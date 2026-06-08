@@ -349,9 +349,6 @@ function ProjectManagerModal({ project, onClose }) {
     </div>
   );
 }
-El `ProjectManagerModal` está pero sigue faltando todo lo demás. Necesitas añadir esto al final del archivo, después de la última `}`:
-
-```jsx
 function SectionTrabajos() {
   const [projects, setProjects] = useState([]);
   const [savedProjects, setSavedProjects] = useState([]);
