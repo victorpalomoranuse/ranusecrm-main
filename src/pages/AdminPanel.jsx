@@ -328,3 +328,24 @@ function TabAsignaciones({ projectId }) {
     </div>
   );
 }
+function ProjectManagerModal({ project, onClose }) {
+  const [tab, setTab] = useState('renders');
+  return (
+    <div className="ap-modal-overlay" onClick={onClose}>
+      <div className="ap-mgr-modal" onClick={e => e.stopPropagation()}>
+        <div className="ap-mgr-head">
+          <div><h2 className="ap-mgr-title">{project.client_name}</h2><p className="ap-mgr-sub">{project.project_name} · <span className="ap-code-val" style={{fontSize:'0.78rem'}}>{project.access_code}</span></p></div>
+          <button className="ap-modal-close" onClick={onClose}><X size={16}/></button>
+        </div>
+        <div className="ap-mgr-tabs">{MGR_TABS.map(t => (<button key={t.id} className={`ap-mgr-tab${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id)}>{t.label}</button>))}</div>
+        <div className="ap-mgr-body">
+          {tab === 'renders'    && <TabRenders      projectId={project.id} />}
+          {tab === 'documentos' && <TabDocumentos   projectId={project.id} />}
+          {tab === 'tours'      && <TabTour         projectId={project.id} />}
+          {tab === 'notas'      && <TabNotas        projectId={project.id} />}
+          {tab === 'catalogo'   && <TabAsignaciones projectId={project.id} />}
+        </div>
+      </div>
+    </div>
+  );
+}
