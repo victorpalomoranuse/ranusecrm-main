@@ -1,0 +1,238 @@
+.cp {
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+  position: relative;
+}
+
+.cp-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.cp-header-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: #fff;
+}
+
+.cp-header-logo img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.cp-header-logo span {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.cp-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.cp-user {
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.4);
+}
+
+.cp-logout {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 7px;
+  padding: 0.4rem 0.85rem;
+  color: rgba(255,255,255,0.7);
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.cp-logout:hover {
+  background: rgba(255,255,255,0.12);
+}
+
+.cp-main {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 4rem 2rem 6rem;
+  position: relative;
+  z-index: 1;
+}
+
+.cp-hero {
+  margin-bottom: 3rem;
+}
+
+.cp-hero h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+}
+
+.cp-sub {
+  font-size: 0.95rem;
+  color: rgba(255,255,255,0.45);
+  margin: 0;
+}
+
+.cp-loading {
+  display: flex;
+  justify-content: center;
+  padding: 4rem 0;
+}
+
+.cp-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255,255,255,0.1);
+  border-top-color: rgba(255,255,255,0.6);
+  border-radius: 50%;
+  animation: cp-spin 0.7s linear infinite;
+}
+
+@keyframes cp-spin {
+  to { transform: rotate(360deg); }
+}
+
+.cp-empty {
+  text-align: center;
+  padding: 4rem 0;
+  color: rgba(255,255,255,0.4);
+}
+
+.cp-empty p {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.cp-empty-sub {
+  font-size: 0.83rem;
+  color: rgba(255,255,255,0.25) !important;
+}
+
+.cp-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cp-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 1.4rem 1.6rem;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.cp-card:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.14);
+}
+
+.cp-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-card-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp-card-client {
+  font-size: 0.83rem;
+  color: rgba(255,255,255,0.4);
+  margin: 0;
+}
+
+.cp-card-phase {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.2rem;
+}
+
+.cp-phase-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.cp-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  transition: background 0.2s;
+}
+
+.cp-dot.active {
+  background: #beb0a2;
+}
+
+.cp-phase-label {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.35);
+}
+
+.cp-view-btn {
+  flex-shrink: 0;
+  background: #fff;
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+  white-space: nowrap;
+}
+
+.cp-view-btn:hover {
+  background: #beb0a2;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 480px) {
+  .cp-header {
+    padding: 0.85rem 1rem;
+  }
+  .cp-main {
+    padding: 2.5rem 1rem 4rem;
+  }
+  .cp-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .cp-view-btn {
+    width: 100%;
+    text-align: center;
+  }
+}

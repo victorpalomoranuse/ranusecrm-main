@@ -1,0 +1,163 @@
+/* ── Stat cards ────────────────────────────────────────────────────── */
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 1100px) { .dash-stats { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px)  { .dash-stats { grid-template-columns: 1fr; } }
+
+.dash-stat-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+.dash-stat-icon {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.4);
+  flex-shrink: 0;
+}
+.dash-stat-body { display: flex; flex-direction: column; gap: 0.15rem; }
+.dash-stat-label { font-size: 0.68rem; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.07em; }
+.dash-stat-value { font-size: 1.35rem; font-weight: 700; color: rgba(255,255,255,0.88); line-height: 1.2; }
+.dash-stat-sub   { font-size: 0.7rem;  color: rgba(255,255,255,0.25); margin-top: 0.1rem; }
+
+/* ── Chart cards ───────────────────────────────────────────────────── */
+.dash-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1rem;
+}
+.dash-bottom-row {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 1rem;
+}
+@media (max-width: 1000px) {
+  .dash-charts-row,
+  .dash-bottom-row { grid-template-columns: 1fr; }
+}
+
+.dash-chart-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  padding: 1.25rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.dash-chart-card--wide { } /* occupies left column by default */
+
+.dash-chart-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.dash-chart-head svg { color: rgba(255,255,255,0.3); }
+
+.dash-empty-chart {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.2);
+  text-align: center;
+  padding: 2.5rem 1rem;
+}
+.dash-empty-small {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.2);
+  margin: 0;
+  padding: 0.5rem 0;
+}
+
+/* ── Tooltip ───────────────────────────────────────────────────────── */
+.dash-tooltip {
+  background: #1a1a1a;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.8);
+}
+.dash-tooltip-label {
+  color: rgba(255,255,255,0.4);
+  font-size: 0.7rem;
+  margin: 0 0 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.dash-tooltip p { margin: 0.15rem 0; }
+
+/* ── Donut ─────────────────────────────────────────────────────────── */
+.dash-donut-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; }
+
+.dash-donut-legend { width: 100%; display: flex; flex-direction: column; gap: 0.3rem; }
+.dash-legend-item  { display: flex; align-items: center; gap: 0.5rem; }
+.dash-legend-dot   { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dash-legend-name  { font-size: 0.75rem; color: rgba(255,255,255,0.5); flex: 1; }
+.dash-legend-val   { font-size: 0.75rem; color: rgba(255,255,255,0.4); font-variant-numeric: tabular-nums; }
+
+/* ── Pipeline ──────────────────────────────────────────────────────── */
+.dash-pipeline { display: flex; flex-direction: column; gap: 0.65rem; }
+.dash-pipe-item { display: flex; flex-direction: column; gap: 0.2rem; }
+.dash-pipe-meta { display: flex; align-items: baseline; gap: 0.5rem; }
+.dash-pipe-phase { font-size: 0.65rem; color: rgba(255,255,255,0.25); text-transform: uppercase; letter-spacing: 0.07em; }
+.dash-pipe-label { font-size: 0.78rem; color: rgba(255,255,255,0.55); flex: 1; }
+.dash-pipe-count { font-size: 0.82rem; font-weight: 700; color: rgba(255,255,255,0.7); }
+.dash-pipe-bar-wrap {
+  height: 5px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.dash-pipe-bar-fill {
+  height: 100%;
+  background: #beb0a2;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+  min-width: 2px;
+}
+
+/* ── Recent table ──────────────────────────────────────────────────── */
+.dash-recent-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.dash-recent-table th {
+  text-align: left;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.63rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.25);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.dash-recent-table td {
+  padding: 0.5rem 0.6rem;
+  color: rgba(255,255,255,0.65);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-recent-table tr:last-child td { border-bottom: none; }
+.dash-recent-table tr:hover td { background: rgba(255,255,255,0.02); }
+.dash-recent-status { font-size: 0.72rem; font-weight: 500; }
+.dash-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }

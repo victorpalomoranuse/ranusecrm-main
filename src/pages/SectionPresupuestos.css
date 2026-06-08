@@ -1,0 +1,328 @@
+/* ── Budget list ───────────────────────────────────────────────────── */
+.pres-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.pres-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  padding: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: border-color 0.15s;
+}
+.pres-card--has-budget { cursor: pointer; }
+.pres-card--has-budget:hover { border-color: rgba(255,255,255,0.18); }
+
+.pres-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.pres-card-client {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin: 0;
+}
+.pres-card-project {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  margin: 0.15rem 0 0;
+}
+.pres-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  border: 1px solid;
+  border-radius: 20px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pres-card-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.pres-cs {
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.pres-cs span { font-size: 0.65rem; color: rgba(255,255,255,0.3); }
+.pres-cs strong { font-size: 0.88rem; color: rgba(255,255,255,0.85); }
+.pres-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.1rem;
+}
+.pres-card-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.pres-card-empty p {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.25);
+  margin: 0;
+}
+
+/* ── Editor header ─────────────────────────────────────────────────── */
+.pres-editor { display: flex; flex-direction: column; gap: 1.25rem; }
+
+.pres-editor-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.pres-editor-title { flex: 1; min-width: 0; }
+.pres-editor-client {
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.pres-editor-title h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.1rem 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pres-editor-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.pres-msg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+.pres-msg--success { background: rgba(139,174,143,0.15); color: #8bae8f; }
+.pres-msg--error   { background: rgba(174,139,139,0.15); color: #ae8b8b; }
+
+/* ── Summary cards ─────────────────────────────────────────────────── */
+.pres-summary {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.6rem;
+}
+@media (max-width: 1100px) { .pres-summary { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 700px)  { .pres-summary { grid-template-columns: repeat(2, 1fr); } }
+
+.pres-sum-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.pres-sum-card--accent { border-color: rgba(190,176,162,0.3); background: rgba(190,176,162,0.05); }
+.pres-sum-card span { font-size: 0.67rem; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.05em; }
+.pres-sum-card strong { font-size: 1rem; font-weight: 700; color: rgba(255,255,255,0.85); }
+
+/* ── Design fee ────────────────────────────────────────────────────── */
+.pres-fee-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  padding: 0.7rem 1rem;
+  flex-wrap: wrap;
+}
+.pres-fee-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgba(255,255,255,0.3);
+  margin-right: 0.25rem;
+}
+.pres-fee-field {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 0 0.5rem;
+}
+.pres-fee-field span { font-size: 0.78rem; color: rgba(255,255,255,0.3); }
+.pres-fee-field input { background: transparent; border: none; outline: none; color: rgba(255,255,255,0.8); font-size: 0.84rem; width: 70px; padding: 0.35rem 0; }
+
+/* ── Items table ───────────────────────────────────────────────────── */
+.pres-items-wrap {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.pres-items-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.pres-items-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.6);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.pres-items-count {
+  background: rgba(255,255,255,0.08);
+  border-radius: 20px;
+  padding: 1px 7px;
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.4);
+}
+
+.pres-table-scroll { overflow-x: auto; }
+
+.pres-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  min-width: 1000px;
+  table-layout: fixed;
+}
+
+/* Column widths */
+.pres-table colgroup col:nth-child(1)  { width: 200px; }  /* Descripción */
+.pres-table colgroup col:nth-child(2)  { width: 110px; }  /* Categoría */
+.pres-table colgroup col:nth-child(3)  { width: 68px;  }  /* Cant */
+.pres-table colgroup col:nth-child(4)  { width: 68px;  }  /* Ud */
+.pres-table colgroup col:nth-child(5)  { width: 98px;  }  /* Coste ud */
+.pres-table colgroup col:nth-child(6)  { width: 90px;  }  /* Margen */
+.pres-table colgroup col:nth-child(7)  { width: 98px;  }  /* PVP ud */
+.pres-table colgroup col:nth-child(8)  { width: 110px; }  /* Total coste */
+.pres-table colgroup col:nth-child(9)  { width: 110px; }  /* Total PVP */
+.pres-table colgroup col:nth-child(10) { width: 96px;  }  /* Acciones */
+
+.pres-table thead tr { border-bottom: 1px solid rgba(255,255,255,0.07); }
+.pres-table th {
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.28);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pres-row td {
+  padding: 0.55rem 0.65rem;
+  color: rgba(255,255,255,0.7);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+}
+/* Descripción: truncar con ellipsis */
+.pres-row td:first-child {
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.pres-row:last-child td { border-bottom: none; }
+.pres-row:hover td { background: rgba(255,255,255,0.02); }
+.pres-row--edit td { background: rgba(190,176,162,0.04); }
+.pres-row--new td { background: rgba(255,255,255,0.01); }
+
+.pres-col-cost { color: rgba(255,255,255,0.45) !important; }
+.pres-col-pvp  { color: #beb0a2 !important; font-weight: 600; }
+.pres-mono { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.pres-cat-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-right: 0.45rem;
+  flex-shrink: 0;
+}
+.pres-cat-chip {
+  font-size: 0.62rem;
+  border: 1px solid;
+  border-radius: 20px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.pres-actions-cell {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.6rem !important;
+  overflow: visible;
+  white-space: nowrap;
+}
+.pres-del { color: rgba(255,255,255,0.25) !important; }
+.pres-del:hover { color: #ae8b8b !important; }
+
+/* Inputs inside table */
+.pres-cell-input {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  padding: 0.3rem 0.45rem;
+  color: rgba(255,255,255,0.85);
+  font-size: 0.8rem;
+  width: 100%;
+  outline: none;
+  min-width: 80px;
+}
+.pres-cell-input:focus { border-color: rgba(190,176,162,0.5); }
+.pres-cell-num { width: 75px; min-width: 60px; text-align: right; }
+
+.pres-cell-select {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  padding: 0.3rem 0.4rem;
+  color: rgba(255,255,255,0.8);
+  font-size: 0.78rem;
+  outline: none;
+  cursor: pointer;
+  max-width: 140px;
+}
+.pres-cell-select:focus { border-color: rgba(190,176,162,0.5); }
+
+/* Footer totals */
+.pres-tfoot-row td {
+  padding: 0.5rem 0.65rem;
+  font-size: 0.78rem;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.pres-tfoot-row--total td {
+  border-top: 2px solid rgba(190,176,162,0.25);
+  color: rgba(255,255,255,0.85);
+}
+.pres-tfoot-row--total .pres-col-pvp { color: #beb0a2 !important; font-size: 0.92rem; }

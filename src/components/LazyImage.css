@@ -1,0 +1,47 @@
+.lazy-wrap {
+  position: relative;
+  overflow: hidden;
+  background: #f0ece8;
+  width: 100%;
+  height: 100%;
+}
+
+/* Shimmer skeleton */
+.lazy-skeleton {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    #f0ece8 25%,
+    #e8e2dc 50%,
+    #f0ece8 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  transition: opacity 0.3s;
+}
+
+.lazy-wrap--loaded .lazy-skeleton {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* La imagen real */
+.lazy-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.lazy-wrap--loaded .lazy-img {
+  opacity: 1;
+}

@@ -1,0 +1,116 @@
+.proyectos-page {
+  min-height: 100vh;
+  background: #050505;
+  position: relative;
+}
+
+.proyectos-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8rem 1.5rem 6rem;
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 768px) {
+  .proyectos-main { padding: 6rem 1.25rem 4rem; }
+  .proyectos-header { margin-bottom: 2rem; }
+}
+
+@media (max-width: 480px) {
+  .proyectos-main { padding: 5rem 1rem 3rem; }
+}
+
+.proyectos-header {
+  margin-bottom: 4rem;
+}
+
+.proyectos-header h1 {
+  font-size: clamp(2.2rem, 4vw, 3.2rem);
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 0.75rem;
+}
+
+.proyectos-header p {
+  font-size: 1.05rem;
+  color: rgba(255,255,255,0.35);
+  margin: 0;
+}
+
+/* Grid de proyectos */
+.proyectos-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+.proyectos-card {
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.03);
+  transition: transform 0.22s, border-color 0.22s, box-shadow 0.22s;
+}
+
+.proyectos-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(190,176,162,0.3);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+}
+
+.proyectos-card-img {
+  aspect-ratio: 4 / 3;
+  position: relative;
+  overflow: hidden;
+}
+
+.proyectos-card-img img,
+.proyectos-card-img > * {
+  transition: transform 0.35s;
+}
+
+.proyectos-card:hover .proyectos-card-img img {
+  transform: scale(1.04);
+}
+
+.proyectos-card-info {
+  padding: 1.25rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.proyectos-card-info h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 0 0.4rem;
+}
+
+.proyectos-card-info p {
+  font-size: 0.875rem;
+  color: rgba(255,255,255,0.35);
+  margin: 0 0 1rem;
+  line-height: 1.5;
+  flex: 1;
+}
+
+.proyectos-card-cta {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #beb0a2;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 900px) {
+  .proyectos-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 560px) {
+  .proyectos-grid { grid-template-columns: 1fr; gap: 1rem; }
+}

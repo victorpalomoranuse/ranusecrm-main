@@ -1,0 +1,17 @@
+.model3d-wrap {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.model3d-wrap:active {
+  cursor: grabbing;
+}
+
+.model3d-wrap canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
