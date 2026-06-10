@@ -1,4 +1,7 @@
 import express from 'express';
+import PDFDocument from 'pdfkit';
+import https from 'https';
+import http from 'http';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requireAdminSuperior } from '../middleware/auth.middleware.js';
 
@@ -21,7 +24,6 @@ function computeTotals(items, feeType, feeValue, designHours) {
   return { itemCost, itemRevenue, designFee, totalRevenue, totalProfit, margin };
 }
 
-// ── Dashboard stats ────────────────────────────────────────────────────────
 router.get('/dashboard', async (req, res) => {
   try {
     const [budgetsRes, projectsRes] = await Promise.all([
@@ -36,21 +38,18 @@ router.get('/dashboard', async (req, res) => {
     }));
     const allProjects = projectsRes.data || [];
 
-    // Summary (approved + all)
     const approved = allBudgets.filter(b => b.status === 'aprobado');
     const totalRevenue = approved.reduce((s, b) => s + b.totalRevenue, 0);
     const totalCost = approved.reduce((s, b) => s + b.itemCost, 0);
     const totalProfit = totalRevenue - totalCost;
     const margin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
-    // Pipeline
     const pipeline = [1,2,3,4,5].map(phase => ({
       phase,
       label: PHASE_LABELS[phase - 1],
       count: allProjects.filter(p => p.phase === phase).length,
     }));
 
-    // Monthly (last 6 months) — based on when budget was created
     const now = new Date();
     const monthly = [];
     for (let i = 5; i >= 0; i--) {
@@ -69,7 +68,6 @@ router.get('/dashboard', async (req, res) => {
       });
     }
 
-    // By category
     const catMap = {};
     allBudgets.forEach(b => {
       (b.items || []).forEach(item => {
@@ -84,7 +82,6 @@ router.get('/dashboard', async (req, res) => {
       category: cat, label: CAT_LABELS[cat] || cat, ...v,
     }));
 
-    // Recent budgets
     const recentBudgets = [...allBudgets]
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .slice(0, 6)
@@ -97,7 +94,6 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
-// ── List budgets ──────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -115,7 +111,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ── Get one budget ─────────────────────────────────────────────────────────
 router.get('/:id', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -131,7 +126,6 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// ── Create budget ──────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
   try {
     const { project_id } = req.body;
@@ -151,7 +145,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// ── Update budget meta ─────────────────────────────────────────────────────
 router.put('/:id', async (req, res) => {
   try {
     const { status, design_fee_type, design_fee_value, design_hours, notes } = req.body;
@@ -169,7 +162,6 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// ── Delete budget ──────────────────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   try {
     const { error } = await supabase.from('budgets').delete().eq('id', req.params.id);
@@ -180,7 +172,6 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// ── Add item ───────────────────────────────────────────────────────────────
 router.post('/:id/items', async (req, res) => {
   try {
     const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id } = req.body;
@@ -204,7 +195,6 @@ router.post('/:id/items', async (req, res) => {
   }
 });
 
-// ── Update item ────────────────────────────────────────────────────────────
 router.put('/:id/items/:itemId', async (req, res) => {
   try {
     const { name, category, quantity, unit, unit_cost, markup_pct, unit_price } = req.body;
@@ -224,7 +214,6 @@ router.put('/:id/items/:itemId', async (req, res) => {
   }
 });
 
-// ── Delete item ────────────────────────────────────────────────────────────
 router.delete('/:id/items/:itemId', async (req, res) => {
   try {
     const { error } = await supabase.from('budget_items').delete().eq('id', req.params.itemId).eq('budget_id', req.params.id);
@@ -235,7 +224,6 @@ router.delete('/:id/items/:itemId', async (req, res) => {
   }
 });
 
-// ── Import from project catalog assignments ────────────────────────────────
 router.post('/:id/import', async (req, res) => {
   try {
     const { data: budget } = await supabase.from('budgets').select('project_id').eq('id', req.params.id).single();
@@ -278,6 +266,119 @@ router.post('/:id/import', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al importar partidas' });
+  }
+});
+
+router.get('/:id/pdf-cliente', async (req, res) => {
+  try {
+    const { iva = 21, irpf = 0 } = req.query;
+    const { data: budget, error } = await supabase
+      .from('budgets')
+      .select('*, project:client_projects(id, client_name, project_name), items:budget_items(*)')
+      .eq('id', req.params.id)
+      .single();
+    if (error || !budget) return res.status(404).json({ error: 'Presupuesto no encontrado' });
+
+    const items = (budget.items || []).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+    const subtotal = items.reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1), 0);
+    const ivaAmount = subtotal * (parseFloat(iva) / 100);
+    const irpfAmount = subtotal * (parseFloat(irpf) / 100);
+    const total = subtotal + ivaAmount - irpfAmount;
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="presupuesto-${(budget.project?.client_name || 'cliente').replace(/\s+/g, '-')}.pdf"`);
+    doc.pipe(res);
+
+    doc.fontSize(20).fillColor('#0a0a0a').text('RANUSE DESIGN', 50, 50);
+    doc.fontSize(10).fillColor('#888888').text('Diseño de espacios premium', 50, 75);
+    doc.moveTo(50, 95).lineTo(545, 95).strokeColor('#e0e0e0').stroke();
+
+    doc.fontSize(14).fillColor('#0a0a0a').text(budget.project?.project_name || '', 50, 110);
+    doc.fontSize(10).fillColor('#555555').text(`Cliente: ${budget.project?.client_name || ''}`, 50, 130);
+    doc.fontSize(10).fillColor('#555555').text(`Fecha: ${new Date().toLocaleDateString('es-ES')}`, 50, 145);
+
+    let y = 180;
+    doc.fontSize(9).fillColor('#888888')
+      .text('PRODUCTO', 50, y)
+      .text('CANT.', 370, y, { width: 60, align: 'right' })
+      .text('UNIDAD', 440, y, { width: 55, align: 'right' });
+    doc.moveTo(50, y + 15).lineTo(545, y + 15).strokeColor('#e0e0e0').stroke();
+    y += 25;
+
+    for (const item of items) {
+      if (y > 700) { doc.addPage(); y = 50; }
+
+      if (item.image_url) {
+        try {
+          await new Promise((resolve) => {
+            const urlObj = new URL(item.image_url);
+            const client = urlObj.protocol === 'https:' ? https : http;
+            client.get(item.image_url, (imgRes) => {
+              const chunks = [];
+              imgRes.on('data', c => chunks.push(c));
+              imgRes.on('end', () => {
+                try {
+                  const buf = Buffer.concat(chunks);
+                  doc.image(buf, 50, y, { width: 40, height: 40 });
+                } catch {}
+                resolve();
+              });
+              imgRes.on('error', resolve);
+            }).on('error', resolve);
+          });
+          doc.fontSize(10).fillColor('#0a0a0a').text(item.name, 100, y + 5, { width: 260 });
+          if (item.category) doc.fontSize(8).fillColor('#aaaaaa').text(item.category, 100, y + 20, { width: 260 });
+        } catch {
+          doc.fontSize(10).fillColor('#0a0a0a').text(item.name, 50, y + 5, { width: 310 });
+          if (item.category) doc.fontSize(8).fillColor('#aaaaaa').text(item.category, 50, y + 20, { width: 310 });
+        }
+      } else {
+        doc.fontSize(10).fillColor('#0a0a0a').text(item.name, 50, y + 5, { width: 310 });
+        if (item.category) doc.fontSize(8).fillColor('#aaaaaa').text(item.category, 50, y + 20, { width: 310 });
+      }
+
+      doc.fontSize(10).fillColor('#0a0a0a')
+        .text(String(item.quantity || 1), 370, y + 13, { width: 60, align: 'right' })
+        .text(item.unit || 'ud', 440, y + 13, { width: 55, align: 'right' });
+
+      doc.moveTo(50, y + 48).lineTo(545, y + 48).strokeColor('#f0f0f0').stroke();
+      y += 55;
+    }
+
+    y += 10;
+    doc.moveTo(350, y).lineTo(545, y).strokeColor('#cccccc').stroke();
+    y += 15;
+
+    const fmtEur = n => Number(n).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+
+    doc.fontSize(10).fillColor('#555555').text('Subtotal', 350, y);
+    doc.fillColor('#0a0a0a').text(fmtEur(subtotal), 440, y, { width: 105, align: 'right' });
+    y += 20;
+
+    if (parseFloat(iva) > 0) {
+      doc.fontSize(10).fillColor('#555555').text(`IVA (${iva}%)`, 350, y);
+      doc.fillColor('#0a0a0a').text(fmtEur(ivaAmount), 440, y, { width: 105, align: 'right' });
+      y += 20;
+    }
+
+    if (parseFloat(irpf) > 0) {
+      doc.fontSize(10).fillColor('#555555').text(`Retencion IRPF (${irpf}%)`, 350, y);
+      doc.fillColor('#cc0000').text(`-${fmtEur(irpfAmount)}`, 440, y, { width: 105, align: 'right' });
+      y += 20;
+    }
+
+    doc.moveTo(350, y).lineTo(545, y).strokeColor('#cccccc').stroke();
+    y += 12;
+    doc.fontSize(13).fillColor('#0a0a0a').text('TOTAL', 350, y);
+    doc.text(fmtEur(total), 440, y, { width: 105, align: 'right' });
+
+    doc.fontSize(8).fillColor('#bbbbbb').text('ranusedesign.com', 50, 780, { align: 'center', width: 495 });
+
+    doc.end();
+  } catch (err) {
+    console.error(err);
+    if (!res.headersSent) res.status(500).json({ error: 'Error al generar PDF' });
   }
 });
 
