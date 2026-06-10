@@ -252,22 +252,19 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     const margin = 45;
 
     // HEADER negro
-    doc.rect(0, 0, W, 110).fill(BRAND.dark);
+    doc.rect(0, 0, W, 70).fill(BRAND.dark);
 
-    // Logo blanco
+    // Logo blanco pequeño
     const logoPath = path.join(__dirname, '..', 'Icono Blanco.png');
-    try { doc.image(logoPath, margin, 18, { height: 70 }); } catch {}
+    try { doc.image(logoPath, margin, 12, { height: 46 }); } catch {}
 
-    // Nombre marca
-    doc.fillColor('#ffffff').fontSize(18).font('Helvetica-Bold').text('RANUSE', margin + 82, 32);
-    doc.fillColor(BRAND.primary).fontSize(9).font('Helvetica').text('DESIGN', margin + 82, 52);
-
-    // Numero y fecha derecha
-    doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold').text(`N ${budgetNumber}`, 0, 32, { align: 'right', width: W - margin });
-    doc.fillColor('rgba(255,255,255,0.55)').fontSize(8).font('Helvetica').text(dateStr, 0, 48, { align: 'right', width: W - margin });
+    // PRESUPUESTO Nº y fecha derecha
+    doc.fillColor('rgba(255,255,255,0.5)').fontSize(8).font('Helvetica').text('PRESUPUESTO', 0, 14, { align: 'right', width: W - margin });
+    doc.fillColor('#ffffff').fontSize(13).font('Helvetica-Bold').text(`N\u00BA ${budgetNumber}`, 0, 27, { align: 'right', width: W - margin });
+    doc.fillColor('rgba(255,255,255,0.5)').fontSize(8).font('Helvetica').text(dateStr, 0, 46, { align: 'right', width: W - margin });
 
     // INFO BLOCK
-    const infoY = 125;
+    const infoY = 90;
 
     // DE — Ranuse
     doc.fillColor(BRAND.primary).fontSize(7).font('Helvetica-Bold').text('DE', margin, infoY);
