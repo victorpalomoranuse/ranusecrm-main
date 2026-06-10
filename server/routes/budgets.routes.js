@@ -259,9 +259,9 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     try { doc.image(logoPath, margin, 12, { height: 46 }); } catch {}
 
     // PRESUPUESTO Nº y fecha derecha
-    doc.fillColor('rgba(255,255,255,0.5)').fontSize(8).font('Helvetica').text('PRESUPUESTO', 0, 14, { align: 'right', width: W - margin });
+    doc.fillColor('#999999').fontSize(8).font('Helvetica').text('PRESUPUESTO', 0, 14, { align: 'right', width: W - margin });
     doc.fillColor('#ffffff').fontSize(13).font('Helvetica-Bold').text(`N\u00BA ${budgetNumber}`, 0, 27, { align: 'right', width: W - margin });
-    doc.fillColor('rgba(255,255,255,0.5)').fontSize(8).font('Helvetica').text(dateStr, 0, 46, { align: 'right', width: W - margin });
+    doc.fillColor('#999999').fontSize(8).font('Helvetica').text(dateStr, 0, 46, { align: 'right', width: W - margin });
 
     // INFO BLOCK
     const infoY = 90;
