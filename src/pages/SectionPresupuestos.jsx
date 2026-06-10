@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle } from 'lucide-react';
 import './SectionPresupuestos.css';
 
-// ── Helpers ────────────────────────────────────────────────────────────────
 const CATEGORIES = [
   { value: 'material',    label: 'Material',      color: '#beb0a2' },
   { value: 'mobiliario',  label: 'Mobiliario',     color: '#8b9eae' },
@@ -43,7 +42,6 @@ function computeSummary(items, b) {
   return { itemCost, itemRev, fee, totalRev, profit, margin: totalRev > 0 ? (profit / totalRev) * 100 : 0 };
 }
 
-// ── Toast mini ─────────────────────────────────────────────────────────────
 function MsgBanner({ msg }) {
   if (!msg) return null;
   return (
@@ -54,7 +52,6 @@ function MsgBanner({ msg }) {
   );
 }
 
-// ── Budget List ────────────────────────────────────────────────────────────
 function BudgetList({ onOpen }) {
   const [projects, setProjects]   = useState([]);
   const [budgets, setBudgets]     = useState([]);
@@ -114,40 +111,23 @@ function BudgetList({ onOpen }) {
                   </div>
                   {st && <span className="pres-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>}
                 </div>
-
                 {b ? (
                   <>
                     <div className="pres-card-stats">
                       <div className="pres-cs"><span>Coste</span><strong>{fmt(b.itemCost)}</strong></div>
                       <div className="pres-cs"><span>PVP total</span><strong>{fmt(b.totalRevenue)}</strong></div>
-                      <div className="pres-cs">
-                        <span>Beneficio</span>
-                        <strong style={{ color: b.totalProfit >= 0 ? '#8bae8f' : '#ae8b8b' }}>{fmt(b.totalProfit)}</strong>
-                      </div>
-                      <div className="pres-cs">
-                        <span>Margen</span>
-                        <strong style={{ color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#beb0a2' : '#ae8b8b' }}>
-                          {Number(b.margin||0).toFixed(1)}%
-                        </strong>
-                      </div>
+                      <div className="pres-cs"><span>Beneficio</span><strong style={{ color: b.totalProfit >= 0 ? '#8bae8f' : '#ae8b8b' }}>{fmt(b.totalProfit)}</strong></div>
+                      <div className="pres-cs"><span>Margen</span><strong style={{ color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#beb0a2' : '#ae8b8b' }}>{Number(b.margin||0).toFixed(1)}%</strong></div>
                     </div>
                     <div className="pres-card-foot">
-                      <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={e => { e.stopPropagation(); onOpen(b.id); }}>
-                        Abrir presupuesto →
-                      </button>
-                      <button className="ap-btn-icon" onClick={e => handleDelete(b.id, e)} disabled={deletingId === b.id} title="Eliminar presupuesto">
-                        <Trash2 size={13}/>
-                      </button>
+                      <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={e => { e.stopPropagation(); onOpen(b.id); }}>Abrir presupuesto →</button>
+                      <button className="ap-btn-icon" onClick={e => handleDelete(b.id, e)} disabled={deletingId === b.id} title="Eliminar presupuesto"><Trash2 size={13}/></button>
                     </div>
                   </>
                 ) : (
                   <div className="pres-card-empty">
                     <p>Sin presupuesto</p>
-                    <button
-                      className="ap-btn ap-btn-primary ap-btn-sm"
-                      onClick={e => { e.stopPropagation(); handleCreate(p.id); }}
-                      disabled={creating === p.id}
-                    >
+                    <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={e => { e.stopPropagation(); handleCreate(p.id); }} disabled={creating === p.id}>
                       {creating === p.id ? 'Creando…' : <><Plus size={12}/> Crear presupuesto</>}
                     </button>
                   </div>
@@ -161,55 +141,35 @@ function BudgetList({ onOpen }) {
   );
 }
 
-// ── Item Row (edit mode) ───────────────────────────────────────────────────
 function ItemRowEdit({ item, onSave, onCancel }) {
   const [d, setD] = useState({ ...item });
-
-  const handleCostChange = v => {
-    const cost = parseFloat(v) || 0;
-    const markup = parseFloat(d.markup_pct) || 0;
-    setD(p => ({ ...p, unit_cost: v, unit_price: (cost * (1 + markup/100)).toFixed(2) }));
-  };
-  const handleMarkupChange = v => {
-    const cost = parseFloat(d.unit_cost) || 0;
-    const markup = parseFloat(v) || 0;
-    setD(p => ({ ...p, markup_pct: v, unit_price: (cost * (1 + markup/100)).toFixed(2) }));
-  };
-
+  const handleCostChange = v => { const cost = parseFloat(v)||0, markup = parseFloat(d.markup_pct)||0; setD(p=>({...p, unit_cost:v, unit_price:(cost*(1+markup/100)).toFixed(2)})); };
+  const handleMarkupChange = v => { const cost = parseFloat(d.unit_cost)||0, markup = parseFloat(v)||0; setD(p=>({...p, markup_pct:v, unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   return (
     <tr className="pres-row pres-row--edit">
-      <td><input className="pres-cell-input" value={d.name} onChange={e => setD(p=>({...p, name: e.target.value}))} autoFocus /></td>
-      <td>
-        <select className="pres-cell-select" value={d.category} onChange={e => setD(p=>({...p, category: e.target.value}))}>
-          {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-        </select>
-      </td>
-      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.quantity} onChange={e => setD(p=>({...p, quantity: e.target.value}))} /></td>
-      <td>
-        <select className="pres-cell-select" value={d.unit} onChange={e => setD(p=>({...p, unit: e.target.value}))}>
-          {UNITS.map(u => <option key={u}>{u}</option>)}
-        </select>
-      </td>
-      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_cost} onChange={e => handleCostChange(e.target.value)} /></td>
-      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.1" value={d.markup_pct} onChange={e => handleMarkupChange(e.target.value)} /></td>
-      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_price} onChange={e => setD(p=>({...p, unit_price: e.target.value}))} /></td>
+      <td><input className="pres-cell-input" value={d.name} onChange={e=>setD(p=>({...p,name:e.target.value}))} autoFocus /></td>
+      <td><select className="pres-cell-select" value={d.category} onChange={e=>setD(p=>({...p,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></td>
+      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.quantity} onChange={e=>setD(p=>({...p,quantity:e.target.value}))} /></td>
+      <td><select className="pres-cell-select" value={d.unit} onChange={e=>setD(p=>({...p,unit:e.target.value}))}>{UNITS.map(u=><option key={u}>{u}</option>)}</select></td>
+      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_cost} onChange={e=>handleCostChange(e.target.value)} /></td>
+      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.1" value={d.markup_pct} onChange={e=>handleMarkupChange(e.target.value)} /></td>
+      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_price} onChange={e=>setD(p=>({...p,unit_price:e.target.value}))} /></td>
       <td className="pres-mono pres-col-cost">{fmt((parseFloat(d.unit_cost)||0)*(parseFloat(d.quantity)||1))}</td>
       <td className="pres-mono pres-col-pvp">{fmt((parseFloat(d.unit_price)||0)*(parseFloat(d.quantity)||1))}</td>
       <td className="pres-actions-cell">
-        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => onSave(d)} disabled={!d.name?.trim()}>✓</button>
+        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={()=>onSave(d)} disabled={!d.name?.trim()}>✓</button>
         <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onCancel}>✕</button>
       </td>
     </tr>
   );
 }
 
-// ── Item Row (display mode) ────────────────────────────────────────────────
 function ItemRowDisplay({ item, onEdit, onDelete }) {
-  const cat = CATEGORIES.find(c => c.value === item.category) || CATEGORIES[0];
+  const cat = CATEGORIES.find(c=>c.value===item.category)||CATEGORIES[0];
   return (
     <tr className="pres-row">
-      <td><span className="pres-cat-dot" style={{ background: cat.color }}/>{item.name}</td>
-      <td><span className="pres-cat-chip" style={{ borderColor: cat.color, color: cat.color }}>{cat.label}</span></td>
+      <td><span className="pres-cat-dot" style={{background:cat.color}}/>{item.name}</td>
+      <td><span className="pres-cat-chip" style={{borderColor:cat.color,color:cat.color}}>{cat.label}</span></td>
       <td className="pres-mono">{item.quantity}</td>
       <td className="pres-mono">{item.unit}</td>
       <td className="pres-mono">{fmt(item.unit_cost)}</td>
@@ -225,56 +185,29 @@ function ItemRowDisplay({ item, onEdit, onDelete }) {
   );
 }
 
-// ── New item row ───────────────────────────────────────────────────────────
 function NewItemRow({ onAdd }) {
-  const blank = { name: '', category: 'material', quantity: '1', unit: 'ud', unit_cost: '0', markup_pct: '20', unit_price: '0' };
+  const blank = { name:'', category:'material', quantity:'1', unit:'ud', unit_cost:'0', markup_pct:'20', unit_price:'0' };
   const [d, setD] = useState(blank);
   const [saving, setSaving] = useState(false);
-
-  const handleCostChange = v => {
-    const cost = parseFloat(v)||0, markup = parseFloat(d.markup_pct)||0;
-    setD(p=>({...p, unit_cost: v, unit_price: (cost*(1+markup/100)).toFixed(2)}));
-  };
-  const handleMarkupChange = v => {
-    const cost = parseFloat(d.unit_cost)||0, markup = parseFloat(v)||0;
-    setD(p=>({...p, markup_pct: v, unit_price: (cost*(1+markup/100)).toFixed(2)}));
-  };
-
-  const handleAdd = async () => {
-    if (!d.name.trim()) return;
-    setSaving(true);
-    try { await onAdd(d); setD(blank); } finally { setSaving(false); }
-  };
-
+  const handleCostChange = v => { const cost=parseFloat(v)||0, markup=parseFloat(d.markup_pct)||0; setD(p=>({...p,unit_cost:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
+  const handleMarkupChange = v => { const cost=parseFloat(d.unit_cost)||0, markup=parseFloat(v)||0; setD(p=>({...p,markup_pct:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
+  const handleAdd = async () => { if(!d.name.trim()) return; setSaving(true); try { await onAdd(d); setD(blank); } finally { setSaving(false); } };
   return (
     <tr className="pres-row pres-row--new">
-      <td><input className="pres-cell-input" value={d.name} onChange={e=>setD(p=>({...p, name:e.target.value}))} placeholder="Nueva partida…" onKeyDown={e=>e.key==='Enter'&&handleAdd()} /></td>
-      <td>
-        <select className="pres-cell-select" value={d.category} onChange={e=>setD(p=>({...p, category:e.target.value}))}>
-          {CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}
-        </select>
-      </td>
+      <td><input className="pres-cell-input" value={d.name} onChange={e=>setD(p=>({...p,name:e.target.value}))} placeholder="Nueva partida…" onKeyDown={e=>e.key==='Enter'&&handleAdd()} /></td>
+      <td><select className="pres-cell-select" value={d.category} onChange={e=>setD(p=>({...p,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></td>
       <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.quantity} onChange={e=>setD(p=>({...p,quantity:e.target.value}))} /></td>
-      <td>
-        <select className="pres-cell-select" value={d.unit} onChange={e=>setD(p=>({...p,unit:e.target.value}))}>
-          {UNITS.map(u=><option key={u}>{u}</option>)}
-        </select>
-      </td>
+      <td><select className="pres-cell-select" value={d.unit} onChange={e=>setD(p=>({...p,unit:e.target.value}))}>{UNITS.map(u=><option key={u}>{u}</option>)}</select></td>
       <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_cost} onChange={e=>handleCostChange(e.target.value)} /></td>
       <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.1" value={d.markup_pct} onChange={e=>handleMarkupChange(e.target.value)} /></td>
       <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_price} onChange={e=>setD(p=>({...p,unit_price:e.target.value}))} /></td>
       <td className="pres-mono" style={{color:'rgba(255,255,255,0.25)'}}>{fmt((parseFloat(d.unit_cost)||0)*(parseFloat(d.quantity)||1))}</td>
       <td className="pres-mono" style={{color:'rgba(255,255,255,0.25)'}}>{fmt((parseFloat(d.unit_price)||0)*(parseFloat(d.quantity)||1))}</td>
-      <td className="pres-actions-cell">
-        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAdd} disabled={saving||!d.name.trim()}>
-          {saving ? '…' : <Plus size={13}/>}
-        </button>
-      </td>
+      <td className="pres-actions-cell"><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAdd} disabled={saving||!d.name.trim()}>{saving?'…':<Plus size={13}/>}</button></td>
     </tr>
   );
 }
 
-// ── Budget Editor ──────────────────────────────────────────────────────────
 function BudgetEditor({ id, onBack }) {
   const [budget, setBudget]   = useState(null);
   const [items, setItems]     = useState([]);
@@ -283,8 +216,34 @@ function BudgetEditor({ id, onBack }) {
   const [importing, setImporting] = useState(false);
   const [savingFee, setSavingFee] = useState(false);
   const [msg, setMsg]         = useState(null);
+  const [pdfIva, setPdfIva]   = useState('21');
+  const [pdfIrpf, setPdfIrpf] = useState('0');
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   const flash = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null), 2500); };
+
+  const handlePdf = async () => {
+    setGeneratingPdf(true);
+    try {
+      const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch(`${base}/budgets/${id}/pdf-cliente?iva=${pdfIva}&irpf=${pdfIrpf}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'presupuesto-cliente.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      flash('Error al generar PDF', 'error');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
 
   useEffect(() => {
     api.get(`/budgets/${id}`)
@@ -297,10 +256,7 @@ function BudgetEditor({ id, onBack }) {
     setSavingFee(true);
     try {
       const b = { ...budget, ...patch };
-      const { data } = await api.put(`/budgets/${id}`, {
-        status: b.status, design_fee_type: b.design_fee_type,
-        design_fee_value: b.design_fee_value, design_hours: b.design_hours,
-      });
+      const { data } = await api.put(`/budgets/${id}`, { status: b.status, design_fee_type: b.design_fee_type, design_fee_value: b.design_fee_value, design_hours: b.design_hours });
       setBudget(prev => ({ ...prev, ...data.budget, ...patch }));
       flash('Guardado');
     } catch { flash('Error al guardar', 'error'); }
@@ -308,24 +264,12 @@ function BudgetEditor({ id, onBack }) {
   };
 
   const handleAddItem = async (form) => {
-    const { data } = await api.post(`/budgets/${id}/items`, {
-      ...form,
-      unit_cost: parseFloat(form.unit_cost)||0,
-      unit_price: parseFloat(form.unit_price)||0,
-      markup_pct: parseFloat(form.markup_pct)||20,
-      quantity: parseFloat(form.quantity)||1,
-    });
+    const { data } = await api.post(`/budgets/${id}/items`, { ...form, unit_cost: parseFloat(form.unit_cost)||0, unit_price: parseFloat(form.unit_price)||0, markup_pct: parseFloat(form.markup_pct)||20, quantity: parseFloat(form.quantity)||1 });
     setItems(prev => [...prev, data.item]);
   };
 
   const handleUpdateItem = async (itemId, d) => {
-    const { data } = await api.put(`/budgets/${id}/items/${itemId}`, {
-      name: d.name, category: d.category,
-      quantity: parseFloat(d.quantity)||1, unit: d.unit,
-      unit_cost: parseFloat(d.unit_cost)||0,
-      markup_pct: parseFloat(d.markup_pct)||0,
-      unit_price: parseFloat(d.unit_price)||0,
-    });
+    const { data } = await api.put(`/budgets/${id}/items/${itemId}`, { name: d.name, category: d.category, quantity: parseFloat(d.quantity)||1, unit: d.unit, unit_cost: parseFloat(d.unit_cost)||0, markup_pct: parseFloat(d.markup_pct)||0, unit_price: parseFloat(d.unit_price)||0 });
     setItems(prev => prev.map(i => i.id === itemId ? data.item : i));
     setEditingId(null);
   };
@@ -354,7 +298,6 @@ function BudgetEditor({ id, onBack }) {
 
   return (
     <div className="pres-editor">
-      {/* Header */}
       <div className="pres-editor-head">
         <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onBack}><ArrowLeft size={14}/> Volver</button>
         <div className="pres-editor-title">
@@ -363,17 +306,12 @@ function BudgetEditor({ id, onBack }) {
         </div>
         <div className="pres-editor-right">
           <MsgBanner msg={msg}/>
-          <select
-            className="pres-cell-select"
-            value={budget.status}
-            onChange={e => { const s = e.target.value; setBudget(b=>({...b, status: s})); saveFee({ status: s }); }}
-          >
+          <select className="pres-cell-select" value={budget.status} onChange={e => { const s=e.target.value; setBudget(b=>({...b,status:s})); saveFee({status:s}); }}>
             {Object.entries(STATUS_CFG).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
         </div>
       </div>
 
-      {/* Summary cards */}
       <div className="pres-summary">
         {[
           { label: 'Coste total',     val: fmt(sum.itemCost),    color: null },
@@ -383,64 +321,53 @@ function BudgetEditor({ id, onBack }) {
           { label: 'Beneficio bruto', val: fmt(sum.profit),      color: sum.profit >= 0 ? '#8bae8f' : '#ae8b8b' },
           { label: 'Margen',          val: `${sum.margin.toFixed(1)}%`, color: sum.margin >= 20 ? '#8bae8f' : sum.margin >= 10 ? '#beb0a2' : '#ae8b8b' },
         ].map(c => (
-          <div key={c.label} className={`pres-sum-card${c.accent ? ' pres-sum-card--accent' : ''}`}>
+          <div key={c.label} className={`pres-sum-card${c.accent?' pres-sum-card--accent':''}`}>
             <span>{c.label}</span>
-            <strong style={c.color ? { color: c.color } : {}}>{c.val}</strong>
+            <strong style={c.color?{color:c.color}:{}}>{c.val}</strong>
           </div>
         ))}
       </div>
 
-      {/* Design fee */}
       <div className="pres-fee-box">
         <span className="pres-fee-label">Honorarios</span>
-        <select
-          className="pres-cell-select"
-          value={budget.design_fee_type}
-          onChange={e => setBudget(b=>({...b, design_fee_type: e.target.value}))}
-          onBlur={() => saveFee()}
-        >
+        <select className="pres-cell-select" value={budget.design_fee_type} onChange={e=>setBudget(b=>({...b,design_fee_type:e.target.value}))} onBlur={()=>saveFee()}>
           {FEE_TYPES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}
         </select>
         <div className="pres-fee-field">
-          <span>{budget.design_fee_type === 'percentage' ? '%' : '€'}</span>
-          <input
-            className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01"
-            value={budget.design_fee_value||0}
-            onChange={e => setBudget(b=>({...b, design_fee_value: e.target.value}))}
-            onBlur={() => saveFee()}
-          />
+          <span>{budget.design_fee_type==='percentage'?'%':'€'}</span>
+          <input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={budget.design_fee_value||0} onChange={e=>setBudget(b=>({...b,design_fee_value:e.target.value}))} onBlur={()=>saveFee()} />
         </div>
-        {budget.design_fee_type === 'hourly' && (
+        {budget.design_fee_type==='hourly' && (
           <div className="pres-fee-field">
             <span>h</span>
-            <input
-              className="pres-cell-input pres-cell-num" type="number" min="0" step="0.5"
-              value={budget.design_hours||0}
-              onChange={e => setBudget(b=>({...b, design_hours: e.target.value}))}
-              onBlur={() => saveFee()}
-              placeholder="Horas"
-            />
+            <input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.5" value={budget.design_hours||0} onChange={e=>setBudget(b=>({...b,design_hours:e.target.value}))} onBlur={()=>saveFee()} placeholder="Horas" />
           </div>
         )}
-        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => saveFee()} disabled={savingFee}>
-          {savingFee ? '…' : 'Guardar'}
-        </button>
+        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>saveFee()} disabled={savingFee}>{savingFee?'…':'Guardar'}</button>
       </div>
 
-      {/* Items table */}
       <div className="pres-items-wrap">
         <div className="pres-items-toolbar">
           <span className="pres-items-title">Partidas <span className="pres-items-count">{items.length}</span></span>
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleImport} disabled={importing}>
-            <RotateCcw size={13}/> {importing ? 'Importando…' : 'Importar del proyecto'}
-          </button>
+          <div style={{display:'flex',alignItems:'center',gap:'0.5rem',flexWrap:'wrap'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'0.4rem'}}>
+              <span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.4)'}}>IVA%</span>
+              <input className="ap-field-input" type="number" min="0" max="100" value={pdfIva} onChange={e=>setPdfIva(e.target.value)} style={{width:55}} />
+              <span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.4)'}}>IRPF%</span>
+              <input className="ap-field-input" type="number" min="0" max="100" value={pdfIrpf} onChange={e=>setPdfIrpf(e.target.value)} style={{width:55}} />
+              <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handlePdf} disabled={generatingPdf}>
+                {generatingPdf ? 'Generando…' : 'PDF cliente'}
+              </button>
+            </div>
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleImport} disabled={importing}>
+              <RotateCcw size={13}/> {importing?'Importando…':'Importar del proyecto'}
+            </button>
+          </div>
         </div>
 
         <div className="pres-table-scroll">
           <table className="pres-table">
-            <colgroup>
-              <col/><col/><col/><col/><col/><col/><col/><col/><col/><col/>
-            </colgroup>
+            <colgroup><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/></colgroup>
             <thead>
               <tr>
                 <th>Descripción</th><th>Categoría</th><th>Cant</th><th>Ud</th>
@@ -453,25 +380,21 @@ function BudgetEditor({ id, onBack }) {
             <tbody>
               {items.map(item =>
                 editingId === item.id
-                  ? <ItemRowEdit key={item.id} item={item} onSave={d => handleUpdateItem(item.id, d)} onCancel={() => setEditingId(null)} />
-                  : <ItemRowDisplay key={item.id} item={item} onEdit={() => setEditingId(item.id)} onDelete={() => handleDeleteItem(item.id)} />
+                  ? <ItemRowEdit key={item.id} item={item} onSave={d=>handleUpdateItem(item.id,d)} onCancel={()=>setEditingId(null)} />
+                  : <ItemRowDisplay key={item.id} item={item} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} />
               )}
               <NewItemRow onAdd={handleAddItem} />
             </tbody>
             {items.length > 0 && (
               <tfoot>
                 <tr className="pres-tfoot-row">
-                  <td colSpan={7} style={{textAlign:'right',paddingRight:'0.75rem',color:'rgba(255,255,255,0.4)',fontSize:'0.72rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em'}}>
-                    SUBTOTAL PARTIDAS
-                  </td>
+                  <td colSpan={7} style={{textAlign:'right',paddingRight:'0.75rem',color:'rgba(255,255,255,0.4)',fontSize:'0.72rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em'}}>SUBTOTAL PARTIDAS</td>
                   <td className="pres-mono pres-col-cost">{fmt(totalItemCost)}</td>
                   <td className="pres-mono pres-col-pvp">{fmt(totalItemPvp)}</td>
                   <td/>
                 </tr>
                 <tr className="pres-tfoot-row pres-tfoot-row--total">
-                  <td colSpan={7} style={{textAlign:'right',paddingRight:'0.75rem',fontSize:'0.72rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em'}}>
-                    TOTAL CLIENTE (con honorarios)
-                  </td>
+                  <td colSpan={7} style={{textAlign:'right',paddingRight:'0.75rem',fontSize:'0.72rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em'}}>TOTAL CLIENTE (con honorarios)</td>
                   <td className="pres-mono pres-col-cost">{fmt(sum.itemCost)}</td>
                   <td className="pres-mono pres-col-pvp">{fmt(sum.totalRev)}</td>
                   <td/>
@@ -485,7 +408,6 @@ function BudgetEditor({ id, onBack }) {
   );
 }
 
-// ── Export ─────────────────────────────────────────────────────────────────
 export function SectionPresupuestos() {
   const [view, setView]         = useState('list');
   const [budgetId, setBudgetId] = useState(null);
