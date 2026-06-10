@@ -180,7 +180,7 @@ function MobiliarioSection({ equipment }) {
                 <span className="mp-sel-name">{e.name}</span>
                 {e.brand && <span className="mp-sel-sub">{e.brand}</span>}
                 {e.category && <span className="mp-sel-tag">{e.category}</span>}
-                {e.quantity > 1 && <span className="mp-sel-qty">×{e.quantity}</span>}
+                <span className="mp-sel-qty">×{e.quantity || 1}</span>
               </div>
             </div>
           );
