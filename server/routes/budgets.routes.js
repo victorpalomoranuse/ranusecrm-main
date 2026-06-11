@@ -234,6 +234,8 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       (products || []).forEach(p => { catalogMap[p.id] = p.photo_url; });
     }
 
+    const { data: settingsData } = await supabase.from('settings').select('*').eq('id', 1).single();
+    const settings = settingsData || {};
     const subtotal = items.reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1), 0);
     const ivaAmount = subtotal * (parseFloat(iva) / 100);
     const irpfAmount = subtotal * (parseFloat(irpf) / 100);
@@ -368,6 +370,10 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     doc.fillColor(BRAND.dark).fontSize(11).font('Helvetica-Bold').text('TOTAL', totX, y + 4);
     doc.fillColor(BRAND.dark).fontSize(13).font('Helvetica-Bold').text(fmtEur(total), totX, y + 2, { width: totW, align: 'right' });
 
+    // PAGO
+    if (settings.bank_iban || settings.payment_methods) {
+      y += 24;
+      if (y > H - 80) { doc.addPage(); y = margin + 20; }
     // FOOTER con solo logo
     doc.rect(0, H - 42, W, 42).fill(BRAND.dark);
     try {
