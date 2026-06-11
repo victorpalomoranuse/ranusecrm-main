@@ -15,6 +15,7 @@ import budgetsRoutes from './routes/budgets.routes.js';
 import tasksRoutes from './routes/tasks.routes.js';
 import eventsRoutes from './routes/events.routes.js';
 import savedItemsRoutes from './routes/saved-items.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
 
 dotenv.config();
 
@@ -62,6 +63,7 @@ app.use('/api/budgets', budgetsRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/saved-items', savedItemsRoutes);
+app.use('/api/settings', settingsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
