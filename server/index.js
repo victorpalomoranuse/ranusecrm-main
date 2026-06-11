@@ -1,4 +1,3 @@
-```js
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -16,8 +15,6 @@ import budgetsRoutes from './routes/budgets.routes.js';
 import tasksRoutes from './routes/tasks.routes.js';
 
 dotenv.config();
-console.log('🔑 GOOGLE_API_KEY:', process.env.GOOGLE_API_KEY ? '✅ Cargada' : '❌ NO encontrada');
-console.log('🔑 Primeros caracteres:', process.env.GOOGLE_API_KEY?.substring(0, 10));
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -41,7 +38,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  console.log(new Date().toISOString() + ' - ' + req.method + ' ' + req.path);
   next();
 });
 
@@ -69,22 +66,12 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error('Error:', err);
   res.status(err.status || 500).json({
-    error: err.message || 'Error interno del servidor',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    error: err.message || 'Error interno del servidor'
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`
-╔═══════════════════════════════════════╗
-║   🚀 Ranuse Design API Server         ║
-║   📡 Puerto: ${PORT}                      ║
-║   🌍 Entorno: ${process.env.NODE_ENV || 'development'}           ║
-╚═══════════════════════════════════════╝
-  `);
+  console.log('Ranuse Design API Server - Puerto: ' + PORT);
 });
 
 export default app;
-```
-
-Haz commit y dime cuando esté.
