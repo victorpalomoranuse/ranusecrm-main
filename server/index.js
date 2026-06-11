@@ -13,6 +13,7 @@ import referencesRoutes from './routes/references.routes.js';
 import contactsRoutes from './routes/contacts.routes.js';
 import budgetsRoutes from './routes/budgets.routes.js';
 import tasksRoutes from './routes/tasks.routes.js';
+import eventsRoutes from './routes/events.routes.js';
 
 dotenv.config();
 
@@ -58,6 +59,7 @@ app.use('/api/references', referencesRoutes);
 app.use('/api/contacts', contactsRoutes);
 app.use('/api/budgets', budgetsRoutes);
 app.use('/api/tasks', tasksRoutes);
+app.use('/api/events', eventsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
