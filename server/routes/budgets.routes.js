@@ -28,13 +28,13 @@ const BRAND = {
   dark: '#0a0a0a',
 };
 
-function generateBudgetNumber() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const rand = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
-  return `${year}${month}${day}-${rand}`;
+async function generateBudgetNumber() {
+  const { data, error } = await supabase.rpc('increment_budget_counter');
+  if (error || !data) {
+    const rand = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
+    return `RAN-${rand}`;
+  }
+  return `RAN-${String(data).padStart(3, '0')}`;
 }
 
 function computeTotals(items, feeType, feeValue, designHours) {
