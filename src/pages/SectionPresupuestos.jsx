@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, Bookmark, BookOpen, X } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, Bookmark, BookOpen, X, Link } from 'lucide-react';
 import './SectionPresupuestos.css';
 
 const CATEGORIES = [
@@ -70,7 +70,7 @@ function SavedItemsPanel({ onInsert, onClose }) {
   return (
     <div style={{ position: 'fixed', top: 0, right: 0, width: 320, height: '100vh', background: '#111', borderLeft: '1px solid rgba(255,255,255,0.08)', zIndex: 200, display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff' }}><BookOpen size={14} style={{ marginRight: 6 }}/>Biblioteca</span>
+        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}><BookOpen size={14}/>Biblioteca</span>
         <button className="ap-btn-icon" onClick={onClose}><X size={15}/></button>
       </div>
       <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -79,7 +79,7 @@ function SavedItemsPanel({ onInsert, onClose }) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
         {loading ? <div className="ap-loading">Cargando…</div> : visible.length === 0 ? (
           <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.3)', padding: '1rem', textAlign: 'center' }}>
-            {items.length === 0 ? 'Aún no hay partidas guardadas. Guarda una desde el presupuesto.' : 'Sin resultados.'}
+            {items.length === 0 ? 'Aún no hay partidas guardadas.' : 'Sin resultados.'}
           </p>
         ) : visible.map(item => {
           const cat = CATEGORIES.find(c => c.value === item.category) || CATEGORIES[0];
@@ -101,12 +101,102 @@ function SavedItemsPanel({ onInsert, onClose }) {
   );
 }
 
+function NewBudgetModal({ projects, onClose, onCreate }) {
+  const [mode, setMode] = useState('independiente');
+  const [name, setName] = useState('');
+  const [projectId, setProjectId] = useState(projects[0]?.id || '');
+  const [creating, setCreating] = useState(false);
+
+  const handleCreate = async () => {
+    setCreating(true);
+    try {
+      if (mode === 'proyecto') {
+        await onCreate({ project_id: projectId });
+      } else {
+        if (!name.trim()) return;
+        await onCreate({ budget_name: name.trim() });
+      }
+      onClose();
+    } catch {} finally { setCreating(false); }
+  };
+
+  return (
+    <div className="ap-modal-overlay" onClick={onClose}>
+      <div className="ap-modal" onClick={e => e.stopPropagation()}>
+        <div className="ap-modal-head"><h2>Nuevo presupuesto</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div>
+        <div className="ap-modal-form">
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+            <button type="button" className={`ap-btn ap-btn-sm ${mode === 'independiente' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setMode('independiente')}>Independiente</button>
+            <button type="button" className={`ap-btn ap-btn-sm ${mode === 'proyecto' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setMode('proyecto')} disabled={projects.length === 0}>Vincular a proyecto</button>
+          </div>
+          {mode === 'independiente' ? (
+            <div className="ap-field">
+              <label>Nombre del presupuesto *</label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Residencia Torres - Gym" autoFocus />
+            </div>
+          ) : (
+            <div className="ap-field">
+              <label>Proyecto</label>
+              <select className="ap-select" value={projectId} onChange={e => setProjectId(e.target.value)}>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.client_name} — {p.project_name}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="ap-modal-actions">
+            <button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button>
+            <button type="button" className="ap-btn ap-btn-primary" onClick={handleCreate} disabled={creating || (mode === 'independiente' && !name.trim())}>
+              {creating ? 'Creando…' : 'Crear presupuesto'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LinkProjectModal({ projects, budgetId, onClose, onLinked }) {
+  const [projectId, setProjectId] = useState(projects[0]?.id || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleLink = async () => {
+    setSaving(true);
+    try {
+      await api.put(`/budgets/${budgetId}`, { project_id: projectId });
+      onLinked(projectId);
+      onClose();
+    } catch {} finally { setSaving(false); }
+  };
+
+  return (
+    <div className="ap-modal-overlay" onClick={onClose}>
+      <div className="ap-modal" onClick={e => e.stopPropagation()}>
+        <div className="ap-modal-head"><h2>Vincular a proyecto</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div>
+        <div className="ap-modal-form">
+          <div className="ap-field">
+            <label>Proyecto</label>
+            <select className="ap-select" value={projectId} onChange={e => setProjectId(e.target.value)}>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.client_name} — {p.project_name}</option>)}
+            </select>
+          </div>
+          <div className="ap-modal-actions">
+            <button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button>
+            <button type="button" className="ap-btn ap-btn-primary" onClick={handleLink} disabled={saving || !projectId}>
+              {saving ? 'Vinculando…' : 'Vincular'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BudgetList({ onOpen }) {
-  const [projects, setProjects]   = useState([]);
-  const [budgets, setBudgets]     = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [creating, setCreating]   = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [budgets, setBudgets]   = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [showNewModal, setShowNewModal] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [tab, setTab] = useState('todos');
 
   useEffect(() => {
     Promise.all([api.get('/client-projects'), api.get('/budgets')])
@@ -114,20 +204,10 @@ function BudgetList({ onOpen }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const budgetByProject = Object.fromEntries(budgets.map(b => [b.project_id, b]));
-
-  const handleCreate = async (projectId) => {
-    setCreating(projectId);
-    try {
-      const { data } = await api.post('/budgets', { project_id: projectId });
-      setBudgets(prev => [data.budget, ...prev]);
-      onOpen(data.budget.id);
-    } catch (err) {
-      if (err.response?.data?.error?.includes('ya tiene')) {
-        const existing = budgets.find(b => b.project_id === projectId);
-        if (existing) onOpen(existing.id);
-      }
-    } finally { setCreating(null); }
+  const handleCreate = async (payload) => {
+    const { data } = await api.post('/budgets', payload);
+    setBudgets(prev => [data.budget, ...prev]);
+    onOpen(data.budget.id);
   };
 
   const handleDelete = async (budgetId, e) => {
@@ -140,52 +220,101 @@ function BudgetList({ onOpen }) {
     } finally { setDeletingId(null); }
   };
 
+  const budgetByProject = Object.fromEntries(budgets.filter(b => b.project_id).map(b => [b.project_id, b]));
+  const independienteBudgets = budgets.filter(b => !b.project_id);
+
+  const visibleProjects = projects.filter(p => budgetByProject[p.id]);
+  const projectsWithoutBudget = projects.filter(p => !budgetByProject[p.id]);
+
   if (loading) return <div className="ap-loading">Cargando presupuestos…</div>;
 
   return (
     <div className="pres-list">
-      {projects.length === 0 ? (
-        <div className="ap-empty"><p>Crea proyectos primero para poder presupuestarlos.</p></div>
-      ) : (
-        <div className="pres-grid">
-          {projects.map(p => {
-            const b = budgetByProject[p.id];
-            const st = b ? STATUS_CFG[b.status] : null;
-            return (
-              <div key={p.id} className={`pres-card${b ? ' pres-card--has-budget' : ''}`} onClick={() => b && onOpen(b.id)}>
-                <div className="pres-card-head">
-                  <div className="pres-card-names">
-                    <p className="pres-card-client">{p.client_name}</p>
-                    <p className="pres-card-project">{p.project_name}</p>
-                  </div>
-                  {st && <span className="pres-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>}
-                </div>
-                {b ? (
-                  <>
-                    <div className="pres-card-stats">
-                      <div className="pres-cs"><span>Coste</span><strong>{fmt(b.itemCost)}</strong></div>
-                      <div className="pres-cs"><span>PVP total</span><strong>{fmt(b.totalRevenue)}</strong></div>
-                      <div className="pres-cs"><span>Beneficio</span><strong style={{ color: b.totalProfit >= 0 ? '#8bae8f' : '#ae8b8b' }}>{fmt(b.totalProfit)}</strong></div>
-                      <div className="pres-cs"><span>Margen</span><strong style={{ color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#beb0a2' : '#ae8b8b' }}>{Number(b.margin||0).toFixed(1)}%</strong></div>
-                    </div>
-                    <div className="pres-card-foot">
-                      <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={e => { e.stopPropagation(); onOpen(b.id); }}>Abrir presupuesto →</button>
-                      <button className="ap-btn-icon" onClick={e => handleDelete(b.id, e)} disabled={deletingId === b.id} title="Eliminar presupuesto"><Trash2 size={13}/></button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="pres-card-empty">
-                    <p>Sin presupuesto</p>
-                    <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={e => { e.stopPropagation(); handleCreate(p.id); }} disabled={creating === p.id}>
-                      {creating === p.id ? 'Creando…' : <><Plus size={12}/> Crear presupuesto</>}
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 3 }}>
+          {['todos', 'independientes', 'proyectos'].map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{ padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.78rem', background: tab === t ? '#beb0a2' : 'transparent', color: tab === t ? '#0a0a0a' : 'rgba(255,255,255,0.5)', fontWeight: tab === t ? 600 : 400 }}>
+              {t === 'todos' ? 'Todos' : t === 'independientes' ? 'Independientes' : 'Con proyecto'}
+            </button>
+          ))}
         </div>
-      )}
+        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setShowNewModal(true)}><Plus size={13}/> Nuevo presupuesto</button>
+      </div>
+
+      {showNewModal && <NewBudgetModal projects={projects} onClose={() => setShowNewModal(false)} onCreate={handleCreate} />}
+
+      <div className="pres-grid">
+        {/* Presupuestos independientes */}
+        {(tab === 'todos' || tab === 'independientes') && independienteBudgets.map(b => {
+          const st = STATUS_CFG[b.status];
+          return (
+            <div key={b.id} className="pres-card pres-card--has-budget" onClick={() => onOpen(b.id)}>
+              <div className="pres-card-head">
+                <div className="pres-card-names">
+                  <p className="pres-card-client" style={{ color: '#beb0a2' }}>{b.budget_number}</p>
+                  <p className="pres-card-project">{b.budget_name || 'Sin nombre'}</p>
+                </div>
+                {st && <span className="pres-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>}
+              </div>
+              <div className="pres-card-stats">
+                <div className="pres-cs"><span>Coste</span><strong>{fmt(b.itemCost)}</strong></div>
+                <div className="pres-cs"><span>PVP total</span><strong>{fmt(b.totalRevenue)}</strong></div>
+                <div className="pres-cs"><span>Beneficio</span><strong style={{ color: b.totalProfit >= 0 ? '#8bae8f' : '#ae8b8b' }}>{fmt(b.totalProfit)}</strong></div>
+                <div className="pres-cs"><span>Margen</span><strong style={{ color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#beb0a2' : '#ae8b8b' }}>{Number(b.margin||0).toFixed(1)}%</strong></div>
+              </div>
+              <div className="pres-card-foot">
+                <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={e => { e.stopPropagation(); onOpen(b.id); }}>Abrir →</button>
+                <button className="ap-btn-icon" onClick={e => handleDelete(b.id, e)} disabled={deletingId === b.id}><Trash2 size={13}/></button>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Presupuestos con proyecto */}
+        {(tab === 'todos' || tab === 'proyectos') && visibleProjects.map(p => {
+          const b = budgetByProject[p.id];
+          const st = STATUS_CFG[b.status];
+          return (
+            <div key={p.id} className="pres-card pres-card--has-budget" onClick={() => onOpen(b.id)}>
+              <div className="pres-card-head">
+                <div className="pres-card-names">
+                  <p className="pres-card-client">{p.client_name}</p>
+                  <p className="pres-card-project">{p.project_name}</p>
+                </div>
+                {st && <span className="pres-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>}
+              </div>
+              <div className="pres-card-stats">
+                <div className="pres-cs"><span>Coste</span><strong>{fmt(b.itemCost)}</strong></div>
+                <div className="pres-cs"><span>PVP total</span><strong>{fmt(b.totalRevenue)}</strong></div>
+                <div className="pres-cs"><span>Beneficio</span><strong style={{ color: b.totalProfit >= 0 ? '#8bae8f' : '#ae8b8b' }}>{fmt(b.totalProfit)}</strong></div>
+                <div className="pres-cs"><span>Margen</span><strong style={{ color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#beb0a2' : '#ae8b8b' }}>{Number(b.margin||0).toFixed(1)}%</strong></div>
+              </div>
+              <div className="pres-card-foot">
+                <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={e => { e.stopPropagation(); onOpen(b.id); }}>Abrir →</button>
+                <button className="ap-btn-icon" onClick={e => handleDelete(b.id, e)} disabled={deletingId === b.id}><Trash2 size={13}/></button>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Proyectos sin presupuesto */}
+        {(tab === 'todos' || tab === 'proyectos') && projectsWithoutBudget.map(p => (
+          <div key={p.id} className="pres-card">
+            <div className="pres-card-head">
+              <div className="pres-card-names">
+                <p className="pres-card-client">{p.client_name}</p>
+                <p className="pres-card-project">{p.project_name}</p>
+              </div>
+            </div>
+            <div className="pres-card-empty">
+              <p>Sin presupuesto</p>
+              <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={e => { e.stopPropagation(); handleCreate({ project_id: p.id }); }}>
+                <Plus size={12}/> Crear presupuesto
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -228,9 +357,9 @@ function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary }) {
       <td className="pres-mono pres-col-cost">{fmt((item.unit_cost||0)*(item.quantity||1))}</td>
       <td className="pres-mono pres-col-pvp">{fmt((item.unit_price||0)*(item.quantity||1))}</td>
       <td className="pres-actions-cell">
-        <button className="ap-btn-icon" onClick={onEdit} title="Editar"><Pencil size={12}/></button>
+        <button className="ap-btn-icon" onClick={onEdit}><Pencil size={12}/></button>
         <button className="ap-btn-icon" onClick={() => onSaveToLibrary(item)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
-        <button className="ap-btn-icon pres-del" onClick={onDelete} title="Eliminar"><Trash2 size={12}/></button>
+        <button className="ap-btn-icon pres-del" onClick={onDelete}><Trash2 size={12}/></button>
       </td>
     </tr>
   );
@@ -271,6 +400,8 @@ function BudgetEditor({ id, onBack }) {
   const [pdfIrpf, setPdfIrpf] = useState('0');
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [projects, setProjects] = useState([]);
 
   const flash = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null), 2500); };
 
@@ -290,18 +421,20 @@ function BudgetEditor({ id, onBack }) {
       a.download = `presupuesto-${budget?.budget_number || 'cliente'}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      flash('Error al generar PDF', 'error');
-    } finally {
-      setGeneratingPdf(false);
-    }
+    } catch { flash('Error al generar PDF', 'error'); }
+    finally { setGeneratingPdf(false); }
   };
 
   useEffect(() => {
-    api.get(`/budgets/${id}`)
-      .then(r => { setBudget(r.data.budget); setItems(r.data.budget.items||[]); })
-      .catch(() => flash('Error al cargar', 'error'))
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.get(`/budgets/${id}`),
+      api.get('/client-projects'),
+    ]).then(([b, p]) => {
+      setBudget(b.data.budget);
+      setItems(b.data.budget.items || []);
+      setProjects(p.data.projects || []);
+    }).catch(() => flash('Error al cargar', 'error'))
+    .finally(() => setLoading(false));
   }, [id]);
 
   const saveFee = async (patch = {}) => {
@@ -343,22 +476,20 @@ function BudgetEditor({ id, onBack }) {
 
   const handleSaveToLibrary = async (item) => {
     try {
-      await api.post('/saved-items', {
-        name: item.name, category: item.category, unit: item.unit,
-        unit_cost: parseFloat(item.unit_cost)||0, markup_pct: parseFloat(item.markup_pct)||20,
-        unit_price: parseFloat(item.unit_price)||0, notes: item.notes || null
-      });
+      await api.post('/saved-items', { name: item.name, category: item.category, unit: item.unit, unit_cost: parseFloat(item.unit_cost)||0, markup_pct: parseFloat(item.markup_pct)||20, unit_price: parseFloat(item.unit_price)||0 });
       flash('Guardado en biblioteca');
     } catch { flash('Error al guardar', 'error'); }
   };
 
   const handleInsertFromLibrary = async (savedItem) => {
-    await handleAddItem({
-      name: savedItem.name, category: savedItem.category, unit: savedItem.unit,
-      unit_cost: savedItem.unit_cost, markup_pct: savedItem.markup_pct,
-      unit_price: savedItem.unit_price, quantity: 1
-    });
+    await handleAddItem({ name: savedItem.name, category: savedItem.category, unit: savedItem.unit, unit_cost: savedItem.unit_cost, markup_pct: savedItem.markup_pct, unit_price: savedItem.unit_price, quantity: 1 });
     flash('Partida insertada');
+  };
+
+  const handleLinked = async (projectId) => {
+    const project = projects.find(p => p.id === projectId);
+    setBudget(prev => ({ ...prev, project_id: projectId, project }));
+    flash('Proyecto vinculado');
   };
 
   if (loading) return <div className="ap-loading">Cargando…</div>;
@@ -367,19 +498,35 @@ function BudgetEditor({ id, onBack }) {
   const sum = computeSummary(items, budget);
   const totalItemCost = items.reduce((s,i)=>(parseFloat(i.unit_cost)||0)*(parseFloat(i.quantity)||1)+s, 0);
   const totalItemPvp  = items.reduce((s,i)=>(parseFloat(i.unit_price)||0)*(parseFloat(i.quantity)||1)+s, 0);
+  const unlinkedProjects = projects.filter(p => !p.has_budget && p.id !== budget.project_id);
 
   return (
     <div className="pres-editor" style={{ paddingRight: showLibrary ? 330 : 0 }}>
       {showLibrary && <SavedItemsPanel onInsert={handleInsertFromLibrary} onClose={() => setShowLibrary(false)} />}
+      {showLinkModal && <LinkProjectModal projects={unlinkedProjects.length > 0 ? unlinkedProjects : projects} budgetId={id} onClose={() => setShowLinkModal(false)} onLinked={handleLinked} />}
 
       <div className="pres-editor-head">
         <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onBack}><ArrowLeft size={14}/> Volver</button>
         <div className="pres-editor-title">
-          <span className="pres-editor-client">{budget.project?.client_name}</span>
-          <h2>{budget.project?.project_name} <span style={{ fontSize: '0.75rem', color: '#beb0a2', fontWeight: 400, marginLeft: 8 }}>{budget.budget_number}</span></h2>
+          {budget.project ? (
+            <>
+              <span className="pres-editor-client">{budget.project.client_name}</span>
+              <h2>{budget.project.project_name} <span style={{ fontSize: '0.75rem', color: '#beb0a2', fontWeight: 400, marginLeft: 8 }}>{budget.budget_number}</span></h2>
+            </>
+          ) : (
+            <>
+              <span className="pres-editor-client" style={{ color: '#beb0a2' }}>{budget.budget_number}</span>
+              <h2>{budget.budget_name || 'Sin nombre'}</h2>
+            </>
+          )}
         </div>
         <div className="pres-editor-right">
           <MsgBanner msg={msg}/>
+          {!budget.project_id && (
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setShowLinkModal(true)}>
+              <Link size={13}/> Vincular proyecto
+            </button>
+          )}
           <button className={`ap-btn ap-btn-sm ${showLibrary ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setShowLibrary(v => !v)}>
             <BookOpen size={13}/> Biblioteca
           </button>
@@ -391,11 +538,11 @@ function BudgetEditor({ id, onBack }) {
 
       <div className="pres-summary">
         {[
-          { label: 'Coste total',     val: fmt(sum.itemCost),    color: null },
-          { label: 'PVP artículos',   val: fmt(sum.itemRev),     color: null },
-          { label: 'Honorarios',      val: fmt(sum.fee),         color: null },
-          { label: 'Total cliente',   val: fmt(sum.totalRev),    color: '#beb0a2', accent: true },
-          { label: 'Beneficio bruto', val: fmt(sum.profit),      color: sum.profit >= 0 ? '#8bae8f' : '#ae8b8b' },
+          { label: 'Coste total',     val: fmt(sum.itemCost) },
+          { label: 'PVP artículos',   val: fmt(sum.itemRev) },
+          { label: 'Honorarios',      val: fmt(sum.fee) },
+          { label: 'Total cliente',   val: fmt(sum.totalRev),  color: '#beb0a2', accent: true },
+          { label: 'Beneficio bruto', val: fmt(sum.profit),    color: sum.profit >= 0 ? '#8bae8f' : '#ae8b8b' },
           { label: 'Margen',          val: `${sum.margin.toFixed(1)}%`, color: sum.margin >= 20 ? '#8bae8f' : sum.margin >= 10 ? '#beb0a2' : '#ae8b8b' },
         ].map(c => (
           <div key={c.label} className={`pres-sum-card${c.accent?' pres-sum-card--accent':''}`}>
@@ -417,7 +564,7 @@ function BudgetEditor({ id, onBack }) {
         {budget.design_fee_type==='hourly' && (
           <div className="pres-fee-field">
             <span>h</span>
-            <input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.5" value={budget.design_hours||0} onChange={e=>setBudget(b=>({...b,design_hours:e.target.value}))} onBlur={()=>saveFee()} placeholder="Horas" />
+            <input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.5" value={budget.design_hours||0} onChange={e=>setBudget(b=>({...b,design_hours:e.target.value}))} onBlur={()=>saveFee()} />
           </div>
         )}
         <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>saveFee()} disabled={savingFee}>{savingFee?'…':'Guardar'}</button>
@@ -436,9 +583,11 @@ function BudgetEditor({ id, onBack }) {
                 {generatingPdf ? 'Generando…' : 'PDF cliente'}
               </button>
             </div>
-            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleImport} disabled={importing}>
-              <RotateCcw size={13}/> {importing?'Importando…':'Importar del proyecto'}
-            </button>
+            {budget.project_id && (
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleImport} disabled={importing}>
+                <RotateCcw size={13}/> {importing?'Importando…':'Importar del proyecto'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -494,18 +643,13 @@ export function SectionPresupuestos() {
       {view === 'list' ? (
         <>
           <div className="ap-section-head">
-            <div>
-              <h1>Presupuestos</h1>
-              <p>Calcula costes, márgenes y honorarios de cada proyecto.</p>
-            </div>
+            <div><h1>Presupuestos</h1><p>Calcula costes, márgenes y honorarios.</p></div>
           </div>
           <BudgetList onOpen={id => { setBudgetId(id); setView('editor'); }} />
         </>
       ) : (
         <>
-          <div className="ap-section-head" style={{marginBottom:0}}>
-            <h1>Presupuestos</h1>
-          </div>
+          <div className="ap-section-head" style={{marginBottom:0}}><h1>Presupuestos</h1></div>
           <BudgetEditor id={budgetId} onBack={() => { setBudgetId(null); setView('list'); }} />
         </>
       )}
