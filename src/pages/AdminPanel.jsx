@@ -5,6 +5,7 @@ import api from '../services/api';
 import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionTareas } from './SectionTareas';
+import { SectionAjustes } from './SectionAjustes';
 import { SectionDashboard } from './SectionDashboard';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -739,6 +740,7 @@ const NAV_ITEMS = [
   { id:'catalogo', label:'Catálogo', Icon:BookOpen },
   { id:'referencias', label:'Referencias', Icon:Bookmark },
   { id:'contactos', label:'Contactos', Icon:Phone },
+  { id:'ajustes', label:'Ajustes', Icon:Settings, adminOnly:true },
 ];
 
 export function AdminPanel() {
@@ -761,6 +763,7 @@ export function AdminPanel() {
         {section==='empleados'&&<SectionEmpleados/>}
         {section==='presupuestos'&&<SectionPresupuestos/>}
         {section==='tareas'&&<SectionTareas/>}
+        {section==='ajustes'&&<SectionAjustes/>}
         {section==='catalogo'&&<SectionCatalogo/>}
         {section==='referencias'&&<SectionReferencias/>}
         {section==='contactos'&&<SectionContactos/>}
