@@ -124,7 +124,7 @@ router.post('/', async (req, res) => {
   try {
     const { project_id } = req.body;
     if (!project_id) return res.status(400).json({ error: 'project_id requerido' });
-    const budget_number = generateBudgetNumber();
+    const budget_number = await generateBudgetNumber();
     const { data, error } = await supabase.from('budgets').insert({ project_id, budget_number, status: 'borrador', design_fee_type: 'flat', design_fee_value: 0, design_hours: 0 }).select('*, project:client_projects(id, client_name, project_name, phase)').single();
     if (error) { if (error.code === '23505') return res.status(400).json({ error: 'Este proyecto ya tiene presupuesto' }); throw error; }
     res.status(201).json({ budget: { ...data, items: [], ...computeTotals([], 'flat', 0, 0) } });
