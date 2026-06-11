@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, Bookmark, BookOpen, X } from 'lucide-react';
 import './SectionPresupuestos.css';
 
 const CATEGORIES = [
@@ -49,6 +49,55 @@ function MsgBanner({ msg }) {
       {msg.type === 'success' ? <CheckCircle size={12}/> : <AlertCircle size={12}/>}
       {msg.text}
     </span>
+  );
+}
+
+function SavedItemsPanel({ onInsert, onClose }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('');
+
+  useEffect(() => {
+    api.get('/saved-items').then(r => setItems(r.data.items || [])).finally(() => setLoading(false));
+  }, []);
+
+  const handleDelete = async (id) => {
+    try { await api.delete(`/saved-items/${id}`); setItems(prev => prev.filter(i => i.id !== id)); } catch {}
+  };
+
+  const visible = items.filter(i => i.name.toLowerCase().includes(filter.toLowerCase()));
+
+  return (
+    <div style={{ position: 'fixed', top: 0, right: 0, width: 320, height: '100vh', background: '#111', borderLeft: '1px solid rgba(255,255,255,0.08)', zIndex: 200, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff' }}><BookOpen size={14} style={{ marginRight: 6 }}/>Biblioteca</span>
+        <button className="ap-btn-icon" onClick={onClose}><X size={15}/></button>
+      </div>
+      <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <input className="ap-field-input" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar partida…" style={{ width: '100%' }} />
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
+        {loading ? <div className="ap-loading">Cargando…</div> : visible.length === 0 ? (
+          <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.3)', padding: '1rem', textAlign: 'center' }}>
+            {items.length === 0 ? 'Aún no hay partidas guardadas. Guarda una desde el presupuesto.' : 'Sin resultados.'}
+          </p>
+        ) : visible.map(item => {
+          const cat = CATEGORIES.find(c => c.value === item.category) || CATEGORIES[0];
+          return (
+            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: '#fff', fontWeight: 500 }}>{item.name}</p>
+                <p style={{ margin: 0, fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
+                  <span style={{ color: cat.color }}>{cat.label}</span> · {fmt(item.unit_cost)} coste · {fmt(item.unit_price)} PVP
+                </p>
+              </div>
+              <button className="ap-btn ap-btn-primary ap-btn-sm" style={{ fontSize: '0.7rem', padding: '3px 8px' }} onClick={() => onInsert(item)}>Insertar</button>
+              <button className="ap-btn-icon" onClick={() => handleDelete(item.id)}><Trash2 size={12}/></button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -141,7 +190,7 @@ function BudgetList({ onOpen }) {
   );
 }
 
-function ItemRowEdit({ item, onSave, onCancel }) {
+function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
   const [d, setD] = useState({ ...item });
   const handleCostChange = v => { const cost = parseFloat(v)||0, markup = parseFloat(d.markup_pct)||0; setD(p=>({...p, unit_cost:v, unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   const handleMarkupChange = v => { const cost = parseFloat(d.unit_cost)||0, markup = parseFloat(v)||0; setD(p=>({...p, markup_pct:v, unit_price:(cost*(1+markup/100)).toFixed(2)})); };
@@ -158,13 +207,14 @@ function ItemRowEdit({ item, onSave, onCancel }) {
       <td className="pres-mono pres-col-pvp">{fmt((parseFloat(d.unit_price)||0)*(parseFloat(d.quantity)||1))}</td>
       <td className="pres-actions-cell">
         <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={()=>onSave(d)} disabled={!d.name?.trim()}>✓</button>
+        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>onSaveToLibrary(d)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
         <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onCancel}>✕</button>
       </td>
     </tr>
   );
 }
 
-function ItemRowDisplay({ item, onEdit, onDelete }) {
+function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary }) {
   const cat = CATEGORIES.find(c=>c.value===item.category)||CATEGORIES[0];
   return (
     <tr className="pres-row">
@@ -179,6 +229,7 @@ function ItemRowDisplay({ item, onEdit, onDelete }) {
       <td className="pres-mono pres-col-pvp">{fmt((item.unit_price||0)*(item.quantity||1))}</td>
       <td className="pres-actions-cell">
         <button className="ap-btn-icon" onClick={onEdit} title="Editar"><Pencil size={12}/></button>
+        <button className="ap-btn-icon" onClick={() => onSaveToLibrary(item)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
         <button className="ap-btn-icon pres-del" onClick={onDelete} title="Eliminar"><Trash2 size={12}/></button>
       </td>
     </tr>
@@ -219,6 +270,7 @@ function BudgetEditor({ id, onBack }) {
   const [pdfIva, setPdfIva]   = useState('21');
   const [pdfIrpf, setPdfIrpf] = useState('0');
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
 
   const flash = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null), 2500); };
 
@@ -235,7 +287,7 @@ function BudgetEditor({ id, onBack }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'presupuesto-cliente.pdf';
+      a.download = `presupuesto-${budget?.budget_number || 'cliente'}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -289,6 +341,26 @@ function BudgetEditor({ id, onBack }) {
     finally { setImporting(false); }
   };
 
+  const handleSaveToLibrary = async (item) => {
+    try {
+      await api.post('/saved-items', {
+        name: item.name, category: item.category, unit: item.unit,
+        unit_cost: parseFloat(item.unit_cost)||0, markup_pct: parseFloat(item.markup_pct)||20,
+        unit_price: parseFloat(item.unit_price)||0, notes: item.notes || null
+      });
+      flash('Guardado en biblioteca');
+    } catch { flash('Error al guardar', 'error'); }
+  };
+
+  const handleInsertFromLibrary = async (savedItem) => {
+    await handleAddItem({
+      name: savedItem.name, category: savedItem.category, unit: savedItem.unit,
+      unit_cost: savedItem.unit_cost, markup_pct: savedItem.markup_pct,
+      unit_price: savedItem.unit_price, quantity: 1
+    });
+    flash('Partida insertada');
+  };
+
   if (loading) return <div className="ap-loading">Cargando…</div>;
   if (!budget) return null;
 
@@ -297,15 +369,20 @@ function BudgetEditor({ id, onBack }) {
   const totalItemPvp  = items.reduce((s,i)=>(parseFloat(i.unit_price)||0)*(parseFloat(i.quantity)||1)+s, 0);
 
   return (
-    <div className="pres-editor">
+    <div className="pres-editor" style={{ paddingRight: showLibrary ? 330 : 0 }}>
+      {showLibrary && <SavedItemsPanel onInsert={handleInsertFromLibrary} onClose={() => setShowLibrary(false)} />}
+
       <div className="pres-editor-head">
         <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onBack}><ArrowLeft size={14}/> Volver</button>
         <div className="pres-editor-title">
           <span className="pres-editor-client">{budget.project?.client_name}</span>
-          <h2>{budget.project?.project_name}</h2>
+          <h2>{budget.project?.project_name} <span style={{ fontSize: '0.75rem', color: '#beb0a2', fontWeight: 400, marginLeft: 8 }}>{budget.budget_number}</span></h2>
         </div>
         <div className="pres-editor-right">
           <MsgBanner msg={msg}/>
+          <button className={`ap-btn ap-btn-sm ${showLibrary ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setShowLibrary(v => !v)}>
+            <BookOpen size={13}/> Biblioteca
+          </button>
           <select className="pres-cell-select" value={budget.status} onChange={e => { const s=e.target.value; setBudget(b=>({...b,status:s})); saveFee({status:s}); }}>
             {Object.entries(STATUS_CFG).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
@@ -380,8 +457,8 @@ function BudgetEditor({ id, onBack }) {
             <tbody>
               {items.map(item =>
                 editingId === item.id
-                  ? <ItemRowEdit key={item.id} item={item} onSave={d=>handleUpdateItem(item.id,d)} onCancel={()=>setEditingId(null)} />
-                  : <ItemRowDisplay key={item.id} item={item} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} />
+                  ? <ItemRowEdit key={item.id} item={item} onSave={d=>handleUpdateItem(item.id,d)} onCancel={()=>setEditingId(null)} onSaveToLibrary={handleSaveToLibrary} />
+                  : <ItemRowDisplay key={item.id} item={item} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} onSaveToLibrary={handleSaveToLibrary} />
               )}
               <NewItemRow onAdd={handleAddItem} />
             </tbody>
