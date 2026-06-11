@@ -110,7 +110,7 @@ export function SectionTareas() {
   const getItemsForDay = (day) => {
     const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const dayEvents = events.filter(e => e.date === dateStr);
-    const dayTasks = tasks.filter(t => t.due_date === dateStr);
+    const dayTasks = tasks.filter(t => t.due_date && t.due_date.slice(0, 10) === dateStr);
     return { events: dayEvents, tasks: dayTasks };
   };
 
