@@ -1,8 +1,7 @@
+```js
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-
-// Importar rutas
 import authRoutes from './routes/auth.routes.js';
 import productsRoutes from './routes/products.routes.js';
 import projectsRoutes from './routes/projects.routes.js';
@@ -14,20 +13,15 @@ import catalogRoutes from './routes/catalog.routes.js';
 import referencesRoutes from './routes/references.routes.js';
 import contactsRoutes from './routes/contacts.routes.js';
 import budgetsRoutes from './routes/budgets.routes.js';
+import tasksRoutes from './routes/tasks.routes.js';
 
 dotenv.config();
-
 console.log('🔑 GOOGLE_API_KEY:', process.env.GOOGLE_API_KEY ? '✅ Cargada' : '❌ NO encontrada');
 console.log('🔑 Primeros caracteres:', process.env.GOOGLE_API_KEY?.substring(0, 10));
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// ============================================
-// MIDDLEWARE
-// ============================================
-
-// CORS - permitir peticiones desde el frontend
 const allowedOrigins = [
   'http://localhost:5173',
   'https://www.ranusedesign.com',
@@ -43,30 +37,18 @@ app.use(cors({
   credentials: true
 }));
 
-// Body parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Logging básico
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
-// ============================================
-// RUTAS
-// ============================================
-
-// Health check
 app.get('/', (req, res) => {
-  res.json({ 
-    message: 'Ranuse Design API',
-    status: 'running',
-    version: '1.0.0'
-  });
+  res.json({ message: 'Ranuse Design API', status: 'running', version: '1.0.0' });
 });
 
-// Rutas de la API
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productsRoutes);
 app.use('/api/projects', projectsRoutes);
@@ -78,33 +60,19 @@ app.use('/api/catalog', catalogRoutes);
 app.use('/api/references', referencesRoutes);
 app.use('/api/contacts', contactsRoutes);
 app.use('/api/budgets', budgetsRoutes);
+app.use('/api/tasks', tasksRoutes);
 
-
-// ============================================
-// MANEJO DE ERRORES
-// ============================================
-
-// Ruta no encontrada
 app.use((req, res) => {
-  res.status(404).json({ 
-    error: 'Ruta no encontrada',
-    path: req.path 
-  });
+  res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
 });
 
-// Error handler global
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  
   res.status(err.status || 500).json({
     error: err.message || 'Error interno del servidor',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });
-
-// ============================================
-// INICIAR SERVIDOR
-// ============================================
 
 app.listen(PORT, () => {
   console.log(`
@@ -117,3 +85,6 @@ app.listen(PORT, () => {
 });
 
 export default app;
+```
+
+Haz commit y dime cuando esté.
