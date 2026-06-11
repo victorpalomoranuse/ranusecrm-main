@@ -981,4 +981,133 @@ router.put('/:id/equipment/:selId', authenticateToken, requireAdmin, async (req,
     res.status(500).json({ error: 'Error al actualizar equipo' });
   }
 });
+router.get('/:id/pdf-materiales', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { data: project, error } = await supabase
+      .from('client_projects')
+      .select('*, responsible:employees!responsible_id(name)')
+      .eq('id', req.params.id)
+      .single();
+    if (error || !project) return res.status(404).json({ error: 'Proyecto no encontrado' });
+
+    const [matsRes, equipRes] = await Promise.all([
+      supabase.from('project_material_selections').select('*').eq('project_id', req.params.id).order('display_order', { ascending: true, nullsFirst: false }),
+      supabase.from('project_equipment_selections').select('*').eq('project_id', req.params.id).order('display_order', { ascending: true, nullsFirst: false }),
+    ]);
+
+    const materials = matsRes.data || [];
+    const equipment = equipRes.data || [];
+
+    const PDFDocument = (await import('pdfkit')).default;
+    const https = await import('https');
+    const http = await import('http');
+    const path = await import('path');
+    const { fileURLToPath } = await import('url');
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+
+    function fetchBuf(url) {
+      return new Promise((resolve) => {
+        try {
+          const urlObj = new URL(url);
+          const client = urlObj.protocol === 'https:' ? https.default : http.default;
+          const req2 = client.get(url, { timeout: 5000 }, (r) => {
+            if (r.statusCode !== 200) { resolve(null); return; }
+            const chunks = [];
+            r.on('data', c => chunks.push(c));
+            r.on('end', () => resolve(Buffer.concat(chunks)));
+            r.on('error', () => resolve(null));
+          });
+          req2.on('error', () => resolve(null));
+          req2.on('timeout', () => { req2.destroy(); resolve(null); });
+        } catch { resolve(null); }
+      });
+    }
+
+    const BRAND = {
+      primary: '#beb0a2', dark: '#0a0a0a',
+      contact: 'Víctor Palomo Díaz', name: 'Ranuse Design',
+      address: 'Calle de la Constitución 100, 2ºC', city: 'Alcobendas, 28100 Madrid',
+      nif: '53853605W', phone: '657 589 503', email: 'victor.palomo@ranusedesign.com',
+    };
+
+    const doc = new PDFDocument({ margin: 0, size: 'A4' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="materiales-' + project.client_name.replace(/\s+/g, '-') + '.pdf"');
+    doc.pipe(res);
+
+    const W = 595, H = 842, margin = 45;
+    const dateStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
+    const logoPath = path.join(__dirname, '..', 'Icono Blanco.png');
+
+    // HEADER
+    doc.rect(0, 0, W, 70).fill(BRAND.dark);
+    try { doc.image(logoPath, margin, 12, { height: 46 }); } catch {}
+    doc.fillColor('#999999').fontSize(8).font('Helvetica').text('LISTA DE MATERIALES', 0, 14, { align: 'right', width: W - margin });
+    doc.fillColor('#ffffff').fontSize(11).font('Helvetica-Bold').text(project.client_name, 0, 27, { align: 'right', width: W - margin });
+    doc.fillColor('#999999').fontSize(8).font('Helvetica').text(project.project_name + '  ·  ' + dateStr, 0, 44, { align: 'right', width: W - margin });
+
+    let y = 90;
+
+    const drawSection = async (title, items, showQty) => {
+      if (items.length === 0) return;
+
+      if (y > H - 100) { doc.addPage(); y = margin; }
+
+      // Section title
+      doc.rect(margin, y, W - margin * 2, 22).fill('#f5f3f0');
+      doc.fillColor(BRAND.dark).fontSize(8).font('Helvetica-Bold').text(title.toUpperCase(), margin + 8, y + 7);
+      y += 28;
+
+      for (const item of items) {
+        const imgH = 42;
+        const rowH = imgH + 12;
+
+        if (y + rowH > H - 60) { doc.addPage(); y = margin; }
+
+        if (items.indexOf(item) % 2 === 1) doc.rect(margin, y, W - margin * 2, rowH).fill('#faf9f8');
+
+        // Image
+        const imgX = margin + 8;
+        if (item.image_url) {
+          const buf = await fetchBuf(item.image_url);
+          if (buf) { try { doc.image(buf, imgX, y + 6, { width: imgH, height: imgH, cover: [imgH, imgH] }); } catch {} }
+        } else {
+          doc.rect(imgX, y + 6, imgH, imgH).fill('#eeeeee');
+        }
+
+        // Info
+        const textX = imgX + imgH + 10;
+        const textW = W - margin - textX - (showQty ? 80 : 20);
+        doc.fillColor(BRAND.dark).fontSize(9).font('Helvetica-Bold').text(item.name, textX, y + 10, { width: textW, lineBreak: false });
+        let subY = y + 22;
+        if (item.brand) { doc.fillColor('#777777').fontSize(8).font('Helvetica').text(item.brand, textX, subY, { width: textW }); subY += 11; }
+        if (item.category) { doc.fillColor('#aaaaaa').fontSize(7.5).font('Helvetica').text(item.category, textX, subY, { width: textW }); }
+
+        // Quantity
+        if (showQty) {
+          const qty = item.quantity || 1;
+          doc.fillColor(BRAND.primary).fontSize(11).font('Helvetica-Bold').text('x' + qty, W - margin - 70, y + rowH / 2 - 7, { width: 60, align: 'right' });
+        }
+
+        doc.moveTo(margin, y + rowH).lineTo(W - margin, y + rowH).strokeColor('#eeeeee').lineWidth(0.3).stroke();
+        y += rowH;
+      }
+      y += 12;
+    };
+
+    await drawSection('Materiales', materials, false);
+    await drawSection('Mobiliario y Equipamiento', equipment, true);
+
+    // FOOTER
+    doc.rect(0, H - 42, W, 42).fill(BRAND.dark);
+    try { doc.image(logoPath, W / 2 - 15, H - 36, { height: 24 }); } catch {}
+
+    doc.end();
+  } catch (err) {
+    console.error(err);
+    if (!res.headersSent) res.status(500).json({ error: 'Error al generar PDF' });
+  }
+});
 export default router;
