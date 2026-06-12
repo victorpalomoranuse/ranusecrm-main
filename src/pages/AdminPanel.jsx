@@ -149,6 +149,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
     </div>
   );
 }
+
 function slugify(text) {
   return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9\s-]/g,'').trim().replace(/\s+/g,'-');
 }
@@ -343,6 +344,7 @@ function TabNotas({ projectId }) {
     </div>
   );
 }
+
 function ProductModal({ categories, product, onClose, onSaved }) {
   const isEdit = !!product;
   const [name,setName]=useState(product?.name||''); const [brand,setBrand]=useState(product?.brand||''); const [categoryId,setCategoryId]=useState(product?.category_id||categories[0]?.id||''); const [price,setPrice]=useState(product?.price!=null?String(product.price):''); const [link,setLink]=useState(product?.link||''); const [notes,setNotes]=useState(product?.notes||''); const [file,setFile]=useState(null); const [preview,setPreview]=useState(product?.photo_url||null); const [saving,setSaving]=useState(false); const [error,setError]=useState('');
@@ -411,6 +413,7 @@ function RendersLibrary() {
     </div>
   );
 }
+
 function CatalogoLibrary() {
   const [tab,setTab]=useState('material'); const [activeCat,setActiveCat]=useState('all'); const [categories,setCategories]=useState([]); const [products,setProducts]=useState([]); const [loading,setLoading]=useState(true); const [newCatName,setNewCatName]=useState(''); const [addingCat,setAddingCat]=useState(false); const [showCatInput,setShowCatInput]=useState(false); const [showProductModal,setShowProductModal]=useState(false); const [editProduct,setEditProduct]=useState(null); const [confirm,setConfirm]=useState(null); const [cart,setCart]=useState([]); const [showCart,setShowCart]=useState(false);
   const {toast}=useToast();
@@ -540,6 +543,7 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
     </div>
   );
 }
+
 function TabAsignaciones({ projectId }) {
   const [tab,setTab]=useState('material'); const [categories,setCategories]=useState([]); const [products,setProducts]=useState([]); const [assigned,setAssigned]=useState({materials:[],equipment:[]}); const [loading,setLoading]=useState(true); const [expandedCat,setExpandedCat]=useState(null);
   const {toast}=useToast();
@@ -568,11 +572,41 @@ function TabAsignaciones({ projectId }) {
 }
 
 function ProjectManagerModal({ project, onClose }) {
-  const [tab,setTab]=useState('renders');
+  const [tab, setTab] = useState('renders');
+
+  const handlePdfMateriales = async () => {
+    try {
+      const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch(`${base}/client-projects/${project.id}/pdf-materiales`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `materiales-${project.client_name}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {}
+  };
+
   return (
     <div className="ap-modal-overlay" onClick={onClose}>
-      <div className="ap-mgr-modal" onClick={e=>e.stopPropagation()}>
-        <div className="ap-mgr-head"><div><h2 className="ap-mgr-title">{project.client_name}</h2><p className="ap-mgr-sub">{project.project_name} · <span className="ap-code-val" style={{fontSize:'0.78rem'}}>{project.access_code}</span></p></div><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div>
+      <div className="ap-mgr-modal" onClick={e => e.stopPropagation()}>
+        <div className="ap-mgr-head">
+          <div>
+            <h2 className="ap-mgr-title">{project.client_name}</h2>
+            <p className="ap-mgr-sub">{project.project_name} · <span className="ap-code-val" style={{fontSize:'0.78rem'}}>{project.access_code}</span></p>
+          </div>
+          <div style={{display:'flex', gap:'0.5rem', alignItems:'center'}}>
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handlePdfMateriales}>
+              <Download size={13}/> PDF materiales
+            </button>
+            <button className="ap-modal-close" onClick={onClose}><X size={16}/></button>
+          </div>
+        </div>
         <div className="ap-mgr-tabs">{MGR_TABS.map(t=>(<button key={t.id} className={`ap-mgr-tab${tab===t.id?' active':''}`} onClick={()=>setTab(t.id)}>{t.label}</button>))}</div>
         <div className="ap-mgr-body">
           {tab==='renders'&&<TabRenders projectId={project.id}/>}
