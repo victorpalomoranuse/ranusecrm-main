@@ -4,11 +4,12 @@ import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, B
 import './SectionPresupuestos.css';
 
 const CATEGORIES = [
-  { value: 'material',    label: 'Material',      color: '#beb0a2' },
-  { value: 'mobiliario',  label: 'Mobiliario',     color: '#8b9eae' },
-  { value: 'instalacion', label: 'Instalación',    color: '#ae9e8b' },
-  { value: 'transporte',  label: 'Transporte',     color: '#8bae8f' },
-  { value: 'otro',        label: 'Otro',           color: '#7d7d7d' },
+  { value: 'material',      label: 'Material',      color: '#beb0a2' },
+  { value: 'mobiliario',    label: 'Mobiliario',     color: '#8b9eae' },
+  { value: 'equipamiento',  label: 'Equipamiento',   color: '#9eae8b' },
+  { value: 'instalacion',   label: 'Instalación',    color: '#ae9e8b' },
+  { value: 'transporte',    label: 'Transporte',     color: '#8bae8f' },
+  { value: 'otro',          label: 'Otro',           color: '#7d7d7d' },
 ];
 
 const UNITS = ['ud', 'm²', 'm', 'ml', 'h', 'kg', 'l', 'lote'];
