@@ -189,6 +189,16 @@ router.put('/:id/items/:itemId', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Error al actualizar partida' }); }
 });
 
+router.put('/:id/items/reorder', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids requeridos' });
+    await Promise.all(ids.map((itemId, index) =>
+      supabase.from('budget_items').update({ display_order: index }).eq('id', itemId).eq('budget_id', req.params.id)
+    ));
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: 'Error al reordenar' }); }
+});
 router.delete('/:id/items/:itemId', async (req, res) => {
   try {
     const { error } = await supabase.from('budget_items').delete().eq('id', req.params.itemId).eq('budget_id', req.params.id);
