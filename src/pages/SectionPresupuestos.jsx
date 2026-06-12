@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, Bookmark, BookOpen, X, Link, ChevronUp, ChevronDown, FolderPlus } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, Bookmark, BookOpen, X, Link, ChevronUp, ChevronDown, FolderPlus, GripVertical } from 'lucide-react';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import './SectionPresupuestos.css';
 
 const CATEGORIES = [
-  { value: 'material',      label: 'Material',      color: '#beb0a2' },
-  { value: 'mobiliario',    label: 'Mobiliario',     color: '#8b9eae' },
-  { value: 'equipamiento',  label: 'Equipamiento',   color: '#9eae8b' },
-  { value: 'instalacion',   label: 'Instalación',    color: '#ae9e8b' },
-  { value: 'transporte',    label: 'Transporte',     color: '#8bae8f' },
-  { value: 'otro',          label: 'Otro',           color: '#7d7d7d' },
+  { value: 'material',    label: 'Material',      color: '#beb0a2' },
+  { value: 'mobiliario',  label: 'Mobiliario',     color: '#8b9eae' },
+  { value: 'instalacion', label: 'Instalación',    color: '#ae9e8b' },
+  { value: 'transporte',  label: 'Transporte',     color: '#8bae8f' },
+  { value: 'otro',        label: 'Otro',           color: '#7d7d7d' },
 ];
 
 const UNITS = ['ud', 'm²', 'm', 'ml', 'h', 'kg', 'l', 'lote'];
@@ -278,7 +280,9 @@ function BudgetList({ onOpen }) {
   );
 }
 
-function ChapterRow({ item, onEdit, onDelete, onMove, isFirst, isLast }) {
+function ChapterRow({ item, onEdit, onDelete }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
 
@@ -288,8 +292,11 @@ function ChapterRow({ item, onEdit, onDelete, onMove, isFirst, isLast }) {
   };
 
   return (
-    <tr className="pres-row pres-chapter-row">
-      <td colSpan={9} style={{ padding: '0.4rem 0.5rem' }}>
+    <tr ref={setNodeRef} style={style} className="pres-row pres-chapter-row">
+      <td style={{ padding: '0.4rem 0.5rem', width: 24 }}>
+        <button {...attributes} {...listeners} style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center' }}><GripVertical size={13}/></button>
+      </td>
+      <td colSpan={8} style={{ padding: '0.4rem 0.5rem' }}>
         {editing ? (
           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
             <input className="pres-cell-input" value={name} onChange={e => setName(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} style={{ flex: 1, fontWeight: 700 }} />
@@ -303,8 +310,6 @@ function ChapterRow({ item, onEdit, onDelete, onMove, isFirst, isLast }) {
         )}
       </td>
       <td className="pres-actions-cell">
-        <button className="ap-btn-icon" onClick={() => onMove(item.id, -1)} disabled={isFirst}><ChevronUp size={12}/></button>
-        <button className="ap-btn-icon" onClick={() => onMove(item.id, 1)} disabled={isLast}><ChevronDown size={12}/></button>
         <button className="ap-btn-icon" onClick={() => setEditing(true)}><Pencil size={12}/></button>
         <button className="ap-btn-icon pres-del" onClick={() => onDelete(item.id)}><Trash2 size={12}/></button>
       </td>
@@ -336,11 +341,18 @@ function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
   );
 }
 
-function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary, onMove, isFirst, isLast }) {
+function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   const cat = CATEGORIES.find(c=>c.value===item.category)||CATEGORIES[0];
   return (
-    <tr className="pres-row">
-      <td><span className="pres-cat-dot" style={{background:cat.color}}/>{item.name}</td>
+    <tr ref={setNodeRef} style={style} className="pres-row">
+      <td>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button {...attributes} {...listeners} style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(255,255,255,0.25)', padding: 0, display: 'flex', alignItems: 'center' }}><GripVertical size={12}/></button>
+          <span className="pres-cat-dot" style={{background:cat.color}}/>{item.name}
+        </span>
+      </td>
       <td><span className="pres-cat-chip" style={{borderColor:cat.color,color:cat.color}}>{cat.label}</span></td>
       <td className="pres-mono">{item.quantity}</td>
       <td className="pres-mono">{item.unit}</td>
@@ -350,8 +362,6 @@ function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary, onMove, isFir
       <td className="pres-mono pres-col-cost">{fmt((item.unit_cost||0)*(item.quantity||1))}</td>
       <td className="pres-mono pres-col-pvp">{fmt((item.unit_price||0)*(item.quantity||1))}</td>
       <td className="pres-actions-cell">
-        <button className="ap-btn-icon" onClick={() => onMove(item.id, -1)} disabled={isFirst}><ChevronUp size={12}/></button>
-        <button className="ap-btn-icon" onClick={() => onMove(item.id, 1)} disabled={isLast}><ChevronDown size={12}/></button>
         <button className="ap-btn-icon" onClick={onEdit}><Pencil size={12}/></button>
         <button className="ap-btn-icon" onClick={() => onSaveToLibrary(item)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
         <button className="ap-btn-icon pres-del" onClick={onDelete}><Trash2 size={12}/></button>
@@ -478,16 +488,17 @@ function BudgetEditor({ id, onBack }) {
     setItems(prev => prev.filter(i => i.id !== itemId));
   };
 
-  const handleMove = async (itemId, direction) => {
-    const idx = items.findIndex(i => i.id === itemId);
-    const newIdx = idx + direction;
-    if (newIdx < 0 || newIdx >= items.length) return;
-    const newItems = [...items];
-    [newItems[idx], newItems[newIdx]] = [newItems[newIdx], newItems[idx]];
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!active || !over || active.id === over.id) return;
+    const oldIndex = items.findIndex(i => i.id === active.id);
+    const newIndex = items.findIndex(i => i.id === over.id);
+    const newItems = arrayMove(items, oldIndex, newIndex);
     setItems(newItems);
-    try {
-      await api.put(`/budgets/${id}/items/reorder`, { ids: newItems.map(i => i.id) });
-    } catch { flash('Error al reordenar', 'error'); }
+    try { await api.put(`/budgets/${id}/items/reorder`, { ids: newItems.map(i => i.id) }); }
+    catch { flash('Error al reordenar', 'error'); }
   };
 
   const handleImport = async () => {
@@ -602,6 +613,8 @@ function BudgetEditor({ id, onBack }) {
         </div>
 
         <div className="pres-table-scroll">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
           <table className="pres-table">
             <colgroup><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/></colgroup>
             <thead>
@@ -616,11 +629,11 @@ function BudgetEditor({ id, onBack }) {
             <tbody>
               {items.map((item, idx) =>
                 item.is_chapter_header ? (
-                  <ChapterRow key={item.id} item={item} onEdit={handleUpdateItem} onDelete={handleDeleteItem} onMove={handleMove} isFirst={idx === 0} isLast={idx === items.length - 1} />
+                  <ChapterRow key={item.id} item={item} onEdit={handleUpdateItem} onDelete={handleDeleteItem} />
                 ) : editingId === item.id ? (
                   <ItemRowEdit key={item.id} item={item} onSave={d=>handleUpdateItem(item.id,d)} onCancel={()=>setEditingId(null)} onSaveToLibrary={handleSaveToLibrary} />
                 ) : (
-                  <ItemRowDisplay key={item.id} item={item} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} onSaveToLibrary={handleSaveToLibrary} onMove={handleMove} isFirst={idx === 0} isLast={idx === items.length - 1} />
+                  <ItemRowDisplay key={item.id} item={item} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} onSaveToLibrary={handleSaveToLibrary} />
                 )
               )}
               <NewItemRow onAdd={handleAddItem} onAddChapter={handleAddChapter} />
@@ -642,6 +655,8 @@ function BudgetEditor({ id, onBack }) {
               </tfoot>
             )}
           </table>
+            </SortableContext>
+          </DndContext>
         </div>
       </div>
     </div>
