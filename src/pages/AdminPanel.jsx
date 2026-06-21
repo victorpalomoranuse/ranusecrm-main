@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save } from 'lucide-react';
+import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, ClipboardList } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionTareas } from './SectionTareas';
 import { SectionAjustes } from './SectionAjustes';
