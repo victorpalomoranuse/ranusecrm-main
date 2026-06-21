@@ -796,6 +796,8 @@ export function AdminPanel() {
       <main className="ap-main">
         {section==='dashboard'&&<SectionDashboard/>}
         {section==='trabajos'&&<SectionTrabajos/>}
+        {section==='leads'&&<SectionLeads/>}
+        {section==='leads-cualificados'&&<SectionLeadsCualificados/>}
         {section==='proyectos'&&<SectionProyectos/>}
         {section==='clientes'&&<SectionClientes/>}
         {section==='empleados'&&<SectionEmpleados/>}
