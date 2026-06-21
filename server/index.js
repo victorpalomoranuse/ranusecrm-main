@@ -16,7 +16,8 @@ import tasksRoutes from './routes/tasks.routes.js';
 import eventsRoutes from './routes/events.routes.js';
 import savedItemsRoutes from './routes/saved-items.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
-
+import leadsRoutes from './routes/leads.routes.js';
+import leadsCualificadosRoutes from './routes/leads-cualificados.routes.js';
 dotenv.config();
 
 const app = express();
@@ -64,7 +65,8 @@ app.use('/api/tasks', tasksRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/saved-items', savedItemsRoutes);
 app.use('/api/settings', settingsRoutes);
-
+app.use('/api/leads', leadsRoutes);
+app.use('/api/leads-cualificados', leadsCualificadosRoutes);
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
 });
