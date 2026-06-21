@@ -7,6 +7,8 @@ import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionTareas } from './SectionTareas';
 import { SectionAjustes } from './SectionAjustes';
 import { SectionDashboard } from './SectionDashboard';
+import { SectionLeads } from './SectionLeads';
+import { SectionLeadsCualificados } from './SectionLeadsCualificados';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -766,6 +768,8 @@ function SectionContactos() {
 const NAV_ITEMS = [
   { id:'dashboard', label:'Dashboard', Icon:BarChart2, adminOnly:true },
   { id:'trabajos', label:'Trabajos', Icon:LayoutGrid },
+  { id:'leads', label:'Leads', Icon:Target, adminOnly:true },
+  { id:'leads-cualificados', label:'Cualificados', Icon:ClipboardList, adminOnly:true },
   { id:'proyectos', label:'Proyectos', Icon:FolderOpen },
   { id:'clientes', label:'Clientes', Icon:UserCheck },
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
