@@ -45,14 +45,16 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
 const ESTADOS = {
   contacto:               { label: 'Contacto',              color: '#3b82f6', fecha: 'fecha_contacto' },
   respuesta_chat:         { label: 'Respuesta chat',        color: '#f59e0b', fecha: 'fecha_respuesta' },
-  llamada_descubrimiento: { label: 'Llamada',               color: '#8b5cf6', fecha: 'fecha_llamada' },
+  llamada_descubrimiento: { label: 'Llamada desc.',         color: '#8b5cf6', fecha: 'fecha_llamada' },
   diseño:                 { label: 'Diseño',                color: '#06b6d4', fecha: 'fecha_diseño' },
+  llamada_venta:          { label: 'Llamada venta',         color: '#10b981', fecha: 'fecha_llamada_venta' },
+  no_show:                { label: 'No Show',               color: '#f97316', fecha: null },
   venta:                  { label: 'Venta ✓',               color: '#beb0a2', fecha: 'fecha_venta' },
   rechazo:                { label: 'Rechazo',               color: '#f87171', fecha: null },
-  enfriado:               { label: 'Enfriado',              color: '#f97316', fecha: null },
+  enfriado:               { label: 'Enfriado',              color: '#64748b', fecha: null },
   descartado:             { label: 'Descartado',            color: '#6b7280', fecha: null },
 };
-const ORDEN = ['contacto','respuesta_chat','llamada_descubrimiento','diseño','venta','rechazo','enfriado','descartado'];
+const ORDEN = ['contacto','respuesta_chat','llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo','enfriado','descartado'];
 const CANALES = ['instagram','whatsapp','web','recomendacion','ads','evento','agente','otro'];
 const DEPORTES = ['Fútbol','Pádel','Baloncesto','Tenis','MotoGP','Ciclismo','Otro'];
 const LIGAS = ['LaLiga','Hypermotion','Primera RFEF','Liga F','ACB','WPT','Bundesliga','Premier','Serie A','Otro'];
@@ -65,7 +67,7 @@ const EMPTY = {
   telefono:'', email:'', origen:'outbound', canal:'instagram',
   estado:'contacto', valor_estimado:'', pct_cierre:20, notas:'',
   fecha_contacto: new Date().toISOString().slice(0,10),
-  fecha_respuesta:'', fecha_llamada:'', fecha_diseño:'', fecha_venta:'',
+  fecha_respuesta:'', fecha_llamada:'', fecha_diseño:'', fecha_llamada_venta:'', fecha_venta:'',
 };
 
 export function SectionLeads() {
@@ -177,6 +179,7 @@ export function SectionLeads() {
       fecha_respuesta: lead.fecha_respuesta?.slice(0,10) || '',
       fecha_llamada: lead.fecha_llamada?.slice(0,10) || '',
       fecha_diseño: lead.fecha_diseño?.slice(0,10) || '',
+      fecha_llamada_venta: lead.fecha_llamada_venta?.slice(0,10) || '',
       fecha_venta: lead.fecha_venta?.slice(0,10) || '',
     });
     setModal(lead);
@@ -214,6 +217,8 @@ export function SectionLeads() {
           { label:'Resp. chat',     val: fmtPct(metricas.tasaRespuesta || 0) },
           { label:'→ Llamada',      val: fmtPct(metricas.tasaLlamada || 0) },
           { label:'→ Diseño',       val: fmtPct(metricas.tasaDiseño || 0) },
+          { label:'→ Llamada vta',  val: fmtPct(metricas.tasaLlamadaVenta || 0) },
+          { label:'No Show',        val: fmtPct(metricas.tasaNoShow || 0), color:'#f97316' },
           { label:'→ Venta',        val: fmtPct(metricas.tasaVenta || 0), color:'#22c55e' },
         ].map(m => (
           <div key={m.label} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'10px 14px' }}>
@@ -386,6 +391,7 @@ export function SectionLeads() {
             ['📅 Respuesta',panel.fecha_respuesta?.slice(0,10) || '—'],
             ['📅 Llamada',  panel.fecha_llamada?.slice(0,10) || '—'],
             ['📅 Diseño',   panel.fecha_diseño?.slice(0,10) || '—'],
+            ['📅 Llamada venta', panel.fecha_llamada_venta?.slice(0,10) || '—'],
             ['📅 Venta',    panel.fecha_venta?.slice(0,10) || '—'],
           ].map(([k,v]) => (
             <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,0.05)', fontSize:12 }}>
@@ -463,6 +469,7 @@ export function SectionLeads() {
                 <div className="ap-field"><label>📅 Respuesta chat</label><input type="date" value={form.fecha_respuesta} onChange={e => setF('fecha_respuesta', e.target.value)} /></div>
                 <div className="ap-field"><label>📅 Llamada</label><input type="date" value={form.fecha_llamada} onChange={e => setF('fecha_llamada', e.target.value)} /></div>
                 <div className="ap-field"><label>📅 Diseño enviado</label><input type="date" value={form.fecha_diseño} onChange={e => setF('fecha_diseño', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Llamada de venta</label><input type="date" value={form.fecha_llamada_venta} onChange={e => setF('fecha_llamada_venta', e.target.value)} /></div>
                 <div className="ap-field"><label>📅 Venta</label><input type="date" value={form.fecha_venta} onChange={e => setF('fecha_venta', e.target.value)} /></div>
               </div>
 
