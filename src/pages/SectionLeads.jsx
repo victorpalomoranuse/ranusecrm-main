@@ -43,16 +43,16 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
 }
 
 const ESTADOS = {
-  contacto:               { label: 'Contacto',              color: '#3b82f6', fecha: 'fecha_contacto' },
-  respuesta_chat:         { label: 'Respuesta chat',        color: '#f59e0b', fecha: 'fecha_respuesta' },
-  llamada_descubrimiento: { label: 'Llamada desc.',         color: '#8b5cf6', fecha: 'fecha_llamada' },
-  diseño:                 { label: 'Diseño',                color: '#06b6d4', fecha: 'fecha_diseño' },
-  llamada_venta:          { label: 'Llamada venta',         color: '#10b981', fecha: 'fecha_llamada_venta' },
-  no_show:                { label: 'No Show',               color: '#f97316', fecha: null },
-  venta:                  { label: 'Venta ✓',               color: '#beb0a2', fecha: 'fecha_venta' },
-  rechazo:                { label: 'Rechazo',               color: '#f87171', fecha: null },
-  enfriado:               { label: 'Enfriado',              color: '#64748b', fecha: null },
-  descartado:             { label: 'Descartado',            color: '#6b7280', fecha: null },
+  contacto:               { label: 'Contacto',         color: '#3b82f6' },
+  respuesta_chat:         { label: 'Respuesta chat',   color: '#f59e0b' },
+  llamada_descubrimiento: { label: 'Llamada desc.',    color: '#8b5cf6' },
+  diseño:                 { label: 'Diseño',           color: '#06b6d4' },
+  llamada_venta:          { label: 'Llamada venta',    color: '#10b981' },
+  no_show:                { label: 'No Show',          color: '#f97316' },
+  venta:                  { label: 'Venta ✓',          color: '#beb0a2' },
+  rechazo:                { label: 'Rechazo',          color: '#f87171' },
+  enfriado:               { label: 'Enfriado',         color: '#64748b' },
+  descartado:             { label: 'Descartado',       color: '#6b7280' },
 };
 const ORDEN = ['contacto','respuesta_chat','llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo','enfriado','descartado'];
 const CANALES = ['instagram','whatsapp','web','recomendacion','ads','evento','agente','otro'];
@@ -60,7 +60,6 @@ const DEPORTES = ['Fútbol','Pádel','Baloncesto','Tenis','MotoGP','Ciclismo','O
 const LIGAS = ['LaLiga','Hypermotion','Primera RFEF','Liga F','ACB','WPT','Bundesliga','Premier','Serie A','Otro'];
 
 const fmtEur = n => n ? `${Number(n).toLocaleString('es-ES')}€` : '—';
-const fmtPct = n => `${n}%`;
 
 const EMPTY = {
   nombre:'', perfil:'', deporte:'Fútbol', liga:'', instagram:'',
@@ -73,9 +72,6 @@ const EMPTY = {
 export function SectionLeads() {
   const { toasts, toast, remove } = useToast();
   const [leads, setLeads] = useState([]);
-  const [metricas, setMetricas] = useState({});
-  const [porEstado, setPorEstado] = useState({});
-  const [porCanal, setPorCanal] = useState({});
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [panel, setPanel] = useState(null);
@@ -95,16 +91,12 @@ export function SectionLeads() {
     try {
       const { data } = await api.get('/leads');
       setLeads(data.leads || []);
-      setMetricas(data.metricas || {});
-      setPorEstado(data.porEstado || {});
-      setPorCanal(data.porCanal || {});
     } catch { toast.error('Error al cargar leads'); }
     setLoading(false);
   };
 
   useEffect(() => { cargar(); }, []);
 
-  // Meses disponibles
   const mesesDisponibles = [...new Set(leads
     .filter(l => l.fecha_contacto)
     .map(l => l.fecha_contacto.slice(0, 7))
@@ -121,6 +113,35 @@ export function SectionLeads() {
 
   const totalPaginas = Math.ceil(filtrados.length / POR_PAGINA);
   const leadsPagina = filtrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
+
+  // Métricas calculadas sobre filtrados
+  const calcMetricas = (f) => {
+    const total = f.length;
+    const conRespuesta = f.filter(l => ['respuesta_chat','llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo','enfriado'].includes(l.estado)).length;
+    const conLlamada = f.filter(l => ['llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
+    const conDiseño = f.filter(l => ['diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
+    const conLlamadaVenta = f.filter(l => ['llamada_venta','venta','rechazo'].includes(l.estado)).length;
+    const noShow = f.filter(l => l.estado === 'no_show').length;
+    const ventas = f.filter(l => l.estado === 'venta').length;
+    const rechazo = f.filter(l => l.estado === 'rechazo').length;
+    const activos = f.filter(l => !['venta','rechazo','no_show','descartado'].includes(l.estado)).length;
+    const valorVentas = f.filter(l => l.estado === 'venta').reduce((s, l) => s + (l.valor_estimado || 0), 0);
+    const pct = (a, b) => b > 0 ? `${Math.round((a/b)*100)}%` : '—';
+    return [
+      { label:'Total',           val: total },
+      { label:'Activos',         val: activos },
+      { label:'Ventas',          val: ventas, color:'#beb0a2' },
+      { label:'Valor ventas',    val: fmtEur(valorVentas), color:'#beb0a2' },
+      { label:'Resp. chat',      val: pct(conRespuesta, total) },
+      { label:'→ Llamada desc.', val: pct(conLlamada, conRespuesta) },
+      { label:'→ Diseño',        val: pct(conDiseño, conLlamada) },
+      { label:'→ Llamada venta', val: pct(conLlamadaVenta + noShow, conDiseño) },
+      { label:'No Show',         val: pct(noShow, conLlamadaVenta + noShow), color:'#f97316' },
+      { label:'→ Venta',         val: pct(ventas, conLlamadaVenta), color:'#22c55e' },
+      { label:'Rechazo',         val: pct(rechazo, conLlamadaVenta), color:'#f87171' },
+      { label:'Cierre global',   val: pct(ventas, total), color:'#22c55e' },
+    ];
+  };
 
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -141,21 +162,16 @@ export function SectionLeads() {
 
   const cambiarEstado = async (id, estado) => {
     try {
-      // Si pasa a diseño, crear ficha de cualificado automáticamente
       const lead = leads.find(l => l.id === id);
       const { data } = await api.put(`/leads/${id}`, { estado });
       if (estado === 'diseño' && lead) {
         try {
           await api.post('/leads-cualificados', {
-            lead_id: id,
-            nombre: lead.nombre,
-            instagram: lead.instagram,
-            telefono: lead.telefono,
-            email: lead.email,
-            estado: 'en_cualificacion',
+            lead_id: id, nombre: lead.nombre, instagram: lead.instagram,
+            telefono: lead.telefono, email: lead.email, estado: 'en_cualificacion',
           });
-          toast.success('Lead movido a Diseño y ficha de cualificación creada');
-        } catch { /* ya existe o error menor */ }
+          toast.success('Lead movido a Diseño y ficha creada');
+        } catch {}
       }
       setLeads(prev => prev.map(l => l.id === id ? data.lead : l));
       if (panel?.id === id) setPanel(data.lead);
@@ -185,7 +201,9 @@ export function SectionLeads() {
     setModal(lead);
   };
 
-  // ── Render ──────────────────────────────────────────────────────────
+  const porEstado = {};
+  ORDEN.forEach(e => { porEstado[e] = leads.filter(l => l.estado === e).length; });
+
   return (
     <div className="ap-section">
       <ToastContainer toasts={toasts} onRemove={remove} />
@@ -199,7 +217,7 @@ export function SectionLeads() {
         </div>
         <div style={{ display:'flex', gap:8 }}>
           <button className="ap-btn ap-btn-ghost" onClick={() => setVistaMetricas(v => !v)}>
-            {vistaMetricas ? 'Ver kanban' : '📊 Ver métricas'}
+            {vistaMetricas ? 'Ocultar métricas' : '📊 Ver métricas'}
           </button>
           <button className="ap-btn ap-btn-primary" onClick={() => { setForm(EMPTY); setModal('new'); }}>
             <Plus size={15} /> Nuevo lead
@@ -207,53 +225,24 @@ export function SectionLeads() {
         </div>
       </div>
 
-      {/* Métricas calculadas sobre leads filtrados */}
-      {(() => {
-        const f = filtrados;
-        const total = f.length;
-        const activos = f.filter(l => !['venta','rechazo','no_show','descartado'].includes(l.estado)).length;
-        const conRespuesta = f.filter(l => ['respuesta_chat','llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo','enfriado'].includes(l.estado)).length;
-        const conLlamada = f.filter(l => ['llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
-        const conDiseño = f.filter(l => ['diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
-        const conLlamadaVenta = f.filter(l => ['llamada_venta','venta','rechazo'].includes(l.estado)).length;
-        const noShow = f.filter(l => l.estado === 'no_show').length;
-        const ventas = f.filter(l => l.estado === 'venta').length;
-        const valorVentas = f.filter(l => l.estado === 'venta').reduce((s, l) => s + (l.valor_estimado || 0), 0);
-
-        const pct = (a, b) => b > 0 ? `${Math.round((a/b)*100)}%` : '—';
-
-        return (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))', gap:8, marginBottom:16 }}>
-            {[
-              { label:'Total',           val: total },
-              { label:'Activos',         val: activos },
-              { label:'Ventas',          val: ventas, color:'#beb0a2' },
-              { label:'Valor ventas',    val: fmtEur(valorVentas), color:'#beb0a2' },
-              { label:'Resp. chat',      val: pct(conRespuesta, total) },
-              { label:'→ Llamada desc.', val: pct(conLlamada, conRespuesta) },
-              { label:'→ Diseño',        val: pct(conDiseño, conLlamada) },
-              { label:'→ Llamada venta', val: pct(conLlamadaVenta + noShow, conDiseño) },
-              { label:'No Show',         val: pct(noShow, conLlamadaVenta + noShow), color:'#f97316' },
-              { label:'→ Venta',         val: pct(ventas, conLlamadaVenta), color:'#22c55e' },
-              { label:'Cierre global',   val: pct(ventas, total), color:'#22c55e' },
-            ].map(m => (
-              <div key={m.label} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'10px 14px' }}>
-                <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:3 }}>{m.label}</div>
-                <div style={{ fontSize:16, fontWeight:700, color: m.color || '#fff' }}>{m.val}</div>
-              </div>
-            ))}
+      {/* Métricas sobre filtrados */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(100px,1fr))', gap:8, marginBottom:16 }}>
+        {calcMetricas(filtrados).map(m => (
+          <div key={m.label} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'10px 14px' }}>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:3 }}>{m.label}</div>
+            <div style={{ fontSize:16, fontWeight:700, color: m.color || '#fff' }}>{m.val}</div>
           </div>
-        );
-      })()}
+        ))}
+      </div>
 
-      {/* Vista métricas detalladas */}
+      {/* Métricas detalladas */}
       {vistaMetricas && (
         <div style={{ marginBottom:20 }}>
-          {/* Funnel visual */}
+          {/* Funnel */}
           <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'16px 20px', marginBottom:12 }}>
             <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Embudo de ventas</div>
             <div style={{ display:'flex', gap:4, alignItems:'flex-end' }}>
-              {ORDEN.slice(0,7).map((e, i) => {
+              {ORDEN.slice(0,7).map(e => {
                 const n = filtrados.filter(l => l.estado === e).length;
                 const max = filtrados.filter(l => l.estado === 'contacto').length || 1;
                 const height = Math.max(20, Math.round((n / max) * 100));
@@ -264,8 +253,7 @@ export function SectionLeads() {
                     <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', marginTop:4, textTransform:'uppercase', letterSpacing:0.5 }}>{ESTADOS[e].label}</div>
                   </div>
                 );
-                });
-              })()}
+              })}
             </div>
           </div>
 
@@ -282,19 +270,20 @@ export function SectionLeads() {
                   if (l.estado === 'venta') canalData[c].ventas++;
                 });
                 return Object.entries(canalData).sort((a,b) => b[1].total - a[1].total).map(([canal, d]) => {
-                const tasa = d.total > 0 ? Math.round((d.ventas / d.total) * 100) : 0;
-                const pct = d.total > 0 ? Math.round((d.total / (filtrados.length || 1)) * 100) : 0;
-                return (
-                  <div key={canal} style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    <div style={{ width:90, fontSize:12, color:'#beb0a2', textTransform:'capitalize' }}>{canal}</div>
-                    <div style={{ flex:1, height:6, background:'rgba(255,255,255,0.05)', borderRadius:3, overflow:'hidden' }}>
-                      <div style={{ width:`${pct}%`, height:'100%', background:'#beb0a2', borderRadius:3 }} />
+                  const tasa = d.total > 0 ? Math.round((d.ventas / d.total) * 100) : 0;
+                  const pct = d.total > 0 ? Math.round((d.total / (filtrados.length || 1)) * 100) : 0;
+                  return (
+                    <div key={canal} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <div style={{ width:90, fontSize:12, color:'#beb0a2', textTransform:'capitalize' }}>{canal}</div>
+                      <div style={{ flex:1, height:6, background:'rgba(255,255,255,0.05)', borderRadius:3, overflow:'hidden' }}>
+                        <div style={{ width:`${pct}%`, height:'100%', background:'#beb0a2', borderRadius:3 }} />
+                      </div>
+                      <div style={{ width:30, fontSize:12, color:'rgba(255,255,255,0.5)', textAlign:'right' }}>{d.total}</div>
+                      <div style={{ width:50, fontSize:11, color: tasa > 0 ? '#22c55e' : 'rgba(255,255,255,0.2)', textAlign:'right' }}>{tasa}% vta</div>
                     </div>
-                    <div style={{ width:30, fontSize:12, color:'rgba(255,255,255,0.5)', textAlign:'right' }}>{d.total}</div>
-                    <div style={{ width:50, fontSize:11, color: tasa > 0 ? '#22c55e' : 'rgba(255,255,255,0.2)', textAlign:'right' }}>{tasa}% vta</div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
@@ -323,32 +312,26 @@ export function SectionLeads() {
         <span style={{ marginLeft:'auto', color:'rgba(255,255,255,0.3)', fontSize:13 }}>{filtrados.length} leads</span>
       </div>
 
-      {/* Vista condicional: tabla si todos los meses, kanban si mes filtrado */}
+      {/* Vista: tabla si todos los meses, kanban si mes concreto */}
       {loading ? <div className="ap-loading">Cargando leads…</div> : filtroMes === 'all' ? (
         <>
           <div style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, overflow:'hidden' }}>
-            {/* Cabecera tabla */}
-            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 120px', gap:0, padding:'8px 16px', borderBottom:'1px solid rgba(255,255,255,0.07)', fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1 }}>
-              <span>Nombre</span>
-              <span>Estado</span>
-              <span>Deporte</span>
-              <span>Canal</span>
-              <span>Fecha contacto</span>
-              <span>Origen</span>
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 100px', padding:'8px 16px', borderBottom:'1px solid rgba(255,255,255,0.07)', fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1 }}>
+              <span>Nombre</span><span>Estado</span><span>Deporte</span><span>Canal</span><span>Contacto</span><span>Origen</span>
             </div>
             {leadsPagina.length === 0 && <div className="ap-empty"><p>No hay leads con estos filtros.</p></div>}
             {leadsPagina.map((lead, i) => {
               const est = ESTADOS[lead.estado];
               return (
                 <div key={lead.id} onClick={() => setPanel(lead)}
-                  style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 120px', gap:0, padding:'10px 16px', borderBottom:'1px solid rgba(255,255,255,0.05)', cursor:'pointer', background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}
+                  style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 100px', padding:'10px 16px', borderBottom:'1px solid rgba(255,255,255,0.05)', cursor:'pointer', background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}
                   onMouseEnter={e => e.currentTarget.style.background='rgba(190,176,162,0.05)'}
                   onMouseLeave={e => e.currentTarget.style.background= i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)'}>
                   <div>
                     <div style={{ fontSize:13, fontWeight:600, color:'#e5ddd5' }}>{lead.nombre}</div>
                     {lead.instagram && <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)' }}>@{lead.instagram}</div>}
                   </div>
-                  <div><span style={{ background:`${est?.color}20`, color:est?.color, fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4 }}>{est?.label}</span></div>
+                  <div style={{ alignSelf:'center' }}><span style={{ background:`${est?.color}20`, color:est?.color, fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4 }}>{est?.label}</span></div>
                   <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center' }}>{lead.deporte || '—'}</div>
                   <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center', textTransform:'capitalize' }}>{lead.canal || '—'}</div>
                   <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center' }}>{lead.fecha_contacto?.slice(0,10) || '—'}</div>
@@ -370,14 +353,13 @@ export function SectionLeads() {
           )}
         </>
       ) : (
-        /* Kanban cuando hay filtro de mes */
         <div style={{ overflowX:'auto' }}>
-          <div style={{ display:'flex', gap:10, minWidth:1000 }}>
+          <div style={{ display:'flex', gap:10, minWidth:1100 }}>
             {ORDEN.map(estado => {
               const col = filtrados.filter(l => l.estado === estado);
               const est = ESTADOS[estado];
               return (
-                <div key={estado} style={{ flex:1, minWidth:130 }}>
+                <div key={estado} style={{ flex:1, minWidth:120 }}>
                   <div style={{ background:`${est.color}15`, border:`1px solid ${est.color}30`, borderRadius:'8px 8px 0 0', padding:'6px 10px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                     <span style={{ color:est.color, fontWeight:700, fontSize:10, textTransform:'uppercase', letterSpacing:1 }}>{est.label}</span>
                     <span style={{ background:`${est.color}30`, color:est.color, borderRadius:999, padding:'1px 6px', fontSize:10, fontWeight:700 }}>{col.length}</span>
@@ -427,7 +409,6 @@ export function SectionLeads() {
             </div>
             <button onClick={() => setPanel(null)} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.3)', fontSize:18, cursor:'pointer' }}>✕</button>
           </div>
-
           <div style={{ marginBottom:12 }}>
             <span style={{ background:`${ESTADOS[panel.estado]?.color}20`, border:`1px solid ${ESTADOS[panel.estado]?.color}40`, borderRadius:8, padding:'5px 12px', color:ESTADOS[panel.estado]?.color, fontWeight:700, fontSize:12 }}>
               {ESTADOS[panel.estado]?.label}
@@ -441,34 +422,31 @@ export function SectionLeads() {
               </button>
             ))}
           </div>
-
           {[
-            ['Origen',      panel.origen === 'inbound' ? '📥 Inbound' : '📤 Outbound'],
-            ['Canal',       panel.canal || '—'],
-            ['Deporte',     [panel.deporte, panel.liga].filter(Boolean).join(' · ') || '—'],
-            ['Teléfono',    panel.telefono || '—'],
-            ['Email',       panel.email || '—'],
-            ['Inversión',   fmtEur(panel.valor_estimado)],
-            ['% Cierre',    `${panel.pct_cierre||0}%`],
-            ['📅 Contacto', panel.fecha_contacto?.slice(0,10) || '—'],
-            ['📅 Respuesta',panel.fecha_respuesta?.slice(0,10) || '—'],
-            ['📅 Llamada',  panel.fecha_llamada?.slice(0,10) || '—'],
-            ['📅 Diseño',   panel.fecha_diseño?.slice(0,10) || '—'],
+            ['Origen',           panel.origen === 'inbound' ? '📥 Inbound' : '📤 Outbound'],
+            ['Canal',            panel.canal || '—'],
+            ['Deporte',          [panel.deporte, panel.liga].filter(Boolean).join(' · ') || '—'],
+            ['Teléfono',         panel.telefono || '—'],
+            ['Email',            panel.email || '—'],
+            ['Inversión',        fmtEur(panel.valor_estimado)],
+            ['% Cierre',         `${panel.pct_cierre||0}%`],
+            ['📅 Contacto',      panel.fecha_contacto?.slice(0,10) || '—'],
+            ['📅 Respuesta',     panel.fecha_respuesta?.slice(0,10) || '—'],
+            ['📅 Llamada desc.', panel.fecha_llamada?.slice(0,10) || '—'],
+            ['📅 Diseño',        panel.fecha_diseño?.slice(0,10) || '—'],
             ['📅 Llamada venta', panel.fecha_llamada_venta?.slice(0,10) || '—'],
-            ['📅 Venta',    panel.fecha_venta?.slice(0,10) || '—'],
+            ['📅 Venta',         panel.fecha_venta?.slice(0,10) || '—'],
           ].map(([k,v]) => (
             <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,0.05)', fontSize:12 }}>
               <span style={{ color:'rgba(255,255,255,0.3)' }}>{k}</span>
               <span style={{ color:'#e5ddd5' }}>{v}</span>
             </div>
           ))}
-
           {panel.notas && (
             <div style={{ marginTop:12, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:10, fontSize:12, color:'rgba(255,255,255,0.5)', lineHeight:1.6 }}>
               {panel.notas}
             </div>
           )}
-
           <div style={{ display:'flex', gap:8, marginTop:16 }}>
             <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { abrirEditar(panel); setPanel(null); }}>
               <Pencil size={13}/> Editar
@@ -491,21 +469,21 @@ export function SectionLeads() {
             <form onSubmit={guardar} className="ap-modal-form">
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
                 <div className="ap-field" style={{ gridColumn:'1/-1' }}><label>Nombre *</label><input value={form.nombre} onChange={e => setF('nombre', e.target.value)} required autoFocus placeholder="Ej: Rubén Yáñez" /></div>
-                <div className="ap-field"><label>Perfil</label><input value={form.perfil} onChange={e => setF('perfil', e.target.value)} placeholder="Portero, Delantero..." /></div>
+                <div className="ap-field"><label>Perfil</label><input value={form.perfil||''} onChange={e => setF('perfil', e.target.value)} placeholder="Portero, Delantero..." /></div>
                 <div className="ap-field"><label>Deporte</label>
                   <select className="ap-select" value={form.deporte} onChange={e => setF('deporte', e.target.value)}>
                     {DEPORTES.map(d => <option key={d}>{d}</option>)}
                   </select>
                 </div>
                 <div className="ap-field"><label>Liga</label>
-                  <select className="ap-select" value={form.liga} onChange={e => setF('liga', e.target.value)}>
+                  <select className="ap-select" value={form.liga||''} onChange={e => setF('liga', e.target.value)}>
                     <option value="">— sin liga —</option>
                     {LIGAS.map(l => <option key={l}>{l}</option>)}
                   </select>
                 </div>
-                <div className="ap-field"><label>Instagram</label><input value={form.instagram} onChange={e => setF('instagram', e.target.value)} placeholder="handle sin @" /></div>
-                <div className="ap-field"><label>Teléfono</label><input value={form.telefono} onChange={e => setF('telefono', e.target.value)} placeholder="+34 600 000 000" /></div>
-                <div className="ap-field"><label>Email</label><input value={form.email} onChange={e => setF('email', e.target.value)} placeholder="correo@gmail.com" /></div>
+                <div className="ap-field"><label>Instagram</label><input value={form.instagram||''} onChange={e => setF('instagram', e.target.value)} placeholder="handle sin @" /></div>
+                <div className="ap-field"><label>Teléfono</label><input value={form.telefono||''} onChange={e => setF('telefono', e.target.value)} placeholder="+34 600 000 000" /></div>
+                <div className="ap-field"><label>Email</label><input value={form.email||''} onChange={e => setF('email', e.target.value)} placeholder="correo@gmail.com" /></div>
                 <div className="ap-field"><label>Origen</label>
                   <select className="ap-select" value={form.origen} onChange={e => setF('origen', e.target.value)}>
                     <option value="outbound">📤 Outbound</option>
@@ -522,22 +500,19 @@ export function SectionLeads() {
                     {ORDEN.map(e => <option key={e} value={e}>{ESTADOS[e].label}</option>)}
                   </select>
                 </div>
-                <div className="ap-field"><label>Inversión estimada (€)</label><input type="number" value={form.valor_estimado} onChange={e => setF('valor_estimado', e.target.value)} placeholder="25000" /></div>
+                <div className="ap-field"><label>Inversión estimada (€)</label><input type="number" value={form.valor_estimado||''} onChange={e => setF('valor_estimado', e.target.value)} placeholder="25000" /></div>
                 <div className="ap-field"><label>% Cierre estimado</label><input type="number" min={0} max={100} value={form.pct_cierre} onChange={e => setF('pct_cierre', Number(e.target.value))} /></div>
               </div>
-
               <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, margin:'12px 0 8px' }}>Fechas del proceso</div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
-                <div className="ap-field"><label>📅 Contacto</label><input type="date" value={form.fecha_contacto} onChange={e => setF('fecha_contacto', e.target.value)} /></div>
-                <div className="ap-field"><label>📅 Respuesta chat</label><input type="date" value={form.fecha_respuesta} onChange={e => setF('fecha_respuesta', e.target.value)} /></div>
-                <div className="ap-field"><label>📅 Llamada</label><input type="date" value={form.fecha_llamada} onChange={e => setF('fecha_llamada', e.target.value)} /></div>
-                <div className="ap-field"><label>📅 Diseño enviado</label><input type="date" value={form.fecha_diseño} onChange={e => setF('fecha_diseño', e.target.value)} /></div>
-                <div className="ap-field"><label>📅 Llamada de venta</label><input type="date" value={form.fecha_llamada_venta} onChange={e => setF('fecha_llamada_venta', e.target.value)} /></div>
-                <div className="ap-field"><label>📅 Venta</label><input type="date" value={form.fecha_venta} onChange={e => setF('fecha_venta', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Contacto</label><input type="date" value={form.fecha_contacto||''} onChange={e => setF('fecha_contacto', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Respuesta chat</label><input type="date" value={form.fecha_respuesta||''} onChange={e => setF('fecha_respuesta', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Llamada desc.</label><input type="date" value={form.fecha_llamada||''} onChange={e => setF('fecha_llamada', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Diseño enviado</label><input type="date" value={form.fecha_diseño||''} onChange={e => setF('fecha_diseño', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Llamada de venta</label><input type="date" value={form.fecha_llamada_venta||''} onChange={e => setF('fecha_llamada_venta', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Venta</label><input type="date" value={form.fecha_venta||''} onChange={e => setF('fecha_venta', e.target.value)} /></div>
               </div>
-
-              <div className="ap-field"><label>Notas</label><textarea value={form.notas} onChange={e => setF('notas', e.target.value)} rows={3} placeholder="Contexto, observaciones..." /></div>
-
+              <div className="ap-field"><label>Notas</label><textarea value={form.notas||''} onChange={e => setF('notas', e.target.value)} rows={3} placeholder="Contexto, observaciones..." /></div>
               <div className="ap-modal-actions">
                 <button type="button" className="ap-btn ap-btn-ghost" onClick={() => setModal(null)}>Cancelar</button>
                 <button type="submit" className="ap-btn ap-btn-primary" disabled={saving || !form.nombre.trim()}>
