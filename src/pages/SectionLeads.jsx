@@ -323,12 +323,58 @@ export function SectionLeads() {
         <span style={{ marginLeft:'auto', color:'rgba(255,255,255,0.3)', fontSize:13 }}>{filtrados.length} leads</span>
       </div>
 
-      {/* Kanban */}
-      {loading ? <div className="ap-loading">Cargando leads…</div> : (
+      {/* Vista condicional: tabla si todos los meses, kanban si mes filtrado */}
+      {loading ? <div className="ap-loading">Cargando leads…</div> : filtroMes === 'all' ? (
+        <>
+          <div style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, overflow:'hidden' }}>
+            {/* Cabecera tabla */}
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 120px', gap:0, padding:'8px 16px', borderBottom:'1px solid rgba(255,255,255,0.07)', fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1 }}>
+              <span>Nombre</span>
+              <span>Estado</span>
+              <span>Deporte</span>
+              <span>Canal</span>
+              <span>Fecha contacto</span>
+              <span>Origen</span>
+            </div>
+            {leadsPagina.length === 0 && <div className="ap-empty"><p>No hay leads con estos filtros.</p></div>}
+            {leadsPagina.map((lead, i) => {
+              const est = ESTADOS[lead.estado];
+              return (
+                <div key={lead.id} onClick={() => setPanel(lead)}
+                  style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 120px', gap:0, padding:'10px 16px', borderBottom:'1px solid rgba(255,255,255,0.05)', cursor:'pointer', background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}
+                  onMouseEnter={e => e.currentTarget.style.background='rgba(190,176,162,0.05)'}
+                  onMouseLeave={e => e.currentTarget.style.background= i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)'}>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:600, color:'#e5ddd5' }}>{lead.nombre}</div>
+                    {lead.instagram && <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)' }}>@{lead.instagram}</div>}
+                  </div>
+                  <div><span style={{ background:`${est?.color}20`, color:est?.color, fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4 }}>{est?.label}</span></div>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center' }}>{lead.deporte || '—'}</div>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center', textTransform:'capitalize' }}>{lead.canal || '—'}</div>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center' }}>{lead.fecha_contacto?.slice(0,10) || '—'}</div>
+                  <div style={{ alignSelf:'center' }}>
+                    <span style={{ fontSize:9, background: lead.origen==='inbound' ? '#0a3d4a' : '#3b1f6e', color: lead.origen==='inbound' ? '#06b6d4' : '#8b5cf6', borderRadius:3, padding:'2px 6px' }}>
+                      {lead.origen === 'inbound' ? '📥 IN' : '📤 OUT'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {totalPaginas > 1 && (
+            <div className="ap-pagination" style={{ marginTop:16 }}>
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setPagina(p => Math.max(1, p-1))} disabled={pagina === 1}>← Anterior</button>
+              <span className="ap-pagination-info">{pagina} / {totalPaginas} · {filtrados.length} leads</span>
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setPagina(p => Math.min(totalPaginas, p+1))} disabled={pagina === totalPaginas}>Siguiente →</button>
+            </div>
+          )}
+        </>
+      ) : (
+        /* Kanban cuando hay filtro de mes */
         <div style={{ overflowX:'auto' }}>
           <div style={{ display:'flex', gap:10, minWidth:1000 }}>
             {ORDEN.map(estado => {
-              const col = leadsPagina.filter(l => l.estado === estado);
+              const col = filtrados.filter(l => l.estado === estado);
               const est = ESTADOS[estado];
               return (
                 <div key={estado} style={{ flex:1, minWidth:130 }}>
@@ -353,7 +399,6 @@ export function SectionLeads() {
                         </div>
                         {lead.deporte && <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)', marginTop:2 }}>{lead.deporte}</div>}
                         {lead.valor_estimado > 0 && <div style={{ fontSize:11, color:'#beb0a2', fontWeight:600, marginTop:4 }}>{Number(lead.valor_estimado).toLocaleString('es-ES')}€</div>}
-                        {/* Cambio rápido */}
                         <div onClick={e => e.stopPropagation()} style={{ marginTop:6, display:'flex', gap:3, flexWrap:'wrap' }}>
                           {ORDEN.filter(e => e !== estado).slice(0,2).map(e => (
                             <button key={e} onClick={() => cambiarEstado(lead.id, e)}
@@ -369,15 +414,6 @@ export function SectionLeads() {
               );
             })}
           </div>
-        </div>
-      )}
-
-      {/* Paginación */}
-      {totalPaginas > 1 && (
-        <div className="ap-pagination" style={{ marginTop:20 }}>
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setPagina(p => Math.max(1, p-1))} disabled={pagina === 1}>← Anterior</button>
-          <span className="ap-pagination-info">{pagina} / {totalPaginas} · {filtrados.length} leads</span>
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setPagina(p => Math.min(totalPaginas, p+1))} disabled={pagina === totalPaginas}>Siguiente →</button>
         </div>
       )}
 
