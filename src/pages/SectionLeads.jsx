@@ -82,8 +82,11 @@ export function SectionLeads() {
   const [form, setForm] = useState(EMPTY);
   const [filtroEstado, setFiltroEstado] = useState('all');
   const [filtroOrigen, setFiltroOrigen] = useState('all');
+  const [filtroMes, setFiltroMes] = useState('all');
   const [busqueda, setBusqueda] = useState('');
   const [vistaMetricas, setVistaMetricas] = useState(false);
+  const [pagina, setPagina] = useState(1);
+  const POR_PAGINA = 30;
 
   const cargar = async () => {
     setLoading(true);
@@ -99,13 +102,24 @@ export function SectionLeads() {
 
   useEffect(() => { cargar(); }, []);
 
+  // Meses disponibles
+  const mesesDisponibles = [...new Set(leads
+    .filter(l => l.fecha_contacto)
+    .map(l => l.fecha_contacto.slice(0, 7))
+  )].sort().reverse();
+
   const filtrados = leads.filter(l => {
     if (filtroEstado !== 'all' && l.estado !== filtroEstado) return false;
     if (filtroOrigen !== 'all' && l.origen !== filtroOrigen) return false;
+    if (filtroMes !== 'all' && (!l.fecha_contacto || l.fecha_contacto.slice(0, 7) !== filtroMes)) return false;
     if (busqueda && !l.nombre.toLowerCase().includes(busqueda.toLowerCase()) &&
         !(l.instagram||'').toLowerCase().includes(busqueda.toLowerCase())) return false;
     return true;
   });
+
+  const POR_PAGINA = 30;
+  const totalPaginas = Math.ceil(filtrados.length / POR_PAGINA);
+  const leadsPagina = filtrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -257,15 +271,23 @@ export function SectionLeads() {
 
       {/* Filtros */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16, alignItems:'center' }}>
-        <input placeholder="Buscar..." value={busqueda} onChange={e => setBusqueda(e.target.value)} className="ap-field-input" style={{ maxWidth:200 }} />
-        <select className="ap-select" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
+        <input placeholder="Buscar..." value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(1); }} className="ap-field-input" style={{ maxWidth:200 }} />
+        <select className="ap-select" value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPagina(1); }}>
           <option value="all">Todos los estados</option>
           {ORDEN.map(e => <option key={e} value={e}>{ESTADOS[e].label} ({porEstado[e]||0})</option>)}
         </select>
-        <select className="ap-select" value={filtroOrigen} onChange={e => setFiltroOrigen(e.target.value)}>
+        <select className="ap-select" value={filtroOrigen} onChange={e => { setFiltroOrigen(e.target.value); setPagina(1); }}>
           <option value="all">Inbound + Outbound</option>
           <option value="inbound">📥 Inbound</option>
           <option value="outbound">📤 Outbound</option>
+        </select>
+        <select className="ap-select" value={filtroMes} onChange={e => { setFiltroMes(e.target.value); setPagina(1); }}>
+          <option value="all">Todos los meses</option>
+          {mesesDisponibles.map(m => {
+            const [year, month] = m.split('-');
+            const label = new Date(year, month - 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+            return <option key={m} value={m}>{label}</option>;
+          })}
         </select>
         <span style={{ marginLeft:'auto', color:'rgba(255,255,255,0.3)', fontSize:13 }}>{filtrados.length} leads</span>
       </div>
@@ -275,7 +297,7 @@ export function SectionLeads() {
         <div style={{ overflowX:'auto' }}>
           <div style={{ display:'flex', gap:10, minWidth:1000 }}>
             {ORDEN.map(estado => {
-              const col = filtrados.filter(l => l.estado === estado);
+              const col = leadsPagina.filter(l => l.estado === estado);
               const est = ESTADOS[estado];
               return (
                 <div key={estado} style={{ flex:1, minWidth:130 }}>
@@ -316,6 +338,15 @@ export function SectionLeads() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Paginación */}
+      {totalPaginas > 1 && (
+        <div className="ap-pagination" style={{ marginTop:20 }}>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setPagina(p => Math.max(1, p-1))} disabled={pagina === 1}>← Anterior</button>
+          <span className="ap-pagination-info">{pagina} / {totalPaginas} · {filtrados.length} leads</span>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setPagina(p => Math.min(totalPaginas, p+1))} disabled={pagina === totalPaginas}>Siguiente →</button>
         </div>
       )}
 
