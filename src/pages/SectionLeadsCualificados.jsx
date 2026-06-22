@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, GripVertical, Download } from 'lucide-react';
+import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, GripVertical, Download, Save } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import api from '../services/api';
 
@@ -62,11 +62,11 @@ const ESTETICAS = [
   { val:'mixta', label:'🎨 Mixta' },
 ];
 const TIPOS_ESPACIO = ['Bajo cubierta','Garaje','Habitación / sótano','Parcela exterior','Obra nueva','Local','Otro'];
-const EQUIPAMIENTO  = ['Fuerza completa','Cardio premium','Crossfit / funcional','Pádel interior','Mixto','Solo cardio','Otro'];
+const EQUIPAMIENTO_OPTS = ['Fuerza completa','Cardio premium','Crossfit / funcional','Pádel interior','Mixto','Solo cardio','Otro'];
 const DOC_TYPES = ['plano','contrato','factura','presupuesto','otro'];
 const fmtEur = n => n ? `${Number(n).toLocaleString('es-ES')}€` : '—';
 
-// ── Sortable Render Thumb ─────────────────────────────────────────────
+// ── Renders ───────────────────────────────────────────────────────────
 function SortableRenderThumb({ r, onDelete, isFirst }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: r.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
@@ -84,7 +84,6 @@ function SortableRenderThumb({ r, onDelete, isFirst }) {
   );
 }
 
-// ── Tab Renders ───────────────────────────────────────────────────────
 function TabRenders({ lcId }) {
   const [renders, setRenders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -119,9 +118,7 @@ function TabRenders({ lcId }) {
 
   const handleDragEnd = async (event) => {
     const { active, over } = event; if (!active || !over || active.id === over.id) return;
-    const oldIndex = renders.findIndex(r => r.id === active.id);
-    const newIndex = renders.findIndex(r => r.id === over.id);
-    const newRenders = arrayMove(renders, oldIndex, newIndex);
+    const newRenders = arrayMove(renders, renders.findIndex(r => r.id === active.id), renders.findIndex(r => r.id === over.id));
     setRenders(newRenders);
     try { await api.put(`/leads-cualificados/${lcId}/renders/reorder`, { ids: newRenders.map(r => r.id) }); }
     catch { setError('Error al guardar el orden'); }
@@ -150,7 +147,7 @@ function TabRenders({ lcId }) {
   );
 }
 
-// ── Tab Documentos ────────────────────────────────────────────────────
+// ── Documentos ────────────────────────────────────────────────────────
 function TabDocumentos({ lcId }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -167,12 +164,9 @@ function TabDocumentos({ lcId }) {
     setUploading(true); setError('');
     try {
       const form = new FormData();
-      form.append('file', file);
-      form.append('name', docName || file.name);
-      form.append('doc_type', docType);
+      form.append('file', file); form.append('name', docName || file.name); form.append('doc_type', docType);
       const { data } = await api.post(`/leads-cualificados/${lcId}/documents`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
-      setDocuments(prev => [data.document, ...prev]);
-      setDocName(''); fileRef.current.value = '';
+      setDocuments(prev => [data.document, ...prev]); setDocName(''); fileRef.current.value = '';
     } catch (err) { setError(err.response?.data?.error || 'Error al subir documento'); }
     setUploading(false);
   };
@@ -210,36 +204,28 @@ function TabDocumentos({ lcId }) {
   );
 }
 
-// ── Tab Tours ─────────────────────────────────────────────────────────
+// ── Tours ─────────────────────────────────────────────────────────────
 function TabTour({ lcId }) {
   const [tours, setTours] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [name, setName] = useState('');
-  const [url, setUrl] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [editingId, setEditingId] = useState(null);
-  const [editName, setEditName] = useState('');
-  const [editUrl, setEditUrl] = useState('');
+  const [name, setName] = useState(''); const [url, setUrl] = useState('');
+  const [saving, setSaving] = useState(false); const [error, setError] = useState('');
+  const [editingId, setEditingId] = useState(null); const [editName, setEditName] = useState(''); const [editUrl, setEditUrl] = useState('');
 
   useEffect(() => { api.get(`/leads-cualificados/${lcId}/tours`).then(r => setTours(r.data.tours||[])).catch(()=>{}).finally(()=>setLoading(false)); }, [lcId]);
 
   const handleAdd = async () => {
     if (!name.trim() || !url.trim()) { setError('Nombre y URL son requeridos'); return; }
     setSaving(true); setError('');
-    try {
-      const { data } = await api.post(`/leads-cualificados/${lcId}/tours`, { name, url });
-      setTours(prev => [...prev, data.tour]); setName(''); setUrl('');
-    } catch (err) { setError(err.response?.data?.error || 'Error al añadir tour'); }
+    try { const { data } = await api.post(`/leads-cualificados/${lcId}/tours`, { name, url }); setTours(prev => [...prev, data.tour]); setName(''); setUrl(''); }
+    catch (err) { setError(err.response?.data?.error || 'Error al añadir tour'); }
     setSaving(false);
   };
 
   const handleSaveEdit = async (id) => {
     setSaving(true);
-    try {
-      const { data } = await api.put(`/leads-cualificados/${lcId}/tours/${id}`, { name: editName, url: editUrl });
-      setTours(prev => prev.map(t => t.id === id ? data.tour : t)); setEditingId(null);
-    } catch { setError('Error al actualizar tour'); }
+    try { const { data } = await api.put(`/leads-cualificados/${lcId}/tours/${id}`, { name: editName, url: editUrl }); setTours(prev => prev.map(t => t.id === id ? data.tour : t)); setEditingId(null); }
+    catch { setError('Error al actualizar tour'); }
     setSaving(false);
   };
 
@@ -249,7 +235,6 @@ function TabTour({ lcId }) {
   };
 
   if (loading) return <div className="ap-loading">Cargando…</div>;
-
   return (
     <div className="ap-tab-content">
       <p className="ap-tab-desc">Añade links de tours virtuales o Keypano.</p>
@@ -264,23 +249,9 @@ function TabTour({ lcId }) {
           {tours.map(t => (
             <div key={t.id} className="ap-tour-item">
               {editingId === t.id ? (
-                <>
-                  <input className="ap-field-input" value={editName} onChange={e => setEditName(e.target.value)} />
-                  <input className="ap-field-input ap-tour-url-input" value={editUrl} onChange={e => setEditUrl(e.target.value)} type="url" />
-                  <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => handleSaveEdit(t.id)} disabled={saving}>Guardar</button>
-                  <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setEditingId(null)}>Cancelar</button>
-                </>
+                <><input className="ap-field-input" value={editName} onChange={e => setEditName(e.target.value)} /><input className="ap-field-input ap-tour-url-input" value={editUrl} onChange={e => setEditUrl(e.target.value)} type="url" /><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => handleSaveEdit(t.id)} disabled={saving}>Guardar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setEditingId(null)}>Cancelar</button></>
               ) : (
-                <>
-                  <div className="ap-tour-info">
-                    <span className="ap-tour-name">{t.name}</span>
-                    <a className="ap-tour-url" href={t.url} target="_blank" rel="noopener noreferrer">{t.url}</a>
-                  </div>
-                  <div className="ap-tour-actions">
-                    <button className="ap-btn-icon" onClick={() => { setEditingId(t.id); setEditName(t.name); setEditUrl(t.url); }}><Pencil size={13}/></button>
-                    <button className="ap-btn-icon" onClick={() => handleDelete(t.id)}><Trash2 size={13}/></button>
-                  </div>
-                </>
+                <><div className="ap-tour-info"><span className="ap-tour-name">{t.name}</span><a className="ap-tour-url" href={t.url} target="_blank" rel="noopener noreferrer">{t.url}</a></div><div className="ap-tour-actions"><button className="ap-btn-icon" onClick={() => { setEditingId(t.id); setEditName(t.name); setEditUrl(t.url); }}><Pencil size={13}/></button><button className="ap-btn-icon" onClick={() => handleDelete(t.id)}><Trash2 size={13}/></button></div></>
               )}
             </div>
           ))}
@@ -290,22 +261,17 @@ function TabTour({ lcId }) {
   );
 }
 
-// ── Tab Notas ─────────────────────────────────────────────────────────
+// ── Notas ─────────────────────────────────────────────────────────────
 function TabNotas({ lcId }) {
-  const [notes, setNotes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [text, setText] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [notes, setNotes] = useState([]); const [loading, setLoading] = useState(true);
+  const [text, setText] = useState(''); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
 
   useEffect(() => { api.get(`/leads-cualificados/${lcId}/notes`).then(r => setNotes(r.data.notes||[])).catch(()=>{}).finally(()=>setLoading(false)); }, [lcId]);
 
   const handleAdd = async () => {
     if (!text.trim()) return; setSaving(true); setError('');
-    try {
-      const { data } = await api.post(`/leads-cualificados/${lcId}/notes`, { content: text.trim() });
-      setNotes(prev => [data.note, ...prev]); setText('');
-    } catch { setError('Error al añadir nota'); }
+    try { const { data } = await api.post(`/leads-cualificados/${lcId}/notes`, { content: text.trim() }); setNotes(prev => [data.note, ...prev]); setText(''); }
+    catch { setError('Error al añadir nota'); }
     setSaving(false);
   };
 
@@ -315,35 +281,17 @@ function TabNotas({ lcId }) {
   };
 
   if (loading) return <div className="ap-loading">Cargando…</div>;
-
   return (
     <div className="ap-tab-content">
       <div className="ap-field"><label>Nueva nota</label><textarea className="ap-diag-textarea" value={text} onChange={e => setText(e.target.value)} rows={4} placeholder="Observaciones, seguimiento..." /></div>
-      <div className="ap-diag-save-row">
-        {error && <p className="ap-error" style={{ margin:0 }}>{error}</p>}
-        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAdd} disabled={saving || !text.trim()}>
-          {saving ? 'Añadiendo…' : <><Plus size={13}/> Añadir nota</>}
-        </button>
-      </div>
-      {notes.length > 0 && (
-        <div className="ap-notes-list">
-          {notes.map(n => (
-            <div key={n.id} className="ap-note-item">
-              <p className="ap-note-content">{n.content}</p>
-              <div className="ap-note-footer">
-                <span className="ap-note-date">{new Date(n.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'short', year:'numeric' })}</span>
-                <button className="ap-btn-icon" onClick={() => handleDelete(n.id)}><Trash2 size={13}/></button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="ap-diag-save-row">{error && <p className="ap-error" style={{ margin:0 }}>{error}</p>}<button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAdd} disabled={saving || !text.trim()}>{saving ? 'Añadiendo…' : <><Plus size={13}/> Añadir nota</>}</button></div>
+      {notes.length > 0 && <div className="ap-notes-list">{notes.map(n => (<div key={n.id} className="ap-note-item"><p className="ap-note-content">{n.content}</p><div className="ap-note-footer"><span className="ap-note-date">{new Date(n.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'short', year:'numeric' })}</span><button className="ap-btn-icon" onClick={() => handleDelete(n.id)}><Trash2 size={13}/></button></div></div>))}</div>}
       {notes.length === 0 && <p className="ap-empty-sm">Sin notas todavía.</p>}
     </div>
   );
 }
 
-// ── Tab Ficha ─────────────────────────────────────────────────────────
+// ── Ficha ─────────────────────────────────────────────────────────────
 function TabFicha({ lead, onSaved }) {
   const [form, setForm] = useState(lead);
   const [saving, setSaving] = useState(false);
@@ -352,10 +300,8 @@ function TabFicha({ lead, onSaved }) {
 
   const guardar = async () => {
     setSaving(true); setError('');
-    try {
-      const { data } = await api.put(`/leads-cualificados/${lead.id}`, form);
-      onSaved(data.lead);
-    } catch { setError('Error al guardar'); }
+    try { const { data } = await api.put(`/leads-cualificados/${lead.id}`, form); onSaved(data.lead); }
+    catch { setError('Error al guardar'); }
     setSaving(false);
   };
 
@@ -384,7 +330,6 @@ function TabFicha({ lead, onSaved }) {
         <div className="ap-field"><label>Inicio previsto</label><input className="ap-field-input" type="date" value={form.fecha_inicio_prevista?.slice(0,10)||''} onChange={e => setF('fecha_inicio_prevista', e.target.value)} /></div>
         <div className="ap-field"><label>Entrega prevista</label><input className="ap-field-input" type="date" value={form.fecha_entrega_prevista?.slice(0,10)||''} onChange={e => setF('fecha_entrega_prevista', e.target.value)} /></div>
       </div>
-
       <div className="ap-field">
         <label>Estética</label>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
@@ -396,12 +341,11 @@ function TabFicha({ lead, onSaved }) {
           ))}
         </div>
       </div>
-
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
         <div className="ap-field"><label>Equipamiento</label>
           <select className="ap-select" value={form.equipamiento_clave||''} onChange={e => setF('equipamiento_clave', e.target.value)}>
             <option value="">— Seleccionar —</option>
-            {EQUIPAMIENTO.map(eq => <option key={eq}>{eq}</option>)}
+            {EQUIPAMIENTO_OPTS.map(eq => <option key={eq}>{eq}</option>)}
           </select>
         </div>
         <div className="ap-field"><label>Marcas preferidas</label><input className="ap-field-input" value={form.marcas_preferidas||''} onChange={e => setF('marcas_preferidas', e.target.value)} placeholder="Akon, Technogym..." /></div>
@@ -410,40 +354,248 @@ function TabFicha({ lead, onSaved }) {
         <div className="ap-field"><label>Link presupuesto</label><input className="ap-field-input" value={form.link_presupuesto||''} onChange={e => setF('link_presupuesto', e.target.value)} placeholder="https://..." /></div>
         <div className="ap-field"><label>Link moodboard</label><input className="ap-field-input" value={form.link_moodboard||''} onChange={e => setF('link_moodboard', e.target.value)} placeholder="https://..." /></div>
       </div>
-
       <div style={{ display:'flex', gap:16, margin:'8px 0' }}>
-        <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:'rgba(255,255,255,0.6)' }}>
-          <input type="checkbox" checked={!!form.necesita_duchas} onChange={e => setF('necesita_duchas', e.target.checked)} /> Duchas / aseo
-        </label>
-        <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:'rgba(255,255,255,0.6)' }}>
-          <input type="checkbox" checked={!!form.necesita_sauna} onChange={e => setF('necesita_sauna', e.target.checked)} /> Sauna
-        </label>
-        <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:'rgba(255,255,255,0.6)' }}>
-          <input type="checkbox" checked={!!form.presupuesto_confirmado} onChange={e => setF('presupuesto_confirmado', e.target.checked)} /> Presupuesto confirmado
-        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:'rgba(255,255,255,0.6)' }}><input type="checkbox" checked={!!form.necesita_duchas} onChange={e => setF('necesita_duchas', e.target.checked)} /> Duchas / aseo</label>
+        <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:'rgba(255,255,255,0.6)' }}><input type="checkbox" checked={!!form.necesita_sauna} onChange={e => setF('necesita_sauna', e.target.checked)} /> Sauna</label>
+        <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:'rgba(255,255,255,0.6)' }}><input type="checkbox" checked={!!form.presupuesto_confirmado} onChange={e => setF('presupuesto_confirmado', e.target.checked)} /> Presupuesto confirmado</label>
       </div>
-
       <div className="ap-field"><label>Otras necesidades</label><textarea className="ap-field-input" value={form.otras_necesidades||''} onChange={e => setF('otras_necesidades', e.target.value)} rows={2} placeholder="TV, sonido, zona estiramiento..." /></div>
       <div className="ap-field"><label>Notas internas</label><textarea className="ap-field-input" value={form.notas_internas||''} onChange={e => setF('notas_internas', e.target.value)} rows={3} placeholder="Contexto, observaciones..." /></div>
-
       {error && <p className="ap-error">{error}</p>}
-      <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={guardar} disabled={saving} style={{ marginTop:8 }}>
-        {saving ? 'Guardando…' : '💾 Guardar ficha'}
-      </button>
+      <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={guardar} disabled={saving} style={{ marginTop:8 }}>{saving ? 'Guardando…' : <><Save size={12}/> Guardar ficha</>}</button>
     </div>
   );
 }
 
-// ── Modal gestor (como ProjectManagerModal) ───────────────────────────
+// ── Catálogo (igual que proyectos) ────────────────────────────────────
+function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+  const [expanded, setExpanded] = useState(false);
+  const [qty, setQty] = useState(item.quantity ?? 1);
+  const [ytUrl, setYtUrl] = useState(item.youtube_url || '');
+  const [extraImgs, setExtraImgs] = useState(item.extra_images || []);
+  const [newImg, setNewImg] = useState('');
+  const [saving, setSaving] = useState(false);
+  const isMob = type === 'mobiliario';
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.put(`/leads-cualificados/${item.lc_id}/equipment/${item.id}`, { quantity: qty, youtube_url: ytUrl || null, extra_images: extraImgs });
+      onUpdate({ ...item, quantity: qty, youtube_url: ytUrl || null, extra_images: extraImgs });
+      setExpanded(false);
+    } catch {}
+    setSaving(false);
+  };
+
+  const addImg = () => { const url = newImg.trim(); if (!url || extraImgs.includes(url)) return; setExtraImgs(prev => [...prev, url]); setNewImg(''); };
+  const removeImg = (url) => setExtraImgs(prev => prev.filter(u => u !== url));
+
+  return (
+    <div ref={setNodeRef} style={style} className="ap-catalog-product ap-catalog-product--expand">
+      <button {...attributes} {...listeners} style={{ background:'none', border:'none', cursor:'grab', color:'rgba(255,255,255,0.3)', padding:'0 4px', flexShrink:0, display:'flex', alignItems:'center' }} type="button"><GripVertical size={13}/></button>
+      {item.image_url && <img src={item.image_url} alt={item.name} className="ap-catalog-product-img" />}
+      <div className="ap-catalog-product-info" style={{ flex:1 }}>
+        <span className="ap-catalog-product-name">{item.name}</span>
+        {item.category && <span className="ap-cat-meta">{item.category}</span>}
+        {isMob && <span className="ap-cat-meta" style={{ color:'rgba(190,176,162,0.7)', marginLeft:4 }}>×{qty}{item.youtube_url && ' · 🎬'}{item.extra_images?.length > 0 && ` · ${item.extra_images.length} img`}</span>}
+      </div>
+      {isMob && <button className="ap-btn ap-btn-ghost ap-btn-sm" style={{ flexShrink:0, fontSize:'0.72rem' }} onClick={() => setExpanded(v => !v)} type="button"><Pencil size={11}/> {expanded ? 'Cerrar' : 'Detalle'}</button>}
+      <button className="ap-btn-icon" onClick={() => onUnassign(item.id, type)}><X size={13}/></button>
+      {expanded && isMob && (
+        <div className="ap-eq-detail-panel">
+          <div className="ap-field" style={{ marginBottom:'0.75rem' }}>
+            <label style={{ fontSize:'0.7rem', color:'rgba(255,255,255,0.4)', marginBottom:'0.3rem', display:'block' }}>Cantidad</label>
+            <div style={{ display:'flex', alignItems:'center', gap:'0.4rem' }}>
+              <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setQty(q => Math.max(1, q-1))}>−</button>
+              <input type="number" min="1" className="ap-field-input" style={{ width:60, textAlign:'center' }} value={qty} onChange={e => setQty(Math.max(1, parseInt(e.target.value)||1))} />
+              <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setQty(q => q+1)}>+</button>
+            </div>
+          </div>
+          <div className="ap-field" style={{ marginBottom:'0.75rem' }}>
+            <label style={{ fontSize:'0.7rem', color:'rgba(255,255,255,0.4)', marginBottom:'0.3rem', display:'block' }}>Vídeo YouTube (URL)</label>
+            <input className="ap-field-input" value={ytUrl} onChange={e => setYtUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+          </div>
+          <div className="ap-field" style={{ marginBottom:'0.75rem' }}>
+            <label style={{ fontSize:'0.7rem', color:'rgba(255,255,255,0.4)', marginBottom:'0.3rem', display:'block' }}>Imágenes adicionales (URLs)</label>
+            {extraImgs.length > 0 && (
+              <div style={{ display:'flex', flexWrap:'wrap', gap:'0.4rem', marginBottom:'0.5rem' }}>
+                {extraImgs.map(url => (
+                  <div key={url} style={{ position:'relative', width:52, height:52 }}>
+                    <img src={url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:6, border:'1px solid rgba(255,255,255,0.1)' }} />
+                    <button type="button" onClick={() => removeImg(url)} style={{ position:'absolute', top:-5, right:-5, background:'#1a1a1a', border:'1px solid rgba(255,255,255,0.15)', borderRadius:'50%', width:16, height:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', padding:0, color:'rgba(255,255,255,0.6)' }}><X size={9}/></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display:'flex', gap:'0.4rem' }}>
+              <input className="ap-field-input" value={newImg} onChange={e => setNewImg(e.target.value)} placeholder="https://..." onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addImg())} />
+              <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={addImg}><Plus size={12}/> Añadir</button>
+            </div>
+          </div>
+          <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSave} disabled={saving} style={{ width:'100%' }}>{saving ? 'Guardando…' : <><Save size={12}/> Guardar cambios</>}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TabCatalogo({ lcId }) {
+  const [tab, setTab] = useState('material');
+  const [categories, setCategories] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [assigned, setAssigned] = useState({ materials: [], equipment: [] });
+  const [loading, setLoading] = useState(true);
+  const [expandedCat, setExpandedCat] = useState(null);
+  const { toast } = useToast();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/catalog/categories'),
+      api.get('/catalog/products'),
+      api.get(`/leads-cualificados/${lcId}/materials`),
+      api.get(`/leads-cualificados/${lcId}/equipment`),
+    ]).then(([cats, prods, mats, equip]) => {
+      setCategories(cats.data.categories || []);
+      setProducts(prods.data.products || []);
+      setAssigned({ materials: mats.data.materials || [], equipment: equip.data.equipment || [] });
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [lcId]);
+
+  const isAssigned = (productId, type) => {
+    const list = type === 'material' ? assigned.materials : assigned.equipment;
+    return list.some(a => a.catalog_product_id === productId);
+  };
+
+  const handleAssignedDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!active || !over || active.id === over.id) return;
+    const isMat = tab === 'material';
+    const list = isMat ? assigned.materials : assigned.equipment;
+    const newList = arrayMove(list, list.findIndex(a => a.id === active.id), list.findIndex(a => a.id === over.id));
+    setAssigned(prev => isMat ? { ...prev, materials: newList } : { ...prev, equipment: newList });
+    const endpoint = isMat ? `/leads-cualificados/${lcId}/materials/reorder` : `/leads-cualificados/${lcId}/equipment/reorder`;
+    try { await api.put(endpoint, { ids: newList.map(a => a.id) }); }
+    catch { toast.error('Error al guardar el orden'); }
+  };
+
+  const assign = async (product) => {
+    const isMat = product.category?.type === 'material';
+    const type = isMat ? 'material' : 'mobiliario';
+    if (isAssigned(product.id, type)) { toast.error(`"${product.name}" ya está asignado`); return; }
+    const endpoint = isMat ? `/leads-cualificados/${lcId}/materials` : `/leads-cualificados/${lcId}/equipment`;
+    try {
+      const payload = isMat
+        ? { name: product.name, category: product.category?.name, catalog_product_id: product.id, image_url: product.photo_url || null }
+        : { name: product.name, category: product.category?.name, catalog_product_id: product.id, quantity: 1, image_url: product.photo_url || null };
+      const { data } = await api.post(endpoint, payload);
+      setAssigned(prev => isMat
+        ? { ...prev, materials: [data.material, ...prev.materials] }
+        : { ...prev, equipment: [data.equipment, ...prev.equipment] }
+      );
+      toast.success(`"${product.name}" añadido`);
+    } catch { toast.error('Error al asignar producto'); }
+  };
+
+  const unassign = async (id, type) => {
+    const isMat = type === 'material';
+    const endpoint = isMat ? `/leads-cualificados/${lcId}/materials/${id}` : `/leads-cualificados/${lcId}/equipment/${id}`;
+    try {
+      await api.delete(endpoint);
+      setAssigned(prev => isMat
+        ? { ...prev, materials: prev.materials.filter(m => m.id !== id) }
+        : { ...prev, equipment: prev.equipment.filter(e => e.id !== id) }
+      );
+    } catch { toast.error('Error al quitar producto'); }
+  };
+
+  const handleItemUpdate = (updatedItem) => {
+    setAssigned(prev => ({ ...prev, equipment: prev.equipment.map(e => e.id === updatedItem.id ? updatedItem : e) }));
+    toast.success('Detalles guardados');
+  };
+
+  if (loading) return <div className="ap-loading">Cargando…</div>;
+
+  const filteredCats = categories.filter(c => c.type === tab);
+  const assignedList = tab === 'material' ? assigned.materials : assigned.equipment;
+
+  return (
+    <div className="ap-tab-content">
+      <div className="ap-cat-tabs" style={{ marginBottom:'1.25rem' }}>
+        <button className={`ap-cat-tab${tab === 'material' ? ' active' : ''}`} onClick={() => setTab('material')}>Materiales</button>
+        <button className={`ap-cat-tab${tab === 'mobiliario' ? ' active' : ''}`} onClick={() => setTab('mobiliario')}>Mobiliario</button>
+      </div>
+
+      {assignedList.length > 0 && (
+        <div style={{ marginBottom:'1.25rem' }}>
+          <p style={{ fontSize:'0.7rem', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:'rgba(255,255,255,0.3)', marginBottom:'0.5rem' }}>Asignados a esta ficha</p>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleAssignedDragEnd}>
+            <SortableContext items={assignedList.map(a => a.id)} strategy={verticalListSortingStrategy}>
+              <div className="ap-catalog-products" style={{ padding:0 }}>
+                {assignedList.map(a => (
+                  <SortableAssignedItem key={a.id} item={{ ...a, lc_id: lcId }} type={tab === 'material' ? 'material' : 'mobiliario'} onUnassign={unassign} onUpdate={handleItemUpdate} />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </div>
+      )}
+
+      <p style={{ fontSize:'0.7rem', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:'rgba(255,255,255,0.3)', marginBottom:'0.75rem' }}>Tu catálogo</p>
+      {filteredCats.length === 0 && <p className="ap-empty-sm">No hay categorías en el catálogo todavía.</p>}
+      <div className="ap-catalog-categories">
+        {filteredCats.map(cat => {
+          const catProducts = products.filter(p => p.category_id === cat.id);
+          const isOpen = expandedCat === cat.id;
+          return (
+            <div key={cat.id} className="ap-catalog-cat">
+              <div className="ap-catalog-cat-header">
+                <button className="ap-catalog-cat-toggle" onClick={() => setExpandedCat(isOpen ? null : cat.id)}>
+                  <span className="ap-catalog-cat-arrow">{isOpen ? '▾' : '▸'}</span>
+                  <span className="ap-catalog-cat-name">{cat.name}</span>
+                  <span className="ap-catalog-cat-count">{catProducts.length}</span>
+                </button>
+              </div>
+              {isOpen && (
+                <div className="ap-catalog-products">
+                  {catProducts.length === 0 && <p className="ap-empty-sm" style={{ paddingLeft:'1rem' }}>Sin productos.</p>}
+                  {catProducts.map(p => {
+                    const already = isAssigned(p.id, tab);
+                    return (
+                      <div key={p.id} className="ap-catalog-product">
+                        {p.photo_url && <img src={p.photo_url} alt={p.name} className="ap-catalog-product-img" />}
+                        <div className="ap-catalog-product-info">
+                          <span className="ap-catalog-product-name">{p.name}</span>
+                          {p.price != null && <span className="ap-catalog-product-price">{Number(p.price).toLocaleString('es-ES', { style:'currency', currency:'EUR' })}</span>}
+                          {p.link && <a href={p.link} target="_blank" rel="noopener noreferrer" className="ap-catalog-product-link">Ver producto ↗</a>}
+                        </div>
+                        <button className={`ap-btn ap-btn-sm ${already ? 'ap-btn-ghost' : 'ap-btn-primary'}`} onClick={() => !already && assign(p)} disabled={already} style={{ flexShrink:0 }}>{already ? '✓' : <Plus size={13}/>}</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Modal gestor ──────────────────────────────────────────────────────
 const MGR_TABS = [
   { id:'renders', label:'Renders' },
   { id:'documentos', label:'Documentos' },
   { id:'tours', label:'Tour 3D' },
   { id:'notas', label:'Notas' },
+  { id:'catalogo', label:'Catálogo' },
   { id:'ficha', label:'Ficha' },
 ];
 
-function LCManagerModal({ lead, onClose, onSaved }) {
+function LCManagerModal({ lead, onClose, onSaved, onDownloadPdf }) {
   const [tab, setTab] = useState('renders');
 
   return (
@@ -457,16 +609,22 @@ function LCManagerModal({ lead, onClose, onSaved }) {
               {(lead.inversion_min || lead.inversion_max) && `💰 ${fmtEur(lead.inversion_min)} – ${fmtEur(lead.inversion_max)}`}
             </p>
           </div>
-          <button className="ap-modal-close" onClick={onClose}><X size={16}/></button>
+          <div style={{ display:'flex', gap:'0.5rem', alignItems:'center' }}>
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onDownloadPdf}>
+              <Download size={13}/> PDF materiales
+            </button>
+            <button className="ap-modal-close" onClick={onClose}><X size={16}/></button>
+          </div>
         </div>
         <div className="ap-mgr-tabs">
-          {MGR_TABS.map(t => <button key={t.id} className={`ap-mgr-tab${tab===t.id?' active':''}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
+          {MGR_TABS.map(t => <button key={t.id} className={`ap-mgr-tab${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
         </div>
         <div className="ap-mgr-body">
           {tab === 'renders'    && <TabRenders lcId={lead.id} />}
           {tab === 'documentos' && <TabDocumentos lcId={lead.id} />}
           {tab === 'tours'      && <TabTour lcId={lead.id} />}
           {tab === 'notas'      && <TabNotas lcId={lead.id} />}
+          {tab === 'catalogo'   && <TabCatalogo lcId={lead.id} />}
           {tab === 'ficha'      && <TabFicha lead={lead} onSaved={(updated) => { onSaved(updated); }} />}
         </div>
       </div>
@@ -486,10 +644,8 @@ export function SectionLeadsCualificados() {
 
   const cargar = async () => {
     setLoading(true);
-    try {
-      const { data } = await api.get('/leads-cualificados');
-      setLeads(data.leads || []);
-    } catch { toast.error('Error al cargar fichas'); }
+    try { const { data } = await api.get('/leads-cualificados'); setLeads(data.leads || []); }
+    catch { toast.error('Error al cargar fichas'); }
     setLoading(false);
   };
 
@@ -519,9 +675,18 @@ export function SectionLeadsCualificados() {
     setConfirm(null);
   };
 
-  const convertirAProyecto = async (lead) => {
-    toast.success(`${lead.nombre} marcado como Convertido. Crea el proyecto en la sección Proyectos.`);
-    await cambiarEstado(lead.id, 'convertido');
+  const downloadPdf = async (lead) => {
+    try {
+      const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch(`${base}/leads-cualificados/${lead.id}/pdf-materiales`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `materiales-${lead.nombre}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } catch { toast.error('Error al generar PDF'); }
   };
 
   const prioColor = { alta:'#f87171', media:'#f59e0b', baja:'#6b7280' };
@@ -538,7 +703,6 @@ export function SectionLeadsCualificados() {
         </div>
       </div>
 
-      {/* Pills estado */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12 }}>
         <button className={`ap-catalog-pill${filtroEstado==='all'?' active':''}`} onClick={() => setFiltroEstado('all')}>Todos ({leads.length})</button>
         {CUAL_ORDEN.map(e => {
@@ -575,32 +739,17 @@ export function SectionLeadsCualificados() {
                     <span style={{ background:`${est.color}20`, color:est.color, fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:5 }}>{est.label}</span>
                   </div>
                 </div>
-
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'3px 10px', marginTop:8, fontSize:11, color:'rgba(255,255,255,0.4)' }}>
                   {lead.ubicacion_ciudad && <span>📍 {lead.ubicacion_ciudad}{lead.metros_cuadrados ? ` · ${lead.metros_cuadrados}m²` : ''}</span>}
                   {lead.tipo_espacio && <span>🏠 {lead.tipo_espacio}</span>}
                   {(lead.inversion_min||lead.inversion_max) && <span>💰 {fmtEur(lead.inversion_min)} – {fmtEur(lead.inversion_max)}</span>}
                   {lead.estetica && <span>🎨 {ESTETICAS.find(e=>e.val===lead.estetica)?.label||lead.estetica}</span>}
                 </div>
-
-                {lead.id_presupuesto && (
-                  <div style={{ marginTop:8 }}>
-                    <span style={{ fontSize:11, color:'#beb0a2', background:'rgba(190,176,162,0.1)', padding:'2px 8px', borderRadius:4 }}>{lead.id_presupuesto}</span>
-                  </div>
-                )}
-
+                {lead.id_presupuesto && <div style={{ marginTop:8 }}><span style={{ fontSize:11, color:'#beb0a2', background:'rgba(190,176,162,0.1)', padding:'2px 8px', borderRadius:4 }}>{lead.id_presupuesto}</span></div>}
                 <div className="ap-project-actions" style={{ marginTop:10 }}>
-                  <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setManaging(lead)}>
-                    <Pencil size={13}/> Gestionar
-                  </button>
-                  {lead.estado !== 'convertido' && (
-                    <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => convertirAProyecto(lead)}>
-                      ✅ Convertir
-                    </button>
-                  )}
-                  <button className="ap-btn ap-btn-danger ap-btn-sm" onClick={() => setConfirm({ message:`¿Eliminar la ficha de ${lead.nombre}?`, onConfirm:()=>eliminar(lead.id) })}>
-                    <Trash2 size={13}/>
-                  </button>
+                  <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setManaging(lead)}><Pencil size={13}/> Gestionar</button>
+                  {lead.estado !== 'convertido' && <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => cambiarEstado(lead.id, 'convertido')}>✅ Convertir</button>}
+                  <button className="ap-btn ap-btn-danger ap-btn-sm" onClick={() => setConfirm({ message:`¿Eliminar la ficha de ${lead.nombre}?`, onConfirm:()=>eliminar(lead.id) })}><Trash2 size={13}/></button>
                 </div>
               </div>
             );
@@ -612,6 +761,7 @@ export function SectionLeadsCualificados() {
         <LCManagerModal
           lead={managing}
           onClose={() => setManaging(null)}
+          onDownloadPdf={() => downloadPdf(managing)}
           onSaved={(updated) => {
             setLeads(prev => prev.map(l => l.id === updated.id ? updated : l));
             setManaging(updated);
