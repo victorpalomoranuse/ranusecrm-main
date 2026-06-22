@@ -247,3 +247,39 @@ export async function deleteDiagnosisImage(url) {
     return !error;
   } catch { return false; }
 }
+// ── Leads Cualificados renders ────────────────────────────────────────
+export async function uploadLcRender(fileBuffer, fileName, mimeType, lcId) {
+  const ext = fileName.split('.').pop();
+  const filePath = `${lcId}/${randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from('lc-renders').upload(filePath, fileBuffer, { contentType: mimeType });
+  if (error) throw new Error('Error al subir render: ' + error.message);
+  const { data: { publicUrl } } = supabase.storage.from('lc-renders').getPublicUrl(filePath);
+  return publicUrl;
+}
+export async function deleteLcRender(url) {
+  try {
+    const parts = url.split('/lc-renders/');
+    if (parts.length < 2) return false;
+    const { error } = await supabase.storage.from('lc-renders').remove([parts[1]]);
+    return !error;
+  } catch { return false; }
+}
+
+// ── Leads Cualificados documents ──────────────────────────────────────
+export async function uploadLcDocument(fileBuffer, fileName, mimeType, lcId) {
+  const timestamp = Date.now();
+  const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const filePath = `${lcId}/${timestamp}_${sanitized}`;
+  const { error } = await supabase.storage.from('lc-documents').upload(filePath, fileBuffer, { contentType: mimeType });
+  if (error) throw new Error('Error al subir documento: ' + error.message);
+  const { data: { publicUrl } } = supabase.storage.from('lc-documents').getPublicUrl(filePath);
+  return publicUrl;
+}
+export async function deleteLcDocument(url) {
+  try {
+    const parts = url.split('/lc-documents/');
+    if (parts.length < 2) return false;
+    const { error } = await supabase.storage.from('lc-documents').remove([parts[1]]);
+    return !error;
+  } catch { return false; }
+}
