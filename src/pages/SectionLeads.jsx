@@ -207,26 +207,44 @@ export function SectionLeads() {
         </div>
       </div>
 
-      {/* Métricas resumen siempre visible */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))', gap:8, marginBottom:16 }}>
-        {[
-          { label:'Total',          val: metricas.total || 0 },
-          { label:'Activos',        val: metricas.activos || 0 },
-          { label:'Ventas',         val: metricas.ventas || 0, color:'#beb0a2' },
-          { label:'Cierre global',  val: fmtPct(metricas.tasaCierreGlobal || 0), color:'#beb0a2' },
-          { label:'Resp. chat',     val: fmtPct(metricas.tasaRespuesta || 0) },
-          { label:'→ Llamada',      val: fmtPct(metricas.tasaLlamada || 0) },
-          { label:'→ Diseño',       val: fmtPct(metricas.tasaDiseño || 0) },
-          { label:'→ Llamada vta',  val: fmtPct(metricas.tasaLlamadaVenta || 0) },
-          { label:'No Show',        val: fmtPct(metricas.tasaNoShow || 0), color:'#f97316' },
-          { label:'→ Venta',        val: fmtPct(metricas.tasaVenta || 0), color:'#22c55e' },
-        ].map(m => (
-          <div key={m.label} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'10px 14px' }}>
-            <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:3 }}>{m.label}</div>
-            <div style={{ fontSize:18, fontWeight:700, color: m.color || '#fff' }}>{m.val}</div>
+      {/* Métricas calculadas sobre leads filtrados */}
+      {(() => {
+        const f = filtrados;
+        const total = f.length;
+        const activos = f.filter(l => !['venta','rechazo','no_show','descartado'].includes(l.estado)).length;
+        const conRespuesta = f.filter(l => ['respuesta_chat','llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo','enfriado'].includes(l.estado)).length;
+        const conLlamada = f.filter(l => ['llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
+        const conDiseño = f.filter(l => ['diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
+        const conLlamadaVenta = f.filter(l => ['llamada_venta','venta','rechazo'].includes(l.estado)).length;
+        const noShow = f.filter(l => l.estado === 'no_show').length;
+        const ventas = f.filter(l => l.estado === 'venta').length;
+        const valorVentas = f.filter(l => l.estado === 'venta').reduce((s, l) => s + (l.valor_estimado || 0), 0);
+
+        const pct = (a, b) => b > 0 ? `${Math.round((a/b)*100)}%` : '—';
+
+        return (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))', gap:8, marginBottom:16 }}>
+            {[
+              { label:'Total',           val: total },
+              { label:'Activos',         val: activos },
+              { label:'Ventas',          val: ventas, color:'#beb0a2' },
+              { label:'Valor ventas',    val: fmtEur(valorVentas), color:'#beb0a2' },
+              { label:'Resp. chat',      val: pct(conRespuesta, total) },
+              { label:'→ Llamada desc.', val: pct(conLlamada, conRespuesta) },
+              { label:'→ Diseño',        val: pct(conDiseño, conLlamada) },
+              { label:'→ Llamada venta', val: pct(conLlamadaVenta + noShow, conDiseño) },
+              { label:'No Show',         val: pct(noShow, conLlamadaVenta + noShow), color:'#f97316' },
+              { label:'→ Venta',         val: pct(ventas, conLlamadaVenta), color:'#22c55e' },
+              { label:'Cierre global',   val: pct(ventas, total), color:'#22c55e' },
+            ].map(m => (
+              <div key={m.label} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'10px 14px' }}>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:3 }}>{m.label}</div>
+                <div style={{ fontSize:16, fontWeight:700, color: m.color || '#fff' }}>{m.val}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* Vista métricas detalladas */}
       {vistaMetricas && (
@@ -235,9 +253,9 @@ export function SectionLeads() {
           <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'16px 20px', marginBottom:12 }}>
             <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Embudo de ventas</div>
             <div style={{ display:'flex', gap:4, alignItems:'flex-end' }}>
-              {ORDEN.slice(0,5).map((e, i) => {
-                const n = porEstado[e] || 0;
-                const max = porEstado['contacto'] || 1;
+              {ORDEN.slice(0,7).map((e, i) => {
+                const n = filtrados.filter(l => l.estado === e).length;
+                const max = filtrados.filter(l => l.estado === 'contacto').length || 1;
                 const height = Math.max(20, Math.round((n / max) * 100));
                 return (
                   <div key={e} style={{ flex:1, textAlign:'center' }}>
@@ -246,7 +264,8 @@ export function SectionLeads() {
                     <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', marginTop:4, textTransform:'uppercase', letterSpacing:0.5 }}>{ESTADOS[e].label}</div>
                   </div>
                 );
-              })}
+                });
+              })()}
             </div>
           </div>
 
@@ -254,9 +273,17 @@ export function SectionLeads() {
           <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'16px 20px' }}>
             <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Por canal</div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {Object.entries(porCanal).sort((a,b) => b[1].total - a[1].total).map(([canal, d]) => {
+              {(() => {
+                const canalData = {};
+                filtrados.forEach(l => {
+                  const c = l.canal || 'otro';
+                  if (!canalData[c]) canalData[c] = { total: 0, ventas: 0 };
+                  canalData[c].total++;
+                  if (l.estado === 'venta') canalData[c].ventas++;
+                });
+                return Object.entries(canalData).sort((a,b) => b[1].total - a[1].total).map(([canal, d]) => {
                 const tasa = d.total > 0 ? Math.round((d.ventas / d.total) * 100) : 0;
-                const pct = d.total > 0 ? Math.round((d.total / (metricas.total || 1)) * 100) : 0;
+                const pct = d.total > 0 ? Math.round((d.total / (filtrados.length || 1)) * 100) : 0;
                 return (
                   <div key={canal} style={{ display:'flex', alignItems:'center', gap:10 }}>
                     <div style={{ width:90, fontSize:12, color:'#beb0a2', textTransform:'capitalize' }}>{canal}</div>
