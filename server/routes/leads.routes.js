@@ -118,7 +118,11 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
         estado: ESTADOS_VALIDOS.includes(estado) ? estado : 'contacto',
         valor_estimado: valor_estimado ? parseFloat(valor_estimado) : null,
         pct_cierre: pct_cierre ? parseInt(pct_cierre) : 20,
-        notas, fecha_contacto, fecha_respuesta, fecha_llamada, fecha_diseño, fecha_venta,
+        notas, fecha_contacto: fecha_contacto || null,
+        fecha_respuesta: fecha_respuesta || null,
+        fecha_llamada: fecha_llamada || null,
+        fecha_diseño: fecha_diseño || null,
+        fecha_venta: fecha_venta || null,
         created_by: req.user.id
       })
       .select()
