@@ -117,7 +117,6 @@ export function SectionLeads() {
     return true;
   });
 
-  const POR_PAGINA = 30;
   const totalPaginas = Math.ceil(filtrados.length / POR_PAGINA);
   const leadsPagina = filtrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
