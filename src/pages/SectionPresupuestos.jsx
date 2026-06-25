@@ -318,12 +318,14 @@ function ChapterRow({ item, onEdit, onDelete }) {
 }
 
 function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
-  const [d, setD] = useState({ ...item });
+  const [d, setD] = useState({ ...item, discount_pct: item.discount_pct || 0 });
   const [showSpecs, setShowSpecs] = useState(
     !!(item.brand || item.longitud || item.ancho || item.altura || item.color_bastidor || item.color_acolchado || item.tipo_acolchado)
   );
   const handleCostChange = v => { const cost = parseFloat(v)||0, markup = parseFloat(d.markup_pct)||0; setD(p=>({...p, unit_cost:v, unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   const handleMarkupChange = v => { const cost = parseFloat(d.unit_cost)||0, markup = parseFloat(v)||0; setD(p=>({...p, markup_pct:v, unit_price:(cost*(1+markup/100)).toFixed(2)})); };
+  const dto = parseFloat(d.discount_pct) || 0;
+  const lineFinal = (parseFloat(d.unit_price)||0) * (parseFloat(d.quantity)||1) * (1 - dto/100);
   return (
     <>
       <tr className="pres-row pres-row--edit">
@@ -334,8 +336,14 @@ function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
         <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_cost} onChange={e=>handleCostChange(e.target.value)} /></td>
         <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.1" value={d.markup_pct} onChange={e=>handleMarkupChange(e.target.value)} /></td>
         <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_price} onChange={e=>setD(p=>({...p,unit_price:e.target.value}))} /></td>
+        <td>
+          <div style={{display:'flex',alignItems:'center',gap:3}}>
+            <input className="pres-cell-input pres-cell-num" type="number" min="0" max="100" step="0.5" value={d.discount_pct} onChange={e=>setD(p=>({...p,discount_pct:e.target.value}))} style={{width:42}} />
+            <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.3)'}}>%</span>
+          </div>
+        </td>
         <td className="pres-mono pres-col-cost">{fmt((parseFloat(d.unit_cost)||0)*(parseFloat(d.quantity)||1))}</td>
-        <td className="pres-mono pres-col-pvp">{fmt((parseFloat(d.unit_price)||0)*(parseFloat(d.quantity)||1))}</td>
+        <td className="pres-mono pres-col-pvp" style={{color: dto > 0 ? '#e74c3c' : undefined}}>{fmt(lineFinal)}</td>
         <td className="pres-actions-cell">
           <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={()=>onSave(d)} disabled={!d.name?.trim()}>✓</button>
           <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>onSaveToLibrary(d)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
@@ -389,6 +397,9 @@ function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary }) {
   const cat = CATEGORIES.find(c=>c.value===item.category)||CATEGORIES[0];
   const hasSpecs = item.brand || item.longitud || item.ancho || item.altura || item.color_bastidor || item.color_acolchado || item.tipo_acolchado;
   const dims = [item.longitud && `L:${item.longitud}`, item.ancho && `A:${item.ancho}`, item.altura && `H:${item.altura}`].filter(Boolean).join(' ');
+  const dto = parseFloat(item.discount_pct) || 0;
+  const lineTotal = (parseFloat(item.unit_price)||0) * (parseFloat(item.quantity)||1);
+  const lineFinal = lineTotal * (1 - dto/100);
   return (
     <>
       <tr ref={setNodeRef} style={style} className="pres-row">
@@ -405,8 +416,11 @@ function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary }) {
         <td className="pres-mono">{fmt(item.unit_cost)}</td>
         <td className="pres-mono">{Number(item.markup_pct||0).toFixed(1)}%</td>
         <td className="pres-mono">{fmt(item.unit_price)}</td>
+        <td className="pres-mono" style={{color: dto > 0 ? '#e74c3c' : 'rgba(255,255,255,0.4)'}}>
+          {dto > 0 ? `-${dto}%` : '—'}
+        </td>
         <td className="pres-mono pres-col-cost">{fmt((item.unit_cost||0)*(item.quantity||1))}</td>
-        <td className="pres-mono pres-col-pvp">{fmt((item.unit_price||0)*(item.quantity||1))}</td>
+        <td className="pres-mono pres-col-pvp" style={{color: dto > 0 ? '#e74c3c' : undefined}}>{fmt(lineFinal)}</td>
         <td className="pres-actions-cell">
           <button className="ap-btn-icon" onClick={onEdit}><Pencil size={12}/></button>
           <button className="ap-btn-icon" onClick={() => onSaveToLibrary(item)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
@@ -522,6 +536,11 @@ function BudgetEditor({ id, onBack }) {
   const [pdfIva, setPdfIva]   = useState('21');
   const [pdfIrpf, setPdfIrpf] = useState('0');
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [showPdfOptions, setShowPdfOptions] = useState(false);
+  const [pdfShowUnitPrice, setPdfShowUnitPrice] = useState(true);
+  const [pdfShowDiscount, setPdfShowDiscount]   = useState(true);
+  const [pdfShowTotalCol, setPdfShowTotalCol]   = useState(true);
+  const [pdfShowSavings, setPdfShowSavings]     = useState(true);
   const [showLibrary, setShowLibrary] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [projects, setProjects] = useState([]);
@@ -533,7 +552,14 @@ function BudgetEditor({ id, onBack }) {
     try {
       const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
       const token = localStorage.getItem('admin_token');
-      const res = await fetch(`${base}/budgets/${id}/pdf-cliente?iva=${pdfIva}&irpf=${pdfIrpf}`, { headers: { Authorization: `Bearer ${token}` } });
+      const params = new URLSearchParams({
+        iva: pdfIva, irpf: pdfIrpf,
+        show_unit_price: pdfShowUnitPrice,
+        show_discount: pdfShowDiscount,
+        show_total_col: pdfShowTotalCol,
+        show_savings: pdfShowSavings,
+      });
+      const res = await fetch(`${base}/budgets/${id}/pdf-cliente?${params}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error();
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -575,7 +601,13 @@ function BudgetEditor({ id, onBack }) {
   };
 
   const handleUpdateItem = async (itemId, d) => {
-    const { data } = await api.put(`/budgets/${id}/items/${itemId}`, { name: d.name, category: d.category, quantity: parseFloat(d.quantity)||1, unit: d.unit, unit_cost: parseFloat(d.unit_cost)||0, markup_pct: parseFloat(d.markup_pct)||0, unit_price: parseFloat(d.unit_price)||0 });
+    const { data } = await api.put(`/budgets/${id}/items/${itemId}`, {
+      name: d.name, category: d.category, quantity: parseFloat(d.quantity)||1, unit: d.unit,
+      unit_cost: parseFloat(d.unit_cost)||0, markup_pct: parseFloat(d.markup_pct)||0,
+      unit_price: parseFloat(d.unit_price)||0, discount_pct: parseFloat(d.discount_pct)||0,
+      brand: d.brand||null, longitud: d.longitud||null, ancho: d.ancho||null, altura: d.altura||null,
+      color_bastidor: d.color_bastidor||null, color_acolchado: d.color_acolchado||null, tipo_acolchado: d.tipo_acolchado||null,
+    });
     setItems(prev => prev.map(i => i.id === itemId ? data.item : i));
     setEditingId(null);
   };
@@ -687,6 +719,20 @@ function BudgetEditor({ id, onBack }) {
             <input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.5" value={budget.design_hours||0} onChange={e=>setBudget(b=>({...b,design_hours:e.target.value}))} onBlur={()=>saveFee()} />
           </div>
         )}
+        <div style={{width:'1px',background:'rgba(255,255,255,0.08)',margin:'0 4px',alignSelf:'stretch'}}/>
+        <span className="pres-fee-label" style={{color:'#e74c3c'}}>Dto. global</span>
+        <div className="pres-fee-field">
+          <span>%</span>
+          <input className="pres-cell-input pres-cell-num" type="number" min="0" max="100" step="0.5"
+            value={budget.global_discount_pct||0}
+            onChange={e=>setBudget(b=>({...b,global_discount_pct:e.target.value}))}
+            onBlur={async()=>{
+              try { await api.put(`/budgets/${id}`, { global_discount_pct: parseFloat(budget.global_discount_pct)||0 }); flash('Descuento guardado'); }
+              catch { flash('Error al guardar', 'error'); }
+            }}
+            style={{width:52}}
+          />
+        </div>
         <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>saveFee()} disabled={savingFee}>{savingFee?'…':'Guardar'}</button>
       </div>
 
@@ -694,11 +740,28 @@ function BudgetEditor({ id, onBack }) {
         <div className="pres-items-toolbar">
           <span className="pres-items-title">Partidas <span className="pres-items-count">{realItems.length}</span></span>
           <div style={{display:'flex',alignItems:'center',gap:'0.5rem',flexWrap:'wrap'}}>
-            <div style={{display:'flex',alignItems:'center',gap:'0.4rem'}}>
-              <span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.4)'}}>IVA%</span>
-              <input className="ap-field-input" type="number" min="0" max="100" value={pdfIva} onChange={e=>setPdfIva(e.target.value)} style={{width:55}} />
-              <span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.4)'}}>IRPF%</span>
-              <input className="ap-field-input" type="number" min="0" max="100" value={pdfIrpf} onChange={e=>setPdfIrpf(e.target.value)} style={{width:55}} />
+          <div style={{display:'flex',alignItems:'center',gap:'0.4rem',flexWrap:'wrap'}}>
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowPdfOptions(v=>!v)} style={{fontSize:'0.7rem'}}>⚙ PDF opciones</button>
+              {showPdfOptions && (
+                <div style={{display:'flex',alignItems:'center',gap:'0.5rem',flexWrap:'wrap',padding:'0.4rem 0.6rem',background:'rgba(255,255,255,0.04)',borderRadius:6,border:'1px solid rgba(255,255,255,0.08)'}}>
+                  <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>IVA%</span>
+                  <input className="ap-field-input" type="number" min="0" max="100" value={pdfIva} onChange={e=>setPdfIva(e.target.value)} style={{width:45}} />
+                  <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>IRPF%</span>
+                  <input className="ap-field-input" type="number" min="0" max="100" value={pdfIrpf} onChange={e=>setPdfIrpf(e.target.value)} style={{width:45}} />
+                  <span style={{width:'1px',background:'rgba(255,255,255,0.1)',alignSelf:'stretch'}}/>
+                  {[
+                    ['P. unitario', pdfShowUnitPrice, setPdfShowUnitPrice],
+                    ['Dto%', pdfShowDiscount, setPdfShowDiscount],
+                    ['Total línea', pdfShowTotalCol, setPdfShowTotalCol],
+                    ['Bloque ahorro', pdfShowSavings, setPdfShowSavings],
+                  ].map(([label, val, setter]) => (
+                    <label key={label} style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.7rem',color: val ? '#beb0a2' : 'rgba(255,255,255,0.3)',cursor:'pointer',userSelect:'none'}}>
+                      <input type="checkbox" checked={val} onChange={e=>setter(e.target.checked)} style={{accentColor:'#beb0a2'}} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              )}
               <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handlePdf} disabled={generatingPdf}>{generatingPdf ? 'Generando…' : 'PDF cliente'}</button>
             </div>
             {budget.project_id && (
@@ -713,13 +776,14 @@ function BudgetEditor({ id, onBack }) {
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
           <table className="pres-table">
-            <colgroup><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/></colgroup>
+            <colgroup><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/></colgroup>
             <thead>
               <tr>
                 <th>Descripción</th><th>Categoría</th><th>Cant</th><th>Ud</th>
                 <th>Coste ud.</th><th>Margen %</th><th>PVP ud.</th>
+                <th style={{color:'#e74c3c'}}>Dto%</th>
                 <th className="pres-col-cost">Total coste</th>
-                <th className="pres-col-pvp">Total PVP</th>
+                <th className="pres-col-pvp">Total c/dto</th>
                 <th></th>
               </tr>
             </thead>
