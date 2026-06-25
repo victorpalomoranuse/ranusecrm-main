@@ -319,25 +319,67 @@ function ChapterRow({ item, onEdit, onDelete }) {
 
 function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
   const [d, setD] = useState({ ...item });
+  const [showSpecs, setShowSpecs] = useState(
+    !!(item.brand || item.longitud || item.ancho || item.altura || item.color_bastidor || item.color_acolchado || item.tipo_acolchado)
+  );
   const handleCostChange = v => { const cost = parseFloat(v)||0, markup = parseFloat(d.markup_pct)||0; setD(p=>({...p, unit_cost:v, unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   const handleMarkupChange = v => { const cost = parseFloat(d.unit_cost)||0, markup = parseFloat(v)||0; setD(p=>({...p, markup_pct:v, unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   return (
-    <tr className="pres-row pres-row--edit">
-      <td><input className="pres-cell-input" value={d.name} onChange={e=>setD(p=>({...p,name:e.target.value}))} autoFocus /></td>
-      <td><select className="pres-cell-select" value={d.category} onChange={e=>setD(p=>({...p,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></td>
-      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.quantity} onChange={e=>setD(p=>({...p,quantity:e.target.value}))} /></td>
-      <td><select className="pres-cell-select" value={d.unit} onChange={e=>setD(p=>({...p,unit:e.target.value}))}>{UNITS.map(u=><option key={u}>{u}</option>)}</select></td>
-      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_cost} onChange={e=>handleCostChange(e.target.value)} /></td>
-      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.1" value={d.markup_pct} onChange={e=>handleMarkupChange(e.target.value)} /></td>
-      <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_price} onChange={e=>setD(p=>({...p,unit_price:e.target.value}))} /></td>
-      <td className="pres-mono pres-col-cost">{fmt((parseFloat(d.unit_cost)||0)*(parseFloat(d.quantity)||1))}</td>
-      <td className="pres-mono pres-col-pvp">{fmt((parseFloat(d.unit_price)||0)*(parseFloat(d.quantity)||1))}</td>
-      <td className="pres-actions-cell">
-        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={()=>onSave(d)} disabled={!d.name?.trim()}>✓</button>
-        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>onSaveToLibrary(d)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
-        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onCancel}>✕</button>
-      </td>
-    </tr>
+    <>
+      <tr className="pres-row pres-row--edit">
+        <td><input className="pres-cell-input" value={d.name} onChange={e=>setD(p=>({...p,name:e.target.value}))} autoFocus /></td>
+        <td><select className="pres-cell-select" value={d.category} onChange={e=>setD(p=>({...p,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></td>
+        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.quantity} onChange={e=>setD(p=>({...p,quantity:e.target.value}))} /></td>
+        <td><select className="pres-cell-select" value={d.unit} onChange={e=>setD(p=>({...p,unit:e.target.value}))}>{UNITS.map(u=><option key={u}>{u}</option>)}</select></td>
+        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_cost} onChange={e=>handleCostChange(e.target.value)} /></td>
+        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.1" value={d.markup_pct} onChange={e=>handleMarkupChange(e.target.value)} /></td>
+        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_price} onChange={e=>setD(p=>({...p,unit_price:e.target.value}))} /></td>
+        <td className="pres-mono pres-col-cost">{fmt((parseFloat(d.unit_cost)||0)*(parseFloat(d.quantity)||1))}</td>
+        <td className="pres-mono pres-col-pvp">{fmt((parseFloat(d.unit_price)||0)*(parseFloat(d.quantity)||1))}</td>
+        <td className="pres-actions-cell">
+          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={()=>onSave(d)} disabled={!d.name?.trim()}>✓</button>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>onSaveToLibrary(d)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowSpecs(v=>!v)} title="Especificaciones técnicas" style={{fontSize:'0.65rem',padding:'2px 5px'}}>esp.</button>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onCancel}>✕</button>
+        </td>
+      </tr>
+      {showSpecs && (
+        <tr className="pres-row" style={{background:'rgba(190,176,162,0.04)'}}>
+          <td colSpan={10} style={{padding:'0.5rem 0.75rem'}}>
+            <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap',alignItems:'flex-end'}}>
+              <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:120}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Marca</label>
+                <input className="pres-cell-input" value={d.brand||''} onChange={e=>setD(p=>({...p,brand:e.target.value}))} placeholder="ej: Eleiko"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,width:70}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Long. cm</label>
+                <input className="pres-cell-input pres-cell-num" type="number" step="0.1" min="0" value={d.longitud||''} onChange={e=>setD(p=>({...p,longitud:e.target.value}))} placeholder="—"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,width:70}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Ancho cm</label>
+                <input className="pres-cell-input pres-cell-num" type="number" step="0.1" min="0" value={d.ancho||''} onChange={e=>setD(p=>({...p,ancho:e.target.value}))} placeholder="—"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,width:70}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Altura cm</label>
+                <input className="pres-cell-input pres-cell-num" type="number" step="0.1" min="0" value={d.altura||''} onChange={e=>setD(p=>({...p,altura:e.target.value}))} placeholder="—"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:130}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Color bastidor</label>
+                <input className="pres-cell-input" value={d.color_bastidor||''} onChange={e=>setD(p=>({...p,color_bastidor:e.target.value}))} placeholder="ej: Negro mate"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:130}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Color acolchados</label>
+                <input className="pres-cell-input" value={d.color_acolchado||''} onChange={e=>setD(p=>({...p,color_acolchado:e.target.value}))} placeholder="ej: Negro"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:130}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Tipo acolchados</label>
+                <input className="pres-cell-input" value={d.tipo_acolchado||''} onChange={e=>setD(p=>({...p,tipo_acolchado:e.target.value}))} placeholder="ej: Vinilo"/>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -345,40 +387,58 @@ function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   const cat = CATEGORIES.find(c=>c.value===item.category)||CATEGORIES[0];
+  const hasSpecs = item.brand || item.longitud || item.ancho || item.altura || item.color_bastidor || item.color_acolchado || item.tipo_acolchado;
+  const dims = [item.longitud && `L:${item.longitud}`, item.ancho && `A:${item.ancho}`, item.altura && `H:${item.altura}`].filter(Boolean).join(' ');
   return (
-    <tr ref={setNodeRef} style={style} className="pres-row">
-      <td>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <button {...attributes} {...listeners} style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(255,255,255,0.25)', padding: 0, display: 'flex', alignItems: 'center' }}><GripVertical size={12}/></button>
-          <span className="pres-cat-dot" style={{background:cat.color}}/>{item.name}
-        </span>
-      </td>
-      <td><span className="pres-cat-chip" style={{borderColor:cat.color,color:cat.color}}>{cat.label}</span></td>
-      <td className="pres-mono">{item.quantity}</td>
-      <td className="pres-mono">{item.unit}</td>
-      <td className="pres-mono">{fmt(item.unit_cost)}</td>
-      <td className="pres-mono">{Number(item.markup_pct||0).toFixed(1)}%</td>
-      <td className="pres-mono">{fmt(item.unit_price)}</td>
-      <td className="pres-mono pres-col-cost">{fmt((item.unit_cost||0)*(item.quantity||1))}</td>
-      <td className="pres-mono pres-col-pvp">{fmt((item.unit_price||0)*(item.quantity||1))}</td>
-      <td className="pres-actions-cell">
-        <button className="ap-btn-icon" onClick={onEdit}><Pencil size={12}/></button>
-        <button className="ap-btn-icon" onClick={() => onSaveToLibrary(item)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
-        <button className="ap-btn-icon pres-del" onClick={onDelete}><Trash2 size={12}/></button>
-      </td>
-    </tr>
+    <>
+      <tr ref={setNodeRef} style={style} className="pres-row">
+        <td>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <button {...attributes} {...listeners} style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(255,255,255,0.25)', padding: 0, display: 'flex', alignItems: 'center' }}><GripVertical size={12}/></button>
+            <span className="pres-cat-dot" style={{background:cat.color}}/>{item.name}
+            {item.brand && <span style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.3)',marginLeft:4}}>{item.brand}</span>}
+          </span>
+        </td>
+        <td><span className="pres-cat-chip" style={{borderColor:cat.color,color:cat.color}}>{cat.label}</span></td>
+        <td className="pres-mono">{item.quantity}</td>
+        <td className="pres-mono">{item.unit}</td>
+        <td className="pres-mono">{fmt(item.unit_cost)}</td>
+        <td className="pres-mono">{Number(item.markup_pct||0).toFixed(1)}%</td>
+        <td className="pres-mono">{fmt(item.unit_price)}</td>
+        <td className="pres-mono pres-col-cost">{fmt((item.unit_cost||0)*(item.quantity||1))}</td>
+        <td className="pres-mono pres-col-pvp">{fmt((item.unit_price||0)*(item.quantity||1))}</td>
+        <td className="pres-actions-cell">
+          <button className="ap-btn-icon" onClick={onEdit}><Pencil size={12}/></button>
+          <button className="ap-btn-icon" onClick={() => onSaveToLibrary(item)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
+          <button className="ap-btn-icon pres-del" onClick={onDelete}><Trash2 size={12}/></button>
+        </td>
+      </tr>
+      {hasSpecs && (
+        <tr style={{background:'rgba(190,176,162,0.03)'}}>
+          <td colSpan={10} style={{padding:'0.25rem 0.75rem 0.4rem 2.5rem'}}>
+            <span style={{fontSize:'0.68rem',color:'rgba(255,255,255,0.3)',display:'flex',gap:'1rem',flexWrap:'wrap'}}>
+              {dims && <span>📐 {dims} cm</span>}
+              {item.color_bastidor && <span>🔩 Bastidor: <strong style={{color:'rgba(255,255,255,0.5)'}}>{item.color_bastidor}</strong></span>}
+              {item.color_acolchado && <span>🪑 Acolchado: <strong style={{color:'rgba(255,255,255,0.5)'}}>{item.color_acolchado}</strong></span>}
+              {item.tipo_acolchado && <span>Tipo: <strong style={{color:'rgba(255,255,255,0.5)'}}>{item.tipo_acolchado}</strong></span>}
+            </span>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
 function NewItemRow({ onAdd, onAddChapter }) {
-  const blank = { name:'', category:'material', quantity:'1', unit:'ud', unit_cost:'0', markup_pct:'20', unit_price:'0' };
+  const blank = { name:'', category:'material', quantity:'1', unit:'ud', unit_cost:'0', markup_pct:'20', unit_price:'0', brand:'', longitud:'', ancho:'', altura:'', color_bastidor:'', color_acolchado:'', tipo_acolchado:'' };
   const [d, setD] = useState(blank);
   const [saving, setSaving] = useState(false);
   const [chapterName, setChapterName] = useState('');
   const [showChapter, setShowChapter] = useState(false);
+  const [showSpecs, setShowSpecs] = useState(false);
   const handleCostChange = v => { const cost=parseFloat(v)||0, markup=parseFloat(d.markup_pct)||0; setD(p=>({...p,unit_cost:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   const handleMarkupChange = v => { const cost=parseFloat(d.unit_cost)||0, markup=parseFloat(v)||0; setD(p=>({...p,markup_pct:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
-  const handleAdd = async () => { if(!d.name.trim()) return; setSaving(true); try { await onAdd(d); setD(blank); } finally { setSaving(false); } };
+  const handleAdd = async () => { if(!d.name.trim()) return; setSaving(true); try { await onAdd(d); setD(blank); setShowSpecs(false); } finally { setSaving(false); } };
   const handleAddChapter = async () => { if(!chapterName.trim()) return; setSaving(true); try { await onAddChapter(chapterName.trim()); setChapterName(''); setShowChapter(false); } finally { setSaving(false); } };
 
   return (
@@ -408,8 +468,45 @@ function NewItemRow({ onAdd, onAddChapter }) {
         <td className="pres-actions-cell">
           <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAdd} disabled={saving||!d.name.trim()}>{saving?'…':<Plus size={13}/>}</button>
           <button className="ap-btn-icon" onClick={() => setShowChapter(v => !v)} title="Añadir capítulo"><FolderPlus size={13}/></button>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowSpecs(v=>!v)} title="Especificaciones técnicas" style={{fontSize:'0.65rem',padding:'2px 5px',opacity:showSpecs?1:0.5}}>esp.</button>
         </td>
       </tr>
+      {showSpecs && (
+        <tr className="pres-row" style={{background:'rgba(190,176,162,0.04)'}}>
+          <td colSpan={10} style={{padding:'0.5rem 0.75rem'}}>
+            <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap',alignItems:'flex-end'}}>
+              <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:120}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Marca</label>
+                <input className="pres-cell-input" value={d.brand} onChange={e=>setD(p=>({...p,brand:e.target.value}))} placeholder="ej: Eleiko"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,width:70}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Long. cm</label>
+                <input className="pres-cell-input pres-cell-num" type="number" step="0.1" min="0" value={d.longitud} onChange={e=>setD(p=>({...p,longitud:e.target.value}))} placeholder="—"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,width:70}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Ancho cm</label>
+                <input className="pres-cell-input pres-cell-num" type="number" step="0.1" min="0" value={d.ancho} onChange={e=>setD(p=>({...p,ancho:e.target.value}))} placeholder="—"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,width:70}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Altura cm</label>
+                <input className="pres-cell-input pres-cell-num" type="number" step="0.1" min="0" value={d.altura} onChange={e=>setD(p=>({...p,altura:e.target.value}))} placeholder="—"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:130}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Color bastidor</label>
+                <input className="pres-cell-input" value={d.color_bastidor} onChange={e=>setD(p=>({...p,color_bastidor:e.target.value}))} placeholder="ej: Negro mate"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:130}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Color acolchados</label>
+                <input className="pres-cell-input" value={d.color_acolchado} onChange={e=>setD(p=>({...p,color_acolchado:e.target.value}))} placeholder="ej: Negro"/>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:130}}>
+                <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Tipo acolchados</label>
+                <input className="pres-cell-input" value={d.tipo_acolchado} onChange={e=>setD(p=>({...p,tipo_acolchado:e.target.value}))} placeholder="ej: Vinilo"/>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
     </>
   );
 }
