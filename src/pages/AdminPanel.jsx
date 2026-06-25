@@ -350,10 +350,16 @@ function TabNotas({ projectId }) {
 function ProductModal({ categories, product, onClose, onSaved }) {
   const isEdit = !!product;
   const [name,setName]=useState(product?.name||''); const [brand,setBrand]=useState(product?.brand||''); const [categoryId,setCategoryId]=useState(product?.category_id||categories[0]?.id||''); const [price,setPrice]=useState(product?.price!=null?String(product.price):''); const [link,setLink]=useState(product?.link||''); const [notes,setNotes]=useState(product?.notes||''); const [file,setFile]=useState(null); const [preview,setPreview]=useState(product?.photo_url||null); const [saving,setSaving]=useState(false); const [error,setError]=useState('');
+  const [longitud,setLongitud]=useState(product?.longitud!=null?String(product.longitud):'');
+  const [ancho,setAncho]=useState(product?.ancho!=null?String(product.ancho):'');
+  const [altura,setAltura]=useState(product?.altura!=null?String(product.altura):'');
+  const [colorBastidor,setColorBastidor]=useState(product?.color_bastidor||'');
+  const [colorAcolchado,setColorAcolchado]=useState(product?.color_acolchado||'');
+  const [tipoAcolchado,setTipoAcolchado]=useState(product?.tipo_acolchado||'');
   const inputId=useRef(`file-${Math.random()}`).current;
   useEffect(()=>{document.body.style.overflow='hidden';return()=>{document.body.style.overflow='';};},[]);
   const handleFile=(e)=>{const f=e.target.files?.[0];if(!f)return;setFile(f);setPreview(URL.createObjectURL(f));};
-  const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim()||!categoryId)return;setSaving(true);setError('');try{const form=new FormData();form.append('category_id',categoryId);form.append('name',name.trim());if(brand)form.append('brand',brand.trim());if(price)form.append('price',price);if(link)form.append('link',link.trim());if(notes)form.append('notes',notes.trim());if(file)form.append('file',file);let data;if(isEdit){({data}=await api.put(`/catalog/products/${product.id}`,form,{headers:{'Content-Type':'multipart/form-data'}}));}else{({data}=await api.post('/catalog/products',form,{headers:{'Content-Type':'multipart/form-data'}}));}onSaved(data.product);onClose();}catch{setError('Error al guardar producto');}finally{setSaving(false);}};
+  const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim()||!categoryId)return;setSaving(true);setError('');try{const form=new FormData();form.append('category_id',categoryId);form.append('name',name.trim());if(brand)form.append('brand',brand.trim());if(price)form.append('price',price);if(link)form.append('link',link.trim());if(notes)form.append('notes',notes.trim());if(file)form.append('file',file);if(longitud)form.append('longitud',longitud);if(ancho)form.append('ancho',ancho);if(altura)form.append('altura',altura);if(colorBastidor)form.append('color_bastidor',colorBastidor.trim());if(colorAcolchado)form.append('color_acolchado',colorAcolchado.trim());if(tipoAcolchado)form.append('tipo_acolchado',tipoAcolchado.trim());let data;if(isEdit){({data}=await api.put(`/catalog/products/${product.id}`,form,{headers:{'Content-Type':'multipart/form-data'}}));}else{({data}=await api.post('/catalog/products',form,{headers:{'Content-Type':'multipart/form-data'}}));}onSaved(data.product);onClose();}catch{setError('Error al guardar producto');}finally{setSaving(false);}};
   return (
     <div className="ap-confirm-overlay" onClick={onClose}>
       <div className="ap-modal-inner" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
@@ -366,6 +372,17 @@ function ProductModal({ categories, product, onClose, onSaved }) {
           <div className="ap-field"><label>Precio (€)</label><input className="ap-field-input" type="number" step="0.01" min="0" value={price} onChange={e=>setPrice(e.target.value)} placeholder="0.00"/></div>
           <div className="ap-field"><label>Link del producto</label><input className="ap-field-input" value={link} onChange={e=>setLink(e.target.value)} placeholder="https://..."/></div>
           <div className="ap-field"><label>Notas</label><input className="ap-field-input" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observaciones opcionales"/></div>
+          <div style={{borderTop:'1px solid rgba(255,255,255,0.07)',marginTop:'0.5rem',paddingTop:'0.75rem'}}>
+            <p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.75rem'}}>Especificaciones técnicas</p>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem'}}>
+              <div className="ap-field" style={{margin:0}}><label>Long. (cm)</label><input className="ap-field-input" type="number" step="0.1" min="0" value={longitud} onChange={e=>setLongitud(e.target.value)} placeholder="—"/></div>
+              <div className="ap-field" style={{margin:0}}><label>Ancho (cm)</label><input className="ap-field-input" type="number" step="0.1" min="0" value={ancho} onChange={e=>setAncho(e.target.value)} placeholder="—"/></div>
+              <div className="ap-field" style={{margin:0}}><label>Altura (cm)</label><input className="ap-field-input" type="number" step="0.1" min="0" value={altura} onChange={e=>setAltura(e.target.value)} placeholder="—"/></div>
+            </div>
+            <div className="ap-field" style={{marginTop:'0.5rem'}}><label>Color bastidor</label><input className="ap-field-input" value={colorBastidor} onChange={e=>setColorBastidor(e.target.value)} placeholder="ej: Negro mate RAL 9005"/></div>
+            <div className="ap-field"><label>Color acolchados</label><input className="ap-field-input" value={colorAcolchado} onChange={e=>setColorAcolchado(e.target.value)} placeholder="ej: Negro / Gris antracita"/></div>
+            <div className="ap-field"><label>Tipo acolchados</label><input className="ap-field-input" value={tipoAcolchado} onChange={e=>setTipoAcolchado(e.target.value)} placeholder="ej: Vinilo / Cuero sintético"/></div>
+          </div>
           {error&&<p className="ap-error" style={{margin:0}}>{error}</p>}
           <div className="ap-modal-footer"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={saving||!name.trim()||!categoryId}>{saving?'Guardando…':isEdit?'Guardar cambios':'Guardar producto'}</button></div>
         </form>
