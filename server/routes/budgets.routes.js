@@ -37,18 +37,29 @@ async function generateBudgetNumber() {
   return 'RAN-' + String(data).padStart(3, '0');
 }
 
-function computeTotals(items, feeType, feeValue, designHours) {
+function computeTotals(items, feeType, feeValue, designHours, globalDiscountPct) {
   const itemCost = items.reduce((s, i) => s + (parseFloat(i.unit_cost) || 0) * (parseFloat(i.quantity) || 1), 0);
-  const itemRevenue = items.reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1), 0);
+  // precio con dto por línea
+  const itemRevenue = items.reduce((s, i) => {
+    const lineTotal = (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1);
+    const dto = parseFloat(i.discount_pct) || 0;
+    return s + lineTotal * (1 - dto / 100);
+  }, 0);
+  const itemRevenueBeforeDiscount = items.reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1), 0);
+  const lineDiscountAmount = itemRevenueBeforeDiscount - itemRevenue;
   const feeVal = parseFloat(feeValue) || 0;
   let designFee = 0;
   if (feeType === 'flat') designFee = feeVal;
   else if (feeType === 'percentage') designFee = itemRevenue * feeVal / 100;
   else if (feeType === 'hourly') designFee = (parseFloat(designHours) || 0) * feeVal;
-  const totalRevenue = itemRevenue + designFee;
+  const subtotalAfterLines = itemRevenue + designFee;
+  const globalDto = parseFloat(globalDiscountPct) || 0;
+  const globalDiscountAmount = subtotalAfterLines * globalDto / 100;
+  const totalRevenue = subtotalAfterLines - globalDiscountAmount;
+  const totalDiscount = lineDiscountAmount + globalDiscountAmount;
   const totalProfit = totalRevenue - itemCost;
   const margin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
-  return { itemCost, itemRevenue, designFee, totalRevenue, totalProfit, margin };
+  return { itemCost, itemRevenue, designFee, totalRevenue, totalProfit, margin, lineDiscountAmount, globalDiscountAmount, totalDiscount, itemRevenueBeforeDiscount };
 }
 
 function fetchImageBuffer(url) {
@@ -76,7 +87,7 @@ router.get('/dashboard', async (req, res) => {
       supabase.from('client_projects').select('id, phase, created_at'),
     ]);
     if (budgetsRes.error) throw budgetsRes.error;
-    const allBudgets = (budgetsRes.data || []).map(b => ({ ...b, ...computeTotals(b.items || [], b.design_fee_type, b.design_fee_value, b.design_hours) }));
+    const allBudgets = (budgetsRes.data || []).map(b => ({ ...b, ...computeTotals(b.items || [], b.design_fee_type, b.design_fee_value, b.design_hours, b.global_discount_pct) }));
     const allProjects = projectsRes.data || [];
     const approved = allBudgets.filter(b => b.status === 'aprobado');
     const totalRevenue = approved.reduce((s, b) => s + b.totalRevenue, 0);
@@ -106,7 +117,7 @@ router.get('/', async (req, res) => {
   try {
     const { data, error } = await supabase.from('budgets').select('*, project:client_projects(id, client_name, project_name, phase), items:budget_items(unit_cost, unit_price, quantity)').order('created_at', { ascending: false });
     if (error) throw error;
-    const budgets = (data || []).map(({ items, ...b }) => ({ ...b, ...computeTotals(items || [], b.design_fee_type, b.design_fee_value, b.design_hours) }));
+    const budgets = (data || []).map(({ items, ...b }) => ({ ...b, ...computeTotals(items || [], b.design_fee_type, b.design_fee_value, b.design_hours, b.global_discount_pct) }));
     res.json({ budgets });
   } catch (err) { res.status(500).json({ error: 'Error al listar presupuestos' }); }
 });
@@ -135,7 +146,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { status, design_fee_type, design_fee_value, design_hours, notes, budget_name, project_id } = req.body;
+    const { status, design_fee_type, design_fee_value, design_hours, notes, budget_name, project_id, global_discount_pct } = req.body;
     const updates = { updated_at: new Date().toISOString() };
     if (status !== undefined) updates.status = status;
     if (design_fee_type !== undefined) updates.design_fee_type = design_fee_type;
@@ -144,6 +155,7 @@ router.put('/:id', async (req, res) => {
     if (notes !== undefined) updates.notes = notes;
     if (budget_name !== undefined) updates.budget_name = budget_name?.trim() || null;
     if (project_id !== undefined) updates.project_id = project_id || null;
+    if (global_discount_pct !== undefined) updates.global_discount_pct = parseFloat(global_discount_pct) || 0;
     const { data, error } = await supabase.from('budgets').update(updates).eq('id', req.params.id).select().single();
     if (error) throw error;
     res.json({ budget: data });
@@ -160,7 +172,7 @@ router.delete('/:id', async (req, res) => {
 
 router.post('/:id/items', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'nombre requerido' });
     const cost = parseFloat(unit_cost) || 0;
     const markup = parseFloat(markup_pct) ?? 20;
@@ -184,6 +196,7 @@ router.post('/:id/items', async (req, res) => {
       color_bastidor: color_bastidor?.trim() || null,
       color_acolchado: color_acolchado?.trim() || null,
       tipo_acolchado: tipo_acolchado?.trim() || null,
+      discount_pct: parseFloat(discount_pct) || 0,
     }).select('*').single();
     if (error) throw error;
     res.status(201).json({ item: data });
@@ -202,7 +215,7 @@ router.put('/:id/items/reorder', async (req, res) => {
 });
 router.put('/:id/items/:itemId', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct } = req.body;
     const updates = {};
     if (name !== undefined) updates.name = name.trim();
     if (category !== undefined) updates.category = category;
@@ -218,6 +231,7 @@ router.put('/:id/items/:itemId', async (req, res) => {
     if (color_bastidor !== undefined) updates.color_bastidor = color_bastidor?.trim() || null;
     if (color_acolchado !== undefined) updates.color_acolchado = color_acolchado?.trim() || null;
     if (tipo_acolchado !== undefined) updates.tipo_acolchado = tipo_acolchado?.trim() || null;
+    if (discount_pct !== undefined) updates.discount_pct = parseFloat(discount_pct) || 0;
     const { data, error } = await supabase.from('budget_items').update(updates).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
     if (error) throw error;
     res.json({ item: data });
@@ -278,7 +292,11 @@ router.post('/:id/import', async (req, res) => {
 
 router.get('/:id/pdf-cliente', async (req, res) => {
   try {
-    const { iva = 21, irpf = 0 } = req.query;
+    const { iva = 21, irpf = 0, show_unit_price = 'true', show_discount = 'true', show_total_col = 'true', show_savings = 'true' } = req.query;
+    const showUnitPrice = show_unit_price !== 'false';
+    const showDiscount = show_discount !== 'false';
+    const showTotalCol = show_total_col !== 'false';
+    const showSavings = show_savings !== 'false';
 
     const { data: budget, error } = await supabase
       .from('budgets')
@@ -299,7 +317,17 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     const { data: settingsData } = await supabase.from('settings').select('*').eq('id', 1).single();
     const settings = settingsData || {};
 
-    const subtotal = items.reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1), 0);
+    // Cálculos con descuentos
+    const globalDto = parseFloat(budget.global_discount_pct) || 0;
+    const subtotalBruto = items.reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1), 0);
+    const lineDiscountTotal = items.reduce((s, i) => {
+      const lineTotal = (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1);
+      return s + lineTotal * (parseFloat(i.discount_pct) || 0) / 100;
+    }, 0);
+    const subtotalAfterLines = subtotalBruto - lineDiscountTotal;
+    const globalDiscountAmount = subtotalAfterLines * globalDto / 100;
+    const subtotal = subtotalAfterLines - globalDiscountAmount;
+    const totalSavings = lineDiscountTotal + globalDiscountAmount;
     const ivaAmount = subtotal * (parseFloat(iva) / 100);
     const irpfAmount = subtotal * (parseFloat(irpf) / 100);
     const total = subtotal + ivaAmount - irpfAmount;
@@ -353,15 +381,27 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     const lineY = infoY + 100;
     doc.moveTo(margin, lineY).lineTo(W - margin, lineY).strokeColor(BRAND.primary).lineWidth(0.5).stroke();
 
-    // TABLA
+    // TABLA — calcular anchos dinámicamente según columnas activas
     let y = lineY + 16;
+    // Columnas derecha: [precio u.] [dto%] [total línea]
+    // Fijas: N(20) + img+nombre(~200) + specs(~130) + cant(45) + ud(40)
+    // Variables: precio_u(65) + dto(45) + total(70)
+    const colCant = { w: 45, x: W - margin - (showUnitPrice ? 65 : 0) - (showDiscount ? 45 : 0) - (showTotalCol ? 70 : 0) - 85 };
+    const colUd   = { w: 40, x: colCant.x + colCant.w };
+    const colPu   = showUnitPrice ? { w: 65, x: colUd.x + colUd.w } : null;
+    const colDto  = showDiscount  ? { w: 45, x: (colPu ? colPu.x + colPu.w : colUd.x + colUd.w) } : null;
+    const colTot  = showTotalCol  ? { w: 70, x: W - margin - 70 } : null;
+
     doc.rect(margin, y, W - margin * 2, 20).fill('#f5f3f0');
     doc.fillColor('#888888').fontSize(7).font('Helvetica-Bold')
       .text('N', margin + 4, y + 6)
       .text('PRODUCTO / DESCRIPCION', margin + 22, y + 6)
-      .text('ESPECIFICACIONES', W - margin - 260, y + 6)
-      .text('CANT.', W - margin - 110, y + 6, { width: 50, align: 'right' })
-      .text('UNIDAD', W - margin - 55, y + 6, { width: 55, align: 'right' });
+      .text('ESPECIF.', margin + 200, y + 6)
+      .text('CANT.', colCant.x, y + 6, { width: colCant.w, align: 'right' })
+      .text('UD', colUd.x, y + 6, { width: colUd.w, align: 'right' });
+    if (colPu)  doc.text('P. UNIT.', colPu.x,  y + 6, { width: colPu.w,  align: 'right' });
+    if (colDto) doc.text('DTO%',     colDto.x, y + 6, { width: colDto.w, align: 'right' });
+    if (colTot) doc.text('TOTAL',    colTot.x, y + 6, { width: colTot.w, align: 'right' });
     y += 22;
 
     let rowNum = 1;
@@ -371,46 +411,49 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       const rowH = imgH + 14;
       if (y + rowH > H - 140) { doc.addPage(); y = margin; }
       if (rowNum % 2 === 0) doc.rect(margin, y, W - margin * 2, rowH).fill('#faf9f8');
+
       doc.fillColor(BRAND.primary).fontSize(7.5).font('Helvetica-Bold').text(String(rowNum).padStart(2, '0'), margin + 4, y + rowH / 2 - 5);
+
       const imgX = margin + 22;
       if (imageUrl) {
         const buf = await fetchImageBuffer(imageUrl);
         if (buf) { try { doc.image(buf, imgX, y + 6, { width: imgH, height: imgH, cover: [imgH, imgH] }); } catch {} }
       }
+
       const textX = imgX + imgH + 8;
-      const textW = W - margin - textX - 280;
-      doc.fillColor(BRAND.dark).fontSize(9).font('Helvetica-Bold').text(item.name, textX, y + 10, { width: textW, lineBreak: false });
+      const textW = 100;
+      doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica-Bold').text(item.name, textX, y + 10, { width: textW, lineBreak: false });
       const subLines = [item.brand, item.category ? item.category.charAt(0).toUpperCase() + item.category.slice(1) : null].filter(Boolean).join(' · ');
-      if (subLines) doc.fillColor('#aaaaaa').fontSize(7.5).font('Helvetica').text(subLines, textX, y + 24, { width: textW });
+      if (subLines) doc.fillColor('#aaaaaa').fontSize(7).font('Helvetica').text(subLines, textX, y + 23, { width: textW });
 
-      // Columna especificaciones
-      const specX = W - margin - 260;
-      const specW = 140;
+      // Especificaciones
+      const specX = margin + 200;
+      const specW = colCant.x - specX - 8;
       let specY = y + 8;
-      const dims = [item.longitud, item.ancho, item.altura].filter(Boolean);
-      if (dims.length > 0) {
-        const dimStr = dims.map((d, i) => ['L','A','H'][i] + ':' + d + 'cm').join(' ');
-        doc.fillColor('#666666').fontSize(7).font('Helvetica').text(dimStr, specX, specY, { width: specW });
-        specY += 11;
-      }
-      if (item.color_bastidor) {
-        doc.fillColor('#888888').fontSize(7).font('Helvetica').text('Bastidor: ', specX, specY, { continued: true, width: specW });
-        doc.fillColor('#444444').font('Helvetica-Bold').text(item.color_bastidor, { lineBreak: false });
-        specY += 11;
-      }
-      if (item.color_acolchado) {
-        doc.fillColor('#888888').fontSize(7).font('Helvetica').text('Acolchado: ', specX, specY, { continued: true, width: specW });
-        doc.fillColor('#444444').font('Helvetica-Bold').text(item.color_acolchado, { lineBreak: false });
-        specY += 11;
-      }
-      if (item.tipo_acolchado) {
-        doc.fillColor('#888888').fontSize(7).font('Helvetica').text('Tipo: ', specX, specY, { continued: true, width: specW });
-        doc.fillColor('#444444').font('Helvetica-Bold').text(item.tipo_acolchado, { lineBreak: false });
-      }
+      const dims = [item.longitud && 'L:'+item.longitud, item.ancho && 'A:'+item.ancho, item.altura && 'H:'+item.altura].filter(Boolean).join(' ');
+      if (dims) { doc.fillColor('#666666').fontSize(6.5).font('Helvetica').text(dims + 'cm', specX, specY, { width: specW }); specY += 10; }
+      if (item.color_bastidor) { doc.fillColor('#888888').fontSize(6.5).font('Helvetica').text('Bast: ' + item.color_bastidor, specX, specY, { width: specW }); specY += 10; }
+      if (item.color_acolchado) { doc.fillColor('#888888').fontSize(6.5).font('Helvetica').text('Acol: ' + item.color_acolchado, specX, specY, { width: specW }); specY += 10; }
+      if (item.tipo_acolchado) { doc.fillColor('#888888').fontSize(6.5).font('Helvetica').text('Tipo: ' + item.tipo_acolchado, specX, specY, { width: specW }); }
 
-      doc.fillColor(BRAND.dark).fontSize(9).font('Helvetica')
-        .text(String(item.quantity || 1), W - margin - 110, y + rowH / 2 - 5, { width: 50, align: 'right' })
-        .text(item.unit || 'ud', W - margin - 55, y + rowH / 2 - 5, { width: 55, align: 'right' });
+      // Columnas numéricas
+      const midY = y + rowH / 2 - 5;
+      const lineDto = parseFloat(item.discount_pct) || 0;
+      const lineTotal = (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 1);
+      const lineFinal = lineTotal * (1 - lineDto / 100);
+      doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica')
+        .text(String(item.quantity || 1), colCant.x, midY, { width: colCant.w, align: 'right' })
+        .text(item.unit || 'ud', colUd.x, midY, { width: colUd.w, align: 'right' });
+      if (colPu)  doc.text(fmtEur(item.unit_price || 0), colPu.x, midY, { width: colPu.w, align: 'right' });
+      if (colDto) {
+        if (lineDto > 0) {
+          doc.fillColor('#c0392b').fontSize(8.5).font('Helvetica-Bold').text('-' + lineDto + '%', colDto.x, midY, { width: colDto.w, align: 'right' });
+        } else {
+          doc.fillColor('#aaaaaa').fontSize(8.5).font('Helvetica').text('—', colDto.x, midY, { width: colDto.w, align: 'right' });
+        }
+      }
+      if (colTot) doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica-Bold').text(fmtEur(lineFinal), colTot.x, midY, { width: colTot.w, align: 'right' });
+
       doc.moveTo(margin, y + rowH).lineTo(W - margin, y + rowH).strokeColor('#eeeeee').lineWidth(0.3).stroke();
       y += rowH;
       rowNum++;
@@ -418,33 +461,43 @@ router.get('/:id/pdf-cliente', async (req, res) => {
 
     // TOTALES
     y += 20;
-    if (y > H - 160) { doc.addPage(); y = margin + 20; }
+    if (y > H - 200) { doc.addPage(); y = margin + 20; }
     const totW = 220;
     const totX = W - margin - totW;
     doc.moveTo(totX, y - 4).lineTo(W - margin, y - 4).strokeColor('#dddddd').lineWidth(0.5).stroke();
     y += 4;
 
     const drawRow = (label, value, bold, color) => {
-      const c = color || BRAND.dark;
-      const f = bold ? 'Helvetica-Bold' : 'Helvetica';
       doc.fillColor('#888888').fontSize(8.5).font('Helvetica').text(label, totX, y);
-      doc.fillColor(c).fontSize(8.5).font(f).text(value, totX, y, { width: totW, align: 'right' });
+      doc.fillColor(color || BRAND.dark).fontSize(8.5).font(bold ? 'Helvetica-Bold' : 'Helvetica').text(value, totX, y, { width: totW, align: 'right' });
       y += 16;
     };
 
-    drawRow('Subtotal', fmtEur(subtotal));
+    drawRow('Subtotal', fmtEur(subtotalBruto));
+    if (lineDiscountTotal > 0) drawRow('Descuentos por producto', '-' + fmtEur(lineDiscountTotal), false, '#c0392b');
+    if (globalDto > 0) drawRow('Descuento global (' + globalDto + '%)', '-' + fmtEur(globalDiscountAmount), false, '#c0392b');
     if (parseFloat(iva) > 0) drawRow('IVA (' + iva + '%)', fmtEur(ivaAmount));
-    if (parseFloat(irpf) > 0) drawRow('Retencion IRPF (' + irpf + '%)', '-' + fmtEur(irpfAmount), false, '#cc3333');
+    if (parseFloat(irpf) > 0) drawRow('Retención IRPF (' + irpf + '%)', '-' + fmtEur(irpfAmount), false, '#cc3333');
 
     y += 4;
     doc.rect(totX - 10, y - 4, totW + 10, 28).fill('#f5f3f0');
     doc.fillColor(BRAND.dark).fontSize(11).font('Helvetica-Bold').text('TOTAL', totX, y + 4);
     doc.fillColor(BRAND.dark).fontSize(13).font('Helvetica-Bold').text(fmtEur(total), totX, y + 2, { width: totW, align: 'right' });
-    y += 32;
+    y += 38;
+
+    // BLOQUE AHORRO
+    if (showSavings && totalSavings > 0) {
+      if (y > H - 120) { doc.addPage(); y = margin + 20; }
+      doc.rect(margin, y, W - margin * 2, 36).fill('#0a0a0a');
+      doc.fillColor(BRAND.primary).fontSize(7).font('Helvetica-Bold').text('TU AHORRO CON RANUSE DESIGN', margin + 16, y + 8);
+      doc.fillColor('#ffffff').fontSize(14).font('Helvetica-Bold').text(fmtEur(totalSavings), margin + 16, y + 18);
+      doc.fillColor('rgba(255,255,255,0.4)').fontSize(7.5).font('Helvetica').text('Descuento total aplicado sobre precio de tarifa', W - margin - 200, y + 22, { width: 180, align: 'right' });
+      y += 52;
+    }
 
     // DATOS DE PAGO
     if (settings.bank_iban || settings.payment_methods) {
-      y += 16;
+      y += 10;
       if (y > H - 100) { doc.addPage(); y = margin + 20; }
       doc.moveTo(margin, y).lineTo(W - margin, y).strokeColor('#eeeeee').lineWidth(0.3).stroke();
       y += 12;
@@ -466,5 +519,6 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     if (!res.headersSent) res.status(500).json({ error: 'Error al generar PDF' });
   }
 });
+
 
 export default router;
