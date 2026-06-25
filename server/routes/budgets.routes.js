@@ -160,13 +160,31 @@ router.delete('/:id', async (req, res) => {
 
 router.post('/:id/items', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'nombre requerido' });
     const cost = parseFloat(unit_cost) || 0;
     const markup = parseFloat(markup_pct) ?? 20;
     const price = unit_price !== undefined ? parseFloat(unit_price) || 0 : parseFloat((cost * (1 + markup / 100)).toFixed(2));
     const { data: maxRow } = await supabase.from('budget_items').select('display_order').eq('budget_id', req.params.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
-    const { data, error } = await supabase.from('budget_items').insert({ budget_id: req.params.id, catalog_product_id: catalog_product_id || null, name: name.trim(), category: category || 'material', quantity: parseFloat(quantity) || 1, unit: unit || 'ud', unit_cost: cost, markup_pct: markup, unit_price: price, display_order: (maxRow?.display_order ?? -1) + 1 }).select('*').single();
+    const { data, error } = await supabase.from('budget_items').insert({
+      budget_id: req.params.id,
+      catalog_product_id: catalog_product_id || null,
+      name: name.trim(),
+      category: category || 'material',
+      quantity: parseFloat(quantity) || 1,
+      unit: unit || 'ud',
+      unit_cost: cost,
+      markup_pct: markup,
+      unit_price: price,
+      display_order: (maxRow?.display_order ?? -1) + 1,
+      brand: brand?.trim() || null,
+      longitud: longitud ? parseFloat(longitud) : null,
+      ancho: ancho ? parseFloat(ancho) : null,
+      altura: altura ? parseFloat(altura) : null,
+      color_bastidor: color_bastidor?.trim() || null,
+      color_acolchado: color_acolchado?.trim() || null,
+      tipo_acolchado: tipo_acolchado?.trim() || null,
+    }).select('*').single();
     if (error) throw error;
     res.status(201).json({ item: data });
   } catch (err) { res.status(500).json({ error: 'Error al anadir partida' }); }
@@ -184,7 +202,7 @@ router.put('/:id/items/reorder', async (req, res) => {
 });
 router.put('/:id/items/:itemId', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado } = req.body;
     const updates = {};
     if (name !== undefined) updates.name = name.trim();
     if (category !== undefined) updates.category = category;
@@ -193,6 +211,13 @@ router.put('/:id/items/:itemId', async (req, res) => {
     if (unit_cost !== undefined) updates.unit_cost = parseFloat(unit_cost) || 0;
     if (markup_pct !== undefined) updates.markup_pct = parseFloat(markup_pct) ?? 20;
     if (unit_price !== undefined) updates.unit_price = parseFloat(unit_price) || 0;
+    if (brand !== undefined) updates.brand = brand?.trim() || null;
+    if (longitud !== undefined) updates.longitud = longitud ? parseFloat(longitud) : null;
+    if (ancho !== undefined) updates.ancho = ancho ? parseFloat(ancho) : null;
+    if (altura !== undefined) updates.altura = altura ? parseFloat(altura) : null;
+    if (color_bastidor !== undefined) updates.color_bastidor = color_bastidor?.trim() || null;
+    if (color_acolchado !== undefined) updates.color_acolchado = color_acolchado?.trim() || null;
+    if (tipo_acolchado !== undefined) updates.tipo_acolchado = tipo_acolchado?.trim() || null;
     const { data, error } = await supabase.from('budget_items').update(updates).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
     if (error) throw error;
     res.json({ item: data });
@@ -218,12 +243,33 @@ router.post('/:id/import', async (req, res) => {
     const { data: maxRow } = await supabase.from('budget_items').select('display_order').eq('budget_id', req.params.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
     let nextOrder = (maxRow?.display_order ?? -1) + 1;
     const [matsRes, equipRes] = await Promise.all([
-      supabase.from('project_material_selections').select('*, catalog:catalog_products(id, price)').eq('project_id', budget.project_id),
-      supabase.from('project_equipment_selections').select('*, catalog:catalog_products(id, price)').eq('project_id', budget.project_id),
+      supabase.from('project_material_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('project_id', budget.project_id),
+      supabase.from('project_equipment_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('project_id', budget.project_id),
     ]);
     const assignments = [...(matsRes.data || []).map(m => ({ ...m, cat: 'material' })), ...(equipRes.data || []).map(e => ({ ...e, cat: 'mobiliario' }))].filter(a => !a.catalog_product_id || !existingIds.has(a.catalog_product_id));
     if (assignments.length === 0) return res.json({ items: [], message: 'No hay partidas nuevas para importar' });
-    const toInsert = assignments.map(a => { const cost = parseFloat(a.catalog?.price) || 0; return { budget_id: req.params.id, catalog_product_id: a.catalog_product_id || null, name: a.name, category: a.cat, quantity: parseFloat(a.quantity) || 1, unit: 'ud', unit_cost: cost, markup_pct: 20, unit_price: parseFloat((cost * 1.2).toFixed(2)), display_order: nextOrder++ }; });
+    const toInsert = assignments.map(a => {
+      const cost = parseFloat(a.catalog?.price) || 0;
+      return {
+        budget_id: req.params.id,
+        catalog_product_id: a.catalog_product_id || null,
+        name: a.name,
+        category: a.cat,
+        quantity: parseFloat(a.quantity) || 1,
+        unit: 'ud',
+        unit_cost: cost,
+        markup_pct: 20,
+        unit_price: parseFloat((cost * 1.2).toFixed(2)),
+        display_order: nextOrder++,
+        brand: a.catalog?.brand || null,
+        longitud: a.catalog?.longitud || null,
+        ancho: a.catalog?.ancho || null,
+        altura: a.catalog?.altura || null,
+        color_bastidor: a.catalog?.color_bastidor || null,
+        color_acolchado: a.catalog?.color_acolchado || null,
+        tipo_acolchado: a.catalog?.tipo_acolchado || null,
+      };
+    });
     const { data, error } = await supabase.from('budget_items').insert(toInsert).select('*');
     if (error) throw error;
     res.json({ items: data || [], message: (data?.length || 0) + ' partidas importadas' });
@@ -313,6 +359,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     doc.fillColor('#888888').fontSize(7).font('Helvetica-Bold')
       .text('N', margin + 4, y + 6)
       .text('PRODUCTO / DESCRIPCION', margin + 22, y + 6)
+      .text('ESPECIFICACIONES', W - margin - 260, y + 6)
       .text('CANT.', W - margin - 110, y + 6, { width: 50, align: 'right' })
       .text('UNIDAD', W - margin - 55, y + 6, { width: 55, align: 'right' });
     y += 22;
@@ -331,9 +378,36 @@ router.get('/:id/pdf-cliente', async (req, res) => {
         if (buf) { try { doc.image(buf, imgX, y + 6, { width: imgH, height: imgH, cover: [imgH, imgH] }); } catch {} }
       }
       const textX = imgX + imgH + 8;
-      const textW = W - margin - textX - 120;
+      const textW = W - margin - textX - 280;
       doc.fillColor(BRAND.dark).fontSize(9).font('Helvetica-Bold').text(item.name, textX, y + 10, { width: textW, lineBreak: false });
-      if (item.category) doc.fillColor('#aaaaaa').fontSize(7.5).font('Helvetica').text(item.category.charAt(0).toUpperCase() + item.category.slice(1), textX, y + 24, { width: textW });
+      const subLines = [item.brand, item.category ? item.category.charAt(0).toUpperCase() + item.category.slice(1) : null].filter(Boolean).join(' · ');
+      if (subLines) doc.fillColor('#aaaaaa').fontSize(7.5).font('Helvetica').text(subLines, textX, y + 24, { width: textW });
+
+      // Columna especificaciones
+      const specX = W - margin - 260;
+      const specW = 140;
+      let specY = y + 8;
+      const dims = [item.longitud, item.ancho, item.altura].filter(Boolean);
+      if (dims.length > 0) {
+        const dimStr = dims.map((d, i) => ['L','A','H'][i] + ':' + d + 'cm').join(' ');
+        doc.fillColor('#666666').fontSize(7).font('Helvetica').text(dimStr, specX, specY, { width: specW });
+        specY += 11;
+      }
+      if (item.color_bastidor) {
+        doc.fillColor('#888888').fontSize(7).font('Helvetica').text('Bastidor: ', specX, specY, { continued: true, width: specW });
+        doc.fillColor('#444444').font('Helvetica-Bold').text(item.color_bastidor, { lineBreak: false });
+        specY += 11;
+      }
+      if (item.color_acolchado) {
+        doc.fillColor('#888888').fontSize(7).font('Helvetica').text('Acolchado: ', specX, specY, { continued: true, width: specW });
+        doc.fillColor('#444444').font('Helvetica-Bold').text(item.color_acolchado, { lineBreak: false });
+        specY += 11;
+      }
+      if (item.tipo_acolchado) {
+        doc.fillColor('#888888').fontSize(7).font('Helvetica').text('Tipo: ', specX, specY, { continued: true, width: specW });
+        doc.fillColor('#444444').font('Helvetica-Bold').text(item.tipo_acolchado, { lineBreak: false });
+      }
+
       doc.fillColor(BRAND.dark).fontSize(9).font('Helvetica')
         .text(String(item.quantity || 1), W - margin - 110, y + rowH / 2 - 5, { width: 50, align: 'right' })
         .text(item.unit || 'ud', W - margin - 55, y + rowH / 2 - 5, { width: 55, align: 'right' });
