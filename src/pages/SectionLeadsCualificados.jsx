@@ -665,6 +665,18 @@ export function SectionLeadsCualificados() {
     } catch { toast.error('Error al cambiar estado'); }
   };
 
+  const handleConvert = async (lead) => {
+    if (!window.confirm(`¿Convertir "${lead.nombre}" en proyecto? Se creará automáticamente con todo su equipamiento.`)) return;
+    try {
+      const { data } = await api.post(`/leads-cualificados/${lead.id}/convert`);
+      setLeads(prev => prev.map(l => l.id === lead.id ? data.lead : l));
+      if (managing?.id === lead.id) setManaging(data.lead);
+      toast.success(`Proyecto creado: ${data.project.client_name} — ${data.project.project_name}`);
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Error al convertir lead');
+    }
+  };
+
   const eliminar = async (id) => {
     try {
       await api.delete(`/leads-cualificados/${id}`);
@@ -748,7 +760,7 @@ export function SectionLeadsCualificados() {
                 {lead.id_presupuesto && <div style={{ marginTop:8 }}><span style={{ fontSize:11, color:'#beb0a2', background:'rgba(190,176,162,0.1)', padding:'2px 8px', borderRadius:4 }}>{lead.id_presupuesto}</span></div>}
                 <div className="ap-project-actions" style={{ marginTop:10 }}>
                   <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setManaging(lead)}><Pencil size={13}/> Gestionar</button>
-                  {lead.estado !== 'convertido' && <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => cambiarEstado(lead.id, 'convertido')}>✅ Convertir</button>}
+                  {lead.estado !== 'convertido' && <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => handleConvert(lead)}>✅ Convertir</button>}
                   <button className="ap-btn ap-btn-danger ap-btn-sm" onClick={() => setConfirm({ message:`¿Eliminar la ficha de ${lead.nombre}?`, onConfirm:()=>eliminar(lead.id) })}><Trash2 size={13}/></button>
                 </div>
               </div>
