@@ -459,6 +459,16 @@ router.get('/:id/pdf-materiales', authenticateToken, requireAdmin, async (req, r
 
 // ── Conversión a Proyecto ─────────────────────────────────────────────
 
+// Helper: genera número de presupuesto correlativo
+async function generateBudgetNumber() {
+  const { data, error } = await supabase.rpc('increment_budget_counter');
+  if (error || !data) {
+    const rand = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
+    return 'RAN-' + rand;
+  }
+  return 'RAN-' + String(data).padStart(3, '0');
+}
+
 router.post('/:id/convert', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { data: lead, error: leadErr } = await supabase
@@ -525,6 +535,62 @@ router.post('/:id/convert', authenticateToken, requireAdmin, async (req, res) =>
     if (matsToInsert.length > 0) await supabase.from('project_material_selections').insert(matsToInsert);
     if (equipToInsert.length > 0) await supabase.from('project_equipment_selections').insert(equipToInsert);
 
+    // ── Crear presupuesto automáticamente con el equipamiento del lead ──
+    let budget = null;
+    try {
+      const budget_number = await generateBudgetNumber();
+      const budgetInsert = {
+        budget_number,
+        budget_name: `${lead.nombre.trim()} — Home Gym`,
+        project_id: project.id,
+        status: 'borrador',
+        design_fee_type: 'flat',
+        design_fee_value: 0,
+        design_hours: 0,
+      };
+      const { data: newBudget, error: budgetErr } = await supabase
+        .from('budgets')
+        .insert(budgetInsert)
+        .select()
+        .single();
+
+      if (!budgetErr && newBudget) {
+        budget = newBudget;
+        // Crear budget_items desde el equipamiento del lead
+        const allItems = [
+          ...(matsRes.data || []).map((m, i) => ({
+            budget_id: newBudget.id,
+            name: m.name,
+            category: 'material',
+            quantity: 1,
+            unit_cost: 0,
+            unit_price: 0,
+            display_order: i,
+            notes: m.notes || null,
+            image_url: m.image_url || null,
+          })),
+          ...(equipRes.data || []).map((e, i) => ({
+            budget_id: newBudget.id,
+            name: e.name,
+            category: 'mobiliario',
+            quantity: e.quantity || 1,
+            unit_cost: 0,
+            unit_price: 0,
+            display_order: (matsRes.data || []).length + i,
+            notes: e.notes || null,
+            image_url: e.image_url || null,
+          })),
+        ];
+        if (allItems.length > 0) {
+          await supabase.from('budget_items').insert(allItems);
+        }
+        console.log('[convert] presupuesto creado:', newBudget.budget_number, 'con', allItems.length, 'partidas');
+      }
+    } catch (budgetCreateErr) {
+      // No bloquear la conversión si el presupuesto falla
+      console.error('[convert] Error al crear presupuesto automático:', budgetCreateErr);
+    }
+
     // Marcar lead como convertido
     const { data: updatedLead } = await supabase
       .from('leads_cualificados')
@@ -533,7 +599,7 @@ router.post('/:id/convert', authenticateToken, requireAdmin, async (req, res) =>
       .select()
       .single();
 
-    res.status(201).json({ project, lead: updatedLead });
+    res.status(201).json({ project, lead: updatedLead, budget });
   } catch (err) {
     console.error('Error al convertir lead:', err);
     res.status(500).json({ error: 'Error al convertir lead en proyecto' });
