@@ -295,22 +295,17 @@ router.post('/:id/import-from-lc', async (req, res) => {
   try {
     const { lc_id } = req.body;
     if (!lc_id) return res.status(400).json({ error: 'lc_id requerido' });
-
     const { data: maxRow } = await supabase.from('budget_items').select('display_order').eq('budget_id', req.params.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
     let nextOrder = (maxRow?.display_order ?? -1) + 1;
-
     const [matsRes, equipRes] = await Promise.all([
       supabase.from('lc_material_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('lc_id', lc_id),
       supabase.from('lc_equipment_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('lc_id', lc_id),
     ]);
-
     const assignments = [
       ...(matsRes.data || []).map(m => ({ ...m, cat: 'material' })),
       ...(equipRes.data || []).map(e => ({ ...e, cat: 'mobiliario' })),
     ];
-
     if (assignments.length === 0) return res.json({ items: [], message: 'Este lead no tiene equipamiento asignado' });
-
     const toInsert = assignments.map(a => {
       const cost = parseFloat(a.catalog?.price) || 0;
       return {
@@ -333,7 +328,6 @@ router.post('/:id/import-from-lc', async (req, res) => {
         tipo_acolchado: a.catalog?.tipo_acolchado || null,
       };
     });
-
     const { data, error } = await supabase.from('budget_items').insert(toInsert).select('*');
     if (error) throw error;
     res.json({ items: data || [], message: (data?.length || 0) + ' partidas importadas desde lead cualificado' });
