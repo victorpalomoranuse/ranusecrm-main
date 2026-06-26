@@ -296,9 +296,6 @@ router.post('/:id/import-from-lc', async (req, res) => {
     const { lc_id } = req.body;
     if (!lc_id) return res.status(400).json({ error: 'lc_id requerido' });
 
-    const { data: existing } = await supabase.from('budget_items').select('catalog_product_id').eq('budget_id', req.params.id);
-    const existingCatalogIds = new Set((existing || []).map(e => e.catalog_product_id).filter(Boolean));
-
     const { data: maxRow } = await supabase.from('budget_items').select('display_order').eq('budget_id', req.params.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
     let nextOrder = (maxRow?.display_order ?? -1) + 1;
 
@@ -307,19 +304,12 @@ router.post('/:id/import-from-lc', async (req, res) => {
       supabase.from('lc_equipment_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('lc_id', lc_id),
     ]);
 
-    console.log(`[import-from-lc] lc_id=${lc_id} mats=${matsRes.data?.length} equip=${equipRes.data?.length}`);
-
-    const all = [
+    const assignments = [
       ...(matsRes.data || []).map(m => ({ ...m, cat: 'material' })),
       ...(equipRes.data || []).map(e => ({ ...e, cat: 'mobiliario' })),
     ];
 
-    // Solo deduplicar si tiene catalog_product_id y ya está en el presupuesto
-    const assignments = all.filter(a => !a.catalog_product_id || !existingCatalogIds.has(a.catalog_product_id));
-
-    console.log(`[import-from-lc] assignments=${assignments.length}`);
-
-    if (assignments.length === 0) return res.json({ items: [], message: 'No hay partidas nuevas para importar (ya existen en el presupuesto)' });
+    if (assignments.length === 0) return res.json({ items: [], message: 'Este lead no tiene equipamiento asignado' });
 
     const toInsert = assignments.map(a => {
       const cost = parseFloat(a.catalog?.price) || 0;
