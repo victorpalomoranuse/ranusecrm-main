@@ -488,7 +488,7 @@ router.post('/:id/convert', authenticateToken, requireAdmin, async (req, res) =>
         access_code,
         phase: 1,
         urgency: 'normal',
-        notes: lead.notas || null,
+        notes: lead.notas_internas || lead.notas || null,
       })
       .select()
       .single();
@@ -523,13 +523,26 @@ router.post('/:id/convert', authenticateToken, requireAdmin, async (req, res) =>
     if (matsToInsert.length > 0) await supabase.from('project_material_selections').insert(matsToInsert);
     if (equipToInsert.length > 0) await supabase.from('project_equipment_selections').insert(equipToInsert);
 
-    // Marcar lead como convertido y guardar referencia al proyecto
-    const { data: updatedLead } = await supabase
-      .from('leads_cualificados')
-      .update({ estado: 'convertido', converted_project_id: project.id })
-      .eq('id', req.params.id)
-      .select()
-      .single();
+    // Marcar lead como convertido (intentar guardar referencia al proyecto si la columna existe)
+    let updatedLead;
+    try {
+      const { data } = await supabase
+        .from('leads_cualificados')
+        .update({ estado: 'convertido', converted_project_id: project.id })
+        .eq('id', req.params.id)
+        .select()
+        .single();
+      updatedLead = data;
+    } catch {
+      // Si converted_project_id no existe aún, solo actualizar estado
+      const { data } = await supabase
+        .from('leads_cualificados')
+        .update({ estado: 'convertido' })
+        .eq('id', req.params.id)
+        .select()
+        .single();
+      updatedLead = data;
+    }
 
     res.status(201).json({ project, lead: updatedLead });
   } catch (err) {
