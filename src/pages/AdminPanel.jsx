@@ -814,7 +814,7 @@ export function AdminPanel() {
         {section==='dashboard'&&<SectionDashboard/>}
         {section==='trabajos'&&<SectionTrabajos/>}
         {section==='leads'&&<SectionLeads/>}
-        {section==='leads-cualificados'&&<SectionLeadsCualificados/>}
+        {section==='leads-cualificados'&&<SectionLeadsCualificados onNavigate={setSection}/>}
         {section==='proyectos'&&<SectionProyectos/>}
         {section==='clientes'&&<SectionClientes/>}
         {section==='empleados'&&<SectionEmpleados/>}
