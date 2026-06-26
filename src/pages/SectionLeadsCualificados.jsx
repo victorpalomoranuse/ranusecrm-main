@@ -765,10 +765,11 @@ export function SectionLeadsCualificados({ onNavigate }) {
                 <div className="ap-project-actions" style={{ marginTop:10 }}>
                   <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setManaging(lead)}><Pencil size={13}/> Gestionar</button>
                   {lead.estado !== 'convertido' && <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => handleConvert(lead)}>✅ Convertir</button>}
-                  {lead.estado === 'convertido' && onNavigate && (
+              {lead.estado === 'convertido' && onNavigate && (
                     <>
                       <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => onNavigate('proyectos')} style={{ color:'#beb0a2', borderColor:'rgba(190,176,162,0.3)' }}>📁 Ver proyecto</button>
                       <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => onNavigate('presupuestos')} style={{ color:'#8b9eae', borderColor:'rgba(139,158,174,0.3)' }}>📄 Ver presupuesto</button>
+                      <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => cambiarEstado(lead.id, 'negociacion')} style={{ color:'#f97316', borderColor:'rgba(249,115,22,0.3)' }}>↩ Deshacer</button>
                     </>
                   )}
                   <button className="ap-btn ap-btn-danger ap-btn-sm" onClick={() => setConfirm({ message:`¿Eliminar la ficha de ${lead.nombre}?`, onConfirm:()=>eliminar(lead.id) })}><Trash2 size={13}/></button>
