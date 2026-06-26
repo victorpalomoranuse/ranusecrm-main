@@ -479,6 +479,7 @@ router.post('/:id/convert', authenticateToken, requireAdmin, async (req, res) =>
     }
 
     // Crear proyecto en client_projects
+    console.log('[convert] Creando proyecto para lead:', lead.nombre, 'access_code:', access_code);
     const { data: project, error: projErr } = await supabase
       .from('client_projects')
       .insert({
@@ -492,6 +493,7 @@ router.post('/:id/convert', authenticateToken, requireAdmin, async (req, res) =>
       })
       .select()
       .single();
+    console.log('[convert] proyecto creado:', project?.id, 'error:', projErr?.message);
     if (projErr) throw projErr;
 
     // Migrar equipamiento del lead al proyecto
