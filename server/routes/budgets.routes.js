@@ -290,6 +290,99 @@ router.post('/:id/import', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al importar partidas' }); }
 });
 
+// Importar equipamiento desde un lead cualificado directamente
+router.post('/:id/import-from-lc', async (req, res) => {
+  try {
+    const { lc_id } = req.body;
+    if (!lc_id) return res.status(400).json({ error: 'lc_id requerido' });
+
+    const { data: existing } = await supabase.from('budget_items').select('catalog_product_id').eq('budget_id', req.params.id);
+    const existingIds = new Set((existing || []).map(e => e.catalog_product_id).filter(Boolean));
+    const { data: maxRow } = await supabase.from('budget_items').select('display_order').eq('budget_id', req.params.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+    let nextOrder = (maxRow?.display_order ?? -1) + 1;
+
+    const [matsRes, equipRes] = await Promise.all([
+      supabase.from('lc_material_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('lc_id', lc_id),
+      supabase.from('lc_equipment_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('lc_id', lc_id),
+    ]);
+
+    const assignments = [
+      ...(matsRes.data || []).map(m => ({ ...m, cat: 'material' })),
+      ...(equipRes.data || []).map(e => ({ ...e, cat: 'mobiliario' })),
+    ].filter(a => !a.catalog_product_id || !existingIds.has(a.catalog_product_id));
+
+    if (assignments.length === 0) return res.json({ items: [], message: 'No hay partidas nuevas para importar' });
+
+    const toInsert = assignments.map(a => {
+      const cost = parseFloat(a.catalog?.price) || 0;
+      return {
+        budget_id: req.params.id,
+        catalog_product_id: a.catalog_product_id || null,
+        name: a.name,
+        category: a.cat,
+        quantity: parseFloat(a.quantity) || 1,
+        unit: 'ud',
+        unit_cost: cost,
+        markup_pct: 20,
+        unit_price: parseFloat((cost * 1.2).toFixed(2)),
+        display_order: nextOrder++,
+        brand: a.catalog?.brand || a.brand || null,
+        longitud: a.catalog?.longitud || null,
+        ancho: a.catalog?.ancho || null,
+        altura: a.catalog?.altura || null,
+        color_bastidor: a.catalog?.color_bastidor || null,
+        color_acolchado: a.catalog?.color_acolchado || null,
+        tipo_acolchado: a.catalog?.tipo_acolchado || null,
+      };
+    });
+
+    const { data, error } = await supabase.from('budget_items').insert(toInsert).select('*');
+    if (error) throw error;
+    res.json({ items: data || [], message: (data?.length || 0) + ' partidas importadas desde lead cualificado' });
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Error al importar desde lead cualificado' }); }
+});
+  try {
+    const { data: budget } = await supabase.from('budgets').select('project_id').eq('id', req.params.id).single();
+    if (!budget) return res.status(404).json({ error: 'Presupuesto no encontrado' });
+    if (!budget.project_id) return res.json({ items: [], message: 'Este presupuesto no tiene proyecto asociado' });
+    const { data: existing } = await supabase.from('budget_items').select('catalog_product_id').eq('budget_id', req.params.id);
+    const existingIds = new Set((existing || []).map(e => e.catalog_product_id).filter(Boolean));
+    const { data: maxRow } = await supabase.from('budget_items').select('display_order').eq('budget_id', req.params.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+    let nextOrder = (maxRow?.display_order ?? -1) + 1;
+    const [matsRes, equipRes] = await Promise.all([
+      supabase.from('project_material_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('project_id', budget.project_id),
+      supabase.from('project_equipment_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('project_id', budget.project_id),
+    ]);
+    const assignments = [...(matsRes.data || []).map(m => ({ ...m, cat: 'material' })), ...(equipRes.data || []).map(e => ({ ...e, cat: 'mobiliario' }))].filter(a => !a.catalog_product_id || !existingIds.has(a.catalog_product_id));
+    if (assignments.length === 0) return res.json({ items: [], message: 'No hay partidas nuevas para importar' });
+    const toInsert = assignments.map(a => {
+      const cost = parseFloat(a.catalog?.price) || 0;
+      return {
+        budget_id: req.params.id,
+        catalog_product_id: a.catalog_product_id || null,
+        name: a.name,
+        category: a.cat,
+        quantity: parseFloat(a.quantity) || 1,
+        unit: 'ud',
+        unit_cost: cost,
+        markup_pct: 20,
+        unit_price: parseFloat((cost * 1.2).toFixed(2)),
+        display_order: nextOrder++,
+        brand: a.catalog?.brand || null,
+        longitud: a.catalog?.longitud || null,
+        ancho: a.catalog?.ancho || null,
+        altura: a.catalog?.altura || null,
+        color_bastidor: a.catalog?.color_bastidor || null,
+        color_acolchado: a.catalog?.color_acolchado || null,
+        tipo_acolchado: a.catalog?.tipo_acolchado || null,
+      };
+    });
+    const { data, error } = await supabase.from('budget_items').insert(toInsert).select('*');
+    if (error) throw error;
+    res.json({ items: data || [], message: (data?.length || 0) + ' partidas importadas' });
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Error al importar partidas' }); }
+});
+
 router.get('/:id/pdf-cliente', async (req, res) => {
   try {
     const { iva = 21, irpf = 0, show_unit_price = 'true', show_discount = 'true', show_total_col = 'true', show_savings = 'true' } = req.query;
