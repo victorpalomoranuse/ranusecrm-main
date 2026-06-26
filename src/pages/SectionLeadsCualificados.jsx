@@ -633,7 +633,7 @@ function LCManagerModal({ lead, onClose, onSaved, onDownloadPdf }) {
 }
 
 // ── Sección principal ─────────────────────────────────────────────────
-export function SectionLeadsCualificados() {
+export function SectionLeadsCualificados({ onNavigate }) {
   const { toasts, toast, remove } = useToast();
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -666,12 +666,16 @@ export function SectionLeadsCualificados() {
   };
 
   const handleConvert = async (lead) => {
-    if (!window.confirm(`¿Convertir "${lead.nombre}" en proyecto? Se creará automáticamente con todo su equipamiento.`)) return;
+    if (!window.confirm(`¿Convertir "${lead.nombre}" en proyecto? Se creará automáticamente con todo su equipamiento y un presupuesto borrador.`)) return;
     try {
       const { data } = await api.post(`/leads-cualificados/${lead.id}/convert`);
       setLeads(prev => prev.map(l => l.id === lead.id ? data.lead : l));
       if (managing?.id === lead.id) setManaging(data.lead);
-      toast.success(`Proyecto creado: ${data.project.client_name} — ${data.project.project_name}`);
+      const budgetMsg = data.budget ? ` · Presupuesto ${data.budget.budget_number} creado` : '';
+      toast.success(`✅ Proyecto creado: ${data.project.client_name}${budgetMsg}`);
+      if (onNavigate) {
+        setTimeout(() => onNavigate('proyectos'), 1800);
+      }
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Error al convertir lead');
     }
@@ -761,6 +765,12 @@ export function SectionLeadsCualificados() {
                 <div className="ap-project-actions" style={{ marginTop:10 }}>
                   <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setManaging(lead)}><Pencil size={13}/> Gestionar</button>
                   {lead.estado !== 'convertido' && <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => handleConvert(lead)}>✅ Convertir</button>}
+                  {lead.estado === 'convertido' && onNavigate && (
+                    <>
+                      <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => onNavigate('proyectos')} style={{ color:'#beb0a2', borderColor:'rgba(190,176,162,0.3)' }}>📁 Ver proyecto</button>
+                      <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => onNavigate('presupuestos')} style={{ color:'#8b9eae', borderColor:'rgba(139,158,174,0.3)' }}>📄 Ver presupuesto</button>
+                    </>
+                  )}
                   <button className="ap-btn ap-btn-danger ap-btn-sm" onClick={() => setConfirm({ message:`¿Eliminar la ficha de ${lead.nombre}?`, onConfirm:()=>eliminar(lead.id) })}><Trash2 size={13}/></button>
                 </div>
               </div>
