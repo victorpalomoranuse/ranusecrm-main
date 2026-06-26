@@ -862,10 +862,10 @@ function BudgetEditor({ id, onBack }) {
   );
 }
 
-export function SectionPresupuestos() {
-  const [view, setView]         = useState('list');
-  const [budgetId, setBudgetId] = useState(null);
-
+export function SectionPresupuestos({ initialBudgetId } = {}) {
+  const [view, setView]         = useState(initialBudgetId ? 'editor' : 'list');
+  const [budgetId, setBudgetId] = useState(initialBudgetId || null);
+  
   return (
     <div className="ap-section">
       {view === 'list' ? (
