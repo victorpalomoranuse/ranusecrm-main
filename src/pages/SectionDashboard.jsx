@@ -65,6 +65,7 @@ export function SectionDashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeDonut, setActiveDonut] = useState(null);
+  const [revealed, setRevealed] = useState(false);
 
   useEffect(() => {
     api.get('/budgets/dashboard')
@@ -95,7 +96,25 @@ export function SectionDashboard() {
   const totalCatCost = donutData.reduce((s, d) => s + d.value, 0);
 
   return (
-    <div className="ap-section">
+    <div className="ap-section" style={{ position: 'relative' }}>
+      {!revealed && (
+        <div
+          onClick={() => setRevealed(true)}
+          style={{
+            position: 'absolute', inset: 0, zIndex: 10,
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div style={{
+            background: 'rgba(10,10,10,0.55)', borderRadius: 12, padding: '0.9rem 1.6rem',
+            color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', letterSpacing: '0.06em',
+            textTransform: 'uppercase', pointerEvents: 'none', userSelect: 'none',
+          }}>
+            Clic para revelar
+          </div>
+        </div>
+      )}
+      <div style={{ filter: revealed ? 'none' : 'blur(8px)', transition: 'filter 0.4s ease', pointerEvents: revealed ? 'auto' : 'none' }}>
       <div className="ap-section-head">
         <div>
           <h1>Dashboard</h1>
@@ -283,6 +302,7 @@ export function SectionDashboard() {
             </table>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
