@@ -457,4 +457,85 @@ router.get('/:id/pdf-materiales', authenticateToken, requireAdmin, async (req, r
   }
 });
 
+// ── Conversión a Proyecto ─────────────────────────────────────────────
+
+router.post('/:id/convert', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { data: lead, error: leadErr } = await supabase
+      .from('leads_cualificados')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (leadErr || !lead) return res.status(404).json({ error: 'Lead no encontrado' });
+
+    // Generar access_code único desde nombre
+    const base = (lead.nombre || 'LC').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6);
+    let access_code = base;
+    let suffix = 1;
+    while (true) {
+      const { data: existing } = await supabase.from('client_projects').select('id').eq('access_code', access_code).single();
+      if (!existing) break;
+      access_code = base + String(suffix++);
+    }
+
+    // Crear proyecto en client_projects
+    const { data: project, error: projErr } = await supabase
+      .from('client_projects')
+      .insert({
+        client_name: lead.nombre.trim(),
+        project_name: lead.ubicacion_ciudad ? `Gym ${lead.ubicacion_ciudad}` : 'Home Gym',
+        client_email: lead.email || null,
+        access_code,
+        phase: 1,
+        urgency: 'normal',
+        notes: lead.notas || null,
+      })
+      .select()
+      .single();
+    if (projErr) throw projErr;
+
+    // Migrar equipamiento del lead al proyecto
+    const [matsRes, equipRes] = await Promise.all([
+      supabase.from('lc_material_selections').select('*').eq('lc_id', req.params.id),
+      supabase.from('lc_equipment_selections').select('*').eq('lc_id', req.params.id),
+    ]);
+
+    const matsToInsert = (matsRes.data || []).map(m => ({
+      project_id: project.id,
+      name: m.name,
+      brand: m.brand || null,
+      category: m.category || null,
+      notes: m.notes || null,
+      image_url: m.image_url || null,
+      catalog_product_id: m.catalog_product_id || null,
+    }));
+    const equipToInsert = (equipRes.data || []).map(e => ({
+      project_id: project.id,
+      name: e.name,
+      brand: e.brand || null,
+      category: e.category || null,
+      quantity: e.quantity || 1,
+      notes: e.notes || null,
+      image_url: e.image_url || null,
+      catalog_product_id: e.catalog_product_id || null,
+    }));
+
+    if (matsToInsert.length > 0) await supabase.from('project_material_selections').insert(matsToInsert);
+    if (equipToInsert.length > 0) await supabase.from('project_equipment_selections').insert(equipToInsert);
+
+    // Marcar lead como convertido y guardar referencia al proyecto
+    const { data: updatedLead } = await supabase
+      .from('leads_cualificados')
+      .update({ estado: 'convertido', converted_project_id: project.id })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    res.status(201).json({ project, lead: updatedLead });
+  } catch (err) {
+    console.error('Error al convertir lead:', err);
+    res.status(500).json({ error: 'Error al convertir lead en proyecto' });
+  }
+});
+
 export default router;
