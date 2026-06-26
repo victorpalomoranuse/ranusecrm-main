@@ -296,9 +296,8 @@ router.post('/:id/import-from-lc', async (req, res) => {
     const { lc_id } = req.body;
     if (!lc_id) return res.status(400).json({ error: 'lc_id requerido' });
 
-    const { data: existing } = await supabase.from('budget_items').select('catalog_product_id, name').eq('budget_id', req.params.id);
+    const { data: existing } = await supabase.from('budget_items').select('catalog_product_id').eq('budget_id', req.params.id);
     const existingCatalogIds = new Set((existing || []).map(e => e.catalog_product_id).filter(Boolean));
-    const existingNames = new Set((existing || []).map(e => (e.name || '').toLowerCase().trim()));
 
     const { data: maxRow } = await supabase.from('budget_items').select('display_order').eq('budget_id', req.params.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
     let nextOrder = (maxRow?.display_order ?? -1) + 1;
@@ -315,14 +314,10 @@ router.post('/:id/import-from-lc', async (req, res) => {
       ...(equipRes.data || []).map(e => ({ ...e, cat: 'mobiliario' })),
     ];
 
-    // Deduplicar: si ya existe por catalog_product_id o por nombre exacto, saltar
-    const assignments = all.filter(a => {
-      if (a.catalog_product_id && existingCatalogIds.has(a.catalog_product_id)) return false;
-      if (!a.catalog_product_id && existingNames.has((a.name || '').toLowerCase().trim())) return false;
-      return true;
-    });
+    // Solo deduplicar si tiene catalog_product_id y ya está en el presupuesto
+    const assignments = all.filter(a => !a.catalog_product_id || !existingCatalogIds.has(a.catalog_product_id));
 
-    console.log(`[import-from-lc] assignments tras dedup=${assignments.length}`);
+    console.log(`[import-from-lc] assignments=${assignments.length}`);
 
     if (assignments.length === 0) return res.json({ items: [], message: 'No hay partidas nuevas para importar (ya existen en el presupuesto)' });
 
