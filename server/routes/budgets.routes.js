@@ -38,13 +38,27 @@ async function generateBudgetNumber() {
 }
 
 function computeTotals(items, feeType, feeValue, designHours, globalDiscountPct) {
-  const itemCost = items.reduce((s, i) => s + (parseFloat(i.unit_cost) || 0) * (parseFloat(i.quantity) || 1), 0);
-  const itemRevenue = items.reduce((s, i) => {
-    const lineTotal = (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1);
-    const dto = parseFloat(i.discount_pct) || 0;
-    return s + lineTotal * (1 - dto / 100);
+  const itemCost = items.reduce((s, i) => {
+    const qty = parseFloat(i.quantity) || 1;
+    if ((i.pricing_mode || 'margin') === 'pvp') {
+      const pvp = parseFloat(i.pvp_ref) || 0, dtoC = parseFloat(i.purchase_dto) || 0;
+      return s + pvp * (1 - dtoC/100) * qty;
+    }
+    return s + (parseFloat(i.unit_cost) || 0) * qty;
   }, 0);
-  const itemRevenueBeforeDiscount = items.reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1), 0);
+  const itemRevenue = items.reduce((s, i) => {
+    const qty = parseFloat(i.quantity) || 1;
+    if ((i.pricing_mode || 'margin') === 'pvp') {
+      const pvp = parseFloat(i.pvp_ref) || 0, dtoK = parseFloat(i.discount_pct) || 0;
+      return s + pvp * qty * (1 - dtoK/100);
+    }
+    return s + (parseFloat(i.unit_price) || 0) * qty;
+  }, 0);
+  const itemRevenueBeforeDiscount = items.reduce((s, i) => {
+    const qty = parseFloat(i.quantity) || 1;
+    if ((i.pricing_mode || 'margin') === 'pvp') return s + (parseFloat(i.pvp_ref) || 0) * qty;
+    return s + (parseFloat(i.unit_price) || 0) * qty;
+  }, 0);
   const lineDiscountAmount = itemRevenueBeforeDiscount - itemRevenue;
   const feeVal = parseFloat(feeValue) || 0;
   let designFee = 0;
@@ -171,7 +185,7 @@ router.delete('/:id', async (req, res) => {
 
 router.post('/:id/items', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'nombre requerido' });
     const cost = parseFloat(unit_cost) || 0;
     const markup = parseFloat(markup_pct) ?? 20;
@@ -196,6 +210,9 @@ router.post('/:id/items', async (req, res) => {
       color_acolchado: color_acolchado?.trim() || null,
       tipo_acolchado: tipo_acolchado?.trim() || null,
       discount_pct: parseFloat(discount_pct) || 0,
+      pvp_ref: pvp_ref ? parseFloat(pvp_ref) : null,
+      purchase_dto: purchase_dto ? parseFloat(purchase_dto) : null,
+      pricing_mode: pricing_mode || 'margin',
     }).select('*').single();
     if (error) throw error;
     res.status(201).json({ item: data });
@@ -215,7 +232,7 @@ router.put('/:id/items/reorder', async (req, res) => {
 
 router.put('/:id/items/:itemId', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode } = req.body;
     const updates = {};
     if (name !== undefined) updates.name = name.trim();
     if (category !== undefined) updates.category = category;
@@ -232,6 +249,9 @@ router.put('/:id/items/:itemId', async (req, res) => {
     if (color_acolchado !== undefined) updates.color_acolchado = color_acolchado?.trim() || null;
     if (tipo_acolchado !== undefined) updates.tipo_acolchado = tipo_acolchado?.trim() || null;
     if (discount_pct !== undefined) updates.discount_pct = parseFloat(discount_pct) || 0;
+    if (pvp_ref !== undefined) updates.pvp_ref = pvp_ref ? parseFloat(pvp_ref) : null;
+    if (purchase_dto !== undefined) updates.purchase_dto = purchase_dto ? parseFloat(purchase_dto) : null;
+    if (pricing_mode !== undefined) updates.pricing_mode = pricing_mode || 'margin';
     const { data, error } = await supabase.from('budget_items').update(updates).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
     if (error) throw error;
     res.json({ item: data });
@@ -478,12 +498,15 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       // Columnas numéricas
       const midY = y + rowH / 2 - 5;
       const lineDto = parseFloat(item.discount_pct) || 0;
-      const lineTotal = (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 1);
-      const lineFinal = lineTotal * (1 - lineDto / 100);
+      const isPvpMode = (item.pricing_mode || 'margin') === 'pvp';
+      const pvpBase = isPvpMode ? (parseFloat(item.pvp_ref) || 0) : (parseFloat(item.unit_price) || 0);
+      const lineFinal = isPvpMode
+        ? pvpBase * (parseFloat(item.quantity) || 1) * (1 - lineDto / 100)
+        : pvpBase * (parseFloat(item.quantity) || 1);
       doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica')
         .text(String(item.quantity || 1), colCant.x, midY, { width: colCant.w, align: 'right' })
         .text(item.unit || 'ud', colUd.x, midY, { width: colUd.w, align: 'right' });
-      if (colPu)  doc.text(fmtEur(item.unit_price || 0), colPu.x, midY, { width: colPu.w, align: 'right' });
+      if (colPu)  doc.text(fmtEur(pvpBase), colPu.x, midY, { width: colPu.w, align: 'right' });
       if (colDto) {
         if (lineDto > 0) {
           doc.fillColor('#c0392b').fontSize(8.5).font('Helvetica-Bold').text('-' + lineDto + '%', colDto.x, midY, { width: colDto.w, align: 'right' });
