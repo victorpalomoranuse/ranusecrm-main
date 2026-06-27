@@ -34,11 +34,21 @@ function fmt(n) {
 
 function computeSummary(items, b) {
   const realItems = items.filter(i => !i.is_chapter_header);
-  const itemCost = realItems.reduce((s, i) => s + (parseFloat(i.unit_cost)||0) * (parseFloat(i.quantity)||1), 0);
-  const itemRev  = realItems.reduce((s, i) => {
-    const pvpBase = parseFloat(i.pvp_ref) > 0 ? parseFloat(i.pvp_ref) : (parseFloat(i.unit_price)||0);
-    const dto = parseFloat(i.discount_pct) || 0;
-    return s + pvpBase * (parseFloat(i.quantity)||1) * (1 - dto/100);
+  const itemCost = realItems.reduce((s, i) => {
+    const qty = parseFloat(i.quantity)||1;
+    if ((i.pricing_mode||'margin') === 'pvp') {
+      const pvp = parseFloat(i.pvp_ref)||0, dtoC = parseFloat(i.purchase_dto)||0;
+      return s + pvp*(1-dtoC/100)*qty;
+    }
+    return s + (parseFloat(i.unit_cost)||0)*qty;
+  }, 0);
+  const itemRev = realItems.reduce((s, i) => {
+    const qty = parseFloat(i.quantity)||1;
+    if ((i.pricing_mode||'margin') === 'pvp') {
+      const pvp = parseFloat(i.pvp_ref)||0, dtoK = parseFloat(i.discount_pct)||0;
+      return s + pvp*qty*(1-dtoK/100);
+    }
+    return s + (parseFloat(i.unit_price)||0)*qty;
   }, 0);
   const fv = parseFloat(b.design_fee_value) || 0;
   let fee = 0;
@@ -322,57 +332,69 @@ function ChapterRow({ item, onEdit, onDelete }) {
 }
 
 function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
+  const initMode = item.pricing_mode || 'margin';
   const [d, setD] = useState({
     ...item,
+    pricing_mode: initMode,
     pvp_ref:      item.pvp_ref      ?? '',
     purchase_dto: item.purchase_dto ?? '',
     discount_pct: item.discount_pct ?? 0,
+    unit_cost:    item.unit_cost    ?? 0,
+    markup_pct:   item.markup_pct   ?? 20,
+    unit_price:   item.unit_price   ?? 0,
   });
   const [showSpecs, setShowSpecs] = useState(
     !!(item.brand || item.longitud || item.ancho || item.altura || item.color_bastidor || item.color_acolchado || item.tipo_acolchado)
   );
 
-  // Cuando cambia PVP cat. o dto compra → recalcula coste y luego precio venta
-  const handlePvpRefChange = v => {
-    const pvp = parseFloat(v) || 0;
+  const mode = d.pricing_mode || 'margin';
+  const isPvp = mode === 'pvp';
+
+  // Modo PVP: handlers
+  const handlePvpChange = v => {
+    const pvp  = parseFloat(v) || 0;
     const dtoC = parseFloat(d.purchase_dto) || 0;
-    const newCost = dtoC > 0 ? parseFloat((pvp * (1 - dtoC/100)).toFixed(2)) : parseFloat(d.unit_cost) || 0;
-    const markup = parseFloat(d.markup_pct) || 0;
-    const newPrice = parseFloat((newCost * (1 + markup/100)).toFixed(2));
-    setD(p => ({ ...p, pvp_ref: v, unit_cost: dtoC > 0 ? newCost : p.unit_cost, unit_price: dtoC > 0 ? newPrice : p.unit_price }));
+    const cost = parseFloat((pvp * (1 - dtoC/100)).toFixed(2));
+    setD(p => ({ ...p, pvp_ref: v, unit_cost: cost }));
   };
   const handlePurchaseDtoChange = v => {
     const dtoC = parseFloat(v) || 0;
-    const pvp = parseFloat(d.pvp_ref) || 0;
-    if (pvp > 0) {
-      const newCost = parseFloat((pvp * (1 - dtoC/100)).toFixed(2));
-      const markup = parseFloat(d.markup_pct) || 0;
-      const newPrice = parseFloat((newCost * (1 + markup/100)).toFixed(2));
-      setD(p => ({ ...p, purchase_dto: v, unit_cost: newCost, unit_price: newPrice }));
-    } else {
-      setD(p => ({ ...p, purchase_dto: v }));
-    }
+    const pvp  = parseFloat(d.pvp_ref) || 0;
+    const cost = parseFloat((pvp * (1 - dtoC/100)).toFixed(2));
+    setD(p => ({ ...p, purchase_dto: v, unit_cost: cost }));
   };
+
+  // Modo Margen: handlers
   const handleCostChange = v => {
-    const cost = parseFloat(v) || 0;
+    const cost   = parseFloat(v) || 0;
     const markup = parseFloat(d.markup_pct) || 0;
     setD(p => ({ ...p, unit_cost: v, unit_price: (cost*(1+markup/100)).toFixed(2) }));
   };
   const handleMarkupChange = v => {
-    const cost = parseFloat(d.unit_cost) || 0;
+    const cost   = parseFloat(d.unit_cost) || 0;
     const markup = parseFloat(v) || 0;
     setD(p => ({ ...p, markup_pct: v, unit_price: (cost*(1+markup/100)).toFixed(2) }));
   };
 
-  const qty      = parseFloat(d.quantity) || 1;
-  const cost     = parseFloat(d.unit_cost) || 0;
-  const price    = parseFloat(d.unit_price) || 0;
-  const dtoC     = parseFloat(d.discount_pct) || 0;
-  const pvpBase  = parseFloat(d.pvp_ref) > 0 ? parseFloat(d.pvp_ref) : price;
-  const totalCliente = pvpBase * qty * (1 - dtoC/100);
-  const margenEur    = totalCliente - cost * qty;
+  // Cálculos según modo
+  const qty  = parseFloat(d.quantity) || 1;
+  let totalCliente, margenEur, costUnit;
+  if (isPvp) {
+    const pvp   = parseFloat(d.pvp_ref) || 0;
+    const dtoC  = parseFloat(d.purchase_dto) || 0;
+    costUnit    = parseFloat((pvp * (1 - dtoC/100)).toFixed(2));
+    const dtoK  = parseFloat(d.discount_pct) || 0;
+    totalCliente = pvp * qty * (1 - dtoK/100);
+    margenEur    = totalCliente - costUnit * qty;
+  } else {
+    costUnit     = parseFloat(d.unit_cost) || 0;
+    const price  = parseFloat(d.unit_price) || 0;
+    totalCliente = price * qty;
+    margenEur    = totalCliente - costUnit * qty;
+  }
 
-  const inputSm = { width: 52 };
+  const sm = { width: 58 };
+  const dimmed = { color: 'rgba(255,255,255,0.25)', fontSize: '0.65rem' };
 
   return (
     <>
@@ -381,36 +403,56 @@ function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
         <td><select className="pres-cell-select" value={d.category} onChange={e=>setD(p=>({...p,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></td>
         <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.quantity} onChange={e=>setD(p=>({...p,quantity:e.target.value}))} /></td>
         <td><select className="pres-cell-select" value={d.unit} onChange={e=>setD(p=>({...p,unit:e.target.value}))}>{UNITS.map(u=><option key={u}>{u}</option>)}</select></td>
-        {/* PVP catálogo proveedor */}
-        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.pvp_ref} onChange={e=>handlePvpRefChange(e.target.value)} placeholder="—" title="PVP catálogo del proveedor" /></td>
-        {/* Dto compra % → calcula coste automático */}
+
+        {/* TOGGLE MODO */}
         <td>
-          <div style={{display:'flex',alignItems:'center',gap:2}}>
-            <input className="pres-cell-input pres-cell-num" type="number" min="0" max="100" step="0.5" value={d.purchase_dto} onChange={e=>handlePurchaseDtoChange(e.target.value)} placeholder="—" style={inputSm} title="Tu descuento de compra al proveedor" />
-            <span style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.25)'}}>%</span>
-          </div>
+          <button
+            onClick={()=>setD(p=>({...p, pricing_mode: isPvp ? 'margin' : 'pvp'}))}
+            style={{fontSize:'0.62rem',padding:'2px 6px',borderRadius:4,border:'1px solid',cursor:'pointer',fontWeight:700,whiteSpace:'nowrap',
+              background: isPvp ? 'rgba(190,176,162,0.15)' : 'rgba(139,174,143,0.15)',
+              borderColor: isPvp ? '#beb0a2' : '#8bae8f',
+              color: isPvp ? '#beb0a2' : '#8bae8f'}}
+            title="Alternar modo de precio"
+          >
+            {isPvp ? 'PVP+Dto' : 'Coste+%'}
+          </button>
         </td>
-        {/* Coste (editable manualmente si no hay PVP cat.) */}
-        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_cost} onChange={e=>handleCostChange(e.target.value)} title="Coste unitario" /></td>
-        {/* Margen % → calcula precio venta */}
-        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.1" value={d.markup_pct} onChange={e=>handleMarkupChange(e.target.value)} style={inputSm} /></td>
-        {/* Precio venta (editable) */}
-        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_price} onChange={e=>setD(p=>({...p,unit_price:e.target.value}))} title="Precio de venta al cliente" /></td>
-        {/* Dto cliente % → se muestra en PDF si se activa */}
-        <td>
-          <div style={{display:'flex',alignItems:'center',gap:2}}>
-            <input className="pres-cell-input pres-cell-num" type="number" min="0" max="100" step="0.5" value={d.discount_pct} onChange={e=>setD(p=>({...p,discount_pct:e.target.value}))} style={inputSm} title="Descuento visible al cliente en PDF" />
-            <span style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.25)'}}>%</span>
-          </div>
-        </td>
-        {/* Total cliente */}
-        <td className="pres-mono pres-col-pvp" style={{color: dtoC > 0 ? '#e74c3c' : undefined}}>{fmt(totalCliente)}</td>
-        {/* Margen € */}
-        <td className="pres-mono" style={{color: margenEur >= 0 ? '#8bae8f' : '#ae8b8b', fontSize:'0.78rem'}}>{fmt(margenEur)}</td>
+
+        {isPvp ? (<>
+          {/* MODO A: PVP cat. + Dto compra + Dto cliente */}
+          <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.pvp_ref} onChange={e=>handlePvpChange(e.target.value)} placeholder="PVP cat." title="PVP catálogo proveedor" /></td>
+          <td><div style={{display:'flex',alignItems:'center',gap:2}}>
+            <input className="pres-cell-input pres-cell-num" type="number" min="0" max="100" step="0.5" value={d.purchase_dto} onChange={e=>handlePurchaseDtoChange(e.target.value)} placeholder="—" style={sm} title="Tu dto de compra al proveedor"/>
+            <span style={dimmed}>%</span>
+          </div></td>
+          <td className="pres-mono" style={{color:'rgba(255,255,255,0.5)',fontSize:'0.8rem'}}>{fmt(costUnit)}</td>
+          <td style={{color:'rgba(255,255,255,0.15)',textAlign:'center',fontSize:'0.7rem'}}>—</td>
+          <td style={{color:'rgba(255,255,255,0.15)',textAlign:'center',fontSize:'0.7rem'}}>—</td>
+          <td><div style={{display:'flex',alignItems:'center',gap:2}}>
+            <input className="pres-cell-input pres-cell-num" type="number" min="0" max="100" step="0.5" value={d.discount_pct} onChange={e=>setD(p=>({...p,discount_pct:e.target.value}))} placeholder="—" style={sm} title="Dto visible al cliente en PDF"/>
+            <span style={dimmed}>%</span>
+          </div></td>
+        </>) : (<>
+          {/* MODO B: Coste + Margen % */}
+          <td style={{color:'rgba(255,255,255,0.15)',textAlign:'center',fontSize:'0.7rem'}}>—</td>
+          <td style={{color:'rgba(255,255,255,0.15)',textAlign:'center',fontSize:'0.7rem'}}>—</td>
+          <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_cost} onChange={e=>handleCostChange(e.target.value)} title="Coste unitario"/></td>
+          <td><div style={{display:'flex',alignItems:'center',gap:2}}>
+            <input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.1" value={d.markup_pct} onChange={e=>handleMarkupChange(e.target.value)} style={sm}/>
+            <span style={dimmed}>%</span>
+          </div></td>
+          <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_price} onChange={e=>setD(p=>({...p,unit_price:e.target.value}))} title="Precio venta"/></td>
+          <td style={{color:'rgba(255,255,255,0.15)',textAlign:'center',fontSize:'0.7rem'}}>—</td>
+        </>)}
+
+        {/* SIEMPRE VISIBLES */}
+        <td className="pres-mono pres-col-pvp">{fmt(totalCliente)}</td>
+        <td className="pres-mono" style={{color: margenEur >= 0 ? '#8bae8f' : '#ae8b8b', fontWeight:700}}>{fmt(margenEur)}</td>
+
         <td className="pres-actions-cell">
           <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={()=>onSave(d)} disabled={!d.name?.trim()}>✓</button>
           <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>onSaveToLibrary(d)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowSpecs(v=>!v)} title="Especificaciones técnicas" style={{fontSize:'0.65rem',padding:'2px 5px'}}>esp.</button>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowSpecs(v=>!v)} style={{fontSize:'0.65rem',padding:'2px 5px'}}>esp.</button>
           <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onCancel}>✕</button>
         </td>
       </tr>
@@ -461,13 +503,26 @@ function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary }) {
   const hasSpecs = item.brand || item.longitud || item.ancho || item.altura || item.color_bastidor || item.color_acolchado || item.tipo_acolchado;
   const dims = [item.longitud && `L:${item.longitud}`, item.ancho && `A:${item.ancho}`, item.altura && `H:${item.altura}`].filter(Boolean).join(' ');
 
-  const qty         = parseFloat(item.quantity) || 1;
-  const cost        = parseFloat(item.unit_cost) || 0;
-  const price       = parseFloat(item.unit_price) || 0;
-  const dtoCliente  = parseFloat(item.discount_pct) || 0;
-  const pvpBase     = parseFloat(item.pvp_ref) > 0 ? parseFloat(item.pvp_ref) : price;
-  const totalCliente = pvpBase * qty * (1 - dtoCliente/100);
-  const margenEur   = totalCliente - cost * qty;
+  const qty  = parseFloat(item.quantity) || 1;
+  const mode = item.pricing_mode || 'margin';
+  const isPvp = mode === 'pvp';
+
+  let totalCliente, margenEur, costUnit;
+  if (isPvp) {
+    const pvp  = parseFloat(item.pvp_ref) || 0;
+    const dtoC = parseFloat(item.purchase_dto) || 0;
+    costUnit   = pvp * (1 - dtoC/100);
+    const dtoK = parseFloat(item.discount_pct) || 0;
+    totalCliente = pvp * qty * (1 - dtoK/100);
+    margenEur    = totalCliente - costUnit * qty;
+  } else {
+    costUnit     = parseFloat(item.unit_cost) || 0;
+    const price  = parseFloat(item.unit_price) || 0;
+    totalCliente = price * qty;
+    margenEur    = totalCliente - costUnit * qty;
+  }
+
+  const dimmed = { color: 'rgba(255,255,255,0.2)', fontSize: '0.75rem' };
 
   return (
     <>
@@ -482,28 +537,35 @@ function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary }) {
         <td><span className="pres-cat-chip" style={{borderColor:cat.color,color:cat.color}}>{cat.label}</span></td>
         <td className="pres-mono">{item.quantity}</td>
         <td className="pres-mono">{item.unit}</td>
-        {/* PVP catálogo */}
-        <td className="pres-mono" style={{color: parseFloat(item.pvp_ref)>0 ? '#beb0a2' : 'rgba(255,255,255,0.2)', fontSize:'0.78rem'}}>
-          {parseFloat(item.pvp_ref)>0 ? fmt(item.pvp_ref) : '—'}
+
+        {/* MODO badge */}
+        <td>
+          <span style={{fontSize:'0.6rem',padding:'1px 5px',borderRadius:3,border:'1px solid',fontWeight:700,
+            borderColor: isPvp ? '#beb0a2' : '#8bae8f',
+            color: isPvp ? '#beb0a2' : '#8bae8f',
+            background: isPvp ? 'rgba(190,176,162,0.1)' : 'rgba(139,174,143,0.1)'}}>
+            {isPvp ? 'PVP' : 'Margen'}
+          </span>
         </td>
-        {/* Dto compra */}
-        <td className="pres-mono" style={{color: parseFloat(item.purchase_dto)>0 ? '#ae9e8b' : 'rgba(255,255,255,0.2)', fontSize:'0.78rem'}}>
-          {parseFloat(item.purchase_dto)>0 ? `-${item.purchase_dto}%` : '—'}
-        </td>
-        {/* Coste */}
-        <td className="pres-mono">{fmt(cost)}</td>
-        {/* Margen % */}
-        <td className="pres-mono">{Number(item.markup_pct||0).toFixed(1)}%</td>
-        {/* Precio venta */}
-        <td className="pres-mono">{fmt(price)}</td>
-        {/* Dto cliente */}
-        <td className="pres-mono" style={{color: dtoCliente > 0 ? '#e74c3c' : 'rgba(255,255,255,0.3)'}}>
-          {dtoCliente > 0 ? `-${dtoCliente}%` : '—'}
-        </td>
-        {/* Total cliente */}
-        <td className="pres-mono pres-col-pvp" style={{color: dtoCliente > 0 ? '#e74c3c' : undefined}}>{fmt(totalCliente)}</td>
-        {/* Margen € */}
-        <td className="pres-mono" style={{color: margenEur >= 0 ? '#8bae8f' : '#ae8b8b', fontSize:'0.78rem'}}>{fmt(margenEur)}</td>
+
+        {isPvp ? (<>
+          <td className="pres-mono" style={{color:'#beb0a2',fontSize:'0.8rem'}}>{fmt(item.pvp_ref)}</td>
+          <td className="pres-mono" style={{color:'#ae9e8b',fontSize:'0.78rem'}}>{parseFloat(item.purchase_dto)>0 ? `-${item.purchase_dto}%` : '—'}</td>
+          <td className="pres-mono" style={{color:'rgba(255,255,255,0.45)',fontSize:'0.78rem'}}>{fmt(costUnit)}</td>
+          <td style={dimmed}>—</td>
+          <td style={dimmed}>—</td>
+          <td className="pres-mono" style={{color:'#e74c3c',fontSize:'0.78rem'}}>{parseFloat(item.discount_pct)>0 ? `-${item.discount_pct}%` : '—'}</td>
+        </>) : (<>
+          <td style={dimmed}>—</td>
+          <td style={dimmed}>—</td>
+          <td className="pres-mono">{fmt(item.unit_cost)}</td>
+          <td className="pres-mono">{Number(item.markup_pct||0).toFixed(1)}%</td>
+          <td className="pres-mono">{fmt(item.unit_price)}</td>
+          <td style={dimmed}>—</td>
+        </>)}
+
+        <td className="pres-mono pres-col-pvp">{fmt(totalCliente)}</td>
+        <td className="pres-mono" style={{color: margenEur >= 0 ? '#8bae8f' : '#ae8b8b', fontWeight:700}}>{fmt(margenEur)}</td>
         <td className="pres-actions-cell">
           <button className="ap-btn-icon" onClick={onEdit}><Pencil size={12}/></button>
           <button className="ap-btn-icon" onClick={() => onSaveToLibrary(item)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
@@ -527,29 +589,22 @@ function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary }) {
 }
 
 function NewItemRow({ onAdd, onAddChapter }) {
-  const blank = { name:'', category:'material', quantity:'1', unit:'ud', pvp_ref:'', purchase_dto:'', unit_cost:'0', markup_pct:'20', unit_price:'0', discount_pct:'0', brand:'', longitud:'', ancho:'', altura:'', color_bastidor:'', color_acolchado:'', tipo_acolchado:'' };
+  const blank = { name:'', category:'material', quantity:'1', unit:'ud', pricing_mode:'margin', pvp_ref:'', purchase_dto:'', unit_cost:'0', markup_pct:'20', unit_price:'0', discount_pct:'0', brand:'', longitud:'', ancho:'', altura:'', color_bastidor:'', color_acolchado:'', tipo_acolchado:'' };
   const [d, setD] = useState(blank);
   const [saving, setSaving] = useState(false);
   const [chapterName, setChapterName] = useState('');
   const [showChapter, setShowChapter] = useState(false);
   const [showSpecs, setShowSpecs] = useState(false);
 
-  const handlePvpRefChange = v => {
-    const pvp = parseFloat(v) || 0;
-    const dtoC = parseFloat(d.purchase_dto) || 0;
-    const newCost = (pvp > 0 && dtoC > 0) ? parseFloat((pvp * (1 - dtoC/100)).toFixed(2)) : parseFloat(d.unit_cost)||0;
-    const markup = parseFloat(d.markup_pct)||0;
-    const newPrice = parseFloat((newCost*(1+markup/100)).toFixed(2));
-    setD(p => ({ ...p, pvp_ref: v, unit_cost: (pvp>0&&dtoC>0)?String(newCost):p.unit_cost, unit_price: (pvp>0&&dtoC>0)?String(newPrice):p.unit_price }));
+  const isPvp = d.pricing_mode === 'pvp';
+
+  const handlePvpChange = v => {
+    const pvp = parseFloat(v)||0, dtoC = parseFloat(d.purchase_dto)||0;
+    setD(p => ({ ...p, pvp_ref: v, unit_cost: String(parseFloat((pvp*(1-dtoC/100)).toFixed(2))) }));
   };
   const handlePurchaseDtoChange = v => {
-    const dtoC = parseFloat(v)||0;
-    const pvp = parseFloat(d.pvp_ref)||0;
-    if (pvp > 0) {
-      const newCost = parseFloat((pvp*(1-dtoC/100)).toFixed(2));
-      const markup = parseFloat(d.markup_pct)||0;
-      setD(p=>({...p, purchase_dto:v, unit_cost:String(newCost), unit_price:String(parseFloat((newCost*(1+markup/100)).toFixed(2)))}));
-    } else { setD(p=>({...p, purchase_dto:v})); }
+    const dtoC = parseFloat(v)||0, pvp = parseFloat(d.pvp_ref)||0;
+    setD(p => ({ ...p, purchase_dto: v, unit_cost: String(parseFloat((pvp*(1-dtoC/100)).toFixed(2))) }));
   };
   const handleCostChange = v => { const cost=parseFloat(v)||0, markup=parseFloat(d.markup_pct)||0; setD(p=>({...p,unit_cost:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   const handleMarkupChange = v => { const cost=parseFloat(d.unit_cost)||0, markup=parseFloat(v)||0; setD(p=>({...p,markup_pct:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
@@ -557,13 +612,19 @@ function NewItemRow({ onAdd, onAddChapter }) {
   const handleAddChapter = async () => { if(!chapterName.trim()) return; setSaving(true); try { await onAddChapter(chapterName.trim()); setChapterName(''); setShowChapter(false); } finally { setSaving(false); } };
 
   const qty = parseFloat(d.quantity)||1;
-  const cost = parseFloat(d.unit_cost)||0;
-  const price = parseFloat(d.unit_price)||0;
-  const dtoC = parseFloat(d.discount_pct)||0;
-  const pvpBase = parseFloat(d.pvp_ref)>0 ? parseFloat(d.pvp_ref) : price;
-  const totalCliente = pvpBase * qty * (1 - dtoC/100);
-  const margenEur = totalCliente - cost * qty;
-  const inputSm = { width: 52 };
+  let totalCliente, margenEur;
+  if (isPvp) {
+    const pvp = parseFloat(d.pvp_ref)||0, dtoC = parseFloat(d.purchase_dto)||0, dtoK = parseFloat(d.discount_pct)||0;
+    const cost = pvp*(1-dtoC/100);
+    totalCliente = pvp*qty*(1-dtoK/100);
+    margenEur = totalCliente - cost*qty;
+  } else {
+    const cost = parseFloat(d.unit_cost)||0, price = parseFloat(d.unit_price)||0;
+    totalCliente = price*qty;
+    margenEur = totalCliente - cost*qty;
+  }
+  const sm = { width: 58 };
+  const dimmed = { color: 'rgba(255,255,255,0.25)', fontSize: '0.65rem' };
 
   return (
     <>
@@ -584,18 +645,35 @@ function NewItemRow({ onAdd, onAddChapter }) {
         <td><select className="pres-cell-select" value={d.category} onChange={e=>setD(p=>({...p,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></td>
         <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.quantity} onChange={e=>setD(p=>({...p,quantity:e.target.value}))} /></td>
         <td><select className="pres-cell-select" value={d.unit} onChange={e=>setD(p=>({...p,unit:e.target.value}))}>{UNITS.map(u=><option key={u}>{u}</option>)}</select></td>
-        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.pvp_ref} onChange={e=>handlePvpRefChange(e.target.value)} placeholder="—" title="PVP catálogo del proveedor" /></td>
-        <td><div style={{display:'flex',alignItems:'center',gap:2}}><input className="pres-cell-input pres-cell-num" type="number" min="0" max="100" step="0.5" value={d.purchase_dto} onChange={e=>handlePurchaseDtoChange(e.target.value)} placeholder="—" style={inputSm} title="Tu dto de compra" /><span style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.25)'}}>%</span></div></td>
-        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_cost} onChange={e=>handleCostChange(e.target.value)} /></td>
-        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.1" value={d.markup_pct} onChange={e=>handleMarkupChange(e.target.value)} style={inputSm} /></td>
-        <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_price} onChange={e=>setD(p=>({...p,unit_price:e.target.value}))} /></td>
-        <td><div style={{display:'flex',alignItems:'center',gap:2}}><input className="pres-cell-input pres-cell-num" type="number" min="0" max="100" step="0.5" value={d.discount_pct} onChange={e=>setD(p=>({...p,discount_pct:e.target.value}))} style={inputSm} title="Dto visible al cliente en PDF" /><span style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.25)'}}>%</span></div></td>
-        <td className="pres-mono" style={{color:'rgba(255,255,255,0.3)', fontSize:'0.78rem'}}>{fmt(totalCliente)}</td>
-        <td className="pres-mono" style={{color: margenEur >= 0 ? '#8bae8f' : '#ae8b8b', fontSize:'0.78rem'}}>{fmt(margenEur)}</td>
+        <td>
+          <button onClick={()=>setD(p=>({...p,pricing_mode:isPvp?'margin':'pvp'}))}
+            style={{fontSize:'0.62rem',padding:'2px 6px',borderRadius:4,border:'1px solid',cursor:'pointer',fontWeight:700,whiteSpace:'nowrap',
+              background: isPvp?'rgba(190,176,162,0.15)':'rgba(139,174,143,0.15)',
+              borderColor: isPvp?'#beb0a2':'#8bae8f', color: isPvp?'#beb0a2':'#8bae8f'}}>
+            {isPvp ? 'PVP+Dto' : 'Coste+%'}
+          </button>
+        </td>
+        {isPvp ? (<>
+          <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.pvp_ref} onChange={e=>handlePvpChange(e.target.value)} placeholder="PVP cat." /></td>
+          <td><div style={{display:'flex',alignItems:'center',gap:2}}><input className="pres-cell-input pres-cell-num" type="number" min="0" max="100" step="0.5" value={d.purchase_dto} onChange={e=>handlePurchaseDtoChange(e.target.value)} placeholder="—" style={sm}/><span style={dimmed}>%</span></div></td>
+          <td className="pres-mono" style={{color:'rgba(255,255,255,0.4)',fontSize:'0.8rem'}}>{fmt(parseFloat(d.pvp_ref)||0 * (1-(parseFloat(d.purchase_dto)||0)/100))}</td>
+          <td style={{color:'rgba(255,255,255,0.15)',textAlign:'center'}}>—</td>
+          <td style={{color:'rgba(255,255,255,0.15)',textAlign:'center'}}>—</td>
+          <td><div style={{display:'flex',alignItems:'center',gap:2}}><input className="pres-cell-input pres-cell-num" type="number" min="0" max="100" step="0.5" value={d.discount_pct} onChange={e=>setD(p=>({...p,discount_pct:e.target.value}))} placeholder="—" style={sm}/><span style={dimmed}>%</span></div></td>
+        </>) : (<>
+          <td style={{color:'rgba(255,255,255,0.15)',textAlign:'center'}}>—</td>
+          <td style={{color:'rgba(255,255,255,0.15)',textAlign:'center'}}>—</td>
+          <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_cost} onChange={e=>handleCostChange(e.target.value)} /></td>
+          <td><div style={{display:'flex',alignItems:'center',gap:2}}><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.1" value={d.markup_pct} onChange={e=>handleMarkupChange(e.target.value)} style={sm}/><span style={dimmed}>%</span></div></td>
+          <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.unit_price} onChange={e=>setD(p=>({...p,unit_price:e.target.value}))} /></td>
+          <td style={{color:'rgba(255,255,255,0.15)',textAlign:'center'}}>—</td>
+        </>)}
+        <td className="pres-mono" style={{color:'rgba(255,255,255,0.4)'}}>{fmt(totalCliente)}</td>
+        <td className="pres-mono" style={{color: margenEur>=0?'#8bae8f':'#ae8b8b', fontWeight:700}}>{fmt(margenEur)}</td>
         <td className="pres-actions-cell">
           <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAdd} disabled={saving||!d.name.trim()}>{saving?'…':<Plus size={13}/>}</button>
           <button className="ap-btn-icon" onClick={() => setShowChapter(v => !v)} title="Añadir capítulo"><FolderPlus size={13}/></button>
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowSpecs(v=>!v)} title="Especificaciones técnicas" style={{fontSize:'0.65rem',padding:'2px 5px',opacity:showSpecs?1:0.5}}>esp.</button>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowSpecs(v=>!v)} style={{fontSize:'0.65rem',padding:'2px 5px',opacity:showSpecs?1:0.5}}>esp.</button>
         </td>
       </tr>
       {showSpecs && (
@@ -713,7 +791,7 @@ function BudgetEditor({ id, onBack }) {
   };
 
   const handleAddItem = async (form) => {
-    const { data } = await api.post(`/budgets/${id}/items`, { ...form, unit_cost: parseFloat(form.unit_cost)||0, unit_price: parseFloat(form.unit_price)||0, markup_pct: parseFloat(form.markup_pct)||20, quantity: parseFloat(form.quantity)||1, pvp_ref: parseFloat(form.pvp_ref)||null, purchase_dto: parseFloat(form.purchase_dto)||null });
+    const { data } = await api.post(`/budgets/${id}/items`, { ...form, unit_cost: parseFloat(form.unit_cost)||0, unit_price: parseFloat(form.unit_price)||0, markup_pct: parseFloat(form.markup_pct)||20, quantity: parseFloat(form.quantity)||1, pvp_ref: parseFloat(form.pvp_ref)||null, purchase_dto: parseFloat(form.purchase_dto)||null, pricing_mode: form.pricing_mode||'margin' });
     setItems(prev => [...prev, data.item]);
   };
 
@@ -728,6 +806,7 @@ function BudgetEditor({ id, onBack }) {
       unit_cost: parseFloat(d.unit_cost)||0, markup_pct: parseFloat(d.markup_pct)||0,
       unit_price: parseFloat(d.unit_price)||0, discount_pct: parseFloat(d.discount_pct)||0,
       pvp_ref: parseFloat(d.pvp_ref)||null, purchase_dto: parseFloat(d.purchase_dto)||null,
+      pricing_mode: d.pricing_mode||'margin',
       brand: d.brand||null, longitud: d.longitud||null, ancho: d.ancho||null, altura: d.altura||null,
       color_bastidor: d.color_bastidor||null, color_acolchado: d.color_acolchado||null, tipo_acolchado: d.tipo_acolchado||null,
     });
@@ -932,12 +1011,13 @@ function BudgetEditor({ id, onBack }) {
             <thead>
               <tr>
                 <th>Descripción</th><th>Categoría</th><th>Cant</th><th>Ud</th>
-                <th title="PVP del catálogo del proveedor">PVP cat.</th>
-                <th style={{color:'#ae9e8b'}} title="Tu descuento de compra al proveedor">Dto compra</th>
+                <th>Modo</th>
+                <th title="PVP catálogo proveedor">PVP cat.</th>
+                <th style={{color:'#ae9e8b'}} title="Tu dto de compra">Dto compra</th>
                 <th>Coste ud.</th>
                 <th>Margen %</th>
                 <th>Precio venta</th>
-                <th style={{color:'#e74c3c'}} title="Descuento visible al cliente en el PDF">Dto cliente</th>
+                <th style={{color:'#e74c3c'}} title="Dto visible al cliente en PDF">Dto cliente</th>
                 <th className="pres-col-pvp">Total cliente</th>
                 <th style={{color:'#8bae8f'}}>Margen €</th>
                 <th></th>
