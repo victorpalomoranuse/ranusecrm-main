@@ -407,6 +407,7 @@ function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
         {/* TOGGLE MODO */}
         <td>
           <button
+            type="button"
             onClick={()=>setD(p=>({...p, pricing_mode: isPvp ? 'margin' : 'pvp'}))}
             style={{fontSize:'0.62rem',padding:'2px 6px',borderRadius:4,border:'1px solid',cursor:'pointer',fontWeight:700,whiteSpace:'nowrap',
               background: isPvp ? 'rgba(190,176,162,0.15)' : 'rgba(139,174,143,0.15)',
@@ -450,10 +451,16 @@ function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
         <td className="pres-mono" style={{color: margenEur >= 0 ? '#8bae8f' : '#ae8b8b', fontWeight:700}}>{fmt(margenEur)}</td>
 
         <td className="pres-actions-cell">
-          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={()=>onSave(d)} disabled={!d.name?.trim()}>✓</button>
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>onSaveToLibrary(d)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowSpecs(v=>!v)} style={{fontSize:'0.65rem',padding:'2px 5px'}}>esp.</button>
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onCancel}>✕</button>
+          <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => {
+            // En modo PVP, asegurar que unit_cost está calculado antes de guardar
+            const toSave = isPvp
+              ? { ...d, unit_cost: costUnit, unit_price: costUnit }
+              : d;
+            onSave(toSave);
+          }} disabled={!d.name?.trim()}>✓</button>
+          <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>onSaveToLibrary(d)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
+          <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowSpecs(v=>!v)} style={{fontSize:'0.65rem',padding:'2px 5px'}}>esp.</button>
+          <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onCancel}>✕</button>
         </td>
       </tr>
       {showSpecs && (
@@ -646,7 +653,7 @@ function NewItemRow({ onAdd, onAddChapter }) {
         <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.quantity} onChange={e=>setD(p=>({...p,quantity:e.target.value}))} /></td>
         <td><select className="pres-cell-select" value={d.unit} onChange={e=>setD(p=>({...p,unit:e.target.value}))}>{UNITS.map(u=><option key={u}>{u}</option>)}</select></td>
         <td>
-          <button onClick={()=>setD(p=>({...p,pricing_mode:isPvp?'margin':'pvp'}))}
+          <button type="button" onClick={()=>setD(p=>({...p,pricing_mode:isPvp?'margin':'pvp'}))}
             style={{fontSize:'0.62rem',padding:'2px 6px',borderRadius:4,border:'1px solid',cursor:'pointer',fontWeight:700,whiteSpace:'nowrap',
               background: isPvp?'rgba(190,176,162,0.15)':'rgba(139,174,143,0.15)',
               borderColor: isPvp?'#beb0a2':'#8bae8f', color: isPvp?'#beb0a2':'#8bae8f'}}>
@@ -801,17 +808,23 @@ function BudgetEditor({ id, onBack }) {
   };
 
   const handleUpdateItem = async (itemId, d) => {
-    const { data } = await api.put(`/budgets/${id}/items/${itemId}`, {
-      name: d.name, category: d.category, quantity: parseFloat(d.quantity)||1, unit: d.unit,
-      unit_cost: parseFloat(d.unit_cost)||0, markup_pct: parseFloat(d.markup_pct)||0,
-      unit_price: parseFloat(d.unit_price)||0, discount_pct: parseFloat(d.discount_pct)||0,
-      pvp_ref: parseFloat(d.pvp_ref)||null, purchase_dto: parseFloat(d.purchase_dto)||null,
-      pricing_mode: d.pricing_mode||'margin',
-      brand: d.brand||null, longitud: d.longitud||null, ancho: d.ancho||null, altura: d.altura||null,
-      color_bastidor: d.color_bastidor||null, color_acolchado: d.color_acolchado||null, tipo_acolchado: d.tipo_acolchado||null,
-    });
-    setItems(prev => prev.map(i => i.id === itemId ? data.item : i));
-    setEditingId(null);
+    try {
+      const { data } = await api.put(`/budgets/${id}/items/${itemId}`, {
+        name: d.name, category: d.category, quantity: parseFloat(d.quantity)||1, unit: d.unit,
+        unit_cost: parseFloat(d.unit_cost)||0, markup_pct: parseFloat(d.markup_pct)||0,
+        unit_price: parseFloat(d.unit_price)||0, discount_pct: parseFloat(d.discount_pct)||0,
+        pvp_ref: parseFloat(d.pvp_ref)||null, purchase_dto: parseFloat(d.purchase_dto)||null,
+        pricing_mode: d.pricing_mode||'margin',
+        brand: d.brand||null, longitud: d.longitud||null, ancho: d.ancho||null, altura: d.altura||null,
+        color_bastidor: d.color_bastidor||null, color_acolchado: d.color_acolchado||null, tipo_acolchado: d.tipo_acolchado||null,
+      });
+      setItems(prev => prev.map(i => i.id === itemId ? data.item : i));
+      setEditingId(null);
+      flash('Partida guardada');
+    } catch (err) {
+      flash('Error al guardar partida', 'error');
+      console.error('handleUpdateItem error:', err);
+    }
   };
 
   const handleDeleteItem = async (itemId) => {
