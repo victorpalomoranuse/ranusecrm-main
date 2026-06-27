@@ -482,7 +482,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       const textW = (margin + 195) - textX;
       doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica-Bold').text(item.name, textX, y + 8, { width: textW });
       const nameBottom = doc.y;
-      const subLines = [item.brand, item.category ? item.category.charAt(0).toUpperCase() + item.category.slice(1) : null].filter(Boolean).join(' · ');
+      const subLines = item.brand || '';
       if (subLines) doc.fillColor('#aaaaaa').fontSize(7).font('Helvetica').text(subLines, textX, Math.max(nameBottom + 1, y + 8), { width: textW });
 
       // Especificaciones
@@ -500,13 +500,13 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       const lineDto = parseFloat(item.discount_pct) || 0;
       const isPvpMode = (item.pricing_mode || 'margin') === 'pvp';
       const pvpBase = isPvpMode ? (parseFloat(item.pvp_ref) || 0) : (parseFloat(item.unit_price) || 0);
-      const lineFinal = isPvpMode
-        ? pvpBase * (parseFloat(item.quantity) || 1) * (1 - lineDto / 100)
-        : pvpBase * (parseFloat(item.quantity) || 1);
+      // P. UNIT. = PVP bruto en modo PVP, precio venta en modo margen
+      const unitFinal = isPvpMode ? pvpBase * (1 - lineDto / 100) : pvpBase;
+      const lineFinal = unitFinal * (parseFloat(item.quantity) || 1);
       doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica')
         .text(String(item.quantity || 1), colCant.x, midY, { width: colCant.w, align: 'right' })
         .text(item.unit || 'ud', colUd.x, midY, { width: colUd.w, align: 'right' });
-      if (colPu)  doc.text(fmtEur(pvpBase), colPu.x, midY, { width: colPu.w, align: 'right' });
+      if (colPu) doc.text(fmtEur(pvpBase), colPu.x, midY, { width: colPu.w, align: 'right' });
       if (colDto) {
         if (lineDto > 0) {
           doc.fillColor('#c0392b').fontSize(8.5).font('Helvetica-Bold').text('-' + lineDto + '%', colDto.x, midY, { width: colDto.w, align: 'right' });
