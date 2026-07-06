@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, Bookmark, BookOpen, X, Link, ChevronUp, ChevronDown, FolderPlus, GripVertical, Copy } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, BookOpen, X, Link, ChevronUp, ChevronDown, FolderPlus, GripVertical, Copy } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -70,47 +70,50 @@ function MsgBanner({ msg }) {
   );
 }
 
-function SavedItemsPanel({ onInsert, onClose }) {
-  const [items, setItems] = useState([]);
+function CatalogLibraryPanel({ onInsert, onClose }) {
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
 
   useEffect(() => {
-    api.get('/saved-items').then(r => setItems(r.data.items || [])).finally(() => setLoading(false));
+    api.get('/catalog/products').then(r => setProducts(r.data.products || [])).finally(() => setLoading(false));
   }, []);
 
-  const handleDelete = async (id) => {
-    try { await api.delete(`/saved-items/${id}`); setItems(prev => prev.filter(i => i.id !== id)); } catch {}
-  };
-
-  const visible = items.filter(i => i.name.toLowerCase().includes(filter.toLowerCase()));
+  const visible = products.filter(p => {
+    const s = filter.toLowerCase();
+    return !s || p.name.toLowerCase().includes(s) || (p.brand || '').toLowerCase().includes(s);
+  });
 
   return (
     <div style={{ position: 'fixed', top: 0, right: 0, width: 320, height: '100vh', background: '#111', borderLeft: '1px solid rgba(255,255,255,0.08)', zIndex: 200, display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}><BookOpen size={14}/>Biblioteca</span>
+        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}><BookOpen size={14}/>Biblioteca (catálogo)</span>
         <button className="ap-btn-icon" onClick={onClose}><X size={15}/></button>
       </div>
       <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <input className="ap-field-input" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar partida…" style={{ width: '100%' }} />
+        <input className="ap-field-input" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar producto o marca…" style={{ width: '100%' }} />
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
         {loading ? <div className="ap-loading">Cargando…</div> : visible.length === 0 ? (
           <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.3)', padding: '1rem', textAlign: 'center' }}>
-            {items.length === 0 ? 'Aún no hay partidas guardadas.' : 'Sin resultados.'}
+            {products.length === 0 ? 'Aún no hay productos en el catálogo. Añádelos desde Admin › Catálogo.' : 'Sin resultados.'}
           </p>
-        ) : visible.map(item => {
-          const cat = CATEGORIES.find(c => c.value === item.category) || CATEGORIES[0];
+        ) : visible.map(p => {
+          const cat = CATEGORIES.find(c => c.value === p.category?.type) || CATEGORIES[0];
           return (
-            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: 0, fontSize: '0.82rem', color: '#fff', fontWeight: 500 }}>{item.name}</p>
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              {p.photo_url ? (
+                <img src={p.photo_url} alt="" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
+              ) : (
+                <div style={{ width: 32, height: 32, borderRadius: 4, background: 'rgba(255,255,255,0.06)', flexShrink: 0 }} />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</p>
                 <p style={{ margin: 0, fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
-                  <span style={{ color: cat.color }}>{cat.label}</span> · {fmt(item.unit_cost)} coste · {fmt(item.unit_price)} PVP
+                  <span style={{ color: cat.color }}>{cat.label}</span> · {p.brand ? p.brand + ' · ' : ''}{fmt(p.price)}
                 </p>
               </div>
-              <button className="ap-btn ap-btn-primary ap-btn-sm" style={{ fontSize: '0.7rem', padding: '3px 8px' }} onClick={() => onInsert(item)}>Insertar</button>
-              <button className="ap-btn-icon" onClick={() => handleDelete(item.id)}><Trash2 size={12}/></button>
+              <button className="ap-btn ap-btn-primary ap-btn-sm" style={{ fontSize: '0.7rem', padding: '3px 8px' }} onClick={() => onInsert(p)}>Insertar</button>
             </div>
           );
         })}
@@ -331,7 +334,7 @@ function ChapterRow({ item, onEdit, onDelete }) {
   );
 }
 
-function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
+function ItemRowEdit({ item, onSave, onCancel }) {
   const initMode = item.pricing_mode || 'margin';
   const [d, setD] = useState({
     ...item,
@@ -458,7 +461,6 @@ function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
               : d;
             onSave(toSave);
           }} disabled={!d.name?.trim()}>✓</button>
-          <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>onSaveToLibrary(d)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
           <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowSpecs(v=>!v)} style={{fontSize:'0.65rem',padding:'2px 5px'}}>esp.</button>
           <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onCancel}>✕</button>
         </td>
@@ -503,7 +505,7 @@ function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
   );
 }
 
-function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate, onSaveToLibrary }) {
+function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   const cat = CATEGORIES.find(c=>c.value===item.category)||CATEGORIES[0];
@@ -575,7 +577,6 @@ function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate, onSaveToLibrary }
         <td className="pres-mono" style={{color: margenEur >= 0 ? '#8bae8f' : '#ae8b8b', fontWeight:700}}>{fmt(margenEur)}</td>
         <td className="pres-actions-cell">
           <button className="ap-btn-icon" onClick={onEdit}><Pencil size={12}/></button>
-          <button className="ap-btn-icon" onClick={() => onSaveToLibrary(item)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
           <button className="ap-btn-icon" onClick={onDuplicate} title="Duplicar partida"><Copy size={12}/></button>
           <button className="ap-btn-icon pres-del" onClick={onDelete}><Trash2 size={12}/></button>
         </td>
@@ -881,16 +882,26 @@ function BudgetEditor({ id, onBack }) {
     finally { setImportingLc(false); }
   };
 
-  const handleSaveToLibrary = async (item) => {
-    try {
-      await api.post('/saved-items', { name: item.name, category: item.category, unit: item.unit, unit_cost: parseFloat(item.unit_cost)||0, markup_pct: parseFloat(item.markup_pct)||20, unit_price: parseFloat(item.unit_price)||0 });
-      flash('Guardado en biblioteca');
-    } catch { flash('Error al guardar', 'error'); }
-  };
-
-  const handleInsertFromLibrary = async (savedItem) => {
-    await handleAddItem({ name: savedItem.name, category: savedItem.category, unit: savedItem.unit, unit_cost: savedItem.unit_cost, markup_pct: savedItem.markup_pct, unit_price: savedItem.unit_price, quantity: 1 });
-    flash('Partida insertada');
+  const handleInsertFromLibrary = async (product) => {
+    const cost = parseFloat(product.price) || 0;
+    await handleAddItem({
+      name: product.name,
+      category: product.category?.type || 'material',
+      unit: 'ud',
+      unit_cost: cost,
+      markup_pct: 20,
+      unit_price: parseFloat((cost * 1.2).toFixed(2)),
+      catalog_product_id: product.id,
+      brand: product.brand || null,
+      longitud: product.longitud || null,
+      ancho: product.ancho || null,
+      altura: product.altura || null,
+      color_bastidor: product.color_bastidor || null,
+      color_acolchado: product.color_acolchado || null,
+      tipo_acolchado: product.tipo_acolchado || null,
+      quantity: 1,
+    });
+    flash('Partida insertada desde catálogo');
   };
 
   const handleLinked = async (projectId) => {
@@ -910,7 +921,7 @@ function BudgetEditor({ id, onBack }) {
 
   return (
     <div className="pres-editor" style={{ paddingRight: showLibrary ? 330 : 0 }}>
-      {showLibrary && <SavedItemsPanel onInsert={handleInsertFromLibrary} onClose={() => setShowLibrary(false)} />}
+      {showLibrary && <CatalogLibraryPanel onInsert={handleInsertFromLibrary} onClose={() => setShowLibrary(false)} />}
       {showLinkModal && <LinkProjectModal projects={unlinkedProjects.length > 0 ? unlinkedProjects : projects} budgetId={id} onClose={() => setShowLinkModal(false)} onLinked={handleLinked} />}
 
       <div className="pres-editor-head">
@@ -1057,9 +1068,9 @@ function BudgetEditor({ id, onBack }) {
                 item.is_chapter_header ? (
                   <ChapterRow key={item.id} item={item} onEdit={handleUpdateItem} onDelete={handleDeleteItem} />
                 ) : editingId === item.id ? (
-                  <ItemRowEdit key={item.id} item={item} onSave={d=>handleUpdateItem(item.id,d)} onCancel={()=>setEditingId(null)} onSaveToLibrary={handleSaveToLibrary} />
+                  <ItemRowEdit key={item.id} item={item} onSave={d=>handleUpdateItem(item.id,d)} onCancel={()=>setEditingId(null)} />
                 ) : (
-                  <ItemRowDisplay key={item.id} item={item} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} onDuplicate={()=>handleDuplicateItem(item)} onSaveToLibrary={handleSaveToLibrary} />
+                  <ItemRowDisplay key={item.id} item={item} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} onDuplicate={()=>handleDuplicateItem(item)} />
                 )
               )}
               <NewItemRow onAdd={handleAddItem} onAddChapter={handleAddChapter} />
