@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, Bookmark, BookOpen, X, Link, ChevronUp, ChevronDown, FolderPlus, GripVertical } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, Bookmark, BookOpen, X, Link, ChevronUp, ChevronDown, FolderPlus, GripVertical, Copy } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -503,7 +503,7 @@ function ItemRowEdit({ item, onSave, onCancel, onSaveToLibrary }) {
   );
 }
 
-function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary }) {
+function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate, onSaveToLibrary }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   const cat = CATEGORIES.find(c=>c.value===item.category)||CATEGORIES[0];
@@ -576,6 +576,7 @@ function ItemRowDisplay({ item, onEdit, onDelete, onSaveToLibrary }) {
         <td className="pres-actions-cell">
           <button className="ap-btn-icon" onClick={onEdit}><Pencil size={12}/></button>
           <button className="ap-btn-icon" onClick={() => onSaveToLibrary(item)} title="Guardar en biblioteca"><Bookmark size={12}/></button>
+          <button className="ap-btn-icon" onClick={onDuplicate} title="Duplicar partida"><Copy size={12}/></button>
           <button className="ap-btn-icon pres-del" onClick={onDelete}><Trash2 size={12}/></button>
         </td>
       </tr>
@@ -832,6 +833,21 @@ function BudgetEditor({ id, onBack }) {
     setItems(prev => prev.filter(i => i.id !== itemId));
   };
 
+  const handleDuplicateItem = async (item) => {
+    try {
+      const { data } = await api.post(`/budgets/${id}/items`, {
+        name: item.name, category: item.category, quantity: item.quantity, unit: item.unit,
+        unit_cost: item.unit_cost, markup_pct: item.markup_pct, unit_price: item.unit_price,
+        discount_pct: item.discount_pct, pvp_ref: item.pvp_ref, purchase_dto: item.purchase_dto,
+        pricing_mode: item.pricing_mode, catalog_product_id: item.catalog_product_id,
+        brand: item.brand, longitud: item.longitud, ancho: item.ancho, altura: item.altura,
+        color_bastidor: item.color_bastidor, color_acolchado: item.color_acolchado, tipo_acolchado: item.tipo_acolchado,
+      });
+      setItems(prev => [...prev, data.item]);
+      flash('Partida duplicada');
+    } catch { flash('Error al duplicar', 'error'); }
+  };
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const handleDragEnd = async (event) => {
@@ -1043,7 +1059,7 @@ function BudgetEditor({ id, onBack }) {
                 ) : editingId === item.id ? (
                   <ItemRowEdit key={item.id} item={item} onSave={d=>handleUpdateItem(item.id,d)} onCancel={()=>setEditingId(null)} onSaveToLibrary={handleSaveToLibrary} />
                 ) : (
-                  <ItemRowDisplay key={item.id} item={item} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} onSaveToLibrary={handleSaveToLibrary} />
+                  <ItemRowDisplay key={item.id} item={item} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} onDuplicate={()=>handleDuplicateItem(item)} onSaveToLibrary={handleSaveToLibrary} />
                 )
               )}
               <NewItemRow onAdd={handleAddItem} onAddChapter={handleAddChapter} />
