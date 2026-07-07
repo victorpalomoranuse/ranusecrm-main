@@ -481,7 +481,14 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       const imgX = margin + 22;
       if (imageUrl) {
         const buf = await fetchImageBuffer(imageUrl);
-        if (buf) { try { doc.image(buf, imgX, y + 6, { width: imgH, height: imgH, cover: [imgH, imgH] }); } catch {} }
+        if (buf) {
+          try {
+            doc.save();
+            doc.rect(imgX, y + 6, imgH, imgH).clip();
+            doc.image(buf, imgX, y + 6, { width: imgH, height: imgH, cover: [imgH, imgH] });
+            doc.restore();
+          } catch { doc.restore(); }
+        }
       }
 
       const textX = imgX + imgH + 8;
