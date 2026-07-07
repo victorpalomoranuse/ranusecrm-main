@@ -466,7 +466,13 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     for (const item of items) {
       const imageUrl = item.image_url || (item.catalog_product_id ? catalogMap[item.catalog_product_id] : null);
       const imgH = 38;
-      const rowH = imgH + 18;
+      const textXforCalc = margin + 22 + imgH + 8;
+      const textWforCalc = (margin + 195) - textXforCalc;
+      doc.fontSize(8.5).font('Helvetica');
+      const nameH = doc.heightOfString(item.name || '', { width: textWforCalc });
+      const brandH = item.brand ? doc.heightOfString(item.brand, { width: textWforCalc, fontSize: 7 }) : 0;
+      const textBlockH = nameH + (brandH ? brandH + 3 : 0);
+      const rowH = Math.max(imgH + 18, textBlockH + 16);
       if (y + rowH > H - 140) { doc.addPage(); y = margin; }
       if (rowNum % 2 === 0) doc.rect(margin, y, W - margin * 2, rowH).fill('#faf9f8');
 
@@ -480,7 +486,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
 
       const textX = imgX + imgH + 8;
       const textW = (margin + 195) - textX;
-      doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica-Bold').text(item.name, textX, y + 8, { width: textW });
+      doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica').text(item.name, textX, y + 8, { width: textW });
       const nameBottom = doc.y;
       const subLines = item.brand || '';
       if (subLines) doc.fillColor('#aaaaaa').fontSize(7).font('Helvetica').text(subLines, textX, Math.max(nameBottom + 1, y + 8), { width: textW });
@@ -536,7 +542,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     };
 
     drawRow('Subtotal', fmtEur(subtotalBruto));
-    if (lineDiscountTotal > 0) drawRow('Descuentos por producto', '-' + fmtEur(lineDiscountTotal), false, '#c0392b');
+    if (showDiscount && lineDiscountTotal > 0) drawRow('Descuentos por producto', '-' + fmtEur(lineDiscountTotal), false, '#c0392b');
     if (globalDto > 0) drawRow('Descuento global (' + globalDto + '%)', '-' + fmtEur(globalDiscountAmount), false, '#c0392b');
     if (parseFloat(iva) > 0) drawRow('IVA (' + iva + '%)', fmtEur(ivaAmount));
     if (parseFloat(irpf) > 0) drawRow('Retención IRPF (' + irpf + '%)', '-' + fmtEur(irpfAmount), false, '#cc3333');
