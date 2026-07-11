@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, ClipboardList } from 'lucide-react';
+import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, ClipboardList, Shield } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionTareas } from './SectionTareas';
 import { SectionAjustes } from './SectionAjustes';
@@ -687,30 +687,74 @@ function SectionProyectos() {
   );
 }
 
-function EmpleadoModal({ onClose, onSaved }) {
-  const [name,setName]=useState(''); const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [loading,setLoading]=useState(false); const [error,setError]=useState('');
-  const handleSubmit=async(e)=>{e.preventDefault();setError('');setLoading(true);try{const{data}=await api.post('/employees',{name,email,password});onSaved(data.employee);}catch(err){setError(err.response?.data?.error||'Error al crear el empleado');}finally{setLoading(false);}};
-  return (<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>Nuevo empleado</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form"><div className="ap-field"><label>Nombre *</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Carlos Rodríguez" required/></div><div className="ap-field"><label>Email *</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="carlos@ranusedesign.com" required/></div><div className="ap-field"><label>Contraseña *</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" required minLength={6}/></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={loading}>{loading?'Creando...':'Crear empleado'}</button></div></form></div></div>);
+const ETIQUETAS_PERMISOS = {
+  dashboard: 'Dashboard', trabajos: 'Trabajos', leads: 'Leads',
+  'leads-cualificados': 'Cualificados', proyectos: 'Proyectos', clientes: 'Clientes',
+  catalogo: 'Catálogo', referencias: 'Referencias', recursos: 'Recursos', contactos: 'Contactos',
+};
+const PERMISOS_CONFIGURABLES = Object.keys(ETIQUETAS_PERMISOS);
+
+function useRoles() {
+  const [roles,setRoles]=useState([]); const [loadingRoles,setLoadingRoles]=useState(true);
+  useEffect(()=>{api.get('/roles').then(r=>setRoles(r.data.roles||[])).catch(()=>{}).finally(()=>setLoadingRoles(false));},[]);
+  return {roles,setRoles,loadingRoles};
+}
+
+function EmpleadoModal({ employee, onClose, onSaved }) {
+  const isEdit = !!employee;
+  const {roles,loadingRoles}=useRoles();
+  const [name,setName]=useState(employee?.name||''); const [email,setEmail]=useState(employee?.email||''); const [password,setPassword]=useState(''); const [roleId,setRoleId]=useState(employee?.role_id||''); const [loading,setLoading]=useState(false); const [error,setError]=useState('');
+  const handleSubmit=async(e)=>{e.preventDefault();setError('');setLoading(true);try{if(isEdit){const{data}=await api.put(`/employees/${employee.id}`,{name,role_id:roleId||null});onSaved(data.employee,true);}else{const{data}=await api.post('/employees',{name,email,password,role_id:roleId||null});onSaved(data.employee,false);}}catch(err){setError(err.response?.data?.error||`Error al ${isEdit?'guardar':'crear'} el empleado`);}finally{setLoading(false);}};
+  return (<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>{isEdit?'Editar empleado':'Nuevo empleado'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form"><div className="ap-field"><label>Nombre *</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Carlos Rodríguez" required/></div><div className="ap-field"><label>Email *</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="carlos@ranusedesign.com" required disabled={isEdit}/></div>{!isEdit&&<div className="ap-field"><label>Contraseña *</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" required minLength={6}/></div>}<div className="ap-field"><label>Categoría / rol</label><select className="ap-select" value={roleId} onChange={e=>setRoleId(e.target.value)} disabled={loadingRoles}><option value="">Sin categoría (sin acceso extra)</option>{roles.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select><span className="ap-field-hint">Define qué puede ver este empleado. Gestiona las categorías desde "Roles".</span></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={loading}>{loading?'Guardando...':isEdit?'Guardar cambios':'Crear empleado'}</button></div></form></div></div>);
 }
 
 const PAGE_SIZE_EMPLEADOS=8;
 
 function SectionEmpleados() {
-  const {user}=useAdminAuth(); const isSuper=user?.role==='admin_superior'; const [employees,setEmployees]=useState([]); const [loading,setLoading]=useState(true); const [showModal,setShowModal]=useState(false); const [confirmId,setConfirmId]=useState(null); const [page,setPage]=useState(1); const [visiblePass,setVisiblePass]=useState({});
+  const {user}=useAdminAuth(); const isSuper=user?.role==='admin_superior'; const [employees,setEmployees]=useState([]); const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null); const [confirmId,setConfirmId]=useState(null); const [page,setPage]=useState(1); const [visiblePass,setVisiblePass]=useState({});
   const {toasts,toast,remove}=useToast();
   const loadEmployees=async()=>{try{const{data}=await api.get('/employees');setEmployees(data.employees||[]);}catch{}finally{setLoading(false);}};
   useEffect(()=>{loadEmployees();},[]);
   const handleDelete=async()=>{const emp=employees.find(e=>e.id===confirmId);if(emp?.is_admin_profile){toast.error('No puedes eliminar tu propio perfil');setConfirmId(null);return;}try{await api.delete(`/employees/${confirmId}`);setEmployees(prev=>prev.filter(e=>e.id!==confirmId));toast.success('Empleado eliminado');}catch{toast.error('Error al eliminar el empleado');}finally{setConfirmId(null);}};
   const togglePass=(id)=>setVisiblePass(prev=>({...prev,[id]:!prev[id]}));
+  const handleSaved=(emp,isEdit)=>{if(isEdit){setEmployees(prev=>prev.map(e=>e.id===emp.id?emp:e));toast.success('Empleado actualizado');}else{setEmployees(prev=>[emp,...prev]);toast.success('Empleado creado correctamente');}setModal(null);};
   return (
     <div className="ap-section">
       <ToastContainer toasts={toasts} onRemove={remove}/>
-      <div className="ap-section-head"><div><h1>Empleados</h1><p>Gestiona el equipo.</p></div><button className="ap-btn ap-btn-primary" onClick={()=>setShowModal(true)}><Plus size={15}/> Añadir empleado</button></div>
+      <div className="ap-section-head"><div><h1>Empleados</h1><p>Gestiona el equipo y la categoría de cada uno.</p></div><button className="ap-btn ap-btn-primary" onClick={()=>setModal('new')}><Plus size={15}/> Añadir empleado</button></div>
       {loading?<div className="ap-loading">Cargando empleados…</div>:employees.length===0?<div className="ap-empty"><p>No hay empleados todavía.</p></div>:(
-        <><div className="ap-emp-list">{employees.slice((page-1)*PAGE_SIZE_EMPLEADOS,page*PAGE_SIZE_EMPLEADOS).map(e=>(<div key={e.id} className={`ap-emp-row${e.is_admin_profile?' ap-emp-row--admin':''}`}><div className="ap-emp-avatar" style={e.is_admin_profile?{background:'rgba(190,176,162,0.2)',color:'#beb0a2'}:{}}>{e.name.charAt(0).toUpperCase()}</div><div className="ap-emp-info"><span className="ap-emp-name">{e.name}{e.is_admin_profile&&<span className="ap-emp-badge">Admin</span>}</span><span className="ap-emp-email">{e.email}</span>{isSuper&&!e.is_admin_profile&&e.plain_password&&(<span className="ap-emp-pass-row"><span className="ap-emp-pass-val">{visiblePass[e.id]?e.plain_password:'••••••••'}</span><button className="ap-btn-icon ap-emp-pass-eye" onClick={()=>togglePass(e.id)}>{visiblePass[e.id]?<EyeOff size={12}/>:<Eye size={12}/>}</button></span>)}</div><span className={`ap-emp-status${e.active?' active':''}`}>{e.active?'Activo':'Inactivo'}</span>{!e.is_admin_profile&&(<button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(e.id)}><Trash2 size={13}/></button>)}</div>))}</div><Pagination page={page} total={employees.length} pageSize={PAGE_SIZE_EMPLEADOS} onPage={setPage}/></>
+        <><div className="ap-emp-list">{employees.slice((page-1)*PAGE_SIZE_EMPLEADOS,page*PAGE_SIZE_EMPLEADOS).map(e=>(<div key={e.id} className={`ap-emp-row${e.is_admin_profile?' ap-emp-row--admin':''}`}><div className="ap-emp-avatar" style={e.is_admin_profile?{background:'rgba(190,176,162,0.2)',color:'#beb0a2'}:{}}>{e.name.charAt(0).toUpperCase()}</div><div className="ap-emp-info"><span className="ap-emp-name">{e.name}{e.is_admin_profile&&<span className="ap-emp-badge">Admin</span>}</span><span className="ap-emp-email">{e.email}</span>{!e.is_admin_profile&&(<span className="ap-emp-perms-row">{e.employee_roles?.name?<span className="ap-perm-tag">{e.employee_roles.name}</span>:<span className="ap-perm-tag ap-perm-tag--none">Sin categoría</span>}</span>)}{isSuper&&!e.is_admin_profile&&e.plain_password&&(<span className="ap-emp-pass-row"><span className="ap-emp-pass-val">{visiblePass[e.id]?e.plain_password:'••••••••'}</span><button className="ap-btn-icon ap-emp-pass-eye" onClick={()=>togglePass(e.id)}>{visiblePass[e.id]?<EyeOff size={12}/>:<Eye size={12}/>}</button></span>)}</div><span className={`ap-emp-status${e.active?' active':''}`}>{e.active?'Activo':'Inactivo'}</span>{!e.is_admin_profile&&(<div className="ap-emp-actions"><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(e)}><Pencil size={13}/></button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(e.id)}><Trash2 size={13}/></button></div>)}</div>))}</div><Pagination page={page} total={employees.length} pageSize={PAGE_SIZE_EMPLEADOS} onPage={setPage}/></>
       )}
-      {showModal&&<EmpleadoModal onClose={()=>setShowModal(false)} onSaved={(emp)=>{setEmployees(prev=>[emp,...prev]);setShowModal(false);toast.success('Empleado creado correctamente');}}/>}
+      {modal&&<EmpleadoModal employee={modal==='new'?null:modal} onClose={()=>setModal(null)} onSaved={handleSaved}/>}
       {confirmId&&<ConfirmDialog message="¿Eliminar este empleado? Perderá el acceso al panel." onConfirm={handleDelete} onCancel={()=>setConfirmId(null)}/>}
+    </div>
+  );
+}
+
+function RoleModal({ role, onClose, onSaved }) {
+  const isEdit = !!role;
+  const [name,setName]=useState(role?.name||''); const [permissions,setPermissions]=useState(()=>{const base={};PERMISOS_CONFIGURABLES.forEach(k=>{base[k]=role?.permissions?.[k]===true;});return base;}); const [loading,setLoading]=useState(false); const [error,setError]=useState('');
+  const togglePerm=(key)=>setPermissions(prev=>({...prev,[key]:!prev[key]}));
+  const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim())return;setError('');setLoading(true);try{let data;if(isEdit){({data}=await api.put(`/roles/${role.id}`,{name,permissions}));onSaved(data.role,true);}else{({data}=await api.post('/roles',{name,permissions}));onSaved(data.role,false);}}catch(err){setError(err.response?.data?.error||`Error al ${isEdit?'guardar':'crear'} el rol`);}finally{setLoading(false);}};
+  return (<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>{isEdit?'Editar rol':'Nuevo rol'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form"><div className="ap-field"><label>Nombre del rol *</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Comercial, Diseñador, Marketing..." required autoFocus/></div><div className="ap-field"><label>Secciones visibles</label><div className="ap-perms-list">{PERMISOS_CONFIGURABLES.map(key=>(<label key={key} className="ap-perm-item"><input type="checkbox" checked={permissions[key]} onChange={()=>togglePerm(key)}/><span><strong>{ETIQUETAS_PERMISOS[key]}</strong></span></label>))}</div></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={loading||!name.trim()}>{loading?'Guardando...':isEdit?'Guardar cambios':'Crear rol'}</button></div></form></div></div>);
+}
+
+function SectionRoles() {
+  const [roles,setRoles]=useState([]); const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null); const [confirm,setConfirm]=useState(null);
+  const {toasts,toast,remove}=useToast();
+  const loadRoles=async()=>{try{const{data}=await api.get('/roles');setRoles(data.roles||[]);}catch{}finally{setLoading(false);}};
+  useEffect(()=>{loadRoles();},[]);
+  const handleSaved=(role,isEdit)=>{setRoles(prev=>isEdit?prev.map(r=>r.id===role.id?role:r):[...prev,role]);toast.success(isEdit?'Rol actualizado':'Rol creado');setModal(null);};
+  const handleDelete=(id)=>{setConfirm({message:'¿Eliminar este rol? Los empleados que lo tengan asignado se quedarán sin categoría (no se borran).',onConfirm:async()=>{try{await api.delete(`/roles/${id}`);setRoles(prev=>prev.filter(r=>r.id!==id));toast.success('Rol eliminado');}catch{toast.error('Error al eliminar');}setConfirm(null);},onCancel:()=>setConfirm(null)});};
+  return (
+    <div className="ap-section">
+      <ToastContainer toasts={toasts} onRemove={remove}/>
+      {confirm&&<ConfirmDialog {...confirm}/>}
+      {modal&&<RoleModal role={modal==='new'?null:modal} onClose={()=>setModal(null)} onSaved={handleSaved}/>}
+      <div className="ap-section-head"><div><h1>Roles</h1><p>Crea categorías (Comercial, Diseñador...) y decide qué secciones ve cada una.</p></div><button className="ap-btn ap-btn-primary" onClick={()=>setModal('new')}><Plus size={15}/> Nuevo rol</button></div>
+      {loading?<div className="ap-loading">Cargando roles…</div>:roles.length===0?<div className="ap-empty"><p>No hay roles todavía. Crea el primero (por ejemplo, "Comercial").</p></div>:(
+        <div className="ap-role-grid">{roles.map(role=>{const active=PERMISOS_CONFIGURABLES.filter(k=>role.permissions?.[k]);return(<div key={role.id} className="ap-role-card"><div className="ap-role-card-head"><h3>{role.name}</h3><div className="ap-role-card-actions"><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(role)}><Pencil size={12}/></button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>handleDelete(role.id)}><Trash2 size={12}/></button></div></div>{active.length===0?<p className="ap-role-empty">Sin secciones activadas.</p>:(<div className="ap-role-perms">{active.map(k=><span key={k} className="ap-perm-tag">{ETIQUETAS_PERMISOS[k]}</span>)}</div>)}</div>);})}</div>
+      )}
     </div>
   );
 }
@@ -782,33 +826,66 @@ function SectionContactos() {
   );
 }
 
+function SectionRecursos() {
+  const {user}=useAdminAuth(); const canEdit=user?.role==='admin_superior';
+  const [resources,setResources]=useState([]); const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null); const [confirm,setConfirm]=useState(null); const [activeCategory,setActiveCategory]=useState('all');
+  const {toasts,toast,remove}=useToast();
+  useEffect(()=>{api.get('/resources').then(r=>setResources(r.data.resources||[])).catch(()=>toast.error('Error al cargar recursos')).finally(()=>setLoading(false));},[]);
+  const categories=[...new Set(resources.map(r=>r.category).filter(Boolean))].sort();
+  const visible=activeCategory==='all'?resources:resources.filter(r=>r.category===activeCategory);
+  const handleSaved=(res,isEdit)=>{setResources(prev=>isEdit?prev.map(r=>r.id===res.id?res:r):[res,...prev]);toast.success(isEdit?'Recurso actualizado':'Recurso añadido');};
+  const handleDelete=(id)=>{setConfirm({message:'¿Eliminar este recurso?',onConfirm:async()=>{try{await api.delete(`/resources/${id}`);setResources(prev=>prev.filter(r=>r.id!==id));toast.success('Recurso eliminado');}catch{toast.error('Error al eliminar');}setConfirm(null);},onCancel:()=>setConfirm(null)});};
+  const ResourceModal=({resource,onClose,onSaved})=>{const isEdit=!!resource;const [title,setTitle]=useState(resource?.title||'');const [category,setCategory]=useState(resource?.category||'');const [description,setDescription]=useState(resource?.description||'');const [url,setUrl]=useState(resource?.url||'');const [fileUrl,setFileUrl]=useState(resource?.file_url||'');const [saving,setSaving]=useState(false);const [error,setError]=useState('');const handleSubmit=async(e)=>{e.preventDefault();if(!title.trim())return;setSaving(true);setError('');try{const payload={title:title.trim(),category:category.trim()||null,description:description.trim()||null,url:url.trim()||null,file_url:fileUrl.trim()||null};let data;if(isEdit){({data}=await api.put(`/resources/${resource.id}`,payload));onSaved(data.resource,true);}else{({data}=await api.post('/resources',payload));onSaved(data.resource,false);}onClose();}catch{setError('Error al guardar');}finally{setSaving(false);}};return(<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>{isEdit?'Editar recurso':'Nuevo recurso'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form"><div className="ap-field"><label>Título *</label><input value={title} onChange={e=>setTitle(e.target.value)} required autoFocus/></div><div className="ap-field"><label>Categoría</label><input list="resource-categories" value={category} onChange={e=>setCategory(e.target.value)} placeholder="Manuales, Guiones, Marca..."/><datalist id="resource-categories">{categories.map(c=><option key={c} value={c}/>)}</datalist></div><div className="ap-field"><label>Descripción</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3}/></div><div className="ap-field"><label>Enlace</label><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..."/></div><div className="ap-field"><label>Archivo (URL)</label><input value={fileUrl} onChange={e=>setFileUrl(e.target.value)} placeholder="https://... (PDF, doc, etc.)"/></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={saving||!title.trim()}>{saving?'Guardando…':isEdit?'Guardar cambios':'Añadir recurso'}</button></div></form></div></div>);};
+  return (
+    <div className="ap-section">
+      <ToastContainer toasts={toasts} onRemove={remove}/>
+      {confirm&&<ConfirmDialog {...confirm}/>}
+      {modal&&<ResourceModal resource={modal==='new'?null:modal} onClose={()=>setModal(null)} onSaved={handleSaved}/>}
+      <div className="ap-section-head"><div><h1>Recursos</h1><p>Manuales, guías y documentación interna del equipo.</p></div>{canEdit&&<button className="ap-btn ap-btn-primary" onClick={()=>setModal('new')}><Plus size={15}/> Añadir recurso</button>}</div>
+      {categories.length>0&&(<div className="ap-ref-filters"><button className={`ap-catalog-pill${activeCategory==='all'?' active':''}`} onClick={()=>setActiveCategory('all')}>Todas ({resources.length})</button>{categories.map(cat=>(<button key={cat} className={`ap-catalog-pill${activeCategory===cat?' active':''}`} onClick={()=>setActiveCategory(cat)}>{cat}<span className="ap-catalog-pill-count">{resources.filter(r=>r.category===cat).length}</span></button>))}</div>)}
+      {loading?<div className="ap-loading">Cargando…</div>:resources.length===0?<div className="ap-empty"><p>No hay recursos todavía.</p></div>:(<div className="ap-ref-grid">{visible.map(res=>(<div key={res.id} className="ap-ref-card"><div className="ap-ref-card-body">{res.category&&<span className="ap-ref-category">{res.category}</span>}<h3 className="ap-ref-title">{res.title}</h3>{res.description&&<p className="ap-ref-desc">{res.description}</p>}</div><div className="ap-ref-card-actions">{res.url&&(<a href={res.url} target="_blank" rel="noopener noreferrer" className="ap-btn ap-btn-primary ap-btn-sm"><ExternalLink size={12}/> Abrir</a>)}{res.file_url&&(<a href={res.file_url} target="_blank" rel="noopener noreferrer" className="ap-btn ap-btn-ghost ap-btn-sm"><Download size={12}/> Descargar</a>)}{canEdit&&(<><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(res)}><Pencil size={12}/></button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>handleDelete(res.id)}><Trash2 size={12}/></button></>)}</div></div>))}</div>)}
+    </div>
+  );
+}
+
 const NAV_ITEMS = [
   { id:'dashboard', label:'Dashboard', Icon:BarChart2, adminOnly:true },
-  { id:'trabajos', label:'Trabajos', Icon:LayoutGrid },
-  { id:'leads', label:'Leads', Icon:Target, adminOnly:true },
-  { id:'leads-cualificados', label:'Cualificados', Icon:ClipboardList, adminOnly:true },
-  { id:'proyectos', label:'Proyectos', Icon:FolderOpen },
-  { id:'clientes', label:'Clientes', Icon:UserCheck },
+  { id:'trabajos', label:'Trabajos', Icon:LayoutGrid, permission:'trabajos' },
+  { id:'leads', label:'Leads', Icon:Target, permission:'leads' },
+  { id:'leads-cualificados', label:'Cualificados', Icon:ClipboardList, permission:'leads-cualificados' },
+  { id:'proyectos', label:'Proyectos', Icon:FolderOpen, permission:'proyectos' },
+  { id:'clientes', label:'Clientes', Icon:UserCheck, permission:'clientes' },
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
+  { id:'roles', label:'Roles', Icon:Shield, adminOnly:true },
   { id:'presupuestos', label:'Presupuestos', Icon:Calculator, adminOnly:true },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
-  { id:'catalogo', label:'Catálogo', Icon:BookOpen },
-  { id:'referencias', label:'Referencias', Icon:Bookmark },
-  { id:'contactos', label:'Contactos', Icon:Phone },
+  { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },
+  { id:'referencias', label:'Referencias', Icon:Bookmark, permission:'referencias' },
+  { id:'recursos', label:'Recursos', Icon:Download, permission:'recursos' },
+  { id:'contactos', label:'Contactos', Icon:Phone, permission:'contactos' },
   { id:'ajustes', label:'Ajustes', Icon:Settings, adminOnly:true },
 ];
+
+function canAccessNav(item, user) {
+  if (user?.role === 'admin_superior') return true;
+  if (item.adminOnly) return false;
+  if (item.permission) return user?.permissions?.[item.permission] === true;
+  return true;
+}
 
 export function AdminPanel() {
   const {user,logout}=useAdminAuth();
   const navigate=useNavigate();
-  const [section,setSection]=useState(user?.role==='admin_superior'?'dashboard':'trabajos');
+  const accessibleItems=NAV_ITEMS.filter(item=>canAccessNav(item,user));
+  const defaultSection=user?.role==='admin_superior'?'dashboard':(accessibleItems[0]?.id||'trabajos');
+  const [section,setSection]=useState(defaultSection);
   const handleLogout=()=>{logout();navigate('/admin');};
   return (
     <div className="ap">
       <aside className="ap-sidebar">
         <div className="ap-sidebar-logo"><img src="/iconoRanuse.ico" alt="Ranuse"/><span>Ranuse Design</span></div>
-        <nav className="ap-nav">{NAV_ITEMS.filter(item=>!item.adminOnly||user?.role==='admin_superior').map(item=>(<button key={item.id} className={`ap-nav-item${section===item.id?' active':''}`} onClick={()=>setSection(item.id)}><item.Icon size={17} className="ap-nav-icon"/><span>{item.label}</span></button>))}</nav>
-        <div className="ap-sidebar-footer"><p className="ap-user">{user?.email}</p><button className="ap-logout" onClick={handleLogout}><LogOut size={13}/> Cerrar sesión</button></div>
+        <nav className="ap-nav">{accessibleItems.map(item=>(<button key={item.id} className={`ap-nav-item${section===item.id?' active':''}`} onClick={()=>setSection(item.id)}><item.Icon size={17} className="ap-nav-icon"/><span>{item.label}</span></button>))}</nav>
+        <div className="ap-sidebar-footer"><p className="ap-user">{user?.name||user?.email}{user?.puesto&&<span className="ap-user-puesto">{user.puesto}</span>}</p><button className="ap-logout" onClick={handleLogout}><LogOut size={13}/> Cerrar sesión</button></div>
       </aside>
       <main className="ap-main">
         {section==='dashboard'&&<SectionDashboard/>}
@@ -818,11 +895,13 @@ export function AdminPanel() {
         {section==='proyectos'&&<SectionProyectos/>}
         {section==='clientes'&&<SectionClientes/>}
         {section==='empleados'&&<SectionEmpleados/>}
+        {section==='roles'&&<SectionRoles/>}
         {section==='presupuestos'&&<SectionPresupuestos/>}
         {section==='tareas'&&<SectionTareas/>}
         {section==='ajustes'&&<SectionAjustes/>}
         {section==='catalogo'&&<SectionCatalogo/>}
         {section==='referencias'&&<SectionReferencias/>}
+        {section==='recursos'&&<SectionRecursos/>}
         {section==='contactos'&&<SectionContactos/>}
       </main>
     </div>
