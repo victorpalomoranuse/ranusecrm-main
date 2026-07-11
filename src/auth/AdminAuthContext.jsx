@@ -14,7 +14,11 @@ export function AdminAuthProvider({ children }) {
     if (!token) { setLoading(false); return; }
 
     api.post('/auth/verify')
-      .then(({ data }) => setUser(data.user))
+      .then(({ data }) => {
+        setUser(data.user);
+        localStorage.setItem('admin_user', JSON.stringify(data.user));
+        if (data.token) localStorage.setItem('admin_token', data.token);
+      })
       .catch(() => {
         localStorage.removeItem('admin_token');
         localStorage.removeItem('admin_user');
