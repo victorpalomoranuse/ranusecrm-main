@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, ExternalLink, UserPlus, ArrowUp, ArrowDown, LayoutGrid, List } from 'lucide-react';
 import api from '../services/api';
 
 function useToast() {
@@ -49,7 +49,7 @@ const ESTADOS = {
   diseño:                 { label: 'Diseño',           color: '#06b6d4' },
   llamada_venta:          { label: 'Llamada venta',    color: '#10b981' },
   no_show:                { label: 'No Show',          color: '#f97316' },
-  venta:                  { label: 'Venta ✓',          color: '#beb0a2' },
+  venta:                  { label: 'Venta 2 ✓',        color: '#beb0a2' },
   rechazo:                { label: 'Rechazo',          color: '#f87171' },
   enfriado:               { label: 'Enfriado',         color: '#64748b' },
   descartado:             { label: 'Descartado',       color: '#6b7280' },
@@ -58,6 +58,17 @@ const ORDEN = ['contacto','respuesta_chat','llamada_descubrimiento','diseño','l
 const CANALES = ['instagram','whatsapp','web','recomendacion','ads','evento','agente','otro'];
 const DEPORTES = ['Fútbol','Pádel','Baloncesto','Tenis','MotoGP','Ciclismo','Otro'];
 const LIGAS = ['LaLiga','Hypermotion','Primera RFEF','Liga F','ACB','WPT','Bundesliga','Premier','Serie A','Otro'];
+const TIPOS_DISEÑO = {
+  diseño_gratis: { label: 'Diseño gratis', color: '#64748b' },
+  diseño_venta:  { label: 'Diseño con venta', color: '#22c55e' },
+};
+const ORDENABLES = [
+  { key: 'fecha_contacto', label: 'Fecha de contacto' },
+  { key: 'canal', label: 'Canal' },
+  { key: 'estado', label: 'Etiqueta (estado)' },
+  { key: 'nombre', label: 'Nombre' },
+  { key: 'valor_estimado', label: 'Inversión estimada' },
+];
 
 const fmtEur = n => n ? `${Number(n).toLocaleString('es-ES')}€` : '—';
 
@@ -67,11 +78,13 @@ const EMPTY = {
   estado:'contacto', valor_estimado:'', pct_cierre:20, notas:'',
   fecha_contacto: new Date().toISOString().slice(0,10),
   fecha_respuesta:'', fecha_llamada:'', fecha_diseño:'', fecha_llamada_venta:'', fecha_venta:'',
+  tipo_diseño:'diseño_gratis', valor_diseño:'', link_fathom:'', assigned_to:'',
 };
 
 export function SectionLeads() {
   const { toasts, toast, remove } = useToast();
   const [leads, setLeads] = useState([]);
+  const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [panel, setPanel] = useState(null);
@@ -81,8 +94,12 @@ export function SectionLeads() {
   const [filtroEstado, setFiltroEstado] = useState('all');
   const [filtroOrigen, setFiltroOrigen] = useState('all');
   const [filtroMes, setFiltroMes] = useState('all');
+  const [filtroComercial, setFiltroComercial] = useState('all');
   const [busqueda, setBusqueda] = useState('');
   const [vistaMetricas, setVistaMetricas] = useState(false);
+  const [vistaKanban, setVistaKanban] = useState(false);
+  const [ordenarPor, setOrdenarPor] = useState('fecha_contacto');
+  const [ordenAsc, setOrdenAsc] = useState(false);
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 30;
 
@@ -95,7 +112,12 @@ export function SectionLeads() {
     setLoading(false);
   };
 
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => {
+    cargar();
+    api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {});
+  }, []);
+
+  const nombreComercial = (id) => empleados.find(e => e.id === id)?.name || null;
 
   const mesesDisponibles = [...new Set(leads
     .filter(l => l.fecha_contacto)
@@ -106,13 +128,24 @@ export function SectionLeads() {
     if (filtroEstado !== 'all' && l.estado !== filtroEstado) return false;
     if (filtroOrigen !== 'all' && l.origen !== filtroOrigen) return false;
     if (filtroMes !== 'all' && (!l.fecha_contacto || l.fecha_contacto.slice(0, 7) !== filtroMes)) return false;
+    if (filtroComercial !== 'all' && (filtroComercial === 'sin_asignar' ? l.assigned_to : l.assigned_to !== filtroComercial)) return false;
     if (busqueda && !l.nombre.toLowerCase().includes(busqueda.toLowerCase()) &&
         !(l.instagram||'').toLowerCase().includes(busqueda.toLowerCase())) return false;
     return true;
   });
 
-  const totalPaginas = Math.ceil(filtrados.length / POR_PAGINA);
-  const leadsPagina = filtrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
+  const ordenados = [...filtrados].sort((a, b) => {
+    let va, vb;
+    if (ordenarPor === 'estado') { va = ORDEN.indexOf(a.estado); vb = ORDEN.indexOf(b.estado); }
+    else if (ordenarPor === 'valor_estimado') { va = a.valor_estimado || 0; vb = b.valor_estimado || 0; }
+    else { va = (a[ordenarPor] || '').toString().toLowerCase(); vb = (b[ordenarPor] || '').toString().toLowerCase(); }
+    if (va < vb) return ordenAsc ? -1 : 1;
+    if (va > vb) return ordenAsc ? 1 : -1;
+    return 0;
+  });
+
+  const totalPaginas = Math.ceil(ordenados.length / POR_PAGINA);
+  const leadsPagina = ordenados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
   // Métricas calculadas sobre filtrados
   const calcMetricas = (f) => {
@@ -176,6 +209,24 @@ export function SectionLeads() {
       setLeads(prev => prev.map(l => l.id === id ? data.lead : l));
       if (panel?.id === id) setPanel(data.lead);
     } catch { toast.error('Error al cambiar estado'); }
+  };
+
+  const asignarme = async (id) => {
+    try {
+      const { data } = await api.put(`/leads/${id}/asignarme`);
+      setLeads(prev => prev.map(l => l.id === id ? data.lead : l));
+      if (panel?.id === id) setPanel(data.lead);
+      toast.success('Lead asignado a ti');
+    } catch (err) { toast.error(err.response?.data?.error || 'Error al asignarte el lead'); }
+  };
+
+  const reasignar = async (id, employeeId) => {
+    try {
+      const { data } = await api.put(`/leads/${id}`, { assigned_to: employeeId || null });
+      setLeads(prev => prev.map(l => l.id === id ? data.lead : l));
+      if (panel?.id === id) setPanel(data.lead);
+      toast.success(employeeId ? 'Comercial reasignado' : 'Comercial desasignado');
+    } catch { toast.error('Error al reasignar'); }
   };
 
   const eliminar = async (id) => {
@@ -290,7 +341,7 @@ export function SectionLeads() {
       )}
 
       {/* Filtros */}
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16, alignItems:'center' }}>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12, alignItems:'center' }}>
         <input placeholder="Buscar..." value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(1); }} className="ap-field-input" style={{ maxWidth:200 }} />
         <select className="ap-select" value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPagina(1); }}>
           <option value="all">Todos los estados</option>
@@ -309,19 +360,49 @@ export function SectionLeads() {
             return <option key={m} value={m}>{label}</option>;
           })}
         </select>
+        <select className="ap-select" value={filtroComercial} onChange={e => { setFiltroComercial(e.target.value); setPagina(1); }}>
+          <option value="all">Todos los comerciales</option>
+          <option value="sin_asignar">Sin asignar</option>
+          {empleados.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
         <span style={{ marginLeft:'auto', color:'rgba(255,255,255,0.3)', fontSize:13 }}>{filtrados.length} leads</span>
       </div>
 
-      {/* Vista: tabla si todos los meses, kanban si mes concreto */}
-      {loading ? <div className="ap-loading">Cargando leads…</div> : filtroMes === 'all' ? (
+      {/* Orden y vista */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16, alignItems:'center' }}>
+        <span style={{ fontSize:12, color:'rgba(255,255,255,0.3)' }}>Ordenar por</span>
+        <select className="ap-select ap-select-sm" value={ordenarPor} onChange={e => setOrdenarPor(e.target.value)}>
+          {ORDENABLES.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+        </select>
+        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setOrdenAsc(a => !a)} title={ordenAsc ? 'Ascendente' : 'Descendente'}>
+          {ordenAsc ? <ArrowUp size={13}/> : <ArrowDown size={13}/>}
+        </button>
+        <div style={{ marginLeft:'auto', display:'flex', gap:4 }}>
+          <button className={`ap-btn ap-btn-sm ${!vistaKanban ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVistaKanban(false)}>
+            <List size={13}/> Listado
+          </button>
+          <button className={`ap-btn ap-btn-sm ${vistaKanban ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVistaKanban(true)}>
+            <LayoutGrid size={13}/> Tablero
+          </button>
+        </div>
+      </div>
+
+      {/* Vista: listado siempre disponible independientemente de los filtros; tablero es opcional */}
+      {loading ? <div className="ap-loading">Cargando leads…</div> : !vistaKanban ? (
         <>
           <div style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, overflow:'hidden' }}>
             <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 100px', padding:'8px 16px', borderBottom:'1px solid rgba(255,255,255,0.07)', fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1 }}>
-              <span>Nombre</span><span>Estado</span><span>Deporte</span><span>Canal</span><span>Contacto</span><span>Origen</span>
+              {[['nombre','Nombre'],['estado','Estado'],['canal','Canal'],['fecha_contacto','Contacto']].map(([key,label]) => (
+                <span key={key} onClick={() => ordenarPor===key ? setOrdenAsc(a=>!a) : (setOrdenarPor(key),setOrdenAsc(true))} style={{ cursor:'pointer', display:'flex', alignItems:'center', gap:3, userSelect:'none' }}>
+                  {label}{ordenarPor===key && (ordenAsc ? <ArrowUp size={10}/> : <ArrowDown size={10}/>)}
+                </span>
+              ))}
+              <span>Comercial</span><span>Origen</span>
             </div>
             {leadsPagina.length === 0 && <div className="ap-empty"><p>No hay leads con estos filtros.</p></div>}
             {leadsPagina.map((lead, i) => {
               const est = ESTADOS[lead.estado];
+              const comercial = nombreComercial(lead.assigned_to);
               return (
                 <div key={lead.id} onClick={() => setPanel(lead)}
                   style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 100px', padding:'10px 16px', borderBottom:'1px solid rgba(255,255,255,0.05)', cursor:'pointer', background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}
@@ -332,9 +413,15 @@ export function SectionLeads() {
                     {lead.instagram && <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)' }}>@{lead.instagram}</div>}
                   </div>
                   <div style={{ alignSelf:'center' }}><span style={{ background:`${est?.color}20`, color:est?.color, fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4 }}>{est?.label}</span></div>
-                  <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center' }}>{lead.deporte || '—'}</div>
                   <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center', textTransform:'capitalize' }}>{lead.canal || '—'}</div>
                   <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center' }}>{lead.fecha_contacto?.slice(0,10) || '—'}</div>
+                  <div style={{ alignSelf:'center' }} onClick={e => e.stopPropagation()}>
+                    {comercial ? (
+                      <span style={{ fontSize:11, color:'#beb0a2' }}>{comercial}</span>
+                    ) : (
+                      <button className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => asignarme(lead.id)}><UserPlus size={11}/> Asignarme</button>
+                    )}
+                  </div>
                   <div style={{ alignSelf:'center' }}>
                     <span style={{ fontSize:9, background: lead.origen==='inbound' ? '#0a3d4a' : '#3b1f6e', color: lead.origen==='inbound' ? '#06b6d4' : '#8b5cf6', borderRadius:3, padding:'2px 6px' }}>
                       {lead.origen === 'inbound' ? '📥 IN' : '📤 OUT'}
@@ -356,7 +443,7 @@ export function SectionLeads() {
         <div style={{ overflowX:'auto' }}>
           <div style={{ display:'flex', gap:10, minWidth:1100 }}>
             {ORDEN.map(estado => {
-              const col = filtrados.filter(l => l.estado === estado);
+              const col = ordenados.filter(l => l.estado === estado);
               const est = ESTADOS[estado];
               return (
                 <div key={estado} style={{ flex:1, minWidth:120 }}>
@@ -381,6 +468,7 @@ export function SectionLeads() {
                         </div>
                         {lead.deporte && <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)', marginTop:2 }}>{lead.deporte}</div>}
                         {lead.valor_estimado > 0 && <div style={{ fontSize:11, color:'#beb0a2', fontWeight:600, marginTop:4 }}>{Number(lead.valor_estimado).toLocaleString('es-ES')}€</div>}
+                        <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', marginTop:3 }}>{nombreComercial(lead.assigned_to) || 'Sin asignar'}</div>
                         <div onClick={e => e.stopPropagation()} style={{ marginTop:6, display:'flex', gap:3, flexWrap:'wrap' }}>
                           {ORDEN.filter(e => e !== estado).slice(0,2).map(e => (
                             <button key={e} onClick={() => cambiarEstado(lead.id, e)}
@@ -428,6 +516,8 @@ export function SectionLeads() {
             ['Deporte',          [panel.deporte, panel.liga].filter(Boolean).join(' · ') || '—'],
             ['Teléfono',         panel.telefono || '—'],
             ['Email',            panel.email || '—'],
+            ['Servicio',         TIPOS_DISEÑO[panel.tipo_diseño]?.label || TIPOS_DISEÑO.diseño_gratis.label],
+            ...(panel.tipo_diseño === 'diseño_venta' ? [['Valor diseño', fmtEur(panel.valor_diseño)]] : []),
             ['Inversión',        fmtEur(panel.valor_estimado)],
             ['% Cierre',         `${panel.pct_cierre||0}%`],
             ['📅 Contacto',      panel.fecha_contacto?.slice(0,10) || '—'],
@@ -442,6 +532,23 @@ export function SectionLeads() {
               <span style={{ color:'#e5ddd5' }}>{v}</span>
             </div>
           ))}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,0.05)', fontSize:12 }}>
+            <span style={{ color:'rgba(255,255,255,0.3)' }}>Comercial</span>
+            <select className="ap-select ap-select-sm" value={panel.assigned_to||''} onChange={e => reasignar(panel.id, e.target.value)}>
+              <option value="">Sin asignar</option>
+              {empleados.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </div>
+          {!panel.assigned_to && (
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop:8, width:'100%' }} onClick={() => asignarme(panel.id)}>
+              <UserPlus size={13}/> Asignarme este lead
+            </button>
+          )}
+          {panel.link_fathom && (
+            <a href={panel.link_fathom} target="_blank" rel="noopener noreferrer" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop:8, width:'100%', justifyContent:'center' }}>
+              <ExternalLink size={13}/> Ver llamada (Fathom)
+            </a>
+          )}
           {panel.notas && (
             <div style={{ marginTop:12, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:10, fontSize:12, color:'rgba(255,255,255,0.5)', lineHeight:1.6 }}>
               {panel.notas}
@@ -502,6 +609,21 @@ export function SectionLeads() {
                 </div>
                 <div className="ap-field"><label>Inversión estimada (€)</label><input type="number" value={form.valor_estimado||''} onChange={e => setF('valor_estimado', e.target.value)} placeholder="25000" /></div>
                 <div className="ap-field"><label>% Cierre estimado</label><input type="number" min={0} max={100} value={form.pct_cierre} onChange={e => setF('pct_cierre', Number(e.target.value))} /></div>
+                <div className="ap-field"><label>Servicio de diseño</label>
+                  <select className="ap-select" value={form.tipo_diseño||'diseño_gratis'} onChange={e => setF('tipo_diseño', e.target.value)}>
+                    {Object.entries(TIPOS_DISEÑO).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </div>
+                {form.tipo_diseño === 'diseño_venta' && (
+                  <div className="ap-field"><label>Valor del diseño (€)</label><input type="number" value={form.valor_diseño||''} onChange={e => setF('valor_diseño', e.target.value)} placeholder="500" /></div>
+                )}
+                <div className="ap-field"><label>Comercial asignado</label>
+                  <select className="ap-select" value={form.assigned_to||''} onChange={e => setF('assigned_to', e.target.value)}>
+                    <option value="">Sin asignar</option>
+                    {empleados.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                </div>
+                <div className="ap-field" style={{ gridColumn:'1/-1' }}><label>Link llamada (Fathom)</label><input value={form.link_fathom||''} onChange={e => setF('link_fathom', e.target.value)} placeholder="https://fathom.video/..." /></div>
               </div>
               <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, margin:'12px 0 8px' }}>Fechas del proceso</div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
