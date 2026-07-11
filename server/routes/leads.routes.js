@@ -102,6 +102,7 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
       origen = 'outbound', canal, estado = 'contacto',
       valor_estimado, pct_cierre = 20, notas,
       fecha_contacto, fecha_respuesta, fecha_llamada, fecha_diseño, fecha_llamada_venta, fecha_venta,
+      fecha_venta_diseño_1,
       tipo_diseño = 'diseño_gratis', valor_diseño, link_fathom, assigned_to,
       valor_comisiones, notas_comisiones
     } = req.body;
@@ -125,6 +126,7 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
         fecha_llamada: fecha_llamada || null,
         fecha_diseño: fecha_diseño || null,
         fecha_llamada_venta: fecha_llamada_venta || null,
+        fecha_venta_diseño_1: fecha_venta_diseño_1 || null,
         fecha_venta: fecha_venta || null,
         tipo_diseño: resolverTipoDiseño(estadoFinal, tipo_diseño),
         valor_diseño: valor_diseño ? parseFloat(valor_diseño) : null,
@@ -168,7 +170,7 @@ router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
     if (updates.assigned_to !== undefined)
       updates.assigned_to = updates.assigned_to || null;
 
-    ['fecha_contacto','fecha_respuesta','fecha_llamada','fecha_diseño','fecha_llamada_venta','fecha_venta'].forEach(f => {
+    ['fecha_contacto','fecha_respuesta','fecha_llamada','fecha_diseño','fecha_llamada_venta','fecha_venta','fecha_venta_diseño_1'].forEach(f => {
       if (updates[f] !== undefined) updates[f] = updates[f] || null;
     });
 
