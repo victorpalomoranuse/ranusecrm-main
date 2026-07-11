@@ -1,6 +1,8 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
-import { authenticateToken, requireAdmin, requireAdminSuperior } from '../middleware/auth.middleware.js';
+import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
+
+const requireProyectos = requirePermission('proyectos');
 import { uploadProjectRender, deleteProjectRender, uploadProjectDocument, deleteProjectDocument, uploadDiagnosisImage, deleteDiagnosisImage } from '../utils/storage.js';
 import { uploadRenderFile, uploadDocumentFile, uploadDiagnosisImageFile, handleMulterError } from '../middleware/upload.middleware.js';
 
@@ -29,7 +31,7 @@ async function generateUniqueCode() {
  * GET /api/client-projects
  * Listar todos los proyectos de clientes
  */
-router.get('/', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('client_projects')
@@ -71,7 +73,7 @@ router.get('/my-projects', authenticateToken, async (req, res) => {
  * POST /api/client-projects/generate-code
  * Generar un código único (para usar en el formulario del admin)
  */
-router.post('/generate-code', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/generate-code', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const code = await generateUniqueCode();
     res.json({ code });
@@ -84,7 +86,7 @@ router.post('/generate-code', authenticateToken, requireAdmin, async (req, res) 
  * GET /api/client-projects/all-renders
  * Todos los renders de todos los proyectos (para la biblioteca de renders)
  */
-router.get('/all-renders', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/all-renders', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('project_renders')
@@ -177,7 +179,7 @@ router.get('/by-code/:code', async (req, res) => {
  * POST /api/client-projects
  * Crear un nuevo proyecto de cliente
  */
-router.post('/', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { client_name, project_name, client_email, access_code, phase = 1, urgency = 'normal', responsible_id, notes } = req.body;
 
@@ -222,7 +224,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
  * PUT /api/client-projects/:id
  * Actualizar un proyecto de cliente
  */
-router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active } = req.body;
 
@@ -277,7 +279,7 @@ router.delete('/:id', authenticateToken, requireAdminSuperior, async (req, res) 
 /**
  * GET /api/client-projects/:id/renders
  */
-router.put('/:id/renders/reorder', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/:id/renders/reorder', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -294,7 +296,7 @@ router.put('/:id/renders/reorder', authenticateToken, requireAdmin, async (req, 
   }
 });
 
-router.get('/:id/renders', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/:id/renders', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('project_renders')
@@ -314,7 +316,7 @@ router.get('/:id/renders', authenticateToken, requireAdmin, async (req, res) => 
 /**
  * POST /api/client-projects/:id/renders
  */
-router.post('/:id/renders', authenticateToken, requireAdmin, uploadRenderFile, handleMulterError, async (req, res) => {
+router.post('/:id/renders', authenticateToken, requireProyectos, uploadRenderFile, handleMulterError, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No se recibió ningún archivo' });
@@ -362,7 +364,7 @@ router.post('/:id/renders', authenticateToken, requireAdmin, uploadRenderFile, h
 /**
  * DELETE /api/client-projects/:id/renders/:renderId
  */
-router.delete('/:id/renders/:renderId', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id/renders/:renderId', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data: render, error: fetchError } = await supabase
       .from('project_renders')
@@ -397,7 +399,7 @@ router.delete('/:id/renders/:renderId', authenticateToken, requireAdmin, async (
 /**
  * GET /api/client-projects/:id/documents
  */
-router.get('/:id/documents', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/:id/documents', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('project_documents')
@@ -416,7 +418,7 @@ router.get('/:id/documents', authenticateToken, requireAdmin, async (req, res) =
 /**
  * POST /api/client-projects/:id/documents
  */
-router.post('/:id/documents', authenticateToken, requireAdmin, uploadDocumentFile, handleMulterError, async (req, res) => {
+router.post('/:id/documents', authenticateToken, requireProyectos, uploadDocumentFile, handleMulterError, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No se recibió ningún archivo' });
@@ -454,7 +456,7 @@ router.post('/:id/documents', authenticateToken, requireAdmin, uploadDocumentFil
 /**
  * DELETE /api/client-projects/:id/documents/:docId
  */
-router.delete('/:id/documents/:docId', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id/documents/:docId', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data: doc, error: fetchError } = await supabase
       .from('project_documents')
@@ -489,7 +491,7 @@ router.delete('/:id/documents/:docId', authenticateToken, requireAdmin, async (r
 /**
  * GET /api/client-projects/:id/diagnosis
  */
-router.get('/:id/diagnosis', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/:id/diagnosis', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data: diagnosis, error } = await supabase
       .from('project_diagnosis')
@@ -522,7 +524,7 @@ router.get('/:id/diagnosis', authenticateToken, requireAdmin, async (req, res) =
  * PUT /api/client-projects/:id/diagnosis
  * Upsert diagnosis content (text)
  */
-router.put('/:id/diagnosis', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/:id/diagnosis', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { content } = req.body;
     const projectId = req.params.id;
@@ -547,7 +549,7 @@ router.put('/:id/diagnosis', authenticateToken, requireAdmin, async (req, res) =
 /**
  * POST /api/client-projects/:id/diagnosis/images
  */
-router.post('/:id/diagnosis/images', authenticateToken, requireAdmin, uploadDiagnosisImageFile, handleMulterError, async (req, res) => {
+router.post('/:id/diagnosis/images', authenticateToken, requireProyectos, uploadDiagnosisImageFile, handleMulterError, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No se recibió ningún archivo' });
@@ -599,7 +601,7 @@ router.post('/:id/diagnosis/images', authenticateToken, requireAdmin, uploadDiag
 /**
  * DELETE /api/client-projects/:id/diagnosis/images/:imgId
  */
-router.delete('/:id/diagnosis/images/:imgId', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id/diagnosis/images/:imgId', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data: img, error: fetchError } = await supabase
       .from('project_diagnosis_images')
@@ -633,7 +635,7 @@ router.delete('/:id/diagnosis/images/:imgId', authenticateToken, requireAdmin, a
 /**
  * GET /api/client-projects/:id/materials
  */
-router.put('/:id/materials/reorder', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/:id/materials/reorder', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -650,7 +652,7 @@ router.put('/:id/materials/reorder', authenticateToken, requireAdmin, async (req
   }
 });
 
-router.get('/:id/materials', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/:id/materials', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('project_material_selections')
@@ -670,7 +672,7 @@ router.get('/:id/materials', authenticateToken, requireAdmin, async (req, res) =
 /**
  * POST /api/client-projects/:id/materials
  */
-router.post('/:id/materials', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/:id/materials', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { name, brand, category, location, notes, image_url, catalog_product_id } = req.body;
 
@@ -704,7 +706,7 @@ router.post('/:id/materials', authenticateToken, requireAdmin, async (req, res) 
 /**
  * DELETE /api/client-projects/:id/materials/:selId
  */
-router.delete('/:id/materials/:selId', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id/materials/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { error } = await supabase
       .from('project_material_selections')
@@ -727,7 +729,7 @@ router.delete('/:id/materials/:selId', authenticateToken, requireAdmin, async (r
 /**
  * GET /api/client-projects/:id/equipment
  */
-router.put('/:id/equipment/reorder', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/:id/equipment/reorder', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -744,7 +746,7 @@ router.put('/:id/equipment/reorder', authenticateToken, requireAdmin, async (req
   }
 });
 
-router.get('/:id/equipment', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/:id/equipment', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('project_equipment_selections')
@@ -764,7 +766,7 @@ router.get('/:id/equipment', authenticateToken, requireAdmin, async (req, res) =
 /**
  * POST /api/client-projects/:id/equipment
  */
-router.post('/:id/equipment', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { name, brand, category, quantity, color, notes, catalog_product_id, image_url } = req.body;
 
@@ -799,7 +801,7 @@ router.post('/:id/equipment', authenticateToken, requireAdmin, async (req, res) 
 /**
  * DELETE /api/client-projects/:id/equipment/:selId
  */
-router.delete('/:id/equipment/:selId', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id/equipment/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { error } = await supabase
       .from('project_equipment_selections')
@@ -822,7 +824,7 @@ router.delete('/:id/equipment/:selId', authenticateToken, requireAdmin, async (r
 /**
  * GET /api/client-projects/:id/tours
  */
-router.get('/:id/tours', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/:id/tours', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('project_tours')
@@ -839,7 +841,7 @@ router.get('/:id/tours', authenticateToken, requireAdmin, async (req, res) => {
 /**
  * POST /api/client-projects/:id/tours
  */
-router.post('/:id/tours', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/:id/tours', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { name, url } = req.body;
     if (!name?.trim() || !url?.trim()) {
@@ -860,7 +862,7 @@ router.post('/:id/tours', authenticateToken, requireAdmin, async (req, res) => {
 /**
  * PUT /api/client-projects/:id/tours/:tourId
  */
-router.put('/:id/tours/:tourId', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/:id/tours/:tourId', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { name, url } = req.body;
     const updates = {};
@@ -884,7 +886,7 @@ router.put('/:id/tours/:tourId', authenticateToken, requireAdmin, async (req, re
 /**
  * DELETE /api/client-projects/:id/tours/:tourId
  */
-router.delete('/:id/tours/:tourId', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id/tours/:tourId', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { error } = await supabase
       .from('project_tours')
@@ -905,7 +907,7 @@ router.delete('/:id/tours/:tourId', authenticateToken, requireAdmin, async (req,
 /**
  * GET /api/client-projects/:id/notes
  */
-router.get('/:id/notes', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/:id/notes', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('project_notes')
@@ -923,7 +925,7 @@ router.get('/:id/notes', authenticateToken, requireAdmin, async (req, res) => {
 /**
  * POST /api/client-projects/:id/notes
  */
-router.post('/:id/notes', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/:id/notes', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { content } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: 'El contenido es requerido' });
@@ -943,7 +945,7 @@ router.post('/:id/notes', authenticateToken, requireAdmin, async (req, res) => {
 /**
  * DELETE /api/client-projects/:id/notes/:noteId
  */
-router.delete('/:id/notes/:noteId', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id/notes/:noteId', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { error } = await supabase
       .from('project_notes')
@@ -957,7 +959,7 @@ router.delete('/:id/notes/:noteId', authenticateToken, requireAdmin, async (req,
     res.status(500).json({ error: 'Error al eliminar nota' });
   }
 });
-router.put('/:id/equipment/:selId', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { quantity, youtube_url, extra_images } = req.body;
 
@@ -981,7 +983,7 @@ router.put('/:id/equipment/:selId', authenticateToken, requireAdmin, async (req,
     res.status(500).json({ error: 'Error al actualizar equipo' });
   }
 });
-router.get('/:id/pdf-materiales', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/:id/pdf-materiales', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const { data: project, error } = await supabase
       .from('client_projects')
