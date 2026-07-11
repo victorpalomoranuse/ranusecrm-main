@@ -78,7 +78,7 @@ const EMPTY = {
   telefono:'', email:'', origen:'outbound', canal:'instagram',
   estado:'contacto', valor_estimado:'', pct_cierre:20, notas:'',
   fecha_contacto: new Date().toISOString().slice(0,10),
-  fecha_respuesta:'', fecha_llamada:'', fecha_diseño:'', fecha_llamada_venta:'', fecha_venta:'',
+  fecha_respuesta:'', fecha_llamada:'', fecha_diseño:'', fecha_llamada_venta:'', fecha_venta:'', fecha_venta_diseño_1:'',
   tipo_diseño:'diseño_gratis', valor_diseño:'', link_fathom:'', assigned_to:'',
   valor_comisiones:'', notas_comisiones:'',
 };
@@ -96,6 +96,7 @@ export function SectionLeads() {
   const [filtroEstado, setFiltroEstado] = useState('all');
   const [filtroOrigen, setFiltroOrigen] = useState('all');
   const [filtroMes, setFiltroMes] = useState('all');
+  const [filtroFechaTipo, setFiltroFechaTipo] = useState('contacto');
   const [filtroComercial, setFiltroComercial] = useState('all');
   const [busqueda, setBusqueda] = useState('');
   const [vistaMetricas, setVistaMetricas] = useState(false);
@@ -121,15 +122,21 @@ export function SectionLeads() {
 
   const nombreComercial = (id) => empleados.find(e => e.id === id)?.name || null;
 
+  // Fecha(s) relevantes de un lead según el tipo elegido: "contacto" (cuándo entró)
+  // o "venta" (cuándo se cobró algo — Venta Diseño 1 o Venta Diseño 2)
+  const fechasParaFiltro = (l) => filtroFechaTipo === 'venta'
+    ? [l.fecha_venta_diseño_1, l.fecha_venta].filter(Boolean)
+    : [l.fecha_contacto].filter(Boolean);
+
   const mesesDisponibles = [...new Set(leads
-    .filter(l => l.fecha_contacto)
-    .map(l => l.fecha_contacto.slice(0, 7))
+    .flatMap(fechasParaFiltro)
+    .map(f => f.slice(0, 7))
   )].sort().reverse();
 
   const filtrados = leads.filter(l => {
     if (filtroEstado !== 'all' && l.estado !== filtroEstado) return false;
     if (filtroOrigen !== 'all' && l.origen !== filtroOrigen) return false;
-    if (filtroMes !== 'all' && (!l.fecha_contacto || l.fecha_contacto.slice(0, 7) !== filtroMes)) return false;
+    if (filtroMes !== 'all' && !fechasParaFiltro(l).some(f => f.slice(0, 7) === filtroMes)) return false;
     if (filtroComercial !== 'all' && (filtroComercial === 'sin_asignar' ? l.assigned_to : l.assigned_to !== filtroComercial)) return false;
     if (busqueda && !l.nombre.toLowerCase().includes(busqueda.toLowerCase()) &&
         !(l.instagram||'').toLowerCase().includes(busqueda.toLowerCase())) return false;
@@ -269,6 +276,7 @@ export function SectionLeads() {
       fecha_diseño: lead.fecha_diseño?.slice(0,10) || '',
       fecha_llamada_venta: lead.fecha_llamada_venta?.slice(0,10) || '',
       fecha_venta: lead.fecha_venta?.slice(0,10) || '',
+      fecha_venta_diseño_1: lead.fecha_venta_diseño_1?.slice(0,10) || '',
     });
     setModal(lead);
   };
@@ -372,6 +380,10 @@ export function SectionLeads() {
           <option value="all">Inbound + Outbound</option>
           <option value="inbound">📥 Inbound</option>
           <option value="outbound">📤 Outbound</option>
+        </select>
+        <select className="ap-select ap-select-sm" value={filtroFechaTipo} onChange={e => { setFiltroFechaTipo(e.target.value); setFiltroMes('all'); setPagina(1); }} title="Qué fecha usa el filtro de mes">
+          <option value="contacto">Por fecha de contacto</option>
+          <option value="venta">Por fecha de venta</option>
         </select>
         <select className="ap-select" value={filtroMes} onChange={e => { setFiltroMes(e.target.value); setPagina(1); }}>
           <option value="all">Todos los meses</option>
@@ -548,6 +560,7 @@ export function SectionLeads() {
             ['📅 Diseño',        panel.fecha_diseño?.slice(0,10) || '—'],
             ['📅 Llamada venta', panel.fecha_llamada_venta?.slice(0,10) || '—'],
             ['📅 Venta',         panel.fecha_venta?.slice(0,10) || '—'],
+            ['📅 Venta Diseño 1', panel.fecha_venta_diseño_1?.slice(0,10) || '—'],
           ].map(([k,v]) => (
             <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,0.05)', fontSize:12 }}>
               <span style={{ color:'rgba(255,255,255,0.3)' }}>{k}</span>
@@ -657,6 +670,7 @@ export function SectionLeads() {
                 <div className="ap-field"><label>📅 Diseño enviado</label><input type="date" value={form.fecha_diseño||''} onChange={e => setF('fecha_diseño', e.target.value)} /></div>
                 <div className="ap-field"><label>📅 Llamada de venta</label><input type="date" value={form.fecha_llamada_venta||''} onChange={e => setF('fecha_llamada_venta', e.target.value)} /></div>
                 <div className="ap-field"><label>📅 Venta</label><input type="date" value={form.fecha_venta||''} onChange={e => setF('fecha_venta', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Venta Diseño 1</label><input type="date" value={form.fecha_venta_diseño_1||''} onChange={e => setF('fecha_venta_diseño_1', e.target.value)} /></div>
               </div>
               <div className="ap-field"><label>Notas</label><textarea value={form.notas||''} onChange={e => setF('notas', e.target.value)} rows={3} placeholder="Contexto, observaciones..." /></div>
               <div className="ap-modal-actions">
