@@ -168,8 +168,11 @@ export function SectionLeads() {
     const valorDiseño2 = f.filter(l => l.estado === 'venta').reduce((s, l) => s + (l.valor_estimado || 0), 0);
     const valorComisiones = f.reduce((s, l) => s + (l.valor_comisiones || 0), 0);
     const valorVentasTotal = valorDiseño1 + valorDiseño2 + valorComisiones;
-    const diseño0 = f.filter(l => (l.tipo_diseño || 'diseño_gratis') === 'diseño_gratis').length;
-    const diseño1 = ventasDiseño1;
+    // Diseño 0/1 solo se decide a partir de la llamada de descubrimiento en adelante;
+    // antes de eso el lead no ha llegado al punto donde se ofrece diseño 1 (de pago) o 0 (gratis)
+    const yaDecidido = f.filter(l => ['llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado));
+    const diseño0 = yaDecidido.filter(l => (l.tipo_diseño || 'diseño_gratis') === 'diseño_gratis').length;
+    const diseño1 = yaDecidido.filter(l => l.tipo_diseño === 'diseño_venta').length;
     const pct = (a, b) => b > 0 ? `${Math.round((a/b)*100)}%` : '—';
     // Cierre global = todas las ventas en relación a llamadas de descubrimiento + llamadas de venta
     const cierreGlobal = pct(ventasTotal, conLlamada + conLlamadaVenta);
