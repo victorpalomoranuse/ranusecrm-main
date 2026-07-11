@@ -877,7 +877,7 @@ export function AdminPanel() {
   const {user,logout}=useAdminAuth();
   const navigate=useNavigate();
   const accessibleItems=NAV_ITEMS.filter(item=>canAccessNav(item,user));
-  const defaultSection=user?.role==='admin_superior'?'dashboard':(accessibleItems[0]?.id||'trabajos');
+  const defaultSection=user?.role==='admin_superior'?'dashboard':(accessibleItems[0]?.id||null);
   const [section,setSection]=useState(defaultSection);
   const handleLogout=()=>{logout();navigate('/admin');};
   return (
@@ -888,6 +888,7 @@ export function AdminPanel() {
         <div className="ap-sidebar-footer"><p className="ap-user">{user?.name||user?.email}{user?.puesto&&<span className="ap-user-puesto">{user.puesto}</span>}</p><button className="ap-logout" onClick={handleLogout}><LogOut size={13}/> Cerrar sesión</button></div>
       </aside>
       <main className="ap-main">
+        {!section&&(<div className="ap-empty-access"><Shield size={32} style={{opacity:0.25,marginBottom:'0.75rem'}}/><h2>Sin acceso asignado</h2><p>Todavía no tienes ninguna sección disponible. Pide al administrador que te asigne una categoría en "Empleados".</p></div>)}
         {section==='dashboard'&&<SectionDashboard/>}
         {section==='trabajos'&&<SectionTrabajos/>}
         {section==='leads'&&<SectionLeads/>}
