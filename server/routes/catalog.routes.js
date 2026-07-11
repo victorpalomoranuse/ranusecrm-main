@@ -1,13 +1,13 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
-import { authenticateToken, requireAdmin } from '../middleware/auth.middleware.js';
+import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { uploadCatalogPhotoFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { uploadCatalogPhoto, deleteCatalogPhoto } from '../utils/storage.js';
 
 const router = express.Router();
 
 // Todas las rutas requieren admin
-router.use(authenticateToken, requireAdmin);
+router.use(authenticateToken, requirePermission('catalogo'));
 
 // ── Categorías ─────────────────────────────────────────────────────────
 
