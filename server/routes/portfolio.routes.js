@@ -1,6 +1,8 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
-import { authenticateToken, requireAdmin } from '../middleware/auth.middleware.js';
+import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
+
+const requireTrabajos = requirePermission('trabajos');
 import { uploadPortfolioImages, handleMulterError } from '../middleware/upload.middleware.js';
 import { uploadPortfolioImage, deletePortfolioImage } from '../utils/storage.js';
 
@@ -22,7 +24,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/portfolio — crear proyecto con imágenes
-router.post('/', authenticateToken, requireAdmin, uploadPortfolioImages, handleMulterError, async (req, res) => {
+router.post('/', authenticateToken, requireTrabajos, uploadPortfolioImages, handleMulterError, async (req, res) => {
   try {
     const { title, description, slug } = req.body;
     const files = req.files || [];
@@ -61,7 +63,7 @@ router.post('/', authenticateToken, requireAdmin, uploadPortfolioImages, handleM
 });
 
 // PUT /api/portfolio/:id — editar texto
-router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/:id', authenticateToken, requireTrabajos, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, slug, display_order, cover_url } = req.body;
@@ -88,7 +90,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // POST /api/portfolio/:id/images — añadir imágenes a proyecto existente
-router.post('/:id/images', authenticateToken, requireAdmin, uploadPortfolioImages, handleMulterError, async (req, res) => {
+router.post('/:id/images', authenticateToken, requireTrabajos, uploadPortfolioImages, handleMulterError, async (req, res) => {
   try {
     const { id } = req.params;
     const files = req.files || [];
@@ -128,7 +130,7 @@ router.post('/:id/images', authenticateToken, requireAdmin, uploadPortfolioImage
 });
 
 // DELETE /api/portfolio/:id/images — eliminar una imagen
-router.delete('/:id/images', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id/images', authenticateToken, requireTrabajos, async (req, res) => {
   try {
     const { id } = req.params;
     const { imageUrl } = req.body;
@@ -161,7 +163,7 @@ router.delete('/:id/images', authenticateToken, requireAdmin, async (req, res) =
 });
 
 // DELETE /api/portfolio/:id — eliminar proyecto completo
-router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id', authenticateToken, requireTrabajos, async (req, res) => {
   try {
     const { id } = req.params;
 
