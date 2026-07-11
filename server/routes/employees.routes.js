@@ -5,16 +5,17 @@ import { authenticateToken, requireAdmin, requireAdminSuperior } from '../middle
 
 const router = express.Router();
 
+const EMPLOYEE_FIELDS_SUPER = 'id, name, email, role, active, created_at, plain_password, is_admin_profile, role_id, employee_roles(id, name, permissions)';
+const EMPLOYEE_FIELDS_BASIC = 'id, name, email, role, active, created_at, is_admin_profile, role_id, employee_roles(id, name, permissions)';
+
 /**
  * GET /api/employees
- * Listar todos los empleados
+ * Listar todos los empleados, con el rol/categoría asignado (si tiene)
  */
 router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const isSuper = req.user.role === 'admin_superior';
-    const fields = isSuper
-      ? 'id, name, email, role, active, created_at, plain_password, is_admin_profile'
-      : 'id, name, email, role, active, created_at, is_admin_profile';
+    const fields = isSuper ? EMPLOYEE_FIELDS_SUPER : EMPLOYEE_FIELDS_BASIC;
 
     const { data, error } = await supabase
       .from('employees')
@@ -65,11 +66,11 @@ router.post('/myself', authenticateToken, requireAdminSuperior, async (req, res)
 /**
  * POST /api/employees
  * Crear un empleado (crea usuario en users + registro en employees)
- * Solo admin_superior
+ * Solo admin_superior. Se le puede asignar directamente una categoría (role_id).
  */
 router.post('/', authenticateToken, requireAdminSuperior, async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role_id } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Nombre, email y contraseña son requeridos' });
@@ -102,11 +103,11 @@ router.post('/', authenticateToken, requireAdminSuperior, async (req, res) => {
 
     if (userError) throw userError;
 
-    // Crear registro en employees
+    // Crear registro en employees, con la categoría (role_id) si se indicó
     const { data: employee, error: empError } = await supabase
       .from('employees')
-      .insert({ name: name.trim(), email: emailNorm, role: 'empleado', plain_password: password })
-      .select('id, name, email, role, active, created_at, plain_password, is_admin_profile')
+      .insert({ name: name.trim(), email: emailNorm, role: 'empleado', plain_password: password, role_id: role_id || null })
+      .select(EMPLOYEE_FIELDS_SUPER)
       .single();
 
     if (empError) {
@@ -119,6 +120,48 @@ router.post('/', authenticateToken, requireAdminSuperior, async (req, res) => {
   } catch (error) {
     console.error('Error al crear empleado:', error);
     res.status(500).json({ error: 'Error al crear empleado' });
+  }
+});
+
+/**
+ * PUT /api/employees/:id
+ * Actualizar nombre, estado activo y/o categoría (role_id) de un empleado
+ * Solo admin_superior
+ */
+router.put('/:id', authenticateToken, requireAdminSuperior, async (req, res) => {
+  try {
+    const { name, active, role_id } = req.body;
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('employees')
+      .select('id, is_admin_profile')
+      .eq('id', req.params.id)
+      .single();
+
+    if (fetchError || !existing) {
+      return res.status(404).json({ error: 'Empleado no encontrado' });
+    }
+
+    const updates = {};
+    if (name !== undefined) {
+      if (!name.trim()) return res.status(400).json({ error: 'El nombre no puede estar vacío' });
+      updates.name = name.trim();
+    }
+    if (active !== undefined && !existing.is_admin_profile) updates.active = !!active;
+    if (role_id !== undefined) updates.role_id = role_id || null;
+
+    const { data: employee, error } = await supabase
+      .from('employees')
+      .update(updates)
+      .eq('id', req.params.id)
+      .select(EMPLOYEE_FIELDS_SUPER)
+      .single();
+
+    if (error) throw error;
+    res.json({ employee });
+  } catch (error) {
+    console.error('Error al actualizar empleado:', error);
+    res.status(500).json({ error: 'Error al actualizar empleado' });
   }
 });
 
