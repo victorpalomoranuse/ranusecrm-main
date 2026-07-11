@@ -59,8 +59,8 @@ const CANALES = ['instagram','whatsapp','web','recomendacion','ads','evento','ag
 const DEPORTES = ['Fútbol','Pádel','Baloncesto','Tenis','MotoGP','Ciclismo','Otro'];
 const LIGAS = ['LaLiga','Hypermotion','Primera RFEF','Liga F','ACB','WPT','Bundesliga','Premier','Serie A','Otro'];
 const TIPOS_DISEÑO = {
-  diseño_gratis: { label: 'Diseño 0 (gratis)', color: '#64748b' },
-  diseño_venta:  { label: 'Diseño 1 (monetizado)', color: '#22c55e' },
+  diseño_gratis: { label: 'Diseño 0', color: '#64748b' },
+  diseño_venta:  { label: 'Venta Diseño 1', color: '#22c55e' },
 };
 const ORDENABLES = [
   { key: 'fecha_contacto', label: 'Fecha de contacto' },
@@ -159,7 +159,7 @@ export function SectionLeads() {
     const rechazo = f.filter(l => l.estado === 'rechazo').length;
     // Activos: fuera del pipeline activo si ya se cerró (venta/no_show/rechazo) o se dio de baja (enfriado/descartado)
     const activos = f.filter(l => !['venta','rechazo','no_show','descartado','enfriado'].includes(l.estado)).length;
-    // Ventas = ventas de Diseño 1 (monetizado) + ventas de Diseño 2 (venta final del proyecto)
+    // Ventas = Venta Diseño 1 + Venta Diseño 2 (venta final del proyecto)
     const ventasDiseño1 = f.filter(l => l.tipo_diseño === 'diseño_venta').length;
     const ventasDiseño2 = f.filter(l => l.estado === 'venta').length;
     const ventasTotal = ventasDiseño1 + ventasDiseño2;
@@ -529,7 +529,7 @@ export function SectionLeads() {
             ['Teléfono',         panel.telefono || '—'],
             ['Email',            panel.email || '—'],
             ['Servicio',         TIPOS_DISEÑO[panel.tipo_diseño]?.label || TIPOS_DISEÑO.diseño_gratis.label],
-            ...(panel.tipo_diseño === 'diseño_venta' ? [['Valor diseño', fmtEur(panel.valor_diseño)]] : []),
+            ...(panel.tipo_diseño === 'diseño_venta' ? [['Valor Venta Diseño 1', fmtEur(panel.valor_diseño)]] : []),
             ...(panel.valor_comisiones ? [['Comisión/extra', `${fmtEur(panel.valor_comisiones)}${panel.notas_comisiones ? ' · ' + panel.notas_comisiones : ''}`]] : []),
             ['Inversión',        fmtEur(panel.valor_estimado)],
             ['% Cierre',         `${panel.pct_cierre||0}%`],
@@ -628,7 +628,7 @@ export function SectionLeads() {
                   </select>
                 </div>
                 {form.tipo_diseño === 'diseño_venta' && (
-                  <div className="ap-field"><label>Valor del diseño (€)</label><input type="number" value={form.valor_diseño||''} onChange={e => setF('valor_diseño', e.target.value)} placeholder="500" /></div>
+                  <div className="ap-field"><label>Valor Venta Diseño 1 (€)</label><input type="number" value={form.valor_diseño||''} onChange={e => setF('valor_diseño', e.target.value)} placeholder="500" /></div>
                 )}
                 <div className="ap-field"><label>Comercial asignado</label>
                   <select className="ap-select" value={form.assigned_to||''} onChange={e => setF('assigned_to', e.target.value)}>
