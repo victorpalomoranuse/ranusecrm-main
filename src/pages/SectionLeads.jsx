@@ -168,6 +168,8 @@ export function SectionLeads() {
     const valorDiseño2 = f.filter(l => l.estado === 'venta').reduce((s, l) => s + (l.valor_estimado || 0), 0);
     const valorComisiones = f.reduce((s, l) => s + (l.valor_comisiones || 0), 0);
     const valorVentasTotal = valorDiseño1 + valorDiseño2 + valorComisiones;
+    const diseño0 = f.filter(l => (l.tipo_diseño || 'diseño_gratis') === 'diseño_gratis').length;
+    const diseño1 = ventasDiseño1;
     const pct = (a, b) => b > 0 ? `${Math.round((a/b)*100)}%` : '—';
     // Cierre global = todas las ventas en relación a llamadas de descubrimiento + llamadas de venta
     const cierreGlobal = pct(ventasTotal, conLlamada + conLlamadaVenta);
@@ -180,6 +182,8 @@ export function SectionLeads() {
       { label:'Resp. chat',      val: pct(conRespuesta, total) },
       { label:'→ Llamada desc.', val: pct(conLlamada, conRespuesta) },
       { label:'→ Diseño',        val: pct(conDiseño, conLlamada) },
+      { label:'Diseño 0',        val: diseño0, color:'#64748b' },
+      { label:'Diseño 1',        val: diseño1, color:'#22c55e' },
       { label:'→ Llamada venta', val: pct(conLlamadaVenta + noShow, conDiseño) },
       { label:'No Show',         val: pct(noShow, conLlamadaVenta + noShow), color:'#f97316' },
       { label:'→ Venta Diseño 2', val: pct(ventasDiseño2, conLlamadaVenta), color:'#22c55e' },
