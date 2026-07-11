@@ -1,12 +1,13 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
-import { authenticateToken, requireAdmin } from '../middleware/auth.middleware.js';
+import { authenticateToken, requireAdminSuperior, requirePermission } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
+const requireLeads = requirePermission('leads');
 
 const ESTADOS_VALIDOS = ['contacto', 'respuesta_chat', 'llamada_descubrimiento', 'diseño', 'llamada_venta', 'no_show', 'venta', 'rechazo', 'enfriado', 'descartado'];
 
-router.get('/', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/', authenticateToken, requireLeads, async (req, res) => {
   try {
     const { data: leads, error } = await supabase
       .from('leads')
@@ -75,7 +76,7 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-router.get('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/:id', authenticateToken, requireLeads, async (req, res) => {
   try {
     const { data, error } = await supabase.from('leads').select('*').eq('id', req.params.id).single();
     if (error || !data) return res.status(404).json({ error: 'Lead no encontrado' });
@@ -85,7 +86,7 @@ router.get('/:id', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/', authenticateToken, requireLeads, async (req, res) => {
   try {
     const {
       nombre, perfil, deporte, liga, instagram, telefono, email,
@@ -126,7 +127,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
   try {
     const updates = { ...req.body };
     delete updates.id;
@@ -161,7 +162,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id', authenticateToken, requireAdminSuperior, async (req, res) => {
   try {
     const { error } = await supabase.from('leads').delete().eq('id', req.params.id);
     if (error) throw error;
