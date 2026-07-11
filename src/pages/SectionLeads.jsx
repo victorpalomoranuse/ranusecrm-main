@@ -49,7 +49,7 @@ const ESTADOS = {
   diseño:                 { label: 'Diseño',           color: '#06b6d4' },
   llamada_venta:          { label: 'Llamada venta',    color: '#10b981' },
   no_show:                { label: 'No Show',          color: '#f97316' },
-  venta:                  { label: 'Venta 2 ✓',        color: '#beb0a2' },
+  venta:                  { label: 'Venta Diseño 2 ✓',  color: '#beb0a2' },
   rechazo:                { label: 'Rechazo',          color: '#f87171' },
   enfriado:               { label: 'Enfriado',         color: '#64748b' },
   descartado:             { label: 'Descartado',       color: '#6b7280' },
@@ -59,8 +59,8 @@ const CANALES = ['instagram','whatsapp','web','recomendacion','ads','evento','ag
 const DEPORTES = ['Fútbol','Pádel','Baloncesto','Tenis','MotoGP','Ciclismo','Otro'];
 const LIGAS = ['LaLiga','Hypermotion','Primera RFEF','Liga F','ACB','WPT','Bundesliga','Premier','Serie A','Otro'];
 const TIPOS_DISEÑO = {
-  diseño_gratis: { label: 'Diseño gratis', color: '#64748b' },
-  diseño_venta:  { label: 'Diseño con venta', color: '#22c55e' },
+  diseño_gratis: { label: 'Diseño 0 (gratis)', color: '#64748b' },
+  diseño_venta:  { label: 'Diseño 1 (monetizado)', color: '#22c55e' },
 };
 const ORDENABLES = [
   { key: 'fecha_contacto', label: 'Fecha de contacto' },
@@ -79,6 +79,7 @@ const EMPTY = {
   fecha_contacto: new Date().toISOString().slice(0,10),
   fecha_respuesta:'', fecha_llamada:'', fecha_diseño:'', fecha_llamada_venta:'', fecha_venta:'',
   tipo_diseño:'diseño_gratis', valor_diseño:'', link_fathom:'', assigned_to:'',
+  valor_comisiones:'', notas_comisiones:'',
 };
 
 export function SectionLeads() {
@@ -155,30 +156,35 @@ export function SectionLeads() {
     const conDiseño = f.filter(l => ['diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
     const conLlamadaVenta = f.filter(l => ['llamada_venta','venta','rechazo'].includes(l.estado)).length;
     const noShow = f.filter(l => l.estado === 'no_show').length;
-    const ventas = f.filter(l => l.estado === 'venta').length;
     const rechazo = f.filter(l => l.estado === 'rechazo').length;
-    const activos = f.filter(l => !['venta','rechazo','no_show','descartado'].includes(l.estado)).length;
-    const valorVentas = f.filter(l => l.estado === 'venta').reduce((s, l) => s + (l.valor_estimado || 0), 0);
-    const diseñoVenta = f.filter(l => l.tipo_diseño === 'diseño_venta');
-    const diseñoGratis = f.filter(l => (l.tipo_diseño || 'diseño_gratis') === 'diseño_gratis');
-    const valorDiseñoVenta = diseñoVenta.reduce((s, l) => s + (l.valor_diseño || 0), 0);
+    // Activos: fuera del pipeline activo si ya se cerró (venta/no_show/rechazo) o se dio de baja (enfriado/descartado)
+    const activos = f.filter(l => !['venta','rechazo','no_show','descartado','enfriado'].includes(l.estado)).length;
+    // Ventas = ventas de Diseño 1 (monetizado) + ventas de Diseño 2 (venta final del proyecto)
+    const ventasDiseño1 = f.filter(l => l.tipo_diseño === 'diseño_venta').length;
+    const ventasDiseño2 = f.filter(l => l.estado === 'venta').length;
+    const ventasTotal = ventasDiseño1 + ventasDiseño2;
+    // Valor ventas = valor del diseño 1 + valor de la venta final + comisiones/extras
+    const valorDiseño1 = f.filter(l => l.tipo_diseño === 'diseño_venta').reduce((s, l) => s + (l.valor_diseño || 0), 0);
+    const valorDiseño2 = f.filter(l => l.estado === 'venta').reduce((s, l) => s + (l.valor_estimado || 0), 0);
+    const valorComisiones = f.reduce((s, l) => s + (l.valor_comisiones || 0), 0);
+    const valorVentasTotal = valorDiseño1 + valorDiseño2 + valorComisiones;
     const pct = (a, b) => b > 0 ? `${Math.round((a/b)*100)}%` : '—';
+    // Cierre global = todas las ventas en relación a llamadas de descubrimiento + llamadas de venta
+    const cierreGlobal = pct(ventasTotal, conLlamada + conLlamadaVenta);
     return [
       { label:'Total',           val: total },
       { label:'Activos',         val: activos },
-      { label:'Ventas',          val: ventas, color:'#beb0a2' },
-      { label:'Valor ventas',    val: fmtEur(valorVentas), color:'#beb0a2' },
-      { label:'Diseño con venta', val: diseñoVenta.length, color:'#22c55e' },
-      { label:'Valor diseño venta', val: fmtEur(valorDiseñoVenta), color:'#22c55e' },
-      { label:'Diseño gratis',   val: diseñoGratis.length, color:'#64748b' },
+      { label:'Ventas',          val: ventasTotal, color:'#beb0a2' },
+      { label:'Valor ventas',    val: fmtEur(valorVentasTotal), color:'#beb0a2' },
+      { label:'Comisiones/extras', val: fmtEur(valorComisiones), color:'#a78bfa' },
       { label:'Resp. chat',      val: pct(conRespuesta, total) },
       { label:'→ Llamada desc.', val: pct(conLlamada, conRespuesta) },
       { label:'→ Diseño',        val: pct(conDiseño, conLlamada) },
       { label:'→ Llamada venta', val: pct(conLlamadaVenta + noShow, conDiseño) },
       { label:'No Show',         val: pct(noShow, conLlamadaVenta + noShow), color:'#f97316' },
-      { label:'→ Venta',         val: pct(ventas, conLlamadaVenta), color:'#22c55e' },
+      { label:'→ Venta Diseño 2', val: pct(ventasDiseño2, conLlamadaVenta), color:'#22c55e' },
       { label:'Rechazo',         val: pct(rechazo, conLlamadaVenta), color:'#f87171' },
-      { label:'Cierre global',   val: pct(ventas, total), color:'#22c55e' },
+      { label:'Cierre global',   val: cierreGlobal, color:'#22c55e' },
     ];
   };
 
@@ -524,6 +530,7 @@ export function SectionLeads() {
             ['Email',            panel.email || '—'],
             ['Servicio',         TIPOS_DISEÑO[panel.tipo_diseño]?.label || TIPOS_DISEÑO.diseño_gratis.label],
             ...(panel.tipo_diseño === 'diseño_venta' ? [['Valor diseño', fmtEur(panel.valor_diseño)]] : []),
+            ...(panel.valor_comisiones ? [['Comisión/extra', `${fmtEur(panel.valor_comisiones)}${panel.notas_comisiones ? ' · ' + panel.notas_comisiones : ''}`]] : []),
             ['Inversión',        fmtEur(panel.valor_estimado)],
             ['% Cierre',         `${panel.pct_cierre||0}%`],
             ['📅 Contacto',      panel.fecha_contacto?.slice(0,10) || '—'],
@@ -630,6 +637,8 @@ export function SectionLeads() {
                   </select>
                 </div>
                 <div className="ap-field" style={{ gridColumn:'1/-1' }}><label>Link llamada (Fathom)</label><input value={form.link_fathom||''} onChange={e => setF('link_fathom', e.target.value)} placeholder="https://fathom.video/..." /></div>
+                <div className="ap-field"><label>Comisiones / extras (€)</label><input type="number" value={form.valor_comisiones||''} onChange={e => setF('valor_comisiones', e.target.value)} placeholder="Ej: comisión de un proveedor" /></div>
+                <div className="ap-field"><label>Nota de comisión/extra</label><input value={form.notas_comisiones||''} onChange={e => setF('notas_comisiones', e.target.value)} placeholder="¿Por qué concepto?" /></div>
               </div>
               <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, margin:'12px 0 8px' }}>Fechas del proceso</div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
