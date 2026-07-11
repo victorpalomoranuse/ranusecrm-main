@@ -84,6 +84,30 @@ export const requireClient = (req, res, next) => {
 };
 
 /**
+ * Middleware factory: permite el acceso si el usuario es admin_superior,
+ * o si es trabajador y tiene el permiso concreto activado (req.user.permissions[key] === true).
+ * Se usa para dar acceso granular a secciones como "leads" o "recursos" sin
+ * convertir al empleado en admin completo.
+ */
+export const requirePermission = (key) => (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'Autenticación requerida'
+    });
+  }
+
+  if (req.user.role === 'admin_superior') return next();
+
+  if (req.user.role === 'trabajador' && req.user.permissions?.[key] === true) {
+    return next();
+  }
+
+  return res.status(403).json({
+    error: 'Acceso denegado. No tienes permiso para esta sección.'
+  });
+};
+
+/**
  * Middleware para verificar si es admin o es el propio cliente
  */
 export const requireAdminOrOwner = (req, res, next) => {
