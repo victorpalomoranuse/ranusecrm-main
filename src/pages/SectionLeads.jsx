@@ -46,15 +46,16 @@ const ESTADOS = {
   contacto:               { label: 'Contacto',         color: '#3b82f6' },
   respuesta_chat:         { label: 'Respuesta chat',   color: '#f59e0b' },
   llamada_descubrimiento: { label: 'Llamada desc.',    color: '#8b5cf6' },
-  diseño:                 { label: 'Diseño',           color: '#06b6d4' },
-  llamada_venta:          { label: 'Llamada venta',    color: '#10b981' },
+  diseño_0:               { label: 'Diseño 0',         color: '#64748b' },
+  diseño_1:               { label: 'Diseño 1',         color: '#06b6d4' },
+  llamada_venta:          { label: 'Llamada Diseño 1', color: '#10b981' },
   no_show:                { label: 'No Show',          color: '#f97316' },
   venta:                  { label: 'Venta Diseño 2 ✓',  color: '#beb0a2' },
   rechazo:                { label: 'Rechazo',          color: '#f87171' },
   enfriado:               { label: 'Enfriado',         color: '#64748b' },
   descartado:             { label: 'Descartado',       color: '#6b7280' },
 };
-const ORDEN = ['contacto','respuesta_chat','llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo','enfriado','descartado'];
+const ORDEN = ['contacto','respuesta_chat','llamada_descubrimiento','diseño_0','diseño_1','llamada_venta','no_show','venta','rechazo','enfriado','descartado'];
 const CANALES = ['instagram','whatsapp','web','recomendacion','ads','evento','agente','otro'];
 const DEPORTES = ['Fútbol','Pádel','Baloncesto','Tenis','MotoGP','Ciclismo','Otro'];
 const LIGAS = ['LaLiga','Hypermotion','Primera RFEF','Liga F','ACB','WPT','Bundesliga','Premier','Serie A','Otro'];
@@ -151,9 +152,9 @@ export function SectionLeads() {
   // Métricas calculadas sobre filtrados
   const calcMetricas = (f) => {
     const total = f.length;
-    const conRespuesta = f.filter(l => ['respuesta_chat','llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo','enfriado'].includes(l.estado)).length;
-    const conLlamada = f.filter(l => ['llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
-    const conDiseño = f.filter(l => ['diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
+    const conRespuesta = f.filter(l => ['respuesta_chat','llamada_descubrimiento','diseño_0','diseño_1','llamada_venta','no_show','venta','rechazo','enfriado'].includes(l.estado)).length;
+    const conLlamada = f.filter(l => ['llamada_descubrimiento','diseño_0','diseño_1','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
+    const conDiseño = f.filter(l => ['diseño_0','diseño_1','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
     const conLlamadaVenta = f.filter(l => ['llamada_venta','venta','rechazo'].includes(l.estado)).length;
     const noShow = f.filter(l => l.estado === 'no_show').length;
     const rechazo = f.filter(l => l.estado === 'rechazo').length;
@@ -170,7 +171,7 @@ export function SectionLeads() {
     const valorVentasTotal = valorDiseño1 + valorDiseño2 + valorComisiones;
     // Diseño 0/1 solo se decide a partir de la llamada de descubrimiento en adelante;
     // antes de eso el lead no ha llegado al punto donde se ofrece diseño 1 (de pago) o 0 (gratis)
-    const yaDecidido = f.filter(l => ['llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado));
+    const yaDecidido = f.filter(l => ['llamada_descubrimiento','diseño_0','diseño_1','llamada_venta','no_show','venta','rechazo'].includes(l.estado));
     const diseño0 = yaDecidido.filter(l => (l.tipo_diseño || 'diseño_gratis') === 'diseño_gratis').length;
     const diseño1 = yaDecidido.filter(l => l.tipo_diseño === 'diseño_venta').length;
     const pct = (a, b) => b > 0 ? `${Math.round((a/b)*100)}%` : '—';
@@ -186,8 +187,9 @@ export function SectionLeads() {
       { label:'→ Llamada desc.', val: pct(conLlamada, conRespuesta) },
       { label:'→ Diseño',        val: pct(conDiseño, conLlamada) },
       { label:'Diseño 0',        val: diseño0, color:'#64748b' },
-      { label:'Diseño 1',        val: diseño1, color:'#22c55e' },
-      { label:'→ Llamada venta', val: pct(conLlamadaVenta + noShow, conDiseño) },
+      { label:'Diseño 1',        val: diseño1, color:'#06b6d4' },
+      { label:'→ Venta Diseño 1', val: pct(diseño1, conLlamada), color:'#22c55e' },
+      { label:'→ Llamada Diseño 1', val: pct(conLlamadaVenta + noShow, conDiseño) },
       { label:'No Show',         val: pct(noShow, conLlamadaVenta + noShow), color:'#f97316' },
       { label:'→ Venta Diseño 2', val: pct(ventasDiseño2, conLlamadaVenta), color:'#22c55e' },
       { label:'Rechazo',         val: pct(rechazo, conLlamadaVenta), color:'#f87171' },
@@ -216,7 +218,7 @@ export function SectionLeads() {
     try {
       const lead = leads.find(l => l.id === id);
       const { data } = await api.put(`/leads/${id}`, { estado });
-      if (estado === 'diseño' && lead) {
+      if ((estado === 'diseño_0' || estado === 'diseño_1') && lead) {
         try {
           await api.post('/leads-cualificados', {
             lead_id: id, nombre: lead.nombre, instagram: lead.instagram,
