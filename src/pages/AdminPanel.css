@@ -915,6 +915,20 @@
   color: rgba(255,255,255,0.3);
 }
 
+.ap-empty-access {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  max-width: 360px;
+  margin: 4rem auto;
+  color: rgba(255,255,255,0.5);
+}
+
+.ap-empty-access h2 { font-size: 1.1rem; color: #fff; margin-bottom: 0.4rem; }
+.ap-empty-access p { font-size: 0.85rem; line-height: 1.5; }
+
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .ap-sidebar { width: 56px; }
