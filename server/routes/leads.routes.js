@@ -94,7 +94,8 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
       origen = 'outbound', canal, estado = 'contacto',
       valor_estimado, pct_cierre = 20, notas,
       fecha_contacto, fecha_respuesta, fecha_llamada, fecha_diseño, fecha_llamada_venta, fecha_venta,
-      tipo_diseño = 'diseño_gratis', valor_diseño, link_fathom, assigned_to
+      tipo_diseño = 'diseño_gratis', valor_diseño, link_fathom, assigned_to,
+      valor_comisiones, notas_comisiones
     } = req.body;
 
     if (!nombre) return res.status(400).json({ error: 'El nombre es requerido' });
@@ -119,6 +120,8 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
         valor_diseño: valor_diseño ? parseFloat(valor_diseño) : null,
         link_fathom: link_fathom?.trim() || null,
         assigned_to: assigned_to || null,
+        valor_comisiones: valor_comisiones ? parseFloat(valor_comisiones) : null,
+        notas_comisiones: notas_comisiones?.trim() || null,
         created_by: req.user.id
       })
       .select()
@@ -144,6 +147,10 @@ router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
       updates.valor_estimado = updates.valor_estimado ? parseFloat(updates.valor_estimado) : null;
     if (updates.valor_diseño !== undefined)
       updates.valor_diseño = updates.valor_diseño ? parseFloat(updates.valor_diseño) : null;
+    if (updates.valor_comisiones !== undefined)
+      updates.valor_comisiones = updates.valor_comisiones ? parseFloat(updates.valor_comisiones) : null;
+    if (updates.notas_comisiones !== undefined)
+      updates.notas_comisiones = updates.notas_comisiones?.trim() || null;
     if (updates.pct_cierre !== undefined)
       updates.pct_cierre = parseInt(updates.pct_cierre);
     if (updates.link_fathom !== undefined)
