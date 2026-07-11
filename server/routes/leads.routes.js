@@ -5,8 +5,16 @@ import { authenticateToken, requireAdminSuperior, requirePermission } from '../m
 const router = express.Router();
 const requireLeads = requirePermission('leads');
 
-const ESTADOS_VALIDOS = ['contacto', 'respuesta_chat', 'llamada_descubrimiento', 'diseño', 'llamada_venta', 'no_show', 'venta', 'rechazo', 'enfriado', 'descartado'];
+const ESTADOS_VALIDOS = ['contacto', 'respuesta_chat', 'llamada_descubrimiento', 'diseño_0', 'diseño_1', 'llamada_venta', 'no_show', 'venta', 'rechazo', 'enfriado', 'descartado'];
 const TIPOS_DISEÑO_VALIDOS = ['diseño_gratis', 'diseño_venta'];
+
+// El estado diseño_0/diseño_1 y el campo tipo_diseño deben ir siempre coordinados:
+// si el estado dice diseño_1, tipo_diseño tiene que ser 'diseño_venta' (y viceversa).
+function resolverTipoDiseño(estadoFinal, tipoDiseñoInput) {
+  if (estadoFinal === 'diseño_0') return 'diseño_gratis';
+  if (estadoFinal === 'diseño_1') return 'diseño_venta';
+  return TIPOS_DISEÑO_VALIDOS.includes(tipoDiseñoInput) ? tipoDiseñoInput : 'diseño_gratis';
+}
 
 router.get('/', authenticateToken, requireLeads, async (req, res) => {
   try {
@@ -100,13 +108,15 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
 
     if (!nombre) return res.status(400).json({ error: 'El nombre es requerido' });
 
+    const estadoFinal = ESTADOS_VALIDOS.includes(estado) ? estado : 'contacto';
+
     const { data, error } = await supabase
       .from('leads')
       .insert({
         nombre: nombre.trim(), perfil: perfil || null, deporte: deporte || null,
         liga: liga || null, instagram: instagram || null, telefono: telefono || null,
         email: email || null, origen, canal: canal || null,
-        estado: ESTADOS_VALIDOS.includes(estado) ? estado : 'contacto',
+        estado: estadoFinal,
         valor_estimado: valor_estimado ? parseFloat(valor_estimado) : null,
         pct_cierre: pct_cierre ? parseInt(pct_cierre) : 20,
         notas: notas || null,
@@ -116,7 +126,7 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
         fecha_diseño: fecha_diseño || null,
         fecha_llamada_venta: fecha_llamada_venta || null,
         fecha_venta: fecha_venta || null,
-        tipo_diseño: TIPOS_DISEÑO_VALIDOS.includes(tipo_diseño) ? tipo_diseño : 'diseño_gratis',
+        tipo_diseño: resolverTipoDiseño(estadoFinal, tipo_diseño),
         valor_diseño: valor_diseño ? parseFloat(valor_diseño) : null,
         link_fathom: link_fathom?.trim() || null,
         assigned_to: assigned_to || null,
@@ -167,6 +177,12 @@ router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
 
     if (updates.tipo_diseño && !TIPOS_DISEÑO_VALIDOS.includes(updates.tipo_diseño))
       delete updates.tipo_diseño;
+
+    // Si el estado pasa a diseño_0 o diseño_1, sincroniza tipo_diseño automáticamente
+    // (por ejemplo, al cambiar el estado desde el tablero Kanban sin abrir el formulario)
+    if (updates.estado === 'diseño_0' || updates.estado === 'diseño_1') {
+      updates.tipo_diseño = resolverTipoDiseño(updates.estado);
+    }
 
     const { data, error } = await supabase
       .from('leads')
