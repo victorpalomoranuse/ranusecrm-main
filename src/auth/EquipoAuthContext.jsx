@@ -14,7 +14,11 @@ export function EquipoAuthProvider({ children }) {
     if (!token) { setLoading(false); return; }
 
     equipoApi.post('/auth/verify')
-      .then(({ data }) => setUser(data.user))
+      .then(({ data }) => {
+        setUser(data.user);
+        localStorage.setItem('equipo_user', JSON.stringify(data.user));
+        if (data.token) localStorage.setItem('equipo_token', data.token);
+      })
       .catch(() => {
         localStorage.removeItem('equipo_token');
         localStorage.removeItem('equipo_user');
