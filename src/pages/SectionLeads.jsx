@@ -159,12 +159,18 @@ export function SectionLeads() {
     const rechazo = f.filter(l => l.estado === 'rechazo').length;
     const activos = f.filter(l => !['venta','rechazo','no_show','descartado'].includes(l.estado)).length;
     const valorVentas = f.filter(l => l.estado === 'venta').reduce((s, l) => s + (l.valor_estimado || 0), 0);
+    const diseñoVenta = f.filter(l => l.tipo_diseño === 'diseño_venta');
+    const diseñoGratis = f.filter(l => (l.tipo_diseño || 'diseño_gratis') === 'diseño_gratis');
+    const valorDiseñoVenta = diseñoVenta.reduce((s, l) => s + (l.valor_diseño || 0), 0);
     const pct = (a, b) => b > 0 ? `${Math.round((a/b)*100)}%` : '—';
     return [
       { label:'Total',           val: total },
       { label:'Activos',         val: activos },
       { label:'Ventas',          val: ventas, color:'#beb0a2' },
       { label:'Valor ventas',    val: fmtEur(valorVentas), color:'#beb0a2' },
+      { label:'Diseño con venta', val: diseñoVenta.length, color:'#22c55e' },
+      { label:'Valor diseño venta', val: fmtEur(valorDiseñoVenta), color:'#22c55e' },
+      { label:'Diseño gratis',   val: diseñoGratis.length, color:'#64748b' },
       { label:'Resp. chat',      val: pct(conRespuesta, total) },
       { label:'→ Llamada desc.', val: pct(conLlamada, conRespuesta) },
       { label:'→ Diseño',        val: pct(conDiseño, conLlamada) },
