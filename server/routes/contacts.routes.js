@@ -1,9 +1,9 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
-import { authenticateToken, requireAdmin } from '../middleware/auth.middleware.js';
+import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
-router.use(authenticateToken, requireAdmin);
+router.use(authenticateToken, requirePermission('contactos'));
 
 router.get('/', async (req, res) => {
   try {
