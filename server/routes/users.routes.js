@@ -1,7 +1,9 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import { supabase } from '../config/supabase.js';
-import { authenticateToken, requireAdmin, requireAdminSuperior } from '../middleware/auth.middleware.js';
+import { authenticateToken, requireAdmin, requireAdminSuperior, requirePermission } from '../middleware/auth.middleware.js';
+
+const requireClientes = requirePermission('clientes');
 
 const router = express.Router();
 
@@ -9,7 +11,7 @@ const router = express.Router();
  * GET /api/users
  * Listar usuarios (filtrar por role)
  */
-router.get('/', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/', authenticateToken, requireClientes, async (req, res) => {
   try {
     const { role } = req.query;
 
@@ -67,7 +69,7 @@ router.get('/:id', authenticateToken, requireAdmin, async (req, res) => {
  * POST /api/users/cliente
  * Crear un nuevo cliente
  */
-router.post('/cliente', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/cliente', authenticateToken, requireClientes, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -238,7 +240,7 @@ router.put('/:id/password', authenticateToken, requireAdmin, async (req, res) =>
  * DELETE /api/users/:id
  * Eliminar un usuario (trabajador o cliente)
  */
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requireClientes, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -294,7 +296,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
  * GET /api/users/:id/client-projects
  * Proyectos asignados a un cliente
  */
-router.get('/:id/client-projects', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/:id/client-projects', authenticateToken, requireClientes, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('client_user_projects')
@@ -314,7 +316,7 @@ router.get('/:id/client-projects', authenticateToken, requireAdmin, async (req, 
  * POST /api/users/:id/client-projects
  * Asignar un proyecto a un cliente
  */
-router.post('/:id/client-projects', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/:id/client-projects', authenticateToken, requireClientes, async (req, res) => {
   try {
     const { client_project_id } = req.body;
     if (!client_project_id) {
@@ -343,7 +345,7 @@ router.post('/:id/client-projects', authenticateToken, requireAdmin, async (req,
  * DELETE /api/users/:id/client-projects/:projectId
  * Desasignar un proyecto de un cliente
  */
-router.delete('/:id/client-projects/:projectId', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id/client-projects/:projectId', authenticateToken, requireClientes, async (req, res) => {
   try {
     const { error } = await supabase
       .from('client_user_projects')
