@@ -6,6 +6,7 @@ const router = express.Router();
 const requireLeads = requirePermission('leads');
 
 const ESTADOS_VALIDOS = ['contacto', 'respuesta_chat', 'llamada_descubrimiento', 'diseño', 'llamada_venta', 'no_show', 'venta', 'rechazo', 'enfriado', 'descartado'];
+const TIPOS_DISEÑO_VALIDOS = ['diseño_gratis', 'diseño_venta'];
 
 router.get('/', authenticateToken, requireLeads, async (req, res) => {
   try {
@@ -92,7 +93,8 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
       nombre, perfil, deporte, liga, instagram, telefono, email,
       origen = 'outbound', canal, estado = 'contacto',
       valor_estimado, pct_cierre = 20, notas,
-      fecha_contacto, fecha_respuesta, fecha_llamada, fecha_diseño, fecha_llamada_venta, fecha_venta
+      fecha_contacto, fecha_respuesta, fecha_llamada, fecha_diseño, fecha_llamada_venta, fecha_venta,
+      tipo_diseño = 'diseño_gratis', valor_diseño, link_fathom, assigned_to
     } = req.body;
 
     if (!nombre) return res.status(400).json({ error: 'El nombre es requerido' });
@@ -113,6 +115,10 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
         fecha_diseño: fecha_diseño || null,
         fecha_llamada_venta: fecha_llamada_venta || null,
         fecha_venta: fecha_venta || null,
+        tipo_diseño: TIPOS_DISEÑO_VALIDOS.includes(tipo_diseño) ? tipo_diseño : 'diseño_gratis',
+        valor_diseño: valor_diseño ? parseFloat(valor_diseño) : null,
+        link_fathom: link_fathom?.trim() || null,
+        assigned_to: assigned_to || null,
         created_by: req.user.id
       })
       .select()
@@ -136,8 +142,14 @@ router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
 
     if (updates.valor_estimado !== undefined)
       updates.valor_estimado = updates.valor_estimado ? parseFloat(updates.valor_estimado) : null;
+    if (updates.valor_diseño !== undefined)
+      updates.valor_diseño = updates.valor_diseño ? parseFloat(updates.valor_diseño) : null;
     if (updates.pct_cierre !== undefined)
       updates.pct_cierre = parseInt(updates.pct_cierre);
+    if (updates.link_fathom !== undefined)
+      updates.link_fathom = updates.link_fathom?.trim() || null;
+    if (updates.assigned_to !== undefined)
+      updates.assigned_to = updates.assigned_to || null;
 
     ['fecha_contacto','fecha_respuesta','fecha_llamada','fecha_diseño','fecha_llamada_venta','fecha_venta'].forEach(f => {
       if (updates[f] !== undefined) updates[f] = updates[f] || null;
@@ -145,6 +157,9 @@ router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
 
     if (updates.estado && !ESTADOS_VALIDOS.includes(updates.estado))
       delete updates.estado;
+
+    if (updates.tipo_diseño && !TIPOS_DISEÑO_VALIDOS.includes(updates.tipo_diseño))
+      delete updates.tipo_diseño;
 
     const { data, error } = await supabase
       .from('leads')
@@ -159,6 +174,37 @@ router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
   } catch (error) {
     console.error('Error al actualizar lead:', error);
     res.status(500).json({ error: 'Error al actualizar lead' });
+  }
+});
+
+/**
+ * PUT /api/leads/:id/asignarme
+ * El propio comercial (o admin) se autoasigna un lead.
+ */
+router.put('/:id/asignarme', authenticateToken, requireLeads, async (req, res) => {
+  try {
+    const { data: employee, error: empError } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('email', req.user.email)
+      .single();
+
+    if (empError || !employee) {
+      return res.status(400).json({ error: 'No se encontró tu perfil de empleado para asignarte el lead' });
+    }
+
+    const { data, error } = await supabase
+      .from('leads')
+      .update({ assigned_to: employee.id })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ message: 'Lead asignado', lead: data });
+  } catch (error) {
+    console.error('Error al autoasignar lead:', error);
+    res.status(500).json({ error: 'Error al asignarte el lead' });
   }
 });
 
