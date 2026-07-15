@@ -105,7 +105,12 @@ function fetchImageBuffer(url) {
 router.get('/dashboard', async (req, res) => {
   try {
     const [budgetsRes, projectsRes] = await Promise.all([
-      supabase.from('budgets').select('*, project:client_projects(id, client_name, project_name, phase, created_at), items:budget_items(unit_cost, unit_price, quantity, category, created_at)'),
+      // FIX #5: faltaban pricing_mode/pvp_ref/discount_pct/purchase_dto — sin ellos,
+      // computeTotals() trataba TODAS las partidas como modo "margen" (usando
+      // unit_cost/unit_price a secas), aunque estuvieran en modo PVP+Dto. Esto hacía
+      // que el Dashboard pudiera mostrar cifras de facturación/coste/descuento
+      // distintas a las del presupuesto individual para el mismo dato.
+      supabase.from('budgets').select('*, project:client_projects(id, client_name, project_name, phase, created_at), items:budget_items(unit_cost, unit_price, quantity, category, created_at, pricing_mode, pvp_ref, discount_pct, purchase_dto)'),
       supabase.from('client_projects').select('id, phase, created_at'),
     ]);
     if (budgetsRes.error) throw budgetsRes.error;
@@ -116,6 +121,9 @@ router.get('/dashboard', async (req, res) => {
     const totalCost = approved.reduce((s, b) => s + b.itemCost, 0);
     const totalProfit = totalRevenue - totalCost;
     const margin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+    // Suma del descuento total (por línea + global) aplicado al cliente,
+    // sobre presupuestos aprobados — es el "ahorro" que ve el cliente en el PDF.
+    const totalDiscountGiven = approved.reduce((s, b) => s + (b.totalDiscount || 0), 0);
     const pipeline = [1,2,3,4,5].map(phase => ({ phase, label: PHASE_LABELS[phase - 1], count: allProjects.filter(p => p.phase === phase).length }));
     const now = new Date();
     const monthly = [];
@@ -124,20 +132,24 @@ router.get('/dashboard', async (req, res) => {
       const yr = d.getFullYear(), mo = d.getMonth();
       const label = d.toLocaleDateString('es-ES', { month: 'short' });
       const group = allBudgets.filter(b => { const bd = new Date(b.created_at); return bd.getFullYear() === yr && bd.getMonth() === mo; });
-      monthly.push({ month: label.charAt(0).toUpperCase() + label.slice(1), revenue: group.reduce((s, b) => s + b.totalRevenue, 0), cost: group.reduce((s, b) => s + b.itemCost, 0), profit: group.reduce((s, b) => s + b.totalProfit, 0) });
+      monthly.push({ month: label.charAt(0).toUpperCase() + label.slice(1), revenue: group.reduce((s, b) => s + b.totalRevenue, 0), cost: group.reduce((s, b) => s + b.itemCost, 0), profit: group.reduce((s, b) => s + b.totalProfit, 0), discount: group.reduce((s, b) => s + (b.totalDiscount || 0), 0) });
     }
     const catMap = {};
     allBudgets.forEach(b => { (b.items || []).forEach(item => { const cat = item.category || 'otro'; if (!catMap[cat]) catMap[cat] = { cost: 0, revenue: 0 }; catMap[cat].cost += (parseFloat(item.unit_cost) || 0) * (parseFloat(item.quantity) || 1); catMap[cat].revenue += (parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 1); }); });
     const CAT_LABELS = { material: 'Material', mobiliario: 'Mobiliario', instalacion: 'Instalacion', transporte: 'Transporte', otro: 'Otro' };
     const byCategory = Object.entries(catMap).map(([cat, v]) => ({ category: cat, label: CAT_LABELS[cat] || cat, ...v }));
     const recentBudgets = [...allBudgets].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6).map(({ items: _items, ...b }) => b);
-    res.json({ summary: { totalRevenue, totalCost, totalProfit, margin, activeProjects: allProjects.length, budgetsCount: allBudgets.length }, monthly, byCategory, pipeline, recentBudgets });
+    res.json({ summary: { totalRevenue, totalCost, totalProfit, margin, totalDiscountGiven, activeProjects: allProjects.length, budgetsCount: allBudgets.length }, monthly, byCategory, pipeline, recentBudgets });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al cargar dashboard' }); }
 });
 
 router.get('/', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('budgets').select('*, project:client_projects(id, client_name, project_name, phase), items:budget_items(unit_cost, unit_price, quantity)').order('created_at', { ascending: false });
+    // FIX #6: mismo problema que el dashboard (ver FIX #5) — sin estos campos,
+    // computeTotals() trataba las partidas en modo PVP+Dto como si fueran modo
+    // margen, y las tarjetas del listado podían no coincidir con el presupuesto
+    // individual para el mismo dato.
+    const { data, error } = await supabase.from('budgets').select('*, project:client_projects(id, client_name, project_name, phase), items:budget_items(unit_cost, unit_price, quantity, pricing_mode, pvp_ref, discount_pct, purchase_dto)').order('created_at', { ascending: false });
     if (error) throw error;
     const budgets = (data || []).map(({ items, ...b }) => ({ ...b, ...computeTotals(items || [], b.design_fee_type, b.design_fee_value, b.design_hours, b.global_discount_pct) }));
     res.json({ budgets });
