@@ -37,6 +37,16 @@ async function generateBudgetNumber() {
   return 'RAN-' + String(data).padStart(3, '0');
 }
 
+// Precio de venta al cliente por partida, antes de su descuento de línea.
+// En modo PVP+Dto el precio que ve el cliente es pvp_ref (catálogo), NO unit_price
+// (que solo guarda el coste de compra). En modo Coste+% sí es unit_price.
+// Usar esta única función en todos los cálculos evita que un dato desactualizado o
+// mal guardado en unit_price descuadre el subtotal (bug que afectaba al PDF).
+function lineListPrice(item) {
+  const isPvpMode = (item.pricing_mode || 'margin') === 'pvp';
+  return isPvpMode ? (parseFloat(item.pvp_ref) || 0) : (parseFloat(item.unit_price) || 0);
+}
+
 function computeTotals(items, feeType, feeValue, designHours, globalDiscountPct) {
   const itemCost = items.reduce((s, i) => {
     const qty = parseFloat(i.quantity) || 1;
@@ -56,8 +66,7 @@ function computeTotals(items, feeType, feeValue, designHours, globalDiscountPct)
   }, 0);
   const itemRevenueBeforeDiscount = items.reduce((s, i) => {
     const qty = parseFloat(i.quantity) || 1;
-    if ((i.pricing_mode || 'margin') === 'pvp') return s + (parseFloat(i.pvp_ref) || 0) * qty;
-    return s + (parseFloat(i.unit_price) || 0) * qty;
+    return s + lineListPrice(i) * qty;
   }, 0);
   const lineDiscountAmount = itemRevenueBeforeDiscount - itemRevenue;
   const feeVal = parseFloat(feeValue) || 0;
@@ -379,10 +388,17 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     const { data: settingsData } = await supabase.from('settings').select('*').eq('id', 1).single();
     const settings = settingsData || {};
 
+    // FIX #3 (bug del subtotal del PDF): antes, subtotalBruto y lineDiscountTotal usaban
+    // siempre `unit_price`. Para partidas en modo PVP+Dto, unit_price puede no reflejar el
+    // PVP real (dato heredado de partidas guardadas antes del FIX #2, o simplemente
+    // desincronizado), así que el subtotal del PDF podía no coincidir con la suma real
+    // de las líneas que el cliente ve en la tabla (que sí usan pvp_ref más abajo).
+    // Ahora usamos lineListPrice(), la misma fuente de verdad que usa computeTotals()
+    // y las filas de la tabla: pvp_ref para modo PVP, unit_price para modo margen.
     const globalDto = parseFloat(budget.global_discount_pct) || 0;
-    const subtotalBruto = items.reduce((s, i) => s + (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1), 0);
+    const subtotalBruto = items.reduce((s, i) => s + lineListPrice(i) * (parseFloat(i.quantity) || 1), 0);
     const lineDiscountTotal = items.reduce((s, i) => {
-      const lineTotal = (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 1);
+      const lineTotal = lineListPrice(i) * (parseFloat(i.quantity) || 1);
       return s + lineTotal * (parseFloat(i.discount_pct) || 0) / 100;
     }, 0);
     const subtotalAfterLines = subtotalBruto - lineDiscountTotal;
@@ -512,7 +528,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       const midY = y + rowH / 2 - 5;
       const lineDto = parseFloat(item.discount_pct) || 0;
       const isPvpMode = (item.pricing_mode || 'margin') === 'pvp';
-      const pvpBase = isPvpMode ? (parseFloat(item.pvp_ref) || 0) : (parseFloat(item.unit_price) || 0);
+      const pvpBase = lineListPrice(item);
       // P. UNIT. = PVP bruto en modo PVP, precio venta en modo margen
       const unitFinal = isPvpMode ? pvpBase * (1 - lineDto / 100) : pvpBase;
       const lineFinal = unitFinal * (parseFloat(item.quantity) || 1);
