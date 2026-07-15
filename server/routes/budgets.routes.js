@@ -564,9 +564,22 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       y += 16;
     };
 
-    drawRow('Subtotal', fmtEur(subtotalBruto));
+    // FIX #4: el toggle showDiscount decide entre dos presentaciones, ambas
+    // matemáticamente consistentes por sí solas:
+    //  - Visible (showDiscount=true): se muestra el Subtotal BRUTO (antes de
+    //    descuentos), seguido de las líneas de descuento por producto/global,
+    //    de forma que Subtotal − Descuentos + IVA − IRPF = TOTAL.
+    //  - Oculto (showDiscount=false): se muestra directamente el Subtotal NETO
+    //    (ya con los descuentos restados) y no se dibuja ninguna línea de
+    //    descuento, de forma que Subtotal + IVA − IRPF = TOTAL sin pasos
+    //    intermedios que el cliente no vea.
+    // Antes, el Subtotal mostrado era siempre el bruto pero la línea de
+    // descuento solo aparecía si showDiscount era true, así que al ocultarla
+    // el Subtotal + IVA dejaba de coincidir con el TOTAL (había un descuento
+    // aplicado "por dentro" sin ninguna línea que lo explicara).
+    drawRow('Subtotal', fmtEur(showDiscount ? subtotalBruto : subtotal));
     if (showDiscount && lineDiscountTotal > 0) drawRow('Descuentos por producto', '-' + fmtEur(lineDiscountTotal), false, '#c0392b');
-    if (globalDto > 0) drawRow('Descuento global (' + globalDto + '%)', '-' + fmtEur(globalDiscountAmount), false, '#c0392b');
+    if (showDiscount && globalDto > 0) drawRow('Descuento global (' + globalDto + '%)', '-' + fmtEur(globalDiscountAmount), false, '#c0392b');
     if (parseFloat(iva) > 0) drawRow('IVA (' + iva + '%)', fmtEur(ivaAmount));
     if (parseFloat(irpf) > 0) drawRow('Retención IRPF (' + irpf + '%)', '-' + fmtEur(irpfAmount), false, '#cc3333');
 
