@@ -32,6 +32,10 @@ function fmt(n) {
   return Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
 }
 
+// FIX #1: computeSummary ahora resta el Dto. Global (global_discount_pct) al calcular
+// totalRev/profit/margin, igual que hace computeTotals() en el backend (routes/budgets.js).
+// Antes: totalRev = itemRev + fee  → ignoraba por completo el descuento global, así que
+// "Total cliente" y "Beneficio bruto" salían inflados (idénticos a los del PVP sin descontar).
 function computeSummary(items, b) {
   const realItems = items.filter(i => !i.is_chapter_header);
   const itemCost = realItems.reduce((s, i) => {
@@ -55,9 +59,19 @@ function computeSummary(items, b) {
   if (b.design_fee_type === 'flat') fee = fv;
   else if (b.design_fee_type === 'percentage') fee = itemRev * fv / 100;
   else if (b.design_fee_type === 'hourly') fee = (parseFloat(b.design_hours)||0) * fv;
-  const totalRev = itemRev + fee;
+
+  // Subtotal antes del descuento global (partidas + honorarios), luego se le aplica el % global.
+  const subtotalAfterLines = itemRev + fee;
+  const globalDto = parseFloat(b.global_discount_pct) || 0;
+  const globalDiscountAmount = subtotalAfterLines * globalDto / 100;
+  const totalRev = subtotalAfterLines - globalDiscountAmount;
+
   const profit = totalRev - itemCost;
-  return { itemCost, itemRev, fee, totalRev, profit, margin: totalRev > 0 ? (profit / totalRev) * 100 : 0 };
+  return {
+    itemCost, itemRev, fee, totalRev, profit,
+    globalDiscountAmount,
+    margin: totalRev > 0 ? (profit / totalRev) * 100 : 0,
+  };
 }
 
 function MsgBanner({ msg }) {
@@ -455,9 +469,12 @@ function ItemRowEdit({ item, onSave, onCancel }) {
 
         <td className="pres-actions-cell">
           <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => {
-            // En modo PVP, asegurar que unit_cost está calculado antes de guardar
+            // FIX #2: en modo PVP, unit_price debe guardar el PVP de catálogo (d.pvp_ref),
+            // no el coste (costUnit). Antes: unit_price = costUnit, lo que hacía que el
+            // subtotal del PDF cliente (que usa unit_price) saliera más bajo de lo real,
+            // sin cuadrar con las líneas individuales de la tabla (que sí usan pvp_ref).
             const toSave = isPvp
-              ? { ...d, unit_cost: costUnit, unit_price: costUnit }
+              ? { ...d, unit_cost: costUnit, unit_price: parseFloat(d.pvp_ref) || 0 }
               : d;
             onSave(toSave);
           }} disabled={!d.name?.trim()}>✓</button>
@@ -1097,7 +1114,7 @@ function BudgetEditor({ id, onBack }) {
 export function SectionPresupuestos({ initialBudgetId } = {}) {
   const [view, setView]         = useState(initialBudgetId ? 'editor' : 'list');
   const [budgetId, setBudgetId] = useState(initialBudgetId || null);
-  
+
   return (
     <div className="ap-section">
       {view === 'list' ? (
