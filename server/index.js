@@ -19,6 +19,8 @@ import leadsRoutes from './routes/leads.routes.js';
 import leadsCualificadosRoutes from './routes/leads-cualificados.routes.js';
 import resourcesRoutes from './routes/resources.routes.js';
 import rolesRoutes from './routes/roles.routes.js';
+import ventasRoutes from './routes/ventas.routes.js';
+import finanzasRoutes from './routes/finanzas.routes.js';
 dotenv.config();
 
 const app = express();
@@ -69,6 +71,8 @@ app.use('/api/leads', leadsRoutes);
 app.use('/api/leads-cualificados', leadsCualificadosRoutes);
 app.use('/api/resources', resourcesRoutes);
 app.use('/api/roles', rolesRoutes);
+app.use('/api/ventas', ventasRoutes);
+app.use('/api/finanzas', finanzasRoutes);
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
 });
