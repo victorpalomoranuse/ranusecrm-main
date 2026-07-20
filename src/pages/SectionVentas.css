@@ -13,6 +13,11 @@
 .vt-stat-body { display: flex; flex-direction: column; gap: 0.15rem; }
 .vt-stat-body span { font-size: 0.72rem; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.06em; }
 .vt-stat-body strong { font-size: 1.35rem; font-weight: 600; }
+.vt-stat-sub { font-size: 0.72rem !important; text-transform: none !important; color: rgba(255,255,255,0.35) !important; letter-spacing: 0 !important; }
+
+.vt-filtros { display: flex; gap: 0.5rem; margin-bottom: 1.1rem; }
+
+.vt-tipo-badge { font-size: 0.7rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
 
 .vt-meses { display: flex; flex-direction: column; gap: 0.75rem; }
 
