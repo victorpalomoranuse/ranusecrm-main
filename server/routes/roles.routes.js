@@ -12,6 +12,7 @@ router.use(authenticateToken, requireAdminSuperior);
 export const PERMISOS_VALIDOS = [
   'dashboard', 'trabajos', 'leads', 'leads-cualificados', 'proyectos',
   'clientes', 'catalogo', 'referencias', 'recursos', 'contactos',
+  'ventas', 'finanzas',
 ];
 
 function sanitizePermissions(input) {
