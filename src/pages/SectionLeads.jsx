@@ -65,6 +65,7 @@ const TIPOS_DISEÑO = {
 };
 const ORDENABLES = [
   { key: 'fecha_contacto', label: 'Fecha de contacto' },
+  { key: 'fecha_venta', label: 'Fecha de venta' },
   { key: 'canal', label: 'Canal' },
   { key: 'estado', label: 'Etiqueta (estado)' },
   { key: 'nombre', label: 'Nombre' },
@@ -121,6 +122,13 @@ export function SectionLeads() {
   }, []);
 
   const nombreComercial = (id) => empleados.find(e => e.id === id)?.name || null;
+
+  // Días transcurridos entre el primer contacto y la venta (solo tiene sentido si ambas fechas existen)
+  const diasHastaVenta = (l) => {
+    if (!l.fecha_contacto || !l.fecha_venta) return null;
+    const ms = new Date(l.fecha_venta) - new Date(l.fecha_contacto);
+    return ms >= 0 ? Math.round(ms / 86400000) : null;
+  };
 
   // Fecha(s) relevantes de un lead según el tipo elegido: "contacto" (cuándo entró)
   // o "venta" (cuándo se cobró algo — Venta Diseño 1 o Venta Diseño 2)
@@ -424,21 +432,22 @@ export function SectionLeads() {
       {loading ? <div className="ap-loading">Cargando leads…</div> : !vistaKanban ? (
         <>
           <div style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, overflow:'hidden' }}>
-            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 100px', padding:'8px 16px', borderBottom:'1px solid rgba(255,255,255,0.07)', fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1 }}>
-              {[['nombre','Nombre'],['estado','Estado'],['canal','Canal'],['fecha_contacto','Contacto']].map(([key,label]) => (
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 0.8fr 0.9fr 0.9fr 0.6fr 1fr 100px', padding:'8px 16px', borderBottom:'1px solid rgba(255,255,255,0.07)', fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1 }}>
+              {[['nombre','Nombre'],['estado','Estado'],['canal','Canal'],['fecha_contacto','Contacto'],['fecha_venta','Venta']].map(([key,label]) => (
                 <span key={key} onClick={() => ordenarPor===key ? setOrdenAsc(a=>!a) : (setOrdenarPor(key),setOrdenAsc(true))} style={{ cursor:'pointer', display:'flex', alignItems:'center', gap:3, userSelect:'none' }}>
                   {label}{ordenarPor===key && (ordenAsc ? <ArrowUp size={10}/> : <ArrowDown size={10}/>)}
                 </span>
               ))}
-              <span>Comercial</span><span>Origen</span>
+              <span>Días</span><span>Comercial</span><span>Origen</span>
             </div>
             {leadsPagina.length === 0 && <div className="ap-empty"><p>No hay leads con estos filtros.</p></div>}
             {leadsPagina.map((lead, i) => {
               const est = ESTADOS[lead.estado];
               const comercial = nombreComercial(lead.assigned_to);
+              const dias = diasHastaVenta(lead);
               return (
                 <div key={lead.id} onClick={() => setPanel(lead)}
-                  style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 100px', padding:'10px 16px', borderBottom:'1px solid rgba(255,255,255,0.05)', cursor:'pointer', background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}
+                  style={{ display:'grid', gridTemplateColumns:'2fr 1fr 0.8fr 0.9fr 0.9fr 0.6fr 1fr 100px', padding:'10px 16px', borderBottom:'1px solid rgba(255,255,255,0.05)', cursor:'pointer', background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}
                   onMouseEnter={e => e.currentTarget.style.background='rgba(190,176,162,0.05)'}
                   onMouseLeave={e => e.currentTarget.style.background= i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)'}>
                   <div>
@@ -448,6 +457,8 @@ export function SectionLeads() {
                   <div style={{ alignSelf:'center' }}><span style={{ background:`${est?.color}20`, color:est?.color, fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4 }}>{est?.label}</span></div>
                   <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center', textTransform:'capitalize' }}>{lead.canal || '—'}</div>
                   <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center' }}>{lead.fecha_contacto?.slice(0,10) || '—'}</div>
+                  <div style={{ fontSize:12, color: lead.fecha_venta ? '#8bae8f' : 'rgba(255,255,255,0.5)', alignSelf:'center' }}>{lead.fecha_venta?.slice(0,10) || '—'}</div>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', alignSelf:'center' }}>{dias !== null ? `${dias}d` : '—'}</div>
                   <div style={{ alignSelf:'center' }} onClick={e => e.stopPropagation()}>
                     {comercial ? (
                       <span style={{ fontSize:11, color:'#beb0a2' }}>{comercial}</span>
