@@ -2,13 +2,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, ClipboardList, Shield } from 'lucide-react';
+import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, ClipboardList, Shield, TrendingUp, Wallet } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionTareas } from './SectionTareas';
 import { SectionAjustes } from './SectionAjustes';
 import { SectionDashboard } from './SectionDashboard';
 import { SectionLeads } from './SectionLeads';
 import { SectionLeadsCualificados } from './SectionLeadsCualificados';
+import { SectionVentas } from './SectionVentas';
+import { SectionFinanzas } from './SectionFinanzas';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -691,6 +693,7 @@ const ETIQUETAS_PERMISOS = {
   dashboard: 'Dashboard', trabajos: 'Trabajos', leads: 'Leads',
   'leads-cualificados': 'Cualificados', proyectos: 'Proyectos', clientes: 'Clientes',
   catalogo: 'Catálogo', referencias: 'Referencias', recursos: 'Recursos', contactos: 'Contactos',
+  ventas: 'Ventas', finanzas: 'Finanzas',
 };
 const PERMISOS_CONFIGURABLES = Object.keys(ETIQUETAS_PERMISOS);
 
@@ -853,11 +856,13 @@ const NAV_ITEMS = [
   { id:'trabajos', label:'Trabajos', Icon:LayoutGrid, permission:'trabajos' },
   { id:'leads', label:'Leads', Icon:Target, permission:'leads' },
   { id:'leads-cualificados', label:'Cualificados', Icon:ClipboardList, permission:'leads-cualificados' },
+  { id:'ventas', label:'Ventas', Icon:TrendingUp, permission:'ventas' },
   { id:'proyectos', label:'Proyectos', Icon:FolderOpen, permission:'proyectos' },
   { id:'clientes', label:'Clientes', Icon:UserCheck, permission:'clientes' },
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
   { id:'roles', label:'Roles', Icon:Shield, adminOnly:true },
   { id:'presupuestos', label:'Presupuestos', Icon:Calculator, adminOnly:true },
+  { id:'finanzas', label:'Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
   { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },
   { id:'referencias', label:'Referencias', Icon:Bookmark, permission:'referencias' },
@@ -893,11 +898,13 @@ export function AdminPanel() {
         {section==='trabajos'&&<SectionTrabajos/>}
         {section==='leads'&&<SectionLeads/>}
         {section==='leads-cualificados'&&<SectionLeadsCualificados onNavigate={setSection}/>}
+        {section==='ventas'&&<SectionVentas/>}
         {section==='proyectos'&&<SectionProyectos/>}
         {section==='clientes'&&<SectionClientes/>}
         {section==='empleados'&&<SectionEmpleados/>}
         {section==='roles'&&<SectionRoles/>}
         {section==='presupuestos'&&<SectionPresupuestos/>}
+        {section==='finanzas'&&<SectionFinanzas/>}
         {section==='tareas'&&<SectionTareas/>}
         {section==='ajustes'&&<SectionAjustes/>}
         {section==='catalogo'&&<SectionCatalogo/>}
