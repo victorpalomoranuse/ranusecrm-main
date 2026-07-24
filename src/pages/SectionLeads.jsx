@@ -147,7 +147,8 @@ export function SectionLeads() {
     if (filtroMes !== 'all' && !fechasParaFiltro(l).some(f => f.slice(0, 7) === filtroMes)) return false;
     if (filtroComercial !== 'all' && (filtroComercial === 'sin_asignar' ? l.assigned_to : l.assigned_to !== filtroComercial)) return false;
     if (busqueda && !l.nombre.toLowerCase().includes(busqueda.toLowerCase()) &&
-        !(l.instagram||'').toLowerCase().includes(busqueda.toLowerCase())) return false;
+        !(l.instagram||'').toLowerCase().includes(busqueda.toLowerCase()) &&
+        !(l.telefono||'').toLowerCase().replace(/\s+/g, '').includes(busqueda.toLowerCase().replace(/\s+/g, ''))) return false;
     return true;
   });
 
