@@ -653,7 +653,8 @@ export function SectionLeadsCualificados({ onNavigate }) {
 
   const filtrados = leads.filter(l => {
     if (filtroEstado !== 'all' && l.estado !== filtroEstado) return false;
-    if (busqueda && !l.nombre.toLowerCase().includes(busqueda.toLowerCase())) return false;
+    if (busqueda && !l.nombre.toLowerCase().includes(busqueda.toLowerCase()) &&
+        !(l.telefono||'').toLowerCase().replace(/\s+/g, '').includes(busqueda.toLowerCase().replace(/\s+/g, ''))) return false;
     return true;
   });
 
