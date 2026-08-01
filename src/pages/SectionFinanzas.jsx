@@ -25,10 +25,16 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [metodoPago, setMetodoPago] = useState('');
   const [notas, setNotas] = useState('');
+  const [leadId, setLeadId] = useState('');
+  const [leadsVenta, setLeadsVenta] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const categorias = tipo === 'ingreso' ? CATEGORIAS_INGRESO : CATEGORIAS_GASTO;
+
+  useEffect(() => {
+    api.get('/leads').then(r => setLeadsVenta((r.data.leads || []).filter(l => l.estado === 'venta'))).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -37,7 +43,7 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
     setLoading(true);
     try {
       const { data } = await api.post('/finanzas', {
-        tipo, categoria, concepto, monto, fecha, metodo_pago: metodoPago || null, notas,
+        tipo, categoria, concepto, monto, fecha, metodo_pago: metodoPago || null, notas, lead_id: leadId || null,
       });
       onSaved(data.movimiento);
     } catch (err) {
@@ -70,6 +76,13 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
           <div className="ap-field">
             <label>Concepto *</label>
             <input value={concepto} onChange={e => setConcepto(e.target.value)} placeholder="Ej: Pago proveedor renders" required />
+          </div>
+          <div className="ap-field">
+            <label>Proyecto / lead <span className="ap-optional">(opcional, pero enlázalo si es un cobro o gasto de una venta concreta)</span></label>
+            <select className="ap-select" value={leadId} onChange={e => setLeadId(e.target.value)}>
+              <option value="">— Sin enlazar (gasto/ingreso general de empresa) —</option>
+              {leadsVenta.map(l => <option key={l.id} value={l.id}>{l.nombre} {l.fecha_venta ? `(${l.fecha_venta.slice(0,10)})` : ''}</option>)}
+            </select>
           </div>
           <div className="fz-field-row">
             <div className="ap-field">
@@ -205,14 +218,24 @@ function PanelObjetivosFinanzas() {
 
       {progreso && (progreso.porEscenario?.pesimista?.objetivo != null || progreso.porEscenario?.realista?.objetivo != null || progreso.porEscenario?.optimista?.objetivo != null) && (
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
-          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Vendido</div><strong style={{ fontSize: 15 }}>{fmt(progreso.facturacionVendida)}</strong></div>
+          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Vendido</div><strong style={{ fontSize: 15 }}>{fmt(progreso.facturacionVendida)}</strong>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{fmt(progreso.facturacionVendidaLimpia)} limpio · {fmt(progreso.facturacionVendidaEjecucion)} ejecución</div>
+          </div>
           <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Cobrado</div><strong style={{ fontSize: 15 }}>{fmt(progreso.facturacionCobrada)}</strong></div>
+          {progreso.facturacionNeta !== undefined && (
+            <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Neto (cobrado − gastos)</div><strong style={{ fontSize: 15, color: progreso.facturacionNeta >= 0 ? '#8bae8f' : '#ae6b6b' }}>{fmt(progreso.facturacionNeta)}</strong></div>
+          )}
           {ESCENARIOS.filter(esc => progreso.porEscenario?.[esc]?.objetivo != null).map(esc => (
             <div key={esc}>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Falta ({ESCENARIO_LABEL[esc]})</div>
               <strong style={{ fontSize: 15, color: progreso.porEscenario[esc].restaVendido > 0 ? '#f5b748' : '#8bae8f' }}>
                 {progreso.porEscenario[esc].restaVendido > 0 ? fmt(progreso.porEscenario[esc].restaVendido) : '¡Cumplido! 🎉'}
               </strong>
+              {progreso.porEscenario[esc].restaNeto !== undefined && (
+                <div style={{ fontSize: 10, color: progreso.porEscenario[esc].restaNeto > 0 ? '#f5b748' : '#8bae8f' }}>
+                  {progreso.porEscenario[esc].restaNeto > 0 ? `${fmt(progreso.porEscenario[esc].restaNeto)} en neto` : 'Neto cumplido 🎉'}
+                </div>
+              )}
             </div>
           ))}
         </div>
