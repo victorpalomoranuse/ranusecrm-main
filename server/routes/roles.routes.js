@@ -10,7 +10,7 @@ router.use(authenticateToken, requireAdminSuperior);
 // del admin_superior para evitar que un rol mal configurado se dé a sí mismo
 // (o a otros) permisos de administración total.
 export const PERMISOS_VALIDOS = [
-  'dashboard', 'trabajos', 'leads', 'leads-cualificados', 'proyectos',
+  'dashboard', 'trabajos', 'leads', 'proyectos',
   'clientes', 'catalogo', 'referencias', 'recursos', 'contactos',
   'ventas', 'finanzas',
 ];
