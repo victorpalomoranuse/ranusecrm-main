@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requireAdminSuperior, requirePermission } from '../middleware/auth.middleware.js';
+import { clavesIdentidad } from '../utils/identidad.js';
 
 const router = express.Router();
 const requireLeads = requirePermission('leads');
@@ -25,16 +26,6 @@ function resolverTipoDiseño(estadoFinal, tipoDiseñoInput) {
   if (estadoFinal === 'diseño_0') return 'diseño_gratis';
   if (estadoFinal === 'diseño_1') return 'diseño_venta';
   return TIPOS_DISEÑO_VALIDOS.includes(tipoDiseñoInput) ? tipoDiseñoInput : 'diseño_gratis';
-}
-
-// Claves de identidad de un lead (instagram/email/teléfono normalizados), para
-// detectar sin tabla nueva si dos fichas de lead son la misma persona.
-function clavesIdentidad(l) {
-  const claves = [];
-  if (l.instagram) claves.push('ig:' + l.instagram.trim().toLowerCase().replace(/^@/, ''));
-  if (l.email) claves.push('email:' + l.email.trim().toLowerCase());
-  if (l.telefono) claves.push('tel:' + l.telefono.replace(/\D/g, ''));
-  return claves.filter(k => k.length > 4); // evita cruces por campos casi vacíos
 }
 
 // Marca cada lead con si esa misma persona ya tiene otra venta (por instagram/
