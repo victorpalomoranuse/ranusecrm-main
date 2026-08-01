@@ -107,6 +107,15 @@ router.get('/', authenticateToken, requireLeads, async (req, res) => {
       if (l.estado === 'venta') porCanal[c].ventas++;
     });
 
+    // Desglose de leads de Ads por campaña concreta (solo tiene sentido para canal='ads')
+    const porCampaña = {};
+    leads.filter(l => l.canal === 'ads').forEach(l => {
+      const camp = l.campaña || 'sin campaña';
+      if (!porCampaña[camp]) porCampaña[camp] = { total: 0, ventas: 0 };
+      porCampaña[camp].total++;
+      if (l.estado === 'venta') porCampaña[camp].ventas++;
+    });
+
     const valorPipeline = leads
       .filter(l => !['rechazo','no_show','descartado'].includes(l.estado))
       .reduce((sum, l) => sum + ((l.valor_estimado || 0) * (l.pct_cierre || 0) / 100), 0);
@@ -125,6 +134,7 @@ router.get('/', authenticateToken, requireLeads, async (req, res) => {
       },
       porEstado,
       porCanal,
+      porCampaña,
     });
 
   } catch (error) {
@@ -148,7 +158,7 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
     const {
       nombre, perfil, deporte, liga, instagram, telefono, email,
       origen = 'outbound', canal, estado = 'contacto',
-      valor_estimado, pct_cierre = 20, notas,
+      valor_estimado, pct_cierre = 20, notas, campaña,
       fecha_contacto, fecha_respuesta, fecha_llamada, fecha_diseño, fecha_llamada_venta, fecha_venta,
       fecha_venta_diseño_1,
       tipo_diseño = 'diseño_gratis', valor_diseño, link_fathom, assigned_to,
@@ -164,7 +174,7 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
       .insert({
         nombre: nombre.trim(), perfil: perfil || null, deporte: deporte || null,
         liga: liga || null, instagram: instagram || null, telefono: telefono || null,
-        email: email || null, origen, canal: canal || null,
+        email: email || null, origen, canal: canal || null, campaña: campaña?.trim() || null,
         estado: estadoFinal,
         valor_estimado: valor_estimado ? parseFloat(valor_estimado) : null,
         pct_cierre: pct_cierre ? parseInt(pct_cierre) : 20,
@@ -216,6 +226,8 @@ router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
       updates.pct_cierre = parseInt(updates.pct_cierre);
     if (updates.link_fathom !== undefined)
       updates.link_fathom = updates.link_fathom?.trim() || null;
+    if (updates.campaña !== undefined)
+      updates.campaña = updates.campaña?.trim() || null;
     if (updates.assigned_to !== undefined)
       updates.assigned_to = updates.assigned_to || null;
 
