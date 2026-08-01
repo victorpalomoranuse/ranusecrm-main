@@ -21,6 +21,7 @@ import rolesRoutes from './routes/roles.routes.js';
 import ventasRoutes from './routes/ventas.routes.js';
 import finanzasRoutes from './routes/finanzas.routes.js';
 import objetivosRoutes from './routes/objetivos.routes.js';
+import comisionesRoutes from './routes/comisiones.routes.js';
 dotenv.config();
 
 const app = express();
@@ -73,6 +74,7 @@ app.use('/api/roles', rolesRoutes);
 app.use('/api/ventas', ventasRoutes);
 app.use('/api/finanzas', finanzasRoutes);
 app.use('/api/objetivos', objetivosRoutes);
+app.use('/api/comisiones', comisionesRoutes);
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
 });
