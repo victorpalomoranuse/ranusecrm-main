@@ -59,18 +59,18 @@ function PanelObjetivos() {
       ) : (
         <>
           <div className="vt-objetivos-facturacion">
-            <div><span>Vendido</span><strong>{fmt(progreso.facturacionVendida)}</strong></div>
             <div><span>Cobrado</span><strong>{fmt(progreso.facturacionCobrada)}</strong></div>
+            <div><span>Vendido (referencia)</span><strong style={{ color: 'rgba(255,255,255,0.5)' }}>{fmt(progreso.facturacionVendida)}</strong></div>
           </div>
           <div className="vt-objetivos-lista">
             {escenarios.map(esc => {
               const e = progreso.porEscenario[esc];
-              const pct = Math.min(e.cumplidoVendidoPct ?? 0, 100);
+              const pct = Math.min(e.cumplidoCobradoPct ?? 0, 100);
               return (
                 <div key={esc} className="vt-objetivo-row">
                   <div className="vt-objetivo-row-head">
                     <span className="vt-objetivo-nombre" style={{ color: ESCENARIO_COLOR[esc] }}>{ESCENARIO_LABEL[esc]}</span>
-                    <span className="vt-objetivo-meta">{fmt(progreso.facturacionVendida)} / {fmt(e.objetivo)} · resta {fmt(e.restaVendido)}</span>
+                    <span className="vt-objetivo-meta">{fmt(progreso.facturacionCobrada)} / {fmt(e.objetivo)} · resta {fmt(e.restaCobrado)}</span>
                   </div>
                   <div className="vt-objetivo-bar"><div className="vt-objetivo-bar-fill" style={{ width: `${pct}%`, background: ESCENARIO_COLOR[esc] }} /></div>
                 </div>
@@ -116,7 +116,10 @@ function FichaConectada({ leadId }) {
   );
 }
 
-function NuevaVentaClienteModal({ cliente, onClose, onSaved }) {
+function NuevaVentaClienteModal({ cliente: clientePreseleccionado, onClose, onSaved }) {
+  const [clientes, setClientes] = useState([]);
+  const [cargandoClientes, setCargandoClientes] = useState(!clientePreseleccionado);
+  const [clienteId, setClienteId] = useState(clientePreseleccionado?.clienteId || '');
   const [valor, setValor] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [tipoProyecto, setTipoProyecto] = useState('solo_diseno');
@@ -124,8 +127,16 @@ function NuevaVentaClienteModal({ cliente, onClose, onSaved }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    if (clientePreseleccionado) return;
+    api.get('/ventas/clientes').then(r => setClientes(r.data.clientes || [])).catch(() => {}).finally(() => setCargandoClientes(false));
+  }, [clientePreseleccionado]);
+
+  const cliente = clientePreseleccionado || clientes.find(c => c.clienteId === clienteId);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!cliente) { setError('Elige un cliente'); return; }
     if (!valor) { setError('Indica el valor de la venta'); return; }
     setError(''); setLoading(true);
     try {
@@ -154,12 +165,29 @@ function NuevaVentaClienteModal({ cliente, onClose, onSaved }) {
   return (
     <div className="ap-modal-overlay" onClick={onClose}>
       <div className="ap-modal" onClick={e => e.stopPropagation()}>
-        <div className="ap-modal-head"><h2>Nueva venta a {cliente.nombre}</h2><button className="ap-modal-close" onClick={onClose}><X size={16} /></button></div>
+        <div className="ap-modal-head"><h2>{cliente ? `Nueva venta a ${cliente.nombre}` : 'Nueva venta a cliente existente'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16} /></button></div>
         <form onSubmit={handleSubmit} className="ap-modal-form">
-          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: -4 }}>
-            Cliente ya identificado{cliente.instagram ? ` (@${cliente.instagram})` : ''} — {cliente.numCompras} compra{cliente.numCompras !== 1 ? 's' : ''} previa{cliente.numCompras !== 1 ? 's' : ''}, {fmt(cliente.totalVendido)} en total.
-          </p>
-          <div className="ap-field"><label>Valor de la venta (€) *</label><input type="number" step="0.01" min="0" value={valor} onChange={e => setValor(e.target.value)} placeholder="0.00" required autoFocus /></div>
+          {!clientePreseleccionado && (
+            <div className="ap-field">
+              <label>Cliente *</label>
+              {cargandoClientes ? (
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Cargando clientes…</p>
+              ) : clientes.length === 0 ? (
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Todavía no hay ningún cliente con ventas registradas.</p>
+              ) : (
+                <select className="ap-select" value={clienteId} onChange={e => setClienteId(e.target.value)} required autoFocus>
+                  <option value="">— Selecciona un cliente —</option>
+                  {clientes.map(c => <option key={c.clienteId} value={c.clienteId}>{c.nombre} · {c.numCompras} compra{c.numCompras !== 1 ? 's' : ''} · {fmt(c.totalVendido)}</option>)}
+                </select>
+              )}
+            </div>
+          )}
+          {cliente && (
+            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: -4 }}>
+              Cliente ya identificado{cliente.instagram ? ` (@${cliente.instagram})` : ''} — {cliente.numCompras} compra{cliente.numCompras !== 1 ? 's' : ''} previa{cliente.numCompras !== 1 ? 's' : ''}, {fmt(cliente.totalVendido)} en total.
+            </p>
+          )}
+          <div className="ap-field"><label>Valor de la venta (€) *</label><input type="number" step="0.01" min="0" value={valor} onChange={e => setValor(e.target.value)} placeholder="0.00" required /></div>
           <div className="ap-field"><label>Fecha de venta</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} /></div>
           <div className="ap-field"><label>Tipo de proyecto</label>
             <select className="ap-select" value={tipoProyecto} onChange={e => setTipoProyecto(e.target.value)}>
@@ -249,8 +277,9 @@ export function SectionVentas() {
   const [filtroTipo, setFiltroTipo] = useState('todas');
   const [ventaAbierta, setVentaAbierta] = useState(null);
   const [vista, setVista] = useState('mes');
+  const [modalNuevaVenta, setModalNuevaVenta] = useState(false);
 
-  useEffect(() => {
+  const cargarVentas = () => {
     api.get('/ventas')
       .then(r => {
         setData(r.data);
@@ -258,7 +287,9 @@ export function SectionVentas() {
       })
       .catch(() => setError('No se pudieron cargar las ventas'))
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { cargarVentas(); }, []);
 
   const { ventas: todasLasVentas = [], resumen = { total: 0, valorTotal: 0, valorLimpio: 0, valorEjecucion: 0, valorMedio: 0, totalDiseño1: 0, totalDiseño2: 0 } } = data || {};
 
@@ -295,6 +326,7 @@ export function SectionVentas() {
         <div style={{ display: 'flex', gap: 8 }}>
           <button className={`ap-btn ap-btn-sm ${vista === 'mes' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVista('mes')}><Hash size={13} /> Por mes</button>
           <button className={`ap-btn ap-btn-sm ${vista === 'cliente' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVista('cliente')}><Users size={13} /> Por cliente</button>
+          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setModalNuevaVenta(true)}><Plus size={13} /> Venta a cliente existente</button>
         </div>
       </div>
 
@@ -384,7 +416,14 @@ export function SectionVentas() {
       ) : (
         <PanelClientes />
       )}
+
+      {modalNuevaVenta && (
+        <NuevaVentaClienteModal
+          cliente={null}
+          onClose={() => setModalNuevaVenta(false)}
+          onSaved={() => { setModalNuevaVenta(false); cargarVentas(); }}
+        />
+      )}
     </div>
   );
 }
-
