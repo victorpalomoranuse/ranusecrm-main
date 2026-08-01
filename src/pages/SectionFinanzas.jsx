@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
-import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2 } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2, Users, Check } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './SectionFinanzas.css';
 
@@ -258,6 +258,185 @@ function PanelObjetivosFinanzas() {
   );
 }
 
+function PanelComisiones() {
+  const [periodoTipo, setPeriodoTipo] = useState('mes');
+  const [mes, setMes] = useState(new Date().toISOString().slice(0, 7));
+  const [año, setAño] = useState(añoActual());
+  const [trimestre, setTrimestre] = useState(Math.ceil((new Date().getMonth() + 1) / 3));
+  const [calculo, setCalculo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [pagando, setPagando] = useState(null);
+  const [historico, setHistorico] = useState([]);
+  const [verHistorico, setVerHistorico] = useState(false);
+  const [modalConfig, setModalConfig] = useState(false);
+
+  const periodo = periodoTipo === 'mes' ? mes : periodoTipo === 'trimestre' ? `${año}-Q${trimestre}` : String(año);
+  const periodoLabel = periodoTipo === 'mes' ? fmtMesCorto(mes) + ' ' + mes.slice(0, 4) : periodo;
+
+  const cargar = useCallback(() => {
+    setLoading(true);
+    api.get('/comisiones/calculo', { params: { periodo_tipo: periodoTipo, periodo } })
+      .then(r => setCalculo(r.data))
+      .catch(() => setCalculo(null))
+      .finally(() => setLoading(false));
+  }, [periodoTipo, periodo]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => { if (verHistorico) api.get('/comisiones/historico').then(r => setHistorico(r.data.historico || [])).catch(() => {}); }, [verHistorico]);
+
+  const pagar = async (nombre, monto) => {
+    setPagando(nombre);
+    try {
+      await api.post('/comisiones/pagar', { nombre, monto, periodo_label: periodoLabel });
+      cargar();
+    } catch {
+      // noop
+    } finally {
+      setPagando(null);
+    }
+  };
+
+  return (
+    <div className="fz-chart-card" style={{ marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        <p className="fz-chart-title" style={{ margin: 0 }}><Users size={15} /> Comisiones del equipo</p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setVerHistorico(v => !v)}>{verHistorico ? 'Ver periodo actual' : 'Ver histórico total'}</button>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setModalConfig(true)}>Configurar %</button>
+        </div>
+      </div>
+
+      {verHistorico ? (
+        historico.length === 0 ? <div className="ap-empty"><p>Todavía no se ha registrado ningún pago de comisión.</p></div> : (
+          <div className="fz-tabla">
+            <div className="fz-row fz-row--head"><span>Persona</span><span></span><span></span><span></span><span>Total ganado contigo</span></div>
+            {historico.map(h => (
+              <div key={h.nombre} className="fz-row">
+                <span>{h.nombre}</span><span></span><span></span><span></span>
+                <span className="fz-importe fz-importe--ingreso">{fmt(h.total)}</span>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            {PERIODO_TABS.map(t => (
+              <button key={t.tipo} type="button" className={`ap-btn ap-btn-sm ${periodoTipo === t.tipo ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setPeriodoTipo(t.tipo)}>{t.label}</button>
+            ))}
+            {periodoTipo === 'mes' && <input type="month" className="ap-select" style={{ maxWidth: 160 }} value={mes} onChange={e => setMes(e.target.value)} />}
+            {periodoTipo === 'trimestre' && (
+              <>
+                <input type="number" className="ap-select" style={{ maxWidth: 90 }} value={año} onChange={e => setAño(parseInt(e.target.value) || añoActual())} />
+                <select className="ap-select" style={{ maxWidth: 90 }} value={trimestre} onChange={e => setTrimestre(parseInt(e.target.value))}>
+                  {[1, 2, 3, 4].map(q => <option key={q} value={q}>Q{q}</option>)}
+                </select>
+              </>
+            )}
+            {periodoTipo === 'año' && <input type="number" className="ap-select" style={{ maxWidth: 90 }} value={año} onChange={e => setAño(parseInt(e.target.value) || añoActual())} />}
+          </div>
+
+          {loading ? <div className="ap-loading">Calculando…</div> : !calculo ? (
+            <div className="ap-empty"><p>No se pudo calcular. Revisa que la migración de comisiones esté aplicada.</p></div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Beneficio neto del periodo</div><strong style={{ fontSize: 15 }}>{fmt(calculo.beneficioNeto)}</strong></div>
+                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Caja antes de pagar al equipo</div><strong style={{ fontSize: 15, color: '#8bae8f' }}>{fmt(calculo.cajaAntesDePagarEquipo)}</strong></div>
+                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Caja después de pagar al equipo</div><strong style={{ fontSize: 15, color: calculo.cajaDespuesDePagarEquipo >= 0 ? '#8bae8f' : '#ae6b6b' }}>{fmt(calculo.cajaDespuesDePagarEquipo)}</strong></div>
+              </div>
+
+              {calculo.porMiembro.length === 0 ? (
+                <div className="ap-empty"><p>No hay miembros del equipo configurados. Pulsa "Configurar %".</p></div>
+              ) : (
+                <div className="fz-tabla">
+                  <div className="fz-row fz-row--head"><span>Persona</span><span>%</span><span>Le corresponde</span><span>Ya pagado</span><span>Pendiente</span><span></span></div>
+                  {calculo.porMiembro.map(m => (
+                    <div key={m.nombre} className="fz-row">
+                      <span>{m.nombre}</span>
+                      <span>{m.porcentaje}%</span>
+                      <span>{fmt(m.comisionCalculada)}</span>
+                      <span>{fmt(m.yaPagado)}</span>
+                      <span className={m.pendiente > 0 ? 'fz-importe fz-importe--gasto' : ''}>{fmt(m.pendiente)}</span>
+                      <span>
+                        {m.pendiente > 0.009 && (
+                          <button className="ap-btn ap-btn-primary ap-btn-xs" disabled={pagando === m.nombre} onClick={() => pagar(m.nombre, m.pendiente)}>
+                            {pagando === m.nombre ? '...' : <><Check size={12} /> Pagar</>}
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {modalConfig && <ComisionesConfigModal onClose={() => setModalConfig(false)} onSaved={() => { setModalConfig(false); cargar(); }} />}
+    </div>
+  );
+}
+
+function ComisionesConfigModal({ onClose, onSaved }) {
+  const [equipo, setEquipo] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [nombreNuevo, setNombreNuevo] = useState('');
+  const [pctNuevo, setPctNuevo] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const cargar = () => { api.get('/comisiones/config').then(r => setEquipo(r.data.equipo || [])).catch(() => {}).finally(() => setLoading(false)); };
+  useEffect(cargar, []);
+
+  const actualizarPct = async (nombre, porcentaje) => {
+    try { await api.put('/comisiones/config', { nombre, porcentaje }); cargar(); } catch {}
+  };
+
+  const eliminar = async (id) => {
+    try { await api.delete(`/comisiones/config/${id}`); cargar(); } catch {}
+  };
+
+  const añadir = async (e) => {
+    e.preventDefault();
+    if (!nombreNuevo.trim() || pctNuevo === '') return;
+    setGuardando(true);
+    try {
+      await api.put('/comisiones/config', { nombre: nombreNuevo.trim(), porcentaje: pctNuevo });
+      setNombreNuevo(''); setPctNuevo('');
+      cargar();
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="ap-modal-overlay" onClick={onClose}>
+      <div className="ap-modal" onClick={e => e.stopPropagation()}>
+        <div className="ap-modal-head"><h2>Configurar comisiones</h2><button className="ap-modal-close" onClick={onClose}><X size={16} /></button></div>
+        <div className="ap-modal-form">
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: -4 }}>% sobre el beneficio neto total de cada periodo.</p>
+          {!loading && equipo.map(m => (
+            <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ flex: 1, fontSize: 13 }}>{m.nombre}</span>
+              <input type="number" step="0.5" min="0" max="100" defaultValue={m.porcentaje} className="ap-select" style={{ width: 80 }}
+                onBlur={e => { if (parseFloat(e.target.value) !== m.porcentaje) actualizarPct(m.nombre, e.target.value); }} />
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>%</span>
+              <button className="ap-btn-icon" onClick={() => eliminar(m.id)}><Trash2 size={13} /></button>
+            </div>
+          ))}
+          <form onSubmit={añadir} style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
+            <input value={nombreNuevo} onChange={e => setNombreNuevo(e.target.value)} placeholder="Nombre" className="ap-select" style={{ flex: 1 }} />
+            <input type="number" step="0.5" min="0" max="100" value={pctNuevo} onChange={e => setPctNuevo(e.target.value)} placeholder="%" className="ap-select" style={{ width: 80 }} />
+            <button type="submit" className="ap-btn ap-btn-primary ap-btn-sm" disabled={guardando}>Añadir</button>
+          </form>
+          <div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cerrar</button></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SectionFinanzas() {
   const [resumen, setResumen] = useState(null);
   const [movimientos, setMovimientos] = useState([]);
@@ -324,6 +503,8 @@ export function SectionFinanzas() {
       </div>
 
       <PanelObjetivosFinanzas />
+
+      <PanelComisiones />
 
       {chartData.length > 0 && (
         <div className="fz-chart-card">
