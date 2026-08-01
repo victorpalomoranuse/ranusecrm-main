@@ -74,3 +74,12 @@
 .vt-objetivo-meta { font-size: 0.76rem; color: rgba(255,255,255,0.45); white-space: nowrap; }
 .vt-objetivo-bar { height: 7px; border-radius: 4px; background: rgba(255,255,255,0.07); overflow: hidden; }
 .vt-objetivo-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+
+.vt-ficha-conectada {
+  display: flex; gap: 1.5rem; flex-wrap: wrap;
+  background: rgba(255,255,255,0.02); border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 0.75rem 1rem 0.85rem 1rem; margin: -2px 0 4px;
+}
+.vt-ficha-dato { display: flex; flex-direction: column; gap: 0.15rem; }
+.vt-ficha-dato span { font-size: 0.68rem; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.05em; }
+.vt-ficha-dato strong { font-size: 0.85rem; font-weight: 600; }
