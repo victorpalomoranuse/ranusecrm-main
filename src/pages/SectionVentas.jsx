@@ -1,134 +1,176 @@
-import { useState, useEffect } from 'react';
-import api from '../services/api';
-import { TrendingUp, Euro, Hash, ChevronDown, ChevronUp } from 'lucide-react';
-import './SectionVentas.css';
+import express from 'express';
+import { supabase } from '../config/supabase.js';
+import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 
-function fmt(n) {
-  return Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const router = express.Router();
+const requireFinanzas = requirePermission('finanzas');
+
+// Lectura del progreso de objetivos: visible para quien tenga 'ventas' o
+// 'finanzas' (el equipo comercial ve facturación/objetivo, no gastos ni
+// margen — eso sigue exclusivamente bajo 'finanzas').
+const requireVentasOFinanzas = (req, res, next) => {
+  if (!req.user) return res.status(401).json({ error: 'Autenticación requerida' });
+  if (req.user.role === 'admin_superior') return next();
+  if (req.user.role === 'trabajador' && (req.user.permissions?.ventas === true || req.user.permissions?.finanzas === true)) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Acceso denegado. No tienes permiso para esta sección.' });
+};
+
+const TIPOS_PERIODO = ['mes', 'trimestre', 'año'];
+const ESCENARIOS = ['pesimista', 'realista', 'optimista'];
+
+/**
+ * GET /api/objetivos?periodo_tipo=mes&año=2026
+ * Lista objetivos, opcionalmente filtrados por tipo de periodo y/o año.
+ */
+router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
+  try {
+    let query = supabase.from('objetivos_financieros').select('*').order('periodo', { ascending: true });
+
+    if (req.query.periodo_tipo && TIPOS_PERIODO.includes(req.query.periodo_tipo)) {
+      query = query.eq('periodo_tipo', req.query.periodo_tipo);
+    }
+    if (req.query.año) {
+      query = query.like('periodo', `${req.query.año}%`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json({ objetivos: data });
+  } catch (error) {
+    console.error('Error al listar objetivos:', error);
+    res.status(500).json({ error: 'Error al listar objetivos' });
+  }
+});
+
+/**
+ * PUT /api/objetivos
+ * Upsert de un objetivo (periodo_tipo + periodo + escenario es única).
+ * Body: { periodo_tipo, periodo, escenario, importe }
+ */
+router.put('/', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const { periodo_tipo, periodo, escenario, importe } = req.body;
+
+    if (!TIPOS_PERIODO.includes(periodo_tipo)) return res.status(400).json({ error: 'periodo_tipo inválido' });
+    if (!periodo?.trim()) return res.status(400).json({ error: 'periodo requerido' });
+    if (!ESCENARIOS.includes(escenario)) return res.status(400).json({ error: 'escenario inválido' });
+    if (importe === undefined || isNaN(parseFloat(importe)) || parseFloat(importe) < 0) {
+      return res.status(400).json({ error: 'importe inválido' });
+    }
+
+    const { data, error } = await supabase
+      .from('objetivos_financieros')
+      .upsert(
+        {
+          periodo_tipo,
+          periodo: periodo.trim(),
+          escenario,
+          importe: parseFloat(importe),
+          created_by: req.user.id,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'periodo_tipo,periodo,escenario' }
+      )
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ message: 'Objetivo guardado', objetivo: data });
+  } catch (error) {
+    console.error('Error al guardar objetivo:', error);
+    res.status(500).json({ error: 'Error al guardar objetivo' });
+  }
+});
+
+router.delete('/:id', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const { error } = await supabase.from('objetivos_financieros').delete().eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ message: 'Objetivo eliminado' });
+  } catch (error) {
+    console.error('Error al eliminar objetivo:', error);
+    res.status(500).json({ error: 'Error al eliminar objetivo' });
+  }
+});
+
+// Convierte una fecha 'YYYY-MM-DD' a la clave de periodo correspondiente
+function claveDePeriodo(fechaISO, tipo) {
+  const [y, m] = fechaISO.slice(0, 7).split('-');
+  if (tipo === 'año') return y;
+  if (tipo === 'trimestre') return `${y}-Q${Math.ceil(Number(m) / 3)}`;
+  return `${y}-${m}`; // mes
 }
 
-function fmtMes(mes) {
-  if (mes === 'sin_fecha') return 'Sin fecha';
-  const [y, m] = mes.split('-');
-  const nombre = new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-  return nombre.charAt(0).toUpperCase() + nombre.slice(1);
-}
+/**
+ * GET /api/objetivos/progreso?periodo_tipo=mes&periodo=2026-08
+ * Compara la facturación real (vendida y cobrada) del periodo con los
+ * 3 escenarios definidos, y calcula lo que resta para cada uno.
+ */
+router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, res) => {
+  try {
+    const periodo_tipo = TIPOS_PERIODO.includes(req.query.periodo_tipo) ? req.query.periodo_tipo : 'mes';
+    const periodo = req.query.periodo;
+    if (!periodo) return res.status(400).json({ error: 'periodo requerido (ej. 2026-08, 2026-Q3, 2026)' });
 
-const TIPO_COLOR = { diseño_1: '#06b6d4', diseño_2: '#beb0a2' };
+    const [{ data: objetivos, error: errObj }, { data: leads, error: errLeads }, { data: movimientos, error: errMov }] =
+      await Promise.all([
+        supabase.from('objetivos_financieros').select('*').eq('periodo_tipo', periodo_tipo).eq('periodo', periodo),
+        supabase.from('leads').select('valor_estimado, fecha_venta, valor_diseño, fecha_venta_diseño_1').or('estado.eq.venta,tipo_diseño.eq.diseño_venta'),
+        supabase.from('finanzas_movimientos').select('tipo, monto, fecha'),
+      ]);
+    if (errObj) throw errObj;
+    if (errLeads) throw errLeads;
+    if (errMov) throw errMov;
 
-export function SectionVentas() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [openMes, setOpenMes] = useState(null);
-  const [filtroTipo, setFiltroTipo] = useState('todas');
+    // Facturación VENDIDA: importe de cada venta en la fecha en que se cerró
+    let facturacionVendida = 0;
+    leads.forEach(l => {
+      if (l.fecha_venta && claveDePeriodo(l.fecha_venta, periodo_tipo) === periodo) {
+        facturacionVendida += Number(l.valor_estimado || 0);
+      }
+      if (l.fecha_venta_diseño_1 && claveDePeriodo(l.fecha_venta_diseño_1, periodo_tipo) === periodo) {
+        facturacionVendida += Number(l.valor_diseño || 0);
+      }
+    });
 
-  useEffect(() => {
-    api.get('/ventas')
-      .then(r => {
-        setData(r.data);
-        if (r.data.porMes?.length) setOpenMes(r.data.porMes[0].mes);
-      })
-      .catch(() => setError('No se pudieron cargar las ventas'))
-      .finally(() => setLoading(false));
-  }, []);
+    // Facturación COBRADA: ingresos reales registrados en caja durante el periodo
+    let facturacionCobrada = 0;
+    let gastosPeriodo = 0;
+    movimientos.forEach(m => {
+      if (claveDePeriodo(m.fecha, periodo_tipo) !== periodo) return;
+      if (m.tipo === 'ingreso') facturacionCobrada += Number(m.monto);
+      else gastosPeriodo += Number(m.monto);
+    });
 
-  const { ventas: todasLasVentas = [], resumen = { total: 0, valorTotal: 0, valorMedio: 0, totalDiseño1: 0, totalDiseño2: 0 } } = data || {};
+    const porEscenario = {};
+    ESCENARIOS.forEach(esc => {
+      const obj = objetivos.find(o => o.escenario === esc);
+      const importeObjetivo = obj ? Number(obj.importe) : null;
+      porEscenario[esc] = {
+        objetivo: importeObjetivo,
+        restaVendido: importeObjetivo !== null ? Math.max(importeObjetivo - facturacionVendida, 0) : null,
+        restaCobrado: importeObjetivo !== null ? Math.max(importeObjetivo - facturacionCobrada, 0) : null,
+        cumplidoVendidoPct: importeObjetivo ? Math.round((facturacionVendida / importeObjetivo) * 100) : null,
+        cumplidoCobradoPct: importeObjetivo ? Math.round((facturacionCobrada / importeObjetivo) * 100) : null,
+      };
+    });
 
-  // Recalcula la agrupación por mes en función del filtro de tipo seleccionado
-  const ventasFiltradas = filtroTipo === 'todas' ? todasLasVentas : todasLasVentas.filter(v => v.tipo === filtroTipo);
-  const porMesMap = {};
-  ventasFiltradas.forEach(v => {
-    const mes = v.fecha ? v.fecha.slice(0, 7) : 'sin_fecha';
-    if (!porMesMap[mes]) porMesMap[mes] = { mes, total: 0, count: 0, ventas: [] };
-    porMesMap[mes].total += v.valor;
-    porMesMap[mes].count += 1;
-    porMesMap[mes].ventas.push(v);
-  });
-  const porMes = Object.values(porMesMap).sort((a, b) => b.mes.localeCompare(a.mes));
+    const puedeVerFinanzas = req.user.role === 'admin_superior' || req.user.permissions?.finanzas === true;
 
-  if (loading) return (
-    <div className="ap-section">
-      <div className="ap-section-head"><h1>Ventas</h1></div>
-      <div className="ap-loading">Cargando ventas…</div>
-    </div>
-  );
+    res.json({
+      periodo_tipo,
+      periodo,
+      facturacionVendida,
+      facturacionCobrada,
+      ...(puedeVerFinanzas ? { gastosPeriodo, balanceCobrado: facturacionCobrada - gastosPeriodo } : {}),
+      porEscenario,
+    });
+  } catch (error) {
+    console.error('Error al calcular progreso de objetivos:', error);
+    res.status(500).json({ error: 'Error al calcular progreso de objetivos' });
+  }
+});
 
-  if (error) return (
-    <div className="ap-section">
-      <div className="ap-section-head"><h1>Ventas</h1></div>
-      <div className="ap-empty"><p>{error}</p></div>
-    </div>
-  );
-
-  return (
-    <div className="ap-section">
-      <div className="ap-section-head">
-        <div><h1>Ventas</h1><p>Venta Diseño 1 (se vende el diseño) y Venta Diseño 2 (venta final del proyecto), agrupadas por mes.</p></div>
-      </div>
-
-      <div className="vt-stats">
-        <div className="vt-stat-card">
-          <div className="vt-stat-icon"><Hash size={18} /></div>
-          <div className="vt-stat-body"><span>Ventas totales</span><strong>{resumen.total}</strong><span className="vt-stat-sub">{resumen.totalDiseño1} Diseño 1 · {resumen.totalDiseño2} Diseño 2</span></div>
-        </div>
-        <div className="vt-stat-card">
-          <div className="vt-stat-icon"><Euro size={18} /></div>
-          <div className="vt-stat-body"><span>Valor total</span><strong>{fmt(resumen.valorTotal)}</strong></div>
-        </div>
-        <div className="vt-stat-card">
-          <div className="vt-stat-icon"><TrendingUp size={18} /></div>
-          <div className="vt-stat-body"><span>Valor medio / venta</span><strong>{fmt(resumen.valorMedio)}</strong></div>
-        </div>
-      </div>
-
-      <div className="vt-filtros">
-        <button className={`ap-btn ap-btn-sm ${filtroTipo === 'todas' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setFiltroTipo('todas')}>Todas</button>
-        <button className={`ap-btn ap-btn-sm ${filtroTipo === 'diseño_1' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setFiltroTipo('diseño_1')}>Venta Diseño 1</button>
-        <button className={`ap-btn ap-btn-sm ${filtroTipo === 'diseño_2' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setFiltroTipo('diseño_2')}>Venta Diseño 2</button>
-      </div>
-
-      {porMes.length === 0 ? (
-        <div className="ap-empty"><p>Todavía no hay ventas registradas.</p></div>
-      ) : (
-        <div className="vt-meses">
-          {porMes.map(m => {
-            const open = openMes === m.mes;
-            return (
-              <div key={m.mes} className="vt-mes-card">
-                <button className="vt-mes-head" onClick={() => setOpenMes(open ? null : m.mes)}>
-                  <div className="vt-mes-title">
-                    <span className="vt-mes-nombre">{fmtMes(m.mes)}</span>
-                    <span className="vt-mes-count">{m.count} venta{m.count !== 1 ? 's' : ''}</span>
-                  </div>
-                  <div className="vt-mes-right">
-                    <strong className="vt-mes-total">{fmt(m.total)}</strong>
-                    {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </div>
-                </button>
-                {open && (
-                  <div className="vt-mes-table">
-                    <div className="vt-row vt-row--head">
-                      <span>Lead</span><span>Tipo</span><span>Canal</span><span>Comercial</span><span>Fecha</span><span>Valor</span>
-                    </div>
-                    {m.ventas.map(v => (
-                      <div key={v.id} className="vt-row">
-                        <span className="vt-lead-nombre">{v.nombre}</span>
-                        <span><span className="vt-tipo-badge" style={{ background: `${TIPO_COLOR[v.tipo]}20`, color: TIPO_COLOR[v.tipo] }}>{v.tipoLabel}</span></span>
-                        <span>{v.canal || '—'}</span>
-                        <span>{v.comercial || '—'}</span>
-                        <span>{v.fecha ? new Date(v.fecha).toLocaleDateString('es-ES') : '—'}</span>
-                        <span className="vt-valor">{fmt(v.valor)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
+export default router;
