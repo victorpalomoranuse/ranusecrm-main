@@ -10,6 +10,7 @@ import { SectionDashboard } from './SectionDashboard';
 import { SectionLeads } from './SectionLeads';
 import { SectionVentas } from './SectionVentas';
 import { SectionFinanzas } from './SectionFinanzas';
+import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -678,7 +679,7 @@ function SectionTrabajos() {
 const PAGE_SIZE_PROYECTOS=6;
 
 function SectionProyectos() {
-  const [projects,setProjects]=useState([]); const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null); const [confirmId,setConfirmId]=useState(null); const [manageProject,setManageProject]=useState(null); const [page,setPage]=useState(1);
+  const [projects,setProjects]=useState([]); const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null); const [confirmId,setConfirmId]=useState(null); const [manageProject,setManageProject]=useState(null); const [page,setPage]=useState(1); const [verProyectoLead,setVerProyectoLead]=useState(null);
   const {toasts,toast,remove}=useToast();
   const loadProjects=async()=>{try{const{data}=await api.get('/client-projects');setProjects(data.projects||[]);}catch{}finally{setLoading(false);}};
   useEffect(()=>{loadProjects();},[]);
@@ -690,11 +691,12 @@ function SectionProyectos() {
       <ToastContainer toasts={toasts} onRemove={remove}/>
       <div className="ap-section-head"><div><h1>Proyectos</h1><p>Genera proyectos con códigos de acceso para tus clientes.</p></div><button className="ap-btn ap-btn-primary" onClick={()=>setModal('new')}><Plus size={15}/> Generar proyecto</button></div>
       {loading?<div className="ap-loading">Cargando proyectos...</div>:projects.length===0?<div className="ap-empty"><p>No hay proyectos todavía.</p></div>:(
-        <><div className="ap-cp-grid">{projects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[1,2,3,4,5].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions"><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={projects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
+        <><div className="ap-cp-grid">{projects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[1,2,3,4,5].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions">{p.lead_id&&<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setVerProyectoLead(p.lead_id)}>Ver relación completa</button>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={projects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
       )}
       {modal&&<ClientProjectModal project={modal==='new'?null:modal} onClose={()=>setModal(null)} onSaved={(saved)=>{if(modal==='new')setProjects(prev=>[saved,...prev]);else setProjects(prev=>prev.map(p=>p.id===saved.id?saved:p));setModal(null);toast.success('Proyecto guardado correctamente');}}/>}
       {confirmId&&<ConfirmDialog message="¿Eliminar este proyecto? El código de acceso quedará inválido." onConfirm={handleDelete} onCancel={()=>setConfirmId(null)}/>}
       {manageProject&&<ProjectManagerModal project={manageProject} onClose={()=>setManageProject(null)}/>}
+      {verProyectoLead&&<ProyectoCompletoModal leadId={verProyectoLead} onClose={()=>setVerProyectoLead(null)}/>}
     </div>
   );
 }
