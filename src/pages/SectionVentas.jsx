@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
+import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { TrendingUp, Euro, Hash, ChevronDown, ChevronUp, Target, Plus, X, Users } from 'lucide-react';
 import './SectionVentas.css';
 
@@ -91,6 +92,7 @@ const FASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Ins
 function FichaConectada({ leadId }) {
   const [ficha, setFicha] = useState(null);
   const [cargando, setCargando] = useState(true);
+  const [verCompleto, setVerCompleto] = useState(false);
 
   useEffect(() => {
     setCargando(true);
@@ -112,6 +114,10 @@ function FichaConectada({ leadId }) {
         <span>Proyecto</span>
         <strong>{ficha.proyecto ? `${FASE_LABELS[ficha.proyecto.phase] || ficha.proyecto.phase} · ${ficha.proyecto.project_name}` : 'Sin proyecto enlazado'}</strong>
       </div>
+      <div className="vt-ficha-dato" style={{ justifyContent: 'center' }}>
+        <button className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => setVerCompleto(true)}>Ver proyecto completo</button>
+      </div>
+      {verCompleto && <ProyectoCompletoModal leadId={leadId} onClose={() => setVerCompleto(false)} />}
     </div>
   );
 }
@@ -212,6 +218,7 @@ function PanelClientes() {
   const [loading, setLoading] = useState(true);
   const [abierto, setAbierto] = useState(null);
   const [modalCliente, setModalCliente] = useState(null);
+  const [verProyecto, setVerProyecto] = useState(null);
 
   const cargar = () => {
     setLoading(true);
@@ -245,7 +252,7 @@ function PanelClientes() {
                   <span>Tipo</span><span>Canal</span><span>Proyecto</span><span>Fecha</span><span>Cobrado</span><span>Valor</span>
                 </div>
                 {c.compras.map((compra, i) => (
-                  <div key={i} className="vt-row">
+                  <div key={i} className="vt-row" onClick={() => setVerProyecto(compra.leadId)} style={{ cursor: 'pointer' }}>
                     <span><span className="vt-tipo-badge" style={{ background: `${TIPO_COLOR[compra.tipo]}20`, color: TIPO_COLOR[compra.tipo] }}>{compra.tipoLabel}</span></span>
                     <span style={{ textTransform: 'capitalize' }}>{compra.canal || '—'}</span>
                     <span>{compra.tipoProyecto === 'con_ejecucion' ? 'Ejecución' : 'Limpio'}</span>
@@ -265,6 +272,7 @@ function PanelClientes() {
       {modalCliente && (
         <NuevaVentaClienteModal cliente={modalCliente} onClose={() => setModalCliente(null)} onSaved={() => { setModalCliente(null); cargar(); }} />
       )}
+      {verProyecto && <ProyectoCompletoModal leadId={verProyecto} onClose={() => setVerProyecto(null)} />}
     </div>
   );
 }
