@@ -151,7 +151,7 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
       fecha_contacto, fecha_respuesta, fecha_llamada, fecha_diseño, fecha_llamada_venta, fecha_venta,
       fecha_venta_diseño_1,
       tipo_diseño = 'diseño_gratis', valor_diseño, link_fathom, assigned_to,
-      valor_comisiones, notas_comisiones, tipo_proyecto = 'solo_diseno'
+      valor_comisiones, notas_comisiones, tipo_proyecto = 'solo_diseno', costes_estimados
     } = req.body;
 
     if (!nombre) return res.status(400).json({ error: 'El nombre es requerido' });
@@ -178,6 +178,7 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
         tipo_diseño: resolverTipoDiseño(estadoFinal, tipo_diseño),
         valor_diseño: valor_diseño ? parseFloat(valor_diseño) : null,
         tipo_proyecto: ['solo_diseno', 'con_ejecucion'].includes(tipo_proyecto) ? tipo_proyecto : 'solo_diseno',
+        costes_estimados: costes_estimados ? parseFloat(costes_estimados) : null,
         link_fathom: link_fathom?.trim() || null,
         assigned_to: assigned_to || null,
         valor_comisiones: valor_comisiones ? parseFloat(valor_comisiones) : null,
@@ -232,6 +233,9 @@ router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
 
     if (updates.tipo_proyecto && !['solo_diseno', 'con_ejecucion'].includes(updates.tipo_proyecto))
       delete updates.tipo_proyecto;
+
+    if (updates.costes_estimados !== undefined)
+      updates.costes_estimados = updates.costes_estimados !== null && updates.costes_estimados !== '' ? parseFloat(updates.costes_estimados) : null;
 
     // Si el estado pasa a diseño_0 o diseño_1, sincroniza tipo_diseño automáticamente
     // (por ejemplo, al cambiar el estado desde el tablero Kanban sin abrir el formulario)
