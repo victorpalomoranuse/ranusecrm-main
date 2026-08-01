@@ -748,10 +748,6 @@ function BudgetEditor({ id, onBack }) {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [importing, setImporting] = useState(false);
-  const [importingLc, setImportingLc] = useState(false);
-  const [lcList, setLcList] = useState([]);
-  const [selectedLcId, setSelectedLcId] = useState('');
-  const [showLcImport, setShowLcImport] = useState(false);
   const [savingFee, setSavingFee] = useState(false);
   const [msg, setMsg]         = useState(null);
   const [pdfIva, setPdfIva]   = useState('21');
@@ -794,12 +790,11 @@ function BudgetEditor({ id, onBack }) {
   };
 
   useEffect(() => {
-    Promise.all([api.get(`/budgets/${id}`), api.get('/client-projects'), api.get('/leads-cualificados')])
-      .then(([b, p, lc]) => {
+    Promise.all([api.get(`/budgets/${id}`), api.get('/client-projects')])
+      .then(([b, p]) => {
         setBudget(b.data.budget);
         setItems(b.data.budget.items || []);
         setProjects(p.data.projects || []);
-        setLcList(lc.data.leads || []);
       })
       .catch(() => flash('Error al cargar', 'error'))
       .finally(() => setLoading(false));
@@ -884,19 +879,6 @@ function BudgetEditor({ id, onBack }) {
     try { const { data } = await api.post(`/budgets/${id}/import`); setItems(prev => [...prev, ...(data.items||[])]); flash(data.message || 'Importado'); }
     catch { flash('Error al importar', 'error'); }
     finally { setImporting(false); }
-  };
-
-  const handleImportFromLc = async () => {
-    if (!selectedLcId) return;
-    setImportingLc(true);
-    try {
-      const { data } = await api.post(`/budgets/${id}/import-from-lc`, { lc_id: selectedLcId });
-      setItems(prev => [...prev, ...(data.items || [])]);
-      flash(data.message || 'Importado desde lead cualificado');
-      setShowLcImport(false);
-      setSelectedLcId('');
-    } catch { flash('Error al importar desde lead', 'error'); }
-    finally { setImportingLc(false); }
   };
 
   const handleInsertFromLibrary = async (product) => {
@@ -1041,22 +1023,6 @@ function BudgetEditor({ id, onBack }) {
                 <RotateCcw size={13}/> {importing?'Importando…':'Importar del proyecto'}
               </button>
             )}
-            <div style={{display:'flex',alignItems:'center',gap:'0.4rem'}}>
-              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowLcImport(v=>!v)}>
-                <RotateCcw size={13}/> Importar de lead
-              </button>
-              {showLcImport && (
-                <>
-                  <select className="pres-cell-select" value={selectedLcId} onChange={e=>setSelectedLcId(e.target.value)} style={{minWidth:160}}>
-                    <option value="">— Selecciona lead —</option>
-                    {lcList.map(lc => <option key={lc.id} value={lc.id}>{lc.nombre}</option>)}
-                  </select>
-                  <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleImportFromLc} disabled={importingLc || !selectedLcId}>
-                    {importingLc ? 'Importando…' : 'Importar'}
-                  </button>
-                </>
-              )}
-            </div>
           </div>
         </div>
 
