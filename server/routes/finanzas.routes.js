@@ -92,6 +92,104 @@ router.get('/resumen', authenticateToken, requireFinanzas, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/finanzas/proyectos
+ * Un proyecto (lead vendido) por fila, con: presupuesto aceptado, cobrado,
+ * pendiente de cobro, gastos asociados y margen real. Sirve para la tabla
+ * "lo que gano realmente en cada proyecto".
+ */
+router.get('/proyectos', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const { data: leads, error: errLeads } = await supabase
+      .from('leads')
+      .select('id, nombre, tipo_proyecto, valor_estimado, fecha_venta, employees:assigned_to(name)')
+      .eq('estado', 'venta');
+    if (errLeads) throw errLeads;
+
+    const { data: movimientos, error: errMov } = await supabase
+      .from('finanzas_movimientos')
+      .select('lead_id, tipo, monto')
+      .not('lead_id', 'is', null);
+    if (errMov) throw errMov;
+
+    const proyectos = leads.map(l => {
+      const movs = movimientos.filter(m => m.lead_id === l.id);
+      const cobrado = movs.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + Number(m.monto), 0);
+      const gastos = movs.filter(m => m.tipo === 'gasto').reduce((s, m) => s + Number(m.monto), 0);
+      const presupuesto = Number(l.valor_estimado || 0);
+      return {
+        leadId: l.id,
+        nombre: l.nombre,
+        tipoProyecto: l.tipo_proyecto || 'solo_diseno',
+        comercial: l.employees?.name || null,
+        fechaVenta: l.fecha_venta,
+        presupuesto,
+        cobrado,
+        pendiente: Math.max(presupuesto - cobrado, 0),
+        gastos,
+        margenReal: cobrado - gastos,
+      };
+    });
+
+    proyectos.sort((a, b) => (b.fechaVenta || '').localeCompare(a.fechaVenta || ''));
+    res.json({ proyectos });
+  } catch (error) {
+    console.error('Error al listar proyectos financieros:', error);
+    res.status(500).json({ error: 'Error al listar proyectos financieros' });
+  }
+});
+
+/**
+ * GET /api/finanzas/proyecto/:leadId
+ * Ficha financiera de un proyecto concreto: presupuesto vs cobrado (previsión
+ * vs real), pagos individuales del cliente, gastos y margen real.
+ */
+router.get('/proyecto/:leadId', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const { data: lead, error: errLead } = await supabase
+      .from('leads')
+      .select('id, nombre, tipo_proyecto, valor_estimado, fecha_venta')
+      .eq('id', req.params.leadId)
+      .single();
+    if (errLead) throw errLead;
+
+    const { data: movimientos, error: errMov } = await supabase
+      .from('finanzas_movimientos')
+      .select('*')
+      .eq('lead_id', req.params.leadId)
+      .order('fecha', { ascending: true });
+    if (errMov) throw errMov;
+
+    const pagos = movimientos.filter(m => m.tipo === 'ingreso');
+    const gastos = movimientos.filter(m => m.tipo === 'gasto');
+    const cobrado = pagos.reduce((s, m) => s + Number(m.monto), 0);
+    const totalGastos = gastos.reduce((s, m) => s + Number(m.monto), 0);
+    const presupuesto = Number(lead.valor_estimado || 0);
+
+    res.json({
+      proyecto: {
+        leadId: lead.id,
+        nombre: lead.nombre,
+        tipoProyecto: lead.tipo_proyecto || 'solo_diseno',
+        fechaVenta: lead.fecha_venta,
+        presupuesto,
+      },
+      pagos,
+      gastos,
+      resumen: {
+        cobrado,
+        pendiente: Math.max(presupuesto - cobrado, 0),
+        totalGastos,
+        margenReal: cobrado - totalGastos,
+        previsionVsReal: presupuesto - cobrado,
+      },
+    });
+  } catch (error) {
+    console.error('Error al obtener ficha financiera del proyecto:', error);
+    res.status(500).json({ error: 'Error al obtener ficha financiera del proyecto' });
+  }
+});
+
 router.post('/', authenticateToken, requireFinanzas, async (req, res) => {
   try {
     const { tipo, categoria, concepto, monto, fecha, metodo_pago, lead_id, notas } = req.body;
