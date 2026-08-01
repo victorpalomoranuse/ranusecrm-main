@@ -80,7 +80,7 @@ router.put('/', authenticateToken, requireFinanzas, async (req, res) => {
     res.json({ message: 'Objetivo guardado', objetivo: data });
   } catch (error) {
     console.error('Error al guardar objetivo:', error);
-    res.status(500).json({ error: 'Error al guardar objetivo' });
+    res.status(500).json({ error: 'Error al guardar objetivo', detalle: error.message || String(error) });
   }
 });
 
