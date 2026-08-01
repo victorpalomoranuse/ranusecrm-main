@@ -148,17 +148,17 @@ router.get('/proyecto/:leadId', authenticateToken, requireFinanzas, async (req, 
   try {
     const { data: lead, error: errLead } = await supabase
       .from('leads')
-      .select('id, nombre, tipo_proyecto, valor_estimado, fecha_venta')
+      .select('id, nombre, instagram, email, telefono, canal, campaña, tipo_proyecto, valor_estimado, fecha_venta, fecha_contacto, notas, assigned_to, employees:assigned_to(name)')
       .eq('id', req.params.leadId)
       .single();
     if (errLead) throw errLead;
 
-    const { data: movimientos, error: errMov } = await supabase
-      .from('finanzas_movimientos')
-      .select('*')
-      .eq('lead_id', req.params.leadId)
-      .order('fecha', { ascending: true });
+    const [{ data: movimientos, error: errMov }, { data: clientProject, error: errCP }] = await Promise.all([
+      supabase.from('finanzas_movimientos').select('*').eq('lead_id', req.params.leadId).order('fecha', { ascending: true }),
+      supabase.from('client_projects').select('id, project_name, phase, urgency, access_code, notes, responsible:employees!responsible_id(name)').eq('lead_id', req.params.leadId).maybeSingle(),
+    ]);
     if (errMov) throw errMov;
+    if (errCP) throw errCP;
 
     const pagos = movimientos.filter(m => m.tipo === 'ingreso');
     const gastos = movimientos.filter(m => m.tipo === 'gasto');
@@ -170,10 +170,26 @@ router.get('/proyecto/:leadId', authenticateToken, requireFinanzas, async (req, 
       proyecto: {
         leadId: lead.id,
         nombre: lead.nombre,
+        instagram: lead.instagram,
+        email: lead.email,
+        telefono: lead.telefono,
+        canal: lead.canal,
+        campaña: lead.campaña,
         tipoProyecto: lead.tipo_proyecto || 'solo_diseno',
         fechaVenta: lead.fecha_venta,
+        fechaContacto: lead.fecha_contacto,
+        comercial: lead.employees?.name || null,
+        notas: lead.notas,
         presupuesto,
       },
+      ejecucion: clientProject ? {
+        nombre: clientProject.project_name,
+        fase: clientProject.phase,
+        urgencia: clientProject.urgency,
+        codigoAcceso: clientProject.access_code,
+        responsable: clientProject.responsible?.name || null,
+        notas: clientProject.notes,
+      } : null,
       pagos,
       gastos,
       resumen: {
