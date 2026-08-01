@@ -60,18 +60,18 @@ function PanelObjetivos() {
       ) : (
         <>
           <div className="vt-objetivos-facturacion">
-            <div><span>Cobrado</span><strong>{fmt(progreso.facturacionCobrada)}</strong></div>
-            <div><span>Vendido (referencia)</span><strong style={{ color: 'rgba(255,255,255,0.5)' }}>{fmt(progreso.facturacionVendida)}</strong></div>
+            <div><span>Beneficio limpio (por proyecto)</span><strong>{fmt(progreso.beneficioLimpioPorProyecto)}</strong></div>
+            <div><span>Cobrado (referencia)</span><strong style={{ color: 'rgba(255,255,255,0.5)' }}>{fmt(progreso.facturacionCobrada)}</strong></div>
           </div>
           <div className="vt-objetivos-lista">
             {escenarios.map(esc => {
               const e = progreso.porEscenario[esc];
-              const pct = Math.min(e.cumplidoCobradoPct ?? 0, 100);
+              const pct = Math.min(e.cumplidoBeneficioLimpioPct ?? 0, 100);
               return (
                 <div key={esc} className="vt-objetivo-row">
                   <div className="vt-objetivo-row-head">
                     <span className="vt-objetivo-nombre" style={{ color: ESCENARIO_COLOR[esc] }}>{ESCENARIO_LABEL[esc]}</span>
-                    <span className="vt-objetivo-meta">{fmt(progreso.facturacionCobrada)} / {fmt(e.objetivo)} · resta {fmt(e.restaCobrado)}</span>
+                    <span className="vt-objetivo-meta">{fmt(progreso.beneficioLimpioPorProyecto)} / {fmt(e.objetivo)} · resta {fmt(e.restaBeneficioLimpio)}</span>
                   </div>
                   <div className="vt-objetivo-bar"><div className="vt-objetivo-bar-fill" style={{ width: `${pct}%`, background: ESCENARIO_COLOR[esc] }} /></div>
                 </div>
