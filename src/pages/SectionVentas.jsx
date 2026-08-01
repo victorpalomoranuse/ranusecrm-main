@@ -134,7 +134,7 @@ export function SectionVentas() {
       .finally(() => setLoading(false));
   }, []);
 
-  const { ventas: todasLasVentas = [], resumen = { total: 0, valorTotal: 0, valorMedio: 0, totalDiseño1: 0, totalDiseño2: 0 } } = data || {};
+  const { ventas: todasLasVentas = [], resumen = { total: 0, valorTotal: 0, valorLimpio: 0, valorEjecucion: 0, valorMedio: 0, totalDiseño1: 0, totalDiseño2: 0 } } = data || {};
 
   // Recalcula la agrupación por mes en función del filtro de tipo seleccionado
   const ventasFiltradas = filtroTipo === 'todas' ? todasLasVentas : todasLasVentas.filter(v => v.tipo === filtroTipo);
@@ -183,6 +183,14 @@ export function SectionVentas() {
           <div className="vt-stat-icon"><TrendingUp size={18} /></div>
           <div className="vt-stat-body"><span>Valor medio / venta</span><strong>{fmt(resumen.valorMedio)}</strong></div>
         </div>
+        <div className="vt-stat-card">
+          <div className="vt-stat-icon" style={{ color: '#22c55e' }}><Euro size={18} /></div>
+          <div className="vt-stat-body"><span>Vendido limpio</span><strong style={{ color: '#22c55e' }}>{fmt(resumen.valorLimpio)}</strong><span className="vt-stat-sub">Solo diseño, sin gastos</span></div>
+        </div>
+        <div className="vt-stat-card">
+          <div className="vt-stat-icon" style={{ color: '#f5b748' }}><Euro size={18} /></div>
+          <div className="vt-stat-body"><span>Vendido con ejecución</span><strong style={{ color: '#f5b748' }}>{fmt(resumen.valorEjecucion)}</strong><span className="vt-stat-sub">Lleva gastos asociados</span></div>
+        </div>
       </div>
 
       <div className="vt-filtros">
@@ -218,7 +226,13 @@ export function SectionVentas() {
                       <div key={v.id}>
                         <div className="vt-row" onClick={() => setVentaAbierta(ventaAbierta === v.id ? null : v.id)} style={{ cursor: 'pointer' }}>
                           <span className="vt-lead-nombre">{v.nombre}</span>
-                          <span><span className="vt-tipo-badge" style={{ background: `${TIPO_COLOR[v.tipo]}20`, color: TIPO_COLOR[v.tipo] }}>{v.tipoLabel}</span></span>
+                          <span>
+                            <span className="vt-tipo-badge" style={{ background: `${TIPO_COLOR[v.tipo]}20`, color: TIPO_COLOR[v.tipo] }}>{v.tipoLabel}</span>
+                            {' '}
+                            <span className="vt-tipo-badge" style={{ background: v.tipoProyecto === 'con_ejecucion' ? '#f5b74820' : '#22c55e20', color: v.tipoProyecto === 'con_ejecucion' ? '#f5b748' : '#22c55e' }}>
+                              {v.tipoProyecto === 'con_ejecucion' ? 'Ejecución' : 'Limpio'}
+                            </span>
+                          </span>
                           <span>{v.canal || '—'}</span>
                           <span>{v.comercial || '—'}</span>
                           <span>{v.fecha ? new Date(v.fecha).toLocaleDateString('es-ES') : '—'}</span>
