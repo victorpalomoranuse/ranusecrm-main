@@ -4,7 +4,6 @@ import { authenticateToken, requirePermission } from '../middleware/auth.middlew
 
 const router = express.Router();
 const requireFinanzas = requirePermission('finanzas');
-router.use(authenticateToken, requireFinanzas); // todo lo de comisiones es solo del admin/finanzas
 
 const TIPOS_PERIODO = ['mes', 'trimestre', 'año'];
 
@@ -35,12 +34,94 @@ function rangoDePeriodo(periodo_tipo, periodo) {
 }
 
 /**
- * GET /api/comisiones/config
- * Lista los miembros del equipo con su % de comisión configurado.
+ * Calcula el beneficio del periodo y lo que corresponde a cada miembro,
+ * descontando una "reserva" por costes ya estimados de proyectos con
+ * ejecución que todavía no han terminado y cuyo gasto real aún no está
+ * completamente registrado. Así no se reparte como beneficio dinero que
+ * en realidad está reservado para materiales/mano de obra pendientes.
  */
-router.get('/config', async (req, res) => {
+async function calcularComisiones(periodo_tipo, periodo) {
+  const { desde, hasta } = rangoDePeriodo(periodo_tipo, periodo);
+
+  const [{ data: equipo, error: errEq }, { data: movimientos, error: errMov }, { data: leadsEjecucion, error: errLeads }] = await Promise.all([
+    supabase.from('equipo_comisiones').select('*').eq('activo', true).order('nombre'),
+    supabase.from('finanzas_movimientos').select('tipo, monto, categoria, beneficiario, fecha, lead_id').gte('fecha', desde).lte('fecha', hasta),
+    supabase.from('leads').select('id, valor_estimado, costes_estimados').eq('estado', 'venta').eq('tipo_proyecto', 'con_ejecucion').not('costes_estimados', 'is', null),
+  ]);
+  if (errEq) throw errEq;
+  if (errMov) throw errMov;
+  if (errLeads) throw errLeads;
+
+  const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + Number(m.monto), 0);
+  const gastosOperativos = movimientos.filter(m => m.tipo === 'gasto' && m.categoria !== 'Comisiones').reduce((s, m) => s + Number(m.monto), 0);
+  const comisionesYaPagadasTotal = movimientos.filter(m => m.tipo === 'gasto' && m.categoria === 'Comisiones').reduce((s, m) => s + Number(m.monto), 0);
+  const beneficioNeto = ingresos - gastosOperativos;
+
+  // Reserva: para cada proyecto con ejecución con coste estimado, cuánto de
+  // ese coste estimado todavía no se ha registrado como gasto real (a lo
+  // largo de TODA su vida, no solo este periodo) y su fase no está "Entregado".
+  let reservaPendiente = 0;
+  if (leadsEjecucion.length > 0) {
+    const leadIds = leadsEjecucion.map(l => l.id);
+    const [{ data: gastosPorLead }, { data: fasesPorLead }] = await Promise.all([
+      supabase.from('finanzas_movimientos').select('lead_id, monto').eq('tipo', 'gasto').in('lead_id', leadIds),
+      supabase.from('client_projects').select('lead_id, phase').in('lead_id', leadIds),
+    ]);
+    const gastosAcum = {};
+    (gastosPorLead || []).forEach(g => { gastosAcum[g.lead_id] = (gastosAcum[g.lead_id] || 0) + Number(g.monto); });
+    const faseDeLead = {};
+    (fasesPorLead || []).forEach(p => { faseDeLead[p.lead_id] = p.phase; });
+
+    leadsEjecucion.forEach(l => {
+      const fase = faseDeLead[l.id];
+      if (fase === 5) return; // entregado: ya no reservamos, el gasto real ya debería estar todo registrado
+      const gastado = gastosAcum[l.id] || 0;
+      const pendienteDeCoste = Math.max(Number(l.costes_estimados) - gastado, 0);
+      reservaPendiente += pendienteDeCoste;
+    });
+  }
+
+  const beneficioDistribuible = Math.max(beneficioNeto - reservaPendiente, 0);
+
+  const porMiembro = equipo.map(miembro => {
+    const comisionCalculada = beneficioDistribuible * (Number(miembro.porcentaje) / 100);
+    const yaPagado = movimientos
+      .filter(m => m.tipo === 'gasto' && m.categoria === 'Comisiones' && m.beneficiario === miembro.nombre)
+      .reduce((s, m) => s + Number(m.monto), 0);
+    return {
+      nombre: miembro.nombre,
+      employeeId: miembro.employee_id || null,
+      porcentaje: Number(miembro.porcentaje),
+      comisionCalculada,
+      yaPagado,
+      pendiente: Math.max(comisionCalculada - yaPagado, 0),
+    };
+  });
+
+  const totalPendiente = porMiembro.reduce((s, m) => s + m.pendiente, 0);
+
+  return {
+    periodo_tipo,
+    periodo,
+    ingresos,
+    gastosOperativos,
+    beneficioNeto,
+    reservaPendiente,
+    beneficioDistribuible,
+    comisionesYaPagadasTotal,
+    cajaAntesDePagarEquipo: beneficioNeto - comisionesYaPagadasTotal,
+    cajaDespuesDePagarEquipo: beneficioNeto - comisionesYaPagadasTotal - totalPendiente,
+    totalPendiente,
+    porMiembro,
+  };
+}
+
+/**
+ * GET /api/comisiones/config
+ */
+router.get('/config', authenticateToken, requireFinanzas, async (req, res) => {
   try {
-    const { data, error } = await supabase.from('equipo_comisiones').select('*').order('nombre', { ascending: true });
+    const { data, error } = await supabase.from('equipo_comisiones').select('*, employee:employees(id, name)').order('nombre', { ascending: true });
     if (error) throw error;
     res.json({ equipo: data });
   } catch (error) {
@@ -51,17 +132,17 @@ router.get('/config', async (req, res) => {
 
 /**
  * PUT /api/comisiones/config
- * Upsert de un miembro del equipo (por nombre). Body: { nombre, porcentaje, notas, activo }
+ * Upsert de un miembro del equipo (por nombre). Body: { nombre, porcentaje, notas, activo, employee_id }
  */
-router.put('/config', async (req, res) => {
+router.put('/config', authenticateToken, requireFinanzas, async (req, res) => {
   try {
-    const { nombre, porcentaje, notas, activo = true } = req.body;
+    const { nombre, porcentaje, notas, activo = true, employee_id } = req.body;
     if (!nombre?.trim()) return res.status(400).json({ error: 'nombre requerido' });
     if (porcentaje === undefined || isNaN(parseFloat(porcentaje))) return res.status(400).json({ error: 'porcentaje inválido' });
 
     const { data, error } = await supabase
       .from('equipo_comisiones')
-      .upsert({ nombre: nombre.trim(), porcentaje: parseFloat(porcentaje), notas: notas?.trim() || null, activo, updated_at: new Date().toISOString() }, { onConflict: 'nombre' })
+      .upsert({ nombre: nombre.trim(), porcentaje: parseFloat(porcentaje), notas: notas?.trim() || null, activo, employee_id: employee_id || null, updated_at: new Date().toISOString() }, { onConflict: 'nombre' })
       .select()
       .single();
     if (error) throw error;
@@ -72,7 +153,7 @@ router.put('/config', async (req, res) => {
   }
 });
 
-router.delete('/config/:id', async (req, res) => {
+router.delete('/config/:id', authenticateToken, requireFinanzas, async (req, res) => {
   try {
     const { error } = await supabase.from('equipo_comisiones').delete().eq('id', req.params.id);
     if (error) throw error;
@@ -84,61 +165,15 @@ router.delete('/config/:id', async (req, res) => {
 
 /**
  * GET /api/comisiones/calculo?periodo_tipo=mes&periodo=2026-08
- * Beneficio neto del periodo (cobrado - gastos, excluyendo las propias
- * comisiones para no comerse el beneficio antes de repartirlo) y, para cada
- * miembro del equipo, cuánto le corresponde, cuánto ya se le pagó de ese
- * periodo, y cuánto queda pendiente.
+ * Vista completa para admin/finanzas: beneficio, reserva pendiente y el
+ * desglose de todos los miembros.
  */
-router.get('/calculo', async (req, res) => {
+router.get('/calculo', authenticateToken, requireFinanzas, async (req, res) => {
   try {
     const periodo_tipo = TIPOS_PERIODO.includes(req.query.periodo_tipo) ? req.query.periodo_tipo : 'mes';
     const periodo = req.query.periodo;
     if (!periodo) return res.status(400).json({ error: 'periodo requerido' });
-    const { desde, hasta } = rangoDePeriodo(periodo_tipo, periodo);
-
-    const [{ data: equipo, error: errEq }, { data: movimientos, error: errMov }] = await Promise.all([
-      supabase.from('equipo_comisiones').select('*').eq('activo', true).order('nombre'),
-      supabase.from('finanzas_movimientos').select('tipo, monto, categoria, beneficiario, fecha').gte('fecha', desde).lte('fecha', hasta),
-    ]);
-    if (errEq) throw errEq;
-    if (errMov) throw errMov;
-
-    const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + Number(m.monto), 0);
-    // Gastos operativos, SIN contar comisiones (para calcular el beneficio sobre el que se reparte)
-    const gastosOperativos = movimientos.filter(m => m.tipo === 'gasto' && m.categoria !== 'Comisiones').reduce((s, m) => s + Number(m.monto), 0);
-    const comisionesYaPagadasTotal = movimientos.filter(m => m.tipo === 'gasto' && m.categoria === 'Comisiones').reduce((s, m) => s + Number(m.monto), 0);
-
-    const beneficioNeto = ingresos - gastosOperativos;
-    const cajaActual = ingresos - gastosOperativos - comisionesYaPagadasTotal; // caja del periodo, tras pagar lo ya pagado
-
-    const porMiembro = equipo.map(miembro => {
-      const comisionCalculada = Math.max(beneficioNeto, 0) * (Number(miembro.porcentaje) / 100);
-      const yaPagado = movimientos
-        .filter(m => m.tipo === 'gasto' && m.categoria === 'Comisiones' && m.beneficiario === miembro.nombre)
-        .reduce((s, m) => s + Number(m.monto), 0);
-      return {
-        nombre: miembro.nombre,
-        porcentaje: Number(miembro.porcentaje),
-        comisionCalculada,
-        yaPagado,
-        pendiente: Math.max(comisionCalculada - yaPagado, 0),
-      };
-    });
-
-    const totalPendiente = porMiembro.reduce((s, m) => s + m.pendiente, 0);
-
-    res.json({
-      periodo_tipo,
-      periodo,
-      ingresos,
-      gastosOperativos,
-      beneficioNeto,
-      comisionesYaPagadasTotal,
-      cajaAntesDePagarEquipo: beneficioNeto - comisionesYaPagadasTotal,
-      cajaDespuesDePagarEquipo: beneficioNeto - comisionesYaPagadasTotal - totalPendiente,
-      totalPendiente,
-      porMiembro,
-    });
+    res.json(await calcularComisiones(periodo_tipo, periodo));
   } catch (error) {
     console.error('Error al calcular comisiones:', error);
     res.status(500).json({ error: 'Error al calcular comisiones' });
@@ -146,13 +181,47 @@ router.get('/calculo', async (req, res) => {
 });
 
 /**
- * POST /api/comisiones/pagar
- * Registra el pago de una comisión: crea un gasto real en Finanzas
- * (categoría "Comisiones", con beneficiario), para que la caja se actualice
- * y quede un histórico real de qué se pagó a quién y cuándo.
- * Body: { nombre, monto, periodo_label, fecha }
+ * GET /api/comisiones/mia?periodo_tipo=mes&periodo=2026-08
+ * Autoservicio: cualquier persona autenticada (no requiere permiso de
+ * finanzas) puede ver SOLO su propia fila, si un admin la enlazó a su
+ * cuenta de empleado en la configuración. No expone el resto de la empresa.
  */
-router.post('/pagar', async (req, res) => {
+router.get('/mia', authenticateToken, async (req, res) => {
+  try {
+    const periodo_tipo = TIPOS_PERIODO.includes(req.query.periodo_tipo) ? req.query.periodo_tipo : 'mes';
+    const periodo = req.query.periodo;
+    if (!periodo) return res.status(400).json({ error: 'periodo requerido' });
+
+    const calculo = await calcularComisiones(periodo_tipo, periodo);
+    const miFila = calculo.porMiembro.find(m => m.employeeId === req.user.id);
+
+    if (!miFila) {
+      return res.json({ encontrado: false, mensaje: 'Todavía no tienes una comisión configurada. Pídele a tu admin que te enlace en Finanzas → Comisiones.' });
+    }
+
+    res.json({
+      encontrado: true,
+      periodo_tipo,
+      periodo,
+      nombre: miFila.nombre,
+      porcentaje: miFila.porcentaje,
+      comisionEstimada: miFila.comisionCalculada,
+      yaPagado: miFila.yaPagado,
+      pendiente: miFila.pendiente,
+      nota: calculo.reservaPendiente > 0
+        ? 'Esta cifra ya descuenta una reserva por proyectos con ejecución que aún no han terminado (su coste final todavía no se conoce del todo), así que puede subir un poco más adelante.'
+        : null,
+    });
+  } catch (error) {
+    console.error('Error al calcular mi comisión:', error);
+    res.status(500).json({ error: 'Error al calcular tu comisión' });
+  }
+});
+
+/**
+ * POST /api/comisiones/pagar
+ */
+router.post('/pagar', authenticateToken, requireFinanzas, async (req, res) => {
   try {
     const { nombre, monto, periodo_label, fecha } = req.body;
     if (!nombre?.trim()) return res.status(400).json({ error: 'nombre requerido' });
@@ -181,10 +250,8 @@ router.post('/pagar', async (req, res) => {
 
 /**
  * GET /api/comisiones/historico?nombre=Dani
- * Todo lo que se le ha pagado a esa persona a lo largo del tiempo (o a
- * todos si no se especifica nombre), agrupado por persona.
  */
-router.get('/historico', async (req, res) => {
+router.get('/historico', authenticateToken, requireFinanzas, async (req, res) => {
   try {
     let query = supabase.from('finanzas_movimientos').select('monto, fecha, beneficiario, concepto').eq('tipo', 'gasto').eq('categoria', 'Comisiones').not('beneficiario', 'is', null);
     if (req.query.nombre) query = query.eq('beneficiario', req.query.nombre);
@@ -202,6 +269,29 @@ router.get('/historico', async (req, res) => {
   } catch (error) {
     console.error('Error al obtener histórico de comisiones:', error);
     res.status(500).json({ error: 'Error al obtener histórico de comisiones' });
+  }
+});
+
+/**
+ * GET /api/comisiones/mi-historico
+ * Autoservicio del histórico total propio (todo lo que se le ha pagado).
+ */
+router.get('/mi-historico', authenticateToken, async (req, res) => {
+  try {
+    const { data: miConfig } = await supabase.from('equipo_comisiones').select('nombre').eq('employee_id', req.user.id).maybeSingle();
+    if (!miConfig) return res.json({ encontrado: false, total: 0, pagos: [] });
+
+    const { data, error } = await supabase
+      .from('finanzas_movimientos')
+      .select('monto, fecha, concepto')
+      .eq('tipo', 'gasto').eq('categoria', 'Comisiones').eq('beneficiario', miConfig.nombre)
+      .order('fecha', { ascending: false });
+    if (error) throw error;
+
+    res.json({ encontrado: true, total: data.reduce((s, m) => s + Number(m.monto), 0), pagos: data });
+  } catch (error) {
+    console.error('Error al obtener mi histórico:', error);
+    res.status(500).json({ error: 'Error al obtener tu histórico' });
   }
 });
 
