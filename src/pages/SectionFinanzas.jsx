@@ -104,6 +104,114 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
   );
 }
 
+const ESCENARIOS = ['pesimista', 'realista', 'optimista'];
+const ESCENARIO_LABEL = { pesimista: 'Pesimista', realista: 'Realista', optimista: 'Optimista' };
+const PERIODO_TABS = [{ tipo: 'mes', label: 'Mes' }, { tipo: 'trimestre', label: 'Trimestre' }, { tipo: 'año', label: 'Año' }];
+
+function añoActual() { return new Date().getFullYear(); }
+
+function PanelObjetivosFinanzas() {
+  const [periodoTipo, setPeriodoTipo] = useState('mes');
+  const [mes, setMes] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [año, setAño] = useState(añoActual());
+  const [trimestre, setTrimestre] = useState(Math.ceil((new Date().getMonth() + 1) / 3));
+  const [valores, setValores] = useState({ pesimista: '', realista: '', optimista: '' });
+  const [listado, setListado] = useState([]);
+  const [guardando, setGuardando] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const periodo = periodoTipo === 'mes' ? mes : periodoTipo === 'trimestre' ? `${año}-Q${trimestre}` : String(año);
+
+  const cargarListado = useCallback(() => {
+    api.get('/objetivos', { params: { periodo_tipo: periodoTipo, año: periodoTipo !== 'mes' ? año : undefined } })
+      .then(r => setListado(r.data.objetivos || []))
+      .catch(() => setListado([]));
+  }, [periodoTipo, año]);
+
+  useEffect(() => { cargarListado(); }, [cargarListado]);
+
+  useEffect(() => {
+    const v = { pesimista: '', realista: '', optimista: '' };
+    listado.filter(o => o.periodo === periodo).forEach(o => { v[o.escenario] = o.importe; });
+    setValores(v);
+  }, [periodo, listado]);
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    setGuardando(true); setMsg('');
+    try {
+      await Promise.all(
+        ESCENARIOS.filter(esc => valores[esc] !== '' && valores[esc] !== null)
+          .map(esc => api.put('/objetivos', { periodo_tipo: periodoTipo, periodo, escenario: esc, importe: parseFloat(valores[esc]) || 0 }))
+      );
+      setMsg('Guardado');
+      cargarListado();
+    } catch {
+      setMsg('Error al guardar');
+    } finally {
+      setGuardando(false);
+      setTimeout(() => setMsg(''), 2500);
+    }
+  };
+
+  const eliminar = async (id) => {
+    try { await api.delete(`/objetivos/${id}`); cargarListado(); } catch {}
+  };
+
+  return (
+    <div className="fz-chart-card" style={{ marginBottom: '1.5rem' }}>
+      <p className="fz-chart-title"><BarChart2 size={15} /> Objetivos de facturación</p>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        {PERIODO_TABS.map(t => (
+          <button key={t.tipo} type="button" className={`ap-btn ap-btn-sm ${periodoTipo === t.tipo ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setPeriodoTipo(t.tipo)}>{t.label}</button>
+        ))}
+      </div>
+
+      <form onSubmit={guardar} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginBottom: 16 }}>
+        {periodoTipo === 'mes' && (
+          <div className="ap-field" style={{ minWidth: 160 }}><label>Mes</label><input type="month" className="ap-select" value={mes} onChange={e => setMes(e.target.value)} /></div>
+        )}
+        {periodoTipo === 'trimestre' && (
+          <>
+            <div className="ap-field" style={{ minWidth: 100 }}><label>Año</label><input type="number" className="ap-select" value={año} onChange={e => setAño(parseInt(e.target.value) || añoActual())} /></div>
+            <div className="ap-field" style={{ minWidth: 120 }}><label>Trimestre</label>
+              <select className="ap-select" value={trimestre} onChange={e => setTrimestre(parseInt(e.target.value))}>
+                {[1, 2, 3, 4].map(q => <option key={q} value={q}>Q{q}</option>)}
+              </select>
+            </div>
+          </>
+        )}
+        {periodoTipo === 'año' && (
+          <div className="ap-field" style={{ minWidth: 100 }}><label>Año</label><input type="number" className="ap-select" value={año} onChange={e => setAño(parseInt(e.target.value) || añoActual())} /></div>
+        )}
+        {ESCENARIOS.map(esc => (
+          <div className="ap-field" key={esc} style={{ minWidth: 130 }}>
+            <label>{ESCENARIO_LABEL[esc]} (€)</label>
+            <input type="number" step="0.01" min="0" className="ap-select" placeholder="0.00" value={valores[esc]} onChange={e => setValores(v => ({ ...v, [esc]: e.target.value }))} />
+          </div>
+        ))}
+        <button type="submit" className="ap-btn ap-btn-primary" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar objetivo'}</button>
+        {msg && <span style={{ fontSize: 12, color: msg === 'Guardado' ? '#8bae8f' : '#ae6b6b' }}>{msg}</span>}
+      </form>
+
+      {listado.length > 0 && (
+        <div className="fz-tabla">
+          <div className="fz-row fz-row--head"><span>Periodo</span><span>Escenario</span><span>Importe</span><span></span></div>
+          {listado.sort((a, b) => a.periodo.localeCompare(b.periodo)).map(o => (
+            <div key={o.id} className="fz-row">
+              <span>{o.periodo}</span>
+              <span>{ESCENARIO_LABEL[o.escenario]}</span>
+              <span className="fz-importe fz-importe--ingreso">{fmt(o.importe)}</span>
+              <button className="ap-btn-icon" onClick={() => eliminar(o.id)}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SectionFinanzas() {
   const [resumen, setResumen] = useState(null);
   const [movimientos, setMovimientos] = useState([]);
@@ -168,6 +276,8 @@ export function SectionFinanzas() {
           <div className="fz-stat-body"><span>Gastos totales</span><strong>{fmt(resumen?.gastosTotales)}</strong></div>
         </div>
       </div>
+
+      <PanelObjetivosFinanzas />
 
       {chartData.length > 0 && (
         <div className="fz-chart-card">
