@@ -232,17 +232,7 @@ export function SectionLeads() {
 
   const cambiarEstado = async (id, estado) => {
     try {
-      const lead = leads.find(l => l.id === id);
       const { data } = await api.put(`/leads/${id}`, { estado });
-      if ((estado === 'diseño_0' || estado === 'diseño_1') && lead) {
-        try {
-          await api.post('/leads-cualificados', {
-            lead_id: id, nombre: lead.nombre, instagram: lead.instagram,
-            telefono: lead.telefono, email: lead.email, estado: 'en_cualificacion',
-          });
-          toast.success('Lead movido a Diseño y ficha creada');
-        } catch {}
-      }
       setLeads(prev => prev.map(l => l.id === id ? data.lead : l));
       if (panel?.id === id) setPanel(data.lead);
     } catch { toast.error('Error al cambiar estado'); }
