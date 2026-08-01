@@ -1,47 +1,70 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, ExternalLink, UserPlus, ArrowUp, ArrowDown, LayoutGrid, List } from 'lucide-react';
 import api from '../services/api';
-import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import './SectionFinanzas.css';
+import { ProyectoCompletoModal } from './ProyectoCompleto';
 
-function fmt(n) {
+const FASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Instalación', 5: 'Entregado' };
+
+function fmtEurLocal(n) {
   return Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 }
 
-function fmtMesCorto(mes) {
-  const [y, m] = mes.split('-');
-  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('es-ES', { month: 'short' }).replace('.', '');
+function FichaConectadaLead({ leadId }) {
+  const [ficha, setFicha] = useState(null);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    setCargando(true);
+    api.get(`/leads/${leadId}/ficha-cliente`)
+      .then(r => setFicha(r.data))
+      .catch(() => setFicha(null))
+      .finally(() => setCargando(false));
+  }, [leadId]);
+
+  if (cargando) return <div style={{ padding:'10px 0', fontSize:12, color:'rgba(255,255,255,0.4)' }}>Cargando ficha de cobros…</div>;
+  if (!ficha) return null;
+
+  return (
+    <div style={{ display:'flex', flexWrap:'wrap', gap:16, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'10px 12px', margin:'10px 0' }}>
+      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Presupuesto</div><strong style={{ fontSize:13 }}>{fmtEurLocal(ficha.presupuesto)}</strong></div>
+      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Cobrado</div><strong style={{ fontSize:13, color:'#22c55e' }}>{fmtEurLocal(ficha.cobrado)}</strong></div>
+      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Pendiente</div><strong style={{ fontSize:13, color: ficha.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmtEurLocal(ficha.pendiente)}</strong></div>
+      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Proyecto</div><strong style={{ fontSize:13 }}>{ficha.proyecto ? `${FASE_LABELS[ficha.proyecto.phase] || ficha.proyecto.phase} · ${ficha.proyecto.project_name}` : 'Sin proyecto enlazado'}</strong></div>
+    </div>
+  );
 }
 
-const CATEGORIAS_GASTO = ['Nóminas', 'Materiales', 'Marketing', 'Software', 'Alquiler', 'Comisiones', 'Fiscal', 'Otros'];
-const CATEGORIAS_INGRESO = ['Venta proyecto', 'Anticipo', 'Diseño', 'Otros'];
-const METODOS_PAGO = ['Transferencia', 'Tarjeta', 'Efectivo', 'Bizum', 'Otro'];
-
-function MovimientoModal({ tipoInicial, onClose, onSaved }) {
-  const [tipo, setTipo] = useState(tipoInicial);
-  const [categoria, setCategoria] = useState('');
-  const [concepto, setConcepto] = useState('');
-  const [monto, setMonto] = useState('');
+function VentaDirectaModal({ empleados, onClose, onSaved }) {
+  const [nombre, setNombre] = useState('');
+  const [valor, setValor] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
-  const [metodoPago, setMetodoPago] = useState('');
+  const [canal, setCanal] = useState('recomendacion');
+  const [campaña, setCampaña] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
   const [notas, setNotas] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const categorias = tipo === 'ingreso' ? CATEGORIAS_INGRESO : CATEGORIAS_GASTO;
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    if (!categoria || !concepto.trim() || !monto) { setError('Completa categoría, concepto e importe'); return; }
-    setLoading(true);
+    if (!nombre.trim()) { setError('El nombre es obligatorio'); return; }
+    setError(''); setLoading(true);
     try {
-      const { data } = await api.post('/finanzas', {
-        tipo, categoria, concepto, monto, fecha, metodo_pago: metodoPago || null, notas,
+      await api.post('/leads', {
+        nombre: nombre.trim(),
+        estado: 'venta',
+        valor_estimado: valor || null,
+        fecha_venta: fecha,
+        fecha_contacto: fecha,
+        canal,
+        campaña: canal === 'ads' ? (campaña || null) : null,
+        assigned_to: assignedTo || null,
+        notas: notas || null,
+        pct_cierre: 100,
       });
-      onSaved(data.movimiento);
+      onSaved();
     } catch (err) {
-      setError(err.response?.data?.error || 'Error al guardar el movimiento');
+      setError(err.response?.data?.error || 'Error al registrar la venta');
     } finally {
       setLoading(false);
     }
@@ -50,53 +73,31 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
   return (
     <div className="ap-modal-overlay" onClick={onClose}>
       <div className="ap-modal" onClick={e => e.stopPropagation()}>
-        <div className="ap-modal-head">
-          <h2>Nuevo movimiento</h2>
-          <button className="ap-modal-close" onClick={onClose}><X size={16} /></button>
-        </div>
+        <div className="ap-modal-head"><h2>Registrar venta directa</h2><button className="ap-modal-close" onClick={onClose}><X size={16} /></button></div>
         <form onSubmit={handleSubmit} className="ap-modal-form">
-          <div className="fz-tipo-toggle">
-            <button type="button" className={`fz-tipo-btn fz-tipo-btn--ingreso${tipo === 'ingreso' ? ' active' : ''}`} onClick={() => { setTipo('ingreso'); setCategoria(''); }}>Ingreso</button>
-            <button type="button" className={`fz-tipo-btn fz-tipo-btn--gasto${tipo === 'gasto' ? ' active' : ''}`} onClick={() => { setTipo('gasto'); setCategoria(''); }}>Gasto</button>
-          </div>
-
-          <div className="ap-field">
-            <label>Categoría *</label>
-            <select className="ap-select" value={categoria} onChange={e => setCategoria(e.target.value)} required>
-              <option value="">Selecciona una categoría</option>
-              {categorias.map(c => <option key={c} value={c}>{c}</option>)}
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: -4, marginBottom: 4 }}>Crea el lead directamente como venta cerrada, sin pasar por todo el pipeline.</p>
+          <div className="ap-field"><label>Nombre / Cliente *</label><input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre del cliente" required autoFocus /></div>
+          <div className="ap-field"><label>Valor de la venta (€)</label><input type="number" step="0.01" min="0" value={valor} onChange={e => setValor(e.target.value)} placeholder="0.00" /></div>
+          <div className="ap-field"><label>Fecha de venta</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} /></div>
+          <div className="ap-field"><label>Canal</label>
+            <select className="ap-select" value={canal} onChange={e => setCanal(e.target.value)}>
+              {CANALES.map(c => <option key={c} value={c} style={{ textTransform: 'capitalize' }}>{c}</option>)}
             </select>
           </div>
-          <div className="ap-field">
-            <label>Concepto *</label>
-            <input value={concepto} onChange={e => setConcepto(e.target.value)} placeholder="Ej: Pago proveedor renders" required />
-          </div>
-          <div className="fz-field-row">
-            <div className="ap-field">
-              <label>Importe (€) *</label>
-              <input type="number" step="0.01" min="0" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" required />
-            </div>
-            <div className="ap-field">
-              <label>Fecha</label>
-              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
-            </div>
-          </div>
-          <div className="ap-field">
-            <label>Método de pago <span className="ap-optional">(opcional)</span></label>
-            <select className="ap-select" value={metodoPago} onChange={e => setMetodoPago(e.target.value)}>
-              <option value="">—</option>
-              {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+          {canal === 'ads' && (
+            <div className="ap-field"><label>Campaña</label><input value={campaña} onChange={e => setCampaña(e.target.value)} placeholder="Ej. Verano26_IG_Conversiones" /></div>
+          )}
+          <div className="ap-field"><label>Comercial <span className="ap-optional">(opcional)</span></label>
+            <select className="ap-select" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
+              <option value="">— Sin asignar —</option>
+              {empleados.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           </div>
-          <div className="ap-field">
-            <label>Notas <span className="ap-optional">(opcional)</span></label>
-            <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} />
-          </div>
-
+          <div className="ap-field"><label>Notas <span className="ap-optional">(opcional)</span></label><textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} /></div>
           {error && <p className="ap-error">{error}</p>}
           <div className="ap-modal-actions">
             <button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="ap-btn ap-btn-primary" disabled={loading}>{loading ? 'Guardando...' : 'Guardar movimiento'}</button>
+            <button type="submit" className="ap-btn ap-btn-primary" disabled={loading}>{loading ? 'Guardando…' : 'Registrar venta'}</button>
           </div>
         </form>
       </div>
@@ -104,263 +105,755 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
   );
 }
 
-const ESCENARIOS = ['pesimista', 'realista', 'optimista'];
-const ESCENARIO_LABEL = { pesimista: 'Pesimista', realista: 'Realista', optimista: 'Optimista' };
-const PERIODO_TABS = [{ tipo: 'mes', label: 'Mes' }, { tipo: 'trimestre', label: 'Trimestre' }, { tipo: 'año', label: 'Año' }];
-
-function añoActual() { return new Date().getFullYear(); }
-
-function PanelObjetivosFinanzas() {
-  const [periodoTipo, setPeriodoTipo] = useState('mes');
-  const [mes, setMes] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
-  const [año, setAño] = useState(añoActual());
-  const [trimestre, setTrimestre] = useState(Math.ceil((new Date().getMonth() + 1) / 3));
-  const [valores, setValores] = useState({ pesimista: '', realista: '', optimista: '' });
-  const [listado, setListado] = useState([]);
-  const [progreso, setProgreso] = useState(null);
-  const [guardando, setGuardando] = useState(false);
-  const [msg, setMsg] = useState('');
-
-  const periodo = periodoTipo === 'mes' ? mes : periodoTipo === 'trimestre' ? `${año}-Q${trimestre}` : String(año);
-
-  const cargarListado = useCallback(() => {
-    api.get('/objetivos', { params: { periodo_tipo: periodoTipo, año: periodoTipo !== 'mes' ? año : undefined } })
-      .then(r => setListado(r.data.objetivos || []))
-      .catch(() => setListado([]));
-  }, [periodoTipo, año]);
-
-  useEffect(() => { cargarListado(); }, [cargarListado]);
-
-  useEffect(() => {
-    api.get('/objetivos/progreso', { params: { periodo_tipo: periodoTipo, periodo } })
-      .then(r => setProgreso(r.data))
-      .catch(() => setProgreso(null));
-  }, [periodoTipo, periodo]);
-
-  useEffect(() => {
-    const v = { pesimista: '', realista: '', optimista: '' };
-    listado.filter(o => o.periodo === periodo).forEach(o => { v[o.escenario] = o.importe; });
-    setValores(v);
-  }, [periodo, listado]);
-
-  const guardar = async (e) => {
-    e.preventDefault();
-    setGuardando(true); setMsg('');
-    try {
-      await Promise.all(
-        ESCENARIOS.filter(esc => valores[esc] !== '' && valores[esc] !== null)
-          .map(esc => api.put('/objetivos', { periodo_tipo: periodoTipo, periodo, escenario: esc, importe: parseFloat(valores[esc]) || 0 }))
-      );
-      setMsg('Guardado');
-      cargarListado();
-      api.get('/objetivos/progreso', { params: { periodo_tipo: periodoTipo, periodo } }).then(r => setProgreso(r.data)).catch(() => {});
-    } catch (err) {
-      setMsg(err.response?.data?.detalle || 'Error al guardar');
-    } finally {
-      setGuardando(false);
-      setTimeout(() => setMsg(''), 2500);
-    }
+function useToast() {
+  const [toasts, setToasts] = useState([]);
+  const add = (message, type = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
   };
+  const remove = (id) => setToasts(prev => prev.filter(t => t.id !== id));
+  return { toasts, toast: { success: m => add(m, 'success'), error: m => add(m, 'error') }, remove };
+}
 
-  const eliminar = async (id) => {
-    try { await api.delete(`/objetivos/${id}`); cargarListado(); } catch {}
-  };
-
+function ToastContainer({ toasts, onRemove }) {
   return (
-    <div className="fz-chart-card" style={{ marginBottom: '1.5rem' }}>
-      <p className="fz-chart-title"><BarChart2 size={15} /> Objetivos de facturación</p>
-
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        {PERIODO_TABS.map(t => (
-          <button key={t.tipo} type="button" className={`ap-btn ap-btn-sm ${periodoTipo === t.tipo ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setPeriodoTipo(t.tipo)}>{t.label}</button>
-        ))}
-      </div>
-
-      <form onSubmit={guardar} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginBottom: 16 }}>
-        {periodoTipo === 'mes' && (
-          <div className="ap-field" style={{ minWidth: 160 }}><label>Mes</label><input type="month" className="ap-select" value={mes} onChange={e => setMes(e.target.value)} /></div>
-        )}
-        {periodoTipo === 'trimestre' && (
-          <>
-            <div className="ap-field" style={{ minWidth: 100 }}><label>Año</label><input type="number" className="ap-select" value={año} onChange={e => setAño(parseInt(e.target.value) || añoActual())} /></div>
-            <div className="ap-field" style={{ minWidth: 120 }}><label>Trimestre</label>
-              <select className="ap-select" value={trimestre} onChange={e => setTrimestre(parseInt(e.target.value))}>
-                {[1, 2, 3, 4].map(q => <option key={q} value={q}>Q{q}</option>)}
-              </select>
-            </div>
-          </>
-        )}
-        {periodoTipo === 'año' && (
-          <div className="ap-field" style={{ minWidth: 100 }}><label>Año</label><input type="number" className="ap-select" value={año} onChange={e => setAño(parseInt(e.target.value) || añoActual())} /></div>
-        )}
-        {ESCENARIOS.map(esc => (
-          <div className="ap-field" key={esc} style={{ minWidth: 130 }}>
-            <label>{ESCENARIO_LABEL[esc]} (€)</label>
-            <input type="number" step="0.01" min="0" className="ap-select" placeholder="0.00" value={valores[esc]} onChange={e => setValores(v => ({ ...v, [esc]: e.target.value }))} />
-          </div>
-        ))}
-        <button type="submit" className="ap-btn ap-btn-primary" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar objetivo'}</button>
-        {msg && <span style={{ fontSize: 12, color: msg === 'Guardado' ? '#8bae8f' : '#ae6b6b' }}>{msg}</span>}
-      </form>
-
-      {progreso && (progreso.porEscenario?.pesimista?.objetivo != null || progreso.porEscenario?.realista?.objetivo != null || progreso.porEscenario?.optimista?.objetivo != null) && (
-        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
-          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Vendido</div><strong style={{ fontSize: 15 }}>{fmt(progreso.facturacionVendida)}</strong></div>
-          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Cobrado</div><strong style={{ fontSize: 15 }}>{fmt(progreso.facturacionCobrada)}</strong></div>
-          {ESCENARIOS.filter(esc => progreso.porEscenario?.[esc]?.objetivo != null).map(esc => (
-            <div key={esc}>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Falta ({ESCENARIO_LABEL[esc]})</div>
-              <strong style={{ fontSize: 15, color: progreso.porEscenario[esc].restaVendido > 0 ? '#f5b748' : '#8bae8f' }}>
-                {progreso.porEscenario[esc].restaVendido > 0 ? fmt(progreso.porEscenario[esc].restaVendido) : '¡Cumplido! 🎉'}
-              </strong>
-            </div>
-          ))}
+    <div className="ap-toasts">
+      {toasts.map(t => (
+        <div key={t.id} className={`ap-toast ap-toast--${t.type}`}>
+          {t.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+          <span>{t.message}</span>
+          <button onClick={() => onRemove(t.id)}><X size={13} /></button>
         </div>
-      )}
-
-      {listado.length > 0 && (
-        <div className="fz-tabla">
-          <div className="fz-row fz-row--head"><span>Periodo</span><span>Escenario</span><span>Importe</span><span></span></div>
-          {listado.sort((a, b) => a.periodo.localeCompare(b.periodo)).map(o => (
-            <div key={o.id} className="fz-row">
-              <span>{o.periodo}</span>
-              <span>{ESCENARIO_LABEL[o.escenario]}</span>
-              <span className="fz-importe fz-importe--ingreso">{fmt(o.importe)}</span>
-              <button className="ap-btn-icon" onClick={() => eliminar(o.id)}><Trash2 size={13} /></button>
-            </div>
-          ))}
-        </div>
-      )}
+      ))}
     </div>
   );
 }
 
-export function SectionFinanzas() {
-  const [resumen, setResumen] = useState(null);
-  const [movimientos, setMovimientos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filtroTipo, setFiltroTipo] = useState('todos');
-  const [filtroMes, setFiltroMes] = useState('');
-  const [modal, setModal] = useState(null);
-  const [confirmId, setConfirmId] = useState(null);
+function ConfirmDialog({ message, onConfirm, onCancel }) {
+  return (
+    <div className="ap-confirm-overlay" onClick={onCancel}>
+      <div className="ap-confirm" onClick={e => e.stopPropagation()}>
+        <div className="ap-confirm-icon"><AlertCircle size={28} /></div>
+        <p className="ap-confirm-msg">{message}</p>
+        <div className="ap-confirm-actions">
+          <button className="ap-btn ap-btn-ghost" onClick={onCancel}>Cancelar</button>
+          <button className="ap-btn ap-btn-danger" onClick={onConfirm}>Eliminar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-  const loadResumen = useCallback(() => {
-    api.get('/finanzas/resumen').then(r => setResumen(r.data)).catch(() => {});
+const ESTADOS = {
+  contacto:               { label: 'Contacto',         color: '#3b82f6' },
+  respuesta_chat:         { label: 'Respuesta chat',   color: '#f59e0b' },
+  llamada_descubrimiento: { label: 'Llamada desc.',    color: '#8b5cf6' },
+  diseño_0:               { label: 'Diseño 0',         color: '#64748b' },
+  diseño_1:               { label: 'Diseño 1',         color: '#06b6d4' },
+  llamada_venta:          { label: 'Llamada Diseño 1', color: '#10b981' },
+  no_show:                { label: 'No Show',          color: '#f97316' },
+  venta:                  { label: 'Venta Diseño 2 ✓',  color: '#beb0a2' },
+  rechazo:                { label: 'Rechazo',          color: '#f87171' },
+  enfriado:               { label: 'Enfriado',         color: '#64748b' },
+  descartado:             { label: 'Descartado',       color: '#6b7280' },
+};
+const ORDEN = ['contacto','respuesta_chat','llamada_descubrimiento','diseño_0','diseño_1','llamada_venta','no_show','venta','rechazo','enfriado','descartado'];
+const CANALES = ['instagram','tiktok','whatsapp','web','recomendacion','prospeccion','ads','evento','agente','otro'];
+const DEPORTES = ['Fútbol','Pádel','Baloncesto','Tenis','MotoGP','Ciclismo','Otro'];
+const LIGAS = ['LaLiga','Hypermotion','Primera RFEF','Liga F','ACB','WPT','Bundesliga','Premier','Serie A','Otro'];
+const TIPOS_DISEÑO = {
+  diseño_gratis: { label: 'Diseño 0', color: '#64748b' },
+  diseño_venta:  { label: 'Venta Diseño 1', color: '#22c55e' },
+};
+const ORDENABLES = [
+  { key: 'fecha_contacto', label: 'Fecha de contacto' },
+  { key: 'fecha_venta', label: 'Fecha de venta' },
+  { key: 'canal', label: 'Canal' },
+  { key: 'estado', label: 'Etiqueta (estado)' },
+  { key: 'nombre', label: 'Nombre' },
+  { key: 'valor_estimado', label: 'Inversión estimada' },
+];
+
+const fmtEur = n => n ? `${Number(n).toLocaleString('es-ES')}€` : '—';
+
+const EMPTY = {
+  nombre:'', perfil:'', deporte:'Fútbol', liga:'', instagram:'',
+  telefono:'', email:'', canal:'instagram', campaña:'',
+  estado:'contacto', valor_estimado:'', pct_cierre:20, notas:'',
+  fecha_contacto: new Date().toISOString().slice(0,10),
+  fecha_respuesta:'', fecha_llamada:'', fecha_diseño:'', fecha_llamada_venta:'', fecha_venta:'', fecha_venta_diseño_1:'',
+  tipo_diseño:'diseño_gratis', valor_diseño:'', link_fathom:'', assigned_to:'',
+  valor_comisiones:'', notas_comisiones:'',
+};
+
+export function SectionLeads() {
+  const { toasts, toast, remove } = useToast();
+  const [leads, setLeads] = useState([]);
+  const [empleados, setEmpleados] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null);
+  const [modalVentaDirecta, setModalVentaDirecta] = useState(false);
+  const [modalProyectoCompleto, setModalProyectoCompleto] = useState(null);
+  const [panel, setPanel] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [confirm, setConfirm] = useState(null);
+  const [form, setForm] = useState(EMPTY);
+  const [filtroEstado, setFiltroEstado] = useState('all');
+  const [filtroCanal, setFiltroCanal] = useState('all');
+  const [filtroCampaña, setFiltroCampaña] = useState('all');
+  const [filtroMes, setFiltroMes] = useState('all');
+  const [filtroFechaTipo, setFiltroFechaTipo] = useState('contacto');
+  const [filtroComercial, setFiltroComercial] = useState('all');
+  const [busqueda, setBusqueda] = useState('');
+  const [vistaMetricas, setVistaMetricas] = useState(false);
+  const [vistaKanban, setVistaKanban] = useState(false);
+  const [ordenarPor, setOrdenarPor] = useState('fecha_contacto');
+  const [ordenAsc, setOrdenAsc] = useState(false);
+  const [pagina, setPagina] = useState(1);
+  const POR_PAGINA = 30;
+
+  const cargar = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get('/leads');
+      setLeads(data.leads || []);
+    } catch { toast.error('Error al cargar leads'); }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    cargar();
+    api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {});
   }, []);
 
-  const loadMovimientos = useCallback(() => {
-    const params = {};
-    if (filtroTipo !== 'todos') params.tipo = filtroTipo;
-    if (filtroMes) params.mes = filtroMes;
-    api.get('/finanzas', { params }).then(r => setMovimientos(r.data.movimientos || [])).catch(() => {}).finally(() => setLoading(false));
-  }, [filtroTipo, filtroMes]);
+  const nombreComercial = (id) => empleados.find(e => e.id === id)?.name || null;
 
-  useEffect(() => { loadResumen(); }, [loadResumen]);
-  useEffect(() => { setLoading(true); loadMovimientos(); }, [loadMovimientos]);
-
-  const handleSaved = (mov) => {
-    setModal(null);
-    loadResumen();
-    loadMovimientos();
+  // Días transcurridos entre el primer contacto y la venta (solo tiene sentido si ambas fechas existen)
+  const diasHastaVenta = (l) => {
+    if (!l.fecha_contacto || !l.fecha_venta) return null;
+    const ms = new Date(l.fecha_venta) - new Date(l.fecha_contacto);
+    return ms >= 0 ? Math.round(ms / 86400000) : null;
   };
 
-  const handleDelete = async () => {
+  // Fecha(s) relevantes de un lead según el tipo elegido: "contacto" (cuándo entró)
+  // o "venta" (cuándo se cobró algo — Venta Diseño 1 o Venta Diseño 2)
+  const fechasParaFiltro = (l) => filtroFechaTipo === 'venta'
+    ? [l.fecha_venta_diseño_1, l.fecha_venta].filter(Boolean)
+    : [l.fecha_contacto].filter(Boolean);
+
+  const mesesDisponibles = [...new Set(leads
+    .flatMap(fechasParaFiltro)
+    .map(f => f.slice(0, 7))
+  )].sort().reverse();
+
+  const filtrados = leads.filter(l => {
+    if (filtroEstado !== 'all' && l.estado !== filtroEstado) return false;
+    if (filtroCanal !== 'all' && (l.canal || 'otro') !== filtroCanal) return false;
+    if (filtroCampaña !== 'all' && (l.campaña || 'sin campaña') !== filtroCampaña) return false;
+    if (filtroMes !== 'all' && !fechasParaFiltro(l).some(f => f.slice(0, 7) === filtroMes)) return false;
+    if (filtroComercial !== 'all' && (filtroComercial === 'sin_asignar' ? l.assigned_to : l.assigned_to !== filtroComercial)) return false;
+    if (busqueda && !l.nombre.toLowerCase().includes(busqueda.toLowerCase()) &&
+        !(l.instagram||'').toLowerCase().includes(busqueda.toLowerCase()) &&
+        !(l.telefono||'').toLowerCase().replace(/\s+/g, '').includes(busqueda.toLowerCase().replace(/\s+/g, ''))) return false;
+    return true;
+  });
+
+  const ordenados = [...filtrados].sort((a, b) => {
+    let va, vb;
+    if (ordenarPor === 'estado') { va = ORDEN.indexOf(a.estado); vb = ORDEN.indexOf(b.estado); }
+    else if (ordenarPor === 'valor_estimado') { va = a.valor_estimado || 0; vb = b.valor_estimado || 0; }
+    else { va = (a[ordenarPor] || '').toString().toLowerCase(); vb = (b[ordenarPor] || '').toString().toLowerCase(); }
+    if (va < vb) return ordenAsc ? -1 : 1;
+    if (va > vb) return ordenAsc ? 1 : -1;
+    return 0;
+  });
+
+  const totalPaginas = Math.ceil(ordenados.length / POR_PAGINA);
+  const leadsPagina = ordenados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
+
+  // Métricas calculadas sobre filtrados
+  const calcMetricas = (f) => {
+    const total = f.length;
+    const conRespuesta = f.filter(l => ['respuesta_chat','llamada_descubrimiento','diseño_0','diseño_1','llamada_venta','no_show','venta','rechazo','enfriado'].includes(l.estado)).length;
+    const conLlamada = f.filter(l => ['llamada_descubrimiento','diseño_0','diseño_1','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
+    const conDiseño = f.filter(l => ['diseño_0','diseño_1','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
+    const conLlamadaVenta = f.filter(l => ['llamada_venta','venta','rechazo'].includes(l.estado)).length;
+    const noShow = f.filter(l => l.estado === 'no_show').length;
+    const rechazo = f.filter(l => l.estado === 'rechazo').length;
+    // Activos: fuera del pipeline activo si ya se cerró (venta/no_show/rechazo) o se dio de baja (enfriado/descartado)
+    const activos = f.filter(l => !['venta','rechazo','no_show','descartado','enfriado'].includes(l.estado)).length;
+    // Ventas = Venta Diseño 1 + Venta Diseño 2 (venta final del proyecto)
+    const ventasDiseño1 = f.filter(l => l.tipo_diseño === 'diseño_venta').length;
+    const ventasDiseño2 = f.filter(l => l.estado === 'venta').length;
+    const ventasTotal = ventasDiseño1 + ventasDiseño2;
+    // Valor ventas = valor del diseño 1 + valor de la venta final + comisiones/extras
+    const valorDiseño1 = f.filter(l => l.tipo_diseño === 'diseño_venta').reduce((s, l) => s + (l.valor_diseño || 0), 0);
+    const valorDiseño2 = f.filter(l => l.estado === 'venta').reduce((s, l) => s + (l.valor_estimado || 0), 0);
+    const valorComisiones = f.reduce((s, l) => s + (l.valor_comisiones || 0), 0);
+    const valorVentasTotal = valorDiseño1 + valorDiseño2 + valorComisiones;
+    // Diseño 0/1 solo se decide a partir de la llamada de descubrimiento en adelante;
+    // antes de eso el lead no ha llegado al punto donde se ofrece diseño 1 (de pago) o 0 (gratis)
+    const yaDecidido = f.filter(l => ['llamada_descubrimiento','diseño_0','diseño_1','llamada_venta','no_show','venta','rechazo'].includes(l.estado));
+    const diseño0 = yaDecidido.filter(l => (l.tipo_diseño || 'diseño_gratis') === 'diseño_gratis').length;
+    const diseño1 = yaDecidido.filter(l => l.tipo_diseño === 'diseño_venta').length;
+    const pct = (a, b) => b > 0 ? `${Math.round((a/b)*100)}%` : '—';
+    // Cierre global = todas las ventas en relación a llamadas de descubrimiento + llamadas de venta
+    const cierreGlobal = pct(ventasTotal, conLlamada + conLlamadaVenta);
+    const recurrentes = f.filter(l => l.estado === 'venta' && l.cliente_recurrente).length;
+    return [
+      { label:'Total',           val: total },
+      { label:'Activos',         val: activos },
+      { label:'Ventas',          val: ventasTotal, color:'#beb0a2' },
+      { label:'Valor ventas',    val: fmtEur(valorVentasTotal), color:'#beb0a2' },
+      { label:'Clientes recurrentes', val: recurrentes, color:'#a78bfa' },
+      { label:'Comisiones/extras', val: fmtEur(valorComisiones), color:'#a78bfa' },
+      { label:'Resp. chat',      val: pct(conRespuesta, total) },
+      { label:'→ Llamada desc.', val: pct(conLlamada, conRespuesta) },
+      { label:'→ Diseño',        val: pct(conDiseño, conLlamada) },
+      { label:'Diseño 0',        val: diseño0, color:'#64748b' },
+      { label:'Diseño 1',        val: diseño1, color:'#06b6d4' },
+      { label:'→ Venta Diseño 1', val: pct(diseño1, conLlamada), color:'#22c55e' },
+      { label:'→ Llamada Diseño 1', val: pct(conLlamadaVenta + noShow, conDiseño) },
+      { label:'No Show',         val: pct(noShow, conLlamadaVenta + noShow), color:'#f97316' },
+      { label:'→ Venta Diseño 2', val: pct(ventasDiseño2, conLlamadaVenta), color:'#22c55e' },
+      { label:'Rechazo',         val: pct(rechazo, conLlamadaVenta), color:'#f87171' },
+      { label:'Cierre global',   val: cierreGlobal, color:'#22c55e' },
+    ];
+  };
+
+  const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    if (!form.nombre.trim()) return;
+    setSaving(true);
     try {
-      await api.delete(`/finanzas/${confirmId}`);
-      loadResumen();
-      loadMovimientos();
-    } catch {
-      // noop
-    } finally {
-      setConfirmId(null);
-    }
+      const isEdit = modal !== 'new';
+      const { data } = await api[isEdit ? 'put' : 'post'](isEdit ? `/leads/${modal.id}` : '/leads', form);
+      toast.success(isEdit ? 'Lead actualizado' : 'Lead creado');
+      await cargar();
+      setModal(null);
+      if (isEdit && panel?.id === modal.id) setPanel(data.lead);
+    } catch { toast.error('Error al guardar'); }
+    setSaving(false);
   };
 
-  const chartData = (resumen?.porMes || []).slice(0, 6).reverse().map(m => ({ mes: fmtMesCorto(m.mes), Ingresos: m.ingresos, Gastos: m.gastos }));
+  const cambiarEstado = async (id, estado) => {
+    try {
+      const { data } = await api.put(`/leads/${id}`, { estado });
+      setLeads(prev => prev.map(l => l.id === id ? data.lead : l));
+      if (panel?.id === id) setPanel(data.lead);
+    } catch { toast.error('Error al cambiar estado'); }
+  };
+
+  const cambiarCanal = async (id, canal) => {
+    try {
+      const { data } = await api.put(`/leads/${id}`, { canal });
+      setLeads(prev => prev.map(l => l.id === id ? data.lead : l));
+      if (panel?.id === id) setPanel(data.lead);
+    } catch { toast.error('Error al cambiar canal'); }
+  };
+
+  const asignarme = async (id) => {
+    try {
+      const { data } = await api.put(`/leads/${id}/asignarme`);
+      setLeads(prev => prev.map(l => l.id === id ? data.lead : l));
+      if (panel?.id === id) setPanel(data.lead);
+      toast.success('Lead asignado a ti');
+    } catch (err) { toast.error(err.response?.data?.error || 'Error al asignarte el lead'); }
+  };
+
+  const reasignar = async (id, employeeId) => {
+    try {
+      const { data } = await api.put(`/leads/${id}`, { assigned_to: employeeId || null });
+      setLeads(prev => prev.map(l => l.id === id ? data.lead : l));
+      if (panel?.id === id) setPanel(data.lead);
+      toast.success(employeeId ? 'Comercial reasignado' : 'Comercial desasignado');
+    } catch { toast.error('Error al reasignar'); }
+  };
+
+  const eliminar = async (id) => {
+    try {
+      await api.delete(`/leads/${id}`);
+      setLeads(prev => prev.filter(l => l.id !== id));
+      if (panel?.id === id) setPanel(null);
+      toast.success('Lead eliminado');
+    } catch { toast.error('Error al eliminar'); }
+    setConfirm(null);
+  };
+
+  const abrirEditar = (lead) => {
+    setForm({
+      ...lead,
+      fecha_contacto: lead.fecha_contacto?.slice(0,10) || '',
+      fecha_respuesta: lead.fecha_respuesta?.slice(0,10) || '',
+      fecha_llamada: lead.fecha_llamada?.slice(0,10) || '',
+      fecha_diseño: lead.fecha_diseño?.slice(0,10) || '',
+      fecha_llamada_venta: lead.fecha_llamada_venta?.slice(0,10) || '',
+      fecha_venta: lead.fecha_venta?.slice(0,10) || '',
+      fecha_venta_diseño_1: lead.fecha_venta_diseño_1?.slice(0,10) || '',
+    });
+    setModal(lead);
+  };
+
+  const porEstado = {};
+  ORDEN.forEach(e => { porEstado[e] = leads.filter(l => l.estado === e).length; });
 
   return (
     <div className="ap-section">
+      <ToastContainer toasts={toasts} onRemove={remove} />
+      {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
+
+      {/* Header */}
       <div className="ap-section-head">
-        <div><h1>Finanzas</h1><p>Ingresos, gastos y caja del negocio.</p></div>
-        <button className="ap-btn ap-btn-primary" onClick={() => setModal('new')}><Plus size={15} /> Nuevo movimiento</button>
-      </div>
-
-      <div className="fz-stats">
-        <div className="fz-stat-card">
-          <div className="fz-stat-icon" style={{ background: 'rgba(190,176,162,0.15)', color: '#beb0a2' }}><Wallet size={18} /></div>
-          <div className="fz-stat-body"><span>Caja actual</span><strong>{fmt(resumen?.caja)}</strong></div>
+        <div>
+          <h1>Leads</h1>
+          <p>Pipeline de ventas por canal</p>
         </div>
-        <div className="fz-stat-card">
-          <div className="fz-stat-icon" style={{ background: 'rgba(139,174,143,0.15)', color: '#8bae8f' }}><TrendingUp size={18} /></div>
-          <div className="fz-stat-body"><span>Ingresos totales</span><strong>{fmt(resumen?.ingresosTotales)}</strong></div>
-        </div>
-        <div className="fz-stat-card">
-          <div className="fz-stat-icon" style={{ background: 'rgba(174,107,107,0.15)', color: '#ae6b6b' }}><TrendingDown size={18} /></div>
-          <div className="fz-stat-body"><span>Gastos totales</span><strong>{fmt(resumen?.gastosTotales)}</strong></div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button className="ap-btn ap-btn-ghost" onClick={() => setVistaMetricas(v => !v)}>
+            {vistaMetricas ? 'Ocultar métricas' : '📊 Ver métricas'}
+          </button>
+          <button className="ap-btn ap-btn-ghost" onClick={() => setModalVentaDirecta(true)}>
+            💰 Venta directa
+          </button>
+          <button className="ap-btn ap-btn-primary" onClick={() => { setForm(EMPTY); setModal('new'); }}>
+            <Plus size={15} /> Nuevo lead
+          </button>
         </div>
       </div>
 
-      <PanelObjetivosFinanzas />
+      {/* Métricas sobre filtrados */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(100px,1fr))', gap:8, marginBottom:16 }}>
+        {calcMetricas(filtrados).map(m => (
+          <div key={m.label} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'10px 14px' }}>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:3 }}>{m.label}</div>
+            <div style={{ fontSize:16, fontWeight:700, color: m.color || '#fff' }}>{m.val}</div>
+          </div>
+        ))}
+      </div>
 
-      {chartData.length > 0 && (
-        <div className="fz-chart-card">
-          <p className="fz-chart-title"><BarChart2 size={15} /> Últimos meses</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={chartData} barCategoryGap="30%" barGap={3}>
-              <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.06)" />
-              <XAxis dataKey="mes" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8 }} />
-              <Bar dataKey="Ingresos" fill="#8bae8f" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="Gastos" fill="#ae6b6b" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* Métricas detalladas */}
+      {vistaMetricas && (
+        <div style={{ marginBottom:20 }}>
+          {/* Funnel */}
+          <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'16px 20px', marginBottom:12 }}>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Embudo de ventas</div>
+            <div style={{ display:'flex', gap:4, alignItems:'flex-end' }}>
+              {ORDEN.slice(0,7).map(e => {
+                const n = filtrados.filter(l => l.estado === e).length;
+                const max = filtrados.filter(l => l.estado === 'contacto').length || 1;
+                const height = Math.max(20, Math.round((n / max) * 100));
+                return (
+                  <div key={e} style={{ flex:1, textAlign:'center' }}>
+                    <div style={{ fontSize:12, fontWeight:700, color: ESTADOS[e].color, marginBottom:4 }}>{n}</div>
+                    <div style={{ height, background:`${ESTADOS[e].color}40`, border:`1px solid ${ESTADOS[e].color}60`, borderRadius:'4px 4px 0 0', transition:'height .3s' }} />
+                    <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', marginTop:4, textTransform:'uppercase', letterSpacing:0.5 }}>{ESTADOS[e].label}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Por canal */}
+          <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'16px 20px' }}>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Por canal</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {(() => {
+                const canalData = {};
+                filtrados.forEach(l => {
+                  const c = l.canal || 'otro';
+                  if (!canalData[c]) canalData[c] = { total: 0, ventas: 0 };
+                  canalData[c].total++;
+                  if (l.estado === 'venta') canalData[c].ventas++;
+                });
+                return Object.entries(canalData).sort((a,b) => b[1].total - a[1].total).map(([canal, d]) => {
+                  const tasa = d.total > 0 ? Math.round((d.ventas / d.total) * 100) : 0;
+                  const pct = d.total > 0 ? Math.round((d.total / (filtrados.length || 1)) * 100) : 0;
+                  return (
+                    <div key={canal} onClick={() => { setFiltroCanal(canal); setPagina(1); }} style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} title={`Filtrar por ${canal}`}>
+                      <div style={{ width:90, fontSize:12, color: filtroCanal===canal ? '#fff' : '#beb0a2', fontWeight: filtroCanal===canal ? 700 : 400, textTransform:'capitalize' }}>{canal}</div>
+                      <div style={{ flex:1, height:6, background:'rgba(255,255,255,0.05)', borderRadius:3, overflow:'hidden' }}>
+                        <div style={{ width:`${pct}%`, height:'100%', background:'#beb0a2', borderRadius:3 }} />
+                      </div>
+                      <div style={{ width:30, fontSize:12, color:'rgba(255,255,255,0.5)', textAlign:'right' }}>{d.total}</div>
+                      <div style={{ width:50, fontSize:11, color: tasa > 0 ? '#22c55e' : 'rgba(255,255,255,0.2)', textAlign:'right' }}>{tasa}% vta</div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+
+          {/* Por campaña (solo Ads) */}
+          {filtrados.some(l => l.canal === 'ads') && (
+            <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'16px 20px', marginTop:12 }}>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Por campaña (Ads)</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {(() => {
+                  const adsLeads = filtrados.filter(l => l.canal === 'ads');
+                  const campData = {};
+                  adsLeads.forEach(l => {
+                    const camp = l.campaña || 'sin campaña';
+                    if (!campData[camp]) campData[camp] = { total: 0, ventas: 0 };
+                    campData[camp].total++;
+                    if (l.estado === 'venta') campData[camp].ventas++;
+                  });
+                  return Object.entries(campData).sort((a,b) => b[1].total - a[1].total).map(([camp, d]) => {
+                    const tasa = d.total > 0 ? Math.round((d.ventas / d.total) * 100) : 0;
+                    const pct = d.total > 0 ? Math.round((d.total / (adsLeads.length || 1)) * 100) : 0;
+                    return (
+                      <div key={camp} onClick={() => { setFiltroCanal('ads'); setFiltroCampaña(camp); setPagina(1); }} style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} title={`Filtrar por ${camp}`}>
+                        <div style={{ width:170, fontSize:12, color: filtroCampaña===camp ? '#fff' : '#beb0a2', fontWeight: filtroCampaña===camp ? 700 : 400 }}>{camp}</div>
+                        <div style={{ flex:1, height:6, background:'rgba(255,255,255,0.05)', borderRadius:3, overflow:'hidden' }}>
+                          <div style={{ width:`${pct}%`, height:'100%', background:'#a78bfa', borderRadius:3 }} />
+                        </div>
+                        <div style={{ width:30, fontSize:12, color:'rgba(255,255,255,0.5)', textAlign:'right' }}>{d.total}</div>
+                        <div style={{ width:50, fontSize:11, color: tasa > 0 ? '#22c55e' : 'rgba(255,255,255,0.2)', textAlign:'right' }}>{tasa}% vta</div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      <div className="fz-filters">
-        <select className="ap-select" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
-          <option value="todos">Todos los movimientos</option>
-          <option value="ingreso">Solo ingresos</option>
-          <option value="gasto">Solo gastos</option>
+      {/* Filtros */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12, alignItems:'center' }}>
+        <input placeholder="Buscar..." value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(1); }} className="ap-field-input" style={{ maxWidth:200 }} />
+        <select className="ap-select" value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPagina(1); }}>
+          <option value="all">Todos los estados</option>
+          {ORDEN.map(e => <option key={e} value={e}>{ESTADOS[e].label} ({porEstado[e]||0})</option>)}
         </select>
-        <input type="month" className="ap-select" value={filtroMes} onChange={e => setFiltroMes(e.target.value)} />
-        {filtroMes && <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setFiltroMes('')}>Limpiar mes</button>}
+        <select className="ap-select" value={filtroCanal} onChange={e => { setFiltroCanal(e.target.value); setFiltroCampaña('all'); setPagina(1); }}>
+          <option value="all">Todos los canales</option>
+          {CANALES.map(c => <option key={c} value={c} style={{ textTransform:'capitalize' }}>{c}</option>)}
+        </select>
+        <select className="ap-select ap-select-sm" value={filtroFechaTipo} onChange={e => { setFiltroFechaTipo(e.target.value); setFiltroMes('all'); setPagina(1); }} title="Qué fecha usa el filtro de mes">
+          <option value="contacto">Por fecha de contacto</option>
+          <option value="venta">Por fecha de venta</option>
+        </select>
+        <select className="ap-select" value={filtroMes} onChange={e => { setFiltroMes(e.target.value); setPagina(1); }}>
+          <option value="all">Todos los meses</option>
+          {mesesDisponibles.map(m => {
+            const [year, month] = m.split('-');
+            const label = new Date(year, month - 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+            return <option key={m} value={m}>{label}</option>;
+          })}
+        </select>
+        <select className="ap-select" value={filtroComercial} onChange={e => { setFiltroComercial(e.target.value); setPagina(1); }}>
+          <option value="all">Todos los comerciales</option>
+          <option value="sin_asignar">Sin asignar</option>
+          {empleados.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+        <span style={{ marginLeft:'auto', color:'rgba(255,255,255,0.3)', fontSize:13 }}>{filtrados.length} leads</span>
       </div>
 
-      {loading ? (
-        <div className="ap-loading">Cargando movimientos…</div>
-      ) : movimientos.length === 0 ? (
-        <div className="ap-empty"><p>No hay movimientos con estos filtros.</p></div>
-      ) : (
-        <div className="fz-tabla">
-          <div className="fz-row fz-row--head">
-            <span>Concepto</span><span>Categoría</span><span>Método</span><span>Fecha</span><span>Importe</span><span></span>
+      {/* Orden y vista */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16, alignItems:'center' }}>
+        <span style={{ fontSize:12, color:'rgba(255,255,255,0.3)' }}>Ordenar por</span>
+        <select className="ap-select ap-select-sm" value={ordenarPor} onChange={e => setOrdenarPor(e.target.value)}>
+          {ORDENABLES.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+        </select>
+        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setOrdenAsc(a => !a)} title={ordenAsc ? 'Ascendente' : 'Descendente'}>
+          {ordenAsc ? <ArrowUp size={13}/> : <ArrowDown size={13}/>}
+        </button>
+        <div style={{ marginLeft:'auto', display:'flex', gap:4 }}>
+          <button className={`ap-btn ap-btn-sm ${!vistaKanban ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVistaKanban(false)}>
+            <List size={13}/> Listado
+          </button>
+          <button className={`ap-btn ap-btn-sm ${vistaKanban ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVistaKanban(true)}>
+            <LayoutGrid size={13}/> Tablero
+          </button>
+        </div>
+      </div>
+
+      {/* Vista: listado siempre disponible independientemente de los filtros; tablero es opcional */}
+      {loading ? <div className="ap-loading">Cargando leads…</div> : !vistaKanban ? (
+        <>
+          <div style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, overflow:'hidden' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 0.8fr 0.9fr 0.9fr 0.6fr 1fr', padding:'8px 16px', borderBottom:'1px solid rgba(255,255,255,0.07)', fontSize:10, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1 }}>
+              {[['nombre','Nombre'],['estado','Estado'],['canal','Canal'],['fecha_contacto','Contacto'],['fecha_venta','Venta']].map(([key,label]) => (
+                <span key={key} onClick={() => ordenarPor===key ? setOrdenAsc(a=>!a) : (setOrdenarPor(key),setOrdenAsc(true))} style={{ cursor:'pointer', display:'flex', alignItems:'center', gap:3, userSelect:'none' }}>
+                  {label}{ordenarPor===key && (ordenAsc ? <ArrowUp size={10}/> : <ArrowDown size={10}/>)}
+                </span>
+              ))}
+              <span>Días</span><span>Comercial</span>
+            </div>
+            {leadsPagina.length === 0 && <div className="ap-empty"><p>No hay leads con estos filtros.</p></div>}
+            {leadsPagina.map((lead, i) => {
+              const est = ESTADOS[lead.estado];
+              const comercial = nombreComercial(lead.assigned_to);
+              const dias = diasHastaVenta(lead);
+              return (
+                <div key={lead.id} onClick={() => setPanel(lead)}
+                  style={{ display:'grid', gridTemplateColumns:'2fr 1fr 0.8fr 0.9fr 0.9fr 0.6fr 1fr', padding:'10px 16px', borderBottom:'1px solid rgba(255,255,255,0.05)', cursor:'pointer', background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}
+                  onMouseEnter={e => e.currentTarget.style.background='rgba(190,176,162,0.05)'}
+                  onMouseLeave={e => e.currentTarget.style.background= i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)'}>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:600, color:'#e5ddd5', display:'flex', alignItems:'center', gap:6 }}>
+                      {lead.nombre}
+                      {lead.cliente_recurrente && <span title={`Ya compró antes (${lead.compras_previas.length})`} style={{ fontSize:9, background:'#2d1f4e', color:'#a78bfa', borderRadius:3, padding:'2px 5px', fontWeight:700 }}>🔁 Recurrente</span>}
+                    </div>
+                    {lead.instagram && <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)' }}>@{lead.instagram}</div>}
+                  </div>
+                  <div style={{ alignSelf:'center' }}><span style={{ background:`${est?.color}20`, color:est?.color, fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4 }}>{est?.label}</span></div>
+                  <div style={{ alignSelf:'center' }} onClick={e => e.stopPropagation()}>
+                    <select className="ap-select ap-select-sm" style={{ fontSize:11, padding:'3px 6px', textTransform:'capitalize' }} value={lead.canal || 'otro'} onChange={e => cambiarCanal(lead.id, e.target.value)}>
+                      {CANALES.map(c => <option key={c} value={c} style={{ textTransform:'capitalize' }}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', alignSelf:'center' }}>{lead.fecha_contacto?.slice(0,10) || '—'}</div>
+                  <div style={{ fontSize:12, color: lead.fecha_venta ? '#8bae8f' : 'rgba(255,255,255,0.5)', alignSelf:'center' }}>{lead.fecha_venta?.slice(0,10) || '—'}</div>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', alignSelf:'center' }}>{dias !== null ? `${dias}d` : '—'}</div>
+                  <div style={{ alignSelf:'center' }} onClick={e => e.stopPropagation()}>
+                    {comercial ? (
+                      <span style={{ fontSize:11, color:'#beb0a2' }}>{comercial}</span>
+                    ) : (
+                      <button className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => asignarme(lead.id)}><UserPlus size={11}/> Asignarme</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          {movimientos.map(m => (
-            <div key={m.id} className="fz-row">
-              <span className="fz-concepto">{m.concepto}{m.leads?.nombre && <span className="fz-lead-tag">{m.leads.nombre}</span>}</span>
-              <span>{m.categoria}</span>
-              <span>{m.metodo_pago || '—'}</span>
-              <span>{new Date(m.fecha).toLocaleDateString('es-ES')}</span>
-              <span className={`fz-importe fz-importe--${m.tipo}`}>{m.tipo === 'gasto' ? '-' : '+'}{fmt(m.monto)}</span>
-              <button className="ap-btn-icon" onClick={() => setConfirmId(m.id)}><Trash2 size={13} /></button>
+          {totalPaginas > 1 && (
+            <div className="ap-pagination" style={{ marginTop:16 }}>
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setPagina(p => Math.max(1, p-1))} disabled={pagina === 1}>← Anterior</button>
+              <span className="ap-pagination-info">{pagina} / {totalPaginas} · {filtrados.length} leads</span>
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setPagina(p => Math.min(totalPaginas, p+1))} disabled={pagina === totalPaginas}>Siguiente →</button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ overflowX:'auto' }}>
+          <div style={{ display:'flex', gap:10, minWidth:1100 }}>
+            {ORDEN.map(estado => {
+              const col = ordenados.filter(l => l.estado === estado);
+              const est = ESTADOS[estado];
+              return (
+                <div key={estado} style={{ flex:1, minWidth:120 }}>
+                  <div style={{ background:`${est.color}15`, border:`1px solid ${est.color}30`, borderRadius:'8px 8px 0 0', padding:'6px 10px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ color:est.color, fontWeight:700, fontSize:10, textTransform:'uppercase', letterSpacing:1 }}>{est.label}</span>
+                    <span style={{ background:`${est.color}30`, color:est.color, borderRadius:999, padding:'1px 6px', fontSize:10, fontWeight:700 }}>{col.length}</span>
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                    {col.length === 0 && (
+                      <div style={{ border:`1px dashed ${est.color}20`, borderRadius:'0 0 8px 8px', padding:12, textAlign:'center', color:'rgba(255,255,255,0.1)', fontSize:11 }}>vacío</div>
+                    )}
+                    {col.map((lead, i) => (
+                      <div key={lead.id} onClick={() => setPanel(lead)}
+                        style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius: i === col.length-1 ? '0 0 8px 8px' : 6, padding:'9px 10px', cursor:'pointer' }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor='rgba(190,176,162,0.3)'}
+                        onMouseLeave={e => e.currentTarget.style.borderColor='rgba(255,255,255,0.08)'}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:4 }}>
+                          <span style={{ fontSize:12, fontWeight:600, color:'#e5ddd5', lineHeight:1.3 }}>{lead.nombre}</span>
+                          {lead.canal && <span style={{ fontSize:8, background:'rgba(190,176,162,0.15)', color:'#beb0a2', borderRadius:3, padding:'2px 4px', whiteSpace:'nowrap', flexShrink:0, textTransform:'capitalize' }}>{lead.canal}</span>}
+                        </div>
+                        {lead.deporte && <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)', marginTop:2 }}>{lead.deporte}</div>}
+                        {lead.valor_estimado > 0 && <div style={{ fontSize:11, color:'#beb0a2', fontWeight:600, marginTop:4 }}>{Number(lead.valor_estimado).toLocaleString('es-ES')}€</div>}
+                        <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', marginTop:3 }}>{nombreComercial(lead.assigned_to) || 'Sin asignar'}</div>
+                        <div onClick={e => e.stopPropagation()} style={{ marginTop:6, display:'flex', gap:3, flexWrap:'wrap' }}>
+                          {ORDEN.filter(e => e !== estado).slice(0,2).map(e => (
+                            <button key={e} onClick={() => cambiarEstado(lead.id, e)}
+                              style={{ fontSize:8, background:`${ESTADOS[e].color}15`, color:ESTADOS[e].color, border:`1px solid ${ESTADOS[e].color}40`, borderRadius:3, padding:'2px 4px', cursor:'pointer', fontFamily:'inherit' }}>
+                              {ESTADOS[e].label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Panel lateral */}
+      {panel && (
+        <div style={{ position:'fixed', top:0, right:0, width:360, height:'100vh', background:'#1a1612', borderLeft:'1px solid rgba(255,255,255,0.08)', zIndex:200, overflowY:'auto', padding:24 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
+            <div>
+              <div style={{ fontSize:17, fontWeight:700, color:'#beb0a2' }}>{panel.nombre}</div>
+              {panel.instagram && <div style={{ fontSize:12, color:'rgba(255,255,255,0.3)' }}>@{panel.instagram}</div>}
+            </div>
+            <button onClick={() => setPanel(null)} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.3)', fontSize:18, cursor:'pointer' }}>✕</button>
+          </div>
+          <div style={{ marginBottom:12 }}>
+            <span style={{ background:`${ESTADOS[panel.estado]?.color}20`, border:`1px solid ${ESTADOS[panel.estado]?.color}40`, borderRadius:8, padding:'5px 12px', color:ESTADOS[panel.estado]?.color, fontWeight:700, fontSize:12 }}>
+              {ESTADOS[panel.estado]?.label}
+            </span>
+          </div>
+          <div style={{ marginBottom:14, display:'flex', gap:4, flexWrap:'wrap' }}>
+            {ORDEN.filter(e => e !== panel.estado).map(e => (
+              <button key={e} onClick={() => cambiarEstado(panel.id, e)}
+                style={{ fontSize:9, background:`${ESTADOS[e].color}15`, color:ESTADOS[e].color, border:`1px solid ${ESTADOS[e].color}30`, borderRadius:4, padding:'3px 6px', cursor:'pointer', fontFamily:'inherit' }}>
+                {ESTADOS[e].label}
+              </button>
+            ))}
+          </div>
+          {(panel.estado === 'venta' || panel.tipo_diseño === 'diseño_venta') && (
+            <>
+              <FichaConectadaLead leadId={panel.id} />
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginBottom: 10 }} onClick={() => setModalProyectoCompleto(panel.id)}>Ver proyecto completo</button>
+            </>
+          )}
+          {[
+            ['Canal',            panel.canal || '—'],
+            ...(panel.canal === 'ads' && panel.campaña ? [['Campaña', panel.campaña]] : []),
+            ...(panel.cliente_recurrente ? [['🔁 Cliente recurrente', panel.compras_previas.map(c => `${c.fecha?.slice(0,10)} · ${fmtEur(c.valor)}`).join('  |  ')]] : []),
+            ['Deporte',          [panel.deporte, panel.liga].filter(Boolean).join(' · ') || '—'],
+            ['Teléfono',         panel.telefono || '—'],
+            ['Email',            panel.email || '—'],
+            ['Servicio',         TIPOS_DISEÑO[panel.tipo_diseño]?.label || TIPOS_DISEÑO.diseño_gratis.label],
+            ...(panel.tipo_diseño === 'diseño_venta' ? [['Valor Venta Diseño 1', fmtEur(panel.valor_diseño)]] : []),
+            ...(panel.valor_comisiones ? [['Comisión/extra', `${fmtEur(panel.valor_comisiones)}${panel.notas_comisiones ? ' · ' + panel.notas_comisiones : ''}`]] : []),
+            ['Inversión',        fmtEur(panel.valor_estimado)],
+            ['% Cierre',         `${panel.pct_cierre||0}%`],
+            ['📅 Contacto',      panel.fecha_contacto?.slice(0,10) || '—'],
+            ['📅 Respuesta',     panel.fecha_respuesta?.slice(0,10) || '—'],
+            ['📅 Llamada desc.', panel.fecha_llamada?.slice(0,10) || '—'],
+            ['📅 Diseño',        panel.fecha_diseño?.slice(0,10) || '—'],
+            ['📅 Llamada venta', panel.fecha_llamada_venta?.slice(0,10) || '—'],
+            ['📅 Venta',         panel.fecha_venta?.slice(0,10) || '—'],
+            ['📅 Venta Diseño 1', panel.fecha_venta_diseño_1?.slice(0,10) || '—'],
+          ].map(([k,v]) => (
+            <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,0.05)', fontSize:12 }}>
+              <span style={{ color:'rgba(255,255,255,0.3)' }}>{k}</span>
+              <span style={{ color:'#e5ddd5' }}>{v}</span>
             </div>
           ))}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,0.05)', fontSize:12 }}>
+            <span style={{ color:'rgba(255,255,255,0.3)' }}>Comercial</span>
+            <select className="ap-select ap-select-sm" value={panel.assigned_to||''} onChange={e => reasignar(panel.id, e.target.value)}>
+              <option value="">Sin asignar</option>
+              {empleados.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </div>
+          {!panel.assigned_to && (
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop:8, width:'100%' }} onClick={() => asignarme(panel.id)}>
+              <UserPlus size={13}/> Asignarme este lead
+            </button>
+          )}
+          {panel.link_fathom && (
+            <a href={panel.link_fathom} target="_blank" rel="noopener noreferrer" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop:8, width:'100%', justifyContent:'center' }}>
+              <ExternalLink size={13}/> Ver llamada (Fathom)
+            </a>
+          )}
+          {panel.notas && (
+            <div style={{ marginTop:12, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:10, fontSize:12, color:'rgba(255,255,255,0.5)', lineHeight:1.6 }}>
+              {panel.notas}
+            </div>
+          )}
+          <div style={{ display:'flex', gap:8, marginTop:16 }}>
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { abrirEditar(panel); setPanel(null); }}>
+              <Pencil size={13}/> Editar
+            </button>
+            <button className="ap-btn ap-btn-danger ap-btn-sm" onClick={() => setConfirm({ message:`¿Eliminar a ${panel.nombre}?`, onConfirm:()=>eliminar(panel.id) })}>
+              <Trash2 size={13}/>
+            </button>
+          </div>
         </div>
       )}
 
-      {modal && <MovimientoModal tipoInicial="ingreso" onClose={() => setModal(null)} onSaved={handleSaved} />}
-      {confirmId && (
-        <div className="ap-modal-overlay" onClick={() => setConfirmId(null)}>
-          <div className="ap-modal ap-modal--sm" onClick={e => e.stopPropagation()}>
-            <p style={{ marginBottom: '1.25rem' }}>¿Eliminar este movimiento? Esta acción no se puede deshacer.</p>
-            <div className="ap-modal-actions">
-              <button className="ap-btn ap-btn-ghost" onClick={() => setConfirmId(null)}>Cancelar</button>
-              <button className="ap-btn ap-btn-danger" onClick={handleDelete}>Eliminar</button>
+      {/* Modal crear/editar */}
+      {modal && (
+        <div className="ap-modal-overlay" onClick={() => setModal(null)}>
+          <div className="ap-modal" onClick={e => e.stopPropagation()} style={{ maxWidth:580 }}>
+            <div className="ap-modal-head">
+              <h2>{modal === 'new' ? 'Nuevo lead' : 'Editar lead'}</h2>
+              <button className="ap-modal-close" onClick={() => setModal(null)}><X size={16}/></button>
             </div>
+            <form onSubmit={guardar} className="ap-modal-form">
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
+                <div className="ap-field" style={{ gridColumn:'1/-1' }}><label>Nombre *</label><input value={form.nombre} onChange={e => setF('nombre', e.target.value)} required autoFocus placeholder="Ej: Rubén Yáñez" /></div>
+                <div className="ap-field"><label>Perfil</label><input value={form.perfil||''} onChange={e => setF('perfil', e.target.value)} placeholder="Portero, Delantero..." /></div>
+                <div className="ap-field"><label>Deporte</label>
+                  <select className="ap-select" value={form.deporte} onChange={e => setF('deporte', e.target.value)}>
+                    {DEPORTES.map(d => <option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div className="ap-field"><label>Liga</label>
+                  <select className="ap-select" value={form.liga||''} onChange={e => setF('liga', e.target.value)}>
+                    <option value="">— sin liga —</option>
+                    {LIGAS.map(l => <option key={l}>{l}</option>)}
+                  </select>
+                </div>
+                <div className="ap-field"><label>Instagram</label><input value={form.instagram||''} onChange={e => setF('instagram', e.target.value)} placeholder="handle sin @" /></div>
+                <div className="ap-field"><label>Teléfono</label><input value={form.telefono||''} onChange={e => setF('telefono', e.target.value)} placeholder="+34 600 000 000" /></div>
+                <div className="ap-field"><label>Email</label><input value={form.email||''} onChange={e => setF('email', e.target.value)} placeholder="correo@gmail.com" /></div>
+                <div className="ap-field"><label>Canal</label>
+                  <select className="ap-select" value={form.canal} onChange={e => setF('canal', e.target.value)}>
+                    {CANALES.map(c => <option key={c} value={c} style={{ textTransform:'capitalize' }}>{c}</option>)}
+                  </select>
+                </div>
+                {form.canal === 'ads' && (
+                  <div className="ap-field"><label>Campaña</label>
+                    <input value={form.campaña || ''} onChange={e => setF('campaña', e.target.value)} placeholder="Ej. Verano26_IG_Conversiones" />
+                  </div>
+                )}
+                <div className="ap-field"><label>Estado</label>
+                  <select className="ap-select" value={form.estado} onChange={e => setF('estado', e.target.value)}>
+                    {ORDEN.map(e => <option key={e} value={e}>{ESTADOS[e].label}</option>)}
+                  </select>
+                </div>
+                <div className="ap-field"><label>Inversión estimada (€)</label><input type="number" value={form.valor_estimado||''} onChange={e => setF('valor_estimado', e.target.value)} placeholder="25000" /></div>
+                <div className="ap-field"><label>% Cierre estimado</label><input type="number" min={0} max={100} value={form.pct_cierre} onChange={e => setF('pct_cierre', Number(e.target.value))} /></div>
+                <div className="ap-field"><label>Servicio de diseño</label>
+                  <select className="ap-select" value={form.tipo_diseño||'diseño_gratis'} onChange={e => setF('tipo_diseño', e.target.value)}>
+                    {Object.entries(TIPOS_DISEÑO).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </div>
+                {form.tipo_diseño === 'diseño_venta' && (
+                  <div className="ap-field"><label>Valor Venta Diseño 1 (€)</label><input type="number" value={form.valor_diseño||''} onChange={e => setF('valor_diseño', e.target.value)} placeholder="500" /></div>
+                )}
+                <div className="ap-field"><label>Comercial asignado</label>
+                  <select className="ap-select" value={form.assigned_to||''} onChange={e => setF('assigned_to', e.target.value)}>
+                    <option value="">Sin asignar</option>
+                    {empleados.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                </div>
+                <div className="ap-field" style={{ gridColumn:'1/-1' }}><label>Link llamada (Fathom)</label><input value={form.link_fathom||''} onChange={e => setF('link_fathom', e.target.value)} placeholder="https://fathom.video/..." /></div>
+                <div className="ap-field"><label>Comisiones / extras (€)</label><input type="number" value={form.valor_comisiones||''} onChange={e => setF('valor_comisiones', e.target.value)} placeholder="Ej: comisión de un proveedor" /></div>
+                <div className="ap-field"><label>Nota de comisión/extra</label><input value={form.notas_comisiones||''} onChange={e => setF('notas_comisiones', e.target.value)} placeholder="¿Por qué concepto?" /></div>
+              </div>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, margin:'12px 0 8px' }}>Fechas del proceso</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
+                <div className="ap-field"><label>📅 Contacto</label><input type="date" value={form.fecha_contacto||''} onChange={e => setF('fecha_contacto', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Respuesta chat</label><input type="date" value={form.fecha_respuesta||''} onChange={e => setF('fecha_respuesta', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Llamada desc.</label><input type="date" value={form.fecha_llamada||''} onChange={e => setF('fecha_llamada', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Diseño enviado</label><input type="date" value={form.fecha_diseño||''} onChange={e => setF('fecha_diseño', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Llamada de venta</label><input type="date" value={form.fecha_llamada_venta||''} onChange={e => setF('fecha_llamada_venta', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Venta</label><input type="date" value={form.fecha_venta||''} onChange={e => setF('fecha_venta', e.target.value)} /></div>
+                <div className="ap-field"><label>📅 Venta Diseño 1</label><input type="date" value={form.fecha_venta_diseño_1||''} onChange={e => setF('fecha_venta_diseño_1', e.target.value)} /></div>
+              </div>
+              <div className="ap-field"><label>Notas</label><textarea value={form.notas||''} onChange={e => setF('notas', e.target.value)} rows={3} placeholder="Contexto, observaciones..." /></div>
+              <div className="ap-modal-actions">
+                <button type="button" className="ap-btn ap-btn-ghost" onClick={() => setModal(null)}>Cancelar</button>
+                <button type="submit" className="ap-btn ap-btn-primary" disabled={saving || !form.nombre.trim()}>
+                  {saving ? 'Guardando...' : modal === 'new' ? 'Crear lead' : 'Guardar cambios'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
+      )}
+
+      {modalVentaDirecta && (
+        <VentaDirectaModal
+          empleados={empleados}
+          onClose={() => setModalVentaDirecta(false)}
+          onSaved={() => { setModalVentaDirecta(false); toast.success('Venta registrada'); cargar(); }}
+        />
+      )}
+
+      {modalProyectoCompleto && (
+        <ProyectoCompletoModal leadId={modalProyectoCompleto} onClose={() => setModalProyectoCompleto(null)} />
       )}
     </div>
   );
