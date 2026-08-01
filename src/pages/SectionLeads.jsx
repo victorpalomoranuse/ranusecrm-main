@@ -96,6 +96,7 @@ export function SectionLeads() {
   const [form, setForm] = useState(EMPTY);
   const [filtroEstado, setFiltroEstado] = useState('all');
   const [filtroOrigen, setFiltroOrigen] = useState('all');
+  const [filtroCanal, setFiltroCanal] = useState('all');
   const [filtroMes, setFiltroMes] = useState('all');
   const [filtroFechaTipo, setFiltroFechaTipo] = useState('contacto');
   const [filtroComercial, setFiltroComercial] = useState('all');
@@ -144,6 +145,7 @@ export function SectionLeads() {
   const filtrados = leads.filter(l => {
     if (filtroEstado !== 'all' && l.estado !== filtroEstado) return false;
     if (filtroOrigen !== 'all' && l.origen !== filtroOrigen) return false;
+    if (filtroCanal !== 'all' && (l.canal || 'otro') !== filtroCanal) return false;
     if (filtroMes !== 'all' && !fechasParaFiltro(l).some(f => f.slice(0, 7) === filtroMes)) return false;
     if (filtroComercial !== 'all' && (filtroComercial === 'sin_asignar' ? l.assigned_to : l.assigned_to !== filtroComercial)) return false;
     if (busqueda && !l.nombre.toLowerCase().includes(busqueda.toLowerCase()) &&
@@ -352,8 +354,8 @@ export function SectionLeads() {
                   const tasa = d.total > 0 ? Math.round((d.ventas / d.total) * 100) : 0;
                   const pct = d.total > 0 ? Math.round((d.total / (filtrados.length || 1)) * 100) : 0;
                   return (
-                    <div key={canal} style={{ display:'flex', alignItems:'center', gap:10 }}>
-                      <div style={{ width:90, fontSize:12, color:'#beb0a2', textTransform:'capitalize' }}>{canal}</div>
+                    <div key={canal} onClick={() => { setFiltroCanal(canal); setPagina(1); }} style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} title={`Filtrar por ${canal}`}>
+                      <div style={{ width:90, fontSize:12, color: filtroCanal===canal ? '#fff' : '#beb0a2', fontWeight: filtroCanal===canal ? 700 : 400, textTransform:'capitalize' }}>{canal}</div>
                       <div style={{ flex:1, height:6, background:'rgba(255,255,255,0.05)', borderRadius:3, overflow:'hidden' }}>
                         <div style={{ width:`${pct}%`, height:'100%', background:'#beb0a2', borderRadius:3 }} />
                       </div>
@@ -379,6 +381,10 @@ export function SectionLeads() {
           <option value="all">Inbound + Outbound</option>
           <option value="inbound">📥 Inbound</option>
           <option value="outbound">📤 Outbound</option>
+        </select>
+        <select className="ap-select" value={filtroCanal} onChange={e => { setFiltroCanal(e.target.value); setPagina(1); }}>
+          <option value="all">Todos los canales</option>
+          {CANALES.map(c => <option key={c} value={c} style={{ textTransform:'capitalize' }}>{c}</option>)}
         </select>
         <select className="ap-select ap-select-sm" value={filtroFechaTipo} onChange={e => { setFiltroFechaTipo(e.target.value); setFiltroMes('all'); setPagina(1); }} title="Qué fecha usa el filtro de mes">
           <option value="contacto">Por fecha de contacto</option>
