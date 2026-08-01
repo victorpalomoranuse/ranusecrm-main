@@ -181,7 +181,7 @@ router.get('/by-code/:code', async (req, res) => {
  */
 router.post('/', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { client_name, project_name, client_email, access_code, phase = 1, urgency = 'normal', responsible_id, notes } = req.body;
+    const { client_name, project_name, client_email, access_code, phase = 1, urgency = 'normal', responsible_id, notes, lead_id } = req.body;
 
     if (!client_name || !project_name || !access_code) {
       return res.status(400).json({ error: 'Nombre del cliente, proyecto y código son requeridos' });
@@ -208,6 +208,7 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
         urgency,
         responsible_id: responsible_id || null,
         notes: notes?.trim() || null,
+        lead_id: lead_id || null,
       })
       .select('*, responsible:employees!responsible_id(id, name)')
       .single();
@@ -226,7 +227,7 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
  */
 router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active } = req.body;
+    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active, lead_id } = req.body;
 
     const updates = {};
     if (client_name !== undefined) updates.client_name = client_name.trim();
@@ -237,6 +238,7 @@ router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
     if (responsible_id !== undefined) updates.responsible_id = responsible_id || null;
     if (notes !== undefined) updates.notes = notes?.trim() || null;
     if (active !== undefined) updates.active = active;
+    if (lead_id !== undefined) updates.lead_id = lead_id || null;
 
     const { data, error } = await supabase
       .from('client_projects')
