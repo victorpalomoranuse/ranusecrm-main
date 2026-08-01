@@ -74,8 +74,6 @@ router.get('/', authenticateToken, requireLeads, async (req, res) => {
 
     const total    = leads.length;
     const activos  = leads.filter(l => !['venta','rechazo','no_show','descartado'].includes(l.estado)).length;
-    const inbound  = leads.filter(l => l.origen === 'inbound').length;
-    const outbound = leads.filter(l => l.origen === 'outbound').length;
     const ventas   = leads.filter(l => l.estado === 'venta').length;
     const noShow   = leads.filter(l => l.estado === 'no_show').length;
     const ventasRecurrentes = leadsConRecurrencia.filter(l => l.estado === 'venta' && l.cliente_recurrente).length;
@@ -127,7 +125,7 @@ router.get('/', authenticateToken, requireLeads, async (req, res) => {
     res.json({
       leads: leadsConRecurrencia,
       metricas: {
-        total, activos, inbound, outbound, ventas, noShow, ventasRecurrentes,
+        total, activos, ventas, noShow, ventasRecurrentes,
         valorPipeline, valorVentas,
         tasaRespuesta, tasaLlamada, tasaDiseño, tasaLlamadaVenta,
         tasaNoShow, tasaVenta, tasaRechazo, tasaCierreGlobal,
