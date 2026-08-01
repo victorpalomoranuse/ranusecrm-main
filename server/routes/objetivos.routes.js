@@ -117,21 +117,29 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
     const [{ data: objetivos, error: errObj }, { data: leads, error: errLeads }, { data: movimientos, error: errMov }] =
       await Promise.all([
         supabase.from('objetivos_financieros').select('*').eq('periodo_tipo', periodo_tipo).eq('periodo', periodo),
-        supabase.from('leads').select('valor_estimado, fecha_venta, valor_diseño, fecha_venta_diseño_1').or('estado.eq.venta,tipo_diseño.eq.diseño_venta'),
+        supabase.from('leads').select('valor_estimado, fecha_venta, valor_diseño, fecha_venta_diseño_1, tipo_proyecto').or('estado.eq.venta,tipo_diseño.eq.diseño_venta'),
         supabase.from('finanzas_movimientos').select('tipo, monto, fecha'),
       ]);
     if (errObj) throw errObj;
     if (errLeads) throw errLeads;
     if (errMov) throw errMov;
 
-    // Facturación VENDIDA: importe de cada venta en la fecha en que se cerró
+    // Facturación VENDIDA: importe de cada venta en la fecha en que se cerró,
+    // desglosada entre "limpia" (solo diseño, sin gastos) y "con ejecución"
     let facturacionVendida = 0;
+    let facturacionVendidaLimpia = 0;
+    let facturacionVendidaEjecucion = 0;
     leads.forEach(l => {
+      const esEjecucion = l.tipo_proyecto === 'con_ejecucion';
       if (l.fecha_venta && claveDePeriodo(l.fecha_venta, periodo_tipo) === periodo) {
-        facturacionVendida += Number(l.valor_estimado || 0);
+        const v = Number(l.valor_estimado || 0);
+        facturacionVendida += v;
+        if (esEjecucion) facturacionVendidaEjecucion += v; else facturacionVendidaLimpia += v;
       }
       if (l.fecha_venta_diseño_1 && claveDePeriodo(l.fecha_venta_diseño_1, periodo_tipo) === periodo) {
-        facturacionVendida += Number(l.valor_diseño || 0);
+        const v = Number(l.valor_diseño || 0);
+        facturacionVendida += v;
+        if (esEjecucion) facturacionVendidaEjecucion += v; else facturacionVendidaLimpia += v;
       }
     });
 
@@ -143,6 +151,9 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
       if (m.tipo === 'ingreso') facturacionCobrada += Number(m.monto);
       else gastosPeriodo += Number(m.monto);
     });
+    const facturacionNeta = facturacionCobrada - gastosPeriodo;
+
+    const puedeVerFinanzas = req.user.role === 'admin_superior' || req.user.permissions?.finanzas === true;
 
     const porEscenario = {};
     ESCENARIOS.forEach(esc => {
@@ -154,17 +165,21 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
         restaCobrado: importeObjetivo !== null ? Math.max(importeObjetivo - facturacionCobrada, 0) : null,
         cumplidoVendidoPct: importeObjetivo ? Math.round((facturacionVendida / importeObjetivo) * 100) : null,
         cumplidoCobradoPct: importeObjetivo ? Math.round((facturacionCobrada / importeObjetivo) * 100) : null,
+        ...(puedeVerFinanzas ? {
+          restaNeto: importeObjetivo !== null ? Math.max(importeObjetivo - facturacionNeta, 0) : null,
+          cumplidoNetoPct: importeObjetivo ? Math.round((facturacionNeta / importeObjetivo) * 100) : null,
+        } : {}),
       };
     });
-
-    const puedeVerFinanzas = req.user.role === 'admin_superior' || req.user.permissions?.finanzas === true;
 
     res.json({
       periodo_tipo,
       periodo,
       facturacionVendida,
+      facturacionVendidaLimpia,
+      facturacionVendidaEjecucion,
       facturacionCobrada,
-      ...(puedeVerFinanzas ? { gastosPeriodo, balanceCobrado: facturacionCobrada - gastosPeriodo } : {}),
+      ...(puedeVerFinanzas ? { gastosPeriodo, balanceCobrado: facturacionNeta, facturacionNeta } : {}),
       porEscenario,
     });
   } catch (error) {
