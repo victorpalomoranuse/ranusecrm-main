@@ -102,8 +102,8 @@ router.get('/proyectos', authenticateToken, requireFinanzas, async (req, res) =>
   try {
     const { data: leads, error: errLeads } = await supabase
       .from('leads')
-      .select('id, nombre, tipo_proyecto, valor_estimado, fecha_venta, employees:assigned_to(name)')
-      .eq('estado', 'venta');
+      .select('id, nombre, tipo_proyecto, tipo_diseño, valor_estimado, valor_diseño, fecha_venta, fecha_venta_diseño_1, employees:assigned_to(name)')
+      .or('estado.eq.venta,tipo_diseño.eq.diseño_venta');
     if (errLeads) throw errLeads;
 
     const { data: movimientos, error: errMov } = await supabase
@@ -116,13 +116,15 @@ router.get('/proyectos', authenticateToken, requireFinanzas, async (req, res) =>
       const movs = movimientos.filter(m => m.lead_id === l.id);
       const cobrado = movs.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + Number(m.monto), 0);
       const gastos = movs.filter(m => m.tipo === 'gasto').reduce((s, m) => s + Number(m.monto), 0);
-      const presupuesto = Number(l.valor_estimado || 0);
+      // Presupuesto = venta final (Diseño 2) + venta de Diseño 1 si la hubo,
+      // para que un lead vendido solo como Diseño 1 también cuente como proyecto.
+      const presupuesto = Number(l.valor_estimado || 0) + (l.tipo_diseño === 'diseño_venta' ? Number(l.valor_diseño || 0) : 0);
       return {
         leadId: l.id,
         nombre: l.nombre,
         tipoProyecto: l.tipo_proyecto || 'solo_diseno',
         comercial: l.employees?.name || null,
-        fechaVenta: l.fecha_venta,
+        fechaVenta: l.fecha_venta || l.fecha_venta_diseño_1,
         presupuesto,
         cobrado,
         pendiente: Math.max(presupuesto - cobrado, 0),
@@ -148,7 +150,7 @@ router.get('/proyecto/:leadId', authenticateToken, requireFinanzas, async (req, 
   try {
     const { data: lead, error: errLead } = await supabase
       .from('leads')
-      .select('id, nombre, instagram, email, telefono, canal, campaña, tipo_proyecto, valor_estimado, costes_estimados, fecha_venta, fecha_contacto, notas, assigned_to, employees:assigned_to(name)')
+      .select('id, nombre, instagram, email, telefono, canal, campaña, tipo_proyecto, tipo_diseño, valor_estimado, valor_diseño, costes_estimados, fecha_venta, fecha_venta_diseño_1, fecha_contacto, notas, assigned_to, employees:assigned_to(name)')
       .eq('id', req.params.leadId)
       .single();
     if (errLead) throw errLead;
@@ -164,7 +166,8 @@ router.get('/proyecto/:leadId', authenticateToken, requireFinanzas, async (req, 
     const gastos = movimientos.filter(m => m.tipo === 'gasto');
     const cobrado = pagos.reduce((s, m) => s + Number(m.monto), 0);
     const totalGastos = gastos.reduce((s, m) => s + Number(m.monto), 0);
-    const presupuesto = Number(lead.valor_estimado || 0);
+    // Presupuesto = venta final (Diseño 2) + venta de Diseño 1 si la hubo
+    const presupuesto = Number(lead.valor_estimado || 0) + (lead.tipo_diseño === 'diseño_venta' ? Number(lead.valor_diseño || 0) : 0);
 
     res.json({
       proyecto: {
@@ -176,7 +179,7 @@ router.get('/proyecto/:leadId', authenticateToken, requireFinanzas, async (req, 
         canal: lead.canal,
         campaña: lead.campaña,
         tipoProyecto: lead.tipo_proyecto || 'solo_diseno',
-        fechaVenta: lead.fecha_venta,
+        fechaVenta: lead.fecha_venta || lead.fecha_venta_diseño_1,
         fechaContacto: lead.fecha_contacto,
         comercial: lead.employees?.name || null,
         notas: lead.notas,
