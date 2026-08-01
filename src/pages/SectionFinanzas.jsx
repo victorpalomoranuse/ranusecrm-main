@@ -27,6 +27,7 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
   const [notas, setNotas] = useState('');
   const [leadId, setLeadId] = useState('');
   const [leadsVenta, setLeadsVenta] = useState([]);
+  const [proyectosPorLead, setProyectosPorLead] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -34,6 +35,11 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
 
   useEffect(() => {
     api.get('/leads').then(r => setLeadsVenta((r.data.leads || []).filter(l => l.estado === 'venta'))).catch(() => {});
+    api.get('/client-projects').then(r => {
+      const map = {};
+      (r.data.projects || []).forEach(p => { if (p.lead_id) map[p.lead_id] = p.project_name; });
+      setProyectosPorLead(map);
+    }).catch(() => {});
   }, []);
 
   const handleSubmit = async (e) => {
@@ -81,7 +87,11 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
             <label>Proyecto / lead <span className="ap-optional">(opcional, pero enlázalo si es un cobro o gasto de una venta concreta)</span></label>
             <select className="ap-select" value={leadId} onChange={e => setLeadId(e.target.value)}>
               <option value="">— Sin enlazar (gasto/ingreso general de empresa) —</option>
-              {leadsVenta.map(l => <option key={l.id} value={l.id}>{l.nombre} {l.fecha_venta ? `(${l.fecha_venta.slice(0,10)})` : ''}</option>)}
+              {leadsVenta.map(l => (
+                <option key={l.id} value={l.id}>
+                  {l.nombre} {l.fecha_venta ? `(${l.fecha_venta.slice(0,10)})` : ''}{proyectosPorLead[l.id] ? ` — proyecto: ${proyectosPorLead[l.id]}` : ''}
+                </option>
+              ))}
             </select>
           </div>
           <div className="fz-field-row">
@@ -218,18 +228,18 @@ function PanelObjetivosFinanzas() {
 
       {progreso && (progreso.porEscenario?.pesimista?.objetivo != null || progreso.porEscenario?.realista?.objetivo != null || progreso.porEscenario?.optimista?.objetivo != null) && (
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
-          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Vendido</div><strong style={{ fontSize: 15 }}>{fmt(progreso.facturacionVendida)}</strong>
+          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Cobrado (cuenta para el objetivo)</div><strong style={{ fontSize: 15 }}>{fmt(progreso.facturacionCobrada)}</strong></div>
+          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Vendido (referencia)</div><strong style={{ fontSize: 15, color: 'rgba(255,255,255,0.5)' }}>{fmt(progreso.facturacionVendida)}</strong>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{fmt(progreso.facturacionVendidaLimpia)} limpio · {fmt(progreso.facturacionVendidaEjecucion)} ejecución</div>
           </div>
-          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Cobrado</div><strong style={{ fontSize: 15 }}>{fmt(progreso.facturacionCobrada)}</strong></div>
           {progreso.facturacionNeta !== undefined && (
             <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Neto (cobrado − gastos)</div><strong style={{ fontSize: 15, color: progreso.facturacionNeta >= 0 ? '#8bae8f' : '#ae6b6b' }}>{fmt(progreso.facturacionNeta)}</strong></div>
           )}
           {ESCENARIOS.filter(esc => progreso.porEscenario?.[esc]?.objetivo != null).map(esc => (
             <div key={esc}>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Falta ({ESCENARIO_LABEL[esc]})</div>
-              <strong style={{ fontSize: 15, color: progreso.porEscenario[esc].restaVendido > 0 ? '#f5b748' : '#8bae8f' }}>
-                {progreso.porEscenario[esc].restaVendido > 0 ? fmt(progreso.porEscenario[esc].restaVendido) : '¡Cumplido! 🎉'}
+              <strong style={{ fontSize: 15, color: progreso.porEscenario[esc].restaCobrado > 0 ? '#f5b748' : '#8bae8f' }}>
+                {progreso.porEscenario[esc].restaCobrado > 0 ? fmt(progreso.porEscenario[esc].restaCobrado) : '¡Cumplido! 🎉'}
               </strong>
               {progreso.porEscenario[esc].restaNeto !== undefined && (
                 <div style={{ fontSize: 10, color: progreso.porEscenario[esc].restaNeto > 0 ? '#f5b748' : '#8bae8f' }}>
@@ -342,9 +352,18 @@ function PanelComisiones() {
             <>
               <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
                 <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Beneficio neto del periodo</div><strong style={{ fontSize: 15 }}>{fmt(calculo.beneficioNeto)}</strong></div>
+                {calculo.reservaPendiente > 0 && (
+                  <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Reserva costes pendientes</div><strong style={{ fontSize: 15, color: '#f5b748' }}>-{fmt(calculo.reservaPendiente)}</strong></div>
+                )}
+                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Beneficio a repartir</div><strong style={{ fontSize: 15, color: '#a78bfa' }}>{fmt(calculo.beneficioDistribuible)}</strong></div>
                 <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Caja antes de pagar al equipo</div><strong style={{ fontSize: 15, color: '#8bae8f' }}>{fmt(calculo.cajaAntesDePagarEquipo)}</strong></div>
                 <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Caja después de pagar al equipo</div><strong style={{ fontSize: 15, color: calculo.cajaDespuesDePagarEquipo >= 0 ? '#8bae8f' : '#ae6b6b' }}>{fmt(calculo.cajaDespuesDePagarEquipo)}</strong></div>
               </div>
+              {calculo.reservaPendiente > 0 && (
+                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -8, marginBottom: 12 }}>
+                  Hay proyectos con ejecución en marcha cuyo coste final todavía no se conoce del todo — se reserva esa parte antes de calcular comisiones, para no repartir beneficio que en realidad está pendiente de gastar.
+                </p>
+              )}
 
               {calculo.porMiembro.length === 0 ? (
                 <div className="ap-empty"><p>No hay miembros del equipo configurados. Pulsa "Configurar %".</p></div>
@@ -381,6 +400,7 @@ function PanelComisiones() {
 
 function ComisionesConfigModal({ onClose, onSaved }) {
   const [equipo, setEquipo] = useState([]);
+  const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [nombreNuevo, setNombreNuevo] = useState('');
   const [pctNuevo, setPctNuevo] = useState('');
@@ -388,9 +408,14 @@ function ComisionesConfigModal({ onClose, onSaved }) {
 
   const cargar = () => { api.get('/comisiones/config').then(r => setEquipo(r.data.equipo || [])).catch(() => {}).finally(() => setLoading(false)); };
   useEffect(cargar, []);
+  useEffect(() => { api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {}); }, []);
 
   const actualizarPct = async (nombre, porcentaje) => {
     try { await api.put('/comisiones/config', { nombre, porcentaje }); cargar(); } catch {}
+  };
+
+  const actualizarEmpleado = async (miembro, employee_id) => {
+    try { await api.put('/comisiones/config', { nombre: miembro.nombre, porcentaje: miembro.porcentaje, employee_id: employee_id || null }); cargar(); } catch {}
   };
 
   const eliminar = async (id) => {
@@ -415,13 +440,17 @@ function ComisionesConfigModal({ onClose, onSaved }) {
       <div className="ap-modal" onClick={e => e.stopPropagation()}>
         <div className="ap-modal-head"><h2>Configurar comisiones</h2><button className="ap-modal-close" onClick={onClose}><X size={16} /></button></div>
         <div className="ap-modal-form">
-          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: -4 }}>% sobre el beneficio neto total de cada periodo.</p>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: -4 }}>% sobre el beneficio neto total de cada periodo. Enlaza a una cuenta del CRM para que esa persona pueda ver "Mis Comisiones" ella sola.</p>
           {!loading && equipo.map(m => (
-            <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ flex: 1, fontSize: 13 }}>{m.nombre}</span>
-              <input type="number" step="0.5" min="0" max="100" defaultValue={m.porcentaje} className="ap-select" style={{ width: 80 }}
+            <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+              <span style={{ flex: 1, minWidth: 80, fontSize: 13 }}>{m.nombre}</span>
+              <input type="number" step="0.5" min="0" max="100" defaultValue={m.porcentaje} className="ap-select" style={{ width: 70 }}
                 onBlur={e => { if (parseFloat(e.target.value) !== m.porcentaje) actualizarPct(m.nombre, e.target.value); }} />
               <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>%</span>
+              <select className="ap-select" style={{ width: 150 }} defaultValue={m.employee_id || ''} onChange={e => actualizarEmpleado(m, e.target.value)}>
+                <option value="">Sin cuenta CRM</option>
+                {empleados.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
               <button className="ap-btn-icon" onClick={() => eliminar(m.id)}><Trash2 size={13} /></button>
             </div>
           ))}
