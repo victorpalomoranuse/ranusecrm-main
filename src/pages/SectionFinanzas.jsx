@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
-import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2, Users, Check } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2, Users, Check, Pencil } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './SectionFinanzas.css';
 
@@ -17,15 +17,16 @@ const CATEGORIAS_GASTO = ['Nóminas', 'Materiales', 'Marketing', 'Software', 'Al
 const CATEGORIAS_INGRESO = ['Venta proyecto', 'Anticipo', 'Diseño', 'Otros'];
 const METODOS_PAGO = ['Transferencia', 'Tarjeta', 'Efectivo', 'Bizum', 'Otro'];
 
-function MovimientoModal({ tipoInicial, onClose, onSaved }) {
-  const [tipo, setTipo] = useState(tipoInicial);
-  const [categoria, setCategoria] = useState('');
-  const [concepto, setConcepto] = useState('');
-  const [monto, setMonto] = useState('');
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
-  const [metodoPago, setMetodoPago] = useState('');
-  const [notas, setNotas] = useState('');
-  const [leadId, setLeadId] = useState('');
+function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
+  const isEdit = !!movimiento;
+  const [tipo, setTipo] = useState(movimiento?.tipo || tipoInicial);
+  const [categoria, setCategoria] = useState(movimiento?.categoria || '');
+  const [concepto, setConcepto] = useState(movimiento?.concepto || '');
+  const [monto, setMonto] = useState(movimiento?.monto ?? '');
+  const [fecha, setFecha] = useState(movimiento?.fecha?.slice(0, 10) || new Date().toISOString().slice(0, 10));
+  const [metodoPago, setMetodoPago] = useState(movimiento?.metodo_pago || '');
+  const [notas, setNotas] = useState(movimiento?.notas || '');
+  const [leadId, setLeadId] = useState(movimiento?.lead_id || '');
   const [leadsVenta, setLeadsVenta] = useState([]);
   const [proyectosPorLead, setProyectosPorLead] = useState({});
   const [loading, setLoading] = useState(false);
@@ -48,9 +49,10 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
     if (!categoria || !concepto.trim() || !monto) { setError('Completa categoría, concepto e importe'); return; }
     setLoading(true);
     try {
-      const { data } = await api.post('/finanzas', {
-        tipo, categoria, concepto, monto, fecha, metodo_pago: metodoPago || null, notas, lead_id: leadId || null,
-      });
+      const payload = { tipo, categoria, concepto, monto, fecha, metodo_pago: metodoPago || null, notas, lead_id: leadId || null };
+      const { data } = isEdit
+        ? await api.put(`/finanzas/${movimiento.id}`, payload)
+        : await api.post('/finanzas', payload);
       onSaved(data.movimiento);
     } catch (err) {
       setError(err.response?.data?.error || 'Error al guardar el movimiento');
@@ -63,7 +65,7 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
     <div className="ap-modal-overlay" onClick={onClose}>
       <div className="ap-modal" onClick={e => e.stopPropagation()}>
         <div className="ap-modal-head">
-          <h2>Nuevo movimiento</h2>
+          <h2>{isEdit ? 'Editar movimiento' : 'Nuevo movimiento'}</h2>
           <button className="ap-modal-close" onClick={onClose}><X size={16} /></button>
         </div>
         <form onSubmit={handleSubmit} className="ap-modal-form">
@@ -119,7 +121,7 @@ function MovimientoModal({ tipoInicial, onClose, onSaved }) {
           {error && <p className="ap-error">{error}</p>}
           <div className="ap-modal-actions">
             <button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="ap-btn ap-btn-primary" disabled={loading}>{loading ? 'Guardando...' : 'Guardar movimiento'}</button>
+            <button type="submit" className="ap-btn ap-btn-primary" disabled={loading}>{loading ? 'Guardando...' : isEdit ? 'Guardar cambios' : 'Guardar movimiento'}</button>
           </div>
         </form>
       </div>
@@ -228,24 +230,20 @@ function PanelObjetivosFinanzas() {
 
       {progreso && (progreso.porEscenario?.pesimista?.objetivo != null || progreso.porEscenario?.realista?.objetivo != null || progreso.porEscenario?.optimista?.objetivo != null) && (
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
-          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Cobrado (cuenta para el objetivo)</div><strong style={{ fontSize: 15 }}>{fmt(progreso.facturacionCobrada)}</strong></div>
+          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Beneficio limpio por proyecto (cuenta para el objetivo)</div><strong style={{ fontSize: 15 }}>{fmt(progreso.beneficioLimpioPorProyecto)}</strong></div>
+          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Cobrado (referencia)</div><strong style={{ fontSize: 15, color: 'rgba(255,255,255,0.5)' }}>{fmt(progreso.facturacionCobrada)}</strong></div>
           <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Vendido (referencia)</div><strong style={{ fontSize: 15, color: 'rgba(255,255,255,0.5)' }}>{fmt(progreso.facturacionVendida)}</strong>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{fmt(progreso.facturacionVendidaLimpia)} limpio · {fmt(progreso.facturacionVendidaEjecucion)} ejecución</div>
           </div>
           {progreso.facturacionNeta !== undefined && (
-            <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Neto (cobrado − gastos)</div><strong style={{ fontSize: 15, color: progreso.facturacionNeta >= 0 ? '#8bae8f' : '#ae6b6b' }}>{fmt(progreso.facturacionNeta)}</strong></div>
+            <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Neto caja (cobrado − todos los gastos)</div><strong style={{ fontSize: 15, color: progreso.facturacionNeta >= 0 ? '#8bae8f' : '#ae6b6b' }}>{fmt(progreso.facturacionNeta)}</strong></div>
           )}
           {ESCENARIOS.filter(esc => progreso.porEscenario?.[esc]?.objetivo != null).map(esc => (
             <div key={esc}>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Falta ({ESCENARIO_LABEL[esc]})</div>
-              <strong style={{ fontSize: 15, color: progreso.porEscenario[esc].restaCobrado > 0 ? '#f5b748' : '#8bae8f' }}>
-                {progreso.porEscenario[esc].restaCobrado > 0 ? fmt(progreso.porEscenario[esc].restaCobrado) : '¡Cumplido! 🎉'}
+              <strong style={{ fontSize: 15, color: progreso.porEscenario[esc].restaBeneficioLimpio > 0 ? '#f5b748' : '#8bae8f' }}>
+                {progreso.porEscenario[esc].restaBeneficioLimpio > 0 ? fmt(progreso.porEscenario[esc].restaBeneficioLimpio) : '¡Cumplido! 🎉'}
               </strong>
-              {progreso.porEscenario[esc].restaNeto !== undefined && (
-                <div style={{ fontSize: 10, color: progreso.porEscenario[esc].restaNeto > 0 ? '#f5b748' : '#8bae8f' }}>
-                  {progreso.porEscenario[esc].restaNeto > 0 ? `${fmt(progreso.porEscenario[esc].restaNeto)} en neto` : 'Neto cumplido 🎉'}
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -279,6 +277,7 @@ function PanelComisiones() {
   const [historico, setHistorico] = useState([]);
   const [verHistorico, setVerHistorico] = useState(false);
   const [modalConfig, setModalConfig] = useState(false);
+  const [montosManual, setMontosManual] = useState({});
 
   const periodo = periodoTipo === 'mes' ? mes : periodoTipo === 'trimestre' ? `${año}-Q${trimestre}` : String(año);
   const periodoLabel = periodoTipo === 'mes' ? fmtMesCorto(mes) + ' ' + mes.slice(0, 4) : periodo;
@@ -286,7 +285,12 @@ function PanelComisiones() {
   const cargar = useCallback(() => {
     setLoading(true);
     api.get('/comisiones/calculo', { params: { periodo_tipo: periodoTipo, periodo } })
-      .then(r => setCalculo(r.data))
+      .then(r => {
+        setCalculo(r.data);
+        const iniciales = {};
+        (r.data.porMiembro || []).forEach(m => { iniciales[m.nombre] = m.pendiente > 0 ? m.pendiente.toFixed(2) : ''; });
+        setMontosManual(iniciales);
+      })
       .catch(() => setCalculo(null))
       .finally(() => setLoading(false));
   }, [periodoTipo, periodo]);
@@ -294,7 +298,9 @@ function PanelComisiones() {
   useEffect(() => { cargar(); }, [cargar]);
   useEffect(() => { if (verHistorico) api.get('/comisiones/historico').then(r => setHistorico(r.data.historico || [])).catch(() => {}); }, [verHistorico]);
 
-  const pagar = async (nombre, monto) => {
+  const pagar = async (nombre) => {
+    const monto = parseFloat(montosManual[nombre]);
+    if (!monto || monto <= 0) return;
     setPagando(nombre);
     try {
       await api.post('/comisiones/pagar', { nombre, monto, periodo_label: periodoLabel });
@@ -315,6 +321,7 @@ function PanelComisiones() {
           <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setModalConfig(true)}>Configurar %</button>
         </div>
       </div>
+      {!verHistorico && <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -6, marginBottom: 14 }}>"Le corresponde" es solo el cálculo automático de referencia (%) — el importe que se registra cada mes lo pones tú a mano en "Importe a registrar".</p>}
 
       {verHistorico ? (
         historico.length === 0 ? <div className="ap-empty"><p>Todavía no se ha registrado ningún pago de comisión.</p></div> : (
@@ -369,20 +376,26 @@ function PanelComisiones() {
                 <div className="ap-empty"><p>No hay miembros del equipo configurados. Pulsa "Configurar %".</p></div>
               ) : (
                 <div className="fz-tabla">
-                  <div className="fz-row fz-row--head"><span>Persona</span><span>%</span><span>Le corresponde</span><span>Ya pagado</span><span>Pendiente</span><span></span></div>
+                  <div className="fz-row fz-row--head"><span>Persona</span><span>%</span><span>Le corresponde</span><span>Ya pagado</span><span>Importe a registrar</span><span></span></div>
                   {calculo.porMiembro.map(m => (
                     <div key={m.nombre} className="fz-row">
                       <span>{m.nombre}</span>
                       <span>{m.porcentaje}%</span>
                       <span>{fmt(m.comisionCalculada)}</span>
                       <span>{fmt(m.yaPagado)}</span>
-                      <span className={m.pendiente > 0 ? 'fz-importe fz-importe--gasto' : ''}>{fmt(m.pendiente)}</span>
                       <span>
-                        {m.pendiente > 0.009 && (
-                          <button className="ap-btn ap-btn-primary ap-btn-xs" disabled={pagando === m.nombre} onClick={() => pagar(m.nombre, m.pendiente)}>
-                            {pagando === m.nombre ? '...' : <><Check size={12} /> Pagar</>}
-                          </button>
-                        )}
+                        <input
+                          type="number" step="0.01" min="0"
+                          value={montosManual[m.nombre] ?? ''}
+                          onChange={e => setMontosManual(v => ({ ...v, [m.nombre]: e.target.value }))}
+                          placeholder="0.00"
+                          className="ap-select" style={{ width: 100, padding: '4px 8px' }}
+                        />
+                      </span>
+                      <span>
+                        <button className="ap-btn ap-btn-primary ap-btn-xs" disabled={pagando === m.nombre || !parseFloat(montosManual[m.nombre])} onClick={() => pagar(m.nombre)}>
+                          {pagando === m.nombre ? '...' : <><Check size={12} /> Registrar</>}
+                        </button>
                       </span>
                     </div>
                   ))}
@@ -473,6 +486,7 @@ export function SectionFinanzas() {
   const [filtroTipo, setFiltroTipo] = useState('todos');
   const [filtroMes, setFiltroMes] = useState('');
   const [modal, setModal] = useState(null);
+  const [movimientoEditando, setMovimientoEditando] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
 
   const loadResumen = useCallback(() => {
@@ -491,6 +505,7 @@ export function SectionFinanzas() {
 
   const handleSaved = (mov) => {
     setModal(null);
+    setMovimientoEditando(null);
     loadResumen();
     loadMovimientos();
   };
@@ -577,13 +592,17 @@ export function SectionFinanzas() {
               <span>{m.metodo_pago || '—'}</span>
               <span>{new Date(m.fecha).toLocaleDateString('es-ES')}</span>
               <span className={`fz-importe fz-importe--${m.tipo}`}>{m.tipo === 'gasto' ? '-' : '+'}{fmt(m.monto)}</span>
-              <button className="ap-btn-icon" onClick={() => setConfirmId(m.id)}><Trash2 size={13} /></button>
+              <span style={{ display: 'flex', gap: 4 }}>
+                <button className="ap-btn-icon" onClick={() => setMovimientoEditando(m)}><Pencil size={13} /></button>
+                <button className="ap-btn-icon" onClick={() => setConfirmId(m.id)}><Trash2 size={13} /></button>
+              </span>
             </div>
           ))}
         </div>
       )}
 
       {modal && <MovimientoModal tipoInicial="ingreso" onClose={() => setModal(null)} onSaved={handleSaved} />}
+      {movimientoEditando && <MovimientoModal movimiento={movimientoEditando} onClose={() => setMovimientoEditando(null)} onSaved={handleSaved} />}
       {confirmId && (
         <div className="ap-modal-overlay" onClick={() => setConfirmId(null)}>
           <div className="ap-modal ap-modal--sm" onClick={e => e.stopPropagation()}>
