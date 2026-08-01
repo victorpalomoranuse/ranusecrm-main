@@ -148,7 +148,7 @@ router.get('/proyecto/:leadId', authenticateToken, requireFinanzas, async (req, 
   try {
     const { data: lead, error: errLead } = await supabase
       .from('leads')
-      .select('id, nombre, instagram, email, telefono, canal, campaña, tipo_proyecto, valor_estimado, fecha_venta, fecha_contacto, notas, assigned_to, employees:assigned_to(name)')
+      .select('id, nombre, instagram, email, telefono, canal, campaña, tipo_proyecto, valor_estimado, costes_estimados, fecha_venta, fecha_contacto, notas, assigned_to, employees:assigned_to(name)')
       .eq('id', req.params.leadId)
       .single();
     if (errLead) throw errLead;
@@ -181,6 +181,7 @@ router.get('/proyecto/:leadId', authenticateToken, requireFinanzas, async (req, 
         comercial: lead.employees?.name || null,
         notas: lead.notas,
         presupuesto,
+        costesEstimados: lead.costes_estimados !== null && lead.costes_estimados !== undefined ? Number(lead.costes_estimados) : null,
       },
       ejecucion: clientProject ? {
         nombre: clientProject.project_name,
@@ -198,6 +199,9 @@ router.get('/proyecto/:leadId', authenticateToken, requireFinanzas, async (req, 
         totalGastos,
         margenReal: cobrado - totalGastos,
         previsionVsReal: presupuesto - cobrado,
+        ...(lead.tipo_proyecto === 'con_ejecucion' && lead.costes_estimados != null ? {
+          margenEstimado: presupuesto - Number(lead.costes_estimados),
+        } : {}),
       },
     });
   } catch (error) {
