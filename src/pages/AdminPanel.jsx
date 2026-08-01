@@ -99,6 +99,16 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   useEffect(() => { api.get('/employees').then(r => setEmployees(r.data.employees || [])).catch(() => {}); }, []);
   useEffect(() => { api.get('/leads').then(r => setLeadsVenta((r.data.leads || []).filter(l => l.estado === 'venta'))).catch(() => {}); }, []);
 
+  const handleSelectLead = (id) => {
+    setLeadId(id);
+    const lead = leadsVenta.find(l => l.id === id);
+    if (lead) {
+      setClientName(lead.nombre || '');
+      setClientEmail(lead.email || '');
+      setClientPhone(lead.telefono || '');
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
@@ -115,16 +125,16 @@ function ClientProjectModal({ project, onClose, onSaved }) {
       <div className="ap-modal" onClick={e => e.stopPropagation()}>
         <div className="ap-modal-head"><h2>{isEdit ? 'Editar proyecto' : 'Nuevo proyecto'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16} /></button></div>
         <form onSubmit={handleSubmit} className="ap-modal-form">
-          <div className="ap-field"><label>Nombre del cliente *</label><input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Pedro García" required /></div>
-          <div className="ap-field"><label>Nombre del proyecto *</label><input value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="Home gym residencia Madrid" required /></div>
           <div className="ap-field">
-            <label>Venta de origen <span className="ap-optional">(opcional)</span></label>
-            <select className="ap-select" value={leadId} onChange={e => setLeadId(e.target.value)}>
-              <option value="">— Sin enlazar —</option>
+            <label>Venta de origen <span className="ap-optional">(opcional, pero rellena el resto automáticamente)</span></label>
+            <select className="ap-select" value={leadId} onChange={e => handleSelectLead(e.target.value)}>
+              <option value="">— Sin enlazar / cliente sin venta registrada —</option>
               {leadsVenta.map(l => <option key={l.id} value={l.id}>{l.nombre} {l.fecha_venta ? `(${l.fecha_venta.slice(0,10)})` : ''}</option>)}
             </select>
-            <span className="ap-field-hint">Enlaza este proyecto con la venta que lo originó, para ver cobros y estado desde Leads/Ventas.</span>
+            <span className="ap-field-hint">Al elegir la venta, se rellenan nombre/email/teléfono del cliente solos. Así ves cobros y estado desde Leads/Ventas.</span>
           </div>
+          <div className="ap-field"><label>Nombre del cliente *</label><input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Pedro García" required /></div>
+          <div className="ap-field"><label>Nombre del proyecto *</label><input value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="Home gym residencia Madrid" required /></div>
           <div className="ap-field"><label>Correo del cliente <span className="ap-optional">(opcional)</span></label><input type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="pedro@email.com" /></div>
           <div className="ap-field"><label>Teléfono del cliente <span className="ap-optional">(opcional)</span></label><input value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="+34 600 000 000" /></div>
           <div className="ap-field"><label>NIF / NIE <span className="ap-optional">(opcional)</span></label><input value={clientNif} onChange={e => setClientNif(e.target.value)} placeholder="12345678A" /></div>
