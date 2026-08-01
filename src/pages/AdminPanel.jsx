@@ -92,13 +92,16 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const [error, setError] = useState('');
   const [employees, setEmployees] = useState([]);
   const [responsibleId, setResponsibleId] = useState(project?.responsible?.id || project?.responsible_id || '');
+  const [leadId, setLeadId] = useState(project?.lead_id || '');
+  const [leadsVenta, setLeadsVenta] = useState([]);
 
   useEffect(() => { api.get('/employees').then(r => setEmployees(r.data.employees || [])).catch(() => {}); }, []);
+  useEffect(() => { api.get('/leads').then(r => setLeadsVenta((r.data.leads || []).filter(l => l.estado === 'venta'))).catch(() => {}); }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const payload = { client_name: clientName, project_name: projectName, client_email: clientEmail || null, access_code: accessCode, phase, urgency, notes: notes || null, responsible_id: responsibleId || null, client_nif: clientNif || null, client_phone: clientPhone || null, client_address: clientAddress || null, client_city: clientCity || null };
+      const payload = { client_name: clientName, project_name: projectName, client_email: clientEmail || null, access_code: accessCode, phase, urgency, notes: notes || null, responsible_id: responsibleId || null, client_nif: clientNif || null, client_phone: clientPhone || null, client_address: clientAddress || null, client_city: clientCity || null, lead_id: leadId || null };
       let saved;
       if (isEdit) { const { data } = await api.put(`/client-projects/${project.id}`, payload); saved = data.project; }
       else { const { data } = await api.post('/client-projects', payload); saved = data.project; }
@@ -113,6 +116,14 @@ function ClientProjectModal({ project, onClose, onSaved }) {
         <form onSubmit={handleSubmit} className="ap-modal-form">
           <div className="ap-field"><label>Nombre del cliente *</label><input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Pedro García" required /></div>
           <div className="ap-field"><label>Nombre del proyecto *</label><input value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="Home gym residencia Madrid" required /></div>
+          <div className="ap-field">
+            <label>Venta de origen <span className="ap-optional">(opcional)</span></label>
+            <select className="ap-select" value={leadId} onChange={e => setLeadId(e.target.value)}>
+              <option value="">— Sin enlazar —</option>
+              {leadsVenta.map(l => <option key={l.id} value={l.id}>{l.nombre} {l.fecha_venta ? `(${l.fecha_venta.slice(0,10)})` : ''}</option>)}
+            </select>
+            <span className="ap-field-hint">Enlaza este proyecto con la venta que lo originó, para ver cobros y estado desde Leads/Ventas.</span>
+          </div>
           <div className="ap-field"><label>Correo del cliente <span className="ap-optional">(opcional)</span></label><input type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="pedro@email.com" /></div>
           <div className="ap-field"><label>Teléfono del cliente <span className="ap-optional">(opcional)</span></label><input value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="+34 600 000 000" /></div>
           <div className="ap-field"><label>NIF / NIE <span className="ap-optional">(opcional)</span></label><input value={clientNif} onChange={e => setClientNif(e.target.value)} placeholder="12345678A" /></div>
