@@ -5,6 +5,17 @@ import { authenticateToken, requireAdminSuperior, requirePermission } from '../m
 const router = express.Router();
 const requireLeads = requirePermission('leads');
 
+// Ficha conectada (lead → venta → proyecto en ejecución): visible para
+// cualquiera con permiso de 'leads', 'ventas' o 'finanzas'.
+const requireLeadsVentasOFinanzas = (req, res, next) => {
+  if (!req.user) return res.status(401).json({ error: 'Autenticación requerida' });
+  if (req.user.role === 'admin_superior') return next();
+  if (req.user.role === 'trabajador' && ['leads', 'ventas', 'finanzas'].some(k => req.user.permissions?.[k] === true)) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Acceso denegado. No tienes permiso para esta sección.' });
+};
+
 const ESTADOS_VALIDOS = ['contacto', 'respuesta_chat', 'llamada_descubrimiento', 'diseño_0', 'diseño_1', 'llamada_venta', 'no_show', 'venta', 'rechazo', 'enfriado', 'descartado'];
 const TIPOS_DISEÑO_VALIDOS = ['diseño_gratis', 'diseño_venta'];
 
@@ -16,6 +27,40 @@ function resolverTipoDiseño(estadoFinal, tipoDiseñoInput) {
   return TIPOS_DISEÑO_VALIDOS.includes(tipoDiseñoInput) ? tipoDiseñoInput : 'diseño_gratis';
 }
 
+// Claves de identidad de un lead (instagram/email/teléfono normalizados), para
+// detectar sin tabla nueva si dos fichas de lead son la misma persona.
+function clavesIdentidad(l) {
+  const claves = [];
+  if (l.instagram) claves.push('ig:' + l.instagram.trim().toLowerCase().replace(/^@/, ''));
+  if (l.email) claves.push('email:' + l.email.trim().toLowerCase());
+  if (l.telefono) claves.push('tel:' + l.telefono.replace(/\D/g, ''));
+  return claves.filter(k => k.length > 4); // evita cruces por campos casi vacíos
+}
+
+// Marca cada lead con si esa misma persona ya tiene otra venta (por instagram/
+// email/teléfono), sin tocar en absoluto cómo se suma el valor de las ventas.
+function marcarClientesRecurrentes(leads) {
+  const porClave = {};
+  leads.forEach(l => {
+    clavesIdentidad(l).forEach(k => {
+      if (!porClave[k]) porClave[k] = [];
+      porClave[k].push(l);
+    });
+  });
+
+  return leads.map(l => {
+    const relacionados = new Map();
+    clavesIdentidad(l).forEach(k => {
+      (porClave[k] || []).forEach(o => { if (o.id !== l.id) relacionados.set(o.id, o); });
+    });
+    const otrasVentas = [...relacionados.values()]
+      .filter(o => o.estado === 'venta' && o.fecha_venta)
+      .map(o => ({ leadId: o.id, fecha: o.fecha_venta, valor: o.valor_estimado || 0 }))
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+    return { ...l, cliente_recurrente: otrasVentas.length > 0, compras_previas: otrasVentas };
+  });
+}
+
 router.get('/', authenticateToken, requireLeads, async (req, res) => {
   try {
     const { data: leads, error } = await supabase
@@ -25,12 +70,15 @@ router.get('/', authenticateToken, requireLeads, async (req, res) => {
 
     if (error) throw error;
 
+    const leadsConRecurrencia = marcarClientesRecurrentes(leads);
+
     const total    = leads.length;
     const activos  = leads.filter(l => !['venta','rechazo','no_show','descartado'].includes(l.estado)).length;
     const inbound  = leads.filter(l => l.origen === 'inbound').length;
     const outbound = leads.filter(l => l.origen === 'outbound').length;
     const ventas   = leads.filter(l => l.estado === 'venta').length;
     const noShow   = leads.filter(l => l.estado === 'no_show').length;
+    const ventasRecurrentes = leadsConRecurrencia.filter(l => l.estado === 'venta' && l.cliente_recurrente).length;
 
     const porEstado = {};
     ESTADOS_VALIDOS.forEach(e => { porEstado[e] = 0; });
@@ -68,9 +116,9 @@ router.get('/', authenticateToken, requireLeads, async (req, res) => {
       .reduce((sum, l) => sum + (l.valor_estimado || 0), 0);
 
     res.json({
-      leads,
+      leads: leadsConRecurrencia,
       metricas: {
-        total, activos, inbound, outbound, ventas, noShow,
+        total, activos, inbound, outbound, ventas, noShow, ventasRecurrentes,
         valorPipeline, valorVentas,
         tasaRespuesta, tasaLlamada, tasaDiseño, tasaLlamadaVenta,
         tasaNoShow, tasaVenta, tasaRechazo, tasaCierreGlobal,
@@ -257,6 +305,44 @@ router.delete('/:id', authenticateToken, requireAdminSuperior, async (req, res) 
   } catch (error) {
     console.error('Error al eliminar lead:', error);
     res.status(500).json({ error: 'Error al eliminar lead' });
+  }
+});
+
+/**
+ * GET /api/leads/:id/ficha-cliente
+ * Vista conectada de una venta: cuánto ha pagado / le queda pendiente
+ * (sin gastos ni margen — eso sigue solo en Finanzas) + en qué fase de
+ * ejecución está su proyecto, si ya se creó uno enlazado a este lead.
+ */
+router.get('/:id/ficha-cliente', authenticateToken, requireLeadsVentasOFinanzas, async (req, res) => {
+  try {
+    const { data: lead, error: errLead } = await supabase
+      .from('leads')
+      .select('id, nombre, estado, valor_estimado, fecha_venta, tipo_diseño, valor_diseño, fecha_venta_diseño_1')
+      .eq('id', req.params.id)
+      .single();
+    if (errLead || !lead) return res.status(404).json({ error: 'Lead no encontrado' });
+
+    const [{ data: movimientos, error: errMov }, { data: proyecto, error: errProy }] = await Promise.all([
+      supabase.from('finanzas_movimientos').select('monto, tipo').eq('lead_id', req.params.id),
+      supabase.from('client_projects').select('id, project_name, phase, urgency, access_code').eq('lead_id', req.params.id).maybeSingle(),
+    ]);
+    if (errMov) throw errMov;
+    if (errProy) throw errProy;
+
+    const cobrado = (movimientos || []).filter(m => m.tipo === 'ingreso').reduce((s, m) => s + Number(m.monto), 0);
+    const presupuesto = Number(lead.valor_estimado || 0) + (lead.tipo_diseño === 'diseño_venta' ? Number(lead.valor_diseño || 0) : 0);
+
+    res.json({
+      lead: { id: lead.id, nombre: lead.nombre, estado: lead.estado, fechaVenta: lead.fecha_venta || lead.fecha_venta_diseño_1 },
+      presupuesto,
+      cobrado,
+      pendiente: Math.max(presupuesto - cobrado, 0),
+      proyecto: proyecto || null,
+    });
+  } catch (error) {
+    console.error('Error al obtener ficha conectada:', error);
+    res.status(500).json({ error: 'Error al obtener ficha conectada' });
   }
 });
 
