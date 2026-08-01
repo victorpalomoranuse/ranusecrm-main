@@ -5,6 +5,18 @@ import { authenticateToken, requirePermission } from '../middleware/auth.middlew
 const router = express.Router();
 const requireFinanzas = requirePermission('finanzas');
 
+// Lectura del progreso de objetivos: visible para quien tenga 'ventas' o
+// 'finanzas' (el equipo comercial ve facturación/objetivo, no gastos ni
+// margen — eso sigue exclusivamente bajo 'finanzas').
+const requireVentasOFinanzas = (req, res, next) => {
+  if (!req.user) return res.status(401).json({ error: 'Autenticación requerida' });
+  if (req.user.role === 'admin_superior') return next();
+  if (req.user.role === 'trabajador' && (req.user.permissions?.ventas === true || req.user.permissions?.finanzas === true)) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Acceso denegado. No tienes permiso para esta sección.' });
+};
+
 const TIPOS_PERIODO = ['mes', 'trimestre', 'año'];
 const ESCENARIOS = ['pesimista', 'realista', 'optimista'];
 
@@ -12,7 +24,7 @@ const ESCENARIOS = ['pesimista', 'realista', 'optimista'];
  * GET /api/objetivos?periodo_tipo=mes&año=2026
  * Lista objetivos, opcionalmente filtrados por tipo de periodo y/o año.
  */
-router.get('/', authenticateToken, requireFinanzas, async (req, res) => {
+router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
   try {
     let query = supabase.from('objetivos_financieros').select('*').order('periodo', { ascending: true });
 
@@ -96,7 +108,7 @@ function claveDePeriodo(fechaISO, tipo) {
  * Compara la facturación real (vendida y cobrada) del periodo con los
  * 3 escenarios definidos, y calcula lo que resta para cada uno.
  */
-router.get('/progreso', authenticateToken, requireFinanzas, async (req, res) => {
+router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, res) => {
   try {
     const periodo_tipo = TIPOS_PERIODO.includes(req.query.periodo_tipo) ? req.query.periodo_tipo : 'mes';
     const periodo = req.query.periodo;
@@ -145,13 +157,14 @@ router.get('/progreso', authenticateToken, requireFinanzas, async (req, res) => 
       };
     });
 
+    const puedeVerFinanzas = req.user.role === 'admin_superior' || req.user.permissions?.finanzas === true;
+
     res.json({
       periodo_tipo,
       periodo,
       facturacionVendida,
       facturacionCobrada,
-      gastosPeriodo,
-      balanceCobrado: facturacionCobrada - gastosPeriodo,
+      ...(puedeVerFinanzas ? { gastosPeriodo, balanceCobrado: facturacionCobrada - gastosPeriodo } : {}),
       porEscenario,
     });
   } catch (error) {
