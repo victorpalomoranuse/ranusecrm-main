@@ -10,6 +10,7 @@ import { SectionDashboard } from './SectionDashboard';
 import { SectionLeads } from './SectionLeads';
 import { SectionVentas } from './SectionVentas';
 import { SectionFinanzas } from './SectionFinanzas';
+import { SectionMisComisiones } from './SectionMisComisiones';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -878,6 +879,7 @@ const NAV_ITEMS = [
   { id:'trabajos', label:'Trabajos', Icon:LayoutGrid, permission:'trabajos' },
   { id:'leads', label:'Leads', Icon:Target, permission:'leads' },
   { id:'ventas', label:'Ventas', Icon:TrendingUp, permission:'ventas' },
+  { id:'mis-comisiones', label:'Mis Comisiones', Icon:Wallet },
   { id:'proyectos', label:'Proyectos', Icon:FolderOpen, permission:'proyectos' },
   { id:'clientes', label:'Clientes', Icon:UserCheck, permission:'clientes' },
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
@@ -919,6 +921,7 @@ export function AdminPanel() {
         {section==='trabajos'&&<SectionTrabajos/>}
         {section==='leads'&&<SectionLeads/>}
         {section==='ventas'&&<SectionVentas/>}
+        {section==='mis-comisiones'&&<SectionMisComisiones/>}
         {section==='proyectos'&&<SectionProyectos/>}
         {section==='clientes'&&<SectionClientes/>}
         {section==='empleados'&&<SectionEmpleados/>}
