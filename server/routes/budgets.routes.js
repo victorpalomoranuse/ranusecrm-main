@@ -330,49 +330,6 @@ router.post('/:id/import', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al importar partidas' }); }
 });
 
-router.post('/:id/import-from-lc', async (req, res) => {
-  try {
-    const { lc_id } = req.body;
-    if (!lc_id) return res.status(400).json({ error: 'lc_id requerido' });
-    const { data: maxRow } = await supabase.from('budget_items').select('display_order').eq('budget_id', req.params.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
-    let nextOrder = (maxRow?.display_order ?? -1) + 1;
-    const [matsRes, equipRes] = await Promise.all([
-      supabase.from('lc_material_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('lc_id', lc_id),
-      supabase.from('lc_equipment_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('lc_id', lc_id),
-    ]);
-    const assignments = [
-      ...(matsRes.data || []).map(m => ({ ...m, cat: 'material' })),
-      ...(equipRes.data || []).map(e => ({ ...e, cat: 'mobiliario' })),
-    ];
-    if (assignments.length === 0) return res.json({ items: [], message: 'Este lead no tiene equipamiento asignado' });
-    const toInsert = assignments.map(a => {
-      const cost = parseFloat(a.catalog?.price) || 0;
-      return {
-        budget_id: req.params.id,
-        catalog_product_id: a.catalog_product_id || null,
-        name: a.name,
-        category: a.cat,
-        quantity: parseFloat(a.quantity) || 1,
-        unit: 'ud',
-        unit_cost: cost,
-        markup_pct: 20,
-        unit_price: parseFloat((cost * 1.2).toFixed(2)),
-        display_order: nextOrder++,
-        brand: a.catalog?.brand || a.brand || null,
-        longitud: a.catalog?.longitud || null,
-        ancho: a.catalog?.ancho || null,
-        altura: a.catalog?.altura || null,
-        color_bastidor: a.catalog?.color_bastidor || null,
-        color_acolchado: a.catalog?.color_acolchado || null,
-        tipo_acolchado: a.catalog?.tipo_acolchado || null,
-      };
-    });
-    const { data, error } = await supabase.from('budget_items').insert(toInsert).select('*');
-    if (error) throw error;
-    res.json({ items: data || [], message: (data?.length || 0) + ' partidas importadas desde lead cualificado' });
-  } catch (err) { console.error('[import-from-lc] error:', err); res.status(500).json({ error: 'Error al importar desde lead cualificado' }); }
-});
-
 router.get('/:id/pdf-cliente', async (req, res) => {
   try {
     const { iva = 21, irpf = 0, show_unit_price = 'true', show_discount = 'true', show_total_col = 'true', show_savings = 'true' } = req.query;
