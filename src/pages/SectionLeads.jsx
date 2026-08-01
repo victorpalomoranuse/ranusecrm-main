@@ -2,6 +2,37 @@ import { useState, useEffect } from 'react';
 import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, ExternalLink, UserPlus, ArrowUp, ArrowDown, LayoutGrid, List } from 'lucide-react';
 import api from '../services/api';
 
+const FASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Instalación', 5: 'Entregado' };
+
+function fmtEurLocal(n) {
+  return Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+}
+
+function FichaConectadaLead({ leadId }) {
+  const [ficha, setFicha] = useState(null);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    setCargando(true);
+    api.get(`/leads/${leadId}/ficha-cliente`)
+      .then(r => setFicha(r.data))
+      .catch(() => setFicha(null))
+      .finally(() => setCargando(false));
+  }, [leadId]);
+
+  if (cargando) return <div style={{ padding:'10px 0', fontSize:12, color:'rgba(255,255,255,0.4)' }}>Cargando ficha de cobros…</div>;
+  if (!ficha) return null;
+
+  return (
+    <div style={{ display:'flex', flexWrap:'wrap', gap:16, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'10px 12px', margin:'10px 0' }}>
+      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Presupuesto</div><strong style={{ fontSize:13 }}>{fmtEurLocal(ficha.presupuesto)}</strong></div>
+      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Cobrado</div><strong style={{ fontSize:13, color:'#22c55e' }}>{fmtEurLocal(ficha.cobrado)}</strong></div>
+      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Pendiente</div><strong style={{ fontSize:13, color: ficha.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmtEurLocal(ficha.pendiente)}</strong></div>
+      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Proyecto</div><strong style={{ fontSize:13 }}>{ficha.proyecto ? `${FASE_LABELS[ficha.proyecto.phase] || ficha.proyecto.phase} · ${ficha.proyecto.project_name}` : 'Sin proyecto enlazado'}</strong></div>
+    </div>
+  );
+}
+
 function useToast() {
   const [toasts, setToasts] = useState([]);
   const add = (message, type = 'success') => {
@@ -56,7 +87,7 @@ const ESTADOS = {
   descartado:             { label: 'Descartado',       color: '#6b7280' },
 };
 const ORDEN = ['contacto','respuesta_chat','llamada_descubrimiento','diseño_0','diseño_1','llamada_venta','no_show','venta','rechazo','enfriado','descartado'];
-const CANALES = ['instagram','whatsapp','web','recomendacion','ads','evento','agente','otro'];
+const CANALES = ['instagram','tiktok','whatsapp','web','recomendacion','prospeccion','ads','evento','agente','otro'];
 const DEPORTES = ['Fútbol','Pádel','Baloncesto','Tenis','MotoGP','Ciclismo','Otro'];
 const LIGAS = ['LaLiga','Hypermotion','Primera RFEF','Liga F','ACB','WPT','Bundesliga','Premier','Serie A','Otro'];
 const TIPOS_DISEÑO = {
@@ -76,7 +107,7 @@ const fmtEur = n => n ? `${Number(n).toLocaleString('es-ES')}€` : '—';
 
 const EMPTY = {
   nombre:'', perfil:'', deporte:'Fútbol', liga:'', instagram:'',
-  telefono:'', email:'', origen:'outbound', canal:'instagram',
+  telefono:'', email:'', origen:'outbound', canal:'instagram', campaña:'',
   estado:'contacto', valor_estimado:'', pct_cierre:20, notas:'',
   fecha_contacto: new Date().toISOString().slice(0,10),
   fecha_respuesta:'', fecha_llamada:'', fecha_diseño:'', fecha_llamada_venta:'', fecha_venta:'', fecha_venta_diseño_1:'',
@@ -97,6 +128,7 @@ export function SectionLeads() {
   const [filtroEstado, setFiltroEstado] = useState('all');
   const [filtroOrigen, setFiltroOrigen] = useState('all');
   const [filtroCanal, setFiltroCanal] = useState('all');
+  const [filtroCampaña, setFiltroCampaña] = useState('all');
   const [filtroMes, setFiltroMes] = useState('all');
   const [filtroFechaTipo, setFiltroFechaTipo] = useState('contacto');
   const [filtroComercial, setFiltroComercial] = useState('all');
@@ -146,6 +178,7 @@ export function SectionLeads() {
     if (filtroEstado !== 'all' && l.estado !== filtroEstado) return false;
     if (filtroOrigen !== 'all' && l.origen !== filtroOrigen) return false;
     if (filtroCanal !== 'all' && (l.canal || 'otro') !== filtroCanal) return false;
+    if (filtroCampaña !== 'all' && (l.campaña || 'sin campaña') !== filtroCampaña) return false;
     if (filtroMes !== 'all' && !fechasParaFiltro(l).some(f => f.slice(0, 7) === filtroMes)) return false;
     if (filtroComercial !== 'all' && (filtroComercial === 'sin_asignar' ? l.assigned_to : l.assigned_to !== filtroComercial)) return false;
     if (busqueda && !l.nombre.toLowerCase().includes(busqueda.toLowerCase()) &&
@@ -195,11 +228,13 @@ export function SectionLeads() {
     const pct = (a, b) => b > 0 ? `${Math.round((a/b)*100)}%` : '—';
     // Cierre global = todas las ventas en relación a llamadas de descubrimiento + llamadas de venta
     const cierreGlobal = pct(ventasTotal, conLlamada + conLlamadaVenta);
+    const recurrentes = f.filter(l => l.estado === 'venta' && l.cliente_recurrente).length;
     return [
       { label:'Total',           val: total },
       { label:'Activos',         val: activos },
       { label:'Ventas',          val: ventasTotal, color:'#beb0a2' },
       { label:'Valor ventas',    val: fmtEur(valorVentasTotal), color:'#beb0a2' },
+      { label:'Clientes recurrentes', val: recurrentes, color:'#a78bfa' },
       { label:'Comisiones/extras', val: fmtEur(valorComisiones), color:'#a78bfa' },
       { label:'Resp. chat',      val: pct(conRespuesta, total) },
       { label:'→ Llamada desc.', val: pct(conLlamada, conRespuesta) },
@@ -367,6 +402,39 @@ export function SectionLeads() {
               })()}
             </div>
           </div>
+
+          {/* Por campaña (solo Ads) */}
+          {filtrados.some(l => l.canal === 'ads') && (
+            <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'16px 20px', marginTop:12 }}>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Por campaña (Ads)</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {(() => {
+                  const adsLeads = filtrados.filter(l => l.canal === 'ads');
+                  const campData = {};
+                  adsLeads.forEach(l => {
+                    const camp = l.campaña || 'sin campaña';
+                    if (!campData[camp]) campData[camp] = { total: 0, ventas: 0 };
+                    campData[camp].total++;
+                    if (l.estado === 'venta') campData[camp].ventas++;
+                  });
+                  return Object.entries(campData).sort((a,b) => b[1].total - a[1].total).map(([camp, d]) => {
+                    const tasa = d.total > 0 ? Math.round((d.ventas / d.total) * 100) : 0;
+                    const pct = d.total > 0 ? Math.round((d.total / (adsLeads.length || 1)) * 100) : 0;
+                    return (
+                      <div key={camp} onClick={() => { setFiltroCanal('ads'); setFiltroCampaña(camp); setPagina(1); }} style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} title={`Filtrar por ${camp}`}>
+                        <div style={{ width:170, fontSize:12, color: filtroCampaña===camp ? '#fff' : '#beb0a2', fontWeight: filtroCampaña===camp ? 700 : 400 }}>{camp}</div>
+                        <div style={{ flex:1, height:6, background:'rgba(255,255,255,0.05)', borderRadius:3, overflow:'hidden' }}>
+                          <div style={{ width:`${pct}%`, height:'100%', background:'#a78bfa', borderRadius:3 }} />
+                        </div>
+                        <div style={{ width:30, fontSize:12, color:'rgba(255,255,255,0.5)', textAlign:'right' }}>{d.total}</div>
+                        <div style={{ width:50, fontSize:11, color: tasa > 0 ? '#22c55e' : 'rgba(255,255,255,0.2)', textAlign:'right' }}>{tasa}% vta</div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -382,7 +450,7 @@ export function SectionLeads() {
           <option value="inbound">📥 Inbound</option>
           <option value="outbound">📤 Outbound</option>
         </select>
-        <select className="ap-select" value={filtroCanal} onChange={e => { setFiltroCanal(e.target.value); setPagina(1); }}>
+        <select className="ap-select" value={filtroCanal} onChange={e => { setFiltroCanal(e.target.value); setFiltroCampaña('all'); setPagina(1); }}>
           <option value="all">Todos los canales</option>
           {CANALES.map(c => <option key={c} value={c} style={{ textTransform:'capitalize' }}>{c}</option>)}
         </select>
@@ -448,7 +516,10 @@ export function SectionLeads() {
                   onMouseEnter={e => e.currentTarget.style.background='rgba(190,176,162,0.05)'}
                   onMouseLeave={e => e.currentTarget.style.background= i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)'}>
                   <div>
-                    <div style={{ fontSize:13, fontWeight:600, color:'#e5ddd5' }}>{lead.nombre}</div>
+                    <div style={{ fontSize:13, fontWeight:600, color:'#e5ddd5', display:'flex', alignItems:'center', gap:6 }}>
+                      {lead.nombre}
+                      {lead.cliente_recurrente && <span title={`Ya compró antes (${lead.compras_previas.length})`} style={{ fontSize:9, background:'#2d1f4e', color:'#a78bfa', borderRadius:3, padding:'2px 5px', fontWeight:700 }}>🔁 Recurrente</span>}
+                    </div>
                     {lead.instagram && <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)' }}>@{lead.instagram}</div>}
                   </div>
                   <div style={{ alignSelf:'center' }}><span style={{ background:`${est?.color}20`, color:est?.color, fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:4 }}>{est?.label}</span></div>
@@ -551,9 +622,12 @@ export function SectionLeads() {
               </button>
             ))}
           </div>
+          {(panel.estado === 'venta' || panel.tipo_diseño === 'diseño_venta') && <FichaConectadaLead leadId={panel.id} />}
           {[
             ['Origen',           panel.origen === 'inbound' ? '📥 Inbound' : '📤 Outbound'],
             ['Canal',            panel.canal || '—'],
+            ...(panel.canal === 'ads' && panel.campaña ? [['Campaña', panel.campaña]] : []),
+            ...(panel.cliente_recurrente ? [['🔁 Cliente recurrente', panel.compras_previas.map(c => `${c.fecha?.slice(0,10)} · ${fmtEur(c.valor)}`).join('  |  ')]] : []),
             ['Deporte',          [panel.deporte, panel.liga].filter(Boolean).join(' · ') || '—'],
             ['Teléfono',         panel.telefono || '—'],
             ['Email',            panel.email || '—'],
@@ -645,6 +719,11 @@ export function SectionLeads() {
                     {CANALES.map(c => <option key={c} value={c} style={{ textTransform:'capitalize' }}>{c}</option>)}
                   </select>
                 </div>
+                {form.canal === 'ads' && (
+                  <div className="ap-field"><label>Campaña</label>
+                    <input value={form.campaña || ''} onChange={e => setF('campaña', e.target.value)} placeholder="Ej. Verano26_IG_Conversiones" />
+                  </div>
+                )}
                 <div className="ap-field"><label>Estado</label>
                   <select className="ap-select" value={form.estado} onChange={e => setF('estado', e.target.value)}>
                     {ORDEN.map(e => <option key={e} value={e}>{ESTADOS[e].label}</option>)}
