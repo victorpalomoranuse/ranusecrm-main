@@ -117,6 +117,7 @@ function PanelObjetivosFinanzas() {
   const [trimestre, setTrimestre] = useState(Math.ceil((new Date().getMonth() + 1) / 3));
   const [valores, setValores] = useState({ pesimista: '', realista: '', optimista: '' });
   const [listado, setListado] = useState([]);
+  const [progreso, setProgreso] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [msg, setMsg] = useState('');
 
@@ -129,6 +130,12 @@ function PanelObjetivosFinanzas() {
   }, [periodoTipo, año]);
 
   useEffect(() => { cargarListado(); }, [cargarListado]);
+
+  useEffect(() => {
+    api.get('/objetivos/progreso', { params: { periodo_tipo: periodoTipo, periodo } })
+      .then(r => setProgreso(r.data))
+      .catch(() => setProgreso(null));
+  }, [periodoTipo, periodo]);
 
   useEffect(() => {
     const v = { pesimista: '', realista: '', optimista: '' };
@@ -146,8 +153,9 @@ function PanelObjetivosFinanzas() {
       );
       setMsg('Guardado');
       cargarListado();
-    } catch {
-      setMsg('Error al guardar');
+      api.get('/objetivos/progreso', { params: { periodo_tipo: periodoTipo, periodo } }).then(r => setProgreso(r.data)).catch(() => {});
+    } catch (err) {
+      setMsg(err.response?.data?.detalle || 'Error al guardar');
     } finally {
       setGuardando(false);
       setTimeout(() => setMsg(''), 2500);
@@ -194,6 +202,21 @@ function PanelObjetivosFinanzas() {
         <button type="submit" className="ap-btn ap-btn-primary" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar objetivo'}</button>
         {msg && <span style={{ fontSize: 12, color: msg === 'Guardado' ? '#8bae8f' : '#ae6b6b' }}>{msg}</span>}
       </form>
+
+      {progreso && (progreso.porEscenario?.pesimista?.objetivo != null || progreso.porEscenario?.realista?.objetivo != null || progreso.porEscenario?.optimista?.objetivo != null) && (
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Vendido</div><strong style={{ fontSize: 15 }}>{fmt(progreso.facturacionVendida)}</strong></div>
+          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Cobrado</div><strong style={{ fontSize: 15 }}>{fmt(progreso.facturacionCobrada)}</strong></div>
+          {ESCENARIOS.filter(esc => progreso.porEscenario?.[esc]?.objetivo != null).map(esc => (
+            <div key={esc}>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Falta ({ESCENARIO_LABEL[esc]})</div>
+              <strong style={{ fontSize: 15, color: progreso.porEscenario[esc].restaVendido > 0 ? '#f5b748' : '#8bae8f' }}>
+                {progreso.porEscenario[esc].restaVendido > 0 ? fmt(progreso.porEscenario[esc].restaVendido) : '¡Cumplido! 🎉'}
+              </strong>
+            </div>
+          ))}
+        </div>
+      )}
 
       {listado.length > 0 && (
         <div className="fz-tabla">
