@@ -190,6 +190,18 @@ router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
       updates.tipo_diseño = resolverTipoDiseño(updates.estado);
     }
 
+    // BUGFIX: si se pasa a diseño_1 arrastrando la tarjeta en el Kanban, el
+    // frontend solo envía { estado }, sin fecha_venta_diseño_1. Sin esa fecha,
+    // /api/ventas nunca cuenta la venta de Diseño 1 aunque tipo_diseño ya sea
+    // 'diseño_venta'. Si no viene la fecha en el body y el lead aún no tiene
+    // una guardada, la fijamos hoy para que la venta no se pierda.
+    if (updates.estado === 'diseño_1' && updates.fecha_venta_diseño_1 === undefined) {
+      const { data: actual } = await supabase.from('leads').select('fecha_venta_diseño_1').eq('id', req.params.id).single();
+      if (!actual?.fecha_venta_diseño_1) {
+        updates.fecha_venta_diseño_1 = new Date().toISOString().slice(0, 10);
+      }
+    }
+
     const { data, error } = await supabase
       .from('leads')
       .update(updates)
