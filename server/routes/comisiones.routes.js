@@ -196,17 +196,23 @@ async function calcularComisionesPorVenta(nombreFiltro) {
   const ventaIds = [...new Set(asignaciones.map(a => a.venta_id))];
   const { data: movimientos } = await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').in('venta_id', ventaIds);
   const cobradoPorVenta = {};
+  const gastosPorVenta = {};
   (movimientos || []).forEach(m => {
-    if (m.tipo !== 'ingreso') return;
-    cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+    if (m.tipo === 'ingreso') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+    else gastosPorVenta[m.venta_id] = (gastosPorVenta[m.venta_id] || 0) + Number(m.monto);
   });
 
   return asignaciones.map(a => {
     const v = a.venta;
     const valor = Number(v?.valor || 0);
     const presupuesto = Number(v?.prevision_ingresos ?? v?.valor ?? 0);
-    const costes = v?.prevision_gastos != null ? Number(v.prevision_gastos) : null;
-    const beneficioPrevisto = v?.tipo_proyecto === 'solo_diseno' ? valor : (costes != null ? valor - costes : 0);
+    const previsionGastos = v?.prevision_gastos != null ? Number(v.prevision_gastos) : null;
+    const gastosReales = gastosPorVenta[a.venta_id] || 0;
+    let costes = null;
+    if (previsionGastos != null) costes = Math.max(previsionGastos, gastosReales);
+    else if (gastosReales > 0) costes = gastosReales;
+    else if (v?.tipo_proyecto === 'solo_diseno') costes = 0;
+    const beneficioPrevisto = costes != null ? valor - costes : 0;
     const cobrado = cobradoPorVenta[a.venta_id] || 0;
     const proporcionCobrada = presupuesto > 0 ? Math.min(cobrado / presupuesto, 1) : 0;
 
