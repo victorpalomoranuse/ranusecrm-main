@@ -145,22 +145,23 @@ function PanelObjetivosFinanzas() {
   const [progreso, setProgreso] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [msg, setMsg] = useState('');
+  const [alcance, setAlcance] = useState('propio');
 
   const periodo = periodoTipo === 'mes' ? mes : periodoTipo === 'trimestre' ? `${año}-Q${trimestre}` : String(año);
 
   const cargarListado = useCallback(() => {
-    api.get('/objetivos', { params: { periodo_tipo: periodoTipo, año: periodoTipo !== 'mes' ? año : undefined } })
+    api.get('/objetivos', { params: { periodo_tipo: periodoTipo, año: periodoTipo !== 'mes' ? año : undefined, alcance } })
       .then(r => setListado(r.data.objetivos || []))
       .catch(() => setListado([]));
-  }, [periodoTipo, año]);
+  }, [periodoTipo, año, alcance]);
 
   useEffect(() => { cargarListado(); }, [cargarListado]);
 
   useEffect(() => {
-    api.get('/objetivos/progreso', { params: { periodo_tipo: periodoTipo, periodo } })
+    api.get('/objetivos/progreso', { params: { periodo_tipo: periodoTipo, periodo, alcance } })
       .then(r => setProgreso(r.data))
       .catch(() => setProgreso(null));
-  }, [periodoTipo, periodo]);
+  }, [periodoTipo, periodo, alcance]);
 
   useEffect(() => {
     const v = { pesimista: '', realista: '', optimista: '' };
@@ -174,11 +175,11 @@ function PanelObjetivosFinanzas() {
     try {
       await Promise.all(
         ESCENARIOS.filter(esc => valores[esc] !== '' && valores[esc] !== null)
-          .map(esc => api.put('/objetivos', { periodo_tipo: periodoTipo, periodo, escenario: esc, importe: parseFloat(valores[esc]) || 0 }))
+          .map(esc => api.put('/objetivos', { periodo_tipo: periodoTipo, periodo, escenario: esc, importe: parseFloat(valores[esc]) || 0, alcance }))
       );
       setMsg('Guardado');
       cargarListado();
-      api.get('/objetivos/progreso', { params: { periodo_tipo: periodoTipo, periodo } }).then(r => setProgreso(r.data)).catch(() => {});
+      api.get('/objetivos/progreso', { params: { periodo_tipo: periodoTipo, periodo, alcance } }).then(r => setProgreso(r.data)).catch(() => {});
     } catch (err) {
       setMsg(err.response?.data?.detalle || 'Error al guardar');
     } finally {
@@ -194,6 +195,14 @@ function PanelObjetivosFinanzas() {
   return (
     <div className="fz-chart-card" style={{ marginBottom: '1.5rem' }}>
       <p className="fz-chart-title"><BarChart2 size={15} /> Objetivos de facturación</p>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <button type="button" className={`ap-btn ap-btn-sm ${alcance === 'propio' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setAlcance('propio')}>Mis objetivos</button>
+        <button type="button" className={`ap-btn ap-btn-sm ${alcance === 'equipo' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setAlcance('equipo')}>Objetivos del equipo</button>
+      </div>
+      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -6, marginBottom: 12 }}>
+        {alcance === 'propio' ? 'Solo tú los ves — se comparan contra tu beneficio en caja.' : 'Los que ve el equipo en Ventas — se comparan contra el beneficio previsto (venta − costes directos).'}
+      </p>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         {PERIODO_TABS.map(t => (
@@ -243,14 +252,17 @@ function PanelObjetivosFinanzas() {
           {progreso.facturacionNeta !== undefined && (
             <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Neto empresa (cobrado − TODOS los gastos)</div><strong style={{ fontSize: 15, color: progreso.facturacionNeta >= 0 ? '#8bae8f' : '#ae6b6b' }}>{fmt(progreso.facturacionNeta)}</strong></div>
           )}
-          {ESCENARIOS.filter(esc => progreso.porEscenario?.[esc]?.objetivo != null).map(esc => (
-            <div key={esc}>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Falta ({ESCENARIO_LABEL[esc]})</div>
-              <strong style={{ fontSize: 15, color: progreso.porEscenario[esc].restaBeneficioLimpio > 0 ? '#f5b748' : '#8bae8f' }}>
-                {progreso.porEscenario[esc].restaBeneficioLimpio > 0 ? fmt(progreso.porEscenario[esc].restaBeneficioLimpio) : '¡Cumplido! 🎉'}
-              </strong>
-            </div>
-          ))}
+          {ESCENARIOS.filter(esc => progreso.porEscenario?.[esc]?.objetivo != null).map(esc => {
+            const resta = alcance === 'propio' ? progreso.porEscenario[esc].restaBeneficioLimpio : progreso.porEscenario[esc].restaBeneficioPrevisto;
+            return (
+              <div key={esc}>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Falta ({ESCENARIO_LABEL[esc]})</div>
+                <strong style={{ fontSize: 15, color: resta > 0 ? '#f5b748' : '#8bae8f' }}>
+                  {resta > 0 ? fmt(resta) : '¡Cumplido! 🎉'}
+                </strong>
+              </div>
+            );
+          })}
         </div>
       )}
 
