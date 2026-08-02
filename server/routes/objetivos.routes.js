@@ -172,9 +172,20 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
       else gastosPorVenta[m.venta_id] = (gastosPorVenta[m.venta_id] || 0) + Number(m.monto);
     });
     let beneficioLimpioPorProyecto = 0;
+    // BENEFICIO COBRADO (visible al equipo): de cada venta cerrada en el
+    // periodo, la parte de lo YA cobrado (hasta hoy) que corresponde a
+    // beneficio, según su margen previsto (venta − costes directos) / venta.
+    // Si aún no hay coste previsto, se asume 100% margen (todo lo cobrado es
+    // beneficio, como en un proyecto "limpio").
+    let beneficioCobradoPeriodo = 0;
     ventas.forEach(v => {
       if (!v.fecha || claveDePeriodo(v.fecha, periodo_tipo) !== periodo) return;
       beneficioLimpioPorProyecto += (cobradoPorVenta[v.id] || 0) - (gastosPorVenta[v.id] || 0);
+
+      const valor = Number(v.valor || 0);
+      const costesDirectos = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
+      const margenPct = valor > 0 && costesDirectos != null ? (valor - costesDirectos) / valor : 1;
+      beneficioCobradoPeriodo += (cobradoPorVenta[v.id] || 0) * margenPct;
     });
 
     const puedeVerFinanzas = req.user.role === 'admin_superior' || req.user.permissions?.finanzas === true;
@@ -188,9 +199,11 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
         restaVendido: importeObjetivo !== null ? Math.max(importeObjetivo - facturacionVendida, 0) : null,
         restaCobrado: importeObjetivo !== null ? Math.max(importeObjetivo - facturacionCobrada, 0) : null,
         restaBeneficioPrevisto: importeObjetivo !== null ? Math.max(importeObjetivo - beneficioPrevistoPeriodo, 0) : null,
+        restaBeneficioCobrado: importeObjetivo !== null ? Math.max(importeObjetivo - beneficioCobradoPeriodo, 0) : null,
         cumplidoVendidoPct: importeObjetivo ? Math.round((facturacionVendida / importeObjetivo) * 100) : null,
         cumplidoCobradoPct: importeObjetivo ? Math.round((facturacionCobrada / importeObjetivo) * 100) : null,
         cumplidoBeneficioPrevistoPct: importeObjetivo ? Math.round((beneficioPrevistoPeriodo / importeObjetivo) * 100) : null,
+        cumplidoBeneficioCobradoPct: importeObjetivo ? Math.round((beneficioCobradoPeriodo / importeObjetivo) * 100) : null,
         ...(puedeVerFinanzas ? {
           restaBeneficioLimpio: importeObjetivo !== null ? Math.max(importeObjetivo - beneficioLimpioPorProyecto, 0) : null,
           cumplidoBeneficioLimpioPct: importeObjetivo ? Math.round((beneficioLimpioPorProyecto / importeObjetivo) * 100) : null,
@@ -205,6 +218,7 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
       periodo,
       alcance,
       beneficioPrevistoPeriodo,
+      beneficioCobradoPeriodo,
       beneficioLimpioPorProyecto,
       facturacionVendida,
       facturacionVendidaLimpia,
@@ -216,6 +230,90 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
   } catch (error) {
     console.error('Error al calcular progreso de objetivos:', error);
     res.status(500).json({ error: 'Error al calcular progreso de objetivos' });
+  }
+});
+
+/**
+ * GET /api/objetivos/ritmo?año=2026&alcance=equipo
+ * Para el objetivo ANUAL: cuánto lleváis generado de media al mes/trimestre
+ * hasta ahora, y cuánto hace falta generar de aquí a fin de año para
+ * cumplirlo — según lo vendido y según lo cobrado.
+ */
+router.get('/ritmo', authenticateToken, requireVentasOFinanzas, async (req, res) => {
+  try {
+    const año = req.query.año || String(new Date().getFullYear());
+    const alcance = ['equipo', 'propio'].includes(req.query.alcance) ? req.query.alcance : 'equipo';
+
+    const [{ data: objetivosAño, error: errObj }, { data: ventas, error: errVentas }] = await Promise.all([
+      supabase.from('objetivos_financieros').select('*').eq('periodo_tipo', 'año').eq('periodo', año).eq('alcance', alcance),
+      supabase.from('ventas').select('id, valor, fecha, prevision_gastos').gte('fecha', `${año}-01-01`).lte('fecha', `${año}-12-31`),
+    ]);
+    if (errObj) throw errObj;
+    if (errVentas) throw errVentas;
+
+    const ventaIds = ventas.map(v => v.id);
+    const { data: movVenta } = ventaIds.length
+      ? await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').in('venta_id', ventaIds)
+      : { data: [] };
+    const cobradoPorVenta = {};
+    (movVenta || []).forEach(m => {
+      if (m.tipo === 'ingreso') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+    });
+
+    // Meses transcurridos del año: si es el año en curso, hasta el mes actual;
+    // si ya pasó, los 12; si es futuro, 0.
+    const hoy = new Date();
+    const añoActualNum = hoy.getFullYear();
+    const mesesTranscurridos = Number(año) < añoActualNum ? 12 : Number(año) > añoActualNum ? 0 : hoy.getMonth() + 1;
+    const mesesRestantes = 12 - mesesTranscurridos;
+    const trimestreActual = Math.ceil(mesesTranscurridos / 3);
+    const trimestresCompletos = mesesTranscurridos % 3 === 0 ? trimestreActual : trimestreActual - 1;
+    const trimestresRestantes = 4 - trimestresCompletos;
+
+    let generadoPrevisto = 0;
+    let generadoCobrado = 0;
+    ventas.forEach(v => {
+      const mesVenta = Number(v.fecha.slice(5, 7));
+      if (mesVenta > mesesTranscurridos) return; // todavía no ha llegado ese mes
+      const valor = Number(v.valor || 0);
+      const costes = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
+      const margenPct = valor > 0 && costes != null ? (valor - costes) / valor : 1;
+      generadoPrevisto += (valor - (costes || 0));
+      generadoCobrado += (cobradoPorVenta[v.id] || 0) * margenPct;
+    });
+
+    const porEscenario = {};
+    ESCENARIOS.forEach(esc => {
+      const obj = objetivosAño.find(o => o.escenario === esc);
+      const objetivoAnual = obj ? Number(obj.importe) : null;
+      if (objetivoAnual === null) { porEscenario[esc] = null; return; }
+
+      const restaPrevisto = Math.max(objetivoAnual - generadoPrevisto, 0);
+      const restaCobrado = Math.max(objetivoAnual - generadoCobrado, 0);
+
+      porEscenario[esc] = {
+        objetivoAnual,
+        ritmoActualMensualPrevisto: mesesTranscurridos > 0 ? generadoPrevisto / mesesTranscurridos : null,
+        ritmoActualMensualCobrado: mesesTranscurridos > 0 ? generadoCobrado / mesesTranscurridos : null,
+        ritmoNecesarioMensualPrevisto: mesesRestantes > 0 ? restaPrevisto / mesesRestantes : (restaPrevisto > 0 ? null : 0),
+        ritmoNecesarioMensualCobrado: mesesRestantes > 0 ? restaCobrado / mesesRestantes : (restaCobrado > 0 ? null : 0),
+        ritmoNecesarioTrimestralPrevisto: trimestresRestantes > 0 ? restaPrevisto / trimestresRestantes : (restaPrevisto > 0 ? null : 0),
+        ritmoNecesarioTrimestralCobrado: trimestresRestantes > 0 ? restaCobrado / trimestresRestantes : (restaCobrado > 0 ? null : 0),
+      };
+    });
+
+    res.json({
+      año,
+      mesesTranscurridos,
+      mesesRestantes,
+      trimestresRestantes,
+      generadoPrevisto,
+      generadoCobrado,
+      porEscenario,
+    });
+  } catch (error) {
+    console.error('Error al calcular ritmo de objetivos:', error);
+    res.status(500).json({ error: 'Error al calcular ritmo de objetivos' });
   }
 });
 
