@@ -1,370 +1,437 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
-import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
+import { authenticateToken, requireAdminSuperior, requirePermission } from '../middleware/auth.middleware.js';
 import { clavesIdentidad } from '../utils/identidad.js';
 
 const router = express.Router();
-const requireVentas = requirePermission('ventas');
-const requireFinanzas = requirePermission('finanzas');
+const requireLeads = requirePermission('leads');
 
-// Lectura visible para quien tenga 'ventas' o 'finanzas' (el equipo comercial
-// ve lo comercial; el detalle de gastos/margen sigue siendo solo finanzas).
-const requireVentasOFinanzas = (req, res, next) => {
+// Ficha conectada (lead → venta → proyecto en ejecución): visible para
+// cualquiera con permiso de 'leads', 'ventas' o 'finanzas'.
+const requireLeadsVentasOFinanzas = (req, res, next) => {
   if (!req.user) return res.status(401).json({ error: 'Autenticación requerida' });
   if (req.user.role === 'admin_superior') return next();
-  if (req.user.role === 'trabajador' && ['ventas', 'finanzas', 'leads'].some(k => req.user.permissions?.[k] === true)) {
+  if (req.user.role === 'trabajador' && ['leads', 'ventas', 'finanzas'].some(k => req.user.permissions?.[k] === true)) {
     return next();
   }
   return res.status(403).json({ error: 'Acceso denegado. No tienes permiso para esta sección.' });
 };
 
-const FASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Instalación', 5: 'Entregado' };
+const ESTADOS_VALIDOS = ['contacto', 'respuesta_chat', 'llamada_descubrimiento', 'diseño_0', 'diseño_1', 'llamada_venta', 'no_show', 'venta', 'rechazo', 'enfriado', 'descartado'];
+const TIPOS_DISEÑO_VALIDOS = ['diseño_gratis', 'diseño_venta'];
 
-/**
- * GET /api/ventas
- * Listado de ventas con resumen y agrupación por mes.
- */
-router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
+// El estado diseño_0/diseño_1 y el campo tipo_diseño deben ir siempre coordinados:
+// si el estado dice diseño_1, tipo_diseño tiene que ser 'diseño_venta' (y viceversa).
+function resolverTipoDiseño(estadoFinal, tipoDiseñoInput) {
+  if (estadoFinal === 'diseño_0') return 'diseño_gratis';
+  if (estadoFinal === 'diseño_1') return 'diseño_venta';
+  return TIPOS_DISEÑO_VALIDOS.includes(tipoDiseñoInput) ? tipoDiseñoInput : 'diseño_gratis';
+}
+
+// Marca cada lead con si esa misma persona ya tiene otra venta (por instagram/
+// email/teléfono), sin tocar en absoluto cómo se suma el valor de las ventas.
+function marcarClientesRecurrentes(leads) {
+  const porClave = {};
+  leads.forEach(l => {
+    clavesIdentidad(l).forEach(k => {
+      if (!porClave[k]) porClave[k] = [];
+      porClave[k].push(l);
+    });
+  });
+
+  return leads.map(l => {
+    const relacionados = new Map();
+    clavesIdentidad(l).forEach(k => {
+      (porClave[k] || []).forEach(o => { if (o.id !== l.id) relacionados.set(o.id, o); });
+    });
+    const otrasVentas = [...relacionados.values()]
+      .filter(o => o.estado === 'venta' && o.fecha_venta)
+      .map(o => ({ leadId: o.id, fecha: o.fecha_venta, valor: o.valor_estimado || 0 }))
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+    return { ...l, cliente_recurrente: otrasVentas.length > 0, compras_previas: otrasVentas };
+  });
+}
+
+router.get('/', authenticateToken, requireLeads, async (req, res) => {
   try {
-    let query = supabase.from('ventas').select('*, comercial:employees(name)').order('fecha', { ascending: false });
-    if (req.query.lead_id) query = query.eq('lead_id', req.query.lead_id);
-    const { data: ventas, error } = await query;
+    const { data: leads, error } = await supabase
+      .from('leads')
+      .select('*')
+      .order('created_at', { ascending: false });
+
     if (error) throw error;
 
-    const ventaIds = ventas.map(v => v.id);
-    const { data: movimientos } = ventaIds.length
-      ? await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').in('venta_id', ventaIds)
+    const leadsConRecurrencia = marcarClientesRecurrentes(leads);
+
+    // Beneficio y nº de ventas por lead, calculado desde la tabla Ventas
+    // (independiente, pero enlazada por lead_id cuando la venta vino de aquí).
+    const leadIds = leads.map(l => l.id);
+    const [{ data: ventasDeLeads }, { data: movVentas }] = await Promise.all([
+      leadIds.length ? supabase.from('ventas').select('id, lead_id, valor').in('lead_id', leadIds) : Promise.resolve({ data: [] }),
+      Promise.resolve({ data: [] }),
+    ]);
+    const ventaIdsDeLeads = (ventasDeLeads || []).map(v => v.id);
+    const { data: movimientosDeVentas } = ventaIdsDeLeads.length
+      ? await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').in('venta_id', ventaIdsDeLeads)
       : { data: [] };
     const cobradoPorVenta = {};
-    (movimientos || []).forEach(m => {
-      if (m.tipo !== 'ingreso') return;
-      cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+    const gastosPorVenta = {};
+    (movimientosDeVentas || []).forEach(m => {
+      if (m.tipo === 'ingreso') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+      else gastosPorVenta[m.venta_id] = (gastosPorVenta[m.venta_id] || 0) + Number(m.monto);
+    });
+    const numVentasPorLead = {};
+    const beneficioPorLead = {};
+    (ventasDeLeads || []).forEach(v => {
+      numVentasPorLead[v.lead_id] = (numVentasPorLead[v.lead_id] || 0) + 1;
+      const margen = (cobradoPorVenta[v.id] || 0) - (gastosPorVenta[v.id] || 0);
+      beneficioPorLead[v.lead_id] = (beneficioPorLead[v.lead_id] || 0) + margen;
+    });
+    const leadsConVentas = leadsConRecurrencia.map(l => ({
+      ...l,
+      num_ventas: numVentasPorLead[l.id] || 0,
+      beneficio_total: beneficioPorLead[l.id] || 0,
+    }));
+    const beneficioTotalGlobal = Object.values(beneficioPorLead).reduce((s, v) => s + v, 0);
+    const numVentasGlobal = (ventasDeLeads || []).length;
+
+    const total    = leads.length;
+    const activos  = leads.filter(l => !['venta','rechazo','no_show','descartado'].includes(l.estado)).length;
+    const ventas   = leads.filter(l => l.estado === 'venta').length;
+    const noShow   = leads.filter(l => l.estado === 'no_show').length;
+    const ventasRecurrentes = leadsConRecurrencia.filter(l => l.estado === 'venta' && l.cliente_recurrente).length;
+
+    const porEstado = {};
+    ESTADOS_VALIDOS.forEach(e => { porEstado[e] = 0; });
+    leads.forEach(l => { if (porEstado[l.estado] !== undefined) porEstado[l.estado]++; });
+
+    const contacto     = leads.filter(l => l.estado !== 'descartado').length;
+    const respuesta    = leads.filter(l => ['respuesta_chat','llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo','enfriado'].includes(l.estado)).length;
+    const llamada      = leads.filter(l => ['llamada_descubrimiento','diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
+    const diseño       = leads.filter(l => ['diseño','llamada_venta','no_show','venta','rechazo'].includes(l.estado)).length;
+    const llamadaVenta = leads.filter(l => ['llamada_venta','venta','rechazo'].includes(l.estado)).length;
+
+    const tasaRespuesta    = contacto     > 0 ? Math.round((respuesta    / contacto)               * 100) : 0;
+    const tasaLlamada      = respuesta    > 0 ? Math.round((llamada      / respuesta)               * 100) : 0;
+    const tasaDiseño       = llamada      > 0 ? Math.round((diseño       / llamada)                 * 100) : 0;
+    const tasaLlamadaVenta = diseño       > 0 ? Math.round(((llamadaVenta + noShow) / diseño)       * 100) : 0;
+    const tasaNoShow       = (llamadaVenta + noShow) > 0 ? Math.round((noShow / (llamadaVenta + noShow)) * 100) : 0;
+    const tasaVenta        = llamadaVenta > 0 ? Math.round((ventas       / llamadaVenta)            * 100) : 0;
+    const tasaRechazo      = llamadaVenta > 0 ? Math.round((leads.filter(l => l.estado === 'rechazo').length / llamadaVenta) * 100) : 0;
+    const tasaCierreGlobal = total        > 0 ? Math.round((ventas       / total)                   * 100) : 0;
+
+    const porCanal = {};
+    leads.forEach(l => {
+      const c = l.canal || 'otro';
+      if (!porCanal[c]) porCanal[c] = { total: 0, ventas: 0 };
+      porCanal[c].total++;
+      if (l.estado === 'venta') porCanal[c].ventas++;
     });
 
-    const lista = ventas.map(v => {
-      const valor = Number(v.valor || 0);
-      const previsionGastos = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
-      const beneficioPrevisto = previsionGastos != null ? valor - previsionGastos : valor;
-      const presupuesto = Number(v.prevision_ingresos ?? v.valor ?? 0);
-      const cobrado = cobradoPorVenta[v.id] || 0;
-      return {
-        id: v.id,
-        nombre: v.nombre,
-        clienteNombre: v.cliente_nombre,
-        canal: v.canal,
-        campaña: v.campaña,
-        tipoProyecto: v.tipo_proyecto,
-        valor,
-        previsionGastos,
-        beneficioPrevisto,
-        cobrado,
-        pendiente: Math.max(presupuesto - cobrado, 0),
-        fecha: v.fecha,
-        comercial: v.comercial?.name || null,
-        leadId: v.lead_id,
-      };
+    // Desglose de leads de Ads por campaña concreta (solo tiene sentido para canal='ads')
+    const porCampaña = {};
+    leads.filter(l => l.canal === 'ads').forEach(l => {
+      const camp = l.campaña || 'sin campaña';
+      if (!porCampaña[camp]) porCampaña[camp] = { total: 0, ventas: 0 };
+      porCampaña[camp].total++;
+      if (l.estado === 'venta') porCampaña[camp].ventas++;
     });
 
-    const porMes = {};
-    lista.forEach(v => {
-      const mes = v.fecha ? v.fecha.slice(0, 7) : 'sin_fecha';
-      if (!porMes[mes]) porMes[mes] = { mes, total: 0, totalLimpio: 0, totalEjecucion: 0, count: 0, ventas: [] };
-      porMes[mes].total += v.valor;
-      if (v.tipoProyecto === 'con_ejecucion') porMes[mes].totalEjecucion += v.valor;
-      else porMes[mes].totalLimpio += v.valor;
-      porMes[mes].count += 1;
-      porMes[mes].ventas.push(v);
-    });
+    const valorPipeline = leads
+      .filter(l => !['rechazo','no_show','descartado'].includes(l.estado))
+      .reduce((sum, l) => sum + ((l.valor_estimado || 0) * (l.pct_cierre || 0) / 100), 0);
 
-    const valorTotal = lista.reduce((s, v) => s + v.valor, 0);
-    const valorLimpio = lista.filter(v => v.tipoProyecto !== 'con_ejecucion').reduce((s, v) => s + v.valor, 0);
-    const valorEjecucion = lista.filter(v => v.tipoProyecto === 'con_ejecucion').reduce((s, v) => s + v.valor, 0);
-    const valorMedio = lista.length ? valorTotal / lista.length : 0;
+    const valorVentas = leads
+      .filter(l => l.estado === 'venta')
+      .reduce((sum, l) => sum + (l.valor_estimado || 0), 0);
 
     res.json({
-      ventas: lista,
-      porMes: Object.values(porMes).sort((a, b) => b.mes.localeCompare(a.mes)),
-      resumen: { total: lista.length, valorTotal, valorLimpio, valorEjecucion, valorMedio },
+      leads: leadsConVentas,
+      metricas: {
+        total, activos, ventas, noShow, ventasRecurrentes,
+        valorPipeline, valorVentas,
+        numVentasGlobal, beneficioTotalGlobal,
+        tasaRespuesta, tasaLlamada, tasaDiseño, tasaLlamadaVenta,
+        tasaNoShow, tasaVenta, tasaRechazo, tasaCierreGlobal,
+      },
+      porEstado,
+      porCanal,
+      porCampaña,
     });
+
   } catch (error) {
-    console.error('Error al listar ventas:', error);
-    res.status(500).json({ error: 'Error al listar ventas' });
+    console.error('Error al listar leads:', error);
+    res.status(500).json({ error: 'Error al listar leads' });
   }
 });
 
-/**
- * GET /api/ventas/clientes
- * Agrupa las ventas por cliente (misma persona detectada por instagram/
- * email/teléfono), con el total histórico vendido y cobrado.
- */
-router.get('/clientes', authenticateToken, requireVentasOFinanzas, async (req, res) => {
+router.get('/:id', authenticateToken, requireLeads, async (req, res) => {
   try {
-    const { data: ventas, error: errVentas } = await supabase.from('ventas').select('*');
-    if (errVentas) throw errVentas;
-
-    const ventaIds = ventas.map(v => v.id);
-    const { data: movimientos, error: errMov } = ventaIds.length
-      ? await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').in('venta_id', ventaIds)
-      : { data: [], error: null };
-    if (errMov) throw errMov;
-
-    const cobradoPorVenta = {};
-    (movimientos || []).forEach(m => {
-      if (m.tipo !== 'ingreso') return;
-      cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
-    });
-
-    const grupos = [];
-    ventas.forEach(v => {
-      const identidad = { instagram: v.cliente_instagram, email: v.cliente_email, telefono: v.cliente_telefono };
-      const claves = clavesIdentidad(identidad);
-      let grupo = claves.length ? grupos.find(g => claves.some(k => g.claves.has(k))) : null;
-      if (!grupo) {
-        grupo = { claves: new Set(claves), ventas: [] };
-        grupos.push(grupo);
-      } else {
-        claves.forEach(k => grupo.claves.add(k));
-      }
-      grupo.ventas.push(v);
-    });
-
-    const clientes = grupos.map((g, i) => {
-      const ordenadas = g.ventas.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
-      const ultima = ordenadas[ordenadas.length - 1];
-      const totalVendido = ordenadas.reduce((s, v) => s + Number(v.valor || 0), 0);
-      const totalCobrado = ordenadas.reduce((s, v) => s + (cobradoPorVenta[v.id] || 0), 0);
-      return {
-        clienteId: `cli-${i}`,
-        nombre: ultima.cliente_nombre || ultima.nombre,
-        instagram: ultima.cliente_instagram || null,
-        email: ultima.cliente_email || null,
-        telefono: ultima.cliente_telefono || null,
-        numCompras: ordenadas.length,
-        totalVendido,
-        totalCobrado,
-        compras: ordenadas.map(v => ({
-          ventaId: v.id, nombre: v.nombre, valor: Number(v.valor || 0), fecha: v.fecha,
-          cobrado: cobradoPorVenta[v.id] || 0, tipoProyecto: v.tipo_proyecto, canal: v.canal,
-        })),
-      };
-    });
-
-    clientes.sort((a, b) => b.totalVendido - a.totalVendido);
-    res.json({ clientes });
+    const { data, error } = await supabase.from('leads').select('*').eq('id', req.params.id).single();
+    if (error || !data) return res.status(404).json({ error: 'Lead no encontrado' });
+    res.json({ lead: data });
   } catch (error) {
-    console.error('Error al agrupar ventas por cliente:', error);
-    res.status(500).json({ error: 'Error al agrupar ventas por cliente' });
+    res.status(500).json({ error: 'Error al obtener lead' });
   }
 });
 
-/**
- * POST /api/ventas
- * Crea una venta manualmente — no depende de que exista un lead.
- */
-router.post('/', authenticateToken, requireVentas, async (req, res) => {
+router.post('/', authenticateToken, requireLeads, async (req, res) => {
   try {
     const {
-      nombre, cliente_nombre, cliente_instagram, cliente_email, cliente_telefono,
-      valor, fecha, canal, campaña, tipo_proyecto = 'solo_diseno',
-      prevision_ingresos, prevision_gastos, comercial_id, lead_id, notas,
+      nombre, perfil, deporte, liga, instagram, telefono, email,
+      origen = 'outbound', canal, estado = 'contacto',
+      valor_estimado, pct_cierre = 20, notas, campaña,
+      fecha_contacto, fecha_respuesta, fecha_llamada, fecha_diseño, fecha_llamada_venta, fecha_venta,
+      fecha_venta_diseño_1,
+      tipo_diseño = 'diseño_gratis', valor_diseño, link_fathom, assigned_to,
+      valor_comisiones, notas_comisiones, tipo_proyecto = 'solo_diseno', costes_estimados, nombre_proyecto
     } = req.body;
 
-    if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre de la venta es obligatorio' });
-    if (valor === undefined || isNaN(parseFloat(valor))) return res.status(400).json({ error: 'El valor de la venta es obligatorio' });
+    if (!nombre) return res.status(400).json({ error: 'El nombre es requerido' });
+
+    const estadoFinal = ESTADOS_VALIDOS.includes(estado) ? estado : 'contacto';
 
     const { data, error } = await supabase
+      .from('leads')
+      .insert({
+        nombre: nombre.trim(), perfil: perfil || null, deporte: deporte || null,
+        liga: liga || null, instagram: instagram || null, telefono: telefono || null,
+        email: email || null, origen, canal: canal || null, campaña: campaña?.trim() || null,
+        estado: estadoFinal,
+        valor_estimado: valor_estimado ? parseFloat(valor_estimado) : null,
+        pct_cierre: pct_cierre ? parseInt(pct_cierre) : 20,
+        notas: notas || null,
+        fecha_contacto: fecha_contacto || null,
+        fecha_respuesta: fecha_respuesta || null,
+        fecha_llamada: fecha_llamada || null,
+        fecha_diseño: fecha_diseño || null,
+        fecha_llamada_venta: fecha_llamada_venta || null,
+        fecha_venta_diseño_1: fecha_venta_diseño_1 || null,
+        fecha_venta: fecha_venta || null,
+        tipo_diseño: resolverTipoDiseño(estadoFinal, tipo_diseño),
+        valor_diseño: valor_diseño ? parseFloat(valor_diseño) : null,
+        tipo_proyecto: ['solo_diseno', 'con_ejecucion'].includes(tipo_proyecto) ? tipo_proyecto : 'solo_diseno',
+        costes_estimados: costes_estimados ? parseFloat(costes_estimados) : null,
+        nombre_proyecto: nombre_proyecto?.trim() || null,
+        link_fathom: link_fathom?.trim() || null,
+        assigned_to: assigned_to || null,
+        valor_comisiones: valor_comisiones ? parseFloat(valor_comisiones) : null,
+        notas_comisiones: notas_comisiones?.trim() || null,
+        created_by: req.user.id
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json({ message: 'Lead creado exitosamente', lead: data });
+
+  } catch (error) {
+    console.error('Error al crear lead:', error);
+    res.status(500).json({ error: 'Error al crear lead' });
+  }
+});
+
+router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
+  try {
+    const updates = { ...req.body };
+    delete updates.id;
+    delete updates.created_at;
+    delete updates.created_by;
+
+    if (updates.valor_estimado !== undefined)
+      updates.valor_estimado = updates.valor_estimado ? parseFloat(updates.valor_estimado) : null;
+    if (updates.valor_diseño !== undefined)
+      updates.valor_diseño = updates.valor_diseño ? parseFloat(updates.valor_diseño) : null;
+    if (updates.valor_comisiones !== undefined)
+      updates.valor_comisiones = updates.valor_comisiones ? parseFloat(updates.valor_comisiones) : null;
+    if (updates.notas_comisiones !== undefined)
+      updates.notas_comisiones = updates.notas_comisiones?.trim() || null;
+    if (updates.pct_cierre !== undefined)
+      updates.pct_cierre = parseInt(updates.pct_cierre);
+    if (updates.link_fathom !== undefined)
+      updates.link_fathom = updates.link_fathom?.trim() || null;
+    if (updates.campaña !== undefined)
+      updates.campaña = updates.campaña?.trim() || null;
+    if (updates.assigned_to !== undefined)
+      updates.assigned_to = updates.assigned_to || null;
+
+    ['fecha_contacto','fecha_respuesta','fecha_llamada','fecha_diseño','fecha_llamada_venta','fecha_venta','fecha_venta_diseño_1'].forEach(f => {
+      if (updates[f] !== undefined) updates[f] = updates[f] || null;
+    });
+
+    if (updates.estado && !ESTADOS_VALIDOS.includes(updates.estado))
+      delete updates.estado;
+
+    if (updates.tipo_diseño && !TIPOS_DISEÑO_VALIDOS.includes(updates.tipo_diseño))
+      delete updates.tipo_diseño;
+
+    if (updates.tipo_proyecto && !['solo_diseno', 'con_ejecucion'].includes(updates.tipo_proyecto))
+      delete updates.tipo_proyecto;
+
+    if (updates.costes_estimados !== undefined)
+      updates.costes_estimados = updates.costes_estimados !== null && updates.costes_estimados !== '' ? parseFloat(updates.costes_estimados) : null;
+
+    if (updates.nombre_proyecto !== undefined)
+      updates.nombre_proyecto = updates.nombre_proyecto?.trim() || null;
+
+    // Si el estado pasa a diseño_0 o diseño_1, sincroniza tipo_diseño automáticamente
+    // (por ejemplo, al cambiar el estado desde el tablero Kanban sin abrir el formulario)
+    if (updates.estado === 'diseño_0' || updates.estado === 'diseño_1') {
+      updates.tipo_diseño = resolverTipoDiseño(updates.estado);
+    }
+
+    // BUGFIX: si se pasa a diseño_1 arrastrando la tarjeta en el Kanban, el
+    // frontend solo envía { estado }, sin fecha_venta_diseño_1. Sin esa fecha,
+    // /api/ventas nunca cuenta la venta de Diseño 1 aunque tipo_diseño ya sea
+    // 'diseño_venta'. Si no viene la fecha en el body y el lead aún no tiene
+    // una guardada, la fijamos hoy para que la venta no se pierda.
+    if (updates.estado === 'diseño_1' && updates.fecha_venta_diseño_1 === undefined) {
+      const { data: actual } = await supabase.from('leads').select('fecha_venta_diseño_1').eq('id', req.params.id).single();
+      if (!actual?.fecha_venta_diseño_1) {
+        updates.fecha_venta_diseño_1 = new Date().toISOString().slice(0, 10);
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('leads')
+      .update(updates)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ message: 'Lead actualizado exitosamente', lead: data });
+
+  } catch (error) {
+    console.error('Error al actualizar lead:', error);
+    res.status(500).json({ error: 'Error al actualizar lead' });
+  }
+});
+
+/**
+ * PUT /api/leads/:id/asignarme
+ * El propio comercial (o admin) se autoasigna un lead.
+ */
+router.put('/:id/asignarme', authenticateToken, requireLeads, async (req, res) => {
+  try {
+    const { data: employee, error: empError } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('email', req.user.email)
+      .single();
+
+    if (empError || !employee) {
+      return res.status(400).json({ error: 'No se encontró tu perfil de empleado para asignarte el lead' });
+    }
+
+    const { data, error } = await supabase
+      .from('leads')
+      .update({ assigned_to: employee.id })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ message: 'Lead asignado', lead: data });
+  } catch (error) {
+    console.error('Error al autoasignar lead:', error);
+    res.status(500).json({ error: 'Error al asignarte el lead' });
+  }
+});
+
+/**
+ * POST /api/leads/:id/convertir-venta
+ * Crea una Venta (entidad independiente) a partir de este lead, prellenando
+ * sus datos. El lead se enlaza como origen pero la Venta vive por su cuenta
+ * desde ese momento — se puede editar/gestionar sin volver a tocar el lead.
+ */
+router.post('/:id/convertir-venta', authenticateToken, requireLeads, async (req, res) => {
+  try {
+    const { data: lead, error: errLead } = await supabase.from('leads').select('*').eq('id', req.params.id).single();
+    if (errLead || !lead) return res.status(404).json({ error: 'Lead no encontrado' });
+
+    const { valor, fecha, nombre, tipo_proyecto, notas } = req.body;
+
+    const { data: venta, error: errVenta } = await supabase
       .from('ventas')
       .insert({
-        nombre: nombre.trim(),
-        cliente_nombre: cliente_nombre?.trim() || nombre.trim(),
-        cliente_instagram: cliente_instagram?.trim() || null,
-        cliente_email: cliente_email?.trim() || null,
-        cliente_telefono: cliente_telefono?.trim() || null,
-        valor: parseFloat(valor),
+        nombre: nombre?.trim() || lead.nombre_proyecto || lead.nombre,
+        cliente_nombre: lead.nombre,
+        cliente_instagram: lead.instagram,
+        cliente_email: lead.email,
+        cliente_telefono: lead.telefono,
+        valor: valor !== undefined ? parseFloat(valor) : (lead.valor_estimado || 0),
         fecha: fecha || new Date().toISOString().slice(0, 10),
-        canal: canal || null,
-        campaña: campaña?.trim() || null,
-        tipo_proyecto: ['solo_diseno', 'con_ejecucion'].includes(tipo_proyecto) ? tipo_proyecto : 'solo_diseno',
-        prevision_ingresos: prevision_ingresos ? parseFloat(prevision_ingresos) : null,
-        prevision_gastos: prevision_gastos ? parseFloat(prevision_gastos) : null,
-        comercial_id: comercial_id || null,
-        lead_id: lead_id || null,
+        canal: lead.canal,
+        campaña: lead.campaña,
+        tipo_proyecto: tipo_proyecto || lead.tipo_proyecto || 'solo_diseno',
+        prevision_gastos: lead.costes_estimados || null,
+        comercial_id: lead.assigned_to || null,
+        lead_id: lead.id,
         notas: notas?.trim() || null,
         created_by: req.user.id,
       })
-      .select('*, comercial:employees(name)')
+      .select()
       .single();
-    if (error) throw error;
+    if (errVenta) throw errVenta;
 
-    res.status(201).json({ venta: data });
+    // El lead queda marcado como venta a efectos de embudo/métricas, sin
+    // que eso sea ya lo que gestiona el dinero (eso es cosa de la Venta).
+    await supabase.from('leads').update({ estado: 'venta', fecha_venta: venta.fecha }).eq('id', lead.id);
+
+    res.status(201).json({ venta });
   } catch (error) {
-    console.error('Error al crear venta:', error);
-    res.status(500).json({ error: 'Error al crear la venta', detalle: error.message });
-  }
-});
-
-/**
- * PUT /api/ventas/:id
- */
-router.put('/:id', authenticateToken, requireVentas, async (req, res) => {
-  try {
-    const campos = ['nombre', 'cliente_nombre', 'cliente_instagram', 'cliente_email', 'cliente_telefono', 'valor', 'fecha', 'canal', 'campaña', 'tipo_proyecto', 'prevision_ingresos', 'prevision_gastos', 'comercial_id', 'notas'];
-    const updates = {};
-    campos.forEach(c => { if (req.body[c] !== undefined) updates[c] = req.body[c]; });
-
-    if (updates.valor !== undefined) updates.valor = parseFloat(updates.valor) || 0;
-    if (updates.prevision_ingresos !== undefined) updates.prevision_ingresos = updates.prevision_ingresos === '' || updates.prevision_ingresos === null ? null : parseFloat(updates.prevision_ingresos);
-    if (updates.prevision_gastos !== undefined) updates.prevision_gastos = updates.prevision_gastos === '' || updates.prevision_gastos === null ? null : parseFloat(updates.prevision_gastos);
-    if (updates.tipo_proyecto && !['solo_diseno', 'con_ejecucion'].includes(updates.tipo_proyecto)) delete updates.tipo_proyecto;
-    updates.updated_at = new Date().toISOString();
-
-    const { data, error } = await supabase.from('ventas').update(updates).eq('id', req.params.id).select('*, comercial:employees(name)').single();
-    if (error) throw error;
-    res.json({ venta: data });
-  } catch (error) {
-    console.error('Error al actualizar venta:', error);
-    res.status(500).json({ error: 'Error al actualizar la venta', detalle: error.message });
+    console.error('Error al convertir lead en venta:', error);
+    res.status(500).json({ error: 'Error al convertir en venta', detalle: error.message });
   }
 });
 
 router.delete('/:id', authenticateToken, requireAdminSuperior, async (req, res) => {
   try {
-    const { error } = await supabase.from('ventas').delete().eq('id', req.params.id);
+    const { error } = await supabase.from('leads').delete().eq('id', req.params.id);
     if (error) throw error;
-    res.json({ message: 'Venta eliminada' });
+    res.json({ message: 'Lead eliminado exitosamente' });
   } catch (error) {
-    res.status(500).json({ error: 'Error al eliminar la venta' });
+    console.error('Error al eliminar lead:', error);
+    res.status(500).json({ error: 'Error al eliminar lead' });
   }
 });
 
 /**
- * GET /api/ventas/:id/ficha
- * Vista team-safe: cobrado/pendiente y fase de ejecución, sin gastos ni margen.
+ * GET /api/leads/:id/ficha-cliente
+ * Vista conectada de una venta: cuánto ha pagado / le queda pendiente
+ * (sin gastos ni margen — eso sigue solo en Finanzas) + en qué fase de
+ * ejecución está su proyecto, si ya se creó uno enlazado a este lead.
  */
-router.get('/:id/ficha', authenticateToken, requireVentasOFinanzas, async (req, res) => {
+router.get('/:id/ficha-cliente', authenticateToken, requireLeadsVentasOFinanzas, async (req, res) => {
   try {
-    const { data: venta, error: errVenta } = await supabase.from('ventas').select('*').eq('id', req.params.id).single();
-    if (errVenta || !venta) return res.status(404).json({ error: 'Venta no encontrada' });
+    const { data: lead, error: errLead } = await supabase
+      .from('leads')
+      .select('id, nombre, nombre_proyecto, estado, valor_estimado, fecha_venta, tipo_diseño, valor_diseño, fecha_venta_diseño_1')
+      .eq('id', req.params.id)
+      .single();
+    if (errLead || !lead) return res.status(404).json({ error: 'Lead no encontrado' });
 
     const [{ data: movimientos, error: errMov }, { data: proyecto, error: errProy }] = await Promise.all([
-      supabase.from('finanzas_movimientos').select('monto, tipo').eq('venta_id', req.params.id),
-      supabase.from('client_projects').select('id, project_name, phase, urgency, access_code').eq('venta_id', req.params.id).maybeSingle(),
+      supabase.from('finanzas_movimientos').select('monto, tipo').eq('lead_id', req.params.id),
+      supabase.from('client_projects').select('id, project_name, phase, urgency, access_code').eq('lead_id', req.params.id).maybeSingle(),
     ]);
     if (errMov) throw errMov;
     if (errProy) throw errProy;
 
     const cobrado = (movimientos || []).filter(m => m.tipo === 'ingreso').reduce((s, m) => s + Number(m.monto), 0);
-    const presupuesto = Number(venta.prevision_ingresos ?? venta.valor ?? 0);
+    const presupuesto = Number(lead.valor_estimado || 0) + (lead.tipo_diseño === 'diseño_venta' ? Number(lead.valor_diseño || 0) : 0);
 
     res.json({
-      venta: { id: venta.id, nombre: venta.nombre, fecha: venta.fecha },
+      lead: { id: lead.id, nombre: lead.nombre_proyecto || lead.nombre, nombreCliente: lead.nombre, estado: lead.estado, fechaVenta: lead.fecha_venta || lead.fecha_venta_diseño_1 },
       presupuesto,
       cobrado,
       pendiente: Math.max(presupuesto - cobrado, 0),
       proyecto: proyecto || null,
     });
   } catch (error) {
-    console.error('Error al obtener ficha de venta:', error);
-    res.status(500).json({ error: 'Error al obtener ficha de venta' });
-  }
-});
-
-/**
- * GET /api/ventas/:id/completo
- * Ficha completa (admin/finanzas): pagos, gastos, margen real y estimado,
- * previsión, proyecto de ejecución enlazado.
- */
-router.get('/:id/completo', authenticateToken, requireFinanzas, async (req, res) => {
-  try {
-    const { data: venta, error: errVenta } = await supabase
-      .from('ventas').select('*, comercial:employees(name)').eq('id', req.params.id).single();
-    if (errVenta || !venta) return res.status(404).json({ error: 'Venta no encontrada' });
-
-    const [{ data: movimientos, error: errMov }, { data: proyecto, error: errProy }] = await Promise.all([
-      supabase.from('finanzas_movimientos').select('*').eq('venta_id', req.params.id).order('fecha', { ascending: true }),
-      supabase.from('client_projects').select('id, project_name, phase, urgency, access_code, notes, responsible:employees!responsible_id(name)').eq('venta_id', req.params.id).maybeSingle(),
-    ]);
-    if (errMov) throw errMov;
-    if (errProy) throw errProy;
-
-    const pagos = movimientos.filter(m => m.tipo === 'ingreso');
-    const gastos = movimientos.filter(m => m.tipo === 'gasto');
-    const cobrado = pagos.reduce((s, m) => s + Number(m.monto), 0);
-    const totalGastos = gastos.reduce((s, m) => s + Number(m.monto), 0);
-    const presupuesto = Number(venta.prevision_ingresos ?? venta.valor ?? 0);
-
-    res.json({
-      venta: {
-        id: venta.id, nombre: venta.nombre, clienteNombre: venta.cliente_nombre,
-        instagram: venta.cliente_instagram, email: venta.cliente_email, telefono: venta.cliente_telefono,
-        canal: venta.canal, campaña: venta.campaña, tipoProyecto: venta.tipo_proyecto,
-        fecha: venta.fecha, comercial: venta.comercial?.name || null, notas: venta.notas,
-        presupuesto, previsionGastos: venta.prevision_gastos != null ? Number(venta.prevision_gastos) : null,
-      },
-      ejecucion: proyecto ? {
-        nombre: proyecto.project_name, fase: proyecto.phase, urgencia: proyecto.urgency,
-        codigoAcceso: proyecto.access_code, responsable: proyecto.responsible?.name || null, notas: proyecto.notes,
-      } : null,
-      pagos,
-      gastos,
-      resumen: {
-        cobrado,
-        pendiente: Math.max(presupuesto - cobrado, 0),
-        totalGastos,
-        margenReal: cobrado - totalGastos,
-        previsionVsReal: presupuesto - cobrado,
-        ...(venta.tipo_proyecto === 'con_ejecucion' && venta.prevision_gastos != null ? {
-          margenEstimado: presupuesto - Number(venta.prevision_gastos),
-        } : {}),
-      },
-    });
-  } catch (error) {
-    console.error('Error al obtener ficha completa de venta:', error);
-    res.status(500).json({ error: 'Error al obtener ficha completa de venta' });
-  }
-});
-
-/**
- * GET /api/ventas/resumen-financiero
- * Tabla "lo que gano por venta" para Finanzas: presupuesto, cobrado,
- * pendiente, gastos, margen real de cada venta.
- */
-router.get('/resumen/financiero', authenticateToken, requireFinanzas, async (req, res) => {
-  try {
-    const { data: ventas, error: errVentas } = await supabase.from('ventas').select('*, comercial:employees(name)');
-    if (errVentas) throw errVentas;
-
-    const ventaIds = ventas.map(v => v.id);
-    const { data: movimientos, error: errMov } = ventaIds.length
-      ? await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').in('venta_id', ventaIds)
-      : { data: [], error: null };
-    if (errMov) throw errMov;
-
-    const proyectos = ventas.map(v => {
-      const movs = (movimientos || []).filter(m => m.venta_id === v.id);
-      const cobrado = movs.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + Number(m.monto), 0);
-      const gastos = movs.filter(m => m.tipo === 'gasto').reduce((s, m) => s + Number(m.monto), 0);
-      const presupuesto = Number(v.prevision_ingresos ?? v.valor ?? 0);
-      return {
-        ventaId: v.id,
-        nombre: v.nombre,
-        clienteNombre: v.cliente_nombre,
-        tipoProyecto: v.tipo_proyecto,
-        comercial: v.comercial?.name || null,
-        fecha: v.fecha,
-        presupuesto,
-        cobrado,
-        pendiente: Math.max(presupuesto - cobrado, 0),
-        gastos,
-        margenReal: cobrado - gastos,
-      };
-    });
-
-    proyectos.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
-    res.json({ proyectos });
-  } catch (error) {
-    console.error('Error al listar resumen financiero de ventas:', error);
-    res.status(500).json({ error: 'Error al listar resumen financiero de ventas' });
+    console.error('Error al obtener ficha conectada:', error);
+    res.status(500).json({ error: 'Error al obtener ficha conectada' });
   }
 });
 
