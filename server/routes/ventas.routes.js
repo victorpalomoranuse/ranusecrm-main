@@ -36,26 +36,33 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
       ? await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').in('venta_id', ventaIds)
       : { data: [] };
     const cobradoPorVenta = {};
+    const gastosRealesPorVenta = {};
     (movimientos || []).forEach(m => {
-      if (m.tipo !== 'ingreso') return;
-      cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+      if (m.tipo === 'ingreso') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+      else gastosRealesPorVenta[m.venta_id] = (gastosRealesPorVenta[m.venta_id] || 0) + Number(m.monto);
     });
 
     const lista = ventas.map(v => {
       const valor = Number(v.valor || 0);
       const previsionGastos = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
-      const costesConocidos = v.tipo_proyecto === 'solo_diseno' || previsionGastos != null;
-      // Si es un proyecto con ejecución y TODAVÍA no se ha puesto el coste
-      // previsto, no se puede saber el beneficio de verdad — se cuenta como
-      // 0 (no como si fuera 100% limpio) hasta que se estime el coste.
-      const beneficioPrevisto = v.tipo_proyecto === 'solo_diseno' ? valor : (previsionGastos != null ? valor - previsionGastos : 0);
+      const gastosReales = gastosRealesPorVenta[v.id] || 0;
+      // El coste que se usa para calcular el beneficio es siempre el mayor
+      // entre lo previsto a mano y lo que ya se ha gastado de verdad en
+      // Finanzas — así un gasto real ya registrado nunca se ignora, aunque
+      // nunca hayas rellenado "costes previstos".
+      let costesEfectivos = null;
+      if (previsionGastos != null) costesEfectivos = Math.max(previsionGastos, gastosReales);
+      else if (gastosReales > 0) costesEfectivos = gastosReales;
+      else if (v.tipo_proyecto === 'solo_diseno') costesEfectivos = 0;
+      // con_ejecucion sin previsión y sin gasto real todavía: costesEfectivos queda null (desconocido)
+
+      const costesConocidos = costesEfectivos != null;
+      const beneficioPrevisto = costesConocidos ? valor - costesEfectivos : 0;
       const presupuesto = Number(v.prevision_ingresos ?? v.valor ?? 0);
       const cobrado = cobradoPorVenta[v.id] || 0;
       // Proporción del cobrado que es beneficio real, según el margen previsto
       // de la venta (ej. si el margen previsto es 12%, de cada pago recibido
       // el 12% se considera ya beneficio; el resto sigue "reservado" para costes).
-      // Sin coste previsto en un proyecto con ejecución, el margen se
-      // considera desconocido (0), no 100%.
       const margenPct = valor > 0 && costesConocidos ? beneficioPrevisto / valor : 0;
       const beneficioPagado = cobrado * margenPct;
       return {
@@ -67,6 +74,7 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
         tipoProyecto: v.tipo_proyecto,
         valor,
         previsionGastos,
+        gastosReales,
         costesConocidos,
         beneficioPrevisto,
         cobrado,
