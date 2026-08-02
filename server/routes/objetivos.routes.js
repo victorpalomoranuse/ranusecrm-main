@@ -133,15 +133,34 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
     if (errMov) throw errMov;
     if (errMovVenta) throw errMovVenta;
 
+    // Gasto real ya registrado por venta (para usarlo como suelo del coste,
+    // aunque no se haya rellenado "costes previstos" a mano).
+    const cobradoPorVenta = {};
+    const gastosPorVenta = {};
+    (movVenta || []).forEach(m => {
+      if (m.tipo === 'ingreso') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+      else gastosPorVenta[m.venta_id] = (gastosPorVenta[m.venta_id] || 0) + Number(m.monto);
+    });
+
+    function costesEfectivosDe(v) {
+      const previsionGastos = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
+      const gastosReales = gastosPorVenta[v.id] || 0;
+      if (previsionGastos != null) return Math.max(previsionGastos, gastosReales);
+      if (gastosReales > 0) return gastosReales;
+      if (v.tipo_proyecto === 'solo_diseno') return 0;
+      return null; // con_ejecucion sin previsión y sin gasto real: desconocido
+    }
+
     // Facturación VENDIDA: importe de cada venta en la fecha en que se cerró,
     // desglosada entre "limpia" (solo diseño, sin gastos) y "con ejecución"
     let facturacionVendida = 0;
     let facturacionVendidaLimpia = 0;
     let facturacionVendidaEjecucion = 0;
-    // BENEFICIO PREVISTO (venta − costes directos previstos del proyecto, SIN
+    // BENEFICIO PREVISTO (venta − costes directos, previstos o ya reales, SIN
     // contar gastos operativos de empresa). Esta es la métrica del objetivo
     // que ve el equipo en Ventas: se sabe en el momento de la venta, no hace
-    // falta esperar a cobrar ni a que termine el proyecto.
+    // falta esperar a cobrar ni a que termine el proyecto — pero si ya hay
+    // gasto real registrado, ese manda sobre cualquier previsión optimista.
     let beneficioPrevistoPeriodo = 0;
     ventas.forEach(v => {
       if (!v.fecha || claveDePeriodo(v.fecha, periodo_tipo) !== periodo) return;
@@ -149,13 +168,8 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
       facturacionVendida += importe;
       if (v.tipo_proyecto === 'con_ejecucion') facturacionVendidaEjecucion += importe;
       else facturacionVendidaLimpia += importe;
-      // Sin coste previsto en un proyecto con ejecución, el beneficio de ese
-      // proyecto es desconocido — se cuenta como 0, no como 100% limpio.
-      if (v.tipo_proyecto === 'solo_diseno') {
-        beneficioPrevistoPeriodo += importe;
-      } else if (v.prevision_gastos != null) {
-        beneficioPrevistoPeriodo += (importe - Number(v.prevision_gastos));
-      }
+      const costes = costesEfectivosDe(v);
+      if (costes != null) beneficioPrevistoPeriodo += (importe - costes);
     });
 
     // Facturación COBRADA: ingresos reales registrados en caja durante el periodo
@@ -170,27 +184,20 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
 
     // BENEFICIO LIMPIO POR VENTA en caja (cobrado − gastos directos, en toda
     // su vida) — solo referencia tuya en Finanzas, no es lo que ve el equipo.
-    const cobradoPorVenta = {};
-    const gastosPorVenta = {};
-    (movVenta || []).forEach(m => {
-      if (m.tipo === 'ingreso') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
-      else gastosPorVenta[m.venta_id] = (gastosPorVenta[m.venta_id] || 0) + Number(m.monto);
-    });
     let beneficioLimpioPorProyecto = 0;
     // BENEFICIO COBRADO (visible al equipo): de cada venta cerrada en el
     // periodo, la parte de lo YA cobrado (hasta hoy) que corresponde a
-    // beneficio, según su margen previsto (venta − costes directos) / venta.
-    // Si aún no hay coste previsto, se asume 100% margen (todo lo cobrado es
-    // beneficio, como en un proyecto "limpio").
+    // beneficio, según su margen (venta − costes directos, previstos o
+    // reales) / venta. Sin coste conocido (ni previsto ni gastado), el
+    // margen se considera desconocido (0), nunca 100% por defecto.
     let beneficioCobradoPeriodo = 0;
     ventas.forEach(v => {
       if (!v.fecha || claveDePeriodo(v.fecha, periodo_tipo) !== periodo) return;
       beneficioLimpioPorProyecto += (cobradoPorVenta[v.id] || 0) - (gastosPorVenta[v.id] || 0);
 
       const valor = Number(v.valor || 0);
-      const costesDirectos = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
-      const costesConocidos = v.tipo_proyecto === 'solo_diseno' || costesDirectos != null;
-      const margenPct = valor > 0 && costesConocidos ? (v.tipo_proyecto === 'solo_diseno' ? 1 : (valor - costesDirectos) / valor) : 0;
+      const costes = costesEfectivosDe(v);
+      const margenPct = valor > 0 && costes != null ? (valor - costes) / valor : 0;
       beneficioCobradoPeriodo += (cobradoPorVenta[v.id] || 0) * margenPct;
     });
 
@@ -262,8 +269,10 @@ router.get('/ritmo', authenticateToken, requireVentasOFinanzas, async (req, res)
       ? await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').in('venta_id', ventaIds)
       : { data: [] };
     const cobradoPorVenta = {};
+    const gastosPorVenta = {};
     (movVenta || []).forEach(m => {
       if (m.tipo === 'ingreso') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+      else gastosPorVenta[m.venta_id] = (gastosPorVenta[m.venta_id] || 0) + Number(m.monto);
     });
 
     // Meses transcurridos del año: si es el año en curso, hasta el mes actual;
@@ -282,11 +291,15 @@ router.get('/ritmo', authenticateToken, requireVentasOFinanzas, async (req, res)
       const mesVenta = Number(v.fecha.slice(5, 7));
       if (mesVenta > mesesTranscurridos) return; // todavía no ha llegado ese mes
       const valor = Number(v.valor || 0);
-      const costes = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
-      const costesConocidos = v.tipo_proyecto === 'solo_diseno' || costes != null;
-      const margenPct = valor > 0 && costesConocidos ? (v.tipo_proyecto === 'solo_diseno' ? 1 : (valor - costes) / valor) : 0;
-      if (v.tipo_proyecto === 'solo_diseno') generadoPrevisto += valor;
-      else if (costes != null) generadoPrevisto += (valor - costes);
+      const previsionGastos = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
+      const gastosReales = gastosPorVenta[v.id] || 0;
+      let costes = null;
+      if (previsionGastos != null) costes = Math.max(previsionGastos, gastosReales);
+      else if (gastosReales > 0) costes = gastosReales;
+      else if (v.tipo_proyecto === 'solo_diseno') costes = 0;
+
+      const margenPct = valor > 0 && costes != null ? (valor - costes) / valor : 0;
+      if (costes != null) generadoPrevisto += (valor - costes);
       generadoCobrado += (cobradoPorVenta[v.id] || 0) * margenPct;
     });
 
