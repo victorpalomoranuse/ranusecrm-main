@@ -63,6 +63,38 @@ router.get('/', authenticateToken, requireLeads, async (req, res) => {
 
     const leadsConRecurrencia = marcarClientesRecurrentes(leads);
 
+    // Beneficio y nº de ventas por lead, calculado desde la tabla Ventas
+    // (independiente, pero enlazada por lead_id cuando la venta vino de aquí).
+    const leadIds = leads.map(l => l.id);
+    const [{ data: ventasDeLeads }, { data: movVentas }] = await Promise.all([
+      leadIds.length ? supabase.from('ventas').select('id, lead_id, valor').in('lead_id', leadIds) : Promise.resolve({ data: [] }),
+      Promise.resolve({ data: [] }),
+    ]);
+    const ventaIdsDeLeads = (ventasDeLeads || []).map(v => v.id);
+    const { data: movimientosDeVentas } = ventaIdsDeLeads.length
+      ? await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').in('venta_id', ventaIdsDeLeads)
+      : { data: [] };
+    const cobradoPorVenta = {};
+    const gastosPorVenta = {};
+    (movimientosDeVentas || []).forEach(m => {
+      if (m.tipo === 'ingreso') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+      else gastosPorVenta[m.venta_id] = (gastosPorVenta[m.venta_id] || 0) + Number(m.monto);
+    });
+    const numVentasPorLead = {};
+    const beneficioPorLead = {};
+    (ventasDeLeads || []).forEach(v => {
+      numVentasPorLead[v.lead_id] = (numVentasPorLead[v.lead_id] || 0) + 1;
+      const margen = (cobradoPorVenta[v.id] || 0) - (gastosPorVenta[v.id] || 0);
+      beneficioPorLead[v.lead_id] = (beneficioPorLead[v.lead_id] || 0) + margen;
+    });
+    const leadsConVentas = leadsConRecurrencia.map(l => ({
+      ...l,
+      num_ventas: numVentasPorLead[l.id] || 0,
+      beneficio_total: beneficioPorLead[l.id] || 0,
+    }));
+    const beneficioTotalGlobal = Object.values(beneficioPorLead).reduce((s, v) => s + v, 0);
+    const numVentasGlobal = (ventasDeLeads || []).length;
+
     const total    = leads.length;
     const activos  = leads.filter(l => !['venta','rechazo','no_show','descartado'].includes(l.estado)).length;
     const ventas   = leads.filter(l => l.estado === 'venta').length;
@@ -114,10 +146,11 @@ router.get('/', authenticateToken, requireLeads, async (req, res) => {
       .reduce((sum, l) => sum + (l.valor_estimado || 0), 0);
 
     res.json({
-      leads: leadsConRecurrencia,
+      leads: leadsConVentas,
       metricas: {
         total, activos, ventas, noShow, ventasRecurrentes,
         valorPipeline, valorVentas,
+        numVentasGlobal, beneficioTotalGlobal,
         tasaRespuesta, tasaLlamada, tasaDiseño, tasaLlamadaVenta,
         tasaNoShow, tasaVenta, tasaRechazo, tasaCierreGlobal,
       },
@@ -303,6 +336,53 @@ router.put('/:id/asignarme', authenticateToken, requireLeads, async (req, res) =
   } catch (error) {
     console.error('Error al autoasignar lead:', error);
     res.status(500).json({ error: 'Error al asignarte el lead' });
+  }
+});
+
+/**
+ * POST /api/leads/:id/convertir-venta
+ * Crea una Venta (entidad independiente) a partir de este lead, prellenando
+ * sus datos. El lead se enlaza como origen pero la Venta vive por su cuenta
+ * desde ese momento — se puede editar/gestionar sin volver a tocar el lead.
+ */
+router.post('/:id/convertir-venta', authenticateToken, requireLeads, async (req, res) => {
+  try {
+    const { data: lead, error: errLead } = await supabase.from('leads').select('*').eq('id', req.params.id).single();
+    if (errLead || !lead) return res.status(404).json({ error: 'Lead no encontrado' });
+
+    const { valor, fecha, nombre, tipo_proyecto, notas } = req.body;
+
+    const { data: venta, error: errVenta } = await supabase
+      .from('ventas')
+      .insert({
+        nombre: nombre?.trim() || lead.nombre_proyecto || lead.nombre,
+        cliente_nombre: lead.nombre,
+        cliente_instagram: lead.instagram,
+        cliente_email: lead.email,
+        cliente_telefono: lead.telefono,
+        valor: valor !== undefined ? parseFloat(valor) : (lead.valor_estimado || 0),
+        fecha: fecha || new Date().toISOString().slice(0, 10),
+        canal: lead.canal,
+        campaña: lead.campaña,
+        tipo_proyecto: tipo_proyecto || lead.tipo_proyecto || 'solo_diseno',
+        prevision_gastos: lead.costes_estimados || null,
+        comercial_id: lead.assigned_to || null,
+        lead_id: lead.id,
+        notas: notas?.trim() || null,
+        created_by: req.user.id,
+      })
+      .select()
+      .single();
+    if (errVenta) throw errVenta;
+
+    // El lead queda marcado como venta a efectos de embudo/métricas, sin
+    // que eso sea ya lo que gestiona el dinero (eso es cosa de la Venta).
+    await supabase.from('leads').update({ estado: 'venta', fecha_venta: venta.fecha }).eq('id', lead.id);
+
+    res.status(201).json({ venta });
+  } catch (error) {
+    console.error('Error al convertir lead en venta:', error);
+    res.status(500).json({ error: 'Error al convertir en venta', detalle: error.message });
   }
 });
 
