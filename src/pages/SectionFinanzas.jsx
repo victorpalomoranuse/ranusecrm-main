@@ -230,13 +230,18 @@ function PanelObjetivosFinanzas() {
 
       {progreso && (progreso.porEscenario?.pesimista?.objetivo != null || progreso.porEscenario?.realista?.objetivo != null || progreso.porEscenario?.optimista?.objetivo != null) && (
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
-          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Beneficio limpio por proyecto (cuenta para el objetivo)</div><strong style={{ fontSize: 15 }}>{fmt(progreso.beneficioLimpioPorProyecto)}</strong></div>
+          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Beneficio en caja (cuenta para tu objetivo)</div><strong style={{ fontSize: 15 }}>{fmt(progreso.beneficioLimpioPorProyecto)}</strong>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>Cobrado − gastos directos ya registrados</div>
+          </div>
+          <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Beneficio previsto (lo que ve el equipo)</div><strong style={{ fontSize: 15, color: 'rgba(255,255,255,0.5)' }}>{fmt(progreso.beneficioPrevistoPeriodo)}</strong>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>Venta − costes directos previstos</div>
+          </div>
           <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Cobrado (referencia)</div><strong style={{ fontSize: 15, color: 'rgba(255,255,255,0.5)' }}>{fmt(progreso.facturacionCobrada)}</strong></div>
           <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Vendido (referencia)</div><strong style={{ fontSize: 15, color: 'rgba(255,255,255,0.5)' }}>{fmt(progreso.facturacionVendida)}</strong>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{fmt(progreso.facturacionVendidaLimpia)} limpio · {fmt(progreso.facturacionVendidaEjecucion)} ejecución</div>
           </div>
           {progreso.facturacionNeta !== undefined && (
-            <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Neto caja (cobrado − todos los gastos)</div><strong style={{ fontSize: 15, color: progreso.facturacionNeta >= 0 ? '#8bae8f' : '#ae6b6b' }}>{fmt(progreso.facturacionNeta)}</strong></div>
+            <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Neto empresa (cobrado − TODOS los gastos)</div><strong style={{ fontSize: 15, color: progreso.facturacionNeta >= 0 ? '#8bae8f' : '#ae6b6b' }}>{fmt(progreso.facturacionNeta)}</strong></div>
           )}
           {ESCENARIOS.filter(esc => progreso.porEscenario?.[esc]?.objetivo != null).map(esc => (
             <div key={esc}>
