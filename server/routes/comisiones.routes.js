@@ -43,40 +43,40 @@ function rangoDePeriodo(periodo_tipo, periodo) {
 async function calcularComisiones(periodo_tipo, periodo) {
   const { desde, hasta } = rangoDePeriodo(periodo_tipo, periodo);
 
-  const [{ data: equipo, error: errEq }, { data: movimientos, error: errMov }, { data: leadsEjecucion, error: errLeads }] = await Promise.all([
+  const [{ data: equipo, error: errEq }, { data: movimientos, error: errMov }, { data: ventasEjecucion, error: errVentas }] = await Promise.all([
     supabase.from('equipo_comisiones').select('*').eq('activo', true).order('nombre'),
-    supabase.from('finanzas_movimientos').select('tipo, monto, categoria, beneficiario, fecha, lead_id').gte('fecha', desde).lte('fecha', hasta),
-    supabase.from('leads').select('id, valor_estimado, costes_estimados').eq('estado', 'venta').eq('tipo_proyecto', 'con_ejecucion').not('costes_estimados', 'is', null),
+    supabase.from('finanzas_movimientos').select('tipo, monto, categoria, beneficiario, fecha, venta_id').gte('fecha', desde).lte('fecha', hasta),
+    supabase.from('ventas').select('id, valor, prevision_gastos').eq('tipo_proyecto', 'con_ejecucion').not('prevision_gastos', 'is', null),
   ]);
   if (errEq) throw errEq;
   if (errMov) throw errMov;
-  if (errLeads) throw errLeads;
+  if (errVentas) throw errVentas;
 
   const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + Number(m.monto), 0);
   const gastosOperativos = movimientos.filter(m => m.tipo === 'gasto' && m.categoria !== 'Comisiones').reduce((s, m) => s + Number(m.monto), 0);
   const comisionesYaPagadasTotal = movimientos.filter(m => m.tipo === 'gasto' && m.categoria === 'Comisiones').reduce((s, m) => s + Number(m.monto), 0);
   const beneficioNeto = ingresos - gastosOperativos;
 
-  // Reserva: para cada proyecto con ejecución con coste estimado, cuánto de
-  // ese coste estimado todavía no se ha registrado como gasto real (a lo
-  // largo de TODA su vida, no solo este periodo) y su fase no está "Entregado".
+  // Reserva: para cada venta con ejecución con coste estimado, cuánto de ese
+  // coste todavía no se ha registrado como gasto real (en toda su vida) y su
+  // proyecto de ejecución no está "Entregado".
   let reservaPendiente = 0;
-  if (leadsEjecucion.length > 0) {
-    const leadIds = leadsEjecucion.map(l => l.id);
-    const [{ data: gastosPorLead }, { data: fasesPorLead }] = await Promise.all([
-      supabase.from('finanzas_movimientos').select('lead_id, monto').eq('tipo', 'gasto').in('lead_id', leadIds),
-      supabase.from('client_projects').select('lead_id, phase').in('lead_id', leadIds),
+  if (ventasEjecucion.length > 0) {
+    const ventaIds = ventasEjecucion.map(v => v.id);
+    const [{ data: gastosPorVenta }, { data: fasesPorVenta }] = await Promise.all([
+      supabase.from('finanzas_movimientos').select('venta_id, monto').eq('tipo', 'gasto').in('venta_id', ventaIds),
+      supabase.from('client_projects').select('venta_id, phase').in('venta_id', ventaIds),
     ]);
     const gastosAcum = {};
-    (gastosPorLead || []).forEach(g => { gastosAcum[g.lead_id] = (gastosAcum[g.lead_id] || 0) + Number(g.monto); });
-    const faseDeLead = {};
-    (fasesPorLead || []).forEach(p => { faseDeLead[p.lead_id] = p.phase; });
+    (gastosPorVenta || []).forEach(g => { gastosAcum[g.venta_id] = (gastosAcum[g.venta_id] || 0) + Number(g.monto); });
+    const faseDeVenta = {};
+    (fasesPorVenta || []).forEach(p => { faseDeVenta[p.venta_id] = p.phase; });
 
-    leadsEjecucion.forEach(l => {
-      const fase = faseDeLead[l.id];
-      if (fase === 5) return; // entregado: ya no reservamos, el gasto real ya debería estar todo registrado
-      const gastado = gastosAcum[l.id] || 0;
-      const pendienteDeCoste = Math.max(Number(l.costes_estimados) - gastado, 0);
+    ventasEjecucion.forEach(v => {
+      const fase = faseDeVenta[v.id];
+      if (fase === 5) return; // entregado: ya no reservamos
+      const gastado = gastosAcum[v.id] || 0;
+      const pendienteDeCoste = Math.max(Number(v.prevision_gastos) - gastado, 0);
       reservaPendiente += pendienteDeCoste;
     });
   }
