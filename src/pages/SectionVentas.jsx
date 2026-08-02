@@ -64,9 +64,12 @@ function PanelObjetivos() {
       ) : (
         <>
           <div className="vt-objetivos-facturacion">
-            <div><span>Beneficio (venta − costes directos)</span><strong>{fmt(progreso.beneficioPrevistoPeriodo)}</strong></div>
+            <div><span>Beneficio previsto (venta − costes)</span><strong>{fmt(progreso.beneficioPrevistoPeriodo)}</strong></div>
+            <div><span>Beneficio cobrado (ya en caja)</span><strong style={{ color: '#22c55e' }}>{fmt(progreso.beneficioCobradoPeriodo)}</strong></div>
             <div><span>Vendido (referencia)</span><strong style={{ color: 'rgba(255,255,255,0.5)' }}>{fmt(progreso.facturacionVendida)}</strong></div>
           </div>
+
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Según lo vendido</div>
           <div className="vt-objetivos-lista">
             {escenarios.map(esc => {
               const e = progreso.porEscenario[esc];
@@ -82,6 +85,91 @@ function PanelObjetivos() {
               );
             })}
           </div>
+
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '14px 0 6px' }}>Según lo cobrado</div>
+          <div className="vt-objetivos-lista">
+            {escenarios.map(esc => {
+              const e = progreso.porEscenario[esc];
+              const pct = Math.min(e.cumplidoBeneficioCobradoPct ?? 0, 100);
+              return (
+                <div key={`${esc}-cobrado`} className="vt-objetivo-row">
+                  <div className="vt-objetivo-row-head">
+                    <span className="vt-objetivo-nombre" style={{ color: ESCENARIO_COLOR[esc] }}>{ESCENARIO_LABEL[esc]}</span>
+                    <span className="vt-objetivo-meta">{fmt(progreso.beneficioCobradoPeriodo)} / {fmt(e.objetivo)} · resta {fmt(e.restaBeneficioCobrado)}</span>
+                  </div>
+                  <div className="vt-objetivo-bar"><div className="vt-objetivo-bar-fill" style={{ width: `${pct}%`, background: '#22c55e' }} /></div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PanelRitmo() {
+  const [año, setAño] = useState(String(new Date().getFullYear()));
+  const [ritmo, setRitmo] = useState(null);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    setCargando(true);
+    api.get('/objetivos/ritmo', { params: { año, alcance: 'equipo' } })
+      .then(r => setRitmo(r.data))
+      .catch(() => setRitmo(null))
+      .finally(() => setCargando(false));
+  }, [año]);
+
+  const escenarios = ESCENARIOS_ORDEN.filter(esc => ritmo?.porEscenario?.[esc]);
+
+  return (
+    <div className="vt-objetivos-card">
+      <div className="vt-objetivos-head">
+        <div className="vt-objetivos-title"><Target size={16} /><span>Ritmo necesario para cumplir el objetivo anual</span></div>
+        <input type="number" value={año} onChange={e => setAño(e.target.value)} className="ap-select" style={{ width: 90 }} />
+      </div>
+
+      {cargando ? (
+        <div className="ap-loading">Calculando…</div>
+      ) : !ritmo || escenarios.length === 0 ? (
+        <div className="ap-empty"><p>Define primero un objetivo ANUAL de equipo para ver el ritmo necesario.</p></div>
+      ) : (
+        <>
+          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: -4, marginBottom: 14 }}>
+            {ritmo.mesesTranscurridos} mes{ritmo.mesesTranscurridos !== 1 ? 'es' : ''} transcurrido{ritmo.mesesTranscurridos !== 1 ? 's' : ''} de {año} · quedan {ritmo.mesesRestantes} mes{ritmo.mesesRestantes !== 1 ? 'es' : ''} ({ritmo.trimestresRestantes} trimestre{ritmo.trimestresRestantes !== 1 ? 's' : ''})
+          </p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', fontSize: 10.5, textAlign: 'left' }}>
+                  <th style={{ padding: '4px 8px' }}>Escenario</th>
+                  <th style={{ padding: '4px 8px' }}>Objetivo anual</th>
+                  <th style={{ padding: '4px 8px' }}>Ritmo actual /mes</th>
+                  <th style={{ padding: '4px 8px', color: '#f5b748' }}>Necesitas /mes</th>
+                  <th style={{ padding: '4px 8px', color: '#f5b748' }}>Necesitas /trimestre</th>
+                </tr>
+              </thead>
+              <tbody>
+                {escenarios.map(esc => {
+                  const e = ritmo.porEscenario[esc];
+                  const vaBien = e.ritmoActualMensualPrevisto != null && e.ritmoNecesarioMensualPrevisto != null && e.ritmoActualMensualPrevisto >= e.ritmoNecesarioMensualPrevisto;
+                  return (
+                    <tr key={esc} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <td style={{ padding: '8px', color: ESCENARIO_COLOR[esc], fontWeight: 600 }}>{ESCENARIO_LABEL[esc]}</td>
+                      <td style={{ padding: '8px' }}>{fmt(e.objetivoAnual)}</td>
+                      <td style={{ padding: '8px', color: vaBien ? '#22c55e' : '#f5b748' }}>{e.ritmoActualMensualPrevisto != null ? fmt(e.ritmoActualMensualPrevisto) : '—'}</td>
+                      <td style={{ padding: '8px', fontWeight: 600 }}>{e.ritmoNecesarioMensualPrevisto != null ? fmt(e.ritmoNecesarioMensualPrevisto) : '¡Cumplido! 🎉'}</td>
+                      <td style={{ padding: '8px', fontWeight: 600 }}>{e.ritmoNecesarioTrimestralPrevisto != null ? fmt(e.ritmoNecesarioTrimestralPrevisto) : '¡Cumplido! 🎉'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.3)', marginTop: 10 }}>
+            "Ritmo actual" = lo generado hasta ahora ÷ meses transcurridos. "Necesitas" = lo que falta ÷ meses o trimestres que quedan. Basado en beneficio previsto (venta − costes directos).
+          </p>
         </>
       )}
     </div>
@@ -310,6 +398,8 @@ export function SectionVentas() {
       </div>
 
       <PanelObjetivos />
+
+      <PanelRitmo />
 
       <div className="vt-stats">
         <div className="vt-stat-card">
