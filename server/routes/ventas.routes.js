@@ -44,13 +44,19 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
     const lista = ventas.map(v => {
       const valor = Number(v.valor || 0);
       const previsionGastos = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
-      const beneficioPrevisto = previsionGastos != null ? valor - previsionGastos : valor;
+      const costesConocidos = v.tipo_proyecto === 'solo_diseno' || previsionGastos != null;
+      // Si es un proyecto con ejecución y TODAVÍA no se ha puesto el coste
+      // previsto, no se puede saber el beneficio de verdad — se cuenta como
+      // 0 (no como si fuera 100% limpio) hasta que se estime el coste.
+      const beneficioPrevisto = v.tipo_proyecto === 'solo_diseno' ? valor : (previsionGastos != null ? valor - previsionGastos : 0);
       const presupuesto = Number(v.prevision_ingresos ?? v.valor ?? 0);
       const cobrado = cobradoPorVenta[v.id] || 0;
       // Proporción del cobrado que es beneficio real, según el margen previsto
       // de la venta (ej. si el margen previsto es 12%, de cada pago recibido
       // el 12% se considera ya beneficio; el resto sigue "reservado" para costes).
-      const margenPct = valor > 0 ? beneficioPrevisto / valor : 1;
+      // Sin coste previsto en un proyecto con ejecución, el margen se
+      // considera desconocido (0), no 100%.
+      const margenPct = valor > 0 && costesConocidos ? beneficioPrevisto / valor : 0;
       const beneficioPagado = cobrado * margenPct;
       return {
         id: v.id,
@@ -61,6 +67,7 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
         tipoProyecto: v.tipo_proyecto,
         valor,
         previsionGastos,
+        costesConocidos,
         beneficioPrevisto,
         cobrado,
         beneficioPagado,
