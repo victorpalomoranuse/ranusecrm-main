@@ -35,7 +35,7 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
   const categorias = tipo === 'ingreso' ? CATEGORIAS_INGRESO : CATEGORIAS_GASTO;
 
   useEffect(() => {
-    api.get('/leads').then(r => setLeadsVenta((r.data.leads || []).filter(l => l.estado === 'venta'))).catch(() => {});
+    api.get('/leads').then(r => setLeadsVenta((r.data.leads || []).filter(l => l.estado === 'venta' || l.tipo_diseño === 'diseño_venta'))).catch(() => {});
     api.get('/client-projects').then(r => {
       const map = {};
       (r.data.projects || []).forEach(p => { if (p.lead_id) map[p.lead_id] = p.project_name; });
@@ -91,7 +91,7 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
               <option value="">— Sin enlazar (gasto/ingreso general de empresa) —</option>
               {leadsVenta.map(l => (
                 <option key={l.id} value={l.id}>
-                  {l.nombre} {l.fecha_venta ? `(${l.fecha_venta.slice(0,10)})` : ''}{proyectosPorLead[l.id] ? ` — proyecto: ${proyectosPorLead[l.id]}` : ''}
+                  {l.nombre_proyecto || l.nombre} {(l.fecha_venta || l.fecha_venta_diseño_1) ? `(${(l.fecha_venta || l.fecha_venta_diseño_1).slice(0,10)})` : ''}{proyectosPorLead[l.id] ? ` — proyecto: ${proyectosPorLead[l.id]}` : ''}
                 </option>
               ))}
             </select>
