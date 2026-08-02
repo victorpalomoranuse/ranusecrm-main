@@ -34,6 +34,9 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
     if (req.query.año) {
       query = query.like('periodo', `${req.query.año}%`);
     }
+    if (req.query.alcance && ['equipo', 'propio'].includes(req.query.alcance)) {
+      query = query.eq('alcance', req.query.alcance);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
@@ -46,16 +49,18 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
 
 /**
  * PUT /api/objetivos
- * Upsert de un objetivo (periodo_tipo + periodo + escenario es única).
- * Body: { periodo_tipo, periodo, escenario, importe }
+ * Upsert de un objetivo (periodo_tipo + periodo + escenario + alcance es
+ * único). Body: { periodo_tipo, periodo, escenario, importe, alcance }
+ * alcance: 'equipo' (lo que ve el equipo en Ventas) o 'propio' (solo tú, en Finanzas). Por defecto 'equipo'.
  */
 router.put('/', authenticateToken, requireFinanzas, async (req, res) => {
   try {
-    const { periodo_tipo, periodo, escenario, importe } = req.body;
+    const { periodo_tipo, periodo, escenario, importe, alcance = 'equipo' } = req.body;
 
     if (!TIPOS_PERIODO.includes(periodo_tipo)) return res.status(400).json({ error: 'periodo_tipo inválido' });
     if (!periodo?.trim()) return res.status(400).json({ error: 'periodo requerido' });
     if (!ESCENARIOS.includes(escenario)) return res.status(400).json({ error: 'escenario inválido' });
+    if (!['equipo', 'propio'].includes(alcance)) return res.status(400).json({ error: 'alcance inválido' });
     if (importe === undefined || isNaN(parseFloat(importe)) || parseFloat(importe) < 0) {
       return res.status(400).json({ error: 'importe inválido' });
     }
@@ -67,11 +72,12 @@ router.put('/', authenticateToken, requireFinanzas, async (req, res) => {
           periodo_tipo,
           periodo: periodo.trim(),
           escenario,
+          alcance,
           importe: parseFloat(importe),
           created_by: req.user.id,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: 'periodo_tipo,periodo,escenario' }
+        { onConflict: 'periodo_tipo,periodo,escenario,alcance' }
       )
       .select()
       .single();
@@ -112,11 +118,12 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
   try {
     const periodo_tipo = TIPOS_PERIODO.includes(req.query.periodo_tipo) ? req.query.periodo_tipo : 'mes';
     const periodo = req.query.periodo;
+    const alcance = ['equipo', 'propio'].includes(req.query.alcance) ? req.query.alcance : 'equipo';
     if (!periodo) return res.status(400).json({ error: 'periodo requerido (ej. 2026-08, 2026-Q3, 2026)' });
 
     const [{ data: objetivos, error: errObj }, { data: ventas, error: errVentas }, { data: movimientos, error: errMov }, { data: movVenta, error: errMovVenta }] =
       await Promise.all([
-        supabase.from('objetivos_financieros').select('*').eq('periodo_tipo', periodo_tipo).eq('periodo', periodo),
+        supabase.from('objetivos_financieros').select('*').eq('periodo_tipo', periodo_tipo).eq('periodo', periodo).eq('alcance', alcance),
         supabase.from('ventas').select('id, valor, fecha, tipo_proyecto, prevision_gastos'),
         supabase.from('finanzas_movimientos').select('tipo, monto, fecha'),
         supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').not('venta_id', 'is', null),
@@ -196,6 +203,7 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
     res.json({
       periodo_tipo,
       periodo,
+      alcance,
       beneficioPrevistoPeriodo,
       beneficioLimpioPorProyecto,
       facturacionVendida,
