@@ -282,6 +282,7 @@ export function SectionVentas() {
   const [vista, setVista] = useState('tabla');
   const [modalVenta, setModalVenta] = useState(null);
   const [ventaAbierta, setVentaAbierta] = useState(null);
+  const [openMes, setOpenMes] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
 
   const cargar = useCallback(() => {
@@ -302,6 +303,7 @@ export function SectionVentas() {
         <div><h1>Ventas</h1><p>Cada venta con su valor, previsión de coste/beneficio, cobros y pendiente.</p></div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className={`ap-btn ap-btn-sm ${vista === 'tabla' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVista('tabla')}><Hash size={13} /> Todas</button>
+          <button className={`ap-btn ap-btn-sm ${vista === 'mes' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVista('mes')}><Hash size={13} /> Por mes</button>
           <button className={`ap-btn ap-btn-sm ${vista === 'cliente' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVista('cliente')}><Users size={13} /> Por cliente</button>
           <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setModalVenta('new')}><Plus size={13} /> Nueva venta</button>
         </div>
@@ -336,22 +338,70 @@ export function SectionVentas() {
         <div className="ap-loading">Cargando ventas…</div>
       ) : vista === 'cliente' ? (
         <PanelClientes />
+      ) : vista === 'mes' ? (
+        (data?.porMes || []).length === 0 ? (
+          <div className="ap-empty"><p>Todavía no hay ventas registradas.</p></div>
+        ) : (
+          <div className="vt-meses">
+            {data.porMes.map(m => {
+              const open = openMes === m.mes;
+              return (
+                <div key={m.mes} className="vt-mes-card">
+                  <button className="vt-mes-head" onClick={() => setOpenMes(open ? null : m.mes)}>
+                    <div className="vt-mes-title">
+                      <span className="vt-mes-nombre">{fmtMes(m.mes)}</span>
+                      <span className="vt-mes-count">{m.count} venta{m.count !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="vt-mes-right">
+                      <span style={{ fontSize: 12, color: '#22c55e' }}>Beneficio pagado {fmt(m.totalBeneficioPagado)}</span>
+                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Cobrado {fmt(m.totalCobrado)}</span>
+                      <strong className="vt-mes-total">{fmt(m.total)}</strong>
+                      {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </div>
+                  </button>
+                  {open && (
+                    <div className="vt-mes-table">
+                      <div className="vt-row vt-row--head" style={{ gridTemplateColumns: '1.5fr 1.2fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr' }}>
+                        <span>Cliente / lead</span><span>Proyecto</span><span>Valor venta</span><span>Beneficio previsto</span><span>Pagado</span><span>Beneficio pagado</span><span>Pendiente</span>
+                      </div>
+                      {m.ventas.map(v => (
+                        <div key={v.id}>
+                          <div className="vt-row" style={{ gridTemplateColumns: '1.5fr 1.2fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr', cursor: 'pointer' }} onClick={() => setVentaAbierta(ventaAbierta === v.id ? null : v.id)}>
+                            <span className="vt-lead-nombre">{v.clienteNombre || v.nombre}</span>
+                            <span>{v.nombre}</span>
+                            <span className="vt-valor">{fmt(v.valor)}</span>
+                            <span style={{ color: '#a78bfa', fontWeight: 600 }}>{fmt(v.beneficioPrevisto)}</span>
+                            <span style={{ color: '#22c55e' }}>{fmt(v.cobrado)}</span>
+                            <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(v.beneficioPagado)}</span>
+                            <span style={{ color: v.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(v.pendiente)}</span>
+                          </div>
+                          {ventaAbierta === v.id && <FichaConectada ventaId={v.id} />}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )
       ) : ventas.length === 0 ? (
         <div className="ap-empty"><p>Todavía no hay ventas registradas. Pulsa "Nueva venta" para añadir la primera.</p></div>
       ) : (
         <div className="vt-mes-table" style={{ marginTop: 8 }}>
-          <div className="vt-row vt-row--head" style={{ gridTemplateColumns: '1.6fr 1.3fr 1fr 1fr 1fr 1fr 1fr 90px' }}>
-            <span>Cliente / lead</span><span>Proyecto</span><span>Valor venta</span><span>Costes previstos</span><span>Beneficio previsto</span><span>Pagado</span><span>Pendiente</span><span></span>
+          <div className="vt-row vt-row--head" style={{ gridTemplateColumns: '1.5fr 1.2fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 90px' }}>
+            <span>Cliente / lead</span><span>Proyecto</span><span>Valor venta</span><span>Costes previstos</span><span>Beneficio previsto</span><span>Pagado</span><span>Beneficio pagado</span><span>Pendiente</span><span></span>
           </div>
           {ventas.map(v => (
             <div key={v.id}>
-              <div className="vt-row" style={{ gridTemplateColumns: '1.6fr 1.3fr 1fr 1fr 1fr 1fr 1fr 90px', cursor: 'pointer' }} onClick={() => setVentaAbierta(ventaAbierta === v.id ? null : v.id)}>
+              <div className="vt-row" style={{ gridTemplateColumns: '1.5fr 1.2fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 90px', cursor: 'pointer' }} onClick={() => setVentaAbierta(ventaAbierta === v.id ? null : v.id)}>
                 <span className="vt-lead-nombre">{v.clienteNombre || v.nombre}</span>
                 <span>{v.nombre}</span>
                 <span className="vt-valor">{fmt(v.valor)}</span>
                 <span>{v.previsionGastos != null ? fmt(v.previsionGastos) : '—'}</span>
                 <span style={{ color: '#a78bfa', fontWeight: 600 }}>{fmt(v.beneficioPrevisto)}</span>
                 <span style={{ color: '#22c55e' }}>{fmt(v.cobrado)}</span>
+                <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(v.beneficioPagado)}</span>
                 <span style={{ color: v.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(v.pendiente)}</span>
                 <span style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
                   <button className="ap-btn-icon" onClick={() => setModalVenta(v)}><Pencil size={13} /></button>
