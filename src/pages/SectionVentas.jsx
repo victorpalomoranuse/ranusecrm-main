@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
+import { TrendingUp, Euro, Hash, ChevronDown, ChevronUp, Target, Plus, X, Users, Pencil, Trash2 } from 'lucide-react';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
-import { TrendingUp, Euro, Hash, ChevronDown, ChevronUp, Target, Plus, X, Users } from 'lucide-react';
 import './SectionVentas.css';
+
+const CANALES = ['instagram','tiktok','whatsapp','web','recomendacion','prospeccion','ads','evento','agente','otro'];
 
 function fmt(n) {
   return Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
@@ -25,7 +27,9 @@ function periodoActual(tipo) {
 
 const ESCENARIO_LABEL = { pesimista: 'Pesimista', realista: 'Realista', optimista: 'Optimista' };
 const ESCENARIO_COLOR = { pesimista: '#f87171', realista: '#beb0a2', optimista: '#22c55e' };
+const ESCENARIOS_ORDEN = ['pesimista', 'realista', 'optimista'];
 const PERIODO_TABS = [{ tipo: 'mes', label: 'Mes' }, { tipo: 'trimestre', label: 'Trimestre' }, { tipo: 'año', label: 'Año' }];
+const FASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Instalación', 5: 'Entregado' };
 
 function PanelObjetivos() {
   const [periodoTipo, setPeriodoTipo] = useState('mes');
@@ -60,7 +64,7 @@ function PanelObjetivos() {
       ) : (
         <>
           <div className="vt-objetivos-facturacion">
-            <div><span>Beneficio limpio (por proyecto)</span><strong>{fmt(progreso.beneficioLimpioPorProyecto)}</strong></div>
+            <div><span>Beneficio limpio (por venta)</span><strong>{fmt(progreso.beneficioLimpioPorProyecto)}</strong></div>
             <div><span>Cobrado (referencia)</span><strong style={{ color: 'rgba(255,255,255,0.5)' }}>{fmt(progreso.facturacionCobrada)}</strong></div>
           </div>
           <div className="vt-objetivos-lista">
@@ -84,23 +88,116 @@ function PanelObjetivos() {
   );
 }
 
-const ESCENARIOS_ORDEN = ['pesimista', 'realista', 'optimista'];
-const TIPO_COLOR = { diseño_1: '#06b6d4', diseño_2: '#beb0a2' };
+function VentaModal({ venta, onClose, onSaved }) {
+  const isEdit = !!venta;
+  const [nombre, setNombre] = useState(venta?.nombre || '');
+  const [clienteNombre, setClienteNombre] = useState(venta?.clienteNombre || '');
+  const [instagram, setInstagram] = useState(venta?.cliente_instagram || '');
+  const [email, setEmail] = useState(venta?.cliente_email || '');
+  const [telefono, setTelefono] = useState(venta?.cliente_telefono || '');
+  const [valor, setValor] = useState(venta?.valor ?? '');
+  const [fecha, setFecha] = useState(venta?.fecha?.slice(0, 10) || new Date().toISOString().slice(0, 10));
+  const [canal, setCanal] = useState(venta?.canal || 'recomendacion');
+  const [campaña, setCampaña] = useState(venta?.campaña || '');
+  const [tipoProyecto, setTipoProyecto] = useState(venta?.tipoProyecto || 'solo_diseno');
+  const [previsionIngresos, setPrevisionIngresos] = useState(venta?.prevision_ingresos ?? '');
+  const [previsionGastos, setPrevisionGastos] = useState(venta?.previsionGastos ?? venta?.prevision_gastos ?? '');
+  const [comercialId, setComercialId] = useState(venta?.comercial_id || '');
+  const [notas, setNotas] = useState(venta?.notas || '');
+  const [empleados, setEmpleados] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-const FASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Instalación', 5: 'Entregado' };
+  useEffect(() => { api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {}); }, []);
 
-function FichaConectada({ leadId }) {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!nombre.trim()) { setError('El nombre de la venta es obligatorio'); return; }
+    if (!valor) { setError('Indica el valor de la venta'); return; }
+    setError(''); setLoading(true);
+    try {
+      const payload = {
+        nombre: nombre.trim(), cliente_nombre: clienteNombre.trim() || nombre.trim(),
+        cliente_instagram: instagram || null, cliente_email: email || null, cliente_telefono: telefono || null,
+        valor, fecha, canal, campaña: canal === 'ads' ? campaña : null, tipo_proyecto: tipoProyecto,
+        prevision_ingresos: previsionIngresos || null, prevision_gastos: previsionGastos || null,
+        comercial_id: comercialId || null, notas: notas || null,
+      };
+      if (isEdit) await api.put(`/ventas/${venta.id}`, payload);
+      else await api.post('/ventas', payload);
+      onSaved();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al guardar la venta');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="ap-modal-overlay" onClick={onClose}>
+      <div className="ap-modal" onClick={e => e.stopPropagation()}>
+        <div className="ap-modal-head"><h2>{isEdit ? 'Editar venta' : 'Nueva venta'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16} /></button></div>
+        <form onSubmit={handleSubmit} className="ap-modal-form">
+          <div className="ap-field"><label>Nombre del proyecto / venta *</label><input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej. Home gym residencia Madrid" required autoFocus /></div>
+          <div className="ap-field"><label>Cliente <span className="ap-optional">(opcional, si es distinto al nombre de arriba)</span></label><input value={clienteNombre} onChange={e => setClienteNombre(e.target.value)} placeholder="Nombre del cliente" /></div>
+          <div className="fz-field-row">
+            <div className="ap-field"><label>Instagram</label><input value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="handle sin @" /></div>
+            <div className="ap-field"><label>Email</label><input value={email} onChange={e => setEmail(e.target.value)} placeholder="correo@gmail.com" /></div>
+          </div>
+          <div className="fz-field-row">
+            <div className="ap-field"><label>Valor de venta (€) *</label><input type="number" step="0.01" min="0" value={valor} onChange={e => setValor(e.target.value)} placeholder="0.00" required /></div>
+            <div className="ap-field"><label>Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} /></div>
+          </div>
+          <div className="fz-field-row">
+            <div className="ap-field"><label>Canal</label>
+              <select className="ap-select" value={canal} onChange={e => setCanal(e.target.value)}>
+                {CANALES.map(c => <option key={c} value={c} style={{ textTransform: 'capitalize' }}>{c}</option>)}
+              </select>
+            </div>
+            {canal === 'ads' && (
+              <div className="ap-field"><label>Campaña</label><input value={campaña} onChange={e => setCampaña(e.target.value)} placeholder="Ej. Verano26_IG" /></div>
+            )}
+          </div>
+          <div className="ap-field"><label>Tipo de proyecto</label>
+            <select className="ap-select" value={tipoProyecto} onChange={e => setTipoProyecto(e.target.value)}>
+              <option value="solo_diseno">Solo diseño (limpio)</option>
+              <option value="con_ejecucion">Con ejecución (lleva gastos)</option>
+            </select>
+          </div>
+          <div className="fz-field-row">
+            <div className="ap-field"><label>Previsión de ingresos <span className="ap-optional">(si difiere del valor)</span></label><input type="number" step="0.01" min="0" value={previsionIngresos} onChange={e => setPrevisionIngresos(e.target.value)} placeholder={valor || '0.00'} /></div>
+            <div className="ap-field"><label>Costes previstos <span className="ap-optional">(opcional)</span></label><input type="number" step="0.01" min="0" value={previsionGastos} onChange={e => setPrevisionGastos(e.target.value)} placeholder="0.00" /></div>
+          </div>
+          <div className="ap-field"><label>Comercial <span className="ap-optional">(opcional)</span></label>
+            <select className="ap-select" value={comercialId} onChange={e => setComercialId(e.target.value)}>
+              <option value="">— Sin asignar —</option>
+              {empleados.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </div>
+          <div className="ap-field"><label>Notas <span className="ap-optional">(opcional)</span></label><textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} /></div>
+          {error && <p className="ap-error">{error}</p>}
+          <div className="ap-modal-actions">
+            <button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="ap-btn ap-btn-primary" disabled={loading}>{loading ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Registrar venta'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function FichaConectada({ ventaId }) {
   const [ficha, setFicha] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [verCompleto, setVerCompleto] = useState(false);
 
   useEffect(() => {
     setCargando(true);
-    api.get(`/leads/${leadId}/ficha-cliente`)
+    api.get(`/ventas/${ventaId}/ficha`)
       .then(r => setFicha(r.data))
       .catch(() => setFicha(null))
       .finally(() => setCargando(false));
-  }, [leadId]);
+  }, [ventaId]);
 
   if (cargando) return <div className="vt-ficha-conectada"><span className="ap-loading" style={{ padding: 0 }}>Cargando…</span></div>;
   if (!ficha) return <div className="vt-ficha-conectada"><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>No se pudo cargar la ficha.</span></div>;
@@ -115,109 +212,17 @@ function FichaConectada({ leadId }) {
         <strong>{ficha.proyecto ? `${FASE_LABELS[ficha.proyecto.phase] || ficha.proyecto.phase} · ${ficha.proyecto.project_name}` : 'Sin proyecto enlazado'}</strong>
       </div>
       <div className="vt-ficha-dato" style={{ justifyContent: 'center' }}>
-        <button className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => setVerCompleto(true)}>Ver proyecto completo</button>
+        <button className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => setVerCompleto(true)}>Ver ficha completa</button>
       </div>
-      {verCompleto && <ProyectoCompletoModal leadId={leadId} onClose={() => setVerCompleto(false)} />}
+      {verCompleto && <ProyectoCompletoModal ventaId={ventaId} onClose={() => setVerCompleto(false)} />}
     </div>
   );
 }
 
-function NuevaVentaClienteModal({ cliente: clientePreseleccionado, onClose, onSaved }) {
-  const [clientes, setClientes] = useState([]);
-  const [cargandoClientes, setCargandoClientes] = useState(!clientePreseleccionado);
-  const [clienteId, setClienteId] = useState(clientePreseleccionado?.clienteId || '');
-  const [valor, setValor] = useState('');
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
-  const [tipoProyecto, setTipoProyecto] = useState('solo_diseno');
-  const [notas, setNotas] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (clientePreseleccionado) return;
-    api.get('/ventas/clientes').then(r => setClientes(r.data.clientes || [])).catch(() => {}).finally(() => setCargandoClientes(false));
-  }, [clientePreseleccionado]);
-
-  const cliente = clientePreseleccionado || clientes.find(c => c.clienteId === clienteId);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!cliente) { setError('Elige un cliente'); return; }
-    if (!valor) { setError('Indica el valor de la venta'); return; }
-    setError(''); setLoading(true);
-    try {
-      await api.post('/leads', {
-        nombre: cliente.nombre,
-        instagram: cliente.instagram || undefined,
-        email: cliente.email || undefined,
-        telefono: cliente.telefono || undefined,
-        estado: 'venta',
-        valor_estimado: valor,
-        fecha_venta: fecha,
-        fecha_contacto: fecha,
-        canal: 'recomendacion',
-        tipo_proyecto: tipoProyecto,
-        notas: notas || `Venta adicional a cliente existente (${cliente.numCompras} compra${cliente.numCompras !== 1 ? 's' : ''} previa${cliente.numCompras !== 1 ? 's' : ''})`,
-        pct_cierre: 100,
-      });
-      onSaved();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Error al registrar la venta');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="ap-modal-overlay" onClick={onClose}>
-      <div className="ap-modal" onClick={e => e.stopPropagation()}>
-        <div className="ap-modal-head"><h2>{cliente ? `Nueva venta a ${cliente.nombre}` : 'Nueva venta a cliente existente'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16} /></button></div>
-        <form onSubmit={handleSubmit} className="ap-modal-form">
-          {!clientePreseleccionado && (
-            <div className="ap-field">
-              <label>Cliente *</label>
-              {cargandoClientes ? (
-                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Cargando clientes…</p>
-              ) : clientes.length === 0 ? (
-                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Todavía no hay ningún cliente con ventas registradas.</p>
-              ) : (
-                <select className="ap-select" value={clienteId} onChange={e => setClienteId(e.target.value)} required autoFocus>
-                  <option value="">— Selecciona un cliente —</option>
-                  {clientes.map(c => <option key={c.clienteId} value={c.clienteId}>{c.nombre} · {c.numCompras} compra{c.numCompras !== 1 ? 's' : ''} · {fmt(c.totalVendido)}</option>)}
-                </select>
-              )}
-            </div>
-          )}
-          {cliente && (
-            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: -4 }}>
-              Cliente ya identificado{cliente.instagram ? ` (@${cliente.instagram})` : ''} — {cliente.numCompras} compra{cliente.numCompras !== 1 ? 's' : ''} previa{cliente.numCompras !== 1 ? 's' : ''}, {fmt(cliente.totalVendido)} en total.
-            </p>
-          )}
-          <div className="ap-field"><label>Valor de la venta (€) *</label><input type="number" step="0.01" min="0" value={valor} onChange={e => setValor(e.target.value)} placeholder="0.00" required /></div>
-          <div className="ap-field"><label>Fecha de venta</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} /></div>
-          <div className="ap-field"><label>Tipo de proyecto</label>
-            <select className="ap-select" value={tipoProyecto} onChange={e => setTipoProyecto(e.target.value)}>
-              <option value="solo_diseno">Solo diseño (limpio)</option>
-              <option value="con_ejecucion">Con ejecución (lleva gastos)</option>
-            </select>
-          </div>
-          <div className="ap-field"><label>Notas <span className="ap-optional">(opcional)</span></label><textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} /></div>
-          {error && <p className="ap-error">{error}</p>}
-          <div className="ap-modal-actions">
-            <button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="ap-btn ap-btn-primary" disabled={loading}>{loading ? 'Guardando…' : 'Registrar venta'}</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function PanelClientes() {
+function PanelClientes({ onEditar }) {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [abierto, setAbierto] = useState(null);
-  const [modalCliente, setModalCliente] = useState(null);
   const [verProyecto, setVerProyecto] = useState(null);
 
   const cargar = () => {
@@ -227,7 +232,7 @@ function PanelClientes() {
   useEffect(() => { cargar(); }, []);
 
   if (loading) return <div className="ap-loading">Cargando clientes…</div>;
-  if (clientes.length === 0) return <div className="ap-empty"><p>Todavía no hay clientes con ventas registradas.</p></div>;
+  if (clientes.length === 0) return <div className="ap-empty"><p>Todavía no hay ventas registradas.</p></div>;
 
   return (
     <div className="vt-meses">
@@ -238,7 +243,7 @@ function PanelClientes() {
             <button className="vt-mes-head" onClick={() => setAbierto(open ? null : c.clienteId)}>
               <div className="vt-mes-title">
                 <span className="vt-mes-nombre" style={{ textTransform: 'none' }}>{c.nombre}</span>
-                <span className="vt-mes-count">{c.numCompras} compra{c.numCompras !== 1 ? 's' : ''}{c.numCompras > 1 ? ' 🔁' : ''}</span>
+                <span className="vt-mes-count">{c.numCompras} venta{c.numCompras !== 1 ? 's' : ''}{c.numCompras > 1 ? ' 🔁' : ''}</span>
               </div>
               <div className="vt-mes-right">
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Cobrado {fmt(c.totalCobrado)}</span>
@@ -249,11 +254,11 @@ function PanelClientes() {
             {open && (
               <div className="vt-mes-table">
                 <div className="vt-row vt-row--head">
-                  <span>Tipo</span><span>Canal</span><span>Proyecto</span><span>Fecha</span><span>Cobrado</span><span>Valor</span>
+                  <span>Venta</span><span>Canal</span><span>Proyecto</span><span>Fecha</span><span>Cobrado</span><span>Valor</span>
                 </div>
-                {c.compras.map((compra, i) => (
-                  <div key={i} className="vt-row" onClick={() => setVerProyecto(compra.leadId)} style={{ cursor: 'pointer' }}>
-                    <span><span className="vt-tipo-badge" style={{ background: `${TIPO_COLOR[compra.tipo]}20`, color: TIPO_COLOR[compra.tipo] }}>{compra.tipoLabel}</span></span>
+                {c.compras.map((compra) => (
+                  <div key={compra.ventaId} className="vt-row" onClick={() => setVerProyecto(compra.ventaId)} style={{ cursor: 'pointer' }}>
+                    <span className="vt-lead-nombre">{compra.nombre}</span>
                     <span style={{ textTransform: 'capitalize' }}>{compra.canal || '—'}</span>
                     <span>{compra.tipoProyecto === 'con_ejecucion' ? 'Ejecución' : 'Limpio'}</span>
                     <span>{compra.fecha ? new Date(compra.fecha).toLocaleDateString('es-ES') : '—'}</span>
@@ -261,18 +266,12 @@ function PanelClientes() {
                     <span className="vt-valor">{fmt(compra.valor)}</span>
                   </div>
                 ))}
-                <div style={{ padding: '10px 12px' }}>
-                  <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setModalCliente(c)}><Plus size={13} /> Nueva venta a este cliente</button>
-                </div>
               </div>
             )}
           </div>
         );
       })}
-      {modalCliente && (
-        <NuevaVentaClienteModal cliente={modalCliente} onClose={() => setModalCliente(null)} onSaved={() => { setModalCliente(null); cargar(); }} />
-      )}
-      {verProyecto && <ProyectoCompletoModal leadId={verProyecto} onClose={() => setVerProyecto(null)} />}
+      {verProyecto && <ProyectoCompletoModal ventaId={verProyecto} onClose={() => setVerProyecto(null)} />}
     </div>
   );
 }
@@ -280,157 +279,112 @@ function PanelClientes() {
 export function SectionVentas() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [openMes, setOpenMes] = useState(null);
-  const [filtroTipo, setFiltroTipo] = useState('todas');
+  const [vista, setVista] = useState('tabla');
+  const [modalVenta, setModalVenta] = useState(null);
   const [ventaAbierta, setVentaAbierta] = useState(null);
-  const [vista, setVista] = useState('mes');
-  const [modalNuevaVenta, setModalNuevaVenta] = useState(false);
+  const [confirmId, setConfirmId] = useState(null);
 
-  const cargarVentas = () => {
-    api.get('/ventas')
-      .then(r => {
-        setData(r.data);
-        if (r.data.porMes?.length) setOpenMes(r.data.porMes[0].mes);
-      })
-      .catch(() => setError('No se pudieron cargar las ventas'))
-      .finally(() => setLoading(false));
+  const cargar = useCallback(() => {
+    setLoading(true);
+    api.get('/ventas').then(r => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const handleDelete = async () => {
+    try { await api.delete(`/ventas/${confirmId}`); setConfirmId(null); cargar(); } catch {}
   };
 
-  useEffect(() => { cargarVentas(); }, []);
-
-  const { ventas: todasLasVentas = [], resumen = { total: 0, valorTotal: 0, valorLimpio: 0, valorEjecucion: 0, valorMedio: 0, totalDiseño1: 0, totalDiseño2: 0 } } = data || {};
-
-  // Recalcula la agrupación por mes en función del filtro de tipo seleccionado
-  const ventasFiltradas = filtroTipo === 'todas' ? todasLasVentas : todasLasVentas.filter(v => v.tipo === filtroTipo);
-  const porMesMap = {};
-  ventasFiltradas.forEach(v => {
-    const mes = v.fecha ? v.fecha.slice(0, 7) : 'sin_fecha';
-    if (!porMesMap[mes]) porMesMap[mes] = { mes, total: 0, count: 0, ventas: [] };
-    porMesMap[mes].total += v.valor;
-    porMesMap[mes].count += 1;
-    porMesMap[mes].ventas.push(v);
-  });
-  const porMes = Object.values(porMesMap).sort((a, b) => b.mes.localeCompare(a.mes));
-
-  if (loading) return (
-    <div className="ap-section">
-      <div className="ap-section-head"><h1>Ventas</h1></div>
-      <div className="ap-loading">Cargando ventas…</div>
-    </div>
-  );
-
-  if (error) return (
-    <div className="ap-section">
-      <div className="ap-section-head"><h1>Ventas</h1></div>
-      <div className="ap-empty"><p>{error}</p></div>
-    </div>
-  );
+  const { ventas = [], resumen = { total: 0, valorTotal: 0, valorLimpio: 0, valorEjecucion: 0, valorMedio: 0 } } = data || {};
 
   return (
     <div className="ap-section">
       <div className="ap-section-head">
-        <div><h1>Ventas</h1><p>Venta Diseño 1 (se vende el diseño) y Venta Diseño 2 (venta final del proyecto), agrupadas por mes.</p></div>
+        <div><h1>Ventas</h1><p>Cada venta con su valor, previsión de coste/beneficio, cobros y pendiente.</p></div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className={`ap-btn ap-btn-sm ${vista === 'mes' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVista('mes')}><Hash size={13} /> Por mes</button>
+          <button className={`ap-btn ap-btn-sm ${vista === 'tabla' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVista('tabla')}><Hash size={13} /> Todas</button>
           <button className={`ap-btn ap-btn-sm ${vista === 'cliente' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVista('cliente')}><Users size={13} /> Por cliente</button>
-          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setModalNuevaVenta(true)}><Plus size={13} /> Venta a cliente existente</button>
+          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setModalVenta('new')}><Plus size={13} /> Nueva venta</button>
         </div>
       </div>
 
       <PanelObjetivos />
 
-      {vista === 'mes' ? (
-        <>
-          <div className="vt-stats">
-            <div className="vt-stat-card">
-              <div className="vt-stat-icon"><Hash size={18} /></div>
-              <div className="vt-stat-body"><span>Ventas totales</span><strong>{resumen.total}</strong><span className="vt-stat-sub">{resumen.totalDiseño1} Diseño 1 · {resumen.totalDiseño2} Diseño 2</span></div>
-            </div>
-            <div className="vt-stat-card">
-              <div className="vt-stat-icon"><Euro size={18} /></div>
-              <div className="vt-stat-body"><span>Valor total</span><strong>{fmt(resumen.valorTotal)}</strong></div>
-            </div>
-            <div className="vt-stat-card">
-              <div className="vt-stat-icon"><TrendingUp size={18} /></div>
-              <div className="vt-stat-body"><span>Valor medio / venta</span><strong>{fmt(resumen.valorMedio)}</strong></div>
-            </div>
-            <div className="vt-stat-card">
-              <div className="vt-stat-icon" style={{ color: '#22c55e' }}><Euro size={18} /></div>
-              <div className="vt-stat-body"><span>Vendido limpio</span><strong style={{ color: '#22c55e' }}>{fmt(resumen.valorLimpio)}</strong><span className="vt-stat-sub">Solo diseño, sin gastos</span></div>
-            </div>
-            <div className="vt-stat-card">
-              <div className="vt-stat-icon" style={{ color: '#f5b748' }}><Euro size={18} /></div>
-              <div className="vt-stat-body"><span>Vendido con ejecución</span><strong style={{ color: '#f5b748' }}>{fmt(resumen.valorEjecucion)}</strong><span className="vt-stat-sub">Lleva gastos asociados</span></div>
-            </div>
-          </div>
+      <div className="vt-stats">
+        <div className="vt-stat-card">
+          <div className="vt-stat-icon"><Hash size={18} /></div>
+          <div className="vt-stat-body"><span>Ventas totales</span><strong>{resumen.total}</strong></div>
+        </div>
+        <div className="vt-stat-card">
+          <div className="vt-stat-icon"><Euro size={18} /></div>
+          <div className="vt-stat-body"><span>Valor total vendido</span><strong>{fmt(resumen.valorTotal)}</strong></div>
+        </div>
+        <div className="vt-stat-card">
+          <div className="vt-stat-icon"><TrendingUp size={18} /></div>
+          <div className="vt-stat-body"><span>Valor medio / venta</span><strong>{fmt(resumen.valorMedio)}</strong></div>
+        </div>
+        <div className="vt-stat-card">
+          <div className="vt-stat-icon" style={{ color: '#22c55e' }}><Euro size={18} /></div>
+          <div className="vt-stat-body"><span>Limpio (sin ejecución)</span><strong style={{ color: '#22c55e' }}>{fmt(resumen.valorLimpio)}</strong></div>
+        </div>
+        <div className="vt-stat-card">
+          <div className="vt-stat-icon" style={{ color: '#f5b748' }}><Euro size={18} /></div>
+          <div className="vt-stat-body"><span>Con ejecución</span><strong style={{ color: '#f5b748' }}>{fmt(resumen.valorEjecucion)}</strong></div>
+        </div>
+      </div>
 
-          <div className="vt-filtros">
-            <button className={`ap-btn ap-btn-sm ${filtroTipo === 'todas' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setFiltroTipo('todas')}>Todas</button>
-            <button className={`ap-btn ap-btn-sm ${filtroTipo === 'diseño_1' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setFiltroTipo('diseño_1')}>Venta Diseño 1</button>
-            <button className={`ap-btn ap-btn-sm ${filtroTipo === 'diseño_2' ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setFiltroTipo('diseño_2')}>Venta Diseño 2</button>
-          </div>
-
-          {porMes.length === 0 ? (
-            <div className="ap-empty"><p>Todavía no hay ventas registradas.</p></div>
-          ) : (
-            <div className="vt-meses">
-              {porMes.map(m => {
-                const open = openMes === m.mes;
-                return (
-                  <div key={m.mes} className="vt-mes-card">
-                    <button className="vt-mes-head" onClick={() => setOpenMes(open ? null : m.mes)}>
-                      <div className="vt-mes-title">
-                        <span className="vt-mes-nombre">{fmtMes(m.mes)}</span>
-                        <span className="vt-mes-count">{m.count} venta{m.count !== 1 ? 's' : ''}</span>
-                      </div>
-                      <div className="vt-mes-right">
-                        <strong className="vt-mes-total">{fmt(m.total)}</strong>
-                        {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                      </div>
-                    </button>
-                    {open && (
-                      <div className="vt-mes-table">
-                        <div className="vt-row vt-row--head">
-                          <span>Lead</span><span>Tipo</span><span>Canal</span><span>Comercial</span><span>Fecha</span><span>Valor</span>
-                        </div>
-                        {m.ventas.map(v => (
-                          <div key={v.id}>
-                            <div className="vt-row" onClick={() => setVentaAbierta(ventaAbierta === v.id ? null : v.id)} style={{ cursor: 'pointer' }}>
-                              <span className="vt-lead-nombre">{v.nombre}</span>
-                              <span>
-                                <span className="vt-tipo-badge" style={{ background: `${TIPO_COLOR[v.tipo]}20`, color: TIPO_COLOR[v.tipo] }}>{v.tipoLabel}</span>
-                                {' '}
-                                <span className="vt-tipo-badge" style={{ background: v.tipoProyecto === 'con_ejecucion' ? '#f5b74820' : '#22c55e20', color: v.tipoProyecto === 'con_ejecucion' ? '#f5b748' : '#22c55e' }}>
-                                  {v.tipoProyecto === 'con_ejecucion' ? 'Ejecución' : 'Limpio'}
-                                </span>
-                              </span>
-                              <span>{v.canal || '—'}</span>
-                              <span>{v.comercial || '—'}</span>
-                              <span>{v.fecha ? new Date(v.fecha).toLocaleDateString('es-ES') : '—'}</span>
-                              <span className="vt-valor">{fmt(v.valor)}</span>
-                            </div>
-                            {ventaAbierta === v.id && <FichaConectada leadId={v.leadId} />}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      ) : (
+      {loading ? (
+        <div className="ap-loading">Cargando ventas…</div>
+      ) : vista === 'cliente' ? (
         <PanelClientes />
+      ) : ventas.length === 0 ? (
+        <div className="ap-empty"><p>Todavía no hay ventas registradas. Pulsa "Nueva venta" para añadir la primera.</p></div>
+      ) : (
+        <div className="vt-mes-table" style={{ marginTop: 8 }}>
+          <div className="vt-row vt-row--head" style={{ gridTemplateColumns: '1.6fr 1.3fr 1fr 1fr 1fr 1fr 1fr 90px' }}>
+            <span>Cliente / lead</span><span>Proyecto</span><span>Valor venta</span><span>Costes previstos</span><span>Beneficio previsto</span><span>Pagado</span><span>Pendiente</span><span></span>
+          </div>
+          {ventas.map(v => (
+            <div key={v.id}>
+              <div className="vt-row" style={{ gridTemplateColumns: '1.6fr 1.3fr 1fr 1fr 1fr 1fr 1fr 90px', cursor: 'pointer' }} onClick={() => setVentaAbierta(ventaAbierta === v.id ? null : v.id)}>
+                <span className="vt-lead-nombre">{v.clienteNombre || v.nombre}</span>
+                <span>{v.nombre}</span>
+                <span className="vt-valor">{fmt(v.valor)}</span>
+                <span>{v.previsionGastos != null ? fmt(v.previsionGastos) : '—'}</span>
+                <span style={{ color: '#a78bfa', fontWeight: 600 }}>{fmt(v.beneficioPrevisto)}</span>
+                <span style={{ color: '#22c55e' }}>{fmt(v.cobrado)}</span>
+                <span style={{ color: v.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(v.pendiente)}</span>
+                <span style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                  <button className="ap-btn-icon" onClick={() => setModalVenta(v)}><Pencil size={13} /></button>
+                  <button className="ap-btn-icon" onClick={() => setConfirmId(v.id)}><Trash2 size={13} /></button>
+                </span>
+              </div>
+              {ventaAbierta === v.id && <FichaConectada ventaId={v.id} />}
+            </div>
+          ))}
+        </div>
       )}
 
-      {modalNuevaVenta && (
-        <NuevaVentaClienteModal
-          cliente={null}
-          onClose={() => setModalNuevaVenta(false)}
-          onSaved={() => { setModalNuevaVenta(false); cargarVentas(); }}
+      {modalVenta && (
+        <VentaModal
+          venta={modalVenta === 'new' ? null : modalVenta}
+          onClose={() => setModalVenta(null)}
+          onSaved={() => { setModalVenta(null); cargar(); }}
         />
+      )}
+
+      {confirmId && (
+        <div className="ap-modal-overlay" onClick={() => setConfirmId(null)}>
+          <div className="ap-modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div className="ap-modal-head"><h2>Eliminar venta</h2></div>
+            <div className="ap-modal-form">
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>¿Seguro? Los pagos/gastos que tuviera enlazados se quedarán sin venta asociada.</p>
+              <div className="ap-modal-actions">
+                <button className="ap-btn ap-btn-ghost" onClick={() => setConfirmId(null)}>Cancelar</button>
+                <button className="ap-btn ap-btn-danger" onClick={handleDelete}>Eliminar</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
