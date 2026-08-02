@@ -98,7 +98,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const [leadsVenta, setLeadsVenta] = useState([]);
 
   useEffect(() => { api.get('/employees').then(r => setEmployees(r.data.employees || [])).catch(() => {}); }, []);
-  useEffect(() => { api.get('/leads').then(r => setLeadsVenta((r.data.leads || []).filter(l => l.estado === 'venta'))).catch(() => {}); }, []);
+  useEffect(() => { api.get('/leads').then(r => setLeadsVenta((r.data.leads || []).filter(l => l.estado === 'venta' || l.tipo_diseño === 'diseño_venta'))).catch(() => {}); }, []);
 
   const handleSelectLead = (id) => {
     setLeadId(id);
@@ -130,7 +130,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
             <label>Venta de origen <span className="ap-optional">(opcional, pero rellena el resto automáticamente)</span></label>
             <select className="ap-select" value={leadId} onChange={e => handleSelectLead(e.target.value)}>
               <option value="">— Sin enlazar / cliente sin venta registrada —</option>
-              {leadsVenta.map(l => <option key={l.id} value={l.id}>{l.nombre} {l.fecha_venta ? `(${l.fecha_venta.slice(0,10)})` : ''}</option>)}
+              {leadsVenta.map(l => <option key={l.id} value={l.id}>{l.nombre_proyecto || l.nombre} {(l.fecha_venta || l.fecha_venta_diseño_1) ? `(${(l.fecha_venta || l.fecha_venta_diseño_1).slice(0,10)})` : ''}</option>)}
             </select>
             <span className="ap-field-hint">Al elegir la venta, se rellenan nombre/email/teléfono del cliente solos. Así ves cobros y estado desde Leads/Ventas.</span>
           </div>
