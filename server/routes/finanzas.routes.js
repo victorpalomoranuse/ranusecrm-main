@@ -102,7 +102,7 @@ router.get('/proyectos', authenticateToken, requireFinanzas, async (req, res) =>
   try {
     const { data: leads, error: errLeads } = await supabase
       .from('leads')
-      .select('id, nombre, tipo_proyecto, tipo_diseño, valor_estimado, valor_diseño, fecha_venta, fecha_venta_diseño_1, employees:assigned_to(name)')
+      .select('id, nombre, nombre_proyecto, tipo_proyecto, tipo_diseño, valor_estimado, valor_diseño, fecha_venta, fecha_venta_diseño_1, employees:assigned_to(name)')
       .or('estado.eq.venta,tipo_diseño.eq.diseño_venta');
     if (errLeads) throw errLeads;
 
@@ -121,7 +121,8 @@ router.get('/proyectos', authenticateToken, requireFinanzas, async (req, res) =>
       const presupuesto = Number(l.valor_estimado || 0) + (l.tipo_diseño === 'diseño_venta' ? Number(l.valor_diseño || 0) : 0);
       return {
         leadId: l.id,
-        nombre: l.nombre,
+        nombre: l.nombre_proyecto || l.nombre,
+        nombreCliente: l.nombre,
         tipoProyecto: l.tipo_proyecto || 'solo_diseno',
         comercial: l.employees?.name || null,
         fechaVenta: l.fecha_venta || l.fecha_venta_diseño_1,
@@ -150,7 +151,7 @@ router.get('/proyecto/:leadId', authenticateToken, requireFinanzas, async (req, 
   try {
     const { data: lead, error: errLead } = await supabase
       .from('leads')
-      .select('id, nombre, instagram, email, telefono, canal, campaña, tipo_proyecto, tipo_diseño, valor_estimado, valor_diseño, costes_estimados, fecha_venta, fecha_venta_diseño_1, fecha_contacto, notas, assigned_to, employees:assigned_to(name)')
+      .select('id, nombre, nombre_proyecto, instagram, email, telefono, canal, campaña, tipo_proyecto, tipo_diseño, valor_estimado, valor_diseño, costes_estimados, fecha_venta, fecha_venta_diseño_1, fecha_contacto, notas, assigned_to, employees:assigned_to(name)')
       .eq('id', req.params.leadId)
       .single();
     if (errLead) throw errLead;
@@ -172,7 +173,8 @@ router.get('/proyecto/:leadId', authenticateToken, requireFinanzas, async (req, 
     res.json({
       proyecto: {
         leadId: lead.id,
-        nombre: lead.nombre,
+        nombre: lead.nombre_proyecto || lead.nombre,
+        nombreCliente: lead.nombre,
         instagram: lead.instagram,
         email: lead.email,
         telefono: lead.telefono,
