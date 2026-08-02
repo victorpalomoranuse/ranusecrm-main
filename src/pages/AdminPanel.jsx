@@ -94,26 +94,37 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const [error, setError] = useState('');
   const [employees, setEmployees] = useState([]);
   const [responsibleId, setResponsibleId] = useState(project?.responsible?.id || project?.responsible_id || '');
-  const [leadId, setLeadId] = useState(project?.lead_id || '');
-  const [leadsVenta, setLeadsVenta] = useState([]);
+  const [ventaId, setVentaId] = useState(project?.venta_id || '');
+  const [ventas, setVentas] = useState([]);
+  const [buscarVenta, setBuscarVenta] = useState('');
 
   useEffect(() => { api.get('/employees').then(r => setEmployees(r.data.employees || [])).catch(() => {}); }, []);
-  useEffect(() => { api.get('/leads').then(r => setLeadsVenta((r.data.leads || []).filter(l => l.estado === 'venta' || l.tipo_diseño === 'diseño_venta'))).catch(() => {}); }, []);
+  useEffect(() => { api.get('/ventas').then(r => setVentas(r.data.ventas || [])).catch(() => {}); }, []);
 
-  const handleSelectLead = (id) => {
-    setLeadId(id);
-    const lead = leadsVenta.find(l => l.id === id);
-    if (lead) {
-      setClientName(lead.nombre || '');
-      setClientEmail(lead.email || '');
-      setClientPhone(lead.telefono || '');
+  // Si es un proyecto ya creado sin enlazar, sugiere automáticamente la venta
+  // cuyo cliente coincide con el del proyecto (no lo aplica solo, solo lo
+  // resalta para elegir con un clic).
+  const sugerida = !ventaId && isEdit && clientName
+    ? ventas.find(v => (v.clienteNombre || v.nombre || '').trim().toLowerCase() === clientName.trim().toLowerCase())
+    : null;
+
+  const ventasFiltradas = buscarVenta.trim()
+    ? ventas.filter(v => v.nombre.toLowerCase().includes(buscarVenta.trim().toLowerCase()) || (v.clienteNombre || '').toLowerCase().includes(buscarVenta.trim().toLowerCase()))
+    : ventas;
+
+  const handleSelectVenta = (id) => {
+    setVentaId(id);
+    const venta = ventas.find(v => v.id === id);
+    if (venta) {
+      setClientName(venta.clienteNombre || venta.nombre || '');
+      if (!projectName) setProjectName(venta.nombre || '');
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const payload = { client_name: clientName, project_name: projectName, client_email: clientEmail || null, access_code: accessCode, phase, urgency, notes: notes || null, responsible_id: responsibleId || null, client_nif: clientNif || null, client_phone: clientPhone || null, client_address: clientAddress || null, client_city: clientCity || null, lead_id: leadId || null };
+      const payload = { client_name: clientName, project_name: projectName, client_email: clientEmail || null, access_code: accessCode, phase, urgency, notes: notes || null, responsible_id: responsibleId || null, client_nif: clientNif || null, client_phone: clientPhone || null, client_address: clientAddress || null, client_city: clientCity || null, venta_id: ventaId || null };
       let saved;
       if (isEdit) { const { data } = await api.put(`/client-projects/${project.id}`, payload); saved = data.project; }
       else { const { data } = await api.post('/client-projects', payload); saved = data.project; }
@@ -128,11 +139,20 @@ function ClientProjectModal({ project, onClose, onSaved }) {
         <form onSubmit={handleSubmit} className="ap-modal-form">
           <div className="ap-field">
             <label>Venta de origen <span className="ap-optional">(opcional, pero rellena el resto automáticamente)</span></label>
-            <select className="ap-select" value={leadId} onChange={e => handleSelectLead(e.target.value)}>
+            {sugerida && (
+              <div style={{ background:'rgba(167,139,250,0.1)', border:'1px solid rgba(167,139,250,0.3)', borderRadius:8, padding:'6px 10px', marginBottom:6, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:12, color:'#a78bfa' }}>¿Es esta venta? {sugerida.nombre} {sugerida.fecha ? `(${sugerida.fecha.slice(0,10)})` : ''}</span>
+                <button type="button" className="ap-btn ap-btn-primary ap-btn-xs" onClick={() => handleSelectVenta(sugerida.id)}>Enlazar</button>
+              </div>
+            )}
+            {ventas.length > 8 && (
+              <input value={buscarVenta} onChange={e => setBuscarVenta(e.target.value)} placeholder="Buscar por nombre…" className="ap-select" style={{ marginBottom: 6 }} />
+            )}
+            <select className="ap-select" value={ventaId} onChange={e => handleSelectVenta(e.target.value)}>
               <option value="">— Sin enlazar / cliente sin venta registrada —</option>
-              {leadsVenta.map(l => <option key={l.id} value={l.id}>{l.nombre_proyecto || l.nombre} {(l.fecha_venta || l.fecha_venta_diseño_1) ? `(${(l.fecha_venta || l.fecha_venta_diseño_1).slice(0,10)})` : ''}</option>)}
+              {ventasFiltradas.map(v => <option key={v.id} value={v.id}>{v.nombre} {v.fecha ? `(${v.fecha.slice(0,10)})` : ''}</option>)}
             </select>
-            <span className="ap-field-hint">Al elegir la venta, se rellenan nombre/email/teléfono del cliente solos. Así ves cobros y estado desde Leads/Ventas.</span>
+            <span className="ap-field-hint">Al elegir la venta, se rellenan nombre del cliente y proyecto solos. Así ves cobros y estado desde Ventas.</span>
           </div>
           <div className="ap-field"><label>Nombre del cliente *</label><input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Pedro García" required /></div>
           <div className="ap-field"><label>Nombre del proyecto *</label><input value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="Home gym residencia Madrid" required /></div>
@@ -690,7 +710,7 @@ function SectionTrabajos() {
 const PAGE_SIZE_PROYECTOS=6;
 
 function SectionProyectos() {
-  const [projects,setProjects]=useState([]); const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null); const [confirmId,setConfirmId]=useState(null); const [manageProject,setManageProject]=useState(null); const [page,setPage]=useState(1); const [verProyectoLead,setVerProyectoLead]=useState(null);
+  const [projects,setProjects]=useState([]); const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null); const [confirmId,setConfirmId]=useState(null); const [manageProject,setManageProject]=useState(null); const [page,setPage]=useState(1); const [verProyectoVenta,setVerProyectoVenta]=useState(null);
   const {toasts,toast,remove}=useToast();
   const loadProjects=async()=>{try{const{data}=await api.get('/client-projects');setProjects(data.projects||[]);}catch{}finally{setLoading(false);}};
   useEffect(()=>{loadProjects();},[]);
@@ -702,12 +722,12 @@ function SectionProyectos() {
       <ToastContainer toasts={toasts} onRemove={remove}/>
       <div className="ap-section-head"><div><h1>Proyectos</h1><p>Genera proyectos con códigos de acceso para tus clientes.</p></div><button className="ap-btn ap-btn-primary" onClick={()=>setModal('new')}><Plus size={15}/> Generar proyecto</button></div>
       {loading?<div className="ap-loading">Cargando proyectos...</div>:projects.length===0?<div className="ap-empty"><p>No hay proyectos todavía.</p></div>:(
-        <><div className="ap-cp-grid">{projects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[1,2,3,4,5].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions">{p.lead_id&&<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setVerProyectoLead(p.lead_id)}>Ver relación completa</button>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={projects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
+        <><div className="ap-cp-grid">{projects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[1,2,3,4,5].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions">{p.venta_id&&<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setVerProyectoVenta(p.venta_id)}>Ver relación completa</button>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={projects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
       )}
       {modal&&<ClientProjectModal project={modal==='new'?null:modal} onClose={()=>setModal(null)} onSaved={(saved)=>{if(modal==='new')setProjects(prev=>[saved,...prev]);else setProjects(prev=>prev.map(p=>p.id===saved.id?saved:p));setModal(null);toast.success('Proyecto guardado correctamente');}}/>}
       {confirmId&&<ConfirmDialog message="¿Eliminar este proyecto? El código de acceso quedará inválido." onConfirm={handleDelete} onCancel={()=>setConfirmId(null)}/>}
       {manageProject&&<ProjectManagerModal project={manageProject} onClose={()=>setManageProject(null)}/>}
-      {verProyectoLead&&<ProyectoCompletoModal leadId={verProyectoLead} onClose={()=>setVerProyectoLead(null)}/>}
+      {verProyectoVenta&&<ProyectoCompletoModal ventaId={verProyectoVenta} onClose={()=>setVerProyectoVenta(null)}/>}
     </div>
   );
 }
