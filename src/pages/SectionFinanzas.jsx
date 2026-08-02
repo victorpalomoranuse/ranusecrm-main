@@ -26,20 +26,20 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
   const [fecha, setFecha] = useState(movimiento?.fecha?.slice(0, 10) || new Date().toISOString().slice(0, 10));
   const [metodoPago, setMetodoPago] = useState(movimiento?.metodo_pago || '');
   const [notas, setNotas] = useState(movimiento?.notas || '');
-  const [leadId, setLeadId] = useState(movimiento?.lead_id || '');
-  const [leadsVenta, setLeadsVenta] = useState([]);
-  const [proyectosPorLead, setProyectosPorLead] = useState({});
+  const [ventaId, setVentaId] = useState(movimiento?.venta_id || '');
+  const [ventas, setVentas] = useState([]);
+  const [proyectosPorVenta, setProyectosPorVenta] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const categorias = tipo === 'ingreso' ? CATEGORIAS_INGRESO : CATEGORIAS_GASTO;
 
   useEffect(() => {
-    api.get('/leads').then(r => setLeadsVenta((r.data.leads || []).filter(l => l.estado === 'venta' || l.tipo_diseño === 'diseño_venta'))).catch(() => {});
+    api.get('/ventas').then(r => setVentas(r.data.ventas || [])).catch(() => {});
     api.get('/client-projects').then(r => {
       const map = {};
-      (r.data.projects || []).forEach(p => { if (p.lead_id) map[p.lead_id] = p.project_name; });
-      setProyectosPorLead(map);
+      (r.data.projects || []).forEach(p => { if (p.venta_id) map[p.venta_id] = p.project_name; });
+      setProyectosPorVenta(map);
     }).catch(() => {});
   }, []);
 
@@ -49,7 +49,7 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
     if (!categoria || !concepto.trim() || !monto) { setError('Completa categoría, concepto e importe'); return; }
     setLoading(true);
     try {
-      const payload = { tipo, categoria, concepto, monto, fecha, metodo_pago: metodoPago || null, notas, lead_id: leadId || null };
+      const payload = { tipo, categoria, concepto, monto, fecha, metodo_pago: metodoPago || null, notas, venta_id: ventaId || null };
       const { data } = isEdit
         ? await api.put(`/finanzas/${movimiento.id}`, payload)
         : await api.post('/finanzas', payload);
@@ -86,12 +86,12 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
             <input value={concepto} onChange={e => setConcepto(e.target.value)} placeholder="Ej: Pago proveedor renders" required />
           </div>
           <div className="ap-field">
-            <label>Proyecto / lead <span className="ap-optional">(opcional, pero enlázalo si es un cobro o gasto de una venta concreta)</span></label>
-            <select className="ap-select" value={leadId} onChange={e => setLeadId(e.target.value)}>
+            <label>Venta <span className="ap-optional">(opcional, pero enlázalo si es un cobro o gasto de una venta concreta)</span></label>
+            <select className="ap-select" value={ventaId} onChange={e => setVentaId(e.target.value)}>
               <option value="">— Sin enlazar (gasto/ingreso general de empresa) —</option>
-              {leadsVenta.map(l => (
-                <option key={l.id} value={l.id}>
-                  {l.nombre_proyecto || l.nombre} {(l.fecha_venta || l.fecha_venta_diseño_1) ? `(${(l.fecha_venta || l.fecha_venta_diseño_1).slice(0,10)})` : ''}{proyectosPorLead[l.id] ? ` — proyecto: ${proyectosPorLead[l.id]}` : ''}
+              {ventas.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.nombre} {v.fecha ? `(${v.fecha.slice(0,10)})` : ''}{proyectosPorVenta[v.id] ? ` — proyecto: ${proyectosPorVenta[v.id]}` : ''}
                 </option>
               ))}
             </select>
@@ -587,7 +587,7 @@ export function SectionFinanzas() {
           </div>
           {movimientos.map(m => (
             <div key={m.id} className="fz-row">
-              <span className="fz-concepto">{m.concepto}{m.leads?.nombre && <span className="fz-lead-tag">{m.leads.nombre}</span>}</span>
+              <span className="fz-concepto">{m.concepto}{m.ventas?.nombre && <span className="fz-lead-tag">{m.ventas.nombre}</span>}</span>
               <span>{m.categoria}</span>
               <span>{m.metodo_pago || '—'}</span>
               <span>{new Date(m.fecha).toLocaleDateString('es-ES')}</span>
