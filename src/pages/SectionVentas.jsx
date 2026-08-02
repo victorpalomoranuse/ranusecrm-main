@@ -38,7 +38,7 @@ function PanelObjetivos() {
 
   useEffect(() => {
     setCargando(true);
-    api.get('/objetivos/progreso', { params: { periodo_tipo: periodoTipo, periodo: periodoActual(periodoTipo) } })
+    api.get('/objetivos/progreso', { params: { periodo_tipo: periodoTipo, periodo: periodoActual(periodoTipo), alcance: 'equipo' } })
       .then(r => setProgreso(r.data))
       .catch(() => setProgreso(null))
       .finally(() => setCargando(false));
