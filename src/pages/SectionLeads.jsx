@@ -9,27 +9,63 @@ function fmtEurLocal(n) {
   return Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 }
 
-function FichaConectadaLead({ leadId }) {
-  const [ficha, setFicha] = useState(null);
+function VentasDelLead({ leadId, onVerProyecto }) {
+  const [ventas, setVentas] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [convirtiendo, setConvirtiendo] = useState(false);
+  const [nombreNueva, setNombreNueva] = useState('');
+  const [valorNueva, setValorNueva] = useState('');
+  const [mostrarForm, setMostrarForm] = useState(false);
 
-  useEffect(() => {
+  const cargar = () => {
     setCargando(true);
-    api.get(`/leads/${leadId}/ficha-cliente`)
-      .then(r => setFicha(r.data))
-      .catch(() => setFicha(null))
+    api.get('/ventas', { params: { lead_id: leadId } })
+      .then(r => setVentas(r.data.ventas || []))
+      .catch(() => setVentas([]))
       .finally(() => setCargando(false));
-  }, [leadId]);
+  };
+  useEffect(() => { cargar(); }, [leadId]);
 
-  if (cargando) return <div style={{ padding:'10px 0', fontSize:12, color:'rgba(255,255,255,0.4)' }}>Cargando ficha de cobros…</div>;
-  if (!ficha) return null;
+  const convertir = async () => {
+    if (!valorNueva) return;
+    setConvirtiendo(true);
+    try {
+      await api.post(`/leads/${leadId}/convertir-venta`, { nombre: nombreNueva || undefined, valor: valorNueva });
+      setMostrarForm(false); setNombreNueva(''); setValorNueva('');
+      cargar();
+    } catch {
+      // noop
+    } finally {
+      setConvirtiendo(false);
+    }
+  };
+
+  if (cargando) return <div style={{ padding:'10px 0', fontSize:12, color:'rgba(255,255,255,0.4)' }}>Cargando ventas…</div>;
 
   return (
-    <div style={{ display:'flex', flexWrap:'wrap', gap:16, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'10px 12px', margin:'10px 0' }}>
-      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Presupuesto</div><strong style={{ fontSize:13 }}>{fmtEurLocal(ficha.presupuesto)}</strong></div>
-      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Cobrado</div><strong style={{ fontSize:13, color:'#22c55e' }}>{fmtEurLocal(ficha.cobrado)}</strong></div>
-      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Pendiente</div><strong style={{ fontSize:13, color: ficha.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmtEurLocal(ficha.pendiente)}</strong></div>
-      <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Proyecto</div><strong style={{ fontSize:13 }}>{ficha.proyecto ? `${FASE_LABELS[ficha.proyecto.phase] || ficha.proyecto.phase} · ${ficha.proyecto.project_name}` : 'Sin proyecto enlazado'}</strong></div>
+    <div style={{ margin:'10px 0' }}>
+      {ventas.length > 0 && (
+        <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:8 }}>
+          {ventas.map(v => (
+            <div key={v.id} onClick={() => onVerProyecto(v.id)} style={{ display:'flex', flexWrap:'wrap', gap:16, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'10px 12px', cursor:'pointer' }}>
+              <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Venta</div><strong style={{ fontSize:13 }}>{v.nombre}</strong></div>
+              <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Valor</div><strong style={{ fontSize:13 }}>{fmtEurLocal(v.valor)}</strong></div>
+              <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Cobrado</div><strong style={{ fontSize:13, color:'#22c55e' }}>{fmtEurLocal(v.cobrado)}</strong></div>
+              <div><div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', textTransform:'uppercase' }}>Pendiente</div><strong style={{ fontSize:13, color: v.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmtEurLocal(v.pendiente)}</strong></div>
+            </div>
+          ))}
+        </div>
+      )}
+      {mostrarForm ? (
+        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+          <input value={nombreNueva} onChange={e => setNombreNueva(e.target.value)} placeholder="Nombre del proyecto (opcional)" className="ap-select" style={{ flex:1, minWidth:160 }} />
+          <input type="number" step="0.01" min="0" value={valorNueva} onChange={e => setValorNueva(e.target.value)} placeholder="Valor €" className="ap-select" style={{ width:110 }} />
+          <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={convirtiendo || !valorNueva} onClick={convertir}>{convirtiendo ? '...' : 'Crear venta'}</button>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setMostrarForm(false)}>Cancelar</button>
+        </div>
+      ) : (
+        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setMostrarForm(true)}>+ Convertir en venta</button>
+      )}
     </div>
   );
 }
@@ -299,13 +335,15 @@ export function SectionLeads() {
     const diseño1 = yaDecidido.filter(l => l.tipo_diseño === 'diseño_venta').length;
     const pct = (a, b) => b > 0 ? `${Math.round((a/b)*100)}%` : '—';
     // Cierre global = todas las ventas en relación a llamadas de descubrimiento + llamadas de venta
-    const cierreGlobal = pct(ventasTotal, conLlamada + conLlamadaVenta);
+    const numVentas = f.reduce((s, l) => s + (l.num_ventas || 0), 0);
+    const beneficioTotal = f.reduce((s, l) => s + (l.beneficio_total || 0), 0);
+    const cierreGlobal = pct(numVentas, conLlamada + conLlamadaVenta);
     const recurrentes = f.filter(l => l.estado === 'venta' && l.cliente_recurrente).length;
     return [
       { label:'Total',           val: total },
       { label:'Activos',         val: activos },
-      { label:'Ventas',          val: ventasTotal, color:'#beb0a2' },
-      { label:'Valor ventas',    val: fmtEur(valorVentasTotal), color:'#beb0a2' },
+      { label:'Nº de ventas',    val: numVentas, color:'#beb0a2' },
+      { label:'Beneficio',       val: fmtEur(beneficioTotal), color:'#beb0a2' },
       { label:'Clientes recurrentes', val: recurrentes, color:'#a78bfa' },
       { label:'Comisiones/extras', val: fmtEur(valorComisiones), color:'#a78bfa' },
       { label:'Resp. chat',      val: pct(conRespuesta, total) },
@@ -697,12 +735,7 @@ export function SectionLeads() {
               </button>
             ))}
           </div>
-          {(panel.estado === 'venta' || panel.tipo_diseño === 'diseño_venta') && (
-            <>
-              <FichaConectadaLead leadId={panel.id} />
-              <button className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginBottom: 10 }} onClick={() => setModalProyectoCompleto(panel.id)}>Ver proyecto completo</button>
-            </>
-          )}
+          <VentasDelLead leadId={panel.id} onVerProyecto={setModalProyectoCompleto} />
           {[
             ['Canal',            panel.canal || '—'],
             ...(panel.canal === 'ads' && panel.campaña ? [['Campaña', panel.campaña]] : []),
@@ -860,7 +893,7 @@ export function SectionLeads() {
       )}
 
       {modalProyectoCompleto && (
-        <ProyectoCompletoModal leadId={modalProyectoCompleto} onClose={() => setModalProyectoCompleto(null)} />
+        <ProyectoCompletoModal ventaId={modalProyectoCompleto} onClose={() => setModalProyectoCompleto(null)} />
       )}
     </div>
   );
