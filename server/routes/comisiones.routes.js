@@ -181,6 +181,125 @@ router.get('/calculo', authenticateToken, requireFinanzas, async (req, res) => {
 });
 
 /**
+ * Calcula, para una lista de asignaciones venta_comisiones (opcionalmente
+ * filtradas por nombre), cuánto de esa comisión ya está "devengado" (según
+ * lo que el cliente ha pagado de esa venta hasta ahora) y cuánto queda
+ * pendiente para cuando pague más.
+ */
+async function calcularComisionesPorVenta(nombreFiltro) {
+  let query = supabase.from('venta_comisiones').select('*, venta:ventas(id, nombre, valor, tipo_proyecto, prevision_ingresos, prevision_gastos)');
+  if (nombreFiltro) query = query.eq('nombre', nombreFiltro);
+  const { data: asignaciones, error } = await query;
+  if (error) throw error;
+  if (asignaciones.length === 0) return [];
+
+  const ventaIds = [...new Set(asignaciones.map(a => a.venta_id))];
+  const { data: movimientos } = await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').in('venta_id', ventaIds);
+  const cobradoPorVenta = {};
+  (movimientos || []).forEach(m => {
+    if (m.tipo !== 'ingreso') return;
+    cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+  });
+
+  return asignaciones.map(a => {
+    const v = a.venta;
+    const valor = Number(v?.valor || 0);
+    const presupuesto = Number(v?.prevision_ingresos ?? v?.valor ?? 0);
+    const costes = v?.prevision_gastos != null ? Number(v.prevision_gastos) : null;
+    const beneficioPrevisto = v?.tipo_proyecto === 'solo_diseno' ? valor : (costes != null ? valor - costes : 0);
+    const cobrado = cobradoPorVenta[a.venta_id] || 0;
+    const proporcionCobrada = presupuesto > 0 ? Math.min(cobrado / presupuesto, 1) : 0;
+
+    const comisionTotal = a.tipo === 'fijo' ? Number(a.valor) : beneficioPrevisto * (Number(a.valor) / 100);
+    const devengada = comisionTotal * proporcionCobrada;
+    const pendiente = comisionTotal - devengada;
+
+    return {
+      id: a.id,
+      ventaId: a.venta_id,
+      ventaNombre: v?.nombre || '—',
+      nombre: a.nombre,
+      tipo: a.tipo,
+      valor: Number(a.valor),
+      notas: a.notas,
+      comisionTotal,
+      proporcionCobradaPct: Math.round(proporcionCobrada * 100),
+      devengada,
+      pendiente,
+    };
+  });
+}
+
+/**
+ * GET /api/comisiones/venta/:ventaId
+ * Comisiones asignadas a una venta concreta (admin).
+ */
+router.get('/venta/:ventaId', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('venta_comisiones').select('*').eq('venta_id', req.params.ventaId).order('created_at');
+    if (error) throw error;
+    const calculadas = await calcularComisionesPorVenta(null);
+    const deEstaVenta = calculadas.filter(c => c.ventaId === req.params.ventaId);
+    res.json({ comisiones: data.map(d => ({ ...d, calculo: deEstaVenta.find(c => c.id === d.id) || null })) });
+  } catch (error) {
+    console.error('Error al listar comisiones de la venta:', error);
+    res.status(500).json({ error: 'Error al listar comisiones de la venta' });
+  }
+});
+
+/**
+ * POST /api/comisiones/venta/:ventaId
+ * Añade una asignación de comisión a una venta. Body: { nombre, tipo, valor, notas }
+ */
+router.post('/venta/:ventaId', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const { nombre, tipo = 'porcentaje', valor, notas } = req.body;
+    if (!nombre?.trim()) return res.status(400).json({ error: 'nombre requerido' });
+    if (!['porcentaje', 'fijo'].includes(tipo)) return res.status(400).json({ error: 'tipo inválido' });
+    if (valor === undefined || isNaN(parseFloat(valor))) return res.status(400).json({ error: 'valor inválido' });
+
+    const { data, error } = await supabase
+      .from('venta_comisiones')
+      .insert({ venta_id: req.params.ventaId, nombre: nombre.trim(), tipo, valor: parseFloat(valor), notas: notas?.trim() || null })
+      .select()
+      .single();
+    if (error) throw error;
+    res.status(201).json({ comision: data });
+  } catch (error) {
+    console.error('Error al asignar comisión:', error);
+    res.status(500).json({ error: 'Error al asignar comisión', detalle: error.message });
+  }
+});
+
+router.put('/venta/:ventaId/:comisionId', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const { nombre, tipo, valor, notas } = req.body;
+    const updates = {};
+    if (nombre !== undefined) updates.nombre = nombre.trim();
+    if (tipo !== undefined && ['porcentaje', 'fijo'].includes(tipo)) updates.tipo = tipo;
+    if (valor !== undefined) updates.valor = parseFloat(valor);
+    if (notas !== undefined) updates.notas = notas?.trim() || null;
+    updates.updated_at = new Date().toISOString();
+
+    const { data, error } = await supabase.from('venta_comisiones').update(updates).eq('id', req.params.comisionId).select().single();
+    if (error) throw error;
+    res.json({ comision: data });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar comisión' });
+  }
+});
+
+router.delete('/venta/:ventaId/:comisionId', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const { error } = await supabase.from('venta_comisiones').delete().eq('id', req.params.comisionId);
+    if (error) throw error;
+    res.json({ message: 'Eliminada' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar' });
+  }
+});
+
+/**
  * GET /api/comisiones/mia?periodo_tipo=mes&periodo=2026-08
  * Autoservicio: cualquier persona autenticada (no requiere permiso de
  * finanzas) puede ver SOLO su propia fila, si un admin la enlazó a su
@@ -199,6 +318,8 @@ router.get('/mia', authenticateToken, async (req, res) => {
       return res.json({ encontrado: false, mensaje: 'Todavía no tienes una comisión configurada. Pídele a tu admin que te enlace en Finanzas → Comisiones.' });
     }
 
+    const porVenta = await calcularComisionesPorVenta(miFila.nombre);
+
     res.json({
       encontrado: true,
       periodo_tipo,
@@ -208,6 +329,7 @@ router.get('/mia', authenticateToken, async (req, res) => {
       comisionEstimada: miFila.comisionCalculada,
       yaPagado: miFila.yaPagado,
       pendiente: miFila.pendiente,
+      porVenta,
       nota: calculo.reservaPendiente > 0
         ? 'Esta cifra ya descuenta una reserva por proyectos con ejecución que aún no han terminado (su coste final todavía no se conoce del todo), así que puede subir un poco más adelante.'
         : null,
