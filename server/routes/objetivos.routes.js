@@ -114,33 +114,29 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
     const periodo = req.query.periodo;
     if (!periodo) return res.status(400).json({ error: 'periodo requerido (ej. 2026-08, 2026-Q3, 2026)' });
 
-    const [{ data: objetivos, error: errObj }, { data: leads, error: errLeads }, { data: movimientos, error: errMov }] =
+    const [{ data: objetivos, error: errObj }, { data: ventas, error: errVentas }, { data: movimientos, error: errMov }, { data: movVenta, error: errMovVenta }] =
       await Promise.all([
         supabase.from('objetivos_financieros').select('*').eq('periodo_tipo', periodo_tipo).eq('periodo', periodo),
-        supabase.from('leads').select('valor_estimado, fecha_venta, valor_diseño, fecha_venta_diseño_1, tipo_proyecto').or('estado.eq.venta,tipo_diseño.eq.diseño_venta'),
+        supabase.from('ventas').select('id, valor, fecha, tipo_proyecto'),
         supabase.from('finanzas_movimientos').select('tipo, monto, fecha'),
+        supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').not('venta_id', 'is', null),
       ]);
     if (errObj) throw errObj;
-    if (errLeads) throw errLeads;
+    if (errVentas) throw errVentas;
     if (errMov) throw errMov;
+    if (errMovVenta) throw errMovVenta;
 
     // Facturación VENDIDA: importe de cada venta en la fecha en que se cerró,
     // desglosada entre "limpia" (solo diseño, sin gastos) y "con ejecución"
     let facturacionVendida = 0;
     let facturacionVendidaLimpia = 0;
     let facturacionVendidaEjecucion = 0;
-    leads.forEach(l => {
-      const esEjecucion = l.tipo_proyecto === 'con_ejecucion';
-      if (l.fecha_venta && claveDePeriodo(l.fecha_venta, periodo_tipo) === periodo) {
-        const v = Number(l.valor_estimado || 0);
-        facturacionVendida += v;
-        if (esEjecucion) facturacionVendidaEjecucion += v; else facturacionVendidaLimpia += v;
-      }
-      if (l.fecha_venta_diseño_1 && claveDePeriodo(l.fecha_venta_diseño_1, periodo_tipo) === periodo) {
-        const v = Number(l.valor_diseño || 0);
-        facturacionVendida += v;
-        if (esEjecucion) facturacionVendidaEjecucion += v; else facturacionVendidaLimpia += v;
-      }
+    ventas.forEach(v => {
+      if (!v.fecha || claveDePeriodo(v.fecha, periodo_tipo) !== periodo) return;
+      const importe = Number(v.valor || 0);
+      facturacionVendida += importe;
+      if (v.tipo_proyecto === 'con_ejecucion') facturacionVendidaEjecucion += importe;
+      else facturacionVendidaLimpia += importe;
     });
 
     // Facturación COBRADA: ingresos reales registrados en caja durante el periodo
@@ -153,6 +149,22 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
     });
     const facturacionNeta = facturacionCobrada - gastosPeriodo;
 
+    // BENEFICIO LIMPIO POR VENTA (antes de comisiones): para cada venta
+    // cerrada en este periodo, su margen real (cobrado − gastos, en toda su
+    // vida, no solo este periodo), sumado. Esta es la métrica que cuenta de
+    // verdad para el objetivo — no la caja general.
+    const cobradoPorVenta = {};
+    const gastosPorVenta = {};
+    (movVenta || []).forEach(m => {
+      if (m.tipo === 'ingreso') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+      else gastosPorVenta[m.venta_id] = (gastosPorVenta[m.venta_id] || 0) + Number(m.monto);
+    });
+    let beneficioLimpioPorProyecto = 0;
+    ventas.forEach(v => {
+      if (!v.fecha || claveDePeriodo(v.fecha, periodo_tipo) !== periodo) return;
+      beneficioLimpioPorProyecto += (cobradoPorVenta[v.id] || 0) - (gastosPorVenta[v.id] || 0);
+    });
+
     const puedeVerFinanzas = req.user.role === 'admin_superior' || req.user.permissions?.finanzas === true;
 
     const porEscenario = {};
@@ -163,8 +175,10 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
         objetivo: importeObjetivo,
         restaVendido: importeObjetivo !== null ? Math.max(importeObjetivo - facturacionVendida, 0) : null,
         restaCobrado: importeObjetivo !== null ? Math.max(importeObjetivo - facturacionCobrada, 0) : null,
+        restaBeneficioLimpio: importeObjetivo !== null ? Math.max(importeObjetivo - beneficioLimpioPorProyecto, 0) : null,
         cumplidoVendidoPct: importeObjetivo ? Math.round((facturacionVendida / importeObjetivo) * 100) : null,
         cumplidoCobradoPct: importeObjetivo ? Math.round((facturacionCobrada / importeObjetivo) * 100) : null,
+        cumplidoBeneficioLimpioPct: importeObjetivo ? Math.round((beneficioLimpioPorProyecto / importeObjetivo) * 100) : null,
         ...(puedeVerFinanzas ? {
           restaNeto: importeObjetivo !== null ? Math.max(importeObjetivo - facturacionNeta, 0) : null,
           cumplidoNetoPct: importeObjetivo ? Math.round((facturacionNeta / importeObjetivo) * 100) : null,
@@ -175,6 +189,7 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
     res.json({
       periodo_tipo,
       periodo,
+      beneficioLimpioPorProyecto,
       facturacionVendida,
       facturacionVendidaLimpia,
       facturacionVendidaEjecucion,
