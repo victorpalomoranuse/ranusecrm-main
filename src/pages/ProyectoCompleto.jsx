@@ -9,12 +9,12 @@ function fmt(n) {
 const FASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Instalación', 5: 'Entregado' };
 
 /**
- * Ficha única de un proyecto, con TODO lo que ya está registrado en el
- * sistema (venta, pagos, gastos, margen, fase de ejecución) — no pide
- * meter nada nuevo, solo junta lo que ya existe en Leads/Finanzas/Proyectos.
+ * Ficha única de una venta, con TODO lo que ya está registrado en el
+ * sistema (datos de la venta, pagos, gastos, margen, fase de ejecución) —
+ * no pide meter nada nuevo, solo junta lo que ya existe.
  * Requiere permiso 'finanzas' (muestra gastos y margen real).
  */
-export function ProyectoCompletoModal({ leadId, onClose }) {
+export function ProyectoCompletoModal({ ventaId, onClose }) {
   const [datos, setDatos] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -23,18 +23,18 @@ export function ProyectoCompletoModal({ leadId, onClose }) {
   const [guardandoCostes, setGuardandoCostes] = useState(false);
 
   const cargar = () => {
-    api.get(`/finanzas/proyecto/${leadId}`)
-      .then(r => { setDatos(r.data); setCostesInput(r.data.proyecto.costesEstimados ?? ''); })
-      .catch(err => setError(err.response?.data?.error || 'No se pudo cargar el proyecto'))
+    api.get(`/ventas/${ventaId}/completo`)
+      .then(r => { setDatos(r.data); setCostesInput(r.data.venta.previsionGastos ?? ''); })
+      .catch(err => setError(err.response?.data?.error || 'No se pudo cargar la venta'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { cargar(); }, [leadId]);
+  useEffect(() => { cargar(); }, [ventaId]);
 
   const guardarCostes = async () => {
     setGuardandoCostes(true);
     try {
-      await api.put(`/leads/${leadId}`, { costes_estimados: costesInput === '' ? null : costesInput });
+      await api.put(`/ventas/${ventaId}`, { prevision_gastos: costesInput === '' ? null : costesInput });
       setEditandoCostes(false);
       cargar();
     } catch {
@@ -48,7 +48,7 @@ export function ProyectoCompletoModal({ leadId, onClose }) {
     <div className="ap-modal-overlay" onClick={onClose}>
       <div className="ap-modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
         <div className="ap-modal-head">
-          <h2>{datos?.proyecto?.nombre || 'Proyecto completo'}</h2>
+          <h2>{datos?.venta?.nombre || 'Venta completa'}</h2>
           <button className="ap-modal-close" onClick={onClose}><X size={16} /></button>
         </div>
 
@@ -63,46 +63,47 @@ export function ProyectoCompletoModal({ leadId, onClose }) {
             <div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Venta</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 13 }}>
-                <div><span style={{ color: 'rgba(255,255,255,0.4)' }}>Canal: </span>{datos.proyecto.canal || '—'}{datos.proyecto.campaña ? ` (${datos.proyecto.campaña})` : ''}</div>
-                <div><span style={{ color: 'rgba(255,255,255,0.4)' }}>Comercial: </span>{datos.proyecto.comercial || '—'}</div>
-                <div><span style={{ color: 'rgba(255,255,255,0.4)' }}>Tipo: </span>{datos.proyecto.tipoProyecto === 'con_ejecucion' ? 'Con ejecución' : 'Solo diseño (limpio)'}</div>
-                <div><span style={{ color: 'rgba(255,255,255,0.4)' }}>Fecha venta: </span>{datos.proyecto.fechaVenta?.slice(0, 10) || '—'}</div>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)' }}>Cliente: </span>{datos.venta.clienteNombre || '—'}</div>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)' }}>Canal: </span>{datos.venta.canal || '—'}{datos.venta.campaña ? ` (${datos.venta.campaña})` : ''}</div>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)' }}>Comercial: </span>{datos.venta.comercial || '—'}</div>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)' }}>Tipo: </span>{datos.venta.tipoProyecto === 'con_ejecucion' ? 'Con ejecución' : 'Solo diseño (limpio)'}</div>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)' }}>Fecha venta: </span>{datos.venta.fecha?.slice(0, 10) || '—'}</div>
               </div>
-              {datos.proyecto.notas && <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 8 }}>{datos.proyecto.notas}</p>}
+              {datos.venta.notas && <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 8 }}>{datos.venta.notas}</p>}
             </div>
 
             {/* Resumen financiero */}
             <div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Finanzas</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 14px' }}>
-                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Presupuesto</div><strong>{fmt(datos.proyecto.presupuesto)}</strong></div>
+                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Presupuesto</div><strong>{fmt(datos.venta.presupuesto)}</strong></div>
                 <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Cobrado</div><strong style={{ color: '#22c55e' }}>{fmt(datos.resumen.cobrado)}</strong></div>
                 <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Pendiente</div><strong style={{ color: datos.resumen.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(datos.resumen.pendiente)}</strong></div>
-                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Gastos</div><strong style={{ color: '#ae6b6b' }}>{fmt(datos.resumen.totalGastos)}</strong></div>
+                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Gastos reales</div><strong style={{ color: '#ae6b6b' }}>{fmt(datos.resumen.totalGastos)}</strong></div>
                 <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Margen real (hasta ahora)</div><strong style={{ color: datos.resumen.margenReal >= 0 ? '#8bae8f' : '#ae6b6b' }}>{fmt(datos.resumen.margenReal)}</strong></div>
               </div>
 
-              {datos.proyecto.tipoProyecto === 'con_ejecucion' && (
+              {datos.venta.tipoProyecto === 'con_ejecucion' && (
                 <div style={{ marginTop: 10, background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)', borderRadius: 10, padding: '10px 14px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                     <div style={{ fontSize: 10, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: 1 }}>Margen estimado al terminar</div>
-                    {!editandoCostes && <button className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => setEditandoCostes(true)}>{datos.proyecto.costesEstimados != null ? 'Editar coste estimado' : '+ Estimar coste'}</button>}
+                    {!editandoCostes && <button className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => setEditandoCostes(true)}>{datos.venta.previsionGastos != null ? 'Editar coste previsto' : '+ Estimar coste'}</button>}
                   </div>
                   {editandoCostes ? (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
-                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>Coste total estimado del proyecto:</span>
+                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>Coste total previsto del proyecto:</span>
                       <input type="number" step="0.01" min="0" value={costesInput} onChange={e => setCostesInput(e.target.value)} placeholder="0.00" className="ap-select" style={{ width: 120 }} autoFocus />
                       <button className="ap-btn ap-btn-primary ap-btn-xs" disabled={guardandoCostes} onClick={guardarCostes}>{guardandoCostes ? '...' : 'Guardar'}</button>
-                      <button className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => { setEditandoCostes(false); setCostesInput(datos.proyecto.costesEstimados ?? ''); }}>Cancelar</button>
+                      <button className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => { setEditandoCostes(false); setCostesInput(datos.venta.previsionGastos ?? ''); }}>Cancelar</button>
                     </div>
-                  ) : datos.proyecto.costesEstimados != null ? (
+                  ) : datos.venta.previsionGastos != null ? (
                     <div style={{ display: 'flex', gap: 20, marginTop: 6 }}>
-                      <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Coste estimado</div><strong>{fmt(datos.proyecto.costesEstimados)}</strong></div>
+                      <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Coste previsto</div><strong>{fmt(datos.venta.previsionGastos)}</strong></div>
                       <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Margen estimado</div><strong style={{ color: datos.resumen.margenEstimado >= 0 ? '#a78bfa' : '#ae6b6b' }}>{fmt(datos.resumen.margenEstimado)}</strong></div>
                     </div>
                   ) : (
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 6, marginBottom: 0 }}>
-                      Sin coste estimado todavía — hasta que lo pongas, el margen real de arriba es la única cifra fiable (y probablemente esté inflado, porque aún faltan gastos por registrar).
+                      Sin coste previsto todavía — hasta que lo pongas, el margen real de arriba es la única cifra fiable (y probablemente esté inflado, porque aún faltan gastos por registrar).
                     </p>
                   )}
                 </div>
@@ -128,7 +129,7 @@ export function ProyectoCompletoModal({ leadId, onClose }) {
             {/* Gastos */}
             {datos.gastos.length > 0 && (
               <div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Gastos del proyecto ({datos.gastos.length})</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Gastos reales ({datos.gastos.length})</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {datos.gastos.map(g => (
                     <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
