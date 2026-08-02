@@ -153,14 +153,14 @@ function PanelRitmo() {
               <tbody>
                 {escenarios.map(esc => {
                   const e = ritmo.porEscenario[esc];
-                  const vaBien = e.ritmoActualMensualPrevisto != null && e.ritmoNecesarioMensualPrevisto != null && e.ritmoActualMensualPrevisto >= e.ritmoNecesarioMensualPrevisto;
+                  const vaBien = e.ritmoActualMensualCobrado != null && e.ritmoNecesarioMensualCobrado != null && e.ritmoActualMensualCobrado >= e.ritmoNecesarioMensualCobrado;
                   return (
                     <tr key={esc} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                       <td style={{ padding: '8px', color: ESCENARIO_COLOR[esc], fontWeight: 600 }}>{ESCENARIO_LABEL[esc]}</td>
                       <td style={{ padding: '8px' }}>{fmt(e.objetivoAnual)}</td>
-                      <td style={{ padding: '8px', color: vaBien ? '#22c55e' : '#f5b748' }}>{e.ritmoActualMensualPrevisto != null ? fmt(e.ritmoActualMensualPrevisto) : '—'}</td>
-                      <td style={{ padding: '8px', fontWeight: 600 }}>{e.ritmoNecesarioMensualPrevisto != null ? fmt(e.ritmoNecesarioMensualPrevisto) : '¡Cumplido! 🎉'}</td>
-                      <td style={{ padding: '8px', fontWeight: 600 }}>{e.ritmoNecesarioTrimestralPrevisto != null ? fmt(e.ritmoNecesarioTrimestralPrevisto) : '¡Cumplido! 🎉'}</td>
+                      <td style={{ padding: '8px', color: vaBien ? '#22c55e' : '#f5b748' }}>{e.ritmoActualMensualCobrado != null ? fmt(e.ritmoActualMensualCobrado) : '—'}</td>
+                      <td style={{ padding: '8px', fontWeight: 600 }}>{e.ritmoNecesarioMensualCobrado != null ? fmt(e.ritmoNecesarioMensualCobrado) : '¡Cumplido! 🎉'}</td>
+                      <td style={{ padding: '8px', fontWeight: 600 }}>{e.ritmoNecesarioTrimestralCobrado != null ? fmt(e.ritmoNecesarioTrimestralCobrado) : '¡Cumplido! 🎉'}</td>
                     </tr>
                   );
                 })}
@@ -168,7 +168,7 @@ function PanelRitmo() {
             </table>
           </div>
           <p style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.3)', marginTop: 10 }}>
-            "Ritmo actual" = lo generado hasta ahora ÷ meses transcurridos. "Necesitas" = lo que falta ÷ meses o trimestres que quedan. Basado en beneficio previsto (venta − costes directos).
+            "Ritmo actual" = lo cobrado hasta ahora (en beneficio) ÷ meses transcurridos. "Necesitas" = lo que falta ÷ meses o trimestres que quedan. Basado en beneficio COBRADO, no en lo vendido.
           </p>
         </>
       )}
@@ -460,7 +460,7 @@ export function SectionVentas() {
                             <span className="vt-lead-nombre">{v.clienteNombre || v.nombre}</span>
                             <span>{v.nombre}</span>
                             <span className="vt-valor">{fmt(v.valor)}</span>
-                            <span style={{ color: '#a78bfa', fontWeight: 600 }}>{fmt(v.beneficioPrevisto)}</span>
+                            <span style={{ color: v.costesConocidos === false ? '#f5b748' : '#a78bfa', fontWeight: 600 }} title={v.costesConocidos === false ? 'Falta poner el coste previsto para saber el beneficio real' : ''}>{v.costesConocidos === false ? '¿? sin coste' : fmt(v.beneficioPrevisto)}</span>
                             <span style={{ color: '#22c55e' }}>{fmt(v.cobrado)}</span>
                             <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(v.beneficioPagado)}</span>
                             <span style={{ color: v.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(v.pendiente)}</span>
@@ -489,7 +489,7 @@ export function SectionVentas() {
                 <span>{v.nombre}</span>
                 <span className="vt-valor">{fmt(v.valor)}</span>
                 <span>{v.previsionGastos != null ? fmt(v.previsionGastos) : '—'}</span>
-                <span style={{ color: '#a78bfa', fontWeight: 600 }}>{fmt(v.beneficioPrevisto)}</span>
+                <span style={{ color: v.costesConocidos === false ? '#f5b748' : '#a78bfa', fontWeight: 600 }} title={v.costesConocidos === false ? 'Falta poner el coste previsto para saber el beneficio real' : ''}>{v.costesConocidos === false ? '¿? sin coste' : fmt(v.beneficioPrevisto)}</span>
                 <span style={{ color: '#22c55e' }}>{fmt(v.cobrado)}</span>
                 <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(v.beneficioPagado)}</span>
                 <span style={{ color: v.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(v.pendiente)}</span>
