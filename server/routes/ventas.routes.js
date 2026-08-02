@@ -22,7 +22,7 @@ router.get('/', authenticateToken, requireVentas, async (req, res) => {
   try {
     const { data: leads, error } = await supabase
       .from('leads')
-      .select('id, nombre, perfil, deporte, canal, origen, estado, tipo_diseño, tipo_proyecto, valor_estimado, valor_diseño, fecha_venta, fecha_venta_diseño_1, assigned_to, employees:assigned_to(name)')
+      .select('id, nombre, nombre_proyecto, perfil, deporte, canal, origen, estado, tipo_diseño, tipo_proyecto, valor_estimado, valor_diseño, fecha_venta, fecha_venta_diseño_1, assigned_to, employees:assigned_to(name)')
       .or('estado.eq.venta,tipo_diseño.eq.diseño_venta');
 
     if (error) throw error;
@@ -31,7 +31,7 @@ router.get('/', authenticateToken, requireVentas, async (req, res) => {
     leads.forEach(l => {
       const comercial = l.employees?.name || null;
       const tipoProyecto = l.tipo_proyecto || 'solo_diseno';
-      const base = { leadId: l.id, nombre: l.nombre, perfil: l.perfil, deporte: l.deporte, canal: l.canal, origen: l.origen, comercial, tipoProyecto };
+      const base = { leadId: l.id, nombre: l.nombre_proyecto || l.nombre, nombreCliente: l.nombre, perfil: l.perfil, deporte: l.deporte, canal: l.canal, origen: l.origen, comercial, tipoProyecto };
 
       if (l.tipo_diseño === 'diseño_venta' && l.fecha_venta_diseño_1) {
         ventas.push({ ...base, id: `${l.id}-d1`, tipo: 'diseño_1', tipoLabel: 'Venta Diseño 1', valor: l.valor_diseño || 0, fecha: l.fecha_venta_diseño_1 });
@@ -82,7 +82,7 @@ router.get('/clientes', authenticateToken, requireVentas, async (req, res) => {
   try {
     const { data: leads, error: errLeads } = await supabase
       .from('leads')
-      .select('id, nombre, instagram, email, telefono, canal, tipo_proyecto, estado, tipo_diseño, valor_estimado, valor_diseño, fecha_venta, fecha_venta_diseño_1, assigned_to, employees:assigned_to(name)')
+      .select('id, nombre, nombre_proyecto, instagram, email, telefono, canal, tipo_proyecto, estado, tipo_diseño, valor_estimado, valor_diseño, fecha_venta, fecha_venta_diseño_1, assigned_to, employees:assigned_to(name)')
       .or('estado.eq.venta,tipo_diseño.eq.diseño_venta');
     if (errLeads) throw errLeads;
 
@@ -138,7 +138,7 @@ router.get('/clientes', authenticateToken, requireVentas, async (req, res) => {
         numCompras: comprasOrdenadas.length,
         totalVendido,
         totalCobrado,
-        compras: comprasOrdenadas.map(c => ({ leadId: c.leadId, tipo: c.tipo, tipoLabel: c.tipoLabel, valor: c.valor, fecha: c.fecha, cobrado: c.cobrado, tipoProyecto: c.lead.tipo_proyecto || 'solo_diseno', canal: c.lead.canal })),
+        compras: comprasOrdenadas.map(c => ({ leadId: c.leadId, tipo: c.tipo, tipoLabel: c.tipoLabel, nombreProyecto: c.lead.nombre_proyecto || null, valor: c.valor, fecha: c.fecha, cobrado: c.cobrado, tipoProyecto: c.lead.tipo_proyecto || 'solo_diseno', canal: c.lead.canal })),
       };
     });
 
