@@ -184,7 +184,7 @@ const EMPTY = {
   fecha_contacto: new Date().toISOString().slice(0,10),
   fecha_respuesta:'', fecha_llamada:'', fecha_diseño:'', fecha_llamada_venta:'', fecha_venta:'', fecha_venta_diseño_1:'',
   tipo_diseño:'diseño_gratis', valor_diseño:'', link_fathom:'', assigned_to:'',
-  valor_comisiones:'', notas_comisiones:'',
+  valor_comisiones:'', notas_comisiones:'', nombre_proyecto:'', tipo_proyecto:'solo_diseno',
 };
 
 export function SectionLeads() {
@@ -803,6 +803,13 @@ export function SectionLeads() {
                   </select>
                 </div>
                 <div className="ap-field"><label>Inversión estimada (€)</label><input type="number" value={form.valor_estimado||''} onChange={e => setF('valor_estimado', e.target.value)} placeholder="25000" /></div>
+                <div className="ap-field"><label>Nombre del proyecto <span className="ap-optional">(opcional)</span></label><input value={form.nombre_proyecto||''} onChange={e => setF('nombre_proyecto', e.target.value)} placeholder="Ej. Home gym residencia Madrid" /></div>
+                <div className="ap-field"><label>Tipo de proyecto</label>
+                  <select className="ap-select" value={form.tipo_proyecto||'solo_diseno'} onChange={e => setF('tipo_proyecto', e.target.value)}>
+                    <option value="solo_diseno">Solo diseño (limpio)</option>
+                    <option value="con_ejecucion">Con ejecución (lleva gastos)</option>
+                  </select>
+                </div>
                 <div className="ap-field"><label>% Cierre estimado</label><input type="number" min={0} max={100} value={form.pct_cierre} onChange={e => setF('pct_cierre', Number(e.target.value))} /></div>
                 <div className="ap-field"><label>Servicio de diseño</label>
                   <select className="ap-select" value={form.tipo_diseño||'diseño_gratis'} onChange={e => setF('tipo_diseño', e.target.value)}>
