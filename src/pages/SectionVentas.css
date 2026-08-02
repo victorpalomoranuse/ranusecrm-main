@@ -1,5 +1,10 @@
-.vt-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.75rem; }
-@media (max-width: 900px) { .vt-stats { grid-template-columns: 1fr; } }
+.vt-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1rem; margin-bottom: 1.75rem; }
+@media (max-width: 900px) { .vt-stats { grid-template-columns: 1fr 1fr; } }
+
+.ap-section > .vt-mes-table {
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px; padding: 0.25rem 0.5rem 0.5rem;
+}
 
 .vt-stat-card {
   display: flex; align-items: center; gap: 0.85rem;
