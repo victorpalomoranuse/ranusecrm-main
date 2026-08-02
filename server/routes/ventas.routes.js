@@ -47,6 +47,11 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
       const beneficioPrevisto = previsionGastos != null ? valor - previsionGastos : valor;
       const presupuesto = Number(v.prevision_ingresos ?? v.valor ?? 0);
       const cobrado = cobradoPorVenta[v.id] || 0;
+      // Proporción del cobrado que es beneficio real, según el margen previsto
+      // de la venta (ej. si el margen previsto es 12%, de cada pago recibido
+      // el 12% se considera ya beneficio; el resto sigue "reservado" para costes).
+      const margenPct = valor > 0 ? beneficioPrevisto / valor : 1;
+      const beneficioPagado = cobrado * margenPct;
       return {
         id: v.id,
         nombre: v.nombre,
@@ -58,6 +63,7 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
         previsionGastos,
         beneficioPrevisto,
         cobrado,
+        beneficioPagado,
         pendiente: Math.max(presupuesto - cobrado, 0),
         fecha: v.fecha,
         comercial: v.comercial?.name || null,
@@ -68,10 +74,14 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
     const porMes = {};
     lista.forEach(v => {
       const mes = v.fecha ? v.fecha.slice(0, 7) : 'sin_fecha';
-      if (!porMes[mes]) porMes[mes] = { mes, total: 0, totalLimpio: 0, totalEjecucion: 0, count: 0, ventas: [] };
+      if (!porMes[mes]) porMes[mes] = { mes, total: 0, totalLimpio: 0, totalEjecucion: 0, totalBeneficioPrevisto: 0, totalCobrado: 0, totalBeneficioPagado: 0, totalPendiente: 0, count: 0, ventas: [] };
       porMes[mes].total += v.valor;
       if (v.tipoProyecto === 'con_ejecucion') porMes[mes].totalEjecucion += v.valor;
       else porMes[mes].totalLimpio += v.valor;
+      porMes[mes].totalBeneficioPrevisto += v.beneficioPrevisto;
+      porMes[mes].totalCobrado += v.cobrado;
+      porMes[mes].totalBeneficioPagado += v.beneficioPagado;
+      porMes[mes].totalPendiente += v.pendiente;
       porMes[mes].count += 1;
       porMes[mes].ventas.push(v);
     });
