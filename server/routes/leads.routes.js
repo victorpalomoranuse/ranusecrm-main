@@ -151,7 +151,7 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
       fecha_contacto, fecha_respuesta, fecha_llamada, fecha_diseño, fecha_llamada_venta, fecha_venta,
       fecha_venta_diseño_1,
       tipo_diseño = 'diseño_gratis', valor_diseño, link_fathom, assigned_to,
-      valor_comisiones, notas_comisiones, tipo_proyecto = 'solo_diseno', costes_estimados
+      valor_comisiones, notas_comisiones, tipo_proyecto = 'solo_diseno', costes_estimados, nombre_proyecto
     } = req.body;
 
     if (!nombre) return res.status(400).json({ error: 'El nombre es requerido' });
@@ -179,6 +179,7 @@ router.post('/', authenticateToken, requireLeads, async (req, res) => {
         valor_diseño: valor_diseño ? parseFloat(valor_diseño) : null,
         tipo_proyecto: ['solo_diseno', 'con_ejecucion'].includes(tipo_proyecto) ? tipo_proyecto : 'solo_diseno',
         costes_estimados: costes_estimados ? parseFloat(costes_estimados) : null,
+        nombre_proyecto: nombre_proyecto?.trim() || null,
         link_fathom: link_fathom?.trim() || null,
         assigned_to: assigned_to || null,
         valor_comisiones: valor_comisiones ? parseFloat(valor_comisiones) : null,
@@ -236,6 +237,9 @@ router.put('/:id', authenticateToken, requireLeads, async (req, res) => {
 
     if (updates.costes_estimados !== undefined)
       updates.costes_estimados = updates.costes_estimados !== null && updates.costes_estimados !== '' ? parseFloat(updates.costes_estimados) : null;
+
+    if (updates.nombre_proyecto !== undefined)
+      updates.nombre_proyecto = updates.nombre_proyecto?.trim() || null;
 
     // Si el estado pasa a diseño_0 o diseño_1, sincroniza tipo_diseño automáticamente
     // (por ejemplo, al cambiar el estado desde el tablero Kanban sin abrir el formulario)
@@ -323,7 +327,7 @@ router.get('/:id/ficha-cliente', authenticateToken, requireLeadsVentasOFinanzas,
   try {
     const { data: lead, error: errLead } = await supabase
       .from('leads')
-      .select('id, nombre, estado, valor_estimado, fecha_venta, tipo_diseño, valor_diseño, fecha_venta_diseño_1')
+      .select('id, nombre, nombre_proyecto, estado, valor_estimado, fecha_venta, tipo_diseño, valor_diseño, fecha_venta_diseño_1')
       .eq('id', req.params.id)
       .single();
     if (errLead || !lead) return res.status(404).json({ error: 'Lead no encontrado' });
@@ -339,7 +343,7 @@ router.get('/:id/ficha-cliente', authenticateToken, requireLeadsVentasOFinanzas,
     const presupuesto = Number(lead.valor_estimado || 0) + (lead.tipo_diseño === 'diseño_venta' ? Number(lead.valor_diseño || 0) : 0);
 
     res.json({
-      lead: { id: lead.id, nombre: lead.nombre, estado: lead.estado, fechaVenta: lead.fecha_venta || lead.fecha_venta_diseño_1 },
+      lead: { id: lead.id, nombre: lead.nombre_proyecto || lead.nombre, nombreCliente: lead.nombre, estado: lead.estado, fechaVenta: lead.fecha_venta || lead.fecha_venta_diseño_1 },
       presupuesto,
       cobrado,
       pendiente: Math.max(presupuesto - cobrado, 0),
