@@ -761,6 +761,19 @@ function BudgetEditor({ id, onBack, onOpen }) {
   const [editingId, setEditingId] = useState(null);
   const [importing, setImporting] = useState(false);
   const [duplicando, setDuplicando] = useState(false);
+  const [editandoNombre, setEditandoNombre] = useState(false);
+  const [nombreInput, setNombreInput] = useState('');
+
+  const guardarNombre = async () => {
+    const nombre = nombreInput.trim();
+    setEditandoNombre(false);
+    if (!nombre || nombre === budget.budget_name) return;
+    try {
+      const { data } = await api.put(`/budgets/${id}`, { budget_name: nombre });
+      setBudget(b => ({ ...b, budget_name: data.budget.budget_name }));
+      flash('Nombre actualizado');
+    } catch { flash('Error al renombrar', 'error'); }
+  };
   const [savingFee, setSavingFee] = useState(false);
   const [msg, setMsg]         = useState(null);
   const [pdfIva, setPdfIva]   = useState('21');
@@ -952,7 +965,20 @@ function BudgetEditor({ id, onBack, onOpen }) {
           {budget.project ? (
             <><span className="pres-editor-client">{budget.project.client_name}</span><h2>{budget.project.project_name} <span style={{ fontSize: '0.75rem', color: '#beb0a2', fontWeight: 400, marginLeft: 8 }}>{budget.budget_number}</span></h2></>
           ) : (
-            <><span className="pres-editor-client" style={{ color: '#beb0a2' }}>{budget.budget_number}</span><h2>{budget.budget_name || 'Sin nombre'}</h2></>
+            <>
+              <span className="pres-editor-client" style={{ color: '#beb0a2' }}>{budget.budget_number}</span>
+              {editandoNombre ? (
+                <input
+                  autoFocus value={nombreInput} onChange={e => setNombreInput(e.target.value)}
+                  onBlur={guardarNombre} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditandoNombre(false); }}
+                  style={{ fontSize: '1.3rem', fontWeight: 600, background: 'transparent', border: 'none', borderBottom: '1px solid #beb0a2', color: '#fff', outline: 'none', padding: '2px 0', width: '100%' }}
+                />
+              ) : (
+                <h2 onClick={() => { setNombreInput(budget.budget_name || ''); setEditandoNombre(true); }} style={{ cursor: 'pointer' }} title="Clic para renombrar">
+                  {budget.budget_name || 'Sin nombre'} <Pencil size={12} style={{ opacity: 0.4, marginLeft: 4 }}/>
+                </h2>
+              )}
+            </>
           )}
         </div>
         <div className="pres-editor-right">
