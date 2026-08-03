@@ -229,6 +229,16 @@ function BudgetList({ onOpen }) {
     finally { setDeletingId(null); }
   };
 
+  const [duplicatingId, setDuplicatingId] = useState(null);
+  const handleDuplicate = async (budgetId, e) => {
+    e.stopPropagation();
+    setDuplicatingId(budgetId);
+    try {
+      const { data } = await api.post(`/budgets/${budgetId}/duplicate`);
+      setBudgets(prev => [data.budget, ...prev]);
+    } finally { setDuplicatingId(null); }
+  };
+
   const budgetByProject = Object.fromEntries(budgets.filter(b => b.project_id).map(b => [b.project_id, b]));
   const independienteBudgets = budgets.filter(b => !b.project_id);
   const visibleProjects = projects.filter(p => budgetByProject[p.id]);
@@ -268,6 +278,7 @@ function BudgetList({ onOpen }) {
               </div>
               <div className="pres-card-foot">
                 <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={e => { e.stopPropagation(); onOpen(b.id); }}>Abrir →</button>
+                <button className="ap-btn-icon" onClick={e => handleDuplicate(b.id, e)} disabled={duplicatingId === b.id} title="Duplicar presupuesto"><Copy size={13}/></button>
                 <button className="ap-btn-icon" onClick={e => handleDelete(b.id, e)} disabled={deletingId === b.id}><Trash2 size={13}/></button>
               </div>
             </div>
@@ -291,6 +302,7 @@ function BudgetList({ onOpen }) {
               </div>
               <div className="pres-card-foot">
                 <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={e => { e.stopPropagation(); onOpen(b.id); }}>Abrir →</button>
+                <button className="ap-btn-icon" onClick={e => handleDuplicate(b.id, e)} disabled={duplicatingId === b.id} title="Duplicar presupuesto"><Copy size={13}/></button>
                 <button className="ap-btn-icon" onClick={e => handleDelete(b.id, e)} disabled={deletingId === b.id}><Trash2 size={13}/></button>
               </div>
             </div>
@@ -742,12 +754,13 @@ function NewItemRow({ onAdd, onAddChapter }) {
   );
 }
 
-function BudgetEditor({ id, onBack }) {
+function BudgetEditor({ id, onBack, onOpen }) {
   const [budget, setBudget]   = useState(null);
   const [items, setItems]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [duplicando, setDuplicando] = useState(false);
   const [savingFee, setSavingFee] = useState(false);
   const [msg, setMsg]         = useState(null);
   const [pdfIva, setPdfIva]   = useState('21');
@@ -881,6 +894,16 @@ function BudgetEditor({ id, onBack }) {
     finally { setImporting(false); }
   };
 
+  const handleDuplicar = async () => {
+    setDuplicando(true);
+    try {
+      const { data } = await api.post(`/budgets/${id}/duplicate`);
+      flash('Presupuesto duplicado');
+      onOpen?.(data.budget.id);
+    } catch { flash('Error al duplicar', 'error'); }
+    finally { setDuplicando(false); }
+  };
+
   const handleInsertFromLibrary = async (product) => {
     const cost = parseFloat(product.price) || 0;
     await handleAddItem({
@@ -935,6 +958,7 @@ function BudgetEditor({ id, onBack }) {
         <div className="pres-editor-right">
           <MsgBanner msg={msg}/>
           {!budget.project_id && <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setShowLinkModal(true)}><Link size={13}/> Vincular proyecto</button>}
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleDuplicar} disabled={duplicando}><Copy size={13}/> {duplicando ? 'Duplicando…' : 'Duplicar'}</button>
           <button className={`ap-btn ap-btn-sm ${showLibrary ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setShowLibrary(v => !v)}><BookOpen size={13}/> Biblioteca</button>
           <select className="pres-cell-select" value={budget.status} onChange={e => { const s=e.target.value; setBudget(b=>({...b,status:s})); saveFee({status:s}); }}>
             {Object.entries(STATUS_CFG).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -1091,7 +1115,7 @@ export function SectionPresupuestos({ initialBudgetId } = {}) {
       ) : (
         <>
           <div className="ap-section-head" style={{marginBottom:0}}><h1>Presupuestos</h1></div>
-          <BudgetEditor id={budgetId} onBack={() => { setBudgetId(null); setView('list'); }} />
+          <BudgetEditor id={budgetId} onBack={() => { setBudgetId(null); setView('list'); }} onOpen={setBudgetId} />
         </>
       )}
     </div>
