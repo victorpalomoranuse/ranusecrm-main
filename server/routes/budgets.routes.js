@@ -204,6 +204,49 @@ router.delete('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Error al eliminar presupuesto' }); }
 });
 
+router.post('/:id/duplicate', async (req, res) => {
+  try {
+    const { data: original, error: errOriginal } = await supabase
+      .from('budgets')
+      .select('*, items:budget_items(*)')
+      .eq('id', req.params.id)
+      .single();
+    if (errOriginal || !original) return res.status(404).json({ error: 'Presupuesto no encontrado' });
+
+    const budget_number = await generateBudgetNumber();
+    // No se enlaza al mismo proyecto (un proyecto solo puede tener un
+    // presupuesto) — se crea suelto, y desde ahí se puede reenlazar si hace falta.
+    const { data: nuevo, error: errNuevo } = await supabase
+      .from('budgets')
+      .insert({
+        budget_number,
+        budget_name: original.budget_name ? `${original.budget_name} (copia)` : 'Copia de presupuesto',
+        status: 'borrador',
+        design_fee_type: original.design_fee_type,
+        design_fee_value: original.design_fee_value,
+        design_hours: original.design_hours,
+        global_discount_pct: original.global_discount_pct,
+        notes: original.notes,
+      })
+      .select('*, project:client_projects(id, client_name, project_name, phase)')
+      .single();
+    if (errNuevo) throw errNuevo;
+
+    const items = original.items || [];
+    if (items.length > 0) {
+      const toInsert = items.map(({ id, budget_id, created_at, updated_at, ...resto }) => ({ ...resto, budget_id: nuevo.id }));
+      const { error: errItems } = await supabase.from('budget_items').insert(toInsert);
+      if (errItems) throw errItems;
+    }
+
+    const { data: itemsNuevos } = await supabase.from('budget_items').select('*').eq('budget_id', nuevo.id).order('display_order');
+    res.status(201).json({ budget: { ...nuevo, items: itemsNuevos || [], ...computeTotals(itemsNuevos || [], nuevo.design_fee_type, nuevo.design_fee_value, nuevo.design_hours, nuevo.global_discount_pct) } });
+  } catch (err) {
+    console.error('Error al duplicar presupuesto:', err);
+    res.status(500).json({ error: 'Error al duplicar presupuesto', detalle: err.message });
+  }
+});
+
 router.post('/:id/items', async (req, res) => {
   try {
     const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode } = req.body;
