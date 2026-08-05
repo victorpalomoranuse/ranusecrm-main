@@ -11,7 +11,48 @@ const PHASE_LABELS = [
   'Dirección de obra',
 ];
 
-function Lightbox({ src, alt, onClose }) {
+async function downloadRender(url, filename) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objUrl;
+    a.download = filename || 'render.jpg';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objUrl);
+  } catch {
+    window.open(url, '_blank');
+  }
+}
+
+function renderFilename(render, idx) {
+  const ext = (render.url?.split('.').pop() || 'jpg').split('?')[0];
+  const base = render.name?.trim() || `render-${idx + 1}`;
+  return `${base}.${ext}`;
+}
+
+function DownloadButton({ url, filename, className }) {
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={(e) => { e.stopPropagation(); downloadRender(url, filename); }}
+      aria-label="Descargar render"
+      title="Descargar"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+      </svg>
+    </button>
+  );
+}
+
+function Lightbox({ src, alt, onClose, downloadUrl, downloadName }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -21,6 +62,7 @@ function Lightbox({ src, alt, onClose }) {
   return (
     <div className="mp-lb" onClick={onClose}>
       <button className="mp-lb-close" onClick={onClose}>✕</button>
+      {downloadUrl && <DownloadButton url={downloadUrl} filename={downloadName} className="mp-lb-download" />}
       <img src={src} alt={alt} onClick={e => e.stopPropagation()} />
     </div>
   );
@@ -53,6 +95,7 @@ function HeroRender({ render, onClick }) {
   return (
     <div className="mp-hero-render" onClick={onClick} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && onClick()}>
       <img src={render.url} alt={render.name || ''} loading="eager" />
+      <DownloadButton url={render.url} filename={renderFilename(render, 0)} className="mp-hero-download" />
     </div>
   );
 }
@@ -65,14 +108,30 @@ function RendersSection({ renders }) {
     <section className="mp-block">
       <p className="mp-block-label">Diseños</p>
       <div className="mp-img-grid">
-        {rest.map(r => (
-          <button key={r.id} className="mp-img-thumb" onClick={() => setActive(r)}>
+        {rest.map((r, i) => (
+          <div
+            key={r.id}
+            className="mp-img-thumb"
+            role="button"
+            tabIndex={0}
+            onClick={() => setActive(r)}
+            onKeyDown={e => e.key === 'Enter' && setActive(r)}
+          >
             <img src={r.url} alt={r.name || ''} loading="lazy" />
+            <DownloadButton url={r.url} filename={renderFilename(r, i + 1)} className="mp-img-download" />
             {r.name && <span className="mp-img-name">{r.name}</span>}
-          </button>
+          </div>
         ))}
       </div>
-      {active && <Lightbox src={active.url} alt={active.name || ''} onClose={() => setActive(null)} />}
+      {active && (
+        <Lightbox
+          src={active.url}
+          alt={active.name || ''}
+          onClose={() => setActive(null)}
+          downloadUrl={active.url}
+          downloadName={renderFilename(active, rest.findIndex(r => r.id === active.id) + 1)}
+        />
+      )}
     </section>
   );
 }
@@ -181,6 +240,17 @@ function MobiliarioSection({ equipment }) {
                 {e.brand && <span className="mp-sel-sub">{e.brand}</span>}
                 {e.category && <span className="mp-sel-tag">{e.category}</span>}
                 <span className="mp-sel-qty">×{e.quantity || 1}</span>
+                {e.show_purchase_link && e.purchase_link && (
+                  <a
+                    href={e.purchase_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mp-sel-buy"
+                    onClick={ev => ev.stopPropagation()}
+                  >
+                    Comprar ↗
+                  </a>
+                )}
               </div>
             </div>
           );
@@ -199,6 +269,16 @@ function MobiliarioSection({ equipment }) {
                 {activeItem.category && <span className="mp-sel-tag">{activeItem.category}</span>}
                 {activeItem.quantity > 1 && <span className="mp-eq-qty">Cantidad: <strong>{activeItem.quantity}</strong></span>}
               </div>
+              {activeItem.show_purchase_link && activeItem.purchase_link && (
+                <a
+                  href={activeItem.purchase_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mp-eq-buy"
+                >
+                  Comprar este producto ↗
+                </a>
+              )}
             </div>
 
             {allImages(activeItem).length > 0 && (
@@ -355,7 +435,15 @@ export function MiProyecto() {
         {heroRender && (
           <>
             <HeroRender render={heroRender} onClick={() => setHeroLightbox(heroRender)} />
-            {heroLightbox && <Lightbox src={heroLightbox.url} alt={heroLightbox.name || ''} onClose={() => setHeroLightbox(null)} />}
+            {heroLightbox && (
+              <Lightbox
+                src={heroLightbox.url}
+                alt={heroLightbox.name || ''}
+                onClose={() => setHeroLightbox(null)}
+                downloadUrl={heroLightbox.url}
+                downloadName={renderFilename(heroLightbox, 0)}
+              />
+            )}
           </>
         )}
 
