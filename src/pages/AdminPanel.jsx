@@ -562,9 +562,9 @@ function SectionCatalogo() {
 function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
   const {attributes,listeners,setNodeRef,transform,transition,isDragging}=useSortable({id:item.id});
   const style={transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.4:1};
-  const [expanded,setExpanded]=useState(false); const [qty,setQty]=useState(item.quantity??1); const [ytUrl,setYtUrl]=useState(item.youtube_url||''); const [extraImgs,setExtraImgs]=useState(item.extra_images||[]); const [newImg,setNewImg]=useState(''); const [saving,setSaving]=useState(false);
+  const [expanded,setExpanded]=useState(false); const [qty,setQty]=useState(item.quantity??1); const [ytUrl,setYtUrl]=useState(item.youtube_url||''); const [extraImgs,setExtraImgs]=useState(item.extra_images||[]); const [newImg,setNewImg]=useState(''); const [saving,setSaving]=useState(false); const [purchaseLink,setPurchaseLink]=useState(item.purchase_link||''); const [showLink,setShowLink]=useState(item.show_purchase_link||false);
   const isMob=type==='mobiliario';
-  const handleSave=async()=>{setSaving(true);try{await api.put(`/client-projects/${item.project_id}/equipment/${item.id}`,{quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs});onUpdate({...item,quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs});setExpanded(false);}catch{}finally{setSaving(false);}};
+  const handleSave=async()=>{setSaving(true);try{await api.put(`/client-projects/${item.project_id}/equipment/${item.id}`,{quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink});onUpdate({...item,quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink});setExpanded(false);}catch{}finally{setSaving(false);}};
   const addImg=()=>{const url=newImg.trim();if(!url||extraImgs.includes(url))return;setExtraImgs(prev=>[...prev,url]);setNewImg('');};
   const removeImg=(url)=>setExtraImgs(prev=>prev.filter(u=>u!==url));
   return (
@@ -574,7 +574,7 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
       <div className="ap-catalog-product-info" style={{flex:1}}>
         <span className="ap-catalog-product-name">{item.name}</span>
         {item.category&&<span className="ap-cat-meta">{item.category}</span>}
-        {isMob&&<span className="ap-cat-meta" style={{color:'rgba(190,176,162,0.7)',marginLeft:4}}>×{qty}{item.youtube_url&&' · 🎬'}{item.extra_images?.length>0&&` · ${item.extra_images.length} img`}</span>}
+        {isMob&&<span className="ap-cat-meta" style={{color:'rgba(190,176,162,0.7)',marginLeft:4}}>×{qty}{item.youtube_url&&' · 🎬'}{item.extra_images?.length>0&&` · ${item.extra_images.length} img`}{showLink&&purchaseLink&&' · 🔗'}</span>}
       </div>
       {isMob&&(<button className="ap-btn ap-btn-ghost ap-btn-sm" style={{flexShrink:0,fontSize:'0.72rem'}} onClick={()=>setExpanded(v=>!v)} type="button"><Pencil size={11}/> {expanded?'Cerrar':'Detalle'}</button>)}
       <button className="ap-btn-icon" onClick={()=>onUnassign(item.id,type)}><X size={13}/></button>
@@ -599,6 +599,14 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
               <input className="ap-field-input" value={newImg} onChange={e=>setNewImg(e.target.value)} placeholder="https://..." onKeyDown={e=>e.key==='Enter'&&(e.preventDefault(),addImg())}/>
               <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={addImg}><Plus size={12}/> Añadir</button>
             </div>
+          </div>
+          <div className="ap-field" style={{marginBottom:'0.75rem'}}>
+            <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Enlace de compra</label>
+            <input className="ap-field-input" value={purchaseLink} onChange={e=>setPurchaseLink(e.target.value)} placeholder="https://..."/>
+            <label style={{display:'flex',alignItems:'center',gap:'0.4rem',marginTop:'0.5rem',fontSize:'0.72rem',color:'rgba(255,255,255,0.7)',cursor:'pointer'}}>
+              <input type="checkbox" checked={showLink} onChange={e=>setShowLink(e.target.checked)}/>
+              Mostrar cantidad y enlace de compra al cliente
+            </label>
           </div>
           <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSave} disabled={saving} style={{width:'100%'}}>{saving?'Guardando…':<><Save size={12}/> Guardar cambios</>}</button>
         </div>
