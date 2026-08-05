@@ -772,10 +772,21 @@ router.get('/:id/equipment', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, quantity, color, notes, catalog_product_id, image_url } = req.body;
+    const { name, brand, category, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del equipo es requerido' });
+    }
+
+    // Si viene de un producto del catálogo y no se indica enlace propio, se hereda el suyo
+    let resolvedLink = purchase_link?.trim() || null;
+    if (!resolvedLink && catalog_product_id) {
+      const { data: catalogProduct } = await supabase
+        .from('catalog_products')
+        .select('link')
+        .eq('id', catalog_product_id)
+        .single();
+      resolvedLink = catalogProduct?.link || null;
     }
 
     const { data, error } = await supabase
@@ -790,6 +801,8 @@ router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, r
         notes: notes?.trim() || null,
         catalog_product_id: catalog_product_id || null,
         image_url: image_url?.trim() || null,
+        purchase_link: resolvedLink,
+        show_purchase_link: show_purchase_link === true,
       })
       .select('*')
       .single();
@@ -965,12 +978,14 @@ router.delete('/:id/notes/:noteId', authenticateToken, requireProyectos, async (
 });
 router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { quantity, youtube_url, extra_images } = req.body;
+    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link } = req.body;
 
     const updates = {};
     if (quantity !== undefined) updates.quantity = parseInt(quantity);
     if (youtube_url !== undefined) updates.youtube_url = youtube_url?.trim() || null;
     if (extra_images !== undefined) updates.extra_images = Array.isArray(extra_images) ? extra_images : [];
+    if (purchase_link !== undefined) updates.purchase_link = purchase_link?.trim() || null;
+    if (show_purchase_link !== undefined) updates.show_purchase_link = show_purchase_link === true;
 
     const { data, error } = await supabase
       .from('project_equipment_selections')
