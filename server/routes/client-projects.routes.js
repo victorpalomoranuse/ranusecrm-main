@@ -128,6 +128,8 @@ router.get('/by-code/:code', async (req, res) => {
       equipmentResult,
       notesResult,
       toursResult,
+      phaseDocumentsResult,
+      phaseContentResult,
     ] = await Promise.all([
       supabase.from('project_renders').select('*').eq('project_id', projectId).order('display_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }),
       supabase.from('project_documents').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
@@ -136,6 +138,8 @@ router.get('/by-code/:code', async (req, res) => {
       supabase.from('project_equipment_selections').select('*').eq('project_id', projectId).order('display_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }),
       supabase.from('project_notes').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
       supabase.from('project_tours').select('*').eq('project_id', projectId).order('created_at', { ascending: true }),
+      supabase.from('project_phase_documents').select('*').eq('project_id', projectId).order('phase_number', { ascending: true }).order('display_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }),
+      supabase.from('project_phase_content').select('*').eq('project_id', projectId),
     ]);
 
     let diagnosisData = diagnosisResult.data || null;
@@ -153,20 +157,41 @@ router.get('/by-code/:code', async (req, res) => {
     const responsible_email = project.responsible?.email || null;
     const responsible_name = project.responsible?.name || null;
 
+    const allRenders = rendersResult.data || [];
+    const allTours = toursResult.data || [];
+    const allMaterials = materialsResult.data || [];
+    const allEquipment = equipmentResult.data || [];
+    const allPhaseDocuments = phaseDocumentsResult.data || [];
+    const phaseContentByNumber = {};
+    (phaseContentResult.data || []).forEach(c => { phaseContentByNumber[c.phase_number] = c.intro_text; });
+
+    const currentPhase = project.phase ?? 1;
+    const phases = [0, 1, 2, 3, 4, 5].map(n => ({
+      number: n,
+      status: n < currentPhase ? 'completado' : n === currentPhase ? 'en_curso' : 'proximamente',
+      intro_text: phaseContentByNumber[n] ?? null,
+      documents: allPhaseDocuments.filter(d => d.phase_number === n),
+      renders: allRenders.filter(r => r.phase_number === n),
+      tours: allTours.filter(t => t.phase_number === n),
+      materials: allMaterials.filter(m => m.phase_number === n),
+      equipment: allEquipment.filter(e => e.phase_number === n),
+    }));
+
     res.json({
       project: {
         ...project,
         responsible_name,
         responsible_email,
-        renders: rendersResult.data || [],
+        renders: allRenders,
         documents: documentsResult.data || [],
         diagnosis: diagnosisData
           ? { ...diagnosisData, images: diagnosisImages }
           : null,
-        materials: materialsResult.data || [],
-        equipment: equipmentResult.data || [],
+        materials: allMaterials,
+        equipment: allEquipment,
         notes: notesResult.data || [],
-        tours: toursResult.data || [],
+        tours: allTours,
+        phases,
       },
     });
   } catch (err) {
@@ -181,7 +206,7 @@ router.get('/by-code/:code', async (req, res) => {
  */
 router.post('/', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { client_name, project_name, client_email, access_code, phase = 1, urgency = 'normal', responsible_id, notes, lead_id, venta_id } = req.body;
+    const { client_name, project_name, client_email, access_code, phase = 0, urgency = 'normal', responsible_id, notes, lead_id, venta_id } = req.body;
 
     if (!client_name || !project_name || !access_code) {
       return res.status(400).json({ error: 'Nombre del cliente, proyecto y código son requeridos' });
@@ -326,7 +351,7 @@ router.post('/:id/renders', authenticateToken, requireProyectos, uploadRenderFil
       return res.status(400).json({ error: 'No se recibió ningún archivo' });
     }
 
-    const { name, version } = req.body;
+    const { name, version, phase_number } = req.body;
     const projectId = req.params.id;
 
     const url = await uploadProjectRender(
@@ -353,6 +378,7 @@ router.post('/:id/renders', authenticateToken, requireProyectos, uploadRenderFil
         name: name?.trim() || req.file.originalname,
         version: version?.trim() || null,
         display_order: nextOrder,
+        phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
       })
       .select('*')
       .single();
@@ -485,6 +511,181 @@ router.delete('/:id/documents/:docId', authenticateToken, requireProyectos, asyn
   } catch (error) {
     console.error('Error al eliminar documento:', error);
     res.status(500).json({ error: 'Error al eliminar documento' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE DOCUMENTS (documentos con código, agrupados por fase 0-5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/client-projects/:id/phase-documents
+ */
+router.get('/:id/phase-documents', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('project_phase_documents')
+      .select('*')
+      .eq('project_id', req.params.id)
+      .order('phase_number', { ascending: true })
+      .order('display_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json({ documents: data });
+  } catch (error) {
+    console.error('Error al obtener documentos de fase:', error);
+    res.status(500).json({ error: 'Error al obtener documentos de fase' });
+  }
+});
+
+/**
+ * POST /api/client-projects/:id/phase-documents
+ */
+router.post('/:id/phase-documents', authenticateToken, requireProyectos, uploadDocumentFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se recibió ningún archivo' });
+    }
+
+    const { name, code, phase_number } = req.body;
+    const projectId = req.params.id;
+
+    if (!code?.trim() || phase_number === undefined || phase_number === '') {
+      return res.status(400).json({ error: 'Código y fase son requeridos' });
+    }
+
+    const url = await uploadProjectDocument(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype,
+      projectId
+    );
+
+    const { data, error } = await supabase
+      .from('project_phase_documents')
+      .insert({
+        project_id: projectId,
+        phase_number: parseInt(phase_number),
+        code: code.trim(),
+        name: name?.trim() || req.file.originalname,
+        file_url: url,
+      })
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    res.status(201).json({ document: data });
+  } catch (error) {
+    console.error('Error al subir documento de fase:', error);
+    res.status(500).json({ error: 'Error al subir documento de fase' });
+  }
+});
+
+/**
+ * PUT /api/client-projects/:id/phase-documents/:docId
+ */
+router.put('/:id/phase-documents/:docId', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { name, code, phase_number } = req.body;
+    const updates = {};
+    if (name !== undefined) updates.name = name.trim();
+    if (code !== undefined) updates.code = code.trim();
+    if (phase_number !== undefined) updates.phase_number = parseInt(phase_number);
+
+    const { data, error } = await supabase
+      .from('project_phase_documents')
+      .update(updates)
+      .eq('id', req.params.docId)
+      .eq('project_id', req.params.id)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    res.json({ document: data });
+  } catch (error) {
+    console.error('Error al actualizar documento de fase:', error);
+    res.status(500).json({ error: 'Error al actualizar documento de fase' });
+  }
+});
+
+/**
+ * DELETE /api/client-projects/:id/phase-documents/:docId
+ */
+router.delete('/:id/phase-documents/:docId', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { data: doc, error: fetchError } = await supabase
+      .from('project_phase_documents')
+      .select('file_url')
+      .eq('id', req.params.docId)
+      .eq('project_id', req.params.id)
+      .single();
+
+    if (fetchError || !doc) {
+      return res.status(404).json({ error: 'Documento no encontrado' });
+    }
+
+    await deleteProjectDocument(doc.file_url);
+
+    const { error } = await supabase
+      .from('project_phase_documents')
+      .delete()
+      .eq('id', req.params.docId);
+
+    if (error) throw error;
+    res.json({ message: 'Documento eliminado' });
+  } catch (error) {
+    console.error('Error al eliminar documento de fase:', error);
+    res.status(500).json({ error: 'Error al eliminar documento de fase' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE CONTENT (texto de introducción editable por fase)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/client-projects/:id/phase-content
+ */
+router.get('/:id/phase-content', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('project_phase_content')
+      .select('*')
+      .eq('project_id', req.params.id);
+
+    if (error) throw error;
+    res.json({ content: data });
+  } catch (error) {
+    console.error('Error al obtener contenido de fase:', error);
+    res.status(500).json({ error: 'Error al obtener contenido de fase' });
+  }
+});
+
+/**
+ * PUT /api/client-projects/:id/phase-content/:phaseNumber
+ * Upsert del intro_text de una fase
+ */
+router.put('/:id/phase-content/:phaseNumber', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { intro_text } = req.body;
+    const projectId = req.params.id;
+    const phaseNumber = parseInt(req.params.phaseNumber);
+
+    const { data, error } = await supabase
+      .from('project_phase_content')
+      .upsert(
+        { project_id: projectId, phase_number: phaseNumber, intro_text: intro_text ?? '', updated_at: new Date().toISOString() },
+        { onConflict: 'project_id,phase_number' }
+      )
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    res.json({ content: data });
+  } catch (error) {
+    console.error('Error al actualizar contenido de fase:', error);
+    res.status(500).json({ error: 'Error al actualizar contenido de fase' });
   }
 });
 
@@ -678,7 +879,7 @@ router.get('/:id/materials', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/materials', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, location, notes, image_url, catalog_product_id } = req.body;
+    const { name, brand, category, location, notes, image_url, catalog_product_id, phase_number } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del material es requerido' });
@@ -695,6 +896,7 @@ router.post('/:id/materials', authenticateToken, requireProyectos, async (req, r
         notes: notes?.trim() || null,
         image_url: image_url?.trim() || null,
         catalog_product_id: catalog_product_id || null,
+        phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
       })
       .select('*')
       .single();
@@ -704,6 +906,36 @@ router.post('/:id/materials', authenticateToken, requireProyectos, async (req, r
   } catch (error) {
     console.error('Error al crear material:', error);
     res.status(500).json({ error: 'Error al crear material' });
+  }
+});
+
+/**
+ * PUT /api/client-projects/:id/materials/:selId
+ */
+router.put('/:id/materials/:selId', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { brand, category, location, notes, phase_number } = req.body;
+
+    const updates = {};
+    if (brand !== undefined) updates.brand = brand?.trim() || null;
+    if (category !== undefined) updates.category = category?.trim() || null;
+    if (location !== undefined) updates.location = location?.trim() || null;
+    if (notes !== undefined) updates.notes = notes?.trim() || null;
+    if (phase_number !== undefined) updates.phase_number = phase_number != null && phase_number !== '' ? parseInt(phase_number) : null;
+
+    const { data, error } = await supabase
+      .from('project_material_selections')
+      .update(updates)
+      .eq('id', req.params.selId)
+      .eq('project_id', req.params.id)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    res.json({ material: data });
+  } catch (error) {
+    console.error('Error al actualizar material:', error);
+    res.status(500).json({ error: 'Error al actualizar material' });
   }
 });
 
@@ -772,7 +1004,7 @@ router.get('/:id/equipment', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link } = req.body;
+    const { name, brand, category, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link, phase_number } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del equipo es requerido' });
@@ -803,6 +1035,7 @@ router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, r
         image_url: image_url?.trim() || null,
         purchase_link: resolvedLink,
         show_purchase_link: show_purchase_link === true,
+        phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
       })
       .select('*')
       .single();
@@ -860,13 +1093,18 @@ router.get('/:id/tours', authenticateToken, requireProyectos, async (req, res) =
  */
 router.post('/:id/tours', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, url } = req.body;
+    const { name, url, phase_number } = req.body;
     if (!name?.trim() || !url?.trim()) {
       return res.status(400).json({ error: 'Nombre y URL son requeridos' });
     }
     const { data, error } = await supabase
       .from('project_tours')
-      .insert({ project_id: req.params.id, name: name.trim(), url: url.trim() })
+      .insert({
+        project_id: req.params.id,
+        name: name.trim(),
+        url: url.trim(),
+        phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
+      })
       .select('*')
       .single();
     if (error) throw error;
@@ -881,10 +1119,11 @@ router.post('/:id/tours', authenticateToken, requireProyectos, async (req, res) 
  */
 router.put('/:id/tours/:tourId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, url } = req.body;
+    const { name, url, phase_number } = req.body;
     const updates = {};
     if (name !== undefined) updates.name = name.trim();
     if (url !== undefined) updates.url = url.trim();
+    if (phase_number !== undefined) updates.phase_number = phase_number != null && phase_number !== '' ? parseInt(phase_number) : null;
 
     const { data, error } = await supabase
       .from('project_tours')
@@ -978,7 +1217,7 @@ router.delete('/:id/notes/:noteId', authenticateToken, requireProyectos, async (
 });
 router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link } = req.body;
+    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link, phase_number } = req.body;
 
     const updates = {};
     if (quantity !== undefined) updates.quantity = parseInt(quantity);
@@ -986,6 +1225,7 @@ router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (
     if (extra_images !== undefined) updates.extra_images = Array.isArray(extra_images) ? extra_images : [];
     if (purchase_link !== undefined) updates.purchase_link = purchase_link?.trim() || null;
     if (show_purchase_link !== undefined) updates.show_purchase_link = show_purchase_link === true;
+    if (phase_number !== undefined) updates.phase_number = phase_number != null && phase_number !== '' ? parseInt(phase_number) : null;
 
     const { data, error } = await supabase
       .from('project_equipment_selections')

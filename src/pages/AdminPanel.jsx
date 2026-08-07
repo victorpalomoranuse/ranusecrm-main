@@ -69,7 +69,7 @@ function Pagination({ page, total, pageSize, onPage }) {
   );
 }
 
-const PHASE_LABELS = { 1: 'Diagnóstico y mediciones', 2: 'Prediseño', 3: 'Diseño detallado', 4: 'Compras y coordinación', 5: 'Dirección de obra' };
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
 const URGENCY_OPTIONS = ['baja', 'normal', 'alta', 'urgente'];
 
 function generateCode() {
@@ -83,7 +83,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const [projectName, setProjectName] = useState(project?.project_name || '');
   const [clientEmail, setClientEmail] = useState(project?.client_email || '');
   const [accessCode, setAccessCode] = useState(project?.access_code || generateCode());
-  const [phase, setPhase] = useState(project?.phase || 1);
+  const [phase, setPhase] = useState(project?.phase ?? 0);
   const [urgency, setUrgency] = useState(project?.urgency || 'normal');
   const [notes, setNotes] = useState(project?.notes || '');
   const [clientNif, setClientNif] = useState(project?.client_nif || '');
@@ -171,7 +171,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
           </div>
           <div className="ap-field">
             <label>Fase</label>
-            <div className="ap-phase-selector">{[1,2,3,4,5].map(n => <button key={n} type="button" className={`ap-phase-btn${phase===n?' active':''}`} onClick={() => setPhase(n)}>{n} · {PHASE_LABELS[n]}</button>)}</div>
+            <div className="ap-phase-selector">{[0,1,2,3,4,5].map(n => <button key={n} type="button" className={`ap-phase-btn${phase===n?' active':''}`} onClick={() => setPhase(n)}>{n} · {PHASE_LABELS[n]}</button>)}</div>
           </div>
           <div className="ap-field">
             <label>Urgencia</label>
@@ -265,8 +265,9 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{ id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Catálogo'}];
+const MGR_TABS = [{ id:'fases',label:'Fases'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Catálogo'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
+const FASE_TABS_PHASES = [0,1,2,3,4,5];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: r.id });
@@ -281,7 +282,7 @@ function SortableRenderThumb({ r, onDelete, isFirst }) {
   );
 }
 
-function TabRenders({ projectId }) {
+function TabRenders({ projectId, phaseNumber }) {
   const [renders, setRenders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -291,11 +292,16 @@ function TabRenders({ projectId }) {
   const fileRef = useRef();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  useEffect(() => { api.get(`/client-projects/${projectId}/renders`).then(r=>setRenders(r.data.renders||[])).catch(()=>{}).finally(()=>setLoading(false)); },[projectId]);
+  useEffect(() => {
+    api.get(`/client-projects/${projectId}/renders`).then(r=>{
+      const all = r.data.renders||[];
+      setRenders(phaseNumber != null ? all.filter(x=>x.phase_number===phaseNumber) : all);
+    }).catch(()=>{}).finally(()=>setLoading(false));
+  },[projectId, phaseNumber]);
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]; if (!file) return; setUploading(true); setError('');
-    try { const form = new FormData(); form.append('file',file); if(name) form.append('name',name); if(version) form.append('version',version); const {data} = await api.post(`/client-projects/${projectId}/renders`,form,{headers:{'Content-Type':'multipart/form-data'}}); setRenders(prev=>[...prev,data.render]); setName(''); setVersion(''); fileRef.current.value=''; } catch(err){setError(err.response?.data?.error||'Error al subir render');} finally{setUploading(false);}
+    try { const form = new FormData(); form.append('file',file); if(name) form.append('name',name); if(version) form.append('version',version); if(phaseNumber != null) form.append('phase_number', phaseNumber); const {data} = await api.post(`/client-projects/${projectId}/renders`,form,{headers:{'Content-Type':'multipart/form-data'}}); setRenders(prev=>[...prev,data.render]); setName(''); setVersion(''); fileRef.current.value=''; } catch(err){setError(err.response?.data?.error||'Error al subir render');} finally{setUploading(false);}
   };
   const handleDelete = async (id) => { try{await api.delete(`/client-projects/${projectId}/renders/${id}`);setRenders(prev=>prev.filter(r=>r.id!==id));}catch{setError('Error al eliminar render');} };
   const handleDragEnd = async (event) => {
@@ -356,10 +362,15 @@ function TabDocumentos({ projectId }) {
   );
 }
 
-function TabTour({ projectId }) {
+function TabTour({ projectId, phaseNumber }) {
   const [tours,setTours]=useState([]); const [loading,setLoading]=useState(true); const [name,setName]=useState(''); const [url,setUrl]=useState(''); const [saving,setSaving]=useState(false); const [error,setError]=useState(''); const [editingId,setEditingId]=useState(null); const [editName,setEditName]=useState(''); const [editUrl,setEditUrl]=useState('');
-  useEffect(()=>{api.get(`/client-projects/${projectId}/tours`).then(r=>setTours(r.data.tours||[])).catch(()=>{}).finally(()=>setLoading(false));},[projectId]);
-  const handleAdd=async()=>{if(!name.trim()||!url.trim()){setError('Nombre y URL son requeridos');return;}setSaving(true);setError('');try{const{data}=await api.post(`/client-projects/${projectId}/tours`,{name,url});setTours(prev=>[...prev,data.tour]);setName('');setUrl('');}catch(err){setError(err.response?.data?.error||'Error al añadir tour');}finally{setSaving(false);}};
+  useEffect(()=>{
+    api.get(`/client-projects/${projectId}/tours`).then(r=>{
+      const all = r.data.tours||[];
+      setTours(phaseNumber != null ? all.filter(t=>t.phase_number===phaseNumber) : all);
+    }).catch(()=>{}).finally(()=>setLoading(false));
+  },[projectId, phaseNumber]);
+  const handleAdd=async()=>{if(!name.trim()||!url.trim()){setError('Nombre y URL son requeridos');return;}setSaving(true);setError('');try{const payload={name,url};if(phaseNumber!=null)payload.phase_number=phaseNumber;const{data}=await api.post(`/client-projects/${projectId}/tours`,payload);setTours(prev=>[...prev,data.tour]);setName('');setUrl('');}catch(err){setError(err.response?.data?.error||'Error al añadir tour');}finally{setSaving(false);}};
   const handleSaveEdit=async(id)=>{setSaving(true);setError('');try{const{data}=await api.put(`/client-projects/${projectId}/tours/${id}`,{name:editName,url:editUrl});setTours(prev=>prev.map(t=>t.id===id?data.tour:t));setEditingId(null);}catch(err){setError(err.response?.data?.error||'Error al actualizar tour');}finally{setSaving(false);}};
   const handleDelete=async(id)=>{try{await api.delete(`/client-projects/${projectId}/tours/${id}`);setTours(prev=>prev.filter(t=>t.id!==id));}catch{setError('Error al eliminar tour');}};
   if(loading) return <div className="ap-loading">Cargando…</div>;
@@ -615,26 +626,27 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
   );
 }
 
-function TabAsignaciones({ projectId }) {
+function TabAsignaciones({ projectId, phaseNumber }) {
   const [tab,setTab]=useState('material'); const [categories,setCategories]=useState([]); const [products,setProducts]=useState([]); const [assigned,setAssigned]=useState({materials:[],equipment:[]}); const [loading,setLoading]=useState(true); const [expandedCat,setExpandedCat]=useState(null);
   const {toast}=useToast();
   const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}));
   useEffect(()=>{Promise.all([api.get('/catalog/categories'),api.get('/catalog/products'),api.get(`/client-projects/${projectId}/materials`),api.get(`/client-projects/${projectId}/equipment`)]).then(([cats,prods,mats,equip])=>{setCategories(cats.data.categories||[]);setProducts(prods.data.products||[]);setAssigned({materials:mats.data.materials||[],equipment:equip.data.equipment||[]});}).catch(()=>{}).finally(()=>setLoading(false));},[projectId]);
   const isAssigned=(productId,type)=>{const list=type==='material'?assigned.materials:assigned.equipment;return list.some(a=>a.catalog_product_id===productId);};
-  const handleAssignedDragEnd=async(event)=>{const{active,over}=event;if(!active||!over||active.id===over.id)return;const isMat=tab==='material';const list=isMat?assigned.materials:assigned.equipment;const oldIndex=list.findIndex(a=>a.id===active.id);const newIndex=list.findIndex(a=>a.id===over.id);const newList=arrayMove(list,oldIndex,newIndex);setAssigned(prev=>isMat?{...prev,materials:newList}:{...prev,equipment:newList});const endpoint=isMat?`/client-projects/${projectId}/materials/reorder`:`/client-projects/${projectId}/equipment/reorder`;try{await api.put(endpoint,{ids:newList.map(a=>a.id)});}catch{toast.error('Error al guardar el orden');}};
-  const assign=async(product)=>{const isMat=product.category?.type==='material';const type=isMat?'material':'mobiliario';if(isAssigned(product.id,type)){toast.error(`"${product.name}" ya está asignado`);return;}const endpoint=isMat?`/client-projects/${projectId}/materials`:`/client-projects/${projectId}/equipment`;try{const payload=isMat?{name:product.name,category:product.category?.name,catalog_product_id:product.id,image_url:product.photo_url||null}:{name:product.name,category:product.category?.name,catalog_product_id:product.id,quantity:1,image_url:product.photo_url||null,extra_images:[],youtube_url:null};const{data}=await api.post(endpoint,payload);setAssigned(prev=>isMat?{...prev,materials:[data.material,...prev.materials]}:{...prev,equipment:[data.equipment,...prev.equipment]});toast.success(`"${product.name}" añadido`);}catch{toast.error('Error al asignar producto');}};
+  const visibleAssigned=(list)=>phaseNumber!=null?list.filter(a=>a.phase_number===phaseNumber):list;
+  const handleAssignedDragEnd=async(event)=>{const{active,over}=event;if(!active||!over||active.id===over.id)return;const isMat=tab==='material';const list=visibleAssigned(isMat?assigned.materials:assigned.equipment);const oldIndex=list.findIndex(a=>a.id===active.id);const newIndex=list.findIndex(a=>a.id===over.id);const newList=arrayMove(list,oldIndex,newIndex);setAssigned(prev=>{const key=isMat?'materials':'equipment';const others=prev[key].filter(x=>phaseNumber!=null&&x.phase_number!==phaseNumber);return{...prev,[key]:[...others,...newList]};});const endpoint=isMat?`/client-projects/${projectId}/materials/reorder`:`/client-projects/${projectId}/equipment/reorder`;try{await api.put(endpoint,{ids:newList.map(a=>a.id)});}catch{toast.error('Error al guardar el orden');}};
+  const assign=async(product)=>{const isMat=product.category?.type==='material';const type=isMat?'material':'mobiliario';if(isAssigned(product.id,type)){toast.error(`"${product.name}" ya está asignado`);return;}const endpoint=isMat?`/client-projects/${projectId}/materials`:`/client-projects/${projectId}/equipment`;try{const payload=isMat?{name:product.name,category:product.category?.name,catalog_product_id:product.id,image_url:product.photo_url||null}:{name:product.name,category:product.category?.name,catalog_product_id:product.id,quantity:1,image_url:product.photo_url||null,extra_images:[],youtube_url:null};if(phaseNumber!=null)payload.phase_number=phaseNumber;const{data}=await api.post(endpoint,payload);setAssigned(prev=>isMat?{...prev,materials:[data.material,...prev.materials]}:{...prev,equipment:[data.equipment,...prev.equipment]});toast.success(`"${product.name}" añadido`);}catch{toast.error('Error al asignar producto');}};
   const unassign=async(id,type)=>{const isMat=type==='material';const endpoint=isMat?`/client-projects/${projectId}/materials/${id}`:`/client-projects/${projectId}/equipment/${id}`;try{await api.delete(endpoint);setAssigned(prev=>isMat?{...prev,materials:prev.materials.filter(m=>m.id!==id)}:{...prev,equipment:prev.equipment.filter(e=>e.id!==id)});}catch{toast.error('Error al quitar producto');}};
   const handleItemUpdate=(updatedItem)=>{setAssigned(prev=>({...prev,equipment:prev.equipment.map(e=>e.id===updatedItem.id?updatedItem:e)}));toast.success('Detalles guardados');};
   if(loading) return <div className="ap-loading">Cargando…</div>;
   const filteredCats=categories.filter(c=>c.type===tab);
-  const assignedList=tab==='material'?assigned.materials:assigned.equipment;
+  const assignedList=visibleAssigned(tab==='material'?assigned.materials:assigned.equipment);
   return (
     <div className="ap-tab-content">
       <div className="ap-cat-tabs" style={{marginBottom:'1.25rem'}}>
         <button className={`ap-cat-tab${tab==='material'?' active':''}`} onClick={()=>setTab('material')}>Materiales</button>
         <button className={`ap-cat-tab${tab==='mobiliario'?' active':''}`} onClick={()=>setTab('mobiliario')}>Mobiliario</button>
       </div>
-      {assignedList.length>0&&(<div style={{marginBottom:'1.25rem'}}><p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.5rem'}}>Asignados a este proyecto</p><DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleAssignedDragEnd}><SortableContext items={assignedList.map(a=>a.id)} strategy={verticalListSortingStrategy}><div className="ap-catalog-products" style={{padding:0}}>{assignedList.map(a=>(<SortableAssignedItem key={a.id} item={{...a,project_id:projectId}} type={tab==='material'?'material':'mobiliario'} onUnassign={unassign} onUpdate={handleItemUpdate}/>))}</div></SortableContext></DndContext></div>)}
+      {assignedList.length>0&&(<div style={{marginBottom:'1.25rem'}}><p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.5rem'}}>{phaseNumber!=null?'Asignados a esta fase':'Asignados a este proyecto'}</p><DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleAssignedDragEnd}><SortableContext items={assignedList.map(a=>a.id)} strategy={verticalListSortingStrategy}><div className="ap-catalog-products" style={{padding:0}}>{assignedList.map(a=>(<SortableAssignedItem key={a.id} item={{...a,project_id:projectId}} type={tab==='material'?'material':'mobiliario'} onUnassign={unassign} onUpdate={handleItemUpdate}/>))}</div></SortableContext></DndContext></div>)}
       <p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.75rem'}}>Tu catálogo</p>
       {filteredCats.length===0&&<p className="ap-empty-sm">No hay categorías en el catálogo todavía.</p>}
       <div className="ap-catalog-categories">{filteredCats.map(cat=>{const catProducts=products.filter(p=>p.category_id===cat.id);const isOpen=expandedCat===cat.id;return(<div key={cat.id} className="ap-catalog-cat"><div className="ap-catalog-cat-header"><button className="ap-catalog-cat-toggle" onClick={()=>setExpandedCat(isOpen?null:cat.id)}><span className="ap-catalog-cat-arrow">{isOpen?'▾':'▸'}</span><span className="ap-catalog-cat-name">{cat.name}</span><span className="ap-catalog-cat-count">{catProducts.length}</span></button></div>{isOpen&&(<div className="ap-catalog-products">{catProducts.length===0&&<p className="ap-empty-sm" style={{paddingLeft:'1rem'}}>Sin productos.</p>}{catProducts.map(p=>{const already=isAssigned(p.id,tab);return(<div key={p.id} className="ap-catalog-product">{p.photo_url&&<img src={p.photo_url} alt={p.name} className="ap-catalog-product-img"/>}<div className="ap-catalog-product-info"><span className="ap-catalog-product-name">{p.name}</span>{p.price!=null&&<span className="ap-catalog-product-price">{Number(p.price).toLocaleString('es-ES',{style:'currency',currency:'EUR'})}</span>}{p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" className="ap-catalog-product-link">Ver producto ↗</a>}</div><button className={`ap-btn ap-btn-sm ${already?'ap-btn-ghost':'ap-btn-primary'}`} onClick={()=>!already&&assign(p)} disabled={already} style={{flexShrink:0}}>{already?'✓':<Plus size={13}/>}</button></div>);})}</div>)}</div>);})}</div>
@@ -642,8 +654,136 @@ function TabAsignaciones({ projectId }) {
   );
 }
 
+function TabFaseIntro({ projectId, phaseNumber }) {
+  const [introText, setIntroText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    setLoading(true);
+    api.get(`/client-projects/${projectId}/phase-content`)
+      .then(r => {
+        const row = (r.data.content || []).find(c => c.phase_number === phaseNumber);
+        setIntroText(row?.intro_text || '');
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [projectId, phaseNumber]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.put(`/client-projects/${projectId}/phase-content/${phaseNumber}`, { intro_text: introText });
+      toast.success('Introducción guardada');
+    } catch {
+      toast.error('Error al guardar la introducción');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="ap-loading">Cargando…</div>;
+
+  return (
+    <div className="ap-field" style={{ marginBottom: '1.25rem' }}>
+      <label>Texto de introducción <span className="ap-optional">(opcional, si lo dejas vacío se usa el texto por defecto)</span></label>
+      <textarea className="ap-field-input" rows={3} value={introText} onChange={e => setIntroText(e.target.value)} placeholder="Aquí encontrarás..." />
+      <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" style={{ marginTop: '0.5rem' }} onClick={handleSave} disabled={saving}>
+        {saving ? 'Guardando…' : <><Save size={12} /> Guardar</>}
+      </button>
+    </div>
+  );
+}
+
+function TabFaseDocumentos({ projectId, phaseNumber }) {
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [code, setCode] = useState('');
+  const [docName, setDocName] = useState('');
+  const [error, setError] = useState('');
+  const fileRef = useRef();
+
+  useEffect(() => {
+    api.get(`/client-projects/${projectId}/phase-documents`)
+      .then(r => setDocuments((r.data.documents || []).filter(d => d.phase_number === phaseNumber)))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [projectId, phaseNumber]);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    if (!code.trim()) { setError('Indica el código del documento (ej. IE.01)'); return; }
+    setUploading(true); setError('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('code', code.trim());
+      form.append('name', docName || file.name);
+      form.append('phase_number', phaseNumber);
+      const { data } = await api.post(`/client-projects/${projectId}/phase-documents`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setDocuments(prev => [data.document, ...prev]);
+      setCode(''); setDocName(''); fileRef.current.value = '';
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error al subir documento');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await api.delete(`/client-projects/${projectId}/phase-documents/${id}`);
+      setDocuments(prev => prev.filter(d => d.id !== id));
+    } catch {
+      setError('Error al eliminar documento');
+    }
+  };
+
+  return (
+    <div className="ap-tab-content">
+      <div className="ap-upload-row">
+        <input className="ap-field-input" style={{ maxWidth: 110 }} value={code} onChange={e => setCode(e.target.value)} placeholder="Código (IE.01)" />
+        <input className="ap-field-input" value={docName} onChange={e => setDocName(e.target.value)} placeholder="Nombre del documento" />
+        <label className="ap-btn ap-btn-primary ap-btn-sm ap-upload-label">{uploading ? 'Subiendo…' : <><Plus size={13} /> Subir archivo</>}<input ref={fileRef} type="file" accept="image/*,application/pdf" onChange={handleUpload} disabled={uploading} style={{ display: 'none' }} /></label>
+      </div>
+      {error && <p className="ap-error">{error}</p>}
+      {loading ? <div className="ap-loading">Cargando…</div> : documents.length === 0 ? <div className="ap-empty"><p>No hay documentos en esta fase todavía.</p></div> : (
+        <div className="ap-doc-list">{documents.map(d => (
+          <div key={d.id} className="ap-doc-row">
+            <span className="ap-doc-type" style={{ background: 'rgba(190,176,162,0.12)', color: '#beb0a2' }}>{d.code}</span>
+            <a href={d.file_url} target="_blank" rel="noopener noreferrer" className="ap-doc-name">{d.name}</a>
+            <button className="ap-btn-icon" onClick={() => handleDelete(d.id)}><Trash2 size={13} /></button>
+          </div>
+        ))}</div>
+      )}
+    </div>
+  );
+}
+
+function TabFases({ projectId }) {
+  const [phaseNumber, setPhaseNumber] = useState(0);
+
+  return (
+    <div className="ap-tab-content">
+      <div className="ap-cat-tabs" style={{ marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+        {FASE_TABS_PHASES.map(n => (
+          <button key={n} className={`ap-cat-tab${phaseNumber === n ? ' active' : ''}`} onClick={() => setPhaseNumber(n)}>{n} · {PHASE_LABELS[n]}</button>
+        ))}
+      </div>
+      <TabFaseIntro projectId={projectId} phaseNumber={phaseNumber} />
+      <p className="ap-tab-desc">Documentos con código, renders, tour virtual y catálogo vinculados a esta fase. Usa solo lo que aplique.</p>
+      <TabFaseDocumentos projectId={projectId} phaseNumber={phaseNumber} />
+      <TabRenders projectId={projectId} phaseNumber={phaseNumber} />
+      <TabTour projectId={projectId} phaseNumber={phaseNumber} />
+      <TabAsignaciones projectId={projectId} phaseNumber={phaseNumber} />
+    </div>
+  );
+}
+
 function ProjectManagerModal({ project, onClose }) {
-  const [tab, setTab] = useState('renders');
+  const [tab, setTab] = useState('fases');
 
   const handlePdfMateriales = async () => {
     try {
@@ -680,6 +820,7 @@ function ProjectManagerModal({ project, onClose }) {
         </div>
         <div className="ap-mgr-tabs">{MGR_TABS.map(t=>(<button key={t.id} className={`ap-mgr-tab${tab===t.id?' active':''}`} onClick={()=>setTab(t.id)}>{t.label}</button>))}</div>
         <div className="ap-mgr-body">
+          {tab==='fases'&&<TabFases projectId={project.id}/>}
           {tab==='renders'&&<TabRenders projectId={project.id}/>}
           {tab==='documentos'&&<TabDocumentos projectId={project.id}/>}
           {tab==='tours'&&<TabTour projectId={project.id}/>}
@@ -730,7 +871,7 @@ function SectionProyectos() {
       <ToastContainer toasts={toasts} onRemove={remove}/>
       <div className="ap-section-head"><div><h1>Proyectos</h1><p>Genera proyectos con códigos de acceso para tus clientes.</p></div><button className="ap-btn ap-btn-primary" onClick={()=>setModal('new')}><Plus size={15}/> Generar proyecto</button></div>
       {loading?<div className="ap-loading">Cargando proyectos...</div>:projects.length===0?<div className="ap-empty"><p>No hay proyectos todavía.</p></div>:(
-        <><div className="ap-cp-grid">{projects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[1,2,3,4,5].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions">{p.venta_id&&<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setVerProyectoVenta(p.venta_id)}>Ver relación completa</button>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={projects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
+        <><div className="ap-cp-grid">{projects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[0,1,2,3,4,5].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions">{p.venta_id&&<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setVerProyectoVenta(p.venta_id)}>Ver relación completa</button>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={projects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
       )}
       {modal&&<ClientProjectModal project={modal==='new'?null:modal} onClose={()=>setModal(null)} onSaved={(saved)=>{if(modal==='new')setProjects(prev=>[saved,...prev]);else setProjects(prev=>prev.map(p=>p.id===saved.id?saved:p));setModal(null);toast.success('Proyecto guardado correctamente');}}/>}
       {confirmId&&<ConfirmDialog message="¿Eliminar este proyecto? El código de acceso quedará inválido." onConfirm={handleDelete} onCancel={()=>setConfirmId(null)}/>}

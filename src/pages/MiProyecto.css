@@ -98,56 +98,125 @@
   color: #fff;
 }
 
-.mp-stepper { display: flex; flex-direction: column; gap: 0; margin-bottom: 0.25rem; }
+.mp-phases { display: flex; flex-direction: column; gap: 0.6rem; }
 
-.mp-st-row { display: flex; align-items: flex-start; gap: 0.9rem; }
-
-.mp-st-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex-shrink: 0;
-  width: 26px;
+.mp-ph {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  overflow: hidden;
 }
 
-.mp-st-dot {
-  width: 26px;
-  height: 26px;
+.mp-ph-head {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 0.95rem;
+}
+
+.mp-ph-dot {
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.1);
-  background: rgba(255,255,255,0.03);
+  border: 1.5px solid rgba(190,176,162,0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
   color: #beb0a2;
-  transition: all 0.3s;
+  flex-shrink: 0;
 }
+.mp-ph--proximamente .mp-ph-dot { border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.3); }
 
-.mp-st-dot.done { background: rgba(190,176,162,0.12); border-color: rgba(190,176,162,0.5); }
-.mp-st-dot.current { background: #beb0a2; border-color: #beb0a2; box-shadow: 0 0 0 4px rgba(190,176,162,0.15); }
-
-.mp-st-line {
-  width: 2px;
+.mp-ph-label {
   flex: 1;
-  min-height: 22px;
-  background: rgba(255,255,255,0.07);
-  margin: 3px 0;
-  transition: background 0.3s;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: left;
+  color: #fff;
 }
-.mp-st-line.done { background: rgba(190,176,162,0.35); }
+.mp-ph--proximamente .mp-ph-label { color: rgba(255,255,255,0.4); }
 
-.mp-st-label {
-  font-size: 0.82rem;
-  color: rgba(255,255,255,0.5);
-  padding-top: 4px;
-  padding-bottom: 22px;
-  line-height: 1.3;
-  transition: color 0.2s;
+.mp-ph-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 20px;
+  flex-shrink: 0;
 }
-.mp-st-row:last-child .mp-st-label { padding-bottom: 0; }
-.mp-st-label.done { color: rgba(255,255,255,0.6); }
-.mp-st-label.current { color: #fff; font-weight: 700; }
+.mp-ph-badge--completado { background: rgba(190,176,162,0.12); color: #beb0a2; }
+.mp-ph-badge--en_curso { background: #beb0a2; color: #0a0a0a; }
+.mp-ph-badge--proximamente { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.4); }
+
+.mp-ph-chevron {
+  width: 15px;
+  height: 15px;
+  color: rgba(255,255,255,0.3);
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.mp-ph-chevron.open { transform: rotate(180deg); }
+
+.mp-ph-body {
+  padding: 0 0.95rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.mp-ph-intro {
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: rgba(255,255,255,0.55);
+  margin: 0;
+}
+
+.mp-ph-content { display: flex; flex-direction: column; gap: 1.5rem; }
+
+.mp-ph-empty { font-size: 0.8rem; color: rgba(255,255,255,0.25); margin: 0; }
+
+.mp-ph-next {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.4);
+  margin: 0;
+}
+.mp-ph-next svg { width: 13px; height: 13px; color: #beb0a2; margin-top: 0.15rem; flex-shrink: 0; }
+
+.mp-ph-docs { display: flex; flex-direction: column; gap: 0.5rem; }
+.mp-ph-doc {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  padding: 0.7rem 0.85rem;
+  text-decoration: none;
+  color: #fff;
+  transition: background 0.15s, border-color 0.15s;
+}
+.mp-ph-doc:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.13); }
+.mp-ph-doc-code {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #0a0a0a;
+  background: #beb0a2;
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.mp-ph-doc-name { font-size: 0.8rem; font-weight: 500; flex: 1; }
 
 .mp-sections { display: flex; flex-direction: column; gap: 2.5rem; }
 .mp-block { display: flex; flex-direction: column; gap: 1rem; }
