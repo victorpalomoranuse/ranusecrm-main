@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useEquipoAuth } from '../auth/EquipoAuthContext';
 import equipoApi from '../services/equipoApi';
-import { LogOut, Copy, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { LogOut, Copy, ChevronLeft, ChevronRight, CheckCircle, Circle, AlertCircle, X } from 'lucide-react';
 import './EquipoPanel.css';
 
-const PHASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Instalación', 5: 'Entregado' };
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
 
 function useToast() {
   const [toasts, setToasts] = useState([]);
@@ -32,6 +32,82 @@ function ToastContainer({ toasts, onRemove }) {
   );
 }
 
+function MisTareas() {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  const loadTasks = () => {
+    equipoApi.get('/tasks').then(r => setTasks(r.data.tasks || [])).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadTasks(); }, []);
+
+  const toggleDone = async (task) => {
+    try {
+      const { data } = await equipoApi.put(`/tasks/${task.id}`, { done: !task.done });
+      setTasks(prev => prev.map(t => t.id === task.id ? data.task : t));
+    } catch {
+      toast.error('Error al actualizar la tarea');
+    }
+  };
+
+  if (loading) return <div className="ep-loading">Cargando tareas…</div>;
+
+  const pending = tasks.filter(t => !t.done);
+  const done = tasks.filter(t => t.done);
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  return (
+    <div>
+      <div className="ep-section-head">
+        <h1>Mis tareas</h1>
+        <p>Tareas que te ha asignado tu diseñador.</p>
+      </div>
+      {tasks.length === 0 ? (
+        <div className="ep-empty">No tienes tareas asignadas todavía.</div>
+      ) : (
+        <div className="ep-tasks-list">
+          {pending.map(t => {
+            const overdue = t.due_date && t.due_date < todayStr;
+            return (
+              <div key={t.id} className="ep-task-row">
+                <button className="ep-task-check" onClick={() => toggleDone(t)}><Circle size={17} /></button>
+                <div className="ep-task-body">
+                  <p className="ep-task-title">{t.title}</p>
+                  {t.description && <p className="ep-task-desc">{t.description}</p>}
+                  <div className="ep-task-meta">
+                    {t.project && <span className="ep-task-tag">{t.project.client_name}{t.phase_number != null && ` · Fase ${t.phase_number}`}</span>}
+                    {t.due_date && (
+                      <span className={`ep-task-due${overdue ? ' overdue' : ''}`}>
+                        {overdue && <AlertCircle size={11} />}
+                        {new Date(t.due_date + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {done.length > 0 && (
+            <>
+              <p className="ep-tasks-done-label">Completadas ({done.length})</p>
+              {done.map(t => (
+                <div key={t.id} className="ep-task-row ep-task-row--done">
+                  <button className="ep-task-check ep-task-check--done" onClick={() => toggleDone(t)}><CheckCircle size={17} /></button>
+                  <div className="ep-task-body">
+                    <p className="ep-task-title ep-task-title--done">{t.title}</p>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function EquipoPanel() {
   const { user, logout } = useEquipoAuth();
   const navigate = useNavigate();
@@ -40,6 +116,7 @@ export function EquipoPanel() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
+  const [tab, setTab] = useState('proyectos');
 
   const loadProjects = async () => {
     try {
@@ -54,7 +131,7 @@ export function EquipoPanel() {
 
   const changePhase = async (project, delta) => {
     const newPhase = project.phase + delta;
-    if (newPhase < 1 || newPhase > 5) return;
+    if (newPhase < 0 || newPhase > 5) return;
     setUpdatingId(project.id);
     try {
       const { data } = await equipoApi.put(`/client-projects/${project.id}`, { phase: newPhase });
@@ -90,6 +167,15 @@ export function EquipoPanel() {
       </header>
 
       <main className="ep-main">
+        <div className="ep-tabs">
+          <button className={`ep-tab${tab === 'proyectos' ? ' active' : ''}`} onClick={() => setTab('proyectos')}>Proyectos</button>
+          <button className={`ep-tab${tab === 'tareas' ? ' active' : ''}`} onClick={() => setTab('tareas')}>Mis tareas</button>
+        </div>
+
+        {tab === 'tareas' ? (
+          <MisTareas />
+        ) : (
+        <>
         <div className="ep-section-head">
           <h1>Proyectos</h1>
           <p>Gestiona el estado de los proyectos de cliente.</p>
@@ -117,16 +203,16 @@ export function EquipoPanel() {
                     <button
                       className="ep-phase-arrow"
                       onClick={() => changePhase(p, -1)}
-                      disabled={p.phase <= 1 || isUpdating}
+                      disabled={p.phase <= 0 || isUpdating}
                       title="Fase anterior"
                     >
                       <ChevronLeft size={16} />
                     </button>
                     <div className="ep-phase-center">
-                      <span className="ep-phase-num">{p.phase}/5</span>
+                      <span className="ep-phase-num">Fase {p.phase}</span>
                       <span className="ep-phase-name">{PHASE_LABELS[p.phase]}</span>
                       <div className="ep-phase-dots">
-                        {[1,2,3,4,5].map(n => (
+                        {[0,1,2,3,4,5].map(n => (
                           <div key={n} className={`ep-dot${n <= p.phase ? ' active' : ''}`} />
                         ))}
                       </div>
@@ -153,6 +239,8 @@ export function EquipoPanel() {
               );
             })}
           </div>
+        )}
+        </>
         )}
       </main>
     </div>

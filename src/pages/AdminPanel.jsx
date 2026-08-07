@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet } from 'lucide-react';
+import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
+import { SectionPedidos } from './SectionPedidos';
 import { SectionTareas } from './SectionTareas';
 import { SectionAjustes } from './SectionAjustes';
 import { SectionDashboard } from './SectionDashboard';
@@ -762,6 +763,87 @@ function TabFaseDocumentos({ projectId, phaseNumber }) {
   );
 }
 
+function TabFaseTareas({ projectId, phaseNumber }) {
+  const [tasks, setTasks] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [title, setTitle] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
+  const [adding, setAdding] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([api.get(`/tasks?project_id=${projectId}`), api.get('/employees')])
+      .then(([t, emp]) => { setTasks(t.data.tasks || []); setEmployees(emp.data.employees || []); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [projectId]);
+
+  const phaseTasks = tasks.filter(t => t.phase_number === phaseNumber);
+
+  const handleAdd = async () => {
+    if (!title.trim()) return;
+    setAdding(true);
+    try {
+      const { data } = await api.post('/tasks', { title, project_id: projectId, phase_number: phaseNumber, assigned_to: assignedTo || null });
+      setTasks(prev => [data.task, ...prev]);
+      setTitle(''); setAssignedTo('');
+    } catch { toast.error('Error al crear tarea'); } finally { setAdding(false); }
+  };
+
+  const toggleDone = async (task) => {
+    try {
+      const { data } = await api.put(`/tasks/${task.id}`, { done: !task.done });
+      setTasks(prev => prev.map(t => t.id === task.id ? data.task : t));
+    } catch {}
+  };
+
+  const reassign = async (task, employeeId) => {
+    try {
+      const { data } = await api.put(`/tasks/${task.id}`, { assigned_to: employeeId || null });
+      setTasks(prev => prev.map(t => t.id === task.id ? data.task : t));
+    } catch {}
+  };
+
+  const handleDelete = async (id) => {
+    try { await api.delete(`/tasks/${id}`); setTasks(prev => prev.filter(t => t.id !== id)); } catch {}
+  };
+
+  if (loading) return <div className="ap-loading">Cargando…</div>;
+
+  return (
+    <div style={{ marginBottom: '1.5rem' }}>
+      <p style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', marginBottom: '0.5rem' }}>Tareas de esta fase</p>
+      <div className="ap-upload-row" style={{ marginBottom: '0.75rem' }}>
+        <input className="ap-field-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Nueva tarea…" onKeyDown={e => e.key === 'Enter' && handleAdd()} />
+        <select className="ap-select ap-select-sm" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
+          <option value="">Sin asignar</option>
+          {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+        </select>
+        <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAdd} disabled={adding || !title.trim()}><Plus size={13}/> Añadir</button>
+      </div>
+      {phaseTasks.length === 0 ? <p className="ap-empty-sm">Sin tareas en esta fase todavía.</p> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          {phaseTasks.map(t => (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '0.5rem 0.75rem' }}>
+              <button onClick={() => toggleDone(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.done ? '#8bae8f' : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
+                {t.done ? <CheckCircle size={15}/> : <Circle size={15}/>}
+              </button>
+              <span style={{ flex: 1, fontSize: '0.82rem', color: t.done ? 'rgba(255,255,255,0.35)' : '#fff', textDecoration: t.done ? 'line-through' : 'none' }}>{t.title}</span>
+              <select className="ap-select ap-select-sm" style={{ maxWidth: 140 }} value={t.assigned_to || ''} onChange={e => reassign(t, e.target.value)}>
+                <option value="">Sin asignar</option>
+                {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+              </select>
+              <button className="ap-btn-icon" onClick={() => handleDelete(t.id)}><Trash2 size={12}/></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TabFases({ projectId }) {
   const [phaseNumber, setPhaseNumber] = useState(0);
 
@@ -773,6 +855,7 @@ function TabFases({ projectId }) {
         ))}
       </div>
       <TabFaseIntro projectId={projectId} phaseNumber={phaseNumber} />
+      <TabFaseTareas projectId={projectId} phaseNumber={phaseNumber} />
       <p className="ap-tab-desc">Documentos con código, renders, tour virtual y catálogo vinculados a esta fase. Usa solo lo que aplique.</p>
       <TabFaseDocumentos projectId={projectId} phaseNumber={phaseNumber} />
       <TabRenders projectId={projectId} phaseNumber={phaseNumber} />
@@ -1054,6 +1137,7 @@ const NAV_ITEMS = [
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
   { id:'roles', label:'Roles', Icon:Shield, adminOnly:true },
   { id:'presupuestos', label:'Presupuestos', Icon:Calculator, adminOnly:true },
+  { id:'pedidos', label:'Pedidos', Icon:Package, adminOnly:true },
   { id:'finanzas', label:'Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
   { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },
@@ -1096,6 +1180,7 @@ export function AdminPanel() {
         {section==='empleados'&&<SectionEmpleados/>}
         {section==='roles'&&<SectionRoles/>}
         {section==='presupuestos'&&<SectionPresupuestos/>}
+        {section==='pedidos'&&<SectionPedidos/>}
         {section==='finanzas'&&<SectionFinanzas/>}
         {section==='tareas'&&<SectionTareas/>}
         {section==='ajustes'&&<SectionAjustes/>}

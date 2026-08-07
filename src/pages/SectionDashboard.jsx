@@ -18,7 +18,7 @@ const STATUS_LABEL = { borrador: 'Borrador', enviado: 'Enviado', aprobado: 'Apro
 const STATUS_COLOR = { borrador: 'rgba(255,255,255,0.3)', enviado: '#8b9eae', aprobado: '#8bae8f' };
 const CAT_COLORS   = ['#beb0a2', '#8b9eae', '#ae9e8b', '#8bae8f', '#9e8b9e'];
 
-const PHASE_LABELS = ['Diagnóstico', 'Prediseño', 'Diseño', 'Compras', 'Obra'];
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
 
 // ── Stat card ──────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, color, icon: Icon }) {
@@ -60,16 +60,62 @@ function DonutTooltip({ active, payload }) {
   );
 }
 
+// ── Tasks widget ───────────────────────────────────────────────────────────
+function TasksWidget({ tasks }) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const pending = tasks
+    .filter(t => !t.done)
+    .sort((a, b) => {
+      if (!a.due_date && !b.due_date) return 0;
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return a.due_date.localeCompare(b.due_date);
+    })
+    .slice(0, 8);
+  const overdueCount = tasks.filter(t => !t.done && t.due_date && t.due_date < todayStr).length;
+
+  return (
+    <div className="dash-chart-card">
+      <div className="dash-chart-head">
+        <span>Tareas pendientes</span>
+        {overdueCount > 0 && <span style={{ color: '#ae8b8b', fontSize: '0.75rem' }}>{overdueCount} atrasadas</span>}
+      </div>
+      {pending.length === 0 ? (
+        <div className="dash-empty-chart">Sin tareas pendientes</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+          {pending.map(t => {
+            const overdue = t.due_date && t.due_date < todayStr;
+            return (
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.8rem', padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <span style={{ flex: 1, color: '#fff' }}>{t.title}</span>
+                {t.project && <span style={{ fontSize: '0.68rem', color: '#beb0a2', flexShrink: 0 }}>{t.project.client_name}</span>}
+                {t.employee && <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>{t.employee.name}</span>}
+                {t.due_date && (
+                  <span style={{ fontSize: '0.7rem', color: overdue ? '#ae8b8b' : 'rgba(255,255,255,0.35)', flexShrink: 0 }}>
+                    {new Date(t.due_date + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main dashboard ─────────────────────────────────────────────────────────
 export function SectionDashboard() {
   const [stats, setStats] = useState(null);
+  const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeDonut, setActiveDonut] = useState(null);
   const [revealed, setRevealed] = useState(false);
 
   useEffect(() => {
-    api.get('/budgets/dashboard')
-      .then(r => setStats(r.data))
+    Promise.all([api.get('/budgets/dashboard'), api.get('/tasks')])
+      .then(([d, t]) => { setStats(d.data); setTasks(t.data.tasks || []); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -247,7 +293,7 @@ export function SectionDashboard() {
               <div key={p.phase} className="dash-pipe-item">
                 <div className="dash-pipe-meta">
                   <span className="dash-pipe-phase">Fase {p.phase}</span>
-                  <span className="dash-pipe-label">{PHASE_LABELS[i] || ''}</span>
+                  <span className="dash-pipe-label">{PHASE_LABELS[p.phase] || ''}</span>
                   <span className="dash-pipe-count">{p.count}</span>
                 </div>
                 <div className="dash-pipe-bar-wrap">
@@ -302,6 +348,10 @@ export function SectionDashboard() {
             </table>
           )}
         </div>
+      </div>
+
+      <div style={{ marginTop: '1rem' }}>
+        <TasksWidget tasks={tasks} />
       </div>
       </div>
     </div>

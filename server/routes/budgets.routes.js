@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 router.use(authenticateToken, requireAdminSuperior);
 
-const PHASE_LABELS = ['Diagnóstico', 'Prediseño', 'Diseño detallado', 'Compras', 'Dirección de obra'];
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
 
 const BRAND = {
   name: 'Ranuse Design',
@@ -124,7 +124,7 @@ router.get('/dashboard', async (req, res) => {
     // Suma del descuento total (por línea + global) aplicado al cliente,
     // sobre presupuestos aprobados — es el "ahorro" que ve el cliente en el PDF.
     const totalDiscountGiven = approved.reduce((s, b) => s + (b.totalDiscount || 0), 0);
-    const pipeline = [1,2,3,4,5].map(phase => ({ phase, label: PHASE_LABELS[phase - 1], count: allProjects.filter(p => p.phase === phase).length }));
+    const pipeline = [0,1,2,3,4,5].map(phase => ({ phase, label: PHASE_LABELS[phase], count: allProjects.filter(p => p.phase === phase).length }));
     const now = new Date();
     const monthly = [];
     for (let i = 5; i >= 0; i--) {
@@ -154,6 +154,111 @@ router.get('/', async (req, res) => {
     const budgets = (data || []).map(({ items, ...b }) => ({ ...b, ...computeTotals(items || [], b.design_fee_type, b.design_fee_value, b.design_hours, b.global_discount_pct) }));
     res.json({ budgets });
   } catch (err) { res.status(500).json({ error: 'Error al listar presupuestos' }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PEDIDOS (líneas de presupuestos aprobados pendientes de pedir/pagar/entregar)
+// Registradas antes de '/:id' para que Express no las confunda con un ID.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get('/pedidos', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('budgets')
+      .select('id, status, project:client_projects(id, client_name, project_name), items:budget_items(id, name, brand, provider, category, quantity, unit, order_status, payment_status, delivery_date, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)')
+      .eq('status', 'aprobado');
+    if (error) throw error;
+
+    const lines = [];
+    (data || []).forEach(b => {
+      (b.items || []).forEach(item => {
+        if (item.category !== 'material' && item.category !== 'mobiliario') return;
+        lines.push({
+          ...item,
+          effective_provider: item.provider?.trim() || item.brand?.trim() || 'Sin proveedor',
+          budget_id: b.id,
+          project: b.project,
+        });
+      });
+    });
+
+    res.json({ lines });
+  } catch (err) {
+    console.error('Error al obtener pedidos:', err);
+    res.status(500).json({ error: 'Error al obtener pedidos' });
+  }
+});
+
+router.get('/pedidos/export', async (req, res) => {
+  try {
+    const provider = (req.query.provider || '').trim();
+    if (!provider) return res.status(400).json({ error: 'Proveedor requerido' });
+
+    const { data, error } = await supabase
+      .from('budgets')
+      .select('id, status, project:client_projects(id, client_name, project_name), items:budget_items(id, name, brand, provider, category, quantity, unit, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, order_status)')
+      .eq('status', 'aprobado');
+    if (error) throw error;
+
+    const lines = [];
+    (data || []).forEach(b => {
+      (b.items || []).forEach(item => {
+        if (item.category !== 'material' && item.category !== 'mobiliario') return;
+        const effective = item.provider?.trim() || item.brand?.trim() || 'Sin proveedor';
+        if (effective === provider) lines.push({ ...item, project: b.project });
+      });
+    });
+
+    const W = 595, H = 842, margin = 45;
+    const dateStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
+    const logoPath = path.join(__dirname, '..', 'Icono Blanco.png');
+
+    const doc = new PDFDocument({ margin: 0, size: 'A4' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="pedido-' + provider.replace(/\s+/g, '-') + '.pdf"');
+    doc.pipe(res);
+
+    doc.rect(0, 0, W, 70).fill(BRAND.dark);
+    try { doc.image(logoPath, margin, 12, { height: 46 }); } catch {}
+    doc.fillColor('#999999').fontSize(8).font('Helvetica').text('PEDIDO', 0, 14, { align: 'right', width: W - margin });
+    doc.fillColor('#ffffff').fontSize(13).font('Helvetica-Bold').text(provider, 0, 27, { align: 'right', width: W - margin });
+    doc.fillColor('#999999').fontSize(8).font('Helvetica').text(dateStr, 0, 46, { align: 'right', width: W - margin });
+
+    let y = 90;
+    doc.fillColor('#999999').fontSize(7.5).font('Helvetica').text(BRAND.contact + '  ·  ' + BRAND.phone + '  ·  ' + BRAND.email, margin, y);
+    y += 24;
+
+    lines.forEach((item, i) => {
+      if (y > H - 80) { doc.addPage(); y = margin; }
+      if (i % 2 === 1) doc.rect(margin, y, W - margin * 2, 34).fill('#faf9f8');
+
+      doc.fillColor(BRAND.dark).fontSize(9).font('Helvetica-Bold').text(item.name, margin + 8, y + 6, { width: 280 });
+      const specs = [item.color_bastidor, item.color_acolchado, item.tipo_acolchado].filter(Boolean).join(' · ');
+      const dims = [item.longitud, item.ancho, item.altura].filter(Boolean).length
+        ? `${item.longitud || '-'}×${item.ancho || '-'}×${item.altura || '-'} cm` : '';
+      const sub = [specs, dims].filter(Boolean).join('  ·  ');
+      if (sub) doc.fillColor('#888888').fontSize(7.5).font('Helvetica').text(sub, margin + 8, y + 19, { width: 280 });
+
+      doc.fillColor('#777777').fontSize(8).font('Helvetica').text(item.project?.client_name || '—', margin + 300, y + 6, { width: 130 });
+
+      doc.fillColor(BRAND.primary).fontSize(10).font('Helvetica-Bold').text(`${item.quantity} ${item.unit || 'ud'}`, W - margin - 90, y + 10, { width: 80, align: 'right' });
+
+      doc.moveTo(margin, y + 34).lineTo(W - margin, y + 34).strokeColor('#eeeeee').lineWidth(0.3).stroke();
+      y += 34;
+    });
+
+    if (lines.length === 0) {
+      doc.fillColor('#999999').fontSize(9).font('Helvetica').text('Sin partidas pendientes para este proveedor.', margin, y);
+    }
+
+    doc.rect(0, H - 42, W, 42).fill(BRAND.dark);
+    try { doc.image(logoPath, W / 2 - 15, H - 36, { height: 24 }); } catch {}
+
+    doc.end();
+  } catch (err) {
+    console.error('Error al exportar pedido:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'Error al exportar pedido' });
+  }
 });
 
 router.get('/:id', async (req, res) => {
@@ -296,7 +401,7 @@ router.put('/:id/items/reorder', async (req, res) => {
 
 router.put('/:id/items/:itemId', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, order_status, payment_status, delivery_date, provider } = req.body;
     const updates = {};
     if (name !== undefined) updates.name = name.trim();
     if (category !== undefined) updates.category = category;
@@ -316,6 +421,10 @@ router.put('/:id/items/:itemId', async (req, res) => {
     if (pvp_ref !== undefined) updates.pvp_ref = pvp_ref ? parseFloat(pvp_ref) : null;
     if (purchase_dto !== undefined) updates.purchase_dto = purchase_dto ? parseFloat(purchase_dto) : null;
     if (pricing_mode !== undefined) updates.pricing_mode = pricing_mode || 'margin';
+    if (order_status !== undefined) updates.order_status = order_status || 'pendiente';
+    if (payment_status !== undefined) updates.payment_status = payment_status || 'pendiente';
+    if (delivery_date !== undefined) updates.delivery_date = delivery_date || null;
+    if (provider !== undefined) updates.provider = provider?.trim() || null;
     const { data, error } = await supabase.from('budget_items').update(updates).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
     if (error) throw error;
     res.json({ item: data });

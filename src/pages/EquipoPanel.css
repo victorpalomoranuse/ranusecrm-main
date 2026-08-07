@@ -263,6 +263,106 @@
 .ep-toast button { background: none; border: none; color: rgba(255,255,255,0.35); cursor: pointer; padding: 0; display: flex; align-items: center; }
 .ep-toast button:hover { color: #fff; }
 
+/* Tabs */
+.ep-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1.75rem;
+  background: rgba(255,255,255,0.04);
+  border-radius: 8px;
+  padding: 3px;
+  width: fit-content;
+}
+
+.ep-tab {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.45);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.45rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ep-tab.active { background: #beb0a2; color: #0a0a0a; font-weight: 600; }
+.ep-tab:not(.active):hover { color: #fff; }
+
+/* Tasks list */
+.ep-tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 640px;
+}
+
+.ep-task-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: #161616;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.ep-task-row--done { opacity: 0.5; padding: 0.6rem 1rem; }
+
+.ep-task-check {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.3);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.ep-task-check--done { color: #8bae8f; }
+
+.ep-task-body { flex: 1; min-width: 0; }
+.ep-task-title { margin: 0; font-size: 0.9rem; font-weight: 500; color: #fff; }
+.ep-task-title--done { text-decoration: line-through; color: rgba(255,255,255,0.4); }
+.ep-task-desc { margin: 2px 0 0; font-size: 0.78rem; color: rgba(255,255,255,0.4); }
+
+.ep-task-meta {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.4rem;
+}
+
+.ep-task-tag {
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(190,176,162,0.1);
+  color: #beb0a2;
+}
+
+.ep-task-due {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.4);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.ep-task-due.overdue { color: #ff6b6b; }
+
+.ep-tasks-done-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.25);
+  margin: 1rem 0 0.25rem;
+}
+
 /* Mobile */
 @media (max-width: 640px) {
   .ep-header { padding: 0.85rem 1rem; }

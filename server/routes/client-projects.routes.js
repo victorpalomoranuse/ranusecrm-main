@@ -28,6 +28,43 @@ async function generateUniqueCode() {
 }
 
 /**
+ * Genera las tareas de la plantilla de checklist de una fase para un proyecto,
+ * saltándose las plantillas que ya se hayan aplicado antes (para que ir y
+ * volver de una fase no duplique tareas).
+ */
+async function applyPhaseTaskTemplates(projectId, phaseNumber) {
+  try {
+    const { data: templates } = await supabase
+      .from('phase_task_templates')
+      .select('*')
+      .eq('phase_number', phaseNumber);
+    if (!templates?.length) return;
+
+    const { data: existing } = await supabase
+      .from('tasks')
+      .select('template_id')
+      .eq('project_id', projectId)
+      .not('template_id', 'is', null);
+    const existingTemplateIds = new Set((existing || []).map(t => t.template_id));
+
+    const toInsert = templates
+      .filter(t => !existingTemplateIds.has(t.id))
+      .map(t => ({
+        title: t.title,
+        description: t.description,
+        project_id: projectId,
+        phase_number: phaseNumber,
+        template_id: t.id,
+        priority: 'normal',
+      }));
+
+    if (toInsert.length) await supabase.from('tasks').insert(toInsert);
+  } catch (err) {
+    console.error('Error al generar checklist de fase:', err);
+  }
+}
+
+/**
  * GET /api/client-projects
  * Listar todos los proyectos de clientes
  */
@@ -240,6 +277,7 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
       .single();
 
     if (error) throw error;
+    await applyPhaseTaskTemplates(data.id, data.phase);
     res.status(201).json({ project: data });
   } catch (error) {
     console.error('Error al crear proyecto:', error);
@@ -275,6 +313,7 @@ router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
       .single();
 
     if (error) throw error;
+    if (updates.phase !== undefined) await applyPhaseTaskTemplates(req.params.id, updates.phase);
     res.json({ project: data });
   } catch (error) {
     console.error('Error al actualizar proyecto:', error);

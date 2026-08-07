@@ -9,6 +9,8 @@ const PRIORITIES = [
   { value: 'urgente', label: 'Urgente', color: '#ae8b8b' },
 ];
 
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
+
 const EVENT_COLORS = ['#beb0a2', '#8b9eae', '#8bae8f', '#ae9e8b', '#ae8b8b', '#9e8bae'];
 
 function getDaysInMonth(year, month) {
@@ -23,6 +25,8 @@ function getFirstDayOfMonth(year, month) {
 export function SectionTareas() {
   const [tasks, setTasks] = useState([]);
   const [events, setEvents] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('ambos'); // 'ambos' | 'tareas' | 'calendario'
 
@@ -32,6 +36,9 @@ export function SectionTareas() {
   const [taskDesc, setTaskDesc] = useState('');
   const [taskPriority, setTaskPriority] = useState('normal');
   const [taskDue, setTaskDue] = useState('');
+  const [taskProjectId, setTaskProjectId] = useState('');
+  const [taskPhase, setTaskPhase] = useState('');
+  const [taskAssignedTo, setTaskAssignedTo] = useState('');
   const [addingTask, setAddingTask] = useState(false);
 
   // Event form
@@ -50,8 +57,13 @@ export function SectionTareas() {
   const [selectedDay, setSelectedDay] = useState(null);
 
   useEffect(() => {
-    Promise.all([api.get('/tasks'), api.get('/events')])
-      .then(([t, e]) => { setTasks(t.data.tasks || []); setEvents(e.data.events || []); })
+    Promise.all([api.get('/tasks'), api.get('/events'), api.get('/client-projects'), api.get('/employees')])
+      .then(([t, e, p, emp]) => {
+        setTasks(t.data.tasks || []);
+        setEvents(e.data.events || []);
+        setProjects(p.data.projects || []);
+        setEmployees(emp.data.employees || []);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -61,9 +73,12 @@ export function SectionTareas() {
     if (!taskTitle.trim()) return;
     setAddingTask(true);
     try {
-      const { data } = await api.post('/tasks', { title: taskTitle, description: taskDesc, priority: taskPriority, due_date: taskDue || null });
+      const { data } = await api.post('/tasks', {
+        title: taskTitle, description: taskDesc, priority: taskPriority, due_date: taskDue || null,
+        project_id: taskProjectId || null, phase_number: taskProjectId && taskPhase !== '' ? taskPhase : null, assigned_to: taskAssignedTo || null,
+      });
       setTasks(prev => [data.task, ...prev]);
-      setTaskTitle(''); setTaskDesc(''); setTaskPriority('normal'); setTaskDue('');
+      setTaskTitle(''); setTaskDesc(''); setTaskPriority('normal'); setTaskDue(''); setTaskProjectId(''); setTaskPhase(''); setTaskAssignedTo('');
       setShowTaskForm(false);
     } catch {} finally { setAddingTask(false); }
   };
@@ -89,6 +104,13 @@ export function SectionTareas() {
 
   const deleteTask = async (id) => {
     try { await api.delete(`/tasks/${id}`); setTasks(prev => prev.filter(t => t.id !== id)); } catch {}
+  };
+
+  const reassignTask = async (task, employeeId) => {
+    try {
+      const { data } = await api.put(`/tasks/${task.id}`, { assigned_to: employeeId || null });
+      setTasks(prev => prev.map(t => t.id === task.id ? data.task : t));
+    } catch {}
   };
 
   const deleteEvent = async (id) => {
@@ -162,6 +184,31 @@ export function SectionTareas() {
             <div className="ap-field" style={{ flex: 1, minWidth: 140 }}>
               <label>Fecha límite <span className="ap-optional">(opcional)</span></label>
               <input type="date" value={taskDue} onChange={e => setTaskDue(e.target.value)} className="ap-field-input" />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div className="ap-field" style={{ flex: 1, minWidth: 160 }}>
+              <label>Proyecto <span className="ap-optional">(opcional)</span></label>
+              <select className="ap-select" value={taskProjectId} onChange={e => { setTaskProjectId(e.target.value); setTaskPhase(''); }}>
+                <option value="">Sin proyecto</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.client_name} — {p.project_name}</option>)}
+              </select>
+            </div>
+            {taskProjectId && (
+              <div className="ap-field" style={{ flex: 1, minWidth: 160 }}>
+                <label>Fase <span className="ap-optional">(opcional)</span></label>
+                <select className="ap-select" value={taskPhase} onChange={e => setTaskPhase(e.target.value)}>
+                  <option value="">Sin fase concreta</option>
+                  {[0,1,2,3,4,5].map(n => <option key={n} value={n}>{n} · {PHASE_LABELS[n]}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="ap-field" style={{ flex: 1, minWidth: 160 }}>
+              <label>Asignar a <span className="ap-optional">(opcional)</span></label>
+              <select className="ap-select" value={taskAssignedTo} onChange={e => setTaskAssignedTo(e.target.value)}>
+                <option value="">Sin asignar</option>
+                {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+              </select>
             </div>
           </div>
           <div className="ap-modal-actions">
@@ -332,6 +379,15 @@ export function SectionTareas() {
                                       {new Date(task.due_date + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
                                     </span>
                                   )}
+                                  {task.project && (
+                                    <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 20, background: 'rgba(190,176,162,0.1)', color: '#beb0a2' }}>
+                                      {task.project.client_name}{task.phase_number != null && ` · Fase ${task.phase_number}`}
+                                    </span>
+                                  )}
+                                  <select className="ap-select ap-select-sm" style={{ maxWidth: 150 }} value={task.assigned_to || ''} onChange={e => reassignTask(task, e.target.value)}>
+                                    <option value="">Sin asignar</option>
+                                    {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                                  </select>
                                 </div>
                               </div>
                               <button onClick={() => deleteTask(task.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}><Trash2 size={14}/></button>
