@@ -291,7 +291,7 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
  */
 router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active, lead_id, venta_id } = req.body;
+    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active, lead_id, venta_id, status } = req.body;
 
     const updates = {};
     if (client_name !== undefined) updates.client_name = client_name.trim();
@@ -304,6 +304,7 @@ router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
     if (active !== undefined) updates.active = active;
     if (lead_id !== undefined) updates.lead_id = lead_id || null;
     if (venta_id !== undefined) updates.venta_id = venta_id || null;
+    if (status !== undefined) updates.status = status;
 
     const { data, error } = await supabase
       .from('client_projects')

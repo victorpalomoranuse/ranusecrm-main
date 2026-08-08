@@ -72,6 +72,7 @@ function Pagination({ page, total, pageSize, onPage }) {
 
 const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
 const URGENCY_OPTIONS = ['baja', 'normal', 'alta', 'urgente'];
+const PROJECT_STATUS_LABELS = { en_marcha: 'En marcha', finalizado: 'Finalizado', archivado: 'Archivado' };
 
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -86,6 +87,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const [accessCode, setAccessCode] = useState(project?.access_code || generateCode());
   const [phase, setPhase] = useState(project?.phase ?? 0);
   const [urgency, setUrgency] = useState(project?.urgency || 'normal');
+  const [status, setStatus] = useState(project?.status || 'en_marcha');
   const [notes, setNotes] = useState(project?.notes || '');
   const [clientNif, setClientNif] = useState(project?.client_nif || '');
   const [clientPhone, setClientPhone] = useState(project?.client_phone || '');
@@ -125,7 +127,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const payload = { client_name: clientName, project_name: projectName, client_email: clientEmail || null, access_code: accessCode, phase, urgency, notes: notes || null, responsible_id: responsibleId || null, client_nif: clientNif || null, client_phone: clientPhone || null, client_address: clientAddress || null, client_city: clientCity || null, venta_id: ventaId || null };
+      const payload = { client_name: clientName, project_name: projectName, client_email: clientEmail || null, access_code: accessCode, phase, urgency, status, notes: notes || null, responsible_id: responsibleId || null, client_nif: clientNif || null, client_phone: clientPhone || null, client_address: clientAddress || null, client_city: clientCity || null, venta_id: ventaId || null };
       let saved;
       if (isEdit) { const { data } = await api.put(`/client-projects/${project.id}`, payload); saved = data.project; }
       else { const { data } = await api.post('/client-projects', payload); saved = data.project; }
@@ -173,6 +175,10 @@ function ClientProjectModal({ project, onClose, onSaved }) {
           <div className="ap-field">
             <label>Fase</label>
             <div className="ap-phase-selector">{[0,1,2,3,4,5].map(n => <button key={n} type="button" className={`ap-phase-btn${phase===n?' active':''}`} onClick={() => setPhase(n)}>{n} · {PHASE_LABELS[n]}</button>)}</div>
+          </div>
+          <div className="ap-field">
+            <label>Estado del proyecto</label>
+            <div className="ap-urgency-selector">{Object.entries(PROJECT_STATUS_LABELS).map(([val, label]) => <button key={val} type="button" className={`ap-urgency-btn ap-urgency--${val==='en_marcha'?'normal':val==='finalizado'?'alta':'baja'}${status===val?' active':''}`} onClick={() => setStatus(val)}>{label}</button>)}</div>
           </div>
           <div className="ap-field">
             <label>Urgencia</label>
@@ -958,19 +964,23 @@ function SectionTrabajos() {
 const PAGE_SIZE_PROYECTOS=6;
 
 function SectionProyectos() {
-  const [projects,setProjects]=useState([]); const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null); const [confirmId,setConfirmId]=useState(null); const [manageProject,setManageProject]=useState(null); const [page,setPage]=useState(1); const [verProyectoVenta,setVerProyectoVenta]=useState(null);
+  const [projects,setProjects]=useState([]); const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null); const [confirmId,setConfirmId]=useState(null); const [manageProject,setManageProject]=useState(null); const [page,setPage]=useState(1); const [verProyectoVenta,setVerProyectoVenta]=useState(null); const [statusTab,setStatusTab]=useState('en_marcha');
   const {toasts,toast,remove}=useToast();
   const loadProjects=async()=>{try{const{data}=await api.get('/client-projects');setProjects(data.projects||[]);}catch{}finally{setLoading(false);}};
   useEffect(()=>{loadProjects();},[]);
   const handleDelete=async()=>{try{await api.delete(`/client-projects/${confirmId}`);setProjects(prev=>prev.filter(p=>p.id!==confirmId));toast.success('Proyecto eliminado');}catch{toast.error('Error al eliminar el proyecto');}finally{setConfirmId(null);}};
   const copyCode=(code)=>{navigator.clipboard.writeText(code);toast.success('Código copiado');};
   const copyLink=(code)=>{const url=`${window.location.origin}/mi-proyecto?code=${code}`;navigator.clipboard.writeText(url);toast.success('Enlace copiado');};
+  const filteredProjects=statusTab==='todos'?projects:projects.filter(p=>(p.status||'en_marcha')===statusTab);
   return (
     <div className="ap-section">
       <ToastContainer toasts={toasts} onRemove={remove}/>
       <div className="ap-section-head"><div><h1>Proyectos</h1><p>Genera proyectos con códigos de acceso para tus clientes.</p></div><button className="ap-btn ap-btn-primary" onClick={()=>setModal('new')}><Plus size={15}/> Generar proyecto</button></div>
-      {loading?<div className="ap-loading">Cargando proyectos...</div>:projects.length===0?<div className="ap-empty"><p>No hay proyectos todavía.</p></div>:(
-        <><div className="ap-cp-grid">{projects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[0,1,2,3,4,5].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions">{p.venta_id&&<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setVerProyectoVenta(p.venta_id)}>Ver relación completa</button>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={projects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
+      <div className="ap-cat-tabs" style={{marginBottom:'1.25rem'}}>
+        {['en_marcha','finalizado','archivado','todos'].map(t=>(<button key={t} className={`ap-cat-tab${statusTab===t?' active':''}`} onClick={()=>{setStatusTab(t);setPage(1);}}>{t==='todos'?'Todos':PROJECT_STATUS_LABELS[t]} <span style={{opacity:0.5,fontSize:'0.75em'}}>({t==='todos'?projects.length:projects.filter(p=>(p.status||'en_marcha')===t).length})</span></button>))}
+      </div>
+      {loading?<div className="ap-loading">Cargando proyectos...</div>:filteredProjects.length===0?<div className="ap-empty"><p>No hay proyectos en este estado.</p></div>:(
+        <><div className="ap-cp-grid">{filteredProjects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><div style={{display:'flex',gap:4,flexDirection:'column',alignItems:'flex-end'}}><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span>{(p.status||'en_marcha')!=='en_marcha'&&<span className="ap-urgency-badge ap-urgency--baja">{PROJECT_STATUS_LABELS[p.status]}</span>}</div></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[0,1,2,3,4,5].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions">{p.venta_id&&<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setVerProyectoVenta(p.venta_id)}>Ver relación completa</button>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={filteredProjects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
       )}
       {modal&&<ClientProjectModal project={modal==='new'?null:modal} onClose={()=>setModal(null)} onSaved={(saved)=>{if(modal==='new')setProjects(prev=>[saved,...prev]);else setProjects(prev=>prev.map(p=>p.id===saved.id?saved:p));setModal(null);toast.success('Proyecto guardado correctamente');}}/>}
       {confirmId&&<ConfirmDialog message="¿Eliminar este proyecto? El código de acceso quedará inválido." onConfirm={handleDelete} onCancel={()=>setConfirmId(null)}/>}

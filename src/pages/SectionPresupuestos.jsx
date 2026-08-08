@@ -242,7 +242,8 @@ function BudgetList({ onOpen }) {
   const budgetByProject = Object.fromEntries(budgets.filter(b => b.project_id).map(b => [b.project_id, b]));
   const independienteBudgets = budgets.filter(b => !b.project_id);
   const visibleProjects = projects.filter(p => budgetByProject[p.id]);
-  const projectsWithoutBudget = projects.filter(p => !budgetByProject[p.id]);
+  const activeProjects = projects.filter(p => (p.status || 'en_marcha') === 'en_marcha');
+  const projectsWithoutBudget = activeProjects.filter(p => !budgetByProject[p.id]);
 
   if (loading) return <div className="ap-loading">Cargando presupuestos…</div>;
 
@@ -259,7 +260,7 @@ function BudgetList({ onOpen }) {
         <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setShowNewModal(true)}><Plus size={13}/> Nuevo presupuesto</button>
       </div>
 
-      {showNewModal && <NewBudgetModal projects={projects} onClose={() => setShowNewModal(false)} onCreate={handleCreate} />}
+      {showNewModal && <NewBudgetModal projects={activeProjects} onClose={() => setShowNewModal(false)} onCreate={handleCreate} />}
 
       <div className="pres-grid">
         {(tab === 'todos' || tab === 'independientes') && independienteBudgets.map(b => {

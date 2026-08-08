@@ -111,7 +111,7 @@ router.get('/dashboard', async (req, res) => {
       // que el Dashboard pudiera mostrar cifras de facturación/coste/descuento
       // distintas a las del presupuesto individual para el mismo dato.
       supabase.from('budgets').select('*, project:client_projects(id, client_name, project_name, phase, created_at), items:budget_items(unit_cost, unit_price, quantity, category, created_at, pricing_mode, pvp_ref, discount_pct, purchase_dto)'),
-      supabase.from('client_projects').select('id, phase, created_at'),
+      supabase.from('client_projects').select('id, phase, status, created_at'),
     ]);
     if (budgetsRes.error) throw budgetsRes.error;
     const allBudgets = (budgetsRes.data || []).map(b => ({ ...b, ...computeTotals(b.items || [], b.design_fee_type, b.design_fee_value, b.design_hours, b.global_discount_pct) }));
@@ -139,7 +139,8 @@ router.get('/dashboard', async (req, res) => {
     const CAT_LABELS = { material: 'Material', mobiliario: 'Mobiliario', instalacion: 'Instalacion', transporte: 'Transporte', otro: 'Otro' };
     const byCategory = Object.entries(catMap).map(([cat, v]) => ({ category: cat, label: CAT_LABELS[cat] || cat, ...v }));
     const recentBudgets = [...allBudgets].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6).map(({ items: _items, ...b }) => b);
-    res.json({ summary: { totalRevenue, totalCost, totalProfit, margin, totalDiscountGiven, activeProjects: allProjects.length, budgetsCount: allBudgets.length }, monthly, byCategory, pipeline, recentBudgets });
+    const activeProjectsCount = allProjects.filter(p => (p.status || 'en_marcha') === 'en_marcha').length;
+    res.json({ summary: { totalRevenue, totalCost, totalProfit, margin, totalDiscountGiven, activeProjects: activeProjectsCount, budgetsCount: allBudgets.length }, monthly, byCategory, pipeline, recentBudgets });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al cargar dashboard' }); }
 });
 
@@ -165,7 +166,7 @@ router.get('/pedidos', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('budgets')
-      .select('id, status, project:client_projects(id, client_name, project_name), items:budget_items(id, name, brand, provider, category, quantity, unit, order_status, payment_status, delivery_date, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)')
+      .select('id, status, project:client_projects(id, client_name, project_name, status), items:budget_items(id, name, brand, provider, category, quantity, unit, order_status, payment_status, delivery_date, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)')
       .eq('status', 'aprobado');
     if (error) throw error;
 
@@ -191,7 +192,7 @@ router.get('/pedidos', async (req, res) => {
 
 router.get('/pedidos/export', async (req, res) => {
   try {
-    const provider = (req.query.provider || '').trim();
+    const provider = (req.query.provider || '').trim().toLowerCase();
     const projectId = (req.query.project_id || '').trim();
     if (!provider) return res.status(400).json({ error: 'Proveedor requerido' });
 
@@ -207,7 +208,7 @@ router.get('/pedidos/export', async (req, res) => {
       (b.items || []).forEach(item => {
         if (item.category !== 'material' && item.category !== 'mobiliario') return;
         const effective = item.provider?.trim() || item.brand?.trim() || 'Sin proveedor';
-        if (effective === provider) lines.push({ ...item, project: b.project });
+        if (effective.toLowerCase() === provider) lines.push({ ...item, project: b.project });
       });
     });
 

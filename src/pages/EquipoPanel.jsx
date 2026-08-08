@@ -121,7 +121,7 @@ export function EquipoPanel() {
   const loadProjects = async () => {
     try {
       const { data } = await equipoApi.get('/client-projects');
-      setProjects(data.projects || []);
+      setProjects((data.projects || []).filter(p => (p.status || 'en_marcha') === 'en_marcha'));
     } catch { } finally { setLoading(false); }
   };
 

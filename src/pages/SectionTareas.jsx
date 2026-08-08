@@ -191,7 +191,7 @@ export function SectionTareas() {
               <label>Proyecto <span className="ap-optional">(opcional)</span></label>
               <select className="ap-select" value={taskProjectId} onChange={e => { setTaskProjectId(e.target.value); setTaskPhase(''); }}>
                 <option value="">Sin proyecto</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.client_name} — {p.project_name}</option>)}
+                {projects.filter(p => (p.status || 'en_marcha') === 'en_marcha').map(p => <option key={p.id} value={p.id}>{p.client_name} — {p.project_name}</option>)}
               </select>
             </div>
             {taskProjectId && (
