@@ -30,11 +30,12 @@ export function SectionPedidos() {
     } catch {}
   };
 
-  const handleExport = async (provider) => {
+  const handleExport = async (provider, projectId) => {
     try {
       const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
       const token = localStorage.getItem('admin_token');
-      const res = await fetch(`${base}/budgets/pedidos/export?provider=${encodeURIComponent(provider)}`, {
+      const qs = new URLSearchParams({ provider, ...(projectId ? { project_id: projectId } : {}) });
+      const res = await fetch(`${base}/budgets/pedidos/export?${qs.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error();
@@ -58,16 +59,25 @@ export function SectionPedidos() {
   }
 
   const visibleLines = filter === 'pendientes' ? lines.filter(l => l.order_status !== 'entregado') : lines;
-  const groups = {};
-  visibleLines.forEach(l => { (groups[l.effective_provider] ||= []).push(l); });
-  const providerNames = Object.keys(groups).sort();
+
+  const projectGroups = {};
+  visibleLines.forEach(l => {
+    const pid = l.project?.id || 'sin-proyecto';
+    if (!projectGroups[pid]) projectGroups[pid] = { project: l.project, providers: {} };
+    (projectGroups[pid].providers[l.effective_provider] ||= []).push(l);
+  });
+  const projectIds = Object.keys(projectGroups).sort((a, b) => {
+    const na = projectGroups[a].project?.client_name || '';
+    const nb = projectGroups[b].project?.client_name || '';
+    return na.localeCompare(nb);
+  });
 
   return (
     <div className="ap-section">
       <div className="ap-section-head">
         <div>
           <h1>Pedidos</h1>
-          <p>Qué falta por pedir de tus presupuestos aprobados, agrupado por proveedor/marca.</p>
+          <p>Qué falta por pedir de tus presupuestos aprobados, por proyecto y proveedor/marca.</p>
         </div>
         <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 3 }}>
           {['pendientes', 'todos'].map(v => (
@@ -87,43 +97,57 @@ export function SectionPedidos() {
         </div>
       </div>
 
-      {providerNames.length === 0 ? (
+      {projectIds.length === 0 ? (
         <div className="ap-empty"><p>{filter === 'pendientes' ? 'Nada pendiente de pedir.' : 'No hay partidas en presupuestos aprobados.'}</p></div>
-      ) : providerNames.map(provider => (
-        <div key={provider} style={{ marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: '#fff', margin: 0 }}>
-              {provider} <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.78rem' }}>({groups[provider].length})</span>
-            </h3>
-            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => handleExport(provider)}><Download size={13} /> Exportar PDF</button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {groups[provider].map(line => (
-              <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '0.75rem 1rem' }}>
-                <div style={{ flex: '1 1 220px', minWidth: 180 }}>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#fff', fontWeight: 500 }}>{line.name}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>
-                    {line.project?.client_name} · {line.project?.project_name} · x{line.quantity} {line.unit}
-                  </p>
+      ) : projectIds.map(pid => {
+        const { project, providers } = projectGroups[pid];
+        const providerNames = Object.keys(providers).sort();
+        const totalCount = providerNames.reduce((s, p) => s + providers[p].length, 0);
+        return (
+          <div key={pid} style={{ marginBottom: '2.5rem' }}>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff', margin: '0 0 0.15rem' }}>
+              {project?.client_name || 'Sin proyecto'}
+            </h2>
+            <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', margin: '0 0 1rem' }}>
+              {project?.project_name} · {totalCount} partida{totalCount !== 1 ? 's' : ''}
+            </p>
+
+            {providerNames.map(provider => (
+              <div key={provider} style={{ marginBottom: '1.5rem', paddingLeft: '1rem', borderLeft: '2px solid rgba(190,176,162,0.2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                  <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: '#beb0a2', margin: 0 }}>
+                    {provider} <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.75rem' }}>({providers[provider].length})</span>
+                  </h3>
+                  <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => handleExport(provider, project?.id)}><Download size={13} /> Exportar PDF</button>
                 </div>
-                <select className="ap-select ap-select-sm" value={line.order_status || 'pendiente'} onChange={e => updateLine(line, { order_status: e.target.value })}>
-                  {ORDER_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-                <select className="ap-select ap-select-sm" value={line.payment_status || 'pendiente'} onChange={e => updateLine(line, { payment_status: e.target.value })}>
-                  {PAYMENT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-                <input
-                  type="date"
-                  className="ap-field-input"
-                  style={{ maxWidth: 150 }}
-                  value={line.delivery_date || ''}
-                  onChange={e => updateLine(line, { delivery_date: e.target.value })}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {providers[provider].map(line => (
+                    <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '0.75rem 1rem' }}>
+                      <div style={{ flex: '1 1 220px', minWidth: 180 }}>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#fff', fontWeight: 500 }}>{line.name}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>x{line.quantity} {line.unit}</p>
+                      </div>
+                      <select className="ap-select ap-select-sm" value={line.order_status || 'pendiente'} onChange={e => updateLine(line, { order_status: e.target.value })}>
+                        {ORDER_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      </select>
+                      <select className="ap-select ap-select-sm" value={line.payment_status || 'pendiente'} onChange={e => updateLine(line, { payment_status: e.target.value })}>
+                        {PAYMENT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      </select>
+                      <input
+                        type="date"
+                        className="ap-field-input"
+                        style={{ maxWidth: 150 }}
+                        value={line.delivery_date || ''}
+                        onChange={e => updateLine(line, { delivery_date: e.target.value })}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -192,6 +192,7 @@ router.get('/pedidos', async (req, res) => {
 router.get('/pedidos/export', async (req, res) => {
   try {
     const provider = (req.query.provider || '').trim();
+    const projectId = (req.query.project_id || '').trim();
     if (!provider) return res.status(400).json({ error: 'Proveedor requerido' });
 
     const { data, error } = await supabase
@@ -202,6 +203,7 @@ router.get('/pedidos/export', async (req, res) => {
 
     const lines = [];
     (data || []).forEach(b => {
+      if (projectId && b.project?.id !== projectId) return;
       (b.items || []).forEach(item => {
         if (item.category !== 'material' && item.category !== 'mobiliario') return;
         const effective = item.provider?.trim() || item.brand?.trim() || 'Sin proveedor';

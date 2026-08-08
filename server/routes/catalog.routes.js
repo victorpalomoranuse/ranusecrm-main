@@ -9,6 +9,76 @@ const router = express.Router();
 // Todas las rutas requieren admin
 router.use(authenticateToken, requirePermission('catalogo'));
 
+function slugify(text) {
+  return text
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+}
+
+// ── Tipos de catálogo (nivel superior: Materiales, Mobiliario, y los que añadas) ──
+
+router.get('/types', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('catalog_types').select('*').order('display_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: true });
+    if (error) throw error;
+    res.json({ types: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al listar tipos' });
+  }
+});
+
+router.post('/types', async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+    const baseSlug = slugify(name) || 'tipo';
+    let slug = baseSlug, n = 1;
+    while (true) {
+      const { data: existing } = await supabase.from('catalog_types').select('id').eq('slug', slug).maybeSingle();
+      if (!existing) break;
+      slug = `${baseSlug}-${++n}`;
+    }
+    const { data: maxRow } = await supabase.from('catalog_types').select('display_order').order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+    const { data, error } = await supabase.from('catalog_types').insert({
+      name: name.trim(), slug, display_order: (maxRow?.display_order ?? -1) + 1,
+    }).select('*').single();
+    if (error) throw error;
+    res.status(201).json({ type: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al crear tipo' });
+  }
+});
+
+router.put('/types/:id', async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+    const { data, error } = await supabase.from('catalog_types').update({ name: name.trim() }).eq('id', req.params.id).select('*').single();
+    if (error) throw error;
+    res.json({ type: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al renombrar tipo' });
+  }
+});
+
+router.delete('/types/:id', async (req, res) => {
+  try {
+    const { data: type } = await supabase.from('catalog_types').select('slug').eq('id', req.params.id).single();
+    if (type) {
+      const { data: inUse } = await supabase.from('catalog_categories').select('id').eq('type', type.slug).limit(1);
+      if (inUse?.length) return res.status(400).json({ error: 'Hay categorías usando este tipo. Muévelas o elimínalas antes.' });
+    }
+    const { error } = await supabase.from('catalog_types').delete().eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ message: 'Tipo eliminado' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al eliminar tipo' });
+  }
+});
+
 // ── Categorías ─────────────────────────────────────────────────────────
 
 router.get('/categories', async (req, res) => {
@@ -27,7 +97,7 @@ router.get('/categories', async (req, res) => {
 router.post('/categories', async (req, res) => {
   try {
     const { name, type } = req.body;
-    if (!name?.trim() || !['material', 'mobiliario'].includes(type)) {
+    if (!name?.trim() || !type?.trim()) {
       return res.status(400).json({ error: 'Nombre y tipo requeridos' });
     }
     const { data, error } = await supabase
