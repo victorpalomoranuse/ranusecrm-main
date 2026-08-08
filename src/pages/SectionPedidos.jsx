@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { Download } from 'lucide-react';
+import { Download, GripVertical } from 'lucide-react';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const ORDER_STATUSES = [
   { value: 'pendiente', label: 'Por pedir', color: 'rgba(255,255,255,0.35)' },
@@ -18,12 +21,43 @@ function normalizeKey(s) {
 function displayName(key) {
   return key.replace(/\b\w/g, c => c.toUpperCase());
 }
+function sortByPedidoOrder(arr) {
+  return [...arr].sort((a, b) => (a.pedido_order ?? Infinity) - (b.pedido_order ?? Infinity));
+}
+
+function SortableLineRow({ line, onUpdate }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: line.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, zIndex: isDragging ? 10 : undefined };
+  return (
+    <div ref={setNodeRef} style={{ ...style, display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '0.75rem 1rem' }}>
+      <button {...attributes} {...listeners} type="button" style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(255,255,255,0.3)', padding: 0, flexShrink: 0, display: 'flex' }}><GripVertical size={14} /></button>
+      <div style={{ flex: '1 1 220px', minWidth: 180 }}>
+        <p style={{ margin: 0, fontSize: '0.85rem', color: '#fff', fontWeight: 500 }}>{line.name}</p>
+        <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>x{line.quantity} {line.unit}</p>
+      </div>
+      <select className="ap-select ap-select-sm" value={line.order_status || 'pendiente'} onChange={e => onUpdate(line, { order_status: e.target.value })}>
+        {ORDER_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+      </select>
+      <select className="ap-select ap-select-sm" value={line.payment_status || 'pendiente'} onChange={e => onUpdate(line, { payment_status: e.target.value })}>
+        {PAYMENT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+      </select>
+      <input
+        type="date"
+        className="ap-field-input"
+        style={{ maxWidth: 150 }}
+        value={line.delivery_date || ''}
+        onChange={e => onUpdate(line, { delivery_date: e.target.value })}
+      />
+    </div>
+  );
+}
 
 export function SectionPedidos() {
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('pendientes'); // 'pendientes' | 'todos'
   const [includeFinished, setIncludeFinished] = useState(false);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useEffect(() => {
     api.get('/budgets/pedidos').then(r => setLines(r.data.lines || [])).catch(() => {}).finally(() => setLoading(false));
@@ -35,6 +69,24 @@ export function SectionPedidos() {
       setLines(prev => prev.map(l => l.id === line.id
         ? { ...l, ...data.item, effective_provider: data.item.provider?.trim() || data.item.brand?.trim() || 'Sin proveedor' }
         : l));
+    } catch {}
+  };
+
+  const handleReorder = async (providerLines, event) => {
+    const { active, over } = event;
+    if (!active || !over || active.id === over.id) return;
+    const oldIndex = providerLines.findIndex(l => l.id === active.id);
+    const newIndex = providerLines.findIndex(l => l.id === over.id);
+    const newOrder = arrayMove(providerLines, oldIndex, newIndex);
+    setLines(prev => {
+      const updated = prev.map(l => {
+        const idx = newOrder.findIndex(n => n.id === l.id);
+        return idx >= 0 ? { ...l, pedido_order: idx } : l;
+      });
+      return sortByPedidoOrder(updated);
+    });
+    try {
+      await api.put('/budgets/pedidos/reorder', { ids: newOrder.map(l => l.id) });
     } catch {}
   };
 
@@ -88,7 +140,7 @@ export function SectionPedidos() {
       <div className="ap-section-head">
         <div>
           <h1>Pedidos</h1>
-          <p>Qué falta por pedir de tus presupuestos aprobados, por proyecto y proveedor/marca.</p>
+          <p>Qué falta por pedir de tus presupuestos aprobados, por proyecto y proveedor/marca. Arrastra las líneas para ordenarlas.</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}>
@@ -139,29 +191,13 @@ export function SectionPedidos() {
                     </h3>
                     <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => handleExport(key, name, project?.id)}><Download size={13} /> Exportar PDF</button>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {providerLines.map(line => (
-                      <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '0.75rem 1rem' }}>
-                        <div style={{ flex: '1 1 220px', minWidth: 180 }}>
-                          <p style={{ margin: 0, fontSize: '0.85rem', color: '#fff', fontWeight: 500 }}>{line.name}</p>
-                          <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>x{line.quantity} {line.unit}</p>
-                        </div>
-                        <select className="ap-select ap-select-sm" value={line.order_status || 'pendiente'} onChange={e => updateLine(line, { order_status: e.target.value })}>
-                          {ORDER_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
-                        <select className="ap-select ap-select-sm" value={line.payment_status || 'pendiente'} onChange={e => updateLine(line, { payment_status: e.target.value })}>
-                          {PAYMENT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
-                        <input
-                          type="date"
-                          className="ap-field-input"
-                          style={{ maxWidth: 150 }}
-                          value={line.delivery_date || ''}
-                          onChange={e => updateLine(line, { delivery_date: e.target.value })}
-                        />
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={e => handleReorder(providerLines, e)}>
+                    <SortableContext items={providerLines.map(l => l.id)} strategy={verticalListSortingStrategy}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {providerLines.map(line => <SortableLineRow key={line.id} line={line} onUpdate={updateLine} />)}
                       </div>
-                    ))}
-                  </div>
+                    </SortableContext>
+                  </DndContext>
                 </div>
               );
             })}

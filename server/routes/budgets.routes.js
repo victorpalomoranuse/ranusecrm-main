@@ -166,7 +166,7 @@ router.get('/pedidos', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('budgets')
-      .select('id, status, project:client_projects(id, client_name, project_name, status), items:budget_items(id, name, brand, provider, category, quantity, unit, order_status, payment_status, delivery_date, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)')
+      .select('id, status, project:client_projects(id, client_name, project_name, status), items:budget_items(id, name, brand, provider, category, quantity, unit, order_status, payment_status, delivery_date, pedido_order, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)')
       .eq('status', 'aprobado');
     if (error) throw error;
 
@@ -182,6 +182,7 @@ router.get('/pedidos', async (req, res) => {
         });
       });
     });
+    lines.sort((a, b) => (a.pedido_order ?? Infinity) - (b.pedido_order ?? Infinity));
 
     res.json({ lines });
   } catch (err) {
@@ -198,7 +199,7 @@ router.get('/pedidos/export', async (req, res) => {
 
     const { data, error } = await supabase
       .from('budgets')
-      .select('id, status, project:client_projects(id, client_name, project_name), items:budget_items(id, name, brand, provider, category, quantity, unit, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, order_status)')
+      .select('id, status, project:client_projects(id, client_name, project_name), items:budget_items(id, name, brand, provider, category, quantity, unit, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, order_status, pedido_order)')
       .eq('status', 'aprobado');
     if (error) throw error;
 
@@ -211,6 +212,7 @@ router.get('/pedidos/export', async (req, res) => {
         if (effective.toLowerCase() === provider) lines.push({ ...item, project: b.project });
       });
     });
+    lines.sort((a, b) => (a.pedido_order ?? Infinity) - (b.pedido_order ?? Infinity));
 
     const W = 595, H = 842, margin = 45;
     const dateStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -261,6 +263,19 @@ router.get('/pedidos/export', async (req, res) => {
   } catch (err) {
     console.error('Error al exportar pedido:', err);
     if (!res.headersSent) res.status(500).json({ error: 'Error al exportar pedido' });
+  }
+});
+
+router.put('/pedidos/reorder', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids requeridos' });
+    await Promise.all(ids.map((itemId, index) =>
+      supabase.from('budget_items').update({ pedido_order: index }).eq('id', itemId)
+    ));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al reordenar' });
   }
 });
 
