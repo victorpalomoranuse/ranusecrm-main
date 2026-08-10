@@ -5,16 +5,10 @@ import clienteApi from '../services/clienteApi';
 import { Stars } from '../components/Stars';
 import './ClientePanel.css';
 
-const PHASE_LABELS = [
-  'Diagnóstico y mediciones',
-  'Prediseño',
-  'Diseño detallado',
-  'Compras y coordinación',
-  'Dirección de obra',
-];
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Planos generales', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Renders', 5: 'Maquinaria y equipamiento', 6: 'Documentación de apoyo' };
 
 function ProjectCard({ project, onView }) {
-  const phase = project.phase || 1;
+  const phase = project.phase ?? 0;
   return (
     <div className="cp-card">
       <div className="cp-card-info">
@@ -22,11 +16,11 @@ function ProjectCard({ project, onView }) {
         <p className="cp-card-client">{project.client_name}</p>
         <div className="cp-card-phase">
           <div className="cp-phase-dots">
-            {[1,2,3,4,5].map(n => (
+            {[0,1,2,3,4,5,6].map(n => (
               <div key={n} className={`cp-dot${n <= phase ? ' active' : ''}`} />
             ))}
           </div>
-          <span className="cp-phase-label">{PHASE_LABELS[phase - 1]}</span>
+          <span className="cp-phase-label">{PHASE_LABELS[phase]}</span>
         </div>
       </div>
       <button className="cp-view-btn" onClick={() => onView(project.access_code)}>

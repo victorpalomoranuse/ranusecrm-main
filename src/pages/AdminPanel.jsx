@@ -70,7 +70,7 @@ function Pagination({ page, total, pageSize, onPage }) {
   );
 }
 
-const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Planos generales', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Renders', 5: 'Maquinaria y equipamiento', 6: 'Documentación de apoyo' };
 const URGENCY_OPTIONS = ['baja', 'normal', 'alta', 'urgente'];
 const PROJECT_STATUS_LABELS = { en_marcha: 'En marcha', finalizado: 'Finalizado', archivado: 'Archivado' };
 
@@ -174,7 +174,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
           </div>
           <div className="ap-field">
             <label>Fase</label>
-            <div className="ap-phase-selector">{[0,1,2,3,4,5].map(n => <button key={n} type="button" className={`ap-phase-btn${phase===n?' active':''}`} onClick={() => setPhase(n)}>{n} · {PHASE_LABELS[n]}</button>)}</div>
+            <div className="ap-phase-selector">{[0,1,2,3,4,5,6].map(n => <button key={n} type="button" className={`ap-phase-btn${phase===n?' active':''}`} onClick={() => setPhase(n)}>{n} · {PHASE_LABELS[n]}</button>)}</div>
           </div>
           <div className="ap-field">
             <label>Estado del proyecto</label>
@@ -274,7 +274,7 @@ function ProjectModal({ project, onClose, onSaved }) {
 
 const MGR_TABS = [{ id:'fases',label:'Fases'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Catálogo'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
-const FASE_TABS_PHASES = [0,1,2,3,4,5];
+const FASE_TABS_PHASES = [0,1,2,3,4,5,6];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: r.id });
@@ -980,7 +980,7 @@ function SectionProyectos() {
         {['en_marcha','finalizado','archivado','todos'].map(t=>(<button key={t} className={`ap-cat-tab${statusTab===t?' active':''}`} onClick={()=>{setStatusTab(t);setPage(1);}}>{t==='todos'?'Todos':PROJECT_STATUS_LABELS[t]} <span style={{opacity:0.5,fontSize:'0.75em'}}>({t==='todos'?projects.length:projects.filter(p=>(p.status||'en_marcha')===t).length})</span></button>))}
       </div>
       {loading?<div className="ap-loading">Cargando proyectos...</div>:filteredProjects.length===0?<div className="ap-empty"><p>No hay proyectos en este estado.</p></div>:(
-        <><div className="ap-cp-grid">{filteredProjects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><div style={{display:'flex',gap:4,flexDirection:'column',alignItems:'flex-end'}}><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span>{(p.status||'en_marcha')!=='en_marcha'&&<span className="ap-urgency-badge ap-urgency--baja">{PROJECT_STATUS_LABELS[p.status]}</span>}</div></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[0,1,2,3,4,5].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions">{p.venta_id&&<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setVerProyectoVenta(p.venta_id)}>Ver relación completa</button>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={filteredProjects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
+        <><div className="ap-cp-grid">{filteredProjects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><div style={{display:'flex',gap:4,flexDirection:'column',alignItems:'flex-end'}}><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span>{(p.status||'en_marcha')!=='en_marcha'&&<span className="ap-urgency-badge ap-urgency--baja">{PROJECT_STATUS_LABELS[p.status]}</span>}</div></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[0,1,2,3,4,5,6].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions">{p.venta_id&&<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setVerProyectoVenta(p.venta_id)}>Ver relación completa</button>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={filteredProjects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
       )}
       {modal&&<ClientProjectModal project={modal==='new'?null:modal} onClose={()=>setModal(null)} onSaved={(saved)=>{if(modal==='new')setProjects(prev=>[saved,...prev]);else setProjects(prev=>prev.map(p=>p.id===saved.id?saved:p));setModal(null);toast.success('Proyecto guardado correctamente');}}/>}
       {confirmId&&<ConfirmDialog message="¿Eliminar este proyecto? El código de acceso quedará inválido." onConfirm={handleDelete} onCancel={()=>setConfirmId(null)}/>}

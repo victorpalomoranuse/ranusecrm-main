@@ -203,7 +203,7 @@ router.get('/by-code/:code', async (req, res) => {
     (phaseContentResult.data || []).forEach(c => { phaseContentByNumber[c.phase_number] = c.intro_text; });
 
     const currentPhase = project.phase ?? 1;
-    const phases = [0, 1, 2, 3, 4, 5].map(n => ({
+    const phases = [0, 1, 2, 3, 4, 5, 6].map(n => ({
       number: n,
       status: n < currentPhase ? 'completado' : n === currentPhase ? 'en_curso' : 'proximamente',
       intro_text: phaseContentByNumber[n] ?? null,

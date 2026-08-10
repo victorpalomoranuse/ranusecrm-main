@@ -18,7 +18,7 @@ const STATUS_LABEL = { borrador: 'Borrador', enviado: 'Enviado', aprobado: 'Apro
 const STATUS_COLOR = { borrador: 'rgba(255,255,255,0.3)', enviado: '#8b9eae', aprobado: '#8bae8f' };
 const CAT_COLORS   = ['#beb0a2', '#8b9eae', '#ae9e8b', '#8bae8f', '#9e8b9e'];
 
-const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Planos generales', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Renders', 5: 'Maquinaria y equipamiento', 6: 'Documentación de apoyo' };
 
 // ── Stat card ──────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, color, icon: Icon }) {

@@ -5,7 +5,7 @@ import equipoApi from '../services/equipoApi';
 import { LogOut, Copy, ChevronLeft, ChevronRight, CheckCircle, Circle, AlertCircle, X } from 'lucide-react';
 import './EquipoPanel.css';
 
-const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Planos generales', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Renders', 5: 'Maquinaria y equipamiento', 6: 'Documentación de apoyo' };
 
 function useToast() {
   const [toasts, setToasts] = useState([]);
@@ -131,7 +131,7 @@ export function EquipoPanel() {
 
   const changePhase = async (project, delta) => {
     const newPhase = project.phase + delta;
-    if (newPhase < 0 || newPhase > 5) return;
+    if (newPhase < 0 || newPhase > 6) return;
     setUpdatingId(project.id);
     try {
       const { data } = await equipoApi.put(`/client-projects/${project.id}`, { phase: newPhase });
@@ -212,7 +212,7 @@ export function EquipoPanel() {
                       <span className="ep-phase-num">Fase {p.phase}</span>
                       <span className="ep-phase-name">{PHASE_LABELS[p.phase]}</span>
                       <div className="ep-phase-dots">
-                        {[0,1,2,3,4,5].map(n => (
+                        {[0,1,2,3,4,5,6].map(n => (
                           <div key={n} className={`ep-dot${n <= p.phase ? ' active' : ''}`} />
                         ))}
                       </div>
@@ -220,7 +220,7 @@ export function EquipoPanel() {
                     <button
                       className="ep-phase-arrow"
                       onClick={() => changePhase(p, 1)}
-                      disabled={p.phase >= 5 || isUpdating}
+                      disabled={p.phase >= 6 || isUpdating}
                       title="Fase siguiente"
                     >
                       <ChevronRight size={16} />

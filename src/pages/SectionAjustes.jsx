@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { CheckCircle, AlertCircle, Plus, X } from 'lucide-react';
 
-const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Planos generales', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Renders', 5: 'Maquinaria y equipamiento', 6: 'Documentación de apoyo' };
 
 function ChecklistTemplates() {
   const [templates, setTemplates] = useState([]);
@@ -39,13 +39,13 @@ function ChecklistTemplates() {
 
       <form onSubmit={handleAdd} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
         <select className="ap-select" value={phase} onChange={e => setPhase(parseInt(e.target.value))} style={{ maxWidth: 220 }}>
-          {[0,1,2,3,4,5].map(n => <option key={n} value={n}>{n} · {PHASE_LABELS[n]}</option>)}
+          {[0,1,2,3,4,5,6].map(n => <option key={n} value={n}>{n} · {PHASE_LABELS[n]}</option>)}
         </select>
         <input className="ap-field-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Título de la tarea" style={{ flex: 1, minWidth: 160 }} />
         <button type="submit" className="ap-btn ap-btn-primary ap-btn-sm" disabled={adding || !title.trim()}><Plus size={13}/> Añadir</button>
       </form>
 
-      {[0,1,2,3,4,5].map(n => {
+      {[0,1,2,3,4,5,6].map(n => {
         const items = templates.filter(t => t.phase_number === n);
         if (items.length === 0) return null;
         return (

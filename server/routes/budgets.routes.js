@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 router.use(authenticateToken, requireAdminSuperior);
 
-const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Planos generales', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Renders', 5: 'Maquinaria y equipamiento', 6: 'Documentación de apoyo' };
 
 const BRAND = {
   name: 'Ranuse Design',
@@ -124,7 +124,7 @@ router.get('/dashboard', async (req, res) => {
     // Suma del descuento total (por línea + global) aplicado al cliente,
     // sobre presupuestos aprobados — es el "ahorro" que ve el cliente en el PDF.
     const totalDiscountGiven = approved.reduce((s, b) => s + (b.totalDiscount || 0), 0);
-    const pipeline = [0,1,2,3,4,5].map(phase => ({ phase, label: PHASE_LABELS[phase], count: allProjects.filter(p => p.phase === phase).length }));
+    const pipeline = [0,1,2,3,4,5,6].map(phase => ({ phase, label: PHASE_LABELS[phase], count: allProjects.filter(p => p.phase === phase).length }));
     const now = new Date();
     const monthly = [];
     for (let i = 5; i >= 0; i--) {

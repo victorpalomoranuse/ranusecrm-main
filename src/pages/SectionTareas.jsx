@@ -9,7 +9,7 @@ const PRIORITIES = [
   { value: 'urgente', label: 'Urgente', color: '#ae8b8b' },
 ];
 
-const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Arquitectura', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Maquinaria y equipamiento', 5: 'Documentación de apoyo' };
+const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Planos generales', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Renders', 5: 'Maquinaria y equipamiento', 6: 'Documentación de apoyo' };
 
 const EVENT_COLORS = ['#beb0a2', '#8b9eae', '#8bae8f', '#ae9e8b', '#ae8b8b', '#9e8bae'];
 
@@ -199,7 +199,7 @@ export function SectionTareas() {
                 <label>Fase <span className="ap-optional">(opcional)</span></label>
                 <select className="ap-select" value={taskPhase} onChange={e => setTaskPhase(e.target.value)}>
                   <option value="">Sin fase concreta</option>
-                  {[0,1,2,3,4,5].map(n => <option key={n} value={n}>{n} · {PHASE_LABELS[n]}</option>)}
+                  {[0,1,2,3,4,5,6].map(n => <option key={n} value={n}>{n} · {PHASE_LABELS[n]}</option>)}
                 </select>
               </div>
             )}
