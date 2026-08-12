@@ -77,7 +77,7 @@ function MisTareas() {
                   <p className="ep-task-title">{t.title}</p>
                   {t.description && <p className="ep-task-desc">{t.description}</p>}
                   <div className="ep-task-meta">
-                    {t.project && <span className="ep-task-tag">{t.project.client_name}{t.phase_number != null && ` · Fase ${t.phase_number}`}</span>}
+                    {t.project && <span className="ep-task-tag">{t.project.client_name}{t.category?.name && ` · ${t.category.name}`}</span>}
                     {t.due_date && (
                       <span className={`ep-task-due${overdue ? ' overdue' : ''}`}>
                         {overdue && <AlertCircle size={11} />}

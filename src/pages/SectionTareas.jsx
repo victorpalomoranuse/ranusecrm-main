@@ -9,8 +9,6 @@ const PRIORITIES = [
   { value: 'urgente', label: 'Urgente', color: '#ae8b8b' },
 ];
 
-const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Planos generales', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Renders', 5: 'Maquinaria y equipamiento', 6: 'Documentación de apoyo' };
-
 const EVENT_COLORS = ['#beb0a2', '#8b9eae', '#8bae8f', '#ae9e8b', '#ae8b8b', '#9e8bae'];
 
 function getDaysInMonth(year, month) {
@@ -37,7 +35,8 @@ export function SectionTareas() {
   const [taskPriority, setTaskPriority] = useState('normal');
   const [taskDue, setTaskDue] = useState('');
   const [taskProjectId, setTaskProjectId] = useState('');
-  const [taskPhase, setTaskPhase] = useState('');
+  const [taskCategoryId, setTaskCategoryId] = useState('');
+  const [taskCategories, setTaskCategories] = useState([]);
   const [taskAssignedTo, setTaskAssignedTo] = useState('');
   const [addingTask, setAddingTask] = useState(false);
 
@@ -75,10 +74,10 @@ export function SectionTareas() {
     try {
       const { data } = await api.post('/tasks', {
         title: taskTitle, description: taskDesc, priority: taskPriority, due_date: taskDue || null,
-        project_id: taskProjectId || null, phase_number: taskProjectId && taskPhase !== '' ? taskPhase : null, assigned_to: taskAssignedTo || null,
+        project_id: taskProjectId || null, category_id: taskProjectId && taskCategoryId !== '' ? taskCategoryId : null, assigned_to: taskAssignedTo || null,
       });
       setTasks(prev => [data.task, ...prev]);
-      setTaskTitle(''); setTaskDesc(''); setTaskPriority('normal'); setTaskDue(''); setTaskProjectId(''); setTaskPhase(''); setTaskAssignedTo('');
+      setTaskTitle(''); setTaskDesc(''); setTaskPriority('normal'); setTaskDue(''); setTaskProjectId(''); setTaskCategoryId(''); setTaskCategories([]); setTaskAssignedTo('');
       setShowTaskForm(false);
     } catch {} finally { setAddingTask(false); }
   };
@@ -189,17 +188,21 @@ export function SectionTareas() {
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <div className="ap-field" style={{ flex: 1, minWidth: 160 }}>
               <label>Proyecto <span className="ap-optional">(opcional)</span></label>
-              <select className="ap-select" value={taskProjectId} onChange={e => { setTaskProjectId(e.target.value); setTaskPhase(''); }}>
+              <select className="ap-select" value={taskProjectId} onChange={e => {
+                const id = e.target.value;
+                setTaskProjectId(id); setTaskCategoryId(''); setTaskCategories([]);
+                if (id) api.get(`/categories/project/${id}`).then(r => setTaskCategories(r.data.categories || [])).catch(() => {});
+              }}>
                 <option value="">Sin proyecto</option>
                 {projects.filter(p => (p.status || 'en_marcha') === 'en_marcha').map(p => <option key={p.id} value={p.id}>{p.client_name} — {p.project_name}</option>)}
               </select>
             </div>
             {taskProjectId && (
               <div className="ap-field" style={{ flex: 1, minWidth: 160 }}>
-                <label>Fase <span className="ap-optional">(opcional)</span></label>
-                <select className="ap-select" value={taskPhase} onChange={e => setTaskPhase(e.target.value)}>
-                  <option value="">Sin fase concreta</option>
-                  {[0,1,2,3,4,5,6].map(n => <option key={n} value={n}>{n} · {PHASE_LABELS[n]}</option>)}
+                <label>Categoría <span className="ap-optional">(opcional)</span></label>
+                <select className="ap-select" value={taskCategoryId} onChange={e => setTaskCategoryId(e.target.value)}>
+                  <option value="">Sin categoría concreta</option>
+                  {taskCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
             )}
@@ -381,7 +384,7 @@ export function SectionTareas() {
                                   )}
                                   {task.project && (
                                     <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 20, background: 'rgba(190,176,162,0.1)', color: '#beb0a2' }}>
-                                      {task.project.client_name}{task.phase_number != null && ` · Fase ${task.phase_number}`}
+                                      {task.project.client_name}{task.category?.name && ` · ${task.category.name}`}
                                     </span>
                                   )}
                                   <select className="ap-select ap-select-sm" style={{ maxWidth: 150 }} value={task.assigned_to || ''} onChange={e => reassignTask(task, e.target.value)}>

@@ -16,7 +16,7 @@ async function getOwnEmployeeId(req) {
   return data?.id || null;
 }
 
-const TASK_SELECT = '*, project:client_projects(id, client_name, project_name), employee:employees!assigned_to(id, name)';
+const TASK_SELECT = '*, project:client_projects(id, client_name, project_name), employee:employees!assigned_to(id, name), category:project_categories!category_id(id, name)';
 
 router.get('/', requireAdminOrTrabajador, async (req, res) => {
   try {
