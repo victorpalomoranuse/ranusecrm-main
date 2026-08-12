@@ -3,51 +3,6 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Stars } from '../components/Stars';
 import './MiProyecto.css';
 
-const PHASE_DEFS = [
-  {
-    number: 0,
-    label: 'Diseño previo',
-    defaultIntro: 'Aquí encontrarás los renders, el tour virtual 3D, los planos del anteproyecto y, si procede, el presupuesto orientativo que preparamos antes de arrancar la obra.',
-    defaultNext: 'Al confirmar el proyecto, este contenido queda archivado y pasamos a la Fase 1 · Planos generales.',
-  },
-  {
-    number: 1,
-    label: 'Planos generales',
-    defaultIntro: 'Aquí encontrarás los planos de arquitectura de tu proyecto.',
-    defaultNext: 'Con los planos aprobados, pasamos a la Fase 2 · Instalaciones.',
-  },
-  {
-    number: 2,
-    label: 'Instalaciones',
-    defaultIntro: 'Aquí encontrarás el plano de instalación eléctrica y, cuando el proyecto lo requiere, el de coordinación de climatización y fontanería, junto con los materiales y equipos seleccionados para esta fase.',
-    defaultNext: 'Cuando las instalaciones queden coordinadas, pasamos a la Fase 3 · Interiorismo y materialidad.',
-  },
-  {
-    number: 3,
-    label: 'Interiorismo y materialidad',
-    defaultIntro: 'Aquí encontrarás los documentos de materialidad de tu proyecto.',
-    defaultNext: 'Con la materialidad definida, pasamos a la Fase 4 · Renders.',
-  },
-  {
-    number: 4,
-    label: 'Renders',
-    defaultIntro: 'Aquí encontrarás los renders definitivos y el tour virtual 3D de tu proyecto.',
-    defaultNext: 'Con los renders aprobados, pasamos a la Fase 5 · Maquinaria y equipamiento.',
-  },
-  {
-    number: 5,
-    label: 'Maquinaria y equipamiento',
-    defaultIntro: 'Aquí encontrarás la selección de maquinaria y equipamiento deportivo para tu gimnasio.',
-    defaultNext: 'Con el equipamiento confirmado, pasamos a la Fase 6 · Documentación de apoyo.',
-  },
-  {
-    number: 6,
-    label: 'Documentación de apoyo',
-    defaultIntro: 'Aquí encontrarás la documentación de apoyo y cierre de tu proyecto.',
-    defaultNext: 'Con esta documentación, tu proyecto queda completo.',
-  },
-];
-
 const PHASE_STATUS_LABELS = {
   completado: 'Completado',
   en_curso: 'En curso',
@@ -369,17 +324,18 @@ function MobiliarioSection({ equipment }) {
   );
 }
 
-function PhaseDocuments({ documents }) {
-  if (!documents?.length) return null;
+function CategoryDocuments({ items }) {
+  const docs = items.filter(i => i.type === 'documento' && i.file_url);
+  if (!docs.length) return null;
   return (
     <div className="mp-ph-docs">
-      {documents.map(d => (
+      {docs.map(d => (
         <a key={d.id} href={d.file_url} target="_blank" rel="noopener noreferrer" className="mp-ph-doc">
-          <span className="mp-ph-doc-code">{d.code}</span>
+          {d.code && <span className="mp-ph-doc-code">{d.code}</span>}
           <svg className="mp-doc-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13h6M9 17h4"/>
           </svg>
-          <span className="mp-ph-doc-name">{d.name}</span>
+          <span className="mp-ph-doc-name">{d.title}</span>
           <svg className="mp-doc-dl" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
@@ -389,20 +345,58 @@ function PhaseDocuments({ documents }) {
   );
 }
 
-function PhaseBlock({ def, phase }) {
-  const status = phase?.status || 'proximamente';
-  const [open, setOpen] = useState(status === 'en_curso');
-
-  const hasContent = phase && (
-    phase.documents?.length || phase.renders?.length || phase.tours?.length ||
-    phase.materials?.length || phase.equipment?.length
+function BlockItem({ item }) {
+  const [active, setActive] = useState(null);
+  const hasAny = item.body_text || item.images?.length || item.links?.length;
+  if (!hasAny) return null;
+  return (
+    <div className="mp-block">
+      <p className="mp-block-label">{item.title}</p>
+      {item.body_text && <p className="mp-ph-intro">{item.body_text}</p>}
+      {item.images?.length > 0 && (
+        <div className="mp-img-grid">
+          {item.images.map((img, i) => (
+            <div key={i} className="mp-img-thumb" role="button" tabIndex={0} onClick={() => setActive(img)} onKeyDown={e => e.key === 'Enter' && setActive(img)}>
+              <img src={img.url} alt={img.name || ''} loading="lazy" />
+              <DownloadButton url={img.url} filename={img.name || `imagen-${i + 1}.jpg`} className="mp-img-download" />
+            </div>
+          ))}
+        </div>
+      )}
+      {item.links?.length > 0 && (
+        <div className="mp-tours-grid">
+          {item.links.map((l, i) => (
+            <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" className="mp-tour-btn">
+              <svg className="mp-tour-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22C12 22 3 17 3 10a9 9 0 1 1 18 0c0 7-9 12-9 12z"/><circle cx="12" cy="10" r="3"/>
+              </svg>
+              <span className="mp-tour-name">{l.label}</span>
+              <svg className="mp-tour-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 17L17 7M17 7H7M17 7v10"/>
+              </svg>
+            </a>
+          ))}
+        </div>
+      )}
+      {active && (
+        <Lightbox src={active.url} alt={active.name || ''} onClose={() => setActive(null)} downloadUrl={active.url} downloadName={active.name} />
+      )}
+    </div>
   );
+}
+
+function CategoryBlock({ category }) {
+  const status = category.status || 'en_curso';
+  const [open, setOpen] = useState(status !== 'proximamente');
+
+  const items = category.items || [];
+  const blockItems = items.filter(i => i.type === 'bloque');
+  const hasContent = items.length || category.materials?.length || category.equipment?.length;
 
   return (
     <div className={`mp-ph mp-ph--${status}`}>
       <button type="button" className="mp-ph-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
-        <span className="mp-ph-dot">{def.number}</span>
-        <span className="mp-ph-label">{def.label}</span>
+        <span className="mp-ph-label">{category.name}</span>
         <span className={`mp-ph-badge mp-ph-badge--${status}`}>{PHASE_STATUS_LABELS[status]}</span>
         <svg className={`mp-ph-chevron${open ? ' open' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="6 9 12 15 18 9"/>
@@ -410,24 +404,17 @@ function PhaseBlock({ def, phase }) {
       </button>
       {open && (
         <div className="mp-ph-body">
-          <p className="mp-ph-intro">{phase?.intro_text || def.defaultIntro}</p>
+          {category.intro_text && <p className="mp-ph-intro">{category.intro_text}</p>}
           {hasContent ? (
             <div className="mp-ph-content">
-              <TourSection tours={phase.tours} />
-              <RendersSection renders={phase.renders} />
-              <PhaseDocuments documents={phase.documents} />
-              <MaterialesSection materials={phase.materials} />
-              <MobiliarioSection equipment={phase.equipment} />
+              <CategoryDocuments items={items} />
+              {blockItems.map(item => <BlockItem key={item.id} item={item} />)}
+              <MaterialesSection materials={category.materials} />
+              <MobiliarioSection equipment={category.equipment} />
             </div>
           ) : (
-            <p className="mp-ph-empty">Tu diseñador irá añadiendo el contenido de esta fase aquí.</p>
+            <p className="mp-ph-empty">Tu diseñador irá añadiendo el contenido de esta categoría aquí.</p>
           )}
-          <p className="mp-ph-next">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12h14M13 6l6 6-6 6"/>
-            </svg>
-            {def.defaultNext}
-          </p>
         </div>
       )}
     </div>
@@ -525,8 +512,7 @@ export function MiProyecto() {
   }
 
   const heroRender = project.renders?.[0] || null;
-  const phaseByNumber = {};
-  (project.phases || []).forEach(p => { phaseByNumber[p.number] = p; });
+  const categories = project.categories || [];
   const hasGlobalContent = project.notes?.length || project.documents?.length;
 
   return (
@@ -561,8 +547,8 @@ export function MiProyecto() {
         </div>
 
         <div className="mp-phases">
-          {PHASE_DEFS.map(def => (
-            <PhaseBlock key={def.number} def={def} phase={phaseByNumber[def.number]} />
+          {categories.map(category => (
+            <CategoryBlock key={category.id} category={category} />
           ))}
         </div>
 

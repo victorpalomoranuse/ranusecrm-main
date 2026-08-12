@@ -165,8 +165,7 @@ router.get('/by-code/:code', async (req, res) => {
       equipmentResult,
       notesResult,
       toursResult,
-      phaseDocumentsResult,
-      phaseContentResult,
+      categoriesResult,
     ] = await Promise.all([
       supabase.from('project_renders').select('*').eq('project_id', projectId).order('display_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }),
       supabase.from('project_documents').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
@@ -175,8 +174,7 @@ router.get('/by-code/:code', async (req, res) => {
       supabase.from('project_equipment_selections').select('*').eq('project_id', projectId).order('display_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }),
       supabase.from('project_notes').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
       supabase.from('project_tours').select('*').eq('project_id', projectId).order('created_at', { ascending: true }),
-      supabase.from('project_phase_documents').select('*').eq('project_id', projectId).order('phase_number', { ascending: true }).order('display_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }),
-      supabase.from('project_phase_content').select('*').eq('project_id', projectId),
+      supabase.from('project_categories').select('*').eq('project_id', projectId).order('display_order', { ascending: true }),
     ]);
 
     let diagnosisData = diagnosisResult.data || null;
@@ -198,20 +196,18 @@ router.get('/by-code/:code', async (req, res) => {
     const allTours = toursResult.data || [];
     const allMaterials = materialsResult.data || [];
     const allEquipment = equipmentResult.data || [];
-    const allPhaseDocuments = phaseDocumentsResult.data || [];
-    const phaseContentByNumber = {};
-    (phaseContentResult.data || []).forEach(c => { phaseContentByNumber[c.phase_number] = c.intro_text; });
+    const allCategories = categoriesResult.data || [];
 
-    const currentPhase = project.phase ?? 1;
-    const phases = [0, 1, 2, 3, 4, 5, 6].map(n => ({
-      number: n,
-      status: n < currentPhase ? 'completado' : n === currentPhase ? 'en_curso' : 'proximamente',
-      intro_text: phaseContentByNumber[n] ?? null,
-      documents: allPhaseDocuments.filter(d => d.phase_number === n),
-      renders: allRenders.filter(r => r.phase_number === n),
-      tours: allTours.filter(t => t.phase_number === n),
-      materials: allMaterials.filter(m => m.phase_number === n),
-      equipment: allEquipment.filter(e => e.phase_number === n),
+    const categoryIds = allCategories.map(c => c.id);
+    const { data: allCategoryItems } = categoryIds.length
+      ? await supabase.from('category_items').select('*').in('category_id', categoryIds).order('display_order', { ascending: true })
+      : { data: [] };
+
+    const categories = allCategories.map(c => ({
+      ...c,
+      items: (allCategoryItems || []).filter(i => i.category_id === c.id),
+      materials: c.legacy_phase_number != null ? allMaterials.filter(m => m.phase_number === c.legacy_phase_number) : [],
+      equipment: c.legacy_phase_number != null ? allEquipment.filter(e => e.phase_number === c.legacy_phase_number) : [],
     }));
 
     res.json({
@@ -228,7 +224,7 @@ router.get('/by-code/:code', async (req, res) => {
         equipment: allEquipment,
         notes: notesResult.data || [],
         tours: allTours,
-        phases,
+        categories,
       },
     });
   } catch (err) {
