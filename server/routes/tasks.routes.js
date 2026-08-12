@@ -41,7 +41,7 @@ router.get('/', requireAdminOrTrabajador, async (req, res) => {
 
 router.post('/', requireAdminSuperior, async (req, res) => {
   try {
-    const { title, description, priority, due_date, project_id, phase_number, assigned_to } = req.body;
+    const { title, description, priority, due_date, project_id, phase_number, category_id, assigned_to } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: 'Título requerido' });
     const { data, error } = await supabase.from('tasks').insert({
       title: title.trim(),
@@ -50,6 +50,7 @@ router.post('/', requireAdminSuperior, async (req, res) => {
       due_date: due_date || null,
       project_id: project_id || null,
       phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
+      category_id: category_id || null,
       assigned_to: assigned_to || null,
     }).select(TASK_SELECT).single();
     if (error) throw error;
@@ -71,7 +72,7 @@ router.put('/:id', requireAdminOrTrabajador, async (req, res) => {
       return res.json({ task: data });
     }
 
-    const { title, description, done, priority, due_date, project_id, phase_number, assigned_to } = req.body;
+    const { title, description, done, priority, due_date, project_id, phase_number, category_id, assigned_to } = req.body;
     const updates = {};
     if (title !== undefined) updates.title = title.trim();
     if (description !== undefined) updates.description = description?.trim() || null;
@@ -80,6 +81,7 @@ router.put('/:id', requireAdminOrTrabajador, async (req, res) => {
     if (due_date !== undefined) updates.due_date = due_date || null;
     if (project_id !== undefined) updates.project_id = project_id || null;
     if (phase_number !== undefined) updates.phase_number = phase_number != null && phase_number !== '' ? parseInt(phase_number) : null;
+    if (category_id !== undefined) updates.category_id = category_id || null;
     if (assigned_to !== undefined) updates.assigned_to = assigned_to || null;
     const { data, error } = await supabase.from('tasks').update(updates).eq('id', req.params.id).select(TASK_SELECT).single();
     if (error) throw error;

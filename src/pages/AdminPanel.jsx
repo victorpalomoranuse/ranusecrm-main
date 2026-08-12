@@ -272,9 +272,8 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{ id:'fases',label:'Fases'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Catálogo'}];
+const MGR_TABS = [{ id:'fases',label:'Categorías'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Catálogo'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
-const FASE_TABS_PHASES = [0,1,2,3,4,5,6];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: r.id });
@@ -677,115 +676,7 @@ function TabAsignaciones({ projectId, phaseNumber }) {
   );
 }
 
-function TabFaseIntro({ projectId, phaseNumber }) {
-  const [introText, setIntroText] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    setLoading(true);
-    api.get(`/client-projects/${projectId}/phase-content`)
-      .then(r => {
-        const row = (r.data.content || []).find(c => c.phase_number === phaseNumber);
-        setIntroText(row?.intro_text || '');
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [projectId, phaseNumber]);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await api.put(`/client-projects/${projectId}/phase-content/${phaseNumber}`, { intro_text: introText });
-      toast.success('Introducción guardada');
-    } catch {
-      toast.error('Error al guardar la introducción');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading) return <div className="ap-loading">Cargando…</div>;
-
-  return (
-    <div className="ap-field" style={{ marginBottom: '1.25rem' }}>
-      <label>Texto de introducción <span className="ap-optional">(opcional, si lo dejas vacío se usa el texto por defecto)</span></label>
-      <textarea className="ap-field-input" rows={3} value={introText} onChange={e => setIntroText(e.target.value)} placeholder="Aquí encontrarás..." />
-      <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" style={{ marginTop: '0.5rem' }} onClick={handleSave} disabled={saving}>
-        {saving ? 'Guardando…' : <><Save size={12} /> Guardar</>}
-      </button>
-    </div>
-  );
-}
-
-function TabFaseDocumentos({ projectId, phaseNumber }) {
-  const [documents, setDocuments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [code, setCode] = useState('');
-  const [docName, setDocName] = useState('');
-  const [error, setError] = useState('');
-  const fileRef = useRef();
-
-  useEffect(() => {
-    api.get(`/client-projects/${projectId}/phase-documents`)
-      .then(r => setDocuments((r.data.documents || []).filter(d => d.phase_number === phaseNumber)))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [projectId, phaseNumber]);
-
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    if (!code.trim()) { setError('Indica el código del documento (ej. IE.01)'); return; }
-    setUploading(true); setError('');
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('code', code.trim());
-      form.append('name', docName || file.name);
-      form.append('phase_number', phaseNumber);
-      const { data } = await api.post(`/client-projects/${projectId}/phase-documents`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
-      setDocuments(prev => [data.document, ...prev]);
-      setCode(''); setDocName(''); fileRef.current.value = '';
-    } catch (err) {
-      setError(err.response?.data?.error || 'Error al subir documento');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleDelete = async (id) => {
-    try {
-      await api.delete(`/client-projects/${projectId}/phase-documents/${id}`);
-      setDocuments(prev => prev.filter(d => d.id !== id));
-    } catch {
-      setError('Error al eliminar documento');
-    }
-  };
-
-  return (
-    <div className="ap-tab-content">
-      <div className="ap-upload-row">
-        <input className="ap-field-input" style={{ maxWidth: 110 }} value={code} onChange={e => setCode(e.target.value)} placeholder="Código (IE.01)" />
-        <input className="ap-field-input" value={docName} onChange={e => setDocName(e.target.value)} placeholder="Nombre del documento" />
-        <label className="ap-btn ap-btn-primary ap-btn-sm ap-upload-label">{uploading ? 'Subiendo…' : <><Plus size={13} /> Subir archivo</>}<input ref={fileRef} type="file" accept="image/*,application/pdf" onChange={handleUpload} disabled={uploading} style={{ display: 'none' }} /></label>
-      </div>
-      {error && <p className="ap-error">{error}</p>}
-      {loading ? <div className="ap-loading">Cargando…</div> : documents.length === 0 ? <div className="ap-empty"><p>No hay documentos en esta fase todavía.</p></div> : (
-        <div className="ap-doc-list">{documents.map(d => (
-          <div key={d.id} className="ap-doc-row">
-            <span className="ap-doc-type" style={{ background: 'rgba(190,176,162,0.12)', color: '#beb0a2' }}>{d.code}</span>
-            <a href={d.file_url} target="_blank" rel="noopener noreferrer" className="ap-doc-name">{d.name}</a>
-            <button className="ap-btn-icon" onClick={() => handleDelete(d.id)}><Trash2 size={13} /></button>
-          </div>
-        ))}</div>
-      )}
-    </div>
-  );
-}
-
-function TabFaseTareas({ projectId, phaseNumber }) {
+function TabCategoriaTareas({ projectId, categoryId }) {
   const [tasks, setTasks] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -802,13 +693,13 @@ function TabFaseTareas({ projectId, phaseNumber }) {
       .finally(() => setLoading(false));
   }, [projectId]);
 
-  const phaseTasks = tasks.filter(t => t.phase_number === phaseNumber);
+  const catTasks = tasks.filter(t => t.category_id === categoryId);
 
   const handleAdd = async () => {
     if (!title.trim()) return;
     setAdding(true);
     try {
-      const { data } = await api.post('/tasks', { title, project_id: projectId, phase_number: phaseNumber, assigned_to: assignedTo || null });
+      const { data } = await api.post('/tasks', { title, project_id: projectId, category_id: categoryId, assigned_to: assignedTo || null });
       setTasks(prev => [data.task, ...prev]);
       setTitle(''); setAssignedTo('');
     } catch { toast.error('Error al crear tarea'); } finally { setAdding(false); }
@@ -836,7 +727,7 @@ function TabFaseTareas({ projectId, phaseNumber }) {
 
   return (
     <div style={{ marginBottom: '1.5rem' }}>
-      <p style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', marginBottom: '0.5rem' }}>Tareas de esta fase</p>
+      <p style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', marginBottom: '0.5rem' }}>Tareas de esta categoría</p>
       <div className="ap-upload-row" style={{ marginBottom: '0.75rem' }}>
         <input className="ap-field-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Nueva tarea…" onKeyDown={e => e.key === 'Enter' && handleAdd()} />
         <select className="ap-select ap-select-sm" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
@@ -845,9 +736,9 @@ function TabFaseTareas({ projectId, phaseNumber }) {
         </select>
         <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAdd} disabled={adding || !title.trim()}><Plus size={13}/> Añadir</button>
       </div>
-      {phaseTasks.length === 0 ? <p className="ap-empty-sm">Sin tareas en esta fase todavía.</p> : (
+      {catTasks.length === 0 ? <p className="ap-empty-sm">Sin tareas en esta categoría todavía.</p> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          {phaseTasks.map(t => (
+          {catTasks.map(t => (
             <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '0.5rem 0.75rem' }}>
               <button onClick={() => toggleDone(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.done ? '#8bae8f' : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
                 {t.done ? <CheckCircle size={15}/> : <Circle size={15}/>}
@@ -866,23 +757,260 @@ function TabFaseTareas({ projectId, phaseNumber }) {
   );
 }
 
-function TabFases({ projectId }) {
-  const [phaseNumber, setPhaseNumber] = useState(0);
+function CategoryItemEditor({ item, onUpdated, onDeleted }) {
+  const [title, setTitle] = useState(item.title);
+  const [bodyText, setBodyText] = useState(item.body_text || '');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkLabel, setLinkLabel] = useState('');
+  const fileRef = useRef();
+  const imgRef = useRef();
+
+  const patch = async (fields) => {
+    try {
+      const { data } = await api.put(`/categories/items/${item.id}`, fields);
+      onUpdated(data.item);
+    } catch {}
+  };
+
+  const addLink = () => {
+    if (!linkUrl.trim()) return;
+    patch({ links: [...(item.links || []), { url: linkUrl.trim(), label: linkLabel.trim() || linkUrl.trim() }] });
+    setLinkUrl(''); setLinkLabel('');
+  };
+  const removeLink = (i) => patch({ links: (item.links || []).filter((_, idx) => idx !== i) });
+
+  const uploadDocFile = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const form = new FormData(); form.append('file', file);
+    try {
+      const { data } = await api.post(`/categories/items/${item.id}/file`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      onUpdated(data.item);
+    } catch {}
+  };
+
+  const uploadImages = async (e) => {
+    const files = e.target.files; if (!files?.length) return;
+    const form = new FormData(); Array.from(files).forEach(f => form.append('images', f));
+    try {
+      const { data } = await api.post(`/categories/items/${item.id}/images`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      onUpdated(data.item);
+      if (imgRef.current) imgRef.current.value = '';
+    } catch {}
+  };
+
+  const removeImage = (url) => patch({ remove_image_url: url });
+
+  const handleDelete = async () => {
+    try { await api.delete(`/categories/items/${item.id}`); onDeleted(item.id); } catch {}
+  };
+
+  return (
+    <div className="ap-doc-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.5rem', padding: '0.75rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <span className="ap-doc-type" style={{ background: 'rgba(190,176,162,0.12)', color: '#beb0a2' }}>{item.type === 'documento' ? 'Documento' : 'Bloque'}</span>
+        <input className="ap-field-input" value={title} onChange={e => setTitle(e.target.value)} onBlur={() => title !== item.title && title.trim() && patch({ title })} style={{ flex: 1, fontWeight: 600 }} />
+        <button className="ap-btn-icon" onClick={handleDelete}><Trash2 size={13} /></button>
+      </div>
+
+      {item.type === 'documento' ? (
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {item.file_url ? <a href={item.file_url} target="_blank" rel="noopener noreferrer" className="ap-doc-name">Ver archivo</a> : <span className="ap-empty-sm">Sin archivo</span>}
+          <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label">{item.file_url ? 'Reemplazar' : 'Subir archivo'}<input ref={fileRef} type="file" accept="image/*,application/pdf" onChange={uploadDocFile} style={{ display: 'none' }} /></label>
+        </div>
+      ) : (
+        <>
+          <textarea className="ap-field-input" value={bodyText} onChange={e => setBodyText(e.target.value)} onBlur={() => bodyText !== (item.body_text || '') && patch({ body_text: bodyText })} rows={2} placeholder="Explicación para el cliente..." />
+
+          {item.images?.length > 0 && (
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+              {item.images.map((img, i) => (
+                <div key={i} style={{ position: 'relative' }}>
+                  <img src={img.url} alt={img.name} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6 }} />
+                  <button onClick={() => removeImage(img.url)} style={{ position: 'absolute', top: -4, right: -4, background: '#1a1a1a', border: 'none', borderRadius: '50%', width: 16, height: 16, color: '#fff', cursor: 'pointer', fontSize: 10, lineHeight: 1 }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ alignSelf: 'flex-start' }}>+ Imágenes<input ref={imgRef} type="file" accept="image/*" multiple onChange={uploadImages} style={{ display: 'none' }} /></label>
+
+          {item.links?.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              {item.links.map((l, i) => (
+                <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.78rem' }}>
+                  <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ color: '#beb0a2', flex: 1 }}>{l.label}</a>
+                  <button className="ap-btn-icon" onClick={() => removeLink(i)}><X size={11} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            <input className="ap-field-input" style={{ flex: 1 }} value={linkLabel} onChange={e => setLinkLabel(e.target.value)} placeholder="Texto del enlace" />
+            <input className="ap-field-input" style={{ flex: 1 }} value={linkUrl} onChange={e => setLinkUrl(e.target.value)} placeholder="https://..." />
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={addLink}>+ Enlace</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TabCategorias({ projectId }) {
+  const [categories, setCategories] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [activeId, setActiveId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newTemplate, setNewTemplate] = useState('');
+  const [addingItemType, setAddingItemType] = useState(null);
+  const [itemTitle, setItemTitle] = useState('');
+  const [itemCode, setItemCode] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const fileRef = useRef();
+
+  const load = () => {
+    Promise.all([
+      api.get(`/categories/project/${projectId}`),
+      api.get('/categories/templates'),
+    ]).then(([catsRes, tplRes]) => {
+      const cats = catsRes.data.categories || [];
+      setCategories(cats);
+      setTemplates(tplRes.data.templates || []);
+      setActiveId(prev => (prev && cats.some(c => c.id === prev)) ? prev : (cats[0]?.id ?? null));
+    }).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [projectId]);
+
+  const active = categories.find(c => c.id === activeId);
+
+  const handleAddCategory = async () => {
+    if (!newName.trim()) return;
+    try {
+      const { data } = await api.post('/categories', { project_id: projectId, name: newName.trim(), template_id: newTemplate || undefined });
+      setCategories(prev => [...prev, { ...data.category, items: [] }]);
+      setActiveId(data.category.id);
+      setNewName(''); setNewTemplate(''); setAdding(false);
+    } catch {}
+  };
+
+  const handleRename = async (name) => {
+    if (!active || !name.trim() || name === active.name) return;
+    try {
+      const { data } = await api.put(`/categories/${active.id}`, { name: name.trim() });
+      setCategories(prev => prev.map(c => c.id === active.id ? { ...c, name: data.category.name } : c));
+    } catch {}
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!active) return;
+    try {
+      await api.delete(`/categories/${active.id}`);
+      const remaining = categories.filter(c => c.id !== active.id);
+      setCategories(remaining);
+      setActiveId(remaining[0]?.id ?? null);
+    } catch {} finally { setConfirmDelete(false); }
+  };
+
+  const move = async (dir) => {
+    const idx = categories.findIndex(c => c.id === activeId);
+    const swap = idx + dir;
+    if (swap < 0 || swap >= categories.length) return;
+    const reordered = [...categories];
+    [reordered[idx], reordered[swap]] = [reordered[swap], reordered[idx]];
+    setCategories(reordered);
+    try { await api.put('/categories/reorder', { project_id: projectId, ids: reordered.map(c => c.id) }); } catch {}
+  };
+
+  const handleAddItem = async () => {
+    if (!active || !itemTitle.trim()) return;
+    try {
+      const form = new FormData();
+      form.append('type', addingItemType);
+      form.append('title', itemTitle.trim());
+      if (addingItemType === 'documento') {
+        form.append('code', itemCode.trim());
+        if (fileRef.current?.files?.[0]) form.append('file', fileRef.current.files[0]);
+      } else {
+        form.append('body_text', '');
+        form.append('links', '[]');
+      }
+      const { data } = await api.post(`/categories/${active.id}/items`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setCategories(prev => prev.map(c => c.id === active.id ? { ...c, items: [...c.items, data.item] } : c));
+      setItemTitle(''); setItemCode(''); setAddingItemType(null);
+      if (fileRef.current) fileRef.current.value = '';
+    } catch {}
+  };
+
+  const updateItemInState = (item) => {
+    setCategories(prev => prev.map(c => c.id === active.id ? { ...c, items: c.items.map(i => i.id === item.id ? item : i) } : c));
+  };
+  const removeItemFromState = (itemId) => {
+    setCategories(prev => prev.map(c => c.id === active.id ? { ...c, items: c.items.filter(i => i.id !== itemId) } : c));
+  };
+
+  if (loading) return <div className="ap-loading">Cargando…</div>;
 
   return (
     <div className="ap-tab-content">
-      <div className="ap-cat-tabs" style={{ marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-        {FASE_TABS_PHASES.map(n => (
-          <button key={n} className={`ap-cat-tab${phaseNumber === n ? ' active' : ''}`} onClick={() => setPhaseNumber(n)}>{n} · {PHASE_LABELS[n]}</button>
+      <div className="ap-cat-tabs" style={{ marginBottom: '1rem', flexWrap: 'wrap' }}>
+        {categories.map(c => (
+          <button key={c.id} className={`ap-cat-tab${activeId === c.id ? ' active' : ''}`} onClick={() => setActiveId(c.id)}>{c.name}</button>
         ))}
+        <button className="ap-cat-tab" onClick={() => setAdding(v => !v)} style={{ color: '#8bae8f' }}>+ Categoría</button>
       </div>
-      <TabFaseIntro projectId={projectId} phaseNumber={phaseNumber} />
-      <TabFaseTareas projectId={projectId} phaseNumber={phaseNumber} />
-      <p className="ap-tab-desc">Documentos con código, renders, tour virtual y catálogo vinculados a esta fase. Usa solo lo que aplique.</p>
-      <TabFaseDocumentos projectId={projectId} phaseNumber={phaseNumber} />
-      <TabRenders projectId={projectId} phaseNumber={phaseNumber} />
-      <TabTour projectId={projectId} phaseNumber={phaseNumber} />
-      <TabAsignaciones projectId={projectId} phaseNumber={phaseNumber} />
+
+      {adding && (
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <select className="ap-select" value={newTemplate} onChange={e => { const id = e.target.value; setNewTemplate(id); const t = templates.find(tp => tp.id === id); if (t) setNewName(t.name); }} style={{ maxWidth: 220 }}>
+            <option value="">Nombre libre…</option>
+            {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <input className="ap-field-input" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nombre de la categoría" />
+          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAddCategory} disabled={!newName.trim()}>Crear</button>
+        </div>
+      )}
+
+      {!active ? (
+        <div className="ap-empty"><p>Este proyecto no tiene categorías todavía. Añade la primera.</p></div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem' }}>
+            <input className="ap-field-input" defaultValue={active.name} key={active.id} onBlur={e => handleRename(e.target.value)} style={{ fontWeight: 600, maxWidth: 280 }} />
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => move(-1)}><ChevronUp size={13} /></button>
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => move(1)}><ChevronDown size={13} /></button>
+            <button className="ap-btn ap-btn-danger ap-btn-sm" onClick={() => setConfirmDelete(true)}><Trash2 size={13} /> Borrar categoría</button>
+          </div>
+
+          <TabCategoriaTareas projectId={projectId} categoryId={active.id} />
+
+          <p className="ap-tab-desc">Apartados de esta categoría: documentos descargables o bloques con texto, imágenes y enlaces.</p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1rem' }}>
+            {active.items.length === 0 && <p className="ap-empty-sm">Sin apartados todavía.</p>}
+            {active.items.map(item => (
+              <CategoryItemEditor key={item.id} item={item} onUpdated={updateItemInState} onDeleted={removeItemFromState} />
+            ))}
+          </div>
+
+          {addingItemType ? (
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: 8 }}>
+              {addingItemType === 'documento' && <input className="ap-field-input" style={{ maxWidth: 110 }} value={itemCode} onChange={e => setItemCode(e.target.value)} placeholder="Código (opc.)" />}
+              <input className="ap-field-input" value={itemTitle} onChange={e => setItemTitle(e.target.value)} placeholder="Título del apartado" style={{ flex: 1, minWidth: 160 }} />
+              {addingItemType === 'documento' && <input ref={fileRef} type="file" accept="image/*,application/pdf" />}
+              <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAddItem} disabled={!itemTitle.trim()}>Guardar</button>
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setAddingItemType(null)}>Cancelar</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setAddingItemType('documento')}><Plus size={13} /> Subir documento</button>
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setAddingItemType('bloque')}><Plus size={13} /> Crear bloque</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {confirmDelete && <ConfirmDialog message={`¿Borrar la categoría "${active?.name}" y todo su contenido? Esta acción no se puede deshacer.`} onConfirm={handleDeleteCategory} onCancel={() => setConfirmDelete(false)} />}
     </div>
   );
 }
@@ -925,7 +1053,7 @@ function ProjectManagerModal({ project, onClose }) {
         </div>
         <div className="ap-mgr-tabs">{MGR_TABS.map(t=>(<button key={t.id} className={`ap-mgr-tab${tab===t.id?' active':''}`} onClick={()=>setTab(t.id)}>{t.label}</button>))}</div>
         <div className="ap-mgr-body">
-          {tab==='fases'&&<TabFases projectId={project.id}/>}
+          {tab==='fases'&&<TabCategorias projectId={project.id}/>}
           {tab==='renders'&&<TabRenders projectId={project.id}/>}
           {tab==='documentos'&&<TabDocumentos projectId={project.id}/>}
           {tab==='tours'&&<TabTour projectId={project.id}/>}
