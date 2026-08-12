@@ -136,11 +136,13 @@ router.put('/reorder', authenticateToken, requireProyectos, async (req, res) => 
  */
 router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, intro_text, status } = req.body;
+    const { name, intro_text, status, materials_label, equipment_label } = req.body;
     const updates = {};
     if (name !== undefined) updates.name = name.trim();
     if (intro_text !== undefined) updates.intro_text = intro_text;
     if (status !== undefined) updates.status = status;
+    if (materials_label !== undefined) updates.materials_label = materials_label?.trim() || null;
+    if (equipment_label !== undefined) updates.equipment_label = equipment_label?.trim() || null;
 
     const { data, error } = await supabase.from('project_categories').update(updates).eq('id', req.params.id).select('*').single();
     if (error) throw error;

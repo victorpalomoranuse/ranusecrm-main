@@ -206,8 +206,8 @@ router.get('/by-code/:code', async (req, res) => {
     const categories = allCategories.map(c => ({
       ...c,
       items: (allCategoryItems || []).filter(i => i.category_id === c.id),
-      materials: c.legacy_phase_number != null ? allMaterials.filter(m => m.phase_number === c.legacy_phase_number) : [],
-      equipment: c.legacy_phase_number != null ? allEquipment.filter(e => e.phase_number === c.legacy_phase_number) : [],
+      materials: allMaterials.filter(m => m.category_id === c.id),
+      equipment: allEquipment.filter(e => e.category_id === c.id),
     }));
 
     res.json({
@@ -915,7 +915,7 @@ router.get('/:id/materials', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/materials', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, location, notes, image_url, catalog_product_id, phase_number } = req.body;
+    const { name, brand, category, location, notes, image_url, catalog_product_id, phase_number, category_id } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del material es requerido' });
@@ -933,6 +933,7 @@ router.post('/:id/materials', authenticateToken, requireProyectos, async (req, r
         image_url: image_url?.trim() || null,
         catalog_product_id: catalog_product_id || null,
         phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
+        category_id: category_id || null,
       })
       .select('*')
       .single();
@@ -1040,7 +1041,7 @@ router.get('/:id/equipment', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link, phase_number } = req.body;
+    const { name, brand, category, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link, phase_number, category_id } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del equipo es requerido' });
@@ -1072,6 +1073,7 @@ router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, r
         purchase_link: resolvedLink,
         show_purchase_link: show_purchase_link === true,
         phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
+        category_id: category_id || null,
       })
       .select('*')
       .single();

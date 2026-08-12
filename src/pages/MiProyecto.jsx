@@ -134,12 +134,12 @@ function RendersSection({ renders }) {
   );
 }
 
-function MaterialesSection({ materials }) {
+function MaterialesSection({ materials, label }) {
   const [active, setActive] = useState(null);
   if (!materials?.length) return null;
   return (
     <section className="mp-block">
-      <p className="mp-block-label">Materiales</p>
+      <p className="mp-block-label">{label || 'Materiales'}</p>
       <div className="mp-sel-grid">
         {materials.map(m => (
           <div
@@ -182,7 +182,7 @@ function getYoutubeId(url) {
   return null;
 }
 
-function MobiliarioSection({ equipment }) {
+function MobiliarioSection({ equipment, label }) {
   const [activeItem, setActiveItem] = useState(null);
   const [galleryIdx, setGalleryIdx] = useState(0);
 
@@ -201,7 +201,7 @@ function MobiliarioSection({ equipment }) {
 
   return (
     <section className="mp-block">
-      <p className="mp-block-label">Mobiliario y equipamiento</p>
+      <p className="mp-block-label">{label || 'Mobiliario y equipamiento'}</p>
       <div className="mp-sel-grid">
         {equipment.map(e => {
           const imgs = allImages(e);
@@ -409,8 +409,8 @@ function CategoryBlock({ category }) {
             <div className="mp-ph-content">
               <CategoryDocuments items={items} />
               {blockItems.map(item => <BlockItem key={item.id} item={item} />)}
-              <MaterialesSection materials={category.materials} />
-              <MobiliarioSection equipment={category.equipment} />
+              <MaterialesSection materials={category.materials} label={category.materials_label} />
+              <MobiliarioSection equipment={category.equipment} label={category.equipment_label} />
             </div>
           ) : (
             <p className="mp-ph-empty">Tu diseñador irá añadiendo el contenido de esta categoría aquí.</p>
