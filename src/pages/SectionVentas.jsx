@@ -383,7 +383,7 @@ export function SectionVentas() {
     try { await api.delete(`/ventas/${confirmId}`); setConfirmId(null); cargar(); } catch {}
   };
 
-  const { ventas = [], resumen = { total: 0, valorTotal: 0, valorLimpio: 0, valorEjecucion: 0, valorMedio: 0 } } = data || {};
+  const { ventas = [], resumen = { total: 0, valorTotal: 0, valorLimpio: 0, valorEjecucion: 0, valorMedio: 0, beneficioPagadoTotal: 0 } } = data || {};
 
   return (
     <div className="ap-section">
@@ -416,7 +416,7 @@ export function SectionVentas() {
         </div>
         <div className="vt-stat-card">
           <div className="vt-stat-icon" style={{ color: '#22c55e' }}><Euro size={18} /></div>
-          <div className="vt-stat-body"><span>Limpio (sin ejecución)</span><strong style={{ color: '#22c55e' }}>{fmt(resumen.valorLimpio)}</strong></div>
+          <div className="vt-stat-body"><span>Beneficio cobrado</span><strong style={{ color: '#22c55e' }}>{fmt(resumen.beneficioPagadoTotal)}</strong></div>
         </div>
         <div className="vt-stat-card">
           <div className="vt-stat-icon" style={{ color: '#f5b748' }}><Euro size={18} /></div>

@@ -105,11 +105,15 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
     const valorLimpio = lista.filter(v => v.tipoProyecto !== 'con_ejecucion').reduce((s, v) => s + v.valor, 0);
     const valorEjecucion = lista.filter(v => v.tipoProyecto === 'con_ejecucion').reduce((s, v) => s + v.valor, 0);
     const valorMedio = lista.length ? valorTotal / lista.length : 0;
+    // Beneficio ya cobrado de verdad, sumado sobre todas las ventas (no solo
+    // el valor vendido "de papel") — la parte del dinero ya recibido que,
+    // según el margen previsto de cada venta, ya cuenta como beneficio real.
+    const beneficioPagadoTotal = lista.reduce((s, v) => s + v.beneficioPagado, 0);
 
     res.json({
       ventas: lista,
       porMes: Object.values(porMes).sort((a, b) => b.mes.localeCompare(a.mes)),
-      resumen: { total: lista.length, valorTotal, valorLimpio, valorEjecucion, valorMedio },
+      resumen: { total: lista.length, valorTotal, valorLimpio, valorEjecucion, valorMedio, beneficioPagadoTotal },
     });
   } catch (error) {
     console.error('Error al listar ventas:', error);
