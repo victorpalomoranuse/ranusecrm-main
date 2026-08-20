@@ -718,7 +718,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     // aplicado "por dentro" sin ninguna línea que lo explicara).
     drawRow('Subtotal', fmtEur(showDiscount ? subtotalBruto : subtotal));
     if (showDiscount && lineDiscountTotal > 0) drawRow('Descuentos por producto', '-' + fmtEur(lineDiscountTotal), false, '#c0392b');
-    if (showDiscount && globalDto > 0) drawRow('Descuento global (' + globalDto + '%)', '-' + fmtEur(globalDiscountAmount), false, '#c0392b');
+    if (showDiscount && globalDto > 0) drawRow('Descuento global', '-' + fmtEur(globalDiscountAmount), false, '#c0392b');
     if (parseFloat(iva) > 0) drawRow('IVA (' + iva + '%)', fmtEur(ivaAmount));
     if (parseFloat(irpf) > 0) drawRow('Retención IRPF (' + irpf + '%)', '-' + fmtEur(irpfAmount), false, '#cc3333');
 
