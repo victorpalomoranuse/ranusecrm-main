@@ -990,6 +990,11 @@ function TabCategorias({ projectId }) {
             <button className="ap-btn ap-btn-danger ap-btn-sm" onClick={() => setConfirmDelete(true)}><Trash2 size={13} /> Borrar categoría</button>
           </div>
 
+          <div className="ap-field" style={{ marginBottom: '1.25rem' }}>
+            <label>Descripción para el cliente <span className="ap-optional">(opcional)</span></label>
+            <textarea className="ap-field-input" rows={2} defaultValue={active.intro_text || ''} key={`intro-${active.id}`} placeholder="Explica en un par de líneas qué encontrará el cliente en esta categoría..." onBlur={e => handleLabelChange('intro_text', e.target.value)} />
+          </div>
+
           <TabCategoriaTareas projectId={projectId} categoryId={active.id} />
 
           <p className="ap-tab-desc">Apartados de esta categoría: documentos descargables o bloques con texto, imágenes y enlaces.</p>
