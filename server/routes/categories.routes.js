@@ -1,7 +1,7 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
-import { uploadCategoryItemFile, uploadCategoryItemImages, handleMulterError } from '../middleware/upload.middleware.js';
+import { uploadCategoryItemFile, uploadCategoryItemImages, uploadCategoryItemCreate, handleMulterError } from '../middleware/upload.middleware.js';
 import { uploadProjectDocument, deleteProjectDocument, uploadProjectRender, deleteProjectRender } from '../utils/storage.js';
 
 const requireProyectos = requirePermission('proyectos');
@@ -204,7 +204,7 @@ router.put('/:id/items/reorder', authenticateToken, requireProyectos, async (req
  *  - images[] (si type=bloque, opcional, hasta 10)
  *  - body_text, links (JSON string [{url,label}]) (si type=bloque)
  */
-router.post('/:id/items', authenticateToken, requireProyectos, uploadCategoryItemImages, handleMulterError, async (req, res) => {
+router.post('/:id/items', authenticateToken, requireProyectos, uploadCategoryItemCreate, handleMulterError, async (req, res) => {
   try {
     const categoryId = req.params.id;
     const { type, title, body_text, links, code } = req.body;
@@ -228,13 +228,17 @@ router.post('/:id/items', authenticateToken, requireProyectos, uploadCategoryIte
       insert.body_text = body_text || null;
       insert.links = links ? JSON.parse(links) : [];
       const images = [];
-      for (const file of req.files || []) {
+      for (const file of req.files?.images || []) {
         const url = await uploadProjectRender(file.buffer, file.originalname, file.mimetype, category.project_id);
         images.push({ url, name: file.originalname });
       }
       insert.images = images;
     } else {
       insert.code = code || null;
+      const docFile = req.files?.file?.[0];
+      if (docFile) {
+        insert.file_url = await uploadProjectDocument(docFile.buffer, docFile.originalname, docFile.mimetype, category.project_id);
+      }
     }
 
     const { data, error } = await supabase.from('category_items').insert(insert).select('*').single();

@@ -74,6 +74,11 @@ export const uploadDocumentFile = multer({ storage, fileFilter, limits: { fileSi
 export const uploadDiagnosisImageFile = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 10*1024*1024, files: 1 } }).single('file');
 export const uploadCategoryItemFile = multer({ storage, fileFilter, limits: { fileSize: 20*1024*1024, files: 1 } }).single('file');
 export const uploadCategoryItemImages = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 15*1024*1024, files: 10 } }).array('images', 10);
+const categoryItemFieldFilter = (req, file, cb) => {
+  if (file.fieldname === 'images') return imageFilter(req, file, cb);
+  return fileFilter(req, file, cb);
+};
+export const uploadCategoryItemCreate = multer({ storage, fileFilter: categoryItemFieldFilter, limits: { fileSize: 20*1024*1024, files: 11 } }).fields([{ name: 'file', maxCount: 1 }, { name: 'images', maxCount: 10 }]);
 
 // Handler de errores de multer
 export const handleMulterError = (err, req, res, next) => {
