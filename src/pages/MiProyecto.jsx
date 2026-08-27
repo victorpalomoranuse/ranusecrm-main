@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Stars } from '../components/Stars';
 import './MiProyecto.css';
@@ -154,10 +154,11 @@ function MaterialesSection({ materials, label }) {
               </div>
             )}
             <div className="mp-sel-info">
-              <span className="mp-sel-name">{m.name}</span>
+              <span className="mp-sel-name">{m.name}{m.code && <span className="mp-sel-code"> #{m.code}</span>}</span>
               {m.brand && <span className="mp-sel-sub">{m.brand}</span>}
               {m.category && <span className="mp-sel-tag">{m.category}</span>}
               {m.location && <span className="mp-sel-location">→ {m.location}</span>}
+              {m.datasheet_url && <a href={m.datasheet_url} target="_blank" rel="noopener noreferrer" className="mp-sel-datasheet" onClick={ev => ev.stopPropagation()}>Ficha técnica ↗</a>}
             </div>
           </div>
         ))}
@@ -234,10 +235,12 @@ function MobiliarioSection({ equipment, label }) {
                 </div>
               )}
               <div className="mp-sel-info">
-                <span className="mp-sel-name">{e.name}</span>
+                <span className="mp-sel-name">{e.name}{e.code && <span className="mp-sel-code"> #{e.code}</span>}</span>
                 {e.brand && <span className="mp-sel-sub">{e.brand}</span>}
                 {e.category && <span className="mp-sel-tag">{e.category}</span>}
+                {e.location && <span className="mp-sel-location">→ {e.location}</span>}
                 <span className="mp-sel-qty">×{e.quantity || 1}</span>
+                {e.datasheet_url && <a href={e.datasheet_url} target="_blank" rel="noopener noreferrer" className="mp-sel-datasheet" onClick={ev => ev.stopPropagation()}>Ficha técnica ↗</a>}
                 {e.show_purchase_link && e.purchase_link && (
                   <a
                     href={e.purchase_link}
@@ -472,6 +475,237 @@ function DocumentosSection({ documents }) {
   );
 }
 
+function NeedsFormQuestionField({ question, value, onChange, catalogProducts, references }) {
+  switch (question.question_type) {
+    case 'si_no':
+      return (
+        <div className="mp-nf-options">
+          {['Sí', 'No'].map(opt => (
+            <button key={opt} type="button" className={`mp-nf-opt${value === opt ? ' active' : ''}`} onClick={() => onChange(opt)}>{opt}</button>
+          ))}
+        </div>
+      );
+    case 'opcion_unica':
+      return (
+        <div className="mp-nf-options">
+          {(question.options || []).map(opt => (
+            <button key={opt} type="button" className={`mp-nf-opt${value === opt ? ' active' : ''}`} onClick={() => onChange(opt)}>{opt}</button>
+          ))}
+        </div>
+      );
+    case 'opcion_multiple': {
+      const arr = Array.isArray(value) ? value : [];
+      const toggle = (opt) => onChange(arr.includes(opt) ? arr.filter(o => o !== opt) : [...arr, opt]);
+      return (
+        <div className="mp-nf-options">
+          {(question.options || []).map(opt => (
+            <button key={opt} type="button" className={`mp-nf-opt${arr.includes(opt) ? ' active' : ''}`} onClick={() => toggle(opt)}>{opt}</button>
+          ))}
+        </div>
+      );
+    }
+    case 'numero':
+      return <input type="number" className="mp-nf-input" style={{ maxWidth: 160 }} value={value ?? ''} onChange={e => onChange(e.target.value === '' ? null : parseFloat(e.target.value))} />;
+    case 'texto_largo':
+      return <textarea className="mp-nf-input" rows={3} value={value || ''} onChange={e => onChange(e.target.value)} />;
+    case 'catalogo_productos': {
+      const arr = Array.isArray(value) ? value : [];
+      const toggle = (id) => onChange(arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]);
+      return (
+        <div className="mp-nf-picker">
+          {catalogProducts.length === 0 && <p className="mp-nf-empty">Todavía no hay productos en el catálogo.</p>}
+          {catalogProducts.map(p => {
+            const selected = arr.includes(p.id);
+            return (
+              <button key={p.id} type="button" onClick={() => toggle(p.id)} className={`mp-nf-pick${selected ? ' active' : ''}`}>
+                {p.photo_url ? <img src={p.photo_url} alt={p.name} /> : <div className="mp-nf-pick-noimg" />}
+                <span>{p.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+    case 'estilo_imagenes': {
+      const arr = Array.isArray(value) ? value : [];
+      const toggle = (id) => onChange(arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]);
+      return (
+        <div className="mp-nf-picker">
+          {references.length === 0 && <p className="mp-nf-empty">Tu diseñador todavía no ha añadido imágenes de referencia.</p>}
+          {references.map(r => {
+            const selected = arr.includes(r.id);
+            return (
+              <button key={r.id} type="button" onClick={() => toggle(r.id)} className={`mp-nf-pick${selected ? ' active' : ''}`}>
+                {r.image_url ? <img src={r.image_url} alt={r.title} /> : <div className="mp-nf-pick-noimg" />}
+                <span>{r.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+    default:
+      return <input className="mp-nf-input" value={value || ''} onChange={e => onChange(e.target.value)} />;
+  }
+}
+
+function NeedsFormSection({ code }) {
+  const [bundle, setBundle] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [answersDraft, setAnswersDraft] = useState({});
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [newSpace, setNewSpace] = useState({ space_name: '', largo: '', ancho: '', alto: '', notes: '' });
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoRef = useRef();
+  const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+  const load = () => {
+    fetch(`${base}/needs-form/public/${encodeURIComponent(code)}`)
+      .then(r => r.json())
+      .then(data => {
+        setBundle(data);
+        const draft = {};
+        (data.answers || []).forEach(a => { draft[a.question_id] = a.answer_value; });
+        setAnswersDraft(draft);
+        setName(data.form?.filled_by_name || '');
+        setSent(data.form?.status === 'enviado');
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [code]);
+
+  const handleAddMeasurement = async () => {
+    if (!newSpace.space_name.trim()) return;
+    try {
+      const r = await fetch(`${base}/needs-form/public/${encodeURIComponent(code)}/measurements`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSpace),
+      });
+      const data = await r.json();
+      setBundle(prev => ({ ...prev, measurements: [...prev.measurements, data.measurement] }));
+      setNewSpace({ space_name: '', largo: '', ancho: '', alto: '', notes: '' });
+    } catch {}
+  };
+
+  const handleDeleteMeasurement = async (id) => {
+    try {
+      await fetch(`${base}/needs-form/public/${encodeURIComponent(code)}/measurements/${id}`, { method: 'DELETE' });
+      setBundle(prev => ({ ...prev, measurements: prev.measurements.filter(m => m.id !== id) }));
+    } catch {}
+  };
+
+  const handleUploadPhoto = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const r = await fetch(`${base}/needs-form/public/${encodeURIComponent(code)}/photos`, { method: 'POST', body: form });
+      const data = await r.json();
+      setBundle(prev => ({ ...prev, photos: [...prev.photos, data.photo] }));
+    } catch {} finally { setUploadingPhoto(false); if (photoRef.current) photoRef.current.value = ''; }
+  };
+
+  const handleDeletePhoto = async (id) => {
+    try {
+      await fetch(`${base}/needs-form/public/${encodeURIComponent(code)}/photos/${id}`, { method: 'DELETE' });
+      setBundle(prev => ({ ...prev, photos: prev.photos.filter(p => p.id !== id) }));
+    } catch {}
+  };
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    try {
+      const answers = Object.entries(answersDraft).map(([question_id, answer_value]) => ({ question_id, answer_value }));
+      await fetch(`${base}/needs-form/public/${encodeURIComponent(code)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers, filled_by_name: name || 'Cliente', status: 'enviado' }),
+      });
+      setSent(true);
+    } catch {} finally { setSaving(false); }
+  };
+
+  if (loading || !bundle) return null;
+
+  const sections = [];
+  bundle.questions.forEach(q => {
+    let sec = sections.find(s => s.name === (q.section || 'General'));
+    if (!sec) { sec = { name: q.section || 'General', qs: [] }; sections.push(sec); }
+    sec.qs.push(q);
+  });
+
+  return (
+    <div className="mp-ph mp-ph--en_curso">
+      <button type="button" className="mp-ph-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <span className="mp-ph-label">Programa de Necesidades</span>
+        <span className={`mp-ph-badge mp-ph-badge--${sent ? 'completado' : 'en_curso'}`}>{sent ? 'Enviado' : 'Pendiente'}</span>
+        <svg className={`mp-ph-chevron${open ? ' open' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="mp-ph-body">
+          <p className="mp-ph-intro">Cuéntanos sobre tu proyecto para que podamos diseñarlo a tu medida. Puedes rellenarlo tú o pedirle a tu diseñador que lo haga contigo.</p>
+
+          <div className="mp-nf-block">
+            <p className="mp-block-label">Mediciones</p>
+            {bundle.measurements.map(m => (
+              <div key={m.id} className="mp-nf-measure-row">
+                <span>{m.space_name}</span>
+                <span className="mp-nf-measure-dims">{[m.largo, m.ancho, m.alto].filter(v => v != null).length ? `${m.largo ?? '—'} × ${m.ancho ?? '—'} × ${m.alto ?? '—'} m` : ''}</span>
+                <button onClick={() => handleDeleteMeasurement(m.id)}>✕</button>
+              </div>
+            ))}
+            <div className="mp-nf-measure-form">
+              <input value={newSpace.space_name} onChange={e => setNewSpace(s => ({ ...s, space_name: e.target.value }))} placeholder="Espacio (ej. Garaje)" />
+              <input value={newSpace.largo} onChange={e => setNewSpace(s => ({ ...s, largo: e.target.value }))} placeholder="Largo" />
+              <input value={newSpace.ancho} onChange={e => setNewSpace(s => ({ ...s, ancho: e.target.value }))} placeholder="Ancho" />
+              <input value={newSpace.alto} onChange={e => setNewSpace(s => ({ ...s, alto: e.target.value }))} placeholder="Alto" />
+              <button type="button" onClick={handleAddMeasurement}>+ Añadir</button>
+            </div>
+          </div>
+
+          <div className="mp-nf-block">
+            <p className="mp-block-label">Fotos del estado actual</p>
+            <div className="mp-nf-photos">
+              {bundle.photos.map(p => (
+                <div key={p.id} className="mp-nf-photo">
+                  <img src={p.url} alt="" />
+                  <button onClick={() => handleDeletePhoto(p.id)}>✕</button>
+                </div>
+              ))}
+            </div>
+            <label className="mp-nf-upload-btn">{uploadingPhoto ? 'Subiendo…' : '+ Añadir foto'}<input ref={photoRef} type="file" accept="image/*" onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
+          </div>
+
+          {sections.map(sec => (
+            <div key={sec.name} className="mp-nf-block">
+              <p className="mp-block-label">{sec.name}</p>
+              <div className="mp-nf-questions">
+                {sec.qs.map(q => (
+                  <div key={q.id} className="mp-nf-question">
+                    <p>{q.question_text}</p>
+                    <NeedsFormQuestionField question={q} value={answersDraft[q.id]} onChange={(v) => setAnswersDraft(prev => ({ ...prev, [q.id]: v }))} catalogProducts={bundle.catalog_products || []} references={bundle.references || []} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <div className="mp-nf-submit">
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Tu nombre" className="mp-nf-input" style={{ maxWidth: 220 }} />
+            <button type="button" onClick={handleSubmit} disabled={saving} className="mp-nf-submit-btn">{saving ? 'Guardando…' : sent ? 'Actualizar respuestas' : 'Enviar'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MiProyecto() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -525,6 +759,12 @@ export function MiProyecto() {
         </a>
       </header>
 
+      {project.cover_image_url && (
+        <div className="mp-cover">
+          <img src={project.cover_image_url} alt={project.project_name} />
+        </div>
+      )}
+
       <main className="mp-main">
         {heroRender && (
           <>
@@ -547,6 +787,7 @@ export function MiProyecto() {
         </div>
 
         <div className="mp-phases">
+          <NeedsFormSection code={code} />
           {categories.map(category => (
             <CategoryBlock key={category.id} category={category} />
           ))}

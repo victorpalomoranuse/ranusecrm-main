@@ -94,7 +94,7 @@ router.get('/my-projects', authenticateToken, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('client_user_projects')
-      .select('client_projects(id, client_name, project_name, phase, access_code)')
+      .select('client_projects(id, client_name, project_name, phase, access_code, cover_image_url)')
       .eq('user_id', req.user.id);
 
     if (error) throw error;
@@ -146,7 +146,7 @@ router.get('/by-code/:code', async (req, res) => {
   try {
     const { data: project, error } = await supabase
       .from('client_projects')
-      .select('id, client_name, project_name, phase, responsible:employees!responsible_id(name, email)')
+      .select('id, client_name, project_name, phase, cover_image_url, responsible:employees!responsible_id(name, email)')
       .eq('access_code', req.params.code.toUpperCase())
       .single();
 
@@ -287,7 +287,7 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
  */
 router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active, lead_id, venta_id, status } = req.body;
+    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active, lead_id, venta_id, status, cover_image_url } = req.body;
 
     const updates = {};
     if (client_name !== undefined) updates.client_name = client_name.trim();
@@ -301,6 +301,7 @@ router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
     if (lead_id !== undefined) updates.lead_id = lead_id || null;
     if (venta_id !== undefined) updates.venta_id = venta_id || null;
     if (status !== undefined) updates.status = status;
+    if (cover_image_url !== undefined) updates.cover_image_url = cover_image_url?.trim() || null;
 
     const { data, error } = await supabase
       .from('client_projects')
@@ -334,6 +335,28 @@ router.delete('/:id', authenticateToken, requireAdminSuperior, async (req, res) 
   } catch (error) {
     console.error('Error al eliminar proyecto:', error);
     res.status(500).json({ error: 'Error al eliminar proyecto' });
+  }
+});
+
+/**
+ * POST /api/client-projects/:id/cover
+ * Sube (o reemplaza) la portada del proyecto
+ */
+router.post('/:id/cover', authenticateToken, requireProyectos, uploadRenderFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+    const url = await uploadProjectRender(req.file.buffer, req.file.originalname, req.file.mimetype, req.params.id);
+    const { data, error } = await supabase
+      .from('client_projects')
+      .update({ cover_image_url: url })
+      .eq('id', req.params.id)
+      .select('cover_image_url')
+      .single();
+    if (error) throw error;
+    res.json({ cover_image_url: data.cover_image_url });
+  } catch (error) {
+    console.error('Error al subir portada:', error);
+    res.status(500).json({ error: 'Error al subir portada' });
   }
 });
 
@@ -915,7 +938,7 @@ router.get('/:id/materials', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/materials', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, location, notes, image_url, catalog_product_id, phase_number, category_id } = req.body;
+    const { name, brand, category, location, notes, image_url, catalog_product_id, phase_number, category_id, code, datasheet_url } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del material es requerido' });
@@ -934,6 +957,8 @@ router.post('/:id/materials', authenticateToken, requireProyectos, async (req, r
         catalog_product_id: catalog_product_id || null,
         phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
         category_id: category_id || null,
+        code: code?.trim() || null,
+        datasheet_url: datasheet_url?.trim() || null,
       })
       .select('*')
       .single();
@@ -951,7 +976,7 @@ router.post('/:id/materials', authenticateToken, requireProyectos, async (req, r
  */
 router.put('/:id/materials/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { brand, category, location, notes, phase_number } = req.body;
+    const { brand, category, location, notes, phase_number, code, datasheet_url } = req.body;
 
     const updates = {};
     if (brand !== undefined) updates.brand = brand?.trim() || null;
@@ -959,6 +984,8 @@ router.put('/:id/materials/:selId', authenticateToken, requireProyectos, async (
     if (location !== undefined) updates.location = location?.trim() || null;
     if (notes !== undefined) updates.notes = notes?.trim() || null;
     if (phase_number !== undefined) updates.phase_number = phase_number != null && phase_number !== '' ? parseInt(phase_number) : null;
+    if (code !== undefined) updates.code = code?.trim() || null;
+    if (datasheet_url !== undefined) updates.datasheet_url = datasheet_url?.trim() || null;
 
     const { data, error } = await supabase
       .from('project_material_selections')
@@ -1041,7 +1068,7 @@ router.get('/:id/equipment', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link, phase_number, category_id } = req.body;
+    const { name, brand, category, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link, phase_number, category_id, code, datasheet_url, location } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del equipo es requerido' });
@@ -1074,6 +1101,9 @@ router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, r
         show_purchase_link: show_purchase_link === true,
         phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
         category_id: category_id || null,
+        code: code?.trim() || null,
+        datasheet_url: datasheet_url?.trim() || null,
+        location: location?.trim() || null,
       })
       .select('*')
       .single();
@@ -1255,7 +1285,7 @@ router.delete('/:id/notes/:noteId', authenticateToken, requireProyectos, async (
 });
 router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link, phase_number } = req.body;
+    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link, phase_number, code, datasheet_url, location } = req.body;
 
     const updates = {};
     if (quantity !== undefined) updates.quantity = parseInt(quantity);
@@ -1264,6 +1294,9 @@ router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (
     if (purchase_link !== undefined) updates.purchase_link = purchase_link?.trim() || null;
     if (show_purchase_link !== undefined) updates.show_purchase_link = show_purchase_link === true;
     if (phase_number !== undefined) updates.phase_number = phase_number != null && phase_number !== '' ? parseInt(phase_number) : null;
+    if (code !== undefined) updates.code = code?.trim() || null;
+    if (datasheet_url !== undefined) updates.datasheet_url = datasheet_url?.trim() || null;
+    if (location !== undefined) updates.location = location?.trim() || null;
 
     const { data, error } = await supabase
       .from('project_equipment_selections')

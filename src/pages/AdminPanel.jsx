@@ -272,7 +272,7 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{ id:'fases',label:'Categorías'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Catálogo'}];
+const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Catálogo'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
@@ -597,8 +597,22 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
   const {attributes,listeners,setNodeRef,transform,transition,isDragging}=useSortable({id:item.id});
   const style={transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.4:1};
   const [expanded,setExpanded]=useState(false); const [qty,setQty]=useState(item.quantity??1); const [ytUrl,setYtUrl]=useState(item.youtube_url||''); const [extraImgs,setExtraImgs]=useState(item.extra_images||[]); const [newImg,setNewImg]=useState(''); const [saving,setSaving]=useState(false); const [purchaseLink,setPurchaseLink]=useState(item.purchase_link||''); const [showLink,setShowLink]=useState(item.show_purchase_link||false);
+  const [code,setCode]=useState(item.code||''); const [datasheetUrl,setDatasheetUrl]=useState(item.datasheet_url||''); const [location,setLocation]=useState(item.location||'');
   const isMob=type==='mobiliario';
-  const handleSave=async()=>{setSaving(true);try{await api.put(`/client-projects/${item.project_id}/equipment/${item.id}`,{quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink});onUpdate({...item,quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink});setExpanded(false);}catch{}finally{setSaving(false);}};
+  const handleSave=async()=>{
+    setSaving(true);
+    try{
+      const shared={code:code||null,datasheet_url:datasheetUrl||null,location:location||null};
+      if(isMob){
+        await api.put(`/client-projects/${item.project_id}/equipment/${item.id}`,{quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink,...shared});
+        onUpdate({...item,quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink,...shared});
+      }else{
+        await api.put(`/client-projects/${item.project_id}/materials/${item.id}`,shared);
+        onUpdate({...item,...shared});
+      }
+      setExpanded(false);
+    }catch{}finally{setSaving(false);}
+  };
   const addImg=()=>{const url=newImg.trim();if(!url||extraImgs.includes(url))return;setExtraImgs(prev=>[...prev,url]);setNewImg('');};
   const removeImg=(url)=>setExtraImgs(prev=>prev.filter(u=>u!==url));
   return (
@@ -608,40 +622,56 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
       <div className="ap-catalog-product-info" style={{flex:1}}>
         <span className="ap-catalog-product-name">{item.name}</span>
         {item.category&&<span className="ap-cat-meta">{item.category}</span>}
+        {item.code&&<span className="ap-cat-meta" style={{color:'rgba(190,176,162,0.7)',marginLeft:4}}>#{item.code}</span>}
+        {item.location&&<span className="ap-cat-meta" style={{marginLeft:4}}>→ {item.location}</span>}
         {isMob&&<span className="ap-cat-meta" style={{color:'rgba(190,176,162,0.7)',marginLeft:4}}>×{qty}{item.youtube_url&&' · 🎬'}{item.extra_images?.length>0&&` · ${item.extra_images.length} img`}{showLink&&purchaseLink&&' · 🔗'}</span>}
       </div>
-      {isMob&&(<button className="ap-btn ap-btn-ghost ap-btn-sm" style={{flexShrink:0,fontSize:'0.72rem'}} onClick={()=>setExpanded(v=>!v)} type="button"><Pencil size={11}/> {expanded?'Cerrar':'Detalle'}</button>)}
+      <button className="ap-btn ap-btn-ghost ap-btn-sm" style={{flexShrink:0,fontSize:'0.72rem'}} onClick={()=>setExpanded(v=>!v)} type="button"><Pencil size={11}/> {expanded?'Cerrar':'Detalle'}</button>
       <button className="ap-btn-icon" onClick={()=>onUnassign(item.id,type)}><X size={13}/></button>
-      {expanded&&isMob&&(
+      {expanded&&(
         <div className="ap-eq-detail-panel">
-          <div className="ap-field" style={{marginBottom:'0.75rem'}}>
+          {isMob&&(<div className="ap-field" style={{marginBottom:'0.75rem'}}>
             <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Cantidad</label>
             <div style={{display:'flex',alignItems:'center',gap:'0.4rem'}}>
               <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setQty(q=>Math.max(1,q-1))}>−</button>
               <input type="number" min="1" className="ap-field-input" style={{width:60,textAlign:'center'}} value={qty} onChange={e=>setQty(Math.max(1,parseInt(e.target.value)||1))}/>
               <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setQty(q=>q+1)}>+</button>
             </div>
+          </div>)}
+          <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.75rem'}}>
+            <div className="ap-field" style={{flex:1}}>
+              <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Código</label>
+              <input className="ap-field-input" value={code} onChange={e=>setCode(e.target.value)} placeholder="Ej. MO.01"/>
+            </div>
+            <div className="ap-field" style={{flex:1}}>
+              <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Ubicación</label>
+              <input className="ap-field-input" value={location} onChange={e=>setLocation(e.target.value)} placeholder="Ej. Pared norte"/>
+            </div>
           </div>
           <div className="ap-field" style={{marginBottom:'0.75rem'}}>
+            <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Ficha técnica (enlace)</label>
+            <input className="ap-field-input" value={datasheetUrl} onChange={e=>setDatasheetUrl(e.target.value)} placeholder="https://..."/>
+          </div>
+          {isMob&&(<div className="ap-field" style={{marginBottom:'0.75rem'}}>
             <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Vídeo YouTube (URL)</label>
             <input className="ap-field-input" value={ytUrl} onChange={e=>setYtUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..."/>
-          </div>
-          <div className="ap-field" style={{marginBottom:'0.75rem'}}>
+          </div>)}
+          {isMob&&(<div className="ap-field" style={{marginBottom:'0.75rem'}}>
             <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Imágenes adicionales (URLs)</label>
             {extraImgs.length>0&&(<div style={{display:'flex',flexWrap:'wrap',gap:'0.4rem',marginBottom:'0.5rem'}}>{extraImgs.map(url=>(<div key={url} style={{position:'relative',width:52,height:52}}><img src={url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:6,border:'1px solid rgba(255,255,255,0.1)'}}/><button type="button" onClick={()=>removeImg(url)} style={{position:'absolute',top:-5,right:-5,background:'#1a1a1a',border:'1px solid rgba(255,255,255,0.15)',borderRadius:'50%',width:16,height:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:0,color:'rgba(255,255,255,0.6)'}}><X size={9}/></button></div>))}</div>)}
             <div style={{display:'flex',gap:'0.4rem'}}>
               <input className="ap-field-input" value={newImg} onChange={e=>setNewImg(e.target.value)} placeholder="https://..." onKeyDown={e=>e.key==='Enter'&&(e.preventDefault(),addImg())}/>
               <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={addImg}><Plus size={12}/> Añadir</button>
             </div>
-          </div>
-          <div className="ap-field" style={{marginBottom:'0.75rem'}}>
+          </div>)}
+          {isMob&&(<div className="ap-field" style={{marginBottom:'0.75rem'}}>
             <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Enlace de compra</label>
             <input className="ap-field-input" value={purchaseLink} onChange={e=>setPurchaseLink(e.target.value)} placeholder="https://..."/>
             <label style={{display:'flex',alignItems:'center',gap:'0.4rem',marginTop:'0.5rem',fontSize:'0.72rem',color:'rgba(255,255,255,0.7)',cursor:'pointer'}}>
               <input type="checkbox" checked={showLink} onChange={e=>setShowLink(e.target.checked)}/>
               Mostrar cantidad y enlace de compra al cliente
             </label>
-          </div>
+          </div>)}
           <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSave} disabled={saving} style={{width:'100%'}}>{saving?'Guardando…':<><Save size={12}/> Guardar cambios</>}</button>
         </div>
       )}
@@ -1041,6 +1071,293 @@ function TabCategorias({ projectId }) {
   );
 }
 
+function TabPortada({ project, onUpdated }) {
+  const [uploading, setUploading] = useState(false);
+  const [coverUrl, setCoverUrl] = useState(project.cover_image_url || null);
+  const fileRef = useRef();
+  const { toast } = useToast();
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const { data } = await api.post(`/client-projects/${project.id}/cover`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setCoverUrl(data.cover_image_url);
+      onUpdated?.(data.cover_image_url);
+      toast.success('Portada guardada');
+    } catch {
+      toast.error('Error al subir la portada');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const handleRemove = async () => {
+    try {
+      await api.put(`/client-projects/${project.id}`, { cover_image_url: '' });
+      setCoverUrl(null);
+      onUpdated?.(null);
+      toast.success('Portada eliminada');
+    } catch { toast.error('Error al eliminar la portada'); }
+  };
+
+  return (
+    <div className="ap-tab-content">
+      <p className="ap-tab-desc">Imagen grande que verá el cliente arriba de todo en su página de proyecto.</p>
+      {coverUrl ? (
+        <div style={{ marginBottom: '1rem' }}>
+          <img src={coverUrl} alt="Portada" style={{ width: '100%', maxWidth: 480, borderRadius: 10, display: 'block' }} />
+        </div>
+      ) : (
+        <div className="ap-empty" style={{ marginBottom: '1rem' }}><p>Este proyecto no tiene portada todavía.</p></div>
+      )}
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <label className="ap-btn ap-btn-primary ap-btn-sm ap-upload-label">{uploading ? 'Subiendo…' : <><Plus size={13} /> {coverUrl ? 'Reemplazar portada' : 'Subir portada'}</>}<input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} disabled={uploading} style={{ display: 'none' }} /></label>
+        {coverUrl && <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleRemove}><Trash2 size={13} /> Quitar</button>}
+      </div>
+    </div>
+  );
+}
+
+function QuestionField({ question, value, onChange, catalogProducts, references }) {
+  switch (question.question_type) {
+    case 'si_no':
+      return (
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {['Sí', 'No'].map(opt => (
+            <button key={opt} type="button" className={`ap-btn ap-btn-sm ${value === opt ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => onChange(opt)}>{opt}</button>
+          ))}
+        </div>
+      );
+    case 'opcion_unica':
+      return (
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          {(question.options || []).map(opt => (
+            <button key={opt} type="button" className={`ap-btn ap-btn-sm ${value === opt ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => onChange(opt)}>{opt}</button>
+          ))}
+        </div>
+      );
+    case 'opcion_multiple': {
+      const arr = Array.isArray(value) ? value : [];
+      const toggle = (opt) => onChange(arr.includes(opt) ? arr.filter(o => o !== opt) : [...arr, opt]);
+      return (
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          {(question.options || []).map(opt => (
+            <button key={opt} type="button" className={`ap-btn ap-btn-sm ${arr.includes(opt) ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => toggle(opt)}>{opt}</button>
+          ))}
+        </div>
+      );
+    }
+    case 'numero':
+      return <input type="number" className="ap-field-input" style={{ maxWidth: 160 }} value={value ?? ''} onChange={e => onChange(e.target.value === '' ? null : parseFloat(e.target.value))} />;
+    case 'texto_largo':
+      return <textarea className="ap-field-input" rows={3} value={value || ''} onChange={e => onChange(e.target.value)} />;
+    case 'catalogo_productos': {
+      const arr = Array.isArray(value) ? value : [];
+      const toggle = (id) => onChange(arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]);
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', maxHeight: 260, overflowY: 'auto', padding: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+          {catalogProducts.length === 0 && <p className="ap-empty-sm">Sin productos en el catálogo todavía.</p>}
+          {catalogProducts.map(p => {
+            const selected = arr.includes(p.id);
+            return (
+              <button key={p.id} type="button" onClick={() => toggle(p.id)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 84, border: selected ? '2px solid #beb0a2' : '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: 4, background: selected ? 'rgba(190,176,162,0.12)' : 'transparent', cursor: 'pointer' }}>
+                {p.photo_url ? <img src={p.photo_url} alt={p.name} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6 }} /> : <div style={{ width: 60, height: 60, borderRadius: 6, background: 'rgba(255,255,255,0.06)' }} />}
+                <span style={{ fontSize: '0.62rem', color: '#fff', textAlign: 'center', marginTop: 4, lineHeight: 1.2 }}>{p.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+    case 'estilo_imagenes': {
+      const arr = Array.isArray(value) ? value : [];
+      const toggle = (id) => onChange(arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]);
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', maxHeight: 260, overflowY: 'auto', padding: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+          {references.length === 0 && <p className="ap-empty-sm">Sin referencias todavía (añádelas en la sección Referencias).</p>}
+          {references.map(r => {
+            const selected = arr.includes(r.id);
+            return (
+              <button key={r.id} type="button" onClick={() => toggle(r.id)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 84, border: selected ? '2px solid #beb0a2' : '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: 4, background: selected ? 'rgba(190,176,162,0.12)' : 'transparent', cursor: 'pointer' }}>
+                {r.image_url ? <img src={r.image_url} alt={r.title} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6 }} /> : <div style={{ width: 60, height: 60, borderRadius: 6, background: 'rgba(255,255,255,0.06)' }} />}
+                <span style={{ fontSize: '0.62rem', color: '#fff', textAlign: 'center', marginTop: 4, lineHeight: 1.2 }}>{r.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+    default:
+      return <input className="ap-field-input" value={value || ''} onChange={e => onChange(e.target.value)} />;
+  }
+}
+
+function TabNecesidades({ projectId }) {
+  const [bundle, setBundle] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [answersDraft, setAnswersDraft] = useState({});
+  const [catalogProducts, setCatalogProducts] = useState([]);
+  const [references, setReferences] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [filledByName, setFilledByName] = useState('');
+  const [newSpace, setNewSpace] = useState({ space_name: '', largo: '', ancho: '', alto: '', notes: '' });
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoRef = useRef();
+  const { toast } = useToast();
+
+  const load = () => {
+    Promise.all([
+      api.get(`/needs-form/project/${projectId}`),
+      api.get('/catalog/products'),
+      api.get('/references'),
+    ]).then(([bundleRes, prodRes, refRes]) => {
+      setBundle(bundleRes.data);
+      setCatalogProducts(prodRes.data.products || []);
+      setReferences(refRes.data.references || []);
+      const draft = {};
+      (bundleRes.data.answers || []).forEach(a => { draft[a.question_id] = a.answer_value; });
+      setAnswersDraft(draft);
+      setFilledByName(bundleRes.data.form?.filled_by_name || '');
+    }).catch(() => toast.error('Error al cargar el programa de necesidades')).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [projectId]);
+
+  const handleSave = async (asComercial) => {
+    setSaving(true);
+    try {
+      const answers = Object.entries(answersDraft).map(([question_id, answer_value]) => ({ question_id, answer_value }));
+      await api.put(`/needs-form/project/${projectId}`, {
+        answers,
+        filled_by_role: asComercial ? 'comercial' : bundle.form.filled_by_role,
+        filled_by_name: asComercial ? (filledByName || 'Comercial') : bundle.form.filled_by_name,
+        status: asComercial ? 'enviado' : bundle.form.status,
+      });
+      toast.success('Guardado');
+      load();
+    } catch { toast.error('Error al guardar'); } finally { setSaving(false); }
+  };
+
+  const handleAddMeasurement = async () => {
+    if (!newSpace.space_name.trim()) return;
+    try {
+      const { data } = await api.post(`/needs-form/project/${projectId}/measurements`, newSpace);
+      setBundle(prev => ({ ...prev, measurements: [...prev.measurements, data.measurement] }));
+      setNewSpace({ space_name: '', largo: '', ancho: '', alto: '', notes: '' });
+    } catch { toast.error('Error al añadir medición'); }
+  };
+
+  const handleDeleteMeasurement = async (id) => {
+    try {
+      await api.delete(`/needs-form/project/${projectId}/measurements/${id}`);
+      setBundle(prev => ({ ...prev, measurements: prev.measurements.filter(m => m.id !== id) }));
+    } catch {}
+  };
+
+  const handleUploadPhoto = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const { data } = await api.post(`/needs-form/project/${projectId}/photos`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setBundle(prev => ({ ...prev, photos: [...prev.photos, data.photo] }));
+    } catch { toast.error('Error al subir foto'); } finally { setUploadingPhoto(false); if (photoRef.current) photoRef.current.value = ''; }
+  };
+
+  const handleDeletePhoto = async (id) => {
+    try {
+      await api.delete(`/needs-form/project/${projectId}/photos/${id}`);
+      setBundle(prev => ({ ...prev, photos: prev.photos.filter(p => p.id !== id) }));
+    } catch {}
+  };
+
+  if (loading || !bundle) return <div className="ap-loading">Cargando…</div>;
+
+  const sections = [];
+  bundle.questions.forEach(q => {
+    let sec = sections.find(s => s.name === (q.section || 'General'));
+    if (!sec) { sec = { name: q.section || 'General', qs: [] }; sections.push(sec); }
+    sec.qs.push(q);
+  });
+
+  return (
+    <div className="ap-tab-content">
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <span className="ap-doc-type" style={{ background: bundle.form.status === 'enviado' ? 'rgba(139,174,143,0.15)' : 'rgba(255,255,255,0.08)', color: bundle.form.status === 'enviado' ? '#8bae8f' : '#aaa' }}>
+          {bundle.form.status === 'enviado' ? 'Enviado' : 'Borrador'}
+        </span>
+        {bundle.form.filled_by_name && <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)' }}>Rellenado por {bundle.form.filled_by_name} ({bundle.form.filled_by_role})</span>}
+        <a href={`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/needs-form/project/${projectId}/pdf?token=`} onClick={async (e) => {
+          e.preventDefault();
+          try {
+            const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+            const token = localStorage.getItem('admin_token');
+            const res = await fetch(`${base}/needs-form/project/${projectId}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'programa-necesidades.pdf'; a.click(); URL.revokeObjectURL(url);
+          } catch {}
+        }} className="ap-btn ap-btn-ghost ap-btn-sm"><Download size={13} /> PDF</a>
+      </div>
+
+      <p className="ap-tab-desc">Mediciones y fotos del estado actual — puedes subirlas tú o el cliente desde su página.</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
+        {bundle.measurements.map(m => (
+          <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '0.5rem 0.75rem' }}>
+            <span style={{ flex: 1, fontSize: '0.82rem', color: '#fff' }}>{m.space_name}</span>
+            <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)' }}>{[m.largo, m.ancho, m.alto].filter(v => v != null).length ? `${m.largo ?? '—'} × ${m.ancho ?? '—'} × ${m.alto ?? '—'} m` : ''}</span>
+            <button className="ap-btn-icon" onClick={() => handleDeleteMeasurement(m.id)}><Trash2 size={12} /></button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+        <input className="ap-field-input" style={{ flex: 1, minWidth: 120 }} placeholder="Espacio (ej. Garaje)" value={newSpace.space_name} onChange={e => setNewSpace(s => ({ ...s, space_name: e.target.value }))} />
+        <input className="ap-field-input" style={{ width: 70 }} placeholder="Largo" value={newSpace.largo} onChange={e => setNewSpace(s => ({ ...s, largo: e.target.value }))} />
+        <input className="ap-field-input" style={{ width: 70 }} placeholder="Ancho" value={newSpace.ancho} onChange={e => setNewSpace(s => ({ ...s, ancho: e.target.value }))} />
+        <input className="ap-field-input" style={{ width: 70 }} placeholder="Alto" value={newSpace.alto} onChange={e => setNewSpace(s => ({ ...s, alto: e.target.value }))} />
+        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAddMeasurement}><Plus size={13} /> Añadir</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+        {bundle.photos.map(p => (
+          <div key={p.id} style={{ position: 'relative' }}>
+            <img src={p.url} alt="" style={{ width: 70, height: 70, objectFit: 'cover', borderRadius: 6 }} />
+            <button onClick={() => handleDeletePhoto(p.id)} style={{ position: 'absolute', top: -4, right: -4, background: '#1a1a1a', border: 'none', borderRadius: '50%', width: 16, height: 16, color: '#fff', cursor: 'pointer', fontSize: 10 }}>✕</button>
+          </div>
+        ))}
+      </div>
+      <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ marginBottom: '1.5rem', display: 'inline-flex' }}>{uploadingPhoto ? 'Subiendo…' : <><Plus size={13} /> Añadir foto</>}<input ref={photoRef} type="file" accept="image/*" onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
+
+      <p className="ap-tab-desc" style={{ marginTop: '0.5rem' }}>Formulario del programa de necesidades — rellénalo tú como comercial, o pide al cliente que lo haga desde su página.</p>
+
+      {sections.map(sec => (
+        <div key={sec.name} style={{ marginBottom: '1.5rem' }}>
+          <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#beb0a2', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{sec.name}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {sec.qs.map(q => (
+              <div key={q.id}>
+                <p style={{ fontSize: '0.82rem', color: '#fff', marginBottom: '0.4rem' }}>{q.question_text}</p>
+                <QuestionField question={q} value={answersDraft[q.id]} onChange={(v) => setAnswersDraft(prev => ({ ...prev, [q.id]: v }))} catalogProducts={catalogProducts} references={references} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <input className="ap-field-input" style={{ maxWidth: 200 }} placeholder="Tu nombre (comercial)" value={filledByName} onChange={e => setFilledByName(e.target.value)} />
+        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => handleSave(false)} disabled={saving}>Guardar borrador</button>
+        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => handleSave(true)} disabled={saving}>Guardar y marcar enviado</button>
+      </div>
+    </div>
+  );
+}
+
 function ProjectManagerModal({ project, onClose }) {
   const [tab, setTab] = useState('fases');
 
@@ -1079,7 +1396,9 @@ function ProjectManagerModal({ project, onClose }) {
         </div>
         <div className="ap-mgr-tabs">{MGR_TABS.map(t=>(<button key={t.id} className={`ap-mgr-tab${tab===t.id?' active':''}`} onClick={()=>setTab(t.id)}>{t.label}</button>))}</div>
         <div className="ap-mgr-body">
+          {tab==='portada'&&<TabPortada project={project} onUpdated={(url)=>{project.cover_image_url=url;}}/>}
           {tab==='fases'&&<TabCategorias projectId={project.id}/>}
+          {tab==='necesidades'&&<TabNecesidades projectId={project.id}/>}
           {tab==='renders'&&<TabRenders projectId={project.id}/>}
           {tab==='documentos'&&<TabDocumentos projectId={project.id}/>}
           {tab==='tours'&&<TabTour projectId={project.id}/>}
