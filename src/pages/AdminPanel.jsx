@@ -596,7 +596,7 @@ function SectionCatalogo() {
 function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
   const {attributes,listeners,setNodeRef,transform,transition,isDragging}=useSortable({id:item.id});
   const style={transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.4:1};
-  const [expanded,setExpanded]=useState(false); const [qty,setQty]=useState(item.quantity??1); const [ytUrl,setYtUrl]=useState(item.youtube_url||''); const [extraImgs,setExtraImgs]=useState(item.extra_images||[]); const [newImg,setNewImg]=useState(''); const [saving,setSaving]=useState(false); const [purchaseLink,setPurchaseLink]=useState(item.purchase_link||''); const [showLink,setShowLink]=useState(item.show_purchase_link||false);
+  const [expanded,setExpanded]=useState(false); const [qty,setQty]=useState(item.quantity??1); const [ytUrl,setYtUrl]=useState(item.youtube_url||''); const [extraImgs,setExtraImgs]=useState(item.extra_images||[]); const [newImg,setNewImg]=useState(''); const [saving,setSaving]=useState(false); const [purchaseLink,setPurchaseLink]=useState(item.purchase_link||''); const [showLink,setShowLink]=useState(item.show_purchase_link||false); const [showQty,setShowQty]=useState(item.show_quantity!==false);
   const [code,setCode]=useState(item.code||''); const [datasheetUrl,setDatasheetUrl]=useState(item.datasheet_url||''); const [location,setLocation]=useState(item.location||'');
   const isMob=type==='mobiliario';
   const handleSave=async()=>{
@@ -604,8 +604,8 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
     try{
       const shared={code:code||null,datasheet_url:datasheetUrl||null,location:location||null};
       if(isMob){
-        await api.put(`/client-projects/${item.project_id}/equipment/${item.id}`,{quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink,...shared});
-        onUpdate({...item,quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink,...shared});
+        await api.put(`/client-projects/${item.project_id}/equipment/${item.id}`,{quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink,show_quantity:showQty,...shared});
+        onUpdate({...item,quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink,show_quantity:showQty,...shared});
       }else{
         await api.put(`/client-projects/${item.project_id}/materials/${item.id}`,shared);
         onUpdate({...item,...shared});
@@ -668,8 +668,12 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
             <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Enlace de compra</label>
             <input className="ap-field-input" value={purchaseLink} onChange={e=>setPurchaseLink(e.target.value)} placeholder="https://..."/>
             <label style={{display:'flex',alignItems:'center',gap:'0.4rem',marginTop:'0.5rem',fontSize:'0.72rem',color:'rgba(255,255,255,0.7)',cursor:'pointer'}}>
+              <input type="checkbox" checked={showQty} onChange={e=>setShowQty(e.target.checked)}/>
+              Mostrar cantidad al cliente
+            </label>
+            <label style={{display:'flex',alignItems:'center',gap:'0.4rem',marginTop:'0.4rem',fontSize:'0.72rem',color:'rgba(255,255,255,0.7)',cursor:'pointer'}}>
               <input type="checkbox" checked={showLink} onChange={e=>setShowLink(e.target.checked)}/>
-              Mostrar cantidad y enlace de compra al cliente
+              Mostrar enlace de compra al cliente
             </label>
           </div>)}
           <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSave} disabled={saving} style={{width:'100%'}}>{saving?'Guardando…':<><Save size={12}/> Guardar cambios</>}</button>
@@ -1203,7 +1207,10 @@ function TabNecesidades({ projectId }) {
   const [catalogProducts, setCatalogProducts] = useState([]);
   const [references, setReferences] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
   const [filledByName, setFilledByName] = useState('');
+  const [adminNotes, setAdminNotes] = useState('');
+  const [clientSummary, setClientSummary] = useState('');
   const [newSpace, setNewSpace] = useState({ space_name: '', largo: '', ancho: '', alto: '', notes: '' });
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoRef = useRef();
@@ -1222,6 +1229,8 @@ function TabNecesidades({ projectId }) {
       (bundleRes.data.answers || []).forEach(a => { draft[a.question_id] = a.answer_value; });
       setAnswersDraft(draft);
       setFilledByName(bundleRes.data.form?.filled_by_name || '');
+      setAdminNotes(bundleRes.data.form?.admin_notes || '');
+      setClientSummary(bundleRes.data.form?.client_summary || '');
     }).catch(() => toast.error('Error al cargar el programa de necesidades')).finally(() => setLoading(false));
   };
 
@@ -1240,6 +1249,14 @@ function TabNecesidades({ projectId }) {
       toast.success('Guardado');
       load();
     } catch { toast.error('Error al guardar'); } finally { setSaving(false); }
+  };
+
+  const handleSaveNotes = async () => {
+    setSavingNotes(true);
+    try {
+      await api.put(`/needs-form/project/${projectId}`, { admin_notes: adminNotes, client_summary: clientSummary });
+      toast.success('Notas guardadas');
+    } catch { toast.error('Error al guardar notas'); } finally { setSavingNotes(false); }
   };
 
   const handleAddMeasurement = async () => {
@@ -1304,6 +1321,18 @@ function TabNecesidades({ projectId }) {
           } catch {}
         }} className="ap-btn ap-btn-ghost ap-btn-sm"><Download size={13} /> PDF</a>
       </div>
+
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+        <div className="ap-field" style={{ flex: 1, minWidth: 260 }}>
+          <label>Notas internas <span className="ap-optional">(solo tú las ves, nunca el cliente)</span></label>
+          <textarea className="ap-field-input" rows={3} value={adminNotes} onChange={e => setAdminNotes(e.target.value)} placeholder="Ej. Solo quiere redistribuir para meter un tatami y cambiar la iluminación, el resto se mantiene..." />
+        </div>
+        <div className="ap-field" style={{ flex: 1, minWidth: 260 }}>
+          <label>Resumen para el cliente <span className="ap-optional">(esto es lo único que verá el cliente, en vez de todas las respuestas)</span></label>
+          <textarea className="ap-field-input" rows={3} value={clientSummary} onChange={e => setClientSummary(e.target.value)} placeholder="Ej. Hemos entendido que quieres transformar el espacio en una zona de tatami, con nueva iluminación..." />
+        </div>
+      </div>
+      <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSaveNotes} disabled={savingNotes} style={{ marginBottom: '1.5rem' }}>{savingNotes ? 'Guardando…' : 'Guardar notas y resumen'}</button>
 
       <p className="ap-tab-desc">Mediciones y fotos del estado actual — puedes subirlas tú o el cliente desde su página.</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>

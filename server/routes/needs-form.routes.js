@@ -282,11 +282,13 @@ router.get('/project/:projectId', authenticateToken, requireProyectos, async (re
 router.put('/project/:projectId', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const form = await getOrCreateForm(req.params.projectId);
-    const { status, filled_by_role, filled_by_name, answers } = req.body;
+    const { status, filled_by_role, filled_by_name, answers, admin_notes, client_summary } = req.body;
     const updates = {};
     if (status !== undefined) updates.status = status;
     if (filled_by_role !== undefined) updates.filled_by_role = filled_by_role;
     if (filled_by_name !== undefined) updates.filled_by_name = filled_by_name?.trim() || null;
+    if (admin_notes !== undefined) updates.admin_notes = admin_notes;
+    if (client_summary !== undefined) updates.client_summary = client_summary;
     if (status === 'enviado') updates.submitted_at = new Date().toISOString();
     updates.updated_at = new Date().toISOString();
 
@@ -386,7 +388,10 @@ router.get('/public/:code', async (req, res) => {
   try {
     const projectId = await resolveProjectIdByCode(req.params.code);
     if (!projectId) return res.status(404).json({ error: 'Código no válido' });
-    res.json(await loadFormBundle(projectId));
+    const bundle = await loadFormBundle(projectId);
+    // admin_notes es privado del diseñador y nunca debe salir por esta ruta pública.
+    const { admin_notes, ...publicForm } = bundle.form;
+    res.json({ ...bundle, form: publicForm });
   } catch (err) {
     console.error('Error al cargar formulario público:', err);
     res.status(500).json({ error: 'Error al cargar el formulario' });
@@ -408,7 +413,8 @@ router.put('/public/:code', async (req, res) => {
 
     const { data, error } = await supabase.from('project_needs_forms').update(updates).eq('id', form.id).select('*').single();
     if (error) throw error;
-    res.json({ form: data });
+    const { admin_notes, ...publicForm } = data;
+    res.json({ form: publicForm });
   } catch (err) {
     console.error('Error al guardar formulario público:', err);
     res.status(500).json({ error: 'Error al guardar el formulario' });

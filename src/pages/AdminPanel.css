@@ -972,6 +972,9 @@
   gap: 0.15rem;
   padding: 1rem 1.5rem 0;
   border-bottom: 1px solid rgba(255,255,255,0.07);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .ap-mgr-tab {
@@ -986,6 +989,8 @@
   cursor: pointer;
   margin-bottom: -1px;
   transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ap-mgr-tab:hover { color: rgba(255,255,255,0.7); }

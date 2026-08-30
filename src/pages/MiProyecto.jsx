@@ -239,7 +239,7 @@ function MobiliarioSection({ equipment, label }) {
                 {e.brand && <span className="mp-sel-sub">{e.brand}</span>}
                 {e.category && <span className="mp-sel-tag">{e.category}</span>}
                 {e.location && <span className="mp-sel-location">→ {e.location}</span>}
-                <span className="mp-sel-qty">×{e.quantity || 1}</span>
+                {e.show_quantity !== false && <span className="mp-sel-qty">×{e.quantity || 1}</span>}
                 {e.datasheet_url && <a href={e.datasheet_url} target="_blank" rel="noopener noreferrer" className="mp-sel-datasheet" onClick={ev => ev.stopPropagation()}>Ficha técnica ↗</a>}
                 {e.show_purchase_link && e.purchase_link && (
                   <a
@@ -268,7 +268,7 @@ function MobiliarioSection({ equipment, label }) {
               <div className="mp-eq-meta">
                 {activeItem.brand && <span className="mp-eq-brand">{activeItem.brand}</span>}
                 {activeItem.category && <span className="mp-sel-tag">{activeItem.category}</span>}
-                {activeItem.quantity > 1 && <span className="mp-eq-qty">Cantidad: <strong>{activeItem.quantity}</strong></span>}
+                {activeItem.show_quantity !== false && activeItem.quantity > 1 && <span className="mp-eq-qty">Cantidad: <strong>{activeItem.quantity}</strong></span>}
               </div>
               {activeItem.show_purchase_link && activeItem.purchase_link && (
                 <a
@@ -631,6 +631,8 @@ function NeedsFormSection({ code }) {
 
   if (loading || !bundle) return null;
 
+  const summary = bundle.form?.client_summary || '';
+
   const sections = [];
   bundle.questions.forEach(q => {
     let sec = sections.find(s => s.name === (q.section || 'General'));
@@ -649,57 +651,65 @@ function NeedsFormSection({ code }) {
       </button>
       {open && (
         <div className="mp-ph-body">
-          <p className="mp-ph-intro">Cuéntanos sobre tu proyecto para que podamos diseñarlo a tu medida. Puedes rellenarlo tú o pedirle a tu diseñador que lo haga contigo.</p>
+          {summary ? (
+            <p className="mp-ph-intro">{summary}</p>
+          ) : sent ? (
+            <p className="mp-ph-intro">Gracias, hemos recibido tu programa de necesidades. Tu diseñador lo está revisando y pronto verás aquí un resumen.</p>
+          ) : (
+            <>
+              <p className="mp-ph-intro">Cuéntanos sobre tu proyecto para que podamos diseñarlo a tu medida. Puedes rellenarlo tú o pedirle a tu diseñador que lo haga contigo.</p>
 
-          <div className="mp-nf-block">
-            <p className="mp-block-label">Mediciones</p>
-            {bundle.measurements.map(m => (
-              <div key={m.id} className="mp-nf-measure-row">
-                <span>{m.space_name}</span>
-                <span className="mp-nf-measure-dims">{[m.largo, m.ancho, m.alto].filter(v => v != null).length ? `${m.largo ?? '—'} × ${m.ancho ?? '—'} × ${m.alto ?? '—'} m` : ''}</span>
-                <button onClick={() => handleDeleteMeasurement(m.id)}>✕</button>
-              </div>
-            ))}
-            <div className="mp-nf-measure-form">
-              <input value={newSpace.space_name} onChange={e => setNewSpace(s => ({ ...s, space_name: e.target.value }))} placeholder="Espacio (ej. Garaje)" />
-              <input value={newSpace.largo} onChange={e => setNewSpace(s => ({ ...s, largo: e.target.value }))} placeholder="Largo" />
-              <input value={newSpace.ancho} onChange={e => setNewSpace(s => ({ ...s, ancho: e.target.value }))} placeholder="Ancho" />
-              <input value={newSpace.alto} onChange={e => setNewSpace(s => ({ ...s, alto: e.target.value }))} placeholder="Alto" />
-              <button type="button" onClick={handleAddMeasurement}>+ Añadir</button>
-            </div>
-          </div>
-
-          <div className="mp-nf-block">
-            <p className="mp-block-label">Fotos del estado actual</p>
-            <div className="mp-nf-photos">
-              {bundle.photos.map(p => (
-                <div key={p.id} className="mp-nf-photo">
-                  <img src={p.url} alt="" />
-                  <button onClick={() => handleDeletePhoto(p.id)}>✕</button>
-                </div>
-              ))}
-            </div>
-            <label className="mp-nf-upload-btn">{uploadingPhoto ? 'Subiendo…' : '+ Añadir foto'}<input ref={photoRef} type="file" accept="image/*" onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
-          </div>
-
-          {sections.map(sec => (
-            <div key={sec.name} className="mp-nf-block">
-              <p className="mp-block-label">{sec.name}</p>
-              <div className="mp-nf-questions">
-                {sec.qs.map(q => (
-                  <div key={q.id} className="mp-nf-question">
-                    <p>{q.question_text}</p>
-                    <NeedsFormQuestionField question={q} value={answersDraft[q.id]} onChange={(v) => setAnswersDraft(prev => ({ ...prev, [q.id]: v }))} catalogProducts={bundle.catalog_products || []} references={bundle.references || []} />
+              <div className="mp-nf-block">
+                <p className="mp-block-label">Mediciones</p>
+                {bundle.measurements.map(m => (
+                  <div key={m.id} className="mp-nf-measure-row">
+                    <span>{m.space_name}</span>
+                    <span className="mp-nf-measure-dims">{[m.largo, m.ancho, m.alto].filter(v => v != null).length ? `${m.largo ?? '—'} × ${m.ancho ?? '—'} × ${m.alto ?? '—'} m` : ''}</span>
+                    <button onClick={() => handleDeleteMeasurement(m.id)}>✕</button>
                   </div>
                 ))}
+                <div className="mp-nf-measure-form">
+                  <input value={newSpace.space_name} onChange={e => setNewSpace(s => ({ ...s, space_name: e.target.value }))} placeholder="Espacio (ej. Garaje)" />
+                  <input value={newSpace.largo} onChange={e => setNewSpace(s => ({ ...s, largo: e.target.value }))} placeholder="Largo" />
+                  <input value={newSpace.ancho} onChange={e => setNewSpace(s => ({ ...s, ancho: e.target.value }))} placeholder="Ancho" />
+                  <input value={newSpace.alto} onChange={e => setNewSpace(s => ({ ...s, alto: e.target.value }))} placeholder="Alto" />
+                  <button type="button" onClick={handleAddMeasurement}>+ Añadir</button>
+                </div>
               </div>
-            </div>
-          ))}
 
-          <div className="mp-nf-submit">
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Tu nombre" className="mp-nf-input" style={{ maxWidth: 220 }} />
-            <button type="button" onClick={handleSubmit} disabled={saving} className="mp-nf-submit-btn">{saving ? 'Guardando…' : sent ? 'Actualizar respuestas' : 'Enviar'}</button>
-          </div>
+              <div className="mp-nf-block">
+                <p className="mp-block-label">Fotos del estado actual</p>
+                <div className="mp-nf-photos">
+                  {bundle.photos.map(p => (
+                    <div key={p.id} className="mp-nf-photo">
+                      <img src={p.url} alt="" />
+                      <button onClick={() => handleDeletePhoto(p.id)}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                <label className="mp-nf-upload-btn">{uploadingPhoto ? 'Subiendo…' : '+ Añadir foto'}<input ref={photoRef} type="file" accept="image/*" onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
+              </div>
+
+              {sections.map(sec => (
+                <div key={sec.name} className="mp-nf-block">
+                  <p className="mp-block-label">{sec.name}</p>
+                  <div className="mp-nf-questions">
+                    {sec.qs.map(q => (
+                      <div key={q.id} className="mp-nf-question">
+                        <p>{q.question_text}</p>
+                        <NeedsFormQuestionField question={q} value={answersDraft[q.id]} onChange={(v) => setAnswersDraft(prev => ({ ...prev, [q.id]: v }))} catalogProducts={bundle.catalog_products || []} references={bundle.references || []} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <div className="mp-nf-submit">
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="Tu nombre" className="mp-nf-input" style={{ maxWidth: 220 }} />
+                <button type="button" onClick={handleSubmit} disabled={saving} className="mp-nf-submit-btn">{saving ? 'Guardando…' : 'Enviar'}</button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

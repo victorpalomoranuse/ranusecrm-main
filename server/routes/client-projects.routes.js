@@ -1068,7 +1068,7 @@ router.get('/:id/equipment', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link, phase_number, category_id, code, datasheet_url, location } = req.body;
+    const { name, brand, category, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link, show_quantity, phase_number, category_id, code, datasheet_url, location } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del equipo es requerido' });
@@ -1099,6 +1099,7 @@ router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, r
         image_url: image_url?.trim() || null,
         purchase_link: resolvedLink,
         show_purchase_link: show_purchase_link === true,
+        show_quantity: show_quantity !== undefined ? show_quantity === true : true,
         phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
         category_id: category_id || null,
         code: code?.trim() || null,
@@ -1285,7 +1286,7 @@ router.delete('/:id/notes/:noteId', authenticateToken, requireProyectos, async (
 });
 router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link, phase_number, code, datasheet_url, location } = req.body;
+    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link, show_quantity, phase_number, code, datasheet_url, location } = req.body;
 
     const updates = {};
     if (quantity !== undefined) updates.quantity = parseInt(quantity);
@@ -1293,6 +1294,7 @@ router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (
     if (extra_images !== undefined) updates.extra_images = Array.isArray(extra_images) ? extra_images : [];
     if (purchase_link !== undefined) updates.purchase_link = purchase_link?.trim() || null;
     if (show_purchase_link !== undefined) updates.show_purchase_link = show_purchase_link === true;
+    if (show_quantity !== undefined) updates.show_quantity = show_quantity === true;
     if (phase_number !== undefined) updates.phase_number = phase_number != null && phase_number !== '' ? parseInt(phase_number) : null;
     if (code !== undefined) updates.code = code?.trim() || null;
     if (datasheet_url !== undefined) updates.datasheet_url = datasheet_url?.trim() || null;
