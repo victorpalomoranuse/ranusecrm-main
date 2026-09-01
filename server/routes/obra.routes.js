@@ -62,6 +62,13 @@ async function relacionDeObra(ventaId) {
     .eq('tipo', 'gasto')
     .order('fecha', { ascending: false });
 
+  const { data: previsiones } = await supabase
+    .from('obra_previsiones')
+    .select('proveedor, monto')
+    .eq('venta_id', ventaId);
+  const previstoPorProveedor = {};
+  (previsiones || []).forEach(p => { previstoPorProveedor[p.proveedor] = Number(p.monto); });
+
   const porProveedor = {};
   items.forEach(item => {
     const prov = effectiveProvider(item);
@@ -73,12 +80,22 @@ async function relacionDeObra(ventaId) {
     if (!porProveedor[prov]) porProveedor[prov] = { proveedor: prov, presupuestado: 0, pagado: 0 };
     porProveedor[prov].pagado += Number(p.monto);
   });
+  // Un proveedor puede tener previsión propia (renegociada) aunque no
+  // tenga líneas en el presupuesto ni pagos todavía.
+  Object.keys(previstoPorProveedor).forEach(prov => {
+    if (!porProveedor[prov]) porProveedor[prov] = { proveedor: prov, presupuestado: 0, pagado: 0 };
+  });
 
   const proveedores = Object.values(porProveedor)
-    .map(p => ({ ...p, diferencia: p.presupuestado - p.pagado }))
+    .map(p => {
+      // Si no se ha renegociado, el previsto por defecto es el presupuestado.
+      const previsto = previstoPorProveedor[p.proveedor] != null ? previstoPorProveedor[p.proveedor] : p.presupuestado;
+      return { ...p, previsto, previstoEditado: previstoPorProveedor[p.proveedor] != null, diferencia: previsto - p.pagado };
+    })
     .sort((a, b) => b.presupuestado - a.presupuestado);
 
   const presupuestoTotal = proveedores.reduce((s, p) => s + p.presupuestado, 0);
+  const previstoTotal = proveedores.reduce((s, p) => s + p.previsto, 0);
   const pagadoTotal = proveedores.reduce((s, p) => s + p.pagado, 0);
 
   return {
@@ -87,8 +104,9 @@ async function relacionDeObra(ventaId) {
     proveedores,
     pagos: pagos || [],
     presupuestoTotal,
+    previstoTotal,
     pagadoTotal,
-    diferenciaTotal: presupuestoTotal - pagadoTotal,
+    diferenciaTotal: previstoTotal - pagadoTotal,
   };
 }
 
@@ -116,6 +134,7 @@ router.get('/', authenticateToken, requireFinanzas, async (req, res) => {
         fecha: v.fecha,
         proyecto: rel.proyecto,
         presupuestoTotal: rel.presupuestoTotal,
+        previstoTotal: rel.previstoTotal,
         pagadoTotal: rel.pagadoTotal,
         diferenciaTotal: rel.diferenciaTotal,
       };
@@ -140,6 +159,40 @@ router.get('/:ventaId', authenticateToken, requireFinanzas, async (req, res) => 
   } catch (err) {
     console.error('Error al cargar relación de obra:', err);
     res.status(500).json({ error: 'Error al cargar relación de obra' });
+  }
+});
+
+/**
+ * PUT /api/obra/:ventaId/previsto
+ * Fija (o borra, si monto es null) la previsión renegociada de un
+ * proveedor para esta obra. Body: { proveedor, monto }
+ */
+router.put('/:ventaId/previsto', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const { proveedor, monto } = req.body;
+    if (!proveedor?.trim()) return res.status(400).json({ error: 'proveedor es requerido' });
+
+    if (monto === null || monto === '') {
+      const { error } = await supabase.from('obra_previsiones').delete().eq('venta_id', req.params.ventaId).eq('proveedor', proveedor.trim());
+      if (error) throw error;
+      return res.json({ ok: true, borrado: true });
+    }
+
+    if (isNaN(parseFloat(monto))) return res.status(400).json({ error: 'monto inválido' });
+
+    const { data, error } = await supabase
+      .from('obra_previsiones')
+      .upsert(
+        { venta_id: req.params.ventaId, proveedor: proveedor.trim(), monto: parseFloat(monto), updated_at: new Date().toISOString() },
+        { onConflict: 'venta_id,proveedor' }
+      )
+      .select('*')
+      .single();
+    if (error) throw error;
+    res.json({ prevision: data });
+  } catch (err) {
+    console.error('Error al guardar previsión:', err);
+    res.status(500).json({ error: 'Error al guardar previsión' });
   }
 });
 
