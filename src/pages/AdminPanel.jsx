@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package } from 'lucide-react';
+import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionPedidos } from './SectionPedidos';
 import { SectionTareas } from './SectionTareas';
@@ -11,6 +11,7 @@ import { SectionDashboard } from './SectionDashboard';
 import { SectionLeads } from './SectionLeads';
 import { SectionVentas } from './SectionVentas';
 import { SectionFinanzas } from './SectionFinanzas';
+import { SectionRelacionObra } from './SectionRelacionObra';
 import { SectionMisComisiones } from './SectionMisComisiones';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -1667,6 +1668,7 @@ const NAV_ITEMS = [
   { id:'presupuestos', label:'Presupuestos', Icon:Calculator, adminOnly:true },
   { id:'pedidos', label:'Pedidos', Icon:Package, adminOnly:true },
   { id:'finanzas', label:'Finanzas', Icon:Wallet, permission:'finanzas' },
+  { id:'obra', label:'Relación de obra', Icon:Hammer, permission:'finanzas' },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
   { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },
   { id:'referencias', label:'Referencias', Icon:Bookmark, permission:'referencias' },
@@ -1710,6 +1712,7 @@ export function AdminPanel() {
         {section==='presupuestos'&&<SectionPresupuestos/>}
         {section==='pedidos'&&<SectionPedidos/>}
         {section==='finanzas'&&<SectionFinanzas/>}
+        {section==='obra'&&<SectionRelacionObra/>}
         {section==='tareas'&&<SectionTareas/>}
         {section==='ajustes'&&<SectionAjustes/>}
         {section==='catalogo'&&<SectionCatalogo/>}

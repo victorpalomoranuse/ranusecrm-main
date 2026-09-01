@@ -25,6 +25,7 @@ import objetivosRoutes from './routes/objetivos.routes.js';
 import comisionesRoutes from './routes/comisiones.routes.js';
 import categoriesRoutes from './routes/categories.routes.js';
 import needsFormRoutes from './routes/needs-form.routes.js';
+import obraRoutes from './routes/obra.routes.js';
 dotenv.config();
 
 const app = express();
@@ -81,6 +82,7 @@ app.use('/api/objetivos', objetivosRoutes);
 app.use('/api/comisiones', comisionesRoutes);
 app.use('/api/categories', categoriesRoutes);
 app.use('/api/needs-form', needsFormRoutes);
+app.use('/api/obra', obraRoutes);
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
 });

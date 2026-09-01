@@ -98,7 +98,7 @@ router.get('/resumen', authenticateToken, requireFinanzas, async (req, res) => {
  */
 router.post('/', authenticateToken, requireFinanzas, async (req, res) => {
   try {
-    const { tipo, categoria, concepto, monto, fecha, metodo_pago, venta_id, beneficiario, notas } = req.body;
+    const { tipo, categoria, concepto, monto, fecha, metodo_pago, venta_id, beneficiario, notas, proveedor } = req.body;
 
     if (!TIPOS_VALIDOS.includes(tipo)) return res.status(400).json({ error: 'Tipo inválido (ingreso o gasto)' });
     if (!categoria?.trim()) return res.status(400).json({ error: 'La categoría es requerida' });
@@ -119,6 +119,7 @@ router.post('/', authenticateToken, requireFinanzas, async (req, res) => {
         venta_id: venta_id || null,
         beneficiario: beneficiario?.trim() || null,
         notas: notas?.trim() || null,
+        proveedor: proveedor?.trim() || null,
         created_by: req.user.id,
       })
       .select()
@@ -147,6 +148,7 @@ router.put('/:id', authenticateToken, requireFinanzas, async (req, res) => {
     if (updates.notas !== undefined) updates.notas = updates.notas?.trim() || null;
     if (updates.venta_id !== undefined) updates.venta_id = updates.venta_id || null;
     if (updates.beneficiario !== undefined) updates.beneficiario = updates.beneficiario?.trim() || null;
+    if (updates.proveedor !== undefined) updates.proveedor = updates.proveedor?.trim() || null;
 
     const { data, error } = await supabase
       .from('finanzas_movimientos')
