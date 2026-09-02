@@ -64,7 +64,7 @@ function ResumenPorPeriodo({ periodos, tipo }) {
                   </div>
                   <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>
                     {v.esAjuste
-                      ? 'Alguna venta de un mes anterior cambió después (por ejemplo, se marcó como cerrada) — los meses ya vistos no se tocan, así que la diferencia se refleja aquí, en el mes actual.'
+                      ? 'Esta venta cambió después de que ya vieras algún mes suyo (por ejemplo, se actualizó su valor o se marcó como cerrada). Ese mes ya visto no se toca, así que la diferencia se refleja aquí, en el mes actual.'
                       : explicacion(v)}
                   </p>
                 </div>

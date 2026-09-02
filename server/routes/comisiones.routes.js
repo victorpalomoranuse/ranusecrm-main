@@ -419,7 +419,9 @@ async function periodosDeComision(employeeId, nombre, tipo) {
     p.porVenta[g.ventaId].devengado += devengado;
   };
 
-  let ajustePeriodoActual = 0;
+  // Ajustes por venta (no un único número agregado) — así se puede explicar
+  // exactamente qué venta cambió y por cuánto.
+  const ajustesPorVenta = {};
   if (pasados.length > 0) {
     const { data: congelados } = await supabase
       .from('comisiones_devengado_congelado')
@@ -434,9 +436,14 @@ async function periodosDeComision(employeeId, nombre, tipo) {
       const p = ensure(g.periodo);
       if (Object.prototype.hasOwnProperty.call(congeladoMap, clave)) {
         // Ya estaba congelado: se usa ese valor tal cual, y la diferencia con
-        // lo que el cálculo en vivo dice ahora se manda al periodo actual.
+        // lo que el cálculo en vivo dice ahora se manda al periodo actual,
+        // marcada con la venta que la causó.
         const frozenVal = congeladoMap[clave];
-        ajustePeriodoActual += g.devengado - frozenVal;
+        const delta = g.devengado - frozenVal;
+        if (Math.abs(delta) > 0.005) {
+          if (!ajustesPorVenta[g.ventaId]) ajustesPorVenta[g.ventaId] = { ventaId: g.ventaId, ventaNombre: g.ventaNombre, devengado: 0 };
+          ajustesPorVenta[g.ventaId].devengado += delta;
+        }
         p.devengado += frozenVal;
         addPorVenta(p, g, frozenVal);
       } else {
@@ -458,13 +465,16 @@ async function periodosDeComision(employeeId, nombre, tipo) {
     addPorVenta(p, g, g.devengado);
   });
 
-  if (Math.abs(ajustePeriodoActual) > 0.005) {
+  Object.values(ajustesPorVenta).forEach(aj => {
     const p = ensure(periodoActual);
-    p.devengado += ajustePeriodoActual;
-    p.porVenta.__ajuste__ = {
-      ventaId: '__ajuste__', ventaNombre: 'Ajuste por cambios en ventas de meses anteriores', devengado: ajustePeriodoActual, esAjuste: true,
+    p.devengado += aj.devengado;
+    p.porVenta[`__ajuste_${aj.ventaId}__`] = {
+      ventaId: `__ajuste_${aj.ventaId}__`,
+      ventaNombre: `Ajuste — ${aj.ventaNombre}`,
+      devengado: aj.devengado,
+      esAjuste: true,
     };
-  }
+  });
 
   const { data: pagos } = await supabase.from('comisiones_pagos_periodo').select('periodo, monto').eq('nombre', nombre).eq('periodo_tipo', tipo);
   (pagos || []).forEach(p => { ensure(p.periodo).pagado += Number(p.monto); });
