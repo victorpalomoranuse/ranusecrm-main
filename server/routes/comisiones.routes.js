@@ -286,6 +286,129 @@ async function calcularComisionesPorVenta(employeeIdFiltro) {
 }
 
 /**
+ * Como calcularComisionesPorVenta, pero en vez de devolver un total
+ * acumulado por asignación, descompone cada ingreso (y devolución) real de
+ * Finanzas en su propio "evento" con fecha — para poder trocear la
+ * comisión devengada mes a mes según cuándo entró el dinero, en vez de
+ * solo un acumulado desde siempre. Respeta el % (o importe fijo) que se
+ * haya introducido a mano en cada asignación.
+ */
+async function eventosComisionPorVenta(employeeIdFiltro) {
+  let query = supabase.from('venta_comisiones').select('*, venta:ventas(id, nombre, valor, tipo_proyecto, prevision_ingresos, prevision_gastos)');
+  if (employeeIdFiltro) query = query.eq('employee_id', employeeIdFiltro);
+  const { data: asignaciones, error } = await query;
+  if (error) throw error;
+  if (asignaciones.length === 0) return [];
+
+  const ventaIds = [...new Set(asignaciones.map(a => a.venta_id))];
+  const { data: movimientos } = await supabase
+    .from('finanzas_movimientos')
+    .select('venta_id, tipo, monto, categoria, fecha')
+    .in('venta_id', ventaIds);
+
+  // Gastos de toda la vida de la venta, para calcular el margen previsto
+  // igual que en calcularComisionesPorVenta (no depende del periodo).
+  const gastosPorVenta = {};
+  (movimientos || []).forEach(m => { if (m.tipo === 'gasto') gastosPorVenta[m.venta_id] = (gastosPorVenta[m.venta_id] || 0) + Number(m.monto); });
+
+  const eventos = [];
+  asignaciones.forEach(a => {
+    const v = a.venta;
+    const valor = Number(v?.valor || 0);
+    const presupuesto = Number(v?.prevision_ingresos ?? v?.valor ?? 0);
+    const previsionGastos = v?.prevision_gastos != null ? Number(v.prevision_gastos) : null;
+    const gastosReales = gastosPorVenta[a.venta_id] || 0;
+    let costes = null;
+    if (previsionGastos != null) costes = Math.max(previsionGastos, gastosReales);
+    else if (gastosReales > 0) costes = gastosReales;
+    else if (v?.tipo_proyecto === 'solo_diseno') costes = 0;
+    const beneficioPrevisto = costes != null ? valor - costes : 0;
+    const comisionTotal = a.tipo === 'fijo' ? Number(a.valor) : beneficioPrevisto * (Number(a.valor) / 100);
+    if (presupuesto <= 0) return;
+
+    (movimientos || [])
+      .filter(m => m.venta_id === a.venta_id && (m.tipo === 'ingreso' || m.categoria === 'Devolución'))
+      .forEach(m => {
+        const signo = m.categoria === 'Devolución' ? -1 : 1;
+        const fraccion = (signo * Number(m.monto)) / presupuesto;
+        const devengado = comisionTotal * fraccion;
+        if (devengado !== 0) {
+          eventos.push({ employeeId: a.employee_id, nombre: a.nombre, ventaId: a.venta_id, ventaNombre: v?.nombre || '—', fecha: m.fecha, devengado });
+        }
+      });
+  });
+  return eventos;
+}
+
+/**
+ * Agrupa, para una persona (por employeeId + su nombre en equipo_comisiones),
+ * lo devengado (según eventosComisionPorVenta) y lo pagado (movimientos de
+ * Finanzas "Comisiones" a su nombre) por periodo — mes, trimestre o año,
+ * según la fecha de cada evento/pago.
+ */
+async function periodosDeComision(employeeId, nombre, tipo) {
+  const [eventos, { data: pagos }] = await Promise.all([
+    employeeId ? eventosComisionPorVenta(employeeId) : Promise.resolve([]),
+    supabase.from('finanzas_movimientos').select('monto, fecha').eq('tipo', 'gasto').eq('categoria', 'Comisiones').eq('beneficiario', nombre),
+  ]);
+
+  const porPeriodo = {};
+  const ensure = (clave) => { if (!porPeriodo[clave]) porPeriodo[clave] = { periodo: clave, devengado: 0, pagado: 0 }; return porPeriodo[clave]; };
+  eventos.forEach(ev => { ensure(claveDePeriodo(ev.fecha, tipo)).devengado += ev.devengado; });
+  (pagos || []).forEach(p => { ensure(claveDePeriodo(p.fecha, tipo)).pagado += Number(p.monto); });
+
+  return Object.values(porPeriodo)
+    .map(p => ({ ...p, pendiente: p.devengado - p.pagado }))
+    .sort((a, b) => b.periodo.localeCompare(a.periodo));
+}
+
+/**
+ * GET /api/comisiones/mia/periodos?tipo=mes
+ * Autoservicio: desglose mensual/trimestral/anual de lo devengado, pagado
+ * y pendiente, calculado según la fecha real de cada ingreso cobrado en
+ * sus proyectos asignados (modelo por_proyecto).
+ */
+router.get('/mia/periodos', authenticateToken, async (req, res) => {
+  try {
+    const miConfig = await resolveMiConfig(req);
+    if (!miConfig) return res.json({ encontrado: false, periodos: [] });
+    const tipo = TIPOS_PERIODO.includes(req.query.tipo) ? req.query.tipo : 'mes';
+    const periodos = await periodosDeComision(miConfig.employeeId, miConfig.nombre, tipo);
+    res.json({ encontrado: true, nombre: miConfig.nombre, tipo, periodos });
+  } catch (error) {
+    console.error('Error al calcular tus periodos de comisión:', error);
+    res.status(500).json({ error: 'Error al calcular tus periodos de comisión' });
+  }
+});
+
+/**
+ * GET /api/comisiones/equipo/periodos?tipo=mes
+ * Admin/finanzas: mismo desglose mensual/trimestral/anual, pero de todo el
+ * equipo (modelo por_proyecto) — para ver lo que le sale a cada persona.
+ */
+router.get('/equipo/periodos', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const tipo = TIPOS_PERIODO.includes(req.query.tipo) ? req.query.tipo : 'mes';
+    const { data: equipo, error } = await supabase.from('equipo_comisiones').select('*').eq('activo', true).order('nombre');
+    if (error) throw error;
+
+    const { data: asignaciones } = await supabase.from('venta_comisiones').select('employee_id');
+    const conProyectos = new Set((asignaciones || []).map(a => a.employee_id));
+
+    const resultado = await Promise.all(equipo.map(async miembro => {
+      const tieneProyectos = miembro.employee_id && conProyectos.has(miembro.employee_id);
+      const periodos = tieneProyectos ? await periodosDeComision(miembro.employee_id, miembro.nombre, tipo) : [];
+      return { nombre: miembro.nombre, employeeId: miembro.employee_id || null, modelo: tieneProyectos ? 'por_proyecto' : 'global', periodos };
+    }));
+
+    res.json({ tipo, equipo: resultado });
+  } catch (error) {
+    console.error('Error al calcular los periodos del equipo:', error);
+    res.status(500).json({ error: 'Error al calcular los periodos del equipo' });
+  }
+});
+
+/**
  * GET /api/comisiones/venta/:ventaId
  * Comisiones asignadas a una venta concreta (admin).
  */

@@ -13,6 +13,14 @@ function fmtMesCorto(mes) {
   return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('es-ES', { month: 'short' }).replace('.', '');
 }
 
+function fmtPeriodoLargo(clave, tipo) {
+  if (tipo === 'año') return clave;
+  if (tipo === 'trimestre') return clave.replace('-Q', ' · T');
+  const [y, m] = clave.split('-');
+  const nombre = new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  return nombre.charAt(0).toUpperCase() + nombre.slice(1);
+}
+
 const CATEGORIAS_GASTO = ['Nóminas', 'Materiales', 'Marketing', 'Software', 'Alquiler', 'Comisiones', 'Devolución', 'Fiscal', 'Otros'];
 const CATEGORIAS_INGRESO = ['Venta proyecto', 'Anticipo', 'Diseño', 'Otros'];
 const METODOS_PAGO = ['Transferencia', 'Tarjeta', 'Efectivo', 'Bizum', 'Otro'];
@@ -295,6 +303,72 @@ function PanelObjetivosFinanzas() {
   );
 }
 
+function EquipoPeriodos() {
+  const [tipo, setTipo] = useState('mes');
+  const [equipo, setEquipo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [abierto, setAbierto] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    api.get('/comisiones/equipo/periodos', { params: { tipo } })
+      .then(r => setEquipo(r.data.equipo || []))
+      .catch(() => setEquipo(null))
+      .finally(() => setLoading(false));
+  }, [tipo]);
+
+  const conProyectos = (equipo || []).filter(m => m.modelo === 'por_proyecto');
+  const sinProyectos = (equipo || []).filter(m => m.modelo !== 'por_proyecto');
+
+  return (
+    <div style={{ marginTop: 4, marginBottom: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+        <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', margin: 0 }}>Desglose por persona y periodo</p>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {PERIODO_TABS.map(t => (
+            <button key={t.tipo} type="button" className={`ap-btn ap-btn-xs ${tipo === t.tipo ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setTipo(t.tipo)}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? <div className="ap-loading">Calculando…</div> : !equipo || conProyectos.length === 0 ? (
+        <p className="ap-empty-sm">Todavía nadie tiene proyectos asignados (modelo "por proyecto"). Asígnalos desde "Ver relación completa" de una venta.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {conProyectos.map(m => (
+            <div key={m.nombre}>
+              <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ justifyContent: 'space-between', width: '100%' }} onClick={() => setAbierto(a => a === m.nombre ? null : m.nombre)}>
+                <span>{m.nombre}</span>
+                <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>{abierto === m.nombre ? 'Ocultar' : 'Ver desglose'}</span>
+              </button>
+              {abierto === m.nombre && (
+                m.periodos.length === 0 ? <p className="ap-empty-sm" style={{ padding: '6px 12px' }}>Sin ingresos cobrados todavía.</p> : (
+                  <div className="fz-tabla" style={{ marginTop: 4 }}>
+                    <div className="fz-row fz-row--head"><span>Periodo</span><span>Devengado</span><span>Pagado</span><span>Pendiente</span></div>
+                    {m.periodos.map(p => (
+                      <div key={p.periodo} className="fz-row">
+                        <span>{fmtPeriodoLargo(p.periodo, tipo)}</span>
+                        <span>{fmt(p.devengado)}</span>
+                        <span style={{ color: '#22c55e' }}>{fmt(p.pagado)}</span>
+                        <span style={{ color: p.pendiente > 0.01 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(p.pendiente)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
+          ))}
+          {sinProyectos.length > 0 && (
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
+              {sinProyectos.map(m => m.nombre).join(', ')} {sinProyectos.length === 1 ? 'sigue' : 'siguen'} en el modelo de % global — su desglose por periodo ya se ve arriba, cambiando de pestaña Mes/Trimestre/Año.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelComisiones() {
   const [periodoTipo, setPeriodoTipo] = useState('mes');
   const [mes, setMes] = useState(new Date().toISOString().slice(0, 7));
@@ -307,6 +381,7 @@ function PanelComisiones() {
   const [verHistorico, setVerHistorico] = useState(false);
   const [modalConfig, setModalConfig] = useState(false);
   const [montosManual, setMontosManual] = useState({});
+  const [verEquipoPeriodos, setVerEquipoPeriodos] = useState(false);
 
   const periodo = periodoTipo === 'mes' ? mes : periodoTipo === 'trimestre' ? `${año}-Q${trimestre}` : String(año);
   const periodoLabel = periodoTipo === 'mes' ? fmtMesCorto(mes) + ' ' + mes.slice(0, 4) : periodo;
@@ -346,11 +421,14 @@ function PanelComisiones() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
         <p className="fz-chart-title" style={{ margin: 0 }}><Users size={15} /> Comisiones del equipo</p>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setVerEquipoPeriodos(v => !v)}>{verEquipoPeriodos ? 'Ocultar desglose por persona' : 'Ver desglose por persona y mes'}</button>
           <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setVerHistorico(v => !v)}>{verHistorico ? 'Ver periodo actual' : 'Ver histórico total'}</button>
           <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setModalConfig(true)}>Configurar %</button>
         </div>
       </div>
       {!verHistorico && <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -6, marginBottom: 14 }}>"Le corresponde" es solo el cálculo automático de referencia — el importe que se registra cada mes lo pones tú a mano en "Importe a registrar". Si alguien tiene proyectos asignados (desde "Ver relación completa" de una venta), su cifra sale de sumar esos proyectos según lo cobrado hasta ahora, no del % de aquí abajo.</p>}
+
+      {verEquipoPeriodos && <EquipoPeriodos />}
 
       {verHistorico ? (
         historico.length === 0 ? <div className="ap-empty"><p>Todavía no se ha registrado ningún pago de comisión.</p></div> : (
