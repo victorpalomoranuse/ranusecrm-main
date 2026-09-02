@@ -1588,8 +1588,38 @@ function SectionRoles() {
   );
 }
 
+function EditClientModal({client,onClose,onSaved}){
+  const [name,setName]=useState(client.name||'');
+  const [email,setEmail]=useState(client.email||'');
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState('');
+  const handleSubmit=async(e)=>{
+    e.preventDefault();
+    setError('');setSaving(true);
+    try{
+      const{data}=await api.put(`/users/${client.id}`,{name,email});
+      onSaved(data.user);
+    }catch(err){
+      setError(err.response?.data?.error||'Error al guardar los cambios');
+    }finally{setSaving(false);}
+  };
+  return(
+    <div className="ap-modal-overlay" onClick={onClose}>
+      <div className="ap-modal" onClick={e=>e.stopPropagation()}>
+        <div className="ap-modal-head"><h2>Editar cliente</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div>
+        <form onSubmit={handleSubmit} className="ap-modal-form">
+          <div className="ap-field"><label>Nombre <span className="ap-optional">(opcional)</span></label><input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="Nombre del cliente" autoFocus/></div>
+          <div className="ap-field"><label>Email *</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required/></div>
+          {error&&<p className="ap-error">{error}</p>}
+          <div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={saving}>{saving?'Guardando...':'Guardar cambios'}</button></div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function SectionClientes() {
-  const {toasts,toast,remove}=useToast(); const [clients,setClients]=useState([]); const [loading,setLoading]=useState(true); const [showModal,setShowModal]=useState(false); const [expandedId,setExpandedId]=useState(null); const [clientProjects,setClientProjects]=useState({}); const [allProjects,setAllProjects]=useState([]); const [confirmDelete,setConfirmDelete]=useState(null); const [nombreCliente,setNombreCliente]=useState(''); const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [creating,setCreating]=useState(false); const [formError,setFormError]=useState('');
+  const {toasts,toast,remove}=useToast(); const [clients,setClients]=useState([]); const [loading,setLoading]=useState(true); const [showModal,setShowModal]=useState(false); const [expandedId,setExpandedId]=useState(null); const [clientProjects,setClientProjects]=useState({}); const [allProjects,setAllProjects]=useState([]); const [confirmDelete,setConfirmDelete]=useState(null); const [nombreCliente,setNombreCliente]=useState(''); const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [creating,setCreating]=useState(false); const [formError,setFormError]=useState(''); const [editClient,setEditClient]=useState(null);
   const loadClients=async()=>{try{const{data}=await api.get('/users?role=cliente');setClients(data.users||[]);}catch{}finally{setLoading(false);}};
   useEffect(()=>{loadClients();api.get('/client-projects').then(r=>setAllProjects(r.data.projects||[])).catch(()=>{});},[]);
   const loadClientProjects=async(clientId)=>{if(clientProjects[clientId]!==undefined)return;try{const{data}=await api.get(`/users/${clientId}/client-projects`);setClientProjects(prev=>({...prev,[clientId]:data.projects||[]}));}catch{setClientProjects(prev=>({...prev,[clientId]:[]}));}};
@@ -1603,10 +1633,11 @@ function SectionClientes() {
     <div className="ap-section">
       <ToastContainer toasts={toasts} onRemove={remove}/>
       {confirmDelete&&<ConfirmDialog message="¿Eliminar este cliente?" onConfirm={()=>handleDeleteClient(confirmDelete)} onCancel={()=>setConfirmDelete(null)}/>}
+      {editClient&&<EditClientModal client={editClient} onClose={()=>setEditClient(null)} onSaved={(updated)=>{setClients(prev=>prev.map(c=>c.id===updated.id?updated:c));setEditClient(null);toast.success('Cliente actualizado');}}/>}
       <div className="ap-section-head"><div><h1>Clientes</h1><p>Crea cuentas para tus clientes y asígnales sus proyectos.</p></div><button className="ap-btn ap-btn-primary" onClick={()=>setShowModal(true)}><Plus size={15}/> Nuevo cliente</button></div>
       {showModal&&(<div className="ap-modal-overlay" onClick={()=>setShowModal(false)}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>Nuevo cliente</h2><button className="ap-modal-close" onClick={()=>setShowModal(false)}><X size={16}/></button></div><form onSubmit={handleCreate} className="ap-modal-form"><div className="ap-field"><label>Nombre <span className="ap-optional">(opcional)</span></label><input type="text" value={nombreCliente} onChange={e=>setNombreCliente(e.target.value)} placeholder="Nombre del cliente" autoFocus/></div><div className="ap-field"><label>Email *</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="cliente@email.com" required/></div><div className="ap-field"><label>Contraseña *</label><input type="text" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Contraseña que le darás al cliente" required/><span className="ap-field-hint">El cliente usará estas credenciales para iniciar sesión.</span></div>{formError&&<p className="ap-error">{formError}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={()=>setShowModal(false)}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={creating}>{creating?'Creando...':'Crear cliente'}</button></div></form></div></div>)}
       {loading?<div className="ap-loading">Cargando clientes…</div>:clients.length===0?<div className="ap-empty"><p>No hay clientes todavía.</p></div>:(
-        <div className="ap-cl-list">{clients.map(client=>{const isExpanded=expandedId===client.id;const assigned=clientProjects[client.id]||[];const available=assignableProjects(client.id);return(<div key={client.id} className={`ap-cl-row${isExpanded?' expanded':''}`}><div className="ap-cl-main" onClick={()=>toggleExpand(client.id)}><div className="ap-cl-avatar">{(client.name||client.email).charAt(0).toUpperCase()}</div><div className="ap-cl-info"><span className="ap-cl-email">{client.name?`${client.name} · ${client.email}`:client.email}</span><span className="ap-cl-meta">{new Date(client.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})}</span></div><div className="ap-cl-actions"><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={e=>{e.stopPropagation();setConfirmDelete(client.id);}}><Trash2 size={13}/></button><span className="ap-cl-chevron">{isExpanded?<ChevronUp size={15}/>:<ChevronDown size={15}/>}</span></div></div>{isExpanded&&(<div className="ap-cl-projects"><p className="ap-cl-projects-title">Proyectos asignados</p>{assigned.length===0?<p className="ap-cl-projects-empty">Sin proyectos asignados.</p>:(<div className="ap-cl-proj-list">{assigned.map(p=>(<div key={p.id} className="ap-cl-proj-item"><span className="ap-cl-proj-name">{p.project_name}</span><span className="ap-cl-proj-client">{p.client_name}</span><button className="ap-btn ap-btn-danger ap-btn-xs" onClick={()=>handleUnassign(client.id,p.id)}><X size={12}/></button></div>))}</div>)}{available.length>0&&(<div className="ap-cl-assign"><select className="ap-select ap-cl-proj-select" defaultValue="" onChange={e=>{if(e.target.value){handleAssign(client.id,e.target.value);e.target.value='';} }}><option value="" disabled>+ Asignar proyecto…</option>{available.map(p=>(<option key={p.id} value={p.id}>{p.project_name} — {p.client_name}</option>))}</select></div>)}</div>)}</div>);})}</div>
+        <div className="ap-cl-list">{clients.map(client=>{const isExpanded=expandedId===client.id;const assigned=clientProjects[client.id]||[];const available=assignableProjects(client.id);return(<div key={client.id} className={`ap-cl-row${isExpanded?' expanded':''}`}><div className="ap-cl-main" onClick={()=>toggleExpand(client.id)}><div className="ap-cl-avatar">{(client.name||client.email).charAt(0).toUpperCase()}</div><div className="ap-cl-info"><span className="ap-cl-email">{client.name?`${client.name} · ${client.email}`:client.email}</span><span className="ap-cl-meta">{new Date(client.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})}</span></div><div className="ap-cl-actions"><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={e=>{e.stopPropagation();setEditClient(client);}}><Pencil size={13}/></button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={e=>{e.stopPropagation();setConfirmDelete(client.id);}}><Trash2 size={13}/></button><span className="ap-cl-chevron">{isExpanded?<ChevronUp size={15}/>:<ChevronDown size={15}/>}</span></div></div>{isExpanded&&(<div className="ap-cl-projects"><p className="ap-cl-projects-title">Proyectos asignados</p>{assigned.length===0?<p className="ap-cl-projects-empty">Sin proyectos asignados.</p>:(<div className="ap-cl-proj-list">{assigned.map(p=>(<div key={p.id} className="ap-cl-proj-item"><span className="ap-cl-proj-name">{p.project_name}</span><span className="ap-cl-proj-client">{p.client_name}</span><button className="ap-btn ap-btn-danger ap-btn-xs" onClick={()=>handleUnassign(client.id,p.id)}><X size={12}/></button></div>))}</div>)}{available.length>0&&(<div className="ap-cl-assign"><select className="ap-select ap-cl-proj-select" defaultValue="" onChange={e=>{if(e.target.value){handleAssign(client.id,e.target.value);e.target.value='';} }}><option value="" disabled>+ Asignar proyecto…</option>{available.map(p=>(<option key={p.id} value={p.id}>{p.project_name} — {p.client_name}</option>))}</select></div>)}</div>)}</div>);})}</div>
       )}
     </div>
   );

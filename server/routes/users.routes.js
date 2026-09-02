@@ -201,6 +201,44 @@ router.post('/trabajador', authenticateToken, requireAdminSuperior, async (req, 
 });
 
 /**
+ * PUT /api/users/:id
+ * Editar nombre (y opcionalmente email) de un cliente ya creado.
+ */
+router.put('/:id', authenticateToken, requireClientes, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email } = req.body;
+    const updates = {};
+
+    if (name !== undefined) updates.name = name?.trim() || null;
+
+    if (email !== undefined) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const emailNorm = email.toLowerCase().trim();
+      if (!emailRegex.test(emailNorm)) return res.status(400).json({ error: 'Formato de email inválido' });
+      const { data: existing } = await supabase.from('users').select('id').eq('email', emailNorm).neq('id', id).maybeSingle();
+      if (existing) return res.status(400).json({ error: 'Ya hay otra cuenta con ese email' });
+      updates.email = emailNorm;
+    }
+
+    if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'Nada que actualizar' });
+
+    const { data, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', id)
+      .select('id, email, role, name, created_at')
+      .single();
+    if (error) throw error;
+
+    res.json({ user: data });
+  } catch (error) {
+    console.error('Error al actualizar usuario:', error);
+    res.status(500).json({ error: 'Error al actualizar el usuario' });
+  }
+});
+
+/**
  * PUT /api/users/:id/password
  * Cambiar contraseña de un usuario
  */
