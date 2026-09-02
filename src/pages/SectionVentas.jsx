@@ -192,11 +192,16 @@ function VentaModal({ venta, onClose, onSaved }) {
   const [previsionGastos, setPrevisionGastos] = useState(venta?.previsionGastos ?? venta?.prevision_gastos ?? '');
   const [comercialId, setComercialId] = useState(venta?.comercial_id || '');
   const [notas, setNotas] = useState(venta?.notas || '');
+  const [clienteId, setClienteId] = useState(venta?.clienteId || '');
   const [empleados, setEmpleados] = useState([]);
+  const [cuentasCliente, setCuentasCliente] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => { api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {}); }, []);
+  useEffect(() => {
+    api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {});
+    api.get('/ventas/cuentas-cliente').then(r => setCuentasCliente(r.data.cuentas || [])).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -209,7 +214,7 @@ function VentaModal({ venta, onClose, onSaved }) {
         cliente_instagram: instagram || null, cliente_email: email || null, cliente_telefono: telefono || null,
         valor, fecha, canal, campaña: canal === 'ads' ? campaña : null, tipo_proyecto: tipoProyecto,
         prevision_ingresos: previsionIngresos || null, prevision_gastos: previsionGastos || null,
-        comercial_id: comercialId || null, notas: notas || null,
+        comercial_id: comercialId || null, notas: notas || null, cliente_id: clienteId || null,
       };
       if (isEdit) await api.put(`/ventas/${venta.id}`, payload);
       else await api.post('/ventas', payload);
@@ -228,6 +233,12 @@ function VentaModal({ venta, onClose, onSaved }) {
         <form onSubmit={handleSubmit} className="ap-modal-form">
           <div className="ap-field"><label>Nombre del proyecto / venta *</label><input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej. Home gym residencia Madrid" required autoFocus /></div>
           <div className="ap-field"><label>Cliente <span className="ap-optional">(opcional, si es distinto al nombre de arriba)</span></label><input value={clienteNombre} onChange={e => setClienteNombre(e.target.value)} placeholder="Nombre del cliente" /></div>
+          <div className="ap-field"><label>Cuenta de cliente <span className="ap-optional">(opcional, si ya tiene acceso creado en Clientes)</span></label>
+            <select className="ap-select" value={clienteId} onChange={e => setClienteId(e.target.value)}>
+              <option value="">Sin enlazar</option>
+              {cuentasCliente.map(c => <option key={c.id} value={c.id}>{c.email}</option>)}
+            </select>
+          </div>
           <div className="fz-field-row">
             <div className="ap-field"><label>Instagram</label><input value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="handle sin @" /></div>
             <div className="ap-field"><label>Email</label><input value={email} onChange={e => setEmail(e.target.value)} placeholder="correo@gmail.com" /></div>

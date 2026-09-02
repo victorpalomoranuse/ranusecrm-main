@@ -29,6 +29,9 @@ router.get('/', authenticateToken, requireFinanzas, async (req, res) => {
         query = query.gte('fecha', desde).lte('fecha', hasta);
       }
     }
+    if (req.query.beneficiario) {
+      query = query.eq('beneficiario', req.query.beneficiario);
+    }
 
     const { data: movimientos, error } = await query;
     if (error) throw error;

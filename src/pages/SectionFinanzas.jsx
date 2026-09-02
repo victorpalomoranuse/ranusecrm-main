@@ -27,8 +27,10 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
   const [metodoPago, setMetodoPago] = useState(movimiento?.metodo_pago || '');
   const [notas, setNotas] = useState(movimiento?.notas || '');
   const [ventaId, setVentaId] = useState(movimiento?.venta_id || '');
+  const [beneficiario, setBeneficiario] = useState(movimiento?.beneficiario || '');
   const [ventas, setVentas] = useState([]);
   const [proyectosPorVenta, setProyectosPorVenta] = useState({});
+  const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -41,6 +43,7 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
       (r.data.projects || []).forEach(p => { if (p.venta_id) map[p.venta_id] = p.project_name; });
       setProyectosPorVenta(map);
     }).catch(() => {});
+    api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {});
   }, []);
 
   const handleSubmit = async (e) => {
@@ -49,7 +52,7 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
     if (!categoria || !concepto.trim() || !monto) { setError('Completa categoría, concepto e importe'); return; }
     setLoading(true);
     try {
-      const payload = { tipo, categoria, concepto, monto, fecha, metodo_pago: metodoPago || null, notas, venta_id: ventaId || null };
+      const payload = { tipo, categoria, concepto, monto, fecha, metodo_pago: metodoPago || null, notas, venta_id: ventaId || null, beneficiario: beneficiario || null };
       const { data } = isEdit
         ? await api.put(`/finanzas/${movimiento.id}`, payload)
         : await api.post('/finanzas', payload);
@@ -96,6 +99,15 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
               ))}
             </select>
           </div>
+          {tipo === 'gasto' && (
+            <div className="ap-field">
+              <label>Pagado a <span className="ap-optional">(opcional, elige un empleado para poder ver luego todo lo que le has pagado)</span></label>
+              <select className="ap-select" value={beneficiario} onChange={e => setBeneficiario(e.target.value)}>
+                <option value="">—</option>
+                {empleados.map(emp => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
+              </select>
+            </div>
+          )}
           <div className="fz-field-row">
             <div className="ap-field">
               <label>Importe (€) *</label>
@@ -502,9 +514,13 @@ export function SectionFinanzas() {
   const [loading, setLoading] = useState(true);
   const [filtroTipo, setFiltroTipo] = useState('todos');
   const [filtroMes, setFiltroMes] = useState('');
+  const [filtroBeneficiario, setFiltroBeneficiario] = useState('');
+  const [empleados, setEmpleados] = useState([]);
   const [modal, setModal] = useState(null);
   const [movimientoEditando, setMovimientoEditando] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
+
+  useEffect(() => { api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {}); }, []);
 
   const loadResumen = useCallback(() => {
     api.get('/finanzas/resumen').then(r => setResumen(r.data)).catch(() => {});
@@ -514,8 +530,9 @@ export function SectionFinanzas() {
     const params = {};
     if (filtroTipo !== 'todos') params.tipo = filtroTipo;
     if (filtroMes) params.mes = filtroMes;
+    if (filtroBeneficiario) params.beneficiario = filtroBeneficiario;
     api.get('/finanzas', { params }).then(r => setMovimientos(r.data.movimientos || [])).catch(() => {}).finally(() => setLoading(false));
-  }, [filtroTipo, filtroMes]);
+  }, [filtroTipo, filtroMes, filtroBeneficiario]);
 
   useEffect(() => { loadResumen(); }, [loadResumen]);
   useEffect(() => { setLoading(true); loadMovimientos(); }, [loadMovimientos]);
@@ -591,7 +608,18 @@ export function SectionFinanzas() {
         </select>
         <input type="month" className="ap-select" value={filtroMes} onChange={e => setFiltroMes(e.target.value)} />
         {filtroMes && <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setFiltroMes('')}>Limpiar mes</button>}
+        <select className="ap-select" value={filtroBeneficiario} onChange={e => setFiltroBeneficiario(e.target.value)}>
+          <option value="">Todos los empleados</option>
+          {empleados.map(emp => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
+        </select>
+        {filtroBeneficiario && <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setFiltroBeneficiario('')}>Quitar filtro</button>}
       </div>
+
+      {filtroBeneficiario && !loading && (
+        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: -8, marginBottom: 12 }}>
+          Total pagado a <strong style={{ color: '#fff' }}>{filtroBeneficiario}</strong> (con estos filtros): <strong style={{ color: '#ae6b6b' }}>{fmt(movimientos.filter(m => m.tipo === 'gasto').reduce((s, m) => s + Number(m.monto), 0))}</strong>
+        </p>
+      )}
 
       {loading ? (
         <div className="ap-loading">Cargando movimientos…</div>
@@ -604,7 +632,7 @@ export function SectionFinanzas() {
           </div>
           {movimientos.map(m => (
             <div key={m.id} className="fz-row">
-              <span className="fz-concepto">{m.concepto}{m.ventas?.nombre && <span className="fz-lead-tag">{m.ventas.nombre}</span>}</span>
+              <span className="fz-concepto">{m.concepto}{m.ventas?.nombre && <span className="fz-lead-tag">{m.ventas.nombre}</span>}{m.beneficiario && <span className="fz-lead-tag">→ {m.beneficiario}</span>}</span>
               <span>{m.categoria}</span>
               <span>{m.metodo_pago || '—'}</span>
               <span>{new Date(m.fecha).toLocaleDateString('es-ES')}</span>

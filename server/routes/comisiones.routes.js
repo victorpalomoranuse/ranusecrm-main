@@ -14,7 +14,17 @@ async function resolveMiConfig(req) {
   const { data: employee } = await supabase.from('employees').select('id').eq('email', req.user.email).maybeSingle();
   if (!employee) return null;
   const { data: miConfig } = await supabase.from('equipo_comisiones').select('nombre').eq('employee_id', employee.id).maybeSingle();
-  return miConfig || null;
+  if (!miConfig) return null;
+  return { ...miConfig, employeeId: employee.id };
+}
+
+// Si un admin asigna una comisión por proyecto a un empleado que todavía no
+// está en Finanzas → Comisiones, le crea automáticamente su fila (con 0%
+// de respaldo) para que aparezca en el panel de admin y en su autoservicio.
+async function ensureEquipoComisionRow(employeeId, employeeName) {
+  const { data: existing } = await supabase.from('equipo_comisiones').select('id').eq('employee_id', employeeId).maybeSingle();
+  if (existing) return;
+  await supabase.from('equipo_comisiones').insert({ nombre: employeeName, porcentaje: 0, employee_id: employeeId, activo: true });
 }
 
 function claveDePeriodo(fechaISO, tipo) {
@@ -99,7 +109,7 @@ async function calcularComisiones(periodo_tipo, periodo) {
   // cobrando — acumulado desde siempre, no solo de este periodo, porque el
   // pago mensual es simplemente "lo que quede pendiente de cobrar hoy".
   const porMiembro = await Promise.all(equipo.map(async miembro => {
-    const porVenta = await calcularComisionesPorVenta(miembro.nombre);
+    const porVenta = miembro.employee_id ? await calcularComisionesPorVenta(miembro.employee_id) : [];
     if (porVenta.length > 0) {
       const comisionCalculada = porVenta.reduce((s, v) => s + v.devengada, 0);
       const { data: pagosLifetime } = await supabase
@@ -220,9 +230,9 @@ router.get('/calculo', authenticateToken, requireFinanzas, async (req, res) => {
  * lo que el cliente ha pagado de esa venta hasta ahora) y cuánto queda
  * pendiente para cuando pague más.
  */
-async function calcularComisionesPorVenta(nombreFiltro) {
+async function calcularComisionesPorVenta(employeeIdFiltro) {
   let query = supabase.from('venta_comisiones').select('*, venta:ventas(id, nombre, valor, tipo_proyecto, prevision_ingresos, prevision_gastos)');
-  if (nombreFiltro) query = query.eq('nombre', nombreFiltro);
+  if (employeeIdFiltro) query = query.eq('employee_id', employeeIdFiltro);
   const { data: asignaciones, error } = await query;
   if (error) throw error;
   if (asignaciones.length === 0) return [];
@@ -259,6 +269,7 @@ async function calcularComisionesPorVenta(nombreFiltro) {
       id: a.id,
       ventaId: a.venta_id,
       ventaNombre: v?.nombre || '—',
+      employeeId: a.employee_id || null,
       nombre: a.nombre,
       tipo: a.tipo,
       valor: Number(a.valor),
@@ -299,7 +310,7 @@ router.get('/venta/:ventaId/mia', authenticateToken, async (req, res) => {
   try {
     const miConfig = await resolveMiConfig(req);
     if (!miConfig) return res.json({ comisiones: [] });
-    const calculadas = await calcularComisionesPorVenta(miConfig.nombre);
+    const calculadas = await calcularComisionesPorVenta(miConfig.employeeId);
     res.json({ comisiones: calculadas.filter(c => c.ventaId === req.params.ventaId) });
   } catch (error) {
     console.error('Error al listar mi comisión de la venta:', error);
@@ -313,17 +324,23 @@ router.get('/venta/:ventaId/mia', authenticateToken, async (req, res) => {
  */
 router.post('/venta/:ventaId', authenticateToken, requireFinanzas, async (req, res) => {
   try {
-    const { nombre, tipo = 'porcentaje', valor, notas } = req.body;
-    if (!nombre?.trim()) return res.status(400).json({ error: 'nombre requerido' });
+    const { employee_id, tipo = 'porcentaje', valor, notas } = req.body;
+    if (!employee_id) return res.status(400).json({ error: 'employee_id requerido' });
     if (!['porcentaje', 'fijo'].includes(tipo)) return res.status(400).json({ error: 'tipo inválido' });
     if (valor === undefined || isNaN(parseFloat(valor))) return res.status(400).json({ error: 'valor inválido' });
 
+    const { data: employee, error: errEmp } = await supabase.from('employees').select('id, name').eq('id', employee_id).single();
+    if (errEmp || !employee) return res.status(400).json({ error: 'Empleado no encontrado' });
+
     const { data, error } = await supabase
       .from('venta_comisiones')
-      .insert({ venta_id: req.params.ventaId, nombre: nombre.trim(), tipo, valor: parseFloat(valor), notas: notas?.trim() || null })
+      .insert({ venta_id: req.params.ventaId, employee_id, nombre: employee.name, tipo, valor: parseFloat(valor), notas: notas?.trim() || null })
       .select()
       .single();
     if (error) throw error;
+
+    await ensureEquipoComisionRow(employee.id, employee.name);
+
     res.status(201).json({ comision: data });
   } catch (error) {
     console.error('Error al asignar comisión:', error);
@@ -372,7 +389,7 @@ router.get('/mia', authenticateToken, async (req, res) => {
       return res.json({ encontrado: false, mensaje: 'Todavía no tienes una comisión configurada. Pídele a tu admin que te enlace en Finanzas → Comisiones.' });
     }
 
-    const porVenta = await calcularComisionesPorVenta(miConfig.nombre);
+    const porVenta = await calcularComisionesPorVenta(miConfig.employeeId);
 
     // Modelo por proyecto: si tiene proyectos asignados, el total sale de
     // sumarlos (acumulado desde siempre, según lo que se ha ido cobrando de

@@ -69,6 +69,7 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
         id: v.id,
         nombre: v.nombre,
         clienteNombre: v.cliente_nombre,
+        clienteId: v.cliente_id,
         canal: v.canal,
         campaña: v.campaña,
         tipoProyecto: v.tipo_proyecto,
@@ -187,6 +188,23 @@ router.get('/clientes', authenticateToken, requireVentasOFinanzas, async (req, r
 });
 
 /**
+ * GET /api/ventas/cuentas-cliente
+ * Lista las cuentas de cliente ya creadas (Clientes → email+contraseña),
+ * para poder enlazar una venta a una directamente. Con el mismo permiso
+ * que el resto de Ventas, para no depender del permiso 'clientes'.
+ */
+router.get('/cuentas-cliente', authenticateToken, requireVentasOFinanzas, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('users').select('id, email').eq('role', 'cliente').order('email');
+    if (error) throw error;
+    res.json({ cuentas: data || [] });
+  } catch (error) {
+    console.error('Error al listar cuentas de cliente:', error);
+    res.status(500).json({ error: 'Error al listar cuentas de cliente' });
+  }
+});
+
+/**
  * POST /api/ventas
  * Crea una venta manualmente — no depende de que exista un lead.
  */
@@ -195,7 +213,7 @@ router.post('/', authenticateToken, requireVentas, async (req, res) => {
     const {
       nombre, cliente_nombre, cliente_instagram, cliente_email, cliente_telefono,
       valor, fecha, canal, campaña, tipo_proyecto = 'solo_diseno',
-      prevision_ingresos, prevision_gastos, comercial_id, lead_id, notas,
+      prevision_ingresos, prevision_gastos, comercial_id, lead_id, notas, cliente_id,
     } = req.body;
 
     if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre de la venta es obligatorio' });
@@ -219,6 +237,7 @@ router.post('/', authenticateToken, requireVentas, async (req, res) => {
         comercial_id: comercial_id || null,
         lead_id: lead_id || null,
         notas: notas?.trim() || null,
+        cliente_id: cliente_id || null,
         created_by: req.user.id,
       })
       .select('*, comercial:employees(name)')
@@ -237,7 +256,7 @@ router.post('/', authenticateToken, requireVentas, async (req, res) => {
  */
 router.put('/:id', authenticateToken, requireVentas, async (req, res) => {
   try {
-    const campos = ['nombre', 'cliente_nombre', 'cliente_instagram', 'cliente_email', 'cliente_telefono', 'valor', 'fecha', 'canal', 'campaña', 'tipo_proyecto', 'prevision_ingresos', 'prevision_gastos', 'comercial_id', 'notas'];
+    const campos = ['nombre', 'cliente_nombre', 'cliente_instagram', 'cliente_email', 'cliente_telefono', 'valor', 'fecha', 'canal', 'campaña', 'tipo_proyecto', 'prevision_ingresos', 'prevision_gastos', 'comercial_id', 'notas', 'cliente_id'];
     const updates = {};
     campos.forEach(c => { if (req.body[c] !== undefined) updates[c] = req.body[c]; });
 

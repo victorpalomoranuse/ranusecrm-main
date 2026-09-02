@@ -9,11 +9,74 @@ function fmt(n) {
 
 const FASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Instalación', 5: 'Entregado' };
 
+function EjecucionVenta({ ventaId, ejecucion, onLinked }) {
+  const [proyectos, setProyectos] = useState([]);
+  const [seleccion, setSeleccion] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/client-projects').then(r => setProyectos(r.data.projects || [])).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const handleLink = async () => {
+    if (!seleccion) return;
+    setGuardando(true);
+    try {
+      await api.put(`/client-projects/${seleccion}`, { venta_id: ventaId });
+      onLinked();
+    } catch {} finally { setGuardando(false); }
+  };
+
+  const handleUnlink = async () => {
+    setGuardando(true);
+    try {
+      await api.put(`/client-projects/${ejecucion.id}`, { venta_id: null });
+      onLinked();
+    } catch {} finally { setGuardando(false); }
+  };
+
+  if (ejecucion) {
+    return (
+      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 14px', fontSize: 13 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <strong>{ejecucion.nombre}</strong> — {FASE_LABELS[ejecucion.fase] || ejecucion.fase}
+          <button className="ap-btn ap-btn-ghost ap-btn-xs" onClick={handleUnlink} disabled={guardando}>Desenlazar</button>
+        </div>
+        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 4 }}>
+          Urgencia: {ejecucion.urgencia} · Responsable: {ejecucion.responsable || '—'} · Código: {ejecucion.codigoAcceso}
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) return null;
+
+  const disponibles = proyectos.filter(p => !p.venta_id);
+
+  return (
+    <div>
+      <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 8 }}>Todavía no hay un proyecto de ejecución enlazado a esta venta.</p>
+      {disponibles.length === 0 ? (
+        <p className="ap-empty-sm">No hay proyectos sin enlazar. Créalo primero en Proyectos.</p>
+      ) : (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <select className="ap-select" value={seleccion} onChange={e => setSeleccion(e.target.value)} style={{ minWidth: 220, flex: 1 }}>
+            <option value="">Elige un proyecto…</option>
+            {disponibles.map(p => <option key={p.id} value={p.id}>{p.client_name} — {p.project_name}</option>)}
+          </select>
+          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleLink} disabled={!seleccion || guardando}>Enlazar</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ComisionesVentaAdmin({ ventaId }) {
   const [comisiones, setComisiones] = useState([]);
-  const [equipo, setEquipo] = useState([]);
+  const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [nombre, setNombre] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [tipo, setTipo] = useState('porcentaje');
   const [valor, setValor] = useState('');
   const [notas, setNotas] = useState('');
@@ -22,10 +85,10 @@ function ComisionesVentaAdmin({ ventaId }) {
   const cargar = () => {
     Promise.all([
       api.get(`/comisiones/venta/${ventaId}`),
-      api.get('/comisiones/config'),
+      api.get('/employees'),
     ]).then(([c, e]) => {
       setComisiones(c.data.comisiones || []);
-      setEquipo(e.data.equipo || []);
+      setEmpleados(e.data.employees || []);
     }).catch(() => {}).finally(() => setLoading(false));
   };
 
@@ -33,11 +96,11 @@ function ComisionesVentaAdmin({ ventaId }) {
 
   const handleAdd = async (e) => {
     e.preventDefault();
-    if (!nombre.trim() || !valor) return;
+    if (!employeeId || !valor) return;
     setGuardando(true);
     try {
-      await api.post(`/comisiones/venta/${ventaId}`, { nombre, tipo, valor, notas });
-      setNombre(''); setValor(''); setNotas('');
+      await api.post(`/comisiones/venta/${ventaId}`, { employee_id: employeeId, tipo, valor, notas });
+      setEmployeeId(''); setValor(''); setNotas('');
       cargar();
     } catch {} finally { setGuardando(false); }
   };
@@ -70,8 +133,10 @@ function ComisionesVentaAdmin({ ventaId }) {
         </div>
       )}
       <form onSubmit={handleAdd} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <input className="ap-select" list="equipo-comisiones" value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Persona" style={{ minWidth: 120, flex: 1 }} />
-        <datalist id="equipo-comisiones">{equipo.map(m => <option key={m.id} value={m.nombre} />)}</datalist>
+        <select className="ap-select" value={employeeId} onChange={e => setEmployeeId(e.target.value)} style={{ minWidth: 140, flex: 1 }}>
+          <option value="">Empleado…</option>
+          {empleados.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
         <select className="ap-select" value={tipo} onChange={e => setTipo(e.target.value)} style={{ maxWidth: 110 }}>
           <option value="porcentaje">%</option>
           <option value="fijo">Importe fijo</option>
@@ -257,16 +322,7 @@ export function ProyectoCompletoModal({ ventaId, onClose }) {
             {/* Proyecto de ejecución */}
             <div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Ejecución</div>
-              {datos.ejecucion ? (
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 14px', fontSize: 13 }}>
-                  <div><strong>{datos.ejecucion.nombre}</strong> — {FASE_LABELS[datos.ejecucion.fase] || datos.ejecucion.fase}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 4 }}>
-                    Urgencia: {datos.ejecucion.urgencia} · Responsable: {datos.ejecucion.responsable || '—'} · Código: {datos.ejecucion.codigoAcceso}
-                  </div>
-                </div>
-              ) : (
-                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Todavía no hay un proyecto de ejecución enlazado a esta venta.</p>
-              )}
+              <EjecucionVenta ventaId={ventaId} ejecucion={datos.ejecucion} onLinked={cargar} />
             </div>
 
             {/* Comisiones */}
