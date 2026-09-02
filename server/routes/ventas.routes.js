@@ -47,12 +47,15 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
       const valor = Number(v.valor || 0);
       const previsionGastos = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
       const gastosReales = gastosRealesPorVenta[v.id] || 0;
-      // El coste que se usa para calcular el beneficio es siempre el mayor
-      // entre lo previsto a mano y lo que ya se ha gastado de verdad en
-      // Finanzas — así un gasto real ya registrado nunca se ignora, aunque
-      // nunca hayas rellenado "costes previstos".
+      // El coste que se usa para calcular el beneficio es, mientras la venta
+      // sigue abierta, siempre el mayor entre lo previsto a mano y lo que ya
+      // se ha gastado de verdad — así no se reparte como beneficio dinero que
+      // en realidad está reservado para costes todavía pendientes. Una vez
+      // que la venta se marca "cerrada" (ya no va a haber más gastos), se deja
+      // de usar la previsión y se calcula solo con el gasto real definitivo.
       let costesEfectivos = null;
-      if (previsionGastos != null) costesEfectivos = Math.max(previsionGastos, gastosReales);
+      if (v.cerrada) costesEfectivos = gastosReales;
+      else if (previsionGastos != null) costesEfectivos = Math.max(previsionGastos, gastosReales);
       else if (gastosReales > 0) costesEfectivos = gastosReales;
       else if (v.tipo_proyecto === 'solo_diseno') costesEfectivos = 0;
       // con_ejecucion sin previsión y sin gasto real todavía: costesEfectivos queda null (desconocido)
@@ -72,6 +75,7 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
         clienteNombre: v.cliente_nombre,
         clienteId: v.cliente_id,
         clientProjectId: v.client_project_id,
+        cerrada: !!v.cerrada,
         canal: v.canal,
         campaña: v.campaña,
         tipoProyecto: v.tipo_proyecto,
@@ -259,9 +263,10 @@ router.post('/', authenticateToken, requireVentas, async (req, res) => {
  */
 router.put('/:id', authenticateToken, requireVentas, async (req, res) => {
   try {
-    const campos = ['nombre', 'cliente_nombre', 'cliente_instagram', 'cliente_email', 'cliente_telefono', 'valor', 'fecha', 'canal', 'campaña', 'tipo_proyecto', 'prevision_ingresos', 'prevision_gastos', 'comercial_id', 'notas', 'cliente_id', 'client_project_id'];
+    const campos = ['nombre', 'cliente_nombre', 'cliente_instagram', 'cliente_email', 'cliente_telefono', 'valor', 'fecha', 'canal', 'campaña', 'tipo_proyecto', 'prevision_ingresos', 'prevision_gastos', 'comercial_id', 'notas', 'cliente_id', 'client_project_id', 'cerrada'];
     const updates = {};
     campos.forEach(c => { if (req.body[c] !== undefined) updates[c] = req.body[c]; });
+    if (updates.cerrada !== undefined) updates.cerrada = !!updates.cerrada;
 
     if (updates.valor !== undefined) updates.valor = parseFloat(updates.valor) || 0;
     if (updates.prevision_ingresos !== undefined) updates.prevision_ingresos = updates.prevision_ingresos === '' || updates.prevision_ingresos === null ? null : parseFloat(updates.prevision_ingresos);

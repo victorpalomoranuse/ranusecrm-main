@@ -66,7 +66,7 @@ async function calcularComisiones(periodo_tipo, periodo) {
   const [{ data: equipo, error: errEq }, { data: movimientos, error: errMov }, { data: ventasEjecucion, error: errVentas }] = await Promise.all([
     supabase.from('equipo_comisiones').select('*').eq('activo', true).order('nombre'),
     supabase.from('finanzas_movimientos').select('tipo, monto, categoria, beneficiario, fecha, venta_id').gte('fecha', desde).lte('fecha', hasta),
-    supabase.from('ventas').select('id, valor, prevision_gastos, client_project_id').eq('tipo_proyecto', 'con_ejecucion').not('prevision_gastos', 'is', null),
+    supabase.from('ventas').select('id, valor, prevision_gastos, client_project_id, cerrada').eq('tipo_proyecto', 'con_ejecucion').not('prevision_gastos', 'is', null),
   ]);
   if (errEq) throw errEq;
   if (errMov) throw errMov;
@@ -97,7 +97,7 @@ async function calcularComisiones(periodo_tipo, periodo) {
 
     ventasEjecucion.forEach(v => {
       const fase = faseDeVenta[v.id];
-      if (fase === 5) return; // entregado: ya no reservamos
+      if (fase === 5 || v.cerrada) return; // entregado o cerrada a mano: ya no reservamos
       const gastado = gastosAcum[v.id] || 0;
       const pendienteDeCoste = Math.max(Number(v.prevision_gastos) - gastado, 0);
       reservaPendiente += pendienteDeCoste;
@@ -234,7 +234,7 @@ router.get('/calculo', authenticateToken, requireFinanzas, async (req, res) => {
  * pendiente para cuando pague más.
  */
 async function calcularComisionesPorVenta(employeeIdFiltro) {
-  let query = supabase.from('venta_comisiones').select('*, venta:ventas(id, nombre, valor, tipo_proyecto, prevision_ingresos, prevision_gastos)');
+  let query = supabase.from('venta_comisiones').select('*, venta:ventas(id, nombre, valor, tipo_proyecto, prevision_ingresos, prevision_gastos, cerrada)');
   if (employeeIdFiltro) query = query.eq('employee_id', employeeIdFiltro);
   const { data: asignaciones, error } = await query;
   if (error) throw error;
@@ -256,8 +256,12 @@ async function calcularComisionesPorVenta(employeeIdFiltro) {
     const presupuesto = Number(v?.prevision_ingresos ?? v?.valor ?? 0);
     const previsionGastos = v?.prevision_gastos != null ? Number(v.prevision_gastos) : null;
     const gastosReales = gastosPorVenta[a.venta_id] || 0;
+    // Igual que en ventas.routes.js: mientras la venta sigue abierta se usa
+    // el mayor entre lo previsto y lo gastado; una vez "cerrada" se usa solo
+    // el gasto real definitivo.
     let costes = null;
-    if (previsionGastos != null) costes = Math.max(previsionGastos, gastosReales);
+    if (v?.cerrada) costes = gastosReales;
+    else if (previsionGastos != null) costes = Math.max(previsionGastos, gastosReales);
     else if (gastosReales > 0) costes = gastosReales;
     else if (v?.tipo_proyecto === 'solo_diseno') costes = 0;
     const beneficioPrevisto = costes != null ? valor - costes : 0;
@@ -294,7 +298,7 @@ async function calcularComisionesPorVenta(employeeIdFiltro) {
  * haya introducido a mano en cada asignación.
  */
 async function eventosComisionPorVenta(employeeIdFiltro) {
-  let query = supabase.from('venta_comisiones').select('*, venta:ventas(id, nombre, valor, tipo_proyecto, prevision_ingresos, prevision_gastos)');
+  let query = supabase.from('venta_comisiones').select('*, venta:ventas(id, nombre, valor, tipo_proyecto, prevision_ingresos, prevision_gastos, cerrada)');
   if (employeeIdFiltro) query = query.eq('employee_id', employeeIdFiltro);
   const { data: asignaciones, error } = await query;
   if (error) throw error;
@@ -319,7 +323,8 @@ async function eventosComisionPorVenta(employeeIdFiltro) {
     const previsionGastos = v?.prevision_gastos != null ? Number(v.prevision_gastos) : null;
     const gastosReales = gastosPorVenta[a.venta_id] || 0;
     let costes = null;
-    if (previsionGastos != null) costes = Math.max(previsionGastos, gastosReales);
+    if (v?.cerrada) costes = gastosReales;
+    else if (previsionGastos != null) costes = Math.max(previsionGastos, gastosReales);
     else if (gastosReales > 0) costes = gastosReales;
     else if (v?.tipo_proyecto === 'solo_diseno') costes = 0;
     const beneficioPrevisto = costes != null ? valor - costes : 0;

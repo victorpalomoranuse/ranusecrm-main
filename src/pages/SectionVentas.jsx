@@ -194,6 +194,7 @@ function VentaModal({ venta, onClose, onSaved }) {
   const [notas, setNotas] = useState(venta?.notas || '');
   const [clienteId, setClienteId] = useState(venta?.clienteId || '');
   const [clientProjectId, setClientProjectId] = useState(venta?.clientProjectId || '');
+  const [cerrada, setCerrada] = useState(venta?.cerrada || false);
   const [empleados, setEmpleados] = useState([]);
   const [cuentasCliente, setCuentasCliente] = useState([]);
   const [proyectos, setProyectos] = useState([]);
@@ -218,7 +219,7 @@ function VentaModal({ venta, onClose, onSaved }) {
         valor, fecha, canal, campaña: canal === 'ads' ? campaña : null, tipo_proyecto: tipoProyecto,
         prevision_ingresos: previsionIngresos || null, prevision_gastos: previsionGastos || null,
         comercial_id: comercialId || null, notas: notas || null, cliente_id: clienteId || null,
-        client_project_id: clientProjectId || null,
+        client_project_id: clientProjectId || null, cerrada,
       };
       if (isEdit) await api.put(`/ventas/${venta.id}`, payload);
       else await api.post('/ventas', payload);
@@ -277,6 +278,14 @@ function VentaModal({ venta, onClose, onSaved }) {
             <div className="ap-field"><label>Previsión de ingresos <span className="ap-optional">(si difiere del valor)</span></label><input type="number" step="0.01" min="0" value={previsionIngresos} onChange={e => setPrevisionIngresos(e.target.value)} placeholder={valor || '0.00'} /></div>
             <div className="ap-field"><label>Costes previstos <span className="ap-optional">(opcional)</span></label><input type="number" step="0.01" min="0" value={previsionGastos} onChange={e => setPrevisionGastos(e.target.value)} placeholder="0.00" /></div>
           </div>
+          {isEdit && (
+            <div className="ap-field">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={cerrada} onChange={e => setCerrada(e.target.checked)} />
+                Venta cerrada <span className="ap-optional">(ya no va a haber más gastos — el beneficio deja de calcularse con lo previsto y pasa a usar solo lo realmente gastado)</span>
+              </label>
+            </div>
+          )}
           <div className="ap-field"><label>Comercial <span className="ap-optional">(opcional)</span></label>
             <select className="ap-select" value={comercialId} onChange={e => setComercialId(e.target.value)}>
               <option value="">— Sin asignar —</option>
