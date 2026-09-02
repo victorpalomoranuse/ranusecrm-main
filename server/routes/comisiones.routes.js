@@ -289,6 +289,25 @@ router.get('/venta/:ventaId', authenticateToken, requireFinanzas, async (req, re
 });
 
 /**
+ * GET /api/comisiones/venta/:ventaId/mia
+ * Autoservicio: cualquier persona autenticada puede ver SU PROPIA fila de
+ * comisión en esta venta (si tiene alguna), en solo lectura — nunca las de
+ * sus compañeros. Pensado para cuando alguien sin permiso de Finanzas abre
+ * una venta desde Ventas o Proyectos.
+ */
+router.get('/venta/:ventaId/mia', authenticateToken, async (req, res) => {
+  try {
+    const miConfig = await resolveMiConfig(req);
+    if (!miConfig) return res.json({ comisiones: [] });
+    const calculadas = await calcularComisionesPorVenta(miConfig.nombre);
+    res.json({ comisiones: calculadas.filter(c => c.ventaId === req.params.ventaId) });
+  } catch (error) {
+    console.error('Error al listar mi comisión de la venta:', error);
+    res.status(500).json({ error: 'Error al listar tu comisión de esta venta' });
+  }
+});
+
+/**
  * POST /api/comisiones/venta/:ventaId
  * Añade una asignación de comisión a una venta. Body: { nombre, tipo, valor, notas }
  */

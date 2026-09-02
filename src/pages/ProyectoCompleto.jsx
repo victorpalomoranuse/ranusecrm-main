@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { X } from 'lucide-react';
+import { useAdminAuth } from '../auth/AdminAuthContext';
 
 function fmt(n) {
   return Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
@@ -8,7 +9,7 @@ function fmt(n) {
 
 const FASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Instalación', 5: 'Entregado' };
 
-function ComisionesVenta({ ventaId }) {
+function ComisionesVentaAdmin({ ventaId }) {
   const [comisiones, setComisiones] = useState([]);
   const [equipo, setEquipo] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -81,6 +82,42 @@ function ComisionesVenta({ ventaId }) {
       </form>
     </div>
   );
+}
+
+// Autoservicio: quien no es admin_superior ni tiene permiso de Finanzas solo
+// ve su propia fila de comisión en esta venta (si tiene alguna), en solo
+// lectura — nunca las de sus compañeros.
+function ComisionesVentaMia({ ventaId }) {
+  const [comisiones, setComisiones] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get(`/comisiones/venta/${ventaId}/mia`).then(r => setComisiones(r.data.comisiones || [])).catch(() => {}).finally(() => setLoading(false));
+  }, [ventaId]);
+
+  if (loading || comisiones.length === 0) return null;
+
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Tu comisión en este proyecto</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {comisiones.map(c => (
+          <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '6px 10px' }}>
+            <span style={{ color: 'rgba(255,255,255,0.5)' }}>{c.tipo === 'fijo' ? fmt(c.valor) : `${c.valor}%`}</span>
+            <span style={{ color: 'rgba(255,255,255,0.4)' }}>{c.proporcionCobradaPct}% cobrado</span>
+            <span style={{ color: '#22c55e' }}>Devengado {fmt(c.devengada)}</span>
+            <span style={{ color: '#f5b748' }}>Pendiente {fmt(c.pendiente)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ComisionesVenta({ ventaId }) {
+  const { user } = useAdminAuth();
+  const puedeGestionar = user?.role === 'admin_superior' || user?.permissions?.finanzas === true;
+  return puedeGestionar ? <ComisionesVentaAdmin ventaId={ventaId} /> : <ComisionesVentaMia ventaId={ventaId} />;
 }
 
 /**
