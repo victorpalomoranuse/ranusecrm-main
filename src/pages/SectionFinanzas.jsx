@@ -29,19 +29,6 @@ function fmtPeriodoLargo(clave, tipo) {
   return nombre.charAt(0).toUpperCase() + nombre.slice(1);
 }
 
-// Fecha (dentro del propio periodo) que se guarda en el pago manual, para
-// que al recalcular caiga en el mismo mes/trimestre/año que se está pagando
-// (si se usara "hoy", un pago de un mes pasado se contaría en el mes actual).
-function fechaFinDePeriodo(clave, tipo) {
-  if (tipo === 'año') return `${clave}-12-31`;
-  if (tipo === 'trimestre') {
-    const [y, q] = clave.split('-Q');
-    const mFin = Number(q) * 3;
-    return new Date(Number(y), mFin, 0).toISOString().slice(0, 10);
-  }
-  const [y, m] = clave.split('-');
-  return new Date(Number(y), Number(m), 0).toISOString().slice(0, 10);
-}
 
 const CATEGORIAS_GASTO = ['Nóminas', 'Materiales', 'Marketing', 'Software', 'Alquiler', 'Comisiones', 'Devolución', 'Fiscal', 'Otros'];
 const CATEGORIAS_INGRESO = ['Venta proyecto', 'Anticipo', 'Diseño', 'Otros'];
@@ -346,13 +333,12 @@ function EquipoPeriodos() {
 
   const pagarPeriodo = async (nombre, periodo, monto) => {
     const importe = parseFloat(monto);
-    if (!importe || importe <= 0) return;
+    if (isNaN(importe) || importe < 0) return;
     const clave = `${nombre}|${periodo}`;
     setPagando(clave);
     try {
-      await api.post('/comisiones/pagar', { nombre, monto: importe, periodo_label: fmtPeriodoLargo(periodo, tipo), fecha: fechaFinDePeriodo(periodo, tipo) });
+      await api.put('/comisiones/periodo-pago', { nombre, periodo_tipo: tipo, periodo, monto: importe });
       await cargar();
-      setPagoInputs(v => ({ ...v, [clave]: '' }));
     } catch {
       // noop
     } finally {
@@ -373,6 +359,7 @@ function EquipoPeriodos() {
           ))}
         </div>
       </div>
+      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -6, marginBottom: 10 }}>El "Cobrado" de aquí abajo es un apunte tuyo, aparte de Finanzas — no crea ni lee ningún movimiento de Finanzas, para no mezclarlo con pagos antiguos que incluían otras cosas además de la comisión. Se actualiza al momento en el panel de esa persona.</p>
 
       {loading ? <div className="ap-loading">Calculando…</div> : !equipo || conProyectos.length === 0 ? (
         <p className="ap-empty-sm">Todavía nadie tiene proyectos asignados (modelo "por proyecto"). Asígnalos desde "Ver relación completa" de una venta.</p>
@@ -390,7 +377,7 @@ function EquipoPeriodos() {
                     <div className="fz-row fz-row--head"><span>Periodo</span><span>Generado</span><span>Cobrado</span><span>Pendiente</span></div>
                     {m.periodos.map(p => {
                       const clave = `${m.nombre}|${p.periodo}`;
-                      const expandible = p.porVenta?.length > 0 || p.pendiente > 0.01;
+                      const expandible = true;
                       return (
                         <div key={p.periodo}>
                           <div className="fz-row" style={{ cursor: expandible ? 'pointer' : 'default' }} onClick={() => expandible && setPeriodoAbierto(a => a === clave ? null : clave)}>
@@ -417,23 +404,22 @@ function EquipoPeriodos() {
                                   ))}
                                 </div>
                               )}
-                              {p.pendiente > 0.01 && (
-                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-                                  <input
-                                    type="number" step="0.01" min="0"
-                                    value={pagoInputs[clave] ?? p.pendiente.toFixed(2)}
-                                    onChange={e => setPagoInputs(v => ({ ...v, [clave]: e.target.value }))}
-                                    className="ap-select" style={{ width: 100, padding: '4px 8px' }}
-                                  />
-                                  <button
-                                    className="ap-btn ap-btn-primary ap-btn-xs"
-                                    disabled={pagando === clave}
-                                    onClick={() => pagarPeriodo(m.nombre, p.periodo, pagoInputs[clave] ?? p.pendiente.toFixed(2))}
-                                  >
-                                    {pagando === clave ? '...' : <><Check size={12} /> Registrar cobro de {fmtPeriodoLargo(p.periodo, tipo)}</>}
-                                  </button>
-                                </div>
-                              )}
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Cobrado en {fmtPeriodoLargo(p.periodo, tipo)}:</span>
+                                <input
+                                  type="number" step="0.01" min="0"
+                                  value={pagoInputs[clave] ?? p.pagado.toFixed(2)}
+                                  onChange={e => setPagoInputs(v => ({ ...v, [clave]: e.target.value }))}
+                                  className="ap-select" style={{ width: 100, padding: '4px 8px' }}
+                                />
+                                <button
+                                  className="ap-btn ap-btn-primary ap-btn-xs"
+                                  disabled={pagando === clave}
+                                  onClick={() => pagarPeriodo(m.nombre, p.periodo, pagoInputs[clave] ?? p.pagado.toFixed(2))}
+                                >
+                                  {pagando === clave ? '...' : <><Check size={12} /> Guardar</>}
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>

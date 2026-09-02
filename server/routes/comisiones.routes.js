@@ -349,14 +349,18 @@ async function eventosComisionPorVenta(employeeIdFiltro) {
 
 /**
  * Agrupa, para una persona (por employeeId + su nombre en equipo_comisiones),
- * lo devengado (según eventosComisionPorVenta) y lo pagado (movimientos de
- * Finanzas "Comisiones" a su nombre) por periodo — mes, trimestre o año,
- * según la fecha de cada evento/pago.
+ * lo devengado (según eventosComisionPorVenta) por periodo — mes, trimestre
+ * o año, según la fecha de cada evento. Lo "pagado" de este desglose NO sale
+ * de los movimientos reales de Finanzas (ahí hay pagos antiguos donde el
+ * importe mezclaba la comisión con otro concepto, así que no son fiables
+ * para esto) — sale de comisiones_pagos_periodo, un registro aparte que tú
+ * introduces a mano por persona y periodo. El histórico de "Ya pagado" de
+ * Finanzas sigue funcionando igual que siempre, sin tocarlo.
  */
 async function periodosDeComision(employeeId, nombre, tipo) {
   const [eventos, { data: pagos }] = await Promise.all([
     employeeId ? eventosComisionPorVenta(employeeId) : Promise.resolve([]),
-    supabase.from('finanzas_movimientos').select('monto, fecha').eq('tipo', 'gasto').eq('categoria', 'Comisiones').eq('beneficiario', nombre),
+    supabase.from('comisiones_pagos_periodo').select('periodo, monto').eq('nombre', nombre).eq('periodo_tipo', tipo),
   ]);
 
   const porPeriodo = {};
@@ -373,7 +377,7 @@ async function periodosDeComision(employeeId, nombre, tipo) {
     p.porVenta[ev.ventaId].devengado += ev.devengado;
     p.porVenta[ev.ventaId].montoCobrado += ev.montoCobrado;
   });
-  (pagos || []).forEach(p => { ensure(claveDePeriodo(p.fecha, tipo)).pagado += Number(p.monto); });
+  (pagos || []).forEach(p => { ensure(p.periodo).pagado += Number(p.monto); });
 
   return Object.values(porPeriodo)
     .map(p => ({
@@ -400,6 +404,36 @@ router.get('/mia/periodos', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error al calcular tus periodos de comisión:', error);
     res.status(500).json({ error: 'Error al calcular tus periodos de comisión' });
+  }
+});
+
+/**
+ * PUT /api/comisiones/periodo-pago
+ * Fija (upsert) cuánto se le ha pagado a una persona en un periodo
+ * concreto del desglose mes a mes — independiente de los movimientos
+ * reales de Finanzas. Body: { nombre, periodo_tipo, periodo, monto }
+ */
+router.put('/periodo-pago', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const { nombre, periodo_tipo, periodo, monto } = req.body;
+    if (!nombre?.trim()) return res.status(400).json({ error: 'nombre requerido' });
+    if (!TIPOS_PERIODO.includes(periodo_tipo)) return res.status(400).json({ error: 'periodo_tipo inválido' });
+    if (!periodo?.trim()) return res.status(400).json({ error: 'periodo requerido' });
+    if (monto === undefined || isNaN(parseFloat(monto)) || parseFloat(monto) < 0) return res.status(400).json({ error: 'monto inválido' });
+
+    const { data, error } = await supabase
+      .from('comisiones_pagos_periodo')
+      .upsert(
+        { nombre: nombre.trim(), periodo_tipo, periodo: periodo.trim(), monto: parseFloat(monto), updated_at: new Date().toISOString() },
+        { onConflict: 'nombre,periodo_tipo,periodo' }
+      )
+      .select()
+      .single();
+    if (error) throw error;
+    res.json({ pago: data });
+  } catch (error) {
+    console.error('Error al guardar el pago del periodo:', error);
+    res.status(500).json({ error: 'Error al guardar el pago del periodo', detalle: error.message });
   }
 });
 
