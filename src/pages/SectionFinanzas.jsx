@@ -29,6 +29,20 @@ function fmtPeriodoLargo(clave, tipo) {
   return nombre.charAt(0).toUpperCase() + nombre.slice(1);
 }
 
+// Fecha (dentro del propio periodo) que se guarda en el pago manual, para
+// que al recalcular caiga en el mismo mes/trimestre/año que se está pagando
+// (si se usara "hoy", un pago de un mes pasado se contaría en el mes actual).
+function fechaFinDePeriodo(clave, tipo) {
+  if (tipo === 'año') return `${clave}-12-31`;
+  if (tipo === 'trimestre') {
+    const [y, q] = clave.split('-Q');
+    const mFin = Number(q) * 3;
+    return new Date(Number(y), mFin, 0).toISOString().slice(0, 10);
+  }
+  const [y, m] = clave.split('-');
+  return new Date(Number(y), Number(m), 0).toISOString().slice(0, 10);
+}
+
 const CATEGORIAS_GASTO = ['Nóminas', 'Materiales', 'Marketing', 'Software', 'Alquiler', 'Comisiones', 'Devolución', 'Fiscal', 'Otros'];
 const CATEGORIAS_INGRESO = ['Venta proyecto', 'Anticipo', 'Diseño', 'Otros'];
 const METODOS_PAGO = ['Transferencia', 'Tarjeta', 'Efectivo', 'Bizum', 'Otro'];
@@ -317,14 +331,34 @@ function EquipoPeriodos() {
   const [loading, setLoading] = useState(true);
   const [abierto, setAbierto] = useState(null);
   const [periodoAbierto, setPeriodoAbierto] = useState(null);
+  const [pagoInputs, setPagoInputs] = useState({});
+  const [pagando, setPagando] = useState(null);
 
-  useEffect(() => {
+  const cargar = useCallback(() => {
     setLoading(true);
-    api.get('/comisiones/equipo/periodos', { params: { tipo } })
+    return api.get('/comisiones/equipo/periodos', { params: { tipo } })
       .then(r => setEquipo(r.data.equipo || []))
       .catch(() => setEquipo(null))
       .finally(() => setLoading(false));
   }, [tipo]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const pagarPeriodo = async (nombre, periodo, monto) => {
+    const importe = parseFloat(monto);
+    if (!importe || importe <= 0) return;
+    const clave = `${nombre}|${periodo}`;
+    setPagando(clave);
+    try {
+      await api.post('/comisiones/pagar', { nombre, monto: importe, periodo_label: fmtPeriodoLargo(periodo, tipo), fecha: fechaFinDePeriodo(periodo, tipo) });
+      await cargar();
+      setPagoInputs(v => ({ ...v, [clave]: '' }));
+    } catch {
+      // noop
+    } finally {
+      setPagando(null);
+    }
+  };
 
   const conProyectos = (equipo || []).filter(m => m.modelo === 'por_proyecto');
   const sinProyectos = (equipo || []).filter(m => m.modelo !== 'por_proyecto');
@@ -356,28 +390,50 @@ function EquipoPeriodos() {
                     <div className="fz-row fz-row--head"><span>Periodo</span><span>Generado</span><span>Cobrado</span><span>Pendiente</span></div>
                     {m.periodos.map(p => {
                       const clave = `${m.nombre}|${p.periodo}`;
+                      const expandible = p.porVenta?.length > 0 || p.pendiente > 0.01;
                       return (
                         <div key={p.periodo}>
-                          <div className="fz-row" style={{ cursor: p.porVenta?.length ? 'pointer' : 'default' }} onClick={() => p.porVenta?.length && setPeriodoAbierto(a => a === clave ? null : clave)}>
+                          <div className="fz-row" style={{ cursor: expandible ? 'pointer' : 'default' }} onClick={() => expandible && setPeriodoAbierto(a => a === clave ? null : clave)}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {p.porVenta?.length > 0 && (periodoAbierto === clave ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
+                              {expandible && (periodoAbierto === clave ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
                               {fmtPeriodoLargo(p.periodo, tipo)}
                             </span>
                             <span>{fmt(p.devengado)}</span>
                             <span style={{ color: '#22c55e' }}>{fmt(p.pagado)}</span>
                             <span style={{ color: p.pendiente > 0.01 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(p.pendiente)}</span>
                           </div>
-                          {periodoAbierto === clave && p.porVenta?.length > 0 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 12px 12px 28px' }}>
-                              {p.porVenta.map(v => (
-                                <div key={v.ventaId} style={{ fontSize: 12 }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.75)', fontWeight: 600, marginBottom: 2 }}>
-                                    <span>{v.ventaNombre}</span>
-                                    <span>{fmt(v.devengado)}</span>
-                                  </div>
-                                  <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>{explicacionComision(v)}</p>
+                          {periodoAbierto === clave && (
+                            <div style={{ padding: '4px 12px 12px 28px' }}>
+                              {p.porVenta?.length > 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: p.pendiente > 0.01 ? 10 : 0 }}>
+                                  {p.porVenta.map(v => (
+                                    <div key={v.ventaId} style={{ fontSize: 12 }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.75)', fontWeight: 600, marginBottom: 2 }}>
+                                        <span>{v.ventaNombre}</span>
+                                        <span>{fmt(v.devengado)}</span>
+                                      </div>
+                                      <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>{explicacionComision(v)}</p>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
+                              {p.pendiente > 0.01 && (
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                                  <input
+                                    type="number" step="0.01" min="0"
+                                    value={pagoInputs[clave] ?? p.pendiente.toFixed(2)}
+                                    onChange={e => setPagoInputs(v => ({ ...v, [clave]: e.target.value }))}
+                                    className="ap-select" style={{ width: 100, padding: '4px 8px' }}
+                                  />
+                                  <button
+                                    className="ap-btn ap-btn-primary ap-btn-xs"
+                                    disabled={pagando === clave}
+                                    onClick={() => pagarPeriodo(m.nombre, p.periodo, pagoInputs[clave] ?? p.pendiente.toFixed(2))}
+                                  >
+                                    {pagando === clave ? '...' : <><Check size={12} /> Registrar cobro de {fmtPeriodoLargo(p.periodo, tipo)}</>}
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
