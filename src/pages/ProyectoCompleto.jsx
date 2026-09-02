@@ -23,7 +23,7 @@ function EjecucionVenta({ ventaId, ejecucion, onLinked }) {
     if (!seleccion) return;
     setGuardando(true);
     try {
-      await api.put(`/client-projects/${seleccion}`, { venta_id: ventaId });
+      await api.put(`/ventas/${ventaId}`, { client_project_id: seleccion });
       onLinked();
     } catch {} finally { setGuardando(false); }
   };
@@ -31,7 +31,7 @@ function EjecucionVenta({ ventaId, ejecucion, onLinked }) {
   const handleUnlink = async () => {
     setGuardando(true);
     try {
-      await api.put(`/client-projects/${ejecucion.id}`, { venta_id: null });
+      await api.put(`/ventas/${ventaId}`, { client_project_id: null });
       onLinked();
     } catch {} finally { setGuardando(false); }
   };
@@ -52,18 +52,16 @@ function EjecucionVenta({ ventaId, ejecucion, onLinked }) {
 
   if (loading) return null;
 
-  const disponibles = proyectos.filter(p => !p.venta_id);
-
   return (
     <div>
       <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 8 }}>Todavía no hay un proyecto de ejecución enlazado a esta venta.</p>
-      {disponibles.length === 0 ? (
-        <p className="ap-empty-sm">No hay proyectos sin enlazar. Créalo primero en Proyectos.</p>
+      {proyectos.length === 0 ? (
+        <p className="ap-empty-sm">No hay proyectos todavía. Créalo primero en Proyectos.</p>
       ) : (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <select className="ap-select" value={seleccion} onChange={e => setSeleccion(e.target.value)} style={{ minWidth: 220, flex: 1 }}>
             <option value="">Elige un proyecto…</option>
-            {disponibles.map(p => <option key={p.id} value={p.id}>{p.client_name} — {p.project_name}</option>)}
+            {proyectos.map(p => <option key={p.id} value={p.id}>{p.client_name} — {p.project_name}</option>)}
           </select>
           <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleLink} disabled={!seleccion || guardando}>Enlazar</button>
         </div>

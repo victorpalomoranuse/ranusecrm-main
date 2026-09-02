@@ -28,6 +28,7 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
   try {
     let query = supabase.from('ventas').select('*, comercial:employees(name)').order('fecha', { ascending: false });
     if (req.query.lead_id) query = query.eq('lead_id', req.query.lead_id);
+    if (req.query.client_project_id) query = query.eq('client_project_id', req.query.client_project_id);
     const { data: ventas, error } = await query;
     if (error) throw error;
 
@@ -70,6 +71,7 @@ router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
         nombre: v.nombre,
         clienteNombre: v.cliente_nombre,
         clienteId: v.cliente_id,
+        clientProjectId: v.client_project_id,
         canal: v.canal,
         campaña: v.campaña,
         tipoProyecto: v.tipo_proyecto,
@@ -213,7 +215,7 @@ router.post('/', authenticateToken, requireVentas, async (req, res) => {
     const {
       nombre, cliente_nombre, cliente_instagram, cliente_email, cliente_telefono,
       valor, fecha, canal, campaña, tipo_proyecto = 'solo_diseno',
-      prevision_ingresos, prevision_gastos, comercial_id, lead_id, notas, cliente_id,
+      prevision_ingresos, prevision_gastos, comercial_id, lead_id, notas, cliente_id, client_project_id,
     } = req.body;
 
     if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre de la venta es obligatorio' });
@@ -238,6 +240,7 @@ router.post('/', authenticateToken, requireVentas, async (req, res) => {
         lead_id: lead_id || null,
         notas: notas?.trim() || null,
         cliente_id: cliente_id || null,
+        client_project_id: client_project_id || null,
         created_by: req.user.id,
       })
       .select('*, comercial:employees(name)')
@@ -256,7 +259,7 @@ router.post('/', authenticateToken, requireVentas, async (req, res) => {
  */
 router.put('/:id', authenticateToken, requireVentas, async (req, res) => {
   try {
-    const campos = ['nombre', 'cliente_nombre', 'cliente_instagram', 'cliente_email', 'cliente_telefono', 'valor', 'fecha', 'canal', 'campaña', 'tipo_proyecto', 'prevision_ingresos', 'prevision_gastos', 'comercial_id', 'notas', 'cliente_id'];
+    const campos = ['nombre', 'cliente_nombre', 'cliente_instagram', 'cliente_email', 'cliente_telefono', 'valor', 'fecha', 'canal', 'campaña', 'tipo_proyecto', 'prevision_ingresos', 'prevision_gastos', 'comercial_id', 'notas', 'cliente_id', 'client_project_id'];
     const updates = {};
     campos.forEach(c => { if (req.body[c] !== undefined) updates[c] = req.body[c]; });
 
@@ -296,7 +299,9 @@ router.get('/:id/ficha', authenticateToken, requireVentasOFinanzas, async (req, 
 
     const [{ data: movimientos, error: errMov }, { data: proyecto, error: errProy }] = await Promise.all([
       supabase.from('finanzas_movimientos').select('monto, tipo').eq('venta_id', req.params.id),
-      supabase.from('client_projects').select('id, project_name, phase, urgency, access_code').eq('venta_id', req.params.id).maybeSingle(),
+      venta.client_project_id
+        ? supabase.from('client_projects').select('id, project_name, phase, urgency, access_code').eq('id', venta.client_project_id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
     ]);
     if (errMov) throw errMov;
     if (errProy) throw errProy;
@@ -330,7 +335,9 @@ router.get('/:id/completo', authenticateToken, requireFinanzas, async (req, res)
 
     const [{ data: movimientos, error: errMov }, { data: proyecto, error: errProy }] = await Promise.all([
       supabase.from('finanzas_movimientos').select('*').eq('venta_id', req.params.id).order('fecha', { ascending: true }),
-      supabase.from('client_projects').select('id, project_name, phase, urgency, access_code, notes, responsible:employees!responsible_id(name)').eq('venta_id', req.params.id).maybeSingle(),
+      venta.client_project_id
+        ? supabase.from('client_projects').select('id, project_name, phase, urgency, access_code, notes, responsible:employees!responsible_id(name)').eq('id', venta.client_project_id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
     ]);
     if (errMov) throw errMov;
     if (errProy) throw errProy;
@@ -350,7 +357,7 @@ router.get('/:id/completo', authenticateToken, requireFinanzas, async (req, res)
         presupuesto, previsionGastos: venta.prevision_gastos != null ? Number(venta.prevision_gastos) : null,
       },
       ejecucion: proyecto ? {
-        nombre: proyecto.project_name, fase: proyecto.phase, urgencia: proyecto.urgency,
+        id: proyecto.id, nombre: proyecto.project_name, fase: proyecto.phase, urgencia: proyecto.urgency,
         codigoAcceso: proyecto.access_code, responsable: proyecto.responsible?.name || null, notas: proyecto.notes,
       } : null,
       pagos,

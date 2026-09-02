@@ -1467,10 +1467,19 @@ function SectionTrabajos() {
 const PAGE_SIZE_PROYECTOS=6;
 
 function SectionProyectos() {
-  const [projects,setProjects]=useState([]); const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null); const [confirmId,setConfirmId]=useState(null); const [manageProject,setManageProject]=useState(null); const [page,setPage]=useState(1); const [verProyectoVenta,setVerProyectoVenta]=useState(null); const [statusTab,setStatusTab]=useState('en_marcha');
+  const [projects,setProjects]=useState([]); const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null); const [confirmId,setConfirmId]=useState(null); const [manageProject,setManageProject]=useState(null); const [page,setPage]=useState(1); const [verProyectoVenta,setVerProyectoVenta]=useState(null); const [statusTab,setStatusTab]=useState('en_marcha'); const [elegirVentas,setElegirVentas]=useState(null);
   const {toasts,toast,remove}=useToast();
   const loadProjects=async()=>{try{const{data}=await api.get('/client-projects');setProjects(data.projects||[]);}catch{}finally{setLoading(false);}};
   useEffect(()=>{loadProjects();},[]);
+  const abrirRelacion=async(p)=>{
+    try{
+      const{data}=await api.get('/ventas',{params:{client_project_id:p.id}});
+      const ventas=data.ventas||[];
+      if(ventas.length===0)toast.error('Este proyecto todavía no tiene ninguna venta enlazada');
+      else if(ventas.length===1)setVerProyectoVenta(ventas[0].id);
+      else setElegirVentas({proyecto:p,ventas});
+    }catch{toast.error('Error al buscar las ventas del proyecto');}
+  };
   const handleDelete=async()=>{try{await api.delete(`/client-projects/${confirmId}`);setProjects(prev=>prev.filter(p=>p.id!==confirmId));toast.success('Proyecto eliminado');}catch{toast.error('Error al eliminar el proyecto');}finally{setConfirmId(null);}};
   const copyCode=(code)=>{navigator.clipboard.writeText(code);toast.success('Código copiado');};
   const copyLink=(code)=>{const url=`${window.location.origin}/mi-proyecto?code=${code}`;navigator.clipboard.writeText(url);toast.success('Enlace copiado');};
@@ -1483,12 +1492,25 @@ function SectionProyectos() {
         {['en_marcha','finalizado','archivado','todos'].map(t=>(<button key={t} className={`ap-cat-tab${statusTab===t?' active':''}`} onClick={()=>{setStatusTab(t);setPage(1);}}>{t==='todos'?'Todos':PROJECT_STATUS_LABELS[t]} <span style={{opacity:0.5,fontSize:'0.75em'}}>({t==='todos'?projects.length:projects.filter(p=>(p.status||'en_marcha')===t).length})</span></button>))}
       </div>
       {loading?<div className="ap-loading">Cargando proyectos...</div>:filteredProjects.length===0?<div className="ap-empty"><p>No hay proyectos en este estado.</p></div>:(
-        <><div className="ap-cp-grid">{filteredProjects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><div style={{display:'flex',gap:4,flexDirection:'column',alignItems:'flex-end'}}><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span>{(p.status||'en_marcha')!=='en_marcha'&&<span className="ap-urgency-badge ap-urgency--baja">{PROJECT_STATUS_LABELS[p.status]}</span>}</div></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[0,1,2,3,4,5,6].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions">{p.venta_id&&<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setVerProyectoVenta(p.venta_id)}>Ver relación completa</button>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={filteredProjects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
+        <><div className="ap-cp-grid">{filteredProjects.slice((page-1)*PAGE_SIZE_PROYECTOS,page*PAGE_SIZE_PROYECTOS).map(p=>(<div key={p.id} className="ap-cp-card"><div className="ap-cp-header"><div className="ap-cp-names"><h3 className="ap-cp-client">{p.client_name}</h3><p className="ap-cp-name">{p.project_name}</p></div><div style={{display:'flex',gap:4,flexDirection:'column',alignItems:'flex-end'}}><span className={`ap-urgency-badge ap-urgency--${p.urgency}`}>{p.urgency}</span>{(p.status||'en_marcha')!=='en_marcha'&&<span className="ap-urgency-badge ap-urgency--baja">{PROJECT_STATUS_LABELS[p.status]}</span>}</div></div><div className="ap-cp-phase-row"><div className="ap-cp-dots">{[0,1,2,3,4,5,6].map(n=>(<div key={n} className={`ap-phase-dot${n<=p.phase?' active':''}`} title={PHASE_LABELS[n]}/>))}</div><span className="ap-phase-label">{PHASE_LABELS[p.phase]}</span></div><div className="ap-cp-code-row"><span className="ap-code-val">{p.access_code}</span><button className="ap-btn-icon" onClick={()=>copyCode(p.access_code)}><Copy size={13}/></button></div><div className="ap-cp-link-row"><span className="ap-cp-link-text">/mi-proyecto?code={p.access_code}</span><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>copyLink(p.access_code)}><Copy size={12}/> Copiar enlace</button></div>{p.client_email&&<p className="ap-cp-email">{p.client_email}</p>}<div className="ap-project-actions">{<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>abrirRelacion(p)}>Ver relación completa</button>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setManageProject(p)}><Settings size={13}/> Gestionar</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></div></div>))}</div><Pagination page={page} total={filteredProjects.length} pageSize={PAGE_SIZE_PROYECTOS} onPage={setPage}/></>
       )}
       {modal&&<ClientProjectModal project={modal==='new'?null:modal} onClose={()=>setModal(null)} onSaved={(saved)=>{if(modal==='new')setProjects(prev=>[saved,...prev]);else setProjects(prev=>prev.map(p=>p.id===saved.id?saved:p));setModal(null);toast.success('Proyecto guardado correctamente');}}/>}
       {confirmId&&<ConfirmDialog message="¿Eliminar este proyecto? El código de acceso quedará inválido." onConfirm={handleDelete} onCancel={()=>setConfirmId(null)}/>}
       {manageProject&&<ProjectManagerModal project={manageProject} onClose={()=>setManageProject(null)}/>}
       {verProyectoVenta&&<ProyectoCompletoModal ventaId={verProyectoVenta} onClose={()=>setVerProyectoVenta(null)}/>}
+      {elegirVentas&&(
+        <div className="ap-modal-overlay" onClick={()=>setElegirVentas(null)}>
+          <div className="ap-modal" onClick={e=>e.stopPropagation()} style={{maxWidth:420}}>
+            <div className="ap-modal-head"><h2>Elige una venta</h2><button className="ap-modal-close" onClick={()=>setElegirVentas(null)}><X size={16}/></button></div>
+            <div style={{padding:'0 1.25rem 1.25rem',display:'flex',flexDirection:'column',gap:6}}>
+              <p style={{fontSize:12,color:'rgba(255,255,255,0.5)',margin:0}}>{elegirVentas.proyecto.project_name} tiene {elegirVentas.ventas.length} ventas enlazadas:</p>
+              {elegirVentas.ventas.map(v=>(
+                <button key={v.id} className="ap-btn ap-btn-ghost ap-btn-sm" style={{justifyContent:'flex-start'}} onClick={()=>{setVerProyectoVenta(v.id);setElegirVentas(null);}}>{v.nombre}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

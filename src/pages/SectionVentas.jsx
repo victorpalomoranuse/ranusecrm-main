@@ -193,14 +193,17 @@ function VentaModal({ venta, onClose, onSaved }) {
   const [comercialId, setComercialId] = useState(venta?.comercial_id || '');
   const [notas, setNotas] = useState(venta?.notas || '');
   const [clienteId, setClienteId] = useState(venta?.clienteId || '');
+  const [clientProjectId, setClientProjectId] = useState(venta?.clientProjectId || '');
   const [empleados, setEmpleados] = useState([]);
   const [cuentasCliente, setCuentasCliente] = useState([]);
+  const [proyectos, setProyectos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {});
     api.get('/ventas/cuentas-cliente').then(r => setCuentasCliente(r.data.cuentas || [])).catch(() => {});
+    api.get('/client-projects').then(r => setProyectos(r.data.projects || [])).catch(() => {});
   }, []);
 
   const handleSubmit = async (e) => {
@@ -215,6 +218,7 @@ function VentaModal({ venta, onClose, onSaved }) {
         valor, fecha, canal, campaña: canal === 'ads' ? campaña : null, tipo_proyecto: tipoProyecto,
         prevision_ingresos: previsionIngresos || null, prevision_gastos: previsionGastos || null,
         comercial_id: comercialId || null, notas: notas || null, cliente_id: clienteId || null,
+        client_project_id: clientProjectId || null,
       };
       if (isEdit) await api.put(`/ventas/${venta.id}`, payload);
       else await api.post('/ventas', payload);
@@ -237,6 +241,12 @@ function VentaModal({ venta, onClose, onSaved }) {
             <select className="ap-select" value={clienteId} onChange={e => setClienteId(e.target.value)}>
               <option value="">Sin enlazar</option>
               {cuentasCliente.map(c => <option key={c.id} value={c.id}>{c.email}</option>)}
+            </select>
+          </div>
+          <div className="ap-field"><label>Proyecto enlazado <span className="ap-optional">(opcional, un proyecto puede tener varias ventas)</span></label>
+            <select className="ap-select" value={clientProjectId} onChange={e => setClientProjectId(e.target.value)}>
+              <option value="">Sin enlazar</option>
+              {proyectos.map(p => <option key={p.id} value={p.id}>{p.client_name} — {p.project_name}</option>)}
             </select>
           </div>
           <div className="fz-field-row">

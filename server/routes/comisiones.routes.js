@@ -66,7 +66,7 @@ async function calcularComisiones(periodo_tipo, periodo) {
   const [{ data: equipo, error: errEq }, { data: movimientos, error: errMov }, { data: ventasEjecucion, error: errVentas }] = await Promise.all([
     supabase.from('equipo_comisiones').select('*').eq('activo', true).order('nombre'),
     supabase.from('finanzas_movimientos').select('tipo, monto, categoria, beneficiario, fecha, venta_id').gte('fecha', desde).lte('fecha', hasta),
-    supabase.from('ventas').select('id, valor, prevision_gastos').eq('tipo_proyecto', 'con_ejecucion').not('prevision_gastos', 'is', null),
+    supabase.from('ventas').select('id, valor, prevision_gastos, client_project_id').eq('tipo_proyecto', 'con_ejecucion').not('prevision_gastos', 'is', null),
   ]);
   if (errEq) throw errEq;
   if (errMov) throw errMov;
@@ -83,14 +83,17 @@ async function calcularComisiones(periodo_tipo, periodo) {
   let reservaPendiente = 0;
   if (ventasEjecucion.length > 0) {
     const ventaIds = ventasEjecucion.map(v => v.id);
-    const [{ data: gastosPorVenta }, { data: fasesPorVenta }] = await Promise.all([
+    const projectIds = [...new Set(ventasEjecucion.map(v => v.client_project_id).filter(Boolean))];
+    const [{ data: gastosPorVenta }, { data: proyectosLigados }] = await Promise.all([
       supabase.from('finanzas_movimientos').select('venta_id, monto').eq('tipo', 'gasto').in('venta_id', ventaIds),
-      supabase.from('client_projects').select('venta_id, phase').in('venta_id', ventaIds),
+      projectIds.length ? supabase.from('client_projects').select('id, phase').in('id', projectIds) : Promise.resolve({ data: [] }),
     ]);
     const gastosAcum = {};
     (gastosPorVenta || []).forEach(g => { gastosAcum[g.venta_id] = (gastosAcum[g.venta_id] || 0) + Number(g.monto); });
+    const faseDeProyecto = {};
+    (proyectosLigados || []).forEach(p => { faseDeProyecto[p.id] = p.phase; });
     const faseDeVenta = {};
-    (fasesPorVenta || []).forEach(p => { faseDeVenta[p.venta_id] = p.phase; });
+    ventasEjecucion.forEach(v => { if (v.client_project_id) faseDeVenta[v.id] = faseDeProyecto[v.client_project_id]; });
 
     ventasEjecucion.forEach(v => {
       const fase = faseDeVenta[v.id];

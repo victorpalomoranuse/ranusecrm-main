@@ -31,16 +31,14 @@ function effectiveProvider(item) {
 async function relacionDeObra(ventaId) {
   const { data: venta, error: errVenta } = await supabase
     .from('ventas')
-    .select('id, nombre, cliente_nombre, tipo_proyecto, valor')
+    .select('id, nombre, cliente_nombre, tipo_proyecto, valor, client_project_id')
     .eq('id', ventaId)
     .single();
   if (errVenta || !venta) return null;
 
-  const { data: proyecto } = await supabase
-    .from('client_projects')
-    .select('id, project_name, phase')
-    .eq('venta_id', ventaId)
-    .maybeSingle();
+  const { data: proyecto } = venta.client_project_id
+    ? await supabase.from('client_projects').select('id, project_name, phase').eq('id', venta.client_project_id).maybeSingle()
+    : { data: null };
 
   let items = [];
   if (proyecto) {
