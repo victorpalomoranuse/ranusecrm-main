@@ -7,6 +7,16 @@ const requireFinanzas = requirePermission('finanzas');
 
 const TIPOS_PERIODO = ['mes', 'trimestre', 'año'];
 
+// req.user.id es el id de la tabla "users" (login), no el de "employees"
+// (donde vive equipo_comisiones.employee_id) — son tablas distintas con ids
+// distintos. El email es el único dato fiable que los conecta.
+async function resolveMiConfig(req) {
+  const { data: employee } = await supabase.from('employees').select('id').eq('email', req.user.email).maybeSingle();
+  if (!employee) return null;
+  const { data: miConfig } = await supabase.from('equipo_comisiones').select('nombre').eq('employee_id', employee.id).maybeSingle();
+  return miConfig || null;
+}
+
 function claveDePeriodo(fechaISO, tipo) {
   const [y, m] = fechaISO.slice(0, 7).split('-');
   if (tipo === 'año') return y;
@@ -83,7 +93,30 @@ async function calcularComisiones(periodo_tipo, periodo) {
 
   const beneficioDistribuible = Math.max(beneficioNeto - reservaPendiente, 0);
 
-  const porMiembro = equipo.map(miembro => {
+  // Si un miembro tiene proyectos asignados (venta_comisiones), su cifra ya
+  // no sale del % único sobre el beneficio global del periodo, sino de sumar
+  // lo devengado en cada uno de sus proyectos según lo que se ha ido
+  // cobrando — acumulado desde siempre, no solo de este periodo, porque el
+  // pago mensual es simplemente "lo que quede pendiente de cobrar hoy".
+  const porMiembro = await Promise.all(equipo.map(async miembro => {
+    const porVenta = await calcularComisionesPorVenta(miembro.nombre);
+    if (porVenta.length > 0) {
+      const comisionCalculada = porVenta.reduce((s, v) => s + v.devengada, 0);
+      const { data: pagosLifetime } = await supabase
+        .from('finanzas_movimientos')
+        .select('monto')
+        .eq('tipo', 'gasto').eq('categoria', 'Comisiones').eq('beneficiario', miembro.nombre);
+      const yaPagado = (pagosLifetime || []).reduce((s, m) => s + Number(m.monto), 0);
+      return {
+        nombre: miembro.nombre,
+        employeeId: miembro.employee_id || null,
+        porcentaje: null,
+        modelo: 'por_proyecto',
+        comisionCalculada,
+        yaPagado,
+        pendiente: Math.max(comisionCalculada - yaPagado, 0),
+      };
+    }
     const comisionCalculada = beneficioDistribuible * (Number(miembro.porcentaje) / 100);
     const yaPagado = movimientos
       .filter(m => m.tipo === 'gasto' && m.categoria === 'Comisiones' && m.beneficiario === miembro.nombre)
@@ -92,11 +125,12 @@ async function calcularComisiones(periodo_tipo, periodo) {
       nombre: miembro.nombre,
       employeeId: miembro.employee_id || null,
       porcentaje: Number(miembro.porcentaje),
+      modelo: 'global',
       comisionCalculada,
       yaPagado,
       pendiente: Math.max(comisionCalculada - yaPagado, 0),
     };
-  });
+  }));
 
   const totalPendiente = porMiembro.reduce((s, m) => s + m.pendiente, 0);
 
@@ -194,11 +228,12 @@ async function calcularComisionesPorVenta(nombreFiltro) {
   if (asignaciones.length === 0) return [];
 
   const ventaIds = [...new Set(asignaciones.map(a => a.venta_id))];
-  const { data: movimientos } = await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').in('venta_id', ventaIds);
+  const { data: movimientos } = await supabase.from('finanzas_movimientos').select('venta_id, tipo, monto, categoria').in('venta_id', ventaIds);
   const cobradoPorVenta = {};
   const gastosPorVenta = {};
   (movimientos || []).forEach(m => {
     if (m.tipo === 'ingreso') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
+    else if (m.categoria === 'Devolución') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) - Number(m.monto);
     else gastosPorVenta[m.venta_id] = (gastosPorVenta[m.venta_id] || 0) + Number(m.monto);
   });
 
@@ -213,7 +248,7 @@ async function calcularComisionesPorVenta(nombreFiltro) {
     else if (gastosReales > 0) costes = gastosReales;
     else if (v?.tipo_proyecto === 'solo_diseno') costes = 0;
     const beneficioPrevisto = costes != null ? valor - costes : 0;
-    const cobrado = cobradoPorVenta[a.venta_id] || 0;
+    const cobrado = Math.max(cobradoPorVenta[a.venta_id] || 0, 0);
     const proporcionCobrada = presupuesto > 0 ? Math.min(cobrado / presupuesto, 1) : 0;
 
     const comisionTotal = a.tipo === 'fijo' ? Number(a.valor) : beneficioPrevisto * (Number(a.valor) / 100);
@@ -313,21 +348,50 @@ router.delete('/venta/:ventaId/:comisionId', authenticateToken, requireFinanzas,
  */
 router.get('/mia', authenticateToken, async (req, res) => {
   try {
+    const miConfig = await resolveMiConfig(req);
+    if (!miConfig) {
+      return res.json({ encontrado: false, mensaje: 'Todavía no tienes una comisión configurada. Pídele a tu admin que te enlace en Finanzas → Comisiones.' });
+    }
+
+    const porVenta = await calcularComisionesPorVenta(miConfig.nombre);
+
+    // Modelo por proyecto: si tiene proyectos asignados, el total sale de
+    // sumarlos (acumulado desde siempre, según lo que se ha ido cobrando de
+    // cada uno), no de un % único sobre el beneficio global del periodo.
+    if (porVenta.length > 0) {
+      const totalDevengado = porVenta.reduce((s, v) => s + v.devengada, 0);
+      const { data: pagosData } = await supabase
+        .from('finanzas_movimientos')
+        .select('monto')
+        .eq('tipo', 'gasto').eq('categoria', 'Comisiones').eq('beneficiario', miConfig.nombre);
+      const yaPagado = (pagosData || []).reduce((s, m) => s + Number(m.monto), 0);
+      return res.json({
+        encontrado: true,
+        modelo: 'por_proyecto',
+        nombre: miConfig.nombre,
+        comisionEstimada: totalDevengado,
+        yaPagado,
+        pendiente: Math.max(totalDevengado - yaPagado, 0),
+        porVenta,
+        nota: null,
+      });
+    }
+
+    // Sin proyectos asignados todavía: modelo antiguo de % único sobre el
+    // beneficio de la empresa del periodo, como respaldo.
     const periodo_tipo = TIPOS_PERIODO.includes(req.query.periodo_tipo) ? req.query.periodo_tipo : 'mes';
     const periodo = req.query.periodo;
     if (!periodo) return res.status(400).json({ error: 'periodo requerido' });
 
     const calculo = await calcularComisiones(periodo_tipo, periodo);
-    const miFila = calculo.porMiembro.find(m => m.employeeId === req.user.id);
-
+    const miFila = calculo.porMiembro.find(m => m.nombre === miConfig.nombre);
     if (!miFila) {
       return res.json({ encontrado: false, mensaje: 'Todavía no tienes una comisión configurada. Pídele a tu admin que te enlace en Finanzas → Comisiones.' });
     }
 
-    const porVenta = await calcularComisionesPorVenta(miFila.nombre);
-
     res.json({
       encontrado: true,
+      modelo: 'global',
       periodo_tipo,
       periodo,
       nombre: miFila.nombre,
@@ -335,7 +399,7 @@ router.get('/mia', authenticateToken, async (req, res) => {
       comisionEstimada: miFila.comisionCalculada,
       yaPagado: miFila.yaPagado,
       pendiente: miFila.pendiente,
-      porVenta,
+      porVenta: [],
       nota: calculo.reservaPendiente > 0
         ? 'Esta cifra ya descuenta una reserva por proyectos con ejecución que aún no han terminado (su coste final todavía no se conoce del todo), así que puede subir un poco más adelante.'
         : null,
@@ -406,7 +470,7 @@ router.get('/historico', authenticateToken, requireFinanzas, async (req, res) =>
  */
 router.get('/mi-historico', authenticateToken, async (req, res) => {
   try {
-    const { data: miConfig } = await supabase.from('equipo_comisiones').select('nombre').eq('employee_id', req.user.id).maybeSingle();
+    const miConfig = await resolveMiConfig(req);
     if (!miConfig) return res.json({ encontrado: false, total: 0, pagos: [] });
 
     const { data, error } = await supabase

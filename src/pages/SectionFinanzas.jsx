@@ -13,7 +13,7 @@ function fmtMesCorto(mes) {
   return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('es-ES', { month: 'short' }).replace('.', '');
 }
 
-const CATEGORIAS_GASTO = ['Nóminas', 'Materiales', 'Marketing', 'Software', 'Alquiler', 'Comisiones', 'Fiscal', 'Otros'];
+const CATEGORIAS_GASTO = ['Nóminas', 'Materiales', 'Marketing', 'Software', 'Alquiler', 'Comisiones', 'Devolución', 'Fiscal', 'Otros'];
 const CATEGORIAS_INGRESO = ['Venta proyecto', 'Anticipo', 'Diseño', 'Otros'];
 const METODOS_PAGO = ['Transferencia', 'Tarjeta', 'Efectivo', 'Bizum', 'Otro'];
 
@@ -338,7 +338,7 @@ function PanelComisiones() {
           <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setModalConfig(true)}>Configurar %</button>
         </div>
       </div>
-      {!verHistorico && <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -6, marginBottom: 14 }}>"Le corresponde" es solo el cálculo automático de referencia (%) — el importe que se registra cada mes lo pones tú a mano en "Importe a registrar".</p>}
+      {!verHistorico && <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -6, marginBottom: 14 }}>"Le corresponde" es solo el cálculo automático de referencia — el importe que se registra cada mes lo pones tú a mano en "Importe a registrar". Si alguien tiene proyectos asignados (desde "Ver relación completa" de una venta), su cifra sale de sumar esos proyectos según lo cobrado hasta ahora, no del % de aquí abajo.</p>}
 
       {verHistorico ? (
         historico.length === 0 ? <div className="ap-empty"><p>Todavía no se ha registrado ningún pago de comisión.</p></div> : (
@@ -397,7 +397,7 @@ function PanelComisiones() {
                   {calculo.porMiembro.map(m => (
                     <div key={m.nombre} className="fz-row">
                       <span>{m.nombre}</span>
-                      <span>{m.porcentaje}%</span>
+                      <span>{m.modelo === 'por_proyecto' ? 'Por proyecto' : `${m.porcentaje}%`}</span>
                       <span>{fmt(m.comisionCalculada)}</span>
                       <span>{fmt(m.yaPagado)}</span>
                       <span>

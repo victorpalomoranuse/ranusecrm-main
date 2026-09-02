@@ -8,6 +8,81 @@ function fmt(n) {
 
 const FASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Instalación', 5: 'Entregado' };
 
+function ComisionesVenta({ ventaId }) {
+  const [comisiones, setComisiones] = useState([]);
+  const [equipo, setEquipo] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [nombre, setNombre] = useState('');
+  const [tipo, setTipo] = useState('porcentaje');
+  const [valor, setValor] = useState('');
+  const [notas, setNotas] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const cargar = () => {
+    Promise.all([
+      api.get(`/comisiones/venta/${ventaId}`),
+      api.get('/comisiones/config'),
+    ]).then(([c, e]) => {
+      setComisiones(c.data.comisiones || []);
+      setEquipo(e.data.equipo || []);
+    }).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { cargar(); }, [ventaId]);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!nombre.trim() || !valor) return;
+    setGuardando(true);
+    try {
+      await api.post(`/comisiones/venta/${ventaId}`, { nombre, tipo, valor, notas });
+      setNombre(''); setValor(''); setNotas('');
+      cargar();
+    } catch {} finally { setGuardando(false); }
+  };
+
+  const handleDelete = async (id) => {
+    try { await api.delete(`/comisiones/venta/${ventaId}/${id}`); cargar(); } catch {}
+  };
+
+  if (loading) return null;
+
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Comisiones de este proyecto</div>
+      {comisiones.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+          {comisiones.map(c => (
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '6px 10px' }}>
+              <span style={{ flex: 1, fontWeight: 600 }}>{c.nombre}</span>
+              <span style={{ color: 'rgba(255,255,255,0.5)' }}>{c.tipo === 'fijo' ? fmt(c.valor) : `${c.valor}%`}</span>
+              {c.calculo && (
+                <>
+                  <span style={{ color: 'rgba(255,255,255,0.4)' }}>{c.calculo.proporcionCobradaPct}% cobrado</span>
+                  <span style={{ color: '#22c55e' }}>Devengado {fmt(c.calculo.devengada)}</span>
+                  <span style={{ color: '#f5b748' }}>Pendiente {fmt(c.calculo.pendiente)}</span>
+                </>
+              )}
+              <button className="ap-btn-icon" onClick={() => handleDelete(c.id)}><X size={12} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      <form onSubmit={handleAdd} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <input className="ap-select" list="equipo-comisiones" value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Persona" style={{ minWidth: 120, flex: 1 }} />
+        <datalist id="equipo-comisiones">{equipo.map(m => <option key={m.id} value={m.nombre} />)}</datalist>
+        <select className="ap-select" value={tipo} onChange={e => setTipo(e.target.value)} style={{ maxWidth: 110 }}>
+          <option value="porcentaje">%</option>
+          <option value="fijo">Importe fijo</option>
+        </select>
+        <input className="ap-select" type="number" step="0.01" min="0" value={valor} onChange={e => setValor(e.target.value)} placeholder={tipo === 'porcentaje' ? '%' : '€'} style={{ maxWidth: 90 }} />
+        <input className="ap-select" value={notas} onChange={e => setNotas(e.target.value)} placeholder="Notas (opc.)" style={{ minWidth: 100, flex: 1 }} />
+        <button type="submit" className="ap-btn ap-btn-primary ap-btn-xs" disabled={guardando}>+ Añadir</button>
+      </form>
+    </div>
+  );
+}
+
 /**
  * Ficha única de una venta, con TODO lo que ya está registrado en el
  * sistema (datos de la venta, pagos, gastos, margen, fase de ejecución) —
@@ -156,6 +231,9 @@ export function ProyectoCompletoModal({ ventaId, onClose }) {
                 <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Todavía no hay un proyecto de ejecución enlazado a esta venta.</p>
               )}
             </div>
+
+            {/* Comisiones */}
+            <ComisionesVenta ventaId={ventaId} />
           </div>
         )}
       </div>
