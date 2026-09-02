@@ -71,7 +71,7 @@ router.get('/:id', authenticateToken, requireAdmin, async (req, res) => {
  */
 router.post('/cliente', authenticateToken, requireClientes, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, name } = req.body;
 
     // Validación
     if (!email || !password) {
@@ -112,9 +112,10 @@ router.post('/cliente', authenticateToken, requireClientes, async (req, res) => 
         email: email.toLowerCase().trim(),
         password_hash: passwordHash,
         role: 'cliente',
+        name: name?.trim() || null,
         created_by: req.user.id
       })
-      .select('id, email, role, created_at')
+      .select('id, email, role, name, created_at')
       .single();
 
     if (error) {
