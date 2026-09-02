@@ -331,13 +331,24 @@ async function eventosComisionPorVenta(employeeIdFiltro) {
     const comisionTotal = a.tipo === 'fijo' ? Number(a.valor) : beneficioPrevisto * (Number(a.valor) / 100);
     if (presupuesto <= 0) return;
 
+    // Igual que calcularComisionesPorVenta, la proporción cobrada nunca pasa
+    // del 100% del presupuesto (si el cliente paga de más, ese exceso no
+    // genera más comisión) ni baja de 0% — pero aquí hace falta repartir ese
+    // límite ENTRE los pagos, en el orden en que fueron entrando, para que
+    // cada pago se lleve solo la parte de comisión que "quedaba libre" en ese
+    // momento. Se procesan en orden cronológico llevando un acumulado.
+    let acumuladoAntes = 0;
     (movimientos || [])
       .filter(m => m.venta_id === a.venta_id && (m.tipo === 'ingreso' || m.categoria === 'Devolución'))
+      .sort((m1, m2) => (m1.fecha || '').localeCompare(m2.fecha || ''))
       .forEach(m => {
         const signo = m.categoria === 'Devolución' ? -1 : 1;
         const montoCobrado = signo * Number(m.monto);
-        const fraccion = montoCobrado / presupuesto;
-        const devengado = comisionTotal * fraccion;
+        const acumuladoDespues = acumuladoAntes + montoCobrado;
+        const fraccionAntes = Math.min(Math.max(acumuladoAntes, 0), presupuesto) / presupuesto;
+        const fraccionDespues = Math.min(Math.max(acumuladoDespues, 0), presupuesto) / presupuesto;
+        const devengado = comisionTotal * (fraccionDespues - fraccionAntes);
+        acumuladoAntes = acumuladoDespues;
         if (devengado !== 0) {
           eventos.push({
             employeeId: a.employee_id, nombre: a.nombre, ventaId: a.venta_id, ventaNombre: v?.nombre || '—', fecha: m.fecha, devengado,
