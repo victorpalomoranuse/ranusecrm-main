@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
-import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2, Users, Check, Pencil } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2, Users, Check, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './SectionFinanzas.css';
 
@@ -308,6 +308,7 @@ function EquipoPeriodos() {
   const [equipo, setEquipo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [abierto, setAbierto] = useState(null);
+  const [periodoAbierto, setPeriodoAbierto] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -344,15 +345,39 @@ function EquipoPeriodos() {
               {abierto === m.nombre && (
                 m.periodos.length === 0 ? <p className="ap-empty-sm" style={{ padding: '6px 12px' }}>Sin ingresos cobrados todavía.</p> : (
                   <div className="fz-tabla" style={{ marginTop: 4 }}>
-                    <div className="fz-row fz-row--head"><span>Periodo</span><span>Devengado</span><span>Pagado</span><span>Pendiente</span></div>
-                    {m.periodos.map(p => (
-                      <div key={p.periodo} className="fz-row">
-                        <span>{fmtPeriodoLargo(p.periodo, tipo)}</span>
-                        <span>{fmt(p.devengado)}</span>
-                        <span style={{ color: '#22c55e' }}>{fmt(p.pagado)}</span>
-                        <span style={{ color: p.pendiente > 0.01 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(p.pendiente)}</span>
-                      </div>
-                    ))}
+                    <div className="fz-row fz-row--head"><span>Periodo</span><span>Generado</span><span>Cobrado</span><span>Pendiente</span></div>
+                    {m.periodos.map(p => {
+                      const clave = `${m.nombre}|${p.periodo}`;
+                      return (
+                        <div key={p.periodo}>
+                          <div className="fz-row" style={{ cursor: p.porVenta?.length ? 'pointer' : 'default' }} onClick={() => p.porVenta?.length && setPeriodoAbierto(a => a === clave ? null : clave)}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {p.porVenta?.length > 0 && (periodoAbierto === clave ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
+                              {fmtPeriodoLargo(p.periodo, tipo)}
+                            </span>
+                            <span>{fmt(p.devengado)}</span>
+                            <span style={{ color: '#22c55e' }}>{fmt(p.pagado)}</span>
+                            <span style={{ color: p.pendiente > 0.01 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(p.pendiente)}</span>
+                          </div>
+                          {periodoAbierto === clave && p.porVenta?.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 12px 12px 28px' }}>
+                              {p.porVenta.map(v => (
+                                <div key={v.ventaId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+                                  <span>{v.ventaNombre}</span>
+                                  <span>{fmt(v.devengado)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div className="fz-row" style={{ fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                      <span>Total</span>
+                      <span>{fmt(m.periodos.reduce((s, p) => s + p.devengado, 0))}</span>
+                      <span style={{ color: '#22c55e' }}>{fmt(m.periodos.reduce((s, p) => s + p.pagado, 0))}</span>
+                      <span style={{ color: '#f5b748' }}>{fmt(m.periodos.reduce((s, p) => s + p.pendiente, 0))}</span>
+                    </div>
                   </div>
                 )
               )}

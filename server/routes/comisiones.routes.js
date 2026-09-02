@@ -353,12 +353,21 @@ async function periodosDeComision(employeeId, nombre, tipo) {
   ]);
 
   const porPeriodo = {};
-  const ensure = (clave) => { if (!porPeriodo[clave]) porPeriodo[clave] = { periodo: clave, devengado: 0, pagado: 0 }; return porPeriodo[clave]; };
-  eventos.forEach(ev => { ensure(claveDePeriodo(ev.fecha, tipo)).devengado += ev.devengado; });
+  const ensure = (clave) => { if (!porPeriodo[clave]) porPeriodo[clave] = { periodo: clave, devengado: 0, pagado: 0, porVenta: {} }; return porPeriodo[clave]; };
+  eventos.forEach(ev => {
+    const p = ensure(claveDePeriodo(ev.fecha, tipo));
+    p.devengado += ev.devengado;
+    if (!p.porVenta[ev.ventaId]) p.porVenta[ev.ventaId] = { ventaId: ev.ventaId, ventaNombre: ev.ventaNombre, devengado: 0 };
+    p.porVenta[ev.ventaId].devengado += ev.devengado;
+  });
   (pagos || []).forEach(p => { ensure(claveDePeriodo(p.fecha, tipo)).pagado += Number(p.monto); });
 
   return Object.values(porPeriodo)
-    .map(p => ({ ...p, pendiente: p.devengado - p.pagado }))
+    .map(p => ({
+      ...p,
+      pendiente: p.devengado - p.pagado,
+      porVenta: Object.values(p.porVenta).sort((a, b) => b.devengado - a.devengado),
+    }))
     .sort((a, b) => b.periodo.localeCompare(a.periodo));
 }
 

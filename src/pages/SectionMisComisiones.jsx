@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { Wallet, TrendingUp, Clock, Calendar } from 'lucide-react';
+import { Wallet, TrendingUp, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 
 function fmt(n) {
   return Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
@@ -25,18 +25,45 @@ function fmtPeriodo(clave, tipo) {
 const PERIODO_TABS = [{ tipo: 'mes', label: 'Mes' }, { tipo: 'trimestre', label: 'Trimestre' }, { tipo: 'año', label: 'Año' }];
 
 function ResumenPorPeriodo({ periodos, tipo }) {
+  const [abierto, setAbierto] = useState(null);
+
   if (!periodos || periodos.length === 0) return <p className="ap-empty-sm">Todavía no hay ingresos cobrados en tus proyectos.</p>;
+
+  const totalDevengado = periodos.reduce((s, p) => s + p.devengado, 0);
+  const totalPagado = periodos.reduce((s, p) => s + p.pagado, 0);
+
   return (
     <div className="fz-tabla">
-      <div className="fz-row fz-row--head"><span>Periodo</span><span>Devengado</span><span>Pagado</span><span>Pendiente</span></div>
+      <div className="fz-row fz-row--head"><span>Periodo</span><span>Generado</span><span>Cobrado</span><span>Pendiente</span></div>
       {periodos.map(p => (
-        <div key={p.periodo} className="fz-row">
-          <span>{fmtPeriodo(p.periodo, tipo)}</span>
-          <span>{fmt(p.devengado)}</span>
-          <span style={{ color: '#22c55e' }}>{fmt(p.pagado)}</span>
-          <span style={{ color: p.pendiente > 0.01 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(p.pendiente)}</span>
+        <div key={p.periodo}>
+          <div className="fz-row" style={{ cursor: p.porVenta?.length ? 'pointer' : 'default' }} onClick={() => p.porVenta?.length && setAbierto(a => a === p.periodo ? null : p.periodo)}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              {p.porVenta?.length > 0 && (abierto === p.periodo ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
+              {fmtPeriodo(p.periodo, tipo)}
+            </span>
+            <span>{fmt(p.devengado)}</span>
+            <span style={{ color: '#22c55e' }}>{fmt(p.pagado)}</span>
+            <span style={{ color: p.pendiente > 0.01 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(p.pendiente)}</span>
+          </div>
+          {abierto === p.periodo && p.porVenta?.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 12px 12px 28px' }}>
+              {p.porVenta.map(v => (
+                <div key={v.ventaId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+                  <span>{v.ventaNombre}</span>
+                  <span>{fmt(v.devengado)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ))}
+      <div className="fz-row" style={{ fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+        <span>Total</span>
+        <span>{fmt(totalDevengado)}</span>
+        <span style={{ color: '#22c55e' }}>{fmt(totalPagado)}</span>
+        <span style={{ color: '#f5b748' }}>{fmt(totalDevengado - totalPagado)}</span>
+      </div>
     </div>
   );
 }
@@ -77,7 +104,7 @@ export function SectionMisComisiones() {
     <div className="ap-section">
       <div className="ap-section-head">
         <div><h1>Mis Comisiones</h1><p>Lo que te corresponde, lo que ya se te ha pagado y lo que queda pendiente.</p></div>
-        <button className="ap-btn ap-btn-ghost" onClick={() => setVerHistorico(v => !v)}>{verHistorico ? 'Ver periodo actual' : 'Ver histórico total'}</button>
+        <button className="ap-btn ap-btn-ghost" onClick={() => setVerHistorico(v => !v)}>{verHistorico ? 'Ver mes a mes' : 'Ver pagos recibidos'}</button>
       </div>
 
       {verHistorico ? (
@@ -111,14 +138,6 @@ export function SectionMisComisiones() {
         )
       ) : (
         <>
-          {mia?.encontrado && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              {PERIODO_TABS.map(t => (
-                <button key={t.tipo} className={`ap-btn ap-btn-sm ${periodoTipo === t.tipo ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setPeriodoTipo(t.tipo)}>{t.label}</button>
-              ))}
-            </div>
-          )}
-
           {loading ? (
             <div className="ap-loading">Cargando…</div>
           ) : !mia?.encontrado ? (
@@ -128,7 +147,7 @@ export function SectionMisComisiones() {
               <div className="vt-stats">
                 <div className="vt-stat-card">
                   <div className="vt-stat-icon"><TrendingUp size={18} /></div>
-                  <div className="vt-stat-body"><span>{mia.modelo === 'global' ? `Te corresponde este periodo (${mia.porcentaje}%)` : 'Te corresponde en total'}</span><strong>{fmt(mia.comisionEstimada)}</strong></div>
+                  <div className="vt-stat-body"><span>{mia.modelo === 'global' ? `Te corresponde este periodo (${mia.porcentaje}%)` : 'Total acumulado (desde siempre)'}</span><strong>{fmt(mia.comisionEstimada)}</strong></div>
                 </div>
                 <div className="vt-stat-card">
                   <div className="vt-stat-icon" style={{ color: '#22c55e' }}><Wallet size={18} /></div>
@@ -144,32 +163,20 @@ export function SectionMisComisiones() {
               )}
 
               {mia.modelo === 'por_proyecto' && (
-                <>
-                  <div style={{ marginTop: 24 }}>
-                    <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>De dónde sale ese número</p>
-                    {mia.porVenta.length === 0 ? (
-                      <p className="ap-empty-sm">Todavía no tienes proyectos asignados.</p>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {mia.porVenta.map(v => (
-                          <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 12px', flexWrap: 'wrap' }}>
-                            <span style={{ flex: 1, fontWeight: 600, minWidth: 140 }}>{v.ventaNombre}</span>
-                            <span style={{ color: 'rgba(255,255,255,0.5)' }}>{v.tipo === 'fijo' ? fmt(v.valor) : `${v.valor}%`}</span>
-                            <span style={{ color: 'rgba(255,255,255,0.4)' }}>{v.proporcionCobradaPct}% cobrado</span>
-                            <span style={{ color: '#22c55e' }}>Devengado {fmt(v.devengada)}</span>
-                            <span style={{ color: '#f5b748' }}>Por cobrar {fmt(v.pendiente)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                <div style={{ marginTop: 24 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+                    <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.35)', margin: 0 }}>Mes a mes</p>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {PERIODO_TABS.map(t => (
+                        <button key={t.tipo} className={`ap-btn ap-btn-xs ${periodoTipo === t.tipo ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setPeriodoTipo(t.tipo)}>{t.label}</button>
+                      ))}
+                    </div>
                   </div>
-
-                  <div style={{ marginTop: 24 }}>
-                    <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}><Calendar size={12} style={{ verticalAlign: -2 }} /> Resumen por {periodoTipo === 'mes' ? 'mes' : periodoTipo === 'trimestre' ? 'trimestre' : 'año'}</p>
-                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -4, marginBottom: 10 }}>Cada periodo muestra lo que se generó según lo que fuiste cobrando ese {periodoTipo === 'mes' ? 'mes' : periodoTipo === 'trimestre' ? 'trimestre' : 'año'} (aunque el proyecto siga abierto), lo que ya se te pagó de eso, y lo que queda pendiente.</p>
-                    {cargandoPeriodos ? <div className="ap-loading">Cargando…</div> : <ResumenPorPeriodo periodos={periodos} tipo={periodoTipo} />}
-                  </div>
-                </>
+                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -2, marginBottom: 10 }}>
+                    Lo que se generó según lo que fuiste cobrando cada {periodoTipo === 'mes' ? 'mes' : periodoTipo === 'trimestre' ? 'trimestre' : 'año'} (aunque el proyecto siga abierto), lo que ya se te pagó de eso, y lo que queda pendiente. Toca un periodo para ver de qué proyectos sale.
+                  </p>
+                  {cargandoPeriodos ? <div className="ap-loading">Cargando…</div> : <ResumenPorPeriodo periodos={periodos} tipo={periodoTipo} />}
+                </div>
               )}
             </>
           )}
