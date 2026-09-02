@@ -13,6 +13,14 @@ function fmtMesCorto(mes) {
   return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('es-ES', { month: 'short' }).replace('.', '');
 }
 
+function explicacionComision(v) {
+  const pctCobrado = v.presupuesto > 0 ? Math.round((v.montoCobrado / v.presupuesto) * 100) : 0;
+  if (v.tipo === 'fijo') {
+    return `Cobró ${fmt(v.montoCobrado)} este periodo (${pctCobrado}% del presupuesto). Su comisión en este proyecto es fija — ${fmt(v.valorConfig)} en total — así que le corresponde esa parte: ${fmt(v.devengado)}.`;
+  }
+  return `Cobró ${fmt(v.montoCobrado)} este periodo, que a su margen previsto (beneficio ${fmt(v.beneficioPrevisto)} sobre ${fmt(v.presupuesto)}) es ${fmt(v.montoCobrado * (v.beneficioPrevisto / v.presupuesto))} de beneficio. Su comisión es el ${v.valorConfig}% de eso → ${fmt(v.devengado)}.`;
+}
+
 function fmtPeriodoLargo(clave, tipo) {
   if (tipo === 'año') return clave;
   if (tipo === 'trimestre') return clave.replace('-Q', ' · T');
@@ -360,11 +368,14 @@ function EquipoPeriodos() {
                             <span style={{ color: p.pendiente > 0.01 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(p.pendiente)}</span>
                           </div>
                           {periodoAbierto === clave && p.porVenta?.length > 0 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 12px 12px 28px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 12px 12px 28px' }}>
                               {p.porVenta.map(v => (
-                                <div key={v.ventaId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-                                  <span>{v.ventaNombre}</span>
-                                  <span>{fmt(v.devengado)}</span>
+                                <div key={v.ventaId} style={{ fontSize: 12 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.75)', fontWeight: 600, marginBottom: 2 }}>
+                                    <span>{v.ventaNombre}</span>
+                                    <span>{fmt(v.devengado)}</span>
+                                  </div>
+                                  <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>{explicacionComision(v)}</p>
                                 </div>
                               ))}
                             </div>

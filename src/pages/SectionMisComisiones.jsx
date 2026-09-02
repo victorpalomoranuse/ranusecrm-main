@@ -24,6 +24,14 @@ function fmtPeriodo(clave, tipo) {
 
 const PERIODO_TABS = [{ tipo: 'mes', label: 'Mes' }, { tipo: 'trimestre', label: 'Trimestre' }, { tipo: 'año', label: 'Año' }];
 
+function explicacion(v) {
+  const pctCobrado = v.presupuesto > 0 ? Math.round((v.montoCobrado / v.presupuesto) * 100) : 0;
+  if (v.tipo === 'fijo') {
+    return `Cobraste ${fmt(v.montoCobrado)} este periodo (${pctCobrado}% del presupuesto). Tu comisión en este proyecto es fija — ${fmt(v.valorConfig)} en total — así que te corresponde esa parte: ${fmt(v.devengado)}.`;
+  }
+  return `Cobraste ${fmt(v.montoCobrado)} este periodo, que a tu margen previsto (beneficio ${fmt(v.beneficioPrevisto)} sobre ${fmt(v.presupuesto)}) es ${fmt(v.montoCobrado * (v.beneficioPrevisto / v.presupuesto))} de beneficio. Tu comisión es el ${v.valorConfig}% de eso → ${fmt(v.devengado)}.`;
+}
+
 function ResumenPorPeriodo({ periodos, tipo }) {
   const [abierto, setAbierto] = useState(null);
 
@@ -47,11 +55,14 @@ function ResumenPorPeriodo({ periodos, tipo }) {
             <span style={{ color: p.pendiente > 0.01 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(p.pendiente)}</span>
           </div>
           {abierto === p.periodo && p.porVenta?.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 12px 12px 28px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 12px 12px 28px' }}>
               {p.porVenta.map(v => (
-                <div key={v.ventaId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-                  <span>{v.ventaNombre}</span>
-                  <span>{fmt(v.devengado)}</span>
+                <div key={v.ventaId} style={{ fontSize: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.75)', fontWeight: 600, marginBottom: 2 }}>
+                    <span>{v.ventaNombre}</span>
+                    <span>{fmt(v.devengado)}</span>
+                  </div>
+                  <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>{explicacion(v)}</p>
                 </div>
               ))}
             </div>

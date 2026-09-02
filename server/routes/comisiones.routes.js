@@ -330,10 +330,17 @@ async function eventosComisionPorVenta(employeeIdFiltro) {
       .filter(m => m.venta_id === a.venta_id && (m.tipo === 'ingreso' || m.categoria === 'Devolución'))
       .forEach(m => {
         const signo = m.categoria === 'Devolución' ? -1 : 1;
-        const fraccion = (signo * Number(m.monto)) / presupuesto;
+        const montoCobrado = signo * Number(m.monto);
+        const fraccion = montoCobrado / presupuesto;
         const devengado = comisionTotal * fraccion;
         if (devengado !== 0) {
-          eventos.push({ employeeId: a.employee_id, nombre: a.nombre, ventaId: a.venta_id, ventaNombre: v?.nombre || '—', fecha: m.fecha, devengado });
+          eventos.push({
+            employeeId: a.employee_id, nombre: a.nombre, ventaId: a.venta_id, ventaNombre: v?.nombre || '—', fecha: m.fecha, devengado,
+            // Datos para explicar el cálculo al usuario: qué % (o fijo) tiene
+            // asignado, cuánto cobró el cliente en este pago concreto, y sobre
+            // qué beneficio/presupuesto se calculó.
+            tipo: a.tipo, valorConfig: Number(a.valor), montoCobrado, presupuesto, beneficioPrevisto,
+          });
         }
       });
   });
@@ -357,8 +364,14 @@ async function periodosDeComision(employeeId, nombre, tipo) {
   eventos.forEach(ev => {
     const p = ensure(claveDePeriodo(ev.fecha, tipo));
     p.devengado += ev.devengado;
-    if (!p.porVenta[ev.ventaId]) p.porVenta[ev.ventaId] = { ventaId: ev.ventaId, ventaNombre: ev.ventaNombre, devengado: 0 };
+    if (!p.porVenta[ev.ventaId]) {
+      p.porVenta[ev.ventaId] = {
+        ventaId: ev.ventaId, ventaNombre: ev.ventaNombre, devengado: 0, montoCobrado: 0,
+        tipo: ev.tipo, valorConfig: ev.valorConfig, presupuesto: ev.presupuesto, beneficioPrevisto: ev.beneficioPrevisto,
+      };
+    }
     p.porVenta[ev.ventaId].devengado += ev.devengado;
+    p.porVenta[ev.ventaId].montoCobrado += ev.montoCobrado;
   });
   (pagos || []).forEach(p => { ensure(claveDePeriodo(p.fecha, tipo)).pagado += Number(p.monto); });
 
