@@ -433,7 +433,7 @@ function EquipoPeriodos() {
                       <span>Total</span>
                       <span>{fmt(m.periodos.reduce((s, p) => s + p.devengado, 0))}</span>
                       <span style={{ color: '#22c55e' }}>{fmt(m.periodos.reduce((s, p) => s + p.pagado, 0))}</span>
-                      <span style={{ color: '#f5b748' }}>{fmt(m.periodos.reduce((s, p) => s + p.pendiente, 0))}</span>
+                      <span style={{ color: '#f5b748' }}>{fmt(m.periodos.reduce((s, p) => s + p.devengado, 0) - m.periodos.reduce((s, p) => s + p.pagado, 0))}</span>
                     </div>
                   </div>
                 )
