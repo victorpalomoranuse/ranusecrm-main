@@ -58,11 +58,15 @@ function ResumenPorPeriodo({ periodos, tipo }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 12px 12px 28px' }}>
               {p.porVenta.map(v => (
                 <div key={v.ventaId} style={{ fontSize: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.75)', fontWeight: 600, marginBottom: 2 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: v.esAjuste ? '#a78bfa' : 'rgba(255,255,255,0.75)', fontWeight: 600, marginBottom: 2 }}>
                     <span>{v.ventaNombre}</span>
                     <span>{fmt(v.devengado)}</span>
                   </div>
-                  <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>{explicacion(v)}</p>
+                  <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>
+                    {v.esAjuste
+                      ? 'Alguna venta de un mes anterior cambió después (por ejemplo, se marcó como cerrada) — los meses ya vistos no se tocan, así que la diferencia se refleja aquí, en el mes actual.'
+                      : explicacion(v)}
+                  </p>
                 </div>
               ))}
             </div>
@@ -184,7 +188,7 @@ export function SectionMisComisiones() {
                     </div>
                   </div>
                   <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -2, marginBottom: 10 }}>
-                    Lo que se generó según lo que fuiste cobrando cada {periodoTipo === 'mes' ? 'mes' : periodoTipo === 'trimestre' ? 'trimestre' : 'año'} (aunque el proyecto siga abierto), lo que ya se te pagó de eso, y lo que queda pendiente. Toca un periodo para ver de qué proyectos sale.
+                    Lo que se generó según lo que fuiste cobrando cada {periodoTipo === 'mes' ? 'mes' : periodoTipo === 'trimestre' ? 'trimestre' : 'año'} (aunque el proyecto siga abierto), lo que ya se te pagó de eso, y lo que queda pendiente en total hasta ese momento — si un {periodoTipo === 'mes' ? 'mes' : periodoTipo === 'trimestre' ? 'trimestre' : 'año'} se paga de más, ese sobrante se resta del pendiente del siguiente. Toca un periodo para ver de qué proyectos sale.
                   </p>
                   {cargandoPeriodos ? <div className="ap-loading">Cargando…</div> : <ResumenPorPeriodo periodos={periodos} tipo={periodoTipo} />}
                 </div>

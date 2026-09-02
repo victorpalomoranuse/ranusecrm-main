@@ -359,7 +359,7 @@ function EquipoPeriodos() {
           ))}
         </div>
       </div>
-      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -6, marginBottom: 10 }}>El "Cobrado" de aquí abajo es un apunte tuyo, aparte de Finanzas — no crea ni lee ningún movimiento de Finanzas, para no mezclarlo con pagos antiguos que incluían otras cosas además de la comisión. Se actualiza al momento en el panel de esa persona.</p>
+      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -6, marginBottom: 10 }}>El "Cobrado" de aquí abajo es un apunte tuyo, aparte de Finanzas — no crea ni lee ningún movimiento de Finanzas, para no mezclarlo con pagos antiguos que incluían otras cosas además de la comisión. Se actualiza al momento en el panel de esa persona. El "Pendiente" es un saldo acumulado: si un periodo se paga de más, el sobrante se resta del pendiente del siguiente (y si se paga de menos, el déficit se suma).</p>
 
       {loading ? <div className="ap-loading">Calculando…</div> : !equipo || conProyectos.length === 0 ? (
         <p className="ap-empty-sm">Todavía nadie tiene proyectos asignados (modelo "por proyecto"). Asígnalos desde "Ver relación completa" de una venta.</p>
@@ -395,11 +395,15 @@ function EquipoPeriodos() {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: p.pendiente > 0.01 ? 10 : 0 }}>
                                   {p.porVenta.map(v => (
                                     <div key={v.ventaId} style={{ fontSize: 12 }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.75)', fontWeight: 600, marginBottom: 2 }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', color: v.esAjuste ? '#a78bfa' : 'rgba(255,255,255,0.75)', fontWeight: 600, marginBottom: 2 }}>
                                         <span>{v.ventaNombre}</span>
                                         <span>{fmt(v.devengado)}</span>
                                       </div>
-                                      <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>{explicacionComision(v)}</p>
+                                      <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>
+                                        {v.esAjuste
+                                          ? 'Alguna venta de un mes anterior cambió después (por ejemplo, se marcó como cerrada) — los meses ya vistos no se tocan, así que la diferencia se refleja aquí, en el mes actual.'
+                                          : explicacionComision(v)}
+                                      </p>
                                     </div>
                                   ))}
                                 </div>

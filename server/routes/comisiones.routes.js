@@ -361,36 +361,122 @@ async function eventosComisionPorVenta(employeeIdFiltro) {
  * para esto) — sale de comisiones_pagos_periodo, un registro aparte que tú
  * introduces a mano por persona y periodo. El histórico de "Ya pagado" de
  * Finanzas sigue funcionando igual que siempre, sin tocarlo.
+ *
+ * Los periodos ya pasados se CONGELAN la primera vez que se consultan (se
+ * guardan en comisiones_devengado_congelado) y a partir de ahí ya no
+ * cambian, aunque después se cierre esa venta o cambie su coste real. Si el
+ * recálculo en vivo dice que el total de un proyecto en un periodo pasado
+ * debería ser distinto al que quedó congelado, la diferencia no se aplica
+ * a ese mes — se acumula y aparece como una única línea "Ajuste por cambios
+ * en ventas de meses anteriores" dentro del periodo ACTUAL (siempre en
+ * vivo, nunca congelado), para que el total siga cuadrando sin mover lo que
+ * ya se vio o se pagó en meses anteriores.
  */
 async function periodosDeComision(employeeId, nombre, tipo) {
-  const [eventos, { data: pagos }] = await Promise.all([
-    employeeId ? eventosComisionPorVenta(employeeId) : Promise.resolve([]),
-    supabase.from('comisiones_pagos_periodo').select('periodo, monto').eq('nombre', nombre).eq('periodo_tipo', tipo),
-  ]);
+  const eventos = employeeId ? await eventosComisionPorVenta(employeeId) : [];
 
-  const porPeriodo = {};
-  const ensure = (clave) => { if (!porPeriodo[clave]) porPeriodo[clave] = { periodo: clave, devengado: 0, pagado: 0, porVenta: {} }; return porPeriodo[clave]; };
+  // Agrupar eventos en vivo por periodo+venta (con el estado ACTUAL de cada
+  // venta, ej. si ya está cerrada).
+  const gruposPorPeriodoVenta = {};
   eventos.forEach(ev => {
-    const p = ensure(claveDePeriodo(ev.fecha, tipo));
-    p.devengado += ev.devengado;
-    if (!p.porVenta[ev.ventaId]) {
-      p.porVenta[ev.ventaId] = {
-        ventaId: ev.ventaId, ventaNombre: ev.ventaNombre, devengado: 0, montoCobrado: 0,
+    const periodo = claveDePeriodo(ev.fecha, tipo);
+    const clave = `${periodo}|${ev.ventaId}`;
+    if (!gruposPorPeriodoVenta[clave]) {
+      gruposPorPeriodoVenta[clave] = {
+        periodo, ventaId: ev.ventaId, ventaNombre: ev.ventaNombre, devengado: 0, montoCobrado: 0,
         tipo: ev.tipo, valorConfig: ev.valorConfig, presupuesto: ev.presupuesto, beneficioPrevisto: ev.beneficioPrevisto,
       };
     }
-    p.porVenta[ev.ventaId].devengado += ev.devengado;
-    p.porVenta[ev.ventaId].montoCobrado += ev.montoCobrado;
+    gruposPorPeriodoVenta[clave].devengado += ev.devengado;
+    gruposPorPeriodoVenta[clave].montoCobrado += ev.montoCobrado;
   });
+
+  const periodoActual = claveDePeriodo(new Date().toISOString(), tipo);
+  const grupos = Object.values(gruposPorPeriodoVenta);
+  const pasados = grupos.filter(g => g.periodo < periodoActual);
+  const actuales = grupos.filter(g => g.periodo >= periodoActual);
+
+  const porPeriodo = {};
+  const ensure = (clave) => { if (!porPeriodo[clave]) porPeriodo[clave] = { periodo: clave, devengado: 0, pagado: 0, porVenta: {} }; return porPeriodo[clave]; };
+  const addPorVenta = (p, g, devengado) => {
+    if (!p.porVenta[g.ventaId]) {
+      p.porVenta[g.ventaId] = {
+        ventaId: g.ventaId, ventaNombre: g.ventaNombre, devengado: 0, montoCobrado: g.montoCobrado,
+        tipo: g.tipo, valorConfig: g.valorConfig, presupuesto: g.presupuesto, beneficioPrevisto: g.beneficioPrevisto,
+      };
+    }
+    p.porVenta[g.ventaId].devengado += devengado;
+  };
+
+  let ajustePeriodoActual = 0;
+  if (pasados.length > 0) {
+    const { data: congelados } = await supabase
+      .from('comisiones_devengado_congelado')
+      .select('venta_id, periodo, devengado')
+      .eq('nombre', nombre).eq('periodo_tipo', tipo);
+    const congeladoMap = {};
+    (congelados || []).forEach(c => { congeladoMap[`${c.periodo}|${c.venta_id}`] = Number(c.devengado); });
+
+    const porCongelar = [];
+    pasados.forEach(g => {
+      const clave = `${g.periodo}|${g.ventaId}`;
+      const p = ensure(g.periodo);
+      if (Object.prototype.hasOwnProperty.call(congeladoMap, clave)) {
+        // Ya estaba congelado: se usa ese valor tal cual, y la diferencia con
+        // lo que el cálculo en vivo dice ahora se manda al periodo actual.
+        const frozenVal = congeladoMap[clave];
+        ajustePeriodoActual += g.devengado - frozenVal;
+        p.devengado += frozenVal;
+        addPorVenta(p, g, frozenVal);
+      } else {
+        // Primera vez que se ve este periodo+proyecto ya pasado: se congela
+        // con el valor de hoy.
+        porCongelar.push({ nombre, venta_id: g.ventaId, periodo_tipo: tipo, periodo: g.periodo, devengado: g.devengado });
+        p.devengado += g.devengado;
+        addPorVenta(p, g, g.devengado);
+      }
+    });
+    if (porCongelar.length > 0) {
+      await supabase.from('comisiones_devengado_congelado').upsert(porCongelar, { onConflict: 'nombre,venta_id,periodo_tipo,periodo' });
+    }
+  }
+
+  actuales.forEach(g => {
+    const p = ensure(g.periodo);
+    p.devengado += g.devengado;
+    addPorVenta(p, g, g.devengado);
+  });
+
+  if (Math.abs(ajustePeriodoActual) > 0.005) {
+    const p = ensure(periodoActual);
+    p.devengado += ajustePeriodoActual;
+    p.porVenta.__ajuste__ = {
+      ventaId: '__ajuste__', ventaNombre: 'Ajuste por cambios en ventas de meses anteriores', devengado: ajustePeriodoActual, esAjuste: true,
+    };
+  }
+
+  const { data: pagos } = await supabase.from('comisiones_pagos_periodo').select('periodo, monto').eq('nombre', nombre).eq('periodo_tipo', tipo);
   (pagos || []).forEach(p => { ensure(p.periodo).pagado += Number(p.monto); });
 
-  return Object.values(porPeriodo)
-    .map(p => ({
-      ...p,
-      pendiente: p.devengado - p.pagado,
-      porVenta: Object.values(p.porVenta).sort((a, b) => b.devengado - a.devengado),
-    }))
-    .sort((a, b) => b.periodo.localeCompare(a.periodo));
+  // El "pendiente" es un saldo ACUMULADO, no el devengado-pagado de cada mes
+  // aislado: si un mes se paga de más, ese sobrante se resta del pendiente
+  // del mes siguiente (y si se paga de menos, el déficit se suma), igual
+  // que cuadrarías una cuenta corriente.
+  let cumDevengado = 0;
+  let cumPagado = 0;
+  const conPendienteAcumulado = Object.values(porPeriodo)
+    .sort((a, b) => a.periodo.localeCompare(b.periodo))
+    .map(p => {
+      cumDevengado += p.devengado;
+      cumPagado += p.pagado;
+      return {
+        ...p,
+        pendiente: cumDevengado - cumPagado,
+        porVenta: Object.values(p.porVenta).sort((a, b) => b.devengado - a.devengado),
+      };
+    });
+
+  return conPendienteAcumulado.sort((a, b) => b.periodo.localeCompare(a.periodo));
 }
 
 /**
