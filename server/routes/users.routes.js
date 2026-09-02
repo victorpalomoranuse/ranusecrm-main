@@ -17,7 +17,7 @@ router.get('/', authenticateToken, requireClientes, async (req, res) => {
 
     let query = supabase
       .from('users')
-      .select('id, email, role, created_at')
+      .select('id, email, role, name, created_at')
       .order('created_at', { ascending: false });
 
     // Filtrar por rol si se especifica

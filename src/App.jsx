@@ -13,6 +13,7 @@ import { EquipoPanel } from './pages/EquipoPanel';
 import { MiProyecto } from './pages/MiProyecto';
 import { ClienteLogin } from './pages/ClienteLogin';
 import { ClientePanel } from './pages/ClientePanel';
+import { RestablecerContrasena } from './pages/RestablecerContrasena';
 import './App.css';
 
 function AdminGuard({ children }) {
@@ -68,6 +69,7 @@ function App() {
 
               {/* Clientes */}
               <Route path="/cliente" element={<ClienteLogin />} />
+              <Route path="/cliente/restablecer" element={<RestablecerContrasena />} />
               <Route path="/cliente/panel" element={
                 <ClienteGuard><ClientePanel /></ClienteGuard>
               } />

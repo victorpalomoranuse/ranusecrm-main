@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useClienteAuth } from '../auth/ClienteAuthContext';
+import clienteApi from '../services/clienteApi';
 import './ClienteLogin.css';
 
 export function ClienteLogin() {
-  const { login } = useClienteAuth();
+  const { login, register } = useClienteAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState('login');
+  const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
+  const [aviso, setAviso] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e) => {
@@ -33,6 +36,37 @@ export function ClienteLogin() {
     }
   };
 
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!nombre.trim()) { setError('Indica tu nombre.'); return; }
+    if (password.length < 6) { setError('La contraseña debe tener al menos 6 caracteres.'); return; }
+    setLoading(true);
+    try {
+      await register(nombre, email, password);
+      navigate('/cliente/panel');
+    } catch (err) {
+      setError(err.response?.data?.error || 'No se pudo crear la cuenta.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgot = async (e) => {
+    e.preventDefault();
+    setError('');
+    setAviso('');
+    setLoading(true);
+    try {
+      const { data } = await clienteApi.post('/auth/forgot-password', { email });
+      setAviso(data.message);
+    } catch {
+      setAviso('Si ese email tiene una cuenta, te hemos enviado un enlace para restablecer la contraseña.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCode = (e) => {
     e.preventDefault();
     const trimmed = code.trim();
@@ -40,7 +74,7 @@ export function ClienteLogin() {
     navigate(`/mi-proyecto?code=${encodeURIComponent(trimmed)}`);
   };
 
-  const switchTab = (t) => { setTab(t); setError(''); };
+  const switchTab = (t) => { setTab(t); setError(''); setAviso(''); };
 
   return (
     <div className="cl">
@@ -57,6 +91,12 @@ export function ClienteLogin() {
             onClick={() => switchTab('login')}
           >
             Iniciar sesión
+          </button>
+          <button
+            className={`cl-tab${tab === 'registro' ? ' active' : ''}`}
+            onClick={() => switchTab('registro')}
+          >
+            Crear cuenta
           </button>
           <button
             className={`cl-tab${tab === 'codigo' ? ' active' : ''}`}
@@ -93,7 +133,84 @@ export function ClienteLogin() {
             <button type="submit" className="cl-btn" disabled={loading}>
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
+            <button type="button" className="cl-link" onClick={() => switchTab('olvide')}>
+              ¿Olvidaste tu contraseña?
+            </button>
           </form>
+        )}
+
+        {tab === 'registro' && (
+          <form onSubmit={handleRegister} className="cl-form">
+            <div className="cl-field">
+              <label>Nombre</label>
+              <input
+                type="text"
+                value={nombre}
+                onChange={e => setNombre(e.target.value)}
+                placeholder="Tu nombre"
+                required
+                autoFocus
+              />
+            </div>
+            <div className="cl-field">
+              <label>Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="tu@email.com"
+                required
+              />
+            </div>
+            <div className="cl-field">
+              <label>Contraseña</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Al menos 6 caracteres"
+                required
+                minLength={6}
+              />
+            </div>
+            {error && <p className="cl-error">{error}</p>}
+            <button type="submit" className="cl-btn" disabled={loading}>
+              {loading ? 'Creando cuenta...' : 'Crear cuenta'}
+            </button>
+          </form>
+        )}
+
+        {tab === 'olvide' && (
+          aviso ? (
+            <div className="cl-form">
+              <p className="cl-hint">{aviso}</p>
+              <button type="button" className="cl-btn" onClick={() => switchTab('login')}>
+                Volver a iniciar sesión
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleForgot} className="cl-form">
+              <div className="cl-field">
+                <label>Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="tu@email.com"
+                  required
+                  autoFocus
+                />
+                <span className="cl-hint">Te mandaremos un enlace para elegir una contraseña nueva.</span>
+              </div>
+              {error && <p className="cl-error">{error}</p>}
+              <button type="submit" className="cl-btn" disabled={loading}>
+                {loading ? 'Enviando...' : 'Enviar enlace'}
+              </button>
+              <button type="button" className="cl-link" onClick={() => switchTab('login')}>
+                Volver a iniciar sesión
+              </button>
+            </form>
+          )
         )}
 
         {tab === 'codigo' && (

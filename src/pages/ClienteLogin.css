@@ -146,3 +146,19 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.cl-link {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.45);
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: underline;
+  padding: 0.25rem;
+}
+
+.cl-link:hover {
+  color: #fff;
+}

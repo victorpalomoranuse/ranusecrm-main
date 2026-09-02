@@ -31,6 +31,14 @@ export function ClienteAuthProvider({ children }) {
     return data.user;
   };
 
+  const register = async (name, email, password) => {
+    const { data } = await clienteApi.post('/auth/register', { name, email, password });
+    localStorage.setItem('cliente_token', data.token);
+    localStorage.setItem('cliente_user', JSON.stringify(data.user));
+    setUser(data.user);
+    return data.user;
+  };
+
   const logout = () => {
     localStorage.removeItem('cliente_token');
     localStorage.removeItem('cliente_user');
@@ -38,7 +46,7 @@ export function ClienteAuthProvider({ children }) {
   };
 
   return (
-    <ClienteAuthContext.Provider value={{ user, loading, login, logout }}>
+    <ClienteAuthContext.Provider value={{ user, loading, login, register, logout }}>
       {children}
     </ClienteAuthContext.Provider>
   );
