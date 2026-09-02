@@ -20,6 +20,20 @@ const requireVentasOFinanzas = (req, res, next) => {
 const TIPOS_PERIODO = ['mes', 'trimestre', 'año'];
 const ESCENARIOS = ['pesimista', 'realista', 'optimista'];
 
+// Mismo criterio que ventas.routes.js y comisiones.routes.js: mientras la
+// venta sigue abierta, el coste efectivo es el mayor entre lo previsto a
+// mano y lo ya gastado de verdad (para no contar como beneficio dinero
+// reservado para costes pendientes). Una vez la venta se marca "cerrada",
+// se deja la previsión y se usa solo el gasto real definitivo.
+function costesEfectivosDe(v, gastosReales) {
+  const previsionGastos = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
+  if (v.cerrada) return gastosReales;
+  if (previsionGastos != null) return Math.max(previsionGastos, gastosReales);
+  if (gastosReales > 0) return gastosReales;
+  if (v.tipo_proyecto === 'solo_diseno') return 0;
+  return null; // con_ejecucion sin previsión y sin gasto real: desconocido
+}
+
 /**
  * GET /api/objetivos?periodo_tipo=mes&año=2026
  * Lista objetivos, opcionalmente filtrados por tipo de periodo y/o año.
@@ -124,7 +138,7 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
     const [{ data: objetivos, error: errObj }, { data: ventas, error: errVentas }, { data: movimientos, error: errMov }, { data: movVenta, error: errMovVenta }] =
       await Promise.all([
         supabase.from('objetivos_financieros').select('*').eq('periodo_tipo', periodo_tipo).eq('periodo', periodo).eq('alcance', alcance),
-        supabase.from('ventas').select('id, valor, fecha, tipo_proyecto, prevision_gastos'),
+        supabase.from('ventas').select('id, valor, fecha, tipo_proyecto, prevision_gastos, cerrada'),
         supabase.from('finanzas_movimientos').select('tipo, monto, fecha'),
         supabase.from('finanzas_movimientos').select('venta_id, tipo, monto').not('venta_id', 'is', null),
       ]);
@@ -141,15 +155,6 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
       if (m.tipo === 'ingreso') cobradoPorVenta[m.venta_id] = (cobradoPorVenta[m.venta_id] || 0) + Number(m.monto);
       else gastosPorVenta[m.venta_id] = (gastosPorVenta[m.venta_id] || 0) + Number(m.monto);
     });
-
-    function costesEfectivosDe(v) {
-      const previsionGastos = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
-      const gastosReales = gastosPorVenta[v.id] || 0;
-      if (previsionGastos != null) return Math.max(previsionGastos, gastosReales);
-      if (gastosReales > 0) return gastosReales;
-      if (v.tipo_proyecto === 'solo_diseno') return 0;
-      return null; // con_ejecucion sin previsión y sin gasto real: desconocido
-    }
 
     // Facturación VENDIDA: importe de cada venta en la fecha en que se cerró,
     // desglosada entre "limpia" (solo diseño, sin gastos) y "con ejecución"
@@ -168,7 +173,7 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
       facturacionVendida += importe;
       if (v.tipo_proyecto === 'con_ejecucion') facturacionVendidaEjecucion += importe;
       else facturacionVendidaLimpia += importe;
-      const costes = costesEfectivosDe(v);
+      const costes = costesEfectivosDe(v, gastosPorVenta[v.id] || 0);
       if (costes != null) beneficioPrevistoPeriodo += (importe - costes);
     });
 
@@ -196,7 +201,7 @@ router.get('/progreso', authenticateToken, requireVentasOFinanzas, async (req, r
       beneficioLimpioPorProyecto += (cobradoPorVenta[v.id] || 0) - (gastosPorVenta[v.id] || 0);
 
       const valor = Number(v.valor || 0);
-      const costes = costesEfectivosDe(v);
+      const costes = costesEfectivosDe(v, gastosPorVenta[v.id] || 0);
       const margenPct = valor > 0 && costes != null ? (valor - costes) / valor : 0;
       beneficioCobradoPeriodo += (cobradoPorVenta[v.id] || 0) * margenPct;
     });
@@ -259,7 +264,7 @@ router.get('/ritmo', authenticateToken, requireVentasOFinanzas, async (req, res)
 
     const [{ data: objetivosAño, error: errObj }, { data: ventas, error: errVentas }] = await Promise.all([
       supabase.from('objetivos_financieros').select('*').eq('periodo_tipo', 'año').eq('periodo', año).eq('alcance', alcance),
-      supabase.from('ventas').select('id, valor, fecha, tipo_proyecto, prevision_gastos').gte('fecha', `${año}-01-01`).lte('fecha', `${año}-12-31`),
+      supabase.from('ventas').select('id, valor, fecha, tipo_proyecto, prevision_gastos, cerrada').gte('fecha', `${año}-01-01`).lte('fecha', `${año}-12-31`),
     ]);
     if (errObj) throw errObj;
     if (errVentas) throw errVentas;
@@ -291,12 +296,7 @@ router.get('/ritmo', authenticateToken, requireVentasOFinanzas, async (req, res)
       const mesVenta = Number(v.fecha.slice(5, 7));
       if (mesVenta > mesesTranscurridos) return; // todavía no ha llegado ese mes
       const valor = Number(v.valor || 0);
-      const previsionGastos = v.prevision_gastos != null ? Number(v.prevision_gastos) : null;
-      const gastosReales = gastosPorVenta[v.id] || 0;
-      let costes = null;
-      if (previsionGastos != null) costes = Math.max(previsionGastos, gastosReales);
-      else if (gastosReales > 0) costes = gastosReales;
-      else if (v.tipo_proyecto === 'solo_diseno') costes = 0;
+      const costes = costesEfectivosDe(v, gastosPorVenta[v.id] || 0);
 
       const margenPct = valor > 0 && costes != null ? (valor - costes) / valor : 0;
       if (costes != null) generadoPrevisto += (valor - costes);
