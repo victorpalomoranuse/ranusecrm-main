@@ -247,6 +247,24 @@ export async function deleteDiagnosisImage(url) {
     return !error;
   } catch { return false; }
 }
+// ── Moodboard images ──────────────────────────────────────────────────
+export async function uploadMoodboardImage(fileBuffer, fileName, mimeType, projectId) {
+  const ext = fileName.split('.').pop();
+  const filePath = `${projectId}/${randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from('project-moodboard').upload(filePath, fileBuffer, { contentType: mimeType });
+  if (error) throw new Error('Error al subir imagen: ' + error.message);
+  const { data: { publicUrl } } = supabase.storage.from('project-moodboard').getPublicUrl(filePath);
+  return publicUrl;
+}
+export async function deleteMoodboardImage(url) {
+  try {
+    const parts = url.split('/project-moodboard/');
+    if (parts.length < 2) return false;
+    const { error } = await supabase.storage.from('project-moodboard').remove([parts[1]]);
+    return !error;
+  } catch { return false; }
+}
+
 // ── Leads Cualificados renders ────────────────────────────────────────
 export async function uploadLcRender(fileBuffer, fileName, mimeType, lcId) {
   const ext = fileName.split('.').pop();

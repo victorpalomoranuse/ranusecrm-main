@@ -89,6 +89,34 @@ function TourSection({ tours }) {
   );
 }
 
+function MoodboardSection({ moodboard }) {
+  const [active, setActive] = useState(null);
+  const images = moodboard?.images || [];
+  const description = moodboard?.description || '';
+  if (images.length === 0 && !description) return null;
+  return (
+    <section className="mp-moodboard">
+      <div className="mp-moodboard-header">
+        <p className="mp-moodboard-label">El estilo del proyecto</p>
+        <h2 className="mp-moodboard-title">Moodboard</h2>
+        {description && <p className="mp-moodboard-desc">{description}</p>}
+      </div>
+      {images.length > 0 && (
+        <div className="mp-moodboard-grid">
+          {images.map((img, i) => (
+            <div key={img.id} className="mp-moodboard-item" role="button" tabIndex={0} onClick={() => setActive(img)} onKeyDown={e => e.key === 'Enter' && setActive(img)}>
+              <img src={img.url} alt="" loading={i < 4 ? 'eager' : 'lazy'} />
+            </div>
+          ))}
+        </div>
+      )}
+      {active && (
+        <Lightbox src={active.url} alt="" onClose={() => setActive(null)} downloadUrl={active.url} downloadName={`moodboard-${images.findIndex(i => i.id === active.id) + 1}.jpg`} />
+      )}
+    </section>
+  );
+}
+
 function HeroRender({ render, onClick }) {
   return (
     <div className="mp-hero-render" onClick={onClick} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && onClick()}>
@@ -798,6 +826,7 @@ export function MiProyecto() {
 
         <div className="mp-phases">
           <NeedsFormSection code={code} />
+          <MoodboardSection moodboard={project.moodboard} />
           {categories.map(category => (
             <CategoryBlock key={category.id} category={category} />
           ))}

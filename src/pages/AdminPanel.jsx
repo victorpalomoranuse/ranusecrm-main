@@ -273,7 +273,7 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Catálogo'}];
+const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Catálogo'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
@@ -331,6 +331,87 @@ function TabRenders({ projectId, phaseNumber }) {
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={renders.map(r=>r.id)} strategy={rectSortingStrategy}>
             <div className="ap-renders-grid">{renders.map((r,i)=><SortableRenderThumb key={r.id} r={r} onDelete={handleDelete} isFirst={i===0}/>)}</div>
+          </SortableContext>
+        </DndContext>
+      )}
+    </div>
+  );
+}
+
+function SortableMoodboardThumb({ img, onDelete }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: img.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, zIndex: isDragging ? 10 : undefined };
+  return (
+    <div ref={setNodeRef} style={style} className="ap-render-thumb">
+      <img src={img.url} alt=""/>
+      <button {...attributes} {...listeners} className="ap-render-drag-handle" type="button"><GripVertical size={12}/></button>
+      <div className="ap-render-overlay"><span/><button className="ap-btn-icon ap-render-del" onClick={()=>onDelete(img.id)}><Trash2 size={13}/></button></div>
+    </div>
+  );
+}
+
+function TabMoodboard({ projectId }) {
+  const [images, setImages] = useState([]);
+  const [description, setDescription] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [savingDesc, setSavingDesc] = useState(false);
+  const [error, setError] = useState('');
+  const fileRef = useRef();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  useEffect(() => {
+    api.get(`/client-projects/${projectId}/moodboard`).then(r => {
+      setImages(r.data.images || []);
+      setDescription(r.data.description || '');
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [projectId]);
+
+  const handleUpload = async (e) => {
+    const files = Array.from(e.target.files || []); if (files.length === 0) return;
+    setUploading(true); setError('');
+    try {
+      const form = new FormData();
+      files.forEach(f => form.append('images', f));
+      const { data } = await api.post(`/client-projects/${projectId}/moodboard/images`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setImages(prev => [...prev, ...data.images]);
+      fileRef.current.value = '';
+    } catch (err) { setError(err.response?.data?.error || 'Error al subir las imágenes'); } finally { setUploading(false); }
+  };
+  const handleDelete = async (id) => { try { await api.delete(`/client-projects/${projectId}/moodboard/images/${id}`); setImages(prev => prev.filter(i => i.id !== id)); } catch { setError('Error al eliminar la imagen'); } };
+  const handleDragEnd = async (event) => {
+    const { active, over } = event; if (!active || !over || active.id === over.id) return;
+    const oldIndex = images.findIndex(i => i.id === active.id); const newIndex = images.findIndex(i => i.id === over.id);
+    const newImages = arrayMove(images, oldIndex, newIndex); setImages(newImages);
+    try { await api.put(`/client-projects/${projectId}/moodboard/images/reorder`, { ids: newImages.map(i => i.id) }); } catch { setError('Error al guardar el orden'); }
+  };
+  const handleSaveDesc = async () => {
+    setSavingDesc(true); setError('');
+    try { await api.put(`/client-projects/${projectId}/moodboard`, { description }); } catch { setError('Error al guardar la descripción'); } finally { setSavingDesc(false); }
+  };
+
+  if (loading) return <div className="ap-loading">Cargando…</div>;
+  return (
+    <div className="ap-tab-content">
+      <p className="ap-tab-desc">El moodboard aparece en el portal del cliente justo después del Programa de Necesidades: imágenes de inspiración + el texto que explica el estilo y las soluciones que van a guiar el proyecto.</p>
+
+      <div className="ap-field">
+        <label>Descripción del estilo</label>
+        <textarea className="ap-diag-textarea" value={description} onChange={e => setDescription(e.target.value)} rows={5} placeholder="Ej. Un estilo minimalista y cálido, con maderas claras y acero negro mate. Iluminación indirecta para crear ambiente..." />
+      </div>
+      <div className="ap-diag-save-row" style={{ marginBottom: '1.25rem' }}>
+        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSaveDesc} disabled={savingDesc}>{savingDesc ? 'Guardando…' : 'Guardar descripción'}</button>
+      </div>
+
+      <div className="ap-upload-row">
+        <label className="ap-btn ap-btn-primary ap-btn-sm ap-upload-label">{uploading ? 'Subiendo…' : <><Plus size={13}/> Subir imágenes</>}<input ref={fileRef} type="file" accept="image/*" multiple onChange={handleUpload} disabled={uploading} style={{ display: 'none' }}/></label>
+      </div>
+      {error && <p className="ap-error">{error}</p>}
+      {images.length > 0 && <p className="ap-order-hint" style={{ marginBottom: '0.5rem' }}>Arrastra para reordenar.</p>}
+      {images.length === 0 ? <div className="ap-empty"><p>No hay imágenes todavía.</p></div> : (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={images.map(i => i.id)} strategy={rectSortingStrategy}>
+            <div className="ap-renders-grid">{images.map(img => <SortableMoodboardThumb key={img.id} img={img} onDelete={handleDelete}/>)}</div>
           </SortableContext>
         </DndContext>
       )}
@@ -1429,6 +1510,7 @@ function ProjectManagerModal({ project, onClose }) {
           {tab==='portada'&&<TabPortada project={project} onUpdated={(url)=>{project.cover_image_url=url;}}/>}
           {tab==='fases'&&<TabCategorias projectId={project.id}/>}
           {tab==='necesidades'&&<TabNecesidades projectId={project.id}/>}
+          {tab==='moodboard'&&<TabMoodboard projectId={project.id}/>}
           {tab==='renders'&&<TabRenders projectId={project.id}/>}
           {tab==='documentos'&&<TabDocumentos projectId={project.id}/>}
           {tab==='tours'&&<TabTour projectId={project.id}/>}

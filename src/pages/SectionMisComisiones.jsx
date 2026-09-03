@@ -159,20 +159,31 @@ export function SectionMisComisiones() {
             <div className="ap-empty"><p>{mia?.mensaje || 'Todavía no tienes comisiones configuradas. Pídele a tu admin que te enlace en Finanzas → Comisiones.'}</p></div>
           ) : (
             <>
-              <div className="vt-stats">
-                <div className="vt-stat-card">
-                  <div className="vt-stat-icon"><TrendingUp size={18} /></div>
-                  <div className="vt-stat-body"><span>{mia.modelo === 'global' ? `Te corresponde este periodo (${mia.porcentaje}%)` : 'Total acumulado (desde siempre)'}</span><strong>{fmt(mia.comisionEstimada)}</strong></div>
-                </div>
-                <div className="vt-stat-card">
-                  <div className="vt-stat-icon" style={{ color: '#22c55e' }}><Wallet size={18} /></div>
-                  <div className="vt-stat-body"><span>Ya te han pagado</span><strong style={{ color: '#22c55e' }}>{fmt(mia.yaPagado)}</strong></div>
-                </div>
-                <div className="vt-stat-card">
-                  <div className="vt-stat-icon" style={{ color: '#f5b748' }}><Clock size={18} /></div>
-                  <div className="vt-stat-body"><span>Pendiente de cobrar</span><strong style={{ color: '#f5b748' }}>{fmt(mia.pendiente)}</strong></div>
-                </div>
-              </div>
+              {(() => {
+                // Para el modelo por_proyecto, "ya pagado" / "pendiente" salen
+                // del registro manual por periodo (comisiones_pagos_periodo),
+                // no de Finanzas — son la misma fuente que la tabla de abajo,
+                // para que las tarjetas de arriba y el desglose siempre cuadren.
+                const usaPeriodos = mia.modelo === 'por_proyecto' && periodos != null;
+                const yaPagado = usaPeriodos ? periodos.reduce((s, p) => s + p.pagado, 0) : mia.yaPagado;
+                const pendiente = usaPeriodos ? periodos.reduce((s, p) => s + p.devengado, 0) - yaPagado : mia.pendiente;
+                return (
+                  <div className="vt-stats">
+                    <div className="vt-stat-card">
+                      <div className="vt-stat-icon"><TrendingUp size={18} /></div>
+                      <div className="vt-stat-body"><span>{mia.modelo === 'global' ? `Te corresponde este periodo (${mia.porcentaje}%)` : 'Total acumulado (desde siempre)'}</span><strong>{fmt(mia.comisionEstimada)}</strong></div>
+                    </div>
+                    <div className="vt-stat-card">
+                      <div className="vt-stat-icon" style={{ color: '#22c55e' }}><Wallet size={18} /></div>
+                      <div className="vt-stat-body"><span>Ya te han pagado</span><strong style={{ color: '#22c55e' }}>{fmt(yaPagado)}</strong></div>
+                    </div>
+                    <div className="vt-stat-card">
+                      <div className="vt-stat-icon" style={{ color: '#f5b748' }}><Clock size={18} /></div>
+                      <div className="vt-stat-body"><span>Pendiente de cobrar</span><strong style={{ color: '#f5b748' }}>{fmt(pendiente)}</strong></div>
+                    </div>
+                  </div>
+                );
+              })()}
               {mia.nota && (
                 <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>{mia.nota}</p>
               )}

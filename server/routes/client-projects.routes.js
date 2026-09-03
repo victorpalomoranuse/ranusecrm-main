@@ -3,8 +3,8 @@ import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
 
 const requireProyectos = requirePermission('proyectos');
-import { uploadProjectRender, deleteProjectRender, uploadProjectDocument, deleteProjectDocument, uploadDiagnosisImage, deleteDiagnosisImage } from '../utils/storage.js';
-import { uploadRenderFile, uploadDocumentFile, uploadDiagnosisImageFile, handleMulterError } from '../middleware/upload.middleware.js';
+import { uploadProjectRender, deleteProjectRender, uploadProjectDocument, deleteProjectDocument, uploadDiagnosisImage, deleteDiagnosisImage, uploadMoodboardImage, deleteMoodboardImage } from '../utils/storage.js';
+import { uploadRenderFile, uploadDocumentFile, uploadDiagnosisImageFile, uploadMoodboardImages, handleMulterError } from '../middleware/upload.middleware.js';
 
 const router = express.Router();
 
@@ -146,7 +146,7 @@ router.get('/by-code/:code', async (req, res) => {
   try {
     const { data: project, error } = await supabase
       .from('client_projects')
-      .select('id, client_name, project_name, phase, cover_image_url, responsible:employees!responsible_id(name, email)')
+      .select('id, client_name, project_name, phase, cover_image_url, moodboard_description, responsible:employees!responsible_id(name, email)')
       .eq('access_code', req.params.code.toUpperCase())
       .single();
 
@@ -166,6 +166,7 @@ router.get('/by-code/:code', async (req, res) => {
       notesResult,
       toursResult,
       categoriesResult,
+      moodboardImagesResult,
     ] = await Promise.all([
       supabase.from('project_renders').select('*').eq('project_id', projectId).order('display_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }),
       supabase.from('project_documents').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
@@ -175,6 +176,7 @@ router.get('/by-code/:code', async (req, res) => {
       supabase.from('project_notes').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
       supabase.from('project_tours').select('*').eq('project_id', projectId).order('created_at', { ascending: true }),
       supabase.from('project_categories').select('*').eq('project_id', projectId).order('display_order', { ascending: true }),
+      supabase.from('project_moodboard_images').select('*').eq('project_id', projectId).order('display_order', { ascending: true }),
     ]);
 
     let diagnosisData = diagnosisResult.data || null;
@@ -225,6 +227,10 @@ router.get('/by-code/:code', async (req, res) => {
         notes: notesResult.data || [],
         tours: allTours,
         categories,
+        moodboard: {
+          description: project.moodboard_description || '',
+          images: moodboardImagesResult.data || [],
+        },
       },
     });
   } catch (err) {
@@ -478,6 +484,131 @@ router.delete('/:id/renders/:renderId', authenticateToken, requireProyectos, asy
   } catch (error) {
     console.error('Error al eliminar render:', error);
     res.status(500).json({ error: 'Error al eliminar render' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MOODBOARD (imágenes + descripción del estilo, a nivel de proyecto entero —
+// se muestra al cliente justo después del Programa de Necesidades)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/client-projects/:id/moodboard
+ */
+router.get('/:id/moodboard', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const [{ data: project, error: errProject }, { data: images, error: errImages }] = await Promise.all([
+      supabase.from('client_projects').select('moodboard_description').eq('id', req.params.id).single(),
+      supabase.from('project_moodboard_images').select('*').eq('project_id', req.params.id).order('display_order', { ascending: true }),
+    ]);
+    if (errProject) throw errProject;
+    if (errImages) throw errImages;
+    res.json({ description: project?.moodboard_description || '', images: images || [] });
+  } catch (error) {
+    console.error('Error al obtener moodboard:', error);
+    res.status(500).json({ error: 'Error al obtener el moodboard' });
+  }
+});
+
+/**
+ * PUT /api/client-projects/:id/moodboard
+ * Body: { description }
+ */
+router.put('/:id/moodboard', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { description } = req.body;
+    const { error } = await supabase
+      .from('client_projects')
+      .update({ moodboard_description: description?.trim() || null })
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ message: 'Moodboard actualizado' });
+  } catch (error) {
+    console.error('Error al actualizar moodboard:', error);
+    res.status(500).json({ error: 'Error al actualizar el moodboard' });
+  }
+});
+
+/**
+ * POST /api/client-projects/:id/moodboard/images
+ * Acepta una o varias imágenes a la vez (campo "images").
+ */
+router.post('/:id/moodboard/images', authenticateToken, requireProyectos, uploadMoodboardImages, handleMulterError, async (req, res) => {
+  try {
+    const files = req.files || [];
+    if (files.length === 0) return res.status(400).json({ error: 'No se recibió ninguna imagen' });
+
+    const projectId = req.params.id;
+    const { data: maxRow } = await supabase
+      .from('project_moodboard_images')
+      .select('display_order')
+      .eq('project_id', projectId)
+      .order('display_order', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    let nextOrder = (maxRow?.display_order ?? -1) + 1;
+
+    const inserted = [];
+    for (const file of files) {
+      const url = await uploadMoodboardImage(file.buffer, file.originalname, file.mimetype, projectId);
+      const { data, error } = await supabase
+        .from('project_moodboard_images')
+        .insert({ project_id: projectId, url, display_order: nextOrder })
+        .select('*')
+        .single();
+      if (error) throw error;
+      inserted.push(data);
+      nextOrder += 1;
+    }
+
+    res.status(201).json({ images: inserted });
+  } catch (error) {
+    console.error('Error al subir imagen del moodboard:', error);
+    res.status(500).json({ error: 'Error al subir la imagen' });
+  }
+});
+
+/**
+ * PUT /api/client-projects/:id/moodboard/images/reorder
+ * Body: { ids: [imageId, imageId, ...] }
+ */
+router.put('/:id/moodboard/images/reorder', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids debe ser un array' });
+    await Promise.all(
+      ids.map((imageId, index) =>
+        supabase.from('project_moodboard_images').update({ display_order: index }).eq('id', imageId).eq('project_id', req.params.id)
+      )
+    );
+    res.json({ message: 'Orden guardado' });
+  } catch (error) {
+    console.error('Error al reordenar moodboard:', error);
+    res.status(500).json({ error: 'Error al reordenar el moodboard' });
+  }
+});
+
+/**
+ * DELETE /api/client-projects/:id/moodboard/images/:imageId
+ */
+router.delete('/:id/moodboard/images/:imageId', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { data: image, error: fetchError } = await supabase
+      .from('project_moodboard_images')
+      .select('url')
+      .eq('id', req.params.imageId)
+      .eq('project_id', req.params.id)
+      .single();
+    if (fetchError || !image) return res.status(404).json({ error: 'Imagen no encontrada' });
+
+    await deleteMoodboardImage(image.url);
+
+    const { error } = await supabase.from('project_moodboard_images').delete().eq('id', req.params.imageId);
+    if (error) throw error;
+    res.json({ message: 'Imagen eliminada' });
+  } catch (error) {
+    console.error('Error al eliminar imagen del moodboard:', error);
+    res.status(500).json({ error: 'Error al eliminar la imagen' });
   }
 });
 
