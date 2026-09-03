@@ -1803,7 +1803,7 @@ const NAV_ITEMS = [
   { id:'presupuestos', label:'Presupuestos', Icon:Calculator, adminOnly:true },
   { id:'pedidos', label:'Pedidos', Icon:Package, adminOnly:true },
   { id:'finanzas', label:'Finanzas', Icon:Wallet, permission:'finanzas' },
-  { id:'obra', label:'Relación de obra', Icon:Hammer, permission:'finanzas' },
+  { id:'obra', label:'Relación de obra', Icon:Hammer, permissions:['ventas','finanzas'] },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
   { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },
   { id:'referencias', label:'Referencias', Icon:Bookmark, permission:'referencias' },
@@ -1815,6 +1815,7 @@ const NAV_ITEMS = [
 function canAccessNav(item, user) {
   if (user?.role === 'admin_superior') return true;
   if (item.adminOnly) return false;
+  if (item.permissions) return item.permissions.some(p => user?.permissions?.[p] === true);
   if (item.permission) return user?.permissions?.[item.permission] === true;
   return true;
 }

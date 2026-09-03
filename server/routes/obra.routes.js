@@ -5,6 +5,18 @@ import { authenticateToken, requirePermission } from '../middleware/auth.middlew
 const router = express.Router();
 const requireFinanzas = requirePermission('finanzas');
 
+// Lectura visible para quien tenga 'ventas' o 'finanzas' (el equipo comercial
+// también puede ver los movimientos de ingresos y gastos de la obra); editar
+// (previsto, añadir/borrar pagos) sigue siendo solo de finanzas.
+const requireVentasOFinanzas = (req, res, next) => {
+  if (!req.user) return res.status(401).json({ error: 'Autenticación requerida' });
+  if (req.user.role === 'admin_superior') return next();
+  if (req.user.role === 'trabajador' && (req.user.permissions?.ventas === true || req.user.permissions?.finanzas === true)) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Acceso denegado. No tienes permiso para esta sección.' });
+};
+
 // Coste real (lo que le pagas al proveedor) de una partida del presupuesto,
 // igual que en budgets.routes.js: en modo PVP+Dto es el pvp con el
 // descuento de compra aplicado; en modo Coste+% es el coste directamente.
@@ -60,6 +72,13 @@ async function relacionDeObra(ventaId) {
     .eq('tipo', 'gasto')
     .order('fecha', { ascending: false });
 
+  const { data: ingresos } = await supabase
+    .from('finanzas_movimientos')
+    .select('id, monto, concepto, fecha, categoria, metodo_pago')
+    .eq('venta_id', ventaId)
+    .eq('tipo', 'ingreso')
+    .order('fecha', { ascending: false });
+
   const { data: previsiones } = await supabase
     .from('obra_previsiones')
     .select('proveedor, monto')
@@ -95,12 +114,15 @@ async function relacionDeObra(ventaId) {
   const presupuestoTotal = proveedores.reduce((s, p) => s + p.presupuestado, 0);
   const previstoTotal = proveedores.reduce((s, p) => s + p.previsto, 0);
   const pagadoTotal = proveedores.reduce((s, p) => s + p.pagado, 0);
+  const ingresoTotal = (ingresos || []).reduce((s, i) => s + Number(i.monto), 0);
 
   return {
     venta: { id: venta.id, nombre: venta.nombre, clienteNombre: venta.cliente_nombre, valor: Number(venta.valor) },
     proyecto: proyecto ? { id: proyecto.id, nombre: proyecto.project_name, fase: proyecto.phase } : null,
     proveedores,
     pagos: pagos || [],
+    ingresos: ingresos || [],
+    ingresoTotal,
     presupuestoTotal,
     previstoTotal,
     pagadoTotal,
@@ -113,7 +135,7 @@ async function relacionDeObra(ventaId) {
  * Lista de obras (ventas con ejecución) con sus totales, para la vista
  * general de "Relación de obra".
  */
-router.get('/', authenticateToken, requireFinanzas, async (req, res) => {
+router.get('/', authenticateToken, requireVentasOFinanzas, async (req, res) => {
   try {
     const { data: ventas, error } = await supabase
       .from('ventas')
@@ -135,6 +157,7 @@ router.get('/', authenticateToken, requireFinanzas, async (req, res) => {
         previstoTotal: rel.previstoTotal,
         pagadoTotal: rel.pagadoTotal,
         diferenciaTotal: rel.diferenciaTotal,
+        ingresoTotal: rel.ingresoTotal,
       };
     }));
 
@@ -149,7 +172,7 @@ router.get('/', authenticateToken, requireFinanzas, async (req, res) => {
  * GET /api/obra/:ventaId
  * Detalle: presupuestado vs pagado por proveedor, y el listado de pagos.
  */
-router.get('/:ventaId', authenticateToken, requireFinanzas, async (req, res) => {
+router.get('/:ventaId', authenticateToken, requireVentasOFinanzas, async (req, res) => {
   try {
     const rel = await relacionDeObra(req.params.ventaId);
     if (!rel) return res.status(404).json({ error: 'Venta no encontrada' });
