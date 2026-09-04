@@ -719,6 +719,10 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     drawRow('Subtotal', fmtEur(showDiscount ? subtotalBruto : subtotal));
     if (showDiscount && lineDiscountTotal > 0) drawRow('Descuentos por producto', '-' + fmtEur(lineDiscountTotal), false, '#c0392b');
     if (showDiscount && globalDto > 0) drawRow('Descuento global', '-' + fmtEur(globalDiscountAmount), false, '#c0392b');
+    // Base imponible = subtotal ya con los descuentos aplicados, sobre la que
+    // se calculan IVA e IRPF. Si no hay descuentos, coincide con el Subtotal
+    // de arriba, así que no hace falta repetirla.
+    if (showDiscount && (lineDiscountTotal > 0 || globalDto > 0)) drawRow('Base imponible', fmtEur(subtotal), true);
     if (parseFloat(iva) > 0) drawRow('IVA (' + iva + '%)', fmtEur(ivaAmount));
     if (parseFloat(irpf) > 0) drawRow('Retención IRPF (' + irpf + '%)', '-' + fmtEur(irpfAmount), false, '#cc3333');
 
