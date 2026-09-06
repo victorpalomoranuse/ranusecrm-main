@@ -70,7 +70,7 @@ async function applyPhaseTaskTemplates(projectId, phaseNumber) {
 const DEFAULT_CATEGORIES = [
   {
     name: 'Diseño previo',
-    intro_text: 'Aquí tienes la presentación de tu proyecto, los renders del diseño y algunos detalles clave (acabados de paredes, iluminación, etc.) — una guía completa para que puedas avanzar por tu cuenta si de momento no sigues con el proyecto de ejecución.',
+    intro_text: 'En esta fase definimos el concepto estético del proyecto, la distribución del espacio y una primera orientación de acabados (paredes, iluminación, etc.) — aquí encontrarás la presentación y los renders de tu diseño.',
   },
   {
     name: 'Proyecto de ejecución',
