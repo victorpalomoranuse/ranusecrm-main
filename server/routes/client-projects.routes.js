@@ -64,6 +64,34 @@ async function applyPhaseTaskTemplates(projectId, phaseNumber) {
   }
 }
 
+// Categorías con las que arranca cada proyecto nuevo, para no tener que
+// crearlas a mano cada vez — se pueden renombrar, reordenar o borrar
+// después en cualquier proyecto sin que afecte a los demás.
+const DEFAULT_CATEGORIES = [
+  {
+    name: 'Diseño previo',
+    intro_text: 'Aquí tienes la presentación de tu proyecto, los renders del diseño y algunos detalles clave (acabados de paredes, iluminación, etc.) — una guía completa para que puedas avanzar por tu cuenta si de momento no sigues con el proyecto de ejecución.',
+  },
+  {
+    name: 'Proyecto de ejecución',
+    intro_text: 'Aquí encontrarás toda la documentación técnica para ejecutar el proyecto: planos, instalaciones, materiales y equipamiento definitivo.',
+  },
+];
+
+async function applyDefaultCategories(projectId) {
+  try {
+    const toInsert = DEFAULT_CATEGORIES.map((c, i) => ({
+      project_id: projectId,
+      name: c.name,
+      intro_text: c.intro_text,
+      display_order: i,
+    }));
+    await supabase.from('project_categories').insert(toInsert);
+  } catch (err) {
+    console.error('Error al crear categorías por defecto:', err);
+  }
+}
+
 /**
  * GET /api/client-projects
  * Listar todos los proyectos de clientes
@@ -280,6 +308,7 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
 
     if (error) throw error;
     await applyPhaseTaskTemplates(data.id, data.phase);
+    await applyDefaultCategories(data.id);
     res.status(201).json({ project: data });
   } catch (error) {
     console.error('Error al crear proyecto:', error);
