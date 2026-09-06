@@ -784,6 +784,12 @@ export function MiProyecto() {
   }
 
   const heroRender = project.renders?.[0] || null;
+  // La portada que sube el diseñador manda sobre el primer render como
+  // imagen destacada — pero se muestra con el mismo tratamiento visual
+  // (recuadro redondeado y contenido), no como banner a todo lo ancho.
+  const coverImage = project.cover_image_url
+    ? { url: project.cover_image_url, name: project.project_name }
+    : heroRender;
   const categories = project.categories || [];
   const hasGlobalContent = project.notes?.length || project.documents?.length;
 
@@ -797,16 +803,10 @@ export function MiProyecto() {
         </a>
       </header>
 
-      {project.cover_image_url && (
-        <div className="mp-cover">
-          <img src={project.cover_image_url} alt={project.project_name} />
-        </div>
-      )}
-
       <main className="mp-main">
-        {heroRender && (
+        {coverImage && (
           <>
-            <HeroRender render={heroRender} onClick={() => setHeroLightbox(heroRender)} />
+            <HeroRender render={coverImage} onClick={() => setHeroLightbox(coverImage)} />
             {heroLightbox && (
               <Lightbox
                 src={heroLightbox.url}
