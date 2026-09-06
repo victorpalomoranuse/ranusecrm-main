@@ -276,8 +276,10 @@
 .mp-moodboard-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.35s ease; }
 .mp-moodboard-item:hover img { transform: scale(1.05); }
 
-.mp-moodboard-item:nth-child(6n+1) { grid-column: span 2; grid-row: span 2; }
-.mp-moodboard-item:nth-child(6n+4) { grid-row: span 2; }
+/* La primera imagen siempre grande a la izquierda (ocupa 2×2); el resto,
+   del mismo tamaño, se acomoda alrededor — con 5 imágenes en total queda
+   1 grande + 4 iguales en una cuadrícula 2×2 a la derecha. */
+.mp-moodboard-item:first-child { grid-column: span 2; grid-row: span 2; }
 
 @media (min-width: 640px) {
   .mp-moodboard-grid { grid-auto-rows: 110px; }
@@ -285,8 +287,7 @@
 
 @media (max-width: 479px) {
   .mp-moodboard-grid { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 78px; }
-  .mp-moodboard-item:nth-child(6n+1) { grid-column: span 2; grid-row: span 2; }
-  .mp-moodboard-item:nth-child(6n+4) { grid-row: span 1; }
+  .mp-moodboard-item:first-child { grid-column: span 2; grid-row: span 2; }
 }
 
 .mp-sections { display: flex; flex-direction: column; gap: 2.5rem; }

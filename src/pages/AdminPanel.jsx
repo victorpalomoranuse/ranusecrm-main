@@ -1528,7 +1528,7 @@ function TabNecesidades({ projectId }) {
 }
 
 function ProjectManagerModal({ project, onClose }) {
-  const [tab, setTab] = useState('fases');
+  const [tab, setTab] = useState('portada');
 
   const handlePdfMateriales = async () => {
     try {
