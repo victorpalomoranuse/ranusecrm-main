@@ -89,6 +89,8 @@ function TourSection({ tours }) {
   );
 }
 
+const DEFAULT_MOODBOARD_DESC = 'Estas imágenes muestran el estilo, los materiales y las soluciones que van a guiar el diseño de tu proyecto — la referencia visual sobre la que vamos a trabajar.';
+
 function MoodboardSection({ moodboard }) {
   const [active, setActive] = useState(null);
   const images = moodboard?.images || [];
@@ -99,7 +101,7 @@ function MoodboardSection({ moodboard }) {
       <div className="mp-moodboard-header">
         <p className="mp-moodboard-label">El estilo del proyecto</p>
         <h2 className="mp-moodboard-title">Moodboard</h2>
-        {description && <p className="mp-moodboard-desc">{description}</p>}
+        <p className="mp-moodboard-desc">{description || DEFAULT_MOODBOARD_DESC}</p>
       </div>
       {images.length > 0 && (
         <div className="mp-moodboard-grid">
@@ -355,6 +357,63 @@ function MobiliarioSection({ equipment, label }) {
   );
 }
 
+const DEFAULT_LISTADOS_INTRO = 'Aquí tienes el listado completo de materiales y equipamiento seleccionados para tu proyecto, organizado por categoría, con su código de plano, unidades y enlace de compra cuando esté disponible.';
+
+function ListadosSection({ materials, equipment, intro }) {
+  const [zoom, setZoom] = useState(null);
+  const all = [
+    ...(materials || []).map(m => ({ ...m, kind: 'material' })),
+    ...(equipment || []).map(e => ({ ...e, kind: 'equipment' })),
+  ];
+  if (!all.length) return null;
+
+  const groups = [];
+  all.forEach(item => {
+    const catName = item.category || 'Sin categoría';
+    let g = groups.find(x => x.name === catName);
+    if (!g) { g = { name: catName, items: [] }; groups.push(g); }
+    g.items.push(item);
+  });
+
+  return (
+    <section className="mp-block">
+      <p className="mp-block-label">Listados</p>
+      <p className="mp-ph-intro">{intro || DEFAULT_LISTADOS_INTRO}</p>
+      <div className="mp-listados">
+        {groups.map(g => (
+          <div key={g.name} className="mp-listado-group">
+            <p className="mp-listado-cat">{g.name}</p>
+            <div className="mp-listado-table">
+              {g.items.map(item => {
+                const uds = item.quantity || 1;
+                const showUds = item.kind === 'equipment' ? item.show_quantity !== false : true;
+                return (
+                  <div key={item.id} className="mp-listado-row">
+                    <div className="mp-listado-img" onClick={() => item.image_url && setZoom(item)} role={item.image_url ? 'button' : undefined} tabIndex={item.image_url ? 0 : undefined}>
+                      {item.image_url ? <img src={item.image_url} alt="" loading="lazy" /> : <span className="mp-listado-img-empty" />}
+                    </div>
+                    <div className="mp-listado-info">
+                      <span className="mp-listado-desc">{item.name}{item.brand ? <span className="mp-listado-brand"> · {item.brand}</span> : null}</span>
+                      <span className="mp-listado-meta">
+                        {item.code && <span className="mp-listado-code">Cód. {item.code}</span>}
+                        {showUds && <span className="mp-listado-uds">Uds: {uds}</span>}
+                      </span>
+                    </div>
+                    {item.show_purchase_link && item.purchase_link && (
+                      <a href={item.purchase_link} target="_blank" rel="noopener noreferrer" className="mp-listado-buy" onClick={e => e.stopPropagation()}>Comprar ↗</a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      {zoom && <Lightbox src={zoom.image_url} alt={zoom.name} onClose={() => setZoom(null)} />}
+    </section>
+  );
+}
+
 function CategoryDocuments({ items }) {
   const docs = items.filter(i => i.type === 'documento' && i.file_url);
   if (!docs.length) return null;
@@ -422,7 +481,10 @@ function CategoryBlock({ category }) {
 
   const items = category.items || [];
   const blockItems = items.filter(i => i.type === 'bloque');
-  const hasContent = items.length || category.materials?.length || category.equipment?.length;
+  // Materiales y equipamiento ya no se muestran aquí repartidos por fase —
+  // van todos juntos en la sección "Listados", agrupados por categoría de
+  // producto en vez de por fase de diseño.
+  const hasContent = items.length > 0;
 
   return (
     <div className={`mp-ph mp-ph--${status}`}>
@@ -440,8 +502,6 @@ function CategoryBlock({ category }) {
             <div className="mp-ph-content">
               <CategoryDocuments items={items} />
               {blockItems.map(item => <BlockItem key={item.id} item={item} />)}
-              <MaterialesSection materials={category.materials} label={category.materials_label} />
-              <MobiliarioSection equipment={category.equipment} label={category.equipment_label} />
             </div>
           ) : (
             <p className="mp-ph-empty">Tu diseñador irá añadiendo el contenido de esta categoría aquí.</p>
@@ -830,6 +890,7 @@ export function MiProyecto() {
           {categories.map(category => (
             <CategoryBlock key={category.id} category={category} />
           ))}
+          <ListadosSection materials={project.materials} equipment={project.equipment} intro={project.listados_intro_text} />
         </div>
 
         {hasGlobalContent && (

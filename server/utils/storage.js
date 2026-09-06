@@ -247,6 +247,24 @@ export async function deleteDiagnosisImage(url) {
     return !error;
   } catch { return false; }
 }
+// ── Inspiration reference images ────────────────────────────────────────
+export async function uploadReferenceImage(fileBuffer, fileName, mimeType) {
+  const ext = fileName.split('.').pop();
+  const filePath = `${randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from('inspiration-references').upload(filePath, fileBuffer, { contentType: mimeType });
+  if (error) throw new Error('Error al subir imagen: ' + error.message);
+  const { data: { publicUrl } } = supabase.storage.from('inspiration-references').getPublicUrl(filePath);
+  return publicUrl;
+}
+export async function deleteReferenceImage(url) {
+  try {
+    const parts = url.split('/inspiration-references/');
+    if (parts.length < 2) return false;
+    const { error } = await supabase.storage.from('inspiration-references').remove([parts[1]]);
+    return !error;
+  } catch { return false; }
+}
+
 // ── Moodboard images ──────────────────────────────────────────────────
 export async function uploadMoodboardImage(fileBuffer, fileName, mimeType, projectId) {
   const ext = fileName.split('.').pop();

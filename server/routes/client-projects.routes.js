@@ -146,7 +146,7 @@ router.get('/by-code/:code', async (req, res) => {
   try {
     const { data: project, error } = await supabase
       .from('client_projects')
-      .select('id, client_name, project_name, phase, cover_image_url, moodboard_description, responsible:employees!responsible_id(name, email)')
+      .select('id, client_name, project_name, phase, cover_image_url, moodboard_description, listados_intro_text, responsible:employees!responsible_id(name, email)')
       .eq('access_code', req.params.code.toUpperCase())
       .single();
 
@@ -530,6 +530,27 @@ router.put('/:id/moodboard', authenticateToken, requireProyectos, async (req, re
 });
 
 /**
+ * PUT /api/client-projects/:id/listados-intro
+ * Texto de introducción de la sección "Listados" que ve el cliente. Si se
+ * deja vacío, el cliente ve un texto genérico por defecto (definido en el
+ * frontend), igual que ya pasa con el intro_text de las categorías.
+ */
+router.put('/:id/listados-intro', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { intro } = req.body;
+    const { error } = await supabase
+      .from('client_projects')
+      .update({ listados_intro_text: intro?.trim() || null })
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ message: 'Introducción de Listados actualizada' });
+  } catch (error) {
+    console.error('Error al actualizar la introducción de Listados:', error);
+    res.status(500).json({ error: 'Error al actualizar la introducción' });
+  }
+});
+
+/**
  * POST /api/client-projects/:id/moodboard/images
  * Acepta una o varias imágenes a la vez (campo "images").
  */
@@ -565,6 +586,38 @@ router.post('/:id/moodboard/images', authenticateToken, requireProyectos, upload
   } catch (error) {
     console.error('Error al subir imagen del moodboard:', error);
     res.status(500).json({ error: 'Error al subir la imagen' });
+  }
+});
+
+/**
+ * POST /api/client-projects/:id/moodboard/images/from-url
+ * Añade al moodboard una imagen que ya existe en otro sitio (p.ej. tu
+ * biblioteca de Referencias), sin volver a subirla — solo guarda la URL.
+ * Body: { urls: [url, url, ...] }
+ */
+router.post('/:id/moodboard/images/from-url', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const urls = (req.body.urls || []).filter(Boolean);
+    if (urls.length === 0) return res.status(400).json({ error: 'No se recibió ninguna URL' });
+
+    const projectId = req.params.id;
+    const { data: maxRow } = await supabase
+      .from('project_moodboard_images')
+      .select('display_order')
+      .eq('project_id', projectId)
+      .order('display_order', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    let nextOrder = (maxRow?.display_order ?? -1) + 1;
+
+    const toInsert = urls.map(url => ({ project_id: projectId, url, display_order: nextOrder++ }));
+    const { data, error } = await supabase.from('project_moodboard_images').insert(toInsert).select('*');
+    if (error) throw error;
+
+    res.status(201).json({ images: data });
+  } catch (error) {
+    console.error('Error al añadir imagen al moodboard:', error);
+    res.status(500).json({ error: 'Error al añadir la imagen' });
   }
 });
 
@@ -1069,7 +1122,7 @@ router.get('/:id/materials', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/materials', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, location, notes, image_url, catalog_product_id, phase_number, category_id, code, datasheet_url } = req.body;
+    const { name, brand, category, location, notes, image_url, catalog_product_id, phase_number, category_id, code, datasheet_url, quantity, purchase_link, show_purchase_link } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del material es requerido' });
@@ -1090,6 +1143,9 @@ router.post('/:id/materials', authenticateToken, requireProyectos, async (req, r
         category_id: category_id || null,
         code: code?.trim() || null,
         datasheet_url: datasheet_url?.trim() || null,
+        quantity: quantity != null && quantity !== '' ? parseFloat(quantity) : 1,
+        purchase_link: purchase_link?.trim() || null,
+        show_purchase_link: !!show_purchase_link,
       })
       .select('*')
       .single();
@@ -1107,7 +1163,7 @@ router.post('/:id/materials', authenticateToken, requireProyectos, async (req, r
  */
 router.put('/:id/materials/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { brand, category, location, notes, phase_number, code, datasheet_url } = req.body;
+    const { brand, category, location, notes, phase_number, code, datasheet_url, quantity, purchase_link, show_purchase_link } = req.body;
 
     const updates = {};
     if (brand !== undefined) updates.brand = brand?.trim() || null;
@@ -1117,6 +1173,9 @@ router.put('/:id/materials/:selId', authenticateToken, requireProyectos, async (
     if (phase_number !== undefined) updates.phase_number = phase_number != null && phase_number !== '' ? parseInt(phase_number) : null;
     if (code !== undefined) updates.code = code?.trim() || null;
     if (datasheet_url !== undefined) updates.datasheet_url = datasheet_url?.trim() || null;
+    if (quantity !== undefined) updates.quantity = quantity != null && quantity !== '' ? parseFloat(quantity) : 1;
+    if (purchase_link !== undefined) updates.purchase_link = purchase_link?.trim() || null;
+    if (show_purchase_link !== undefined) updates.show_purchase_link = !!show_purchase_link;
 
     const { data, error } = await supabase
       .from('project_material_selections')

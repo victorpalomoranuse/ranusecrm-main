@@ -80,6 +80,7 @@ const categoryItemFieldFilter = (req, file, cb) => {
 };
 export const uploadCategoryItemCreate = multer({ storage, fileFilter: categoryItemFieldFilter, limits: { fileSize: 20*1024*1024, files: 11 } }).fields([{ name: 'file', maxCount: 1 }, { name: 'images', maxCount: 10 }]);
 export const uploadMoodboardImages = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 15*1024*1024, files: 20 } }).array('images', 20);
+export const uploadReferenceImageFile = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 15*1024*1024, files: 1 } }).single('file');
 
 // Handler de errores de multer
 export const handleMulterError = (err, req, res, next) => {

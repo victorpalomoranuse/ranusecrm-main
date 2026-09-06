@@ -273,7 +273,7 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Catálogo'}];
+const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Listados'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
@@ -357,6 +357,9 @@ function TabMoodboard({ projectId }) {
   const [uploading, setUploading] = useState(false);
   const [savingDesc, setSavingDesc] = useState(false);
   const [error, setError] = useState('');
+  const [showRefPicker, setShowRefPicker] = useState(false);
+  const [references, setReferences] = useState(null);
+  const [addingRefIds, setAddingRefIds] = useState([]);
   const fileRef = useRef();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -377,6 +380,23 @@ function TabMoodboard({ projectId }) {
       setImages(prev => [...prev, ...data.images]);
       fileRef.current.value = '';
     } catch (err) { setError(err.response?.data?.error || 'Error al subir las imágenes'); } finally { setUploading(false); }
+  };
+
+  const openRefPicker = () => {
+    setShowRefPicker(true);
+    if (references === null) {
+      api.get('/references').then(r => setReferences((r.data.references || []).filter(x => x.image_url))).catch(() => setReferences([]));
+    }
+  };
+
+  const handleAddFromReference = async (ref) => {
+    setAddingRefIds(prev => [...prev, ref.id]);
+    try {
+      const { data } = await api.post(`/client-projects/${projectId}/moodboard/images/from-url`, { urls: [ref.image_url] });
+      setImages(prev => [...prev, ...data.images]);
+    } catch { setError('Error al añadir la imagen de referencia'); } finally {
+      setAddingRefIds(prev => prev.filter(id => id !== ref.id));
+    }
   };
   const handleDelete = async (id) => { try { await api.delete(`/client-projects/${projectId}/moodboard/images/${id}`); setImages(prev => prev.filter(i => i.id !== id)); } catch { setError('Error al eliminar la imagen'); } };
   const handleDragEnd = async (event) => {
@@ -405,7 +425,34 @@ function TabMoodboard({ projectId }) {
 
       <div className="ap-upload-row">
         <label className="ap-btn ap-btn-primary ap-btn-sm ap-upload-label">{uploading ? 'Subiendo…' : <><Plus size={13}/> Subir imágenes</>}<input ref={fileRef} type="file" accept="image/*" multiple onChange={handleUpload} disabled={uploading} style={{ display: 'none' }}/></label>
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={openRefPicker}>Elegir de tus Referencias</button>
       </div>
+
+      {showRefPicker && (
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 12, marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', margin: 0 }}>Tus Referencias</p>
+            <button type="button" className="ap-btn-icon" onClick={() => setShowRefPicker(false)}><X size={13}/></button>
+          </div>
+          {references === null ? <div className="ap-loading">Cargando…</div> : references.length === 0 ? (
+            <p className="ap-empty-sm">No tienes referencias con imagen todavía. Añádelas desde la sección Referencias.</p>
+          ) : (
+            <div className="ap-renders-grid">
+              {references.map(ref => {
+                const yaEnMoodboard = images.some(i => i.url === ref.image_url);
+                const adding = addingRefIds.includes(ref.id);
+                return (
+                  <div key={ref.id} className="ap-render-thumb" style={{ cursor: yaEnMoodboard ? 'default' : 'pointer', opacity: yaEnMoodboard ? 0.5 : 1 }} onClick={() => !yaEnMoodboard && !adding && handleAddFromReference(ref)}>
+                    <img src={ref.image_url} alt={ref.title}/>
+                    <div className="ap-render-overlay"><span className="ap-render-name">{ref.title}</span>{yaEnMoodboard ? <span style={{ fontSize: 11, color: '#8bae8f' }}>✓ Añadida</span> : adding ? <span style={{ fontSize: 11 }}>Añadiendo…</span> : <Plus size={13}/>}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {error && <p className="ap-error">{error}</p>}
       {images.length > 0 && <p className="ap-order-hint" style={{ marginBottom: '0.5rem' }}>Arrastra para reordenar.</p>}
       {images.length === 0 ? <div className="ap-empty"><p>No hay imágenes todavía.</p></div> : (
@@ -684,13 +731,13 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
   const handleSave=async()=>{
     setSaving(true);
     try{
-      const shared={code:code||null,datasheet_url:datasheetUrl||null,location:location||null};
+      const shared={code:code||null,datasheet_url:datasheetUrl||null,location:location||null,quantity:qty,purchase_link:purchaseLink||null,show_purchase_link:showLink};
       if(isMob){
-        await api.put(`/client-projects/${item.project_id}/equipment/${item.id}`,{quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink,show_quantity:showQty,...shared});
-        onUpdate({...item,quantity:qty,youtube_url:ytUrl||null,extra_images:extraImgs,purchase_link:purchaseLink||null,show_purchase_link:showLink,show_quantity:showQty,...shared});
+        await api.put(`/client-projects/${item.project_id}/equipment/${item.id}`,{...shared,youtube_url:ytUrl||null,extra_images:extraImgs,show_quantity:showQty});
+        onUpdate({...item,...shared,youtube_url:ytUrl||null,extra_images:extraImgs,show_quantity:showQty},type);
       }else{
         await api.put(`/client-projects/${item.project_id}/materials/${item.id}`,shared);
-        onUpdate({...item,...shared});
+        onUpdate({...item,...shared},type);
       }
       setExpanded(false);
     }catch{}finally{setSaving(false);}
@@ -712,14 +759,14 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
       <button className="ap-btn-icon" onClick={()=>onUnassign(item.id,type)}><X size={13}/></button>
       {expanded&&(
         <div className="ap-eq-detail-panel">
-          {isMob&&(<div className="ap-field" style={{marginBottom:'0.75rem'}}>
-            <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Cantidad</label>
+          <div className="ap-field" style={{marginBottom:'0.75rem'}}>
+            <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Unidades</label>
             <div style={{display:'flex',alignItems:'center',gap:'0.4rem'}}>
               <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setQty(q=>Math.max(1,q-1))}>−</button>
               <input type="number" min="1" className="ap-field-input" style={{width:60,textAlign:'center'}} value={qty} onChange={e=>setQty(Math.max(1,parseInt(e.target.value)||1))}/>
               <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setQty(q=>q+1)}>+</button>
             </div>
-          </div>)}
+          </div>
           <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.75rem'}}>
             <div className="ap-field" style={{flex:1}}>
               <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Código</label>
@@ -746,18 +793,18 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
               <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={addImg}><Plus size={12}/> Añadir</button>
             </div>
           </div>)}
-          {isMob&&(<div className="ap-field" style={{marginBottom:'0.75rem'}}>
+          <div className="ap-field" style={{marginBottom:'0.75rem'}}>
             <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Enlace de compra</label>
             <input className="ap-field-input" value={purchaseLink} onChange={e=>setPurchaseLink(e.target.value)} placeholder="https://..."/>
-            <label style={{display:'flex',alignItems:'center',gap:'0.4rem',marginTop:'0.5rem',fontSize:'0.72rem',color:'rgba(255,255,255,0.7)',cursor:'pointer'}}>
+            {isMob&&(<label style={{display:'flex',alignItems:'center',gap:'0.4rem',marginTop:'0.5rem',fontSize:'0.72rem',color:'rgba(255,255,255,0.7)',cursor:'pointer'}}>
               <input type="checkbox" checked={showQty} onChange={e=>setShowQty(e.target.checked)}/>
               Mostrar cantidad al cliente
-            </label>
+            </label>)}
             <label style={{display:'flex',alignItems:'center',gap:'0.4rem',marginTop:'0.4rem',fontSize:'0.72rem',color:'rgba(255,255,255,0.7)',cursor:'pointer'}}>
               <input type="checkbox" checked={showLink} onChange={e=>setShowLink(e.target.checked)}/>
               Mostrar enlace de compra al cliente
             </label>
-          </div>)}
+          </div>
           <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSave} disabled={saving} style={{width:'100%'}}>{saving?'Guardando…':<><Save size={12}/> Guardar cambios</>}</button>
         </div>
       )}
@@ -765,9 +812,11 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
   );
 }
 
-function TabAsignaciones({ projectId, categoryId }) {
+function TabAsignaciones({ projectId, categoryId, listadosIntro, onIntroUpdated }) {
   const [tab,setTab]=useState('material'); const [categories,setCategories]=useState([]); const [products,setProducts]=useState([]); const [types,setTypes]=useState([]); const [assigned,setAssigned]=useState({materials:[],equipment:[]}); const [loading,setLoading]=useState(true); const [expandedCat,setExpandedCat]=useState(null);
+  const [intro,setIntro]=useState(listadosIntro||''); const [savingIntro,setSavingIntro]=useState(false);
   const {toast}=useToast();
+  const handleSaveIntro=async()=>{setSavingIntro(true);try{await api.put(`/client-projects/${projectId}/listados-intro`,{intro});onIntroUpdated?.(intro);toast.success('Introducción guardada');}catch{toast.error('Error al guardar la introducción');}finally{setSavingIntro(false);}};
   const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}));
   useEffect(()=>{Promise.all([api.get('/catalog/categories'),api.get('/catalog/products'),api.get('/catalog/types'),api.get(`/client-projects/${projectId}/materials`),api.get(`/client-projects/${projectId}/equipment`)]).then(([cats,prods,typs,mats,equip])=>{setCategories(cats.data.categories||[]);setProducts(prods.data.products||[]);const t=typs.data.types||[];setTypes(t);if(t.length&&!t.some(x=>x.slug===tab))setTab(t[0].slug);setAssigned({materials:mats.data.materials||[],equipment:equip.data.equipment||[]});}).catch(()=>{}).finally(()=>setLoading(false));},[projectId]);
   const visibleAssigned=(list)=>categoryId!=null?list.filter(a=>a.category_id===categoryId):list;
@@ -775,12 +824,21 @@ function TabAsignaciones({ projectId, categoryId }) {
   const handleAssignedDragEnd=async(event)=>{const{active,over}=event;if(!active||!over||active.id===over.id)return;const isMat=tab==='material';const list=visibleAssigned(isMat?assigned.materials:assigned.equipment);const oldIndex=list.findIndex(a=>a.id===active.id);const newIndex=list.findIndex(a=>a.id===over.id);const newList=arrayMove(list,oldIndex,newIndex);setAssigned(prev=>{const key=isMat?'materials':'equipment';const others=prev[key].filter(x=>categoryId!=null&&x.category_id!==categoryId);return{...prev,[key]:[...others,...newList]};});const endpoint=isMat?`/client-projects/${projectId}/materials/reorder`:`/client-projects/${projectId}/equipment/reorder`;try{await api.put(endpoint,{ids:newList.map(a=>a.id)});}catch{toast.error('Error al guardar el orden');}};
   const assign=async(product)=>{const isMat=product.category?.type==='material';const type=isMat?'material':'mobiliario';if(isAssigned(product.id,type)){toast.error(`"${product.name}" ya está asignado`);return;}const endpoint=isMat?`/client-projects/${projectId}/materials`:`/client-projects/${projectId}/equipment`;try{const payload=isMat?{name:product.name,category:product.category?.name,catalog_product_id:product.id,image_url:product.photo_url||null}:{name:product.name,category:product.category?.name,catalog_product_id:product.id,quantity:1,image_url:product.photo_url||null,extra_images:[],youtube_url:null};if(categoryId!=null)payload.category_id=categoryId;const{data}=await api.post(endpoint,payload);setAssigned(prev=>isMat?{...prev,materials:[data.material,...prev.materials]}:{...prev,equipment:[data.equipment,...prev.equipment]});toast.success(`"${product.name}" añadido`);}catch{toast.error('Error al asignar producto');}};
   const unassign=async(id,type)=>{const isMat=type==='material';const endpoint=isMat?`/client-projects/${projectId}/materials/${id}`:`/client-projects/${projectId}/equipment/${id}`;try{await api.delete(endpoint);setAssigned(prev=>isMat?{...prev,materials:prev.materials.filter(m=>m.id!==id)}:{...prev,equipment:prev.equipment.filter(e=>e.id!==id)});}catch{toast.error('Error al quitar producto');}};
-  const handleItemUpdate=(updatedItem)=>{setAssigned(prev=>({...prev,equipment:prev.equipment.map(e=>e.id===updatedItem.id?updatedItem:e)}));toast.success('Detalles guardados');};
+  const handleItemUpdate=(updatedItem,type)=>{const key=type==='mobiliario'?'equipment':'materials';setAssigned(prev=>({...prev,[key]:prev[key].map(x=>x.id===updatedItem.id?updatedItem:x)}));toast.success('Detalles guardados');};
   if(loading) return <div className="ap-loading">Cargando…</div>;
   const filteredCats=categories.filter(c=>c.type===tab);
   const assignedList=visibleAssigned(tab==='material'?assigned.materials:assigned.equipment);
   return (
     <div className="ap-tab-content">
+      {categoryId==null&&(
+        <div className="ap-field" style={{marginBottom:'1.25rem'}}>
+          <label>Introducción para el cliente <span className="ap-optional">(opcional — si la dejas vacía, se usa un texto genérico)</span></label>
+          <textarea className="ap-diag-textarea" rows={3} value={intro} onChange={e=>setIntro(e.target.value)} placeholder="Aquí tienes el listado completo de materiales y equipamiento..."/>
+          <div className="ap-diag-save-row" style={{marginTop:'0.5rem'}}>
+            <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSaveIntro} disabled={savingIntro}>{savingIntro?'Guardando…':'Guardar introducción'}</button>
+          </div>
+        </div>
+      )}
       <div className="ap-cat-tabs" style={{marginBottom:'1.25rem'}}>
         {types.map(t=>(<button key={t.id} className={`ap-cat-tab${tab===t.slug?' active':''}`} onClick={()=>setTab(t.slug)}>{t.name}</button>))}
       </div>
@@ -1515,7 +1573,7 @@ function ProjectManagerModal({ project, onClose }) {
           {tab==='documentos'&&<TabDocumentos projectId={project.id}/>}
           {tab==='tours'&&<TabTour projectId={project.id}/>}
           {tab==='notas'&&<TabNotas projectId={project.id}/>}
-          {tab==='catalogo'&&<TabAsignaciones projectId={project.id}/>}
+          {tab==='catalogo'&&<TabAsignaciones projectId={project.id} listadosIntro={project.listados_intro_text} onIntroUpdated={(v)=>{project.listados_intro_text=v;}}/>}
         </div>
       </div>
     </div>
@@ -1734,7 +1792,7 @@ function SectionReferencias() {
   const handleSaved=(ref,isEdit)=>{setReferences(prev=>isEdit?prev.map(r=>r.id===ref.id?ref:r):[ref,...prev]);toast.success(isEdit?'Referencia actualizada':'Referencia añadida');};
   const handleDelete=(id)=>{setConfirm({message:'¿Eliminar esta referencia?',onConfirm:async()=>{try{await api.delete(`/references/${id}`);setReferences(prev=>prev.filter(r=>r.id!==id));toast.success('Referencia eliminada');}catch{toast.error('Error al eliminar');}setConfirm(null);},onCancel:()=>setConfirm(null)});};
   const getDomain=(url)=>{try{return new URL(url).hostname.replace('www.','');}catch{return url;}};
-  const ReferenceModal=({reference,onClose,onSaved})=>{const isEdit=!!reference;const [title,setTitle]=useState(reference?.title||'');const [url,setUrl]=useState(reference?.url||'');const [description,setDescription]=useState(reference?.description||'');const [category,setCategory]=useState(reference?.category||'');const [imageUrl,setImageUrl]=useState(reference?.image_url||'');const [saving,setSaving]=useState(false);const [error,setError]=useState('');const handleSubmit=async(e)=>{e.preventDefault();if(!title.trim())return;setSaving(true);setError('');try{const payload={title:title.trim(),url:url.trim()||null,description:description.trim()||null,category:category.trim()||null,image_url:imageUrl.trim()||null};let data;if(isEdit){({data}=await api.put(`/references/${reference.id}`,payload));onSaved(data.reference,true);}else{({data}=await api.post('/references',payload));onSaved(data.reference,false);}onClose();}catch{setError('Error al guardar');}finally{setSaving(false);}};return(<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>{isEdit?'Editar referencia':'Nueva referencia'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form"><div className="ap-field"><label>Título *</label><input value={title} onChange={e=>setTitle(e.target.value)} required autoFocus/></div><div className="ap-field"><label>URL</label><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..."/></div><div className="ap-field"><label>Categoría</label><input list="ref-cats" value={category} onChange={e=>setCategory(e.target.value)}/><datalist id="ref-cats">{categories.map(c=><option key={c} value={c}/>)}</datalist></div><div className="ap-field"><label>Imagen (URL)</label><input value={imageUrl} onChange={e=>setImageUrl(e.target.value)} placeholder="https://..."/>{imageUrl&&<img src={imageUrl} alt="" style={{marginTop:'0.5rem',width:'100%',maxHeight:160,objectFit:'cover',borderRadius:8}} onError={e=>e.target.style.display='none'}/>}</div><div className="ap-field"><label>Descripción</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3}/></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={saving||!title.trim()}>{saving?'Guardando…':isEdit?'Guardar cambios':'Añadir'}</button></div></form></div></div>);};
+  const ReferenceModal=({reference,onClose,onSaved})=>{const isEdit=!!reference;const [title,setTitle]=useState(reference?.title||'');const [url,setUrl]=useState(reference?.url||'');const [description,setDescription]=useState(reference?.description||'');const [category,setCategory]=useState(reference?.category||'');const [imageUrl,setImageUrl]=useState(reference?.image_url||'');const [saving,setSaving]=useState(false);const [uploadingImg,setUploadingImg]=useState(false);const [error,setError]=useState('');const imgFileRef=useRef();const handleUploadImg=async(e)=>{const file=e.target.files?.[0];if(!file)return;setUploadingImg(true);setError('');try{const form=new FormData();form.append('file',file);const{data}=await api.post('/references/upload-image',form,{headers:{'Content-Type':'multipart/form-data'}});setImageUrl(data.image_url);if(!title.trim())setTitle(file.name.replace(/\.[^.]+$/,''));}catch{setError('Error al subir la imagen');}finally{setUploadingImg(false);if(imgFileRef.current)imgFileRef.current.value='';}};const handleSubmit=async(e)=>{e.preventDefault();if(!title.trim())return;setSaving(true);setError('');try{const payload={title:title.trim(),url:url.trim()||null,description:description.trim()||null,category:category.trim()||null,image_url:imageUrl.trim()||null};let data;if(isEdit){({data}=await api.put(`/references/${reference.id}`,payload));onSaved(data.reference,true);}else{({data}=await api.post('/references',payload));onSaved(data.reference,false);}onClose();}catch{setError('Error al guardar');}finally{setSaving(false);}};return(<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>{isEdit?'Editar referencia':'Nueva referencia'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form"><div className="ap-field"><label>Título *</label><input value={title} onChange={e=>setTitle(e.target.value)} required autoFocus/></div><div className="ap-field"><label>Imagen</label><div style={{display:'flex',gap:8,alignItems:'center'}}><input value={imageUrl} onChange={e=>setImageUrl(e.target.value)} placeholder="Pega una URL o sube una imagen" style={{flex:1}}/><label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{flexShrink:0}}>{uploadingImg?'Subiendo…':<><Plus size={13}/> Subir</>}<input ref={imgFileRef} type="file" accept="image/*" onChange={handleUploadImg} disabled={uploadingImg} style={{display:'none'}}/></label></div>{imageUrl&&<img src={imageUrl} alt="" style={{marginTop:'0.5rem',width:'100%',maxHeight:160,objectFit:'cover',borderRadius:8}} onError={e=>e.target.style.display='none'}/>}</div><div className="ap-field"><label>URL <span className="ap-optional">(opcional, si es un enlace a una web)</span></label><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..."/></div><div className="ap-field"><label>Categoría</label><input list="ref-cats" value={category} onChange={e=>setCategory(e.target.value)}/><datalist id="ref-cats">{categories.map(c=><option key={c} value={c}/>)}</datalist></div><div className="ap-field"><label>Descripción</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3}/></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={saving||!title.trim()}>{saving?'Guardando…':isEdit?'Guardar cambios':'Añadir'}</button></div></form></div></div>);};
   return (
     <div className="ap-section">
       <ToastContainer toasts={toasts} onRemove={remove}/>

@@ -1,9 +1,27 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
+import { uploadReferenceImageFile, handleMulterError } from '../middleware/upload.middleware.js';
+import { uploadReferenceImage, deleteReferenceImage } from '../utils/storage.js';
 
 const router = express.Router();
 router.use(authenticateToken, requirePermission('referencias'));
+
+/**
+ * POST /api/references/upload-image
+ * Sube una imagen propia (sin URL externa) y devuelve su image_url, para
+ * usar al crear/editar una referencia de solo imagen.
+ */
+router.post('/upload-image', uploadReferenceImageFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ninguna imagen' });
+    const image_url = await uploadReferenceImage(req.file.buffer, req.file.originalname, req.file.mimetype);
+    res.status(201).json({ image_url });
+  } catch (error) {
+    console.error('Error al subir imagen de referencia:', error);
+    res.status(500).json({ error: 'Error al subir la imagen' });
+  }
+});
 
 router.get('/', async (req, res) => {
   try {
@@ -64,11 +82,15 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
+    const { data: existing } = await supabase.from('inspiration_references').select('image_url').eq('id', req.params.id).maybeSingle();
     const { error } = await supabase
       .from('inspiration_references')
       .delete()
       .eq('id', req.params.id);
     if (error) throw error;
+    if (existing?.image_url?.includes('/inspiration-references/')) {
+      await deleteReferenceImage(existing.image_url);
+    }
     res.json({ message: 'Referencia eliminada' });
   } catch {
     res.status(500).json({ error: 'Error al eliminar referencia' });
