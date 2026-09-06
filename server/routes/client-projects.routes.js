@@ -174,7 +174,7 @@ router.get('/by-code/:code', async (req, res) => {
   try {
     const { data: project, error } = await supabase
       .from('client_projects')
-      .select('id, client_name, project_name, phase, cover_image_url, moodboard_description, listados_intro_text, responsible:employees!responsible_id(name, email)')
+      .select('id, client_name, project_name, phase, cover_image_url, moodboard_description, listados_intro_text, listados_title, responsible:employees!responsible_id(name, email)')
       .eq('access_code', req.params.code.toUpperCase())
       .single();
 
@@ -566,13 +566,16 @@ router.put('/:id/moodboard', authenticateToken, requireProyectos, async (req, re
  */
 router.put('/:id/listados-intro', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { intro } = req.body;
+    const { intro, title } = req.body;
+    const updates = {};
+    if (intro !== undefined) updates.listados_intro_text = intro?.trim() || null;
+    if (title !== undefined) updates.listados_title = title?.trim() || null;
     const { error } = await supabase
       .from('client_projects')
-      .update({ listados_intro_text: intro?.trim() || null })
+      .update(updates)
       .eq('id', req.params.id);
     if (error) throw error;
-    res.json({ message: 'Introducción de Listados actualizada' });
+    res.json({ message: 'Listados actualizado' });
   } catch (error) {
     console.error('Error al actualizar la introducción de Listados:', error);
     res.status(500).json({ error: 'Error al actualizar la introducción' });

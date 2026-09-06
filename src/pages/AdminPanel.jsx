@@ -812,11 +812,11 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
   );
 }
 
-function TabAsignaciones({ projectId, categoryId, listadosIntro, onIntroUpdated }) {
+function TabAsignaciones({ projectId, categoryId, listadosIntro, listadosTitle, onIntroUpdated }) {
   const [tab,setTab]=useState('material'); const [categories,setCategories]=useState([]); const [products,setProducts]=useState([]); const [types,setTypes]=useState([]); const [assigned,setAssigned]=useState({materials:[],equipment:[]}); const [loading,setLoading]=useState(true); const [expandedCat,setExpandedCat]=useState(null);
-  const [intro,setIntro]=useState(listadosIntro||''); const [savingIntro,setSavingIntro]=useState(false);
+  const [intro,setIntro]=useState(listadosIntro||''); const [title,setTitle]=useState(listadosTitle||''); const [savingIntro,setSavingIntro]=useState(false);
   const {toast}=useToast();
-  const handleSaveIntro=async()=>{setSavingIntro(true);try{await api.put(`/client-projects/${projectId}/listados-intro`,{intro});onIntroUpdated?.(intro);toast.success('Introducción guardada');}catch{toast.error('Error al guardar la introducción');}finally{setSavingIntro(false);}};
+  const handleSaveIntro=async()=>{setSavingIntro(true);try{await api.put(`/client-projects/${projectId}/listados-intro`,{intro,title});onIntroUpdated?.(intro,title);toast.success('Guardado');}catch{toast.error('Error al guardar');}finally{setSavingIntro(false);}};
   const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}));
   useEffect(()=>{Promise.all([api.get('/catalog/categories'),api.get('/catalog/products'),api.get('/catalog/types'),api.get(`/client-projects/${projectId}/materials`),api.get(`/client-projects/${projectId}/equipment`)]).then(([cats,prods,typs,mats,equip])=>{setCategories(cats.data.categories||[]);setProducts(prods.data.products||[]);const t=typs.data.types||[];setTypes(t);if(t.length&&!t.some(x=>x.slug===tab))setTab(t[0].slug);setAssigned({materials:mats.data.materials||[],equipment:equip.data.equipment||[]});}).catch(()=>{}).finally(()=>setLoading(false));},[projectId]);
   const visibleAssigned=(list)=>categoryId!=null?list.filter(a=>a.category_id===categoryId):list;
@@ -832,10 +832,12 @@ function TabAsignaciones({ projectId, categoryId, listadosIntro, onIntroUpdated 
     <div className="ap-tab-content">
       {categoryId==null&&(
         <div className="ap-field" style={{marginBottom:'1.25rem'}}>
+          <label>Título de la sección <span className="ap-optional">(opcional — por defecto "Listados"; en un anteproyecto puedes poner "Selección orientativa")</span></label>
+          <input className="ap-field-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="Listados" style={{marginBottom:'0.75rem'}}/>
           <label>Introducción para el cliente <span className="ap-optional">(opcional — si la dejas vacía, se usa un texto genérico)</span></label>
           <textarea className="ap-diag-textarea" rows={3} value={intro} onChange={e=>setIntro(e.target.value)} placeholder="Aquí tienes el listado completo de materiales y equipamiento..."/>
           <div className="ap-diag-save-row" style={{marginTop:'0.5rem'}}>
-            <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSaveIntro} disabled={savingIntro}>{savingIntro?'Guardando…':'Guardar introducción'}</button>
+            <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSaveIntro} disabled={savingIntro}>{savingIntro?'Guardando…':'Guardar'}</button>
           </div>
         </div>
       )}
@@ -1573,7 +1575,7 @@ function ProjectManagerModal({ project, onClose }) {
           {tab==='documentos'&&<TabDocumentos projectId={project.id}/>}
           {tab==='tours'&&<TabTour projectId={project.id}/>}
           {tab==='notas'&&<TabNotas projectId={project.id}/>}
-          {tab==='catalogo'&&<TabAsignaciones projectId={project.id} listadosIntro={project.listados_intro_text} onIntroUpdated={(v)=>{project.listados_intro_text=v;}}/>}
+          {tab==='catalogo'&&<TabAsignaciones projectId={project.id} listadosIntro={project.listados_intro_text} listadosTitle={project.listados_title} onIntroUpdated={(v,t)=>{project.listados_intro_text=v;project.listados_title=t;}}/>}
         </div>
       </div>
     </div>

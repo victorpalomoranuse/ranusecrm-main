@@ -359,7 +359,7 @@ function MobiliarioSection({ equipment, label }) {
 
 const DEFAULT_LISTADOS_INTRO = 'Aquí tienes el listado completo de materiales y equipamiento seleccionados para tu proyecto, organizado por categoría, con su código de plano, unidades y enlace de compra cuando esté disponible.';
 
-function ListadosSection({ materials, equipment, intro }) {
+function ListadosSection({ materials, equipment, intro, title }) {
   const [zoom, setZoom] = useState(null);
   const all = [
     ...(materials || []).map(m => ({ ...m, kind: 'material' })),
@@ -377,7 +377,7 @@ function ListadosSection({ materials, equipment, intro }) {
 
   return (
     <section className="mp-block">
-      <p className="mp-block-label">Listados</p>
+      <p className="mp-block-label">{title || 'Listados'}</p>
       <p className="mp-ph-intro">{intro || DEFAULT_LISTADOS_INTRO}</p>
       <div className="mp-listados">
         {groups.map(g => (
@@ -890,7 +890,7 @@ export function MiProyecto() {
           {categories.map(category => (
             <CategoryBlock key={category.id} category={category} />
           ))}
-          <ListadosSection materials={project.materials} equipment={project.equipment} intro={project.listados_intro_text} />
+          <ListadosSection materials={project.materials} equipment={project.equipment} intro={project.listados_intro_text} title={project.listados_title} />
         </div>
 
         {hasGlobalContent && (
