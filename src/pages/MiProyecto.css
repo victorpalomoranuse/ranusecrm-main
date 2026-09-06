@@ -341,6 +341,15 @@
 /* ── Listados ─────────────────────────────────────────────────────── */
 .mp-listados { display: flex; flex-direction: column; gap: 1.5rem; }
 .mp-listado-group { display: flex; flex-direction: column; gap: 0.5rem; }
+.mp-listado-cat-head {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
 .mp-listado-cat {
   font-size: 0.68rem;
   font-weight: 700;
@@ -348,6 +357,7 @@
   letter-spacing: 0.08em;
   color: #beb0a2;
   margin: 0;
+  flex: 1;
 }
 .mp-listado-table { display: flex; flex-direction: column; gap: 0.4rem; }
 .mp-listado-row {

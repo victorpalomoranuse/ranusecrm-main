@@ -359,6 +359,53 @@ function MobiliarioSection({ equipment, label }) {
 
 const DEFAULT_LISTADOS_INTRO = 'Aquí tienes el listado completo de materiales y equipamiento seleccionados para tu proyecto, organizado por categoría, con su código de plano, unidades y enlace de compra cuando esté disponible.';
 
+// Las categorías del catálogo se nombran "1. Racks y Jaulas", "2. Máquinas Gym"...
+// Con ese número al principio, Víctor ya define el orden que quiere — lo usamos
+// para ordenar los listados en vez de dejarlos en el orden en que se añadieron.
+function leadingNumber(name) {
+  const m = /^(\d+)\./.exec(name || '');
+  return m ? parseInt(m[1], 10) : Infinity;
+}
+
+function ListadoGroup({ group, onZoom }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="mp-listado-group">
+      <button type="button" className="mp-listado-cat-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <span className="mp-listado-cat">{group.name}</span>
+        <svg className={`mp-ph-chevron${open ? ' open' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="mp-listado-table">
+          {group.items.map(item => {
+            const uds = item.quantity || 1;
+            const showUds = item.kind === 'equipment' ? item.show_quantity !== false : true;
+            return (
+              <div key={item.id} className="mp-listado-row">
+                <div className="mp-listado-img" onClick={() => item.image_url && onZoom(item)} role={item.image_url ? 'button' : undefined} tabIndex={item.image_url ? 0 : undefined}>
+                  {item.image_url ? <img src={item.image_url} alt="" loading="lazy" /> : <span className="mp-listado-img-empty" />}
+                </div>
+                <div className="mp-listado-info">
+                  <span className="mp-listado-desc">{item.name}{item.brand ? <span className="mp-listado-brand"> · {item.brand}</span> : null}</span>
+                  <span className="mp-listado-meta">
+                    {item.code && <span className="mp-listado-code">Cód. {item.code}</span>}
+                    {showUds && <span className="mp-listado-uds">Uds: {uds}</span>}
+                  </span>
+                </div>
+                {item.show_purchase_link && item.purchase_link && (
+                  <a href={item.purchase_link} target="_blank" rel="noopener noreferrer" className="mp-listado-buy" onClick={e => e.stopPropagation()}>Comprar ↗</a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ListadosSection({ materials, equipment, intro, title }) {
   const [zoom, setZoom] = useState(null);
   const all = [
@@ -374,40 +421,14 @@ function ListadosSection({ materials, equipment, intro, title }) {
     if (!g) { g = { name: catName, items: [] }; groups.push(g); }
     g.items.push(item);
   });
+  groups.sort((a, b) => leadingNumber(a.name) - leadingNumber(b.name) || a.name.localeCompare(b.name));
 
   return (
     <section className="mp-block">
       <p className="mp-block-label">{title || 'Listados'}</p>
       <p className="mp-ph-intro">{intro || DEFAULT_LISTADOS_INTRO}</p>
       <div className="mp-listados">
-        {groups.map(g => (
-          <div key={g.name} className="mp-listado-group">
-            <p className="mp-listado-cat">{g.name}</p>
-            <div className="mp-listado-table">
-              {g.items.map(item => {
-                const uds = item.quantity || 1;
-                const showUds = item.kind === 'equipment' ? item.show_quantity !== false : true;
-                return (
-                  <div key={item.id} className="mp-listado-row">
-                    <div className="mp-listado-img" onClick={() => item.image_url && setZoom(item)} role={item.image_url ? 'button' : undefined} tabIndex={item.image_url ? 0 : undefined}>
-                      {item.image_url ? <img src={item.image_url} alt="" loading="lazy" /> : <span className="mp-listado-img-empty" />}
-                    </div>
-                    <div className="mp-listado-info">
-                      <span className="mp-listado-desc">{item.name}{item.brand ? <span className="mp-listado-brand"> · {item.brand}</span> : null}</span>
-                      <span className="mp-listado-meta">
-                        {item.code && <span className="mp-listado-code">Cód. {item.code}</span>}
-                        {showUds && <span className="mp-listado-uds">Uds: {uds}</span>}
-                      </span>
-                    </div>
-                    {item.show_purchase_link && item.purchase_link && (
-                      <a href={item.purchase_link} target="_blank" rel="noopener noreferrer" className="mp-listado-buy" onClick={e => e.stopPropagation()}>Comprar ↗</a>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+        {groups.map(g => <ListadoGroup key={g.name} group={g} onZoom={setZoom} />)}
       </div>
       {zoom && <Lightbox src={zoom.image_url} alt={zoom.name} onClose={() => setZoom(null)} />}
     </section>
