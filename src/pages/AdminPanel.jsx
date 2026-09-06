@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer } from 'lucide-react';
+import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, Send } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
+import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionPedidos } from './SectionPedidos';
 import { SectionTareas } from './SectionTareas';
 import { SectionAjustes } from './SectionAjustes';
@@ -1861,6 +1862,7 @@ const NAV_ITEMS = [
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
   { id:'roles', label:'Roles', Icon:Shield, adminOnly:true },
   { id:'presupuestos', label:'Presupuestos', Icon:Calculator, adminOnly:true },
+  { id:'asistente', label:'Asistente IA', Icon:MessageSquare, adminOnly:true },
   { id:'pedidos', label:'Pedidos', Icon:Package, adminOnly:true },
   { id:'finanzas', label:'Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'obra', label:'Relación de obra', Icon:Hammer, permissions:['ventas','finanzas'] },
@@ -1906,6 +1908,7 @@ export function AdminPanel() {
         {section==='empleados'&&<SectionEmpleados/>}
         {section==='roles'&&<SectionRoles/>}
         {section==='presupuestos'&&<SectionPresupuestos/>}
+        {section==='asistente'&&<SectionAsistenteIA/>}
         {section==='pedidos'&&<SectionPedidos/>}
         {section==='finanzas'&&<SectionFinanzas/>}
         {section==='obra'&&<SectionRelacionObra/>}

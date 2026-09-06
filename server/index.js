@@ -26,6 +26,7 @@ import comisionesRoutes from './routes/comisiones.routes.js';
 import categoriesRoutes from './routes/categories.routes.js';
 import needsFormRoutes from './routes/needs-form.routes.js';
 import obraRoutes from './routes/obra.routes.js';
+import aiBudgetRoutes from './routes/ai-budget.routes.js';
 dotenv.config();
 
 const app = express();
@@ -83,6 +84,7 @@ app.use('/api/comisiones', comisionesRoutes);
 app.use('/api/categories', categoriesRoutes);
 app.use('/api/needs-form', needsFormRoutes);
 app.use('/api/obra', obraRoutes);
+app.use('/api/ai-budget', aiBudgetRoutes);
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
 });
