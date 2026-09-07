@@ -159,6 +159,7 @@ export function SectionAjustes() {
   const [bankName, setBankName] = useState('');
   const [paymentMethods, setPaymentMethods] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [aiPrefs, setAiPrefs] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -170,6 +171,7 @@ export function SectionAjustes() {
       setBankName(s.bank_name || '');
       setPaymentMethods(s.payment_methods || '');
       setPaymentNotes(s.payment_notes || '');
+      setAiPrefs(s.ai_budget_preferences || '');
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
@@ -177,7 +179,7 @@ export function SectionAjustes() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put('/settings', { bank_iban: iban, bank_name: bankName, payment_methods: paymentMethods, payment_notes: paymentNotes });
+      await api.put('/settings', { bank_iban: iban, bank_name: bankName, payment_methods: paymentMethods, payment_notes: paymentNotes, ai_budget_preferences: aiPrefs });
       setMsg({ type: 'success', text: 'Ajustes guardados' });
     } catch {
       setMsg({ type: 'error', text: 'Error al guardar' });
@@ -217,6 +219,15 @@ export function SectionAjustes() {
               <div className="ap-field">
                 <label>Notas adicionales <span className="ap-optional">(opcional)</span></label>
                 <textarea value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)} rows={3} placeholder="Ej: El pago se realizará en dos plazos: 50% al inicio y 50% a la entrega." />
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '1.5rem', marginBottom: '1.5rem' }}>
+              <p style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', marginBottom: '0.5rem' }}>Asistente IA de presupuestos</p>
+              <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', marginBottom: '1rem' }}>Cuando el asistente elige un producto por ti o para un comercial, ya ordena por precio (económico/medio/premium). Aquí puedes contarle tus propios criterios para que elija más como lo harías tú — marcas de confianza, qué evitar, qué priorizar además del precio, etc.</p>
+              <div className="ap-field">
+                <label>Preferencias de selección <span className="ap-optional">(opcional)</span></label>
+                <textarea value={aiPrefs} onChange={e => setAiPrefs(e.target.value)} rows={4} placeholder="Ej: Para racks prefiero siempre Element Fitness salvo que pidan algo muy económico. Evita recomendar cintas de correr plegables, prefiero las fijas. En mancuernas de goma prioriza siempre las que tengan buena valoración de marca sobre las más baratas." />
               </div>
             </div>
 

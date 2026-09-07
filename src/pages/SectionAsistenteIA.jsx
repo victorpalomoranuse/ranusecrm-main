@@ -6,7 +6,7 @@ import './SectionAsistenteIA.css';
 const EJEMPLOS = [
   'Gimnasio en casa con rack, banco y mancuernas, tres niveles de precio',
   'Presupuesto para sala de cardio: cinta, bici y remo',
-  'Qué categorías de mobiliario tengo cargadas en el catálogo',
+  'Crea el presupuesto de nivel medio para el proyecto de [nombre del cliente]',
 ];
 
 export function SectionAsistenteIA() {
@@ -43,7 +43,7 @@ export function SectionAsistenteIA() {
       <div className="ap-section-head">
         <div>
           <h1><MessageSquare size={20} style={{ verticalAlign: -3, marginRight: 6 }} />Asistente de presupuestos</h1>
-          <p>Pídele un desglose por tipos de máquina y niveles de precio (económico/medio/premium) usando tu catálogo real.</p>
+          <p>Pídele un desglose por tipos de máquina y niveles de precio (económico/medio/premium) usando tu catálogo real. Cuando tengas claro qué nivel quieres, pídele que lo cree y quedará guardado como presupuesto real del proyecto.</p>
         </div>
       </div>
 

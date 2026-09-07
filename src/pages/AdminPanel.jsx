@@ -1875,7 +1875,7 @@ const NAV_ITEMS = [
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
   { id:'roles', label:'Roles', Icon:Shield, adminOnly:true },
   { id:'presupuestos', label:'Presupuestos', Icon:Calculator, adminOnly:true },
-  { id:'asistente', label:'Asistente IA', Icon:MessageSquare, adminOnly:true },
+  { id:'asistente', label:'Asistente IA', Icon:MessageSquare, permission:'ventas' },
   { id:'pedidos', label:'Pedidos', Icon:Package, adminOnly:true },
   { id:'finanzas', label:'Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'obra', label:'Relación de obra', Icon:Hammer, permissions:['ventas','finanzas'] },
