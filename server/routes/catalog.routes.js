@@ -169,7 +169,7 @@ router.put('/products/reorder', async (req, res) => {
 
 router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
-    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado } = req.body;
+    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color } = req.body;
     if (!category_id || !name?.trim()) {
       return res.status(400).json({ error: 'Categoría y nombre requeridos' });
     }
@@ -201,6 +201,10 @@ router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, 
         color_bastidor: color_bastidor?.trim() || null,
         color_acolchado: color_acolchado?.trim() || null,
         tipo_acolchado: tipo_acolchado?.trim() || null,
+        lumens: lumens ? parseInt(lumens) : null,
+        watts: watts ? parseFloat(watts) : null,
+        color_temperature: color_temperature?.trim() || null,
+        color: color?.trim() || null,
       })
       .select('*, category:catalog_categories(id, name, type)')
       .single();
@@ -214,7 +218,7 @@ router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, 
 
 router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
-    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado } = req.body;
+    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color } = req.body;
     const updates = {};
     if (category_id !== undefined) updates.category_id = category_id;
     if (name !== undefined) updates.name = name.trim();
@@ -228,6 +232,10 @@ router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (re
     if (color_bastidor !== undefined) updates.color_bastidor = color_bastidor?.trim() || null;
     if (color_acolchado !== undefined) updates.color_acolchado = color_acolchado?.trim() || null;
     if (tipo_acolchado !== undefined) updates.tipo_acolchado = tipo_acolchado?.trim() || null;
+    if (lumens !== undefined) updates.lumens = lumens ? parseInt(lumens) : null;
+    if (watts !== undefined) updates.watts = watts ? parseFloat(watts) : null;
+    if (color_temperature !== undefined) updates.color_temperature = color_temperature?.trim() || null;
+    if (color !== undefined) updates.color = color?.trim() || null;
 
     if (req.file) {
       // Borrar foto anterior

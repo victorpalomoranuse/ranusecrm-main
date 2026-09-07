@@ -393,6 +393,14 @@ function ListadoGroup({ group, onZoom }) {
                     {item.code && <span className="mp-listado-code">Cód. {item.code}</span>}
                     {showUds && <span className="mp-listado-uds">Uds: {uds}</span>}
                   </span>
+                  {(item.lumens || item.watts || item.color_temperature || item.color) && (
+                    <span className="mp-listado-specs">
+                      {item.lumens && <span className="mp-listado-spec">{item.lumens} lm</span>}
+                      {item.watts && <span className="mp-listado-spec">{item.watts} W</span>}
+                      {item.color_temperature && <span className="mp-listado-spec">{item.color_temperature}</span>}
+                      {item.color && <span className="mp-listado-spec">{item.color}</span>}
+                    </span>
+                  )}
                 </div>
                 {item.show_purchase_link && item.purchase_link && (
                   <a href={item.purchase_link} target="_blank" rel="noopener noreferrer" className="mp-listado-buy" onClick={e => e.stopPropagation()}>Comprar ↗</a>

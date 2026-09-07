@@ -1159,7 +1159,7 @@ router.get('/:id/materials', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/materials', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, category_type, location, notes, image_url, catalog_product_id, phase_number, category_id, code, datasheet_url, quantity, purchase_link, show_purchase_link } = req.body;
+    const { name, brand, category, category_type, location, notes, image_url, catalog_product_id, phase_number, category_id, code, datasheet_url, quantity, purchase_link, show_purchase_link, lumens, watts, color_temperature, color } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del material es requerido' });
@@ -1184,6 +1184,10 @@ router.post('/:id/materials', authenticateToken, requireProyectos, async (req, r
         quantity: quantity != null && quantity !== '' ? parseFloat(quantity) : 1,
         purchase_link: purchase_link?.trim() || null,
         show_purchase_link: !!show_purchase_link,
+        lumens: lumens ? parseInt(lumens) : null,
+        watts: watts ? parseFloat(watts) : null,
+        color_temperature: color_temperature?.trim() || null,
+        color: color?.trim() || null,
       })
       .select('*')
       .single();
@@ -1201,7 +1205,7 @@ router.post('/:id/materials', authenticateToken, requireProyectos, async (req, r
  */
 router.put('/:id/materials/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { brand, category, location, notes, phase_number, code, datasheet_url, quantity, purchase_link, show_purchase_link } = req.body;
+    const { brand, category, location, notes, phase_number, code, datasheet_url, quantity, purchase_link, show_purchase_link, lumens, watts, color_temperature, color } = req.body;
 
     const updates = {};
     if (brand !== undefined) updates.brand = brand?.trim() || null;
@@ -1214,6 +1218,10 @@ router.put('/:id/materials/:selId', authenticateToken, requireProyectos, async (
     if (quantity !== undefined) updates.quantity = quantity != null && quantity !== '' ? parseFloat(quantity) : 1;
     if (purchase_link !== undefined) updates.purchase_link = purchase_link?.trim() || null;
     if (show_purchase_link !== undefined) updates.show_purchase_link = !!show_purchase_link;
+    if (lumens !== undefined) updates.lumens = lumens ? parseInt(lumens) : null;
+    if (watts !== undefined) updates.watts = watts ? parseFloat(watts) : null;
+    if (color_temperature !== undefined) updates.color_temperature = color_temperature?.trim() || null;
+    if (color !== undefined) updates.color = color?.trim() || null;
 
     const { data, error } = await supabase
       .from('project_material_selections')
@@ -1296,7 +1304,7 @@ router.get('/:id/equipment', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, category_type, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link, show_quantity, phase_number, category_id, code, datasheet_url, location } = req.body;
+    const { name, brand, category, category_type, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link, show_quantity, phase_number, category_id, code, datasheet_url, location, lumens, watts, color_temperature } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del equipo es requerido' });
@@ -1334,6 +1342,9 @@ router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, r
         code: code?.trim() || null,
         datasheet_url: datasheet_url?.trim() || null,
         location: location?.trim() || null,
+        lumens: lumens ? parseInt(lumens) : null,
+        watts: watts ? parseFloat(watts) : null,
+        color_temperature: color_temperature?.trim() || null,
       })
       .select('*')
       .single();
@@ -1515,7 +1526,7 @@ router.delete('/:id/notes/:noteId', authenticateToken, requireProyectos, async (
 });
 router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link, show_quantity, phase_number, code, datasheet_url, location } = req.body;
+    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link, show_quantity, phase_number, code, datasheet_url, location, lumens, watts, color_temperature, color } = req.body;
 
     const updates = {};
     if (quantity !== undefined) updates.quantity = parseInt(quantity);
@@ -1528,6 +1539,10 @@ router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (
     if (code !== undefined) updates.code = code?.trim() || null;
     if (datasheet_url !== undefined) updates.datasheet_url = datasheet_url?.trim() || null;
     if (location !== undefined) updates.location = location?.trim() || null;
+    if (lumens !== undefined) updates.lumens = lumens ? parseInt(lumens) : null;
+    if (watts !== undefined) updates.watts = watts ? parseFloat(watts) : null;
+    if (color_temperature !== undefined) updates.color_temperature = color_temperature?.trim() || null;
+    if (color !== undefined) updates.color = color?.trim() || null;
 
     const { data, error } = await supabase
       .from('project_equipment_selections')

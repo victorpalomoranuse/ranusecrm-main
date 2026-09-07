@@ -392,6 +392,15 @@
 .mp-listado-desc { font-size: 0.85rem; font-weight: 600; color: #fff; }
 .mp-listado-brand { font-weight: 400; color: rgba(255,255,255,0.4); }
 .mp-listado-meta { display: flex; gap: 0.7rem; font-size: 0.72rem; color: rgba(255,255,255,0.4); }
+.mp-listado-specs { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.1rem; }
+.mp-listado-spec {
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #beb0a2;
+  background: rgba(190,176,162,0.1);
+  border-radius: 5px;
+  padding: 0.1rem 0.4rem;
+}
 .mp-listado-buy {
   flex-shrink: 0;
   font-size: 0.75rem;
