@@ -6,6 +6,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requireAdminSuperior } from '../middleware/auth.middleware.js';
+import { uploadBudgetPdf, deleteBudgetPdf } from '../utils/storage.js';
+import { internalAdminToken } from '../utils/internal-auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -762,6 +764,46 @@ router.get('/:id/pdf-cliente', async (req, res) => {
   } catch (err) {
     console.error(err);
     if (!res.headersSent) res.status(500).json({ error: 'Error al generar PDF' });
+  }
+});
+
+/**
+ * POST /api/budgets/:id/export-pdf
+ * Genera el PDF de cara al cliente (mismos parámetros/valores por defecto
+ * que /pdf-cliente) y lo guarda como copia en Supabase Storage, dejando la
+ * URL en budgets.pdf_url. Se usa desde el Asistente IA justo después de
+ * crear un presupuesto, para dejar ya un PDF guardado sin que haga falta
+ * entrar a Presupuestos a generarlo a mano.
+ */
+router.post('/:id/export-pdf', async (req, res) => {
+  try {
+    const { iva = 21, irpf = 0, show_unit_price = 'true', show_discount = 'true', show_total_col = 'true', show_savings = 'true' } = req.query;
+    const params = new URLSearchParams({ iva, irpf, show_unit_price, show_discount, show_total_col, show_savings }).toString();
+    const port = process.env.PORT || 3001;
+    const pdfRes = await fetch(`http://localhost:${port}/api/budgets/${req.params.id}/pdf-cliente?${params}`, {
+      headers: { Authorization: `Bearer ${internalAdminToken()}` },
+    });
+    if (!pdfRes.ok) throw new Error('No se pudo generar el PDF');
+    const buffer = Buffer.from(await pdfRes.arrayBuffer());
+
+    const { data: budget, error: errBudget } = await supabase.from('budgets').select('budget_number, pdf_url').eq('id', req.params.id).single();
+    if (errBudget || !budget) return res.status(404).json({ error: 'Presupuesto no encontrado' });
+
+    if (budget.pdf_url) await deleteBudgetPdf(budget.pdf_url);
+    const pdf_url = await uploadBudgetPdf(buffer, budget.budget_number, req.params.id);
+
+    const { data, error } = await supabase
+      .from('budgets')
+      .update({ pdf_url, pdf_generated_at: new Date().toISOString() })
+      .eq('id', req.params.id)
+      .select('*')
+      .single();
+    if (error) throw error;
+
+    res.json({ budget: data, pdf_url });
+  } catch (err) {
+    console.error('Error al exportar y guardar PDF:', err);
+    res.status(500).json({ error: 'Error al exportar y guardar PDF' });
   }
 });
 

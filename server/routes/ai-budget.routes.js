@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
+import { internalAdminToken } from '../utils/internal-auth.js';
 
 const router = express.Router();
 // admin_superior siempre pasa; trabajador necesita el permiso "ventas"
@@ -25,7 +26,7 @@ Cómo guardar un presupuesto de verdad (herramienta crear_presupuesto):
 - Usa buscar_proyecto con ese nombre para encontrar el proyecto exacto. Si hay varias coincidencias, enséñaselas y pregunta cuál es. Si no hay ninguna, dilo y pregunta si el proyecto ya existe en el CRM.
 - Un proyecto solo puede tener UN presupuesto. Si buscar_proyecto o crear_presupuesto indican que ya tiene uno, no crees otro: avisa con el número de presupuesto existente y sugiere abrirlo desde la sección Presupuestos para añadir partidas ahí.
 - Solo llama a crear_presupuesto cuando tengas confirmación clara de la persona sobre qué nivel/productos concretos quiere guardar y para qué proyecto — no lo hagas por iniciativa propia con el primer mensaje. Usa como "nombre" de cada partida el nombre EXACTO tal cual aparece en los resultados de buscar_productos.
-- Tras crear el presupuesto, confirma con el número de presupuesto generado y recuerda que se puede terminar de revisar y exportar a PDF desde la sección Presupuestos.`;
+- Tras crear el presupuesto, la herramienta ya genera y guarda el PDF automáticamente (no hace falta que lo pidas aparte). Confirma con el número de presupuesto generado y, si el resultado incluye pdf_url, dilo (el PDF ya está listo y guardado; se puede terminar de revisar o editar a mano desde la sección Presupuestos y volver a exportar si hace falta). Si pdf_url viniera vacío, dilo también y sugiere generarlo a mano desde Presupuestos.`;
 
 const TOOLS = [
   {
@@ -57,7 +58,7 @@ const TOOLS = [
   },
   {
     name: 'crear_presupuesto',
-    description: 'Crea un presupuesto REAL en el sistema de Presupuestos de Ranuse Design, con sus partidas, y lo deja guardado (estado borrador) para ese proyecto. Solo se puede usar una vez que la persona ha confirmado el proyecto y los productos/nivel elegidos. Cada nombre de producto debe ser EXACTO tal cual lo devolvió buscar_productos.',
+    description: 'Crea un presupuesto REAL en el sistema de Presupuestos de Ranuse Design, con sus partidas, lo deja guardado (estado borrador) para ese proyecto, y genera y guarda automáticamente el PDF de cara al cliente. Solo se puede usar una vez que la persona ha confirmado el proyecto y los productos/nivel elegidos. Cada nombre de producto debe ser EXACTO tal cual lo devolvió buscar_productos.',
     input_schema: {
       type: 'object',
       properties: {
@@ -233,16 +234,46 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
     else noEncontrados.push(nombreBuscado);
   }
 
+  let pdf_url = null;
+  if (insertados.length > 0) {
+    pdf_url = await exportarPdfPresupuesto(budget.id);
+  }
+
+  const avisoEncontrados = noEncontrados.length
+    ? ` Algunos productos no se encontraron en el catálogo con ese nombre exacto y no se añadieron: ${noEncontrados.join(', ')}.`
+    : '';
+  const avisoPdf = insertados.length > 0
+    ? (pdf_url ? ' El PDF ya está generado y guardado.' : ' No se ha podido generar el PDF automáticamente — se puede exportar a mano desde Presupuestos.')
+    : '';
+
   return {
     creado: true,
     budget_id: budget.id,
     budget_number: budget.budget_number,
     partidas_creadas: insertados,
     partidas_no_encontradas: noEncontrados,
-    mensaje: noEncontrados.length
-      ? `Presupuesto ${budget.budget_number} creado, pero algunos productos no se encontraron en el catálogo con ese nombre exacto y no se añadieron: ${noEncontrados.join(', ')}.`
-      : `Presupuesto ${budget.budget_number} creado correctamente con ${insertados.length} partida(s).`,
+    pdf_url,
+    mensaje: `Presupuesto ${budget.budget_number} creado correctamente con ${insertados.length} partida(s).${avisoEncontrados}${avisoPdf}`,
   };
+}
+
+// Llama internamente a POST /api/budgets/:id/export-pdf (con los mismos
+// valores por defecto que usaría Víctor al pulsar "PDF cliente") para que el
+// presupuesto recién creado por el asistente quede con una copia de PDF ya
+// guardada, sin que haga falta entrar a Presupuestos a generarla a mano.
+async function exportarPdfPresupuesto(budgetId) {
+  try {
+    const port = process.env.PORT || 3001;
+    const res = await fetch(`http://localhost:${port}/api/budgets/${budgetId}/export-pdf`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${internalAdminToken()}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.pdf_url || null;
+  } catch {
+    return null;
+  }
 }
 
 async function runTool(name, input) {

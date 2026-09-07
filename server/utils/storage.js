@@ -301,6 +301,24 @@ export async function deleteLcRender(url) {
   } catch { return false; }
 }
 
+// ── Budget PDFs (copia guardada del PDF de un presupuesto) ─────────────
+export async function uploadBudgetPdf(fileBuffer, budgetNumber, budgetId) {
+  const safeName = (budgetNumber || 'presupuesto').replace(/[^a-zA-Z0-9-]/g, '_');
+  const filePath = `${budgetId}/${safeName}_${Date.now()}.pdf`;
+  const { error } = await supabase.storage.from('budget-pdfs').upload(filePath, fileBuffer, { contentType: 'application/pdf' });
+  if (error) throw new Error('Error al subir PDF del presupuesto: ' + error.message);
+  const { data: { publicUrl } } = supabase.storage.from('budget-pdfs').getPublicUrl(filePath);
+  return publicUrl;
+}
+export async function deleteBudgetPdf(url) {
+  try {
+    const parts = url.split('/budget-pdfs/');
+    if (parts.length < 2) return false;
+    const { error } = await supabase.storage.from('budget-pdfs').remove([parts[1]]);
+    return !error;
+  } catch { return false; }
+}
+
 // ── Leads Cualificados documents ──────────────────────────────────────
 export async function uploadLcDocument(fileBuffer, fileName, mimeType, lcId) {
   const timestamp = Date.now();

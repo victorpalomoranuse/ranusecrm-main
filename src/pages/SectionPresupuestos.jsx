@@ -1068,6 +1068,18 @@ function BudgetEditor({ id, onBack, onOpen }) {
                 </div>
               )}
               <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handlePdf} disabled={generatingPdf}>{generatingPdf ? 'Generando…' : 'PDF cliente'}</button>
+              {budget.pdf_url && (
+                <a
+                  href={budget.pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ap-btn ap-btn-ghost ap-btn-sm"
+                  style={{ fontSize: '0.7rem' }}
+                  title={budget.pdf_generated_at ? `Generado el ${new Date(budget.pdf_generated_at).toLocaleString('es-ES')}` : undefined}
+                >
+                  📄 PDF guardado
+                </a>
+              )}
             </div>
             {budget.project_id && (
               <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleImport} disabled={importing}>
