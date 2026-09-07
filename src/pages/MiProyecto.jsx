@@ -368,7 +368,7 @@ function leadingNumber(name) {
 }
 
 function ListadoGroup({ group, onZoom }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   return (
     <div className="mp-listado-group">
       <button type="button" className="mp-listado-cat-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
@@ -411,7 +411,7 @@ const LISTADOS_DISCLAIMER = 'Este listado muestra los productos de catálogo tal
 const TYPE_FALLBACK_NAMES = { material: 'Materiales', mobiliario: 'Equipamiento' };
 
 function ListadoTypeSection({ typeGroup, onZoom }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   return (
     <div className="mp-ph mp-listado-type">
       <button type="button" className="mp-ph-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
