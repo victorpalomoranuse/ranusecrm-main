@@ -195,6 +195,7 @@ router.get('/by-code/:code', async (req, res) => {
       toursResult,
       categoriesResult,
       moodboardImagesResult,
+      catalogTypesResult,
     ] = await Promise.all([
       supabase.from('project_renders').select('*').eq('project_id', projectId).order('display_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }),
       supabase.from('project_documents').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
@@ -205,6 +206,9 @@ router.get('/by-code/:code', async (req, res) => {
       supabase.from('project_tours').select('*').eq('project_id', projectId).order('created_at', { ascending: true }),
       supabase.from('project_categories').select('*').eq('project_id', projectId).order('display_order', { ascending: true }),
       supabase.from('project_moodboard_images').select('*').eq('project_id', projectId).order('display_order', { ascending: true }),
+      // Tipos de catálogo (Materiales, Mobiliario, Iluminación...) — para agrupar
+      // los "Listados" del cliente en un desplegable por tipo, con su nombre y orden.
+      supabase.from('catalog_types').select('name, slug, display_order').order('display_order', { ascending: true, nullsFirst: false }),
     ]);
 
     let diagnosisData = diagnosisResult.data || null;
@@ -252,6 +256,7 @@ router.get('/by-code/:code', async (req, res) => {
           : null,
         materials: allMaterials,
         equipment: allEquipment,
+        catalog_types: catalogTypesResult.data || [],
         notes: notesResult.data || [],
         tours: allTours,
         categories,
@@ -1154,7 +1159,7 @@ router.get('/:id/materials', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/materials', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, location, notes, image_url, catalog_product_id, phase_number, category_id, code, datasheet_url, quantity, purchase_link, show_purchase_link } = req.body;
+    const { name, brand, category, category_type, location, notes, image_url, catalog_product_id, phase_number, category_id, code, datasheet_url, quantity, purchase_link, show_purchase_link } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del material es requerido' });
@@ -1167,6 +1172,7 @@ router.post('/:id/materials', authenticateToken, requireProyectos, async (req, r
         name: name.trim(),
         brand: brand?.trim() || null,
         category: category?.trim() || null,
+        category_type: category_type?.trim() || 'material',
         location: location?.trim() || null,
         notes: notes?.trim() || null,
         image_url: image_url?.trim() || null,
@@ -1290,7 +1296,7 @@ router.get('/:id/equipment', authenticateToken, requireProyectos, async (req, re
  */
 router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { name, brand, category, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link, show_quantity, phase_number, category_id, code, datasheet_url, location } = req.body;
+    const { name, brand, category, category_type, quantity, color, notes, catalog_product_id, image_url, purchase_link, show_purchase_link, show_quantity, phase_number, category_id, code, datasheet_url, location } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'El nombre del equipo es requerido' });
@@ -1314,6 +1320,7 @@ router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, r
         name: name.trim(),
         brand: brand?.trim() || null,
         category: category?.trim() || null,
+        category_type: category_type?.trim() || 'mobiliario',
         quantity: quantity != null ? parseInt(quantity) : 1,
         color: color?.trim() || null,
         notes: notes?.trim() || null,

@@ -339,6 +339,15 @@
 }
 
 /* ── Listados ─────────────────────────────────────────────────────── */
+.mp-listados-disclaimer {
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.4);
+  font-style: italic;
+  margin: -0.35rem 0 0.5rem;
+}
+.mp-listado-types { display: flex; flex-direction: column; gap: 0.6rem; }
+.mp-listado-type .mp-ph-body { padding-top: 0.2rem; }
 .mp-listados { display: flex; flex-direction: column; gap: 1.5rem; }
 .mp-listado-group { display: flex; flex-direction: column; gap: 0.5rem; }
 .mp-listado-cat-head {

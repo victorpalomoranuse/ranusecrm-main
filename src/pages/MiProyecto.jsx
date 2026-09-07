@@ -406,29 +406,65 @@ function ListadoGroup({ group, onZoom }) {
   );
 }
 
-function ListadosSection({ materials, equipment, intro, title }) {
+const LISTADOS_DISCLAIMER = 'Este listado muestra los productos de catálogo tal cual, sin ninguna personalización — sirve para entender la selección de materiales y máquinas. Si hay algo especial (una medida concreta, un tapizado o acabado a medida, etc.), lo hablamos directamente contigo y con fábrica.';
+
+const TYPE_FALLBACK_NAMES = { material: 'Materiales', mobiliario: 'Equipamiento' };
+
+function ListadoTypeSection({ typeGroup, onZoom }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="mp-ph mp-listado-type">
+      <button type="button" className="mp-ph-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <span className="mp-ph-label">{typeGroup.name}</span>
+        <svg className={`mp-ph-chevron${open ? ' open' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="mp-ph-body mp-listados">
+          {typeGroup.groups.map(g => <ListadoGroup key={g.name} group={g} onZoom={onZoom} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ListadosSection({ materials, equipment, catalogTypes, intro, title }) {
   const [zoom, setZoom] = useState(null);
   const all = [
-    ...(materials || []).map(m => ({ ...m, kind: 'material' })),
-    ...(equipment || []).map(e => ({ ...e, kind: 'equipment' })),
+    ...(materials || []).map(m => ({ ...m, kind: 'material', type_slug: m.category_type || 'material' })),
+    ...(equipment || []).map(e => ({ ...e, kind: 'equipment', type_slug: e.category_type || 'mobiliario' })),
   ];
   if (!all.length) return null;
 
-  const groups = [];
+  const typeMeta = {};
+  (catalogTypes || []).forEach(t => { typeMeta[t.slug] = t; });
+
+  // Primer nivel: por tipo de catálogo (Materiales, Equipamiento, Iluminación...
+  // los que Víctor haya creado). Segundo nivel: por categoría dentro de ese tipo.
+  const typeGroups = [];
   all.forEach(item => {
+    const slug = item.type_slug;
+    let tg = typeGroups.find(x => x.slug === slug);
+    if (!tg) {
+      tg = { slug, name: typeMeta[slug]?.name || TYPE_FALLBACK_NAMES[slug] || slug, order: typeMeta[slug]?.display_order ?? Infinity, groups: [] };
+      typeGroups.push(tg);
+    }
     const catName = item.category || 'Sin categoría';
-    let g = groups.find(x => x.name === catName);
-    if (!g) { g = { name: catName, items: [] }; groups.push(g); }
+    let g = tg.groups.find(x => x.name === catName);
+    if (!g) { g = { name: catName, items: [] }; tg.groups.push(g); }
     g.items.push(item);
   });
-  groups.sort((a, b) => leadingNumber(a.name) - leadingNumber(b.name) || a.name.localeCompare(b.name));
+  typeGroups.forEach(tg => tg.groups.sort((a, b) => leadingNumber(a.name) - leadingNumber(b.name) || a.name.localeCompare(b.name)));
+  typeGroups.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
 
   return (
     <section className="mp-block">
       <p className="mp-block-label">{title || 'Listados'}</p>
       <p className="mp-ph-intro">{intro || DEFAULT_LISTADOS_INTRO}</p>
-      <div className="mp-listados">
-        {groups.map(g => <ListadoGroup key={g.name} group={g} onZoom={setZoom} />)}
+      <p className="mp-listados-disclaimer">{LISTADOS_DISCLAIMER}</p>
+      <div className="mp-listado-types">
+        {typeGroups.map(tg => <ListadoTypeSection key={tg.slug} typeGroup={tg} onZoom={setZoom} />)}
       </div>
       {zoom && <Lightbox src={zoom.image_url} alt={zoom.name} onClose={() => setZoom(null)} />}
     </section>
@@ -911,7 +947,7 @@ export function MiProyecto() {
           {categories.map(category => (
             <CategoryBlock key={category.id} category={category} />
           ))}
-          <ListadosSection materials={project.materials} equipment={project.equipment} intro={project.listados_intro_text} title={project.listados_title} />
+          <ListadosSection materials={project.materials} equipment={project.equipment} catalogTypes={project.catalog_types} intro={project.listados_intro_text} title={project.listados_title} />
         </div>
 
         {hasGlobalContent && (
