@@ -233,10 +233,10 @@ function ProjectModal({ project, onClose, onSaved }) {
       if (isEdit) {
         const safeCover = coverUrl && !coverUrl.startsWith('blob:') ? coverUrl : null;
         await api.put(`/portfolio/${project.id}`, { title, slug, description, cover_url: safeCover });
-        if (files.length > 0) { const form = new FormData(); files.forEach(f => form.append('images', f)); await api.post(`/portfolio/${project.id}/images`, form, { headers: { 'Content-Type': 'multipart/form-data' } }); }
+        if (files.length > 0) { const form = new FormData(); files.forEach(f => form.append('images', f)); await api.post(`/portfolio/${project.id}/images`, form); }
       } else {
         const form = new FormData(); form.append('title', title); form.append('slug', slug); form.append('description', description); files.forEach(f => form.append('images', f));
-        await api.post('/portfolio', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        await api.post('/portfolio', form);
       }
       onSaved();
     } catch (err) { setError(err.response?.data?.error || 'Error al guardar el proyecto'); } finally { setLoading(false); }
@@ -309,7 +309,7 @@ function TabRenders({ projectId, phaseNumber }) {
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]; if (!file) return; setUploading(true); setError('');
-    try { const form = new FormData(); form.append('file',file); if(name) form.append('name',name); if(version) form.append('version',version); if(phaseNumber != null) form.append('phase_number', phaseNumber); const {data} = await api.post(`/client-projects/${projectId}/renders`,form,{headers:{'Content-Type':'multipart/form-data'}}); setRenders(prev=>[...prev,data.render]); setName(''); setVersion(''); fileRef.current.value=''; } catch(err){setError(err.response?.data?.error||'Error al subir render');} finally{setUploading(false);}
+    try { const form = new FormData(); form.append('file',file); if(name) form.append('name',name); if(version) form.append('version',version); if(phaseNumber != null) form.append('phase_number', phaseNumber); const {data} = await api.post(`/client-projects/${projectId}/renders`,form); setRenders(prev=>[...prev,data.render]); setName(''); setVersion(''); fileRef.current.value=''; } catch(err){setError(err.response?.data?.error||'Error al subir render');} finally{setUploading(false);}
   };
   const handleDelete = async (id) => { try{await api.delete(`/client-projects/${projectId}/renders/${id}`);setRenders(prev=>prev.filter(r=>r.id!==id));}catch{setError('Error al eliminar render');} };
   const handleDragEnd = async (event) => {
@@ -377,7 +377,7 @@ function TabMoodboard({ projectId }) {
     try {
       const form = new FormData();
       files.forEach(f => form.append('images', f));
-      const { data } = await api.post(`/client-projects/${projectId}/moodboard/images`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const { data } = await api.post(`/client-projects/${projectId}/moodboard/images`, form);
       setImages(prev => [...prev, ...data.images]);
       fileRef.current.value = '';
     } catch (err) { setError(err.response?.data?.error || 'Error al subir las imágenes'); } finally { setUploading(false); }
@@ -479,7 +479,7 @@ function TabDocumentos({ projectId }) {
   useEffect(()=>{api.get(`/client-projects/${projectId}/documents`).then(r=>setDocuments(r.data.documents||[])).catch(()=>{}).finally(()=>setLoading(false));},[projectId]);
   const handleUpload = async (e) => {
     const file=e.target.files?.[0]; if(!file) return; setUploading(true); setError('');
-    try{const form=new FormData(); form.append('file',file); form.append('name',docName||file.name); form.append('doc_type',docType); const{data}=await api.post(`/client-projects/${projectId}/documents`,form,{headers:{'Content-Type':'multipart/form-data'}}); setDocuments(prev=>[data.document,...prev]); setDocName(''); fileRef.current.value='';}catch(err){setError(err.response?.data?.error||'Error al subir documento');}finally{setUploading(false);}
+    try{const form=new FormData(); form.append('file',file); form.append('name',docName||file.name); form.append('doc_type',docType); const{data}=await api.post(`/client-projects/${projectId}/documents`,form); setDocuments(prev=>[data.document,...prev]); setDocName(''); fileRef.current.value='';}catch(err){setError(err.response?.data?.error||'Error al subir documento');}finally{setUploading(false);}
   };
   const handleDelete = async (id)=>{try{await api.delete(`/client-projects/${projectId}/documents/${id}`);setDocuments(prev=>prev.filter(d=>d.id!==id));}catch{setError('Error al eliminar documento');}};
 
@@ -556,7 +556,7 @@ function ProductModal({ categories, product, onClose, onSaved }) {
   useEffect(()=>{api.get('/contacts').then(r=>setProviders(r.data.contacts||[])).catch(()=>{});},[]);
   useEffect(()=>{document.body.style.overflow='hidden';return()=>{document.body.style.overflow='';};},[]);
   const handleFile=(e)=>{const f=e.target.files?.[0];if(!f)return;setFile(f);setPreview(URL.createObjectURL(f));};
-  const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim()||!categoryId)return;setSaving(true);setError('');try{const form=new FormData();form.append('category_id',categoryId);form.append('name',name.trim());if(brand)form.append('brand',brand.trim());if(price)form.append('price',price);if(link)form.append('link',link.trim());if(notes)form.append('notes',notes.trim());if(file)form.append('file',file);if(longitud)form.append('longitud',longitud);if(ancho)form.append('ancho',ancho);if(altura)form.append('altura',altura);if(colorBastidor)form.append('color_bastidor',colorBastidor.trim());if(colorAcolchado)form.append('color_acolchado',colorAcolchado.trim());if(tipoAcolchado)form.append('tipo_acolchado',tipoAcolchado.trim());if(lumens)form.append('lumens',lumens);if(watts)form.append('watts',watts);if(colorTemperature)form.append('color_temperature',colorTemperature.trim());if(color)form.append('color',color.trim());let data;if(isEdit){({data}=await api.put(`/catalog/products/${product.id}`,form,{headers:{'Content-Type':'multipart/form-data'}}));}else{({data}=await api.post('/catalog/products',form,{headers:{'Content-Type':'multipart/form-data'}}));}onSaved(data.product);onClose();}catch{setError('Error al guardar producto');}finally{setSaving(false);}};
+  const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim()||!categoryId)return;setSaving(true);setError('');try{const form=new FormData();form.append('category_id',categoryId);form.append('name',name.trim());if(brand)form.append('brand',brand.trim());if(price)form.append('price',price);if(link)form.append('link',link.trim());if(notes)form.append('notes',notes.trim());if(file)form.append('file',file);if(longitud)form.append('longitud',longitud);if(ancho)form.append('ancho',ancho);if(altura)form.append('altura',altura);if(colorBastidor)form.append('color_bastidor',colorBastidor.trim());if(colorAcolchado)form.append('color_acolchado',colorAcolchado.trim());if(tipoAcolchado)form.append('tipo_acolchado',tipoAcolchado.trim());if(lumens)form.append('lumens',lumens);if(watts)form.append('watts',watts);if(colorTemperature)form.append('color_temperature',colorTemperature.trim());if(color)form.append('color',color.trim());let data;if(isEdit){({data}=await api.put(`/catalog/products/${product.id}`,form));}else{({data}=await api.post('/catalog/products',form));}onSaved(data.product);onClose();}catch{setError('Error al guardar producto');}finally{setSaving(false);}};
   return (
     <div className="ap-confirm-overlay" onClick={onClose}>
       <div className="ap-modal-inner" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
@@ -973,7 +973,7 @@ function CategoryItemEditor({ item, onUpdated, onDeleted }) {
     const file = e.target.files?.[0]; if (!file) return;
     const form = new FormData(); form.append('file', file);
     try {
-      const { data } = await api.post(`/categories/items/${item.id}/file`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const { data } = await api.post(`/categories/items/${item.id}/file`, form);
       onUpdated(data.item);
     } catch {}
   };
@@ -982,7 +982,7 @@ function CategoryItemEditor({ item, onUpdated, onDeleted }) {
     const files = e.target.files; if (!files?.length) return;
     const form = new FormData(); Array.from(files).forEach(f => form.append('images', f));
     try {
-      const { data } = await api.post(`/categories/items/${item.id}/images`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const { data } = await api.post(`/categories/items/${item.id}/images`, form);
       onUpdated(data.item);
       if (imgRef.current) imgRef.current.value = '';
     } catch {}
@@ -1133,7 +1133,7 @@ function TabCategorias({ projectId }) {
         form.append('body_text', '');
         form.append('links', '[]');
       }
-      const { data } = await api.post(`/categories/${active.id}/items`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const { data } = await api.post(`/categories/${active.id}/items`, form);
       setCategories(prev => prev.map(c => c.id === active.id ? { ...c, items: [...c.items, data.item] } : c));
       setItemTitle(''); setItemCode(''); setAddingItemType(null);
       if (fileRef.current) fileRef.current.value = '';
@@ -1243,7 +1243,7 @@ function TabPortada({ project, onUpdated }) {
     try {
       const form = new FormData();
       form.append('file', file);
-      const { data } = await api.post(`/client-projects/${project.id}/cover`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const { data } = await api.post(`/client-projects/${project.id}/cover`, form);
       setCoverUrl(data.cover_image_url);
       onUpdated?.(data.cover_image_url);
       toast.success('Portada guardada');
@@ -1437,7 +1437,7 @@ function TabNecesidades({ projectId }) {
     try {
       const form = new FormData();
       form.append('file', file);
-      const { data } = await api.post(`/needs-form/project/${projectId}/photos`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const { data } = await api.post(`/needs-form/project/${projectId}/photos`, form);
       setBundle(prev => ({ ...prev, photos: [...prev.photos, data.photo] }));
     } catch { toast.error('Error al subir foto'); } finally { setUploadingPhoto(false); if (photoRef.current) photoRef.current.value = ''; }
   };
@@ -1808,7 +1808,7 @@ function SectionReferencias() {
   const handleSaved=(ref,isEdit)=>{setReferences(prev=>isEdit?prev.map(r=>r.id===ref.id?ref:r):[ref,...prev]);toast.success(isEdit?'Referencia actualizada':'Referencia añadida');};
   const handleDelete=(id)=>{setConfirm({message:'¿Eliminar esta referencia?',onConfirm:async()=>{try{await api.delete(`/references/${id}`);setReferences(prev=>prev.filter(r=>r.id!==id));toast.success('Referencia eliminada');}catch{toast.error('Error al eliminar');}setConfirm(null);},onCancel:()=>setConfirm(null)});};
   const getDomain=(url)=>{try{return new URL(url).hostname.replace('www.','');}catch{return url;}};
-  const ReferenceModal=({reference,onClose,onSaved})=>{const isEdit=!!reference;const [title,setTitle]=useState(reference?.title||'');const [url,setUrl]=useState(reference?.url||'');const [description,setDescription]=useState(reference?.description||'');const [category,setCategory]=useState(reference?.category||'');const [imageUrl,setImageUrl]=useState(reference?.image_url||'');const [saving,setSaving]=useState(false);const [uploadingImg,setUploadingImg]=useState(false);const [error,setError]=useState('');const imgFileRef=useRef();const handleUploadImg=async(e)=>{const file=e.target.files?.[0];if(!file)return;setUploadingImg(true);setError('');try{const form=new FormData();form.append('file',file);const{data}=await api.post('/references/upload-image',form,{headers:{'Content-Type':'multipart/form-data'}});setImageUrl(data.image_url);if(!title.trim())setTitle(file.name.replace(/\.[^.]+$/,''));}catch{setError('Error al subir la imagen');}finally{setUploadingImg(false);if(imgFileRef.current)imgFileRef.current.value='';}};const handleSubmit=async(e)=>{e.preventDefault();if(!title.trim())return;setSaving(true);setError('');try{const payload={title:title.trim(),url:url.trim()||null,description:description.trim()||null,category:category.trim()||null,image_url:imageUrl.trim()||null};let data;if(isEdit){({data}=await api.put(`/references/${reference.id}`,payload));onSaved(data.reference,true);}else{({data}=await api.post('/references',payload));onSaved(data.reference,false);}onClose();}catch{setError('Error al guardar');}finally{setSaving(false);}};return(<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>{isEdit?'Editar referencia':'Nueva referencia'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form"><div className="ap-field"><label>Título *</label><input value={title} onChange={e=>setTitle(e.target.value)} required autoFocus/></div><div className="ap-field"><label>Imagen</label><div style={{display:'flex',gap:8,alignItems:'center'}}><input value={imageUrl} onChange={e=>setImageUrl(e.target.value)} placeholder="Pega una URL o sube una imagen" style={{flex:1}}/><label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{flexShrink:0}}>{uploadingImg?'Subiendo…':<><Plus size={13}/> Subir</>}<input ref={imgFileRef} type="file" accept="image/*" onChange={handleUploadImg} disabled={uploadingImg} style={{display:'none'}}/></label></div>{imageUrl&&<img src={imageUrl} alt="" style={{marginTop:'0.5rem',width:'100%',maxHeight:160,objectFit:'cover',borderRadius:8}} onError={e=>e.target.style.display='none'}/>}</div><div className="ap-field"><label>URL <span className="ap-optional">(opcional, si es un enlace a una web)</span></label><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..."/></div><div className="ap-field"><label>Categoría</label><input list="ref-cats" value={category} onChange={e=>setCategory(e.target.value)}/><datalist id="ref-cats">{categories.map(c=><option key={c} value={c}/>)}</datalist></div><div className="ap-field"><label>Descripción</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3}/></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={saving||!title.trim()}>{saving?'Guardando…':isEdit?'Guardar cambios':'Añadir'}</button></div></form></div></div>);};
+  const ReferenceModal=({reference,onClose,onSaved})=>{const isEdit=!!reference;const [title,setTitle]=useState(reference?.title||'');const [url,setUrl]=useState(reference?.url||'');const [description,setDescription]=useState(reference?.description||'');const [category,setCategory]=useState(reference?.category||'');const [imageUrl,setImageUrl]=useState(reference?.image_url||'');const [saving,setSaving]=useState(false);const [uploadingImg,setUploadingImg]=useState(false);const [error,setError]=useState('');const imgFileRef=useRef();const handleUploadImg=async(e)=>{const file=e.target.files?.[0];if(!file)return;setUploadingImg(true);setError('');try{const form=new FormData();form.append('file',file);const{data}=await api.post('/references/upload-image',form);setImageUrl(data.image_url);if(!title.trim())setTitle(file.name.replace(/\.[^.]+$/,''));}catch{setError('Error al subir la imagen');}finally{setUploadingImg(false);if(imgFileRef.current)imgFileRef.current.value='';}};const handleSubmit=async(e)=>{e.preventDefault();if(!title.trim())return;setSaving(true);setError('');try{const payload={title:title.trim(),url:url.trim()||null,description:description.trim()||null,category:category.trim()||null,image_url:imageUrl.trim()||null};let data;if(isEdit){({data}=await api.put(`/references/${reference.id}`,payload));onSaved(data.reference,true);}else{({data}=await api.post('/references',payload));onSaved(data.reference,false);}onClose();}catch{setError('Error al guardar');}finally{setSaving(false);}};return(<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>{isEdit?'Editar referencia':'Nueva referencia'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form"><div className="ap-field"><label>Título *</label><input value={title} onChange={e=>setTitle(e.target.value)} required autoFocus/></div><div className="ap-field"><label>Imagen</label><div style={{display:'flex',gap:8,alignItems:'center'}}><input value={imageUrl} onChange={e=>setImageUrl(e.target.value)} placeholder="Pega una URL o sube una imagen" style={{flex:1}}/><label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{flexShrink:0}}>{uploadingImg?'Subiendo…':<><Plus size={13}/> Subir</>}<input ref={imgFileRef} type="file" accept="image/*" onChange={handleUploadImg} disabled={uploadingImg} style={{display:'none'}}/></label></div>{imageUrl&&<img src={imageUrl} alt="" style={{marginTop:'0.5rem',width:'100%',maxHeight:160,objectFit:'cover',borderRadius:8}} onError={e=>e.target.style.display='none'}/>}</div><div className="ap-field"><label>URL <span className="ap-optional">(opcional, si es un enlace a una web)</span></label><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..."/></div><div className="ap-field"><label>Categoría</label><input list="ref-cats" value={category} onChange={e=>setCategory(e.target.value)}/><datalist id="ref-cats">{categories.map(c=><option key={c} value={c}/>)}</datalist></div><div className="ap-field"><label>Descripción</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3}/></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={saving||!title.trim()}>{saving?'Guardando…':isEdit?'Guardar cambios':'Añadir'}</button></div></form></div></div>);};
   return (
     <div className="ap-section">
       <ToastContainer toasts={toasts} onRemove={remove}/>
