@@ -308,6 +308,7 @@ router.post('/chat', async (req, res) => {
     let conversation = messages.map(m => ({ role: m.role, content: m.content }));
 
     let lastResponse = null;
+    let budgetCreated = null; // último presupuesto creado en esta conversación (si lo hay), con su PDF
     for (let turn = 0; turn < 6; turn++) {
       lastResponse = await callClaude({ system, messages: conversation, tools: TOOLS });
 
@@ -316,11 +317,13 @@ router.post('/chat', async (req, res) => {
 
       // Añadir el turno del asistente (con sus tool_use) y luego los resultados
       conversation.push({ role: 'assistant', content: lastResponse.content });
-      const toolResults = await Promise.all(toolUses.map(async tu => ({
-        type: 'tool_result',
-        tool_use_id: tu.id,
-        content: JSON.stringify(await runTool(tu.name, tu.input)),
-      })));
+      const toolResults = await Promise.all(toolUses.map(async tu => {
+        const result = await runTool(tu.name, tu.input);
+        if (tu.name === 'crear_presupuesto' && result?.creado) {
+          budgetCreated = { budget_id: result.budget_id, budget_number: result.budget_number, pdf_url: result.pdf_url || null };
+        }
+        return { type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) };
+      }));
       conversation.push({ role: 'user', content: toolResults });
     }
 
@@ -328,6 +331,7 @@ router.post('/chat', async (req, res) => {
     res.json({
       reply: textBlock?.text || 'No he podido generar una respuesta.',
       messages: conversation.concat(lastResponse?.content ? [{ role: 'assistant', content: lastResponse.content }] : []),
+      budget_created: budgetCreated,
     });
   } catch (error) {
     console.error('Error en asistente de presupuestos:', error);

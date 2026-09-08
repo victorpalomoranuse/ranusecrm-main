@@ -28,7 +28,7 @@ export function SectionAsistenteIA() {
     setLoading(true);
     try {
       const { data } = await api.post('/ai-budget/chat', { messages: nextMessages });
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply, budgetCreated: data.budget_created || null }]);
     } catch (err) {
       setError(err.response?.data?.error || 'Error al consultar al asistente. Revisa que la clave de Claude esté configurada.');
     } finally {
@@ -61,7 +61,19 @@ export function SectionAsistenteIA() {
           ) : (
             messages.map((m, i) => (
               <div key={i} className={`ai-msg ai-msg--${m.role}`}>
-                <div className="ai-msg-bubble">{m.content}</div>
+                <div className="ai-msg-bubble">
+                  {m.content}
+                  {m.budgetCreated?.pdf_url && (
+                    <a
+                      href={m.budgetCreated.pdf_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ai-msg-pdf-link"
+                    >
+                      📄 Descargar PDF — {m.budgetCreated.budget_number}
+                    </a>
+                  )}
+                </div>
               </div>
             ))
           )}

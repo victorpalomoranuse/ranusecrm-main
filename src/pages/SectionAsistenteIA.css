@@ -48,6 +48,23 @@
 .ai-msg--assistant .ai-msg-bubble { background: rgba(255,255,255,0.06); color: #fff; }
 .ai-msg-bubble--loading { color: rgba(255,255,255,0.4); font-style: italic; }
 
+.ai-msg-pdf-link {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+  padding: 0.45rem 0.75rem;
+  background: #beb0a2;
+  color: #0a0a0a;
+  font-weight: 600;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  text-decoration: none;
+  white-space: normal;
+}
+.ai-msg-pdf-link:hover { opacity: 0.85; }
+
 .ai-chat-input-row {
   display: flex;
   gap: 0.5rem;
