@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, Send } from 'lucide-react';
+import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, Send, PhoneCall } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
+import { SectionSetting } from './SectionSetting';
 import { SectionPedidos } from './SectionPedidos';
 import { SectionTareas } from './SectionTareas';
 import { SectionAjustes } from './SectionAjustes';
@@ -1892,6 +1893,7 @@ const NAV_ITEMS = [
   { id:'dashboard', label:'Dashboard', Icon:BarChart2, adminOnly:true },
   { id:'trabajos', label:'Trabajos', Icon:LayoutGrid, permission:'trabajos' },
   { id:'leads', label:'Leads', Icon:Target, permission:'leads' },
+  { id:'setting', label:'Setting', Icon:PhoneCall, permission:'leads' },
   { id:'ventas', label:'Ventas', Icon:TrendingUp, permission:'ventas' },
   { id:'mis-comisiones', label:'Mis Comisiones', Icon:Wallet },
   { id:'proyectos', label:'Proyectos', Icon:FolderOpen, permission:'proyectos' },
@@ -1938,6 +1940,7 @@ export function AdminPanel() {
         {section==='dashboard'&&<SectionDashboard/>}
         {section==='trabajos'&&<SectionTrabajos/>}
         {section==='leads'&&<SectionLeads/>}
+        {section==='setting'&&<SectionSetting/>}
         {section==='ventas'&&<SectionVentas/>}
         {section==='mis-comisiones'&&<SectionMisComisiones/>}
         {section==='proyectos'&&<SectionProyectos/>}

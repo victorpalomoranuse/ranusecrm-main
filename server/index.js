@@ -27,6 +27,7 @@ import categoriesRoutes from './routes/categories.routes.js';
 import needsFormRoutes from './routes/needs-form.routes.js';
 import obraRoutes from './routes/obra.routes.js';
 import aiBudgetRoutes from './routes/ai-budget.routes.js';
+import settingRoutes from './routes/setting.routes.js';
 dotenv.config();
 
 const app = express();
@@ -85,6 +86,7 @@ app.use('/api/categories', categoriesRoutes);
 app.use('/api/needs-form', needsFormRoutes);
 app.use('/api/obra', obraRoutes);
 app.use('/api/ai-budget', aiBudgetRoutes);
+app.use('/api/setting', settingRoutes);
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
 });
