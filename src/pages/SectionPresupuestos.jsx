@@ -919,14 +919,24 @@ function BudgetEditor({ id, onBack, onOpen }) {
   };
 
   const handleInsertFromLibrary = async (product) => {
-    const cost = parseFloat(product.price) || 0;
+    // Mismo criterio que usa el Asistente IA (server/utils/pricing.js): si el
+    // producto tiene un dto. de compra configurado, el precio de catálogo es
+    // el PVP (modo pvp); si no, es su coste y se le suma el margen por
+    // defecto del producto (o 20% si no tiene ninguno).
+    const price = parseFloat(product.price) || 0;
+    const dto = parseFloat(product.purchase_dto) || 0;
+    const isPvp = dto > 0;
+    const margin = product.default_margin_pct != null && product.default_margin_pct !== '' ? parseFloat(product.default_margin_pct) : 20;
     await handleAddItem({
       name: product.name,
       category: product.category?.type || 'material',
-      unit: 'ud',
-      unit_cost: cost,
-      markup_pct: 20,
-      unit_price: parseFloat((cost * 1.2).toFixed(2)),
+      unit: product.pricing_unit || 'ud',
+      unit_cost: isPvp ? parseFloat((price * (1 - dto / 100)).toFixed(2)) : price,
+      markup_pct: isPvp ? 0 : margin,
+      unit_price: isPvp ? price : parseFloat((price * (1 + margin / 100)).toFixed(2)),
+      pricing_mode: isPvp ? 'pvp' : 'margin',
+      pvp_ref: isPvp ? price : null,
+      purchase_dto: isPvp ? dto : null,
       catalog_product_id: product.id,
       brand: product.brand || null,
       longitud: product.longitud || null,
@@ -935,6 +945,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
       color_bastidor: product.color_bastidor || null,
       color_acolchado: product.color_acolchado || null,
       tipo_acolchado: product.tipo_acolchado || null,
+      accessories_note: product.included_accessories || null,
       quantity: 1,
     });
     flash('Partida insertada desde catálogo');

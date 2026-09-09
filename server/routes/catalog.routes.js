@@ -169,7 +169,7 @@ router.put('/products/reorder', async (req, res) => {
 
 router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
-    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color } = req.body;
+    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories } = req.body;
     if (!category_id || !name?.trim()) {
       return res.status(400).json({ error: 'Categoría y nombre requeridos' });
     }
@@ -205,6 +205,10 @@ router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, 
         watts: watts ? parseFloat(watts) : null,
         color_temperature: color_temperature?.trim() || null,
         color: color?.trim() || null,
+        purchase_dto: purchase_dto ? parseFloat(purchase_dto) : null,
+        default_margin_pct: default_margin_pct ? parseFloat(default_margin_pct) : null,
+        pricing_unit: pricing_unit?.trim() || 'ud',
+        included_accessories: included_accessories?.trim() || null,
       })
       .select('*, category:catalog_categories(id, name, type)')
       .single();
@@ -218,7 +222,7 @@ router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, 
 
 router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
-    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color } = req.body;
+    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories } = req.body;
     const updates = {};
     if (category_id !== undefined) updates.category_id = category_id;
     if (name !== undefined) updates.name = name.trim();
@@ -236,6 +240,10 @@ router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (re
     if (watts !== undefined) updates.watts = watts ? parseFloat(watts) : null;
     if (color_temperature !== undefined) updates.color_temperature = color_temperature?.trim() || null;
     if (color !== undefined) updates.color = color?.trim() || null;
+    if (purchase_dto !== undefined) updates.purchase_dto = purchase_dto ? parseFloat(purchase_dto) : null;
+    if (default_margin_pct !== undefined) updates.default_margin_pct = default_margin_pct ? parseFloat(default_margin_pct) : null;
+    if (pricing_unit !== undefined) updates.pricing_unit = pricing_unit?.trim() || 'ud';
+    if (included_accessories !== undefined) updates.included_accessories = included_accessories?.trim() || null;
 
     if (req.file) {
       // Borrar foto anterior

@@ -8,6 +8,7 @@ import { supabase } from '../config/supabase.js';
 import { authenticateToken, requireAdminSuperior } from '../middleware/auth.middleware.js';
 import { uploadBudgetPdf, deleteBudgetPdf } from '../utils/storage.js';
 import { internalAdminToken } from '../utils/internal-auth.js';
+import { computeCatalogPricing } from '../utils/pricing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -374,7 +375,7 @@ router.post('/:id/duplicate', async (req, res) => {
 
 router.post('/:id/items', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, accessories_note } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'nombre requerido' });
     const cost = parseFloat(unit_cost) || 0;
     const markup = parseFloat(markup_pct) ?? 20;
@@ -402,6 +403,7 @@ router.post('/:id/items', async (req, res) => {
       pvp_ref: pvp_ref ? parseFloat(pvp_ref) : null,
       purchase_dto: purchase_dto ? parseFloat(purchase_dto) : null,
       pricing_mode: pricing_mode || 'margin',
+      accessories_note: accessories_note?.trim() || null,
     }).select('*').single();
     if (error) throw error;
     res.status(201).json({ item: data });
@@ -421,7 +423,7 @@ router.put('/:id/items/reorder', async (req, res) => {
 
 router.put('/:id/items/:itemId', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, order_status, payment_status, delivery_date, provider } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, order_status, payment_status, delivery_date, provider, accessories_note } = req.body;
     const updates = {};
     if (name !== undefined) updates.name = name.trim();
     if (category !== undefined) updates.category = category;
@@ -445,6 +447,7 @@ router.put('/:id/items/:itemId', async (req, res) => {
     if (payment_status !== undefined) updates.payment_status = payment_status || 'pendiente';
     if (delivery_date !== undefined) updates.delivery_date = delivery_date || null;
     if (provider !== undefined) updates.provider = provider?.trim() || null;
+    if (accessories_note !== undefined) updates.accessories_note = accessories_note?.trim() || null;
     const { data, error } = await supabase.from('budget_items').update(updates).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
     if (error) throw error;
     res.json({ item: data });
@@ -469,23 +472,26 @@ router.post('/:id/import', async (req, res) => {
     const { data: maxRow } = await supabase.from('budget_items').select('display_order').eq('budget_id', req.params.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
     let nextOrder = (maxRow?.display_order ?? -1) + 1;
     const [matsRes, equipRes] = await Promise.all([
-      supabase.from('project_material_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('project_id', budget.project_id),
-      supabase.from('project_equipment_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado)').eq('project_id', budget.project_id),
+      supabase.from('project_material_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, purchase_dto, default_margin_pct, pricing_unit, included_accessories)').eq('project_id', budget.project_id),
+      supabase.from('project_equipment_selections').select('*, catalog:catalog_products(id, price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, purchase_dto, default_margin_pct, pricing_unit, included_accessories)').eq('project_id', budget.project_id),
     ]);
     const assignments = [...(matsRes.data || []).map(m => ({ ...m, cat: 'material' })), ...(equipRes.data || []).map(e => ({ ...e, cat: 'mobiliario' }))].filter(a => !a.catalog_product_id || !existingIds.has(a.catalog_product_id));
     if (assignments.length === 0) return res.json({ items: [], message: 'No hay partidas nuevas para importar' });
     const toInsert = assignments.map(a => {
-      const cost = parseFloat(a.catalog?.price) || 0;
+      const pricing = computeCatalogPricing(a.catalog);
       return {
         budget_id: req.params.id,
         catalog_product_id: a.catalog_product_id || null,
         name: a.name,
         category: a.cat,
         quantity: parseFloat(a.quantity) || 1,
-        unit: 'ud',
-        unit_cost: cost,
-        markup_pct: 20,
-        unit_price: parseFloat((cost * 1.2).toFixed(2)),
+        unit: a.catalog ? pricing.unit : 'ud',
+        unit_cost: pricing.unit_cost,
+        markup_pct: pricing.markup_pct,
+        unit_price: pricing.unit_price,
+        pricing_mode: a.catalog ? pricing.pricing_mode : 'margin',
+        pvp_ref: pricing.pvp_ref,
+        purchase_dto: pricing.purchase_dto,
         display_order: nextOrder++,
         brand: a.catalog?.brand || null,
         longitud: a.catalog?.longitud || null,
@@ -494,6 +500,7 @@ router.post('/:id/import', async (req, res) => {
         color_bastidor: a.catalog?.color_bastidor || null,
         color_acolchado: a.catalog?.color_acolchado || null,
         tipo_acolchado: a.catalog?.tipo_acolchado || null,
+        accessories_note: a.catalog?.included_accessories || null,
       };
     });
     const { data, error } = await supabase.from('budget_items').insert(toInsert).select('*');
@@ -628,7 +635,8 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       doc.fontSize(8.5).font('Helvetica');
       const nameH = doc.heightOfString(item.name || '', { width: textWforCalc });
       const brandH = item.brand ? doc.heightOfString(item.brand, { width: textWforCalc, fontSize: 7 }) : 0;
-      const textBlockH = nameH + (brandH ? brandH + 3 : 0);
+      const accessoriesH = item.accessories_note ? doc.heightOfString('Incluye: ' + item.accessories_note, { width: textWforCalc, fontSize: 6.5 }) : 0;
+      const textBlockH = nameH + (brandH ? brandH + 3 : 0) + (accessoriesH ? accessoriesH + 3 : 0);
       const rowH = Math.max(imgH + 18, textBlockH + 16);
       if (y + rowH > H - 140) { doc.addPage(); y = margin; }
       if (rowNum % 2 === 0) doc.rect(margin, y, W - margin * 2, rowH).fill('#faf9f8');
@@ -653,7 +661,14 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica').text(item.name, textX, y + 8, { width: textW });
       const nameBottom = doc.y;
       const subLines = item.brand || '';
-      if (subLines) doc.fillColor('#aaaaaa').fontSize(7).font('Helvetica').text(subLines, textX, Math.max(nameBottom + 1, y + 8), { width: textW });
+      let afterBrandY = nameBottom;
+      if (subLines) {
+        doc.fillColor('#aaaaaa').fontSize(7).font('Helvetica').text(subLines, textX, Math.max(nameBottom + 1, y + 8), { width: textW });
+        afterBrandY = doc.y;
+      }
+      if (item.accessories_note) {
+        doc.fillColor('#999999').fontSize(6.5).font('Helvetica-Oblique').text('Incluye: ' + item.accessories_note, textX, Math.max(afterBrandY + 1, y + 8), { width: textW });
+      }
 
       // Especificaciones
       const specX = margin + 200;

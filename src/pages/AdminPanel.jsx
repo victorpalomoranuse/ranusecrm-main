@@ -551,12 +551,16 @@ function ProductModal({ categories, product, onClose, onSaved }) {
   const [watts,setWatts]=useState(product?.watts!=null?String(product.watts):'');
   const [colorTemperature,setColorTemperature]=useState(product?.color_temperature||'');
   const [color,setColor]=useState(product?.color||'');
+  const [purchaseDto,setPurchaseDto]=useState(product?.purchase_dto!=null?String(product.purchase_dto):'');
+  const [defaultMarginPct,setDefaultMarginPct]=useState(product?.default_margin_pct!=null?String(product.default_margin_pct):'');
+  const [pricingUnit,setPricingUnit]=useState(product?.pricing_unit||'ud');
+  const [includedAccessories,setIncludedAccessories]=useState(product?.included_accessories||'');
   const inputId=useRef(`file-${Math.random()}`).current;
   const [providers,setProviders]=useState([]);
   useEffect(()=>{api.get('/contacts').then(r=>setProviders(r.data.contacts||[])).catch(()=>{});},[]);
   useEffect(()=>{document.body.style.overflow='hidden';return()=>{document.body.style.overflow='';};},[]);
   const handleFile=(e)=>{const f=e.target.files?.[0];if(!f)return;setFile(f);setPreview(URL.createObjectURL(f));};
-  const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim()||!categoryId)return;setSaving(true);setError('');try{const form=new FormData();form.append('category_id',categoryId);form.append('name',name.trim());if(brand)form.append('brand',brand.trim());if(price)form.append('price',price);if(link)form.append('link',link.trim());if(notes)form.append('notes',notes.trim());if(file)form.append('file',file);if(longitud)form.append('longitud',longitud);if(ancho)form.append('ancho',ancho);if(altura)form.append('altura',altura);if(colorBastidor)form.append('color_bastidor',colorBastidor.trim());if(colorAcolchado)form.append('color_acolchado',colorAcolchado.trim());if(tipoAcolchado)form.append('tipo_acolchado',tipoAcolchado.trim());if(lumens)form.append('lumens',lumens);if(watts)form.append('watts',watts);if(colorTemperature)form.append('color_temperature',colorTemperature.trim());if(color)form.append('color',color.trim());let data;if(isEdit){({data}=await api.put(`/catalog/products/${product.id}`,form));}else{({data}=await api.post('/catalog/products',form));}onSaved(data.product);onClose();}catch{setError('Error al guardar producto');}finally{setSaving(false);}};
+  const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim()||!categoryId)return;setSaving(true);setError('');try{const form=new FormData();form.append('category_id',categoryId);form.append('name',name.trim());if(brand)form.append('brand',brand.trim());if(price)form.append('price',price);if(link)form.append('link',link.trim());if(notes)form.append('notes',notes.trim());if(file)form.append('file',file);if(longitud)form.append('longitud',longitud);if(ancho)form.append('ancho',ancho);if(altura)form.append('altura',altura);if(colorBastidor)form.append('color_bastidor',colorBastidor.trim());if(colorAcolchado)form.append('color_acolchado',colorAcolchado.trim());if(tipoAcolchado)form.append('tipo_acolchado',tipoAcolchado.trim());if(lumens)form.append('lumens',lumens);if(watts)form.append('watts',watts);if(colorTemperature)form.append('color_temperature',colorTemperature.trim());if(color)form.append('color',color.trim());if(purchaseDto)form.append('purchase_dto',purchaseDto);if(defaultMarginPct)form.append('default_margin_pct',defaultMarginPct);form.append('pricing_unit',pricingUnit);if(includedAccessories)form.append('included_accessories',includedAccessories.trim());let data;if(isEdit){({data}=await api.put(`/catalog/products/${product.id}`,form));}else{({data}=await api.post('/catalog/products',form));}onSaved(data.product);onClose();}catch{setError('Error al guardar producto');}finally{setSaving(false);}};
   return (
     <div className="ap-confirm-overlay" onClick={onClose}>
       <div className="ap-modal-inner" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
@@ -588,6 +592,22 @@ function ProductModal({ categories, product, onClose, onSaved }) {
             </div>
             <div className="ap-field" style={{marginTop:'0.5rem'}}><label>Temperatura de color</label><input className="ap-field-input" value={colorTemperature} onChange={e=>setColorTemperature(e.target.value)} placeholder="ej: 3000K cálida"/></div>
             <div className="ap-field"><label>Color</label><input className="ap-field-input" value={color} onChange={e=>setColor(e.target.value)} placeholder="ej: Negro mate"/></div>
+          </div>
+          <div style={{borderTop:'1px solid rgba(255,255,255,0.07)',marginTop:'0.5rem',paddingTop:'0.75rem'}}>
+            <p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.5rem'}}>Precios y presupuesto</p>
+            <p style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.75rem'}}>Si este precio ya es un PVP con descuento tuyo de compra, pon el dto. Si es tu coste puro, deja el dto. vacío y pon el margen que le quieras sumar (por defecto 20%). Se usa así tanto al insertar este producto en un presupuesto como cuando lo arma el Asistente IA.</p>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem'}}>
+              <div className="ap-field" style={{margin:0}}><label>Dto. de compra (%)</label><input className="ap-field-input" type="number" step="0.5" min="0" max="100" value={purchaseDto} onChange={e=>setPurchaseDto(e.target.value)} placeholder="ej: 40"/></div>
+              <div className="ap-field" style={{margin:0}}><label>Margen por defecto (%)</label><input className="ap-field-input" type="number" step="0.5" min="0" value={defaultMarginPct} onChange={e=>setDefaultMarginPct(e.target.value)} placeholder="20"/></div>
+            </div>
+            <div className="ap-field" style={{marginTop:'0.5rem'}}>
+              <label>El precio es por</label>
+              <select className="ap-select" value={pricingUnit} onChange={e=>setPricingUnit(e.target.value)}>
+                <option value="ud">Unidad</option>
+                <option value="m2">Metro cuadrado (m²)</option>
+              </select>
+            </div>
+            <div className="ap-field"><label>Accesorios incluidos <span className="ap-optional">(opcional)</span></label><textarea className="ap-diag-textarea" rows={2} value={includedAccessories} onChange={e=>setIncludedAccessories(e.target.value)} placeholder="ej: J-cups y barra de seguridad"/></div>
           </div>
           {error&&<p className="ap-error" style={{margin:0}}>{error}</p>}
           <div className="ap-modal-footer"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={saving||!name.trim()||!categoryId}>{saving?'Guardando…':isEdit?'Guardar cambios':'Guardar producto'}</button></div>

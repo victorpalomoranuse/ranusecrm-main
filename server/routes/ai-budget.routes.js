@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
 import { internalAdminToken } from '../utils/internal-auth.js';
+import { computeCatalogPricing } from '../utils/pricing.js';
 
 const router = express.Router();
 // admin_superior siempre pasa; trabajador necesita el permiso "ventas"
@@ -21,6 +22,18 @@ Reglas importantes:
 - Si no especifican cantidades (ej. cuántas mancuernas), asume 1 unidad de cada producto salvo que sea obvio que hacen falta más (pares, sets) — y dilo explícitamente para que lo puedan corregir.
 - Sé breve y directo — esto lo usa alguien con prisa para responder a un cliente rápido, no hace falta que expliques tu proceso, solo dale el resultado.
 
+Marcas:
+- Si te piden una marca concreta ("todo de Akon", "prefiero Titanium Strength"...), pásasela a buscar_productos en el parámetro marca para priorizarla. Si esa marca no tiene nada en alguna categoría, dilo claramente y usa otra marca disponible en su lugar — nunca dejes una categoría vacía por no haber esa marca.
+
+Productos por m² (ej. suelos):
+- buscar_productos indica en "unidad_precio" si un producto se cobra por unidad ("ud") o por metro cuadrado ("m2"). Si es "m2", el precio que ves es por m², así que pregunta (si no te lo han dado) los metros cuadrados a cubrir, y usa ese número como "cantidad" al crear el presupuesto — el total sale de multiplicar precio × m².
+
+Accesorios incluidos:
+- Si un producto trae accesorios incluidos (campo "accesorios_incluidos" en buscar_productos), menciónalo también en tu respuesta al usuario (ej. "incluye J-cups y barra de seguridad"), no solo lo dejes para el PDF.
+
+Precios y márgenes (esto es automático, no lo calcules tú):
+- No calcules tú el coste, margen o descuento de compra — la herramienta crear_presupuesto ya aplica automáticamente el criterio de Víctor por producto (o el precio de catálogo es un PVP con su descuento de compra, o es su coste puro y le suma un margen por defecto). Tú solo trabajas con el precio que te da buscar_productos, que es el precio de venta al cliente.
+
 Cómo guardar un presupuesto de verdad (herramienta crear_presupuesto):
 - Cuando la persona ya haya elegido un nivel (económico/medio/premium) o una lista concreta de productos y te pida guardarlo / crearlo / armarlo como presupuesto real, necesitas saber a qué proyecto de cliente pertenece. Si no te lo han dicho, pregúntalo (nombre del cliente o del proyecto).
 - Usa buscar_proyecto con ese nombre para encontrar el proyecto exacto. Si hay varias coincidencias, enséñaselas y pregunta cuál es. Si no hay ninguna, dilo y pregunta si el proyecto ya existe en el CRM.
@@ -36,11 +49,12 @@ const TOOLS = [
   },
   {
     name: 'buscar_productos',
-    description: 'Busca productos reales del catálogo por categoría (coincidencia parcial, no hace falta el nombre exacto) y devuelve todos los que hay con nombre, marca, precio y el nivel de calidad ya calculado (económico/medio/premium) según su precio dentro de esa categoría.',
+    description: 'Busca productos reales del catálogo por categoría (coincidencia parcial, no hace falta el nombre exacto) y devuelve todos los que hay con nombre, marca, precio de venta ya calculado, unidad de precio (ud o m2), accesorios incluidos y el nivel de calidad (económico/medio/premium) según ese precio dentro de esa categoría.',
     input_schema: {
       type: 'object',
       properties: {
         categoria: { type: 'string', description: 'Nombre o parte del nombre de la categoría a buscar, ej. "rack", "mancuernas", "cardio"' },
+        marca: { type: 'string', description: 'Opcional — filtra solo productos de esta marca, cuando el usuario pide una marca concreta' },
       },
       required: ['categoria'],
     },
@@ -71,7 +85,7 @@ const TOOLS = [
             type: 'object',
             properties: {
               nombre: { type: 'string', description: 'Nombre exacto del producto tal cual aparece en buscar_productos' },
-              cantidad: { type: 'number', description: 'Cantidad de unidades, por defecto 1' },
+              cantidad: { type: 'number', description: 'Cantidad de unidades, por defecto 1. Si el producto se cobra por m² (unidad_precio "m2" en buscar_productos), pon aquí los metros cuadrados en vez de un número de piezas.' },
             },
             required: ['nombre'],
           },
@@ -91,23 +105,37 @@ async function listarCategorias() {
   return (data || []).map(c => `${c.name} (${c.type === 'material' ? 'material' : 'mobiliario'})`);
 }
 
-async function buscarProductos(categoriaQuery) {
+async function buscarProductos(categoriaQuery, marcaQuery) {
   const { data: cats } = await supabase.from('catalog_categories').select('id, name, type').ilike('name', `%${categoriaQuery}%`);
   if (!cats?.length) return { encontrado: false, mensaje: `No hay ninguna categoría que coincida con "${categoriaQuery}" en el catálogo.` };
 
   const catIds = cats.map(c => c.id);
-  const { data: products } = await supabase
+  let query = supabase
     .from('catalog_products')
-    .select('name, brand, price, category_id')
+    .select('name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories')
     .in('category_id', catIds)
-    .not('price', 'is', null)
-    .order('price', { ascending: true });
+    .not('price', 'is', null);
+  if (marcaQuery?.trim()) query = query.ilike('brand', `%${marcaQuery.trim()}%`);
+  const { data: products } = await query;
 
-  if (!products?.length) return { encontrado: false, mensaje: `La categoría "${cats[0].name}" existe pero no tiene productos con precio cargado todavía.` };
+  if (!products?.length) {
+    return marcaQuery?.trim()
+      ? { encontrado: false, mensaje: `No hay productos de la marca "${marcaQuery}" en "${cats[0].name}" — prueba con otra marca o sin filtrar por marca.` }
+      : { encontrado: false, mensaje: `La categoría "${cats[0].name}" existe pero no tiene productos con precio cargado todavía.` };
+  }
+
+  // Precio de venta real (ya con el criterio pvp+dto o coste+margen aplicado,
+  // el mismo que usará crear_presupuesto) — es sobre este precio, no el de
+  // catálogo en bruto, sobre el que se calculan los niveles y se informa.
+  const conPrecioVenta = products.map(p => {
+    const pricing = computeCatalogPricing(p);
+    const precioVenta = pricing.pricing_mode === 'pvp' ? pricing.pvp_ref : pricing.unit_price;
+    return { ...p, precioVenta };
+  });
 
   // Nivel por precio, agrupado por categoría (por si buscarProductos matcheó varias categorías a la vez)
   const porCategoria = {};
-  products.forEach(p => {
+  conPrecioVenta.forEach(p => {
     if (!porCategoria[p.category_id]) porCategoria[p.category_id] = [];
     porCategoria[p.category_id].push(p);
   });
@@ -115,12 +143,21 @@ async function buscarProductos(categoriaQuery) {
   const resultado = [];
   Object.entries(porCategoria).forEach(([catId, items]) => {
     const catName = cats.find(c => c.id === catId)?.name || categoriaQuery;
-    items.sort((a, b) => Number(a.price) - Number(b.price));
+    items.sort((a, b) => a.precioVenta - b.precioVenta);
     items.forEach((p, i) => {
       let nivel = 'medio';
       if (i === 0) nivel = 'económico';
       else if (i === items.length - 1 && items.length > 1) nivel = 'premium';
-      resultado.push({ categoria: catName, nombre: p.name, marca: p.brand || null, precio: Number(p.price), precio_formateado: fmtEur(p.price), nivel });
+      resultado.push({
+        categoria: catName,
+        nombre: p.name,
+        marca: p.brand || null,
+        precio: p.precioVenta,
+        precio_formateado: fmtEur(p.precioVenta),
+        unidad_precio: p.pricing_unit || 'ud',
+        accesorios_incluidos: p.included_accessories || null,
+        nivel,
+      });
     });
   });
 
@@ -198,7 +235,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
     if (!nombreBuscado) continue;
     const { data: producto } = await supabase
       .from('catalog_products')
-      .select('id, name, brand, price, category_id, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, category:catalog_categories(type)')
+      .select('id, name, brand, price, category_id, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, purchase_dto, default_margin_pct, pricing_unit, included_accessories, category:catalog_categories(type)')
       .ilike('name', nombreBuscado)
       .limit(1)
       .maybeSingle();
@@ -208,7 +245,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
       continue;
     }
 
-    const cost = Number(producto.price) || 0;
+    const pricing = computeCatalogPricing(producto);
     const cantidad = parseFloat(it.cantidad) || 1;
     const { error: errItem } = await supabase.from('budget_items').insert({
       budget_id: budget.id,
@@ -216,10 +253,13 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
       name: producto.name,
       category: producto.category?.type || 'material',
       quantity: cantidad,
-      unit: 'ud',
-      unit_cost: cost,
-      markup_pct: 20,
-      unit_price: parseFloat((cost * 1.2).toFixed(2)),
+      unit: pricing.unit,
+      unit_cost: pricing.unit_cost,
+      markup_pct: pricing.markup_pct,
+      unit_price: pricing.unit_price,
+      pricing_mode: pricing.pricing_mode,
+      pvp_ref: pricing.pvp_ref,
+      purchase_dto: pricing.purchase_dto,
       display_order: displayOrder++,
       brand: producto.brand || null,
       longitud: producto.longitud || null,
@@ -228,7 +268,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
       color_bastidor: producto.color_bastidor || null,
       color_acolchado: producto.color_acolchado || null,
       tipo_acolchado: producto.tipo_acolchado || null,
-      pricing_mode: 'margin',
+      accessories_note: producto.included_accessories || null,
     });
     if (!errItem) insertados.push(producto.name);
     else noEncontrados.push(nombreBuscado);
@@ -278,7 +318,7 @@ async function exportarPdfPresupuesto(budgetId) {
 
 async function runTool(name, input) {
   if (name === 'listar_categorias') return { categorias: await listarCategorias() };
-  if (name === 'buscar_productos') return buscarProductos(input.categoria);
+  if (name === 'buscar_productos') return buscarProductos(input.categoria, input.marca);
   if (name === 'buscar_proyecto') return buscarProyecto(input.nombre);
   if (name === 'crear_presupuesto') return crearPresupuesto(input);
   return { error: 'Herramienta desconocida' };
