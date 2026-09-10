@@ -1394,7 +1394,10 @@ function TabNecesidades({ projectId }) {
   const [clientSummary, setClientSummary] = useState('');
   const [newSpace, setNewSpace] = useState({ space_name: '', largo: '', ancho: '', alto: '', notes: '' });
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingPlano, setUploadingPlano] = useState(false);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
   const photoRef = useRef();
+  const planoRef = useRef();
   const { toast } = useToast();
 
   const load = () => {
@@ -1474,6 +1477,36 @@ function TabNecesidades({ projectId }) {
     } catch {}
   };
 
+  const handleUploadPlano = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingPlano(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const { data } = await api.post(`/needs-form/project/${projectId}/measurement-plan`, form);
+      setBundle(prev => ({ ...prev, form: data.form }));
+    } catch { toast.error('Error al subir el plano'); } finally { setUploadingPlano(false); if (planoRef.current) planoRef.current.value = ''; }
+  };
+
+  const handleDeletePlano = async () => {
+    try {
+      const { data } = await api.delete(`/needs-form/project/${projectId}/measurement-plan`);
+      setBundle(prev => ({ ...prev, form: data.form }));
+    } catch { toast.error('Error al eliminar el plano'); }
+  };
+
+  const handleGenerateSummary = async () => {
+    setGeneratingSummary(true);
+    try {
+      const { data } = await api.post(`/needs-form/project/${projectId}/ai-summary`);
+      setClientSummary(data.client_summary || '');
+      setBundle(prev => ({ ...prev, form: data.form }));
+      toast.success('Resumen generado — revísalo antes de que lo vea el cliente');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error al generar el resumen');
+    } finally { setGeneratingSummary(false); }
+  };
+
   if (loading || !bundle) return <div className="ap-loading">Cargando…</div>;
 
   const sections = [];
@@ -1511,6 +1544,9 @@ function TabNecesidades({ projectId }) {
         <div className="ap-field" style={{ flex: 1, minWidth: 260 }}>
           <label>Resumen para el cliente <span className="ap-optional">(esto es lo único que verá el cliente, en vez de todas las respuestas)</span></label>
           <textarea className="ap-field-input" rows={3} value={clientSummary} onChange={e => setClientSummary(e.target.value)} placeholder="Ej. Hemos entendido que quieres transformar el espacio en una zona de tatami, con nueva iluminación..." />
+          <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleGenerateSummary} disabled={generatingSummary} style={{ marginTop: '0.4rem' }}>
+            {generatingSummary ? 'Generando…' : '✨ Generar resumen con IA'}
+          </button>
         </div>
       </div>
       <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSaveNotes} disabled={savingNotes} style={{ marginBottom: '1.5rem' }}>{savingNotes ? 'Guardando…' : 'Guardar notas y resumen'}</button>
@@ -1542,6 +1578,18 @@ function TabNecesidades({ projectId }) {
         ))}
       </div>
       <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ marginBottom: '1.5rem', display: 'inline-flex' }}>{uploadingPhoto ? 'Subiendo…' : <><Plus size={13} /> Añadir foto</>}<input ref={photoRef} type="file" accept="image/*" onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
+
+      <p className="ap-tab-desc" style={{ marginTop: '0.5rem' }}>Plano de medición <span className="ap-optional">(PDF o imagen del plano acotado del espacio — lo ve también el cliente)</span></p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+        {bundle.form.measurement_plan_url ? (
+          <>
+            <a href={bundle.form.measurement_plan_url} target="_blank" rel="noopener noreferrer" className="ap-btn ap-btn-ghost ap-btn-sm"><Download size={13} /> Ver plano</a>
+            <button className="ap-btn-icon" onClick={handleDeletePlano}><Trash2 size={12} /></button>
+          </>
+        ) : (
+          <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ display: 'inline-flex' }}>{uploadingPlano ? 'Subiendo…' : <><Plus size={13} /> Subir plano</>}<input ref={planoRef} type="file" accept="image/*,application/pdf" onChange={handleUploadPlano} disabled={uploadingPlano} style={{ display: 'none' }} /></label>
+        )}
+      </div>
 
       <p className="ap-tab-desc" style={{ marginTop: '0.5rem' }}>Formulario del programa de necesidades — rellénalo tú como comercial, o pide al cliente que lo haga desde su página.</p>
 

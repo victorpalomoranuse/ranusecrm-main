@@ -6,8 +6,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
-import { uploadDiagnosisImageFile, handleMulterError } from '../middleware/upload.middleware.js';
-import { uploadDiagnosisImage, deleteDiagnosisImage } from '../utils/storage.js';
+import { uploadDiagnosisImageFile, uploadDocumentFile, handleMulterError } from '../middleware/upload.middleware.js';
+import { uploadDiagnosisImage, deleteDiagnosisImage, uploadProjectDocument, deleteProjectDocument } from '../utils/storage.js';
+import { callClaude } from '../utils/anthropic.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -380,6 +381,78 @@ router.delete('/project/:projectId/photos/:id', authenticateToken, requireProyec
   }
 });
 
+// ── Plano de medición (PDF o imagen) ──────────────────────────────────
+async function guardarPlanoMedicion(projectId, file) {
+  const form = await getOrCreateForm(projectId);
+  if (form.measurement_plan_url) await deleteProjectDocument(form.measurement_plan_url);
+  const url = await uploadProjectDocument(file.buffer, file.originalname, file.mimetype, projectId);
+  const { data, error } = await supabase.from('project_needs_forms').update({ measurement_plan_url: url, updated_at: new Date().toISOString() }).eq('id', form.id).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+async function borrarPlanoMedicion(projectId) {
+  const form = await getOrCreateForm(projectId);
+  if (form.measurement_plan_url) await deleteProjectDocument(form.measurement_plan_url);
+  const { data, error } = await supabase.from('project_needs_forms').update({ measurement_plan_url: null, updated_at: new Date().toISOString() }).eq('id', form.id).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+router.post('/project/:projectId/measurement-plan', authenticateToken, requireProyectos, uploadDocumentFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Archivo requerido (PDF o imagen)' });
+    res.status(201).json({ form: await guardarPlanoMedicion(req.params.projectId, req.file) });
+  } catch (err) {
+    console.error('Error al subir plano de medición:', err);
+    res.status(500).json({ error: 'Error al subir el plano' });
+  }
+});
+
+router.delete('/project/:projectId/measurement-plan', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    res.json({ form: await borrarPlanoMedicion(req.params.projectId) });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al eliminar el plano' });
+  }
+});
+
+// ── Resumen con IA (solo admin) ──────────────────────────────────────
+router.post('/project/:projectId/ai-summary', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const bundle = await loadFormBundle(req.params.projectId);
+    const { data: project } = await supabase.from('client_projects').select('client_name, project_name').eq('id', req.params.projectId).single();
+
+    const productsById = {}; (bundle.catalog_products || []).forEach(p => { productsById[p.id] = p; });
+    const referencesById = {}; (bundle.references || []).forEach(r => { referencesById[r.id] = r; });
+    const answerByQuestion = {};
+    bundle.answers.forEach(a => { answerByQuestion[a.question_id] = a.answer_value; });
+
+    const preguntasYrespuestas = bundle.questions
+      .map(q => `- ${q.question_text}: ${formatAnswer(q, answerByQuestion[q.id], productsById, referencesById)}`)
+      .join('\n');
+    const mediciones = (bundle.measurements || [])
+      .map(m => `- ${m.space_name}: ${[m.largo, m.ancho, m.alto].filter(v => v != null).length ? `${m.largo ?? '—'} × ${m.ancho ?? '—'} × ${m.alto ?? '—'} m` : 'sin medidas'}${m.notes ? ` (${m.notes})` : ''}`)
+      .join('\n') || 'Sin mediciones registradas.';
+    const notas = bundle.form.admin_notes?.trim() || 'Sin notas internas.';
+
+    const system = `Eres el asistente de Ranuse Design, un estudio de diseño de espacios deportivos (home gyms) en España. Te paso el Programa de Necesidades de un cliente (sus respuestas a un formulario, las mediciones del espacio y las notas internas del diseñador). Escribe un RESUMEN breve y claro EN ESPAÑOL, en 2ª persona dirigido al cliente ("Hemos entendido que quieres..."), de 4-6 frases, que recoja qué quiere, para qué espacio, con qué prioridades y cualquier condicionante importante. No inventes nada que no esté en la información. No uses encabezados ni listas, solo un párrafo natural. Este texto es lo único que verá el cliente en su página, así que tiene que sonar cercano y profesional.`;
+    const userMsg = `PROYECTO: ${project?.project_name || '—'} (cliente: ${project?.client_name || '—'})\n\nRESPUESTAS DEL FORMULARIO:\n${preguntasYrespuestas || 'Sin respuestas.'}\n\nMEDICIONES:\n${mediciones}\n\nNOTAS INTERNAS DEL DISEÑADOR:\n${notas}`;
+
+    const response = await callClaude({ system, messages: [{ role: 'user', content: userMsg }], maxTokens: 600 });
+    const textBlock = (response.content || []).find(b => b.type === 'text');
+    const resumen = textBlock?.text?.trim();
+    if (!resumen) return res.status(502).json({ error: 'La IA no devolvió un resumen' });
+
+    const { data, error } = await supabase.from('project_needs_forms').update({ client_summary: resumen, updated_at: new Date().toISOString() }).eq('id', bundle.form.id).select('*').single();
+    if (error) throw error;
+    res.json({ form: data, client_summary: resumen });
+  } catch (err) {
+    console.error('Error al generar resumen con IA:', err);
+    res.status(500).json({ error: err.message || 'Error al generar el resumen' });
+  }
+});
+
 // ══════════════════════════════════════════════════════════════════════
 // FORMULARIO — lado cliente (público, por código de acceso)
 // ══════════════════════════════════════════════════════════════════════
@@ -484,6 +557,32 @@ router.delete('/public/:code/photos/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Error al eliminar foto' });
+  }
+});
+
+router.post('/public/:code/measurement-plan', uploadDocumentFile, handleMulterError, async (req, res) => {
+  try {
+    const projectId = await resolveProjectIdByCode(req.params.code);
+    if (!projectId) return res.status(404).json({ error: 'Código no válido' });
+    if (!req.file) return res.status(400).json({ error: 'Archivo requerido (PDF o imagen)' });
+    const form = await guardarPlanoMedicion(projectId, req.file);
+    const { admin_notes, ...publicForm } = form;
+    res.status(201).json({ form: publicForm });
+  } catch (err) {
+    console.error('Error al subir plano de medición (público):', err);
+    res.status(500).json({ error: 'Error al subir el plano' });
+  }
+});
+
+router.delete('/public/:code/measurement-plan', async (req, res) => {
+  try {
+    const projectId = await resolveProjectIdByCode(req.params.code);
+    if (!projectId) return res.status(404).json({ error: 'Código no válido' });
+    const form = await borrarPlanoMedicion(projectId);
+    const { admin_notes, ...publicForm } = form;
+    res.json({ form: publicForm });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al eliminar el plano' });
   }
 });
 

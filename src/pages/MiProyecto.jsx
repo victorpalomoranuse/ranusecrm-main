@@ -712,7 +712,9 @@ function NeedsFormSection({ code }) {
   const [sent, setSent] = useState(false);
   const [newSpace, setNewSpace] = useState({ space_name: '', largo: '', ancho: '', alto: '', notes: '' });
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingPlano, setUploadingPlano] = useState(false);
   const photoRef = useRef();
+  const planoRef = useRef();
   const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
   const load = () => {
@@ -770,6 +772,26 @@ function NeedsFormSection({ code }) {
     } catch {}
   };
 
+  const handleUploadPlano = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingPlano(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const r = await fetch(`${base}/needs-form/public/${encodeURIComponent(code)}/measurement-plan`, { method: 'POST', body: form });
+      const data = await r.json();
+      setBundle(prev => ({ ...prev, form: data.form }));
+    } catch {} finally { setUploadingPlano(false); if (planoRef.current) planoRef.current.value = ''; }
+  };
+
+  const handleDeletePlano = async () => {
+    try {
+      const r = await fetch(`${base}/needs-form/public/${encodeURIComponent(code)}/measurement-plan`, { method: 'DELETE' });
+      const data = await r.json();
+      setBundle(prev => ({ ...prev, form: data.form }));
+    } catch {}
+  };
+
   const handleSubmit = async () => {
     setSaving(true);
     try {
@@ -804,10 +826,26 @@ function NeedsFormSection({ code }) {
       </button>
       {open && (
         <div className="mp-ph-body">
-          {summary ? (
-            <p className="mp-ph-intro">{summary}</p>
-          ) : sent ? (
-            <p className="mp-ph-intro">Gracias, hemos recibido tu programa de necesidades. Tu diseñador lo está revisando y pronto verás aquí un resumen.</p>
+          {summary || sent ? (
+            <>
+              <p className="mp-ph-intro">{summary || 'Gracias, hemos recibido tu programa de necesidades. Tu diseñador lo está revisando y pronto verás aquí un resumen.'}</p>
+              {bundle.photos.length > 0 && (
+                <div className="mp-nf-block">
+                  <p className="mp-block-label">Fotos del antes</p>
+                  <div className="mp-nf-photos">
+                    {bundle.photos.map(p => (
+                      <div key={p.id} className="mp-nf-photo"><img src={p.url} alt="" /></div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {bundle.form?.measurement_plan_url && (
+                <div className="mp-nf-block">
+                  <p className="mp-block-label">Plano de medición</p>
+                  <a href={bundle.form.measurement_plan_url} target="_blank" rel="noopener noreferrer" className="mp-nf-upload-btn" style={{ display: 'inline-block' }}>Ver plano ↗</a>
+                </div>
+              )}
+            </>
           ) : (
             <>
               <p className="mp-ph-intro">Cuéntanos sobre tu proyecto para que podamos diseñarlo a tu medida. Puedes rellenarlo tú o pedirle a tu diseñador que lo haga contigo.</p>
@@ -841,6 +879,18 @@ function NeedsFormSection({ code }) {
                   ))}
                 </div>
                 <label className="mp-nf-upload-btn">{uploadingPhoto ? 'Subiendo…' : '+ Añadir foto'}<input ref={photoRef} type="file" accept="image/*" onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
+              </div>
+
+              <div className="mp-nf-block">
+                <p className="mp-block-label">Plano de medición <span style={{ fontWeight: 400, opacity: 0.6 }}>(PDF o imagen, opcional)</span></p>
+                {bundle.form?.measurement_plan_url ? (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <a href={bundle.form.measurement_plan_url} target="_blank" rel="noopener noreferrer" className="mp-nf-upload-btn" style={{ display: 'inline-block' }}>Ver plano ↗</a>
+                    <button type="button" onClick={handleDeletePlano} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}>✕</button>
+                  </div>
+                ) : (
+                  <label className="mp-nf-upload-btn">{uploadingPlano ? 'Subiendo…' : '+ Subir plano'}<input ref={planoRef} type="file" accept="image/*,application/pdf" onChange={handleUploadPlano} disabled={uploadingPlano} style={{ display: 'none' }} /></label>
+                )}
               </div>
 
               {sections.map(sec => (
