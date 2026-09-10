@@ -327,9 +327,10 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
  */
 router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active, lead_id, venta_id, status, cover_image_url } = req.body;
+    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active, lead_id, venta_id, status, cover_image_url, memoria_intro } = req.body;
 
     const updates = {};
+    if (memoria_intro !== undefined) updates.memoria_intro = memoria_intro?.trim() || null;
     if (client_name !== undefined) updates.client_name = client_name.trim();
     if (project_name !== undefined) updates.project_name = project_name.trim();
     if (client_email !== undefined) updates.client_email = client_email?.trim() || null;

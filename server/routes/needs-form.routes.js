@@ -283,13 +283,14 @@ router.get('/project/:projectId', authenticateToken, requireProyectos, async (re
 router.put('/project/:projectId', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const form = await getOrCreateForm(req.params.projectId);
-    const { status, filled_by_role, filled_by_name, answers, admin_notes, client_summary } = req.body;
+    const { status, filled_by_role, filled_by_name, answers, admin_notes, client_summary, brief } = req.body;
     const updates = {};
     if (status !== undefined) updates.status = status;
     if (filled_by_role !== undefined) updates.filled_by_role = filled_by_role;
     if (filled_by_name !== undefined) updates.filled_by_name = filled_by_name?.trim() || null;
     if (admin_notes !== undefined) updates.admin_notes = admin_notes;
     if (client_summary !== undefined) updates.client_summary = client_summary;
+    if (brief !== undefined) updates.brief = brief?.trim() || null;
     if (status === 'enviado') updates.submitted_at = new Date().toISOString();
     updates.updated_at = new Date().toISOString();
 
@@ -435,9 +436,10 @@ router.post('/project/:projectId/ai-summary', authenticateToken, requireProyecto
       .map(m => `- ${m.space_name}: ${[m.largo, m.ancho, m.alto].filter(v => v != null).length ? `${m.largo ?? '—'} × ${m.ancho ?? '—'} × ${m.alto ?? '—'} m` : 'sin medidas'}${m.notes ? ` (${m.notes})` : ''}`)
       .join('\n') || 'Sin mediciones registradas.';
     const notas = bundle.form.admin_notes?.trim() || 'Sin notas internas.';
+    const descripcionLibre = bundle.form.brief?.trim() || '';
 
     const system = `Eres el asistente de Ranuse Design, un estudio de diseño de espacios deportivos (home gyms) en España. Te paso el Programa de Necesidades de un cliente (sus respuestas a un formulario, las mediciones del espacio y las notas internas del diseñador). Escribe un RESUMEN breve y claro EN ESPAÑOL, en 2ª persona dirigido al cliente ("Hemos entendido que quieres..."), de 4-6 frases, que recoja qué quiere, para qué espacio, con qué prioridades y cualquier condicionante importante. No inventes nada que no esté en la información. No uses encabezados ni listas, solo un párrafo natural. Este texto es lo único que verá el cliente en su página, así que tiene que sonar cercano y profesional.`;
-    const userMsg = `PROYECTO: ${project?.project_name || '—'} (cliente: ${project?.client_name || '—'})\n\nRESPUESTAS DEL FORMULARIO:\n${preguntasYrespuestas || 'Sin respuestas.'}\n\nMEDICIONES:\n${mediciones}\n\nNOTAS INTERNAS DEL DISEÑADOR:\n${notas}`;
+    const userMsg = `PROYECTO: ${project?.project_name || '—'} (cliente: ${project?.client_name || '—'})\n\n${descripcionLibre ? `DESCRIPCIÓN LIBRE DEL PROYECTO (escrita por el diseñador):\n${descripcionLibre}\n\n` : ''}RESPUESTAS DEL FORMULARIO:\n${preguntasYrespuestas || 'Sin respuestas — puede que el diseñador solo haya escrito la descripción libre de arriba.'}\n\nMEDICIONES:\n${mediciones}\n\nNOTAS INTERNAS DEL DISEÑADOR:\n${notas}`;
 
     const response = await callClaude({ system, messages: [{ role: 'user', content: userMsg }], maxTokens: 600 });
     const textBlock = (response.content || []).find(b => b.type === 'text');

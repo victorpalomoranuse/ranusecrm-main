@@ -1259,8 +1259,19 @@ function TabCategorias({ projectId }) {
 function TabPortada({ project, onUpdated }) {
   const [uploading, setUploading] = useState(false);
   const [coverUrl, setCoverUrl] = useState(project.cover_image_url || null);
+  const [memoriaIntro, setMemoriaIntro] = useState(project.memoria_intro || '');
+  const [savingMemoria, setSavingMemoria] = useState(false);
   const fileRef = useRef();
   const { toast } = useToast();
+
+  const handleSaveMemoria = async () => {
+    setSavingMemoria(true);
+    try {
+      await api.put(`/client-projects/${project.id}`, { memoria_intro: memoriaIntro });
+      project.memoria_intro = memoriaIntro;
+      toast.success('Planteamiento guardado');
+    } catch { toast.error('Error al guardar'); } finally { setSavingMemoria(false); }
+  };
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1302,6 +1313,12 @@ function TabPortada({ project, onUpdated }) {
       <div style={{ display: 'flex', gap: '0.5rem' }}>
         <label className="ap-btn ap-btn-primary ap-btn-sm ap-upload-label">{uploading ? 'Subiendo…' : <><Plus size={13} /> {coverUrl ? 'Reemplazar portada' : 'Subir portada'}</>}<input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} disabled={uploading} style={{ display: 'none' }} /></label>
         {coverUrl && <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleRemove}><Trash2 size={13} /> Quitar</button>}
+      </div>
+
+      <div className="ap-field" style={{ marginTop: '1.75rem' }}>
+        <label>Planteamiento y justificación del proyecto <span className="ap-optional">(sale en la Memoria PDF — explica por qué se plantea cada solución; solo interno, el cliente no lo ve en su página)</span></label>
+        <textarea className="ap-field-input" rows={6} value={memoriaIntro} onChange={e => setMemoriaIntro(e.target.value)} placeholder="Ej. El cliente parte de un garaje de 6×4 m que quiere convertir en zona de fuerza sin perder el uso del portón. Se plantea un rack a pared para liberar suelo, suelo técnico de 20 mm por el impacto de las cargas, e iluminación cenital en dos líneas para trabajar sin sombras..." />
+        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSaveMemoria} disabled={savingMemoria} style={{ marginTop: '0.5rem' }}>{savingMemoria ? 'Guardando…' : 'Guardar planteamiento'}</button>
       </div>
     </div>
   );
@@ -1392,10 +1409,12 @@ function TabNecesidades({ projectId }) {
   const [filledByName, setFilledByName] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
   const [clientSummary, setClientSummary] = useState('');
+  const [brief, setBrief] = useState('');
   const [newSpace, setNewSpace] = useState({ space_name: '', largo: '', ancho: '', alto: '', notes: '' });
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingPlano, setUploadingPlano] = useState(false);
   const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [photoZoom, setPhotoZoom] = useState(null);
   const photoRef = useRef();
   const planoRef = useRef();
   const { toast } = useToast();
@@ -1415,6 +1434,7 @@ function TabNecesidades({ projectId }) {
       setFilledByName(bundleRes.data.form?.filled_by_name || '');
       setAdminNotes(bundleRes.data.form?.admin_notes || '');
       setClientSummary(bundleRes.data.form?.client_summary || '');
+      setBrief(bundleRes.data.form?.brief || '');
     }).catch(() => toast.error('Error al cargar el programa de necesidades')).finally(() => setLoading(false));
   };
 
@@ -1438,8 +1458,8 @@ function TabNecesidades({ projectId }) {
   const handleSaveNotes = async () => {
     setSavingNotes(true);
     try {
-      await api.put(`/needs-form/project/${projectId}`, { admin_notes: adminNotes, client_summary: clientSummary });
-      toast.success('Notas guardadas');
+      await api.put(`/needs-form/project/${projectId}`, { admin_notes: adminNotes, client_summary: clientSummary, brief });
+      toast.success('Guardado');
     } catch { toast.error('Error al guardar notas'); } finally { setSavingNotes(false); }
   };
 
@@ -1536,6 +1556,11 @@ function TabNecesidades({ projectId }) {
         }} className="ap-btn ap-btn-ghost ap-btn-sm"><Download size={13} /> PDF</a>
       </div>
 
+      <div className="ap-field" style={{ marginBottom: '1.25rem' }}>
+        <label>Descripción libre del proyecto <span className="ap-optional">(si no rellenas el formulario de abajo, escribe aquí directamente lo que sepas del proyecto — la IA usa esto también para el resumen)</span></label>
+        <textarea className="ap-field-input" rows={5} value={brief} onChange={e => setBrief(e.target.value)} placeholder="Ej. Garaje de 6×4 m, quiere zona de fuerza con rack y suelo técnico, presupuesto ajustado, mantener el portón operativo. Le gusta el estilo negro industrial. Va con prisa para tenerlo en 2 meses..." />
+      </div>
+
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         <div className="ap-field" style={{ flex: 1, minWidth: 260 }}>
           <label>Notas internas <span className="ap-optional">(solo tú las ves, nunca el cliente)</span></label>
@@ -1572,11 +1597,17 @@ function TabNecesidades({ projectId }) {
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
         {bundle.photos.map(p => (
           <div key={p.id} style={{ position: 'relative' }}>
-            <img src={p.url} alt="" style={{ width: 70, height: 70, objectFit: 'cover', borderRadius: 6 }} />
+            <img src={p.url} alt="" onClick={() => setPhotoZoom(p.url)} style={{ width: 70, height: 70, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in' }} />
             <button onClick={() => handleDeletePhoto(p.id)} style={{ position: 'absolute', top: -4, right: -4, background: '#1a1a1a', border: 'none', borderRadius: '50%', width: 16, height: 16, color: '#fff', cursor: 'pointer', fontSize: 10 }}>✕</button>
           </div>
         ))}
       </div>
+      {photoZoom && (
+        <div onClick={() => setPhotoZoom(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', cursor: 'zoom-out' }}>
+          <button onClick={() => setPhotoZoom(null)} style={{ position: 'absolute', top: 20, right: 24, background: 'none', border: 'none', color: '#fff', fontSize: 24, cursor: 'pointer' }}>✕</button>
+          <img src={photoZoom} alt="" onClick={e => e.stopPropagation()} style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 8 }} />
+        </div>
+      )}
       <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ marginBottom: '1.5rem', display: 'inline-flex' }}>{uploadingPhoto ? 'Subiendo…' : <><Plus size={13} /> Añadir foto</>}<input ref={photoRef} type="file" accept="image/*" onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
 
       <p className="ap-tab-desc" style={{ marginTop: '0.5rem' }}>Plano de medición <span className="ap-optional">(PDF o imagen del plano acotado del espacio — lo ve también el cliente)</span></p>
@@ -1618,6 +1649,24 @@ function TabNecesidades({ projectId }) {
 
 function ProjectManagerModal({ project, onClose }) {
   const [tab, setTab] = useState('portada');
+  const [descargandoMemoria, setDescargandoMemoria] = useState(false);
+
+  const handleMemoria = async () => {
+    setDescargandoMemoria(true);
+    try {
+      const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch(`${base}/memoria/${project.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `memoria-${(project.project_name || 'proyecto').replace(/\s+/g, '-')}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {} finally { setDescargandoMemoria(false); }
+  };
 
   const handlePdfMateriales = async () => {
     try {
@@ -1646,6 +1695,9 @@ function ProjectManagerModal({ project, onClose }) {
             <p className="ap-mgr-sub">{project.project_name} · <span className="ap-code-val" style={{fontSize:'0.78rem'}}>{project.access_code}</span></p>
           </div>
           <div style={{display:'flex', gap:'0.5rem', alignItems:'center'}}>
+            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleMemoria} disabled={descargandoMemoria}>
+              <Download size={13}/> {descargandoMemoria ? 'Generando…' : 'Memoria PDF'}
+            </button>
             <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handlePdfMateriales}>
               <Download size={13}/> PDF materiales
             </button>

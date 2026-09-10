@@ -713,6 +713,7 @@ function NeedsFormSection({ code }) {
   const [newSpace, setNewSpace] = useState({ space_name: '', largo: '', ancho: '', alto: '', notes: '' });
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingPlano, setUploadingPlano] = useState(false);
+  const [photoZoom, setPhotoZoom] = useState(null);
   const photoRef = useRef();
   const planoRef = useRef();
   const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -834,7 +835,7 @@ function NeedsFormSection({ code }) {
                   <p className="mp-block-label">Fotos del antes</p>
                   <div className="mp-nf-photos">
                     {bundle.photos.map(p => (
-                      <div key={p.id} className="mp-nf-photo"><img src={p.url} alt="" /></div>
+                      <div key={p.id} className="mp-nf-photo"><img src={p.url} alt="" onClick={() => setPhotoZoom(p.url)} style={{ cursor: 'zoom-in' }} /></div>
                     ))}
                   </div>
                 </div>
@@ -873,7 +874,7 @@ function NeedsFormSection({ code }) {
                 <div className="mp-nf-photos">
                   {bundle.photos.map(p => (
                     <div key={p.id} className="mp-nf-photo">
-                      <img src={p.url} alt="" />
+                      <img src={p.url} alt="" onClick={() => setPhotoZoom(p.url)} style={{ cursor: 'zoom-in' }} />
                       <button onClick={() => handleDeletePhoto(p.id)}>✕</button>
                     </div>
                   ))}
@@ -915,6 +916,7 @@ function NeedsFormSection({ code }) {
           )}
         </div>
       )}
+      {photoZoom && <Lightbox src={photoZoom} alt="" onClose={() => setPhotoZoom(null)} downloadUrl={photoZoom} downloadName="foto.jpg" />}
     </div>
   );
 }
