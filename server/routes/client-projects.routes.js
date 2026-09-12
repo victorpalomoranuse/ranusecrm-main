@@ -376,7 +376,6 @@ router.get('/public/portfolio/:slug', async (req, res) => {
           moodboard_palette: [],
           before_photos: [],
           result_images: (legacy.images || []).filter(u => u && !u.startsWith('blob:')),
-          is_result: true,
           testimonial_video_url: null,
         },
       });
@@ -384,7 +383,7 @@ router.get('/public/portfolio/:slug', async (req, res) => {
 
     const [{ data: moodboardImgs }, { data: renders }, needsForm] = await Promise.all([
       supabase.from('project_moodboard_images').select('url').eq('project_id', project.id).order('display_order', { ascending: true }),
-      supabase.from('project_renders').select('url, kind').eq('project_id', project.id).order('display_order', { ascending: true, nullsFirst: false }),
+      supabase.from('project_renders').select('url').eq('project_id', project.id).order('display_order', { ascending: true, nullsFirst: false }),
       supabase.from('project_needs_forms').select('id').eq('project_id', project.id).maybeSingle().then(r => r.data),
     ]);
 
@@ -393,10 +392,6 @@ router.get('/public/portfolio/:slug', async (req, res) => {
       const { data: photos } = await supabase.from('project_needs_form_photos').select('url').eq('form_id', needsForm.id).order('display_order', { ascending: true });
       beforePhotos = (photos || []).map(p => p.url);
     }
-
-    const allRenders = renders || [];
-    const resultado = allRenders.filter(r => r.kind === 'resultado').map(r => r.url);
-    const rendersOnly = allRenders.filter(r => r.kind !== 'resultado').map(r => r.url);
 
     res.json({
       project: {
@@ -409,8 +404,7 @@ router.get('/public/portfolio/:slug', async (req, res) => {
         moodboard_images: (moodboardImgs || []).map(m => m.url),
         moodboard_palette: project.moodboard_palette || [],
         before_photos: beforePhotos,
-        result_images: resultado.length ? resultado : rendersOnly,
-        is_result: resultado.length > 0,
+        result_images: (renders || []).map(r => r.url),
         testimonial_video_url: project.testimonial_video_url || null,
       },
     });
@@ -609,7 +603,7 @@ router.post('/:id/renders', authenticateToken, requireProyectos, uploadRenderFil
       return res.status(400).json({ error: 'No se recibió ningún archivo' });
     }
 
-    const { name, version, phase_number, kind } = req.body;
+    const { name, version, phase_number } = req.body;
     const projectId = req.params.id;
 
     const url = await uploadProjectRender(
@@ -637,7 +631,6 @@ router.post('/:id/renders', authenticateToken, requireProyectos, uploadRenderFil
         version: version?.trim() || null,
         display_order: nextOrder,
         phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
-        kind: kind === 'resultado' ? 'resultado' : 'render',
       })
       .select('*')
       .single();
@@ -647,29 +640,6 @@ router.post('/:id/renders', authenticateToken, requireProyectos, uploadRenderFil
   } catch (error) {
     console.error('Error al subir render:', error);
     res.status(500).json({ error: 'Error al subir render' });
-  }
-});
-
-/**
- * PUT /api/client-projects/:id/renders/:renderId
- * Solo para marcar si es un render (visualización 3D) o una foto real del
- * resultado ya ejecutado — se usa en Trabajos para decidir qué enseñar.
- */
-router.put('/:id/renders/:renderId', authenticateToken, requireProyectos, async (req, res) => {
-  try {
-    const { kind } = req.body;
-    if (!['render', 'resultado'].includes(kind)) return res.status(400).json({ error: 'kind inválido' });
-    const { data, error } = await supabase
-      .from('project_renders')
-      .update({ kind })
-      .eq('id', req.params.renderId)
-      .eq('project_id', req.params.id)
-      .select('*')
-      .single();
-    if (error) throw error;
-    res.json({ render: data });
-  } catch (error) {
-    res.status(500).json({ error: 'Error al actualizar el render' });
   }
 });
 

@@ -140,7 +140,7 @@ export function ProjectGallery() {
       <main className="pg-main">
         <ImageSection label="El antes" text={project.before_text} images={project.before_photos} offset={0} onOpen={openLightbox} />
         <ImageSection label="Moodboard" text={project.concept} palette={project.moodboard_palette} images={project.moodboard_images} offset={beforeCount} onOpen={openLightbox} />
-        <ImageSection label={project.is_result ? 'El resultado' : 'Renders'} text={project.result_text} images={project.result_images} offset={beforeCount + moodboardCount} onOpen={openLightbox} />
+        <ImageSection label="El resultado" text={project.result_text} images={project.result_images} offset={beforeCount + moodboardCount} onOpen={openLightbox} />
 
         {project.testimonial_video_url && (
           <section className="pg-section">

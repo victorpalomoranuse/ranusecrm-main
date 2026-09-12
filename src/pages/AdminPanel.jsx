@@ -275,18 +275,16 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Listados'},{id:'trabajos',label:'Trabajos web'}];
+const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Resultado'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Listados'},{id:'trabajos',label:'Trabajos web'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
-function SortableRenderThumb({ r, onDelete, isFirst, onToggleKind }) {
+function SortableRenderThumb({ r, onDelete, isFirst }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: r.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, zIndex: isDragging ? 10 : undefined };
-  const isResultado = r.kind === 'resultado';
   return (
     <div ref={setNodeRef} style={style} className={`ap-render-thumb${isFirst?' ap-render-thumb--hero':''}`}>
       <img src={r.url} alt={r.name}/>
       {isFirst && <span className="ap-render-hero-badge">Hero</span>}
-      <button type="button" onClick={()=>onToggleKind(r)} style={{ position:'absolute', top:6, left:6, zIndex:5, fontSize:'0.62rem', fontWeight:700, padding:'2px 7px', borderRadius:999, border:'none', cursor:'pointer', color:'#fff', background: isResultado ? '#3f8f5f' : 'rgba(0,0,0,0.55)' }}>{isResultado?'✓ Resultado':'Render'}</button>
       <button {...attributes} {...listeners} className="ap-render-drag-handle" type="button"><GripVertical size={12}/></button>
       <div className="ap-render-overlay"><span className="ap-render-name">{r.name}</span>{r.version&&<span className="ap-render-ver">{r.version}</span>}<button className="ap-btn-icon ap-render-del" onClick={()=>onDelete(r.id)}><Trash2 size={13}/></button></div>
     </div>
@@ -315,11 +313,6 @@ function TabRenders({ projectId, phaseNumber }) {
     try { const form = new FormData(); form.append('file',file); if(name) form.append('name',name); if(version) form.append('version',version); if(phaseNumber != null) form.append('phase_number', phaseNumber); const {data} = await api.post(`/client-projects/${projectId}/renders`,form); setRenders(prev=>[...prev,data.render]); setName(''); setVersion(''); fileRef.current.value=''; } catch(err){setError(err.response?.data?.error||'Error al subir render');} finally{setUploading(false);}
   };
   const handleDelete = async (id) => { try{await api.delete(`/client-projects/${projectId}/renders/${id}`);setRenders(prev=>prev.filter(r=>r.id!==id));}catch{setError('Error al eliminar render');} };
-  const handleToggleKind = async (r) => {
-    const newKind = r.kind === 'resultado' ? 'render' : 'resultado';
-    setRenders(prev => prev.map(x => x.id === r.id ? { ...x, kind: newKind } : x));
-    try { await api.put(`/client-projects/${projectId}/renders/${r.id}`, { kind: newKind }); } catch { setError('Error al actualizar el render'); }
-  };
   const handleDragEnd = async (event) => {
     const {active,over}=event; if(!active||!over||active.id===over.id) return;
     const oldIndex=renders.findIndex(r=>r.id===active.id); const newIndex=renders.findIndex(r=>r.id===over.id);
@@ -335,11 +328,11 @@ function TabRenders({ projectId, phaseNumber }) {
         <label className="ap-btn ap-btn-primary ap-btn-sm ap-upload-label">{uploading?'Subiendo…':<><Plus size={13}/> Subir imagen</>}<input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} disabled={uploading} style={{display:'none'}}/></label>
       </div>
       {error && <p className="ap-error">{error}</p>}
-      {renders.length>0&&<p className="ap-order-hint" style={{marginBottom:'0.5rem'}}>El primero se muestra como portada. Arrastra para reordenar. Marca "Resultado" en las fotos reales una vez ejecutado — en Trabajos se enseñan esas en vez de los renders si las hay.</p>}
+      {renders.length>0&&<p className="ap-order-hint" style={{marginBottom:'0.5rem'}}>El primero se muestra como portada. Arrastra para reordenar. Esto es lo que se enseña en Trabajos como "El resultado" — sube renders mientras tanto, y cuando el proyecto esté ejecutado, borra los renders y sube aquí mismo las fotos reales.</p>}
       {loading?<div className="ap-loading">Cargando…</div>:renders.length===0?<div className="ap-empty"><p>No hay renders todavía.</p></div>:(
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={renders.map(r=>r.id)} strategy={rectSortingStrategy}>
-            <div className="ap-renders-grid">{renders.map((r,i)=><SortableRenderThumb key={r.id} r={r} onDelete={handleDelete} isFirst={i===0} onToggleKind={handleToggleKind}/>)}</div>
+            <div className="ap-renders-grid">{renders.map((r,i)=><SortableRenderThumb key={r.id} r={r} onDelete={handleDelete} isFirst={i===0}/>)}</div>
           </SortableContext>
         </DndContext>
       )}
@@ -1082,7 +1075,7 @@ function TabTrabajosWeb({ project }) {
       <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => handleSave()} disabled={saving} style={{ marginTop: '0.5rem' }}>{saving ? 'Guardando…' : 'Guardar'}</button>
       {publicUrl && published && <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop: '0.5rem', marginLeft: '0.5rem' }}>Ver en la web ↗</a>}
 
-      <p className="ap-tab-desc" style={{ marginTop: '1.5rem' }}>Las fotos del "antes" son las del Programa de Necesidades, y las de "resultado" son los renders marcados como tal en la pestaña Renders (si no marcas ninguno, se enseñan los renders normales).</p>
+      <p className="ap-tab-desc" style={{ marginTop: '1.5rem' }}>Las fotos del "antes" son las del Programa de Necesidades. Las de "El resultado" son las que subas en la pestaña Resultado del proyecto — de renders al principio, a las fotos reales cuando esté ejecutado.</p>
     </div>
   );
 }
