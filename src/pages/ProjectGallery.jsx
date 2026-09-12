@@ -23,10 +23,18 @@ function ImageSection({ label, images, offset, onOpen }) {
   if (!images?.length) return null;
   return (
     <section className="pg-section">
-      <p className="pg-section-label">{label}</p>
+      <div className="pg-section-head">
+        <p className="pg-section-label">{label}</p>
+        <span className="pg-section-count">{String(images.length).padStart(2, '0')}</span>
+      </div>
       <div className="pg-grid">
         {images.map((src, i) => (
-          <button key={i} className="pg-thumb" onClick={() => onOpen(offset + i)} aria-label={`Ver imagen ${i + 1}`}>
+          <button
+            key={i}
+            className={`pg-thumb${i === 0 ? ' pg-thumb--big' : ''}`}
+            onClick={() => onOpen(offset + i)}
+            aria-label={`Ver imagen ${i + 1}`}
+          >
             <LazyImage src={src} alt={`${label} · ${i + 1}`} />
           </button>
         ))}
@@ -95,8 +103,22 @@ export function ProjectGallery() {
       <Stars count={140} style={{ position: 'fixed' }} />
       <Navbar />
 
-      <main className="pg-main">
-        <div className="pg-header">
+      {project.cover_url ? (
+        <div className="pg-hero">
+          <LazyImage src={project.cover_url} alt={project.title} className="pg-hero-img" />
+          <div className="pg-hero-scrim" />
+          <Link to="/proyectos" className="pg-back pg-hero-back">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Todos los proyectos
+          </Link>
+          <div className="pg-hero-content">
+            <h1>{project.title}</h1>
+          </div>
+        </div>
+      ) : (
+        <div className="pg-header pg-header--plain">
           <Link to="/proyectos" className="pg-back">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="15 18 9 12 15 6" />
@@ -104,14 +126,11 @@ export function ProjectGallery() {
             Todos los proyectos
           </Link>
           <h1>{project.title}</h1>
-          {project.concept && <p className="pg-concept">{project.concept}</p>}
         </div>
+      )}
 
-        {project.cover_url && (
-          <div className="pg-cover">
-            <LazyImage src={project.cover_url} alt={project.title} />
-          </div>
-        )}
+      <main className="pg-main">
+        {project.concept && <p className="pg-concept">{project.concept}</p>}
 
         <ImageSection label="Moodboard" images={project.moodboard_images} offset={0} onOpen={openLightbox} />
         <ImageSection label="El antes" images={project.before_photos} offset={moodboardCount} onOpen={openLightbox} />
@@ -119,7 +138,9 @@ export function ProjectGallery() {
 
         {project.testimonial_video_url && (
           <section className="pg-section">
-            <p className="pg-section-label">Testimonio</p>
+            <div className="pg-section-head">
+              <p className="pg-section-label">Testimonio</p>
+            </div>
             <div className="pg-video">
               {isEmbeddableVideo(project.testimonial_video_url) ? (
                 <iframe

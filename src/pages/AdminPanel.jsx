@@ -1553,6 +1553,7 @@ function TabNecesidades({ projectId }) {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingPlano, setUploadingPlano] = useState(false);
   const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [generatingFill, setGeneratingFill] = useState(false);
   const [photoZoom, setPhotoZoom] = useState(null);
   const photoRef = useRef();
   const planoRef = useRef();
@@ -1666,6 +1667,21 @@ function TabNecesidades({ projectId }) {
     } finally { setGeneratingSummary(false); }
   };
 
+  const handleGenerateFill = async () => {
+    setGeneratingFill(true);
+    try {
+      await api.put(`/needs-form/project/${projectId}`, { admin_notes: adminNotes, client_summary: clientSummary, brief });
+      const { data } = await api.post(`/needs-form/project/${projectId}/ai-fill`);
+      setBundle(data);
+      const draft = {};
+      (data.answers || []).forEach(a => { draft[a.question_id] = a.answer_value; });
+      setAnswersDraft(draft);
+      toast.success(data.filled_count ? `IA rellenó ${data.filled_count} pregunta${data.filled_count === 1 ? '' : 's'} — revísalas antes de guardar` : 'La IA no encontró nada nuevo que rellenar con la descripción actual');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error al rellenar con IA');
+    } finally { setGeneratingFill(false); }
+  };
+
   if (loading || !bundle) return <div className="ap-loading">Cargando…</div>;
 
   const sections = [];
@@ -1698,6 +1714,10 @@ function TabNecesidades({ projectId }) {
       <div className="ap-field" style={{ marginBottom: '1.25rem' }}>
         <label>Descripción libre del proyecto <span className="ap-optional">(si no rellenas el formulario de abajo, escribe aquí directamente lo que sepas del proyecto — la IA usa esto también para el resumen)</span></label>
         <textarea className="ap-field-input" rows={5} value={brief} onChange={e => setBrief(e.target.value)} placeholder="Ej. Garaje de 6×4 m, quiere zona de fuerza con rack y suelo técnico, presupuesto ajustado, mantener el portón operativo. Le gusta el estilo negro industrial. Va con prisa para tenerlo en 2 meses..." />
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleGenerateFill} disabled={generatingFill || !brief.trim()} style={{ marginTop: '0.4rem' }}>
+          {generatingFill ? 'Rellenando…' : '✨ Rellenar/mejorar formulario con IA'}
+        </button>
+        {!brief.trim() && <span className="ap-field-hint" style={{ marginLeft: '0.5rem' }}>Escribe antes la descripción de arriba</span>}
       </div>
 
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>

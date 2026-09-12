@@ -455,6 +455,77 @@ router.post('/project/:projectId/ai-summary', authenticateToken, requireProyecto
   }
 });
 
+// ── Rellenar/mejorar respuestas con IA a partir de la descripción libre ─
+// Deja intactas las preguntas de tipo "elegir productos/imágenes" (esas
+// requieren una selección manual), y solo toca las que la IA puede inferir
+// con una base razonable — el resto se queda como estaba.
+const ANSWERABLE_TYPES = ['texto', 'texto_largo', 'numero', 'si_no', 'opcion_unica', 'opcion_multiple'];
+
+router.post('/project/:projectId/ai-fill', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const bundle = await loadFormBundle(req.params.projectId);
+    const { data: project } = await supabase.from('client_projects').select('client_name, project_name').eq('id', req.params.projectId).single();
+
+    const descripcionLibre = bundle.form.brief?.trim() || '';
+    if (!descripcionLibre) return res.status(400).json({ error: 'Escribe antes la descripción libre del proyecto — la IA la necesita para poder rellenar el formulario.' });
+
+    const answerByQuestion = {};
+    bundle.answers.forEach(a => { answerByQuestion[a.question_id] = a.answer_value; });
+
+    const answerable = bundle.questions.filter(q => ANSWERABLE_TYPES.includes(q.question_type));
+    if (!answerable.length) return res.status(400).json({ error: 'No hay preguntas que la IA pueda rellenar.' });
+
+    const preguntasJson = answerable.map(q => ({
+      question_id: q.id,
+      question_text: q.question_text,
+      type: q.question_type,
+      options: q.options || undefined,
+      current_answer: answerByQuestion[q.id] ?? null,
+    }));
+
+    const notas = bundle.form.admin_notes?.trim() || '';
+
+    const system = `Eres el asistente de Ranuse Design, un estudio de diseño de espacios deportivos (home gyms) en España. Te paso la descripción libre de un proyecto (escrita por el diseñador) y la lista de preguntas del Programa de Necesidades con su tipo y, si ya tiene, su respuesta actual. Tu tarea es rellenar o mejorar las respuestas que puedas inferir razonablemente de la descripción — nunca inventes datos muy concretos (medidas exactas, marcas, precios) que no estén en el texto. Si una pregunta no tiene ninguna base en la descripción, NO la incluyas en la respuesta (mejor omitirla que inventar).
+
+Responde ÚNICAMENTE con un array JSON válido, sin texto antes ni después, sin bloques de código markdown, con este formato exacto:
+[{"question_id": "...", "answer_value": ...}, ...]
+
+Reglas de formato de answer_value según el tipo de cada pregunta:
+- "si_no": el texto exacto "Sí" o "No"
+- "opcion_unica": el texto exacto de UNA de las opciones dadas (options)
+- "opcion_multiple": un array con el texto exacto de una o varias de las opciones dadas
+- "numero": un número (sin unidades ni texto)
+- "texto" / "texto_largo": una frase o párrafo corto en español, natural y directo`;
+
+    const userMsg = `PROYECTO: ${project?.project_name || '—'} (cliente: ${project?.client_name || '—'})\n\nDESCRIPCIÓN LIBRE (escrita por el diseñador):\n${descripcionLibre}\n\n${notas ? `NOTAS INTERNAS DEL DISEÑADOR:\n${notas}\n\n` : ''}PREGUNTAS (con su tipo, opciones si las tiene, y respuesta actual si ya hay una):\n${JSON.stringify(preguntasJson, null, 2)}`;
+
+    const response = await callClaude({ system, messages: [{ role: 'user', content: userMsg }], maxTokens: 2000 });
+    const textBlock = (response.content || []).find(b => b.type === 'text');
+    const raw = textBlock?.text?.trim();
+    if (!raw) return res.status(502).json({ error: 'La IA no devolvió respuesta' });
+
+    let parsed;
+    try {
+      const jsonText = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      parsed = JSON.parse(jsonText);
+    } catch {
+      return res.status(502).json({ error: 'La IA devolvió un formato inesperado, prueba de nuevo' });
+    }
+    if (!Array.isArray(parsed)) return res.status(502).json({ error: 'La IA devolvió un formato inesperado, prueba de nuevo' });
+
+    const answerableIds = new Set(answerable.map(q => q.id));
+    const toApply = parsed.filter(a => a && a.question_id && answerableIds.has(a.question_id) && a.answer_value !== null && a.answer_value !== undefined && a.answer_value !== '');
+
+    if (toApply.length) await upsertAnswers(bundle.form.id, toApply);
+
+    const updatedBundle = await loadFormBundle(req.params.projectId);
+    res.json({ ...updatedBundle, filled_count: toApply.length });
+  } catch (err) {
+    console.error('Error al rellenar con IA:', err);
+    res.status(500).json({ error: err.message || 'Error al rellenar con IA' });
+  }
+});
+
 // ══════════════════════════════════════════════════════════════════════
 // FORMULARIO — lado cliente (público, por código de acceso)
 // ══════════════════════════════════════════════════════════════════════
