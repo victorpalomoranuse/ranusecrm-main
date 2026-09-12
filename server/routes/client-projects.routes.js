@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
 
 const requireProyectos = requirePermission('proyectos');
+const requireTrabajos = requirePermission('trabajos');
 import { uploadProjectRender, deleteProjectRender, uploadProjectDocument, deleteProjectDocument, uploadDiagnosisImage, deleteDiagnosisImage, uploadMoodboardImage, deleteMoodboardImage } from '../utils/storage.js';
 import { uploadRenderFile, uploadDocumentFile, uploadDiagnosisImageFile, uploadMoodboardImages, handleMulterError } from '../middleware/upload.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
@@ -288,7 +289,7 @@ router.get('/public/portfolio', async (req, res) => {
     const [{ data: legacy }, { data: linked, error }] = await Promise.all([
       supabase.from('portfolio_projects').select('id, title, slug, description, cover_url, images, display_order').order('display_order', { ascending: true }),
       supabase.from('client_projects')
-        .select('id, project_name, portfolio_slug, portfolio_concept, cover_image_url')
+        .select('id, project_name, portfolio_slug, portfolio_concept, cover_image_url, portfolio_order')
         .eq('portfolio_published', true)
         .not('portfolio_slug', 'is', null)
         .order('created_at', { ascending: false }),
@@ -297,22 +298,54 @@ router.get('/public/portfolio', async (req, res) => {
 
     const legacyProjects = (legacy || []).map(p => ({
       id: p.id,
+      type: 'legacy',
       slug: p.slug,
       title: p.title,
       description: p.description || '',
       cover_url: (p.cover_url && !p.cover_url.startsWith('blob:')) ? p.cover_url : (p.images || []).find(u => u && !u.startsWith('blob:')) || null,
+      order: p.display_order ?? Infinity,
     }));
     const linkedProjects = (linked || []).map(p => ({
       id: p.id,
+      type: 'linked',
       slug: p.portfolio_slug,
       title: p.project_name,
       description: p.portfolio_concept ? p.portfolio_concept.slice(0, 160) : '',
       cover_url: p.cover_image_url,
+      order: p.portfolio_order ?? Infinity,
     }));
-    res.json({ projects: [...legacyProjects, ...linkedProjects] });
+    // Orden único: si tiene un orden guardado (por arrastrar/flechas en el
+    // panel) se respeta ese; si no, los antiguos van primero (como siempre)
+    // y los nuevos conectados detrás, por fecha de creación.
+    const merged = [...legacyProjects, ...linkedProjects]
+      .sort((a, b) => a.order - b.order)
+      .map(({ order, ...p }) => p);
+    res.json({ projects: merged });
   } catch (err) {
     console.error('Error al listar trabajos:', err);
     res.status(500).json({ error: 'Error al listar trabajos' });
+  }
+});
+
+// PUT /client-projects/portfolio/reorder — guarda el orden único de Trabajos
+// (mezcla proyectos antiguos sueltos y nuevos conectados). Recibe la lista
+// completa en el orden deseado: [{id, type: 'legacy'|'linked'}, ...].
+router.put('/portfolio/reorder', authenticateToken, requireTrabajos, async (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items)) return res.status(400).json({ error: 'Formato inválido' });
+
+    await Promise.all(items.map((item, i) => {
+      if (item.type === 'legacy') {
+        return supabase.from('portfolio_projects').update({ display_order: i }).eq('id', item.id);
+      }
+      return supabase.from('client_projects').update({ portfolio_order: i }).eq('id', item.id);
+    }));
+
+    res.json({ message: 'Orden guardado' });
+  } catch (err) {
+    console.error('Error al guardar el orden de trabajos:', err);
+    res.status(500).json({ error: 'Error al guardar el orden' });
   }
 });
 

@@ -171,7 +171,7 @@ async function loadFormBundle(projectId) {
     supabase.from('project_needs_form_answers').select('*').eq('form_id', form.id),
     supabase.from('project_needs_form_measurements').select('*').eq('form_id', form.id).order('display_order', { ascending: true }),
     supabase.from('project_needs_form_photos').select('*').eq('form_id', form.id).order('display_order', { ascending: true }),
-    supabase.from('catalog_products').select('id, name, photo_url, category_id, category:catalog_categories(type)'),
+    supabase.from('catalog_products').select('id, name, photo_url, category_id, category:catalog_categories!catalog_products_category_id_fkey(type)'),
     supabase.from('inspiration_references').select('id, title, image_url, category'),
   ]);
   return {

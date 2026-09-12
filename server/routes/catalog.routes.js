@@ -84,7 +84,7 @@ router.delete('/types/:id', async (req, res) => {
 router.get('/categories', async (req, res) => {
   try {
     const { type } = req.query;
-    let query = supabase.from('catalog_categories').select('*').order('name');
+    let query = supabase.from('catalog_categories').select('*').order('display_order', { ascending: true, nullsFirst: false }).order('name');
     if (type) query = query.eq('type', type);
     const { data, error } = await query;
     if (error) throw error;
@@ -100,15 +100,39 @@ router.post('/categories', async (req, res) => {
     if (!name?.trim() || !type?.trim()) {
       return res.status(400).json({ error: 'Nombre y tipo requeridos' });
     }
+    const { data: maxRow } = await supabase.from('catalog_categories').select('display_order').eq('type', type).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
     const { data, error } = await supabase
       .from('catalog_categories')
-      .insert({ name: name.trim(), type })
+      .insert({ name: name.trim(), type, display_order: (maxRow?.display_order ?? -1) + 1 })
       .select('*')
       .single();
     if (error) throw error;
     res.status(201).json({ category: data });
   } catch (err) {
     res.status(500).json({ error: 'Error al crear categoría' });
+  }
+});
+
+router.put('/categories/reorder', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids requeridos' });
+    await Promise.all(ids.map((id, index) => supabase.from('catalog_categories').update({ display_order: index }).eq('id', id)));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al reordenar categorías' });
+  }
+});
+
+router.put('/categories/:id', async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+    const { data, error } = await supabase.from('catalog_categories').update({ name: name.trim() }).eq('id', req.params.id).select('*').single();
+    if (error) throw error;
+    res.json({ category: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al renombrar categoría' });
   }
 });
 
@@ -137,18 +161,40 @@ router.get('/products', async (req, res) => {
     const { category_id, type } = req.query;
     let query = supabase
       .from('catalog_products')
-      .select('*, category:catalog_categories(id, name, type)')
+      .select('*, category:catalog_categories!catalog_products_category_id_fkey(id, name, type)')
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false });
     if (category_id) query = query.eq('category_id', category_id);
     if (type) query = query.eq('catalog_categories.type', type);
     const { data, error } = await query;
     if (error) throw error;
-    res.json({ products: data });
+
+    const { data: extraRows } = await supabase
+      .from('catalog_product_categories')
+      .select('product_id, category:catalog_categories(id, name, type)');
+    const extraByProduct = {};
+    (extraRows || []).forEach(r => {
+      if (!r.category) return;
+      (extraByProduct[r.product_id] ||= []).push(r.category);
+    });
+    const products = (data || []).map(p => ({ ...p, extra_categories: extraByProduct[p.id] || [] }));
+
+    res.json({ products });
   } catch (err) {
     res.status(500).json({ error: 'Error al listar productos' });
   }
 });
+
+async function syncExtraCategories(productId, extraCategoryIdsRaw) {
+  if (extraCategoryIdsRaw === undefined) return;
+  let ids;
+  try { ids = JSON.parse(extraCategoryIdsRaw); } catch { ids = []; }
+  if (!Array.isArray(ids)) ids = [];
+  await supabase.from('catalog_product_categories').delete().eq('product_id', productId);
+  if (ids.length) {
+    await supabase.from('catalog_product_categories').insert(ids.map(category_id => ({ product_id: productId, category_id })));
+  }
+}
 
 router.put('/products/reorder', async (req, res) => {
   try {
@@ -169,7 +215,7 @@ router.put('/products/reorder', async (req, res) => {
 
 router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
-    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories } = req.body;
+    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, extra_category_ids } = req.body;
     if (!category_id || !name?.trim()) {
       return res.status(400).json({ error: 'Categoría y nombre requeridos' });
     }
@@ -210,10 +256,12 @@ router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, 
         pricing_unit: pricing_unit?.trim() || 'ud',
         included_accessories: included_accessories?.trim() || null,
       })
-      .select('*, category:catalog_categories(id, name, type)')
+      .select('*, category:catalog_categories!catalog_products_category_id_fkey(id, name, type)')
       .single();
     if (error) throw error;
-    res.status(201).json({ product: data });
+    await syncExtraCategories(data.id, extra_category_ids);
+    const { data: extraRows } = await supabase.from('catalog_product_categories').select('category:catalog_categories(id, name, type)').eq('product_id', data.id);
+    res.status(201).json({ product: { ...data, extra_categories: (extraRows || []).map(r => r.category).filter(Boolean) } });
   } catch (err) {
     console.error('Error al crear producto:', err);
     res.status(500).json({ error: 'Error al crear producto' });
@@ -222,7 +270,7 @@ router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, 
 
 router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
-    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories } = req.body;
+    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, extra_category_ids } = req.body;
     const updates = {};
     if (category_id !== undefined) updates.category_id = category_id;
     if (name !== undefined) updates.name = name.trim();
@@ -256,14 +304,14 @@ router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (re
       updates.photo_url = await uploadCatalogPhoto(req.file.buffer, req.file.originalname, req.file.mimetype);
     }
 
-    const { data, error } = await supabase
-      .from('catalog_products')
-      .update(updates)
-      .eq('id', req.params.id)
-      .select('*, category:catalog_categories(id, name, type)')
-      .single();
+    const selectCols = '*, category:catalog_categories!catalog_products_category_id_fkey(id, name, type)';
+    const { data, error } = Object.keys(updates).length
+      ? await supabase.from('catalog_products').update(updates).eq('id', req.params.id).select(selectCols).single()
+      : await supabase.from('catalog_products').select(selectCols).eq('id', req.params.id).single();
     if (error) throw error;
-    res.json({ product: data });
+    await syncExtraCategories(data.id, extra_category_ids);
+    const { data: extraRows } = await supabase.from('catalog_product_categories').select('category:catalog_categories(id, name, type)').eq('product_id', data.id);
+    res.json({ product: { ...data, extra_categories: (extraRows || []).map(r => r.category).filter(Boolean) } });
   } catch (err) {
     console.error('Error al actualizar producto:', err);
     res.status(500).json({ error: 'Error al actualizar producto' });

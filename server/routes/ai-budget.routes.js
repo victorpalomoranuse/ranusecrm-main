@@ -235,7 +235,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
     if (!nombreBuscado) continue;
     const { data: producto } = await supabase
       .from('catalog_products')
-      .select('id, name, brand, price, category_id, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, purchase_dto, default_margin_pct, pricing_unit, included_accessories, category:catalog_categories(type)')
+      .select('id, name, brand, price, category_id, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, purchase_dto, default_margin_pct, pricing_unit, included_accessories, category:catalog_categories!catalog_products_category_id_fkey(type)')
       .ilike('name', nombreBuscado)
       .limit(1)
       .maybeSingle();
