@@ -31,8 +31,33 @@ Productos por m² (ej. suelos):
 Accesorios incluidos:
 - Si un producto trae accesorios incluidos (campo "accesorios_incluidos" en buscar_productos), menciónalo también en tu respuesta al usuario (ej. "incluye J-cups y barra de seguridad"), no solo lo dejes para el PDF.
 
+Complementos (precio aparte):
+- Algunos productos tienen complementos habituales que se venden con precio propio y desglosado, no incluido (campo "complementos" en buscar_productos, si lo tiene). Cuando recomiendes un producto que tenga complementos, menciónalos y su precio, y pregunta si se quieren añadir también como partidas aparte del presupuesto (con su nombre EXACTO, igual que cualquier otro producto).
+
+Preguntar antes de recomendar (cuando haga falta):
+- No te limites a soltar la lista de económico/medio/premium sin más cuando el caso realmente depende de cómo lo vaya a usar el cliente. Si te piden recomendación para algo donde el "mejor" producto depende de datos que no tienes (ej. una cinta de correr: depende del peso del usuario, la potencia de motor que necesita, si es para caminar o para correr/HIIT, cuántas veces por semana la va a usar; un rack: depende de si va a levantar mucho peso o solo entrenamiento ligero; etc.), PREGUNTA primero 2-4 cosas clave y concretas (incluyendo el presupuesto si no te lo han dado) antes de recomendar, y luego usa esas respuestas para elegir y justificar un producto concreto — no solo el más barato/caro de cada nivel, sino el que de verdad encaja con lo que te han contado.
+- Si ya te han dado bastante contexto en el mensaje (ej. "cinta para correr HIIT, cliente de 90kg, presupuesto medio"), no hace falta preguntar todo otra vez — solo lo que realmente falte.
+- Para pedidos simples y ya bien definidos (ej. "5 mancuernas de goma de 10kg") no hace falta preguntar nada, ve directo al grano.
+
+Argumentos de venta, materiales y comparar productos:
+- No eres solo una calculadora de presupuestos — también ayudas al comercial a saber QUÉ recomendar y POR QUÉ. Cuando te pidan argumentos de venta, comparar dos productos, o "cuál es mejor para X caso", usa lo que ya tienes en buscar_productos (medidas_cm, color, tipo_acolchado, notas) y, si hace falta más detalle sobre materiales o calidad que no esté ahí, usa leer_pagina_producto con el "enlace" del producto para leer su ficha real y sacar argumentos concretos (material del bastidor, acabado, certificaciones, etc.) — nunca te inventes características que no hayas visto en el catálogo o en la página del producto.
+- Para comparar dos o más productos, lee la página de cada uno con leer_pagina_producto y arma una comparación clara (diferencias de material, acabado, tamaño, lo que aporta cada uno) en vez de limitarte a comparar precios.
+
+Medidas y espacio disponible:
+- Los productos traen sus medidas en cm cuando el catálogo las tiene (campo medidas_cm: largo/ancho/alto) — pero esas son las medidas del propio mueble/máquina, NO el espacio real que hace falta para usarlo. Por ejemplo, un rack de 1,25m de ancho necesita bastante más espacio real si se le pone una barra de 2,20m para cargar discos por los lados; una cinta de correr necesita espacio detrás para poder subirse con seguridad; una máquina de poleas necesita recorrido de cable, etc. Ten esto siempre en cuenta y adviértelo aunque el catálogo no diga nada — no des por hecho que el espacio del producto es igual al espacio que hace falta para usarlo.
+- Si el comercial menciona las medidas del espacio del cliente, o si un producto es voluminoso (racks, máquinas grandes, cintas de correr...) y no te han dado las medidas del espacio, PREGÚNTALAS antes de recomendar — es un problema habitual que un producto no quepa. Si las medidas del producto (o el espacio real de uso, según el caso anterior) no encajan claramente en el espacio indicado, avísalo explícitamente y sugiere una alternativa más pequeña si la hay en el catálogo, en vez de recomendarlo sin más.
+
+Conocimiento de entrenamiento deportivo:
+- Además de producto y reformas, entiendes de entrenamiento (fuerza, HIIT, funcional, cardio, rehabilitación/readaptación, etc.). Úsalo para razonar y argumentar de verdad, no solo listar specs: ej. para HIIT interesa un motor de cinta con buena potencia continua aunque las series sean cortas, para fuerza pesada interesa un rack robusto con buena base y J-hooks reforzados, para rehabilitación interesa progresividad y ajuste fino de resistencia, etc. Cuando recomiendes o des argumentos de venta, conecta la característica del producto con el tipo de entrenamiento real del cliente — eso es lo que lo hace un argumento de venta de verdad y no un listado de specs.
+
+Dudas de reformas y construcción:
+- Además de presupuestos, el comercial te puede preguntar dudas generales de reformas ("si tiro este tabique, qué pasa con...", "cuánta altura hace falta para suelo radiante", etc.). Respóndelas con tu conocimiento general de construcción y reformas, y ten en cuenta también las reglas propias de Ranuse Design de más abajo si las hay — nunca inventes normativa específica de la que no estés seguro; si depende de un técnico/arquitecto o de normativa local, dilo.
+
 Precios y márgenes (esto es automático, no lo calcules tú):
 - No calcules tú el coste, margen o descuento de compra — la herramienta crear_presupuesto ya aplica automáticamente el criterio de Víctor por producto (o el precio de catálogo es un PVP con su descuento de compra, o es su coste puro y le suma un margen por defecto). Tú solo trabajas con el precio que te da buscar_productos, que es el precio de venta al cliente.
+
+Instalación, montaje y envío:
+- NUNCA incluyas instalación, montaje o envío/transporte como una partida con precio en el presupuesto — el coste real depende demasiado de la ciudad, el acceso, la planta, si hay ascensor, etc. como para dar una cifra fiable de antemano. Si el comercial o el cliente preguntan por ello, dilo así de claro y explica que se valorará aparte una vez se sepan los datos de la entrega. crear_presupuesto ya añade automáticamente una nota de "pendiente de valorar" para esto en el presupuesto — no hace falta que hagas nada más al respecto.
 
 Cómo guardar un presupuesto de verdad (herramienta crear_presupuesto):
 - Cuando la persona ya haya elegido un nivel (económico/medio/premium) o una lista concreta de productos y te pida guardarlo / crearlo / armarlo como presupuesto real, necesitas saber a qué proyecto de cliente pertenece. Si no te lo han dicho, pregúntalo (nombre del cliente o del proyecto).
@@ -60,6 +85,17 @@ const TOOLS = [
     },
   },
   {
+    name: 'leer_pagina_producto',
+    description: 'Abre y lee el texto de la página web de un producto (el "enlace" que devuelve buscar_productos) para conocer sus características técnicas, materiales o especificaciones que no están en el catálogo interno. Úsala cuando necesites argumentar sobre materiales/calidad de un producto, o comparar dos productos leyendo la página de cada uno.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'La URL del producto, tal cual aparece en el campo "enlace" de buscar_productos' },
+      },
+      required: ['url'],
+    },
+  },
+  {
     name: 'buscar_proyecto',
     description: 'Busca proyectos de cliente existentes en el CRM por nombre de cliente o de proyecto (coincidencia parcial). Úsala antes de crear_presupuesto para encontrar el id exacto del proyecto y comprobar si ya tiene presupuesto.',
     input_schema: {
@@ -72,7 +108,7 @@ const TOOLS = [
   },
   {
     name: 'crear_presupuesto',
-    description: 'Crea un presupuesto REAL en el sistema de Presupuestos de Ranuse Design, con sus partidas, lo deja guardado (estado borrador) para ese proyecto, y genera y guarda automáticamente el PDF de cara al cliente. Solo se puede usar una vez que la persona ha confirmado el proyecto y los productos/nivel elegidos. Cada nombre de producto debe ser EXACTO tal cual lo devolvió buscar_productos.',
+    description: 'Crea un presupuesto REAL en el sistema de Presupuestos de Ranuse Design, con sus partidas, lo deja guardado (estado borrador) para ese proyecto, y genera y guarda automáticamente el PDF de cara al cliente. Solo se puede usar una vez que la persona ha confirmado el proyecto y los productos/nivel elegidos. Cada nombre de producto debe ser EXACTO tal cual lo devolvió buscar_productos. Los productos sin precio cargado en el catálogo se ignoran automáticamente (nunca se añaden con precio 0€).',
     input_schema: {
       type: 'object',
       properties: {
@@ -112,7 +148,7 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
   const catIds = cats.map(c => c.id);
   let query = supabase
     .from('catalog_products')
-    .select('name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories')
+    .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, color')
     .in('category_id', catIds)
     .not('price', 'is', null);
   if (marcaQuery?.trim()) query = query.ilike('brand', `%${marcaQuery.trim()}%`);
@@ -123,6 +159,17 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
       ? { encontrado: false, mensaje: `No hay productos de la marca "${marcaQuery}" en "${cats[0].name}" — prueba con otra marca o sin filtrar por marca.` }
       : { encontrado: false, mensaje: `La categoría "${cats[0].name}" existe pero no tiene productos con precio cargado todavía.` };
   }
+
+  const { data: complementRows } = await supabase
+    .from('catalog_product_complements')
+    .select('product_id, complement:catalog_products!catalog_product_complements_complement_id_fkey(name, price)')
+    .in('product_id', products.map(p => p.id));
+  const complementsByProduct = {};
+  (complementRows || []).forEach(r => {
+    // Sin precio cargado no se puede añadir a un presupuesto — no lo ofrecemos.
+    if (!r.complement || r.complement.price == null) return;
+    (complementsByProduct[r.product_id] ||= []).push({ nombre: r.complement.name, precio_formateado: fmtEur(r.complement.price) });
+  });
 
   // Precio de venta real (ya con el criterio pvp+dto o coste+margen aplicado,
   // el mismo que usará crear_presupuesto) — es sobre este precio, no el de
@@ -157,11 +204,46 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
         unidad_precio: p.pricing_unit || 'ud',
         accesorios_incluidos: p.included_accessories || null,
         nivel,
+        enlace: p.link || null,
+        notas: p.notes || null,
+        medidas_cm: (p.longitud || p.ancho || p.altura) ? { largo: p.longitud || null, ancho: p.ancho || null, alto: p.altura || null } : null,
+        color: p.color || p.color_bastidor || null,
+        color_acolchado: p.color_acolchado || null,
+        tipo_acolchado: p.tipo_acolchado || null,
+        complementos: complementsByProduct[p.id] || null,
       });
     });
   });
 
   return { encontrado: true, productos: resultado };
+}
+
+async function leerPaginaProducto(url) {
+  if (!url?.trim()) return { leido: false, mensaje: 'No se ha indicado ninguna URL.' };
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(url.trim(), {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RanuseDesignBot/1.0)' },
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return { leido: false, mensaje: `La página respondió con error ${res.status} — no se ha podido leer.` };
+    const html = await res.text();
+    const texto = html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&[a-z]+;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!texto) return { leido: false, mensaje: 'La página se cargó pero no se ha podido extraer texto legible (puede que cargue el contenido con JavaScript).' };
+    return { leido: true, texto: texto.slice(0, 6000) };
+  } catch (err) {
+    return { leido: false, mensaje: `No se ha podido leer la página (${err.name === 'AbortError' ? 'tardó demasiado en responder' : 'error de conexión'}).` };
+  }
 }
 
 async function buscarProyecto(nombreQuery) {
@@ -217,6 +299,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
       design_fee_value: 0,
       design_hours: 0,
       project_id: proyecto_id,
+      install_shipping_note: 'Instalación, montaje y envío: pendientes de valorar (varían según ciudad, acceso y planta).',
       ...(nombre_presupuesto?.trim() ? { budget_name: nombre_presupuesto.trim() } : {}),
     })
     .select('id, budget_number')
@@ -228,6 +311,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
 
   const insertados = [];
   const noEncontrados = [];
+  const sinPrecio = [];
   let displayOrder = 0;
 
   for (const it of items) {
@@ -242,6 +326,12 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
 
     if (!producto) {
       noEncontrados.push(nombreBuscado);
+      continue;
+    }
+    if (producto.price == null) {
+      // Sin precio cargado en el catálogo — nunca se añade a un
+      // presupuesto real, aunque se haya encontrado el producto.
+      sinPrecio.push(producto.name);
       continue;
     }
 
@@ -282,6 +372,9 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
   const avisoEncontrados = noEncontrados.length
     ? ` Algunos productos no se encontraron en el catálogo con ese nombre exacto y no se añadieron: ${noEncontrados.join(', ')}.`
     : '';
+  const avisoSinPrecio = sinPrecio.length
+    ? ` Algunos productos no tienen precio cargado en el catálogo, así que NO se han añadido al presupuesto: ${sinPrecio.join(', ')} — hay que ponerles precio en el catálogo primero.`
+    : '';
   const avisoPdf = insertados.length > 0
     ? (pdf_url ? ' El PDF ya está generado y guardado.' : ' No se ha podido generar el PDF automáticamente — se puede exportar a mano desde Presupuestos.')
     : '';
@@ -292,8 +385,9 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
     budget_number: budget.budget_number,
     partidas_creadas: insertados,
     partidas_no_encontradas: noEncontrados,
+    partidas_sin_precio: sinPrecio,
     pdf_url,
-    mensaje: `Presupuesto ${budget.budget_number} creado correctamente con ${insertados.length} partida(s).${avisoEncontrados}${avisoPdf}`,
+    mensaje: `Presupuesto ${budget.budget_number} creado correctamente con ${insertados.length} partida(s).${avisoEncontrados}${avisoSinPrecio}${avisoPdf}`,
   };
 }
 
@@ -319,6 +413,7 @@ async function exportarPdfPresupuesto(budgetId) {
 async function runTool(name, input) {
   if (name === 'listar_categorias') return { categorias: await listarCategorias() };
   if (name === 'buscar_productos') return buscarProductos(input.categoria, input.marca);
+  if (name === 'leer_pagina_producto') return leerPaginaProducto(input.url);
   if (name === 'buscar_proyecto') return buscarProyecto(input.nombre);
   if (name === 'crear_presupuesto') return crearPresupuesto(input);
   return { error: 'Herramienta desconocida' };
@@ -337,11 +432,12 @@ router.post('/chat', async (req, res) => {
       return res.status(400).json({ error: 'messages es requerido' });
     }
 
-    const { data: settings } = await supabase.from('settings').select('ai_budget_preferences').eq('id', 1).maybeSingle();
+    const { data: settings } = await supabase.from('settings').select('ai_budget_preferences, ai_reform_rules').eq('id', 1).maybeSingle();
     const prefs = settings?.ai_budget_preferences?.trim();
-    const system = prefs
-      ? `${BASE_SYSTEM_PROMPT}\n\nPreferencias de selección de producto de Víctor (además de ordenar por precio, ten esto en cuenta al elegir qué producto representa cada nivel):\n${prefs}`
-      : BASE_SYSTEM_PROMPT;
+    const reformRules = settings?.ai_reform_rules?.trim();
+    let system = BASE_SYSTEM_PROMPT;
+    if (prefs) system += `\n\nPreferencias de selección de producto de Víctor (además de ordenar por precio, ten esto en cuenta al elegir qué producto representa cada nivel):\n${prefs}`;
+    if (reformRules) system += `\n\nReglas propias de Ranuse Design sobre reformas y espacio real de uso de los productos (además de tu conocimiento general, ten SIEMPRE esto en cuenta, tanto al responder dudas de reformas/construcción como al valorar si algo encaja en un espacio):\n${reformRules}`;
 
     // Anthropic espera content como string o array de bloques; los mensajes
     // que llegan del frontend son simples { role, content: string }.
@@ -349,7 +445,7 @@ router.post('/chat', async (req, res) => {
 
     let lastResponse = null;
     let budgetCreated = null; // último presupuesto creado en esta conversación (si lo hay), con su PDF
-    for (let turn = 0; turn < 6; turn++) {
+    for (let turn = 0; turn < 10; turn++) {
       lastResponse = await callClaude({ system, messages: conversation, tools: TOOLS });
 
       const toolUses = (lastResponse.content || []).filter(b => b.type === 'tool_use');

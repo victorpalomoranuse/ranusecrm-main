@@ -788,8 +788,34 @@ function BudgetEditor({ id, onBack, onOpen }) {
   const [showLibrary, setShowLibrary] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [projects, setProjects] = useState([]);
+  const [paymentOptions, setPaymentOptions] = useState([]);
+  const [savingPaymentOption, setSavingPaymentOption] = useState(false);
 
   const flash = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null), 2500); };
+
+  const handlePaymentOptionChange = async (value) => {
+    const payment_option_id = value || null;
+    setSavingPaymentOption(true);
+    try {
+      const { data } = await api.put(`/budgets/${id}`, { payment_option_id });
+      setBudget(b => ({ ...b, payment_option_id: data.budget.payment_option_id, payment_option_text: data.budget.payment_option_text }));
+      flash('Forma de pago actualizada');
+    } catch { flash('Error al guardar la forma de pago', 'error'); }
+    finally { setSavingPaymentOption(false); }
+  };
+
+  const [installNote, setInstallNote] = useState('');
+  const [savingInstallNote, setSavingInstallNote] = useState(false);
+  useEffect(() => { setInstallNote(budget?.install_shipping_note || ''); }, [budget?.id]);
+  const handleSaveInstallNote = async () => {
+    setSavingInstallNote(true);
+    try {
+      const { data } = await api.put(`/budgets/${id}`, { install_shipping_note: installNote });
+      setBudget(b => ({ ...b, install_shipping_note: data.budget.install_shipping_note }));
+      flash('Nota guardada');
+    } catch { flash('Error al guardar la nota', 'error'); }
+    finally { setSavingInstallNote(false); }
+  };
 
   const handlePdf = async () => {
     setGeneratingPdf(true);
@@ -817,11 +843,12 @@ function BudgetEditor({ id, onBack, onOpen }) {
   };
 
   useEffect(() => {
-    Promise.all([api.get(`/budgets/${id}`), api.get('/client-projects')])
-      .then(([b, p]) => {
+    Promise.all([api.get(`/budgets/${id}`), api.get('/client-projects'), api.get('/budgets/payment-options')])
+      .then(([b, p, po]) => {
         setBudget(b.data.budget);
         setItems(b.data.budget.items || []);
         setProjects(p.data.projects || []);
+        setPaymentOptions(po.data.options || []);
       })
       .catch(() => flash('Error al cargar', 'error'))
       .finally(() => setLoading(false));
@@ -1076,6 +1103,19 @@ function BudgetEditor({ id, onBack, onOpen }) {
                       {label}
                     </label>
                   ))}
+                  <span style={{width:'1px',background:'rgba(255,255,255,0.1)',alignSelf:'stretch'}}/>
+                  <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>Forma de pago</span>
+                  <select className="ap-select" value={budget.payment_option_id||''} onChange={e=>handlePaymentOptionChange(e.target.value)} disabled={savingPaymentOption} style={{fontSize:'0.72rem',maxWidth:220}}>
+                    <option value="">(ninguna / texto genérico)</option>
+                    {paymentOptions.map(o=><option key={o.id} value={o.id}>{o.text.length>50?o.text.slice(0,50)+'…':o.text}</option>)}
+                  </select>
+                </div>
+              )}
+              {showPdfOptions && (
+                <div style={{display:'flex',alignItems:'center',gap:'0.5rem',flexWrap:'wrap',padding:'0.4rem 0.6rem',background:'rgba(255,255,255,0.04)',borderRadius:6,border:'1px solid rgba(255,255,255,0.08)',width:'100%'}}>
+                  <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',flexShrink:0}}>Nota instalación/envío</span>
+                  <input className="ap-field-input" value={installNote} onChange={e=>setInstallNote(e.target.value)} placeholder="Ej: Instalación, montaje y envío: pendientes de valorar (varían según ciudad, acceso y planta)." style={{flex:1,fontSize:'0.72rem',minWidth:200}} />
+                  <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleSaveInstallNote} disabled={savingInstallNote} style={{fontSize:'0.7rem'}}>{savingInstallNote?'…':'Guardar'}</button>
                 </div>
               )}
               <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handlePdf} disabled={generatingPdf}>{generatingPdf ? 'Generando…' : 'PDF cliente'}</button>

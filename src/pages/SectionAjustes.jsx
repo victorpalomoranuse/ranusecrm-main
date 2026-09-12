@@ -154,12 +154,84 @@ function NeedsFormQuestions() {
   );
 }
 
+function PaymentOptions() {
+  const [options, setOptions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [text, setText] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editingText, setEditingText] = useState('');
+
+  useEffect(() => {
+    api.get('/budgets/payment-options').then(r => setOptions(r.data.options || [])).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    setAdding(true);
+    try {
+      const { data } = await api.post('/budgets/payment-options', { text: text.trim() });
+      setOptions(prev => [...prev, data.option]);
+      setText('');
+    } catch {} finally { setAdding(false); }
+  };
+
+  const handleDelete = async (id) => {
+    try { await api.delete(`/budgets/payment-options/${id}`); setOptions(prev => prev.filter(o => o.id !== id)); } catch {}
+  };
+
+  const startEdit = (o) => { setEditingId(o.id); setEditingText(o.text); };
+  const saveEdit = async () => {
+    if (!editingText.trim()) return;
+    try {
+      const { data } = await api.put(`/budgets/payment-options/${editingId}`, { text: editingText.trim() });
+      setOptions(prev => prev.map(o => o.id === editingId ? data.option : o));
+    } catch {} finally { setEditingId(null); }
+  };
+
+  if (loading) return <div className="ap-loading">Cargando…</div>;
+
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '1.5rem', maxWidth: 640 }}>
+      <p style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', marginBottom: '0.5rem' }}>Formas de pago (lista)</p>
+      <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', marginBottom: '1rem' }}>Crea aquí las formas de pago que uses (ej. "Contado: pago único al confirmar el pedido", "50% al inicio + 50% a la entrega", "Financiado a 12 meses"). Al generar el PDF de cada presupuesto, eliges cuál de estas aplica.</p>
+
+      <form onSubmit={handleAdd} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+        <input className="ap-field-input" value={text} onChange={e => setText(e.target.value)} placeholder='Ej: Contado: pago único al confirmar el pedido' style={{ flex: 1 }} />
+        <button type="submit" className="ap-btn ap-btn-primary ap-btn-sm" disabled={adding || !text.trim()}><Plus size={13}/> Añadir</button>
+      </form>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        {options.map(o => (
+          <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '0.5rem 0.75rem' }}>
+            {editingId === o.id ? (
+              <>
+                <input className="ap-field-input" value={editingText} onChange={e => setEditingText(e.target.value)} style={{ flex: 1 }} autoFocus onKeyDown={e => e.key === 'Enter' && saveEdit()} />
+                <button onClick={saveEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#beb0a2', fontSize: '0.75rem' }}>Guardar</button>
+              </>
+            ) : (
+              <>
+                <span style={{ flex: 1, fontSize: '0.82rem', color: '#fff', cursor: 'pointer' }} onClick={() => startEdit(o)}>{o.text}</span>
+                <button onClick={() => handleDelete(o.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.25)' }}><X size={13}/></button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      {options.length === 0 && <p className="ap-empty-sm">Sin formas de pago todavía.</p>}
+    </div>
+  );
+}
+
 export function SectionAjustes() {
   const [iban, setIban] = useState('');
   const [bankName, setBankName] = useState('');
   const [paymentMethods, setPaymentMethods] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [aiPrefs, setAiPrefs] = useState('');
+  const [warrantyText, setWarrantyText] = useState('');
+  const [aiReformRules, setAiReformRules] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -172,6 +244,8 @@ export function SectionAjustes() {
       setPaymentMethods(s.payment_methods || '');
       setPaymentNotes(s.payment_notes || '');
       setAiPrefs(s.ai_budget_preferences || '');
+      setWarrantyText(s.warranty_text || '');
+      setAiReformRules(s.ai_reform_rules || '');
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
@@ -179,7 +253,7 @@ export function SectionAjustes() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put('/settings', { bank_iban: iban, bank_name: bankName, payment_methods: paymentMethods, payment_notes: paymentNotes, ai_budget_preferences: aiPrefs });
+      await api.put('/settings', { bank_iban: iban, bank_name: bankName, payment_methods: paymentMethods, payment_notes: paymentNotes, ai_budget_preferences: aiPrefs, warranty_text: warrantyText, ai_reform_rules: aiReformRules });
       setMsg({ type: 'success', text: 'Ajustes guardados' });
     } catch {
       setMsg({ type: 'error', text: 'Error al guardar' });
@@ -229,6 +303,20 @@ export function SectionAjustes() {
                 <label>Preferencias de selección <span className="ap-optional">(opcional)</span></label>
                 <textarea value={aiPrefs} onChange={e => setAiPrefs(e.target.value)} rows={4} placeholder="Ej: Para racks prefiero siempre Element Fitness salvo que pidan algo muy económico. Evita recomendar cintas de correr plegables, prefiero las fijas. En mancuernas de goma prioriza siempre las que tengan buena valoración de marca sobre las más baratas." />
               </div>
+              <div className="ap-field">
+                <label>Reglas propias sobre reformas y espacio de uso <span className="ap-optional">(opcional)</span></label>
+                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginTop: -4, marginBottom: 6 }}>Incluye aquí tanto dudas típicas de reformas como el espacio REAL que necesita un producto más allá de sus propias medidas (ej. un rack necesita más ancho del suyo propio para poder cargar la barra por los lados).</p>
+                <textarea value={aiReformRules} onChange={e => setAiReformRules(e.target.value)} rows={4} placeholder="Ej: Si el techo mide menos de 2.20m no recomendamos falso techo técnico. Para suelo radiante pedimos siempre mínimo 6cm de altura libre. Un rack necesita al menos 100cm extra de ancho a cada lado abierto para poder cargar la barra con discos." />
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '1.5rem', marginBottom: '1.5rem' }}>
+              <p style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', marginBottom: '0.5rem' }}>Garantía</p>
+              <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', marginBottom: '1rem' }}>Este texto aparece en todos los presupuestos en PDF, en una sección "Garantía".</p>
+              <div className="ap-field">
+                <label>Texto de garantía <span className="ap-optional">(opcional)</span></label>
+                <textarea value={warrantyText} onChange={e => setWarrantyText(e.target.value)} rows={3} placeholder="Ej: Todos los productos cuentan con la garantía aportada por el fabricante/marca correspondiente." />
+              </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -248,6 +336,10 @@ export function SectionAjustes() {
 
           <div style={{ marginTop: '1.5rem' }}>
             <NeedsFormQuestions />
+          </div>
+
+          <div style={{ marginTop: '1.5rem' }}>
+            <PaymentOptions />
           </div>
         </>
       )}

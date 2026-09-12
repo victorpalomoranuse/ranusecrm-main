@@ -177,7 +177,17 @@ router.get('/products', async (req, res) => {
       if (!r.category) return;
       (extraByProduct[r.product_id] ||= []).push(r.category);
     });
-    const products = (data || []).map(p => ({ ...p, extra_categories: extraByProduct[p.id] || [] }));
+
+    const { data: complementRows } = await supabase
+      .from('catalog_product_complements')
+      .select('product_id, complement:catalog_products!catalog_product_complements_complement_id_fkey(id, name, price, photo_url)');
+    const complementsByProduct = {};
+    (complementRows || []).forEach(r => {
+      if (!r.complement) return;
+      (complementsByProduct[r.product_id] ||= []).push(r.complement);
+    });
+
+    const products = (data || []).map(p => ({ ...p, extra_categories: extraByProduct[p.id] || [], complements: complementsByProduct[p.id] || [] }));
 
     res.json({ products });
   } catch (err) {
@@ -193,6 +203,18 @@ async function syncExtraCategories(productId, extraCategoryIdsRaw) {
   await supabase.from('catalog_product_categories').delete().eq('product_id', productId);
   if (ids.length) {
     await supabase.from('catalog_product_categories').insert(ids.map(category_id => ({ product_id: productId, category_id })));
+  }
+}
+
+async function syncComplements(productId, complementIdsRaw) {
+  if (complementIdsRaw === undefined) return;
+  let ids;
+  try { ids = JSON.parse(complementIdsRaw); } catch { ids = []; }
+  if (!Array.isArray(ids)) ids = [];
+  ids = ids.filter(cid => cid !== productId);
+  await supabase.from('catalog_product_complements').delete().eq('product_id', productId);
+  if (ids.length) {
+    await supabase.from('catalog_product_complements').insert(ids.map(complement_id => ({ product_id: productId, complement_id })));
   }
 }
 
@@ -215,7 +237,7 @@ router.put('/products/reorder', async (req, res) => {
 
 router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
-    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, extra_category_ids } = req.body;
+    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, extra_category_ids, complement_ids } = req.body;
     if (!category_id || !name?.trim()) {
       return res.status(400).json({ error: 'Categoría y nombre requeridos' });
     }
@@ -260,8 +282,10 @@ router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, 
       .single();
     if (error) throw error;
     await syncExtraCategories(data.id, extra_category_ids);
+    await syncComplements(data.id, complement_ids);
     const { data: extraRows } = await supabase.from('catalog_product_categories').select('category:catalog_categories(id, name, type)').eq('product_id', data.id);
-    res.status(201).json({ product: { ...data, extra_categories: (extraRows || []).map(r => r.category).filter(Boolean) } });
+    const { data: complementRows } = await supabase.from('catalog_product_complements').select('complement:catalog_products!catalog_product_complements_complement_id_fkey(id, name, price, photo_url)').eq('product_id', data.id);
+    res.status(201).json({ product: { ...data, extra_categories: (extraRows || []).map(r => r.category).filter(Boolean), complements: (complementRows || []).map(r => r.complement).filter(Boolean) } });
   } catch (err) {
     console.error('Error al crear producto:', err);
     res.status(500).json({ error: 'Error al crear producto' });
@@ -270,7 +294,7 @@ router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, 
 
 router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
-    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, extra_category_ids } = req.body;
+    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, extra_category_ids, complement_ids } = req.body;
     const updates = {};
     if (category_id !== undefined) updates.category_id = category_id;
     if (name !== undefined) updates.name = name.trim();
@@ -310,8 +334,10 @@ router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (re
       : await supabase.from('catalog_products').select(selectCols).eq('id', req.params.id).single();
     if (error) throw error;
     await syncExtraCategories(data.id, extra_category_ids);
+    await syncComplements(data.id, complement_ids);
     const { data: extraRows } = await supabase.from('catalog_product_categories').select('category:catalog_categories(id, name, type)').eq('product_id', data.id);
-    res.json({ product: { ...data, extra_categories: (extraRows || []).map(r => r.category).filter(Boolean) } });
+    const { data: complementRows } = await supabase.from('catalog_product_complements').select('complement:catalog_products!catalog_product_complements_complement_id_fkey(id, name, price, photo_url)').eq('product_id', data.id);
+    res.json({ product: { ...data, extra_categories: (extraRows || []).map(r => r.category).filter(Boolean), complements: (complementRows || []).map(r => r.complement).filter(Boolean) } });
   } catch (err) {
     console.error('Error al actualizar producto:', err);
     res.status(500).json({ error: 'Error al actualizar producto' });

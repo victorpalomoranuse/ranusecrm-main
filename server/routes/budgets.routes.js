@@ -18,6 +18,57 @@ router.use(authenticateToken, requireAdminSuperior);
 
 const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Planos generales', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Renders', 5: 'Maquinaria y equipamiento', 6: 'Documentación de apoyo' };
 
+// ── Formas de pago (lista editable) ─────────────────────────────────────
+// Cada presupuesto elige UNA de estas al generar el PDF — el texto se
+// copia (payment_option_text) en ese momento, para que si luego se edita
+// o borra la opción maestra, los PDF ya generados no cambien.
+
+router.get('/payment-options', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('budget_payment_options').select('*').order('display_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: true });
+    if (error) throw error;
+    res.json({ options: data || [] });
+  } catch (err) { res.status(500).json({ error: 'Error al listar formas de pago' }); }
+});
+
+router.post('/payment-options', async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text?.trim()) return res.status(400).json({ error: 'Texto requerido' });
+    const { data: maxRow } = await supabase.from('budget_payment_options').select('display_order').order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+    const { data, error } = await supabase.from('budget_payment_options').insert({ text: text.trim(), display_order: (maxRow?.display_order ?? -1) + 1 }).select('*').single();
+    if (error) throw error;
+    res.status(201).json({ option: data });
+  } catch (err) { res.status(500).json({ error: 'Error al crear forma de pago' }); }
+});
+
+router.put('/payment-options/reorder', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids requeridos' });
+    await Promise.all(ids.map((id, index) => supabase.from('budget_payment_options').update({ display_order: index }).eq('id', id)));
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: 'Error al reordenar' }); }
+});
+
+router.put('/payment-options/:id', async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text?.trim()) return res.status(400).json({ error: 'Texto requerido' });
+    const { data, error } = await supabase.from('budget_payment_options').update({ text: text.trim() }).eq('id', req.params.id).select('*').single();
+    if (error) throw error;
+    res.json({ option: data });
+  } catch (err) { res.status(500).json({ error: 'Error al editar forma de pago' }); }
+});
+
+router.delete('/payment-options/:id', async (req, res) => {
+  try {
+    const { error } = await supabase.from('budget_payment_options').delete().eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ message: 'Forma de pago eliminada' });
+  } catch (err) { res.status(500).json({ error: 'Error al eliminar forma de pago' }); }
+});
+
 const BRAND = {
   name: 'Ranuse Design',
   contact: 'Víctor Palomo Díaz',
@@ -306,7 +357,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { status, design_fee_type, design_fee_value, design_hours, notes, budget_name, project_id, global_discount_pct } = req.body;
+    const { status, design_fee_type, design_fee_value, design_hours, notes, budget_name, project_id, global_discount_pct, payment_option_id, install_shipping_note } = req.body;
     const updates = { updated_at: new Date().toISOString() };
     if (status !== undefined) updates.status = status;
     if (design_fee_type !== undefined) updates.design_fee_type = design_fee_type;
@@ -316,6 +367,17 @@ router.put('/:id', async (req, res) => {
     if (budget_name !== undefined) updates.budget_name = budget_name?.trim() || null;
     if (project_id !== undefined) updates.project_id = project_id || null;
     if (global_discount_pct !== undefined) updates.global_discount_pct = parseFloat(global_discount_pct) || 0;
+    if (install_shipping_note !== undefined) updates.install_shipping_note = install_shipping_note?.trim() || null;
+    if (payment_option_id !== undefined) {
+      if (payment_option_id) {
+        const { data: opt } = await supabase.from('budget_payment_options').select('text').eq('id', payment_option_id).single();
+        updates.payment_option_id = payment_option_id;
+        updates.payment_option_text = opt?.text || null;
+      } else {
+        updates.payment_option_id = null;
+        updates.payment_option_text = null;
+      }
+    }
     const { data, error } = await supabase.from('budgets').update(updates).eq('id', req.params.id).select().single();
     if (error) throw error;
     res.json({ budget: data });
@@ -758,7 +820,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       y += 52;
     }
 
-    if (settings.bank_iban || settings.payment_methods) {
+    if (settings.bank_iban || settings.payment_methods || budget.payment_option_text) {
       y += 10;
       if (y > H - 100) { doc.addPage(); y = margin + 20; }
       doc.moveTo(margin, y).lineTo(W - margin, y).strokeColor('#eeeeee').lineWidth(0.3).stroke();
@@ -767,8 +829,35 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       y += 12;
       if (settings.bank_name) { doc.fillColor('#555555').fontSize(8).font('Helvetica').text(settings.bank_name, margin, y); y += 11; }
       if (settings.bank_iban) { doc.fillColor(BRAND.dark).fontSize(9).font('Helvetica-Bold').text(settings.bank_iban, margin, y); y += 14; }
-      if (settings.payment_methods) { doc.fillColor('#555555').fontSize(8).font('Helvetica').text(settings.payment_methods, margin, y); y += 11; }
-      if (settings.payment_notes) { doc.fillColor('#888888').fontSize(7.5).font('Helvetica').text(settings.payment_notes, margin, y, { width: W - margin * 2 }); }
+      if (budget.payment_option_text) {
+        doc.fillColor('#555555').fontSize(8).font('Helvetica').text(budget.payment_option_text, margin, y, { width: W - margin * 2 });
+        y += 11;
+      } else if (settings.payment_methods) {
+        doc.fillColor('#555555').fontSize(8).font('Helvetica').text(settings.payment_methods, margin, y);
+        y += 11;
+      }
+      if (settings.payment_notes) { doc.fillColor('#888888').fontSize(7.5).font('Helvetica').text(settings.payment_notes, margin, y, { width: W - margin * 2 }); y += 11; }
+    }
+
+    if (settings.warranty_text) {
+      y += 10;
+      if (y > H - 100) { doc.addPage(); y = margin + 20; }
+      doc.moveTo(margin, y).lineTo(W - margin, y).strokeColor('#eeeeee').lineWidth(0.3).stroke();
+      y += 12;
+      doc.fillColor(BRAND.primary).fontSize(7).font('Helvetica-Bold').text('GARANTÍA', margin, y);
+      y += 12;
+      doc.fillColor('#555555').fontSize(8).font('Helvetica').text(settings.warranty_text, margin, y, { width: W - margin * 2 });
+      y += 11;
+    }
+
+    if (budget.install_shipping_note) {
+      y += 10;
+      if (y > H - 100) { doc.addPage(); y = margin + 20; }
+      doc.moveTo(margin, y).lineTo(W - margin, y).strokeColor('#eeeeee').lineWidth(0.3).stroke();
+      y += 12;
+      doc.fillColor(BRAND.primary).fontSize(7).font('Helvetica-Bold').text('INSTALACIÓN Y ENVÍO', margin, y);
+      y += 12;
+      doc.fillColor('#555555').fontSize(8).font('Helvetica').text(budget.install_shipping_note, margin, y, { width: W - margin * 2 });
     }
 
     // FOOTER

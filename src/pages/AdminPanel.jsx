@@ -570,7 +570,7 @@ function TabNotas({ projectId }) {
   );
 }
 
-function ProductModal({ categories, product, onClose, onSaved }) {
+function ProductModal({ categories, allProducts, product, onClose, onSaved }) {
   const isEdit = !!product;
   const [name,setName]=useState(product?.name||''); const [brand,setBrand]=useState(product?.brand||''); const [categoryId,setCategoryId]=useState(product?.category_id||categories[0]?.id||''); const [price,setPrice]=useState(product?.price!=null?String(product.price):''); const [link,setLink]=useState(product?.link||''); const [notes,setNotes]=useState(product?.notes||''); const [file,setFile]=useState(null); const [preview,setPreview]=useState(product?.photo_url||null); const [saving,setSaving]=useState(false); const [error,setError]=useState('');
   const [longitud,setLongitud]=useState(product?.longitud!=null?String(product.longitud):'');
@@ -588,12 +588,14 @@ function ProductModal({ categories, product, onClose, onSaved }) {
   const [pricingUnit,setPricingUnit]=useState(product?.pricing_unit||'ud');
   const [includedAccessories,setIncludedAccessories]=useState(product?.included_accessories||'');
   const [extraCategoryIds,setExtraCategoryIds]=useState(product?.extra_categories?.map(c=>c.id)||[]);
+  const [complementIds,setComplementIds]=useState(product?.complements?.map(c=>c.id)||[]);
+  const [complementSearch,setComplementSearch]=useState('');
   const inputId=useRef(`file-${Math.random()}`).current;
   const [providers,setProviders]=useState([]);
   useEffect(()=>{api.get('/contacts').then(r=>setProviders(r.data.contacts||[])).catch(()=>{});},[]);
   useEffect(()=>{document.body.style.overflow='hidden';return()=>{document.body.style.overflow='';};},[]);
   const handleFile=(e)=>{const f=e.target.files?.[0];if(!f)return;setFile(f);setPreview(URL.createObjectURL(f));};
-  const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim()||!categoryId)return;setSaving(true);setError('');try{const form=new FormData();form.append('category_id',categoryId);form.append('name',name.trim());if(brand)form.append('brand',brand.trim());if(price)form.append('price',price);if(link)form.append('link',link.trim());if(notes)form.append('notes',notes.trim());if(file)form.append('file',file);if(longitud)form.append('longitud',longitud);if(ancho)form.append('ancho',ancho);if(altura)form.append('altura',altura);if(colorBastidor)form.append('color_bastidor',colorBastidor.trim());if(colorAcolchado)form.append('color_acolchado',colorAcolchado.trim());if(tipoAcolchado)form.append('tipo_acolchado',tipoAcolchado.trim());if(lumens)form.append('lumens',lumens);if(watts)form.append('watts',watts);if(colorTemperature)form.append('color_temperature',colorTemperature.trim());if(color)form.append('color',color.trim());if(purchaseDto)form.append('purchase_dto',purchaseDto);if(defaultMarginPct)form.append('default_margin_pct',defaultMarginPct);form.append('pricing_unit',pricingUnit);if(includedAccessories)form.append('included_accessories',includedAccessories.trim());const primaryType=categories.find(c=>c.id===categoryId)?.type;const validExtraIds=extraCategoryIds.filter(id=>id!==categoryId&&categories.find(c=>c.id===id)?.type===primaryType);form.append('extra_category_ids',JSON.stringify(validExtraIds));let data;if(isEdit){({data}=await api.put(`/catalog/products/${product.id}`,form));}else{({data}=await api.post('/catalog/products',form));}onSaved(data.product);onClose();}catch{setError('Error al guardar producto');}finally{setSaving(false);}};
+  const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim()||!categoryId)return;setSaving(true);setError('');try{const form=new FormData();form.append('category_id',categoryId);form.append('name',name.trim());if(brand)form.append('brand',brand.trim());if(price)form.append('price',price);if(link)form.append('link',link.trim());if(notes)form.append('notes',notes.trim());if(file)form.append('file',file);if(longitud)form.append('longitud',longitud);if(ancho)form.append('ancho',ancho);if(altura)form.append('altura',altura);if(colorBastidor)form.append('color_bastidor',colorBastidor.trim());if(colorAcolchado)form.append('color_acolchado',colorAcolchado.trim());if(tipoAcolchado)form.append('tipo_acolchado',tipoAcolchado.trim());if(lumens)form.append('lumens',lumens);if(watts)form.append('watts',watts);if(colorTemperature)form.append('color_temperature',colorTemperature.trim());if(color)form.append('color',color.trim());if(purchaseDto)form.append('purchase_dto',purchaseDto);if(defaultMarginPct)form.append('default_margin_pct',defaultMarginPct);form.append('pricing_unit',pricingUnit);if(includedAccessories)form.append('included_accessories',includedAccessories.trim());const primaryType=categories.find(c=>c.id===categoryId)?.type;const validExtraIds=extraCategoryIds.filter(id=>id!==categoryId&&categories.find(c=>c.id===id)?.type===primaryType);form.append('extra_category_ids',JSON.stringify(validExtraIds));form.append('complement_ids',JSON.stringify(complementIds.filter(id=>id!==product?.id)));let data;if(isEdit){({data}=await api.put(`/catalog/products/${product.id}`,form));}else{({data}=await api.post('/catalog/products',form));}onSaved(data.product);onClose();}catch{setError('Error al guardar producto');}finally{setSaving(false);}};
   return (
     <div className="ap-confirm-overlay" onClick={onClose}>
       <div className="ap-modal-inner" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
@@ -613,6 +615,26 @@ function ProductModal({ categories, product, onClose, onSaved }) {
               </div>
             </div>
           ); })()}
+          <div className="ap-field">
+            <label>Complementos <span className="ap-optional">(opcional — productos que se venden aparte, con su propio precio, ej. un kit de poleas para un rack)</span></label>
+            <input className="ap-field-input" value={complementSearch} onChange={e=>setComplementSearch(e.target.value)} placeholder="Buscar producto por nombre…" style={{marginBottom:'0.4rem'}}/>
+            {complementIds.length>0&&(
+              <div style={{display:'flex',flexWrap:'wrap',gap:'0.4rem',marginBottom:'0.4rem'}}>
+                {complementIds.map(cid=>{const p=(allProducts||[]).find(x=>x.id===cid);if(!p)return null;return(
+                  <span key={cid} className="ap-catalog-pill active" style={{fontSize:'0.72rem',cursor:'pointer'}} onClick={()=>setComplementIds(prev=>prev.filter(id=>id!==cid))}>{p.name} ✕</span>
+                );})}
+              </div>
+            )}
+            {complementSearch.trim().length>=2&&(
+              <div style={{maxHeight:160,overflowY:'auto',border:'1px solid rgba(255,255,255,0.1)',borderRadius:8,padding:'0.4rem'}}>
+                {(allProducts||[]).filter(p=>p.id!==product?.id&&!complementIds.includes(p.id)&&p.name.toLowerCase().includes(complementSearch.trim().toLowerCase())).slice(0,20).map(p=>(
+                  <div key={p.id} onClick={()=>{setComplementIds(prev=>[...prev,p.id]);setComplementSearch('');}} style={{padding:'0.35rem 0.5rem',fontSize:'0.78rem',color:'#fff',cursor:'pointer',borderRadius:6}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.06)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    {p.name}{p.price!=null&&<span style={{color:'rgba(255,255,255,0.4)',marginLeft:6}}>{Number(p.price).toLocaleString('es-ES',{style:'currency',currency:'EUR'})}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="ap-field"><label>Precio (€)</label><input className="ap-field-input" type="number" step="0.01" min="0" value={price} onChange={e=>setPrice(e.target.value)} placeholder="0.00"/></div>
           <div className="ap-field"><label>Link del producto</label><input className="ap-field-input" value={link} onChange={e=>setLink(e.target.value)} placeholder="https://..."/></div>
           <div className="ap-field"><label>Notas</label><input className="ap-field-input" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observaciones opcionales"/></div>
@@ -740,8 +762,8 @@ function CatalogoLibrary() {
   return (
     <div className="ap-catalog-shell">
       {confirm&&<ConfirmDialog {...confirm}/>}
-      {showProductModal&&<ProductModal categories={categories} onClose={()=>setShowProductModal(false)} onSaved={handleProductSaved}/>}
-      {editProduct&&<ProductModal categories={categories} product={editProduct} onClose={()=>setEditProduct(null)} onSaved={(p)=>{handleProductSaved(p);setEditProduct(null);}}/>}
+      {showProductModal&&<ProductModal categories={categories} allProducts={products} onClose={()=>setShowProductModal(false)} onSaved={handleProductSaved}/>}
+      {editProduct&&<ProductModal categories={categories} allProducts={products} product={editProduct} onClose={()=>setEditProduct(null)} onSaved={(p)=>{handleProductSaved(p);setEditProduct(null);}}/>}
       {showCart&&<CartPanel cart={cart} onRemove={removeFromCart} onClear={clearCart} onClose={()=>setShowCart(false)} toast={toast}/>}
       <div className="ap-catalog-type-tabs" style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:'0.3rem'}}>
         {types.map(t=>(
