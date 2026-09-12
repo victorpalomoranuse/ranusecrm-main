@@ -275,16 +275,18 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Listados'}];
+const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Renders'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Listados'},{id:'trabajos',label:'Trabajos web'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
-function SortableRenderThumb({ r, onDelete, isFirst }) {
+function SortableRenderThumb({ r, onDelete, isFirst, onToggleKind }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: r.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, zIndex: isDragging ? 10 : undefined };
+  const isResultado = r.kind === 'resultado';
   return (
     <div ref={setNodeRef} style={style} className={`ap-render-thumb${isFirst?' ap-render-thumb--hero':''}`}>
       <img src={r.url} alt={r.name}/>
       {isFirst && <span className="ap-render-hero-badge">Hero</span>}
+      <button type="button" onClick={()=>onToggleKind(r)} style={{ position:'absolute', top:6, left:6, zIndex:5, fontSize:'0.62rem', fontWeight:700, padding:'2px 7px', borderRadius:999, border:'none', cursor:'pointer', color:'#fff', background: isResultado ? '#3f8f5f' : 'rgba(0,0,0,0.55)' }}>{isResultado?'✓ Resultado':'Render'}</button>
       <button {...attributes} {...listeners} className="ap-render-drag-handle" type="button"><GripVertical size={12}/></button>
       <div className="ap-render-overlay"><span className="ap-render-name">{r.name}</span>{r.version&&<span className="ap-render-ver">{r.version}</span>}<button className="ap-btn-icon ap-render-del" onClick={()=>onDelete(r.id)}><Trash2 size={13}/></button></div>
     </div>
@@ -313,6 +315,11 @@ function TabRenders({ projectId, phaseNumber }) {
     try { const form = new FormData(); form.append('file',file); if(name) form.append('name',name); if(version) form.append('version',version); if(phaseNumber != null) form.append('phase_number', phaseNumber); const {data} = await api.post(`/client-projects/${projectId}/renders`,form); setRenders(prev=>[...prev,data.render]); setName(''); setVersion(''); fileRef.current.value=''; } catch(err){setError(err.response?.data?.error||'Error al subir render');} finally{setUploading(false);}
   };
   const handleDelete = async (id) => { try{await api.delete(`/client-projects/${projectId}/renders/${id}`);setRenders(prev=>prev.filter(r=>r.id!==id));}catch{setError('Error al eliminar render');} };
+  const handleToggleKind = async (r) => {
+    const newKind = r.kind === 'resultado' ? 'render' : 'resultado';
+    setRenders(prev => prev.map(x => x.id === r.id ? { ...x, kind: newKind } : x));
+    try { await api.put(`/client-projects/${projectId}/renders/${r.id}`, { kind: newKind }); } catch { setError('Error al actualizar el render'); }
+  };
   const handleDragEnd = async (event) => {
     const {active,over}=event; if(!active||!over||active.id===over.id) return;
     const oldIndex=renders.findIndex(r=>r.id===active.id); const newIndex=renders.findIndex(r=>r.id===over.id);
@@ -328,11 +335,11 @@ function TabRenders({ projectId, phaseNumber }) {
         <label className="ap-btn ap-btn-primary ap-btn-sm ap-upload-label">{uploading?'Subiendo…':<><Plus size={13}/> Subir imagen</>}<input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} disabled={uploading} style={{display:'none'}}/></label>
       </div>
       {error && <p className="ap-error">{error}</p>}
-      {renders.length>0&&<p className="ap-order-hint" style={{marginBottom:'0.5rem'}}>El primero se muestra como portada. Arrastra para reordenar.</p>}
+      {renders.length>0&&<p className="ap-order-hint" style={{marginBottom:'0.5rem'}}>El primero se muestra como portada. Arrastra para reordenar. Marca "Resultado" en las fotos reales una vez ejecutado — en Trabajos se enseñan esas en vez de los renders si las hay.</p>}
       {loading?<div className="ap-loading">Cargando…</div>:renders.length===0?<div className="ap-empty"><p>No hay renders todavía.</p></div>:(
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={renders.map(r=>r.id)} strategy={rectSortingStrategy}>
-            <div className="ap-renders-grid">{renders.map((r,i)=><SortableRenderThumb key={r.id} r={r} onDelete={handleDelete} isFirst={i===0}/>)}</div>
+            <div className="ap-renders-grid">{renders.map((r,i)=><SortableRenderThumb key={r.id} r={r} onDelete={handleDelete} isFirst={i===0} onToggleKind={handleToggleKind}/>)}</div>
           </SortableContext>
         </DndContext>
       )}
@@ -355,9 +362,11 @@ function SortableMoodboardThumb({ img, onDelete }) {
 function TabMoodboard({ projectId }) {
   const [images, setImages] = useState([]);
   const [description, setDescription] = useState('');
+  const [palette, setPalette] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [savingDesc, setSavingDesc] = useState(false);
+  const [savingPalette, setSavingPalette] = useState(false);
   const [error, setError] = useState('');
   const [showRefPicker, setShowRefPicker] = useState(false);
   const [references, setReferences] = useState(null);
@@ -369,6 +378,7 @@ function TabMoodboard({ projectId }) {
     api.get(`/client-projects/${projectId}/moodboard`).then(r => {
       setImages(r.data.images || []);
       setDescription(r.data.description || '');
+      setPalette(r.data.palette || []);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [projectId]);
 
@@ -411,6 +421,13 @@ function TabMoodboard({ projectId }) {
     setSavingDesc(true); setError('');
     try { await api.put(`/client-projects/${projectId}/moodboard`, { description }); } catch { setError('Error al guardar la descripción'); } finally { setSavingDesc(false); }
   };
+  const handleAddColor = () => setPalette(prev => [...prev, '#beb0a2']);
+  const handleChangeColor = (i, hex) => setPalette(prev => prev.map((c, idx) => idx === i ? hex : c));
+  const handleRemoveColor = (i) => setPalette(prev => prev.filter((_, idx) => idx !== i));
+  const handleSavePalette = async () => {
+    setSavingPalette(true); setError('');
+    try { await api.put(`/client-projects/${projectId}/moodboard`, { palette }); } catch { setError('Error al guardar la paleta'); } finally { setSavingPalette(false); }
+  };
 
   if (loading) return <div className="ap-loading">Cargando…</div>;
   return (
@@ -423,6 +440,27 @@ function TabMoodboard({ projectId }) {
       </div>
       <div className="ap-diag-save-row" style={{ marginBottom: '1.25rem' }}>
         <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSaveDesc} disabled={savingDesc}>{savingDesc ? 'Guardando…' : 'Guardar descripción'}</button>
+      </div>
+
+      <div className="ap-field">
+        <label>Paleta de colores <span className="ap-optional">(la IA la tiene en cuenta al escribir el concepto de Trabajos)</span></label>
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.4rem' }}>
+          {palette.map((hex, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{ position: 'relative' }}>
+                <label style={{ display: 'block', width: 40, height: 40, borderRadius: '50%', background: /^#[0-9a-fA-F]{3,8}$/.test(hex) ? hex : '#333', border: '2px solid rgba(255,255,255,0.15)', cursor: 'pointer' }}>
+                  <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(hex) ? hex : '#beb0a2'} onChange={e => handleChangeColor(i, e.target.value)} style={{ opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+                </label>
+                <button type="button" onClick={() => handleRemoveColor(i)} style={{ position: 'absolute', top: -4, right: -4, background: '#1a1a1a', border: 'none', borderRadius: '50%', width: 16, height: 16, color: '#fff', cursor: 'pointer', fontSize: 10, lineHeight: 1 }}>✕</button>
+              </div>
+              <input className="ap-field-input" value={hex} onChange={e => handleChangeColor(i, e.target.value)} style={{ width: 74, fontSize: '0.7rem', textAlign: 'center', padding: '0.25rem' }} placeholder="#RRGGBB" />
+            </div>
+          ))}
+          <button type="button" onClick={handleAddColor} style={{ width: 40, height: 40, borderRadius: '50%', border: '2px dashed rgba(255,255,255,0.25)', background: 'transparent', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 18 }}>+</button>
+        </div>
+      </div>
+      <div className="ap-diag-save-row" style={{ marginBottom: '1.25rem' }}>
+        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleSavePalette} disabled={savingPalette}>{savingPalette ? 'Guardando…' : 'Guardar paleta'}</button>
       </div>
 
       <div className="ap-upload-row">
@@ -887,6 +925,85 @@ function TabAsignaciones({ projectId, categoryId, listadosIntro, listadosTitle, 
       <p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.75rem'}}>Tu catálogo</p>
       {filteredCats.length===0&&<p className="ap-empty-sm">No hay categorías en el catálogo todavía.</p>}
       <div className="ap-catalog-categories">{filteredCats.map(cat=>{const catProducts=products.filter(p=>p.category_id===cat.id);const isOpen=expandedCat===cat.id;return(<div key={cat.id} className="ap-catalog-cat"><div className="ap-catalog-cat-header"><button className="ap-catalog-cat-toggle" onClick={()=>setExpandedCat(isOpen?null:cat.id)}><span className="ap-catalog-cat-arrow">{isOpen?'▾':'▸'}</span><span className="ap-catalog-cat-name">{cat.name}</span><span className="ap-catalog-cat-count">{catProducts.length}</span></button></div>{isOpen&&(<div className="ap-catalog-products">{catProducts.length===0&&<p className="ap-empty-sm" style={{paddingLeft:'1rem'}}>Sin productos.</p>}{catProducts.map(p=>{const already=isAssigned(p.id,tab);return(<div key={p.id} className="ap-catalog-product">{p.photo_url&&<img src={p.photo_url} alt={p.name} className="ap-catalog-product-img"/>}<div className="ap-catalog-product-info"><span className="ap-catalog-product-name">{p.name}</span>{p.price!=null&&<span className="ap-catalog-product-price">{Number(p.price).toLocaleString('es-ES',{style:'currency',currency:'EUR'})}</span>}{p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" className="ap-catalog-product-link">Ver producto ↗</a>}</div><button className={`ap-btn ap-btn-sm ${already?'ap-btn-ghost':'ap-btn-primary'}`} onClick={()=>!already&&assign(p)} disabled={already} style={{flexShrink:0}}>{already?'✓':<Plus size={13}/>}</button></div>);})}</div>)}</div>);})}</div>
+    </div>
+  );
+}
+
+function TabTrabajosWeb({ project }) {
+  const [published, setPublished] = useState(!!project.portfolio_published);
+  const [slug, setSlug] = useState(project.portfolio_slug || '');
+  const [concept, setConcept] = useState(project.portfolio_concept || '');
+  const [videoUrl, setVideoUrl] = useState(project.testimonial_video_url || '');
+  const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const { toast } = useToast();
+
+  const handleSave = async (extra = {}) => {
+    setSaving(true);
+    try {
+      const payload = {
+        portfolio_published: published,
+        portfolio_slug: slug || slugify(project.project_name),
+        portfolio_concept: concept,
+        testimonial_video_url: videoUrl,
+        ...extra,
+      };
+      const { data } = await api.put(`/client-projects/${project.id}`, payload);
+      Object.assign(project, data.project);
+      setSlug(data.project.portfolio_slug || '');
+      toast.success('Guardado');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const { data } = await api.post(`/client-projects/${project.id}/portfolio-concept-ai`);
+      setConcept(data.concept || '');
+      toast.success('Concepto generado — revísalo antes de guardar');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error al generar el concepto');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const publicUrl = slug ? `https://www.ranusedesign.com/proyecto/${slug}` : '';
+
+  return (
+    <div className="ap-tab-content">
+      <p className="ap-tab-desc">Publica este proyecto en la web pública de Trabajos, conectado con sus datos reales (portada, moodboard, fotos del antes y renders/resultado). Nunca se muestran datos confidenciales del cliente.</p>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '1.25rem', cursor: 'pointer' }}>
+        <input type="checkbox" checked={published} onChange={e => setPublished(e.target.checked)} />
+        <span style={{ fontSize: '0.85rem', color: '#fff' }}>Publicar en Trabajos</span>
+      </label>
+
+      <div className="ap-field">
+        <label>URL del proyecto <span className="ap-optional">(se autogenera del nombre si lo dejas vacío)</span></label>
+        <input className="ap-field-input" value={slug} onChange={e => setSlug(slugify(e.target.value))} placeholder={slugify(project.project_name)} />
+        {publicUrl && <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>{publicUrl}</p>}
+      </div>
+
+      <div className="ap-field">
+        <label>Concepto <span className="ap-optional">(el texto público del proyecto — nunca menciones al cliente ni datos confidenciales)</span></label>
+        <textarea className="ap-field-input" rows={5} value={concept} onChange={e => setConcept(e.target.value)} placeholder="Ej. Un home gym pensado para entrenar fuerza sin renunciar al diseño..." />
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleGenerate} disabled={generating} style={{ marginTop: '0.4rem' }}>{generating ? 'Generando…' : '✨ Generar con IA'}</button>
+      </div>
+
+      <div className="ap-field">
+        <label>Vídeo testimonio del cliente <span className="ap-optional">(URL de YouTube/Vimeo o enlace directo a un .mp4, opcional)</span></label>
+        <input className="ap-field-input" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="https://..." />
+      </div>
+
+      <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => handleSave()} disabled={saving} style={{ marginTop: '0.5rem' }}>{saving ? 'Guardando…' : 'Guardar'}</button>
+      {publicUrl && published && <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop: '0.5rem', marginLeft: '0.5rem' }}>Ver en la web ↗</a>}
+
+      <p className="ap-tab-desc" style={{ marginTop: '1.5rem' }}>Las fotos del "antes" son las del Programa de Necesidades, y las de "resultado" son los renders marcados como tal en la pestaña Renders (si no marcas ninguno, se enseñan los renders normales).</p>
     </div>
   );
 }
@@ -1737,6 +1854,7 @@ function ProjectManagerModal({ project, onClose }) {
           {tab==='tours'&&<TabTour projectId={project.id}/>}
           {tab==='notas'&&<TabNotas projectId={project.id}/>}
           {tab==='catalogo'&&<TabAsignaciones projectId={project.id} listadosIntro={project.listados_intro_text} listadosTitle={project.listados_title} onIntroUpdated={(v,t)=>{project.listados_intro_text=v;project.listados_title=t;}}/>}
+          {tab==='trabajos'&&<TabTrabajosWeb project={project}/>}
         </div>
       </div>
     </div>

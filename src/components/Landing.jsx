@@ -104,7 +104,7 @@ export function Landing() {
   const [projects, setProjects] = useState([]);
 
   useEffect(() => {
-    fetch(`${API_URL}/portfolio`)
+    fetch(`${API_URL}/client-projects/public/portfolio`)
       .then(r => r.json())
       .then(d => setProjects(d.projects || []))
       .catch(() => {});

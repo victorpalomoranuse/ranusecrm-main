@@ -5,6 +5,7 @@ import { authenticateToken, requirePermission, requireAdminSuperior } from '../m
 const requireProyectos = requirePermission('proyectos');
 import { uploadProjectRender, deleteProjectRender, uploadProjectDocument, deleteProjectDocument, uploadDiagnosisImage, deleteDiagnosisImage, uploadMoodboardImage, deleteMoodboardImage } from '../utils/storage.js';
 import { uploadRenderFile, uploadDocumentFile, uploadDiagnosisImageFile, uploadMoodboardImages, handleMulterError } from '../middleware/upload.middleware.js';
+import { callClaude } from '../utils/anthropic.js';
 
 const router = express.Router();
 
@@ -272,6 +273,114 @@ router.get('/by-code/:code', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════
+// TRABAJOS (portfolio público) — proyectos reales con portfolio_published
+// = true. Solo se devuelven campos seguros: nunca cliente, contacto,
+// presupuesto ni notas internas.
+// ══════════════════════════════════════════════════════════════════════
+
+router.get('/public/portfolio', async (req, res) => {
+  try {
+    // Los trabajos antiguos (tabla portfolio_projects, sueltos) se siguen
+    // enseñando tal cual para no romper lo que ya hay publicado — se
+    // enseñan primero, en su orden de siempre, y los proyectos nuevos
+    // conectados van después. Con el tiempo, todo pasará a ser conectado.
+    const [{ data: legacy }, { data: linked, error }] = await Promise.all([
+      supabase.from('portfolio_projects').select('id, title, slug, description, cover_url, images, display_order').order('display_order', { ascending: true }),
+      supabase.from('client_projects')
+        .select('id, project_name, portfolio_slug, portfolio_concept, cover_image_url')
+        .eq('portfolio_published', true)
+        .not('portfolio_slug', 'is', null)
+        .order('created_at', { ascending: false }),
+    ]);
+    if (error) throw error;
+
+    const legacyProjects = (legacy || []).map(p => ({
+      id: p.id,
+      slug: p.slug,
+      title: p.title,
+      description: p.description || '',
+      cover_url: (p.cover_url && !p.cover_url.startsWith('blob:')) ? p.cover_url : (p.images || []).find(u => u && !u.startsWith('blob:')) || null,
+    }));
+    const linkedProjects = (linked || []).map(p => ({
+      id: p.id,
+      slug: p.portfolio_slug,
+      title: p.project_name,
+      description: p.portfolio_concept ? p.portfolio_concept.slice(0, 160) : '',
+      cover_url: p.cover_image_url,
+    }));
+    res.json({ projects: [...legacyProjects, ...linkedProjects] });
+  } catch (err) {
+    console.error('Error al listar trabajos:', err);
+    res.status(500).json({ error: 'Error al listar trabajos' });
+  }
+});
+
+router.get('/public/portfolio/:slug', async (req, res) => {
+  try {
+    const { data: project, error } = await supabase
+      .from('client_projects')
+      .select('id, project_name, portfolio_slug, portfolio_concept, cover_image_url, testimonial_video_url')
+      .eq('portfolio_slug', req.params.slug)
+      .eq('portfolio_published', true)
+      .maybeSingle();
+    if (error) throw error;
+
+    if (!project) {
+      // Trabajo antiguo (tabla suelta portfolio_projects) — se enseña tal
+      // cual, solo con la sección "El resultado" (sus fotos de siempre).
+      const { data: legacy } = await supabase.from('portfolio_projects').select('*').eq('slug', req.params.slug).maybeSingle();
+      if (!legacy) return res.status(404).json({ error: 'No encontrado' });
+      return res.json({
+        project: {
+          slug: legacy.slug,
+          title: legacy.title,
+          concept: legacy.description || '',
+          cover_url: (legacy.cover_url && !legacy.cover_url.startsWith('blob:')) ? legacy.cover_url : null,
+          moodboard_images: [],
+          before_photos: [],
+          result_images: (legacy.images || []).filter(u => u && !u.startsWith('blob:')),
+          is_result: true,
+          testimonial_video_url: null,
+        },
+      });
+    }
+
+    const [{ data: moodboardImgs }, { data: renders }, needsForm] = await Promise.all([
+      supabase.from('project_moodboard_images').select('url').eq('project_id', project.id).order('display_order', { ascending: true }),
+      supabase.from('project_renders').select('url, kind').eq('project_id', project.id).order('display_order', { ascending: true, nullsFirst: false }),
+      supabase.from('project_needs_forms').select('id').eq('project_id', project.id).maybeSingle().then(r => r.data),
+    ]);
+
+    let beforePhotos = [];
+    if (needsForm) {
+      const { data: photos } = await supabase.from('project_needs_form_photos').select('url').eq('form_id', needsForm.id).order('display_order', { ascending: true });
+      beforePhotos = (photos || []).map(p => p.url);
+    }
+
+    const allRenders = renders || [];
+    const resultado = allRenders.filter(r => r.kind === 'resultado').map(r => r.url);
+    const rendersOnly = allRenders.filter(r => r.kind !== 'resultado').map(r => r.url);
+
+    res.json({
+      project: {
+        slug: project.portfolio_slug,
+        title: project.project_name,
+        concept: project.portfolio_concept || '',
+        cover_url: project.cover_image_url,
+        moodboard_images: (moodboardImgs || []).map(m => m.url),
+        before_photos: beforePhotos,
+        result_images: resultado.length ? resultado : rendersOnly,
+        is_result: resultado.length > 0,
+        testimonial_video_url: project.testimonial_video_url || null,
+      },
+    });
+  } catch (err) {
+    console.error('Error al cargar trabajo público:', err);
+    res.status(500).json({ error: 'Error al cargar el proyecto' });
+  }
+});
+
 /**
  * POST /api/client-projects
  * Crear un nuevo proyecto de cliente
@@ -327,10 +436,14 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
  */
 router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active, lead_id, venta_id, status, cover_image_url, memoria_intro } = req.body;
+    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active, lead_id, venta_id, status, cover_image_url, memoria_intro, portfolio_published, portfolio_slug, portfolio_concept, testimonial_video_url } = req.body;
 
     const updates = {};
     if (memoria_intro !== undefined) updates.memoria_intro = memoria_intro?.trim() || null;
+    if (portfolio_published !== undefined) updates.portfolio_published = !!portfolio_published;
+    if (portfolio_slug !== undefined) updates.portfolio_slug = portfolio_slug?.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || null;
+    if (portfolio_concept !== undefined) updates.portfolio_concept = portfolio_concept?.trim() || null;
+    if (testimonial_video_url !== undefined) updates.testimonial_video_url = testimonial_video_url?.trim() || null;
     if (client_name !== undefined) updates.client_name = client_name.trim();
     if (project_name !== undefined) updates.project_name = project_name.trim();
     if (client_email !== undefined) updates.client_email = client_email?.trim() || null;
@@ -355,6 +468,9 @@ router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
     if (updates.phase !== undefined) await applyPhaseTaskTemplates(req.params.id, updates.phase);
     res.json({ project: data });
   } catch (error) {
+    if (error.code === '23505' && error.message?.includes('portfolio_slug')) {
+      return res.status(400).json({ error: 'Esa URL de Trabajos ya la usa otro proyecto — elige otra.' });
+    }
     console.error('Error al actualizar proyecto:', error);
     res.status(500).json({ error: 'Error al actualizar proyecto' });
   }
@@ -451,7 +567,7 @@ router.post('/:id/renders', authenticateToken, requireProyectos, uploadRenderFil
       return res.status(400).json({ error: 'No se recibió ningún archivo' });
     }
 
-    const { name, version, phase_number } = req.body;
+    const { name, version, phase_number, kind } = req.body;
     const projectId = req.params.id;
 
     const url = await uploadProjectRender(
@@ -479,6 +595,7 @@ router.post('/:id/renders', authenticateToken, requireProyectos, uploadRenderFil
         version: version?.trim() || null,
         display_order: nextOrder,
         phase_number: phase_number != null && phase_number !== '' ? parseInt(phase_number) : null,
+        kind: kind === 'resultado' ? 'resultado' : 'render',
       })
       .select('*')
       .single();
@@ -488,6 +605,56 @@ router.post('/:id/renders', authenticateToken, requireProyectos, uploadRenderFil
   } catch (error) {
     console.error('Error al subir render:', error);
     res.status(500).json({ error: 'Error al subir render' });
+  }
+});
+
+/**
+ * PUT /api/client-projects/:id/renders/:renderId
+ * Solo para marcar si es un render (visualización 3D) o una foto real del
+ * resultado ya ejecutado — se usa en Trabajos para decidir qué enseñar.
+ */
+router.put('/:id/renders/:renderId', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { kind } = req.body;
+    if (!['render', 'resultado'].includes(kind)) return res.status(400).json({ error: 'kind inválido' });
+    const { data, error } = await supabase
+      .from('project_renders')
+      .update({ kind })
+      .eq('id', req.params.renderId)
+      .eq('project_id', req.params.id)
+      .select('*')
+      .single();
+    if (error) throw error;
+    res.json({ render: data });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar el render' });
+  }
+});
+
+/**
+ * POST /api/client-projects/:id/portfolio-concept-ai
+ * Genera (no guarda) un texto de concepto para Trabajos a partir del
+ * moodboard y el planteamiento interno — nunca menciona datos
+ * confidenciales. Se revisa y se guarda a mano con PUT /:id.
+ */
+router.post('/:id/portfolio-concept-ai', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { data: project } = await supabase.from('client_projects').select('project_name, moodboard_description, moodboard_palette, memoria_intro').eq('id', req.params.id).single();
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' });
+
+    const paletteText = (project.moodboard_palette || []).length ? project.moodboard_palette.join(', ') : 'No hay.';
+
+    const system = `Eres el redactor de la web de Ranuse Design, un estudio de diseño de espacios deportivos (home gyms) en España. Te paso información interna de un proyecto ya diseñado, incluida su paleta de colores (códigos hex). Escribe un texto de CONCEPTO breve (3-5 frases) para la página pública de "Trabajos" de este proyecto, en tono profesional e inspirador, centrado en la idea de diseño, la paleta de colores y el resultado buscado — NUNCA menciones nombres de clientes, direcciones, precios ni ningún dato confidencial o personal, aunque aparezcan en la información que te paso. Responde solo con el texto del concepto, sin títulos ni comillas.`;
+    const userMsg = `PROYECTO: ${project.project_name || '—'}\n\nDESCRIPCIÓN DE ESTILO/MOODBOARD:\n${project.moodboard_description?.trim() || 'No hay.'}\n\nPALETA DE COLORES (hex):\n${paletteText}\n\nPLANTEAMIENTO INTERNO:\n${project.memoria_intro?.trim() || 'No hay.'}`;
+
+    const response = await callClaude({ system, messages: [{ role: 'user', content: userMsg }], maxTokens: 400 });
+    const textBlock = (response.content || []).find(b => b.type === 'text');
+    const concept = textBlock?.text?.trim();
+    if (!concept) return res.status(502).json({ error: 'La IA no devolvió texto' });
+    res.json({ concept });
+  } catch (err) {
+    console.error('Error al generar concepto IA:', err);
+    res.status(500).json({ error: err.message || 'Error al generar el concepto' });
   }
 });
 
@@ -533,12 +700,12 @@ router.delete('/:id/renders/:renderId', authenticateToken, requireProyectos, asy
 router.get('/:id/moodboard', authenticateToken, requireProyectos, async (req, res) => {
   try {
     const [{ data: project, error: errProject }, { data: images, error: errImages }] = await Promise.all([
-      supabase.from('client_projects').select('moodboard_description').eq('id', req.params.id).single(),
+      supabase.from('client_projects').select('moodboard_description, moodboard_palette').eq('id', req.params.id).single(),
       supabase.from('project_moodboard_images').select('*').eq('project_id', req.params.id).order('display_order', { ascending: true }),
     ]);
     if (errProject) throw errProject;
     if (errImages) throw errImages;
-    res.json({ description: project?.moodboard_description || '', images: images || [] });
+    res.json({ description: project?.moodboard_description || '', palette: project?.moodboard_palette || [], images: images || [] });
   } catch (error) {
     console.error('Error al obtener moodboard:', error);
     res.status(500).json({ error: 'Error al obtener el moodboard' });
@@ -547,14 +714,18 @@ router.get('/:id/moodboard', authenticateToken, requireProyectos, async (req, re
 
 /**
  * PUT /api/client-projects/:id/moodboard
- * Body: { description }
+ * Body: { description, palette }
+ * palette: array de códigos hex, ej. ["#0a0a0a", "#beb0a2"]
  */
 router.put('/:id/moodboard', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { description } = req.body;
+    const { description, palette } = req.body;
+    const updates = {};
+    if (description !== undefined) updates.moodboard_description = description?.trim() || null;
+    if (palette !== undefined) updates.moodboard_palette = Array.isArray(palette) ? palette.filter(c => /^#[0-9a-fA-F]{3,8}$/.test(c)) : [];
     const { error } = await supabase
       .from('client_projects')
-      .update({ moodboard_description: description?.trim() || null })
+      .update(updates)
       .eq('id', req.params.id);
     if (error) throw error;
     res.json({ message: 'Moodboard actualizado' });
