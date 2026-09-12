@@ -4,6 +4,7 @@ import { authenticateToken, requirePermission } from '../middleware/auth.middlew
 import { callClaude } from '../utils/anthropic.js';
 import { internalAdminToken } from '../utils/internal-auth.js';
 import { computeCatalogPricing } from '../utils/pricing.js';
+import { uploadCatalogPhoto } from '../utils/storage.js';
 
 const router = express.Router();
 // admin_superior siempre pasa; trabajador necesita el permiso "ventas"
@@ -63,6 +64,12 @@ Precios y márgenes (esto es automático, no lo calcules tú):
 Instalación, montaje y envío:
 - NUNCA incluyas instalación, montaje o envío/transporte como una partida con precio en el presupuesto — el coste real depende demasiado de la ciudad, el acceso, la planta, si hay ascensor, etc. como para dar una cifra fiable de antemano. Si el comercial o el cliente preguntan por ello, dilo así de claro y explica que se valorará aparte una vez se sepan los datos de la entrega. crear_presupuesto ya añade automáticamente una nota de "pendiente de valorar" para esto en el presupuesto — no hace falta que hagas nada más al respecto.
 
+Dar de alta un producto nuevo en el catálogo desde un enlace:
+- Si te pasan la URL de un producto que no está en el catálogo y piden añadirlo, usa leer_pagina_producto para leer la ficha. Extrae tú mismo nombre, marca, precio (solo si se ve claro — si no, no lo inventes) y un resumen breve de características/materiales como notas.
+- Antes de crearlo, di qué has entendido (nombre, marca, precio si lo hay, categoría que usarías) y espera confirmación — no lo crees con el primer mensaje sin más, salvo que te digan explícitamente "créalo directamente" o similar.
+- Si no sabes en qué categoría exacta encaja, usa listar_categorias primero. Si no hay ninguna categoría que encaje, dilo — no te inventes una, hay que crearla antes desde Catálogo.
+- Llama a crear_producto_catalogo con lo que tengas. Si no había precio claro en la página, créalo igualmente sin precio (nunca inventado) y dilo explícitamente para que se revise a mano; igual si no se detectó imagen. El objetivo es dejar el producto ya creado para que solo haga falta repasar esos detalles, no rellenarlo todo desde cero.
+
 Cómo guardar un presupuesto de verdad (herramienta crear_presupuesto):
 - Cuando la persona ya haya elegido un nivel (económico/medio/premium) o una lista concreta de productos y te pida guardarlo / crearlo / armarlo como presupuesto real, necesitas saber a qué proyecto de cliente pertenece. Si no te lo han dicho, pregúntalo (nombre del cliente o del proyecto).
 - Usa buscar_proyecto con ese nombre para encontrar el proyecto exacto. Si hay varias coincidencias, enséñaselas y pregunta cuál es. Si no hay ninguna, dilo y pregunta si el proyecto ya existe en el CRM.
@@ -90,13 +97,30 @@ const TOOLS = [
   },
   {
     name: 'leer_pagina_producto',
-    description: 'Abre y lee el texto de la página web de un producto (el "enlace" que devuelve buscar_productos) para conocer sus características técnicas, materiales o especificaciones que no están en el catálogo interno. Úsala cuando necesites argumentar sobre materiales/calidad de un producto, o comparar dos productos leyendo la página de cada uno.',
+    description: 'Abre y lee el texto de la página web de un producto (el "enlace" que devuelve buscar_productos, o cualquier URL de producto que te pasen para añadir al catálogo) para conocer sus características técnicas, materiales, precio o especificaciones. También intenta detectar una imagen del producto (campo imagen_detectada en el resultado, puede venir null). Úsala para argumentar sobre materiales/calidad, comparar productos, o como primer paso para dar de alta un producto nuevo en el catálogo a partir de un enlace.',
     input_schema: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: 'La URL del producto, tal cual aparece en el campo "enlace" de buscar_productos' },
+        url: { type: 'string', description: 'La URL del producto a leer' },
       },
       required: ['url'],
+    },
+  },
+  {
+    name: 'crear_producto_catalogo',
+    description: 'Da de alta un producto nuevo en el Catálogo de Ranuse Design a partir de los datos extraídos de leer_pagina_producto (nombre, marca, precio si se ve claro, notas con características, e imagen_url si se detectó). Solo úsala DESPUÉS de leer la página con leer_pagina_producto y de que la persona haya confirmado que quiere crear el producto — nunca la llames de golpe con el primer mensaje. Si no has visto un precio claro en la página, créalo igualmente sin precio (no inventes uno) y avisa de que hay que revisarlo a mano.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        categoria: { type: 'string', description: 'Nombre (o parte del nombre) de una categoría YA EXISTENTE en el catálogo — usa listar_categorias si no estás seguro' },
+        nombre: { type: 'string', description: 'Nombre del producto' },
+        marca: { type: 'string', description: 'Marca/fabricante, si se identifica en la página' },
+        precio: { type: 'number', description: 'Precio de venta si se ve claro en la página — déjalo vacío si no estás seguro, nunca lo inventes' },
+        notas: { type: 'string', description: 'Resumen breve de características/materiales vistos en la página' },
+        link: { type: 'string', description: 'La URL original del producto' },
+        imagen_url: { type: 'string', description: 'URL de la imagen del producto, si leer_pagina_producto devolvió una en imagen_detectada' },
+      },
+      required: ['categoria', 'nombre', 'link'],
     },
   },
   {
@@ -234,6 +258,10 @@ async function leerPaginaProducto(url) {
     clearTimeout(timeout);
     if (!res.ok) return { leido: false, mensaje: `La página respondió con error ${res.status} — no se ha podido leer.` };
     const html = await res.text();
+    const imgMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
+      || html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
+    const imagen_detectada = imgMatch ? imgMatch[1] : null;
     const texto = html
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
       .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -244,10 +272,65 @@ async function leerPaginaProducto(url) {
       .replace(/\s+/g, ' ')
       .trim();
     if (!texto) return { leido: false, mensaje: 'La página se cargó pero no se ha podido extraer texto legible (puede que cargue el contenido con JavaScript).' };
-    return { leido: true, texto: texto.slice(0, 6000) };
+    return { leido: true, texto: texto.slice(0, 6000), imagen_detectada };
   } catch (err) {
     return { leido: false, mensaje: `No se ha podido leer la página (${err.name === 'AbortError' ? 'tardó demasiado en responder' : 'error de conexión'}).` };
   }
+}
+
+async function descargarImagenProducto(imageUrl) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(imageUrl, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RanuseDesignBot/1.0)' } });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const contentType = res.headers.get('content-type') || 'image/jpeg';
+    if (!contentType.startsWith('image/')) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const ext = contentType.split('/')[1]?.split(';')[0] || 'jpg';
+    return await uploadCatalogPhoto(buffer, `producto.${ext}`, contentType);
+  } catch {
+    return null;
+  }
+}
+
+async function crearProductoCatalogo({ categoria, nombre, marca, precio, notas, link, imagen_url }) {
+  if (!categoria?.trim()) return { creado: false, mensaje: 'Falta la categoría — usa listar_categorias si no sabes cuál es.' };
+  if (!nombre?.trim()) return { creado: false, mensaje: 'Falta el nombre del producto.' };
+
+  const { data: cats } = await supabase.from('catalog_categories').select('id, name').ilike('name', `%${categoria.trim()}%`);
+  if (!cats?.length) return { creado: false, mensaje: `No hay ninguna categoría que coincida con "${categoria}". Usa listar_categorias para ver las que hay, o créala primero desde Catálogo.` };
+  if (cats.length > 1) return { creado: false, ambiguo: true, opciones: cats.map(c => c.name), mensaje: `Hay varias categorías que coinciden con "${categoria}": ${cats.map(c => c.name).join(', ')}. Pregunta cuál usar y vuelve a intentarlo con el nombre exacto.` };
+
+  let photo_url = null;
+  if (imagen_url?.trim()) photo_url = await descargarImagenProducto(imagen_url.trim());
+
+  const { data: maxRow } = await supabase.from('catalog_products').select('display_order').order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+
+  const { data: producto, error } = await supabase.from('catalog_products').insert({
+    category_id: cats[0].id,
+    name: nombre.trim(),
+    brand: marca?.trim() || null,
+    price: precio != null && precio !== '' ? parseFloat(precio) : null,
+    link: link?.trim() || null,
+    notes: notas?.trim() || null,
+    photo_url,
+    display_order: (maxRow?.display_order ?? -1) + 1,
+  }).select('id, name, price, photo_url').single();
+  if (error) return { creado: false, mensaje: 'Error al crear el producto: ' + error.message };
+
+  const avisos = [];
+  if (producto.price == null) avisos.push('sin precio — revísalo en el catálogo antes de usarlo en un presupuesto');
+  if (!producto.photo_url) avisos.push('sin foto — no se ha podido descargar automáticamente, súbela a mano si quieres');
+
+  return {
+    creado: true,
+    producto_id: producto.id,
+    nombre: producto.name,
+    categoria: cats[0].name,
+    mensaje: `Producto "${producto.name}" creado en la categoría "${cats[0].name}".${avisos.length ? ' Pendiente de revisar: ' + avisos.join('; ') + '.' : ''}`,
+  };
 }
 
 async function buscarProyecto(nombreQuery) {
@@ -418,6 +501,7 @@ async function runTool(name, input) {
   if (name === 'listar_categorias') return { categorias: await listarCategorias() };
   if (name === 'buscar_productos') return buscarProductos(input.categoria, input.marca);
   if (name === 'leer_pagina_producto') return leerPaginaProducto(input.url);
+  if (name === 'crear_producto_catalogo') return crearProductoCatalogo(input);
   if (name === 'buscar_proyecto') return buscarProyecto(input.nombre);
   if (name === 'crear_presupuesto') return crearPresupuesto(input);
   return { error: 'Herramienta desconocida' };
