@@ -161,6 +161,22 @@ export function ProjectGallery() {
             </div>
           </section>
         )}
+
+        <section className="pg-cta">
+          <p className="pg-cta-title">¿Quieres un proyecto como este?</p>
+          <p className="pg-cta-text">Cuéntanos tu idea por WhatsApp y te ayudamos a darle forma.</p>
+          <a
+            href={`https://wa.me/34673274303?text=${encodeURIComponent(`Hola, he visto el proyecto "${project.title}" y me gustaría más información`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="pg-cta-btn"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.004c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.85 9.85 0 0 0 12.04 2m0 1.67a8.2 8.2 0 0 1 5.83 2.42 8.2 8.2 0 0 1 2.42 5.82c0 4.55-3.7 8.25-8.25 8.25a8.2 8.2 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.4c0-4.55 3.7-8.24 8.24-8.24m-4.53 4.7c-.16 0-.42.06-.64.3-.22.24-.85.83-.85 2.03s.87 2.36.99 2.52c.12.17 1.7 2.6 4.13 3.64.58.25 1.03.4 1.38.5.58.19 1.11.16 1.53.1.47-.07 1.44-.59 1.64-1.15s.2-1.05.14-1.15c-.06-.1-.22-.16-.46-.28s-1.44-.71-1.66-.79-.39-.12-.55.12-.63.79-.78.96c-.14.16-.29.18-.53.06-.25-.12-1.03-.38-1.97-1.21-.73-.65-1.22-1.45-1.36-1.7-.14-.24-.01-.37.11-.5.11-.11.25-.28.37-.42.12-.14.16-.24.24-.4.08-.17.04-.31-.02-.43-.06-.12-.55-1.35-.76-1.84-.2-.48-.4-.42-.55-.42h-.14" />
+            </svg>
+            Escríbenos por WhatsApp
+          </a>
+        </section>
       </main>
 
       <Footer />
