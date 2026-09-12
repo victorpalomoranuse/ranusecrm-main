@@ -19,26 +19,34 @@ function embedUrl(url) {
   return url;
 }
 
-function ImageSection({ label, images, offset, onOpen }) {
-  if (!images?.length) return null;
+function ImageSection({ label, text, palette, images, offset, onOpen }) {
+  if (!images?.length && !text) return null;
   return (
     <section className="pg-section">
       <div className="pg-section-head">
         <p className="pg-section-label">{label}</p>
-        <span className="pg-section-count">{String(images.length).padStart(2, '0')}</span>
+        {images?.length > 0 && <span className="pg-section-count">{String(images.length).padStart(2, '0')}</span>}
       </div>
-      <div className="pg-grid">
-        {images.map((src, i) => (
-          <button
-            key={i}
-            className={`pg-thumb${i === 0 ? ' pg-thumb--big' : ''}`}
-            onClick={() => onOpen(offset + i)}
-            aria-label={`Ver imagen ${i + 1}`}
-          >
-            <LazyImage src={src} alt={`${label} · ${i + 1}`} />
-          </button>
-        ))}
-      </div>
+      {text && <p className="pg-section-text">{text}</p>}
+      {palette?.length > 0 && (
+        <div className="pg-palette">
+          {palette.map((hex, i) => <span key={i} className="pg-palette-dot" style={{ background: hex }} title={hex} />)}
+        </div>
+      )}
+      {images?.length > 0 && (
+        <div className="pg-grid">
+          {images.map((src, i) => (
+            <button
+              key={i}
+              className={`pg-thumb${i === 0 ? ' pg-thumb--big' : ''}`}
+              onClick={() => onOpen(offset + i)}
+              aria-label={`Ver imagen ${i + 1}`}
+            >
+              <LazyImage src={src} alt={`${label} · ${i + 1}`} />
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -60,7 +68,7 @@ export function ProjectGallery() {
 
   const allImages = useMemo(() => {
     if (!project) return [];
-    return [...(project.moodboard_images || []), ...(project.before_photos || []), ...(project.result_images || [])];
+    return [...(project.before_photos || []), ...(project.moodboard_images || []), ...(project.result_images || [])];
   }, [project]);
 
   if (loading) return (
@@ -95,8 +103,8 @@ export function ProjectGallery() {
     if (e.key === 'Escape') closeLightbox();
   };
 
-  const moodboardCount = project.moodboard_images?.length || 0;
   const beforeCount = project.before_photos?.length || 0;
+  const moodboardCount = project.moodboard_images?.length || 0;
 
   return (
     <div className="pg-page">
@@ -130,11 +138,9 @@ export function ProjectGallery() {
       )}
 
       <main className="pg-main">
-        {project.concept && <p className="pg-concept">{project.concept}</p>}
-
-        <ImageSection label="Moodboard" images={project.moodboard_images} offset={0} onOpen={openLightbox} />
-        <ImageSection label="El antes" images={project.before_photos} offset={moodboardCount} onOpen={openLightbox} />
-        <ImageSection label={project.is_result ? 'El resultado' : 'Renders'} images={project.result_images} offset={moodboardCount + beforeCount} onOpen={openLightbox} />
+        <ImageSection label="El antes" text={project.before_text} images={project.before_photos} offset={0} onOpen={openLightbox} />
+        <ImageSection label="Moodboard" text={project.concept} palette={project.moodboard_palette} images={project.moodboard_images} offset={beforeCount} onOpen={openLightbox} />
+        <ImageSection label={project.is_result ? 'El resultado' : 'Renders'} text={project.result_text} images={project.result_images} offset={beforeCount + moodboardCount} onOpen={openLightbox} />
 
         {project.testimonial_video_url && (
           <section className="pg-section">

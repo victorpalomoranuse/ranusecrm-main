@@ -353,7 +353,7 @@ router.get('/public/portfolio/:slug', async (req, res) => {
   try {
     const { data: project, error } = await supabase
       .from('client_projects')
-      .select('id, project_name, portfolio_slug, portfolio_concept, cover_image_url, testimonial_video_url')
+      .select('id, project_name, portfolio_slug, portfolio_concept, portfolio_before_text, portfolio_result_text, cover_image_url, testimonial_video_url, moodboard_palette')
       .eq('portfolio_slug', req.params.slug)
       .eq('portfolio_published', true)
       .maybeSingle();
@@ -369,8 +369,11 @@ router.get('/public/portfolio/:slug', async (req, res) => {
           slug: legacy.slug,
           title: legacy.title,
           concept: legacy.description || '',
+          before_text: '',
+          result_text: '',
           cover_url: (legacy.cover_url && !legacy.cover_url.startsWith('blob:')) ? legacy.cover_url : null,
           moodboard_images: [],
+          moodboard_palette: [],
           before_photos: [],
           result_images: (legacy.images || []).filter(u => u && !u.startsWith('blob:')),
           is_result: true,
@@ -400,8 +403,11 @@ router.get('/public/portfolio/:slug', async (req, res) => {
         slug: project.portfolio_slug,
         title: project.project_name,
         concept: project.portfolio_concept || '',
+        before_text: project.portfolio_before_text || '',
+        result_text: project.portfolio_result_text || '',
         cover_url: project.cover_image_url,
         moodboard_images: (moodboardImgs || []).map(m => m.url),
+        moodboard_palette: project.moodboard_palette || [],
         before_photos: beforePhotos,
         result_images: resultado.length ? resultado : rendersOnly,
         is_result: resultado.length > 0,
@@ -469,13 +475,16 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
  */
 router.put('/:id', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active, lead_id, venta_id, status, cover_image_url, memoria_intro, portfolio_published, portfolio_slug, portfolio_concept, testimonial_video_url } = req.body;
+    const { client_name, project_name, client_email, phase, urgency, responsible_id, notes, active, lead_id, venta_id, status, cover_image_url, memoria_intro, portfolio_published, portfolio_slug, portfolio_concept, portfolio_before_text, portfolio_result_text, portfolio_result_notes, testimonial_video_url } = req.body;
 
     const updates = {};
     if (memoria_intro !== undefined) updates.memoria_intro = memoria_intro?.trim() || null;
     if (portfolio_published !== undefined) updates.portfolio_published = !!portfolio_published;
     if (portfolio_slug !== undefined) updates.portfolio_slug = portfolio_slug?.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || null;
     if (portfolio_concept !== undefined) updates.portfolio_concept = portfolio_concept?.trim() || null;
+    if (portfolio_before_text !== undefined) updates.portfolio_before_text = portfolio_before_text?.trim() || null;
+    if (portfolio_result_text !== undefined) updates.portfolio_result_text = portfolio_result_text?.trim() || null;
+    if (portfolio_result_notes !== undefined) updates.portfolio_result_notes = portfolio_result_notes?.trim() || null;
     if (testimonial_video_url !== undefined) updates.testimonial_video_url = testimonial_video_url?.trim() || null;
     if (client_name !== undefined) updates.client_name = client_name.trim();
     if (project_name !== undefined) updates.project_name = project_name.trim();
@@ -688,6 +697,64 @@ router.post('/:id/portfolio-concept-ai', authenticateToken, requireProyectos, as
   } catch (err) {
     console.error('Error al generar concepto IA:', err);
     res.status(500).json({ error: err.message || 'Error al generar el concepto' });
+  }
+});
+
+/**
+ * POST /api/client-projects/:id/portfolio-before-ai
+ * Genera (no guarda) el texto de "El antes" para Trabajos — qué problema u
+ * objetivo había, a partir de la descripción libre y notas del Programa de
+ * Necesidades. Nunca menciona datos confidenciales.
+ */
+router.post('/:id/portfolio-before-ai', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { data: project } = await supabase.from('client_projects').select('project_name').eq('id', req.params.id).single();
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    const { data: form } = await supabase.from('project_needs_forms').select('brief, admin_notes').eq('project_id', req.params.id).maybeSingle();
+
+    const brief = form?.brief?.trim() || '';
+    const notas = form?.admin_notes?.trim() || '';
+    if (!brief && !notas) return res.status(400).json({ error: 'Rellena antes la descripción del Programa de Necesidades — la IA la necesita para escribir "El antes".' });
+
+    const system = `Eres el redactor de la web de Ranuse Design, un estudio de diseño de espacios deportivos (home gyms) en España. Te paso información interna sobre la situación de partida de un proyecto (lo que había antes de intervenir, qué problema o inconveniente tenía el cliente, qué buscaba conseguir). Escribe un texto breve (2-4 frases) para la sección "El antes" de la página pública de "Trabajos" de este proyecto, explicando el punto de partida y el objetivo que se buscaba, en tono profesional — NUNCA menciones nombres de clientes, direcciones, precios ni ningún dato confidencial o personal, aunque aparezcan en la información que te paso. Responde solo con el texto, sin títulos ni comillas.`;
+    const userMsg = `PROYECTO: ${project.project_name || '—'}\n\nDESCRIPCIÓN LIBRE:\n${brief || 'No hay.'}\n\nNOTAS INTERNAS:\n${notas || 'No hay.'}`;
+
+    const response = await callClaude({ system, messages: [{ role: 'user', content: userMsg }], maxTokens: 300 });
+    const textBlock = (response.content || []).find(b => b.type === 'text');
+    const text = textBlock?.text?.trim();
+    if (!text) return res.status(502).json({ error: 'La IA no devolvió texto' });
+    res.json({ text });
+  } catch (err) {
+    console.error('Error al generar texto "El antes" IA:', err);
+    res.status(500).json({ error: err.message || 'Error al generar el texto' });
+  }
+});
+
+/**
+ * POST /api/client-projects/:id/portfolio-result-ai
+ * Genera (no guarda) el texto de "El resultado" para Trabajos — qué se
+ * consiguió — a partir de tus propias indicaciones (portfolio_result_notes)
+ * y del resto del contexto del proyecto. Nunca menciona datos confidenciales.
+ */
+router.post('/:id/portfolio-result-ai', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { data: project } = await supabase.from('client_projects').select('project_name, portfolio_before_text, portfolio_concept, portfolio_result_notes').eq('id', req.params.id).single();
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' });
+
+    const indicaciones = project.portfolio_result_notes?.trim() || '';
+    if (!indicaciones) return res.status(400).json({ error: 'Escribe antes tus indicaciones sobre el resultado — la IA las necesita para escribir el texto.' });
+
+    const system = `Eres el redactor de la web de Ranuse Design, un estudio de diseño de espacios deportivos (home gyms) en España. Te paso el punto de partida del proyecto, el concepto de diseño, y tus propias indicaciones sobre lo conseguido con el resultado final. Escribe un texto breve (2-4 frases) para la sección "El resultado" de la página pública de "Trabajos" de este proyecto, destacando qué se logró y cómo responde al objetivo inicial, en tono profesional e inspirador — NUNCA menciones nombres de clientes, direcciones, precios ni ningún dato confidencial o personal, aunque aparezcan en la información que te paso. Responde solo con el texto, sin títulos ni comillas.`;
+    const userMsg = `PROYECTO: ${project.project_name || '—'}\n\nEL ANTES:\n${project.portfolio_before_text?.trim() || 'No hay.'}\n\nCONCEPTO/SOLUCIÓN:\n${project.portfolio_concept?.trim() || 'No hay.'}\n\nTUS INDICACIONES SOBRE LO CONSEGUIDO:\n${indicaciones}`;
+
+    const response = await callClaude({ system, messages: [{ role: 'user', content: userMsg }], maxTokens: 300 });
+    const textBlock = (response.content || []).find(b => b.type === 'text');
+    const text = textBlock?.text?.trim();
+    if (!text) return res.status(502).json({ error: 'La IA no devolvió texto' });
+    res.json({ text });
+  } catch (err) {
+    console.error('Error al generar texto "El resultado" IA:', err);
+    res.status(500).json({ error: err.message || 'Error al generar el texto' });
   }
 });
 

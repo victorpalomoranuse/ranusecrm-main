@@ -963,10 +963,15 @@ function TabAsignaciones({ projectId, categoryId, listadosIntro, listadosTitle, 
 function TabTrabajosWeb({ project }) {
   const [published, setPublished] = useState(!!project.portfolio_published);
   const [slug, setSlug] = useState(project.portfolio_slug || '');
+  const [beforeText, setBeforeText] = useState(project.portfolio_before_text || '');
   const [concept, setConcept] = useState(project.portfolio_concept || '');
+  const [resultNotes, setResultNotes] = useState(project.portfolio_result_notes || '');
+  const [resultText, setResultText] = useState(project.portfolio_result_text || '');
   const [videoUrl, setVideoUrl] = useState(project.testimonial_video_url || '');
   const [saving, setSaving] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [generatingBefore, setGeneratingBefore] = useState(false);
+  const [generatingConcept, setGeneratingConcept] = useState(false);
+  const [generatingResult, setGeneratingResult] = useState(false);
   const { toast } = useToast();
 
   const handleSave = async (extra = {}) => {
@@ -975,7 +980,10 @@ function TabTrabajosWeb({ project }) {
       const payload = {
         portfolio_published: published,
         portfolio_slug: slug || slugify(project.project_name),
+        portfolio_before_text: beforeText,
         portfolio_concept: concept,
+        portfolio_result_notes: resultNotes,
+        portfolio_result_text: resultText,
         testimonial_video_url: videoUrl,
         ...extra,
       };
@@ -990,8 +998,21 @@ function TabTrabajosWeb({ project }) {
     }
   };
 
-  const handleGenerate = async () => {
-    setGenerating(true);
+  const handleGenerateBefore = async () => {
+    setGeneratingBefore(true);
+    try {
+      const { data } = await api.post(`/client-projects/${project.id}/portfolio-before-ai`);
+      setBeforeText(data.text || '');
+      toast.success('Texto generado — revísalo antes de guardar');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error al generar el texto');
+    } finally {
+      setGeneratingBefore(false);
+    }
+  };
+
+  const handleGenerateConcept = async () => {
+    setGeneratingConcept(true);
     try {
       const { data } = await api.post(`/client-projects/${project.id}/portfolio-concept-ai`);
       setConcept(data.concept || '');
@@ -999,7 +1020,21 @@ function TabTrabajosWeb({ project }) {
     } catch (err) {
       toast.error(err.response?.data?.error || 'Error al generar el concepto');
     } finally {
-      setGenerating(false);
+      setGeneratingConcept(false);
+    }
+  };
+
+  const handleGenerateResult = async () => {
+    setGeneratingResult(true);
+    try {
+      await api.put(`/client-projects/${project.id}`, { portfolio_result_notes: resultNotes });
+      const { data } = await api.post(`/client-projects/${project.id}/portfolio-result-ai`);
+      setResultText(data.text || '');
+      toast.success('Texto generado — revísalo antes de guardar');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error al generar el texto');
+    } finally {
+      setGeneratingResult(false);
     }
   };
 
@@ -1007,7 +1042,7 @@ function TabTrabajosWeb({ project }) {
 
   return (
     <div className="ap-tab-content">
-      <p className="ap-tab-desc">Publica este proyecto en la web pública de Trabajos, conectado con sus datos reales (portada, moodboard, fotos del antes y renders/resultado). Nunca se muestran datos confidenciales del cliente.</p>
+      <p className="ap-tab-desc">Publica este proyecto en la web pública de Trabajos, conectado con sus datos reales. La página cuenta la historia en tres partes — el antes, el moodboard/solución y el resultado — muy parecida a la del proyecto del cliente, pero sin presupuesto, archivos descargables ni listados de materiales y equipamientos. Nunca se muestran datos confidenciales del cliente.</p>
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '1.25rem', cursor: 'pointer' }}>
         <input type="checkbox" checked={published} onChange={e => setPublished(e.target.checked)} />
@@ -1021,9 +1056,22 @@ function TabTrabajosWeb({ project }) {
       </div>
 
       <div className="ap-field">
-        <label>Concepto <span className="ap-optional">(el texto público del proyecto — nunca menciones al cliente ni datos confidenciales)</span></label>
-        <textarea className="ap-field-input" rows={5} value={concept} onChange={e => setConcept(e.target.value)} placeholder="Ej. Un home gym pensado para entrenar fuerza sin renunciar al diseño..." />
-        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleGenerate} disabled={generating} style={{ marginTop: '0.4rem' }}>{generating ? 'Generando…' : '✨ Generar con IA'}</button>
+        <label>1. El antes <span className="ap-optional">(qué problema u objetivo había — la IA la escribe a partir de la descripción y notas del Programa de Necesidades)</span></label>
+        <textarea className="ap-field-input" rows={4} value={beforeText} onChange={e => setBeforeText(e.target.value)} placeholder="Ej. Un garaje sin uso, con poca luz y ningún equipamiento, que el cliente quería convertir en una zona de entrenamiento funcional..." />
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleGenerateBefore} disabled={generatingBefore} style={{ marginTop: '0.4rem' }}>{generatingBefore ? 'Generando…' : '✨ Generar con IA'}</button>
+      </div>
+
+      <div className="ap-field">
+        <label>2. Moodboard / Solución <span className="ap-optional">(la idea de diseño frente al antes — la IA tiene en cuenta la descripción del moodboard y su paleta de colores)</span></label>
+        <textarea className="ap-field-input" rows={4} value={concept} onChange={e => setConcept(e.target.value)} placeholder="Ej. Un home gym pensado para entrenar fuerza sin renunciar al diseño..." />
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleGenerateConcept} disabled={generatingConcept} style={{ marginTop: '0.4rem' }}>{generatingConcept ? 'Generando…' : '✨ Generar con IA'}</button>
+      </div>
+
+      <div className="ap-field">
+        <label>3. El resultado <span className="ap-optional">(qué se consiguió — escribe tus indicaciones y la IA redacta el texto a partir de ellas)</span></label>
+        <textarea className="ap-field-input" rows={2} value={resultNotes} onChange={e => setResultNotes(e.target.value)} placeholder="Tus indicaciones para la IA, ej: Se ganó mucha luz natural, el cliente ahora entrena a diario sin salir de casa, quedó un acabado muy limpio..." />
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleGenerateResult} disabled={generatingResult || !resultNotes.trim()} style={{ marginTop: '0.4rem' }}>{generatingResult ? 'Generando…' : '✨ Generar con IA a partir de mis indicaciones'}</button>
+        <textarea className="ap-field-input" rows={4} value={resultText} onChange={e => setResultText(e.target.value)} placeholder="Aquí aparecerá el texto generado — puedes editarlo a mano." style={{ marginTop: '0.5rem' }} />
       </div>
 
       <div className="ap-field">
