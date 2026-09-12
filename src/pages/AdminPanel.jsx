@@ -972,6 +972,17 @@ function TabCategoriaTareas({ projectId, categoryId }) {
   );
 }
 
+function SortableCategoryImage({ img, onRemove }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: img.url });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, zIndex: isDragging ? 10 : undefined, position: 'relative' };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <img src={img.url} alt={img.name} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6, cursor: 'grab' }} />
+      <button onClick={(e) => { e.stopPropagation(); onRemove(img.url); }} style={{ position: 'absolute', top: -4, right: -4, background: '#1a1a1a', border: 'none', borderRadius: '50%', width: 16, height: 16, color: '#fff', cursor: 'pointer', fontSize: 10, lineHeight: 1 }}>✕</button>
+    </div>
+  );
+}
+
 function CategoryItemEditor({ item, onUpdated, onDeleted }) {
   const [title, setTitle] = useState(item.title);
   const [bodyText, setBodyText] = useState(item.body_text || '');
@@ -979,6 +990,7 @@ function CategoryItemEditor({ item, onUpdated, onDeleted }) {
   const [linkLabel, setLinkLabel] = useState('');
   const fileRef = useRef();
   const imgRef = useRef();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const patch = async (fields) => {
     try {
@@ -1014,6 +1026,15 @@ function CategoryItemEditor({ item, onUpdated, onDeleted }) {
   };
 
   const removeImage = (url) => patch({ remove_image_url: url });
+  const handleImagesDragEnd = (event) => {
+    const { active, over } = event; if (!active || !over || active.id === over.id) return;
+    const images = item.images || [];
+    const oldIndex = images.findIndex(i => i.url === active.id);
+    const newIndex = images.findIndex(i => i.url === over.id);
+    const newImages = arrayMove(images, oldIndex, newIndex);
+    onUpdated({ ...item, images: newImages });
+    patch({ images: newImages });
+  };
 
   const handleDelete = async () => {
     try { await api.delete(`/categories/items/${item.id}`); onDeleted(item.id); } catch {}
@@ -1037,14 +1058,15 @@ function CategoryItemEditor({ item, onUpdated, onDeleted }) {
           <textarea className="ap-field-input" value={bodyText} onChange={e => setBodyText(e.target.value)} onBlur={() => bodyText !== (item.body_text || '') && patch({ body_text: bodyText })} rows={2} placeholder="Explicación para el cliente..." />
 
           {item.images?.length > 0 && (
-            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-              {item.images.map((img, i) => (
-                <div key={i} style={{ position: 'relative' }}>
-                  <img src={img.url} alt={img.name} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6 }} />
-                  <button onClick={() => removeImage(img.url)} style={{ position: 'absolute', top: -4, right: -4, background: '#1a1a1a', border: 'none', borderRadius: '50%', width: 16, height: 16, color: '#fff', cursor: 'pointer', fontSize: 10, lineHeight: 1 }}>✕</button>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleImagesDragEnd}>
+              <SortableContext items={item.images.map(img => img.url)} strategy={rectSortingStrategy}>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  {item.images.map((img) => (
+                    <SortableCategoryImage key={img.url} img={img} onRemove={removeImage} />
+                  ))}
                 </div>
-              ))}
-            </div>
+              </SortableContext>
+            </DndContext>
           )}
           <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ alignSelf: 'flex-start' }}>+ Imágenes<input ref={imgRef} type="file" accept="image/*" multiple onChange={uploadImages} style={{ display: 'none' }} /></label>
 

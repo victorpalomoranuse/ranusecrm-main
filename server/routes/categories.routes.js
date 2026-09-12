@@ -311,12 +311,13 @@ router.post('/items/:itemId/images', authenticateToken, requireProyectos, upload
  */
 router.put('/items/:itemId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { title, body_text, links, code, remove_image_url } = req.body;
+    const { title, body_text, links, code, remove_image_url, images } = req.body;
     const updates = {};
     if (title !== undefined) updates.title = title.trim();
     if (body_text !== undefined) updates.body_text = body_text;
     if (links !== undefined) updates.links = links;
     if (code !== undefined) updates.code = code;
+    if (images !== undefined) updates.images = images;
 
     if (remove_image_url) {
       const { data: item } = await supabase.from('category_items').select('images').eq('id', req.params.itemId).single();
