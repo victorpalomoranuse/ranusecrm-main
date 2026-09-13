@@ -71,10 +71,10 @@ Dar de alta un producto nuevo en el catálogo desde un enlace:
 - Llama a crear_producto_catalogo con lo que tengas. Si no había precio claro en la página, créalo igualmente sin precio (nunca inventado) y dilo explícitamente para que se revise a mano; igual si no se detectó imagen. El objetivo es dejar el producto ya creado para que solo haga falta repasar esos detalles, no rellenarlo todo desde cero.
 
 Cómo guardar un presupuesto de verdad (herramienta crear_presupuesto):
-- Cuando la persona ya haya elegido un nivel (económico/medio/premium) o una lista concreta de productos y te pida guardarlo / crearlo / armarlo como presupuesto real, necesitas saber a qué proyecto de cliente pertenece. Si no te lo han dicho, pregúntalo (nombre del cliente o del proyecto).
-- Usa buscar_proyecto con ese nombre para encontrar el proyecto exacto. Si hay varias coincidencias, enséñaselas y pregunta cuál es. Si no hay ninguna, dilo y pregunta si el proyecto ya existe en el CRM.
-- Un proyecto solo puede tener UN presupuesto. Si buscar_proyecto o crear_presupuesto indican que ya tiene uno, no crees otro: avisa con el número de presupuesto existente y sugiere abrirlo desde la sección Presupuestos para añadir partidas ahí.
-- Solo llama a crear_presupuesto cuando tengas confirmación clara de la persona sobre qué nivel/productos concretos quiere guardar y para qué proyecto — no lo hagas por iniciativa propia con el primer mensaje. Usa como "nombre" de cada partida el nombre EXACTO tal cual aparece en los resultados de buscar_productos.
+- Cuando la persona ya haya elegido un nivel (económico/medio/premium) o una lista concreta de productos y te pida guardarlo / crearlo / armarlo como presupuesto real, pregunta si es para un proyecto ya existente en el CRM o si es una venta rápida sin proyecto (directa, sin pasar por diseño).
+  - Con proyecto: usa buscar_proyecto con el nombre del cliente o del proyecto para encontrar el id exacto. Si hay varias coincidencias, enséñaselas y pregunta cuál es. Un proyecto solo puede tener UN presupuesto — si buscar_proyecto o crear_presupuesto indican que ya tiene uno, no crees otro: avisa con el número existente y sugiere abrirlo desde Presupuestos.
+  - Sin proyecto (venta rápida/directa): no hace falta buscar ni crear ningún proyecto — llama a crear_presupuesto sin proyecto_id, pero pídele antes un nombre identificable (ej. el nombre del cliente) para poder encontrarlo luego en la lista de Presupuestos. Queda guardado suelto, sin vincular a ningún proyecto, y se puede vincular más adelante desde Presupuestos si hiciera falta.
+- Solo llama a crear_presupuesto cuando tengas confirmación clara de la persona sobre qué nivel/productos concretos quiere guardar — no lo hagas por iniciativa propia con el primer mensaje. Usa como "nombre" de cada partida el nombre EXACTO tal cual aparece en los resultados de buscar_productos.
 - Tras crear el presupuesto, la herramienta ya genera y guarda el PDF automáticamente (no hace falta que lo pidas aparte). Confirma con el número de presupuesto generado y, si el resultado incluye pdf_url, dilo (el PDF ya está listo y guardado; se puede terminar de revisar o editar a mano desde la sección Presupuestos y volver a exportar si hace falta). Si pdf_url viniera vacío, dilo también y sugiere generarlo a mano desde Presupuestos.`;
 
 const TOOLS = [
@@ -136,12 +136,12 @@ const TOOLS = [
   },
   {
     name: 'crear_presupuesto',
-    description: 'Crea un presupuesto REAL en el sistema de Presupuestos de Ranuse Design, con sus partidas, lo deja guardado (estado borrador) para ese proyecto, y genera y guarda automáticamente el PDF de cara al cliente. Solo se puede usar una vez que la persona ha confirmado el proyecto y los productos/nivel elegidos. Cada nombre de producto debe ser EXACTO tal cual lo devolvió buscar_productos. Los productos sin precio cargado en el catálogo se ignoran automáticamente (nunca se añaden con precio 0€).',
+    description: 'Crea un presupuesto REAL en el sistema de Presupuestos de Ranuse Design, con sus partidas, lo deja guardado (estado borrador), y genera y guarda automáticamente el PDF de cara al cliente. Solo se puede usar una vez que la persona ha confirmado los productos/nivel elegidos. Cada nombre de producto debe ser EXACTO tal cual lo devolvió buscar_productos. Los productos sin precio cargado en el catálogo se ignoran automáticamente (nunca se añaden con precio 0€). proyecto_id es OPCIONAL — para una venta rápida sin proyecto en el CRM, créalo sin proyecto_id pero con nombre_presupuesto (obligatorio en ese caso, ej. el nombre del cliente) para poder identificarlo luego; se puede vincular a un proyecto más tarde desde Presupuestos si hace falta.',
     input_schema: {
       type: 'object',
       properties: {
-        proyecto_id: { type: 'string', description: 'id del proyecto (uuid) devuelto por buscar_proyecto' },
-        nombre_presupuesto: { type: 'string', description: 'Nombre corto opcional para el presupuesto, ej. "Nivel medio - gimnasio en casa"' },
+        proyecto_id: { type: 'string', description: 'id del proyecto (uuid) devuelto por buscar_proyecto — opcional, solo si el presupuesto va ligado a un proyecto del CRM' },
+        nombre_presupuesto: { type: 'string', description: 'Nombre corto para el presupuesto, ej. "Nivel medio - gimnasio en casa". Obligatorio si no hay proyecto_id (usa el nombre del cliente o algo identificable).' },
         items: {
           type: 'array',
           description: 'Lista de productos a incluir, con el nombre EXACTO devuelto por buscar_productos',
@@ -155,7 +155,7 @@ const TOOLS = [
           },
         },
       },
-      required: ['proyecto_id', 'items'],
+      required: ['items'],
     },
   },
 ];
@@ -368,12 +368,16 @@ async function generateBudgetNumber() {
 }
 
 async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
-  if (!proyecto_id) return { creado: false, mensaje: 'Falta proyecto_id — usa buscar_proyecto primero.' };
+  if (!proyecto_id && !nombre_presupuesto?.trim()) {
+    return { creado: false, mensaje: 'Sin proyecto hace falta al menos un nombre para el presupuesto (ej. el nombre del cliente), para poder identificarlo luego en Presupuestos.' };
+  }
   if (!Array.isArray(items) || items.length === 0) return { creado: false, mensaje: 'No se ha indicado ningún producto para el presupuesto.' };
 
-  const { data: existente } = await supabase.from('budgets').select('id, budget_number').eq('project_id', proyecto_id).maybeSingle();
-  if (existente) {
-    return { creado: false, ya_existe: true, budget_number: existente.budget_number, mensaje: `Este proyecto ya tiene el presupuesto ${existente.budget_number}. No se ha creado uno nuevo — hay que añadir partidas desde la sección Presupuestos.` };
+  if (proyecto_id) {
+    const { data: existente } = await supabase.from('budgets').select('id, budget_number').eq('project_id', proyecto_id).maybeSingle();
+    if (existente) {
+      return { creado: false, ya_existe: true, budget_number: existente.budget_number, mensaje: `Este proyecto ya tiene el presupuesto ${existente.budget_number}. No se ha creado uno nuevo — hay que añadir partidas desde la sección Presupuestos.` };
+    }
   }
 
   const budget_number = await generateBudgetNumber();
@@ -385,7 +389,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
       design_fee_type: 'flat',
       design_fee_value: 0,
       design_hours: 0,
-      project_id: proyecto_id,
+      project_id: proyecto_id || null,
       install_shipping_note: 'Instalación, montaje y envío: pendientes de valorar (varían según ciudad, acceso y planta).',
       ...(nombre_presupuesto?.trim() ? { budget_name: nombre_presupuesto.trim() } : {}),
     })
