@@ -27,6 +27,7 @@ import categoriesRoutes from './routes/categories.routes.js';
 import needsFormRoutes from './routes/needs-form.routes.js';
 import obraRoutes from './routes/obra.routes.js';
 import aiBudgetRoutes from './routes/ai-budget.routes.js';
+import aiSetterRoutes from './routes/ai-setter.routes.js';
 import settingRoutes from './routes/setting.routes.js';
 import memoriaRoutes from './routes/memoria.routes.js';
 dotenv.config();
@@ -87,6 +88,7 @@ app.use('/api/categories', categoriesRoutes);
 app.use('/api/needs-form', needsFormRoutes);
 app.use('/api/obra', obraRoutes);
 app.use('/api/ai-budget', aiBudgetRoutes);
+app.use('/api/ai-setter', aiSetterRoutes);
 app.use('/api/setting', settingRoutes);
 app.use('/api/memoria', memoriaRoutes);
 app.use((req, res) => {
