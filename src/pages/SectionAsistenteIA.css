@@ -70,5 +70,38 @@
   gap: 0.5rem;
   padding: 0.85rem;
   border-top: 1px solid rgba(255,255,255,0.07);
+  align-items: center;
 }
 .ai-chat-input-row .ap-field-input { flex: 1; }
+
+.ai-chat-pending-image {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem 0;
+  position: relative;
+  width: fit-content;
+}
+.ai-chat-pending-image img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.ai-chat-pending-image-remove {
+  position: absolute;
+  top: -2px;
+  left: 50px;
+  background: #1a1a1a;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  padding: 0;
+}

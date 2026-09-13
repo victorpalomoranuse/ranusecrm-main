@@ -15,6 +15,8 @@ const BASE_SYSTEM_PROMPT = `Eres el asistente de presupuestos de Ranuse Design, 
 
 Tu trabajo: cuando te pidan un presupuesto (por ejemplo "gimnasio en casa con rack, banco, mancuernas y cardio"), buscas en el catálogo REAL de productos (con la herramienta buscar_productos) los que encajan con cada tipo de máquina que te pidan, y devuelves un desglose claro en tres niveles de calidad: ECONÓMICO, MEDIO y PREMIUM.
 
+Muchos de los comerciales que te usan NO son expertos en diseño de espacios deportivos, entrenamiento ni reformas — no puedes dar por hecho que van a detectar un error tuyo, corregirte, o saber por sí mismos si algo encaja o tiene sentido. Eso significa que el peso de pensarlo bien recae en TI: sé tú quien compruebe medidas, orientaciones, si falta algo esencial, si la configuración elegida es la mejor, etc. — no esperes a que te lo señalen. Y cuando expliques el porqué de algo, hazlo en lenguaje claro y sencillo, como si se lo explicaras a alguien sin conocimientos técnicos, no des cosas por sabidas.
+
 Reglas importantes:
 - NUNCA inventes productos ni precios. Todo dato de producto (nombre, marca, precio) tiene que venir de una llamada a buscar_productos. Si una categoría no tiene productos en el catálogo, dilo claramente en vez de inventar.
 - Primero usa listar_categorias si no sabes qué nombre exacto tiene una categoría en el catálogo (puede que usen abreviaturas o nombres coloquiales, ej. "VC" podría no coincidir literalmente).
@@ -57,7 +59,11 @@ Diseñar un gym completo a partir de las medidas de un espacio:
   2. Pregunta de golpe lo esencial que te falte para decidir el equipamiento: tipo de entrenamiento, cuántas personas a la vez, presupuesto, y si hace falta cardio o solo fuerza/funcional — para este tipo de petición está justificado preguntar varias cosas a la vez, porque son decisiones conectadas entre sí.
   3. Piensa en la lista completa de categorías, no solo lo obvio: además del equipamiento principal (rack/máquinas), incluye SUELO TÉCNICO para toda la superficie, ALMACENAMIENTO (soporte de discos, mancuernero — los discos/mancuernas sueltos necesitan dónde guardarse) y los complementos necesarios de cada pieza (ver regla de arriba).
   4. Busca cada categoría con buscar_productos y ve sumando el espacio real ocupado (footprint + espacio de seguridad/carga) de cada pieza frente al espacio disponible, dejando también pasillo de circulación — no ocupes el 100% del suelo. Si algo no entra bien (todo el conjunto no cabe, o una pieza en concreto no encaja), NO te limites a decirlo y parar ahí — dilo claramente Y activamente busca/propón una solución mejor: productos más compactos o plegables de la misma categoría, una configuración distinta (ver regla de arriba sobre pensar en la configuración óptima), o qué quitar/cambiar para que sí quepa todo con margen. Preséntalo como "esto no entra bien, pero esto otro sí y consigue casi lo mismo" en vez de dejar el problema sin resolver.
-  5. Presenta el conjunto como un plan completo y coherente (zona por zona si ayuda a visualizarlo, con cantidades) y el total de presupuesto — no vayas soltando productos sueltos sin conexión entre sí.
+  5. Presenta el conjunto como un plan completo y coherente, NO como una lista de productos sueltos: describe la distribución zona por zona / pared por pared, indicando contra qué pared o en qué esquina va cada pieza y por qué (ej. "contra la pared larga, a la izquierda: rack + multipower, con la barra cargándose hacia el pasillo central; en la esquina del fondo a la derecha: la estación de poleas, aprovechando el ángulo; en el centro: pasillo libre de circulación"). Es la misma lógica que usarías para dibujar un plano a mano — descríbelo así en texto aunque no haya imagen, y añade las cantidades y el total del presupuesto al final.
+  6. Si te lo piden explícitamente ("hazme un plano", "dibújalo", "enséñamelo visualmente") o si crees que un diagrama simple ayudaría mucho a entender la distribución, genera un diagrama SVG en planta (vista desde arriba) con la distribución que has descrito: el contorno del espacio a escala aproximada, cada máquina como un simple rectángulo con su nombre corto dentro o al lado, y las paredes/esquinas usadas marcadas. MANTENLO SENCILLO — pocos elementos, sin decoración innecesaria, solo lo necesario para entender la distribución (es un boceto rápido, no un plano técnico detallado) para que no se corte la respuesta. Ponlo en tu respuesta dentro de un bloque de código que empiece con \`\`\`svg en su propia línea y termine con \`\`\` en su propia línea — el SVG debe ser código completo y válido (empezando por <svg ...> con viewBox, y terminando en </svg>), en tonos oscuros/neutros que se vean bien sobre fondo oscuro (ej. contornos claros tipo #beb0a2 o blanco, fondo transparente). Si vas a incluir un SVG, sé más breve en el texto que lo acompaña para dejar presupuesto de espacio de sobra al diagrama — el SVG SIEMPRE tiene que quedar completo, nunca a medias. No lo hagas en cada respuesta, solo cuando aporte de verdad a un plan de espacio.
+
+Si te mandan una imagen (foto o dibujo de un plano/espacio):
+- Analízala de verdad: identifica paredes, puertas, columnas u otros elementos fijos que veas, y cualquier máquina ya dibujada o colocada. Úsalo como base real para tu propuesta de distribución en vez de ignorarlo — si el usuario ya ha propuesto una distribución en la imagen, coméntala explícitamente (qué te parece bien, qué cambiarías y por qué) en vez de proponer una desde cero sin mencionarla.
 
 Argumentos de venta, materiales y comparar productos:
 - No eres solo una calculadora de presupuestos — también ayudas al comercial a saber QUÉ recomendar y POR QUÉ. Cuando te pidan argumentos de venta, comparar dos productos, o "cuál es mejor para X caso", usa lo que ya tienes en buscar_productos (medidas_cm, color, tipo_acolchado, notas) y, si hace falta más detalle sobre materiales o calidad que no esté ahí, usa leer_pagina_producto con el "enlace" del producto para leer su ficha real y sacar argumentos concretos (material del bastidor, acabado, certificaciones, etc.) — nunca te inventes características que no hayas visto en el catálogo o en la página del producto.
@@ -408,6 +414,37 @@ async function generateBudgetNumber() {
   return 'RAN-' + String(data).padStart(3, '0');
 }
 
+const PRODUCT_SELECT = 'id, name, brand, price, category_id, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, purchase_dto, default_margin_pct, pricing_unit, included_accessories, category:catalog_categories!catalog_products_category_id_fkey(type)';
+const STOPWORDS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'con', 'para', 'a', 'en', 'un', 'una']);
+
+// Busca un producto por nombre de forma tolerante — la IA no siempre
+// reproduce el nombre EXACTO tal cual salió de buscar_productos (orden de
+// palabras, mayúsculas, algún espacio de más...). Prueba primero una
+// coincidencia exacta, luego "contiene el texto", y por último "contiene
+// todas las palabras significativas" en cualquier orden, antes de rendirse.
+// Normaliza caracteres "parecidos" que la IA a veces usa en vez del que
+// tiene realmente el catálogo (ej. el símbolo de multiplicación × en vez
+// de una "x" normal en medidas tipo "100x100").
+function normalizarNombre(texto) {
+  return texto.replace(/[×✕✖]/g, 'x').replace(/[–—]/g, '-');
+}
+
+async function buscarProductoPorNombre(nombreBuscadoRaw) {
+  const nombreBuscado = normalizarNombre(nombreBuscadoRaw);
+  const exacto = await supabase.from('catalog_products').select(PRODUCT_SELECT).ilike('name', nombreBuscado).limit(1).maybeSingle();
+  if (exacto.data) return exacto.data;
+
+  const contiene = await supabase.from('catalog_products').select(PRODUCT_SELECT).ilike('name', `%${nombreBuscado}%`).limit(1).maybeSingle();
+  if (contiene.data) return contiene.data;
+
+  const palabras = nombreBuscado.split(/\s+/).map(w => w.trim()).filter(w => w.length > 1 && !STOPWORDS.has(w.toLowerCase()));
+  if (!palabras.length) return null;
+  let query = supabase.from('catalog_products').select(PRODUCT_SELECT);
+  for (const palabra of palabras) query = query.ilike('name', `%${palabra}%`);
+  const { data: candidatos } = await query.limit(1);
+  return candidatos?.[0] || null;
+}
+
 async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items, descuento_global_pct }) {
   if (!proyecto_id && !nombre_presupuesto?.trim()) {
     return { creado: false, mensaje: 'Sin proyecto hace falta al menos un nombre para el presupuesto (ej. el nombre del cliente), para poder identificarlo luego en Presupuestos.' };
@@ -450,12 +487,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items, descue
   for (const it of items) {
     const nombreBuscado = (it.nombre || '').trim();
     if (!nombreBuscado) continue;
-    const { data: producto } = await supabase
-      .from('catalog_products')
-      .select('id, name, brand, price, category_id, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, purchase_dto, default_margin_pct, pricing_unit, included_accessories, category:catalog_categories!catalog_products_category_id_fkey(type)')
-      .ilike('name', nombreBuscado)
-      .limit(1)
-      .maybeSingle();
+    const producto = await buscarProductoPorNombre(nombreBuscado);
 
     if (!producto) {
       noEncontrados.push(nombreBuscado);
@@ -608,7 +640,7 @@ router.post('/chat', async (req, res) => {
     let lastResponse = null;
     let budgetCreated = null; // último presupuesto creado en esta conversación (si lo hay), con su PDF
     for (let turn = 0; turn < 10; turn++) {
-      lastResponse = await callClaude({ system, messages: conversation, tools: TOOLS });
+      lastResponse = await callClaude({ system, messages: conversation, tools: TOOLS, maxTokens: 6000 });
 
       const toolUses = (lastResponse.content || []).filter(b => b.type === 'tool_use');
       if (toolUses.length === 0) break;
