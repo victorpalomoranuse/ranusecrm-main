@@ -594,14 +594,25 @@ function ProductModal({ categories, allProducts, product, onClose, onSaved }) {
   const [providers,setProviders]=useState([]);
   useEffect(()=>{api.get('/contacts').then(r=>setProviders(r.data.contacts||[])).catch(()=>{});},[]);
   useEffect(()=>{document.body.style.overflow='hidden';return()=>{document.body.style.overflow='';};},[]);
-  const handleFile=(e)=>{const f=e.target.files?.[0];if(!f)return;setFile(f);setPreview(URL.createObjectURL(f));};
+  const setPhotoFile=(f)=>{if(!f)return;setFile(f);setPreview(URL.createObjectURL(f));};
+  const handleFile=(e)=>{setPhotoFile(e.target.files?.[0]);};
+  useEffect(()=>{
+    const onPaste=(e)=>{
+      const item=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));
+      if(!item)return;
+      e.preventDefault();
+      setPhotoFile(item.getAsFile());
+    };
+    window.addEventListener('paste',onPaste);
+    return()=>window.removeEventListener('paste',onPaste);
+  },[]);
   const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim()||!categoryId)return;setSaving(true);setError('');try{const form=new FormData();form.append('category_id',categoryId);form.append('name',name.trim());if(brand)form.append('brand',brand.trim());if(price)form.append('price',price);if(link)form.append('link',link.trim());if(notes)form.append('notes',notes.trim());if(file)form.append('file',file);if(longitud)form.append('longitud',longitud);if(ancho)form.append('ancho',ancho);if(altura)form.append('altura',altura);if(colorBastidor)form.append('color_bastidor',colorBastidor.trim());if(colorAcolchado)form.append('color_acolchado',colorAcolchado.trim());if(tipoAcolchado)form.append('tipo_acolchado',tipoAcolchado.trim());if(lumens)form.append('lumens',lumens);if(watts)form.append('watts',watts);if(colorTemperature)form.append('color_temperature',colorTemperature.trim());if(color)form.append('color',color.trim());if(purchaseDto)form.append('purchase_dto',purchaseDto);if(defaultMarginPct)form.append('default_margin_pct',defaultMarginPct);form.append('pricing_unit',pricingUnit);if(includedAccessories)form.append('included_accessories',includedAccessories.trim());const primaryType=categories.find(c=>c.id===categoryId)?.type;const validExtraIds=extraCategoryIds.filter(id=>id!==categoryId&&categories.find(c=>c.id===id)?.type===primaryType);form.append('extra_category_ids',JSON.stringify(validExtraIds));form.append('complement_ids',JSON.stringify(complementIds.filter(id=>id!==product?.id)));let data;if(isEdit){({data}=await api.put(`/catalog/products/${product.id}`,form));}else{({data}=await api.post('/catalog/products',form));}onSaved(data.product);onClose();}catch{setError('Error al guardar producto');}finally{setSaving(false);}};
   return (
     <div className="ap-confirm-overlay" onClick={onClose}>
       <div className="ap-modal-inner" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
         <div className="ap-modal-header"><h3>{isEdit?'Editar producto':'Nuevo producto'}</h3><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div>
         <form onSubmit={handleSubmit} className="ap-modal-body">
-          <div className="ap-field"><label htmlFor={inputId}>Foto</label><label htmlFor={inputId} className="ap-photo-drop">{preview?<img src={preview} alt="preview" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:8}}/>:<span style={{color:'rgba(255,255,255,0.3)',fontSize:'0.82rem'}}>Haz clic para subir imagen</span>}</label><input id={inputId} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/></div>
+          <div className="ap-field"><label htmlFor={inputId}>Foto</label><label htmlFor={inputId} className="ap-photo-drop">{preview?<img src={preview} alt="preview" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:8}}/>:<span style={{color:'rgba(255,255,255,0.3)',fontSize:'0.82rem',textAlign:'center'}}>Haz clic para subir imagen<br/>o pega con Ctrl+V</span>}</label><input id={inputId} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/></div>
           <div className="ap-field"><label>Nombre *</label><input className="ap-field-input" value={name} onChange={e=>setName(e.target.value)} placeholder="ej: Roble natural 20mm" required autoFocus/></div>
           <div className="ap-field"><label>Marca / Proveedor</label><input className="ap-field-input" list="product-providers" value={brand} onChange={e=>setBrand(e.target.value)} placeholder="ej: Tarkett…"/><datalist id="product-providers">{providers.map(p=><option key={p.id} value={p.name}/>)}</datalist></div>
           <div className="ap-field"><label>Categoría *</label><select className="ap-select" value={categoryId} onChange={e=>setCategoryId(e.target.value)} required><option value="">Seleccionar…</option>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
