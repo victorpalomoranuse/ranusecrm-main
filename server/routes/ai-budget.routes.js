@@ -44,6 +44,17 @@ Preguntar antes de recomendar (cuando haga falta):
 - Si ya te han dado bastante contexto en el mensaje (ej. "cinta para correr HIIT, cliente de 90kg, presupuesto medio"), no hace falta preguntar todo otra vez — solo lo que realmente falte.
 - Para pedidos simples y ya bien definidos (ej. "5 mancuernas de goma de 10kg") no hace falta preguntar nada, ve directo al grano.
 
+No olvides equipamiento complementario necesario:
+- Cuando recomiendes o armes un presupuesto con un producto que necesita otro para poder usarse de verdad (ej. un rack o multipower necesita barra y discos para poder entrenar; un banco a veces se usa con mancuernas o barra; una polea necesita agarres), NO lo des por hecho ni lo omitas — dilo explícitamente y pregunta si el cliente ya lo tiene o si hay que incluirlo también en el presupuesto. Es un fallo habitual dejar presupuestos "incompletos" en la práctica aunque el producto pedido esté bien elegido — repasa mentalmente si con lo que llevas el cliente ya podría entrenar de verdad, o le falta algo esencial.
+
+Diseñar un gym completo a partir de las medidas de un espacio:
+- Cuando te den las medidas de un espacio y pidan montar/armar el gimnasio completo (no un producto suelto), trabaja de forma sistemática, no vayas improvisando categoría a categoría sin plan:
+  1. Confirma el espacio real disponible (largo x ancho x alto) y si hay obstáculos fijos (columnas, puertas, ventanas) relevantes.
+  2. Pregunta de golpe lo esencial que te falte para decidir el equipamiento: tipo de entrenamiento, cuántas personas a la vez, presupuesto, y si hace falta cardio o solo fuerza/funcional — para este tipo de petición está justificado preguntar varias cosas a la vez, porque son decisiones conectadas entre sí.
+  3. Piensa en la lista completa de categorías, no solo lo obvio: además del equipamiento principal (rack/máquinas), incluye SUELO TÉCNICO para toda la superficie, ALMACENAMIENTO (soporte de discos, mancuernero — los discos/mancuernas sueltos necesitan dónde guardarse) y los complementos necesarios de cada pieza (ver regla de arriba).
+  4. Busca cada categoría con buscar_productos y ve sumando el espacio real ocupado (footprint + espacio de seguridad/carga) de cada pieza frente al espacio disponible, dejando también pasillo de circulación — no ocupes el 100% del suelo. Si no cabe todo lo que haría falta, dilo claramente y prioriza según lo que te hayan contado, o pregunta qué priorizar.
+  5. Presenta el conjunto como un plan completo y coherente (zona por zona si ayuda a visualizarlo, con cantidades) y el total de presupuesto — no vayas soltando productos sueltos sin conexión entre sí.
+
 Argumentos de venta, materiales y comparar productos:
 - No eres solo una calculadora de presupuestos — también ayudas al comercial a saber QUÉ recomendar y POR QUÉ. Cuando te pidan argumentos de venta, comparar dos productos, o "cuál es mejor para X caso", usa lo que ya tienes en buscar_productos (medidas_cm, color, tipo_acolchado, notas) y, si hace falta más detalle sobre materiales o calidad que no esté ahí, usa leer_pagina_producto con el "enlace" del producto para leer su ficha real y sacar argumentos concretos (material del bastidor, acabado, certificaciones, etc.) — nunca te inventes características que no hayas visto en el catálogo o en la página del producto.
 - Para comparar dos o más productos, lee la página de cada uno con leer_pagina_producto y arma una comparación clara (diferencias de material, acabado, tamaño, lo que aporta cada uno) en vez de limitarte a comparar precios.
@@ -53,7 +64,8 @@ Medidas y espacio disponible:
 - Si el comercial menciona las medidas del espacio del cliente, o si un producto es voluminoso (racks, máquinas grandes, cintas de correr...) y no te han dado las medidas del espacio, PREGÚNTALAS antes de recomendar — es un problema habitual que un producto no quepa. Si las medidas del producto (o el espacio real de uso, según el caso anterior) no encajan claramente en el espacio indicado, avísalo explícitamente y sugiere una alternativa más pequeña si la hay en el catálogo, en vez de recomendarlo sin más.
 
 Conocimiento de entrenamiento deportivo:
-- Además de producto y reformas, entiendes de entrenamiento (fuerza, HIIT, funcional, cardio, rehabilitación/readaptación, etc.). Úsalo para razonar y argumentar de verdad, no solo listar specs: ej. para HIIT interesa un motor de cinta con buena potencia continua aunque las series sean cortas, para fuerza pesada interesa un rack robusto con buena base y J-hooks reforzados, para rehabilitación interesa progresividad y ajuste fino de resistencia, etc. Cuando recomiendes o des argumentos de venta, conecta la característica del producto con el tipo de entrenamiento real del cliente — eso es lo que lo hace un argumento de venta de verdad y no un listado de specs.
+- Además de producto y reformas, entiendes de entrenamiento (fuerza, HIIT, funcional, crossfit, cardio, hipertrofia/culturismo, rehabilitación/readaptación, etc.). Úsalo para razonar y argumentar de verdad, no solo listar specs: ej. para HIIT interesa un motor de cinta con buena potencia continua aunque las series sean cortas, para fuerza pesada interesa un rack robusto con buena base y J-hooks reforzados, para rehabilitación interesa progresividad y ajuste fino de resistencia, etc. Cuando recomiendes o des argumentos de venta, conecta la característica del producto con el tipo de entrenamiento real del cliente — eso es lo que lo hace un argumento de venta de verdad y no un listado de specs.
+- Además, usa ese conocimiento para decidir TÚ MISMO qué categorías/tipo de equipamiento buscar a partir del tipo de entrenamiento que te digan, sin que te tengan que listar las máquinas una a una. Ej.: "crossfit/funcional" → pistas de que puede interesar rig funcional, kettlebells, cuerdas, cajones pliométricos, barras y discos, remo; "hipertrofia/culturismo" → máquinas guiadas, poleas, variedad de mancuernas; "rehabilitación/readaptación" → cargas progresivas ligeras, bandas, bicis o elípticas suaves; "fuerza/powerlifting" → rack, barra, discos, banco. Usa esto como punto de partida razonable y agrupa las categorías a buscar (con listar_categorias/buscar_productos) — pero sigue preguntando cuando de verdad haga falta un dato que cambie la decisión (presupuesto, espacio, personas), no le quites peso a esas preguntas por tener ya este conocimiento.
 
 Dudas de reformas y construcción:
 - Además de presupuestos, el comercial te puede preguntar dudas generales de reformas ("si tiro este tabique, qué pasa con...", "cuánta altura hace falta para suelo radiante", etc.). Respóndelas con tu conocimiento general de construcción y reformas, y ten en cuenta también las reglas propias de Ranuse Design de más abajo si las hay — nunca inventes normativa específica de la que no estés seguro; si depende de un técnico/arquitecto o de normativa local, dilo.
@@ -75,7 +87,11 @@ Cómo guardar un presupuesto de verdad (herramienta crear_presupuesto):
   - Con proyecto: usa buscar_proyecto con el nombre del cliente o del proyecto para encontrar el id exacto. Si hay varias coincidencias, enséñaselas y pregunta cuál es. Un proyecto solo puede tener UN presupuesto — si buscar_proyecto o crear_presupuesto indican que ya tiene uno, no crees otro: avisa con el número existente y sugiere abrirlo desde Presupuestos.
   - Sin proyecto (venta rápida/directa): no hace falta buscar ni crear ningún proyecto — llama a crear_presupuesto sin proyecto_id, pero pídele antes un nombre identificable (ej. el nombre del cliente) para poder encontrarlo luego en la lista de Presupuestos. Queda guardado suelto, sin vincular a ningún proyecto, y se puede vincular más adelante desde Presupuestos si hiciera falta.
 - Solo llama a crear_presupuesto cuando tengas confirmación clara de la persona sobre qué nivel/productos concretos quiere guardar — no lo hagas por iniciativa propia con el primer mensaje. Usa como "nombre" de cada partida el nombre EXACTO tal cual aparece en los resultados de buscar_productos.
-- Tras crear el presupuesto, la herramienta ya genera y guarda el PDF automáticamente (no hace falta que lo pidas aparte). Confirma con el número de presupuesto generado y, si el resultado incluye pdf_url, dilo (el PDF ya está listo y guardado; se puede terminar de revisar o editar a mano desde la sección Presupuestos y volver a exportar si hace falta). Si pdf_url viniera vacío, dilo también y sugiere generarlo a mano desde Presupuestos.`;
+- Tras crear el presupuesto, la herramienta ya genera y guarda el PDF automáticamente (no hace falta que lo pidas aparte). Confirma con el número de presupuesto generado y, si el resultado incluye pdf_url, dilo (el PDF ya está listo y guardado; se puede terminar de revisar o editar a mano desde la sección Presupuestos y volver a exportar si hace falta). Si pdf_url viniera vacío, dilo también y sugiere generarlo a mano desde Presupuestos.
+
+Descuentos sobre el presupuesto:
+- Si te piden aplicar un descuento global (%) al crear el presupuesto, pásalo en descuento_global_pct de crear_presupuesto.
+- Si te piden aplicar o cambiar el descuento de un presupuesto que YA EXISTE (de esta conversación o dándote el número, ej. "aplica un 10% al RAN-050"), usa aplicar_descuento_presupuesto — regenera el PDF solo automáticamente, dilo al confirmar.`;
 
 const TOOLS = [
   {
@@ -154,8 +170,22 @@ const TOOLS = [
             required: ['nombre'],
           },
         },
+        descuento_global_pct: { type: 'number', description: 'Descuento global en % (0-100) a aplicar sobre el total del presupuesto, solo si te lo han pedido explícitamente al crearlo.' },
       },
       required: ['items'],
+    },
+  },
+  {
+    name: 'aplicar_descuento_presupuesto',
+    description: 'Aplica (o cambia) el descuento global en % de un presupuesto YA CREADO, y regenera el PDF automáticamente con el descuento ya reflejado. Úsala cuando te pidan un descuento sobre un presupuesto existente, dando su número (ej. RAN-050) o su id si lo tienes de esta misma conversación.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        presupuesto_id: { type: 'string', description: 'id (uuid) del presupuesto, si lo tienes (ej. del resultado de crear_presupuesto en esta conversación)' },
+        numero_presupuesto: { type: 'string', description: 'Número del presupuesto, ej. "RAN-050" — alternativa a presupuesto_id' },
+        descuento_pct: { type: 'number', description: 'Porcentaje de descuento a aplicar (0-100)' },
+      },
+      required: ['descuento_pct'],
     },
   },
 ];
@@ -342,9 +372,9 @@ async function buscarProyecto(nombreQuery) {
   if (error || !projects?.length) return { encontrado: false, mensaje: `No hay ningún proyecto que coincida con "${nombreQuery}" en el CRM.` };
 
   const ids = projects.map(p => p.id);
-  const { data: budgets } = await supabase.from('budgets').select('project_id, budget_number').in('project_id', ids);
+  const { data: budgets } = await supabase.from('budgets').select('id, project_id, budget_number').in('project_id', ids);
   const budgetByProject = {};
-  (budgets || []).forEach(b => { budgetByProject[b.project_id] = b.budget_number; });
+  (budgets || []).forEach(b => { budgetByProject[b.project_id] = b; });
 
   return {
     encontrado: true,
@@ -353,7 +383,8 @@ async function buscarProyecto(nombreQuery) {
       cliente: p.client_name,
       proyecto: p.project_name,
       ya_tiene_presupuesto: !!budgetByProject[p.id],
-      numero_presupuesto_existente: budgetByProject[p.id] || null,
+      numero_presupuesto_existente: budgetByProject[p.id]?.budget_number || null,
+      presupuesto_id_existente: budgetByProject[p.id]?.id || null,
     })),
   };
 }
@@ -367,7 +398,7 @@ async function generateBudgetNumber() {
   return 'RAN-' + String(data).padStart(3, '0');
 }
 
-async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
+async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items, descuento_global_pct }) {
   if (!proyecto_id && !nombre_presupuesto?.trim()) {
     return { creado: false, mensaje: 'Sin proyecto hace falta al menos un nombre para el presupuesto (ej. el nombre del cliente), para poder identificarlo luego en Presupuestos.' };
   }
@@ -392,6 +423,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items }) {
       project_id: proyecto_id || null,
       install_shipping_note: 'Instalación, montaje y envío: pendientes de valorar (varían según ciudad, acceso y planta).',
       ...(nombre_presupuesto?.trim() ? { budget_name: nombre_presupuesto.trim() } : {}),
+      ...(descuento_global_pct != null && descuento_global_pct !== '' ? { global_discount_pct: Math.max(0, Math.min(100, parseFloat(descuento_global_pct) || 0)) } : {}),
     })
     .select('id, budget_number')
     .single();
@@ -501,11 +533,39 @@ async function exportarPdfPresupuesto(budgetId) {
   }
 }
 
+async function aplicarDescuentoPresupuesto({ presupuesto_id, numero_presupuesto, descuento_pct }) {
+  if (!presupuesto_id && !numero_presupuesto?.trim()) {
+    return { aplicado: false, mensaje: 'Falta el id o el número del presupuesto (ej. RAN-050) — usa buscar_proyecto o el número que se dio al crearlo.' };
+  }
+  if (descuento_pct == null || descuento_pct === '' || isNaN(parseFloat(descuento_pct))) {
+    return { aplicado: false, mensaje: 'Falta el porcentaje de descuento a aplicar.' };
+  }
+  const pct = Math.max(0, Math.min(100, parseFloat(descuento_pct)));
+
+  let query = supabase.from('budgets').select('id, budget_number');
+  query = presupuesto_id ? query.eq('id', presupuesto_id) : query.eq('budget_number', numero_presupuesto.trim());
+  const { data: budget, error: errFind } = await query.maybeSingle();
+  if (errFind || !budget) return { aplicado: false, mensaje: `No se ha encontrado ningún presupuesto con ese ${presupuesto_id ? 'id' : 'número'}.` };
+
+  const { error: errUpdate } = await supabase.from('budgets').update({ global_discount_pct: pct, updated_at: new Date().toISOString() }).eq('id', budget.id);
+  if (errUpdate) return { aplicado: false, mensaje: 'Error al aplicar el descuento: ' + errUpdate.message };
+
+  const pdf_url = await exportarPdfPresupuesto(budget.id);
+  return {
+    aplicado: true,
+    budget_number: budget.budget_number,
+    descuento_pct: pct,
+    pdf_url,
+    mensaje: `Descuento global del ${pct}% aplicado al presupuesto ${budget.budget_number}.${pdf_url ? ' El PDF se ha regenerado con el descuento ya aplicado.' : ' No se ha podido regenerar el PDF automáticamente — se puede volver a exportar desde Presupuestos.'}`,
+  };
+}
+
 async function runTool(name, input) {
   if (name === 'listar_categorias') return { categorias: await listarCategorias() };
   if (name === 'buscar_productos') return buscarProductos(input.categoria, input.marca);
   if (name === 'leer_pagina_producto') return leerPaginaProducto(input.url);
   if (name === 'crear_producto_catalogo') return crearProductoCatalogo(input);
+  if (name === 'aplicar_descuento_presupuesto') return aplicarDescuentoPresupuesto(input);
   if (name === 'buscar_proyecto') return buscarProyecto(input.nombre);
   if (name === 'crear_presupuesto') return crearPresupuesto(input);
   return { error: 'Herramienta desconocida' };
