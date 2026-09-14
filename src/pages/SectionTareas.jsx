@@ -1,8 +1,49 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { Plus, Trash2, CheckCircle, Circle, AlertCircle, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Plus, Trash2, CheckCircle, Circle, AlertCircle, ChevronLeft, ChevronRight, X, Smartphone, Copy, Check } from 'lucide-react';
 import { TaskDetailModal } from '../components/TaskDetailModal';
 import { EventDetailModal } from '../components/EventDetailModal';
+
+function SubscribeCalendarCard() {
+  const [feedUrls, setFeedUrls] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => { api.get('/calendar/feed-url').then(r => setFeedUrls(r.data)).catch(() => {}); }, []);
+
+  const copy = async () => {
+    if (!feedUrls) return;
+    try { await navigator.clipboard.writeText(feedUrls.url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {}
+  };
+
+  if (!feedUrls) return null;
+
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '1rem', marginBottom: '1rem' }}>
+      <button onClick={() => setOpen(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'none', border: 'none', cursor: 'pointer', color: '#beb0a2', fontSize: '0.82rem', fontWeight: 600, width: '100%', textAlign: 'left', padding: 0 }}>
+        <Smartphone size={15} /> Ver este calendario en el móvil
+      </button>
+      {open && (
+        <div style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 }}>
+          <p style={{ margin: '0 0 0.5rem' }}>
+            Añade este enlace UNA VEZ en Google Calendar (o Apple Calendar) y a partir de ahí tus tareas y eventos aparecerán ahí también, actualizándose solos. Es de solo lectura: lo que crees en Google Calendar no vuelve aquí.
+          </p>
+          <p style={{ margin: '0 0 0.5rem' }}>
+            <strong style={{ color: '#fff' }}>Desde el móvil:</strong> toca este enlace y elige "Añadir a Calendario":<br/>
+            <a href={feedUrls.webcal} style={{ color: '#beb0a2', wordBreak: 'break-all' }}>{feedUrls.webcal}</a>
+          </p>
+          <p style={{ margin: '0 0 0.5rem' }}>
+            <strong style={{ color: '#fff' }}>Desde Google Calendar (web):</strong> Configuración → "Agregar calendario" → "Desde URL", y pega:
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <input readOnly value={feedUrls.url} className="ap-field-input" style={{ fontSize: '0.72rem' }} onClick={e => e.target.select()} />
+            <button type="button" className="ap-btn-icon" onClick={copy} title="Copiar enlace">{copied ? <Check size={14} color="#8bae8f" /> : <Copy size={14} />}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const PRIORITIES = [
   { value: 'baja', label: 'Baja', color: '#8bae8f' },
@@ -276,6 +317,7 @@ export function SectionTareas() {
           {/* CALENDARIO */}
           {(view === 'ambos' || view === 'calendario') && (
             <div style={{ flex: '1 1 320px', minWidth: 300 }}>
+              <SubscribeCalendarCard />
               <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '1.25rem' }}>
                 {/* Nav */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>

@@ -30,10 +30,12 @@ import aiBudgetRoutes from './routes/ai-budget.routes.js';
 import aiSetterRoutes from './routes/ai-setter.routes.js';
 import settingRoutes from './routes/setting.routes.js';
 import memoriaRoutes from './routes/memoria.routes.js';
+import calendarFeedRoutes from './routes/calendar-feed.routes.js';
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+app.set('trust proxy', 1);
 
 const allowedOrigins = [
   'http://localhost:5173',
@@ -91,6 +93,7 @@ app.use('/api/ai-budget', aiBudgetRoutes);
 app.use('/api/ai-setter', aiSetterRoutes);
 app.use('/api/setting', settingRoutes);
 app.use('/api/memoria', memoriaRoutes);
+app.use('/api/calendar', calendarFeedRoutes);
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
 });
