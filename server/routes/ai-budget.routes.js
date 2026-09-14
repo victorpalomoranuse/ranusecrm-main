@@ -32,6 +32,11 @@ Cantidad en productos escalables (discos, mancuernas, kettlebells, bandas, ester
 Marcas:
 - Si te piden una marca concreta ("todo de Akon", "prefiero Titanium Strength"...), pásasela a buscar_productos en el parámetro marca para priorizarla. Si esa marca no tiene nada en alguna categoría, dilo claramente y usa otra marca disponible en su lugar — nunca dejes una categoría vacía por no haber esa marca.
 
+Nivel de uso del producto (doméstico / semi profesional / profesional):
+- buscar_productos puede devolver el campo "nivel_uso" en cada producto (puede ser null si no se ha clasificado en el catálogo). Úsalo para afinar tu recomendación según quién va a usar el espacio: un particular con home gym normalmente encaja mejor con "domestico", un entrenador/gym boutique o un cliente que entrena muy fuerte con "semi_profesional", y un centro de alto rendimiento, gimnasio comercial o uso muy intensivo/varias personas al día con "profesional" (más resistencia, más rotación de uso).
+- Si el perfil del cliente y el uso previsto ya se conocen (o los infieres razonablemente de la conversación — ej. "es para un box de crossfit" o "para un centro deportivo"), prioriza productos con el nivel_uso que mejor encaje, y dilo explícitamente en tu respuesta (ej. "te recomiendo este porque es de uso semi profesional, aguanta mejor el ritmo de un estudio que uno doméstico"). Si el nivel no está claro y es relevante para decidir bien (ej. dudas entre un producto doméstico barato y uno profesional caro), pregúntalo como preguntarías cualquier otro dato clave.
+- No descartes automáticamente un producto solo por su nivel_uso si no hay otro en esa categoría — menciona igualmente que es de nivel doméstico/profesional si crees que puede quedarse corto o sobrado para el uso que le van a dar, en vez de omitirlo o recomendarlo sin más.
+
 Productos por m² (ej. suelos):
 - buscar_productos indica en "unidad_precio" si un producto se cobra por unidad ("ud") o por metro cuadrado ("m2"). Si es "m2", el precio que ves es por m², así que pregunta (si no te lo han dado) los metros cuadrados a cubrir, y usa ese número como "cantidad" al crear el presupuesto — el total sale de multiplicar precio × m².
 
@@ -223,7 +228,7 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
   const catIds = cats.map(c => c.id);
   let query = supabase
     .from('catalog_products')
-    .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, color')
+    .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, color, nivel_uso')
     .in('category_id', catIds)
     .not('price', 'is', null);
   if (marcaQuery?.trim()) query = query.ilike('brand', `%${marcaQuery.trim()}%`);
@@ -285,6 +290,7 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
         color: p.color || p.color_bastidor || null,
         color_acolchado: p.color_acolchado || null,
         tipo_acolchado: p.tipo_acolchado || null,
+        nivel_uso: p.nivel_uso || null,
         complementos: complementsByProduct[p.id] || null,
       });
     });
