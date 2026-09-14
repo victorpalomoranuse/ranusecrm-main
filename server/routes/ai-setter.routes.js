@@ -1,9 +1,151 @@
 import express from 'express';
+import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
 
 const router = express.Router();
 router.use(authenticateToken, requirePermission('leads'));
+
+const ESTADOS_VALIDOS = ['ads', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'recolectando_info', 'prioridad', 'venta', 'no_responde'];
+
+const LEAD_SELECT = 'id, nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, created_at, updated_at';
+
+async function buscarLead({ query }) {
+  const q = (query || '').trim();
+  if (!q) return { encontrados: [], mensaje: 'No se ha indicado ningún dato para buscar.' };
+
+  const { data, error } = await supabase
+    .from('setting_leads')
+    .select(LEAD_SELECT)
+    .or(`instagram.ilike.%${q}%,nombre.ilike.%${q}%`)
+    .order('updated_at', { ascending: false })
+    .limit(5);
+  if (error) throw error;
+
+  if (!data || data.length === 0) return { encontrados: [], mensaje: `No hay ningún lead existente que coincida con "${q}".` };
+  return { encontrados: data };
+}
+
+async function crearLead(input, userId) {
+  const nombre = input.nombre?.trim();
+  if (!nombre) return { creado: false, error: 'Falta el nombre del lead' };
+
+  const estado = ESTADOS_VALIDOS.includes(input.estado) ? input.estado : 'contacto_nuevo';
+
+  const { data, error } = await supabase
+    .from('setting_leads')
+    .insert({
+      nombre,
+      telefono: input.telefono?.trim() || null,
+      instagram: input.instagram?.trim() || null,
+      email: input.email?.trim() || null,
+      canal: input.canal?.trim() || 'Instagram',
+      estado,
+      objetivo: input.objetivo?.trim() || null,
+      medidas: input.medidas?.trim() || null,
+      maquinarias: input.maquinarias?.trim() || null,
+      notas: input.notas?.trim() || null,
+      created_by: userId,
+    })
+    .select(LEAD_SELECT)
+    .single();
+  if (error) throw error;
+
+  return { creado: true, lead: data };
+}
+
+async function actualizarLead(input) {
+  const leadId = input.lead_id;
+  if (!leadId) return { actualizado: false, error: 'Falta lead_id' };
+
+  const { data: existente, error: errBusqueda } = await supabase.from('setting_leads').select('notas').eq('id', leadId).maybeSingle();
+  if (errBusqueda) throw errBusqueda;
+  if (!existente) return { actualizado: false, error: `No existe ningún lead con id ${leadId}` };
+
+  const updates = {};
+  if (input.estado !== undefined && ESTADOS_VALIDOS.includes(input.estado)) updates.estado = input.estado;
+  if (input.objetivo !== undefined) updates.objetivo = input.objetivo?.trim() || null;
+  if (input.medidas !== undefined) updates.medidas = input.medidas?.trim() || null;
+  if (input.maquinarias !== undefined) updates.maquinarias = input.maquinarias?.trim() || null;
+  if (input.telefono !== undefined) updates.telefono = input.telefono?.trim() || null;
+  if (input.email !== undefined) updates.email = input.email?.trim() || null;
+  if (input.instagram !== undefined) updates.instagram = input.instagram?.trim() || null;
+  if (input.canal !== undefined) updates.canal = input.canal?.trim() || null;
+
+  if (input.nota_nueva?.trim()) {
+    const fecha = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const linea = `[${fecha}] ${input.nota_nueva.trim()}`;
+    updates.notas = existente.notas ? `${existente.notas}\n${linea}` : linea;
+  }
+
+  if (Object.keys(updates).length === 0) return { actualizado: false, error: 'No se ha indicado ningún cambio' };
+
+  const { data, error } = await supabase.from('setting_leads').update(updates).eq('id', leadId).select(LEAD_SELECT).single();
+  if (error) throw error;
+
+  return { actualizado: true, lead: data };
+}
+
+async function runTool(name, input, ctx) {
+  if (name === 'buscar_lead') return buscarLead(input);
+  if (name === 'crear_lead') return crearLead(input, ctx.userId);
+  if (name === 'actualizar_lead') return actualizarLead(input);
+  return { error: 'Herramienta desconocida' };
+}
+
+const TOOLS = [
+  {
+    name: 'buscar_lead',
+    description: 'Busca en Setting (el tablero de leads de Instagram) un lead ya existente por su @usuario de Instagram o por su nombre. Úsala SIEMPRE que analices una captura o conversación, antes de responder, para saber si ese prospecto ya tiene historial.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'El @usuario de Instagram (con o sin @) o el nombre del prospecto a buscar.' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'crear_lead',
+    description: 'Crea un nuevo lead en Setting cuando buscar_lead no ha encontrado nada y hay datos suficientes para identificar al prospecto (al menos nombre o @usuario de Instagram).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre: { type: 'string', description: 'Nombre del prospecto, o su @usuario de Instagram si no se sabe el nombre real.' },
+        instagram: { type: 'string', description: '@usuario de Instagram, si se conoce.' },
+        telefono: { type: 'string' },
+        email: { type: 'string' },
+        canal: { type: 'string', description: 'Canal de contacto, por defecto "Instagram".' },
+        estado: { type: 'string', enum: ESTADOS_VALIDOS, description: 'Etapa inicial más adecuada según lo detectado en la conversación.' },
+        objetivo: { type: 'string', description: 'Qué busca/objetivo del espacio, si ya se sabe.' },
+        medidas: { type: 'string', description: 'Medidas o m² del espacio, si ya se sabe.' },
+        maquinarias: { type: 'string', description: 'Equipamiento actual o deseado, si ya se sabe.' },
+        notas: { type: 'string', description: 'Resumen breve de lo hablado hasta ahora.' },
+      },
+      required: ['nombre'],
+    },
+  },
+  {
+    name: 'actualizar_lead',
+    description: 'Actualiza un lead existente en Setting: cambia su etapa si ha avanzado, rellena datos nuevos que se hayan descubierto, y/o añade una nota resumiendo la interacción actual (para mantener memoria de lo hablado). Usa nota_nueva para añadir, no para borrar el historial.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        lead_id: { type: 'string', description: 'id del lead a actualizar (obtenido de buscar_lead o crear_lead).' },
+        estado: { type: 'string', enum: ESTADOS_VALIDOS },
+        objetivo: { type: 'string' },
+        medidas: { type: 'string' },
+        maquinarias: { type: 'string' },
+        telefono: { type: 'string' },
+        email: { type: 'string' },
+        instagram: { type: 'string' },
+        canal: { type: 'string' },
+        nota_nueva: { type: 'string', description: 'Resumen breve de esta interacción, se añade al final del historial de notas con la fecha de hoy.' },
+      },
+      required: ['lead_id'],
+    },
+  },
+];
 
 const SYSTEM_PROMPT = `Eres la IA de apoyo para el segundo setter de Víctor El Diseñador / Ranuse Design (estudio de diseño integral de espacios de entrenamiento). Tu misión es ayudar a convertir conversaciones de Instagram en oportunidades calificadas y llamadas con Víctor/closer. NO debes intentar cerrar toda la venta por DM — tu función es detectar oportunidad, conversar, descubrir necesidad, calificar, y conseguir que la conversación avance hacia una llamada cuando corresponda.
 
@@ -80,15 +222,27 @@ Acepta la llamada → cierra día/hora concretos.
 SISTEMA DE APRENDIZAJE (playbook vivo):
 Este es un sistema vivo, no un guion rígido. Si detectas algo que parece funcionar o no funcionar en la conversación que te pasen, puedes señalarlo como aprendizaje, clasificándolo como HIPÓTESIS (creemos que puede funcionar, sin evidencia suficiente), EN PRUEBA (se está testeando intencionalmente), VALIDADO (evidencia suficiente para incorporarlo) o DESCARTADO (los datos indican que no merece seguir usándose). No declares algo VALIDADO ni DESCARTADO por 2-3 conversaciones sueltas — solo con volumen suficiente.
 
+MEMORIA DE LEADS (usa las herramientas buscar_lead / crear_lead / actualizar_lead):
+Setting es el tablero donde Víctor lleva el registro de todos los leads de Instagram. Tu trabajo incluye mantenerlo actualizado, para que nunca se pierda el hilo de una conversación:
+- Cuando analices una captura o mensaje, intenta identificar el @usuario de Instagram del prospecto (normalmente visible en la cabecera de la conversación de la captura) o su nombre si se menciona en el texto.
+- Si consigues identificarlo, llama SIEMPRE primero a buscar_lead con ese dato, ANTES de dar tu respuesta — así sabes si ya existe, y si existe, ten en cuenta su historial de notas y su etapa actual: no repitas preguntas que ya te consta que se respondieron, y no lo trates como si fuera la primera conversación si no lo es.
+- Si buscar_lead no encuentra nada y tienes datos suficientes para identificarlo (al menos nombre o @usuario), créalo con crear_lead, con el estado inicial que mejor encaje según la etapa que acabas de detectar en la conversación.
+- Después de dar tu respuesta, si el lead ya existía o lo acabas de crear, llama a actualizar_lead para: ajustar el estado si ha avanzado de etapa, rellenar campos nuevos que hayas descubierto (objetivo/medidas/maquinarias/teléfono/email), y añadir con nota_nueva un resumen breve (1-2 líneas) de esta interacción, para dejar memoria de lo hablado.
+- Si no hay ningún dato (ni nombre ni @usuario visibles) que permita identificar quién es, no crees un lead a ciegas — simplemente responde con normalidad, no lo menciones como un problema.
+- Nunca inventes un @usuario o nombre que no aparezca realmente en la captura o en el mensaje del setter.
+- Al final de tu respuesta, añade siempre una línea breve indicando qué has hecho en Setting, por ejemplo: "(Lead de @usuario: creado, etapa apertura)" o "(Lead de @usuario actualizado: etapa calificación)" o, si no había datos suficientes, no añadas esa línea.
+
 CUANDO TE PASEN UNA CAPTURA O CONVERSACIÓN, RESPONDE SIEMPRE EN ESTE ORDEN:
 1. Analiza el contexto completo (no solo el último mensaje).
-2. Infiere qué parece estar pensando/buscando el prospecto, sin inventar datos que no estén ahí.
-3. Identifica la etapa actual de la conversación (de la lista de arriba).
-4. Separa qué información ya se sabe de la que todavía falta (piensa en la lista de "información ideal antes de transferir").
-5. Define el próximo objetivo concreto de la conversación.
-6. Da el MENSAJE EXACTO listo para enviar (esto es lo más importante — el setter necesita saber qué escribir YA, no una clase teórica).
-7. Indica brevemente qué NO conviene hacer todavía.
-8. Si detectas algún aprendizaje útil para el playbook, señálalo con su clasificación (hipótesis/en prueba/validado/descartado).
+2. Identifica si es posible el @usuario/nombre del prospecto y consulta su memoria con buscar_lead antes de razonar la respuesta.
+3. Infiere qué parece estar pensando/buscando el prospecto, sin inventar datos que no estén ahí.
+4. Identifica la etapa actual de la conversación (de la lista de arriba).
+5. Separa qué información ya se sabe (incluyendo lo que ya conste en Setting) de la que todavía falta (piensa en la lista de "información ideal antes de transferir").
+6. Define el próximo objetivo concreto de la conversación.
+7. Da el MENSAJE EXACTO listo para enviar (esto es lo más importante — el setter necesita saber qué escribir YA, no una clase teórica).
+8. Indica brevemente qué NO conviene hacer todavía.
+9. Si detectas algún aprendizaje útil para el playbook, señálalo con su clasificación (hipótesis/en prueba/validado/descartado).
+10. Crea o actualiza el lead en Setting (crear_lead/actualizar_lead) y añade la línea de confirmación al final.
 
 Sé directo y práctico — el setter tiene prisa por responder, prioriza siempre darle el mensaje concreto a enviar antes que explicaciones largas.
 
@@ -99,9 +253,9 @@ OBJETIVO FINAL: no optimizar solo por respuestas — optimizar por conversacione
 /**
  * POST /api/ai-setter/chat
  * Body: { messages: [{ role: 'user'|'assistant', content: string | array }] }
- * Chat simple sin herramientas — analiza capturas/conversaciones de
- * Instagram y devuelve el mensaje a enviar siguiendo el playbook del
- * segundo setter.
+ * Analiza capturas/conversaciones de Instagram, devuelve el mensaje a enviar
+ * siguiendo el playbook del segundo setter, y mantiene actualizado el
+ * historial del lead en Setting (búsqueda/creación/actualización vía tools).
  */
 router.post('/chat', async (req, res) => {
   try {
@@ -109,10 +263,41 @@ router.post('/chat', async (req, res) => {
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'messages es requerido' });
     }
-    const conversation = messages.map(m => ({ role: m.role, content: m.content }));
-    const response = await callClaude({ system: SYSTEM_PROMPT, messages: conversation, maxTokens: 2000 });
-    const textBlock = (response.content || []).find(b => b.type === 'text');
-    res.json({ reply: textBlock?.text || 'No he podido generar una respuesta.' });
+
+    let conversation = messages.map(m => ({ role: m.role, content: m.content }));
+    const ctx = { userId: req.user.id };
+
+    let lastResponse = null;
+    let leadTocado = null;
+    let bestText = '';
+    for (let turn = 0; turn < 6; turn++) {
+      lastResponse = await callClaude({ system: SYSTEM_PROMPT, messages: conversation, tools: TOOLS, maxTokens: 3000 });
+
+      // El texto con el análisis y el mensaje a enviar puede llegar en el mismo
+      // turno en el que el modelo también llama a una tool (p.ej. lo escribe y
+      // luego llama a actualizar_lead) — un turno posterior de solo confirmación
+      // no debe pisarlo, así que nos quedamos con el bloque de texto más largo.
+      const turnText = (lastResponse.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n');
+      if (turnText.length > bestText.length) bestText = turnText;
+
+      const toolUses = (lastResponse.content || []).filter(b => b.type === 'tool_use');
+      if (toolUses.length === 0) break;
+
+      conversation.push({ role: 'assistant', content: lastResponse.content });
+      const toolResults = await Promise.all(toolUses.map(async tu => {
+        const result = await runTool(tu.name, tu.input, ctx);
+        if ((tu.name === 'crear_lead' && result?.creado) || (tu.name === 'actualizar_lead' && result?.actualizado)) {
+          leadTocado = result.lead;
+        }
+        return { type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) };
+      }));
+      conversation.push({ role: 'user', content: toolResults });
+    }
+
+    res.json({
+      reply: bestText || 'No he podido generar una respuesta.',
+      lead: leadTocado,
+    });
   } catch (error) {
     console.error('Error en asistente de setter:', error);
     res.status(500).json({ error: error.message || 'Error al consultar al asistente' });
