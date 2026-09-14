@@ -5,6 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   PieChart as RechartsPie, Pie, Cell, Sector,
 } from 'recharts';
+import { TaskDetailModal } from '../components/TaskDetailModal';
 import './SectionDashboard.css';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -61,7 +62,7 @@ function DonutTooltip({ active, payload }) {
 }
 
 // ── Tasks widget ───────────────────────────────────────────────────────────
-function TasksWidget({ tasks }) {
+function TasksWidget({ tasks, onTaskClick }) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const pending = tasks
     .filter(t => !t.done)
@@ -87,7 +88,7 @@ function TasksWidget({ tasks }) {
           {pending.map(t => {
             const overdue = t.due_date && t.due_date < todayStr;
             return (
-              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.8rem', padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <div key={t.id} onClick={() => onTaskClick?.(t)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.8rem', padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: onTaskClick ? 'pointer' : 'default' }}>
                 <span style={{ flex: 1, color: '#fff' }}>{t.title}</span>
                 {t.project && <span style={{ fontSize: '0.68rem', color: '#beb0a2', flexShrink: 0 }}>{t.project.client_name}</span>}
                 {t.employee && <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>{t.employee.name}</span>}
@@ -112,6 +113,7 @@ export function SectionDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeDonut, setActiveDonut] = useState(null);
   const [revealed, setRevealed] = useState(false);
+  const [detailTask, setDetailTask] = useState(null);
 
   useEffect(() => {
     Promise.all([api.get('/budgets/dashboard'), api.get('/tasks')])
@@ -351,9 +353,18 @@ export function SectionDashboard() {
       </div>
 
       <div style={{ marginTop: '1rem' }}>
-        <TasksWidget tasks={tasks} />
+        <TasksWidget tasks={tasks} onTaskClick={setDetailTask} />
       </div>
       </div>
+
+      {detailTask && (
+        <TaskDetailModal
+          task={detailTask}
+          onClose={() => setDetailTask(null)}
+          onUpdated={updated => { setTasks(prev => prev.map(t => t.id === updated.id ? updated : t)); setDetailTask(updated); }}
+          onDeleted={id => { setTasks(prev => prev.filter(t => t.id !== id)); setDetailTask(null); }}
+        />
+      )}
     </div>
   );
 }

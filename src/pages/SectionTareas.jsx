@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { Plus, Trash2, CheckCircle, Circle, AlertCircle, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { TaskDetailModal } from '../components/TaskDetailModal';
+import { EventDetailModal } from '../components/EventDetailModal';
 
 const PRIORITIES = [
   { value: 'baja', label: 'Baja', color: '#8bae8f' },
@@ -54,6 +56,9 @@ export function SectionTareas() {
   const [calYear, setCalYear] = useState(today.getFullYear());
   const [calMonth, setCalMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState(null);
+  const [obraFiltro, setObraFiltro] = useState('');
+  const [detailTask, setDetailTask] = useState(null);
+  const [detailEvent, setDetailEvent] = useState(null);
 
   useEffect(() => {
     Promise.all([api.get('/tasks'), api.get('/events'), api.get('/client-projects'), api.get('/employees')])
@@ -128,10 +133,12 @@ export function SectionTareas() {
   const firstDay = getFirstDayOfMonth(calYear, calMonth);
   const monthName = new Date(calYear, calMonth, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
+  const tasksFiltradas = obraFiltro ? tasks.filter(t => t.project?.id === obraFiltro) : tasks;
+
   const getItemsForDay = (day) => {
     const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const dayEvents = events.filter(e => e.date === dateStr);
-    const dayTasks = tasks.filter(t => t.due_date && t.due_date.slice(0, 10) === dateStr);
+    const dayTasks = tasksFiltradas.filter(t => t.due_date && t.due_date.slice(0, 10) === dateStr);
     return { events: dayEvents, tasks: dayTasks };
   };
 
@@ -141,8 +148,13 @@ export function SectionTareas() {
 
   const selectedItems = selectedDay ? getItemsForDay(selectedDay) : null;
 
-  const pending = tasks.filter(t => !t.done);
-  const done = tasks.filter(t => t.done);
+  const pending = tasksFiltradas.filter(t => !t.done);
+  const done = tasksFiltradas.filter(t => t.done);
+
+  // Obras con al menos una tarea, para el filtro
+  const obrasConTareas = Array.from(
+    new Map(tasks.filter(t => t.project).map(t => [t.project.id, t.project])).values()
+  );
 
   const WEEK_DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -158,6 +170,12 @@ export function SectionTareas() {
               </button>
             ))}
           </div>
+          {obrasConTareas.length > 0 && (
+            <select className="ap-select ap-select-sm" style={{ maxWidth: 200 }} value={obraFiltro} onChange={e => setObraFiltro(e.target.value)}>
+              <option value="">Todas las obras</option>
+              {obrasConTareas.map(p => <option key={p.id} value={p.id}>{p.client_name} — {p.project_name}</option>)}
+            </select>
+          )}
           <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setShowEventForm(v => !v); setShowTaskForm(false); }}>+ Evento</button>
           <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => { setShowTaskForm(v => !v); setShowEventForm(false); }}>+ Tarea</button>
         </div>
@@ -305,22 +323,33 @@ export function SectionTareas() {
                       <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.25)' }}>Sin eventos ni tareas</p>
                     )}
                     {selectedItems.events.map(e => (
-                      <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div key={e.id} onClick={() => setDetailEvent(e)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', background: e.color, flexShrink: 0 }} />
                         <div style={{ flex: 1 }}>
                           <p style={{ margin: 0, fontSize: '0.82rem', color: '#fff' }}>{e.title}</p>
-                          {e.time && <p style={{ margin: 0, fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>{e.time}</p>}
+                          {(e.time || e.description) && (
+                            <p style={{ margin: 0, fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
+                              {e.time}{e.time && e.description && ' · '}{e.description ? e.description.slice(0, 60) + (e.description.length > 60 ? '…' : '') : ''}
+                            </p>
+                          )}
                         </div>
-                        <button onClick={() => deleteEvent(e.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)' }}><X size={12}/></button>
+                        <button onClick={ev => { ev.stopPropagation(); deleteEvent(e.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)' }}><X size={12}/></button>
                       </div>
                     ))}
                     {selectedItems.tasks.map(t => (
-                      <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <button onClick={() => toggleDone(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.done ? '#8bae8f' : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
+                      <div key={t.id} onClick={() => setDetailTask(t)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+                        <button onClick={ev => { ev.stopPropagation(); toggleDone(t); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.done ? '#8bae8f' : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
                           {t.done ? <CheckCircle size={14}/> : <Circle size={14}/>}
                         </button>
-                        <p style={{ margin: 0, fontSize: '0.82rem', color: t.done ? 'rgba(255,255,255,0.4)' : '#fff', textDecoration: t.done ? 'line-through' : 'none', flex: 1 }}>{t.title}</p>
-                        <button onClick={() => deleteTask(t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)' }}><X size={12}/></button>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: 0, fontSize: '0.82rem', color: t.done ? 'rgba(255,255,255,0.4)' : '#fff', textDecoration: t.done ? 'line-through' : 'none' }}>{t.title}</p>
+                          {(t.project || t.description) && (
+                            <p style={{ margin: 0, fontSize: '0.7rem', color: '#beb0a2' }}>
+                              {t.project ? `${t.project.client_name}${t.category?.name ? ' · ' + t.category.name : ''}` : t.description.slice(0, 50)}
+                            </p>
+                          )}
+                        </div>
+                        <button onClick={ev => { ev.stopPropagation(); deleteTask(t.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)' }}><X size={12}/></button>
                       </div>
                     ))}
                     <button className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop: '0.5rem', width: '100%', fontSize: '0.72rem' }}
@@ -337,7 +366,7 @@ export function SectionTareas() {
                 {events.filter(e => e.date >= new Date().toISOString().slice(0, 10)).slice(0, 5).length === 0
                   ? <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.25)' }}>Sin eventos próximos</p>
                   : events.filter(e => e.date >= new Date().toISOString().slice(0, 10)).slice(0, 5).map(e => (
-                    <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div key={e.id} onClick={() => setDetailEvent(e)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
                       <div style={{ width: 8, height: 8, borderRadius: '50%', background: e.color, flexShrink: 0 }} />
                       <div style={{ flex: 1 }}>
                         <p style={{ margin: 0, fontSize: '0.82rem', color: '#fff' }}>{e.title}</p>
@@ -346,7 +375,7 @@ export function SectionTareas() {
                           {e.time && ` · ${e.time}`}
                         </p>
                       </div>
-                      <button onClick={() => deleteEvent(e.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)' }}><X size={12}/></button>
+                      <button onClick={ev => { ev.stopPropagation(); deleteEvent(e.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)' }}><X size={12}/></button>
                     </div>
                   ))
                 }
@@ -369,8 +398,8 @@ export function SectionTareas() {
                           const pri = getPriority(task.priority);
                           const overdue = isOverdue(task);
                           return (
-                            <div key={task.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '0.75rem 1rem' }}>
-                              <button onClick={() => toggleDone(task)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', flexShrink: 0, paddingTop: 2 }}><Circle size={18}/></button>
+                            <div key={task.id} onClick={() => setDetailTask(task)} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '0.75rem 1rem', cursor: 'pointer' }}>
+                              <button onClick={ev => { ev.stopPropagation(); toggleDone(task); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', flexShrink: 0, paddingTop: 2 }}><Circle size={18}/></button>
                               <div style={{ flex: 1 }}>
                                 <p style={{ margin: 0, fontSize: '0.9rem', color: '#fff', fontWeight: 500 }}>{task.title}</p>
                                 {task.description && <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'rgba(255,255,255,0.45)' }}>{task.description}</p>}
@@ -387,13 +416,13 @@ export function SectionTareas() {
                                       {task.project.client_name}{task.category?.name && ` · ${task.category.name}`}
                                     </span>
                                   )}
-                                  <select className="ap-select ap-select-sm" style={{ maxWidth: 150 }} value={task.assigned_to || ''} onChange={e => reassignTask(task, e.target.value)}>
+                                  <select className="ap-select ap-select-sm" style={{ maxWidth: 150 }} value={task.assigned_to || ''} onClick={ev => ev.stopPropagation()} onChange={e => reassignTask(task, e.target.value)}>
                                     <option value="">Sin asignar</option>
                                     {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
                                   </select>
                                 </div>
                               </div>
-                              <button onClick={() => deleteTask(task.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}><Trash2 size={14}/></button>
+                              <button onClick={ev => { ev.stopPropagation(); deleteTask(task.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}><Trash2 size={14}/></button>
                             </div>
                           );
                         })}
@@ -405,10 +434,10 @@ export function SectionTareas() {
                       <p style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.2)', marginBottom: '0.75rem' }}>Completadas ({done.length})</p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         {done.map(task => (
-                          <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(255,255,255,0.015)', borderRadius: 10, padding: '0.6rem 1rem', opacity: 0.5 }}>
-                            <button onClick={() => toggleDone(task)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8bae8f', flexShrink: 0 }}><CheckCircle size={18}/></button>
+                          <div key={task.id} onClick={() => setDetailTask(task)} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(255,255,255,0.015)', borderRadius: 10, padding: '0.6rem 1rem', opacity: 0.5, cursor: 'pointer' }}>
+                            <button onClick={ev => { ev.stopPropagation(); toggleDone(task); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8bae8f', flexShrink: 0 }}><CheckCircle size={18}/></button>
                             <p style={{ margin: 0, fontSize: '0.88rem', color: 'rgba(255,255,255,0.5)', textDecoration: 'line-through', flex: 1 }}>{task.title}</p>
-                            <button onClick={() => deleteTask(task.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}><Trash2 size={14}/></button>
+                            <button onClick={ev => { ev.stopPropagation(); deleteTask(task.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}><Trash2 size={14}/></button>
                           </div>
                         ))}
                       </div>
@@ -419,6 +448,22 @@ export function SectionTareas() {
             </div>
           )}
         </div>
+      )}
+
+      {detailTask && (
+        <TaskDetailModal
+          task={detailTask}
+          onClose={() => setDetailTask(null)}
+          onUpdated={updated => { setTasks(prev => prev.map(t => t.id === updated.id ? updated : t)); setDetailTask(updated); }}
+          onDeleted={id => { setTasks(prev => prev.filter(t => t.id !== id)); setDetailTask(null); }}
+        />
+      )}
+      {detailEvent && (
+        <EventDetailModal
+          event={detailEvent}
+          onClose={() => setDetailEvent(null)}
+          onDeleted={id => { setEvents(prev => prev.filter(e => e.id !== id)); setDetailEvent(null); }}
+        />
       )}
     </div>
   );
