@@ -48,13 +48,27 @@ export function SectionAsistenteSetter() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
 
-  const handlePickImage = async (e) => {
-    const file = e.target.files?.[0];
+  const setImageFile = async (file) => {
     if (!file) return;
     const base64 = await fileToBase64(file);
     setPendingImage({ previewUrl: URL.createObjectURL(file), base64, mediaType: file.type });
+  };
+
+  const handlePickImage = async (e) => {
+    await setImageFile(e.target.files?.[0]);
     e.target.value = '';
   };
+
+  useEffect(() => {
+    const onPaste = (e) => {
+      const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+      if (!item) return;
+      e.preventDefault();
+      setImageFile(item.getAsFile());
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
 
   const send = async (text) => {
     const textContent = (text ?? input).trim();
@@ -136,14 +150,14 @@ export function SectionAsistenteSetter() {
 
         <form onSubmit={handleSubmit} className="ai-chat-input-row">
           <input ref={fileRef} type="file" accept="image/*" onChange={handlePickImage} style={{ display: 'none' }} />
-          <button type="button" className="ap-btn-icon" onClick={() => fileRef.current.click()} disabled={loading} title="Adjuntar captura de la conversación">
+          <button type="button" className="ap-btn-icon" onClick={() => fileRef.current.click()} disabled={loading} title="Adjuntar captura de la conversación (o pega con Ctrl+V)">
             <Paperclip size={15} />
           </button>
           <input
             className="ap-field-input"
             value={input}
             onChange={e => setInput(e.target.value)}
-            placeholder={pendingImage ? 'Añade contexto (opcional)…' : 'Ej. me escribió preguntando el precio, ¿qué le digo?'}
+            placeholder={pendingImage ? 'Añade contexto (opcional)…' : 'Ej. me escribió preguntando el precio, ¿qué le digo? (o pega una captura con Ctrl+V)'}
             disabled={loading}
           />
           <button type="submit" className="ap-btn ap-btn-primary ap-btn-sm" disabled={loading || (!input.trim() && !pendingImage)}>
