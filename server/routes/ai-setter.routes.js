@@ -14,10 +14,16 @@ async function buscarLead({ query }) {
   const q = (query || '').trim();
   if (!q) return { encontrados: [], mensaje: 'No se ha indicado ningún dato para buscar.' };
 
+  // Búsqueda por @ de Instagram, nombre, o teléfono (p.ej. si la conversación
+  // ya pasó a WhatsApp y el setter tiene el número en vez del @).
+  const soloDigitos = q.replace(/\D/g, '');
+  const filtros = [`instagram.ilike.%${q}%`, `nombre.ilike.%${q}%`, `telefono.ilike.%${q}%`];
+  if (soloDigitos.length >= 6) filtros.push(`telefono.ilike.%${soloDigitos}%`);
+
   const { data, error } = await supabase
     .from('setting_leads')
     .select(LEAD_SELECT)
-    .or(`instagram.ilike.%${q}%,nombre.ilike.%${q}%`)
+    .or(filtros.join(','))
     .order('updated_at', { ascending: false })
     .limit(5);
   if (error) throw error;
@@ -96,11 +102,11 @@ async function runTool(name, input, ctx) {
 const TOOLS = [
   {
     name: 'buscar_lead',
-    description: 'Busca en Setting (el tablero de leads de Instagram) un lead ya existente por su @usuario de Instagram o por su nombre. Úsala SIEMPRE que analices una captura o conversación, antes de responder, para saber si ese prospecto ya tiene historial.',
+    description: 'Busca en Setting (el tablero de leads) un lead ya existente por su @usuario de Instagram, su nombre, o su número de teléfono. Úsala SIEMPRE que analices una captura o conversación, antes de responder, para saber si ese prospecto ya tiene historial — incluso si la conversación ya pasó a WhatsApp y solo tienes el teléfono, no el @.',
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'El @usuario de Instagram (con o sin @) o el nombre del prospecto a buscar.' },
+        query: { type: 'string', description: 'El @usuario de Instagram (con o sin @), el nombre, o el número de teléfono del prospecto a buscar.' },
       },
       required: ['query'],
     },
@@ -224,13 +230,13 @@ Este es un sistema vivo, no un guion rígido. Si detectas algo que parece funcio
 
 MEMORIA DE LEADS (usa las herramientas buscar_lead / crear_lead / actualizar_lead):
 Setting es el tablero donde Víctor lleva el registro de todos los leads de Instagram. Tu trabajo incluye mantenerlo actualizado, para que nunca se pierda el hilo de una conversación:
-- Cuando analices una captura o mensaje, intenta identificar el @usuario de Instagram del prospecto (normalmente visible en la cabecera de la conversación de la captura) o su nombre si se menciona en el texto.
-- Si consigues identificarlo, llama SIEMPRE primero a buscar_lead con ese dato, ANTES de dar tu respuesta — así sabes si ya existe, y si existe, ten en cuenta su historial de notas y su etapa actual: no repitas preguntas que ya te consta que se respondieron, y no lo trates como si fuera la primera conversación si no lo es.
-- Si buscar_lead no encuentra nada y tienes datos suficientes para identificarlo (al menos nombre o @usuario), créalo con crear_lead, con el estado inicial que mejor encaje según la etapa que acabas de detectar en la conversación.
-- Después de dar tu respuesta, si el lead ya existía o lo acabas de crear, llama a actualizar_lead para: ajustar el estado si ha avanzado de etapa, rellenar campos nuevos que hayas descubierto (objetivo/medidas/maquinarias/teléfono/email), y añadir con nota_nueva un resumen breve (1-2 líneas) de esta interacción, para dejar memoria de lo hablado.
-- Si no hay ningún dato (ni nombre ni @usuario visibles) que permita identificar quién es, no crees un lead a ciegas — simplemente responde con normalidad, no lo menciones como un problema.
-- Nunca inventes un @usuario o nombre que no aparezca realmente en la captura o en el mensaje del setter.
-- Al final de tu respuesta, añade siempre una línea breve indicando qué has hecho en Setting, por ejemplo: "(Lead de @usuario: creado, etapa apertura)" o "(Lead de @usuario actualizado: etapa calificación)" o, si no había datos suficientes, no añadas esa línea.
+- Cuando analices una captura o mensaje, intenta identificar el @usuario de Instagram del prospecto (normalmente visible en la cabecera de la conversación de la captura), su nombre si se menciona en el texto, o su número de teléfono si la conversación ya pasó a WhatsApp y el setter te pasa esa captura en su lugar — cualquiera de los tres sirve para identificarlo, no hace falta el @ siempre.
+- Si consigues identificarlo por cualquiera de esos tres datos, llama SIEMPRE primero a buscar_lead con ese dato, ANTES de dar tu respuesta — así sabes si ya existe, y si existe, ten en cuenta su historial de notas y su etapa actual: no repitas preguntas que ya te consta que se respondieron, y no lo trates como si fuera la primera conversación si no lo es. Es habitual que un lead que ya existe por su @ de Instagram vuelva a aparecer más adelante solo con su teléfono (cuando pasa a WhatsApp) — en ese caso sigue siendo el mismo lead, no crees uno nuevo.
+- Si buscar_lead no encuentra nada y tienes datos suficientes para identificarlo (al menos nombre, @usuario, o teléfono), créalo con crear_lead, con el estado inicial que mejor encaje según la etapa que acabas de detectar en la conversación.
+- Después de dar tu respuesta, si el lead ya existía o lo acabas de crear, llama a actualizar_lead para: ajustar el estado si ha avanzado de etapa, rellenar campos nuevos que hayas descubierto (objetivo/medidas/maquinarias/teléfono/email/instagram — por ejemplo si ahora conoces el teléfono de un lead que antes solo tenía @, añádelo), y añadir con nota_nueva un resumen breve (1-2 líneas) de esta interacción, para dejar memoria de lo hablado.
+- Si no hay ningún dato (ni nombre, ni @usuario, ni teléfono visibles) que permita identificar quién es, no crees un lead a ciegas — simplemente responde con normalidad, no lo menciones como un problema.
+- Nunca inventes un @usuario, nombre o teléfono que no aparezca realmente en la captura o en el mensaje del setter.
+- Al final de tu respuesta, añade siempre una línea breve indicando qué has hecho en Setting, por ejemplo: "(Lead de @usuario: creado, etapa apertura)" o "(Lead actualizado: etapa calificación)" o, si no había datos suficientes, no añadas esa línea.
 
 CUANDO TE PASEN UNA CAPTURA O CONVERSACIÓN, RESPONDE SIEMPRE EN ESTE ORDEN:
 1. Analiza el contexto completo (no solo el último mensaje).
