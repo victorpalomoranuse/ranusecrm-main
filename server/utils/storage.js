@@ -212,6 +212,25 @@ export async function deleteProjectDocument(url) {
   } catch { return false; }
 }
 
+// ── Project invoices (interno, nunca visible para el cliente) ──────────
+export async function uploadProjectInvoice(fileBuffer, fileName, mimeType, projectId) {
+  const timestamp = Date.now();
+  const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const filePath = `${projectId}/${timestamp}_${sanitized}`;
+  const { error } = await supabase.storage.from('project-invoices').upload(filePath, fileBuffer, { contentType: mimeType });
+  if (error) throw new Error('Error al subir factura: ' + error.message);
+  const { data: { publicUrl } } = supabase.storage.from('project-invoices').getPublicUrl(filePath);
+  return publicUrl;
+}
+export async function deleteProjectInvoice(url) {
+  try {
+    const parts = url.split('/project-invoices/');
+    if (parts.length < 2) return false;
+    const { error } = await supabase.storage.from('project-invoices').remove([parts[1]]);
+    return !error;
+  } catch { return false; }
+}
+
 // ── Catalog product photos ────────────────────────────────────────────
 export async function uploadCatalogPhoto(fileBuffer, fileName, mimeType) {
   const ext = fileName.split('.').pop();

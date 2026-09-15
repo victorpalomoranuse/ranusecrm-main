@@ -276,7 +276,7 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Resultado'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Listados'},{id:'trabajos',label:'Trabajos web'}];
+const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Resultado'},{id:'documentos',label:'Documentos'},{id:'facturas',label:'Facturas'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Listados'},{id:'trabajos',label:'Trabajos web'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
@@ -526,6 +526,92 @@ function TabDocumentos({ projectId }) {
       {error&&<p className="ap-error">{error}</p>}
       {loading?<div className="ap-loading">Cargando…</div>:documents.length===0?<div className="ap-empty"><p>No hay documentos todavía.</p></div>:(
         <div className="ap-doc-list">{documents.map(d=>(<div key={d.id} className="ap-doc-row"><span className={`ap-doc-type ap-doc-type--${d.doc_type}`}>{d.doc_type}</span><a href={d.url} target="_blank" rel="noopener noreferrer" className="ap-doc-name">{d.name}</a><button className="ap-btn-icon" onClick={()=>handleDelete(d.id)}><Trash2 size={13}/></button></div>))}</div>
+      )}
+    </div>
+  );
+}
+
+function TabFacturas({ projectId }) {
+  const [invoices, setInvoices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [tipo, setTipo] = useState('compra');
+  const [numeroFactura, setNumeroFactura] = useState('');
+  const [fecha, setFecha] = useState('');
+  const [importe, setImporte] = useState('');
+  const [contraparte, setContraparte] = useState('');
+  const [notas, setNotas] = useState('');
+  const [error, setError] = useState('');
+  const fileRef = useRef();
+
+  useEffect(()=>{api.get(`/client-projects/${projectId}/invoices`).then(r=>setInvoices(r.data.invoices||[])).catch(()=>{}).finally(()=>setLoading(false));},[projectId]);
+
+  const handleUpload = async (e) => {
+    const file=e.target.files?.[0]; if(!file) return; setUploading(true); setError('');
+    try{
+      const form=new FormData();
+      form.append('file',file);
+      form.append('tipo',tipo);
+      if(numeroFactura)form.append('numero_factura',numeroFactura.trim());
+      if(fecha)form.append('fecha',fecha);
+      if(importe)form.append('importe',importe);
+      if(contraparte)form.append('contraparte',contraparte.trim());
+      if(notas)form.append('notas',notas.trim());
+      const{data}=await api.post(`/client-projects/${projectId}/invoices`,form);
+      setInvoices(prev=>[data.invoice,...prev]);
+      setNumeroFactura('');setFecha('');setImporte('');setContraparte('');setNotas('');
+      fileRef.current.value='';
+    }catch(err){setError(err.response?.data?.error||'Error al subir factura');}finally{setUploading(false);}
+  };
+  const handleDelete = async (id)=>{try{await api.delete(`/client-projects/${projectId}/invoices/${id}`);setInvoices(prev=>prev.filter(i=>i.id!==id));}catch{setError('Error al eliminar factura');}};
+
+  const compras = invoices.filter(i=>i.tipo==='compra');
+  const ventas = invoices.filter(i=>i.tipo==='venta');
+
+  return (
+    <div className="ap-tab-content">
+      <p style={{fontSize:'0.75rem',color:'rgba(255,255,255,0.35)',marginBottom:'0.75rem'}}>Solo visible internamente — el cliente nunca ve esta pestaña ni estos archivos.</p>
+      <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:10,padding:'0.9rem',marginBottom:'1rem'}}>
+        <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.5rem'}}>
+          {['compra','venta'].map(t=>(
+            <button key={t} type="button" onClick={()=>setTipo(t)} className={`ap-catalog-pill${tipo===t?' active':''}`} style={{fontSize:'0.75rem'}}>
+              {t==='compra'?'Factura de compra (a proveedor)':'Factura de venta (al cliente)'}
+            </button>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
+          <input className="ap-field-input" style={{flex:'1 1 160px'}} value={contraparte} onChange={e=>setContraparte(e.target.value)} placeholder={tipo==='compra'?'Proveedor':'Cliente / entidad'}/>
+          <input className="ap-field-input" style={{flex:'1 1 120px'}} value={numeroFactura} onChange={e=>setNumeroFactura(e.target.value)} placeholder="Nº factura"/>
+          <input className="ap-field-input" type="date" style={{flex:'1 1 140px'}} value={fecha} onChange={e=>setFecha(e.target.value)}/>
+          <input className="ap-field-input" type="number" step="0.01" style={{flex:'1 1 100px'}} value={importe} onChange={e=>setImporte(e.target.value)} placeholder="Importe €"/>
+        </div>
+        <input className="ap-field-input" style={{marginBottom:'0.5rem'}} value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Notas (opcional)"/>
+        <label className="ap-btn ap-btn-primary ap-btn-sm ap-upload-label">{uploading?'Subiendo…':<><Plus size={13}/> Subir factura (PDF o foto)</>}<input ref={fileRef} type="file" accept="image/*,application/pdf" onChange={handleUpload} disabled={uploading} style={{display:'none'}}/></label>
+      </div>
+      {error&&<p className="ap-error">{error}</p>}
+      {loading?<div className="ap-loading">Cargando…</div>:invoices.length===0?<div className="ap-empty"><p>No hay facturas todavía.</p></div>:(
+        <>
+          {compras.length>0 && <>
+            <p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'rgba(255,255,255,0.3)',margin:'0.5rem 0'}}>Compras a proveedor ({compras.length})</p>
+            <div className="ap-doc-list">{compras.map(i=>(
+              <div key={i.id} className="ap-doc-row">
+                <span className="ap-doc-type ap-doc-type--otro">{i.numero_factura||'s/n'}</span>
+                <a href={i.url} target="_blank" rel="noopener noreferrer" className="ap-doc-name">{i.contraparte||i.file_name}{i.fecha&&` · ${new Date(i.fecha+'T00:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})}`}{i.importe!=null&&` · ${Number(i.importe).toLocaleString('es-ES',{style:'currency',currency:'EUR'})}`}</a>
+                <button className="ap-btn-icon" onClick={()=>handleDelete(i.id)}><Trash2 size={13}/></button>
+              </div>
+            ))}</div>
+          </>}
+          {ventas.length>0 && <>
+            <p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'rgba(255,255,255,0.3)',margin:'0.5rem 0'}}>Ventas al cliente ({ventas.length})</p>
+            <div className="ap-doc-list">{ventas.map(i=>(
+              <div key={i.id} className="ap-doc-row">
+                <span className="ap-doc-type ap-doc-type--otro">{i.numero_factura||'s/n'}</span>
+                <a href={i.url} target="_blank" rel="noopener noreferrer" className="ap-doc-name">{i.contraparte||i.file_name}{i.fecha&&` · ${new Date(i.fecha+'T00:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})}`}{i.importe!=null&&` · ${Number(i.importe).toLocaleString('es-ES',{style:'currency',currency:'EUR'})}`}</a>
+                <button className="ap-btn-icon" onClick={()=>handleDelete(i.id)}><Trash2 size={13}/></button>
+              </div>
+            ))}</div>
+          </>}
+        </>
       )}
     </div>
   );
@@ -1986,6 +2072,7 @@ function ProjectManagerModal({ project, onClose }) {
           {tab==='moodboard'&&<TabMoodboard projectId={project.id}/>}
           {tab==='renders'&&<TabRenders projectId={project.id}/>}
           {tab==='documentos'&&<TabDocumentos projectId={project.id}/>}
+          {tab==='facturas'&&<TabFacturas projectId={project.id}/>}
           {tab==='tours'&&<TabTour projectId={project.id}/>}
           {tab==='notas'&&<TabNotas projectId={project.id}/>}
           {tab==='catalogo'&&<TabAsignaciones projectId={project.id} listadosIntro={project.listados_intro_text} listadosTitle={project.listados_title} onIntroUpdated={(v,t)=>{project.listados_intro_text=v;project.listados_title=t;}}/>}

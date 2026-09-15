@@ -4,7 +4,7 @@ import { authenticateToken, requirePermission, requireAdminSuperior } from '../m
 
 const requireProyectos = requirePermission('proyectos');
 const requireTrabajos = requirePermission('trabajos');
-import { uploadProjectRender, deleteProjectRender, uploadProjectDocument, deleteProjectDocument, uploadDiagnosisImage, deleteDiagnosisImage, uploadMoodboardImage, deleteMoodboardImage } from '../utils/storage.js';
+import { uploadProjectRender, deleteProjectRender, uploadProjectDocument, deleteProjectDocument, uploadProjectInvoice, deleteProjectInvoice, uploadDiagnosisImage, deleteDiagnosisImage, uploadMoodboardImage, deleteMoodboardImage } from '../utils/storage.js';
 import { uploadRenderFile, uploadDocumentFile, uploadDiagnosisImageFile, uploadMoodboardImages, handleMulterError } from '../middleware/upload.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
 
@@ -1033,6 +1033,98 @@ router.delete('/:id/documents/:docId', authenticateToken, requireProyectos, asyn
   } catch (error) {
     console.error('Error al eliminar documento:', error);
     res.status(500).json({ error: 'Error al eliminar documento' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INVOICES (facturas de compra/venta — SOLO INTERNO, el cliente nunca las ve)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/client-projects/:id/invoices
+ */
+router.get('/:id/invoices', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('project_invoices')
+      .select('*')
+      .eq('project_id', req.params.id)
+      .order('fecha', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json({ invoices: data });
+  } catch (error) {
+    console.error('Error al obtener facturas:', error);
+    res.status(500).json({ error: 'Error al obtener facturas' });
+  }
+});
+
+/**
+ * POST /api/client-projects/:id/invoices
+ */
+router.post('/:id/invoices', authenticateToken, requireProyectos, uploadDocumentFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se recibió ningún archivo' });
+    }
+    const { tipo, numero_factura, fecha, importe, contraparte, notas } = req.body;
+    if (!['compra', 'venta'].includes(tipo)) {
+      return res.status(400).json({ error: 'tipo debe ser "compra" o "venta"' });
+    }
+    const projectId = req.params.id;
+
+    const url = await uploadProjectInvoice(req.file.buffer, req.file.originalname, req.file.mimetype, projectId);
+
+    const { data, error } = await supabase
+      .from('project_invoices')
+      .insert({
+        project_id: projectId,
+        tipo,
+        numero_factura: numero_factura?.trim() || null,
+        fecha: fecha || null,
+        importe: importe ? parseFloat(importe) : null,
+        contraparte: contraparte?.trim() || null,
+        notas: notas?.trim() || null,
+        url,
+        file_name: req.file.originalname,
+        uploaded_by: req.user.id,
+      })
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    res.status(201).json({ invoice: data });
+  } catch (error) {
+    console.error('Error al subir factura:', error);
+    res.status(500).json({ error: 'Error al subir factura' });
+  }
+});
+
+/**
+ * DELETE /api/client-projects/:id/invoices/:invoiceId
+ */
+router.delete('/:id/invoices/:invoiceId', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { data: inv, error: fetchError } = await supabase
+      .from('project_invoices')
+      .select('url')
+      .eq('id', req.params.invoiceId)
+      .eq('project_id', req.params.id)
+      .single();
+
+    if (fetchError || !inv) {
+      return res.status(404).json({ error: 'Factura no encontrada' });
+    }
+
+    await deleteProjectInvoice(inv.url);
+
+    const { error } = await supabase.from('project_invoices').delete().eq('id', req.params.invoiceId);
+    if (error) throw error;
+    res.json({ message: 'Factura eliminada' });
+  } catch (error) {
+    console.error('Error al eliminar factura:', error);
+    res.status(500).json({ error: 'Error al eliminar factura' });
   }
 });
 
