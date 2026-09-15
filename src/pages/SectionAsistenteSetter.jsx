@@ -24,14 +24,18 @@ function MessageContent({ content }) {
   const text = isArray ? (content.find(b => b.type === 'text')?.text || '') : content;
   return (
     <>
-      {images.map((img, i) => (
-        <img
-          key={i}
-          src={`data:${img.source.media_type};base64,${img.source.data}`}
-          alt="Captura adjunta"
-          style={{ maxWidth: '100%', borderRadius: 8, marginBottom: text ? '0.5rem' : 0, display: 'block' }}
-        />
-      ))}
+      {images.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: text ? '0.5rem' : 0 }}>
+          {images.map((img, i) => (
+            <img
+              key={i}
+              src={`data:${img.source.media_type};base64,${img.source.data}`}
+              alt="Captura adjunta"
+              style={{ maxWidth: images.length > 1 ? 140 : '100%', borderRadius: 8, display: 'block' }}
+            />
+          ))}
+        </div>
+      )}
       {text && <span>{text}</span>}
     </>
   );
@@ -42,29 +46,32 @@ export function SectionAsistenteSetter() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [pendingImage, setPendingImage] = useState(null);
+  const [pendingImages, setPendingImages] = useState([]);
   const bottomRef = useRef(null);
   const fileRef = useRef();
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
 
-  const setImageFile = async (file) => {
+  const addImageFile = async (file) => {
     if (!file) return;
     const base64 = await fileToBase64(file);
-    setPendingImage({ previewUrl: URL.createObjectURL(file), base64, mediaType: file.type });
+    setPendingImages(prev => [...prev, { previewUrl: URL.createObjectURL(file), base64, mediaType: file.type }]);
   };
 
-  const handlePickImage = async (e) => {
-    await setImageFile(e.target.files?.[0]);
+  const handlePickImages = async (e) => {
+    const files = [...(e.target.files || [])];
+    for (const file of files) await addImageFile(file);
     e.target.value = '';
   };
 
+  const removeImage = (idx) => setPendingImages(prev => prev.filter((_, i) => i !== idx));
+
   useEffect(() => {
     const onPaste = (e) => {
-      const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
-      if (!item) return;
+      const items = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith('image/'));
+      if (items.length === 0) return;
       e.preventDefault();
-      setImageFile(item.getAsFile());
+      items.forEach(item => addImageFile(item.getAsFile()));
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
@@ -72,14 +79,14 @@ export function SectionAsistenteSetter() {
 
   const send = async (text) => {
     const textContent = (text ?? input).trim();
-    if ((!textContent && !pendingImage) || loading) return;
+    if ((!textContent && pendingImages.length === 0) || loading) return;
     setError('');
 
     let content;
-    if (pendingImage) {
+    if (pendingImages.length > 0) {
       content = [
-        { type: 'image', source: { type: 'base64', media_type: pendingImage.mediaType, data: pendingImage.base64 } },
-        { type: 'text', text: textContent || 'Aquí tienes la captura de la conversación — dime qué le respondo.' },
+        ...pendingImages.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } })),
+        { type: 'text', text: textContent || (pendingImages.length > 1 ? 'Aquí tienes varias capturas de la misma conversación — dime qué le respondo.' : 'Aquí tienes la captura de la conversación — dime qué le respondo.') },
       ];
     } else {
       content = textContent;
@@ -88,7 +95,7 @@ export function SectionAsistenteSetter() {
     const nextMessages = [...messages, { role: 'user', content }];
     setMessages(nextMessages);
     setInput('');
-    setPendingImage(null);
+    setPendingImages([]);
     setLoading(true);
     try {
       const { data } = await api.post('/ai-setter/chat', { messages: nextMessages });
@@ -107,7 +114,7 @@ export function SectionAsistenteSetter() {
       <div className="ap-section-head">
         <div>
           <h1><MessageCircle size={20} style={{ verticalAlign: -3, marginRight: 6 }} />Asistente Setter</h1>
-          <p>Pégale la captura de una conversación de Instagram (o cuéntale el contexto) y te dice en qué etapa está, qué falta por descubrir, y el mensaje exacto para responder — siguiendo el playbook de calificación de Ranuse Design.</p>
+          <p>Pégale la captura de una conversación de Instagram (o cuéntale el contexto) y te dice en qué etapa está, qué falta por descubrir, y el mensaje exacto para responder — siguiendo el playbook de calificación de Ranuse Design. Puedes adjuntar varias capturas a la vez si la conversación no cabe en una sola.</p>
         </div>
       </div>
 
@@ -141,26 +148,30 @@ export function SectionAsistenteSetter() {
 
         {error && <p className="ap-error" style={{ margin: '0 1rem' }}>{error}</p>}
 
-        {pendingImage && (
-          <div className="ai-chat-pending-image">
-            <img src={pendingImage.previewUrl} alt="Captura" />
-            <button type="button" onClick={() => setPendingImage(null)} className="ai-chat-pending-image-remove"><X size={12} /></button>
+        {pendingImages.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 1rem 0.5rem' }}>
+            {pendingImages.map((img, i) => (
+              <div key={i} className="ai-chat-pending-image">
+                <img src={img.previewUrl} alt="Captura" />
+                <button type="button" onClick={() => removeImage(i)} className="ai-chat-pending-image-remove"><X size={12} /></button>
+              </div>
+            ))}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="ai-chat-input-row">
-          <input ref={fileRef} type="file" accept="image/*" onChange={handlePickImage} style={{ display: 'none' }} />
-          <button type="button" className="ap-btn-icon" onClick={() => fileRef.current.click()} disabled={loading} title="Adjuntar captura de la conversación (o pega con Ctrl+V)">
+          <input ref={fileRef} type="file" accept="image/*" multiple onChange={handlePickImages} style={{ display: 'none' }} />
+          <button type="button" className="ap-btn-icon" onClick={() => fileRef.current.click()} disabled={loading} title="Adjuntar una o varias capturas de la conversación (o pega con Ctrl+V)">
             <Paperclip size={15} />
           </button>
           <input
             className="ap-field-input"
             value={input}
             onChange={e => setInput(e.target.value)}
-            placeholder={pendingImage ? 'Añade contexto (opcional)…' : 'Ej. me escribió preguntando el precio, ¿qué le digo? (o pega una captura con Ctrl+V)'}
+            placeholder={pendingImages.length > 0 ? 'Añade contexto (opcional)…' : 'Ej. me escribió preguntando el precio, ¿qué le digo? (o pega una o varias capturas con Ctrl+V)'}
             disabled={loading}
           />
-          <button type="submit" className="ap-btn ap-btn-primary ap-btn-sm" disabled={loading || (!input.trim() && !pendingImage)}>
+          <button type="submit" className="ap-btn ap-btn-primary ap-btn-sm" disabled={loading || (!input.trim() && pendingImages.length === 0)}>
             <SendIcon size={13} />
           </button>
         </form>
