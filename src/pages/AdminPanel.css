@@ -1505,6 +1505,27 @@
 .ap-catalog-card:hover .ap-catalog-card-edit { opacity: 1; }
 .ap-catalog-card-edit:hover { color: #beb0a2; }
 
+/* Botón duplicar en tarjeta catálogo */
+.ap-catalog-card-duplicate {
+  position: absolute;
+  top: 0.5rem;
+  left: 2.5rem;
+  background: rgba(0,0,0,0.6);
+  border: none;
+  color: rgba(255,255,255,0.6);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.ap-catalog-card:hover .ap-catalog-card-duplicate { opacity: 1; }
+.ap-catalog-card-duplicate:hover { color: #beb0a2; }
+
 /* Drag handle en tarjeta catálogo */
 .ap-catalog-drag-handle {
   position: absolute;

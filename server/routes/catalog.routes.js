@@ -2,7 +2,7 @@ import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { uploadCatalogPhotoFile, handleMulterError } from '../middleware/upload.middleware.js';
-import { uploadCatalogPhoto, deleteCatalogPhoto } from '../utils/storage.js';
+import { uploadCatalogPhoto, deleteCatalogPhoto, copyCatalogPhoto } from '../utils/storage.js';
 
 const router = express.Router();
 
@@ -343,6 +343,51 @@ router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (re
   } catch (err) {
     console.error('Error al actualizar producto:', err);
     res.status(500).json({ error: 'Error al actualizar producto' });
+  }
+});
+
+router.post('/products/:id/duplicate', async (req, res) => {
+  try {
+    const { data: original, error: fetchError } = await supabase
+      .from('catalog_products')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (fetchError || !original) return res.status(404).json({ error: 'Producto no encontrado' });
+
+    const { data: maxRow } = await supabase
+      .from('catalog_products')
+      .select('display_order')
+      .order('display_order', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    const nextOrder = (maxRow?.display_order ?? -1) + 1;
+
+    const { id, created_at, updated_at, display_order, name, photo_url, ...rest } = original;
+    // La foto se copia a un archivo propio en Storage — nunca comparte el
+    // mismo archivo que el original, para que borrar una copia no borre
+    // también la foto del producto del que se duplicó.
+    const copiedPhotoUrl = photo_url ? await copyCatalogPhoto(photo_url) : null;
+    const { data: copy, error } = await supabase
+      .from('catalog_products')
+      .insert({ ...rest, name: `${name} (copia)`, display_order: nextOrder, photo_url: copiedPhotoUrl })
+      .select('*, category:catalog_categories!catalog_products_category_id_fkey(id, name, type)')
+      .single();
+    if (error) throw error;
+
+    const [{ data: extraRows }, { data: complementRows }] = await Promise.all([
+      supabase.from('catalog_product_categories').select('category_id').eq('product_id', id),
+      supabase.from('catalog_product_complements').select('complement_id').eq('product_id', id),
+    ]);
+    if (extraRows?.length) await supabase.from('catalog_product_categories').insert(extraRows.map(r => ({ product_id: copy.id, category_id: r.category_id })));
+    if (complementRows?.length) await supabase.from('catalog_product_complements').insert(complementRows.map(r => ({ product_id: copy.id, complement_id: r.complement_id })));
+
+    const { data: extraCats } = await supabase.from('catalog_product_categories').select('category:catalog_categories(id, name, type)').eq('product_id', copy.id);
+    const { data: complements } = await supabase.from('catalog_product_complements').select('complement:catalog_products!catalog_product_complements_complement_id_fkey(id, name, price, photo_url)').eq('product_id', copy.id);
+    res.status(201).json({ product: { ...copy, extra_categories: (extraCats || []).map(r => r.category).filter(Boolean), complements: (complements || []).map(r => r.complement).filter(Boolean) } });
+  } catch (err) {
+    console.error('Error al duplicar producto:', err);
+    res.status(500).json({ error: 'Error al duplicar producto' });
   }
 });
 

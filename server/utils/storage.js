@@ -240,6 +240,18 @@ export async function uploadCatalogPhoto(fileBuffer, fileName, mimeType) {
   const { data: { publicUrl } } = supabase.storage.from('catalog-products').getPublicUrl(filePath);
   return publicUrl;
 }
+export async function copyCatalogPhoto(url) {
+  if (!url) return null;
+  const parts = url.split('/catalog-products/');
+  if (parts.length < 2) return null;
+  const srcPath = parts[1];
+  const ext = srcPath.split('.').pop();
+  const destPath = `products/${randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from('catalog-products').copy(srcPath, destPath);
+  if (error) return null; // si falla la copia, mejor dejar sin foto que arriesgar el original
+  const { data: { publicUrl } } = supabase.storage.from('catalog-products').getPublicUrl(destPath);
+  return publicUrl;
+}
 export async function deleteCatalogPhoto(url) {
   try {
     const parts = url.split('/catalog-products/');

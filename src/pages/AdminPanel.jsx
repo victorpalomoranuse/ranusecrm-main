@@ -863,6 +863,7 @@ function CatalogoLibrary() {
   const handleRenameCategory=async(cat)=>{const name=window.prompt(`Nuevo nombre para "${cat.name}"`,cat.name);if(!name||!name.trim()||name.trim()===cat.name)return;try{const{data}=await api.put(`/catalog/categories/${cat.id}`,{name:name.trim()});setCategories(prev=>prev.map(c=>c.id===cat.id?data.category:c));toast.success('Categoría renombrada');}catch{toast.error('Error al renombrar categoría');}};
   const handleCategoryDragEnd=async(event)=>{const{active,over}=event;if(!active||!over||active.id===over.id)return;const oldIndex=filteredCats.findIndex(c=>c.id===active.id);const newIndex=filteredCats.findIndex(c=>c.id===over.id);const newFiltered=arrayMove(filteredCats,oldIndex,newIndex);setCategories(prev=>{const others=prev.filter(c=>c.type!==tab);return[...others,...newFiltered];});try{await api.put('/catalog/categories/reorder',{ids:newFiltered.map(c=>c.id)});}catch{toast.error('Error al guardar el orden de categorías');}};
   const handleDeleteProduct=(id)=>{setConfirm({message:'¿Eliminar este producto del catálogo?',onConfirm:async()=>{try{await api.delete(`/catalog/products/${id}`);setProducts(prev=>prev.filter(p=>p.id!==id));toast.success('Producto eliminado');}catch{toast.error('Error al eliminar producto');}setConfirm(null);},onCancel:()=>setConfirm(null)});};
+  const handleDuplicateProduct=async(id)=>{try{const{data}=await api.post(`/catalog/products/${id}/duplicate`);setProducts(prev=>[data.product,...prev]);toast.success('Producto duplicado');}catch{toast.error('Error al duplicar producto');}};
   const handleProductSaved=(product)=>{setProducts(prev=>{const idx=prev.findIndex(p=>p.id===product.id);if(idx>=0){const updated=[...prev];updated[idx]=product;return updated;}return[...prev,product];});setActiveCat(product.category_id);};
   const handleCatalogDragEnd=async(event)=>{const{active,over}=event;if(!active||!over||active.id===over.id||activeCat==='all')return;const oldIndex=visibleProducts.findIndex(p=>p.id===active.id);const newIndex=visibleProducts.findIndex(p=>p.id===over.id);const newVisible=arrayMove(visibleProducts,oldIndex,newIndex);setProducts(prev=>prev.map(p=>{const idx=newVisible.findIndex(v=>v.id===p.id);if(idx>=0)return{...p,display_order:idx};return p;}));try{await api.put('/catalog/products/reorder',{ids:newVisible.map(p=>p.id)});}catch{toast.error('Error al guardar el orden');const{data}=await api.get('/catalog/products');setProducts(data.products||[]);}};
   if(loading) return <div className="ap-loading">Cargando catálogo…</div>;
@@ -906,7 +907,7 @@ function CatalogoLibrary() {
       {tab!=='renders'&&(visibleProducts.length===0?(<p className="ap-empty-sm" style={{textAlign:'center',paddingTop:'2rem'}}>{filteredCats.length===0?'Crea una categoría primero.':'No hay productos. Añade el primero.'}</p>):(
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCatalogDragEnd}>
           <SortableContext items={visibleProducts.map(p=>p.id)} strategy={rectSortingStrategy}>
-            <div className="ap-catalog-grid">{visibleProducts.map(p=>(<SortableCatalogCard key={p.id} p={p} inCart={cart.some(c=>c.id===p.id)} onEdit={setEditProduct} onDelete={handleDeleteProduct} onCart={addToCart} onRemoveCart={removeFromCart} showHandle={activeCat!=='all'}/>))}</div>
+            <div className="ap-catalog-grid">{visibleProducts.map(p=>(<SortableCatalogCard key={p.id} p={p} inCart={cart.some(c=>c.id===p.id)} onEdit={setEditProduct} onDelete={handleDeleteProduct} onDuplicate={handleDuplicateProduct} onCart={addToCart} onRemoveCart={removeFromCart} showHandle={activeCat!=='all'}/>))}</div>
           </SortableContext>
         </DndContext>
       ))}
@@ -915,7 +916,7 @@ function CatalogoLibrary() {
   );
 }
 
-function SortableCatalogCard({ p, inCart, onEdit, onDelete, onCart, onRemoveCart, showHandle }) {
+function SortableCatalogCard({ p, inCart, onEdit, onDelete, onDuplicate, onCart, onRemoveCart, showHandle }) {
   const {attributes,listeners,setNodeRef,transform,transition,isDragging}=useSortable({id:p.id});
   const style={transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.4:1,zIndex:isDragging?10:undefined};
   return (
@@ -925,6 +926,7 @@ function SortableCatalogCard({ p, inCart, onEdit, onDelete, onCart, onRemoveCart
         {p.photo_url?<img src={p.photo_url} alt={p.name}/>:<div className="ap-catalog-card-no-img"><Plus size={20} style={{opacity:0.2}}/></div>}
         <button className="ap-catalog-card-del" onClick={()=>onDelete(p.id)}><Trash2 size={12}/></button>
         <button className="ap-catalog-card-edit" onClick={()=>onEdit(p)}><Pencil size={12}/></button>
+        <button className="ap-catalog-card-duplicate" title="Duplicar producto" onClick={()=>onDuplicate(p.id)}><Copy size={12}/></button>
         <button className={`ap-catalog-card-cart-btn${inCart?' added':''}`} onClick={()=>inCart?onRemoveCart(p.id):onCart(p)}>{inCart?<X size={12}/>:<Plus size={12}/>}</button>
         {p.category&&<span className="ap-catalog-card-cat">{p.category.name}{p.extra_categories?.length>0&&` +${p.extra_categories.length}`}</span>}
       </div>
