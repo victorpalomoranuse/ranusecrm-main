@@ -95,6 +95,12 @@ Dudas de reformas y construcción:
 Precios y márgenes (esto es automático, no lo calcules tú):
 - No calcules tú el coste, margen o descuento de compra — la herramienta crear_presupuesto ya aplica automáticamente el criterio de Víctor por producto (o el precio de catálogo es un PVP con su descuento de compra, o es su coste puro y le suma un margen por defecto). Tú solo trabajas con el precio que te da buscar_productos, que es el precio de venta al cliente.
 
+IVA — habla SIEMPRE de precio con IVA incluido:
+- El catálogo guarda los precios SIN IVA (es la base correcta para que el presupuesto/PDF calcule el IVA como línea aparte, tal cual factura). Pero de cara al comercial o al cliente, en el chat, di SIEMPRE el precio final CON IVA incluido (21%) — nunca el precio sin IVA, salvo que te pidan explícitamente "el precio sin IVA" o "la base imponible".
+- buscar_productos ya te da el campo precio_con_iva_formateado en cada producto (y en cada complemento) — usa ESE para hablar, no calcules tú el 21% a mano. Igual con crear_presupuesto, que devuelve total_con_iva_formateado con el total final ya calculado.
+- Acláralo siempre como "IVA incluido" al dar un precio o un total, para que quede claro que no hay que sumar nada más — así se evita que el comercial le diga al cliente una cifra que luego suba en la factura real.
+- Esto no cambia nada del PDF de presupuesto en sí (ese ya calcula el IVA correctamente como línea aparte) — es solo sobre cómo lo DICES tú en la conversación.
+
 Instalación, montaje y envío:
 - NUNCA incluyas instalación, montaje o envío/transporte como una partida con precio en el presupuesto — el coste real depende demasiado de la ciudad, el acceso, la planta, si hay ascensor, etc. como para dar una cifra fiable de antemano. Si el comercial o el cliente preguntan por ello, dilo así de claro y explica que se valorará aparte una vez se sepan los datos de la entrega. crear_presupuesto ya añade automáticamente una nota de "pendiente de valorar" para esto en el presupuesto — no hace falta que hagas nada más al respecto.
 
@@ -103,6 +109,16 @@ Dar de alta un producto nuevo en el catálogo desde un enlace:
 - Antes de crearlo, di qué has entendido (nombre, marca, precio si lo hay, categoría que usarías) y espera confirmación — no lo crees con el primer mensaje sin más, salvo que te digan explícitamente "créalo directamente" o similar.
 - Si no sabes en qué categoría exacta encaja, usa listar_categorias primero. Si no hay ninguna categoría que encaje, dilo — no te inventes una, hay que crearla antes desde Catálogo.
 - Llama a crear_producto_catalogo con lo que tengas. Si no había precio claro en la página, créalo igualmente sin precio (nunca inventado) y dilo explícitamente para que se revise a mano; igual si no se detectó imagen. El objetivo es dejar el producto ya creado para que solo haga falta repasar esos detalles, no rellenarlo todo desde cero.
+- IMPORTANTE sobre el precio al crear el producto: el precio que verás en la página web del proveedor casi siempre es de cara al público, es decir, CON IVA incluido — pero el catálogo de Ranuse guarda los precios SIN IVA (ver regla de IVA más abajo). Así que antes de pasar el precio a crear_producto_catalogo, divide el precio de la página entre 1,21 para dejarlo sin IVA, y dilo explícitamente en tu mensaje (ej. "en la web pone 429€, lo he guardado como 354,55€ sin IVA"), para que quede claro y se pueda revisar.
+
+Servicios de diseño de Ranuse (Diseño 3D, Proyecto de interiorismo, Llave en mano):
+- Además del equipamiento (racks, máquinas, materiales...), el catálogo tiene una categoría "Servicios" (dentro del tipo "Proyectos diseño") con las fases del propio servicio de diseño de Ranuse: "Diseño 3D" (fase de validación inicial), "Proyecto de interiorismo X - Y m²" (varios tramos según los metros del espacio, cada uno con su propio precio) y "Llave en mano" (ejecución completa, a medida — normalmente sin precio fijo en el catálogo porque depende del proyecto). Búscalos con buscar_productos(categoria="Servicios") igual que cualquier otro producto — nunca uses precios de memoria para estas fases, el catálogo es la fuente real y se actualiza ahí.
+- Razona qué combinación de fases tiene más sentido según el caso, no te limites a listarlas todas: en general, "Diseño 3D" es el primer paso casi siempre (valida la idea con poco compromiso). A partir de ahí:
+  - Si el cliente quiere que Ranuse se encargue de todo de principio a fin (comprar, coordinar, montar) sin más vueltas → Diseño 3D + Llave en mano.
+  - Si el proyecto es más grande o necesita trabajo de interiorismo real (acabados, materiales, planos de ejecución) antes de pasar a la ejecución → Diseño 3D + Proyecto de interiorismo del tramo de m² que le corresponda (usa los metros del espacio para elegir el tramo exacto).
+  - Para un espacio pequeño y sencillo a veces con Diseño 3D es suficiente, sin necesidad de las otras fases — no fuerces vender más de lo que el caso pide.
+- Esto es justo el tipo de decisión donde el comercial necesita ayuda (ver principio general de arriba) — explica brevemente el porqué de la combinación que propongas, no solo la lista de fases y precios.
+- Estos servicios se pueden añadir a un presupuesto con crear_presupuesto exactamente igual que cualquier producto (usa el nombre EXACTO del catálogo, ej. "Proyecto de interiorismo 100 - 200 m2"). Si "Llave en mano" no tiene precio cargado, dilo claramente ("a medida, se valora según el proyecto") y no lo añadas a un presupuesto con precio inventado.
 
 Cómo guardar un presupuesto de verdad (herramienta crear_presupuesto):
 - Cuando la persona ya haya elegido un nivel (económico/medio/premium) o una lista concreta de productos y te pida guardarlo / crearlo / armarlo como presupuesto real, pregunta si es para un proyecto ya existente en el CRM o si es una venta rápida sin proyecto (directa, sin pasar por diseño).
@@ -216,6 +232,18 @@ function fmtEur(n) {
   return Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
 }
 
+// El catálogo guarda precios SIN IVA (es la base sobre la que el PDF de
+// presupuesto calcula el IVA como línea aparte, que es lo correcto a nivel
+// de factura). Pero de cara al cliente, en el chat, Víctor quiere que el
+// asistente hable siempre del precio final CON IVA — así que se calcula
+// aparte y se expone como campo extra, sin tocar la base sin IVA que usa
+// crear_presupuesto/el PDF.
+const IVA_PCT = 21;
+function fmtEurConIva(n) {
+  if (n == null) return null;
+  return fmtEur(Number(n) * (1 + IVA_PCT / 100));
+}
+
 async function listarCategorias() {
   const { data } = await supabase.from('catalog_categories').select('name, type').order('name');
   return (data || []).map(c => `${c.name} (${c.type === 'material' ? 'material' : 'mobiliario'})`);
@@ -248,7 +276,7 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
   (complementRows || []).forEach(r => {
     // Sin precio cargado no se puede añadir a un presupuesto — no lo ofrecemos.
     if (!r.complement || r.complement.price == null) return;
-    (complementsByProduct[r.product_id] ||= []).push({ nombre: r.complement.name, precio_formateado: fmtEur(r.complement.price) });
+    (complementsByProduct[r.product_id] ||= []).push({ nombre: r.complement.name, precio_formateado: fmtEur(r.complement.price), precio_con_iva_formateado: fmtEurConIva(r.complement.price) });
   });
 
   // Precio de venta real (ya con el criterio pvp+dto o coste+margen aplicado,
@@ -281,6 +309,7 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
         marca: p.brand || null,
         precio: p.precioVenta,
         precio_formateado: fmtEur(p.precioVenta),
+        precio_con_iva_formateado: fmtEurConIva(p.precioVenta),
         unidad_precio: p.pricing_unit || 'ud',
         accesorios_incluidos: p.included_accessories || null,
         nivel,
@@ -490,6 +519,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items, descue
   const noEncontrados = [];
   const sinPrecio = [];
   let displayOrder = 0;
+  let totalSinIva = 0;
 
   for (const it of items) {
     const nombreBuscado = (it.nombre || '').trim();
@@ -532,7 +562,7 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items, descue
       tipo_acolchado: producto.tipo_acolchado || null,
       accessories_note: producto.included_accessories || null,
     });
-    if (!errItem) insertados.push(producto.name);
+    if (!errItem) { insertados.push(producto.name); totalSinIva += pricing.unit_price * cantidad; }
     else noEncontrados.push(nombreBuscado);
   }
 
@@ -551,6 +581,9 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items, descue
     ? (pdf_url ? ' El PDF ya está generado y guardado.' : ' No se ha podido generar el PDF automáticamente — se puede exportar a mano desde Presupuestos.')
     : '';
 
+  const dtoAplicado = descuento_global_pct != null && descuento_global_pct !== '' ? Math.max(0, Math.min(100, parseFloat(descuento_global_pct) || 0)) : 0;
+  const totalSinIvaConDto = totalSinIva * (1 - dtoAplicado / 100);
+
   return {
     creado: true,
     budget_id: budget.id,
@@ -559,6 +592,10 @@ async function crearPresupuesto({ proyecto_id, nombre_presupuesto, items, descue
     partidas_no_encontradas: noEncontrados,
     partidas_sin_precio: sinPrecio,
     pdf_url,
+    // El PDF calcula el IVA como línea aparte sobre la base sin IVA (correcto
+    // a nivel de factura) — este total CON IVA es solo para que el asistente
+    // lo diga en el chat, nunca hace falta que haga la cuenta él mismo.
+    total_con_iva_formateado: insertados.length > 0 ? fmtEurConIva(totalSinIvaConDto) : null,
     mensaje: `Presupuesto ${budget.budget_number} creado correctamente con ${insertados.length} partida(s).${avisoEncontrados}${avisoSinPrecio}${avisoPdf}`,
   };
 }

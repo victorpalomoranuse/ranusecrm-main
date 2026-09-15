@@ -10,6 +10,30 @@ const ESTADOS_VALIDOS = ['ads', 'interesado', 'no_califica', 'contacto_nuevo', '
 
 const LEAD_SELECT = 'id, nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, created_at, updated_at';
 
+// El catálogo guarda los precios de los servicios de diseño SIN IVA — para
+// hablar con el prospecto siempre se da el precio CON IVA (21%), igual que
+// en el Asistente de presupuestos.
+const IVA_PCT = 21;
+function fmtEurConIva(price) {
+  if (price == null) return null;
+  return Number(price * (1 + IVA_PCT / 100)).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+}
+
+async function buscarServiciosDiseno() {
+  const { data: cat } = await supabase.from('catalog_categories').select('id').eq('name', 'Servicios').maybeSingle();
+  if (!cat) return { encontrado: false, mensaje: 'No se ha encontrado la categoría "Servicios" en el catálogo.' };
+  const { data, error } = await supabase.from('catalog_products').select('name, price, notes').eq('category_id', cat.id).order('price', { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return {
+    encontrado: true,
+    servicios: (data || []).map(s => ({
+      nombre: s.name,
+      precio_con_iva_formateado: s.price != null ? fmtEurConIva(s.price) : null,
+      nota: s.price == null ? 'Sin precio fijo — se valora a medida según el proyecto' : null,
+    })),
+  };
+}
+
 async function buscarLead({ query }) {
   const q = (query || '').trim();
   if (!q) return { encontrados: [], mensaje: 'No se ha indicado ningún dato para buscar.' };
@@ -96,10 +120,16 @@ async function runTool(name, input, ctx) {
   if (name === 'buscar_lead') return buscarLead(input);
   if (name === 'crear_lead') return crearLead(input, ctx.userId);
   if (name === 'actualizar_lead') return actualizarLead(input);
+  if (name === 'buscar_servicios_diseno') return buscarServiciosDiseno();
   return { error: 'Herramienta desconocida' };
 }
 
 const TOOLS = [
+  {
+    name: 'buscar_servicios_diseno',
+    description: 'Consulta en el catálogo real los servicios de diseño de Ranuse (Diseño 3D, Proyecto de interiorismo por tramo de m², Llave en mano) con su precio actual CON IVA incluido. Úsala SIEMPRE que vayas a mencionar precios o fases del servicio — nunca uses cifras de memoria, el catálogo es la fuente real y puede cambiar.',
+    input_schema: { type: 'object', properties: {} },
+  },
   {
     name: 'buscar_lead',
     description: 'Busca en Setting (el tablero de leads) un lead ya existente por su @usuario de Instagram, su nombre, o su número de teléfono. Úsala SIEMPRE que analices una captura o conversación, antes de responder, para saber si ese prospecto ya tiene historial — incluso si la conversación ya pasó a WhatsApp y solo tienes el teléfono, no el @.',
@@ -174,11 +204,20 @@ PRINCIPIOS:
 QUÉ VENDE RANUSE DESIGN:
 No es solo colocar máquinas — es diseño integral del espacio de entrenamiento: distribución, interiorismo, equipamiento y visualización previa (3D/render). Incluye: diseño 3D y render fotorrealista, distribución del espacio, selección y compra de equipamiento, suelos/paredes/iluminación/materiales/acabados/mobiliario cuando corresponde, asesoramiento técnico y acceso a proveedores especializados, gestión y acompañamiento del montaje según el proyecto, portal de seguimiento del proyecto.
 
-FASES Y PRECIOS CONOCIDOS:
-- Fase 1 · Diseño 3D / Validación — 350€ pago único. Incluye distribución, selección de equipamiento, tour/diseño 3D y presupuesto orientativo. Es la forma más simple de explicar cómo se valida la idea antes de comprometerse con todo el proyecto.
-- Fase 2 · Interiorismo — tabla de 900-3.000€ según m² (no hay un precio único fijo, depende del tamaño). Añade acabados, materiales, mobiliario, iluminación y documentación/planos de ejecución. No la expliques completa si el prospecto todavía está en fase de descubrimiento — de momento no des un rango más preciso que ese hasta que el equipo lo confirme mejor.
-- Fase 3 · Ejecución — a medida. Compra, condiciones con proveedores, gestión y acompañamiento de instalación y entrega. Depende del proyecto; la disponibilidad fuera de Madrid puede ser limitada, dilo si preguntan por ubicaciones lejanas.
+FASES Y PRECIOS (usa SIEMPRE la herramienta buscar_servicios_diseno, nunca cifras de memoria):
+- Fase 1 · Diseño 3D / Validación — el catálogo tiene el precio actual (busca "Diseño 3D"). Incluye distribución, selección de equipamiento, tour/diseño 3D y presupuesto orientativo. Es la forma más simple de explicar cómo se valida la idea antes de comprometerse con todo el proyecto.
+- Fase 2 · Interiorismo — el catálogo tiene varios tramos por m² ("Proyecto de interiorismo X - Y m2"), cada uno con su precio. Añade acabados, materiales, mobiliario, iluminación y documentación/planos de ejecución. No la expliques completa si el prospecto todavía está en fase de descubrimiento — con decir "depende de los metros, hay una tabla por tramos" es suficiente hasta que sepas el tamaño real.
+- Fase 3 · Ejecución / Llave en mano — normalmente sin precio fijo en el catálogo (a medida). Compra, condiciones con proveedores, gestión y acompañamiento de instalación y entrega. Depende del proyecto; la disponibilidad fuera de Madrid puede ser limitada, dilo si preguntan por ubicaciones lejanas.
+- SIEMPRE que menciones un precio de estas fases, di la cifra CON IVA incluido (el campo precio_con_iva_formateado que te da la herramienta) y acláralo como "IVA incluido" — nunca la cifra sin IVA.
 - NO existe un mínimo de inversión confirmado (75-100k mencionado internamente NO está validado) — nunca lo menciones como si fuera un requisito real.
+
+QUÉ COMBINACIÓN DE FASES PROPONER SEGÚN EL CASO:
+- Diseño 3D es casi siempre el primer paso — valida la idea con poco compromiso, así que suele ser la puerta de entrada natural cuando ya hay intención real.
+- A partir de ahí, piensa (y dilo, con tu razonamiento, no solo la lista) qué combinación encaja mejor con lo que sabes del prospecto:
+  - Si quiere que Ranuse se encargue de todo de principio a fin sin más vueltas (comprar, coordinar, montar) → Diseño 3D + Llave en mano.
+  - Si el proyecto es más grande o necesita trabajo real de interiorismo (acabados, materiales, planos) antes de ejecutar → Diseño 3D + Proyecto de interiorismo del tramo de m² que le corresponda.
+  - Si el espacio es pequeño y sencillo, a veces con el Diseño 3D es suficiente — no fuerces vender más fases de las que el caso pide.
+- Esto es información útil para pasarle al closer/Víctor antes de la llamada (qué combinación tiene sentido y por qué), no hace falta cerrarlo tú por DM.
 
 POSICIONAMIENTO:
 Ranuse comunica especialización fuerte en espacios de entrenamiento y deportistas de élite (incluye proyectos con futbolistas profesionales, ej. un jugador del RCD Mallorca), pero el portfolio real también incluye home gyms familiares, gimnasios boutique, centros de alto rendimiento, oficinas/espacios deportivos y proyectos comerciales — no asumas que solo se acepta deportista de élite, cualquier segmento es válido.
@@ -203,7 +242,7 @@ RUTAS CONVERSACIONALES FRECUENTES (adapta el tono, no copies literal):
 - Ya compró equipamiento: pregunta si la distribución también la tiene resuelta o es ahí donde tiene dudas.
 - Está construyendo/reformando: coméntale que puede ser buen momento para verlo antes de estar condicionado por máquinas o acabados ya comprados, y pregunta si tiene definidos los metros que va a destinar al gym.
 - Solo tiene una idea futura: pregunta si es algo para su casa actual o más pensando a futuro. Si no hay intención cercana, no fuerces la llamada — puede quedar en seguimiento.
-- Pregunta precio temprano: responde que la Fase 1 (diseño) tiene un precio fijo de 350€, que después si quiere llevarlo a proyecto completo depende del tamaño y de hasta dónde quiera involucrarse el equipo, y pregunta de cuántos metros es el espacio.
+- Pregunta precio temprano: responde con el precio real de la Fase 1/Diseño 3D (usa buscar_servicios_diseno, con IVA incluido), que después si quiere llevarlo a proyecto completo depende del tamaño y de hasta dónde quiera involucrarse el equipo, y pregunta de cuántos metros es el espacio.
 
 CÓMO EXPLICAR EL SERVICIO SIN SOBRECARGAR:
 Algo como: "Vemos el espacio de forma completa: distribución, suelos, paredes, iluminación, acabados y equipamiento, para que todo tenga sentido a nivel funcional y estético. Lo llevamos a 3D para que puedas ver cómo quedaría antes de montarlo y, según el proyecto, también podemos acompañarte con equipamiento y ejecución." No recites todas las fases en cada conversación — solo lo necesario para que el prospecto entienda el valor y pueda avanzar.
@@ -224,7 +263,7 @@ Dice que quiere montar gym/sala → pregunta espacio/medidas + objetivo.
 Tiene espacio y medidas → pregunta uso/equipamiento/timing si falta.
 Tiene planos/fotos/vídeo + idea clara + timing → busca llamada.
 Pregunta servicios → explica el enfoque integral brevemente y conéctalo con su caso.
-Pregunta precio → responde Fase 1 (350€) y vuelve a contexto/m².
+Pregunta precio → responde con el precio real de Fase 1 (buscar_servicios_diseno, con IVA) y vuelve a contexto/m².
 Proyecto lejano sin fecha → no fuerces la llamada, sugiere seguimiento.
 Objeción de obra/cansancio → explora una alternativa temporal o un espacio secundario, sin presionar (ej. si dice que está cansado de la obra, puede que haya otra zona ya lista, como pasó con una cochera mientras la planta superior seguía en obra).
 Acepta la llamada → cierra día/hora concretos.
