@@ -18,8 +18,8 @@ Tu trabajo: cuando te pidan un presupuesto (por ejemplo "gimnasio en casa con ra
 Muchos de los comerciales que te usan NO son expertos en diseño de espacios deportivos, entrenamiento ni reformas — no puedes dar por hecho que van a detectar un error tuyo, corregirte, o saber por sí mismos si algo encaja o tiene sentido. Eso significa que el peso de pensarlo bien recae en TI: sé tú quien compruebe medidas, orientaciones, si falta algo esencial, si la configuración elegida es la mejor, etc. — no esperes a que te lo señalen. Y cuando expliques el porqué de algo, hazlo en lenguaje claro y sencillo, como si se lo explicaras a alguien sin conocimientos técnicos, no des cosas por sabidas.
 
 Reglas importantes:
-- NUNCA inventes productos ni precios. Todo dato de producto (nombre, marca, precio) tiene que venir de una llamada a buscar_productos. Si una categoría no tiene productos en el catálogo, dilo claramente en vez de inventar.
-- Primero usa listar_categorias si no sabes qué nombre exacto tiene una categoría en el catálogo (puede que usen abreviaturas o nombres coloquiales, ej. "VC" podría no coincidir literalmente).
+- NUNCA inventes productos ni precios. Todo dato de producto (nombre, marca, precio) tiene que venir de una llamada a buscar_productos o buscar_por_texto. Si una categoría no tiene productos en el catálogo, dilo claramente en vez de inventar.
+- Primero usa listar_categorias si no sabes qué nombre exacto tiene una categoría en el catálogo (puede que usen abreviaturas o nombres coloquiales, ej. "VC" podría no coincidir literalmente). Si lo que te piden no es un tipo de producto sino una función/característica concreta (ver más abajo), usa directamente buscar_por_texto en vez de intentar adivinar una categoría.
 - Los niveles de calidad ya vienen calculados en el resultado de buscar_productos (el más barato de la categoría es económico, el más caro premium, y el resto medio) — solo tienes que elegir UN producto de cada nivel por categoría (si hay varios "medio", elige el más representativo, ej. el de precio más cercano a la media). Ten en cuenta también las preferencias de selección de más abajo, si las hay, no solo el precio.
 - Responde SIEMPRE en español, en un formato claro tipo tabla/lista por nivel, con el precio de cada producto y el TOTAL sumado de cada nivel al final.
 - Si no especifican cantidades (ej. cuántas mancuernas), asume 1 unidad de cada producto salvo que sea obvio que hacen falta más (pares, sets) — y dilo explícitamente para que lo puedan corregir.
@@ -46,8 +46,9 @@ Accesorios incluidos:
 Complementos (precio aparte):
 - Algunos productos tienen complementos habituales que se venden con precio propio y desglosado, no incluido (campo "complementos" en buscar_productos, si lo tiene). Cuando recomiendes un producto que tenga complementos, menciónalos y su precio, y pregunta si se quieren añadir también como partidas aparte del presupuesto (con su nombre EXACTO, igual que cualquier otro producto).
 
-Entiende lo que te piden por CAPACIDAD/FUNCIÓN, no solo por el nombre del producto:
-- Cuando te pidan un producto que además pueda hacer algo concreto (ej. "un rack plegable que además tenga jalón y remo bajo", "un banco que también sirva de press de piernas"), no te quedes en buscar solo por el tipo de producto principal (en este ejemplo, "rack") — revisa TAMBIÉN el campo "notas" y el campo "complementos" de cada resultado de buscar_productos, porque muchas veces esa capacidad extra viene de un accesorio/complemento compatible de ese producto en concreto, no de todos los productos de la categoría por igual. Un producto que en sus notas diga que es compatible con un accesorio de jalón/polea, o que tenga ese accesorio como complemento vinculado, encaja mejor que otro de la misma categoría que no lo tenga — aunque sea más barato o de la marca que se prefiera por defecto.
+Entiende lo que te piden por CAPACIDAD/FUNCIÓN, no solo por el nombre del producto o de la categoría:
+- buscar_productos busca por categoría — para dar con la categoría tienes que acertar más o menos el nombre, lo cual funciona bien cuando piden un TIPO de producto ("un rack", "mancuernas"), pero no cuando piden algo por una función o característica concreta que no es el nombre de ninguna categoría (ej. "jalón y remo bajo", "apto para sentadilla búlgara", "con volante de inercia"). Para esos casos usa buscar_por_texto, que busca esa palabra en el nombre, las notas y los accesorios incluidos de TODO el catálogo a la vez, sin depender de la categoría — así no se te escapa un producto o accesorio compatible que esté en una categoría distinta a la que hubieras asumido (ej. el accesorio de jalón de un rack concreto puede estar en la categoría de accesorios, no en la del rack).
+- Cuando te pidan un producto que además pueda hacer algo concreto (ej. "un rack plegable que además tenga jalón y remo bajo", "un banco que también sirva de press de piernas"), no te quedes en buscar solo por el tipo de producto principal (en este ejemplo, "rack") — revisa TAMBIÉN el campo "notas" y el campo "complementos" de cada resultado (de buscar_productos o buscar_por_texto), porque muchas veces esa capacidad extra viene de un accesorio/complemento compatible de ese producto en concreto, no de todos los productos de la categoría por igual. Un producto que en sus notas diga que es compatible con un accesorio de jalón/polea, o que tenga ese accesorio como complemento vinculado, encaja mejor que otro de la misma categoría que no lo tenga — aunque sea más barato o de la marca que se prefiera por defecto.
 - Antes de asumir que hace falta una estación de poleas separada (un producto aparte, normalmente más caro y no plegable) para conseguir esa función, comprueba primero si alguno de los racks/productos que ya estás mirando la puede incorporar mediante su propio complemento — suele ser más barato, más compacto, y es justo lo que se pedía si además querían que fuera plegable/compacto.
 - Si varios productos cumplen el tipo principal pedido (ej. varios racks plegables), compáralos explícitamente en base a la capacidad extra pedida antes de elegir cuál recomendar — no elijas solo por precio o por la marca preferida si eso te hace perder la función que realmente pedían.
 
@@ -153,6 +154,17 @@ const TOOLS = [
         marca: { type: 'string', description: 'Opcional — filtra solo productos de esta marca, cuando el usuario pide una marca concreta' },
       },
       required: ['categoria'],
+    },
+  },
+  {
+    name: 'buscar_por_texto',
+    description: 'Busca en TODO el catálogo (todas las categorías a la vez) por una palabra o frase libre, dentro del nombre, las notas y los accesorios incluidos de cada producto — no hace falta acertar la categoría ni el nombre exacto. Úsala cuando pidan algo por función/capacidad concreta en vez de por tipo de producto (ej. "jalón y remo", "apto sentadilla búlgara", "con volante de inercia", "plegable con polea"), o siempre que buscar_productos por categoría no encuentre lo que describen — así no te quedas solo con lo que asumas de la categoría.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        texto: { type: 'string', description: 'Palabra o frase a buscar, ej. "jalón y remo", "volante de inercia", "plegable"' },
+      },
+      required: ['texto'],
     },
   },
   {
@@ -329,6 +341,58 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
         complementos: complementsByProduct[p.id] || null,
       });
     });
+  });
+
+  return { encontrado: true, productos: resultado };
+}
+
+// Búsqueda libre por texto en TODO el catálogo (nombre, notas y accesorios
+// incluidos), sin depender de acertar el nombre exacto de una categoría —
+// para cuando piden algo por función/capacidad concreta (ej. "jalón y
+// remo", "apto sentadilla búlgara", "con volante de inercia") en vez de
+// por el tipo de producto o categoría literal.
+async function buscarPorTexto(textoQuery) {
+  const q = (textoQuery || '').trim();
+  if (!q) return { encontrado: false, mensaje: 'No se ha indicado ningún texto para buscar.' };
+
+  const { data: products } = await supabase
+    .from('catalog_products')
+    .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color, nivel_uso, category:catalog_categories!catalog_products_category_id_fkey(name)')
+    .or(`name.ilike.%${q}%,notes.ilike.%${q}%,included_accessories.ilike.%${q}%`)
+    .not('price', 'is', null)
+    .limit(15);
+
+  if (!products?.length) return { encontrado: false, mensaje: `No hay ningún producto cuyo nombre, notas o accesorios incluidos mencionen "${q}".` };
+
+  const { data: complementRows } = await supabase
+    .from('catalog_product_complements')
+    .select('product_id, complement:catalog_products!catalog_product_complements_complement_id_fkey(name, price)')
+    .in('product_id', products.map(p => p.id));
+  const complementsByProduct = {};
+  (complementRows || []).forEach(r => {
+    if (!r.complement || r.complement.price == null) return;
+    (complementsByProduct[r.product_id] ||= []).push({ nombre: r.complement.name, precio_formateado: fmtEur(r.complement.price), precio_con_iva_formateado: fmtEurConIva(r.complement.price) });
+  });
+
+  const resultado = products.map(p => {
+    const pricing = computeCatalogPricing(p);
+    const precioVenta = pricing.pricing_mode === 'pvp' ? pricing.pvp_ref : pricing.unit_price;
+    return {
+      categoria: p.category?.name || null,
+      nombre: p.name,
+      marca: p.brand || null,
+      precio: precioVenta,
+      precio_formateado: fmtEur(precioVenta),
+      precio_con_iva_formateado: fmtEurConIva(precioVenta),
+      unidad_precio: p.pricing_unit || 'ud',
+      accesorios_incluidos: p.included_accessories || null,
+      enlace: p.link || null,
+      notas: p.notes || null,
+      medidas_cm: (p.longitud || p.ancho || p.altura) ? { largo: p.longitud || null, ancho: p.ancho || null, alto: p.altura || null } : null,
+      color: p.color || null,
+      nivel_uso: p.nivel_uso || null,
+      complementos: complementsByProduct[p.id] || null,
+    };
   });
 
   return { encontrado: true, productos: resultado };
@@ -655,6 +719,7 @@ async function aplicarDescuentoPresupuesto({ presupuesto_id, numero_presupuesto,
 async function runTool(name, input) {
   if (name === 'listar_categorias') return { categorias: await listarCategorias() };
   if (name === 'buscar_productos') return buscarProductos(input.categoria, input.marca);
+  if (name === 'buscar_por_texto') return buscarPorTexto(input.texto);
   if (name === 'leer_pagina_producto') return leerPaginaProducto(input.url);
   if (name === 'crear_producto_catalogo') return crearProductoCatalogo(input);
   if (name === 'aplicar_descuento_presupuesto') return aplicarDescuentoPresupuesto(input);
