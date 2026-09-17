@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import api from '../services/api';
-import { MessageSquare, Send, Paperclip, X } from 'lucide-react';
+import { MessageSquare, Send, Paperclip, X, FileText } from 'lucide-react';
 import './SectionAsistenteIA.css';
 
 const EJEMPLOS = [
@@ -34,18 +34,28 @@ function splitSvgBlock(text) {
 function MessageContent({ content }) {
   const isArray = Array.isArray(content);
   const images = isArray ? content.filter(b => b.type === 'image') : [];
+  const docs = isArray ? content.filter(b => b.type === 'document') : [];
   const text = isArray ? (content.find(b => b.type === 'text')?.text || '') : content;
   const { before, svg, after } = splitSvgBlock(text);
   return (
     <>
-      {images.map((img, i) => (
-        <img
-          key={i}
-          src={`data:${img.source.media_type};base64,${img.source.data}`}
-          alt="Adjunto"
-          style={{ maxWidth: '100%', borderRadius: 8, marginBottom: before ? '0.5rem' : 0, display: 'block' }}
-        />
-      ))}
+      {(images.length > 0 || docs.length > 0) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: before ? '0.5rem' : 0 }}>
+          {images.map((img, i) => (
+            <img
+              key={i}
+              src={`data:${img.source.media_type};base64,${img.source.data}`}
+              alt="Adjunto"
+              style={{ maxWidth: (images.length + docs.length) > 1 ? 140 : '100%', borderRadius: 8, display: 'block' }}
+            />
+          ))}
+          {docs.map((doc, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 8, padding: '0.5rem 0.75rem', fontSize: '0.78rem' }}>
+              <FileText size={14} /> {doc.title || 'Plano PDF'}
+            </div>
+          ))}
+        </div>
+      )}
       {before && <span>{before}</span>}
       {svg && (
         <div
@@ -63,29 +73,52 @@ export function SectionAsistenteIA() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [pendingImage, setPendingImage] = useState(null); // { previewUrl, base64, mediaType }
+  const [pendingFiles, setPendingFiles] = useState([]); // [{ kind: 'image'|'pdf', previewUrl?, base64, mediaType, name }]
   const bottomRef = useRef(null);
   const fileRef = useRef();
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
 
-  const handlePickImage = async (e) => {
-    const file = e.target.files?.[0];
+  const addFile = async (file) => {
     if (!file) return;
     const base64 = await fileToBase64(file);
-    setPendingImage({ previewUrl: URL.createObjectURL(file), base64, mediaType: file.type });
+    if (file.type === 'application/pdf') {
+      setPendingFiles(prev => [...prev, { kind: 'pdf', base64, mediaType: file.type, name: file.name }]);
+    } else if (file.type.startsWith('image/')) {
+      setPendingFiles(prev => [...prev, { kind: 'image', previewUrl: URL.createObjectURL(file), base64, mediaType: file.type, name: file.name }]);
+    }
+  };
+
+  const handlePickFiles = async (e) => {
+    const files = [...(e.target.files || [])];
+    for (const file of files) await addFile(file);
     e.target.value = '';
   };
 
+  const removeFile = (idx) => setPendingFiles(prev => prev.filter((_, i) => i !== idx));
+
+  useEffect(() => {
+    const onPaste = (e) => {
+      const items = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith('image/') || i.type === 'application/pdf');
+      if (items.length === 0) return;
+      e.preventDefault();
+      items.forEach(item => addFile(item.getAsFile()));
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
+
   const send = async (text) => {
     const textContent = (text ?? input).trim();
-    if ((!textContent && !pendingImage) || loading) return;
+    if ((!textContent && pendingFiles.length === 0) || loading) return;
     setError('');
 
     let content;
-    if (pendingImage) {
+    if (pendingFiles.length > 0) {
       content = [
-        { type: 'image', source: { type: 'base64', media_type: pendingImage.mediaType, data: pendingImage.base64 } },
+        ...pendingFiles.map(f => f.kind === 'pdf'
+          ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.base64 }, title: f.name }
+          : { type: 'image', source: { type: 'base64', media_type: f.mediaType, data: f.base64 } }),
         { type: 'text', text: textContent || '¿Qué te parece esta distribución? Sugiéreme una si crees que se puede mejorar.' },
       ];
     } else {
@@ -95,7 +128,7 @@ export function SectionAsistenteIA() {
     const nextMessages = [...messages, { role: 'user', content }];
     setMessages(nextMessages);
     setInput('');
-    setPendingImage(null);
+    setPendingFiles([]);
     setLoading(true);
     try {
       const { data } = await api.post('/ai-budget/chat', { messages: nextMessages });
@@ -114,7 +147,7 @@ export function SectionAsistenteIA() {
       <div className="ap-section-head">
         <div>
           <h1><MessageSquare size={20} style={{ verticalAlign: -3, marginRight: 6 }} />Asistente de presupuestos</h1>
-          <p>Pídele un desglose por tipos de máquina y niveles de precio (económico/medio/premium) usando tu catálogo real. Puedes adjuntarle una foto o dibujo del espacio/plano. Cuando tengas claro qué nivel quieres, pídele que lo cree y quedará guardado como presupuesto real del proyecto.</p>
+          <p>Pídele un desglose por tipos de máquina y niveles de precio (económico/medio/premium) usando tu catálogo real. Puedes adjuntarle fotos, dibujos del espacio o planos en PDF (varios a la vez). Cuando tengas claro qué nivel quieres, pídele que lo cree y quedará guardado como presupuesto real del proyecto.</p>
         </div>
       </div>
 
@@ -158,26 +191,38 @@ export function SectionAsistenteIA() {
 
         {error && <p className="ap-error" style={{ margin: '0 1rem' }}>{error}</p>}
 
-        {pendingImage && (
-          <div className="ai-chat-pending-image">
-            <img src={pendingImage.previewUrl} alt="Adjunto" />
-            <button type="button" onClick={() => setPendingImage(null)} className="ai-chat-pending-image-remove"><X size={12} /></button>
+        {pendingFiles.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 1rem 0.5rem' }}>
+            {pendingFiles.map((f, i) => (
+              f.kind === 'pdf' ? (
+                <div key={i} className="ai-chat-pending-image" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.4rem 0.6rem', width: 'auto', height: 'auto' }}>
+                  <FileText size={16} />
+                  <span style={{ fontSize: '0.72rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                  <button type="button" onClick={() => removeFile(i)} className="ai-chat-pending-image-remove" style={{ position: 'static' }}><X size={12} /></button>
+                </div>
+              ) : (
+                <div key={i} className="ai-chat-pending-image">
+                  <img src={f.previewUrl} alt="Adjunto" />
+                  <button type="button" onClick={() => removeFile(i)} className="ai-chat-pending-image-remove"><X size={12} /></button>
+                </div>
+              )
+            ))}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="ai-chat-input-row">
-          <input ref={fileRef} type="file" accept="image/*" onChange={handlePickImage} style={{ display: 'none' }} />
-          <button type="button" className="ap-btn-icon" onClick={() => fileRef.current.click()} disabled={loading} title="Adjuntar imagen (plano, foto del espacio...)">
+          <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple onChange={handlePickFiles} style={{ display: 'none' }} />
+          <button type="button" className="ap-btn-icon" onClick={() => fileRef.current.click()} disabled={loading} title="Adjuntar imagen o plano en PDF (o pega con Ctrl+V)">
             <Paperclip size={15} />
           </button>
           <input
             className="ap-field-input"
             value={input}
             onChange={e => setInput(e.target.value)}
-            placeholder={pendingImage ? 'Añade un comentario (opcional)…' : 'Ej. gimnasio en casa con rack, banco y mancuernas, tres niveles de precio'}
+            placeholder={pendingFiles.length > 0 ? 'Añade un comentario (opcional)…' : 'Ej. gimnasio en casa con rack, banco y mancuernas, tres niveles de precio'}
             disabled={loading}
           />
-          <button type="submit" className="ap-btn ap-btn-primary ap-btn-sm" disabled={loading || (!input.trim() && !pendingImage)}>
+          <button type="submit" className="ap-btn ap-btn-primary ap-btn-sm" disabled={loading || (!input.trim() && pendingFiles.length === 0)}>
             <Send size={13} />
           </button>
         </form>
