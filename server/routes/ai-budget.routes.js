@@ -19,6 +19,7 @@ Muchos de los comerciales que te usan NO son expertos en diseño de espacios dep
 
 Reglas importantes:
 - NUNCA inventes productos ni precios. Todo dato de producto (nombre, marca, precio) tiene que venir de una llamada a buscar_productos o buscar_por_texto. Si una categoría no tiene productos en el catálogo, dilo claramente en vez de inventar.
+- Algunos resultados pueden venir en el campo "sin_precio" (partidas o productos ya redactados en el catálogo pero sin precio puesto todavía, típico de partidas de obra/reforma). NUNCA les inventes un precio ni los añadas a un presupuesto. Pero sí puedes decir que existen (con su descripción) y ofrecerte a completarles el precio con actualizar_precio_producto si el usuario te lo da en la conversación — así ayudas a ir completando el catálogo poco a poco en vez de limitarte a decir que no hay nada.
 - Primero usa listar_categorias si no sabes qué nombre exacto tiene una categoría en el catálogo (puede que usen abreviaturas o nombres coloquiales, ej. "VC" podría no coincidir literalmente). Si lo que te piden no es un tipo de producto sino una función/característica concreta (ver más abajo), usa directamente buscar_por_texto en vez de intentar adivinar una categoría.
 - Los niveles de calidad ya vienen calculados en el resultado de buscar_productos (el más barato de la categoría es económico, el más caro premium, y el resto medio) — solo tienes que elegir UN producto de cada nivel por categoría (si hay varios "medio", elige el más representativo, ej. el de precio más cercano a la media). Ten en cuenta también las preferencias de selección de más abajo, si las hay, no solo el precio.
 - Responde SIEMPRE en español, en un formato claro tipo tabla/lista por nivel, con el precio de cada producto y el TOTAL sumado de cada nivel al final.
@@ -37,8 +38,9 @@ Nivel de uso del producto (doméstico / semi profesional / profesional):
 - Si el perfil del cliente y el uso previsto ya se conocen (o los infieres razonablemente de la conversación — ej. "es para un box de crossfit" o "para un centro deportivo"), prioriza productos con el nivel_uso que mejor encaje, y dilo explícitamente en tu respuesta (ej. "te recomiendo este porque es de uso semi profesional, aguanta mejor el ritmo de un estudio que uno doméstico"). Si el nivel no está claro y es relevante para decidir bien (ej. dudas entre un producto doméstico barato y uno profesional caro), pregúntalo como preguntarías cualquier otro dato clave.
 - No descartes automáticamente un producto solo por su nivel_uso si no hay otro en esa categoría — menciona igualmente que es de nivel doméstico/profesional si crees que puede quedarse corto o sobrado para el uso que le van a dar, en vez de omitirlo o recomendarlo sin más.
 
-Productos por m² (ej. suelos):
-- buscar_productos indica en "unidad_precio" si un producto se cobra por unidad ("ud") o por metro cuadrado ("m2"). Si es "m2", el precio que ves es por m², así que pregunta (si no te lo han dado) los metros cuadrados a cubrir, y usa ese número como "cantidad" al crear el presupuesto — el total sale de multiplicar precio × m².
+Productos por m² o por metro lineal (ej. suelos, pintura, rodapiés, perfiles LED):
+- buscar_productos indica en "unidad_precio" si un producto se cobra por unidad ("ud"), por metro cuadrado ("m2") o por metro lineal ("ml"). Si es "m2", pregunta (si no te lo han dado) los metros cuadrados a cubrir; si es "ml", pregunta los metros lineales — y usa ese número como "cantidad" al crear el presupuesto en ambos casos, el total sale de multiplicar precio × cantidad.
+- Esto es muy habitual en partidas de obra/reforma (pintura, tabiquería, pavimentos, rodapiés, perfiles, canalizaciones) — no asumas 1 unidad como con un producto normal, siempre pregunta la superficie o longitud si no te la han dado.
 
 Accesorios incluidos:
 - Si un producto trae accesorios incluidos (campo "accesorios_incluidos" en buscar_productos), menciónalo también en tu respuesta al usuario (ej. "incluye J-cups y barra de seguridad"), no solo lo dejes para el PDF.
@@ -196,6 +198,20 @@ const TOOLS = [
     },
   },
   {
+    name: 'actualizar_precio_producto',
+    description: 'Pone o cambia el precio (SIN IVA) de un producto/partida que YA EXISTE en el catálogo, buscándolo por su nombre EXACTO (tal cual aparece en buscar_productos/buscar_por_texto). Úsala cuando el usuario te dé el precio de una partida que antes aparecía en "sin_precio", o cuando pida corregir el precio de un producto existente. Si el precio que te dan es de cara al cliente (con IVA, como suele pasar cuando te lo dicen de palabra o viene de una web pública), divídelo entre 1,21 antes de guardarlo, igual que al crear un producto nuevo desde un enlace — el catálogo siempre guarda sin IVA.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre: { type: 'string', description: 'Nombre EXACTO del producto/partida a actualizar' },
+        precio: { type: 'number', description: 'Nuevo precio SIN IVA' },
+        purchase_dto: { type: 'number', description: 'Opcional — % de descuento de compra, si el precio es un PVP con descuento' },
+        default_margin_pct: { type: 'number', description: 'Opcional — % de margen por defecto, si el precio es un coste puro' },
+      },
+      required: ['nombre', 'precio'],
+    },
+  },
+  {
     name: 'buscar_proyecto',
     description: 'Busca proyectos de cliente existentes en el CRM por nombre de cliente o de proyecto (coincidencia parcial). Úsala antes de crear_presupuesto para encontrar el id exacto del proyecto y comprobar si ya tiene presupuesto.',
     input_schema: {
@@ -275,15 +291,26 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
   let query = supabase
     .from('catalog_products')
     .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, color, nivel_uso')
-    .in('category_id', catIds)
-    .not('price', 'is', null);
+    .in('category_id', catIds);
   if (marcaQuery?.trim()) query = query.ilike('brand', `%${marcaQuery.trim()}%`);
-  const { data: products } = await query;
+  const { data: allProducts } = await query;
 
-  if (!products?.length) {
+  if (!allProducts?.length) {
     return marcaQuery?.trim()
       ? { encontrado: false, mensaje: `No hay productos de la marca "${marcaQuery}" en "${cats[0].name}" — prueba con otra marca o sin filtrar por marca.` }
-      : { encontrado: false, mensaje: `La categoría "${cats[0].name}" existe pero no tiene productos con precio cargado todavía.` };
+      : { encontrado: false, mensaje: `La categoría "${cats[0].name}" no tiene ningún producto dado de alta todavía.` };
+  }
+
+  // Los productos sin precio (partidas ya redactadas pero pendientes de
+  // poner precio) se listan aparte — nunca entran en el cálculo de niveles
+  // económico/medio/premium ni se pueden añadir a un presupuesto, pero sí
+  // conviene que el asistente sepa que existen para poder decírselo al
+  // usuario y ofrecerse a completar el precio si se lo dan.
+  const products = allProducts.filter(p => p.price != null);
+  const sinPrecio = allProducts.filter(p => p.price == null).map(p => ({ categoria: cats.find(c => c.id === p.category_id)?.name || categoriaQuery, nombre: p.name, unidad_precio: p.pricing_unit || 'ud', notas: p.notes || null }));
+
+  if (!products.length) {
+    return { encontrado: true, productos: [], sin_precio: sinPrecio, mensaje: `La categoría "${cats[0].name}" tiene partidas/productos dados de alta pero NINGUNO tiene precio todavía (ver sin_precio) — no se pueden añadir a un presupuesto hasta ponerles precio.` };
   }
 
   const { data: complementRows } = await supabase
@@ -343,7 +370,7 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
     });
   });
 
-  return { encontrado: true, productos: resultado };
+  return { encontrado: true, productos: resultado, sin_precio: sinPrecio.length ? sinPrecio : undefined };
 }
 
 // Búsqueda libre por texto en TODO el catálogo (nombre, notas y accesorios
@@ -355,14 +382,17 @@ async function buscarPorTexto(textoQuery) {
   const q = (textoQuery || '').trim();
   if (!q) return { encontrado: false, mensaje: 'No se ha indicado ningún texto para buscar.' };
 
-  const { data: products } = await supabase
+  const { data: allProducts } = await supabase
     .from('catalog_products')
     .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color, nivel_uso, category:catalog_categories!catalog_products_category_id_fkey(name)')
     .or(`name.ilike.%${q}%,notes.ilike.%${q}%,included_accessories.ilike.%${q}%`)
-    .not('price', 'is', null)
-    .limit(15);
+    .limit(20);
 
-  if (!products?.length) return { encontrado: false, mensaje: `No hay ningún producto cuyo nombre, notas o accesorios incluidos mencionen "${q}".` };
+  if (!allProducts?.length) return { encontrado: false, mensaje: `No hay ningún producto cuyo nombre, notas o accesorios incluidos mencionen "${q}".` };
+
+  const products = allProducts.filter(p => p.price != null).slice(0, 15);
+  const sinPrecio = allProducts.filter(p => p.price == null).map(p => ({ categoria: p.category?.name || null, nombre: p.name, unidad_precio: p.pricing_unit || 'ud', notas: p.notes || null }));
+  if (!products.length) return { encontrado: true, productos: [], sin_precio: sinPrecio, mensaje: `Hay resultados que mencionan "${q}" pero ninguno tiene precio cargado todavía (ver sin_precio).` };
 
   const { data: complementRows } = await supabase
     .from('catalog_product_complements')
@@ -395,7 +425,7 @@ async function buscarPorTexto(textoQuery) {
     };
   });
 
-  return { encontrado: true, productos: resultado };
+  return { encontrado: true, productos: resultado, sin_precio: sinPrecio.length ? sinPrecio : undefined };
 }
 
 async function leerPaginaProducto(url) {
@@ -483,6 +513,23 @@ async function crearProductoCatalogo({ categoria, nombre, marca, precio, notas, 
     categoria: cats[0].name,
     mensaje: `Producto "${producto.name}" creado en la categoría "${cats[0].name}".${avisos.length ? ' Pendiente de revisar: ' + avisos.join('; ') + '.' : ''}`,
   };
+}
+
+async function actualizarPrecioProducto({ nombre, precio, purchase_dto, default_margin_pct }) {
+  if (!nombre?.trim()) return { actualizado: false, mensaje: 'Falta el nombre del producto/partida a actualizar.' };
+  if (precio == null || precio === '') return { actualizado: false, mensaje: 'Falta el precio a poner.' };
+
+  const producto = await buscarProductoPorNombre(nombre.trim());
+  if (!producto) return { actualizado: false, mensaje: `No se ha encontrado ningún producto/partida con el nombre "${nombre}" — usa buscar_productos o buscar_por_texto primero para confirmar el nombre exacto.` };
+
+  const updates = { price: parseFloat(precio) };
+  if (purchase_dto != null && purchase_dto !== '') updates.purchase_dto = parseFloat(purchase_dto);
+  if (default_margin_pct != null && default_margin_pct !== '') updates.default_margin_pct = parseFloat(default_margin_pct);
+
+  const { error } = await supabase.from('catalog_products').update(updates).eq('id', producto.id);
+  if (error) return { actualizado: false, mensaje: 'Error al actualizar el precio: ' + error.message };
+
+  return { actualizado: true, nombre: producto.name, precio_formateado: fmtEur(updates.price), precio_con_iva_formateado: fmtEurConIva(updates.price), mensaje: `Precio de "${producto.name}" actualizado a ${fmtEur(updates.price)} (sin IVA).` };
 }
 
 async function buscarProyecto(nombreQuery) {
@@ -722,6 +769,7 @@ async function runTool(name, input) {
   if (name === 'buscar_por_texto') return buscarPorTexto(input.texto);
   if (name === 'leer_pagina_producto') return leerPaginaProducto(input.url);
   if (name === 'crear_producto_catalogo') return crearProductoCatalogo(input);
+  if (name === 'actualizar_precio_producto') return actualizarPrecioProducto(input);
   if (name === 'aplicar_descuento_presupuesto') return aplicarDescuentoPresupuesto(input);
   if (name === 'buscar_proyecto') return buscarProyecto(input.nombre);
   if (name === 'crear_presupuesto') return crearPresupuesto(input);
