@@ -28,6 +28,11 @@ Tarjetas visuales de producto (foto + enlace, para que el comercial no vea solo 
 - Cuando presentes opciones de máquinas/productos concretos al comercial (ej. el desglose por niveles económico/medio/premium, o cualquier recomendación de productos concretos), además de la tabla/lista de texto, añade AL FINAL de tu respuesta un bloque de tarjetas visuales en este formato exacto: un bloque de código que empiece con \`\`\`productos en su propia línea, contenga un array JSON con un objeto por producto mostrado — {"nombre": "...", "foto": "URL o null si buscar_productos no trajo foto", "enlace": "URL o null", "precio": "el precio_con_iva_formateado tal cual"} — y termine con \`\`\` en su propia línea. Es JSON válido, sin comentarios.
 - Incluye en el bloque TODOS los productos que hayas mencionado como opción concreta en esa respuesta (no solo el elegido), en el mismo orden en que los presentaste en el texto. Si un producto no tiene foto en el catálogo (campo "foto" viene null en buscar_productos), pon foto: null igualmente — no lo omitas del bloque ni inventes una URL de imagen.
 - No hace falta este bloque cuando no estás mostrando productos concretos (ej. si solo respondes una duda, pides datos, o hablas de precios de partidas de obra que no tienen foto por no ser un producto físico) — solo cuando el comercial vaya a poder ver/elegir entre opciones de máquinas o mobiliario.
+- Cuando uses el bloque \`\`\`productos\`\`\`, la tarjeta ya muestra foto, precio y enlace — NO repitas eso en el texto (nada de volver a escribir el precio, ni listar de nuevo cada característica que ya se ve en el link del producto). El texto que acompañe a las tarjetas debe ser CORTO: como mucho 1-2 frases de contexto (ej. por qué encaja, qué le falta) más la pregunta si hace falta una — nunca un desglose largo de medidas/accesorios/specs en párrafos, eso satura al comercial en vez de ayudarle. Si hay algo importante que SÍ hace falta decir y no está en la tarjeta (ej. "este rack necesita barra y discos aparte"), dilo en una frase corta, no en una lista larga.
+
+Botones de respuesta rápida (para que el comercial no tenga que escribir):
+- Cuando termines tu respuesta con una pregunta que tenga opciones claras y discretas (sí/no, elegir entre 2-4 alternativas concretas, elegir un nivel económico/medio/premium, confirmar si añadir algo o no...), añade AL FINAL (después del bloque \`\`\`productos\`\`\` si lo hay) un bloque \`\`\`opciones\`\`\` con un array JSON de strings — cada string es el texto EXACTO que se enviaría como si el comercial lo hubiera escrito él mismo al pulsar ese botón (ej. ["Sí, añade barra y discos", "No, solo el rack"], o ["Nivel económico", "Nivel medio", "Nivel premium"]). Máximo 4 opciones, textos cortos (menos de 6-7 palabras cada una).
+- NO uses este bloque para preguntas abiertas (medidas, presupuesto, nombre del cliente, etc.) donde no hay opciones discretas que ofrecer — ahí espera a que el comercial escriba la respuesta libremente.
 - Si no especifican cantidades (ej. cuántas mancuernas), asume 1 unidad de cada producto salvo que sea obvio que hacen falta más (pares, sets) — y dilo explícitamente para que lo puedan corregir.
 
 Cantidad en productos escalables (discos, mancuernas, kettlebells, bandas, esterillas...):
@@ -119,10 +124,11 @@ Instalación, montaje y envío:
 - NUNCA incluyas instalación, montaje o envío/transporte como una partida con precio en el presupuesto — el coste real depende demasiado de la ciudad, el acceso, la planta, si hay ascensor, etc. como para dar una cifra fiable de antemano. Si el comercial o el cliente preguntan por ello, dilo así de claro y explica que se valorará aparte una vez se sepan los datos de la entrega. crear_presupuesto ya añade automáticamente una nota de "pendiente de valorar" para esto en el presupuesto — no hace falta que hagas nada más al respecto.
 
 Dar de alta un producto nuevo en el catálogo desde un enlace:
-- Si te pasan la URL de un producto que no está en el catálogo y piden añadirlo, usa leer_pagina_producto para leer la ficha. Extrae tú mismo nombre, marca, precio (solo si se ve claro — si no, no lo inventes) y un resumen breve de características/materiales como notas.
+- Si te pasan la URL de un producto que no está en el catálogo y piden añadirlo, usa leer_pagina_producto para leer la ficha. Extrae tú mismo nombre, marca, precio (solo si se ve claro — si no, no lo inventes), y TODOS los datos técnicos que veas: medidas (largo/ancho/alto en cm), color, color del bastidor/estructura, color y tipo de acolchado si tiene, y accesorios que incluya.
+- IMPORTANTE — usa el campo específico de cada dato, NUNCA los metas todos en "notas": crear_producto_catalogo tiene parámetros propios para medidas (longitud/ancho/altura), colores (color/color_bastidor/color_acolchado/tipo_acolchado) y accesorios_incluidos. "notas" es solo para lo que sobre — materiales, acabado, certificaciones u observaciones que no encajen en ningún campo específico. Un producto bien creado no debería tener casi nada en notas si la ficha traía medidas/colores/accesorios claros, porque todo eso ya tiene su sitio propio.
 - Antes de crearlo, di qué has entendido (nombre, marca, precio si lo hay, categoría que usarías) y espera confirmación — no lo crees con el primer mensaje sin más, salvo que te digan explícitamente "créalo directamente" o similar.
 - Si no sabes en qué categoría exacta encaja, usa listar_categorias primero. Si no hay ninguna categoría que encaje, dilo — no te inventes una, hay que crearla antes desde Catálogo.
-- Llama a crear_producto_catalogo con lo que tengas. Si no había precio claro en la página, créalo igualmente sin precio (nunca inventado) y dilo explícitamente para que se revise a mano; igual si no se detectó imagen. El objetivo es dejar el producto ya creado para que solo haga falta repasar esos detalles, no rellenarlo todo desde cero.
+- Llama a crear_producto_catalogo con lo que tengas, repartido en sus campos correspondientes. Si no había precio claro en la página, créalo igualmente sin precio (nunca inventado) y dilo explícitamente para que se revise a mano; igual si no se detectó imagen. El objetivo es dejar el producto ya creado y bien clasificado para que solo haga falta repasar los detalles que falten, no rellenarlo todo desde cero ni reescribirlo campo a campo a mano después.
 - IMPORTANTE sobre el precio al crear el producto: el precio que verás en la página web del proveedor casi siempre es de cara al público, es decir, CON IVA incluido — pero el catálogo de Ranuse guarda los precios SIN IVA (ver regla de IVA más abajo). Así que antes de pasar el precio a crear_producto_catalogo, divide el precio de la página entre 1,21 para dejarlo sin IVA, y dilo explícitamente en tu mensaje (ej. "en la web pone 429€, lo he guardado como 354,55€ sin IVA"), para que quede claro y se pueda revisar.
 
 Servicios de diseño de Ranuse (Diseño 3D, Proyecto de interiorismo, Llave en mano):
@@ -187,15 +193,24 @@ const TOOLS = [
   },
   {
     name: 'crear_producto_catalogo',
-    description: 'Da de alta un producto nuevo en el Catálogo de Ranuse Design a partir de los datos extraídos de leer_pagina_producto (nombre, marca, precio si se ve claro, notas con características, e imagen_url si se detectó). Solo úsala DESPUÉS de leer la página con leer_pagina_producto y de que la persona haya confirmado que quiere crear el producto — nunca la llames de golpe con el primer mensaje. Si no has visto un precio claro en la página, créalo igualmente sin precio (no inventes uno) y avisa de que hay que revisarlo a mano.',
+    description: 'Da de alta un producto nuevo en el Catálogo de Ranuse Design a partir de los datos extraídos de leer_pagina_producto. IMPORTANTE: el catálogo tiene un campo específico para cada dato (medidas, colores, accesorios incluidos...) — rellénalos SIEMPRE que la página lo indique, en vez de meterlo todo en "notas". El campo "notas" es solo para lo que no encaje en ningún campo específico (materiales, acabado general, certificaciones, observaciones). Solo úsala DESPUÉS de leer la página con leer_pagina_producto y de que la persona haya confirmado que quiere crear el producto — nunca la llames de golpe con el primer mensaje. Si no has visto un precio claro en la página, créalo igualmente sin precio (no inventes uno) y avisa de que hay que revisarlo a mano.',
     input_schema: {
       type: 'object',
       properties: {
         categoria: { type: 'string', description: 'Nombre (o parte del nombre) de una categoría YA EXISTENTE en el catálogo — usa listar_categorias si no estás seguro' },
         nombre: { type: 'string', description: 'Nombre del producto' },
         marca: { type: 'string', description: 'Marca/fabricante, si se identifica en la página' },
-        precio: { type: 'number', description: 'Precio de venta si se ve claro en la página — déjalo vacío si no estás seguro, nunca lo inventes' },
-        notas: { type: 'string', description: 'Resumen breve de características/materiales vistos en la página' },
+        precio: { type: 'number', description: 'Precio de venta SIN IVA si se ve claro en la página (recuerda dividir entre 1,21 si el precio de la web es de cara al público) — déjalo vacío si no estás seguro, nunca lo inventes' },
+        pricing_unit: { type: 'string', description: 'Cómo se cobra: "ud" (por defecto), "m2" (por metro cuadrado) o "ml" (por metro lineal) — solo si aplica' },
+        longitud: { type: 'number', description: 'Largo en cm, si viene indicado en la ficha' },
+        ancho: { type: 'number', description: 'Ancho en cm, si viene indicado' },
+        altura: { type: 'number', description: 'Alto en cm, si viene indicado' },
+        color: { type: 'string', description: 'Color principal del producto, si se indica' },
+        color_bastidor: { type: 'string', description: 'Color del bastidor/estructura, si se indica por separado del color general' },
+        color_acolchado: { type: 'string', description: 'Color del acolchado/tapizado, si aplica (bancos, asientos...)' },
+        tipo_acolchado: { type: 'string', description: 'Material del acolchado (ej. vinilo, cuero sintético), si aplica' },
+        accesorios_incluidos: { type: 'string', description: 'Accesorios que trae incluidos el producto (ej. "J-cups y barra de seguridad") — esto va en su propio campo, NO en notas' },
+        notas: { type: 'string', description: 'SOLO para lo que no encaje en ningún campo específico de arriba: materiales, acabado general, certificaciones u observaciones sueltas' },
         link: { type: 'string', description: 'La URL original del producto' },
         imagen_url: { type: 'string', description: 'URL de la imagen del producto, si leer_pagina_producto devolvió una en imagen_detectada' },
       },
@@ -484,7 +499,7 @@ async function descargarImagenProducto(imageUrl) {
   }
 }
 
-async function crearProductoCatalogo({ categoria, nombre, marca, precio, notas, link, imagen_url }) {
+async function crearProductoCatalogo({ categoria, nombre, marca, precio, notas, link, imagen_url, longitud, ancho, altura, color, color_bastidor, color_acolchado, tipo_acolchado, accesorios_incluidos, pricing_unit }) {
   if (!categoria?.trim()) return { creado: false, mensaje: 'Falta la categoría — usa listar_categorias si no sabes cuál es.' };
   if (!nombre?.trim()) return { creado: false, mensaje: 'Falta el nombre del producto.' };
 
@@ -497,15 +512,25 @@ async function crearProductoCatalogo({ categoria, nombre, marca, precio, notas, 
 
   const { data: maxRow } = await supabase.from('catalog_products').select('display_order').order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
 
+  const num = v => (v != null && v !== '' ? parseFloat(v) : null);
   const { data: producto, error } = await supabase.from('catalog_products').insert({
     category_id: cats[0].id,
     name: nombre.trim(),
     brand: marca?.trim() || null,
-    price: precio != null && precio !== '' ? parseFloat(precio) : null,
+    price: num(precio),
     link: link?.trim() || null,
     notes: notas?.trim() || null,
     photo_url,
     display_order: (maxRow?.display_order ?? -1) + 1,
+    longitud: num(longitud),
+    ancho: num(ancho),
+    altura: num(altura),
+    color: color?.trim() || null,
+    color_bastidor: color_bastidor?.trim() || null,
+    color_acolchado: color_acolchado?.trim() || null,
+    tipo_acolchado: tipo_acolchado?.trim() || null,
+    included_accessories: accesorios_incluidos?.trim() || null,
+    pricing_unit: pricing_unit?.trim() || 'ud',
   }).select('id, name, price, photo_url').single();
   if (error) return { creado: false, mensaje: 'Error al crear el producto: ' + error.message };
 
