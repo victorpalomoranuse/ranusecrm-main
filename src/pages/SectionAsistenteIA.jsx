@@ -18,29 +18,63 @@ function fileToBase64(file) {
   });
 }
 
-// Separa el texto de un posible bloque ```svg ... ``` que haya devuelto la IA.
-function splitSvgBlock(text) {
-  if (typeof text !== 'string') return { before: text, svg: null, after: null };
-  const match = text.match(/```svg\s*([\s\S]*?)```/i);
-  if (!match) return { before: text, svg: null, after: null };
-  const svg = match[1].trim().replace(/<script[\s\S]*?<\/script>/gi, '');
-  return {
-    before: text.slice(0, match.index).trim(),
-    svg,
-    after: text.slice(match.index + match[0].length).trim(),
-  };
+// Extrae un bloque de código ```lang ... ``` (si existe) y devuelve el resto
+// del texto sin él, junto con el contenido del bloque.
+function extractFencedBlock(text, lang) {
+  if (typeof text !== 'string') return { rest: text, block: null };
+  const re = new RegExp('```' + lang + '\\s*([\\s\\S]*?)```', 'i');
+  const match = text.match(re);
+  if (!match) return { rest: text, block: null };
+  const rest = (text.slice(0, match.index) + text.slice(match.index + match[0].length)).trim();
+  return { rest, block: match[1].trim() };
+}
+
+function ProductCards({ productos }) {
+  if (!productos?.length) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', margin: '0.75rem 0' }}>
+      {productos.map((p, i) => (
+        <div key={i} style={{ width: 150, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ width: '100%', height: 100, background: 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {p.foto ? (
+              <img src={p.foto} alt={p.nombre || 'Producto'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.25)' }}>Sin foto</span>
+            )}
+          </div>
+          <div style={{ padding: '0.5rem 0.6rem' }}>
+            <p style={{ margin: 0, fontSize: '0.72rem', color: '#fff', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.nombre}</p>
+            {p.precio && <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#beb0a2', fontWeight: 600 }}>{p.precio}</p>}
+            {p.enlace && (
+              <a href={p.enlace} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 4, fontSize: '0.68rem', color: 'rgba(255,255,255,0.5)' }}>
+                Ver producto ↗
+              </a>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function MessageContent({ content }) {
   const isArray = Array.isArray(content);
   const images = isArray ? content.filter(b => b.type === 'image') : [];
   const docs = isArray ? content.filter(b => b.type === 'document') : [];
-  const text = isArray ? (content.find(b => b.type === 'text')?.text || '') : content;
-  const { before, svg, after } = splitSvgBlock(text);
+  const rawText = isArray ? (content.find(b => b.type === 'text')?.text || '') : content;
+
+  const { rest: afterSvg, block: svgBlock } = extractFencedBlock(rawText, 'svg');
+  const svg = svgBlock ? svgBlock.replace(/<script[\s\S]*?<\/script>/gi, '') : null;
+  const { rest: text, block: productosBlock } = extractFencedBlock(afterSvg, 'productos');
+  let productos = null;
+  if (productosBlock) {
+    try { const parsed = JSON.parse(productosBlock); if (Array.isArray(parsed)) productos = parsed; } catch { /* ignora bloque mal formado */ }
+  }
+
   return (
     <>
       {(images.length > 0 || docs.length > 0) && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: before ? '0.5rem' : 0 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: text ? '0.5rem' : 0 }}>
           {images.map((img, i) => (
             <img
               key={i}
@@ -56,14 +90,14 @@ function MessageContent({ content }) {
           ))}
         </div>
       )}
-      {before && <span>{before}</span>}
+      {text && <span>{text}</span>}
       {svg && (
         <div
           style={{ margin: '0.75rem 0', background: 'rgba(0,0,0,0.25)', borderRadius: 8, padding: '0.75rem' }}
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       )}
-      {after && <span>{after}</span>}
+      <ProductCards productos={productos} />
     </>
   );
 }

@@ -23,6 +23,11 @@ Reglas importantes:
 - Primero usa listar_categorias si no sabes qué nombre exacto tiene una categoría en el catálogo (puede que usen abreviaturas o nombres coloquiales, ej. "VC" podría no coincidir literalmente). Si lo que te piden no es un tipo de producto sino una función/característica concreta (ver más abajo), usa directamente buscar_por_texto en vez de intentar adivinar una categoría.
 - Los niveles de calidad ya vienen calculados en el resultado de buscar_productos (el más barato de la categoría es económico, el más caro premium, y el resto medio) — solo tienes que elegir UN producto de cada nivel por categoría (si hay varios "medio", elige el más representativo, ej. el de precio más cercano a la media). Ten en cuenta también las preferencias de selección de más abajo, si las hay, no solo el precio.
 - Responde SIEMPRE en español, en un formato claro tipo tabla/lista por nivel, con el precio de cada producto y el TOTAL sumado de cada nivel al final.
+
+Tarjetas visuales de producto (foto + enlace, para que el comercial no vea solo texto):
+- Cuando presentes opciones de máquinas/productos concretos al comercial (ej. el desglose por niveles económico/medio/premium, o cualquier recomendación de productos concretos), además de la tabla/lista de texto, añade AL FINAL de tu respuesta un bloque de tarjetas visuales en este formato exacto: un bloque de código que empiece con \`\`\`productos en su propia línea, contenga un array JSON con un objeto por producto mostrado — {"nombre": "...", "foto": "URL o null si buscar_productos no trajo foto", "enlace": "URL o null", "precio": "el precio_con_iva_formateado tal cual"} — y termine con \`\`\` en su propia línea. Es JSON válido, sin comentarios.
+- Incluye en el bloque TODOS los productos que hayas mencionado como opción concreta en esa respuesta (no solo el elegido), en el mismo orden en que los presentaste en el texto. Si un producto no tiene foto en el catálogo (campo "foto" viene null en buscar_productos), pon foto: null igualmente — no lo omitas del bloque ni inventes una URL de imagen.
+- No hace falta este bloque cuando no estás mostrando productos concretos (ej. si solo respondes una duda, pides datos, o hablas de precios de partidas de obra que no tienen foto por no ser un producto físico) — solo cuando el comercial vaya a poder ver/elegir entre opciones de máquinas o mobiliario.
 - Si no especifican cantidades (ej. cuántas mancuernas), asume 1 unidad de cada producto salvo que sea obvio que hacen falta más (pares, sets) — y dilo explícitamente para que lo puedan corregir.
 
 Cantidad en productos escalables (discos, mancuernas, kettlebells, bandas, esterillas...):
@@ -290,7 +295,7 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
   const catIds = cats.map(c => c.id);
   let query = supabase
     .from('catalog_products')
-    .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, color, nivel_uso')
+    .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, color, nivel_uso, photo_url')
     .in('category_id', catIds);
   if (marcaQuery?.trim()) query = query.ilike('brand', `%${marcaQuery.trim()}%`);
   const { data: allProducts } = await query;
@@ -359,6 +364,7 @@ async function buscarProductos(categoriaQuery, marcaQuery) {
         accesorios_incluidos: p.included_accessories || null,
         nivel,
         enlace: p.link || null,
+        foto: p.photo_url || null,
         notas: p.notes || null,
         medidas_cm: (p.longitud || p.ancho || p.altura) ? { largo: p.longitud || null, ancho: p.ancho || null, alto: p.altura || null } : null,
         color: p.color || p.color_bastidor || null,
@@ -384,7 +390,7 @@ async function buscarPorTexto(textoQuery) {
 
   const { data: allProducts } = await supabase
     .from('catalog_products')
-    .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color, nivel_uso, category:catalog_categories!catalog_products_category_id_fkey(name)')
+    .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color, nivel_uso, photo_url, category:catalog_categories!catalog_products_category_id_fkey(name)')
     .or(`name.ilike.%${q}%,notes.ilike.%${q}%,included_accessories.ilike.%${q}%`)
     .limit(20);
 
@@ -417,6 +423,7 @@ async function buscarPorTexto(textoQuery) {
       unidad_precio: p.pricing_unit || 'ud',
       accesorios_incluidos: p.included_accessories || null,
       enlace: p.link || null,
+      foto: p.photo_url || null,
       notas: p.notes || null,
       medidas_cm: (p.longitud || p.ancho || p.altura) ? { largo: p.longitud || null, ancho: p.ancho || null, alto: p.altura || null } : null,
       color: p.color || null,
