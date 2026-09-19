@@ -699,7 +699,24 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       const brandH = item.brand ? doc.heightOfString(item.brand, { width: textWforCalc, fontSize: 7 }) : 0;
       const accessoriesH = item.accessories_note ? doc.heightOfString('Incluye: ' + item.accessories_note, { width: textWforCalc, fontSize: 6.5 }) : 0;
       const textBlockH = nameH + (brandH ? brandH + 3 : 0) + (accessoriesH ? accessoriesH + 3 : 0);
-      const rowH = Math.max(imgH + 18, textBlockH + 16);
+
+      // Especificaciones (columna derecha) — cada línea puede envolver a más
+      // de una línea real (ej. "L:75 A:190 H:225cm" en una columna estrecha),
+      // así que se mide con heightOfString en vez de asumir una altura fija
+      // por campo — si no, un campo largo se solapaba con el siguiente.
+      const specX = margin + 200;
+      const specW = colCant.x - specX - 8;
+      doc.fontSize(6.5).font('Helvetica');
+      const dims = [item.longitud && 'L:' + item.longitud, item.ancho && 'A:' + item.ancho, item.altura && 'H:' + item.altura].filter(Boolean).join(' ');
+      const dimsText = dims ? dims + 'cm' : '';
+      const dimsH = dimsText ? doc.heightOfString(dimsText, { width: specW }) : 0;
+      const bastH = item.color_bastidor ? doc.heightOfString('Bast: ' + item.color_bastidor, { width: specW }) : 0;
+      const acolH = item.color_acolchado ? doc.heightOfString('Acol: ' + item.color_acolchado, { width: specW }) : 0;
+      const tipoH = item.tipo_acolchado ? doc.heightOfString('Tipo: ' + item.tipo_acolchado, { width: specW }) : 0;
+      const specGap = 2;
+      const specsBlockH = [dimsH, bastH, acolH, tipoH].filter(Boolean).reduce((sum, h, i) => sum + h + (i > 0 ? specGap : 0), 0);
+
+      const rowH = Math.max(imgH + 18, textBlockH + 16, specsBlockH + 16);
       if (y + rowH > H - 140) { doc.addPage(); y = margin; }
       if (rowNum % 2 === 0) doc.rect(margin, y, W - margin * 2, rowH).fill('#faf9f8');
 
@@ -732,14 +749,12 @@ router.get('/:id/pdf-cliente', async (req, res) => {
         doc.fillColor('#999999').fontSize(6.5).font('Helvetica-Oblique').text('Incluye: ' + item.accessories_note, textX, Math.max(afterBrandY + 1, y + 8), { width: textW });
       }
 
-      // Especificaciones
-      const specX = margin + 200;
-      const specW = colCant.x - specX - 8;
+      // Especificaciones — misma medición que arriba, para que cada línea se
+      // dibuje justo debajo de donde terminó realmente la anterior.
       let specY = y + 8;
-      const dims = [item.longitud && 'L:'+item.longitud, item.ancho && 'A:'+item.ancho, item.altura && 'H:'+item.altura].filter(Boolean).join(' ');
-      if (dims) { doc.fillColor('#666666').fontSize(6.5).font('Helvetica').text(dims + 'cm', specX, specY, { width: specW }); specY += 10; }
-      if (item.color_bastidor) { doc.fillColor('#888888').fontSize(6.5).font('Helvetica').text('Bast: ' + item.color_bastidor, specX, specY, { width: specW }); specY += 10; }
-      if (item.color_acolchado) { doc.fillColor('#888888').fontSize(6.5).font('Helvetica').text('Acol: ' + item.color_acolchado, specX, specY, { width: specW }); specY += 10; }
+      if (dimsText) { doc.fillColor('#666666').fontSize(6.5).font('Helvetica').text(dimsText, specX, specY, { width: specW }); specY += dimsH + specGap; }
+      if (item.color_bastidor) { doc.fillColor('#888888').fontSize(6.5).font('Helvetica').text('Bast: ' + item.color_bastidor, specX, specY, { width: specW }); specY += bastH + specGap; }
+      if (item.color_acolchado) { doc.fillColor('#888888').fontSize(6.5).font('Helvetica').text('Acol: ' + item.color_acolchado, specX, specY, { width: specW }); specY += acolH + specGap; }
       if (item.tipo_acolchado) { doc.fillColor('#888888').fontSize(6.5).font('Helvetica').text('Tipo: ' + item.tipo_acolchado, specX, specY, { width: specW }); }
 
       // Columnas numéricas
