@@ -57,7 +57,7 @@ function ProductCards({ productos }) {
   );
 }
 
-function QuickReplies({ opciones, onPick, disabled }) {
+function QuickReplies({ opciones, onPick, onOther, disabled }) {
   if (!opciones?.length) return null;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.6rem' }}>
@@ -72,11 +72,22 @@ function QuickReplies({ opciones, onPick, disabled }) {
           {op}
         </button>
       ))}
+      {onOther && (
+        <button
+          type="button"
+          className="ap-btn ap-btn-ghost ap-btn-sm"
+          style={{ opacity: 0.65, borderStyle: 'dashed' }}
+          disabled={disabled}
+          onClick={onOther}
+        >
+          Otro… (escribir)
+        </button>
+      )}
     </div>
   );
 }
 
-function MessageContent({ content, onOption, loading }) {
+function MessageContent({ content, onOption, onOther, loading }) {
   const isArray = Array.isArray(content);
   const images = isArray ? content.filter(b => b.type === 'image') : [];
   const docs = isArray ? content.filter(b => b.type === 'document') : [];
@@ -122,7 +133,7 @@ function MessageContent({ content, onOption, loading }) {
         />
       )}
       <ProductCards productos={productos} />
-      {onOption && <QuickReplies opciones={opciones} onPick={onOption} disabled={loading} />}
+      {onOption && <QuickReplies opciones={opciones} onPick={onOption} onOther={onOther} disabled={loading} />}
     </>
   );
 }
@@ -135,8 +146,11 @@ export function SectionAsistenteIA() {
   const [pendingFiles, setPendingFiles] = useState([]); // [{ kind: 'image'|'pdf', previewUrl?, base64, mediaType, name }]
   const bottomRef = useRef(null);
   const fileRef = useRef();
+  const textInputRef = useRef();
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
+
+  const focusInput = () => textInputRef.current?.focus();
 
   const addFile = async (file) => {
     if (!file) return;
@@ -225,7 +239,7 @@ export function SectionAsistenteIA() {
             messages.map((m, i) => (
               <div key={i} className={`ai-msg ai-msg--${m.role}`}>
                 <div className="ai-msg-bubble">
-                  <MessageContent content={m.content} onOption={m.role === 'assistant' ? send : undefined} loading={loading} />
+                  <MessageContent content={m.content} onOption={m.role === 'assistant' ? send : undefined} onOther={m.role === 'assistant' ? focusInput : undefined} loading={loading} />
                   {m.budgetCreated?.pdf_url && (
                     <a
                       href={m.budgetCreated.pdf_url}
@@ -275,6 +289,7 @@ export function SectionAsistenteIA() {
             <Paperclip size={15} />
           </button>
           <input
+            ref={textInputRef}
             className="ap-field-input"
             value={input}
             onChange={e => setInput(e.target.value)}
