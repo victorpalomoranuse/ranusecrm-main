@@ -57,7 +57,26 @@ function ProductCards({ productos }) {
   );
 }
 
-function MessageContent({ content }) {
+function QuickReplies({ opciones, onPick, disabled }) {
+  if (!opciones?.length) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.6rem' }}>
+      {opciones.map((op, i) => (
+        <button
+          key={i}
+          type="button"
+          className="ap-btn ap-btn-ghost ap-btn-sm"
+          disabled={disabled}
+          onClick={() => onPick(op)}
+        >
+          {op}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MessageContent({ content, onOption, loading }) {
   const isArray = Array.isArray(content);
   const images = isArray ? content.filter(b => b.type === 'image') : [];
   const docs = isArray ? content.filter(b => b.type === 'document') : [];
@@ -65,10 +84,15 @@ function MessageContent({ content }) {
 
   const { rest: afterSvg, block: svgBlock } = extractFencedBlock(rawText, 'svg');
   const svg = svgBlock ? svgBlock.replace(/<script[\s\S]*?<\/script>/gi, '') : null;
-  const { rest: text, block: productosBlock } = extractFencedBlock(afterSvg, 'productos');
+  const { rest: afterProductos, block: productosBlock } = extractFencedBlock(afterSvg, 'productos');
   let productos = null;
   if (productosBlock) {
     try { const parsed = JSON.parse(productosBlock); if (Array.isArray(parsed)) productos = parsed; } catch { /* ignora bloque mal formado */ }
+  }
+  const { rest: text, block: opcionesBlock } = extractFencedBlock(afterProductos, 'opciones');
+  let opciones = null;
+  if (opcionesBlock) {
+    try { const parsed = JSON.parse(opcionesBlock); if (Array.isArray(parsed)) opciones = parsed.filter(o => typeof o === 'string'); } catch { /* ignora bloque mal formado */ }
   }
 
   return (
@@ -98,6 +122,7 @@ function MessageContent({ content }) {
         />
       )}
       <ProductCards productos={productos} />
+      {onOption && <QuickReplies opciones={opciones} onPick={onOption} disabled={loading} />}
     </>
   );
 }
@@ -200,7 +225,7 @@ export function SectionAsistenteIA() {
             messages.map((m, i) => (
               <div key={i} className={`ai-msg ai-msg--${m.role}`}>
                 <div className="ai-msg-bubble">
-                  <MessageContent content={m.content} />
+                  <MessageContent content={m.content} onOption={m.role === 'assistant' ? send : undefined} loading={loading} />
                   {m.budgetCreated?.pdf_url && (
                     <a
                       href={m.budgetCreated.pdf_url}
