@@ -26,14 +26,17 @@
     <meta name="twitter:description" content="Diseñamos home gyms, gimnasios y centros deportivos que elevan tu marca." />
     <meta name="twitter:image" content="https://www.ranusedesign.com/img/f11/contf112.png" />
 
-    <!-- ═══ FAVICON / PWA ════════════════════════════════════════════════ -->
+    <!-- ═══ FAVICON ══════════════════════════════════════════════════════ -->
     <link rel="icon" type="image/x-icon" href="/iconoRanuse.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#beb0a2" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="Ranuse Design" />
+    <!-- Sin manifest.json / apple-mobile-web-app-capable a propósito: como es
+         una web con varios portales (admin, equipo, cliente, público), un
+         manifest con un único start_url hacía que CUALQUIER acceso directo a
+         pantalla de inicio en iOS (desde /admin, /equipo, /cliente...) abriera
+         siempre "/" en vez de la página desde la que se creó el acceso
+         directo. Sin manifest, "Añadir a pantalla de inicio" se comporta como
+         un marcador normal: abre la URL exacta desde la que se creó. -->
 
     <!-- ═══ FUENTES ══════════════════════════════════════════════════════ -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
