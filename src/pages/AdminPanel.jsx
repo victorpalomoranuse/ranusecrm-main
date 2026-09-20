@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall } from 'lucide-react';
+import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteSetter } from './SectionAsistenteSetter';
@@ -2392,12 +2392,18 @@ export function AdminPanel() {
   const accessibleItems=NAV_ITEMS.filter(item=>canAccessNav(item,user));
   const defaultSection=user?.role==='admin_superior'?'dashboard':(accessibleItems[0]?.id||null);
   const [section,setSection]=useState(defaultSection);
+  const [mobileNavOpen,setMobileNavOpen]=useState(false);
   const handleLogout=()=>{logout();navigate('/admin');};
+  const currentLabel=accessibleItems.find(i=>i.id===section)?.label||'';
+  const pickSection=(id)=>{setSection(id);setMobileNavOpen(false);};
   return (
     <div className="ap">
-      <aside className="ap-sidebar">
-        <div className="ap-sidebar-logo"><img src="/iconoRanuse.ico" alt="Ranuse"/><span>Ranuse Design</span></div>
-        <nav className="ap-nav">{accessibleItems.map(item=>(<button key={item.id} className={`ap-nav-item${section===item.id?' active':''}`} onClick={()=>setSection(item.id)}><item.Icon size={17} className="ap-nav-icon"/><span>{item.label}</span></button>))}</nav>
+      <button className="ap-mobile-topbar-menu" onClick={()=>setMobileNavOpen(true)} aria-label="Abrir menú"><Menu size={20}/></button>
+      <span className="ap-mobile-topbar-title">{currentLabel}</span>
+      {mobileNavOpen&&<div className="ap-mobile-nav-overlay" onClick={()=>setMobileNavOpen(false)}/>}
+      <aside className={`ap-sidebar${mobileNavOpen?' ap-sidebar--open':''}`}>
+        <div className="ap-sidebar-logo"><img src="/iconoRanuse.ico" alt="Ranuse"/><span>Ranuse Design</span><button className="ap-mobile-nav-close" onClick={()=>setMobileNavOpen(false)} aria-label="Cerrar menú"><X size={18}/></button></div>
+        <nav className="ap-nav">{accessibleItems.map(item=>(<button key={item.id} className={`ap-nav-item${section===item.id?' active':''}`} onClick={()=>pickSection(item.id)}><item.Icon size={17} className="ap-nav-icon"/><span>{item.label}</span></button>))}</nav>
         <div className="ap-sidebar-footer"><p className="ap-user">{user?.name||user?.email}{user?.puesto&&<span className="ap-user-puesto">{user.puesto}</span>}</p><button className="ap-logout" onClick={handleLogout}><LogOut size={13}/> Cerrar sesión</button></div>
       </aside>
       <main className="ap-main">

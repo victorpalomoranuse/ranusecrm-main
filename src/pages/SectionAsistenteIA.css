@@ -30,6 +30,20 @@
   gap: 0.5rem;
   margin-top: 0.75rem;
   align-items: center;
+  width: 100%;
+}
+.ai-chat-examples button {
+  white-space: normal;
+  max-width: 100%;
+  text-align: left;
+}
+/* Los botones de opciones rápidas también pueden llevar textos largos
+   (ej. "Fuerza (sentadilla, press, dominadas)") — que no se salgan del
+   ancho del chat en móvil. */
+.ai-msg-bubble button {
+  white-space: normal;
+  max-width: 100%;
+  text-align: left;
 }
 
 .ai-msg { display: flex; }

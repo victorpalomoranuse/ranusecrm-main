@@ -969,17 +969,58 @@
 .ap-empty-access p { font-size: 0.85rem; line-height: 1.5; }
 
 /* ── Responsive ── */
-@media (max-width: 640px) {
-  .ap-sidebar { width: 56px; }
-  .ap-sidebar-logo span,
-  .ap-nav-item span:last-child,
-  .ap-sidebar-footer .ap-user,
-  .ap-sidebar-footer .ap-logout { display: none; }
-  .ap-sidebar-logo { justify-content: center; padding: 1rem; }
-  .ap-nav-item { justify-content: center; padding: 0.65rem; }
-  .ap-nav-icon { font-size: 1.2rem; }
-  .ap-sidebar-footer { align-items: center; }
-  .ap-section { padding: 1rem 0.75rem; }
+/* Barra superior móvil (hamburguesa) y cierre del cajón lateral — ocultos
+   en escritorio, donde el sidebar siempre está visible a la izquierda. */
+.ap-mobile-topbar-menu,
+.ap-mobile-topbar-title,
+.ap-mobile-nav-close,
+.ap-mobile-nav-overlay { display: none; }
+
+@media (max-width: 720px) {
+  .ap { display: block; height: 100vh; overflow: hidden; }
+
+  /* Barra superior fija con botón de menú + título de la sección actual */
+  .ap-mobile-topbar-menu {
+    display: flex; align-items: center; justify-content: center;
+    position: fixed; top: 0; left: 0; z-index: 40;
+    width: 52px; height: 52px;
+    background: #111; border: none; border-bottom: 1px solid rgba(255,255,255,0.07); border-right: 1px solid rgba(255,255,255,0.07);
+    color: #fff; cursor: pointer;
+  }
+  .ap-mobile-topbar-title {
+    display: flex; align-items: center;
+    position: fixed; top: 0; left: 52px; right: 0; z-index: 39; height: 52px;
+    background: #111; border-bottom: 1px solid rgba(255,255,255,0.07);
+    padding: 0 1rem; font-size: 0.9rem; font-weight: 700; color: #fff;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* El sidebar pasa a ser un cajón que se desliza desde la izquierda */
+  .ap-sidebar {
+    position: fixed; top: 0; left: 0; z-index: 50;
+    width: 78vw; max-width: 280px; height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+  }
+  .ap-sidebar--open { transform: translateX(0); }
+  .ap-sidebar-logo { position: relative; }
+  .ap-mobile-nav-close {
+    display: flex; align-items: center; justify-content: center;
+    position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%);
+    width: 30px; height: 30px; border-radius: 8px;
+    background: rgba(255,255,255,0.06); border: none; color: rgba(255,255,255,0.6); cursor: pointer;
+  }
+
+  .ap-mobile-nav-overlay {
+    display: block;
+    position: fixed; inset: 0; z-index: 45;
+    background: rgba(0,0,0,0.55);
+  }
+
+  /* El contenido ocupa toda la pantalla (el sidebar ahora flota encima) */
+  .ap-main { width: 100%; height: 100vh; padding-top: 52px; }
+  .ap-section { padding: 1rem 0.85rem; }
 }
 
 /* ── Project Manager Modal ── */
