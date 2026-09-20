@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import api from '../services/api';
-import { Send as SendIcon, Paperclip, X, MessageCircle, FileText } from 'lucide-react';
+import { Send as SendIcon, Paperclip, X, MessageCircle, FileText, Copy, Check } from 'lucide-react';
 import './SectionAsistenteIA.css';
 
 const EJEMPLOS = [
@@ -18,11 +18,35 @@ function fileToBase64(file) {
   });
 }
 
+// Extrae el bloque ``` ... ``` (el "mensaje para enviar") del resto del
+// análisis, sea cual sea la etiqueta de lenguaje que le haya puesto (o
+// ninguna) — para que nunca se vean los ``` literalmente en el chat.
+function extractMessageBlock(text) {
+  if (typeof text !== 'string') return { rest: text, mensaje: null };
+  const match = text.match(/```[a-zA-Z]*\n?([\s\S]*?)```/);
+  if (!match) return { rest: text, mensaje: null };
+  const rest = (text.slice(0, match.index) + text.slice(match.index + match[0].length)).trim();
+  return { rest, mensaje: match[1].trim() };
+}
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
+  };
+  return (
+    <button type="button" onClick={copy} className="ap-btn-icon" title="Copiar mensaje" style={{ flexShrink: 0 }}>
+      {copied ? <Check size={13} color="#8bae8f" /> : <Copy size={13} />}
+    </button>
+  );
+}
+
 function MessageContent({ content }) {
   const isArray = Array.isArray(content);
   const images = isArray ? content.filter(b => b.type === 'image') : [];
   const docs = isArray ? content.filter(b => b.type === 'document') : [];
-  const text = isArray ? (content.find(b => b.type === 'text')?.text || '') : content;
+  const rawText = isArray ? (content.find(b => b.type === 'text')?.text || '') : content;
+  const { rest: text, mensaje } = extractMessageBlock(rawText);
   return (
     <>
       {(images.length > 0 || docs.length > 0) && (
@@ -43,6 +67,15 @@ function MessageContent({ content }) {
         </div>
       )}
       {text && <span>{text}</span>}
+      {mensaje && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '0.75rem 0', background: 'rgba(190,176,162,0.1)', border: '1px solid rgba(190,176,162,0.25)', borderRadius: 10, padding: '0.7rem 0.85rem' }}>
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: '0 0 3px', fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#beb0a2' }}>Mensaje para enviar</p>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: '#fff', whiteSpace: 'pre-wrap' }}>{mensaje}</p>
+          </div>
+          <CopyButton text={mensaje} />
+        </div>
+      )}
     </>
   );
 }
