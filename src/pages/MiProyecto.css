@@ -46,6 +46,16 @@
   z-index: 1;
 }
 
+/* En monitores grandes, 720px se queda corto y deja franjas enormes vacías
+   a los lados — se ensancha progresivamente. El móvil (todo por debajo de
+   estos breakpoints) no se toca, sigue igual que antes. */
+@media (min-width: 900px) {
+  .mp-main { max-width: 900px; padding-left: 2rem; padding-right: 2rem; }
+}
+@media (min-width: 1280px) {
+  .mp-main { max-width: 1080px; }
+}
+
 .mp-hero-render {
   width: 100%;
   border-radius: 14px;
