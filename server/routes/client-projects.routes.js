@@ -176,7 +176,7 @@ router.get('/by-code/:code', async (req, res) => {
   try {
     const { data: project, error } = await supabase
       .from('client_projects')
-      .select('id, client_name, project_name, phase, cover_image_url, moodboard_description, listados_intro_text, listados_title, responsible:employees!responsible_id(name, email)')
+      .select('id, client_name, project_name, phase, cover_image_url, moodboard_description, moodboard_palette, listados_intro_text, listados_title, responsible:employees!responsible_id(name, email)')
       .eq('access_code', req.params.code.toUpperCase())
       .single();
 
@@ -265,6 +265,7 @@ router.get('/by-code/:code', async (req, res) => {
         moodboard: {
           description: project.moodboard_description || '',
           images: moodboardImagesResult.data || [],
+          palette: project.moodboard_palette || [],
         },
       },
     });

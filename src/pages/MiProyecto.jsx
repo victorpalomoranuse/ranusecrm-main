@@ -95,13 +95,24 @@ function MoodboardSection({ moodboard }) {
   const [active, setActive] = useState(null);
   const images = moodboard?.images || [];
   const description = moodboard?.description || '';
-  if (images.length === 0 && !description) return null;
+  const palette = moodboard?.palette || [];
+  if (images.length === 0 && !description && palette.length === 0) return null;
   return (
     <section className="mp-moodboard">
       <div className="mp-moodboard-header">
         <p className="mp-moodboard-label">El estilo del proyecto</p>
         <h2 className="mp-moodboard-title">Moodboard</h2>
         <p className="mp-moodboard-desc">{description || DEFAULT_MOODBOARD_DESC}</p>
+        {palette.length > 0 && (
+          <div className="mp-palette">
+            {palette.map((hex, i) => (
+              <div key={i} className="mp-palette-swatch">
+                <span className="mp-palette-dot" style={{ background: hex }} />
+                <span className="mp-palette-hex">{hex}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       {images.length > 0 && (
         <div className="mp-moodboard-grid">
@@ -968,7 +979,7 @@ export function MiProyecto() {
     ? { url: project.cover_image_url, name: project.project_name }
     : heroRender;
   const categories = project.categories || [];
-  const hasGlobalContent = project.notes?.length || project.documents?.length;
+  const hasGlobalContent = Boolean(project.notes?.length || project.documents?.length);
 
   return (
     <div className="mp">
