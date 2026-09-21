@@ -376,17 +376,36 @@ function TabMoodboard({ projectId }) {
     }).catch(() => {}).finally(() => setLoading(false));
   }, [projectId]);
 
-  const handleUpload = async (e) => {
-    const files = Array.from(e.target.files || []); if (files.length === 0) return;
+  const uploadFiles = async (files) => {
+    if (!files.length) return;
     setUploading(true); setError('');
     try {
       const form = new FormData();
       files.forEach(f => form.append('images', f));
       const { data } = await api.post(`/client-projects/${projectId}/moodboard/images`, form);
       setImages(prev => [...prev, ...data.images]);
-      fileRef.current.value = '';
     } catch (err) { setError(err.response?.data?.error || 'Error al subir las imágenes'); } finally { setUploading(false); }
   };
+
+  const handleUpload = async (e) => {
+    const files = Array.from(e.target.files || []); if (files.length === 0) return;
+    await uploadFiles(files);
+    fileRef.current.value = '';
+  };
+
+  useEffect(() => {
+    const onPaste = (e) => {
+      const files = [...(e.clipboardData?.items || [])]
+        .filter(i => i.type.startsWith('image/'))
+        .map(i => i.getAsFile())
+        .filter(Boolean);
+      if (!files.length) return;
+      e.preventDefault();
+      uploadFiles(files);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [projectId]);
 
   const openRefPicker = () => {
     setShowRefPicker(true);
@@ -460,6 +479,7 @@ function TabMoodboard({ projectId }) {
       <div className="ap-upload-row">
         <label className="ap-btn ap-btn-primary ap-btn-sm ap-upload-label">{uploading ? 'Subiendo…' : <><Plus size={13}/> Subir imágenes</>}<input ref={fileRef} type="file" accept="image/*" multiple onChange={handleUpload} disabled={uploading} style={{ display: 'none' }}/></label>
         <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={openRefPicker}>Elegir de tus Referencias</button>
+        <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)', alignSelf: 'center' }}>o pega con Ctrl+V</span>
       </div>
 
       {showRefPicker && (
@@ -1822,16 +1842,33 @@ function TabNecesidades({ projectId }) {
     } catch {}
   };
 
-  const handleUploadPhoto = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
+  const uploadPhotoFile = async (file) => {
+    if (!file) return;
     setUploadingPhoto(true);
     try {
       const form = new FormData();
       form.append('file', file);
       const { data } = await api.post(`/needs-form/project/${projectId}/photos`, form);
       setBundle(prev => ({ ...prev, photos: [...prev.photos, data.photo] }));
-    } catch { toast.error('Error al subir foto'); } finally { setUploadingPhoto(false); if (photoRef.current) photoRef.current.value = ''; }
+    } catch { toast.error('Error al subir foto'); } finally { setUploadingPhoto(false); }
   };
+
+  const handleUploadPhoto = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    await uploadPhotoFile(file);
+    if (photoRef.current) photoRef.current.value = '';
+  };
+
+  useEffect(() => {
+    const onPaste = (e) => {
+      const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+      if (!item) return;
+      e.preventDefault();
+      uploadPhotoFile(item.getAsFile());
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [projectId]);
 
   const handleDeletePhoto = async (id) => {
     try {
@@ -1970,7 +2007,10 @@ function TabNecesidades({ projectId }) {
           <img src={photoZoom} alt="" onClick={e => e.stopPropagation()} style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 8 }} />
         </div>
       )}
-      <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ marginBottom: '1.5rem', display: 'inline-flex' }}>{uploadingPhoto ? 'Subiendo…' : <><Plus size={13} /> Añadir foto</>}<input ref={photoRef} type="file" accept="image/*" onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.5rem' }}>
+        <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ display: 'inline-flex' }}>{uploadingPhoto ? 'Subiendo…' : <><Plus size={13} /> Añadir foto</>}<input ref={photoRef} type="file" accept="image/*" onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
+        <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)' }}>o pega con Ctrl+V</span>
+      </div>
 
       <p className="ap-tab-desc" style={{ marginTop: '0.5rem' }}>Plano de medición <span className="ap-optional">(PDF o imagen del plano acotado del espacio — lo ve también el cliente)</span></p>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
