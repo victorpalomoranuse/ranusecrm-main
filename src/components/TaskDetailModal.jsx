@@ -1,4 +1,5 @@
-import { X, CheckCircle, Circle, Trash2, AlertCircle } from 'lucide-react';
+import { useState } from 'react';
+import { X, CheckCircle, Circle, Trash2, AlertCircle, Pencil } from 'lucide-react';
 import api from '../services/api';
 
 const PRIORITIES = {
@@ -9,6 +10,9 @@ const PRIORITIES = {
 };
 
 export function TaskDetailModal({ task, onClose, onUpdated, onDeleted }) {
+  const [editingDate, setEditingDate] = useState(false);
+  const [dateDraft, setDateDraft] = useState(task?.due_date || '');
+  const [savingDate, setSavingDate] = useState(false);
   if (!task) return null;
   const pri = PRIORITIES[task.priority] || PRIORITIES.normal;
   const overdue = task.due_date && !task.done && new Date(task.due_date) < new Date(new Date().toDateString());
@@ -18,6 +22,16 @@ export function TaskDetailModal({ task, onClose, onUpdated, onDeleted }) {
       const { data } = await api.put(`/tasks/${task.id}`, { done: !task.done });
       onUpdated?.(data.task);
     } catch {}
+  };
+
+  const startEditDate = () => { setDateDraft(task.due_date || ''); setEditingDate(true); };
+  const saveDate = async () => {
+    setSavingDate(true);
+    try {
+      const { data } = await api.put(`/tasks/${task.id}`, { due_date: dateDraft || null });
+      onUpdated?.(data.task);
+      setEditingDate(false);
+    } catch {} finally { setSavingDate(false); }
   };
 
   const remove = async () => {
@@ -38,10 +52,21 @@ export function TaskDetailModal({ task, onClose, onUpdated, onDeleted }) {
         <div style={{ padding: '0 1.5rem 1.5rem' }}>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
             <span style={{ fontSize: '0.72rem', padding: '3px 10px', borderRadius: 20, border: `1px solid ${pri.color}`, color: pri.color }}>{pri.label}</span>
-            {task.due_date && (
-              <span style={{ fontSize: '0.72rem', padding: '3px 10px', borderRadius: 20, background: overdue ? 'rgba(174,139,139,0.15)' : 'rgba(255,255,255,0.06)', color: overdue ? '#ae8b8b' : 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            {editingDate ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input type="date" value={dateDraft} onChange={e => setDateDraft(e.target.value)} className="ap-field-input" style={{ fontSize: '0.72rem', padding: '3px 8px', width: 140 }} autoFocus />
+                <button type="button" onClick={saveDate} disabled={savingDate} className="ap-btn ap-btn-primary ap-btn-sm" style={{ padding: '3px 10px', fontSize: '0.7rem' }}>{savingDate ? '…' : 'OK'}</button>
+                <button type="button" onClick={() => setEditingDate(false)} className="ap-btn ap-btn-ghost ap-btn-sm" style={{ padding: '3px 8px', fontSize: '0.7rem' }}>✕</button>
+              </span>
+            ) : (
+              <span
+                onClick={startEditDate}
+                title="Cambiar fecha"
+                style={{ fontSize: '0.72rem', padding: '3px 10px', borderRadius: 20, background: overdue ? 'rgba(174,139,139,0.15)' : 'rgba(255,255,255,0.06)', color: overdue ? '#ae8b8b' : 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+              >
                 {overdue && <AlertCircle size={11} />}
-                {new Date(task.due_date + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'long' })}
+                {task.due_date ? new Date(task.due_date + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'long' }) : 'Sin fecha'}
+                <Pencil size={10} style={{ opacity: 0.6 }} />
               </span>
             )}
             {task.project && (
