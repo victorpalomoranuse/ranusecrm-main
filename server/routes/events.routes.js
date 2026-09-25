@@ -23,6 +23,22 @@ router.post('/', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Error al crear evento' }); }
 });
 
+router.put('/:id', async (req, res) => {
+  try {
+    const { title, description, date, time, color, done } = req.body;
+    const updates = {};
+    if (title !== undefined) updates.title = title.trim();
+    if (description !== undefined) updates.description = description?.trim() || null;
+    if (date !== undefined) updates.date = date;
+    if (time !== undefined) updates.time = time || null;
+    if (color !== undefined) updates.color = color;
+    if (done !== undefined) updates.done = done === true;
+    const { data, error } = await supabase.from('events').update(updates).eq('id', req.params.id).select('*').single();
+    if (error) throw error;
+    res.json({ event: data });
+  } catch (err) { res.status(500).json({ error: 'Error al actualizar evento' }); }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     const { error } = await supabase.from('events').delete().eq('id', req.params.id);

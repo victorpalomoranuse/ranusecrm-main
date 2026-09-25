@@ -365,10 +365,10 @@ export function SectionTareas() {
                       <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.25)' }}>Sin eventos ni tareas</p>
                     )}
                     {selectedItems.events.map(e => (
-                      <div key={e.id} onClick={() => setDetailEvent(e)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+                      <div key={e.id} onClick={() => setDetailEvent(e)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', opacity: e.done ? 0.5 : 1 }}>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', background: e.color, flexShrink: 0 }} />
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: '0.82rem', color: '#fff' }}>{e.title}</p>
+                          <p style={{ margin: 0, fontSize: '0.82rem', color: '#fff', textDecoration: e.done ? 'line-through' : 'none' }}>{e.title}</p>
                           {(e.time || e.description) && (
                             <p style={{ margin: 0, fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
                               {e.time}{e.time && e.description && ' · '}{e.description ? e.description.slice(0, 60) + (e.description.length > 60 ? '…' : '') : ''}
@@ -405,9 +405,9 @@ export function SectionTareas() {
               {/* Upcoming events */}
               <div style={{ marginTop: '1rem' }}>
                 <p style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)', marginBottom: '0.5rem' }}>Próximos eventos</p>
-                {events.filter(e => e.date >= new Date().toISOString().slice(0, 10)).slice(0, 5).length === 0
+                {events.filter(e => !e.done && e.date >= new Date().toISOString().slice(0, 10)).slice(0, 5).length === 0
                   ? <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.25)' }}>Sin eventos próximos</p>
-                  : events.filter(e => e.date >= new Date().toISOString().slice(0, 10)).slice(0, 5).map(e => (
+                  : events.filter(e => !e.done && e.date >= new Date().toISOString().slice(0, 10)).slice(0, 5).map(e => (
                     <div key={e.id} onClick={() => setDetailEvent(e)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
                       <div style={{ width: 8, height: 8, borderRadius: '50%', background: e.color, flexShrink: 0 }} />
                       <div style={{ flex: 1 }}>
@@ -504,6 +504,7 @@ export function SectionTareas() {
         <EventDetailModal
           event={detailEvent}
           onClose={() => setDetailEvent(null)}
+          onUpdated={updated => { setEvents(prev => prev.map(e => e.id === updated.id ? updated : e)); setDetailEvent(updated); }}
           onDeleted={id => { setEvents(prev => prev.filter(e => e.id !== id)); setDetailEvent(null); }}
         />
       )}
