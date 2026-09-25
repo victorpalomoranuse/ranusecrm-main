@@ -10,6 +10,9 @@ const CATEGORIES = [
   { value: 'material',    label: 'Material',      color: '#beb0a2' },
   { value: 'mobiliario',  label: 'Mobiliario',     color: '#8b9eae' },
   { value: 'instalacion', label: 'Instalación',    color: '#ae9e8b' },
+  { value: 'reformas',    label: 'Reformas',       color: '#ae8b8b' },
+  { value: 'iluminacion', label: 'Iluminación',    color: '#c9b98a' },
+  { value: 'proyectos-diseno', label: 'Diseño',    color: '#9e8bae' },
   { value: 'transporte',  label: 'Transporte',     color: '#8bae8f' },
   { value: 'otro',        label: 'Otro',           color: '#7d7d7d' },
 ];
@@ -86,48 +89,84 @@ function MsgBanner({ msg }) {
 
 function CatalogLibraryPanel({ onInsert, onClose }) {
   const [products, setProducts] = useState([]);
+  const [types, setTypes] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
+  const [activeType, setActiveType] = useState('all');
+  const [collapsed, setCollapsed] = useState({});
 
   useEffect(() => {
-    api.get('/catalog/products').then(r => setProducts(r.data.products || [])).finally(() => setLoading(false));
+    Promise.all([api.get('/catalog/products'), api.get('/catalog/types'), api.get('/catalog/categories')])
+      .then(([p, t, c]) => { setProducts(p.data.products || []); setTypes(t.data.types || []); setCategories(c.data.categories || []); })
+      .finally(() => setLoading(false));
   }, []);
 
-  const visible = products.filter(p => {
-    const s = filter.toLowerCase();
-    return !s || p.name.toLowerCase().includes(s) || (p.brand || '').toLowerCase().includes(s);
+  const s = filter.trim().toLowerCase();
+  const matches = p => !s || p.name.toLowerCase().includes(s) || (p.brand || '').toLowerCase().includes(s);
+  const typeOf = p => p.category?.type;
+
+  // Con búsqueda se ignora la pestaña de tipo, para encontrar el producto estés donde estés.
+  const inScope = products.filter(p => matches(p) && (s || activeType === 'all' || typeOf(p) === activeType));
+
+  const groups = [];
+  const catOrder = [...categories].sort((a, b) => (types.findIndex(t => t.slug === a.type) - types.findIndex(t => t.slug === b.type)) || ((a.display_order ?? 999) - (b.display_order ?? 999)) || a.name.localeCompare(b.name, 'es', { numeric: true }));
+  catOrder.forEach(c => {
+    const items = inScope.filter(p => p.category?.id === c.id);
+    if (items.length) groups.push({ id: c.id, name: c.name, type: types.find(t => t.slug === c.type)?.name || '', items });
   });
 
+  const countByType = slug => products.filter(p => typeOf(p) === slug).length;
+
   return (
-    <div style={{ position: 'fixed', top: 0, right: 0, width: 320, height: '100vh', background: '#111', borderLeft: '1px solid rgba(255,255,255,0.08)', zIndex: 200, display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'fixed', top: 0, right: 0, width: 340, maxWidth: '100vw', height: '100vh', background: '#111', borderLeft: '1px solid rgba(255,255,255,0.08)', zIndex: 200, display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}><BookOpen size={14}/>Biblioteca (catálogo)</span>
         <button className="ap-btn-icon" onClick={onClose}><X size={15}/></button>
       </div>
-      <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <input className="ap-field-input" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar producto o marca…" style={{ width: '100%' }} />
+      <div style={{ padding: '0.75rem 1rem 0.5rem' }}>
+        <input className="ap-field-input" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar en todo el catálogo…" style={{ width: '100%' }} />
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
-        {loading ? <div className="ap-loading">Cargando…</div> : visible.length === 0 ? (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '0 1rem 0.75rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        {[{ slug: 'all', name: 'Todo' }, ...types].map(t => {
+          const active = !s && activeType === t.slug;
+          return (
+            <button key={t.slug} type="button" onClick={() => setActiveType(t.slug)} style={{ fontSize: '0.68rem', padding: '3px 9px', borderRadius: 14, cursor: 'pointer', border: `1px solid ${active ? '#beb0a2' : 'rgba(255,255,255,0.12)'}`, background: active ? 'rgba(190,176,162,0.15)' : 'transparent', color: active ? '#beb0a2' : 'rgba(255,255,255,0.5)', opacity: s ? 0.4 : 1 }}>
+              {t.name}{t.slug !== 'all' && ` (${countByType(t.slug)})`}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0.25rem 0.5rem 1rem' }}>
+        {loading ? <div className="ap-loading">Cargando…</div> : groups.length === 0 ? (
           <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.3)', padding: '1rem', textAlign: 'center' }}>
             {products.length === 0 ? 'Aún no hay productos en el catálogo. Añádelos desde Admin › Catálogo.' : 'Sin resultados.'}
           </p>
-        ) : visible.map(p => {
-          const cat = CATEGORIES.find(c => c.value === p.category?.type) || CATEGORIES[0];
+        ) : groups.map(g => {
+          const isCollapsed = !s && collapsed[g.id];
           return (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              {p.photo_url ? (
-                <img src={p.photo_url} alt="" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
-              ) : (
-                <div style={{ width: 32, height: 32, borderRadius: 4, background: 'rgba(255,255,255,0.06)', flexShrink: 0 }} />
-              )}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, fontSize: '0.82rem', color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</p>
-                <p style={{ margin: 0, fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>
-                  <span style={{ color: cat.color }}>{cat.label}</span> · {p.brand ? p.brand + ' · ' : ''}{fmt(p.price)}
-                </p>
-              </div>
-              <button className="ap-btn ap-btn-primary ap-btn-sm" style={{ fontSize: '0.7rem', padding: '3px 8px' }} onClick={() => onInsert(p)}>Insertar</button>
+            <div key={g.id} style={{ marginBottom: '0.4rem' }}>
+              <button type="button" onClick={() => setCollapsed(prev => ({ ...prev, [g.id]: !prev[g.id] }))} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, textAlign: 'left', background: 'rgba(255,255,255,0.04)', border: 'none', borderRadius: 6, padding: '0.45rem 0.6rem', cursor: 'pointer', position: 'sticky', top: 0, zIndex: 1 }}>
+                <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem' }}>{isCollapsed ? '▸' : '▾'}</span>
+                <span style={{ flex: 1, fontSize: '0.74rem', fontWeight: 600, color: '#beb0a2' }}>{g.name}</span>
+                <span style={{ fontSize: '0.66rem', color: 'rgba(255,255,255,0.3)' }}>{g.items.length}</span>
+              </button>
+              {!isCollapsed && g.items.map(p => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.4rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  {p.photo_url ? (
+                    <img src={p.photo_url} alt="" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
+                  ) : (
+                    <div style={{ width: 32, height: 32, borderRadius: 4, background: 'rgba(255,255,255,0.06)', flexShrink: 0 }} />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p title={p.name} style={{ margin: 0, fontSize: '0.8rem', color: '#fff', fontWeight: 500, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.name}</p>
+                    <p style={{ margin: 0, fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)' }}>
+                      {p.brand ? p.brand + ' · ' : ''}{p.price != null ? fmt(p.price) : 'sin precio'}{p.pricing_unit && p.pricing_unit !== 'ud' ? ` / ${p.pricing_unit}` : ''}
+                    </p>
+                  </div>
+                  <button className="ap-btn ap-btn-primary ap-btn-sm" style={{ fontSize: '0.7rem', padding: '3px 8px' }} onClick={() => onInsert(p)}>Insertar</button>
+                </div>
+              ))}
             </div>
           );
         })}
