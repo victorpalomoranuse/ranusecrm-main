@@ -136,6 +136,11 @@ Dar de alta un producto nuevo en el catálogo desde un enlace:
 - Llama a crear_producto_catalogo con lo que tengas, repartido en sus campos correspondientes. Si no había precio claro en la página, créalo igualmente sin precio (nunca inventado) y dilo explícitamente para que se revise a mano; igual si no se detectó imagen. El objetivo es dejar el producto ya creado y bien clasificado para que solo haga falta repasar los detalles que falten, no rellenarlo todo desde cero ni reescribirlo campo a campo a mano después.
 - IMPORTANTE sobre el precio al crear el producto: el precio que verás en la página web del proveedor casi siempre es de cara al público, es decir, CON IVA incluido — pero el catálogo de Ranuse guarda los precios SIN IVA (ver regla de IVA más abajo). Así que antes de pasar el precio a crear_producto_catalogo, divide el precio de la página entre 1,21 para dejarlo sin IVA, y dilo explícitamente en tu mensaje (ej. "en la web pone 429€, lo he guardado como 354,55€ sin IVA"), para que quede claro y se pueda revisar.
 
+Dar de alta una partida de obra nueva (de palabra, sin enlace):
+- Cuando te pidan crear una partida de obra/reforma (pintura, tabiquería, pladur, alicatado, solado, instalaciones...) descrita de palabra, sin URL, redacta tú el "nombre" de forma profesional y bien desglosada, como una partida de un presupuesto de obra real — no copies la frase suelta tal cual te la digan. Ej.: si te dicen "tabique de pladur", el nombre debe quedar algo como "Tabique de placa de yeso laminado (pladur) sobre estructura de perfilería metálica, doble placa a cada cara, con aislamiento acústico interior" (ajusta el detalle según lo que te den o lo habitual en el sector si no te dan más datos).
+- Rellena también search_keywords con palabras clave cortas para poder encontrar luego esa partida escribiendo poco: usa las que el usuario te haya dado explícitamente si las menciona, y si no (o además), propón tú mismo 2-4 términos coloquiales/abreviados obvios con los que la buscaría alguien en el día a día (ej. para el tabique de pladur: "pladur, tabique, durlock"). Dilo en tu respuesta para que se pueda corregir si no le convence.
+- Pregunta la categoría si no está clara (usa listar_categorias), y si no hay precio, créala igualmente sin precio (nunca lo inventes) y dilo explícitamente — quedará como partida "sin precio" hasta que se complete con actualizar_precio_producto.
+
 Servicios de diseño de Ranuse (Diseño 3D, Proyecto de interiorismo, Llave en mano):
 - Además del equipamiento (racks, máquinas, materiales...), el catálogo tiene una categoría "Servicios" (dentro del tipo "Proyectos diseño") con las fases del propio servicio de diseño de Ranuse: "Diseño 3D" (fase de validación inicial), "Proyecto de interiorismo X - Y m²" (varios tramos según los metros del espacio, cada uno con su propio precio) y "Llave en mano" (ejecución completa, a medida — normalmente sin precio fijo en el catálogo porque depende del proyecto). Búscalos con buscar_productos(categoria="Servicios") igual que cualquier otro producto — nunca uses precios de memoria para estas fases, el catálogo es la fuente real y se actualiza ahí.
 - Razona qué combinación de fases tiene más sentido según el caso, no te limites a listarlas todas: en general, "Diseño 3D" es el primer paso casi siempre (valida la idea con poco compromiso). A partir de ahí:
@@ -198,12 +203,12 @@ const TOOLS = [
   },
   {
     name: 'crear_producto_catalogo',
-    description: 'Da de alta un producto nuevo en el Catálogo de Ranuse Design a partir de los datos extraídos de leer_pagina_producto. IMPORTANTE: el catálogo tiene un campo específico para cada dato (medidas, colores, accesorios incluidos...) — rellénalos SIEMPRE que la página lo indique, en vez de meterlo todo en "notas". El campo "notas" es solo para lo que no encaje en ningún campo específico (materiales, acabado general, certificaciones, observaciones). Solo úsala DESPUÉS de leer la página con leer_pagina_producto y de que la persona haya confirmado que quiere crear el producto — nunca la llames de golpe con el primer mensaje. Si no has visto un precio claro en la página, créalo igualmente sin precio (no inventes uno) y avisa de que hay que revisarlo a mano.',
+    description: 'Da de alta un producto o partida nueva en el Catálogo de Ranuse Design. Dos casos de uso: (1) a partir de los datos extraídos de leer_pagina_producto — solo DESPUÉS de leer la página y de que la persona haya confirmado que quiere crear el producto, nunca de golpe con el primer mensaje; o (2) una partida de obra/reforma que te describen de palabra, sin enlace (ej. "pintura plástica lisa en paredes", "tabique de pladur"). En el caso (2), redacta tú el "nombre" de forma profesional y bien desglosada, como lo escribiría un buen presupuesto de obra (material, sistema constructivo, acabado...), no una frase suelta tal cual te la han dicho. IMPORTANTE: el catálogo tiene un campo específico para cada dato (medidas, colores, accesorios incluidos...) — rellénalos SIEMPRE que se sepan, en vez de meterlo todo en "notas". El campo "notas" es solo para lo que no encaje en ningún campo específico. Si no hay un precio claro, créalo igualmente sin precio (no inventes uno) y avisa de que hay que revisarlo a mano.',
     input_schema: {
       type: 'object',
       properties: {
         categoria: { type: 'string', description: 'Nombre (o parte del nombre) de una categoría YA EXISTENTE en el catálogo — usa listar_categorias si no estás seguro' },
-        nombre: { type: 'string', description: 'Nombre del producto' },
+        nombre: { type: 'string', description: 'Nombre del producto o partida. Para una partida de obra descrita de palabra (sin enlace), redáctalo tú de forma profesional y desglosada (tipo, material, sistema, acabado), no la frase literal del usuario.' },
         marca: { type: 'string', description: 'Marca/fabricante, si se identifica en la página' },
         precio: { type: 'number', description: 'Precio de venta SIN IVA si se ve claro en la página (recuerda dividir entre 1,21 si el precio de la web es de cara al público) — déjalo vacío si no estás seguro, nunca lo inventes' },
         pricing_unit: { type: 'string', description: 'Cómo se cobra: "ud" (por defecto), "m2" (por metro cuadrado) o "ml" (por metro lineal) — solo si aplica' },
@@ -215,11 +220,12 @@ const TOOLS = [
         color_acolchado: { type: 'string', description: 'Color del acolchado/tapizado, si aplica (bancos, asientos...)' },
         tipo_acolchado: { type: 'string', description: 'Material del acolchado (ej. vinilo, cuero sintético), si aplica' },
         accesorios_incluidos: { type: 'string', description: 'Accesorios que trae incluidos el producto (ej. "J-cups y barra de seguridad") — esto va en su propio campo, NO en notas' },
+        search_keywords: { type: 'string', description: 'Palabras clave cortas separadas por comas para encontrar el producto/partida por abreviatura al buscar (ej. "pladur, tabique, durlock"). Especialmente importante en partidas de obra/reformas, donde el nombre suele ser una redacción larga y técnica difícil de teclear entera. Usa las palabras que te haya dado el usuario si las ha dicho, y complétalas o propón las tuyas con los términos coloquiales/abreviados más obvios que la gente usaría para buscar ese producto o partida.' },
         notas: { type: 'string', description: 'SOLO para lo que no encaje en ningún campo específico de arriba: materiales, acabado general, certificaciones u observaciones sueltas' },
-        link: { type: 'string', description: 'La URL original del producto' },
+        link: { type: 'string', description: 'La URL original del producto — solo si viene de un enlace, no aplica a una partida de obra descrita de palabra' },
         imagen_url: { type: 'string', description: 'URL de la imagen del producto, si leer_pagina_producto devolvió una en imagen_detectada' },
       },
-      required: ['categoria', 'nombre', 'link'],
+      required: ['categoria', 'nombre'],
     },
   },
   {
@@ -410,8 +416,8 @@ async function buscarPorTexto(textoQuery) {
 
   const { data: allProducts } = await supabase
     .from('catalog_products')
-    .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color, nivel_uso, photo_url, category:catalog_categories!catalog_products_category_id_fkey(name)')
-    .or(`name.ilike.%${q}%,notes.ilike.%${q}%,included_accessories.ilike.%${q}%`)
+    .select('id, name, brand, price, category_id, purchase_dto, default_margin_pct, pricing_unit, included_accessories, link, notes, longitud, ancho, altura, color, nivel_uso, photo_url, search_keywords, category:catalog_categories!catalog_products_category_id_fkey(name)')
+    .or(`name.ilike.%${q}%,notes.ilike.%${q}%,included_accessories.ilike.%${q}%,search_keywords.ilike.%${q}%`)
     .limit(20);
 
   if (!allProducts?.length) return { encontrado: false, mensaje: `No hay ningún producto cuyo nombre, notas o accesorios incluidos mencionen "${q}".` };
@@ -504,7 +510,7 @@ async function descargarImagenProducto(imageUrl) {
   }
 }
 
-async function crearProductoCatalogo({ categoria, nombre, marca, precio, notas, link, imagen_url, longitud, ancho, altura, color, color_bastidor, color_acolchado, tipo_acolchado, accesorios_incluidos, pricing_unit }) {
+async function crearProductoCatalogo({ categoria, nombre, marca, precio, notas, link, imagen_url, longitud, ancho, altura, color, color_bastidor, color_acolchado, tipo_acolchado, accesorios_incluidos, pricing_unit, search_keywords }) {
   if (!categoria?.trim()) return { creado: false, mensaje: 'Falta la categoría — usa listar_categorias si no sabes cuál es.' };
   if (!nombre?.trim()) return { creado: false, mensaje: 'Falta el nombre del producto.' };
 
@@ -536,6 +542,7 @@ async function crearProductoCatalogo({ categoria, nombre, marca, precio, notas, 
     tipo_acolchado: tipo_acolchado?.trim() || null,
     included_accessories: accesorios_incluidos?.trim() || null,
     pricing_unit: pricing_unit?.trim() || 'ud',
+    search_keywords: search_keywords?.trim() || null,
   }).select('id, name, price, photo_url').single();
   if (error) return { creado: false, mensaje: 'Error al crear el producto: ' + error.message };
 

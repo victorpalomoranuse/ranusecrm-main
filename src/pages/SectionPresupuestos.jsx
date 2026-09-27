@@ -103,7 +103,7 @@ function CatalogLibraryPanel({ onInsert, onClose }) {
   }, []);
 
   const s = filter.trim().toLowerCase();
-  const matches = p => !s || p.name.toLowerCase().includes(s) || (p.brand || '').toLowerCase().includes(s);
+  const matches = p => !s || p.name.toLowerCase().includes(s) || (p.brand || '').toLowerCase().includes(s) || (p.search_keywords || '').toLowerCase().includes(s);
   const typeOf = p => p.category?.type;
 
   // Con búsqueda se ignora la pestaña de tipo, para encontrar el producto estés donde estés.
