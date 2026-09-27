@@ -690,6 +690,22 @@ router.get('/:id/pdf-cliente', async (req, res) => {
 
     let rowNum = 1;
     for (const item of items) {
+      // Los capítulos (is_chapter_header) son solo un separador visual entre
+      // grupos de partidas, no una partida en sí — antes se dibujaban con la
+      // misma fila (número, imagen, cantidad, unidad) que un producto normal,
+      // así que en el PDF eran indistinguibles de una partida real. Se
+      // dibujan aparte, como una banda de color con el texto en blanco, sin
+      // número de línea, sin columnas numéricas y sin consumir la numeración
+      // de las partidas.
+      if (item.is_chapter_header) {
+        const chapH = 24;
+        if (y + chapH > H - 140) { doc.addPage(); y = margin; }
+        doc.rect(margin, y, W - margin * 2, chapH).fill(BRAND.primary);
+        doc.fillColor('#ffffff').fontSize(9.5).font('Helvetica-Bold').text((item.name || '').toUpperCase(), margin + 10, y + chapH / 2 - 5, { width: W - margin * 2 - 20 });
+        y += chapH;
+        continue;
+      }
+
       const imageUrl = item.image_url || (item.catalog_product_id ? catalogMap[item.catalog_product_id] : null);
       const imgH = 38;
       const textXforCalc = margin + 22 + imgH + 8;
