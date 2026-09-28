@@ -30,9 +30,14 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
     const tasaCierre = total > 0 ? Math.round((ventas / total) * 100) : 0;
     const tasaCalificacion = total > 0 ? Math.round(((total - noCalifica) / total) * 100) : 0;
 
+    // Normalizado sin distinguir mayúsculas/minúsculas — el Asistente Setter
+    // guarda "Instagram"/"WhatsApp"/"Ads" con mayúscula inicial, pero el
+    // formulario manual ofrece las mismas opciones en minúscula, así que sin
+    // normalizar aparecían como canales distintos en el desglose.
     const porCanal = {};
     registros.forEach(r => {
-      const c = r.canal || 'otro';
+      const raw = (r.canal || 'otro').trim();
+      const c = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
       if (!porCanal[c]) porCanal[c] = { total: 0, ventas: 0 };
       porCanal[c].total++;
       if (r.estado === 'venta') porCanal[c].ventas++;

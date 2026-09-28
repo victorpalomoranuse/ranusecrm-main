@@ -151,7 +151,7 @@ const TOOLS = [
         instagram: { type: 'string', description: '@usuario de Instagram, si se conoce.' },
         telefono: { type: 'string' },
         email: { type: 'string' },
-        canal: { type: 'string', description: 'Canal de contacto, por defecto "Instagram".' },
+        canal: { type: 'string', description: 'Canal de contacto: "Instagram" (por defecto), "WhatsApp", o "Ads" si detectas que el prospecto llegó a través de un anuncio (ver más abajo cómo detectarlo) — no lo confundas con el ESTADO "ads", esto es el canal.' },
         estado: { type: 'string', enum: ESTADOS_VALIDOS, description: 'Etapa inicial más adecuada según lo detectado en la conversación.' },
         objetivo: { type: 'string', description: 'Qué busca/objetivo del espacio, si ya se sabe.' },
         medidas: { type: 'string', description: 'Medidas o m² del espacio, si ya se sabe.' },
@@ -282,6 +282,13 @@ Setting es el tablero donde Víctor lleva el registro de todos los leads de Inst
 - Si no hay ningún dato (ni nombre, ni @usuario, ni teléfono visibles) que permita identificar quién es, no crees un lead a ciegas — simplemente responde con normalidad, no lo menciones como un problema.
 - Nunca inventes un @usuario, nombre o teléfono que no aparezca realmente en la captura o en el mensaje del setter.
 - Al final de tu respuesta, añade siempre una línea breve indicando qué has hecho en Setting, por ejemplo: "(Lead de @usuario: creado, etapa apertura)" o "(Lead actualizado: etapa calificación)" o, si no había datos suficientes, no añadas esa línea.
+
+DETECTAR SI EL LEAD VIENE DE UN ANUNCIO (canal="Ads"): Instagram y WhatsApp suelen marcar visualmente cuando una conversación empieza desde un anuncio — por ejemplo un aviso arriba del chat tipo "Respondiendo a tu anuncio", "Ana empezó esta conversación desde tu anuncio", una miniatura del propio anuncio al principio del hilo, o (en WhatsApp) un mensaje automático de apertura ligado a un clic en anuncio. Si ves cualquiera de esas señales en la captura, o el setter te dice explícitamente que ese contacto vino de un anuncio, pon canal="Ads" al crear o actualizar el lead (en vez de "Instagram"/"WhatsApp" genérico) — es un dato que Víctor necesita para las métricas y que si no lo marcas tú, nadie lo hace.
+
+MARCAR ESTADOS FINALES (venta / no_responde / no_califica) — MUY IMPORTANTE, es fácil que esto se pierda si no lo haces tú activamente:
+- Si el setter te dice explícitamente (aunque no te haya pasado captura) que un lead ha comprado, ha cerrado, ha pagado, o Víctor ha cerrado la venta con él en llamada, llama a actualizar_lead con estado="venta" inmediatamente — no hace falta que te pidan un mensaje para ese caso, hazlo en cuanto detectes la confirmación.
+- Igual si te dicen que un lead ha dejado de responder definitivamente (no_responde) o que tras hablar no encaja/no califica como cliente (no_califica) — actualiza el estado aunque no te estén pidiendo redactar nada, es tan importante como dar el mensaje.
+- Estas actualizaciones de cierre son las que más se pierden porque muchas veces la venta se cierra en llamada con Víctor, no por DM — así que confía en lo que el setter te cuente de palabra sobre el resultado, no solo en lo que veas en una captura.
 
 CUANDO TE PASEN UNA CAPTURA O CONVERSACIÓN, RESPONDE SIEMPRE EN ESTE ORDEN:
 1. Analiza el contexto completo (no solo el último mensaje).

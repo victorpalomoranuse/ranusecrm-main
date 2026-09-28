@@ -146,6 +146,7 @@ function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
 export function SectionSetting() {
   const [registros, setRegistros] = useState([]);
   const [metricas, setMetricas] = useState(null);
+  const [porCanal, setPorCanal] = useState(null);
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // 'new' | registro object | null
@@ -153,7 +154,7 @@ export function SectionSetting() {
   const { toasts, toast, remove } = useToast();
 
   const cargar = () => {
-    api.get('/setting').then(r => { setRegistros(r.data.registros || []); setMetricas(r.data.metricas || null); }).catch(() => {}).finally(() => setLoading(false));
+    api.get('/setting').then(r => { setRegistros(r.data.registros || []); setMetricas(r.data.metricas || null); setPorCanal(r.data.porCanal || null); }).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { cargar(); api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {}); }, []);
 
@@ -216,6 +217,16 @@ export function SectionSetting() {
             <div key={label} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'0.75rem 1rem', minWidth:110 }}>
               <div style={{ fontSize:'0.65rem', color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
               <div style={{ fontSize:'1.3rem', fontWeight:700, color:'#fff' }}>{val}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {porCanal && Object.keys(porCanal).length > 0 && (
+        <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap', marginBottom:'1.5rem' }}>
+          {Object.entries(porCanal).sort((a,b) => b[1].total - a[1].total).map(([canal, v]) => (
+            <div key={canal} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:'0.45rem 0.75rem', fontSize:'0.75rem', color:'rgba(255,255,255,0.6)' }}>
+              <strong style={{ color:'#fff' }}>{canal}</strong>: {v.total} lead{v.total === 1 ? '' : 's'}{v.ventas > 0 ? ` · ${v.ventas} venta${v.ventas === 1 ? '' : 's'}` : ''}
             </div>
           ))}
         </div>
