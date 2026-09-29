@@ -43,10 +43,12 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
 }
 
 // Embudo previo de cualificación/agenda (independiente del de Leads, que no
-// se toca): ADS → Interesado → No califica / Contacto Nuevo → Pitcheo
+// se toca): Nuevo → Interesado → No califica / Contacto Nuevo → Pitcheo
 // Agenda → Recolectando Información → Prioridad → Venta / No responde.
+// "Nuevo" se llamaba antes "ads" — se renombró para no confundirse con el
+// CANAL "Ads" (de dónde viene el contacto), que es un dato aparte.
 const ESTADOS = {
-  ads:                { label: 'ADS',                  color: '#3b82f6' },
+  nuevo:              { label: 'Nuevo',                 color: '#3b82f6' },
   interesado:         { label: 'Interesado',            color: '#8b5cf6' },
   no_califica:        { label: 'No califica',            color: '#6b7280' },
   contacto_nuevo:     { label: 'Contacto Nuevo',          color: '#06b6d4' },
@@ -56,16 +58,19 @@ const ESTADOS = {
   venta:              { label: 'Venta ✓',                  color: '#22c55e' },
   no_responde:        { label: 'No responde',              color: '#ef4444' },
 };
-const ORDEN = ['ads','interesado','no_califica','contacto_nuevo','pitcheo_agenda','recolectando_info','prioridad','venta','no_responde'];
-const CANALES = ['instagram','tiktok','whatsapp','web','recomendacion','prospeccion','ads','evento','agente','otro'];
+const ORDEN = ['nuevo','interesado','no_califica','contacto_nuevo','pitcheo_agenda','recolectando_info','prioridad','venta','no_responde'];
+// Origen del contacto — las mismas 4 categorías que usa el Asistente Setter,
+// más un par de casos que solo se dan automáticamente (WhatsApp orgánico sin
+// anuncio, y Otro para lo suelto).
+const CANALES = ['Instagram (nos escriben)', 'Instagram (prospección)', 'Ads', 'Referido', 'WhatsApp', 'Otro'];
 
-const blank = { nombre:'', telefono:'', instagram:'', email:'', canal:'', estado:'ads', objetivo:'', medidas:'', maquinarias:'', notas:'', assigned_to:'' };
+const blank = { nombre:'', telefono:'', instagram:'', email:'', canal:'', estado:'nuevo', objetivo:'', medidas:'', maquinarias:'', notas:'', assigned_to:'' };
 
 function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
   const isEdit = !!registro;
   const [form, setForm] = useState(registro ? {
     nombre: registro.nombre || '', telefono: registro.telefono || '', instagram: registro.instagram || '',
-    email: registro.email || '', canal: registro.canal || '', estado: registro.estado || 'ads',
+    email: registro.email || '', canal: registro.canal || '', estado: registro.estado || 'nuevo',
     objetivo: registro.objetivo || '', medidas: registro.medidas || '', maquinarias: registro.maquinarias || '',
     notas: registro.notas || '', assigned_to: registro.assigned_to || '',
   } : blank);

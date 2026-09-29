@@ -6,7 +6,13 @@ import { callClaude } from '../utils/anthropic.js';
 const router = express.Router();
 router.use(authenticateToken, requirePermission('leads'));
 
-const ESTADOS_VALIDOS = ['ads', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'recolectando_info', 'prioridad', 'venta', 'no_responde'];
+const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'recolectando_info', 'prioridad', 'venta', 'no_responde'];
+
+// Origen del contacto — las 4 opciones que debe distinguir el setter, más
+// dos categorías que solo se usan automáticamente (WhatsApp orgánico sin
+// anuncio, y Otro para casos sueltos), no se le ofrecen como pregunta.
+const CANALES_A_PREGUNTAR = ['Instagram (nos escriben)', 'Instagram (prospección)', 'Ads', 'Referido'];
+const CANALES_VALIDOS = [...CANALES_A_PREGUNTAR, 'WhatsApp', 'Otro'];
 
 const LEAD_SELECT = 'id, nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, created_at, updated_at';
 
@@ -34,15 +40,24 @@ async function buscarServiciosDiseno() {
   };
 }
 
-async function buscarLead({ query }) {
-  const q = (query || '').trim();
-  if (!q) return { encontrados: [], mensaje: 'No se ha indicado ningún dato para buscar.' };
+// Acepta varios datos identificativos a la vez (nombre, instagram, telefono,
+// email) y encuentra un lead que coincida por CUALQUIERA de ellos — no solo
+// por uno. Esto es clave para no duplicar leads: la misma persona puede
+// aparecer en distintas capturas identificada por datos distintos cada vez
+// (primero solo el teléfono, luego el nombre, luego el @) — si solo se
+// pudiera buscar por uno, cada búsqueda con un dato "nuevo" fallaría y
+// crearía un lead duplicado en vez de encontrar el que ya existía.
+async function buscarLead({ nombre, instagram, telefono, email, query }) {
+  // Compatibilidad hacia atrás por si el modelo aún manda "query" suelto.
+  const candidatos = [nombre, instagram, telefono, email, query].map(v => (v || '').trim()).filter(Boolean);
+  if (!candidatos.length) return { encontrados: [], mensaje: 'No se ha indicado ningún dato para buscar.' };
 
-  // Búsqueda por @ de Instagram, nombre, o teléfono (p.ej. si la conversación
-  // ya pasó a WhatsApp y el setter tiene el número en vez del @).
-  const soloDigitos = q.replace(/\D/g, '');
-  const filtros = [`instagram.ilike.%${q}%`, `nombre.ilike.%${q}%`, `telefono.ilike.%${q}%`];
-  if (soloDigitos.length >= 6) filtros.push(`telefono.ilike.%${soloDigitos}%`);
+  const filtros = [];
+  candidatos.forEach(v => {
+    filtros.push(`instagram.ilike.%${v}%`, `nombre.ilike.%${v}%`, `telefono.ilike.%${v}%`, `email.ilike.%${v}%`);
+    const soloDigitos = v.replace(/\D/g, '');
+    if (soloDigitos.length >= 6) filtros.push(`telefono.ilike.%${soloDigitos}%`);
+  });
 
   const { data, error } = await supabase
     .from('setting_leads')
@@ -52,7 +67,7 @@ async function buscarLead({ query }) {
     .limit(5);
   if (error) throw error;
 
-  if (!data || data.length === 0) return { encontrados: [], mensaje: `No hay ningún lead existente que coincida con "${q}".` };
+  if (!data || data.length === 0) return { encontrados: [], mensaje: `No hay ningún lead existente que coincida con "${candidatos.join(', ')}".` };
   return { encontrados: data };
 }
 
@@ -69,7 +84,7 @@ async function crearLead(input, userId) {
       telefono: input.telefono?.trim() || null,
       instagram: input.instagram?.trim() || null,
       email: input.email?.trim() || null,
-      canal: input.canal?.trim() || 'Instagram',
+      canal: (CANALES_VALIDOS.includes(input.canal) ? input.canal : null) || 'Instagram (nos escriben)',
       estado,
       objetivo: input.objetivo?.trim() || null,
       medidas: input.medidas?.trim() || null,
@@ -93,6 +108,7 @@ async function actualizarLead(input) {
   if (!existente) return { actualizado: false, error: `No existe ningún lead con id ${leadId}` };
 
   const updates = {};
+  if (input.nombre?.trim()) updates.nombre = input.nombre.trim();
   if (input.estado !== undefined && ESTADOS_VALIDOS.includes(input.estado)) updates.estado = input.estado;
   if (input.objetivo !== undefined) updates.objetivo = input.objetivo?.trim() || null;
   if (input.medidas !== undefined) updates.medidas = input.medidas?.trim() || null;
@@ -132,13 +148,15 @@ const TOOLS = [
   },
   {
     name: 'buscar_lead',
-    description: 'Busca en Setting (el tablero de leads) un lead ya existente por su @usuario de Instagram, su nombre, o su número de teléfono. Úsala SIEMPRE que analices una captura o conversación, antes de responder, para saber si ese prospecto ya tiene historial — incluso si la conversación ya pasó a WhatsApp y solo tienes el teléfono, no el @.',
+    description: 'Busca en Setting (el tablero de leads) un lead ya existente. Úsala SIEMPRE que analices una captura o conversación, antes de responder, para saber si ese prospecto ya tiene historial. IMPORTANTE para no duplicar: pasa TODOS los datos identificativos que veas en ESTA captura, no solo uno — la misma persona puede haber quedado guardada antes con un dato distinto al que ves ahora (ej. antes solo se le veía el teléfono y se creó con el teléfono como nombre provisional, y ahora ves su nombre real o su @) — si solo buscas por el dato de hoy, no la vas a encontrar y crearás un duplicado.',
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'El @usuario de Instagram (con o sin @), el nombre, o el número de teléfono del prospecto a buscar.' },
+        nombre: { type: 'string', description: 'Nombre del prospecto, si se ve en esta captura.' },
+        instagram: { type: 'string', description: '@usuario de Instagram, si se ve en esta captura.' },
+        telefono: { type: 'string', description: 'Número de teléfono, si se ve en esta captura.' },
+        email: { type: 'string', description: 'Email, si se ve en esta captura.' },
       },
-      required: ['query'],
     },
   },
   {
@@ -151,7 +169,7 @@ const TOOLS = [
         instagram: { type: 'string', description: '@usuario de Instagram, si se conoce.' },
         telefono: { type: 'string' },
         email: { type: 'string' },
-        canal: { type: 'string', description: 'Canal de contacto: "Instagram" (por defecto), "WhatsApp", o "Ads" si detectas que el prospecto llegó a través de un anuncio (ver más abajo cómo detectarlo) — no lo confundas con el ESTADO "ads", esto es el canal.' },
+        canal: { type: 'string', enum: CANALES_VALIDOS, description: 'Origen real del contacto — ver la sección "ORIGEN DEL CONTACTO" del prompt: pregúntaselo al setter si no está claro, no lo adivines entre "Instagram (nos escriben)" y "Instagram (prospección)".' },
         estado: { type: 'string', enum: ESTADOS_VALIDOS, description: 'Etapa inicial más adecuada según lo detectado en la conversación.' },
         objetivo: { type: 'string', description: 'Qué busca/objetivo del espacio, si ya se sabe.' },
         medidas: { type: 'string', description: 'Medidas o m² del espacio, si ya se sabe.' },
@@ -168,6 +186,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         lead_id: { type: 'string', description: 'id del lead a actualizar (obtenido de buscar_lead o crear_lead).' },
+        nombre: { type: 'string', description: 'Corrige el nombre si el lead se creó con un nombre provisional (el teléfono o el @) y ahora has descubierto su nombre real.' },
         estado: { type: 'string', enum: ESTADOS_VALIDOS },
         objetivo: { type: 'string' },
         medidas: { type: 'string' },
@@ -175,7 +194,7 @@ const TOOLS = [
         telefono: { type: 'string' },
         email: { type: 'string' },
         instagram: { type: 'string' },
-        canal: { type: 'string' },
+        canal: { type: 'string', enum: CANALES_VALIDOS },
         nota_nueva: { type: 'string', description: 'Resumen breve de esta interacción, se añade al final del historial de notas con la fecha de hoy.' },
       },
       required: ['lead_id'],
@@ -275,15 +294,27 @@ Este es un sistema vivo, no un guion rígido. Si detectas algo que parece funcio
 
 MEMORIA DE LEADS (usa las herramientas buscar_lead / crear_lead / actualizar_lead):
 Setting es el tablero donde Víctor lleva el registro de todos los leads de Instagram. Tu trabajo incluye mantenerlo actualizado, para que nunca se pierda el hilo de una conversación:
-- Cuando analices una captura o mensaje, intenta identificar el @usuario de Instagram del prospecto (normalmente visible en la cabecera de la conversación de la captura), su nombre si se menciona en el texto, o su número de teléfono si la conversación ya pasó a WhatsApp y el setter te pasa esa captura en su lugar — cualquiera de los tres sirve para identificarlo, no hace falta el @ siempre.
-- Si consigues identificarlo por cualquiera de esos tres datos, llama SIEMPRE primero a buscar_lead con ese dato, ANTES de dar tu respuesta — así sabes si ya existe, y si existe, ten en cuenta su historial de notas y su etapa actual: no repitas preguntas que ya te consta que se respondieron, y no lo trates como si fuera la primera conversación si no lo es. Es habitual que un lead que ya existe por su @ de Instagram vuelva a aparecer más adelante solo con su teléfono (cuando pasa a WhatsApp) — en ese caso sigue siendo el mismo lead, no crees uno nuevo.
-- Si buscar_lead no encuentra nada y tienes datos suficientes para identificarlo (al menos nombre, @usuario, o teléfono), créalo con crear_lead, con el estado inicial que mejor encaje según la etapa que acabas de detectar en la conversación.
-- Después de dar tu respuesta, si el lead ya existía o lo acabas de crear, llama a actualizar_lead para: ajustar el estado si ha avanzado de etapa, rellenar campos nuevos que hayas descubierto (objetivo/medidas/maquinarias/teléfono/email/instagram — por ejemplo si ahora conoces el teléfono de un lead que antes solo tenía @, añádelo), y añadir con nota_nueva un resumen breve (1-2 líneas) de esta interacción, para dejar memoria de lo hablado.
+- Cuando analices una captura o mensaje, identifica TODOS los datos que veas del prospecto: @usuario de Instagram (normalmente visible en la cabecera de la conversación), nombre si se menciona o si aparece guardado como contacto, y número de teléfono si la conversación ya pasó a WhatsApp — reúne todos los que veas, no te quedes solo con el primero que encuentres.
+- Llama SIEMPRE a buscar_lead ANTES de dar tu respuesta, pasando TODOS esos datos a la vez (nombre + instagram + telefono + email, cada uno si lo tienes) — nunca solo uno. Esto es crítico para no duplicar: el mismo prospecto puede aparecer identificado con un dato distinto en cada captura (una vez solo se ve el teléfono, otra vez aparece su nombre guardado, otra vez su @) — si el lead ya se creó antes con, por ejemplo, el teléfono como nombre provisional, y ahora solo buscas por el nombre real que acabas de ver, NO lo vas a encontrar por nombre (el campo nombre en la base de datos todavía tiene el teléfono) — pero SÍ lo encontrarás si además mandas el teléfono en la misma búsqueda, porque ese sí coincide. Manda siempre todo lo que tengas de esa captura, aunque creas que un dato "ya lo sabías" de antes.
+- Si buscar_lead encuentra un lead pero con un nombre provisional (el teléfono, un @usuario, o cualquier cosa que no sea un nombre real de persona) y en esta captura ya ves su nombre real, corrígelo con actualizar_lead (campo nombre) — no lo dejes con el dato provisional para siempre.
+- Ten en cuenta su historial de notas y su etapa actual al encontrarlo: no repitas preguntas que ya te consta que se respondieron, y no lo trates como si fuera la primera conversación si no lo es.
+- Si buscar_lead no encuentra nada (con todos los datos que le pasaste) y tienes datos suficientes para identificarlo (al menos nombre, @usuario, o teléfono), créalo con crear_lead, con el estado inicial que mejor encaje según la etapa que acabas de detectar en la conversación, y con el canal según la sección "ORIGEN DEL CONTACTO" de abajo — si no está claro, PREGÚNTALE al setter cuál es antes de crear el lead, no lo crees con un canal adivinado.
+- Después de dar tu respuesta, si el lead ya existía o lo acabas de crear, llama a actualizar_lead para: ajustar el estado si ha avanzado de etapa, rellenar campos nuevos que hayas descubierto (nombre real/objetivo/medidas/maquinarias/teléfono/email/instagram — por ejemplo si ahora conoces el teléfono de un lead que antes solo tenía @, añádelo), y añadir con nota_nueva un resumen breve (1-2 líneas) de esta interacción, para dejar memoria de lo hablado.
 - Si no hay ningún dato (ni nombre, ni @usuario, ni teléfono visibles) que permita identificar quién es, no crees un lead a ciegas — simplemente responde con normalidad, no lo menciones como un problema.
 - Nunca inventes un @usuario, nombre o teléfono que no aparezca realmente en la captura o en el mensaje del setter.
 - Al final de tu respuesta, añade siempre una línea breve indicando qué has hecho en Setting, por ejemplo: "(Lead de @usuario: creado, etapa apertura)" o "(Lead actualizado: etapa calificación)" o, si no había datos suficientes, no añadas esa línea.
 
-DETECTAR SI EL LEAD VIENE DE UN ANUNCIO (canal="Ads"): Instagram y WhatsApp suelen marcar visualmente cuando una conversación empieza desde un anuncio — por ejemplo un aviso arriba del chat tipo "Respondiendo a tu anuncio", "Ana empezó esta conversación desde tu anuncio", una miniatura del propio anuncio al principio del hilo, o (en WhatsApp) un mensaje automático de apertura ligado a un clic en anuncio. Si ves cualquiera de esas señales en la captura, o el setter te dice explícitamente que ese contacto vino de un anuncio, pon canal="Ads" al crear o actualizar el lead (en vez de "Instagram"/"WhatsApp" genérico) — es un dato que Víctor necesita para las métricas y que si no lo marcas tú, nadie lo hace.
+ORIGEN DEL CONTACTO (canal) — 4 categorías, NO las confundas entre sí:
+- "Instagram (nos escriben)": el prospecto escribió primero, por iniciativa propia (comentó, mandó DM, reaccionó a una historia...) — es el caso más común.
+- "Instagram (prospección)": el setter contactó primero al prospecto (mensaje en frío, prospección activa) — la conversación la abrió Ranuse, no el prospecto.
+- "Ads": la conversación viene de un anuncio de pago. Señales para detectarlo tú mismo sin preguntar: un aviso arriba del chat tipo "Respondiendo a tu anuncio", "Ana empezó esta conversación desde tu anuncio", una miniatura del propio anuncio al principio del hilo, o (en WhatsApp) un mensaje automático de apertura ligado a un clic en anuncio.
+- "Referido": alguien (cliente, conocido, otro prospecto) recomendó a Ranuse y por eso escribe este prospecto.
+
+Cómo decidir cuál usar:
+- Si ves alguna de las señales oficiales de anuncio → "Ads", sin preguntar.
+- Si el setter o el propio prospecto mencionan explícitamente que alguien se lo recomendó → "Referido", sin preguntar.
+- Si no hay ninguna señal clara de anuncio ni de referido, la duda real está entre "Instagram (nos escriben)" e "Instagram (prospección)" — normalmente se sabe por el primer mensaje del hilo (si empieza el prospecto o si empieza el setter/Víctor). Si aun así no te queda claro por la captura, PREGÚNTASELO directamente al setter en tu respuesta (ej. "¿este contacto os escribió él o lo prospectasteis vosotros?") antes de crear el lead — no lo asumas ni lo dejes en blanco.
+- Una vez tengas la respuesta del setter en un mensaje posterior, usa actualizar_lead para fijar el canal correcto — no hace falta volver a preguntar si ya te lo dijeron antes en esta misma conversación.
 
 MARCAR ESTADOS FINALES (venta / no_responde / no_califica) — MUY IMPORTANTE, es fácil que esto se pierda si no lo haces tú activamente:
 - Si el setter te dice explícitamente (aunque no te haya pasado captura) que un lead ha comprado, ha cerrado, ha pagado, o Víctor ha cerrado la venta con él en llamada, llama a actualizar_lead con estado="venta" inmediatamente — no hace falta que te pidan un mensaje para ese caso, hazlo en cuanto detectes la confirmación.
@@ -303,7 +334,7 @@ CUANDO TE PASEN UNA CAPTURA O CONVERSACIÓN, RESPONDE SIEMPRE EN ESTE ORDEN:
    - Da UN precio o UN dato concreto por mensaje si tienes varios que dar (ej. si preguntan por el precio de la Fase 1, di solo eso; no aproveches para explicar también la Fase 2 y la Fase 3 en el mismo mensaje salvo que te lo hayan preguntado explícitamente) — dejar algo para la respuesta siguiente mantiene la conversación viva, en vez de agotar todo de golpe.
 8. Indica brevemente qué NO conviene hacer todavía.
 9. Si detectas algún aprendizaje útil para el playbook, señálalo con su clasificación (hipótesis/en prueba/validado/descartado).
-10. Crea o actualiza el lead en Setting (crear_lead/actualizar_lead) y añade la línea de confirmación al final.
+10. Crea o actualiza el lead en Setting (crear_lead/actualizar_lead) y añade la línea de confirmación al final. Si es un lead nuevo y el canal no está claro (ver "ORIGEN DEL CONTACTO"), incluye la pregunta al setter sobre el origen como parte natural de tu respuesta, antes de crear el lead.
 
 Sé directo y práctico — el setter tiene prisa por responder, prioriza siempre darle el mensaje concreto a enviar antes que explicaciones largas.
 

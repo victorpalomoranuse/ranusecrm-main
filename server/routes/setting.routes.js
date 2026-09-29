@@ -7,7 +7,15 @@ const router = express.Router();
 // permiso) — Setting es un embudo previo, independiente del de Leads.
 const requireSetting = requirePermission('leads');
 
-export const ESTADOS_VALIDOS = ['ads', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'recolectando_info', 'prioridad', 'venta', 'no_responde'];
+// "nuevo" (antes llamado "ads") es la etapa inicial del embudo, antes de
+// cualquier interacción real — se renombró para no confundirse con el
+// CANAL "Ads" (origen del contacto), que es un concepto aparte.
+export const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'recolectando_info', 'prioridad', 'venta', 'no_responde'];
+
+// Origen del contacto — usado tanto en el formulario manual como por el
+// Asistente Setter (que debe preguntar cuál aplica cuando no lo tenga claro,
+// en vez de adivinarlo).
+export const CANALES_VALIDOS = ['Instagram (nos escriben)', 'Instagram (prospección)', 'Ads', 'Referido', 'WhatsApp', 'Otro'];
 
 router.get('/', authenticateToken, requireSetting, async (req, res) => {
   try {
@@ -78,7 +86,7 @@ router.post('/', authenticateToken, requireSetting, async (req, res) => {
         instagram: instagram?.trim() || null,
         email: email?.trim() || null,
         canal: canal?.trim() || null,
-        estado: ESTADOS_VALIDOS.includes(estado) ? estado : 'ads',
+        estado: ESTADOS_VALIDOS.includes(estado) ? estado : 'nuevo',
         objetivo: objetivo?.trim() || null,
         medidas: medidas?.trim() || null,
         maquinarias: maquinarias?.trim() || null,
