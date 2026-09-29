@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, Target } from 'lucide-react';
+import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, Target, Search } from 'lucide-react';
 import api from '../services/api';
 
 function useToast() {
@@ -151,6 +151,8 @@ export function SectionSetting() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // 'new' | registro object | null
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [busqueda, setBusqueda] = useState('');
+  const [mesFiltro, setMesFiltro] = useState('');
   const { toasts, toast, remove } = useToast();
 
   const cargar = () => {
@@ -186,6 +188,23 @@ export function SectionSetting() {
       setConfirmDelete(null);
     }
   };
+
+  // Meses presentes en los datos (a partir de created_at), para el
+  // desplegable de filtro — más nuevo primero.
+  const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const mesesDisponibles = [...new Set(registros.map(r => (r.created_at || '').slice(0, 7)).filter(Boolean))]
+    .sort((a, b) => b.localeCompare(a))
+    .map(ym => {
+      const [y, m] = ym.split('-');
+      return { valor: ym, etiqueta: `${MESES_ES[parseInt(m, 10) - 1]} ${y}` };
+    });
+
+  const q = busqueda.trim().toLowerCase();
+  const registrosFiltrados = registros.filter(r => {
+    if (mesFiltro && (r.created_at || '').slice(0, 7) !== mesFiltro) return false;
+    if (!q) return true;
+    return [r.nombre, r.telefono, r.instagram, r.email].some(v => (v || '').toLowerCase().includes(q));
+  });
 
   if (loading) return <div className="ap-loading">Cargando…</div>;
 
@@ -232,9 +251,32 @@ export function SectionSetting() {
         </div>
       )}
 
+      <div style={{ display:'flex', gap:'0.6rem', flexWrap:'wrap', marginBottom:'1rem' }}>
+        <div style={{ position:'relative', flex:'1 1 260px', minWidth:200 }}>
+          <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'rgba(255,255,255,0.35)' }}/>
+          <input
+            className="ap-field-input"
+            style={{ paddingLeft:32 }}
+            placeholder="Buscar por nombre, teléfono, Instagram o email…"
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+          />
+        </div>
+        <select className="ap-select" style={{ minWidth:170 }} value={mesFiltro} onChange={e => setMesFiltro(e.target.value)}>
+          <option value="">Todos los meses</option>
+          {mesesDisponibles.map(m => <option key={m.valor} value={m.valor}>{m.etiqueta}</option>)}
+        </select>
+        {(busqueda || mesFiltro) && (
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setBusqueda(''); setMesFiltro(''); }}>Limpiar filtros</button>
+        )}
+        {(busqueda || mesFiltro) && (
+          <span style={{ fontSize:'0.75rem', color:'rgba(255,255,255,0.4)', alignSelf:'center' }}>{registrosFiltrados.length} resultado{registrosFiltrados.length === 1 ? '' : 's'}</span>
+        )}
+      </div>
+
       <div style={{ display:'flex', gap:'0.75rem', overflowX:'auto', paddingBottom:'0.5rem' }}>
         {ORDEN.map(estado => {
-          const items = registros.filter(r => r.estado === estado);
+          const items = registrosFiltrados.filter(r => r.estado === estado);
           const est = ESTADOS[estado];
           return (
             <div key={estado} style={{ flex:'0 0 260px', background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:12, padding:'0.75rem', display:'flex', flexDirection:'column', gap:'0.5rem' }}>
@@ -253,6 +295,8 @@ export function SectionSetting() {
                     </div>
                   </div>
                   {r.canal && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.4)' }}>{r.canal}</span>}
+                  {r.telefono && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.3)' }}>{r.telefono}</span>}
+                  {r.instagram && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.3)' }}>@{r.instagram.replace(/^@/, '')}</span>}
                   {r.empleado?.name && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.3)' }}>→ {r.empleado.name}</span>}
                   <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginTop:4 }}>
                     {ORDEN.filter(e => e !== estado).map(e => (
