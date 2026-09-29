@@ -49,7 +49,13 @@ async function buscarServiciosDiseno() {
 // crearía un lead duplicado en vez de encontrar el que ya existía.
 async function buscarLead({ nombre, instagram, telefono, email, query }) {
   // Compatibilidad hacia atrás por si el modelo aún manda "query" suelto.
-  const candidatos = [nombre, instagram, telefono, email, query].map(v => (v || '').trim()).filter(Boolean);
+  // El @ inicial se quita SIEMPRE del término de búsqueda: como se busca por
+  // "contiene", buscar sin @ encuentra tanto "usuario" como "@usuario" en la
+  // base de datos, pero buscar CON @ solo encuentra "@usuario" — así que
+  // quitarlo es estrictamente más robusto y evita duplicados por esta causa
+  // (confirmado: 3 pares de leads duplicados en Setting eran el mismo @
+  // guardado una vez con @ y otra vez sin él).
+  const candidatos = [nombre, instagram, telefono, email, query].map(v => (v || '').trim().replace(/^@+/, '')).filter(Boolean);
   if (!candidatos.length) return { encontrados: [], mensaje: 'No se ha indicado ningún dato para buscar.' };
 
   const filtros = [];
@@ -82,7 +88,7 @@ async function crearLead(input, userId) {
     .insert({
       nombre,
       telefono: input.telefono?.trim() || null,
-      instagram: input.instagram?.trim() || null,
+      instagram: input.instagram?.trim().replace(/^@+/, '') || null,
       email: input.email?.trim() || null,
       canal: (CANALES_VALIDOS.includes(input.canal) ? input.canal : null) || 'Instagram (nos escriben)',
       estado,
@@ -115,7 +121,7 @@ async function actualizarLead(input) {
   if (input.maquinarias !== undefined) updates.maquinarias = input.maquinarias?.trim() || null;
   if (input.telefono !== undefined) updates.telefono = input.telefono?.trim() || null;
   if (input.email !== undefined) updates.email = input.email?.trim() || null;
-  if (input.instagram !== undefined) updates.instagram = input.instagram?.trim() || null;
+  if (input.instagram !== undefined) updates.instagram = input.instagram?.trim().replace(/^@+/, '') || null;
   if (input.canal !== undefined) updates.canal = input.canal?.trim() || null;
 
   if (input.nota_nueva?.trim()) {

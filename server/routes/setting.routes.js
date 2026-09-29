@@ -83,7 +83,7 @@ router.post('/', authenticateToken, requireSetting, async (req, res) => {
       .insert({
         nombre: nombre.trim(),
         telefono: telefono?.trim() || null,
-        instagram: instagram?.trim() || null,
+        instagram: instagram?.trim().replace(/^@+/, '') || null,
         email: email?.trim() || null,
         canal: canal?.trim() || null,
         estado: ESTADOS_VALIDOS.includes(estado) ? estado : 'nuevo',
@@ -110,7 +110,7 @@ router.put('/:id', authenticateToken, requireSetting, async (req, res) => {
     const updates = { updated_at: new Date().toISOString() };
     if (nombre !== undefined) updates.nombre = nombre.trim();
     if (telefono !== undefined) updates.telefono = telefono?.trim() || null;
-    if (instagram !== undefined) updates.instagram = instagram?.trim() || null;
+    if (instagram !== undefined) updates.instagram = instagram?.trim().replace(/^@+/, '') || null;
     if (email !== undefined) updates.email = email?.trim() || null;
     if (canal !== undefined) updates.canal = canal?.trim() || null;
     if (estado !== undefined && ESTADOS_VALIDOS.includes(estado)) updates.estado = estado;
