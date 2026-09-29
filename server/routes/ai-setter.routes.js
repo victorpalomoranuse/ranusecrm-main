@@ -90,7 +90,13 @@ async function crearLead(input, userId) {
   // que el modelo se acuerde de preguntar primero: sin confirmación
   // explícita de Franco, no se crea nada.
   if (input.confirmado_por_setter !== true) {
-    return { creado: false, requiere_confirmacion: true, mensaje: 'No se ha creado el lead — falta confirmación explícita de Franco. Pregúntale si quiere darlo de alta en Setting antes de volver a llamar a esta herramienta (con confirmado_por_setter=true una vez te diga que sí).' };
+    return { creado: false, requiere_confirmacion: true, mensaje: 'No se ha creado el lead — falta confirmación explícita de Franco. Pregúntale si quiere darlo de alta en Setting (con el bloque de opciones del canal) antes de volver a llamar a esta herramienta (con confirmado_por_setter=true una vez elija una opción).' };
+  }
+  // El canal también se exige a nivel de código — es un dato clave para las
+  // métricas de origen (de dónde vienen las ventas), así que nunca se crea
+  // un lead sin él fijado explícitamente por la respuesta de Franco.
+  if (!CANALES_VALIDOS.includes(input.canal)) {
+    return { creado: false, requiere_confirmacion: true, mensaje: `No se ha creado el lead — falta el canal de origen (o no es válido: "${input.canal || ''}"). Pregúntale a Franco de dónde viene el contacto con el bloque de opciones antes de volver a llamar a esta herramienta.` };
   }
 
   const estado = ESTADOS_VALIDOS.includes(input.estado) ? input.estado : 'contacto_nuevo';
@@ -102,7 +108,7 @@ async function crearLead(input, userId) {
       telefono: input.telefono?.trim() || null,
       instagram: input.instagram?.trim().replace(/^@+/, '') || null,
       email: input.email?.trim() || null,
-      canal: (CANALES_VALIDOS.includes(input.canal) ? input.canal : null) || 'Instagram (nos escriben)',
+      canal: input.canal,
       estado,
       objetivo: input.objetivo?.trim() || null,
       medidas: input.medidas?.trim() || null,
@@ -190,7 +196,7 @@ const TOOLS = [
   },
   {
     name: 'crear_lead',
-    description: 'Crea un nuevo lead en Setting cuando buscar_lead no ha encontrado nada y hay datos suficientes para identificar al prospecto (al menos nombre o @usuario de Instagram). OBLIGATORIO: nunca la llames en el mismo turno en el que analizas la captura por primera vez — antes SIEMPRE tienes que preguntarle a Franco en tu respuesta si quiere darlo de alta (ej. "¿lo doy de alta en Setting?"), y esperar a que él responda que sí en un mensaje posterior. Si llamas a esta tool sin que Franco haya confirmado explícitamente en un mensaje suyo previo, se rechazará.',
+    description: 'Crea un nuevo lead en Setting cuando buscar_lead no ha encontrado nada y hay datos suficientes para identificar al prospecto (al menos nombre o @usuario de Instagram). OBLIGATORIO: nunca la llames en el mismo turno en el que analizas la captura por primera vez — antes SIEMPRE tienes que preguntarle a Franco, en un solo bloque de opciones, tanto si quiere darlo de alta como de dónde viene el contacto (ver "ORIGEN DEL CONTACTO" del prompt), y esperar a que elija una opción en un mensaje posterior. Se rechaza si falta la confirmación o el canal, aunque tengas señales que sugieran cuál es — el canal SIEMPRE lo confirma Franco con un clic, nunca lo fijes tú sin preguntar.',
     input_schema: {
       type: 'object',
       properties: {
@@ -206,7 +212,7 @@ const TOOLS = [
         maquinarias: { type: 'string', description: 'Equipamiento actual o deseado, si ya se sabe.' },
         notas: { type: 'string', description: 'Resumen breve de lo hablado hasta ahora.' },
       },
-      required: ['nombre', 'confirmado_por_setter'],
+      required: ['nombre', 'confirmado_por_setter', 'canal'],
     },
   },
   {
@@ -335,23 +341,20 @@ Setting es el tablero donde Víctor lleva el registro de todos los leads de Inst
 - Llama SIEMPRE a buscar_lead ANTES de dar tu respuesta, pasando TODOS esos datos a la vez (nombre + instagram + telefono + email, cada uno si lo tienes) — nunca solo uno. Esto es crítico para no duplicar: el mismo prospecto puede aparecer identificado con un dato distinto en cada captura (una vez solo se ve el teléfono, otra vez aparece su nombre guardado, otra vez su @) — si el lead ya se creó antes con, por ejemplo, el teléfono como nombre provisional, y ahora solo buscas por el nombre real que acabas de ver, NO lo vas a encontrar por nombre (el campo nombre en la base de datos todavía tiene el teléfono) — pero SÍ lo encontrarás si además mandas el teléfono en la misma búsqueda, porque ese sí coincide. Manda siempre todo lo que tengas de esa captura, aunque creas que un dato "ya lo sabías" de antes.
 - Si buscar_lead encuentra un lead pero con un nombre provisional (el teléfono, un @usuario, o cualquier cosa que no sea un nombre real de persona) y en esta captura ya ves su nombre real, corrígelo con actualizar_lead (campo nombre) — no lo dejes con el dato provisional para siempre.
 - Ten en cuenta su historial de notas y su etapa actual al encontrarlo: no repitas preguntas que ya te consta que se respondieron, y no lo trates como si fuera la primera conversación si no lo es.
-- Si buscar_lead no encuentra nada (con todos los datos que le pasaste) y tienes datos suficientes para identificarlo (al menos nombre, @usuario, o teléfono), PREGÚNTALE primero a Franco si quiere que lo cree en Setting (ej. "¿Lo doy de alta en Setting?"), con opciones rápidas ["Sí, créalo", "No, todavía no"] — nunca lo crees directamente sin confirmación, aunque tengas datos de sobra. Si confirma que sí, créalo con crear_lead, con el estado inicial que mejor encaje según la etapa que acabas de detectar en la conversación, y con el canal según la sección "ORIGEN DEL CONTACTO" de abajo — si el canal no está claro, pregúntalo también (puedes combinar ambas preguntas en una sola si tiene sentido). Si Franco dice que no lo cree, responde con normalidad sin insistir ni volver a preguntar en esta misma conversación.
+- Si buscar_lead no encuentra nada (con todos los datos que le pasaste) y tienes datos suficientes para identificarlo (al menos nombre, @usuario, o teléfono), PREGÚNTALE siempre a Franco antes de crearlo — nunca lo crees directamente, ni siquiera cuando tengas datos de sobra o creas tener claro el canal. Esta pregunta combina SIEMPRE dos cosas en una: si quiere darlo de alta, Y de dónde viene el contacto — ver "ORIGEN DEL CONTACTO" de abajo para el porqué esto es obligatorio siempre, sin excepción, aunque veas señales claras de anuncio o de referido. Formato tipo: "¿Lo doy de alta en Setting? ¿De dónde viene?" con un bloque \`\`\`opciones\`\`\` que contenga exactamente ["Nos escribió ella", "Lo prospectamos", "Viene de un anuncio", "Es un referido"] (la opción "Otro… (escribir)" para cancelar/decir que no, ya la añade el sistema sola — no hace falta que la incluyas tú en el array). Cuando Franco pinche una de las 4, eso es SU CONFIRMACIÓN de crear el lead Y el canal a la vez — llama a crear_lead con confirmado_por_setter=true y el canal correspondiente. Si en vez de pinchar una opción te escribe que no lo crees, respeta eso y no insistas ni vuelvas a preguntar en esta misma conversación.
 - Después de dar tu respuesta, si el lead ya existía o lo acabas de crear, llama a actualizar_lead para: ajustar el estado si ha avanzado de etapa, rellenar campos nuevos que hayas descubierto (nombre real/objetivo/medidas/maquinarias/teléfono/email/instagram — por ejemplo si ahora conoces el teléfono de un lead que antes solo tenía @, añádelo), y añadir con nota_nueva un resumen breve (1-2 líneas) de esta interacción, para dejar memoria de lo hablado.
 - Si no hay ningún dato (ni nombre, ni @usuario, ni teléfono visibles) que permita identificar quién es, no crees un lead a ciegas — simplemente responde con normalidad, no lo menciones como un problema.
 - Nunca inventes un @usuario, nombre o teléfono que no aparezca realmente en la captura o en el mensaje del setter.
 - Al final de tu respuesta, añade siempre una línea breve indicando qué has hecho en Setting, por ejemplo: "(Lead de @usuario: creado, etapa apertura)" o "(Lead actualizado: etapa calificación)" o, si no había datos suficientes, no añadas esa línea.
 
-ORIGEN DEL CONTACTO (canal) — 4 categorías, NO las confundas entre sí:
-- "Instagram (nos escriben)": el prospecto escribió primero, por iniciativa propia (comentó, mandó DM, reaccionó a una historia...) — es el caso más común.
-- "Instagram (prospección)": el setter contactó primero al prospecto (mensaje en frío, prospección activa) — la conversación la abrió Ranuse, no el prospecto.
-- "Ads": la conversación viene de un anuncio de pago. Señales para detectarlo tú mismo sin preguntar: un aviso arriba del chat tipo "Respondiendo a tu anuncio", "Ana empezó esta conversación desde tu anuncio", una miniatura del propio anuncio al principio del hilo, o (en WhatsApp) un mensaje automático de apertura ligado a un clic en anuncio.
+ORIGEN DEL CONTACTO (canal) — 4 categorías, NO las confundas entre sí. Es un dato MUY IMPORTANTE para Víctor: con él mide de dónde vienen las ventas y cuántos leads llegan por cada vía (inbound vs. prospección activa vs. anuncios vs. boca a boca) — por eso hay que preguntarlo SIEMPRE al crear un lead nuevo, nunca darlo por hecho aunque parezca obvio:
+- "Instagram (nos escriben)": el prospecto escribió primero, por iniciativa propia (comentó, mandó DM, reaccionó a una historia...) — es el caso más común (inbound).
+- "Instagram (prospección)": el setter contactó primero al prospecto (mensaje en frío, prospección activa) — la conversación la abrió Ranuse, no el prospecto (outbound).
+- "Ads": la conversación viene de un anuncio de pago. Señales que lo sugieren (pero NO sustituyen la pregunta a Franco, solo te ayudan a intuirlo antes de preguntar): un aviso arriba del chat tipo "Respondiendo a tu anuncio", "Ana empezó esta conversación desde tu anuncio", una miniatura del propio anuncio al principio del hilo, o (en WhatsApp) un mensaje automático de apertura ligado a un clic en anuncio.
 - "Referido": alguien (cliente, conocido, otro prospecto) recomendó a Ranuse y por eso escribe este prospecto.
 
-Cómo decidir cuál usar:
-- Si ves alguna de las señales oficiales de anuncio → "Ads", sin preguntar.
-- Si el setter o el propio prospecto mencionan explícitamente que alguien se lo recomendó → "Referido", sin preguntar.
-- Si no hay ninguna señal clara de anuncio ni de referido, la duda real está entre "Instagram (nos escriben)" e "Instagram (prospección)" — normalmente se sabe por el primer mensaje del hilo (si empieza el prospecto o si empieza el setter/Víctor). Si aun así no te queda claro por la captura, PREGÚNTASELO directamente al setter en tu respuesta (ej. "¿este contacto os escribió él o lo prospectasteis vosotros?") antes de crear el lead — no lo asumas ni lo dejes en blanco. Acompaña esa pregunta con un bloque \`\`\`opciones\`\`\` con las 4 categorías (["Nos escribió él", "Lo prospectamos", "Viene de un anuncio", "Es un referido"]) para que Franco pueda pinchar en vez de escribir.
-- Una vez tengas la respuesta del setter en un mensaje posterior, usa actualizar_lead para fijar el canal correcto — no hace falta volver a preguntar si ya te lo dijeron antes en esta misma conversación.
+IMPORTANTE: aunque veas señales claras de anuncio o de referido en la captura, PREGUNTA IGUALMENTE con el bloque de opciones al crear el lead (ver arriba) — no lo dejes fijado tú solo sin que Franco lo confirme con un clic. Es la única forma de que este dato sea fiable siempre, y a Víctor le importa mucho que no se pierda ni un solo caso.
+- Si el lead YA EXISTÍA (no es de creación nueva) y necesitas actualizar o corregir su canal más adelante, ahí sí puedes usar actualizar_lead directamente con el canal que te diga Franco de palabra, sin repetir el bloque de opciones — esa regla de preguntar siempre con botones es específicamente para el momento de CREAR el lead.
 
 MARCAR ESTADOS FINALES (venta_1 / venta_2 / rechazo / seguimiento_futuro / no_responde / no_califica) — MUY IMPORTANTE, es fácil que esto se pierda si no lo haces tú activamente:
 - Ranuse vende dos servicios independientes — venta_1 y venta_2 (que un prospecto puede comprar solo el 1, solo el 2, o los dos, en cualquier orden). Si el setter te dice explícitamente (aunque no te haya pasado captura) que un lead ha comprado, ha cerrado, o Víctor ha cerrado la venta con él en llamada, pregunta si no queda claro cuál de los dos servicios compró, y llama a actualizar_lead con estado="venta_1" o estado="venta_2" según corresponda — inmediatamente, no hace falta que te pidan un mensaje para ese caso. Si compró los dos a la vez, llama a actualizar_lead dos veces (una para cada estado) para que quede registrada cada fecha de venta por separado.
