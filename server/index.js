@@ -31,6 +31,7 @@ import aiSetterRoutes from './routes/ai-setter.routes.js';
 import settingRoutes from './routes/setting.routes.js';
 import memoriaRoutes from './routes/memoria.routes.js';
 import calendarFeedRoutes from './routes/calendar-feed.routes.js';
+import whatsappRoutes from './routes/whatsapp.routes.js';
 dotenv.config();
 
 const app = express();
@@ -52,7 +53,12 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json({ limit: '25mb' }));
+// verify: guarda el cuerpo crudo de cada petición en req.rawBody — lo
+// necesita el webhook de WhatsApp (server/routes/whatsapp.routes.js) para
+// comprobar la firma HMAC que manda Meta, que se calcula sobre los bytes
+// exactos recibidos (JSON.stringify del body ya parseado podría no coincidir
+// byte a byte). Para el resto de rutas no cambia nada.
+app.use(express.json({ limit: '25mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 app.use((req, res, next) => {
@@ -92,6 +98,7 @@ app.use('/api/obra', obraRoutes);
 app.use('/api/ai-budget', aiBudgetRoutes);
 app.use('/api/ai-setter', aiSetterRoutes);
 app.use('/api/setting', settingRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/memoria', memoriaRoutes);
 app.use('/api/calendar', calendarFeedRoutes);
 app.use((req, res) => {
