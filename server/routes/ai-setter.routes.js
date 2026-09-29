@@ -6,7 +6,13 @@ import { callClaude } from '../utils/anthropic.js';
 const router = express.Router();
 router.use(authenticateToken, requirePermission('leads'));
 
-const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'recolectando_info', 'prioridad', 'venta', 'no_responde'];
+// "agendado" = ya tiene fecha/hora de llamada confirmada con Hernán (viene
+// justo después de "pitcheo_agenda", que es cuando se está intentando
+// conseguir esa cita todavía).
+// "venta_1"/"venta_2" = compró el servicio 1 / el servicio 2 — independientes
+// entre sí, se puede comprar solo uno o los dos. "rechazo" y
+// "seguimiento_futuro" son dos desenlaces más de la llamada.
+const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'agendado', 'recolectando_info', 'prioridad', 'venta_1', 'venta_2', 'rechazo', 'seguimiento_futuro', 'no_responde'];
 
 // Origen del contacto — las 4 opciones que debe distinguir el setter, más
 // dos categorías que solo se usan automáticamente (WhatsApp orgánico sin
@@ -80,6 +86,12 @@ async function buscarLead({ nombre, instagram, telefono, email, query }) {
 async function crearLead(input, userId) {
   const nombre = input.nombre?.trim();
   if (!nombre) return { creado: false, error: 'Falta el nombre del lead' };
+  // Bloqueo a nivel de código, no solo de instrucción — así no depende de
+  // que el modelo se acuerde de preguntar primero: sin confirmación
+  // explícita de Franco, no se crea nada.
+  if (input.confirmado_por_setter !== true) {
+    return { creado: false, requiere_confirmacion: true, mensaje: 'No se ha creado el lead — falta confirmación explícita de Franco. Pregúntale si quiere darlo de alta en Setting antes de volver a llamar a esta herramienta (con confirmado_por_setter=true una vez te diga que sí).' };
+  }
 
   const estado = ESTADOS_VALIDOS.includes(input.estado) ? input.estado : 'contacto_nuevo';
 
@@ -115,7 +127,13 @@ async function actualizarLead(input) {
 
   const updates = {};
   if (input.nombre?.trim()) updates.nombre = input.nombre.trim();
-  if (input.estado !== undefined && ESTADOS_VALIDOS.includes(input.estado)) updates.estado = input.estado;
+  if (input.estado !== undefined && ESTADOS_VALIDOS.includes(input.estado)) {
+    updates.estado = input.estado;
+    // Estampa la fecha de venta automáticamente al mover a venta_1/venta_2,
+    // así los % de cierre no dependen de que nadie la rellene a mano.
+    if (input.estado === 'venta_1') updates.fecha_venta_1 = new Date().toISOString();
+    if (input.estado === 'venta_2') updates.fecha_venta_2 = new Date().toISOString();
+  }
   if (input.objetivo !== undefined) updates.objetivo = input.objetivo?.trim() || null;
   if (input.medidas !== undefined) updates.medidas = input.medidas?.trim() || null;
   if (input.maquinarias !== undefined) updates.maquinarias = input.maquinarias?.trim() || null;
@@ -123,10 +141,15 @@ async function actualizarLead(input) {
   if (input.email !== undefined) updates.email = input.email?.trim() || null;
   if (input.instagram !== undefined) updates.instagram = input.instagram?.trim().replace(/^@+/, '') || null;
   if (input.canal !== undefined) updates.canal = input.canal?.trim() || null;
+  if (input.fecha_llamada !== undefined) {
+    const d = input.fecha_llamada ? new Date(input.fecha_llamada) : null;
+    if (input.fecha_llamada && isNaN(d?.getTime())) return { actualizado: false, error: `Fecha/hora de llamada no válida: "${input.fecha_llamada}" — usa formato ISO (ej. "2026-10-03T17:00:00").` };
+    updates.fecha_llamada = d ? d.toISOString() : null;
+  }
 
   if (input.nota_nueva?.trim()) {
     const fecha = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const linea = `[${fecha}] ${input.nota_nueva.trim()}`;
+    const linea = `[${fecha} — vía Asistente Setter] ${input.nota_nueva.trim()}`;
     updates.notas = existente.notas ? `${existente.notas}\n${linea}` : linea;
   }
 
@@ -167,10 +190,11 @@ const TOOLS = [
   },
   {
     name: 'crear_lead',
-    description: 'Crea un nuevo lead en Setting cuando buscar_lead no ha encontrado nada y hay datos suficientes para identificar al prospecto (al menos nombre o @usuario de Instagram).',
+    description: 'Crea un nuevo lead en Setting cuando buscar_lead no ha encontrado nada y hay datos suficientes para identificar al prospecto (al menos nombre o @usuario de Instagram). OBLIGATORIO: nunca la llames en el mismo turno en el que analizas la captura por primera vez — antes SIEMPRE tienes que preguntarle a Franco en tu respuesta si quiere darlo de alta (ej. "¿lo doy de alta en Setting?"), y esperar a que él responda que sí en un mensaje posterior. Si llamas a esta tool sin que Franco haya confirmado explícitamente en un mensaje suyo previo, se rechazará.',
     input_schema: {
       type: 'object',
       properties: {
+        confirmado_por_setter: { type: 'boolean', description: 'true SOLO si Franco ya ha confirmado explícitamente, en un mensaje suyo anterior, que quiere crear este lead (ej. respondió "sí", "créalo", "dale"...). Si es la primera vez que sale este prospecto en la conversación, esto tiene que ser false — pregunta primero y no llames a la tool todavía.' },
         nombre: { type: 'string', description: 'Nombre del prospecto, o su @usuario de Instagram si no se sabe el nombre real.' },
         instagram: { type: 'string', description: '@usuario de Instagram, si se conoce.' },
         telefono: { type: 'string' },
@@ -182,7 +206,7 @@ const TOOLS = [
         maquinarias: { type: 'string', description: 'Equipamiento actual o deseado, si ya se sabe.' },
         notas: { type: 'string', description: 'Resumen breve de lo hablado hasta ahora.' },
       },
-      required: ['nombre'],
+      required: ['nombre', 'confirmado_por_setter'],
     },
   },
   {
@@ -201,6 +225,7 @@ const TOOLS = [
         email: { type: 'string' },
         instagram: { type: 'string' },
         canal: { type: 'string', enum: CANALES_VALIDOS },
+        fecha_llamada: { type: 'string', description: 'Fecha y hora de la llamada agendada, en formato ISO (ej. "2026-10-03T17:00:00"), cuando Franco te diga que ha agendado/reservado una llamada con este prospecto (con Calendly o como sea) — calcula la fecha real a partir de la FECHA DE HOY si te dan algo relativo ("el jueves", "mañana a las 5"). Al ponerla, cambia también el estado a "agendado".' },
         nota_nueva: { type: 'string', description: 'Resumen breve de esta interacción, se añade al final del historial de notas con la fecha de hoy.' },
       },
       required: ['lead_id'],
@@ -310,7 +335,7 @@ Setting es el tablero donde Víctor lleva el registro de todos los leads de Inst
 - Llama SIEMPRE a buscar_lead ANTES de dar tu respuesta, pasando TODOS esos datos a la vez (nombre + instagram + telefono + email, cada uno si lo tienes) — nunca solo uno. Esto es crítico para no duplicar: el mismo prospecto puede aparecer identificado con un dato distinto en cada captura (una vez solo se ve el teléfono, otra vez aparece su nombre guardado, otra vez su @) — si el lead ya se creó antes con, por ejemplo, el teléfono como nombre provisional, y ahora solo buscas por el nombre real que acabas de ver, NO lo vas a encontrar por nombre (el campo nombre en la base de datos todavía tiene el teléfono) — pero SÍ lo encontrarás si además mandas el teléfono en la misma búsqueda, porque ese sí coincide. Manda siempre todo lo que tengas de esa captura, aunque creas que un dato "ya lo sabías" de antes.
 - Si buscar_lead encuentra un lead pero con un nombre provisional (el teléfono, un @usuario, o cualquier cosa que no sea un nombre real de persona) y en esta captura ya ves su nombre real, corrígelo con actualizar_lead (campo nombre) — no lo dejes con el dato provisional para siempre.
 - Ten en cuenta su historial de notas y su etapa actual al encontrarlo: no repitas preguntas que ya te consta que se respondieron, y no lo trates como si fuera la primera conversación si no lo es.
-- Si buscar_lead no encuentra nada (con todos los datos que le pasaste) y tienes datos suficientes para identificarlo (al menos nombre, @usuario, o teléfono), créalo con crear_lead, con el estado inicial que mejor encaje según la etapa que acabas de detectar en la conversación, y con el canal según la sección "ORIGEN DEL CONTACTO" de abajo — si no está claro, PREGÚNTALE al setter cuál es antes de crear el lead, no lo crees con un canal adivinado.
+- Si buscar_lead no encuentra nada (con todos los datos que le pasaste) y tienes datos suficientes para identificarlo (al menos nombre, @usuario, o teléfono), PREGÚNTALE primero a Franco si quiere que lo cree en Setting (ej. "¿Lo doy de alta en Setting?"), con opciones rápidas ["Sí, créalo", "No, todavía no"] — nunca lo crees directamente sin confirmación, aunque tengas datos de sobra. Si confirma que sí, créalo con crear_lead, con el estado inicial que mejor encaje según la etapa que acabas de detectar en la conversación, y con el canal según la sección "ORIGEN DEL CONTACTO" de abajo — si el canal no está claro, pregúntalo también (puedes combinar ambas preguntas en una sola si tiene sentido). Si Franco dice que no lo cree, responde con normalidad sin insistir ni volver a preguntar en esta misma conversación.
 - Después de dar tu respuesta, si el lead ya existía o lo acabas de crear, llama a actualizar_lead para: ajustar el estado si ha avanzado de etapa, rellenar campos nuevos que hayas descubierto (nombre real/objetivo/medidas/maquinarias/teléfono/email/instagram — por ejemplo si ahora conoces el teléfono de un lead que antes solo tenía @, añádelo), y añadir con nota_nueva un resumen breve (1-2 líneas) de esta interacción, para dejar memoria de lo hablado.
 - Si no hay ningún dato (ni nombre, ni @usuario, ni teléfono visibles) que permita identificar quién es, no crees un lead a ciegas — simplemente responde con normalidad, no lo menciones como un problema.
 - Nunca inventes un @usuario, nombre o teléfono que no aparezca realmente en la captura o en el mensaje del setter.
@@ -328,10 +353,17 @@ Cómo decidir cuál usar:
 - Si no hay ninguna señal clara de anuncio ni de referido, la duda real está entre "Instagram (nos escriben)" e "Instagram (prospección)" — normalmente se sabe por el primer mensaje del hilo (si empieza el prospecto o si empieza el setter/Víctor). Si aun así no te queda claro por la captura, PREGÚNTASELO directamente al setter en tu respuesta (ej. "¿este contacto os escribió él o lo prospectasteis vosotros?") antes de crear el lead — no lo asumas ni lo dejes en blanco. Acompaña esa pregunta con un bloque \`\`\`opciones\`\`\` con las 4 categorías (["Nos escribió él", "Lo prospectamos", "Viene de un anuncio", "Es un referido"]) para que Franco pueda pinchar en vez de escribir.
 - Una vez tengas la respuesta del setter en un mensaje posterior, usa actualizar_lead para fijar el canal correcto — no hace falta volver a preguntar si ya te lo dijeron antes en esta misma conversación.
 
-MARCAR ESTADOS FINALES (venta / no_responde / no_califica) — MUY IMPORTANTE, es fácil que esto se pierda si no lo haces tú activamente:
-- Si el setter te dice explícitamente (aunque no te haya pasado captura) que un lead ha comprado, ha cerrado, ha pagado, o Víctor ha cerrado la venta con él en llamada, llama a actualizar_lead con estado="venta" inmediatamente — no hace falta que te pidan un mensaje para ese caso, hazlo en cuanto detectes la confirmación.
-- Igual si te dicen que un lead ha dejado de responder definitivamente (no_responde) o que tras hablar no encaja/no califica como cliente (no_califica) — actualiza el estado aunque no te estén pidiendo redactar nada, es tan importante como dar el mensaje.
+MARCAR ESTADOS FINALES (venta_1 / venta_2 / rechazo / seguimiento_futuro / no_responde / no_califica) — MUY IMPORTANTE, es fácil que esto se pierda si no lo haces tú activamente:
+- Ranuse vende dos servicios independientes — venta_1 y venta_2 (que un prospecto puede comprar solo el 1, solo el 2, o los dos, en cualquier orden). Si el setter te dice explícitamente (aunque no te haya pasado captura) que un lead ha comprado, ha cerrado, o Víctor ha cerrado la venta con él en llamada, pregunta si no queda claro cuál de los dos servicios compró, y llama a actualizar_lead con estado="venta_1" o estado="venta_2" según corresponda — inmediatamente, no hace falta que te pidan un mensaje para ese caso. Si compró los dos a la vez, llama a actualizar_lead dos veces (una para cada estado) para que quede registrada cada fecha de venta por separado.
+- Si tras la llamada el prospecto dijo que no le interesa o rechazó la propuesta, usa estado="rechazo". Si dijo que ahora no pero podría interesarle más adelante (no es un "no" definitivo), usa estado="seguimiento_futuro" — son desenlaces distintos y Víctor los quiere medir por separado.
+- Igual si te dicen que un lead ha dejado de responder definitivamente (no_responde) o que antes de llegar a hablar no encaja/no califica como cliente (no_califica) — actualiza el estado aunque no te estén pidiendo redactar nada, es tan importante como dar el mensaje.
 - Estas actualizaciones de cierre son las que más se pierden porque muchas veces la venta se cierra en llamada con Víctor, no por DM — así que confía en lo que el setter te cuente de palabra sobre el resultado, no solo en lo que veas en una captura.
+
+REGISTRAR LLAMADAS AGENDADAS (fecha_llamada) — para que Hernán vea su agenda en el CRM sin depender de que se lo digan aparte por WhatsApp:
+- Si Franco te dice que ha agendado, reservado o programado una llamada con un prospecto (por Calendly o como sea), aunque no te pida redactar ningún mensaje, llama a actualizar_lead con fecha_llamada (calculada a partir de la FECHA DE HOY si te da algo relativo) y estado="agendado" — hazlo en cuanto lo detectes, es tan importante como marcar una venta.
+- Si Franco solo dice que "va a intentar agendar" o "le propuso llamada" pero todavía no hay fecha/hora confirmada, NO pongas fecha_llamada — usa estado="pitcheo_agenda" en su lugar (se está gestionando, pero aún no está cerrada la cita).
+- Si te da la fecha pero no la hora (o viceversa), pregúntale el dato que falte antes de guardar fecha_llamada — una cita sin hora no le sirve a Hernán para su agenda.
+- Si te dice que una llamada agendada se ha cambiado de fecha o cancelado, actualiza fecha_llamada (con la nueva fecha, o null si se cancela) del lead correspondiente — no crees una entrada nueva.
 
 CUANDO TE PASEN UNA CAPTURA O CONVERSACIÓN, RESPONDE SIEMPRE EN ESTE ORDEN:
 1. Analiza el contexto completo (no solo el último mensaje).
@@ -346,7 +378,7 @@ CUANDO TE PASEN UNA CAPTURA O CONVERSACIÓN, RESPONDE SIEMPRE EN ESTE ORDEN:
    - Da UN precio o UN dato concreto por mensaje si tienes varios que dar (ej. si preguntan por el precio de la Fase 1, di solo eso; no aproveches para explicar también la Fase 2 y la Fase 3 en el mismo mensaje salvo que te lo hayan preguntado explícitamente) — dejar algo para la respuesta siguiente mantiene la conversación viva, en vez de agotar todo de golpe.
 8. Indica brevemente qué NO conviene hacer todavía.
 9. Si detectas algún aprendizaje útil para el playbook, señálalo con su clasificación (hipótesis/en prueba/validado/descartado).
-10. Crea o actualiza el lead en Setting (crear_lead/actualizar_lead) y añade la línea de confirmación al final. Si es un lead nuevo y el canal no está claro (ver "ORIGEN DEL CONTACTO"), incluye la pregunta al setter sobre el origen como parte natural de tu respuesta, antes de crear el lead.
+10. Si el lead ya existía, actualízalo con actualizar_lead y añade la línea de confirmación al final. Si es un lead NUEVO, no lo crees todavía — pregúntale a Franco si quiere darlo de alta (y el canal, si no está claro) como parte natural de tu respuesta, y créalo con crear_lead solo cuando confirme.
 
 Sé directo y práctico — el setter tiene prisa por responder, prioriza siempre darle el mensaje concreto a enviar antes que explicaciones largas.
 
@@ -375,11 +407,17 @@ router.post('/chat', async (req, res) => {
     let conversation = messages.map(m => ({ role: m.role, content: m.content }));
     const ctx = { userId: req.user.id };
 
+    // La fecha de hoy se añade en cada petición (no al cargar el módulo) para
+    // que el asistente pueda convertir fechas relativas que diga Franco
+    // ("el jueves que viene a las 17h") a una fecha/hora real para fecha_llamada.
+    const hoy = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const systemConFecha = `${SYSTEM_PROMPT}\n\nFECHA DE HOY: ${hoy}. Úsala para calcular cualquier fecha relativa que te den ("mañana", "el jueves", "en 3 días"...) al rellenar fecha_llamada.`;
+
     let lastResponse = null;
     let leadTocado = null;
     let bestText = '';
     for (let turn = 0; turn < 6; turn++) {
-      lastResponse = await callClaude({ system: SYSTEM_PROMPT, messages: conversation, tools: TOOLS, maxTokens: 3000 });
+      lastResponse = await callClaude({ system: systemConFecha, messages: conversation, tools: TOOLS, maxTokens: 3000 });
 
       // El texto con el análisis y el mensaje a enviar puede llegar en el mismo
       // turno en el que el modelo también llama a una tool (p.ej. lo escribe y

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, Target, Search } from 'lucide-react';
+import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, Target, Search, LayoutGrid, List as ListIcon, MessageSquarePlus, CalendarClock, Info } from 'lucide-react';
 import api from '../services/api';
 
 function useToast() {
@@ -47,24 +47,68 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
 // Agenda → Recolectando Información → Prioridad → Venta / No responde.
 // "Nuevo" se llamaba antes "ads" — se renombró para no confundirse con el
 // CANAL "Ads" (de dónde viene el contacto), que es un dato aparte.
+// "agendado" = ya tiene fecha/hora de llamada confirmada con Hernán, viene
+// justo después de "pitcheo_agenda" (que es cuando se está intentando
+// conseguir esa cita todavía, sin fecha cerrada aún).
+// "venta_1"/"venta_2" = dos servicios independientes — se puede comprar solo
+// uno o los dos (ver fecha_venta_1/fecha_venta_2, que es lo que alimenta los
+// % de cierre por separado/cruzado en las métricas de arriba).
 const ESTADOS = {
   nuevo:              { label: 'Nuevo',                 color: '#3b82f6' },
   interesado:         { label: 'Interesado',            color: '#8b5cf6' },
   no_califica:        { label: 'No califica',            color: '#6b7280' },
   contacto_nuevo:     { label: 'Contacto Nuevo',          color: '#06b6d4' },
   pitcheo_agenda:     { label: 'Pitcheo Agenda',          color: '#f59e0b' },
+  agendado:           { label: 'Agendado',                color: '#a78bfa' },
   recolectando_info:  { label: 'Recolectando Info.',      color: '#f97316' },
   prioridad:          { label: 'Prioridad',                color: '#eab308' },
-  venta:              { label: 'Venta ✓',                  color: '#22c55e' },
+  venta_1:            { label: 'Venta 1 ✓',                color: '#22c55e' },
+  venta_2:            { label: 'Venta 2 ✓',                color: '#16a34a' },
+  rechazo:            { label: 'Rechazo',                  color: '#dc2626' },
+  seguimiento_futuro: { label: 'Seguimiento futuro',       color: '#0ea5e9' },
   no_responde:        { label: 'No responde',              color: '#ef4444' },
 };
-const ORDEN = ['nuevo','interesado','no_califica','contacto_nuevo','pitcheo_agenda','recolectando_info','prioridad','venta','no_responde'];
+const ORDEN = ['nuevo','interesado','no_califica','contacto_nuevo','pitcheo_agenda','agendado','recolectando_info','prioridad','venta_1','venta_2','rechazo','seguimiento_futuro','no_responde'];
 // Origen del contacto — las mismas 4 categorías que usa el Asistente Setter,
 // más un par de casos que solo se dan automáticamente (WhatsApp orgánico sin
 // anuncio, y Otro para lo suelto).
 const CANALES = ['Instagram (nos escriben)', 'Instagram (prospección)', 'Ads', 'Referido', 'WhatsApp', 'Otro'];
 
-const blank = { nombre:'', telefono:'', instagram:'', email:'', canal:'', estado:'nuevo', objetivo:'', medidas:'', maquinarias:'', notas:'', assigned_to:'' };
+const blank = { nombre:'', telefono:'', instagram:'', email:'', canal:'', estado:'nuevo', objetivo:'', medidas:'', maquinarias:'', notas:'', assigned_to:'', fecha_llamada:'' };
+
+// Explicación de cada métrica de la cabecera, en el mismo orden en que se
+// muestran — para que cualquiera que abra Setting entienda qué cuenta cada
+// número sin tener que preguntar.
+const DEFINICIONES_METRICAS = [
+  ['Total', 'Todos los leads que hay en Setting, sin filtrar.'],
+  ['Activos', 'Los que todavía siguen "en juego": el total menos los que ya están cerrados (Venta 1, Venta 2, No responde, No califica o Rechazo). "Seguimiento futuro" SÍ cuenta como activo, porque sigue abierto para retomarlo más adelante.'],
+  ['Ventas (1 o 2)', 'Cuántos leads han comprado al menos uno de los dos servicios (Venta 1 y/o Venta 2) — no depende de en qué columna del tablero estén ahora mismo, sino de si tienen fecha de compra guardada.'],
+  ['Solo Venta 1', 'Compraron el Servicio 1 pero, de momento, no el Servicio 2.'],
+  ['Solo Venta 2', 'Compraron el Servicio 2 pero, de momento, no el Servicio 1.'],
+  ['Compraron ambos', 'Compraron los dos servicios (en cualquier orden).'],
+  ['% cruzado (1→2)', 'De todos los que compraron el Servicio 1, qué porcentaje acabó comprando también el Servicio 2 — mide el cruce de ventas entre ambos servicios.'],
+  ['No responde', 'Leads marcados así porque dejaron de responder definitivamente.'],
+  ['No califica', 'Leads que, tras hablar, no encajan como cliente potencial.'],
+  ['Tasa de cierre', 'Ventas (1 o 2) dividido entre el Total — de todos los leads que han entrado alguna vez, qué % ha acabado comprando algo.'],
+  ['Cierre en llamada', 'Ventas (1 o 2) dividido entre los que llegaron a tener una llamada agendada — mide específicamente cómo de bien se cierra EN LA LLAMADA, no desde el primer contacto.'],
+  ['Tasa de calificación', 'Qué % de los leads NO ha terminado en "No califica" — es decir, cuántos sí eran un contacto con potencial real, aunque no hayan comprado (todavía).'],
+];
+
+// <input type="datetime-local"> espera "YYYY-MM-DDTHH:mm" en hora local, sin
+// zona horaria — convierte desde/hacia el ISO que guarda la base de datos.
+function isoToDatetimeLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtFechaLlamada(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+}
 
 function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
   const isEdit = !!registro;
@@ -73,6 +117,7 @@ function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
     email: registro.email || '', canal: registro.canal || '', estado: registro.estado || 'nuevo',
     objetivo: registro.objetivo || '', medidas: registro.medidas || '', maquinarias: registro.maquinarias || '',
     notas: registro.notas || '', assigned_to: registro.assigned_to || '',
+    fecha_llamada: isoToDatetimeLocal(registro.fecha_llamada),
   } : blank);
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -82,7 +127,11 @@ function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
     if (!form.nombre.trim()) return;
     setSaving(true);
     try {
-      const payload = { ...form, assigned_to: form.assigned_to || null };
+      const payload = {
+        ...form,
+        assigned_to: form.assigned_to || null,
+        fecha_llamada: form.fecha_llamada ? new Date(form.fecha_llamada).toISOString() : null,
+      };
       if (isEdit) {
         const { data } = await api.put(`/setting/${registro.id}`, payload);
         onSaved(data.registro, true);
@@ -124,12 +173,18 @@ function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
               {ORDEN.map(e => <option key={e} value={e}>{ESTADOS[e].label}</option>)}
             </select>
           </div>
-          <div className="ap-field">
-            <label>Asignado a</label>
-            <select className="ap-select" value={form.assigned_to} onChange={e=>set('assigned_to',e.target.value)}>
-              <option value="">Sin asignar</option>
-              {empleados.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-            </select>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            <div className="ap-field" style={{ flex:1, minWidth:140 }}>
+              <label>Asignado a</label>
+              <select className="ap-select" value={form.assigned_to} onChange={e=>set('assigned_to',e.target.value)}>
+                <option value="">Sin asignar</option>
+                {empleados.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+              </select>
+            </div>
+            <div className="ap-field" style={{ flex:1, minWidth:180 }}>
+              <label>Llamada agendada</label>
+              <input type="datetime-local" className="ap-field-input" value={form.fecha_llamada} onChange={e=>set('fecha_llamada',e.target.value)}/>
+            </div>
           </div>
           <div style={{ borderTop:'1px solid rgba(255,255,255,0.07)', paddingTop:'0.75rem', marginTop:'0.25rem' }}>
             <p style={{ fontSize:'0.7rem', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:'rgba(255,255,255,0.3)', marginBottom:'0.5rem' }}>Recolectando información</p>
@@ -148,6 +203,54 @@ function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
   );
 }
 
+// Comentario rápido de avance (ej. para que Hernán deje notas sin tener que
+// abrir el modal completo) — se añade con fecha al historial de "notas" vía
+// nota_nueva, nunca sobrescribe lo que ya había.
+function QuickNote({ registro, onSaved, toast }) {
+  const [open, setOpen] = useState(false);
+  const [texto, setTexto] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const guardar = async () => {
+    if (!texto.trim()) return;
+    setSaving(true);
+    try {
+      const { data } = await api.put(`/setting/${registro.id}`, { nota_nueva: texto.trim() });
+      onSaved(data.registro, true);
+      toast.success('Comentario añadido');
+      setTexto('');
+      setOpen(false);
+    } catch {
+      toast.error('Error al añadir el comentario');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.35)', cursor:'pointer', display:'flex', alignItems:'center' }} title="Añadir comentario">
+        <MessageSquarePlus size={12}/>
+      </button>
+    );
+  }
+  return (
+    <div style={{ display:'flex', gap:4, marginTop:4 }} onClick={e => e.stopPropagation()}>
+      <input
+        className="ap-field-input"
+        style={{ fontSize:'0.72rem', padding:'0.3rem 0.5rem' }}
+        placeholder="Comentario rápido…"
+        value={texto}
+        autoFocus
+        onChange={e => setTexto(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && guardar()}
+      />
+      <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" disabled={saving || !texto.trim()} onClick={guardar}>OK</button>
+      <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setOpen(false); setTexto(''); }}>✕</button>
+    </div>
+  );
+}
+
 export function SectionSetting() {
   const [registros, setRegistros] = useState([]);
   const [metricas, setMetricas] = useState(null);
@@ -158,6 +261,10 @@ export function SectionSetting() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [busqueda, setBusqueda] = useState('');
   const [mesFiltro, setMesFiltro] = useState('');
+  const [asignadoFiltro, setAsignadoFiltro] = useState('');
+  const [vista, setVista] = useState(() => { try { return localStorage.getItem('setting_vista') || 'kanban'; } catch { return 'kanban'; } });
+  const [mostrarInfoMetricas, setMostrarInfoMetricas] = useState(false);
+  const cambiarVista = (v) => { setVista(v); try { localStorage.setItem('setting_vista', v); } catch {} };
   const { toasts, toast, remove } = useToast();
 
   const cargar = () => {
@@ -207,8 +314,18 @@ export function SectionSetting() {
   const q = busqueda.trim().toLowerCase();
   const registrosFiltrados = registros.filter(r => {
     if (mesFiltro && (r.created_at || '').slice(0, 7) !== mesFiltro) return false;
+    if (asignadoFiltro && r.assigned_to !== asignadoFiltro) return false;
     if (!q) return true;
     return [r.nombre, r.telefono, r.instagram, r.email].some(v => (v || '').toLowerCase().includes(q));
+  });
+  // Vista de lista: los que tienen llamada agendada primero (antes la más
+  // próxima), el resto detrás por fecha de creación — es la vista que le
+  // interesa a Hernán para ver su agenda de un vistazo.
+  const registrosOrdenados = [...registrosFiltrados].sort((a, b) => {
+    if (a.fecha_llamada && b.fecha_llamada) return new Date(a.fecha_llamada) - new Date(b.fecha_llamada);
+    if (a.fecha_llamada) return -1;
+    if (b.fecha_llamada) return 1;
+    return new Date(b.created_at) - new Date(a.created_at);
   });
 
   if (loading) return <div className="ap-loading">Cargando…</div>;
@@ -224,18 +341,55 @@ export function SectionSetting() {
           <h1><Target size={20} style={{ verticalAlign:-3, marginRight:6 }}/>Setting</h1>
           <p>Embudo de cualificación y agenda — independiente de Leads.</p>
         </div>
-        <button className="ap-btn ap-btn-primary" onClick={() => setModal('new')}><Plus size={15}/> Nuevo</button>
+        <div style={{ display:'flex', gap:8 }}>
+          <div style={{ display:'flex', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:2 }}>
+            <button type="button" onClick={() => cambiarVista('kanban')} title="Vista tablero"
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'0.4rem 0.6rem', borderRadius:6, border:'none', cursor:'pointer', fontSize:'0.72rem', background: vista==='kanban' ? 'rgba(255,255,255,0.1)' : 'transparent', color: vista==='kanban' ? '#fff' : 'rgba(255,255,255,0.45)' }}>
+              <LayoutGrid size={13}/> Tablero
+            </button>
+            <button type="button" onClick={() => cambiarVista('lista')} title="Vista lista"
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'0.4rem 0.6rem', borderRadius:6, border:'none', cursor:'pointer', fontSize:'0.72rem', background: vista==='lista' ? 'rgba(255,255,255,0.1)' : 'transparent', color: vista==='lista' ? '#fff' : 'rgba(255,255,255,0.45)' }}>
+              <ListIcon size={13}/> Lista
+            </button>
+          </div>
+          <button className="ap-btn ap-btn-primary" onClick={() => setModal('new')}><Plus size={15}/> Nuevo</button>
+        </div>
       </div>
+
+      {metricas && (
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:'0.5rem' }}>
+          <button type="button" onClick={() => setMostrarInfoMetricas(v => !v)}
+            style={{ display:'flex', alignItems:'center', gap:5, background:'none', border:'none', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:'0.72rem', padding:0 }}>
+            <Info size={13}/> {mostrarInfoMetricas ? 'Ocultar' : 'Cómo se calculan estas métricas'}
+          </button>
+        </div>
+      )}
+
+      {mostrarInfoMetricas && (
+        <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'0.9rem 1.1rem', marginBottom:'1rem', display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(260px, 1fr))', gap:'0.6rem 1.2rem' }}>
+          {DEFINICIONES_METRICAS.map(([label, texto]) => (
+            <div key={label}>
+              <div style={{ fontSize:'0.72rem', fontWeight:700, color:'#fff', marginBottom:2 }}>{label}</div>
+              <div style={{ fontSize:'0.72rem', color:'rgba(255,255,255,0.5)', lineHeight:1.4 }}>{texto}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {metricas && (
         <div style={{ display:'flex', gap:'0.75rem', flexWrap:'wrap', marginBottom:'1.5rem' }}>
           {[
             ['Total', metricas.total],
             ['Activos', metricas.activos],
-            ['Ventas', metricas.ventas],
+            ['Ventas (1 o 2)', metricas.ventas],
+            ['Solo Venta 1', metricas.soloVenta1],
+            ['Solo Venta 2', metricas.soloVenta2],
+            ['Compraron ambos', metricas.compraronAmbos],
+            ['% cruzado (1→2)', metricas.tasaCrossSell + '%'],
             ['No responde', metricas.noResponde],
             ['No califica', metricas.noCalifica],
             ['Tasa de cierre', metricas.tasaCierre + '%'],
+            ['Cierre en llamada', metricas.tasaCierreLlamadas + '%'],
             ['Tasa de calificación', metricas.tasaCalificacion + '%'],
           ].map(([label, val]) => (
             <div key={label} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'0.75rem 1rem', minWidth:110 }}>
@@ -271,52 +425,105 @@ export function SectionSetting() {
           <option value="">Todos los meses</option>
           {mesesDisponibles.map(m => <option key={m.valor} value={m.valor}>{m.etiqueta}</option>)}
         </select>
-        {(busqueda || mesFiltro) && (
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setBusqueda(''); setMesFiltro(''); }}>Limpiar filtros</button>
+        <select className="ap-select" style={{ minWidth:160 }} value={asignadoFiltro} onChange={e => setAsignadoFiltro(e.target.value)}>
+          <option value="">Todos (asignado a)</option>
+          {empleados.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+        </select>
+        {(busqueda || mesFiltro || asignadoFiltro) && (
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setBusqueda(''); setMesFiltro(''); setAsignadoFiltro(''); }}>Limpiar filtros</button>
         )}
-        {(busqueda || mesFiltro) && (
+        {(busqueda || mesFiltro || asignadoFiltro) && (
           <span style={{ fontSize:'0.75rem', color:'rgba(255,255,255,0.4)', alignSelf:'center' }}>{registrosFiltrados.length} resultado{registrosFiltrados.length === 1 ? '' : 's'}</span>
         )}
       </div>
 
-      <div style={{ display:'flex', gap:'0.75rem', overflowX:'auto', paddingBottom:'0.5rem' }}>
-        {ORDEN.map(estado => {
-          const items = registrosFiltrados.filter(r => r.estado === estado);
-          const est = ESTADOS[estado];
-          return (
-            <div key={estado} style={{ flex:'0 0 260px', background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:12, padding:'0.75rem', display:'flex', flexDirection:'column', gap:'0.5rem' }}>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <span style={{ fontSize:'0.75rem', fontWeight:700, color: est.color }}>{est.label}</span>
-                <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.35)' }}>{items.length}</span>
-              </div>
-              {items.length === 0 && <p style={{ fontSize:'0.72rem', color:'rgba(255,255,255,0.25)', margin:0 }}>Vacío</p>}
-              {items.map(r => (
-                <div key={r.id} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'0.6rem 0.7rem', display:'flex', flexDirection:'column', gap:4 }}>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:6 }}>
-                    <strong style={{ fontSize:'0.8rem', color:'#fff' }}>{r.nombre}</strong>
-                    <div style={{ display:'flex', gap:4, flexShrink:0 }}>
-                      <button onClick={() => setModal(r)} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.35)', cursor:'pointer' }}><Pencil size={12}/></button>
-                      <button onClick={() => setConfirmDelete(r)} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.35)', cursor:'pointer' }}><Trash2 size={12}/></button>
+      {vista === 'kanban' ? (
+        <div style={{ display:'flex', gap:'0.75rem', overflowX:'auto', paddingBottom:'0.5rem' }}>
+          {ORDEN.map(estado => {
+            const items = registrosFiltrados.filter(r => r.estado === estado);
+            const est = ESTADOS[estado];
+            return (
+              <div key={estado} style={{ flex:'0 0 260px', background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:12, padding:'0.75rem', display:'flex', flexDirection:'column', gap:'0.5rem' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <span style={{ fontSize:'0.75rem', fontWeight:700, color: est.color }}>{est.label}</span>
+                  <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.35)' }}>{items.length}</span>
+                </div>
+                {items.length === 0 && <p style={{ fontSize:'0.72rem', color:'rgba(255,255,255,0.25)', margin:0 }}>Vacío</p>}
+                {items.map(r => (
+                  <div key={r.id} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'0.6rem 0.7rem', display:'flex', flexDirection:'column', gap:4 }}>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:6 }}>
+                      <strong style={{ fontSize:'0.8rem', color:'#fff' }}>{r.nombre}</strong>
+                      <div style={{ display:'flex', gap:4, flexShrink:0 }}>
+                        <QuickNote registro={r} onSaved={handleSaved} toast={toast} />
+                        <button onClick={() => setModal(r)} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.35)', cursor:'pointer' }}><Pencil size={12}/></button>
+                        <button onClick={() => setConfirmDelete(r)} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.35)', cursor:'pointer' }}><Trash2 size={12}/></button>
+                      </div>
+                    </div>
+                    {r.canal && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.4)' }}>{r.canal}</span>}
+                    {r.telefono && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.3)' }}>{r.telefono}</span>}
+                    {r.instagram && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.3)' }}>@{r.instagram.replace(/^@/, '')}</span>}
+                    {r.empleado?.name && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.3)' }}>→ {r.empleado.name}</span>}
+                    {r.fecha_llamada && (
+                      <span style={{ fontSize:'0.68rem', color:'#a78bfa', display:'flex', alignItems:'center', gap:3 }}>
+                        <CalendarClock size={11}/> {fmtFechaLlamada(r.fecha_llamada)}
+                      </span>
+                    )}
+                    <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginTop:4 }}>
+                      {ORDEN.filter(e => e !== estado).map(e => (
+                        <button key={e} onClick={() => cambiarEstado(r, e)}
+                          style={{ fontSize:8, background:`${ESTADOS[e].color}15`, color:ESTADOS[e].color, border:`1px solid ${ESTADOS[e].color}40`, borderRadius:3, padding:'2px 4px', cursor:'pointer', fontFamily:'inherit' }}>
+                          {ESTADOS[e].label}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                  {r.canal && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.4)' }}>{r.canal}</span>}
-                  {r.telefono && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.3)' }}>{r.telefono}</span>}
-                  {r.instagram && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.3)' }}>@{r.instagram.replace(/^@/, '')}</span>}
-                  {r.empleado?.name && <span style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.3)' }}>→ {r.empleado.name}</span>}
-                  <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginTop:4 }}>
-                    {ORDEN.filter(e => e !== estado).map(e => (
-                      <button key={e} onClick={() => cambiarEstado(r, e)}
-                        style={{ fontSize:8, background:`${ESTADOS[e].color}15`, color:ESTADOS[e].color, border:`1px solid ${ESTADOS[e].color}40`, borderRadius:3, padding:'2px 4px', cursor:'pointer', fontFamily:'inherit' }}>
-                        {ESTADOS[e].label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ overflowX:'auto', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.78rem' }}>
+            <thead>
+              <tr style={{ background:'rgba(255,255,255,0.04)', textAlign:'left' }}>
+                {['Nombre','Contacto','Canal','Estado','Asignado a','Llamada','',''].map((h,i) => (
+                  <th key={i} style={{ padding:'0.6rem 0.75rem', fontSize:'0.68rem', textTransform:'uppercase', letterSpacing:'0.05em', color:'rgba(255,255,255,0.4)', fontWeight:600 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {registrosOrdenados.map(r => (
+                <tr key={r.id} style={{ borderTop:'1px solid rgba(255,255,255,0.06)' }}>
+                  <td style={{ padding:'0.6rem 0.75rem', color:'#fff', fontWeight:600, whiteSpace:'nowrap' }}>{r.nombre}</td>
+                  <td style={{ padding:'0.6rem 0.75rem', color:'rgba(255,255,255,0.5)', whiteSpace:'nowrap' }}>
+                    {r.telefono && <div>{r.telefono}</div>}
+                    {r.instagram && <div>@{r.instagram.replace(/^@/, '')}</div>}
+                  </td>
+                  <td style={{ padding:'0.6rem 0.75rem', color:'rgba(255,255,255,0.5)', whiteSpace:'nowrap' }}>{r.canal || '—'}</td>
+                  <td style={{ padding:'0.6rem 0.75rem', whiteSpace:'nowrap' }}>
+                    <select className="ap-select" style={{ fontSize:'0.72rem', padding:'0.25rem 0.5rem', color: ESTADOS[r.estado]?.color }} value={r.estado} onChange={e => cambiarEstado(r, e.target.value)}>
+                      {ORDEN.map(e => <option key={e} value={e}>{ESTADOS[e].label}</option>)}
+                    </select>
+                  </td>
+                  <td style={{ padding:'0.6rem 0.75rem', color:'rgba(255,255,255,0.5)', whiteSpace:'nowrap' }}>{r.empleado?.name || '—'}</td>
+                  <td style={{ padding:'0.6rem 0.75rem', color: r.fecha_llamada ? '#a78bfa' : 'rgba(255,255,255,0.3)', whiteSpace:'nowrap' }}>{fmtFechaLlamada(r.fecha_llamada) || '—'}</td>
+                  <td style={{ padding:'0.6rem 0.5rem' }}><QuickNote registro={r} onSaved={handleSaved} toast={toast} /></td>
+                  <td style={{ padding:'0.6rem 0.75rem', whiteSpace:'nowrap' }}>
+                    <div style={{ display:'flex', gap:6 }}>
+                      <button onClick={() => setModal(r)} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.35)', cursor:'pointer' }}><Pencil size={13}/></button>
+                      <button onClick={() => setConfirmDelete(r)} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.35)', cursor:'pointer' }}><Trash2 size={13}/></button>
+                    </div>
+                  </td>
+                </tr>
               ))}
-            </div>
-          );
-        })}
-      </div>
+              {registrosOrdenados.length === 0 && (
+                <tr><td colSpan={8} style={{ padding:'1.5rem', textAlign:'center', color:'rgba(255,255,255,0.3)' }}>Sin resultados</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
