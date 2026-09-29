@@ -27,6 +27,18 @@ router.get('/webhook', (req, res) => {
   return res.sendStatus(403);
 });
 
+// DIAGNÓSTICO TEMPORAL — no expone el valor del secreto, solo si está
+// configurado y su longitud, para depurar por qué falla la verificación.
+// Quitar en cuanto quede confirmado que funciona.
+router.get('/webhook-debug', (req, res) => {
+  res.json({
+    verify_token_configurado: !!VERIFY_TOKEN,
+    verify_token_longitud: VERIFY_TOKEN ? VERIFY_TOKEN.length : 0,
+    app_secret_configurado: !!APP_SECRET,
+    query_recibida: req.query,
+  });
+});
+
 // Verifica que el POST viene realmente de Meta comprobando la firma
 // HMAC-SHA256 que manda en la cabecera x-hub-signature-256, calculada sobre
 // el cuerpo crudo de la petición con el App Secret. Sin esto, cualquiera que
