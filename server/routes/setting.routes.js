@@ -49,6 +49,10 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
     const soloVenta2 = registros.filter(r => r.fecha_venta_2 && !r.fecha_venta_1).length;
     const ventas = registros.filter(r => r.fecha_venta_1 || r.fecha_venta_2).length; // nº de leads que han comprado algo
     const tasaCrossSell = compraron1 > 0 ? Math.round((compraronAmbos / compraron1) * 100) : 0; // de los que compraron 1, % que también compró 2
+    // % de cierre de CADA venta por separado (sobre el total de leads), sin
+    // mezclarlas entre sí — independiente del % cruzado de arriba.
+    const tasaVenta1 = total > 0 ? Math.round((compraron1 / total) * 100) : 0;
+    const tasaVenta2 = total > 0 ? Math.round((compraron2 / total) * 100) : 0;
 
     const rechazo = porEstado.rechazo || 0;
     const seguimientoFuturo = porEstado.seguimiento_futuro || 0;
@@ -84,7 +88,7 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
       metricas: {
         total, activos, ventas, noResponde, noCalifica, rechazo, seguimientoFuturo,
         tasaCierre, tasaCalificacion, tasaCierreLlamadas, conLlamada,
-        compraron1, compraron2, soloVenta1, soloVenta2, compraronAmbos, tasaCrossSell,
+        compraron1, compraron2, soloVenta1, soloVenta2, compraronAmbos, tasaCrossSell, tasaVenta1, tasaVenta2,
       },
       porEstado,
       porCanal,
