@@ -29,6 +29,36 @@ function extractMessageBlock(text) {
   return { rest, mensaje: match[1].trim() };
 }
 
+// Extrae un bloque ```lang ... ``` concreto (aparte del de "mensaje para
+// enviar" de arriba) — se usa para el bloque ```opciones``` de botones de
+// respuesta rápida.
+function extractFencedBlock(text, lang) {
+  if (typeof text !== 'string') return { rest: text, block: null };
+  const re = new RegExp('```' + lang + '\\s*([\\s\\S]*?)```', 'i');
+  const match = text.match(re);
+  if (!match) return { rest: text, block: null };
+  const rest = (text.slice(0, match.index) + text.slice(match.index + match[0].length)).trim();
+  return { rest, block: match[1].trim() };
+}
+
+function QuickReplies({ opciones, onPick, onOther, disabled }) {
+  if (!opciones?.length) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.6rem' }}>
+      {opciones.map((op, i) => (
+        <button key={i} type="button" className="ap-btn ap-btn-ghost ap-btn-sm" disabled={disabled} onClick={() => onPick(op)}>
+          {op}
+        </button>
+      ))}
+      {onOther && (
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ opacity: 0.65, borderStyle: 'dashed' }} disabled={disabled} onClick={onOther}>
+          Otro… (escribir)
+        </button>
+      )}
+    </div>
+  );
+}
+
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -41,12 +71,20 @@ function CopyButton({ text }) {
   );
 }
 
-function MessageContent({ content }) {
+function MessageContent({ content, onOption, onOther, loading }) {
   const isArray = Array.isArray(content);
   const images = isArray ? content.filter(b => b.type === 'image') : [];
   const docs = isArray ? content.filter(b => b.type === 'document') : [];
   const rawText = isArray ? (content.find(b => b.type === 'text')?.text || '') : content;
-  const { rest: text, mensaje } = extractMessageBlock(rawText);
+  // El bloque ```opciones``` tiene etiqueta propia, así que se extrae primero
+  // y de forma inequívoca; el bloque de "mensaje para enviar" (sin etiqueta)
+  // se extrae después, sobre lo que quede.
+  const { rest: afterOpciones, block: opcionesBlock } = extractFencedBlock(rawText, 'opciones');
+  let opciones = null;
+  if (opcionesBlock) {
+    try { const parsed = JSON.parse(opcionesBlock); if (Array.isArray(parsed)) opciones = parsed.filter(o => typeof o === 'string'); } catch { /* ignora bloque mal formado */ }
+  }
+  const { rest: text, mensaje } = extractMessageBlock(afterOpciones);
   return (
     <>
       {(images.length > 0 || docs.length > 0) && (
@@ -76,6 +114,7 @@ function MessageContent({ content }) {
           <CopyButton text={mensaje} />
         </div>
       )}
+      {onOption && <QuickReplies opciones={opciones} onPick={onOption} onOther={onOther} disabled={loading} />}
     </>
   );
 }
@@ -88,6 +127,8 @@ export function SectionAsistenteSetter() {
   const [pendingFiles, setPendingFiles] = useState([]); // [{ kind: 'image'|'pdf', previewUrl?, base64, mediaType, name }]
   const bottomRef = useRef(null);
   const fileRef = useRef();
+  const textInputRef = useRef();
+  const focusInput = () => textInputRef.current?.focus();
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
 
@@ -178,7 +219,7 @@ export function SectionAsistenteSetter() {
             messages.map((m, i) => (
               <div key={i} className={`ai-msg ai-msg--${m.role}`}>
                 <div className="ai-msg-bubble">
-                  <MessageContent content={m.content} />
+                  <MessageContent content={m.content} onOption={m.role === 'assistant' ? send : undefined} onOther={m.role === 'assistant' ? focusInput : undefined} loading={loading} />
                 </div>
               </div>
             ))
@@ -218,6 +259,7 @@ export function SectionAsistenteSetter() {
             <Paperclip size={15} />
           </button>
           <input
+            ref={textInputRef}
             className="ap-field-input"
             value={input}
             onChange={e => setInput(e.target.value)}
