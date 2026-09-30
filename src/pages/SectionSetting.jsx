@@ -112,7 +112,24 @@ function fmtFechaLlamada(iso) {
   return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 }
 
-function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
+// Busca posibles duplicados por teléfono (últimos 9 dígitos), Instagram (sin
+// @, sin distinguir mayúsculas) o nombre exacto — mismo criterio que usa el
+// Asistente Setter al buscar, para avisar en el momento de crear a mano.
+function encontrarPosiblesDuplicados({ nombre, telefono, instagram }, registros, excludeId) {
+  const tel = (telefono || '').replace(/\D/g, '').slice(-9);
+  const ig = (instagram || '').trim().toLowerCase().replace(/^@/, '');
+  const nom = (nombre || '').trim().toLowerCase();
+  if (!tel && !ig && !nom) return [];
+  return registros.filter(r => {
+    if (r.id === excludeId) return false;
+    if (tel && tel.length >= 6 && (r.telefono || '').replace(/\D/g, '').slice(-9) === tel) return true;
+    if (ig && (r.instagram || '').trim().toLowerCase().replace(/^@/, '') === ig) return true;
+    if (nom && (r.nombre || '').trim().toLowerCase() === nom) return true;
+    return false;
+  });
+}
+
+function RegistroModal({ registro, registros, empleados, onClose, onSaved, toast }) {
   const isEdit = !!registro;
   const [form, setForm] = useState(registro ? {
     nombre: registro.nombre || '', telefono: registro.telefono || '', instagram: registro.instagram || '',
@@ -126,6 +143,7 @@ function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
   } : blank);
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const duplicados = encontrarPosiblesDuplicados(form, registros || [], registro?.id);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -165,6 +183,21 @@ function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
             <div className="ap-field" style={{ flex:1, minWidth:140 }}><label>Teléfono</label><input className="ap-field-input" value={form.telefono} onChange={e=>set('telefono',e.target.value)}/></div>
             <div className="ap-field" style={{ flex:1, minWidth:140 }}><label>Instagram</label><input className="ap-field-input" value={form.instagram} onChange={e=>set('instagram',e.target.value)}/></div>
           </div>
+          {duplicados.length > 0 && (
+            <div style={{ background:'rgba(234,179,8,0.1)', border:'1px solid rgba(234,179,8,0.35)', borderRadius:8, padding:'0.6rem 0.75rem', display:'flex', gap:8, alignItems:'flex-start' }}>
+              <AlertCircle size={15} color="#eab308" style={{ flexShrink:0, marginTop:1 }}/>
+              <div style={{ fontSize:'0.75rem', color:'#eab308' }}>
+                Posible duplicado — ya existe{duplicados.length > 1 ? 'n' : ''} en Setting:{' '}
+                {duplicados.map((d, i) => (
+                  <span key={d.id}>
+                    {i > 0 && ', '}
+                    <strong>{d.nombre}</strong> ({ESTADOS[d.estado]?.label || d.estado})
+                  </span>
+                ))}
+                . Revisa si es la misma persona antes de crear uno nuevo.
+              </div>
+            </div>
+          )}
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
             <div className="ap-field" style={{ flex:1, minWidth:140 }}><label>Email</label><input className="ap-field-input" type="email" value={form.email} onChange={e=>set('email',e.target.value)}/></div>
             <div className="ap-field" style={{ flex:1, minWidth:140 }}>
@@ -288,6 +321,7 @@ export function SectionSetting() {
   const [mesFiltro, setMesFiltro] = useState('');
   const [asignadoFiltro, setAsignadoFiltro] = useState('');
   const [canalFiltro, setCanalFiltro] = useState('');
+  const [estadoFiltro, setEstadoFiltro] = useState('');
   const [vista, setVista] = useState(() => { try { return localStorage.getItem('setting_vista') || 'kanban'; } catch { return 'kanban'; } });
   const [mostrarInfoMetricas, setMostrarInfoMetricas] = useState(false);
   const cambiarVista = (v) => { setVista(v); try { localStorage.setItem('setting_vista', v); } catch {} };
@@ -350,6 +384,7 @@ export function SectionSetting() {
     if (mesFiltro && (r.created_at || '').slice(0, 7) !== mesFiltro) return false;
     if (asignadoFiltro && r.assigned_to !== asignadoFiltro) return false;
     if (canalFiltro && normCanal(r.canal) !== canalFiltro) return false;
+    if (estadoFiltro && r.estado !== estadoFiltro) return false;
     if (!q) return true;
     return [r.nombre, r.telefono, r.instagram, r.email].some(v => (v || '').toLowerCase().includes(q));
   });
@@ -369,7 +404,7 @@ export function SectionSetting() {
     <div className="ap-section">
       <ToastContainer toasts={toasts} onRemove={remove} />
       {confirmDelete && <ConfirmDialog message={`¿Eliminar a "${confirmDelete.nombre}" de Setting?`} onConfirm={handleDelete} onCancel={() => setConfirmDelete(null)} />}
-      {modal && <RegistroModal registro={modal === 'new' ? null : modal} empleados={empleados} onClose={() => setModal(null)} onSaved={handleSaved} toast={toast} />}
+      {modal && <RegistroModal registro={modal === 'new' ? null : modal} registros={registros} empleados={empleados} onClose={() => setModal(null)} onSaved={handleSaved} toast={toast} />}
 
       <div className="ap-section-head">
         <div>
@@ -473,10 +508,14 @@ export function SectionSetting() {
           <option value="">Todos (asignado a)</option>
           {empleados.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
         </select>
-        {(busqueda || mesFiltro || asignadoFiltro || canalFiltro) && (
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setBusqueda(''); setMesFiltro(''); setAsignadoFiltro(''); setCanalFiltro(''); }}>Limpiar filtros</button>
+        <select className="ap-select" style={{ minWidth:160 }} value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}>
+          <option value="">Todos los estados</option>
+          {ORDEN.map(e => <option key={e} value={e}>{ESTADOS[e].label}</option>)}
+        </select>
+        {(busqueda || mesFiltro || asignadoFiltro || canalFiltro || estadoFiltro) && (
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setBusqueda(''); setMesFiltro(''); setAsignadoFiltro(''); setCanalFiltro(''); setEstadoFiltro(''); }}>Limpiar filtros</button>
         )}
-        {(busqueda || mesFiltro || asignadoFiltro || canalFiltro) && (
+        {(busqueda || mesFiltro || asignadoFiltro || canalFiltro || estadoFiltro) && (
           <span style={{ fontSize:'0.75rem', color:'rgba(255,255,255,0.4)', alignSelf:'center' }}>{registrosFiltrados.length} resultado{registrosFiltrados.length === 1 ? '' : 's'}</span>
         )}
       </div>
