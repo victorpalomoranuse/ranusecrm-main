@@ -1,0 +1,56 @@
+/* Tema oscuro para react-big-calendar, a juego con el resto del panel. */
+.call-big-calendar {
+  color: rgba(255, 255, 255, 0.85);
+  font-family: inherit;
+}
+.call-big-calendar .rbc-calendar { background: transparent; }
+.call-big-calendar .rbc-toolbar { color: #fff; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 8px; }
+.call-big-calendar .rbc-toolbar button {
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}
+.call-big-calendar .rbc-toolbar button:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.call-big-calendar .rbc-toolbar button.rbc-active {
+  background: rgba(190, 176, 162, 0.2);
+  color: #fff;
+  border-color: rgba(190, 176, 162, 0.5);
+}
+.call-big-calendar .rbc-toolbar-label { font-weight: 700; text-transform: capitalize; }
+.call-big-calendar .rbc-header {
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.08);
+  text-transform: capitalize;
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 6px 0;
+}
+.call-big-calendar .rbc-month-view,
+.call-big-calendar .rbc-time-view,
+.call-big-calendar .rbc-time-header,
+.call-big-calendar .rbc-time-content,
+.call-big-calendar .rbc-day-bg,
+.call-big-calendar .rbc-header,
+.call-big-calendar .rbc-month-row,
+.call-big-calendar .rbc-day-slot,
+.call-big-calendar .rbc-timeslot-group {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+.call-big-calendar .rbc-off-range-bg { background: rgba(0, 0, 0, 0.2); }
+.call-big-calendar .rbc-today { background: rgba(190, 176, 162, 0.08); }
+.call-big-calendar .rbc-date-cell { color: rgba(255, 255, 255, 0.6); font-size: 0.78rem; padding: 4px; }
+.call-big-calendar .rbc-date-cell.rbc-now { color: #beb0a2; font-weight: 700; }
+.call-big-calendar .rbc-label { color: rgba(255, 255, 255, 0.4); font-size: 0.7rem; }
+.call-big-calendar .rbc-event { border-radius: 5px; padding: 2px 5px; }
+.call-big-calendar .rbc-event.rbc-selected { box-shadow: 0 0 0 2px #beb0a2; }
+.call-big-calendar .rbc-show-more { color: #beb0a2; background: transparent; }
+.call-big-calendar .rbc-agenda-view table.rbc-agenda-table { color: rgba(255, 255, 255, 0.8); }
+.call-big-calendar .rbc-agenda-view table.rbc-agenda-table thead > tr > th {
+  color: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.call-big-calendar .rbc-agenda-view table.rbc-agenda-table tbody > tr > td {
+  border-color: rgba(255, 255, 255, 0.08);
+}

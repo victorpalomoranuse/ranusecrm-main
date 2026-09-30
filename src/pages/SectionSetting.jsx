@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, Target, Search, LayoutGrid, List as ListIcon, MessageSquarePlus, CalendarClock, Info, CalendarCheck } from 'lucide-react';
+import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, Target, Search, LayoutGrid, List as ListIcon, MessageSquarePlus, CalendarClock, Info, CalendarCheck, CalendarDays } from 'lucide-react';
 import api from '../services/api';
+import { CallBigCalendar } from '../components/CallBigCalendar';
 
 function useToast() {
   const [toasts, setToasts] = useState([]);
@@ -137,6 +138,7 @@ function ReservarHuecoPicker({ leadId, onReservado, toast }) {
   const [seleccionado, setSeleccionado] = useState('');
   const [loading, setLoading] = useState(true);
   const [reservando, setReservando] = useState(false);
+  const [verCalendario, setVerCalendario] = useState(false);
 
   useEffect(() => {
     api.get('/call-slots', { params: { disponibles: 'true' } })
@@ -145,13 +147,13 @@ function ReservarHuecoPicker({ leadId, onReservado, toast }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const reservar = async () => {
-    if (!seleccionado) return;
+  const reservarId = async (id) => {
     setReservando(true);
     try {
-      const { data } = await api.post(`/call-slots/${seleccionado}/reservar`, { setting_lead_id: leadId });
+      const { data } = await api.post(`/call-slots/${id}/reservar`, { setting_lead_id: leadId });
       onReservado(data.slot);
       toast.success('Llamada agendada');
+      setVerCalendario(false);
     } catch (err) {
       toast.error(err.response?.data?.error || 'No se ha podido reservar ese hueco');
     } finally {
@@ -163,19 +165,34 @@ function ReservarHuecoPicker({ leadId, onReservado, toast }) {
   if (huecos.length === 0) return <p style={{ fontSize:'0.72rem', color:'rgba(255,255,255,0.35)', margin:'4px 0 0' }}>No hay huecos libres en el calendario ahora mismo (ver "Mi Agenda").</p>;
 
   return (
-    <div style={{ display:'flex', gap:6, marginTop:4, flexWrap:'wrap' }}>
-      <select className="ap-select" style={{ flex:1, minWidth:220 }} value={seleccionado} onChange={e => setSeleccionado(e.target.value)}>
-        <option value="">Elige un hueco libre del calendario…</option>
-        {huecos.map(h => (
-          <option key={h.id} value={h.id}>
-            {h.fecha} · {(h.hora_inicio||'').slice(0,5)}–{(h.hora_fin||'').slice(0,5)} · {h.empleado?.name || 'Sin asignar'}
-          </option>
-        ))}
-      </select>
-      <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" disabled={!seleccionado || reservando} onClick={reservar}>
-        <CalendarCheck size={13}/> Reservar
-      </button>
-    </div>
+    <>
+      {verCalendario && (
+        <div className="ap-modal-overlay" onClick={() => setVerCalendario(false)}>
+          <div className="ap-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 900, width: '95vw' }}>
+            <div className="ap-modal-head"><h2>Elige un hueco libre</h2><button className="ap-modal-close" onClick={() => setVerCalendario(false)}><X size={16}/></button></div>
+            <div style={{ padding: '0 1.25rem 1.25rem' }}>
+              <CallBigCalendar slots={huecos} height={520} onSelectEvent={(s) => !s.ocupado && reservarId(s.id)} />
+            </div>
+          </div>
+        </div>
+      )}
+      <div style={{ display:'flex', gap:6, marginTop:4, flexWrap:'wrap' }}>
+        <select className="ap-select" style={{ flex:1, minWidth:220 }} value={seleccionado} onChange={e => setSeleccionado(e.target.value)}>
+          <option value="">Elige un hueco libre del calendario…</option>
+          {huecos.map(h => (
+            <option key={h.id} value={h.id}>
+              {h.fecha} · {(h.hora_inicio||'').slice(0,5)}–{(h.hora_fin||'').slice(0,5)} · {h.empleado?.name || 'Sin asignar'}
+            </option>
+          ))}
+        </select>
+        <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" disabled={!seleccionado || reservando} onClick={() => reservarId(seleccionado)}>
+          <CalendarCheck size={13}/> Reservar
+        </button>
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setVerCalendario(true)}>
+          <CalendarDays size={13}/> Ver calendario
+        </button>
+      </div>
+    </>
   );
 }
 

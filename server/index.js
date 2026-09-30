@@ -32,7 +32,7 @@ import settingRoutes from './routes/setting.routes.js';
 import memoriaRoutes from './routes/memoria.routes.js';
 import calendarFeedRoutes from './routes/calendar-feed.routes.js';
 import whatsappRoutes from './routes/whatsapp.routes.js';
-import callSlotsRoutes, { enviarRecordatoriosLlamadas } from './routes/call-slots.routes.js';
+import callSlotsRoutes, { enviarRecordatoriosLlamadas, generarSlotsDesdeReglas } from './routes/call-slots.routes.js';
 dotenv.config();
 
 const app = express();
@@ -122,5 +122,11 @@ app.listen(PORT, () => {
 // dentro de las próximas 24h a la que aún no se le haya mandado el email.
 setInterval(enviarRecordatoriosLlamadas, 15 * 60 * 1000);
 enviarRecordatoriosLlamadas(); // primera pasada al arrancar, no hace falta esperar 15 min
+
+// Genera los huecos reales de las próximas semanas a partir de las reglas
+// de disponibilidad recurrente — una vez al día basta (los huecos ya
+// generados no se tocan), más una pasada al arrancar.
+setInterval(generarSlotsDesdeReglas, 24 * 60 * 60 * 1000);
+generarSlotsDesdeReglas();
 
 export default app;
