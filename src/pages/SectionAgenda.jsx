@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CalendarDays, Plus, Trash2, Phone, Instagram, Save, LayoutGrid, List as ListIcon, X, RefreshCw } from 'lucide-react';
+import { CalendarDays, Plus, Trash2, Phone, Instagram, Save, LayoutGrid, List as ListIcon, X, RefreshCw, Search, CalendarCheck } from 'lucide-react';
 import api from '../services/api';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import { CallBigCalendar } from '../components/CallBigCalendar';
@@ -208,8 +208,83 @@ function ResumenLlamada({ slot, onGuardado, toast }) {
   );
 }
 
+// Busca un lead de la base de Setting (por nombre, teléfono o Instagram) y
+// permite reservar el hueco directamente para él, sin tener que ir antes a
+// la ficha del lead en Setting.
+function BuscarLeadPicker({ slotId, onReservado, toast }) {
+  const [query, setQuery] = useState('');
+  const [leads, setLeads] = useState(null); // null = aún no cargados
+  const [seleccionado, setSeleccionado] = useState(null);
+  const [reservando, setReservando] = useState(false);
+
+  useEffect(() => {
+    api.get('/setting').then(r => setLeads(r.data.registros || [])).catch(() => setLeads([]));
+  }, []);
+
+  const q = query.trim().toLowerCase();
+  const resultados = q.length < 2 || !leads ? [] : leads.filter(l =>
+    [l.nombre, l.telefono, l.instagram].some(v => (v || '').toLowerCase().includes(q))
+  ).slice(0, 8);
+
+  const reservar = async () => {
+    if (!seleccionado) return;
+    setReservando(true);
+    try {
+      const { data } = await api.post(`/call-slots/${slotId}/reservar`, { setting_lead_id: seleccionado.id });
+      onReservado(data.slot);
+      toast.success(`Llamada agendada con ${seleccionado.nombre}`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se ha podido reservar');
+    } finally {
+      setReservando(false);
+    }
+  };
+
+  if (seleccionado) {
+    return (
+      <div style={{ marginTop: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '0.6rem 0.75rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.82rem', color: '#fff' }}><strong>{seleccionado.nombre}</strong> {seleccionado.telefono && `· ${seleccionado.telefono}`}</span>
+          <button type="button" onClick={() => setSeleccionado(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}><X size={13} /></button>
+        </div>
+        <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" style={{ marginTop: 8 }} disabled={reservando} onClick={reservar}>
+          <CalendarCheck size={13} /> Reservar para este lead
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ position: 'relative' }}>
+        <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.35)' }} />
+        <input
+          className="ap-field-input"
+          style={{ paddingLeft: 28, fontSize: '0.8rem' }}
+          placeholder="Buscar lead de Setting por nombre, teléfono o Instagram…"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+        />
+      </div>
+      {q.length >= 2 && (
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {resultados.length === 0 && <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', margin: '4px 0 0' }}>Sin resultados en Setting.</p>}
+          {resultados.map(l => (
+            <button key={l.id} type="button" onClick={() => setSeleccionado(l)}
+              style={{ textAlign: 'left', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '0.4rem 0.6rem', cursor: 'pointer', fontSize: '0.78rem', color: '#fff' }}>
+              <strong>{l.nombre}</strong>
+              {l.telefono && <span style={{ color: 'rgba(255,255,255,0.4)' }}> · {l.telefono}</span>}
+              {l.instagram && <span style={{ color: 'rgba(255,255,255,0.4)' }}> · @{l.instagram}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Panel que se abre al pinchar un hueco en el calendario grande.
-function DetalleHuecoModal({ slot, onClose, onGuardado, onEliminado, toast }) {
+function DetalleHuecoModal({ slot, onClose, onGuardado, onEliminado, onReservado, toast }) {
   return (
     <div className="ap-modal-overlay" onClick={onClose}>
       <div className="ap-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
@@ -233,7 +308,8 @@ function DetalleHuecoModal({ slot, onClose, onGuardado, onEliminado, toast }) {
           ) : (
             <>
               <span style={{ fontSize: '0.68rem', padding: '2px 9px', borderRadius: 20, background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>Libre</span>
-              <div style={{ marginTop: 12 }}>
+              <BuscarLeadPicker slotId={slot.id} onReservado={onReservado} toast={toast} />
+              <div style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 10 }}>
                 <button type="button" className="ap-btn ap-btn-ghost" style={{ color: '#ae8b8b' }} onClick={() => onEliminado(slot)}><Trash2 size={13} /> Eliminar este hueco</button>
               </div>
             </>
@@ -300,6 +376,7 @@ export function SectionAgenda() {
           slot={detalle}
           onClose={() => setDetalle(null)}
           onGuardado={(upd) => { setSlots(prev => prev.map(x => x.id === upd.id ? { ...x, ...upd } : x)); setDetalle(upd); }}
+          onReservado={(upd) => { setSlots(prev => prev.map(x => x.id === upd.id ? { ...x, ...upd } : x)); setDetalle(upd); }}
           onEliminado={eliminarSlot}
           toast={toast}
         />
