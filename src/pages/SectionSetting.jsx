@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, Target, Search, LayoutGrid, List as ListIcon, MessageSquarePlus, CalendarClock, Info } from 'lucide-react';
+import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, Target, Search, LayoutGrid, List as ListIcon, MessageSquarePlus, CalendarClock, Info, CalendarCheck } from 'lucide-react';
 import api from '../services/api';
 
 function useToast() {
@@ -129,6 +129,56 @@ function encontrarPosiblesDuplicados({ nombre, telefono, instagram }, registros,
   });
 }
 
+// Selector de huecos libres del calendario de "Mi Agenda" — reservar aquí
+// deja el hueco ocupado Y actualiza fecha_llamada/estado del lead a la vez
+// (vía POST /call-slots/:id/reservar), en vez de escribir la fecha a mano.
+function ReservarHuecoPicker({ leadId, onReservado, toast }) {
+  const [huecos, setHuecos] = useState([]);
+  const [seleccionado, setSeleccionado] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [reservando, setReservando] = useState(false);
+
+  useEffect(() => {
+    api.get('/call-slots', { params: { disponibles: 'true' } })
+      .then(r => setHuecos((r.data.slots || []).filter(s => s.fecha >= new Date().toISOString().slice(0, 10))))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const reservar = async () => {
+    if (!seleccionado) return;
+    setReservando(true);
+    try {
+      const { data } = await api.post(`/call-slots/${seleccionado}/reservar`, { setting_lead_id: leadId });
+      onReservado(data.slot);
+      toast.success('Llamada agendada');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se ha podido reservar ese hueco');
+    } finally {
+      setReservando(false);
+    }
+  };
+
+  if (loading) return null;
+  if (huecos.length === 0) return <p style={{ fontSize:'0.72rem', color:'rgba(255,255,255,0.35)', margin:'4px 0 0' }}>No hay huecos libres en el calendario ahora mismo (ver "Mi Agenda").</p>;
+
+  return (
+    <div style={{ display:'flex', gap:6, marginTop:4, flexWrap:'wrap' }}>
+      <select className="ap-select" style={{ flex:1, minWidth:220 }} value={seleccionado} onChange={e => setSeleccionado(e.target.value)}>
+        <option value="">Elige un hueco libre del calendario…</option>
+        {huecos.map(h => (
+          <option key={h.id} value={h.id}>
+            {h.fecha} · {(h.hora_inicio||'').slice(0,5)}–{(h.hora_fin||'').slice(0,5)} · {h.empleado?.name || 'Sin asignar'}
+          </option>
+        ))}
+      </select>
+      <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" disabled={!seleccionado || reservando} onClick={reservar}>
+        <CalendarCheck size={13}/> Reservar
+      </button>
+    </div>
+  );
+}
+
 function RegistroModal({ registro, registros, empleados, onClose, onSaved, toast }) {
   const isEdit = !!registro;
   const [form, setForm] = useState(registro ? {
@@ -227,6 +277,19 @@ function RegistroModal({ registro, registros, empleados, onClose, onSaved, toast
               <input type="datetime-local" className="ap-field-input" value={form.fecha_llamada} onChange={e=>set('fecha_llamada',e.target.value)}/>
             </div>
           </div>
+          {isEdit && (
+            <div className="ap-field">
+              <label>Reservar desde el calendario (Mi Agenda)</label>
+              <ReservarHuecoPicker
+                leadId={registro.id}
+                toast={toast}
+                onReservado={(slot) => {
+                  set('fecha_llamada', isoToDatetimeLocal(new Date(`${slot.fecha}T${slot.hora_inicio}`).toISOString()));
+                  set('estado', 'agendado');
+                }}
+              />
+            </div>
+          )}
           <div style={{ borderTop:'1px solid rgba(255,255,255,0.07)', paddingTop:'0.75rem', marginTop:'0.25rem' }}>
             <p style={{ fontSize:'0.7rem', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:'rgba(255,255,255,0.3)', marginBottom:'0.5rem' }}>Recolectando información</p>
             <div className="ap-field"><label>Objetivo</label><input className="ap-field-input" value={form.objetivo} onChange={e=>set('objetivo',e.target.value)} placeholder="ej: perder grasa, ganar fuerza, rehabilitación…"/></div>
@@ -479,7 +542,7 @@ export function SectionSetting() {
             return (
               <button key={canal} type="button" onClick={() => setCanalFiltro(activo ? '' : canal)}
                 style={{ background: activo ? 'rgba(190,176,162,0.18)' : 'rgba(255,255,255,0.03)', border: activo ? '1px solid rgba(190,176,162,0.6)' : '1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:'0.45rem 0.75rem', fontSize:'0.75rem', color: activo ? '#fff' : 'rgba(255,255,255,0.6)', cursor:'pointer', fontFamily:'inherit' }}>
-                <strong style={{ color: activo ? '#fff' : '#fff' }}>{canal}</strong>: {v.total} lead{v.total === 1 ? '' : 's'}{v.ventas > 0 ? ` · ${v.ventas} venta${v.ventas === 1 ? '' : 's'}` : ''}
+                <strong style={{ color: activo ? '#fff' : '#fff' }}>{canal}</strong>: {v.total} lead{v.total === 1 ? '' : 's'}{v.ventas > 0 ? ` · ${v.ventas} venta${v.ventas === 1 ? '' : 's'} (${Math.round((v.ventas / v.total) * 100)}%)` : ''}
               </button>
             );
           })}

@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
+import { madridToUtcDate } from '../utils/timezone.js';
 
 const router = express.Router();
 router.use(authenticateToken, requirePermission('leads'));
@@ -148,13 +149,22 @@ async function actualizarLead(input) {
   if (input.instagram !== undefined) updates.instagram = input.instagram?.trim().replace(/^@+/, '') || null;
   if (input.canal !== undefined) updates.canal = input.canal?.trim() || null;
   if (input.fecha_llamada !== undefined) {
-    const d = input.fecha_llamada ? new Date(input.fecha_llamada) : null;
-    if (input.fecha_llamada && isNaN(d?.getTime())) return { actualizado: false, error: `Fecha/hora de llamada no válida: "${input.fecha_llamada}" — usa formato ISO (ej. "2026-10-03T17:00:00").` };
-    updates.fecha_llamada = d ? d.toISOString() : null;
+    if (!input.fecha_llamada) {
+      updates.fecha_llamada = null;
+    } else {
+      // El modelo da la hora en hora de España (piensa como Franco, que está
+      // en Madrid) — se interpreta explícitamente así, no con la zona del
+      // servidor (madridToUtcDate), para no desfasar la hora guardada.
+      const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}(?::\d{2})?)/.exec(input.fecha_llamada);
+      if (!match) return { actualizado: false, error: `Fecha/hora de llamada no válida: "${input.fecha_llamada}" — usa formato ISO (ej. "2026-10-03T17:00:00").` };
+      const d = madridToUtcDate(match[1], match[2]);
+      if (isNaN(d.getTime())) return { actualizado: false, error: `Fecha/hora de llamada no válida: "${input.fecha_llamada}".` };
+      updates.fecha_llamada = d.toISOString();
+    }
   }
 
   if (input.nota_nueva?.trim()) {
-    const fecha = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const fecha = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Madrid' });
     const linea = `[${fecha} — vía Asistente Setter] ${input.nota_nueva.trim()}`;
     updates.notas = existente.notas ? `${existente.notas}\n${linea}` : linea;
   }
@@ -413,7 +423,7 @@ router.post('/chat', async (req, res) => {
     // La fecha de hoy se añade en cada petición (no al cargar el módulo) para
     // que el asistente pueda convertir fechas relativas que diga Franco
     // ("el jueves que viene a las 17h") a una fecha/hora real para fecha_llamada.
-    const hoy = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const hoy = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' });
     const systemConFecha = `${SYSTEM_PROMPT}\n\nFECHA DE HOY: ${hoy}. Úsala para calcular cualquier fecha relativa que te den ("mañana", "el jueves", "en 3 días"...) al rellenar fecha_llamada.`;
 
     let lastResponse = null;

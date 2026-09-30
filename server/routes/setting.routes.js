@@ -192,7 +192,7 @@ router.put('/:id', authenticateToken, requireSetting, async (req, res) => {
         supabase.from('setting_leads').select('notas').eq('id', req.params.id).maybeSingle(),
         req.user.email ? supabase.from('employees').select('name').eq('email', req.user.email).maybeSingle() : Promise.resolve({ data: null }),
       ]);
-      const fecha = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const fecha = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Madrid' });
       const autor = autorEmp?.name ? ` — ${autorEmp.name}` : '';
       const linea = `[${fecha}${autor}] ${nota_nueva.trim()}`;
       updates.notas = actual?.notas ? `${actual.notas}\n${linea}` : linea;

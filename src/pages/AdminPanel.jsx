@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu } from 'lucide-react';
+import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteSetter } from './SectionAsistenteSetter';
+import { SectionAgenda } from './SectionAgenda';
 import { SectionSetting } from './SectionSetting';
 import { SectionPedidos } from './SectionPedidos';
 import { SectionTareas } from './SectionTareas';
@@ -2401,6 +2402,7 @@ const NAV_ITEMS = [
   { id:'leads', label:'Leads', Icon:Target, permission:'leads' },
   { id:'setting', label:'Setting', Icon:PhoneCall, permission:'leads' },
   { id:'asistente-setter', label:'Asistente Setter', Icon:MessageCircle, permission:'leads' },
+  { id:'mi-agenda', label:'Mi Agenda', Icon:CalendarDays, permission:'leads' },
   { id:'ventas', label:'Ventas', Icon:TrendingUp, permission:'ventas' },
   { id:'mis-comisiones', label:'Mis Comisiones', Icon:Wallet },
   { id:'proyectos', label:'Proyectos', Icon:FolderOpen, permission:'proyectos' },
@@ -2463,6 +2465,7 @@ export function AdminPanel() {
         {section==='presupuestos'&&<SectionPresupuestos/>}
         {section==='asistente'&&<SectionAsistenteIA/>}
         {section==='asistente-setter'&&<SectionAsistenteSetter/>}
+        {section==='mi-agenda'&&<SectionAgenda/>}
         {section==='pedidos'&&<SectionPedidos/>}
         {section==='finanzas'&&<SectionFinanzas/>}
         {section==='obra'&&<SectionRelacionObra/>}

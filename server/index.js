@@ -32,6 +32,7 @@ import settingRoutes from './routes/setting.routes.js';
 import memoriaRoutes from './routes/memoria.routes.js';
 import calendarFeedRoutes from './routes/calendar-feed.routes.js';
 import whatsappRoutes from './routes/whatsapp.routes.js';
+import callSlotsRoutes, { enviarRecordatoriosLlamadas } from './routes/call-slots.routes.js';
 dotenv.config();
 
 const app = express();
@@ -101,6 +102,7 @@ app.use('/api/setting', settingRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/memoria', memoriaRoutes);
 app.use('/api/calendar', calendarFeedRoutes);
+app.use('/api/call-slots', callSlotsRoutes);
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
 });
@@ -115,5 +117,10 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log('Ranuse Design API Server - Puerto: ' + PORT);
 });
+
+// Recordatorios de llamadas agendadas: revisa cada 15 minutos si hay alguna
+// dentro de las próximas 24h a la que aún no se le haya mandado el email.
+setInterval(enviarRecordatoriosLlamadas, 15 * 60 * 1000);
+enviarRecordatoriosLlamadas(); // primera pasada al arrancar, no hace falta esperar 15 min
 
 export default app;
