@@ -74,7 +74,7 @@ const ORDEN = ['nuevo','interesado','no_califica','contacto_nuevo','pitcheo_agen
 // anuncio, y Otro para lo suelto).
 const CANALES = ['Instagram (nos escriben)', 'Instagram (prospección)', 'Ads', 'Referido', 'WhatsApp', 'Otro'];
 
-const blank = { nombre:'', telefono:'', instagram:'', email:'', canal:'', estado:'nuevo', objetivo:'', medidas:'', maquinarias:'', notas:'', assigned_to:'', fecha_llamada:'' };
+const blank = { nombre:'', telefono:'', instagram:'', email:'', canal:'', estado:'nuevo', objetivo:'', medidas:'', maquinarias:'', notas:'', assigned_to:'', fecha_llamada:'', created_at:'', fecha_venta_1:'', fecha_venta_2:'' };
 
 // Explicación de cada métrica de la cabecera, en el mismo orden en que se
 // muestran — para que cualquiera que abra Setting entienda qué cuenta cada
@@ -120,6 +120,9 @@ function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
     objetivo: registro.objetivo || '', medidas: registro.medidas || '', maquinarias: registro.maquinarias || '',
     notas: registro.notas || '', assigned_to: registro.assigned_to || '',
     fecha_llamada: isoToDatetimeLocal(registro.fecha_llamada),
+    created_at: isoToDatetimeLocal(registro.created_at),
+    fecha_venta_1: isoToDatetimeLocal(registro.fecha_venta_1),
+    fecha_venta_2: isoToDatetimeLocal(registro.fecha_venta_2),
   } : blank);
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -133,6 +136,9 @@ function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
         ...form,
         assigned_to: form.assigned_to || null,
         fecha_llamada: form.fecha_llamada ? new Date(form.fecha_llamada).toISOString() : null,
+        fecha_venta_1: form.fecha_venta_1 ? new Date(form.fecha_venta_1).toISOString() : null,
+        fecha_venta_2: form.fecha_venta_2 ? new Date(form.fecha_venta_2).toISOString() : null,
+        created_at: form.created_at ? new Date(form.created_at).toISOString() : undefined,
       };
       if (isEdit) {
         const { data } = await api.put(`/setting/${registro.id}`, payload);
@@ -195,6 +201,23 @@ function RegistroModal({ registro, empleados, onClose, onSaved, toast }) {
             <div className="ap-field"><label>Maquinaria de interés</label><input className="ap-field-input" value={form.maquinarias} onChange={e=>set('maquinarias',e.target.value)} placeholder="ej: rack, cardio, mancuernas…"/></div>
           </div>
           <div className="ap-field"><label>Notas</label><textarea className="ap-diag-textarea" rows={3} value={form.notas} onChange={e=>set('notas',e.target.value)}/></div>
+          <div style={{ borderTop:'1px solid rgba(255,255,255,0.07)', paddingTop:'0.75rem', marginTop:'0.25rem' }}>
+            <p style={{ fontSize:'0.7rem', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:'rgba(255,255,255,0.3)', marginBottom:'0.5rem' }}>Fechas (editable a mano — ej. para datos retroactivos)</p>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              <div className="ap-field" style={{ flex:1, minWidth:160 }}>
+                <label>Fecha de creación</label>
+                <input type="datetime-local" className="ap-field-input" value={form.created_at} onChange={e=>set('created_at',e.target.value)}/>
+              </div>
+              <div className="ap-field" style={{ flex:1, minWidth:160 }}>
+                <label>Fecha Venta 1</label>
+                <input type="datetime-local" className="ap-field-input" value={form.fecha_venta_1} onChange={e=>set('fecha_venta_1',e.target.value)}/>
+              </div>
+              <div className="ap-field" style={{ flex:1, minWidth:160 }}>
+                <label>Fecha Venta 2</label>
+                <input type="datetime-local" className="ap-field-input" value={form.fecha_venta_2} onChange={e=>set('fecha_venta_2',e.target.value)}/>
+              </div>
+            </div>
+          </div>
           <div className="ap-modal-actions">
             <button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button>
             <button type="submit" className="ap-btn ap-btn-primary" disabled={saving || !form.nombre.trim()}>{saving ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear'}</button>

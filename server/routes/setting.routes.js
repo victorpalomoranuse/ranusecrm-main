@@ -111,7 +111,7 @@ router.get('/:id', authenticateToken, requireSetting, async (req, res) => {
 
 router.post('/', authenticateToken, requireSetting, async (req, res) => {
   try {
-    const { nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, assigned_to, fecha_llamada } = req.body;
+    const { nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, assigned_to, fecha_llamada, fecha_venta_1, fecha_venta_2, created_at } = req.body;
     if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
 
     const estadoFinal = ESTADOS_VALIDOS.includes(estado) ? estado : 'nuevo';
@@ -130,8 +130,14 @@ router.post('/', authenticateToken, requireSetting, async (req, res) => {
         notas: notas?.trim() || null,
         assigned_to: assigned_to || null,
         fecha_llamada: fecha_llamada || null,
-        fecha_venta_1: estadoFinal === 'venta_1' ? new Date().toISOString() : null,
-        fecha_venta_2: estadoFinal === 'venta_2' ? new Date().toISOString() : null,
+        // Si se da una fecha de venta a mano (ej. al dar de alta un lead
+        // retroactivo que ya sabes que compró), se respeta esa; si no, se
+        // estampa sola solo cuando el estado inicial ya es venta_1/venta_2.
+        fecha_venta_1: fecha_venta_1 || (estadoFinal === 'venta_1' ? new Date().toISOString() : null),
+        fecha_venta_2: fecha_venta_2 || (estadoFinal === 'venta_2' ? new Date().toISOString() : null),
+        // Permite dar de alta un lead con la fecha real en la que entró
+        // (ej. datos históricos que se cargan más tarde) en vez de "ahora".
+        ...(created_at ? { created_at } : {}),
         created_by: req.user.id,
       })
       .select('*, empleado:employees(id, name)')
@@ -146,7 +152,7 @@ router.post('/', authenticateToken, requireSetting, async (req, res) => {
 
 router.put('/:id', authenticateToken, requireSetting, async (req, res) => {
   try {
-    const { nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, nota_nueva, assigned_to, fecha_llamada, fecha_venta_1, fecha_venta_2 } = req.body;
+    const { nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, nota_nueva, assigned_to, fecha_llamada, fecha_venta_1, fecha_venta_2, created_at } = req.body;
     const updates = { updated_at: new Date().toISOString() };
     if (nombre !== undefined) updates.nombre = nombre.trim();
     if (telefono !== undefined) updates.telefono = telefono?.trim() || null;
@@ -171,6 +177,9 @@ router.put('/:id', authenticateToken, requireSetting, async (req, res) => {
     // (ej. se marcó por error, o se quiere poner la fecha real de cobro).
     if (fecha_venta_1 !== undefined) updates.fecha_venta_1 = fecha_venta_1 || null;
     if (fecha_venta_2 !== undefined) updates.fecha_venta_2 = fecha_venta_2 || null;
+    // Fecha de creación editable a mano (ej. para corregir un lead
+    // registrado tarde con la fecha real en la que entró de verdad).
+    if (created_at) updates.created_at = created_at;
 
     // nota_nueva: añade una línea con fecha al final del historial en vez de
     // sobrescribir todo el campo "notas" — así Hernán (o quien sea) puede
