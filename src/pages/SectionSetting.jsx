@@ -287,6 +287,7 @@ export function SectionSetting() {
   const [busqueda, setBusqueda] = useState('');
   const [mesFiltro, setMesFiltro] = useState('');
   const [asignadoFiltro, setAsignadoFiltro] = useState('');
+  const [canalFiltro, setCanalFiltro] = useState('');
   const [vista, setVista] = useState(() => { try { return localStorage.getItem('setting_vista') || 'kanban'; } catch { return 'kanban'; } });
   const [mostrarInfoMetricas, setMostrarInfoMetricas] = useState(false);
   const cambiarVista = (v) => { setVista(v); try { localStorage.setItem('setting_vista', v); } catch {} };
@@ -336,10 +337,19 @@ export function SectionSetting() {
       return { valor: ym, etiqueta: `${MESES_ES[parseInt(m, 10) - 1]} ${y}` };
     });
 
+  // Misma normalización que hace el backend en porCanal — así el filtro
+  // coincide exactamente con las etiquetas de los chips ("Instagram",
+  // "Ads"...) sin importar mayúsculas/minúsculas del dato guardado.
+  const normCanal = (raw) => {
+    const s = (raw || 'otro').trim();
+    return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  };
+
   const q = busqueda.trim().toLowerCase();
   const registrosFiltrados = registros.filter(r => {
     if (mesFiltro && (r.created_at || '').slice(0, 7) !== mesFiltro) return false;
     if (asignadoFiltro && r.assigned_to !== asignadoFiltro) return false;
+    if (canalFiltro && normCanal(r.canal) !== canalFiltro) return false;
     if (!q) return true;
     return [r.nombre, r.telefono, r.instagram, r.email].some(v => (v || '').toLowerCase().includes(q));
   });
@@ -428,12 +438,19 @@ export function SectionSetting() {
       )}
 
       {porCanal && Object.keys(porCanal).length > 0 && (
-        <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap', marginBottom:'1.5rem' }}>
-          {Object.entries(porCanal).sort((a,b) => b[1].total - a[1].total).map(([canal, v]) => (
-            <div key={canal} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:'0.45rem 0.75rem', fontSize:'0.75rem', color:'rgba(255,255,255,0.6)' }}>
-              <strong style={{ color:'#fff' }}>{canal}</strong>: {v.total} lead{v.total === 1 ? '' : 's'}{v.ventas > 0 ? ` · ${v.ventas} venta${v.ventas === 1 ? '' : 's'}` : ''}
-            </div>
-          ))}
+        <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap', marginBottom:'1.5rem', alignItems:'center' }}>
+          {Object.entries(porCanal).sort((a,b) => b[1].total - a[1].total).map(([canal, v]) => {
+            const activo = canalFiltro === canal;
+            return (
+              <button key={canal} type="button" onClick={() => setCanalFiltro(activo ? '' : canal)}
+                style={{ background: activo ? 'rgba(190,176,162,0.18)' : 'rgba(255,255,255,0.03)', border: activo ? '1px solid rgba(190,176,162,0.6)' : '1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:'0.45rem 0.75rem', fontSize:'0.75rem', color: activo ? '#fff' : 'rgba(255,255,255,0.6)', cursor:'pointer', fontFamily:'inherit' }}>
+                <strong style={{ color: activo ? '#fff' : '#fff' }}>{canal}</strong>: {v.total} lead{v.total === 1 ? '' : 's'}{v.ventas > 0 ? ` · ${v.ventas} venta${v.ventas === 1 ? '' : 's'}` : ''}
+              </button>
+            );
+          })}
+          {canalFiltro && (
+            <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setCanalFiltro('')}>Quitar filtro de canal</button>
+          )}
         </div>
       )}
 
@@ -456,10 +473,10 @@ export function SectionSetting() {
           <option value="">Todos (asignado a)</option>
           {empleados.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
         </select>
-        {(busqueda || mesFiltro || asignadoFiltro) && (
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setBusqueda(''); setMesFiltro(''); setAsignadoFiltro(''); }}>Limpiar filtros</button>
+        {(busqueda || mesFiltro || asignadoFiltro || canalFiltro) && (
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setBusqueda(''); setMesFiltro(''); setAsignadoFiltro(''); setCanalFiltro(''); }}>Limpiar filtros</button>
         )}
-        {(busqueda || mesFiltro || asignadoFiltro) && (
+        {(busqueda || mesFiltro || asignadoFiltro || canalFiltro) && (
           <span style={{ fontSize:'0.75rem', color:'rgba(255,255,255,0.4)', alignSelf:'center' }}>{registrosFiltrados.length} resultado{registrosFiltrados.length === 1 ? '' : 's'}</span>
         )}
       </div>
