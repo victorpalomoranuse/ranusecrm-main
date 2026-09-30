@@ -65,10 +65,16 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
 
     // Tasa de cierre DE LLAMADAS (distinta de la tasa de cierre general):
     // de los que llegaron a tener una llamada agendada (fecha_llamada), qué
-    // % acabó comprando algo — mide específicamente cómo de bien se cierra
-    // en la llamada, no todo el embudo desde el primer contacto.
+    // % de ESOS MISMOS acabó comprando algo — mide específicamente cómo de
+    // bien se cierra en la llamada, no todo el embudo desde el primer
+    // contacto. OJO: tiene que ser una intersección (mismo lead con las dos
+    // cosas), no ventas totales entre llamadas totales — si no, sale un
+    // % irreal (>100%) en cuanto hay una sola venta sin fecha_llamada
+    // registrada (ej. datos antiguos o cargados a mano sin pasar por la
+    // llamada agendada).
     const conLlamada = registros.filter(r => r.fecha_llamada).length;
-    const tasaCierreLlamadas = conLlamada > 0 ? Math.round((ventas / conLlamada) * 100) : 0;
+    const ventasConLlamada = registros.filter(r => r.fecha_llamada && (r.fecha_venta_1 || r.fecha_venta_2)).length;
+    const tasaCierreLlamadas = conLlamada > 0 ? Math.round((ventasConLlamada / conLlamada) * 100) : 0;
 
     // Normalizado sin distinguir mayúsculas/minúsculas — el Asistente Setter
     // guarda "Instagram"/"WhatsApp"/"Ads" con mayúscula inicial, pero el
@@ -87,7 +93,7 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
       registros,
       metricas: {
         total, activos, ventas, noResponde, noCalifica, rechazo, seguimientoFuturo,
-        tasaCierre, tasaCalificacion, tasaCierreLlamadas, conLlamada,
+        tasaCierre, tasaCalificacion, tasaCierreLlamadas, conLlamada, ventasConLlamada,
         compraron1, compraron2, soloVenta1, soloVenta2, compraronAmbos, tasaCrossSell, tasaVenta1, tasaVenta2,
       },
       porEstado,

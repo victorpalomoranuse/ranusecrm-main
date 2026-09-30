@@ -93,7 +93,8 @@ const DEFINICIONES_METRICAS = [
   ['No responde', 'Leads marcados así porque dejaron de responder definitivamente.'],
   ['No califica', 'Leads que, tras hablar, no encajan como cliente potencial.'],
   ['Tasa de cierre', 'Ventas (1 o 2) dividido entre el Total — de todos los leads que han entrado alguna vez, qué % ha acabado comprando algo.'],
-  ['Cierre en llamada', 'Ventas (1 o 2) dividido entre los que llegaron a tener una llamada agendada — mide específicamente cómo de bien se cierra EN LA LLAMADA, no desde el primer contacto.'],
+  ['Llamadas', 'Cuántos leads han llegado a tener una llamada agendada (con fecha guardada), la hayan hecho ya o esté todavía por venir.'],
+  ['Cierre en llamada', 'De los que llegaron a tener una llamada agendada, qué % de ESOS MISMOS acabó comprando algo (Venta 1 y/o Venta 2) — es una intersección, no ventas totales entre llamadas totales, así que nunca puede pasar de 100%.'],
   ['Tasa de calificación', 'Qué % de los leads NO ha terminado en "No califica" — es decir, cuántos sí eran un contacto con potencial real, aunque no hayan comprado (todavía).'],
 ];
 
@@ -541,6 +542,7 @@ export function SectionSetting() {
             ['No responde', metricas.noResponde],
             ['No califica', metricas.noCalifica],
             ['Tasa de cierre', metricas.tasaCierre + '%'],
+            ['Llamadas', metricas.conLlamada],
             ['Cierre en llamada', metricas.tasaCierreLlamadas + '%'],
             ['Tasa de calificación', metricas.tasaCalificacion + '%'],
           ].map(([label, val]) => (
