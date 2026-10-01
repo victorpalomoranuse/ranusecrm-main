@@ -259,6 +259,14 @@ export function ProyectoCompletoModal({ ventaId, onClose }) {
               </div>
 
               {datos.venta.tipoProyecto === 'con_ejecucion' && (
+                datos.venta.cerrada ? (
+                  <div style={{ marginTop: 10, background: 'rgba(139,174,143,0.08)', border: '1px solid rgba(139,174,143,0.25)', borderRadius: 10, padding: '10px 14px' }}>
+                    <div style={{ fontSize: 10, color: '#8bae8f', textTransform: 'uppercase', letterSpacing: 1 }}>Venta cerrada</div>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 6, marginBottom: 0 }}>
+                      Ya no se esperan más gastos, así que el "Margen real (hasta ahora)" de arriba es el margen definitivo — no se usa ningún coste previsto.
+                    </p>
+                  </div>
+                ) : (
                 <div style={{ marginTop: 10, background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)', borderRadius: 10, padding: '10px 14px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                     <div style={{ fontSize: 10, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: 1 }}>Margen estimado al terminar</div>
@@ -282,6 +290,7 @@ export function ProyectoCompletoModal({ ventaId, onClose }) {
                     </p>
                   )}
                 </div>
+                )
               )}
             </div>
 

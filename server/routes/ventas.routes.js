@@ -360,6 +360,7 @@ router.get('/:id/completo', authenticateToken, requireFinanzas, async (req, res)
         canal: venta.canal, campaña: venta.campaña, tipoProyecto: venta.tipo_proyecto,
         fecha: venta.fecha, comercial: venta.comercial?.name || null, notas: venta.notas,
         presupuesto, previsionGastos: venta.prevision_gastos != null ? Number(venta.prevision_gastos) : null,
+        cerrada: !!venta.cerrada,
       },
       ejecucion: proyecto ? {
         id: proyecto.id, nombre: proyecto.project_name, fase: proyecto.phase, urgencia: proyecto.urgency,
@@ -373,7 +374,10 @@ router.get('/:id/completo', authenticateToken, requireFinanzas, async (req, res)
         totalGastos,
         margenReal: cobrado - totalGastos,
         previsionVsReal: presupuesto - cobrado,
-        ...(venta.tipo_proyecto === 'con_ejecucion' && venta.prevision_gastos != null ? {
+        // Con la venta cerrada ya no quedan más gastos por llegar, así que el
+        // margen real de arriba ES el definitivo — no tiene sentido seguir
+        // mostrando una estimación con el coste previsto antiguo.
+        ...(!venta.cerrada && venta.tipo_proyecto === 'con_ejecucion' && venta.prevision_gastos != null ? {
           margenEstimado: presupuesto - Number(venta.prevision_gastos),
         } : {}),
       },

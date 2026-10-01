@@ -480,18 +480,19 @@ export function SectionVentas() {
                     </div>
                   </button>
                   {open && (
-                    <div className="vt-mes-table">
-                      <div className="vt-row vt-row--head" style={{ gridTemplateColumns: '1.5fr 1.2fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr' }}>
-                        <span>Cliente / lead</span><span>Proyecto</span><span>Valor venta</span><span>Beneficio previsto</span><span>Pagado</span><span>Beneficio pagado</span><span>Pendiente</span>
+                    <div className="vt-mes-table" style={{ overflowX: 'auto' }}>
+                      <div className="vt-row vt-row--head" style={{ gridTemplateColumns: '1.3fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr', fontSize: '0.66rem', minWidth: 860 }}>
+                        <span>Cliente / lead</span><span>Proyecto</span><span>Valor venta</span><span>Beneficio previsto</span><span>Ingresos reales</span><span>Gastos reales</span><span>Beneficio pagado</span><span>Pendiente</span>
                       </div>
                       {m.ventas.map(v => (
                         <div key={v.id}>
-                          <div className="vt-row" style={{ gridTemplateColumns: '1.5fr 1.2fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr', cursor: 'pointer' }} onClick={() => setVentaAbierta(ventaAbierta === v.id ? null : v.id)}>
+                          <div className="vt-row" style={{ gridTemplateColumns: '1.3fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr', fontSize: '0.8rem', minWidth: 860, cursor: 'pointer' }} onClick={() => setVentaAbierta(ventaAbierta === v.id ? null : v.id)}>
                             <span className="vt-lead-nombre">{v.clienteNombre || v.nombre}</span>
                             <span>{v.nombre}</span>
                             <span className="vt-valor">{fmt(v.valor)}</span>
                             <span style={{ color: v.costesConocidos === false ? '#f5b748' : '#a78bfa', fontWeight: 600 }} title={v.costesConocidos === false ? 'Falta poner el coste previsto para saber el beneficio real' : ''}>{v.costesConocidos === false ? '¿? sin coste' : fmt(v.beneficioPrevisto)}</span>
                             <span style={{ color: '#22c55e' }}>{fmt(v.cobrado)}</span>
+                            <span style={{ color: '#ae6b6b' }}>{fmt(v.gastosReales)}</span>
                             <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(v.beneficioPagado)}</span>
                             <span style={{ color: v.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(v.pendiente)}</span>
                           </div>
@@ -508,19 +509,20 @@ export function SectionVentas() {
       ) : ventas.length === 0 ? (
         <div className="ap-empty"><p>Todavía no hay ventas registradas. Pulsa "Nueva venta" para añadir la primera.</p></div>
       ) : (
-        <div className="vt-mes-table" style={{ marginTop: 8 }}>
-          <div className="vt-row vt-row--head" style={{ gridTemplateColumns: '1.5fr 1.2fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 90px' }}>
-            <span>Cliente / lead</span><span>Proyecto</span><span>Valor venta</span><span>Costes previstos</span><span>Beneficio previsto</span><span>Pagado</span><span>Beneficio pagado</span><span>Pendiente</span><span></span>
+        <div className="vt-mes-table" style={{ marginTop: 8, overflowX: 'auto' }}>
+          <div className="vt-row vt-row--head" style={{ gridTemplateColumns: '1.3fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 80px', fontSize: '0.66rem', minWidth: 980 }}>
+            <span>Cliente / lead</span><span>Proyecto</span><span>Valor venta</span><span>Costes previstos</span><span>Beneficio previsto</span><span>Ingresos reales</span><span>Gastos reales</span><span>Beneficio pagado</span><span>Pendiente</span><span></span>
           </div>
           {ventas.map(v => (
             <div key={v.id}>
-              <div className="vt-row" style={{ gridTemplateColumns: '1.5fr 1.2fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 90px', cursor: 'pointer' }} onClick={() => setVentaAbierta(ventaAbierta === v.id ? null : v.id)}>
+              <div className="vt-row" style={{ gridTemplateColumns: '1.3fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 80px', fontSize: '0.8rem', minWidth: 980, cursor: 'pointer' }} onClick={() => setVentaAbierta(ventaAbierta === v.id ? null : v.id)}>
                 <span className="vt-lead-nombre">{v.clienteNombre || v.nombre}</span>
                 <span>{v.nombre}</span>
                 <span className="vt-valor">{fmt(v.valor)}</span>
                 <span>{v.previsionGastos != null ? fmt(v.previsionGastos) : '—'}</span>
                 <span style={{ color: v.costesConocidos === false ? '#f5b748' : '#a78bfa', fontWeight: 600 }} title={v.costesConocidos === false ? 'Falta poner el coste previsto para saber el beneficio real' : ''}>{v.costesConocidos === false ? '¿? sin coste' : fmt(v.beneficioPrevisto)}</span>
                 <span style={{ color: '#22c55e' }}>{fmt(v.cobrado)}</span>
+                <span style={{ color: '#ae6b6b' }}>{fmt(v.gastosReales)}</span>
                 <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(v.beneficioPagado)}</span>
                 <span style={{ color: v.pendiente > 0 ? '#f5b748' : 'rgba(255,255,255,0.4)' }}>{fmt(v.pendiente)}</span>
                 <span style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
