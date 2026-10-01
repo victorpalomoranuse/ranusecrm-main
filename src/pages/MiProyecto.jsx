@@ -93,16 +93,24 @@ const DEFAULT_MOODBOARD_DESC = 'Estas imágenes muestran el estilo, los material
 
 function MoodboardSection({ moodboard }) {
   const [active, setActive] = useState(null);
+  const [expanded, setExpanded] = useState(false);
   const images = moodboard?.images || [];
   const description = moodboard?.description || '';
   const palette = moodboard?.palette || [];
   if (images.length === 0 && !description && palette.length === 0) return null;
+  const text = description || DEFAULT_MOODBOARD_DESC;
+  const isLong = text.length > 180;
   return (
     <section className="mp-moodboard">
       <div className="mp-moodboard-header">
         <p className="mp-moodboard-label">El estilo del proyecto</p>
         <h2 className="mp-moodboard-title">Moodboard</h2>
-        <p className="mp-moodboard-desc">{description || DEFAULT_MOODBOARD_DESC}</p>
+        <p className={`mp-moodboard-desc${isLong && !expanded ? ' mp-moodboard-desc--clamped' : ''}`}>{text}</p>
+        {isLong && (
+          <button type="button" className="mp-moodboard-toggle" onClick={() => setExpanded(e => !e)}>
+            {expanded ? 'Ver menos' : 'Ver más'}
+          </button>
+        )}
         {palette.length > 0 && (
           <div className="mp-palette">
             {palette.map((hex, i) => (
