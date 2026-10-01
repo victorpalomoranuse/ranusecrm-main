@@ -5,6 +5,7 @@ import api from '../services/api';
 import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
+import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
 import { SectionAsistenteSetter } from './SectionAsistenteSetter';
 import { SectionAgenda } from './SectionAgenda';
 import { SectionSetting } from './SectionSetting';
@@ -2413,6 +2414,7 @@ const NAV_ITEMS = [
   { id:'asistente', label:'Asistente IA', Icon:MessageSquare, permission:'ventas' },
   { id:'pedidos', label:'Pedidos', Icon:Package, adminOnly:true },
   { id:'finanzas', label:'Finanzas', Icon:Wallet, permission:'finanzas' },
+  { id:'asistente-finanzas', label:'Asistente Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'obra', label:'Relación de obra', Icon:Hammer, permissions:['ventas','finanzas'] },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
   { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },
@@ -2464,6 +2466,7 @@ export function AdminPanel() {
         {section==='roles'&&<SectionRoles/>}
         {section==='presupuestos'&&<SectionPresupuestos/>}
         {section==='asistente'&&<SectionAsistenteIA/>}
+        {section==='asistente-finanzas'&&<SectionAsistenteFinanzas/>}
         {section==='asistente-setter'&&<SectionAsistenteSetter/>}
         {section==='mi-agenda'&&<SectionAgenda/>}
         {section==='pedidos'&&<SectionPedidos/>}
