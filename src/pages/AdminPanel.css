@@ -1123,6 +1123,36 @@
 .ap-select option { background: #1a1a1a; }
 .ap-select-sm { width: auto; padding: 0.55rem 0.6rem; font-size: 0.82rem; }
 
+.ap-ssel { position: relative; width: 100%; }
+.ap-ssel-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #1a1a1a;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  padding: 4px;
+}
+.ap-ssel-option {
+  padding: 0.55rem 0.65rem;
+  font-size: 0.82rem;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ap-ssel-option:hover { background: rgba(255,255,255,0.08); }
+.ap-ssel-option.is-selected { background: rgba(190,176,162,0.18); color: #beb0a2; }
+.ap-ssel-option--empty { color: rgba(255,255,255,0.45); border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 4px; border-radius: 6px 6px 0 0; }
+.ap-ssel-empty { padding: 0.55rem 0.65rem; font-size: 0.8rem; color: rgba(255,255,255,0.35); }
+
 .ap-upload-label { cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem; }
 
 /* ── Renders grid ── */

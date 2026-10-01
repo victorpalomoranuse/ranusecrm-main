@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
 import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2, Users, Check, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { SearchableSelect } from '../components/SearchableSelect';
 import './SectionFinanzas.css';
 
 function fmt(n) {
@@ -139,14 +140,16 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved, onSavedCon
           </div>
           <div className="ap-field">
             <label>Venta <span className="ap-optional">(opcional, pero enlázalo si es un cobro o gasto de una venta concreta)</span></label>
-            <select className="ap-select" value={ventaId} onChange={e => setVentaId(e.target.value)}>
-              <option value="">— Sin enlazar (gasto/ingreso general de empresa) —</option>
-              {ventas.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.nombre} {v.fecha ? `(${v.fecha.slice(0,10)})` : ''}{proyectosPorVenta[v.id] ? ` — proyecto: ${proyectosPorVenta[v.id]}` : ''}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={ventaId}
+              onChange={setVentaId}
+              emptyLabel="— Sin enlazar (gasto/ingreso general de empresa) —"
+              placeholder="Busca por nombre de la venta o del proyecto…"
+              options={ventas.map(v => ({
+                value: v.id,
+                label: `${v.nombre} ${v.fecha ? `(${v.fecha.slice(0, 10)})` : ''}${proyectosPorVenta[v.id] ? ` — proyecto: ${proyectosPorVenta[v.id]}` : ''}`,
+              }))}
+            />
           </div>
           {tipo === 'gasto' && (
             <div className="ap-field">
