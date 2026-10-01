@@ -573,7 +573,13 @@ router.post('/:id/import', async (req, res) => {
 
 router.get('/:id/pdf-cliente', async (req, res) => {
   try {
-    const { iva = 21, irpf = 0, show_unit_price = 'true', show_discount = 'true', show_total_col = 'true', show_savings = 'true' } = req.query;
+    const { iva: ivaRaw = 21, irpf: irpfRaw = 0, show_unit_price = 'true', show_discount = 'true', show_total_col = 'true', show_savings = 'true' } = req.query;
+    // parseFloat('') da NaN, y el default de la desestructuración NO salta con
+    // string vacío (solo con undefined) — si el campo IVA/IRPF% se queda vacío
+    // un instante en el formulario, el query llega como '' y el TOTAL del PDF
+    // salía NaN. Forzamos aquí un número válido siempre.
+    const iva = Number.isFinite(parseFloat(ivaRaw)) ? parseFloat(ivaRaw) : 21;
+    const irpf = Number.isFinite(parseFloat(irpfRaw)) ? parseFloat(irpfRaw) : 0;
     const showUnitPrice = show_unit_price !== 'false';
     const showDiscount = show_discount !== 'false';
     const showTotalCol = show_total_col !== 'false';
