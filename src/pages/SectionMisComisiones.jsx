@@ -22,6 +22,17 @@ function fmtPeriodo(clave, tipo) {
   return nombre.charAt(0).toUpperCase() + nombre.slice(1);
 }
 
+// Las comisiones se pagan a mes vencido: lo generado en un mes se paga en
+// la primera semana del mes siguiente.
+function fechaPagoPrevista(clave, tipo) {
+  if (tipo !== 'mes') return null;
+  const [y, m] = clave.split('-').map(Number);
+  const siguiente = new Date(y, m, 1); // m ya es el índice 0-based del mes SIGUIENTE
+  const nombre = siguiente.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  const vencimiento = new Date(y, m, 7);
+  return { texto: `primera semana de ${nombre}`, vencido: new Date() > vencimiento };
+}
+
 const PERIODO_TABS = [{ tipo: 'mes', label: 'Mes' }, { tipo: 'trimestre', label: 'Trimestre' }, { tipo: 'año', label: 'Año' }];
 
 function explicacion(v) {
@@ -43,12 +54,21 @@ function ResumenPorPeriodo({ periodos, tipo }) {
   return (
     <div className="fz-tabla">
       <div className="fz-row fz-row--head"><span>Periodo</span><span>Generado</span><span>Cobrado</span><span>Pendiente</span></div>
-      {periodos.map(p => (
+      {periodos.map(p => {
+        const pago = p.pendiente > 0.01 ? fechaPagoPrevista(p.periodo, tipo) : null;
+        return (
         <div key={p.periodo}>
           <div className="fz-row" style={{ cursor: p.porVenta?.length ? 'pointer' : 'default' }} onClick={() => p.porVenta?.length && setAbierto(a => a === p.periodo ? null : p.periodo)}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {p.porVenta?.length > 0 && (abierto === p.periodo ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
-              {fmtPeriodo(p.periodo, tipo)}
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                {p.porVenta?.length > 0 && (abierto === p.periodo ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
+                {fmtPeriodo(p.periodo, tipo)}
+              </span>
+              {pago && (
+                <span style={{ fontSize: 10, marginLeft: 17, color: pago.vencido ? '#ef4444' : 'rgba(255,255,255,0.35)' }}>
+                  {pago.vencido ? 'Pago atrasado — ' : 'Se paga: '}{pago.texto}
+                </span>
+              )}
             </span>
             <span>{fmt(p.devengado)}</span>
             <span style={{ color: '#22c55e' }}>{fmt(p.pagado)}</span>
@@ -72,7 +92,8 @@ function ResumenPorPeriodo({ periodos, tipo }) {
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
       <div className="fz-row" style={{ fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
         <span>Total</span>
         <span>{fmt(totalDevengado)}</span>

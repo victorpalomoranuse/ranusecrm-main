@@ -29,6 +29,18 @@ function fmtPeriodoLargo(clave, tipo) {
   return nombre.charAt(0).toUpperCase() + nombre.slice(1);
 }
 
+// Las comisiones se pagan a mes vencido: lo generado en un mes se paga en la
+// primera semana del mes siguiente — solo tiene sentido para periodos de
+// tipo "mes" (trimestre/año no tienen esta regla de pago tan concreta).
+function fechaPagoPrevista(clave, tipo) {
+  if (tipo !== 'mes') return null;
+  const [y, m] = clave.split('-').map(Number);
+  const siguiente = new Date(y, m, 1); // m ya es el índice 0-based del mes SIGUIENTE (m=8 → septiembre)
+  const nombre = siguiente.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  const vencimiento = new Date(y, m, 7); // "primera semana" ≈ hasta el día 7
+  return { texto: `primera semana de ${nombre}`, vencido: new Date() > vencimiento };
+}
+
 
 const CATEGORIAS_GASTO = ['Nóminas', 'Materiales', 'Marketing', 'Software', 'Alquiler', 'Comisiones', 'Devolución', 'Fiscal', 'Otros'];
 const CATEGORIAS_INGRESO = ['Venta proyecto', 'Anticipo', 'Diseño', 'Otros'];
@@ -378,12 +390,20 @@ function EquipoPeriodos() {
                     {m.periodos.map(p => {
                       const clave = `${m.nombre}|${p.periodo}`;
                       const expandible = true;
+                      const pago = p.pendiente > 0.01 ? fechaPagoPrevista(p.periodo, tipo) : null;
                       return (
                         <div key={p.periodo}>
                           <div className="fz-row" style={{ cursor: expandible ? 'pointer' : 'default' }} onClick={() => expandible && setPeriodoAbierto(a => a === clave ? null : clave)}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {expandible && (periodoAbierto === clave ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
-                              {fmtPeriodoLargo(p.periodo, tipo)}
+                            <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                {expandible && (periodoAbierto === clave ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
+                                {fmtPeriodoLargo(p.periodo, tipo)}
+                              </span>
+                              {pago && (
+                                <span style={{ fontSize: 10, marginLeft: 17, color: pago.vencido ? '#ef4444' : 'rgba(255,255,255,0.35)' }}>
+                                  {pago.vencido ? 'Pago atrasado — ' : 'Se paga: '}{pago.texto}
+                                </span>
+                              )}
                             </span>
                             <span>{fmt(p.devengado)}</span>
                             <span style={{ color: '#22c55e' }}>{fmt(p.pagado)}</span>
