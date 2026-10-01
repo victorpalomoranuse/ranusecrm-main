@@ -129,17 +129,13 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved, onSavedCon
 
           <div className="ap-field">
             <label>Categoría * <span className="ap-optional">(elige una o escribe una nueva)</span></label>
-            <input
-              className="ap-select"
-              list="fz-categorias-datalist"
+            <SearchableSelect
               value={categoria}
-              onChange={e => setCategoria(e.target.value)}
+              onChange={setCategoria}
+              allowCustom
               placeholder="Elige o escribe una categoría"
-              required
+              options={categorias.map(c => ({ value: c, label: c }))}
             />
-            <datalist id="fz-categorias-datalist">
-              {categorias.map(c => <option key={c} value={c} />)}
-            </datalist>
           </div>
           <div className="ap-field">
             <label>Concepto *</label>
