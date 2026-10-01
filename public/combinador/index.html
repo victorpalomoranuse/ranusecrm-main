@@ -80,6 +80,16 @@ main{max-width:1040px;margin:0 auto;padding:20px 20px 60px}
   <div class="seg" role="group" aria-label="Máquinas"><button type="button" data-mc="black" aria-pressed="true">Negras (estándar)</button><button type="button" data-mc="custom" aria-pressed="false">Lacadas (premium)</button></div>
   <p class="note">Con máquinas negras, el Negro Carbono entra siempre en la paleta. Lacadas, toman el color del 30 %.</p>
  </section>
+ <section class="step"><h2>4 · Estilo decorativo</h2>
+  <div class="seg" role="group" aria-label="Estilo decorativo" style="flex-wrap:wrap">
+   <button type="button" data-style="all" aria-pressed="true">Todos</button>
+   <button type="button" data-style="medi" aria-pressed="false">Mediterráneo</button>
+   <button type="button" data-style="nordico" aria-pressed="false">Nórdico claro</button>
+   <button type="button" data-style="industrial" aria-pressed="false">Industrial</button>
+   <button type="button" data-style="premium" aria-pressed="false">Premium oscuro</button>
+  </div>
+  <p class="note" id="stylenote"></p>
+ </section>
  <section class="res" id="res" aria-live="polite"></section>
  <p class="foot">Combinaciones del sistema Estilo Ranuse: reparto 60/30/10, baja saturación y suelos de caucho premium en loseta de 100 × 100. Los colores en pantalla son orientativos; confírmalos con la muestra NCS.</p>
 </main>
@@ -181,15 +191,18 @@ const LINES={org:["Orgánica / Cálida","Beiges, maderas y luz natural: el gym p
 tech:["Oscura / Tech","Oscuro con temperatura: grises fríos y azules apagados en lugar del negro plano. Parece monocromático, pero tiene capas."],
 prem:["Negro Premium","Sobriedad absoluta. El acento es una sola cosa: un herraje, una perfilería, una franja de madera. Menos es más."]};
 const COMBOS=[
-{id:"A",line:"org",t:"Beige Lino base",lvl:"ABC",bar:[["lino",60],["ante",30],["carbono",10]],app:{wall:"lino",ceil:"lino",floor:"marble_sand",panel:"ante",trim:"carbono"},tap:"carbono",txt:"Paredes Beige Lino, carpintería o panel Marrón Ante, detalles y máquinas Negro Carbono. El Marrón Ante puede ser cuero, tapizado o nogal."},
-{id:"B",line:"org",t:"Beige Arena con acento Marrón Roble",lvl:"ABC",bar:[["arena",55],["duna",30],["roble",15]],app:{wall:"arena",ceil:"arena",floor:"marble_sand",panel:"duna",trim:"roble"},tap:"carbono",tapBC:"ante",txt:"Marrón Roble en carpintería, herraje o perfilería. Para espacios con buena luz natural. Tapizado Marrón Ante si es nivel B o C."},
-{id:"C",line:"org",t:"Con Verde Musgo como acento",lvl:"BC",bar:[["lino",60],["carbono",25],["musgo",15]],app:{wall:"lino",ceil:"lino",floor:"mpearl",panel:"musgo",trim:"carbono"},tap:"carbono",txt:"Verde Musgo solo en un panel o pared de fondo, nunca en más de una superficie. Requiere luz natural."},
-{id:"D",line:"tech",t:"Gris Acero y Negro Carbono, la más pura",lvl:"ABC",bar:[["carbono",55],["indigo",30],["perla",15]],app:{wall:"carbono",ceil:"carbono",floor:"granite",panel:"indigo",trim:"carbono"},tap:"carbono",txt:"Negro Carbono en paredes y techo, Azul Índigo en panel o carpintería, Gris Perla solo en suelo o un detalle. Las máquinas desaparecen: ese es el objetivo."},
-{id:"E",line:"tech",t:"Tech con profundidad Azul Marino",lvl:"BC",bar:[["grafito",50],["titanio",30],["marino",20]],app:{wall:"grafito",ceil:"grafito",floor:"carbon_black",panel:"titanio",band:"marino",trim:"grafito"},tap:"carbono",txt:"Azul Marino como acento en panel o tapizado. Un azul profundo que no resulta obvio sobre el Gris Grafito; muy potente en render."},
-{id:"F",line:"tech",t:"Tech contenido",lvl:"ABC",bar:[["acero",50],["carbono",35],["indigo",15]],app:{wall:"acero",ceil:"carbono",floor:"eco_grey",panel:"carbono",band:"indigo",trim:"acero"},tap:"carbono",txt:"Para el cliente que quiere tech pero teme que quede demasiado oscuro. Gris Acero como metal cepillado o panel lacado."},
-{id:"G",line:"prem",t:"Carbono y Marrón Roble, la firma Ranuse",lvl:"ABC",bar:[["carbono",65],["grafito",25],["roble",10]],app:{wall:"carbono",ceil:"carbono",floor:"mcarbono",panel:"grafito",trim:"roble"},tap:"carbono",txt:"Marrón Roble en herraje, perfilería o un único detalle de carpintería. El negro hace el trabajo; el Roble es la firma."},
-{id:"H",line:"prem",t:"Carbono y Blanco Humo, más luminoso",lvl:"ABC",bar:[["carbono",60],["humo",30],["barro",10]],app:{wall:"carbono",ceil:"humo",floor:"carbon_black",panel:"carbono",band:"barro",trim:"carbono"},tap:"carbono",txt:"Para espacios amplios donde el negro podría agobiar. Blanco Humo en techo o zona de cardio; Tierra Barro muy puntual."},
-{id:"I",line:"prem",t:"Carbono y Gris Pizarra, sofisticado",lvl:"ABC",bar:[["carbono",60],["pizarra",30],["ante",10]],app:{wall:"carbono",ceil:"carbono",floor:"mwengue",panel:"pizarra",band:"ante",trim:"carbono"},tap:"carbono",txt:"Gris Pizarra como transición entre el negro y un toque de calidez: madera oscura tintada o panel melamina."}
+{id:"A",line:"org",style:["medi"],t:"Beige Lino base",lvl:"ABC",bar:[["lino",60],["ante",30],["carbono",10]],app:{wall:"lino",ceil:"lino",floor:"marble_sand",panel:"ante",trim:"carbono"},tap:"carbono",txt:"Paredes Beige Lino, carpintería o panel Marrón Ante, detalles y máquinas Negro Carbono. El Marrón Ante puede ser cuero, tapizado o nogal."},
+{id:"B",line:"org",style:["medi","nordico"],t:"Beige Arena con acento Marrón Roble",lvl:"ABC",bar:[["arena",55],["duna",30],["roble",15]],app:{wall:"arena",ceil:"arena",floor:"marble_sand",panel:"duna",trim:"roble"},tap:"carbono",tapBC:"ante",txt:"Marrón Roble en carpintería, herraje o perfilería. Para espacios con buena luz natural. Tapizado Marrón Ante si es nivel B o C."},
+{id:"C",line:"org",style:["medi"],t:"Con Verde Musgo como acento",lvl:"BC",bar:[["lino",60],["carbono",25],["musgo",15]],app:{wall:"lino",ceil:"lino",floor:"mpearl",panel:"musgo",trim:"carbono"},tap:"carbono",txt:"Verde Musgo solo en un panel o pared de fondo, nunca en más de una superficie. Requiere luz natural."},
+{id:"D",line:"tech",style:["industrial"],t:"Gris Acero y Negro Carbono, la más pura",lvl:"ABC",bar:[["carbono",55],["indigo",30],["perla",15]],app:{wall:"carbono",ceil:"carbono",floor:"granite",panel:"indigo",trim:"carbono"},tap:"carbono",txt:"Negro Carbono en paredes y techo, Azul Índigo en panel o carpintería, Gris Perla solo en suelo o un detalle. Las máquinas desaparecen: ese es el objetivo."},
+{id:"E",line:"tech",style:["industrial"],t:"Tech con profundidad Azul Marino",lvl:"BC",bar:[["grafito",50],["titanio",30],["marino",20]],app:{wall:"grafito",ceil:"grafito",floor:"carbon_black",panel:"titanio",band:"marino",trim:"grafito"},tap:"carbono",txt:"Azul Marino como acento en panel o tapizado. Un azul profundo que no resulta obvio sobre el Gris Grafito; muy potente en render."},
+{id:"F",line:"tech",style:["industrial"],t:"Tech contenido",lvl:"ABC",bar:[["acero",50],["carbono",35],["indigo",15]],app:{wall:"acero",ceil:"carbono",floor:"eco_grey",panel:"carbono",band:"indigo",trim:"acero"},tap:"carbono",txt:"Para el cliente que quiere tech pero teme que quede demasiado oscuro. Gris Acero como metal cepillado o panel lacado."},
+{id:"G",line:"prem",style:["premium"],t:"Carbono y Marrón Roble, la firma Ranuse",lvl:"ABC",bar:[["carbono",65],["grafito",25],["roble",10]],app:{wall:"carbono",ceil:"carbono",floor:"mcarbono",panel:"grafito",trim:"roble"},tap:"carbono",txt:"Marrón Roble en herraje, perfilería o un único detalle de carpintería. El negro hace el trabajo; el Roble es la firma."},
+{id:"H",line:"prem",style:["premium","medi"],t:"Carbono y Blanco Humo, más luminoso",lvl:"ABC",bar:[["carbono",60],["humo",30],["barro",10]],app:{wall:"carbono",ceil:"humo",floor:"carbon_black",panel:"carbono",band:"barro",trim:"carbono"},tap:"carbono",txt:"Para espacios amplios donde el negro podría agobiar. Blanco Humo en techo o zona de cardio; Tierra Barro muy puntual."},
+{id:"I",line:"prem",style:["premium"],t:"Carbono y Gris Pizarra, sofisticado",lvl:"ABC",bar:[["carbono",60],["pizarra",30],["ante",10]],app:{wall:"carbono",ceil:"carbono",floor:"mwengue",panel:"pizarra",band:"ante",trim:"carbono"},tap:"carbono",txt:"Gris Pizarra como transición entre el negro y un toque de calidez: madera oscura tintada o panel melamina."},
+{id:"J",line:"org",style:["medi"],t:"Beige Arena y Terracota, mediterráneo",lvl:"ABC",bar:[["arena",60],["barro",30],["carbono",10]],app:{wall:"arena",ceil:"arena",floor:"marble_sand",panel:"barro",trim:"carbono"},tap:"carbono",txt:"Tierra Barro en terracota real (un paño, una pileta de obra o un revestimiento) sobre paredes Beige Arena y suelo claro. El Negro Carbono queda solo en máquinas y herrajes — nada de gris ni azules, para no romper el aire cálido y de exterior."},
+{id:"K",line:"tech",style:["industrial"],t:"Hormigón y Acero, industrial puro",lvl:"ABC",bar:[["cemento",60],["pedernal",30],["carbono",10]],app:{wall:"cemento",ceil:"cemento",floor:"eco_grey",panel:"pedernal",trim:"carbono"},tap:"carbono",txt:"Hormigón visto o microcemento en paredes y techo, Gris Pedernal en un paño o panel, Negro Carbono en máquinas y herrajes. Sin azules ni beiges: crudo, de nave o garaje reformado."},
+{id:"L",line:"org",style:["nordico"],t:"Blanco Humo y Roble Natural, nórdico claro",lvl:"ABC",bar:[["humo",65],["duna",25],["carbono",10]],app:{wall:"humo",ceil:"humo",floor:"marble_sand",panel:"duna",trim:"carbono"},tap:"carbono",txt:"Blanco Humo en paredes y techo, Roble Natural en carpintería o un mueble, Negro Carbono mínimo y solo en máquinas/herrajes. El espacio más luminoso del catálogo, sin apenas color con identidad."}
 ];
 const TAPS=[["auto","Según la combinación"],["carbono","Negro Carbono"],["grafito","Gris Grafito (antracita)"],["indigo","Azul Índigo (gris azulado)"],["barro","Tierra Barro (terracota)"],["burdeos","Rojo Vino (burdeos)"],["duna","Beige Duna"],["ante","Marrón Ante"],["cuero_conac","Cuero coñac"],["custom","Color existente que no cambia"]];
 const TAP_LINES={carbono:["org","tech","prem"],grafito:["tech","prem"],indigo:["tech"],barro:["org"],duna:["org"],ante:["org","prem"],burdeos:["org","prem"],cuero_conac:["org","prem"]};
@@ -305,6 +318,22 @@ function Lstar(h){const[r,g,b]=rgb(h).map(v=>{v/=255;return v<=.04045?v/12.92:Ma
 const temp=id=>{const p=parse(P[id][1]);if(p.c<2)return"n";return(p.h[0]==="Y"||(p.h.includes("R")&&!p.h.includes("B")))?"w":"c"};
 function lineFit(ids){const sc={};for(const L in LINE_SET){sc[L]=0;ids.forEach((id,i)=>{const wgt=[2,1.5,1][i];if(LINE_SET[L].includes(id))sc[L]+=wgt;else if(parse(P[id][1]).c===0)sc[L]+=wgt*.5})}
  const best=Object.keys(sc).sort((a,b)=>sc[b]-sc[a])[0];return{best,sc}}
+// ── Estilo decorativo (independiente de la línea org/tech/prem de arriba,
+// pensado para que Víctor pueda pedir directamente "dame algo mediterráneo"
+// en vez de tener que traducirlo él mismo a colores) ──
+const STYLE_LABEL={medi:"Mediterráneo",nordico:"Nórdico claro",industrial:"Industrial",premium:"Premium oscuro"};
+const STYLE_WARM=["lino","arena","duna","ante","roble","barro","musgo","humo","nieve"];
+const STYLE_COLD=["cemento","pedernal","acero","grafito","titanio","indigo","marino","perla"];
+function styleFit(ids){
+ const L=id=>Lstar(P[id][2]),dL=L(ids[0]),idc=ids.filter(x=>parse(P[x][1]).c>=5);
+ const has=arr=>ids.some(x=>arr.includes(x));
+ const sc={
+  medi:(has(["lino","arena","duna","ante","roble"])?2:0)+(has(["barro","musgo"])?2.5:0)+(dL>=55?1:0)-(has(STYLE_COLD)?3:0),
+  nordico:(has(["nieve","humo","perla","lino","arena","duna"])?1.5:0)+(dL>=78?2:0)+(idc.length===0?1.5:0)-((has(["barro","musgo","oxido","burdeos"])||ids[0]==="carbono")&&dL<70?2:0),
+  industrial:(has(STYLE_COLD)?2.5:0)+(dL<60?1:0)-(has(["lino","arena","duna","barro","ante","roble"])?3:0),
+  premium:(dL<=30?2.5:0)+(has(["carbono","grafito","pizarra"])?1.5:0)+(has(["ante","roble","barro","burdeos"])?1:0)-(has(["cemento","pedernal","acero"])?1:0)};
+ const best=Object.keys(sc).sort((a,b)=>sc[b]-sc[a])[0];return{best,sc}}
+function matchesStyle(k,ids){if(STYLE==="all")return true;if(k&&k.style)return k.style.includes(STYLE);return styleFit(ids).best===STYLE}
 function conflicts(ids){const cs=ids.map(col);let bad=false;
  cs.forEach(c=>{if(c.key==="cuarzo"&&cs.some(yellowC))bad=true;if(c.key==="acero"&&cs.some(x=>y50(x)&&parse(x.code).c>=5))bad=true;
   if(c.key==="pedernal"&&cs.some(warmC))bad=true;if(c.key==="burdeos"&&cs.some(x=>["barro","oxido"].includes(x.key)))bad=true;if((c.key==="titanio"||c.key==="indigo")&&cs.some(y50))bad=true});return bad}
@@ -497,7 +526,7 @@ const ACC=[["musgo","Verde"],["indigo","Azul"],["burdeos","Burdeos"],["barro","T
 const COLD=["indigo","marino","musgo","barro","oxido","burdeos","titanio"];
 const ADJ={calma:"Sereno",amplitud:"Luminoso",hogar:"Cálido",foco:"Técnico",energia:"Intenso",exclusiva:"Sobrio"};
 const FLOORS=Object.keys(LIB).filter(id=>LIB[id][1]==="Suelo técnico");
-let MODE="floor",PICK="marble_sand",AMB="neutral",ACCENT="musgo",MACH="black";
+let MODE="floor",PICK="marble_sand",AMB="neutral",ACCENT="musgo",MACH="black",STYLE="all";
 const BASE_S=()=>({exist:{},upg:"3",sens:"all",mach:"carbono",tap:"auto",lvl:"C",small:false,floor:"auto",thread:"none",line:"all"});
 function swFloor(id){const c=col(id),img=FLOORIMG[id];return`<button type="button" class="sw" data-p="${id}" aria-pressed="${PICK===id}"><i style="${img?`background-image:url(${img})`:`background:${c.hex}`}"></i><b>${c.n}</b><small>${c.eq?"≈ "+c.eq:"fuera de paleta"}</small></button>`}
 function swColor(id){const c=col(id);return`<button type="button" class="sw" data-p="${id}" aria-pressed="${PICK===id}"><i style="background:${c.hex}"></i><b>${c.n}</b><small>${c.code}</small></button>`}
@@ -524,10 +553,15 @@ function results(){
  COMBOS.forEach(k=>add(k,true,6));
  generate(S,{line:"all",lum:"all",sens:"all"}).filter(o=>o.ids.length===3).slice(0,600).forEach((o,i)=>add(mk(o.ids,S),false,o.score/3));
  cand.sort((x,y)=>y.sc-x.sc);
+ // Si hay un estilo decorativo elegido, nos quedamos solo con las que encajan — pero
+ // si eso deja menos de 3 (puede pasar con combinaciones de partida muy concretas),
+ // mejor mostrar las mejores de todas antes que dejar la pantalla casi vacía.
+ let pool=cand;
+ if(STYLE!=="all"){const filtered=cand.filter(r=>matchesStyle(r.k,r.ids));if(filtered.length>=3)pool=filtered}
  const bucket=r=>{const L=Lstar(P[r.ids[0]][2]);return L>=75?0:L>=40?1:2};
  const out=[],dom=new Set();
- for(const b of [0,1,2]){const r=cand.find(x=>bucket(x)===b&&!dom.has(x.ids[0]));if(r){out.push(r);dom.add(r.ids[0])}}
- for(const r of cand){if(out.length>=3)break;if(!dom.has(r.ids[0])){out.push(r);dom.add(r.ids[0])}}
+ for(const b of [0,1,2]){const r=pool.find(x=>bucket(x)===b&&!dom.has(x.ids[0]));if(r){out.push(r);dom.add(r.ids[0])}}
+ for(const r of pool){if(out.length>=3)break;if(!dom.has(r.ids[0])){out.push(r);dom.add(r.ids[0])}}
  out.sort((x,y)=>y.sc-x.sc);
  return{S,out:out.slice(0,3)}}
 function sentence(i,id,a){const surf=[];return roleText(i,id)}
@@ -547,6 +581,8 @@ function render(){
  document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===MODE));
  document.querySelectorAll("[data-amb]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.amb===AMB));
  document.querySelectorAll("[data-mc]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mc===MACH));
+ document.querySelectorAll("[data-style]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.style===STYLE));
+ $("stylenote").textContent=STYLE==="all"?"Si no eliges ninguno, se mezclan todos los estilos.":`Priorizando combinaciones ${STYLE_LABEL[STYLE].toLowerCase()}. Si tu suelo/color de partida no da suficientes, se completa con el resto.`;
  $("picks").innerHTML=MODE==="floor"?FLOORS.map(swFloor).join(""):Object.keys(P).map(swColor).join("");
  const colorPick=MODE==="color"&&COLD.includes(PICK);
  $("ambstep").hidden=colorPick;
@@ -562,6 +598,7 @@ document.addEventListener("click",e=>{const t=e.target.closest("button");if(!t)r
  else if(t.dataset.amb){AMB=t.dataset.amb;render()}
  else if(t.dataset.acc){ACCENT=t.dataset.acc;render()}
  else if(t.dataset.mc){MACH=t.dataset.mc;render()}
+ else if(t.dataset.style){STYLE=t.dataset.style;render();$("res").scrollIntoView({behavior:"smooth",block:"start"})}
  else if(t.dataset.copy){const s=decodeURIComponent(t.dataset.copy);(navigator.clipboard?navigator.clipboard.writeText(s):Promise.reject()).then(()=>{t.textContent="Copiada"},()=>{t.textContent="No se pudo copiar"});setTimeout(()=>t.textContent="Copiar paleta",1600)}
  else if(t.dataset.save){const payload=JSON.parse(decodeURIComponent(t.dataset.save));window.parent.postMessage({type:"ranuse-combo-selected",...payload},"*");t.textContent="Guardada ✓";setTimeout(()=>t.textContent="Guardar en el proyecto",1600)}});
 render();
