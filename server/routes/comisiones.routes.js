@@ -27,6 +27,25 @@ async function ensureEquipoComisionRow(employeeId, employeeName) {
   await supabase.from('equipo_comisiones').insert({ nombre: employeeName, porcentaje: 0, employee_id: employeeId, activo: true });
 }
 
+// Hasta qué mes (inclusive) puede ver el EQUIPO sus comisiones en su propio
+// panel ("Mis Comisiones") — el admin lo "publica" a mano (botón en Finanzas
+// → Comisiones) cuando ha revisado que los números del mes están bien,
+// normalmente al cerrar el mes. Hasta entonces, el mes en curso (y
+// cualquiera posterior) no se le enseña al equipo, aunque el admin sí lo
+// vea en vivo en su propio panel. Null = sin tope, se enseña todo (por si
+// la columna no existiera todavía).
+async function mesPublicado() {
+  const { data } = await supabase.from('settings').select('comisiones_mes_publicado').eq('id', 1).maybeSingle();
+  return data?.comisiones_mes_publicado || null;
+}
+
+// Convierte el tope mensual ("2026-09") a la clave del tipo de periodo que
+// corresponda (mes/trimestre/año), para poder filtrar igual en cualquier
+// pestaña del panel del equipo.
+function claveTopeParaTipo(mesTope, tipo) {
+  return claveDePeriodo(`${mesTope}-01`, tipo);
+}
+
 function claveDePeriodo(fechaISO, tipo) {
   const [y, m] = fechaISO.slice(0, 7).split('-');
   if (tipo === 'año') return y;
@@ -511,7 +530,12 @@ router.get('/mia/periodos', authenticateToken, async (req, res) => {
     const miConfig = await resolveMiConfig(req);
     if (!miConfig) return res.json({ encontrado: false, periodos: [] });
     const tipo = TIPOS_PERIODO.includes(req.query.tipo) ? req.query.tipo : 'mes';
-    const periodos = await periodosDeComision(miConfig.employeeId, miConfig.nombre, tipo);
+    let periodos = await periodosDeComision(miConfig.employeeId, miConfig.nombre, tipo);
+    const mesTope = await mesPublicado();
+    if (mesTope) {
+      const tope = claveTopeParaTipo(mesTope, tipo);
+      periodos = periodos.filter(p => p.periodo <= tope);
+    }
     res.json({ encontrado: true, nombre: miConfig.nombre, tipo, periodos });
   } catch (error) {
     console.error('Error al calcular tus periodos de comisión:', error);
@@ -546,6 +570,38 @@ router.put('/periodo-pago', authenticateToken, requireFinanzas, async (req, res)
   } catch (error) {
     console.error('Error al guardar el pago del periodo:', error);
     res.status(500).json({ error: 'Error al guardar el pago del periodo', detalle: error.message });
+  }
+});
+
+/**
+ * GET /api/comisiones/publicacion
+ * Hasta qué mes puede ver el equipo sus comisiones ahora mismo.
+ */
+router.get('/publicacion', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    res.json({ mesPublicado: await mesPublicado() });
+  } catch (error) {
+    console.error('Error al leer el mes publicado:', error);
+    res.status(500).json({ error: 'Error al leer el mes publicado' });
+  }
+});
+
+/**
+ * PUT /api/comisiones/publicacion
+ * El admin "cierra"/publica un mes para que el equipo ya pueda verlo en su
+ * panel de Mis Comisiones. Body: { mes: 'YYYY-MM' } — normalmente el mes
+ * actual, pero se deja libre por si hace falta publicar/ocultar otro.
+ */
+router.put('/publicacion', authenticateToken, requireFinanzas, async (req, res) => {
+  try {
+    const { mes } = req.body;
+    if (!/^\d{4}-\d{2}$/.test(mes || '')) return res.status(400).json({ error: 'mes inválido, formato YYYY-MM' });
+    const { error } = await supabase.from('settings').update({ comisiones_mes_publicado: mes }).eq('id', 1);
+    if (error) throw error;
+    res.json({ mesPublicado: mes });
+  } catch (error) {
+    console.error('Error al publicar el mes de comisiones:', error);
+    res.status(500).json({ error: 'Error al publicar el mes de comisiones' });
   }
 });
 

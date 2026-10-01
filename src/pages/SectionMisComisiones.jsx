@@ -181,18 +181,20 @@ export function SectionMisComisiones() {
           ) : (
             <>
               {(() => {
-                // Para el modelo por_proyecto, "ya pagado" / "pendiente" salen
-                // del registro manual por periodo (comisiones_pagos_periodo),
-                // no de Finanzas — son la misma fuente que la tabla de abajo,
-                // para que las tarjetas de arriba y el desglose siempre cuadren.
+                // Para el modelo por_proyecto, todo esto sale del desglose por
+                // periodo (comisiones_pagos_periodo + lo devengado mes a mes),
+                // no del cálculo en vivo sin filtrar — así, si tu admin todavía
+                // no ha publicado el mes en curso, ni el total ni el pendiente
+                // lo incluyen (coincide exactamente con lo que ves abajo).
                 const usaPeriodos = mia.modelo === 'por_proyecto' && periodos != null;
+                const comisionEstimada = usaPeriodos ? periodos.reduce((s, p) => s + p.devengado, 0) : mia.comisionEstimada;
                 const yaPagado = usaPeriodos ? periodos.reduce((s, p) => s + p.pagado, 0) : mia.yaPagado;
-                const pendiente = usaPeriodos ? periodos.reduce((s, p) => s + p.devengado, 0) - yaPagado : mia.pendiente;
+                const pendiente = usaPeriodos ? comisionEstimada - yaPagado : mia.pendiente;
                 return (
                   <div className="vt-stats">
                     <div className="vt-stat-card">
                       <div className="vt-stat-icon"><TrendingUp size={18} /></div>
-                      <div className="vt-stat-body"><span>{mia.modelo === 'global' ? `Te corresponde este periodo (${mia.porcentaje}%)` : 'Total acumulado (desde siempre)'}</span><strong>{fmt(mia.comisionEstimada)}</strong></div>
+                      <div className="vt-stat-body"><span>{mia.modelo === 'global' ? `Te corresponde este periodo (${mia.porcentaje}%)` : 'Total acumulado (desde siempre)'}</span><strong>{fmt(comisionEstimada)}</strong></div>
                     </div>
                     <div className="vt-stat-card">
                       <div className="vt-stat-icon" style={{ color: '#22c55e' }}><Wallet size={18} /></div>

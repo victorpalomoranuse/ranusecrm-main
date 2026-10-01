@@ -507,16 +507,53 @@ function EquipoPeriodos() {
   );
 }
 
+function mesActualStr() { return new Date().toISOString().slice(0, 7); }
+
 function PanelComisiones() {
   const [modalConfig, setModalConfig] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [mesPublicado, setMesPublicado] = useState(null);
+  const [publicando, setPublicando] = useState(false);
+  const mesActual = mesActualStr();
+
+  const cargarPublicacion = useCallback(() => {
+    api.get('/comisiones/publicacion').then(r => setMesPublicado(r.data.mesPublicado)).catch(() => {});
+  }, []);
+  useEffect(() => { cargarPublicacion(); }, [cargarPublicacion]);
+
+  const publicarMesActual = async () => {
+    setPublicando(true);
+    try {
+      await api.put('/comisiones/publicacion', { mes: mesActual });
+      setMesPublicado(mesActual);
+      setRefreshKey(k => k + 1);
+    } catch {
+      // noop
+    } finally {
+      setPublicando(false);
+    }
+  };
+
+  const yaPublicado = mesPublicado && mesPublicado >= mesActual;
 
   return (
     <div className="fz-chart-card" style={{ marginBottom: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
         <p className="fz-chart-title" style={{ margin: 0 }}><Users size={15} /> Comisiones del equipo</p>
-        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setModalConfig(true)}>Configurar equipo</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!yaPublicado && (
+            <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={publicando} onClick={publicarMesActual}>
+              {publicando ? 'Publicando…' : `Cerrar y publicar ${fmtPeriodoLargo(mesActual, 'mes').toLowerCase()} al equipo`}
+            </button>
+          )}
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setModalConfig(true)}>Configurar equipo</button>
+        </div>
       </div>
+      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 0, marginBottom: 12 }}>
+        {yaPublicado
+          ? `El equipo ya puede ver ${fmtPeriodoLargo(mesActual, 'mes').toLowerCase()} en su panel de Mis Comisiones.`
+          : `El equipo todavía NO ve ${fmtPeriodoLargo(mesActual, 'mes').toLowerCase()} en su panel — solo ve hasta ${mesPublicado ? fmtPeriodoLargo(mesPublicado, 'mes').toLowerCase() : 'el último mes publicado'}. Tú sí ves todo en vivo aquí abajo. Publícalo cuando hayas revisado que los números están bien.`}
+      </p>
 
       <EquipoPeriodos key={refreshKey} />
 
