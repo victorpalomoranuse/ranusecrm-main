@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
-import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2, Users, Check, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2, PieChart, Users, Check, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { SearchableSelect } from '../components/SearchableSelect';
 import './SectionFinanzas.css';
@@ -525,6 +525,48 @@ function PanelComisiones() {
   );
 }
 
+function PanelPorCategoria({ resumen }) {
+  const [tipo, setTipo] = useState('gasto');
+  const datos = tipo === 'gasto' ? resumen?.porCategoriaGasto : resumen?.porCategoriaIngreso;
+  const total = tipo === 'gasto' ? resumen?.gastosTotales : resumen?.ingresosTotales;
+  const color = tipo === 'gasto' ? '#ae6b6b' : '#8bae8f';
+  const filas = Object.entries(datos || {}).sort((a, b) => b[1] - a[1]);
+
+  if (!resumen) return null;
+
+  return (
+    <div className="fz-chart-card" style={{ marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+        <p className="fz-chart-title" style={{ margin: 0 }}><PieChart size={15} /> Por categoría</p>
+        <div className="fz-tipo-toggle" style={{ margin: 0, width: 'auto' }}>
+          <button type="button" className={`fz-tipo-btn fz-tipo-btn--gasto${tipo === 'gasto' ? ' active' : ''}`} onClick={() => setTipo('gasto')}>Gastos</button>
+          <button type="button" className={`fz-tipo-btn fz-tipo-btn--ingreso${tipo === 'ingreso' ? ' active' : ''}`} onClick={() => setTipo('ingreso')}>Ingresos</button>
+        </div>
+      </div>
+      {filas.length === 0 ? (
+        <div className="ap-empty"><p>No hay {tipo === 'gasto' ? 'gastos' : 'ingresos'} todavía.</p></div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {filas.map(([cat, monto]) => {
+            const pct = total > 0 ? (monto / total) * 100 : 0;
+            return (
+              <div key={cat}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                  <span>{cat}</span>
+                  <span style={{ fontWeight: 600 }}>{fmt(monto)} <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>({pct.toFixed(0)}%)</span></span>
+                </div>
+                <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3 }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ComisionesConfigModal({ onClose, onSaved }) {
   const [equipo, setEquipo] = useState([]);
   const [empleados, setEmpleados] = useState([]);
@@ -712,6 +754,8 @@ export function SectionFinanzas() {
           </ResponsiveContainer>
         </div>
       )}
+
+      <PanelPorCategoria resumen={resumen} />
 
       <div className="fz-filters">
         <select className="ap-select" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
