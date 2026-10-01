@@ -392,7 +392,7 @@ function EquipoPeriodos() {
   const sinProyectos = (equipo || []).filter(m => m.modelo !== 'por_proyecto');
 
   return (
-    <div style={{ marginTop: 4, marginBottom: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: 14 }}>
+    <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', margin: 0 }}>Desglose por persona y periodo</p>
         <div style={{ display: 'flex', gap: 6 }}>
@@ -502,150 +502,19 @@ function EquipoPeriodos() {
 }
 
 function PanelComisiones() {
-  const [periodoTipo, setPeriodoTipo] = useState('mes');
-  const [mes, setMes] = useState(new Date().toISOString().slice(0, 7));
-  const [año, setAño] = useState(añoActual());
-  const [trimestre, setTrimestre] = useState(Math.ceil((new Date().getMonth() + 1) / 3));
-  const [calculo, setCalculo] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [pagando, setPagando] = useState(null);
-  const [historico, setHistorico] = useState([]);
-  const [verHistorico, setVerHistorico] = useState(false);
   const [modalConfig, setModalConfig] = useState(false);
-  const [montosManual, setMontosManual] = useState({});
-  const [verEquipoPeriodos, setVerEquipoPeriodos] = useState(false);
-
-  const periodo = periodoTipo === 'mes' ? mes : periodoTipo === 'trimestre' ? `${año}-Q${trimestre}` : String(año);
-  const periodoLabel = periodoTipo === 'mes' ? fmtMesCorto(mes) + ' ' + mes.slice(0, 4) : periodo;
-
-  const cargar = useCallback(() => {
-    setLoading(true);
-    api.get('/comisiones/calculo', { params: { periodo_tipo: periodoTipo, periodo } })
-      .then(r => {
-        setCalculo(r.data);
-        const iniciales = {};
-        (r.data.porMiembro || []).forEach(m => { iniciales[m.nombre] = m.pendiente > 0 ? m.pendiente.toFixed(2) : ''; });
-        setMontosManual(iniciales);
-      })
-      .catch(() => setCalculo(null))
-      .finally(() => setLoading(false));
-  }, [periodoTipo, periodo]);
-
-  useEffect(() => { cargar(); }, [cargar]);
-  useEffect(() => { if (verHistorico) api.get('/comisiones/historico').then(r => setHistorico(r.data.historico || [])).catch(() => {}); }, [verHistorico]);
-
-  const pagar = async (nombre) => {
-    const monto = parseFloat(montosManual[nombre]);
-    if (!monto || monto <= 0) return;
-    setPagando(nombre);
-    try {
-      await api.post('/comisiones/pagar', { nombre, monto, periodo_label: periodoLabel });
-      cargar();
-    } catch {
-      // noop
-    } finally {
-      setPagando(null);
-    }
-  };
+  const [refreshKey, setRefreshKey] = useState(0);
 
   return (
     <div className="fz-chart-card" style={{ marginBottom: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
         <p className="fz-chart-title" style={{ margin: 0 }}><Users size={15} /> Comisiones del equipo</p>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setVerEquipoPeriodos(v => !v)}>{verEquipoPeriodos ? 'Ocultar desglose por persona' : 'Ver desglose por persona y mes'}</button>
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setVerHistorico(v => !v)}>{verHistorico ? 'Ver periodo actual' : 'Ver histórico total'}</button>
-          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setModalConfig(true)}>Configurar %</button>
-        </div>
+        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setModalConfig(true)}>Configurar equipo</button>
       </div>
-      {!verHistorico && <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -6, marginBottom: 14 }}>"Le corresponde" es solo el cálculo automático de referencia — el importe que se registra cada mes lo pones tú a mano en "Importe a registrar". Si alguien tiene proyectos asignados (desde "Ver relación completa" de una venta), su cifra sale de sumar esos proyectos según lo cobrado hasta ahora, no del % de aquí abajo.</p>}
 
-      {verEquipoPeriodos && <EquipoPeriodos />}
+      <EquipoPeriodos key={refreshKey} />
 
-      {verHistorico ? (
-        historico.length === 0 ? <div className="ap-empty"><p>Todavía no se ha registrado ningún pago de comisión.</p></div> : (
-          <div className="fz-tabla">
-            <div className="fz-row fz-row--head"><span>Persona</span><span></span><span></span><span></span><span>Total ganado contigo</span></div>
-            {historico.map(h => (
-              <div key={h.nombre} className="fz-row">
-                <span>{h.nombre}</span><span></span><span></span><span></span>
-                <span className="fz-importe fz-importe--ingreso">{fmt(h.total)}</span>
-              </div>
-            ))}
-          </div>
-        )
-      ) : (
-        <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            {PERIODO_TABS.map(t => (
-              <button key={t.tipo} type="button" className={`ap-btn ap-btn-sm ${periodoTipo === t.tipo ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setPeriodoTipo(t.tipo)}>{t.label}</button>
-            ))}
-            {periodoTipo === 'mes' && <input type="month" className="ap-select" style={{ maxWidth: 160 }} value={mes} onChange={e => setMes(e.target.value)} />}
-            {periodoTipo === 'trimestre' && (
-              <>
-                <input type="number" className="ap-select" style={{ maxWidth: 90 }} value={año} onChange={e => setAño(parseInt(e.target.value) || añoActual())} />
-                <select className="ap-select" style={{ maxWidth: 90 }} value={trimestre} onChange={e => setTrimestre(parseInt(e.target.value))}>
-                  {[1, 2, 3, 4].map(q => <option key={q} value={q}>Q{q}</option>)}
-                </select>
-              </>
-            )}
-            {periodoTipo === 'año' && <input type="number" className="ap-select" style={{ maxWidth: 90 }} value={año} onChange={e => setAño(parseInt(e.target.value) || añoActual())} />}
-          </div>
-
-          {loading ? <div className="ap-loading">Calculando…</div> : !calculo ? (
-            <div className="ap-empty"><p>No se pudo calcular. Revisa que la migración de comisiones esté aplicada.</p></div>
-          ) : (
-            <>
-              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
-                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Beneficio neto del periodo</div><strong style={{ fontSize: 15 }}>{fmt(calculo.beneficioNeto)}</strong></div>
-                {calculo.reservaPendiente > 0 && (
-                  <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Reserva costes pendientes</div><strong style={{ fontSize: 15, color: '#f5b748' }}>-{fmt(calculo.reservaPendiente)}</strong></div>
-                )}
-                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Beneficio a repartir</div><strong style={{ fontSize: 15, color: '#a78bfa' }}>{fmt(calculo.beneficioDistribuible)}</strong></div>
-                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Caja antes de pagar al equipo</div><strong style={{ fontSize: 15, color: '#8bae8f' }}>{fmt(calculo.cajaAntesDePagarEquipo)}</strong></div>
-                <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Caja después de pagar al equipo</div><strong style={{ fontSize: 15, color: calculo.cajaDespuesDePagarEquipo >= 0 ? '#8bae8f' : '#ae6b6b' }}>{fmt(calculo.cajaDespuesDePagarEquipo)}</strong></div>
-              </div>
-              {calculo.reservaPendiente > 0 && (
-                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -8, marginBottom: 12 }}>
-                  Hay proyectos con ejecución en marcha cuyo coste final todavía no se conoce del todo — se reserva esa parte antes de calcular comisiones, para no repartir beneficio que en realidad está pendiente de gastar.
-                </p>
-              )}
-
-              {calculo.porMiembro.length === 0 ? (
-                <div className="ap-empty"><p>No hay miembros del equipo configurados. Pulsa "Configurar %".</p></div>
-              ) : (
-                <div className="fz-tabla">
-                  <div className="fz-row fz-row--head"><span>Persona</span><span>%</span><span>Le corresponde</span><span>Ya pagado</span><span>Importe a registrar</span><span></span></div>
-                  {calculo.porMiembro.map(m => (
-                    <div key={m.nombre} className="fz-row">
-                      <span>{m.nombre}</span>
-                      <span>{m.modelo === 'por_proyecto' ? 'Por proyecto' : `${m.porcentaje}%`}</span>
-                      <span>{fmt(m.comisionCalculada)}</span>
-                      <span>{fmt(m.yaPagado)}</span>
-                      <span>
-                        <input
-                          type="number" step="0.01" min="0"
-                          value={montosManual[m.nombre] ?? ''}
-                          onChange={e => setMontosManual(v => ({ ...v, [m.nombre]: e.target.value }))}
-                          placeholder="0.00"
-                          className="ap-select" style={{ width: 100, padding: '4px 8px' }}
-                        />
-                      </span>
-                      <span>
-                        <button className="ap-btn ap-btn-primary ap-btn-xs" disabled={pagando === m.nombre || !parseFloat(montosManual[m.nombre])} onClick={() => pagar(m.nombre)}>
-                          {pagando === m.nombre ? '...' : <><Check size={12} /> Registrar</>}
-                        </button>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </>
-      )}
-
-      {modalConfig && <ComisionesConfigModal onClose={() => setModalConfig(false)} onSaved={() => { setModalConfig(false); cargar(); }} />}
+      {modalConfig && <ComisionesConfigModal onClose={() => setModalConfig(false)} onSaved={() => { setModalConfig(false); setRefreshKey(k => k + 1); }} />}
     </div>
   );
 }
