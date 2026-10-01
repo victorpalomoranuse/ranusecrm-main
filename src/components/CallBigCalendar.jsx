@@ -20,13 +20,17 @@ const localizer = dateFnsLocalizer({
 // -> evento de react-big-calendar (Date de verdad). Se combinan como hora
 // LOCAL del navegador — como todo el equipo está en España, esto ya
 // coincide con lo que se ve en la interfaz sin más conversión.
-function slotToEvent(s) {
+function slotToEvent(s, mostrarEmpleado) {
   const [y, m, d] = s.fecha.split('-').map(Number);
   const [h1, mi1] = s.hora_inicio.split(':').map(Number);
   const [h2, mi2] = s.hora_fin.split(':').map(Number);
+  const nombreEmpleado = s.empleado?.name || '';
+  const title = s.ocupado
+    ? (s.lead?.nombre || 'Reservado') + (mostrarEmpleado && nombreEmpleado ? ` · ${nombreEmpleado}` : '')
+    : `Libre · ${nombreEmpleado}`;
   return {
     id: s.id,
-    title: s.ocupado ? (s.lead?.nombre || 'Reservado') : `Libre · ${s.empleado?.name || ''}`,
+    title,
     start: new Date(y, m - 1, d, h1, mi1),
     end: new Date(y, m - 1, d, h2, mi2),
     resource: s,
@@ -39,8 +43,8 @@ function slotToEvent(s) {
  * de Setting (donde Franco ve huecos libres de todos y reserva con un
  * clic). El color del evento distingue libre / reservado / mío.
  */
-export function CallBigCalendar({ slots, onSelectEvent, height = 600, defaultView = 'week' }) {
-  const events = (slots || []).map(slotToEvent);
+export function CallBigCalendar({ slots, onSelectEvent, height = 600, defaultView = 'week', mostrarEmpleado = false }) {
+  const events = (slots || []).map(s => slotToEvent(s, mostrarEmpleado));
   // Controlado explícitamente (view/date + onView/onNavigate) — sin esto,
   // los botones de mes/semana/día y las flechas de navegación no
   // respondían (bug real comprobado: la vista se quedaba siempre clavada

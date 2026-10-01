@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CalendarDays, Plus, Trash2, Phone, Instagram, Save, LayoutGrid, List as ListIcon, X, RefreshCw, Search, CalendarCheck } from 'lucide-react';
+import { CalendarDays, Plus, Trash2, Phone, Instagram, Save, LayoutGrid, List as ListIcon, X, RefreshCw, Search, CalendarCheck, Users, User } from 'lucide-react';
 import api from '../services/api';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import { CallBigCalendar } from '../components/CallBigCalendar';
@@ -327,7 +327,9 @@ export function SectionAgenda() {
   const [loading, setLoading] = useState(true);
   const [vista, setVista] = useState('calendario');
   const [detalle, setDetalle] = useState(null);
+  const [verTodos, setVerTodos] = useState(false);
   const { toasts, toast, remove } = useToast();
+  const esAdmin = user?.role === 'admin_superior';
 
   const cargar = () => {
     Promise.all([api.get('/call-slots'), api.get('/call-slots/rules')])
@@ -338,9 +340,13 @@ export function SectionAgenda() {
   useEffect(() => { cargar(); }, []);
 
   // El backend devuelve los huecos/reglas de TODOS (para que Franco los vea
-  // al reservar) — aquí en "Mi Agenda" cada uno gestiona solo los suyos.
+  // al reservar) — aquí en "Mi Agenda" cada uno gestiona solo los suyos, pero
+  // el admin puede activar "Ver todo el equipo" para verlos todos de un
+  // vistazo (sin que eso cambie lo que gestiona: añadir huecos/reglas sigue
+  // siendo siempre sobre los propios).
   const misHuecos = slots.filter(s => s.empleado?.email === user?.email);
   const misReglas = reglas.filter(r => r.empleado?.email === user?.email);
+  const huecosVisibles = esAdmin && verTodos ? slots : misHuecos;
 
   const eliminarSlot = async (slot) => {
     try {
@@ -355,7 +361,7 @@ export function SectionAgenda() {
 
   const hoy = new Date().toISOString().slice(0, 10);
   const porFecha = {};
-  misHuecos.filter(s => s.fecha >= hoy).forEach(s => { (porFecha[s.fecha] ||= []).push(s); });
+  huecosVisibles.filter(s => s.fecha >= hoy).forEach(s => { (porFecha[s.fecha] ||= []).push(s); });
   const fechasOrdenadas = Object.keys(porFecha).sort();
 
   if (loading) return <div className="ap-loading">Cargando…</div>;
@@ -384,30 +390,43 @@ export function SectionAgenda() {
 
       <div className="ap-section-head">
         <div>
-          <h1><CalendarDays size={20} style={{ verticalAlign: -3, marginRight: 6 }} />Mi Agenda</h1>
-          <p>Marca tu disponibilidad para llamadas — el equipo de Setting reserva directamente para sus leads, y te avisamos por email 24h antes.</p>
+          <h1><CalendarDays size={20} style={{ verticalAlign: -3, marginRight: 6 }} />{esAdmin && verTodos ? 'Agenda del equipo' : 'Mi Agenda'}</h1>
+          <p>{esAdmin && verTodos
+            ? 'Llamadas y disponibilidad de todo el equipo, de un vistazo.'
+            : 'Marca tu disponibilidad para llamadas — el equipo de Setting reserva directamente para sus leads, y te avisamos por email 24h antes.'}</p>
         </div>
-        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: 2 }}>
-          <button type="button" onClick={() => setVista('calendario')} title="Vista calendario"
-            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0.4rem 0.6rem', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.72rem', background: vista === 'calendario' ? 'rgba(255,255,255,0.1)' : 'transparent', color: vista === 'calendario' ? '#fff' : 'rgba(255,255,255,0.45)' }}>
-            <CalendarDays size={13} /> Calendario
-          </button>
-          <button type="button" onClick={() => setVista('lista')} title="Vista lista"
-            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0.4rem 0.6rem', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.72rem', background: vista === 'lista' ? 'rgba(255,255,255,0.1)' : 'transparent', color: vista === 'lista' ? '#fff' : 'rgba(255,255,255,0.45)' }}>
-            <ListIcon size={13} /> Lista
-          </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {esAdmin && (
+            <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setVerTodos(v => !v)}>
+              {verTodos ? <><User size={13} /> Ver solo la mía</> : <><Users size={13} /> Ver todo el equipo</>}
+            </button>
+          )}
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: 2 }}>
+            <button type="button" onClick={() => setVista('calendario')} title="Vista calendario"
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0.4rem 0.6rem', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.72rem', background: vista === 'calendario' ? 'rgba(255,255,255,0.1)' : 'transparent', color: vista === 'calendario' ? '#fff' : 'rgba(255,255,255,0.45)' }}>
+              <CalendarDays size={13} /> Calendario
+            </button>
+            <button type="button" onClick={() => setVista('lista')} title="Vista lista"
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0.4rem 0.6rem', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.72rem', background: vista === 'lista' ? 'rgba(255,255,255,0.1)' : 'transparent', color: vista === 'lista' ? '#fff' : 'rgba(255,255,255,0.45)' }}>
+              <ListIcon size={13} /> Lista
+            </button>
+          </div>
         </div>
       </div>
 
-      <ReglasDisponibilidad reglas={misReglas} onChange={(fn) => setReglas(prev => fn(prev))} toast={toast} />
-      <NuevoHuecoForm onCreado={(nuevos) => setSlots(prev => [...prev, ...nuevos])} toast={toast} />
+      {!(esAdmin && verTodos) && (
+        <>
+          <ReglasDisponibilidad reglas={misReglas} onChange={(fn) => setReglas(prev => fn(prev))} toast={toast} />
+          <NuevoHuecoForm onCreado={(nuevos) => setSlots(prev => [...prev, ...nuevos])} toast={toast} />
+        </>
+      )}
 
       {vista === 'calendario' ? (
-        <CallBigCalendar slots={misHuecos} onSelectEvent={setDetalle} />
+        <CallBigCalendar slots={huecosVisibles} onSelectEvent={setDetalle} mostrarEmpleado={esAdmin && verTodos} />
       ) : (
         <>
           {fechasOrdenadas.length === 0 && (
-            <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem' }}>No tienes ningún hueco todavía — añade disponibilidad arriba.</p>
+            <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem' }}>{esAdmin && verTodos ? 'No hay ningún hueco del equipo todavía.' : 'No tienes ningún hueco todavía — añade disponibilidad arriba.'}</p>
           )}
           {fechasOrdenadas.map(fecha => (
             <div key={fecha} style={{ marginBottom: '1.25rem' }}>
@@ -416,7 +435,10 @@ export function SectionAgenda() {
                 {porFecha[fecha].sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio)).map(s => (
                   <div key={s.id} onClick={() => setDetalle(s)} style={{ cursor: 'pointer', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '0.75rem 1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <strong style={{ fontSize: '0.85rem', color: '#fff' }}>{hhmm(s.hora_inicio)} – {hhmm(s.hora_fin)}</strong>
+                      <strong style={{ fontSize: '0.85rem', color: '#fff' }}>
+                        {hhmm(s.hora_inicio)} – {hhmm(s.hora_fin)}
+                        {esAdmin && verTodos && <span style={{ fontWeight: 400, color: 'rgba(255,255,255,0.4)', marginLeft: 8 }}>{s.empleado?.name || ''}</span>}
+                      </strong>
                       {s.ocupado ? (
                         <span style={{ fontSize: '0.68rem', padding: '2px 9px', borderRadius: 20, background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>Reservado{s.lead ? `: ${s.lead.nombre}` : ''}</span>
                       ) : (
