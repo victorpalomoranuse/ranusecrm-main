@@ -367,6 +367,8 @@ function TabMoodboard({ projectId }) {
   const [showRefPicker, setShowRefPicker] = useState(false);
   const [references, setReferences] = useState(null);
   const [addingRefIds, setAddingRefIds] = useState([]);
+  const [showCombinador, setShowCombinador] = useState(false);
+  const [comboSaved, setComboSaved] = useState(false);
   const fileRef = useRef();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -376,6 +378,26 @@ function TabMoodboard({ projectId }) {
       setDescription(r.data.description || '');
       setPalette(r.data.palette || []);
     }).catch(() => {}).finally(() => setLoading(false));
+  }, [projectId]);
+
+  // Escucha al Combinador de colores (public/combinador/index.html, cargado en el
+  // iframe de abajo) — cuando Víctor pulsa "Guardar en el proyecto" en una de sus
+  // combinaciones, nos manda la paleta + el texto por postMessage y lo guardamos
+  // aquí igual que si lo hubiera escrito/elegido a mano en los campos de arriba.
+  useEffect(() => {
+    const onMessage = (e) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type !== 'ranuse-combo-selected') return;
+      const nuevaDescripcion = e.data.description || '';
+      const nuevaPaleta = Array.isArray(e.data.palette) ? e.data.palette : [];
+      setDescription(nuevaDescripcion);
+      setPalette(nuevaPaleta);
+      api.put(`/client-projects/${projectId}/moodboard`, { description: nuevaDescripcion, palette: nuevaPaleta })
+        .then(() => { setComboSaved(true); setTimeout(() => setComboSaved(false), 3000); })
+        .catch(() => setError('Error al guardar la combinación'));
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
   }, [projectId]);
 
   const uploadFiles = async (files) => {
@@ -448,6 +470,25 @@ function TabMoodboard({ projectId }) {
   return (
     <div className="ap-tab-content">
       <p className="ap-tab-desc">El moodboard aparece en el portal del cliente justo después del Programa de Necesidades: imágenes de inspiración + el texto que explica el estilo y las soluciones que van a guiar el proyecto.</p>
+
+      <div className="ap-field" style={{ marginBottom: '1.25rem' }}>
+        <div className="ap-diag-save-row">
+          <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setShowCombinador(s => !s)}>
+            {showCombinador ? 'Ocultar Combinador de colores' : 'Abrir Combinador de colores'}
+          </button>
+          {comboSaved && <span style={{ color: '#8bae8f', fontSize: '0.8rem' }}>✓ Combinación guardada en el moodboard</span>}
+        </div>
+        {showCombinador && (
+          <>
+            <p className="ap-order-hint" style={{ margin: '0.5rem 0' }}>Elige una combinación y pulsa "Guardar en el proyecto" en la tarjeta — rellena la descripción y la paleta de abajo automáticamente.</p>
+            <iframe
+              src="/combinador/index.html?embed=1"
+              title="Combinador de colores"
+              style={{ width: '100%', height: 720, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, background: '#F3F1EE' }}
+            />
+          </>
+        )}
+      </div>
 
       <div className="ap-field">
         <label>Descripción del estilo</label>
