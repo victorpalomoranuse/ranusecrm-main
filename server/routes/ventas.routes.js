@@ -276,6 +276,18 @@ router.put('/:id', authenticateToken, requireVentas, async (req, res) => {
 
     const { data, error } = await supabase.from('ventas').update(updates).eq('id', req.params.id).select('*, comercial:employees(name)').single();
     if (error) throw error;
+
+    // Al cerrar una venta (o volver a guardarla ya cerrada, ej. tras ajustar
+    // un gasto), el coste real pasa a ser la verdad definitiva — así que
+    // cualquier "congelado" de comisiones de meses anteriores para ESTA
+    // venta queda obsoleto (se calculó con el coste previsto o con gastos
+    // todavía incompletos). Lo borramos para que la próxima vez que se vea
+    // ese mes se recalcule ya con el dato cerrado, en vez de arrastrar un
+    // número antiguo y mandar la diferencia como "ajuste" al mes actual.
+    if (updates.cerrada === true) {
+      await supabase.from('comisiones_devengado_congelado').delete().eq('venta_id', req.params.id);
+    }
+
     res.json({ venta: data });
   } catch (error) {
     console.error('Error al actualizar venta:', error);
