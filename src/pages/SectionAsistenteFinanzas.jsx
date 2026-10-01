@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import api from '../services/api';
-import { Send as SendIcon, Paperclip, X, Wallet, CheckCircle2 } from 'lucide-react';
+import { Send as SendIcon, Paperclip, X, Wallet, CheckCircle2, FileText } from 'lucide-react';
 import './SectionAsistenteIA.css';
 
 const EJEMPLOS = [
@@ -46,14 +46,21 @@ function CreadosList({ creados }) {
 function MessageContent({ content, creados }) {
   const isArray = Array.isArray(content);
   const images = isArray ? content.filter(b => b.type === 'image') : [];
+  const documentos = isArray ? content.filter(b => b.type === 'document') : [];
   const text = isArray ? (content.find(b => b.type === 'text')?.text || '') : content;
   return (
     <>
-      {images.length > 0 && (
+      {(images.length > 0 || documentos.length > 0) && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: text ? '0.5rem' : 0 }}>
           {images.map((img, i) => (
-            <img key={i} src={`data:${img.source.media_type};base64,${img.source.data}`} alt="Captura adjunta"
+            <img key={`img-${i}`} src={`data:${img.source.media_type};base64,${img.source.data}`} alt="Captura adjunta"
               style={{ maxWidth: images.length > 1 ? 140 : '100%', borderRadius: 8, display: 'block' }} />
+          ))}
+          {documentos.map((doc, i) => (
+            <div key={`doc-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '0.5rem 0.65rem', fontSize: '0.78rem' }}>
+              <FileText size={14} style={{ flexShrink: 0 }} />
+              <span>{doc.title || 'Documento PDF'}</span>
+            </div>
           ))}
         </div>
       )}
@@ -75,9 +82,10 @@ export function SectionAsistenteFinanzas() {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
 
   const addFile = async (file) => {
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!file || !(file.type.startsWith('image/') || file.type === 'application/pdf')) return;
     const base64 = await fileToBase64(file);
-    setPendingFiles(prev => [...prev, { previewUrl: URL.createObjectURL(file), base64, mediaType: file.type, name: file.name }]);
+    const isPdf = file.type === 'application/pdf';
+    setPendingFiles(prev => [...prev, { previewUrl: isPdf ? null : URL.createObjectURL(file), base64, mediaType: file.type, name: file.name, isPdf }]);
   };
 
   const handlePickFiles = async (e) => {
@@ -90,7 +98,7 @@ export function SectionAsistenteFinanzas() {
 
   useEffect(() => {
     const onPaste = (e) => {
-      const items = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith('image/'));
+      const items = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith('image/') || i.type === 'application/pdf');
       if (items.length === 0) return;
       e.preventDefault();
       items.forEach(item => addFile(item.getAsFile()));
@@ -107,7 +115,9 @@ export function SectionAsistenteFinanzas() {
     let content;
     if (pendingFiles.length > 0) {
       content = [
-        ...pendingFiles.map(f => ({ type: 'image', source: { type: 'base64', media_type: f.mediaType, data: f.base64 } })),
+        ...pendingFiles.map(f => f.isPdf
+          ? { type: 'document', source: { type: 'base64', media_type: f.mediaType, data: f.base64 }, title: f.name }
+          : { type: 'image', source: { type: 'base64', media_type: f.mediaType, data: f.base64 } }),
         { type: 'text', text: textContent || (pendingFiles.length > 1 ? 'Aquí tienes varias facturas/recibos — dalos de alta en Finanzas.' : 'Aquí tienes una factura/recibo — dalo de alta en Finanzas.') },
       ];
     } else {
@@ -136,7 +146,7 @@ export function SectionAsistenteFinanzas() {
       <div className="ap-section-head">
         <div>
           <h1><Wallet size={20} style={{ verticalAlign: -3, marginRight: 6 }} />Asistente de Finanzas</h1>
-          <p>Pégale fotos o capturas de facturas, recibos, tickets o movimientos bancarios (puedes mandar varias a la vez) y los da de alta solo en Finanzas — las capturas vienen con IVA, él los guarda sin IVA. Revísalos y ajústalos después en Finanzas.</p>
+          <p>Pégale fotos, capturas o PDFs de facturas, recibos, tickets o movimientos bancarios (puedes mandar varios a la vez) y los da de alta solo en Finanzas — vienen con IVA, él los guarda sin IVA. Revísalos y ajústalos después en Finanzas.</p>
         </div>
       </div>
 
@@ -174,7 +184,14 @@ export function SectionAsistenteFinanzas() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 1rem 0.5rem' }}>
             {pendingFiles.map((f, i) => (
               <div key={i} className="ai-chat-pending-image">
-                <img src={f.previewUrl} alt="Captura" />
+                {f.isPdf ? (
+                  <div style={{ width: 60, height: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: 'rgba(255,255,255,0.08)', borderRadius: 8 }} title={f.name}>
+                    <FileText size={20} />
+                    <span style={{ fontSize: '0.55rem', maxWidth: 54, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                  </div>
+                ) : (
+                  <img src={f.previewUrl} alt="Captura" />
+                )}
                 <button type="button" onClick={() => removeFile(i)} className="ai-chat-pending-image-remove"><X size={12} /></button>
               </div>
             ))}
@@ -182,15 +199,15 @@ export function SectionAsistenteFinanzas() {
         )}
 
         <form onSubmit={handleSubmit} className="ai-chat-input-row">
-          <input ref={fileRef} type="file" accept="image/*" multiple onChange={handlePickFiles} style={{ display: 'none' }} />
-          <button type="button" className="ap-btn-icon" onClick={() => fileRef.current.click()} disabled={loading} title="Adjuntar facturas/recibos (o pega con Ctrl+V)">
+          <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple onChange={handlePickFiles} style={{ display: 'none' }} />
+          <button type="button" className="ap-btn-icon" onClick={() => fileRef.current.click()} disabled={loading} title="Adjuntar facturas/recibos en foto o PDF (o pega con Ctrl+V)">
             <Paperclip size={15} />
           </button>
           <input
             className="ap-field-input"
             value={input}
             onChange={e => setInput(e.target.value)}
-            placeholder={pendingFiles.length > 0 ? 'Añade contexto (opcional)…' : 'Adjunta facturas/recibos con el clip o pega con Ctrl+V…'}
+            placeholder={pendingFiles.length > 0 ? 'Añade contexto (opcional)…' : 'Adjunta facturas/recibos (foto o PDF) con el clip o pega con Ctrl+V…'}
             disabled={loading}
           />
           <button type="submit" className="ap-btn ap-btn-primary ap-btn-sm" disabled={loading || (!input.trim() && pendingFiles.length === 0)}>
