@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import api from '../services/api';
 import { Send as SendIcon, Paperclip, X, MessageCircle, FileText, Copy, Check } from 'lucide-react';
+import { MicButton } from '../components/MicButton';
 import './SectionAsistenteIA.css';
 
 const EJEMPLOS = [
@@ -258,6 +259,7 @@ export function SectionAsistenteSetter() {
           <button type="button" className="ap-btn-icon" onClick={() => fileRef.current.click()} disabled={loading} title="Adjuntar capturas o planos en PDF (o pega con Ctrl+V)">
             <Paperclip size={15} />
           </button>
+          <MicButton disabled={loading} onResult={text => setInput(prev => (prev ? prev + ' ' : '') + text)} />
           <input
             ref={textInputRef}
             className="ap-field-input"

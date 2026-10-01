@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import api from '../services/api';
 import { Send as SendIcon, Paperclip, X, Wallet, CheckCircle2, FileText } from 'lucide-react';
+import { MicButton } from '../components/MicButton';
 import './SectionAsistenteIA.css';
 
 const EJEMPLOS = [
@@ -203,6 +204,7 @@ export function SectionAsistenteFinanzas() {
           <button type="button" className="ap-btn-icon" onClick={() => fileRef.current.click()} disabled={loading} title="Adjuntar facturas/recibos en foto o PDF (o pega con Ctrl+V)">
             <Paperclip size={15} />
           </button>
+          <MicButton disabled={loading} onResult={text => setInput(prev => (prev ? prev + ' ' : '') + text)} />
           <input
             className="ap-field-input"
             value={input}
