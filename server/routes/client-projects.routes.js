@@ -304,6 +304,11 @@ router.get('/public/portfolio', async (req, res) => {
       title: p.title,
       description: p.description || '',
       cover_url: (p.cover_url && !p.cover_url.startsWith('blob:')) ? p.cover_url : (p.images || []).find(u => u && !u.startsWith('blob:')) || null,
+      // El listado de admin (SectionTrabajos) necesita el array completo para
+      // precargar las imágenes ya subidas al editar y para el badge "N fotos"
+      // — antes no se mandaba, así que el modal de edición se abría siempre
+      // vacío aunque el proyecto ya tuviera fotos guardadas.
+      images: p.images || [],
       order: p.display_order ?? Infinity,
     }));
     const linkedProjects = (linked || []).map(p => ({
