@@ -52,3 +52,10 @@
   .fz-row, .fz-row--head { grid-template-columns: 1.4fr 1fr 1fr; }
   .fz-row span:nth-child(3), .fz-row--head span:nth-child(3) { display: none; }
 }
+
+.fz-row--movs { grid-template-columns: 24px 1.6fr 1fr 0.9fr 0.9fr 0.9fr 32px; }
+@media (max-width: 760px) {
+  .fz-row--movs { grid-template-columns: 24px 1.4fr 1fr 1fr; }
+  .fz-row--movs span:nth-child(3) { display: flex; }
+  .fz-row--movs span:nth-child(4) { display: none; }
+}

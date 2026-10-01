@@ -729,6 +729,9 @@ export function SectionFinanzas() {
   const [modal, setModal] = useState(null);
   const [movimientoEditando, setMovimientoEditando] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
+  const [seleccionados, setSeleccionados] = useState(new Set());
+  const [confirmBorrarSeleccion, setConfirmBorrarSeleccion] = useState(false);
+  const [borrandoSeleccion, setBorrandoSeleccion] = useState(false);
 
   useEffect(() => { api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {}); }, []);
 
@@ -745,7 +748,7 @@ export function SectionFinanzas() {
   }, [filtroTipo, filtroMes, filtroBeneficiario]);
 
   useEffect(() => { loadResumen(); }, [loadResumen]);
-  useEffect(() => { setLoading(true); loadMovimientos(); }, [loadMovimientos]);
+  useEffect(() => { setLoading(true); setSeleccionados(new Set()); loadMovimientos(); }, [loadMovimientos]);
 
   const handleSaved = (mov) => {
     setModal(null);
@@ -763,6 +766,31 @@ export function SectionFinanzas() {
       // noop
     } finally {
       setConfirmId(null);
+    }
+  };
+
+  const toggleSeleccionado = (id) => {
+    setSeleccionados(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSeleccionarTodos = () => {
+    setSeleccionados(prev => prev.size === movimientos.length ? new Set() : new Set(movimientos.map(m => m.id)));
+  };
+
+  const handleDeleteSeleccion = async () => {
+    setBorrandoSeleccion(true);
+    try {
+      await Promise.all([...seleccionados].map(id => api.delete(`/finanzas/${id}`).catch(() => {})));
+      setSeleccionados(new Set());
+      loadResumen();
+      loadMovimientos();
+    } finally {
+      setBorrandoSeleccion(false);
+      setConfirmBorrarSeleccion(false);
     }
   };
 
@@ -831,17 +859,42 @@ export function SectionFinanzas() {
         </p>
       )}
 
+      {seleccionados.size > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 10px' }}>
+          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>{seleccionados.size} seleccionado{seleccionados.size !== 1 ? 's' : ''}</span>
+          <button className="ap-btn ap-btn-danger ap-btn-sm" onClick={() => setConfirmBorrarSeleccion(true)}>
+            <Trash2 size={13} /> Eliminar seleccionados ({seleccionados.size})
+          </button>
+          <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setSeleccionados(new Set())}>Cancelar selección</button>
+        </div>
+      )}
+
       {loading ? (
         <div className="ap-loading">Cargando movimientos…</div>
       ) : movimientos.length === 0 ? (
         <div className="ap-empty"><p>No hay movimientos con estos filtros.</p></div>
       ) : (
         <div className="fz-tabla">
-          <div className="fz-row fz-row--head">
+          <div className="fz-row fz-row--head fz-row--movs">
+            <span>
+              <input
+                type="checkbox"
+                checked={seleccionados.size === movimientos.length}
+                onChange={toggleSeleccionarTodos}
+                title="Seleccionar todos"
+              />
+            </span>
             <span>Concepto</span><span>Categoría</span><span>Método</span><span>Fecha</span><span>Importe</span><span></span>
           </div>
           {movimientos.map(m => (
-            <div key={m.id} className="fz-row">
+            <div key={m.id} className="fz-row fz-row--movs">
+              <span>
+                <input
+                  type="checkbox"
+                  checked={seleccionados.has(m.id)}
+                  onChange={() => toggleSeleccionado(m.id)}
+                />
+              </span>
               <span className="fz-concepto">{m.concepto}{m.ventas?.nombre && <span className="fz-lead-tag">{m.ventas.nombre}</span>}{m.beneficiario && <span className="fz-lead-tag">→ {m.beneficiario}</span>}</span>
               <span>{m.categoria}</span>
               <span>{m.metodo_pago || '—'}</span>
@@ -865,6 +918,19 @@ export function SectionFinanzas() {
             <div className="ap-modal-actions">
               <button className="ap-btn ap-btn-ghost" onClick={() => setConfirmId(null)}>Cancelar</button>
               <button className="ap-btn ap-btn-danger" onClick={handleDelete}>Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmBorrarSeleccion && (
+        <div className="ap-modal-overlay" onClick={() => !borrandoSeleccion && setConfirmBorrarSeleccion(false)}>
+          <div className="ap-modal ap-modal--sm" onClick={e => e.stopPropagation()}>
+            <p style={{ marginBottom: '1.25rem' }}>¿Eliminar {seleccionados.size} movimiento{seleccionados.size !== 1 ? 's' : ''}? Esta acción no se puede deshacer.</p>
+            <div className="ap-modal-actions">
+              <button className="ap-btn ap-btn-ghost" onClick={() => setConfirmBorrarSeleccion(false)} disabled={borrandoSeleccion}>Cancelar</button>
+              <button className="ap-btn ap-btn-danger" onClick={handleDeleteSeleccion} disabled={borrandoSeleccion}>
+                {borrandoSeleccion ? 'Eliminando…' : 'Eliminar'}
+              </button>
             </div>
           </div>
         </div>
