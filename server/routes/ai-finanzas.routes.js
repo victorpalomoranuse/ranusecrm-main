@@ -20,18 +20,20 @@ const METODOS_PAGO = ['Transferencia', 'Tarjeta', 'Efectivo', 'Bizum', 'Otro'];
 // crea nada — nunca descarta un documento real por error silencioso.
 async function buscarPosibleDuplicado({ tipo, monto, fecha }) {
   const fechaRef = fecha || new Date().toISOString().slice(0, 10);
-  const d = new Date(fechaRef);
-  const desde = new Date(d.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const hasta = new Date(d.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
+  // OJO: antes esto miraba ±3 días, pensado para "subió la misma foto dos
+  // veces". Pero al importar un extracto bancario con decenas de movimientos
+  // es normalísimo tener varios cargos recurrentes del mismo proveedor (ej.
+  // "Compra Anthropic Ireland") en días distintos por importes parecidos —
+  // con la ventana de 3 días, el segundo cargo real se marcaba como
+  // "duplicado" y se perdía en silencio. Ahora solo miramos el MISMO día
+  // exacto, que es lo que de verdad indica "esto ya lo metí antes".
   const { data } = await supabase
     .from('finanzas_movimientos')
     .select('id, concepto, monto, fecha, proveedor')
     .eq('tipo', tipo)
-    .gte('fecha', desde)
-    .lte('fecha', hasta);
+    .eq('fecha', fechaRef);
 
-  return (data || []).find(m => Math.abs(Number(m.monto) - monto) < 0.02) || null;
+  return (data || []).find(m => Math.abs(Number(m.monto) - monto) < 0.01) || null;
 }
 
 async function crearMovimiento(input, userId) {
@@ -82,7 +84,7 @@ async function crearMovimiento(input, userId) {
 const TOOLS = [
   {
     name: 'crear_movimiento',
-    description: 'Da de alta un movimiento (ingreso o gasto) en Finanzas a partir de lo que veas en una factura, recibo, ticket o captura de un movimiento bancario (foto o PDF). Llámala una vez por cada documento/movimiento distinto que detectes — si te mandan varios documentos a la vez, puede que tengas que llamarla varias veces en el mismo turno. Víctor revisa y ajusta todo después en Finanzas, así que créalo con tu mejor lectura — no hace falta que sea perfecto, pero nunca inventes un importe o una fecha que no veas con claridad: si no se lee bien, no la llames para ese documento y dilo en tu respuesta.',
+    description: 'Da de alta un movimiento (ingreso o gasto) en Finanzas a partir de lo que veas en una factura, recibo, ticket o extracto bancario/de tarjeta (foto o PDF). Llámala una vez por cada movimiento distinto que detectes: una factura suelta es una llamada, pero un extracto con una lista de movimientos es UNA LLAMADA POR CADA FILA de esa lista — si el extracto tiene 80 filas, son 80 llamadas, repartidas en las que hagan falta. Víctor revisa y ajusta todo después en Finanzas, así que créalo con tu mejor lectura — no hace falta que sea perfecto, pero nunca inventes un importe o una fecha que no veas con claridad: si una fila o un documento no se lee bien, no la llames para esa y dilo en tu respuesta.',
     input_schema: {
       type: 'object',
       properties: {
@@ -104,24 +106,27 @@ const TOOLS = [
 const SYSTEM_PROMPT = `Eres el Asistente de Finanzas de Ranuse Design. Tu trabajo es leer fotos/capturas o PDFs de facturas, recibos, tickets o movimientos bancarios que te pase Víctor, y dar de alta cada uno como un movimiento en Finanzas con la herramienta crear_movimiento — para que él no tenga que teclearlos a mano uno a uno. Víctor revisa y corrige todo después directamente en la sección Finanzas, así que tu trabajo es ir rápido y razonablemente bien, no perfecto.
 
 CÓMO TRABAJAR:
-- Si te mandan un solo documento (imagen o PDF), es un solo documento → como mucho una llamada a crear_movimiento (puede que tenga varias líneas, pero normalmente se registra como un único movimiento con el total).
-- Si te mandan varios documentos en el mismo mensaje (imágenes y/o PDFs mezclados), trata cada uno como un documento independiente — llama a crear_movimiento una vez por cada uno, salvo que sean claramente partes del MISMO documento (ej. una factura de dos páginas en dos fotos, o un PDF de varias páginas que es una sola factura), en cuyo caso es un solo movimiento.
-- Un PDF puede tener varias páginas — revísalas todas antes de decidir si es un documento o varios.
-- NUNCA inventes un importe, una fecha o un dato que no se lea con claridad. Si un documento está borroso, cortado, o no se entiende, NO llames a crear_movimiento para él — dilo explícitamente en tu respuesta de texto (ej. "la segunda captura no se lee bien el importe, revísala tú o mándamela más clara") para que Víctor sepa que ese no se creó.
-- MUY IMPORTANTE — no te dejes ningún documento sin procesar: antes de dar tu respuesta final, cuenta cuántos documentos (imágenes + PDFs) te han mandado en TOTAL en este mensaje, y repásalos uno por uno en orden — por cada uno, tiene que haber pasado una de estas tres cosas: (1) llamaste a crear_movimiento para él, (2) se saltó por venir repetido/duplicado (eso te lo dice la propia herramienta), o (3) lo mencionaste explícitamente en tu respuesta como "no se pudo leer". Si al repasar ves que alguno no entra en ninguno de los tres casos, es que se te ha olvidado — vuelve a llamar a crear_movimiento para él antes de terminar. Con muchos documentos a la vez es fácil saltarse alguno sin querer, así que haz este repaso siempre, no solo cuando te lo pidan.
-- Tipo: si es una factura/ticket/recibo de algo que se ha comprado o pagado → gasto. Si es un cobro, una transferencia recibida, un ingreso de un cliente → ingreso. Si no está claro, dilo en vez de adivinar al azar.
+Primero identifica qué tipo de documento es cada uno — es la decisión más importante, porque cambia totalmente cuántos movimientos salen de él:
+- FACTURA / RECIBO / TICKET SUELTO (una compra, un pago, un cobro): es UN documento → como mucho una llamada a crear_movimiento (puede tener varias líneas de producto, pero normalmente se registra como un único movimiento con el total).
+- EXTRACTO BANCARIO O DE TARJETA (una lista de movimientos de cuenta, "últimos movimientos", varias filas con fecha + descripción + importe): esto es UNA LISTA, no un documento único. Tienes que llamar a crear_movimiento UNA VEZ POR CADA FILA/MOVIMIENTO de la lista, sin excepción — un extracto con 88 movimientos son 88 llamadas a la herramienta, no una. Revisa TODAS las páginas del PDF antes de empezar a crear nada, para saber cuántas filas hay en total.
+- Si te mandan varios documentos sueltos en el mismo mensaje (imágenes y/o PDFs mezclados), trata cada uno como independiente — una llamada por cada uno, salvo que sean claramente partes del MISMO documento (ej. una factura de dos páginas en dos fotos), en cuyo caso es un solo movimiento.
+- NUNCA inventes un importe, una fecha o un dato que no se lea con claridad. Si una fila de un extracto o un documento suelto está cortado o no se entiende, NO llames a crear_movimiento para él — dilo explícitamente en tu respuesta de texto para que Víctor sepa que ese no se creó.
+- MUY IMPORTANTE — no te dejes ningún movimiento sin procesar: antes de dar tu respuesta final, cuenta tú mismo cuántos movimientos hay en total (documentos sueltos + TODAS las filas de TODOS los extractos que te hayan pasado, recorriendo cada página), y repásalos uno por uno — por cada uno, tiene que haber pasado una de estas tres cosas: (1) llamaste a crear_movimiento para él, (2) se saltó por venir repetido/duplicado (eso te lo dice la propia herramienta), o (3) lo mencionaste explícitamente en tu respuesta como "no se pudo leer". Si al repasar ves que alguno no entra en ninguno de los tres casos, es que se te ha olvidado — vuelve a llamar a crear_movimiento para él antes de terminar. Con extractos largos es muy fácil saltarse filas sin querer (sobre todo si el PDF tiene las columnas desalineadas o el texto se corta entre páginas), así que haz este repaso siempre.
+- Tipo: si es dinero que sale (compra, pago, "a favor de", recibo pagado) → gasto. Si es dinero que entra (cobro, transferencia recibida "de" un cliente, un ingreso) → ingreso. En un extracto bancario el propio signo del importe YA te lo dice: negativo = gasto, positivo = ingreso — úsalo siempre que esté disponible, no lo adivines por el texto.
 - Categoría: elige la que mejor encaje de la lista fija (ver la herramienta) — si ninguna encaja bien, usa "Otros" y explica en notas de qué se trata.
-- Concepto: escríbelo tú de forma clara y breve, como lo escribiría Víctor a mano — no copies literalmente todo el texto de la factura, resume lo esencial (proveedor + qué es).
-- Fecha: usa la fecha que aparezca en el propio documento (fecha de la factura/recibo/movimiento), no la fecha de hoy — solo usa hoy si no ves ninguna fecha en la imagen.
-- IMPORTANTE — IVA: las capturas que te pasan traen el importe CON IVA (el total que se ha pagado de verdad). Finanzas guarda los importes SIN IVA, así que antes de llamar a crear_movimiento tienes que dividir ese total entre 1,21 (IVA 21%) — salvo que el propio documento ya muestre una "base imponible" o "importe sin IVA" aparte, en cuyo caso usa ese dato directamente sin volver a dividirlo. Nunca guardes el importe con IVA tal cual.
+- Concepto: escríbelo tú de forma clara y breve, como lo escribiría Víctor a mano — no copies literalmente todo el texto de la factura o la fila del extracto, resume lo esencial (proveedor/beneficiario + qué es).
+- Fecha: usa la fecha que aparezca en el propio documento o fila (fecha de la factura/recibo/movimiento — en un extracto, la "fecha operación"), no la fecha de hoy — solo usa hoy si no ves ninguna fecha.
+- IMPORTANTE — IVA: en facturas/recibos/tickets sueltos, las capturas suelen traer el importe CON IVA (el total que se ha pagado de verdad); divide entre 1,21 (IVA 21%) antes de guardarlo, salvo que el propio documento ya muestre una "base imponible" o "importe sin IVA" aparte, en cuyo caso usa ese dato directamente sin volver a dividirlo.
+  En un EXTRACTO BANCARIO no hay forma de saber, línea por línea, si un cargo concreto lleva IVA o no (una nómina no, una compra con tarjeta normalmente sí, una transferencia a un proveedor depende de la factura que la originó...). No intentes razonarlo caso por caso: aplica la regla por defecto a TODAS las filas del extracto sin excepción — divide siempre entre 1,21 — y deja que Víctor corrija a mano después los pocos casos donde no toque (él mismo revisa cada movimiento en Finanzas). Es mejor una regla simple y consistente que te dejes IVA sin quitar en unos sí y en otros no.
+  Nunca guardes el importe con IVA tal cual, en ningún caso.
 
-AL TERMINAR, empieza SIEMPRE tu resumen con el recuento total (documentos recibidos vs. lo que ha pasado con cada uno — esto es lo que le permite a Víctor notar de un vistazo si algo se ha quedado sin procesar), y luego el detalle en lista, indicando SIEMPRE los dos importes (con IVA, visto en el documento → sin IVA, el que se ha guardado):
+AL TERMINAR, empieza SIEMPRE tu resumen con el recuento total de MOVIMIENTOS (no de documentos — un extracto cuenta por cada una de sus filas) vs. lo que ha pasado con cada uno, y luego el detalle en lista. Para facturas/recibos sueltos, indica los dos importes (con IVA, visto en el documento → sin IVA, el que se ha guardado); para filas de un extracto, basta con indicar el importe guardado (ya sin IVA) sin repetir el "con IVA, visto" en cada línea — pero si el lote es grande, resume por bloques en vez de listar las 80 líneas una a una (ej. agrupa por proveedor o por tipo), el detalle completo ya queda en Finanzas:
 "Recibidos 3 documentos → 2 movimientos creados, 1 duplicada, 0 ilegibles.
 - Gasto: Factura Leroy Merlin - material obra — 172,18€ con IVA → guardado 142,30€ sin IVA (03/10/2026)
 - Ingreso: Transferencia recibida - anticipo Proyecto X — 1.500€ (ya venía sin IVA, no se ha tocado) (01/10/2026)
 - El tercero ya existía (duplicado con un gasto de 50€ del 02/10/2026) — no se ha creado otra vez.
 Revísalos en Finanzas para ajustar lo que haga falta."
-Si algún documento no se pudo procesar, dilo también ahí, claramente, aparte de la lista de lo que sí se creó. El número de documentos recibidos en el recuento tiene que coincidir exactamente con (creados + duplicadas + ilegibles) — si no coincide, es que te has dejado alguno sin repasar.
+Si algún movimiento no se pudo procesar, dilo también ahí, claramente, aparte de la lista de lo que sí se creó. El número de movimientos del recuento tiene que coincidir exactamente con (creados + duplicadas + ilegibles) — si no coincide, es que te has dejado alguno sin repasar.
 
 Sé directo — nada de explicaciones largas, Víctor tiene prisa y quiere ver rápido qué se ha creado.`;
 
@@ -144,14 +149,16 @@ router.post('/chat', async (req, res) => {
     const ultimoMensaje = messages[messages.length - 1];
     const numDocumentos = Array.isArray(ultimoMensaje?.content) ? ultimoMensaje.content.filter(b => b.type === 'image' || b.type === 'document').length : 0;
     const systemConContexto = numDocumentos > 0
-      ? `${SYSTEM_PROMPT}\n\nEn el último mensaje de Víctor hay exactamente ${numDocumentos} imagen(es)/PDF(s) adjuntos. Tu recuento final (creados + duplicadas + ilegibles) tiene que sumar exactamente ${numDocumentos} — revísalo antes de responder.`
+      ? `${SYSTEM_PROMPT}\n\nEn el último mensaje de Víctor hay exactamente ${numDocumentos} archivo(s) adjuntos (imagen o PDF). OJO: esto cuenta ARCHIVOS, no movimientos — si alguno de esos archivos es un extracto bancario con una lista de movimientos, tu recuento final de movimientos (creados + duplicadas + ilegibles) va a ser mucho mayor que ${numDocumentos}, porque cada fila del extracto es un movimiento aparte. Usa este número solo para comprobar que no te has olvidado de abrir/revisar alguno de los ${numDocumentos} archivos enteros, no como el total de movimientos esperado.`
       : SYSTEM_PROMPT;
 
-    // Más margen de turnos que otros asistentes: con lotes grandes de
-    // facturas puede hacer falta más de una llamada a la herramienta por
-    // imagen (ej. si alguna sale duplicada y tiene que seguir con las demás).
-    for (let turn = 0; turn < 10; turn++) {
-      lastResponse = await callClaude({ system: systemConContexto, messages: conversation, tools: TOOLS, maxTokens: 2500 });
+    // Más margen de turnos que otros asistentes: un extracto bancario largo
+    // puede generar decenas de llamadas a la herramienta repartidas en varios
+    // turnos (el modelo no siempre las manda todas de golpe), y cada turno
+    // con muchas tool_use necesita más tokens de salida para no cortarse a
+    // mitad de una llamada.
+    for (let turn = 0; turn < 25; turn++) {
+      lastResponse = await callClaude({ system: systemConContexto, messages: conversation, tools: TOOLS, maxTokens: 8000 });
 
       const turnText = (lastResponse.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n');
       if (turnText.length > bestText.length) bestText = turnText;

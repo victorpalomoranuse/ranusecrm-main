@@ -23,6 +23,39 @@ router.post('/upload-image', uploadReferenceImageFile, handleMulterError, async 
   }
 });
 
+/**
+ * POST /api/references/resolve-pin
+ * Víctor pega el enlace de un Pin de Pinterest y devolvemos la imagen real
+ * (leyendo el og:image de la propia página del Pin) para que se pueda usar
+ * directamente como image_url — sin descargarla ni subirla a nuestro
+ * Storage, así no ocupa espacio ahí.
+ */
+router.post('/resolve-pin', async (req, res) => {
+  try {
+    const raw = req.body?.url?.trim();
+    if (!raw) return res.status(400).json({ error: 'Falta el enlace' });
+    let target;
+    try { target = new URL(raw); } catch { return res.status(400).json({ error: 'Ese enlace no es una URL válida' }); }
+    if (!/(^|\.)pinterest\.[a-z.]+$/i.test(target.hostname) && target.hostname.toLowerCase() !== 'pin.it') {
+      return res.status(400).json({ error: 'Solo se admiten enlaces de pinterest.com o pin.it' });
+    }
+    const pageRes = await fetch(target.toString(), {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36' },
+      redirect: 'follow',
+    });
+    if (!pageRes.ok) return res.status(502).json({ error: 'No se pudo abrir ese Pin' });
+    const html = await pageRes.text();
+    const decode = (s) => s?.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'") || null;
+    const imgMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+    const titleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+    if (!imgMatch) return res.status(422).json({ error: 'No se ha encontrado ninguna imagen en ese Pin' });
+    res.json({ image_url: decode(imgMatch[1]), title: decode(titleMatch?.[1]) });
+  } catch (error) {
+    console.error('Error al resolver Pin de Pinterest:', error);
+    res.status(500).json({ error: 'Error al leer el enlace de Pinterest' });
+  }
+});
+
 router.get('/', async (req, res) => {
   try {
     const { data, error } = await supabase
