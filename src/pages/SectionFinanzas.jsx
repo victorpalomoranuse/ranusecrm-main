@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
 import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2, Users, Check, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -46,7 +46,7 @@ const CATEGORIAS_GASTO = ['Nóminas', 'Materiales', 'Marketing', 'Software', 'Al
 const CATEGORIAS_INGRESO = ['Venta proyecto', 'Anticipo', 'Diseño', 'Otros'];
 const METODOS_PAGO = ['Transferencia', 'Tarjeta', 'Efectivo', 'Bizum', 'Otro'];
 
-function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
+function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved, onSavedContinue }) {
   const isEdit = !!movimiento;
   const [tipo, setTipo] = useState(movimiento?.tipo || tipoInicial);
   const [categoria, setCategoria] = useState(movimiento?.categoria || '');
@@ -62,6 +62,8 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [ultimoGuardado, setUltimoGuardado] = useState(null); // para el aviso "Guardado: X — seguido de otro"
+  const conceptoRef = useRef(null);
 
   const categorias = tipo === 'ingreso' ? CATEGORIAS_INGRESO : CATEGORIAS_GASTO;
 
@@ -75,7 +77,12 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
     api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {});
   }, []);
 
-  const handleSubmit = async (e) => {
+  // seguir=true: "Guardar y añadir otro" — no cierra el modal, solo limpia
+  // concepto/importe/notas (lo que cambia entre movimientos) y deja tipo,
+  // categoría, fecha, venta y método de pago tal cual (lo que se suele
+  // repetir cuando metes varios seguidos, ej. varias facturas del mismo día
+  // y la misma categoría) — así no hay que volver a elegirlos cada vez.
+  const handleSubmit = async (e, seguir = false) => {
     e.preventDefault();
     setError('');
     if (!categoria || !concepto.trim() || !monto) { setError('Completa categoría, concepto e importe'); return; }
@@ -85,7 +92,16 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
       const { data } = isEdit
         ? await api.put(`/finanzas/${movimiento.id}`, payload)
         : await api.post('/finanzas', payload);
-      onSaved(data.movimiento);
+      if (seguir && !isEdit) {
+        setUltimoGuardado({ concepto, monto });
+        setConcepto('');
+        setMonto('');
+        setNotas('');
+        onSavedContinue?.(data.movimiento);
+        conceptoRef.current?.focus();
+      } else {
+        onSaved(data.movimiento);
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Error al guardar el movimiento');
     } finally {
@@ -100,7 +116,11 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
           <h2>{isEdit ? 'Editar movimiento' : 'Nuevo movimiento'}</h2>
           <button className="ap-modal-close" onClick={onClose}><X size={16} /></button>
         </div>
-        <form onSubmit={handleSubmit} className="ap-modal-form">
+        {/* Al dar a Enter (ej. tras escribir el importe) se guarda y sigue
+            listo para el siguiente — no cierra el modal, que es lo que de
+            verdad acelera meter varios movimientos seguidos. Para cerrar,
+            hay que pulsar "Guardar movimiento"/"Guardar cambios" a propósito. */}
+        <form onSubmit={(e) => handleSubmit(e, !isEdit)} className="ap-modal-form">
           <div className="fz-tipo-toggle">
             <button type="button" className={`fz-tipo-btn fz-tipo-btn--ingreso${tipo === 'ingreso' ? ' active' : ''}`} onClick={() => { setTipo('ingreso'); setCategoria(''); }}>Ingreso</button>
             <button type="button" className={`fz-tipo-btn fz-tipo-btn--gasto${tipo === 'gasto' ? ' active' : ''}`} onClick={() => { setTipo('gasto'); setCategoria(''); }}>Gasto</button>
@@ -115,7 +135,7 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
           </div>
           <div className="ap-field">
             <label>Concepto *</label>
-            <input value={concepto} onChange={e => setConcepto(e.target.value)} placeholder="Ej: Pago proveedor renders" required />
+            <input ref={conceptoRef} value={concepto} onChange={e => setConcepto(e.target.value)} placeholder="Ej: Pago proveedor renders" required />
           </div>
           <div className="ap-field">
             <label>Venta <span className="ap-optional">(opcional, pero enlázalo si es un cobro o gasto de una venta concreta)</span></label>
@@ -159,10 +179,20 @@ function MovimientoModal({ tipoInicial, movimiento, onClose, onSaved }) {
             <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} />
           </div>
 
+          {ultimoGuardado && (
+            <p style={{ fontSize: 11, color: '#22c55e', margin: 0 }}>
+              ✓ Guardado "{ultimoGuardado.concepto}" ({fmt(ultimoGuardado.monto)}) — sigue con el siguiente.
+            </p>
+          )}
           {error && <p className="ap-error">{error}</p>}
           <div className="ap-modal-actions">
-            <button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="ap-btn ap-btn-primary" disabled={loading}>{loading ? 'Guardando...' : isEdit ? 'Guardar cambios' : 'Guardar movimiento'}</button>
+            <button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>{isEdit ? 'Cancelar' : 'Cerrar'}</button>
+            {!isEdit && (
+              <button type="button" className="ap-btn ap-btn-ghost" disabled={loading} onClick={(e) => handleSubmit(e, true)}>
+                {loading ? 'Guardando...' : 'Guardar y añadir otro'}
+              </button>
+            )}
+            <button type="button" className="ap-btn ap-btn-primary" disabled={loading} onClick={(e) => handleSubmit(e, false)}>{loading ? 'Guardando...' : isEdit ? 'Guardar cambios' : 'Guardar movimiento'}</button>
           </div>
         </form>
       </div>
@@ -826,7 +856,7 @@ export function SectionFinanzas() {
         </div>
       )}
 
-      {modal && <MovimientoModal tipoInicial="ingreso" onClose={() => setModal(null)} onSaved={handleSaved} />}
+      {modal && <MovimientoModal tipoInicial="ingreso" onClose={() => setModal(null)} onSaved={handleSaved} onSavedContinue={() => { loadResumen(); loadMovimientos(); }} />}
       {movimientoEditando && <MovimientoModal movimiento={movimientoEditando} onClose={() => setMovimientoEditando(null)} onSaved={handleSaved} />}
       {confirmId && (
         <div className="ap-modal-overlay" onClick={() => setConfirmId(null)}>
