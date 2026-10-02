@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { sendEmail } from '../services/email.service.js';
 import { madridToUtcDate } from '../utils/timezone.js';
+import { ESTADOS_VALIDOS } from './setting.routes.js';
 
 const router = express.Router();
 // Mismo permiso que Setting — es la misma gente (comerciales/closer) la que
@@ -30,7 +31,7 @@ router.get('/', async (req, res) => {
     const { employee_id, disponibles, from, to } = req.query;
     let query = supabase
       .from('call_slots')
-      .select('*, empleado:employees(id, name, email), lead:setting_leads(id, nombre, telefono, instagram)')
+      .select('*, empleado:employees(id, name, email), lead:setting_leads(id, nombre, telefono, instagram, estado)')
       .order('fecha', { ascending: true })
       .order('hora_inicio', { ascending: true });
     if (employee_id) query = query.eq('employee_id', employee_id);
@@ -206,7 +207,7 @@ router.post('/:id/reservar', async (req, res) => {
       .update({ ocupado: true, setting_lead_id, recordatorio_enviado: false, updated_at: new Date().toISOString() })
       .eq('id', req.params.id)
       .eq('ocupado', false) // evita condición de carrera: si otro ya lo reservó entre medias, esto no actualiza nada
-      .select('*, empleado:employees(id, name, email), lead:setting_leads(id, nombre, telefono, instagram)')
+      .select('*, empleado:employees(id, name, email), lead:setting_leads(id, nombre, telefono, instagram, estado)')
       .maybeSingle();
     if (errUpd) throw errUpd;
     if (!updatedSlot) return res.status(409).json({ error: 'Este hueco se acaba de reservar — elige otro.' });
@@ -237,7 +238,7 @@ router.post('/:id/reservar', async (req, res) => {
  */
 router.put('/:id', async (req, res) => {
   try {
-    const { resumen_llamada, fecha, hora_inicio, hora_fin } = req.body;
+    const { resumen_llamada, fecha, hora_inicio, hora_fin, fathom_url, estado_lead } = req.body;
     const empleado = await empleadoActual(req);
 
     const { data: slot } = await supabase.from('call_slots').select('employee_id').eq('id', req.params.id).maybeSingle();
@@ -252,8 +253,26 @@ router.put('/:id', async (req, res) => {
     if (fecha !== undefined) updates.fecha = fecha;
     if (hora_inicio !== undefined) updates.hora_inicio = hora_inicio;
     if (hora_fin !== undefined) updates.hora_fin = hora_fin;
+    if (fathom_url !== undefined) {
+      const url = (fathom_url || '').trim();
+      if (url && !/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'El enlace de Fathom tiene que empezar por http:// o https://' });
+      updates.fathom_url = url || null;
+    }
 
-    const { data, error } = await supabase.from('call_slots').update(updates).eq('id', req.params.id).select('*, empleado:employees(id, name, email), lead:setting_leads(id, nombre, telefono, instagram)').single();
+    // Cambiar el estado del lead de esta llamada desde la propia agenda (con
+    // las mismas marcas de fecha de venta que el resto del CRM).
+    if (estado_lead !== undefined) {
+      if (!ESTADOS_VALIDOS.includes(estado_lead)) return res.status(400).json({ error: 'Estado no válido' });
+      const { data: sl } = await supabase.from('call_slots').select('setting_lead_id').eq('id', req.params.id).single();
+      if (!sl?.setting_lead_id) return res.status(400).json({ error: 'Este hueco no tiene ningún lead reservado' });
+      const cambios = { estado: estado_lead };
+      if (estado_lead === 'venta_1') cambios.fecha_venta_1 = new Date().toISOString();
+      if (estado_lead === 'venta_2') cambios.fecha_venta_2 = new Date().toISOString();
+      const { error: errLead } = await supabase.from('setting_leads').update(cambios).eq('id', sl.setting_lead_id);
+      if (errLead) throw errLead;
+    }
+
+    const { data, error } = await supabase.from('call_slots').update(updates).eq('id', req.params.id).select('*, empleado:employees(id, name, email), lead:setting_leads(id, nombre, telefono, instagram, estado)').single();
     if (error) throw error;
     res.json({ slot: data });
   } catch (error) {

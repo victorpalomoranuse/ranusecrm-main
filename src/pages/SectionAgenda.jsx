@@ -284,6 +284,60 @@ function BuscarLeadPicker({ slotId, onReservado, toast }) {
 }
 
 // Panel que se abre al pinchar un hueco en el calendario grande.
+const ESTADOS_LEAD = [
+  ['nuevo', 'Nuevo'], ['interesado', 'Interesado'], ['no_califica', 'No califica'], ['contacto_nuevo', 'Contacto Nuevo'],
+  ['pitcheo_agenda', 'Pitcheo Agenda'], ['agendado', 'Agendado'], ['recolectando_info', 'Recolectando Info.'], ['prioridad', 'Prioridad'],
+  ['venta_1', 'Venta 1 ✓'], ['venta_2', 'Venta 2 ✓'], ['rechazo', 'Rechazo'], ['seguimiento_futuro', 'Seguimiento futuro'], ['no_responde', 'No responde'],
+];
+
+// Estado del lead y enlace de la grabación (Fathom) de la llamada, editables
+// desde el propio hueco para no tener que ir a Setting a cambiarlo.
+function EstadoYFathom({ slot, onGuardado, toast }) {
+  const [fathom, setFathom] = useState(slot.fathom_url || '');
+  const [savingF, setSavingF] = useState(false);
+  const [savingE, setSavingE] = useState(false);
+
+  const cambiarEstado = async (estado) => {
+    setSavingE(true);
+    try {
+      const { data } = await api.put(`/call-slots/${slot.id}`, { estado_lead: estado });
+      onGuardado(data.slot);
+      toast.success('Estado del lead actualizado');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se ha podido cambiar el estado');
+    } finally { setSavingE(false); }
+  };
+  const guardarFathom = async () => {
+    setSavingF(true);
+    try {
+      const { data } = await api.put(`/call-slots/${slot.id}`, { fathom_url: fathom });
+      onGuardado(data.slot);
+      toast.success(fathom.trim() ? 'Enlace de Fathom guardado' : 'Enlace quitado');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se ha podido guardar el enlace');
+    } finally { setSavingF(false); }
+  };
+
+  return (
+    <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div>
+        <label style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Estado del lead</label>
+        <select className="ap-select" value={slot.lead?.estado || ''} onChange={e => cambiarEstado(e.target.value)} disabled={savingE} style={{ marginTop: 4 }}>
+          {ESTADOS_LEAD.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </div>
+      <div>
+        <label style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Grabación (Fathom)</label>
+        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+          <input className="ap-field-input" value={fathom} onChange={e => setFathom(e.target.value)} placeholder="https://fathom.video/..." style={{ flex: 1 }} />
+          <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={guardarFathom} disabled={savingF || fathom.trim() === (slot.fathom_url || '')}>{savingF ? '…' : 'Guardar'}</button>
+        </div>
+        {slot.fathom_url && <a href={slot.fathom_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: '0.74rem', color: '#beb0a2' }}>Abrir grabación ↗</a>}
+      </div>
+    </div>
+  );
+}
+
 function DetalleHuecoModal({ slot, onClose, onGuardado, onEliminado, onReservado, toast }) {
   return (
     <div className="ap-modal-overlay" onClick={onClose}>
@@ -303,6 +357,7 @@ function DetalleHuecoModal({ slot, onClose, onGuardado, onEliminado, onReservado
                   {slot.lead.instagram && <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><Instagram size={12} />@{slot.lead.instagram}</span>}
                 </div>
               )}
+              <EstadoYFathom slot={slot} onGuardado={onGuardado} toast={toast} />
               <ResumenLlamada slot={slot} onGuardado={onGuardado} toast={toast} />
             </>
           ) : (
