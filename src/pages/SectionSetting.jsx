@@ -394,6 +394,7 @@ export function SectionSetting() {
   const [registros, setRegistros] = useState([]);
   const [metricas, setMetricas] = useState(null);
   const [porCanal, setPorCanal] = useState(null);
+  const [ventasMes, setVentasMes] = useState(null);
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // 'new' | registro object | null
@@ -409,7 +410,7 @@ export function SectionSetting() {
   const { toasts, toast, remove } = useToast();
 
   const cargar = () => {
-    api.get('/setting', { params: mesFiltro ? { mes: mesFiltro } : {} }).then(r => { setRegistros(r.data.registros || []); setMetricas(r.data.metricas || null); setPorCanal(r.data.porCanal || null); }).catch(() => {}).finally(() => setLoading(false));
+    api.get('/setting', { params: mesFiltro ? { mes: mesFiltro } : {} }).then(r => { setRegistros(r.data.registros || []); setMetricas(r.data.metricas || null); setPorCanal(r.data.porCanal || null); setVentasMes(r.data.ventasDelMes || null); }).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {}); }, []);
   useEffect(() => { cargar(); }, [mesFiltro]);
@@ -555,6 +556,22 @@ export function SectionSetting() {
         </div>
       )}
 
+      {mesFiltro && ventasMes && (
+        <div style={{ background:'rgba(34,197,94,0.06)', border:'1px solid rgba(34,197,94,0.2)', borderRadius:10, padding:'0.85rem 1rem', marginBottom:'1.5rem' }}>
+          <div style={{ fontSize:'0.7rem', color:'#22c55e', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>
+            Ventas de {(mesesDisponibles.find(m => m.valor === mesFiltro) || {}).etiqueta || mesFiltro} · {ventasMes.length}
+          </div>
+          {ventasMes.length === 0 ? (
+            <p style={{ margin:0, fontSize:'0.8rem', color:'rgba(255,255,255,0.4)' }}>Todavía no hay ventas este mes.</p>
+          ) : ventasMes.map(v => (
+            <div key={v.id} style={{ display:'flex', justifyContent:'space-between', gap:12, flexWrap:'wrap', fontSize:'0.82rem', padding:'4px 0', borderTop:'1px solid rgba(255,255,255,0.05)' }}>
+              <span><strong>{v.nombre}</strong> <span style={{ color:'rgba(255,255,255,0.4)' }}>· {[v.venta1 && 'Venta 1', v.venta2 && 'Venta 2'].filter(Boolean).join(' + ')}{v.canal ? ` · ${v.canal}` : ''}</span></span>
+              <span style={{ color:'rgba(255,255,255,0.5)' }}>vendido el {new Date(v.venta2 || v.venta1).toLocaleDateString('es-ES', { day:'2-digit', month:'short' })} · entró el {new Date(v.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'short', year:'numeric' })}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {porCanal && Object.keys(porCanal).length > 0 && (
         <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap', marginBottom:'1.5rem', alignItems:'center' }}>
           {Object.entries(porCanal).sort((a,b) => b[1].total - a[1].total).map(([canal, v]) => {
@@ -562,7 +579,7 @@ export function SectionSetting() {
             return (
               <button key={canal} type="button" onClick={() => setCanalFiltro(activo ? '' : canal)}
                 style={{ background: activo ? 'rgba(190,176,162,0.18)' : 'rgba(255,255,255,0.03)', border: activo ? '1px solid rgba(190,176,162,0.6)' : '1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:'0.45rem 0.75rem', fontSize:'0.75rem', color: activo ? '#fff' : 'rgba(255,255,255,0.6)', cursor:'pointer', fontFamily:'inherit' }}>
-                <strong style={{ color: activo ? '#fff' : '#fff' }}>{canal}</strong>: {v.total} lead{v.total === 1 ? '' : 's'}{v.ventas > 0 ? ` · ${v.ventas} venta${v.ventas === 1 ? '' : 's'} (${Math.round((v.ventas / v.total) * 100)}%)` : ''}
+                <strong style={{ color: activo ? '#fff' : '#fff' }}>{canal}</strong>: {v.total} lead{v.total === 1 ? '' : 's'}{v.ventas > 0 ? ` · ${v.ventas} venta${v.ventas === 1 ? '' : 's'} ${v.total > 0 ? ` (${Math.round((v.ventas / v.total) * 100)}%)` : ''}` : ''}
               </button>
             );
           })}

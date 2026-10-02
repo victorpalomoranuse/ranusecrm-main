@@ -49,12 +49,30 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
     // Venta 1 y Venta 2 son independientes entre sí (fecha_venta_1/2), no el
     // estado actual del kanban — así un lead que ya está en "venta_2" pero
     // también compró antes el servicio 1 sigue contando en ambos lados.
-    const compraron1 = registros.filter(r => r.fecha_venta_1).length;
-    const compraron2 = registros.filter(r => r.fecha_venta_2).length;
-    const compraronAmbos = registros.filter(r => r.fecha_venta_1 && r.fecha_venta_2).length;
-    const soloVenta1 = registros.filter(r => r.fecha_venta_1 && !r.fecha_venta_2).length;
-    const soloVenta2 = registros.filter(r => r.fecha_venta_2 && !r.fecha_venta_1).length;
-    const ventas = registros.filter(r => r.fecha_venta_1 || r.fecha_venta_2).length; // nº de leads que han comprado algo
+    //
+    // Con un mes elegido, las VENTAS se cuentan por la fecha en la que se
+    // vendió (no por cuándo entró el lead): un lead de septiembre que compra en
+    // octubre cuenta como venta de octubre. El resto de métricas (leads totales,
+    // activos, no responde...) siguen siendo de los leads que entraron ese mes.
+    const mesDe = (iso) => {
+      if (!iso) return null;
+      const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit' }).formatToParts(new Date(iso)).map(x => [x.type, x.value]));
+      return `${p.year}-${p.month}`;
+    };
+    const v1 = (r) => !!r.fecha_venta_1 && (!mes || mesDe(r.fecha_venta_1) === mes);
+    const v2 = (r) => !!r.fecha_venta_2 && (!mes || mesDe(r.fecha_venta_2) === mes);
+    const compraron1 = todos.filter(v1).length;
+    const compraron2 = todos.filter(v2).length;
+    const compraronAmbos = todos.filter(r => v1(r) && v2(r)).length;
+    const soloVenta1 = todos.filter(r => v1(r) && !v2(r)).length;
+    const soloVenta2 = todos.filter(r => v2(r) && !v1(r)).length;
+    const ventas = todos.filter(r => v1(r) || v2(r)).length; // nº de leads que han comprado algo
+    const ventasDelMes = mes
+      ? todos.filter(r => v1(r) || v2(r)).map(r => ({
+          id: r.id, nombre: r.nombre, canal: r.canal, created_at: r.created_at,
+          venta1: v1(r) ? r.fecha_venta_1 : null, venta2: v2(r) ? r.fecha_venta_2 : null,
+        }))
+      : null;
     const tasaCrossSell = compraron1 > 0 ? Math.round((compraronAmbos / compraron1) * 100) : 0; // de los que compraron 1, % que también compró 2
     // % de cierre de CADA venta por separado (sobre el total de leads), sin
     // mezclarlas entre sí — independiente del % cruzado de arriba.
@@ -65,7 +83,8 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
     const seguimientoFuturo = porEstado.seguimiento_futuro || 0;
     const noResponde = porEstado.no_responde || 0;
     const noCalifica = porEstado.no_califica || 0;
-    const cerrados = ventas + noResponde + noCalifica + rechazo;
+    const ventasDeLosLeads = registros.filter(r => r.fecha_venta_1 || r.fecha_venta_2).length; // de los que entraron en el periodo, cualquiera que sea su fecha de venta
+    const cerrados = ventasDeLosLeads + noResponde + noCalifica + rechazo;
     const activos = total - cerrados;
     const tasaCierre = total > 0 ? Math.round((ventas / total) * 100) : 0;
     const tasaCalificacion = total > 0 ? Math.round(((total - noCalifica) / total) * 100) : 0;
@@ -93,7 +112,13 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
       const c = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
       if (!porCanal[c]) porCanal[c] = { total: 0, ventas: 0 };
       porCanal[c].total++;
-      if (r.fecha_venta_1 || r.fecha_venta_2) porCanal[c].ventas++;
+    });
+    // Ventas por canal según la fecha de venta (con mes, solo las de ese mes).
+    todos.filter(r => v1(r) || v2(r)).forEach(r => {
+      const raw = (r.canal || 'otro').trim();
+      const c = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+      if (!porCanal[c]) porCanal[c] = { total: 0, ventas: 0 };
+      porCanal[c].ventas++;
     });
 
     res.json({
@@ -105,6 +130,7 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
       },
       porEstado,
       porCanal,
+      ventasDelMes,
     });
   } catch (error) {
     console.error('Error al listar setting:', error);
