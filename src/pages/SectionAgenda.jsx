@@ -375,6 +375,112 @@ function DetalleHuecoModal({ slot, onClose, onGuardado, onEliminado, onReservado
   );
 }
 
+// Agendar una llamada desde el calendario del equipo (vista de admin): elegir
+// con quién, día y hora, y enlazarla a un lead de Setting o crear uno nuevo.
+function AgendarLlamadaEquipo({ onAgendado, toast }) {
+  const [abierto, setAbierto] = useState(false);
+  const [empleados, setEmpleados] = useState([]);
+  const [leads, setLeads] = useState(null);
+  const [empleadoId, setEmpleadoId] = useState('');
+  const [fecha, setFecha] = useState('');
+  const [hora, setHora] = useState('');
+  const [modo, setModo] = useState('existente');
+  const [query, setQuery] = useState('');
+  const [leadSel, setLeadSel] = useState(null);
+  const [nuevo, setNuevo] = useState({ nombre: '', telefono: '', instagram: '' });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!abierto || leads) return;
+    api.get('/employees').then(r => {
+      const lista = r.data.employees || [];
+      setEmpleados(lista);
+      const hernan = lista.find(e => (e.name || '').toLowerCase().startsWith('hern'));
+      setEmpleadoId(prev => prev || hernan?.id || lista[0]?.id || '');
+    }).catch(() => {});
+    api.get('/setting').then(r => setLeads(r.data.registros || [])).catch(() => setLeads([]));
+  }, [abierto, leads]);
+
+  const q = query.trim().toLowerCase();
+  const resultados = q.length < 2 || !leads ? [] : leads.filter(l => [l.nombre, l.telefono, l.instagram].some(v => (v || '').toLowerCase().includes(q))).slice(0, 6);
+
+  const listo = empleadoId && fecha && hora && (modo === 'existente' ? leadSel : nuevo.nombre.trim());
+
+  const agendar = async () => {
+    setSaving(true);
+    try {
+      const body = { employee_id: empleadoId, fecha, hora_inicio: hora };
+      if (modo === 'existente') body.setting_lead_id = leadSel.id; else body.nuevo_lead = nuevo;
+      const { data } = await api.post('/call-slots/agendar', body);
+      onAgendado(data.slot);
+      toast.success(`Llamada agendada con ${data.slot.lead?.nombre || 'el lead'}`);
+      setLeadSel(null); setQuery(''); setNuevo({ nombre: '', telefono: '', instagram: '' }); setHora(''); setLeads(null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se ha podido agendar la llamada');
+    } finally { setSaving(false); }
+  };
+
+  if (!abierto) {
+    return <button type="button" className="ap-btn ap-btn-primary" style={{ marginBottom: '1rem' }} onClick={() => setAbierto(true)}><CalendarCheck size={14} /> Agendar llamada</button>;
+  }
+  const lbl = { fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.5 };
+  return (
+    <div style={{ marginBottom: '1.25rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '1rem 1.1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <strong style={{ fontSize: '0.9rem' }}>Agendar llamada</strong>
+        <button type="button" onClick={() => setAbierto(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}><X size={15} /></button>
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ flex: '1 1 180px' }}><label style={lbl}>Con quién</label>
+          <select className="ap-select" value={empleadoId} onChange={e => setEmpleadoId(e.target.value)} style={{ marginTop: 4 }}>
+            {empleados.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select></div>
+        <div><label style={lbl}>Día</label><input type="date" className="ap-field-input" value={fecha} onChange={e => setFecha(e.target.value)} style={{ marginTop: 4 }} /></div>
+        <div><label style={lbl}>Hora</label><input type="time" className="ap-field-input" value={hora} onChange={e => setHora(e.target.value)} style={{ marginTop: 4 }} /></div>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        {[['existente', 'Lead existente'], ['nuevo', 'Lead nuevo']].map(([v, l]) => (
+          <button key={v} type="button" className={`ap-btn ap-btn-sm ${modo === v ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setModo(v)}>{l}</button>
+        ))}
+      </div>
+      {modo === 'existente' ? (
+        leadSel ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '0.5rem 0.75rem' }}>
+            <span style={{ fontSize: '0.84rem' }}><strong>{leadSel.nombre}</strong> {leadSel.telefono && `· ${leadSel.telefono}`}</span>
+            <button type="button" onClick={() => setLeadSel(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}><X size={13} /></button>
+          </div>
+        ) : (
+          <>
+            <div style={{ position: 'relative' }}>
+              <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.35)' }} />
+              <input className="ap-field-input" style={{ paddingLeft: 28 }} placeholder="Buscar lead por nombre, teléfono o Instagram…" value={query} onChange={e => setQuery(e.target.value)} />
+            </div>
+            {q.length >= 2 && (
+              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {resultados.length === 0 && <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', margin: '4px 0 0' }}>Sin resultados — prueba con "Lead nuevo".</p>}
+                {resultados.map(l => (
+                  <button key={l.id} type="button" onClick={() => setLeadSel(l)} style={{ textAlign: 'left', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '0.4rem 0.6rem', cursor: 'pointer', fontSize: '0.78rem', color: '#fff' }}>
+                    <strong>{l.nombre}</strong> <span style={{ color: 'rgba(255,255,255,0.45)' }}>{[l.telefono, l.instagram && `@${l.instagram}`].filter(Boolean).join(' · ')}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )
+      ) : (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input className="ap-field-input" style={{ flex: '2 1 180px' }} placeholder="Nombre *" value={nuevo.nombre} onChange={e => setNuevo(n => ({ ...n, nombre: e.target.value }))} />
+          <input className="ap-field-input" style={{ flex: '1 1 130px' }} placeholder="Teléfono" value={nuevo.telefono} onChange={e => setNuevo(n => ({ ...n, telefono: e.target.value }))} />
+          <input className="ap-field-input" style={{ flex: '1 1 130px' }} placeholder="@instagram" value={nuevo.instagram} onChange={e => setNuevo(n => ({ ...n, instagram: e.target.value }))} />
+        </div>
+      )}
+      <button type="button" className="ap-btn ap-btn-primary" style={{ marginTop: 12 }} disabled={!listo || saving} onClick={agendar}>
+        {saving ? 'Agendando…' : 'Agendar llamada'}
+      </button>
+    </div>
+  );
+}
+
 export function SectionAgenda() {
   const { user } = useAdminAuth();
   const [slots, setSlots] = useState([]);
@@ -468,6 +574,13 @@ export function SectionAgenda() {
           </div>
         </div>
       </div>
+
+      {esAdmin && verTodos && (
+        <AgendarLlamadaEquipo
+          onAgendado={(nuevo) => setSlots(prev => [...prev.filter(x => x.id !== nuevo.id && x.setting_lead_id !== nuevo.setting_lead_id), nuevo])}
+          toast={toast}
+        />
+      )}
 
       {!(esAdmin && verTodos) && (
         <>

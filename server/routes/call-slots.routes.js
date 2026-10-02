@@ -239,6 +239,78 @@ router.post('/:id/reservar', async (req, res) => {
 });
 
 /**
+ * POST /api/call-slots/agendar
+ * Agenda una llamada directamente desde el calendario del equipo: se elige
+ * persona, día y hora, y un lead existente (setting_lead_id) o uno nuevo
+ * (nuevo_lead). Si esa persona tenía un hueco libre a esa hora se reserva; si
+ * no, se crea uno ya ocupado. Body: { employee_id, fecha, hora_inicio,
+ * duracion_min?, setting_lead_id? | nuevo_lead: { nombre, telefono?, instagram?, canal? } }
+ */
+router.post('/agendar', async (req, res) => {
+  try {
+    const { employee_id, fecha, hora_inicio, duracion_min, setting_lead_id, nuevo_lead } = req.body;
+    if (!employee_id) return res.status(400).json({ error: 'Elige con quién es la llamada' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha || '')) return res.status(400).json({ error: 'Fecha no válida' });
+    if (!/^\d{2}:\d{2}/.test(hora_inicio || '')) return res.status(400).json({ error: 'Hora no válida' });
+    const hora = hora_inicio.slice(0, 5) + ':00';
+    const inicio = madridToUtcDate(fecha, hora);
+    if (isNaN(inicio.getTime())) return res.status(400).json({ error: 'Fecha u hora no válidas' });
+
+    const { data: emp } = await supabase.from('employees').select('id, name, email').eq('id', employee_id).maybeSingle();
+    if (!emp) return res.status(404).json({ error: 'Empleado no encontrado' });
+
+    let leadId = setting_lead_id;
+    if (!leadId) {
+      if (!nuevo_lead?.nombre?.trim()) return res.status(400).json({ error: 'Elige un lead o escribe el nombre del nuevo' });
+      const { data: creado, error: errNuevo } = await supabase.from('setting_leads').insert({
+        nombre: nuevo_lead.nombre.trim(),
+        telefono: nuevo_lead.telefono?.trim() || null,
+        instagram: nuevo_lead.instagram?.trim().replace(/^@+/, '') || null,
+        canal: nuevo_lead.canal?.trim() || null,
+        estado: 'agendado',
+        created_by: req.user.id,
+      }).select('id').single();
+      if (errNuevo) throw errNuevo;
+      leadId = creado.id;
+    }
+
+    // Si ese lead ya tenía otra llamada reservada, se libera (una por lead).
+    const { data: previos } = await supabase.from('call_slots').select('id, generado_por_regla').eq('setting_lead_id', leadId).eq('ocupado', true);
+    for (const p of previos || []) {
+      if (p.generado_por_regla) await supabase.from('call_slots').update({ ocupado: false, setting_lead_id: null, recordatorio_enviado: false, recordatorio_30_enviado: false, recordatorio_5_enviado: false, updated_at: new Date().toISOString() }).eq('id', p.id);
+      else await supabase.from('call_slots').delete().eq('id', p.id);
+    }
+
+    const SELECT = '*, empleado:employees(id, name, email), lead:setting_leads(id, nombre, telefono, instagram, estado)';
+    const { data: libre } = await supabase.from('call_slots').select('id').eq('employee_id', emp.id).eq('fecha', fecha).eq('hora_inicio', hora).eq('ocupado', false).limit(1).maybeSingle();
+    let slot;
+    if (libre) {
+      const { data, error } = await supabase.from('call_slots').update({ ocupado: true, setting_lead_id: leadId, updated_at: new Date().toISOString() }).eq('id', libre.id).select(SELECT).single();
+      if (error) throw error;
+      slot = data;
+    } else {
+      const dur = Math.min(Math.max(parseInt(duracion_min) || 30, 5), 240);
+      const [h, m] = hora.split(':').map(Number);
+      const fin = h * 60 + m + dur;
+      const horaFin = `${String(Math.floor(fin / 60) % 24).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}:00`;
+      const { data, error } = await supabase.from('call_slots').insert({ employee_id: emp.id, fecha, hora_inicio: hora, hora_fin: horaFin, ocupado: true, setting_lead_id: leadId }).select(SELECT).single();
+      if (error) throw error;
+      slot = data;
+    }
+
+    await supabase.from('setting_leads').update({ estado: 'agendado', fecha_llamada: inicio.toISOString() }).eq('id', leadId);
+    if (emp.email && emp.email !== req.user.email) {
+      const { data: l } = await supabase.from('setting_leads').select('nombre, telefono, instagram, objetivo').eq('id', leadId).maybeSingle();
+      avisarLlamada({ empleado: emp, lead: l, fecha, hora, tipo: 'nueva' });
+    }
+    res.status(201).json({ slot });
+  } catch (error) {
+    console.error('Error al agendar llamada:', error);
+    res.status(500).json({ error: 'Error al agendar la llamada' });
+  }
+});
+
+/**
  * PUT /api/call-slots/:id
  * Rellenar el resumen de la llamada (o, si aún no está ocupado, editar el
  * propio horario). Solo el dueño del hueco o un admin puede tocarlo.
