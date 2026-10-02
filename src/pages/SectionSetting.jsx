@@ -463,8 +463,9 @@ export function SectionSetting() {
   };
 
   const q = busqueda.trim().toLowerCase();
+  const idsVendidosMes = new Set((ventasMes || []).map(v => v.id));
   const registrosFiltrados = registros.filter(r => {
-    if (mesFiltro && (r.created_at || '').slice(0, 7) !== mesFiltro) return false;
+    if (mesFiltro && (r.created_at || '').slice(0, 7) !== mesFiltro && !idsVendidosMes.has(r.id)) return false;
     if (asignadoFiltro && r.assigned_to !== asignadoFiltro) return false;
     if (canalFiltro && normCanal(r.canal) !== canalFiltro) return false;
     if (estadoFiltro && r.estado !== estadoFiltro) return false;
