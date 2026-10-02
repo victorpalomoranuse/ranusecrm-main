@@ -409,9 +409,10 @@ export function SectionSetting() {
   const { toasts, toast, remove } = useToast();
 
   const cargar = () => {
-    api.get('/setting').then(r => { setRegistros(r.data.registros || []); setMetricas(r.data.metricas || null); setPorCanal(r.data.porCanal || null); }).catch(() => {}).finally(() => setLoading(false));
+    api.get('/setting', { params: mesFiltro ? { mes: mesFiltro } : {} }).then(r => { setRegistros(r.data.registros || []); setMetricas(r.data.metricas || null); setPorCanal(r.data.porCanal || null); }).catch(() => {}).finally(() => setLoading(false));
   };
-  useEffect(() => { cargar(); api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {}); }, []);
+  useEffect(() => { api.get('/employees').then(r => setEmpleados(r.data.employees || [])).catch(() => {}); }, []);
+  useEffect(() => { cargar(); }, [mesFiltro]);
 
   const handleSaved = (registro, wasEdit) => {
     setRegistros(prev => wasEdit ? prev.map(r => r.id === registro.id ? registro : r) : [registro, ...prev]);

@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requireAdminSuperior, requirePermission } from '../middleware/auth.middleware.js';
+import { asignarLlamadaAHernan } from '../utils/agenda-hernan.js';
 
 const router = express.Router();
 // Misma sección de la que ya disponen los que gestionan Leads (mismo
@@ -28,11 +29,17 @@ export const CANALES_VALIDOS = ['Instagram (nos escriben)', 'Instagram (prospecc
 
 router.get('/', authenticateToken, requireSetting, async (req, res) => {
   try {
-    const { data: registros, error } = await supabase
+    const { data: todos, error } = await supabase
       .from('setting_leads')
       .select('*, empleado:employees(id, name)')
       .order('created_at', { ascending: false });
     if (error) throw error;
+
+    // Con ?mes=YYYY-MM las métricas y el desglose por canal se calculan solo
+    // con los leads creados ese mes (igual que el filtro de mes de la lista);
+    // sin mes, con todos. La lista devuelta siempre es la completa.
+    const mes = /^\d{4}-\d{2}$/.test(req.query.mes || '') ? req.query.mes : null;
+    const registros = mes ? todos.filter(r => (r.created_at || '').slice(0, 7) === mes) : todos;
 
     const total = registros.length;
     const porEstado = {};
@@ -90,7 +97,7 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
     });
 
     res.json({
-      registros,
+      registros: todos,
       metricas: {
         total, activos, ventas, noResponde, noCalifica, rechazo, seguimientoFuturo,
         tasaCierre, tasaCalificacion, tasaCierreLlamadas, conLlamada, ventasConLlamada,
@@ -149,6 +156,7 @@ router.post('/', authenticateToken, requireSetting, async (req, res) => {
       .select('*, empleado:employees(id, name)')
       .single();
     if (error) throw error;
+    if (data.fecha_llamada) await asignarLlamadaAHernan(data.id, data.fecha_llamada).catch(e => console.error('Agenda de Hernán:', e));
     res.status(201).json({ registro: data });
   } catch (error) {
     console.error('Error al crear registro de setting:', error);
@@ -204,8 +212,16 @@ router.put('/:id', authenticateToken, requireSetting, async (req, res) => {
       updates.notas = actual?.notas ? `${actual.notas}\n${linea}` : linea;
     }
 
+    const { data: previa } = fecha_llamada !== undefined
+      ? await supabase.from('setting_leads').select('fecha_llamada').eq('id', req.params.id).maybeSingle()
+      : { data: null };
     const { data, error } = await supabase.from('setting_leads').update(updates).eq('id', req.params.id).select('*, empleado:employees(id, name)').single();
     if (error) throw error;
+    // Solo si la fecha de la llamada ha cambiado de verdad (guardar el formulario sin tocarla no debe
+    // mover una reserva que quizá se hizo con otra persona desde el calendario).
+    if (fecha_llamada !== undefined && new Date(previa?.fecha_llamada || 0).getTime() !== new Date(data.fecha_llamada || 0).getTime()) {
+      await asignarLlamadaAHernan(data.id, data.fecha_llamada || null).catch(e => console.error('Agenda de Hernán:', e));
+    }
     res.json({ registro: data });
   } catch (error) {
     console.error('Error al actualizar registro de setting:', error);

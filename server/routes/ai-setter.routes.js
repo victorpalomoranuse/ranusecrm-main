@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
 import { madridToUtcDate } from '../utils/timezone.js';
+import { asignarLlamadaAHernan } from '../utils/agenda-hernan.js';
 
 const router = express.Router();
 router.use(authenticateToken, requirePermission('leads'));
@@ -176,44 +177,11 @@ async function actualizarLead(input) {
 
   let agenda = null;
   if (input.fecha_llamada !== undefined) {
-    try { agenda = await asignarLlamadaAHernan(leadId, input.fecha_llamada || null); }
+    try { agenda = await asignarLlamadaAHernan(leadId, data.fecha_llamada || null); }
     catch (e) { console.error('Error al asignar la llamada a la agenda de Hernán:', e); agenda = { error: 'El lead se ha actualizado pero no se ha podido colocar en la agenda de Hernán.' }; }
   }
 
   return { actualizado: true, lead: data, ...(agenda ? { agenda_hernan: agenda } : {}) };
-}
-
-// Cuando se agenda (o cambia/cancela) una llamada desde el Asistente, tiene que
-// aparecer en el calendario de Hernán (call_slots), no solo en el lead: si ya
-// había un hueco suyo libre a esa hora se reserva, y si no se crea uno nuevo
-// ya ocupado. Antes de reservar se liberan los huecos que ese lead tuviera.
-export async function asignarLlamadaAHernan(leadId, fechaLlamada) {
-  const { data: hernan } = await supabase.from('employees').select('id, name').ilike('name', 'Hern%').limit(1).maybeSingle();
-  if (!hernan) return { error: 'No encuentro a Hernán entre los empleados.' };
-
-  const { data: previos } = await supabase.from('call_slots').select('id, generado_por_regla').eq('setting_lead_id', leadId).eq('ocupado', true);
-  const match = fechaLlamada ? /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(fechaLlamada) : null;
-  const hora = match ? `${match[2]}:00` : null;
-
-  for (const p of previos || []) {
-    const { data: s } = await supabase.from('call_slots').select('fecha, hora_inicio').eq('id', p.id).single();
-    if (match && s.fecha === match[1] && s.hora_inicio === hora) return { asignada: true, mensaje: 'Ya estaba en el calendario de Hernán a esa hora.' };
-    if (p.generado_por_regla) await supabase.from('call_slots').update({ ocupado: false, setting_lead_id: null, recordatorio_enviado: false, updated_at: new Date().toISOString() }).eq('id', p.id);
-    else await supabase.from('call_slots').delete().eq('id', p.id);
-  }
-  if (!match) return { asignada: false, mensaje: 'Llamada cancelada: se ha quitado del calendario de Hernán.' };
-
-  const { data: libre } = await supabase.from('call_slots').select('id').eq('employee_id', hernan.id).eq('fecha', match[1]).eq('hora_inicio', hora).eq('ocupado', false).limit(1).maybeSingle();
-  if (libre) {
-    await supabase.from('call_slots').update({ ocupado: true, setting_lead_id: leadId, updated_at: new Date().toISOString() }).eq('id', libre.id);
-  } else {
-    const [h, m] = match[2].split(':').map(Number);
-    const fin = h * 60 + m + 30;
-    const horaFin = `${String(Math.floor(fin / 60) % 24).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}:00`;
-    const { error } = await supabase.from('call_slots').insert({ employee_id: hernan.id, fecha: match[1], hora_inicio: hora, hora_fin: horaFin, ocupado: true, setting_lead_id: leadId });
-    if (error) throw error;
-  }
-  return { asignada: true, mensaje: `Llamada colocada en el calendario de ${hernan.name} el ${match[1]} a las ${match[2]}.` };
 }
 
 async function runTool(name, input, ctx) {
