@@ -1,5 +1,6 @@
 import express from 'express';
 import PDFDocument from 'pdfkit';
+import ExcelJS from 'exceljs';
 import https from 'https';
 import http from 'http';
 import path from 'path';
@@ -569,6 +570,82 @@ router.post('/:id/import', async (req, res) => {
     if (error) throw error;
     res.json({ items: data || [], message: (data?.length || 0) + ' partidas importadas' });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error al importar partidas' }); }
+});
+
+// Excel para pedir precio a un proveedor: partidas sin ningún precio/coste/
+// margen nuestro, con cabecera con formato, columnas ajustadas y la columna
+// Total ya con fórmula (cantidad × precio unitario) para que él solo ponga
+// su precio.
+router.get('/:id/excel-proveedor', async (req, res) => {
+  try {
+    const { data: budget, error } = await supabase
+      .from('budgets')
+      .select('budget_number, project:client_projects(project_name), items:budget_items(*)')
+      .eq('id', req.params.id)
+      .single();
+    if (error || !budget) return res.status(404).json({ error: 'Presupuesto no encontrado' });
+
+    const items = (budget.items || []).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Solicitud de precios');
+    const cols = [
+      ['Nº', 6], ['Capítulo', 22], ['Producto', 42], ['Marca', 16], ['Medidas (L x A x H)', 20],
+      ['Color bastidor', 16], ['Color acolchado', 16], ['Tipo acolchado', 16], ['Cantidad', 10], ['Unidad', 9],
+      ['Precio unitario proveedor (€)', 18], ['Total proveedor (€)', 16], ['Observaciones proveedor', 30],
+    ];
+    ws.columns = cols.map(([, width]) => ({ width }));
+
+    ws.mergeCells(1, 1, 1, cols.length);
+    ws.getCell('A1').value = `Solicitud de precios · Ranuse Design · Presupuesto ${budget.budget_number || ''}${budget.project?.project_name ? ' · ' + budget.project.project_name : ''}`;
+    ws.getCell('A1').font = { bold: true, size: 13 };
+    ws.mergeCells(2, 1, 2, cols.length);
+    ws.getCell('A2').value = 'Por favor, rellena las columnas en amarillo (precio unitario y observaciones). El total se calcula solo.';
+    ws.getCell('A2').font = { italic: true, color: { argb: 'FF666666' } };
+
+    const head = ws.getRow(4);
+    cols.forEach(([label], i) => { head.getCell(i + 1).value = label; });
+    head.eachCell(c => {
+      c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2B2B2B' } };
+      c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    });
+    head.height = 32;
+
+    let capitulo = '';
+    let n = 0;
+    let r = 5;
+    items.forEach(i => {
+      if (i.is_chapter_header) { capitulo = i.name || ''; return; }
+      n += 1;
+      const medidas = [i.longitud, i.ancho, i.altura].filter(Boolean).join(' x ');
+      const row = ws.getRow(r);
+      [n, capitulo, i.name, i.brand, medidas, i.color_bastidor, i.color_acolchado, i.tipo_acolchado, Number(i.quantity) || 1, i.unit || 'ud'].forEach((v, k) => { row.getCell(k + 1).value = v ?? ''; });
+      row.getCell(12).value = { formula: `IF(K${r}="","",I${r}*K${r})` };
+      row.getCell(11).numFmt = '#,##0.00';
+      row.getCell(12).numFmt = '#,##0.00';
+      [11, 13].forEach(c => { row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3B0' } }; });
+      row.eachCell({ includeEmpty: true }, c => {
+        c.border = { top: { style: 'thin', color: { argb: 'FFDDDDDD' } }, bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } }, left: { style: 'thin', color: { argb: 'FFDDDDDD' } }, right: { style: 'thin', color: { argb: 'FFDDDDDD' } } };
+        c.alignment = { vertical: 'middle', wrapText: true };
+      });
+      r += 1;
+    });
+
+    ws.getCell(r + 1, 11).value = 'TOTAL';
+    ws.getCell(r + 1, 11).font = { bold: true };
+    ws.getCell(r + 1, 12).value = { formula: `SUM(L5:L${r - 1})` };
+    ws.getCell(r + 1, 12).font = { bold: true };
+    ws.getCell(r + 1, 12).numFmt = '#,##0.00';
+    ws.views = [{ state: 'frozen', ySplit: 4 }];
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="solicitud-precios-${budget.budget_number || 'presupuesto'}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error('Error al generar el Excel de proveedor:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'Error al generar el Excel' });
+  }
 });
 
 router.get('/:id/pdf-cliente', async (req, res) => {
