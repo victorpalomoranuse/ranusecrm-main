@@ -119,10 +119,14 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
       porCanal[c].total++;
     });
     // Ventas por canal según la fecha de venta (con mes, solo las de ese mes).
+    // Si el lead vendido entró en otro mes, también se suma a los leads de su
+    // canal para que el % de cierre del canal sea coherente (Ads: 1 lead · 1 venta).
+    const idsCohorte = new Set(registros.map(r => r.id));
     todos.filter(r => v1(r) || v2(r)).forEach(r => {
       const raw = (r.canal || 'otro').trim();
       const c = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
       if (!porCanal[c]) porCanal[c] = { total: 0, ventas: 0 };
+      if (!idsCohorte.has(r.id)) porCanal[c].total++;
       porCanal[c].ventas++;
     });
 
