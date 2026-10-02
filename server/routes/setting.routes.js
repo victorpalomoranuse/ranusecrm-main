@@ -20,7 +20,7 @@ const requireSetting = requirePermission('leads');
 // es de donde salen los % de cierre por separado/combinado. "rechazo" y
 // "seguimiento_futuro" son dos desenlaces más de la llamada, aparte de
 // "no_responde"/"no_califica" (que son de antes de llegar a hablar).
-export const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'agendado', 'recolectando_info', 'prioridad', 'venta_1', 'venta_2', 'rechazo', 'seguimiento_futuro', 'no_responde'];
+export const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'agendado', 'recolectando_info', 'prioridad', 'venta_1', 'venta_2', 'venta_extra', 'rechazo', 'seguimiento_futuro', 'no_responde'];
 
 // Origen del contacto — usado tanto en el formulario manual como por el
 // Asistente Setter (que debe preguntar cuál aplica cuando no lo tenga claro,
@@ -61,6 +61,10 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
     };
     const v1 = (r) => !!r.fecha_venta_1 && (!mes || mesDe(r.fecha_venta_1) === mes);
     const v2 = (r) => !!r.fecha_venta_2 && (!mes || mesDe(r.fecha_venta_2) === mes);
+    const vx = (r) => !!r.fecha_venta_extra && (!mes || mesDe(r.fecha_venta_extra) === mes);
+    const extras = todos.filter(vx);
+    const ventasExtra = extras.length;
+    const importeExtra = extras.reduce((s, r) => s + (Number(r.extra_importe) || 0), 0);
     const compraron1 = todos.filter(v1).length;
     const compraron2 = todos.filter(v2).length;
     const compraronAmbos = todos.filter(r => v1(r) && v2(r)).length;
@@ -68,9 +72,10 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
     const soloVenta2 = todos.filter(r => v2(r) && !v1(r)).length;
     const ventas = todos.filter(r => v1(r) || v2(r)).length; // nº de leads que han comprado algo
     const ventasDelMes = mes
-      ? todos.filter(r => v1(r) || v2(r)).map(r => ({
+      ? todos.filter(r => v1(r) || v2(r) || vx(r)).map(r => ({
           id: r.id, nombre: r.nombre, canal: r.canal, created_at: r.created_at,
           venta1: v1(r) ? r.fecha_venta_1 : null, venta2: v2(r) ? r.fecha_venta_2 : null,
+          ventaExtra: vx(r) ? r.fecha_venta_extra : null, extraDescripcion: vx(r) ? r.extra_descripcion : null, extraImporte: vx(r) ? r.extra_importe : null,
         }))
       : null;
     const tasaCrossSell = compraron1 > 0 ? Math.round((compraronAmbos / compraron1) * 100) : 0; // de los que compraron 1, % que también compró 2
@@ -83,7 +88,7 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
     const seguimientoFuturo = porEstado.seguimiento_futuro || 0;
     const noResponde = porEstado.no_responde || 0;
     const noCalifica = porEstado.no_califica || 0;
-    const ventasDeLosLeads = registros.filter(r => r.fecha_venta_1 || r.fecha_venta_2).length; // de los que entraron en el periodo, cualquiera que sea su fecha de venta
+    const ventasDeLosLeads = registros.filter(r => r.fecha_venta_1 || r.fecha_venta_2 || r.fecha_venta_extra).length; // de los que entraron en el periodo, cualquiera que sea su fecha de venta
     const cerrados = ventasDeLosLeads + noResponde + noCalifica + rechazo;
     const activos = total - cerrados;
     const tasaCierre = total > 0 ? Math.round((ventas / total) * 100) : 0;
@@ -125,7 +130,7 @@ router.get('/', authenticateToken, requireSetting, async (req, res) => {
       registros: todos,
       metricas: {
         total, activos, ventas, noResponde, noCalifica, rechazo, seguimientoFuturo,
-        tasaCierre, tasaCalificacion, tasaCierreLlamadas, conLlamada, ventasConLlamada,
+        ventasExtra, importeExtra, tasaCierre, tasaCalificacion, tasaCierreLlamadas, conLlamada, ventasConLlamada,
         compraron1, compraron2, soloVenta1, soloVenta2, compraronAmbos, tasaCrossSell, tasaVenta1, tasaVenta2,
       },
       porEstado,
@@ -150,7 +155,7 @@ router.get('/:id', authenticateToken, requireSetting, async (req, res) => {
 
 router.post('/', authenticateToken, requireSetting, async (req, res) => {
   try {
-    const { nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, assigned_to, fecha_llamada, fecha_venta_1, fecha_venta_2, created_at } = req.body;
+    const { nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, assigned_to, fecha_llamada, fecha_venta_1, fecha_venta_2, fecha_venta_extra, extra_descripcion, extra_importe, created_at } = req.body;
     if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
 
     const estadoFinal = ESTADOS_VALIDOS.includes(estado) ? estado : 'nuevo';
@@ -174,6 +179,9 @@ router.post('/', authenticateToken, requireSetting, async (req, res) => {
         // estampa sola solo cuando el estado inicial ya es venta_1/venta_2.
         fecha_venta_1: fecha_venta_1 || (estadoFinal === 'venta_1' ? new Date().toISOString() : null),
         fecha_venta_2: fecha_venta_2 || (estadoFinal === 'venta_2' ? new Date().toISOString() : null),
+        fecha_venta_extra: fecha_venta_extra || (estadoFinal === 'venta_extra' ? new Date().toISOString() : null),
+        extra_descripcion: extra_descripcion?.trim() || null,
+        extra_importe: extra_importe !== undefined && extra_importe !== null && extra_importe !== '' ? Number(extra_importe) : null,
         // Permite dar de alta un lead con la fecha real en la que entró
         // (ej. datos históricos que se cargan más tarde) en vez de "ahora".
         ...(created_at ? { created_at } : {}),
@@ -192,7 +200,7 @@ router.post('/', authenticateToken, requireSetting, async (req, res) => {
 
 router.put('/:id', authenticateToken, requireSetting, async (req, res) => {
   try {
-    const { nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, nota_nueva, assigned_to, fecha_llamada, fecha_venta_1, fecha_venta_2, created_at } = req.body;
+    const { nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, nota_nueva, assigned_to, fecha_llamada, fecha_venta_1, fecha_venta_2, fecha_venta_extra, extra_descripcion, extra_importe, created_at } = req.body;
     const updates = { updated_at: new Date().toISOString() };
     if (nombre !== undefined) updates.nombre = nombre.trim();
     if (telefono !== undefined) updates.telefono = telefono?.trim() || null;
@@ -206,6 +214,7 @@ router.put('/:id', authenticateToken, requireSetting, async (req, res) => {
       // rellene la fecha a mano, y los % de cierre salen bien solos.
       if (estado === 'venta_1') updates.fecha_venta_1 = new Date().toISOString();
       if (estado === 'venta_2') updates.fecha_venta_2 = new Date().toISOString();
+      if (estado === 'venta_extra') updates.fecha_venta_extra = new Date().toISOString();
     }
     if (objetivo !== undefined) updates.objetivo = objetivo?.trim() || null;
     if (medidas !== undefined) updates.medidas = medidas?.trim() || null;
@@ -217,6 +226,9 @@ router.put('/:id', authenticateToken, requireSetting, async (req, res) => {
     // (ej. se marcó por error, o se quiere poner la fecha real de cobro).
     if (fecha_venta_1 !== undefined) updates.fecha_venta_1 = fecha_venta_1 || null;
     if (fecha_venta_2 !== undefined) updates.fecha_venta_2 = fecha_venta_2 || null;
+    if (fecha_venta_extra !== undefined) updates.fecha_venta_extra = fecha_venta_extra || null;
+    if (extra_descripcion !== undefined) updates.extra_descripcion = extra_descripcion?.trim() || null;
+    if (extra_importe !== undefined) updates.extra_importe = extra_importe === null || extra_importe === '' ? null : Number(extra_importe);
     // Fecha de creación editable a mano (ej. para corregir un lead
     // registrado tarde con la fecha real en la que entró de verdad).
     if (created_at) updates.created_at = created_at;

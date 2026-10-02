@@ -33,6 +33,7 @@ import settingRoutes from './routes/setting.routes.js';
 import memoriaRoutes from './routes/memoria.routes.js';
 import calendarFeedRoutes from './routes/calendar-feed.routes.js';
 import whatsappRoutes from './routes/whatsapp.routes.js';
+import { enviarResumenDiario } from './utils/resumen-diario.js';
 import callSlotsRoutes, { enviarRecordatoriosLlamadas, generarSlotsDesdeReglas } from './routes/call-slots.routes.js';
 dotenv.config();
 
@@ -122,6 +123,10 @@ app.listen(PORT, () => {
 
 // Recordatorios de llamadas agendadas: revisa cada 15 minutos si hay alguna
 // dentro de las próximas 24h a la que aún no se le haya mandado el email.
+// Resumen diario por email (tareas y eventos del día) a partir de las 8:00 Madrid.
+setInterval(enviarResumenDiario, 10 * 60 * 1000);
+setTimeout(enviarResumenDiario, 20 * 1000);
+
 setInterval(enviarRecordatoriosLlamadas, 15 * 60 * 1000);
 enviarRecordatoriosLlamadas(); // primera pasada al arrancar, no hace falta esperar 15 min
 

@@ -287,7 +287,7 @@ function BuscarLeadPicker({ slotId, onReservado, toast }) {
 const ESTADOS_LEAD = [
   ['nuevo', 'Nuevo'], ['interesado', 'Interesado'], ['no_califica', 'No califica'], ['contacto_nuevo', 'Contacto Nuevo'],
   ['pitcheo_agenda', 'Pitcheo Agenda'], ['agendado', 'Agendado'], ['recolectando_info', 'Recolectando Info.'], ['prioridad', 'Prioridad'],
-  ['venta_1', 'Venta 1 ✓'], ['venta_2', 'Venta 2 ✓'], ['rechazo', 'Rechazo'], ['seguimiento_futuro', 'Seguimiento futuro'], ['no_responde', 'No responde'],
+  ['venta_1', 'Venta 1 ✓'], ['venta_2', 'Venta 2 ✓'], ['venta_extra', 'Venta extra ✓'], ['rechazo', 'Rechazo'], ['seguimiento_futuro', 'Seguimiento futuro'], ['no_responde', 'No responde'],
 ];
 
 // Estado del lead y enlace de la grabación (Fathom) de la llamada, editables

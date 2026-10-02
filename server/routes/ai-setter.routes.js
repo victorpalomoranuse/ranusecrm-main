@@ -14,7 +14,7 @@ router.use(authenticateToken, requirePermission('leads'));
 // "venta_1"/"venta_2" = compró el servicio 1 / el servicio 2 — independientes
 // entre sí, se puede comprar solo uno o los dos. "rechazo" y
 // "seguimiento_futuro" son dos desenlaces más de la llamada.
-const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'agendado', 'recolectando_info', 'prioridad', 'venta_1', 'venta_2', 'rechazo', 'seguimiento_futuro', 'no_responde'];
+const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'agendado', 'recolectando_info', 'prioridad', 'venta_1', 'venta_2', 'venta_extra', 'rechazo', 'seguimiento_futuro', 'no_responde'];
 
 // Origen del contacto — las 4 opciones que debe distinguir el setter, más
 // dos categorías que solo se usan automáticamente (WhatsApp orgánico sin
@@ -141,6 +141,7 @@ async function actualizarLead(input) {
     // así los % de cierre no dependen de que nadie la rellene a mano.
     if (input.estado === 'venta_1') updates.fecha_venta_1 = new Date().toISOString();
     if (input.estado === 'venta_2') updates.fecha_venta_2 = new Date().toISOString();
+    if (input.estado === 'venta_extra') updates.fecha_venta_extra = new Date().toISOString();
   }
   if (input.objetivo !== undefined) updates.objetivo = input.objetivo?.trim() || null;
   if (input.medidas !== undefined) updates.medidas = input.medidas?.trim() || null;
@@ -374,7 +375,7 @@ IMPORTANTE: aunque veas señales claras de anuncio o de referido en la captura, 
 - Si el lead YA EXISTÍA (no es de creación nueva) y necesitas actualizar o corregir su canal más adelante, ahí sí puedes usar actualizar_lead directamente con el canal que te diga Franco de palabra, sin repetir el bloque de opciones — esa regla de preguntar siempre con botones es específicamente para el momento de CREAR el lead.
 
 MARCAR ESTADOS FINALES (venta_1 / venta_2 / rechazo / seguimiento_futuro / no_responde / no_califica) — MUY IMPORTANTE, es fácil que esto se pierda si no lo haces tú activamente:
-- Ranuse vende dos servicios independientes — venta_1 y venta_2 (que un prospecto puede comprar solo el 1, solo el 2, o los dos, en cualquier orden). Si el setter te dice explícitamente (aunque no te haya pasado captura) que un lead ha comprado, ha cerrado, o Víctor ha cerrado la venta con él en llamada, pregunta si no queda claro cuál de los dos servicios compró, y llama a actualizar_lead con estado="venta_1" o estado="venta_2" según corresponda — inmediatamente, no hace falta que te pidan un mensaje para ese caso. Si compró los dos a la vez, llama a actualizar_lead dos veces (una para cada estado) para que quede registrada cada fecha de venta por separado.
+- Ranuse vende dos servicios independientes — venta_1 y venta_2 (que un prospecto puede comprar solo el 1, solo el 2, o los dos, en cualquier orden). Si el setter te dice explícitamente (aunque no te haya pasado captura) que un lead ha comprado, ha cerrado, o Víctor ha cerrado la venta con él en llamada, pregunta si no queda claro cuál de los dos servicios compró, y llama a actualizar_lead con estado="venta_1" o estado="venta_2" según corresponda — inmediatamente, no hace falta que te pidan un mensaje para ese caso. Si compró los dos a la vez, llama a actualizar_lead dos veces (una para cada estado) para que quede registrada cada fecha de venta por separado. Además existe estado="venta_extra" para ventas fuera de esa escalera de valor (una máquina, un servicio adicional…): úsalo solo si te dicen que compró algo extra.
 - Si tras la llamada el prospecto dijo que no le interesa o rechazó la propuesta, usa estado="rechazo". Si dijo que ahora no pero podría interesarle más adelante (no es un "no" definitivo), usa estado="seguimiento_futuro" — son desenlaces distintos y Víctor los quiere medir por separado.
 - Igual si te dicen que un lead ha dejado de responder definitivamente (no_responde) o que antes de llegar a hablar no encaja/no califica como cliente (no_califica) — actualiza el estado aunque no te estén pidiendo redactar nada, es tan importante como dar el mensaje.
 - Estas actualizaciones de cierre son las que más se pierden porque muchas veces la venta se cierra en llamada con Víctor, no por DM — así que confía en lo que el setter te cuente de palabra sobre el resultado, no solo en lo que veas en una captura.

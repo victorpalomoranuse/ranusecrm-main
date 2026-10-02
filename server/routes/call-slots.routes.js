@@ -347,6 +347,7 @@ router.put('/:id', async (req, res) => {
       const cambios = { estado: estado_lead };
       if (estado_lead === 'venta_1') cambios.fecha_venta_1 = new Date().toISOString();
       if (estado_lead === 'venta_2') cambios.fecha_venta_2 = new Date().toISOString();
+      if (estado_lead === 'venta_extra') cambios.fecha_venta_extra = new Date().toISOString();
       const { error: errLead } = await supabase.from('setting_leads').update(cambios).eq('id', sl.setting_lead_id);
       if (errLead) throw errLead;
     }

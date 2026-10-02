@@ -65,17 +65,18 @@ const ESTADOS = {
   prioridad:          { label: 'Prioridad',                color: '#eab308' },
   venta_1:            { label: 'Venta 1 ✓',                color: '#22c55e' },
   venta_2:            { label: 'Venta 2 ✓',                color: '#16a34a' },
+  venta_extra:        { label: 'Venta extra ✓',            color: '#0d9488' },
   rechazo:            { label: 'Rechazo',                  color: '#dc2626' },
   seguimiento_futuro: { label: 'Seguimiento futuro',       color: '#0ea5e9' },
   no_responde:        { label: 'No responde',              color: '#ef4444' },
 };
-const ORDEN = ['nuevo','interesado','no_califica','contacto_nuevo','pitcheo_agenda','agendado','recolectando_info','prioridad','venta_1','venta_2','rechazo','seguimiento_futuro','no_responde'];
+const ORDEN = ['nuevo','interesado','no_califica','contacto_nuevo','pitcheo_agenda','agendado','recolectando_info','prioridad','venta_1','venta_2','venta_extra','rechazo','seguimiento_futuro','no_responde'];
 // Origen del contacto — las mismas 4 categorías que usa el Asistente Setter,
 // más un par de casos que solo se dan automáticamente (WhatsApp orgánico sin
 // anuncio, y Otro para lo suelto).
 const CANALES = ['Instagram (nos escriben)', 'Instagram (prospección)', 'Ads', 'Referido', 'WhatsApp', 'Otro'];
 
-const blank = { nombre:'', telefono:'', instagram:'', email:'', canal:'', estado:'nuevo', objetivo:'', medidas:'', maquinarias:'', notas:'', assigned_to:'', fecha_llamada:'', created_at:'', fecha_venta_1:'', fecha_venta_2:'' };
+const blank = { nombre:'', telefono:'', instagram:'', email:'', canal:'', estado:'nuevo', objetivo:'', medidas:'', maquinarias:'', notas:'', assigned_to:'', fecha_llamada:'', created_at:'', fecha_venta_1:'', fecha_venta_2:'', fecha_venta_extra:'', extra_descripcion:'', extra_importe:'' };
 
 // Explicación de cada métrica de la cabecera, en el mismo orden en que se
 // muestran — para que cualquiera que abra Setting entienda qué cuenta cada
@@ -208,6 +209,9 @@ function RegistroModal({ registro, registros, empleados, onClose, onSaved, toast
     created_at: isoToDatetimeLocal(registro.created_at),
     fecha_venta_1: isoToDatetimeLocal(registro.fecha_venta_1),
     fecha_venta_2: isoToDatetimeLocal(registro.fecha_venta_2),
+    fecha_venta_extra: isoToDatetimeLocal(registro.fecha_venta_extra),
+    extra_descripcion: registro.extra_descripcion || '',
+    extra_importe: registro.extra_importe ?? '',
   } : blank);
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -224,6 +228,8 @@ function RegistroModal({ registro, registros, empleados, onClose, onSaved, toast
         fecha_llamada: form.fecha_llamada ? new Date(form.fecha_llamada).toISOString() : null,
         fecha_venta_1: form.fecha_venta_1 ? new Date(form.fecha_venta_1).toISOString() : null,
         fecha_venta_2: form.fecha_venta_2 ? new Date(form.fecha_venta_2).toISOString() : null,
+        fecha_venta_extra: form.fecha_venta_extra ? new Date(form.fecha_venta_extra).toISOString() : null,
+        extra_importe: form.extra_importe === '' ? null : Number(form.extra_importe),
         created_at: form.created_at ? new Date(form.created_at).toISOString() : undefined,
       };
       if (isEdit) {
@@ -329,6 +335,18 @@ function RegistroModal({ registro, registros, empleados, onClose, onSaved, toast
               <div className="ap-field" style={{ flex:1, minWidth:160 }}>
                 <label>Fecha Venta 2</label>
                 <input type="datetime-local" className="ap-field-input" value={form.fecha_venta_2} onChange={e=>set('fecha_venta_2',e.target.value)}/>
+              </div>
+              <div className="ap-field" style={{ flex:1, minWidth:160 }}>
+                <label>Fecha venta extra</label>
+                <input type="datetime-local" className="ap-field-input" value={form.fecha_venta_extra} onChange={e=>set('fecha_venta_extra',e.target.value)}/>
+              </div>
+              <div className="ap-field" style={{ flex:2, minWidth:200 }}>
+                <label>Qué se vendió (extra)</label>
+                <input className="ap-field-input" placeholder="Ej. máquina, servicio adicional…" value={form.extra_descripcion} onChange={e=>set('extra_descripcion',e.target.value)}/>
+              </div>
+              <div className="ap-field" style={{ flex:1, minWidth:120 }}>
+                <label>Importe extra (€)</label>
+                <input type="number" step="0.01" className="ap-field-input" value={form.extra_importe} onChange={e=>set('extra_importe',e.target.value)}/>
               </div>
             </div>
           </div>
@@ -538,6 +556,8 @@ export function SectionSetting() {
             ['Ventas (1 o 2)', metricas.ventas],
             ['Solo Venta 1', metricas.soloVenta1],
             ['Solo Venta 2', metricas.soloVenta2],
+            ['Ventas extra', metricas.ventasExtra ?? 0],
+            ['Importe extra', (metricas.importeExtra || 0).toLocaleString('es-ES') + ' €'],
             ['Compraron ambos', metricas.compraronAmbos],
             ['% Venta 1', metricas.tasaVenta1 + '%'],
             ['% Venta 2', metricas.tasaVenta2 + '%'],
@@ -566,8 +586,8 @@ export function SectionSetting() {
             <p style={{ margin:0, fontSize:'0.8rem', color:'rgba(255,255,255,0.4)' }}>Todavía no hay ventas este mes.</p>
           ) : ventasMes.map(v => (
             <div key={v.id} style={{ display:'flex', justifyContent:'space-between', gap:12, flexWrap:'wrap', fontSize:'0.82rem', padding:'4px 0', borderTop:'1px solid rgba(255,255,255,0.05)' }}>
-              <span><strong>{v.nombre}</strong> <span style={{ color:'rgba(255,255,255,0.4)' }}>· {[v.venta1 && 'Venta 1', v.venta2 && 'Venta 2'].filter(Boolean).join(' + ')}{v.canal ? ` · ${v.canal}` : ''}</span></span>
-              <span style={{ color:'rgba(255,255,255,0.5)' }}>vendido el {new Date(v.venta2 || v.venta1).toLocaleDateString('es-ES', { day:'2-digit', month:'short' })} · entró el {new Date(v.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'short', year:'numeric' })}</span>
+              <span><strong>{v.nombre}</strong> <span style={{ color:'rgba(255,255,255,0.4)' }}>· {[v.venta1 && 'Venta 1', v.venta2 && 'Venta 2', v.ventaExtra && ('Extra' + (v.extraDescripcion ? ': ' + v.extraDescripcion : '') + (v.extraImporte ? ' (' + v.extraImporte + ' €)' : ''))].filter(Boolean).join(' + ')}{v.canal ? ` · ${v.canal}` : ''}</span></span>
+              <span style={{ color:'rgba(255,255,255,0.5)' }}>vendido el {new Date(v.venta2 || v.venta1 || v.ventaExtra).toLocaleDateString('es-ES', { day:'2-digit', month:'short' })} · entró el {new Date(v.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'short', year:'numeric' })}</span>
             </div>
           ))}
         </div>
