@@ -27,7 +27,7 @@ export async function asignarLlamadaAHernan(leadId, fechaLlamada) {
   for (const p of previos || []) {
     hadPrevio = true; previa = p;
     if (fecha && p.fecha === fecha && p.hora_inicio === hora) return { asignada: true, mensaje: 'Ya estaba en el calendario de Hernán a esa hora.' };
-    if (p.generado_por_regla) await supabase.from('call_slots').update({ ocupado: false, setting_lead_id: null, recordatorio_enviado: false, updated_at: new Date().toISOString() }).eq('id', p.id);
+    if (p.generado_por_regla) await supabase.from('call_slots').update({ ocupado: false, setting_lead_id: null, recordatorio_enviado: false, recordatorio_30_enviado: false, recordatorio_5_enviado: false, updated_at: new Date().toISOString() }).eq('id', p.id);
     else await supabase.from('call_slots').delete().eq('id', p.id);
   }
   if (!fecha) {

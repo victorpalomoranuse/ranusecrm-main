@@ -147,6 +147,7 @@ router.put('/rules/:id', async (req, res) => {
     const updates = {};
     if (activo !== undefined) updates.activo = activo;
     if (hora_inicio !== undefined) updates.hora_inicio = hora_inicio;
+    if (fecha !== undefined || hora_inicio !== undefined) Object.assign(updates, { recordatorio_enviado: false, recordatorio_30_enviado: false, recordatorio_5_enviado: false });
     if (hora_fin !== undefined) updates.hora_fin = hora_fin;
     if (duracion_llamada_min !== undefined) updates.duracion_llamada_min = parseInt(duracion_llamada_min, 10) || 30;
 
@@ -393,31 +394,45 @@ export async function generarSlotsDesdeReglas() {
 export async function enviarRecordatoriosLlamadas() {
   try {
     const ahora = new Date();
-    const en24h = new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
     const { data: slots, error } = await supabase
       .from('call_slots')
-      .select('id, fecha, hora_inicio, hora_fin, empleado:employees(name, email), lead:setting_leads(nombre, telefono, instagram, objetivo)')
+      .select('id, fecha, hora_inicio, hora_fin, recordatorio_enviado, recordatorio_30_enviado, recordatorio_5_enviado, empleado:employees(name, email), lead:setting_leads(nombre, telefono, instagram, objetivo)')
       .eq('ocupado', true)
-      .eq('recordatorio_enviado', false)
       .gte('fecha', ahora.toISOString().slice(0, 10));
     if (error) throw error;
     if (!slots?.length) return;
 
     for (const s of slots) {
       const inicio = madridToUtcDate(s.fecha, s.hora_inicio);
-      if (inicio < ahora || inicio > en24h) continue; // fuera de la ventana de 24h, o ya pasó
-
+      const min = (inicio - ahora) / 60000; // minutos que faltan; negativo = ya empezó
+      if (min < 0 || min > 24 * 60) continue;
       if (!s.empleado?.email) continue;
+
+      // Cuál toca ahora: de más lejano a más cercano. Si el aviso grande ya
+      // no tiene sentido (la llamada está más cerca que su ventana, ej. se
+      // agendó con 20 min de margen), se marca como hecho sin mandarlo, para
+      // no soltar tres emails seguidos.
+      let tipo = null, columna = null;
+      if (min <= 5 && !s.recordatorio_5_enviado) { tipo = '5'; columna = 'recordatorio_5_enviado'; }
+      else if (min <= 30 && min > 5 && !s.recordatorio_30_enviado) { tipo = '30'; columna = 'recordatorio_30_enviado'; }
+      else if (min > 30 && !s.recordatorio_enviado) { tipo = '24h'; columna = 'recordatorio_enviado'; }
+      const marcarSaltados = {};
+      if (min <= 30 && !s.recordatorio_enviado) marcarSaltados.recordatorio_enviado = true;
+      if (min <= 5 && !s.recordatorio_30_enviado) marcarSaltados.recordatorio_30_enviado = true;
+      if (Object.keys(marcarSaltados).length) await supabase.from('call_slots').update(marcarSaltados).eq('id', s.id);
+      if (!tipo) continue;
+
       // timeZone explícito — el servidor formatea en su propia zona (UTC en
       // Railway) si no se lo decimos, y saldría la hora equivocada en el email.
       const fechaFmt = inicio.toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', timeZone: 'Europe/Madrid' });
       const horaFmt = inicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
       const nombreLead = s.lead?.nombre || 'Prospecto sin nombre';
+      const titulo = tipo === '5' ? 'Tu llamada empieza en 5 minutos' : tipo === '30' ? 'Tu llamada es en 30 minutos' : 'Recordatorio: llamada mañana';
+      const asunto = tipo === '5' ? `⏰ En 5 min: llamada con ${nombreLead}` : tipo === '30' ? `En 30 min: llamada con ${nombreLead}` : `Recordatorio: llamada con ${nombreLead} — ${fechaFmt} ${horaFmt}`;
       const html = `
         <div style="font-family: sans-serif; color: #222;">
-          <h2>Recordatorio: llamada mañana</h2>
+          <h2>${titulo}</h2>
           <p>Hola ${s.empleado.name || ''},</p>
-          <p>Tienes una llamada agendada:</p>
           <ul>
             <li><strong>Con:</strong> ${nombreLead}</li>
             <li><strong>Cuándo:</strong> ${fechaFmt} a las ${horaFmt}</li>
@@ -428,10 +443,8 @@ export async function enviarRecordatoriosLlamadas() {
           <p>Puedes ver el historial completo en Setting antes de la llamada.</p>
         </div>
       `;
-      const resultado = await sendEmail({ to: s.empleado.email, subject: `Recordatorio: llamada con ${nombreLead} — ${fechaFmt} ${horaFmt}`, html });
-      if (resultado.sent) {
-        await supabase.from('call_slots').update({ recordatorio_enviado: true }).eq('id', s.id);
-      }
+      const resultado = await sendEmail({ to: s.empleado.email, subject: asunto, html });
+      if (resultado.sent) await supabase.from('call_slots').update({ [columna]: true }).eq('id', s.id);
     }
   } catch (error) {
     console.error('Error al enviar recordatorios de llamadas:', error);
