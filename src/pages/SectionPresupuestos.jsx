@@ -881,6 +881,32 @@ function BudgetEditor({ id, onBack, onOpen }) {
     finally { setGeneratingPdf(false); }
   };
 
+  // CSV para pedir precio a un proveedor: solo qué se necesita (producto,
+  // marca, medidas, cantidad) y columnas vacías para que él ponga su precio.
+  // Nunca lleva nuestro coste, PVP ni margen. Separador ";" + BOM UTF-8 para
+  // que Excel en español lo abra directamente con tildes y columnas bien.
+  const handleCsvProveedor = () => {
+    const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const cabecera = ['Nº', 'Capítulo', 'Producto', 'Marca', 'Medidas (L x A x H)', 'Color bastidor', 'Color acolchado', 'Tipo acolchado', 'Cantidad', 'Unidad', 'Precio unitario proveedor (€)', 'Total proveedor (€)', 'Observaciones proveedor'];
+    const filas = [];
+    let capitulo = '';
+    let n = 0;
+    items.forEach(i => {
+      if (i.is_chapter_header) { capitulo = i.name || ''; return; }
+      n += 1;
+      const medidas = [i.longitud, i.ancho, i.altura].filter(Boolean).join(' x ');
+      filas.push([n, capitulo, i.name, i.brand, medidas, i.color_bastidor, i.color_acolchado, i.tipo_acolchado, i.quantity, i.unit || 'ud', '', '', '']);
+    });
+    if (!filas.length) { flash('No hay partidas que exportar', 'error'); return; }
+    const csv = '﻿' + [cabecera, ...filas].map(f => f.map(esc).join(';')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `solicitud-precios-${budget?.budget_number || 'presupuesto'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => {
     Promise.all([api.get(`/budgets/${id}`), api.get('/client-projects'), api.get('/budgets/payment-options')])
       .then(([b, p, po]) => {
@@ -1157,6 +1183,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
                   <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleSaveInstallNote} disabled={savingInstallNote} style={{fontSize:'0.7rem'}}>{savingInstallNote?'…':'Guardar'}</button>
                 </div>
               )}
+              <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleCsvProveedor} title="Lista de partidas sin precios nuestros, con columnas vacías para que el proveedor ponga el suyo" style={{fontSize:'0.7rem'}}>CSV proveedor</button>
               <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handlePdf} disabled={generatingPdf}>{generatingPdf ? 'Generando…' : 'PDF cliente'}</button>
               {budget.pdf_url && (
                 <a
