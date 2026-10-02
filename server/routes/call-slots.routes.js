@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { sendEmail } from '../services/email.service.js';
 import { madridToUtcDate } from '../utils/timezone.js';
+import { avisarLlamada } from '../utils/aviso-llamada.js';
 import { ESTADOS_VALIDOS } from './setting.routes.js';
 
 const router = express.Router();
@@ -224,6 +225,11 @@ router.post('/:id/reservar', async (req, res) => {
       .maybeSingle();
     if (errLead) console.error('Aviso: hueco reservado pero no se pudo actualizar el lead:', errLead);
 
+    // Email inmediato al dueño del hueco, salvo que se lo haya reservado él mismo.
+    if (updatedSlot.empleado?.email && updatedSlot.empleado.email !== req.user.email) {
+      const { data: l } = await supabase.from('setting_leads').select('nombre, telefono, instagram, objetivo').eq('id', updatedSlot.setting_lead_id).maybeSingle();
+      avisarLlamada({ empleado: updatedSlot.empleado, lead: l, fecha: updatedSlot.fecha, hora: updatedSlot.hora_inicio, tipo: 'nueva' });
+    }
     res.json({ slot: updatedSlot, lead });
   } catch (error) {
     console.error('Error al reservar hueco de llamada:', error);
