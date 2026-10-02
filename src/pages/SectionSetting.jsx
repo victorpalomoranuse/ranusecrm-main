@@ -82,6 +82,9 @@ const blank = { nombre:'', telefono:'', instagram:'', email:'', canal:'', estado
 // muestran — para que cualquiera que abra Setting entienda qué cuenta cada
 // número sin tener que preguntar.
 const DEFINICIONES_METRICAS = [
+  ['Filtro por mes', 'Con un mes elegido, Total, Activos, No responde, No califica, Llamadas y la tasa de calificación cuentan los leads que ENTRARON ese mes. Las ventas (Venta 1, Venta 2, Venta extra y sus %) cuentan por la FECHA DE VENTA: si un lead entró en septiembre y compró en octubre, cuenta como venta de octubre (y sale en el panel verde "Ventas de…", con la fecha en que entró). Sin filtro se muestra el total de siempre.'],
+  ['Canales (Instagram, Ads…)', 'Cada canal muestra leads · ventas (% de cierre). Con un mes elegido, las ventas del mes se asignan al canal por el que entró el lead, aunque entrara otro mes, y ese lead también se suma a los leads del canal para que el % sea coherente (ej. Ramiro entró por Ads en septiembre y compró en octubre → en octubre Ads: 1 lead · 1 venta, 100%).'],
+  ['Ventas extra / Importe extra', 'Ventas fuera de la escalera de valor (una máquina, un servicio adicional…). Cuentan aparte por su fecha de venta y NO forman parte de Ventas (1 o 2), ni de la tasa de cierre, ni del % cruzado. El importe es la suma de lo indicado en cada venta extra.'],
   ['Total', 'Todos los leads que hay en Setting, sin filtrar.'],
   ['Activos', 'Los que todavía siguen "en juego": el total menos los que ya están cerrados (Venta 1, Venta 2, No responde, No califica o Rechazo). "Seguimiento futuro" SÍ cuenta como activo, porque sigue abierto para retomarlo más adelante.'],
   ['Ventas (1 o 2)', 'Cuántos leads han comprado al menos uno de los dos servicios (Venta 1 y/o Venta 2) — no depende de en qué columna del tablero estén ahora mismo, sino de si tienen fecha de compra guardada.'],
