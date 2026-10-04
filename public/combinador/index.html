@@ -103,7 +103,7 @@ cuarzo:["Gris Cuarzo","S 0502-R50B","#E8E7E1","Dominante","pintura, piedra natur
 cemento:["Gris Cemento","S 7500-N","#505051","Dominante","microcemento, hormigón",""],
 grafito:["Gris Grafito","S 8500-N","#2D2C2C","Dominante","metal lacado, panel melamina",""],
 acero:["Gris Acero","S 6502-B","#606568","Dominante","metal cepillado, panel lacado","Evitar con Y50R puros"],
-pedernal:["Gris Pedernal","S 4000-N","#9A9B9C","Dominante","microcemento, piedra gris","Evitar con cálidos"],
+pedernal:["Gris Pedernal","S 4000-N","#9A9B9C","Dominante","microcemento, piedra gris",""],
 pizarra:["Gris Pizarra","S 5502-Y","#7E7C76","Dominante","madera oscura, panel tintado",""],
 carbono:["Negro Carbono","S 9000-N","#0D0E0E","Cualquiera","metal lacado, madera tintada",""],
 lino:["Beige Lino","S 1002-Y50R","#ECE7E1","Dominante","pintura, madera clara",""],
@@ -140,13 +140,13 @@ lacado_marino:["Panel lacado azul marino","Panel","marino",null,null,"lacquer",[
 fieltro_cemento:["Panel acústico de fieltro","Panel","cemento",null,null,"fabric",["pared","techo","panel"],false,"B","Controla la reverberación en garajes y sótanos."],
 micro_humo:["Microcemento blanco","Continuo","humo",null,null,"micro",["pared","techo"],false,"B","Continuo y sin juntas. En suelo, protegido y fuera del peso libre."],
 micro_cemento:["Microcemento gris","Continuo","cemento",null,null,"micro",["pared","techo"],false,"B","Paredes y suelos continuos con carácter."],
-micro_pedernal:["Microcemento gris frío","Continuo","pedernal",null,null,"micro",["pared"],false,"B","Para espacios fríos y técnicos. Evitar con cálidos."],
+micro_pedernal:["Microcemento gris frío","Continuo","pedernal",null,null,"micro",["pared"],false,"B","Para espacios técnicos."],
 hormigon_visto:["Hormigón visto","Continuo","cemento",null,null,"concrete",["pared","techo"],false,"B","Paredes y techos con textura de encofrado."],
 hormigon_pigm:["Hormigón pigmentado","Continuo","titanio",null,null,"concrete",["pared"],false,"C","Azul Titanio en masa. Evitar con Y50R."],
 piedra_cuarzo:["Piedra natural gris clara","Piedra","cuarzo",null,null,"stone",["pared","panel"],false,"C","Paños y zócalos. Evitar con amarillos."],
 piedra_beige:["Piedra caliza beige","Piedra","duna",null,null,"stone",["pared","panel"],false,"C","Paños de fondo y bancos de obra."],
 travertino:["Travertino","Piedra","arena",null,null,"stone",["pared","panel"],false,"C","Recuperación, sauna, vestuario. No en zona de peso libre."],
-piedra_gris:["Piedra gris","Piedra","pedernal",null,null,"stone",["pared","panel"],false,"C","Evitar con cálidos."],
+piedra_gris:["Piedra gris","Piedra","pedernal",null,null,"stone",["pared","panel"],false,"C",""],
 marmol_negro:["Mármol negro","Piedra","carbono",null,null,"stone",["panel","pared"],false,"C","Un paño o un detalle en espacios negros y sobrios."],
 terracota:["Terracota","Piedra","barro",null,null,"tile",["panel","pared"],false,"B","Superficie acotada: un paño o un detalle."],
 acero_negro:["Acero lacado negro","Metal","carbono",null,null,"metal",["herraje","panel"],true,"A","Perfilería, estantes y estructura."],
@@ -276,7 +276,6 @@ function check(k,S,a){
   if(c.key==="cuarzo"){const y=cs.filter(yellowC);if(y.length)w.push(`Gris Cuarzo se evita con amarillos (${y.map(x=>x.n).join(", ")}).`)}
   if(c.key==="acero"){const y=cs.filter(x=>y50(x)&&parse(x.code).c>=5);if(y.length)w.push(`Gris Acero se evita con Y50R puros (${y.map(x=>x.n).join(", ")}).`)}
   if(c.key==="burdeos"){const y=cs.filter(x=>["barro","oxido"].includes(x.key));if(y.length)w.push(`Rojo Vino no se combina con ${y.map(x=>x.n).join(" ni ")}: dos rojos compiten.`)}
-  if(c.key==="pedernal"){const y=cs.filter(warmC);if(y.length)w.push(`Gris Pedernal se evita con cálidos (${y.map(x=>x.n).join(", ")}).`)}
   if(c.key==="titanio"||c.key==="indigo"){const y=cs.filter(y50);if(y.length)w.push(`${c.n} se evita con Y50R (${y.map(x=>x.n).join(", ")}).`)}});
  if(a.floor){const fl=col(a.floor);if(fl&&fl.fleck){if(idc.length>=3)w.push(`${fl.n} tiene motas ${fl.fleck}: cuentan como un color más y ya tienes ${idc.length}. Elige un suelo neutro.`);
   else info.push(`${fl.n}: las motas ${fl.fleck} cuentan como un color con identidad.`)}}
@@ -336,7 +335,7 @@ function styleFit(ids){
 function matchesStyle(k,ids){if(STYLE==="all")return true;if(k&&k.style)return k.style.includes(STYLE);return styleFit(ids).best===STYLE}
 function conflicts(ids){const cs=ids.map(col);let bad=false;
  cs.forEach(c=>{if(c.key==="cuarzo"&&cs.some(yellowC))bad=true;if(c.key==="acero"&&cs.some(x=>y50(x)&&parse(x.code).c>=5))bad=true;
-  if(c.key==="pedernal"&&cs.some(warmC))bad=true;if(c.key==="burdeos"&&cs.some(x=>["barro","oxido"].includes(x.key)))bad=true;if((c.key==="titanio"||c.key==="indigo")&&cs.some(y50))bad=true});return bad}
+  if(c.key==="burdeos"&&cs.some(x=>["barro","oxido"].includes(x.key)))bad=true;if((c.key==="titanio"||c.key==="indigo")&&cs.some(y50))bad=true});return bad}
 function generate(S,G){
  const ids=Object.keys(P),out=[],L=id=>Lstar(P[id][2]),mach=col(S.mach),mL=Lstar(mach.hex);
  const taken=new Set(COMBOS.map(k=>k.bar.map(b=>b[0]).join("-")).concat(VALID.map(k=>k.bar.map(b=>b[0]).join("-"))));
