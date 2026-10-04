@@ -64,7 +64,7 @@ function velo(doc, x, y, w, h, opacidad, color = '#14110f') {
   doc.save().fillOpacity(opacidad).fillColor(color).rect(x, y, w, h).fill().restore();
 }
 
-export async function generarHistoriaPdf(res, { project, historia, moodboard, responsable }) {
+export async function generarHistoriaPdf(res, { project, historia, moodboard, responsable, equipo = [] }) {
   const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 0, autoFirstPage: false, info: { Title: `${project.project_name} — Proyecto creativo`, Author: 'Ranuse Design' } });
   doc.pipe(res);
 
@@ -85,9 +85,10 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
   (moodboard?.images || []).slice(0, 4).forEach(i => urls.add(i.url));
   capitulos.forEach(c => {
     if (c.render_url) urls.add(c.render_url);
-    c.bloques.forEach(b => b.imagen_url && urls.add(b.imagen_url));
+    c.bloques.forEach(b => { if (b.imagen_url) urls.add(b.imagen_url); if (b.tipo === 'galeria') (b.elementos || []).forEach(u => urls.add(u)); });
     c.servicios.forEach(s => s.imagen_url && urls.add(s.imagen_url));
   });
+  equipo.slice(0, 8).forEach(e => e.image_url && urls.add(e.image_url));
   const lista = [...urls];
   const buffers = await Promise.all(lista.map(descargarImagen));
   const img = (url) => (url ? buffers[lista.indexOf(url)] || null : null);
@@ -166,7 +167,43 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
     });
 
     for (const g of grupos) {
-      if (g.tipo === 'render') {
+      if (g.tipo === 'plano') {
+        const b = g.items[0]; if (!b.imagen_url) continue;
+        paginaContenido();
+        doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text((b.titulo || 'EL RECORRIDO').toUpperCase(), M, y, { characterSpacing: 2.5, lineBreak: false });
+        const bufP = img(b.imagen_url);
+        try { if (bufP) doc.image(bufP, M, y + 18, { fit: [W - 2 * M, 360], align: 'center', valign: 'center' }); } catch { /* imagen no válida */ }
+        let xl = M; const yl = y + 392;
+        capitulos.forEach((cc, ii) => {
+          doc.save().circle(xl + 9, yl + 8, 9).fill(INK).restore();
+          doc.font('Helvetica-Bold').fontSize(8).fillColor('#ffffff').text(String(ii + 1), xl, yl + 5, { width: 18, align: 'center', lineBreak: false });
+          doc.font('Helvetica').fontSize(9.5).fillColor(INK).text(cc.titulo, xl + 24, yl + 3, { lineBreak: false });
+          xl += 40 + doc.widthOfString(cc.titulo) + 14;
+        });
+        y = H;
+      } else if (g.tipo === 'galeria') {
+        const b = g.items[0]; const fotos = (b.elementos || []).slice(0, 6); if (!fotos.length) continue;
+        paginaContenido();
+        doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text((b.titulo || 'EL ESPACIO').toUpperCase(), M, y, { characterSpacing: 2.5, lineBreak: false });
+        y += 18;
+        cubrir(doc, img(fotos[0]), M, y, W - 2 * M, 250);
+        const resto = fotos.slice(1); const gap = 10; const wf = resto.length ? (W - 2 * M - gap * (resto.length - 1)) / resto.length : 0;
+        resto.forEach((u, k) => cubrir(doc, img(u), M + k * (wf + gap), y + 262, wf, 140));
+        y = H;
+      } else if (g.tipo === 'equipo') {
+        const b = g.items[0]; const lista = equipo.filter(e => e.image_url).slice(0, 8); if (!lista.length) continue;
+        paginaContenido();
+        doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text((b.titulo || 'LO QUE TENDRÁS A MANO').toUpperCase(), M, y, { characterSpacing: 2.5, lineBreak: false });
+        y += 24; const cols = 4; const gap = 14; const wc = (W - 2 * M - gap * (cols - 1)) / cols;
+        lista.forEach((e, k) => {
+          const x = M + (k % cols) * (wc + gap); const yy = y + Math.floor(k / cols) * 205;
+          doc.save().rect(x, yy, wc, 190).fill(SOFT).restore();
+          const bufE = img(e.image_url); try { if (bufE) doc.image(bufE, x + 8, yy + 8, { fit: [wc - 16, 120], align: 'center', valign: 'center' }); } catch { /* imagen no válida */ }
+          doc.font('Helvetica-Bold').fontSize(9).fillColor(INK).text(e.name || '', x + 10, yy + 136, { width: wc - 20, height: 24, ellipsis: true });
+          if (e.brand) doc.font('Helvetica').fontSize(7.5).fillColor(BEIGE_D).text(String(e.brand).toUpperCase(), x + 10, yy + 168, { width: wc - 20, lineBreak: false });
+        });
+        y = H;
+      } else if (g.tipo === 'render') {
         for (const b of g.items) {
           necesito(236);
           cubrir(doc, img(b.imagen_url), M, y, W - 2 * M, 200);

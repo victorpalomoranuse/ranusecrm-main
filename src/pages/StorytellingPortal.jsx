@@ -20,7 +20,9 @@ function agrupar(bloques) {
   return grupos;
 }
 
-function Bloques({ bloques }) {
+function irA(id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); }
+
+function Bloques({ bloques, capitulos, equipo }) {
 
   return agrupar(bloques).map((g, gi) => {
     if (g.tipo === 'render') {
@@ -30,6 +32,55 @@ function Bloques({ bloques }) {
           {(b.titulo || b.texto) && <p className="sp-cap">{[b.titulo, b.texto].filter(Boolean).join(' — ')}</p>}
         </div>
       ));
+    }
+    if (g.tipo === 'plano') {
+      const b = g.items[0];
+      if (!b.imagen_url) return null;
+      return (
+        <div key={b.id} className="sp-blk">
+          <p className="sp-lbl sp-rv">{b.titulo || 'El recorrido'}</p>
+          <div className="sp-plano sp-rv"><img src={b.imagen_url} alt={b.titulo || 'Plano de distribución'} loading="lazy" style={{ objectFit: 'contain' }} /></div>
+          {b.texto && <p className="sp-plano-t sp-rv">{b.texto}</p>}
+          <ol className="sp-leyenda sp-rv">
+            {capitulos.map((c, i) => (
+              <li key={c.id}><button type="button" onClick={() => irA(`sp-c-${c.id}`)}><b>{i + 1}</b> {c.titulo}</button></li>
+            ))}
+          </ol>
+        </div>
+      );
+    }
+    if (g.tipo === 'galeria') {
+      const b = g.items[0]; const fotos = b.elementos || [];
+      if (!fotos.length) return null;
+      return (
+        <div key={b.id} className="sp-blk sp-blk--wide">
+          {(b.titulo || b.texto) && <p className="sp-lbl sp-rv">{b.titulo}</p>}
+          <div className={`sp-gal sp-gal--${Math.min(fotos.length, 4)} sp-rv`}>
+            {fotos.map((u, i) => <div key={i} className={i === 0 ? 'sp-gal-main' : ''}><img src={u} alt={b.titulo || ''} loading="lazy" /></div>)}
+          </div>
+          {b.texto && <p className="sp-cap" style={{ padding: '14px 0' }}>{b.texto}</p>}
+        </div>
+      );
+    }
+    if (g.tipo === 'equipo') {
+      const b = g.items[0];
+      const items = (equipo || []).filter(e => e.image_url).slice(0, 8);
+      if (!items.length) return null;
+      return (
+        <div key={b.id} className="sp-blk">
+          <p className="sp-lbl sp-rv">{b.titulo || 'Lo que tendrás a mano'}</p>
+          {b.texto && <p className="sp-lead sp-rv" style={{ margin: '0 0 22px' }}>{b.texto}</p>}
+          <div className="sp-eq sp-rv">
+            {items.map(e => (
+              <div key={e.id || e.name} className="sp-eq-i">
+                <div className="sp-eq-img"><img src={e.image_url} alt={e.name} loading="lazy" style={{ objectFit: 'contain' }} /></div>
+                <h5>{e.name}</h5>
+                {e.brand && <p>{e.brand}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
     }
     if (g.tipo === 'zona') {
       return (
@@ -191,7 +242,7 @@ export function StorytellingPortal({ project, dossier, code }) {
             </div>
           </div>
           {c.render_url && <div className="sp-full sp-rv"><img src={c.render_url} alt={c.titulo} loading={i === 0 ? 'eager' : 'lazy'} /></div>}
-          <Bloques bloques={c.bloques} />
+          <Bloques bloques={c.bloques} capitulos={capitulos} equipo={project.equipment} />
           {c.servicios.length > 0 && (
             <div className="sp-blk">
               <p className="sp-lbl sp-rv">Servicios en este momento</p>

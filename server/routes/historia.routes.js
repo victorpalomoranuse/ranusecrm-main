@@ -14,7 +14,7 @@ const router = express.Router();
 router.use(authenticateToken, requirePermission('proyectos'));
 
 const ETIQUETAS = ['incluido', 'extra', 'wow'];
-const TIPOS_BLOQUE = ['imagen_texto', 'render', 'zona', 'detalle'];
+const TIPOS_BLOQUE = ['imagen_texto', 'render', 'zona', 'detalle', 'plano', 'galeria', 'equipo'];
 const ESTADOS_ENTREGABLE = ['pendiente', 'en_curso', 'entregado'];
 
 const txt = (v) => (typeof v === 'string' ? (v.trim() || null) : v === null ? null : undefined);
@@ -320,7 +320,7 @@ router.post('/capitulos/:id/ia-reescribir', async (req, res) => {
       `CAPÍTULO: ${cap.titulo}`,
       `DETALLE SENSORIAL SUGERIDO: ${cap.sensorial || '—'}`,
       `SERVICIOS DEL CAPÍTULO: ${serviciosCap.map(s => `${s.nombre} (${s.etiqueta})${s.descripcion ? ': ' + s.descripcion : ''}`).join('; ') || 'ninguno'}`,
-      `BLOQUES YA ESCRITOS: ${(bloques || []).filter(b => b.titulo || b.texto).map(b => `${b.titulo || ''} ${b.texto || ''}${b.elementos?.length ? ' [' + b.elementos.join(', ') + ']' : ''}`.trim()).join(' | ') || 'ninguno'}`,
+      `BLOQUES YA ESCRITOS: ${(bloques || []).filter(b => b.titulo || b.texto).map(b => `${b.titulo || ''} ${b.texto || ''}${b.tipo === 'zona' && b.elementos?.length ? ' [' + b.elementos.join(', ') + ']' : ''}`.trim()).join(' | ') || 'ninguno'}`,
       `TEXTO ACTUAL:\n${cap.texto || '(vacío)'}`,
     ].join('\n');
     const propuesta = await textoDeClaude(system, userMsg, 400);

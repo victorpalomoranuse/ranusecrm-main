@@ -31,7 +31,11 @@ router.get('/:code/renders.zip', async (req, res) => {
       const prefijo = `${String(ci + 1).padStart(2, '0')}-${limpio(c.titulo)}`;
       let n = 0;
       if (c.render_url) imagenes.push({ url: c.render_url, nombre: `${prefijo}-${++n}` });
-      c.bloques.filter(b => b.imagen_url).forEach(b => imagenes.push({ url: b.imagen_url, nombre: `${prefijo}-${++n}` }));
+      c.bloques.forEach(b => {
+        if (b.tipo === 'plano') return; // el plano no es un render
+        if (b.imagen_url) imagenes.push({ url: b.imagen_url, nombre: `${prefijo}-${++n}` });
+        if (b.tipo === 'galeria') (b.elementos || []).forEach(u => imagenes.push({ url: u, nombre: `${prefijo}-${++n}` }));
+      });
     });
     if (!imagenes.length) return res.status(404).json({ error: 'Todavía no hay renders para descargar' });
 
@@ -67,12 +71,13 @@ router.get('/:code/historia.pdf', async (req, res) => {
     if (!project) return res.status(404).json({ error: 'Código no válido' });
     const historia = await getHistoriaPublica(project.id);
     if (!historia) return res.status(404).json({ error: 'Este proyecto no tiene historia' });
+    const { data: equipo } = await supabase.from('project_equipment_selections').select('name, brand, image_url').eq('project_id', project.id).not('image_url', 'is', null).order('display_order', { ascending: true, nullsFirst: false }).limit(8);
     const { data: imagenes } = await supabase.from('project_moodboard_images').select('url').eq('project_id', project.id).order('display_order', { ascending: true });
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="proyecto-creativo-${limpio(project.project_name)}.pdf"`);
     await generarHistoriaPdf(res, {
-      project, historia,
+      project, historia, equipo: equipo || [],
       moodboard: { description: project.moodboard_description || '', palette: project.moodboard_palette || [], images: imagenes || [] },
       responsable: project.responsible,
     });

@@ -114,3 +114,27 @@
  .sp-s2{grid-template-columns:1fr}.sp-full{height:62vh}
  .sp-hero-t{padding-bottom:14vh}
 }
+
+/* Plano, galería y equipo */
+.sp-blk--wide{max-width:1400px}
+.sp-plano{background:#fff;border:1px solid var(--line);border-radius:6px;padding:18px}
+.sp-plano img{height:auto;max-height:70vh}
+.sp-plano-t{margin-top:14px;color:#6a6158;font-weight:300;max-width:640px;white-space:pre-line}
+.sp-leyenda{list-style:none;display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.sp-leyenda button{font-family:inherit;cursor:pointer;background:transparent;border:1px solid var(--line);border-radius:99px;padding:8px 16px;font-size:.78rem;color:var(--ink);display:inline-flex;gap:8px;align-items:center}
+.sp-leyenda button b{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;font-size:.7rem;align-items:center;justify-content:center;font-weight:600}
+.sp-leyenda button:hover{border-color:var(--beige-d)}
+.sp-gal{display:grid;gap:10px}
+.sp-gal>div{overflow:hidden;border-radius:4px;background:var(--soft);aspect-ratio:16/10}
+.sp-gal--1{grid-template-columns:1fr}
+.sp-gal--2{grid-template-columns:1fr 1fr}
+.sp-gal--3,.sp-gal--4{grid-template-columns:repeat(6,1fr)}
+.sp-gal--3 .sp-gal-main,.sp-gal--4 .sp-gal-main{grid-column:span 6;aspect-ratio:21/9}
+.sp-gal--3>div:not(.sp-gal-main){grid-column:span 3}
+.sp-gal--4>div:not(.sp-gal-main){grid-column:span 2}
+.sp-eq{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px}
+.sp-eq-i{background:#fff;border:1px solid var(--line);border-radius:6px;padding:14px}
+.sp-eq-img{aspect-ratio:1/1;background:var(--soft);border-radius:4px;overflow:hidden;margin-bottom:12px;padding:10px}
+.sp-eq-i h5{font-weight:500;font-size:.85rem;line-height:1.35;margin-bottom:2px}
+.sp-eq-i p{font-size:.75rem;color:var(--beige-d);font-weight:500;letter-spacing:.06em;text-transform:uppercase}
+@media(max-width:860px){.sp-gal--3,.sp-gal--4{grid-template-columns:1fr 1fr}.sp-gal--3 .sp-gal-main,.sp-gal--4 .sp-gal-main{grid-column:span 2;aspect-ratio:16/10}.sp-gal--3>div:not(.sp-gal-main),.sp-gal--4>div:not(.sp-gal-main){grid-column:span 1}}

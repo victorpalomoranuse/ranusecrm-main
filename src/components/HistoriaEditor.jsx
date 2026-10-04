@@ -15,6 +15,9 @@ const TIPOS_BLOQUE = [
   { id: 'render', label: 'Render grande' },
   { id: 'zona', label: 'Zona' },
   { id: 'detalle', label: 'Detalle' },
+  { id: 'plano', label: 'Plano / recorrido' },
+  { id: 'galeria', label: 'Galería de renders' },
+  { id: 'equipo', label: 'Equipo (de Listados)' },
 ];
 const ETIQUETAS = [
   { id: 'incluido', label: 'Incluido' },
@@ -372,9 +375,41 @@ function VistaCapitulos({ projectId, data, capitulo, setCapSel, llamar }) {
   );
 }
 
+// Galería: varios renders del mismo espacio en un solo bloque (se guardan en "elementos")
+function GaleriaBloque({ projectId, b, guardar }) {
+  const ref = useRef(null);
+  const [estado, setEstado] = useState('');
+  const fotos = b.elementos || [];
+  const onFiles = async (e) => {
+    const files = [...(e.target.files || [])];
+    if (!files.length) return;
+    let lista = [...fotos];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        setEstado(`Subiendo ${i + 1} de ${files.length}…`);
+        const form = new FormData(); form.append('file', files[i]);
+        const { data } = await api.post(`/historia/${projectId}/subir`, form);
+        lista = [...lista, data.url];
+      }
+      await guardar({ elementos: lista });
+    } finally { setEstado(''); if (ref.current) ref.current.value = ''; }
+  };
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ ...row, marginBottom: 6 }}>
+        {fotos.map((u, i) => <Miniatura key={u + i} url={u} onQuitar={() => guardar({ elementos: fotos.filter((_, k) => k !== i) })} />)}
+        {!fotos.length && <span style={{ ...muted, color: '#f5b748' }}>Sin renders todavía: el bloque no se muestra</span>}
+      </div>
+      <input ref={ref} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onFiles} />
+      <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" disabled={!!estado} onClick={() => ref.current?.click()}><Upload size={11} /> {estado || 'Añadir renders (varios a la vez)'}</button>
+      <p style={{ ...muted, marginTop: 4 }}>El primero se muestra grande y los demás debajo.</p>
+    </div>
+  );
+}
+
 function BloqueEditor({ projectId, b, idx, mover, llamar }) {
   const guardar = (campos) => llamar(() => api.put(`/historia/bloques/${b.id}`, campos));
-  const vacio = !b.texto?.trim() && !b.imagen_url;
+  const vacio = b.tipo === 'equipo' ? false : b.tipo === 'galeria' ? !(b.elementos || []).length : (!b.texto?.trim() && !b.imagen_url);
   return (
     <div style={{ ...box, marginBottom: 10, opacity: b.visible ? 1 : 0.55 }}>
       <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
@@ -398,7 +433,10 @@ function BloqueEditor({ projectId, b, idx, mover, llamar }) {
         <Campo rows={3} placeholder="Qué incluye la zona (una línea por elemento)" value={(b.elementos || []).join('\n')}
           onSave={v => guardar({ elementos: v.split('\n') })} />
       )}
-      <div style={row}>
+      {b.tipo === 'galeria' && <GaleriaBloque projectId={projectId} b={b} guardar={guardar} />}
+      {b.tipo === 'equipo' && <p style={muted}>Se rellena solo con el equipamiento de la pestaña Listados (solo salen los equipos que tengan foto).</p>}
+      {b.tipo === 'plano' && <p style={{ ...muted, marginBottom: 6 }}>Sube el plano como imagen (JPG/PNG). Debajo se genera sola la leyenda con los capítulos. El PDF del plano se sube en Entregables.</p>}
+      <div style={{ ...row, display: b.tipo === 'galeria' || b.tipo === 'equipo' ? 'none' : 'flex' }}>
         <Miniatura url={b.imagen_url} onQuitar={() => guardar({ imagen_url: null })} />
         <Subir projectId={projectId} label={b.imagen_url ? 'Cambiar imagen' : 'Subir imagen'} onUrl={u => guardar({ imagen_url: u })} />
         {b.tipo === 'imagen_texto' && (

@@ -116,7 +116,7 @@ export async function getHistoriaPublica(projectId) {
   const h = await getHistoriaAdmin(projectId);
   const idsVisibles = new Set(capitulos.map(c => c.id));
 
-  const bloques = h.bloques.filter(b => b.visible && idsVisibles.has(b.capitulo_id) && (b.texto?.trim() || b.imagen_url));
+  const bloques = h.bloques.filter(b => b.visible && idsVisibles.has(b.capitulo_id) && (b.texto?.trim() || b.imagen_url || b.tipo === 'equipo' || (b.tipo === 'galeria' && b.elementos?.length)));
   const serviciosVisibles = h.servicios.filter(s => s.nombre && (s.descripcion?.trim() || s.imagen_url));
 
   // Estilo definido a partir del moodboard (columnas v61; si no existen aún, null)
