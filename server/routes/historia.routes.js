@@ -25,6 +25,16 @@ const url = (v) => {
 const sinUndefined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 const fail = (res, err, msg) => { console.error(msg, err); res.status(500).json({ error: msg }); };
 
+// Capítulos de la plantilla de un tipo (para elegir cuáles incluir al crear)
+router.get('/plantillas/:tipo', async (req, res) => {
+  try {
+    if (!TIPOS_PROYECTO.includes(req.params.tipo)) return res.status(400).json({ error: 'Tipo no válido' });
+    const { data, error } = await supabase.from('plantillas_capitulo').select('orden, titulo').eq('tipo', req.params.tipo).order('orden', { ascending: true });
+    if (error) throw error;
+    res.json({ capitulos: data });
+  } catch (e) { fail(res, e, 'Error al obtener las plantillas'); }
+});
+
 // ── Historia completa (admin) ──────────────────────────────────────────
 router.get('/:projectId', async (req, res) => {
   try { res.json(await getHistoriaAdmin(req.params.projectId)); }

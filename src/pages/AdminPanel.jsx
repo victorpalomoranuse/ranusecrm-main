@@ -19,6 +19,7 @@ import { SectionFinanzas } from './SectionFinanzas';
 import { SectionRelacionObra } from './SectionRelacionObra';
 import { SectionMisComisiones } from './SectionMisComisiones';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
+import { TabHistoria, SelectorTipoHistoria } from '../components/HistoriaEditor';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -106,6 +107,8 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const [ventaId, setVentaId] = useState(project?.venta_id || '');
   const [ventas, setVentas] = useState([]);
   const [buscarVenta, setBuscarVenta] = useState('');
+  const [tipoProyecto, setTipoProyecto] = useState('');
+  const [capitulosSel, setCapitulosSel] = useState([]);
 
   useEffect(() => { api.get('/employees').then(r => setEmployees(r.data.employees || [])).catch(() => {}); }, []);
   useEffect(() => { api.get('/ventas').then(r => setVentas(r.data.ventas || [])).catch(() => {}); }, []);
@@ -133,7 +136,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const payload = { client_name: clientName, project_name: projectName, client_email: clientEmail || null, access_code: accessCode, phase, urgency, status, notes: notes || null, responsible_id: responsibleId || null, client_nif: clientNif || null, client_phone: clientPhone || null, client_address: clientAddress || null, client_city: clientCity || null, venta_id: ventaId || null };
+      const payload = { client_name: clientName, project_name: projectName, client_email: clientEmail || null, access_code: accessCode, phase, urgency, status, notes: notes || null, responsible_id: responsibleId || null, client_nif: clientNif || null, client_phone: clientPhone || null, client_address: clientAddress || null, client_city: clientCity || null, venta_id: ventaId || null, ...(!isEdit && tipoProyecto ? { tipo_proyecto: tipoProyecto, capitulos_orden: capitulosSel } : {}) };
       let saved;
       if (isEdit) { const { data } = await api.put(`/client-projects/${project.id}`, payload); saved = data.project; }
       else { const { data } = await api.post('/client-projects', payload); saved = data.project; }
@@ -197,6 +200,13 @@ function ClientProjectModal({ project, onClose, onSaved }) {
               {employees.map(e => <option key={e.id} value={e.id}>{e.name} — {e.email}</option>)}
             </select>
           </div>
+          {!isEdit && (
+            <div className="ap-field">
+              <label>Tipo de proyecto <span className="ap-optional">(Proyecto creativo: historia por capítulos)</span></label>
+              <SelectorTipoHistoria tipo={tipoProyecto} setTipo={setTipoProyecto} seleccion={capitulosSel} setSeleccion={setCapitulosSel} />
+              <span className="ap-field-hint">Si eliges un tipo, se crea la historia con sus capítulos y el portal del cliente la mostrará. Sin tipo, el proyecto es como siempre.</span>
+            </div>
+          )}
           <div className="ap-field"><label>Notas internas <span className="ap-optional">(opcional)</span></label><textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Notas sobre el proyecto..." /></div>
           {error && <p className="ap-error">{error}</p>}
           <div className="ap-modal-actions">
@@ -278,7 +288,7 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Resultado'},{id:'documentos',label:'Documentos'},{id:'facturas',label:'Facturas'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Listados'},{id:'trabajos',label:'Trabajos web'}];
+const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Resultado'},{id:'documentos',label:'Documentos'},{id:'facturas',label:'Facturas'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Listados'},{id:'historia',label:'Historia'},{id:'trabajos',label:'Trabajos web'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
@@ -2180,6 +2190,7 @@ function ProjectManagerModal({ project, onClose }) {
           {tab==='tours'&&<TabTour projectId={project.id}/>}
           {tab==='notas'&&<TabNotas projectId={project.id}/>}
           {tab==='catalogo'&&<TabAsignaciones projectId={project.id} listadosIntro={project.listados_intro_text} listadosTitle={project.listados_title} onIntroUpdated={(v,t)=>{project.listados_intro_text=v;project.listados_title=t;}}/>}
+          {tab==='historia'&&<TabHistoria project={project}/>}
           {tab==='trabajos'&&<TabTrabajosWeb project={project}/>}
         </div>
       </div>
