@@ -4,6 +4,7 @@ import { authenticateToken, requirePermission } from '../middleware/auth.middlew
 import { uploadDocumentFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { uploadProjectRender, uploadProjectDocument } from '../utils/storage.js';
 import { callClaude } from '../utils/anthropic.js';
+import sharp from 'sharp';
 import { crearHistoria, getHistoriaAdmin, TIPOS_PROYECTO } from '../utils/historia.js';
 
 // Historia por capítulos del Proyecto creativo (Servicio 1). Todo es opt-in:
@@ -253,6 +254,24 @@ router.delete('/entregables/:id', async (req, res) => {
   } catch (e) { fail(res, e, 'Error al eliminar el entregable'); }
 });
 
+// ── Estilo del proyecto (a partir del moodboard) ──────────────────────
+router.get('/:projectId/estilo', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('client_projects').select('moodboard_estilo_nombre, moodboard_estilo').eq('id', req.params.projectId).single();
+    if (error) throw error;
+    res.json({ nombre: data.moodboard_estilo_nombre || '', texto: data.moodboard_estilo || '' });
+  } catch (e) { fail(res, e, 'Error al obtener el estilo'); }
+});
+
+router.put('/:projectId/estilo', async (req, res) => {
+  try {
+    const updates = sinUndefined({ moodboard_estilo_nombre: txt(req.body.nombre), moodboard_estilo: txt(req.body.texto) });
+    const { error } = await supabase.from('client_projects').update(updates).eq('id', req.params.projectId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) { fail(res, e, 'Error al guardar el estilo'); }
+});
+
 // ── IA: propone, NUNCA guarda ─────────────────────────────────────────
 const SYSTEM_BASE = `Eres el editor de textos de Ranuse Design, estudio de diseño de espacios deportivos (gimnasios y home gyms) en España. Los textos se muestran al cliente en una historia tipo "un día en tu espacio": segunda persona del singular, presente, tono cálido y elegante, frases cortas, sin tecnicismos ni adjetivos vacíos. Responde SOLO con el texto resultante, sin comillas, títulos ni explicaciones.`;
 
@@ -308,6 +327,55 @@ router.post('/capitulos/:id/ia-reescribir', async (req, res) => {
     if (!propuesta) return res.status(502).json({ error: 'La IA no devolvió texto' });
     res.json({ original: cap.texto || '', propuesta });
   } catch (e) { fail(res, e, e.message || 'Error al reescribir el capítulo'); }
+});
+
+// Analiza la paleta, la receta de combinación y las IMÁGENES del moodboard y
+// propone el nombre del estilo y un texto que lo describe. No guarda nada.
+async function imagenParaIA(url) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const buf = await sharp(Buffer.from(await r.arrayBuffer())).rotate().resize({ width: 1000, height: 1000, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 78 }).toBuffer();
+    return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: buf.toString('base64') } };
+  } catch { return null; }
+}
+
+router.post('/:projectId/ia-estilo', async (req, res) => {
+  try {
+    const { data: p } = await supabase.from('client_projects').select('project_name, tipo_proyecto, moodboard_description, moodboard_palette').eq('id', req.params.projectId).single();
+    if (!p) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    const { data: imgs } = await supabase.from('project_moodboard_images').select('url').eq('project_id', req.params.projectId).order('display_order', { ascending: true }).limit(8);
+    const imagenes = (await Promise.all((imgs || []).map(i => imagenParaIA(i.url)))).filter(Boolean);
+    const paleta = (p.moodboard_palette || []).join(', ');
+    if (!imagenes.length && !paleta && !p.moodboard_description) return res.status(400).json({ error: 'Añade antes imágenes o una paleta al moodboard' });
+
+    const system = `Eres el director creativo de Ranuse Design, estudio de diseño de espacios deportivos (gimnasios y home gyms) en España. Te paso las imágenes de referencia del moodboard de un proyecto, su paleta de colores y la receta técnica con la que se combinan esos colores. Tu tarea: DEFINIR EL ESTILO del proyecto y hablar de él.
+
+Reglas:
+- Observa las imágenes de verdad: materiales, texturas, luz, contrastes, tipografía y rotulación, ambiente y época. Menciona lo que ves, no generalidades.
+- La paleta y su receta ya existen: úsalas como apoyo (el tono, la temperatura, el contraste) pero NO las repitas ni cites códigos NCS ni porcentajes. Eso ya se explica aparte.
+- Primero un NOMBRE del estilo, corto y evocador (2-5 palabras, p. ej. "Industrial cálido y urbano").
+- Después un texto de 80-120 palabras para el cliente, en tercera persona o tono inclusivo, elegante y claro: qué define el estilo, qué sensación transmite, qué materiales y luz lo caracterizan y por qué encaja con un espacio deportivo. Sin tecnicismos, sin adjetivos vacíos, sin listas.
+Responde EXACTAMENTE con este formato, sin nada más:
+NOMBRE: <nombre del estilo>
+TEXTO: <texto>`;
+    const tipo = p.tipo_proyecto === 'home_gym' ? 'home gym' : 'gimnasio comercial';
+    const contenido = [
+      ...imagenes,
+      { type: 'text', text: `PROYECTO: ${p.project_name || '—'} (${tipo})
+PALETA (hex): ${paleta || 'no definida'}
+RECETA DE COMBINACIÓN DE COLORES (referencia, no la copies):
+${(p.moodboard_description || '—').slice(0, 1500)}
+
+Define el estilo.` },
+    ];
+    const response = await callClaude({ system, messages: [{ role: 'user', content: contenido }], maxTokens: 700 });
+    const salida = (response.content || []).find(b => b.type === 'text')?.text?.trim();
+    if (!salida) return res.status(502).json({ error: 'La IA no devolvió texto' });
+    const nombre = /NOMBRE:\s*(.+)/i.exec(salida)?.[1]?.trim() || '';
+    const texto = /TEXTO:\s*([\s\S]+)/i.exec(salida)?.[1]?.trim() || salida;
+    res.json({ nombre, texto, imagenes_analizadas: imagenes.length });
+  } catch (e) { fail(res, e, e.message || 'Error al definir el estilo'); }
 });
 
 export default router;

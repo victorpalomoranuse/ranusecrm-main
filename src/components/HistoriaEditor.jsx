@@ -565,3 +565,59 @@ export function GuiaProyecto() {
     </div>
   );
 }
+
+// ── Estilo del proyecto: la IA analiza paleta + imágenes del moodboard ──
+export function EstiloMoodboard({ projectId }) {
+  const [estilo, setEstilo] = useState(null);
+  const [propuesta, setPropuesta] = useState(null);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.get(`/historia/${projectId}/estilo`).then(r => setEstilo(r.data)).catch(() => setError('No se pudo cargar el estilo (¿has ejecutado el SQL v61?)'));
+  }, [projectId]);
+
+  const guardar = async (campos) => {
+    setError('');
+    try { await api.put(`/historia/${projectId}/estilo`, campos); setEstilo(e => ({ ...e, ...campos })); }
+    catch (e) { setError(e.response?.data?.error || 'Error al guardar el estilo'); }
+  };
+  const definir = async () => {
+    setError(''); setCargando(true);
+    try { const { data } = await api.post(`/historia/${projectId}/ia-estilo`, {}); setPropuesta(data); }
+    catch (e) { setError(e.response?.data?.error || 'La IA no ha podido analizar el moodboard'); }
+    finally { setCargando(false); }
+  };
+  const usar = async () => {
+    await guardar({ nombre: propuesta.nombre, texto: propuesta.texto });
+    setPropuesta(null);
+  };
+
+  if (!estilo) return error ? <p className="ap-error">{error}</p> : null;
+  return (
+    <div style={{ ...box, marginTop: 16, borderColor: 'rgba(190,176,162,0.35)' }}>
+      <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
+        <strong style={{ fontSize: '0.9rem' }}>Estilo del proyecto</strong>
+        <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" disabled={cargando} onClick={definir}>
+          <Sparkles size={12} /> {cargando ? 'Analizando el moodboard…' : 'Definir el estilo con la IA'}
+        </button>
+      </div>
+      <p style={{ ...muted, marginBottom: 10 }}>La IA mira las imágenes y la paleta del moodboard y propone el nombre del estilo y un texto que lo describe. Es lo que verá el cliente en "La atmósfera"; el texto de arriba (cómo combinar los colores) pasa a un desplegable. Nada se guarda hasta que lo aceptes.</p>
+      {error && <p className="ap-error" style={{ marginBottom: 8 }}>{error}</p>}
+      {propuesta && (
+        <div style={{ ...box, marginBottom: 10, borderColor: 'rgba(190,176,162,0.5)' }}>
+          <p style={{ ...muted, marginBottom: 4 }}>Propuesta de la IA{propuesta.imagenes_analizadas ? ` (analizó ${propuesta.imagenes_analizadas} imágenes)` : ''}:</p>
+          <p style={{ fontWeight: 600, marginBottom: 4 }}>{propuesta.nombre}</p>
+          <p style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{propuesta.texto}</p>
+          <div style={{ ...row, marginTop: 8 }}>
+            <button type="button" className="ap-btn ap-btn-primary ap-btn-xs" onClick={usar}>Usar propuesta</button>
+            <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={definir} disabled={cargando}>Otra versión</button>
+            <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => setPropuesta(null)}>Descartar</button>
+          </div>
+        </div>
+      )}
+      <Campo label="Nombre del estilo" value={estilo.nombre} placeholder="p. ej. Industrial cálido y urbano" onSave={v => guardar({ nombre: v })} />
+      <Campo label="Texto del estilo" rows={5} value={estilo.texto} onSave={v => guardar({ texto: v })} ia contexto="Descripción del estilo de un proyecto de diseño de espacio deportivo" />
+    </div>
+  );
+}

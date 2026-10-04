@@ -119,8 +119,13 @@ export async function getHistoriaPublica(projectId) {
   const bloques = h.bloques.filter(b => b.visible && idsVisibles.has(b.capitulo_id) && (b.texto?.trim() || b.imagen_url));
   const serviciosVisibles = h.servicios.filter(s => s.nombre && (s.descripcion?.trim() || s.imagen_url));
 
+  // Estilo definido a partir del moodboard (columnas v61; si no existen aún, null)
+  const { data: est } = await supabase.from('client_projects').select('moodboard_estilo_nombre, moodboard_estilo').eq('id', projectId).maybeSingle();
+  const estilo = est?.moodboard_estilo?.trim() ? { nombre: est.moodboard_estilo_nombre || null, texto: est.moodboard_estilo } : null;
+
   return {
     tipo_proyecto: h.tipo_proyecto,
+    estilo,
     capitulos: capitulos.map(c => ({
       id: c.id, orden: c.orden, titulo: c.titulo, texto: c.texto, render_url: c.render_url, tour_url: c.tour_url,
       bloques: bloques.filter(b => b.capitulo_id === c.id).map(({ guia, proyecto_id, ...b }) => b),

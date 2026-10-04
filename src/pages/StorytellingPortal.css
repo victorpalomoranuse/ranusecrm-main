@@ -38,6 +38,12 @@
 .sp-lead{margin-top:22px;max-width:560px;color:#5d554d;font-weight:300}
 .sp-pal{display:flex;gap:12px;margin:38px 0;flex-wrap:wrap}
 .sp-pal div{width:64px;height:64px;border-radius:50%;box-shadow:0 0 0 1px var(--line) inset}
+.sp-recipe{margin:0 0 38px;max-width:560px;border-top:1px solid var(--line);padding-top:14px}
+.sp-recipe summary{cursor:pointer;font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;color:var(--beige-d);font-weight:600;list-style:none}
+.sp-recipe summary::-webkit-details-marker{display:none}
+.sp-recipe summary::after{content:" +";}
+.sp-recipe[open] summary::after{content:" –"}
+.sp-recipe p{margin-top:12px;color:#6a6158;font-weight:300;font-size:.9rem}
 .sp-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
 .sp-tiles div{aspect-ratio:3/4;overflow:hidden;border-radius:4px;background:var(--soft)}
 .sp-tiles div:nth-child(2n){margin-top:34px}

@@ -107,11 +107,13 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
   // ── La atmósfera ────────────────────────────────────────────────────
   const paleta = moodboard?.palette || [];
   const imgsMood = (moodboard?.images || []).slice(0, 4);
-  if (moodboard?.description || paleta.length || imgsMood.length) {
+  const estilo = historia.estilo || null;
+  if (estilo || moodboard?.description || paleta.length || imgsMood.length) {
     nuevaPagina();
     doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text('LA ATMÓSFERA', M, 56, { characterSpacing: 3 });
-    doc.font('Helvetica').fontSize(26).fillColor(INK).text('El estilo que guía todo el proyecto.', M, 76, { width: W - 2 * M });
-    if (moodboard?.description) doc.font('Helvetica').fontSize(11).fillColor(TXT).text(moodboard.description, M, 120, { width: 460, height: 90, ellipsis: true });
+    doc.font('Helvetica').fontSize(26).fillColor(INK).text(estilo?.nombre || 'El estilo que guía todo el proyecto.', M, 76, { width: W - 2 * M });
+    const textoAtm = estilo?.texto || moodboard?.description;
+    if (textoAtm) doc.font('Helvetica').fontSize(11).fillColor(TXT).text(textoAtm, M, 120, { width: 520, height: 100, ellipsis: true });
     paleta.slice(0, 8).forEach((hex, i) => {
       doc.save().circle(M + 22 + i * 52, 250, 20).fillAndStroke(hex, '#e4ddd3').restore();
     });

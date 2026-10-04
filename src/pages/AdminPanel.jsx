@@ -19,7 +19,7 @@ import { SectionFinanzas } from './SectionFinanzas';
 import { SectionRelacionObra } from './SectionRelacionObra';
 import { SectionMisComisiones } from './SectionMisComisiones';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
-import { TabHistoria, SelectorTipoHistoria, GuiaProyecto } from '../components/HistoriaEditor';
+import { TabHistoria, SelectorTipoHistoria, GuiaProyecto, EstiloMoodboard } from '../components/HistoriaEditor';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -2184,7 +2184,7 @@ function ProjectManagerModal({ project, onClose }) {
           {tab==='portada'&&<TabPortada project={project} onUpdated={(url)=>{project.cover_image_url=url;}}/>}
           {tab==='fases'&&<TabCategorias projectId={project.id}/>}
           {tab==='necesidades'&&<TabNecesidades projectId={project.id}/>}
-          {tab==='moodboard'&&<TabMoodboard projectId={project.id}/>}
+          {tab==='moodboard'&&<><TabMoodboard projectId={project.id}/><EstiloMoodboard projectId={project.id}/></>}
           {tab==='renders'&&<TabRenders projectId={project.id}/>}
           {tab==='documentos'&&<TabDocumentos projectId={project.id}/>}
           {tab==='facturas'&&<TabFacturas projectId={project.id}/>}

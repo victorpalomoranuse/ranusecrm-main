@@ -91,7 +91,8 @@ export function StorytellingPortal({ project, dossier, code }) {
   const moodboard = project.moodboard || {};
   const imagenesMood = (moodboard.images || []).slice(0, 8);
   const paleta = moodboard.palette || [];
-  const hayMood = imagenesMood.length > 0 || paleta.length > 0 || !!moodboard.description;
+  const estilo = historia.estilo || null;
+  const hayMood = imagenesMood.length > 0 || paleta.length > 0 || !!moodboard.description || !!estilo;
   const planos = historia.entregables || [];
   const esHome = historia.tipo_proyecto === 'home_gym';
   const portada = project.cover_image_url || capitulos.find(c => c.render_url)?.render_url || project.renders?.[0]?.url || null;
@@ -163,9 +164,16 @@ export function StorytellingPortal({ project, dossier, code }) {
       {hayMood && (
         <section className="sp-mood" id="sp-atmosfera">
           <p className="sp-label sp-rv">La atmósfera</p>
-          <h2 className="sp-rv">El estilo que guía todo el proyecto.</h2>
-          {moodboard.description && <p className="sp-lead sp-rv" style={{ whiteSpace: 'pre-line' }}>{moodboard.description}</p>}
+          <h2 className="sp-rv">{estilo?.nombre || 'El estilo que guía todo el proyecto.'}</h2>
+          {estilo?.texto && <p className="sp-lead sp-rv" style={{ whiteSpace: 'pre-line' }}>{estilo.texto}</p>}
+          {!estilo && moodboard.description && <p className="sp-lead sp-rv" style={{ whiteSpace: 'pre-line' }}>{moodboard.description}</p>}
           {paleta.length > 0 && <div className="sp-pal sp-rv">{paleta.map((hex, i) => <div key={i} title={hex} style={{ background: hex }} />)}</div>}
+          {estilo && moodboard.description && (
+            <details className="sp-recipe sp-rv">
+              <summary>Cómo se combinan los colores</summary>
+              <p style={{ whiteSpace: 'pre-line' }}>{moodboard.description}</p>
+            </details>
+          )}
           {imagenesMood.length > 0 && (
             <div className="sp-tiles sp-rv">{imagenesMood.map((img, i) => <div key={img.id}><img src={img.url} alt="" loading={i < 4 ? 'eager' : 'lazy'} /></div>)}</div>
           )}
