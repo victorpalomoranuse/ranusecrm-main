@@ -13,7 +13,7 @@ const router = express.Router();
 router.use(authenticateToken, requirePermission('proyectos'));
 
 const ETIQUETAS = ['incluido', 'extra', 'wow'];
-const TIPOS_BLOQUE = ['imagen_texto', 'render', 'zona'];
+const TIPOS_BLOQUE = ['imagen_texto', 'render', 'zona', 'detalle'];
 const ESTADOS_ENTREGABLE = ['pendiente', 'en_curso', 'entregado'];
 
 const txt = (v) => (typeof v === 'string' ? (v.trim() || null) : v === null ? null : undefined);
