@@ -245,7 +245,7 @@ export function StorytellingPortal({ project, dossier, code }) {
           <Bloques bloques={c.bloques} capitulos={capitulos} equipo={project.equipment} />
           {c.servicios.length > 0 && (
             <div className="sp-blk">
-              <p className="sp-lbl sp-rv">Pensado para este momento</p>
+              <p className="sp-lbl sp-rv">Soluciones y servicios</p>
               <div className="sp-sv sp-rv">
                 {c.servicios.map(s => (
                   <div key={s.id} className="sp-card">
