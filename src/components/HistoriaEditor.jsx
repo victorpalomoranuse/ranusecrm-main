@@ -470,3 +470,45 @@ function VistaEntregables({ projectId, data, llamar }) {
     </div>
   );
 }
+
+// ── Guía de orden de trabajo (disclaimer plegable en Gestionar proyecto) ──
+const CLAVE_GUIA = 'ap_guia_proyecto_cerrada';
+export function GuiaProyecto() {
+  const [abierta, setAbierta] = useState(() => { try { return localStorage.getItem(CLAVE_GUIA) !== '1'; } catch { return true; } });
+  const alternar = () => {
+    const nueva = !abierta; setAbierta(nueva);
+    try { localStorage.setItem(CLAVE_GUIA, nueva ? '0' : '1'); } catch { /* sin storage */ }
+  };
+  const paso = (n, titulo, texto) => (
+    <li style={{ marginBottom: 6 }}><strong>{n}. {titulo}</strong> — {texto}</li>
+  );
+  return (
+    <div style={{ ...box, marginBottom: 12, borderColor: 'rgba(190,176,162,0.35)' }}>
+      <div style={{ ...row, justifyContent: 'space-between' }}>
+        <strong style={{ fontSize: '0.85rem' }}>Cómo trabajar un proyecto, en orden</strong>
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={alternar}>{abierta ? 'Ocultar guía' : 'Ver guía'}</button>
+      </div>
+      {abierta && (
+        <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)', marginTop: 8, lineHeight: 1.55 }}>
+          <ol style={{ margin: 0, paddingLeft: '1.1rem' }}>
+            {paso(1, 'Necesidades', 'lo que pide el cliente, y las fotos, planos y medidas del espacio actual (el "antes"). Es lo primero: de aquí sale todo.')}
+            {paso(2, 'Portada', 'la imagen principal con la que se abre el portal del cliente.')}
+            {paso(3, 'Moodboard', 'referencias y paleta de colores. En el portal es "La atmósfera".')}
+            {paso(4, 'Historia', 'el recorrido por capítulos: textos, un render grande por capítulo, bloques (imagen + texto, zonas, detalles), servicios del espacio y la checklist de entregables.')}
+          </ol>
+          <p style={{ margin: '8px 0 4px' }}><strong>Después, según haga falta:</strong></p>
+          <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
+            <li><strong>Listados</strong> (materiales y mobiliario), <strong>Documentos</strong> (planos y archivos) y <strong>Notas</strong>: salen al final del portal, en "Tu dossier".</li>
+            <li><strong>Tour 3D</strong>: opcional, solo en los proyectos que lo lleven.</li>
+            <li><strong>Facturas</strong>: interno, el cliente nunca lo ve. <strong>Trabajos web</strong>: portfolio público de la web.</li>
+          </ul>
+          <p style={{ margin: '8px 0 4px' }}><strong>¿Y Categorías y Resultado?</strong></p>
+          <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
+            <li><strong>Proyecto con Historia:</strong> Categorías y Resultado <u>no se muestran al cliente</u>. Los renders van dentro de cada capítulo. No hace falta usarlas.</li>
+            <li><strong>Proyecto sin Historia</strong> (los de antes): el portal funciona exactamente como siempre, con Categorías y Resultado.</li>
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}

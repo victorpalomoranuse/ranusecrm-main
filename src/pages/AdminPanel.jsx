@@ -19,7 +19,7 @@ import { SectionFinanzas } from './SectionFinanzas';
 import { SectionRelacionObra } from './SectionRelacionObra';
 import { SectionMisComisiones } from './SectionMisComisiones';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
-import { TabHistoria, SelectorTipoHistoria } from '../components/HistoriaEditor';
+import { TabHistoria, SelectorTipoHistoria, GuiaProyecto } from '../components/HistoriaEditor';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -288,7 +288,7 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{ id:'portada',label:'Portada'},{id:'fases',label:'Categorías'},{id:'necesidades',label:'Necesidades'},{id:'moodboard',label:'Moodboard'},{id:'renders',label:'Resultado'},{id:'documentos',label:'Documentos'},{id:'facturas',label:'Facturas'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'catalogo',label:'Listados'},{id:'historia',label:'Historia'},{id:'trabajos',label:'Trabajos web'}];
+const MGR_TABS = [{id:'necesidades',label:'1 · Necesidades'},{id:'portada',label:'2 · Portada'},{id:'moodboard',label:'3 · Moodboard'},{id:'historia',label:'4 · Historia'},{id:'catalogo',label:'Listados'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'renders',label:'Resultado',soloSinHistoria:true},{id:'fases',label:'Categorías',soloSinHistoria:true},{id:'facturas',label:'Facturas'},{id:'trabajos',label:'Trabajos web'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
@@ -2122,7 +2122,7 @@ function TabNecesidades({ projectId }) {
 }
 
 function ProjectManagerModal({ project, onClose }) {
-  const [tab, setTab] = useState('portada');
+  const [tab, setTab] = useState('necesidades');
   const [descargandoMemoria, setDescargandoMemoria] = useState(false);
 
   const handleMemoria = async () => {
@@ -2178,8 +2178,9 @@ function ProjectManagerModal({ project, onClose }) {
             <button className="ap-modal-close" onClick={onClose}><X size={16}/></button>
           </div>
         </div>
-        <div className="ap-mgr-tabs">{MGR_TABS.map(t=>(<button key={t.id} className={`ap-mgr-tab${tab===t.id?' active':''}`} onClick={()=>setTab(t.id)}>{t.label}</button>))}</div>
+        <div className="ap-mgr-tabs">{MGR_TABS.map(t=>(<button key={t.id} className={`ap-mgr-tab${tab===t.id?' active':''}`} title={t.soloSinHistoria?'Solo se muestra al cliente en proyectos SIN historia':undefined} style={t.soloSinHistoria&&project.tipo_proyecto?{opacity:0.5}:undefined} onClick={()=>setTab(t.id)}>{t.label}</button>))}</div>
         <div className="ap-mgr-body">
+          <GuiaProyecto/>
           {tab==='portada'&&<TabPortada project={project} onUpdated={(url)=>{project.cover_image_url=url;}}/>}
           {tab==='fases'&&<TabCategorias projectId={project.id}/>}
           {tab==='necesidades'&&<TabNecesidades projectId={project.id}/>}
