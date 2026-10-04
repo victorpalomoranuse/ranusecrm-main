@@ -456,10 +456,16 @@ function VistaEntregables({ projectId, data, llamar }) {
                   {e.descripcion && <p style={{ ...muted, margin: '2px 0 4px' }}>{e.descripcion}</p>}
                   <div style={row}>
                     {e.archivo_url && <a href={e.archivo_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.78rem' }}><FileText size={11} /> Ver archivo</a>}
-                    <Subir projectId={projectId} accept="image/*,application/pdf" label={e.archivo_url ? 'Cambiar archivo' : 'Subir archivo'} onUrl={u => guardar({ archivo_url: u })} />
-                    <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: '0.78rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={e.visible_cliente} onChange={() => guardar({ visible_cliente: !e.visible_cliente })} /> Visible para el cliente
-                    </label>
+                    {(e.formato || '').startsWith('Imagen') ? (
+                      <span style={muted}>Los renders se suben en su capítulo (pestaña Capítulos). Aquí solo marca el estado.</span>
+                    ) : (
+                      <>
+                        <Subir projectId={projectId} accept="image/*,application/pdf" label={e.archivo_url ? 'Cambiar archivo' : 'Subir archivo'} onUrl={u => guardar({ archivo_url: u })} />
+                        <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: '0.78rem', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={e.visible_cliente} onChange={() => guardar({ visible_cliente: !e.visible_cliente })} /> Visible para el cliente
+                        </label>
+                      </>
+                    )}
                   </div>
                 </div>
               );
