@@ -7,6 +7,7 @@ const requireTrabajos = requirePermission('trabajos');
 import { uploadProjectRender, deleteProjectRender, uploadProjectDocument, deleteProjectDocument, uploadProjectInvoice, deleteProjectInvoice, uploadDiagnosisImage, deleteDiagnosisImage, uploadMoodboardImage, deleteMoodboardImage } from '../utils/storage.js';
 import { uploadRenderFile, uploadDocumentFile, uploadDiagnosisImageFile, uploadMoodboardImages, handleMulterError } from '../middleware/upload.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
+import { crearHistoria, getHistoriaPublica, TIPOS_PROYECTO } from '../utils/historia.js';
 
 const router = express.Router();
 
@@ -225,6 +226,9 @@ router.get('/by-code/:code', async (req, res) => {
       diagnosisImages = imgs || [];
     }
 
+    // Solo proyectos con capítulos: los antiguos devuelven null y el portal no cambia
+    const historia = await getHistoriaPublica(projectId).catch(() => null);
+
     const responsible_email = project.responsible?.email || null;
     const responsible_name = project.responsible?.name || null;
 
@@ -262,6 +266,7 @@ router.get('/by-code/:code', async (req, res) => {
         notes: notesResult.data || [],
         tours: allTours,
         categories,
+        historia,
         moodboard: {
           description: project.moodboard_description || '',
           images: moodboardImagesResult.data || [],
@@ -426,7 +431,7 @@ router.get('/public/portfolio/:slug', async (req, res) => {
  */
 router.post('/', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { client_name, project_name, client_email, access_code, phase = 0, urgency = 'normal', responsible_id, notes, lead_id, venta_id } = req.body;
+    const { client_name, project_name, client_email, access_code, phase = 0, urgency = 'normal', responsible_id, notes, lead_id, venta_id, tipo_proyecto, capitulos_orden } = req.body;
 
     if (!client_name || !project_name || !access_code) {
       return res.status(400).json({ error: 'Nombre del cliente, proyecto y código son requeridos' });
@@ -455,6 +460,8 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
         notes: notes?.trim() || null,
         lead_id: lead_id || null,
         venta_id: venta_id || null,
+        // Solo si llega un tipo válido; sin él, el proyecto se crea igual que siempre
+        ...(TIPOS_PROYECTO.includes(tipo_proyecto) ? { tipo_proyecto } : {}),
       })
       .select('*, responsible:employees!responsible_id(id, name)')
       .single();
@@ -462,6 +469,10 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
     if (error) throw error;
     await applyPhaseTaskTemplates(data.id, data.phase);
     await applyDefaultCategories(data.id);
+    if (TIPOS_PROYECTO.includes(tipo_proyecto)) {
+      // La historia es opcional: si falla, el proyecto ya está creado y se puede generar luego
+      await crearHistoria(data.id, tipo_proyecto, capitulos_orden).catch(e => console.error('Error al crear la historia del proyecto:', e));
+    }
     res.status(201).json({ project: data });
   } catch (error) {
     console.error('Error al crear proyecto:', error);
