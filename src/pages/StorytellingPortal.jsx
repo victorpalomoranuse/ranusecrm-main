@@ -83,7 +83,7 @@ function Bloques({ bloques }) {
   });
 }
 
-export function StorytellingPortal({ project, dossier }) {
+export function StorytellingPortal({ project, dossier, code }) {
   const historia = project.historia;
   const capitulos = historia.capitulos;
   const moodboard = project.moodboard || {};
@@ -123,6 +123,10 @@ export function StorytellingPortal({ project, dossier }) {
     return () => { io.disconnect(); clearTimeout(t); window.removeEventListener('scroll', onScroll); };
   }, [capitulos.length, hayMood]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  const urlZip = code ? `${base}/historia-publica/${encodeURIComponent(code)}/renders.zip` : null;
+  const hayRenders = capitulos.some(c => c.render_url || c.bloques.some(b => b.imagen_url));
+
   const asunto = encodeURIComponent(`Quiero pasar a la ejecución — ${project.project_name || ''}`);
   const hrefEjecucion = project.responsible_email ? `mailto:${project.responsible_email}?subject=${asunto}` : WA_LINK;
 
@@ -131,6 +135,7 @@ export function StorytellingPortal({ project, dossier }) {
       <div className="sp-bar" ref={barRef} />
       <header className="sp-header">
         <a className="sp-logo" href="/"><img src="/iconoRanuse.ico" alt="" /><span>Ranuse Design</span></a>
+        {urlZip && hayRenders && <a className="sp-pdf" href={urlZip} download>Descargar renders</a>}
       </header>
 
       <nav className="sp-rail" aria-label="Capítulos">
@@ -201,6 +206,7 @@ export function StorytellingPortal({ project, dossier }) {
         <div className="sp-dossier-h">
           <p className="sp-label sp-rv">Tu dossier</p>
           <h2 className="sp-rv">Todo lo que necesitas para avanzar, en un solo lugar.</h2>
+          {urlZip && hayRenders && <a className="sp-btn sp-rv" style={{ marginTop: 26, padding: '12px 28px' }} href={urlZip} download>Descargar todos los renders (ZIP)</a>}
         </div>
         {planos.length > 0 && (
           <div className="sp-dgrid">

@@ -988,6 +988,7 @@ export function MiProyecto() {
     return (
       <StorytellingPortal
         project={project}
+        code={code}
         dossier={(
           <div className="mp sp-legacy">
             <div className="mp-main">
