@@ -11,15 +11,17 @@ const WA_LINK = 'https://api.whatsapp.com/message/XSSED6I72WM3P1?autoload=1&app_
 function agrupar(bloques) {
   const grupos = [];
   bloques.forEach(b => {
-    const ultimo = grupos[grupos.length - 1];
-    if ((b.tipo === 'zona' || b.tipo === 'detalle') && ultimo && ultimo.tipo === b.tipo) ultimo.items.push(b);
+    // Todas las zonas (y todos los detalles) de un capítulo van juntos, en la
+    // posición de la primera, aunque haya otros bloques entre medias
+    const existente = (b.tipo === 'zona' || b.tipo === 'detalle') ? grupos.find(g => g.tipo === b.tipo) : null;
+    if (existente) existente.items.push(b);
     else grupos.push({ tipo: b.tipo, items: [b] });
   });
   return grupos;
 }
 
 function Bloques({ bloques }) {
-  let alternar = 0;
+
   return agrupar(bloques).map((g, gi) => {
     if (g.tipo === 'render') {
       return g.items.map(b => b.imagen_url && (
@@ -66,7 +68,7 @@ function Bloques({ bloques }) {
     }
     // imagen_texto
     const b = g.items[0];
-    const rev = b.lado === 'izquierda' || (b.lado == null && alternar++ % 2 === 1);
+    const rev = b.lado !== 'izquierda'; // lado = dónde va la imagen; por defecto a la derecha
     if (!b.imagen_url) {
       return (
         <div key={b.id} className="sp-blk"><div className="sp-solo sp-rv">{b.titulo && <h3>{b.titulo}</h3>}{b.texto && <p>{b.texto}</p>}</div></div>
@@ -125,6 +127,7 @@ export function StorytellingPortal({ project, dossier, code }) {
 
   const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
   const urlZip = code ? `${base}/historia-publica/${encodeURIComponent(code)}/renders.zip` : null;
+  const urlPdf = code ? `${base}/historia-publica/${encodeURIComponent(code)}/historia.pdf` : null;
   const hayRenders = capitulos.some(c => c.render_url || c.bloques.some(b => b.imagen_url));
 
   const asunto = encodeURIComponent(`Quiero pasar a la ejecución — ${project.project_name || ''}`);
@@ -135,7 +138,7 @@ export function StorytellingPortal({ project, dossier, code }) {
       <div className="sp-bar" ref={barRef} />
       <header className="sp-header">
         <a className="sp-logo" href="/"><img src="/iconoRanuse.ico" alt="" /><span>Ranuse Design</span></a>
-        {urlZip && hayRenders && <a className="sp-pdf" href={urlZip} download>Descargar renders</a>}
+        {urlPdf && <a className="sp-pdf" href={urlPdf} download>Descargar PDF</a>}
       </header>
 
       <nav className="sp-rail" aria-label="Capítulos">
@@ -206,7 +209,10 @@ export function StorytellingPortal({ project, dossier, code }) {
         <div className="sp-dossier-h">
           <p className="sp-label sp-rv">Tu dossier</p>
           <h2 className="sp-rv">Todo lo que necesitas para avanzar, en un solo lugar.</h2>
-          {urlZip && hayRenders && <a className="sp-btn sp-rv" style={{ marginTop: 26, padding: '12px 28px' }} href={urlZip} download>Descargar todos los renders (ZIP)</a>}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {urlPdf && <a className="sp-btn sp-rv" style={{ marginTop: 26, padding: '12px 28px' }} href={urlPdf} download>Descargar PDF del proyecto</a>}
+            {urlZip && hayRenders && <a className="sp-btn sp-rv" style={{ marginTop: 26, padding: '12px 28px', background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,.35)' }} href={urlZip} download>Descargar todos los renders (ZIP)</a>}
+          </div>
         </div>
         {planos.length > 0 && (
           <div className="sp-dgrid">

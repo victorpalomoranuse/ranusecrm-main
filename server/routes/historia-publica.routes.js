@@ -2,6 +2,7 @@ import express from 'express';
 import archiver from 'archiver';
 import { supabase } from '../config/supabase.js';
 import { getHistoriaPublica } from '../utils/historia.js';
+import { generarHistoriaPdf } from '../utils/historia-pdf.js';
 
 // Descargas públicas (con el código de acceso del cliente) de la historia.
 // Solo sirven lo que el cliente ya ve en su portal.
@@ -54,6 +55,31 @@ router.get('/:code/renders.zip', async (req, res) => {
   } catch (e) {
     console.error('Error en la descarga de renders:', e);
     if (!res.headersSent) res.status(500).json({ error: 'Error al preparar la descarga' });
+  }
+});
+
+// PDF de la historia (portada, atmósfera, capítulos, dossier y siguiente paso)
+router.get('/:code/historia.pdf', async (req, res) => {
+  try {
+    const { data: project } = await supabase.from('client_projects')
+      .select('id, client_name, project_name, cover_image_url, moodboard_description, moodboard_palette, responsible:employees!responsible_id(name, email)')
+      .eq('access_code', String(req.params.code).toUpperCase()).single();
+    if (!project) return res.status(404).json({ error: 'Código no válido' });
+    const historia = await getHistoriaPublica(project.id);
+    if (!historia) return res.status(404).json({ error: 'Este proyecto no tiene historia' });
+    const { data: imagenes } = await supabase.from('project_moodboard_images').select('url').eq('project_id', project.id).order('display_order', { ascending: true });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="proyecto-creativo-${limpio(project.project_name)}.pdf"`);
+    await generarHistoriaPdf(res, {
+      project, historia,
+      moodboard: { description: project.moodboard_description || '', palette: project.moodboard_palette || [], images: imagenes || [] },
+      responsable: project.responsible,
+    });
+  } catch (e) {
+    console.error('Error al generar el PDF de la historia:', e);
+    if (!res.headersSent) res.status(500).json({ error: 'Error al generar el PDF' });
+    else res.end();
   }
 });
 
