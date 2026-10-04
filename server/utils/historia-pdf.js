@@ -101,7 +101,7 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
   doc.fillOpacity(1).font('Helvetica-Bold').fontSize(40).fillColor('#ffffff')
     .text(project.project_name || 'Un día en tu espacio', M + 24, H - 205, { width: W - 2 * M - 80 });
   doc.font('Helvetica').fontSize(12).fillColor('#ffffff').fillOpacity(0.9)
-    .text(`Antes de dibujar un solo plano, hemos imaginado cómo se vive cada momento. Esta es la historia de ${esHome ? 'tu home gym' : 'tu gimnasio'}.`, M + 24, H - 120, { width: 460 });
+    .text(`Antes de dibujar un solo plano, hemos imaginado cómo se vive cada momento. ${esHome ? 'Esta es la historia de un día de entrenamiento en tu nuevo home gym.' : 'Esta es la historia de tu gimnasio.'}`, M + 24, H - 120, { width: 460 });
   doc.fillOpacity(1);
 
   // ── La atmósfera ────────────────────────────────────────────────────

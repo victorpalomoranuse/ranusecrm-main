@@ -156,7 +156,7 @@ export function StorytellingPortal({ project, dossier, code }) {
         <div className="sp-hero-t">
           <p className="sp-kicker">Proyecto creativo · {project.client_name}</p>
           <h1>{project.project_name || 'Un día en tu espacio'}</h1>
-          <p className="sp-sub">Antes de dibujar un solo plano, hemos imaginado cómo se vive cada momento. Esta es la historia de {esHome ? 'tu home gym' : 'tu gimnasio'}.</p>
+          <p className="sp-sub">Antes de dibujar un solo plano, hemos imaginado cómo se vive cada momento. {esHome ? 'Esta es la historia de un día de entrenamiento en tu nuevo home gym.' : 'Esta es la historia de tu gimnasio.'}</p>
         </div>
         <div className="sp-scroll">Desliza</div>
       </section>
