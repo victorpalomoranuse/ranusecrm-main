@@ -262,7 +262,7 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
 
     if (c.servicios.length) {
       necesito(130);
-      doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text('SERVICIOS EN ESTE MOMENTO', M, y, { characterSpacing: 2.5, lineBreak: false });
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text('PENSADO PARA ESTE MOMENTO', M, y, { characterSpacing: 2.5, lineBreak: false });
       y += 20;
       const cols = 3; const gap = 14; const wc = (W - 2 * M - gap * (cols - 1)) / cols;
       for (let i = 0; i < c.servicios.length; i += cols) {

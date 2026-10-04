@@ -258,7 +258,7 @@ export function TabHistoria({ project }) {
     <div>
       <div style={{ ...row, justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={row}>
-          {[['capitulos', 'Capítulos'], ['servicios', 'Servicios del espacio'], ['entregables', 'Entregables']].map(([id, label]) => (
+          {[['capitulos', 'Capítulos'], ['servicios', 'Soluciones y servicios'], ['entregables', 'Entregables']].map(([id, label]) => (
             <button key={id} type="button" className={`ap-btn ap-btn-sm ${vista === id ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVista(id)}>{label}</button>
           ))}
         </div>
