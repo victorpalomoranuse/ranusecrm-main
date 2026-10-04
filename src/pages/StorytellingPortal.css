@@ -65,7 +65,7 @@
 .sp-solo{max-width:640px}.sp-solo h3{font-weight:400;font-size:1.5rem;margin-bottom:14px}.sp-solo p{color:#5d554d;font-weight:300;white-space:pre-line}
 .sp-tag{display:inline-block;font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;font-weight:600;padding:4px 10px;border-radius:99px;margin-bottom:12px}
 .sp-t-incluido{background:#e9e3da;color:#6d6155}.sp-t-extra{background:#ede0cf;color:#8a6a3c}.sp-t-wow{background:#2a2622;color:#e9dcc8}
-.sp-lbl{font-size:.64rem;letter-spacing:.26em;text-transform:uppercase;color:var(--beige-d);font-weight:600;margin-bottom:16px}
+.sp-lbl{font-size:.66rem;letter-spacing:.26em;text-transform:uppercase;color:var(--beige-d);font-weight:600;margin-bottom:30px}
 .sp-zonas{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
 .sp-zona{background:var(--soft);border-radius:4px;overflow:hidden}
 .sp-zona-i{aspect-ratio:16/10;background:var(--line)}
@@ -119,7 +119,7 @@
 .sp-blk--wide{max-width:1400px}
 .sp-plano{background:#fff;border:1px solid var(--line);border-radius:6px;padding:18px}
 .sp-plano img{height:auto;max-height:70vh}
-.sp-plano-t{margin-top:14px;color:#6a6158;font-weight:300;max-width:640px;white-space:pre-line}
+.sp-plano-t{margin-top:20px;color:#6a6158;font-weight:300;max-width:640px;white-space:pre-line}
 .sp-leyenda{list-style:none;display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
 .sp-leyenda button{font-family:inherit;cursor:pointer;background:transparent;border:1px solid var(--line);border-radius:99px;padding:8px 16px;font-size:.78rem;color:var(--ink);display:inline-flex;gap:8px;align-items:center}
 .sp-leyenda button b{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;font-size:.7rem;align-items:center;justify-content:center;font-weight:600}
