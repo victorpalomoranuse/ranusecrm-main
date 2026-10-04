@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Stars } from '../components/Stars';
+import { StorytellingPortal } from './StorytellingPortal';
 import './MiProyecto.css';
 
 const PHASE_STATUS_LABELS = {
@@ -976,6 +977,32 @@ export function MiProyecto() {
           <button onClick={() => navigate('/')}>Volver al inicio</button>
         </div>
       </div>
+    );
+  }
+
+  // Proyectos con historia por capítulos (Proyecto creativo): vista de
+  // storytelling. Los proyectos antiguos no tienen capítulos y siguen con el
+  // portal de siempre (más abajo, sin cambios).
+  if (project.historia?.capitulos?.length) {
+    const hayGlobal = Boolean(project.notes?.length || project.documents?.length);
+    return (
+      <StorytellingPortal
+        project={project}
+        dossier={(
+          <div className="mp sp-legacy">
+            <div className="mp-main">
+              <NeedsFormSection code={code} />
+              <ListadosSection materials={project.materials} equipment={project.equipment} catalogTypes={project.catalog_types} intro={project.listados_intro_text} title={project.listados_title} />
+              {hayGlobal && (
+                <div className="mp-sections">
+                  <NotasSection notes={project.notes} />
+                  <DocumentosSection documents={project.documents} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      />
     );
   }
 
