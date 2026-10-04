@@ -151,6 +151,42 @@ function Subir({ projectId, onUrl, label = 'Subir', accept = 'image/*' }) {
   );
 }
 
+// Sube varias imágenes de golpe y las reparte: primero el render principal si
+// está vacío, luego los huecos de render vacíos y, si sobran, crea bloques
+// de render nuevos. Así subir los renders de un capítulo es un solo paso.
+function SubirVariosRenders({ projectId, capitulo, bloques, llamar }) {
+  const ref = useRef(null);
+  const [estado, setEstado] = useState('');
+  const [error, setError] = useState('');
+  const onFiles = async (e) => {
+    const files = [...(e.target.files || [])];
+    if (!files.length) return;
+    setError('');
+    let principalLibre = !capitulo.render_url;
+    const huecos = bloques.filter(b => b.tipo === 'render' && !b.imagen_url).map(b => b.id);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        setEstado(`Subiendo ${i + 1} de ${files.length}…`);
+        const form = new FormData(); form.append('file', files[i]);
+        const { data } = await api.post(`/historia/${projectId}/subir`, form);
+        if (principalLibre) { await api.put(`/historia/capitulos/${capitulo.id}`, { render_url: data.url }); principalLibre = false; }
+        else if (huecos.length) await api.put(`/historia/bloques/${huecos.shift()}`, { imagen_url: data.url });
+        else await api.post(`/historia/capitulos/${capitulo.id}/bloques`, { tipo: 'render', imagen_url: data.url });
+      }
+    } catch (err) { setError(err.response?.data?.error || 'Error al subir los renders'); }
+    finally { setEstado(''); if (ref.current) ref.current.value = ''; await llamar(async () => {}); }
+  };
+  return (
+    <span>
+      <input ref={ref} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onFiles} />
+      <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" disabled={!!estado} onClick={() => ref.current?.click()}>
+        <Upload size={12} /> {estado || 'Subir renders (varios a la vez)'}
+      </button>
+      {error && <span className="ap-error" style={{ marginLeft: 6 }}>{error}</span>}
+    </span>
+  );
+}
+
 function Miniatura({ url, onQuitar }) {
   if (!url) return null;
   return (
@@ -288,6 +324,17 @@ function VistaCapitulos({ projectId, data, capitulo, setCapSel, llamar }) {
                 {capitulo.visible ? <><Eye size={11} /> Visible al cliente</> : <><EyeOff size={11} /> Oculto</>}
               </button>
               <button type="button" className="ap-btn ap-btn-danger ap-btn-xs" onClick={borrarCapitulo}><Trash2 size={11} /></button>
+            </div>
+          </div>
+          <div style={{ ...box, marginBottom: 10, borderColor: 'rgba(190,176,162,0.35)' }}>
+            <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
+              <strong style={{ fontSize: '0.85rem' }}>Renders del capítulo</strong>
+              <SubirVariosRenders projectId={projectId} capitulo={capitulo} bloques={bloques} llamar={llamar} />
+            </div>
+            <p style={{ ...muted, marginBottom: 6 }}>Selecciona todos los renders de este capítulo a la vez: el primero será el principal (a pantalla completa) y los demás van a los huecos de render de abajo.</p>
+            <div style={row}>
+              {capitulo.render_url ? <Miniatura url={capitulo.render_url} onQuitar={() => guardarCap({ render_url: null })} /> : <span style={{ ...muted, color: '#f5b748' }}>Falta el render principal</span>}
+              {bloques.filter(b => b.tipo === 'render' && b.imagen_url).map(b => <Miniatura key={b.id} url={b.imagen_url} onQuitar={() => llamar(() => api.put(`/historia/bloques/${b.id}`, { imagen_url: null }))} />)}
             </div>
           </div>
           <Campo label="Título" value={capitulo.titulo} onSave={v => v.trim() && guardarCap({ titulo: v })} />
