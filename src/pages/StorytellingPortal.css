@@ -138,3 +138,6 @@
 .sp-eq-i h5{font-weight:500;font-size:.85rem;line-height:1.35;margin-bottom:2px}
 .sp-eq-i p{font-size:.75rem;color:var(--beige-d);font-weight:500;letter-spacing:.06em;text-transform:uppercase}
 @media(max-width:860px){.sp-gal--3,.sp-gal--4{grid-template-columns:1fr 1fr}.sp-gal--3 .sp-gal-main,.sp-gal--4 .sp-gal-main{grid-column:span 2;aspect-ratio:16/10}.sp-gal--3>div:not(.sp-gal-main),.sp-gal--4>div:not(.sp-gal-main){grid-column:span 1}}
+
+.sp-planosec{padding:12vh 8vw 2vh;max-width:1200px;margin:0 auto}
+.sp-planosec h2{font-weight:300;font-size:clamp(1.8rem,3.6vw,2.9rem);line-height:1.2;letter-spacing:-.01em;margin-bottom:26px}

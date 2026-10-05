@@ -15,7 +15,6 @@ const TIPOS_BLOQUE = [
   { id: 'render', label: 'Render grande' },
   { id: 'zona', label: 'Zona' },
   { id: 'detalle', label: 'Detalle' },
-  { id: 'plano', label: 'Plano / recorrido' },
   { id: 'galeria', label: 'Galería de renders' },
   { id: 'equipo', label: 'Equipo (de Listados)' },
 ];
@@ -216,7 +215,7 @@ export function TabHistoria({ project }) {
     try {
       const { data: h } = await api.get(`/historia/${projectId}`);
       setData(h);
-      setCapSel(prev => (h.capitulos.some(c => c.id === prev) ? prev : h.capitulos[0]?.id || null));
+      setCapSel(prev => (prev === 'plano' || h.capitulos.some(c => c.id === prev) ? prev : h.capitulos[0]?.id || null));
     } catch { setError('No se pudo cargar la historia'); }
   }, [projectId]);
   useEffect(() => { cargar(); }, [cargar]);
@@ -267,7 +266,7 @@ export function TabHistoria({ project }) {
       {error && <p className="ap-error" style={{ marginBottom: 8 }}>{error}</p>}
 
       {vista === 'capitulos' && (
-        <VistaCapitulos projectId={projectId} data={data} capitulo={capitulo} setCapSel={setCapSel} llamar={llamar} />
+        <VistaCapitulos projectId={projectId} data={data} capitulo={capitulo} esPlano={capSel === 'plano'} setCapSel={setCapSel} llamar={llamar} project={project} />
       )}
       {vista === 'servicios' && <VistaServicios projectId={projectId} data={data} llamar={llamar} />}
       {vista === 'entregables' && <VistaEntregables projectId={projectId} data={data} llamar={llamar} />}
@@ -276,7 +275,7 @@ export function TabHistoria({ project }) {
 }
 
 // ── Capítulos + bloques ────────────────────────────────────────────────
-function VistaCapitulos({ projectId, data, capitulo, setCapSel, llamar }) {
+function VistaCapitulos({ projectId, data, capitulo, esPlano, setCapSel, llamar, project }) {
   const caps = data.capitulos;
   const bloques = data.bloques.filter(b => b.capitulo_id === capitulo.id).sort((a, b) => a.orden - b.orden);
 
@@ -306,8 +305,12 @@ function VistaCapitulos({ projectId, data, capitulo, setCapSel, llamar }) {
   return (
     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
       <div style={{ ...box, flex: '0 0 230px', minWidth: 200 }}>
+        <div style={{ ...row, flexWrap: 'nowrap', padding: '8px 6px', borderRadius: 6, cursor: 'pointer', background: esPlano ? 'rgba(190,176,162,0.16)' : 'transparent', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 6 }} onClick={() => setCapSel('plano')}>
+          <span style={{ width: 18 }}>📐</span>
+          <span style={{ flex: 1, fontSize: '0.85rem', fontWeight: 600 }}>Plano y recorrido</span>
+        </div>
         {caps.map((c, i) => (
-          <div key={c.id} style={{ ...row, flexWrap: 'nowrap', padding: '6px 4px', borderRadius: 6, cursor: 'pointer', background: c.id === capitulo.id ? 'rgba(190,176,162,0.16)' : 'transparent', opacity: c.visible ? 1 : 0.45 }}
+          <div key={c.id} style={{ ...row, flexWrap: 'nowrap', padding: '6px 4px', borderRadius: 6, cursor: 'pointer', background: !esPlano && c.id === capitulo.id ? 'rgba(190,176,162,0.16)' : 'transparent', opacity: c.visible ? 1 : 0.45 }}
             onClick={() => setCapSel(c.id)}>
             <span style={{ ...muted, width: 18 }}>{i + 1}</span>
             <span style={{ flex: 1, fontSize: '0.85rem' }}>{c.titulo}</span>
@@ -318,6 +321,7 @@ function VistaCapitulos({ projectId, data, capitulo, setCapSel, llamar }) {
         <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop: 8, width: '100%' }} onClick={nuevoCapitulo}><Plus size={12} /> Capítulo</button>
       </div>
 
+      {esPlano ? <PlanoEditor projectId={projectId} project={project} caps={caps} /> : (
       <div style={{ flex: 1, minWidth: 280 }}>
         <div style={{ ...box, marginBottom: '1rem' }}>
           <div style={{ ...row, justifyContent: 'space-between', marginBottom: 8 }}>
@@ -370,6 +374,48 @@ function VistaCapitulos({ projectId, data, capitulo, setCapSel, llamar }) {
             <BloqueEditor key={b.id} projectId={projectId} b={b} idx={i} total={bloques.length} mover={moverBloque} llamar={llamar} />
           ))}
         </div>
+      </div>
+      )}
+    </div>
+  );
+}
+
+// Plano de distribución con el recorrido: sección propia del portal, entre "La atmósfera" y el capítulo 1
+function PlanoEditor({ projectId, project, caps }) {
+  const [plano, setPlano] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    api.get(`/historia/${projectId}/plano`).then(r => setPlano(r.data)).catch(() => setError('No se pudo cargar el plano (¿has ejecutado el SQL v65?)'));
+  }, [projectId]);
+  const guardar = async (campos) => {
+    setError('');
+    try { await api.put(`/historia/${projectId}/plano`, campos); setPlano(p => ({ ...p, ...campos })); }
+    catch (e) { setError(e.response?.data?.error || 'Error al guardar el plano'); }
+  };
+  return (
+    <div style={{ flex: 1, minWidth: 280 }}>
+      <div style={box}>
+        <strong>Plano de distribución con el recorrido</strong>
+        <p style={{ ...muted, margin: '6px 0 10px' }}>
+          Es una sección propia del portal: aparece al principio del portal, justo después de la portada y antes de "La atmósfera" y los capítulos, para que el cliente entienda el espacio desde el primer momento. Lleva una leyenda numerada que lleva a cada capítulo.
+          Sube aquí el plano como <strong>imagen</strong> (JPG o PNG, con el recorrido numerado). El <strong>PDF</strong> del plano se sube aparte en Entregables → Generales y es el que el cliente descarga en su dossier.
+        </p>
+        {error && <p className="ap-error" style={{ marginBottom: 8 }}>{error}</p>}
+        {plano && (
+          <>
+            <div className="ap-field" style={{ marginBottom: 10 }}>
+              <label>Imagen del plano</label>
+              {plano.imagen_url && <img src={plano.imagen_url} alt="" style={{ maxWidth: '100%', maxHeight: 260, objectFit: 'contain', borderRadius: 6, background: '#fff', display: 'block', marginBottom: 8 }} />}
+              <div style={row}>
+                <Subir projectId={projectId} label={plano.imagen_url ? 'Cambiar plano' : 'Subir plano'} onUrl={u => guardar({ imagen_url: u })} />
+                {plano.imagen_url && <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => guardar({ imagen_url: null })}>Quitar</button>}
+              </div>
+              {!plano.imagen_url && <p style={{ ...muted, color: '#f5b748', marginTop: 6 }}>Sin imagen: la sección no se muestra al cliente.</p>}
+            </div>
+            <Campo label="Frase bajo el plano (opcional)" value={plano.texto} placeholder="Así se organiza tu espacio y así lo recorres, paso a paso." onSave={v => guardar({ texto: v })} ia contexto="Frase corta bajo un plano de distribución con recorrido" />
+            <p style={{ ...muted, marginTop: 8 }}>La leyenda que verá el cliente: {caps.filter(c => c.visible).map((c, i) => `${i + 1} ${c.titulo}`).join(' · ')}</p>
+          </>
+        )}
       </div>
     </div>
   );

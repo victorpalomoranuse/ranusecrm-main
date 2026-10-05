@@ -143,6 +143,7 @@ export function StorytellingPortal({ project, dossier, code }) {
   const imagenesMood = (moodboard.images || []).slice(0, 8);
   const paleta = moodboard.palette || [];
   const estilo = historia.estilo || null;
+  const plano = historia.plano || null;
   const hayMood = imagenesMood.length > 0 || paleta.length > 0 || !!moodboard.description || !!estilo;
   const planos = historia.entregables || [];
   const esHome = historia.tipo_proyecto === 'home_gym';
@@ -150,6 +151,7 @@ export function StorytellingPortal({ project, dossier, code }) {
 
   const secciones = [
     { id: 'sp-top', label: 'Portada' },
+    ...(plano ? [{ id: 'sp-plano', label: 'El recorrido' }] : []),
     ...(hayMood ? [{ id: 'sp-atmosfera', label: 'La atmósfera' }] : []),
     ...capitulos.map((c, i) => ({ id: `sp-c-${c.id}`, label: c.titulo || `Capítulo ${i + 1}` })),
     { id: 'sp-dossier', label: 'Tu dossier' },
@@ -175,7 +177,7 @@ export function StorytellingPortal({ project, dossier, code }) {
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
     return () => { io.disconnect(); clearTimeout(t); window.removeEventListener('scroll', onScroll); };
-  }, [capitulos.length, hayMood]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [capitulos.length, hayMood, !!plano]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
   const urlZip = code ? `${base}/historia-publica/${encodeURIComponent(code)}/renders.zip` : null;
@@ -211,6 +213,20 @@ export function StorytellingPortal({ project, dossier, code }) {
         </div>
         <div className="sp-scroll">Desliza</div>
       </section>
+
+      {plano && (
+        <section className="sp-planosec" id="sp-plano">
+          <p className="sp-label sp-rv">El recorrido</p>
+          <h2 className="sp-rv">Así se organiza tu espacio.</h2>
+          {plano.texto && <p className="sp-lead sp-rv" style={{ marginBottom: 30 }}>{plano.texto}</p>}
+          <div className="sp-plano sp-rv"><img src={plano.imagen_url} alt="Plano de distribución con el recorrido" loading="lazy" style={{ objectFit: 'contain' }} /></div>
+          <ol className="sp-leyenda sp-rv">
+            {capitulos.map((c, i) => (
+              <li key={c.id}><button type="button" onClick={() => irA(`sp-c-${c.id}`)}><b>{i + 1}</b> {c.titulo}</button></li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {hayMood && (
         <section className="sp-mood" id="sp-atmosfera">

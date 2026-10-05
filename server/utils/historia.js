@@ -122,10 +122,14 @@ export async function getHistoriaPublica(projectId) {
   // Estilo definido a partir del moodboard (columnas v61; si no existen aún, null)
   const { data: est } = await supabase.from('client_projects').select('moodboard_estilo_nombre, moodboard_estilo').eq('id', projectId).maybeSingle();
   const estilo = est?.moodboard_estilo?.trim() ? { nombre: est.moodboard_estilo_nombre || null, texto: est.moodboard_estilo } : null;
+  // Plano de distribución con recorrido (columnas v65; si no existen aún, null)
+  const { data: pl } = await supabase.from('client_projects').select('plano_imagen_url, plano_texto').eq('id', projectId).maybeSingle();
+  const plano = pl?.plano_imagen_url ? { imagen_url: pl.plano_imagen_url, texto: pl.plano_texto || null } : null;
 
   return {
     tipo_proyecto: h.tipo_proyecto,
     estilo,
+    plano,
     capitulos: capitulos.map(c => ({
       id: c.id, orden: c.orden, titulo: c.titulo, texto: c.texto, render_url: c.render_url, tour_url: c.tour_url,
       bloques: bloques.filter(b => b.capitulo_id === c.id).map(({ guia, proyecto_id, ...b }) => b),

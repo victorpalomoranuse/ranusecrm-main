@@ -254,6 +254,24 @@ router.delete('/entregables/:id', async (req, res) => {
   } catch (e) { fail(res, e, 'Error al eliminar el entregable'); }
 });
 
+// ── Plano de distribución con recorrido (sección propia del portal) ──
+router.get('/:projectId/plano', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('client_projects').select('plano_imagen_url, plano_texto').eq('id', req.params.projectId).single();
+    if (error) throw error;
+    res.json({ imagen_url: data.plano_imagen_url || null, texto: data.plano_texto || '' });
+  } catch (e) { fail(res, e, 'Error al obtener el plano'); }
+});
+
+router.put('/:projectId/plano', async (req, res) => {
+  try {
+    const updates = sinUndefined({ plano_imagen_url: url(req.body.imagen_url), plano_texto: txt(req.body.texto) });
+    const { error } = await supabase.from('client_projects').update(updates).eq('id', req.params.projectId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) { fail(res, e, 'Error al guardar el plano'); }
+});
+
 // ── Estilo del proyecto (a partir del moodboard) ──────────────────────
 router.get('/:projectId/estilo', async (req, res) => {
   try {

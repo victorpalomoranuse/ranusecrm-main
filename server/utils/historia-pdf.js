@@ -82,6 +82,7 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
   // Imágenes: se descargan todas en paralelo antes de dibujar
   const urls = new Set();
   if (project.cover_image_url) urls.add(project.cover_image_url);
+  if (historia.plano?.imagen_url) urls.add(historia.plano.imagen_url);
   (moodboard?.images || []).slice(0, 4).forEach(i => urls.add(i.url));
   capitulos.forEach(c => {
     if (c.render_url) urls.add(c.render_url);
@@ -104,6 +105,23 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
   doc.font('Helvetica').fontSize(12).fillColor('#ffffff').fillOpacity(0.9)
     .text(`Antes de dibujar un solo plano, hemos imaginado cómo se vive cada momento. ${esHome ? 'Esta es la historia de un día de entrenamiento en tu nuevo home gym.' : 'Esta es la historia de tu gimnasio.'}`, M + 24, H - 120, { width: 460 });
   doc.fillOpacity(1);
+
+  // ── El recorrido (plano de distribución) ────────────────────────────
+  if (historia.plano?.imagen_url) {
+    nuevaPagina();
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text('EL RECORRIDO', M, 56, { characterSpacing: 3 });
+    doc.font('Helvetica').fontSize(26).fillColor(INK).text('Así se organiza tu espacio.', M, 76, { width: W - 2 * M });
+    const bufP = img(historia.plano.imagen_url);
+    try { if (bufP) doc.image(bufP, M, 125, { fit: [W - 2 * M, 350], align: 'center', valign: 'center' }); } catch { /* imagen no válida */ }
+    let xl = M; const yl = 495;
+    capitulos.forEach((cc, ii) => {
+      doc.save().circle(xl + 9, yl + 8, 9).fill(INK).restore();
+      doc.font('Helvetica-Bold').fontSize(8).fillColor('#ffffff').text(String(ii + 1), xl, yl + 5, { width: 18, align: 'center', lineBreak: false });
+      doc.font('Helvetica').fontSize(9.5).fillColor(INK).text(cc.titulo, xl + 24, yl + 3, { lineBreak: false });
+      xl += 40 + doc.widthOfString(cc.titulo) + 14;
+    });
+    pie(project.project_name);
+  }
 
   // ── La atmósfera ────────────────────────────────────────────────────
   const paleta = moodboard?.palette || [];
