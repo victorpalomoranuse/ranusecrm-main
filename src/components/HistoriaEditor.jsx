@@ -34,8 +34,11 @@ const muted = { fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)' };
 const row = { display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' };
 
 // ── Selector de tipo + capítulos a incluir (crear proyecto / generar) ──
-export function SelectorTipoHistoria({ tipo, setTipo, seleccion, setSeleccion }) {
+export function SelectorTipoHistoria({ tipo, setTipo, seleccion, setSeleccion, extras = [], setExtras }) {
   const [plantilla, setPlantilla] = useState([]);
+  const [catalogoExtras, setCatalogoExtras] = useState([]);
+  useEffect(() => { if (setExtras) api.get('/historia/extras').then(r => setCatalogoExtras(r.data.extras || [])).catch(() => {}); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleExtra = (id) => setExtras(e => (e.includes(id) ? e.filter(x => x !== id) : [...e, id]));
 
   useEffect(() => {
     if (!tipo) { setPlantilla([]); setSeleccion([]); return; }
@@ -66,6 +69,18 @@ export function SelectorTipoHistoria({ tipo, setTipo, seleccion, setSeleccion })
               </label>
             ))}
           </div>
+          {setExtras && catalogoExtras.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <p style={muted}>Capítulos extra (opcional): zonas que este espacio también tiene, p. ej. una zona de grabación de contenido.</p>
+              <div style={{ ...row, marginTop: 6 }}>
+                {catalogoExtras.map(x => (
+                  <label key={x.id} title={x.descripcion || ''} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: '0.82rem', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={extras.includes(x.id)} onChange={() => toggleExtra(x.id)} /> {x.titulo}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -209,6 +224,7 @@ export function TabHistoria({ project }) {
   const [error, setError] = useState('');
   const [tipoGen, setTipoGen] = useState('');
   const [selGen, setSelGen] = useState([]);
+  const [extrasGen, setExtrasGen] = useState([]);
   const [generando, setGenerando] = useState(false);
 
   const cargar = useCallback(async () => {
@@ -234,7 +250,7 @@ export function TabHistoria({ project }) {
       if (!tipoGen) return;
       if (!window.confirm('Al generar la historia, el cliente verá este proyecto como una historia por capítulos en lugar de las categorías actuales. ¿Continuar?')) return;
       setGenerando(true); setError('');
-      try { await api.post(`/historia/${projectId}/generar`, { tipo: tipoGen, capitulos_orden: selGen }); await cargar(); }
+      try { await api.post(`/historia/${projectId}/generar`, { tipo: tipoGen, capitulos_orden: selGen, capitulos_extra: extrasGen }); await cargar(); }
       catch (e) { setError(e.response?.data?.error || 'Error al generar la historia'); }
       finally { setGenerando(false); }
     };
@@ -242,7 +258,7 @@ export function TabHistoria({ project }) {
       <div style={box}>
         <h3 style={{ marginBottom: 6 }}>Este proyecto no tiene historia</h3>
         <p style={{ ...muted, marginBottom: 12 }}>El portal del cliente se muestra como siempre. Si generas la historia, pasará a verse como un recorrido por capítulos (Proyecto creativo).</p>
-        <SelectorTipoHistoria tipo={tipoGen} setTipo={setTipoGen} seleccion={selGen} setSeleccion={setSelGen} />
+        <SelectorTipoHistoria tipo={tipoGen} setTipo={setTipoGen} seleccion={selGen} setSeleccion={setSelGen} extras={extrasGen} setExtras={setExtrasGen} />
         {error && <p className="ap-error" style={{ marginTop: 8 }}>{error}</p>}
         <div style={{ marginTop: 12 }}>
           <button type="button" className="ap-btn ap-btn-primary" disabled={!tipoGen || !selGen.length || generando} onClick={generar}>{generando ? 'Generando…' : 'Generar historia'}</button>
@@ -285,9 +301,18 @@ function VistaCapitulos({ projectId, data, capitulo, esPlano, setCapSel, llamar,
     [ids[idx], ids[j]] = [ids[j], ids[idx]];
     llamar(() => api.put(`/historia/${projectId}/capitulos/orden`, { ids }));
   };
-  const nuevoCapitulo = () => {
-    const titulo = window.prompt('Título del nuevo capítulo');
-    if (titulo?.trim()) llamar(() => api.post(`/historia/${projectId}/capitulos`, { titulo }));
+  const [anadiendo, setAnadiendo] = useState(false);
+  const [catalogo, setCatalogo] = useState([]);
+  const [tituloNuevo, setTituloNuevo] = useState('');
+  const abrirAnadir = () => {
+    setAnadiendo(a => !a);
+    if (!catalogo.length) api.get('/historia/extras').then(r => setCatalogo(r.data.extras || [])).catch(() => {});
+  };
+  const anadirExtra = (id) => { setAnadiendo(false); llamar(() => api.post(`/historia/${projectId}/capitulos/extra`, { extra_id: id })); };
+  const anadirBlanco = () => {
+    if (!tituloNuevo.trim()) return;
+    const t = tituloNuevo; setTituloNuevo(''); setAnadiendo(false);
+    llamar(() => api.post(`/historia/${projectId}/capitulos`, { titulo: t }));
   };
   const borrarCapitulo = () => {
     if (window.confirm(`¿Eliminar el capítulo "${capitulo.titulo}" con sus bloques? (Si solo quieres quitarlo del portal, ocúltalo.)`)) llamar(() => api.delete(`/historia/capitulos/${capitulo.id}`));
@@ -318,7 +343,22 @@ function VistaCapitulos({ projectId, data, capitulo, esPlano, setCapSel, llamar,
             <button type="button" className="ap-btn-icon" title="Bajar" onClick={e => { e.stopPropagation(); mover(i, 1); }}><ChevronDown size={13} /></button>
           </div>
         ))}
-        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop: 8, width: '100%' }} onClick={nuevoCapitulo}><Plus size={12} /> Capítulo</button>
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop: 8, width: '100%' }} onClick={abrirAnadir}><Plus size={12} /> Añadir capítulo o zona</button>
+        {anadiendo && (
+          <div style={{ ...box, marginTop: 8, padding: '0.6rem' }}>
+            <p style={{ ...muted, marginBottom: 6 }}>Elige una zona ya preparada (con texto y bloques sugeridos):</p>
+            {catalogo.map(x => (
+              <button key={x.id} type="button" className="ap-btn ap-btn-ghost ap-btn-xs" style={{ display: 'block', width: '100%', textAlign: 'left', marginBottom: 4 }} title={x.descripcion || ''} onClick={() => anadirExtra(x.id)}>
+                {x.titulo}
+              </button>
+            ))}
+            <p style={{ ...muted, margin: '8px 0 4px' }}>O empieza en blanco:</p>
+            <div style={row}>
+              <input value={tituloNuevo} onChange={e => setTituloNuevo(e.target.value)} onKeyDown={e => e.key === 'Enter' && anadirBlanco()} placeholder="Título del capítulo" style={{ flex: 1, minWidth: 120 }} />
+              <button type="button" className="ap-btn ap-btn-primary ap-btn-xs" onClick={anadirBlanco}>Crear</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {esPlano ? <PlanoEditor projectId={projectId} project={project} caps={caps} /> : (

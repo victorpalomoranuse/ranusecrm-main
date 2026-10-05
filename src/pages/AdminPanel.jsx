@@ -109,6 +109,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const [buscarVenta, setBuscarVenta] = useState('');
   const [tipoProyecto, setTipoProyecto] = useState('');
   const [capitulosSel, setCapitulosSel] = useState([]);
+  const [capitulosExtra, setCapitulosExtra] = useState([]);
 
   useEffect(() => { api.get('/employees').then(r => setEmployees(r.data.employees || [])).catch(() => {}); }, []);
   useEffect(() => { api.get('/ventas').then(r => setVentas(r.data.ventas || [])).catch(() => {}); }, []);
@@ -136,7 +137,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const payload = { client_name: clientName, project_name: projectName, client_email: clientEmail || null, access_code: accessCode, phase, urgency, status, notes: notes || null, responsible_id: responsibleId || null, client_nif: clientNif || null, client_phone: clientPhone || null, client_address: clientAddress || null, client_city: clientCity || null, venta_id: ventaId || null, ...(!isEdit && tipoProyecto ? { tipo_proyecto: tipoProyecto, capitulos_orden: capitulosSel } : {}) };
+      const payload = { client_name: clientName, project_name: projectName, client_email: clientEmail || null, access_code: accessCode, phase, urgency, status, notes: notes || null, responsible_id: responsibleId || null, client_nif: clientNif || null, client_phone: clientPhone || null, client_address: clientAddress || null, client_city: clientCity || null, venta_id: ventaId || null, ...(!isEdit && tipoProyecto ? { tipo_proyecto: tipoProyecto, capitulos_orden: capitulosSel, capitulos_extra: capitulosExtra } : {}) };
       let saved;
       if (isEdit) { const { data } = await api.put(`/client-projects/${project.id}`, payload); saved = data.project; }
       else { const { data } = await api.post('/client-projects', payload); saved = data.project; }
@@ -203,7 +204,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
           {!isEdit && (
             <div className="ap-field">
               <label>Tipo de proyecto <span className="ap-optional">(Proyecto creativo: historia por capítulos)</span></label>
-              <SelectorTipoHistoria tipo={tipoProyecto} setTipo={setTipoProyecto} seleccion={capitulosSel} setSeleccion={setCapitulosSel} />
+              <SelectorTipoHistoria tipo={tipoProyecto} setTipo={setTipoProyecto} seleccion={capitulosSel} setSeleccion={setCapitulosSel} extras={capitulosExtra} setExtras={setCapitulosExtra} />
               <span className="ap-field-hint">Si eliges un tipo, se crea la historia con sus capítulos y el portal del cliente la mostrará. Sin tipo, el proyecto es como siempre.</span>
             </div>
           )}

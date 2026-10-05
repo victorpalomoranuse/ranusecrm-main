@@ -5,7 +5,7 @@ import { uploadDocumentFile, handleMulterError } from '../middleware/upload.midd
 import { uploadProjectRender, uploadProjectDocument } from '../utils/storage.js';
 import { callClaude } from '../utils/anthropic.js';
 import sharp from 'sharp';
-import { crearHistoria, getHistoriaAdmin, TIPOS_PROYECTO } from '../utils/historia.js';
+import { crearHistoria, anadirCapituloExtra, getHistoriaAdmin, TIPOS_PROYECTO } from '../utils/historia.js';
 
 // Historia por capítulos del Proyecto creativo (Servicio 1). Todo es opt-in:
 // solo existe para proyectos con tipo_proyecto y capítulos. Los proyectos
@@ -36,6 +36,15 @@ router.get('/plantillas/:tipo', async (req, res) => {
   } catch (e) { fail(res, e, 'Error al obtener las plantillas'); }
 });
 
+// Catálogo de capítulos extra (zona de grabación, boxeo, yoga...)
+router.get('/extras', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('plantillas_capitulo_extra').select('id, titulo, descripcion').order('orden', { ascending: true });
+    if (error) throw error;
+    res.json({ extras: data });
+  } catch (e) { fail(res, e, 'Error al obtener los capítulos extra'); }
+});
+
 // ── Historia completa (admin) ──────────────────────────────────────────
 router.get('/:projectId', async (req, res) => {
   try { res.json(await getHistoriaAdmin(req.params.projectId)); }
@@ -46,9 +55,9 @@ router.get('/:projectId', async (req, res) => {
 // creado sin tipo). Nunca toca una historia ya existente.
 router.post('/:projectId/generar', async (req, res) => {
   try {
-    const { tipo, capitulos_orden } = req.body;
+    const { tipo, capitulos_orden, capitulos_extra } = req.body;
     if (!TIPOS_PROYECTO.includes(tipo)) return res.status(400).json({ error: 'Tipo de proyecto no válido' });
-    const creada = await crearHistoria(req.params.projectId, tipo, capitulos_orden);
+    const creada = await crearHistoria(req.params.projectId, tipo, capitulos_orden, capitulos_extra);
     if (!creada) return res.status(409).json({ error: 'Este proyecto ya tiene historia o no hay capítulos que crear' });
     await supabase.from('client_projects').update({ tipo_proyecto: tipo }).eq('id', req.params.projectId);
     res.status(201).json(await getHistoriaAdmin(req.params.projectId));
@@ -79,6 +88,13 @@ router.post('/:projectId/capitulos', async (req, res) => {
     if (error) throw error;
     res.status(201).json({ capitulo: data });
   } catch (e) { fail(res, e, 'Error al crear el capítulo'); }
+});
+
+router.post('/:projectId/capitulos/extra', async (req, res) => {
+  try {
+    const capitulo = await anadirCapituloExtra(req.params.projectId, req.body.extra_id);
+    res.status(201).json({ capitulo });
+  } catch (e) { fail(res, e, e.message || 'Error al añadir el capítulo'); }
 });
 
 router.put('/:projectId/capitulos/orden', async (req, res) => {

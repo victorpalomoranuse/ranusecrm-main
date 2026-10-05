@@ -431,7 +431,7 @@ router.get('/public/portfolio/:slug', async (req, res) => {
  */
 router.post('/', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { client_name, project_name, client_email, access_code, phase = 0, urgency = 'normal', responsible_id, notes, lead_id, venta_id, tipo_proyecto, capitulos_orden } = req.body;
+    const { client_name, project_name, client_email, access_code, phase = 0, urgency = 'normal', responsible_id, notes, lead_id, venta_id, tipo_proyecto, capitulos_orden, capitulos_extra } = req.body;
 
     if (!client_name || !project_name || !access_code) {
       return res.status(400).json({ error: 'Nombre del cliente, proyecto y código son requeridos' });
@@ -471,7 +471,7 @@ router.post('/', authenticateToken, requireProyectos, async (req, res) => {
     await applyDefaultCategories(data.id);
     if (TIPOS_PROYECTO.includes(tipo_proyecto)) {
       // La historia es opcional: si falla, el proyecto ya está creado y se puede generar luego
-      await crearHistoria(data.id, tipo_proyecto, capitulos_orden).catch(e => console.error('Error al crear la historia del proyecto:', e));
+      await crearHistoria(data.id, tipo_proyecto, capitulos_orden, capitulos_extra).catch(e => console.error('Error al crear la historia del proyecto:', e));
     }
     res.status(201).json({ project: data });
   } catch (error) {

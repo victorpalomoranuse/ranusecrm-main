@@ -10,7 +10,7 @@ export const TIPOS_PROYECTO = ['comercial', 'home_gym'];
  * de la plantilla incluir; el resto no se crea y los demás se renumeran.
  * Devuelve true si ha creado la historia.
  */
-export async function crearHistoria(projectId, tipo, capitulosOrden = null) {
+export async function crearHistoria(projectId, tipo, capitulosOrden = null, extras = []) {
   if (!TIPOS_PROYECTO.includes(tipo)) return false;
 
   const { count } = await supabase.from('capitulos').select('id', { count: 'exact', head: true }).eq('proyecto_id', projectId);
@@ -77,7 +77,39 @@ export async function crearHistoria(projectId, tipo, capitulosOrden = null) {
     }));
   if (ents.length) await supabase.from('entregables_capitulo').insert(ents);
 
+  // Capítulos extra elegidos al crear (zona de grabación, boxeo...)
+  for (const extraId of Array.isArray(extras) ? extras : []) {
+    await anadirCapituloExtra(projectId, extraId).catch(e => console.error('Capítulo extra:', e.message));
+  }
+
   return true;
+}
+
+/**
+ * Añade a un proyecto un capítulo del catálogo de extras (zona de grabación,
+ * boxeo, yoga...). Se coloca antes del último capítulo (el cierre) si ya hay
+ * varios, y se crean sus bloques sugeridos vacíos.
+ */
+export async function anadirCapituloExtra(projectId, extraId) {
+  const { data: extra } = await supabase.from('plantillas_capitulo_extra').select('*').eq('id', extraId).single();
+  if (!extra) throw new Error('Capítulo extra no encontrado');
+  const { data: caps } = await supabase.from('capitulos').select('id, orden').eq('proyecto_id', projectId).order('orden', { ascending: true });
+  const lista = caps || [];
+  let orden = (lista[lista.length - 1]?.orden || 0) + 1;
+  if (lista.length >= 2) {
+    const cierre = lista[lista.length - 1];
+    orden = cierre.orden;
+    await supabase.from('capitulos').update({ orden: cierre.orden + 1 }).eq('id', cierre.id);
+  }
+  const { data: nuevo, error } = await supabase.from('capitulos').insert({
+    proyecto_id: projectId, orden, titulo: extra.titulo, texto: extra.texto_base, sensorial: extra.sensorial || null, origen: 'plantilla',
+  }).select('*').single();
+  if (error) throw error;
+  const bloques = (Array.isArray(extra.bloques) ? extra.bloques : []).map((b, i) => ({
+    proyecto_id: projectId, capitulo_id: nuevo.id, orden: i, tipo: b.tipo || 'imagen_texto', titulo: b.titulo || null, guia: b.guia || null,
+  }));
+  if (bloques.length) await supabase.from('capitulo_bloques').insert(bloques);
+  return nuevo;
 }
 
 /**
