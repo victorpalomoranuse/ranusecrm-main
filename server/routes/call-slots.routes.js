@@ -345,9 +345,12 @@ router.put('/:id', async (req, res) => {
       const { data: sl } = await supabase.from('call_slots').select('setting_lead_id').eq('id', req.params.id).single();
       if (!sl?.setting_lead_id) return res.status(400).json({ error: 'Este hueco no tiene ningún lead reservado' });
       const cambios = { estado: estado_lead };
-      if (estado_lead === 'venta_1') cambios.fecha_venta_1 = new Date().toISOString();
-      if (estado_lead === 'venta_2') cambios.fecha_venta_2 = new Date().toISOString();
-      if (estado_lead === 'venta_extra') cambios.fecha_venta_extra = new Date().toISOString();
+      // La fecha de venta se estampa solo si el lead no la tenía ya (si no,
+      // cada cambio de estado la movería a hoy y se falsearían las métricas)
+      const { data: previo } = await supabase.from('setting_leads').select('fecha_venta_1, fecha_venta_2, fecha_venta_extra').eq('id', sl.setting_lead_id).maybeSingle();
+      if (estado_lead === 'venta_1' && !previo?.fecha_venta_1) cambios.fecha_venta_1 = new Date().toISOString();
+      if (estado_lead === 'venta_2' && !previo?.fecha_venta_2) cambios.fecha_venta_2 = new Date().toISOString();
+      if (estado_lead === 'venta_extra' && !previo?.fecha_venta_extra) cambios.fecha_venta_extra = new Date().toISOString();
       const { error: errLead } = await supabase.from('setting_leads').update(cambios).eq('id', sl.setting_lead_id);
       if (errLead) throw errLead;
     }

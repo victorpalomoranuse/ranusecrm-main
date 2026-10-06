@@ -45,6 +45,9 @@ export async function asignarLlamadaAHernan(leadId, fechaLlamada) {
     const { error } = await supabase.from('call_slots').insert({ employee_id: hernan.id, fecha, hora_inicio: hora, hora_fin: horaFin, ocupado: true, setting_lead_id: leadId });
     if (error) throw error;
   }
-  await avisarLlamada({ empleado: hernan, lead, fecha, hora, tipo: hadPrevio ? 'cambiada' : 'nueva' });
+  // Una llamada que ya pasó (datos históricos que se meten a posteriori) se
+  // coloca en el calendario pero no se avisa a Hernán por email.
+  const yaPasada = new Date(fechaLlamada).getTime() < Date.now();
+  if (!yaPasada) await avisarLlamada({ empleado: hernan, lead, fecha, hora, tipo: hadPrevio ? 'cambiada' : 'nueva' });
   return { asignada: true, mensaje: `Llamada colocada en el calendario de ${hernan.name} el ${fecha} a las ${hora.slice(0, 5)}.` };
 }

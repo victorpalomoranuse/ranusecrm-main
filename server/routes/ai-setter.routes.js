@@ -22,7 +22,7 @@ const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo',
 const CANALES_A_PREGUNTAR = ['Instagram (nos escriben)', 'Instagram (prospección)', 'Ads', 'Referido'];
 const CANALES_VALIDOS = [...CANALES_A_PREGUNTAR, 'WhatsApp', 'Otro'];
 
-const LEAD_SELECT = 'id, nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, created_at, updated_at';
+const LEAD_SELECT = 'id, nombre, telefono, instagram, email, canal, estado, objetivo, medidas, maquinarias, notas, assigned_to, fecha_llamada, fecha_venta_1, fecha_venta_2, fecha_venta_extra, extra_descripcion, extra_importe, created_at, updated_at';
 
 // El catálogo guarda los precios de los servicios de diseño SIN IVA — para
 // hablar con el prospecto siempre se da el precio CON IVA (21%), igual que
@@ -85,6 +85,50 @@ async function buscarLead({ nombre, instagram, telefono, email, query }) {
   return { encontrados: data };
 }
 
+// Convierte lo que da el modelo (hora de España) a un ISO UTC correcto.
+// Acepta "YYYY-MM-DD" (se toma el mediodía de Madrid) o "YYYY-MM-DDTHH:mm[:ss]".
+function fechaMadridAISO(valor) {
+  const v = String(valor || '').trim();
+  const m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}(?::\d{2})?))?/.exec(v);
+  if (!m) return { error: `Fecha no válida: "${valor}" — usa formato ISO (ej. "2026-10-03" o "2026-10-03T17:00:00").` };
+  const d = madridToUtcDate(m[1], m[2] || '12:00');
+  if (isNaN(d.getTime())) return { error: `Fecha no válida: "${valor}".` };
+  return { iso: d.toISOString() };
+}
+
+// Resuelve "asignado_a" (nombre de un empleado) al id del empleado.
+async function resolverEmpleado(nombre) {
+  const n = (nombre || '').trim();
+  if (!n) return { id: null };
+  const { data } = await supabase.from('employees').select('id, name').ilike('name', `%${n}%`).limit(2);
+  if (!data || data.length === 0) return { error: `No encuentro ningún empleado que se llame "${n}".` };
+  if (data.length > 1) return { error: `Hay varios empleados que encajan con "${n}" (${data.map(e => e.name).join(', ')}) — pregunta a cuál te refieres.` };
+  return { id: data[0].id };
+}
+
+// Revisión de la ficha tras crear/actualizar: lo que falte o sea incoherente
+// ensucia las métricas de Setting (origen, ventas por fecha de venta, llamadas...),
+// así que se le devuelve al modelo para que se lo pida a Franco o lo corrija.
+function revisarFicha(l) {
+  const faltan = [];
+  const avisos = [];
+  if (!l.canal) faltan.push('canal de origen (Instagram nos escriben / prospección / Ads / Referido): sin él no cuenta en las métricas por canal');
+  if (!l.telefono && !l.instagram) faltan.push('teléfono o @instagram, para poder identificar al lead');
+  if (l.estado === 'venta_1' && !l.fecha_venta_1) faltan.push('fecha de la venta 1 (las ventas se cuentan por su fecha)');
+  if (l.estado === 'venta_2' && !l.fecha_venta_2) faltan.push('fecha de la venta 2 (las ventas se cuentan por su fecha)');
+  if (l.estado === 'venta_extra' && !l.fecha_venta_extra) faltan.push('fecha de la venta extra');
+  if (l.estado === 'agendado' && !l.fecha_llamada) faltan.push('fecha y hora de la llamada (estado agendado sin fecha)');
+  const esVenta = !!(l.fecha_venta_1 || l.fecha_venta_2 || l.fecha_venta_extra);
+  if (esVenta && !l.fecha_llamada) avisos.push('Tiene venta pero no consta fecha de llamada: no entra en "Llamadas" ni en "Cierre en llamada". Si hubo llamada, pásala (aunque sea pasada).');
+  if (l.fecha_venta_extra && !l.extra_descripcion) avisos.push('Venta extra sin descripción de qué se vendió.');
+  const creado = l.created_at ? new Date(l.created_at).getTime() : null;
+  [['fecha_venta_1', 'venta 1'], ['fecha_venta_2', 'venta 2'], ['fecha_venta_extra', 'venta extra']].forEach(([k, etq]) => {
+    if (creado && l[k] && new Date(l[k]).getTime() < creado - 86400000) avisos.push(`La fecha de la ${etq} es anterior a la fecha de creación del lead: revisa las dos fechas.`);
+  });
+  if (!l.objetivo && !l.medidas && !l.maquinarias) avisos.push('Faltan objetivo, medidas y equipamiento: rellénalos si los has visto en la conversación.');
+  return { completa: faltan.length === 0, faltan, avisos };
+}
+
 async function crearLead(input, userId) {
   const nombre = input.nombre?.trim();
   if (!nombre) return { creado: false, error: 'Falta el nombre del lead' };
@@ -92,16 +136,36 @@ async function crearLead(input, userId) {
   // que el modelo se acuerde de preguntar primero: sin confirmación
   // explícita de Franco, no se crea nada.
   if (input.confirmado_por_setter !== true) {
-    return { creado: false, requiere_confirmacion: true, mensaje: 'No se ha creado el lead — falta confirmación explícita de Franco. Pregúntale si quiere darlo de alta en Setting (con el bloque de opciones del canal) antes de volver a llamar a esta herramienta (con confirmado_por_setter=true una vez elija una opción).' };
+    return { creado: false, requiere_confirmacion: true, mensaje: 'No se ha creado el lead — falta confirmación explícita de Franco. Si él no ha pedido crearlo, pregúntale si quiere darlo de alta en Setting (con el bloque de opciones del canal) antes de volver a llamar a esta herramienta (con confirmado_por_setter=true). Si SÍ te lo ha pedido en su mensaje ("créalo", "dalo de alta"...), eso ya es la confirmación: vuelve a llamar con confirmado_por_setter=true.' };
   }
   // El canal también se exige a nivel de código — es un dato clave para las
   // métricas de origen (de dónde vienen las ventas), así que nunca se crea
   // un lead sin él fijado explícitamente por la respuesta de Franco.
   if (!CANALES_VALIDOS.includes(input.canal)) {
-    return { creado: false, requiere_confirmacion: true, mensaje: `No se ha creado el lead — falta el canal de origen (o no es válido: "${input.canal || ''}"). Pregúntale a Franco de dónde viene el contacto con el bloque de opciones antes de volver a llamar a esta herramienta.` };
+    return { creado: false, requiere_confirmacion: true, mensaje: `No se ha creado el lead — falta el canal de origen (o no es válido: "${input.canal || ''}"). Si Franco no lo ha dicho, pregúntale SOLO eso, con el bloque de opciones, antes de volver a llamar a esta herramienta.` };
   }
 
-  const estado = ESTADOS_VALIDOS.includes(input.estado) ? input.estado : 'contacto_nuevo';
+  const fechas = {};
+  for (const k of ['fecha_creacion', 'fecha_llamada', 'fecha_venta_1', 'fecha_venta_2', 'fecha_venta_extra']) {
+    if (input[k] === undefined || input[k] === null || input[k] === '') continue;
+    const r = fechaMadridAISO(input[k]);
+    if (r.error) return { creado: false, error: `${k}: ${r.error}` };
+    fechas[k] = r.iso;
+  }
+  const asignado = await resolverEmpleado(input.asignado_a);
+  if (asignado.error) return { creado: false, error: asignado.error };
+
+  // Estado: el que se indique; si no, se deduce de las fechas dadas.
+  let estado = ESTADOS_VALIDOS.includes(input.estado) ? input.estado : null;
+  if (!estado) {
+    const ventas = [['venta_1', fechas.fecha_venta_1], ['venta_2', fechas.fecha_venta_2], ['venta_extra', fechas.fecha_venta_extra]].filter(([, f]) => f).sort((a, b) => b[1].localeCompare(a[1]));
+    estado = ventas.length ? ventas[0][0] : (fechas.fecha_llamada ? 'agendado' : 'contacto_nuevo');
+  }
+  // Fecha de venta: la que dé Franco; si el estado es de venta y no la dio, se estampa hoy.
+  const ahora = new Date().toISOString();
+  if (estado === 'venta_1' && !fechas.fecha_venta_1) fechas.fecha_venta_1 = ahora;
+  if (estado === 'venta_2' && !fechas.fecha_venta_2) fechas.fecha_venta_2 = ahora;
+  if (estado === 'venta_extra' && !fechas.fecha_venta_extra) fechas.fecha_venta_extra = ahora;
 
   const { data, error } = await supabase
     .from('setting_leads')
@@ -116,32 +180,70 @@ async function crearLead(input, userId) {
       medidas: input.medidas?.trim() || null,
       maquinarias: input.maquinarias?.trim() || null,
       notas: input.notas?.trim() || null,
+      assigned_to: asignado.id || null,
+      fecha_llamada: fechas.fecha_llamada || null,
+      fecha_venta_1: fechas.fecha_venta_1 || null,
+      fecha_venta_2: fechas.fecha_venta_2 || null,
+      fecha_venta_extra: fechas.fecha_venta_extra || null,
+      extra_descripcion: input.extra_descripcion?.trim() || null,
+      extra_importe: input.extra_importe !== undefined && input.extra_importe !== null && input.extra_importe !== '' ? Number(input.extra_importe) : null,
+      ...(fechas.fecha_creacion ? { created_at: fechas.fecha_creacion } : {}),
       created_by: userId,
     })
     .select(LEAD_SELECT)
     .single();
   if (error) throw error;
 
-  return { creado: true, lead: data };
+  let agenda = null;
+  if (data.fecha_llamada) {
+    try { agenda = await asignarLlamadaAHernan(data.id, data.fecha_llamada); }
+    catch (e) { console.error('Error al asignar la llamada a la agenda de Hernán:', e); agenda = { error: 'El lead se ha creado pero no se ha podido colocar la llamada en la agenda de Hernán.' }; }
+  }
+
+  return { creado: true, lead: data, ficha: revisarFicha(data), ...(agenda ? { agenda_hernan: agenda } : {}) };
 }
 
 async function actualizarLead(input) {
   const leadId = input.lead_id;
   if (!leadId) return { actualizado: false, error: 'Falta lead_id' };
 
-  const { data: existente, error: errBusqueda } = await supabase.from('setting_leads').select('notas').eq('id', leadId).maybeSingle();
+  const { data: existente, error: errBusqueda } = await supabase.from('setting_leads').select('notas, fecha_venta_1, fecha_venta_2, fecha_venta_extra').eq('id', leadId).maybeSingle();
   if (errBusqueda) throw errBusqueda;
   if (!existente) return { actualizado: false, error: `No existe ningún lead con id ${leadId}` };
 
   const updates = {};
   if (input.nombre?.trim()) updates.nombre = input.nombre.trim();
+
+  // Fechas explícitas (hora de España)
+  const fechas = {};
+  for (const k of ['fecha_creacion', 'fecha_venta_1', 'fecha_venta_2', 'fecha_venta_extra']) {
+    if (input[k] === undefined) continue;
+    if (input[k] === null || input[k] === '') { fechas[k] = null; continue; }
+    const r = fechaMadridAISO(input[k]);
+    if (r.error) return { actualizado: false, error: `${k}: ${r.error}` };
+    fechas[k] = r.iso;
+  }
+
   if (input.estado !== undefined && ESTADOS_VALIDOS.includes(input.estado)) {
     updates.estado = input.estado;
-    // Estampa la fecha de venta automáticamente al mover a venta_1/venta_2,
-    // así los % de cierre no dependen de que nadie la rellene a mano.
-    if (input.estado === 'venta_1') updates.fecha_venta_1 = new Date().toISOString();
-    if (input.estado === 'venta_2') updates.fecha_venta_2 = new Date().toISOString();
-    if (input.estado === 'venta_extra') updates.fecha_venta_extra = new Date().toISOString();
+    // Estampa la fecha de venta al pasar a venta_1/2/extra SOLO si el lead no
+    // la tenía ya (si no, cada actualización la movería a hoy y se
+    // falsearían las métricas por fecha de venta) y no se ha indicado una.
+    const ahora = new Date().toISOString();
+    if (input.estado === 'venta_1' && !existente.fecha_venta_1 && fechas.fecha_venta_1 === undefined) updates.fecha_venta_1 = ahora;
+    if (input.estado === 'venta_2' && !existente.fecha_venta_2 && fechas.fecha_venta_2 === undefined) updates.fecha_venta_2 = ahora;
+    if (input.estado === 'venta_extra' && !existente.fecha_venta_extra && fechas.fecha_venta_extra === undefined) updates.fecha_venta_extra = ahora;
+  }
+  if (fechas.fecha_creacion !== undefined && fechas.fecha_creacion) updates.created_at = fechas.fecha_creacion;
+  if (fechas.fecha_venta_1 !== undefined) updates.fecha_venta_1 = fechas.fecha_venta_1;
+  if (fechas.fecha_venta_2 !== undefined) updates.fecha_venta_2 = fechas.fecha_venta_2;
+  if (fechas.fecha_venta_extra !== undefined) updates.fecha_venta_extra = fechas.fecha_venta_extra;
+  if (input.extra_descripcion !== undefined) updates.extra_descripcion = input.extra_descripcion?.trim() || null;
+  if (input.extra_importe !== undefined) updates.extra_importe = input.extra_importe === null || input.extra_importe === '' ? null : Number(input.extra_importe);
+  if (input.asignado_a !== undefined) {
+    const asignado = await resolverEmpleado(input.asignado_a);
+    if (asignado.error) return { actualizado: false, error: asignado.error };
+    updates.assigned_to = asignado.id;
   }
   if (input.objetivo !== undefined) updates.objetivo = input.objetivo?.trim() || null;
   if (input.medidas !== undefined) updates.medidas = input.medidas?.trim() || null;
@@ -182,7 +284,7 @@ async function actualizarLead(input) {
     catch (e) { console.error('Error al asignar la llamada a la agenda de Hernán:', e); agenda = { error: 'El lead se ha actualizado pero no se ha podido colocar en la agenda de Hernán.' }; }
   }
 
-  return { actualizado: true, lead: data, ...(agenda ? { agenda_hernan: agenda } : {}) };
+  return { actualizado: true, lead: data, ficha: revisarFicha(data), ...(agenda ? { agenda_hernan: agenda } : {}) };
 }
 
 async function runTool(name, input, ctx) {
@@ -214,7 +316,7 @@ const TOOLS = [
   },
   {
     name: 'crear_lead',
-    description: 'Crea un nuevo lead en Setting cuando buscar_lead no ha encontrado nada y hay datos suficientes para identificar al prospecto (al menos nombre o @usuario de Instagram). OBLIGATORIO: nunca la llames en el mismo turno en el que analizas la captura por primera vez — antes SIEMPRE tienes que preguntarle a Franco, en un solo bloque de opciones, tanto si quiere darlo de alta como de dónde viene el contacto (ver "ORIGEN DEL CONTACTO" del prompt), y esperar a que elija una opción en un mensaje posterior. Se rechaza si falta la confirmación o el canal, aunque tengas señales que sugieran cuál es — el canal SIEMPRE lo confirma Franco con un clic, nunca lo fijes tú sin preguntar.',
+    description: 'Crea un nuevo lead en Setting cuando buscar_lead no ha encontrado nada y hay datos suficientes para identificar al prospecto (al menos nombre o @usuario de Instagram). Rellena LA FICHA ENTERA en esta misma llamada con todo lo que sepas (contacto, canal, estado, objetivo/medidas/equipamiento, notas, fecha de creación real, fecha de llamada, fechas de venta...) — después de crear, revisa el campo "ficha" del resultado. REGLAS DE CONFIRMACIÓN: si Franco te ha pedido crearlo explícitamente ("créalo", "dalo de alta", "mete este lead"...) eso YA es la confirmación (confirmado_por_setter=true) y, si en ese mismo mensaje te dice el canal, úsalo sin volver a preguntar. Si no te lo ha pedido (solo te pasó una captura), pregúntale antes, en un solo bloque de opciones, si quiere darlo de alta y de dónde viene (ver "ORIGEN DEL CONTACTO"), y espera su elección. Se rechaza si falta la confirmación o el canal — el canal nunca lo adivines.',
     input_schema: {
       type: 'object',
       properties: {
@@ -229,13 +331,21 @@ const TOOLS = [
         medidas: { type: 'string', description: 'Medidas o m² del espacio, si ya se sabe.' },
         maquinarias: { type: 'string', description: 'Equipamiento actual o deseado, si ya se sabe.' },
         notas: { type: 'string', description: 'Resumen breve de lo hablado hasta ahora.' },
+        fecha_creacion: { type: 'string', description: 'Fecha REAL en la que el lead entró/se contactó por primera vez, cuando Franco la indica o se ve en la conversación (ej. "2026-09-27" o "2026-09-27T18:30:00", hora de España). Si la das, el lead se crea CON ESA FECHA, no con la de hoy — cuenta para las métricas del mes en que entró. Si no la sabes, omítela (se usa hoy).' },
+        fecha_llamada: { type: 'string', description: 'Fecha y hora de la llamada (ISO, hora de España), futura o pasada, si Franco la menciona. Pon también un estado coherente (agendado, o el de venta si ya compró).' },
+        fecha_venta_1: { type: 'string', description: 'Fecha en la que compró el servicio 1 (YYYY-MM-DD o ISO). Las ventas se cuentan por esta fecha, no por la de creación.' },
+        fecha_venta_2: { type: 'string', description: 'Fecha en la que compró el servicio 2 (YYYY-MM-DD o ISO).' },
+        fecha_venta_extra: { type: 'string', description: 'Fecha de una venta extra fuera de la escalera de valor (máquina, servicio adicional...).' },
+        extra_descripcion: { type: 'string', description: 'Qué se vendió en la venta extra.' },
+        extra_importe: { type: 'number', description: 'Importe de la venta extra en euros, si se conoce.' },
+        asignado_a: { type: 'string', description: 'Nombre del empleado al que se asigna el lead (ej. "Hernán"), solo si Franco lo indica.' },
       },
       required: ['nombre', 'confirmado_por_setter', 'canal'],
     },
   },
   {
     name: 'actualizar_lead',
-    description: 'Actualiza un lead existente en Setting: cambia su etapa si ha avanzado, rellena datos nuevos que se hayan descubierto, y/o añade una nota resumiendo la interacción actual (para mantener memoria de lo hablado). Usa nota_nueva para añadir, no para borrar el historial.',
+    description: 'Actualiza un lead existente en Setting: cambia su etapa si ha avanzado, rellena datos nuevos que se hayan descubierto (incluidas fechas de creación, de llamada y de venta), y/o añade una nota resumiendo la interacción actual. Usa nota_nueva para añadir, no para borrar el historial. Tras actualizar, revisa el campo "ficha" del resultado: si algo falta, pídeselo a Franco.',
     input_schema: {
       type: 'object',
       properties: {
@@ -251,6 +361,13 @@ const TOOLS = [
         canal: { type: 'string', enum: CANALES_VALIDOS },
         fecha_llamada: { type: 'string', description: 'Fecha y hora de la llamada agendada, en formato ISO (ej. "2026-10-03T17:00:00"), cuando Franco te diga que ha agendado/reservado una llamada con este prospecto (con Calendly o como sea) — calcula la fecha real a partir de la FECHA DE HOY si te dan algo relativo ("el jueves", "mañana a las 5"). Al ponerla, cambia también el estado a "agendado".' },
         nota_nueva: { type: 'string', description: 'Resumen breve de esta interacción, se añade al final del historial de notas con la fecha de hoy.' },
+        fecha_creacion: { type: 'string', description: 'Corrige la fecha real en la que el lead entró (YYYY-MM-DD o ISO, hora de España), si Franco te la indica o ves que estaba mal.' },
+        fecha_venta_1: { type: 'string', description: 'Fecha real en la que compró el servicio 1, si Franco te la indica (si no la das al marcar venta_1, se estampa hoy SOLO si el lead no tenía fecha). null para quitarla.' },
+        fecha_venta_2: { type: 'string', description: 'Fecha real en la que compró el servicio 2. null para quitarla.' },
+        fecha_venta_extra: { type: 'string', description: 'Fecha de la venta extra. null para quitarla.' },
+        extra_descripcion: { type: 'string', description: 'Qué se vendió en la venta extra.' },
+        extra_importe: { type: 'number', description: 'Importe de la venta extra en euros.' },
+        asignado_a: { type: 'string', description: 'Nombre del empleado al que se asigna el lead, solo si Franco lo indica.' },
       },
       required: ['lead_id'],
     },
@@ -368,11 +485,25 @@ Setting es el tablero donde Víctor lleva el registro de todos los leads de Inst
 - Llama SIEMPRE a buscar_lead ANTES de dar tu respuesta, pasando TODOS esos datos a la vez (nombre + instagram + telefono + email, cada uno si lo tienes) — nunca solo uno. Esto es crítico para no duplicar: el mismo prospecto puede aparecer identificado con un dato distinto en cada captura (una vez solo se ve el teléfono, otra vez aparece su nombre guardado, otra vez su @) — si el lead ya se creó antes con, por ejemplo, el teléfono como nombre provisional, y ahora solo buscas por el nombre real que acabas de ver, NO lo vas a encontrar por nombre (el campo nombre en la base de datos todavía tiene el teléfono) — pero SÍ lo encontrarás si además mandas el teléfono en la misma búsqueda, porque ese sí coincide. Manda siempre todo lo que tengas de esa captura, aunque creas que un dato "ya lo sabías" de antes.
 - Si buscar_lead encuentra un lead pero con un nombre provisional (el teléfono, un @usuario, o cualquier cosa que no sea un nombre real de persona) y en esta captura ya ves su nombre real, corrígelo con actualizar_lead (campo nombre) — no lo dejes con el dato provisional para siempre.
 - Ten en cuenta su historial de notas y su etapa actual al encontrarlo: no repitas preguntas que ya te consta que se respondieron, y no lo trates como si fuera la primera conversación si no lo es.
-- Si buscar_lead no encuentra nada (con todos los datos que le pasaste) y tienes datos suficientes para identificarlo (al menos nombre, @usuario, o teléfono), PREGÚNTALE siempre a Franco antes de crearlo — nunca lo crees directamente, ni siquiera cuando tengas datos de sobra o creas tener claro el canal. Esta pregunta combina SIEMPRE dos cosas en una: si quiere darlo de alta, Y de dónde viene el contacto — ver "ORIGEN DEL CONTACTO" de abajo para el porqué esto es obligatorio siempre, sin excepción, aunque veas señales claras de anuncio o de referido. Formato tipo: "Lo doy de alta en Setting? De dónde viene?" con un bloque \`\`\`opciones\`\`\` que contenga exactamente ["Nos escribió ella", "Lo prospectamos", "Viene de un anuncio", "Es un referido"] (la opción "Otro… (escribir)" para cancelar/decir que no, ya la añade el sistema sola — no hace falta que la incluyas tú en el array). Cuando Franco pinche una de las 4, eso es SU CONFIRMACIÓN de crear el lead Y el canal a la vez — llama a crear_lead con confirmado_por_setter=true y el canal correspondiente. Si en vez de pinchar una opción te escribe que no lo crees, respeta eso y no insistas ni vuelvas a preguntar en esta misma conversación.
+- Si buscar_lead no encuentra nada (con todos los datos que le pasaste) y tienes datos suficientes para identificarlo (al menos nombre, @usuario, o teléfono), PREGÚNTALE a Franco antes de crearlo — nunca lo crees por tu cuenta, ni siquiera cuando tengas datos de sobra o creas tener claro el canal. EXCEPCIÓN: si Franco te ha pedido crearlo explícitamente ("créalo", "dalo de alta", "mete este lead con fecha X"...), eso ya es su confirmación y no hay que preguntar si lo creas; si además te ha dicho el canal en ese mismo mensaje, úsalo y crea directamente con la ficha entera; si no te lo ha dicho, pregúntale SOLO el canal con el bloque de opciones. En el caso normal (te pasa una captura sin pedir nada más), esta pregunta combina SIEMPRE dos cosas en una: si quiere darlo de alta, Y de dónde viene el contacto — ver "ORIGEN DEL CONTACTO" de abajo para el porqué esto es obligatorio siempre, sin excepción, aunque veas señales claras de anuncio o de referido. Formato tipo: "Lo doy de alta en Setting? De dónde viene?" con un bloque \`\`\`opciones\`\`\` que contenga exactamente ["Nos escribió ella", "Lo prospectamos", "Viene de un anuncio", "Es un referido"] (la opción "Otro… (escribir)" para cancelar/decir que no, ya la añade el sistema sola — no hace falta que la incluyas tú en el array). Cuando Franco pinche una de las 4, eso es SU CONFIRMACIÓN de crear el lead Y el canal a la vez — llama a crear_lead con confirmado_por_setter=true y el canal correspondiente. Si en vez de pinchar una opción te escribe que no lo crees, respeta eso y no insistas ni vuelvas a preguntar en esta misma conversación.
 - Después de dar tu respuesta, si el lead ya existía o lo acabas de crear, llama a actualizar_lead para: ajustar el estado si ha avanzado de etapa, rellenar campos nuevos que hayas descubierto (nombre real/objetivo/medidas/maquinarias/teléfono/email/instagram — por ejemplo si ahora conoces el teléfono de un lead que antes solo tenía @, añádelo), y añadir con nota_nueva un resumen breve (1-2 líneas) de esta interacción, para dejar memoria de lo hablado.
 - Si no hay ningún dato (ni nombre, ni @usuario, ni teléfono visibles) que permita identificar quién es, no crees un lead a ciegas — simplemente responde con normalidad, no lo menciones como un problema.
 - Nunca inventes un @usuario, nombre o teléfono que no aparezca realmente en la captura o en el mensaje del setter.
 - Al final de tu respuesta, añade siempre una línea breve indicando qué has hecho en Setting, por ejemplo: "(Lead de @usuario: creado, etapa apertura)" o "(Lead actualizado: etapa calificación)" o, si no había datos suficientes, no añadas esa línea.
+
+FICHA COMPLETA EN SETTING (MUY IMPORTANTE — de esto dependen las métricas de Víctor):
+Cada lead que crees o toques tiene que quedar con la ficha rellena de verdad, no a medias. Las métricas de Setting se calculan así:
+- Mes de entrada = fecha de creación del lead. Si Franco te da una fecha de creación ("entró el 27 de septiembre"), pásala en fecha_creacion y el lead se crea CON ESA FECHA, nunca con la de hoy. Si no te la da pero ves en la captura cuándo empezó la conversación, usa esa; solo si no hay forma de saberlo se queda hoy.
+- Ventas = por FECHA DE VENTA (fecha_venta_1 / fecha_venta_2 / fecha_venta_extra), no por la de creación. Si el lead compró, tiene que llevar su fecha de venta (la que te diga Franco; si dice "vendido hoy", hoy). Si es venta extra (máquina, servicio adicional), pon también extra_descripcion y extra_importe.
+- Canal = origen del contacto (siempre confirmado por Franco, ver más abajo).
+- Llamadas = fecha_llamada: si hubo o hay llamada, pásala (hora de España, aunque sea pasada), con estado coherente.
+- Estado coherente con lo que te cuenta: agendado si hay llamada futura, venta_1/venta_2/venta_extra si compró, etc.
+- Datos de contacto: nombre real (no el teléfono), @instagram, teléfono y email si los ves; objetivo, medidas y equipamiento si se han hablado; y en notas un resumen breve.
+Reglas de trabajo:
+- Cuando Franco te dé varios datos de golpe (fecha de creación, fecha de venta, canal, llamada...), aplícalos TODOS en UNA sola llamada a crear_lead / actualizar_lead. No dejes ninguno sin guardar ni los vayas haciendo a trozos.
+- Si Franco te pide explícitamente crear el lead, eso ya es su confirmación: no le vuelvas a preguntar si lo creas. Solo pregúntale lo que falte de verdad (típicamente el canal, con el bloque de opciones) y créalo en cuanto lo tengas.
+- Después de crear o actualizar, lee el campo "ficha" del resultado de la herramienta. Si "faltan" tiene algo, pídeselo a Franco en UNA sola pregunta corta (con el bloque de opciones si procede) y complétalo en cuanto responda. Los "avisos" menciónalos en una línea si son relevantes.
+- Termina siempre con una línea de ficha, por ejemplo: "(Ficha de @usuario: creada 27/09, canal Ads, venta 1 el 02/10, llamada 01/10 17:00 — completa)" o indicando qué falta.
 
 ORIGEN DEL CONTACTO (canal) — 4 categorías, NO las confundas entre sí. Es un dato MUY IMPORTANTE para Víctor: con él mide de dónde vienen las ventas y cuántos leads llegan por cada vía (inbound vs. prospección activa vs. anuncios vs. boca a boca) — por eso hay que preguntarlo SIEMPRE al crear un lead nuevo, nunca darlo por hecho aunque parezca obvio:
 - "Instagram (nos escriben)": el prospecto escribió primero, por iniciativa propia (comentó, mandó DM, reaccionó a una historia...) — es el caso más común (inbound).
@@ -380,7 +511,7 @@ ORIGEN DEL CONTACTO (canal) — 4 categorías, NO las confundas entre sí. Es un
 - "Ads": la conversación viene de un anuncio de pago. Señales que lo sugieren (pero NO sustituyen la pregunta a Franco, solo te ayudan a intuirlo antes de preguntar): un aviso arriba del chat tipo "Respondiendo a tu anuncio", "Ana empezó esta conversación desde tu anuncio", una miniatura del propio anuncio al principio del hilo, o (en WhatsApp) un mensaje automático de apertura ligado a un clic en anuncio.
 - "Referido": alguien (cliente, conocido, otro prospecto) recomendó a Ranuse y por eso escribe este prospecto.
 
-IMPORTANTE: aunque veas señales claras de anuncio o de referido en la captura, PREGUNTA IGUALMENTE con el bloque de opciones al crear el lead (ver arriba) — no lo dejes fijado tú solo sin que Franco lo confirme con un clic. Es la única forma de que este dato sea fiable siempre, y a Víctor le importa mucho que no se pierda ni un solo caso.
+IMPORTANTE: aunque veas señales claras de anuncio o de referido en la captura, PREGUNTA IGUALMENTE con el bloque de opciones al crear el lead (ver arriba) — no lo dejes fijado tú solo sin que Franco lo confirme (con un clic o diciéndotelo él en su mensaje). Es la única forma de que este dato sea fiable siempre, y a Víctor le importa mucho que no se pierda ni un solo caso.
 - Si el lead YA EXISTÍA (no es de creación nueva) y necesitas actualizar o corregir su canal más adelante, ahí sí puedes usar actualizar_lead directamente con el canal que te diga Franco de palabra, sin repetir el bloque de opciones — esa regla de preguntar siempre con botones es específicamente para el momento de CREAR el lead.
 
 MARCAR ESTADOS FINALES (venta_1 / venta_2 / rechazo / seguimiento_futuro / no_responde / no_califica) — MUY IMPORTANTE, es fácil que esto se pierda si no lo haces tú activamente:
