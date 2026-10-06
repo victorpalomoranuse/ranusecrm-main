@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CalendarDays, Plus, Trash2, Phone, Instagram, Save, LayoutGrid, List as ListIcon, X, RefreshCw, Search, CalendarCheck, Users, User } from 'lucide-react';
+import { CalendarDays, Plus, Trash2, Phone, Instagram, Save, LayoutGrid, List as ListIcon, X, RefreshCw, Search, CalendarCheck, Users, User, Clock } from 'lucide-react';
 import api from '../services/api';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import { CallBigCalendar } from '../components/CallBigCalendar';
@@ -338,7 +338,52 @@ function EstadoYFathom({ slot, onGuardado, toast }) {
   );
 }
 
-function DetalleHuecoModal({ slot, onClose, onGuardado, onEliminado, onReservado, toast }) {
+// Cambiar la fecha y la hora de una llamada (o de un hueco libre) desde la agenda.
+// Mantiene la duración, avisa a quien tiene la llamada y actualiza el lead en Setting.
+function ReprogramarLlamada({ slot, onReprogramado, toast }) {
+  const [abierto, setAbierto] = useState(false);
+  const [fecha, setFecha] = useState(slot.fecha);
+  const [hora, setHora] = useState(hhmm(slot.hora_inicio));
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setFecha(slot.fecha); setHora(hhmm(slot.hora_inicio)); setAbierto(false); }, [slot.id, slot.fecha, slot.hora_inicio]);
+
+  const guardar = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.put(`/call-slots/${slot.id}/reprogramar`, { fecha, hora_inicio: hora });
+      onReprogramado(data.slot);
+      toast.success(slot.ocupado ? 'Llamada cambiada de hora' : 'Hueco cambiado de hora');
+      setAbierto(false);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'No se ha podido cambiar la hora');
+    } finally { setSaving(false); }
+  };
+
+  if (!abierto) {
+    return <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop: 12 }} onClick={() => setAbierto(true)}><Clock size={13} /> Cambiar fecha u hora</button>;
+  }
+  return (
+    <div style={{ marginTop: 12, padding: '0.75rem', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="ap-field" style={{ margin: 0, flex: 1, minWidth: 130 }}>
+          <label>Nueva fecha</label>
+          <input type="date" className="ap-field-input" value={fecha} onChange={e => setFecha(e.target.value)} />
+        </div>
+        <div className="ap-field" style={{ margin: 0, flex: 1, minWidth: 100 }}>
+          <label>Nueva hora</label>
+          <input type="time" className="ap-field-input" value={hora} onChange={e => setHora(e.target.value)} />
+        </div>
+      </div>
+      {slot.ocupado && <p style={{ margin: '8px 0 0', fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)' }}>Se avisa por email a {slot.empleado?.name || 'quien tiene la llamada'} y se actualiza el lead en Setting. La duración se mantiene.</p>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={guardar} disabled={saving || !fecha || !hora}>{saving ? 'Guardando…' : 'Guardar cambio'}</button>
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setAbierto(false)}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+function DetalleHuecoModal({ slot, onClose, onGuardado, onEliminado, onReservado, onReprogramado, toast }) {
   return (
     <div className="ap-modal-overlay" onClick={onClose}>
       <div className="ap-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
@@ -357,6 +402,7 @@ function DetalleHuecoModal({ slot, onClose, onGuardado, onEliminado, onReservado
                   {slot.lead.instagram && <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><Instagram size={12} />@{slot.lead.instagram}</span>}
                 </div>
               )}
+              <ReprogramarLlamada slot={slot} onReprogramado={onReprogramado} toast={toast} />
               <EstadoYFathom slot={slot} onGuardado={onGuardado} toast={toast} />
               <ResumenLlamada slot={slot} onGuardado={onGuardado} toast={toast} />
             </>
@@ -364,6 +410,7 @@ function DetalleHuecoModal({ slot, onClose, onGuardado, onEliminado, onReservado
             <>
               <span style={{ fontSize: '0.68rem', padding: '2px 9px', borderRadius: 20, background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>Libre</span>
               <BuscarLeadPicker slotId={slot.id} onReservado={onReservado} toast={toast} />
+              <ReprogramarLlamada slot={slot} onReprogramado={onReprogramado} toast={toast} />
               <div style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 10 }}>
                 <button type="button" className="ap-btn ap-btn-ghost" style={{ color: '#ae8b8b' }} onClick={() => onEliminado(slot)}><Trash2 size={13} /> Eliminar este hueco</button>
               </div>
@@ -544,6 +591,7 @@ export function SectionAgenda() {
           onClose={() => setDetalle(null)}
           onGuardado={(upd) => { setSlots(prev => prev.map(x => x.id === upd.id ? { ...x, ...upd } : x)); setDetalle(upd); }}
           onReservado={(upd) => { setSlots(prev => prev.map(x => x.id === upd.id ? { ...x, ...upd } : x)); setDetalle(upd); }}
+          onReprogramado={(nuevo) => { cargar(); setDetalle(nuevo); }}
           onEliminado={eliminarSlot}
           toast={toast}
         />

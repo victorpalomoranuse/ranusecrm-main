@@ -362,6 +362,80 @@ router.put('/:id', async (req, res) => {
 });
 
 /**
+ * PUT /api/call-slots/:id/reprogramar
+ * Body: { fecha: 'YYYY-MM-DD', hora_inicio: 'HH:MM' }
+ * Cambia la fecha/hora de una llamada ya agendada (o de un hueco libre) desde
+ * el panel de Agenda. Mantiene la duración, sincroniza la fecha del lead en
+ * Setting, reinicia los recordatorios y avisa por email al dueño del hueco
+ * ("llamada cambiada de hora"). El hueco de origen vuelve a quedar libre si
+ * venía de una regla de disponibilidad (si era suelto, se borra).
+ */
+router.put('/:id/reprogramar', async (req, res) => {
+  try {
+    const { fecha, hora_inicio } = req.body;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha || '')) return res.status(400).json({ error: 'Fecha no válida' });
+    if (!/^\d{2}:\d{2}(:\d{2})?$/.test(hora_inicio || '')) return res.status(400).json({ error: 'Hora no válida' });
+    const hora = hora_inicio.length === 5 ? `${hora_inicio}:00` : hora_inicio;
+
+    const empleado = await empleadoActual(req);
+    const SELECT = '*, empleado:employees(id, name, email), lead:setting_leads(id, nombre, telefono, instagram, objetivo, estado)';
+    const { data: slot } = await supabase.from('call_slots').select(SELECT).eq('id', req.params.id).maybeSingle();
+    if (!slot) return res.status(404).json({ error: 'Llamada no encontrada' });
+    const esDueño = empleado && slot.employee_id === empleado.id;
+    if (!esDueño && req.user.role !== 'admin_superior') return res.status(403).json({ error: 'Solo el dueño de la llamada o un administrador puede cambiarla de hora' });
+
+    const [h0, m0] = slot.hora_inicio.split(':').map(Number);
+    const [h1, m1] = slot.hora_fin.split(':').map(Number);
+    const duracion = Math.max((h1 * 60 + m1) - (h0 * 60 + m0), 5);
+    const horaFin = sumarMinutos(hora, duracion);
+    if (fecha === slot.fecha && hora === slot.hora_inicio) return res.json({ slot });
+
+    // Choques con otros huecos del mismo empleado ese día
+    const { data: delDia } = await supabase.from('call_slots').select('id, hora_inicio, hora_fin, ocupado').eq('employee_id', slot.employee_id).eq('fecha', fecha).neq('id', slot.id);
+    const solapan = (delDia || []).filter(o => o.hora_inicio < horaFin && o.hora_fin > hora);
+    if (solapan.some(o => o.ocupado)) return res.status(409).json({ error: 'A esa hora ya hay otra llamada agendada. Elige otra hora.' });
+
+    const ahora = new Date().toISOString();
+    const reinicio = { recordatorio_enviado: false, recordatorio_30_enviado: false, recordatorio_5_enviado: false, updated_at: ahora };
+
+    // Hueco libre: simplemente se mueve
+    if (!slot.ocupado) {
+      for (const o of solapan) await supabase.from('call_slots').delete().eq('id', o.id);
+      const { data, error } = await supabase.from('call_slots').update({ fecha, hora_inicio: hora, hora_fin: horaFin, ...reinicio }).eq('id', slot.id).select(SELECT).single();
+      if (error) throw error;
+      return res.json({ slot: data });
+    }
+
+    // Llamada reservada: se ocupa el hueco nuevo (libre si existe, si no uno nuevo) y se libera/borra el antiguo
+    const exacto = solapan.find(o => !o.ocupado && o.hora_inicio === hora && o.hora_fin === horaFin);
+    for (const o of solapan) if (!exacto || o.id !== exacto.id) await supabase.from('call_slots').delete().eq('id', o.id);
+    let nuevo;
+    if (exacto) {
+      const { data, error } = await supabase.from('call_slots').update({ ocupado: true, setting_lead_id: slot.setting_lead_id, resumen_llamada: slot.resumen_llamada, fathom_url: slot.fathom_url, ...reinicio }).eq('id', exacto.id).select(SELECT).single();
+      if (error) throw error;
+      nuevo = data;
+    } else {
+      const { data, error } = await supabase.from('call_slots').insert({ employee_id: slot.employee_id, fecha, hora_inicio: hora, hora_fin: horaFin, ocupado: true, setting_lead_id: slot.setting_lead_id, resumen_llamada: slot.resumen_llamada, fathom_url: slot.fathom_url }).select(SELECT).single();
+      if (error) throw error;
+      nuevo = data;
+    }
+    if (slot.generado_por_regla) await supabase.from('call_slots').update({ ocupado: false, setting_lead_id: null, resumen_llamada: null, fathom_url: null, ...reinicio }).eq('id', slot.id);
+    else await supabase.from('call_slots').delete().eq('id', slot.id);
+
+    if (slot.setting_lead_id) {
+      await supabase.from('setting_leads').update({ fecha_llamada: madridToUtcDate(fecha, hora).toISOString(), updated_at: ahora }).eq('id', slot.setting_lead_id);
+      if (slot.empleado?.email && slot.empleado.email !== req.user.email) {
+        avisarLlamada({ empleado: slot.empleado, lead: slot.lead, fecha, hora, tipo: 'cambiada' });
+      }
+    }
+    res.json({ slot: nuevo });
+  } catch (error) {
+    console.error('Error al reprogramar la llamada:', error);
+    res.status(500).json({ error: 'Error al cambiar la hora de la llamada' });
+  }
+});
+
+/**
  * DELETE /api/call-slots/:id
  * Solo huecos SIN reservar, y solo el dueño (o admin) — para no borrar una
  * llamada ya agendada con un lead sin querer.
