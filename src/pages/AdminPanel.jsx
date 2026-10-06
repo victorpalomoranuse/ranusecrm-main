@@ -18,6 +18,7 @@ import { SectionVentas } from './SectionVentas';
 import { SectionFinanzas } from './SectionFinanzas';
 import { SectionRelacionObra } from './SectionRelacionObra';
 import { SectionMisComisiones } from './SectionMisComisiones';
+import { SectionMiDashboard } from './SectionMiDashboard';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { TabHistoria, SelectorTipoHistoria, GuiaProyecto, EstiloMoodboard } from '../components/HistoriaEditor';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -2469,6 +2470,7 @@ function SectionRecursos() {
 }
 
 const NAV_ITEMS = [
+  { id:'mi-dia', label:'Mi día', Icon:CalendarDays, hideForAdmin:true },
   { id:'dashboard', label:'Dashboard', Icon:BarChart2, adminOnly:true },
   { id:'trabajos', label:'Trabajos', Icon:LayoutGrid, permission:'trabajos' },
   { id:'leads', label:'Leads', Icon:Target, permission:'leads' },
@@ -2496,6 +2498,7 @@ const NAV_ITEMS = [
 ];
 
 function canAccessNav(item, user) {
+  if (item.hideForAdmin && user?.role === 'admin_superior') return false;
   if (user?.role === 'admin_superior') return true;
   if (item.adminOnly) return false;
   if (item.permissions) return item.permissions.some(p => user?.permissions?.[p] === true);
@@ -2525,6 +2528,7 @@ export function AdminPanel() {
       </aside>
       <main className="ap-main">
         {!section&&(<div className="ap-empty-access"><Shield size={32} style={{opacity:0.25,marginBottom:'0.75rem'}}/><h2>Sin acceso asignado</h2><p>Todavía no tienes ninguna sección disponible. Pide al administrador que te asigne una categoría en "Empleados".</p></div>)}
+        {section==='mi-dia'&&<SectionMiDashboard ir={pickSection}/>}
         {section==='dashboard'&&<SectionDashboard/>}
         {section==='trabajos'&&<SectionTrabajos/>}
         {section==='leads'&&<SectionLeads/>}
