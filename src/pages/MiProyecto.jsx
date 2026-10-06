@@ -774,16 +774,21 @@ function NeedsFormSection({ code }) {
     } catch {}
   };
 
+  // Varias fotos a la vez: se suben una detrás de otra
   const handleUploadPhoto = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
+    const files = [...(e.target.files || [])]; if (!files.length) return;
     setUploadingPhoto(true);
     try {
-      const form = new FormData();
-      form.append('file', file);
-      const r = await fetch(`${base}/needs-form/public/${encodeURIComponent(code)}/photos`, { method: 'POST', body: form });
-      const data = await r.json();
-      setBundle(prev => ({ ...prev, photos: [...prev.photos, data.photo] }));
-    } catch {} finally { setUploadingPhoto(false); if (photoRef.current) photoRef.current.value = ''; }
+      for (const file of files) {
+        try {
+          const form = new FormData();
+          form.append('file', file);
+          const r = await fetch(`${base}/needs-form/public/${encodeURIComponent(code)}/photos`, { method: 'POST', body: form });
+          const data = await r.json();
+          if (data.photo) setBundle(prev => ({ ...prev, photos: [...prev.photos, data.photo] }));
+        } catch { /* esta foto falla, se sigue con las demás */ }
+      }
+    } finally { setUploadingPhoto(false); if (photoRef.current) photoRef.current.value = ''; }
   };
 
   const handleDeletePhoto = async (id) => {
@@ -899,7 +904,7 @@ function NeedsFormSection({ code }) {
                     </div>
                   ))}
                 </div>
-                <label className="mp-nf-upload-btn">{uploadingPhoto ? 'Subiendo…' : '+ Añadir foto'}<input ref={photoRef} type="file" accept="image/*" onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
+                <label className="mp-nf-upload-btn">{uploadingPhoto ? 'Subiendo…' : '+ Añadir fotos'}<input ref={photoRef} type="file" accept="image/*" multiple onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
               </div>
 
               <div className="mp-nf-block">

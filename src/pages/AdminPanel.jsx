@@ -1931,9 +1931,10 @@ function TabNecesidades({ projectId }) {
     } catch { toast.error('Error al subir foto'); } finally { setUploadingPhoto(false); }
   };
 
+  // Varias fotos a la vez: se suben una detrás de otra (sin pisarse)
   const handleUploadPhoto = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    await uploadPhotoFile(file);
+    const files = [...(e.target.files || [])]; if (!files.length) return;
+    for (const f of files) await uploadPhotoFile(f);
     if (photoRef.current) photoRef.current.value = '';
   };
 
@@ -2086,7 +2087,7 @@ function TabNecesidades({ projectId }) {
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.5rem' }}>
-        <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ display: 'inline-flex' }}>{uploadingPhoto ? 'Subiendo…' : <><Plus size={13} /> Añadir foto</>}<input ref={photoRef} type="file" accept="image/*" onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
+        <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ display: 'inline-flex' }}>{uploadingPhoto ? 'Subiendo…' : <><Plus size={13} /> Añadir fotos</>}<input ref={photoRef} type="file" accept="image/*" multiple onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
         <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)' }}>o pega con Ctrl+V</span>
       </div>
 
