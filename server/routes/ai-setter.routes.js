@@ -578,7 +578,13 @@ router.post('/chat', async (req, res) => {
     // que el asistente pueda convertir fechas relativas que diga Franco
     // ("el jueves que viene a las 17h") a una fecha/hora real para fecha_llamada.
     const hoy = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' });
-    const systemConFecha = `${SYSTEM_PROMPT}\n\nFECHA DE HOY: ${hoy}. Úsala para calcular cualquier fecha relativa que te den ("mañana", "el jueves", "en 3 días"...) al rellenar fecha_llamada.`;
+    // Calendario de los próximos días con su día de la semana, para que el
+    // modelo no tenga que calcularlo (se equivocaba de un día con "el viernes")
+    const fmtDia = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Madrid' });
+    const fmtIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' });
+    const proximosDias = Array.from({ length: 21 }, (_, i) => { const d = new Date(Date.now() + i * 86400000); return `${fmtDia.format(d)} = ${fmtIso.format(d)}`; }).join('\n');
+    const horaAhora = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
+    const systemConFecha = `${SYSTEM_PROMPT}\n\nFECHA DE HOY: ${hoy}. HORA ACTUAL EN MADRID: ${horaAhora}.\n\nCALENDARIO (úsalo tal cual para convertir "mañana", "el viernes", "el lunes que viene"... a una fecha; no calcules el día de la semana de cabeza):\n${proximosDias}\n\nREGLA PARA fecha_llamada: la hora de la llamada es SIEMPRE la que te diga Franco ("a las 17:30" → T17:30:00, hora de España). NUNCA pongas la hora actual ni una hora que no te hayan dicho: si te da el día pero no la hora, pregúntale la hora antes de guardar nada. Formato ISO sin zona, ej. "2026-10-09T17:30:00". Antes de guardar, COMPRUEBA en el calendario de arriba que la fecha que vas a poner cae exactamente en el día de la semana que te han dicho (ej. "el jueves de la semana que viene" = el jueves de la semana siguiente a la actual, no el viernes ni el miércoles). Si te dan una fecha numérica ("el 15"), úsala tal cual.`;
 
     let lastResponse = null;
     let leadTocado = null;
