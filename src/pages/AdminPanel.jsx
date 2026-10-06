@@ -22,6 +22,7 @@ import { SectionMiDashboard } from './SectionMiDashboard';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { TabHistoria, SelectorTipoHistoria, GuiaProyecto, EstiloMoodboard } from '../components/HistoriaEditor';
 import { AgenteProyecto } from '../components/AgenteProyecto';
+import { RecetaColor } from '../components/RecetaColor';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -515,6 +516,8 @@ function TabMoodboard({ projectId }) {
           </>
         )}
       </div>
+
+      <RecetaColor description={description} palette={palette} onGuardar={async (d, p) => { await api.put(`/client-projects/${projectId}/moodboard`, { description: d, palette: p }); setDescription(d); setPalette(p); }} />
 
       <div className="ap-field">
         <label>Descripción del estilo</label>
