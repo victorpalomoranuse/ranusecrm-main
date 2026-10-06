@@ -21,6 +21,7 @@ import { SectionMisComisiones } from './SectionMisComisiones';
 import { SectionMiDashboard } from './SectionMiDashboard';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { TabHistoria, SelectorTipoHistoria, GuiaProyecto, EstiloMoodboard } from '../components/HistoriaEditor';
+import { AgenteProyecto } from '../components/AgenteProyecto';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -290,7 +291,7 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{id:'necesidades',label:'1 · Necesidades'},{id:'portada',label:'2 · Portada'},{id:'moodboard',label:'3 · Moodboard'},{id:'historia',label:'4 · Historia'},{id:'catalogo',label:'Listados'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'renders',label:'Resultado',soloSinHistoria:true},{id:'fases',label:'Categorías',soloSinHistoria:true},{id:'facturas',label:'Facturas'},{id:'trabajos',label:'Trabajos web'}];
+const MGR_TABS = [{id:'necesidades',label:'1 · Necesidades'},{id:'portada',label:'2 · Portada'},{id:'moodboard',label:'3 · Moodboard'},{id:'historia',label:'4 · Historia'},{id:'agente',label:'Asistente'},{id:'catalogo',label:'Listados'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'renders',label:'Resultado',soloSinHistoria:true},{id:'fases',label:'Categorías',soloSinHistoria:true},{id:'facturas',label:'Facturas'},{id:'trabajos',label:'Trabajos web'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
@@ -2194,6 +2195,7 @@ function ProjectManagerModal({ project, onClose }) {
           {tab==='notas'&&<TabNotas projectId={project.id}/>}
           {tab==='catalogo'&&<TabAsignaciones projectId={project.id} listadosIntro={project.listados_intro_text} listadosTitle={project.listados_title} onIntroUpdated={(v,t)=>{project.listados_intro_text=v;project.listados_title=t;}}/>}
           {tab==='historia'&&<TabHistoria project={project}/>}
+          {tab==='agente'&&<AgenteProyecto project={project}/>}
           {tab==='trabajos'&&<TabTrabajosWeb project={project}/>}
         </div>
       </div>
