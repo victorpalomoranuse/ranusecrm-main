@@ -904,7 +904,7 @@ function NeedsFormSection({ code }) {
                     </div>
                   ))}
                 </div>
-                <label className="mp-nf-upload-btn">{uploadingPhoto ? 'Subiendo…' : '+ Añadir fotos'}<input ref={photoRef} type="file" accept="image/*" multiple onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
+                <label className="mp-nf-upload-btn">{uploadingPhoto ? 'Subiendo…' : '+ Añadir fotos'}<input ref={photoRef} type="file" accept="image/*,.heic,.heif" multiple onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
               </div>
 
               <div className="mp-nf-block">

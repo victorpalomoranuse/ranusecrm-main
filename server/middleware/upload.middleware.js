@@ -1,4 +1,6 @@
 import multer from 'multer';
+import sharp from 'sharp';
+import heicConvert from 'heic-convert';
 
 // Configuración de multer para guardar archivos en memoria
 const storage = multer.memoryStorage();
@@ -71,7 +73,30 @@ const fileFilter = (req, file, cb) => {
 export const uploadCatalogPhotoFile = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 10*1024*1024, files: 1 } }).single('file');
 export const uploadRenderFile = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 20*1024*1024, files: 1 } }).single('file');
 export const uploadDocumentFile = multer({ storage, fileFilter, limits: { fileSize: 20*1024*1024, files: 1 } }).single('file');
-export const uploadDiagnosisImageFile = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 10*1024*1024, files: 1 } }).single('file');
+// Fotos de necesidades/diagnóstico: aceptan también HEIC/HEIF (iPhone) y se
+// convierten a JPG en el servidor, además de reducirse y corregir su rotación.
+const esHeic = (f) => /heic|heif/i.test(f.mimetype || '') || /\.(heic|heif)$/i.test(f.originalname || '');
+const fotoFilter = (req, file, cb) => {
+  const ok = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.mimetype) || esHeic(file);
+  ok ? cb(null, true) : cb(new Error('Solo se permiten imágenes (JPG, PNG, WEBP o HEIC)'), false);
+};
+const subirFoto = multer({ storage, fileFilter: fotoFilter, limits: { fileSize: 40*1024*1024, files: 1 } }).single('file');
+const normalizarFoto = async (req, res, next) => {
+  try {
+    const f = req.file;
+    if (!f) return next();
+    let buf = f.buffer;
+    if (esHeic(f)) buf = Buffer.from(await heicConvert({ buffer: buf, format: 'JPEG', quality: 0.9 }));
+    buf = await sharp(buf).rotate().resize({ width: 2800, height: 2800, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 86 }).toBuffer();
+    f.buffer = buf; f.size = buf.length; f.mimetype = 'image/jpeg';
+    f.originalname = (f.originalname || 'foto').replace(/\.[^.]+$/, '') + '.jpg';
+    next();
+  } catch (e) {
+    console.error('Error al procesar la foto:', e.message);
+    res.status(400).json({ error: 'No se ha podido procesar la imagen. Prueba con otra foto o en formato JPG.' });
+  }
+};
+export const uploadDiagnosisImageFile = [subirFoto, normalizarFoto];
 export const uploadCategoryItemFile = multer({ storage, fileFilter, limits: { fileSize: 20*1024*1024, files: 1 } }).single('file');
 export const uploadCategoryItemImages = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 15*1024*1024, files: 10 } }).array('images', 10);
 const categoryItemFieldFilter = (req, file, cb) => {
@@ -87,7 +112,7 @@ export const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ 
-        error: 'Archivo demasiado grande. Máximo 5MB para imágenes y 10MB para PDFs' 
+        error: 'Archivo demasiado grande (máximo 40MB para fotos de necesidades y 20MB para el resto de archivos)'
       });
     }
     if (err.code === 'LIMIT_FILE_COUNT') {

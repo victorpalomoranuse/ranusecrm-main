@@ -1928,7 +1928,7 @@ function TabNecesidades({ projectId }) {
       form.append('file', file);
       const { data } = await api.post(`/needs-form/project/${projectId}/photos`, form);
       setBundle(prev => ({ ...prev, photos: [...prev.photos, data.photo] }));
-    } catch { toast.error('Error al subir foto'); } finally { setUploadingPhoto(false); }
+    } catch (err) { toast.error(err.response?.data?.error || 'Error al subir foto'); } finally { setUploadingPhoto(false); }
   };
 
   // Varias fotos a la vez: se suben una detrás de otra (sin pisarse)
@@ -2087,7 +2087,7 @@ function TabNecesidades({ projectId }) {
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.5rem' }}>
-        <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ display: 'inline-flex' }}>{uploadingPhoto ? 'Subiendo…' : <><Plus size={13} /> Añadir fotos</>}<input ref={photoRef} type="file" accept="image/*" multiple onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
+        <label className="ap-btn ap-btn-ghost ap-btn-sm ap-upload-label" style={{ display: 'inline-flex' }}>{uploadingPhoto ? 'Subiendo…' : <><Plus size={13} /> Añadir fotos</>}<input ref={photoRef} type="file" accept="image/*,.heic,.heif" multiple onChange={handleUploadPhoto} disabled={uploadingPhoto} style={{ display: 'none' }} /></label>
         <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)' }}>o pega con Ctrl+V</span>
       </div>
 
