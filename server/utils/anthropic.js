@@ -27,6 +27,9 @@ export async function callClaude({ system, messages, tools, maxTokens = 2000 }) 
       ...(tools ? { tools } : {}),
     }),
   });
+  if (res.status === 401) {
+    throw new Error('La clave de la IA (ANTHROPIC_API_KEY) no es válida o ha caducado. Hay que poner una clave nueva en Railway (Variables) y reiniciar el servidor.');
+  }
   if (!res.ok) {
     const detalle = await res.text().catch(() => '');
     throw new Error(`Error de la API de Claude (${res.status}): ${detalle}`);
