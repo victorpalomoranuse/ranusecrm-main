@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import api from '../services/api';
 import { MessageSquare, Send, Paperclip, X, FileText } from 'lucide-react';
 import { MicButton } from '../components/MicButton';
+import { useConversaciones, PanelConversaciones } from '../components/ConversacionesIA';
 import './SectionAsistenteIA.css';
 
 const EJEMPLOS = [
@@ -114,7 +115,7 @@ function MessageContent({ content, onOption, onOther, loading }) {
           {images.map((img, i) => (
             <img
               key={i}
-              src={`data:${img.source.media_type};base64,${img.source.data}`}
+              src={img.source.type === 'url' ? img.source.url : `data:${img.source.media_type};base64,${img.source.data}`}
               alt="Adjunto"
               style={{ maxWidth: (images.length + docs.length) > 1 ? 140 : '100%', borderRadius: 8, display: 'block' }}
             />
@@ -145,6 +146,9 @@ export function SectionAsistenteIA() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [pendingFiles, setPendingFiles] = useState([]); // [{ kind: 'image'|'pdf', previewUrl?, base64, mediaType, name }]
+  const conv = useConversaciones('presupuestos');
+  const abrirConv = async (id) => { try { setMessages(await conv.abrir(id)); setError(''); setInput(''); setPendingFiles([]); } catch { setError('No se pudo abrir la conversación'); } };
+  const nuevaConv = () => { conv.nueva(); setMessages([]); setError(''); setInput(''); setPendingFiles([]); };
   const bottomRef = useRef(null);
   const fileRef = useRef();
   const textInputRef = useRef();
@@ -206,7 +210,10 @@ export function SectionAsistenteIA() {
     setLoading(true);
     try {
       const { data } = await api.post('/ai-budget/chat', { messages: nextMessages });
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply, budgetCreated: data.budget_created || null }]);
+      const final = [...nextMessages, { role: 'assistant', content: data.reply, budgetCreated: data.budget_created || null }];
+      setMessages(final);
+      const guardados = await conv.guardar(final);
+      if (guardados) setMessages(guardados);
     } catch (err) {
       setError(err.response?.data?.error || 'Error al consultar al asistente. Revisa que la clave de Claude esté configurada.');
     } finally {
@@ -224,6 +231,8 @@ export function SectionAsistenteIA() {
           <p>Pídele un desglose por tipos de máquina y niveles de precio (económico/medio/premium) usando tu catálogo real. Puedes adjuntarle fotos, dibujos del espacio o planos en PDF (varios a la vez). Cuando tengas claro qué nivel quieres, pídele que lo cree y quedará guardado como presupuesto real del proyecto.</p>
         </div>
       </div>
+
+      <PanelConversaciones conv={conv} onAbrir={abrirConv} onNueva={nuevaConv} disabled={loading} />
 
       <div className="ai-chat">
         <div className="ai-chat-body">

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import api from '../services/api';
 import { Send as SendIcon, Paperclip, X, MessageCircle, FileText, Copy, Check } from 'lucide-react';
 import { MicButton } from '../components/MicButton';
+import { useConversaciones, PanelConversaciones } from '../components/ConversacionesIA';
 import './SectionAsistenteIA.css';
 
 const EJEMPLOS = [
@@ -93,7 +94,7 @@ function MessageContent({ content, onOption, onOther, loading }) {
           {images.map((img, i) => (
             <img
               key={i}
-              src={`data:${img.source.media_type};base64,${img.source.data}`}
+              src={img.source.type === 'url' ? img.source.url : `data:${img.source.media_type};base64,${img.source.data}`}
               alt="Captura adjunta"
               style={{ maxWidth: (images.length + docs.length) > 1 ? 140 : '100%', borderRadius: 8, display: 'block' }}
             />
@@ -126,6 +127,9 @@ export function SectionAsistenteSetter() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [pendingFiles, setPendingFiles] = useState([]); // [{ kind: 'image'|'pdf', previewUrl?, base64, mediaType, name }]
+  const conv = useConversaciones('setter');
+  const abrirConv = async (id) => { try { setMessages(await conv.abrir(id)); setError(''); setInput(''); setPendingFiles([]); } catch { setError('No se pudo abrir la conversación'); } };
+  const nuevaConv = () => { conv.nueva(); setMessages([]); setError(''); setInput(''); setPendingFiles([]); };
   const bottomRef = useRef(null);
   const fileRef = useRef();
   const textInputRef = useRef();
@@ -186,7 +190,10 @@ export function SectionAsistenteSetter() {
     setLoading(true);
     try {
       const { data } = await api.post('/ai-setter/chat', { messages: nextMessages });
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+      const final = [...nextMessages, { role: 'assistant', content: data.reply }];
+      setMessages(final);
+      const guardados = await conv.guardar(final);
+      if (guardados) setMessages(guardados);
     } catch (err) {
       setError(err.response?.data?.error || 'Error al consultar al asistente. Revisa que la clave de Claude esté configurada.');
     } finally {
@@ -204,6 +211,8 @@ export function SectionAsistenteSetter() {
           <p>Pégale la captura de una conversación de Instagram (o cuéntale el contexto) y te dice en qué etapa está, qué falta por descubrir, y el mensaje exacto para responder — siguiendo el playbook de calificación de Ranuse Design. Puedes adjuntar varias capturas o planos en PDF a la vez.</p>
         </div>
       </div>
+
+      <PanelConversaciones conv={conv} onAbrir={abrirConv} onNueva={nuevaConv} disabled={loading} />
 
       <div className="ai-chat">
         <div className="ai-chat-body">
