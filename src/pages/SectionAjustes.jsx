@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { BibliotecaConocimiento } from '../components/BibliotecaConocimiento';
 import api from '../services/api';
 import { CheckCircle, AlertCircle, Plus, X } from 'lucide-react';
 
