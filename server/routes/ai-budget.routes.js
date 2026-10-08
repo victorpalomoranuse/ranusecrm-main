@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
+import { TOOL_CONOCIMIENTO, ejecutarConsultaConocimiento } from '../utils/conocimiento.js';
 import { internalAdminToken } from '../utils/internal-auth.js';
 import { computeCatalogPricing } from '../utils/pricing.js';
 import { uploadCatalogPhoto } from '../utils/storage.js';
@@ -162,6 +163,7 @@ Descuentos sobre el presupuesto:
 - Si te piden aplicar o cambiar el descuento de un presupuesto que YA EXISTE (de esta conversación o dándote el número, ej. "aplica un 10% al RAN-050"), usa aplicar_descuento_presupuesto — regenera el PDF solo automáticamente, dilo al confirmar.`;
 
 const TOOLS = [
+  TOOL_CONOCIMIENTO,
   {
     name: 'listar_categorias',
     description: 'Lista todas las categorías de producto que existen en el catálogo (ej. Racks, Mancuernas, Bancos, Cardio, Suelos...), con su tipo (material o mobiliario). Úsala cuando no estés seguro de qué nombre exacto usar en buscar_productos.',
@@ -817,6 +819,7 @@ async function runTool(name, input) {
   if (name === 'aplicar_descuento_presupuesto') return aplicarDescuentoPresupuesto(input);
   if (name === 'buscar_proyecto') return buscarProyecto(input.nombre);
   if (name === 'crear_presupuesto') return crearPresupuesto(input);
+  if (name === 'consultar_conocimiento') return ejecutarConsultaConocimiento(input, 'presupuestos');
   return { error: 'Herramienta desconocida' };
 }
 
@@ -836,7 +839,7 @@ router.post('/chat', async (req, res) => {
     const { data: settings } = await supabase.from('settings').select('ai_budget_preferences, ai_reform_rules').eq('id', 1).maybeSingle();
     const prefs = settings?.ai_budget_preferences?.trim();
     const reformRules = settings?.ai_reform_rules?.trim();
-    let system = BASE_SYSTEM_PROMPT;
+    let system = BASE_SYSTEM_PROMPT + `\n\nBIBLIOTECA DE CONOCIMIENTO: tienes los apuntes del curso de reformas y construcción de Víctor (herramienta consultar_conocimiento). Consúltala cuando la pregunta sea técnica de obra, reformas, materiales, instalaciones, normativa, partidas, plazos o procesos constructivos, y apóyate en lo que encuentres (menciona el tema o documento de donde sale) sin copiarlo literalmente. Si choca con las reglas propias de Ranuse Design o las preferencias de Víctor que aparecen más abajo, mandan las de Ranuse. Si la biblioteca no cubre la pregunta, dilo y responde con tu criterio general.`;
     if (prefs) system += `\n\nPreferencias de selección de producto de Víctor (además de ordenar por precio, ten esto en cuenta al elegir qué producto representa cada nivel):\n${prefs}`;
     if (reformRules) system += `\n\nReglas propias de Ranuse Design sobre reformas y espacio real de uso de los productos (además de tu conocimiento general, ten SIEMPRE esto en cuenta, tanto al responder dudas de reformas/construcción como al valorar si algo encaja en un espacio):\n${reformRules}`;
 

@@ -4,6 +4,7 @@ import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
 import { getHistoriaAdmin } from '../utils/historia.js';
+import { TOOL_CONOCIMIENTO, ejecutarConsultaConocimiento } from '../utils/conocimiento.js';
 
 // Asistente de diseño por proyecto: conoce el moodboard (paleta + IMÁGENES),
 // las necesidades, las medidas, la historia y los condicionantes del proyecto
@@ -79,6 +80,7 @@ CÓMO TRABAJAS
 - Tus consejos son criterio de diseño, no normativa ni cálculo estructural/instalaciones: si algo toca seguridad, estructura, electricidad, ventilación reglamentaria o accesibilidad normativa, dilo y recomienda validarlo con el técnico correspondiente. Si no estás seguro de una cifra (alturas mínimas de un equipo, etc.), dilo y recomienda comprobar la ficha del fabricante.
 - Para techos bajos, por ejemplo, piensa en: color y acabado del techo (claro y mate o continuo con la pared para que "desaparezca"; evitar contrastes fuertes arriba salvo intención clara), iluminación empotrada o indirecta perimetral en vez de luminarias colgantes, evitar vigas/instalaciones vistas si bajan la altura percibida, espejos y paredes claras para ampliar, líneas verticales en paredes, suelos continuos; y sobre todo ALTURA LIBRE del equipamiento: ejercicios por encima de la cabeza (press militar, dominadas, cuerdas, wall balls, saltos al cajón, kettlebell overhead) y racks/estructuras altas — qué se puede y qué no, y alternativas (versiones bajas, zonas con más altura, rediseñar la distribución para colocar lo alto donde hay más altura).
 - Tienes en cuenta el estilo del moodboard: no propongas nada que lo contradiga sin avisar.
+- Tienes una BIBLIOTECA DE CONOCIMIENTO con los apuntes del curso de reformas y construcción de Víctor (herramienta consultar_conocimiento). Cuando la duda sea técnica de obra, reformas, materiales, instalaciones, normativa o procesos constructivos, consúltala antes de contestar y apóyate en ella (di de qué tema o documento sale) sin copiarla literal; si no cubre la pregunta, dilo y responde con tu criterio.
 
 CÓMO RESPONDES
 - En español de España, directo y práctico, como un compañero. Respuestas cortas: lo importante primero. Usa títulos cortos en negrita (**así**) y listas breves cuando ayuden; sin párrafos largos.
@@ -136,8 +138,18 @@ router.post('/:projectId/chat', async (req, res) => {
     const puente = { role: 'assistant', content: 'Entendido, tengo el contexto del proyecto. Dime.' };
     const messages = [intro, puente, ...historial, { role: 'user', content: mensaje }];
 
-    const response = await callClaude({ system: SYSTEM, messages, maxTokens: 1500 });
-    const respuesta = (response.content || []).find(b => b.type === 'text')?.text?.trim();
+    // Bucle con herramientas: puede consultar la biblioteca de conocimiento antes de responder
+    let respuesta = '';
+    for (let turno = 0; turno < 4; turno++) {
+      const response = await callClaude({ system: SYSTEM, messages, tools: [TOOL_CONOCIMIENTO], maxTokens: 1500 });
+      const texto = (response.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+      if (texto) respuesta = texto;
+      const usos = (response.content || []).filter(b => b.type === 'tool_use');
+      if (!usos.length) break;
+      messages.push({ role: 'assistant', content: response.content });
+      const resultados = await Promise.all(usos.map(async u => ({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(await ejecutarConsultaConocimiento(u.input, 'proyecto')) })));
+      messages.push({ role: 'user', content: resultados });
+    }
     if (!respuesta) return res.status(502).json({ error: 'La IA no devolvió respuesta' });
 
     await supabase.from('agente_mensajes').insert([

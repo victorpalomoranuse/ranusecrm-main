@@ -341,6 +341,10 @@ export function SectionAjustes() {
           <div style={{ marginTop: '1.5rem' }}>
             <PaymentOptions />
           </div>
+
+          <div style={{ marginTop: '1.5rem', maxWidth: 720 }}>
+            <BibliotecaConocimiento />
+          </div>
         </>
       )}
     </div>
