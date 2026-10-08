@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { isoAInputMadrid, inputMadridAIso, madridAIso, fmtFechaHoraMadrid } from '../utils/zonaMadrid';
 import { Pencil, Trash2, Plus, X, CheckCircle, AlertCircle, Target, Search, LayoutGrid, List as ListIcon, MessageSquarePlus, CalendarClock, Info, CalendarCheck, CalendarDays } from 'lucide-react';
 import api from '../services/api';
 import { CallBigCalendar } from '../components/CallBigCalendar';
@@ -104,19 +105,10 @@ const DEFINICIONES_METRICAS = [
 
 // <input type="datetime-local"> espera "YYYY-MM-DDTHH:mm" en hora local, sin
 // zona horaria — convierte desde/hacia el ISO que guarda la base de datos.
-function isoToDatetimeLocal(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-function fmtFechaLlamada(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return null;
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-}
+// Todas las fechas con hora de Setting se leen y escriben en HORA DE MADRID,
+// aunque quien las use (p. ej. Franco, en Uruguay) tenga el navegador en otra zona.
+const isoToDatetimeLocal = isoAInputMadrid;
+const fmtFechaLlamada = fmtFechaHoraMadrid;
 
 // Busca posibles duplicados por teléfono (últimos 9 dígitos), Instagram (sin
 // @, sin distinguir mayúsculas) o nombre exacto — mismo criterio que usa el
@@ -228,12 +220,12 @@ function RegistroModal({ registro, registros, empleados, onClose, onSaved, toast
       const payload = {
         ...form,
         assigned_to: form.assigned_to || null,
-        fecha_llamada: form.fecha_llamada ? new Date(form.fecha_llamada).toISOString() : null,
-        fecha_venta_1: form.fecha_venta_1 ? new Date(form.fecha_venta_1).toISOString() : null,
-        fecha_venta_2: form.fecha_venta_2 ? new Date(form.fecha_venta_2).toISOString() : null,
-        fecha_venta_extra: form.fecha_venta_extra ? new Date(form.fecha_venta_extra).toISOString() : null,
+        fecha_llamada: inputMadridAIso(form.fecha_llamada),
+        fecha_venta_1: inputMadridAIso(form.fecha_venta_1),
+        fecha_venta_2: inputMadridAIso(form.fecha_venta_2),
+        fecha_venta_extra: inputMadridAIso(form.fecha_venta_extra),
         extra_importe: form.extra_importe === '' ? null : Number(form.extra_importe),
-        created_at: form.created_at ? new Date(form.created_at).toISOString() : undefined,
+        created_at: form.created_at ? inputMadridAIso(form.created_at) : undefined,
       };
       if (isEdit) {
         const { data } = await api.put(`/setting/${registro.id}`, payload);
@@ -300,7 +292,7 @@ function RegistroModal({ registro, registros, empleados, onClose, onSaved, toast
               </select>
             </div>
             <div className="ap-field" style={{ flex:1, minWidth:180 }}>
-              <label>Llamada agendada</label>
+              <label>Llamada agendada <span className="ap-optional">(hora de Madrid)</span></label>
               <input type="datetime-local" className="ap-field-input" value={form.fecha_llamada} onChange={e=>set('fecha_llamada',e.target.value)}/>
             </div>
           </div>
@@ -311,7 +303,7 @@ function RegistroModal({ registro, registros, empleados, onClose, onSaved, toast
                 leadId={registro.id}
                 toast={toast}
                 onReservado={(slot) => {
-                  set('fecha_llamada', isoToDatetimeLocal(new Date(`${slot.fecha}T${slot.hora_inicio}`).toISOString()));
+                  set('fecha_llamada', isoToDatetimeLocal(madridAIso(slot.fecha, slot.hora_inicio)));
                   set('estado', 'agendado');
                 }}
               />
