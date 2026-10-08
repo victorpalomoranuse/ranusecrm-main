@@ -87,11 +87,29 @@ async function buscarLead({ nombre, instagram, telefono, email, query }) {
 
 // Convierte lo que da el modelo (hora de España) a un ISO UTC correcto.
 // Acepta "YYYY-MM-DD" (se toma el mediodía de Madrid) o "YYYY-MM-DDTHH:mm[:ss]".
-function fechaMadridAISO(valor) {
+// El Salvador es UTC-6 todo el año (sin cambio de hora). La conversión la hace el
+// servidor, no el modelo (que se equivoca de una hora al restar zonas).
+function instanteDesdeZona(fecha, hora, zona) {
+  if (zona === 'el_salvador') {
+    const [y, m, d] = fecha.split('-').map(Number);
+    const [hh, mm] = hora.split(':').map(Number);
+    return new Date(Date.UTC(y, m - 1, d, hh + 6, mm || 0, 0));
+  }
+  return madridToUtcDate(fecha, hora);
+}
+
+// Cómo queda una llamada en las dos zonas, para que la IA lo cite tal cual
+function llamadaEnDosZonas(iso) {
+  if (!iso) return null;
+  const f = (tz) => new Date(iso).toLocaleString('es-ES', { weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: tz });
+  return { madrid: f('Europe/Madrid'), el_salvador: f('America/El_Salvador') };
+}
+
+function fechaMadridAISO(valor, zona) {
   const v = String(valor || '').trim();
   const m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}(?::\d{2})?))?/.exec(v);
   if (!m) return { error: `Fecha no válida: "${valor}" — usa formato ISO (ej. "2026-10-03" o "2026-10-03T17:00:00").` };
-  const d = madridToUtcDate(m[1], m[2] || '12:00');
+  const d = instanteDesdeZona(m[1], m[2] || '12:00', zona);
   if (isNaN(d.getTime())) return { error: `Fecha no válida: "${valor}".` };
   return { iso: d.toISOString() };
 }
@@ -148,7 +166,7 @@ async function crearLead(input, userId) {
   const fechas = {};
   for (const k of ['fecha_creacion', 'fecha_llamada', 'fecha_venta_1', 'fecha_venta_2', 'fecha_venta_extra']) {
     if (input[k] === undefined || input[k] === null || input[k] === '') continue;
-    const r = fechaMadridAISO(input[k]);
+    const r = fechaMadridAISO(input[k], k === 'fecha_llamada' ? input.zona_fecha_llamada : undefined);
     if (r.error) return { creado: false, error: `${k}: ${r.error}` };
     fechas[k] = r.iso;
   }
@@ -200,7 +218,7 @@ async function crearLead(input, userId) {
     catch (e) { console.error('Error al asignar la llamada a la agenda de Hernán:', e); agenda = { error: 'El lead se ha creado pero no se ha podido colocar la llamada en la agenda de Hernán.' }; }
   }
 
-  return { creado: true, lead: data, ficha: revisarFicha(data), ...(agenda ? { agenda_hernan: agenda } : {}) };
+  return { creado: true, lead: data, ficha: revisarFicha(data), ...(data.fecha_llamada ? { llamada_guardada_en_dos_zonas: llamadaEnDosZonas(data.fecha_llamada) } : {}), ...(agenda ? { agenda_hernan: agenda } : {}) };
 }
 
 async function actualizarLead(input) {
@@ -261,7 +279,7 @@ async function actualizarLead(input) {
       // servidor (madridToUtcDate), para no desfasar la hora guardada.
       const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}(?::\d{2})?)/.exec(input.fecha_llamada);
       if (!match) return { actualizado: false, error: `Fecha/hora de llamada no válida: "${input.fecha_llamada}" — usa formato ISO (ej. "2026-10-03T17:00:00").` };
-      const d = madridToUtcDate(match[1], match[2]);
+      const d = instanteDesdeZona(match[1], match[2], input.zona_fecha_llamada);
       if (isNaN(d.getTime())) return { actualizado: false, error: `Fecha/hora de llamada no válida: "${input.fecha_llamada}".` };
       updates.fecha_llamada = d.toISOString();
     }
@@ -284,7 +302,7 @@ async function actualizarLead(input) {
     catch (e) { console.error('Error al asignar la llamada a la agenda de Hernán:', e); agenda = { error: 'El lead se ha actualizado pero no se ha podido colocar en la agenda de Hernán.' }; }
   }
 
-  return { actualizado: true, lead: data, ficha: revisarFicha(data), ...(agenda ? { agenda_hernan: agenda } : {}) };
+  return { actualizado: true, lead: data, ficha: revisarFicha(data), ...(data.fecha_llamada && input.fecha_llamada !== undefined ? { llamada_guardada_en_dos_zonas: llamadaEnDosZonas(data.fecha_llamada) } : {}), ...(agenda ? { agenda_hernan: agenda } : {}) };
 }
 
 async function runTool(name, input, ctx) {
@@ -333,6 +351,7 @@ const TOOLS = [
         notas: { type: 'string', description: 'Resumen breve de lo hablado hasta ahora.' },
         fecha_creacion: { type: 'string', description: 'Fecha REAL en la que el lead entró/se contactó por primera vez, cuando Franco la indica o se ve en la conversación (ej. "2026-09-27" o "2026-09-27T18:30:00", hora de España). Si la das, el lead se crea CON ESA FECHA, no con la de hoy — cuenta para las métricas del mes en que entró. Si no la sabes, omítela (se usa hoy).' },
         fecha_llamada: { type: 'string', description: 'Fecha y hora de la llamada (ISO, hora de España), futura o pasada, si Franco la menciona. Pon también un estado coherente (agendado, o el de venta si ya compró).' },
+        zona_fecha_llamada: { type: 'string', enum: ['madrid', 'el_salvador'], description: 'Zona horaria en la que Franco te ha dicho la hora de fecha_llamada. Por defecto "madrid". Si Franco dijo la hora en hora de El Salvador ("mi hora", "hora de aquí", "hora de El Salvador"), pon "el_salvador" y pasa en fecha_llamada la hora TAL CUAL la dijo, SIN convertirla tú: el servidor hace la conversión exacta a Madrid (tú restando o sumando te equivocas).' },
         fecha_venta_1: { type: 'string', description: 'Fecha en la que compró el servicio 1 (YYYY-MM-DD o ISO). Las ventas se cuentan por esta fecha, no por la de creación.' },
         fecha_venta_2: { type: 'string', description: 'Fecha en la que compró el servicio 2 (YYYY-MM-DD o ISO).' },
         fecha_venta_extra: { type: 'string', description: 'Fecha de una venta extra fuera de la escalera de valor (máquina, servicio adicional...).' },
@@ -360,6 +379,7 @@ const TOOLS = [
         instagram: { type: 'string' },
         canal: { type: 'string', enum: CANALES_VALIDOS },
         fecha_llamada: { type: 'string', description: 'Fecha y hora de la llamada agendada, en formato ISO (ej. "2026-10-03T17:00:00"), cuando Franco te diga que ha agendado/reservado una llamada con este prospecto (con Calendly o como sea) — calcula la fecha real a partir de la FECHA DE HOY si te dan algo relativo ("el jueves", "mañana a las 5"). Al ponerla, cambia también el estado a "agendado".' },
+        zona_fecha_llamada: { type: 'string', enum: ['madrid', 'el_salvador'], description: 'Zona horaria en la que Franco te ha dicho la hora de fecha_llamada. Por defecto "madrid". Si Franco dijo la hora en hora de El Salvador ("mi hora", "hora de aquí", "hora de El Salvador"), pon "el_salvador" y pasa en fecha_llamada la hora TAL CUAL la dijo, SIN convertirla tú: el servidor hace la conversión exacta a Madrid (tú restando o sumando te equivocas).' },
         nota_nueva: { type: 'string', description: 'Resumen breve de esta interacción, se añade al final del historial de notas con la fecha de hoy.' },
         fecha_creacion: { type: 'string', description: 'Corrige la fecha real en la que el lead entró (YYYY-MM-DD o ISO, hora de España), si Franco te la indica o ves que estaba mal.' },
         fecha_venta_1: { type: 'string', description: 'Fecha real en la que compró el servicio 1, si Franco te la indica (si no la das al marcar venta_1, se estampa hoy SOLO si el lead no tenía fecha). null para quitarla.' },
@@ -584,13 +604,21 @@ router.post('/chat', async (req, res) => {
     const fmtIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' });
     const proximosDias = Array.from({ length: 21 }, (_, i) => { const d = new Date(Date.now() + i * 86400000); return `${fmtDia.format(d)} = ${fmtIso.format(d)}`; }).join('\n');
     const horaAhora = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
-    // Franco trabaja desde Uruguay (UTC-3, sin cambio de hora); el equipo y las
-    // llamadas van en hora de Madrid. Se calcula la diferencia actual (5 h en
-    // verano español, 4 h en invierno) para que el modelo no la adivine.
+    // Franco trabaja desde El Salvador (UTC-6, sin cambio de hora); el equipo y las
+    // llamadas van en hora de Madrid. Se calcula la diferencia actual (8 h en
+    // verano español, 7 h en invierno) para que el modelo no la adivine.
     const horaEn = (tz) => +new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', hourCycle: 'h23' }).format(new Date());
-    const difMadridUruguay = (horaEn('Europe/Madrid') - horaEn('America/Montevideo') + 24) % 24;
-    const horaUruguay = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Montevideo' });
-    const zonas = `\n\nZONAS HORARIAS (MUY IMPORTANTE): Franco, el setter, trabaja desde URUGUAY (UTC-3), pero el equipo, Hernán y todas las llamadas funcionan en HORA DE MADRID. Ahora mismo en Madrid son las ${horaAhora} y en Uruguay las ${horaUruguay} (Madrid va ${difMadridUruguay} horas por delante de Uruguay). Reglas: (1) SIEMPRE que Franco te dé la hora de una llamada SIN decir de qué zona es ("mañana a las 17:00"), NO la guardes todavía: pregúntale primero, por si acaso, si es hora de Madrid o de Uruguay, con un bloque \`\`\`opciones\`\`\` que lleve las dos posibilidades YA CALCULADAS, por ejemplo: ["Hora de Madrid: 17:00 (12:00 en Uruguay)", "Hora de Uruguay: 17:00 (22:00 en Madrid)"]. No hace falta que añadas nada más a esa pregunta (ni mensaje al prospecto ni análisis largo). Cuando conteste, guarda la hora que corresponda. (2) Si Franco YA dice la zona ("a las 17:00 hora de Madrid", "hora de Uruguay", "mi hora", "hora de aquí"), no preguntes: si es de Uruguay, conviértela a Madrid sumando ${difMadridUruguay} horas (y ten en cuenta si cambia de día). (3) Cuando confirmes una llamada agendada, escribe SIEMPRE la hora con las dos zonas, por ejemplo: "jueves 15/10 a las 17:00 (hora de Madrid) — 12:00 en Uruguay". (4) Si lo que cambia es una llamada que ya existía y te dan solo la nueva hora, aplica la misma regla (pregunta la zona). (5) fecha_llamada se guarda siempre en hora de Madrid.`;
+    const difMadridSalvador = (horaEn('Europe/Madrid') - horaEn('America/El_Salvador') + 24) % 24;
+    const horaSalvador = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'America/El_Salvador' });
+    // El cambio de hora de España (último domingo de marzo y de octubre) cambia la diferencia con El Salvador (que no cambia nunca):
+    // la diferencia que vale es la de la FECHA DE LA LLAMADA, no la de hoy.
+    const ultimoDomingo = (anio, mes) => { const d = new Date(Date.UTC(anio, mes + 1, 0)); d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d; };
+    const fmtCorto = (d) => d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+    const anioActual = new Date().getUTCFullYear();
+    const cambios = [];
+    for (const a of [anioActual, anioActual + 1]) { cambios.push([ultimoDomingo(a, 2), 8], [ultimoDomingo(a, 9), 7]); }
+    const proximosCambios = cambios.filter(([d]) => d.getTime() > Date.now() - 86400000).slice(0, 3).map(([d, h]) => `desde el ${fmtCorto(d)} la diferencia pasa a ser ${h} horas`).join('; ');
+    const zonas = `\n\nZONAS HORARIAS (MUY IMPORTANTE): Franco, el setter, trabaja desde EL SALVADOR (UTC-6), pero el equipo, Hernán y todas las llamadas funcionan en HORA DE MADRID. Ahora mismo en Madrid son las ${horaAhora} y en El Salvador las ${horaSalvador} (Madrid va ${difMadridSalvador} horas por delante de El Salvador; El Salvador no cambia nunca de hora). OJO: esa diferencia cambia con el cambio de hora de España: ${proximosCambios}. NO hagas tú la conversión entre zonas (restar o sumar horas): el servidor la hace exacta. Reglas: (1) SIEMPRE que Franco te dé la hora de una llamada SIN decir de qué zona es ("mañana a las 17:00"), NO la guardes todavía: pregúntale primero, por si acaso, si es hora de Madrid o de El Salvador, con un bloque \`\`\`opciones\`\`\` con exactamente estas dos opciones: ["Hora de Madrid", "Hora de El Salvador"] (sin calcular nada en las opciones). No hace falta que añadas nada más a esa pregunta (ni mensaje al prospecto ni análisis largo). Cuando conteste, guarda la hora que corresponda. (2) Si Franco YA dice la zona ("a las 17:00 hora de Madrid", "hora de El Salvador", "mi hora", "hora de aquí"), no preguntes: llama a la herramienta con fecha_llamada = la hora TAL CUAL la dijo Franco y zona_fecha_llamada = "madrid" o "el_salvador" según la zona. NO conviertas tú nada: el servidor lo convierte a Madrid de forma exacta (incluido si cambia de día o de horario de verano/invierno). (3) Cuando confirmes una llamada agendada, copia TAL CUAL las dos horas del campo llamada_guardada_en_dos_zonas del resultado de la herramienta (no las calcules tú), por ejemplo: "jueves 15/10, 17:00 hora de Madrid — 09:00 en El Salvador". (4) Si lo que cambia es una llamada que ya existía y te dan solo la nueva hora, aplica la misma regla (pregunta la zona). (5) fecha_llamada se guarda siempre en hora de Madrid.`;
     const systemConFecha = `${SYSTEM_PROMPT}${zonas}\n\nFECHA DE HOY: ${hoy}. HORA ACTUAL EN MADRID: ${horaAhora}.\n\nCALENDARIO (úsalo tal cual para convertir "mañana", "el viernes", "el lunes que viene"... a una fecha; no calcules el día de la semana de cabeza):\n${proximosDias}\n\nREGLA PARA fecha_llamada: la hora de la llamada es SIEMPRE la que te diga Franco ("a las 17:30" → T17:30:00, hora de España). NUNCA pongas la hora actual ni una hora que no te hayan dicho: si te da el día pero no la hora, pregúntale la hora antes de guardar nada. Formato ISO sin zona, ej. "2026-10-09T17:30:00". Antes de guardar, COMPRUEBA en el calendario de arriba que la fecha que vas a poner cae exactamente en el día de la semana que te han dicho (ej. "el jueves de la semana que viene" = el jueves de la semana siguiente a la actual, no el viernes ni el miércoles). Si te dan una fecha numérica ("el 15"), úsala tal cual.`;
 
     let lastResponse = null;

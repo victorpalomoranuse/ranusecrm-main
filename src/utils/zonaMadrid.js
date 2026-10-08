@@ -1,5 +1,5 @@
 // Todo el equipo trabaja en hora de Madrid, aunque alguien (p. ej. Franco, en
-// Uruguay) tenga el navegador en otra zona horaria. Estas funciones leen y
+// El Salvador) tenga el navegador en otra zona horaria. Estas funciones leen y
 // escriben fechas SIEMPRE como hora de Madrid, sin depender de la zona del
 // ordenador de quien mira el CRM.
 

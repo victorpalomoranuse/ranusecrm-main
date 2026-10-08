@@ -106,7 +106,7 @@ const DEFINICIONES_METRICAS = [
 // <input type="datetime-local"> espera "YYYY-MM-DDTHH:mm" en hora local, sin
 // zona horaria — convierte desde/hacia el ISO que guarda la base de datos.
 // Todas las fechas con hora de Setting se leen y escriben en HORA DE MADRID,
-// aunque quien las use (p. ej. Franco, en Uruguay) tenga el navegador en otra zona.
+// aunque quien las use (p. ej. Franco, en El Salvador) tenga el navegador en otra zona.
 const isoToDatetimeLocal = isoAInputMadrid;
 const fmtFechaLlamada = fmtFechaHoraMadrid;
 

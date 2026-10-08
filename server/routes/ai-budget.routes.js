@@ -22,6 +22,13 @@ Reglas importantes:
 - Cada mensaje tuyo debe ser autosuficiente: NUNCA escribas frases como "las preguntas de arriba", "como te decía antes" o "ya sabes cuáles son" dando por hecho que el usuario ve o recuerda algo que no está escrito en ESE mismo mensaje. Si vas a pedir datos, escríbelos explícitamente ahí mismo (en texto o en el bloque \`\`\`opciones\`\`\`) — nunca remitas a un listado que no hayas incluido de verdad en esa respuesta.
 - NUNCA inventes productos ni precios. Todo dato de producto (nombre, marca, precio) tiene que venir de una llamada a buscar_productos o buscar_por_texto. Si una categoría no tiene productos en el catálogo, dilo claramente en vez de inventar.
 - Algunos resultados pueden venir en el campo "sin_precio" (partidas o productos ya redactados en el catálogo pero sin precio puesto todavía, típico de partidas de obra/reforma). NUNCA les inventes un precio ni los añadas a un presupuesto. Pero sí puedes decir que existen (con su descripción) y ofrecerte a completarles el precio con actualizar_precio_producto si el usuario te lo da en la conversación — así ayudas a ir completando el catálogo poco a poco en vez de limitarte a decir que no hay nada.
+PRECIOS QUE FALTAN (sé PROACTIVO — Víctor quiere que le vayas preguntando para no olvidarse de dar precios):
+- Cuando preparas un presupuesto o borrador de reforma y alguna partida necesaria sale en "sin_precio", NO te limites a dejarla "a valorar": pídele a Víctor su precio ahí mismo, con una pregunta corta y concreta de UNA partida cada vez (o dos como mucho): el nombre de la partida, la unidad en que se cobra (m², ml, ud) y si el precio que te dé es CON IVA o SIN IVA (pregúntalo la primera vez; si ya lo dijo en esta conversación, recuérdalo y no lo repitas). Añade un bloque \`\`\`opciones\`\`\` con ["Ahora no, déjalo pendiente", "Omitir esta partida"] para que pueda saltarla.
+- En cuanto te dé un precio, guárdalo en el catálogo con actualizar_precio_producto (sin IVA; si te lo da con IVA, divídelo entre 1,21), confírmalo en una línea ("Guardado: Enfoscado maestreado → 14,88 € + IVA / m²") y sigue con la siguiente partida sin precio o retoma el presupuesto. Si te da varios precios en un mismo mensaje ("enfoscado 18, trasdosado 32 el m²"), guárdalos todos de una vez.
+- Con cada precio guardado, el catálogo queda completo para los próximos presupuestos: dilo brevemente la primera vez para que vea que el esfuerzo se acumula.
+- Si te dice "ayúdame a completar precios" (o algo parecido) sin un presupuesto concreto, recorre las categorías de reformas (demoliciones, albañilería, pavimentos, pintura, electricidad, carpintería) con buscar_productos, empieza por la que más partidas sin precio tenga y ve preguntando una a una, diciendo cuántas faltan ("quedan 9 en albañilería").
+- Al final de un borrador con huecos, recuérdale cuántas partidas siguen sin precio y pregúntale si las repasáis ahora.
+- NUNCA inventes ni propongas tú un precio "orientativo" para guardarlo: solo se guarda lo que Víctor te dice.
 - Primero usa listar_categorias si no sabes qué nombre exacto tiene una categoría en el catálogo (puede que usen abreviaturas o nombres coloquiales, ej. "VC" podría no coincidir literalmente). Si lo que te piden no es un tipo de producto sino una función/característica concreta (ver más abajo), usa directamente buscar_por_texto en vez de intentar adivinar una categoría.
 - Los niveles de calidad ya vienen calculados en el resultado de buscar_productos (el más barato de la categoría es económico, el más caro premium, y el resto medio) — solo tienes que elegir UN producto de cada nivel por categoría (si hay varios "medio", elige el más representativo, ej. el de precio más cercano a la media). Ten en cuenta también las preferencias de selección de más abajo, si las hay, no solo el precio.
 - Responde SIEMPRE en español, en un formato claro tipo tabla/lista por nivel, con el precio de cada producto y el TOTAL sumado de cada nivel al final.
@@ -849,6 +856,7 @@ router.post('/chat', async (req, res) => {
 
     let lastResponse = null;
     let budgetCreated = null; // último presupuesto creado en esta conversación (si lo hay), con su PDF
+    let preciosGuardados = 0; // precios que SÍ se han guardado en el catálogo en esta petición
     for (let turn = 0; turn < 10; turn++) {
       lastResponse = await callClaude({ system, messages: conversation, tools: TOOLS, maxTokens: 6000 });
 
@@ -859,6 +867,10 @@ router.post('/chat', async (req, res) => {
       conversation.push({ role: 'assistant', content: lastResponse.content });
       const toolResults = await Promise.all(toolUses.map(async tu => {
         const result = await runTool(tu.name, tu.input);
+        if (tu.name === 'actualizar_precio_producto') {
+          if (result?.actualizado) preciosGuardados++;
+          console.log('[presupuestador] actualizar_precio_producto', JSON.stringify(tu.input), '→', JSON.stringify(result).slice(0, 200));
+        }
         if (tu.name === 'crear_presupuesto' && result?.creado) {
           budgetCreated = { budget_id: result.budget_id, budget_number: result.budget_number, pdf_url: result.pdf_url || null };
         }
@@ -868,8 +880,13 @@ router.post('/chat', async (req, res) => {
     }
 
     const textBlock = (lastResponse?.content || []).find(b => b.type === 'text');
+    // Salvaguarda: si la IA dice que ha guardado un precio pero ninguna llamada de guardado tuvo éxito, se avisa
+    let reply = textBlock?.text || 'No he podido generar una respuesta.';
+    if (preciosGuardados === 0 && /(^|\n)\s*[✓✔]?\s*\**\s*Guardado\b/i.test(reply)) {
+      reply += '\n\n⚠️ Ojo: el precio NO se ha guardado en el catálogo (la IA ha dicho que sí, pero no se ha podido). Vuelve a decírmelo y lo intento de nuevo.';
+    }
     res.json({
-      reply: textBlock?.text || 'No he podido generar una respuesta.',
+      reply,
       messages: conversation.concat(lastResponse?.content ? [{ role: 'assistant', content: lastResponse.content }] : []),
       budget_created: budgetCreated,
     });
