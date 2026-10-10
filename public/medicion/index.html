@@ -268,6 +268,7 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
         <label class="fld"><span>Cotas</span><select id="x-dims"><option value="ext">Con líneas de cota por fuera</option><option value="int">Con líneas de cota por dentro</option><option value="simple">Solo el número en cada muro</option></select></label>
         <label class="fld"><span>Escala</span><select id="x-scale"><option value="auto">Automática (la mayor que quepa)</option><option value="20">1:20</option><option value="25">1:25</option><option value="50">1:50</option><option value="75">1:75</option><option value="100">1:100</option><option value="200">1:200</option></select></label>
         <div class="btns"><button class="pri" id="b-pdf">PDF de esta lámina</button><button id="b-pdfall">PDF con todas las láminas</button></div>
+        <div class="btns" id="crm-pdf" hidden><button id="b-pdfdoc">Subir esta lámina a Documentos</button><button id="b-pdfdocall">Subir dossier a Documentos</button></div>
         <div class="btns"><button id="b-pdfcarp">Memoria de carpinterías (PDF)</button><button id="b-csvcarp">Carpinterías (CSV)</button></div>
         <details class="addcat">
           <summary>Logo del cajetín</summary>
@@ -3858,6 +3859,17 @@ $('b-svg').addEventListener('click',function(){
 $('b-json').addEventListener('click',function(){saveFile(slug()+'.json',JSON.stringify(st.v,null,1),'Datos')});
 $('b-pdf').addEventListener('click',function(){exportPDF('view')});
 $('b-pdfall').addEventListener('click',function(){exportPDF('all')});
+function subirPdfCrm(mode){
+  if(!bbox()){toast('Dibuja algo antes de exportar');return}
+  if(!window.confirm('El PDF se guardará en Documentos del proyecto y el cliente lo verá en su portal. ¿Continuar?'))return;
+  var bytes;
+  try{bytes=buildPDF(mode,pdfOpts())}catch(e){toast('No se pudo generar el PDF');return}
+  var titulo=(mode==='all'?'Planos · dossier completo':'Plano · '+VNAME[st.view])+(st.v.nombre?' · '+st.v.nombre:'');
+  crmPost({type:'subir-pdf',nombre:titulo,filename:slug()+(mode==='all'?'-dossier':'-'+st.view)+'.pdf',bytes:bytes.buffer});
+  toast('Subiendo a Documentos…');
+}
+$('b-pdfdoc').addEventListener('click',function(){subirPdfCrm('view')});
+$('b-pdfdocall').addEventListener('click',function(){subirPdfCrm('all')});
 $('b-pdfcarp').addEventListener('click',function(){if(!st.v.ops.length){toast('Aún no hay puertas ni ventanas');return}exportPDF('carp')});
 $('b-csvcarp').addEventListener('click',function(){if(!st.v.ops.length){toast('Aún no hay puertas ni ventanas');return}saveFile(slug()+'-carpinterias.csv',carpCSV(),'CSV')});
 $('x-logo').addEventListener('change',function(e){loadLogoFile(e.target.files&&e.target.files[0]);e.target.value=''});
@@ -4026,7 +4038,7 @@ if(CRM){
       cloudLum=(m.luminarias||[]).filter(function(l){return l&&l.id&&l.n&&l.sym});
       cloudLum.forEach(prepLumRgb);
       crmReady=true;crmSkip=Date.now()+1500;
-      $('b-cloud').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
+      $('b-cloud').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
       if(cloud.length){st.v=norm(JSON.parse(JSON.stringify(cloud[0])));crmPrefill()}
       else{st.v=newVisit();crmPrefill()}
       ensureLums();st.sel=null;st.dg=null;hist.length=0;redo.length=0;
@@ -4040,6 +4052,8 @@ if(CRM){
       }
     }else if(m.type==='deleted'){
       cloud=cloud.filter(function(c){return c.id!==m.id});drawCloud();toast('Plano borrado');
+    }else if(m.type==='info'){
+      toast(m.message||'Hecho');
     }else if(m.type==='error'){
       $('saved').textContent=m.message||'No se pudo guardar en el CRM.';toast(m.message||'No se pudo guardar en el CRM');
     }

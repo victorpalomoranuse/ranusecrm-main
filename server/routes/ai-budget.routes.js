@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
+import { cantidadesDePlano } from '../utils/planos.js';
 import { TOOL_CONOCIMIENTO, ejecutarConsultaConocimiento } from '../utils/conocimiento.js';
 import { internalAdminToken } from '../utils/internal-auth.js';
 import { computeCatalogPricing } from '../utils/pricing.js';
@@ -29,6 +30,12 @@ INTERVENCIONES DE REFORMA — QUE NO SE OLVIDE NADA (Víctor quiere que le vayas
 - Termina SIEMPRE con una pregunta de repaso del tipo "¿se me escapa algo?", recordando los típicos olvidos: retirada de escombros y contenedor, protecciones y limpieza, ayudas de albañilería, remates y rodapiés, medios auxiliares, desplazamientos, licencias o comunicación previa si aplica, y la posible aparición de imprevistos (partida de imprevistos).
 - Si la biblioteca no cubre la intervención, dilo y razona con tu criterio general indicando que no sale en los apuntes. Nunca des por válido un trabajo que no tenga sentido técnico: si algo exige validar con un técnico (estructura, instalaciones reglamentarias), dilo.
 - Esto aplica tanto cuando te piden un presupuesto completo como cuando solo preguntan "¿qué hay que hacer para…?".
+
+PLANOS DEL PROYECTO (medidas ya dibujadas por los diseñadores):
+- Cuando vayas a presupuestar un proyecto del CRM, llama a buscar_proyecto y, si tiene_planos es true, llama a leer_planos_proyecto ANTES de preguntar medidas: te da los m² de suelo/techo/paredes, demoliciones, muros nuevos, puertas y ventanas nuevas, puntos eléctricos y el equipamiento y las luminarias colocadas.
+- Las partidas "de catalogo" llevan el nombre exacto y el precio: úsalas tal cual en crear_presupuesto (con la cantidad medida). Las "medido_sin_precio" son trabajos de reforma con cantidad pero sin precio: combínalas con los apuntes y el catálogo de reformas (R1–R6) para decir qué partida corresponde, y pregunta el precio de las que no lo tengan (sin inventarlo).
+- Repasa con él lo que el plano NO trae y suele olvidarse: escombros y contenedor, protecciones, ayudas de albañilería, remates, licencias, imprevistos. Di siempre de qué plano has sacado las cantidades por si hay varios.
+- Si el proyecto no tiene planos, dilo en una frase y sigue pidiendo las medidas como siempre.
 
 PRECIOS QUE FALTAN (sé PROACTIVO — Víctor quiere que le vayas preguntando para no olvidarse de dar precios):
 - Cuando preparas un presupuesto o borrador de reforma y alguna partida necesaria sale en "sin_precio", NO te limites a dejarla "a valorar": pídele a Víctor su precio ahí mismo, con una pregunta corta y concreta de UNA partida cada vez (o dos como mucho): el nombre de la partida, la unidad en que se cobra (m², ml, ud) y si el precio que te dé es CON IVA o SIN IVA (pregúntalo la primera vez; si ya lo dijo en esta conversación, recuérdalo y no lo repitas). Añade un bloque \`\`\`opciones\`\`\` con ["Ahora no, déjalo pendiente", "Omitir esta partida"] para que pueda saltarla.
@@ -268,6 +275,15 @@ const TOOLS = [
         nombre: { type: 'string', description: 'Nombre (o parte del nombre) del cliente o del proyecto a buscar' },
       },
       required: ['nombre'],
+    },
+  },
+  {
+    name: 'leer_planos_proyecto',
+    description: 'Lee las cantidades medidas en los PLANOS que los diseñadores han dibujado para un proyecto: m² de suelo, techo y paredes, demoliciones, muros nuevos, puertas y ventanas nuevas, puntos eléctricos, y el equipamiento y las luminarias colocadas (con su producto del catálogo y precio cuando existe). Úsala en cuanto vayas a presupuestar un proyecto que tenga planos (buscar_proyecto indica tiene_planos) en lugar de pedirle las medidas a Victor.',
+    input_schema: {
+      type: 'object',
+      properties: { proyecto_id: { type: 'string', description: 'id del proyecto (uuid) devuelto por buscar_proyecto' } },
+      required: ['proyecto_id'],
     },
   },
   {
@@ -605,6 +621,9 @@ async function buscarProyecto(nombreQuery) {
   const { data: budgets } = await supabase.from('budgets').select('id, project_id, budget_number').in('project_id', ids);
   const budgetByProject = {};
   (budgets || []).forEach(b => { budgetByProject[b.project_id] = b; });
+  const { data: planos } = await supabase.from('mediciones').select('project_id').in('project_id', ids);
+  const planosByProject = {};
+  (planos || []).forEach(p => { planosByProject[p.project_id] = true; });
 
   return {
     encontrado: true,
@@ -612,6 +631,7 @@ async function buscarProyecto(nombreQuery) {
       id: p.id,
       cliente: p.client_name,
       proyecto: p.project_name,
+      tiene_planos: !!planosByProject[p.id],
       ya_tiene_presupuesto: !!budgetByProject[p.id],
       numero_presupuesto_existente: budgetByProject[p.id]?.budget_number || null,
       presupuesto_id_existente: budgetByProject[p.id]?.id || null,
@@ -824,6 +844,25 @@ async function aplicarDescuentoPresupuesto({ presupuesto_id, numero_presupuesto,
   };
 }
 
+async function leerPlanosProyecto(proyectoId) {
+  try {
+    const r = await cantidadesDePlano(proyectoId);
+    if (!r.plano) return { encontrado: false, mensaje: 'Este proyecto no tiene planos con medidas todavía. Pídele a Victor las medidas o que se dibuje el plano en la pestaña Planos del proyecto.' };
+    return {
+      encontrado: true,
+      plano: r.plano.nombre,
+      otros_planos: r.planos.length - 1,
+      salas: r.resumen?.salas || [],
+      altura_libre_cm: r.resumen?.altura_cm || null,
+      partidas_sugeridas: r.filas.map(f => f.tipo === 'catalogo'
+        ? { de: 'catalogo', nombre_exacto: f.nombre, cantidad: f.cantidad, unidad: f.unidad, precio_catalogo: f.producto?.price ?? null }
+        : { de: 'medido_sin_precio', concepto: f.nombre, cantidad: f.cantidad, unidad: f.unidad, aviso: f.aviso || null }),
+    };
+  } catch {
+    return { encontrado: false, mensaje: 'No se pudieron leer los planos del proyecto.' };
+  }
+}
+
 async function runTool(name, input) {
   if (name === 'listar_categorias') return { categorias: await listarCategorias() };
   if (name === 'buscar_productos') return buscarProductos(input.categoria, input.marca);
@@ -833,6 +872,7 @@ async function runTool(name, input) {
   if (name === 'actualizar_precio_producto') return actualizarPrecioProducto(input);
   if (name === 'aplicar_descuento_presupuesto') return aplicarDescuentoPresupuesto(input);
   if (name === 'buscar_proyecto') return buscarProyecto(input.nombre);
+  if (name === 'leer_planos_proyecto') return leerPlanosProyecto(input.proyecto_id);
   if (name === 'crear_presupuesto') return crearPresupuesto(input);
   if (name === 'consultar_conocimiento') return ejecutarConsultaConocimiento(input, 'presupuestos');
   return { error: 'Herramienta desconocida' };

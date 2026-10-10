@@ -50,6 +50,15 @@ export function MedicionProyecto({ project }) {
           const { data } = await api.put(`/medicion/${m.visita.id}`, { project_id: project.id, data: m.visita });
           responder({ type: 'saved', id: m.visita.id, updated: data.updated });
         } catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo guardar en el CRM' }); }
+      } else if (m.type === 'subir-pdf' && m.bytes) {
+        try {
+          const form = new FormData();
+          form.append('file', new Blob([m.bytes], { type: 'application/pdf' }), m.filename || 'planos.pdf');
+          form.append('name', m.nombre || m.filename || 'Planos');
+          form.append('doc_type', 'plano');
+          await api.post(`/client-projects/${project.id}/documents`, form);
+          responder({ type: 'info', message: 'PDF guardado en Documentos del proyecto' });
+        } catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo subir el PDF' }); }
       } else if (m.type === 'delete' && m.id) {
         try { await api.delete(`/medicion/${m.id}`); responder({ type: 'deleted', id: m.id }); }
         catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo borrar' }); }
