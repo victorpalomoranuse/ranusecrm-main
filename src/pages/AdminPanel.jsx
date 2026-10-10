@@ -20,6 +20,7 @@ import { SectionRelacionObra } from './SectionRelacionObra';
 import { SectionMisComisiones } from './SectionMisComisiones';
 import { SectionMiDashboard } from './SectionMiDashboard';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
+import { MedicionProyecto } from '../components/MedicionProyecto';
 import { TabHistoria, SelectorTipoHistoria, GuiaProyecto, EstiloMoodboard } from '../components/HistoriaEditor';
 import { AgenteProyecto } from '../components/AgenteProyecto';
 import { RecetaColor } from '../components/RecetaColor';
@@ -292,7 +293,7 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{id:'necesidades',label:'1 · Necesidades'},{id:'portada',label:'2 · Portada'},{id:'moodboard',label:'3 · Moodboard'},{id:'historia',label:'4 · Historia'},{id:'agente',label:'Asistente'},{id:'catalogo',label:'Listados'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'renders',label:'Resultado',soloSinHistoria:true},{id:'fases',label:'Categorías',soloSinHistoria:true},{id:'facturas',label:'Facturas'},{id:'trabajos',label:'Trabajos web'}];
+const MGR_TABS = [{id:'necesidades',label:'1 · Necesidades'},{id:'portada',label:'2 · Portada'},{id:'moodboard',label:'3 · Moodboard'},{id:'historia',label:'4 · Historia'},{id:'agente',label:'Asistente'},{id:'medicion',label:'Planos'},{id:'catalogo',label:'Listados'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'renders',label:'Resultado',soloSinHistoria:true},{id:'fases',label:'Categorías',soloSinHistoria:true},{id:'facturas',label:'Facturas'},{id:'trabajos',label:'Trabajos web'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
@@ -2169,7 +2170,7 @@ function ProjectManagerModal({ project, onClose }) {
 
   return (
     <div className="ap-modal-overlay" onClick={onClose}>
-      <div className="ap-mgr-modal" onClick={e => e.stopPropagation()}>
+      <div className="ap-mgr-modal" style={tab==='medicion'?{maxWidth:'min(1500px,97vw)',maxHeight:'96vh'}:undefined} onClick={e => e.stopPropagation()}>
         <div className="ap-mgr-head">
           <div>
             <h2 className="ap-mgr-title">{project.client_name}</h2>
@@ -2200,6 +2201,7 @@ function ProjectManagerModal({ project, onClose }) {
           {tab==='catalogo'&&<TabAsignaciones projectId={project.id} listadosIntro={project.listados_intro_text} listadosTitle={project.listados_title} onIntroUpdated={(v,t)=>{project.listados_intro_text=v;project.listados_title=t;}}/>}
           {tab==='historia'&&<TabHistoria project={project}/>}
           {tab==='agente'&&<AgenteProyecto project={project}/>}
+          {tab==='medicion'&&<MedicionProyecto project={project}/>}
           {tab==='trabajos'&&<TabTrabajosWeb project={project}/>}
         </div>
       </div>

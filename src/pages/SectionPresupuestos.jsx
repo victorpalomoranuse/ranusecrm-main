@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, BookOpen, X, Link, ChevronUp, ChevronDown, FolderPlus, GripVertical, Copy } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, CheckCircle, AlertCircle, BookOpen, Ruler, X, Link, ChevronUp, ChevronDown, FolderPlus, GripVertical, Copy } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { CantidadesPlanos } from '../components/CantidadesPlanos';
 import './SectionPresupuestos.css';
 
 const CATEGORIES = [
@@ -825,6 +826,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
   const [pdfShowTotalCol, setPdfShowTotalCol]   = useState(true);
   const [pdfShowSavings, setPdfShowSavings]     = useState(true);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [showPlanos, setShowPlanos] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [projects, setProjects] = useState([]);
   const [paymentOptions, setPaymentOptions] = useState([]);
@@ -1005,7 +1007,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
     finally { setDuplicando(false); }
   };
 
-  const handleInsertFromLibrary = async (product) => {
+  const handleInsertFromLibrary = async (product, quantity = 1) => {
     // Mismo criterio que usa el Asistente IA (server/utils/pricing.js): si el
     // producto tiene un dto. de compra configurado, el precio de catálogo es
     // el PVP (modo pvp); si no, es su coste y se le suma el margen por
@@ -1033,9 +1035,17 @@ function BudgetEditor({ id, onBack, onOpen }) {
       color_acolchado: product.color_acolchado || null,
       tipo_acolchado: product.tipo_acolchado || null,
       accessories_note: product.included_accessories || null,
-      quantity: 1,
+      quantity,
     });
     flash('Partida insertada desde catálogo');
+  };
+
+  const handleAddFromPlanos = async (filas) => {
+    for (const f of filas) {
+      if (f.tipo === 'catalogo') await handleInsertFromLibrary(f.producto, f.cantidad);
+      else await handleAddItem({ name: f.nombre, category: f.categoria || 'reformas', unit: f.unidad || 'ud', unit_cost: 0, markup_pct: 20, unit_price: 0, quantity: f.cantidad });
+    }
+    flash(`${filas.length} partida${filas.length === 1 ? '' : 's'} añadida${filas.length === 1 ? '' : 's'} desde los planos`);
   };
 
   const handleLinked = async (projectId) => {
@@ -1055,6 +1065,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
 
   return (
     <div className="pres-editor" style={{ paddingRight: showLibrary ? 330 : 0 }}>
+      {showPlanos && budget.project_id && <CantidadesPlanos projectId={budget.project_id} onClose={() => setShowPlanos(false)} onAdd={handleAddFromPlanos} />}
       {showLibrary && <CatalogLibraryPanel onInsert={handleInsertFromLibrary} onClose={() => setShowLibrary(false)} />}
       {showLinkModal && <LinkProjectModal projects={unlinkedProjects.length > 0 ? unlinkedProjects : projects} budgetId={id} onClose={() => setShowLinkModal(false)} onLinked={handleLinked} />}
 
@@ -1084,6 +1095,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
           <MsgBanner msg={msg}/>
           {!budget.project_id && <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setShowLinkModal(true)}><Link size={13}/> Vincular proyecto</button>}
           <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleDuplicar} disabled={duplicando}><Copy size={13}/> {duplicando ? 'Duplicando…' : 'Duplicar'}</button>
+          {budget.project_id && <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setShowPlanos(true)}><Ruler size={13}/> Desde planos</button>}
           <button className={`ap-btn ap-btn-sm ${showLibrary ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setShowLibrary(v => !v)}><BookOpen size={13}/> Biblioteca</button>
           <select className="pres-cell-select" value={budget.status} onChange={e => { const s=e.target.value; setBudget(b=>({...b,status:s})); saveFee({status:s}); }}>
             {Object.entries(STATUS_CFG).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
