@@ -51,10 +51,14 @@ async function fotoMiniatura(url) {
 
 router.get('/catalogos', async (req, res) => {
   try {
-    const [{ data: cats }, { data: prods }] = await Promise.all([
+    const columnas = 'id, name, brand, category_id, longitud, ancho, lumens, watts, color_temperature, photo_url, display_order';
+    const pedirProductos = (cols) => supabase.from('catalog_products').select(cols).order('display_order', { ascending: true, nullsFirst: false });
+    const [{ data: cats }, conBloques] = await Promise.all([
       supabase.from('catalog_categories').select('id, name, type'),
-      supabase.from('catalog_products').select('id, name, brand, category_id, longitud, ancho, lumens, watts, color_temperature, photo_url, display_order').order('display_order', { ascending: true, nullsFirst: false }),
+      pedirProductos(columnas + ', bloques'),
     ]);
+    // Si la columna "bloques" aún no existe en la base de datos, se sigue sin ella
+    const prods = conBloques.error ? (await pedirProductos(columnas)).data : conBloques.data;
     const catPorId = Object.fromEntries((cats || []).map(c => [c.id, c]));
 
     const maquinas = [];
@@ -73,6 +77,8 @@ router.get('/catalogos', async (req, res) => {
           d: tieneMedidas ? Number(p.ancho) : 80,
           ref: [p.brand, cat.name].filter(Boolean).join(' · '),
           sinMedidas: !tieneMedidas,
+          // dibujo real de la planta (si el producto tiene bloque), a escala en cm
+          ...(p.bloques?.svg?.planta ? { bloque: { planta: p.bloques.svg.planta, largo: p.bloques.largo, fondo: p.bloques.fondo } } : {}),
         });
       } else if (cat.type === 'iluminacion') {
         luminariasBase.push({ p, cat });

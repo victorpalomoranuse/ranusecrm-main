@@ -311,6 +311,52 @@ Reglas: las medidas solo si se leen en la foto (etiqueta, ficha) o se pueden est
   }
 });
 
+// ── Bloques de producto (planta / alzado / lateral dibujados a escala) ─────
+// Solo se aceptan trazos simples (line, rect, circle, polygon, path, g): el mismo
+// dibujo se pinta en pantalla y en los PDF de los planos.
+const ETIQUETAS_BLOQUE = new Set(['line', 'rect', 'circle', 'polygon', 'path', 'g']);
+function svgBloqueValido(frag) {
+  if (typeof frag !== 'string' || frag.length > 120000) return false;
+  const etiquetas = [...frag.matchAll(/<\s*\/?\s*([a-zA-Z][\w:-]*)/g)].map(m => m[1].toLowerCase());
+  if (etiquetas.some(t => !ETIQUETAS_BLOQUE.has(t))) return false;
+  return !/on\w+\s*=|javascript:|<\s*script|href\s*=|url\s*\(/i.test(frag);
+}
+router.put('/products/:id/bloques', async (req, res) => {
+  try {
+    const { largo, fondo, alto, shapes, svg } = req.body || {};
+    const L = Number(largo), D = Number(fondo), H = Number(alto);
+    if (!(L > 0 && D > 0 && H > 0) || !svg || typeof svg !== 'object') return res.status(400).json({ error: 'Datos del bloque no válidos' });
+    const vistas = ['planta', 'alzado', 'lateral'];
+    for (const v of vistas) {
+      if (svg[v] != null && svg[v] !== '' && !svgBloqueValido(svg[v])) return res.status(400).json({ error: `El dibujo de ${v} contiene elementos no permitidos` });
+    }
+    if (!svg.planta) return res.status(400).json({ error: 'Falta el dibujo de la planta' });
+    const bloques = {
+      largo: L, fondo: D, alto: H,
+      shapes: shapes && typeof shapes === 'object' ? shapes : null,
+      svg: { planta: svg.planta || '', alzado: svg.alzado || '', lateral: svg.lateral || '' },
+      actualizado: new Date().toISOString(),
+    };
+    // Las medidas del bloque son las medidas reales del producto: largo → longitud, fondo → ancho
+    const { data, error } = await supabase.from('catalog_products').update({ bloques, longitud: L, ancho: D, altura: H }).eq('id', req.params.id).select('id, longitud, ancho, altura, bloques').single();
+    if (error) throw error;
+    res.json({ ok: true, product: data });
+  } catch (err) {
+    console.error('catalog bloques:', err);
+    res.status(500).json({ error: 'No se pudo guardar el bloque' });
+  }
+});
+
+router.delete('/products/:id/bloques', async (req, res) => {
+  try {
+    const { error } = await supabase.from('catalog_products').update({ bloques: null }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo quitar el bloque' });
+  }
+});
+
 router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
     const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, nivel_uso, search_keywords, extra_category_ids, complement_ids } = req.body;
