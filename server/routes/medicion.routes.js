@@ -66,17 +66,17 @@ function plantaValida(frag) {
   return !/on\w+\s*=|javascript:|<\s*script|href\s*=|url\s*\(/i.test(frag);
 }
 function itemBiblioteca(r) {
-  const vistas = [r.planta && 'planta', r.alzado && 'alzado', r.lateral && 'lateral'].filter(Boolean);
+  const vistas = [r.planta && 'planta', r.alzado && 'alzado', r.lado && 'lateral'].filter(Boolean);
   return {
     id: 'bib-' + r.id, nombre: r.nombre, tipo: 'gen', w: Number(r.largo), d: Number(r.fondo), alto: Number(r.alto) || null,
     categoria: r.categoria || 'Mi biblioteca', ref: r.origen || 'Biblioteca propia', biblioteca: true, vistas,
     ...(r.planta ? { bloque: { planta: r.planta, largo: Number(r.largo), fondo: Number(r.fondo) } } : {}),
   };
 }
-const COLS_BIB = 'id, nombre, categoria, largo, fondo, alto, planta, alzado, lateral, origen';
+const COLS_BIB = 'id, nombre, categoria, largo, fondo, alto, planta, alzado, lado, origen';
 async function cargarBiblioteca() {
   // En el catálogo solo viaja la planta; el alzado y el lateral se piden al colocarlos (/bloque/:id)
-  const { data, error } = await supabase.from('biblioteca_bloques').select('id, nombre, categoria, largo, fondo, alto, planta, origen, alzado, lateral').order('categoria').order('nombre').limit(2000);
+  const { data, error } = await supabase.from('biblioteca_bloques').select('id, nombre, categoria, largo, fondo, alto, planta, origen, alzado, lado').order('categoria').order('nombre').limit(2000);
   if (error) { // si la tabla aún no tiene las columnas de vistas (v73), se sigue con la planta
     const { data: d2, error: e2 } = await supabase.from('biblioteca_bloques').select('id, nombre, categoria, largo, fondo, alto, planta, origen').order('categoria').order('nombre').limit(2000);
     return e2 ? [] : (d2 || []).map(itemBiblioteca);
@@ -96,14 +96,14 @@ router.post('/biblioteca', async (req, res) => {
       filas.push({
         nombre, categoria: String(it.categoria || 'Mi biblioteca').trim().slice(0, 60) || 'Mi biblioteca',
         largo, fondo, alto: Number(it.alto) > 0 ? Number(it.alto) : 100,
-        planta: it.planta || null, alzado: it.alzado || null, lateral: it.lateral || null,
+        planta: it.planta || null, alzado: it.alzado || null, lado: it.lateral || null,
         origen: String(it.origen || 'Biblioteca propia').slice(0, 80), created_by: req.user?.id || null,
       });
     }
     if (!filas.length) return res.status(400).json({ error: 'No hay bloques válidos que guardar' });
     const { data, error } = await supabase.from('biblioteca_bloques').insert(filas).select(COLS_BIB);
     if (error) throw error;
-    res.json({ items: (data || []).map(r => ({ ...itemBiblioteca(r), completo: { largo: Number(r.largo), fondo: Number(r.fondo), alto: Number(r.alto), svg: { planta: r.planta || '', alzado: r.alzado || '', lateral: r.lateral || '' } } })) });
+    res.json({ items: (data || []).map(r => ({ ...itemBiblioteca(r), completo: { largo: Number(r.largo), fondo: Number(r.fondo), alto: Number(r.alto), svg: { planta: r.planta || '', alzado: r.alzado || '', lateral: r.lado || '' } } })) });
   } catch (err) {
     console.error('medicion biblioteca:', err);
     res.status(500).json({ error: 'No se pudieron guardar los bloques. ¿Están creadas las tablas de la biblioteca (migraciones v72 y v73)?' });
@@ -229,7 +229,7 @@ router.get('/bloque/:id', async (req, res) => {
       const { data: b, error: eb } = await supabase.from('biblioteca_bloques').select(COLS_BIB).eq('id', req.params.id.slice(4)).maybeSingle();
       if (eb) throw eb;
       if (!b) return res.status(404).json({ error: 'No existe esa pieza' });
-      return res.json({ bloque: { largo: Number(b.largo), fondo: Number(b.fondo), alto: Number(b.alto) || 100, svg: { planta: b.planta || '', alzado: b.alzado || '', lateral: b.lateral || '' } } });
+      return res.json({ bloque: { largo: Number(b.largo), fondo: Number(b.fondo), alto: Number(b.alto) || 100, svg: { planta: b.planta || '', alzado: b.alzado || '', lateral: b.lado || '' } } });
     }
     const { data, error } = await supabase.from('catalog_products').select('id, bloques').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
