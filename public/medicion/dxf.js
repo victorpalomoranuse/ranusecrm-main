@@ -227,6 +227,10 @@
     ['bay window', 'ventana en saliente'], ['bow window', 'ventana en arco saliente'],
     ['shower partition frameless', 'mampara de ducha sin marco'], ['shower door with frame', 'puerta de ducha con marco'], ['shower with door', 'ducha con puerta'],
     ['angle corner shower', 'ducha de esquina angular'], ['drain rectangular', 'desagüe rectangular'], ['drain round', 'desagüe redondo'], ['drain', 'desagüe'],
+    ['commercial urinal rectangle', 'urinario comercial rectangular'], ['commercial urinal round', 'urinario comercial redondo'], ['commercial urinal washout', 'urinario comercial de lavado'],
+    ['commercial urinal', 'urinario comercial'], ['gas water heater', 'calentador de gas'], ['water heater', 'termo eléctrico'], ['air conditioner', 'aire acondicionado'],
+    ['heating unite', 'unidad de calefacción'], ['heating unit', 'unidad de calefacción'], ['ceiling fan bionic', 'ventilador de techo bionic'], ['ceiling fan', 'ventilador de techo'],
+    ['standing fan', 'ventilador de pie'], ['fireplace round', 'chimenea redonda'], ['fireplace corner', 'chimenea de esquina'], ['radiator vintage', 'radiador de hierro fundido'],
     ['coffee table', 'mesa de centro'], ['tv unit wallmounted', 'mueble de TV de pared'], ['tv unit', 'mueble de TV'], ['carpet lines round', 'alfombra redonda'], ['carpet lines', 'alfombra'], ['elliptical table', 'mesa elíptica'],
     ['kitchen sink', 'fregadero'], ['corner shower', 'ducha de esquina'], ['rainfinity shower system', 'sistema de ducha'], ['electric stove', 'cocina eléctrica'],
     ['fridge single door', 'frigorífico de una puerta'], ['glass partition with door', 'mampara de cristal con puerta'], ['glass partition', 'mampara de cristal'],
@@ -246,6 +250,7 @@
     basketball: 'baloncesto', rowing: 'remando', reading: 'leyendo', umbrella: 'paraguas', carriage: 'carrito', dogs: 'perros', hospital: 'hospital', patient: 'paciente',
     surgeon: 'cirujano', disabled: 'en silla de ruedas', lying: 'tumbado', crawling: 'gateando', book: 'libro', stuff: 'personal', a: '', an: '', the: '', in: '', at: 'en', on: 'en',
     exterior: 'exterior', interior: 'interior', frame: 'marco', frameless: 'sin marco', partition: 'mampara', angle: 'angular', visible: 'visible', scale: 'escala', x: 'x',
+    urinal: 'urinario', fireplace: 'chimenea', radiator: 'radiador', fan: 'ventilador', heater: 'calentador', heating: 'calefacción', cooling: 'refrigeración', logs: 'leña',
     large: 'grande', medium: 'mediano', with: 'con', and: 'y', of: 'de', plant: 'planta', lamp: 'lámpara', shelf: 'estantería', shelves: 'estanterías', rack: 'rack',
     mirror: 'espejo', bin: 'papelera', stool: 'taburete', sofa2: 'sofá', stair: 'escalera', stairs: 'escalera', elevator: 'ascensor', lift: 'ascensor', counter: 'mostrador',
     kitchen: 'cocina', bathroom: 'baño', washing: 'lavadora', machine: 'máquina', washer: 'lavadora', dryer: 'secadora', oven: 'horno', microwave: 'microondas',
@@ -288,6 +293,7 @@
     if (/person|people|woman|\bman\b|boy\b|girl\b|infant|child|surgeon|patient|hospital stuff/.test(t)) return 'Personas';
     if (/car\b|truck|bus\b|jet|airliner|yacht|boat|ship|train|motorbike|scooter|bulldozer|crane|roller|parking|catamaran|biker|bicycle|hatchback|liftback|roadster|taxi|pickup|sailing|moped/.test(t)) return 'Transporte';
     if (/treadmill|exercise|trainer|reformer|crossbar|pilates|dumbbell|barbell|rack|bench press|rower/.test(t)) return 'Fitness';
+    if (/heater|heating|cooling|air conditioner|radiator|fireplace|ceiling fan|standing fan|\blogs\b/.test(t)) return 'Climatización';
     if (/toilet|shower|bath|ep wallhung|bidet|rainfinity|urinal|drain/.test(t)) return 'Baño';
     if (/sink|kitchen|stove|fridge|oven|dishwasher|hood/.test(t)) return 'Cocina';
     if (/window|door|partition|gate|curtain wall/.test(t)) return 'Puertas y ventanas';
