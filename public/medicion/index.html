@@ -279,6 +279,7 @@ body.crm .top .brand{display:none}
         <div class="menu"><button class="mbtn" data-menu="ver" aria-expanded="false">Ver ▾</button>
           <div class="mdrop" id="menu-ver" hidden>
             <button data-do="z-fit">Encajar el plano</button>
+            <button data-do="marcas" id="mi-marcas">Etiquetas de alzado: ocultas</button>
             <button data-do="z-in">Acercar</button>
             <button data-do="z-out">Alejar</button>
             <hr>
@@ -1685,13 +1686,15 @@ function gridSvg(C,k){
   return h;
 }
 function elevMarks(C,px){
-  var out='';
+  /* etiqueta discreta: círculo pequeño y suave con su letra y una flechita corta hacia el muro; se aparta del centro para no tapar las cotas */
+  var out='',col=C.dim||C.ink;
   try{elevList('alz').forEach(function(e){
-    var w=e.w,g=wg(w),sg=e.sd==='p'?1:-1,nx=-g.uy*sg,ny=g.ux*sg,mx=(g.a.x+g.b.x)/2,my=(g.a.y+g.b.y)/2,d1=w.t/2+2*px,d2=w.t/2+32*px,r=10.5*px;
-    var cx=mx+nx*d2,cy=my+ny*d2,bx=mx+nx*(d2-r),by0=my+ny*(d2-r),tx=mx+nx*d1,ty=my+ny*d1,qx=-ny*r*0.62,qy=nx*r*0.62;
-    out+='<polygon points="'+f2(bx+qx)+','+f2(by0+qy)+' '+f2(bx-qx)+','+f2(by0-qy)+' '+f2(tx)+','+f2(ty)+'" style="fill:'+C.ink+';stroke:none"/>';
-    out+='<circle cx="'+f2(cx)+'" cy="'+f2(cy)+'" r="'+f2(r)+'" style="fill:'+C.bg+';stroke:'+C.ink+';stroke-width:'+f2(1.2*px)+'"/>';
-    out+=txt(C,px,cx,cy+4*px,e.id,C.ink,11,700);
+    var w=e.w,g=wg(w),sg=e.sd==='p'?1:-1,nx=-g.uy*sg,ny=g.ux*sg,r=7.5*px,d1=w.t/2+1.5*px,d2=w.t/2+19*px;
+    var t=g.l>160?0.2:0.5,mx=g.a.x+g.ux*g.l*t,my=g.a.y+g.uy*g.l*t;
+    var cx=mx+nx*d2,cy=my+ny*d2,bx=mx+nx*(d2-r),by0=my+ny*(d2-r),tx=mx+nx*d1,ty=my+ny*d1,qx=-ny*r*0.45,qy=nx*r*0.45;
+    out+='<polygon points="'+f2(bx+qx)+','+f2(by0+qy)+' '+f2(bx-qx)+','+f2(by0-qy)+' '+f2(tx)+','+f2(ty)+'" style="fill:'+col+';stroke:none;opacity:.8"/>';
+    out+='<circle cx="'+f2(cx)+'" cy="'+f2(cy)+'" r="'+f2(r)+'" style="fill:'+C.bg+';stroke:'+col+';stroke-width:'+f2(0.9*px)+'"/>';
+    out+=txt(C,px,cx,cy+3.2*px,e.id,col,9,600);
   })}catch(er){}
   return out;
 }
@@ -2149,7 +2152,7 @@ function render(){
     if(!qcur.hidden&&document.activeElement===qcur)showOK(qcur,qAct);
     else{qok.hidden=true;qAct=null;clearTimeout(qokT)}
   }
-  svg.innerHTML='<g id="vp" transform="translate('+f2(st.tx)+' '+f2(st.ty)+') scale('+st.k+')">'+gridSvg(CSS,st.k)+scene(CSS,st.k,st.view,{sel:st.sel,nodes:true,dims:st.dims,marks:true})+multiSvg()+'<path id="prev" style="fill:none;stroke:var(--accent);stroke-width:'+f2(2.4/st.k)+';stroke-linecap:round;stroke-linejoin:round"/></g>';
+  svg.innerHTML='<g id="vp" transform="translate('+f2(st.tx)+' '+f2(st.ty)+') scale('+st.k+')">'+gridSvg(CSS,st.k)+scene(CSS,st.k,st.view,{sel:st.sel,nodes:true,dims:st.dims,marks:!!st.verMarcas})+multiSvg()+'<path id="prev" style="fill:none;stroke:var(--accent);stroke-width:'+f2(2.4/st.k)+';stroke-linecap:round;stroke-linejoin:round"/></g>';
 }
 var raf=0;
 function req(){if(!raf)raf=requestAnimationFrame(function(){raf=0;render()})}
@@ -5534,6 +5537,10 @@ function aplicarTema(t,guardar){
 aplicarTema(temaGuardado()||((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light'),false);
 $('m-theme').addEventListener('change',function(){aplicarTema($('m-theme').value,true)});
 function esMovil(){return window.matchMedia&&window.matchMedia('(max-width:1024px)').matches}
+/* las etiquetas de alzado (círculos con flecha) estorban al dibujar: por defecto ocultas en pantalla; el PDF las lleva siempre que se pida */
+function marcasUi(){var b=document.getElementById('mi-marcas');if(b)b.textContent='Etiquetas de alzado: '+(st.verMarcas?'visibles':'ocultas')}
+function alternarMarcas(){st.verMarcas=!st.verMarcas;try{localStorage.setItem('ranuse-plano-marcas',st.verMarcas?'1':'0')}catch(e){}marcasUi();render();toast(st.verMarcas?'Etiquetas de alzado visibles':'Etiquetas de alzado ocultas (siguen saliendo en el PDF)')}
+try{st.verMarcas=localStorage.getItem('ranuse-plano-marcas')==='1'}catch(e){}
 function panelAlternar(){
   if(esMovil())document.body.classList.toggle('side-open');
   else{
@@ -5561,6 +5568,7 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
       var id=it.getAttribute('data-do');
       cerrar();
       if(id==='panel')panelAlternar();
+      else if(id==='marcas')alternarMarcas();
       else if(id==='cmdp')cmdAbrir('');
       else if(id==='ayuda')ayudaAbrir();
       else if(id==='sketchup')skAbrir();
@@ -5625,6 +5633,7 @@ cmd('Cotas por dentro',['ci'],'Líneas de cota interiores',porData('dims','int')
 cmd('Deshacer',['u','z','deshacer','undo'],'Deshacer el último cambio',function(){undo()});
 cmd('Rehacer',['y','rehacer','redo'],'Rehacer',function(){redoit()});
 cmd('Encajar el plano',['ze','f','encajar'],'Ver todo el plano',function(){fit()});
+cmd('Etiquetas de alzado: mostrar / ocultar',['et','etiquetas','marcas'],'Los círculos con flecha que marcan cada alzado',function(){alternarMarcas()});
 cmd('Acercar',['z+','acercar'],'Zoom +',function(){zoomAt(W/2,H/2,1.3)});
 cmd('Alejar',['z-','alejar'],'Zoom −',function(){zoomAt(W/2,H/2,1/1.3)});
 cmd('Borrar selección',['x','del','borrar'],'Quita lo seleccionado',function(){if(st.sel){closeQE();doAction('del',$('a-del'))}else toast('No hay nada seleccionado')});
