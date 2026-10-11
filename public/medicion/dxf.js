@@ -322,7 +322,7 @@
     if (/heater|heating|cooling|air conditioner|radiator|fireplace|ceiling fan|standing fan|\blogs\b/.test(t)) return 'Climatización';
     if (/toilet|shower|bath|ep wallhung|bidet|rainfinity|urinal|drain/.test(t)) return 'Baño';
     if (/sink|kitchen|stove|fridge|oven|dishwasher|hood|casework|cooktop/.test(t)) return 'Cocina';
-    if (/window|door|partition|bgateb|curtain wall|railing|skylight/.test(t)) return 'Puertas y ventanas';
+    if (/window|door|partition|\bgate\b|curtain wall|railing|skylight/.test(t)) return 'Puertas y ventanas';
     if (/sofa|armchair|chair|table|desk|bed|night|wardrobe|tv\b|office|units|bench|locker|stand|aeron|shelf|cabinet|lamp|plant|rug|carpet/.test(t)) return 'Mobiliario';
     return 'Mi biblioteca';
   }
