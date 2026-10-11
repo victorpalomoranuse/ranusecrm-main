@@ -56,6 +56,10 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
       const m = e.data;
       if (!m || m.src !== 'ranuse-medicion') return;
       if (m.type === 'ready') { datos.current.lista = true; enviarInit(); }
+      else if (m.type === 'pedirBloque' && m.id) {
+        try { const { data } = await api.get(`/medicion/bloque/${m.id}`); responder({ type: 'bloque', id: m.id, bloque: data.bloque }); }
+        catch { responder({ type: 'error', message: 'No se pudo cargar el bloque de ese producto' }); }
+      }
       else if (m.type === 'ampliar') onAmpliar?.();
       else if (m.type === 'cerrar') onCerrar?.();
       else if (m.type === 'save' && m.visita?.id) {

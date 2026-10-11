@@ -108,7 +108,22 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
 .dsum .dm{flex:none;font-size:12px;white-space:nowrap}
 .fld.chk{flex-direction:row;align-items:center;gap:10px}
 #det-list details{border-top:1px solid var(--line,rgba(128,128,128,.25));padding:2px 0}
+.catgrid img{width:100%;height:58px;object-fit:contain;background:#fff;border-radius:6px;margin-bottom:2px;display:block}
 .cathead{grid-column:1/-1;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:8px 2px 0;display:flex;justify-content:space-between}
+.cmdp{position:absolute;left:10px;bottom:46px;z-index:12;width:min(380px,calc(100% - 20px));background:var(--panel);border:1px solid var(--accent);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.4);overflow:hidden}
+.cmdp input{border:0;border-bottom:1px solid var(--line);border-radius:0;min-height:44px;font-size:16px;background:transparent}
+.cmdp .it{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;cursor:pointer;font-size:13px}
+.cmdp .it small{opacity:.65;white-space:nowrap}
+.cmdp .it.on{background:var(--accent);color:var(--accent-ink)}
+.helpm{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.helpm[hidden]{display:none}
+.helpb{position:relative;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;max-width:760px;width:100%;max-height:90vh;overflow:auto;padding:20px 24px;line-height:1.5}
+.helpb h2{margin:0 0 8px;font-size:18px}.helpb h3{margin:16px 0 4px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.helpb p,.helpb li{font-size:13.5px}.helpb ul,.helpb ol{padding-left:20px;margin:6px 0}
+.helpx{position:absolute;right:10px;top:10px;min-height:36px}
+.helpgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 16px;font-size:13px}
+.helpgrid span{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:3px 0}
+.helpgrid code{color:var(--accent);font-weight:600}
 </style>
 <style id="ui-cad">
 /* ===== Interfaz tipo editor CAD: barras desplegables, herramientas a la izquierda, 3 temas ===== */
@@ -236,6 +251,8 @@ body.crm .top .brand{display:none}
             <button data-do="z-out">Alejar</button>
             <hr>
             <button data-do="panel">Mostrar / ocultar panel lateral</button>
+            <button data-do="cmdp">Comandos (escribe una letra)</button>
+            <button data-do="ayuda">Ayuda: cómo se trabaja</button>
             <hr>
             <div class="mh">Interfaz</div>
             <button data-do="tema:light">Blanca</button>
@@ -269,6 +286,7 @@ body.crm .top .brand{display:none}
       <div class="stage-body">
       <div class="tools" id="tools" role="group" aria-label="Herramientas">
         <button data-tool="pen" title="Dibujar muros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/></svg><span class="lb">Dibujar</span></button>
+        <button id="b-curve" aria-pressed="false" title="Muros curvos: dibuja un trazo curvo y se convierte en un arco"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18C4 10 10 4 20 4"/></svg><span class="lb">Curva</span></button>
         <button data-tool="select" title="Seleccionar y mover"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l12 8-5.5 1.5L10 18z"/></svg><span class="lb">Seleccionar</span></button>
         <button data-tool="door" title="Puerta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20V4h12v16"/><path d="M4 20h16"/><path d="M15 12h.01"/></svg><span class="lb">Puerta</span></button>
         <button data-tool="win" title="Ventana"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14"/><path d="M12 5v14M4 12h16"/></svg><span class="lb">Ventana</span></button>
@@ -286,6 +304,7 @@ body.crm .top .brand{display:none}
         <input id="qb" class="qe qs" inputmode="decimal" autocomplete="off" aria-label="Medida del muro lateral al final" hidden>
         <button id="qok" class="qok" hidden>OK</button>
         <div class="act" id="act" hidden><div class="seg" id="a-side" hidden></div><button id="a-qe">Medida</button><button class="danger" id="a-del">Borrar</button></div>
+        <div class="cmdp" id="cmdp" hidden><input id="cmd-in" autocomplete="off" spellcheck="false" placeholder="Escribe un comando (muro, puerta, pdf, demoliciones…)" aria-label="Comando"><div id="cmd-list"></div></div>
         <div class="hint" id="hint"></div>
         <div class="zoom"><button id="z-fit">Encajar</button><button id="z-in" aria-label="Acercar">+</button><button id="z-out" aria-label="Alejar">−</button></div>
       </div>
@@ -342,6 +361,7 @@ body.crm .top .brand{display:none}
         <h2>Bloques del catálogo</h2>
         <p class="note">Elige una máquina y toca el plano para colocarla. Todos los diseñadores usan los mismos símbolos y medidas.</p>
         <input id="cat-q" type="search" placeholder="Buscar bloque o máquina…" autocomplete="off" style="margin-bottom:8px">
+        <div class="seg3" id="cat-vista" hidden style="margin-bottom:8px"></div>
         <div class="catgrid" id="cat"></div>
         <details class="addcat">
           <summary>Añadir al catálogo</summary>
@@ -400,7 +420,33 @@ body.crm .top .brand{display:none}
       <section class="blk" id="cloudblk" hidden><h2>Planos de este proyecto</h2><div id="cloud"></div></section>
     </aside>
   </div>
-  <div class="toast" id="toast" hidden></div>
+  <div class="helpm" id="helpm" hidden>
+  <div class="helpb" role="dialog" aria-label="Ayuda">
+    <button id="help-x" class="helpx" aria-label="Cerrar">✕</button>
+    <h2>Cómo se trabaja un plano</h2>
+    <h3>Dos ideas que no hay que mezclar</h3>
+    <p><b>1) El estado de cada elemento</b> (abajo del lienzo: <i>Existente · Demoler · Nuevo</i>). Es lo que <u>es</u> cada muro, puerta, ventana o pilar en la obra: ya está y se queda, ya está y se quita, o se construye. Elige el estado ANTES de dibujar, o cámbialo tocando el muro y usando su panel «Selección».</p>
+    <p><b>2) Las láminas</b> (pestañas de arriba). Son <u>vistas</u> del mismo plano; no se dibuja una cosa distinta en cada una. Cada lámina muestra los elementos según su estado y se exporta a su propia hoja del PDF:</p>
+    <ul>
+      <li><b>Estado actual</b>: cómo está hoy el espacio = Existente + A demoler.</li>
+      <li><b>Demoliciones</b>: lo que se mantiene (gris) y lo que se quita (rojo rayado).</li>
+      <li><b>Intervención</b>: lo existente (gris) y lo nuevo que se construye.</li>
+      <li><b>Cotas, Distribución, Suelos, Techos, Acabados, Alzados, Iluminación, Electricidad</b>: el resultado final = Existente + Nuevo (lo demolido ya no está).</li>
+    </ul>
+    <h3>Cómo seguir el proceso</h3>
+    <ol>
+      <li>En <b>Estado actual</b>, con «Existente» elegido, dibuja el espacio tal y como está y mide cada muro.</li>
+      <li>En <b>Demoliciones</b>, toca lo que se va a quitar y cámbiale el estado a «Demoler».</li>
+      <li>En <b>Intervención</b>, con «Nuevo» elegido, dibuja los muros, puertas y ventanas nuevos.</li>
+      <li>Pasa a <b>Distribución</b>: coloca las máquinas del catálogo. Luego Suelos, Techos, Acabados, Iluminación y Electricidad.</li>
+      <li><b>Archivo → PDF</b> exporta la lámina actual, o todas juntas.</li>
+    </ol>
+    <h3>Comandos</h3>
+    <p>Con el lienzo seleccionado, <b>empieza a escribir</b> y se abre la línea de comandos (<b>Enter</b> o Espacio ejecuta, <b>Esc</b> cierra). Estos son los disponibles:</p>
+    <div id="help-cmds" class="helpgrid"></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
 </div>
 
 <script>
@@ -413,7 +459,7 @@ var TAN12=0.2126, AXDEG=8;
 
 function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
 function newVisit(){return {id:'v'+Date.now().toString(36),nombre:'',cliente:'',fecha:today(),altura:260,paso:80,notas:'',seq:1,nodes:[],walls:[],ops:[],pil:[],ctl:[],eq:[],pts:[],zn:[],rz:[],cn:[],updated:Date.now()}}
-function norm(v){v.eq=v.eq||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];return v}
+function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];return v}
 var TIPOS=[['rack','Rack'],['cinta','Cinta'],['banco','Banco'],['manc','Rack de mancuernas'],['bici','Bicicleta'],['remo','Remo'],['tatami','Tatami'],['gen','Genérico']];
 var DEFCAT=[
   {id:'rack',nombre:'Rack de sentadillas',tipo:'rack',w:120,d:140},
@@ -452,7 +498,7 @@ var hist=[],redo=[],W=0,H=0,firstFit=true,db=null,cloud=[];
 try{var raw=CRM?null:localStorage.getItem(LS);if(raw){var o=JSON.parse(raw);if(o&&o.v&&o.v.nodes){st.v=o.v;st.view=o.view||'actual';if(o.dims)st.dims=o.dims}}}catch(e){}
 if(!st.v)st.v=CRM?newVisit():example();
 norm(st.v);
-var LSC='ranuse-catalogo-v1',custom=[],cloudCat=[],placeId='rack';
+var LSC='ranuse-catalogo-v1',custom=[],cloudCat=[],placeId='rack',placeVista='planta',bloquesFull={};
 var LSLUM='ranuse-luminarias-v1',LUMS=[],cloudLum=[],LUMRGB={};
 try{var rl=JSON.parse(CRM?'[]':(localStorage.getItem(LSLUM)||'[]'));if(Array.isArray(rl))LUMS=rl.filter(function(l){return l&&l.id&&l.n&&l.sym})}catch(e){}
 try{var rc=CRM?null:localStorage.getItem(LSC);if(rc){var oc=JSON.parse(rc);if(Array.isArray(oc))custom=oc}}catch(e){}
@@ -878,7 +924,20 @@ function elevSvg(C,px,el,codes,flat){
   var code=el.mat?(codes[el.mat]||''):'';
   h+=txt(C,px,L/2,(el.ops.length?yt:yd)-22*px,'ALZADO '+el.id+(el.room?' · '+el.room:''),C.label,13,600);
   if(m)h+=txt(C,px,L/2,H-10*px,code+' '+m.n,C.label,11,500);
-  return h;
+  return h+eqaSvg(C,px,el);
+}
+function eqaSvg(C,px,el){
+  var out='',sel=st&&st.sel;
+  ((st&&st.v&&st.v.eqa)||[]).forEach(function(it){
+    if(it.wall!==el.w.id||it.sd!==el.sd)return;
+    var B=bloquesFull[it.cid],frag=B&&B.svg&&B.svg[it.vista],x0=it.x-it.w/2,y0=el.H-it.h;
+    if(!frag){out+='<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(it.w)+'" height="'+f2(it.h)+'" style="fill:none;stroke:'+C.dim+';stroke-width:'+f2(px)+';stroke-dasharray:'+f2(4*px)+' '+f2(3*px)+'"/>'+txt(C,px,it.x,y0+it.h/2,it.nm,C.dim,10,500);return}
+    var bw=it.vista==='alzado'?B.largo:B.fondo,sx=bw>0?it.w/bw:1,sy=B.alto>0?it.h/B.alto:1,k=Math.max(sx,sy)||1;
+    var inner=frag.replace(/#000000/g,C.ink).replace(/stroke-width="([\d.]+)"/g,function(m,v){return 'stroke-width="'+f2(parseFloat(v)*px/k)+'"'});
+    out+='<g transform="translate('+f2(x0)+' '+f2(y0)+') scale('+f2(sx*1e4)/1e4+' '+f2(sy*1e4)/1e4+')">'+inner+'</g>';
+    if(sel&&sel.t==='eqa'&&sel.id===it.id)out+='<rect x="'+f2(x0-3*px)+'" y="'+f2(y0-3*px)+'" width="'+f2(it.w+6*px)+'" height="'+f2(it.h+6*px)+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(2*px)+'"/>';
+  });
+  return out;
 }
 function sceneAlz(C,k,o){
   var px=1/k,h='',list=elevLayout(elevList('alz')),codes=acabCodes('acab'),sel=o.sel;
@@ -995,7 +1054,7 @@ function rebuild(){
   var ns=st.v.nodes,ws=st.v.walls,info={};
   ws.forEach(function(w){
     var g=wg(w),ang=Math.atan2(g.b.y-g.a.y,g.b.x-g.a.x),deg=ang*180/Math.PI,best=Math.round(deg/90)*90;
-    if(Math.abs(deg-best)<=AXDEG)ang=best*Math.PI/180;
+    if(!w.arc&&Math.abs(deg-best)<=AXDEG)ang=best*Math.PI/180;
     info[w.id]={ux:Math.round(Math.cos(ang)*1e9)/1e9,uy:Math.round(Math.sin(ang)*1e9)/1e9,len:(w.len!=null?w.len:g.l)};
   });
   var pos={},done={};
@@ -1257,7 +1316,7 @@ function scene(C,k,view,o){
     if(view==='demol'&&w.s==='dem'){
       h+=ln(g.a.x,g.a.y,g.b.x,g.b.y,C.dem,w.t+2*px,'square');
       h+=ln(g.a.x,g.a.y,g.b.x,g.b.y,'url(#hat)',w.t,'square');
-    }else h+=ln(g.a.x,g.a.y,g.b.x,g.b.y,stCol(w.s,view,C),w.t,'square');
+    }else h+=ln(g.a.x,g.a.y,g.b.x,g.b.y,stCol(w.s,view,C),w.t,w.arc?'round':'square');
   });
   v.ops.forEach(function(op){
     if(!opVis(op,view))return;
@@ -1356,6 +1415,15 @@ function scene(C,k,view,o){
   var cent=(o.dims&&o.dims!=='simple')?wallCent(view):null;
   v.walls.forEach(function(w){
     if(!wallVis(w,view))return;
+    if(w.arc){ // una sola cota por arco: longitud y radio
+      if(w.arc.i===Math.floor(w.arc.n/2)){
+        var ga=wg(w),nxa=-ga.uy,nya=ga.ux,ca=wallCent(view);
+        if((ca.x-(ga.a.x+ga.b.x)/2)*nxa+(ca.y-(ga.a.y+ga.b.y)/2)*nya>0){nxa=-nxa;nya=-nya}
+        var offa=w.t/2+16*px;
+        h+=txt(C,px,(ga.a.x+ga.b.x)/2+nxa*offa,(ga.a.y+ga.b.y)/2+nya*offa+4*px,'⌒ '+fmt(w.arc.L)+'  R'+fmt(w.arc.r),C.label,12,500);
+      }
+      return;
+    }
     if(cent){h+=dimChain(C,px,w,o.dims,cent,view,o.tags);return}
     var g=wg(w),nx=-g.uy,ny=g.ux;
     if((cc0.x-(g.a.x+g.b.x)/2)*nx+(cc0.y-(g.a.y+g.b.y)/2)*ny>0){nx=-nx;ny=-ny}
@@ -1474,7 +1542,7 @@ function openQE(id){
   render();panelSel();
   qe.focus();try{qe.select()}catch(_){}
 }
-function closeQE(){qeId=null;qe.hidden=true}
+function closeQE(){qeId=null;qe.hidden=true;try{qok.hidden=true;qAct=null;clearTimeout(qokT)}catch(e){}}
 function commitQE(adv){
   if(qeBusy||!qeId)return;
   var w=wl(qeId);if(!w){closeQE();return}
@@ -1533,15 +1601,82 @@ function render(){
   if(W<10||H<10)return;
   if(qeId)placeQE();
   placeAdj();
-  if(qok&&!qok.hidden&&qAct){showOK(qAct==='qe'?qe:qAct==='qa'?qaI:qbI,qAct)}
+  if(qok&&!qok.hidden&&qAct){
+    var qcur=qAct==='qe'?qe:qAct==='qa'?qaI:qbI;
+    if(!qcur.hidden&&document.activeElement===qcur)showOK(qcur,qAct);
+    else{qok.hidden=true;qAct=null;clearTimeout(qokT)}
+  }
   svg.innerHTML='<g id="vp" transform="translate('+f2(st.tx)+' '+f2(st.ty)+') scale('+st.k+')">'+gridSvg(CSS,st.k)+scene(CSS,st.k,st.view,{sel:st.sel,nodes:true,dims:st.dims,marks:true})+'<path id="prev" style="fill:none;stroke:var(--accent);stroke-width:'+f2(2.4/st.k)+';stroke-linecap:round;stroke-linejoin:round"/></g>';
 }
 var raf=0;
 function req(){if(!raf)raf=requestAnimationFrame(function(){raf=0;render()})}
+function enderezar(pts){ // misma regla que al soltar: simplificar y dejar horizontales/verticales
+  var sp=rdp(pts,10/st.k),out=[sp[0]];
+  for(var i=1;i<sp.length;i++){
+    var a=out[i-1],q=sp[i],dx=q.x-a.x,dy=q.y-a.y;
+    if(Math.abs(dy)<=Math.abs(dx)*TAN12)q={x:q.x,y:a.y};
+    else if(Math.abs(dx)<=Math.abs(dy)*TAN12)q={x:a.x,y:q.y};
+    out.push(q);
+  }
+  return out;
+}
+function norm2pi(a){while(a<0)a+=2*Math.PI;while(a>=2*Math.PI)a-=2*Math.PI;return a}
+function arcFrom(p0,pm,p2){ // circunferencia por tres puntos; sentido de p0 a p2 pasando por pm
+  var ax=p0.x,ay=p0.y,bx=pm.x,by=pm.y,cx=p2.x,cy=p2.y,d=2*(ax*(by-cy)+bx*(cy-ay)+cx*(ay-by));
+  if(Math.abs(d)<1e-6)return null;
+  var ux=((ax*ax+ay*ay)*(by-cy)+(bx*bx+by*by)*(cy-ay)+(cx*cx+cy*cy)*(ay-by))/d,uy=((ax*ax+ay*ay)*(cx-bx)+(bx*bx+by*by)*(ax-cx)+(cx*cx+cy*cy)*(bx-ax))/d;
+  var r=Math.hypot(ax-ux,ay-uy),a0=Math.atan2(ay-uy,ax-ux),am=Math.atan2(by-uy,bx-ux),a2=Math.atan2(cy-uy,cx-ux);
+  var ccw=norm2pi(am-a0)<norm2pi(a2-a0),sw=norm2pi(a2-a0);
+  return {cx:ux,cy:uy,r:r,a0:a0,sweep:ccw?sw:-(2*Math.PI-sw)};
+}
+function puntoMedioTrazo(pts){ // el punto del trazo más alejado de la cuerda
+  var a=pts[0],b=pts[pts.length-1],dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1,bi=-1,bd=0;
+  for(var i=1;i<pts.length-1;i++){var dd=Math.abs((pts[i].x-a.x)*dy-(pts[i].y-a.y)*dx)/L;if(dd>bd){bd=dd;bi=i}}
+  return bi<0?null:{p:pts[bi],d:bd,L:L};
+}
+function arcPreview(pts){
+  if(pts.length<3)return null;
+  var m=puntoMedioTrazo(pts);if(!m||m.d<6/st.k||m.L<20/st.k)return null;
+  var arc=arcFrom(pts[0],m.p,pts[pts.length-1]);if(!arc||arc.r>8000)return null;
+  var out=[],n=40;
+  for(var i=0;i<=n;i++)out.push({x:arc.cx+arc.r*Math.cos(arc.a0+arc.sweep*i/n),y:arc.cy+arc.r*Math.sin(arc.a0+arc.sweep*i/n)});
+  return out;
+}
 function updPrev(pts){
   var p=$('prev');if(!p)return;
-  var d='';for(var i=0;i<pts.length;i++)d+=(i?'L':'M')+f2(pts[i].x)+' '+f2(pts[i].y);
+  if(!pts||pts.length<2){p.setAttribute('d','');return}
+  var s=pts,arcP=null;
+  if(st.tool==='pen'){
+    arcP=st.penCurve?arcPreview(pts):null;
+    s=arcP||enderezar(pts);
+    p.setAttribute('style','fill:none;stroke:var(--accent);stroke-opacity:.55;stroke-width:12;stroke-linecap:'+(arcP?'round':'square')+';stroke-linejoin:'+(arcP?'round':'miter'));
+  }
+  var d='';for(var i=0;i<s.length;i++)d+=(i?'L':'M')+f2(s[i].x)+' '+f2(s[i].y);
   p.setAttribute('d',d);
+}
+/* muro curvo: el trazo se convierte en un arco hecho de tramos cortos */
+function curveStroke(pts){
+  var k=st.k,snapR=22/k,a=pts[0],b=pts[pts.length-1],m=puntoMedioTrazo(pts);
+  if(!m||m.d<6/k||m.L<20/k)return false;
+  function nodoEn(p){
+    var n=nearNode(p.x,p.y,snapR,null);
+    if(!n){var sw=nearWall(p.x,p.y,snapR);if(sw)n=splitWall(sw.w,sw.s)}
+    if(!n){n={id:uid('n'),x:f2(p.x),y:f2(p.y)};st.v.nodes.push(n)}
+    return n;
+  }
+  var n0=nodoEn(a),n2=nodoEn(b);if(n0.id===n2.id)return false;
+  var arc=arcFrom({x:n0.x,y:n0.y},m.p,{x:n2.x,y:n2.y});if(!arc||arc.r>8000)return false;
+  var alen=arc.r*Math.abs(arc.sweep),n=Math.max(8,Math.min(72,Math.ceil(alen/25))),gid=uid('c'),prev=n0,first=null;
+  for(var i=1;i<=n;i++){
+    var cur=i===n?n2:{id:uid('n'),x:f2(arc.cx+arc.r*Math.cos(arc.a0+arc.sweep*i/n)),y:f2(arc.cy+arc.r*Math.sin(arc.a0+arc.sweep*i/n))};
+    if(i<n)st.v.nodes.push(cur);
+    var w=addWall(prev.id,cur.id);
+    if(w){w.arc={g:gid,i:i-1,n:n,L:f2(alen),r:f2(arc.r)};if(!first)first=w}
+    prev=cur;
+  }
+  cleanNodes();
+  if(!first)return false;
+  st.sel={t:'wall',id:first.id};commit();return true;
 }
 
 /* ---------- punteros ---------- */
@@ -1690,6 +1825,7 @@ function finishStroke(pts){
   var k=st.k,snapR=22/k,len=0;
   for(var i=1;i<pts.length;i++)len+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);
   if(len<30/k){if(pts.length)tap(pts[0]);return}
+  if(st.penCurve&&st.tool==='pen'){snap();if(curveStroke(pts))return;hist.pop()}
   var sp=rdp(pts,10/k);
   snap();
   var prev=null,firstNew=null;
@@ -1864,6 +2000,16 @@ function tap(w){
     var np2={id:uid('l'),n:nq0.id,dx:0,dy:0,k:kid,a:0,h:kd.h!=null?kd.h:null,v:st.view};
     if(lidP)np2.lid=lidP;attachPt(np2,w);st.v.pts.push(np2);st.sel={t:'pt',id:np2.id};commit();return;
   }
+  if(st.tool==='equip'&&st.view==='alz'&&placeVista!=='planta'){
+    var entA=catById(placeId),BA=bloquesFull[placeId],ehA=elevHit(w);
+    if(!entA){toast('Elige un producto del catálogo');return}
+    if(!ehA){toast('Toca dentro de un alzado');return}
+    if(!BA||!BA.svg){pedirBloque(placeId);toast('Cargando el bloque… vuelve a tocar');return}
+    var bw=placeVista==='alzado'?BA.largo:BA.fondo;
+    snap();
+    var nea={id:uid('a'),wall:ehA.w.id,sd:ehA.sd,x:f2(Math.round((w.x-ehA.x)/5)*5),cid:entA.id,nm:entA.nombre,vista:placeVista,w:bw,h:BA.alto};
+    st.v.eqa.push(nea);st.sel={t:'eqa',id:nea.id};commit();return;
+  }
   if(st.tool==='equip'){
     var ent=catById(placeId);
     if(!ent){toast('Elige una máquina del catálogo');return}
@@ -1885,6 +2031,18 @@ function tap(w){
     if(lw){openQE(lw.id);return}
   }
   closeQE();
+  if(st.view==='alz'&&(st.v.eqa||[]).length){
+    var ehS=elevHit(w);
+    if(ehS){
+      var hitA=null;
+      st.v.eqa.forEach(function(it){
+        if(it.wall!==ehS.w.id||it.sd!==ehS.sd)return;
+        var lx=w.x-ehS.x,ly=w.y-ehS.y;
+        if(lx>=it.x-it.w/2&&lx<=it.x+it.w/2&&ly>=ehS.H-it.h&&ly<=ehS.H)hitA=it;
+      });
+      if(hitA){st.sel={t:'eqa',id:hitA.id};render();panelSel();return}
+    }
+  }
   st.sel=pick(w,tol,st.view);
   render();panelSel();
 }
@@ -1892,6 +2050,7 @@ function tap(w){
 /* ---------- vista ---------- */
 /* ---------- catálogo ---------- */
 function thumb(c){
+  if(c.foto)return '<img src="'+esc(c.foto)+'" alt="" loading="lazy" referrerpolicy="no-referrer">';
   var L=c.w,T=c.d,px=Math.max(L,T)/70;
   return '<svg viewBox="-4 -4 '+(L+8)+' '+(T+8)+'" preserveAspectRatio="xMidYMid meet" aria-hidden="true">'+eqSym(c.tipo,L,T,'currentColor',px,c.id)+'</svg>';
 }
@@ -1905,15 +2064,29 @@ function drawCat(){
   function btn(c){
     return '<button data-cat="'+esc(c.id)+'" aria-pressed="'+(placeId===c.id&&st.tool==='equip')+'">'+thumb(c)+'<span>'+esc(c.nombre)+'</span><small>'+fmt(c.w)+' × '+fmt(c.d)+' cm'+(c.bloque?' · ✓ bloque':'')+(c.sinMedidas?' · sin medidas':'')+'</small></button>';
   }
+  pvBotones();
   $('cat').innerHTML=orden.map(function(g){
     var l=grupos[g].slice().sort(function(a,b){return (b.bloque?1:0)-(a.bloque?1:0)});
     return '<div class="cathead">'+esc(g)+' <span>'+l.length+'</span></div>'+l.map(btn).join('');
   }).join('')||'<p class="note" style="grid-column:1/-1">No hay bloques con ese nombre.</p>';
 }
+function pvBotones(){
+  var c=catById(placeId),vs=(c&&c.vistas)||[],box=$('cat-vista');
+  if(!(c&&vs.length>1&&st.tool==='equip')){box.hidden=true;return}
+  box.hidden=false;
+  box.innerHTML=[['planta','Planta'],['alzado','Frente'],['lateral','Lateral']].map(function(x){var ok=x[0]==='planta'||vs.indexOf(x[0])>=0;return '<button data-pv="'+x[0]+'"'+(ok?'':' disabled')+' aria-pressed="'+(placeVista===x[0])+'">'+x[1]+'</button>'}).join('');
+}
+function pedirBloque(id){if(CRM&&id&&!bloquesFull[id]&&!bloquesFull['?'+id]){bloquesFull['?'+id]=1;crmPost({type:'pedirBloque',id:id})}}
+$('cat-vista').addEventListener('click',function(e){
+  var b=e.target.closest('button[data-pv]');if(!b||b.disabled)return;
+  placeVista=b.getAttribute('data-pv');st.tool='equip';
+  if(placeVista!=='planta'){pedirBloque(placeId);st.view='alz'}else st.view='distrib';
+  toolbar();drawCat();save();render();
+});
 $('cat-q').addEventListener('input',drawCat);
 $('cat').addEventListener('click',function(e){
   var b=e.target.closest('button[data-cat]');if(!b)return;
-  placeId=b.getAttribute('data-cat');st.tool='equip';st.view='distrib';st.dg=null;
+  placeId=b.getAttribute('data-cat');placeVista='planta';st.tool='equip';st.view='distrib';st.dg=null;
   toolbar();drawCat();save();render();
 });
 function saveCat(ent){
@@ -2061,7 +2234,7 @@ function fit(){
   render();
 }
 var HINTS={
-  pen:'Dibuja el contorno de la sala a mano alzada. Se endereza solo. Después toca cada muro y escribe su medida.',
+  pen:'Dibuja el contorno de la sala a mano alzada: se ve el muro ya recto y se endereza solo al soltar. Con «Curva» activada, un trazo curvo se convierte en un arco. Después toca cada muro y escribe su medida.',
   paint:'Elige un material y toca dentro de una sala (o sobre un muro en Acabados).',
   cn:'Toca un interruptor y después las luminarias que enciende. Toca otra vez una luminaria unida para quitar la unión.',
   pt:'Toca el plano para colocar el símbolo elegido. Arrástralo para moverlo.',
@@ -2081,6 +2254,7 @@ function hint(){
 function toolbar(){
   var bs=$('tools').querySelectorAll('button[data-tool]');
   for(var i=0;i<bs.length;i++)bs[i].setAttribute('aria-pressed',String(bs[i].getAttribute('data-tool')===st.tool));
+  if($('b-curve'))$('b-curve').setAttribute('aria-pressed',String(!!st.penCurve&&st.tool==='pen'));
   var vs=$('views').querySelectorAll('button');
   for(var j=0;j<vs.length;j++)vs[j].className=vs[j].getAttribute('data-view')===st.view?'on':'';
   var L=[['ex','Existente'],['dem','Demoler'],['new','Nuevo']];
@@ -2164,6 +2338,7 @@ function panelSel(focus){
   if(s&&s.t==='ctl'&&!ct(s.id))s=st.sel=null;
   if(s&&s.t==='eq'&&!by(st.v.eq,s.id))s=st.sel=null;
   if(s&&s.t==='pt'&&!by(st.v.pts,s.id))s=st.sel=null;
+  if(s&&s.t==='eqa'&&!by(st.v.eqa||[],s.id))s=st.sel=null;
   if(s&&s.t==='zn'&&!by(st.v.zn,s.id))s=st.sel=null;
   if(s&&s.t==='rz'&&!by(st.v.rz,s.id))s=st.sel=null;
   if(s&&s.t==='cn'&&!by(st.v.cn||[],s.id))s=st.sel=null;
@@ -2174,6 +2349,11 @@ function panelSel(focus){
     h+='<div class="btns"><button data-a="eqrot">Girar 90°</button><button data-a="eqdup">Duplicar</button></div>';
     h+='<div class="btns"><button data-a="eqcat">Guardar medidas en el catálogo</button></div>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar máquina</button></div>';
+  }else if(s&&s.t==='eqa'){
+    var ea=by(st.v.eqa,s.id);
+    h+='<div class="rowh"><strong>'+esc(ea.nm)+'</strong><span class="muted">'+(ea.vista==='alzado'?'frente':'lateral')+'</span></div>';
+    h+='<p class="note">Bloque colocado en el alzado. Es solo de dibujo: la cantidad para el presupuesto sale de las máquinas colocadas en planta.</p>';
+    h+='<div class="btns"><button class="danger" data-a="del">Borrar del alzado</button></div>';
   }else if(!s){
     h='<p class="note">Toca un elemento del plano para ponerle medidas y estado.</p><div class="btns"><button data-a="nextwall">Medir el siguiente muro</button></div>';
   }else if(s.t==='wall'){
@@ -2465,6 +2645,7 @@ function doAction(a,el){
     else if(s.t==='pil')st.v.pil=st.v.pil.filter(function(p){return p.id!==s.id});
     else if(s.t==='ctl')st.v.ctl=st.v.ctl.filter(function(c){return c.id!==s.id});
     else if(s.t==='eq')st.v.eq=st.v.eq.filter(function(q){return q.id!==s.id});
+    else if(s.t==='eqa')st.v.eqa=(st.v.eqa||[]).filter(function(q){return q.id!==s.id});
     else if(s.t==='pt'){st.v.pts=st.v.pts.filter(function(q){return q.id!==s.id});st.v.cn=(st.v.cn||[]).filter(function(c){return c.a!==s.id&&c.b!==s.id})}
     else if(s.t==='cn')st.v.cn=st.v.cn.filter(function(c){return c.id!==s.id});
     else if(s.t==='zn')st.v.zn=st.v.zn.filter(function(q){return q.id!==s.id});
@@ -2512,9 +2693,10 @@ $('dimsel').addEventListener('click',function(e){var b=e.target.closest('[data-a
 $('tools').addEventListener('click',function(e){
   var b=e.target.closest('button');if(!b)return;
   if(b.id==='b-finger'){st.fingerDraws=!st.fingerDraws;fingerBtn();return}
+  if(b.id==='b-curve'){st.penCurve=!st.penCurve;st.tool='pen';st.dg=null;toolbar();render();return}
   var t=b.getAttribute('data-tool');if(!t)return;
   st.tool=t;st.dg=null;
-  if(t==='equip'&&st.view!=='distrib'){st.view='distrib';save()}
+  if(t==='equip'&&st.view!=='distrib'&&!(placeVista!=='planta'&&st.view==='alz')){st.view='distrib';placeVista='planta';save()}
   toolbar();render();
 });
 $('views').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;st.view=b.getAttribute('data-view');st.led=null;st.cnFrom=null;closeQE();if(st.view==='ilum'||st.view==='elec')st.tool='pt';else if(st.view==='suelos'||st.view==='techos'||st.view==='acab'||st.view==='alz')st.tool='paint';else if(st.tool==='pt'||st.tool==='paint')st.tool='select';if(st.sel&&st.sel.t==='eq'&&st.view!=='distrib'){st.sel=null;panelSel()}toolbar();save();render()});
@@ -4212,6 +4394,8 @@ if(CRM){
       }
     }else if(m.type==='deleted'){
       cloud=cloud.filter(function(c){return c.id!==m.id});drawCloud();toast('Plano borrado');
+    }else if(m.type==='bloque'){
+      if(m.id&&m.bloque){bloquesFull[m.id]=m.bloque;render()}
     }else if(m.type==='modo'){
       modoPantalla(!!m.fullscreen);
     }else if(m.type==='info'){
@@ -4262,6 +4446,8 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
       var id=it.getAttribute('data-do');
       cerrar();
       if(id==='panel')panelAlternar();
+      else if(id==='cmdp')cmdAbrir('');
+      else if(id==='ayuda')ayudaAbrir();
       else if(id.indexOf('tema:')===0)aplicarTema(id.slice(5),true);
       else{var t=$(id);if(t)t.click()}
       return;
@@ -4290,6 +4476,112 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
     })(bl[i]);
   }
 })();
+
+
+/* ---------- comandos: escribe y se ejecuta (como en un CAD) ---------- */
+var CMDS=[],cmdSel=0,cmdAbierta=false;
+function norm1(t){return String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim()}
+function cmd(nombre,claves,desc,run){CMDS.push({n:nombre,k:claves,d:desc,run:run,nn:norm1(nombre)})}
+function porTool(t){return function(){var b=document.querySelector('#tools [data-tool="'+t+'"]');if(b&&!b.hidden)b.click();else toast('Esa herramienta no está en esta lámina')}}
+function porVista(v){return function(){var b=document.querySelector('#views [data-view="'+v+'"]');if(b)b.click()}}
+function porId(id){return function(){var e=$(id);if(e&&!e.hidden)e.click();else toast('No disponible ahora')}}
+function porData(a,sv){return function(){var e=document.querySelector('[data-a="'+a+'"][data-s="'+sv+'"]');if(e)e.click()}}
+cmd('Dibujar muros',['w','mu','muro','pared'],'Herramienta de muros',porTool('pen'));
+cmd('Muros curvos sí / no',['cv','curva','arco'],'Un trazo curvo se convierte en arco',porId('b-curve'));
+cmd('Seleccionar / mover',['mm','sel','mover','seleccionar'],'Tocar, mover y editar',porTool('select'));
+cmd('Puerta',['op','pu','puerta'],'Colocar puerta',porTool('door'));
+cmd('Ventana',['vn','ve','ventana'],'Colocar ventana',porTool('win'));
+cmd('Pilar',['pi','pilar'],'Colocar pilar',porTool('pillar'));
+cmd('Diagonal de control',['dg','diagonal'],'Medir una diagonal',porTool('diag'));
+cmd('Máquina del catálogo',['mq','ma','maquina'],'Colocar una máquina',porTool('equip'));
+cmd('Punto (luz / mecanismo)',['pt','punto'],'En Iluminación y Electricidad',porTool('pt'));
+cmd('Pintar con material',['bb','pa','pintar'],'En Suelos, Techos y Acabados',porTool('paint'));
+cmd('Dedo dibuja sí / no',['dedo'],'Alterna dedo o solo lápiz',porId('b-finger'));
+cmd('Estado nuevo: Existente',['ex','existente'],'Lo que se dibuje ya existe',porData('defstate','ex'));
+cmd('Estado nuevo: Demoler',['dem','demoler'],'Lo que se dibuje se quita',porData('defstate','dem'));
+cmd('Estado nuevo: Nuevo',['nw','nuevo'],'Lo que se dibuje se construye',porData('defstate','new'));
+cmd('Cotas sencillas',['cs'],'Solo el número en cada muro',porData('dims','simple'));
+cmd('Cotas por fuera',['ce'],'Líneas de cota exteriores',porData('dims','ext'));
+cmd('Cotas por dentro',['ci'],'Líneas de cota interiores',porData('dims','int'));
+[['actual','Lámina: Estado actual',['v1','ea','actual']],['cotas','Lámina: Cotas',['v2','co','cotas']],['demol','Lámina: Demoliciones',['v3','dm','demoliciones']],['interv','Lámina: Intervención',['v4','iv','intervencion']],['distrib','Lámina: Distribución',['v5','ds','distribucion']],['suelos','Lámina: Suelos',['v6','su','suelos']],['techos','Lámina: Techos',['v7','te','techos']],['acab','Lámina: Acabados',['v8','ac','acabados']],['alz','Lámina: Alzados',['v9','al','alzados']],['ilum','Lámina: Iluminación',['v10','il','iluminacion']],['elec','Lámina: Electricidad',['v11','el','electricidad']]].forEach(function(v){cmd(v[1],v[2],'Cambiar de lámina',porVista(v[0]))});
+cmd('Deshacer',['u','z','deshacer','undo'],'Deshacer el último cambio',function(){undo()});
+cmd('Rehacer',['y','rehacer','redo'],'Rehacer',function(){redoit()});
+cmd('Encajar el plano',['ze','f','encajar'],'Ver todo el plano',function(){fit()});
+cmd('Acercar',['z+','acercar'],'Zoom +',function(){zoomAt(W/2,H/2,1.3)});
+cmd('Alejar',['z-','alejar'],'Zoom −',function(){zoomAt(W/2,H/2,1/1.3)});
+cmd('Borrar selección',['x','del','borrar'],'Quita lo seleccionado',function(){if(st.sel){closeQE();doAction('del',$('a-del'))}else toast('No hay nada seleccionado')});
+cmd('Guardar ahora',['gd','guardar'],'Guarda el plano en el CRM',function(){if(CRM)crmSaveNow(true);else toast('Solo dentro del CRM')});
+cmd('PDF de esta lámina',['pdf'],'Exportar la lámina actual',porId('b-pdf'));
+cmd('PDF con todas las láminas',['pdft','dossier'],'Exportar el dossier',porId('b-pdfall'));
+cmd('Plano SVG',['svg'],'Exportar como SVG',porId('b-svg'));
+cmd('Datos JSON',['json'],'Exportar los datos',porId('b-json'));
+cmd('Memoria de carpinterías',['carp','carpinterias'],'PDF de puertas y ventanas',porId('b-pdfcarp'));
+cmd('Panel lateral',['panel','pl'],'Mostrar u ocultar el panel',function(){panelAlternar()});
+cmd('Interfaz blanca',['claro','blanca'],'Tema claro',function(){aplicarTema('light',true)});
+cmd('Interfaz negra',['oscuro','negra'],'Tema oscuro',function(){aplicarTema('dark',true)});
+cmd('Interfaz AutoCAD',['autocad','cad'],'Fondo negro y líneas de colores',function(){aplicarTema('cad',true)});
+cmd('Ayuda: cómo se trabaja',['ayuda','h','?'],'Explica láminas y estados',function(){ayudaAbrir()});
+cmd('Ampliar / volver',['full','pantalla','volver'],'Pantalla completa',function(){var b=$('m-full');if(b&&!b.hidden)b.click()});
+
+function cmdBuscar(q){
+  q=norm1(q);if(!q)return CMDS.slice(0,10);
+  var pt=[];
+  CMDS.forEach(function(c){
+    var sc=0;
+    if(c.k.indexOf(q)>=0)sc=100;
+    else if(c.k.some(function(k){return k.indexOf(q)===0}))sc=70;
+    else if(c.nn.indexOf(q)===0)sc=60;
+    else if(c.nn.indexOf(q)>=0)sc=40;
+    else if(c.k.some(function(k){return k.indexOf(q)>=0}))sc=30;
+    if(sc)pt.push({c:c,sc:sc});
+  });
+  pt.sort(function(a,b){return b.sc-a.sc});
+  return pt.slice(0,8).map(function(x){return x.c});
+}
+function cmdPintar(){
+  var l=cmdBuscar($('cmd-in').value);if(cmdSel>=l.length)cmdSel=0;
+  $('cmd-list').innerHTML=l.map(function(c,i){return '<div class="it'+(i===cmdSel?' on':'')+'" data-i="'+i+'"><span>'+esc(c.n)+'</span><small>'+esc(c.k[0].toUpperCase())+'</small></div>'}).join('')||'<div class="it"><span>Ningún comando se llama así</span></div>';
+  return l;
+}
+function cmdAbrir(ini){
+  $('cmdp').hidden=false;cmdAbierta=true;cmdSel=0;
+  var inp=$('cmd-in');inp.value=ini||'';cmdPintar();inp.focus();
+}
+function cmdCerrar(){$('cmdp').hidden=true;cmdAbierta=false;var a=document.activeElement;if(a&&a.blur&&a.id==='cmd-in')a.blur()}
+function cmdEjecutar(i){
+  var l=cmdBuscar($('cmd-in').value),c=l[i==null?cmdSel:i];
+  cmdCerrar();
+  if(c){try{c.run()}catch(e){toast('No se pudo ejecutar el comando')}}
+}
+$('cmd-in').addEventListener('input',function(){cmdSel=0;cmdPintar()});
+$('cmd-in').addEventListener('keydown',function(e){
+  var l=cmdBuscar($('cmd-in').value);
+  if(e.key==='ArrowDown'){e.preventDefault();cmdSel=(cmdSel+1)%Math.max(1,l.length);cmdPintar()}
+  else if(e.key==='ArrowUp'){e.preventDefault();cmdSel=(cmdSel-1+Math.max(1,l.length))%Math.max(1,l.length);cmdPintar()}
+  else if(e.key==='Enter'){e.preventDefault();cmdEjecutar()}
+  else if(e.key==='Escape'){e.preventDefault();cmdCerrar()}
+  else if(e.key===' '){ // el espacio ejecuta si lo escrito es una clave exacta (como en AutoCAD)
+    var q=norm1($('cmd-in').value),ex=CMDS.filter(function(c){return c.k.indexOf(q)>=0})[0];
+    if(q&&ex){e.preventDefault();cmdSel=Math.max(0,l.indexOf(ex));cmdEjecutar()}
+  }
+});
+$('cmd-list').addEventListener('mousedown',function(e){var it=e.target.closest('.it[data-i]');if(it){e.preventDefault();cmdEjecutar(parseInt(it.getAttribute('data-i'),10))}});
+$('cmd-in').addEventListener('blur',function(){setTimeout(function(){if(cmdAbierta&&document.activeElement!==$('cmd-in'))cmdCerrar()},150)});
+document.addEventListener('keydown',function(e){
+  var t=e.target&&e.target.tagName;
+  if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA'||e.ctrlKey||e.metaKey||e.altKey)return;
+  if(!$('helpm').hidden){if(e.key==='Escape')ayudaCerrar();return}
+  if(e.key.length===1&&/[a-zA-Z0-9+\-?]/.test(e.key)){e.preventDefault();cmdAbrir(e.key)}
+});
+/* ayuda */
+function ayudaAbrir(){
+  var g=$('help-cmds');
+  if(!g.innerHTML)g.innerHTML=CMDS.map(function(c){return '<span><span>'+esc(c.n)+'</span><code>'+esc(c.k[0].toUpperCase())+'</code></span>'}).join('');
+  $('helpm').hidden=false;
+}
+function ayudaCerrar(){$('helpm').hidden=true}
+$('help-x').addEventListener('click',ayudaCerrar);
+$('helpm').addEventListener('click',function(e){if(e.target===$('helpm'))ayudaCerrar()});
 
 /* ---------- arranque ---------- */
 ensureLums();fields();toolbar();fingerBtn();panelSel();panelRest();

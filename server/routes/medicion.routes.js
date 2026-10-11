@@ -86,7 +86,11 @@ router.get('/catalogos', async (req, res) => {
           ref: [p.brand, cat.name].filter(Boolean).join(' · '),
           sinMedidas: !tieneMedidas,
           // dibujo real de la planta (si el producto tiene bloque), a escala en cm
-          ...(p.bloques?.svg?.planta ? { bloque: { planta: p.bloques.svg.planta, largo: p.bloques.largo, fondo: p.bloques.fondo } } : {}),
+          foto: p.photo_url || null,
+          ...(p.bloques?.svg?.planta ? {
+            bloque: { planta: p.bloques.svg.planta, largo: p.bloques.largo, fondo: p.bloques.fondo },
+            vistas: ['planta', ...(p.bloques.svg.alzado ? ['alzado'] : []), ...(p.bloques.svg.lateral ? ['lateral'] : [])],
+          } : {}),
         });
       } else if (cat.type === 'iluminacion') {
         luminariasBase.push({ p, cat });
@@ -150,6 +154,19 @@ router.get('/dashboard', async (req, res) => {
   } catch (err) {
     console.error('medicion dashboard:', err);
     res.status(500).json({ error: 'No se pudieron cargar los planos' });
+  }
+});
+
+// Bloque completo (planta, alzado y lateral) de un producto, cuando se necesita colocar el alzado o el lateral
+router.get('/bloque/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('catalog_products').select('id, bloques').eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!data?.bloques?.svg) return res.status(404).json({ error: 'Este producto no tiene bloque' });
+    const b = data.bloques;
+    res.json({ bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, svg: b.svg } });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo cargar el bloque' });
   }
 });
 
