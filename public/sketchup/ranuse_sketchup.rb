@@ -220,6 +220,20 @@ module Ranuse
       et_suelos = etiqueta('Ranuse - Suelos')
       et_techos = etiqueta('Ranuse - Techos')
       et_maq = etiqueta('Ranuse - Máquinas')
+      et_med = etiqueta('Ranuse - Obra a medida')
+      mat_med = material('Ranuse obra a medida', '#c9b08a')
+      mat_luz = material('Ranuse retroiluminado', '#fff2b3')
+
+      # Obra a medida (muebles de obra, panelados, retroiluminados)
+      (plano['a_medida'] || []).each do |am|
+        pts = (am['pts'] || []).map { |q| [q[0].to_f, q[1].to_f] }
+        next if pts.size < 3
+        g = ents.add_group
+        g.name = am['nombre'] || 'Obra a medida'
+        g.layer = et_med
+        prisma(g.entities, pts, am['z0'].to_f, am['z1'].to_f)
+        g.material = am['luz'] ? mat_luz : mat_med
+      end
 
       # Muros con sus huecos
       (plano['muros'] || []).each do |mu|
