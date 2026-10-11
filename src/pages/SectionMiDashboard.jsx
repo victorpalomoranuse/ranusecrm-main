@@ -92,7 +92,7 @@ export function SectionMiDashboard({ ir }) {
                 <div key={etq}><div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{v}</div><div style={muted}>{etq}</div></div>
               ))}
             </div>
-            <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop: 12 }} onClick={() => ir?.('setting')}><TrendingUp size={13} /> Ir a Setting</button>
+            <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{ marginTop: 12 }} onClick={() => ir?.('setting')}><TrendingUp size={13} /> Ir a Métricas</button>
           </div>
         )}
 

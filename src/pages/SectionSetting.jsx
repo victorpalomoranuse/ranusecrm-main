@@ -505,7 +505,7 @@ export function SectionSetting() {
 
       <div className="ap-section-head">
         <div>
-          <h1><Target size={20} style={{ verticalAlign:-3, marginRight:6 }}/>Setting</h1>
+          <h1><Target size={20} style={{ verticalAlign:-3, marginRight:6 }}/>Métricas</h1>
           <p>Embudo de cualificación y agenda — independiente de Leads.</p>
         </div>
         <div style={{ display:'flex', gap:8 }}>

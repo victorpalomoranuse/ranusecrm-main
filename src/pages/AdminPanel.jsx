@@ -785,6 +785,23 @@ function ProductModal({ categories, allProducts, product, onClose, onSaved }) {
   useEffect(()=>{document.body.style.overflow='hidden';return()=>{document.body.style.overflow='';};},[]);
   const setPhotoFile=(f)=>{if(!f)return;setFile(f);setPreview(URL.createObjectURL(f));};
   const handleFile=(e)=>{setPhotoFile(e.target.files?.[0]);};
+  const [iaBusy,setIaBusy]=useState(false); const [iaMsg,setIaMsg]=useState('');
+  const handleIaFoto=async()=>{
+    if(!file&&!product?.photo_url)return; setIaBusy(true); setIaMsg('');
+    try{
+      const form=new FormData(); if(file)form.append('file',file); else form.append('url',product.photo_url);
+      const{data}=await api.post('/catalog/products/ia-foto',form); const s=data.sugerencia||{};
+      // Solo rellena lo que está vacío: lo que ya escribiste no se pisa
+      let n=0; const poner=(valor,actual,set)=>{if(valor!=null&&valor!==''&&!String(actual||'').trim()){set(String(valor));n++;}};
+      poner(s.nombre,name,setName); poner(s.marca,brand,setBrand); poner(s.longitud,longitud,setLongitud); poner(s.ancho,ancho,setAncho); poner(s.altura,altura,setAltura);
+      poner(s.color_bastidor,colorBastidor,setColorBastidor); poner(s.color_acolchado,colorAcolchado,setColorAcolchado); poner(s.tipo_acolchado,tipoAcolchado,setTipoAcolchado); poner(s.color,color,setColor);
+      poner(s.lumens,lumens,setLumens); poner(s.watts,watts,setWatts); poner(s.color_temperature,colorTemperature,setColorTemperature); poner(s.nivel_uso,nivelUso,setNivelUso);
+      poner(s.search_keywords,searchKeywords,setSearchKeywords); poner(s.notes,notes,setNotes);
+      if(s.categoria_id&&(!isEdit)&&categories.some(c=>c.id===s.categoria_id)){setCategoryId(s.categoria_id);n++;}
+      setIaMsg(`${n?`He rellenado ${n} campo${n===1?'':'s'}`:'No he encontrado nada nuevo que rellenar'} (confianza ${s.confianza}). ${s.aviso||''} Revísalo antes de guardar. No pongo precios.`);
+    }catch(err){setIaMsg(err.response?.data?.error||'No se pudo analizar la foto');}
+    finally{setIaBusy(false);}
+  };
   useEffect(()=>{
     const onPaste=(e)=>{
       const item=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));
@@ -801,7 +818,7 @@ function ProductModal({ categories, allProducts, product, onClose, onSaved }) {
       <div className="ap-modal-inner" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
         <div className="ap-modal-header"><h3>{isEdit?'Editar producto':'Nuevo producto'}</h3><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div>
         <form onSubmit={handleSubmit} className="ap-modal-body">
-          <div className="ap-field"><label htmlFor={inputId}>Foto</label><label htmlFor={inputId} className="ap-photo-drop">{preview?<img src={preview} alt="preview" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:8}}/>:<span style={{color:'rgba(255,255,255,0.3)',fontSize:'0.82rem',textAlign:'center'}}>Haz clic para subir imagen<br/>o pega con Ctrl+V</span>}</label><input id={inputId} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/></div>
+          <div className="ap-field"><label htmlFor={inputId}>Foto</label><label htmlFor={inputId} className="ap-photo-drop">{preview?<img src={preview} alt="preview" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:8}}/>:<span style={{color:'rgba(255,255,255,0.3)',fontSize:'0.82rem',textAlign:'center'}}>Haz clic para subir imagen<br/>o pega con Ctrl+V</span>}</label><input id={inputId} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>{preview&&<><button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{marginTop:8}} onClick={handleIaFoto} disabled={iaBusy}>{iaBusy?'Analizando la foto…':'✨ Rellenar con IA desde la foto'}</button>{iaMsg&&<p style={{fontSize:'0.74rem',color:'rgba(255,255,255,0.55)',margin:'6px 0 0',lineHeight:1.4}}>{iaMsg}</p>}</>}</div>
           <div className="ap-field"><label>Nombre *</label><input className="ap-field-input" value={name} onChange={e=>setName(e.target.value)} placeholder="ej: Roble natural 20mm" required autoFocus/></div>
           <div className="ap-field"><label>Marca / Proveedor</label><input className="ap-field-input" list="product-providers" value={brand} onChange={e=>setBrand(e.target.value)} placeholder="ej: Tarkett…"/><datalist id="product-providers">{providers.map(p=><option key={p.id} value={p.name}/>)}</datalist></div>
           <div className="ap-field"><label>Categoría *</label><select className="ap-select" value={categoryId} onChange={e=>setCategoryId(e.target.value)} required><option value="">Seleccionar…</option>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
@@ -2485,8 +2502,8 @@ const NAV_ITEMS = [
   { id:'mi-dia', label:'Mi día', Icon:CalendarDays, hideForAdmin:true },
   { id:'dashboard', label:'Dashboard', Icon:BarChart2, adminOnly:true },
   { id:'trabajos', label:'Trabajos', Icon:LayoutGrid, permission:'trabajos' },
-  { id:'leads', label:'Leads', Icon:Target, permission:'leads' },
-  { id:'setting', label:'Setting', Icon:PhoneCall, permission:'leads' },
+  { id:'leads', label:'Leads antiguo', Icon:Target, permission:'leads' },
+  { id:'setting', label:'Métricas', Icon:PhoneCall, permission:'leads' },
   { id:'asistente-setter', label:'Asistente Setter', Icon:MessageCircle, permission:'leads' },
   { id:'mi-agenda', label:'Mi Agenda', Icon:CalendarDays, permission:'leads' },
   { id:'ventas', label:'Ventas', Icon:TrendingUp, permission:'ventas' },

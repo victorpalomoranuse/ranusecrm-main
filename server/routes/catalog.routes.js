@@ -3,6 +3,8 @@ import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { uploadCatalogPhotoFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { uploadCatalogPhoto, deleteCatalogPhoto, copyCatalogPhoto } from '../utils/storage.js';
+import sharp from 'sharp';
+import { callClaude } from '../utils/anthropic.js';
 
 const router = express.Router();
 
@@ -232,6 +234,80 @@ router.put('/products/reorder', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Error al reordenar productos' });
+  }
+});
+
+// ── IA: rellena la ficha de un producto a partir de su foto ───────────────
+// Propone nombre, marca, categoría, medidas y datos técnicos. Solo sugiere:
+// la persona lo revisa en el formulario antes de guardar. No propone precios.
+router.post('/products/ia-foto', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
+  try {
+    let buf = req.file?.buffer;
+    if (!buf && req.body?.url) {
+      const r = await fetch(String(req.body.url));
+      if (!r.ok) return res.status(400).json({ error: 'No se pudo leer la foto del producto' });
+      buf = Buffer.from(await r.arrayBuffer());
+    }
+    if (!buf) return res.status(400).json({ error: 'Falta la foto' });
+    const jpg = await sharp(buf).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 85 }).toBuffer();
+
+    const { data: cats } = await supabase.from('catalog_categories').select('id, name, type').order('type').order('name');
+    const listaCats = (cats || []).map(c => `${c.id} | ${c.type} | ${c.name}`).join('\n');
+
+    const system = `Eres el asistente de catálogo de Ranuse Design, un estudio que diseña gimnasios y espacios deportivos (home gyms, gimnasios comerciales). Te enseñan la foto de UN producto (máquina, rack, banco, mancuernas, suelo, luminaria, material de obra…) y tienes que proponer su ficha para el catálogo.
+
+Categorías disponibles (id | tipo | nombre):
+${listaCats}
+
+Responde SOLO con un JSON, sin texto alrededor, con estas claves (usa null cuando no lo sepas o no se vea; NO inventes):
+{
+ "nombre": "nombre corto y claro en español, como lo buscaría un diseñador",
+ "marca": "marca o proveedor si se ve (logo, texto), si no null",
+ "categoria_id": "id EXACTO de la lista de categorías que mejor encaje, o null",
+ "longitud": número en cm o null (largo en planta),
+ "ancho": número en cm o null,
+ "altura": número en cm o null,
+ "color_bastidor": "color del bastidor/estructura o null",
+ "color_acolchado": "color del acolchado/tapizado o null",
+ "tipo_acolchado": "tipo de tapizado (piel sintética…) o null",
+ "color": "color o acabado principal (para luminarias, materiales…) o null",
+ "lumens": número o null, "watts": número o null, "temperatura_color": "ej. 3000K" o null,
+ "nivel_uso": "domestico" | "semi_profesional" | "profesional" | null,
+ "palabras_clave": "3-6 palabras de búsqueda separadas por comas",
+ "notas": "una o dos frases útiles para el diseñador (qué es, para qué sirve)",
+ "confianza": "alta" | "media" | "baja",
+ "aviso": "una frase sobre lo que has supuesto, sobre todo las medidas"
+}
+Reglas: las medidas solo si se leen en la foto (etiqueta, ficha) o se pueden estimar con un objeto de referencia (persona, discos, banco); si las estimas, dilo en "aviso" y baja la confianza. Nunca propongas precios.`;
+
+    const respuesta = await callClaude({
+      system, maxTokens: 900,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpg.toString('base64') } },
+        { type: 'text', text: 'Propón la ficha de este producto.' },
+      ] }],
+    });
+    const texto = (respuesta.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const m = texto.match(/\{[\s\S]*\}/);
+    if (!m) return res.status(502).json({ error: 'La IA no devolvió una ficha válida. Inténtalo de nuevo.' });
+    let s;
+    try { s = JSON.parse(m[0]); } catch { return res.status(502).json({ error: 'La IA no devolvió una ficha válida. Inténtalo de nuevo.' }); }
+
+    const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
+    const txt = (v, max = 200) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
+    const catOk = (cats || []).some(c => c.id === s.categoria_id) ? s.categoria_id : null;
+    res.json({ sugerencia: {
+      nombre: txt(s.nombre, 120), marca: txt(s.marca, 80), categoria_id: catOk,
+      longitud: num(s.longitud), ancho: num(s.ancho), altura: num(s.altura),
+      color_bastidor: txt(s.color_bastidor, 60), color_acolchado: txt(s.color_acolchado, 60), tipo_acolchado: txt(s.tipo_acolchado, 60), color: txt(s.color, 60),
+      lumens: num(s.lumens), watts: num(s.watts), color_temperature: txt(s.temperatura_color, 20),
+      nivel_uso: ['domestico', 'semi_profesional', 'profesional'].includes(s.nivel_uso) ? s.nivel_uso : null,
+      search_keywords: txt(s.palabras_clave, 160), notes: txt(s.notas, 400),
+      confianza: ['alta', 'media', 'baja'].includes(s.confianza) ? s.confianza : 'media', aviso: txt(s.aviso, 300),
+    } });
+  } catch (err) {
+    console.error('catalog ia-foto:', err);
+    res.status(500).json({ error: err.message?.includes('clave de la IA') ? err.message : 'No se pudo analizar la foto' });
   }
 });
 

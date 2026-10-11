@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Search, Star } from 'lucide-react';
 import { GRUPOS, SUELTOS } from '../components/NavLateral';
+import { PanelTareasEventos } from '../components/PanelTareasEventos';
 
 // Inicio: pantalla de entrada al CRM. Accesos a todas las secciones a las que
 // la persona tiene permiso, agrupadas por familia, con sus favoritos y las
@@ -10,8 +11,8 @@ const DESCRIPCION = {
   'mi-dia': 'Tus llamadas, leads y comisiones de hoy',
   dashboard: 'Visión global del negocio',
   trabajos: 'Trabajos que se enseñan en la web',
-  leads: 'Contactos entrantes y su seguimiento',
-  setting: 'Llamadas del setting y su estado',
+  leads: 'Listado anterior de leads y su seguimiento',
+  setting: 'Métricas del setting: llamadas, cierres y ventas',
   'asistente-setter': 'IA que mete leads y agenda llamadas',
   'mi-agenda': 'Calendario de llamadas',
   ventas: 'Ventas, cobros y objetivos',
@@ -88,6 +89,8 @@ export function SectionInicio({ items, ir, prefs, user }) {
         <h1 style={{ margin: 0 }}>{saludo}{nombre ? `, ${nombre}` : ''}</h1>
         <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', textTransform: 'capitalize' }}>{fecha}</p>
       </div>
+
+      <PanelTareasEventos puedeVerTareas={!!porId.tareas} ir={ir} />
 
       <div style={{ position: 'relative', maxWidth: 420, marginBottom: 22 }}>
         <Search size={15} style={{ position: 'absolute', left: 11, top: 12, opacity: 0.4 }} />

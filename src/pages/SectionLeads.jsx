@@ -446,7 +446,7 @@ export function SectionLeads() {
       {/* Header */}
       <div className="ap-section-head">
         <div>
-          <h1>Leads</h1>
+          <h1>Leads antiguo</h1>
           <p>Pipeline de ventas por canal</p>
         </div>
         <div style={{ display:'flex', gap:8 }}>
