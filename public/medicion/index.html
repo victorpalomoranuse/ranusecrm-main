@@ -848,7 +848,38 @@ var IDEAL={
   }
 };
 function idealTxt(k,v){var t=IDEAL[k]&&IDEAL[k][String(v||'').trim()];return t?'💡 '+t:''}
-function opKById(id){for(var i=0;i<OPK.length;i++)if(OPK[i].id===id)return OPK[i];return null}
+/* puertas y ventanas importadas a la biblioteca: se identifican por su nombre y se colocan como cualquier puerta o ventana */
+function opLibTipo(c){
+  var n=String(c.nombre||'').toLowerCase();
+  if(/barandilla|mampara/.test(n))return null;
+  if(/ventana con balc|muro cortina|ventana|claraboya|escaparate|pav[eé]s|cristalera/.test(n))return 'win';
+  if(/puerta|port[oó]n/.test(n))return 'door';
+  return null;
+}
+function opLibPreset(id){
+  var c=catById(String(id).replace(/^lib:/,''));if(!c)return null;
+  var t=opLibTipo(c);if(!t)return null;
+  var n=String(c.nombre||'').toLowerCase(),h=Math.round(c.alto||(t==='door'?210:120)),tip;
+  if(/corredera/.test(n))tip=t==='door'?'Corredera':'Corredera';
+  else if(/fija|paladiana|pav[eé]s|escaparate|muro cortina|redonda|medio punto|claraboya/.test(n))tip='Fija';
+  else if(/proyectante/.test(n))tip='Proyectante';
+  else if(/guillotina/.test(n))tip='Corredera';
+  else if(/doble|francesa/.test(n))tip='Doble hoja';
+  else tip=t==='door'?'Abatible':'Practicable';
+  return {id:'lib:'+c.id,t:t,n:c.nombre,w:Math.round(c.w),h:h,sill:t==='win'?(h>=200?0:90):0,tip:tip,lib:c.id};
+}
+function opLibList(tool){
+  var out=[];
+  catalog().forEach(function(c){
+    if(!c.biblioteca||familiaDe(c.categoria)!=='Puertas y ventanas')return;
+    var p=opLibPreset('lib:'+c.id);if(p&&p.t===tool&&c.w>=20)out.push(p);
+  });
+  return out.sort(function(a,b){return a.n.localeCompare(b.n,'es',{numeric:true})});
+}
+function opKById(id){
+  if(String(id).indexOf('lib:')===0)return opLibPreset(id);
+  for(var i=0;i<OPK.length;i++)if(OPK[i].id===id)return OPK[i];return null;
+}
 function opPreset(t){var k=st&&st.opK&&st.opK[t];return opKById(k)||opKById(t==='door'?'p-abat':'v-prac')}
 function opSym(o){
   var t=String(o.tip||(o.t==='door'?'Abatible':'Practicable'));
@@ -867,7 +898,18 @@ function opSym(o){
   return 'prac';
 }
 /* símbolo en planta. q = {x1,y1,x2,y2,nx,ny} del hueco; t = grosor del muro */
+/* si el hueco viene de la biblioteca, se dibuja su planta real, ajustada al ancho del hueco */
+function opBloqueSvg(op,q,col,t,px){
+  var c=op.cid&&catById(op.cid),B=c&&c.bloque;if(!B||!B.planta||!(B.largo>0))return '';
+  var len=Math.hypot(q.x2-q.x1,q.y2-q.y1)||1,ux=(q.x2-q.x1)/len,uy=(q.y2-q.y1)/len,s=op.w/B.largo,T=B.fondo*s,sg=op.side>=0?1:-1;
+  var batiente=T>t*2.6,off=batiente?0:-T/2;
+  var inner=bloqueSvg({planta:B.planta,largo:B.largo,fondo:B.fondo},op.w,T,col,px);
+  var fx=op.flip?'translate('+f2(op.w)+' 0) scale(-1 1)':'';
+  return '<g transform="matrix('+f2(ux)+' '+f2(uy)+' '+f2(q.nx*sg)+' '+f2(q.ny*sg)+' '+f2(q.x1+q.nx*sg*off)+' '+f2(q.y1+q.ny*sg*off)+')"><g transform="'+fx+'">'+inner+'</g></g>';
+}
 function opSymSvg(op,q,col,t,px){
+  var blq=op.cid?opBloqueSvg(op,q,col,t,px):'';
+  if(blq)return blq;
   var sym=opSym(op),w=op.w,h='',len=Math.hypot(q.x2-q.x1,q.y2-q.y1)||1,ux=(q.x2-q.x1)/len,uy=(q.y2-q.y1)/len;
   var s=op.side>=0?1:-1;
   function P(a,b){return [q.x1+ux*a+q.nx*b,q.y1+uy*a+q.ny*b]}
@@ -913,6 +955,14 @@ function opSymSvg(op,q,col,t,px){
 }
 /* símbolo en alzado (frente) */
 function opElevSvg(C,px,o,y0,col){
+  if(o.cid){
+    var BF=bloquesFull[o.cid],fr=BF&&BF.svg&&BF.svg.alzado;
+    if(fr&&BF.largo>0&&BF.alto>0){
+      var sx=o.w/BF.largo,sy=o.h/BF.alto,kk=Math.max(sx,sy)||1;
+      var inn=fr.replace(/#000000/g,col).replace(/stroke-width="([\d.]+)"/g,function(m,v){return 'stroke-width="'+f2(BLW*px/kk)+'"'});
+      return '<g transform="translate('+f2(o.x0)+' '+f2(y0)+') scale('+f2(sx*1e4)/1e4+' '+f2(sy*1e4)/1e4+')">'+inn+'</g>';
+    }
+  }
   var h='',sym=o.sym,x0=o.x0,w=o.w,hh=o.h,dash=';stroke-dasharray:'+f2(5*px)+' '+f2(3*px);
   function fr(){return '<rect x="'+f2(x0+4)+'" y="'+f2(y0+4)+'" width="'+f2(w-8)+'" height="'+f2(hh-8)+'" style="fill:none;stroke:'+col+';stroke-width:'+f2(0.8*px)+'"/>'}
   function diag(xa,xb){return ln(xa,y0+hh-4,xb,y0+hh/2,col,0.6*px,'butt',dash)+ln(xa,y0+4,xb,y0+hh/2,col,0.6*px,'butt',dash)}
@@ -1275,7 +1325,8 @@ function elevList(view){
     var L=Math.round(wg(w).l),ops=[];
     v.ops.forEach(function(o){
       if(o.wall!==w.id||!opVis(o,view))return;
-      ops.push({id:o.id,t:o.t,sym:opSym(o),tag:tags[o.id]||'',x0:rev?L-(o.p+o.w):o.p,w:o.w,h:o.h,sill:o.sill||0});
+      if(o.cid&&!bloquesFull[o.cid])pedirBloque(o.cid);
+      ops.push({id:o.id,t:o.t,sym:opSym(o),tag:tags[o.id]||'',x0:rev?L-(o.p+o.w):o.p,w:o.w,h:o.h,sill:o.sill||0,cid:o.cid||null});
     });
     ops.sort(function(a,b){return a.x0-b.x0});
     return {w:w,sd:sd,rev:rev,room:room,L:L,H:H,ops:ops,mat:(w.f&&w.f[sd])||null};
@@ -2687,6 +2738,7 @@ function tap(w){
     snap();
     var o={id:uid('o'),wall:nw.w.id,t:door?'door':'win',p:f2(Math.max(0,Math.min(nw.g.l-ow,nw.s-ow/2))),w:ow,h:pk.h,sill:pk.sill,side:1,flip:false,s:nw.w.s,tip:pk.tip};
     if(pk.vid)o.vid=pk.vid;if(pk.mat)o.mat=pk.mat;
+    if(pk.lib){o.cid=pk.lib;o.nm=pk.n;pedirBloque(pk.lib)}
     st.v.ops.push(o);st.sel={t:'op',id:o.id};commit();return;
   }
   if(st.tool==='paint'){
@@ -3449,7 +3501,7 @@ function panelSel(focus){
     h+=previewOp(o);
     if(o.t==='door')h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="oside" title="Que abra hacia el otro lado del muro">⇅ Abrir al otro lado</button><button data-a="oflip" title="Bisagra en el otro extremo">⇋ Bisagra al otro lado</button></div>';
     h+='<div class="lab">Estado de '+(o.t==='door'?'esta puerta':'esta ventana')+'</div>'+seg3(o.s,'ostate')+'<p class="note" style="margin:4px 0 8px">Existente = ya está · Demoler = se quita · Nuevo = se hace. Una pieza «Nueva» no se ve en la lámina Estado actual: la verás en Implantación y en las láminas finales.</p>';
-    h+='<label class="fld"><span>Cambiar a otro modelo de '+(o.t==='door'?'puerta':'ventana')+'</span><select data-t="op_model"><option value="">Elegir modelo…</option>'+OPK.filter(function(k){return k.t===o.t}).map(function(k){return '<option value="'+k.id+'">'+esc(k.n)+' ('+k.w+' × '+k.h+')</option>'}).join('')+'</select></label><p class="note" style="margin:0 0 8px">Cambia el tipo, material y medidas por los del modelo elegido, en el mismo sitio del muro. Después puedes retocar lo que quieras (Ctrl+Z lo deshace).</p>';
+    h+='<label class="fld"><span>Cambiar a otro modelo de '+(o.t==='door'?'puerta':'ventana')+'</span><select data-t="op_model"><option value="">Elegir modelo…</option>'+OPK.filter(function(k){return k.t===o.t}).map(function(k){return '<option value="'+k.id+'">'+esc(k.n)+' ('+k.w+' × '+k.h+')</option>'}).join('')+(function(){var l=opLibList(o.t);return l.length?'<optgroup label="Biblioteca">'+l.slice(0,200).map(function(k){return '<option value="'+esc(k.id)+'">'+esc(k.n)+' ('+k.w+' × '+k.h+')</option>'}).join('')+'</optgroup>':''})()+'</select></label><p class="note" style="margin:0 0 8px">Cambia el tipo, material y medidas por los del modelo elegido, en el mismo sitio del muro. Después puedes retocar lo que quieras (Ctrl+Z lo deshace).</p>';
     var opo=opOff(wl(o.wall));
     h+=fld('op_p','Distancia desde el inicio del muro (cm, '+(st.v.cb==='int'&&opo?'desde la cara interior':'a ejes')+')',o.p-opo);
     h+=fld('op_w','Ancho (cm)',o.w);
@@ -3831,6 +3883,7 @@ $('side').addEventListener('change',function(e){
     var gq=og(op0).g,cen=op0.p+op0.w/2,nw=Math.min(pk.w,Math.max(20,Math.floor(gq.l)));
     snap();
     op0.tip=pk.tip;op0.w=nw;op0.h=pk.h;op0.sill=pk.sill;
+    if(pk.lib){op0.cid=pk.lib;op0.nm=pk.n;pedirBloque(pk.lib)}else{delete op0.cid;delete op0.nm}
     op0.p=f2(Math.max(0,Math.min(Math.max(0,gq.l-nw),Math.round(cen-nw/2))));
     if(pk.mat)op0.mat=pk.mat;if(pk.vid)op0.vid=pk.vid;
     commit(false);panelSel();toast('Cambiada a «'+pk.n+'»');return;
@@ -6176,18 +6229,31 @@ function flyOpen(tool,btn){
   $('fly-t').textContent=tool==='equip'?'Biblioteca de bloques':tool==='door'?'Tipos de puerta':'Tipos de ventana';
   if(tool==='equip'){drawCat();setTimeout(function(){try{$('fly-q').focus()}catch(e){}},30)}
   else{
-    $('fly-op').innerHTML=OPK.filter(function(k){return k.t===tool}).map(function(k){
+    var propios=OPK.filter(function(k){return k.t===tool}).map(function(k){
       return '<button data-ok="'+k.id+'" aria-pressed="'+(opPreset(tool).id===k.id)+'">'+iconoOp(k)+'<span>'+esc(k.n)+'</span><small>'+k.w+' × '+k.h+' cm'+(k.t==='win'&&k.sill?' · antepecho '+k.sill:'')+'</small></button>';
     }).join('');
+    var nlib=opLibList(tool).length;
+    $('fly-op').innerHTML=propios+(nlib?'<div class="cathead" style="grid-column:1/-1;margin-top:8px"><span>Biblioteca</span><span>'+nlib+'</span></div><input id="fly-opq" type="search" placeholder="Buscar en la biblioteca…" autocomplete="off" style="grid-column:1/-1;margin-bottom:6px"><div id="fly-opl" style="display:contents"></div>':'');
+    if(nlib)pintaOpLib(tool);
   }
   f.style.top='8px';f.scrollTop=0;
 }
+function pintaOpLib(tool){
+  var q=(($('fly-opq')&&$('fly-opq').value)||'').trim().toLowerCase(),l=opLibList(tool).filter(function(k){return !q||k.n.toLowerCase().indexOf(q)>=0}),box=$('fly-opl');
+  if(!box)return;
+  box.innerHTML=l.slice(0,120).map(function(k){
+    var c=catById(k.lib);
+    return '<button data-ok="'+esc(k.id)+'" aria-pressed="'+(opPreset(tool).id===k.id)+'">'+(c?thumb(c):'')+'<span>'+esc(k.n)+'</span><small>'+k.w+' × '+k.h+' cm'+(k.t==='win'&&k.sill?' · antepecho '+k.sill:'')+'</small></button>';
+  }).join('')+(l.length>120?'<p class="note" style="grid-column:1/-1">Mostrando 120 de '+l.length+'. Afina la búsqueda.</p>':'')||'<p class="note" style="grid-column:1/-1">No hay nada con ese nombre.</p>';
+}
+$('fly-op').addEventListener('input',function(e){if(e.target&&e.target.id==='fly-opq')pintaOpLib(flyTool)});
 function flyClose(){flyTool=null;var f=$('fly');if(f)f.hidden=true}
 $('fly-x').addEventListener('click',flyClose);
 $('fly-op').addEventListener('click',function(e){
   var b=e.target.closest('button[data-ok]');if(!b)return;
   var k=opKById(b.getAttribute('data-ok'));if(!k)return;
   st.opK=st.opK||{};st.opK[k.t]=k.id;st.tool=k.t;
+  if(k.lib)pedirBloque(k.lib);
   flyClose();toolbar();hint();
   toast(k.n+' ('+k.w+'×'+k.h+'): toca un muro para colocarla');
 });
