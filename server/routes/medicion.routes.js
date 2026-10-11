@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { cantidadesDePlano } from '../utils/planos.js';
+import { urlSketchup } from './medicion-sketchup.routes.js';
 
 // Herramienta de medición en obra: guarda los planos por proyecto y le sirve el
 // catálogo del CRM (máquinas y luminarias) para colocarlas en el plano.
@@ -58,7 +59,7 @@ const ES_MATERIAL = /suelo|pavimento|c[eé]sped|madera|pintura|revestimiento|tec
 
 router.get('/catalogos', async (req, res) => {
   try {
-    const columnas = 'id, name, brand, category_id, longitud, ancho, lumens, watts, color_temperature, photo_url, display_order';
+    const columnas = 'id, name, brand, category_id, longitud, ancho, altura, lumens, watts, color_temperature, photo_url, display_order';
     const pedirProductos = (cols) => supabase.from('catalog_products').select(cols).order('display_order', { ascending: true, nullsFirst: false });
     const [{ data: cats }, conBloques] = await Promise.all([
       supabase.from('catalog_categories').select('id, name, type'),
@@ -87,6 +88,7 @@ router.get('/catalogos', async (req, res) => {
           sinMedidas: !tieneMedidas,
           // dibujo real de la planta (si el producto tiene bloque), a escala en cm
           foto: p.photo_url || null,
+          alto: Number(p.altura) > 0 ? Number(p.altura) : null,
           ...(p.bloques?.svg?.planta ? {
             bloque: { planta: p.bloques.svg.planta, largo: p.bloques.largo, fondo: p.bloques.fondo },
             vistas: ['planta', ...(p.bloques.svg.alzado ? ['alzado'] : []), ...(p.bloques.svg.lateral ? ['lateral'] : [])],
@@ -202,6 +204,17 @@ router.put('/:id', async (req, res) => {
   } catch (err) {
     console.error('medicion save:', err);
     res.status(500).json({ error: 'No se pudo guardar la medición' });
+  }
+});
+
+// Enlace para SketchUp de un plano (solo lectura)
+router.post('/:id/sketchup', async (req, res) => {
+  try {
+    const { data } = await supabase.from('mediciones').select('id').eq('id', req.params.id).maybeSingle();
+    if (!data) return res.status(404).json({ error: 'Guarda primero el plano (dibuja algo y espera al aviso de guardado)' });
+    res.json({ url: urlSketchup(req, req.params.id) });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo crear el enlace' });
   }
 });
 

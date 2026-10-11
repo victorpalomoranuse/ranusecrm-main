@@ -125,7 +125,7 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
 .helpgrid span{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:3px 0}
 .helpgrid code{color:var(--accent);font-weight:600}
 .stage{position:relative}
-.fly{position:absolute;left:78px;top:8px;width:min(340px,calc(100% - 90px));max-height:calc(100% - 16px);overflow:auto;z-index:14;background:var(--panel);border:1px solid var(--accent);border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.45);padding:10px}
+.fly{position:absolute;left:78px;top:8px;bottom:auto;width:min(340px,calc(100% - 90px));max-height:calc(100% - 16px);overflow:auto;z-index:14;background:var(--panel);border:1px solid var(--accent);border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.45);padding:10px}
 .fly[hidden]{display:none}
 .fly-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .fly-h button{min-height:34px;padding:0 10px}
@@ -249,6 +249,7 @@ body.crm .top .brand{display:none}
             <button data-do="b-svg">Plano SVG</button>
             <button data-do="b-json">Datos JSON</button>
             <button data-do="b-pdfcarp">Memoria de carpinterías (PDF)</button>
+            <button data-do="sketchup" id="mi-sk" hidden>Modelar en SketchUp…</button>
             <hr>
             <button data-do="b-new">Plano nuevo en blanco</button>
           </div></div>
@@ -461,6 +462,27 @@ body.crm .top .brand{display:none}
     <h3>Comandos</h3>
     <p>Con el lienzo seleccionado, <b>empieza a escribir</b> y se abre la línea de comandos (<b>Enter</b> o Espacio ejecuta, <b>Esc</b> cierra). Estos son los disponibles:</p>
     <div id="help-cmds" class="helpgrid"></div>
+  </div>
+</div>
+<div class="helpm" id="skm" hidden>
+  <div class="helpb" role="dialog" aria-label="SketchUp">
+    <button id="sk-x" class="helpx" aria-label="Cerrar">✕</button>
+    <h2>Modelar en SketchUp mientras dibujas</h2>
+    <p>SketchUp lee este plano y construye el modelo 3D: <b>muros con sus puertas y ventanas, suelos y techos con su material, pilares y las máquinas</b> con su huella real y su altura. Cada vez que cambias el plano, SketchUp se actualiza.</p>
+    <h3>1 · Instalar la extensión (una sola vez)</h3>
+    <ol>
+      <li>Descarga el archivo: <a id="sk-dl" href="/sketchup/ranuse_sketchup.rb" download>ranuse_sketchup.rb</a></li>
+      <li>Cópialo en la carpeta de plugins de SketchUp: <code>C:\Users\TU_USUARIO\AppData\Roaming\SketchUp\SketchUp 2024\SketchUp\Plugins</code> (cambia el año por tu versión).</li>
+      <li>Cierra y vuelve a abrir SketchUp.</li>
+    </ol>
+    <h3>2 · Conectar con este plano</h3>
+    <ol>
+      <li>En SketchUp: menú <b>Extensiones → Ranuse → Conectar con un plano…</b> y pega este enlace:</li>
+    </ol>
+    <div style="display:flex;gap:8px;margin:6px 0"><input id="sk-url" readonly placeholder="Preparando el enlace…" style="flex:1"><button id="sk-copy">Copiar</button></div>
+    <p class="note" id="sk-msg" style="color:var(--muted)"></p>
+    <h3>3 · Ver los cambios</h3>
+    <p>Pulsa <b>Extensiones → Ranuse → Actualizar ahora</b>, o activa <b>Sincronización automática</b> y SketchUp se actualiza solo cada pocos segundos. Lo que modeles tú aparte (muebles, detalles…) no se toca: solo se reconstruye el grupo «RANUSE PLANO».</p>
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -4512,6 +4534,43 @@ function buildResumen(){
   out.carpinterias=carpList().map(function(c){return {ref:c.tag,tipo:c.t==='door'?'puerta':'ventana',ancho:c.w,alto:c.h,estado:c.s,ubicacion:c.loc}});
   return out;
 }
+/* Modelo para SketchUp: muros con sus huecos, salas con sus materiales, pilares y máquinas (con su huella real) */
+function huellaDe(cat){
+  var f=cat&&cat.bloque&&cat.bloque.planta;if(!f)return null;
+  var polys=[],re=/<(polygon|rect|circle|path)\b([^>]*?)\/?>/g,m;
+  while((m=re.exec(f))){
+    var tag=m[1],at=m[2];
+    var g=function(n){var r=new RegExp('\\b'+n+'="([^"]*)"').exec(at);return r?r[1]:null};
+    if(tag==='polygon'){var pt=(g('points')||'').trim().split(/[ ,]+/).map(parseFloat),p=[];for(var i=0;i+1<pt.length;i+=2)p.push([pt[i],pt[i+1]]);if(p.length>=3)polys.push(p)}
+    else if(tag==='rect'){var x=+g('x'),y=+g('y'),w=+g('width'),h=+g('height');polys.push([[x,y],[x+w,y],[x+w,y+h],[x,y+h]])}
+    else if(tag==='circle'){var cx=+g('cx'),cy=+g('cy'),r=+g('r'),c=[];for(var k=0;k<24;k++)c.push([cx+r*Math.cos(k/24*Math.PI*2),cy+r*Math.sin(k/24*Math.PI*2)]);polys.push(c)}
+    else if(tag==='path'){(g('d')||'').split(/[Mm]/).slice(1).forEach(function(sub){var n=sub.replace(/[LlZz]/g,' ').trim().split(/\s+/).map(parseFloat),q=[];for(var j=0;j+1<n.length;j+=2)q.push([n[j],n[j+1]]);if(q.length>=3)polys.push(q)})}
+  }
+  function area(p){var a=0;for(var i=0;i<p.length;i++){var q=p[(i+1)%p.length];a+=p[i][0]*q[1]-q[0]*p[i][1]}return a/2}
+  if(!polys.length)return null;
+  var big=polys.reduce(function(a,b){return Math.abs(area(b))>Math.abs(area(a))?b:a}),sg=area(big)>=0?1:-1;
+  return polys.filter(function(p){return (area(p)>=0?1:-1)===sg}).map(function(p){return p.map(function(q){return [f2(q[0]),f2(q[1])]})});
+}
+function buildModelo3d(){
+  var v=st.v,out={version:1,nombre:v.nombre||'',altura:wallH(),muros:[],salas:[],pilares:[],equipos:[]};
+  v.walls.forEach(function(w){
+    var g=wg(w);
+    out.muros.push({a:[f2(g.a.x),f2(g.a.y)],b:[f2(g.b.x),f2(g.b.y)],t:w.t||12,estado:w.s||'ex',
+      ab:v.ops.filter(function(o){return o.wall===w.id}).map(function(o){return {p:f2(o.p),w:f2(o.w),h:f2(o.h),sill:f2(o.sill||0),tipo:o.t,tip:o.tip||'',mat:o.mat||'',estado:o.s||'ex'}})});
+  });
+  roomFaces('distrib').forEach(function(f){
+    var zs=zoneIn(f,'s'),zt=zoneIn(f,'t'),ms=zs?matOf('suelos',zs.mat):null,mt=zt?matOf('techos',zt.mat):null;
+    out.salas.push({nombre:(zs&&zs.nm)||(zt&&zt.nm)||'',pts:f.inner.map(function(p){return [f2(p.x),f2(p.y)]}),
+      suelo:ms?{n:ms.n,c:ms.c}:null,techo:mt?{n:mt.n,c:mt.c}:null});
+  });
+  v.pil.forEach(function(p){var c=pc(p);out.pilares.push({cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,estado:p.s||'ex'})});
+  v.eq.forEach(function(e){
+    var c=pc(e),cat=catById(e.cid);
+    out.equipos.push({cid:e.cid||'',nombre:e.nm,cx:f2(c.x),cy:f2(c.y),w:e.w,d:e.d,rot:e.rot||0,alto:(cat&&cat.alto)||110,
+      largo:(cat&&cat.bloque&&cat.bloque.largo)||e.w,fondo:(cat&&cat.bloque&&cat.bloque.fondo)||e.d,huella:huellaDe(cat)});
+  });
+  return out;
+}
 var crmReady=false,crmT=null,crmProy=null,crmSkip=0,crmFull=false;
 function modoPantalla(f){
   crmFull=f;
@@ -4535,6 +4594,7 @@ function crmSaveNow(force){
   if(!force&&!(v.walls.length||v.eq.length||v.pts.length))return;
   v.updated=Date.now();
   try{v.resumen=buildResumen()}catch(e){}
+  try{v.modelo3d=buildModelo3d()}catch(e){}
   crmPost({type:'save',visita:JSON.parse(JSON.stringify(v))});
   $('saved').textContent='Guardando en el CRM…';
 }
@@ -4564,7 +4624,7 @@ if(CRM){
       });
       refreshAcab();
       crmReady=true;crmSkip=Date.now()+1500;
-      $('b-cloud').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
+      $('b-cloud').hidden=false;$('mi-sk').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
       var elegido=null;
       if(!m.nuevo){elegido=m.abrir?cloud.filter(function(c){return c.id===m.abrir})[0]:cloud[0]}
       if(elegido){st.v=norm(JSON.parse(JSON.stringify(elegido)));crmPrefill()}
@@ -4580,6 +4640,8 @@ if(CRM){
       }
     }else if(m.type==='deleted'){
       cloud=cloud.filter(function(c){return c.id!==m.id});drawCloud();toast('Plano borrado');
+    }else if(m.type==='enlaceSketchup'){
+      $('sk-url').value=m.url||'';$('sk-msg').textContent=m.url?'Enlace de solo lectura de este plano. Quien lo tenga puede ver el modelo, pero no cambiarlo.':(m.message||'No se pudo crear el enlace');
     }else if(m.type==='bloque'){
       if(m.id&&m.bloque){bloquesFull[m.id]=m.bloque;render()}
     }else if(m.type==='modo'){
@@ -4634,6 +4696,7 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
       if(id==='panel')panelAlternar();
       else if(id==='cmdp')cmdAbrir('');
       else if(id==='ayuda')ayudaAbrir();
+      else if(id==='sketchup')skAbrir();
       else if(id.indexOf('tema:')===0)aplicarTema(id.slice(5),true);
       else{var t=$(id);if(t)t.click()}
       return;
@@ -4708,6 +4771,7 @@ cmd('Panel lateral',['panel','pl'],'Mostrar u ocultar el panel',function(){panel
 cmd('Interfaz blanca',['claro','blanca'],'Tema claro',function(){aplicarTema('light',true)});
 cmd('Interfaz negra',['oscuro','negra'],'Tema oscuro',function(){aplicarTema('dark',true)});
 cmd('Interfaz AutoCAD',['autocad','cad'],'Fondo negro y líneas de colores',function(){aplicarTema('cad',true)});
+cmd('Modelar en SketchUp',['sk','sketchup'],'Enlace y extensión de SketchUp',function(){skAbrir()});
 cmd('Ayuda: cómo se trabaja',['ayuda','h','?'],'Explica láminas y estados',function(){ayudaAbrir()});
 cmd('Ampliar / volver',['full','pantalla','volver'],'Pantalla completa',function(){var b=$('m-full');if(b&&!b.hidden)b.click()});
 
@@ -4758,6 +4822,7 @@ $('cmd-in').addEventListener('blur',function(){setTimeout(function(){if(cmdAbier
 document.addEventListener('keydown',function(e){
   var t=e.target&&e.target.tagName;
   if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA'||e.ctrlKey||e.metaKey||e.altKey)return;
+  if(!$('skm').hidden){if(e.key==='Escape')$('skm').hidden=true;return}
   if(!$('helpm').hidden){if(e.key==='Escape')ayudaCerrar();return}
   if(e.key.length===1&&/[a-zA-Z0-9+\-?]/.test(e.key)){e.preventDefault();cmdAbrir(e.key)}
 });
@@ -4768,9 +4833,79 @@ function ayudaAbrir(){
   $('helpm').hidden=false;
 }
 function ayudaCerrar(){$('helpm').hidden=true}
+function skAbrir(){
+  if(!CRM){toast('Solo dentro del CRM');return}
+  $('skm').hidden=false;$('sk-url').value='';$('sk-msg').textContent='Guardando el plano y creando el enlace…';
+  crmSaveNow(true);
+  setTimeout(function(){crmPost({type:'pedirEnlaceSketchup',id:st.v.id})},900);
+}
+$('sk-x').addEventListener('click',function(){$('skm').hidden=true});
+$('skm').addEventListener('click',function(e){if(e.target===$('skm'))$('skm').hidden=true});
+$('sk-copy').addEventListener('click',function(){
+  var u=$('sk-url').value;if(!u)return;
+  try{navigator.clipboard.writeText(u).then(function(){toast('Enlace copiado')},function(){$('sk-url').select()})}catch(e){$('sk-url').select()}
+});
 $('help-x').addEventListener('click',ayudaCerrar);
 $('helpm').addEventListener('click',function(e){if(e.target===$('helpm'))ayudaCerrar()});
 
+/* ---------- atajos de teclado: deshacer, rehacer, copiar, pegar, duplicar ---------- */
+var curW={x:0,y:0},clip=null;
+svg.addEventListener('pointermove',function(e){curW=toW(loc(e))});
+function copiarSel(silencio){
+  var s=st.sel;if(!s){toast('Toca primero lo que quieres copiar');return false}
+  var v=st.v,item=null;
+  if(s.t==='eq')item=by(v.eq,s.id);else if(s.t==='op')item=opn(s.id);else if(s.t==='pil')item=pl(s.id);
+  else if(s.t==='eqa')item=by(v.eqa||[],s.id);
+  else if(s.t==='wall'){var w=wl(s.id);if(w){var g=wg(w);item=JSON.parse(JSON.stringify(w));item._a={x:g.a.x,y:g.a.y};item._b={x:g.b.x,y:g.b.y}}}
+  if(!item){toast('Eso no se puede copiar');return false}
+  clip={t:s.t,d:JSON.parse(JSON.stringify(item))};
+  if(!silencio)toast('Copiado');
+  return true;
+}
+function pegar(enCursor){
+  if(!clip){toast('No hay nada copiado');return}
+  var v=st.v,d=JSON.parse(JSON.stringify(clip.d)),tol=Math.max(16/st.k,6),dx=30,dy=30;
+  var p=enCursor?curW:null;
+  snap();
+  if(clip.t==='eq'||clip.t==='pil'){
+    d.id=uid(clip.t==='eq'?'e':'p');
+    if(p){var nq=nearNode(p.x,p.y,1e9,null);if(nq){d.n=nq.id;d.dx=f2(Math.round((p.x-nq.x)/5)*5);d.dy=f2(Math.round((p.y-nq.y)/5)*5)}}
+    else{d.dx=f2(d.dx+dx);d.dy=f2(d.dy+dy)}
+    (clip.t==='eq'?v.eq:v.pil).push(d);st.sel={t:clip.t,id:d.id};
+  }else if(clip.t==='op'){
+    d.id=uid('o');
+    var nw=p?nearestWallPos(p,60/st.k):null;
+    if(nw){d.wall=nw.w.id;d.p=f2(Math.max(0,Math.min(Math.max(0,nw.g.l-d.w),Math.round((nw.s-d.w/2)/5)*5)))}
+    else d.p=f2(d.p+60);
+    v.ops.push(d);st.sel={t:'op',id:d.id};
+  }else if(clip.t==='eqa'){
+    d.id=uid('a');d.x=f2(d.x+40);(v.eqa=v.eqa||[]).push(d);st.sel={t:'eqa',id:d.id};
+  }else if(clip.t==='wall'){
+    var ox=p?p.x-(d._a.x+d._b.x)/2:dx,oy=p?p.y-(d._a.y+d._b.y)/2:dy;
+    ox=Math.round(ox/5)*5;oy=Math.round(oy/5)*5;
+    var n1={id:uid('n'),x:f2(d._a.x+ox),y:f2(d._a.y+oy)},n2={id:uid('n'),x:f2(d._b.x+ox),y:f2(d._b.y+oy)};
+    v.nodes.push(n1,n2);
+    var nw2={id:uid('w'),a:n1.id,b:n2.id,len:d.len,m:d.m,s:d.s,t:d.t};
+    if(d.arc)nw2.arc=d.arc;
+    v.walls.push(nw2);st.sel={t:'wall',id:nw2.id};
+  }
+  commit();toast('Pegado');
+}
+document.addEventListener('keydown',function(e){
+  var t=e.target&&e.target.tagName;
+  if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA')return;
+  if(!(e.ctrlKey||e.metaKey)||e.altKey)return;
+  var k=e.key.toLowerCase();
+  if(k==='z'&&!e.shiftKey){e.preventDefault();undo()}
+  else if(k==='y'||(k==='z'&&e.shiftKey)){e.preventDefault();redoit()}
+  else if(k==='c'){e.preventDefault();copiarSel()}
+  else if(k==='x'){e.preventDefault();if(copiarSel(true)){closeQE();doAction('del',$('a-del'));toast('Cortado')}}
+  else if(k==='v'){e.preventDefault();pegar(true)}
+  else if(k==='d'){e.preventDefault();if(copiarSel(true))pegar(false)}
+});
+cmd('Copiar',['cc','copiar'],'Copia lo seleccionado',function(){copiarSel()});
+cmd('Pegar',['pp','pegar'],'Pega en la posición del cursor',function(){pegar(true)});
+cmd('Duplicar',['dd','duplicar'],'Copia y pega con desplazamiento',function(){if(copiarSel(true))pegar(false)});
 /* ---------- ventanita junto a la herramienta ---------- */
 var flyTool=null;
 function iconoOp(k){
@@ -4789,7 +4924,7 @@ function flyOpen(tool,btn){
       return '<button data-ok="'+k.id+'" aria-pressed="'+(opPreset(tool).id===k.id)+'">'+iconoOp(k)+'<span>'+esc(k.n)+'</span><small>'+k.w+' × '+k.h+' cm'+(k.t==='win'&&k.sill?' · antepecho '+k.sill:'')+'</small></button>';
     }).join('');
   }
-  try{var r=btn.getBoundingClientRect(),sr=f.parentNode.getBoundingClientRect();f.style.top=Math.max(8,r.top-sr.top-6)+'px'}catch(e){}
+  f.style.top='8px';f.scrollTop=0;
 }
 function flyClose(){flyTool=null;var f=$('fly');if(f)f.hidden=true}
 $('fly-x').addEventListener('click',flyClose);

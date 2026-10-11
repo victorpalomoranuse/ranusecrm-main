@@ -13,6 +13,7 @@ import agenteProyectoRoutes from './routes/agente-proyecto.routes.js';
 import iaConversacionesRoutes from './routes/ia-conversaciones.routes.js';
 import conocimientoRoutes from './routes/conocimiento.routes.js';
 import medicionRoutes from './routes/medicion.routes.js';
+import medicionSketchupRoutes from './routes/medicion-sketchup.routes.js';
 import historiaPublicaRoutes from './routes/historia-publica.routes.js';
 import employeesRoutes from './routes/employees.routes.js';
 import catalogRoutes from './routes/catalog.routes.js';
@@ -91,6 +92,7 @@ app.use('/api/mi-dashboard', miDashboardRoutes);
 app.use('/api/agente-proyecto', agenteProyectoRoutes);
 app.use('/api/ia-conversaciones', iaConversacionesRoutes);
 app.use('/api/conocimiento', conocimientoRoutes);
+app.use('/api/medicion-publico', medicionSketchupRoutes); // enlace de solo lectura para SketchUp (firmado)
 app.use('/api/medicion', medicionRoutes);
 app.use('/api/historia-publica', historiaPublicaRoutes);
 app.use('/api/employees', employeesRoutes);
