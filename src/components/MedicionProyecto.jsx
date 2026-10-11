@@ -127,7 +127,11 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
 // Pestaña "Planos" dentro de un proyecto
 export function MedicionProyecto({ project }) {
   const [ampliado, setAmpliado] = useState(false);
-  const ampliar = useCallback(() => setAmpliado(true), []);
+  // «Ampliar» abre la herramienta en una pestaña nueva (si el navegador la bloquea, se amplía aquí)
+  const ampliar = useCallback(() => {
+    const p = new URLSearchParams({ proyecto: project.id });
+    if (!window.open('/planos/editor?' + p.toString(), '_blank')) setAmpliado(true);
+  }, [project.id]);
   const cerrar = useCallback(() => setAmpliado(false), []);
   return (
     <div>
@@ -135,6 +139,9 @@ export function MedicionProyecto({ project }) {
         Dibuja el plano, mide la sala, marca demoliciones, distribución, suelos, techos, iluminación y electricidad, y descarga las láminas en PDF.
         Se guarda solo en este proyecto y usa el catálogo del CRM (equipamiento e iluminación). También lo ves junto al resto en la sección Planos.
       </p>
+      <div style={{ margin: '0 0 0.6rem' }}>
+        <button type="button" className="ap-btn ap-btn-ghost" onClick={ampliar}>Abrir los planos en una pestaña nueva ↗</button>
+      </div>
       <MedicionEditor projectId={project.id} proyecto={{ nombre: project.project_name, cliente: project.client_name, direccion: project.client_address || '' }} fullscreen={ampliado} onAmpliar={ampliar} onCerrar={cerrar} />
     </div>
   );

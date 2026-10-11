@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Ruler, Plus, Trash2, Search, FolderOpen, Link2 } from 'lucide-react';
 import api from '../services/api';
+import { abrirPlanosEnPestana } from './PlanosEditor';
 import { MedicionEditor } from '../components/MedicionProyecto';
 import { SearchableSelect } from '../components/SearchableSelect';
 
@@ -75,10 +76,13 @@ export function SectionPlanos() {
     .then(([a, b]) => { setPlanos(a.data.planos || []); setProyectos(b.data.projects || []); setError(''); })
     .catch(e => setError(e.response?.data?.error || 'No se pudieron cargar los planos'));
   useEffect(() => { cargar(); }, []);
+  // Al volver a esta pestaña tras trabajar en los planos (en la otra), la lista se actualiza sola
+  useEffect(() => { const f = () => cargar(); window.addEventListener('focus', f); return () => window.removeEventListener('focus', f); }, []);
 
   const proyectoPorId = useMemo(() => Object.fromEntries(proyectos.map(p => [p.id, p])), [proyectos]);
 
-  const abrirEditor = (cfg) => setEditor(cfg);
+  // Se abre en una pestaña nueva; si el navegador la bloquea, se abre aquí mismo
+  const abrirEditor = (cfg) => { if (!abrirPlanosEnPestana({ projectId: cfg.projectId, abrir: cfg.abrir, nuevo: cfg.nuevo })) setEditor(cfg); };
   const cerrarEditor = () => { setEditor(null); cargar(); };
 
   const abrirPlano = (p) => {

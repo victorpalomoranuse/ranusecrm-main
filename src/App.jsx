@@ -14,6 +14,7 @@ import { MiProyecto } from './pages/MiProyecto';
 import { ClienteLogin } from './pages/ClienteLogin';
 import { ClientePanel } from './pages/ClientePanel';
 import { RestablecerContrasena } from './pages/RestablecerContrasena';
+import { PlanosEditor } from './pages/PlanosEditor';
 import './App.css';
 
 function AdminGuard({ children }) {
@@ -78,6 +79,11 @@ function App() {
               <Route path="/admin" element={<AdminLogin />} />
               <Route path="/admin/panel" element={
                 <AdminGuard><AdminPanel /></AdminGuard>
+              } />
+
+              {/* Herramienta de planos en su propia pestaña */}
+              <Route path="/planos/editor" element={
+                <AdminGuard><PlanosEditor /></AdminGuard>
               } />
 
               {/* Equipo */}
