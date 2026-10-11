@@ -743,7 +743,7 @@ function catalog(){
 }
 function catById(id){var l=catalog();for(var i=0;i<l.length;i++)if(l[i].id===id)return l[i];return null}
 function eqRect(e){
-  var c=pc(e),sw=(e.rot%180)!==0,hw=(sw?e.d:e.w)/2,hh=(sw?e.w:e.d)/2;
+  var c=pc(e),sw=((((e.rot||0)%180)+180)%180)!==0,hw=(sw?e.d:e.w)/2,hh=(sw?e.w:e.d)/2;
   return {x0:c.x-hw,y0:c.y-hh,x1:c.x+hw,y1:c.y+hh,cx:c.x,cy:c.y};
 }
 function pickEq(p){
@@ -1830,7 +1830,7 @@ function scene(C,k,view,o){
     }
     eqs.forEach(function(e,i){
       var r=eqRect(e),col=bad[e.id]?C.dem:(C.blk||C.ink);
-      h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+e.rot+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')"><rect width="'+e.w+'" height="'+e.d+'" style="fill:'+C.bg+'"/>'+eqSym(e.ty,e.w,e.d,col,px,e.cid)+'</g>';
+      h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')"><rect width="'+e.w+'" height="'+e.d+'" style="fill:'+C.bg+'"/>'+eqSym(e.ty,e.w,e.d,col,px,e.cid)+'</g>';
       h+='<circle cx="'+f2(r.cx)+'" cy="'+f2(r.cy)+'" r="'+f2(9*px)+'" style="fill:'+col+'"/>';
       h+='<text x="'+f2(r.cx)+'" y="'+f2(r.cy+4*px)+'" text-anchor="middle" style="fill:'+C.bg+';font-size:'+f2(11*px)+'px;font-weight:600">'+(i+1)+'</text>';
     });
@@ -1912,6 +1912,12 @@ function spanInterior(w,view,cent){
   return best;
 }
 /* diferencia entre el eje del muro y su hueco libre (0 si se trabaja a ejes) */
+/* desplazamiento entre el eje del muro y el punto desde el que se miden las distancias de los huecos (igual que las cotas del plano) */
+function opOff(w){
+  if(!w||!st.v||st.v.cb!=='int'||w.arc)return 0;
+  var sp=spanInterior(w,st.view,wallCent(st.view));
+  return sp?Math.max(0,sp.s0):0;
+}
 function offInt(w){
   if(!st.v||st.v.cb!=='int'||w.arc)return 0;
   var sp=spanInterior(w,st.view,wallCent(st.view));if(!sp)return 0;
@@ -3126,6 +3132,7 @@ function panelSel(focus){
   if(s&&s.t==='eq'){
     var e=by(st.v.eq,s.id),ix=st.v.eq.indexOf(e)+1;
     h+='<div class="rowh"><strong>'+ix+'. '+esc(e.nm)+'</strong><span class="muted">giro '+e.rot+'°</span></div>';
+    h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="eqrotl" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="eqrot" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="eqrot180" title="Girar 180°">180°</button><button data-a="eqflx" aria-pressed="'+!!e.fx+'" title="Espejo izquierda-derecha">⇋ Espejo</button><button data-a="eqfly" aria-pressed="'+!!e.fy+'" title="Espejo arriba-abajo">⇅ Espejo</button></div>';
     h+=previewEq(e);
     var ce0=catById(e.cid);
     if(ce0&&ce0.biblioteca&&CRM)h+='<div class="btns"><button data-a="bibdel">Quitar de mi biblioteca</button></div>';
@@ -3135,7 +3142,7 @@ function panelSel(focus){
       if(reales.length)h+='<label class="fld"><span>Cambiar por un producto del catálogo</span><select data-t="eq_swap"><option value="">Elegir producto…</option>'+reales.map(function(c){return '<option value="'+esc(c.id)+'">'+esc(c.nombre)+' ('+fmt(c.w)+' × '+fmt(c.d)+')</option>'}).join('')+'</select></label>';
     }
     h+=fld('eq_w','Ancho (cm)',e.w)+fld('eq_d','Fondo (cm)',e.d);
-    h+='<div class="btns"><button data-a="eqrot">Girar 90°</button><button data-a="eqdup">Duplicar</button></div>';
+    h+='<div class="btns"><button data-a="eqdup">Duplicar</button></div>';
     h+='<div class="btns"><button data-a="eqcat">Guardar medidas en el catálogo</button></div>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar máquina</button></div>';
   }else if(s&&s.t==='fz'){
@@ -3188,9 +3195,11 @@ function panelSel(focus){
     var o=opn(s.id),q=og(o);
     h+='<div class="rowh"><strong>'+(o.t==='door'?'Puerta':'Ventana')+'</strong><span class="muted">muro de '+fmt(q.g.l)+' cm</span></div>';
     h+=previewOp(o);
+    if(o.t==='door')h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="oside" title="Que abra hacia el otro lado del muro">⇅ Abrir al otro lado</button><button data-a="oflip" title="Bisagra en el otro extremo">⇋ Bisagra al otro lado</button></div>';
     h+='<div class="lab">Estado de '+(o.t==='door'?'esta puerta':'esta ventana')+'</div>'+seg3(o.s,'ostate')+'<p class="note" style="margin:4px 0 8px">Existente = ya está · Demoler = se quita · Nuevo = se hace. Una pieza «Nueva» no se ve en la lámina Estado actual: la verás en Implantación y en las láminas finales.</p>';
     h+='<label class="fld"><span>Cambiar a otro modelo de '+(o.t==='door'?'puerta':'ventana')+'</span><select data-t="op_model"><option value="">Elegir modelo…</option>'+OPK.filter(function(k){return k.t===o.t}).map(function(k){return '<option value="'+k.id+'">'+esc(k.n)+' ('+k.w+' × '+k.h+')</option>'}).join('')+'</select></label><p class="note" style="margin:0 0 8px">Cambia el tipo, material y medidas por los del modelo elegido, en el mismo sitio del muro. Después puedes retocar lo que quieras (Ctrl+Z lo deshace).</p>';
-    h+=fld('op_p','Distancia desde el inicio del muro (cm)',o.p);
+    var opo=opOff(wl(o.wall));
+    h+=fld('op_p','Distancia desde el inicio del muro (cm, '+(st.v.cb==='int'&&opo?'desde la cara interior':'a ejes')+')',o.p-opo);
     h+=fld('op_w','Ancho (cm)',o.w);
     h+=fld('op_h','Alto (cm)',o.h);
     if(o.t==='win')h+=fld('op_sill','Altura desde el suelo (cm)',o.sill);
@@ -3203,7 +3212,6 @@ function panelSel(focus){
     if(o.t==='win')h+='<label class="fld"><span>Vidrio</span><input data-t="op_vid" list="dl-vid" value="'+esc(o.vid||'')+'" placeholder="Doble 4+16+4 bajo emisivo" autocomplete="off"></label>'+'<p class="note ideal" data-ideal="vid">'+idealTxt('vid',o.vid)+'</p>';
     h+='<label class="fld"><span>Observaciones</span><input data-t="op_obs" value="'+esc(o.obs||'')+'" placeholder="Herrajes, cerradura, persiana…" autocomplete="off"></label>';
     h+=''+['mat','vid'].map(function(k){return '<datalist id="dl-'+k+'">'+Object.keys(IDEAL[k]).map(function(v){return '<option value="'+esc(v)+'" label="'+esc(IDEAL[k][v].replace(/^Ideal (para |cuando |por |si )?/,'Ideal: '))+'">'}).join('')+'</datalist>'}).join('')+'';
-    if(o.t==='door')h+='<div class="btns"><button data-a="oside">Cambiar lado</button><button data-a="oflip">Cambiar bisagra</button></div>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar</button></div>';
   }else if(s.t==='pil'){
     var p=pl(s.id);
@@ -3408,7 +3416,7 @@ function applyField(key,val,adv){
     var o=opn(s.id);if(!o)return;
     if(!isFinite(n)||n<0){toast('Escribe un número válido');return}
     snap();
-    if(key==='op_p')o.p=n;else if(key==='op_w'){if(n<20){toast('El ancho mínimo es 20 cm');hist.pop();return}o.w=n}
+    if(key==='op_p')o.p=n+opOff(wl(o.wall));else if(key==='op_w'){if(n<20){toast('El ancho mínimo es 20 cm');hist.pop();return}o.w=n}
     else if(key==='op_h')o.h=n;else if(key==='op_sill')o.sill=n;
     var g=og(o).g;o.p=Math.max(0,Math.min(g.l-o.w,o.p));
     commit(false);
@@ -3503,7 +3511,8 @@ function doAction(a,el){
   if(a==='ptnd'){var q1=by(st.v.pts,s.id);snap();q1.nd=q1.nd?0:1;commit();return}
   if(a==='cnstart'){st.cnFrom=s.id;st.tool='cn';toolbar();hint();render();toast('Toca las luminarias que enciende');return}
   if(a==='ptrot'){var qr=by(st.v.pts,s.id);snap();qr.a=((qr.a||0)+90)%360;commit();return}
-  if(a==='eqrot'){var q1=by(st.v.eq,s.id);snap();q1.rot=(q1.rot+90)%360;commit();return}
+  if(a==='eqrot'||a==='eqrotl'||a==='eqrot180'){var q1=by(st.v.eq,s.id);snap();q1.rot=((q1.rot||0)+(a==='eqrot'?90:a==='eqrotl'?270:180))%360;commit();return}
+  if(a==='eqflx'||a==='eqfly'){var q1f=by(st.v.eq,s.id);snap();if(a==='eqflx')q1f.fx=!q1f.fx;else q1f.fy=!q1f.fy;commit();return}
   if(a==='eqdup'){var q2=by(st.v.eq,s.id);snap();var cp=JSON.parse(JSON.stringify(q2));cp.id=uid('e');cp.dx=f2(cp.dx+30);cp.dy=f2(cp.dy+30);st.v.eq.push(cp);st.sel={t:'eq',id:cp.id};commit();return}
   if(a==='eqcat'){var q3=by(st.v.eq,s.id);saveCat({id:q3.cid||('c'+Date.now().toString(36)),nombre:q3.nm,tipo:q3.ty,w:q3.w,d:q3.d,ref:q3.ref||''});toast('Medidas guardadas en el catálogo');return}
   if(a==='rcadd'&&s.t==='wall'){
@@ -5271,6 +5280,7 @@ function huellaDe(cat){
   var big=polys.reduce(function(a,b){return Math.abs(area(b))>Math.abs(area(a))?b:a}),sg=area(big)>=0?1:-1;
   return polys.filter(function(p){return (area(p)>=0?1:-1)===sg}).map(function(p){return p.map(function(q){return [f2(q[0]),f2(q[1])]})});
 }
+function espejoHuella(h,e,L,T){if(!h||!(e.fx||e.fy))return h;return h.map(function(p){return p.map(function(q){return [e.fx?f2(L-q[0]):q[0],e.fy?f2(T-q[1]):q[1]]}).reverse()})}
 function buildModelo3d(){
   var v=st.v,out={version:1,nombre:v.nombre||'',altura:wallH(),muros:[],salas:[],pilares:[],equipos:[]};
   v.walls.forEach(function(w){
@@ -5286,8 +5296,8 @@ function buildModelo3d(){
   v.pil.forEach(function(p){var c=pc(p);out.pilares.push({cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,estado:p.s||'ex'})});
   v.eq.forEach(function(e){
     var c=pc(e),cat=catById(e.cid);
-    out.equipos.push({cid:e.cid||'',nombre:e.nm,cx:f2(c.x),cy:f2(c.y),w:e.w,d:e.d,rot:e.rot||0,alto:(cat&&cat.alto)||110,
-      largo:(cat&&cat.bloque&&cat.bloque.largo)||e.w,fondo:(cat&&cat.bloque&&cat.bloque.fondo)||e.d,huella:huellaDe(cat)});
+    out.equipos.push({cid:e.cid||'',nombre:e.nm,cx:f2(c.x),cy:f2(c.y),w:e.w,d:e.d,rot:e.rot||0,fx:!!e.fx,fy:!!e.fy,alto:(cat&&cat.alto)||110,
+      largo:(cat&&cat.bloque&&cat.bloque.largo)||e.w,fondo:(cat&&cat.bloque&&cat.bloque.fondo)||e.d,huella:espejoHuella(huellaDe(cat),e,(cat&&cat.bloque&&cat.bloque.largo)||e.w,(cat&&cat.bloque&&cat.bloque.fondo)||e.d)});
   });
   return out;
 }
