@@ -250,6 +250,9 @@
     ['fan palm', 'palmera de abanico'], ['sakura bonsai tree', 'bonsái sakura'], ['pine bonsai tree', 'bonsái de pino'], ['bonsai tree', 'bonsái'], ['hanging plants', 'plantas colgantes'],
     ['wall plants', 'plantas de pared'], ['arc plant stand', 'soporte de plantas en arco'], ['plant stand', 'soporte de plantas'],
     ['office booth', 'cabina de oficina'], ['folding desk', 'escritorio plegable'], ['meeting desk', 'mesa de reuniones'], ['reception desk', 'mostrador de recepción'],
+    ['escalator double one way', 'escalera mecánica doble de un sentido'], ['escalator double', 'escalera mecánica doble'], ['escalator single', 'escalera mecánica simple'], ['escalator', 'escalera mecánica'],
+    ['soaking bathtub', 'bañera de inmersión'], ['corner bathtub', 'bañera rinconera'], ['bathtub rectangular', 'bañera rectangular'], ['bathtub round', 'bañera redonda'], ['corner tub', 'bañera rinconera'],
+    ['vanity round', 'mueble de baño redondo'], ['vanity', 'mueble de baño'],
     ['coffee table', 'mesa de centro'], ['tv unit wallmounted', 'mueble de TV de pared'], ['tv unit', 'mueble de TV'], ['carpet lines round', 'alfombra redonda'], ['carpet lines', 'alfombra'], ['elliptical table', 'mesa elíptica'],
     ['kitchen sink', 'fregadero'], ['corner shower', 'ducha de esquina'], ['rainfinity shower system', 'sistema de ducha'], ['electric stove', 'cocina eléctrica'],
     ['fridge single door', 'frigorífico de una puerta'], ['glass partition with door', 'mampara de cristal con puerta'], ['glass partition', 'mampara de cristal'],
@@ -277,13 +280,15 @@
     casement: 'abatible', slider: 'corredera', sliding: 'corredera',
     toilet: 'inodoro', accessible: 'accesible', smart: 'inteligente', extended: 'alargado',
     hanging: 'colgante', lounge: 'butaca', conference: 'conferencia', folding: 'plegable', oval: 'ovalada', quad: 'cuádruple', setup: 'montaje',
+    ushape: 'en U', lshape: 'en L', halfcircle: 'semicircular', oneway: 'de un sentido', doublerounded: 'doble redondeada', rounded: 'redondeada', spiral: 'de caracol',
+    straight: 'recta', circular: 'circular', circle: 'circular', concrete: 'de hormigón', soaking: 'de inmersión', tub: 'bañera', shape: '',
     large: 'grande', medium: 'mediano', with: 'con', and: 'y', of: 'de', plant: 'planta', lamp: 'lámpara', shelf: 'estantería', shelves: 'estanterías', rack: 'rack',
     mirror: 'espejo', bin: 'papelera', stool: 'taburete', sofa2: 'sofá', stair: 'escalera', stairs: 'escalera', elevator: 'ascensor', lift: 'ascensor', counter: 'mostrador',
     kitchen: 'cocina', bathroom: 'baño', washing: 'lavadora', machine: 'máquina', washer: 'lavadora', dryer: 'secadora', oven: 'horno', microwave: 'microondas',
     tree: 'árbol', bush: 'arbusto', palm: 'palmera', fence: 'valla', gate: 'portón', curtain: 'cortina', carpet: 'alfombra', rug: 'alfombra', piano: 'piano'
   };
   function nombreEs(orig) {
-    var n = String(orig || '').replace(/[_]+/g, ' ').replace(/(\d+)\s*seater/ig, '$1 plazas').replace(/\b(US|EU)\b/g, '').replace(/\s+scale\s*\d+/ig, '').replace(/(\d+)\s*x\s*(\d+)\s*m\b/ig, '$1×$2 m').replace(/\s+/g, ' ').trim(), vista = 'planta', low;
+    var n = String(orig || '').replace(/[_]+/g, ' ').replace(/\bu shape\b/ig, 'ushape').replace(/\bl shape\b/ig, 'lshape').replace(/\bhalf circle\b/ig, 'halfcircle').replace(/\bone way\b/ig, 'oneway').replace(/(\d+)\s*seater/ig, '$1 plazas').replace(/\b(US|EU)\b/g, '').replace(/\s+scale\s*\d+/ig, '').replace(/(\d+)\s*x\s*(\d+)\s*m\b/ig, '$1×$2 m').replace(/\s+/g, ' ').trim(), vista = 'planta', low;
     n = n.replace(/\s+(exterior|interior)\s*$/i, ' $1');
     if (/\bside view\b/i.test(n)) { vista = 'lateral'; n = n.replace(/\s*\bside view\b/ig, ''); }
     else if (/\bfront view\b/i.test(n)) { vista = 'frente'; n = n.replace(/\s*\bfront view\b/ig, ''); }
@@ -313,10 +318,23 @@
     ws.forEach(function (w) { if (uniq.length === 0 || uniq[uniq.length - 1].toLowerCase() !== w.toLowerCase()) uniq.push(w); });
     var half = uniq.length / 2;
     if (uniq.length >= 4 && uniq.length % 2 === 0 && uniq.slice(0, half).join(' ').toLowerCase() === uniq.slice(half).join(' ').toLowerCase()) uniq = uniq.slice(0, half);
-    var CABEZAS = ['alfombra', 'ventana', 'puerta', 'silla', 'mesa', 'mueble', 'cama', 'sofá', 'sillón', 'barandilla', 'chimenea', 'ventilador', 'radiador'];
-    if (!hecho && uniq.length >= 2 && CABEZAS.indexOf(uniq[uniq.length - 1]) >= 0 && uniq[0].toLowerCase() !== uniq[uniq.length - 1]) uniq.unshift(uniq.pop());
+    var CABEZAS = ['lavabo', 'bañera', 'ducha', 'escalera', 'inodoro', 'alfombra', 'ventana', 'puerta', 'silla', 'mesa', 'mueble', 'cama', 'sofá', 'sillón', 'barandilla', 'chimenea', 'ventilador', 'radiador'];
+    var ih = -1;
+    uniq.forEach(function (w, i) { if (ih < 0 && CABEZAS.indexOf(w.toLowerCase()) >= 0) ih = i; });
+    if (!hecho && ih > 0) uniq.unshift(uniq.splice(ih, 1)[0]);
     var NOMBRES = ['silla', 'sofá', 'sillón', 'mesa', 'cama', 'taburete', 'lámpara', 'escritorio'];
     if (uniq.length >= 2 && NOMBRES.indexOf(uniq[uniq.length - 1]) >= 0 && uniq.slice(0, -1).every(function (w) { return /^[A-ZÁÉÍÓÚ0-9]/.test(w) || /^[a-z]+$/.test(w) === false; })) uniq.unshift(uniq.pop());
+    var FEM = ['mesa', 'silla', 'ventana', 'puerta', 'bañera', 'ducha', 'escalera', 'alfombra', 'cama', 'chimenea', 'barandilla', 'mampara', 'cabina', 'placa', 'lavadora'];
+    var MASC = ['lavabo', 'mueble', 'sofá', 'escritorio', 'sillón', 'inodoro', 'urinario', 'radiador', 'ventilador', 'calentador', 'fregadero', 'frigorífico', 'termo', 'armario', 'banco', 'taburete', 'espejo'];
+    var PARES = { redonda: 'redondo', cuadrada: 'cuadrado', rinconera: 'rinconero', rinconero: 'rinconero', metálica: 'metálico', ovalada: 'ovalado', fina: 'fino', moderna: 'moderno', rectangular: 'rectangular', redondeada: 'redondeado', elíptica: 'elíptico', fija: 'fijo', abatible: 'abatible' };
+    var hd = uniq[0].toLowerCase(), gen = FEM.indexOf(hd) >= 0 ? 'f' : MASC.indexOf(hd) >= 0 ? 'm' : '';
+    if (gen) uniq = uniq.map(function (w, i) {
+      var lw = w.toLowerCase();
+      if (!i || !Object.prototype.hasOwnProperty.call(PARES, lw)) return w;
+      if (gen === 'm') return PARES[lw];
+      var fem = Object.keys(PARES).filter(function (k) { return PARES[k] === PARES[lw] && /a$/.test(k); })[0];
+      return fem || w;
+    });
     resto = uniq.join(' ');
     var cat = categoria(orig);
     if (!traducido && cat === 'Plantas y jardín') resto = resto.split(' ').map(function (w, i) { return i ? w.toLowerCase() : w; }).join(' ');
@@ -325,6 +343,7 @@
   }
   function categoria(orig) {
     var t = String(orig || '').toLowerCase();
+    if (/stairs?\b|escalator|elevator/.test(t)) return 'Circulaciones';
     if (/\bplants?\b|bonsai|cactus|ficus|palm\b|\btree\b|geranium|euphorbia|echinopsis|sansevieria|monstera|calathea|philodendron|pothos|agave|opuntia/.test(t)) return 'Plantas y jardín';
     if (/person|people|woman|\bman\b|boy\b|girl\b|infant|child|surgeon|patient|hospital stuff/.test(t)) return 'Personas';
     if (/car\b|truck|bus\b|jet|airliner|yacht|boat|ship|train|motorbike|scooter|bulldozer|crane|roller|parking|catamaran|biker|bicycle|hatchback|liftback|roadster|taxi|pickup|sailing|moped/.test(t)) return 'Transporte';
@@ -406,7 +425,8 @@
   function categoriaDeArchivo(nombre) {
     var t = String(nombre || '').toLowerCase();
     if (/\bplants?\b|garden|\btrees?\b/.test(t) && !/window/.test(t)) return 'Plantas y jardín';
-    if (/toilet|urinal|urinat|shower|bath|bidet|sink|washbasin|lavatory/.test(t)) return 'Baño';
+    if (/stair|escalator|elevator|ramp/.test(t)) return 'Circulaciones';
+    if (/toilet|urinal|urinat|shower|bath|restroom|bidet|sink|washbasin|lavatory/.test(t)) return 'Baño';
     if (/kitchen/.test(t)) return 'Cocina';
     if (/\b(windows?|doors?)\b/.test(t)) return 'Puertas y ventanas';
     if (/heating|cooling|appliance|hvac/.test(t)) return 'Climatización';
@@ -447,7 +467,7 @@
       };
     });
     var catArchivo = categoriaDeArchivo(opciones && opciones.archivo);
-    var forzar = catArchivo === 'Mobiliario' || catArchivo === 'Plantas y jardín';
+    var forzar = catArchivo === 'Mobiliario' || catArchivo === 'Plantas y jardín' || catArchivo === 'Baño' || catArchivo === 'Circulaciones';
     if (catArchivo === 'Plantas y jardín') { // nombres botánicos: «Ficus elastica», no «Ficus Elastica»
       piezas.forEach(function (p) {
         var toks = String(p.original).toLowerCase().replace(/[_\d]+/g, ' ').split(/\s+/).filter(Boolean);
