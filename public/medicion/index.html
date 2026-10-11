@@ -3773,7 +3773,7 @@ function panelSel(focus){
       h+='<p class="note"><b>Pieza genérica</b> de la biblioteca: sirve para distribuir y medir, sin referencia ni precio.</p>';
       if(reales.length)h+='<label class="fld"><span>Cambiar por un producto del catálogo</span><select data-t="eq_swap"><option value="">Elegir producto…</option>'+reales.map(function(c){return '<option value="'+esc(c.id)+'">'+esc(c.nombre)+' ('+fmt(c.w)+' × '+fmt(c.d)+')</option>'}).join('')+'</select></label>';
     }
-    h+=fld('eq_w','Ancho (cm)',e.w)+fld('eq_d','Fondo (cm)',e.d);
+    h+=fld('eq_w','Ancho (cm)',e.w)+fld('eq_d','Fondo (cm)',e.d)+'<label class="fld chk"><input type="checkbox" data-t="eq_lock"'+(e.lock?' checked':'')+'><span>🔒 Mantener la proporción (al cambiar el ancho, el fondo se ajusta)</span></label>';
     h+=fld('eq_pm','Distancia mínima a otros bloques (cm, 0 = no comprobar)',e.pm,String(pasoEq(e)||0));
     h+='<div class="btns"><button data-a="eqdup">Duplicar</button></div>';
     h+='<div class="btns"><button data-a="eqcat">Guardar medidas en el catálogo</button></div>';
@@ -4100,7 +4100,11 @@ function applyField(key,val,adv){
     var q=by(st.v.eq,s.id);if(!q)return;
     if(key==='eq_pm'){snap();if(String(val).trim()==='')delete q.pm;else if(n>=0&&n<=500)q.pm=n;else{hist.pop();toast('Escribe una distancia entre 0 y 500 cm');return}commit(false);return}
     if(!(n>=20&&n<=600)){toast('Escribe una medida entre 20 y 600 cm');return}
-    snap();if(key==='eq_w')q.w=n;else q.d=n;commit(false);
+    snap();
+    var rt=q.d/q.w;
+    if(key==='eq_w'){q.w=n;if(q.lock&&rt>0){var nd2=Math.round(n*rt*10)/10;if(nd2>=20&&nd2<=600)q.d=nd2;else{q.w=n;toast('El fondo saldría fuera de 20-600 cm: no se ha ajustado')}}}
+    else{q.d=n;if(q.lock&&rt>0){var nw2=Math.round(n/rt*10)/10;if(nw2>=20&&nw2<=600)q.w=nw2;else toast('El ancho saldría fuera de 20-600 cm: no se ha ajustado')}}
+    commit(false);panelSel();
   }else if(s.t==='dr'&&/^dr_/.test(key)){
     var qd0=by(st.v.dr,s.id);if(!qd0)return;
     if(!(n>=0.1&&n<=5000)){toast('Escribe un número válido');return}
@@ -4257,6 +4261,7 @@ $('side').addEventListener('change',function(e){
     if(pk.mat)op0.mat=pk.mat;if(pk.vid)op0.vid=pk.vid;
     commit(false);panelSel();toast('Cambiada a «'+pk.n+'»');return;
   }
+  if(t==='eq_lock'&&st.sel&&st.sel.t==='eq'){var ql=by(st.v.eq,st.sel.id);if(ql){snap();ql.lock=!!e.target.checked;commit(false)}return}
   if(t==='pil_dir'&&st.sel&&st.sel.t==='pil'){var pd=pl(st.sel.id);if(pd){snap();pd.dir=e.target.value==='v'?'v':'h';commit(false);panelSel()}return}
   if(t==='w_tipo'&&st.sel&&st.sel.t==='wall'){var wq=wl(st.sel.id);if(wq){snap();if(e.target.value)wq.tipo=e.target.value;else delete wq.tipo;delete wq.tm;aplicarTipo(wq);commit(false);panelSel();drawDet();if(wq.tipo&&espesorTipo(wq.tipo))toast('Grosor del muro: '+fmt(espesorTipo(wq.tipo)*10)+' mm, según las capas del tipo elegido')}return}
   if(t==='alt_g'){var ng=num(e.target.value);if(!(ng>=100&&ng<=1000)){toast('Escribe una altura entre 100 y 1000 cm');return}snap();st.v.altura=ng;try{$('v-altura').value=ng}catch(_){}commit(false);panelSel();toast('Altura de las paredes: '+fmt(ng)+' cm');return}
