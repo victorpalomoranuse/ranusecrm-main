@@ -57,6 +57,58 @@ async function fotoMiniatura(url, conColor = false) {
 const limpiarCategoria = (n) => String(n || '').replace(/^[A-Z]?\.?\d+\.*\s*/, '').trim();
 const ES_MATERIAL = /suelo|pavimento|c[eé]sped|madera|pintura|revestimiento|techo|acabado|parquet|microcemento|caucho/i;
 
+// ── Biblioteca propia de bloques (importados desde DXF, etc.) ─────────────
+const ETIQUETAS_PLANTA = new Set(['path', 'g', 'line', 'rect', 'circle', 'polygon']);
+function plantaValida(frag) {
+  if (typeof frag !== 'string' || !frag || frag.length > 120000) return false;
+  const etiquetas = [...frag.matchAll(/<\s*\/?\s*([a-zA-Z][\w:-]*)/g)].map(m => m[1].toLowerCase());
+  if (!etiquetas.length || etiquetas.some(t => !ETIQUETAS_PLANTA.has(t))) return false;
+  return !/on\w+\s*=|javascript:|<\s*script|href\s*=|url\s*\(/i.test(frag);
+}
+function itemBiblioteca(r) {
+  return {
+    id: 'bib-' + r.id, nombre: r.nombre, tipo: 'gen', w: Number(r.largo), d: Number(r.fondo), alto: Number(r.alto) || null,
+    categoria: r.categoria || 'Mi biblioteca', ref: r.origen || 'Biblioteca propia', biblioteca: true,
+    bloque: { planta: r.planta, largo: Number(r.largo), fondo: Number(r.fondo) },
+  };
+}
+async function cargarBiblioteca() {
+  const { data, error } = await supabase.from('biblioteca_bloques').select('id, nombre, categoria, largo, fondo, alto, planta, origen').order('categoria').order('nombre').limit(2000);
+  return error ? [] : (data || []).map(itemBiblioteca); // si la tabla aún no existe, se sigue sin ella
+}
+router.post('/biblioteca', async (req, res) => {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 60) : [];
+    const filas = [];
+    for (const it of items) {
+      const nombre = String(it?.nombre || '').trim().slice(0, 120);
+      const largo = Number(it?.largo), fondo = Number(it?.fondo);
+      if (!nombre || !(largo >= 1 && largo <= 5000 && fondo >= 1 && fondo <= 5000) || !plantaValida(it?.planta)) continue;
+      filas.push({
+        nombre, categoria: String(it.categoria || 'Mi biblioteca').trim().slice(0, 60) || 'Mi biblioteca',
+        largo, fondo, alto: Number(it.alto) > 0 ? Number(it.alto) : 100, planta: it.planta,
+        origen: String(it.origen || 'Biblioteca propia').slice(0, 80), created_by: req.user?.id || null,
+      });
+    }
+    if (!filas.length) return res.status(400).json({ error: 'No hay bloques válidos que guardar' });
+    const { data, error } = await supabase.from('biblioteca_bloques').insert(filas).select('id, nombre, categoria, largo, fondo, alto, planta, origen');
+    if (error) throw error;
+    res.json({ items: (data || []).map(itemBiblioteca) });
+  } catch (err) {
+    console.error('medicion biblioteca:', err);
+    res.status(500).json({ error: 'No se pudieron guardar los bloques. ¿Está creada la tabla de la biblioteca (migración v72)?' });
+  }
+});
+router.delete('/biblioteca/:id', async (req, res) => {
+  try {
+    const { error } = await supabase.from('biblioteca_bloques').delete().eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo quitar el bloque de la biblioteca' });
+  }
+});
+
 router.get('/catalogos', async (req, res) => {
   try {
     const columnas = 'id, name, brand, category_id, longitud, ancho, altura, lumens, watts, color_temperature, photo_url, display_order';
@@ -99,6 +151,7 @@ router.get('/catalogos', async (req, res) => {
       }
     }
     maquinas.sort((a, b) => Number(a.sinMedidas) - Number(b.sinMedidas)); // primero las que ya tienen medidas
+    maquinas.push(...await cargarBiblioteca());
     const luminarias = await Promise.all(luminariasBase.map(async ({ p, cat }) => {
       const foto = await fotoMiniatura(p.photo_url);
       const k = parseInt(String(p.color_temperature || '').replace(/[^\d]/g, ''), 10);

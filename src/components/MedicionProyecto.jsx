@@ -64,6 +64,14 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
         try { const { data } = await api.get(`/medicion/bloque/${m.id}`); responder({ type: 'bloque', id: m.id, bloque: data.bloque }); }
         catch { responder({ type: 'error', message: 'No se pudo cargar el bloque de ese producto' }); }
       }
+      else if (m.type === 'guardarBiblioteca' && Array.isArray(m.items)) {
+        try { const { data } = await api.post('/medicion/biblioteca', { items: m.items }); responder({ type: 'biblioteca', items: data.items || [] }); }
+        catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudieron guardar los bloques' }); }
+      }
+      else if (m.type === 'borrarBiblioteca' && m.id) {
+        try { await api.delete(`/medicion/biblioteca/${String(m.id).replace(/^bib-/, '')}`); responder({ type: 'bibliotecaBorrada', id: m.id }); }
+        catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo quitar de la biblioteca' }); }
+      }
       else if (m.type === 'ampliar') onAmpliar?.();
       else if (m.type === 'cerrar') onCerrar?.();
       else if (m.type === 'save' && m.visita?.id) {
