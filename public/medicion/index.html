@@ -100,25 +100,6 @@ td+td{text-align:right}
 select{font:inherit;font-size:16px;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:8px;min-height:44px;padding:8px 10px;width:100%}
 details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:13px;color:var(--muted)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13px;z-index:9;max-width:calc(100% - 32px)}
-@media (max-width:860px){
-  .app{height:auto;min-height:100%;gap:8px}
-  .top{gap:8px}
-  .brand{width:100%;justify-content:space-between}
-  #views{width:100%;overflow-x:auto}
-  #views button{flex:none;min-height:44px;padding:0 12px;font-size:13px;white-space:nowrap}
-  .top-r{width:100%}.top-r button{flex:1;min-height:40px}
-  .tools{flex-wrap:nowrap;overflow-x:auto;gap:6px;padding:6px 8px;-webkit-overflow-scrolling:touch}
-  .tools button{flex:none;min-height:42px;padding:0 12px;font-size:13px;white-space:nowrap}
-  .zoom button{min-width:40px;min-height:40px;padding:0 8px;font-size:13px}
-  .hint{font-size:11px;padding:4px 8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;bottom:60px}
-  .act{left:10px;right:10px;justify-content:flex-end;flex-wrap:wrap}
-  .act button{min-height:40px;padding:0 10px;font-size:13px}
-  .act .seg button{min-height:40px}
-  .main{display:flex;flex-direction:column}
-  .stage{height:78vh;flex:none}
-  .side{overflow:visible}
-  .hint{max-width:calc(100% - 20px);top:auto;bottom:64px}
-}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 .dsum{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;padding:6px 0}
 .dsum::-webkit-details-marker{display:none}
@@ -128,10 +109,140 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
 .fld.chk{flex-direction:row;align-items:center;gap:10px}
 #det-list details{border-top:1px solid var(--line,rgba(128,128,128,.25));padding:2px 0}
 </style>
+<style id="ui-cad">
+/* ===== Interfaz tipo editor CAD: barras desplegables, herramientas a la izquierda, 3 temas ===== */
+:root[data-theme="light"]{
+  --bg:#f3f1ee; --panel:#fbfaf8; --stage:#ffffff; --field:#ffffff;
+  --ink:#1e1b18; --muted:#7a7068; --line:#ddd5cb;
+  --accent:#8a6f55; --accent-ink:#ffffff; --brand:#beb0a2;
+  --dim:#8d857d; --dem:#b3402f; --dem-bg:#f6dcd5; --new:#1f6f78;
+  --warn:#a96a12; --ok:#2f7d4f; --grid:#ece6de; --lab:#1e1b18; color-scheme:light;
+}
+/* AutoCAD: fondo negro, líneas blancas, demolición roja, obra nueva verde, cotas cian, selección amarilla */
+:root[data-theme="cad"]{
+  --bg:#07090c; --panel:#10151b; --stage:#05070a; --field:#0b0f14;
+  --ink:#f4f4f4; --muted:#8a97a5; --line:#26313c;
+  --accent:#ffe600; --accent-ink:#000000; --brand:#9aa7b4;
+  --dim:#5f7b95; --dem:#ff3535; --dem-bg:#3b1313; --new:#2dff7a;
+  --warn:#ffb000; --ok:#2dff7a; --grid:#121920; --lab:#00e5ff; color-scheme:dark;
+}
+html,body{height:100%;overflow:hidden}
+.app{height:100vh;height:100dvh;gap:0;padding:0;background:var(--bg)}
+.top{flex-wrap:nowrap;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--panel);min-height:52px}
+.tl{display:flex;align-items:center;gap:10px;flex:none}
+.top .brand{flex:none}
+.top .logo{font-size:12px}
+.top .sub{display:none}
+.ibtn{min-height:38px;padding:0 12px;font-size:13px;white-space:nowrap}
+.menus{display:flex;gap:2px}
+.menu{position:relative}
+.mbtn{min-height:38px;padding:0 12px;border:0;background:transparent;font-size:13px;border-radius:8px}
+.mbtn:hover,.mbtn[aria-expanded="true"]{background:var(--bg)}
+.mdrop{position:absolute;top:calc(100% + 4px);left:0;z-index:40;min-width:230px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.mdrop button{display:block;width:100%;text-align:left;border:0;background:transparent;min-height:40px;padding:0 12px;font-size:13px;border-radius:7px}
+.mdrop button:hover{background:var(--bg)}
+.mdrop hr{border:0;border-top:1px solid var(--line);margin:5px 0}
+.mdrop .mh{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:6px 12px 2px}
+.top #views{flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:thin;border-radius:10px;background:var(--bg)}
+.top #views button{flex:none;min-height:38px;padding:0 12px;font-size:13px;white-space:nowrap}
+.top-r{display:flex;gap:6px;align-items:center;flex:none}
+.top-r button,.top-r select{min-height:38px;font-size:13px}
+.top-r select{width:auto;padding:0 8px}
+.main{flex:1;min-height:0;gap:0;grid-template-columns:minmax(0,1fr) 340px;transition:none}
+body.side-off .main{grid-template-columns:minmax(0,1fr) 0}
+body.side-off .side{display:none}
+.stage{min-height:0;border:0;border-radius:0;background:var(--stage)}
+.stage-body{display:flex;flex:1;min-height:0}
+.tools{flex-direction:column;flex-wrap:nowrap;gap:4px;width:68px;flex:none;padding:8px 6px;border-right:1px solid var(--line);border-bottom:0;overflow-y:auto;scrollbar-width:none;background:var(--panel);align-content:flex-start}
+.tools button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:58px;width:100%;padding:4px 2px;font-size:10.5px;line-height:1.1;border-radius:10px}
+.tools button svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.tools button .lb{display:block;text-align:center}
+.tools button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.cvw{flex:1;min-width:0}
+.newbar{border-top:1px solid var(--line);background:var(--panel);padding:6px 10px;overflow-x:auto;flex-wrap:nowrap;white-space:nowrap}
+.newbar .seg3{flex-wrap:nowrap}
+.side{gap:0;padding:0;border-left:1px solid var(--line);background:var(--panel);overflow-y:auto;overflow-x:hidden}
+.side .blk{border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;padding:10px 14px}
+.side .blk>h2{display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;margin:0;padding:4px 0;min-height:30px}
+.side .blk>h2::after{content:"▾";font-size:12px;opacity:.7}
+.side .blk.collapsed>h2::after{content:"▸"}
+.side .blk>h2+*{margin-top:8px}
+.side .blk.collapsed>*:not(h2){display:none!important}
+.hint{background:var(--panel)}
+.act button{box-shadow:0 2px 10px rgba(0,0,0,.3)}
+body.crm .top .brand{display:none}
+@media (max-width:1024px){
+  /* tablet: el panel es un cajón que se abre con el botón «Panel» */
+  .main,body.side-off .main{grid-template-columns:minmax(0,1fr)}
+  .side,body.side-off .side{display:block;position:fixed;z-index:30;top:0;right:0;bottom:0;width:min(390px,92vw);transform:translateX(105%);transition:transform .2s ease;box-shadow:-10px 0 30px rgba(0,0,0,.35);border-left:1px solid var(--line)}
+  body.side-open .side{transform:none}
+  .tools{width:76px}
+  .tools button{min-height:64px;font-size:11px}
+  .tools button svg{width:27px;height:27px}
+  .top #views button,.mbtn,.top-r button,.top-r select{min-height:44px}
+  .zoom button{min-width:46px;min-height:46px;font-size:15px}
+  .act button{min-height:46px}
+}
+@media (max-width:640px){
+  /* móvil: barra de herramientas abajo, grande y con el pulgar a mano */
+  .top{gap:6px;padding:4px 6px;min-height:48px}
+  .menus .mbtn{padding:0 8px}
+  #m-theme{display:none}
+  .stage-body{flex-direction:column-reverse}
+  .tools{flex-direction:row;width:auto;height:auto;border-right:0;border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));overflow-x:auto;overflow-y:hidden;gap:6px}
+  .tools button{flex:none;width:68px;min-height:62px}
+  .newbar{display:none}
+  .hint{top:auto;bottom:10px;left:10px;max-width:calc(100% - 20px);font-size:11px}
+  .act{bottom:10px;left:10px;right:10px}
+  .side,body.side-off .side{top:0;left:0;right:0;width:auto;bottom:0;transform:translateY(105%)}
+  body.side-open .side{transform:none}
+  .top #views{order:3;flex:1 0 100%}
+  .top{flex-wrap:wrap}
+}
+@media (pointer:coarse){
+  button,.seg button{min-height:44px}
+  input,textarea,select{min-height:46px}
+}
+.side-close{display:none;position:sticky;top:0;z-index:2;width:100%;border:0;border-bottom:1px solid var(--line);border-radius:0;background:var(--panel);min-height:48px;text-align:left;padding:0 14px;font-weight:600}
+@media (max-width:1024px){.side-close{display:block}}
+@media (max-width:1024px){.hide-s{display:none}}
+
+</style>
 
 <div class="app">
   <header class="top">
-    <div class="brand"><span class="logo">Ranuse</span><span class="sub">Planos del proyecto</span></div>
+    <div class="tl">
+      <button id="m-full" class="ibtn" hidden>⤢ Ampliar</button>
+      <div class="brand"><span class="logo">Ranuse</span><span class="sub">Planos del proyecto</span></div>
+      <nav class="menus" aria-label="Menús">
+        <div class="menu"><button class="mbtn" data-menu="archivo" aria-expanded="false">Archivo ▾</button>
+          <div class="mdrop" id="menu-archivo" hidden>
+            <button data-do="b-cloud" id="mi-cloud" hidden>Guardar ahora</button>
+            <button data-do="b-pdf">PDF de esta lámina</button>
+            <button data-do="b-pdfall">PDF con todas las láminas</button>
+            <button data-do="b-pdfdoc" id="mi-docs" hidden>Subir lámina a Documentos</button>
+            <hr>
+            <button data-do="b-svg">Plano SVG</button>
+            <button data-do="b-json">Datos JSON</button>
+            <button data-do="b-pdfcarp">Memoria de carpinterías (PDF)</button>
+            <hr>
+            <button data-do="b-new">Plano nuevo en blanco</button>
+          </div></div>
+        <div class="menu"><button class="mbtn" data-menu="ver" aria-expanded="false">Ver ▾</button>
+          <div class="mdrop" id="menu-ver" hidden>
+            <button data-do="z-fit">Encajar el plano</button>
+            <button data-do="z-in">Acercar</button>
+            <button data-do="z-out">Alejar</button>
+            <hr>
+            <button data-do="panel">Mostrar / ocultar panel lateral</button>
+            <hr>
+            <div class="mh">Interfaz</div>
+            <button data-do="tema:light">Blanca</button>
+            <button data-do="tema:dark">Negra</button>
+            <button data-do="tema:cad">AutoCAD (negro, líneas de colores)</button>
+          </div></div>
+      </nav>
+    </div>
     <div class="seg" id="views" role="group" aria-label="Vista del plano">
       <button data-view="actual">Estado actual</button>
       <button data-view="cotas">Cotas</button>
@@ -145,22 +256,27 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
       <button data-view="ilum">Iluminación</button>
       <button data-view="elec">Electricidad</button>
     </div>
-    <div class="top-r"><button id="b-undo">Deshacer</button><button id="b-redo">Rehacer</button></div>
+    <div class="top-r">
+      <button id="b-undo" title="Deshacer">↶ <span class="hide-s">Deshacer</span></button><button id="b-redo" title="Rehacer">↷</button>
+      <select id="m-theme" aria-label="Interfaz"><option value="light">Blanca</option><option value="dark">Negra</option><option value="cad">AutoCAD</option></select>
+      <button id="b-panel" title="Panel lateral">☰ Panel</button>
+    </div>
   </header>
 
   <div class="main">
     <section class="stage">
+      <div class="stage-body">
       <div class="tools" id="tools" role="group" aria-label="Herramientas">
-        <button data-tool="pen">Dibujar</button>
-        <button data-tool="select">Seleccionar</button>
-        <button data-tool="door">Puerta</button>
-        <button data-tool="win">Ventana</button>
-        <button data-tool="pillar">Pilar</button>
-        <button data-tool="diag">Diagonal</button>
-        <button data-tool="equip">Máquina</button>
-        <button data-tool="pt" id="t-pt" hidden>Punto</button>
-        <button data-tool="paint" id="t-paint" hidden>Pintar</button>
-        <button id="b-finger" aria-pressed="true">Dedo dibuja</button>
+        <button data-tool="pen" title="Dibujar muros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/></svg><span class="lb">Dibujar</span></button>
+        <button data-tool="select" title="Seleccionar y mover"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l12 8-5.5 1.5L10 18z"/></svg><span class="lb">Seleccionar</span></button>
+        <button data-tool="door" title="Puerta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20V4h12v16"/><path d="M4 20h16"/><path d="M15 12h.01"/></svg><span class="lb">Puerta</span></button>
+        <button data-tool="win" title="Ventana"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14"/><path d="M12 5v14M4 12h16"/></svg><span class="lb">Ventana</span></button>
+        <button data-tool="pillar" title="Pilar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" fill="currentColor"/></svg><span class="lb">Pilar</span></button>
+        <button data-tool="diag" title="Diagonal de control"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19L19 5"/><path d="M5 14v5h5M19 10V5h-5"/></svg><span class="lb">Diagonal</span></button>
+        <button data-tool="equip" title="Máquina del catálogo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4M6 8v8M18 8v8M21 10v4M6 12h12"/></svg><span class="lb">Máquina</span></button>
+        <button data-tool="pt" id="t-pt" hidden title="Colocar punto"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg><span class="lb">Punto</span></button>
+        <button data-tool="paint" id="t-paint" hidden title="Pintar con material"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l7-7 7 7-7 7z"/><path d="M19 16c1.2 1.6 1.2 3 0 3s-1.2-1.4 0-3z"/></svg><span class="lb">Pintar</span></button>
+        <button id="b-finger" aria-pressed="true" title="Si está activo, el dedo dibuja; si no, mueve el plano (con lápiz siempre dibuja)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12V6a1.5 1.5 0 013 0v5M12 11V4.5a1.5 1.5 0 013 0V11M15 11V7a1.5 1.5 0 013 0v7c0 4-2.2 6-5.500 6-2.500 0-4-1.500-5-3.500L5 13a1.500 1.500 0 012.300-1.800L9 13"/></svg><span class="lb">Dedo dibuja</span></button>
       </div>
       <div class="cvw" id="cvw">
         <svg id="cv" role="img" aria-label="Plano de la sala"></svg>
@@ -172,6 +288,7 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
         <div class="hint" id="hint"></div>
         <div class="zoom"><button id="z-fit">Encajar</button><button id="z-in" aria-label="Acercar">+</button><button id="z-out" aria-label="Alejar">−</button></div>
       </div>
+      </div>
       <div class="newbar"><span>Muros nuevos como</span>
         <div class="seg3" id="defstate"></div>
         <span>Cotas</span><div class="seg3" id="dimsel"></div><span class="muted" id="dimnote" style="font-size:11px"></span>
@@ -179,6 +296,7 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
     </section>
 
     <aside class="side" id="side">
+      <button class="side-close" id="b-side-close">✕ Cerrar panel</button>
       <section class="blk">
         <h2>Visita</h2>
         <label class="fld"><span>Proyecto</span><input id="v-nombre" placeholder="Gimnasio de Javier"></label>
@@ -1030,7 +1148,7 @@ function toast(m){var t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(t
 
 /* ---------- dibujo ---------- */
 var svg=$('cv'),cvw=$('cvw');
-var CSS={ink:'var(--ink)',dim:'var(--dim)',dem:'var(--dem)',demBg:'var(--dem-bg)',nw:'var(--new)',bg:'var(--stage)',grid:'var(--grid)',label:'var(--ink)',halo:'var(--stage)',accent:'var(--accent)',warn:'var(--warn)',ok:'var(--ok)',node:'var(--muted)'};
+var CSS={ink:'var(--ink)',dim:'var(--dim)',dem:'var(--dem)',demBg:'var(--dem-bg)',nw:'var(--new)',bg:'var(--stage)',grid:'var(--grid)',label:'var(--lab,var(--ink))',halo:'var(--stage)',accent:'var(--accent)',warn:'var(--warn)',ok:'var(--ok)',node:'var(--muted)'};
 var LIGHT={ink:'#1e1b18',dim:'#8d857d',dem:'#b3402f',demBg:'#f6dcd5',nw:'#1f6f78',bg:'#ffffff',grid:'#ece6de',label:'#1e1b18',halo:'#ffffff',accent:'#8a6f55',warn:'#a96a12',ok:'#2f7d4f',node:'#7a7068'};
 
 function ln(x1,y1,x2,y2,stroke,sw,cap,extra){
@@ -4000,7 +4118,14 @@ function buildResumen(){
   out.carpinterias=carpList().map(function(c){return {ref:c.tag,tipo:c.t==='door'?'puerta':'ventana',ancho:c.w,alto:c.h,estado:c.s,ubicacion:c.loc}});
   return out;
 }
-var crmReady=false,crmT=null,crmProy=null,crmSkip=0;
+var crmReady=false,crmT=null,crmProy=null,crmSkip=0,crmFull=false;
+function modoPantalla(f){
+  crmFull=f;
+  var b=$('m-full');b.hidden=false;
+  b.textContent=f?'← Volver':'⤢ Ampliar';
+  b.title=f?'Cerrar el editor y volver':'Abrir el editor a pantalla completa';
+}
+$('m-full').addEventListener('click',function(){crmPost({type:crmFull?'cerrar':'ampliar'})});
 function crmPost(m){try{m.src='ranuse-medicion';window.parent.postMessage(m,location.origin)}catch(e){}}
 function hhmm(){var d=new Date();return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)}
 function crmQueue(){
@@ -4032,13 +4157,14 @@ if(CRM){
     if(e.origin!==location.origin||e.source!==window.parent)return;
     var m=e.data;if(!m||m.src!=='ranuse-crm')return;
     if(m.type==='init'){
-      crmProy=m.proyecto||null;if(m.tema)document.documentElement.setAttribute('data-theme',m.tema);
+      crmProy=m.proyecto||null;if(m.tema&&!temaGuardado())aplicarTema(m.tema,false);
+      modoPantalla(!!m.fullscreen);
       cloud=m.visitas||[];
       cloudCat=(m.maquinas||[]).filter(function(c){return c&&c.id&&c.nombre&&c.w>0&&c.d>0});
       cloudLum=(m.luminarias||[]).filter(function(l){return l&&l.id&&l.n&&l.sym});
       cloudLum.forEach(prepLumRgb);
       crmReady=true;crmSkip=Date.now()+1500;
-      $('b-cloud').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
+      $('b-cloud').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
       var elegido=null;
       if(!m.nuevo){elegido=m.abrir?cloud.filter(function(c){return c.id===m.abrir})[0]:cloud[0]}
       if(elegido){st.v=norm(JSON.parse(JSON.stringify(elegido)));crmPrefill()}
@@ -4054,6 +4180,8 @@ if(CRM){
       }
     }else if(m.type==='deleted'){
       cloud=cloud.filter(function(c){return c.id!==m.id});drawCloud();toast('Plano borrado');
+    }else if(m.type==='modo'){
+      modoPantalla(!!m.fullscreen);
     }else if(m.type==='info'){
       toast(m.message||'Hecho');
     }else if(m.type==='error'){
@@ -4061,6 +4189,75 @@ if(CRM){
     }
   });
 }
+
+
+/* ---------- interfaz: temas, menús, panel lateral, bloques plegables ---------- */
+var TEMA_KEY='ranuse-plano-tema',PANEL_KEY='ranuse-plano-panel',COLL_KEY='ranuse-plano-colapsados';
+function temaGuardado(){try{return localStorage.getItem(TEMA_KEY)}catch(e){return null}}
+function aplicarTema(t,guardar){
+  if(t!=='light'&&t!=='dark'&&t!=='cad')t='light';
+  document.documentElement.setAttribute('data-theme',t);
+  var sel=$('m-theme');if(sel)sel.value=t;
+  if(guardar){try{localStorage.setItem(TEMA_KEY,t)}catch(e){}}
+}
+aplicarTema(temaGuardado()||((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light'),false);
+$('m-theme').addEventListener('change',function(){aplicarTema($('m-theme').value,true)});
+function esMovil(){return window.matchMedia&&window.matchMedia('(max-width:1024px)').matches}
+function panelAlternar(){
+  if(esMovil())document.body.classList.toggle('side-open');
+  else{
+    document.body.classList.toggle('side-off');
+    try{localStorage.setItem(PANEL_KEY,document.body.classList.contains('side-off')?'off':'on')}catch(e){}
+  }
+}
+try{if(localStorage.getItem(PANEL_KEY)==='off')document.body.classList.add('side-off')}catch(e){}
+$('b-panel').addEventListener('click',panelAlternar);
+$('b-side-close').addEventListener('click',function(){document.body.classList.remove('side-open')});
+/* menús desplegables */
+(function(){
+  var abierto=null;
+  function cerrar(){if(abierto){abierto.hidden=true;var b=document.querySelector('[data-menu][aria-expanded="true"]');if(b)b.setAttribute('aria-expanded','false');abierto=null}}
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('[data-menu]');
+    if(b){
+      var m=$('menu-'+b.getAttribute('data-menu')),era=abierto===m;
+      cerrar();
+      if(!era){m.hidden=false;abierto=m;b.setAttribute('aria-expanded','true')}
+      return;
+    }
+    var it=e.target.closest('[data-do]');
+    if(it){
+      var id=it.getAttribute('data-do');
+      cerrar();
+      if(id==='panel')panelAlternar();
+      else if(id.indexOf('tema:')===0)aplicarTema(id.slice(5),true);
+      else{var t=$(id);if(t)t.click()}
+      return;
+    }
+    cerrar();
+  });
+})();
+/* bloques del panel plegables: se recuerda cuáles están cerrados */
+(function(){
+  var DEF_CERRADOS=['Visita','Guardar','Detalles constructivos','Láminas PDF'];
+  var cerrados;
+  try{cerrados=JSON.parse(localStorage.getItem(COLL_KEY))}catch(e){}
+  if(!Array.isArray(cerrados))cerrados=DEF_CERRADOS.slice();
+  var bl=document.querySelectorAll('#side .blk');
+  for(var i=0;i<bl.length;i++){
+    (function(b){
+      var h=b.querySelector(':scope > h2');if(!h)return;
+      var nombre=h.textContent.trim();
+      if(cerrados.indexOf(nombre)>=0)b.classList.add('collapsed');
+      h.addEventListener('click',function(){
+        b.classList.toggle('collapsed');
+        var i2=cerrados.indexOf(h.textContent.trim());
+        if(b.classList.contains('collapsed')){if(i2<0)cerrados.push(h.textContent.trim())}else if(i2>=0)cerrados.splice(i2,1);
+        try{localStorage.setItem(COLL_KEY,JSON.stringify(cerrados))}catch(e){}
+      });
+    })(bl[i]);
+  }
+})();
 
 /* ---------- arranque ---------- */
 ensureLums();fields();toolbar();fingerBtn();panelSel();panelRest();

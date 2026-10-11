@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Ruler, Plus, ArrowLeft, Trash2, Search, FolderOpen, Link2 } from 'lucide-react';
+import { Ruler, Plus, Trash2, Search, FolderOpen, Link2 } from 'lucide-react';
 import api from '../services/api';
 import { MedicionEditor } from '../components/MedicionProyecto';
 import { SearchableSelect } from '../components/SearchableSelect';
@@ -107,21 +107,9 @@ export function SectionPlanos() {
   // ── Editor a pantalla completa ──
   if (editor) {
     return (
-      <div className="ap-section">
-        <div className="ap-section-head" style={{ alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={cerrarEditor}><ArrowLeft size={14} /> Volver a Planos</button>
-            <h1 style={{ fontSize: '1.15rem' }}>{editor.titulo}</h1>
-          </div>
-          {editor.projectId
-            ? <span style={muted}>Proyecto: {editor.proyecto.cliente} — {editor.proyecto.nombre}</span>
-            : <span style={muted}>Plano sin proyecto vinculado</span>}
-        </div>
-        <MedicionEditor key={`${editor.projectId}-${editor.abrir}-${editor.nuevo}`} projectId={editor.projectId} proyecto={editor.proyecto} abrir={editor.abrir} nuevo={editor.nuevo} altura="calc(100vh - 150px)" />
-      </div>
+      <MedicionEditor key={`${editor.projectId}-${editor.abrir}-${editor.nuevo}`} projectId={editor.projectId} proyecto={editor.proyecto} abrir={editor.abrir} nuevo={editor.nuevo} fullscreen onCerrar={cerrarEditor} />
     );
   }
-
   if (error && !planos) return <div className="ap-section"><p className="ap-error">{error}</p></div>;
   if (!planos) return <div className="ap-section"><div className="ap-loading">Cargando…</div></div>;
 

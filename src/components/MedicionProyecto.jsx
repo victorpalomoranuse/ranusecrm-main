@@ -10,11 +10,16 @@ import api from '../services/api';
 // - Desde la sección Planos: MedicionEditor con un plano concreto, uno nuevo,
 //   y con o sin proyecto vinculado.
 
-export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, nuevo = false, altura = 'calc(100vh - 250px)' }) {
+export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, nuevo = false, altura = 'calc(100vh - 250px)', fullscreen = false, onAmpliar, onCerrar }) {
   const frameRef = useRef(null);
   const datos = useRef({ visitas: null, catalogos: null, lista: false });
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(true);
+  const fullRef = useRef(fullscreen);
+  useEffect(() => {
+    fullRef.current = fullscreen;
+    frameRef.current?.contentWindow?.postMessage({ src: 'ranuse-crm', type: 'modo', fullscreen }, window.location.origin);
+  }, [fullscreen]);
   const nombreProyecto = proyecto.nombre || '';
   const nombreCliente = proyecto.cliente || '';
 
@@ -22,7 +27,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
     const d = datos.current;
     if (!d.lista || !d.visitas || !d.catalogos || !frameRef.current?.contentWindow) return;
     frameRef.current.contentWindow.postMessage({
-      src: 'ranuse-crm', type: 'init', tema: 'dark', abrir, nuevo,
+      src: 'ranuse-crm', type: 'init', tema: 'dark', abrir, nuevo, fullscreen: fullRef.current,
       proyecto: { nombre: nombreProyecto, cliente: nombreCliente },
       visitas: d.visitas, maquinas: d.catalogos.maquinas || [], luminarias: d.catalogos.luminarias || [],
     }, window.location.origin);
@@ -51,6 +56,8 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
       const m = e.data;
       if (!m || m.src !== 'ranuse-medicion') return;
       if (m.type === 'ready') { datos.current.lista = true; enviarInit(); }
+      else if (m.type === 'ampliar') onAmpliar?.();
+      else if (m.type === 'cerrar') onCerrar?.();
       else if (m.type === 'save' && m.visita?.id) {
         try {
           const { data } = await api.put(`/medicion/${m.visita.id}`, { project_id: projectId, data: m.visita });
@@ -73,17 +80,17 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
-  }, [projectId, enviarInit]);
+  }, [projectId, enviarInit, onAmpliar, onCerrar]);
 
   return (
-    <div>
-      {error && <p className="ap-error">{error}</p>}
+    <div style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 10000, background: '#07090c' } : undefined}>
+      {error && <p className="ap-error" style={fullscreen ? { position: 'absolute', top: 8, left: 8, zIndex: 2 } : undefined}>{error}</p>}
       {cargando && !error && <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>Cargando herramienta…</p>}
       <iframe
         ref={frameRef}
         title="Planos"
         src="/medicion/index.html"
-        style={{ width: '100%', height: altura, minHeight: 620, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, background: '#151311' }}
+        style={fullscreen ? { width: '100%', height: '100%', border: 0, display: 'block', background: '#07090c' } : { width: '100%', height: altura, minHeight: 620, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, background: '#151311' }}
       />
     </div>
   );
@@ -91,13 +98,16 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
 
 // Pestaña "Planos" dentro de un proyecto
 export function MedicionProyecto({ project }) {
+  const [ampliado, setAmpliado] = useState(false);
+  const ampliar = useCallback(() => setAmpliado(true), []);
+  const cerrar = useCallback(() => setAmpliado(false), []);
   return (
     <div>
       <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', margin: '0 0 0.6rem' }}>
         Dibuja el plano, mide la sala, marca demoliciones, distribución, suelos, techos, iluminación y electricidad, y descarga las láminas en PDF.
         Se guarda solo en este proyecto y usa el catálogo del CRM (equipamiento e iluminación). También lo ves junto al resto en la sección Planos.
       </p>
-      <MedicionEditor projectId={project.id} proyecto={{ nombre: project.project_name, cliente: project.client_name }} />
+      <MedicionEditor projectId={project.id} proyecto={{ nombre: project.project_name, cliente: project.client_name }} fullscreen={ampliado} onAmpliar={ampliar} onCerrar={cerrar} />
     </div>
   );
 }
