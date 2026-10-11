@@ -391,7 +391,7 @@ body.crm .top .brand{display:none}
       </section>
       <section class="blk" id="eqblk">
         <h2>Bloques del catálogo</h2>
-        <p class="note">Elige una máquina y toca el plano para colocarla. Todos los diseñadores usan los mismos símbolos y medidas.</p>
+        <p class="note">Elige una pieza y toca el plano para colocarla. Los productos del catálogo llevan referencia y bloque; los de «Biblioteca» son genéricos (sanitarios, cocina, mobiliario…) y se pueden cambiar luego por un producto real.</p>
         <input id="cat-q" type="search" placeholder="Buscar bloque o máquina…" autocomplete="off" style="margin-bottom:8px">
         <div class="seg3" id="cat-vista" hidden style="margin-bottom:8px"></div>
         <div class="catgrid" id="cat"></div>
@@ -523,6 +523,103 @@ var DEFCAT=[
   {id:'tatami',nombre:'Tatami 2 × 2 m',tipo:'tatami',w:200,d:200},
   {id:'gen',nombre:'Otra máquina',tipo:'gen',w:100,d:80}
 ];
+/* ---------- biblioteca genérica (símbolos propios; el catálogo del CRM aporta los productos reales) ---------- */
+var LIBDEF=[
+  ['inodoro','Inodoro','Biblioteca · Baño',40,70,40],['bide','Bidé','Biblioteca · Baño',40,60,40],
+  ['lavabo','Lavabo','Biblioteca · Baño',60,45,85],['lavabo2','Lavabo doble','Biblioteca · Baño',120,50,85],
+  ['lavmueble','Lavabo con mueble','Biblioteca · Baño',80,46,85],['urinario','Urinario','Biblioteca · Baño',35,35,60],
+  ['plato','Plato de ducha 90 × 90','Biblioteca · Baño',90,90,10],['plato','Plato de ducha 120 × 80','Biblioteca · Baño',120,80,10],
+  ['banera','Bañera','Biblioteca · Baño',170,75,55],
+  ['cabina','Cabina de ducha (vestuario)','Biblioteca · Vestuario',100,100,210],['duchas','Bloque de 4 duchas','Biblioteca · Vestuario',360,100,210],
+  ['taquilla','Taquillas (módulo 3)','Biblioteca · Vestuario',100,50,180],['bancovest','Banco de vestuario','Biblioteca · Vestuario',200,35,45],
+  ['espejo','Espejo / luna','Biblioteca · Vestuario',100,6,120],
+  ['fregadero','Fregadero 2 senos','Biblioteca · Cocina',120,60,90],['fregadero','Fregadero 1 seno','Biblioteca · Cocina',60,60,90],
+  ['placa','Placa de cocción','Biblioteca · Cocina',60,60,90],['frigo','Frigorífico','Biblioteca · Cocina',60,65,185],
+  ['frigoam','Frigorífico americano','Biblioteca · Cocina',90,70,180],['lavadora','Lavadora / lavavajillas','Biblioteca · Cocina',60,60,85],
+  ['mbajo','Mueble bajo de cocina','Biblioteca · Cocina',60,60,90],['malto','Mueble alto de cocina','Biblioteca · Cocina',60,35,70],
+  ['isla','Isla de cocina','Biblioteca · Cocina',180,90,90],['campana','Campana extractora','Biblioteca · Cocina',60,50,50],
+  ['sofa','Sofá 2 plazas','Biblioteca · Mobiliario',160,90,85],['sofa','Sofá 3 plazas','Biblioteca · Mobiliario',210,90,85],
+  ['sofa','Sillón','Biblioteca · Mobiliario',90,85,85],['silla','Silla','Biblioteca · Mobiliario',45,45,90],
+  ['taburete','Taburete','Biblioteca · Mobiliario',35,35,65],['mesa','Mesa 160 × 80','Biblioteca · Mobiliario',160,80,75],
+  ['mesa','Mesa 120 × 70','Biblioteca · Mobiliario',120,70,75],['mesar','Mesa redonda','Biblioteca · Mobiliario',100,100,75],
+  ['mesacentro','Mesa de centro','Biblioteca · Mobiliario',100,50,45],['mesasillas','Mesa con 8 sillas','Biblioteca · Mobiliario',200,120,75],
+  ['estant','Estantería','Biblioteca · Mobiliario',100,35,200],['armario','Armario','Biblioteca · Mobiliario',100,55,220],
+  ['muebletv','Mueble de TV','Biblioteca · Mobiliario',150,40,50],['planta','Planta','Biblioteca · Mobiliario',40,40,120],
+  ['cama','Cama 150 × 200','Biblioteca · Mobiliario',150,200,45],['cama','Cama 90 × 190','Biblioteca · Mobiliario',90,190,45],
+  ['vending','Máquina vending','Biblioteca · Mobiliario',90,80,180],['agua','Dispensador de agua','Biblioteca · Mobiliario',35,35,110],
+  ['escritorio','Escritorio con silla','Biblioteca · Oficina y recepción',140,110,75],['mostrador','Mostrador de recepción','Biblioteca · Oficina y recepción',200,70,110]
+].map(function(x){return {id:'lib-'+x[0]+'-'+x[3]+'x'+x[4],nombre:x[1],tipo:'lb:'+x[0],w:x[3],d:x[4],alto:x[5],categoria:x[2],generico:true}});
+DEFCAT=DEFCAT.concat(LIBDEF);
+function elpPts(cx,cy,rx,ry){var p=[],i;for(i=0;i<28;i++){var a=i/28*Math.PI*2;p.push(f2(cx+Math.cos(a)*rx)+','+f2(cy+Math.sin(a)*ry))}return p.join(' ')}
+function libSym(ty,L,T,c,px){
+  var A='fill="none" stroke="'+c+'" stroke-width="'+f2(px)+'"',A2='fill="none" stroke="'+c+'" stroke-width="'+f2(px*.55)+'"',F='fill="'+c+'" stroke="none"',o='',i;
+  function R(x,y,w,h,rx,a){return '<rect x="'+f2(x)+'" y="'+f2(y)+'" width="'+f2(Math.max(0,w))+'" height="'+f2(Math.max(0,h))+'" rx="'+f2(rx||0)+'" '+(a||A)+'/>'}
+  function E(cx,cy,rx,ry,a){return '<polygon points="'+elpPts(cx,cy,rx,ry)+'" '+(a||A)+'/>'}
+  function Ln(x1,y1,x2,y2,a){return '<line x1="'+f2(x1)+'" y1="'+f2(y1)+'" x2="'+f2(x2)+'" y2="'+f2(y2)+'" '+(a||A2)+'/>'}
+  function Ci(cx,cy,r,a){return '<circle cx="'+f2(cx)+'" cy="'+f2(cy)+'" r="'+f2(r)+'" '+(a||A)+'/>'}
+  var k=ty.slice(3),n,w1;
+  if(k==='inodoro'){o+=R(L*.12,0,L*.76,T*.26,2)+E(L/2,T*.62,L*.46,T*.36)+E(L/2,T*.62,L*.3,T*.22,A2)}
+  else if(k==='bide'){o+=R(L*.2,0,L*.6,T*.14,2)+E(L/2,T*.6,L*.44,T*.36)+E(L/2,T*.6,L*.28,T*.2,A2)+Ci(L/2,T*.07,1.6,F)}
+  else if(k==='lavabo'||k==='lavmueble'){o+=R(0,0,L,T,k==='lavabo'?3:1)+E(L/2,T*.56,L*.34,T*.3)+Ci(L/2,T*.14,2.2,F)}
+  else if(k==='lavabo2'){o+=R(0,0,L,T,1);[.25,.75].forEach(function(f){o+=E(L*f,T*.56,L*.19,T*.3)+Ci(L*f,T*.14,2.2,F)})}
+  else if(k==='urinario'){o+=R(L*.12,0,L*.76,T*.22,2)+E(L/2,T*.52,L*.38,T*.42)+Ci(L/2,T*.52,2,F)}
+  else if(k==='plato'){o+=R(0,0,L,T,2)+R(3,3,L-6,T-6,1,A2)+Ci(L/2,T/2,3.5)+Ln(L/2-5,T/2-5,L/2+5,T/2+5)+Ln(L/2+5,T/2-5,L/2-5,T/2+5)+Ci(L*.1,T*.1,4,F)}
+  else if(k==='banera'){o+=R(0,0,L,T,6)+R(5,5,L-10,T-10,Math.min(T,L)*.3,A2)+Ci(L*.1,T/2,3)+Ci(L*.94,T*.2,2,F)}
+  else if(k==='cabina'||k==='duchas'){
+    n=k==='duchas'?Math.max(1,Math.round(L/90)):1;w1=L/n;o+=R(0,0,L,T,1);
+    for(i=0;i<n;i++){
+      var x0=i*w1,r=Math.min(w1,T)*.38;
+      if(i)o+=Ln(x0,0,x0,T,A);
+      o+=Ci(x0+w1*.5,T*.5,3)+Ci(x0+w1*.16,T*.16,4.5)+Ci(x0+w1*.16,T*.16,2,F);
+      o+='<path d="M '+f2(x0+w1*.12)+' '+f2(T)+' L '+f2(x0+w1*.12)+' '+f2(T-r)+' A '+f2(r)+' '+f2(r)+' 0 0 1 '+f2(x0+w1*.12+r)+' '+f2(T)+'" '+A2+'/>';
+    }
+  }
+  else if(k==='taquilla'){n=Math.max(1,Math.round(L/33));o+=R(0,0,L,T,0);for(i=1;i<n;i++)o+=Ln(L*i/n,0,L*i/n,T,A);for(i=0;i<n;i++)o+=Ci(L*(i+.5)/n,T*.9,1.6,F)}
+  else if(k==='bancovest'){o+=R(0,0,L,T,2)+Ln(0,T/2,L,T/2)+Ln(L*.15,0,L*.15,T)+Ln(L*.85,0,L*.85,T)}
+  else if(k==='espejo'){o+=R(0,0,L,T,0)+Ln(L*.08,T/2,L*.92,T/2,A2)}
+  else if(k==='fregadero'){
+    n=L>=100?2:1;var wb=(L*.62)/n;o+=R(0,0,L,T,2);
+    for(i=0;i<n;i++){o+=R(L*.04+i*(wb+2),T*.14,wb-3,T*.72,4)+Ci(L*.04+i*(wb+2)+(wb-3)/2,T*.5,2.2)}
+    o+=Ci(L*.04+(L*.62)/2,T*.07,2,F);
+    for(i=1;i<5;i++)o+=Ln(L*.72,T*(.12+i*.17),L*.97,T*(.12+i*.17))
+  }
+  else if(k==='placa'){o+=R(0,0,L,T,2);[[.28,.3],[.72,.3],[.28,.72],[.72,.72]].forEach(function(p,j){var rr=Math.min(L,T)*(j%2?.14:.1);o+=Ci(L*p[0],T*p[1],rr)+Ci(L*p[0],T*p[1],rr*.4,A2)})}
+  else if(k==='frigo'){o+=R(0,0,L,T,2)+Ln(0,T*.14,L,T*.14)+R(L*.1,T*.2,L*.08,T*.3,1,F)+Ln(L*.2,T*.4,L*.8,T*.8)+Ln(L*.8,T*.4,L*.2,T*.8)}
+  else if(k==='frigoam'){o+=R(0,0,L,T,2)+Ln(L/2,0,L/2,T)+Ln(0,T*.14,L,T*.14)+R(L*.4,T*.22,L*.04,T*.3,1,F)+R(L*.56,T*.22,L*.04,T*.3,1,F)}
+  else if(k==='lavadora'){o+=R(0,0,L,T,2)+Ci(L/2,T*.54,Math.min(L,T)*.3)+Ci(L/2,T*.54,Math.min(L,T)*.17,A2)+Ln(L*.08,T*.12,L*.4,T*.12,A2)+Ci(L*.8,T*.12,2.2)}
+  else if(k==='mbajo'){o+=R(0,0,L,T,1)+Ln(0,T-4,L,T-4,A2)+Ln(L/2,T-4,L/2,T,A2)}
+  else if(k==='malto'){o+=R(0,0,L,T,1,A+' stroke-dasharray="'+f2(5*px)+' '+f2(3*px)+'"')+Ln(0,T,L,0,A2)}
+  else if(k==='isla'){o+=R(0,0,L,T,2)+R(L*.04,T*.08,L*.92,T*.84,1,A2)+Ci(L*.5,T*.5,3,F)}
+  else if(k==='campana'){o+=R(0,0,L,T,2,A+' stroke-dasharray="'+f2(5*px)+' '+f2(3*px)+'"')+Ln(0,0,L,T,A2)+Ln(L,0,0,T,A2)+Ci(L/2,T/2,Math.min(L,T)*.2)}
+  else if(k==='sofa'){
+    n=L>=190?3:L>=140?2:1;var br=T*.22;o+=R(0,0,L,T,6)+R(0,0,L,T*.3,5)+R(0,T*.3,br,T*.7,5)+R(L-br,T*.3,br,T*.7,5);
+    for(i=1;i<n;i++)o+=Ln(br+(L-2*br)*i/n,T*.3,br+(L-2*br)*i/n,T,A2)
+  }
+  else if(k==='silla'){o+=R(L*.1,T*.28,L*.8,T*.68,4)+R(L*.12,0,L*.76,T*.2,3)}
+  else if(k==='taburete'){o+=Ci(L/2,T/2,Math.min(L,T)/2)+Ci(L/2,T/2,Math.min(L,T)*.32,A2)}
+  else if(k==='mesa'){o+=R(0,0,L,T,2)+R(4,4,L-8,T-8,1,A2)}
+  else if(k==='mesar'){o+=E(L/2,T/2,L/2,T/2)+E(L/2,T/2,L*.42,T*.42,A2)}
+  else if(k==='mesacentro'){o+=R(0,0,L,T,4)+R(4,4,L-8,T-8,2,A2)}
+  else if(k==='mesasillas'){
+    n=Math.max(2,Math.floor(L/50));var ch=T*.2,cw=(L-6)/n-6;o+=R(0,ch+4,L,T-2*ch-8,2);
+    for(i=0;i<n;i++){var cx=6+i*((L-6)/n)+3;o+=R(cx,0,cw,ch,3)+R(cx,T-ch,cw,ch,3)}
+  }
+  else if(k==='estant'){o+=R(0,0,L,T,0)+Ln(0,T*.5,L,T*.5,A2);for(i=25;i<L;i+=25)o+=Ln(i,0,i,T,A2)}
+  else if(k==='armario'){o+=R(0,0,L,T,0)+Ln(0,T,L/2,T*.15)+Ln(L,T,L/2,T*.15)+Ln(L/2,0,L/2,T*.15)}
+  else if(k==='muebletv'){o+=R(0,0,L,T,2)+R(L*.3,T*.15,L*.4,T*.2,1,A2)}
+  else if(k==='planta'){var rr=Math.min(L,T)/2;o+=Ci(L/2,T/2,rr*.35);for(i=0;i<6;i++){var a=i/6*Math.PI*2+.4;o+=Ln(L/2+Math.cos(a)*rr*.3,T/2+Math.sin(a)*rr*.3,L/2+Math.cos(a)*rr*.95,T/2+Math.sin(a)*rr*.95)}}
+  else if(k==='cama'){
+    n=L>=120?2:1;o+=R(0,0,L,T,3)+R(0,0,L,T*.05,2);
+    for(i=0;i<n;i++)o+=R(L*.06+i*(L*.88/n),T*.08,L*.88/n-L*.04,T*.13,5,A2);
+    o+=Ln(0,T*.38,L,T*.38,A2)+R(L*.04,T*.38,L*.92,T*.58,2,A2)
+  }
+  else if(k==='vending'){o+=R(0,0,L,T,2)+R(L*.08,T*.12,L*.55,T*.76,1,A2)+R(L*.72,T*.2,L*.18,T*.3,1,A2)+Ci(L*.81,T*.75,3)}
+  else if(k==='agua'){o+=R(0,0,L,T,2)+Ci(L/2,T/2,Math.min(L,T)*.26)+Ci(L/2,T/2,Math.min(L,T)*.1,F)}
+  else if(k==='escritorio'){var dh=T*.58;o+=R(0,0,L,dh,2)+R(L*.3,dh*.14,L*.4,dh*.2,1,A2)+R(L*.37,T*.64,L*.26,T*.2,5)+R(L*.4,T*.84,L*.2,T*.14,3)}
+  else if(k==='mostrador'){o+=R(0,0,L,T,2)+R(L*.03,T*.12,L*.94,T*.2,1,A2)+Ln(L*.03,T*.45,L*.97,T*.45,A2)}
+  else o+=Ln(0,0,L,T)+Ln(L,0,0,T);
+  return o;
+}
 function example(){
   var v=newVisit();
   v.nombre='Ejemplo: sala de 6 x 4,5 m';v.cliente='Cliente de ejemplo';
@@ -1170,6 +1267,7 @@ function bloqueSvg(B,L,T,c,px){
 }
 function eqSym(ty,L,T,c,px,cid){
   var BQ=bloqueDe(cid);if(BQ)return bloqueSvg(BQ,L,T,c,px);
+  if(ty&&ty.indexOf('lb:')===0)return libSym(ty,L,T,c,px);
   var A='fill="none" stroke="'+c+'" stroke-width="'+f2(px)+'"',F='fill="'+c+'" stroke="none"',o='',i;
   o+='<rect x="0" y="0" width="'+L+'" height="'+T+'" rx="'+(ty==='cinta'||ty==='banco'?5:2)+'" '+A+'/>';
   if(ty==='rack'){
@@ -2386,9 +2484,10 @@ function drawCat(){
     if(q&&(c.nombre+' '+(c.categoria||'')+' '+(c.ref||'')).toLowerCase().indexOf(q)<0)return;
     var g=c.categoria||'Genéricos';if(!grupos[g]){grupos[g]=[];orden.push(g)}grupos[g].push(c);
   });
-  orden.sort(function(a,b){return a==='Genéricos'?1:b==='Genéricos'?-1:a.localeCompare(b)});
+  function pesoG(g){return g==='Genéricos'?2:g.indexOf('Biblioteca')===0?1:0}
+  orden.sort(function(a,b){return pesoG(a)-pesoG(b)||a.localeCompare(b)});
   function btn(c){
-    return '<button data-cat="'+esc(c.id)+'" aria-pressed="'+(placeId===c.id&&st.tool==='equip')+'">'+thumb(c)+'<span>'+esc(c.nombre)+'</span><small>'+fmt(c.w)+' × '+fmt(c.d)+' cm'+(c.bloque?' · ✓ bloque':'')+(c.sinMedidas?' · sin medidas':'')+'</small></button>';
+    return '<button data-cat="'+esc(c.id)+'" aria-pressed="'+(placeId===c.id&&st.tool==='equip')+'">'+thumb(c)+'<span>'+esc(c.nombre)+'</span><small>'+fmt(c.w)+' × '+fmt(c.d)+' cm'+(c.bloque?' · ✓ bloque':'')+(c.generico?' · genérico':'')+(c.sinMedidas?' · sin medidas':'')+'</small></button>';
   }
   pvBotones();
   var cuerpo=orden.map(function(g){
@@ -2733,6 +2832,12 @@ function panelSel(focus){
     var e=by(st.v.eq,s.id),ix=st.v.eq.indexOf(e)+1;
     h+='<div class="rowh"><strong>'+ix+'. '+esc(e.nm)+'</strong><span class="muted">giro '+e.rot+'°</span></div>';
     h+=previewEq(e);
+    var ce0=catById(e.cid);
+    if(ce0&&ce0.generico){
+      var reales=catalog().filter(function(c){return !c.generico&&c.id!==e.cid});
+      h+='<p class="note"><b>Pieza genérica</b> de la biblioteca: sirve para distribuir y medir, sin referencia ni precio.</p>';
+      if(reales.length)h+='<label class="fld"><span>Cambiar por un producto del catálogo</span><select data-t="eq_swap"><option value="">Elegir producto…</option>'+reales.map(function(c){return '<option value="'+esc(c.id)+'">'+esc(c.nombre)+' ('+fmt(c.w)+' × '+fmt(c.d)+')</option>'}).join('')+'</select></label>';
+    }
     h+=fld('eq_w','Ancho (cm)',e.w)+fld('eq_d','Fondo (cm)',e.d);
     h+='<div class="btns"><button data-a="eqrot">Girar 90°</button><button data-a="eqdup">Duplicar</button></div>';
     h+='<div class="btns"><button data-a="eqcat">Guardar medidas en el catálogo</button></div>';
@@ -3083,6 +3188,12 @@ $('side').addEventListener('change',function(e){
     var ql=by(st.v.pts,st.sel.id);if(!ql)return;snap();
     var li2=lumById(e.target.value);if(li2){ql.lid=li2.id;ql.k=li2.sym}else delete ql.lid;
     commit(false);panelSel();return;
+  }
+  if(t==='eq_swap'&&st.sel&&st.sel.t==='eq'){
+    var cs=catById(e.target.value),eq0=by(st.v.eq,st.sel.id);
+    if(!cs||!eq0)return;
+    snap();eq0.cid=cs.id;eq0.nm=cs.nombre;eq0.ty=cs.tipo;eq0.w=cs.w;eq0.d=cs.d;eq0.ref=cs.ref||'';
+    commit(false);panelSel();toast('Sustituida por '+cs.nombre);return;
   }
   if(t==='fz_mat'&&st.sel&&st.sel.t==='fz'){
     var fzm=by(st.v.fz,st.sel.id);if(!fzm)return;snap();fzm.mat=e.target.value;commit(false);panelSel();return;
