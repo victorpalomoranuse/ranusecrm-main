@@ -47,6 +47,12 @@ export function BloqueEditor({ product, onClose, onSaved }) {
       if (!m || m.src !== 'ranuse-bloques') return;
       if (m.type === 'ready') setListo(true);
       else if (m.type === 'cerrar') onClose();
+      else if (m.type === 'generar') {
+        try {
+          const { data } = await api.post(`/catalog/products/${product.id}/bloques/generar`, { largo: m.largo, fondo: m.fondo, alto: m.alto }, { timeout: 240000 });
+          responder({ type: 'generado', bloque: data.bloque });
+        } catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo generar el bloque' }); }
+      }
       else if (m.type === 'guardar' && m.datos) {
         try {
           const { data } = await api.put(`/catalog/products/${product.id}/bloques`, m.datos);

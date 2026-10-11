@@ -33,9 +33,10 @@ function simboloLuminaria(cat, nombre) {
 }
 
 const cacheFotos = new Map();
-async function fotoMiniatura(url) {
+async function fotoMiniatura(url, conColor = false) {
   if (!url) return null;
-  if (cacheFotos.has(url)) return cacheFotos.get(url);
+  const clave = url + (conColor ? '|c' : '');
+  if (cacheFotos.has(clave)) return cacheFotos.get(clave);
   let r = null;
   try {
     const resp = await fetch(url);
@@ -43,11 +44,17 @@ async function fotoMiniatura(url) {
       const buf = Buffer.from(await resp.arrayBuffer());
       const { data, info } = await sharp(buf).rotate().resize(160, 160, { fit: 'inside' }).flatten({ background: '#ffffff' }).jpeg({ quality: 82 }).toBuffer({ resolveWithObject: true });
       r = { uri: `data:image/jpeg;base64,${data.toString('base64')}`, pw: info.width, ph: info.height };
+      if (conColor) { // color medio de la muestra (para el PDF y para rellenar sin textura)
+        const px = await sharp(buf).resize(1, 1).removeAlpha().raw().toBuffer();
+        r.c = '#' + [...px].slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join('');
+      }
     }
   } catch { /* sin foto */ }
-  cacheFotos.set(url, r);
+  cacheFotos.set(clave, r);
   return r;
 }
+const limpiarCategoria = (n) => String(n || '').replace(/^[A-Z]?\.?\d+\.*\s*/, '').trim();
+const ES_MATERIAL = /suelo|pavimento|c[eé]sped|madera|pintura|revestimiento|techo|acabado|parquet|microcemento|caucho/i;
 
 router.get('/catalogos', async (req, res) => {
   try {
@@ -75,6 +82,7 @@ router.get('/catalogos', async (req, res) => {
           tipo: simboloMaquina(cat.name),
           w: tieneMedidas ? Number(p.longitud) : 100,
           d: tieneMedidas ? Number(p.ancho) : 80,
+          categoria: limpiarCategoria(cat.name) || 'Equipamiento',
           ref: [p.brand, cat.name].filter(Boolean).join(' · '),
           sinMedidas: !tieneMedidas,
           // dibujo real de la planta (si el producto tiene bloque), a escala en cm
@@ -94,7 +102,14 @@ router.get('/catalogos', async (req, res) => {
         ...(foto || {}),
       };
     }));
-    res.json({ maquinas, luminarias });
+    // Materiales con foto → texturas para suelos, techos y paredes
+    const materialesBase = (prods || []).filter(p => p.photo_url && catPorId[p.category_id] && (catPorId[p.category_id].type === 'material' || ES_MATERIAL.test(catPorId[p.category_id].name)) && catPorId[p.category_id].type !== 'iluminacion');
+    const materiales = (await Promise.all(materialesBase.map(async p => {
+      const foto = await fotoMiniatura(p.photo_url, true);
+      if (!foto) return null;
+      return { id: p.id, n: p.name, cat: limpiarCategoria(catPorId[p.category_id].name), tw: Number(p.ancho) > 5 && Number(p.ancho) < 500 ? Number(p.ancho) : 60, ...foto };
+    }))).filter(Boolean);
+    res.json({ maquinas, luminarias, materiales });
   } catch (err) {
     console.error('medicion/catalogos:', err);
     res.status(500).json({ error: 'No se pudo cargar el catálogo' });

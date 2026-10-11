@@ -108,6 +108,7 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
 .dsum .dm{flex:none;font-size:12px;white-space:nowrap}
 .fld.chk{flex-direction:row;align-items:center;gap:10px}
 #det-list details{border-top:1px solid var(--line,rgba(128,128,128,.25));padding:2px 0}
+.cathead{grid-column:1/-1;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:8px 2px 0;display:flex;justify-content:space-between}
 </style>
 <style id="ui-cad">
 /* ===== Interfaz tipo editor CAD: barras desplegables, herramientas a la izquierda, 3 temas ===== */
@@ -338,8 +339,9 @@ body.crm .top .brand{display:none}
         </details>
       </section>
       <section class="blk" id="eqblk">
-        <h2>Máquinas</h2>
+        <h2>Bloques del catálogo</h2>
         <p class="note">Elige una máquina y toca el plano para colocarla. Todos los diseñadores usan los mismos símbolos y medidas.</p>
+        <input id="cat-q" type="search" placeholder="Buscar bloque o máquina…" autocomplete="off" style="margin-bottom:8px">
         <div class="catgrid" id="cat"></div>
         <details class="addcat">
           <summary>Añadir al catálogo</summary>
@@ -515,9 +517,9 @@ var MATS={
   acab:[{id:'pint',n:'Pintura',c:'#ece6dc'},{id:'micro',n:'Microcemento',c:'#bdb7b0'},{id:'esp',n:'Espejo',c:'#bfdde8'},{id:'mad',n:'Panel de madera',c:'#d4a876'},{id:'pap',n:'Papel pintado',c:'#e6c9d0'},{id:'ali',n:'Alicatado',c:'#c8d9d2'},{id:'hor',n:'Hormigón visto',c:'#a3a3a3'},{id:'acu',n:'Panel acústico',c:'#c9c2d6'},{id:'cau',n:'Revestimiento de caucho',c:'#8a8a92'}]
 };
 var MCODE={suelos:'S',techos:'T',acab:'A'};
-var BASEACAB=MATS.acab.slice(),TXLIB=[],TXRGB={},LSX='ranuse-texturas-v1';
+var BASEACAB=MATS.acab.slice(),BASESUELOS=MATS.suelos.slice(),BASETECHOS=MATS.techos.slice(),TXLIB=[],TXRGB={},LSX='ranuse-texturas-v1';
 function txToMat(t){return {id:t.id,n:t.n,c:t.c,tx:t}}
-function refreshAcab(){MATS.acab=BASEACAB.concat(TXLIB.map(txToMat))}
+function refreshAcab(){var T=TXLIB.map(txToMat);MATS.acab=BASEACAB.concat(T);MATS.suelos=BASESUELOS.concat(T);MATS.techos=BASETECHOS.concat(T)}
 function prepTxRgb(t,cvs){
   function go(c){var x=c.getContext('2d'),d=x.getImageData(0,0,c.width,c.height).data,rgb=new Uint8Array(c.width*c.height*3);
     for(var i=0,j=0;i<d.length;i+=4){rgb[j++]=d[i];rgb[j++]=d[i+1];rgb[j++]=d[i+2]}
@@ -534,11 +536,12 @@ function ensureTx(){
 function txUsed(){
   var u={};if(!st||!st.v)return [];
   st.v.walls.forEach(function(w){if(w.f)['p','m'].forEach(function(k){if(w.f[k])u[w.f[k]]=1})});
+  (st.v.zn||[]).forEach(function(z){if(z.mat)u[z.mat]=1});
   return TXLIB.filter(function(t){return u[t.id]});
 }
 function matOf(view,id){
   var l=MATS[view]||[];for(var i=0;i<l.length;i++)if(l[i].id===id)return l[i];
-  if(view==='acab'){var t=TXLIB.filter(function(q){return q.id===id})[0]||((st&&st.v&&st.v.tx)||[]).filter(function(q){return q.id===id})[0];if(t)return txToMat(t)}
+  {var t=TXLIB.filter(function(q){return q.id===id})[0]||((st&&st.v&&st.v.tx)||[]).filter(function(q){return q.id===id})[0];if(t)return txToMat(t)}
   return l[0]||{id:id,n:id,c:'#cccccc'}}
 function txTiles(t,L,H,flat,px){
   var tw=Math.max(5,t.tw||60),th=tw*t.h/t.w,nx=Math.max(1,Math.round(L/tw)),ny=Math.max(1,Math.round(H/th)),cw=L/nx,ch=H/ny,h='',i,j;
@@ -1239,7 +1242,11 @@ function scene(C,k,view,o){
       var z=zoneIn(f,zk),pts=f.inner.map(function(q){return f2(q.x)+','+f2(q.y)}).join(' ');
       if(!z){h+='<polygon points="'+pts+'" style="fill:none;stroke:'+C.dim+';stroke-width:'+f2(px)+';stroke-dasharray:'+f2(5*px)+' '+f2(4*px)+'"/>';return}
       var m=matOf(view,z.mat),sl=sel&&sel.t==='zn'&&sel.id===z.id;
-      h+='<polygon points="'+pts+'" style="fill:'+(o.flat?hexMix(m.c,'#ffffff',0.35):m.c)+(o.flat?'':';fill-opacity:.62')+';stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
+      if(m.tx&&!o.flat){
+        var ttw=Math.max(5,m.tx.tw||60),tth=ttw*m.tx.h/m.tx.w,pid='zt'+m.tx.id.replace(/[^a-zA-Z0-9]/g,'')+Math.round(ttw);
+        h+='<defs><pattern id="'+pid+'" patternUnits="userSpaceOnUse" width="'+f2(ttw)+'" height="'+f2(tth)+'"><image href="'+m.tx.uri+'" x="0" y="0" width="'+f2(ttw)+'" height="'+f2(tth)+'" preserveAspectRatio="none"/></pattern></defs>';
+        h+='<polygon points="'+pts+'" style="fill:url(#'+pid+');stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
+      }else h+='<polygon points="'+pts+'" style="fill:'+(o.flat?hexMix(m.c,'#ffffff',0.35):m.c)+(o.flat?'':';fill-opacity:.62')+';stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
       var l1=(codes[z.mat]||'')+(z.nm?'  '+z.nm:''),l2=m2(f.area/10000)+' m²'+(view==='techos'&&z.h?'  ·  h '+fmt(z.h):'');
       zlab+=txt(C,px,f.cx,f.cy-2*px,l1,C.label,13,600)+txt(C,px,f.cx,f.cy+14*px,l2,C.label,11,500);
     });
@@ -1889,10 +1896,21 @@ function thumb(c){
   return '<svg viewBox="-4 -4 '+(L+8)+' '+(T+8)+'" preserveAspectRatio="xMidYMid meet" aria-hidden="true">'+eqSym(c.tipo,L,T,'currentColor',px,c.id)+'</svg>';
 }
 function drawCat(){
-  $('cat').innerHTML=catalog().map(function(c){
-    return '<button data-cat="'+esc(c.id)+'" aria-pressed="'+(placeId===c.id&&st.tool==='equip')+'">'+thumb(c)+'<span>'+esc(c.nombre)+'</span><small>'+fmt(c.w)+' × '+fmt(c.d)+' cm</small></button>';
-  }).join('');
+  var q=(($('cat-q')&&$('cat-q').value)||'').trim().toLowerCase(),grupos={},orden=[];
+  catalog().forEach(function(c){
+    if(q&&(c.nombre+' '+(c.categoria||'')+' '+(c.ref||'')).toLowerCase().indexOf(q)<0)return;
+    var g=c.categoria||'Genéricos';if(!grupos[g]){grupos[g]=[];orden.push(g)}grupos[g].push(c);
+  });
+  orden.sort(function(a,b){return a==='Genéricos'?1:b==='Genéricos'?-1:a.localeCompare(b)});
+  function btn(c){
+    return '<button data-cat="'+esc(c.id)+'" aria-pressed="'+(placeId===c.id&&st.tool==='equip')+'">'+thumb(c)+'<span>'+esc(c.nombre)+'</span><small>'+fmt(c.w)+' × '+fmt(c.d)+' cm'+(c.bloque?' · ✓ bloque':'')+(c.sinMedidas?' · sin medidas':'')+'</small></button>';
+  }
+  $('cat').innerHTML=orden.map(function(g){
+    var l=grupos[g].slice().sort(function(a,b){return (b.bloque?1:0)-(a.bloque?1:0)});
+    return '<div class="cathead">'+esc(g)+' <span>'+l.length+'</span></div>'+l.map(btn).join('');
+  }).join('')||'<p class="note" style="grid-column:1/-1">No hay bloques con ese nombre.</p>';
 }
+$('cat-q').addEventListener('input',drawCat);
 $('cat').addEventListener('click',function(e){
   var b=e.target.closest('button[data-cat]');if(!b)return;
   placeId=b.getAttribute('data-cat');st.tool='equip';st.view='distrib';st.dg=null;
@@ -2074,7 +2092,7 @@ function toolbar(){
   if((st.tool==='pt'||st.tool==='cn')&&($('t-pt').hidden||(st.tool==='cn'&&st.view!=='ilum')))st.tool='select';
   $('dimnote').textContent=st.dims==='simple'?'Cota = longitud del muro a ejes, escrita por fuera':st.dims==='ext'?'Líneas de cota por fuera · medida a ejes de muro':'Líneas de cota por dentro · medida a ejes de muro';
   if(st.tool==='paint'&&$('t-paint').hidden)st.tool='select';
-  $('eqblk').hidden=st.view!=='distrib';
+  $('eqblk').hidden=false;
   drawPal();
   drawCat();drawLum();hint();
 }
@@ -2098,7 +2116,7 @@ function drawPal(){
     $('pal-n').textContent=v==='acab'?'Elige un acabado. Toca una cara de muro para aplicarlo a ese muro, o el centro de una sala para aplicarlo a todas sus paredes.':v==='alz'?'Elige un acabado y toca un alzado para aplicárselo a esa pared.':'Elige un material y toca dentro de una sala cerrada para aplicarlo.';
     $('pal-all-w').hidden=v==='acab'||v==='alz';
     $('pal').innerHTML=MATS[mv].map(function(m){return '<button data-pal="'+m.id+'" aria-pressed="'+(st.pal[mv]===m.id&&st.tool==='paint')+'"><span class="sw" style="background:'+(m.tx?'url('+m.tx.uri+') center/cover':m.c)+'"></span>'+esc(m.n)+'</button>'}).join('');
-    var up=$('txup');up.hidden=!(v==='acab'||v==='alz');
+    var up=$('txup');up.hidden=false;
     $('tx-del-s').innerHTML=TXLIB.map(function(t){return '<option value="'+esc(t.id)+'">'+esc(t.n)+'</option>'}).join('');
     $('tx-del').hidden=$('tx-del-s').hidden=!TXLIB.length;
     return;
@@ -4011,7 +4029,7 @@ $('tx-f').addEventListener('change',function(e){
       var tw=num($('tx-w').value);if(!(tw>=5&&tw<=500))tw=60;
       var t={id:'u'+Date.now().toString(36),n:($('tx-n').value.trim()||('Textura '+(TXLIB.length+1))),c:'#'+hx(R)+hx(G)+hx(B),uri:c.toDataURL('image/jpeg',0.85),tw:tw,w:w,h:h};
       TXLIB.push(t);prepTxRgb(t,c);refreshAcab();
-      try{localStorage.setItem(LSX,JSON.stringify(TXLIB))}catch(e2){toast('Textura cargada, pero no cabe en el almacenamiento del dispositivo')}
+      try{localStorage.setItem(LSX,JSON.stringify(TXLIB.filter(function(t){return !t.cat})))}catch(e2){toast('Textura cargada, pero no cabe en el almacenamiento del dispositivo')}
       $('tx-n').value='';st.pal.acab=t.id;st.tool='paint';drawPal();toolbar();hint();render();toast('Textura añadida')
     }catch(er){toast('No se pudo leer esa imagen')}};
     im.onerror=function(){toast('No se pudo leer esa imagen')};im.src=r.result};
@@ -4022,7 +4040,7 @@ $('tx-del').addEventListener('click',function(){
   TXLIB=TXLIB.filter(function(t){return t.id!==id});
   st.v.walls.forEach(function(w){if(w.f)['p','m'].forEach(function(k){if(w.f[k]===id)delete w.f[k]})});
   if(st.v.tx)st.v.tx=st.v.tx.filter(function(t){return t.id!==id});
-  refreshAcab();try{localStorage.setItem(LSX,JSON.stringify(TXLIB))}catch(e){}
+  refreshAcab();try{localStorage.setItem(LSX,JSON.stringify(TXLIB.filter(function(t){return !t.cat})))}catch(e){}
   if(st.pal.acab===id)st.pal.acab='pint';
   save();drawPal();render();toast('Textura quitada')
 });
@@ -4171,6 +4189,12 @@ if(CRM){
       cloudCat=(m.maquinas||[]).filter(function(c){return c&&c.id&&c.nombre&&c.w>0&&c.d>0});
       cloudLum=(m.luminarias||[]).filter(function(l){return l&&l.id&&l.n&&l.sym});
       cloudLum.forEach(prepLumRgb);
+      (m.materiales||[]).forEach(function(t){
+        if(!t||!t.id||!t.uri||!(t.pw>0)||!(t.ph>0))return;
+        TXLIB=TXLIB.filter(function(q){return q.id!==t.id});
+        TXLIB.push({id:t.id,n:t.n,c:t.c||'#cccccc',uri:t.uri,tw:t.tw||60,w:t.pw,h:t.ph,cat:true,grupo:t.cat||''});
+      });
+      refreshAcab();
       crmReady=true;crmSkip=Date.now()+1500;
       $('b-cloud').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
       var elegido=null;

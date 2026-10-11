@@ -5,6 +5,7 @@ import { uploadCatalogPhotoFile, handleMulterError } from '../middleware/upload.
 import { uploadCatalogPhoto, deleteCatalogPhoto, copyCatalogPhoto } from '../utils/storage.js';
 import sharp from 'sharp';
 import { callClaude } from '../utils/anthropic.js';
+import { generarBloques } from '../utils/bloques-ia.js';
 
 const router = express.Router();
 
@@ -344,6 +345,27 @@ router.put('/products/:id/bloques', async (req, res) => {
   } catch (err) {
     console.error('catalog bloques:', err);
     res.status(500).json({ error: 'No se pudo guardar el bloque' });
+  }
+});
+
+// Genera con IA un borrador de bloques (planta, alzado, lateral) a partir de la foto y las
+// medidas del producto. No guarda nada: el editor de bloques lo muestra para revisarlo.
+router.post('/products/:id/bloques/generar', async (req, res) => {
+  try {
+    const { data: p, error } = await supabase.from('catalog_products').select('id, name, photo_url, longitud, ancho, altura').eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!p) return res.status(404).json({ error: 'Producto no encontrado' });
+    if (!p.photo_url) return res.status(400).json({ error: 'El producto necesita una foto para generar los bloques' });
+    const largo = Number(req.body?.largo) || Number(p.longitud), fondo = Number(req.body?.fondo) || Number(p.ancho), alto = Number(req.body?.alto) || Number(p.altura);
+    if (!(largo > 0 && fondo > 0 && alto > 0)) return res.status(400).json({ error: 'Faltan las medidas del producto: rellena largo, ancho y alto (en el editor o en la ficha)' });
+    const r = await fetch(p.photo_url);
+    if (!r.ok) return res.status(400).json({ error: 'No se pudo leer la foto del producto' });
+    const imagen = Buffer.from(await r.arrayBuffer());
+    const b = await generarBloques({ imagen, largo, fondo, alto, nombre: p.name });
+    res.json({ bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, shapes: b.shapes, svg: b.svg, nota: b.nota } });
+  } catch (err) {
+    console.error('catalog bloques generar:', err);
+    res.status(500).json({ error: err.message?.includes('clave de la IA') ? err.message : (err.message || 'No se pudo generar el bloque') });
   }
 });
 

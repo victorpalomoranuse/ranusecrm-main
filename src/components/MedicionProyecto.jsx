@@ -29,7 +29,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
     frameRef.current.contentWindow.postMessage({
       src: 'ranuse-crm', type: 'init', tema: 'dark', abrir, nuevo, fullscreen: fullRef.current,
       proyecto: { nombre: nombreProyecto, cliente: nombreCliente },
-      visitas: d.visitas, maquinas: d.catalogos.maquinas || [], luminarias: d.catalogos.luminarias || [],
+      visitas: d.visitas, maquinas: d.catalogos.maquinas || [], luminarias: d.catalogos.luminarias || [], materiales: d.catalogos.materiales || [],
     }, window.location.origin);
     setCargando(false);
   }, [abrir, nuevo, nombreProyecto, nombreCliente]);

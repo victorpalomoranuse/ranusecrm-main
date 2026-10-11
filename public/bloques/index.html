@@ -81,6 +81,7 @@ input[type=checkbox]{width:18px;height:18px;min-height:0}
     <span class="sp"></span>
     <button id="b-undo" title="Deshacer">↶</button><button id="b-redo" title="Rehacer">↷</button>
     <select id="theme" style="width:auto" aria-label="Interfaz"><option value="light">Blanca</option><option value="dark">Negra</option><option value="cad">AutoCAD</option></select>
+    <button id="b-gen" title="La IA descompone el producto en piezas a partir de la foto y calcula planta, alzado y lateral">✨ Generar con IA</button>
     <button id="b-panel">☰ Panel</button>
     <button id="b-save" class="pri">Guardar bloque</button>
   </header>
@@ -554,6 +555,13 @@ $('b-save').addEventListener('click',function(){
   if(EMB)window.parent.postMessage({src:'ranuse-bloques',type:'guardar',datos:datos()},location.origin);
   else toast('Abierto fuera del CRM: no se puede guardar');
 });
+$('b-gen').addEventListener('click',function(){
+  if(!EMB){toast('Abierto fuera del CRM');return}
+  var hay=S.shapes.planta.length||S.shapes.alzado.length||S.shapes.lateral.length;
+  if(hay&&!window.confirm('Esto sustituye lo que ya has dibujado en las tres vistas. ¿Continuar?'))return;
+  $('b-gen').disabled=true;$('b-gen').textContent='Generando… (1 minuto)';
+  window.parent.postMessage({src:'ranuse-bloques',type:'generar',largo:S.L,fondo:S.D,alto:S.H},location.origin);
+});
 $('b-close').addEventListener('click',function(){
   if(EMB)window.parent.postMessage({src:'ranuse-bloques',type:'cerrar'},location.origin);
 });
@@ -570,7 +578,16 @@ window.addEventListener('message',function(e){
     campos();tools();
     if(m.foto)cargarFoto(m.foto,fit);else fit();
   }else if(m.type==='guardado'){toast('Bloque guardado en el catálogo')}
-  else if(m.type==='error'){toast(m.message||'No se pudo guardar')}
+  else if(m.type==='generado'){
+    $('b-gen').disabled=false;$('b-gen').textContent='✨ Generar con IA';
+    var g=m.bloque;if(!g||!g.shapes){toast('No se pudo generar');return}
+    snapshot();
+    S.shapes={planta:g.shapes.planta||[],alzado:g.shapes.alzado||[],lateral:g.shapes.lateral||[]};
+    var mx=0;['planta','alzado','lateral'].forEach(function(v){S.shapes[v].forEach(function(s){if(s.id>mx)mx=s.id})});S.uid=mx+1;
+    S.sel=null;fit();
+    toast('Borrador generado. Revísalo y retoca lo que haga falta.'+(g.nota?' '+g.nota:''));
+  }
+  else if(m.type==='error'){$('b-gen').disabled=false;$('b-gen').textContent='✨ Generar con IA';toast(m.message||'No se pudo guardar')}
 });
 window.addEventListener('resize',function(){render()});
 if(window.ResizeObserver)new ResizeObserver(function(){render()}).observe(cvw);
