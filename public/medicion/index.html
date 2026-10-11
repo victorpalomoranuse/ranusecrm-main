@@ -1920,7 +1920,8 @@ function opOff(w){
 }
 function offInt(w){
   if(!st.v||st.v.cb!=='int'||w.arc)return 0;
-  var sp=spanInterior(w,st.view,wallCent(st.view));if(!sp)return 0;
+  var sp=spanInterior(w,st.view,wallCent(st.view));
+  if(!sp)return w.t||12; /* sala aún sin cerrar: en una esquina normal, el hueco libre es el eje menos el grosor del muro */
   var L=wg(w).l;return L-(Math.min(L,sp.s1)-Math.max(0,sp.s0));
 }
 function dimCfg(w,mode,cent,view,px){
