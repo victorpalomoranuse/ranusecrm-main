@@ -95,6 +95,43 @@ router.get('/catalogos', async (req, res) => {
   }
 });
 
+// ── Dashboard de planos (todos, con o sin proyecto) ────────────────────────
+router.get('/dashboard', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('mediciones')
+      .select('id, project_id, nombre, cliente, resumen, created_by, updated_by, created_at, updated_at, project:client_projects(id, client_name, project_name)')
+      .order('updated_at', { ascending: false }).limit(500);
+    if (error) throw error;
+    const ids = [...new Set((data || []).flatMap(m => [m.updated_by, m.created_by]).filter(Boolean))];
+    const nombres = {};
+    if (ids.length) {
+      const [{ data: emp }, { data: usr }] = await Promise.all([
+        supabase.from('employees').select('id, name').in('id', ids),
+        supabase.from('users').select('id, name').in('id', ids),
+      ]);
+      [...(usr || []), ...(emp || [])].forEach(x => { if (x?.id && x.name) nombres[x.id] = x.name; });
+    }
+    const planos = (data || []).map(m => {
+      const r = m.resumen || {};
+      return {
+        id: m.id, project_id: m.project_id, proyecto: m.project || null,
+        nombre: m.nombre || 'Sin nombre', cliente: m.cliente || '',
+        m2: Math.round(((r.salas || []).reduce((s, x) => s + (x.area_m2 || 0), 0)) * 10) / 10,
+        salas: (r.salas || []).length,
+        equipos: (r.equipos || []).reduce((s, x) => s + (x.n || 0), 0),
+        luminarias: (r.luminarias || []).reduce((s, x) => s + (x.n || 0), 0),
+        puertas: r.puertas || 0, ventanas: r.ventanas || 0,
+        creado_por: nombres[m.created_by] || null, editado_por: nombres[m.updated_by] || null,
+        created_at: m.created_at, updated_at: m.updated_at,
+      };
+    });
+    res.json({ planos });
+  } catch (err) {
+    console.error('medicion dashboard:', err);
+    res.status(500).json({ error: 'No se pudieron cargar los planos' });
+  }
+});
+
 // ── Mediciones de un proyecto ──────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
@@ -112,22 +149,47 @@ router.get('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { project_id, data } = req.body || {};
-    if (!project_id || !data || typeof data !== 'object' || !Array.isArray(data.walls)) return res.status(400).json({ error: 'Datos de medición no válidos' });
+    if (!data || typeof data !== 'object' || !Array.isArray(data.walls)) return res.status(400).json({ error: 'Datos de medición no válidos' });
     const ahora = new Date().toISOString();
     const { data: previa } = await supabase.from('mediciones').select('id, project_id').eq('id', req.params.id).maybeSingle();
-    if (previa && previa.project_id !== project_id) return res.status(409).json({ error: 'Esa medición pertenece a otro proyecto' });
     const fila = {
-      id: req.params.id, project_id, data, resumen: data.resumen || null,
+      id: req.params.id, data, resumen: data.resumen || null,
       nombre: String(data.nombre || '').slice(0, 200) || null, cliente: String(data.cliente || '').slice(0, 200) || null,
       updated_by: req.user.id, updated_at: ahora,
     };
-    if (!previa) fila.created_by = req.user.id;
+    if (!previa) { fila.created_by = req.user.id; fila.project_id = project_id || null; }
     const { error } = await supabase.from('mediciones').upsert(fila);
     if (error) throw error;
     res.json({ ok: true, updated: new Date(ahora).getTime() });
   } catch (err) {
     console.error('medicion save:', err);
     res.status(500).json({ error: 'No se pudo guardar la medición' });
+  }
+});
+
+router.get('/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('mediciones').select('id, project_id, data, updated_at').eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Plano no encontrado' });
+    res.json({ plano: { ...data.data, id: data.id, updated: new Date(data.updated_at).getTime() }, project_id: data.project_id });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo cargar el plano' });
+  }
+});
+
+router.patch('/:id/proyecto', async (req, res) => {
+  try {
+    const project_id = req.body?.project_id || null;
+    if (project_id) {
+      const { data: p } = await supabase.from('client_projects').select('id').eq('id', project_id).maybeSingle();
+      if (!p) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+    const { error } = await supabase.from('mediciones').update({ project_id }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo cambiar el proyecto del plano' });
   }
 });
 

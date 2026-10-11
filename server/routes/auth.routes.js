@@ -85,7 +85,7 @@ router.post('/login', async (req, res) => {
         ...(permissions !== null && { permissions })
       },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '30d' }
     );
 
     // Respuesta
@@ -140,7 +140,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
       refreshedToken = jwt.sign(
         { id: req.user.id, email: req.user.email, role: req.user.role, permissions },
         process.env.JWT_SECRET,
-        { expiresIn: '7d' }
+        { expiresIn: '30d' }
       );
     }
   }
@@ -201,7 +201,7 @@ router.post('/register', async (req, res) => {
       .single();
     if (error) throw error;
 
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '30d' });
 
     sendEmail({
       to: user.email,

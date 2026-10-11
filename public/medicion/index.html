@@ -4039,7 +4039,9 @@ if(CRM){
       cloudLum.forEach(prepLumRgb);
       crmReady=true;crmSkip=Date.now()+1500;
       $('b-cloud').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
-      if(cloud.length){st.v=norm(JSON.parse(JSON.stringify(cloud[0])));crmPrefill()}
+      var elegido=null;
+      if(!m.nuevo){elegido=m.abrir?cloud.filter(function(c){return c.id===m.abrir})[0]:cloud[0]}
+      if(elegido){st.v=norm(JSON.parse(JSON.stringify(elegido)));crmPrefill()}
       else{st.v=newVisit();crmPrefill()}
       ensureLums();st.sel=null;st.dg=null;hist.length=0;redo.length=0;
       fields();drawCat();drawLum();drawCloud();commit();fit();

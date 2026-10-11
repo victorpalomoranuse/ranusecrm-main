@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays } from 'lucide-react';
+import { Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
@@ -19,6 +19,7 @@ import { SectionFinanzas } from './SectionFinanzas';
 import { SectionRelacionObra } from './SectionRelacionObra';
 import { SectionMisComisiones } from './SectionMisComisiones';
 import { SectionMiDashboard } from './SectionMiDashboard';
+import { SectionPlanos } from './SectionPlanos';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { MedicionProyecto } from '../components/MedicionProyecto';
 import { TabHistoria, SelectorTipoHistoria, GuiaProyecto, EstiloMoodboard } from '../components/HistoriaEditor';
@@ -2488,6 +2489,7 @@ const NAV_ITEMS = [
   { id:'ventas', label:'Ventas', Icon:TrendingUp, permission:'ventas' },
   { id:'mis-comisiones', label:'Mis Comisiones', Icon:Wallet },
   { id:'proyectos', label:'Proyectos', Icon:FolderOpen, permission:'proyectos' },
+  { id:'planos', label:'Planos', Icon:Ruler, permission:'proyectos' },
   { id:'clientes', label:'Clientes', Icon:UserCheck, permission:'clientes' },
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
   { id:'roles', label:'Roles', Icon:Shield, adminOnly:true },
@@ -2544,6 +2546,7 @@ export function AdminPanel() {
         {section==='ventas'&&<SectionVentas/>}
         {section==='mis-comisiones'&&<SectionMisComisiones/>}
         {section==='proyectos'&&<SectionProyectos/>}
+        {section==='planos'&&<SectionPlanos/>}
         {section==='clientes'&&<SectionClientes/>}
         {section==='empleados'&&<SectionEmpleados/>}
         {section==='roles'&&<SectionRoles/>}
