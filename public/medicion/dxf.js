@@ -221,6 +221,12 @@
     ['wardrobe sliding door', 'armario con puerta corredera'], ['monoblock toilet', 'inodoro monobloque'], ['ep wallhung', 'inodoro suspendido'], ['wall hung', 'suspendido'],
     ['sitting at the table', 'sentada a la mesa'], ['table tennis', 'tenis de mesa'], ['hazmat suit', 'traje de protección'], ['open arms', 'brazos abiertos'], ['on bicycle', 'en bicicleta'],
     ['walking with an umbrella', 'andando con paraguas'], ['walking with a carriage', 'con carrito de bebé'], ['walking dogs', 'paseando perros'], ['sitting with a book', 'sentada con libro'], ['hospital stuff', 'personal sanitario'],
+    ['single double hung window', 'ventana de guillotina simple'], ['double hung window', 'ventana de guillotina doble'], ['single hung window', 'ventana de guillotina'],
+    ['awning window', 'ventana proyectante'], ['casement double window', 'ventana abatible doble'], ['casement arc window', 'ventana abatible en arco'], ['casement window', 'ventana abatible'],
+    ['curtain wall', 'muro cortina'], ['window shutters', 'ventana con contraventanas'], ['palladian window', 'ventana paladiana'], ['sliding window', 'ventana corredera'],
+    ['bay window', 'ventana en saliente'], ['bow window', 'ventana en arco saliente'],
+    ['shower partition frameless', 'mampara de ducha sin marco'], ['shower door with frame', 'puerta de ducha con marco'], ['shower with door', 'ducha con puerta'],
+    ['angle corner shower', 'ducha de esquina angular'], ['drain rectangular', 'desagüe rectangular'], ['drain round', 'desagüe redondo'], ['drain', 'desagüe'],
     ['coffee table', 'mesa de centro'], ['tv unit wallmounted', 'mueble de TV de pared'], ['tv unit', 'mueble de TV'], ['carpet lines round', 'alfombra redonda'], ['carpet lines', 'alfombra'], ['elliptical table', 'mesa elíptica'],
     ['kitchen sink', 'fregadero'], ['corner shower', 'ducha de esquina'], ['rainfinity shower system', 'sistema de ducha'], ['electric stove', 'cocina eléctrica'],
     ['fridge single door', 'frigorífico de una puerta'], ['glass partition with door', 'mampara de cristal con puerta'], ['glass partition', 'mampara de cristal'],
@@ -239,13 +245,15 @@
     standing: 'de pie', sitting: 'sentada', running: 'corriendo', mowing: 'cortando césped', hockey: 'hockey', rugby: 'rugby', soccer: 'fútbol', football: 'fútbol americano',
     basketball: 'baloncesto', rowing: 'remando', reading: 'leyendo', umbrella: 'paraguas', carriage: 'carrito', dogs: 'perros', hospital: 'hospital', patient: 'paciente',
     surgeon: 'cirujano', disabled: 'en silla de ruedas', lying: 'tumbado', crawling: 'gateando', book: 'libro', stuff: 'personal', a: '', an: '', the: '', in: '', at: 'en', on: 'en',
+    exterior: 'exterior', interior: 'interior', frame: 'marco', frameless: 'sin marco', partition: 'mampara', angle: 'angular', visible: 'visible', scale: 'escala', x: 'x',
     large: 'grande', medium: 'mediano', with: 'con', and: 'y', of: 'de', plant: 'planta', lamp: 'lámpara', shelf: 'estantería', shelves: 'estanterías', rack: 'rack',
     mirror: 'espejo', bin: 'papelera', stool: 'taburete', sofa2: 'sofá', stair: 'escalera', stairs: 'escalera', elevator: 'ascensor', lift: 'ascensor', counter: 'mostrador',
     kitchen: 'cocina', bathroom: 'baño', washing: 'lavadora', machine: 'máquina', washer: 'lavadora', dryer: 'secadora', oven: 'horno', microwave: 'microondas',
     tree: 'árbol', bush: 'arbusto', palm: 'palmera', fence: 'valla', gate: 'portón', curtain: 'cortina', carpet: 'alfombra', rug: 'alfombra', piano: 'piano'
   };
   function nombreEs(orig) {
-    var n = String(orig || '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim(), vista = 'planta', low;
+    var n = String(orig || '').replace(/[_]+/g, ' ').replace(/\bUS\b/g, '').replace(/\s+/g, ' ').trim(), vista = 'planta', low;
+    n = n.replace(/\s+(exterior|interior)\s*$/i, ' $1');
     if (/\bside view\b/i.test(n)) { vista = 'lateral'; n = n.replace(/\s*\bside view\b/ig, ''); }
     else if (/\bfront view\b/i.test(n)) { vista = 'frente'; n = n.replace(/\s*\bfront view\b/ig, ''); }
     var talla = '', m = /\s+(XXL|XL|XS|S|M|L)$/.exec(n);
@@ -280,9 +288,9 @@
     if (/person|people|woman|\bman\b|boy\b|girl\b|infant|child|surgeon|patient|hospital stuff/.test(t)) return 'Personas';
     if (/car\b|truck|bus\b|jet|airliner|yacht|boat|ship|train|motorbike|scooter|bulldozer|crane|roller|parking|catamaran|biker|bicycle|hatchback|liftback|roadster|taxi|pickup|sailing|moped/.test(t)) return 'Transporte';
     if (/treadmill|exercise|trainer|reformer|crossbar|pilates|dumbbell|barbell|rack|bench press|rower/.test(t)) return 'Fitness';
-    if (/toilet|shower|bath|ep wallhung|bidet|rainfinity|urinal/.test(t)) return 'Baño';
+    if (/toilet|shower|bath|ep wallhung|bidet|rainfinity|urinal|drain/.test(t)) return 'Baño';
     if (/sink|kitchen|stove|fridge|oven|dishwasher|hood/.test(t)) return 'Cocina';
-    if (/window|door|partition|gate/.test(t)) return 'Puertas y ventanas';
+    if (/window|door|partition|gate|curtain wall/.test(t)) return 'Puertas y ventanas';
     if (/sofa|armchair|chair|table|desk|bed|night|wardrobe|tv\b|office|units|bench|locker|stand|aeron|shelf|cabinet|lamp|plant|rug|carpet/.test(t)) return 'Mobiliario';
     return 'Mi biblioteca';
   }
@@ -352,6 +360,40 @@
     });
     return { unidad: doc.unidad, bloques: res };
   }
-  var API = { parseDXF: parseDXF, bloquesDe: bloquesDe, nombreEs: nombreEs };
+  /* une «X», «X front view» y «X side view» en una sola pieza con sus vistas */
+  function piezasDe(texto, opciones) {
+    var res = bloquesDe(texto, opciones), grupos = {}, orden = [];
+    res.bloques.forEach(function (b) {
+      var base = String(b.original).replace(/\s+(front|side) view\s*$/i, '').trim(), key = base.toLowerCase();
+      if (!grupos[key]) { grupos[key] = { base: base, planta: null, frente: null, lateral: null }; orden.push(key); }
+      var g = grupos[key];
+      if (b.vista === 'frente') g.frente = b; else if (b.vista === 'lateral') g.lateral = b; else g.planta = b;
+    });
+    var piezas = orden.map(function (k) {
+      var g = grupos[k], pl = g.planta, fr = g.frente, la = g.lateral, es = nombreEs(g.base);
+      var largo = pl ? pl.largo : fr ? fr.largo : la.fondo ? la.largo : la.largo;
+      var fondo = pl ? pl.fondo : la ? la.largo : 10;
+      var alto = fr ? fr.fondo : la ? la.fondo : 100;
+      function ajusta(frag, w0, h0, wn, hn) { // lleva el dibujo de una vista a las medidas comunes de la pieza
+        var sx = w0 > 0 ? wn / w0 : 1, sy = h0 > 0 ? hn / h0 : 1;
+        return (Math.abs(sx - 1) < 0.005 && Math.abs(sy - 1) < 0.005) ? frag : '<g transform="scale(' + Math.round(sx * 1e4) / 1e4 + ' ' + Math.round(sy * 1e4) / 1e4 + ')">' + frag + '</g>';
+      }
+      var vistas = [];
+      if (pl) vistas.push('planta');
+      if (fr) vistas.push('alzado');
+      if (la) vistas.push('lateral');
+      return {
+        nombre: es.nombre.replace(/\s·\s(frente|lateral)$/, ''), original: g.base, categoria: es.categoria,
+        largo: Math.round(largo * 10) / 10, fondo: Math.round(fondo * 10) / 10, alto: Math.round(alto * 10) / 10,
+        planta: pl ? pl.planta : null,
+        alzado: fr ? ajusta(fr.planta, fr.largo, fr.fondo, largo, alto) : null,
+        lateral: la ? ajusta(la.planta, la.largo, la.fondo, fondo, alto) : null,
+        vistas: vistas, aprox: !!((pl && pl.aprox) || (fr && fr.aprox) || (la && la.aprox)),
+        generico: [pl, fr, la].some(function (x) { return x && x.generico; })
+      };
+    });
+    return { unidad: res.unidad, piezas: piezas };
+  }
+  var API = { parseDXF: parseDXF, bloquesDe: bloquesDe, piezasDe: piezasDe, nombreEs: nombreEs };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.RanuseDXF = API;
 })(typeof window !== 'undefined' ? window : this);

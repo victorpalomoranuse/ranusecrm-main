@@ -66,15 +66,22 @@ function plantaValida(frag) {
   return !/on\w+\s*=|javascript:|<\s*script|href\s*=|url\s*\(/i.test(frag);
 }
 function itemBiblioteca(r) {
+  const vistas = [r.planta && 'planta', r.alzado && 'alzado', r.lateral && 'lateral'].filter(Boolean);
   return {
     id: 'bib-' + r.id, nombre: r.nombre, tipo: 'gen', w: Number(r.largo), d: Number(r.fondo), alto: Number(r.alto) || null,
-    categoria: r.categoria || 'Mi biblioteca', ref: r.origen || 'Biblioteca propia', biblioteca: true,
-    bloque: { planta: r.planta, largo: Number(r.largo), fondo: Number(r.fondo) },
+    categoria: r.categoria || 'Mi biblioteca', ref: r.origen || 'Biblioteca propia', biblioteca: true, vistas,
+    ...(r.planta ? { bloque: { planta: r.planta, largo: Number(r.largo), fondo: Number(r.fondo) } } : {}),
   };
 }
+const COLS_BIB = 'id, nombre, categoria, largo, fondo, alto, planta, alzado, lateral, origen';
 async function cargarBiblioteca() {
-  const { data, error } = await supabase.from('biblioteca_bloques').select('id, nombre, categoria, largo, fondo, alto, planta, origen').order('categoria').order('nombre').limit(2000);
-  return error ? [] : (data || []).map(itemBiblioteca); // si la tabla aún no existe, se sigue sin ella
+  // En el catálogo solo viaja la planta; el alzado y el lateral se piden al colocarlos (/bloque/:id)
+  const { data, error } = await supabase.from('biblioteca_bloques').select('id, nombre, categoria, largo, fondo, alto, planta, origen, alzado, lateral').order('categoria').order('nombre').limit(2000);
+  if (error) { // si la tabla aún no tiene las columnas de vistas (v73), se sigue con la planta
+    const { data: d2, error: e2 } = await supabase.from('biblioteca_bloques').select('id, nombre, categoria, largo, fondo, alto, planta, origen').order('categoria').order('nombre').limit(2000);
+    return e2 ? [] : (d2 || []).map(itemBiblioteca);
+  }
+  return (data || []).map(r => { const it = itemBiblioteca(r); return it; });
 }
 router.post('/biblioteca', async (req, res) => {
   try {
@@ -83,20 +90,23 @@ router.post('/biblioteca', async (req, res) => {
     for (const it of items) {
       const nombre = String(it?.nombre || '').trim().slice(0, 120);
       const largo = Number(it?.largo), fondo = Number(it?.fondo);
-      if (!nombre || !(largo >= 1 && largo <= 5000 && fondo >= 1 && fondo <= 5000) || !plantaValida(it?.planta)) continue;
+      const vistas = ['planta', 'alzado', 'lateral'];
+      if (!nombre || !(largo >= 1 && largo <= 5000 && fondo >= 1 && fondo <= 5000)) continue;
+      if (vistas.some(v => it?.[v] && !plantaValida(it[v])) || !vistas.some(v => it?.[v])) continue;
       filas.push({
         nombre, categoria: String(it.categoria || 'Mi biblioteca').trim().slice(0, 60) || 'Mi biblioteca',
-        largo, fondo, alto: Number(it.alto) > 0 ? Number(it.alto) : 100, planta: it.planta,
+        largo, fondo, alto: Number(it.alto) > 0 ? Number(it.alto) : 100,
+        planta: it.planta || null, alzado: it.alzado || null, lateral: it.lateral || null,
         origen: String(it.origen || 'Biblioteca propia').slice(0, 80), created_by: req.user?.id || null,
       });
     }
     if (!filas.length) return res.status(400).json({ error: 'No hay bloques válidos que guardar' });
-    const { data, error } = await supabase.from('biblioteca_bloques').insert(filas).select('id, nombre, categoria, largo, fondo, alto, planta, origen');
+    const { data, error } = await supabase.from('biblioteca_bloques').insert(filas).select(COLS_BIB);
     if (error) throw error;
-    res.json({ items: (data || []).map(itemBiblioteca) });
+    res.json({ items: (data || []).map(r => ({ ...itemBiblioteca(r), completo: { largo: Number(r.largo), fondo: Number(r.fondo), alto: Number(r.alto), svg: { planta: r.planta || '', alzado: r.alzado || '', lateral: r.lateral || '' } } })) });
   } catch (err) {
     console.error('medicion biblioteca:', err);
-    res.status(500).json({ error: 'No se pudieron guardar los bloques. ¿Está creada la tabla de la biblioteca (migración v72)?' });
+    res.status(500).json({ error: 'No se pudieron guardar los bloques. ¿Están creadas las tablas de la biblioteca (migraciones v72 y v73)?' });
   }
 });
 router.delete('/biblioteca/:id', async (req, res) => {
@@ -215,6 +225,12 @@ router.get('/dashboard', async (req, res) => {
 // Bloque completo (planta, alzado y lateral) de un producto, cuando se necesita colocar el alzado o el lateral
 router.get('/bloque/:id', async (req, res) => {
   try {
+    if (req.params.id.startsWith('bib-')) { // pieza de la biblioteca propia
+      const { data: b, error: eb } = await supabase.from('biblioteca_bloques').select(COLS_BIB).eq('id', req.params.id.slice(4)).maybeSingle();
+      if (eb) throw eb;
+      if (!b) return res.status(404).json({ error: 'No existe esa pieza' });
+      return res.json({ bloque: { largo: Number(b.largo), fondo: Number(b.fondo), alto: Number(b.alto) || 100, svg: { planta: b.planta || '', alzado: b.alzado || '', lateral: b.lateral || '' } } });
+    }
     const { data, error } = await supabase.from('catalog_products').select('id, bloques').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!data?.bloques?.svg) return res.status(404).json({ error: 'Este producto no tiene bloque' });
