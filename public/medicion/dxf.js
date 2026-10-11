@@ -231,6 +231,19 @@
     ['commercial urinal', 'urinario comercial'], ['gas water heater', 'calentador de gas'], ['water heater', 'termo eléctrico'], ['air conditioner', 'aire acondicionado'],
     ['heating unite', 'unidad de calefacción'], ['heating unit', 'unidad de calefacción'], ['ceiling fan bionic', 'ventilador de techo bionic'], ['ceiling fan', 'ventilador de techo'],
     ['standing fan', 'ventilador de pie'], ['fireplace round', 'chimenea redonda'], ['fireplace corner', 'chimenea de esquina'], ['radiator vintage', 'radiador de hierro fundido'],
+    ['french door window', 'puerta-ventana francesa'], ['balcony railing wooden', 'barandilla de balcón de madera'], ['balcony railing glass', 'barandilla de balcón de cristal'],
+    ['balcony railing iron', 'barandilla de balcón de hierro'], ['balcony railing modern', 'barandilla de balcón moderna'], ['balcony railing metal', 'barandilla de balcón metálica'],
+    ['balcony door', 'puerta de balcón'], ['balcony window', 'ventana de balcón'], ['window with balcony', 'ventana con balcón'], ['garden window', 'ventana de jardín'],
+    ['lunette window', 'ventana de medio punto'], ['jalousie window', 'ventana de lamas'], ['skylight window', 'claraboya'], ['glass block window', 'ventana de pavés'],
+    ['threepanel sliding window', 'ventana corredera de tres paneles'], ['threepanel slider window', 'ventana corredera de tres paneles'], ['multiple mulled units window', 'ventana de varios módulos acoplados'],
+    ['mulled double hung window', 'ventana de guillotina doble acoplada'], ['mulled casement window', 'ventana abatible acoplada'], ['single casement window', 'ventana abatible simple'],
+    ['casement double arc window', 'ventana abatible doble en arco'], ['casement window with shutters', 'ventana abatible con contraventanas'], ['double casement window with shutters', 'ventana abatible doble con contraventanas'],
+    ['single double hung window with shutters', 'ventana de guillotina simple con contraventanas'], ['casement window double', 'ventana abatible doble'], ['fixed round window', 'ventana fija redonda'],
+    ['fixed arc window', 'ventana fija en arco'], ['arc picture window', 'ventana fija en arco'], ['arc window', 'ventana en arco'], ['round window', 'ventana redonda'], ['picture window', 'ventana fija'],
+    ['bay window', 'ventana en saliente'], ['curtain wall', 'muro cortina'], ['window shutters', 'ventana con contraventanas'],
+    ['casework s with door', 'mueble de cocina con puerta (S)'], ['casework m with door', 'mueble de cocina con puerta (M)'], ['casework l with door', 'mueble de cocina con puerta (L)'],
+    ['fridge french door', 'frigorífico americano'], ['induction cooktop', 'placa de inducción'], ['double sink', 'fregadero doble'], ['low back chair', 'silla de respaldo bajo'],
+    ['dining chair thin', 'silla de comedor fina'], ['dining chair', 'silla de comedor'], ['round carpet', 'alfombra redonda'], ['carpet stripes', 'alfombra de rayas'],
     ['coffee table', 'mesa de centro'], ['tv unit wallmounted', 'mueble de TV de pared'], ['tv unit', 'mueble de TV'], ['carpet lines round', 'alfombra redonda'], ['carpet lines', 'alfombra'], ['elliptical table', 'mesa elíptica'],
     ['kitchen sink', 'fregadero'], ['corner shower', 'ducha de esquina'], ['rainfinity shower system', 'sistema de ducha'], ['electric stove', 'cocina eléctrica'],
     ['fridge single door', 'frigorífico de una puerta'], ['glass partition with door', 'mampara de cristal con puerta'], ['glass partition', 'mampara de cristal'],
@@ -238,6 +251,7 @@
     ['elliptical trainer', 'elíptica'], ['exercise bike', 'bicicleta estática'], ['tv set', 'televisor'], ['freestanding tv', 'televisor'], ['picture window', 'ventana fija'],
     ['fixed arc window', 'ventana fija en arco'], ['locker bench', 'banco de vestuario'], ['sink base cabinet', 'mueble bajo con fregadero'], ['us sink base cabinet', 'mueble bajo con fregadero']
   ];
+  FRASES.sort(function (a, b) { return b[0].length - a[0].length; });
   var PALABRAS = {
     car: 'coche', truck: 'camión', bus: 'autobús', jet: 'jet', airliner: 'avión', yacht: 'yate', boat: 'barco', ship: 'barco', train: 'tren', bicycle: 'bicicleta', bike: 'bici',
     biker: 'motorista', motorbike: 'moto', scooter: 'escúter', bulldozer: 'buldócer', crane: 'grúa', catamaran: 'catamarán', parking: 'aparcamiento', sofa: 'sofá',
@@ -251,16 +265,22 @@
     surgeon: 'cirujano', disabled: 'en silla de ruedas', lying: 'tumbado', crawling: 'gateando', book: 'libro', stuff: 'personal', a: '', an: '', the: '', in: '', at: 'en', on: 'en',
     exterior: 'exterior', interior: 'interior', frame: 'marco', frameless: 'sin marco', partition: 'mampara', angle: 'angular', visible: 'visible', scale: 'escala', x: 'x',
     urinal: 'urinario', fireplace: 'chimenea', radiator: 'radiador', fan: 'ventilador', heater: 'calentador', heating: 'calefacción', cooling: 'refrigeración', logs: 'leña',
+    fixed: 'fija', arc: 'en arco', degree: 'grados', panels: 'paneles', panel: 'panel', casework: 'mueble de cocina', cooktop: 'placa', french: 'francesa', balcony: 'de balcón',
+    railing: 'barandilla', shutters: 'contraventanas', hung: 'guillotina', mulled: 'acoplada', invisible: 'invisible', spider: 'con arañas', structure: 'estructura', fin: 'y aletas',
+    wooden: 'de madera', glass: 'de cristal', iron: 'de hierro', metal: 'metálica', modern: 'moderna', multiple: 'varios', thin: 'fina', dining: 'de comedor', stripes: 'de rayas',
+    casement: 'abatible', slider: 'corredera', sliding: 'corredera',
     large: 'grande', medium: 'mediano', with: 'con', and: 'y', of: 'de', plant: 'planta', lamp: 'lámpara', shelf: 'estantería', shelves: 'estanterías', rack: 'rack',
     mirror: 'espejo', bin: 'papelera', stool: 'taburete', sofa2: 'sofá', stair: 'escalera', stairs: 'escalera', elevator: 'ascensor', lift: 'ascensor', counter: 'mostrador',
     kitchen: 'cocina', bathroom: 'baño', washing: 'lavadora', machine: 'máquina', washer: 'lavadora', dryer: 'secadora', oven: 'horno', microwave: 'microondas',
     tree: 'árbol', bush: 'arbusto', palm: 'palmera', fence: 'valla', gate: 'portón', curtain: 'cortina', carpet: 'alfombra', rug: 'alfombra', piano: 'piano'
   };
   function nombreEs(orig) {
-    var n = String(orig || '').replace(/[_]+/g, ' ').replace(/\bUS\b/g, '').replace(/\s+/g, ' ').trim(), vista = 'planta', low;
+    var n = String(orig || '').replace(/[_]+/g, ' ').replace(/\b(US|EU)\b/g, '').replace(/\s+scale\s*\d+/ig, '').replace(/(\d+)\s*x\s*(\d+)\s*m\b/ig, '$1×$2 m').replace(/\s+/g, ' ').trim(), vista = 'planta', low;
     n = n.replace(/\s+(exterior|interior)\s*$/i, ' $1');
     if (/\bside view\b/i.test(n)) { vista = 'lateral'; n = n.replace(/\s*\bside view\b/ig, ''); }
     else if (/\bfront view\b/i.test(n)) { vista = 'frente'; n = n.replace(/\s*\bfront view\b/ig, ''); }
+    var ext = '', me = /\s+(exterior|interior)\s*$/i.exec(n);
+    if (me) { ext = me[1].toLowerCase(); n = n.slice(0, me.index); }
     var talla = '', m = /\s+(XXL|XL|XS|S|M|L)$/.exec(n);
     if (m) { talla = m[1]; n = n.slice(0, m.index); }
     else { m = /\s+([A-Z])$/.exec(n); if (m) { talla = m[1]; n = n.slice(0, m.index); } }
@@ -273,7 +293,7 @@
     var resto = low.split(/\s+/).filter(Boolean).map(function (w) {
       if (w === '\u0001') return hecho;
       if (Object.prototype.hasOwnProperty.call(PALABRAS, w)) return PALABRAS[w];
-      if (/\d/.test(w) || /^(i|ii|iii|iv|v|a|b|c|tv)$/.test(w)) return w.toUpperCase();
+      if (/\d/.test(w) || /^(i|ii|iii|iv|v|a|b|c|tv|xs|xl|xxl|s|m|l)$/.test(w)) return w.toUpperCase();
       return w.charAt(0).toUpperCase() + w.slice(1);
     }).filter(function (w) { return w !== ''; }).join(' ');
     resto = resto.replace(/\s+/g, ' ').trim() || n;
@@ -281,11 +301,13 @@
     ws.forEach(function (w) { if (uniq.length === 0 || uniq[uniq.length - 1].toLowerCase() !== w.toLowerCase()) uniq.push(w); });
     var half = uniq.length / 2;
     if (uniq.length >= 4 && uniq.length % 2 === 0 && uniq.slice(0, half).join(' ').toLowerCase() === uniq.slice(half).join(' ').toLowerCase()) uniq = uniq.slice(0, half);
+    var CABEZAS = ['alfombra', 'ventana', 'puerta', 'silla', 'mesa', 'mueble', 'cama', 'sofá', 'sillón', 'barandilla', 'chimenea', 'ventilador', 'radiador'];
+    if (!hecho && uniq.length >= 2 && CABEZAS.indexOf(uniq[uniq.length - 1]) >= 0 && uniq[0].toLowerCase() !== uniq[uniq.length - 1]) uniq.unshift(uniq.pop());
     var NOMBRES = ['silla', 'sofá', 'sillón', 'mesa', 'cama', 'taburete', 'lámpara', 'escritorio'];
     if (uniq.length >= 2 && NOMBRES.indexOf(uniq[uniq.length - 1]) >= 0 && uniq.slice(0, -1).every(function (w) { return /^[A-ZÁÉÍÓÚ0-9]/.test(w) || /^[a-z]+$/.test(w) === false; })) uniq.unshift(uniq.pop());
     resto = uniq.join(' ');
     var cat = categoria(orig);
-    var out = resto.charAt(0).toUpperCase() + resto.slice(1) + (talla ? ' (' + talla + ')' : '');
+    var out = resto.charAt(0).toUpperCase() + resto.slice(1) + (talla ? ' (' + talla + ')' : '') + (ext ? ' ' + ext : '');
     return { nombre: out + (vista === 'planta' ? '' : ' · ' + vista), vista: vista, categoria: cat };
   }
   function categoria(orig) {
@@ -295,8 +317,8 @@
     if (/treadmill|exercise|trainer|reformer|crossbar|pilates|dumbbell|barbell|rack|bench press|rower/.test(t)) return 'Fitness';
     if (/heater|heating|cooling|air conditioner|radiator|fireplace|ceiling fan|standing fan|\blogs\b/.test(t)) return 'Climatización';
     if (/toilet|shower|bath|ep wallhung|bidet|rainfinity|urinal|drain/.test(t)) return 'Baño';
-    if (/sink|kitchen|stove|fridge|oven|dishwasher|hood/.test(t)) return 'Cocina';
-    if (/window|door|partition|gate|curtain wall/.test(t)) return 'Puertas y ventanas';
+    if (/sink|kitchen|stove|fridge|oven|dishwasher|hood|casework|cooktop/.test(t)) return 'Cocina';
+    if (/window|door|partition|gate|curtain wall|railing|skylight/.test(t)) return 'Puertas y ventanas';
     if (/sofa|armchair|chair|table|desk|bed|night|wardrobe|tv\b|office|units|bench|locker|stand|aeron|shelf|cabinet|lamp|plant|rug|carpet/.test(t)) return 'Mobiliario';
     return 'Mi biblioteca';
   }
@@ -370,7 +392,7 @@
   function piezasDe(texto, opciones) {
     var res = bloquesDe(texto, opciones), grupos = {}, orden = [];
     res.bloques.forEach(function (b) {
-      var base = String(b.original).replace(/\s+(front|side) view\s*$/i, '').trim(), key = base.toLowerCase();
+      var base = String(b.original).replace(/\s+(front|side) view\b/ig, '').trim(), key = base.toLowerCase();
       if (!grupos[key]) { grupos[key] = { base: base, planta: null, frente: null, lateral: null }; orden.push(key); }
       var g = grupos[key];
       if (b.vista === 'frente') g.frente = b; else if (b.vista === 'lateral') g.lateral = b; else g.planta = b;
