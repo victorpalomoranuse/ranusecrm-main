@@ -388,17 +388,39 @@ module Ranuse
   end
 end
 
+# ── Menú y barra de herramientas «Ranuse» (con el logo) ───────────────────
 unless file_loaded?(__FILE__)
+  carpeta_iconos = File.join(File.dirname(__FILE__), 'ranuse_sketchup', 'icons')
+  icono = lambda do |nombre, tam|
+    ruta = File.join(carpeta_iconos, "#{nombre}_#{tam}.png")
+    File.exist?(ruta) ? ruta : nil
+  end
+  crear = lambda do |texto, ayuda, nombre_icono, &accion|
+    cmd = UI::Command.new(texto, &accion)
+    cmd.tooltip = ayuda
+    cmd.status_bar_text = ayuda
+    cmd.small_icon = icono.call(nombre_icono, 16) if icono.call(nombre_icono, 16)
+    cmd.large_icon = icono.call(nombre_icono, 24) if icono.call(nombre_icono, 24)
+    cmd
+  end
+
+  cmd_conectar = crear.call('Conectar con un plano…', 'Ranuse: conectar con un plano del CRM', 'logo') { Ranuse::PlanoSU.conectar }
+  cmd_actualizar = crear.call('Actualizar ahora', 'Ranuse: actualizar el modelo desde el plano', 'actualizar') { Ranuse::PlanoSU.sincronizar(false, true) }
+  cmd_auto = crear.call('Sincronización automática', 'Ranuse: actualizar solo cada pocos segundos', 'auto') { Ranuse::PlanoSU.alternar_auto }
+  cmd_auto.set_validation_proc { Ranuse::PlanoSU.instance_variable_get(:@timer) ? MF_CHECKED : MF_UNCHECKED }
+  cmd_techos = crear.call('Mostrar techos', 'Ranuse: mostrar u ocultar los techos', 'techos') { Ranuse::PlanoSU.alternar_techos }
+  cmd_techos.set_validation_proc { Ranuse::PlanoSU.ajuste('techos', false) ? MF_CHECKED : MF_UNCHECKED }
+  cmd_estado = crear.call('Estado: hoy / final', 'Ranuse: cambiar entre cómo está hoy y cómo quedará', 'estado') { Ranuse::PlanoSU.alternar_estado }
+
   menu_raiz = (UI.respond_to?(:menu) && (UI.menu('Extensions') || UI.menu('Plugins')))
   if menu_raiz
     menu = menu_raiz.add_submenu('Ranuse')
-    menu.add_item('Conectar con un plano…') { Ranuse::PlanoSU.conectar }
-    menu.add_item('Actualizar ahora') { Ranuse::PlanoSU.sincronizar(false, true) }
-    auto = menu.add_item('Sincronización automática') { Ranuse::PlanoSU.alternar_auto }
-    menu.set_validation_proc(auto) { Ranuse::PlanoSU.instance_variable_get(:@timer) ? MF_CHECKED : MF_UNCHECKED }
-    techos = menu.add_item('Mostrar techos') { Ranuse::PlanoSU.alternar_techos }
-    menu.set_validation_proc(techos) { Ranuse::PlanoSU.ajuste('techos', false) ? MF_CHECKED : MF_UNCHECKED }
-    menu.add_item('Estado: cambiar entre «hoy» y «final»') { Ranuse::PlanoSU.alternar_estado }
+    [cmd_conectar, cmd_actualizar, cmd_auto, cmd_techos, cmd_estado].each { |c| menu.add_item(c) }
   end
+
+  barra = UI::Toolbar.new('Ranuse')
+  [cmd_conectar, cmd_actualizar, cmd_auto, cmd_techos, cmd_estado].each { |c| barra.add_item(c) }
+  barra.show if barra.restore == TB_NEW
+
   file_loaded(__FILE__)
 end
