@@ -949,14 +949,15 @@ function refreshAcab(){
 /* Demoliciones se ve por capas (suelo, techo o acabado de paredes) para que no se mezclen */
 /* obra a medida: muebles de obra, panelados, paneles retroiluminados y hornacinas pegados a un muro */
 var MMK=[
-  {k:'mue',n:'Mueble de obra a medida',d:45,h:220,y0:0,len:150},
-  {k:'baj',n:'Mueble bajo / banco corrido',d:45,h:45,y0:0,len:200},
-  {k:'pan',n:'Panelado de pared',d:4,h:250,y0:0,len:200},
-  {k:'luz',n:'Panel retroiluminado',d:10,h:220,y0:0,len:200,luz:true},
-  {k:'hor',n:'Hornacina',d:15,h:120,y0:90,len:80,inset:true}
+  {k:'mue',n:'Mueble de obra a medida',d:45,h:220,y0:0,len:150,of:'obra'},
+  {k:'baj',n:'Mueble bajo / banco corrido',d:45,h:45,y0:0,len:200,of:'obra'},
+  {k:'pan',n:'Panelado de pared',d:4,h:250,y0:0,len:200,of:'carp'},
+  {k:'luz',n:'Panel retroiluminado',d:10,h:220,y0:0,len:200,luz:true,of:'carp'},
+  {k:'hor',n:'Hornacina',d:15,h:120,y0:90,len:80,inset:true,of:'obra'}
 ];
 function mmKind(k){for(var i=0;i<MMK.length;i++)if(MMK[i].k===k)return MMK[i];return MMK[0]}
 function mmNombre(m){return m.nm||mmKind(m.k).n}
+function mmOf(m){return m.of||mmKind(m.k).of||'obra'}
 function mmCod(m){return 'M'+((st.v.mm||[]).indexOf(m)+1)}
 function mmPoly(m){
   var w=wl(m.wall);if(!w)return null;
@@ -1694,6 +1695,26 @@ function elevMarks(C,px){
   })}catch(er){}
   return out;
 }
+/* dibuja la obra a medida (planta). filtro decide cuáles se ven en cada lámina */
+function mmSvg(C,px,sel,o,filtro,colBase){
+  var h='',z='';
+  (st.v.mm||[]).forEach(function(m){
+    if(!filtro(m))return;
+    var q=mmPoly(m);if(!q||q.len<1)return;
+    var slm=sel&&sel.t==='mm'&&sel.id===m.id,col=slm?C.accent:(colBase||C.blk||C.ink),pts=q.pts.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ');
+    if(m.luz){ // resplandor del retroiluminado
+      var gp=[q.pts[0],q.pts[1],{x:q.pts[1].x+q.nx*18,y:q.pts[1].y+q.ny*18},{x:q.pts[0].x+q.nx*18,y:q.pts[0].y+q.ny*18}].map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ');
+      h+='<polygon points="'+gp+'" style="fill:'+C.warn+';fill-opacity:.14;stroke:'+C.warn+';stroke-width:'+f2(px)+';stroke-dasharray:'+f2(4*px)+' '+f2(3*px)+'"/>';
+    }
+    if(m.k==='hor')h+='<polygon points="'+pts+'" style="fill:'+C.bg+';stroke:'+col+';stroke-width:'+f2((slm?2.4:1.2)*px)+';stroke-dasharray:'+f2(5*px)+' '+f2(3*px)+'"/>';
+    else{
+      h+='<polygon points="'+pts+'" style="fill:'+col+';fill-opacity:'+(m.k==='pan'?.35:.1)+';stroke:'+col+';stroke-width:'+f2((slm?2.4:1.3)*px)+'"/>';
+      if(m.k==='mue'||m.k==='luz')h+=ln(q.pts[0].x,q.pts[0].y,q.pts[2].x,q.pts[2].y,col,px*0.8,'butt')+ln(q.pts[1].x,q.pts[1].y,q.pts[3].x,q.pts[3].y,col,px*0.8,'butt');
+    }
+    if(!o.nonum)z+=txt(C,px,q.mid.x+q.nx*13*px,q.mid.y+q.ny*13*px+4*px,mmCod(m),col,11,700);
+  });
+  return {h:h,z:z};
+}
 function scene(C,k,view,o){
   if(view==='alz')return sceneAlz(C,k,o);
   var v=st.v,px=1/k,h='';
@@ -1739,6 +1760,9 @@ function scene(C,k,view,o){
       }
     });
   }
+  if(view==='interv'){var mmi=mmSvg(C,px,sel,o,function(m){return mmOf(m)==='obra'},C.nw);h+=mmi.h;zlab+=mmi.z}
+  if(view==='ilum'){var mml=mmSvg(C,px,sel,o,function(m){return !!m.luz});h+=mml.h;zlab+=mml.z}
+  if(view==='acab'){var mma=mmSvg(C,px,sel,o,function(m){return m.k==='pan'||!!m.mat});h+=mma.h;zlab+=mma.z}
   if(rcVis(view)){
     (v.rc||[]).forEach(function(rc){
       var q=rcPoly(rc);if(!q||q.len<1)return;
@@ -1838,20 +1862,7 @@ function scene(C,k,view,o){
     if(st.led&&o.nodes)h+='<circle cx="'+f2(st.led.x)+'" cy="'+f2(st.led.y)+'" r="'+f2(6*px)+'" style="fill:'+C.accent+'"/>';
   }
   if(view==='distrib'){
-    (v.mm||[]).forEach(function(m){
-      var q=mmPoly(m);if(!q||q.len<1)return;
-      var slm=sel&&sel.t==='mm'&&sel.id===m.id,col=slm?C.accent:(C.blk||C.ink),pts=q.pts.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ');
-      if(m.luz){ // resplandor del retroiluminado
-        var gp=[q.pts[0],q.pts[1],{x:q.pts[1].x+q.nx*18,y:q.pts[1].y+q.ny*18},{x:q.pts[0].x+q.nx*18,y:q.pts[0].y+q.ny*18}].map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ');
-        h+='<polygon points="'+gp+'" style="fill:'+C.warn+';fill-opacity:.14;stroke:'+C.warn+';stroke-width:'+f2(px)+';stroke-dasharray:'+f2(4*px)+' '+f2(3*px)+'"/>';
-      }
-      if(m.k==='hor')h+='<polygon points="'+pts+'" style="fill:'+C.bg+';stroke:'+col+';stroke-width:'+f2((slm?2.4:1.2)*px)+';stroke-dasharray:'+f2(5*px)+' '+f2(3*px)+'"/>';
-      else{
-        h+='<polygon points="'+pts+'" style="fill:'+col+';fill-opacity:'+(m.k==='pan'?.35:.1)+';stroke:'+col+';stroke-width:'+f2((slm?2.4:1.3)*px)+'"/>';
-        if(m.k==='mue'||m.k==='luz')h+=ln(q.pts[0].x,q.pts[0].y,q.pts[2].x,q.pts[2].y,col,px*0.8,'butt')+ln(q.pts[1].x,q.pts[1].y,q.pts[3].x,q.pts[3].y,col,px*0.8,'butt');
-      }
-      if(!o.nonum)zlab+=txt(C,px,q.mid.x+q.nx*13*px,q.mid.y+q.ny*13*px+4*px,mmCod(m),col,11,700);
-    });
+    var mmr=mmSvg(C,px,sel,o,function(){return true});h+=mmr.h;zlab+=mmr.z;
     var paso=num(v.paso)||80,eqs=v.eq,bad={},gl='';
     if(sel&&sel.t==='eq'){
       var se=by(eqs,sel.id);
@@ -2673,7 +2684,7 @@ function tap(w){
     var gm=nwm.g,pkm=mmKind(placeMMk),sdm=((w.x-gm.a.x)*(-gm.uy)+(w.y-gm.a.y)*gm.ux)>=0?'p':'m',lenm=Math.min(pkm.len,gm.l);
     var s0m=Math.max(0,Math.min(gm.l-lenm,Math.round((nwm.s-lenm/2)/5)*5));
     snap();
-    var nmm={id:uid('m'),wall:nwm.w.id,sd:sdm,s0:s0m,s1:s0m+lenm,d:pkm.d,h:pkm.h,y0:pkm.y0,k:pkm.k,nm:'',mat:'',luz:!!pkm.luz,nota:''};
+    var nmm={id:uid('m'),wall:nwm.w.id,sd:sdm,s0:s0m,s1:s0m+lenm,d:pkm.d,h:pkm.h,y0:pkm.y0,k:pkm.k,nm:'',mat:'',luz:!!pkm.luz,nota:'',of:pkm.of||'obra'};
     st.v.mm.push(nmm);st.sel={t:'mm',id:nmm.id};st.tool='select';commit();toolbar();hint();
     toast(pkm.n+' colocado. Ajusta su largo, fondo, alto y posición en el panel.');return;
   }
@@ -3297,6 +3308,7 @@ function panelSel(focus){
     h+='<label class="fld"><span>Nombre (sale en la leyenda)</span><input data-t="mm_nm" value="'+esc(mms.nm||'')+'" placeholder="'+esc(mmKind(mms.k).n)+'" autocomplete="off"></label>';
     if(mmw)h+='<div class="seg3">'+['p','m'].map(function(sd){return '<button data-a="mmside" data-s="'+sd+'" aria-pressed="'+(mms.sd===sd)+'">'+faceName(mmw,sd)+'</button>'}).join('')+'</div>';
     h+=fld('mm_s0','Desde el inicio del muro (cm)',mms.s0)+fld('mm_s1','Hasta (cm)',mms.s1)+fld('mm_d',mms.k==='hor'?'Profundidad en el muro (cm)':'Fondo (cm)',mms.d)+fld('mm_h','Alto (cm)',mms.h)+fld('mm_y0','Altura desde el suelo (cm)',mms.y0);
+    h+='<label class="fld"><span>Lo ejecuta</span><select data-t="mm_of"><option value="obra"'+(mmOf(mms)==='obra'?' selected':'')+'>Albañil (obra) · sale en Implantación</option><option value="carp"'+(mmOf(mms)==='carp'?' selected':'')+'>Carpintero / otro oficio</option></select></label>';
     h+='<label class="fld chk"><input type="checkbox" data-t="mm_luz"'+(mms.luz?' checked':'')+'><span>Retroiluminado (LED)</span></label>';
     h+='<label class="fld"><span>Material / acabado</span><input data-t="mm_mat" value="'+esc(mms.mat||'')+'" placeholder="Lacado, roble, microcemento…" autocomplete="off"></label>';
     h+='<label class="fld"><span>Nota para obra</span><input data-t="mm_nota" value="'+esc(mms.nota||'')+'" placeholder="Con puertas push, cajón, iluminación…" autocomplete="off"></label>';
@@ -3651,7 +3663,8 @@ $('side').addEventListener('change',function(e){
   if(t==='alt_g'){var ng=num(e.target.value);if(!(ng>=100&&ng<=1000)){toast('Escribe una altura entre 100 y 1000 cm');return}snap();st.v.altura=ng;try{$('v-altura').value=ng}catch(_){}commit(false);panelSel();toast('Altura de las paredes: '+fmt(ng)+' cm');return}
   if(t&&/^mm_/.test(t)&&st.sel&&st.sel.t==='mm'){
     var mq=by(st.v.mm,st.sel.id);if(!mq)return;snap();
-    if(t==='mm_k'){var pk2=mmKind(e.target.value);mq.k=pk2.k;mq.d=pk2.d;mq.h=pk2.h;mq.y0=pk2.y0;mq.luz=!!pk2.luz}
+    if(t==='mm_k'){var pk2=mmKind(e.target.value);mq.k=pk2.k;mq.d=pk2.d;mq.h=pk2.h;mq.y0=pk2.y0;mq.luz=!!pk2.luz;mq.of=pk2.of||'obra'}
+    else if(t==='mm_of')mq.of=e.target.value==='carp'?'carp':'obra';
     else if(t==='mm_luz')mq.luz=!!e.target.checked;
     else if(t==='mm_nm')mq.nm=e.target.value.trim();
     else if(t==='mm_mat')mq.mat=e.target.value.trim();
@@ -4004,7 +4017,7 @@ function wLen(w){return w.m===true?w.len:wg(w).l}
 function viewHas(view){
   var v=st.v;
   if(view==='demol')return v.walls.some(function(w){return w.s==='dem'||(w.fr&&(w.fr.p||w.fr.m))})||v.pil.some(function(p){return p.s==='dem'})||v.ops.some(function(o){return o.s==='dem'})||v.pts.some(function(q){return q.s==='dem'})||v.rz.length>0;
-  if(view==='interv')return v.walls.some(function(w){return w.s==='new'})||v.pil.some(function(p){return p.s==='new'})||v.ops.some(function(o){return o.s==='new'});
+  if(view==='interv')return (v.mm||[]).some(function(m){return mmOf(m)==='obra'})||v.walls.some(function(w){return w.s==='new'})||v.pil.some(function(p){return p.s==='new'})||v.ops.some(function(o){return o.s==='new'});
   if(view==='distrib')return v.eq.length>0||(v.mm||[]).length>0;
   if(view==='ilum'||view==='elec')return v.pts.some(function(q){return q.v===view&&q.s!=='dem'});
   if(view==='suelos')return v.zn.some(function(z){return z.k==='s'});
@@ -5348,7 +5361,7 @@ function buildResumen(){
   var v=st.v,alt=wallH(),s=stats(),out={altura_cm:alt};
   out.muros={existente_ml:r2(s.ex/100),demoler_ml:r2(s.dem/100),demoler_m2:r2(areaEst('dem')),nuevo_ml:r2(s.nw/100),nuevo_m2:r2(areaEst('new'))};
   out.puertas=s.doors;out.ventanas=s.wins;
-  out.obra_a_medida=(v.mm||[]).map(function(m,i){return {codigo:'M'+(i+1),tipo:mmKind(m.k).n,nombre:mmNombre(m),largo_cm:r2(m.s1-m.s0),fondo_cm:m.d,alto_cm:m.h,m2_frente:r2((m.s1-m.s0)*m.h/10000),retroiluminado:!!m.luz,material:m.mat||'',nota:m.nota||''}});
+  out.obra_a_medida=(v.mm||[]).map(function(m,i){return {codigo:'M'+(i+1),tipo:mmKind(m.k).n,nombre:mmNombre(m),ejecuta:mmOf(m)==='obra'?'albañil':'carpintero u otro oficio',largo_cm:r2(m.s1-m.s0),fondo_cm:m.d,alto_cm:m.h,m2_frente:r2((m.s1-m.s0)*m.h/10000),retroiluminado:!!m.luz,material:m.mat||'',nota:m.nota||''}});
   out.recrecidos=(v.rc||[]).map(function(rc){var q=rcPoly(rc);return q?{largo_cm:r2(q.len),espesor_cm:rc.t||10,m2:r2(q.len*alt/10000),material:rc.mat||''}:null}).filter(Boolean);
   var salas=[],suelos={},techos={},paredes={};
   roomFaces('suelos').forEach(function(f){
