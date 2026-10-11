@@ -244,6 +244,9 @@
     ['casework s with door', 'mueble de cocina con puerta (S)'], ['casework m with door', 'mueble de cocina con puerta (M)'], ['casework l with door', 'mueble de cocina con puerta (L)'],
     ['fridge french door', 'frigorífico americano'], ['induction cooktop', 'placa de inducción'], ['double sink', 'fregadero doble'], ['low back chair', 'silla de respaldo bajo'],
     ['dining chair thin', 'silla de comedor fina'], ['dining chair', 'silla de comedor'], ['round carpet', 'alfombra redonda'], ['carpet stripes', 'alfombra de rayas'],
+    ['extended wall hung toilet', 'inodoro suspendido alargado'], ['round wall hung toilet', 'inodoro suspendido redondo'], ['square wall hung toilet', 'inodoro suspendido cuadrado'],
+    ['wall hung toilet', 'inodoro suspendido'], ['sp wall hung', 'inodoro suspendido SP'], ['accessible toilet', 'inodoro accesible'], ['smart toilet', 'inodoro inteligente'],
+    ['toilet basic', 'inodoro'], ['elongated', 'inodoro alargado'],
     ['coffee table', 'mesa de centro'], ['tv unit wallmounted', 'mueble de TV de pared'], ['tv unit', 'mueble de TV'], ['carpet lines round', 'alfombra redonda'], ['carpet lines', 'alfombra'], ['elliptical table', 'mesa elíptica'],
     ['kitchen sink', 'fregadero'], ['corner shower', 'ducha de esquina'], ['rainfinity shower system', 'sistema de ducha'], ['electric stove', 'cocina eléctrica'],
     ['fridge single door', 'frigorífico de una puerta'], ['glass partition with door', 'mampara de cristal con puerta'], ['glass partition', 'mampara de cristal'],
@@ -269,6 +272,7 @@
     railing: 'barandilla', shutters: 'contraventanas', hung: 'guillotina', mulled: 'acoplada', invisible: 'invisible', spider: 'con arañas', structure: 'estructura', fin: 'y aletas',
     wooden: 'de madera', glass: 'de cristal', iron: 'de hierro', metal: 'metálica', modern: 'moderna', multiple: 'varios', thin: 'fina', dining: 'de comedor', stripes: 'de rayas',
     casement: 'abatible', slider: 'corredera', sliding: 'corredera',
+    toilet: 'inodoro', accessible: 'accesible', smart: 'inteligente', extended: 'alargado',
     large: 'grande', medium: 'mediano', with: 'con', and: 'y', of: 'de', plant: 'planta', lamp: 'lámpara', shelf: 'estantería', shelves: 'estanterías', rack: 'rack',
     mirror: 'espejo', bin: 'papelera', stool: 'taburete', sofa2: 'sofá', stair: 'escalera', stairs: 'escalera', elevator: 'ascensor', lift: 'ascensor', counter: 'mostrador',
     kitchen: 'cocina', bathroom: 'baño', washing: 'lavadora', machine: 'máquina', washer: 'lavadora', dryer: 'secadora', oven: 'horno', microwave: 'microondas',
@@ -389,6 +393,17 @@
     return { unidad: doc.unidad, bloques: res };
   }
   /* une «X», «X front view» y «X side view» en una sola pieza con sus vistas */
+  function categoriaDeArchivo(nombre) {
+    var t = String(nombre || '').toLowerCase();
+    if (/toilet|urinal|urinat|shower|bath|bidet|sink|washbasin|lavatory/.test(t)) return 'Baño';
+    if (/kitchen/.test(t)) return 'Cocina';
+    if (/window|door/.test(t)) return 'Puertas y ventanas';
+    if (/heating|cooling|appliance|hvac/.test(t)) return 'Climatización';
+    if (/transport|vehicle|car|boat/.test(t)) return 'Transporte';
+    if (/people|person/.test(t)) return 'Personas';
+    if (/living|bedroom|office|furniture|dining|chair|sofa|table|garden|outdoor/.test(t)) return 'Mobiliario';
+    return '';
+  }
   function piezasDe(texto, opciones) {
     var res = bloquesDe(texto, opciones), grupos = {}, orden = [];
     res.bloques.forEach(function (b) {
@@ -420,6 +435,8 @@
         generico: [pl, fr, la].some(function (x) { return x && x.generico; })
       };
     });
+    var catArchivo = categoriaDeArchivo(opciones && opciones.archivo);
+    if (catArchivo) piezas.forEach(function (p) { if (p.categoria === 'Mi biblioteca') p.categoria = catArchivo; });
     return { unidad: res.unidad, piezas: piezas };
   }
   var API = { parseDXF: parseDXF, bloquesDe: bloquesDe, piezasDe: piezasDe, nombreEs: nombreEs };

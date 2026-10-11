@@ -2666,7 +2666,7 @@ $('dxf-file').addEventListener('change',function(e){
     cargarDXF(function(){
       setTimeout(function(){
         try{
-          var res=window.RanuseDXF.piezasDe(String(rd.result));
+          var res=window.RanuseDXF.piezasDe(String(rd.result),{archivo:f.name});
           res.bloques=res.piezas;
           if(!res.bloques.length){$('dxf-st').textContent='Ese DXF no tiene bloques con dibujo. Prueba a exportar el plano con los bloques colocados.';return}
           $('dxf-st').textContent=res.bloques.length+' bloques encontrados en «'+f.name+'».';
