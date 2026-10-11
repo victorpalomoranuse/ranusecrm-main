@@ -3915,8 +3915,9 @@ function viewHas(view){
   if(view==='alz'||view==='cotas')return v.walls.length>0;
   return true;
 }
-/* orden de las láminas, en el orden en que se ejecuta la obra */
-var ORDEN_OBRA=['actual','cotas','distrib','demol','interv','elec','ilum','techos','acab','alz','suelos'];
+/* orden de las láminas del PDF, en el orden en que se ejecuta la obra: lo último, el mobiliario y la planta de máquinas (y después las carpinterías).
+   La distribución se trabaja desde el principio, por eso la pestaña está arriba, pero en el dossier cierra el plano. */
+var ORDEN_OBRA=['actual','cotas','demol','interv','elec','ilum','techos','acab','alz','suelos','distrib'];
 function dossierViews(){return ORDEN_OBRA.filter(viewHas)}
 
 
@@ -4660,7 +4661,7 @@ function sheetPage(doc,view,idx,total,o){
   p.line(cx,mg,cx,PH-mg,INK,0.35);
 
   /* título de la lámina */
-  p.text(mg+7,mg+10,(VNAME[view]+(o.capaN?' · '+o.capaN:'')).toUpperCase(),15*f+1,{bold:true,col:INK});
+  p.text(mg+7,mg+10,((view==='distrib'?'Distribución · mobiliario y máquinas':VNAME[view])+(o.capaN?' · '+o.capaN:'')).toUpperCase(),15*f+1,{bold:true,col:INK});
   p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.cliente?' · '+v.cliente:''),9*f+1,{col:MUTED});
 
   /* escala y plano */
