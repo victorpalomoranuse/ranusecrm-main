@@ -1601,10 +1601,24 @@ function cleanNodes(){
   st.v.ctl.forEach(function(c){used[c.a]=1;used[c.b]=1});
   st.v.nodes=st.v.nodes.filter(function(n){return used[n.id]});
 }
+/* grosor de un muro = suma de las capas de su tipo (en cm). Si el grosor se escribió a mano (tm) no se toca */
+function espesorTipo(id){
+  if(!id||!DLIB[id])return null;
+  var mm=detLayers(id).reduce(function(t,l){return t+(+l.e||0)},0);
+  return mm>0?Math.round(mm)/10:null;
+}
+function aplicarTipo(w){
+  if(!w||w.tm)return false;
+  var id=w.tipo||(w.s==='new'&&w.auto?'TAB-new':null),e=espesorTipo(id);
+  if(e&&Math.abs((w.t||0)-e)>0.01){w.t=e;return true}
+  return false;
+}
+function sincGrosores(){var c=false;st.v.walls.forEach(function(w){if(aplicarTipo(w))c=true});return c}
 function addWall(a,b){
   var ws=st.v.walls;
   for(var i=0;i<ws.length;i++){if((ws[i].a===a&&ws[i].b===b)||(ws[i].a===b&&ws[i].b===a))return null}
   var w={id:uid('w'),a:a,b:b,len:null,m:false,s:st.defState,t:12};
+  if(w.s==='new'){w.auto=true;aplicarTipo(w)} /* un tabique nuevo toma el grosor del tabique por defecto */
   ws.push(w);return w;
 }
 function splitWall(w,s){
@@ -3503,7 +3517,9 @@ function panelSel(focus){
       if(aB)h+=fld('adj_b','Muro que corta al final (cm)',Math.round(wg(aB).l));
     }
     h+='<div class="lab">Estado</div>'+seg3(w.s,'wstate');
-    h+='<div style="height:10px"></div>'+fld('thick','Grosor (cm)',w.t);
+    var gtipo=w.tipo||(w.s==='new'&&w.auto?'TAB-new':null),gE=espesorTipo(gtipo);
+    h+='<div style="height:10px"></div>'+fld('thick','Grosor (cm)'+(gE&&!w.tm?' · según el tipo':''),w.t);
+    if(gE)h+='<p class="note" style="margin:0 0 6px">'+(w.tm?'Grosor escrito a mano: no sigue al tipo de muro.':'El grosor sale de las capas del tipo de muro ('+fmt(gE*10)+' mm).')+'</p>'+(w.tm?'<div class="btns"><button data-a="usartipo">Usar el grosor del tipo</button></div>':'');
     if(st.view==='acab'||st.view==='alz'){
       h+='<div class="lab" style="margin-top:12px">Acabados</div>';
       ['p','m'].forEach(function(sd){
@@ -3752,7 +3768,7 @@ function applyField(key,val,adv){
       commit();
     }else if(key==='thick'){
       if(!(n>=5&&n<=60)){toast('El grosor va de 5 a 60 cm');return}
-      snap();w.t=n;commit(false);
+      snap();w.t=n;w.tm=true;commit(false);
     }
   }else if(s.t==='op'){
     var o=opn(s.id);if(!o)return;
@@ -3874,6 +3890,7 @@ function doAction(a,el){
     commit();toast('Recrecido añadido. Ajusta el tramo, la cara y el espesor en el panel.');return;
   }
   if(a==='mmside'&&s.t==='mm'){var mmx=by(st.v.mm,s.id);if(mmx){snap();mmx.sd=sv;commit()}return}
+  if(a==='usartipo'&&s.t==='wall'){var wu=wl(s.id);if(wu){snap();delete wu.tm;aplicarTipo(wu);commit()}return}
   if(a==='rcside'&&s.t==='rc'){var rcx=by(st.v.rc,s.id);if(rcx){snap();rcx.sd=sv;commit()}return}
   if(a==='del'){
     snap();
@@ -3912,7 +3929,7 @@ $('side').addEventListener('change',function(e){
     if(pk.mat)op0.mat=pk.mat;if(pk.vid)op0.vid=pk.vid;
     commit(false);panelSel();toast('Cambiada a «'+pk.n+'»');return;
   }
-  if(t==='w_tipo'&&st.sel&&st.sel.t==='wall'){var wq=wl(st.sel.id);if(wq){snap();if(e.target.value)wq.tipo=e.target.value;else delete wq.tipo;commit(false);panelSel();drawDet()}return}
+  if(t==='w_tipo'&&st.sel&&st.sel.t==='wall'){var wq=wl(st.sel.id);if(wq){snap();if(e.target.value)wq.tipo=e.target.value;else delete wq.tipo;delete wq.tm;aplicarTipo(wq);commit(false);panelSel();drawDet();if(wq.tipo&&espesorTipo(wq.tipo))toast('Grosor del muro: '+fmt(espesorTipo(wq.tipo)*10)+' mm, según las capas del tipo elegido')}return}
   if(t==='alt_g'){var ng=num(e.target.value);if(!(ng>=100&&ng<=1000)){toast('Escribe una altura entre 100 y 1000 cm');return}snap();st.v.altura=ng;try{$('v-altura').value=ng}catch(_){}commit(false);panelSel();toast('Altura de las paredes: '+fmt(ng)+' cm');return}
   if(t&&/^mm_/.test(t)&&st.sel&&st.sel.t==='mm'){
     var mq=by(st.v.mm,st.sel.id);if(!mq)return;snap();
@@ -5069,7 +5086,8 @@ function drawDet(){
       if(a==='n')L[i].n=t.value.trim()||L[i].n;
       else if(a==='e'){var n=num(t.value);if(n>=0.1&&n<=1000)L[i].e=n}
       else if(a==='k')L[i].k=t.value}
-    save();document.activeElement&&document.activeElement.blur&&document.activeElement.blur();drawDet();
+    var cambioG=sincGrosores();
+    save();document.activeElement&&document.activeElement.blur&&document.activeElement.blur();drawDet();if(cambioG){render();panelSel()}
   });
   box.addEventListener('click',function(e){
     var t=e.target.closest('button[data-da]');if(!t)return;
