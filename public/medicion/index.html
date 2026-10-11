@@ -1126,7 +1126,7 @@ function drItemSvg(C,px,it,sel){
     h='<circle cx="'+f2(a.x)+'" cy="'+f2(a.y)+'" r="'+f2(Math.hypot(b.x-a.x,b.y-a.y))+'" style="fill:'+fill+fo+';stroke:'+col+';stroke-width:'+f2(w)+dash+'"/>';
   }else if(it.t==='poly'){
     var ps=it.pts.map(function(q){return f2(q.x)+','+f2(q.y)}).join(' ');
-    h=it.cl?'<polygon points="'+ps+'" style="fill:'+fill+fo+';stroke:'+col+';stroke-width:'+f2(w)+';stroke-linejoin:round'+dash+'"/>':'<polyline points="'+ps+'" style="fill:none;stroke:'+col+';stroke-width:'+f2(w)+';stroke-linejoin:round'+dash+'"/>';
+    h=it.cl?'<polygon points="'+ps+'" style="fill:'+fill+fo+';stroke:'+col+';stroke-width:'+f2(w)+';stroke-linejoin:round'+dash+'"/>':'<path d="M'+it.pts.map(function(q){return f2(q.x)+' '+f2(q.y)}).join(' L')+'" style="fill:none;stroke:'+col+';stroke-width:'+f2(w)+';stroke-linejoin:round'+dash+'"/>';
   }else if(it.t==='cloud'){
     h='<path d="'+drNube(a,b,10*px)+'" style="fill:'+fill+fo+';stroke:'+col+';stroke-width:'+f2(w)+';stroke-linejoin:round'+dash+'"/>';
   }else if(it.t==='dim'){
@@ -1160,10 +1160,10 @@ function drFinPoly(cerrar){
 function drTap(w){
   var e=drEstilo(),p=drSnap(w);
   if(st.drK==='text'){
-    var t=window.prompt('Texto (puedes poner varias líneas con Intro):','');
-    if(t==null||!String(t).trim())return;
-    snap();var it={id:uid('d'),t:'text',vw:st.drTodas?'*':st.view,pts:[p],txt:String(t).trim(),col:e.col,fs:e.fs,w:e.w};
-    st.v.dr.push(it);st.sel={t:'dr',id:it.id};commit();return;
+    snap();var it={id:uid('d'),t:'text',vw:st.drTodas?'*':st.view,pts:[p],txt:'Nota',col:e.col,fs:e.fs,w:e.w};
+    st.v.dr.push(it);st.sel={t:'dr',id:it.id};commit();
+    setTimeout(function(){var ta=document.querySelector('#sel textarea[data-t="dr_txt"]');if(ta){ta.focus();ta.select()}},60);
+    toast('Escribe la anotación en el panel (Intro = nueva línea)');return;
   }
   if(st.drK==='poly'){
     st.drPoly=st.drPoly||{pts:[],col:e.col,w:e.w,dash:e.dash};
@@ -6854,6 +6854,10 @@ function flyOpen(tool,btn){
   }
   f.style.top='8px';f.scrollTop=0;
 }
+document.addEventListener('input',function(e){ /* la anotación se ve en el plano mientras la escribes */
+  var t=e.target;if(!t||t.getAttribute('data-t')!=='dr_txt'||!st.sel||st.sel.t!=='dr')return;
+  var q=by(st.v.dr,st.sel.id);if(q){q.txt=t.value;render()}
+});
 function pintaFlyDraw(){
   var e=drEstilo(),cols=[['ink','Negro'],['rojo','Rojo'],['azul','Azul'],['verde','Verde'],['naranja','Naranja'],['gris','Gris']];
   $('fly-op').innerHTML='<div class="cathead" style="grid-column:1/-1"><span>Qué dibujar</span></div>'+
