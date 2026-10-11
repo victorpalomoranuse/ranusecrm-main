@@ -29,6 +29,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
     frameRef.current.contentWindow.postMessage({
       src: 'ranuse-crm', type: 'init', tema: 'dark', abrir, nuevo, fullscreen: fullRef.current,
       proyecto: { nombre: nombreProyecto, cliente: nombreCliente },
+      admin: !!d.catalogos.admin,
       visitas: d.visitas, maquinas: d.catalogos.maquinas || [], luminarias: d.catalogos.luminarias || [], materiales: d.catalogos.materiales || [],
     }, window.location.origin);
     setCargando(false);
@@ -67,6 +68,12 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
       else if (m.type === 'guardarBiblioteca' && Array.isArray(m.items)) {
         try { const { data } = await api.post('/medicion/biblioteca', { items: m.items }); responder({ type: 'biblioteca', items: data.items || [] }); }
         catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudieron guardar los bloques' }); }
+      }
+      else if (m.type === 'actualizarBiblioteca' && m.id) {
+        try {
+          const { data } = await api.patch(`/medicion/biblioteca/${String(m.id).replace(/^bib-/, '')}`, { categoria: m.categoria, nombre: m.nombre });
+          responder({ type: 'bibliotecaActualizada', id: data.id, categoria: data.categoria, nombre: data.nombre });
+        } catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo guardar el cambio' }); }
       }
       else if (m.type === 'borrarBiblioteca' && m.id) {
         try { await api.delete(`/medicion/biblioteca/${String(m.id).replace(/^bib-/, '')}`); responder({ type: 'bibliotecaBorrada', id: m.id }); }

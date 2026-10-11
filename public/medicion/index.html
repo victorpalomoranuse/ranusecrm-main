@@ -591,6 +591,7 @@ var LIBDEF=[
   ['escritorio','Escritorio con silla','Biblioteca · Oficina y recepción',140,110,75],['mostrador','Mostrador de recepción','Biblioteca · Oficina y recepción',200,70,110]
 ].map(function(x){return {id:'lib-'+x[0]+'-'+x[3]+'x'+x[4],nombre:x[1],tipo:'lb:'+x[0],w:x[3],d:x[4],alto:x[5],categoria:x[2],generico:true}});
 DEFCAT=DEFCAT.concat(LIBDEF);
+DEFCAT.forEach(function(c){if(!c.categoria)c.categoria='Máquinas genéricas'});
 function elpPts(cx,cy,rx,ry){var p=[],i;for(i=0;i<28;i++){var a=i/28*Math.PI*2;p.push(f2(cx+Math.cos(a)*rx)+','+f2(cy+Math.sin(a)*ry))}return p.join(' ')}
 function libSym(ty,L,T,c,px){
   var A='fill="none" stroke="'+c+'" stroke-width="'+f2(BLW*px)+'"',A2=A,F='fill="'+c+'" stroke="none"',o='',i;
@@ -871,7 +872,7 @@ function opLibPreset(id){
 function opLibList(tool){
   var out=[];
   catalog().forEach(function(c){
-    if(!c.biblioteca||familiaDe(c.categoria)!=='Puertas y ventanas')return;
+    if(!c.biblioteca||!catsDe(c).some(function(x){return familiaDe(x)==='Puertas y ventanas'}))return;
     var p=opLibPreset('lib:'+c.id);if(p&&p.t===tool&&c.w>=20)out.push(p);
   });
   return out.sort(function(a,b){return a.n.localeCompare(b.n,'es',{numeric:true})});
@@ -2891,6 +2892,11 @@ function thumb(c){
   var L=c.w,T=c.d,px=Math.max(L,T)/70;
   return '<svg viewBox="-4 -4 '+(L+8)+' '+(T+8)+'" preserveAspectRatio="xMidYMid meet" aria-hidden="true">'+eqSym(c.tipo,L,T,'currentColor',px,c.id)+'</svg>';
 }
+/* una pieza puede estar en varias categorías (separadas por « | »): aparece en todas */
+function catsDe(c){
+  var l=String(c&&c.categoria||'Genéricos').split('|').map(function(x){return x.trim()}).filter(Boolean);
+  return l.length?l:['Genéricos'];
+}
 /* familias de la biblioteca: arriba, qué es; dentro, la categoría */
 var FAMILIAS=['Máquinas y equipamiento','Cocinas','Baños y vestuarios','Mobiliario','Personas','Puertas y ventanas','Escaleras','Plantas y jardín','Transporte','Climatización','Nave y exterior','Otros'];
 function familiaDe(cat){
@@ -2918,7 +2924,7 @@ function pasoFam(f){
 }
 function pasoEq(e){
   if(e.pm!=null&&e.pm!=='')return num(e.pm)>0?num(e.pm):null;
-  var c=catById(e.cid),n=pasoFam(familiaDe(c?c.categoria:''));
+  var c=catById(e.cid),n=pasoFam(familiaDe(c?catsDe(c)[0]:''));
   return n>0?n:null;
 }
 function pasoPar(a,b){var pa=pasoEq(a),pb=pasoEq(b);if(pa==null||pb==null)return null;return Math.max(pa,pb)}
@@ -2927,7 +2933,7 @@ function alPlegarCat(e){
   var td=e.target.closest('button[data-cat-todo]');
   if(td){
     var abre=td.getAttribute('data-cat-todo')==='1';
-    catalog().forEach(function(c){catAbierto[c.categoria||'Genéricos']=abre});
+    catalog().forEach(function(c){catsDe(c).forEach(function(g){catAbierto[g]=abre})});
     FAMILIAS.forEach(function(f){catAbierto['F:'+f]=abre});
     drawCat();return;
   }
@@ -2949,9 +2955,11 @@ function ordenarBloques(l,ord){
 function drawCat(){
   var q=(($('cat-q')&&$('cat-q').value)||'').trim().toLowerCase(),fam={},ord=($('cat-ord')&&$('cat-ord').value)||'nombre';
   catalog().forEach(function(c){
-    if(q&&(c.nombre+' '+(c.categoria||'')+' '+(c.ref||'')+' '+familiaDe(c.categoria)).toLowerCase().indexOf(q)<0)return;
-    var f=familiaDe(c.categoria),g=c.categoria||'Genéricos';
-    (fam[f]=fam[f]||{});(fam[f][g]=fam[f][g]||[]).push(c);
+    if(q&&(c.nombre+' '+(c.categoria||'')+' '+(c.ref||'')+' '+catsDe(c).map(familiaDe).join(' ')).toLowerCase().indexOf(q)<0)return;
+    catsDe(c).forEach(function(g){
+      var f=familiaDe(g);
+      (fam[f]=fam[f]||{});(fam[f][g]=fam[f][g]||[]).push(c);
+    });
   });
   function btn(c){
     return '<button data-cat="'+esc(c.id)+'" aria-pressed="'+(placeId===c.id&&st.tool==='equip')+'">'+thumb(c)+'<span>'+esc(c.nombre)+'</span><small>'+fmt(c.w)+' × '+fmt(c.d)+' cm'+(c.bloque?' · ✓ bloque':'')+(c.generico?' · genérico':'')+(c.sinMedidas?' · sin medidas':'')+'</small></button>';
@@ -2964,10 +2972,16 @@ function drawCat(){
     var fab=q?true:(catAbierto['F:'+f]!==undefined?catAbierto['F:'+f]:unaSola);
     var out='<div class="famhead" data-f="'+esc(f)+'" role="button" tabindex="0" aria-expanded="'+fab+'"><span>'+(fab?'▾':'▸')+' '+esc(f)+'</span><span>'+tot+'</span></div>';
     if(!fab)return out;
+    var norm5=function(t){return String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').slice(0,5)};
+    if(cats.length===1){ // una sola categoría: sin escalón intermedio
+      var lu=ordenarBloques(fam[f][cats[0]],ord),limu=q?200:lu.length;
+      out+=lu.slice(0,limu).map(btn).join('')+(lu.length>limu?'<p class="note" style="grid-column:1/-1">Mostrando '+limu+' de '+lu.length+'. Afina la búsqueda para ver el resto.</p>':'');
+      return out;
+    }
     cats.forEach(function(g){
-      var l=ordenarBloques(fam[f][g],ord);
+      var l=ordenarBloques(fam[f][g],ord),nombreG=g.replace(/^Biblioteca · /,''),etq=norm5(nombreG)===norm5(f)?'General':nombreG;
       var abierto=q?true:(catAbierto[g]!==undefined?catAbierto[g]:l.length<=12),lim=q?200:l.length;
-      out+='<div class="cathead sub" data-g="'+esc(g)+'" role="button" tabindex="0" style="cursor:pointer" aria-expanded="'+abierto+'"><span>'+(abierto?'▾':'▸')+' '+esc(g.replace(/^Biblioteca · /,''))+'</span> <span>'+l.length+'</span></div>'+(abierto?l.slice(0,lim).map(btn).join('')+(l.length>lim?'<p class="note" style="grid-column:1/-1">Mostrando '+lim+' de '+l.length+'. Afina la búsqueda para ver el resto.</p>':''):'');
+      out+='<div class="cathead sub" data-g="'+esc(g)+'" role="button" tabindex="0" style="cursor:pointer" aria-expanded="'+abierto+'"><span>'+(abierto?'▾':'▸')+' '+esc(etq)+'</span> <span>'+l.length+'</span></div>'+(abierto?l.slice(0,lim).map(btn).join('')+(l.length>lim?'<p class="note" style="grid-column:1/-1">Mostrando '+lim+' de '+l.length+'. Afina la búsqueda para ver el resto.</p>':''):'');
     });
     return out;
   }).join('')||'<p class="note" style="grid-column:1/-1">No hay bloques con ese nombre.</p>';
@@ -3437,7 +3451,17 @@ function panelSel(focus){
     h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="eqrotl" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="eqrot" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="eqrot180" title="Girar 180°">180°</button><button data-a="eqflx" aria-pressed="'+!!e.fx+'" title="Espejo izquierda-derecha">⇋ Espejo</button><button data-a="eqfly" aria-pressed="'+!!e.fy+'" title="Espejo arriba-abajo">⇅ Espejo</button></div>';
     h+=previewEq(e);
     var ce0=catById(e.cid);
-    if(ce0&&ce0.biblioteca&&CRM)h+='<div class="btns"><button data-a="bibdel">Quitar de mi biblioteca</button></div>';
+    if(ce0&&ce0.biblioteca){
+      var cats0={};catalog().forEach(function(c){if(c.biblioteca)cats0[c.categoria||'Mi biblioteca']=1});
+      var puedeEd=!CRM||crmAdmin;
+      if(!puedeEd)h+='<div class="lab">Esta pieza en la biblioteca</div><p class="note">Categorías: '+esc(catsDe(ce0).join(', '))+'. Solo el administrador puede cambiar su nombre o sus categorías.</p>';
+      else{
+      h+='<div class="lab">Esta pieza en tu biblioteca</div><label class="fld"><span>Nombre</span><input data-t="eq_nom" value="'+esc(ce0.nombre)+'" autocomplete="off"></label>';
+      h+='<label class="fld"><span>Categorías (se guardan para siempre; separa con comas para ponerla en varias)</span><input data-t="eq_cat" list="dl-cats" value="'+esc(catsDe(ce0).join(', '))+'" placeholder="Baños y vestuarios, Mobiliario…" autocomplete="off"></label><datalist id="dl-cats">'+Object.keys(cats0).sort().map(function(c){return '<option value="'+esc(c)+'">'}).join('')+'</datalist>';
+      h+='<p class="note" style="margin:0 0 6px">El cambio vale para todos los planos y diseñadores.</p>';
+      if(CRM)h+='<div class="btns"><button data-a="bibdel">Quitar de mi biblioteca</button></div>';
+      }
+    }else if(ce0&&!ce0.generico)h+='<p class="note">La categoría de un producto del catálogo se cambia desde su ficha en el CRM.</p>';
     if(ce0&&ce0.generico){
       var reales=catalog().filter(function(c){return !c.generico&&c.id!==e.cid});
       h+='<p class="note"><b>Pieza genérica</b> de la biblioteca: sirve para distribuir y medir, sin referencia ni precio.</p>';
@@ -3901,6 +3925,19 @@ $('side').addEventListener('change',function(e){
     commit(false);panelSel();return;
   }
   if(t==='rc_mat'&&st.sel&&st.sel.t==='rc'){var rcm=by(st.v.rc,st.sel.id);if(rcm){snap();rcm.mat=e.target.value.trim();commit(false)}return}
+  if((t==='eq_cat'||t==='eq_nom')&&st.sel&&st.sel.t==='eq'){
+    var qeq=by(st.v.eq,st.sel.id),cq=qeq&&catById(qeq.cid),vl=e.target.value.trim();
+    if(!cq||!cq.biblioteca||!vl||(CRM&&!crmAdmin))return;
+    var ch=t==='eq_cat'?{categoria:vl.split(',').map(function(x){return x.trim()}).filter(Boolean).join(' | ')}:{nombre:vl};
+    if(CRM)crmPost({type:'actualizarBiblioteca',id:cq.id,categoria:ch.categoria,nombre:ch.nombre});
+    else{
+      custom=custom.map(function(c){return c.id===cq.id?Object.assign({},c,{categoria:ch.categoria||c.categoria,nombre:ch.nombre||c.nombre}):c});
+      try{localStorage.setItem(LSC,JSON.stringify(custom))}catch(_){}
+      if(ch.categoria)cq.categoria=ch.categoria;if(ch.nombre)cq.nombre=ch.nombre;
+      drawCat();panelSel();toast('Cambio guardado en este dispositivo');
+    }
+    return;
+  }
   if(t==='eq_swap'&&st.sel&&st.sel.t==='eq'){
     var cs=catById(e.target.value),eq0=by(st.v.eq,st.sel.id);
     if(!cs||!eq0)return;
@@ -5718,7 +5755,7 @@ function buildModelo3d(){
   });
   return out;
 }
-var crmReady=false,crmT=null,crmProy=null,crmSkip=0,crmFull=false;
+var crmAdmin=false,crmReady=false,crmT=null,crmProy=null,crmSkip=0,crmFull=false;
 function modoPantalla(f){
   crmFull=f;
   var b=$('m-full');b.hidden=false;
@@ -5758,7 +5795,7 @@ if(CRM){
     if(e.origin!==location.origin||e.source!==window.parent)return;
     var m=e.data;if(!m||m.src!=='ranuse-crm')return;
     if(m.type==='init'){
-      crmProy=m.proyecto||null;if(m.tema&&!temaGuardado())aplicarTema(m.tema,false);
+      crmAdmin=!!m.admin;crmProy=m.proyecto||null;if(m.tema&&!temaGuardado())aplicarTema(m.tema,false);
       modoPantalla(!!m.fullscreen);
       cloud=m.visitas||[];
       cloudCat=(m.maquinas||[]).filter(function(c){return c&&c.id&&c.nombre&&c.w>0&&c.d>0});
@@ -5794,6 +5831,10 @@ if(CRM){
       nuevos.forEach(function(c){if(c.completo){bloquesFull[c.id]=c.completo;delete c.completo}});
       cloudCat=cloudCat.filter(function(c){return !nuevos.some(function(n){return n.id===c.id})}).concat(nuevos);
       drawCat();toast(nuevos.length+' bloques en tu biblioteca. Los encuentras en el catálogo, categoría «'+(nuevos[0]&&nuevos[0].categoria||'Mi biblioteca')+'».');
+    }else if(m.type==='bibliotecaActualizada'){
+      cloudCat.forEach(function(c){if(c.id===m.id){if(m.categoria)c.categoria=m.categoria;if(m.nombre)c.nombre=m.nombre}});
+      (st.v.eq||[]).forEach(function(q){if(q.cid===m.id&&m.nombre)q.nm=m.nombre});
+      drawCat();panelSel();render();toast('Guardado para siempre: «'+(m.nombre||'')+'» en «'+(m.categoria||'')+'»');
     }else if(m.type==='bibliotecaBorrada'){
       cloudCat=cloudCat.filter(function(c){return c.id!==m.id});drawCat();toast('Quitado de tu biblioteca');
     }else if(m.type==='bloque'){

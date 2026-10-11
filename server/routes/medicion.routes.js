@@ -2,7 +2,7 @@ import express from 'express';
 import sharp from 'sharp';
 import compression from 'compression';
 import { supabase } from '../config/supabase.js';
-import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
+import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
 import { cantidadesDePlano } from '../utils/planos.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
 
@@ -110,7 +110,30 @@ router.post('/biblioteca', async (req, res) => {
     res.status(500).json({ error: 'No se pudieron guardar los bloques. ¿Están creadas las tablas de la biblioteca (migraciones v72 y v73)?' });
   }
 });
-router.delete('/biblioteca/:id', async (req, res) => {
+// Cambiar el nombre o las categorías de una pieza de la biblioteca: solo el administrador
+router.patch('/biblioteca/:id', requireAdminSuperior, async (req, res) => {
+  try {
+    const cambios = {};
+    if (typeof req.body?.categoria === 'string') {
+      const c = req.body.categoria.trim().slice(0, 200);
+      if (!c) return res.status(400).json({ error: 'La categoría no puede estar vacía' });
+      cambios.categoria = c;
+    }
+    if (typeof req.body?.nombre === 'string') {
+      const n = req.body.nombre.trim().slice(0, 120);
+      if (!n) return res.status(400).json({ error: 'El nombre no puede estar vacío' });
+      cambios.nombre = n;
+    }
+    if (!Object.keys(cambios).length) return res.status(400).json({ error: 'Nada que cambiar' });
+    const { data, error } = await supabase.from('biblioteca_bloques').update(cambios).eq('id', req.params.id).select('id, nombre, categoria').single();
+    if (error) throw error;
+    res.json({ ok: true, id: 'bib-' + data.id, nombre: data.nombre, categoria: data.categoria });
+  } catch (err) {
+    console.error('medicion biblioteca patch:', err);
+    res.status(500).json({ error: 'No se pudo cambiar la pieza de la biblioteca' });
+  }
+});
+router.delete('/biblioteca/:id', requireAdminSuperior, async (req, res) => {
   try {
     const { error } = await supabase.from('biblioteca_bloques').delete().eq('id', req.params.id);
     if (error) throw error;
@@ -179,7 +202,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
       if (!foto) return null;
       return { id: p.id, n: p.name, cat: limpiarCategoria(catPorId[p.category_id].name), tw: Number(p.ancho) > 5 && Number(p.ancho) < 500 ? Number(p.ancho) : 60, ...foto };
     }))).filter(Boolean);
-    res.json({ maquinas, luminarias, materiales });
+    res.json({ maquinas, luminarias, materiales, admin: req.user?.role === 'admin_superior' });
   } catch (err) {
     console.error('medicion/catalogos:', err);
     res.status(500).json({ error: 'No se pudo cargar el catálogo' });
