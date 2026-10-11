@@ -1790,6 +1790,35 @@ function dimW(C,px,x1,y1,x2,y2,t,col){
   return ln(x1,y1,x2,y2,col,px*1.2)+ln(x1-nx,y1-ny,x1+nx,y1+ny,col,px*1.2)+ln(x2-nx,y2-ny,x2+nx,y2+ny,col,px*1.2)+
     txt(C,px,(x1+x2)/2+(vert?14*px:0),(y1+y2)/2+(vert?4*px:-5*px),t,col,12,500);
 }
+/* muro seleccionado: sus medidas en azul sobre la propia línea (interior por dentro, exterior por fuera) y la interior de los muros que lo cortan; se tocan para cambiarlas */
+var AZUL='#2b7cff';
+function selDims(C,px,w,view){
+  var h='',cent=wallCent(view);
+  function azul(A,B,txtv,hit){
+    var dx=B.x-A.x,dy=B.y-A.y,l=Math.hypot(dx,dy);if(l<2)return;
+    var ux=dx/l,uy=dy/l,tk=5*px,vert=Math.abs(dx)<Math.abs(dy),mx=(A.x+B.x)/2,my=(A.y+B.y)/2;
+    h+=ln(A.x,A.y,B.x,B.y,AZUL,px*1.4)+ln(A.x-uy*tk,A.y+ux*tk,A.x+uy*tk,A.y-ux*tk,AZUL,px*1.4)+ln(B.x-uy*tk,B.y+ux*tk,B.x+uy*tk,B.y-ux*tk,AZUL,px*1.4);
+    var sty='fill:'+AZUL+';font-size:'+f2(13*px)+'px;font-weight:600;paint-order:stroke;stroke:'+C.halo+';stroke-width:'+f2(5*px)+'px;stroke-linejoin:round';
+    h+=vert?'<text transform="translate('+f2(mx+4*px)+' '+f2(my)+') rotate(-90)" text-anchor="middle" style="'+sty+'">'+esc(txtv)+'</text>':'<text x="'+f2(mx)+'" y="'+f2(my+4.5*px)+'" text-anchor="middle" style="'+sty+'">'+esc(txtv)+'</text>';
+    if(colectaDim&&hit){hit.x=mx;hit.y=my;hit.val=+txtv;dimHits.push(hit)}
+  }
+  function una(wl2,esSel,nid){
+    var g=wg(wl2),sp=spanInterior(wl2,view,cent,null);if(!sp||!sp.lado)return;
+    var L=g.l,s0=Math.max(0,sp.s0),s1=Math.min(L,sp.s1),clear=s1-s0,ni={x:-g.uy*sp.lado,y:g.ux*sp.lado},t=wl2.t;
+    function P(sv,d,sg){return {x:g.a.x+g.ux*sv+ni.x*d*(sg||1),y:g.a.y+g.uy*sv+ni.y*d*(sg||1)}}
+    var shown=wl2.m===true?(wl2.len-(L-clear)):clear,dI=t/2+14*px;
+    h+=ln(P(s0,t/2).x,P(s0,t/2).y,P(s0,dI+4*px).x,P(s0,dI+4*px).y,AZUL,px*0.8)+ln(P(s1,t/2).x,P(s1,t/2).y,P(s1,dI+4*px).x,P(s1,dI+4*px).y,AZUL,px*0.8);
+    azul(P(s0,dI),P(s1,dI),fmt(shown),{wall:wl2.id,kind:'wsel',nid:esSel?null:nid,delta:L-clear});
+    if(esSel){ // exterior: de cara exterior a cara exterior
+      var dE=t/2+14*px,o0=s0-t,o1=s1+t;
+      h+=ln(P(o0,t/2,-1).x,P(o0,t/2,-1).y,P(o0,dE+4*px,-1).x,P(o0,dE+4*px,-1).y,AZUL,px*0.8)+ln(P(o1,t/2,-1).x,P(o1,t/2,-1).y,P(o1,dE+4*px,-1).x,P(o1,dE+4*px,-1).y,AZUL,px*0.8);
+      azul(P(o0,dE,-1),P(o1,dE,-1),fmt(shown+2*t),{wall:wl2.id,kind:'wsel',nid:null,delta:(L-clear)-2*t});
+    }
+  }
+  una(w,true,null);
+  [w.a,w.b].forEach(function(nid){adjAll(w,nid).forEach(function(aj){if(wallVis(aj,view))una(aj,false,nid)})});
+  return h;
+}
 function gridSvg(C,k){
   var x0=-st.tx/k,y0=-st.ty/k,x1=x0+W/k,y1=y0+H/k,step=k<0.12?500:100,h='',px=1/k;
   for(var x=Math.ceil(x0/step)*step;x<=x1;x+=step)h+=ln(x,y0,x,y1,C.grid,px);
@@ -2029,7 +2058,7 @@ function scene(C,k,view,o){
     h+=txt(C,px,(a.x+b.x)/2,(a.y+b.y)/2-6*px,s,c.len==null?C.warn:(bad?C.dem:C.ok),12,500);
   });
   var cent=(o.dims&&o.dims!=='simple')?wallCent(view):null;
-  v.walls.forEach(function(w){
+  (cent?dimWalls(view):v.walls).forEach(function(w){
     if(!wallVis(w,view))return;
     if(w.arc){ // una sola cota por arco: longitud y radio
       if(w.arc.i===Math.floor(w.arc.n/2)){
@@ -2051,6 +2080,7 @@ function scene(C,k,view,o){
     h+=txt(C,px,(g.a.x+g.b.x)/2+nx*off,(g.a.y+g.b.y)/2+ny*off+4*px,s,meas?(bad?C.dem:C.label):C.warn,12,500);
   });
   if(sel&&sel.t==='op'){var lo=opn(sel.id);if(lo&&opVis(lo,view)){var lq=og(lo);h+=txt(C,px,(lq.x1+lq.x2)/2+lq.nx*(lq.w.t/2+26*px),(lq.y1+lq.y2)/2+lq.ny*(lq.w.t/2+26*px)+4*px,fmt(lo.w)+' × '+fmt(lo.h),C.accent,12,600)}}
+  if(o.nodes&&sel&&sel.t==='wall'){var swz=wl(sel.id);if(swz&&wallVis(swz,view))h+=selDims(C,px,swz,view)}
   if(o.marks&&view==='acab')h+=elevMarks(C,px);
   h+=zlab;
   if(o.nodes){
@@ -2075,6 +2105,12 @@ function wallCent(view){
 }
 /* dir = hacia qué lado se dibuja la línea de cota: si hay una sala en ese lado, esa es la que se mide (en un tabique entre dos salas) */
 function spanInterior(w,view,cent,dir){
+  if(w._chain){ // cadena de muros acotada como uno solo: de la cara interior del primero a la del último
+    var f0=w._seq[0],f1=w._seq[w._seq.length-1],sf=spanInterior(f0.w,view,cent,dir),sl=spanInterior(f1.w,view,cent,dir);
+    if(!sf||!sl)return null;
+    var dF=f0.w.a===f0.ini,dL=f1.w.a===f1.ini,LF=wg(f0.w).l,LL=wg(f1.w).l,oL=w._offs[w._offs.length-1];
+    return {s0:dF?sf.s0:LF-sf.s1,s1:oL+(dL?sl.s1:LL-sl.s0),lado:(sf.lado||1)*(dF?1:-1)};
+  }
   if(!st.v||st.v.cb!=='int'||w.arc)return null;
   var g=wg(w),mx=(g.a.x+g.b.x)/2,my=(g.a.y+g.b.y)/2,nx=-g.uy,ny=g.ux,sc=(cent.x-mx)*nx+(cent.y-my)*ny,best=null,bsc=-1;
   roomFaces(view).forEach(function(f){
@@ -2085,7 +2121,7 @@ function spanInterior(w,view,cent,dir){
       if(score>bsc){
         bsc=score;
         var s0=(A.x-g.a.x)*g.ux+(A.y-g.a.y)*g.uy,s1=(B.x-g.a.x)*g.ux+(B.y-g.a.y)*g.uy;
-        best={s0:Math.min(s0,s1),s1:Math.max(s0,s1)};
+        best={s0:Math.min(s0,s1),s1:Math.max(s0,s1),lado:side>0?1:-1};
       }
     });
   });
@@ -2110,11 +2146,44 @@ function offInt(w){
   if(!sp)return w.t||12; /* sala aún sin cerrar: en una esquina normal, el hueco libre es el eje menos el grosor del muro */
   var L=wg(w).l;return L-(Math.min(L,sp.s1)-Math.max(0,sp.s0));
 }
+/* En cada lámina, los muros en línea recta que se unen en un nodo donde no sale ningún otro muro visible se acotan juntos
+   (en Estado actual no se corta la cota donde luego irá la implantación) */
+function dimWalls(view){
+  var ws=st.v.walls.filter(function(w){return wallVis(w,view)}),deg={},porNodo={},usada={},out=[];
+  ws.forEach(function(w){[w.a,w.b].forEach(function(n){deg[n]=(deg[n]||0)+1;(porNodo[n]=porNodo[n]||[]).push(w)})});
+  function vecino(w,n){
+    if(deg[n]!==2)return null;
+    var o=porNodo[n][0]===w?porNodo[n][1]:porNodo[n][0];
+    if(!o||o===w||usada[o.id]||o.arc||w.arc||o.s!==w.s||o.t!==w.t)return null;
+    var g1=wg(w),g2=wg(o);
+    return Math.abs(g1.ux*g2.uy-g1.uy*g2.ux)<0.017?o:null;
+  }
+  ws.forEach(function(w){
+    if(usada[w.id])return;
+    usada[w.id]=1;
+    var seq=[{w:w,ini:w.a,fin:w.b}],node=w.b,cur=w,nx;
+    while((nx=vecino(cur,node))){usada[nx.id]=1;var fin=nx.a===node?nx.b:nx.a;seq.push({w:nx,ini:node,fin:fin});node=fin;cur=nx}
+    node=w.a;cur=w;
+    while((nx=vecino(cur,node))){usada[nx.id]=1;var ini=nx.a===node?nx.b:nx.a;seq.unshift({w:nx,ini:ini,fin:node});node=ini;cur=nx}
+    if(seq.length===1){out.push(w);return}
+    var off=0,ops=[],offs=[],todos=true,suma=0;
+    seq.forEach(function(it){
+      var Lm=wg(it.w).l,dir=it.w.a===it.ini;
+      offs.push(off);
+      st.v.ops.forEach(function(o){if(o.wall===it.w.id)ops.push(Object.assign({},o,{p:off+(dir?o.p:Lm-o.p-o.w)}))});
+      if(it.w.m!==true)todos=false;
+      suma+=it.w.m===true?it.w.len:Lm;
+      off+=Lm;
+    });
+    out.push({id:seq[0].w.id,a:seq[0].ini,b:seq[seq.length-1].fin,t:w.t,s:w.s,m:todos,len:suma,_chain:seq.map(function(i){return i.w}),_seq:seq,_offs:offs,opsV:ops});
+  });
+  return out;
+}
 function dimCfg(w,mode,cent,view,px){
   var g=wg(w),nx=-g.uy,ny=g.ux,mx=(g.a.x+g.b.x)/2,my=(g.a.y+g.b.y)/2;
   var toC=(cent.x-mx)*nx+(cent.y-my)*ny,sg=(toC>=0?1:-1)*(mode==='int'?1:-1);
   nx*=sg;ny*=sg;
-  var ops=st.v.ops.filter(function(o){return o.wall===w.id&&opVis(o,view)}).sort(function(a,b){return a.p-b.p});
+  var ops=(w.opsV||st.v.ops.filter(function(o){return o.wall===w.id})).filter(function(o){return opVis(o,view)}).sort(function(a,b){return a.p-b.p});
   var d1=w.t/2+16*px,d2=ops.length?d1+16*px:d1;
   return {g:g,nx:nx,ny:ny,ops:ops,d1:d1,d2:d2,mx:mx,my:my};
 }
@@ -2144,7 +2213,7 @@ function dimChain(C,px,w,mode,cent,view,tags){
     var pts=[S0];segs.forEach(function(sg){pts.push(sg.b)});
     h+=line(S0,S1,c.d1);
     pts.forEach(function(s){h+=ext(s,c.d1)+tick(s,c.d1)});
-    if(colectaDim)segs.forEach(function(sg){
+    if(colectaDim&&!w._chain)segs.forEach(function(sg){
       var pl=P((sg.a+sg.b)/2,c.d1+9*px+Math.abs(c.nx)*12*px);
       dimHits.push({x:pl.x,y:pl.y+3*px,wall:w.id,kind:sg.k,opId:sg.id,base:sg.base,val:sg.b-sg.a});
     });
@@ -2191,6 +2260,7 @@ $('qbase').addEventListener('click',function(e){
 });
 var qaI=$('qa'),qbI=$('qb'),qa2I=$('qa2'),qb2I=$('qb2'),latIn=[qaI,qa2I,qbI,qb2I],latAct=null;
 function placeAdj(){
+  latIn.forEach(function(i){i.hidden=true});return; /* sustituidas por las cotas azules */
   var w=st.sel&&st.sel.t==='wall'&&wl(st.sel.id);
   [[qaI,qa2I,'a'],[qbI,qb2I,'b']].forEach(function(x){
     var lista=w&&wallVis(w,st.view)?adjAll(w,x[2]==='a'?w.a:w.b).filter(function(o){return wallVis(o,st.view)}):[],nid=x[2]==='a'?w&&w.a:w&&w.b;
@@ -2226,6 +2296,14 @@ function openDimEd(h){
 function commitDimEd(){
   if(!dimEd)return;
   var h=dimEd,n=num(qd.value);closeDimEd();
+  if(h.kind==='wsel'){
+    if(!(n>=5&&n<=5000)){toast('Escribe una medida entre 5 y 5000 cm');return}
+    if(Math.abs(n-h.val)<0.01)return;
+    var eje=n+h.delta,cb0=st.v.cb;
+    st.v.cb='ejes'; /* ya está convertido a ejes */
+    try{if(h.nid)applyField('adj:'+h.nid+':'+h.wall,String(eje),false);else applyField('len',String(eje),false)}finally{st.v.cb=cb0}
+    return;
+  }
   var w=wl(h.wall),o=opn(h.opId);if(!w||!o)return;
   if(!(n>=0&&n<=5000)){toast('Escribe una distancia válida');return}
   var L=wg(w).l,old=h.val;if(Math.abs(n-old)<0.01)return;
