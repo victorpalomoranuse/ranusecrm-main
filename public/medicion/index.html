@@ -771,6 +771,50 @@ var OPK=[
   {id:'v-alta-nave',t:'win',n:'Ventana alta de nave (corrida)',w:500,h:100,sill:400,tip:'Fija',vid:'Policarbonato celular'},
   {id:'v-escap',t:'win',n:'Escaparate',w:300,h:260,sill:20,tip:'Fija',vid:'Laminado 6+6 templado'}
 ];
+/* consejos «ideal cuando…» para la memoria de carpintería */
+var IDEAL={
+  vid:{
+    'Doble 4+16+4 bajo emisivo':'Ideal para fachada en cualquier clima: buen aislamiento térmico. Es el estándar actual.',
+    'Doble 6+16+6':'Ideal para huecos grandes o expuestos al viento y a golpes: más espesor, más rigidez y algo de aislamiento acústico.',
+    'Laminar 3+3':'Ideal cuando importa la seguridad: si se rompe, los trozos quedan pegados (planta baja, zonas con niños, barandillas).',
+    'Templado 8 mm':'Ideal para mamparas, puertas de cristal y vestuarios: aguanta golpes y, si se rompe, se hace migas pequeñas.',
+    'Acústico 6+6':'Ideal junto a calles ruidosas o salas de clases colectivas: laminado que reduce el ruido.',
+    'Vidrio templado':'Ideal para puertas y mamparas sin marco: deja pasar la luz y resiste golpes.',
+    'Laminado 6+6 templado':'Ideal para cristaleras grandes y escaparates: seguridad y resistencia en paños amplios.',
+    'Doble 6+12+6 bajo emisivo':'Ideal para correderas y cristaleras grandes con buen aislamiento.',
+    'Doble 8+16+8 control solar':'Ideal para muro cortina y fachadas muy soleadas: refleja parte del calor y evita sobrecalentar.',
+    'Policarbonato celular':'Ideal para iluminar naves de forma barata y ligera: deja pasar luz pero no se ve a través.'
+  },
+  mat:{
+    'Aluminio lacado':'Ideal para huecos grandes y poco mantenimiento: perfiles finos y muy duraderos.',
+    'Aluminio con rotura de puente térmico':'Ideal en fachada exterior: como el aluminio, pero aísla del frío y del calor.',
+    'PVC':'Ideal para buen aislamiento a precio ajustado en ventanas medianas; menos apto para huecos muy grandes.',
+    'Madera maciza':'Ideal por calidez y estética; pide más mantenimiento.',
+    'Madera lacada':'Ideal si quieres el aspecto de madera con un color uniforme.',
+    'Acero':'Ideal para puertas de seguridad, cortafuegos o estética industrial.',
+    'Vidrio templado':'Ideal para puertas y mamparas sin marco, para dejar pasar la luz.',
+    'Panel sándwich':'Ideal para portones de nave: aislante, ligero y rápido de montar.',
+    'Chapa lacada':'Ideal para portones de garaje y nave: resistente y económica.',
+    'Lama de aluminio':'Ideal para enrollables: ligera y automatizable.'
+  },
+  tip:{
+    'Abatible':'Ideal para puertas normales; necesita espacio libre para el giro.',
+    'Practicable':'Ideal para ventilar del todo y limpiar fácil; necesita espacio libre al abrir.',
+    'Doble hoja':'Ideal para huecos anchos: se abren las dos hojas o solo una.',
+    'Oscilobatiente':'Ideal para ventilar sin abrir del todo (inclinada) y también abrir completa.',
+    'Corredera':'Ideal cuando no hay espacio para abrir o el hueco es grande: se desliza por el lateral.',
+    'Corredera 2 hojas':'Ideal para huecos grandes con paso amplio: dos hojas que se cruzan.',
+    'Corredera empotrada':'Ideal para ahorrar espacio: la hoja se esconde dentro del muro.',
+    'Fija':'Ideal para dejar entrar luz y vistas sin ventilar; combínala con una practicable al lado.',
+    'Proyectante':'Ideal para banderolas altas: ventilas aunque llueva.',
+    'Plegable':'Ideal para huecos estrechos con poco espacio de giro.',
+    'Pivotante':'Ideal para puertas grandes y de diseño: gira sobre un eje.',
+    'Seccional':'Ideal para portones: sube en vertical, no ocupa espacio fuera ni dentro y aísla bien.',
+    'Basculante':'Ideal para garajes sencillos y económicos; barre un espacio delante al abrir.',
+    'Enrollable':'Ideal cuando falta espacio en la parte alta del hueco; fácil de automatizar.'
+  }
+};
+function idealTxt(k,v){var t=IDEAL[k]&&IDEAL[k][String(v||'').trim()];return t?'💡 '+t:''}
 function opKById(id){for(var i=0;i<OPK.length;i++)if(OPK[i].id===id)return OPK[i];return null}
 function opPreset(t){var k=st&&st.opK&&st.opK[t];return opKById(k)||opKById(t==='door'?'p-abat':'v-prac')}
 function opSym(o){
@@ -2935,17 +2979,20 @@ function panelSel(focus){
     h+='<div class="rowh"><strong>'+(o.t==='door'?'Puerta':'Ventana')+'</strong><span class="muted">muro de '+fmt(q.g.l)+' cm</span></div>';
     h+=previewOp(o);
     h+='<div class="lab">Estado de '+(o.t==='door'?'esta puerta':'esta ventana')+'</div>'+seg3(o.s,'ostate')+'<p class="note" style="margin:4px 0 8px">Existente = ya está · Demoler = se quita · Nuevo = se hace. Una pieza «Nueva» no se ve en la lámina Estado actual: la verás en Implantación y en las láminas finales.</p>';
+    h+='<label class="fld"><span>Cambiar a otro modelo de '+(o.t==='door'?'puerta':'ventana')+'</span><select data-t="op_model"><option value="">Elegir modelo…</option>'+OPK.filter(function(k){return k.t===o.t}).map(function(k){return '<option value="'+k.id+'">'+esc(k.n)+' ('+k.w+' × '+k.h+')</option>'}).join('')+'</select></label><p class="note" style="margin:0 0 8px">Cambia el tipo, material y medidas por los del modelo elegido, en el mismo sitio del muro. Después puedes retocar lo que quieras (Ctrl+Z lo deshace).</p>';
     h+=fld('op_p','Distancia desde el inicio del muro (cm)',o.p);
     h+=fld('op_w','Ancho (cm)',o.w);
     h+=fld('op_h','Alto (cm)',o.h);
     if(o.t==='win')h+=fld('op_sill','Altura desde el suelo (cm)',o.sill);
     h+='<div class="lab" style="margin-top:12px">Memoria de carpintería</div>';
-    h+='<label class="fld"><span>Tipo de apertura</span><select data-t="op_tip">'+(o.t==='door'?['Abatible','Corredera','Corredera 2 hojas','Corredera empotrada','Plegable','Doble hoja','Pivotante']:['Practicable','Doble hoja','Oscilobatiente','Corredera','Fija','Abatible','Proyectante']).map(function(x){return '<option'+((o.tip||(o.t==='door'?'Abatible':'Practicable'))===x?' selected':'')+'>'+x+'</option>'}).join('')+'</select></label>';
+    h+='<label class="fld"><span>Tipo de apertura</span><select data-t="op_tip">'+(o.t==='door'?['Abatible','Corredera','Corredera 2 hojas','Corredera empotrada','Plegable','Doble hoja','Pivotante','Seccional','Basculante','Enrollable']:['Practicable','Doble hoja','Oscilobatiente','Corredera','Fija','Abatible','Proyectante']).map(function(x){return '<option'+((o.tip||(o.t==='door'?'Abatible':'Practicable'))===x?' selected':'')+'>'+x+'</option>'}).join('')+'</select></label>';
+    h+='<p class="note ideal" data-ideal="tip">'+idealTxt('tip',o.tip||(o.t==='door'?'Abatible':'Practicable'))+'</p>';
     h+='<label class="fld"><span>Material</span><input data-t="op_mat" list="dl-mat" value="'+esc(o.mat||'')+'" placeholder="Aluminio, madera, PVC…" autocomplete="off"></label>';
+    h+='<p class="note ideal" data-ideal="mat">'+idealTxt('mat',o.mat)+'</p>';
     h+='<label class="fld"><span>Acabado / color</span><input data-t="op_col" value="'+esc(o.col||'')+'" placeholder="Lacado blanco RAL 9010" autocomplete="off"></label>';
-    if(o.t==='win')h+='<label class="fld"><span>Vidrio</span><input data-t="op_vid" list="dl-vid" value="'+esc(o.vid||'')+'" placeholder="Doble 4+16+4 bajo emisivo" autocomplete="off"></label>';
+    if(o.t==='win')h+='<label class="fld"><span>Vidrio</span><input data-t="op_vid" list="dl-vid" value="'+esc(o.vid||'')+'" placeholder="Doble 4+16+4 bajo emisivo" autocomplete="off"></label>'+'<p class="note ideal" data-ideal="vid">'+idealTxt('vid',o.vid)+'</p>';
     h+='<label class="fld"><span>Observaciones</span><input data-t="op_obs" value="'+esc(o.obs||'')+'" placeholder="Herrajes, cerradura, persiana…" autocomplete="off"></label>';
-    h+='<datalist id="dl-mat"><option value="Aluminio lacado"><option value="Aluminio con rotura de puente térmico"><option value="PVC"><option value="Madera maciza"><option value="Madera lacada"><option value="Acero"><option value="Vidrio templado"></datalist><datalist id="dl-vid"><option value="Doble 4+16+4 bajo emisivo"><option value="Doble 6+16+6"><option value="Laminar 3+3"><option value="Templado 8 mm"><option value="Acústico 6+6"></datalist>';
+    h+=''+['mat','vid'].map(function(k){return '<datalist id="dl-'+k+'">'+Object.keys(IDEAL[k]).map(function(v){return '<option value="'+esc(v)+'" label="'+esc(IDEAL[k][v].replace(/^Ideal (para |cuando |por |si )?/,'Ideal: '))+'">'}).join('')+'</datalist>'}).join('')+'';
     if(o.t==='door')h+='<div class="btns"><button data-a="oside">Cambiar lado</button><button data-a="oflip">Cambiar bisagra</button></div>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar</button></div>';
   }else if(s.t==='pil'){
@@ -3234,6 +3281,16 @@ $('side').addEventListener('change',function(e){
     var li2=lumById(e.target.value);if(li2){ql.lid=li2.id;ql.k=li2.sym}else delete ql.lid;
     commit(false);panelSel();return;
   }
+  if(t==='op_model'&&st.sel&&st.sel.t==='op'){
+    var pk=opKById(e.target.value),op0=opn(st.sel.id);
+    if(!pk||!op0)return;
+    var gq=og(op0).g,cen=op0.p+op0.w/2,nw=Math.min(pk.w,Math.max(20,Math.floor(gq.l)));
+    snap();
+    op0.tip=pk.tip;op0.w=nw;op0.h=pk.h;op0.sill=pk.sill;
+    op0.p=f2(Math.max(0,Math.min(Math.max(0,gq.l-nw),Math.round(cen-nw/2))));
+    if(pk.mat)op0.mat=pk.mat;if(pk.vid)op0.vid=pk.vid;
+    commit(false);panelSel();toast('Cambiada a «'+pk.n+'»');return;
+  }
   if(t==='eq_swap'&&st.sel&&st.sel.t==='eq'){
     var cs=catById(e.target.value),eq0=by(st.v.eq,st.sel.id);
     if(!cs||!eq0)return;
@@ -3263,6 +3320,16 @@ $('side').addEventListener('change',function(e){
     if(e.target.value)wf.f[t.slice(3)]=e.target.value;else delete wf.f[t.slice(3)];
     commit(false);
   }
+});
+$('side').addEventListener('input',function(e){
+  var t=e.target.getAttribute&&e.target.getAttribute('data-t'),k=t==='op_vid'?'vid':t==='op_mat'?'mat':t==='op_tip'?'tip':null;
+  if(!k)return;
+  var n=$('side').querySelector('.ideal[data-ideal="'+k+'"]');if(n)n.innerHTML=idealTxt(k,e.target.value);
+});
+$('side').addEventListener('change',function(e){
+  var t=e.target.getAttribute&&e.target.getAttribute('data-t'),k=t==='op_vid'?'vid':t==='op_mat'?'mat':t==='op_tip'?'tip':null;
+  if(!k)return;
+  var n=$('side').querySelector('.ideal[data-ideal="'+k+'"]');if(n)n.innerHTML=idealTxt(k,e.target.value);
 });
 $('side').addEventListener('keydown',function(e){
   var k=e.target.getAttribute&&e.target.getAttribute('data-f');
