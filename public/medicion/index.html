@@ -2201,14 +2201,14 @@ function placeAdj(){
       inp._aj=aj.id;inp._nid=nid;
       inp.hidden=false;
       inp.style.left=Math.max(42,Math.min(W-42,p.x))+'px';inp.style.top=Math.max(20,Math.min(H-20,p.y-4))+'px';
-      if(document.activeElement!==inp)inp.value=fmt(wg(aj).l);
+      if(document.activeElement!==inp)inp.value=fmt(wg(aj).l-offInt(aj));
     });
   });
 }
 function applyLat(inp){
   var v=inp.value.trim(),w=st.sel&&st.sel.t==='wall'&&wl(st.sel.id),aj=inp._aj&&wl(inp._aj);
   if(!w||v===''||!aj)return;
-  if(Math.round(wg(aj).l)===Math.round(num(v)))return;
+  if(Math.round(wg(aj).l-offInt(aj))===Math.round(num(v)))return;
   applyField('adj:'+inp._nid+':'+aj.id,v,false);
 }
 latIn.forEach(function(inp){
@@ -3556,8 +3556,8 @@ function panelSel(focus){
     var aA=adjOf(w,w.a),aB=adjOf(w,w.b);
     if(aA||aB){
       h+='<div class="lab" style="margin-top:12px">Mover este muro cambiando los que lo cortan</div>';
-      if(aA)h+=fld('adj_a','Muro que corta al inicio (cm)',Math.round(wg(aA).l));
-      if(aB)h+=fld('adj_b','Muro que corta al final (cm)',Math.round(wg(aB).l));
+      if(aA)h+=fld('adj_a','Muro que corta al inicio (cm, '+(st.v.cb==='int'?'interior':'a ejes')+')',Math.round(wg(aA).l-offInt(aA)));
+      if(aB)h+=fld('adj_b','Muro que corta al final (cm, '+(st.v.cb==='int'?'interior':'a ejes')+')',Math.round(wg(aB).l-offInt(aB)));
     }
     h+='<div class="lab">Estado</div>'+seg3(w.s,'wstate');
     var gtipo=w.tipo||(w.s==='new'&&w.auto?'TAB-new':null),gE=espesorTipo(gtipo);
@@ -3795,6 +3795,7 @@ function applyField(key,val,adv){
     }else if(key==='adj_a'||key==='adj_b'||/^adj:/.test(key)){
       var nid,aj;
       if(/^adj:/.test(key)){var pr=key.split(':');nid=pr[1];aj=wl(pr[2])}else{nid=key==='adj_a'?w.a:w.b;aj=adjOf(w,nid)}
+      if(aj)n=n+offInt(aj); /* lo escrito se mide como el resto de cotas (interior o ejes) */
       if(!aj||!(n>=5&&n<=5000)){toast('Escribe una medida entre 5 y 5000 cm');return}
       var far=nd(aj.a===nid?aj.b:aj.a),nn3=nd(nid),gw=wg(w),nx3=-gw.uy,ny3=gw.ux;
       var Px=nn3.x-far.x,Py=nn3.y-far.y,pnn=Px*nx3+Py*ny3,disc=pnn*pnn-(Px*Px+Py*Py)+n*n;
