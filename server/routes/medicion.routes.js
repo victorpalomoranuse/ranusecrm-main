@@ -213,7 +213,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
 router.get('/dashboard', async (req, res) => {
   try {
     const { data, error } = await supabase.from('mediciones')
-      .select('id, project_id, nombre, cliente, resumen, created_by, updated_by, created_at, updated_at, project:client_projects(id, client_name, project_name)')
+      .select('id, project_id, nombre, cliente, resumen, created_by, updated_by, created_at, updated_at, project:client_projects(id, client_name, project_name, client_address)')
       .order('updated_at', { ascending: false }).limit(500);
     if (error) throw error;
     const ids = [...new Set((data || []).flatMap(m => [m.updated_by, m.created_by]).filter(Boolean))];

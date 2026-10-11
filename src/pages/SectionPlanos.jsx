@@ -85,13 +85,13 @@ export function SectionPlanos() {
     const pr = p.project_id ? proyectoPorId[p.project_id] || p.proyecto : null;
     abrirEditor({
       projectId: p.project_id || null, abrir: p.id, nuevo: false,
-      titulo: p.nombre, proyecto: { nombre: pr?.project_name || '', cliente: pr?.client_name || '' },
+      titulo: p.nombre, proyecto: { nombre: pr?.project_name || '', cliente: pr?.client_name || '', direccion: pr?.client_address || '' },
     });
   };
   const crearEnProyecto = (pr) => abrirEditor({
     projectId: pr ? pr.id : null, abrir: null, nuevo: true,
     titulo: pr ? `Plano nuevo · ${pr.project_name}` : 'Plano nuevo',
-    proyecto: { nombre: pr?.project_name || '', cliente: pr?.client_name || '' },
+    proyecto: { nombre: pr?.project_name || '', cliente: pr?.client_name || '', direccion: pr?.client_address || '' },
   });
 
   const borrar = async (p) => {

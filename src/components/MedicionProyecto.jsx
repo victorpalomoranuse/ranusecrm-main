@@ -22,18 +22,19 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
   }, [fullscreen]);
   const nombreProyecto = proyecto.nombre || '';
   const nombreCliente = proyecto.cliente || '';
+  const direccionProyecto = proyecto.direccion || '';
 
   const enviarInit = useCallback(() => {
     const d = datos.current;
     if (!d.lista || !d.visitas || !d.catalogos || !frameRef.current?.contentWindow) return;
     frameRef.current.contentWindow.postMessage({
       src: 'ranuse-crm', type: 'init', tema: 'dark', abrir, nuevo, fullscreen: fullRef.current,
-      proyecto: { nombre: nombreProyecto, cliente: nombreCliente },
+      proyecto: { nombre: nombreProyecto, cliente: nombreCliente, direccion: direccionProyecto },
       admin: !!d.catalogos.admin,
       visitas: d.visitas, maquinas: d.catalogos.maquinas || [], luminarias: d.catalogos.luminarias || [], materiales: d.catalogos.materiales || [],
     }, window.location.origin);
     setCargando(false);
-  }, [abrir, nuevo, nombreProyecto, nombreCliente]);
+  }, [abrir, nuevo, nombreProyecto, nombreCliente, direccionProyecto]);
 
   useEffect(() => {
     let vivo = true;
@@ -130,7 +131,7 @@ export function MedicionProyecto({ project }) {
         Dibuja el plano, mide la sala, marca demoliciones, distribución, suelos, techos, iluminación y electricidad, y descarga las láminas en PDF.
         Se guarda solo en este proyecto y usa el catálogo del CRM (equipamiento e iluminación). También lo ves junto al resto en la sección Planos.
       </p>
-      <MedicionEditor projectId={project.id} proyecto={{ nombre: project.project_name, cliente: project.client_name }} fullscreen={ampliado} onAmpliar={ampliar} onCerrar={cerrar} />
+      <MedicionEditor projectId={project.id} proyecto={{ nombre: project.project_name, cliente: project.client_name, direccion: project.client_address || '' }} fullscreen={ampliado} onAmpliar={ampliar} onCerrar={cerrar} />
     </div>
   );
 }

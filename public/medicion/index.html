@@ -374,6 +374,7 @@ body.crm .top .brand{display:none}
         <h2>Visita</h2>
         <label class="fld"><span>Proyecto</span><input id="v-nombre" placeholder="Gimnasio de Javier"></label>
         <label class="fld"><span>Cliente</span><input id="v-cliente" placeholder="Nombre del cliente"></label>
+        <label class="fld"><span>Dirección del proyecto</span><input id="v-direccion" placeholder="Calle, número, localidad"></label>
         <label class="fld"><span>Fecha de medición</span><input id="v-fecha" type="date"></label>
         <label class="fld"><span>Altura de las paredes (cm)</span><input id="v-altura" inputmode="decimal" placeholder="260"></label>
         <label class="fld"><span>Distancia mínima entre máquinas (cm)</span><input id="v-paso" inputmode="decimal" placeholder="80"></label>
@@ -470,6 +471,7 @@ body.crm .top .brand{display:none}
         <label class="fld"><span>Cotas de luminarias a paredes</span><select id="x-ldim"><option value="1">Sí</option><option value="0">No</option></select></label>
         <label class="fld"><span>Marcas de alzado en planta</span><select id="x-marks"><option value="1">Sí (distribución y acabados)</option><option value="0">No</option></select></label>
         <label class="fld"><span>Cotas</span><select id="x-dims"><option value="ext">Con líneas de cota por fuera</option><option value="dob">Con dos líneas: interior y exterior</option><option value="int">Con líneas de cota por dentro</option><option value="simple">Solo el número en cada muro</option></select></label>
+        <label class="fld"><span>Orientación del plano</span><select id="x-orient"><option value="auto">Automática (en horizontal si así sale más grande)</option><option value="normal">Tal como está dibujado</option><option value="girado">Girado 90° (en horizontal)</option></select></label>
         <label class="fld"><span>Escala</span><select id="x-scale"><option value="auto">Automática (la mayor que quepa)</option><option value="20">1:20</option><option value="25">1:25</option><option value="50">1:50</option><option value="75">1:75</option><option value="100">1:100</option><option value="200">1:200</option></select></label>
         <div class="btns"><button class="pri" id="b-pdf">PDF de esta lámina</button><button id="b-pdfall">PDF con todas las láminas</button></div>
         <div class="btns" id="crm-pdf" hidden><button id="b-pdfdoc">Subir esta lámina a Documentos</button><button id="b-pdfdocall">Subir dossier a Documentos</button></div>
@@ -2025,7 +2027,7 @@ function scene(C,k,view,o){
     h+=txt(C,px,(g.a.x+g.b.x)/2+nx*off,(g.a.y+g.b.y)/2+ny*off+4*px,s,meas?(bad?C.dem:C.label):C.warn,12,500);
   });
   if(sel&&sel.t==='op'){var lo=opn(sel.id);if(lo&&opVis(lo,view)){var lq=og(lo);h+=txt(C,px,(lq.x1+lq.x2)/2+lq.nx*(lq.w.t/2+26*px),(lq.y1+lq.y2)/2+lq.ny*(lq.w.t/2+26*px)+4*px,fmt(lo.w)+' × '+fmt(lo.h),C.accent,12,600)}}
-  if(o.marks&&(view==='distrib'||view==='acab'))h+=elevMarks(C,px);
+  if(o.marks&&view==='acab')h+=elevMarks(C,px);
   h+=zlab;
   if(o.nodes){
     v.nodes.forEach(function(n){
@@ -4041,12 +4043,12 @@ document.addEventListener('change',function(e){
   save();render();panelRest();drawPasoFam();
 });
 function fields(){
-  $('v-nombre').value=st.v.nombre||'';$('v-cliente').value=st.v.cliente||'';
+  $('v-nombre').value=st.v.nombre||'';$('v-cliente').value=st.v.cliente||'';$('v-direccion').value=st.v.direccion||'';
   $('v-fecha').value=st.v.fecha||'';$('v-altura').value=st.v.altura==null?'':st.v.altura;$('v-notas').value=st.v.notas||'';
   $('v-paso').value=st.v.paso==null?'':st.v.paso;
   drawPasoFam();
 }
-['nombre','cliente','fecha','notas'].forEach(function(k){
+['nombre','cliente','direccion','fecha','notas'].forEach(function(k){
   $('v-'+k).addEventListener('input',function(e){st.v[k]=e.target.value;save()});
 });
 $('v-altura').addEventListener('input',function(e){var n=num(e.target.value);if(n>=100&&n<=1000){st.v.altura=n;save();panelRest()}});
@@ -4193,11 +4195,12 @@ Pg.prototype={
         if(tg==='g'){
           var tr=ch.getAttribute('transform'),cm='',nm=M;
           if(tr){
-            var re=/(translate|rotate|scale)\(([^)]*)\)/g,m,mat=[1,0,0,1,0,0];
+            var re=/(translate|rotate|scale|matrix)\(([^)]*)\)/g,m,mat=[1,0,0,1,0,0];
             while((m=re.exec(tr))){
               var a=m[2].trim().split(/[ ,]+/).map(parseFloat),t;
               if(m[1]==='translate')t=[1,0,0,1,a[0],a[1]||0];
               else if(m[1]==='scale')t=[a[0],0,0,a.length>1?a[1]:a[0],0,0];
+              else if(m[1]==='matrix')t=[a[0],a[1],a[2],a[3],a[4],a[5]];
               else{var r=a[0]*Math.PI/180,c=Math.cos(r),s=Math.sin(r);t=[c,s,-s,c,0,0]}
               mat=[mat[0]*t[0]+mat[2]*t[1],mat[1]*t[0]+mat[3]*t[1],mat[0]*t[2]+mat[2]*t[3],mat[1]*t[2]+mat[3]*t[3],mat[0]*t[4]+mat[2]*t[5]+mat[4],mat[1]*t[4]+mat[3]*t[5]+mat[5]];
             }
@@ -4370,7 +4373,7 @@ function carpFrame(doc,idx,total,o,title,note){
   var v=st.v,A3=o.paper!=='A4',PW=A3?420:297,PH=A3?297:210,f=A3?1:0.76,mg=10,p=doc.page(PW,PH);
   p.rect(mg,mg,PW-2*mg,PH-2*mg,null,INK,0.5);
   p.text(mg+7,mg+10,title.toUpperCase(),15*f+1,{bold:true,col:INK});
-  p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.cliente?' · '+v.cliente:''),9*f+1,{col:MUTED});
+  p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
   if(o.logo){var lw=o.logo.w,lh=o.logo.h,sc=Math.min(40/lw,11*f/lh);p.img(o.logoIdx,PW-mg-6-lw*sc,mg+4,lw*sc,lh*sc)}
   else p.text(PW-mg-6,mg+10,'RANUSE DESIGN',9*f,{bold:true,col:INK,anchor:'end'});
   var fy=PH-mg-12*f,wTot=PW-2*mg;
@@ -5115,7 +5118,7 @@ function sheetPage(doc,view,idx,total,o){
 
   /* título de la lámina */
   p.text(mg+7,mg+10,((view==='distrib'?(o.ante?'Anteproyecto · distribución':'Distribución · mobiliario y máquinas'):VNAME[view])+(o.capaN?' · '+o.capaN:'')).toUpperCase(),15*f+1,{bold:true,col:INK});
-  p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.cliente?' · '+v.cliente:''),9*f+1,{col:MUTED});
+  p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
 
   /* escala y plano */
   var S=SCALES[SCALES.length-1];
@@ -5135,15 +5138,17 @@ function sheetPage(doc,view,idx,total,o){
     p.text(bxA+blA,byA-1.5,(LA<1?'0,5':String(LA))+' m',6.5,{col:INK,anchor:'middle'});
     p.text(bxA+blA+8,byA+1.6,'Escala 1:'+S,7,{bold:true,col:INK});
   }else if(b){
-    var wc=b.x1-b.x0,hc=b.y1-b.y0,need=Math.max(wc*10/aw,hc*10/ah);
+    var wc=b.x1-b.x0,hc=b.y1-b.y0,need=Math.max(wc*10/aw,hc*10/ah),needR=Math.max(hc*10/aw,wc*10/ah);
+    var gira=o.orient==='girado'||((!o.orient||o.orient==='auto')&&needR<need*0.9);
+    if(gira)need=needR;
     if(o.scale&&o.scale!=='auto')S=+o.scale;
     else{for(var i=0;i<SCALES.length;i++)if(SCALES[i]>=need){S=SCALES[i];break}}
-    var km=10/S,bw=wc*km,bh=hc*km,ox=ax+(aw-bw)/2-b.x0*km,oy=ay+(ah-bh)/2-b.y0*km;
+    var km=10/S,bw=(gira?hc:wc)*km,bh=(gira?wc:hc)*km,ox=gira?ax+(aw-bw)/2-b.y0*km:ax+(aw-bw)/2-b.x0*km,oy=gira?ay+(ah-bh)/2+b.x1*km:ay+(ah-bh)/2-b.y0*km;
     demCapa=(view==='demol'&&o.capa)?o.capa:(view==='demol'?'x':null);
     var inner=scene(LIGHT,40/S,view,{sel:null,nodes:false,tags:tags,noctl:true,dims:o.dims,flat:true,marks:o.marks!==false&&!o.ante,ldim:o.ldim!==false&&!o.ante,nonum:!!o.ante});
     demCapa=null;
     p.raw('q '+pn(mg+1)+' '+pn(mg+19)+' '+pn(cx-mg-2)+' '+pn(PH-2*mg-19-1)+' re W n');
-    p.svg('<g transform="translate('+f2(ox)+' '+f2(oy)+') scale('+km+')">'+inner+'</g>',{hatchStep:1.75,dem:LIGHT.dem,demBg:LIGHT.demBg});
+    p.svg('<g transform="translate('+f2(ox)+' '+f2(oy)+') scale('+km+')'+(gira?' matrix(0 -1 1 0 0 0)':'')+'">'+inner+'</g>',{hatchStep:1.75,dem:LIGHT.dem,demBg:LIGHT.demBg});
     p.raw('Q');
     /* barra de escala */
     var lm=[0.5,1,2,5,10],L=1;
@@ -5159,7 +5164,7 @@ function sheetPage(doc,view,idx,total,o){
   }
 
   /* cajetín */
-  var cajH=50*f,cy0=PH-mg-cajH,px0=cx+4*f,pw=Wc-8*f;
+  var cajH=60*f,cy0=PH-mg-cajH,px0=cx+4*f,pw=Wc-8*f;
   p.line(cx,cy0,PW-mg,cy0,INK,0.35);
   var ly=cy0+3*f;
   if(o.logo){
@@ -5174,7 +5179,9 @@ function sheetPage(doc,view,idx,total,o){
     p.text(x,y+7.2*f,fitTxt(val,w,!!bold,8*f*25.4/72),8*f,{bold:!!bold,col:INK});
   }
   cell(px0,gy,'Proyecto',v.nombre||'Sin nombre',pw,true);
-  var gy2=gy+9.6*f;p.line(cx,gy2,PW-mg,gy2,LINEC,0.2);
+  var gyd=gy+9.6*f;p.line(cx,gyd,PW-mg,gyd,LINEC,0.2);
+  cell(px0,gyd,'Dirección',v.direccion||'—',pw);
+  var gy2=gyd+9.6*f;p.line(cx,gy2,PW-mg,gy2,LINEC,0.2);
   cell(px0,gy2,'Cliente',v.cliente||'—',pw*0.55);
   cell(px0+pw*0.6,gy2,'Medición',fdate(v.fecha),pw*0.4);
   var gy3=gy2+9.6*f;p.line(cx,gy3,PW-mg,gy3,LINEC,0.2);
@@ -5508,8 +5515,14 @@ function buildPDF(mode,opt){
   if(mode==='all'||mode==='carp')carpPlan(opt).forEach(function(c){plan.push(c)});
   if(mode==='all'||mode==='det')detPlan(opt).forEach(function(c){plan.push(c)});
   if(!plan.length)throw new Error('vacío');
-  plan.forEach(function(pp,i){if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim})});
+  plan.forEach(function(pp,i){if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{orient:opt.orient,ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim})});
   return doc.bytes();
+}
+/* el logo de Ranuse Design va de serie en el cajetín; quien suba otro (o lo quite) vuelve a verlo al restablecer */
+function logoPorDefecto(){
+  var im=new Image();
+  im.onload=function(){try{setLogoFromImg(im,false);logoUi()}catch(e){}};
+  im.src='ranuse-logo.png';
 }
 function setLogoFromImg(img,store){
   var mw=520,sc=Math.min(1,mw/img.width),w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc));
@@ -5520,7 +5533,7 @@ function setLogoFromImg(img,store){
   LOGO={w:w,h:h,rgb:rgb};
   if(store){try{localStorage.setItem(LSL,cv.toDataURL('image/png'))}catch(e){}}
 }
-function logoUi(){var el=$('logo-st');if(el)el.textContent=LOGO?'Logo cargado ('+LOGO.w+' × '+LOGO.h+' px). Sale en el cajetín de los PDF.':'Sin logo: el cajetín muestra el nombre Ranuse Design.'}
+function logoUi(){var el=$('logo-st');if(el)el.textContent=LOGO?'Logo cargado ('+LOGO.w+' × '+LOGO.h+' px). Sale en el cajetín de los PDF.':'Se usa el logo de Ranuse Design. Puedes subir otro.'}
 function loadLogoFile(file){
   if(!file)return;
   var r=new FileReader();
@@ -5533,9 +5546,11 @@ function loadLogoFile(file){
   r.readAsDataURL(file);
 }
 (function(){
-  try{var u=localStorage.getItem(LSL);if(u){var im=new Image();im.onload=function(){try{setLogoFromImg(im,false);logoUi()}catch(e){}};im.src=u}}catch(e){}
+  var propio=null;try{propio=localStorage.getItem(LSL)}catch(e){}
+  if(propio){var im=new Image();im.onload=function(){try{setLogoFromImg(im,false);logoUi()}catch(e){}};im.src=propio}
+  else logoPorDefecto();
 })();
-function pdfOpts(){return {paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0'}}
+function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0'}}
 function exportPDF(mode){
   if(!bbox()){toast('Dibuja algo antes de exportar');return}
   var bytes;
@@ -5671,7 +5686,7 @@ try{var tl=JSON.parse(localStorage.getItem(LSX)||'[]');if(Array.isArray(tl))TXLI
     });
   }).catch(function(){});
 })();
-$('x-logo-del').addEventListener('click',function(){LOGO=null;try{localStorage.removeItem(LSL)}catch(e){}logoUi();toast('Logo quitado')});
+$('x-logo-del').addEventListener('click',function(){LOGO=null;try{localStorage.removeItem(LSL)}catch(e){}logoPorDefecto();logoUi();toast('Vuelve el logo de Ranuse Design')});
 logoUi();
 var newT=0;
 $('b-new').addEventListener('click',function(){
@@ -5802,6 +5817,7 @@ function crmSaveNow(force){
 }
 function crmPrefill(){
   if(!crmProy)return;
+  if(!st.v.direccion)st.v.direccion=crmProy.direccion||'';
   if(!st.v.nombre)st.v.nombre=crmProy.nombre||'';
   if(!st.v.cliente)st.v.cliente=crmProy.cliente||'';
 }
