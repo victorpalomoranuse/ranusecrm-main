@@ -344,6 +344,8 @@ body.crm .top .brand{display:none}
         <input id="qd" class="qe" inputmode="decimal" autocomplete="off" aria-label="Distancia en centímetros" hidden>
         <input id="qe" class="qe" inputmode="decimal" autocomplete="off" aria-label="Medida real del muro en centímetros" hidden>
         <input id="qa" class="qe qs" inputmode="decimal" autocomplete="off" aria-label="Medida del muro lateral al inicio" hidden>
+        <input id="qa2" class="qe qs" inputmode="decimal" autocomplete="off" aria-label="Medida del otro muro lateral al inicio" hidden>
+        <input id="qb2" class="qe qs" inputmode="decimal" autocomplete="off" aria-label="Medida del otro muro lateral al final" hidden>
         <input id="qb" class="qe qs" inputmode="decimal" autocomplete="off" aria-label="Medida del muro lateral al final" hidden>
         <button id="qbase" class="qbase" hidden title="Cambiar a qué se refiere la medida"></button>
         <button id="qok" class="qok" hidden>OK</button>
@@ -1616,6 +1618,17 @@ function setWallLen(w,n){
   });
   w.len=n;w.m=true;
 }
+/* todos los muros que salen de un extremo y cortan a este (no los que siguen en línea recta) */
+function adjAll(w,nodeId){
+  var g=wg(w),out=[];
+  st.v.walls.forEach(function(o){
+    if(o.id===w.id||(o.a!==nodeId&&o.b!==nodeId))return;
+    var og2=wg(o),dot=Math.abs(og2.ux*g.ux+og2.uy*g.uy);
+    if(dot<0.9)out.push(o);
+  });
+  if(!out.length){var b=adjOf(w,nodeId);if(b)out.push(b)}
+  return out;
+}
 function adjOf(w,nodeId){
   var g=wg(w),best=null,bd=2;
   st.v.walls.forEach(function(o){
@@ -2068,28 +2081,31 @@ $('qbase').addEventListener('click',function(e){
   toast(st.v.cb==='int'?'Las medidas que escribas serán de cara interior a cara interior':'Las medidas que escribas serán a ejes de muro');
   try{qe.focus()}catch(_){}
 });
-var qaI=$('qa'),qbI=$('qb');
+var qaI=$('qa'),qbI=$('qb'),qa2I=$('qa2'),qb2I=$('qb2'),latIn=[qaI,qa2I,qbI,qb2I],latAct=null;
 function placeAdj(){
   var w=st.sel&&st.sel.t==='wall'&&wl(st.sel.id);
-  [[qaI,'a'],[qbI,'b']].forEach(function(x){
-    var inp=x[0],aj=w&&wallVis(w,st.view)?adjOf(w,x[1]==='a'?w.a:w.b):null;
-    if(!aj||!wallVis(aj,st.view)){inp.hidden=true;return}
-    var p=labelScreen(aj);
-    inp.hidden=false;
-    inp.style.left=Math.max(42,Math.min(W-42,p.x))+'px';inp.style.top=Math.max(20,Math.min(H-20,p.y-4))+'px';
-    if(document.activeElement!==inp)inp.value=fmt(wg(aj).l);
+  [[qaI,qa2I,'a'],[qbI,qb2I,'b']].forEach(function(x){
+    var lista=w&&wallVis(w,st.view)?adjAll(w,x[2]==='a'?w.a:w.b).filter(function(o){return wallVis(o,st.view)}):[],nid=x[2]==='a'?w&&w.a:w&&w.b;
+    [x[0],x[1]].forEach(function(inp,i){
+      var aj=lista[i];
+      if(!aj){inp.hidden=true;inp._aj=null;return}
+      var p=labelScreen(aj);
+      inp._aj=aj.id;inp._nid=nid;
+      inp.hidden=false;
+      inp.style.left=Math.max(42,Math.min(W-42,p.x))+'px';inp.style.top=Math.max(20,Math.min(H-20,p.y-4))+'px';
+      if(document.activeElement!==inp)inp.value=fmt(wg(aj).l);
+    });
   });
 }
-function applyLat(inp,key){
-  var v=inp.value.trim(),w=st.sel&&st.sel.t==='wall'&&wl(st.sel.id);
-  if(!w||v==='')return;
-  var aj=adjOf(w,key==='adj_a'?w.a:w.b);
-  if(aj&&Math.round(wg(aj).l)===Math.round(num(v)))return;
-  applyField(key,v,false);
+function applyLat(inp){
+  var v=inp.value.trim(),w=st.sel&&st.sel.t==='wall'&&wl(st.sel.id),aj=inp._aj&&wl(inp._aj);
+  if(!w||v===''||!aj)return;
+  if(Math.round(wg(aj).l)===Math.round(num(v)))return;
+  applyField('adj:'+inp._nid+':'+aj.id,v,false);
 }
-[[qaI,'adj_a'],[qbI,'adj_b']].forEach(function(x){
-  x[0].addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();applyLat(x[0],x[1]);x[0].blur()}else if(e.key==='Escape'){x[0].blur();render()}});
-  x[0].addEventListener('change',function(){applyLat(x[0],x[1])});
+latIn.forEach(function(inp){
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();applyLat(inp);inp.blur()}else if(e.key==='Escape'){inp.blur();render()}});
+  inp.addEventListener('change',function(){applyLat(inp)});
 });
 var qd=$('qd'),dimEd=null;
 function closeDimEd(){dimEd=null;qd.hidden=true}
@@ -2158,16 +2174,15 @@ function showOK(inp,kind){
   qok.style.left=Math.max(60,Math.min(W-60,l))+'px';qok.style.top=Math.min(H-46,t+26)+'px';
   qok.hidden=false;
 }
-function hideOK(){clearTimeout(qokT);qokT=setTimeout(function(){if(document.activeElement!==qe&&document.activeElement!==qaI&&document.activeElement!==qbI){qok.hidden=true;qAct=null}},250)}
-[[qe,'qe'],[qaI,'qa'],[qbI,'qb']].forEach(function(x){
-  x[0].addEventListener('focus',function(){showOK(x[0],x[1])});
+function hideOK(){clearTimeout(qokT);qokT=setTimeout(function(){if(document.activeElement!==qe&&latIn.indexOf(document.activeElement)<0){qok.hidden=true;qAct=null}},250)}
+[[qe,'qe']].concat(latIn.map(function(i){return [i,'lat']})).forEach(function(x){
+  x[0].addEventListener('focus',function(){if(x[1]==='lat')latAct=x[0];showOK(x[0],x[1])});
   x[0].addEventListener('blur',hideOK);
 });
 ['pointerdown','mousedown','touchstart'].forEach(function(ev){qok.addEventListener(ev,function(e){e.preventDefault()},{passive:false})});
 qok.addEventListener('click',function(){
   if(qAct==='qe')commitQE(true);
-  else if(qAct==='qa'){applyLat(qaI,'adj_a');qaI.blur()}
-  else if(qAct==='qb'){applyLat(qbI,'adj_b');qbI.blur()}
+  else if(qAct==='lat'&&latAct){applyLat(latAct);latAct.blur()}
 });
 function labelHit(w){
   var best=null,bd=28,sx=st.tx+w.x*st.k,sy=st.ty+w.y*st.k;
@@ -3534,8 +3549,9 @@ function applyField(key,val,adv){
         if(goNext(w.id)){commit(false);panelRest();openQE(st.sel.id)}
         else{closeQE();commit();fit();toast('Todos los muros tienen medida')}
       }else commit(false);
-    }else if(key==='adj_a'||key==='adj_b'){
-      var nid=key==='adj_a'?w.a:w.b,aj=adjOf(w,nid);
+    }else if(key==='adj_a'||key==='adj_b'||/^adj:/.test(key)){
+      var nid,aj;
+      if(/^adj:/.test(key)){var pr=key.split(':');nid=pr[1];aj=wl(pr[2])}else{nid=key==='adj_a'?w.a:w.b;aj=adjOf(w,nid)}
       if(!aj||!(n>=5&&n<=5000)){toast('Escribe una medida entre 5 y 5000 cm');return}
       var far=nd(aj.a===nid?aj.b:aj.a),nn3=nd(nid),gw=wg(w),nx3=-gw.uy,ny3=gw.ux;
       var Px=nn3.x-far.x,Py=nn3.y-far.y,pnn=Px*nx3+Py*ny3,disc=pnn*pnn-(Px*Px+Py*Py)+n*n;
