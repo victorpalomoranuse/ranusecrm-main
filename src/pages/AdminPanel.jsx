@@ -20,6 +20,7 @@ import { SectionRelacionObra } from './SectionRelacionObra';
 import { SectionMisComisiones } from './SectionMisComisiones';
 import { SectionMiDashboard } from './SectionMiDashboard';
 import { SectionPlanos } from './SectionPlanos';
+import { NavLateral } from '../components/NavLateral';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { MedicionProyecto } from '../components/MedicionProyecto';
 import { TabHistoria, SelectorTipoHistoria, GuiaProyecto, EstiloMoodboard } from '../components/HistoriaEditor';
@@ -2533,7 +2534,7 @@ export function AdminPanel() {
       {mobileNavOpen&&<div className="ap-mobile-nav-overlay" onClick={()=>setMobileNavOpen(false)}/>}
       <aside className={`ap-sidebar${mobileNavOpen?' ap-sidebar--open':''}`}>
         <div className="ap-sidebar-logo"><img src="/iconoRanuse.ico" alt="Ranuse"/><span>Ranuse Design</span><button className="ap-mobile-nav-close" onClick={()=>setMobileNavOpen(false)} aria-label="Cerrar menú"><X size={18}/></button></div>
-        <nav className="ap-nav">{accessibleItems.map(item=>(<button key={item.id} className={`ap-nav-item${section===item.id?' active':''}`} onClick={()=>pickSection(item.id)}><item.Icon size={17} className="ap-nav-icon"/><span>{item.label}</span></button>))}</nav>
+        <NavLateral items={accessibleItems} section={section} onPick={pickSection} userKey={user?.id||'x'}/>
         <div className="ap-sidebar-footer"><p className="ap-user">{user?.name||user?.email}{user?.puesto&&<span className="ap-user-puesto">{user.puesto}</span>}</p><button className="ap-logout" onClick={handleLogout}><LogOut size={13}/> Cerrar sesión</button></div>
       </aside>
       <main className="ap-main">

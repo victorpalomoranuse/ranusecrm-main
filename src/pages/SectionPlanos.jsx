@@ -21,6 +21,8 @@ const fmtFecha = (iso) => {
   return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+const ETIQUETA_ESTADO = { en_marcha: 'En marcha', finalizado: 'Finalizado', archivado: 'Archivado' };
+
 function Tile({ valor, titulo, sub }) {
   return (
     <div style={card}>
@@ -63,7 +65,8 @@ export function SectionPlanos() {
   const [proyectos, setProyectos] = useState([]);
   const [error, setError] = useState('');
   const [busca, setBusca] = useState('');
-  const [filtro, setFiltro] = useState('todos');
+  const [estado, setEstado] = useState('en_marcha'); // en_marcha | finalizado | archivado | todos | sueltos
+  const [filtro, setFiltro] = useState('todos'); // todos | con | sin (según tenga planos)
   const [editor, setEditor] = useState(null); // { projectId, abrir, nuevo, titulo, proyecto }
   const [nuevoModal, setNuevoModal] = useState(false);
   const [nuevoProyecto, setNuevoProyecto] = useState('');
@@ -135,14 +138,16 @@ export function SectionPlanos() {
   let filas = proyectos
     .map(pr => ({ pr, lista: porProyecto[pr.id] || [] }))
     .filter(({ pr, lista }) => coincide(`${pr.client_name} ${pr.project_name} ${lista.map(l => l.nombre).join(' ')}`))
-    .filter(({ lista }) => filtro === 'con' ? lista.length > 0 : filtro === 'sin' ? lista.length === 0 : filtro === 'sueltos' ? false : true);
+    .filter(({ pr }) => estado === 'sueltos' ? false : estado === 'todos' ? true : (pr.status || 'en_marcha') === estado)
+    .filter(({ lista }) => filtro === 'con' ? lista.length > 0 : filtro === 'sin' ? lista.length === 0 : true);
   filas = filas.sort((a, b) => {
     const ua = a.lista[0]?.updated_at || '', ub = b.lista[0]?.updated_at || '';
     if (ua && ub) return ub.localeCompare(ua);
     if (ua || ub) return ua ? -1 : 1;
     return a.pr.client_name.localeCompare(b.pr.client_name);
   });
-  const sueltosVis = filtro === 'todos' || filtro === 'sueltos' ? sueltos.filter(p => coincide(`${p.nombre} ${p.cliente}`)) : [];
+  const sueltosVis = estado === 'todos' || estado === 'sueltos' ? sueltos.filter(p => coincide(`${p.nombre} ${p.cliente}`)) : [];
+  const cuenta = (st) => proyectos.filter(p => (p.status || 'en_marcha') === st).length;
 
   return (
     <div className="ap-section">
@@ -165,11 +170,16 @@ export function SectionPlanos() {
           <input className="ap-field-input" style={{ paddingLeft: 30, width: '100%' }} placeholder="Buscar cliente, proyecto o plano…" value={busca} onChange={e => setBusca(e.target.value)} />
         </div>
         <select className="ap-select ap-select-sm" value={filtro} onChange={e => setFiltro(e.target.value)}>
-          <option value="todos">Todos los proyectos</option>
-          <option value="con">Con planos</option>
-          <option value="sin">Sin planos todavía</option>
-          <option value="sueltos">Planos sin proyecto</option>
+          <option value="todos">Con y sin planos</option>
+          <option value="con">Solo con planos</option>
+          <option value="sin">Solo sin planos todavía</option>
         </select>
+      </div>
+
+      <div className="ap-cat-tabs" style={{ marginBottom: 14 }}>
+        {[['en_marcha', 'En marcha', cuenta('en_marcha')], ['finalizado', 'Finalizados', cuenta('finalizado')], ['archivado', 'Archivados', cuenta('archivado')], ['todos', 'Todos', proyectos.length], ['sueltos', 'Sin proyecto', sueltos.length]].map(([id, label, n]) => (
+          <button key={id} className={`ap-cat-tab${estado === id ? ' active' : ''}`} onClick={() => setEstado(id)}>{label} <span style={{ opacity: 0.55, marginLeft: 4 }}>{n}</span></button>
+        ))}
       </div>
 
       {sueltosVis.length > 0 && (
@@ -184,7 +194,7 @@ export function SectionPlanos() {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><FolderOpen size={14} style={{ opacity: 0.5 }} />{pr.client_name}</div>
-              <div style={muted}>{pr.project_name}{lista.length ? ` · ${lista.length} plano${lista.length === 1 ? '' : 's'}` : ' · sin planos todavía'}</div>
+              <div style={muted}>{estado === 'todos' && <span style={{ marginRight: 6, padding: '1px 7px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)' }}>{ETIQUETA_ESTADO[pr.status || 'en_marcha']}</span>}{pr.project_name}{lista.length ? ` · ${lista.length} plano${lista.length === 1 ? '' : 's'}` : ' · sin planos todavía'}</div>
             </div>
             <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => crearEnProyecto(pr)}><Plus size={13} /> {lista.length ? 'Otro plano' : 'Crear plano'}</button>
           </div>

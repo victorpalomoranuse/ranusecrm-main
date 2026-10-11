@@ -2425,3 +2425,27 @@
   margin-top: 0.5rem;
   border-radius: 0 0 8px 8px;
 }
+
+/* Menú lateral agrupado + favoritos */
+.ap-nav { gap: 0.1rem; overflow-y: auto; }
+.ap-nav-row { position: relative; display: flex; align-items: center; }
+.ap-nav-row .ap-nav-item { padding-right: 2rem; }
+.ap-nav-star {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; color: rgba(255,255,255,0.25); cursor: pointer;
+  padding: 6px; border-radius: 6px; display: flex; opacity: 0; transition: opacity 0.15s, color 0.15s;
+}
+.ap-nav-row:hover .ap-nav-star, .ap-nav-star.on { opacity: 1; }
+.ap-nav-star.on { color: #beb0a2; }
+.ap-nav-star:hover { color: #beb0a2; background: rgba(255,255,255,0.06); }
+@media (hover: none) { .ap-nav-star { opacity: 0.7; } }
+.ap-nav-group { margin-top: 0.55rem; }
+.ap-nav-group-title {
+  display: flex; align-items: center; gap: 0.4rem; width: 100%;
+  background: none; border: none; font-family: inherit; text-align: left; cursor: pointer;
+  padding: 0.4rem 0.85rem; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: rgba(255,255,255,0.35);
+}
+button.ap-nav-group-title:hover { color: rgba(255,255,255,0.7); }
+.ap-nav-group-fav { cursor: default; color: #beb0a2; }
+.ap-nav-group-count { margin-left: auto; font-size: 0.65rem; opacity: 0.6; }
