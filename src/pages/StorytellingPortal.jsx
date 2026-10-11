@@ -13,7 +13,7 @@ function agrupar(bloques) {
   bloques.forEach(b => {
     // Todas las zonas (y todos los detalles) de un capítulo van juntos, en la
     // posición de la primera, aunque haya otros bloques entre medias
-    const existente = (b.tipo === 'zona' || b.tipo === 'detalle') ? grupos.find(g => g.tipo === b.tipo) : null;
+    const existente = (b.tipo === 'zona' || b.tipo === 'detalle' || b.tipo === 'render') ? grupos.find(g => g.tipo === b.tipo) : null;
     if (existente) existente.items.push(b);
     else grupos.push({ tipo: b.tipo, items: [b] });
   });
@@ -22,16 +22,73 @@ function agrupar(bloques) {
 
 function irA(id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); }
 
+// Imágenes que se pueden ampliar al pulsarlas (no el logo ni la portada)
+const SEL_AMPLIAR = '.sp-full img, .sp-rends img, .sp-zona-i img, .sp-dt-i img, .sp-im img, .sp-gal img, .sp-tiles img, .sp-plano img, .sp-card-i img, .sp-eq-img img';
+
+// Galería de renders de una zona: 1 = a toda pantalla, 2 = en dos columnas, 3 o más = una grande y el resto debajo
+function Renders({ items, tituloZona, textoZona, primero }) {
+  const lista = items.filter(r => r.imagen_url);
+  if (!lista.length) return null;
+  const pie = (r) => {
+    const t = r.titulo && r.titulo !== tituloZona ? r.titulo : '';
+    const x = r.texto && r.texto.length <= 140 && !(textoZona || '').startsWith(r.texto.slice(0, 40)) ? r.texto : '';
+    return [t, x].filter(Boolean).join(' — ');
+  };
+  if (lista.length === 1) {
+    const r = lista[0];
+    return (
+      <div>
+        <div className="sp-full sp-rv"><img src={r.imagen_url} alt={r.titulo || tituloZona || ''} loading={primero ? 'eager' : 'lazy'} /></div>
+        {pie(r) && <p className="sp-cap">{pie(r)}</p>}
+      </div>
+    );
+  }
+  return (
+    <div className={`sp-rends sp-rends--${Math.min(lista.length, 4)} sp-rv`}>
+      {lista.map((r, i) => (
+        <figure key={r.id || i} className={i === 0 ? 'sp-rend-main' : ''}>
+          <img src={r.imagen_url} alt={r.titulo || tituloZona || ''} loading={primero && i === 0 ? 'eager' : 'lazy'} />
+          {pie(r) && <figcaption>{pie(r)}</figcaption>}
+        </figure>
+      ))}
+    </div>
+  );
+}
+
+// Visor a pantalla completa: flechas, teclado y gesto de deslizar
+function Visor({ fotos, i, onCambiar, onCerrar }) {
+  const t0 = useRef(null);
+  useEffect(() => {
+    const k = (e) => {
+      if (e.key === 'Escape') onCerrar();
+      else if (e.key === 'ArrowRight') onCambiar(1);
+      else if (e.key === 'ArrowLeft') onCambiar(-1);
+    };
+    window.addEventListener('keydown', k);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', k); document.body.style.overflow = prev; };
+  }, [onCambiar, onCerrar]);
+  const f = fotos[i];
+  if (!f) return null;
+  return (
+    <div className="sp-lb" role="dialog" aria-modal="true" aria-label="Imagen ampliada" onClick={onCerrar}
+      onTouchStart={e => { t0.current = e.touches[0].clientX; }}
+      onTouchEnd={e => { if (t0.current == null) return; const d = e.changedTouches[0].clientX - t0.current; t0.current = null; if (Math.abs(d) > 50) onCambiar(d < 0 ? 1 : -1); }}>
+      <img src={f.src} alt={f.alt || ''} onClick={e => e.stopPropagation()} />
+      {fotos.length > 1 && <button type="button" className="sp-lb-n sp-lb-prev" aria-label="Anterior" onClick={e => { e.stopPropagation(); onCambiar(-1); }}>‹</button>}
+      {fotos.length > 1 && <button type="button" className="sp-lb-n sp-lb-next" aria-label="Siguiente" onClick={e => { e.stopPropagation(); onCambiar(1); }}>›</button>}
+      <button type="button" className="sp-lb-x" aria-label="Cerrar" onClick={onCerrar}>×</button>
+      <div className="sp-lb-i">{f.alt ? f.alt + ' · ' : ''}{i + 1} / {fotos.length}</div>
+    </div>
+  );
+}
+
 function Bloques({ bloques, capitulos, equipo }) {
 
   return agrupar(bloques).map((g, gi) => {
     if (g.tipo === 'render') {
-      return g.items.map(b => b.imagen_url && (
-        <div key={b.id}>
-          <div className="sp-full sp-rv" style={{ marginTop: '9vh' }}><img src={b.imagen_url} alt={b.titulo || ''} loading="lazy" /></div>
-          {(b.titulo || b.texto) && <p className="sp-cap">{[b.titulo, b.texto].filter(Boolean).join(' — ')}</p>}
-        </div>
-      ));
+      return <div key={gi} style={{ marginTop: '6vh' }}><Renders items={g.items} /></div>;
     }
     if (g.tipo === 'plano') {
       const b = g.items[0];
@@ -85,7 +142,7 @@ function Bloques({ bloques, capitulos, equipo }) {
     if (g.tipo === 'zona') {
       return (
         <div key={gi} className="sp-blk">
-          <p className="sp-lbl sp-rv">{g.items.length > 1 ? 'Las zonas' : 'La zona'}</p>
+          <p className="sp-lbl sp-rv">{g.items.length > 1 ? 'Dentro de esta zona' : 'La zona'}</p>
           <div className="sp-zonas sp-rv">
             {g.items.map(z => (
               <div key={z.id} className="sp-zona">
@@ -104,7 +161,7 @@ function Bloques({ bloques, capitulos, equipo }) {
     if (g.tipo === 'detalle') {
       return (
         <div key={gi} className="sp-blk">
-          <p className="sp-lbl sp-rv">Detalles que marcan la diferencia</p>
+          <p className="sp-lbl sp-rv">Detalles de esta zona</p>
           <div className="sp-det sp-rv">
             {g.items.map(d => (
               <div key={d.id} className="sp-dt">
@@ -159,6 +216,18 @@ export function StorytellingPortal({ project, dossier, code }) {
   ];
   const [activa, setActiva] = useState(0);
   const barRef = useRef(null);
+  const rootRef = useRef(null);
+  const [visor, setVisor] = useState(null); // { fotos, i }
+  const abrirVisor = (e) => {
+    const img = e.target.closest && e.target.closest('img');
+    if (!img || !img.matches(SEL_AMPLIAR)) return;
+    const nodos = Array.from(rootRef.current.querySelectorAll(SEL_AMPLIAR));
+    const i = nodos.indexOf(img);
+    if (i < 0) return;
+    setVisor({ i, fotos: nodos.map(n => ({ src: n.currentSrc || n.src, alt: n.alt || '' })) });
+  };
+  const cambiarVisor = (d) => setVisor(v => v && ({ ...v, i: (v.i + d + v.fotos.length) % v.fotos.length }));
+  const cerrarVisor = () => setVisor(null);
 
   useEffect(() => {
     const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) e.target.classList.add('sp-in'); }), { threshold: 0.12 });
@@ -188,7 +257,8 @@ export function StorytellingPortal({ project, dossier, code }) {
   const hrefEjecucion = project.responsible_email ? `mailto:${project.responsible_email}?subject=${asunto}` : WA_LINK;
 
   return (
-    <div className="sp">
+    <div className="sp" ref={rootRef} onClick={abrirVisor}>
+      {visor && <Visor fotos={visor.fotos} i={visor.i} onCambiar={cambiarVisor} onCerrar={cerrarVisor} />}
       <div className="sp-bar" ref={barRef} />
       <header className="sp-header">
         <a className="sp-logo" href="/"><img src="/iconoRanuse.ico" alt="" /><span>Ranuse Design</span></a>
@@ -250,15 +320,15 @@ export function StorytellingPortal({ project, dossier, code }) {
       {capitulos.map((c, i) => (
         <section className="sp-chap" id={`sp-c-${c.id}`} key={c.id}>
           <div className="sp-chap-head sp-rv">
-            <div className="sp-num">{String(i + 1).padStart(2, '0')}</div>
+            {capitulos.length > 1 && <div className="sp-num">{String(i + 1).padStart(2, '0')}</div>}
             <div>
-              <p className="sp-label" style={{ marginBottom: 10 }}>Capítulo</p>
+              <p className="sp-label" style={{ marginBottom: 10 }}>{capitulos.length > 1 ? 'Zona' : 'Tu espacio'}</p>
               <h2>{c.titulo}</h2>
               {c.texto && <p className="sp-text">{c.texto}</p>}
             </div>
           </div>
-          {c.render_url && <div className="sp-full sp-rv"><img src={c.render_url} alt={c.titulo} loading={i === 0 ? 'eager' : 'lazy'} /></div>}
-          <Bloques bloques={c.bloques} capitulos={capitulos} equipo={project.equipment} />
+          <Renders primero={i === 0} tituloZona={c.titulo} textoZona={c.texto} items={[...(c.render_url ? [{ id: 'main', imagen_url: c.render_url, titulo: c.titulo }] : []), ...c.bloques.filter(b => b.tipo === 'render')]} />
+          <Bloques bloques={c.bloques.filter(b => b.tipo !== 'render')} capitulos={capitulos} equipo={project.equipment} />
           {c.servicios.length > 0 && (
             <div className="sp-blk">
               <p className="sp-lbl sp-rv">Soluciones y servicios</p>

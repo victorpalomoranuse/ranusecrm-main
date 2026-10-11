@@ -307,7 +307,7 @@ router.put('/:projectId/estilo', async (req, res) => {
 });
 
 // ── IA: propone, NUNCA guarda ─────────────────────────────────────────
-const SYSTEM_BASE = `Eres el editor de textos de Ranuse Design, estudio de diseño de espacios deportivos (gimnasios y home gyms) en España. Los textos se muestran al cliente en una historia tipo "un día en tu espacio": segunda persona del singular, presente, tono cálido y elegante, frases cortas, sin tecnicismos ni adjetivos vacíos. Responde SOLO con el texto resultante, sin comillas, títulos ni explicaciones.`;
+const SYSTEM_BASE = `Eres el editor de textos de Ranuse Design, estudio de diseño de espacios deportivos (gimnasios y home gyms) en España. Los textos se muestran al cliente organizados POR ZONAS del espacio (fachada, recepción, zona de entrenamiento, vestuarios…). Cada zona se describe por sí misma: cómo es, materiales, luz y ambiente, y qué ofrece. No se narra un recorrido (evita empezar con "llegas…", "entras…"): tono cálido y elegante, presente, frases cortas, sin tecnicismos ni adjetivos vacíos. En un home gym suele haber una sola zona principal (más, si hay recuperación o zona de TV). Responde SOLO con el texto resultante, sin comillas, títulos ni explicaciones.`;
 
 async function textoDeClaude(system, userMsg, maxTokens = 500) {
   const response = await callClaude({ system, messages: [{ role: 'user', content: userMsg }], maxTokens });
@@ -345,7 +345,7 @@ router.post('/capitulos/:id/ia-reescribir', async (req, res) => {
     const serviciosCap = (servs || []).filter(s => idsServ.has(s.id));
     const tipoTxt = proyecto?.tipo_proyecto === 'home_gym' ? 'home gym (gimnasio en casa)' : 'gimnasio comercial';
 
-    const system = `${SYSTEM_BASE}\nTu tarea: reescribir el texto de introducción de UN capítulo (2-3 frases como máximo) con un detalle sensorial (luz, olor, sonido o tacto). Usa los datos reales del proyecto que se te pasan; si algo no está en los datos, no lo inventes.${req.body.instruccion ? `\nInstrucción adicional del diseñador: ${String(req.body.instruccion).slice(0, 400)}` : ''}`;
+    const system = `${SYSTEM_BASE}\nTu tarea: reescribir el texto de introducción de UNA zona (2-3 frases como máximo) describiéndola con un detalle sensorial (luz, olor, sonido o tacto). Usa los datos reales del proyecto que se te pasan; si algo no está en los datos, no lo inventes.${req.body.instruccion ? `\nInstrucción adicional del diseñador: ${String(req.body.instruccion).slice(0, 400)}` : ''}`;
     const userMsg = [
       `PROYECTO: ${proyecto?.project_name || '—'} (${tipoTxt})`,
       `ESTILO / MOODBOARD: ${proyecto?.moodboard_description?.trim() || 'No hay.'}`,
