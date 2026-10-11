@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays } from 'lucide-react';
+import { Home, Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
@@ -20,7 +20,8 @@ import { SectionRelacionObra } from './SectionRelacionObra';
 import { SectionMisComisiones } from './SectionMisComisiones';
 import { SectionMiDashboard } from './SectionMiDashboard';
 import { SectionPlanos } from './SectionPlanos';
-import { NavLateral } from '../components/NavLateral';
+import { NavLateral, useNavPrefs } from '../components/NavLateral';
+import { SectionInicio } from './SectionInicio';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { MedicionProyecto } from '../components/MedicionProyecto';
 import { TabHistoria, SelectorTipoHistoria, GuiaProyecto, EstiloMoodboard } from '../components/HistoriaEditor';
@@ -2480,6 +2481,7 @@ function SectionRecursos() {
 }
 
 const NAV_ITEMS = [
+  { id:'inicio', label:'Inicio', Icon:Home },
   { id:'mi-dia', label:'Mi día', Icon:CalendarDays, hideForAdmin:true },
   { id:'dashboard', label:'Dashboard', Icon:BarChart2, adminOnly:true },
   { id:'trabajos', label:'Trabajos', Icon:LayoutGrid, permission:'trabajos' },
@@ -2521,9 +2523,10 @@ export function AdminPanel() {
   const {user,logout}=useAdminAuth();
   const navigate=useNavigate();
   const accessibleItems=NAV_ITEMS.filter(item=>canAccessNav(item,user));
-  const defaultSection=user?.role==='admin_superior'?'dashboard':(accessibleItems[0]?.id||null);
+  const defaultSection='inicio';
   const [section,setSection]=useState(defaultSection);
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
+  const navPrefs=useNavPrefs(user?.id||'x',section);
   const handleLogout=()=>{logout();navigate('/admin');};
   const currentLabel=accessibleItems.find(i=>i.id===section)?.label||'';
   const pickSection=(id)=>{setSection(id);setMobileNavOpen(false);};
@@ -2534,11 +2537,12 @@ export function AdminPanel() {
       {mobileNavOpen&&<div className="ap-mobile-nav-overlay" onClick={()=>setMobileNavOpen(false)}/>}
       <aside className={`ap-sidebar${mobileNavOpen?' ap-sidebar--open':''}`}>
         <div className="ap-sidebar-logo"><img src="/iconoRanuse.ico" alt="Ranuse"/><span>Ranuse Design</span><button className="ap-mobile-nav-close" onClick={()=>setMobileNavOpen(false)} aria-label="Cerrar menú"><X size={18}/></button></div>
-        <NavLateral items={accessibleItems} section={section} onPick={pickSection} userKey={user?.id||'x'}/>
+        <NavLateral items={accessibleItems} section={section} onPick={pickSection} prefs={navPrefs}/>
         <div className="ap-sidebar-footer"><p className="ap-user">{user?.name||user?.email}{user?.puesto&&<span className="ap-user-puesto">{user.puesto}</span>}</p><button className="ap-logout" onClick={handleLogout}><LogOut size={13}/> Cerrar sesión</button></div>
       </aside>
       <main className="ap-main">
         {!section&&(<div className="ap-empty-access"><Shield size={32} style={{opacity:0.25,marginBottom:'0.75rem'}}/><h2>Sin acceso asignado</h2><p>Todavía no tienes ninguna sección disponible. Pide al administrador que te asigne una categoría en "Empleados".</p></div>)}
+        {section==='inicio'&&<SectionInicio items={accessibleItems} ir={pickSection} prefs={navPrefs} user={user}/>}
         {section==='mi-dia'&&<SectionMiDashboard ir={pickSection}/>}
         {section==='dashboard'&&<SectionDashboard/>}
         {section==='trabajos'&&<SectionTrabajos/>}
