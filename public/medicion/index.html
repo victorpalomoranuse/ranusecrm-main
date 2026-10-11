@@ -298,13 +298,13 @@ body.crm .top .brand{display:none}
       <button data-view="cotas">Cotas</button>
       <button data-view="demol">Demoliciones</button>
       <button data-view="interv">Implantación</button>
-      <button data-view="distrib">Distribución</button>
-      <button data-view="suelos">Suelos</button>
+      <button data-view="elec">Electricidad</button>
+      <button data-view="ilum">Iluminación</button>
       <button data-view="techos">Techos</button>
       <button data-view="acab">Acabados</button>
       <button data-view="alz">Alzados</button>
-      <button data-view="ilum">Iluminación</button>
-      <button data-view="elec">Electricidad</button>
+      <button data-view="suelos">Suelos</button>
+      <button data-view="distrib">Distribución</button>
     </div>
     <div class="top-r">
       <button id="b-undo" title="Deshacer">↶ <span class="hide-s">Deshacer</span></button><button id="b-redo" title="Rehacer">↷</button>
@@ -3915,7 +3915,9 @@ function viewHas(view){
   if(view==='alz'||view==='cotas')return v.walls.length>0;
   return true;
 }
-function dossierViews(){return ['actual','cotas','demol','interv','distrib','suelos','techos','acab','alz','ilum','elec'].filter(viewHas)}
+/* orden de las láminas, en el orden en que se ejecuta la obra */
+var ORDEN_OBRA=['actual','cotas','demol','interv','elec','ilum','techos','acab','alz','suelos','distrib'];
+function dossierViews(){return ORDEN_OBRA.filter(viewHas)}
 
 
 /* ---------- memoria de carpinterías ---------- */
@@ -5491,7 +5493,7 @@ cmd('Medir a ejes de muro',['me','ejes'],'Las cotas miden de eje a eje',porData(
 cmd('Cotas sencillas',['cs'],'Solo el número en cada muro',porData('dims','simple'));
 cmd('Cotas por fuera',['ce'],'Líneas de cota exteriores',porData('dims','ext'));
 cmd('Cotas por dentro',['ci'],'Líneas de cota interiores',porData('dims','int'));
-[['actual','Lámina: Estado actual',['v1','ea','actual']],['cotas','Lámina: Cotas',['v2','co','cotas']],['demol','Lámina: Demoliciones',['v3','dm','demoliciones']],['interv','Lámina: Implantación',['v4','im','implantacion','iv','intervencion']],['distrib','Lámina: Distribución',['v5','ds','distribucion']],['suelos','Lámina: Suelos',['v6','su','suelos']],['techos','Lámina: Techos',['v7','te','techos']],['acab','Lámina: Acabados',['v8','ac','acabados']],['alz','Lámina: Alzados',['v9','al','alzados']],['ilum','Lámina: Iluminación',['v10','il','iluminacion']],['elec','Lámina: Electricidad',['v11','el','electricidad']]].forEach(function(v){cmd(v[1],v[2],'Cambiar de lámina',porVista(v[0]))});
+[['actual','Lámina: Estado actual',['v1','ea','actual']],['cotas','Lámina: Cotas',['v2','co','cotas']],['demol','Lámina: Demoliciones',['v3','dm','demoliciones']],['interv','Lámina: Implantación',['v4','im','implantacion','iv','intervencion']],['elec','Lámina: Electricidad',['v5','el','electricidad']],['ilum','Lámina: Iluminación',['v6','il','iluminacion']],['techos','Lámina: Techos',['v7','te','techos']],['acab','Lámina: Acabados',['v8','ac','acabados']],['alz','Lámina: Alzados',['v9','al','alzados']],['suelos','Lámina: Suelos',['v10','su','suelos']],['distrib','Lámina: Distribución',['v11','ds','distribucion']]].forEach(function(v){cmd(v[1],v[2],'Cambiar de lámina',porVista(v[0]))});
 cmd('Deshacer',['u','z','deshacer','undo'],'Deshacer el último cambio',function(){undo()});
 cmd('Rehacer',['y','rehacer','redo'],'Rehacer',function(){redoit()});
 cmd('Encajar el plano',['ze','f','encajar'],'Ver todo el plano',function(){fit()});
