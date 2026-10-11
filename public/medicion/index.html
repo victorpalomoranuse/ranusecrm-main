@@ -758,7 +758,7 @@ function pickEq(p){
 }
 var MATS={
   suelos:[{id:'porc',n:'Porcelánico',c:'#cfc8bf'},{id:'tarima',n:'Tarima de madera',c:'#d9b98d'},{id:'micro',n:'Microcemento',c:'#bdb7b0'},{id:'caucho',n:'Suelo de caucho',c:'#8a8a92'},{id:'cesped',n:'Césped artificial',c:'#a9cf92'},{id:'cer',n:'Cerámica',c:'#e3c9b3'},{id:'hor',n:'Hormigón pulido',c:'#a8a8a8'},{id:'mold',n:'Moqueta',c:'#b6a7c9'}],
-  techos:[{id:'pint',n:'Pintura lisa',c:'#efe9e0'},{id:'pyl',n:'Falso techo de pladur',c:'#cfdde9'},{id:'reg',n:'Techo registrable',c:'#e0e0c8'},{id:'mad',n:'Lamas de madera',c:'#d9b98d'},{id:'acu',n:'Panel acústico',c:'#c9c2d6'},{id:'visto',n:'Instalaciones vistas',c:'#b9b9b9'}],
+  techos:[{id:'pint',n:'Pintura lisa',c:'#efe9e0'},{id:'pyl',n:'Falso techo de pladur',c:'#cfdde9'},{id:'reg',n:'Techo registrable',c:'#e0e0c8'},{id:'mad',n:'Lamas de madera',c:'#d9b98d'},{id:'acu',n:'Panel acústico',c:'#c9c2d6'},{id:'visto',n:'Instalaciones vistas',c:'#b9b9b9'},{id:'yes',n:'Yeso (guarnecido y enlucido)',c:'#f3eee3'},{id:'esc',n:'Escayola',c:'#f1ede4'},{id:'pyd',n:'Pladur de doble placa',c:'#c5d4e2'},{id:'pyp',n:'Pladur pegado al forjado',c:'#d6e0ea'},{id:'pyh',n:'Pladur hidrófugo',c:'#bfd6de'}],
   acab:[{id:'pint',n:'Pintura',c:'#ece6dc'},{id:'micro',n:'Microcemento',c:'#bdb7b0'},{id:'esp',n:'Espejo',c:'#bfdde8'},{id:'mad',n:'Panel de madera',c:'#d4a876'},{id:'pap',n:'Papel pintado',c:'#e6c9d0'},{id:'ali',n:'Alicatado',c:'#c8d9d2'},{id:'hor',n:'Hormigón visto',c:'#a3a3a3'},{id:'acu',n:'Panel acústico',c:'#c9c2d6'},{id:'cau',n:'Revestimiento de caucho',c:'#8a8a92'}]
 };
 var MCODE={suelos:'S',techos:'T',acab:'A'};
@@ -3296,6 +3296,7 @@ function panelSel(focus){
     h+='<div class="rowh"><strong>Muro</strong><span class="muted">en el plano: '+fmt(g.l)+' cm</span></div>';
     h+=fld('len','Medida real (cm)',w.m?w.len:null,fmt(g.l));
     h+='<button class="pri" data-a="applynext" style="width:100%">Aplicar y siguiente</button>';
+    h+='<label class="fld"><span>Tipo de muro o tabique (sale en los detalles)</span><select data-t="w_tipo"><option value="">Sin definir'+(w.s==='new'?' (tabique de pladur 2+2)':'')+'</option>'+Object.keys(DLIB).filter(function(k){return DLIB[k].wall}).map(function(k){return '<option value="'+k+'"'+(w.tipo===k?' selected':'')+'>'+esc(DLIB[k].n)+'</option>'}).join('')+'</select></label>';
     h+=fld('w_h','Altura de este muro (cm)',w.h,fmt(wallH()))+'<p class="note" style="margin:0 0 6px">Vacío = altura general ('+fmt(wallH())+' cm). Cuenta para los m² y para SketchUp.</p>';
     var aA=adjOf(w,w.a),aB=adjOf(w,w.b);
     if(aA||aB){
@@ -3709,6 +3710,7 @@ $('side').addEventListener('change',function(e){
     if(pk.mat)op0.mat=pk.mat;if(pk.vid)op0.vid=pk.vid;
     commit(false);panelSel();toast('Cambiada a «'+pk.n+'»');return;
   }
+  if(t==='w_tipo'&&st.sel&&st.sel.t==='wall'){var wq=wl(st.sel.id);if(wq){snap();if(e.target.value)wq.tipo=e.target.value;else delete wq.tipo;commit(false);panelSel();drawDet()}return}
   if(t==='alt_g'){var ng=num(e.target.value);if(!(ng>=100&&ng<=1000)){toast('Escribe una altura entre 100 y 1000 cm');return}snap();st.v.altura=ng;try{$('v-altura').value=ng}catch(_){}commit(false);panelSel();toast('Altura de las paredes: '+fmt(ng)+' cm');return}
   if(t&&/^mm_/.test(t)&&st.sel&&st.sel.t==='mm'){
     var mq=by(st.v.mm,st.sel.id);if(!mq)return;snap();
@@ -4231,7 +4233,7 @@ function carpPage(doc,idx,total,o,pg){
 }
 
 /* ---------- detalles constructivos ---------- */
-var DKIND={conc:'Hormigón / forjado',ins:'Aislante',board:'Placa o tablero',wood:'Madera',mort:'Mortero / recrecido',metal:'Perfilería / metal',air:'Cámara de aire',rubber:'Caucho',tile:'Cerámica / azulejo',glass:'Vidrio / espejo',fin:'Acabado fino'};
+var DKIND={conc:'Hormigón / forjado',ins:'Aislante',board:'Placa o tablero',wood:'Madera',mort:'Mortero / recrecido',metal:'Perfilería / metal',air:'Cámara de aire',rubber:'Caucho',tile:'Cerámica / azulejo',glass:'Vidrio / espejo',fin:'Acabado fino',brick:'Ladrillo / fábrica',plast:'Yeso / escayola'};
 var DLIB=(function(){
   var o={},defs=[
    ['S-porc','Suelos','Suelo · Porcelánico',[['Baldosa porcelánica',10,'tile'],['Adhesivo cementoso C2',5,'mort'],['Mortero de nivelación',50,'mort'],['Lámina anti-impacto',5,'ins'],['Forjado',250,'conc']],'Junta perimetral de 8 mm junto a paramentos. Juntas de dilatación cada 40 m² como máximo.'],
@@ -4260,6 +4262,40 @@ var DLIB=(function(){
   ];
   defs.forEach(function(d){o[d[0]]={id:d[0],grp:d[1],n:d[2],layers:d[3].map(function(l){return {n:l[0],e:l[1],k:l[2]}}),note:d[4]}});
   return o;
+})();
+
+(function(){
+  var W=true;
+  [
+   ['TAB-11-48','Paredes','Tabique de pladur sencillo (1+1) · montante 48',[['Placa de yeso laminado',15,'board'],['Montante con lana mineral',48,'ins'],['Placa de yeso laminado',15,'board']],'Tabique ligero para divisiones sin exigencias especiales. Altura máxima orientativa de 3 m.',W],
+   ['TAB-11-70','Paredes','Tabique de pladur sencillo (1+1) · montante 70',[['Placa de yeso laminado',15,'board'],['Montante con lana mineral',70,'ins'],['Placa de yeso laminado',15,'board']],'Para alturas de hasta unos 4 m o cuando se necesita más aislamiento.',W],
+   ['TAB-22-70','Paredes','Tabique de pladur doble (2+2) · montante 70',[['Placa de yeso laminado',15,'board'],['Placa de yeso laminado',15,'board'],['Montante con lana mineral',70,'ins'],['Placa de yeso laminado',15,'board'],['Placa de yeso laminado',15,'board']],'Doble placa por cara: más resistencia a golpes, al fuego y al ruido.',W],
+   ['TAB-21','Paredes','Tabique de pladur asimétrico (2+1)',[['Placa de yeso laminado',15,'board'],['Placa de yeso laminado',15,'board'],['Montante con lana mineral',48,'ins'],['Placa de yeso laminado',15,'board']],'La cara con doble placa va hacia la zona más exigente (ruido, golpes, espejos).',W],
+   ['TAB-hum','Paredes','Tabique de pladur para zona húmeda',[['Placa hidrófuga H1',15,'board'],['Montante con lana mineral',48,'ins'],['Placa hidrófuga H1',15,'board']],'Placa hidrófuga en baños y vestuarios. Impermeabilizar la zona de ducha y subir la banda por las paredes antes de alicatar.',W],
+   ['TAB-fuego','Paredes','Tabique cortafuegos (EI-60)',[['Placa de yeso laminado RF',15,'board'],['Placa de yeso laminado RF',15,'board'],['Montante con lana de roca',48,'ins'],['Placa de yeso laminado RF',15,'board'],['Placa de yeso laminado RF',15,'board']],'Placas resistentes al fuego y lana de roca. Sellar los pasos de instalaciones con material intumescente.',W],
+   ['TAB-ac','Paredes','Tabique acústico de doble estructura',[['Placa de yeso laminado',15,'board'],['Placa de yeso laminado',15,'board'],['Montante con lana mineral',48,'ins'],['Cámara de aire',10,'air'],['Montante con lana mineral',48,'ins'],['Placa de yeso laminado',15,'board'],['Placa de yeso laminado',15,'board']],'Dos estructuras independientes: sala de música, despachos y separaciones entre locales. Sellar los perímetros con banda acústica.',W],
+   ['TRD-dir','Paredes','Trasdosado directo (placa pegada al muro)',[['Muro existente',150,'conc'],['Pelladas de adhesivo de yeso',15,'mort'],['Placa de yeso laminado',15,'board']],'La placa se pega directamente al muro con pelladas. El soporte debe estar plano, seco y limpio. No admite instalaciones empotradas ni cargas pesadas, y aísla poco.',W],
+   ['TRD-sem','Paredes','Trasdosado semidirecto (maestra)',[['Muro existente',150,'conc'],['Maestra con lana mineral',30,'ins'],['Placa de yeso laminado',15,'board']],'Maestras fijadas al muro con piezas de unión: corrige desplomes pequeños y deja una cámara para el aislante.',W],
+   ['TRD-aut','Paredes','Trasdosado autoportante con lana',[['Muro existente',150,'conc'],['Cámara de aire',10,'air'],['Montante con lana mineral',48,'ins'],['Placa de yeso laminado',15,'board']],'Perfilería propia, separada del muro. Admite instalaciones y mejora el aislamiento térmico y acústico.',W],
+   ['LAD-hs','Paredes','Tabique de ladrillo hueco sencillo (4 cm)',[['Enlucido de yeso',15,'plast'],['Ladrillo hueco sencillo',40,'brick'],['Enlucido de yeso',15,'plast']],'Tabiquería interior ligera, no portante. Atar al forjado con junta flexible.',W],
+   ['LAD-hd','Paredes','Tabique de ladrillo hueco doble (7 cm)',[['Enlucido de yeso',15,'plast'],['Ladrillo hueco doble',70,'brick'],['Enlucido de yeso',15,'plast']],'Divisiones interiores con algo más de aislamiento y resistencia que el hueco sencillo.',W],
+   ['LAD-pf','Paredes','Muro de ladrillo perforado (11,5 cm)',[['Enlucido de yeso',15,'plast'],['Ladrillo perforado',115,'brick'],['Enlucido de yeso',15,'plast']],'Fábrica de media asta, con buena resistencia y aislamiento acústico.',W],
+   ['LAD-blq','Paredes','Muro de bloque de hormigón (20 cm)',[['Enlucido de yeso',15,'plast'],['Bloque de hormigón',200,'conc'],['Enlucido de yeso',15,'plast']],'Muro portante o de medianería. Prever refuerzos y juntas de movimiento.',W],
+   ['LAD-cv','Paredes','Fachada de ladrillo cara vista con cámara y aislamiento',[['Ladrillo cara vista',115,'brick'],['Cámara de aire',30,'air'],['Aislante térmico',50,'ins'],['Ladrillo hueco doble',70,'brick'],['Enlucido de yeso',15,'plast']],'Cerramiento de doble hoja con aislante continuo. Prever goterones, llaves de atado y huecos de ventilación de la cámara.',W],
+   ['LAD-cvt','Paredes','Fachada de ladrillo con cámara y trasdosado de pladur',[['Ladrillo cara vista',115,'brick'],['Cámara de aire',30,'air'],['Aislante térmico',40,'ins'],['Ladrillo hueco doble',70,'brick'],['Montante con lana mineral',48,'ins'],['Placa de yeso laminado',15,'board']],'Doble hoja con trasdosado autoportante interior para pasar instalaciones y mejorar el aislamiento.',W],
+   ['SAN-fach','Paredes','Panel sándwich de fachada (nave)',[['Chapa lacada exterior',0.6,'metal'],['Núcleo de poliisocianurato (PIR)',60,'ins'],['Chapa lacada interior',0.5,'metal']],'Fijación oculta a las correas. Sellar juntas y remates; el panel puede quedar visto por dentro.',W],
+   ['SAN-fachc','Paredes','Panel sándwich con cámara interior y trasdosado de pladur',[['Chapa lacada exterior',0.6,'metal'],['Núcleo de poliisocianurato (PIR)',40,'ins'],['Cámara de aire para instalaciones',50,'air'],['Montante con lana mineral',48,'ins'],['Placa de yeso laminado',15,'board']],'Para locales que necesitan un acabado interior de pladur: la cámara aloja las instalaciones.',W],
+   ['SAN-tab','Paredes','Tabique de panel sándwich (interior)',[['Chapa lacada',0.5,'metal'],['Núcleo aislante',80,'ins'],['Chapa lacada',0.5,'metal']],'Cerramiento interior rápido y lavable: cámaras, almacenes y zonas técnicas.',W],
+   ['SAN-cub','Techos','Cubierta de panel sándwich',[['Chapa lacada exterior',0.6,'metal'],['Núcleo de poliisocianurato (PIR)',80,'ins'],['Chapa lacada interior',0.5,'metal'],['Correa metálica',120,'metal']],'Pendiente mínima del 5 %. Solape y sellado de juntas; fijar a las correas con tornillo autotaladrante.',false],
+   ['SAN-cubc','Techos','Cubierta de panel sándwich con falso techo de pladur',[['Chapa lacada exterior',0.6,'metal'],['Núcleo de poliisocianurato (PIR)',80,'ins'],['Chapa lacada interior',0.5,'metal'],['Cámara de aire con instalaciones',250,'air'],['Perfil F530 con varilla',27,'metal'],['Placa de yeso laminado',15,'board'],['Masilla y pintura',2,'fin']],'Falso techo continuo bajo la cubierta, con cámara para instalaciones.',false],
+   ['T-yes','Techos','Techo · Yeso (guarnecido y enlucido)',[['Forjado',250,'conc'],['Guarnecido de yeso',12,'plast'],['Enlucido de yeso',3,'plast'],['Pintura plástica',1,'fin']],'Aplicar sobre soporte limpio y con malla en los encuentros. Dejar secar antes de pintar.',false],
+   ['T-esc','Techos','Techo · Escayola (placas lisas)',[['Forjado',250,'conc'],['Cámara de aire con instalaciones',150,'air'],['Placa de escayola lisa',10,'plast'],['Pintura plástica',1,'fin']],'Placas sujetas con varillas o cañas; las juntas se rellenan con escayola y fibra.',false],
+   ['T-pyd','Techos','Techo · Falso techo de pladur de doble placa',[['Forjado',250,'conc'],['Cámara de aire con instalaciones',200,'air'],['Lana mineral',60,'ins'],['Perfil F530 con varilla y horquilla',27,'metal'],['Placa de yeso laminado',15,'board'],['Placa de yeso laminado',15,'board'],['Masilla y pintura',2,'fin']],'Doble placa cuando se pide mayor resistencia al fuego o mejor aislamiento acústico.',false],
+   ['T-pyp','Techos','Techo · Pladur pegado al forjado (directo)',[['Forjado',250,'conc'],['Pelladas de adhesivo de yeso',15,'mort'],['Placa de yeso laminado',15,'board'],['Masilla y pintura',2,'fin']],'Solo si el forjado está plano y no hay instalaciones por debajo. No deja cámara.',false],
+   ['T-pyh','Techos','Techo · Pladur hidrófugo (zonas húmedas)',[['Forjado',250,'conc'],['Cámara de aire con instalaciones',200,'air'],['Perfil F530 con varilla y horquilla',27,'metal'],['Placa hidrófuga H1',15,'board'],['Masilla y pintura',2,'fin']],'Para baños, vestuarios y zonas con vapor. Prever ventilación.',false]
+  ].forEach(function(d){DLIB[d[0]]={id:d[0],grp:d[1],n:d[2],layers:d[3].map(function(l){return {n:l[0],e:l[1],k:l[2]}}),note:d[4],wall:d[5]}});
+  DLIB['TAB-new'].wall=true;
+  DLIB['TAB-new'].n='Tabique de pladur doble (2+2) · montante 48';
 })();
 
 /* ---------- encuentros con geometría propia ---------- */
@@ -4626,7 +4662,8 @@ function detAuto(){
   function add(id){if(DLIB[id]&&!seen[id]){seen[id]=1;ids.push(id)}}
   v.zn.forEach(function(z){add((z.k==='s'?'S-':'T-')+z.mat)});
   v.walls.forEach(function(w){if(w.f)['p','m'].forEach(function(k){if(w.f[k])add('A-'+w.f[k])})});
-  if(v.walls.some(function(w){return w.s==='new'}))add('TAB-new');
+  v.walls.forEach(function(w){if(w.tipo)add(w.tipo)});
+  if(v.walls.some(function(w){return w.s==='new'&&!w.tipo}))add('TAB-new');
   return ids;
 }
 function detSel(){
@@ -4641,6 +4678,13 @@ function dHatch(k,x,y,w,h,vert){
   function ln(a,b,c2,d,col,sw){return '<line x1="'+f2(a)+'" y1="'+f2(b)+'" x2="'+f2(c2)+'" y2="'+f2(d)+'" style="fill:none;stroke:'+col+';stroke-width:'+sw+'"/>'}
   function R(fill){return '<rect x="'+f2(x)+'" y="'+f2(y)+'" width="'+f2(w)+'" height="'+f2(h)+'" style="fill:'+fill+';stroke:'+INK+';stroke-width:0.2"/>'}
   if(k==='rubber')return R('#4b4b52');
+  if(k==='plast')return R('#f6f1e6');
+  if(k==='brick'){
+    o=R('#f0d3c1');var bs=1.7,bj=0,xx2,yy2;
+    for(yy2=y+bs;yy2<y+h-0.1;yy2+=bs)o+=ln(x,yy2,x+w,yy2,'#b98f78',0.1);
+    for(yy2=y,bj=0;yy2<y+h;yy2+=bs,bj++)for(xx2=x+(bj%2?bs:bs/2);xx2<x+w-0.1;xx2+=bs*2)o+=ln(xx2,yy2,xx2,Math.min(y+h,yy2+bs),'#b98f78',0.1);
+    return o;
+  }
   if(k==='metal')return R('#8a8a92');
   if(k==='board')return R('#f3efe7');
   if(k==='tile')return R('#cfdcd3');
