@@ -110,6 +110,11 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
 #det-list details{border-top:1px solid var(--line,rgba(128,128,128,.25));padding:2px 0}
 .catgrid img{width:100%;height:58px;object-fit:contain;background:#fff;border-radius:6px;margin-bottom:2px;display:block}
 .cathead{grid-column:1/-1;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:8px 2px 0;display:flex;justify-content:space-between}
+.prevrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.prevc{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px;text-align:center;color:var(--ink)}
+.prevc svg,.prevc img{width:100%;height:86px;object-fit:contain;display:block;background:transparent}
+.prevc img{background:#fff;border-radius:4px}
+.prevc small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
 .marq{position:absolute;z-index:11;pointer-events:none;border:1.5px solid var(--accent);background:rgba(138,111,85,.12)}
 .marq.cruce{border-style:dashed;background:rgba(31,111,120,.12);border-color:var(--new)}
 .marq[hidden]{display:none}
@@ -279,7 +284,7 @@ body.crm .top .brand{display:none}
       <button data-view="actual">Estado actual</button>
       <button data-view="cotas">Cotas</button>
       <button data-view="demol">Demoliciones</button>
-      <button data-view="interv">Intervención</button>
+      <button data-view="interv">Implantación</button>
       <button data-view="distrib">Distribución</button>
       <button data-view="suelos">Suelos</button>
       <button data-view="techos">Techos</button>
@@ -341,6 +346,7 @@ body.crm .top .brand{display:none}
 
     <aside class="side" id="side">
       <button class="side-close" id="b-side-close">✕ Cerrar panel</button>
+      <section class="blk"><h2>Selección</h2><div id="sel"></div></section>
       <section class="blk">
         <h2>Visita</h2>
         <label class="fld"><span>Proyecto</span><input id="v-nombre" placeholder="Gimnasio de Javier"></label>
@@ -403,7 +409,6 @@ body.crm .top .brand{display:none}
           <button class="pri" id="c-add" style="width:100%">Añadir al catálogo</button>
         </details>
       </section>
-      <section class="blk"><h2>Selección</h2><div id="sel"></div></section>
       <section class="blk"><h2>Comprobaciones</h2><div id="chk"></div></section>
       <section class="blk"><h2>Resumen</h2><div id="sum"></div></section>
       <section class="blk">
@@ -454,14 +459,14 @@ body.crm .top .brand{display:none}
     <ul>
       <li><b>Estado actual</b>: cómo está hoy el espacio = Existente + A demoler.</li>
       <li><b>Demoliciones</b>: lo que se mantiene (gris) y lo que se quita (rojo rayado).</li>
-      <li><b>Intervención</b>: lo existente (gris) y lo nuevo que se construye.</li>
+      <li><b>Implantación</b>: lo existente (gris) y lo nuevo que se construye.</li>
       <li><b>Cotas, Distribución, Suelos, Techos, Acabados, Alzados, Iluminación, Electricidad</b>: el resultado final = Existente + Nuevo (lo demolido ya no está).</li>
     </ul>
     <h3>Cómo seguir el proceso</h3>
     <ol>
       <li>En <b>Estado actual</b>, con «Existente» elegido, dibuja el espacio tal y como está y mide cada muro.</li>
       <li>En <b>Demoliciones</b>, toca lo que se va a quitar y cámbiale el estado a «Demoler».</li>
-      <li>En <b>Intervención</b>, con «Nuevo» elegido, dibuja los muros, puertas y ventanas nuevos.</li>
+      <li>En <b>Implantación</b>, con «Nuevo» elegido, dibuja los muros, puertas y ventanas nuevos.</li>
       <li>Pasa a <b>Distribución</b>: coloca las máquinas del catálogo. Luego Suelos, Techos, Acabados, Iluminación y Electricidad.</li>
       <li><b>Archivo → PDF</b> exporta la lámina actual, o todas juntas.</li>
     </ol>
@@ -2574,6 +2579,34 @@ function seg3(cur,act){
 function fld(key,label,val,ph){
   return '<label class="fld"><span>'+label+'</span><input data-f="'+key+'" inputmode="decimal" autocomplete="off" value="'+(val==null?'':f2(val))+'"'+(ph!=null?' placeholder="'+ph+'"':'')+'></label>';
 }
+/* al seleccionar algo, el panel de la derecha muestra sus datos arriba del todo */
+function mostrarSel(){
+  try{var bl=$('sel').closest('.blk');if(bl)bl.classList.remove('collapsed');if(!esMovil())$('side').scrollTop=0}catch(e){}
+}
+/* miniaturas de una puerta o ventana: cómo se ve en planta y en alzado */
+function opNombreTipo(o){
+  var k=OPK.filter(function(q){return q.t===o.t&&q.tip===o.tip})[0];
+  return k?k.n:(o.t==='door'?'Puerta':'Ventana')+(o.tip?' · '+o.tip:'');
+}
+function previewOp(o){
+  var t=12,w=o.w,px=Math.max(w,60)/90,q={x1:0,y1:0,x2:w,y2:0,nx:0,ny:1},ext=o.t==='door'?w:10,x0=-w*0.3,ancho=w*1.6;
+  var planta='<svg viewBox="'+f2(x0)+' -12 '+f2(ancho)+' '+f2(ext+24)+'" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><line x1="'+f2(x0)+'" y1="0" x2="0" y2="0" stroke="var(--muted)" stroke-width="'+t+'"/><line x1="'+w+'" y1="0" x2="'+f2(w+w*0.3)+'" y2="0" stroke="var(--muted)" stroke-width="'+t+'"/>'+opSymSvg({t:o.t,w:w,tip:o.tip,side:o.side,flip:o.flip},q,'currentColor',t,px)+'</svg>';
+  var pe=Math.max(w,o.h)/110,pad=Math.max(w,o.h)*0.12;
+  var alzado='<svg viewBox="'+f2(-pad)+' '+f2(-pad)+' '+f2(w+2*pad)+' '+f2(o.h+2*pad)+'" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><rect x="0" y="0" width="'+w+'" height="'+o.h+'" style="fill:none;stroke:currentColor;stroke-width:'+f2(1.3*pe)+'"/>'+opElevSvg(CSS,pe,{t:o.t,sym:opSym(o),x0:0,w:w,h:o.h},0,'currentColor')+'</svg>';
+  return '<div class="prevrow"><div class="prevc">'+planta+'<small>Planta</small></div><div class="prevc">'+alzado+'<small>Alzado (de frente)</small></div></div><p class="note" style="margin:0 0 6px"><b>'+esc(opNombreTipo(o))+'</b> · '+fmt(o.w)+' × '+fmt(o.h)+' cm'+(o.t==='win'?' · antepecho '+fmt(o.sill||0)+' cm':'')+'</p>';
+}
+function previewEq(e){
+  var c=catById(e.cid),foto=c&&c.foto,vs=(c&&c.vistas)||[],h='';
+  var th='<svg viewBox="-4 -4 '+(e.w+8)+' '+(e.d+8)+'" preserveAspectRatio="xMidYMid meet" aria-hidden="true">'+eqSym(e.ty,e.w,e.d,'currentColor',Math.max(e.w,e.d)/70,e.cid)+'</svg>';
+  h+='<div class="prevrow"><div class="prevc">'+(foto?'<img src="'+esc(foto)+'" alt="" referrerpolicy="no-referrer">':'<span class="note">sin foto</span>')+'<small>Producto</small></div><div class="prevc">'+th+'<small>Planta '+(c&&c.bloque?'(bloque del catálogo)':'(símbolo genérico)')+'</small></div></div>';
+  h+='<p class="note" style="margin:0 0 6px"><b>Vista en el plano: planta</b> (desde arriba)'+(c&&c.ref?' · '+esc(c.ref):'')+'</p>';
+  if(vs.length>1){
+    h+='<div class="lab">Colocar otra vista de este bloque en un alzado</div><div class="btns">'+
+      (vs.indexOf('alzado')>=0?'<button data-a="eqvista" data-s="alzado">Frente</button>':'')+
+      (vs.indexOf('lateral')>=0?'<button data-a="eqvista" data-s="lateral">Lateral</button>':'')+'</div>';
+  }else if(c&&!c.bloque)h+='<p class="note">Este producto aún no tiene bloque propio: dibújalo o genéralo en el catálogo (ficha del producto → Dibujar bloques).</p>';
+  return h;
+}
 function panelSel(focus){
   var el=$('sel'),s=st.sel,h='';
   if(st.multi&&st.multi.length){
@@ -2582,7 +2615,7 @@ function panelSel(focus){
     h+='<div class="rowh"><strong>'+st.multi.length+(st.multi.length===1?' elemento seleccionado':' elementos seleccionados')+'</strong></div><p class="note">'+Object.keys(cnt).map(function(k){return cnt[k]+' '+NOM[k]+(cnt[k]===1?'':'s')}).join(' · ')+'</p>';
     h+='<p class="note">Arrastra cualquiera de ellos para moverlos juntos. Ctrl+C / Ctrl+V los copia, Supr los borra, Esc cancela.</p>';
     h+='<div class="btns"><button data-a="mdup">Duplicar</button><button data-a="mclear">Quitar selección</button></div><div class="btns"><button class="danger" data-a="mdel">Borrar todo</button></div>';
-    el.innerHTML=h;return;
+    el.innerHTML=h;mostrarSel();return;
   }
   if(s&&s.t==='wall'&&!wl(s.id))s=st.sel=null;
   if(s&&s.t==='op'&&!opn(s.id))s=st.sel=null;
@@ -2597,14 +2630,16 @@ function panelSel(focus){
   if(s&&s.t==='eq'){
     var e=by(st.v.eq,s.id),ix=st.v.eq.indexOf(e)+1;
     h+='<div class="rowh"><strong>'+ix+'. '+esc(e.nm)+'</strong><span class="muted">giro '+e.rot+'°</span></div>';
+    h+=previewEq(e);
     h+=fld('eq_w','Ancho (cm)',e.w)+fld('eq_d','Fondo (cm)',e.d);
     h+='<div class="btns"><button data-a="eqrot">Girar 90°</button><button data-a="eqdup">Duplicar</button></div>';
     h+='<div class="btns"><button data-a="eqcat">Guardar medidas en el catálogo</button></div>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar máquina</button></div>';
   }else if(s&&s.t==='eqa'){
     var ea=by(st.v.eqa,s.id);
-    h+='<div class="rowh"><strong>'+esc(ea.nm)+'</strong><span class="muted">'+(ea.vista==='alzado'?'frente':'lateral')+'</span></div>';
-    h+='<p class="note">Bloque colocado en el alzado. Es solo de dibujo: la cantidad para el presupuesto sale de las máquinas colocadas en planta.</p>';
+    h+='<div class="rowh"><strong>'+esc(ea.nm)+'</strong><span class="muted">'+(ea.vista==='alzado'?'vista de frente':'vista lateral')+'</span></div>';
+    h+=fld('eqa_x','Posición en la pared (cm)',ea.x)+fld('eqa_w','Ancho (cm)',ea.w)+fld('eqa_h','Alto (cm)',ea.h);
+    h+='<p class="note">Bloque colocado en el alzado: es solo de dibujo; la cantidad para el presupuesto sale de las máquinas colocadas en planta.</p>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar del alzado</button></div>';
   }else if(!s){
     h='<p class="note">Toca un elemento del plano para ponerle medidas y estado.</p><div class="btns"><button data-a="nextwall">Medir el siguiente muro</button></div>';
@@ -2638,6 +2673,7 @@ function panelSel(focus){
   }else if(s.t==='op'){
     var o=opn(s.id),q=og(o);
     h+='<div class="rowh"><strong>'+(o.t==='door'?'Puerta':'Ventana')+'</strong><span class="muted">muro de '+fmt(q.g.l)+' cm</span></div>';
+    h+=previewOp(o);
     h+=fld('op_p','Distancia desde el inicio del muro (cm)',o.p);
     h+=fld('op_w','Ancho (cm)',o.w);
     h+=fld('op_h','Alto (cm)',o.h);
@@ -2849,6 +2885,10 @@ function applyField(key,val,adv){
     var q=by(st.v.eq,s.id);if(!q)return;
     if(!(n>=20&&n<=600)){toast('Escribe una medida entre 20 y 600 cm');return}
     snap();if(key==='eq_w')q.w=n;else q.d=n;commit(false);
+  }else if(s.t==='eqa'){
+    var qa=by(st.v.eqa||[],s.id);if(!qa)return;
+    if(!(n>=0&&n<=3000)){toast('Escribe una medida válida');return}
+    snap();if(key==='eqa_x')qa.x=n;else if(key==='eqa_w')qa.w=Math.max(5,n);else qa.h=Math.max(5,n);commit(false);
   }else if(s.t==='zn'){
     var zq=by(st.v.zn,s.id);if(!zq)return;
     if(!(n>=100&&n<=1000)){toast('Escribe una altura entre 100 y 1000 cm');return}
@@ -2879,6 +2919,12 @@ function doAction(a,el){
   if(a==='nextwall'){var ws=st.v.walls;if(!ws.length){toast('Dibuja primero el contorno');return}if(goNext('')){openQE(st.sel.id)}else toast('Todos los muros tienen medida');return}
   if(a==='applynext'){var inp=$('sel').querySelector('input[data-f="len"]');applyField('len',inp?inp.value:'',true);return}
   if(!s)return;
+  if(a==='eqvista'){
+    var qe0=by(st.v.eq,s.id),ce=qe0&&catById(qe0.cid);
+    if(!ce)return;
+    placeId=ce.id;placeVista=sv;st.tool='equip';st.view='alz';pedirBloque(ce.id);toolbar();drawCat();save();render();
+    toast('Toca el alzado de la pared donde quieres colocar su '+(sv==='alzado'?'frente':'lateral'));return;
+  }
   if(a==='wstate'){var w=wl(s.id);snap();var old=w.s;w.s=sv;st.v.ops.forEach(function(o){if(o.wall===w.id&&o.s===old)o.s=sv});commit();return}
   if(a==='ostate'){var o=opn(s.id);snap();o.s=sv;commit();return}
   if(a==='ptstate'){var qs=by(st.v.pts,s.id);snap();qs.s=sv;commit();return}
@@ -4399,7 +4445,7 @@ function exportPDF(mode){
 /* ---------- nube, exportar y nueva visita ---------- */
 function slug(){return (st.v.nombre||'visita').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'visita'}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-var VNAME={actual:'Estado actual',cotas:'Plano de cotas',demol:'Demoliciones',interv:'Intervención',distrib:'Distribución',suelos:'Suelos',techos:'Techos',acab:'Acabados de paredes',alz:'Alzados',ilum:'Iluminación',elec:'Electricidad'};
+var VNAME={actual:'Estado actual',cotas:'Plano de cotas',demol:'Demoliciones',interv:'Implantación',distrib:'Distribución',suelos:'Suelos',techos:'Techos',acab:'Acabados de paredes',alz:'Alzados',ilum:'Iluminación',elec:'Electricidad'};
 function buildSVG(){
   var b=bbox();if(!b)return null;
   var kx=0.5,m=150,wcm=b.x1-b.x0+2*m,hcm=b.y1-b.y0+2*m;
@@ -4708,7 +4754,7 @@ if(CRM){
 
 
 /* ---------- interfaz: temas, menús, panel lateral, bloques plegables ---------- */
-var TEMA_KEY='ranuse-plano-tema',PANEL_KEY='ranuse-plano-panel',COLL_KEY='ranuse-plano-colapsados';
+var TEMA_KEY='ranuse-plano-tema',PANEL_KEY='ranuse-plano-panel',COLL_KEY='ranuse-plano-colapsados2';
 function temaGuardado(){try{return localStorage.getItem(TEMA_KEY)}catch(e){return null}}
 function aplicarTema(t,guardar){
   if(t!=='light'&&t!=='dark'&&t!=='cad')t='light';
@@ -4758,7 +4804,7 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
 })();
 /* bloques del panel plegables: se recuerda cuáles están cerrados */
 (function(){
-  var DEF_CERRADOS=['Visita','Guardar','Detalles constructivos','Láminas PDF'];
+  var DEF_CERRADOS=['Visita','Bloques del catálogo','Guardar','Detalles constructivos','Láminas PDF'];
   var cerrados;
   try{cerrados=JSON.parse(localStorage.getItem(COLL_KEY))}catch(e){}
   if(!Array.isArray(cerrados))cerrados=DEF_CERRADOS.slice();
@@ -4806,7 +4852,7 @@ cmd('Medir a ejes de muro',['me','ejes'],'Las cotas miden de eje a eje',porData(
 cmd('Cotas sencillas',['cs'],'Solo el número en cada muro',porData('dims','simple'));
 cmd('Cotas por fuera',['ce'],'Líneas de cota exteriores',porData('dims','ext'));
 cmd('Cotas por dentro',['ci'],'Líneas de cota interiores',porData('dims','int'));
-[['actual','Lámina: Estado actual',['v1','ea','actual']],['cotas','Lámina: Cotas',['v2','co','cotas']],['demol','Lámina: Demoliciones',['v3','dm','demoliciones']],['interv','Lámina: Intervención',['v4','iv','intervencion']],['distrib','Lámina: Distribución',['v5','ds','distribucion']],['suelos','Lámina: Suelos',['v6','su','suelos']],['techos','Lámina: Techos',['v7','te','techos']],['acab','Lámina: Acabados',['v8','ac','acabados']],['alz','Lámina: Alzados',['v9','al','alzados']],['ilum','Lámina: Iluminación',['v10','il','iluminacion']],['elec','Lámina: Electricidad',['v11','el','electricidad']]].forEach(function(v){cmd(v[1],v[2],'Cambiar de lámina',porVista(v[0]))});
+[['actual','Lámina: Estado actual',['v1','ea','actual']],['cotas','Lámina: Cotas',['v2','co','cotas']],['demol','Lámina: Demoliciones',['v3','dm','demoliciones']],['interv','Lámina: Implantación',['v4','im','implantacion','iv','intervencion']],['distrib','Lámina: Distribución',['v5','ds','distribucion']],['suelos','Lámina: Suelos',['v6','su','suelos']],['techos','Lámina: Techos',['v7','te','techos']],['acab','Lámina: Acabados',['v8','ac','acabados']],['alz','Lámina: Alzados',['v9','al','alzados']],['ilum','Lámina: Iluminación',['v10','il','iluminacion']],['elec','Lámina: Electricidad',['v11','el','electricidad']]].forEach(function(v){cmd(v[1],v[2],'Cambiar de lámina',porVista(v[0]))});
 cmd('Deshacer',['u','z','deshacer','undo'],'Deshacer el último cambio',function(){undo()});
 cmd('Rehacer',['y','rehacer','redo'],'Rehacer',function(){redoit()});
 cmd('Encajar el plano',['ze','f','encajar'],'Ver todo el plano',function(){fit()});
