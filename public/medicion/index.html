@@ -274,6 +274,7 @@ body.crm .top .brand{display:none}
             <button data-do="b-svg">Plano SVG</button>
             <button data-do="b-json">Datos JSON</button>
             <button data-do="b-pdfcarp">Memoria de carpinterías (PDF)</button>
+            <button data-do="b-pdfcal">Memoria de calidades (PDF)</button>
             <button data-do="sketchup" id="mi-sk" hidden>Modelar en SketchUp…</button>
             <hr>
             <button data-do="b-new">Plano nuevo en blanco</button>
@@ -457,6 +458,22 @@ body.crm .top .brand{display:none}
           <button id="b-new">Nueva visita</button>
         </div>
       </section>
+      <section class="blk" id="calblk">
+        <h2>Memoria de calidades</h2>
+        <p class="note">Mecanismos, grifería, sanitarios, iluminación… elegidos del catálogo, sin dibujarlos en el plano. Salen en una lámina aparte y en las cantidades para el presupuesto.</p>
+        <div id="cal-list"></div>
+        <details class="addcat" id="cal-add-d">
+          <summary>Añadir un elemento</summary>
+          <label class="fld"><span>Sala o zona</span><input id="cal-sala" list="dl-salas" placeholder="Baño, Vestuario, General…" autocomplete="off"></label><datalist id="dl-salas"></datalist>
+          <label class="fld"><span>Categoría</span><select id="cal-cat"></select></label>
+          <label class="fld"><span>Producto del catálogo (escribe para buscar)</span><input id="cal-prod" list="dl-prod" placeholder="Mecanismo, grifo, sanitario…" autocomplete="off"></label><datalist id="dl-prod"></datalist>
+          <label class="fld"><span>Modelo, color o acabado</span><input id="cal-ac" placeholder="Negro mate, blanco, cromo…" autocomplete="off"></label>
+          <label class="fld"><span>Cantidad</span><input id="cal-n" inputmode="decimal" value="1"></label>
+          <label class="fld"><span>Nota</span><input id="cal-nota" placeholder="Altura de colocación, observaciones…" autocomplete="off"></label>
+          <button class="pri" id="cal-add" style="width:100%">Añadir a la memoria</button>
+        </details>
+        <div class="btns"><button id="b-pdfcal">Memoria de calidades (PDF)</button></div>
+      </section>
       <section class="blk" id="detblk">
         <h2>Detalles constructivos</h2>
         <p class="note">Secciones tipo según los materiales que has elegido en suelos, techos y acabados. Edita capas y espesores; salen en el PDF.</p>
@@ -546,7 +563,7 @@ var TAN12=0.2126, AXDEG=8;
 
 function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
 function newVisit(){return norm({id:'v'+Date.now().toString(36),nombre:'',cliente:'',fecha:today(),altura:260,paso:80,notas:'',seq:1,nodes:[],walls:[],ops:[],pil:[],ctl:[],eq:[],pts:[],zn:[],rz:[],cn:[],updated:Date.now()})}
-function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.rc=v.rc||[];v.mm=v.mm||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];return v}
+function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.rc=v.rc||[];v.cal=v.cal||[];v.mm=v.mm||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];return v}
 var TIPOS=[['rack','Rack'],['cinta','Cinta'],['banco','Banco'],['manc','Rack de mancuernas'],['bici','Bicicleta'],['remo','Remo'],['tatami','Tatami'],['gen','Genérico']];
 var DEFCAT=[
   {id:'rack',nombre:'Rack de sentadillas',tipo:'rack',w:120,d:140},
@@ -4048,6 +4065,117 @@ $('z-in').addEventListener('click',function(){zoomAt(W/2,H/2,1.3)});
 $('z-out').addEventListener('click',function(){zoomAt(W/2,H/2,1/1.3)});
 
 /* ---------- datos de la visita ---------- */
+/* ---------- memoria de calidades ---------- */
+var CAL_CATS=['Mecanismos eléctricos','Grifería','Sanitarios','Iluminación','Carpintería','Suelos y revestimientos','Mobiliario','Climatización','Otros'];
+function calSalas(){
+  var o={};(st.v.zn||[]).forEach(function(z){if(z.nm)o[z.nm]=1});(st.v.cal||[]).forEach(function(c){if(c.sala)o[c.sala]=1});
+  o['General']=1;return Object.keys(o);
+}
+function prepMinRgb(id){
+  var mm=calMin[id];if(!mm||!mm.uri||!(mm.pw>0&&mm.ph>0)||mm.rgb)return;
+  var im=new Image();
+  im.onload=function(){try{var c=document.createElement('canvas');c.width=mm.pw;c.height=mm.ph;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,mm.pw,mm.ph);x.drawImage(im,0,0,mm.pw,mm.ph);var d=x.getImageData(0,0,mm.pw,mm.ph).data,rgb=new Uint8Array(mm.pw*mm.ph*3);for(var i=0,j=0;i<d.length;i+=4){rgb[j++]=d[i];rgb[j++]=d[i+1];rgb[j++]=d[i+2]}mm.rgb=rgb;mm.w=mm.pw;mm.h=mm.ph}catch(e){}};
+  im.src=mm.uri;
+}
+function drawCal(){
+  var box=$('cal-list');if(!box)return;
+  if(box.contains(document.activeElement)&&document.activeElement!==document.body&&document.activeElement.tagName==='INPUT')return;
+  var l=st.v.cal||[],h='',porSala={},orden=[];
+  l.forEach(function(c){var s=c.sala||'General';if(!porSala[s]){porSala[s]=[];orden.push(s)}porSala[s].push(c)});
+  if(!l.length)h='<p class="note">Todavía no hay elementos. Añade el primero abajo.</p>';
+  orden.forEach(function(sala){
+    h+='<div class="lab" style="margin-top:10px">'+esc(sala)+'</div>';
+    porSala[sala].forEach(function(c){
+      var mn=c.pid&&calMin[c.pid];
+      h+='<div class="calrow" style="display:grid;grid-template-columns:44px 1fr;gap:8px;align-items:start;padding:6px 0;border-bottom:1px solid var(--line)">'+
+        '<div>'+(mn&&mn.uri?'<img src="'+mn.uri+'" alt="" style="width:44px;height:44px;object-fit:contain;background:#fff;border-radius:6px">':'<div style="width:44px;height:44px;border-radius:6px;background:var(--field)"></div>')+'</div>'+
+        '<div><div style="display:flex;gap:6px;align-items:center"><input data-cal="'+c.id+'" data-f="nm" value="'+esc(c.nm)+'" style="flex:1;min-width:0;font-weight:600" aria-label="Elemento"><input data-cal="'+c.id+'" data-f="n" value="'+f2(c.n)+'" inputmode="decimal" style="width:48px" aria-label="Cantidad"><button data-cal-del="'+c.id+'" aria-label="Quitar" style="min-height:32px">×</button></div>'+
+        '<div class="muted" style="font-size:11px;margin:2px 0">'+esc(c.cat)+(c.m?' · '+esc(c.m):'')+'</div>'+
+        '<input data-cal="'+c.id+'" data-f="ac" value="'+esc(c.ac||'')+'" placeholder="Modelo, color o acabado" style="width:100%;margin-bottom:4px" aria-label="Acabado"><input data-cal="'+c.id+'" data-f="nota" value="'+esc(c.nota||'')+'" placeholder="Nota" style="width:100%" aria-label="Nota"></div></div>';
+    });
+  });
+  box.innerHTML=h;
+  var ds=$('dl-salas');if(ds)ds.innerHTML=calSalas().map(function(x){return '<option value="'+esc(x)+'">'}).join('');
+  var dp=$('dl-prod');if(dp)dp.innerHTML=productosCat.slice(0,2500).map(function(p){return '<option value="'+esc(p.n)+'" label="'+esc((p.m?p.m+' · ':'')+p.c)+'">'}).join('');
+  var cs=$('cal-cat');if(cs&&!cs.options.length)cs.innerHTML=CAL_CATS.map(function(c){return '<option>'+esc(c)+'</option>'}).join('');
+  (st.v.cal||[]).forEach(function(c){if(c.pid)prepMinRgb(c.pid)});
+}
+function pedirMinis(ids){
+  var falta=ids.filter(function(i){return i&&!calMin[i]&&!calMin['?'+i]});
+  if(!falta.length||!CRM)return;
+  falta.forEach(function(i){calMin['?'+i]=1});
+  crmPost({type:'pedirMiniaturas',ids:falta});
+}
+function calPorNombre(n){
+  var q=String(n||'').trim().toLowerCase();if(!q)return null;
+  for(var i=0;i<productosCat.length;i++)if(productosCat[i].n.toLowerCase()===q)return productosCat[i];
+  return null;
+}
+$('cal-add').addEventListener('click',function(){
+  var nm=$('cal-prod').value.trim();
+  if(!nm){toast('Escribe o elige un producto');return}
+  var pr=calPorNombre(nm),n=num($('cal-n').value);
+  var it={id:uid('q'),sala:$('cal-sala').value.trim()||'General',cat:$('cal-cat').value||'Otros',pid:pr?pr.id:null,nm:nm,m:pr?pr.m:'',ac:$('cal-ac').value.trim(),n:n>0?n:1,nota:$('cal-nota').value.trim()};
+  if(pr){var cl=String(pr.c||'').toLowerCase();var k=/mecanism|enchuf|interruptor/.test(cl)?'Mecanismos eléctricos':/grifer/.test(cl)?'Grifería':/sanitari|inodoro|lavabo|ducha|bañera/.test(cl)?'Sanitarios':/ilumin/.test(cl)||pr.t==='iluminacion'?'Iluminación':null;if(k)it.cat=k}
+  snap();st.v.cal.push(it);commit(false);
+  ['cal-prod','cal-ac','cal-nota'].forEach(function(i){$(i).value=''});$('cal-n').value='1';
+  if(it.pid)pedirMinis([it.pid]);
+  drawCal();toast('Añadido a la memoria de calidades');
+});
+$('cal-list').addEventListener('change',function(e){
+  var t=e.target,id=t.getAttribute('data-cal'),f=t.getAttribute('data-f');if(!id||!f)return;
+  var c=by(st.v.cal,id);if(!c)return;snap();
+  if(f==='n'){var n=num(t.value);if(n>0)c.n=n}else c[f]=t.value.trim()||(f==='nm'?c.nm:'');
+  commit(false);
+});
+$('cal-list').addEventListener('click',function(e){
+  var b=e.target.closest('button[data-cal-del]');if(!b)return;
+  snap();st.v.cal=st.v.cal.filter(function(c){return c.id!==b.getAttribute('data-cal-del')});commit(false);drawCal();
+});
+$('b-pdfcal').addEventListener('click',function(){if(!(st.v.cal||[]).length){toast('Añade primero algún elemento a la memoria de calidades');return}exportPDF('cal')});
+function calPlan(o){
+  var items=st.v.cal||[];if(!items.length)return [];
+  var A3=o.paper!=='A4',f=A3?1:0.76,PH=A3?297:210,rh=13*f,hh=7*f,avail=PH-20-34*f-12*f-10-7*f;
+  var filas=[],porSala={},orden=[];
+  items.forEach(function(c){var s=c.sala||'General';if(!porSala[s]){porSala[s]=[];orden.push(s)}porSala[s].push(c)});
+  orden.forEach(function(s){filas.push({sala:s});porSala[s].forEach(function(c){filas.push({c:c})})});
+  var pages=[],cur=[],y=0;
+  filas.forEach(function(r){
+    var h=r.sala?hh:rh;
+    if(y+h>avail&&cur.length){pages.push(cur);cur=[];y=0}
+    if(r.c&&!cur.length&&pages.length){cur.push({sala:r.c.sala||'General',cont:true});y+=hh}
+    cur.push(r);y+=h;
+  });
+  if(cur.length)pages.push(cur);
+  return pages.map(function(rows){return {view:'carp',kind:'cal',rows:rows}});
+}
+function calPage(doc,idx,total,o,pg){
+  var F=carpFrame(doc,idx,total,o,'Memoria de calidades','Productos y acabados a confirmar con el cliente antes de comprar. Las referencias y los colores pueden variar según disponibilidad.'),p=F.p,f=F.f,mg=F.mg,PW=F.PW,body=7*f+(F.A3?0:0.4);
+  var x0=mg+7,W=PW-2*mg-14,y=mg+26;
+  var cols=[['',0.07],['Elemento',0.33],['Categoría',0.14],['Modelo, color o acabado',0.2],['Cant.',0.05],['Nota',0.21]];
+  var xs=[],a=x0;cols.forEach(function(c){xs.push(a);a+=c[1]*W});
+  p.rect(x0,y,W,7*f,'#efe9df',null);
+  cols.forEach(function(c,i){if(c[0])p.text(xs[i]+1.5,y+4.8*f,c[0].toUpperCase(),5.2*f+0.3,{bold:true,col:MUTED})});
+  y+=7*f;p.line(x0,y,x0+W,y,INK,0.3);
+  pg.rows.forEach(function(r){
+    if(r.sala){
+      p.text(x0+1.5,y+4.9*f,r.sala+(r.cont?' (continúa)':''),body+1,{bold:true,col:INK});
+      y+=7*f;p.line(x0,y,x0+W,y,LINEC,0.2);return;
+    }
+    var c=r.c,rh=13*f,mn=c.pid&&calMin[c.pid]&&calMin[c.pid].rgb?calMin[c.pid]:null,idx2=mn&&o.calIdx&&o.calIdx[c.pid];
+    if(idx2!=null){
+      var sc=Math.min((cols[0][1]*W-3)/mn.w,(rh-2)/mn.h);
+      p.img(idx2,xs[0]+1.5+((cols[0][1]*W-3)-mn.w*sc)/2,y+1+((rh-2)-mn.h*sc)/2,mn.w*sc,mn.h*sc);
+    }
+    p.text(xs[1]+1.5,y+5*f,fitTxt(c.nm,cols[1][1]*W-3,true,body*25.4/72),body,{bold:true,col:INK});
+    if(c.m)p.text(xs[1]+1.5,y+9.4*f,fitTxt(c.m,cols[1][1]*W-3,false,(body-1)*25.4/72),body-1,{col:MUTED});
+    p.text(xs[2]+1.5,y+5*f,fitTxt(c.cat,cols[2][1]*W-3,false,body*25.4/72),body,{col:INK});
+    wrapTxt(c.ac||'—',cols[3][1]*W-3,body*25.4/72,2).forEach(function(t,j){p.text(xs[3]+1.5,y+5*f+j*4*f,t,body,{col:INK})});
+    p.text(xs[4]+1.5,y+5*f,fmt(c.n),body,{bold:true,col:INK});
+    wrapTxt(c.nota||'',cols[5][1]*W-3,body*25.4/72,2).forEach(function(t,j){p.text(xs[5]+1.5,y+5*f+j*4*f,t,body-0.6,{col:MUTED})});
+    y+=rh;p.line(x0,y,x0+W,y,LINEC,0.15);
+  });
+}
 function drawPasoFam(){
   var b=$('pasofam');if(!b)return;
   b.innerHTML=FAMILIAS.map(function(f){
@@ -4063,6 +4191,7 @@ document.addEventListener('change',function(e){
   save();render();panelRest();drawPasoFam();
 });
 function fields(){
+  try{drawCal()}catch(e){}
   $('v-nombre').value=st.v.nombre||'';$('v-cliente').value=st.v.cliente||'';$('v-direccion').value=st.v.direccion||'';
   $('v-fecha').value=st.v.fecha||'';$('v-altura').value=st.v.altura==null?'':st.v.altura;$('v-notas').value=st.v.notas||'';
   $('v-paso').value=st.v.paso==null?'':st.v.paso;
@@ -5514,13 +5643,14 @@ function sheetPage(doc,view,idx,total,o){
   return p;
 }
 function buildPDF(mode,opt){
-  var views=mode==='all'?dossierViews():(mode==='carp'||mode==='det')?[]:[st.view];
+  var views=mode==='all'?dossierViews():(mode==='carp'||mode==='det'||mode==='cal')?[]:[st.view];
   if(mode==='all'&&!views.length)views=[st.view];
   var doc=new PdfDoc('Ranuse · '+(st.v.nombre||'Visita')),li=0;
   if(LOGO)li=doc.image(LOGO.w,LOGO.h,LOGO.rgb);
   var txIdx={};
   txUsed().forEach(function(t){var r=TXRGB[t.id];if(r&&r.rgb)txIdx[t.id]=doc.image(r.w,r.h,r.rgb)});
-  var lumIdx={};
+  var lumIdx={},calIdx={};
+  (st.v.cal||[]).forEach(function(c){var mn=c.pid&&calMin[c.pid];if(mn&&mn.rgb&&calIdx[c.pid]==null)calIdx[c.pid]=doc.image(mn.w,mn.h,mn.rgb)});
   lumUsedList().forEach(function(l){var r=LUMRGB[l.id];if(r&&r.rgb&&!lumIdx[l.id])lumIdx[l.id]=doc.image(r.w,r.h,r.rgb)});
   var plan=[],v0=st.v;
   views.forEach(function(vw){
@@ -5533,10 +5663,11 @@ function buildPDF(mode,opt){
     else plan.push({view:vw});
   });
   if(mode==='all'&&(v0.eq.length||(v0.mm||[]).length)){var iante=-1;plan.forEach(function(pp,i){if(pp.view==='cotas'||pp.view==='actual')iante=i});plan.splice(iante+1,0,{view:'distrib',ante:true})}
+  if(mode==='all'||mode==='cal')calPlan(opt).forEach(function(c){plan.push(c)});
   if(mode==='all'||mode==='carp')carpPlan(opt).forEach(function(c){plan.push(c)});
   if(mode==='all'||mode==='det')detPlan(opt).forEach(function(c){plan.push(c)});
   if(!plan.length)throw new Error('vacío');
-  plan.forEach(function(pp,i){if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{orient:opt.orient,ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim})});
+  plan.forEach(function(pp,i){if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li,calIdx:calIdx};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else if(pp.kind==='cal')calPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{orient:opt.orient,ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim})});
   return doc.bytes();
 }
 /* el logo de Ranuse Design va de serie en el cajetín; quien suba otro (o lo quite) vuelve a verlo al restablecer */
@@ -5573,10 +5704,10 @@ function loadLogoFile(file){
 })();
 function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0'}}
 function exportPDF(mode){
-  if(!bbox()){toast('Dibuja algo antes de exportar');return}
+  if(mode!=='cal'&&!bbox()){toast('Dibuja algo antes de exportar');return}
   var bytes;
   try{bytes=buildPDF(mode,pdfOpts())}catch(e){toast('No se pudo generar el PDF');return}
-  saveFile(slug()+(mode==='all'?'-dossier':mode==='carp'?'-carpinterias':mode==='det'?'-detalles':'-'+st.view)+'.pdf',bytes,'PDF');
+  saveFile(slug()+(mode==='all'?'-dossier':mode==='carp'?'-carpinterias':mode==='det'?'-detalles':mode==='cal'?'-calidades':'-'+st.view)+'.pdf',bytes,'PDF');
 }
 
 /* ---------- nube, exportar y nueva visita ---------- */
@@ -5739,6 +5870,7 @@ function buildResumen(){
   var v=st.v,alt=wallH(),s=stats(),out={altura_cm:alt};
   out.muros={existente_ml:r2(s.ex/100),demoler_ml:r2(s.dem/100),demoler_m2:r2(areaEst('dem')),nuevo_ml:r2(s.nw/100),nuevo_m2:r2(areaEst('new'))};
   out.puertas=s.doors;out.ventanas=s.wins;
+  out.calidades=(v.cal||[]).map(function(c){return {sala:c.sala||'General',categoria:c.cat,producto:c.nm,marca:c.m||'',producto_id:c.pid||null,acabado:c.ac||'',cantidad:c.n,nota:c.nota||''}});
   out.obra_a_medida=(v.mm||[]).map(function(m,i){return {codigo:'M'+(i+1),tipo:mmKind(m.k).n,nombre:mmNombre(m),ejecuta:mmOf(m)==='obra'?'albañil':'carpintero u otro oficio',largo_cm:r2(m.s1-m.s0),fondo_cm:m.d,alto_cm:m.h,m2_frente:r2((m.s1-m.s0)*m.h/10000),retroiluminado:!!m.luz,material:m.mat||'',nota:m.nota||''}});
   out.recrecidos=(v.rc||[]).map(function(rc){var q=rcPoly(rc);return q?{largo_cm:r2(q.len),espesor_cm:rc.t||10,m2:r2(q.len*alt/10000),material:rc.mat||''}:null}).filter(Boolean);
   var salas=[],suelos={},techos={},paredes={};
@@ -5809,7 +5941,7 @@ function buildModelo3d(){
   });
   return out;
 }
-var crmAdmin=false,crmReady=false,crmT=null,crmProy=null,crmSkip=0,crmFull=false;
+var crmAdmin=false,crmReady=false,productosCat=[],calMin={},crmT=null,crmProy=null,crmSkip=0,crmFull=false;
 function modoPantalla(f){
   crmFull=f;
   var b=$('m-full');b.hidden=false;
@@ -5850,7 +5982,7 @@ if(CRM){
     if(e.origin!==location.origin||e.source!==window.parent)return;
     var m=e.data;if(!m||m.src!=='ranuse-crm')return;
     if(m.type==='init'){
-      crmAdmin=!!m.admin;crmProy=m.proyecto||null;if(m.tema&&!temaGuardado())aplicarTema(m.tema,false);
+      crmAdmin=!!m.admin;productosCat=(m.productos||[]).filter(function(p){return p&&p.id&&p.n});crmProy=m.proyecto||null;if(m.tema&&!temaGuardado())aplicarTema(m.tema,false);
       modoPantalla(!!m.fullscreen);
       cloud=m.visitas||[];
       cloudCat=(m.maquinas||[]).filter(function(c){return c&&c.id&&c.nombre&&c.w>0&&c.d>0});
@@ -5886,6 +6018,9 @@ if(CRM){
       nuevos.forEach(function(c){if(c.completo){bloquesFull[c.id]=c.completo;delete c.completo}});
       cloudCat=cloudCat.filter(function(c){return !nuevos.some(function(n){return n.id===c.id})}).concat(nuevos);
       drawCat();toast(nuevos.length+' bloques en tu biblioteca. Los encuentras en el catálogo, categoría «'+(nuevos[0]&&nuevos[0].categoria||'Mi biblioteca')+'».');
+    }else if(m.type==='miniaturas'){
+      Object.keys(m.items||{}).forEach(function(id){var f=m.items[id];if(f&&f.uri){calMin[id]={uri:f.uri,pw:f.pw,ph:f.ph,rgb:null};prepMinRgb(id)}});
+      drawCal();
     }else if(m.type==='bibliotecaActualizada'){
       cloudCat.forEach(function(c){if(c.id===m.id){if(m.categoria)c.categoria=m.categoria;if(m.nombre)c.nombre=m.nombre}});
       (st.v.eq||[]).forEach(function(q){if(q.cid===m.id&&m.nombre)q.nm=m.nombre});
@@ -5961,7 +6096,7 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
 })();
 /* bloques del panel plegables: se recuerda cuáles están cerrados */
 (function(){
-  var DEF_CERRADOS=['Visita','Biblioteca de bloques','Guardar','Detalles constructivos','Láminas PDF'];
+  var DEF_CERRADOS=['Visita','Memoria de calidades','Biblioteca de bloques','Guardar','Detalles constructivos','Láminas PDF'];
   var cerrados;
   try{cerrados=JSON.parse(localStorage.getItem(COLL_KEY))}catch(e){}
   if(!Array.isArray(cerrados))cerrados=DEF_CERRADOS.slice();
@@ -6025,6 +6160,7 @@ cmd('PDF con todas las láminas',['pdft','dossier'],'Exportar el dossier',porId(
 cmd('Plano SVG',['svg'],'Exportar como SVG',porId('b-svg'));
 cmd('Datos JSON',['json'],'Exportar los datos',porId('b-json'));
 cmd('Memoria de carpinterías',['carp','carpinterias'],'PDF de puertas y ventanas',porId('b-pdfcarp'));
+cmd('Memoria de calidades',['cal','calidades'],'PDF de mecanismos, grifería, sanitarios…',porId('b-pdfcal'));
 cmd('Panel lateral',['panel','pl'],'Mostrar u ocultar el panel',function(){panelAlternar()});
 cmd('Interfaz blanca',['claro','blanca'],'Tema claro',function(){aplicarTema('light',true)});
 cmd('Interfaz negra',['oscuro','negra'],'Tema oscuro',function(){aplicarTema('dark',true)});

@@ -202,7 +202,12 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
       if (!foto) return null;
       return { id: p.id, n: p.name, cat: limpiarCategoria(catPorId[p.category_id].name), tw: Number(p.ancho) > 5 && Number(p.ancho) < 500 ? Number(p.ancho) : 60, ...foto };
     }))).filter(Boolean);
-    res.json({ maquinas, luminarias, materiales, admin: req.user?.role === 'admin_superior' });
+    // Todos los productos (ligeros) para la memoria de calidades: mecanismos, grifería, sanitarios…
+    const productos = (prods || []).map(p => {
+      const cat = catPorId[p.category_id];
+      return cat ? { id: p.id, n: p.name, m: p.brand || '', c: limpiarCategoria(cat.name), t: cat.type } : null;
+    }).filter(Boolean).slice(0, 4000);
+    res.json({ maquinas, luminarias, materiales, productos, admin: req.user?.role === 'admin_superior' });
   } catch (err) {
     console.error('medicion/catalogos:', err);
     res.status(500).json({ error: 'No se pudo cargar el catálogo' });
@@ -210,6 +215,22 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
 });
 
 // ── Dashboard de planos (todos, con o sin proyecto) ────────────────────────
+// Miniaturas (data URI) de productos para la memoria de calidades
+router.post('/miniaturas', async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).filter(x => typeof x === 'string').slice(0, 40);
+    if (!ids.length) return res.json({ items: {} });
+    const { data, error } = await supabase.from('catalog_products').select('id, photo_url').in('id', ids);
+    if (error) throw error;
+    const items = {};
+    await Promise.all((data || []).map(async p => { const f = await fotoMiniatura(p.photo_url); if (f) items[p.id] = f; }));
+    res.json({ items });
+  } catch (err) {
+    console.error('medicion miniaturas:', err);
+    res.status(500).json({ error: 'No se pudieron cargar las fotos' });
+  }
+});
+
 router.get('/dashboard', async (req, res) => {
   try {
     const { data, error } = await supabase.from('mediciones')

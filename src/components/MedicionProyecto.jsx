@@ -70,6 +70,10 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
         try { const { data } = await api.post('/medicion/biblioteca', { items: m.items }); responder({ type: 'biblioteca', items: data.items || [] }); }
         catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudieron guardar los bloques' }); }
       }
+      else if (m.type === 'pedirMiniaturas' && Array.isArray(m.ids)) {
+        try { const { data } = await api.post('/medicion/miniaturas', { ids: m.ids }); responder({ type: 'miniaturas', items: data.items || {} }); }
+        catch { /* sin fotos: la memoria sale igualmente */ }
+      }
       else if (m.type === 'actualizarBiblioteca' && m.id) {
         try {
           const { data } = await api.patch(`/medicion/biblioteca/${String(m.id).replace(/^bib-/, '')}`, { categoria: m.categoria, nombre: m.nombre });
