@@ -269,6 +269,8 @@ body.crm .top .brand{display:none}
             <button data-do="b-cloud" id="mi-cloud" hidden>Guardar ahora</button>
             <button data-do="b-pdf">PDF de esta lámina</button>
             <button data-do="b-pdfall">PDF con todas las láminas</button>
+            <button data-do="b-prev">Vista previa de las láminas</button>
+            <button data-do="b-pdfproj" id="mi-proj" hidden>PDF con todas las plantas del proyecto</button>
             <button data-do="b-pdfdoc" id="mi-docs" hidden>Subir lámina a Documentos</button>
             <hr>
             <button data-do="b-svg">Plano SVG</button>
@@ -375,6 +377,7 @@ body.crm .top .brand{display:none}
         <h2>Visita</h2>
         <label class="fld"><span>Proyecto</span><input id="v-nombre" placeholder="Gimnasio de Javier"></label>
         <label class="fld"><span>Cliente</span><input id="v-cliente" placeholder="Nombre del cliente"></label>
+        <label class="fld"><span>Planta de este plano</span><input id="v-planta" list="dl-plantas" placeholder="Planta baja, Planta 1…" autocomplete="off"></label><datalist id="dl-plantas"><option value="Sótano"><option value="Planta baja"><option value="Entreplanta"><option value="Planta 1"><option value="Planta 2"><option value="Planta 3"><option value="Cubierta"></datalist>
         <label class="fld"><span>Dirección del proyecto</span><input id="v-direccion" placeholder="Calle, número, localidad"></label>
         <label class="fld"><span>Fecha de medición</span><input id="v-fecha" type="date"></label>
         <label class="fld"><span>Altura de las paredes (cm)</span><input id="v-altura" inputmode="decimal" placeholder="260"></label>
@@ -491,6 +494,7 @@ body.crm .top .brand{display:none}
         <label class="fld"><span>Orientación del plano</span><select id="x-orient"><option value="auto">Automática (en horizontal si así sale más grande)</option><option value="normal">Tal como está dibujado</option><option value="girado">Girado 90° (en horizontal)</option></select></label>
         <label class="fld"><span>Escala</span><select id="x-scale"><option value="auto">Automática (la mayor que quepa)</option><option value="20">1:20</option><option value="25">1:25</option><option value="50">1:50</option><option value="75">1:75</option><option value="100">1:100</option><option value="200">1:200</option></select></label>
         <div class="btns"><button class="pri" id="b-pdf">PDF de esta lámina</button><button id="b-pdfall">PDF con todas las láminas</button></div>
+        <div class="btns"><button id="b-prev">Vista previa de las láminas</button><button id="b-pdfproj" hidden>PDF con todas las plantas del proyecto</button><button id="b-prevproj" hidden>Vista previa de todas las plantas</button></div>
         <div class="btns" id="crm-pdf" hidden><button id="b-pdfdoc">Subir esta lámina a Documentos</button><button id="b-pdfdocall">Subir dossier a Documentos</button></div>
         <div class="btns"><button id="b-pdfcarp">Memoria de carpinterías (PDF)</button><button id="b-csvcarp">Carpinterías (CSV)</button></div>
         <details class="addcat">
@@ -4192,12 +4196,13 @@ document.addEventListener('change',function(e){
 });
 function fields(){
   try{drawCal()}catch(e){}
-  $('v-nombre').value=st.v.nombre||'';$('v-cliente').value=st.v.cliente||'';$('v-direccion').value=st.v.direccion||'';
+  try{actualizaBotonesPlantas()}catch(e){}
+  $('v-nombre').value=st.v.nombre||'';$('v-cliente').value=st.v.cliente||'';$('v-direccion').value=st.v.direccion||'';$('v-planta').value=st.v.planta||'';
   $('v-fecha').value=st.v.fecha||'';$('v-altura').value=st.v.altura==null?'':st.v.altura;$('v-notas').value=st.v.notas||'';
   $('v-paso').value=st.v.paso==null?'':st.v.paso;
   drawPasoFam();
 }
-['nombre','cliente','direccion','fecha','notas'].forEach(function(k){
+['nombre','cliente','direccion','planta','fecha','notas'].forEach(function(k){
   $('v-'+k).addEventListener('input',function(e){st.v[k]=e.target.value;save()});
 });
 $('v-altura').addEventListener('input',function(e){var n=num(e.target.value);if(n>=100&&n<=1000){st.v.altura=n;save();panelRest()}});
@@ -4522,7 +4527,7 @@ function carpFrame(doc,idx,total,o,title,note){
   var v=st.v,A3=o.paper!=='A4',PW=A3?420:297,PH=A3?297:210,f=A3?1:0.76,mg=10,p=doc.page(PW,PH);
   p.rect(mg,mg,PW-2*mg,PH-2*mg,null,INK,0.5);
   p.text(mg+7,mg+10,title.toUpperCase(),15*f+1,{bold:true,col:INK});
-  p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
+  p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.planta?' · '+v.planta:'')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
   if(o.logo){var lw=o.logo.w,lh=o.logo.h,sc=Math.min(40/lw,11*f/lh);p.img(o.logoIdx,PW-mg-6-lw*sc,mg+4,lw*sc,lh*sc)}
   else p.text(PW-mg-6,mg+10,'RANUSE DESIGN',9*f,{bold:true,col:INK,anchor:'end'});
   var fy=PH-mg-12*f,wTot=PW-2*mg;
@@ -5267,7 +5272,7 @@ function sheetPage(doc,view,idx,total,o){
 
   /* título de la lámina */
   p.text(mg+7,mg+10,((view==='distrib'?(o.ante?'Anteproyecto · distribución':'Distribución · mobiliario y máquinas'):VNAME[view])+(o.capaN?' · '+o.capaN:'')).toUpperCase(),15*f+1,{bold:true,col:INK});
-  p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
+  p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.planta?' · '+v.planta:'')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
 
   /* escala y plano */
   var S=SCALES[SCALES.length-1];
@@ -5331,8 +5336,9 @@ function sheetPage(doc,view,idx,total,o){
   var gyd=gy+9.6*f;p.line(cx,gyd,PW-mg,gyd,LINEC,0.2);
   cell(px0,gyd,'Dirección',v.direccion||'—',pw);
   var gy2=gyd+9.6*f;p.line(cx,gy2,PW-mg,gy2,LINEC,0.2);
-  cell(px0,gy2,'Cliente',v.cliente||'—',pw*0.55);
-  cell(px0+pw*0.6,gy2,'Medición',fdate(v.fecha),pw*0.4);
+  cell(px0,gy2,'Cliente',v.cliente||'—',pw*0.44);
+  cell(px0+pw*0.46,gy2,'Planta',v.planta||'—',pw*0.26);
+  cell(px0+pw*0.74,gy2,'Medición',fdate(v.fecha),pw*0.26);
   var gy3=gy2+9.6*f;p.line(cx,gy3,PW-mg,gy3,LINEC,0.2);
   cell(px0,gy3,'Lámina',VNAME[view],pw*0.4,true);
   cell(px0+pw*0.42,gy3,'Escala','1:'+S,pw*0.2,true);
@@ -5642,17 +5648,18 @@ function sheetPage(doc,view,idx,total,o){
   }
   return p;
 }
-function buildPDF(mode,opt){
-  var views=mode==='all'?dossierViews():(mode==='carp'||mode==='det'||mode==='cal')?[]:[st.view];
-  if(mode==='all'&&!views.length)views=[st.view];
+function buildPDF(mode,opt,lista){
+  var orig=st.v,vs=(lista&&lista.length)?lista:[st.v];
   var doc=new PdfDoc('Ranuse · '+(st.v.nombre||'Visita')),li=0;
   if(LOGO)li=doc.image(LOGO.w,LOGO.h,LOGO.rgb);
-  var txIdx={};
-  txUsed().forEach(function(t){var r=TXRGB[t.id];if(r&&r.rgb)txIdx[t.id]=doc.image(r.w,r.h,r.rgb)});
-  var lumIdx={},calIdx={};
+  var txIdx={},lumIdx={},calIdx={},plan=[];
+  vs.forEach(function(vv){
+  st.v=vv;
+  txUsed().forEach(function(t){var r=TXRGB[t.id];if(r&&r.rgb&&txIdx[t.id]==null)txIdx[t.id]=doc.image(r.w,r.h,r.rgb)});
   (st.v.cal||[]).forEach(function(c){var mn=c.pid&&calMin[c.pid];if(mn&&mn.rgb&&calIdx[c.pid]==null)calIdx[c.pid]=doc.image(mn.w,mn.h,mn.rgb)});
   lumUsedList().forEach(function(l){var r=LUMRGB[l.id];if(r&&r.rgb&&!lumIdx[l.id])lumIdx[l.id]=doc.image(r.w,r.h,r.rgb)});
-  var plan=[],v0=st.v;
+  var v0=st.v,antes=plan.length,views=mode==='all'?dossierViews():(mode==='carp'||mode==='det'||mode==='cal')?[]:[st.view];
+  if(mode==='all'&&!views.length)views=[st.view];
   views.forEach(function(vw){
     if(vw==='alz'){var ap=alzPages(opt);ap.pages.forEach(function(pg){plan.push({view:'alz',alz:{S:ap.S,els:pg}})});if(!ap.pages.length)plan.push({view:'alz',alz:null})}
     else if(vw==='demol'){
@@ -5662,13 +5669,26 @@ function buildPDF(mode,opt){
     }
     else plan.push({view:vw});
   });
-  if(mode==='all'&&(v0.eq.length||(v0.mm||[]).length)){var iante=-1;plan.forEach(function(pp,i){if(pp.view==='cotas'||pp.view==='actual')iante=i});plan.splice(iante+1,0,{view:'distrib',ante:true})}
+  if(mode==='all'&&(v0.eq.length||(v0.mm||[]).length)){var iante=antes-1;plan.forEach(function(pp,i){if(i>=antes&&(pp.view==='cotas'||pp.view==='actual'))iante=i});plan.splice(iante+1,0,{view:'distrib',ante:true})}
   if(mode==='all'||mode==='cal')calPlan(opt).forEach(function(c){plan.push(c)});
   if(mode==='all'||mode==='carp')carpPlan(opt).forEach(function(c){plan.push(c)});
   if(mode==='all'||mode==='det')detPlan(opt).forEach(function(c){plan.push(c)});
+  for(var kk=antes;kk<plan.length;kk++)plan[kk].v=vv;
+  });
+  st.v=orig;
   if(!plan.length)throw new Error('vacío');
-  plan.forEach(function(pp,i){if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li,calIdx:calIdx};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else if(pp.kind==='cal')calPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{orient:opt.orient,ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim})});
+  try{plan.forEach(function(pp,i){st.v=pp.v||orig;if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li,calIdx:calIdx};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else if(pp.kind==='cal')calPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{orient:opt.orient,ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim})});}finally{st.v=orig}
   return doc.bytes();
+}
+/* orden de las plantas en el dossier: sótano, baja, entreplanta, 1, 2…, cubierta */
+function plantaRango(n){
+  var t=String(n||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  if(/sotano|semisotano/.test(t))return -1;
+  if(/baja|^0\b|planta 0/.test(t))return 0;
+  if(/entre/.test(t))return 0.5;
+  var m=/(-?\d+)/.exec(t);if(m)return +m[1];
+  if(/cubierta|azotea|terraza/.test(t))return 99;
+  return 50;
 }
 /* el logo de Ranuse Design va de serie en el cajetín; quien suba otro (o lo quite) vuelve a verlo al restablecer */
 function logoPorDefecto(){
@@ -5703,6 +5723,37 @@ function loadLogoFile(file){
   else logoPorDefecto();
 })();
 function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0'}}
+/* planos de todas las plantas del proyecto (el actual con lo último que has dibujado), ordenados de abajo arriba */
+function plantasDelProyecto(){
+  var l=(cloud||[]).map(function(c){return c.id===st.v.id?st.v:norm(JSON.parse(JSON.stringify(c)))});
+  if(!l.some(function(v){return v.id===st.v.id}))l.push(st.v);
+  return l.sort(function(a,b){return plantaRango(a.planta)-plantaRango(b.planta)||String(a.nombre).localeCompare(String(b.nombre))});
+}
+function hayVariasPlantas(){return CRM&&(cloud||[]).length>1}
+function actualizaBotonesPlantas(){
+  var h=!hayVariasPlantas();
+  ['b-pdfproj','b-prevproj','mi-proj'].forEach(function(i){var e=$(i);if(e)e.hidden=h});
+}
+function verPrevia(todas){
+  if(!todas&&!bbox()){toast('Dibuja algo antes de ver la vista previa');return}
+  var bytes;
+  try{bytes=buildPDF('all',pdfOpts(),todas?plantasDelProyecto():null)}catch(e){toast('No se pudo generar la vista previa');return}
+  var url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})),m=document.getElementById('prevpdf');
+  if(m)m.remove();
+  m=document.createElement('div');m.id='prevpdf';m.className='dxfmod';
+  m.innerHTML='<div class="dxfbox" style="height:94vh;max-width:1200px"><header style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="flex:1;margin:0">Vista previa de las láminas'+(todas?' · todas las plantas':'')+'</h3><a class="pri" id="prev-dl" href="'+url+'" download="'+slug()+(todas?'-proyecto':'-dossier')+'.pdf" style="padding:8px 14px;border-radius:8px;text-decoration:none">Descargar PDF</a><a id="prev-nt" href="'+url+'" target="_blank" rel="noopener" style="padding:8px 14px">Abrir en pestaña nueva</a><button id="prev-x">Cerrar</button></header><iframe src="'+url+'" title="Vista previa del PDF" style="flex:1;border:0;width:100%;background:#555"></iframe></div>';
+  document.body.appendChild(m);
+  function cerrar(){try{URL.revokeObjectURL(url)}catch(e){}m.remove()}
+  $('prev-x').addEventListener('click',cerrar);
+  m.addEventListener('click',function(e){if(e.target===m)cerrar()});
+}
+$('b-prev').addEventListener('click',function(){verPrevia(false)});
+$('b-prevproj').addEventListener('click',function(){verPrevia(true)});
+$('b-pdfproj').addEventListener('click',function(){
+  var bytes;
+  try{bytes=buildPDF('all',pdfOpts(),plantasDelProyecto())}catch(e){toast('No se pudo generar el PDF del proyecto');return}
+  saveFile(slug()+'-proyecto.pdf',bytes,'PDF');
+});
 function exportPDF(mode){
   if(mode!=='cal'&&!bbox()){toast('Dibuja algo antes de exportar');return}
   var bytes;
