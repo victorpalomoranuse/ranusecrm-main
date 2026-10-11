@@ -366,7 +366,7 @@ body.crm .top .brand{display:none}
         <label class="fld"><span>Proyecto</span><input id="v-nombre" placeholder="Gimnasio de Javier"></label>
         <label class="fld"><span>Cliente</span><input id="v-cliente" placeholder="Nombre del cliente"></label>
         <label class="fld"><span>Fecha de medición</span><input id="v-fecha" type="date"></label>
-        <label class="fld"><span>Altura libre (cm)</span><input id="v-altura" inputmode="decimal" placeholder="260"></label>
+        <label class="fld"><span>Altura de las paredes (cm)</span><input id="v-altura" inputmode="decimal" placeholder="260"></label>
         <label class="fld"><span>Paso mínimo entre máquinas (cm)</span><input id="v-paso" inputmode="decimal" placeholder="80"></label>
         <label class="fld"><span>Notas</span><textarea id="v-notas" placeholder="Humedades, estado del suelo, instalaciones a la vista…"></textarea></label>
       </section>
@@ -1068,8 +1068,12 @@ function zoneCodes(view){
   return m;
 }
 function wallH(){return num(st.v.altura)||260}
+/* altura de un muro: la suya si la tiene, y si no la general del plano */
+function wh(w){var n=num(w&&w.h);return n>=50&&n<=2000?n:wallH()}
+/* m² de muro por estado, con la altura de cada muro */
+function areaEst(est){var t=0;st.v.walls.forEach(function(w){if(w.s===est)t+=wLen(w)*wh(w)});return t/10000}
 function wallArea(w){
-  var a=wg(w).l*wallH();
+  var a=wg(w).l*wh(w);
   st.v.ops.forEach(function(o){if(o.wall===w.id)a-=o.w*o.h});
   return Math.max(0,a);
 }
@@ -1232,6 +1236,7 @@ function ensureLums(){
 function elevList(view){
   var v=st.v,H=wallH(),list=[],used={},tags=opTags();
   function mk(w,sd,rev,room){
+    var H=wh(w);
     var L=Math.round(wg(w).l),ops=[];
     v.ops.forEach(function(o){
       if(o.wall!==w.id||!opVis(o,view))return;
@@ -3149,11 +3154,13 @@ function panelSel(focus){
     h+='<div class="btns"><button class="danger" data-a="del">Borrar del alzado</button></div>';
   }else if(!s){
     h='<p class="note">Toca un elemento del plano para ponerle medidas y estado.</p><div class="btns"><button data-a="nextwall">Medir el siguiente muro</button></div>';
+    h+='<div class="lab" style="margin-top:14px">Altura de las paredes</div><label class="fld"><span>Altura general (cm)</span><input data-t="alt_g" inputmode="decimal" value="'+f2(wallH())+'" autocomplete="off"></label><p class="note">Se usa para los m² de muros y acabados, los alzados y el modelo 3D de SketchUp. Si un muro tiene otra altura, tócalo y cámbiasela.</p>';
   }else if(s.t==='wall'){
     var w=wl(s.id),g=wg(w);
     h+='<div class="rowh"><strong>Muro</strong><span class="muted">en el plano: '+fmt(g.l)+' cm</span></div>';
     h+=fld('len','Medida real (cm)',w.m?w.len:null,fmt(g.l));
     h+='<button class="pri" data-a="applynext" style="width:100%">Aplicar y siguiente</button>';
+    h+=fld('w_h','Altura de este muro (cm)',w.h,fmt(wallH()))+'<p class="note" style="margin:0 0 6px">Vacío = altura general ('+fmt(wallH())+' cm). Cuenta para los m² y para SketchUp.</p>';
     var aA=adjOf(w,w.a),aB=adjOf(w,w.b);
     if(aA||aB){
       h+='<div class="lab" style="margin-top:12px">Mover este muro cambiando los que lo cortan</div>';
@@ -3333,8 +3340,8 @@ function panelRest(){
   var s='<table>';
   if(b)s+='<tr><td>Ocupa</td><td>'+m2((b.x1-b.x0)/100)+' × '+m2((b.y1-b.y0)/100)+' m</td></tr>';
   s+='<tr><td>Muro existente</td><td>'+m2(r.ex/100)+' ml</td></tr>';
-  s+='<tr><td>Muro a demoler</td><td>'+m2(r.dem/100)+' ml · '+m2(r.dem/100*alt)+' m²</td></tr>';
-  s+='<tr><td>Muro nuevo</td><td>'+m2(r.nw/100)+' ml · '+m2(r.nw/100*alt)+' m²</td></tr>';
+  s+='<tr><td>Muro a demoler</td><td>'+m2(r.dem/100)+' ml · '+m2(areaEst('dem'))+' m²</td></tr>';
+  s+='<tr><td>Muro nuevo</td><td>'+m2(r.nw/100)+' ml · '+m2(areaEst('new'))+' m²</td></tr>';
   s+='<tr><td>Puertas</td><td>'+r.doors+'</td></tr><tr><td>Ventanas</td><td>'+r.wins+'</td></tr>';
   var cnt={},ord=[];
   v.eq.forEach(function(e){var k=e.nm+'|'+fmt(e.w)+'×'+fmt(e.d);if(!cnt[k]){cnt[k]={n:0,t:e.nm,s:fmt(e.w)+' × '+fmt(e.d)};ord.push(k)}cnt[k].n++});
@@ -3364,6 +3371,11 @@ function applyField(key,val,adv){
   var n=num(val);
   if(s.t==='wall'){
     var w=wl(s.id);if(!w)return;
+    if(key==='w_h'){
+      if(String(val).trim()===''){snap();delete w.h;commit(false);return}
+      if(!(n>=50&&n<=2000)){toast('Escribe una altura entre 50 y 2000 cm');return}
+      snap();w.h=n;commit(false);return;
+    }
     if(key==='len'){
       if(String(val).trim()===''){return}
       if(!(n>=5&&n<=5000)){toast('Escribe una medida entre 5 y 5000 cm');return}
@@ -3538,6 +3550,7 @@ $('side').addEventListener('change',function(e){
     if(pk.mat)op0.mat=pk.mat;if(pk.vid)op0.vid=pk.vid;
     commit(false);panelSel();toast('Cambiada a «'+pk.n+'»');return;
   }
+  if(t==='alt_g'){var ng=num(e.target.value);if(!(ng>=100&&ng<=1000)){toast('Escribe una altura entre 100 y 1000 cm');return}snap();st.v.altura=ng;try{$('v-altura').value=ng}catch(_){}commit(false);panelSel();toast('Altura de las paredes: '+fmt(ng)+' cm');return}
   if(t==='rc_mat'&&st.sel&&st.sel.t==='rc'){var rcm=by(st.v.rc,st.sel.id);if(rcm){snap();rcm.mat=e.target.value.trim();commit(false)}return}
   if(t==='eq_swap'&&st.sel&&st.sel.t==='eq'){
     var cs=catById(e.target.value),eq0=by(st.v.eq,st.sel.id);
@@ -4909,7 +4922,7 @@ function sheetPage(doc,view,idx,total,o){
     rows.push(['Puertas / ventanas',cnt(v.ops,'ex','door')+cnt(v.ops,'new','door')+' / '+(cnt(v.ops,'ex','win')+cnt(v.ops,'new','win'))]);
     v.pil.filter(function(q){return q.s!=='dem'}).forEach(function(q,i){rows.push(['Pilar '+(i+1),fmt(q.w)+' × '+fmt(q.d)+' cm'])});
   }else if(view==='demol'){
-    rows.push(['Muros a demoler',m2(sumL('dem'))+' ml · '+m2(sumL('dem')*alt)+' m²']);
+    rows.push(['Muros a demoler',m2(sumL('dem'))+' ml · '+m2(areaEst('dem'))+' m²']);
     rows.push(['Pilares a demoler',String(cnt(v.pil,'dem'))]);
     rows.push(['Puertas a demoler',String(cnt(v.ops,'dem','door'))]);
     rows.push(['Ventanas a demoler',String(cnt(v.ops,'dem','win'))]);
@@ -4926,7 +4939,7 @@ function sheetPage(doc,view,idx,total,o){
     var wrm={},wrT=0;v.walls.forEach(function(w){if(!w.fr||!wallVis(w,view))return;['p','m'].forEach(function(sd){if(w.fr[sd]){var a=wallArea(w);wrT+=a;var k=(w.fx&&w.fx[sd])||'';wrm[k]=(wrm[k]||0)+a}})});
     if(wrT){rows.push(['Acabados de pared a retirar',m2(wrT/10000)+' m²']);Object.keys(wrm).forEach(function(k){rows.push(['   '+(k?matOf('acab',k).n:'Material sin definir'),m2(wrm[k]/10000)+' m²'])})}
   }else if(view==='interv'){
-    rows.push(['Muros nuevos',m2(sumL('new'))+' ml · '+m2(sumL('new')*alt)+' m²']);
+    rows.push(['Muros nuevos',m2(sumL('new'))+' ml · '+m2(areaEst('new'))+' m²']);
     rows.push(['Pilares nuevos',String(cnt(v.pil,'new'))]);
     rows.push(['Puertas nuevas',String(cnt(v.ops,'new','door'))]);
     rows.push(['Ventanas nuevas',String(cnt(v.ops,'new','win'))]);
@@ -5209,7 +5222,7 @@ function r2(n){return Math.round(n*100)/100}
 /* Cantidades medidas: se guardan junto al plano y las usa el CRM (presupuestos, asistentes) */
 function buildResumen(){
   var v=st.v,alt=wallH(),s=stats(),out={altura_cm:alt};
-  out.muros={existente_ml:r2(s.ex/100),demoler_ml:r2(s.dem/100),demoler_m2:r2(s.dem/100*alt/100),nuevo_ml:r2(s.nw/100),nuevo_m2:r2(s.nw/100*alt/100)};
+  out.muros={existente_ml:r2(s.ex/100),demoler_ml:r2(s.dem/100),demoler_m2:r2(areaEst('dem')),nuevo_ml:r2(s.nw/100),nuevo_m2:r2(areaEst('new'))};
   out.puertas=s.doors;out.ventanas=s.wins;
   out.recrecidos=(v.rc||[]).map(function(rc){var q=rcPoly(rc);return q?{largo_cm:r2(q.len),espesor_cm:rc.t||10,m2:r2(q.len*alt/10000),material:rc.mat||''}:null}).filter(Boolean);
   var salas=[],suelos={},techos={},paredes={};
@@ -5262,7 +5275,7 @@ function buildModelo3d(){
   var v=st.v,out={version:1,nombre:v.nombre||'',altura:wallH(),muros:[],salas:[],pilares:[],equipos:[]};
   v.walls.forEach(function(w){
     var g=wg(w);
-    out.muros.push({a:[f2(g.a.x),f2(g.a.y)],b:[f2(g.b.x),f2(g.b.y)],t:w.t||12,estado:w.s||'ex',
+    out.muros.push({a:[f2(g.a.x),f2(g.a.y)],b:[f2(g.b.x),f2(g.b.y)],t:w.t||12,h:wh(w),estado:w.s||'ex',
       ab:v.ops.filter(function(o){return o.wall===w.id}).map(function(o){return {p:f2(o.p),w:f2(o.w),h:f2(o.h),sill:f2(o.sill||0),tipo:o.t,tip:o.tip||'',mat:o.mat||'',estado:o.s||'ex'}})});
   });
   roomFaces('distrib').forEach(function(f){

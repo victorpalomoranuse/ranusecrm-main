@@ -234,6 +234,8 @@ module Ranuse
         uy = dy / largo
         t = mu['t'].to_f
         t = 12.0 if t <= 0
+        h_mu = mu['h'].to_f
+        h_mu = altura if h_mu <= 0
         g = ents.add_group
         g.name = 'Muro'
         g.layer = et_muros
@@ -246,9 +248,9 @@ module Ranuse
           sill = o['tipo'] == 'door' ? 0.0 : o['sill'].to_f
           tope = sill + o['h'].to_f
           piezas = []
-          piezas << [cur, p0, 0.0, altura]
+          piezas << [cur, p0, 0.0, h_mu]
           piezas << [p0, p1, 0.0, sill] if sill > 0.5
-          piezas << [p0, p1, tope, altura] if tope < altura - 0.5
+          piezas << [p0, p1, tope, h_mu] if tope < h_mu - 0.5
           piezas.each do |s0, s1, z0, z1|
             pg = g.entities.add_group
             if caja_muro(pg.entities, ax, ay, ux, uy, t, s0, s1, z0, z1)
@@ -261,7 +263,7 @@ module Ranuse
           cur = [cur, p1].max
         end
         pg = g.entities.add_group
-        if caja_muro(pg.entities, ax, ay, ux, uy, t, cur, largo + t / 2.0, 0.0, altura)
+        if caja_muro(pg.entities, ax, ay, ux, uy, t, cur, largo + t / 2.0, 0.0, h_mu)
           pg.material = mat
         else
           pg.erase!
