@@ -529,7 +529,7 @@ var TAN12=0.2126, AXDEG=8;
 
 function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
 function newVisit(){return {id:'v'+Date.now().toString(36),nombre:'',cliente:'',fecha:today(),altura:260,paso:80,notas:'',seq:1,nodes:[],walls:[],ops:[],pil:[],ctl:[],eq:[],pts:[],zn:[],rz:[],cn:[],updated:Date.now()}}
-function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];return v}
+function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.rc=v.rc||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];return v}
 var TIPOS=[['rack','Rack'],['cinta','Cinta'],['banco','Banco'],['manc','Rack de mancuernas'],['bici','Bicicleta'],['remo','Remo'],['tatami','Tatami'],['gen','Genérico']];
 var DEFCAT=[
   {id:'rack',nombre:'Rack de sentadillas',tipo:'rack',w:120,d:140},
@@ -944,6 +944,14 @@ function refreshAcab(){
   MATS.techos=BASETECHOS.concat(T.filter(function(m){return txKind(m.tx)!=='suelo'}));
 }
 /* Demoliciones se ve por capas (suelo, techo o acabado de paredes) para que no se mezclen */
+/* recrecido: capa nueva (trasdosado, aislante, mortero…) pegada a una cara de un muro, en un tramo y con un espesor */
+function rcVis(view){return stVis('new',view)&&view!=='alz'&&view!=='demol'}
+function rcPoly(rc){
+  var w=wl(rc.wall);if(!w)return null;
+  var g=wg(w),sg=rc.sd==='m'?-1:1,nx=-g.uy*sg,ny=g.ux*sg,o=w.t/2,s0=Math.max(0,Math.min(g.l,rc.s0)),s1=Math.max(0,Math.min(g.l,rc.s1)),t=rc.t||10;
+  function P(s,d){return {x:g.a.x+g.ux*s+nx*d,y:g.a.y+g.uy*s+ny*d}}
+  return {pts:[P(s0,o),P(s1,o),P(s1,o+t),P(s0,o+t)],mid:P((s0+s1)/2,o+t),nx:nx,ny:ny,len:Math.max(0,s1-s0),w:w};
+}
 function rzArea(r){
   if(r.part&&r.bw>0&&r.bh>0)return r.bw*r.bh;
   var rn=nd(r.n),fc=rn&&faceAt({x:rn.x+r.dx,y:rn.y+r.dy},'actual');
@@ -1607,7 +1615,7 @@ function save(){
     catch(e){$('saved').textContent='Este navegador no deja guardar en el dispositivo. Usa la nube o descarga los datos.'}
   },300);
 }
-function commit(selToo){if(st.v.fz&&st.v.fz.length)st.v.fz=st.v.fz.filter(function(z){return wl(z.wall)});save();render();if(selToo!==false)panelSel();panelRest()}
+function commit(selToo){if(st.v.rc&&st.v.rc.length)st.v.rc=st.v.rc.filter(function(z){return wl(z.wall)});if(st.v.fz&&st.v.fz.length)st.v.fz=st.v.fz.filter(function(z){return wl(z.wall)});save();render();if(selToo!==false)panelSel();panelRest()}
 function undo(){
   if(!hist.length)return;
   redo.push(JSON.stringify(st.v));st.v=JSON.parse(hist.pop());st.sel=null;st.dg=null;fields();commit();
@@ -1694,6 +1702,14 @@ function scene(C,k,view,o){
         visto[kz]=1;var al=alzadoDe(w,z.sd),mo=w.t/2+34*px,mx=(g.a.x+g.b.x)/2,my=(g.a.y+g.b.y)/2;
         zlab+=txt(C,px,mx+nx*mo,my+ny*mo+4*px,'Ver alzado '+(al?al.id:''),C.accent,10,700);
       }
+    });
+  }
+  if(rcVis(view)){
+    (v.rc||[]).forEach(function(rc){
+      var q=rcPoly(rc);if(!q||q.len<1)return;
+      var slr=sel&&sel.t==='rc'&&sel.id===rc.id,colr=slr?C.accent:(view==='interv'?C.nw:C.ink);
+      h+='<polygon points="'+q.pts.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ')+'" style="fill:'+colr+';fill-opacity:.22;stroke:'+colr+';stroke-width:'+f2((slr?2.6:1.3)*px)+'"/>';
+      zlab+=txt(C,px,q.mid.x+q.nx*13*px,q.mid.y+q.ny*13*px+4*px,'Recrecido '+fmt(rc.t||10)+' cm'+(rc.mat?' · '+rc.mat:''),colr,10,600);
     });
   }
   if(view==='demol'){
@@ -2418,6 +2434,8 @@ function pick(w,tol,view){
   if(view==='distrib'){var pe=pickEq(p);if(pe)return {t:'eq',id:pe.id}}
   if(view==='ilum'||view==='elec'){var ppk=pickPt(p,tol);if(ppk)return {t:'pt',id:ppk.id}}
   if(view==='ilum'){var pck=pickCn(p,tol);if(pck)return {t:'cn',id:pck.id}}
+  if(rcVis(view))(st.v.rc||[]).forEach(function(rc){var q=rcPoly(rc);if(q&&q.len>=1&&inPoly(p,q.pts))best={t:'rc',id:rc.id}});
+  if(best)return best;
   st.v.ops.forEach(function(o){
     if(!opVis(o,view))return;
     var q=og(o),d=segDist(p,{x:q.x1,y:q.y1},{x:q.x2,y:q.y2});
@@ -3157,6 +3175,7 @@ function panelSel(focus){
         h+='<label class="fld chk"><input type="checkbox" data-t="wr_'+sd+'"'+((w.fr&&w.fr[sd])?' checked':'')+'><span>Retirar este acabado ('+m2(wallArea(w)/10000)+' m²)</span></label>';
       });
     }
+    h+='<div class="btns"><button data-a="rcadd">Añadir recrecido en este muro</button></div>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar muro</button></div>';
   }else if(s.t==='op'){
     var o=opn(s.id),q=og(o);
@@ -3187,6 +3206,14 @@ function panelSel(focus){
     h+='<div class="btns"><button class="danger" data-a="del">Borrar pilar</button></div>';
   }else if(s.t==='eq'){
     /* ya dibujado arriba */
+  }else if(s.t==='rc'){
+    var rcs=by(st.v.rc,s.id),rcw=wl(rcs.wall),rcq=rcPoly(rcs);
+    h+='<div class="rowh"><strong>Recrecido en pared</strong><span class="muted">'+(rcq?fmt(rcq.len)+' cm de largo':'')+'</span></div>';
+    h+='<p class="note">Capa nueva pegada al muro (trasdosado, aislante, recrecido de mortero…). Elige en qué cara va, el tramo y el espesor.</p>';
+    if(rcw)h+='<div class="seg3">'+['p','m'].map(function(sd){return '<button data-a="rcside" data-s="'+sd+'" aria-pressed="'+(rcs.sd===sd)+'">'+faceName(rcw,sd)+'</button>'}).join('')+'</div>';
+    h+=fld('rc_s0','Desde el inicio del muro (cm)',rcs.s0)+fld('rc_s1','Hasta (cm)',rcs.s1)+fld('rc_t','Espesor (cm)',rcs.t);
+    h+='<label class="fld"><span>Material (opcional)</span><input data-t="rc_mat" value="'+esc(rcs.mat||'')+'" placeholder="Placa de yeso laminado, aislante…" autocomplete="off"></label>';
+    h+='<div class="btns"><button class="danger" data-a="del">Borrar recrecido</button></div>';
   }else if(s.t==='rz'){
     var rz=by(st.v.rz,s.id),rv=rz.k==='s'?'suelos':'techos',rn=nd(rz.n),rf=rn&&faceAt({x:rn.x+rz.dx,y:rn.y+rz.dy},'actual');
     h+='<div class="rowh"><strong>'+(rz.part?(rz.k==='s'?'Parte del suelo a levantar':'Parte del techo a desmontar'):(rz.k==='s'?'Suelo existente a levantar':'Techo existente a desmontar'))+'</strong>'+(rz.part||rf?'<span class="muted">'+m2(rzArea(rz)/10000)+' m²</span>':'')+'</div>';
@@ -3381,6 +3408,13 @@ function applyField(key,val,adv){
     var q=by(st.v.eq,s.id);if(!q)return;
     if(!(n>=20&&n<=600)){toast('Escribe una medida entre 20 y 600 cm');return}
     snap();if(key==='eq_w')q.w=n;else q.d=n;commit(false);
+  }else if(s.t==='rc'&&/^rc_/.test(key)){
+    var qrc=by(st.v.rc,s.id);if(!qrc)return;
+    if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
+    snap();
+    if(key==='rc_t')qrc.t=Math.max(1,Math.min(100,n));else qrc[key.slice(3)]=n;
+    if(qrc.s1<qrc.s0){var tt0=qrc.s0;qrc.s0=qrc.s1;qrc.s1=tt0}
+    commit(false);
   }else if(s.t==='rz'&&/^rz_/.test(key)){
     var qr=by(st.v.rz,s.id);if(!qr||!qr.part)return;
     if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
@@ -3460,9 +3494,19 @@ function doAction(a,el){
   if(a==='eqrot'){var q1=by(st.v.eq,s.id);snap();q1.rot=(q1.rot+90)%360;commit();return}
   if(a==='eqdup'){var q2=by(st.v.eq,s.id);snap();var cp=JSON.parse(JSON.stringify(q2));cp.id=uid('e');cp.dx=f2(cp.dx+30);cp.dy=f2(cp.dy+30);st.v.eq.push(cp);st.sel={t:'eq',id:cp.id};commit();return}
   if(a==='eqcat'){var q3=by(st.v.eq,s.id);saveCat({id:q3.cid||('c'+Date.now().toString(36)),nombre:q3.nm,tipo:q3.ty,w:q3.w,d:q3.d,ref:q3.ref||''});toast('Medidas guardadas en el catálogo');return}
+  if(a==='rcadd'&&s.t==='wall'){
+    var rw0=wl(s.id),rg0=rw0&&wg(rw0);if(!rg0)return;
+    snap();
+    var nrc={id:uid('c'),wall:rw0.id,sd:'p',s0:0,s1:f2(rg0.l),t:10,mat:'',s:'new'};
+    st.v.rc.push(nrc);st.sel={t:'rc',id:nrc.id};
+    if(!rcVis(st.view)){st.view='interv';toolbar()}
+    commit();toast('Recrecido añadido. Ajusta el tramo, la cara y el espesor en el panel.');return;
+  }
+  if(a==='rcside'&&s.t==='rc'){var rcx=by(st.v.rc,s.id);if(rcx){snap();rcx.sd=sv;commit()}return}
   if(a==='del'){
     snap();
-    if(s.t==='wall'){st.v.ops=st.v.ops.filter(function(o){return o.wall!==s.id});st.v.walls=st.v.walls.filter(function(w){return w.id!==s.id});cleanNodes()}
+    if(s.t==='rc')st.v.rc=st.v.rc.filter(function(q){return q.id!==s.id});
+    else if(s.t==='wall'){st.v.ops=st.v.ops.filter(function(o){return o.wall!==s.id});st.v.walls=st.v.walls.filter(function(w){return w.id!==s.id});cleanNodes()}
     else if(s.t==='op')st.v.ops=st.v.ops.filter(function(o){return o.id!==s.id});
     else if(s.t==='pil')st.v.pil=st.v.pil.filter(function(p){return p.id!==s.id});
     else if(s.t==='ctl')st.v.ctl=st.v.ctl.filter(function(c){return c.id!==s.id});
@@ -3494,6 +3538,7 @@ $('side').addEventListener('change',function(e){
     if(pk.mat)op0.mat=pk.mat;if(pk.vid)op0.vid=pk.vid;
     commit(false);panelSel();toast('Cambiada a «'+pk.n+'»');return;
   }
+  if(t==='rc_mat'&&st.sel&&st.sel.t==='rc'){var rcm=by(st.v.rc,st.sel.id);if(rcm){snap();rcm.mat=e.target.value.trim();commit(false)}return}
   if(t==='eq_swap'&&st.sel&&st.sel.t==='eq'){
     var cs=catById(e.target.value),eq0=by(st.v.eq,st.sel.id);
     if(!cs||!eq0)return;
@@ -4885,6 +4930,7 @@ function sheetPage(doc,view,idx,total,o){
     rows.push(['Pilares nuevos',String(cnt(v.pil,'new'))]);
     rows.push(['Puertas nuevas',String(cnt(v.ops,'new','door'))]);
     rows.push(['Ventanas nuevas',String(cnt(v.ops,'new','win'))]);
+    if((v.rc||[]).length){var rcl=0;v.rc.forEach(function(rc){var q=rcPoly(rc);if(q)rcl+=q.len});rows.push(['Recrecidos en pared',v.rc.length+' · '+m2(rcl/100)+' ml · '+m2(rcl*alt/10000)+' m²'])}
   }else if(view==='distrib'){
     rows.push(['Equipos',String(v.eq.length)]);
     rows.push(['Paso mínimo entre máquinas',fmt(num(v.paso)||80)+' cm']);
@@ -5165,6 +5211,7 @@ function buildResumen(){
   var v=st.v,alt=wallH(),s=stats(),out={altura_cm:alt};
   out.muros={existente_ml:r2(s.ex/100),demoler_ml:r2(s.dem/100),demoler_m2:r2(s.dem/100*alt/100),nuevo_ml:r2(s.nw/100),nuevo_m2:r2(s.nw/100*alt/100)};
   out.puertas=s.doors;out.ventanas=s.wins;
+  out.recrecidos=(v.rc||[]).map(function(rc){var q=rcPoly(rc);return q?{largo_cm:r2(q.len),espesor_cm:rc.t||10,m2:r2(q.len*alt/10000),material:rc.mat||''}:null}).filter(Boolean);
   var salas=[],suelos={},techos={},paredes={};
   roomFaces('suelos').forEach(function(f){
     var z=zoneIn(f,'s'),zt=zoneIn(f,'t');
