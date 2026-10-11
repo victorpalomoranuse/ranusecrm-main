@@ -1,5 +1,6 @@
 import express from 'express';
 import sharp from 'sharp';
+import compression from 'compression';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { cantidadesDePlano } from '../utils/planos.js';
@@ -119,7 +120,7 @@ router.delete('/biblioteca/:id', async (req, res) => {
   }
 });
 
-router.get('/catalogos', async (req, res) => {
+router.get('/catalogos', compression(), async (req, res) => { // comprimido: la biblioteca propia puede traer cientos de bloques
   try {
     const columnas = 'id, name, brand, category_id, longitud, ancho, altura, lumens, watts, color_temperature, photo_url, display_order';
     const pedirProductos = (cols) => supabase.from('catalog_products').select(cols).order('display_order', { ascending: true, nullsFirst: false });

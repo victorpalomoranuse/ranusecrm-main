@@ -930,7 +930,28 @@ function opElevSvg(C,px,o,y0,col){
 }
 var BASEACAB=MATS.acab.slice(),BASESUELOS=MATS.suelos.slice(),BASETECHOS=MATS.techos.slice(),TXLIB=[],TXRGB={},LSX='ranuse-texturas-v1';
 function txToMat(t){return {id:t.id,n:t.n,c:t.c,tx:t}}
-function refreshAcab(){var T=TXLIB.map(txToMat);MATS.acab=BASEACAB.concat(T);MATS.suelos=BASESUELOS.concat(T);MATS.techos=BASETECHOS.concat(T)}
+/* a qué superficie pertenece un material del catálogo, por su categoría y su nombre */
+function txKind(t){
+  var x=((t.grupo||'')+' '+(t.n||'')).toLowerCase();
+  if(/techo|falso|registrable|pladur|escayola/.test(x))return 'techo';
+  if(/suelo|pavimento|loseta|tarima|parquet|caucho|c[eé]sped|moqueta|microcemento|vin[ií]lic|baldosa|porcel|\bspc\b|\blvt\b|tatami|fitness|goma|laminado de suelo/.test(x))return 'suelo';
+  return '';
+}
+function refreshAcab(){
+  var T=TXLIB.map(txToMat);
+  MATS.acab=BASEACAB.concat(T.filter(function(m){return txKind(m.tx)!=='suelo'&&txKind(m.tx)!=='techo'}));
+  MATS.suelos=BASESUELOS.concat(T.filter(function(m){return txKind(m.tx)!=='techo'}));
+  MATS.techos=BASETECHOS.concat(T.filter(function(m){return txKind(m.tx)!=='suelo'}));
+}
+/* Demoliciones se ve por capas (suelo, techo o acabado de paredes) para que no se mezclen */
+function rzArea(r){
+  if(r.part&&r.bw>0&&r.bh>0)return r.bw*r.bh;
+  var rn=nd(r.n),fc=rn&&faceAt({x:rn.x+r.dx,y:rn.y+r.dy},'actual');
+  return fc?fc.area:0;
+}
+function rzRect(r){var rn=nd(r.n);if(!rn)return null;var cx=rn.x+r.dx,cy=rn.y+r.dy;return {x0:cx-r.bw/2,y0:cy-r.bh/2,x1:cx+r.bw/2,y1:cy+r.bh/2,cx:cx,cy:cy}}
+var demCapa=null;
+function capaDem(){return demCapa||(st.pal.demol==='rz-t'?'t':st.pal.demol==='fr'?'p':'s')}
 function prepTxRgb(t,cvs){
   function go(c){var x=c.getContext('2d'),d=x.getImageData(0,0,c.width,c.height).data,rgb=new Uint8Array(c.width*c.height*3);
     for(var i=0,j=0;i<d.length;i+=4){rgb[j++]=d[i];rgb[j++]=d[i+1];rgb[j++]=d[i+2]}
@@ -1676,8 +1697,16 @@ function scene(C,k,view,o){
     });
   }
   if(view==='demol'){
+    var capaD=capaDem();
     v.rz.forEach(function(r){
+      if(r.k!==capaD)return;
       var rn=nd(r.n);if(!rn)return;var fc=faceAt({x:rn.x+r.dx,y:rn.y+r.dy},'actual');if(!fc)return;
+      if(r.part&&r.bw>0){ // solo una parte de la sala
+        var rr=rzRect(r),slp=sel&&sel.t==='rz'&&sel.id===r.id,mtp=r.mat?' · '+matOf(r.k==='s'?'suelos':'techos',r.mat).n:'';
+        h+='<rect x="'+f2(rr.x0)+'" y="'+f2(rr.y0)+'" width="'+f2(r.bw)+'" height="'+f2(r.bh)+'" style="fill:url(#hat);stroke:'+(slp?C.accent:C.dem)+';stroke-width:'+f2((slp?3:1.2)*px)+'"/>';
+        zlab+=txt(C,px,rr.cx,rr.cy-4*px,(r.k==='s'?'Levantar parte del suelo':'Desmontar parte del techo')+mtp,C.dem,12,600)+txt(C,px,rr.cx,rr.cy+10*px,m2(r.bw*r.bh/10000)+' m² · '+fmt(r.bw)+' × '+fmt(r.bh),C.dem,11,500);
+        return;
+      }
       var pts=fc.inner.map(function(q){return f2(q.x)+','+f2(q.y)}).join(' '),sl=sel&&sel.t==='rz'&&sel.id===r.id;
       h+='<polygon points="'+pts+'" style="fill:url(#hat);stroke:'+(sl?C.accent:C.dem)+';stroke-width:'+f2((sl?3:1.2)*px)+'"/>';
       var mt=r.mat?' · '+matOf(r.k==='s'?'suelos':'techos',r.mat).n:'';
@@ -1685,7 +1714,7 @@ function scene(C,k,view,o){
       zlab+=txt(C,px,fc.cx,fc.cy+(r.k==='s'?-4:12)*px,(r.k==='s'?'Levantar suelo':'Desmontar techo')+mt,C.dem,12,600)+txt(C,px,fc.cx,fc.cy+(r.k==='s'?10:26)*px,m2(fc.area/10000)+' m²',C.dem,11,500);
     });
     v.walls.forEach(function(w){
-      if(!w.fr||!wallVis(w,view))return;var g=wg(w);
+      if(capaD!=='p'||!w.fr||!wallVis(w,view))return;var g=wg(w);
       ['p','m'].forEach(function(sd){
         if(!w.fr[sd])return;var sg=sd==='p'?1:-1,nx=-g.uy*sg,ny=g.ux*sg,off=w.t/2+4.5*px;
         h+=ln(g.a.x+nx*off,g.a.y+ny*off,g.b.x+nx*off,g.b.y+ny*off,C.dem,11*px,'butt');
@@ -2189,6 +2218,7 @@ svg.addEventListener('pointerdown',function(e){
       }
     }
   }
+  if(st.tool==='paint'&&st.view==='demol'&&st.demModo==='parte'&&st.pal.demol!=='fr'&&!pan){gesture={type:'rzdrag',id:e.pointerId,x0:p.x,y0:p.y,x1:p.x,y1:p.y,moved:false};return}
   if(st.tool==='paint'&&st.view==='alz'&&st.alzModo==='trozo'&&!pan){gesture={type:'fzdrag',id:e.pointerId,x0:p.x,y0:p.y,x1:p.x,y1:p.y,moved:false};return}
   var drawOk=st.tool==='pen'&&!pan&&(e.pointerType==='pen'||(e.pointerType==='mouse')||(e.pointerType==='touch'&&st.fingerDraws));
   if(drawOk){gesture={type:'draw',pen:e.pointerType==='pen',id:e.pointerId,pts:[toW(p)]}}
@@ -2227,7 +2257,7 @@ svg.addEventListener('pointermove',function(e){
     var wm=toW(p),dd=Math.round((wm.x-gesture.p0.x)*gesture.nx+(wm.y-gesture.p0.y)*gesture.ny);
     moveNodes([gesture.w.a,gesture.w.b],gesture.nx*dd,gesture.ny*dd,gesture.from);
     relen([gesture.w.a,gesture.w.b]);req();
-  }else if((gesture.type==='marquee'||gesture.type==='fzdrag')&&gesture.id===e.pointerId){
+  }else if((gesture.type==='marquee'||gesture.type==='fzdrag'||gesture.type==='rzdrag')&&gesture.id===e.pointerId){
     gesture.x1=p.x;gesture.y1=p.y;
     if(!gesture.moved&&Math.hypot(p.x-gesture.x0,p.y-gesture.y0)<7)return;
     gesture.moved=true;
@@ -2279,6 +2309,21 @@ function endPtr(e){
       hist.pop();if(e.type==='pointerup')tap(toW(loc(e)));return;
     }
     commit();
+  }
+  else if(g.type==='rzdrag'&&g.id===e.pointerId){
+    gesture=null;$('marq').hidden=true;
+    if(e.type!=='pointerup')return;
+    if(!g.moved){toast('Arrastra un rectángulo dentro de la sala para marcar solo esa parte');return}
+    var ra=toW({x:g.x0,y:g.y0}),rb=toW({x:g.x1,y:g.y1}),rmx=(ra.x+rb.x)/2,rmy=(ra.y+rb.y)/2,rfc=faceAt({x:rmx,y:rmy},'actual');
+    if(!rfc){toast('Dibuja el rectángulo dentro de una sala cerrada por muros existentes');return}
+    var rb0=rfc.inner.reduce(function(a,q){return {x0:Math.min(a.x0,q.x),y0:Math.min(a.y0,q.y),x1:Math.max(a.x1,q.x),y1:Math.max(a.y1,q.y)}},{x0:1e9,y0:1e9,x1:-1e9,y1:-1e9});
+    var sn5=function(n){return Math.round(n/5)*5};
+    var rx0=Math.max(rb0.x0,sn5(Math.min(ra.x,rb.x))),rx1=Math.min(rb0.x1,sn5(Math.max(ra.x,rb.x))),ry0=Math.max(rb0.y0,sn5(Math.min(ra.y,rb.y))),ry1=Math.min(rb0.y1,sn5(Math.max(ra.y,rb.y)));
+    if(rx1-rx0<10||ry1-ry0<10){toast('Ese trozo es demasiado pequeño');return}
+    var rnq=nearNode((rx0+rx1)/2,(ry0+ry1)/2,1e9,null);if(!rnq)return;
+    snap();
+    var nrz={id:uid('r'),k:capaDem(),n:rnq.id,dx:f2((rx0+rx1)/2-rnq.x),dy:f2((ry0+ry1)/2-rnq.y),part:true,bw:f2(rx1-rx0),bh:f2(ry1-ry0),mat:'',nm:''};
+    st.v.rz.push(nrz);st.sel={t:'rz',id:nrz.id};commit();
   }
   else if(g.type==='fzdrag'&&g.id===e.pointerId){
     gesture=null;$('marq').hidden=true;
@@ -2402,7 +2447,8 @@ function pick(w,tol,view){
   }
   if(!best&&view==='demol'){
     var fr=faceAt(p,'actual');
-    if(fr)st.v.rz.forEach(function(r){var nn=nd(r.n);if(nn&&inPoly({x:nn.x+r.dx,y:nn.y+r.dy},fr.poly))best={t:'rz',id:r.id}});
+    st.v.rz.forEach(function(r){if(!r.part||r.k!==capaDem())return;var q=rzRect(r);if(q&&p.x>=q.x0&&p.x<=q.x1&&p.y>=q.y0&&p.y<=q.y1)best={t:'rz',id:r.id}});
+    if(fr&&!best)st.v.rz.forEach(function(r){var nn=nd(r.n);if(nn&&!r.part&&r.k===capaDem()&&inPoly({x:nn.x+r.dx,y:nn.y+r.dy},fr.poly))best={t:'rz',id:r.id}});
   }
   return best;
 }
@@ -2466,9 +2512,11 @@ function tap(w){
       st.sel={t:'zn',id:zz.id};commit();return;
     }
     if(pv==='demol'){
+      if(st.pal.demol==='fr'){toast('Toca un muro y marca «Retirar este acabado» en su panel');return}
+      if(st.demModo==='parte'){toast('Arrastra un rectángulo dentro de la sala para marcar solo esa parte');return}
       var rk=st.pal.demol==='rz-t'?'t':'s',fc2=faceAt(w,'actual');
       if(!fc2){toast('Toca dentro de una sala cerrada por muros existentes');return}
-      var hit=null;st.v.rz.forEach(function(r){var nn=nd(r.n);if(nn&&r.k===rk&&inPoly({x:nn.x+r.dx,y:nn.y+r.dy},fc2.poly))hit=r});
+      var hit=null;st.v.rz.forEach(function(r){var nn=nd(r.n);if(nn&&!r.part&&r.k===rk&&inPoly({x:nn.x+r.dx,y:nn.y+r.dy},fc2.poly))hit=r});
       if(!hit){
         snap();var nq3=nearNode(w.x,w.y,1e9,null);
         hit={id:uid('r'),k:rk,n:nq3.id,dx:f2(w.x-nq3.x),dy:f2(w.y-nq3.y),mat:'',nm:''};st.v.rz.push(hit);
@@ -2586,6 +2634,12 @@ function thumb(c){
   var L=c.w,T=c.d,px=Math.max(L,T)/70;
   return '<svg viewBox="-4 -4 '+(L+8)+' '+(T+8)+'" preserveAspectRatio="xMidYMid meet" aria-hidden="true">'+eqSym(c.tipo,L,T,'currentColor',px,c.id)+'</svg>';
 }
+var catAbierto={};
+function alPlegarCat(e){
+  var h=e.target.closest('.cathead[data-g]');if(!h)return;
+  var g=h.getAttribute('data-g'),ab=h.getAttribute('aria-expanded')==='true';
+  catAbierto[g]=!ab;drawCat();
+}
 function drawCat(){
   var q=(($('cat-q')&&$('cat-q').value)||'').trim().toLowerCase(),grupos={},orden=[];
   catalog().forEach(function(c){
@@ -2600,7 +2654,8 @@ function drawCat(){
   pvBotones();
   var cuerpo=orden.map(function(g){
     var l=grupos[g].slice().sort(function(a,b){return (b.bloque?1:0)-(a.bloque?1:0)});
-    return '<div class="cathead">'+esc(g)+' <span>'+l.length+'</span></div>'+l.map(btn).join('');
+    var abierto=q?true:(catAbierto[g]!==undefined?catAbierto[g]:l.length<=24),lim=q?200:l.length;
+    return '<div class="cathead" data-g="'+esc(g)+'" role="button" tabindex="0" style="cursor:pointer" aria-expanded="'+abierto+'"><span>'+(abierto?'▾':'▸')+' '+esc(g)+'</span> <span>'+l.length+'</span></div>'+(abierto?l.slice(0,lim).map(btn).join('')+(l.length>lim?'<p class="note" style="grid-column:1/-1">Mostrando '+lim+' de '+l.length+'. Afina la búsqueda para ver el resto.</p>':''):'');
   }).join('')||'<p class="note" style="grid-column:1/-1">No hay bloques con ese nombre.</p>';
   $('cat').innerHTML=cuerpo;
   if($('fly-cat'))$('fly-cat').innerHTML=cuerpo;
@@ -2632,6 +2687,8 @@ function alElegirBloque(e){
   if(cc0&&cc0.vistas&&cc0.vistas.length&&cc0.vistas.indexOf('planta')<0){placeVista=cc0.vistas[0];st.view='alz';pedirBloque(placeId);toast('Esta pieza solo tiene vista de '+(placeVista==='alzado'?'frente':'lado')+': toca un alzado para colocarla')}
   toolbar();drawCat();save();render();flyClose();
 }
+$('cat').addEventListener('click',alPlegarCat);
+$('fly-cat').addEventListener('click',alPlegarCat);
 $('cat').addEventListener('click',alElegirBloque);
 $('fly-cat').addEventListener('click',alElegirBloque);
 function saveCat(ent){
@@ -2919,10 +2976,17 @@ function ptThumb(d){
 function drawPal(){
   var v=st.view,blk=$('palblk');
   if(v==='demol'){
-    blk.hidden=false;$('pal-h').textContent='Acabados existentes a retirar';
-    $('pal-n').textContent='Elige qué retirar y toca dentro de una sala existente. Para el acabado de una pared, toca el muro y marca "Retirar" en su panel.';
+    blk.hidden=false;$('pal-h').textContent='Capa a retirar';
+    $('pal-n').textContent=st.pal.demol==='fr'?'Estás viendo los acabados de pared a retirar. Toca un muro y marca «Retirar este acabado» en su panel.':'Elige la capa (suelo, techo o paredes): el plano muestra solo esa capa. Toca dentro de una sala existente para marcarla.';
     $('pal-all-w').hidden=true;$('txup').hidden=true;
-    $('pal').innerHTML=[['rz-s','Levantar suelo','#d9b98d'],['rz-t','Desmontar techo','#cfdde9']].map(function(m){return '<button data-pal="'+m[0]+'" aria-pressed="'+(st.pal.demol===m[0]&&st.tool==='paint')+'"><span class="sw" style="background:'+m[2]+'"></span>'+m[1]+'</button>'}).join('');
+    var demP=st.pal.demol!=='fr';
+    $('alz-modo').hidden=!demP;$('alz-h-w').hidden=true;
+    if(demP){
+      st.demModo=st.demModo||'sala';
+      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Solo una parte (arrastra)']].map(function(x){return '<button data-dm="'+x[0]+'" aria-pressed="'+(st.demModo===x[0])+'">'+x[1]+'</button>'}).join('');
+      if(st.demModo==='parte')$('pal-n').textContent='Arrastra un rectángulo dentro de la sala: solo esa parte se levanta o se desmonta. Luego ajusta sus medidas en el panel.';
+    }
+    $('pal').innerHTML=[['rz-s','Suelo: levantar','#d9b98d'],['rz-t','Techo: desmontar','#cfdde9'],['fr','Paredes: retirar acabado','#d9d0c6']].map(function(m){return '<button data-pal="'+m[0]+'" aria-pressed="'+(st.pal.demol===m[0])+'"><span class="sw" style="background:'+m[2]+'"></span>'+m[1]+'</button>'}).join('');
     return;
   }
   if(v==='suelos'||v==='techos'||v==='acab'||v==='alz'){
@@ -2953,6 +3017,8 @@ function drawPal(){
   $('pal').innerHTML=PTK[v].map(function(d){return '<button data-pal="'+d.id+'" aria-pressed="'+(st.pal[v]===d.id&&st.tool==='pt')+'">'+ptThumb(d)+d.n+'</button>'}).join('');
 }
 $('alz-modo').addEventListener('click',function(e){
+  var bd=e.target.closest('button[data-dm]');
+  if(bd){st.demModo=bd.getAttribute('data-dm');st.tool='paint';drawPal();toolbar();hint();return}
   var b=e.target.closest('button[data-am]');if(!b)return;
   st.alzModo=b.getAttribute('data-am');st.tool='paint';drawPal();toolbar();hint();
 });
@@ -2971,7 +3037,9 @@ $('pal-all').addEventListener('click',function(){
 });
 $('pal').addEventListener('click',function(e){
   var b=e.target.closest('[data-pal]');if(!b)return;
-  st.pal[st.view==='alz'?'acab':st.view]=b.getAttribute('data-pal');st.tool=(st.view==='ilum'||st.view==='elec')?'pt':'paint';st.led=null;toolbar();hint();
+  st.pal[st.view==='alz'?'acab':st.view]=b.getAttribute('data-pal');st.tool=(st.view==='ilum'||st.view==='elec')?'pt':'paint';st.led=null;
+  if(st.view==='demol'){var sr=st.sel&&st.sel.t==='rz'&&by(st.v.rz,st.sel.id);if(sr&&sr.k!==capaDem())st.sel=null;if(st.pal.demol==='fr')st.tool='select';render();panelSel()}
+  toolbar();hint();
 });
 function fingerBtn(){$('b-finger').setAttribute('aria-pressed',String(st.fingerDraws));hint()}
 
@@ -3121,7 +3189,12 @@ function panelSel(focus){
     /* ya dibujado arriba */
   }else if(s.t==='rz'){
     var rz=by(st.v.rz,s.id),rv=rz.k==='s'?'suelos':'techos',rn=nd(rz.n),rf=rn&&faceAt({x:rn.x+rz.dx,y:rn.y+rz.dy},'actual');
-    h+='<div class="rowh"><strong>'+(rz.k==='s'?'Suelo existente a levantar':'Techo existente a desmontar')+'</strong>'+(rf?'<span class="muted">'+m2(rf.area/10000)+' m²</span>':'')+'</div>';
+    h+='<div class="rowh"><strong>'+(rz.part?(rz.k==='s'?'Parte del suelo a levantar':'Parte del techo a desmontar'):(rz.k==='s'?'Suelo existente a levantar':'Techo existente a desmontar'))+'</strong>'+(rz.part||rf?'<span class="muted">'+m2(rzArea(rz)/10000)+' m²</span>':'')+'</div>';
+    if(rz.part&&rf){
+      var bb=rf.inner.reduce(function(a,q){return {x0:Math.min(a.x0,q.x),y0:Math.min(a.y0,q.y)}},{x0:1e9,y0:1e9}),rq=rzRect(rz);
+      h+='<p class="note">Solo se retira este rectángulo, no toda la sala. Ajusta su tamaño y su posición desde la esquina superior izquierda de la sala.</p>';
+      h+=fld('rz_bw','Ancho (cm)',rz.bw)+fld('rz_bh','Fondo (cm)',rz.bh)+fld('rz_x','Distancia desde la esquina izquierda (cm)',rq.x0-bb.x0)+fld('rz_y','Distancia desde la esquina de arriba (cm)',rq.y0-bb.y0);
+    }
     h+='<label class="fld"><span>Material existente</span><select data-t="rz_mat"><option value="">Sin definir</option>'+MATS[rv].map(function(m){return '<option value="'+m.id+'"'+(m.id===rz.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label>';
     h+='<div class="btns"><button class="danger" data-a="del">Dejar de retirar</button></div>';
   }else if(s.t==='zn'){
@@ -3240,7 +3313,7 @@ function panelRest(){
   v.eq.forEach(function(e){var k=e.nm+'|'+fmt(e.w)+'×'+fmt(e.d);if(!cnt[k]){cnt[k]={n:0,t:e.nm,s:fmt(e.w)+' × '+fmt(e.d)};ord.push(k)}cnt[k].n++});
   ord.forEach(function(k){s+='<tr><td>'+esc(cnt[k].t)+' <span class="muted">'+cnt[k].s+'</span></td><td>× '+cnt[k].n+'</td></tr>'});
   if(v.zn.length){var zs=0,zt=0;roomFaces('suelos').forEach(function(f){if(zoneIn(f,'s'))zs+=f.area});roomFaces('techos').forEach(function(f){if(zoneIn(f,'t'))zt+=f.area});if(zs)s+='<tr><td>Suelo con material</td><td>'+m2(zs/10000)+' m²</td></tr>';if(zt)s+='<tr><td>Techo con material</td><td>'+m2(zt/10000)+' m²</td></tr>'}
-  var rzs=0,rzt=0;v.rz.forEach(function(r){var rn=nd(r.n),fc=rn&&faceAt({x:rn.x+r.dx,y:rn.y+r.dy},'actual');if(fc){if(r.k==='s')rzs+=fc.area;else rzt+=fc.area}});
+  var rzs=0,rzt=0;v.rz.forEach(function(r){var ar=rzArea(r);if(ar){if(r.k==='s')rzs+=ar;else rzt+=ar}});
   if(rzs)s+='<tr><td>Suelo a levantar</td><td>'+m2(rzs/10000)+' m²</td></tr>';if(rzt)s+='<tr><td>Techo a desmontar</td><td>'+m2(rzt/10000)+' m²</td></tr>';
   var ndm=v.pts.filter(function(q){return q.s==='dem'}).length;if(ndm)s+='<tr><td>Instalaciones a retirar (reparar hueco)</td><td>× '+ndm+'</td></tr>';
   var pcn={};v.pts.forEach(function(q){if((q.s||'new')==='dem')return;pcn[q.k]=(pcn[q.k]||0)+1});
@@ -3308,6 +3381,15 @@ function applyField(key,val,adv){
     var q=by(st.v.eq,s.id);if(!q)return;
     if(!(n>=20&&n<=600)){toast('Escribe una medida entre 20 y 600 cm');return}
     snap();if(key==='eq_w')q.w=n;else q.d=n;commit(false);
+  }else if(s.t==='rz'&&/^rz_/.test(key)){
+    var qr=by(st.v.rz,s.id);if(!qr||!qr.part)return;
+    if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
+    var rnn=nd(qr.n),rfa=rnn&&faceAt({x:rnn.x+qr.dx,y:rnn.y+qr.dy},'actual');if(!rfa)return;
+    var bb2=rfa.inner.reduce(function(a,q){return {x0:Math.min(a.x0,q.x),y0:Math.min(a.y0,q.y)}},{x0:1e9,y0:1e9}),rc=rzRect(qr),cur={bw:qr.bw,bh:qr.bh,x:rc.x0-bb2.x0,y:rc.y0-bb2.y0};
+    snap();
+    cur[key.slice(3)]=Math.max(key==='rz_x'||key==='rz_y'?0:5,n);
+    qr.bw=cur.bw;qr.bh=cur.bh;qr.dx=f2(bb2.x0+cur.x+cur.bw/2-rnn.x);qr.dy=f2(bb2.y0+cur.y+cur.bh/2-rnn.y);
+    commit(false);
   }else if(s.t==='fz'){
     var qz=by(st.v.fz||[],s.id);if(!qz)return;
     if(!(n>=0&&n<=3000)){toast('Escribe una medida válida');return}
@@ -4509,7 +4591,7 @@ function sheetPage(doc,view,idx,total,o){
   p.line(cx,mg,cx,PH-mg,INK,0.35);
 
   /* título de la lámina */
-  p.text(mg+7,mg+10,VNAME[view].toUpperCase(),15*f+1,{bold:true,col:INK});
+  p.text(mg+7,mg+10,(VNAME[view]+(o.capaN?' · '+o.capaN:'')).toUpperCase(),15*f+1,{bold:true,col:INK});
   p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.cliente?' · '+v.cliente:''),9*f+1,{col:MUTED});
 
   /* escala y plano */
@@ -4534,7 +4616,9 @@ function sheetPage(doc,view,idx,total,o){
     if(o.scale&&o.scale!=='auto')S=+o.scale;
     else{for(var i=0;i<SCALES.length;i++)if(SCALES[i]>=need){S=SCALES[i];break}}
     var km=10/S,bw=wc*km,bh=hc*km,ox=ax+(aw-bw)/2-b.x0*km,oy=ay+(ah-bh)/2-b.y0*km;
+    demCapa=(view==='demol'&&o.capa)?o.capa:(view==='demol'?'x':null);
     var inner=scene(LIGHT,40/S,view,{sel:null,nodes:false,tags:tags,noctl:true,dims:o.dims,flat:true,marks:o.marks!==false,ldim:o.ldim!==false});
+    demCapa=null;
     p.raw('q '+pn(mg+1)+' '+pn(mg+19)+' '+pn(cx-mg-2)+' '+pn(PH-2*mg-19-1)+' re W n');
     p.svg('<g transform="translate('+f2(ox)+' '+f2(oy)+') scale('+km+')">'+inner+'</g>',{hatchStep:1.75,dem:LIGHT.dem,demBg:LIGHT.demBg});
     p.raw('Q');
@@ -4791,7 +4875,7 @@ function sheetPage(doc,view,idx,total,o){
     if(dE)rows.push(['Mecanismos a retirar',String(dE)]);
     if(dml)rows.push(['Tira o carril a retirar',m2(dml/100)+' ml']);
     if(dl.length)rows.push(['Huecos a reparar',String(dl.length)+' ud']);
-    var rsA=0,rtA=0;v.rz.forEach(function(r){var rn=nd(r.n),fc=rn&&faceAt({x:rn.x+r.dx,y:rn.y+r.dy},'actual');if(fc){if(r.k==='s')rsA+=fc.area;else rtA+=fc.area}});
+    var rsA=0,rtA=0;v.rz.forEach(function(r){var ar=rzArea(r);if(ar){if(r.k==='s')rsA+=ar;else rtA+=ar}});
     if(rsA)rows.push(['Suelo a levantar',m2(rsA/10000)+' m²']);
     if(rtA)rows.push(['Techo a desmontar',m2(rtA/10000)+' m²']);
     var wrm={},wrT=0;v.walls.forEach(function(w){if(!w.fr||!wallVis(w,view))return;['p','m'].forEach(function(sd){if(w.fr[sd]){var a=wallArea(w);wrT+=a;var k=(w.fx&&w.fx[sd])||'';wrm[k]=(wrm[k]||0)+a}})});
@@ -4873,15 +4957,20 @@ function buildPDF(mode,opt){
   txUsed().forEach(function(t){var r=TXRGB[t.id];if(r&&r.rgb)txIdx[t.id]=doc.image(r.w,r.h,r.rgb)});
   var lumIdx={};
   lumUsedList().forEach(function(l){var r=LUMRGB[l.id];if(r&&r.rgb&&!lumIdx[l.id])lumIdx[l.id]=doc.image(r.w,r.h,r.rgb)});
-  var plan=[];
+  var plan=[],v0=st.v;
   views.forEach(function(vw){
     if(vw==='alz'){var ap=alzPages(opt);ap.pages.forEach(function(pg){plan.push({view:'alz',alz:{S:ap.S,els:pg}})});if(!ap.pages.length)plan.push({view:'alz',alz:null})}
+    else if(vw==='demol'){
+      var pc=[['s','suelo'],['t','techo'],['p','acabados de paredes']].filter(function(c){return c[0]==='p'?v0.walls.some(function(w){return w.fr&&(w.fr.p||w.fr.m)}):v0.rz.some(function(r){return r.k===c[0]})});
+      plan.push({view:'demol',capa:null});
+      pc.forEach(function(c){plan.push({view:'demol',capa:c[0],capaN:c[1]})});
+    }
     else plan.push({view:vw});
   });
   if(mode==='all'||mode==='carp')carpPlan(opt).forEach(function(c){plan.push(c)});
   if(mode==='all'||mode==='det')detPlan(opt).forEach(function(c){plan.push(c)});
   if(!plan.length)throw new Error('vacío');
-  plan.forEach(function(pp,i){if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim})});
+  plan.forEach(function(pp,i){if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim})});
   return doc.bytes();
 }
 function setLogoFromImg(img,store){
@@ -5092,7 +5181,7 @@ function buildResumen(){
   function lst(o){return Object.keys(o).map(function(k){o[k].m2=r2(o[k].m2);return o[k]})}
   out.salas=salas;out.suelos=lst(suelos);out.techos=lst(techos);out.paredes=lst(paredes);
   var sa=0,te=0;
-  v.rz.forEach(function(r){var rn=nd(r.n),fc=rn&&faceAt({x:rn.x+r.dx,y:rn.y+r.dy},'actual');if(fc){if(r.k==='s')sa+=fc.area/10000;else te+=fc.area/10000}});
+  v.rz.forEach(function(r){var ar=rzArea(r)/10000;if(ar){if(r.k==='s')sa+=ar;else te+=ar}});
   out.levantar_suelo_m2=r2(sa);out.desmontar_techo_m2=r2(te);
   var eq={};
   v.eq.forEach(function(e){var k=e.cid||e.nm;(eq[k]=eq[k]||{cid:e.cid||'',nombre:e.nm,n:0,w:e.w,d:e.d}).n++});

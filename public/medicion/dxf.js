@@ -343,7 +343,7 @@
   }
   function categoria(orig) {
     var t = String(orig || '').toLowerCase();
-    if (/stairs?\b|escalator|elevator/.test(t)) return 'Circulaciones';
+    if (/stairs?\b|escalator|elevator/.test(t)) return 'Escaleras';
     if (/\bplants?\b|bonsai|cactus|ficus|palm\b|\btree\b|geranium|euphorbia|echinopsis|sansevieria|monstera|calathea|philodendron|pothos|agave|opuntia/.test(t)) return 'Plantas y jardín';
     if (/person|people|woman|\bman\b|boy\b|girl\b|infant|child|surgeon|patient|hospital stuff/.test(t)) return 'Personas';
     if (/car\b|truck|bus\b|jet|airliner|yacht|boat|ship|train|motorbike|scooter|bulldozer|crane|roller|parking|catamaran|biker|bicycle|hatchback|liftback|roadster|taxi|pickup|sailing|moped/.test(t)) return 'Transporte';
@@ -425,7 +425,7 @@
   function categoriaDeArchivo(nombre) {
     var t = String(nombre || '').toLowerCase();
     if (/\bplants?\b|garden|\btrees?\b/.test(t) && !/window/.test(t)) return 'Plantas y jardín';
-    if (/stair|escalator|elevator|ramp/.test(t)) return 'Circulaciones';
+    if (/stair|escalator|elevator|ramp/.test(t)) return 'Escaleras';
     if (/toilet|urinal|urinat|shower|bath|restroom|bidet|sink|washbasin|lavatory/.test(t)) return 'Baño';
     if (/kitchen/.test(t)) return 'Cocina';
     if (/\b(windows?|doors?)\b/.test(t)) return 'Puertas y ventanas';
@@ -467,7 +467,7 @@
       };
     });
     var catArchivo = categoriaDeArchivo(opciones && opciones.archivo);
-    var forzar = catArchivo === 'Mobiliario' || catArchivo === 'Plantas y jardín' || catArchivo === 'Baño' || catArchivo === 'Circulaciones';
+    var forzar = catArchivo === 'Mobiliario' || catArchivo === 'Plantas y jardín' || catArchivo === 'Baño' || catArchivo === 'Escaleras';
     if (catArchivo === 'Plantas y jardín') { // nombres botánicos: «Ficus elastica», no «Ficus Elastica»
       piezas.forEach(function (p) {
         var toks = String(p.original).toLowerCase().replace(/[_\d]+/g, ' ').split(/\s+/).filter(Boolean);
