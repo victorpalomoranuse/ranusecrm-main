@@ -600,7 +600,9 @@ window.addEventListener('message',function(e){
     snapshot();
     S.shapes={planta:g.shapes.planta||[],alzado:g.shapes.alzado||[],lateral:g.shapes.lateral||[]};
     var mx=0;['planta','alzado','lateral'].forEach(function(v){S.shapes[v].forEach(function(s){if(s.id>mx)mx=s.id})});S.uid=mx+1;
-    S.sel=null;fit();
+    S.sel=null;
+    S.fotoOp=0.12;try{$('f-op').value=12}catch(e){}
+    fit();
     toast((g.metodo==='malla3d'?'Bloque generado desde un modelo 3D. ':'Borrador generado. ')+'Revísalo y retoca lo que haga falta.'+(g.nota?' '+g.nota:''));
   }
   else if(m.type==='error'){$('b-gen').disabled=false;$('b-gen').textContent='✨ Generar con IA';toast(m.message||'No se pudo guardar')}

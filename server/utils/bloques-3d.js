@@ -131,33 +131,53 @@ function simplificarCerrado(p, eps) {
   const a = rdp(p.slice(0, far + 1), eps), b = rdp(p.slice(far).concat([p[0]]), eps);
   return a.slice(0, -1).concat(b.slice(0, -1));
 }
+// Lados casi horizontales o verticales se dejan exactamente rectos, y se quitan puntos alineados
+function limpiarPoligono(p, tol = 0.07) {
+  const q = p.map(a => a.slice());
+  for (let pasada = 0; pasada < 2; pasada++) {
+    for (let i = 0; i < q.length; i++) {
+      const a = q[i], b = q[(i + 1) % q.length], dx = b[0] - a[0], dy = b[1] - a[1];
+      if (Math.abs(dx) > 1e-6 && Math.abs(dy) / Math.abs(dx) < tol) { const y = (a[1] + b[1]) / 2; a[1] = y; b[1] = y; }
+      else if (Math.abs(dy) > 1e-6 && Math.abs(dx) / Math.abs(dy) < tol) { const x = (a[0] + b[0]) / 2; a[0] = x; b[0] = x; }
+    }
+  }
+  const out = [];
+  for (let i = 0; i < q.length; i++) {
+    const a = out.length ? out[out.length - 1] : q[(i + q.length - 1) % q.length], b = q[i], c = q[(i + 1) % q.length];
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.01) continue;
+    const cruz = Math.abs((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]));
+    if (cruz < 0.5 * Math.max(1, Math.hypot(c[0] - a[0], c[1] - a[1]))) continue;
+    out.push(b);
+  }
+  return out.length >= 3 ? out : p;
+}
 const dentro = (pt, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if (((a[1] > pt[1]) !== (b[1] > pt[1])) && (pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0])) c = !c; } return c; };
-const r2 = (n) => Math.round(n * 100) / 100;
+const r2 = (n) => Math.round(n * 2) / 2; // a medio centímetro: dibujo limpio
 
 // Máscara → formas (un polígono por silueta, con sus huecos), escaladas a cm
 function vectorizar(v, anchoCm, altoCm, idRef) {
   const bucles = contornos(v.m, v.W, v.H);
   const sx = anchoCm / (v.W - 4), sy = altoCm / (v.H - 4), total = (v.W - 4) * (v.H - 4);
-  const info = bucles.map(b => ({ b, a: area(b) })).filter(o => Math.abs(o.a) > total * 0.0004);
-  const eps = Math.max(0.9, Math.max(v.W, v.H) * 0.0035);
+  const info = bucles.map(b => ({ b, a: area(b) })).filter(o => Math.abs(o.a) > total * 0.0012);
+  const eps = Math.max(1.4, Math.max(v.W, v.H) * 0.006);
   const aCm = (p) => p.map(([x, y]) => [r2(Math.min(Math.max(x * sx, 0), anchoCm)), r2(Math.min(Math.max(y * sy, 0), altoCm))]);
   // el signo del bucle más grande es el de los exteriores; los de signo contrario son huecos
   const signo = info.length ? Math.sign(info.reduce((m, o) => (Math.abs(o.a) > Math.abs(m.a) ? o : m)).a) : 1;
-  const exteriores = info.filter(o => Math.sign(o.a) === signo).map(o => ({ ...o, simp: simplificarCerrado(o.b, eps), huecos: [] }));
-  const huecos = info.filter(o => Math.sign(o.a) !== signo).map(o => ({ ...o, simp: simplificarCerrado(o.b, eps) }));
+  const exteriores = info.filter(o => Math.sign(o.a) === signo).map(o => ({ ...o, simp: limpiarPoligono(simplificarCerrado(o.b, eps)), huecos: [] }));
+  const huecos = info.filter(o => Math.sign(o.a) !== signo).map(o => ({ ...o, simp: limpiarPoligono(simplificarCerrado(o.b, eps)) }));
   huecos.forEach(h => {
     const padre = exteriores.filter(e => dentro(h.simp[0], e.simp)).sort((a, b) => Math.abs(a.a) - Math.abs(b.a))[0];
     if (padre) padre.huecos.push(h.simp);
   });
   return exteriores.filter(e => e.simp.length >= 3).map(e => ({
-    id: idRef.n++, t: 'poly', closed: true, f: true, sw: 0.6,
+    id: idRef.n++, t: 'poly', closed: true, f: false, sw: 1.2,
     pts: aCm(e.simp), holes: e.huecos.filter(h => h.length >= 3).map(aCm),
   }));
 }
 export function fragDe(shapes) {
   return shapes.map(s => {
     const sub = [s.pts, ...(s.holes || [])].map(p => 'M ' + p.map(q => q[0] + ' ' + q[1]).join(' L ') + ' Z').join(' ');
-    return `<path d="${sub}" stroke="#000000" stroke-width="0.6" fill="#000000" stroke-linejoin="round"/>`;
+    return `<path d="${sub}" stroke="#000000" stroke-width="${s.sw || 1.2}" fill="${s.f ? '#000000' : 'none'}" stroke-linejoin="round"/>`;
   }).join('');
 }
 
