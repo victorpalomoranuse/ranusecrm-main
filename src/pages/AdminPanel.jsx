@@ -2194,11 +2194,16 @@ function ProjectManagerModal({ project, onClose }) {
 
   return (
     <div className="ap-modal-overlay" onClick={onClose}>
-      <div className="ap-mgr-modal" style={tab==='medicion'?{maxWidth:'min(1500px,97vw)',maxHeight:'96vh'}:undefined} onClick={e => e.stopPropagation()}>
+      <div className="ap-mgr-modal" onClick={e => e.stopPropagation()}>
         <div className="ap-mgr-head">
-          <div>
-            <h2 className="ap-mgr-title">{project.client_name}</h2>
-            <p className="ap-mgr-sub">{project.project_name} · <span className="ap-code-val" style={{fontSize:'0.78rem'}}>{project.access_code}</span></p>
+          <div className="ap-mgr-id">
+            {project.cover_image_url
+              ? <img className="ap-mgr-cover" src={project.cover_image_url} alt="" />
+              : <div className="ap-mgr-cover ap-mgr-cover-ph">{String(project.client_name || '?').slice(0, 1).toUpperCase()}</div>}
+            <div>
+              <h2 className="ap-mgr-title">{project.client_name}</h2>
+              <p className="ap-mgr-sub">{project.project_name} · <span className="ap-code-val" style={{fontSize:'0.85rem'}}>{project.access_code}</span></p>
+            </div>
           </div>
           <div style={{display:'flex', gap:'0.5rem', alignItems:'center'}}>
             <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={handleMemoria} disabled={descargandoMemoria}>
