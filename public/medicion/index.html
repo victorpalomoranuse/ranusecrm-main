@@ -8,7 +8,7 @@
   --ink:#1e1b18; --muted:#7a7068; --line:#ddd5cb;
   --accent:#8a6f55; --accent-ink:#ffffff; --brand:#beb0a2;
   --dim:#8d857d; --dem:#b3402f; --dem-bg:#f6dcd5; --new:#1f6f78;
-  --warn:#a96a12; --ok:#2f7d4f; --grid:#ece6de;
+  --warn:#a96a12; --ok:#2f7d4f; --grid:#ece6de; --blk:#5e564e;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -16,7 +16,7 @@
     --ink:#efe9e2; --muted:#a39a90; --line:#35302b;
     --accent:#beb0a2; --accent-ink:#1a1714;
     --dim:#8a8279; --dem:#e0705d; --dem-bg:#4a2a24; --new:#58b4be;
-    --warn:#e0a24a; --ok:#6cc08d; --grid:#26221e;
+    --warn:#e0a24a; --ok:#6cc08d; --grid:#26221e; --blk:#bdb5ab;
     color-scheme:dark;
   }
 }
@@ -25,7 +25,7 @@
   --ink:#efe9e2; --muted:#a39a90; --line:#35302b;
   --accent:#beb0a2; --accent-ink:#1a1714;
   --dim:#8a8279; --dem:#e0705d; --dem-bg:#4a2a24; --new:#58b4be;
-  --warn:#e0a24a; --ok:#6cc08d; --grid:#26221e;
+  --warn:#e0a24a; --ok:#6cc08d; --grid:#26221e; --blk:#bdb5ab;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -163,7 +163,7 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
   --ink:#1e1b18; --muted:#7a7068; --line:#ddd5cb;
   --accent:#8a6f55; --accent-ink:#ffffff; --brand:#beb0a2;
   --dim:#8d857d; --dem:#b3402f; --dem-bg:#f6dcd5; --new:#1f6f78;
-  --warn:#a96a12; --ok:#2f7d4f; --grid:#ece6de; --lab:#1e1b18; color-scheme:light;
+  --warn:#a96a12; --ok:#2f7d4f; --grid:#ece6de; --lab:#1e1b18; --blk:#5e564e; color-scheme:light;
 }
 /* AutoCAD: fondo negro, líneas blancas, demolición roja, obra nueva verde, cotas cian, selección amarilla */
 :root[data-theme="cad"]{
@@ -171,7 +171,7 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
   --ink:#f4f4f4; --muted:#8a97a5; --line:#26313c;
   --accent:#ffe600; --accent-ink:#000000; --brand:#9aa7b4;
   --dim:#5f7b95; --dem:#ff3535; --dem-bg:#3b1313; --new:#2dff7a;
-  --warn:#ffb000; --ok:#2dff7a; --grid:#121920; --lab:#00e5ff; color-scheme:dark;
+  --warn:#ffb000; --ok:#2dff7a; --grid:#121920; --lab:#00e5ff; --blk:#a9b8c6; color-scheme:dark;
 }
 html,body{height:100%;overflow:hidden}
 .app{height:100vh;height:100dvh;gap:0;padding:0;background:var(--bg)}
@@ -578,7 +578,7 @@ var LIBDEF=[
 DEFCAT=DEFCAT.concat(LIBDEF);
 function elpPts(cx,cy,rx,ry){var p=[],i;for(i=0;i<28;i++){var a=i/28*Math.PI*2;p.push(f2(cx+Math.cos(a)*rx)+','+f2(cy+Math.sin(a)*ry))}return p.join(' ')}
 function libSym(ty,L,T,c,px){
-  var A='fill="none" stroke="'+c+'" stroke-width="'+f2(px)+'"',A2='fill="none" stroke="'+c+'" stroke-width="'+f2(px*.55)+'"',F='fill="'+c+'" stroke="none"',o='',i;
+  var A='fill="none" stroke="'+c+'" stroke-width="'+f2(BLW*px)+'"',A2=A,F='fill="'+c+'" stroke="none"',o='',i;
   function R(x,y,w,h,rx,a){return '<rect x="'+f2(x)+'" y="'+f2(y)+'" width="'+f2(Math.max(0,w))+'" height="'+f2(Math.max(0,h))+'" rx="'+f2(rx||0)+'" '+(a||A)+'/>'}
   function E(cx,cy,rx,ry,a){return '<polygon points="'+elpPts(cx,cy,rx,ry)+'" '+(a||A)+'/>'}
   function Ln(x1,y1,x2,y2,a){return '<line x1="'+f2(x1)+'" y1="'+f2(y1)+'" x2="'+f2(x2)+'" y2="'+f2(y2)+'" '+(a||A2)+'/>'}
@@ -1312,7 +1312,7 @@ function eqaSvg(C,px,el){
     var B=bloquesFull[it.cid],frag=B&&B.svg&&B.svg[it.vista],x0=it.x-it.w/2,y0=el.H-it.h;
     if(!frag){out+='<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(it.w)+'" height="'+f2(it.h)+'" style="fill:none;stroke:'+C.dim+';stroke-width:'+f2(px)+';stroke-dasharray:'+f2(4*px)+' '+f2(3*px)+'"/>'+txt(C,px,it.x,y0+it.h/2,it.nm,C.dim,10,500);return}
     var bw=it.vista==='alzado'?B.largo:B.fondo,sx=bw>0?it.w/bw:1,sy=B.alto>0?it.h/B.alto:1,k=Math.max(sx,sy)||1;
-    var inner=frag.replace(/#000000/g,C.ink).replace(/stroke-width="([\d.]+)"/g,function(m,v){return 'stroke-width="'+f2(parseFloat(v)*px/k)+'"'});
+    var inner=frag.replace(/#000000/g,C.blk||C.ink).replace(/stroke-width="([\d.]+)"/g,function(m,v){return 'stroke-width="'+f2(BLW*px/k)+'"'});
     out+='<g transform="translate('+f2(x0)+' '+f2(y0)+') scale('+f2(sx*1e4)/1e4+' '+f2(sy*1e4)/1e4+')">'+inner+'</g>';
     if(sel&&sel.t==='eqa'&&sel.id===it.id)out+='<rect x="'+f2(x0-3*px)+'" y="'+f2(y0-3*px)+'" width="'+f2(it.w+6*px)+'" height="'+f2(it.h+6*px)+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(2*px)+'"/>';
   });
@@ -1367,15 +1367,16 @@ function ptDraw0(C,px,p,sel,col){
 }
 /* bloque real del producto (dibujado en el editor de bloques): planta a escala en cm, solo trazos */
 function bloqueDe(cid){var c=cid?catById(cid):null;return c&&c.bloque&&c.bloque.planta?c.bloque:null}
+var BLW=0.9; /* grosor único del trazo de todos los bloques, en px de pantalla */
 function bloqueSvg(B,L,T,c,px){
   var sx=B.largo>0?L/B.largo:1,sy=B.fondo>0?T/B.fondo:1,esc=Math.abs(sx-1)<0.002&&Math.abs(sy-1)<0.002,k=esc?1:Math.max(sx,sy);
-  var inner=B.planta.replace(/#000000/g,c).replace(/stroke-width="([\d.]+)"/g,function(m,v){return 'stroke-width="'+f2(parseFloat(v)*px/k)+'"'});
+  var inner=B.planta.replace(/#000000/g,c).replace(/stroke-width="([\d.]+)"/g,function(m,v){return 'stroke-width="'+f2(BLW*px/k)+'"'});
   return esc?inner:'<g transform="scale('+f2(sx*1e4)/1e4+' '+f2(sy*1e4)/1e4+')">'+inner+'</g>';
 }
 function eqSym(ty,L,T,c,px,cid){
   var BQ=bloqueDe(cid);if(BQ)return bloqueSvg(BQ,L,T,c,px);
   if(ty&&ty.indexOf('lb:')===0)return libSym(ty,L,T,c,px);
-  var A='fill="none" stroke="'+c+'" stroke-width="'+f2(px)+'"',F='fill="'+c+'" stroke="none"',o='',i;
+  var A='fill="none" stroke="'+c+'" stroke-width="'+f2(BLW*px)+'"',F='fill="'+c+'" stroke="none"',o='',i;
   o+='<rect x="0" y="0" width="'+L+'" height="'+T+'" rx="'+(ty==='cinta'||ty==='banco'?5:2)+'" '+A+'/>';
   if(ty==='rack'){
     var q=Math.min(14,L*.12,T*.12);
@@ -1598,8 +1599,8 @@ function toast(m){var t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(t
 
 /* ---------- dibujo ---------- */
 var svg=$('cv'),cvw=$('cvw');
-var CSS={ink:'var(--ink)',dim:'var(--dim)',dem:'var(--dem)',demBg:'var(--dem-bg)',nw:'var(--new)',bg:'var(--stage)',grid:'var(--grid)',label:'var(--lab,var(--ink))',halo:'var(--stage)',accent:'var(--accent)',warn:'var(--warn)',ok:'var(--ok)',node:'var(--muted)'};
-var LIGHT={ink:'#1e1b18',dim:'#8d857d',dem:'#b3402f',demBg:'#f6dcd5',nw:'#1f6f78',bg:'#ffffff',grid:'#ece6de',label:'#1e1b18',halo:'#ffffff',accent:'#8a6f55',warn:'#a96a12',ok:'#2f7d4f',node:'#7a7068'};
+var CSS={ink:'var(--ink)',dim:'var(--dim)',dem:'var(--dem)',demBg:'var(--dem-bg)',nw:'var(--new)',bg:'var(--stage)',grid:'var(--grid)',label:'var(--lab,var(--ink))',halo:'var(--stage)',accent:'var(--accent)',warn:'var(--warn)',ok:'var(--ok)',node:'var(--muted)',blk:'var(--blk,var(--ink))'};
+var LIGHT={ink:'#1e1b18',dim:'#8d857d',dem:'#b3402f',demBg:'#f6dcd5',nw:'#1f6f78',bg:'#ffffff',grid:'#ece6de',label:'#1e1b18',halo:'#ffffff',accent:'#8a6f55',warn:'#a96a12',ok:'#2f7d4f',node:'#7a7068',blk:'#4a443e'};
 
 function ln(x1,y1,x2,y2,stroke,sw,cap,extra){
   return '<line x1="'+f2(x1)+'" y1="'+f2(y1)+'" x2="'+f2(x2)+'" y2="'+f2(y2)+'" style="fill:none;stroke:'+stroke+';stroke-width:'+f2(sw)+';stroke-linecap:'+(cap||'butt')+(extra||'')+'"/>';
@@ -1778,7 +1779,7 @@ function scene(C,k,view,o){
       }
     }
     eqs.forEach(function(e,i){
-      var r=eqRect(e),col=bad[e.id]?C.dem:C.ink;
+      var r=eqRect(e),col=bad[e.id]?C.dem:(C.blk||C.ink);
       h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+e.rot+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')"><rect width="'+e.w+'" height="'+e.d+'" style="fill:'+C.bg+'"/>'+eqSym(e.ty,e.w,e.d,col,px,e.cid)+'</g>';
       h+='<circle cx="'+f2(r.cx)+'" cy="'+f2(r.cy)+'" r="'+f2(9*px)+'" style="fill:'+col+'"/>';
       h+='<text x="'+f2(r.cx)+'" y="'+f2(r.cy+4*px)+'" text-anchor="middle" style="fill:'+C.bg+';font-size:'+f2(11*px)+'px;font-weight:600">'+(i+1)+'</text>';
@@ -2683,27 +2684,37 @@ function abrirModalDXF(lista,archivo){
   var cards=lista.map(function(b,i){
     var vb=-Math.max(b.largo,b.fondo)*.02,sw=Math.max(b.largo,b.fondo)/130;
     var svg='<svg viewBox="'+f2(vb)+' '+f2(vb)+' '+f2(b.largo-2*vb)+' '+f2(b.fondo-2*vb)+'" preserveAspectRatio="xMidYMid meet" aria-hidden="true">'+b.planta.replace(/#000000/g,'currentColor').replace('stroke-width="1"','stroke-width="'+f2(sw)+'"')+'</svg>';
-    var marca=!b.generico&&!b.aprox;
-    return '<div class="dxfcard'+(marca?'':' off')+'" data-i="'+i+'"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-k="'+i+'"'+(marca?' checked':'')+'> <span>Guardar</span></label>'+svg+
-      '<input type="text" data-n="'+i+'" value="'+esc(b.nombre)+'" aria-label="Nombre del bloque"><small>'+fmt(b.largo)+' × '+fmt(b.fondo)+' cm'+(b.aprox?' · tamaño dudoso, revísalo':'')+(b.generico&&!b.aprox?' · parece un grupo':'')+'</small></div>';
+    var marca=!b.generico&&!b.aprox&&(!b.vista||b.vista==='planta');
+    return '<div class="dxfcard'+(marca?'':' off')+'" data-i="'+i+'" data-v="'+(b.vista||'planta')+'" data-q="'+esc((b.nombre+' '+(b.original||'')+' '+(b.categoria||'')).toLowerCase())+'"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-k="'+i+'"'+(marca?' checked':'')+'> <span>Guardar</span></label>'+svg+
+      '<input type="text" data-n="'+i+'" value="'+esc(b.nombre)+'" aria-label="Nombre del bloque"><small>'+esc(b.categoria||'')+' · '+fmt(b.largo)+' × '+fmt(b.fondo)+' cm'+(b.aprox?' · tamaño dudoso, revísalo':'')+(b.generico&&!b.aprox?' · parece un grupo':'')+'</small></div>';
   }).join('');
-  m.innerHTML='<div class="dxfbox"><header><h3>Importar bloques de «'+esc(archivo)+'»</h3><p class="note" style="margin:0">Marca los que quieras en tu biblioteca. Solo se guarda el dibujo en planta, a escala. Usa solo bloques que tengas derecho a reutilizar.</p></header>'+
+  m.innerHTML='<div class="dxfbox"><header><h3>Importar bloques de «'+esc(archivo)+'»</h3><p class="note" style="margin:0">Marca los que quieras en tu biblioteca. Solo se guarda el dibujo (sin textos ni marcos), a escala. Usa solo bloques que tengas derecho a reutilizar.</p>'+
+    '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input id="dxf-q" type="search" placeholder="Buscar por nombre…" style="flex:1;min-width:160px"><select id="dxf-v"><option value="">Todas las vistas</option><option value="planta" selected>Solo planta (vista desde arriba)</option><option value="frente">Solo frente</option><option value="lateral">Solo lateral</option></select></div></header>'+
     '<div class="dxfgrid">'+cards+'</div>'+
-    '<footer><label class="fld" style="margin:0"><span>Categoría</span><input id="dxf-cat" type="text" value="Mi biblioteca"></label>'+
+    '<footer><label class="fld" style="margin:0"><span>Categoría (vacío = automática)</span><input id="dxf-cat" type="text" value="" placeholder="Transporte, Baño, Mobiliario…"></label>'+
     '<button id="dxf-all">Marcar todos</button><button id="dxf-none">Quitar todos</button><span class="note" id="dxf-n" style="flex:1;margin:0"></span><button id="dxf-cancel">Cancelar</button><button class="pri" id="dxf-save">Guardar</button></footer></div>';
   document.body.appendChild(m);
-  function cuenta(){var n=m.querySelectorAll('input[data-k]:checked').length;$('dxf-n').textContent=n+' seleccionados';$('dxf-save').disabled=!n;$('dxf-save').textContent='Guardar '+n;
+  function filtra(){
+    var q=($('dxf-q').value||'').trim().toLowerCase(),v=$('dxf-v').value,vis=0;
+    [].forEach.call(m.querySelectorAll('.dxfcard'),function(c){
+      var ok=(!v||c.getAttribute('data-v')===v)&&(!q||c.getAttribute('data-q').indexOf(q)>=0);
+      c.style.display=ok?'':'none';if(ok)vis++;
+    });
+    $('dxf-n').setAttribute('data-vis',vis);cuenta();
+  }
+  function cuenta(){var n=m.querySelectorAll('input[data-k]:checked').length;$('dxf-n').textContent=n+' seleccionados · '+($('dxf-n').getAttribute('data-vis')||lista.length)+' a la vista';$('dxf-save').disabled=!n;$('dxf-save').textContent='Guardar '+n;
     [].forEach.call(m.querySelectorAll('.dxfcard'),function(c){c.classList.toggle('off',!c.querySelector('input[data-k]').checked)})}
   m.addEventListener('change',function(e){if(e.target.getAttribute('data-k')!==null)cuenta()});
-  $('dxf-all').addEventListener('click',function(){[].forEach.call(m.querySelectorAll('input[data-k]'),function(c){c.checked=true});cuenta()});
+  $('dxf-q').addEventListener('input',filtra);$('dxf-v').addEventListener('change',filtra);
+  $('dxf-all').addEventListener('click',function(){[].forEach.call(m.querySelectorAll('.dxfcard'),function(c){if(c.style.display!=='none')c.querySelector('input[data-k]').checked=true});cuenta()});
   $('dxf-none').addEventListener('click',function(){[].forEach.call(m.querySelectorAll('input[data-k]'),function(c){c.checked=false});cuenta()});
   $('dxf-cancel').addEventListener('click',cerrarModalDXF);
   m.addEventListener('click',function(e){if(e.target===m)cerrarModalDXF()});
   $('dxf-save').addEventListener('click',function(){
-    var cat=($('dxf-cat').value||'').trim()||'Mi biblioteca',items=[];
+    var catFija=($('dxf-cat').value||'').trim(),items=[];
     [].forEach.call(m.querySelectorAll('input[data-k]:checked'),function(c){
       var i=+c.getAttribute('data-k'),b=lista[i],nm=(m.querySelector('input[data-n="'+i+'"]').value||'').trim()||b.nombre;
-      items.push({nombre:nm,categoria:cat,largo:b.largo,fondo:b.fondo,alto:100,planta:b.planta,origen:'Importado de '+archivo});
+      items.push({nombre:nm,categoria:catFija||b.categoria||'Mi biblioteca',largo:b.largo,fondo:b.fondo,alto:100,planta:b.planta,origen:'Importado de '+archivo});
     });
     if(!items.length)return;
     if(CRM){
@@ -2715,7 +2726,7 @@ function abrirModalDXF(lista,archivo){
     }
     cerrarModalDXF();
   });
-  cuenta();
+  filtra();
 }
 
 /* ---------- interfaz del catálogo de luminarias ---------- */
