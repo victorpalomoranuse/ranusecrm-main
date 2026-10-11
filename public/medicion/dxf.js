@@ -247,6 +247,9 @@
     ['extended wall hung toilet', 'inodoro suspendido alargado'], ['round wall hung toilet', 'inodoro suspendido redondo'], ['square wall hung toilet', 'inodoro suspendido cuadrado'],
     ['wall hung toilet', 'inodoro suspendido'], ['sp wall hung', 'inodoro suspendido SP'], ['accessible toilet', 'inodoro accesible'], ['smart toilet', 'inodoro inteligente'],
     ['toilet basic', 'inodoro'], ['elongated', 'inodoro alargado'],
+    ['fan palm', 'palmera de abanico'], ['sakura bonsai tree', 'bonsái sakura'], ['pine bonsai tree', 'bonsái de pino'], ['bonsai tree', 'bonsái'], ['hanging plants', 'plantas colgantes'],
+    ['wall plants', 'plantas de pared'], ['arc plant stand', 'soporte de plantas en arco'], ['plant stand', 'soporte de plantas'],
+    ['office booth', 'cabina de oficina'], ['folding desk', 'escritorio plegable'], ['meeting desk', 'mesa de reuniones'], ['reception desk', 'mostrador de recepción'],
     ['coffee table', 'mesa de centro'], ['tv unit wallmounted', 'mueble de TV de pared'], ['tv unit', 'mueble de TV'], ['carpet lines round', 'alfombra redonda'], ['carpet lines', 'alfombra'], ['elliptical table', 'mesa elíptica'],
     ['kitchen sink', 'fregadero'], ['corner shower', 'ducha de esquina'], ['rainfinity shower system', 'sistema de ducha'], ['electric stove', 'cocina eléctrica'],
     ['fridge single door', 'frigorífico de una puerta'], ['glass partition with door', 'mampara de cristal con puerta'], ['glass partition', 'mampara de cristal'],
@@ -273,16 +276,20 @@
     wooden: 'de madera', glass: 'de cristal', iron: 'de hierro', metal: 'metálica', modern: 'moderna', multiple: 'varios', thin: 'fina', dining: 'de comedor', stripes: 'de rayas',
     casement: 'abatible', slider: 'corredera', sliding: 'corredera',
     toilet: 'inodoro', accessible: 'accesible', smart: 'inteligente', extended: 'alargado',
+    hanging: 'colgante', lounge: 'butaca', conference: 'conferencia', folding: 'plegable', oval: 'ovalada', quad: 'cuádruple', setup: 'montaje',
     large: 'grande', medium: 'mediano', with: 'con', and: 'y', of: 'de', plant: 'planta', lamp: 'lámpara', shelf: 'estantería', shelves: 'estanterías', rack: 'rack',
     mirror: 'espejo', bin: 'papelera', stool: 'taburete', sofa2: 'sofá', stair: 'escalera', stairs: 'escalera', elevator: 'ascensor', lift: 'ascensor', counter: 'mostrador',
     kitchen: 'cocina', bathroom: 'baño', washing: 'lavadora', machine: 'máquina', washer: 'lavadora', dryer: 'secadora', oven: 'horno', microwave: 'microondas',
     tree: 'árbol', bush: 'arbusto', palm: 'palmera', fence: 'valla', gate: 'portón', curtain: 'cortina', carpet: 'alfombra', rug: 'alfombra', piano: 'piano'
   };
   function nombreEs(orig) {
-    var n = String(orig || '').replace(/[_]+/g, ' ').replace(/\b(US|EU)\b/g, '').replace(/\s+scale\s*\d+/ig, '').replace(/(\d+)\s*x\s*(\d+)\s*m\b/ig, '$1×$2 m').replace(/\s+/g, ' ').trim(), vista = 'planta', low;
+    var n = String(orig || '').replace(/[_]+/g, ' ').replace(/(\d+)\s*seater/ig, '$1 plazas').replace(/\b(US|EU)\b/g, '').replace(/\s+scale\s*\d+/ig, '').replace(/(\d+)\s*x\s*(\d+)\s*m\b/ig, '$1×$2 m').replace(/\s+/g, ' ').trim(), vista = 'planta', low;
     n = n.replace(/\s+(exterior|interior)\s*$/i, ' $1');
     if (/\bside view\b/i.test(n)) { vista = 'lateral'; n = n.replace(/\s*\bside view\b/ig, ''); }
     else if (/\bfront view\b/i.test(n)) { vista = 'frente'; n = n.replace(/\s*\bfront view\b/ig, ''); }
+    var variante = '', mv = /\s*_(\d+)\s*$/.exec(String(orig || '').replace(/\s+(front|side) view\b/ig, ''));
+    if (mv) variante = ' · variante ' + (parseInt(mv[1], 10) + 1);
+    n = n.replace(/\s*\b(\d+)\s*$/, function (all, d) { return mv && d === mv[1] ? '' : all; });
     var ext = '', me = /\s+(exterior|interior)\s*$/i.exec(n);
     if (me) { ext = me[1].toLowerCase(); n = n.slice(0, me.index); }
     var talla = '', m = /\s+(XXL|XL|XS|S|M|L)$/.exec(n);
@@ -294,9 +301,10 @@
       var f = FRASES[i];
       if (low.indexOf(f[0]) >= 0) { hecho = f[1]; low = low.replace(f[0], '\u0001').trim(); break; }
     }
+    var traducido = !!hecho;
     var resto = low.split(/\s+/).filter(Boolean).map(function (w) {
       if (w === '\u0001') return hecho;
-      if (Object.prototype.hasOwnProperty.call(PALABRAS, w)) return PALABRAS[w];
+      if (Object.prototype.hasOwnProperty.call(PALABRAS, w)) { traducido = true; return PALABRAS[w]; }
       if (/\d/.test(w) || /^(i|ii|iii|iv|v|a|b|c|tv|xs|xl|xxl|s|m|l)$/.test(w)) return w.toUpperCase();
       return w.charAt(0).toUpperCase() + w.slice(1);
     }).filter(function (w) { return w !== ''; }).join(' ');
@@ -311,11 +319,13 @@
     if (uniq.length >= 2 && NOMBRES.indexOf(uniq[uniq.length - 1]) >= 0 && uniq.slice(0, -1).every(function (w) { return /^[A-ZÁÉÍÓÚ0-9]/.test(w) || /^[a-z]+$/.test(w) === false; })) uniq.unshift(uniq.pop());
     resto = uniq.join(' ');
     var cat = categoria(orig);
-    var out = resto.charAt(0).toUpperCase() + resto.slice(1) + (talla ? ' (' + talla + ')' : '') + (ext ? ' ' + ext : '');
+    if (!traducido && cat === 'Plantas y jardín') resto = resto.split(' ').map(function (w, i) { return i ? w.toLowerCase() : w; }).join(' ');
+    var out = resto.charAt(0).toUpperCase() + resto.slice(1) + (talla ? ' (' + talla + ')' : '') + (ext ? ' ' + ext : '') + variante;
     return { nombre: out + (vista === 'planta' ? '' : ' · ' + vista), vista: vista, categoria: cat };
   }
   function categoria(orig) {
     var t = String(orig || '').toLowerCase();
+    if (/\bplants?\b|bonsai|cactus|ficus|palm\b|\btree\b|geranium|euphorbia|echinopsis|sansevieria|monstera|calathea|philodendron|pothos|agave|opuntia/.test(t)) return 'Plantas y jardín';
     if (/person|people|woman|\bman\b|boy\b|girl\b|infant|child|surgeon|patient|hospital stuff/.test(t)) return 'Personas';
     if (/car\b|truck|bus\b|jet|airliner|yacht|boat|ship|train|motorbike|scooter|bulldozer|crane|roller|parking|catamaran|biker|bicycle|hatchback|liftback|roadster|taxi|pickup|sailing|moped/.test(t)) return 'Transporte';
     if (/treadmill|exercise|trainer|reformer|crossbar|pilates|dumbbell|barbell|rack|bench press|rower/.test(t)) return 'Fitness';
@@ -395,13 +405,14 @@
   /* une «X», «X front view» y «X side view» en una sola pieza con sus vistas */
   function categoriaDeArchivo(nombre) {
     var t = String(nombre || '').toLowerCase();
+    if (/\bplants?\b|garden|\btrees?\b/.test(t) && !/window/.test(t)) return 'Plantas y jardín';
     if (/toilet|urinal|urinat|shower|bath|bidet|sink|washbasin|lavatory/.test(t)) return 'Baño';
     if (/kitchen/.test(t)) return 'Cocina';
-    if (/window|door/.test(t)) return 'Puertas y ventanas';
+    if (/\b(windows?|doors?)\b/.test(t)) return 'Puertas y ventanas';
     if (/heating|cooling|appliance|hvac/.test(t)) return 'Climatización';
     if (/transport|vehicle|car|boat/.test(t)) return 'Transporte';
     if (/people|person/.test(t)) return 'Personas';
-    if (/living|bedroom|office|furniture|dining|chair|sofa|table|garden|outdoor/.test(t)) return 'Mobiliario';
+    if (/living|bedroom|office|furniture|dining|chair|sofa|table|outdoor/.test(t)) return 'Mobiliario';
     return '';
   }
   function piezasDe(texto, opciones) {
@@ -436,7 +447,18 @@
       };
     });
     var catArchivo = categoriaDeArchivo(opciones && opciones.archivo);
-    if (catArchivo) piezas.forEach(function (p) { if (p.categoria === 'Mi biblioteca') p.categoria = catArchivo; });
+    var forzar = catArchivo === 'Mobiliario' || catArchivo === 'Plantas y jardín';
+    if (catArchivo === 'Plantas y jardín') { // nombres botánicos: «Ficus elastica», no «Ficus Elastica»
+      piezas.forEach(function (p) {
+        var toks = String(p.original).toLowerCase().replace(/[_\d]+/g, ' ').split(/\s+/).filter(Boolean);
+        var sinTraducir = toks.every(function (w) { return /^(xs|s|m|l|xl|xxl|[a-z])$/.test(w) || !Object.prototype.hasOwnProperty.call(PALABRAS, w); }) && !FRASES.some(function (f) { return String(p.original).toLowerCase().indexOf(f[0]) >= 0; });
+        if (!sinTraducir) return;
+        var m = /^([^(·]*)(.*)$/.exec(p.nombre);
+        var palabras = m[1].trim().split(' ').map(function (w, i) { return i ? w.toLowerCase() : w; }).join(' ');
+        p.nombre = palabras + (m[2] ? ' ' + m[2].trim() : '');
+      });
+    }
+    if (catArchivo) piezas.forEach(function (p) { if (forzar || p.categoria === 'Mi biblioteca') p.categoria = catArchivo; });
     return { unidad: res.unidad, piezas: piezas };
   }
   var API = { parseDXF: parseDXF, bloquesDe: bloquesDe, piezasDe: piezasDe, nombreEs: nombreEs };

@@ -2684,13 +2684,14 @@ function abrirModalDXF(lista,archivo){
   cerrarModalDXF();
   lista=lista.slice().sort(function(a,b){return (a.generico?1:0)-(b.generico?1:0)||(a.aprox?1:0)-(b.aprox?1:0)||a.nombre.localeCompare(b.nombre)});
   var m=document.createElement('div');m.id='dxfmod';m.className='dxfmod';
+  var pv=[];
   var cards=lista.map(function(b,i){
     var NV={planta:'Planta',alzado:'Frente',lateral:'Lateral'},svg='<div style="display:flex;gap:4px">';
     (b.vistas||[]).forEach(function(v){
       var frag=b[v],ww=v==='lateral'?b.fondo:b.largo,hh=v==='planta'?b.fondo:b.alto,sw=Math.max(ww,hh)/110,vb=-Math.max(ww,hh)*.03;
       svg+='<div style="flex:1;text-align:center;min-width:0"><svg viewBox="'+f2(vb)+' '+f2(vb)+' '+f2(ww-2*vb)+' '+f2(hh-2*vb)+'" preserveAspectRatio="xMidYMid meet" aria-hidden="true" style="height:'+((b.vistas||[]).length>1?70:110)+'px">'+frag.replace(/#000000/g,'currentColor').replace(/stroke-width="1"/g,'stroke-width="'+f2(sw)+'"')+'</svg><small>'+NV[v]+'</small></div>';
     });
-    svg+='</div>';
+    svg+='</div>';pv[i]=svg;svg='<div class="dxfpv" data-pv="'+i+'" style="min-height:96px"></div>';
     var marca=!b.generico&&!b.aprox;
     return '<div class="dxfcard'+(marca?'':' off')+'" data-i="'+i+'" data-v="'+(b.vistas||[]).join(',')+'" data-q="'+esc((b.nombre+' '+(b.original||'')+' '+(b.categoria||'')).toLowerCase())+'"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-k="'+i+'"'+(marca?' checked':'')+'> <span>Guardar</span></label>'+svg+
       '<input type="text" data-n="'+i+'" value="'+esc(b.nombre)+'" aria-label="Nombre del bloque"><small>'+esc(b.categoria||'')+' · '+fmt(b.largo)+' × '+fmt(b.fondo)+(b.alto?' × '+fmt(b.alto):'')+' cm'+(b.aprox?' · tamaño dudoso, revísalo':'')+(b.generico&&!b.aprox?' · parece un grupo':'')+'</small></div>';
@@ -2701,6 +2702,9 @@ function abrirModalDXF(lista,archivo){
     '<footer><label class="fld" style="margin:0"><span>Categoría (vacío = automática)</span><input id="dxf-cat" type="text" value="" placeholder="Transporte, Baño, Mobiliario…"></label>'+
     '<button id="dxf-all">Marcar todos</button><button id="dxf-none">Quitar todos</button><span class="note" id="dxf-n" style="flex:1;margin:0"></span><button id="dxf-cancel">Cancelar</button><button class="pri" id="dxf-save">Guardar</button></footer></div>';
   document.body.appendChild(m);
+  function pinta(el){var i=el.getAttribute('data-pv');if(i!==null&&pv[i]){el.innerHTML=pv[i];pv[i]=null}}
+  var obs=window.IntersectionObserver?new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){pinta(e.target);obs.unobserve(e.target)}})},{root:m.querySelector('.dxfgrid'),rootMargin:'300px'}):null;
+  [].forEach.call(m.querySelectorAll('.dxfpv'),function(el){if(obs)obs.observe(el);else pinta(el)});
   function filtra(){
     var q=($('dxf-q').value||'').trim().toLowerCase(),v=$('dxf-v').value,vis=0;
     [].forEach.call(m.querySelectorAll('.dxfcard'),function(c){
