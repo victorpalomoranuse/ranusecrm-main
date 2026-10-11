@@ -6,6 +6,7 @@ import { uploadCatalogPhoto, deleteCatalogPhoto, copyCatalogPhoto } from '../uti
 import sharp from 'sharp';
 import { callClaude } from '../utils/anthropic.js';
 import { generarBloques } from '../utils/bloques-ia.js';
+import { generarBloques3D } from '../utils/bloques-3d.js';
 
 const router = express.Router();
 
@@ -361,8 +362,16 @@ router.post('/products/:id/bloques/generar', async (req, res) => {
     const r = await fetch(p.photo_url);
     if (!r.ok) return res.status(400).json({ error: 'No se pudo leer la foto del producto' });
     const imagen = Buffer.from(await r.arrayBuffer());
-    const b = await generarBloques({ imagen, largo, fondo, alto, nombre: p.name });
-    res.json({ bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, shapes: b.shapes, svg: b.svg, nota: b.nota } });
+    // 1) modelo 3D a partir de la foto, proyectado a las tres vistas; 2) si el servicio 3D no responde, ensamblaje de piezas con IA
+    let b;
+    try { b = await generarBloques3D({ imagen, largo, fondo, alto }); }
+    catch (e3d) {
+      console.error('bloques 3D no disponible, se usa el ensamblaje de piezas:', e3d.message);
+      b = await generarBloques({ imagen, largo, fondo, alto, nombre: p.name });
+      b.metodo = 'piezas';
+      b.nota = 'El servicio de modelos 3D no respondió y se ha usado un método más básico: revisa el dibujo con cuidado. ' + (b.nota || '');
+    }
+    res.json({ bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, shapes: b.shapes, svg: b.svg, nota: b.nota, metodo: b.metodo } });
   } catch (err) {
     console.error('catalog bloques generar:', err);
     res.status(500).json({ error: err.message?.includes('clave de la IA') ? err.message : (err.message || 'No se pudo generar el bloque') });
