@@ -6195,8 +6195,7 @@ function sheetPage(doc,view,idx,total,o){
     rows.push(['Total',m2(tot/10000)+' m²']);
     if(view==='suelos')rows.push(['Rodapié',m2(rod/100)+' ml']);
   }
-  (v.dr||[]).forEach(function(z,i){if(z.t==='zona'&&(z.vw==='*'||z.vw===view))rows.push([(z.txt||'Zona '+(i+1)).split('
-')[0],m2(polyArea(z.pts)/10000)+' m²'])});
+  (v.dr||[]).forEach(function(z,i){if(z.t==='zona'&&(z.vw==='*'||z.vw===view))rows.push([String(z.txt||'Zona '+(i+1)).split('|')[0].slice(0,40),m2(polyArea(z.pts)/10000)+' m²'])});
   if(sect('Mediciones')){
     rows.forEach(function(r){if(room(rh))rowTxt(r[0],r[1])});
     if(view==='demol'||view==='interv')if(room(rh+4)){p.text(xL,y+3*f,'m² de muro = ml × altura libre, sin descontar huecos.',sm,{col:MUTED});y+=4.2*f}
