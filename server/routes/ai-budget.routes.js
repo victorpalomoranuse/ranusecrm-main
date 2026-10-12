@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
+import { encolarBloques, estadoBloques } from '../utils/bloques-catalogo.js';
 import { callClaude } from '../utils/anthropic.js';
 import { cantidadesDePlano } from '../utils/planos.js';
 import { TOOL_CONOCIMIENTO, ejecutarConsultaConocimiento } from '../utils/conocimiento.js';
@@ -186,6 +187,35 @@ Descuentos sobre el presupuesto:
 
 const TOOLS = [
   TOOL_CONOCIMIENTO,
+  {
+    name: 'generar_bloques_productos',
+    description: 'Genera los BLOQUES de planos (planta, alzado y lateral a escala, a partir de la foto y las medidas) de productos del catálogo, para que se puedan colocar en la herramienta de Planos. Úsala cuando te pidan generar los bloques de los productos que has ido creando en esta conversación (usa los producto_id que devolvió crear_producto_catalogo) o de otros que te indiquen por nombre. Cada producto necesita FOTO y las tres medidas (longitud, ancho, altura): si falta alguna y la persona te la da, pásala aquí y se guarda en el producto. La generación tarda unos 2-5 minutos por producto y se hace en segundo plano: la herramienta responde enseguida diciendo cuáles se han puesto en marcha y cuáles no se pueden generar y por qué. Para ver cómo van usa estado_bloques_productos.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        productos: {
+          type: 'array',
+          description: 'Productos a generar',
+          items: {
+            type: 'object',
+            properties: {
+              producto_id: { type: 'string', description: 'id del producto (el que devolvió crear_producto_catalogo)' },
+              nombre: { type: 'string', description: 'Nombre EXACTO del producto, solo si no tienes su id' },
+              longitud: { type: 'number', description: 'Largo en cm — solo si el producto no la tiene y te la han dado' },
+              ancho: { type: 'number', description: 'Fondo en cm — solo si falta y te lo han dado' },
+              altura: { type: 'number', description: 'Alto en cm — solo si falta y te lo han dado' },
+            },
+          },
+        },
+      },
+      required: ['productos'],
+    },
+  },
+  {
+    name: 'estado_bloques_productos',
+    description: 'Consulta cómo va la generación de bloques en segundo plano (en cola, generando, listo o error) de los productos que se han lanzado con generar_bloques_productos. Sin parámetros devuelve todos los de esta sesión del servidor.',
+    input_schema: { type: 'object', properties: { producto_ids: { type: 'array', items: { type: 'string' } } }, required: [] },
+  },
   {
     name: 'listar_categorias',
     description: 'Lista todas las categorías de producto que existen en el catálogo (ej. Racks, Mancuernas, Bancos, Cardio, Suelos...), con su tipo (material o mobiliario). Úsala cuando no estés seguro de qué nombre exacto usar en buscar_productos.',
@@ -863,7 +893,38 @@ async function leerPlanosProyecto(proyectoId) {
   }
 }
 
+async function generarBloquesProductos({ productos }) {
+  const lista = Array.isArray(productos) ? productos.slice(0, 40) : [];
+  if (!lista.length) return { iniciados: 0, mensaje: 'No me has dicho qué productos.' };
+  const ok = [], no = [];
+  for (const it of lista) {
+    let p = null;
+    if (it.producto_id) { const { data } = await supabase.from('catalog_products').select('id, name, photo_url, longitud, ancho, altura').eq('id', it.producto_id).maybeSingle(); p = data; }
+    else if (it.nombre) { const f = await buscarProductoPorNombre(String(it.nombre).trim()); if (f) { const { data } = await supabase.from('catalog_products').select('id, name, photo_url, longitud, ancho, altura').eq('id', f.id).maybeSingle(); p = data; } }
+    if (!p) { no.push({ producto: it.nombre || it.producto_id, motivo: 'no se ha encontrado en el catálogo' }); continue; }
+    const cambios = {};
+    for (const [k, campo] of [['longitud', 'longitud'], ['ancho', 'ancho'], ['altura', 'altura']]) {
+      if (!(Number(p[campo]) > 0) && Number(it[k]) > 0) { cambios[campo] = Number(it[k]); p[campo] = Number(it[k]); }
+    }
+    if (Object.keys(cambios).length) await supabase.from('catalog_products').update(cambios).eq('id', p.id);
+    const faltan = [!p.photo_url && 'foto', !(Number(p.longitud) > 0) && 'longitud', !(Number(p.ancho) > 0) && 'ancho', !(Number(p.altura) > 0) && 'altura'].filter(Boolean);
+    if (faltan.length) { no.push({ producto: p.name, motivo: 'le falta: ' + faltan.join(', ') }); continue; }
+    ok.push(p);
+  }
+  if (ok.length) encolarBloques(ok);
+  return {
+    iniciados: ok.length,
+    productos_iniciados: ok.map(p => ({ producto_id: p.id, nombre: p.name })),
+    no_generables: no,
+    mensaje: ok.length
+      ? `Generación en marcha para ${ok.length} producto(s), de uno en uno y en segundo plano (unos 2-5 minutos cada uno). Cuando acaben aparecerán con su dibujo real en la biblioteca de la herramienta de Planos (hay que recargar la página). Son un primer dibujo automático: se pueden repasar después. Puedo consultar el estado con estado_bloques_productos.`
+      : 'No se ha podido iniciar ninguno.',
+  };
+}
+
 async function runTool(name, input) {
+  if (name === 'generar_bloques_productos') return generarBloquesProductos(input);
+  if (name === 'estado_bloques_productos') return { bloques: estadoBloques(input?.producto_ids) };
   if (name === 'listar_categorias') return { categorias: await listarCategorias() };
   if (name === 'buscar_productos') return buscarProductos(input.categoria, input.marca);
   if (name === 'buscar_por_texto') return buscarPorTexto(input.texto);
