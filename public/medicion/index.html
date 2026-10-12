@@ -6316,7 +6316,7 @@ function buildModelo3d(){
       suelo:ms?{n:ms.n,c:ms.c}:null,techo:mt?{n:mt.n,c:mt.c}:null});
   });
   out.a_medida=(v.mm||[]).filter(function(m){return m.k!=='hor'}).map(function(m){var q=mmPoly(m);return q?{nombre:mmNombre(m),pts:q.pts.map(function(p){return [f2(p.x),f2(p.y)]}),z0:f2(m.y0||0),z1:f2((m.y0||0)+m.h),luz:!!m.luz}:null}).filter(Boolean);
-  v.pil.forEach(function(p){var c=pc(p);out.pilares.push({cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,estado:p.s||'ex'})});
+  v.pil.forEach(function(p){pilCells(p).forEach(function(c){out.pilares.push({cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,estado:p.s||'ex'})})});
   v.eq.forEach(function(e){
     var c=pc(e),cat=catById(e.cid);
     out.equipos.push({cid:e.cid||'',nombre:e.nm,cx:f2(c.x),cy:f2(c.y),w:e.w,d:e.d,rot:e.rot||0,fx:!!e.fx,fy:!!e.fy,alto:(cat&&cat.alto)||110,
