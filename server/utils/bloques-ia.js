@@ -26,8 +26,10 @@ Cada parte:
 - cilindro: "d": diámetro, "l": longitud, "eje": "x" | "y" | "z" (a lo largo de qué eje va antes de rotar).
 - esfera: "d": diámetro.
 - opcional "rot":[rx,ry,rz] en grados, rotación alrededor de los ejes x, y, z que pasan por el centro (para piezas inclinadas: respaldos reclinados, palancas, brazos de prensa…). Comprueba el sentido de giro: una rotación positiva alrededor de x lleva +y hacia +z.
-- "solido": true para estructura de tubo, perfiles, barras y piezas metálicas (se dibujan rellenas en negro); false para tapizados, paneles grandes y pesas (se dibujan solo con contorno).
+- "solido": true SOLO para tubos, perfiles y barras finos (menos de 12 cm de sección; se dibujan rellenos en negro); false para todo lo demás: bases, plataformas, carcasas, tapizados, paneles y pesas (se dibujan solo con contorno).
 Reglas:
+- MODELA SOLO EL PRODUCTO. Ignora por completo a cualquier persona, la ropa, el suelo, las paredes, los accesorios sueltos y el fondo; si hay una persona usándolo, imagina la máquina sin ella.
+- Lo que importa en PLANTA es la huella real: una cinta de correr es una base alargada con los laterales y la consola al frente; un banco, un tablero estrecho; un rack, cuatro patas y sus travesaños. No rellenes huecos que en la realidad están libres (el espacio entre montantes, bajo un asiento).
 - Descompón en las piezas que MÁS se notan en planta y en alzado/lateral: patas, montantes, travesaños, bases, columnas de pesas, asientos y respaldos, barras, rodillos, poleas (cilindros), pantallas. Entre 12 y 45 piezas. Simplifica los tornillos y agujeros: no los dibujes.
 - Usa las medidas reales: las piezas deben llegar a los límites del recuadro (el producto toca x=0 y x=LARGO, y=0 y y=FONDO, z=0 y z=ALTO por alguna parte).
 - Los tubos de estructura suelen medir 5-8 cm de sección; las barras olímpicas 5 cm de diámetro y 220 cm de largo (los extremos sobresalen).
@@ -87,7 +89,9 @@ export function proyectar(partes, { largo, fondo, alto }) {
     .filter(p => (p.tipo === 'caja' ? Array.isArray(p.tam) && p.tam.length === 3 : Number(p.d) > 0));
   for (const p of lista) {
     const P = puntosDe(p);
-    const solido = p.solido === true;
+    /* solo se rellenan las piezas finas (tubos, perfiles, barras): una base o una carcasa grande va de contorno */
+    const fina = p.tipo === 'caja' ? [...p.tam.map(Number)].sort((a, b) => a - b)[1] <= 14 : Number(p.d) <= 12;
+    const solido = false; /* líneas limpias: ninguna pieza se rellena de negro */
     const prof = { planta: Math.max(...P.map(q => q[2])), alzado: Math.min(...P.map(q => q[1])), lateral: Math.min(...P.map(q => q[0])) };
     vistas.planta.push({ pts: casco(P.map(q => [q[0], q[1]])), solido, prof: prof.planta });
     vistas.alzado.push({ pts: casco(P.map(q => [q[0], alto - q[2]])), solido, prof: prof.alzado });
@@ -100,11 +104,11 @@ export function proyectar(partes, { largo, fondo, alto }) {
     const [W, H] = dims[v];
     const polys = vistas[v].filter(q => q.pts.length >= 3).sort((a, b) => a.prof - b.prof);
     const shapes = polys.map(q => ({
-      id: id++, t: 'poly', closed: true, f: q.solido, sw: q.solido ? 0.6 : 1.0,
+      id: id++, t: 'poly', closed: true, f: q.solido, sw: 0.9,
       pts: q.pts.map(([x, y]) => [r2(Math.min(Math.max(x, -1), W + 1)), r2(Math.min(Math.max(y, -1), H + 1))]),
     }));
     salida.svg[v] = shapes.map(s => {
-      const a = ` stroke="#000000" stroke-width="${s.sw}" fill="${s.f ? '#000000' : 'none'}" stroke-linecap="round"`;
+      const a = ` stroke="#000000" stroke-width="${s.sw}" fill="${s.f ? '#000000' : '#ffffff'}" stroke-linecap="round"`;
       return `<polygon points="${s.pts.map(p => p[0] + ',' + p[1]).join(' ')}"${a}/>`;
     }).join('');
     if (v !== 'planta') { // línea de suelo

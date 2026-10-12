@@ -4,9 +4,8 @@ import compression from 'compression';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
 import { cantidadesDePlano } from '../utils/planos.js';
-import { generarBloques } from '../utils/bloques-ia.js';
+import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { callClaude } from '../utils/anthropic.js';
-import { generarBloques3D } from '../utils/bloques-3d.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
 
 // Herramienta de medición en obra: guarda los planos por proyecto y le sirve el
@@ -87,13 +86,7 @@ router.post('/bloque-ia', async (req, res) => {
       if (![largo, fondo, alto].every(n => n > 0 && n <= 5000)) return res.status(422).json({ error: 'No se pudieron estimar las medidas: escríbelas tú' });
       estimadas = true;
     }
-    let b;
-    try { b = await generarBloques3D({ imagen, largo, fondo, alto }); }
-    catch (e3d) {
-      console.error('bloque-ia: 3D no disponible, se usa el ensamblaje de piezas:', e3d.message);
-      b = await generarBloques({ imagen, largo, fondo, alto, nombre });
-      b.metodo = 'piezas';
-    }
+    const b = await generarBloquesAuto({ imagen, largo, fondo, alto, nombre });
     if (!b?.svg?.planta) return res.status(422).json({ error: 'No se pudo sacar un dibujo de esa imagen. Prueba con otra foto, con el objeto bien visible y fondo limpio.' });
     res.json({ bloque: { largo, fondo, alto, estimadas, svg: { planta: b.svg.planta || '', alzado: b.svg.alzado || '', lateral: b.svg.lateral || '' }, metodo: b.metodo || null, nota: b.nota || '' } });
   } catch (err) {

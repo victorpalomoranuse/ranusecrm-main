@@ -1,6 +1,5 @@
 import { supabase } from '../config/supabase.js';
-import { generarBloques } from './bloques-ia.js';
-import { generarBloques3D } from './bloques-3d.js';
+import { generarBloquesAuto } from './bloques-auto.js';
 
 // Genera los bloques (planta, alzado, lateral) de un producto del catálogo a partir de su foto y sus medidas
 // y los guarda en catalog_products.bloques (los mismos que se ven en la herramienta de planos).
@@ -11,9 +10,7 @@ export async function generarBloqueProducto(p) {
   const r = await fetch(p.photo_url);
   if (!r.ok) throw new Error('no se pudo leer la foto');
   const imagen = Buffer.from(await r.arrayBuffer());
-  let b;
-  try { b = await generarBloques3D({ imagen, ...dims }); }
-  catch { b = await generarBloques({ imagen, ...dims, nombre: p.name }); b.metodo = 'piezas'; }
+  const b = await generarBloquesAuto({ imagen, ...dims, nombre: p.name });
   if (!b?.svg?.planta) throw new Error('no se pudo sacar un dibujo de la foto');
   const bloques = { largo: dims.largo, fondo: dims.fondo, alto: dims.alto, shapes: b.shapes || null, svg: { planta: b.svg.planta || '', alzado: b.svg.alzado || '', lateral: b.svg.lateral || '' }, actualizado: new Date().toISOString(), automatico: true, metodo: b.metodo || null };
   const { error } = await supabase.from('catalog_products').update({ bloques }).eq('id', p.id);
