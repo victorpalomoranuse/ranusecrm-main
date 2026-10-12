@@ -2274,7 +2274,12 @@ function scene(C,k,view,o){
   if(o.marks&&view==='acab')h+=elevMarks(C,px);
   h+=zlab;
   if(o.nodes){
+    /* solo los puntos de muros que esta lámina enseña (los de otros estados no se ven) */
+    var nvis={};
+    v.walls.forEach(function(w){if(wallVis(w,view)){nvis[w.a]=1;nvis[w.b]=1}});
+    if(typeof gesture!=='undefined'&&gesture&&gesture.n)nvis[gesture.n.id]=1;
     v.nodes.forEach(function(n){
+      if(!nvis[n.id])return;
       var hot=st.tool==='diag',on=st.dg&&st.dg.a===n.id;
       h+='<circle cx="'+f2(n.x)+'" cy="'+f2(n.y)+'" r="'+f2((on?8:(hot?6:3.5))*px)+'" style="fill:'+(on?C.accent:C.node)+';opacity:'+(hot||on?1:.55)+'"/>';
     });
