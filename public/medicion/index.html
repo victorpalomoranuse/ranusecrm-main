@@ -1989,15 +1989,19 @@ function selDims(C,px,w,view){
     function P(sv,d,sg){return {x:g.a.x+g.ux*sv+ni.x*d*(sg||1),y:g.a.y+g.uy*sv+ni.y*d*(sg||1)}}
     var shown=wl2.m===true?(wl2.len-(L-clear)):clear,dI=t/2+14*px;
     h+=ln(P(s0,t/2).x,P(s0,t/2).y,P(s0,dI+4*px).x,P(s0,dI+4*px).y,AZUL,px*0.8)+ln(P(s1,t/2).x,P(s1,t/2).y,P(s1,dI+4*px).x,P(s1,dI+4*px).y,AZUL,px*0.8);
-    azul(P(s0,dI),P(s1,dI),shown,{wall:wl2.id,kind:'wsel',nid:esSel?null:nid,delta:L-clear});
+    azul(P(s0,dI),P(s1,dI),shown,{wall:wl2.id,kind:'wsel',chain:!!wl2._chain,nid:esSel?null:nid,delta:L-clear});
     if(esSel){ // exterior: de cara exterior a cara exterior
       var dE=t/2+14*px,o0=s0-t,o1=s1+t;
       h+=ln(P(o0,t/2,-1).x,P(o0,t/2,-1).y,P(o0,dE+4*px,-1).x,P(o0,dE+4*px,-1).y,AZUL,px*0.8)+ln(P(o1,t/2,-1).x,P(o1,t/2,-1).y,P(o1,dE+4*px,-1).x,P(o1,dE+4*px,-1).y,AZUL,px*0.8);
-      azul(P(o0,dE,-1),P(o1,dE,-1),shown+2*t,{wall:wl2.id,kind:'wsel',nid:null,delta:(L-clear)-2*t});
+      azul(P(o0,dE,-1),P(o1,dE,-1),shown+2*t,{wall:wl2.id,kind:'wsel',chain:!!wl2._chain,nid:null,delta:(L-clear)-2*t});
     }
   }
-  una(w,true,null);
-  [w.a,w.b].forEach(function(nid){adjAll(w,nid).forEach(function(aj){if(wallVis(aj,view))una(aj,false,nid)})});
+  /* en las láminas donde los muros seguidos se acotan juntos (p. ej. Estado actual), la cota azul también los une */
+  var ch=null;
+  if(cent){var cs=dimWalls(view).filter(function(c){return c._chain&&c._chain.indexOf(w)>=0});ch=cs[0]||null}
+  var W0=ch||w;
+  una(W0,true,null);
+  [W0.a,W0.b].forEach(function(nid){adjAll(W0,nid).forEach(function(aj){if(wallVis(aj,view))una(aj,false,nid)})});
   return h;
 }
 function gridSvg(C,k){
@@ -2485,6 +2489,7 @@ function commitDimEd(){
   if(!dimEd)return;
   var h=dimEd,n=fromU(num(qd.value));closeDimEd();
   if(h.kind==='wsel'){
+    if(h.chain){toast('Esta medida une varios muros seguidos: cambia cada tramo por separado');return}
     if(!(n>0&&n<=100000)){toast('Escribe una medida válida');return}
     if(Math.abs(n-h.val)<0.01)return;
     var eje=n+h.delta,cb0=st.v.cb;
