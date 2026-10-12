@@ -3743,9 +3743,12 @@ $('fly-img').addEventListener('click',function(){flyClose();abrirModalImg(null)}
 document.addEventListener('paste',function(e){
   var items=(e.clipboardData&&e.clipboardData.items)||[],f=null,i;
   for(i=0;i<items.length;i++)if(items[i].kind==='file'&&/^image\//.test(items[i].type)){f=items[i].getAsFile();break}
-  if(!f)return;
-  var ae=document.activeElement;
-  if(ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName)&&!$('imgmod'))return; /* si estás escribiendo en un campo, no se interrumpe */
+  var ae=document.activeElement,enCampo=ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
+  if(!f){
+    if(!enCampo&&!$('imgmod')&&typeof clip!=='undefined'&&clip){e.preventDefault();pegar(true)}
+    return;
+  }
+  if(enCampo&&!$('imgmod'))return; /* si estás escribiendo en un campo, no se interrumpe */
   e.preventDefault();
   reducirImagen(f,function(d){abrirModalImg(d)});
 });
@@ -7186,7 +7189,7 @@ document.addEventListener('keydown',function(e){
   else if(k==='y'||(k==='z'&&e.shiftKey)){e.preventDefault();redoit()}
   else if(k==='c'){e.preventDefault();copiarSel()}
   else if(k==='x'){e.preventDefault();if(copiarSel(true)){closeQE();if(st.multi.length)borrarMulti();else doAction('del',$('a-del'));toast('Cortado')}}
-  else if(k==='v'){e.preventDefault();pegar(true)}
+  else if(k==='v'){/* se resuelve en el evento «paste»: imagen del portapapeles → crear bloque; si no, pegar lo copiado en el plano */}
   else if(k==='d'){e.preventDefault();if(copiarSel(true))pegar(false)}
 });
 cmd('Copiar',['cc','copiar'],'Copia lo seleccionado',function(){copiarSel()});
