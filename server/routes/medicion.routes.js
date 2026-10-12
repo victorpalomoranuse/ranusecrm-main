@@ -5,6 +5,7 @@ import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
 import { cantidadesDePlano } from '../utils/planos.js';
 import { generarBloques } from '../utils/bloques-ia.js';
+import { callClaude } from '../utils/anthropic.js';
 import { generarBloques3D } from '../utils/bloques-3d.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
 
@@ -68,9 +69,24 @@ router.post('/bloque-ia', async (req, res) => {
     if (!m) return res.status(400).json({ error: 'La imagen no es válida (usa PNG, JPG o WebP)' });
     const imagen = Buffer.from(m[2], 'base64');
     if (imagen.length > 12 * 1024 * 1024) return res.status(400).json({ error: 'La imagen pesa demasiado' });
-    const largo = Number(req.body.largo), fondo = Number(req.body.fondo), alto = Number(req.body.alto);
-    if (![largo, fondo, alto].every(n => n > 0 && n <= 5000)) return res.status(400).json({ error: 'Indica el largo, el fondo y el alto del objeto' });
+    let largo = Number(req.body.largo), fondo = Number(req.body.fondo), alto = Number(req.body.alto);
     const nombre = String(req.body.nombre || '').slice(0, 120);
+    let estimadas = false;
+    if (![largo, fondo, alto].every(n => n > 0 && n <= 5000)) {
+      // sin medidas: la IA las estima viendo la foto (hay que revisarlas)
+      const tipo = m[1] === 'png' ? 'image/png' : m[1] === 'webp' ? 'image/webp' : 'image/jpeg';
+      const r = await callClaude({
+        system: 'Eres un técnico de equipamiento de gimnasios y mobiliario. Te enseñan la foto de un objeto y estimas sus medidas reales típicas en centímetros. Responde SOLO con un JSON: {"largo":n,"fondo":n,"alto":n}. largo = lado más largo visto de frente (ancho), fondo = profundidad de delante a atrás, alto = altura total.',
+        maxTokens: 200,
+        messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: tipo, data: m[2] } }, { type: 'text', text: 'Objeto: ' + (nombre || 'sin nombre') + '. Estima largo, fondo y alto en cm.' }] }],
+      });
+      const txt = (r.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+      let j = null;
+      try { j = JSON.parse((txt.match(/\{[\s\S]*\}/) || [''])[0]); } catch { /* sin medidas */ }
+      largo = Number(j?.largo); fondo = Number(j?.fondo); alto = Number(j?.alto);
+      if (![largo, fondo, alto].every(n => n > 0 && n <= 5000)) return res.status(422).json({ error: 'No se pudieron estimar las medidas: escríbelas tú' });
+      estimadas = true;
+    }
     let b;
     try { b = await generarBloques3D({ imagen, largo, fondo, alto }); }
     catch (e3d) {
@@ -79,7 +95,7 @@ router.post('/bloque-ia', async (req, res) => {
       b.metodo = 'piezas';
     }
     if (!b?.svg?.planta) return res.status(422).json({ error: 'No se pudo sacar un dibujo de esa imagen. Prueba con otra foto, con el objeto bien visible y fondo limpio.' });
-    res.json({ bloque: { largo, fondo, alto, svg: { planta: b.svg.planta || '', alzado: b.svg.alzado || '', lateral: b.svg.lateral || '' }, metodo: b.metodo || null, nota: b.nota || '' } });
+    res.json({ bloque: { largo, fondo, alto, estimadas, svg: { planta: b.svg.planta || '', alzado: b.svg.alzado || '', lateral: b.svg.lateral || '' }, metodo: b.metodo || null, nota: b.nota || '' } });
   } catch (err) {
     console.error('medicion bloque-ia:', err);
     res.status(500).json({ error: err.message?.includes('clave de la IA') ? err.message : 'No se pudo generar el bloque. Inténtalo de nuevo.' });

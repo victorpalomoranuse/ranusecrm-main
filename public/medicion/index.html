@@ -3579,7 +3579,7 @@ function reducirImagen(file,cb){
 function abrirModalImg(dataUrl){
   if(!$('imgmod')){
     var m=document.createElement('div');m.id='imgmod';m.className='dxfmod';
-    m.innerHTML='<div class="dxfbox" style="max-width:760px"><header><h3>Crear un bloque desde una imagen</h3><p class="note" style="margin:0">Pega una foto (Ctrl+V), arrástrala o súbela. Lo ideal: el objeto entero, bien visible y con fondo limpio. Indica sus medidas reales y la herramienta dibuja su planta, frente y lateral a escala. Es un primer dibujo: revísalo antes de guardarlo.</p></header>'+
+    m.innerHTML='<div class="dxfbox" style="max-width:760px"><header><h3>Crear un bloque desde una imagen</h3><p class="note" style="margin:0">Pega una foto (Ctrl+V), arrástrala o súbela. Lo ideal: el objeto entero, bien visible y con fondo limpio. Si sabes sus medidas reales, ponlas (así sale a escala exacta). Si no, déjalas vacías y la IA las estima viendo la foto: revísalas. Es un primer dibujo: míralo antes de guardarlo.</p></header>'+
       '<div style="padding:12px 18px;overflow:auto;display:grid;gap:10px">'+
       '<div id="img-drop" style="border:1.5px dashed var(--line);border-radius:10px;min-height:150px;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;cursor:pointer"><span class="note" style="margin:0">Pega aquí la imagen con Ctrl+V,<br>arrástrala o toca para elegir un archivo</span></div>'+
       '<input type="file" id="img-file" accept="image/*" hidden>'+
@@ -3601,7 +3601,7 @@ function abrirModalImg(dataUrl){
       if(!CRM){$('img-msg').textContent='Esta función está disponible dentro del CRM.';return}
       if(!imgGen.dataUrl){$('img-msg').textContent='Primero pega, arrastra o sube una imagen.';return}
       var L=fromU(num($('img-l').value)),F=fromU(num($('img-f').value)),A=fromU(num($('img-a').value));
-      if(!(L>0&&F>0&&A>0)){$('img-msg').textContent='Escribe el largo, el fondo y el alto reales del objeto.';return}
+      if(!(L>0&&F>0&&A>0)){L=0;F=0;A=0}
       $('img-gen').disabled=true;$('img-msg').textContent='Generando… puede tardar uno o dos minutos. No cierres esta ventana.';
       crmPost({type:'generarBloque',imagen:imgGen.dataUrl,largo:L,fondo:F,alto:A,nombre:($('img-nom').value||'').trim()});
     });
@@ -3619,6 +3619,7 @@ function bloqueGenerado(res,err){
   $('img-gen').disabled=false;
   if(err||!res){$('img-msg').textContent=err||'No se pudo generar el bloque';return}
   imgGen.res=res;
+  if(res.estimadas){var u=UNIDADES[UNIT].f;$('img-l').value=toU(res.largo);$('img-f').value=toU(res.fondo);$('img-a').value=toU(res.alto)}
   var NV={planta:['Planta',res.largo,res.fondo],alzado:['Frente',res.largo,res.alto],lateral:['Lateral',res.fondo,res.alto]},h='';
   ['planta','alzado','lateral'].forEach(function(v){
     var frag=res.svg[v];if(!frag)return;
@@ -3626,7 +3627,7 @@ function bloqueGenerado(res,err){
     h+='<div style="flex:1;min-width:150px;text-align:center"><svg viewBox="'+f2(vb)+' '+f2(vb)+' '+f2(ww-2*vb)+' '+f2(hh-2*vb)+'" preserveAspectRatio="xMidYMid meet" style="height:150px;width:100%;color:var(--ink)">'+frag.replace(/#000000/g,'currentColor')+'</svg><small>'+NV[v][0]+'</small></div>';
   });
   $('img-res').innerHTML=h;
-  $('img-msg').textContent='Listo. Revisa el dibujo'+(res.metodo==='piezas'?' (método básico: puede ser menos fiel)':'')+' y guárdalo si te sirve.';
+  $('img-msg').textContent='Listo. Revisa el dibujo'+(res.estimadas?' y las medidas, que ha estimado la IA ('+fmtU(res.largo)+' × '+fmtU(res.fondo)+' × '+fmtU(res.alto)+' '+UNL()+')':'')+(res.metodo==='piezas'?' (método básico: puede ser menos fiel)':'')+' y guárdalo si te sirve.';
   $('img-save').hidden=false;$('img-gen').hidden=true;
 }
 $('fly-img').addEventListener('click',function(){flyClose();abrirModalImg(null)});
