@@ -569,7 +569,23 @@ var TAN12=0.2126, AXDEG=8;
 
 function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
 function newVisit(){return norm({id:'v'+Date.now().toString(36),nombre:'',cliente:'',fecha:today(),altura:260,paso:80,notas:'',seq:1,nodes:[],walls:[],ops:[],pil:[],ctl:[],eq:[],pts:[],zn:[],rz:[],cn:[],updated:Date.now()})}
-function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.rc=v.rc||[];v.dr=v.dr||[];v.cal=v.cal||[];v.mm=v.mm||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];if(!v.cb)v.cb='int';return v}
+function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.rc=v.rc||[];v.dr=v.dr||[];v.cal=v.cal||[];v.mm=v.mm||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];if(!v.cb)v.cb='int';soldarNodos(v);return v}
+/* dos puntos a menos de 1,5 cm son el mismo (si no, la sala no se detecta como cerrada) */
+function soldarNodos(v){
+  var ns=v.nodes||[],i,j;
+  for(i=0;i<ns.length;i++)for(j=ns.length-1;j>i;j--){
+    if(Math.hypot(ns[i].x-ns[j].x,ns[i].y-ns[j].y)<1.5){weldNodes(v,ns[i].id,ns[j].id);ns=v.nodes}
+  }
+}
+function weldNodes(v,keep,drop){
+  ['pil','eq','eqa','pts','zn','rz','fz','ctl'].forEach(function(l){(v[l]||[]).forEach(function(it){if(it.n===drop)it.n=keep})});
+  (v.walls||[]).forEach(function(w){if(w.a===drop)w.a=keep;if(w.b===drop)w.b=keep});
+  var vistos={},quita={};
+  (v.walls||[]).forEach(function(w){var k=w.a<w.b?w.a+'|'+w.b:w.b+'|'+w.a;if(w.a===w.b||vistos[k])quita[w.id]=1;else vistos[k]=1});
+  v.walls=(v.walls||[]).filter(function(w){return !quita[w.id]});
+  v.ops=(v.ops||[]).filter(function(o){return !quita[o.wall]});
+  v.nodes=(v.nodes||[]).filter(function(q){return q.id!==drop});
+}
 var TIPOS=[['rack','Rack'],['cinta','Cinta'],['banco','Banco'],['manc','Rack de mancuernas'],['bici','Bicicleta'],['remo','Remo'],['tatami','Tatami'],['gen','Genérico']];
 var DEFCAT=[
   {id:'rack',nombre:'Rack de sentadillas',tipo:'rack',w:120,d:140},
@@ -1831,20 +1847,7 @@ function moveNodes(ids,dx,dy,from){
 }
 /* las paredes que tocan un nodo movido toman la longitud nueva como medida */
 /* unir dos puntos: lo que colgaba de `drop` pasa a `keep`; se quitan muros de largo cero o repetidos */
-function unirNodos(keep,drop){
-  var v=st.v;
-  ['pil','eq','eqa','pts','zn','rz','fz','ctl'].forEach(function(l){(v[l]||[]).forEach(function(it){if(it.n===drop)it.n=keep})});
-  v.walls.forEach(function(w){if(w.a===drop)w.a=keep;if(w.b===drop)w.b=keep});
-  var vistos={},quita={};
-  v.walls.forEach(function(w){
-    var k=w.a<w.b?w.a+'|'+w.b:w.b+'|'+w.a;
-    if(w.a===w.b||vistos[k])quita[w.id]=1;else vistos[k]=1;
-  });
-  v.walls=v.walls.filter(function(w){return !quita[w.id]});
-  v.ops=v.ops.filter(function(o){return !quita[o.wall]});
-  v.nodes=v.nodes.filter(function(q){return q.id!==drop});
-  relen([keep]);
-}
+function unirNodos(keep,drop){weldNodes(st.v,keep,drop);relen([keep])}
 function relen(ids){
   var set={};ids.forEach(function(i){set[i]=1});
   st.v.walls.forEach(function(w){
