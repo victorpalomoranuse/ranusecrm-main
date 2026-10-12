@@ -4,6 +4,8 @@ import compression from 'compression';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
 import { cantidadesDePlano } from '../utils/planos.js';
+import { generarBloques } from '../utils/bloques-ia.js';
+import { generarBloques3D } from '../utils/bloques-3d.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
 
 // Herramienta de medición en obra: guarda los planos por proyecto y le sirve el
@@ -57,6 +59,32 @@ async function fotoMiniatura(url, conColor = false) {
 }
 const limpiarCategoria = (n) => String(n || '').replace(/^[A-Z]?\.?\d+\.*\s*/, '').trim();
 const ES_MATERIAL = /suelo|pavimento|c[eé]sped|madera|pintura|revestimiento|techo|acabado|parquet|microcemento|caucho/i;
+
+// ── Crear un bloque a partir de una imagen pegada en el plano ──────────────
+// No guarda nada: devuelve planta, alzado y lateral para que se revisen y se guarden en la biblioteca.
+router.post('/bloque-ia', async (req, res) => {
+  try {
+    const m = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.imagen || ''));
+    if (!m) return res.status(400).json({ error: 'La imagen no es válida (usa PNG, JPG o WebP)' });
+    const imagen = Buffer.from(m[2], 'base64');
+    if (imagen.length > 12 * 1024 * 1024) return res.status(400).json({ error: 'La imagen pesa demasiado' });
+    const largo = Number(req.body.largo), fondo = Number(req.body.fondo), alto = Number(req.body.alto);
+    if (![largo, fondo, alto].every(n => n > 0 && n <= 5000)) return res.status(400).json({ error: 'Indica el largo, el fondo y el alto del objeto' });
+    const nombre = String(req.body.nombre || '').slice(0, 120);
+    let b;
+    try { b = await generarBloques3D({ imagen, largo, fondo, alto }); }
+    catch (e3d) {
+      console.error('bloque-ia: 3D no disponible, se usa el ensamblaje de piezas:', e3d.message);
+      b = await generarBloques({ imagen, largo, fondo, alto, nombre });
+      b.metodo = 'piezas';
+    }
+    if (!b?.svg?.planta) return res.status(422).json({ error: 'No se pudo sacar un dibujo de esa imagen. Prueba con otra foto, con el objeto bien visible y fondo limpio.' });
+    res.json({ bloque: { largo, fondo, alto, svg: { planta: b.svg.planta || '', alzado: b.svg.alzado || '', lateral: b.svg.lateral || '' }, metodo: b.metodo || null, nota: b.nota || '' } });
+  } catch (err) {
+    console.error('medicion bloque-ia:', err);
+    res.status(500).json({ error: err.message?.includes('clave de la IA') ? err.message : 'No se pudo generar el bloque. Inténtalo de nuevo.' });
+  }
+});
 
 // ── Biblioteca propia de bloques (importados desde DXF, etc.) ─────────────
 const ETIQUETAS_PLANTA = new Set(['path', 'g', 'line', 'rect', 'circle', 'polygon']);

@@ -328,6 +328,7 @@ body.crm .top .brand{display:none}
           <button data-cat-todo="1" title="Desplegar todas las familias">＋ Todo</button><button data-cat-todo="0" title="Plegar todas las familias">－ Todo</button>
           <select id="fly-ord" aria-label="Ordenar por"><option value="nombre">Nombre (A–Z)</option><option value="tam">Tamaño: de mayor a menor</option><option value="tam-a">Tamaño: de menor a mayor</option><option value="bloque">Con dibujo o foto primero</option></select>
           <div class="seg3" id="fly-vista" hidden style="margin:8px 0"></div>
+          <button id="fly-img" style="width:100%;margin:6px 0" title="Pega o sube una foto de un objeto y la herramienta dibuja su planta, alzado y lateral a escala">✨ Crear bloque desde una imagen…</button>
           <div class="catgrid" id="fly-cat"></div>
         </div>
         <div id="fly-op" class="catgrid" hidden></div>
@@ -3497,6 +3498,81 @@ function abrirModalDXF(lista,archivo){
   filtra();
 }
 
+/* ---------- crear un bloque desde una imagen (pegada con Ctrl+V, subida o arrastrada) ---------- */
+var imgGen=null;
+function cerrarModalImg(){var m=$('imgmod');if(m)m.remove();imgGen=null}
+function reducirImagen(file,cb){
+  var fr=new FileReader();
+  fr.onload=function(){var im=new Image();im.onload=function(){
+    var k=Math.min(1,1024/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));
+    var g=c.getContext('2d');g.fillStyle='#ffffff';g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0,c.width,c.height);cb(c.toDataURL('image/jpeg',0.88));
+  };im.onerror=function(){toast('No se pudo leer esa imagen')};im.src=fr.result};
+  fr.readAsDataURL(file);
+}
+function abrirModalImg(dataUrl){
+  if(!$('imgmod')){
+    var m=document.createElement('div');m.id='imgmod';m.className='dxfmod';
+    m.innerHTML='<div class="dxfbox" style="max-width:760px"><header><h3>Crear un bloque desde una imagen</h3><p class="note" style="margin:0">Pega una foto (Ctrl+V), arrástrala o súbela. Lo ideal: el objeto entero, bien visible y con fondo limpio. Indica sus medidas reales y la herramienta dibuja su planta, frente y lateral a escala. Es un primer dibujo: revísalo antes de guardarlo.</p></header>'+
+      '<div style="padding:12px 18px;overflow:auto;display:grid;gap:10px">'+
+      '<div id="img-drop" style="border:1.5px dashed var(--line);border-radius:10px;min-height:150px;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;cursor:pointer"><span class="note" style="margin:0">Pega aquí la imagen con Ctrl+V,<br>arrástrala o toca para elegir un archivo</span></div>'+
+      '<input type="file" id="img-file" accept="image/*" hidden>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px"><label class="fld" style="margin:0"><span>Nombre</span><input id="img-nom" type="text" placeholder="Prensa de piernas" autocomplete="off"></label><label class="fld" style="margin:0"><span>Categoría</span><input id="img-cat" type="text" value="Mi biblioteca" autocomplete="off"></label>'+
+      '<label class="fld" style="margin:0"><span id="img-l1">Largo</span><input id="img-l" inputmode="decimal" autocomplete="off"></label><label class="fld" style="margin:0"><span id="img-l2">Fondo</span><input id="img-f" inputmode="decimal" autocomplete="off"></label><label class="fld" style="margin:0"><span id="img-l3">Alto</span><input id="img-a" inputmode="decimal" autocomplete="off"></label></div>'+
+      '<p class="note" id="img-msg" style="margin:0"></p><div id="img-res" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>'+
+      '<footer><span style="flex:1"></span><button id="img-cancel">Cerrar</button><button class="pri" id="img-gen">Generar bloque</button><button class="pri" id="img-save" hidden>Guardar en la biblioteca</button></footer></div>';
+    document.body.appendChild(m);
+    ['img-l1','img-l2','img-l3'].forEach(function(id,i){$(id).textContent=['Largo','Fondo','Alto'][i]+' ('+UNL()+')'});
+    imgGen={dataUrl:null,res:null};
+    imgGen.ponImg=function(d){imgGen.dataUrl=d;imgGen.res=null;$('img-drop').innerHTML='<img src="'+d+'" alt="" style="max-height:200px;max-width:100%;border-radius:8px">';$('img-res').innerHTML='';$('img-save').hidden=true;$('img-gen').hidden=false;$('img-msg').textContent=''};
+    $('img-drop').addEventListener('click',function(){$('img-file').click()});
+    $('img-file').addEventListener('change',function(){var f=$('img-file').files[0];if(f)reducirImagen(f,imgGen.ponImg)});
+    $('img-drop').addEventListener('dragover',function(e){e.preventDefault()});
+    $('img-drop').addEventListener('drop',function(e){e.preventDefault();var f=e.dataTransfer&&e.dataTransfer.files[0];if(f&&/^image\//.test(f.type))reducirImagen(f,imgGen.ponImg)});
+    $('img-cancel').addEventListener('click',cerrarModalImg);
+    m.addEventListener('mousedown',function(e){if(e.target===m)cerrarModalImg()});
+    $('img-gen').addEventListener('click',function(){
+      if(!CRM){$('img-msg').textContent='Esta función está disponible dentro del CRM.';return}
+      if(!imgGen.dataUrl){$('img-msg').textContent='Primero pega, arrastra o sube una imagen.';return}
+      var L=fromU(num($('img-l').value)),F=fromU(num($('img-f').value)),A=fromU(num($('img-a').value));
+      if(!(L>0&&F>0&&A>0)){$('img-msg').textContent='Escribe el largo, el fondo y el alto reales del objeto.';return}
+      $('img-gen').disabled=true;$('img-msg').textContent='Generando… puede tardar uno o dos minutos. No cierres esta ventana.';
+      crmPost({type:'generarBloque',imagen:imgGen.dataUrl,largo:L,fondo:F,alto:A,nombre:($('img-nom').value||'').trim()});
+    });
+    $('img-save').addEventListener('click',function(){
+      var r=imgGen.res;if(!r)return;
+      var nombre=($('img-nom').value||'').trim()||'Bloque desde imagen',cat=($('img-cat').value||'').split(',').map(function(x){return x.trim()}).filter(Boolean).join(' | ')||'Mi biblioteca';
+      crmPost({type:'guardarBiblioteca',items:[{nombre:nombre,categoria:cat,largo:r.largo,fondo:r.fondo,alto:r.alto,planta:r.svg.planta,alzado:r.svg.alzado||null,lateral:r.svg.lateral||null,origen:'Generado desde imagen'}]});
+      toast('Guardando el bloque en la biblioteca…');cerrarModalImg();
+    });
+  }
+  if(dataUrl)imgGen.ponImg(dataUrl);
+}
+function bloqueGenerado(res,err){
+  if(!imgGen||!$('imgmod'))return;
+  $('img-gen').disabled=false;
+  if(err||!res){$('img-msg').textContent=err||'No se pudo generar el bloque';return}
+  imgGen.res=res;
+  var NV={planta:['Planta',res.largo,res.fondo],alzado:['Frente',res.largo,res.alto],lateral:['Lateral',res.fondo,res.alto]},h='';
+  ['planta','alzado','lateral'].forEach(function(v){
+    var frag=res.svg[v];if(!frag)return;
+    var ww=NV[v][1],hh=NV[v][2],vb=-Math.max(ww,hh)*.03;
+    h+='<div style="flex:1;min-width:150px;text-align:center"><svg viewBox="'+f2(vb)+' '+f2(vb)+' '+f2(ww-2*vb)+' '+f2(hh-2*vb)+'" preserveAspectRatio="xMidYMid meet" style="height:150px;width:100%;color:var(--ink)">'+frag.replace(/#000000/g,'currentColor')+'</svg><small>'+NV[v][0]+'</small></div>';
+  });
+  $('img-res').innerHTML=h;
+  $('img-msg').textContent='Listo. Revisa el dibujo'+(res.metodo==='piezas'?' (método básico: puede ser menos fiel)':'')+' y guárdalo si te sirve.';
+  $('img-save').hidden=false;$('img-gen').hidden=true;
+}
+$('fly-img').addEventListener('click',function(){flyClose();abrirModalImg(null)});
+document.addEventListener('paste',function(e){
+  var items=(e.clipboardData&&e.clipboardData.items)||[],f=null,i;
+  for(i=0;i<items.length;i++)if(items[i].kind==='file'&&/^image\//.test(items[i].type)){f=items[i].getAsFile();break}
+  if(!f)return;
+  var ae=document.activeElement;
+  if(ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName)&&!$('imgmod'))return; /* si estás escribiendo en un campo, no se interrumpe */
+  e.preventDefault();
+  reducirImagen(f,function(d){abrirModalImg(d)});
+});
+
 /* ---------- interfaz del catálogo de luminarias ---------- */
 var SYMN={foco:'Foco empotrado',plaf:'Plafón de superficie',colg:'Luminaria colgante',aplq:'Aplique de pared',led:'Tira LED',carril:'Carril de luz'},lcPhoto=null;
 $('lc-sym').innerHTML=Object.keys(SYMN).map(function(k){return '<option value="'+k+'">'+SYMN[k]+'</option>'}).join('');
@@ -6483,6 +6559,8 @@ if(CRM){
       cloud=cloud.filter(function(c){return c.id!==m.id});drawCloud();toast('Plano borrado');
     }else if(m.type==='enlaceSketchup'){
       $('sk-url').value=m.url||'';$('sk-msg').textContent=m.url?'Enlace de solo lectura de este plano. Quien lo tenga puede ver el modelo, pero no cambiarlo.':(m.message||'No se pudo crear el enlace');
+    }else if(m.type==='bloqueGenerado'){bloqueGenerado(m.bloque,null);
+    }else if(m.type==='bloqueError'){bloqueGenerado(null,m.message);
     }else if(m.type==='biblioteca'){
       var nuevos=(m.items||[]).filter(function(c){return c&&c.id&&c.nombre&&c.w>0&&c.d>0});
       nuevos.forEach(function(c){if(c.completo){bloquesFull[c.id]=c.completo;delete c.completo}});

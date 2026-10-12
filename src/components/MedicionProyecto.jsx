@@ -70,6 +70,12 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
         try { const { data } = await api.post('/medicion/biblioteca', { items: m.items }); responder({ type: 'biblioteca', items: data.items || [] }); }
         catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudieron guardar los bloques' }); }
       }
+      else if (m.type === 'generarBloque' && typeof m.imagen === 'string') {
+        try {
+          const { data } = await api.post('/medicion/bloque-ia', { imagen: m.imagen, largo: m.largo, fondo: m.fondo, alto: m.alto, nombre: m.nombre }, { timeout: 600000 });
+          responder({ type: 'bloqueGenerado', bloque: data.bloque });
+        } catch (err) { responder({ type: 'bloqueError', message: err.response?.data?.error || 'No se pudo generar el bloque' }); }
+      }
       else if (m.type === 'pedirMiniaturas' && Array.isArray(m.ids)) {
         try { const { data } = await api.post('/medicion/miniaturas', { ids: m.ids }); responder({ type: 'miniaturas', items: data.items || {} }); }
         catch { /* sin fotos: la memoria sale igualmente */ }
