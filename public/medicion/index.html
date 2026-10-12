@@ -448,6 +448,7 @@ body.crm .top .brand{display:none}
           <summary>Importar bloques desde un DXF</summary>
           <p class="note">Elige un archivo DXF con bloques (los que te dé un fabricante, los de tus bibliotecas con licencia o los de tus propios planos). Verás cada bloque dibujado y marcarás cuáles guardar en tu biblioteca.</p>
           <input id="dxf-file" type="file" accept=".dxf">
+          <input id="prod-dxf" type="file" accept=".dxf" hidden>
           <p class="note" id="dxf-st"></p>
         </details>
       </section>
@@ -2623,6 +2624,7 @@ latIn.forEach(function(inp){
   inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();applyLat(inp);inp.blur()}else if(e.key==='Escape'){inp.blur();render()}});
   inp.addEventListener('change',function(){applyLat(inp)});
 });
+var genProd={},subirProd=null;
 var qd=$('qd'),dimEd=null;
 function closeDimEd(){dimEd=null;qd.hidden=true}
 function openDimEd(h){
@@ -3608,8 +3610,20 @@ $('dxf-file').addEventListener('change',function(e){
   rd.readAsText(f);
   e.target.value='';
 });
+$('prod-dxf').addEventListener('change',function(e){
+  var f=e.target.files&&e.target.files[0],pr=subirProd;e.target.value='';if(!f||!pr)return;
+  var rd=new FileReader();
+  rd.onload=function(){cargarDXF(function(){setTimeout(function(){
+    try{
+      var res=window.RanuseDXF.piezasDe(String(rd.result),{archivo:f.name});
+      if(!res.piezas.length){toast('Ese DXF no tiene bloques con dibujo. Exporta el plano con el bloque colocado.');return}
+      abrirModalDXF(res.piezas,f.name,pr);
+    }catch(err){toast('No se pudo leer ese DXF ('+(err&&err.message||'error')+')')}
+  },30)})};
+  rd.readAsText(f);
+});
 function cerrarModalDXF(){var m=$('dxfmod');if(m)m.remove()}
-function abrirModalDXF(lista,archivo){
+function abrirModalDXF(lista,archivo,prod){
   cerrarModalDXF();
   lista=lista.slice().sort(function(a,b){return (a.generico?1:0)-(b.generico?1:0)||(a.aprox?1:0)-(b.aprox?1:0)||a.nombre.localeCompare(b.nombre)});
   var m=document.createElement('div');m.id='dxfmod';m.className='dxfmod';
@@ -3645,13 +3659,32 @@ function abrirModalDXF(lista,archivo){
   }
   function cuenta(){var n=m.querySelectorAll('input[data-k]:checked').length;$('dxf-n').textContent=n+' seleccionados · '+($('dxf-n').getAttribute('data-vis')||lista.length)+' a la vista';$('dxf-save').disabled=!n;$('dxf-save').textContent='Guardar '+n;
     [].forEach.call(m.querySelectorAll('.dxfcard'),function(c){c.classList.toggle('off',!c.querySelector('input[data-k]').checked)})}
-  m.addEventListener('change',function(e){if(e.target.getAttribute('data-k')!==null)cuenta()});
+  m.addEventListener('change',function(e){
+    if(prod&&e.target.getAttribute('data-k')!==null&&e.target.checked)[].forEach.call(m.querySelectorAll('input[data-k]'),function(c){if(c!==e.target)c.checked=false});
+    if(e.target.getAttribute('data-k')!==null)cuenta();
+  });
+  if(prod){
+    m.querySelector('h3').textContent='Elige el dibujo para «'+prod.nombre+'»';
+    m.querySelector('header .note').textContent='Marca el bloque que corresponde a este producto. Se guarda en el producto (con el largo, fondo y alto del dibujo) para todos los planos. Usa solo dibujos que tengas derecho a reutilizar.';
+    [].forEach.call(m.querySelectorAll('input[data-k]'),function(c){c.checked=false});
+    ['dxf-all','dxf-none'].forEach(function(id){$(id).hidden=true});
+    $('dxf-cat').closest('label').hidden=true;
+    var cuenta0=cuenta;cuenta=function(){cuenta0();var n=m.querySelectorAll('input[data-k]:checked').length;$('dxf-save').textContent=n?'Usar para este producto':'Marca uno';$('dxf-save').disabled=!n};
+  }
   $('dxf-q').addEventListener('input',filtra);$('dxf-v').addEventListener('change',filtra);
   $('dxf-all').addEventListener('click',function(){[].forEach.call(m.querySelectorAll('.dxfcard'),function(c){if(c.style.display!=='none')c.querySelector('input[data-k]').checked=true});cuenta()});
   $('dxf-none').addEventListener('click',function(){[].forEach.call(m.querySelectorAll('input[data-k]'),function(c){c.checked=false});cuenta()});
   $('dxf-cancel').addEventListener('click',cerrarModalDXF);
   m.addEventListener('click',function(e){if(e.target===m)cerrarModalDXF()});
   $('dxf-save').addEventListener('click',function(){
+    if(prod){
+      var ck=m.querySelector('input[data-k]:checked');if(!ck)return;
+      var bq=lista[+ck.getAttribute('data-k')];
+      if(!bq||!bq.planta){toast('Ese bloque no tiene vista de planta: elige otro');return}
+      genProd[prod.id]=true;panelSel();
+      crmPost({type:'guardarBloqueProducto',id:prod.id,largo:bq.largo,fondo:bq.fondo,alto:bq.alto||100,planta:bq.planta,alzado:bq.alzado||'',lateral:bq.lateral||''});
+      toast('Guardando el bloque en el producto…');cerrarModalDXF();return;
+    }
     var catFija=($('dxf-cat').value||'').trim(),items=[];
     [].forEach.call(m.querySelectorAll('input[data-k]:checked'),function(c){
       var i=+c.getAttribute('data-k'),b=lista[i],nm=(m.querySelector('input[data-n="'+i+'"]').value||'').trim()||b.nombre;
@@ -4086,6 +4119,13 @@ function panelSel(focus){
       if(CRM)h+='<div class="btns"><button data-a="bibdel">Quitar de mi biblioteca</button></div>';
       }
     }else if(ce0&&!ce0.generico)h+='<p class="note">La categoría de un producto del catálogo se cambia desde su ficha en el CRM.</p>';
+    if(ce0&&ce0.enlace)h+='<p class="note" style="margin:0 0 8px"><a href="'+esc(ce0.enlace)+'" target="_blank" rel="noopener noreferrer">Ver este producto en la web del proveedor ↗</a></p>';
+    if(CRM&&ce0&&!ce0.biblioteca&&!ce0.generico&&/^[0-9a-f]{8}-/.test(String(ce0.id))){
+      var gen0=genProd[ce0.id];
+      h+='<div class="lab">Bloque de este producto</div><p class="note" style="margin:0 0 6px">'+(ce0.bloque?'Tiene bloque propio: se dibuja así en el plano y en SketchUp.':'Aún no tiene bloque propio: ahora sale un símbolo genérico.')+' Lo que hagas aquí se guarda en el producto, para todos los planos.</p>';
+      h+='<div class="btns"><button data-a="prodgen"'+(gen0?' disabled':'')+'>'+(gen0?'Generando… (unos minutos)':(ce0.bloque?'✨ Volver a generar con IA':'✨ Generar con IA (desde la foto)'))+'</button><button data-a="prodsubir">Subir bloque (DXF de Rayon…)</button></div>';
+      if(!ce0.foto)h+='<p class="note">Para generarlo con IA el producto necesita foto y medidas en el catálogo.</p>';
+    }
     if(ce0&&ce0.generico){
       var reales=catalog().filter(function(c){return !c.generico&&c.id!==e.cid});
       h+='<p class="note"><b>Pieza genérica</b> de la biblioteca: sirve para distribuir y medir, sin referencia ni precio.</p>';
@@ -4572,6 +4612,16 @@ function doAction(a,el){
   if(a==='eqrot'||a==='eqrotl'||a==='eqrot180'){var q1=by(st.v.eq,s.id);snap();q1.rot=((q1.rot||0)+(a==='eqrot'?90:a==='eqrotl'?270:180))%360;commit();return}
   if(a==='eqflx'||a==='eqfly'){var q1f=by(st.v.eq,s.id);snap();if(a==='eqflx')q1f.fx=!q1f.fx;else q1f.fy=!q1f.fy;commit();return}
   if(a==='eqdup'){var q2=by(st.v.eq,s.id);snap();var cp=JSON.parse(JSON.stringify(q2));cp.id=uid('e');cp.dx=f2(cp.dx+30);cp.dy=f2(cp.dy+30);st.v.eq.push(cp);st.sel={t:'eq',id:cp.id};commit();return}
+  if(a==='prodgen'&&s.t==='eq'){
+    var pe=by(st.v.eq,s.id),pc0=pe&&catById(pe.cid);if(!pc0)return;
+    if(!pc0.foto){toast('El producto necesita foto en el catálogo para generar su bloque');return}
+    var ph=pc0.alto||0;
+    if(!(ph>0)){var pr=window.prompt('Alto del producto ('+UNL()+'), hace falta para dibujar el alzado:','');ph=fromU(num(pr));if(!(ph>0)){toast('Sin el alto no se puede generar el bloque');return}}
+    genProd[pc0.id]=true;panelSel();
+    crmPost({type:'generarBloqueProducto',id:pc0.id,largo:pe.w||pc0.w,fondo:pe.d||pc0.d,alto:ph});
+    toast('Generando el bloque con IA… puede tardar unos minutos. Puedes seguir trabajando.');return;
+  }
+  if(a==='prodsubir'&&s.t==='eq'){var pe2=by(st.v.eq,s.id);if(!pe2)return;subirProd=catById(pe2.cid);if(!subirProd)return;$('prod-dxf').click();return}
   if(a==='eqcat'){var q3=by(st.v.eq,s.id);saveCat({id:q3.cid||('c'+Date.now().toString(36)),nombre:q3.nm,tipo:q3.ty,w:q3.w,d:q3.d,ref:q3.ref||''});toast('Medidas guardadas en el catálogo');return}
   if(a==='rcadd'&&s.t==='wall'){
     var rw0=wl(s.id),rg0=rw0&&wg(rw0);if(!rg0)return;
@@ -6809,6 +6859,18 @@ if(CRM){
       drawCat();panelSel();render();toast('Guardado para siempre: «'+(m.nombre||'')+'» en «'+(m.categoria||'')+'»');
     }else if(m.type==='bibliotecaBorrada'){
       cloudCat=cloudCat.filter(function(c){return c.id!==m.id});drawCat();toast('Quitado de tu biblioteca');
+    }else if(m.type==='bloqueProducto'){
+      delete genProd[m.id];
+      var cb=catById(m.id),bb=m.bloque;
+      if(cb&&bb&&bb.svg){
+        bloquesFull[m.id]=bb;
+        cb.bloque={planta:bb.svg.planta,largo:bb.largo,fondo:bb.fondo};
+        cb.vistas=['planta'].concat(bb.svg.alzado?['alzado']:[]).concat(bb.svg.lateral?['lateral']:[]);
+        cb.w=bb.largo;cb.d=bb.fondo;cb.alto=bb.alto;
+      }
+      render();panelSel();drawCat();toast('Bloque guardado en el producto: ya se usa en todos los planos.');
+    }else if(m.type==='bloqueProductoError'){
+      delete genProd[m.id];panelSel();toast(m.message||'No se pudo guardar el bloque');
     }else if(m.type==='bloque'){
       if(m.id&&m.bloque){bloquesFull[m.id]=m.bloque;render()}
     }else if(m.type==='modo'){

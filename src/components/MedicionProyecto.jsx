@@ -76,6 +76,21 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           responder({ type: 'bloqueGenerado', bloque: data.bloque });
         } catch (err) { responder({ type: 'bloqueError', message: err.response?.data?.error || 'No se pudo generar el bloque' }); }
       }
+      else if (m.type === 'generarBloqueProducto' && m.id) {
+        try {
+          const { data } = await api.post(`/catalog/products/${m.id}/bloques/generar`, { largo: m.largo, fondo: m.fondo, alto: m.alto }, { timeout: 600000 });
+          const b = data.bloque;
+          await api.put(`/catalog/products/${m.id}/bloques`, { largo: b.largo, fondo: b.fondo, alto: b.alto, shapes: b.shapes, svg: b.svg });
+          responder({ type: 'bloqueProducto', id: m.id, bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, svg: b.svg } });
+        } catch (err) { responder({ type: 'bloqueProductoError', id: m.id, message: err.response?.data?.error || 'No se pudo generar el bloque' }); }
+      }
+      else if (m.type === 'guardarBloqueProducto' && m.id && m.planta) {
+        try {
+          const svg = { planta: m.planta, alzado: m.alzado || '', lateral: m.lateral || '' };
+          await api.put(`/catalog/products/${m.id}/bloques`, { largo: m.largo, fondo: m.fondo, alto: m.alto, shapes: null, svg });
+          responder({ type: 'bloqueProducto', id: m.id, bloque: { largo: m.largo, fondo: m.fondo, alto: m.alto, svg } });
+        } catch (err) { responder({ type: 'bloqueProductoError', id: m.id, message: err.response?.data?.error || 'No se pudo guardar el bloque en el producto' }); }
+      }
       else if (m.type === 'pedirMiniaturas' && Array.isArray(m.ids)) {
         try { const { data } = await api.post('/medicion/miniaturas', { ids: m.ids }); responder({ type: 'miniaturas', items: data.items || {} }); }
         catch { /* sin fotos: la memoria sale igualmente */ }

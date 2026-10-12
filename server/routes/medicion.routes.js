@@ -189,7 +189,7 @@ router.delete('/biblioteca/:id', requireAdminSuperior, async (req, res) => {
 
 router.get('/catalogos', compression(), async (req, res) => { // comprimido: la biblioteca propia puede traer cientos de bloques
   try {
-    const columnas = 'id, name, brand, category_id, longitud, ancho, altura, lumens, watts, color_temperature, photo_url, display_order';
+    const columnas = 'id, name, brand, category_id, longitud, ancho, altura, lumens, watts, color_temperature, photo_url, display_order, link';
     const pedirProductos = (cols) => supabase.from('catalog_products').select(cols).order('display_order', { ascending: true, nullsFirst: false });
     const [{ data: cats }, conBloques] = await Promise.all([
       supabase.from('catalog_categories').select('id, name, type'),
@@ -218,6 +218,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
           sinMedidas: !tieneMedidas,
           // dibujo real de la planta (si el producto tiene bloque), a escala en cm
           foto: p.photo_url || null,
+          enlace: /^https?:\/\//i.test(p.link || '') ? p.link : null,
           alto: Number(p.altura) > 0 ? Number(p.altura) : null,
           ...(p.bloques?.svg?.planta ? {
             bloque: { planta: p.bloques.svg.planta, largo: p.bloques.largo, fondo: p.bloques.fondo },
