@@ -4907,9 +4907,11 @@ function carpPlan(o){
 }
 function carpFrame(doc,idx,total,o,title,note){
   var v=st.v,A3=o.paper!=='A4',PW=A3?420:297,PH=A3?297:210,f=A3?1:0.76,mg=10,p=doc.page(PW,PH);
-  p.rect(mg,mg,PW-2*mg,PH-2*mg,null,INK,0.5);
+  p.rect(mg-3.2,mg-3.2,PW-2*mg+6.4,PH-2*mg+6.4,null,'#cfc8be',0.18);
+  p.rect(mg,mg,PW-2*mg,PH-2*mg,null,INK,0.35);
   p.text(mg+7,mg+10,title.toUpperCase(),15*f+1,{bold:true,col:INK});
-  p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.planta?' · '+v.planta:'')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
+  p.rect(mg+7,mg+12,14*f,0.8,'#b8955a',null,0);
+  p.text(mg+7,mg+18.2,(v.nombre||'Sin nombre')+(v.planta?' · '+v.planta:'')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
   if(o.logo){var lw=o.logo.w,lh=o.logo.h,sc=Math.min(40/lw,11*f/lh);p.img(o.logoIdx,PW-mg-6-lw*sc,mg+4,lw*sc,lh*sc)}
   else p.text(PW-mg-6,mg+10,'RANUSE DESIGN',9*f,{bold:true,col:INK,anchor:'end'});
   var fy=PH-mg-12*f,wTot=PW-2*mg;
@@ -5679,12 +5681,16 @@ function sheetPage(doc,view,idx,total,o){
   var v=st.v,A3=o.paper!=='A4',PW=A3?420:297,PH=A3?297:210,f=A3?1:0.76,mg=10,Wc=A3?88:68;
   var p=doc.page(PW,PH),cx=PW-mg-Wc,tags=opTags(),b=bbox();
   var body=7.5*f+(A3?0:0.6),sm=5.6*f+(A3?0:0.4);
-  p.rect(mg,mg,PW-2*mg,PH-2*mg,null,INK,0.5);
-  p.line(cx,mg,cx,PH-mg,INK,0.35);
+  /* marco fino con filete exterior y columna lateral en tono cálido */
+  p.rect(cx,mg,PW-mg-cx,PH-2*mg,'#f7f4ef',null,0);
+  p.rect(mg-3.2,mg-3.2,PW-2*mg+6.4,PH-2*mg+6.4,null,'#cfc8be',0.18);
+  p.rect(mg,mg,PW-2*mg,PH-2*mg,null,INK,0.35);
+  p.line(cx,mg,cx,PH-mg,INK,0.25);
 
   /* título de la lámina */
   p.text(mg+7,mg+10,((view==='distrib'?(o.ante?'Anteproyecto · distribución':'Distribución · mobiliario y máquinas'):VNAME[view])+(o.capaN?' · '+o.capaN:'')).toUpperCase(),15*f+1,{bold:true,col:INK});
-  p.text(mg+7,mg+16,(v.nombre||'Sin nombre')+(v.planta?' · '+v.planta:'')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
+  p.rect(mg+7,mg+12,14*f,0.8,'#b8955a',null,0);
+  p.text(mg+7,mg+18.2,(v.nombre||'Sin nombre')+(v.planta?' · '+v.planta:'')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
 
   /* escala y plano */
   var S=SCALES[SCALES.length-1];
@@ -5731,7 +5737,8 @@ function sheetPage(doc,view,idx,total,o){
 
   /* cajetín */
   var cajH=60*f,cy0=PH-mg-cajH,px0=cx+4*f,pw=Wc-8*f;
-  p.line(cx,cy0,PW-mg,cy0,INK,0.35);
+  p.rect(cx,cy0,PW-mg-cx,cajH,'#ffffff',null,0);
+  p.line(cx,cy0,PW-mg,cy0,INK,0.25);
   var ly=cy0+3*f;
   if(o.logo){
     var lw=o.logo.w,lh=o.logo.h,mh=11*f,mw=pw*0.55,sc=Math.min(mw/lw,mh/lh);
