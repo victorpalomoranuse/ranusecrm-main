@@ -367,7 +367,7 @@ body.crm .top .brand{display:none}
       </div>
       <div class="newbar"><span>Muros nuevos como</span>
         <div class="seg3" id="defstate"></div>
-        <span>Cotas</span><div class="seg3" id="dimsel"></div><span>Medir</span><div class="seg3" id="dimbase"></div><span class="muted" id="dimnote" style="font-size:11px"></span>
+        <span>Cotas</span><div class="seg3" id="dimsel"></div><span>Medir</span><div class="seg3" id="dimbase"></div><span class="muted" id="dimnote" style="font-size:11px"></span><span>Unidad</span><select id="unidad" style="min-height:32px;width:auto;padding:2px 8px"><option value="cm">cm</option><option value="mm">mm</option><option value="m">m</option></select>
       </div>
     </section>
 
@@ -568,7 +568,7 @@ var TAN12=0.2126, AXDEG=8;
 
 function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
 function newVisit(){return norm({id:'v'+Date.now().toString(36),nombre:'',cliente:'',fecha:today(),altura:260,paso:80,notas:'',seq:1,nodes:[],walls:[],ops:[],pil:[],ctl:[],eq:[],pts:[],zn:[],rz:[],cn:[],updated:Date.now()})}
-function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.rc=v.rc||[];v.dr=v.dr||[];v.cal=v.cal||[];v.mm=v.mm||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];return v}
+function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.rc=v.rc||[];v.dr=v.dr||[];v.cal=v.cal||[];v.mm=v.mm||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];if(!v.cb)v.cb='int';return v}
 var TIPOS=[['rack','Rack'],['cinta','Cinta'],['banco','Banco'],['manc','Rack de mancuernas'],['bici','Bicicleta'],['remo','Remo'],['tatami','Tatami'],['gen','Genérico']];
 var DEFCAT=[
   {id:'rack',nombre:'Rack de sentadillas',tipo:'rack',w:120,d:140},
@@ -753,6 +753,13 @@ function pilCells(p){
 function ct(id){return by(st.v.ctl,id)}
 function f2(n){return Math.round(n*100)/100}
 function fmt(n){return String(Math.round(n))}
+/* unidad de medida elegible: todo se guarda en cm; solo cambia cómo se escribe y se lee */
+var UNIDADES={cm:{f:1,d:1},mm:{f:0.1,d:0},m:{f:100,d:3}},UNIT='cm';
+try{var uu=localStorage.getItem('ranuse-unidad');if(UNIDADES[uu])UNIT=uu}catch(e){}
+function UNL(){return UNIT}
+function toU(n){var u=UNIDADES[UNIT],k=Math.pow(10,u.d+1);return Math.round(n/u.f*(UNIT==='cm'?10:UNIT==='mm'?1:1000))/(UNIT==='cm'?10:UNIT==='mm'?1:1000)}
+function fmtU(n){return String(toU(n))}
+function fromU(x){return x*UNIDADES[UNIT].f}
 function m2(n){return (Math.round(n*10)/10).toFixed(1).replace('.',',')}
 function num(s){var n=parseFloat(String(s).replace(',','.'));return isFinite(n)?n:NaN}
 function wg(w){var a=nd(w.a),b=nd(w.b),dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||0.001;return {a:a,b:b,l:l,ux:dx/l,uy:dy/l}}
@@ -1317,7 +1324,7 @@ function zoneCodes(view){
 }
 function wallH(){return num(st.v.altura)||260}
 /* altura de un muro: la suya si la tiene, y si no la general del plano */
-function wh(w){var n=num(w&&w.h);return n>=50&&n<=2000?n:wallH()}
+function wh(w){var n=num(w&&w.h);return n>0&&n<=5000?n:wallH()}
 /* m² de muro por estado, con la altura de cada muro */
 function areaEst(est){var t=0;st.v.walls.forEach(function(w){if(w.s===est)t+=wLen(w)*wh(w)});return t/10000}
 function wallArea(w){
@@ -1452,7 +1459,7 @@ function lumExtras(C,px,view,o){
       else{
         var r=5.5*u;
         h+=txt(C,px,c.x+r+8*px,c.y-r*0.5,tg[q.id]||'',C.label,11,700);
-        if(showD&&!q.nd)lumDims(q).forEach(function(m){var r0=r*1.25;if(m.d<=r0+2)return;h+=dimLine(C,px,c.x+m.dx*r0,c.y+m.dy*r0,m.x,m.y,fmt(m.d))});
+        if(showD&&!q.nd)lumDims(q).forEach(function(m){var r0=r*1.25;if(m.d<=r0+2)return;h+=dimLine(C,px,c.x+m.dx*r0,c.y+m.dy*r0,m.x,m.y,fmtU(m.d))});
       }
     });
     if(st.cnFrom&&o.nodes){var fq=by(st.v.pts,st.cnFrom);if(fq){var fc=ptPos(fq);h+='<circle cx="'+f2(fc.x)+'" cy="'+f2(fc.y)+'" r="'+f2(15*px)+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(2.4*px)+'px"/>'}}
@@ -1564,17 +1571,17 @@ function elevSvg(C,px,el,codes,flat){
     h+=opElevSvg(C,px,{t:o.t,sym:o.sym,x0:o.x0,w:o.w,h:o.h},y0,col);
     var cx=o.x0+o.w/2,wpx=o.w/px;
     h+=txt(C,px,cx,y0+o.h/2-(wpx>46?5*px:0)+4*px,o.tag,C.accent,11,600);
-    if(wpx>46)h+=txt(C,px,cx,y0+o.h/2+10*px,fmt(o.w)+'×'+fmt(o.h)+(o.t==='win'&&o.sill?' ↑'+fmt(o.sill):''),C.label,9.5,500);
+    if(wpx>46)h+=txt(C,px,cx,y0+o.h/2+10*px,fmtU(o.w)+'×'+fmtU(o.h)+(o.t==='win'&&o.sill?' ↑'+fmtU(o.sill):''),C.label,9.5,500);
   });
   h+='<rect x="0" y="0" width="'+L+'" height="'+H+'" style="fill:none;stroke:'+col+';stroke-width:'+f2(1.6*px)+'"/>';
   h+=ln(-14*px,H,L+14*px,H,col,2.6*px);
   /* cota superior en tramos */
   var pts=[0],segs=[],last=0;
   el.ops.forEach(function(o){
-    if(o.x0-last>0.5)segs.push([last,o.x0,fmt(o.x0-last),false]);
-    segs.push([o.x0,o.x0+o.w,(o.tag?o.tag+' ':'')+fmt(o.w),true]);last=o.x0+o.w;
+    if(o.x0-last>0.5)segs.push([last,o.x0,fmtU(o.x0-last),false]);
+    segs.push([o.x0,o.x0+o.w,(o.tag?o.tag+' ':'')+fmtU(o.w),true]);last=o.x0+o.w;
   });
-  if(L-last>0.5)segs.push([last,L,fmt(L-last),false]);
+  if(L-last>0.5)segs.push([last,L,fmtU(L-last),false]);
   segs.forEach(function(sg){pts.push(sg[1])});
   var yd=-13*px,yt=-27*px,dcol=C.dim;
   function tick(x,y){return ln(x-2.5*px,y+2.5*px,x+2.5*px,y-2.5*px,C.label,1.4*px)}
@@ -1582,14 +1589,14 @@ function elevSvg(C,px,el,codes,flat){
     h+=ln(0,yd,L,yd,dcol,0.9*px);
     pts.forEach(function(x){h+=ln(x,-2*px,x,yd-3*px,dcol,0.9*px)+tick(x,yd)});
     segs.forEach(function(sg){h+=txt(C,px,(sg[0]+sg[1])/2,yd-5*px,sg[2],sg[3]?C.accent:C.label,10,sg[3]?600:500)});
-    h+=ln(0,yt,L,yt,dcol,0.9*px)+ln(0,yd-3*px,0,yt-3*px,dcol,0.9*px)+ln(L,yd-3*px,L,yt-3*px,dcol,0.9*px)+tick(0,yt)+tick(L,yt)+txt(C,px,L/2,yt-5*px,fmt(L),C.label,11,600);
+    h+=ln(0,yt,L,yt,dcol,0.9*px)+ln(0,yd-3*px,0,yt-3*px,dcol,0.9*px)+ln(L,yd-3*px,L,yt-3*px,dcol,0.9*px)+tick(0,yt)+tick(L,yt)+txt(C,px,L/2,yt-5*px,fmtU(L),C.label,11,600);
   }else{
-    h+=ln(0,yd,L,yd,dcol,0.9*px)+ln(0,-2*px,0,yd-3*px,dcol,0.9*px)+ln(L,-2*px,L,yd-3*px,dcol,0.9*px)+tick(0,yd)+tick(L,yd)+txt(C,px,L/2,yd-5*px,fmt(L),C.label,11,600);
+    h+=ln(0,yd,L,yd,dcol,0.9*px)+ln(0,-2*px,0,yd-3*px,dcol,0.9*px)+ln(L,-2*px,L,yd-3*px,dcol,0.9*px)+tick(0,yd)+tick(L,yd)+txt(C,px,L/2,yd-5*px,fmtU(L),C.label,11,600);
   }
   /* cota vertical */
   var xv=-16*px;
   h+=ln(xv,0,xv,H,dcol,0.9*px)+ln(-2*px,0,xv-3*px,0,dcol,0.9*px)+ln(-2*px,H,xv-3*px,H,dcol,0.9*px)+tick(xv,0)+tick(xv,H);
-  h+=txt(C,px,xv-13*px,H/2+4*px,fmt(H),C.label,11,600);
+  h+=txt(C,px,xv-13*px,H/2+4*px,fmtU(H),C.label,11,600);
   /* título */
   var code=el.mat?(codes[el.mat]||''):'';
   h+=txt(C,px,L/2,(el.ops.length?yt:yd)-22*px,'ALZADO '+el.id+(el.room?' · '+el.room:''),C.label,13,600);
@@ -1948,23 +1955,29 @@ function dimW(C,px,x1,y1,x2,y2,t,col){
 var AZUL='#2b7cff';
 /* sin sala cerrada: el interior va de la cara del muro que llega en un extremo a la del otro (o al extremo libre); el lado es hacia donde van los muros vecinos */
 function spanAbierto(w,view){
-  var g=wg(w),s0=0,s1=g.l,lado=0;
+  var g=wg(w),s0=0,s1=g.l,lado=0,adj=[];
   [[w.a,0],[w.b,1]].forEach(function(e){
     var aj=adjAll(w,e[0]).filter(function(o){return wallVis(o,view)})[0];if(!aj)return;
-    if(e[1]===0)s0=aj.t/2;else s1=g.l-aj.t/2;
-    if(!lado){var ga=wg(aj),sg=aj.a===e[0]?1:-1,dot=sg*(ga.ux*-g.uy+ga.uy*g.ux);if(Math.abs(dot)>0.2)lado=dot>0?1:-1}
+    var ga=wg(aj),sg=aj.a===e[0]?1:-1,dot=sg*(ga.ux*-g.uy+ga.uy*g.ux);
+    adj.push({fin:e[1],t:aj.t,dot:dot});
+    if(!lado&&Math.abs(dot)>0.2)lado=dot>0?1:-1;
   });
-  return s1-s0>=1?{s0:s0,s1:s1,lado:lado||1}:null;
+  /* el muro vecino solo quita espacio si sale hacia el lado que se mide; si sale hacia el otro, la cota llega hasta la esquina */
+  adj.forEach(function(q){
+    if(lado&&Math.abs(q.dot)>0.2&&(q.dot>0?1:-1)!==lado)return;
+    if(q.fin===0)s0=q.t/2;else s1=g.l-q.t/2;
+  });
+  return adj.length&&s1-s0>=0.5?{s0:s0,s1:s1,lado:lado||1}:null;
 }
 function selDims(C,px,w,view){
   var h='',cent=wallCent(view);
-  function azul(A,B,txtv,hit){
+  function azul(A,B,valcm,hit){var txtv=fmtU(valcm);
     var dx=B.x-A.x,dy=B.y-A.y,l=Math.hypot(dx,dy);if(l<2)return;
     var ux=dx/l,uy=dy/l,tk=5*px,vert=Math.abs(dx)<Math.abs(dy),mx=(A.x+B.x)/2,my=(A.y+B.y)/2;
     h+=ln(A.x,A.y,B.x,B.y,AZUL,px*1.4)+ln(A.x-uy*tk,A.y+ux*tk,A.x+uy*tk,A.y-ux*tk,AZUL,px*1.4)+ln(B.x-uy*tk,B.y+ux*tk,B.x+uy*tk,B.y-ux*tk,AZUL,px*1.4);
     var sty='fill:'+AZUL+';font-size:'+f2(13*px)+'px;font-weight:600;paint-order:stroke;stroke:'+C.halo+';stroke-width:'+f2(5*px)+'px;stroke-linejoin:round';
     h+=vert?'<text transform="translate('+f2(mx+4*px)+' '+f2(my)+') rotate(-90)" text-anchor="middle" style="'+sty+'">'+esc(txtv)+'</text>':'<text x="'+f2(mx)+'" y="'+f2(my+4.5*px)+'" text-anchor="middle" style="'+sty+'">'+esc(txtv)+'</text>';
-    if(colectaDim&&hit){hit.x=mx;hit.y=my;hit.val=+txtv;dimHits.push(hit)}
+    if(colectaDim&&hit){hit.x=mx;hit.y=my;hit.val=valcm;dimHits.push(hit)}
   }
   function una(wl2,esSel,nid){
     var g=wg(wl2),sp=spanInterior(wl2,view,cent,null);if(!sp||!sp.lado)sp=spanAbierto(wl2,view);if(!sp||!sp.lado)return;
@@ -1972,11 +1985,11 @@ function selDims(C,px,w,view){
     function P(sv,d,sg){return {x:g.a.x+g.ux*sv+ni.x*d*(sg||1),y:g.a.y+g.uy*sv+ni.y*d*(sg||1)}}
     var shown=wl2.m===true?(wl2.len-(L-clear)):clear,dI=t/2+14*px;
     h+=ln(P(s0,t/2).x,P(s0,t/2).y,P(s0,dI+4*px).x,P(s0,dI+4*px).y,AZUL,px*0.8)+ln(P(s1,t/2).x,P(s1,t/2).y,P(s1,dI+4*px).x,P(s1,dI+4*px).y,AZUL,px*0.8);
-    azul(P(s0,dI),P(s1,dI),fmt(shown),{wall:wl2.id,kind:'wsel',nid:esSel?null:nid,delta:L-clear});
+    azul(P(s0,dI),P(s1,dI),shown,{wall:wl2.id,kind:'wsel',nid:esSel?null:nid,delta:L-clear});
     if(esSel){ // exterior: de cara exterior a cara exterior
       var dE=t/2+14*px,o0=s0-t,o1=s1+t;
       h+=ln(P(o0,t/2,-1).x,P(o0,t/2,-1).y,P(o0,dE+4*px,-1).x,P(o0,dE+4*px,-1).y,AZUL,px*0.8)+ln(P(o1,t/2,-1).x,P(o1,t/2,-1).y,P(o1,dE+4*px,-1).x,P(o1,dE+4*px,-1).y,AZUL,px*0.8);
-      azul(P(o0,dE,-1),P(o1,dE,-1),fmt(shown+2*t),{wall:wl2.id,kind:'wsel',nid:null,delta:(L-clear)-2*t});
+      azul(P(o0,dE,-1),P(o1,dE,-1),shown+2*t,{wall:wl2.id,kind:'wsel',nid:null,delta:(L-clear)-2*t});
     }
   }
   una(w,true,null);
@@ -2075,7 +2088,7 @@ function scene(C,k,view,o){
       var q=rcPoly(rc);if(!q||q.len<1)return;
       var slr=sel&&sel.t==='rc'&&sel.id===rc.id,colr=slr?C.accent:(view==='interv'?C.nw:C.ink);
       h+='<polygon points="'+q.pts.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ')+'" style="fill:'+colr+';fill-opacity:.22;stroke:'+colr+';stroke-width:'+f2((slr?2.6:1.3)*px)+'"/>';
-      zlab+=txt(C,px,q.mid.x+q.nx*13*px,q.mid.y+q.ny*13*px+4*px,'Recrecido '+fmt(rc.t||10)+' cm'+(rc.mat?' · '+rc.mat:''),colr,10,600);
+      zlab+=txt(C,px,q.mid.x+q.nx*13*px,q.mid.y+q.ny*13*px+4*px,'Recrecido '+fmtU(rc.t||10)+' '+UNL()+(rc.mat?' · '+rc.mat:''),colr,10,600);
     });
   }
   if(view==='demol'){
@@ -2086,7 +2099,7 @@ function scene(C,k,view,o){
       if(r.part&&r.bw>0){ // solo una parte de la sala
         var rr=rzRect(r),slp=sel&&sel.t==='rz'&&sel.id===r.id,mtp=r.mat?' · '+matOf(r.k==='s'?'suelos':'techos',r.mat).n:'';
         h+='<rect x="'+f2(rr.x0)+'" y="'+f2(rr.y0)+'" width="'+f2(r.bw)+'" height="'+f2(r.bh)+'" style="fill:url(#hat);stroke:'+(slp?C.accent:C.dem)+';stroke-width:'+f2((slp?3:1.2)*px)+'"/>';
-        zlab+=txt(C,px,rr.cx,rr.cy-4*px,(r.k==='s'?'Levantar parte del suelo':'Desmontar parte del techo')+mtp,C.dem,12,600)+txt(C,px,rr.cx,rr.cy+10*px,m2(r.bw*r.bh/10000)+' m² · '+fmt(r.bw)+' × '+fmt(r.bh),C.dem,11,500);
+        zlab+=txt(C,px,rr.cx,rr.cy-4*px,(r.k==='s'?'Levantar parte del suelo':'Desmontar parte del techo')+mtp,C.dem,12,600)+txt(C,px,rr.cx,rr.cy+10*px,m2(r.bw*r.bh/10000)+' m² · '+fmtU(r.bw)+' × '+fmtU(r.bh),C.dem,11,500);
         return;
       }
       var pts=fc.inner.map(function(q){return f2(q.x)+','+f2(q.y)}).join(' '),sl=sel&&sel.t==='rz'&&sel.id===r.id;
@@ -2115,7 +2128,7 @@ function scene(C,k,view,o){
         h+='<defs><pattern id="'+pid+'" patternUnits="userSpaceOnUse" width="'+f2(ttw)+'" height="'+f2(tth)+'"><image href="'+m.tx.uri+'" x="0" y="0" width="'+f2(ttw)+'" height="'+f2(tth)+'" preserveAspectRatio="none"/></pattern></defs>';
         h+='<polygon points="'+pts+'" style="fill:url(#'+pid+');stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
       }else h+='<polygon points="'+pts+'" style="fill:'+(o.flat?hexMix(m.c,'#ffffff',0.35):m.c)+(o.flat?'':';fill-opacity:.62')+';stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
-      var l1=(codes[z.mat]||'')+(z.nm?'  '+z.nm:''),l2=m2(f.area/10000)+' m²'+(view==='techos'&&z.h?'  ·  h '+fmt(z.h):'');
+      var l1=(codes[z.mat]||'')+(z.nm?'  '+z.nm:''),l2=m2(f.area/10000)+' m²'+(view==='techos'&&z.h?'  ·  h '+fmtU(z.h):'');
       zlab+=txt(C,px,f.cx,f.cy-2*px,l1,C.label,13,600)+txt(C,px,f.cx,f.cy+14*px,l2,C.label,11,500);
     });
   }
@@ -2150,9 +2163,9 @@ function scene(C,k,view,o){
     var c=pc(p);
     [[-1,0,p.w/2],[1,0,p.w/2],[0,-1,p.d/2],[0,1,p.d/2]].forEach(function(a){
       var d0=rayWalls(c.x+a[0]*a[2],c.y+a[1]*a[2],a[0],a[1],view);if(d0==null||d0<1)return;
-      h+=dimLine(C,px,c.x+a[0]*a[2],c.y+a[1]*a[2],c.x+a[0]*(a[2]+d0),c.y+a[1]*(a[2]+d0),fmt(d0));
+      h+=dimLine(C,px,c.x+a[0]*a[2],c.y+a[1]*a[2],c.x+a[0]*(a[2]+d0),c.y+a[1]*(a[2]+d0),fmtU(d0));
     });
-    h+=txt(C,px,c.x,c.y+p.d/2+15*px,fmt(p.w)+' × '+fmt(p.d),C.label,11,700);
+    h+=txt(C,px,c.x,c.y+p.d/2+15*px,fmtU(p.w)+' × '+fmtU(p.d),C.label,11,700);
   });
   v.pts.forEach(function(q){
     var ps=q.s||'new';
@@ -2186,10 +2199,10 @@ function scene(C,k,view,o){
       var gc=pmx==null?C.dim:(low?C.dem:C.ok);
       if(q2.dy<0&&q2.dx>0){
         var yy=(Math.max(ra.y0,rb.y0)+Math.min(ra.y1,rb.y1))/2,l=ra.x0<rb.x0?ra:rb,r2=ra.x0<rb.x0?rb:ra;
-        gl+=dimW(C,px,l.x1,yy,r2.x0,yy,fmt(q2.g),gc);
+        gl+=dimW(C,px,l.x1,yy,r2.x0,yy,fmtU(q2.g),gc);
       }else if(q2.dx<0&&q2.dy>0){
         var xx=(Math.max(ra.x0,rb.x0)+Math.min(ra.x1,rb.x1))/2,t2=ra.y0<rb.y0?ra:rb,b2=ra.y0<rb.y0?rb:ra;
-        gl+=dimW(C,px,xx,t2.y1,xx,b2.y0,fmt(q2.g),gc);
+        gl+=dimW(C,px,xx,t2.y1,xx,b2.y0,fmtU(q2.g),gc);
       }
     }
     var tiposEq=eqTipos();
@@ -2210,7 +2223,7 @@ function scene(C,k,view,o){
         var r3=eqRect(se2);
         [[1,0,r3.x1,r3.cy],[-1,0,r3.x0,r3.cy],[0,1,r3.cx,r3.y1],[0,-1,r3.cx,r3.y0]].forEach(function(d){
           var rd=rayDist(d[2],d[3],d[0],d[1],se2.id);
-          if(rd&&rd.d>2)h+=dimW(C,px,d[2],d[3],d[2]+d[0]*rd.d,d[3]+d[1]*rd.d,fmt(rd.d),rd.kind==='e'?(function(){var oe=eqs.filter(function(q){return q.id!==se2.id});var mn=pasoEq(se2);return mn==null?C.dim:(rd.d<mn?C.dem:C.ok)})():C.dim);
+          if(rd&&rd.d>2)h+=dimW(C,px,d[2],d[3],d[2]+d[0]*rd.d,d[3]+d[1]*rd.d,fmtU(rd.d),rd.kind==='e'?(function(){var oe=eqs.filter(function(q){return q.id!==se2.id});var mn=pasoEq(se2);return mn==null?C.dim:(rd.d<mn?C.dem:C.ok)})():C.dim);
         });
       }
     }
@@ -2218,7 +2231,7 @@ function scene(C,k,view,o){
   (o.noctl?[]:v.ctl).forEach(function(c){
     var a=nd(c.a),b=nd(c.b),calc=Math.hypot(b.x-a.x,b.y-a.y),diff=c.len!=null?calc-c.len:0,bad=c.len!=null&&Math.abs(diff)>3;
     h+=ln(a.x,a.y,b.x,b.y,c.len==null?C.warn:(bad?C.dem:C.ok),1.5*px,'butt',';stroke-dasharray:'+f2(6*px)+' '+f2(4*px));
-    var s=c.len==null?'?':fmt(c.len)+(bad?' (plano '+fmt(calc)+')':'');
+    var s=c.len==null?'?':fmtU(c.len)+(bad?' (plano '+fmtU(calc)+')':'');
     h+=txt(C,px,(a.x+b.x)/2,(a.y+b.y)/2-6*px,s,c.len==null?C.warn:(bad?C.dem:C.ok),12,500);
   });
   var cent=(o.dims&&o.dims!=='simple')?wallCent(view):null;
@@ -2229,7 +2242,7 @@ function scene(C,k,view,o){
         var ga=wg(w),nxa=-ga.uy,nya=ga.ux,ca=wallCent(view);
         if((ca.x-(ga.a.x+ga.b.x)/2)*nxa+(ca.y-(ga.a.y+ga.b.y)/2)*nya>0){nxa=-nxa;nya=-nya}
         var offa=w.t/2+16*px;
-        h+=txt(C,px,(ga.a.x+ga.b.x)/2+nxa*offa,(ga.a.y+ga.b.y)/2+nya*offa+4*px,'⌒ '+fmt(w.arc.L)+'  R'+fmt(w.arc.r),C.label,12,500);
+        h+=txt(C,px,(ga.a.x+ga.b.x)/2+nxa*offa,(ga.a.y+ga.b.y)/2+nya*offa+4*px,'⌒ '+fmtU(w.arc.L)+'  R'+fmtU(w.arc.r),C.label,12,500);
       }
       return;
     }
@@ -2237,13 +2250,13 @@ function scene(C,k,view,o){
     var g=wg(w),nx=-g.uy,ny=g.ux;
     if((cc0.x-(g.a.x+g.b.x)/2)*nx+(cc0.y-(g.a.y+g.b.y)/2)*ny>0){nx=-nx;ny=-ny}
     var off=w.t/2+12*px,meas=w.m===true,diff=meas?Math.abs(g.l-w.len):0,bad=meas&&diff>1.5;
-    var s=meas?fmt(w.len):'~'+fmt(g.l);
-    if(bad)s+=' ('+fmt(g.l)+')';
+    var s=meas?fmtU(w.len):'~'+fmtU(g.l);
+    if(bad)s+=' ('+fmtU(g.l)+')';
     var sp0=spanInterior(w,view,cc0);
-    if(sp0){var cl0=Math.max(0,Math.min(g.l,sp0.s1)-Math.max(0,sp0.s0));s=meas?fmt(w.len-(g.l-cl0)):'~'+fmt(cl0)}
+    if(sp0){var cl0=Math.max(0,Math.min(g.l,sp0.s1)-Math.max(0,sp0.s0));s=meas?fmtU(w.len-(g.l-cl0)):'~'+fmtU(cl0)}
     h+=txt(C,px,(g.a.x+g.b.x)/2+nx*off,(g.a.y+g.b.y)/2+ny*off+4*px,s,meas?(bad?C.dem:C.label):C.warn,12,500);
   });
-  if(sel&&sel.t==='op'){var lo=opn(sel.id);if(lo&&opVis(lo,view)){var lq=og(lo);h+=txt(C,px,(lq.x1+lq.x2)/2+lq.nx*(lq.w.t/2+26*px),(lq.y1+lq.y2)/2+lq.ny*(lq.w.t/2+26*px)+4*px,fmt(lo.w)+' × '+fmt(lo.h),C.accent,12,600)}}
+  if(sel&&sel.t==='op'){var lo=opn(sel.id);if(lo&&opVis(lo,view)){var lq=og(lo);h+=txt(C,px,(lq.x1+lq.x2)/2+lq.nx*(lq.w.t/2+26*px),(lq.y1+lq.y2)/2+lq.ny*(lq.w.t/2+26*px)+4*px,fmtU(lo.w)+' × '+fmtU(lo.h),C.accent,12,600)}}
   if(o.nodes&&sel&&sel.t==='wall'){var swz=wl(sel.id);if(swz&&wallVis(swz,view))h+=selDims(C,px,swz,view)}
   h+=drSvg(C,px,view,sel,o);
   if(o.marks&&view==='acab')h+=elevMarks(C,px);
@@ -2290,7 +2303,7 @@ function spanInterior(w,view,cent,dir){
       }
     });
   });
-  return best;
+  return best||spanAbierto(w,view); /* sin sala cerrada: el hueco libre va de la cara del muro vecino al otro extremo */
 }
 /* diferencia entre el eje del muro y su hueco libre (0 si se trabaja a ejes) */
 /* desplazamiento entre el eje del muro y el punto desde el que se miden las distancias de los huecos (igual que las cotas del plano) */
@@ -2298,6 +2311,12 @@ function opOff(w){
   if(!w||!st.v||st.v.cb!=='int'||w.arc)return 0;
   var sp=spanDim(w,st.view);
   return sp?Math.max(0,sp.s0):0;
+}
+/* lo mismo medido desde el final del muro */
+function opOffFin(w){
+  if(!w||!st.v||st.v.cb!=='int'||w.arc)return 0;
+  var sp=spanDim(w,st.view),L=wg(w).l;
+  return sp?Math.max(0,L-Math.min(L,sp.s1)):0;
 }
 /* tramo libre de un muro tal como se acota ahora en pantalla */
 function spanDim(w,view){
@@ -2362,19 +2381,19 @@ function dimChain(C,px,w,mode,cent,view,tags){
   function tick(s,d){var p=P(s,d),tx=(g.ux+c.nx)/Math.SQRT2*3.5*px,ty=(g.uy+c.ny)/Math.SQRT2*3.5*px;return ln(p.x-tx,p.y-ty,p.x+tx,p.y+ty,C.label,1.5*px)}
   function line(s0,s1,d){var a=P(s0,d),b=P(s1,d);return ln(a.x,a.y,b.x,b.y,col,0.9*px)}
   function lab(s0,s1,d,t,colr,wt){var p=P((s0+s1)/2,d+9*px+Math.abs(c.nx)*12*px);return txt(C,px,p.x,p.y+4*px,t,colr,11,wt)}
-  var meas=w.m===true,bad=!esInt&&meas&&Math.abs(L-w.len)>1.5,clear=S1-S0,tt=meas?fmt(esInt?w.len-(L-clear):w.len):'~'+fmt(esInt?clear:L);
+  var meas=w.m===true,bad=!esInt&&meas&&Math.abs(L-w.len)>1.5,clear=S1-S0,tt=meas?fmtU(esInt?w.len-(L-clear):w.len):'~'+fmtU(esInt?clear:L);
   var ttn=meas?(esInt?w.len-(L-clear):w.len):(esInt?clear:L);
-  if(bad)tt+=' ('+fmt(L)+')';
+  if(bad)tt+=' ('+fmtU(L)+')';
   var tcol=meas?(bad?C.dem:C.label):C.warn;
   if(c.ops.length){
     var segs=[],last=S0;
     c.ops.forEach(function(o){
       var s0=Math.max(last,Math.min(S1,o.p)),s1=Math.min(S1,o.p+o.w);
-      if(s0-last>0.5)segs.push({a:last,b:s0,t:fmt(s0-last),op:false,k:'gap',id:o.id,base:last});
-      if(s1>s0)segs.push({a:s0,b:s1,t:((tags&&tags[o.id])?tags[o.id]+' ':'')+fmt(o.w),op:true,k:'op',id:o.id});
+      if(s0-last>0.5)segs.push({a:last,b:s0,t:fmtU(s0-last),op:false,k:'gap',id:o.id,base:last});
+      if(s1>s0)segs.push({a:s0,b:s1,t:((tags&&tags[o.id])?tags[o.id]+' ':'')+fmtU(o.w),op:true,k:'op',id:o.id});
       last=Math.max(last,s1);
     });
-    if(S1-last>0.5)segs.push({a:last,b:S1,t:fmt(S1-last),op:false,k:'last',id:c.ops[c.ops.length-1].id,base:S1});
+    if(S1-last>0.5)segs.push({a:last,b:S1,t:fmtU(S1-last),op:false,k:'last',id:c.ops[c.ops.length-1].id,base:S1});
     var pts=[S0];segs.forEach(function(sg){pts.push(sg.b)});
     h+=line(S0,S1,c.d1);
     pts.forEach(function(s){h+=ext(s,c.d1)+tick(s,c.d1)});
@@ -2390,7 +2409,7 @@ function dimChain(C,px,w,mode,cent,view,tags){
   if(mode==='dob'){ // línea exterior: de cara exterior a cara exterior, encima de la interior
     var d3=(c.ops.length?c.d2:c.d1)+17*px,so0=esInt?S0-w.t:-w.t/2,so1=esInt?S1+w.t:L+w.t/2,outer=ttn+(esInt?2*w.t:w.t),cx=C.dim||col;
     function ext3(s,d){var a=P(s,w.t/2+3*px),b=P(s,d+4*px);return ln(a.x,a.y,b.x,b.y,cx,0.8*px)}
-    h+=line(so0,so1,d3)+ext3(so0,d3)+ext3(so1,d3)+tick(so0,d3)+tick(so1,d3)+lab(so0,so1,d3,fmt(outer)+' ext.',cx,500);
+    h+=line(so0,so1,d3)+ext3(so0,d3)+ext3(so1,d3)+tick(so0,d3)+tick(so1,d3)+lab(so0,so1,d3,fmtU(outer)+' ext.',cx,500);
   }
   return h;
 }
@@ -2454,26 +2473,26 @@ var qd=$('qd'),dimEd=null;
 function closeDimEd(){dimEd=null;qd.hidden=true}
 function openDimEd(h){
   closeQE();dimEd=h;
-  qd.value=f2(h.val);qd.hidden=false;
+  qd.value=toU(h.val);qd.hidden=false;
   qd.style.left=Math.max(40,Math.min(W-40,st.tx+h.x*st.k))+'px';qd.style.top=Math.max(20,Math.min(H-20,st.ty+h.y*st.k))+'px';
   qd.focus();try{qd.select()}catch(_){}
 }
 function commitDimEd(){
   if(!dimEd)return;
-  var h=dimEd,n=num(qd.value);closeDimEd();
+  var h=dimEd,n=fromU(num(qd.value));closeDimEd();
   if(h.kind==='wsel'){
-    if(!(n>=5&&n<=5000)){toast('Escribe una medida entre 5 y 5000 cm');return}
+    if(!(n>0&&n<=100000)){toast('Escribe una medida válida');return}
     if(Math.abs(n-h.val)<0.01)return;
     var eje=n+h.delta,cb0=st.v.cb;
     st.v.cb='ejes'; /* ya está convertido a ejes */
-    try{if(h.nid)applyField('adj:'+h.nid+':'+h.wall,String(eje),false);else applyField('len',String(eje),false)}finally{st.v.cb=cb0}
+    try{if(h.nid)applyField('adj:'+h.nid+':'+h.wall,String(eje),false,true);else applyField('len',String(eje),false,true)}finally{st.v.cb=cb0}
     return;
   }
   var w=wl(h.wall),o=opn(h.opId);if(!w||!o)return;
   if(!(n>=0&&n<=5000)){toast('Escribe una distancia válida');return}
   var L=wg(w).l,old=h.val;if(Math.abs(n-old)<0.01)return;
   snap();
-  if(h.kind==='op'){if(n<20){toast('El ancho mínimo es 20 cm');hist.pop();return}o.w=n}
+  if(h.kind==='op'){if(!(n>0)){toast('Escribe un ancho válido');hist.pop();return}o.w=n}
   else if(h.kind==='gap')o.p=h.base+n;
   else o.p=h.base-n-o.w;
   o.p=f2(Math.max(0,Math.min(Math.max(0,L-o.w),o.p)));
@@ -2488,7 +2507,7 @@ function openQE(id){
   var w=wl(id);if(!w)return;
   qeId=id;st.sel={t:'wall',id:id};
   var g=wg(w);
-  qe.value=w.m===true?f2(w.len-offInt(w)):'';qe.placeholder=fmt(g.l-offInt(w));
+  qe.value=w.m===true?toU(w.len-offInt(w)):'';qe.placeholder=fmtU(g.l-offInt(w));
   qe.hidden=false;
   var p=labelScreen(w);
   if(p.y>H*0.5||p.y<40||p.x<40||p.x>W-40){st.tx+=W/2-p.x;st.ty+=H*0.3-p.y}
@@ -2502,11 +2521,11 @@ function commitQE(adv){
   var w=wl(qeId);if(!w){closeQE();return}
   var s=qe.value.trim();
   if(s===''){if(adv){qeBusy=true;var nx=goNext(w.id)?st.sel.id:null;qeBusy=false;if(nx&&nx!==w.id)openQE(nx);else closeQE()}return}
-  var n=num(s);
-  if(!(n>=5&&n<=5000)){toast('Escribe una medida entre 5 y 5000 cm');return}
+  var n=fromU(num(s));
+  if(!(n>0&&n<=100000)){toast('Escribe una medida válida');return}
   qeBusy=true;
   st.sel={t:'wall',id:w.id};
-  if(w.m===true&&Math.abs(w.len-offInt(w)-n)<0.01&&!adv){qeBusy=false;closeQE();return}
+  if(w.m===true&&Math.abs(w.len-offInt(w)-n)<0.001&&!adv){qeBusy=false;closeQE();return}
   applyField('len',s,adv);
   qeBusy=false;
   if(!adv)closeQE();
@@ -3728,8 +3747,11 @@ function seg3(cur,act){
   var L=[['ex','Existente'],['dem','Demoler'],['new','Nuevo']];
   return '<div class="seg3">'+L.map(function(x){return '<button data-a="'+act+'" data-s="'+x[0]+'" aria-pressed="'+(cur===x[0])+'">'+x[1]+'</button>'}).join('')+'</div>';
 }
+(function(){var u=document.getElementById('unidad');if(!u)return;u.value=UNIT;u.addEventListener('change',function(){UNIT=UNIDADES[u.value]?u.value:'cm';try{localStorage.setItem('ranuse-unidad',UNIT)}catch(e){}render();panelSel();toast('Unidad: '+UNIT+' (los datos se guardan igual; solo cambia cómo se escriben)')})})();
 function fld(key,label,val,ph){
-  return '<label class="fld"><span>'+label+'</span><input data-f="'+key+'" inputmode="decimal" autocomplete="off" value="'+(val==null?'':f2(val))+'"'+(ph!=null?' placeholder="'+ph+'"':'')+'></label>';
+  var sin=/^(w_ang|pil_cnt|dr_fs|dr_wd)$/.test(key);
+  if(!sin)label=String(label).replace(/cm/g,UNL());
+  return '<label class="fld"><span>'+label+'</span><input data-f="'+key+'" inputmode="decimal" autocomplete="off" value="'+(val==null?'':(sin?f2(val):toU(val)))+'"'+(ph!=null?' placeholder="'+(sin||isNaN(+ph)?ph:toU(+ph))+'"':'')+'></label>';
 }
 /* al seleccionar algo, el panel de la derecha muestra sus datos arriba del todo */
 function mostrarSel(){
@@ -3871,6 +3893,7 @@ function panelSel(focus){
     h+='<label class="fld"><span>Cambiar a otro modelo de '+(o.t==='door'?'puerta':'ventana')+'</span><select data-t="op_model"><option value="">Elegir modelo…</option>'+OPK.filter(function(k){return k.t===o.t}).map(function(k){return '<option value="'+k.id+'">'+esc(k.n)+' ('+k.w+' × '+k.h+')</option>'}).join('')+(function(){var l=opLibList(o.t);return l.length?'<optgroup label="Biblioteca">'+l.slice(0,200).map(function(k){return '<option value="'+esc(k.id)+'">'+esc(k.n)+' ('+k.w+' × '+k.h+')</option>'}).join('')+'</optgroup>':''})()+'</select></label><p class="note" style="margin:0 0 8px">Cambia el tipo, material y medidas por los del modelo elegido, en el mismo sitio del muro. Después puedes retocar lo que quieras (Ctrl+Z lo deshace).</p>';
     var opo=opOff(wl(o.wall));
     h+=fld('op_p','Distancia desde el inicio del muro (cm, '+(st.v.cb==='int'&&opo?'desde la cara interior':'a ejes')+')',o.p-opo);
+    h+=fld('op_pe','Distancia hasta el final del muro (cm, '+(st.v.cb==='int'?'hasta la cara interior':'a ejes')+')',wg(wl(o.wall)).l-o.p-o.w-opOffFin(wl(o.wall)));
     h+=fld('op_w','Ancho (cm)',o.w);
     h+=fld('op_h','Alto (cm)',o.h);
     if(o.t==='win')h+=fld('op_sill','Altura desde el suelo (cm)',o.sill);
@@ -4091,14 +4114,15 @@ function girarMuro(w,ang){
   nb.x=Math.round(pxm+ux*(L-fa));nb.y=Math.round(pym+uy*(L-fa));
   relen([w.a,w.b]);
 }
-function applyField(key,val,adv){
+function applyField(key,val,adv,raw){
   var s=st.sel;if(!s)return;
   var n=num(val);
+  if(!raw&&!/^(w_ang|pil_cnt|dr_fs|dr_wd)$/.test(key))n=fromU(n);
   if(s.t==='wall'){
     var w=wl(s.id);if(!w)return;
     if(key==='w_h'){
       if(String(val).trim()===''){snap();delete w.h;commit(false);return}
-      if(!(n>=50&&n<=2000)){toast('Escribe una altura entre 50 y 2000 cm');return}
+      if(!(n>0&&n<=5000)){toast('Escribe una altura válida');return}
       snap();w.h=n;commit(false);return;
     }
     if(key==='w_ang'){
@@ -4106,7 +4130,7 @@ function applyField(key,val,adv){
       snap();girarMuro(w,n);commit(false);panelSel();
     }else if(key==='len'){
       if(String(val).trim()===''){return}
-      if(!(n>=5&&n<=5000)){toast('Escribe una medida entre 5 y 5000 cm');return}
+      if(!(n>0&&n<=100000)){toast('Escribe una medida válida');return}
       snap();setWallLen(w,n+offInt(w));
       if(adv){
         if(goNext(w.id)){commit(false);panelRest();openQE(st.sel.id)}
@@ -4116,7 +4140,7 @@ function applyField(key,val,adv){
       var nid,aj;
       if(/^adj:/.test(key)){var pr=key.split(':');nid=pr[1];aj=wl(pr[2])}else{nid=key==='adj_a'?w.a:w.b;aj=adjOf(w,nid)}
       if(aj)n=n+offInt(aj); /* lo escrito se mide como el resto de cotas (interior o ejes) */
-      if(!aj||!(n>=5&&n<=5000)){toast('Escribe una medida entre 5 y 5000 cm');return}
+      if(!aj||!(n>0&&n<=100000)){toast('Escribe una medida válida');return}
       var far=nd(aj.a===nid?aj.b:aj.a),nn3=nd(nid),gw=wg(w),nx3=-gw.uy,ny3=gw.ux;
       var Px=nn3.x-far.x,Py=nn3.y-far.y,pnn=Px*nx3+Py*ny3,disc=pnn*pnn-(Px*Px+Py*Py)+n*n;
       if(disc<0){toast('Con esa medida el muro no llega a cortar');return}
@@ -4131,26 +4155,28 @@ function applyField(key,val,adv){
       }
       commit();
     }else if(key==='thick'){
-      if(!(n>=5&&n<=60)){toast('El grosor va de 5 a 60 cm');return}
+      if(!(n>0&&n<=300)){toast('Escribe un grosor válido');return}
       snap();w.t=n;w.tm=true;commit(false);
     }
   }else if(s.t==='op'){
     var o=opn(s.id);if(!o)return;
     if(!isFinite(n)||n<0){toast('Escribe un número válido');return}
     snap();
-    if(key==='op_p')o.p=n+opOff(wl(o.wall));else if(key==='op_w'){if(n<20){toast('El ancho mínimo es 20 cm');hist.pop();return}o.w=n}
+    if(key==='op_p')o.p=n+opOff(wl(o.wall));
+    else if(key==='op_pe'){var wq2=wl(o.wall);o.p=wg(wq2).l-o.w-n-opOffFin(wq2)}
+    else if(key==='op_w'){if(!(n>0)){toast('Escribe un ancho válido');hist.pop();return}o.w=n}
     else if(key==='op_h')o.h=n;else if(key==='op_sill')o.sill=n;
     var g=og(o).g;o.p=Math.max(0,Math.min(g.l-o.w,o.p));
     commit(false);
   }else if(s.t==='pil'){
     var p=pl(s.id);if(!p)return;
     if(key==='pil_cnt'){if(!(n>=1&&n<=100)){toast('Escribe una cantidad entre 1 y 100');return}snap();p.cnt=Math.round(n);commit(false);return}
-    if(!(n>=5&&n<=500)){toast('Escribe una medida entre 5 y 500 cm');return}
+    if(!(n>0&&n<=5000)){toast('Escribe una medida válida');return}
     snap();if(key==='pil_w')p.w=n;else if(key==='pil_sep')p.sep=n;else p.d=n;commit(false);
   }else if(s.t==='eq'){
     var q=by(st.v.eq,s.id);if(!q)return;
     if(key==='eq_pm'){snap();if(String(val).trim()==='')delete q.pm;else if(n>=0&&n<=500)q.pm=n;else{hist.pop();toast('Escribe una distancia entre 0 y 500 cm');return}commit(false);return}
-    if(!(n>=20&&n<=600)){toast('Escribe una medida entre 20 y 600 cm');return}
+    if(!(n>0&&n<=5000)){toast('Escribe una medida válida');return}
     snap();
     var rt=q.d/q.w;
     if(key==='eq_w'){q.w=n;if(q.lock&&rt>0){var nd2=Math.round(n*rt*10)/10;if(nd2>=20&&nd2<=600)q.d=nd2;else{q.w=n;toast('El fondo saldría fuera de 20-600 cm: no se ha ajustado')}}}
