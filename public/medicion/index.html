@@ -1349,6 +1349,106 @@ function spRect(r){var n=nd(r.n);if(!n)return null;var cx=n.x+r.dx,cy=n.y+r.dy;r
 function spEn(f,k){var t=0;(st.v.sp||[]).forEach(function(r){if(r.k!==k)return;var q=spRect(r);if(q&&inPoly({x:q.cx,y:q.cy},f.poly))t+=r.bw*r.bh});return t}
 function polyArea(pts){var a=0,i;for(i=0;i<pts.length;i++){var p0=pts[i],p1=pts[(i+1)%pts.length];a+=p0.x*p1.y-p1.x*p0.y}return Math.abs(a)/2}
 function polyCentro(pts){var a=0,cx=0,cy=0,i;for(i=0;i<pts.length;i++){var p0=pts[i],p1=pts[(i+1)%pts.length],c=p0.x*p1.y-p1.x*p0.y;a+=c;cx+=(p0.x+p1.x)*c;cy+=(p0.y+p1.y)*c}if(Math.abs(a)<1e-6)return pts[0];return {x:cx/(3*a),y:cy/(3*a)}}
+/* ---------- colocación y despiece de suelos y techos ---------- */
+var CLPAT=[['','Sin despiece'],['recto','Recto (a hueso)'],['rompe2','Rompejuntas ½ (tresbolillo)'],['rompe3','Rompejuntas ⅓'],['diag','Diagonal 45°']];
+var CLPRE=[[30,30],[45,45],[60,60],[75,75],[30,60],[60,120],[120,120],[20,120],[14,90]];
+function clNuevo(){return {pat:'recto',w:60,h:60,j:2,ox:0,oy:0,show:'ambos'}}
+function polyBox(poly){var x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;poly.forEach(function(q){x0=Math.min(x0,q.x);y0=Math.min(y0,q.y);x1=Math.max(x1,q.x);y1=Math.max(y1,q.y)});return {x0:x0,y0:y0,x1:x1,y1:y1}}
+/* piezas (cuadriláteros) que cubren la sala según el tipo de colocación; null si son tantas que no se pueden dibujar */
+function clTiles(poly,cl){
+  var bb=polyBox(poly),jc=(cl.j||0)/10,pw=Math.max(1,cl.w+jc),ph=Math.max(1,cl.h+jc),diag=cl.pat==='diag',out=[];
+  var cx=(bb.x0+bb.x1)/2,cy=(bb.y0+bb.y1)/2,R=Math.hypot(bb.x1-bb.x0,bb.y1-bb.y0)/2+pw+ph;
+  var X0=diag?cx-R:bb.x0,X1=diag?cx+R:bb.x1,Y0=diag?cy-R:bb.y0,Y1=diag?cy+R:bb.y1;
+  if(((X1-X0)/pw+2)*((Y1-Y0)/ph+2)>4500)return null;
+  var ox=cl.ox||0,oy=cl.oy||0,f=cl.pat==='rompe2'?.5:cl.pat==='rompe3'?1/3:0,mod=cl.pat==='rompe2'?2:3,r=0,y=Y0+(((oy%ph)+ph)%ph)-ph,K=Math.SQRT1_2;
+  for(;y<Y1;y+=ph,r++){
+    var off=f?(r%mod)*f*pw:0,x=X0+((((ox+off)%pw)+pw)%pw)-pw;
+    for(;x<X1;x+=pw){
+      var q=[{x:x,y:y},{x:x+pw,y:y},{x:x+pw,y:y+ph},{x:x,y:y+ph}];
+      if(diag)q=q.map(function(p){var dx=p.x-cx,dy=p.y-cy;return {x:cx+(dx-dy)*K,y:cy+(dx+dy)*K}});
+      var qb=polyBox(q);
+      if(qb.x1<bb.x0||qb.x0>bb.x1||qb.y1<bb.y0||qb.y0>bb.y1)continue;
+      out.push(q);
+    }
+  }
+  return out;
+}
+function shClip(subj,clip){
+  var sg=0,n=clip.length,i,out=subj;
+  for(i=0;i<n;i++){var p0=clip[i],p1=clip[(i+1)%n];sg+=p0.x*p1.y-p1.x*p0.y}
+  sg=sg>0?1:-1;
+  for(i=0;i<n&&out.length;i++){
+    var a=clip[i],b=clip[(i+1)%n],inp=out,j;out=[];
+    var dentro=function(p){return sg*((b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x))>=-1e-9};
+    for(j=0;j<inp.length;j++){
+      var P=inp[j],Q=inp[(j+1)%inp.length],pi=dentro(P),qi=dentro(Q);
+      if(pi)out.push(P);
+      if(pi!==qi){
+        var dx=Q.x-P.x,dy=Q.y-P.y,den=(b.x-a.x)*dy-(b.y-a.y)*dx;
+        if(Math.abs(den)>1e-12){var t=((b.x-a.x)*(a.y-P.y)-(b.y-a.y)*(a.x-P.x))/den;out.push({x:P.x+dx*t,y:P.y+dy*t})}
+      }
+    }
+  }
+  return out;
+}
+/* piezas enteras, cortes y merma */
+function clCuenta(poly,cl){
+  var tl=clTiles(poly,cl);if(!tl)return null;
+  var jc=(cl.j||0)/10,pa=Math.max(1,cl.w+jc)*Math.max(1,cl.h+jc),ent=0,cor=0,area=polyArea(poly);
+  tl.forEach(function(q){var c=shClip(poly,q),a=c.length>2?polyArea(c):0;if(a>=pa*0.995)ent++;else if(a>0.5)cor++});
+  var piezas=ent+cor,comprada=piezas*cl.w*cl.h/10000,util=area/10000;
+  return {tiles:tl,enteras:ent,cortes:cor,piezas:piezas,reserva:Math.ceil(piezas*1.1),merma:util>0?Math.max(0,(comprada-util)/util*100):0,m2:util};
+}
+function clipSegPoly(a,b,poly){
+  var dx=b.x-a.x,dy=b.y-a.y,ts=[0,1],i,out=[];
+  for(i=0;i<poly.length;i++){
+    var p=poly[i],q=poly[(i+1)%poly.length],ex=q.x-p.x,ey=q.y-p.y,den=dx*ey-dy*ex;
+    if(Math.abs(den)<1e-9)continue;
+    var t=((p.x-a.x)*ey-(p.y-a.y)*ex)/den,u=((p.x-a.x)*dy-(p.y-a.y)*dx)/den;
+    if(t>0&&t<1&&u>=0&&u<=1)ts.push(t);
+  }
+  ts.sort(function(x,y){return x-y});
+  for(i=0;i+1<ts.length;i++){
+    var t0=ts[i],t1=ts[i+1];if(t1-t0<1e-6)continue;
+    var m={x:a.x+dx*(t0+t1)/2,y:a.y+dy*(t0+t1)/2};
+    if(inPoly(m,poly))out.push([{x:a.x+dx*t0,y:a.y+dy*t0},{x:a.x+dx*t1,y:a.y+dy*t1}]);
+  }
+  return out;
+}
+/* líneas del despiece recortadas a la sala */
+function clSvg(C,px,poly,cl){
+  var tl=clTiles(poly,cl);if(!tl)return '';
+  var seen={},d='',k=function(p){return Math.round(p.x*10)+','+Math.round(p.y*10)};
+  tl.forEach(function(q){
+    for(var i=0;i<4;i++){
+      var a=q[i],b=q[(i+1)%4],ka=k(a),kb=k(b),key=ka<kb?ka+'|'+kb:kb+'|'+ka;
+      if(seen[key])continue;seen[key]=1;
+      clipSegPoly(a,b,poly).forEach(function(sg){d+='M'+f2(sg[0].x)+' '+f2(sg[0].y)+' L'+f2(sg[1].x)+' '+f2(sg[1].y)+' '});
+    }
+  });
+  return d?'<path d="'+d+'" style="fill:none;stroke:'+C.dim+';stroke-width:'+f2(0.7*px)+'"/>':'';
+}
+function clObj(){var s=st.sel;if(!s)return null;return s.t==='zn'?by(st.v.zn,s.id):s.t==='sp'?by(st.v.sp,s.id):null}
+function colocHtml(o,poly){
+  var cl=o.cl,h='<div class="lab" style="margin-top:12px">Colocación y despiece</div>';
+  h+='<label class="fld"><span>Tipo de colocación</span><select data-t="cl_pat">'+CLPAT.map(function(p){return '<option value="'+p[0]+'"'+((cl&&cl.pat||'')===p[0]?' selected':'')+'>'+p[1]+'</option>'}).join('')+'</select></label>';
+  if(!cl||!cl.pat)return h+'<p class="note">Elige un tipo para ver las líneas de despiece sobre el plano y calcular piezas, cortes y merma.</p>';
+  var preSel=CLPRE.filter(function(p){return p[0]===cl.w&&p[1]===cl.h}).length?cl.w+'x'+cl.h:'';
+  h+='<label class="fld"><span>Formato de pieza</span><select data-t="cl_pre"><option value="">Personalizado</option>'+CLPRE.map(function(p){var v=p[0]+'x'+p[1];return '<option value="'+v+'"'+(preSel===v?' selected':'')+'>'+p[0]+' × '+p[1]+' cm</option>'}).join('')+'</select></label>';
+  h+=fld('cl_w','Ancho de pieza (cm)',cl.w)+fld('cl_h','Largo de pieza (cm)',cl.h)+fld('cl_j','Junta (mm)',cl.j);
+  h+=fld('cl_ox','Mover el inicio en horizontal (cm)',cl.ox||0)+fld('cl_oy','Mover el inicio en vertical (cm)',cl.oy||0);
+  h+='<label class="fld"><span>Mostrar en el plano</span><select data-t="cl_show"><option value="ambos"'+(cl.show!=='trama'?' selected':'')+'>Color y despiece</option><option value="trama"'+(cl.show==='trama'?' selected':'')+'>Solo el despiece (sin color)</option></select></label>';
+  var r=poly&&clCuenta(poly,cl);
+  if(r)h+='<div class="note" style="margin:6px 0"><b>'+r.enteras+'</b> piezas enteras · <b>'+r.cortes+'</b> cortes<br>Piezas a pedir: <b>'+r.piezas+'</b> ('+r.reserva+' con un 10 % de reserva) · merma: <b>'+(Math.round(r.merma*10)/10)+' %</b> sobre '+m2(r.m2)+' m²</div><p class="note" style="margin:0">Cuenta una pieza nueva por cada corte (sin reaprovechar recortes). Revisa los cortes de las esquinas y los encuentros con puertas.</p>';
+  else if(poly)h+='<p class="note">Las piezas son demasiado pequeñas para esta sala: no se dibuja ni se calcula.</p>';
+  return h;
+}
+function applyCl(key,n){
+  var o=clObj();if(!o||!o.cl)return;
+  if((key==='cl_w'||key==='cl_h')&&!(n>=1&&n<=500)){toast('Escribe una medida entre 1 y 500 cm');return}
+  if(key==='cl_j'&&!(n>=0&&n<=50)){toast('La junta va de 0 a 50 mm');return}
+  snap();o.cl[key.slice(3)]=n;commit(false);panelSel();
+}
 function zoneCodes(view){
   var zk=zkind(view),m={},k=0,pre=MCODE[view];
   st.v.zn.forEach(function(z){if(z.k===zk&&!m[z.mat])m[z.mat]=pre+(++k)});
@@ -2152,6 +2252,10 @@ function scene(C,k,view,o){
         h+='<defs><pattern id="'+pid+'" patternUnits="userSpaceOnUse" width="'+f2(ttw)+'" height="'+f2(tth)+'"><image href="'+m.tx.uri+'" x="0" y="0" width="'+f2(ttw)+'" height="'+f2(tth)+'" preserveAspectRatio="none"/></pattern></defs>';
         h+='<polygon points="'+pts+'" style="fill:url(#'+pid+');stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
       }else h+='<polygon points="'+pts+'" style="fill:'+(o.flat?hexMix(m.c,'#ffffff',0.35):m.c)+(o.flat?'':';fill-opacity:.62')+';stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
+      if(z.cl&&z.cl.pat){
+        if(z.cl.show==='trama')h+='<polygon points="'+pts+'" style="fill:'+C.bg+';stroke:none"/>';
+        h+=clSvg(C,px,f.inner,z.cl);
+      }
       var l1=(codes[z.mat]||'')+(z.nm?'  '+z.nm:''),l2=m2((f.area-spEn(f,zk))/10000)+' m²'+(view==='techos'&&z.h?'  ·  h '+fmtU(z.h):'');
       zlab+=txt(C,px,f.cx,f.cy-2*px,l1,C.label,13,600)+txt(C,px,f.cx,f.cy+14*px,l2,C.label,11,500);
     });
@@ -2165,6 +2269,11 @@ function scene(C,k,view,o){
         fill='url(#'+pid+')';
       }else fill=(o.flat?hexMix(m.c,'#ffffff',0.35):m.c);
       h+='<rect x="'+f2(q.x0)+'" y="'+f2(q.y0)+'" width="'+f2(r.bw)+'" height="'+f2(r.bh)+'" style="fill:'+fill+(m.tx&&!o.flat||o.flat?'':';fill-opacity:.85')+';stroke:'+(sl?C.accent:C.label)+';stroke-width:'+f2((sl?3:1.2)*px)+'"/>';
+      if(r.cl&&r.cl.pat){
+        var rpoly=[{x:q.x0,y:q.y0},{x:q.x1,y:q.y0},{x:q.x1,y:q.y1},{x:q.x0,y:q.y1}];
+        if(r.cl.show==='trama')h+='<rect x="'+f2(q.x0)+'" y="'+f2(q.y0)+'" width="'+f2(r.bw)+'" height="'+f2(r.bh)+'" style="fill:'+C.bg+';stroke:'+C.label+';stroke-width:'+f2(1.2*px)+'"/>';
+        h+=clSvg(C,px,rpoly,r.cl);
+      }
       zlab+=txt(C,px,q.cx,q.cy-2*px,(codes[r.mat]||'')+(r.nm?'  '+r.nm:''),C.label,12,600)+txt(C,px,q.cx,q.cy+13*px,m2(r.bw*r.bh/10000)+' m²',C.label,10.5,500);
     });
   }
@@ -3900,7 +4009,7 @@ function seg3(cur,act){
 }
 (function(){var u=document.getElementById('unidad');if(!u)return;u.value=UNIT;u.addEventListener('change',function(){UNIT=UNIDADES[u.value]?u.value:'cm';try{localStorage.setItem('ranuse-unidad',UNIT)}catch(e){}render();panelSel();toast('Unidad: '+UNIT+' (los datos se guardan igual; solo cambia cómo se escriben)')})})();
 function fld(key,label,val,ph){
-  var sin=/^(w_ang|pil_cnt|dr_fs|dr_wd)$/.test(key);
+  var sin=/^(w_ang|pil_cnt|dr_fs|dr_wd|cl_j)$/.test(key);
   if(!sin)label=String(label).replace(/cm/g,UNL());
   return '<label class="fld"><span>'+label+'</span><input data-f="'+key+'" inputmode="decimal" autocomplete="off" value="'+(val==null?'':(sin?f2(val):toU(val)))+'"'+(ph!=null?' placeholder="'+(sin||isNaN(+ph)?ph:toU(+ph))+'"':'')+'></label>';
 }
@@ -4116,6 +4225,7 @@ function panelSel(focus){
     h+='<label class="fld"><span>Nombre (opcional)</span><input data-t="sp_nm" value="'+esc(sp.nm||'')+'" placeholder="Zona de entreno" autocomplete="off"></label>';
     h+=fld('sp_bw','Ancho (cm)',sp.bw)+fld('sp_bh','Fondo (cm)',sp.bh);
     if(sq&&sbx)h+=fld('sp_x','Distancia desde la esquina izquierda (cm)',sq.x0-sbx.x0)+fld('sp_y','Distancia desde la esquina de arriba (cm)',sq.y0-sbx.y0);
+    h+=colocHtml(sp,sq?[{x:sq.x0,y:sq.y0},{x:sq.x1,y:sq.y0},{x:sq.x1,y:sq.y1},{x:sq.x0,y:sq.y1}]:null);
     h+='<div class="btns"><button class="danger" data-a="del">Borrar esta parte</button></div>';
   }else if(s.t==='rz'){
     var rz=by(st.v.rz,s.id),rv=rz.k==='s'?'suelos':'techos',rn=nd(rz.n),rf=rn&&faceAt({x:rn.x+rz.dx,y:rn.y+rz.dy},'actual');
@@ -4135,6 +4245,7 @@ function panelSel(focus){
     h+='<label class="fld"><span>Material</span><select data-t="zn_mat">'+MATS[zv].map(function(m){return '<option value="'+m.id+'"'+(m.id===z.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label>';
     if(z.k==='t')h+=fld('zn_h','Altura libre bajo el techo (cm)',z.h,String(fmt(num(st.v.altura)||260)));
     if(zf&&z.k==='s')h+='<p class="note">Rodapié: '+m2(Math.max(0,zf.per-zf.doorW)/100)+' ml (perímetro menos puertas). Los m² son útiles, descontando el grosor de los muros.</p>';
+    h+=colocHtml(z,zf?zf.inner:null);
     h+='<div class="btns"><button class="danger" data-a="del">Quitar material</button></div>';
   }else if(s.t==='pt'){
     var q=by(st.v.pts,s.id),pd=ptDef(q.k),tgm=lumTagMap(),swm=swTagMap();
@@ -4279,7 +4390,8 @@ function girarMuro(w,ang){
 function applyField(key,val,adv,raw){
   var s=st.sel;if(!s)return;
   var n=num(val);
-  if(!raw&&!/^(w_ang|pil_cnt|dr_fs|dr_wd)$/.test(key))n=fromU(n);
+  if(!raw&&!/^(w_ang|pil_cnt|dr_fs|dr_wd|cl_j)$/.test(key))n=fromU(n);
+  if(/^cl_/.test(key)){applyCl(key,n);return}
   if(s.t==='wall'){
     var w=wl(s.id);if(!w)return;
     if(key==='w_h'){
@@ -4559,6 +4671,16 @@ $('side').addEventListener('change',function(e){
   }
   if(t==='fz_mat'&&st.sel&&st.sel.t==='fz'){
     var fzm=by(st.v.fz,st.sel.id);if(!fzm)return;snap();fzm.mat=e.target.value;commit(false);panelSel();return;
+  }
+  if(t==='cl_pat'||t==='cl_pre'||t==='cl_show'){
+    var co=clObj();if(!co)return;
+    snap();
+    if(t==='cl_pat'){if(e.target.value){co.cl=co.cl||clNuevo();co.cl.pat=e.target.value}else delete co.cl}
+    else if(co.cl){
+      if(t==='cl_show')co.cl.show=e.target.value;
+      else if(e.target.value){var pp=e.target.value.split('x');co.cl.w=+pp[0];co.cl.h=+pp[1]}
+    }
+    commit(false);panelSel();return;
   }
   if(t==='sp_mat'&&st.sel&&st.sel.t==='sp'){var qm=by(st.v.sp,st.sel.id);if(qm){snap();qm.mat=e.target.value;commit(false);panelSel()}return}
   if(t==='sp_nm'&&st.sel&&st.sel.t==='sp'){var qn=by(st.v.sp,st.sel.id);if(qn){snap();qn.nm=e.target.value.slice(0,60);commit(false)}return}
@@ -6195,6 +6317,14 @@ function sheetPage(doc,view,idx,total,o){
     (v.sp||[]).forEach(function(r,i){if(r.k===zkind(view))rows.push([(r.nm||'Parte '+(i+1))+' ('+(cd[r.mat]||'')+')',m2(r.bw*r.bh/10000)+' m²'])});
     rows.push(['Total',m2(tot/10000)+' m²']);
     if(view==='suelos')rows.push(['Rodapié',m2(rod/100)+' ml']);
+    var filaCl=function(nm,poly,cl){
+      if(!cl||!cl.pat)return;
+      var r=clCuenta(poly,cl);if(!r)return;
+      rows.push(['Despiece '+nm+' · '+fmt(cl.w)+'×'+fmt(cl.h)+' cm',r.enteras+' enteras + '+r.cortes+' cortes']);
+      rows.push(['  Piezas a pedir ('+(CLPAT.filter(function(p){return p[0]===cl.pat})[0]||['',''])[1]+')',r.piezas+' ud · merma '+(Math.round(r.merma*10)/10)+' %']);
+    };
+    roomsL.forEach(function(r,i){filaCl(r.z.nm||'Sala '+(i+1),r.f.inner,r.z.cl)});
+    (v.sp||[]).forEach(function(r,i){if(r.k!==zkind(view))return;var q=spRect(r);if(q)filaCl(r.nm||'Parte '+(i+1),[{x:q.x0,y:q.y0},{x:q.x1,y:q.y0},{x:q.x1,y:q.y1},{x:q.x0,y:q.y1}],r.cl)});
   }
   (v.dr||[]).forEach(function(z,i){if(z.t==='zona'&&(z.vw==='*'||z.vw===view))rows.push([String(z.txt||'Zona '+(i+1)).split('|')[0].slice(0,40),m2(polyArea(z.pts)/10000)+' m²'])});
   if(sect('Mediciones')){
