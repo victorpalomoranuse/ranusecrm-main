@@ -266,6 +266,8 @@ body.crm .top .brand{display:none}
       <nav class="menus" aria-label="Menús">
         <div class="menu"><button class="mbtn" data-menu="archivo" aria-expanded="false">Archivo ▾</button>
           <div class="mdrop" id="menu-archivo" hidden>
+            <button data-do="datos">Datos del proyecto (nombre, dirección, cliente…)</button>
+            <button data-do="info">Qué información enseñar en las láminas…</button>
             <button data-do="b-cloud" id="mi-cloud" hidden>Guardar ahora</button>
             <button data-do="b-pdf">PDF de esta lámina</button>
             <button data-do="b-pdfall">PDF con todas las láminas</button>
@@ -4620,6 +4622,7 @@ function panelSel(focus){
     h+='<p class="note">Para cambiar el contorno (en «Seleccionar»): arrastra un punto grande para moverlo, toca el puntito de la mitad de un lado para añadir uno, o arrastra el interior para mover toda la zona. Los puntos se pegan a las esquinas de la sala y se alinean entre sí.</p>';
     if(st.spVsel&&st.spVsel.id===sp.id&&sp.pts&&sp.pts.length>3)h+='<div class="btns"><button data-a="spdelv">Quitar el punto seleccionado</button></div>';
     if(sq&&sbx&&!sp.pts)h+=fld('sp_x','Distancia desde la esquina izquierda (cm)',sq.x0-sbx.x0)+fld('sp_y','Distancia desde la esquina de arriba (cm)',sq.y0-sbx.y0);
+    h+='<label class="fld chk"><input type="checkbox" data-t="sp_ex"'+(sp.ex?' checked':'')+'><span>Existente: se mantiene (no se mide ni se pide)</span></label>';
     h+=colocHtml(sp,spPts(sp));
     h+='<div class="btns"><button class="danger" data-a="del">Borrar esta parte</button></div>';
   }else if(s.t==='rz'){
@@ -4640,6 +4643,7 @@ function panelSel(focus){
     h+='<label class="fld"><span>Material</span><select data-t="zn_mat">'+MATS[zv].map(function(m){return '<option value="'+m.id+'"'+(m.id===z.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label>';
     if(z.k==='t')h+=fld('zn_h','Altura libre bajo el techo (cm)',z.h,String(fmt(num(st.v.altura)||260)));
     if(zf&&z.k==='s')h+='<p class="note">Rodapié: '+m2(Math.max(0,zf.per-zf.doorW)/100)+' ml (perímetro menos puertas). Los m² son útiles, descontando el grosor de los muros.</p>';
+    h+='<label class="fld chk"><input type="checkbox" data-t="zn_ex"'+(z.ex?' checked':'')+'><span>'+(z.k==='s'?'Suelo':'Techo')+' existente: se mantiene (no se mide ni se pide)</span></label>';
     h+=colocHtml(z,zf?zf.inner:null);
     h+='<div class="btns"><button class="danger" data-a="del">Quitar material</button></div>';
   }else if(s.t==='pt'){
@@ -5091,6 +5095,7 @@ $('side').addEventListener('change',function(e){
     }
     commit(false);panelSel();return;
   }
+  if((t==='zn_ex'&&st.sel&&st.sel.t==='zn')||(t==='sp_ex'&&st.sel&&st.sel.t==='sp')){var qz=t==='zn_ex'?by(st.v.zn,st.sel.id):by(st.v.sp,st.sel.id);if(qz){snap();if(e.target.checked)qz.ex=true;else delete qz.ex;commit(false);panelSel()}return}
   if(t==='sp_mat'&&st.sel&&st.sel.t==='sp'){var qm=by(st.v.sp,st.sel.id);if(qm){snap();qm.mat=e.target.value;commit(false);panelSel()}return}
   if(t==='sp_nm'&&st.sel&&st.sel.t==='sp'){var qn=by(st.v.sp,st.sel.id);if(qn){snap();qn.nm=e.target.value.slice(0,60);commit(false)}return}
   if(t==='rz_mat'&&st.sel&&st.sel.t==='rz'){
@@ -5680,7 +5685,7 @@ function carpFrame(doc,idx,total,o,title,note){
   p.line(mg,fy,PW-mg,fy,MARCA,0.3);
   var fr=[0.12,0.22,0.15,0.12,0.25,0.08],xs=[mg],c0=0;
   fr.forEach(function(q){c0+=q;xs.push(mg+W0*c0)});
-  var codLam='A.'+('0'+idx).slice(-2),tpt=6.8*f;
+  var codLam=codigoLamina(doc,/carpinter/i.test(title)?'carp':/calidades/i.test(title)?'cal':'det'),tpt=6.8*f;
   for(var qx=1;qx<=5;qx++)p.line(xs[qx],fy+3.5*f,xs[qx],PH-mg-3.5*f,LINEC,0.25);
   function campo(x,y,lab,val,w,bold){
     p.text(x,y,lab.toUpperCase(),4.4*f+0.4,{bold:true,col:MUTED,sp:0.35});
@@ -5694,7 +5699,7 @@ function carpFrame(doc,idx,total,o,title,note){
   campo(xs[3]+5*f,y1,'Medición',fdate(v.fecha),xs[4]-xs[3]-9*f);
   p.text(xs[4]+5*f,y1,'OBSERVACIONES',4.4*f+0.4,{bold:true,col:MUTED,sp:0.35});
   var yy=y1+5*f;
-  wrapTxt(note||'Medidas en centímetros, a comprobar en obra antes de fabricar.',xs[5]-xs[4]-9*f,5.2*f*25.4/72,2).forEach(function(l){p.text(xs[4]+5*f,yy,l,5.2*f+0.3,{col:INK});yy+=3.2*f});
+  wrapTxt(((note||'Medidas en centímetros, a comprobar en obra antes de fabricar.')+(v.obs?' '+v.obs:'')),xs[5]-xs[4]-9*f,5.2*f*25.4/72,2).forEach(function(l){p.text(xs[4]+5*f,yy,l,5.2*f+0.3,{col:INK});yy+=3.2*f});
   campo(xs[5]+5*f,y1,'Hoja',idx+' / '+total,xs[6]-xs[5]-9*f,true);
   p.rect(xs[6],fy,W0-(xs[6]-mg),bandH,MARCA,null,0);
   p.text((xs[6]+PW-mg)/2,fy+bandH/2+4*f,codLam,17*f+2,{light:true,col:'#ffffff',anchor:'middle'});
@@ -6452,6 +6457,13 @@ function drawDet(){
   });
   $('b-pdfdet').addEventListener('click',function(){if(!detSel().length){toast('Elige o añade algún detalle');return}exportPDF('det')});
 })();
+/* código de cada lámina, por orden de obra: A arquitectura · IE instalaciones · I interiorismo · M maquinaria · D documentación de apoyo */
+var COD_LAM={actual:'A.01',cotas:'A.02',demol:'A.03',interv:'A.04',elec:'IE.01',ilum:'IE.02',techos:'I.01',acab:'I.02',alz:'I.03',suelos:'I.04',distrib:'M.01',carp:'D.01',cal:'D.02',det:'D.03'};
+function codigoLamina(doc,clave,ante){
+  var c=(clave==='distrib'&&ante)?'A.05':(COD_LAM[clave]||'A.00');
+  doc._cod=doc._cod||{};var n=doc._cod[c]=(doc._cod[c]||0)+1;
+  return n>1?c+'-'+String.fromCharCode(64+n):c;
+}
 function sheetPage(doc,view,idx,total,o){
   var v=st.v,A3=o.paper!=='A4',PW=A3?420:297,PH=A3?297:210,f=A3?1:0.76,mg=10,Wc=A3?88:68;
   var p=doc.page(PW,PH),cx=PW-mg-Wc,tags=opTags(),b=bbox();
@@ -6462,7 +6474,7 @@ function sheetPage(doc,view,idx,total,o){
   p.line(cx,mg,cx,cy0,LINEC,0.25);
 
   /* título de la lámina: etiqueta pequeña con letras espaciadas y título ligero */
-  var codLam='A.'+('0'+idx).slice(-2);
+  var codLam=codigoLamina(doc,view,o.ante);
   var tit=(view==='distrib'?(o.ante?'Anteproyecto · distribución':'Distribución'):VNAME[view])+(o.capaN?' · '+o.capaN:'');
   p.text(mg+9,mg+10,('Lámina '+idx+' de '+total+' · '+(v.nombre||'Sin nombre')).toUpperCase(),5.6*f+0.6,{bold:true,col:MUTED,sp:0.5});
   p.text(mg+9,mg+22,tit,22*f+2,{light:true,col:INK});
@@ -6541,7 +6553,7 @@ function sheetPage(doc,view,idx,total,o){
   campo(xs[3]+6*f,by1+13*f,'Medición · papel',fdate(v.fecha)+' · '+(A3?'A3':'A4'),xs[4]-xs[3]-10*f);
   /* observaciones */
   p.text(xs[4]+6*f,by1,'OBSERVACIONES',4.8*f+0.4,{bold:true,col:MUTED,sp:0.35});
-  var obsTxt=(o.obs&&String(o.obs).trim())?String(o.obs).trim():'';
+  var obsTxt=String(o.obs||v.obs||'').trim();
   var obsL=['1. Cotas en cm, medidas '+(st.v.cb==='int'?'de cara interior a cara interior':'a ejes de muro')+(o.dims==='dob'?' (la línea exterior, de cara exterior a cara exterior)':'')+'.','2. Todas las medidas deberán ser comprobadas en obra antes de comenzar ningún trabajo.'];
   if(obsTxt)obsL.push('3. '+obsTxt);
   var yy=by1+5.6*f;
@@ -6572,7 +6584,7 @@ function sheetPage(doc,view,idx,total,o){
   var unm=visW.some(function(w){return w.m!==true});
 
   /* leyenda de estados */
-  if(view!=='alz'&&view!=='acab'&&sect('Leyenda')){
+  if(view!=='alz'&&view!=='acab'&&infoOn('leyenda')&&sect('Leyenda')){
     function swatch(kind,label){
       if(!room(rh))return;
       var sy=y+rh/2-0.9*f;
@@ -6606,13 +6618,18 @@ function sheetPage(doc,view,idx,total,o){
     var zk2=zkind(view),codes2=zoneCodes(view),areaBy={};
     roomFaces(view).forEach(function(f){var z=zoneIn(f,zk2);if(z){areaBy[z.mat]=(areaBy[z.mat]||0)+f.area-spEn(f,zk2);roomsL.push({z:z,f:f})}});
     (v.sp||[]).forEach(function(r){if(r.k===zk2)areaBy[r.mat]=(areaBy[r.mat]||0)+spArea(r)});
+    var exMat={};
+    Object.keys(codes2).forEach(function(mid){
+      var zs=(v.zn||[]).filter(function(z){return z.k===zk2&&z.mat===mid}).concat((v.sp||[]).filter(function(z){return z.k===zk2&&z.mat===mid}));
+      exMat[mid]=zs.length>0&&zs.every(function(z){return z.ex});
+    });
     if(Object.keys(codes2).length&&sect(view==='suelos'?'Suelos':'Techos')){
       Object.keys(codes2).forEach(function(mid){
         if(!room(rh*1.2))return;
         var m=matOf(view,mid);
         p.rect(xL,y+0.7*f,11,3.8*f,hexMix(m.c,'#ffffff',0.55),INK,0.15);
         p.text(xL+14,y+3.6*f,fitTxt(codes2[mid]+'  '+m.n,pw-14-18,false,body*25.4/72),body,{col:INK});
-        p.text(xR,y+3.6*f,m2((areaBy[mid]||0)/10000)+' m²',body,{col:INK,anchor:'end',bold:true});
+        p.text(xR,y+3.6*f,exMat[mid]?'existente':m2((areaBy[mid]||0)/10000)+' m²',body,{col:exMat[mid]?MUTED:INK,anchor:'end',bold:!exMat[mid]});
         y+=rh*1.2;
       });
       y+=3*f;
@@ -6727,7 +6744,7 @@ function sheetPage(doc,view,idx,total,o){
   }
 
   /* carpinterías */
-  if(visO.length&&sect('Carpinterías')){
+  if(visO.length&&infoOn('carp')&&sect('Carpinterías')){
     var colorState=view==='demol'||view==='interv';
     visO.forEach(function(q){
       if(!room(rh))return;
@@ -6802,33 +6819,37 @@ function sheetPage(doc,view,idx,total,o){
     else rows.push(['Total',m2(totA/10000)+' m²']);
     if(view==='alz')rows.push(['Altura libre',m2(wallH()/100)+' m']);
   }else if(view==='suelos'||view==='techos'){
-    var cd=zoneCodes(view),tot=0,rod=0,zkk=zkind(view),carasConZona={};
+    var cd=zoneCodes(view),tot=0,rod=0,zkk=zkind(view),carasConZona={},hayNueva=false;
     roomsL.forEach(function(r,i){
-      var ocu=spEn(r.f,zkk);
-      tot+=r.f.area-ocu;rod+=Math.max(0,r.f.per-r.f.doorW);carasConZona[r.f.cx+','+r.f.cy]=1;
-      rows.push([(cd[r.z.mat]||'')+' · '+(matOf(view,r.z.mat).n||'')+(r.z.nm?' · '+r.z.nm:'')+' (sala)',m2((r.f.area-ocu)/10000)+' m²']);
+      var ocu=spEn(r.f,zkk),et=(cd[r.z.mat]||'')+' · '+(matOf(view,r.z.mat).n||'')+(r.z.nm?' · '+r.z.nm:'')+' (sala)';
+      carasConZona[r.f.cx+','+r.f.cy]=1;
+      if(r.z.ex){rows.push([et+' · existente','—']);return}
+      hayNueva=true;tot+=r.f.area-ocu;rod+=Math.max(0,r.f.per-r.f.doorW);
+      rows.push([et,m2((r.f.area-ocu)/10000)+' m²']);
     });
     (v.sp||[]).forEach(function(r,i){
       if(r.k!==zkk)return;
-      tot+=spArea(r);
-      rows.push([(cd[r.mat]||'')+' · '+(matOf(view,r.mat).n||'')+(r.nm?' · '+r.nm:'')+' (zona '+(i+1)+')',m2(spArea(r)/10000)+' m²']);
+      var et=(cd[r.mat]||'')+' · '+(matOf(view,r.mat).n||'')+(r.nm?' · '+r.nm:'')+' (zona '+(i+1)+')';
+      if(r.ex){rows.push([et+' · existente','—']);return}
+      hayNueva=true;tot+=spArea(r);
+      rows.push([et,m2(spArea(r)/10000)+' m²']);
       var cc=spRect(r),fc=cc&&faceAt({x:cc.cx,y:cc.cy},view);
       if(fc&&!carasConZona[fc.cx+','+fc.cy]){carasConZona[fc.cx+','+fc.cy]=1;rod+=Math.max(0,fc.per-fc.doorW)}
     });
-    rows.push(['Total',m2(tot/10000)+' m²']);
-    if(view==='suelos')rows.push(['Rodapié (perímetro menos puertas)',m2(rod/100)+' ml']);
+    if(hayNueva&&infoOn('total'))rows.push(['Total a ejecutar',m2(tot/10000)+' m²']);
+    if(view==='suelos'&&hayNueva&&infoOn('rodapie'))rows.push(['Rodapié (perímetro menos puertas)',m2(rod/100)+' ml']);
     var filaCl=function(nm,poly,cl){
-      if(!cl||!cl.pat)return;
+      if(!infoOn('despiece')||!cl||!cl.pat)return;
       var r=clCuenta(poly,cl);if(!r)return;
       var patC={recto:'Recto',rompe2:'Rompejuntas ½',rompe3:'Rompejuntas ⅓',diag:'Diagonal'}[cl.pat]||cl.pat;
       rows.push([nm+' · pieza '+fmt(cl.w)+'×'+fmt(cl.h)+' · '+patC,r.enteras+' + '+r.cortes+' cortes']);
       rows.push(['   A pedir (merma '+String(Math.round(r.merma*10)/10).replace('.',',')+' %)',r.piezas+' ud']);
     };
-    roomsL.forEach(function(r,i){filaCl((cd[r.z.mat]||'')+' sala',r.f.inner,r.z.cl)});
-    (v.sp||[]).forEach(function(r,i){if(r.k!==zkind(view))return;var pp=spPts(r);if(pp)filaCl((cd[r.mat]||'')+' zona '+(i+1),pp,r.cl)});
+    roomsL.forEach(function(r,i){if(!r.z.ex)filaCl((cd[r.z.mat]||'')+' sala',r.f.inner,r.z.cl)});
+    (v.sp||[]).forEach(function(r,i){if(r.k!==zkind(view)||r.ex)return;var pp=spPts(r);if(pp)filaCl((cd[r.mat]||'')+' zona '+(i+1),pp,r.cl)});
   }
   (v.dr||[]).forEach(function(z,i){if(z.t==='zona'&&(z.vw==='*'||z.vw===view))rows.push([String(z.txt||'Zona '+(i+1)).split('|')[0].slice(0,40),m2(polyArea(z.pts)/10000)+' m²'])});
-  if(sect('Mediciones')){
+  if(infoOn('med')&&sect('Mediciones')){
     rows.forEach(function(r){if(room(rh))rowTxt(r[0],r[1])});
     if(view==='demol'||view==='interv')if(room(rh+4)){p.text(xL,y+3*f,'m² de muro = ml × altura libre, sin descontar huecos.',sm,{col:MUTED});y+=4.2*f}
     y+=3*f;
@@ -6981,8 +7002,55 @@ $('b-pdfproj').addEventListener('click',function(){
   try{bytes=buildPDF('all',pdfOpts(),plantasDelProyecto())}catch(e){toast('No se pudo generar el PDF del proyecto');return}
   saveFile(slug()+'-proyecto.pdf',bytes,'PDF');
 });
+/* nombre del proyecto, dirección, cliente, planta, fecha y observaciones del cajetín: se escriben aquí (no hace falta enlazar el plano a un proyecto del CRM) */
+/* qué información sale en las láminas (por defecto todo) */
+var INFO_LAM=[['leyenda','Leyenda de estados y símbolos'],['carp','Carpinterías (puertas y ventanas)'],['med','Cuadro de mediciones'],['total','Total de m²'],['rodapie','Rodapié (ml)'],['despiece','Despiece y piezas a pedir']];
+function infoOn(k){return !(st.v&&st.v.info&&st.v.info[k]===false)}
+function abrirInfoLam(){
+  var m0=document.getElementById('infomod');if(m0)m0.remove();
+  var m=document.createElement('div');m.id='infomod';m.className='dxfmod';
+  m.innerHTML='<div class="dxfbox" style="max-width:520px"><header><h3>Qué información enseñar en las láminas</h3><p class="note" style="margin:0">Quita lo que no haga falta para no confundir (por ejemplo, el rodapié si ya existe). Vale para todas las láminas de este plano. Los suelos que ya existen se marcan como «existente» en su propio panel.</p></header><div style="padding:12px 18px;display:grid;gap:8px">'+
+    INFO_LAM.map(function(x){return '<label class="fld chk" style="margin:0"><input type="checkbox" data-inf="'+x[0]+'"'+(infoOn(x[0])?' checked':'')+'><span>'+x[1]+'</span></label>'}).join('')+
+    '</div><footer><span style="flex:1"></span><button id="inf-x">Cancelar</button><button class="pri" id="inf-ok">Guardar</button></footer></div>';
+  document.body.appendChild(m);
+  var cierra=function(){m.remove()};
+  document.getElementById('inf-x').addEventListener('click',cierra);
+  m.addEventListener('mousedown',function(e){if(e.target===m)cierra()});
+  document.getElementById('inf-ok').addEventListener('click',function(){
+    snap();st.v.info={};
+    [].forEach.call(m.querySelectorAll('input[data-inf]'),function(c){if(!c.checked)st.v.info[c.getAttribute('data-inf')]=false});
+    save();cierra();toast('Listo: las láminas que exportes llevarán solo esa información');
+  });
+}
+function abrirDatos(){
+  var m0=document.getElementById('datosmod');if(m0)m0.remove();
+  var m=document.createElement('div');m.id='datosmod';m.className='dxfmod';
+  var pl=['Sótano','Planta baja','Planta 1','Planta 2','Planta 3','Cubierta'];
+  m.innerHTML='<div class="dxfbox" style="max-width:640px"><header><h3>Datos del proyecto</h3><p class="note" style="margin:0">Salen en el cajetín de todas las láminas. Puedes escribirlos aquí aunque este plano no esté enlazado a ningún proyecto.</p></header>'+
+    '<div style="padding:12px 18px;overflow:auto;display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">'+
+    '<label class="fld" style="margin:0"><span>Nombre del proyecto</span><input id="dt-nombre" autocomplete="off" placeholder="Home Gym Las Rozas"></label>'+
+    '<label class="fld" style="margin:0"><span>Cliente</span><input id="dt-cliente" autocomplete="off" placeholder="Nombre del cliente"></label>'+
+    '<label class="fld" style="margin:0;grid-column:1/-1"><span>Dirección del proyecto</span><input id="dt-direccion" autocomplete="off" placeholder="Calle, número, localidad"></label>'+
+    '<label class="fld" style="margin:0"><span>Planta de este plano</span><input id="dt-planta" list="dt-pl" autocomplete="off" placeholder="Planta baja"><datalist id="dt-pl">'+pl.map(function(x){return '<option value="'+x+'">'}).join('')+'</datalist></label>'+
+    '<label class="fld" style="margin:0"><span>Fecha de medición</span><input id="dt-fecha" type="date"></label>'+
+    '<label class="fld" style="margin:0;grid-column:1/-1"><span>Observaciones para el cajetín (opcional)</span><textarea id="dt-obs" rows="3" placeholder="Se suma a las observaciones fijas de la lámina"></textarea></label></div>'+
+    '<footer><span style="flex:1"></span><button id="dt-x">Cancelar</button><button class="pri" id="dt-ok">Guardar</button></footer></div>';
+  document.body.appendChild(m);
+  var map={nombre:'dt-nombre',cliente:'dt-cliente',direccion:'dt-direccion',planta:'dt-planta',fecha:'dt-fecha',obs:'dt-obs'};
+  Object.keys(map).forEach(function(k){document.getElementById(map[k]).value=st.v[k]||''});
+  var cierra=function(){m.remove()};
+  document.getElementById('dt-x').addEventListener('click',cierra);
+  m.addEventListener('mousedown',function(e){if(e.target===m)cierra()});
+  document.getElementById('dt-ok').addEventListener('click',function(){
+    snap();
+    Object.keys(map).forEach(function(k){st.v[k]=(document.getElementById(map[k]).value||'').trim()});
+    fields();save();render();cierra();toast('Datos del proyecto guardados');
+  });
+  setTimeout(function(){try{document.getElementById('dt-nombre').focus()}catch(e){}},30);
+}
 function exportPDF(mode){
   if(mode!=='cal'&&!bbox()){toast('Dibuja algo antes de exportar');return}
+  if(!st.v.nombre&&!window.__avisoDatos){window.__avisoDatos=1;toast('Consejo: pon el nombre y la dirección en «Archivo → Datos del proyecto» para que salgan en el cajetín')}
   var bytes;
   try{bytes=buildPDF(mode,pdfOpts())}catch(e){toast('No se pudo generar el PDF');return}
   saveFile(slug()+(mode==='all'?'-dossier':mode==='carp'?'-carpinterias':mode==='det'?'-detalles':mode==='cal'?'-calidades':'-'+st.view)+'.pdf',bytes,'PDF');
@@ -7074,7 +7142,7 @@ function subirPdfCrm(mode){
   if(!window.confirm('El PDF se guardará en Documentos del proyecto (tipo plano), pensado para: '+dst[1]+' · '+dst[0]+'. El cliente lo verá en su portal. ¿Continuar?'))return;
   var bytes;
   try{bytes=buildPDF(mode,pdfOpts())}catch(e){toast('No se pudo generar el PDF');return}
-  var titulo=(mode==='all'?'Planos · dossier completo':'Plano · '+VNAME[st.view])+(st.v.nombre?' · '+st.v.nombre:'');
+  var titulo=(mode==='all'?'Planos · dossier completo':(COD_LAM[st.view]||'')+' · '+VNAME[st.view])+(st.v.nombre?' · '+st.v.nombre:'');
   crmPost({type:'subir-pdf',nombre:titulo,filename:slug()+(mode==='all'?'-dossier':'-'+st.view)+'.pdf',bytes:bytes.buffer});
   toast('Subiendo a Documentos…');
 }
@@ -7413,6 +7481,8 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
       cerrar();
       if(id==='panel')panelAlternar();
       else if(id==='marcas')alternarMarcas();
+      else if(id==='datos')abrirDatos();
+      else if(id==='info')abrirInfoLam();
       else if(id==='cotamuros')alternarCotaMuros();
       else if(id==='cmdp')cmdAbrir('');
       else if(id==='ayuda')ayudaAbrir();
