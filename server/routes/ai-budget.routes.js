@@ -185,6 +185,12 @@ Descuentos sobre el presupuesto:
 - Si te piden aplicar un descuento global (%) al crear el presupuesto, pásalo en descuento_global_pct de crear_presupuesto.
 - Si te piden aplicar o cambiar el descuento de un presupuesto que YA EXISTE (de esta conversación o dándote el número, ej. "aplica un 10% al RAN-050"), usa aplicar_descuento_presupuesto — regenera el PDF solo automáticamente, dilo al confirmar.`;
 
+// El aviso va antes del bloque de opciones rápidas, que debe seguir al final de la respuesta
+function ponAntesDeOpciones(texto, extra) {
+  const i = texto.indexOf('```opciones');
+  return i >= 0 ? texto.slice(0, i).replace(/\s+$/, '') + extra + '\n\n' + texto.slice(i) : texto + extra;
+}
+
 const TOOLS = [
   TOOL_CONOCIMIENTO,
   {
@@ -955,7 +961,7 @@ router.post('/chat', async (req, res) => {
     const { data: settings } = await supabase.from('settings').select('ai_budget_preferences, ai_reform_rules').eq('id', 1).maybeSingle();
     const prefs = settings?.ai_budget_preferences?.trim();
     const reformRules = settings?.ai_reform_rules?.trim();
-    let system = BASE_SYSTEM_PROMPT + `\n\nBIBLIOTECA DE CONOCIMIENTO: tienes los apuntes del curso de reformas y construcción de Víctor (herramienta consultar_conocimiento). Consúltala cuando la pregunta sea técnica de obra, reformas, materiales, instalaciones, normativa, partidas, plazos o procesos constructivos, y apóyate en lo que encuentres (menciona el tema o documento de donde sale) sin copiarlo literalmente. Si choca con las reglas propias de Ranuse Design o las preferencias de Víctor que aparecen más abajo, mandan las de Ranuse. Si la biblioteca no cubre la pregunta, dilo y responde con tu criterio general.`;
+    let system = BASE_SYSTEM_PROMPT + `\n\nREGLA SOBRE LAS ALTAS: nunca digas que has creado, dado de alta o añadido un producto o partida al catálogo salvo que crear_producto_catalogo haya devuelto creado:true en ESTA misma respuesta. Si la herramienta devuelve creado:false (categoría inexistente o ambigua, falta algún dato…), dilo tal cual y pregunta lo que haga falta. Si te piden crear algo, llama a la herramienta: no lo des por hecho sin llamarla.\n\nBIBLIOTECA DE CONOCIMIENTO: tienes los apuntes del curso de reformas y construcción de Víctor (herramienta consultar_conocimiento). Consúltala cuando la pregunta sea técnica de obra, reformas, materiales, instalaciones, normativa, partidas, plazos o procesos constructivos, y apóyate en lo que encuentres (menciona el tema o documento de donde sale) sin copiarlo literalmente. Si choca con las reglas propias de Ranuse Design o las preferencias de Víctor que aparecen más abajo, mandan las de Ranuse. Si la biblioteca no cubre la pregunta, dilo y responde con tu criterio general.`;
     if (prefs) system += `\n\nPreferencias de selección de producto de Víctor (además de ordenar por precio, ten esto en cuenta al elegir qué producto representa cada nivel):\n${prefs}`;
     if (reformRules) system += `\n\nReglas propias de Ranuse Design sobre reformas y espacio real de uso de los productos (además de tu conocimiento general, ten SIEMPRE esto en cuenta, tanto al responder dudas de reformas/construcción como al valorar si algo encaja en un espacio):\n${reformRules}`;
 
@@ -966,6 +972,9 @@ router.post('/chat', async (req, res) => {
     let lastResponse = null;
     let budgetCreated = null; // último presupuesto creado en esta conversación (si lo hay), con su PDF
     let preciosGuardados = 0; // precios que SÍ se han guardado en el catálogo en esta petición
+    const productosCreados = []; // productos que SÍ se han creado en esta petición
+    const productosFallidos = []; // intentos de crear un producto que fallaron (con el motivo)
+    let sinPasos = false; // la conversación se cortó por el tope de vueltas con herramientas pendientes
     for (let turn = 0; turn < 10; turn++) {
       lastResponse = await callClaude({ system, messages: conversation, tools: TOOLS, maxTokens: 6000 });
 
@@ -980,12 +989,18 @@ router.post('/chat', async (req, res) => {
           if (result?.actualizado) preciosGuardados++;
           console.log('[presupuestador] actualizar_precio_producto', JSON.stringify(tu.input), '→', JSON.stringify(result).slice(0, 200));
         }
+        if (tu.name === 'crear_producto_catalogo') {
+          if (result?.creado) productosCreados.push(result.nombre || tu.input?.nombre || 'producto');
+          else productosFallidos.push({ nombre: tu.input?.nombre || 'producto', motivo: result?.mensaje || 'error desconocido' });
+          console.log('[asistente] crear_producto_catalogo', JSON.stringify({ nombre: tu.input?.nombre, categoria: tu.input?.categoria }), '→', JSON.stringify(result).slice(0, 200));
+        }
         if (tu.name === 'crear_presupuesto' && result?.creado) {
           budgetCreated = { budget_id: result.budget_id, budget_number: result.budget_number, pdf_url: result.pdf_url || null };
         }
         return { type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) };
       }));
       conversation.push({ role: 'user', content: toolResults });
+      if (turn === 9) sinPasos = true;
     }
 
     const textBlock = (lastResponse?.content || []).find(b => b.type === 'text');
@@ -994,6 +1009,17 @@ router.post('/chat', async (req, res) => {
     if (preciosGuardados === 0 && /(^|\n)\s*[✓✔]?\s*\**\s*Guardado\b/i.test(reply)) {
       reply += '\n\n⚠️ Ojo: el precio NO se ha guardado en el catálogo (la IA ha dicho que sí, pero no se ha podido). Vuelve a decírmelo y lo intento de nuevo.';
     }
+    // Lo que se ha hecho DE VERDAD con los productos en esta respuesta (así el texto no puede prometer lo que no ha pasado
+    // y, como el chat guarda solo el texto, queda anotado en la conversación)
+    if (productosCreados.length || productosFallidos.length) {
+      let pie = '\n\n— Resultado real en el catálogo —';
+      if (productosCreados.length) pie += '\n✅ Creados (' + productosCreados.length + '): ' + productosCreados.join(' · ');
+      productosFallidos.forEach(f => { pie += '\n❌ No creado: ' + f.nombre + ' — ' + f.motivo; });
+      reply = ponAntesDeOpciones(reply, pie);
+    } else if (/\b(creado|creada|creados|creadas|dado de alta|añadido|añadida|añadidos|añadidas)\b/i.test(reply) && /(producto|partida|catálogo|catalogo)/i.test(reply)) {
+      reply = ponAntesDeOpciones(reply, '\n\n⚠️ Ojo: en esta respuesta NO se ha creado ningún producto en el catálogo (la IA lo ha dicho, pero no ha llegado a hacerlo). Pídemelo otra vez y lo intento.');
+    }
+    if (sinPasos) reply += '\n\n⚠️ La petición era muy larga y se cortó antes de terminar. Dime «continúa» para seguir con lo que falta.';
     res.json({
       reply,
       messages: conversation.concat(lastResponse?.content ? [{ role: 'assistant', content: lastResponse.content }] : []),
