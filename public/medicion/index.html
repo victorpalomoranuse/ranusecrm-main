@@ -2342,6 +2342,13 @@ function scene(C,k,view,o){
       if(st.spHover){var lp=spp[spp.length-1];h+=ln(lp.x,lp.y,st.spHover.x,st.spHover.y,C.accent,1.4*px,'round','')+'<circle cx="'+f2(st.spHover.x)+'" cy="'+f2(st.spHover.y)+'" r="'+f2(4*px)+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(1.6*px)+'"/>'}
     }
   }
+  if(view==='suelos'&&st.verEqSuelo!==false){
+    (v.eq||[]).forEach(function(e){
+      var r=eqRect(e);
+      h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')">'+eqSym(e.ty,e.w,e.d,C.blk||C.ink,px,e.cid)+'</g>';
+    });
+    if(!o.nonum&&!o.flat&&(v.eq||[]).length)zlab+='';
+  }
   v.walls.forEach(function(w){
     if(!wallVis(w,view))return;
     var g=wg(w);
@@ -4052,7 +4059,7 @@ function drawPal(){
     $('alz-modo').hidden=v!=='alz'&&v!=='suelos'&&v!=='techos';
     if(v==='suelos'||v==='techos'){
       st.sueloModo=st.sueloModo||'sala';
-      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Rectángulo (arrastra)'],['poli','Dibujar la zona (puntos)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('')+(st.sueloModo==='poli'?'<button data-sm="libre" aria-pressed="'+!st.spLibre+'" title="Con las líneas rectas, cada tramo sale horizontal o vertical y se pega a las esquinas de la sala">Líneas rectas: '+(st.spLibre?'no':'sí')+'</button>':'')+(st.sueloModo==='poli'&&st.spPoly&&st.spPoly.length>=3?'<button data-sm="cerrar" class="pri">Cerrar la zona</button>':'');
+      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Rectángulo (arrastra)'],['poli','Dibujar la zona (puntos)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('')+(v==='suelos'?'<button data-sm="equipo" aria-pressed="'+(st.verEqSuelo!==false)+'" title="Enseña las máquinas y el mobiliario sobre el suelo">Ver equipamiento: '+(st.verEqSuelo!==false?'sí':'no')+'</button>':'')+(st.sueloModo==='poli'?'<button data-sm="libre" aria-pressed="'+!st.spLibre+'" title="Con las líneas rectas, cada tramo sale horizontal o vertical y se pega a las esquinas de la sala">Líneas rectas: '+(st.spLibre?'no':'sí')+'</button>':'')+(st.sueloModo==='poli'&&st.spPoly&&st.spPoly.length>=3?'<button data-sm="cerrar" class="pri">Cerrar la zona</button>':'');
       if(st.sueloModo==='poli')$('pal-n').textContent='Elige el material y toca los puntos del contorno de la zona (una esquina tras otra). Los tramos salen rectos (horizontal o vertical) y se pegan a las esquinas de la sala; con «Líneas rectas: no» dibujas libre. Para cerrarla, toca el primer punto o pulsa «Cerrar la zona». Solo esa zona llevará ese material.';
       if(st.sueloModo==='parte')$('pal-n').textContent='Elige el material y ARRASTRA un rectángulo dentro de la sala: solo esa parte llevará ese material (el resto conserva el suyo). Luego ajusta sus medidas en el panel.';
     }
@@ -4081,6 +4088,7 @@ $('alz-modo').addEventListener('click',function(e){
   if(bs){
     var sm=bs.getAttribute('data-sm');
     if(sm==='cerrar'){spCerrar();return}
+    if(sm==='equipo'){st.verEqSuelo=st.verEqSuelo===false;drawPal();render();return}
     if(sm==='libre'){st.spLibre=!st.spLibre;st.spHover=null;drawPal();render();return}
     st.sueloModo=sm;st.spPoly=null;st.spHover=null;st.tool='paint';drawPal();toolbar();hint();render();return;
   }
