@@ -1347,8 +1347,19 @@ function zoneIn(f,zk){
   return null;
 }
 /* parte de un suelo o techo con otro material: rectángulo anclado a un punto del plano */
-function spRect(r){var n=nd(r.n);if(!n)return null;var cx=n.x+r.dx,cy=n.y+r.dy;return {x0:cx-r.bw/2,y0:cy-r.bh/2,x1:cx+r.bw/2,y1:cy+r.bh/2,cx:cx,cy:cy}}
-function spEn(f,k){var t=0;(st.v.sp||[]).forEach(function(r){if(r.k!==k)return;var q=spRect(r);if(q&&inPoly({x:q.cx,y:q.cy},f.poly))t+=r.bw*r.bh});return t}
+function spPts(r){
+  var n=nd(r.n);if(!n)return null;
+  if(r.pts&&r.pts.length>=3)return r.pts.map(function(q){return {x:n.x+q.x,y:n.y+q.y}});
+  var cx=n.x+r.dx,cy=n.y+r.dy;
+  return [{x:cx-r.bw/2,y:cy-r.bh/2},{x:cx+r.bw/2,y:cy-r.bh/2},{x:cx+r.bw/2,y:cy+r.bh/2},{x:cx-r.bw/2,y:cy+r.bh/2}];
+}
+function spArea(r){var p=spPts(r);return p?polyArea(p):0}
+function spRect(r){
+  var p=spPts(r);if(!p)return null;
+  var b=polyBox(p),c=r.pts?polyCentro(p):{x:(b.x0+b.x1)/2,y:(b.y0+b.y1)/2};
+  return {x0:b.x0,y0:b.y0,x1:b.x1,y1:b.y1,cx:c.x,cy:c.y};
+}
+function spEn(f,k){var t=0;(st.v.sp||[]).forEach(function(r){if(r.k!==k)return;var q=spRect(r);if(q&&inPoly({x:q.cx,y:q.cy},f.poly))t+=spArea(r)});return t}
 function polyArea(pts){var a=0,i;for(i=0;i<pts.length;i++){var p0=pts[i],p1=pts[(i+1)%pts.length];a+=p0.x*p1.y-p1.x*p0.y}return Math.abs(a)/2}
 function polyCentro(pts){var a=0,cx=0,cy=0,i;for(i=0;i<pts.length;i++){var p0=pts[i],p1=pts[(i+1)%pts.length],c=p0.x*p1.y-p1.x*p0.y;a+=c;cx+=(p0.x+p1.x)*c;cy+=(p0.y+p1.y)*c}if(Math.abs(a)<1e-6)return pts[0];return {x:cx/(3*a),y:cy/(3*a)}}
 /* ---------- colocación y despiece de suelos y techos ---------- */
@@ -1451,6 +1462,30 @@ function applyCl(key,n){
   if(key==='cl_j'&&!(n>=0&&n<=50)){toast('La junta va de 0 a 50 mm');return}
   snap();o.cl[key.slice(3)]=n;commit(false);panelSel();
 }
+/* dibujar la zona de un suelo o techo punto a punto */
+function spTap(w){
+  var p=drSnap(w),pl=st.spPoly=st.spPoly||[];
+  if(pl.length>=3&&Math.hypot(p.x-pl[0].x,p.y-pl[0].y)<16/st.k){spCerrar();return}
+  var ult=pl[pl.length-1];
+  if(ult&&Math.hypot(p.x-ult.x,p.y-ult.y)<2/st.k){if(pl.length>=3)spCerrar();return}
+  pl.push(p);drawPal();render();
+  toast(pl.length<3?'Toca el siguiente punto del contorno':'Sigue con los puntos; para cerrar toca el primero o pulsa «Cerrar la zona»');
+}
+function spCerrar(){
+  var pl=st.spPoly;
+  if(!pl||pl.length<3){toast('Una zona necesita al menos 3 puntos');return}
+  var cen=polyCentro(pl),fc=faceAt(cen,st.view);
+  if(!fc){toast('El centro de la zona tiene que quedar dentro de una sala cerrada por muros');return}
+  var nq=nearNode(cen.x,cen.y,1e9,null);if(!nq)return;
+  snap();
+  var nsp={id:uid('q'),k:zkind(st.view),n:nq.id,dx:0,dy:0,pts:pl.map(function(q){return {x:f2(q.x-nq.x),y:f2(q.y-nq.y)}}),mat:st.pal[st.view],nm:''};
+  st.v.sp.push(nsp);st.sel={t:'sp',id:nsp.id};st.spPoly=null;commit();drawPal();
+}
+document.addEventListener('keydown',function(e){
+  if(!(st&&st.spPoly&&st.spPoly.length)||(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)))return;
+  if(e.key==='Escape'){st.spPoly=null;drawPal();render()}
+  else if(e.key==='Enter'){spCerrar()}
+});
 function zoneCodes(view){
   var zk=zkind(view),m={},k=0,pre=MCODE[view];
   st.v.zn.forEach(function(z){if(z.k===zk&&!m[z.mat])m[z.mat]=pre+(++k)});
@@ -2270,14 +2305,20 @@ function scene(C,k,view,o){
         h+='<defs><pattern id="'+pid+'" patternUnits="userSpaceOnUse" width="'+f2(ttw)+'" height="'+f2(tth)+'"><image href="'+m.tx.uri+'" x="0" y="0" width="'+f2(ttw)+'" height="'+f2(tth)+'" preserveAspectRatio="none"/></pattern></defs>';
         fill='url(#'+pid+')';
       }else fill=(o.flat?hexMix(m.c,'#ffffff',0.35):m.c);
-      h+='<rect x="'+f2(q.x0)+'" y="'+f2(q.y0)+'" width="'+f2(r.bw)+'" height="'+f2(r.bh)+'" style="fill:'+fill+(m.tx&&!o.flat||o.flat?'':';fill-opacity:.85')+';stroke:'+(sl?C.accent:C.label)+';stroke-width:'+f2((sl?3:1.2)*px)+'"/>';
+      var rpp=spPts(r),rps=rpp.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ');
+      h+='<polygon points="'+rps+'" style="fill:'+fill+(m.tx&&!o.flat||o.flat?'':';fill-opacity:.85')+';stroke:'+(sl?C.accent:C.label)+';stroke-width:'+f2((sl?3:1.2)*px)+';stroke-linejoin:round"/>';
       if(r.cl&&r.cl.pat){
-        var rpoly=[{x:q.x0,y:q.y0},{x:q.x1,y:q.y0},{x:q.x1,y:q.y1},{x:q.x0,y:q.y1}];
-        if(r.cl.show==='trama')h+='<rect x="'+f2(q.x0)+'" y="'+f2(q.y0)+'" width="'+f2(r.bw)+'" height="'+f2(r.bh)+'" style="fill:'+C.bg+';stroke:'+C.label+';stroke-width:'+f2(1.2*px)+'"/>';
+        var rpoly=rpp;
+        if(r.cl.show==='trama')h+='<polygon points="'+rps+'" style="fill:'+C.bg+';stroke:'+C.label+';stroke-width:'+f2(1.2*px)+'"/>';
         h+=clSvg(C,px,rpoly,r.cl);
       }
-      zlab+=txt(C,px,q.cx,q.cy-2*px,(codes[r.mat]||'')+(r.nm?'  '+r.nm:''),C.label,12,600)+txt(C,px,q.cx,q.cy+13*px,m2(r.bw*r.bh/10000)+' m²',C.label,10.5,500);
+      zlab+=txt(C,px,q.cx,q.cy-2*px,(codes[r.mat]||'')+(r.nm?'  '+r.nm:''),C.label,12,600)+txt(C,px,q.cx,q.cy+13*px,m2(spArea(r)/10000)+' m²',C.label,10.5,500);
     });
+    if(o.nodes&&st.spPoly&&st.spPoly.length){ /* zona que se está dibujando */
+      var spp=st.spPoly;
+      h+='<polyline points="'+spp.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ')+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(2*px)+';stroke-dasharray:'+f2(6*px)+' '+f2(4*px)+'"/>';
+      spp.forEach(function(p,i){h+='<circle cx="'+f2(p.x)+'" cy="'+f2(p.y)+'" r="'+f2((i===0?6:3.5)*px)+'" style="fill:'+C.accent+'"/>'});
+    }
   }
   v.walls.forEach(function(w){
     if(!wallVis(w,view))return;
@@ -3198,7 +3239,7 @@ function pick(w,tol,view){
     if(d<Math.max(tol,wa.t/2)&&d<bd){bd=d;best={t:'wall',id:wa.id}}
   });
   if(!best&&(view==='suelos'||view==='techos')){
-    (st.v.sp||[]).forEach(function(r){if(r.k!==zkind(view))return;var q=spRect(r);if(q&&p.x>=q.x0&&p.x<=q.x1&&p.y>=q.y0&&p.y<=q.y1)best={t:'sp',id:r.id}});
+    (st.v.sp||[]).forEach(function(r){if(r.k!==zkind(view))return;var pp=spPts(r);if(pp&&inPoly(p,pp))best={t:'sp',id:r.id}});
   }
   if(!best&&(view==='suelos'||view==='techos')){
     var fz=faceAt(p,view),zz2=fz&&zoneIn(fz,zkind(view));
@@ -3260,6 +3301,7 @@ function tap(w){
   }
   if(st.tool==='paint'){
     var pv=st.view;
+    if((pv==='suelos'||pv==='techos')&&st.sueloModo==='poli'){spTap(w);return}
     if(pv==='suelos'||pv==='techos'){
       if(st.sueloModo==='parte'){toast('Arrastra un rectángulo dentro de la sala: solo esa parte llevará este material');return}
       var fc=faceAt(w,pv);
@@ -3988,7 +4030,8 @@ function drawPal(){
     $('alz-modo').hidden=v!=='alz'&&v!=='suelos'&&v!=='techos';
     if(v==='suelos'||v==='techos'){
       st.sueloModo=st.sueloModo||'sala';
-      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Solo una parte (arrastra)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('');
+      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Rectángulo (arrastra)'],['poli','Dibujar la zona (puntos)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('')+(st.sueloModo==='poli'&&st.spPoly&&st.spPoly.length>=3?'<button data-sm="cerrar" class="pri">Cerrar la zona</button>':'');
+      if(st.sueloModo==='poli')$('pal-n').textContent='Elige el material y toca los puntos del contorno de la zona (una esquina tras otra). Para cerrarla, toca el primer punto o pulsa «Cerrar la zona». Solo esa zona llevará ese material.';
       if(st.sueloModo==='parte')$('pal-n').textContent='Elige el material y ARRASTRA un rectángulo dentro de la sala: solo esa parte llevará ese material (el resto conserva el suyo). Luego ajusta sus medidas en el panel.';
     }
     $('alz-h-w').hidden=!(v==='alz'&&(st.alzModo==='franja-inf'||st.alzModo==='franja-sup'));
@@ -4013,7 +4056,11 @@ function drawPal(){
 }
 $('alz-modo').addEventListener('click',function(e){
   var bs=e.target.closest('button[data-sm]');
-  if(bs){st.sueloModo=bs.getAttribute('data-sm');st.tool='paint';drawPal();toolbar();hint();return}
+  if(bs){
+    var sm=bs.getAttribute('data-sm');
+    if(sm==='cerrar'){spCerrar();return}
+    st.sueloModo=sm;st.spPoly=null;st.tool='paint';drawPal();toolbar();hint();render();return;
+  }
   var bd=e.target.closest('button[data-dm]');
   if(bd){st.demModo=bd.getAttribute('data-dm');st.tool='paint';drawPal();toolbar();hint();return}
   var b=e.target.closest('button[data-am]');if(!b)return;
@@ -4264,13 +4311,14 @@ function panelSel(focus){
     h+='<div class="btns"><button class="danger" data-a="del">Borrar recrecido</button></div>';
   }else if(s.t==='sp'){
     var sp=by(st.v.sp,s.id),spv=sp.k==='s'?'suelos':'techos',sq=spRect(sp),sfa=sq&&faceAt({x:sq.cx,y:sq.cy},spv),sbx=sfa?sfa.inner.reduce(function(a,q){return {x0:Math.min(a.x0,q.x),y0:Math.min(a.y0,q.y)}},{x0:1e9,y0:1e9}):null;
-    h+='<div class="rowh"><strong>'+(sp.k==='s'?'Parte del suelo':'Parte del techo')+'</strong><span class="muted">'+m2(sp.bw*sp.bh/10000)+' m²</span></div>';
+    h+='<div class="rowh"><strong>'+(sp.k==='s'?'Parte del suelo':'Parte del techo')+'</strong><span class="muted">'+m2(spArea(sp)/10000)+' m²</span></div>';
     h+='<p class="note">Solo esta parte lleva este material; el resto de la sala conserva el suyo.</p>';
     h+='<label class="fld"><span>Material</span><select data-t="sp_mat">'+MATS[spv].map(function(m){return '<option value="'+m.id+'"'+(m.id===sp.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label>';
     h+='<label class="fld"><span>Nombre (opcional)</span><input data-t="sp_nm" value="'+esc(sp.nm||'')+'" placeholder="Zona de entreno" autocomplete="off"></label>';
-    h+=fld('sp_bw','Ancho (cm)',sp.bw)+fld('sp_bh','Fondo (cm)',sp.bh);
-    if(sq&&sbx)h+=fld('sp_x','Distancia desde la esquina izquierda (cm)',sq.x0-sbx.x0)+fld('sp_y','Distancia desde la esquina de arriba (cm)',sq.y0-sbx.y0);
-    h+=colocHtml(sp,sq?[{x:sq.x0,y:sq.y0},{x:sq.x1,y:sq.y0},{x:sq.x1,y:sq.y1},{x:sq.x0,y:sq.y1}]:null);
+    if(!sp.pts)h+=fld('sp_bw','Ancho (cm)',sp.bw)+fld('sp_bh','Fondo (cm)',sp.bh);
+    else h+='<p class="note">Zona dibujada con '+sp.pts.length+' puntos. Para cambiarle la forma, bórrala y vuelve a dibujarla.</p>';
+    if(sq&&sbx&&!sp.pts)h+=fld('sp_x','Distancia desde la esquina izquierda (cm)',sq.x0-sbx.x0)+fld('sp_y','Distancia desde la esquina de arriba (cm)',sq.y0-sbx.y0);
+    h+=colocHtml(sp,spPts(sp));
     h+='<div class="btns"><button class="danger" data-a="del">Borrar esta parte</button></div>';
   }else if(s.t==='rz'){
     var rz=by(st.v.rz,s.id),rv=rz.k==='s'?'suelos':'techos',rn=nd(rz.n),rf=rn&&faceAt({x:rn.x+rz.dx,y:rn.y+rz.dy},'actual');
@@ -4527,7 +4575,7 @@ function applyField(key,val,adv,raw){
     if(qrc.s1<qrc.s0){var tt0=qrc.s0;qrc.s0=qrc.s1;qrc.s1=tt0}
     commit(false);
   }else if(s.t==='sp'&&/^sp_/.test(key)){
-    var qs=by(st.v.sp,s.id);if(!qs)return;
+    var qs=by(st.v.sp,s.id);if(!qs||qs.pts)return;
     if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
     var snn=nd(qs.n),sq2=spRect(qs),sfa2=snn&&faceAt({x:sq2.cx,y:sq2.cy},qs.k==='s'?'suelos':'techos');if(!sfa2)return;
     var sbb2=sfa2.inner.reduce(function(a,q){return {x0:Math.min(a.x0,q.x),y0:Math.min(a.y0,q.y)}},{x0:1e9,y0:1e9}),scur={bw:qs.bw,bh:qs.bh,x:sq2.x0-sbb2.x0,y:sq2.y0-sbb2.y0};
@@ -6167,7 +6215,7 @@ function sheetPage(doc,view,idx,total,o){
   if(view==='suelos'||view==='techos'){
     var zk2=zkind(view),codes2=zoneCodes(view),areaBy={};
     roomFaces(view).forEach(function(f){var z=zoneIn(f,zk2);if(z){areaBy[z.mat]=(areaBy[z.mat]||0)+f.area-spEn(f,zk2);roomsL.push({z:z,f:f})}});
-    (v.sp||[]).forEach(function(r){if(r.k===zk2)areaBy[r.mat]=(areaBy[r.mat]||0)+r.bw*r.bh});
+    (v.sp||[]).forEach(function(r){if(r.k===zk2)areaBy[r.mat]=(areaBy[r.mat]||0)+spArea(r)});
     if(Object.keys(codes2).length&&sect(view==='suelos'?'Suelos':'Techos')){
       Object.keys(codes2).forEach(function(mid){
         if(!room(rh*1.2))return;
@@ -6369,7 +6417,7 @@ function sheetPage(doc,view,idx,total,o){
       tot+=r.f.area;rod+=Math.max(0,r.f.per-r.f.doorW);
       rows.push([(r.z.nm||'Sala '+(i+1))+' ('+cd[r.z.mat]+')',m2(r.f.area/10000)+' m²']);
     });
-    (v.sp||[]).forEach(function(r,i){if(r.k===zkind(view))rows.push([(r.nm||'Parte '+(i+1))+' ('+(cd[r.mat]||'')+')',m2(r.bw*r.bh/10000)+' m²'])});
+    (v.sp||[]).forEach(function(r,i){if(r.k===zkind(view))rows.push([(r.nm||'Parte '+(i+1))+' ('+(cd[r.mat]||'')+')',m2(spArea(r)/10000)+' m²'])});
     rows.push(['Total',m2(tot/10000)+' m²']);
     if(view==='suelos')rows.push(['Rodapié',m2(rod/100)+' ml']);
     var filaCl=function(nm,poly,cl){
@@ -6379,7 +6427,7 @@ function sheetPage(doc,view,idx,total,o){
       rows.push(['  Piezas a pedir ('+(CLPAT.filter(function(p){return p[0]===cl.pat})[0]||['',''])[1]+')',r.piezas+' ud · merma '+(Math.round(r.merma*10)/10)+' %']);
     };
     roomsL.forEach(function(r,i){filaCl(r.z.nm||'Sala '+(i+1),r.f.inner,r.z.cl)});
-    (v.sp||[]).forEach(function(r,i){if(r.k!==zkind(view))return;var q=spRect(r);if(q)filaCl(r.nm||'Parte '+(i+1),[{x:q.x0,y:q.y0},{x:q.x1,y:q.y0},{x:q.x1,y:q.y1},{x:q.x0,y:q.y1}],r.cl)});
+    (v.sp||[]).forEach(function(r,i){if(r.k!==zkind(view))return;var pp=spPts(r);if(pp)filaCl(r.nm||'Parte '+(i+1),pp,r.cl)});
   }
   (v.dr||[]).forEach(function(z,i){if(z.t==='zona'&&(z.vw==='*'||z.vw===view))rows.push([String(z.txt||'Zona '+(i+1)).split('|')[0].slice(0,40),m2(polyArea(z.pts)/10000)+' m²'])});
   if(sect('Mediciones')){
