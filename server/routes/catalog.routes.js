@@ -349,6 +349,10 @@ router.put('/products/:id/bloques', async (req, res) => {
       svg: { planta: svg.planta || '', alzado: svg.alzado || '', lateral: svg.lateral || '' },
       actualizado: new Date().toISOString(),
     };
+    if (!previo) {
+      const { data: pr2 } = await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle();
+      if (pr2?.bloques?.paso) bloques.paso = pr2.bloques.paso;
+    } else if (previo.bloques?.paso) bloques.paso = previo.bloques.paso;
     // Las medidas del bloque son las medidas reales del producto: largo → longitud, fondo → ancho
     const { data, error } = await supabase.from('catalog_products').update({ bloques, longitud: L, ancho: D, altura: H }).eq('id', req.params.id).select('id, longitud, ancho, altura, bloques').single();
     if (error) throw error;
@@ -356,6 +360,24 @@ router.put('/products/:id/bloques', async (req, res) => {
   } catch (err) {
     console.error('catalog bloques:', err);
     res.status(500).json({ error: 'No se pudo guardar el bloque' });
+  }
+});
+
+// Distancias de paso de un producto (izquierda, derecha, delante, detrás, en cm): se guardan en el producto y se heredan al colocarlo
+router.put('/products/:id/paso', async (req, res) => {
+  try {
+    const lim = v => (v == null || v === '' ? null : (Number(v) >= 0 && Number(v) <= 500 ? Number(v) : null));
+    const p = req.body?.paso || {};
+    const paso = { I: lim(p.I), D: lim(p.D), F: lim(p.F), T: lim(p.T) };
+    const { data: prev, error: e1 } = await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle();
+    if (e1) throw e1;
+    const bloques = { ...(prev?.bloques || {}), paso };
+    const { error } = await supabase.from('catalog_products').update({ bloques }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true, paso });
+  } catch (err) {
+    console.error('catalog paso:', err);
+    res.status(500).json({ error: 'No se pudieron guardar las distancias' });
   }
 });
 

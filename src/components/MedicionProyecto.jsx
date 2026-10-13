@@ -93,6 +93,12 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           responder({ type: 'bloqueProducto', id: m.id, bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, svg: b.svg || svg } });
         } catch (err) { responder({ type: 'bloqueProductoError', id: m.id, message: err.response?.data?.error || 'No se pudo guardar el bloque en el producto' }); }
       }
+      else if (m.type === 'guardarPasoProducto' && m.id && m.paso) {
+        try {
+          await api.put(`/catalog/products/${m.id}/paso`, { paso: m.paso });
+          responder({ type: 'info', message: 'Distancias guardadas en el producto: se aplicarán al colocarlo en cualquier plano' });
+        } catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudieron guardar las distancias' }); }
+      }
       else if (m.type === 'pedirMiniaturas' && Array.isArray(m.ids)) {
         try { const { data } = await api.post('/medicion/miniaturas', { ids: m.ids }); responder({ type: 'miniaturas', items: data.items || {} }); }
         catch { /* sin fotos: la memoria sale igualmente */ }

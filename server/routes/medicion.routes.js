@@ -211,6 +211,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
           sinMedidas: !tieneMedidas,
           // dibujo real de la planta (si el producto tiene bloque), a escala en cm
           foto: p.photo_url || null,
+          paso: p.bloques?.paso || null,
           enlace: /^https?:\/\//i.test(p.link || '') ? p.link : null,
           alto: Number(p.altura) > 0 ? Number(p.altura) : null,
           ...(p.bloques?.svg?.planta ? {

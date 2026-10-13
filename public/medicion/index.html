@@ -2420,8 +2420,8 @@ function scene(C,k,view,o){
     var paso=num(v.paso)||80,eqs=v.eq,bad={},gl='';
     if(sel&&sel.t==='eq'){
       var se=by(eqs,sel.id);
-      var pso=se?(pasoEq(se)||0):0;
-      if(se&&pso>0){var sr=eqRect(se),pz=pso/2;h+='<rect x="'+f2(sr.x0-pz)+'" y="'+f2(sr.y0-pz)+'" width="'+f2(sr.x1-sr.x0+pso)+'" height="'+f2(sr.y1-sr.y0+pso)+'" rx="'+f2(pz)+'" style="fill:'+C.accent+';fill-opacity:.12;stroke:'+C.accent+';stroke-width:'+f2(px)+';stroke-dasharray:'+f2(5*px)+' '+f2(4*px)+'"/>'}
+      var pI=se?(pasoLado(se,-1,0)||0):0,pD=se?(pasoLado(se,1,0)||0):0,pT=se?(pasoLado(se,0,-1)||0):0,pF=se?(pasoLado(se,0,1)||0):0,pso=Math.max(pI,pD,pT,pF);
+      if(se&&pso>0){var sr=eqRect(se),pz=Math.min(pso/2,12);h+='<rect x="'+f2(sr.x0-pI)+'" y="'+f2(sr.y0-pT)+'" width="'+f2(sr.x1-sr.x0+pI+pD)+'" height="'+f2(sr.y1-sr.y0+pT+pF)+'" rx="'+f2(pz)+'" style="fill:'+C.accent+';fill-opacity:.12;stroke:'+C.accent+';stroke-width:'+f2(px)+';stroke-dasharray:'+f2(5*px)+' '+f2(4*px)+'"/>'}
     }
     for(var ia=0;ia<eqs.length;ia++)for(var ib=ia+1;ib<eqs.length;ib++){
       var ra=eqRect(eqs[ia]),rb=eqRect(eqs[ib]),q2=rgap(ra,rb);
@@ -2434,9 +2434,11 @@ function scene(C,k,view,o){
       if(q2.dy<0&&q2.dx>0){
         var yy=(Math.max(ra.y0,rb.y0)+Math.min(ra.y1,rb.y1))/2,l=ra.x0<rb.x0?ra:rb,r2=ra.x0<rb.x0?rb:ra;
         gl+=dimW(C,px,l.x1,yy,r2.x0,yy,fmtU(q2.g),gc);
+        if(colectaDim)dimHits.push({kind:'eqg',a:eqs[ia].id,b:eqs[ib].id,ux:(ra===l?1:-1),uy:0,x:(l.x1+r2.x0)/2,y:yy-5*px,val:q2.g});
       }else if(q2.dx<0&&q2.dy>0){
         var xx=(Math.max(ra.x0,rb.x0)+Math.min(ra.x1,rb.x1))/2,t2=ra.y0<rb.y0?ra:rb,b2=ra.y0<rb.y0?rb:ra;
         gl+=dimW(C,px,xx,t2.y1,xx,b2.y0,fmtU(q2.g),gc);
+        if(colectaDim)dimHits.push({kind:'eqg',a:eqs[ia].id,b:eqs[ib].id,ux:0,uy:(ra===t2?1:-1),x:xx+14*px,y:(t2.y1+b2.y0)/2,val:q2.g});
       }
     }
     var tiposEq=eqTipos();
@@ -2457,6 +2459,7 @@ function scene(C,k,view,o){
         var r3=eqRect(se2);
         [[1,0,r3.x1,r3.cy],[-1,0,r3.x0,r3.cy],[0,1,r3.cx,r3.y1],[0,-1,r3.cx,r3.y0]].forEach(function(d){
           var rd=rayDist(d[2],d[3],d[0],d[1],se2.id);
+          if(rd&&rd.d>2&&colectaDim)dimHits.push({kind:'eqd',eq:se2.id,ux:d[0],uy:d[1],val:rd.d,x:d[2]+d[0]*rd.d/2+(d[0]===0?14*px:0),y:d[3]+d[1]*rd.d/2-(d[0]===0?0:5*px)});
           if(rd&&rd.d>2)h+=dimW(C,px,d[2],d[3],d[2]+d[0]*rd.d,d[3]+d[1]*rd.d,fmtU(rd.d),rd.kind==='e'?(function(){var oe=eqs.filter(function(q){return q.id!==se2.id});var mn=pasoEq(se2);return mn==null?C.dim:(rd.d<mn?C.dem:C.ok)})():C.dim);
         });
       }
@@ -2754,6 +2757,22 @@ function commitDimEd(){
     var eje=n+h.delta,cb0=st.v.cb;
     st.v.cb='ejes'; /* ya está convertido a ejes */
     try{if(h.nid)applyField('adj:'+h.nid+':'+h.wall,String(eje),false,true);else applyField('len',String(eje),false,true)}finally{st.v.cb=cb0}
+    return;
+  }
+  if(h.kind==='eqd'||h.kind==='eqg'){
+    if(!(n>=0&&n<=5000)){toast('Escribe una distancia válida');return}
+    var mover,ux=h.ux,uy=h.uy;
+    if(h.kind==='eqd')mover=by(st.v.eq,h.eq);
+    else{
+      var ea=by(st.v.eq,h.a),eb=by(st.v.eq,h.b);
+      if(st.sel&&st.sel.t==='eq'&&st.sel.id===h.a){mover=ea}
+      else{mover=eb;ux=-ux;uy=-uy}
+    }
+    if(!mover)return;
+    var dl=h.val-n;if(Math.abs(dl)<0.01)return;
+    snap();
+    mover.dx=f2(mover.dx+ux*dl);mover.dy=f2(mover.dy+uy*dl);
+    commit();
     return;
   }
   var w=wl(h.wall),o=opn(h.opId);if(!w||!o)return;
@@ -3338,6 +3357,7 @@ function ponerMaquina(w){
   if(!nq){toast('Dibuja primero el contorno de la sala');return}
   snap();
   var ne={id:uid('e'),n:nq.id,dx:f2(Math.round((w.x-nq.x)/5)*5),dy:f2(Math.round((w.y-nq.y)/5)*5),w:ent.w,d:ent.d,rot:0,nm:ent.nombre,ty:ent.tipo,cid:ent.id,ref:ent.ref||''};
+  if(ent.paso){['I','D','F','T'].forEach(function(S){if(ent.paso[S]!=null)ne['pm'+S]=ent.paso[S]})}
   st.v.eq.push(ne);st.sel={t:'eq',id:ne.id};st.multi=[];
   st.tool='select';flyClose();
   commit();toolbar();hint();
@@ -3556,7 +3576,25 @@ function pasoEq(e){
   var c=catById(e.cid),n=pasoFam(familiaDe(c?catsDe(c)[0]:''));
   return n>0?n:null;
 }
-function pasoPar(a,b){var pa=pasoEq(a),pb=pasoEq(b);if(pa==null||pb==null)return null;return Math.max(pa,pb)}
+/* distancia mínima por lado: izquierda, derecha, delante y detrás del bloque (delante = por donde se usa, abajo en el dibujo sin girar).
+   Lo que no se rellene usa la distancia general. (ux,uy) es la dirección en el plano hacia la que se mira. */
+function ladoDe(e,ux,uy){
+  var a=-(e.rot||0)*Math.PI/180,c=Math.cos(a),s=Math.sin(a),lx=c*ux-s*uy,ly=s*ux+c*uy;
+  if(e.fx)lx=-lx;if(e.fy)ly=-ly;
+  return Math.abs(lx)>=Math.abs(ly)?(lx>0?'D':'I'):(ly>0?'F':'T');
+}
+function pasoLado(e,ux,uy){
+  var v=e['pm'+ladoDe(e,ux,uy)];
+  if(v!=null&&v!=='')return num(v)>0?num(v):null;
+  return pasoEq(e);
+}
+function pasoPar(a,b){
+  var ra=eqRect(a),rb=eqRect(b),dx=rb.cx-ra.cx,dy=rb.cy-ra.cy,ux=0,uy=0;
+  if(Math.abs(dx)>=Math.abs(dy))ux=dx>=0?1:-1;else uy=dy>=0?1:-1;
+  var pa=pasoLado(a,ux,uy),pb=pasoLado(b,-ux,-uy);
+  if(pa==null||pb==null)return null;
+  return Math.max(pa,pb);
+}
 var ETQ_FAM={'Máquinas y equipamiento':['E','#5a5148'],'Cocinas':['C','#a0612a'],'Baños y vestuarios':['S','#2d6e78'],'Mobiliario':['F','#6b5a8f'],'Personas':['R','#767676'],'Puertas y ventanas':['H','#8a6f55'],'Escaleras':['X','#7a5a3c'],'Plantas y jardín':['J','#3c7a4f'],'Transporte':['T','#555d66'],'Climatización':['K','#a2493c'],'Nave y exterior':['N','#4f6a8a'],'Otros':['O','#6d6d6d']};
 function eqTipos(){
   var porId={},lista=[],idx={},cont={};
@@ -4269,6 +4307,9 @@ function panelSel(focus){
     }
     h+=fld('eq_w','Ancho (cm)',e.w)+fld('eq_d','Fondo (cm)',e.d)+'<label class="fld chk"><input type="checkbox" data-t="eq_lock"'+(e.lock?' checked':'')+'><span>🔒 Mantener la proporción (al cambiar el ancho, el fondo se ajusta)</span></label>';
     h+=fld('eq_pm','Distancia mínima a otros bloques (cm, 0 = no comprobar)',e.pm,String(pasoEq(e)||0));
+    h+='<div class="lab" style="margin-top:8px">Distancia mínima por lado (si no pones nada, vale la general)</div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">'+fld('eq_pmI','Izquierda (cm)',e.pmI,String(pasoLado(e,-1,0)||0))+fld('eq_pmD','Derecha (cm)',e.pmD,String(pasoLado(e,1,0)||0))+fld('eq_pmF','Delante (cm)',e.pmF,String(pasoLado(e,0,1)||0))+fld('eq_pmT','Detrás (cm)',e.pmT,String(pasoLado(e,0,-1)||0))+'</div>';
+    if(CRM&&ce0&&!ce0.biblioteca&&!ce0.generico&&/^[0-9a-f]{8}-/.test(String(ce0.id)))h+='<div class="btns"><button data-a="pasoprod" title="Se aplicará al colocar este producto en cualquier plano">Guardar estas distancias en el producto</button></div>';
     h+='<div class="btns"><button data-a="eqdup">Duplicar</button></div>';
     h+='<div class="btns"><button data-a="eqcat">Guardar medidas en el catálogo</button></div>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar máquina</button></div>';
@@ -4629,6 +4670,7 @@ function applyField(key,val,adv,raw){
     snap();if(key==='pil_w')p.w=n;else if(key==='pil_sep')p.sep=n;else p.d=n;commit(false);
   }else if(s.t==='eq'){
     var q=by(st.v.eq,s.id);if(!q)return;
+    if(/^eq_pm[IDFT]$/.test(key)){snap();var kk='pm'+key.slice(5);if(String(val).trim()==='')delete q[kk];else if(n>=0&&n<=500)q[kk]=n;else{hist.pop();toast('Escribe una distancia entre 0 y 500 cm');return}commit(false);return}
     if(key==='eq_pm'){snap();if(String(val).trim()==='')delete q.pm;else if(n>=0&&n<=500)q.pm=n;else{hist.pop();toast('Escribe una distancia entre 0 y 500 cm');return}commit(false);return}
     if(!(n>0&&n<=5000)){toast('Escribe una medida válida');return}
     snap();
@@ -4749,6 +4791,7 @@ function doAction(a,el){
   if(a==='eqrot'||a==='eqrotl'||a==='eqrot180'){var q1=by(st.v.eq,s.id);snap();q1.rot=((q1.rot||0)+(a==='eqrot'?90:a==='eqrotl'?270:180))%360;commit();return}
   if(a==='eqflx'||a==='eqfly'){var q1f=by(st.v.eq,s.id);snap();if(a==='eqflx')q1f.fx=!q1f.fx;else q1f.fy=!q1f.fy;commit();return}
   if(a==='eqdup'){var q2=by(st.v.eq,s.id);snap();var cp=JSON.parse(JSON.stringify(q2));cp.id=uid('e');cp.dx=f2(cp.dx+30);cp.dy=f2(cp.dy+30);st.v.eq.push(cp);st.sel={t:'eq',id:cp.id};commit();return}
+  if(a==='pasoprod'&&s.t==='eq'){var pq=by(st.v.eq,s.id),pcq=pq&&catById(pq.cid);if(!pcq)return;var pg=function(S){return pq['pm'+S]!=null&&pq['pm'+S]!==''?pq['pm'+S]:null};crmPost({type:'guardarPasoProducto',id:pcq.id,paso:{I:pg('I'),D:pg('D'),F:pg('F'),T:pg('T')}});pcq.paso={I:pg('I'),D:pg('D'),F:pg('F'),T:pg('T')};return}
   if(a==='prodgen'&&s.t==='eq'){
     var pe=by(st.v.eq,s.id),pc0=pe&&catById(pe.cid);if(!pc0)return;
     if(!pc0.foto){toast('El producto necesita foto en el catálogo para generar su bloque');return}
