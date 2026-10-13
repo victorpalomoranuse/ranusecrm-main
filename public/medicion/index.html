@@ -5541,9 +5541,9 @@ function viewHas(view){
   if(view==='interv')return (v.mm||[]).some(function(m){return mmOf(m)==='obra'})||v.walls.some(function(w){return w.s==='new'})||v.pil.some(function(p){return p.s==='new'})||v.ops.some(function(o){return o.s==='new'});
   if(view==='distrib')return v.eq.length>0||(v.mm||[]).length>0;
   if(view==='ilum'||view==='elec')return v.pts.some(function(q){return q.v===view&&q.s!=='dem'});
-  if(view==='suelos')return v.zn.some(function(z){return z.k==='s'});
-  if(view==='techos')return v.zn.some(function(z){return z.k==='t'});
-  if(view==='acab')return v.walls.some(function(w){return w.f&&(w.f.p||w.f.m)});
+  if(view==='suelos')return v.zn.some(function(z){return z.k==='s'})||(v.sp||[]).some(function(z){return z.k==='s'});
+  if(view==='techos')return v.zn.some(function(z){return z.k==='t'})||(v.sp||[]).some(function(z){return z.k==='t'});
+  if(view==='acab')return v.walls.some(function(w){return w.f&&(w.f.p||w.f.m)})||(v.fz||[]).length>0;
   if(view==='alz'||view==='cotas')return v.walls.length>0;
   return true;
 }
