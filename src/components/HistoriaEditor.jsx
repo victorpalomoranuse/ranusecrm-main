@@ -241,12 +241,27 @@ function PlanosEspacio({ projectId, capitulo, bloques, llamar }) {
 }
 
 function Miniatura({ url, onQuitar }) {
+  const [grande, setGrande] = useState(false);
+  useEffect(() => {
+    if (!grande) return undefined;
+    const k = (e) => { if (e.key === 'Escape') setGrande(false); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [grande]);
   if (!url) return null;
   return (
     <span style={{ position: 'relative', display: 'inline-block' }}>
-      <img src={url} alt="" style={{ height: 54, borderRadius: 6, display: 'block' }} />
+      <img src={url} alt="" title="Pulsa para verla en grande" onClick={() => setGrande(true)} style={{ height: 54, borderRadius: 6, display: 'block', cursor: 'zoom-in' }} />
       <button type="button" onClick={onQuitar} title="Quitar imagen"
         style={{ position: 'absolute', top: -6, right: -6, background: '#000', color: '#fff', border: 'none', borderRadius: '50%', width: 18, height: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+      {grande && (
+        <div role="dialog" aria-modal="true" onClick={() => setGrande(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, cursor: 'zoom-out' }}>
+          <img src={url} alt="" style={{ maxWidth: '96vw', maxHeight: '92vh', objectFit: 'contain', background: '#fff', borderRadius: 6 }} />
+          <button type="button" onClick={() => setGrande(false)} aria-label="Cerrar"
+            style={{ position: 'fixed', top: 14, right: 18, background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none', borderRadius: '50%', width: 36, height: 36, fontSize: 22, cursor: 'pointer' }}>×</button>
+        </div>
+      )}
     </span>
   );
 }
