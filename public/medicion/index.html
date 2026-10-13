@@ -2401,7 +2401,7 @@ function scene(C,k,view,o){
       if(sl&&o.nodes){ /* manijas: puntos del contorno y, entre ellos, puntos para añadir uno nuevo */
         rpp.forEach(function(a,i){
           var b=rpp[(i+1)%rpp.length],on=st.spVsel&&st.spVsel.id===r.id&&st.spVsel.i===i;
-          h+='<circle cx="'+f2((a.x+b.x)/2)+'" cy="'+f2((a.y+b.y)/2)+'" r="'+f2(4*px)+'" style="fill:'+C.bg+';stroke:'+C.accent+';stroke-width:'+f2(1.4*px)+'"/>';
+          if(st.spAdd)h+='<circle cx="'+f2((a.x+b.x)/2)+'" cy="'+f2((a.y+b.y)/2)+'" r="'+f2(4*px)+'" style="fill:'+C.bg+';stroke:'+C.accent+';stroke-width:'+f2(1.4*px)+'"/>';
           h+='<circle cx="'+f2(a.x)+'" cy="'+f2(a.y)+'" r="'+f2((on?8:6)*px)+'" style="fill:'+(on?C.accent:C.bg)+';stroke:'+C.accent+';stroke-width:'+f2(2*px)+'"/>';
         });
       }
@@ -2429,7 +2429,9 @@ function scene(C,k,view,o){
           }
           /* la distancia al muro no se dibuja si cruza otra zona de suelo (solo ensuciaría) */
           var cruzaOtra=d0!=null&&(v.sp||[]).some(function(r2){if(r2===r||r2.k!==zk)return false;var pp2=spPts(r2);return pp2&&inPoly({x:mx+onx*d0/2,y:my+ony*d0/2},pp2)});
-          if(d0!=null&&d0>3&&d0<(o.flat?160:3000)&&!cruzaOtra)h+=dimW(C,px,mx,my,mx+onx*d0,my+ony*d0,fmtU(d0),o.flat?hexMix(C.ok,'#ffffff',0.3):C.ok,!!o.flat);
+          var dR=d0==null?null:d0+1.5; /* distancia real desde el propio lado (el rayo salía 1,5 cm hacia fuera) */
+          if(colectaDim&&d0!=null&&d0>3&&d0<3000&&!cruzaOtra)dimHits.push({kind:'spg',sp:r.id,i:i,ux:onx,uy:ony,val:dR,x:mx+onx*dR/2+(Math.abs(onx)>Math.abs(ony)?0:14*px),y:my+ony*dR/2+(Math.abs(onx)>Math.abs(ony)?-5*px:4*px)});
+          if(d0!=null&&d0>3&&d0<(o.flat?160:3000)&&!cruzaOtra)h+=dimW(C,px,mx,my,mx+onx*dR,my+ony*dR,fmtU(dR),o.flat?hexMix(C.ok,'#ffffff',0.3):C.ok,!!o.flat);
         });
       }
       zlab+=txt(C,px,q.cx,q.cy-2*px,(codes[r.mat]||'')+(r.nm?'  '+r.nm:''),C.label,12,600)+txt(C,px,q.cx,q.cy+13*px,m2(spArea(r)/10000)+' m²',C.label,10.5,500);
@@ -2881,6 +2883,16 @@ function commitDimEd(){
     try{if(h.nid)applyField('adj:'+h.nid+':'+h.wall,String(eje),false,true);else applyField('len',String(eje),false,true)}finally{st.v.cb=cb0}
     return;
   }
+  if(h.kind==='spg'){
+    if(!(n>=0&&n<=100000)){toast('Escribe una medida válida');return}
+    var sg0=by(st.v.sp,h.sp);if(!sg0)return;
+    var dd0=h.val-n;if(Math.abs(dd0)<0.01)return;
+    snap();spAPoly(sg0);
+    var Ng=sg0.pts.length,j0=h.i,j1=(h.i+1)%Ng;
+    sg0.pts[j0]={x:f2(sg0.pts[j0].x+h.ux*dd0),y:f2(sg0.pts[j0].y+h.uy*dd0)};
+    sg0.pts[j1]={x:f2(sg0.pts[j1].x+h.ux*dd0),y:f2(sg0.pts[j1].y+h.uy*dd0)};
+    commit();return;
+  }
   if(h.kind==='spe'){
     if(!(n>0&&n<=100000)){toast('Escribe una medida válida');return}
     var sq0=by(st.v.sp,h.sp);if(!sq0)return;
@@ -3114,15 +3126,21 @@ svg.addEventListener('pointerdown',function(e){
   if(st.tool==='select'&&!pan&&st.sel&&st.sel.t==='sp'&&(st.view==='suelos'||st.view==='techos')){
     var spo=by(st.v.sp,st.sel.id),wsp=toW(p);
     if(spo){
-      var spp0=spPts(spo),tolv=Math.max(14/st.k,6),vi=-1,mi=-1,ii;
+      var spp0=spPts(spo),tolv=Math.max(14/st.k,6),vi=-1,mi=-1,ii,mejorD=1e9;
       for(ii=0;ii<spp0.length;ii++)if(Math.hypot(spp0[ii].x-wsp.x,spp0[ii].y-wsp.y)<tolv){vi=ii;break}
-      if(vi<0)for(ii=0;ii<spp0.length;ii++){var qa=spp0[ii],qb=spp0[(ii+1)%spp0.length];if(Math.hypot((qa.x+qb.x)/2-wsp.x,(qa.y+qb.y)/2-wsp.y)<tolv){mi=ii;break}}
+      if(vi<0)for(ii=0;ii<spp0.length;ii++){var qa=spp0[ii],qb=spp0[(ii+1)%spp0.length],dd=segDist(wsp,qa,qb);if(dd<tolv*0.9&&dd<mejorD){mejorD=dd;mi=ii}}
+      if(mi>=0&&!st.spAdd){ /* tocar una línea: se mueve entera (arrastrándola o escribiendo su distancia) */
+        snap();spAPoly(spo);st.spVsel=null;
+        var pe0=spPts(spo);
+        gesture={type:'dragSpE',id:e.pointerId,sp:spo,i:mi,moved:false,pts0:pe0.map(function(q){return {x:q.x,y:q.y}}),w0:wsp,sx:p.x,sy:p.y};
+        return;
+      }
       if(vi>=0||mi>=0){
         snap();
-        if(mi>=0){ /* punto nuevo en la mitad de ese lado */
+        if(mi>=0){ /* «Añadir puntos» activado: punto nuevo en el sitio tocado de ese lado */
           spAPoly(spo);
-          var nA=spo.pts[mi],nB=spo.pts[(mi+1)%spo.pts.length];
-          spo.pts.splice(mi+1,0,{x:f2((nA.x+nB.x)/2),y:f2((nA.y+nB.y)/2)});vi=mi+1;
+          var nA=spo.pts[mi],nB=spo.pts[(mi+1)%spo.pts.length],nn=nd(spo.n),qx=wsp.x-nn.x,qy=wsp.y-nn.y,ex=nB.x-nA.x,ey=nB.y-nA.y,t=Math.max(0.1,Math.min(0.9,((qx-nA.x)*ex+(qy-nA.y)*ey)/((ex*ex+ey*ey)||1)));
+          spo.pts.splice(mi+1,0,{x:f2(nA.x+ex*t),y:f2(nA.y+ey*t)});vi=mi+1;
         }
         st.spVsel={id:spo.id,i:vi};
         gesture={type:'dragSpV',id:e.pointerId,sp:spo,i:vi,moved:false,nuevo:mi>=0,sx:p.x,sy:p.y};
@@ -3186,7 +3204,7 @@ svg.addEventListener('pointerdown',function(e){
   }
   if(st.tool==='paint'&&(st.view==='suelos'||st.view==='techos')&&!pan){
     var wdd=toW(p),dsp2=null;
-    dimHits.forEach(function(hh){if(hh.kind==='spe'&&Math.abs((wdd.x-hh.x)*st.k)<24&&Math.abs((wdd.y-hh.y)*st.k)<11)dsp2=hh});
+    dimHits.forEach(function(hh){if((hh.kind==='spe'||hh.kind==='spg')&&Math.abs((wdd.x-hh.x)*st.k)<24&&Math.abs((wdd.y-hh.y)*st.k)<11)dsp2=hh});
     if(dsp2&&!(st.spPoly&&st.spPoly.length)){gesture={type:'sptapdim',id:e.pointerId,hit:dsp2};return}
   }
   if(st.tool==='paint'&&(st.view==='suelos'||st.view==='techos')&&st.sueloModo==='parte'&&!pan){gesture={type:'spdrag',id:e.pointerId,x0:p.x,y0:p.y,x1:p.x,y1:p.y,moved:false};return}
@@ -3210,6 +3228,16 @@ svg.addEventListener('pointermove',function(e){
     if(!gesture.moved){spAPoly(gesture.sp);gesture.moved=true}
     var npv=spSnapV(gesture.sp,gesture.i,toW(p)),nov=nd(gesture.sp.n);
     gesture.sp.pts[gesture.i]={x:f2(npv.x-nov.x),y:f2(npv.y-nov.y)};req();
+  }else if(gesture.type==='dragSpE'&&gesture.id===e.pointerId){
+    if(!gesture.moved&&Math.hypot(p.x-gesture.sx,p.y-gesture.sy)<6)return;
+    gesture.moved=true;
+    var P0=gesture.pts0,N0=P0.length,A0=P0[gesture.i],B0=P0[(gesture.i+1)%N0],el=Math.hypot(B0.x-A0.x,B0.y-A0.y)||1,nx0=-(B0.y-A0.y)/el,ny0=(B0.x-A0.x)/el;
+    var wm0=toW(p),md={x:(A0.x+B0.x)/2,y:(A0.y+B0.y)/2},dl=(wm0.x-gesture.w0.x)*nx0+(wm0.y-gesture.w0.y)*ny0;
+    var ps0=spSnapCore({x:md.x+nx0*dl,y:md.y+ny0*dl},{prev:null,libre:true,ex:gesture.sp.id,own:[]}),ds=(ps0.x-md.x)*nx0+(ps0.y-md.y)*ny0;
+    if(Math.abs(ds-dl)>14/st.k)ds=Math.round(dl/5)*5;
+    var nb=nd(gesture.sp.n);
+    gesture.sp.pts=P0.map(function(q,j){var mv=(j===gesture.i||j===(gesture.i+1)%N0);return {x:f2(q.x+(mv?nx0*ds:0)-nb.x),y:f2(q.y+(mv?ny0*ds:0)-nb.y)}});
+    req();
   }else if(gesture.type==='dragSpB'&&gesture.id===e.pointerId){
     if(!gesture.moved&&Math.hypot(p.x-gesture.sx,p.y-gesture.sy)<6)return;
     gesture.moved=true;
@@ -3306,6 +3334,7 @@ function endPtr(e){
     return;
   }
   if(g.type==='sptapdim'&&g.id===e.pointerId){gesture=null;if(e.type==='pointerup')openDimEd(g.hit);return}
+  if(g.type==='dragSpE'&&g.id===e.pointerId){gesture=null;if(!g.moved){hist.pop();return}commit();return}
   if(g.type==='dragSpV'&&g.id===e.pointerId){gesture=null;if(!g.moved&&!g.nuevo){hist.pop();panelSel();render();return}commit();panelSel();return}
   if(g.type==='dragSpB'&&g.id===e.pointerId){gesture=null;if(!g.moved){hist.pop();if(e.type==='pointerup')tap(toW(loc(e)));return}commit();return}
   if(g.type==='dragDr'&&g.id===e.pointerId){gesture=null;if(!g.moved){hist.pop();return}commit();return}
@@ -3545,7 +3574,7 @@ function tap(w){
   if(st.tool==='draw'&&(st.drK==='text'||st.drK==='poly'||st.drK==='zonap')){drTap(w);return}
   if((st.view==='suelos'||st.view==='techos')&&!(st.spPoly&&st.spPoly.length)){
     var dsp=null;
-    dimHits.forEach(function(hh){if(hh.kind==='spe'&&Math.abs((w.x-hh.x)*st.k)<24&&Math.abs((w.y-hh.y)*st.k)<11)dsp=hh});
+    dimHits.forEach(function(hh){if((hh.kind==='spe'||hh.kind==='spg')&&Math.abs((w.x-hh.x)*st.k)<24&&Math.abs((w.y-hh.y)*st.k)<11)dsp=hh});
     if(dsp){openDimEd(dsp);return}
   }
   if(qeId&&!qe.hidden&&qe.value.trim()!=='')commitQE(false);
@@ -4634,7 +4663,8 @@ function panelSel(focus){
     h+='<label class="fld"><span>Nombre (opcional)</span><input data-t="sp_nm" value="'+esc(sp.nm||'')+'" placeholder="Zona de entreno" autocomplete="off"></label>';
     if(!sp.pts)h+=fld('sp_bw','Ancho (cm)',sp.bw)+fld('sp_bh','Fondo (cm)',sp.bh);
     else h+='<p class="note">Zona dibujada con '+sp.pts.length+' puntos.</p>';
-    h+='<p class="note">Para cambiar el contorno (en «Seleccionar»): arrastra un punto grande para moverlo, toca el puntito de la mitad de un lado para añadir uno, o arrastra el interior para mover toda la zona. Los puntos se pegan a las esquinas de la sala y se alinean entre sí.</p>';
+    h+='<p class="note">Para cambiar el contorno (en «Seleccionar»): arrastra un punto grande para moverlo, arrastra una <b>línea</b> para moverla entera (o toca su medida y escríbela), o arrastra el interior para mover toda la zona. Se pegan a las esquinas de la sala y a las otras zonas.</p>';
+    h+='<div class="btns"><button data-a="spadd" aria-pressed="'+!!st.spAdd+'">Añadir puntos: '+(st.spAdd?'sí (toca un lado)':'no')+'</button></div>';
     if(st.spVsel&&st.spVsel.id===sp.id&&sp.pts&&sp.pts.length>3)h+='<div class="btns"><button data-a="spdelv">Quitar el punto seleccionado</button></div>';
     if(sq&&sbx&&!sp.pts)h+=fld('sp_x','Distancia desde la esquina izquierda (cm)',sq.x0-sbx.x0)+fld('sp_y','Distancia desde la esquina de arriba (cm)',sq.y0-sbx.y0);
     h+='<label class="fld chk"><input type="checkbox" data-t="sp_ex"'+(sp.ex?' checked':'')+'><span>Existente: se mantiene (no se mide ni se pide)</span></label>';
@@ -5005,6 +5035,7 @@ function doAction(a,el){
     if(!rcVis(st.view)){st.view='interv';toolbar()}
     commit();toast('Recrecido añadido. Ajusta el tramo, la cara y el espesor en el panel.');return;
   }
+  if(a==='spadd'){st.spAdd=!st.spAdd;panelSel();render();toast(st.spAdd?'Toca un lado de la zona para añadir un punto':'Tocar una línea la mueve entera');return}
   if(a==='spdelv'&&s.t==='sp'){var spq=by(st.v.sp,s.id);if(spq&&spq.pts&&spq.pts.length>3&&st.spVsel&&st.spVsel.id===spq.id){snap();spq.pts.splice(st.spVsel.i,1);st.spVsel=null;commit();panelSel()}return}
   if(a==='angpiv'){st.angPiv=sv;panelSel();return}
   if(a==='angd'&&s.t==='wall'){var wag=wl(s.id);if(wag){snap();girarMuro(wag,angMuro(wag)+(+sv));commit(false);panelSel()}return}
