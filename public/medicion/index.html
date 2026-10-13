@@ -572,8 +572,14 @@ var TAN12=0.2126, AXDEG=8;
 function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
 function newVisit(){return norm({id:'v'+Date.now().toString(36),nombre:'',cliente:'',fecha:today(),altura:260,paso:80,notas:'',seq:1,nodes:[],walls:[],ops:[],pil:[],ctl:[],eq:[],pts:[],zn:[],rz:[],cn:[],updated:Date.now()})}
 function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.rc=v.rc||[];v.dr=v.dr||[];v.sp=v.sp||[];v.cal=v.cal||[];v.mm=v.mm||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];if(!v.cb||v.cbv!==2){v.cb='int';v.cbv=2} /* las cotas miden por defecto la cara interior; los planos antiguos guardados «a ejes» se pasan una vez a interior (después se respeta lo que elijas) */
-soldarNodos(v);return v}
+soldarNodos(v);(v.sp||[]).forEach(function(r){if(r.pts&&r.pts.length>3){var l=limpiaPuntosZona(r.pts);if(l.length>=3)r.pts=l}});return v}
 /* dos puntos a menos de 1,5 cm son el mismo (si no, la sala no se detecta como cerrada) */
+function limpiaPuntosZona(pts){
+  var out=[];
+  (pts||[]).forEach(function(q){var l=out[out.length-1];if(!l||Math.hypot(q.x-l.x,q.y-l.y)>0.5)out.push(q)});
+  if(out.length>2&&Math.hypot(out[0].x-out[out.length-1].x,out[0].y-out[out.length-1].y)<=0.5)out.pop();
+  return out;
+}
 function soldarNodos(v){
   var ns=v.nodes||[],i,j;
   for(i=0;i<ns.length;i++)for(j=ns.length-1;j>i;j--){
@@ -1430,7 +1436,7 @@ function clipSegPoly(a,b,poly){
   return out;
 }
 /* líneas del despiece recortadas a la sala */
-function clSvg(C,px,poly,cl){
+function clSvg(C,px,poly,cl,col){
   var tl=clTiles(poly,cl);if(!tl)return '';
   var seen={},d='',k=function(p){return Math.round(p.x*10)+','+Math.round(p.y*10)};
   tl.forEach(function(q){
@@ -1440,7 +1446,7 @@ function clSvg(C,px,poly,cl){
       clipSegPoly(a,b,poly).forEach(function(sg){d+='M'+f2(sg[0].x)+' '+f2(sg[0].y)+' L'+f2(sg[1].x)+' '+f2(sg[1].y)+' '});
     }
   });
-  return d?'<path d="'+d+'" style="fill:none;stroke:'+C.dim+';stroke-width:'+f2(0.7*px)+'"/>':'';
+  return d?'<path d="'+d+'" style="fill:none;stroke:'+(col||C.dim)+';stroke-width:'+f2(0.45*px)+'"/>':'';
 }
 function clObj(){var s=st.sel;if(!s)return null;return s.t==='zn'?by(st.v.zn,s.id):s.t==='sp'?by(st.v.sp,s.id):null}
 function colocHtml(o,poly){
@@ -1484,7 +1490,7 @@ function spCerrar(){
   if(!fc){toast('El centro de la zona tiene que quedar dentro de una sala cerrada por muros');return}
   var nq=nearNode(cen.x,cen.y,1e9,null);if(!nq)return;
   snap();
-  var nsp={id:uid('q'),k:zkind(st.view),n:nq.id,dx:0,dy:0,pts:pl.map(function(q){return {x:f2(q.x-nq.x),y:f2(q.y-nq.y)}}),mat:st.pal[st.view],nm:''};
+  var nsp={id:uid('q'),k:zkind(st.view),n:nq.id,dx:0,dy:0,pts:limpiaPuntosZona(pl.map(function(q){return {x:f2(q.x-nq.x),y:f2(q.y-nq.y)}})),mat:st.pal[st.view],nm:''};
   st.v.sp.push(nsp);st.sel={t:'sp',id:nsp.id};st.spPoly=null;st.spHover=null;commit();drawPal();
 }
 document.addEventListener('keydown',function(e){
@@ -2369,7 +2375,7 @@ function scene(C,k,view,o){
       }else h+='<polygon points="'+pts+'" style="fill:'+(o.flat?hexMix(m.c,'#ffffff',0.35):m.c)+(o.flat?'':';fill-opacity:.62')+';stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
       if(z.cl&&z.cl.pat){
         if(z.cl.show==='trama')h+='<polygon points="'+pts+'" style="fill:'+C.bg+';stroke:none"/>';
-        h+=clSvg(C,px,f.inner,z.cl);
+        h+=clSvg(C,px,f.inner,z.cl,hexMix((o.flat?hexMix(m.c,'#ffffff',0.35):m.c),'#000000',0.16));
       }
       var l1=(codes[z.mat]||'')+(z.nm?'  '+z.nm:''),l2=m2((f.area-spEn(f,zk))/10000)+' m²'+(view==='techos'&&z.h?'  ·  h '+fmtU(z.h):'');
       zlab+=txt(C,px,f.cx,f.cy-2*px,l1,C.label,13,600)+txt(C,px,f.cx,f.cy+14*px,l2,C.label,11,500);
@@ -2388,7 +2394,7 @@ function scene(C,k,view,o){
       if(r.cl&&r.cl.pat){
         var rpoly=rpp;
         if(r.cl.show==='trama')h+='<polygon points="'+rps+'" style="fill:'+C.bg+';stroke:'+C.label+';stroke-width:'+f2(1.2*px)+'"/>';
-        h+=clSvg(C,px,rpoly,r.cl);
+        h+=clSvg(C,px,rpoly,r.cl,hexMix((o.flat?hexMix(m.c,'#ffffff',0.35):m.c),'#000000',0.16));
       }
       if(sl&&o.nodes){ /* manijas: puntos del contorno y, entre ellos, puntos para añadir uno nuevo */
         rpp.forEach(function(a,i){
@@ -2409,7 +2415,13 @@ function scene(C,k,view,o){
           var off=14*px,ix=-onx*off,iy=-ony*off;
           var d0=rayWalls(mx+onx*1.5,my+ony*1.5,onx,ony,view);
           var tocaMuro=d0!=null&&d0<=3;
-          if(!rep0&&!(o.flat&&tocaMuro)){
+          /* el lado que comparte con otra zona (la de arriba en la lista) ya lo acota esa zona */
+          var compartido=(v.sp||[]).some(function(r2){
+            if(r2===r||r2.k!==zk||(v.sp||[]).indexOf(r2)>(v.sp||[]).indexOf(r))return false;
+            var q2=spPts(r2);if(!q2)return false;
+            return q2.some(function(c1,j){var c2=q2[(j+1)%q2.length];return (Math.hypot(c1.x-a.x,c1.y-a.y)<1.5&&Math.hypot(c2.x-b.x,c2.y-b.y)<1.5)||(Math.hypot(c1.x-b.x,c1.y-b.y)<1.5&&Math.hypot(c2.x-a.x,c2.y-a.y)<1.5)});
+          });
+          if(!rep0&&!compartido&&!(o.flat&&tocaMuro)){
             h+=dimW(C,px,a.x+ix,a.y+iy,b.x+ix,b.y+iy,fmtU(L),C.label);
             if(colectaDim){var vt=Math.abs(dx)<Math.abs(dy);dimHits.push({kind:'spe',sp:r.id,i:i,val:L,x:(a.x+b.x)/2+ix+(vt?14*px:0),y:(a.y+b.y)/2+iy+(vt?4*px:-5*px)})}
           }
@@ -2557,7 +2569,7 @@ function scene(C,k,view,o){
     h+=txt(C,px,(a.x+b.x)/2,(a.y+b.y)/2-6*px,s,c.len==null?C.warn:(bad?C.dem:C.ok),12,500);
   });
   var cent=(o.dims&&o.dims!=='simple')?wallCent(view):null;
-  var ocultaCM=(view==='suelos'||view==='techos'||view==='acab'||view==='elec'||view==='ilum')&&!st.verCotasMuros&&!o.flat; /* trabajando en pantalla, en suelos y techos solo se ven las medidas de las zonas (las de los muros se activan con el botón); al exportar salen todas */
+  var ocultaCM=((view==='suelos'||view==='techos')||((view==='acab'||view==='elec'||view==='ilum')&&!o.flat))&&!st.verCotasMuros; /* trabajando en pantalla, en suelos y techos solo se ven las medidas de las zonas (las de los muros se activan con el botón); al exportar salen todas */
   (ocultaCM?[]:(cent?dimWalls(view):v.walls)).forEach(function(w){
     if(!wallVis(w,view))return;
     if(w.arc){ // una sola cota por arco: longitud y radio
