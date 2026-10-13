@@ -204,6 +204,42 @@ function SubirVariosRenders({ projectId, capitulo, bloques, llamar }) {
   );
 }
 
+// Planos del espacio que el cliente ve paso a paso en «Entendemos el espacio» (también se publican desde la herramienta de Planos)
+const PASOS_PLANO = [
+  { titulo: 'Estado actual', paso: 'Paso 1', ayuda: 'Plano del espacio tal como está hoy.' },
+  { titulo: 'Demoliciones', paso: 'Paso 2', ayuda: 'Solo si hay demoliciones.' },
+  { titulo: 'Implantación', paso: 'Paso 2', ayuda: 'Solo si hay obra nueva (tabiques, trasdosados…).' },
+  { titulo: 'Distribución', paso: 'Paso 3', ayuda: 'Plano con las zonas y la maquinaria.' },
+];
+const esPasoPlano = (b) => b.tipo === 'plano' && PASOS_PLANO.some(p => p.titulo === b.titulo);
+
+function PlanosEspacio({ projectId, capitulo, bloques, llamar }) {
+  const guardar = (titulo, existente, url) => llamar(() => existente
+    ? api.put(`/historia/bloques/${existente.id}`, { imagen_url: url })
+    : api.post(`/historia/capitulos/${capitulo.id}/bloques`, { tipo: 'plano', titulo, imagen_url: url }));
+  return (
+    <div style={{ ...box, marginBottom: 10, borderColor: 'rgba(190,176,162,0.35)' }}>
+      <strong style={{ fontSize: '0.85rem' }}>Planos del espacio (el cliente los ve paso a paso)</strong>
+      <p style={{ ...muted, margin: '4px 0 8px' }}>Sube aquí una imagen (JPG o PNG) de cada plano, o publícalos directamente desde la herramienta de Planos con «Publicar en la historia del cliente». Después de estos pasos van las zonas con sus renders. Los pasos que no subas no se muestran.</p>
+      {PASOS_PLANO.map(p => {
+        const b = bloques.find(x => x.tipo === 'plano' && x.titulo === p.titulo);
+        return (
+          <div key={p.titulo} style={{ ...row, justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ flex: '1 1 160px' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{p.paso} · {p.titulo}</div>
+              <div style={muted}>{p.ayuda}</div>
+            </div>
+            <div style={row}>
+              {b?.imagen_url ? <Miniatura url={b.imagen_url} onQuitar={() => llamar(() => api.delete(`/historia/bloques/${b.id}`))} /> : <span style={muted}>Sin subir</span>}
+              <Subir projectId={projectId} label={b?.imagen_url ? 'Cambiar' : 'Subir plano'} onUrl={u => guardar(p.titulo, b, u)} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Miniatura({ url, onQuitar }) {
   if (!url) return null;
   return (
@@ -373,6 +409,7 @@ function VistaCapitulos({ projectId, data, capitulo, esPlano, setCapSel, llamar,
               <button type="button" className="ap-btn ap-btn-danger ap-btn-xs" onClick={borrarCapitulo}><Trash2 size={11} /></button>
             </div>
           </div>
+          {/entendemos el espacio/i.test(capitulo.titulo) && <PlanosEspacio projectId={projectId} capitulo={capitulo} bloques={bloques} llamar={llamar} />}
           <div style={{ ...box, marginBottom: 10, borderColor: 'rgba(190,176,162,0.35)' }}>
             <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
               <strong style={{ fontSize: '0.85rem' }}>Renders del capítulo</strong>
@@ -410,7 +447,7 @@ function VistaCapitulos({ projectId, data, capitulo, esPlano, setCapSel, llamar,
           </div>
           <p style={{ ...muted, marginBottom: 8 }}>Un bloque sin texto ni imagen no se muestra al cliente. La guía es solo para el equipo.</p>
           {bloques.length === 0 && <p style={muted}>Todavía no hay bloques.</p>}
-          {bloques.map((b, i) => (
+          {bloques.filter(b => !esPasoPlano(b)).map((b, i) => (
             <BloqueEditor key={b.id} projectId={projectId} b={b} idx={i} total={bloques.length} mover={moverBloque} llamar={llamar} />
           ))}
         </div>
