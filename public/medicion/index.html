@@ -6465,6 +6465,7 @@ function codigoLamina(doc,clave,ante){
   return n>1?c+'-'+String.fromCharCode(64+n):c;
 }
 function sheetPage(doc,view,idx,total,o){
+  window.__infoView=view;
   var v=st.v,A3=o.paper!=='A4',PW=A3?420:297,PH=A3?297:210,f=A3?1:0.76,mg=10,Wc=A3?88:68;
   var p=doc.page(PW,PH),cx=PW-mg-Wc,tags=opTags(),b=bbox();
   var body=7.5*f+(A3?0:0.6),sm=5.6*f+(A3?0:0.4);
@@ -7005,21 +7006,48 @@ $('b-pdfproj').addEventListener('click',function(){
 /* nombre del proyecto, dirección, cliente, planta, fecha y observaciones del cajetín: se escriben aquí (no hace falta enlazar el plano a un proyecto del CRM) */
 /* qué información sale en las láminas (por defecto todo) */
 var INFO_LAM=[['leyenda','Leyenda de estados y símbolos'],['carp','Carpinterías (puertas y ventanas)'],['med','Cuadro de mediciones'],['total','Total de m²'],['rodapie','Rodapié (ml)'],['despiece','Despiece y piezas a pedir']];
-function infoOn(k){return !(st.v&&st.v.info&&st.v.info[k]===false)}
+/* la información de las láminas se puede fijar para todas o solo para una (la de esa lámina manda sobre la general) */
+function infoOn(k){
+  var v=window.__infoView||st.view,iv=st.v&&st.v.infoV&&st.v.infoV[v];
+  if(iv&&Object.prototype.hasOwnProperty.call(iv,k))return iv[k]!==false;
+  return !(st.v&&st.v.info&&st.v.info[k]===false);
+}
 function abrirInfoLam(){
+  window.__infoView=null;
   var m0=document.getElementById('infomod');if(m0)m0.remove();
+  var vw=st.view,nombre=VNAME[vw]||vw;
   var m=document.createElement('div');m.id='infomod';m.className='dxfmod';
-  m.innerHTML='<div class="dxfbox" style="max-width:520px"><header><h3>Qué información enseñar en las láminas</h3><p class="note" style="margin:0">Quita lo que no haga falta para no confundir (por ejemplo, el rodapié si ya existe). Vale para todas las láminas de este plano. Los suelos que ya existen se marcan como «existente» en su propio panel.</p></header><div style="padding:12px 18px;display:grid;gap:8px">'+
-    INFO_LAM.map(function(x){return '<label class="fld chk" style="margin:0"><input type="checkbox" data-inf="'+x[0]+'"'+(infoOn(x[0])?' checked':'')+'><span>'+x[1]+'</span></label>'}).join('')+
-    '</div><footer><span style="flex:1"></span><button id="inf-x">Cancelar</button><button class="pri" id="inf-ok">Guardar</button></footer></div>';
+  m.innerHTML='<div class="dxfbox" style="max-width:540px"><header><h3>Qué información enseñar en las láminas</h3><p class="note" style="margin:0">Quita lo que no haga falta para no confundir (por ejemplo, el rodapié si ya existe). Los suelos que ya existen se marcan como «existente» en su propio panel.</p>'+
+    '<div class="seg3" style="margin-top:8px"><button data-ambito="esta" aria-pressed="true">Solo esta lámina ('+esc(nombre)+')</button><button data-ambito="todas" aria-pressed="false">Todas las láminas</button></div></header><div id="inf-lista" style="padding:12px 18px;display:grid;gap:8px"></div>'+
+    '<footer><span style="flex:1"></span><button id="inf-x">Cancelar</button><button class="pri" id="inf-ok">Guardar</button></footer></div>';
   document.body.appendChild(m);
+  var ambito='esta';
+  function pinta(){
+    var h='';
+    INFO_LAM.forEach(function(x){
+      var on=true;
+      if(ambito==='esta')on=infoOn(x[0]);else on=!(st.v.info&&st.v.info[x[0]]===false);
+      h+='<label class="fld chk" style="margin:0"><input type="checkbox" data-inf="'+x[0]+'"'+(on?' checked':'')+'><span>'+x[1]+'</span></label>';
+    });
+    document.getElementById('inf-lista').innerHTML=h;
+  }
+  pinta();
+  m.addEventListener('click',function(e){
+    var b=e.target.closest('button[data-ambito]');if(!b)return;
+    ambito=b.getAttribute('data-ambito');
+    [].forEach.call(m.querySelectorAll('button[data-ambito]'),function(x){x.setAttribute('aria-pressed',x===b?'true':'false')});
+    pinta();
+  });
   var cierra=function(){m.remove()};
   document.getElementById('inf-x').addEventListener('click',cierra);
   m.addEventListener('mousedown',function(e){if(e.target===m)cierra()});
   document.getElementById('inf-ok').addEventListener('click',function(){
-    snap();st.v.info={};
-    [].forEach.call(m.querySelectorAll('input[data-inf]'),function(c){if(!c.checked)st.v.info[c.getAttribute('data-inf')]=false});
-    save();cierra();toast('Listo: las láminas que exportes llevarán solo esa información');
+    snap();
+    var mapa={};
+    [].forEach.call(m.querySelectorAll('input[data-inf]'),function(c){mapa[c.getAttribute('data-inf')]=!!c.checked});
+    if(ambito==='esta'){st.v.infoV=st.v.infoV||{};st.v.infoV[vw]=mapa}
+    else{st.v.info={};Object.keys(mapa).forEach(function(k){if(!mapa[k])st.v.info[k]=false});st.v.infoV={}}
+    save();cierra();toast(ambito==='esta'?'Guardado solo para la lámina «'+nombre+'»':'Guardado para todas las láminas');
   });
 }
 function abrirDatos(){
