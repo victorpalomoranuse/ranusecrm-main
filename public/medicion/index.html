@@ -2407,12 +2407,15 @@ function scene(C,k,view,o){
           var ux=dx/L,uy=dy/L,onx=uy,ony=-ux,mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
           if(inPoly({x:mx+onx*2,y:my+ony*2},rpp)){onx=-onx;ony=-ony} /* normal hacia fuera de la zona */
           var off=14*px,ix=-onx*off,iy=-ony*off;
-          if(!rep0){
+          var d0=rayWalls(mx+onx*1.5,my+ony*1.5,onx,ony,view);
+          var tocaMuro=d0!=null&&d0<=3;
+          if(!rep0&&!(o.flat&&tocaMuro)){
             h+=dimW(C,px,a.x+ix,a.y+iy,b.x+ix,b.y+iy,fmtU(L),C.label);
             if(colectaDim){var vt=Math.abs(dx)<Math.abs(dy);dimHits.push({kind:'spe',sp:r.id,i:i,val:L,x:(a.x+b.x)/2+ix+(vt?14*px:0),y:(a.y+b.y)/2+iy+(vt?4*px:-5*px)})}
           }
-          var d0=rayWalls(mx+onx*1.5,my+ony*1.5,onx,ony,view);
-          if(d0!=null&&d0>3&&d0<3000)h+=dimW(C,px,mx,my,mx+onx*d0,my+ony*d0,fmtU(d0),C.ok);
+          /* la distancia al muro no se dibuja si cruza otra zona de suelo (solo ensuciaría) */
+          var cruzaOtra=d0!=null&&(v.sp||[]).some(function(r2){if(r2===r||r2.k!==zk)return false;var pp2=spPts(r2);return pp2&&inPoly({x:mx+onx*d0/2,y:my+ony*d0/2},pp2)});
+          if(d0!=null&&d0>3&&d0<(o.flat?160:3000)&&!cruzaOtra)h+=dimW(C,px,mx,my,mx+onx*d0,my+ony*d0,fmtU(d0),o.flat?hexMix(C.ok,'#ffffff',0.3):C.ok,!!o.flat);
         });
       }
       zlab+=txt(C,px,q.cx,q.cy-2*px,(codes[r.mat]||'')+(r.nm?'  '+r.nm:''),C.label,12,600)+txt(C,px,q.cx,q.cy+13*px,m2(spArea(r)/10000)+' m²',C.label,10.5,500);
@@ -5511,7 +5514,7 @@ PdfDoc.prototype={
 
 /* ---------- láminas PDF ---------- */
 var LSL='ranuse-logo-v1',LOGO=null;
-var SCALES=[10,20,25,50,75,100,150,200,250,500];
+var SCALES=[10,20,25,30,40,50,60,75,100,150,200,250,500];
 var INK='#111111',MUTED='#6f675f',LINEC='#cfc8c1',MARCA='#baafa5',MARCA_F='#f6f4f2';
 function fdate(s){var m=/^(\d{4})-(\d\d)-(\d\d)$/.exec(s||'');return m?m[3]+'/'+m[2]+'/'+m[1]:(s||'—')}
 function fitTxt(s,maxW,bold,size){
@@ -6696,22 +6699,30 @@ function sheetPage(doc,view,idx,total,o){
     else rows.push(['Total',m2(totA/10000)+' m²']);
     if(view==='alz')rows.push(['Altura libre',m2(wallH()/100)+' m']);
   }else if(view==='suelos'||view==='techos'){
-    var cd=zoneCodes(view),tot=0,rod=0;
+    var cd=zoneCodes(view),tot=0,rod=0,zkk=zkind(view),carasConZona={};
     roomsL.forEach(function(r,i){
-      tot+=r.f.area;rod+=Math.max(0,r.f.per-r.f.doorW);
-      rows.push([(r.z.nm||'Sala '+(i+1))+' ('+cd[r.z.mat]+')',m2(r.f.area/10000)+' m²']);
+      var ocu=spEn(r.f,zkk);
+      tot+=r.f.area-ocu;rod+=Math.max(0,r.f.per-r.f.doorW);carasConZona[r.f.cx+','+r.f.cy]=1;
+      rows.push([(cd[r.z.mat]||'')+' · '+(matOf(view,r.z.mat).n||'')+(r.z.nm?' · '+r.z.nm:'')+' (sala)',m2((r.f.area-ocu)/10000)+' m²']);
     });
-    (v.sp||[]).forEach(function(r,i){if(r.k===zkind(view))rows.push([(r.nm||'Parte '+(i+1))+' ('+(cd[r.mat]||'')+')',m2(spArea(r)/10000)+' m²'])});
+    (v.sp||[]).forEach(function(r,i){
+      if(r.k!==zkk)return;
+      tot+=spArea(r);
+      rows.push([(cd[r.mat]||'')+' · '+(matOf(view,r.mat).n||'')+(r.nm?' · '+r.nm:'')+' (zona '+(i+1)+')',m2(spArea(r)/10000)+' m²']);
+      var cc=spRect(r),fc=cc&&faceAt({x:cc.cx,y:cc.cy},view);
+      if(fc&&!carasConZona[fc.cx+','+fc.cy]){carasConZona[fc.cx+','+fc.cy]=1;rod+=Math.max(0,fc.per-fc.doorW)}
+    });
     rows.push(['Total',m2(tot/10000)+' m²']);
-    if(view==='suelos')rows.push(['Rodapié',m2(rod/100)+' ml']);
+    if(view==='suelos')rows.push(['Rodapié (perímetro menos puertas)',m2(rod/100)+' ml']);
     var filaCl=function(nm,poly,cl){
       if(!cl||!cl.pat)return;
       var r=clCuenta(poly,cl);if(!r)return;
-      rows.push(['Despiece '+nm+' · '+fmt(cl.w)+'×'+fmt(cl.h)+' cm',r.enteras+' enteras + '+r.cortes+' cortes']);
-      rows.push(['  Piezas a pedir ('+(CLPAT.filter(function(p){return p[0]===cl.pat})[0]||['',''])[1]+')',r.piezas+' ud · merma '+(Math.round(r.merma*10)/10)+' %']);
+      var patC={recto:'Recto',rompe2:'Rompejuntas ½',rompe3:'Rompejuntas ⅓',diag:'Diagonal'}[cl.pat]||cl.pat;
+      rows.push([nm+' · pieza '+fmt(cl.w)+'×'+fmt(cl.h)+' · '+patC,r.enteras+' + '+r.cortes+' cortes']);
+      rows.push(['   A pedir (merma '+String(Math.round(r.merma*10)/10).replace('.',',')+' %)',r.piezas+' ud']);
     };
-    roomsL.forEach(function(r,i){filaCl(r.z.nm||'Sala '+(i+1),r.f.inner,r.z.cl)});
-    (v.sp||[]).forEach(function(r,i){if(r.k!==zkind(view))return;var pp=spPts(r);if(pp)filaCl(r.nm||'Parte '+(i+1),pp,r.cl)});
+    roomsL.forEach(function(r,i){filaCl((cd[r.z.mat]||'')+' sala',r.f.inner,r.z.cl)});
+    (v.sp||[]).forEach(function(r,i){if(r.k!==zkind(view))return;var pp=spPts(r);if(pp)filaCl((cd[r.mat]||'')+' zona '+(i+1),pp,r.cl)});
   }
   (v.dr||[]).forEach(function(z,i){if(z.t==='zona'&&(z.vw==='*'||z.vw===view))rows.push([String(z.txt||'Zona '+(i+1)).split('|')[0].slice(0,40),m2(polyArea(z.pts)/10000)+' m²'])});
   if(sect('Mediciones')){
