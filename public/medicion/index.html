@@ -1464,24 +1464,8 @@ function applyCl(key,n){
 }
 /* dibujar la zona de un suelo o techo punto a punto */
 function spSnap(w){
-  var pl=st.spPoly||[],prev=pl[pl.length-1],libre=!!st.spLibre,tol=14/st.k;
-  var fc=faceAt(prev||w,st.view)||faceAt(w,st.view),vx=[],vy=[],i;
-  if(fc){
-    for(i=0;i<fc.inner.length;i++){
-      var q=fc.inner[i];
-      if(Math.hypot(q.x-w.x,q.y-w.y)<tol&&!(prev&&Math.hypot(q.x-prev.x,q.y-prev.y)<1))return {x:f2(q.x),y:f2(q.y)}; /* esquina de la sala */
-      vx.push(q.x);vy.push(q.y);
-    }
-  }
-  pl.forEach(function(q){vx.push(q.x);vy.push(q.y)});
-  var x=w.x,y=w.y,fijaX=false,fijaY=false;
-  if(prev&&!libre){ /* recto: horizontal o vertical respecto al punto anterior */
-    if(Math.abs(x-prev.x)>=Math.abs(y-prev.y)){y=prev.y;fijaY=true}else{x=prev.x;fijaX=true}
-  }
-  function alinea(v,lista){var b=null,bd=tol;lista.forEach(function(u){var d=Math.abs(u-v);if(d<bd){bd=d;b=u}});return b}
-  if(!fijaX){var ax=alinea(x,vx);x=ax!==null?ax:Math.round(x/5)*5}
-  if(!fijaY){var ay=alinea(y,vy);y=ay!==null?ay:Math.round(y/5)*5}
-  return {x:f2(x),y:f2(y)};
+  var pl=st.spPoly||[];
+  return spSnapCore(w,{prev:pl[pl.length-1]||null,libre:!!st.spLibre,own:pl,edgesOwn:true});
 }
 function spTap(w){
   var pl=st.spPoly=st.spPoly||[];
@@ -1513,17 +1497,55 @@ function spAPoly(sp){
   var pp=spPts(sp),n=nd(sp.n);
   sp.pts=pp.map(function(q){return {x:f2(q.x-n.x),y:f2(q.y-n.y)}});
 }
-function spSnapV(sp,i,w){
-  var pts=spPts(sp),tol=14/st.k,c=polyCentro(pts),fc=faceAt(c,st.view)||faceAt(w,st.view),vx=[],vy=[],k;
-  if(fc)for(k=0;k<fc.inner.length;k++){
-    var q=fc.inner[k];
-    if(Math.hypot(q.x-w.x,q.y-w.y)<tol)return {x:f2(q.x),y:f2(q.y)};
-    vx.push(q.x);vy.push(q.y);
+/* imanes para dibujar y editar zonas de suelo/techo: puntos y líneas de otras zonas, esquinas y caras de los muros, y los puntos de los muros.
+   o = {prev: punto anterior, libre: sin forzar recto, ex: zona que se está editando, own: puntos de la propia zona} */
+function spSnapCore(w,o){
+  var tol=14/st.k,view=st.view,zk=zkind(view),pts=[],edges=[],vx=[],vy=[],best=null,bd=tol;
+  roomFaces(view).forEach(function(f){f.inner.forEach(function(q,i){pts.push(q);vx.push(q.x);vy.push(q.y);edges.push([q,f.inner[(i+1)%f.inner.length]])})});
+  (st.v.sp||[]).forEach(function(r){
+    if(r.k!==zk||r.id===o.ex)return;
+    var pp=spPts(r);if(!pp)return;
+    pp.forEach(function(q,i){pts.push(q);vx.push(q.x);vy.push(q.y);edges.push([q,pp[(i+1)%pp.length]])});
+  });
+  (o.own||[]).forEach(function(q,i,arr){pts.push(q);vx.push(q.x);vy.push(q.y);if(o.edgesOwn&&i+1<arr.length)edges.push([q,arr[i+1]])});
+  /* (los puntos del eje de los muros no se usan: el suelo llega a la cara interior) */
+  /* 1) un punto existente cerca */
+  pts.forEach(function(q){
+    var d=Math.hypot(q.x-w.x,q.y-w.y);
+    if(d<bd&&!(o.prev&&Math.hypot(q.x-o.prev.x,q.y-o.prev.y)<1)){bd=d;best=q}
+  });
+  if(best)return {x:f2(best.x),y:f2(best.y)};
+  var x=w.x,y=w.y,fx=false,fy=false;
+  if(o.prev&&!o.libre){ /* recto: horizontal o vertical respecto al punto anterior */
+    if(Math.abs(x-o.prev.x)>=Math.abs(y-o.prev.y)){y=o.prev.y;fy=true}else{x=o.prev.x;fx=true}
   }
-  pts.forEach(function(q,j){if(j!==i){vx.push(q.x);vy.push(q.y)}});
-  function al(v,l){var b=null,bd=tol;l.forEach(function(u){var d=Math.abs(u-v);if(d<bd){bd=d;b=u}});return b}
-  var ax=al(w.x,vx),ay=al(w.y,vy);
-  return {x:f2(ax!==null?ax:Math.round(w.x/5)*5),y:f2(ay!==null?ay:Math.round(w.y/5)*5)};
+  /* 2) la línea recta corta una arista (cara de un muro, borde de otra zona): se pega ahí */
+  if(fy){
+    var bx=null,bdx=tol;
+    edges.forEach(function(e){var A=e[0],B=e[1];if(Math.abs(B.y-A.y)<1e-6)return;var t=(y-A.y)/(B.y-A.y);if(t<0||t>1)return;var xi=A.x+(B.x-A.x)*t,d=Math.abs(xi-x);if(d<bdx){bdx=d;bx=xi}});
+    if(bx!==null){x=bx;fx=true}
+  }else if(fx){
+    var by0=null,bdy=tol;
+    edges.forEach(function(e){var A=e[0],B=e[1];if(Math.abs(B.x-A.x)<1e-6)return;var t=(x-A.x)/(B.x-A.x);if(t<0||t>1)return;var yi=A.y+(B.y-A.y)*t,d=Math.abs(yi-y);if(d<bdy){bdy=d;by0=yi}});
+    if(by0!==null){y=by0;fy=true}
+  }else{ /* libre: se pega a la arista más cercana */
+    var bp=null,bdp=tol;
+    edges.forEach(function(e){
+      var A=e[0],B=e[1],dx=B.x-A.x,dy=B.y-A.y,l2=dx*dx+dy*dy;if(!l2)return;
+      var t=Math.max(0,Math.min(1,((w.x-A.x)*dx+(w.y-A.y)*dy)/l2)),px0=A.x+dx*t,py0=A.y+dy*t,d=Math.hypot(w.x-px0,w.y-py0);
+      if(d<bdp){bdp=d;bp={x:px0,y:py0}}
+    });
+    if(bp){x=bp.x;y=bp.y;fx=fy=true}
+  }
+  /* 3) alineación con las esquinas y puntos que ya hay */
+  function al(v,l){var b0=null,d0=tol;l.forEach(function(u){var d=Math.abs(u-v);if(d<d0){d0=d;b0=u}});return b0}
+  if(!fx){var ax=al(x,vx);x=ax!==null?ax:Math.round(x/5)*5}
+  if(!fy){var ay=al(y,vy);y=ay!==null?ay:Math.round(y/5)*5}
+  return {x:f2(x),y:f2(y)};
+}
+function spSnapV(sp,i,w){
+  var pts=spPts(sp);
+  return spSnapCore(w,{prev:null,libre:true,ex:sp.id,own:pts.filter(function(q,j){return j!==i})});
 }
 function pintaListaZonas(v){
   var zk=zkind(v),cod=zoneCodes(v),its=[],fs0=roomFaces(v);
