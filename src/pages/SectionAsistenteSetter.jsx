@@ -108,9 +108,9 @@ function MessageContent({ content, onOption, onOther, loading }) {
       )}
       {text && <span>{text}</span>}
       {mensaje && (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '0.75rem 0', background: 'rgba(190,176,162,0.1)', border: '1px solid rgba(190,176,162,0.25)', borderRadius: 10, padding: '0.7rem 0.85rem' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '0.75rem 0', background: 'rgba(186,175,165,0.1)', border: '1px solid rgba(186,175,165,0.25)', borderRadius: 10, padding: '0.7rem 0.85rem' }}>
           <div style={{ flex: 1 }}>
-            <p style={{ margin: '0 0 3px', fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#beb0a2' }}>Mensaje para enviar</p>
+            <p style={{ margin: '0 0 3px', fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#baafa5' }}>Mensaje para enviar</p>
             <p style={{ margin: 0, fontSize: '0.85rem', color: '#fff', whiteSpace: 'pre-wrap' }}>{mensaje}</p>
           </div>
           <CopyButton text={mensaje} />

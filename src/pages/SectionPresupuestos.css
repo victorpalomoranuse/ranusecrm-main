@@ -139,7 +139,7 @@
   flex-direction: column;
   gap: 0.2rem;
 }
-.pres-sum-card--accent { border-color: rgba(190,176,162,0.3); background: rgba(190,176,162,0.05); }
+.pres-sum-card--accent { border-color: rgba(186,175,165,0.3); background: rgba(186,175,165,0.05); }
 .pres-sum-card span { font-size: 0.67rem; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.05em; }
 .pres-sum-card strong { font-size: 1rem; font-weight: 700; color: rgba(255,255,255,0.85); }
 
@@ -253,11 +253,11 @@
 }
 .pres-row:last-child td { border-bottom: none; }
 .pres-row:hover td { background: rgba(255,255,255,0.02); }
-.pres-row--edit td { background: rgba(190,176,162,0.04); }
+.pres-row--edit td { background: rgba(186,175,165,0.04); }
 .pres-row--new td { background: rgba(255,255,255,0.01); }
 
 .pres-col-cost { color: rgba(255,255,255,0.45) !important; }
-.pres-col-pvp  { color: #beb0a2 !important; font-weight: 600; }
+.pres-col-pvp  { color: #baafa5 !important; font-weight: 600; }
 .pres-mono { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .pres-cat-dot {
@@ -299,7 +299,7 @@
   outline: none;
   min-width: 80px;
 }
-.pres-cell-input:focus { border-color: rgba(190,176,162,0.5); }
+.pres-cell-input:focus { border-color: rgba(186,175,165,0.5); }
 .pres-cell-num { width: 75px; min-width: 60px; text-align: right; }
 
 .pres-cell-select {
@@ -313,7 +313,7 @@
   cursor: pointer;
   max-width: 140px;
 }
-.pres-cell-select:focus { border-color: rgba(190,176,162,0.5); }
+.pres-cell-select:focus { border-color: rgba(186,175,165,0.5); }
 
 /* Footer totals */
 .pres-tfoot-row td {
@@ -322,7 +322,7 @@
   border-top: 1px solid rgba(255,255,255,0.08);
 }
 .pres-tfoot-row--total td {
-  border-top: 2px solid rgba(190,176,162,0.25);
+  border-top: 2px solid rgba(186,175,165,0.25);
   color: rgba(255,255,255,0.85);
 }
-.pres-tfoot-row--total .pres-col-pvp { color: #beb0a2 !important; font-size: 0.92rem; }
+.pres-tfoot-row--total .pres-col-pvp { color: #baafa5 !important; font-size: 0.92rem; }

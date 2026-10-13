@@ -32,7 +32,7 @@
 .fz-row--head { color: rgba(255,255,255,0.35); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid rgba(255,255,255,0.1); }
 
 .fz-concepto { font-weight: 600; display: flex; flex-direction: column; gap: 2px; }
-.fz-lead-tag { font-size: 0.7rem; font-weight: 400; color: #beb0a2; }
+.fz-lead-tag { font-size: 0.7rem; font-weight: 400; color: #baafa5; }
 
 .fz-importe { font-weight: 600; text-align: right; }
 .fz-importe--ingreso { color: #8bae8f; }

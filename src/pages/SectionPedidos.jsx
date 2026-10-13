@@ -154,7 +154,7 @@ export function SectionPedidos() {
                 onClick={() => setFilter(v)}
                 style={{
                   padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.78rem',
-                  background: filter === v ? '#beb0a2' : 'transparent',
+                  background: filter === v ? '#baafa5' : 'transparent',
                   color: filter === v ? '#0a0a0a' : 'rgba(255,255,255,0.5)',
                   fontWeight: filter === v ? 600 : 400,
                 }}
@@ -184,9 +184,9 @@ export function SectionPedidos() {
             {providerKeys.map(key => {
               const { name, lines: providerLines } = providers[key];
               return (
-                <div key={key} style={{ marginBottom: '1.5rem', paddingLeft: '1rem', borderLeft: '2px solid rgba(190,176,162,0.2)' }}>
+                <div key={key} style={{ marginBottom: '1.5rem', paddingLeft: '1rem', borderLeft: '2px solid rgba(186,175,165,0.2)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
-                    <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: '#beb0a2', margin: 0 }}>
+                    <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: '#baafa5', margin: 0 }}>
                       {name} <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.75rem' }}>({providerLines.length})</span>
                     </h3>
                     <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => handleExport(key, name, project?.id)}><Download size={13} /> Exportar PDF</button>

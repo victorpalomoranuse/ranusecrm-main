@@ -51,7 +51,7 @@ function ChecklistTemplates() {
         if (items.length === 0) return null;
         return (
           <div key={n} style={{ marginBottom: '1rem' }}>
-            <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#beb0a2', marginBottom: '0.4rem' }}>{n} · {PHASE_LABELS[n]}</p>
+            <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#baafa5', marginBottom: '0.4rem' }}>{n} · {PHASE_LABELS[n]}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
               {items.map(t => (
                 <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '0.5rem 0.75rem' }}>
@@ -138,7 +138,7 @@ function NeedsFormQuestions() {
 
       {sections.map(sec => (
         <div key={sec.name} style={{ marginBottom: '1rem' }}>
-          <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#beb0a2', marginBottom: '0.4rem' }}>{sec.name}</p>
+          <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#baafa5', marginBottom: '0.4rem' }}>{sec.name}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             {sec.qs.map(q => (
               <div key={q.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '0.5rem 0.75rem' }}>
@@ -209,7 +209,7 @@ function PaymentOptions() {
             {editingId === o.id ? (
               <>
                 <input className="ap-field-input" value={editingText} onChange={e => setEditingText(e.target.value)} style={{ flex: 1 }} autoFocus onKeyDown={e => e.key === 'Enter' && saveEdit()} />
-                <button onClick={saveEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#beb0a2', fontSize: '0.75rem' }}>Guardar</button>
+                <button onClick={saveEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#baafa5', fontSize: '0.75rem' }}>Guardar</button>
               </>
             ) : (
               <>

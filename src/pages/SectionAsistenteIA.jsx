@@ -46,7 +46,7 @@ function ProductCards({ productos }) {
           </div>
           <div style={{ padding: '0.5rem 0.6rem' }}>
             <p style={{ margin: 0, fontSize: '0.72rem', color: '#fff', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.nombre}</p>
-            {p.precio && <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#beb0a2', fontWeight: 600 }}>{p.precio}</p>}
+            {p.precio && <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#baafa5', fontWeight: 600 }}>{p.precio}</p>}
             {p.enlace && (
               <a href={p.enlace} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 4, fontSize: '0.68rem', color: 'rgba(255,255,255,0.5)' }}>
                 Ver producto ↗

@@ -2,7 +2,7 @@
    VARIABLES
    ============================================= */
 :root {
-  --brand: #beb0a2;
+  --brand: #baafa5;
   --brand-dark: #a89a8c;
   --black: #111111;
   --white: #ffffff;
@@ -97,7 +97,7 @@
   left: -10%;
   width: 70%;
   height: 100%;
-  background: radial-gradient(ellipse at 40% 40%, rgba(190,176,162,0.32) 0%, rgba(190,176,162,0.14) 40%, transparent 70%);
+  background: radial-gradient(ellipse at 40% 40%, rgba(186,175,165,0.32) 0%, rgba(186,175,165,0.14) 40%, transparent 70%);
   filter: blur(60px);
 }
 
@@ -158,13 +158,13 @@
   font-weight: 700;
   text-decoration: none;
   letter-spacing: 0.01em;
-  box-shadow: 0 0 0 0 rgba(190,176,162,0);
+  box-shadow: 0 0 0 0 rgba(186,175,165,0);
   transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
 }
 
 .btn-hero-cta:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(190,176,162,0.35);
+  box-shadow: 0 8px 32px rgba(186,175,165,0.35);
   background: #f0ebe5;
 }
 
@@ -324,7 +324,7 @@
 
 .project-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(190, 176, 162, 0.25);
+  box-shadow: 0 12px 32px rgba(186,175,165, 0.25);
 }
 
 .project-img {

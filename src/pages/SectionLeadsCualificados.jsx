@@ -51,7 +51,7 @@ const CUAL_ESTADOS = {
   render_enviado:      { label: 'Render enviado',      color: '#06b6d4' },
   presupuesto_enviado: { label: 'Presupuesto enviado', color: '#3b82f6' },
   negociacion:         { label: 'En negociación',      color: '#f97316' },
-  convertido:          { label: 'Convertido ✓',        color: '#beb0a2' },
+  convertido:          { label: 'Convertido ✓',        color: '#baafa5' },
   descartado:          { label: 'Descartado',          color: '#6b7280' },
 };
 const CUAL_ORDEN = ['en_cualificacion','diseño_en_curso','render_enviado','presupuesto_enviado','negociacion','convertido','descartado'];
@@ -335,7 +335,7 @@ function TabFicha({ lead, onSaved }) {
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
           {ESTETICAS.map(e => (
             <button key={e.val} type="button" onClick={() => setF('estetica', e.val)}
-              style={{ background: form.estetica===e.val ? 'rgba(190,176,162,0.15)' : 'rgba(255,255,255,0.03)', border:`1px solid ${form.estetica===e.val ? '#beb0a2' : 'rgba(255,255,255,0.1)'}`, borderRadius:8, padding:'8px 12px', cursor:'pointer', color: form.estetica===e.val ? '#beb0a2' : 'rgba(255,255,255,0.4)', fontFamily:'inherit', fontSize:12, textAlign:'left' }}>
+              style={{ background: form.estetica===e.val ? 'rgba(186,175,165,0.15)' : 'rgba(255,255,255,0.03)', border:`1px solid ${form.estetica===e.val ? '#baafa5' : 'rgba(255,255,255,0.1)'}`, borderRadius:8, padding:'8px 12px', cursor:'pointer', color: form.estetica===e.val ? '#baafa5' : 'rgba(255,255,255,0.4)', fontFamily:'inherit', fontSize:12, textAlign:'left' }}>
               {e.label}
             </button>
           ))}
@@ -399,7 +399,7 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
       <div className="ap-catalog-product-info" style={{ flex:1 }}>
         <span className="ap-catalog-product-name">{item.name}</span>
         {item.category && <span className="ap-cat-meta">{item.category}</span>}
-        {isMob && <span className="ap-cat-meta" style={{ color:'rgba(190,176,162,0.7)', marginLeft:4 }}>×{qty}{item.youtube_url && ' · 🎬'}{item.extra_images?.length > 0 && ` · ${item.extra_images.length} img`}</span>}
+        {isMob && <span className="ap-cat-meta" style={{ color:'rgba(186,175,165,0.7)', marginLeft:4 }}>×{qty}{item.youtube_url && ' · 🎬'}{item.extra_images?.length > 0 && ` · ${item.extra_images.length} img`}</span>}
       </div>
       {isMob && <button className="ap-btn ap-btn-ghost ap-btn-sm" style={{ flexShrink:0, fontSize:'0.72rem' }} onClick={() => setExpanded(v => !v)} type="button"><Pencil size={11}/> {expanded ? 'Cerrar' : 'Detalle'}</button>}
       <button className="ap-btn-icon" onClick={() => onUnassign(item.id, type)}><X size={13}/></button>
@@ -762,13 +762,13 @@ export function SectionLeadsCualificados({ onNavigate }) {
                   {(lead.inversion_min||lead.inversion_max) && <span>💰 {fmtEur(lead.inversion_min)} – {fmtEur(lead.inversion_max)}</span>}
                   {lead.estetica && <span>🎨 {ESTETICAS.find(e=>e.val===lead.estetica)?.label||lead.estetica}</span>}
                 </div>
-                {lead.id_presupuesto && <div style={{ marginTop:8 }}><span style={{ fontSize:11, color:'#beb0a2', background:'rgba(190,176,162,0.1)', padding:'2px 8px', borderRadius:4 }}>{lead.id_presupuesto}</span></div>}
+                {lead.id_presupuesto && <div style={{ marginTop:8 }}><span style={{ fontSize:11, color:'#baafa5', background:'rgba(186,175,165,0.1)', padding:'2px 8px', borderRadius:4 }}>{lead.id_presupuesto}</span></div>}
                 <div className="ap-project-actions" style={{ marginTop:10 }}>
                   <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setManaging(lead)}><Pencil size={13}/> Gestionar</button>
                   {lead.estado !== 'convertido' && <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => handleConvert(lead)}>✅ Convertir</button>}
               {lead.estado === 'convertido' && onNavigate && (
                     <>
-                      <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => onNavigate('proyectos')} style={{ color:'#beb0a2', borderColor:'rgba(190,176,162,0.3)' }}>📁 Ver proyecto</button>
+                      <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => onNavigate('proyectos')} style={{ color:'#baafa5', borderColor:'rgba(186,175,165,0.3)' }}>📁 Ver proyecto</button>
                       <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => onNavigate('presupuestos')} style={{ color:'#8b9eae', borderColor:'rgba(139,158,174,0.3)' }}>📄 Ver presupuesto</button>
                       <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => cambiarEstado(lead.id, 'negociacion')} style={{ color:'#f97316', borderColor:'rgba(249,115,22,0.3)' }}>↩ Deshacer</button>
                     </>

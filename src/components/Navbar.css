@@ -214,7 +214,7 @@
   transition: border-color 0.18s;
   box-sizing: border-box;
 }
-.cm-input:focus { border-color: #beb0a2; }
+.cm-input:focus { border-color: #baafa5; }
 .cm-input::placeholder { color: rgba(255, 255, 255, 0.2); letter-spacing: 0.02em; }
 
 .cm-btn {
@@ -230,7 +230,7 @@
   cursor: pointer;
   transition: background 0.18s, opacity 0.18s;
 }
-.cm-btn:hover:not(:disabled) { background: #beb0a2; }
+.cm-btn:hover:not(:disabled) { background: #baafa5; }
 .cm-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .cm-hint {
@@ -238,7 +238,7 @@
   color: rgba(255, 255, 255, 0.3);
   margin: 0.25rem 0 0;
 }
-.cm-hint a { color: #beb0a2; text-decoration: none; }
+.cm-hint a { color: #baafa5; text-decoration: none; }
 .cm-hint a:hover { text-decoration: underline; }
 
 /* ── Hamburger ── */

@@ -191,7 +191,7 @@
 }
 
 .cp-dot.active {
-  background: #beb0a2;
+  background: #baafa5;
 }
 
 .cp-phase-label {
@@ -215,7 +215,7 @@
 }
 
 .cp-view-btn:hover {
-  background: #beb0a2;
+  background: #baafa5;
   transform: translateY(-1px);
 }
 

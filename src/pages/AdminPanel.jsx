@@ -491,7 +491,7 @@ function TabMoodboard({ projectId }) {
     setSavingDesc(true); setError('');
     try { await api.put(`/client-projects/${projectId}/moodboard`, { description }); } catch { setError('Error al guardar la descripción'); } finally { setSavingDesc(false); }
   };
-  const handleAddColor = () => setPalette(prev => [...prev, '#beb0a2']);
+  const handleAddColor = () => setPalette(prev => [...prev, '#baafa5']);
   const handleChangeColor = (i, hex) => setPalette(prev => prev.map((c, idx) => idx === i ? hex : c));
   const handleRemoveColor = (i) => setPalette(prev => prev.filter((_, idx) => idx !== i));
   const handleSavePalette = async () => {
@@ -540,7 +540,7 @@ function TabMoodboard({ projectId }) {
             <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
               <div style={{ position: 'relative' }}>
                 <label style={{ display: 'block', width: 40, height: 40, borderRadius: '50%', background: /^#[0-9a-fA-F]{3,8}$/.test(hex) ? hex : '#333', border: '2px solid rgba(255,255,255,0.15)', cursor: 'pointer' }}>
-                  <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(hex) ? hex : '#beb0a2'} onChange={e => handleChangeColor(i, e.target.value)} style={{ opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+                  <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(hex) ? hex : '#baafa5'} onChange={e => handleChangeColor(i, e.target.value)} style={{ opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
                 </label>
                 <button type="button" onClick={() => handleRemoveColor(i)} style={{ position: 'absolute', top: -4, right: -4, background: '#1a1a1a', border: 'none', borderRadius: '50%', width: 16, height: 16, color: '#fff', cursor: 'pointer', fontSize: 10, lineHeight: 1 }}>✕</button>
               </div>
@@ -614,7 +614,7 @@ const GUIA_SUBIDA = [
 function GuiaSubida({ onElegir }) {
   const [abierta, setAbierta] = useState(false);
   return (
-    <div style={{ margin: '0 0 0.8rem', border: '1px solid rgba(190,176,162,0.25)', borderRadius: 10, padding: '0.5rem 0.8rem' }}>
+    <div style={{ margin: '0 0 0.8rem', border: '1px solid rgba(186,175,165,0.25)', borderRadius: 10, padding: '0.5rem 0.8rem' }}>
       <button type="button" className="ap-btn ap-btn-sm" onClick={() => setAbierta(a => !a)}>{abierta ? 'Ocultar' : 'Ver'} qué subir en cada parte</button>
       {abierta && GUIA_SUBIDA.map(g => (
         <div key={g.fase} style={{ marginTop: '0.6rem' }}>
@@ -1130,9 +1130,9 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
       <div className="ap-catalog-product-info" style={{flex:1}}>
         <span className="ap-catalog-product-name">{item.name}</span>
         {item.category&&<span className="ap-cat-meta">{item.category}</span>}
-        {item.code&&<span className="ap-cat-meta" style={{color:'rgba(190,176,162,0.7)',marginLeft:4}}>#{item.code}</span>}
+        {item.code&&<span className="ap-cat-meta" style={{color:'rgba(186,175,165,0.7)',marginLeft:4}}>#{item.code}</span>}
         {item.location&&<span className="ap-cat-meta" style={{marginLeft:4}}>→ {item.location}</span>}
-        {isMob&&<span className="ap-cat-meta" style={{color:'rgba(190,176,162,0.7)',marginLeft:4}}>×{qty}{item.youtube_url&&' · 🎬'}{item.extra_images?.length>0&&` · ${item.extra_images.length} img`}{showLink&&purchaseLink&&' · 🔗'}</span>}
+        {isMob&&<span className="ap-cat-meta" style={{color:'rgba(186,175,165,0.7)',marginLeft:4}}>×{qty}{item.youtube_url&&' · 🎬'}{item.extra_images?.length>0&&` · ${item.extra_images.length} img`}{showLink&&purchaseLink&&' · 🔗'}</span>}
       </div>
       <button className="ap-btn ap-btn-ghost ap-btn-sm" style={{flexShrink:0,fontSize:'0.72rem'}} onClick={()=>setExpanded(v=>!v)} type="button"><Pencil size={11}/> {expanded?'Cerrar':'Detalle'}</button>
       <button className="ap-btn-icon" onClick={()=>onUnassign(item.id,type)}><X size={13}/></button>
@@ -1514,7 +1514,7 @@ function CategoryItemEditor({ item, onUpdated, onDeleted }) {
   return (
     <div className="ap-doc-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.5rem', padding: '0.75rem' }}>
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        <span className="ap-doc-type" style={{ background: 'rgba(190,176,162,0.12)', color: '#beb0a2' }}>{item.type === 'documento' ? 'Documento' : 'Bloque'}</span>
+        <span className="ap-doc-type" style={{ background: 'rgba(186,175,165,0.12)', color: '#baafa5' }}>{item.type === 'documento' ? 'Documento' : 'Bloque'}</span>
         <input className="ap-field-input" value={title} onChange={e => setTitle(e.target.value)} onBlur={() => title !== item.title && title.trim() && patch({ title })} style={{ flex: 1, fontWeight: 600 }} />
         <button className="ap-btn-icon" onClick={handleDelete}><Trash2 size={13} /></button>
       </div>
@@ -1545,7 +1545,7 @@ function CategoryItemEditor({ item, onUpdated, onDeleted }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
               {item.links.map((l, i) => (
                 <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.78rem' }}>
-                  <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ color: '#beb0a2', flex: 1 }}>{l.label}</a>
+                  <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ color: '#baafa5', flex: 1 }}>{l.label}</a>
                   <button className="ap-btn-icon" onClick={() => removeLink(i)}><X size={11} /></button>
                 </div>
               ))}
@@ -1859,7 +1859,7 @@ function QuestionField({ question, value, onChange, catalogProducts, references 
           {catalogProducts.map(p => {
             const selected = arr.includes(p.id);
             return (
-              <button key={p.id} type="button" onClick={() => toggle(p.id)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 84, border: selected ? '2px solid #beb0a2' : '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: 4, background: selected ? 'rgba(190,176,162,0.12)' : 'transparent', cursor: 'pointer' }}>
+              <button key={p.id} type="button" onClick={() => toggle(p.id)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 84, border: selected ? '2px solid #baafa5' : '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: 4, background: selected ? 'rgba(186,175,165,0.12)' : 'transparent', cursor: 'pointer' }}>
                 {p.photo_url ? <img src={p.photo_url} alt={p.name} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6 }} /> : <div style={{ width: 60, height: 60, borderRadius: 6, background: 'rgba(255,255,255,0.06)' }} />}
                 <span style={{ fontSize: '0.62rem', color: '#fff', textAlign: 'center', marginTop: 4, lineHeight: 1.2 }}>{p.name}</span>
               </button>
@@ -1877,7 +1877,7 @@ function QuestionField({ question, value, onChange, catalogProducts, references 
           {references.map(r => {
             const selected = arr.includes(r.id);
             return (
-              <button key={r.id} type="button" onClick={() => toggle(r.id)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 84, border: selected ? '2px solid #beb0a2' : '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: 4, background: selected ? 'rgba(190,176,162,0.12)' : 'transparent', cursor: 'pointer' }}>
+              <button key={r.id} type="button" onClick={() => toggle(r.id)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 84, border: selected ? '2px solid #baafa5' : '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: 4, background: selected ? 'rgba(186,175,165,0.12)' : 'transparent', cursor: 'pointer' }}>
                 {r.image_url ? <img src={r.image_url} alt={r.title} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6 }} /> : <div style={{ width: 60, height: 60, borderRadius: 6, background: 'rgba(255,255,255,0.06)' }} />}
                 <span style={{ fontSize: '0.62rem', color: '#fff', textAlign: 'center', marginTop: 4, lineHeight: 1.2 }}>{r.title}</span>
               </button>
@@ -2160,7 +2160,7 @@ function TabNecesidades({ projectId }) {
 
       {sections.map(sec => (
         <div key={sec.name} style={{ marginBottom: '1.5rem' }}>
-          <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#beb0a2', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{sec.name}</p>
+          <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#baafa5', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{sec.name}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {sec.qs.map(q => (
               <div key={q.id}>
@@ -2282,7 +2282,7 @@ function SectionTrabajos() {
       <div className="ap-section-head"><div><h1>Trabajos</h1><p>Gestiona los trabajos del portfolio. Los 3 primeros aparecen en la página de inicio.</p></div><div style={{display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap'}}>{isDirty&&(<><button className="ap-btn ap-btn-ghost" onClick={handleDiscardOrder} disabled={saving}><X size={14}/> Descartar</button><button className="ap-btn ap-btn-primary" onClick={handleSaveOrder} disabled={saving}><Save size={14}/> {saving?'Guardando...':'Guardar orden'}</button></>)}<button className="ap-btn ap-btn-primary" onClick={()=>setModal('new')}><Plus size={15}/> Nuevo proyecto</button></div></div>
       {loading?<div className="ap-loading">Cargando proyectos...</div>:projects.length===0?<div className="ap-empty"><p>No hay proyectos todavía.</p></div>:(
         <><p className="ap-order-hint">Usa ↑↓ para cambiar el orden.{isDirty&&<span style={{color:'#f5b748',marginLeft:'0.5rem'}}>Tienes cambios sin guardar.</span>}</p>
-        <div className="ap-projects-grid">{projects.map((p,i)=>{const validCover=p.cover_url&&!p.cover_url.startsWith('blob:')&&!brokenCovers[p.id];const fallback=p.images?.find(u=>u&&!u.startsWith('blob:'));const src=validCover?p.cover_url:fallback;const isLinked=p.type==='linked';return(<div key={p.id} className={`ap-project-card${i<3?' is-featured':''}`}><div className="ap-project-img">{src?<img src={src} alt={p.title} onError={()=>setBrokenCovers(prev=>({...prev,[p.id]:true}))}/>:<div className="ap-project-no-img">Sin imagen</div>}{p.images?.length>0&&<span className="ap-project-count">{p.images.length} fotos</span>}{isLinked&&<span className="ap-featured-badge" style={{background:'rgba(190,176,162,0.25)'}}>Proyecto conectado</span>}{i<3&&<span className="ap-featured-badge">En inicio</span>}</div><div className="ap-project-info"><h3>{p.title}</h3>{p.description&&<p>{p.description}</p>}<span className="ap-project-slug">/{p.slug}</span></div><div className="ap-project-actions"><div className="ap-order-btns"><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>handleMove(i,-1)} disabled={i===0}><ChevronUp size={14}/></button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>handleMove(i,1)} disabled={i===projects.length-1}><ChevronDown size={14}/></button></div>{isLinked?<span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.35)'}}>Edítalo desde su proyecto → Trabajos web</span>:(<><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></>)}</div></div>);})}</div></>
+        <div className="ap-projects-grid">{projects.map((p,i)=>{const validCover=p.cover_url&&!p.cover_url.startsWith('blob:')&&!brokenCovers[p.id];const fallback=p.images?.find(u=>u&&!u.startsWith('blob:'));const src=validCover?p.cover_url:fallback;const isLinked=p.type==='linked';return(<div key={p.id} className={`ap-project-card${i<3?' is-featured':''}`}><div className="ap-project-img">{src?<img src={src} alt={p.title} onError={()=>setBrokenCovers(prev=>({...prev,[p.id]:true}))}/>:<div className="ap-project-no-img">Sin imagen</div>}{p.images?.length>0&&<span className="ap-project-count">{p.images.length} fotos</span>}{isLinked&&<span className="ap-featured-badge" style={{background:'rgba(186,175,165,0.25)'}}>Proyecto conectado</span>}{i<3&&<span className="ap-featured-badge">En inicio</span>}</div><div className="ap-project-info"><h3>{p.title}</h3>{p.description&&<p>{p.description}</p>}<span className="ap-project-slug">/{p.slug}</span></div><div className="ap-project-actions"><div className="ap-order-btns"><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>handleMove(i,-1)} disabled={i===0}><ChevronUp size={14}/></button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>handleMove(i,1)} disabled={i===projects.length-1}><ChevronDown size={14}/></button></div>{isLinked?<span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.35)'}}>Edítalo desde su proyecto → Trabajos web</span>:(<><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(p)}><Pencil size={13}/> Editar</button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(p.id)}><Trash2 size={13}/></button></>)}</div></div>);})}</div></>
       )}
       {modal&&<ProjectModal project={modal==='new'?null:modal} onClose={()=>setModal(null)} onSaved={()=>{setModal(null);loadProjects();toast.success('Proyecto guardado correctamente');}}/>}
       {confirmId&&<ConfirmDialog message="¿Eliminar este proyecto? Esta acción no se puede deshacer." onConfirm={handleDelete} onCancel={()=>setConfirmId(null)}/>}
@@ -2378,7 +2378,7 @@ function SectionEmpleados() {
       <ToastContainer toasts={toasts} onRemove={remove}/>
       <div className="ap-section-head"><div><h1>Empleados</h1><p>Gestiona el equipo y la categoría de cada uno.</p></div><button className="ap-btn ap-btn-primary" onClick={()=>setModal('new')}><Plus size={15}/> Añadir empleado</button></div>
       {loading?<div className="ap-loading">Cargando empleados…</div>:employees.length===0?<div className="ap-empty"><p>No hay empleados todavía.</p></div>:(
-        <><div className="ap-emp-list">{employees.slice((page-1)*PAGE_SIZE_EMPLEADOS,page*PAGE_SIZE_EMPLEADOS).map(e=>(<div key={e.id} className={`ap-emp-row${e.is_admin_profile?' ap-emp-row--admin':''}`}><div className="ap-emp-avatar" style={e.is_admin_profile?{background:'rgba(190,176,162,0.2)',color:'#beb0a2'}:{}}>{e.name.charAt(0).toUpperCase()}</div><div className="ap-emp-info"><span className="ap-emp-name">{e.name}{e.is_admin_profile&&<span className="ap-emp-badge">Admin</span>}</span><span className="ap-emp-email">{e.email}</span>{!e.is_admin_profile&&(<span className="ap-emp-perms-row">{e.employee_roles?.name?<span className="ap-perm-tag">{e.employee_roles.name}</span>:<span className="ap-perm-tag ap-perm-tag--none">Sin categoría</span>}</span>)}{isSuper&&!e.is_admin_profile&&e.plain_password&&(<span className="ap-emp-pass-row"><span className="ap-emp-pass-val">{visiblePass[e.id]?e.plain_password:'••••••••'}</span><button className="ap-btn-icon ap-emp-pass-eye" onClick={()=>togglePass(e.id)}>{visiblePass[e.id]?<EyeOff size={12}/>:<Eye size={12}/>}</button></span>)}</div><span className={`ap-emp-status${e.active?' active':''}`}>{e.active?'Activo':'Inactivo'}</span>{!e.is_admin_profile&&(<div className="ap-emp-actions"><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(e)}><Pencil size={13}/></button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(e.id)}><Trash2 size={13}/></button></div>)}</div>))}</div><Pagination page={page} total={employees.length} pageSize={PAGE_SIZE_EMPLEADOS} onPage={setPage}/></>
+        <><div className="ap-emp-list">{employees.slice((page-1)*PAGE_SIZE_EMPLEADOS,page*PAGE_SIZE_EMPLEADOS).map(e=>(<div key={e.id} className={`ap-emp-row${e.is_admin_profile?' ap-emp-row--admin':''}`}><div className="ap-emp-avatar" style={e.is_admin_profile?{background:'rgba(186,175,165,0.2)',color:'#baafa5'}:{}}>{e.name.charAt(0).toUpperCase()}</div><div className="ap-emp-info"><span className="ap-emp-name">{e.name}{e.is_admin_profile&&<span className="ap-emp-badge">Admin</span>}</span><span className="ap-emp-email">{e.email}</span>{!e.is_admin_profile&&(<span className="ap-emp-perms-row">{e.employee_roles?.name?<span className="ap-perm-tag">{e.employee_roles.name}</span>:<span className="ap-perm-tag ap-perm-tag--none">Sin categoría</span>}</span>)}{isSuper&&!e.is_admin_profile&&e.plain_password&&(<span className="ap-emp-pass-row"><span className="ap-emp-pass-val">{visiblePass[e.id]?e.plain_password:'••••••••'}</span><button className="ap-btn-icon ap-emp-pass-eye" onClick={()=>togglePass(e.id)}>{visiblePass[e.id]?<EyeOff size={12}/>:<Eye size={12}/>}</button></span>)}</div><span className={`ap-emp-status${e.active?' active':''}`}>{e.active?'Activo':'Inactivo'}</span>{!e.is_admin_profile&&(<div className="ap-emp-actions"><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setModal(e)}><Pencil size={13}/></button><button className="ap-btn ap-btn-danger ap-btn-sm" onClick={()=>setConfirmId(e.id)}><Trash2 size={13}/></button></div>)}</div>))}</div><Pagination page={page} total={employees.length} pageSize={PAGE_SIZE_EMPLEADOS} onPage={setPage}/></>
       )}
       {modal&&<EmpleadoModal employee={modal==='new'?null:modal} onClose={()=>setModal(null)} onSaved={handleSaved}/>}
       {confirmId&&<ConfirmDialog message="¿Eliminar este empleado? Perderá el acceso al panel." onConfirm={handleDelete} onCancel={()=>setConfirmId(null)}/>}

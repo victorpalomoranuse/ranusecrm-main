@@ -17,7 +17,7 @@ function fmt(n) {
 
 const STATUS_LABEL = { borrador: 'Borrador', enviado: 'Enviado', aprobado: 'Aprobado' };
 const STATUS_COLOR = { borrador: 'rgba(255,255,255,0.3)', enviado: '#8b9eae', aprobado: '#8bae8f' };
-const CAT_COLORS   = ['#beb0a2', '#8b9eae', '#ae9e8b', '#8bae8f', '#9e8b9e'];
+const CAT_COLORS   = ['#baafa5', '#8b9eae', '#ae9e8b', '#8bae8f', '#9e8b9e'];
 
 const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Planos generales', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Renders', 5: 'Maquinaria y equipamiento', 6: 'Documentación de apoyo' };
 
@@ -90,7 +90,7 @@ function TasksWidget({ tasks, onTaskClick }) {
             return (
               <div key={t.id} onClick={() => onTaskClick?.(t)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.8rem', padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: onTaskClick ? 'pointer' : 'default' }}>
                 <span style={{ flex: 1, color: '#fff' }}>{t.title}</span>
-                {t.project && <span style={{ fontSize: '0.68rem', color: '#beb0a2', flexShrink: 0 }}>{t.project.client_name}</span>}
+                {t.project && <span style={{ fontSize: '0.68rem', color: '#baafa5', flexShrink: 0 }}>{t.project.client_name}</span>}
                 {t.employee && <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>{t.employee.name}</span>}
                 {t.due_date && (
                   <span style={{ fontSize: '0.7rem', color: overdue ? '#ae8b8b' : 'rgba(255,255,255,0.35)', flexShrink: 0 }}>
@@ -231,7 +231,7 @@ export function SectionDashboard() {
                   iconType="circle" iconSize={8}
                   wrapperStyle={{ paddingTop: 8 }}
                 />
-                <Bar dataKey="revenue" name="Ingresos" fill="#beb0a2" radius={[3,3,0,0]} />
+                <Bar dataKey="revenue" name="Ingresos" fill="#baafa5" radius={[3,3,0,0]} />
                 <Bar dataKey="cost"    name="Costes"   fill="rgba(255,255,255,0.12)" radius={[3,3,0,0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -341,7 +341,7 @@ export function SectionDashboard() {
                     <td className="dash-num" style={{ color: b.totalProfit >= 0 ? '#8bae8f' : '#ae8b8b' }}>
                       {fmt(b.totalProfit)}
                     </td>
-                    <td className="dash-num" style={{ color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#beb0a2' : '#ae8b8b' }}>
+                    <td className="dash-num" style={{ color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#baafa5' : '#ae8b8b' }}>
                       {Number(b.margin || 0).toFixed(1)}%
                     </td>
                   </tr>

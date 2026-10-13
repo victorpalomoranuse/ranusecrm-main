@@ -39,15 +39,15 @@ const DESCRIPCION = {
 function Tarjeta({ item, ir, esFav, onFav }) {
   return (
     <div onClick={() => ir(item.id)} style={{ position: 'relative', cursor: 'pointer', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '0.9rem 1rem', display: 'flex', gap: 12, alignItems: 'flex-start', transition: 'border-color 0.15s, background 0.15s' }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(190,176,162,0.5)'; e.currentTarget.style.background = 'rgba(190,176,162,0.06)'; }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(186,175,165,0.5)'; e.currentTarget.style.background = 'rgba(186,175,165,0.06)'; }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}>
-      <item.Icon size={20} style={{ color: '#beb0a2', flexShrink: 0, marginTop: 2 }} />
+      <item.Icon size={20} style={{ color: '#baafa5', flexShrink: 0, marginTop: 2 }} />
       <div style={{ minWidth: 0, paddingRight: 18 }}>
         <div style={{ fontSize: '0.92rem', fontWeight: 600 }}>{item.label}</div>
         {DESCRIPCION[item.id] && <div style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.45)', marginTop: 2, lineHeight: 1.35 }}>{DESCRIPCION[item.id]}</div>}
       </div>
       <button title={esFav ? 'Quitar de favoritos' : 'Fijar en favoritos'} onClick={(e) => { e.stopPropagation(); onFav(item.id); }}
-        style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: esFav ? '#beb0a2' : 'rgba(255,255,255,0.25)', display: 'flex' }}>
+        style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: esFav ? '#baafa5' : 'rgba(255,255,255,0.25)', display: 'flex' }}>
         <Star size={14} fill={esFav ? 'currentColor' : 'none'} />
       </button>
     </div>

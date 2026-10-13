@@ -128,7 +128,7 @@ function Campo({ value, onSave, rows = 0, placeholder, ia = false, contexto, onR
       )}
       {error && <p className="ap-error" style={{ marginTop: 4 }}>{error}</p>}
       {propuesta && (
-        <div style={{ ...box, marginTop: 6, borderColor: 'rgba(190,176,162,0.5)' }}>
+        <div style={{ ...box, marginTop: 6, borderColor: 'rgba(186,175,165,0.5)' }}>
           <p style={{ ...muted, marginBottom: 4 }}>Propuesta de la IA (no se guarda hasta que la uses):</p>
           <p style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{propuesta}</p>
           <div style={{ ...row, marginTop: 8 }}>
@@ -218,7 +218,7 @@ function PlanosEspacio({ projectId, capitulo, bloques, llamar }) {
     ? api.put(`/historia/bloques/${existente.id}`, { imagen_url: url })
     : api.post(`/historia/capitulos/${capitulo.id}/bloques`, { tipo: 'plano', titulo, imagen_url: url }));
   return (
-    <div style={{ ...box, marginBottom: 10, borderColor: 'rgba(190,176,162,0.35)' }}>
+    <div style={{ ...box, marginBottom: 10, borderColor: 'rgba(186,175,165,0.35)' }}>
       <strong style={{ fontSize: '0.85rem' }}>Planos del espacio (el cliente los ve paso a paso)</strong>
       <p style={{ ...muted, margin: '4px 0 8px' }}>Sube aquí una imagen (JPG o PNG) de cada plano, o publícalos directamente desde la herramienta de Planos con «Publicar en la historia del cliente». Después de estos pasos van las zonas con sus renders. Los pasos que no subas no se muestran.</p>
       {PASOS_PLANO.map(p => {
@@ -381,12 +381,12 @@ function VistaCapitulos({ projectId, data, capitulo, esPlano, setCapSel, llamar,
   return (
     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
       <div style={{ ...box, flex: '0 0 230px', minWidth: 200 }}>
-        <div style={{ ...row, flexWrap: 'nowrap', padding: '8px 6px', borderRadius: 6, cursor: 'pointer', background: esPlano ? 'rgba(190,176,162,0.16)' : 'transparent', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 6 }} onClick={() => setCapSel('plano')}>
+        <div style={{ ...row, flexWrap: 'nowrap', padding: '8px 6px', borderRadius: 6, cursor: 'pointer', background: esPlano ? 'rgba(186,175,165,0.16)' : 'transparent', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 6 }} onClick={() => setCapSel('plano')}>
           <span style={{ width: 18 }}>📐</span>
           <span style={{ flex: 1, fontSize: '0.85rem', fontWeight: 600 }}>Plano y recorrido</span>
         </div>
         {caps.map((c, i) => (
-          <div key={c.id} style={{ ...row, flexWrap: 'nowrap', padding: '6px 4px', borderRadius: 6, cursor: 'pointer', background: !esPlano && c.id === capitulo.id ? 'rgba(190,176,162,0.16)' : 'transparent', opacity: c.visible ? 1 : 0.45 }}
+          <div key={c.id} style={{ ...row, flexWrap: 'nowrap', padding: '6px 4px', borderRadius: 6, cursor: 'pointer', background: !esPlano && c.id === capitulo.id ? 'rgba(186,175,165,0.16)' : 'transparent', opacity: c.visible ? 1 : 0.45 }}
             onClick={() => setCapSel(c.id)}>
             <span style={{ ...muted, width: 18 }}>{i + 1}</span>
             <span style={{ flex: 1, fontSize: '0.85rem' }}>{c.titulo}</span>
@@ -425,7 +425,7 @@ function VistaCapitulos({ projectId, data, capitulo, esPlano, setCapSel, llamar,
             </div>
           </div>
           {/entendemos el espacio/i.test(capitulo.titulo) && <PlanosEspacio projectId={projectId} capitulo={capitulo} bloques={bloques} llamar={llamar} />}
-          <div style={{ ...box, marginBottom: 10, borderColor: 'rgba(190,176,162,0.35)' }}>
+          <div style={{ ...box, marginBottom: 10, borderColor: 'rgba(186,175,165,0.35)' }}>
             <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
               <strong style={{ fontSize: '0.85rem' }}>Renders del capítulo</strong>
               <SubirVariosRenders projectId={projectId} capitulo={capitulo} bloques={bloques} llamar={llamar} />
@@ -712,7 +712,7 @@ export function GuiaProyecto() {
     <li style={{ marginBottom: 6 }}><strong>{n}. {titulo}</strong> — {texto}</li>
   );
   return (
-    <div style={{ ...box, marginBottom: 12, borderColor: 'rgba(190,176,162,0.35)' }}>
+    <div style={{ ...box, marginBottom: 12, borderColor: 'rgba(186,175,165,0.35)' }}>
       <div style={{ ...row, justifyContent: 'space-between' }}>
         <strong style={{ fontSize: '0.85rem' }}>Cómo trabajar un proyecto, en orden</strong>
         <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={alternar}>{abierta ? 'Ocultar guía' : 'Ver guía'}</button>
@@ -771,7 +771,7 @@ export function EstiloMoodboard({ projectId }) {
 
   if (!estilo) return error ? <p className="ap-error">{error}</p> : null;
   return (
-    <div style={{ ...box, marginTop: 16, borderColor: 'rgba(190,176,162,0.35)' }}>
+    <div style={{ ...box, marginTop: 16, borderColor: 'rgba(186,175,165,0.35)' }}>
       <div style={{ ...row, justifyContent: 'space-between', marginBottom: 6 }}>
         <strong style={{ fontSize: '0.9rem' }}>Estilo del proyecto</strong>
         <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" disabled={cargando} onClick={definir}>
@@ -781,7 +781,7 @@ export function EstiloMoodboard({ projectId }) {
       <p style={{ ...muted, marginBottom: 10 }}>La IA mira las imágenes y la paleta del moodboard y propone el nombre del estilo y un texto que lo describe. Es lo que verá el cliente en "La atmósfera"; el texto de arriba (cómo combinar los colores) pasa a un desplegable. Nada se guarda hasta que lo aceptes.</p>
       {error && <p className="ap-error" style={{ marginBottom: 8 }}>{error}</p>}
       {propuesta && (
-        <div style={{ ...box, marginBottom: 10, borderColor: 'rgba(190,176,162,0.5)' }}>
+        <div style={{ ...box, marginBottom: 10, borderColor: 'rgba(186,175,165,0.5)' }}>
           <p style={{ ...muted, marginBottom: 4 }}>Propuesta de la IA{propuesta.imagenes_analizadas ? ` (analizó ${propuesta.imagenes_analizadas} imágenes)` : ''}:</p>
           <p style={{ fontWeight: 600, marginBottom: 4 }}>{propuesta.nombre}</p>
           <p style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{propuesta.texto}</p>

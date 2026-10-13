@@ -67,7 +67,7 @@
   transition: border-color 0.2s;
 }
 
-.el-field input:focus { border-color: #beb0a2; }
+.el-field input:focus { border-color: #baafa5; }
 .el-field input::placeholder { color: rgba(255,255,255,0.2); }
 
 .el-error {
@@ -91,5 +91,5 @@
   transition: background 0.2s, transform 0.15s;
 }
 
-.el-btn:hover:not(:disabled) { background: #beb0a2; transform: translateY(-1px); }
+.el-btn:hover:not(:disabled) { background: #baafa5; transform: translateY(-1px); }
 .el-btn:disabled { opacity: 0.5; cursor: not-allowed; }

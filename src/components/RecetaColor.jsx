@@ -47,8 +47,8 @@ const row = { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' };
 
 function Color({ valor, onChange }) {
   return (
-    <label style={{ width: 34, height: 34, borderRadius: '50%', background: HEX.test(valor) ? valor : '#beb0a2', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', flex: 'none', display: 'inline-block', overflow: 'hidden' }} title="Cambiar este color">
-      <input type="color" value={HEX.test(valor) ? valor : '#beb0a2'} onChange={e => onChange(e.target.value)} style={{ opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+    <label style={{ width: 34, height: 34, borderRadius: '50%', background: HEX.test(valor) ? valor : '#baafa5', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', flex: 'none', display: 'inline-block', overflow: 'hidden' }} title="Cambiar este color">
+      <input type="color" value={HEX.test(valor) ? valor : '#baafa5'} onChange={e => onChange(e.target.value)} style={{ opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
     </label>
   );
 }
@@ -65,7 +65,7 @@ export function RecetaColor({ description, palette, onGuardar }) {
     if (!p.filas.length) { setDatos(null); return; }
     setDatos(p);
     const pal = Array.isArray(palette) ? palette : [];
-    setColores(p.filas.map((_, i) => pal[i] || '#beb0a2'));
+    setColores(p.filas.map((_, i) => pal[i] || '#baafa5'));
     setSueloHex(p.suelo !== null ? (pal[p.filas.length] || '') : '');
   }, [description, palette]);
 
@@ -73,7 +73,7 @@ export function RecetaColor({ description, palette, onGuardar }) {
 
   const setFila = (i, campo, valor) => setDatos(d => ({ ...d, filas: d.filas.map((f, k) => (k === i ? { ...f, [campo]: valor } : f)) }));
   const quitarFila = (i) => { setDatos(d => ({ ...d, filas: d.filas.filter((_, k) => k !== i) })); setColores(c => c.filter((_, k) => k !== i)); };
-  const anadirFila = () => { setDatos(d => ({ ...d, filas: [...d.filas, { pct: '', nombre: '', ncs: '', donde: '' }] })); setColores(c => [...c, '#beb0a2']); };
+  const anadirFila = () => { setDatos(d => ({ ...d, filas: [...d.filas, { pct: '', nombre: '', ncs: '', donde: '' }] })); setColores(c => [...c, '#baafa5']); };
   const setConsejo = (i, campo, valor) => setDatos(d => ({ ...d, consejos: d.consejos.map((c, k) => (k === i ? { ...c, [campo]: valor } : c)) }));
   const suma = datos.filas.reduce((s, f) => s + (parseFloat(f.pct) || 0), 0);
 

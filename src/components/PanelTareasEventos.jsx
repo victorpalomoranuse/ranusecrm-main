@@ -11,7 +11,7 @@ import { EventDetailModal } from './EventDetailModal';
 
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '1rem 1.1rem' };
 const muted = { fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)' };
-const COLOR_PRIORIDAD = { baja: '#8bae8f', normal: '#beb0a2', alta: '#ae9e8b', urgente: '#ae8b8b' };
+const COLOR_PRIORIDAD = { baja: '#8bae8f', normal: '#baafa5', alta: '#ae9e8b', urgente: '#ae8b8b' };
 
 const hoyISO = () => new Date().toLocaleDateString('sv'); // YYYY-MM-DD en hora local
 const sumarDias = (iso, n) => { const d = new Date(`${iso}T12:00:00`); d.setDate(d.getDate() + n); return d.toLocaleDateString('sv'); };
@@ -49,7 +49,7 @@ export function PanelTareasEventos({ puedeVerTareas, ir }) {
   const deHoy = pendientes.filter(t => t.due_date === hoy);
   const proximas = pendientes.filter(t => t.due_date && t.due_date > hoy);
   const sinFecha = pendientes.filter(t => !t.due_date);
-  const orden = [['Vencidas', vencidas, '#ae8b8b'], ['Hoy', deHoy, '#beb0a2'], ['Próximas', proximas, null], ['Sin fecha', sinFecha, null]];
+  const orden = [['Vencidas', vencidas, '#ae8b8b'], ['Hoy', deHoy, '#baafa5'], ['Próximas', proximas, null], ['Sin fecha', sinFecha, null]];
   const LIMITE = 8;
   let mostradas = 0;
 
@@ -64,7 +64,7 @@ export function PanelTareasEventos({ puedeVerTareas, ir }) {
         </button>
         <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setDetalleTarea(t)}>
           <div style={{ fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: COLOR_PRIORIDAD[t.priority] || '#beb0a2', flexShrink: 0 }} />
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: COLOR_PRIORIDAD[t.priority] || '#baafa5', flexShrink: 0 }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</span>
           </div>
           <div style={muted}>
@@ -111,7 +111,7 @@ export function PanelTareasEventos({ puedeVerTareas, ir }) {
         {proximosEventos.length === 0 && <p style={{ ...muted, marginTop: 8 }}>No hay eventos en las próximas tres semanas.</p>}
         {proximosEventos.map(e => (
           <div key={e.id} onClick={() => setDetalleEvento(e)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}>
-            <span style={{ width: 9, height: 9, borderRadius: '50%', background: e.color || '#beb0a2', flexShrink: 0 }} />
+            <span style={{ width: 9, height: 9, borderRadius: '50%', background: e.color || '#baafa5', flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: '0.86rem' }}>{e.title}</div>
               <div style={muted}>{fmtDia(e.date, hoy)}{e.time ? ` · ${String(e.time).slice(0, 5)}` : ''}</div>

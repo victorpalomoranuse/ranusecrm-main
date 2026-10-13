@@ -4,26 +4,26 @@
 <style>
 /* Concepto: herramienta de obra. Cabecera con las tres vistas del plano, lienzo de croquis a la izquierda y panel de datos a la derecha; en vertical el panel pasa debajo. */
 :root{
-  --bg:#f5f2ee; --panel:#fbf9f6; --stage:#ffffff; --field:#ffffff;
-  --ink:#1e1b18; --muted:#7a7068; --line:#ddd5cb;
-  --accent:#8a6f55; --accent-ink:#ffffff; --brand:#beb0a2;
-  --dim:#8d857d; --dem:#b3402f; --dem-bg:#f6dcd5; --new:#1f6f78;
-  --warn:#a96a12; --ok:#2f7d4f; --grid:#ece6de; --blk:#5e564e;
+  --bg:#f6f4f2; --panel:#fbfaf9; --stage:#ffffff; --field:#ffffff;
+  --ink:#111111; --muted:#6f675f; --line:#dcd6d0;
+  --accent:#7d746b; --accent-ink:#ffffff; --brand:#baafa5;
+  --dim:#968d84; --dem:#b3402f; --dem-bg:#f6dcd5; --new:#1f6f78;
+  --warn:#a96a12; --ok:#2f7d4f; --grid:#ece8e4; --blk:#4d4640;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#151311; --panel:#1d1a17; --stage:#191714; --field:#14110f;
-    --ink:#efe9e2; --muted:#a39a90; --line:#35302b;
-    --accent:#beb0a2; --accent-ink:#1a1714;
+    --bg:#0e0e0e; --panel:#161616; --stage:#121212; --field:#0c0c0c;
+    --ink:#f4f2f0; --muted:#a39b93; --line:#2c2926;
+    --accent:#baafa5; --accent-ink:#111111;
     --dim:#8a8279; --dem:#e0705d; --dem-bg:#4a2a24; --new:#58b4be;
     --warn:#e0a24a; --ok:#6cc08d; --grid:#26221e; --blk:#bdb5ab;
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#151311; --panel:#1d1a17; --stage:#191714; --field:#14110f;
-  --ink:#efe9e2; --muted:#a39a90; --line:#35302b;
-  --accent:#beb0a2; --accent-ink:#1a1714;
+  --bg:#0e0e0e; --panel:#161616; --stage:#121212; --field:#0c0c0c;
+  --ink:#f4f2f0; --muted:#a39b93; --line:#2c2926;
+  --accent:#baafa5; --accent-ink:#111111;
   --dim:#8a8279; --dem:#e0705d; --dem-bg:#4a2a24; --new:#58b4be;
   --warn:#e0a24a; --ok:#6cc08d; --grid:#26221e; --blk:#bdb5ab;
   color-scheme:dark;
@@ -163,7 +163,7 @@ details.addcat summary{min-height:44px;display:flex;align-items:center;cursor:po
 :root[data-theme="light"]{
   --bg:#f3f1ee; --panel:#fbfaf8; --stage:#ffffff; --field:#ffffff;
   --ink:#1e1b18; --muted:#7a7068; --line:#ddd5cb;
-  --accent:#8a6f55; --accent-ink:#ffffff; --brand:#beb0a2;
+  --accent:#8a6f55; --accent-ink:#ffffff; --brand:#baafa5;
   --dim:#8d857d; --dem:#b3402f; --dem-bg:#f6dcd5; --new:#1f6f78;
   --warn:#a96a12; --ok:#2f7d4f; --grid:#ece6de; --lab:#1e1b18; --blk:#5e564e; color-scheme:light;
 }
@@ -2060,7 +2060,7 @@ function toast(m){var t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(t
 /* ---------- dibujo ---------- */
 var svg=$('cv'),cvw=$('cvw');
 var CSS={ink:'var(--ink)',dim:'var(--dim)',dem:'var(--dem)',demBg:'var(--dem-bg)',nw:'var(--new)',bg:'var(--stage)',grid:'var(--grid)',label:'var(--lab,var(--ink))',halo:'var(--stage)',accent:'var(--accent)',warn:'var(--warn)',ok:'var(--ok)',node:'var(--muted)',blk:'var(--blk,var(--ink))'};
-var LIGHT={ink:'#1e1b18',dim:'#8d857d',dem:'#b3402f',demBg:'#f6dcd5',nw:'#1f6f78',bg:'#ffffff',grid:'#ece6de',label:'#1e1b18',halo:'#ffffff',accent:'#8a6f55',warn:'#a96a12',ok:'#2f7d4f',node:'#7a7068',blk:'#4a443e'};
+var LIGHT={ink:'#111111',dim:'#968d84',dem:'#b3402f',demBg:'#f6dcd5',nw:'#1f6f78',bg:'#ffffff',grid:'#ece8e4',label:'#111111',halo:'#ffffff',accent:'#7d746b',warn:'#a96a12',ok:'#2f7d4f',node:'#6f675f',blk:'#4d4640'};
 
 function ln(x1,y1,x2,y2,stroke,sw,cap,extra){
   return '<line x1="'+f2(x1)+'" y1="'+f2(y1)+'" x2="'+f2(x2)+'" y2="'+f2(y2)+'" style="fill:none;stroke:'+stroke+';stroke-width:'+f2(sw)+';stroke-linecap:'+(cap||'butt')+(extra||'')+'"/>';
@@ -5180,7 +5180,7 @@ PdfDoc.prototype={
 /* ---------- láminas PDF ---------- */
 var LSL='ranuse-logo-v1',LOGO=null;
 var SCALES=[10,20,25,50,75,100,150,200,250,500];
-var INK='#1e1b18',MUTED='#7a7068',LINEC='#b9afa4';
+var INK='#111111',MUTED='#6f675f',LINEC='#cfc8c1',MARCA='#baafa5',MARCA_F='#f6f4f2';
 function fdate(s){var m=/^(\d{4})-(\d\d)-(\d\d)$/.exec(s||'');return m?m[3]+'/'+m[2]+'/'+m[1]:(s||'—')}
 function fitTxt(s,maxW,bold,size){
   if(txtW(s,bold,size)<=maxW)return s;
@@ -5258,10 +5258,10 @@ function carpPlan(o){
 }
 function carpFrame(doc,idx,total,o,title,note){
   var v=st.v,A3=o.paper!=='A4',PW=A3?420:297,PH=A3?297:210,f=A3?1:0.76,mg=10,p=doc.page(PW,PH);
-  p.rect(mg-3.2,mg-3.2,PW-2*mg+6.4,PH-2*mg+6.4,null,'#cfc8be',0.18);
+  p.rect(mg-3.2,mg-3.2,PW-2*mg+6.4,PH-2*mg+6.4,null,'#baafa5',0.18);
   p.rect(mg,mg,PW-2*mg,PH-2*mg,null,INK,0.35);
   p.text(mg+7,mg+10,title.toUpperCase(),15*f+1,{bold:true,col:INK});
-  p.rect(mg+7,mg+12,14*f,0.8,'#b8955a',null,0);
+  p.rect(mg+7,mg+12,14*f,0.8,'#baafa5',null,0);
   p.text(mg+7,mg+18.2,(v.nombre||'Sin nombre')+(v.planta?' · '+v.planta:'')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
   if(o.logo){var lw=o.logo.w,lh=o.logo.h,sc=Math.min(40/lw,11*f/lh);p.img(o.logoIdx,PW-mg-6-lw*sc,mg+4,lw*sc,lh*sc)}
   else p.text(PW-mg-6,mg+10,'RANUSE DESIGN',9*f,{bold:true,col:INK,anchor:'end'});
@@ -6033,14 +6033,14 @@ function sheetPage(doc,view,idx,total,o){
   var p=doc.page(PW,PH),cx=PW-mg-Wc,tags=opTags(),b=bbox();
   var body=7.5*f+(A3?0:0.6),sm=5.6*f+(A3?0:0.4);
   /* marco fino con filete exterior y columna lateral en tono cálido */
-  p.rect(cx,mg,PW-mg-cx,PH-2*mg,'#f7f4ef',null,0);
-  p.rect(mg-3.2,mg-3.2,PW-2*mg+6.4,PH-2*mg+6.4,null,'#cfc8be',0.18);
+  p.rect(cx,mg,PW-mg-cx,PH-2*mg,'#f6f4f2',null,0);
+  p.rect(mg-3.2,mg-3.2,PW-2*mg+6.4,PH-2*mg+6.4,null,'#baafa5',0.18);
   p.rect(mg,mg,PW-2*mg,PH-2*mg,null,INK,0.35);
   p.line(cx,mg,cx,PH-mg,INK,0.25);
 
   /* título de la lámina */
   p.text(mg+7,mg+10,((view==='distrib'?(o.ante?'Anteproyecto · distribución':'Distribución · mobiliario y máquinas'):VNAME[view])+(o.capaN?' · '+o.capaN:'')).toUpperCase(),15*f+1,{bold:true,col:INK});
-  p.rect(mg+7,mg+12,14*f,0.8,'#b8955a',null,0);
+  p.rect(mg+7,mg+12,14*f,0.8,'#baafa5',null,0);
   p.text(mg+7,mg+18.2,(v.nombre||'Sin nombre')+(v.planta?' · '+v.planta:'')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
 
   /* escala y plano */

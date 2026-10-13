@@ -14,7 +14,7 @@ function Fallback() {
   return (
     <mesh>
       <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial color="#beb0a2" />
+      <meshStandardMaterial color="#baafa5" />
     </mesh>
   );
 }

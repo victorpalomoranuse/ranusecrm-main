@@ -104,7 +104,7 @@
 }
 
 .cl-field input:focus {
-  border-color: #beb0a2;
+  border-color: #baafa5;
 }
 
 .cl-field input::placeholder {
@@ -138,7 +138,7 @@
 }
 
 .cl-btn:hover:not(:disabled) {
-  background: #beb0a2;
+  background: #baafa5;
   transform: translateY(-1px);
 }
 

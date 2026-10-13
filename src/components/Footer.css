@@ -65,7 +65,7 @@
 }
 
 .footer-link:hover {
-  color: #beb0a2;
+  color: #baafa5;
 }
 
 /* Contacto */
@@ -124,7 +124,7 @@
 }
 
 .footer-legal-link:hover {
-  color: #beb0a2;
+  color: #baafa5;
 }
 
 .footer-separator {
@@ -148,7 +148,7 @@
 
 .legal-modal-content {
   background: #000;
-  border: 1px solid rgba(190, 176, 162, 0.3);
+  border: 1px solid rgba(186,175,165, 0.3);
   border-radius: 20px;
   max-width: 700px;
   width: 100%;
@@ -178,8 +178,8 @@
 }
 
 .legal-modal-close:hover {
-  background: rgba(190, 176, 162, 0.2);
-  color: #beb0a2;
+  background: rgba(186,175,165, 0.2);
+  color: #baafa5;
 }
 
 .legal-modal-title {
@@ -200,7 +200,7 @@
 .legal-section h3 {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #beb0a2;
+  color: #baafa5;
   margin: 0 0 0.75rem 0;
 }
 
@@ -227,7 +227,7 @@
 }
 
 .legal-modal-content::-webkit-scrollbar-thumb {
-  background: #beb0a2;
+  background: #baafa5;
   border-radius: 10px;
 }
 
@@ -311,9 +311,9 @@
 
 .footer-social-link:hover {
   transform: translateY(-3px);
-  border-color: #beb0a2;
-  background: rgba(190, 176, 162, 0.1);
-  color: #beb0a2;
+  border-color: #baafa5;
+  background: rgba(186,175,165, 0.1);
+  color: #baafa5;
 }
 
 .footer-social-link.instagram:hover {

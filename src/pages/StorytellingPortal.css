@@ -1,5 +1,5 @@
 /* Portal del cliente: vista de storytelling (solo proyectos con capítulos) */
-.sp{--beige:#beb0a2;--beige-d:#8f8173;--ink:#2a2622;--paper:#faf8f5;--soft:#f1ede7;--line:#e4ddd3;background:var(--paper);color:var(--ink);font-family:'Montserrat',system-ui,sans-serif;line-height:1.7;-webkit-font-smoothing:antialiased;min-height:100dvh}
+.sp{--beige:#baafa5;--beige-d:#8e847b;--ink:#111111;--paper:#faf9f8;--soft:#f2efec;--line:#e4dfda;background:var(--paper);color:var(--ink);font-family:'Montserrat',system-ui,sans-serif;line-height:1.7;-webkit-font-smoothing:antialiased;min-height:100dvh}
 .sp *{box-sizing:border-box}
 .sp img{display:block;width:100%;height:100%;object-fit:cover}
 .sp h1,.sp h2,.sp h3,.sp h4,.sp h5,.sp p,.sp ul{margin:0;padding:0}

@@ -24,7 +24,7 @@ body, html {
   max-width: 420px;
   margin: 0 auto;
   background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(190, 176, 162, 0.2);
+  border: 1px solid rgba(186,175,165, 0.2);
   border-radius: 20px;
   padding: 3rem;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -106,8 +106,8 @@ body, html {
 
 .login-button {
   padding: 1rem;
-  background: #beb0a2;
-  border: 1px solid #beb0a2;
+  background: #baafa5;
+  border: 1px solid #baafa5;
   border-radius: 12px;
   color: #000;
   font-size: 1rem;
@@ -119,11 +119,11 @@ body, html {
 }
 
 .login-button:hover:not(:disabled) {
-  background: #beb0a2;
+  background: #baafa5;
   border-color: white;
   color: white;
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(190, 176, 162, 0.3);
+  box-shadow: 0 8px 20px rgba(186,175,165, 0.3);
 }
 
 .login-button:focus {

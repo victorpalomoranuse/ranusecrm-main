@@ -76,7 +76,7 @@ export function AgenteProyecto({ project }) {
 
   return (
     <div>
-      <div style={{ ...box, marginBottom: 12, borderColor: 'rgba(190,176,162,0.35)' }}>
+      <div style={{ ...box, marginBottom: 12, borderColor: 'rgba(186,175,165,0.35)' }}>
         <strong style={{ fontSize: '0.9rem' }}>Condicionantes del proyecto</strong>
         <p style={{ ...muted, margin: '4px 0 8px' }}>Lo que limita este proyecto y el asistente debe tener siempre presente: techo bajo (¿cuántos metros?), pilares, poca luz natural, suelo irregular, ruido a vecinos, presupuesto ajustado…</p>
         <textarea value={cond} onChange={e => setCond(e.target.value)} onBlur={guardarCond} rows={3} placeholder="Ej. Techo bajo: 2,30 m libres. Pilar central de 40 cm. Sin luz natural." style={{ width: '100%' }} />
@@ -102,7 +102,7 @@ export function AgenteProyecto({ project }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {mensajes.map(m => (
-            <div key={m.id} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '92%', background: m.role === 'user' ? 'rgba(190,176,162,0.16)' : 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px 12px' }}>
+            <div key={m.id} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '92%', background: m.role === 'user' ? 'rgba(186,175,165,0.16)' : 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px 12px' }}>
               <Texto t={m.content} />
             </div>
           ))}

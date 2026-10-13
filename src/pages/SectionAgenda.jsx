@@ -190,7 +190,7 @@ function ResumenLlamada({ slot, onGuardado, toast }) {
     return (
       <div style={{ marginTop: 6 }}>
         <p style={{ margin: 0, fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', whiteSpace: 'pre-wrap' }}>{slot.resumen_llamada}</p>
-        <button type="button" onClick={() => setEditando(true)} style={{ background: 'none', border: 'none', color: '#beb0a2', fontSize: '0.72rem', cursor: 'pointer', padding: 0, marginTop: 4 }}>Editar resumen</button>
+        <button type="button" onClick={() => setEditando(true)} style={{ background: 'none', border: 'none', color: '#baafa5', fontSize: '0.72rem', cursor: 'pointer', padding: 0, marginTop: 4 }}>Editar resumen</button>
       </div>
     );
   }
@@ -332,7 +332,7 @@ function EstadoYFathom({ slot, onGuardado, toast }) {
           <input className="ap-field-input" value={fathom} onChange={e => setFathom(e.target.value)} placeholder="https://fathom.video/..." style={{ flex: 1 }} />
           <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={guardarFathom} disabled={savingF || fathom.trim() === (slot.fathom_url || '')}>{savingF ? '…' : 'Guardar'}</button>
         </div>
-        {slot.fathom_url && <a href={slot.fathom_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: '0.74rem', color: '#beb0a2' }}>Abrir grabación ↗</a>}
+        {slot.fathom_url && <a href={slot.fathom_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: '0.74rem', color: '#baafa5' }}>Abrir grabación ↗</a>}
       </div>
     </div>
   );

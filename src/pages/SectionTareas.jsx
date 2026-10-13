@@ -20,7 +20,7 @@ function SubscribeCalendarCard() {
 
   return (
     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '1rem', marginBottom: '1rem' }}>
-      <button onClick={() => setOpen(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'none', border: 'none', cursor: 'pointer', color: '#beb0a2', fontSize: '0.82rem', fontWeight: 600, width: '100%', textAlign: 'left', padding: 0 }}>
+      <button onClick={() => setOpen(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'none', border: 'none', cursor: 'pointer', color: '#baafa5', fontSize: '0.82rem', fontWeight: 600, width: '100%', textAlign: 'left', padding: 0 }}>
         <Smartphone size={15} /> Ver este calendario en el móvil
       </button>
       {open && (
@@ -30,7 +30,7 @@ function SubscribeCalendarCard() {
           </p>
           <p style={{ margin: '0 0 0.5rem' }}>
             <strong style={{ color: '#fff' }}>Desde el móvil:</strong> toca este enlace y elige "Añadir a Calendario":<br/>
-            <a href={feedUrls.webcal} style={{ color: '#beb0a2', wordBreak: 'break-all' }}>{feedUrls.webcal}</a>
+            <a href={feedUrls.webcal} style={{ color: '#baafa5', wordBreak: 'break-all' }}>{feedUrls.webcal}</a>
           </p>
           <p style={{ margin: '0 0 0.5rem' }}>
             <strong style={{ color: '#fff' }}>Desde Google Calendar (web):</strong> Configuración → "Agregar calendario" → "Desde URL", y pega:
@@ -47,12 +47,12 @@ function SubscribeCalendarCard() {
 
 const PRIORITIES = [
   { value: 'baja', label: 'Baja', color: '#8bae8f' },
-  { value: 'normal', label: 'Normal', color: '#beb0a2' },
+  { value: 'normal', label: 'Normal', color: '#baafa5' },
   { value: 'alta', label: 'Alta', color: '#ae9e8b' },
   { value: 'urgente', label: 'Urgente', color: '#ae8b8b' },
 ];
 
-const EVENT_COLORS = ['#beb0a2', '#8b9eae', '#8bae8f', '#ae9e8b', '#ae8b8b', '#9e8bae'];
+const EVENT_COLORS = ['#baafa5', '#8b9eae', '#8bae8f', '#ae9e8b', '#ae8b8b', '#9e8bae'];
 
 function getDaysInMonth(year, month) {
   return new Date(year, month + 1, 0).getDate();
@@ -89,7 +89,7 @@ export function SectionTareas() {
   const [eventDesc, setEventDesc] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [eventTime, setEventTime] = useState('');
-  const [eventColor, setEventColor] = useState('#beb0a2');
+  const [eventColor, setEventColor] = useState('#baafa5');
   const [addingEvent, setAddingEvent] = useState(false);
 
   // Calendar
@@ -135,7 +135,7 @@ export function SectionTareas() {
     try {
       const { data } = await api.post('/events', { title: eventTitle, description: eventDesc, date: eventDate, time: eventTime || null, color: eventColor });
       setEvents(prev => [...prev, data.event].sort((a, b) => a.date.localeCompare(b.date)));
-      setEventTitle(''); setEventDesc(''); setEventDate(''); setEventTime(''); setEventColor('#beb0a2');
+      setEventTitle(''); setEventDesc(''); setEventDate(''); setEventTime(''); setEventColor('#baafa5');
       setShowEventForm(false);
     } catch {} finally { setAddingEvent(false); }
   };
@@ -206,7 +206,7 @@ export function SectionTareas() {
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 3 }}>
             {['ambos', 'tareas', 'calendario'].map(v => (
-              <button key={v} onClick={() => setView(v)} style={{ padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.78rem', background: view === v ? '#beb0a2' : 'transparent', color: view === v ? '#0a0a0a' : 'rgba(255,255,255,0.5)', fontWeight: view === v ? 600 : 400 }}>
+              <button key={v} onClick={() => setView(v)} style={{ padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.78rem', background: view === v ? '#baafa5' : 'transparent', color: view === v ? '#0a0a0a' : 'rgba(255,255,255,0.5)', fontWeight: view === v ? 600 : 400 }}>
                 {v === 'ambos' ? 'Todo' : v === 'tareas' ? 'Tareas' : 'Calendario'}
               </button>
             ))}
@@ -342,7 +342,7 @@ export function SectionTareas() {
                     const isSelected = day === selectedDay;
                     return (
                       <button key={day} onClick={() => setSelectedDay(isSelected ? null : day)}
-                        style={{ position: 'relative', aspectRatio: '1', borderRadius: 8, border: isSelected ? '1px solid #beb0a2' : isToday ? '1px solid rgba(190,176,162,0.4)' : '1px solid transparent', background: isSelected ? 'rgba(190,176,162,0.15)' : isToday ? 'rgba(190,176,162,0.07)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', fontSize: '0.78rem', color: isToday ? '#beb0a2' : '#fff', fontWeight: isToday ? 700 : 400, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                        style={{ position: 'relative', aspectRatio: '1', borderRadius: 8, border: isSelected ? '1px solid #baafa5' : isToday ? '1px solid rgba(186,175,165,0.4)' : '1px solid transparent', background: isSelected ? 'rgba(186,175,165,0.15)' : isToday ? 'rgba(186,175,165,0.07)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', fontSize: '0.78rem', color: isToday ? '#baafa5' : '#fff', fontWeight: isToday ? 700 : 400, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
                         {day}
                         {hasItems && (
                           <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -386,7 +386,7 @@ export function SectionTareas() {
                         <div style={{ flex: 1 }}>
                           <p style={{ margin: 0, fontSize: '0.82rem', color: t.done ? 'rgba(255,255,255,0.4)' : '#fff', textDecoration: t.done ? 'line-through' : 'none' }}>{t.title}</p>
                           {(t.project || t.description) && (
-                            <p style={{ margin: 0, fontSize: '0.7rem', color: '#beb0a2' }}>
+                            <p style={{ margin: 0, fontSize: '0.7rem', color: '#baafa5' }}>
                               {t.project ? `${t.project.client_name}${t.category?.name ? ' · ' + t.category.name : ''}` : t.description.slice(0, 50)}
                             </p>
                           )}
@@ -454,7 +454,7 @@ export function SectionTareas() {
                                     </span>
                                   )}
                                   {task.project && (
-                                    <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 20, background: 'rgba(190,176,162,0.1)', color: '#beb0a2' }}>
+                                    <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 20, background: 'rgba(186,175,165,0.1)', color: '#baafa5' }}>
                                       {task.project.client_name}{task.category?.name && ` · ${task.category.name}`}
                                     </span>
                                   )}

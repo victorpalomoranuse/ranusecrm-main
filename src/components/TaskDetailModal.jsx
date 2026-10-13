@@ -4,7 +4,7 @@ import api from '../services/api';
 
 const PRIORITIES = {
   baja: { label: 'Baja', color: '#8bae8f' },
-  normal: { label: 'Normal', color: '#beb0a2' },
+  normal: { label: 'Normal', color: '#baafa5' },
   alta: { label: 'Alta', color: '#ae9e8b' },
   urgente: { label: 'Urgente', color: '#ae8b8b' },
 };
@@ -70,7 +70,7 @@ export function TaskDetailModal({ task, onClose, onUpdated, onDeleted }) {
               </span>
             )}
             {task.project && (
-              <span style={{ fontSize: '0.72rem', padding: '3px 10px', borderRadius: 20, background: 'rgba(190,176,162,0.1)', color: '#beb0a2' }}>
+              <span style={{ fontSize: '0.72rem', padding: '3px 10px', borderRadius: 20, background: 'rgba(186,175,165,0.1)', color: '#baafa5' }}>
                 {task.project.client_name}{task.project.project_name ? ` — ${task.project.project_name}` : ''}{task.category?.name && ` · ${task.category.name}`}
               </span>
             )}

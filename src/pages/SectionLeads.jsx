@@ -189,7 +189,7 @@ const ESTADOS = {
   diseño_1:               { label: 'Diseño 1',         color: '#06b6d4' },
   llamada_venta:          { label: 'Llamada Diseño 1', color: '#10b981' },
   no_show:                { label: 'No Show',          color: '#f97316' },
-  venta:                  { label: 'Venta Diseño 2 ✓',  color: '#beb0a2' },
+  venta:                  { label: 'Venta Diseño 2 ✓',  color: '#baafa5' },
   rechazo:                { label: 'Rechazo',          color: '#f87171' },
   enfriado:               { label: 'Enfriado',         color: '#64748b' },
   descartado:             { label: 'Descartado',       color: '#6b7280' },
@@ -342,8 +342,8 @@ export function SectionLeads() {
     return [
       { label:'Total',           val: total },
       { label:'Activos',         val: activos },
-      { label:'Nº de ventas',    val: numVentas, color:'#beb0a2' },
-      { label:'Beneficio',       val: fmtEur(beneficioTotal), color:'#beb0a2' },
+      { label:'Nº de ventas',    val: numVentas, color:'#baafa5' },
+      { label:'Beneficio',       val: fmtEur(beneficioTotal), color:'#baafa5' },
       { label:'Clientes recurrentes', val: recurrentes, color:'#a78bfa' },
       { label:'Comisiones/extras', val: fmtEur(valorComisiones), color:'#a78bfa' },
       { label:'Resp. chat',      val: pct(conRespuesta, total) },
@@ -511,9 +511,9 @@ export function SectionLeads() {
                   const pct = d.total > 0 ? Math.round((d.total / (filtrados.length || 1)) * 100) : 0;
                   return (
                     <div key={canal} onClick={() => { setFiltroCanal(canal); setPagina(1); }} style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} title={`Filtrar por ${canal}`}>
-                      <div style={{ width:90, fontSize:12, color: filtroCanal===canal ? '#fff' : '#beb0a2', fontWeight: filtroCanal===canal ? 700 : 400, textTransform:'capitalize' }}>{canal}</div>
+                      <div style={{ width:90, fontSize:12, color: filtroCanal===canal ? '#fff' : '#baafa5', fontWeight: filtroCanal===canal ? 700 : 400, textTransform:'capitalize' }}>{canal}</div>
                       <div style={{ flex:1, height:6, background:'rgba(255,255,255,0.05)', borderRadius:3, overflow:'hidden' }}>
-                        <div style={{ width:`${pct}%`, height:'100%', background:'#beb0a2', borderRadius:3 }} />
+                        <div style={{ width:`${pct}%`, height:'100%', background:'#baafa5', borderRadius:3 }} />
                       </div>
                       <div style={{ width:30, fontSize:12, color:'rgba(255,255,255,0.5)', textAlign:'right' }}>{d.total}</div>
                       <div style={{ width:50, fontSize:11, color: tasa > 0 ? '#22c55e' : 'rgba(255,255,255,0.2)', textAlign:'right' }}>{tasa}% vta</div>
@@ -543,7 +543,7 @@ export function SectionLeads() {
                     const pct = d.total > 0 ? Math.round((d.total / (adsLeads.length || 1)) * 100) : 0;
                     return (
                       <div key={camp} onClick={() => { setFiltroCanal('ads'); setFiltroCampaña(camp); setPagina(1); }} style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} title={`Filtrar por ${camp}`}>
-                        <div style={{ width:170, fontSize:12, color: filtroCampaña===camp ? '#fff' : '#beb0a2', fontWeight: filtroCampaña===camp ? 700 : 400 }}>{camp}</div>
+                        <div style={{ width:170, fontSize:12, color: filtroCampaña===camp ? '#fff' : '#baafa5', fontWeight: filtroCampaña===camp ? 700 : 400 }}>{camp}</div>
                         <div style={{ flex:1, height:6, background:'rgba(255,255,255,0.05)', borderRadius:3, overflow:'hidden' }}>
                           <div style={{ width:`${pct}%`, height:'100%', background:'#a78bfa', borderRadius:3 }} />
                         </div>
@@ -629,7 +629,7 @@ export function SectionLeads() {
               return (
                 <div key={lead.id} onClick={() => setPanel(lead)}
                   style={{ display:'grid', gridTemplateColumns:'2fr 1fr 0.8fr 0.9fr 0.9fr 0.6fr 1fr', padding:'10px 16px', borderBottom:'1px solid rgba(255,255,255,0.05)', cursor:'pointer', background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}
-                  onMouseEnter={e => e.currentTarget.style.background='rgba(190,176,162,0.05)'}
+                  onMouseEnter={e => e.currentTarget.style.background='rgba(186,175,165,0.05)'}
                   onMouseLeave={e => e.currentTarget.style.background= i%2===0 ? 'transparent' : 'rgba(255,255,255,0.01)'}>
                   <div>
                     <div style={{ fontSize:13, fontWeight:600, color:'#e5ddd5', display:'flex', alignItems:'center', gap:6 }}>
@@ -649,7 +649,7 @@ export function SectionLeads() {
                   <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', alignSelf:'center' }}>{dias !== null ? `${dias}d` : '—'}</div>
                   <div style={{ alignSelf:'center' }} onClick={e => e.stopPropagation()}>
                     {comercial ? (
-                      <span style={{ fontSize:11, color:'#beb0a2' }}>{comercial}</span>
+                      <span style={{ fontSize:11, color:'#baafa5' }}>{comercial}</span>
                     ) : (
                       <button className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => asignarme(lead.id)}><UserPlus size={11}/> Asignarme</button>
                     )}
@@ -685,14 +685,14 @@ export function SectionLeads() {
                     {col.map((lead, i) => (
                       <div key={lead.id} onClick={() => setPanel(lead)}
                         style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius: i === col.length-1 ? '0 0 8px 8px' : 6, padding:'9px 10px', cursor:'pointer' }}
-                        onMouseEnter={e => e.currentTarget.style.borderColor='rgba(190,176,162,0.3)'}
+                        onMouseEnter={e => e.currentTarget.style.borderColor='rgba(186,175,165,0.3)'}
                         onMouseLeave={e => e.currentTarget.style.borderColor='rgba(255,255,255,0.08)'}>
                         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:4 }}>
                           <span style={{ fontSize:12, fontWeight:600, color:'#e5ddd5', lineHeight:1.3 }}>{lead.nombre}</span>
-                          {lead.canal && <span style={{ fontSize:8, background:'rgba(190,176,162,0.15)', color:'#beb0a2', borderRadius:3, padding:'2px 4px', whiteSpace:'nowrap', flexShrink:0, textTransform:'capitalize' }}>{lead.canal}</span>}
+                          {lead.canal && <span style={{ fontSize:8, background:'rgba(186,175,165,0.15)', color:'#baafa5', borderRadius:3, padding:'2px 4px', whiteSpace:'nowrap', flexShrink:0, textTransform:'capitalize' }}>{lead.canal}</span>}
                         </div>
                         {lead.deporte && <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)', marginTop:2 }}>{lead.deporte}</div>}
-                        {lead.valor_estimado > 0 && <div style={{ fontSize:11, color:'#beb0a2', fontWeight:600, marginTop:4 }}>{Number(lead.valor_estimado).toLocaleString('es-ES')}€</div>}
+                        {lead.valor_estimado > 0 && <div style={{ fontSize:11, color:'#baafa5', fontWeight:600, marginTop:4 }}>{Number(lead.valor_estimado).toLocaleString('es-ES')}€</div>}
                         <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', marginTop:3 }}>{nombreComercial(lead.assigned_to) || 'Sin asignar'}</div>
                         <div onClick={e => e.stopPropagation()} style={{ marginTop:6, display:'flex', gap:3, flexWrap:'wrap' }}>
                           {ORDEN.filter(e => e !== estado).slice(0,2).map(e => (
@@ -717,7 +717,7 @@ export function SectionLeads() {
         <div style={{ position:'fixed', top:0, right:0, width:360, height:'100vh', background:'#1a1612', borderLeft:'1px solid rgba(255,255,255,0.08)', zIndex:200, overflowY:'auto', padding:24 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
             <div>
-              <div style={{ fontSize:17, fontWeight:700, color:'#beb0a2' }}>{panel.nombre}</div>
+              <div style={{ fontSize:17, fontWeight:700, color:'#baafa5' }}>{panel.nombre}</div>
               {panel.instagram && <div style={{ fontSize:12, color:'rgba(255,255,255,0.3)' }}>@{panel.instagram}</div>}
             </div>
             <button onClick={() => setPanel(null)} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.3)', fontSize:18, cursor:'pointer' }}>✕</button>

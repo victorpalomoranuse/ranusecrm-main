@@ -26,7 +26,7 @@ function periodoActual(tipo) {
 }
 
 const ESCENARIO_LABEL = { pesimista: 'Pesimista', realista: 'Realista', optimista: 'Optimista' };
-const ESCENARIO_COLOR = { pesimista: '#f87171', realista: '#beb0a2', optimista: '#22c55e' };
+const ESCENARIO_COLOR = { pesimista: '#f87171', realista: '#baafa5', optimista: '#22c55e' };
 const ESCENARIOS_ORDEN = ['pesimista', 'realista', 'optimista'];
 const PERIODO_TABS = [{ tipo: 'mes', label: 'Mes' }, { tipo: 'trimestre', label: 'Trimestre' }, { tipo: 'año', label: 'Año' }];
 const FASE_LABELS = { 1: 'Diagnóstico', 2: 'Diseño', 3: 'Producción', 4: 'Instalación', 5: 'Entregado' };

@@ -759,7 +759,7 @@ export function SectionFinanzas() {
 
       <div className="fz-stats">
         <div className="fz-stat-card">
-          <div className="fz-stat-icon" style={{ background: 'rgba(190,176,162,0.15)', color: '#beb0a2' }}><Wallet size={18} /></div>
+          <div className="fz-stat-icon" style={{ background: 'rgba(186,175,165,0.15)', color: '#baafa5' }}><Wallet size={18} /></div>
           <div className="fz-stat-body"><span>Caja actual</span><strong>{fmt(resumen?.caja)}</strong></div>
         </div>
         <div className="fz-stat-card">

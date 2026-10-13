@@ -59,7 +59,7 @@
 
 .proyectos-card:hover {
   transform: translateY(-4px);
-  border-color: rgba(190,176,162,0.3);
+  border-color: rgba(186,175,165,0.3);
   box-shadow: 0 16px 40px rgba(0,0,0,0.5);
 }
 
@@ -103,7 +103,7 @@
 .proyectos-card-cta {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #beb0a2;
+  color: #baafa5;
   letter-spacing: 0.02em;
 }
 

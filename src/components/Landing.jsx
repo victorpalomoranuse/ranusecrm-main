@@ -328,7 +328,7 @@ export function Landing() {
                 <ul className="plan-features">
                   {plan.features.map((f) => (
                     <li key={f}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#beb0a2" strokeWidth="2.5">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#baafa5" strokeWidth="2.5">
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
                       {f}

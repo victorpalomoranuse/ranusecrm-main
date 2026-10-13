@@ -76,7 +76,7 @@
 }
 
 .admin-field input:focus {
-  border-color: #beb0a2;
+  border-color: #baafa5;
 }
 
 .admin-field input::placeholder {
@@ -105,7 +105,7 @@
 }
 
 .admin-login-btn:hover:not(:disabled) {
-  background: #beb0a2;
+  background: #baafa5;
   transform: translateY(-1px);
 }
 

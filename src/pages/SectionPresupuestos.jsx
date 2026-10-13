@@ -8,7 +8,7 @@ import { CantidadesPlanos } from '../components/CantidadesPlanos';
 import './SectionPresupuestos.css';
 
 const CATEGORIES = [
-  { value: 'material',    label: 'Material',      color: '#beb0a2' },
+  { value: 'material',    label: 'Material',      color: '#baafa5' },
   { value: 'mobiliario',  label: 'Mobiliario',     color: '#8b9eae' },
   { value: 'instalacion', label: 'Instalación',    color: '#ae9e8b' },
   { value: 'reformas',    label: 'Reformas',       color: '#ae8b8b' },
@@ -132,7 +132,7 @@ function CatalogLibraryPanel({ onInsert, onClose }) {
         {[{ slug: 'all', name: 'Todo' }, ...types].map(t => {
           const active = !s && activeType === t.slug;
           return (
-            <button key={t.slug} type="button" onClick={() => setActiveType(t.slug)} style={{ fontSize: '0.68rem', padding: '3px 9px', borderRadius: 14, cursor: 'pointer', border: `1px solid ${active ? '#beb0a2' : 'rgba(255,255,255,0.12)'}`, background: active ? 'rgba(190,176,162,0.15)' : 'transparent', color: active ? '#beb0a2' : 'rgba(255,255,255,0.5)', opacity: s ? 0.4 : 1 }}>
+            <button key={t.slug} type="button" onClick={() => setActiveType(t.slug)} style={{ fontSize: '0.68rem', padding: '3px 9px', borderRadius: 14, cursor: 'pointer', border: `1px solid ${active ? '#baafa5' : 'rgba(255,255,255,0.12)'}`, background: active ? 'rgba(186,175,165,0.15)' : 'transparent', color: active ? '#baafa5' : 'rgba(255,255,255,0.5)', opacity: s ? 0.4 : 1 }}>
               {t.name}{t.slug !== 'all' && ` (${countByType(t.slug)})`}
             </button>
           );
@@ -149,7 +149,7 @@ function CatalogLibraryPanel({ onInsert, onClose }) {
             <div key={g.id} style={{ marginBottom: '0.4rem' }}>
               <button type="button" onClick={() => setCollapsed(prev => ({ ...prev, [g.id]: !prev[g.id] }))} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, textAlign: 'left', background: 'rgba(255,255,255,0.04)', border: 'none', borderRadius: 6, padding: '0.45rem 0.6rem', cursor: 'pointer', position: 'sticky', top: 0, zIndex: 1 }}>
                 <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem' }}>{isCollapsed ? '▸' : '▾'}</span>
-                <span style={{ flex: 1, fontSize: '0.74rem', fontWeight: 600, color: '#beb0a2' }}>{g.name}</span>
+                <span style={{ flex: 1, fontSize: '0.74rem', fontWeight: 600, color: '#baafa5' }}>{g.name}</span>
                 <span style={{ fontSize: '0.66rem', color: 'rgba(255,255,255,0.3)' }}>{g.items.length}</span>
               </button>
               {!isCollapsed && g.items.map(p => (
@@ -292,7 +292,7 @@ function BudgetList({ onOpen }) {
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 3 }}>
           {['todos', 'independientes', 'proyectos'].map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{ padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.78rem', background: tab === t ? '#beb0a2' : 'transparent', color: tab === t ? '#0a0a0a' : 'rgba(255,255,255,0.5)', fontWeight: tab === t ? 600 : 400 }}>
+            <button key={t} onClick={() => setTab(t)} style={{ padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.78rem', background: tab === t ? '#baafa5' : 'transparent', color: tab === t ? '#0a0a0a' : 'rgba(255,255,255,0.5)', fontWeight: tab === t ? 600 : 400 }}>
               {t === 'todos' ? 'Todos' : t === 'independientes' ? 'Independientes' : 'Con proyecto'}
             </button>
           ))}
@@ -308,14 +308,14 @@ function BudgetList({ onOpen }) {
           return (
             <div key={b.id} className="pres-card pres-card--has-budget" onClick={() => onOpen(b.id)}>
               <div className="pres-card-head">
-                <div className="pres-card-names"><p className="pres-card-client" style={{ color: '#beb0a2' }}>{b.budget_number}</p><p className="pres-card-project">{b.budget_name || 'Sin nombre'}</p></div>
+                <div className="pres-card-names"><p className="pres-card-client" style={{ color: '#baafa5' }}>{b.budget_number}</p><p className="pres-card-project">{b.budget_name || 'Sin nombre'}</p></div>
                 {st && <span className="pres-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>}
               </div>
               <div className="pres-card-stats">
                 <div className="pres-cs"><span>Coste</span><strong>{fmt(b.itemCost)}</strong></div>
                 <div className="pres-cs"><span>PVP total</span><strong>{fmt(b.totalRevenue)}</strong></div>
                 <div className="pres-cs"><span>Beneficio</span><strong style={{ color: b.totalProfit >= 0 ? '#8bae8f' : '#ae8b8b' }}>{fmt(b.totalProfit)}</strong></div>
-                <div className="pres-cs"><span>Margen</span><strong style={{ color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#beb0a2' : '#ae8b8b' }}>{Number(b.margin||0).toFixed(1)}%</strong></div>
+                <div className="pres-cs"><span>Margen</span><strong style={{ color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#baafa5' : '#ae8b8b' }}>{Number(b.margin||0).toFixed(1)}%</strong></div>
               </div>
               <div className="pres-card-foot">
                 <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={e => { e.stopPropagation(); onOpen(b.id); }}>Abrir →</button>
@@ -339,7 +339,7 @@ function BudgetList({ onOpen }) {
                 <div className="pres-cs"><span>Coste</span><strong>{fmt(b.itemCost)}</strong></div>
                 <div className="pres-cs"><span>PVP total</span><strong>{fmt(b.totalRevenue)}</strong></div>
                 <div className="pres-cs"><span>Beneficio</span><strong style={{ color: b.totalProfit >= 0 ? '#8bae8f' : '#ae8b8b' }}>{fmt(b.totalProfit)}</strong></div>
-                <div className="pres-cs"><span>Margen</span><strong style={{ color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#beb0a2' : '#ae8b8b' }}>{Number(b.margin||0).toFixed(1)}%</strong></div>
+                <div className="pres-cs"><span>Margen</span><strong style={{ color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#baafa5' : '#ae8b8b' }}>{Number(b.margin||0).toFixed(1)}%</strong></div>
               </div>
               <div className="pres-card-foot">
                 <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={e => { e.stopPropagation(); onOpen(b.id); }}>Abrir →</button>
@@ -388,7 +388,7 @@ function ChapterRow({ item, onEdit, onDelete }) {
             <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setEditing(false); setName(item.name); }}>✕</button>
           </div>
         ) : (
-          <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#beb0a2', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#baafa5', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             📁 {item.name}
           </span>
         )}
@@ -480,9 +480,9 @@ function ItemRowEdit({ item, onSave, onCancel }) {
             type="button"
             onClick={()=>setD(p=>({...p, pricing_mode: isPvp ? 'margin' : 'pvp'}))}
             style={{fontSize:'0.62rem',padding:'2px 6px',borderRadius:4,border:'1px solid',cursor:'pointer',fontWeight:700,whiteSpace:'nowrap',
-              background: isPvp ? 'rgba(190,176,162,0.15)' : 'rgba(139,174,143,0.15)',
-              borderColor: isPvp ? '#beb0a2' : '#8bae8f',
-              color: isPvp ? '#beb0a2' : '#8bae8f'}}
+              background: isPvp ? 'rgba(186,175,165,0.15)' : 'rgba(139,174,143,0.15)',
+              borderColor: isPvp ? '#baafa5' : '#8bae8f',
+              color: isPvp ? '#baafa5' : '#8bae8f'}}
             title="Alternar modo de precio"
           >
             {isPvp ? 'PVP+Dto' : 'Coste+%'}
@@ -536,7 +536,7 @@ function ItemRowEdit({ item, onSave, onCancel }) {
         </td>
       </tr>
       {showSpecs && (
-        <tr className="pres-row" style={{background:'rgba(190,176,162,0.04)'}}>
+        <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
           <td colSpan={13} style={{padding:'0.5rem 0.75rem'}}>
             <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap',alignItems:'flex-end'}}>
               <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:120}}>
@@ -620,15 +620,15 @@ function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate }) {
         {/* MODO badge */}
         <td>
           <span style={{fontSize:'0.6rem',padding:'1px 5px',borderRadius:3,border:'1px solid',fontWeight:700,
-            borderColor: isPvp ? '#beb0a2' : '#8bae8f',
-            color: isPvp ? '#beb0a2' : '#8bae8f',
-            background: isPvp ? 'rgba(190,176,162,0.1)' : 'rgba(139,174,143,0.1)'}}>
+            borderColor: isPvp ? '#baafa5' : '#8bae8f',
+            color: isPvp ? '#baafa5' : '#8bae8f',
+            background: isPvp ? 'rgba(186,175,165,0.1)' : 'rgba(139,174,143,0.1)'}}>
             {isPvp ? 'PVP' : 'Margen'}
           </span>
         </td>
 
         {isPvp ? (<>
-          <td className="pres-mono" style={{color:'#beb0a2',fontSize:'0.8rem'}}>{fmt(item.pvp_ref)}</td>
+          <td className="pres-mono" style={{color:'#baafa5',fontSize:'0.8rem'}}>{fmt(item.pvp_ref)}</td>
           <td className="pres-mono" style={{color:'#ae9e8b',fontSize:'0.78rem'}}>{parseFloat(item.purchase_dto)>0 ? `-${item.purchase_dto}%` : '—'}</td>
           <td className="pres-mono" style={{color:'rgba(255,255,255,0.45)',fontSize:'0.78rem'}}>{fmt(costUnit)}</td>
           <td style={dimmed}>—</td>
@@ -652,7 +652,7 @@ function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate }) {
         </td>
       </tr>
       {hasSpecs && (
-        <tr style={{background:'rgba(190,176,162,0.03)'}}>
+        <tr style={{background:'rgba(186,175,165,0.03)'}}>
           <td colSpan={13} style={{padding:'0.25rem 0.75rem 0.4rem 2.5rem'}}>
             <span style={{fontSize:'0.68rem',color:'rgba(255,255,255,0.3)',display:'flex',gap:'1rem',flexWrap:'wrap'}}>
               {dims && <span>📐 {dims} cm</span>}
@@ -727,8 +727,8 @@ function NewItemRow({ onAdd, onAddChapter }) {
         <td>
           <button type="button" onClick={()=>setD(p=>({...p,pricing_mode:isPvp?'margin':'pvp'}))}
             style={{fontSize:'0.62rem',padding:'2px 6px',borderRadius:4,border:'1px solid',cursor:'pointer',fontWeight:700,whiteSpace:'nowrap',
-              background: isPvp?'rgba(190,176,162,0.15)':'rgba(139,174,143,0.15)',
-              borderColor: isPvp?'#beb0a2':'#8bae8f', color: isPvp?'#beb0a2':'#8bae8f'}}>
+              background: isPvp?'rgba(186,175,165,0.15)':'rgba(139,174,143,0.15)',
+              borderColor: isPvp?'#baafa5':'#8bae8f', color: isPvp?'#baafa5':'#8bae8f'}}>
             {isPvp ? 'PVP+Dto' : 'Coste+%'}
           </button>
         </td>
@@ -756,7 +756,7 @@ function NewItemRow({ onAdd, onAddChapter }) {
         </td>
       </tr>
       {showSpecs && (
-        <tr className="pres-row" style={{background:'rgba(190,176,162,0.04)'}}>
+        <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
           <td colSpan={10} style={{padding:'0.5rem 0.75rem'}}>
             <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap',alignItems:'flex-end'}}>
               <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:120}}>
@@ -1073,15 +1073,15 @@ function BudgetEditor({ id, onBack, onOpen }) {
         <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onBack}><ArrowLeft size={14}/> Volver</button>
         <div className="pres-editor-title">
           {budget.project ? (
-            <><span className="pres-editor-client">{budget.project.client_name}</span><h2>{budget.project.project_name} <span style={{ fontSize: '0.75rem', color: '#beb0a2', fontWeight: 400, marginLeft: 8 }}>{budget.budget_number}</span></h2></>
+            <><span className="pres-editor-client">{budget.project.client_name}</span><h2>{budget.project.project_name} <span style={{ fontSize: '0.75rem', color: '#baafa5', fontWeight: 400, marginLeft: 8 }}>{budget.budget_number}</span></h2></>
           ) : (
             <>
-              <span className="pres-editor-client" style={{ color: '#beb0a2' }}>{budget.budget_number}</span>
+              <span className="pres-editor-client" style={{ color: '#baafa5' }}>{budget.budget_number}</span>
               {editandoNombre ? (
                 <input
                   autoFocus value={nombreInput} onChange={e => setNombreInput(e.target.value)}
                   onBlur={guardarNombre} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditandoNombre(false); }}
-                  style={{ fontSize: '1.3rem', fontWeight: 600, background: 'transparent', border: 'none', borderBottom: '1px solid #beb0a2', color: '#fff', outline: 'none', padding: '2px 0', width: '100%' }}
+                  style={{ fontSize: '1.3rem', fontWeight: 600, background: 'transparent', border: 'none', borderBottom: '1px solid #baafa5', color: '#fff', outline: 'none', padding: '2px 0', width: '100%' }}
                 />
               ) : (
                 <h2 onClick={() => { setNombreInput(budget.budget_name || ''); setEditandoNombre(true); }} style={{ cursor: 'pointer' }} title="Clic para renombrar">
@@ -1108,9 +1108,9 @@ function BudgetEditor({ id, onBack, onOpen }) {
           { label: 'Coste total',     val: fmt(sum.itemCost) },
           { label: 'PVP artículos',   val: fmt(sum.itemRev) },
           { label: 'Honorarios',      val: fmt(sum.fee) },
-          { label: 'Total cliente',   val: fmt(sum.totalRev), color: '#beb0a2', accent: true },
+          { label: 'Total cliente',   val: fmt(sum.totalRev), color: '#baafa5', accent: true },
           { label: 'Beneficio bruto', val: fmt(sum.profit),   color: sum.profit >= 0 ? '#8bae8f' : '#ae8b8b' },
-          { label: 'Margen',          val: `${sum.margin.toFixed(1)}%`, color: sum.margin >= 20 ? '#8bae8f' : sum.margin >= 10 ? '#beb0a2' : '#ae8b8b' },
+          { label: 'Margen',          val: `${sum.margin.toFixed(1)}%`, color: sum.margin >= 20 ? '#8bae8f' : sum.margin >= 10 ? '#baafa5' : '#ae8b8b' },
         ].map(c => (
           <div key={c.label} className={`pres-sum-card${c.accent?' pres-sum-card--accent':''}`}>
             <span>{c.label}</span>
@@ -1170,8 +1170,8 @@ function BudgetEditor({ id, onBack, onOpen }) {
                     ['Total línea', pdfShowTotalCol, setPdfShowTotalCol],
                     ['Bloque ahorro', pdfShowSavings, setPdfShowSavings],
                   ].map(([label, val, setter]) => (
-                    <label key={label} style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.7rem',color: val ? '#beb0a2' : 'rgba(255,255,255,0.3)',cursor:'pointer',userSelect:'none'}}>
-                      <input type="checkbox" checked={val} onChange={e=>setter(e.target.checked)} style={{accentColor:'#beb0a2'}} />
+                    <label key={label} style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.7rem',color: val ? '#baafa5' : 'rgba(255,255,255,0.3)',cursor:'pointer',userSelect:'none'}}>
+                      <input type="checkbox" checked={val} onChange={e=>setter(e.target.checked)} style={{accentColor:'#baafa5'}} />
                       {label}
                     </label>
                   ))}

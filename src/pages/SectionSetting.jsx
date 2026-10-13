@@ -594,7 +594,7 @@ export function SectionSetting() {
             const activo = canalFiltro === canal;
             return (
               <button key={canal} type="button" onClick={() => setCanalFiltro(activo ? '' : canal)}
-                style={{ background: activo ? 'rgba(190,176,162,0.18)' : 'rgba(255,255,255,0.03)', border: activo ? '1px solid rgba(190,176,162,0.6)' : '1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:'0.45rem 0.75rem', fontSize:'0.75rem', color: activo ? '#fff' : 'rgba(255,255,255,0.6)', cursor:'pointer', fontFamily:'inherit' }}>
+                style={{ background: activo ? 'rgba(186,175,165,0.18)' : 'rgba(255,255,255,0.03)', border: activo ? '1px solid rgba(186,175,165,0.6)' : '1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:'0.45rem 0.75rem', fontSize:'0.75rem', color: activo ? '#fff' : 'rgba(255,255,255,0.6)', cursor:'pointer', fontFamily:'inherit' }}>
                 <strong style={{ color: activo ? '#fff' : '#fff' }}>{canal}</strong>: {v.total} lead{v.total === 1 ? '' : 's'}{v.ventas > 0 ? ` · ${v.ventas} venta${v.ventas === 1 ? '' : 's'} ${v.total > 0 ? ` (${Math.round((v.ventas / v.total) * 100)}%)` : ''}` : ''}
               </button>
             );

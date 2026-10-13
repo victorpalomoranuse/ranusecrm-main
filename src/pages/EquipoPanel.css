@@ -163,7 +163,7 @@
 .ep-phase-name {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #beb0a2;
+  color: #baafa5;
 }
 
 .ep-phase-dots {
@@ -178,7 +178,7 @@
   background: rgba(255,255,255,0.1);
 }
 
-.ep-dot.active { background: #beb0a2; }
+.ep-dot.active { background: #baafa5; }
 
 /* Code row */
 .ep-code-row {
@@ -195,7 +195,7 @@
   font-family: monospace;
   font-size: 0.88rem;
   font-weight: 600;
-  color: #beb0a2;
+  color: #baafa5;
   letter-spacing: 0.08em;
   flex: 1;
 }
@@ -287,7 +287,7 @@
   transition: all 0.15s;
 }
 
-.ep-tab.active { background: #beb0a2; color: #0a0a0a; font-weight: 600; }
+.ep-tab.active { background: #baafa5; color: #0a0a0a; font-weight: 600; }
 .ep-tab:not(.active):hover { color: #fff; }
 
 /* Tasks list */
@@ -340,8 +340,8 @@
   font-size: 0.68rem;
   padding: 2px 8px;
   border-radius: 20px;
-  background: rgba(190,176,162,0.1);
-  color: #beb0a2;
+  background: rgba(186,175,165,0.1);
+  color: #baafa5;
 }
 
 .ep-task-due {

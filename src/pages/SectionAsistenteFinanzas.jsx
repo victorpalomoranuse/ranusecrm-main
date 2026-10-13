@@ -29,7 +29,7 @@ function CreadosList({ creados }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '0.75rem 0' }}>
       {creados.map(m => (
-        <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(190,176,162,0.1)', border: '1px solid rgba(190,176,162,0.25)', borderRadius: 8, padding: '0.55rem 0.75rem' }}>
+        <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(186,175,165,0.1)', border: '1px solid rgba(186,175,165,0.25)', borderRadius: 8, padding: '0.55rem 0.75rem' }}>
           <CheckCircle2 size={14} color="#8bae8f" style={{ flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: '0.8rem', color: '#fff' }}>{m.concepto}</p>

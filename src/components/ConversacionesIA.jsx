@@ -63,7 +63,7 @@ export function PanelConversaciones({ conv, onAbrir, onNueva, disabled }) {
         <div style={{ marginTop: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, maxHeight: 280, overflowY: 'auto' }}>
           {lista.length === 0 && <p style={{ margin: 0, padding: '0.8rem 1rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>Todavía no hay conversaciones guardadas. Se guardan solas en cuanto el asistente responde.</p>}
           {lista.map(c => (
-            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.55rem 0.9rem', borderTop: '1px solid rgba(255,255,255,0.05)', background: c.id === convId ? 'rgba(190,176,162,0.14)' : 'transparent' }}>
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.55rem 0.9rem', borderTop: '1px solid rgba(255,255,255,0.05)', background: c.id === convId ? 'rgba(186,175,165,0.14)' : 'transparent' }}>
               <button type="button" onClick={() => { setAbierto(false); onAbrir(c.id); }} disabled={disabled} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, minWidth: 0 }}>
                 <div style={{ fontSize: '0.84rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.titulo || 'Conversación'}</div>
                 <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)' }}>{fmt(c.updated_at)}</div>
