@@ -2333,6 +2333,19 @@ function scene(C,k,view,o){
         if(r.cl.show==='trama')h+='<polygon points="'+rps+'" style="fill:'+C.bg+';stroke:'+C.label+';stroke-width:'+f2(1.2*px)+'"/>';
         h+=clSvg(C,px,rpoly,r.cl);
       }
+      if(st.verMedZonas!==false&&rpp.length>=3){
+        var nz=rpp.length;
+        rpp.forEach(function(a,i){
+          var b=rpp[(i+1)%nz],dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy);
+          if(L<10)return;
+          var ux=dx/L,uy=dy/L,onx=uy,ony=-ux,mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+          if(inPoly({x:mx+onx*2,y:my+ony*2},rpp)){onx=-onx;ony=-ony} /* normal hacia fuera de la zona */
+          var off=14*px,ix=-onx*off,iy=-ony*off;
+          h+=dimW(C,px,a.x+ix,a.y+iy,b.x+ix,b.y+iy,fmtU(L),C.label);
+          var d0=rayWalls(mx+onx*1.5,my+ony*1.5,onx,ony,view);
+          if(d0!=null&&d0>3&&d0<3000)h+=dimW(C,px,mx,my,mx+onx*d0,my+ony*d0,fmtU(d0),C.ok);
+        });
+      }
       zlab+=txt(C,px,q.cx,q.cy-2*px,(codes[r.mat]||'')+(r.nm?'  '+r.nm:''),C.label,12,600)+txt(C,px,q.cx,q.cy+13*px,m2(spArea(r)/10000)+' m²',C.label,10.5,500);
     });
     if(o.nodes&&st.spPoly&&st.spPoly.length){ /* zona que se está dibujando */
@@ -4059,7 +4072,7 @@ function drawPal(){
     $('alz-modo').hidden=v!=='alz'&&v!=='suelos'&&v!=='techos';
     if(v==='suelos'||v==='techos'){
       st.sueloModo=st.sueloModo||'sala';
-      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Rectángulo (arrastra)'],['poli','Dibujar la zona (puntos)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('')+(v==='suelos'?'<button data-sm="equipo" aria-pressed="'+(st.verEqSuelo!==false)+'" title="Enseña las máquinas y el mobiliario sobre el suelo">Ver equipamiento: '+(st.verEqSuelo!==false?'sí':'no')+'</button>':'')+(st.sueloModo==='poli'?'<button data-sm="libre" aria-pressed="'+!st.spLibre+'" title="Con las líneas rectas, cada tramo sale horizontal o vertical y se pega a las esquinas de la sala">Líneas rectas: '+(st.spLibre?'no':'sí')+'</button>':'')+(st.sueloModo==='poli'&&st.spPoly&&st.spPoly.length>=3?'<button data-sm="cerrar" class="pri">Cerrar la zona</button>':'');
+      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Rectángulo (arrastra)'],['poli','Dibujar la zona (puntos)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('')+(v==='suelos'||v==='techos'?'<button data-sm="medzonas" aria-pressed="'+(st.verMedZonas!==false)+'" title="Enseña el largo de cada lado de las zonas y a cuánto está cada lado del muro">Medidas de las zonas: '+(st.verMedZonas!==false?'sí':'no')+'</button>':'')+(v==='suelos'?'<button data-sm="equipo" aria-pressed="'+(st.verEqSuelo!==false)+'" title="Enseña las máquinas y el mobiliario sobre el suelo">Ver equipamiento: '+(st.verEqSuelo!==false?'sí':'no')+'</button>':'')+(st.sueloModo==='poli'?'<button data-sm="libre" aria-pressed="'+!st.spLibre+'" title="Con las líneas rectas, cada tramo sale horizontal o vertical y se pega a las esquinas de la sala">Líneas rectas: '+(st.spLibre?'no':'sí')+'</button>':'')+(st.sueloModo==='poli'&&st.spPoly&&st.spPoly.length>=3?'<button data-sm="cerrar" class="pri">Cerrar la zona</button>':'');
       if(st.sueloModo==='poli')$('pal-n').textContent='Elige el material y toca los puntos del contorno de la zona (una esquina tras otra). Los tramos salen rectos (horizontal o vertical) y se pegan a las esquinas de la sala; con «Líneas rectas: no» dibujas libre. Para cerrarla, toca el primer punto o pulsa «Cerrar la zona». Solo esa zona llevará ese material.';
       if(st.sueloModo==='parte')$('pal-n').textContent='Elige el material y ARRASTRA un rectángulo dentro de la sala: solo esa parte llevará ese material (el resto conserva el suyo). Luego ajusta sus medidas en el panel.';
     }
@@ -4088,6 +4101,7 @@ $('alz-modo').addEventListener('click',function(e){
   if(bs){
     var sm=bs.getAttribute('data-sm');
     if(sm==='cerrar'){spCerrar();return}
+    if(sm==='medzonas'){st.verMedZonas=st.verMedZonas===false;drawPal();render();return}
     if(sm==='equipo'){st.verEqSuelo=st.verEqSuelo===false;drawPal();render();return}
     if(sm==='libre'){st.spLibre=!st.spLibre;st.spHover=null;drawPal();render();return}
     st.sueloModo=sm;st.spPoly=null;st.spHover=null;st.tool='paint';drawPal();toolbar();hint();render();return;
