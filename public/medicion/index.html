@@ -2158,10 +2158,10 @@ function ln(x1,y1,x2,y2,stroke,sw,cap,extra){
 function txt(C,px,x,y,s,col,size,weight){
   return '<text x="'+f2(x)+'" y="'+f2(y)+'" text-anchor="middle" style="fill:'+col+';font-size:'+f2(size*px)+'px;font-weight:'+(weight||500)+';paint-order:stroke;stroke:'+C.halo+';stroke-width:'+f2(3*px)+'px;stroke-linejoin:round">'+s+'</text>';
 }
-function dimW(C,px,x1,y1,x2,y2,t,col){
-  var a=Math.atan2(y2-y1,x2-x1),nx=-Math.sin(a)*4*px,ny=Math.cos(a)*4*px,vert=Math.abs(x2-x1)<Math.abs(y2-y1);
-  return ln(x1,y1,x2,y2,col,px*1.2)+ln(x1-nx,y1-ny,x1+nx,y1+ny,col,px*1.2)+ln(x2-nx,y2-ny,x2+nx,y2+ny,col,px*1.2)+
-    txt(C,px,(x1+x2)/2+(vert?14*px:0),(y1+y2)/2+(vert?4*px:-5*px),t,col,12,500);
+function dimW(C,px,x1,y1,x2,y2,t,col,suave){
+  var a=Math.atan2(y2-y1,x2-x1),nx=-Math.sin(a)*(suave?3:4)*px,ny=Math.cos(a)*(suave?3:4)*px,vert=Math.abs(x2-x1)<Math.abs(y2-y1),lw=px*(suave?0.7:1.2);
+  return ln(x1,y1,x2,y2,col,lw)+ln(x1-nx,y1-ny,x1+nx,y1+ny,col,lw)+ln(x2-nx,y2-ny,x2+nx,y2+ny,col,lw)+
+    txt(C,px,(x1+x2)/2+(vert?14*px:0),(y1+y2)/2+(vert?4*px:-5*px),t,col,suave?9.5:12,suave?400:500);
 }
 /* muro seleccionado: sus medidas en azul sobre la propia línea (interior por dentro, exterior por fuera) y la interior de los muros que lo cortan; se tocan para cambiarlas */
 var AZUL='#2b7cff';
@@ -2483,14 +2483,17 @@ function scene(C,k,view,o){
       var low=pmx!=null&&q2.g<pmx;
       if(low){bad[eqs[ia].id]=1;bad[eqs[ib].id]=1}
       if(q2.g>=300)continue;
-      var gc=pmx==null?C.dim:(low?C.dem:C.ok);
+      var gc=pmx==null?C.dim:(low?C.dem:C.ok),suave=!!o.flat;
+      if(suave)gc=hexMix(gc,'#ffffff',0.4);
+      var mostrar=suave||(sel&&sel.t==='eq'&&(sel.id===eqs[ia].id||sel.id===eqs[ib].id)); /* trabajando: el plano limpio; las distancias salen al seleccionar un bloque */
+      if(!mostrar)continue;
       if(q2.dy<0&&q2.dx>0){
         var yy=(Math.max(ra.y0,rb.y0)+Math.min(ra.y1,rb.y1))/2,l=ra.x0<rb.x0?ra:rb,r2=ra.x0<rb.x0?rb:ra;
-        gl+=dimW(C,px,l.x1,yy,r2.x0,yy,fmtU(q2.g),gc);
+        gl+=dimW(C,px,l.x1,yy,r2.x0,yy,fmtU(q2.g),gc,suave);
         if(colectaDim)dimHits.push({kind:'eqg',a:eqs[ia].id,b:eqs[ib].id,ux:(ra===l?1:-1),uy:0,x:(l.x1+r2.x0)/2,y:yy-5*px,val:q2.g});
       }else if(q2.dx<0&&q2.dy>0){
         var xx=(Math.max(ra.x0,rb.x0)+Math.min(ra.x1,rb.x1))/2,t2=ra.y0<rb.y0?ra:rb,b2=ra.y0<rb.y0?rb:ra;
-        gl+=dimW(C,px,xx,t2.y1,xx,b2.y0,fmtU(q2.g),gc);
+        gl+=dimW(C,px,xx,t2.y1,xx,b2.y0,fmtU(q2.g),gc,suave);
         if(colectaDim)dimHits.push({kind:'eqg',a:eqs[ia].id,b:eqs[ib].id,ux:0,uy:(ra===t2?1:-1),x:xx+14*px,y:(t2.y1+b2.y0)/2,val:q2.g});
       }
     }
