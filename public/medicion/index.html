@@ -2240,7 +2240,7 @@ function selDims(C,px,w,view){
   if(cent){var cs=dimWalls(view).filter(function(c){return c._chain&&c._chain.indexOf(w)>=0});ch=cs[0]||null}
   var W0=ch||w;
   una(W0,true,null);
-  [W0.a,W0.b].forEach(function(nid){adjAll(W0,nid).forEach(function(aj){if(wallVis(aj,view))una(aj,false,nid)})});
+  [W0.a,W0.b].forEach(function(nid){adjAll(W0,nid).forEach(function(aj){if(wallVis(aj,view))una(corridaDe(aj,view,nid)||aj,false,nid)})});
   return h;
 }
 function gridSvg(C,k){
@@ -2716,18 +2716,42 @@ function dimWalls(view){
     node=w.a;cur=w;
     while((nx=vecino(cur,node))){usada[nx.id]=1;var ini=nx.a===node?nx.b:nx.a;seq.unshift({w:nx,ini:ini,fin:node});node=ini;cur=nx}
     if(seq.length===1){out.push(w);return}
-    var off=0,ops=[],offs=[],todos=true,suma=0;
-    seq.forEach(function(it){
-      var Lm=wg(it.w).l,dir=it.w.a===it.ini;
-      offs.push(off);
-      st.v.ops.forEach(function(o){if(o.wall===it.w.id)ops.push(Object.assign({},o,{p:off+(dir?o.p:Lm-o.p-o.w)}))});
-      if(it.w.m!==true)todos=false;
-      suma+=it.w.m===true?it.w.len:Lm;
-      off+=Lm;
-    });
-    out.push({id:seq[0].w.id,a:seq[0].ini,b:seq[seq.length-1].fin,t:w.t,s:w.s,m:todos,len:suma,_chain:seq.map(function(i){return i.w}),_seq:seq,_offs:offs,opsV:ops});
+    out.push(armaCadena(seq,w));
   });
   return out;
+}
+function armaCadena(seq,w){
+  var off=0,ops=[],offs=[],todos=true,suma=0;
+  seq.forEach(function(it){
+    var Lm=wg(it.w).l,dir=it.w.a===it.ini;
+    offs.push(off);
+    st.v.ops.forEach(function(o){if(o.wall===it.w.id)ops.push(Object.assign({},o,{p:off+(dir?o.p:Lm-o.p-o.w)}))});
+    if(it.w.m!==true)todos=false;
+    suma+=it.w.m===true?it.w.len:Lm;
+    off+=Lm;
+  });
+  return {id:seq[0].w.id,a:seq[0].ini,b:seq[seq.length-1].fin,t:w.t,s:w.s,m:todos,len:suma,_chain:seq.map(function(i){return i.w}),_seq:seq,_offs:offs,opsV:ops};
+}
+/* todo el tramo recto de un muro hasta las paredes del fondo, atravesando los tabiques que lo cortan (un muro partido por un tabique se acota entero) */
+function corridaDe(w,view,stop){
+  if(w.arc)return null;
+  var ws=st.v.walls.filter(function(x){return wallVis(x,view)&&!x.arc});
+  function sig(cur,node,usadas){
+    if(node===stop)return null; /* no se atraviesa el muro seleccionado */
+    var g=wg(cur),cand=null,n=0;
+    ws.forEach(function(o){
+      if(o===cur||usadas[o.id]||(o.a!==node&&o.b!==node))return;
+      var g2=wg(o);
+      if(Math.abs(g.ux*g2.uy-g.uy*g2.ux)<0.017){cand=o;n++}
+    });
+    return n===1?cand:null;
+  }
+  var seq=[{w:w,ini:w.a,fin:w.b}],us={},node=w.b,cur=w,nx;
+  us[w.id]=1;
+  while((nx=sig(cur,node,us))){us[nx.id]=1;var fin=nx.a===node?nx.b:nx.a;seq.push({w:nx,ini:node,fin:fin});node=fin;cur=nx}
+  node=w.a;cur=w;
+  while((nx=sig(cur,node,us))){us[nx.id]=1;var ini=nx.a===node?nx.b:nx.a;seq.unshift({w:nx,ini:ini,fin:node});node=ini;cur=nx}
+  return seq.length>1?armaCadena(seq,w):null;
 }
 function dimCfg(w,mode,cent,view,px){
   var g=wg(w),nx=-g.uy,ny=g.ux,mx=(g.a.x+g.b.x)/2,my=(g.a.y+g.b.y)/2;
