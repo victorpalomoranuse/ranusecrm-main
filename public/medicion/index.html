@@ -1418,8 +1418,53 @@ function clCuenta(poly,cl){
   var tl=clTiles(poly,cl);if(!tl)return null;
   var jc=(cl.j||0)/10,pa=Math.max(1,cl.w+jc)*Math.max(1,cl.h+jc),ent=0,cor=0,area=polyArea(poly);
   tl.forEach(function(q){var c=shClip(poly,q),a=c.length>2?polyArea(c):0;if(a>=pa*0.995)ent++;else if(a>0.5)cor++});
-  var piezas=ent+cor,comprada=piezas*cl.w*cl.h/10000,util=area/10000;
-  return {tiles:tl,enteras:ent,cortes:cor,piezas:piezas,reserva:Math.ceil(piezas*1.1),merma:util>0?Math.max(0,(comprada-util)/util*100):0,m2:util};
+  var piezas=ent+cor,comprada=piezas*cl.w*cl.h/10000,util=area/10000,mg=clMargen(cl);
+  return {tiles:tl,enteras:ent,cortes:cor,piezas:piezas,mg:mg,reserva:Math.ceil(piezas*(1+mg/100)),merma:util>0?Math.max(0,(comprada-util)/util*100):0,m2:util};
+}
+function clMargen(cl){return cl&&cl.mg!=null&&cl.mg>=0?cl.mg:10}
+/* cuenta rápida de una colocación: piezas a comprar y recortes diminutos (tiras de menos de 4 cm, feas de poner) */
+function clEval(poly,cl){
+  var tl=clTiles(poly,cl);if(!tl)return null;
+  var jc=(cl.j||0)/10,pa=Math.max(1,cl.w+jc)*Math.max(1,cl.h+jc),ent=0,cor=0,sliv=0;
+  tl.forEach(function(q){
+    var c=shClip(poly,q),a=c.length>2?polyArea(c):0;
+    if(a>=pa*0.995)ent++;
+    else if(a>0.5){cor++;var b=polyBox(c);if(Math.min(b.x1-b.x0,b.y1-b.y0)<4&&cl.pat!=='diag')sliv++}
+  });
+  return {piezas:ent+cor,ent:ent,cor:cor,sliv:sliv,coste:ent+cor+sliv*0.6};
+}
+/* busca el mejor inicio (y giro de la pieza) para la colocación elegida: menos piezas a comprar, menos cortes y sin tiras minúsculas */
+function clOptimiza(poly,cl,giro){
+  var mejor=null,ori=[[cl.w,cl.h]];
+  if(giro!==false&&cl.w!==cl.h)ori.push([cl.h,cl.w]);
+  ori.forEach(function(o){
+    var base=Object.assign({},cl,{w:o[0],h:o[1],ox:0,oy:0}),jc=(cl.j||0)/10,pw=o[0]+jc,ph=o[1]+jc;
+    var t0=clTiles(poly,base);if(!t0)return;
+    var n=t0.length>400?8:t0.length>150?10:14;
+    var prueba=function(ox,oy){
+      var c=Object.assign({},base,{ox:ox,oy:oy}),r=clEval(poly,c);if(!r)return;
+      if(!mejor||r.coste<mejor.r.coste-1e-9||(Math.abs(r.coste-mejor.r.coste)<1e-9&&r.ent>mejor.r.ent))mejor={cl:c,r:r};
+    };
+    var i,j;
+    for(i=0;i<n;i++)for(j=0;j<n;j++)prueba(pw*i/n,ph*j/n);
+    if(!mejor)return;
+    var cx=mejor.cl.ox,cy=mejor.cl.oy,sx=pw/n/3,sy=ph/n/3;
+    for(i=-3;i<=3;i++)for(j=-3;j<=3;j++)prueba(Math.round(((cx+i*sx)%pw+pw)%pw*10)/10,Math.round(((cy+j*sy)%ph+ph)%ph*10)/10);
+  });
+  if(!mejor)return null;
+  mejor.cl.ox=Math.round(mejor.cl.ox*10)/10;mejor.cl.oy=Math.round(mejor.cl.oy*10)/10;
+  return mejor;
+}
+/* compara los formatos habituales, cada uno con su mejor colocación */
+function clCompara(poly,cl){
+  var area=polyArea(poly)/10000,out=[];
+  CLPRE.forEach(function(p){
+    var c=Object.assign({},cl,{w:p[0],h:p[1]}),m=clOptimiza(poly,c,true);if(!m)return;
+    var comp=m.r.piezas*p[0]*p[1]/10000;
+    out.push({w:m.cl.w,h:m.cl.h,ox:m.cl.ox,oy:m.cl.oy,piezas:m.r.piezas,ent:m.r.ent,cor:m.r.cor,sliv:m.r.sliv,merma:area>0?Math.max(0,(comp-area)/area*100):0,sup:p[0]*p[1]});
+  });
+  out.sort(function(a,b){return b.sup-a.sup});
+  return out;
 }
 function clipSegPoly(a,b,poly){
   var dx=b.x-a.x,dy=b.y-a.y,ts=[0,1],i,out=[];
@@ -1458,10 +1503,17 @@ function colocHtml(o,poly){
   var preSel=CLPRE.filter(function(p){return p[0]===cl.w&&p[1]===cl.h}).length?cl.w+'x'+cl.h:'';
   h+='<label class="fld"><span>Formato de pieza</span><select data-t="cl_pre"><option value="">Personalizado</option>'+CLPRE.map(function(p){var v=p[0]+'x'+p[1];return '<option value="'+v+'"'+(preSel===v?' selected':'')+'>'+p[0]+' × '+p[1]+' cm</option>'}).join('')+'</select></label>';
   h+=fld('cl_w','Ancho de pieza (cm)',cl.w)+fld('cl_h','Largo de pieza (cm)',cl.h)+fld('cl_j','Junta (mm)',cl.j);
-  h+=fld('cl_ox','Mover el inicio en horizontal (cm)',cl.ox||0)+fld('cl_oy','Mover el inicio en vertical (cm)',cl.oy||0);
+  h+=fld('cl_ox','Mover el inicio en horizontal (cm)',cl.ox||0)+fld('cl_oy','Mover el inicio en vertical (cm)',cl.oy||0)+fld('cl_mg','Margen de pedido (%) por roturas y cortes',clMargen(cl));
+  if(poly)h+='<div class="btns"><button data-a="clopt">Optimizar colocación</button><button data-a="clcmp">Comparar formatos</button></div>';
   h+='<label class="fld"><span>Mostrar en el plano</span><select data-t="cl_show"><option value="ambos"'+(cl.show!=='trama'?' selected':'')+'>Color y despiece</option><option value="trama"'+(cl.show==='trama'?' selected':'')+'>Solo el despiece (sin color)</option></select></label>';
   var r=poly&&clCuenta(poly,cl);
-  if(r)h+='<div class="note" style="margin:6px 0"><b>'+r.enteras+'</b> piezas enteras · <b>'+r.cortes+'</b> cortes<br>Piezas a pedir: <b>'+r.piezas+'</b> ('+r.reserva+' con un 10 % de reserva) · merma: <b>'+(Math.round(r.merma*10)/10)+' %</b> sobre '+m2(r.m2)+' m²</div><p class="note" style="margin:0">Cuenta una pieza nueva por cada corte (sin reaprovechar recortes). Revisa los cortes de las esquinas y los encuentros con puertas.</p>';
+  if(r)h+='<div class="note" style="margin:6px 0"><b>'+r.enteras+'</b> piezas enteras · <b>'+r.cortes+'</b> cortes<br>Piezas necesarias: <b>'+r.piezas+'</b> · <b>A pedir: '+r.reserva+'</b> (con un '+String(r.mg).replace('.',',')+' % de margen) · merma: <b>'+(Math.round(r.merma*10)/10)+' %</b> sobre '+m2(r.m2)+' m²</div><p class="note" style="margin:0">Cuenta una pieza nueva por cada corte (sin reaprovechar recortes). Revisa los cortes de las esquinas y los encuentros con puertas.</p>';
+  if(st.clCmp&&st.clCmp.id===o.id&&st.clCmp.rows.length){
+    h+='<div class="lab" style="margin-top:10px">Formatos (mejor colocación de cada uno)</div><table class="cmp" style="width:100%;font-size:12px;border-collapse:collapse"><tr><th align="left">Pieza</th><th>Piezas</th><th>Cortes</th><th>Merma</th><th></th></tr>';
+    var mn=Math.min.apply(null,st.clCmp.rows.map(function(q){return q.merma+q.sliv*3}));
+    st.clCmp.rows.forEach(function(q,i){h+='<tr><td>'+q.w+' × '+q.h+'</td><td align="center">'+q.piezas+'</td><td align="center">'+q.cor+(q.sliv?' ('+q.sliv+' tiras)':'')+'</td><td align="center"'+(q.merma+q.sliv*3===mn?' style="font-weight:700"':'')+'>'+(Math.round(q.merma*10)/10)+' %</td><td><button data-a="clusa" data-i="'+i+'">Usar</button></td></tr>'});
+    h+='</table><p class="note" style="margin:4px 0 0">Ordenados de mayor a menor pieza. En negrita, el de menos desperdicio.</p>';
+  }
   else if(poly)h+='<p class="note">Las piezas son demasiado pequeñas para esta sala: no se dibuja ni se calcula.</p>';
   return h;
 }
@@ -1469,6 +1521,7 @@ function applyCl(key,n){
   var o=clObj();if(!o||!o.cl)return;
   if((key==='cl_w'||key==='cl_h')&&!(n>=1&&n<=500)){toast('Escribe una medida entre 1 y 500 cm');return}
   if(key==='cl_j'&&!(n>=0&&n<=50)){toast('La junta va de 0 a 50 mm');return}
+  if(key==='cl_mg'&&!(n>=0&&n<=100)){toast('El margen va de 0 a 100 %');return}
   snap();o.cl[key.slice(3)]=n;commit(false);panelSel();
 }
 /* dibujar la zona de un suelo o techo punto a punto */
@@ -4461,7 +4514,7 @@ function seg3(cur,act){
 }
 (function(){var u=document.getElementById('unidad');if(!u)return;u.value=UNIT;u.addEventListener('change',function(){UNIT=UNIDADES[u.value]?u.value:'cm';try{localStorage.setItem('ranuse-unidad',UNIT)}catch(e){}render();panelSel();toast('Unidad: '+UNIT+' (los datos se guardan igual; solo cambia cómo se escriben)')})})();
 function fld(key,label,val,ph){
-  var sin=/^(w_ang|pil_cnt|dr_fs|dr_wd|cl_j)$/.test(key);
+  var sin=/^(w_ang|pil_cnt|dr_fs|dr_wd|cl_j|cl_mg)$/.test(key);
   if(!sin)label=String(label).replace(/cm/g,UNL());
   return '<label class="fld"><span>'+label+'</span><input data-f="'+key+'" inputmode="decimal" autocomplete="off" value="'+(val==null?'':(sin?f2(val):toU(val)))+'"'+(ph!=null?' placeholder="'+(sin||isNaN(+ph)?ph:toU(+ph))+'"':'')+'></label>';
 }
@@ -5059,6 +5112,25 @@ function doAction(a,el){
     st.v.rc.push(nrc);st.sel={t:'rc',id:nrc.id};
     if(!rcVis(st.view)){st.view='interv';toolbar()}
     commit();toast('Recrecido añadido. Ajusta el tramo, la cara y el espesor en el panel.');return;
+  }
+  if(a==='clopt'||a==='clcmp'||a==='clusa'){
+    var qo=clObj(),qp=null;
+    if(qo&&qo.cl){
+      if(st.sel.t==='sp')qp=spPts(qo);
+      else{var qz2=qo,vz=qz2.k==='s'?'suelos':'techos';roomFaces(vz).forEach(function(f){if(!qp&&zoneIn(f,qz2.k)===qz2)qp=f.inner})}
+    }
+    if(!qp){toast('No encuentro la zona para calcular');return}
+    if(a==='clopt'){
+      var mo=clOptimiza(qp,qo.cl,true),antes=clEval(qp,qo.cl);
+      if(!mo){toast('Las piezas son demasiado pequeñas para optimizar');return}
+      snap();qo.cl.w=mo.cl.w;qo.cl.h=mo.cl.h;qo.cl.ox=mo.cl.ox;qo.cl.oy=mo.cl.oy;commit(false);panelSel();
+      toast(antes&&antes.piezas>mo.r.piezas?'Optimizado: '+antes.piezas+' → '+mo.r.piezas+' piezas':'Colocación optimizada (ya era de las mejores)');
+      return;
+    }
+    if(a==='clcmp'){st.clCmp={id:qo.id,rows:clCompara(qp,qo.cl)};panelSel();return}
+    var rw=st.clCmp&&st.clCmp.rows[+el.getAttribute('data-i')];
+    if(rw){snap();qo.cl.w=rw.w;qo.cl.h=rw.h;qo.cl.ox=rw.ox;qo.cl.oy=rw.oy;commit(false);panelSel();toast('Formato '+rw.w+' × '+rw.h+' aplicado')}
+    return;
   }
   if(a==='spadd'){st.spAdd=!st.spAdd;panelSel();render();toast(st.spAdd?'Toca un lado de la zona para añadir un punto':'Tocar una línea la mueve entera');return}
   if(a==='spdelv'&&s.t==='sp'){var spq=by(st.v.sp,s.id);if(spq&&spq.pts&&spq.pts.length>3&&st.spVsel&&st.spVsel.id===spq.id){snap();spq.pts.splice(st.spVsel.i,1);st.spVsel=null;commit();panelSel()}return}
@@ -6917,7 +6989,7 @@ function sheetPage(doc,view,idx,total,o){
       var r=clCuenta(poly,cl);if(!r)return;
       var patC={recto:'Recto',rompe2:'Rompejuntas ½',rompe3:'Rompejuntas ⅓',diag:'Diagonal'}[cl.pat]||cl.pat;
       rows.push([nm+' · pieza '+fmt(cl.w)+'×'+fmt(cl.h)+' · '+patC,r.enteras+' + '+r.cortes+' cortes']);
-      rows.push(['   A pedir (merma '+String(Math.round(r.merma*10)/10).replace('.',',')+' %)',r.piezas+' ud']);
+      rows.push(['   A pedir (+'+String(r.mg).replace('.',',')+' % margen · merma '+String(Math.round(r.merma*10)/10).replace('.',',')+' %)',r.reserva+' ud']);
     };
     roomsL.forEach(function(r,i){if(!r.z.ex)filaCl((cd[r.z.mat]||'')+' sala',r.f.inner,r.z.cl)});
     (v.sp||[]).forEach(function(r,i){if(r.k!==zkind(view)||r.ex)return;var pp=spPts(r);if(pp)filaCl((cd[r.mat]||'')+' zona '+(i+1),pp,r.cl)});
