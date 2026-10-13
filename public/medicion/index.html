@@ -2372,10 +2372,10 @@ function scene(C,k,view,o){
         var ttw=Math.max(5,m.tx.tw||60),tth=ttw*m.tx.h/m.tx.w,pid='zt'+m.tx.id.replace(/[^a-zA-Z0-9]/g,'')+Math.round(ttw);
         h+='<defs><pattern id="'+pid+'" patternUnits="userSpaceOnUse" width="'+f2(ttw)+'" height="'+f2(tth)+'"><image href="'+m.tx.uri+'" x="0" y="0" width="'+f2(ttw)+'" height="'+f2(tth)+'" preserveAspectRatio="none"/></pattern></defs>';
         h+='<polygon points="'+pts+'" style="fill:url(#'+pid+');stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
-      }else h+='<polygon points="'+pts+'" style="fill:'+(o.flat?hexMix(m.c,'#ffffff',0.35):m.c)+(o.flat?'':';fill-opacity:.62')+';stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
+      }else h+='<polygon points="'+pts+'" style="fill:'+(o.flat?hexMix(m.c,'#ffffff',0.55):m.c)+(o.flat?'':';fill-opacity:.62')+';stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
       if(z.cl&&z.cl.pat){
         if(z.cl.show==='trama')h+='<polygon points="'+pts+'" style="fill:'+C.bg+';stroke:none"/>';
-        h+=clSvg(C,px,f.inner,z.cl,hexMix((o.flat?hexMix(m.c,'#ffffff',0.35):m.c),'#000000',0.16));
+        h+=clSvg(C,px,f.inner,z.cl,hexMix((o.flat?hexMix(m.c,'#ffffff',0.55):m.c),'#000000',0.16));
       }
       var l1=(codes[z.mat]||'')+(z.nm?'  '+z.nm:''),l2=m2((f.area-spEn(f,zk))/10000)+' m²'+(view==='techos'&&z.h?'  ·  h '+fmtU(z.h):'');
       zlab+=txt(C,px,f.cx,f.cy-2*px,l1,C.label,13,600)+txt(C,px,f.cx,f.cy+14*px,l2,C.label,11,500);
@@ -2388,13 +2388,13 @@ function scene(C,k,view,o){
         var ttw=Math.max(5,m.tx.tw||60),tth=ttw*m.tx.h/m.tx.w,pid='zt'+m.tx.id.replace(/[^a-zA-Z0-9]/g,'')+Math.round(ttw);
         h+='<defs><pattern id="'+pid+'" patternUnits="userSpaceOnUse" width="'+f2(ttw)+'" height="'+f2(tth)+'"><image href="'+m.tx.uri+'" x="0" y="0" width="'+f2(ttw)+'" height="'+f2(tth)+'" preserveAspectRatio="none"/></pattern></defs>';
         fill='url(#'+pid+')';
-      }else fill=(o.flat?hexMix(m.c,'#ffffff',0.35):m.c);
+      }else fill=(o.flat?hexMix(m.c,'#ffffff',0.55):m.c);
       var rpp=spPts(r),rps=rpp.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ');
       h+='<polygon points="'+rps+'" style="fill:'+fill+(m.tx&&!o.flat||o.flat?'':';fill-opacity:.85')+';stroke:'+(sl?C.accent:C.label)+';stroke-width:'+f2((sl?3:1.2)*px)+';stroke-linejoin:round"/>';
       if(r.cl&&r.cl.pat){
         var rpoly=rpp;
         if(r.cl.show==='trama')h+='<polygon points="'+rps+'" style="fill:'+C.bg+';stroke:'+C.label+';stroke-width:'+f2(1.2*px)+'"/>';
-        h+=clSvg(C,px,rpoly,r.cl,hexMix((o.flat?hexMix(m.c,'#ffffff',0.35):m.c),'#000000',0.16));
+        h+=clSvg(C,px,rpoly,r.cl,hexMix((o.flat?hexMix(m.c,'#ffffff',0.55):m.c),'#000000',0.16));
       }
       if(sl&&o.nodes){ /* manijas: puntos del contorno y, entre ellos, puntos para añadir uno nuevo */
         rpp.forEach(function(a,i){
@@ -2446,7 +2446,14 @@ function scene(C,k,view,o){
     });
     if(!o.nonum&&!o.flat&&(v.eq||[]).length)zlab+='';
   }
-  v.walls.forEach(function(w){
+  if(o.flat){
+    var owh=1.5*px,wsh=v.walls.filter(function(w){return wallVis(w,view)});
+    wsh.forEach(function(w){var g=wg(w),dm0=view==='demol'&&w.s==='dem';h+=ln(g.a.x,g.a.y,g.b.x,g.b.y,dm0?C.dem:stCol(w.s,view,C),w.t,w.arc?'round':'square')});
+    wsh.forEach(function(w){
+      var g=wg(w),dm0=view==='demol'&&w.s==='dem',col0=stCol(w.s,view,C),rel=dm0?'url(#hat)':(w.s==='new'?hexMix(col0,'#ffffff',0.72):C.bg);
+      h+=ln(g.a.x,g.a.y,g.b.x,g.b.y,rel,Math.max(0.5,w.t-2*owh),w.arc?'round':'square');
+    });
+  }else v.walls.forEach(function(w){
     if(!wallVis(w,view))return;
     var g=wg(w);
     if(view==='demol'&&w.s==='dem'){
@@ -2470,7 +2477,7 @@ function scene(C,k,view,o){
   v.pil.forEach(function(p){
     if(!stVis(p.s,view))return;
     var fill=(view==='demol'&&p.s==='dem')?'url(#hat)':stCol(p.s,view,C);
-    pilCells(p).forEach(function(c){h+='<rect x="'+f2(c.x-p.w/2)+'" y="'+f2(c.y-p.d/2)+'" width="'+f2(p.w)+'" height="'+f2(p.d)+'" style="fill:'+fill+';stroke:'+(view==='demol'&&p.s==='dem'?C.dem:'none')+';stroke-width:'+f2(px)+'"/>'});
+    pilCells(p).forEach(function(c){h+='<rect x="'+f2(c.x-p.w/2)+'" y="'+f2(c.y-p.d/2)+'" width="'+f2(p.w)+'" height="'+f2(p.d)+'" style="fill:'+(o.flat&&!(view==='demol'&&p.s==='dem')?C.bg:fill)+';stroke:'+(view==='demol'&&p.s==='dem'?C.dem:(o.flat?fill:'none'))+';stroke-width:'+f2((o.flat?1.5:1)*px)+'"/>'});
   });
   if(view==='cotas')v.pil.forEach(function(p){
     if(!stVis(p.s,view))return;
@@ -5301,7 +5308,42 @@ function chW(ch,bold){
   if(cb>=32&&cb<=126)return (bold?HBLD:HREG)[cb-32];
   return 556;
 }
-function txtW(s,bold,size){var w=0;for(var i=0;i<s.length;i++)w+=chW(s.charAt(i),bold);return w/1000*size}
+/* Montserrat incrustada en el PDF (ligera, regular y seminegrita); si no se ha podido cargar se usa Helvetica */
+var MF=null;
+function cargaFuentesPdf(){
+  if(typeof fetch!=='function')return;
+  var base='fonts/';
+  fetch(base+'fonts.json').then(function(r){return r.json()}).then(function(meta){
+    var f={},pend=0;
+    [300,400,600].forEach(function(k){
+      pend++;
+      fetch(base+'mont-'+k+'.ttf').then(function(r){return r.arrayBuffer()}).then(function(b){
+        var m=meta[k];m.ttf=new Uint8Array(b);f[k]=m;
+        if(--pend===0&&f[300]&&f[400]&&f[600])MF={f:f};
+      }).catch(function(){pend=-99});
+    });
+  }).catch(function(){});
+}
+function fkey(bold,peso){return peso||(bold?600:400)}
+function gidDe(F,ch){
+  var g=F.cmap[ch.charCodeAt(0)];
+  if(g==null){var b=ch.normalize('NFD').charAt(0);g=F.cmap[b.charCodeAt(0)]}
+  if(g==null)g=F.cmap[63];
+  return g;
+}
+function txtW(s,bold,size,peso,sp){
+  var F=MF&&MF.f[fkey(bold,peso)];
+  if(F){var w0=0;for(var j=0;j<s.length;j++)w0+=F.adv[gidDe(F,s.charAt(j))]||0;return w0/F.upm*size+(sp||0)*Math.max(0,s.length-1)}
+  var w=0;for(var i=0;i<s.length;i++)w+=chW(s.charAt(i),bold);return w/1000*size+(sp||0)*Math.max(0,s.length-1);
+}
+/* texto listo para el PDF: {fuente, cadena}. Con Montserrat el texto va como índices de glifo (hex) */
+function fontTxt(s,bold,peso){
+  var k=fkey(bold,peso),F=MF&&MF.f[k];
+  if(!F)return {f:bold?'/F2 ':'/F1 ',t:pdfStr(s)};
+  var hex='';
+  for(var i=0;i<s.length;i++)hex+=('0000'+gidDe(F,s.charAt(i)).toString(16)).slice(-4);
+  return {f:'/F'+(k===300?5:k===400?6:7)+' ',t:'<'+hex+'>'};
+}
 var WINA={0x2014:0x97,0x2013:0x96,0x2022:0x95,0x2026:0x85,0x20AC:0x80,0x2019:0x92,0x2018:0x91,0x201C:0x93,0x201D:0x94};
 function pdfStr(s){
   var o='(';
@@ -5367,13 +5409,13 @@ Pg.prototype={
     this.o.push(s);
   },
   text:function(x,y,s,pt,o){
-    o=o||{};var size=pt*25.4/72,bold=!!o.bold,w=txtW(s,bold,size);
+    o=o||{};var size=pt*25.4/72,bold=!!o.bold,peso=o.light?300:(o.peso||0),sp=o.sp||0,w=txtW(s,bold,size,peso,sp);
     if(o.anchor==='middle')x-=w/2;else if(o.anchor==='end')x-=w;
-    var f=bold?'/F2 ':'/F1 ';
-    var a='BT '+f+pn(size)+' Tf 1 0 0 -1 '+pn(x)+' '+pn(y)+' Tm ';
+    var ft=fontTxt(s,bold,peso);
+    var a='BT '+ft.f+pn(size)+' Tf '+pn(sp)+' Tc 1 0 0 -1 '+pn(x)+' '+pn(y)+' Tm ';
     var r='';
-    if(o.halo)r+=a+'1 Tr '+pcol(o.halo)+' RG '+pn(o.haloW||size*0.25)+' w 1 j '+pdfStr(s)+' Tj ET ';
-    r+=a+'0 Tr '+pcol(o.col||'#000000')+' rg '+pdfStr(s)+' Tj ET';
+    if(o.halo)r+=a+'1 Tr '+pcol(o.halo)+' RG '+pn(o.haloW||size*0.25)+' w 1 j '+ft.t+' Tj ET ';
+    r+=a+'0 Tr '+pcol(o.col||'#000000')+' rg '+ft.t+' Tj ET';
     this.o.push(r);
     return w;
   },
@@ -5475,12 +5517,12 @@ Pg.prototype={
           }
           paint(ch,ps,null);
         }else if(tg==='text'){
-          var s=ch.textContent,size=F(ch,'font-size',12),bold=F(ch,'font-weight',400)>=600,col=P(ch,'fill')||'#000000',hl=P(ch,'stroke'),anc=ch.getAttribute('text-anchor')||'start';
-          var tx=F(ch,'x',0),ty=F(ch,'y',0),w2=txtW(s,bold,size);
+          var s=ch.textContent,size=F(ch,'font-size',12),fw=F(ch,'font-weight',400),bold=fw>=600,peso=fw<=300?300:0,col=P(ch,'fill')||'#000000',hl=P(ch,'stroke'),anc=ch.getAttribute('text-anchor')||'start';
+          var tx=F(ch,'x',0),ty=F(ch,'y',0),w2=txtW(s,bold,size,peso);
           if(anc==='middle')tx-=w2/2;else if(anc==='end')tx-=w2;
-          var f=bold?'/F2 ':'/F1 ',a='BT '+f+pn(size)+' Tf 1 0 0 -1 '+pn(tx)+' '+pn(ty)+' Tm ',r='';
-          if(hl&&hl!=='none')r+=a+'1 Tr '+pcol(hl)+' RG '+pn(F(ch,'stroke-width',size*0.25))+' w 1 j '+pdfStr(s)+' Tj ET ';
-          r+=a+'0 Tr '+pcol(col)+' rg '+pdfStr(s)+' Tj ET';
+          var ft=fontTxt(s,bold,peso),a='BT '+ft.f+pn(size)+' Tf 0 Tc 1 0 0 -1 '+pn(tx)+' '+pn(ty)+' Tm ',r='';
+          if(hl&&hl!=='none')r+=a+'1 Tr '+pcol(hl)+' RG '+pn(F(ch,'stroke-width',size*0.25))+' w 1 j '+ft.t+' Tj ET ';
+          r+=a+'0 Tr '+pcol(col)+' rg '+ft.t+' Tj ET';
           self.o.push(r);
         }
       }
@@ -5495,7 +5537,7 @@ PdfDoc.prototype={
   bytes:function(){
     var chunks=[],len=0,offs=[];
     function add(s){var b;if(typeof s==='string'){b=new Uint8Array(s.length);for(var i=0;i<s.length;i++)b[i]=s.charCodeAt(i)&255}else b=s;chunks.push(b);len+=b.length}
-    var self=this,nobj=4+self.images.length+self.pages.length*2;
+    var self=this,nfont=MF?15:0,nobj=4+self.images.length+self.pages.length*2+nfont;
     function obj(n,body){offs[n]=len;add(n+' 0 obj\n');add(body);add('\nendobj\n')}
     add('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
     var firstPage=5+self.images.length,kids=[];
@@ -5508,12 +5550,33 @@ PdfDoc.prototype={
       offs[5+i]=len;add((5+i)+' 0 obj\n<< /Type /XObject /Subtype /Image /Width '+im.w+' /Height '+im.h+' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length '+im.rgb.length+' >>\nstream\n');
       add(im.rgb);add('\nendstream\nendobj\n');
     });
+    var fontRes='/F1 3 0 R /F2 4 0 R';
+    if(MF){
+      var fb=4+self.images.length+self.pages.length*2;
+      [300,400,600].forEach(function(k,fi){
+        var Fm=MF.f[k],o0=fb+1+fi*5,nm='Montserrat-'+(k===300?'Light':k===400?'Regular':'SemiBold');
+        var wArr='',gids=Object.keys(Fm.adv).map(Number).sort(function(a,b){return a-b});
+        gids.forEach(function(g){wArr+=g+' ['+Math.round(Fm.adv[g]*1000/Fm.upm)+'] '});
+        obj(o0,'<< /Type /Font /Subtype /Type0 /BaseFont /'+nm+' /Encoding /Identity-H /DescendantFonts ['+(o0+1)+' 0 R] /ToUnicode '+(o0+4)+' 0 R >>');
+        obj(o0+1,'<< /Type /Font /Subtype /CIDFontType2 /BaseFont /'+nm+' /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor '+(o0+2)+' 0 R /DW 600 /W ['+wArr+'] /CIDToGIDMap /Identity >>');
+        obj(o0+2,'<< /Type /FontDescriptor /FontName /'+nm+' /Flags 32 /FontBBox ['+Fm.bbox.join(' ')+'] /ItalicAngle 0 /Ascent '+Fm.asc+' /Descent '+Fm.desc+' /CapHeight '+Fm.cap+' /StemV 80 /FontFile2 '+(o0+3)+' 0 R >>');
+        offs[o0+3]=len;add((o0+3)+' 0 obj\n<< /Length '+Fm.ttf.length+' /Length1 '+Fm.ttf.length+' >>\nstream\n');add(Fm.ttf);add('\nendstream\nendobj\n');
+        var cps=Object.keys(Fm.cmap).map(Number),bf='';
+        for(var q=0;q<cps.length;q+=100){
+          var ch=cps.slice(q,q+100);
+          bf+=ch.length+' beginbfchar\n'+ch.map(function(cp){return '<'+('0000'+Fm.cmap[cp].toString(16)).slice(-4)+'> <'+('0000'+cp.toString(16)).slice(-4)+'>'}).join('\n')+'\nendbfchar\n';
+        }
+        var tu='/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def /CMapName /Adobe-Identity-UCS def /CMapType 2 def 1 begincodespacerange <0000> <FFFF> endcodespacerange\n'+bf+'endcmap CMapName currentdict /CMap defineresource pop end end';
+        obj(o0+4,'<< /Length '+tu.length+' >>\nstream\n'+tu+'\nendstream');
+        fontRes+=' /F'+(k===300?5:k===400?6:7)+' '+o0+' 0 R';
+      });
+    }
     self.pages.forEach(function(p,i){
       var cn=firstPage+i*2,pnn=cn+1,wp=p.w*MM,hp=p.h*MM;
       var cs='q '+pn(MM)+' 0 0 '+pn(-MM)+' 0 '+pn(hp)+' cm\n'+p.o.join('\n')+'\nQ';
       obj(cn,'<< /Length '+cs.length+' >>\nstream\n'+cs+'\nendstream');
       var xo=p.imgs.map(function(ix){return '/Im'+ix+' '+(4+ix)+' 0 R'}).join(' ');
-      obj(pnn,'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+pn(wp)+' '+pn(hp)+'] /Contents '+cn+' 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >>'+(xo?' /XObject << '+xo+' >>':'')+' >> >>');
+      obj(pnn,'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+pn(wp)+' '+pn(hp)+'] /Contents '+cn+' 0 R /Resources << /Font << '+fontRes+' >>'+(xo?' /XObject << '+xo+' >>':'')+' >> >>');
     });
     var xr=len;
     add('xref\n0 '+(nobj+1)+'\n0000000000 65535 f \n');
@@ -5526,8 +5589,9 @@ PdfDoc.prototype={
 
 /* ---------- láminas PDF ---------- */
 var LSL='ranuse-logo-v1',LOGO=null;
+cargaFuentesPdf();
 var SCALES=[10,20,25,30,40,50,60,75,100,150,200,250,500];
-var INK='#111111',MUTED='#6f675f',LINEC='#cfc8c1',MARCA='#baafa5',MARCA_F='#f6f4f2';
+var INK='#111111',MUTED='#8e847b',LINEC='#e4dfda',MARCA='#baafa5',MARCA_F='#f7f5f3';
 function fdate(s){var m=/^(\d{4})-(\d\d)-(\d\d)$/.exec(s||'');return m?m[3]+'/'+m[2]+'/'+m[1]:(s||'—')}
 function fitTxt(s,maxW,bold,size){
   if(txtW(s,bold,size)<=maxW)return s;
@@ -5605,22 +5669,35 @@ function carpPlan(o){
 }
 function carpFrame(doc,idx,total,o,title,note){
   var v=st.v,A3=o.paper!=='A4',PW=A3?420:297,PH=A3?297:210,f=A3?1:0.76,mg=10,p=doc.page(PW,PH);
-  p.rect(mg-3.2,mg-3.2,PW-2*mg+6.4,PH-2*mg+6.4,null,'#baafa5',0.18);
-  p.rect(mg,mg,PW-2*mg,PH-2*mg,null,INK,0.35);
-  p.text(mg+7,mg+10,title.toUpperCase(),15*f+1,{bold:true,col:INK});
-  p.rect(mg+7,mg+12,14*f,0.8,'#baafa5',null,0);
-  p.text(mg+7,mg+18.2,(v.nombre||'Sin nombre')+(v.planta?' · '+v.planta:'')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
-  if(o.logo){var lw=o.logo.w,lh=o.logo.h,sc=Math.min(40/lw,11*f/lh);p.img(o.logoIdx,PW-mg-6-lw*sc,mg+4,lw*sc,lh*sc)}
-  else p.text(PW-mg-6,mg+10,'RANUSE DESIGN',9*f,{bold:true,col:INK,anchor:'end'});
-  var fy=PH-mg-12*f,wTot=PW-2*mg;
-  p.line(mg,fy,PW-mg,fy,INK,0.35);
-  function cell(x,lab,val,w,bold){p.text(x,fy+3*f,lab.toUpperCase(),5*f,{col:MUTED});p.text(x,fy+8.5*f,fitTxt(val,w-2,!!bold,8*f*25.4/72),8*f,{bold:!!bold,col:INK})}
-  cell(mg+4,'Proyecto',v.nombre||'Sin nombre',wTot*0.34,true);
-  cell(mg+4+wTot*0.36,'Cliente',v.cliente||'—',wTot*0.22);
-  cell(mg+4+wTot*0.60,'Medición',fdate(v.fecha),wTot*0.12);
-  cell(mg+4+wTot*0.74,'Lámina',title,wTot*0.16,true);
-  cell(mg+4+wTot*0.92,'Hoja',idx+'/'+total,wTot*0.08,true);
-  p.text(mg+7,fy-1.6,note||'Medidas en centímetros, a comprobar en obra antes de fabricar.',4.8*f,{col:MUTED});
+  var bandH=A3?24:19,fy=PH-mg-bandH,W0=PW-2*mg;
+  p.rect(mg,mg,PW-2*mg,PH-2*mg,null,MARCA,0.3);
+  /* título: etiqueta con letras espaciadas y título ligero */
+  p.text(mg+9,mg+8.5,((v.nombre||'Sin nombre')+(v.planta?' · '+v.planta:'')).toUpperCase(),5.2*f+0.6,{bold:true,col:MUTED,sp:0.5});
+  p.text(mg+9,mg+17.5,title,16*f+3,{light:true,col:INK});
+  p.rect(mg+9,mg+20.2,12*f,0.5,MARCA,null,0);
+  /* cajetín en banda inferior */
+  p.rect(mg,fy,W0,bandH,'#ffffff',null,0);
+  p.line(mg,fy,PW-mg,fy,MARCA,0.3);
+  var fr=[0.12,0.22,0.15,0.12,0.25,0.08],xs=[mg],c0=0;
+  fr.forEach(function(q){c0+=q;xs.push(mg+W0*c0)});
+  var codLam='A.'+('0'+idx).slice(-2),tpt=6.8*f;
+  for(var qx=1;qx<=5;qx++)p.line(xs[qx],fy+3.5*f,xs[qx],PH-mg-3.5*f,LINEC,0.25);
+  function campo(x,y,lab,val,w,bold){
+    p.text(x,y,lab.toUpperCase(),4.4*f+0.4,{bold:true,col:MUTED,sp:0.35});
+    p.text(x,y+5*f,fitTxt(String(val),w,!!bold,tpt*25.4/72),tpt,{bold:!!bold,col:INK});
+  }
+  if(o.logo){var lw=o.logo.w,lh=o.logo.h,mh=9*f,mw=(xs[1]-xs[0])-10*f,sc=Math.min(mw/lw,mh/lh);p.img(o.logoIdx,xs[0]+5*f,fy+(bandH-lh*sc)/2,lw*sc,lh*sc)}
+  else p.text(xs[0]+5*f,fy+bandH/2+1.6,'RANUSE DESIGN',9*f,{light:true,col:INK,sp:0.7});
+  var y1=fy+8.5*f;
+  campo(xs[1]+5*f,y1,'Proyecto',v.nombre||'Sin nombre',xs[2]-xs[1]-9*f,true);
+  campo(xs[2]+5*f,y1,'Cliente',v.cliente||'—',xs[3]-xs[2]-9*f,true);
+  campo(xs[3]+5*f,y1,'Medición',fdate(v.fecha),xs[4]-xs[3]-9*f);
+  p.text(xs[4]+5*f,y1,'OBSERVACIONES',4.4*f+0.4,{bold:true,col:MUTED,sp:0.35});
+  var yy=y1+5*f;
+  wrapTxt(note||'Medidas en centímetros, a comprobar en obra antes de fabricar.',xs[5]-xs[4]-9*f,5.2*f*25.4/72,2).forEach(function(l){p.text(xs[4]+5*f,yy,l,5.2*f+0.3,{col:INK});yy+=3.2*f});
+  campo(xs[5]+5*f,y1,'Hoja',idx+' / '+total,xs[6]-xs[5]-9*f,true);
+  p.rect(xs[6],fy,W0-(xs[6]-mg),bandH,MARCA,null,0);
+  p.text((xs[6]+PW-mg)/2,fy+bandH/2+4*f,codLam,17*f+2,{light:true,col:'#ffffff',anchor:'middle'});
   return {p:p,PW:PW,PH:PH,f:f,mg:mg,fy:fy,A3:A3};
 }
 function carpIcon(p,x,y,bw,bh,c,f){
@@ -6379,21 +6456,22 @@ function sheetPage(doc,view,idx,total,o){
   var v=st.v,A3=o.paper!=='A4',PW=A3?420:297,PH=A3?297:210,f=A3?1:0.76,mg=10,Wc=A3?88:68;
   var p=doc.page(PW,PH),cx=PW-mg-Wc,tags=opTags(),b=bbox();
   var body=7.5*f+(A3?0:0.6),sm=5.6*f+(A3?0:0.4);
-  /* marco fino con filete exterior y columna lateral en tono cálido */
-  p.rect(cx,mg,PW-mg-cx,PH-2*mg,'#f6f4f2',null,0);
-  p.rect(mg-3.2,mg-3.2,PW-2*mg+6.4,PH-2*mg+6.4,null,'#baafa5',0.18);
-  p.rect(mg,mg,PW-2*mg,PH-2*mg,null,INK,0.35);
-  p.line(cx,mg,cx,PH-mg,INK,0.25);
+  /* marco fino; la columna de leyendas, sin fondo; el cajetín va en una banda inferior */
+  var bandH=A3?42:31,cy0=PH-mg-bandH;
+  p.rect(mg,mg,PW-2*mg,PH-2*mg,null,MARCA,0.3);
+  p.line(cx,mg,cx,cy0,LINEC,0.25);
 
-  /* título de la lámina */
-  p.text(mg+7,mg+10,((view==='distrib'?(o.ante?'Anteproyecto · distribución':'Distribución · mobiliario y máquinas'):VNAME[view])+(o.capaN?' · '+o.capaN:'')).toUpperCase(),15*f+1,{bold:true,col:INK});
-  p.rect(mg+7,mg+12,14*f,0.8,'#baafa5',null,0);
-  p.text(mg+7,mg+18.2,(v.nombre||'Sin nombre')+(v.planta?' · '+v.planta:'')+(v.cliente?' · '+v.cliente:'')+(v.direccion?' · '+v.direccion:''),9*f+1,{col:MUTED});
+  /* título de la lámina: etiqueta pequeña con letras espaciadas y título ligero */
+  var codLam='A.'+('0'+idx).slice(-2);
+  var tit=(view==='distrib'?(o.ante?'Anteproyecto · distribución':'Distribución'):VNAME[view])+(o.capaN?' · '+o.capaN:'');
+  p.text(mg+9,mg+10,('Lámina '+idx+' de '+total+' · '+(v.nombre||'Sin nombre')).toUpperCase(),5.6*f+0.6,{bold:true,col:MUTED,sp:0.5});
+  p.text(mg+9,mg+22,tit,22*f+2,{light:true,col:INK});
+  p.rect(mg+9,mg+25.5,12*f,0.5,MARCA,null,0);
 
   /* escala y plano */
   var S=SCALES[SCALES.length-1];
   var dm=(o.dims&&o.dims!=='simple')?(o.dims==='ext'?22:0):0;
-  var ax=mg+14+dm/2,ay=mg+24+dm/2,aw=cx-mg-28-dm,ah=PH-2*mg-24-22-dm;
+  var ax=mg+14+dm/2,ay=mg+30+dm/2,aw=cx-mg-28-dm,ah=PH-2*mg-30-bandH-14-dm;
   if(view==='alz'&&o.alz){
     S=o.alz.S;
     var kma=10/S,codesE=acabCodes('acab');
@@ -6402,7 +6480,7 @@ function sheetPage(doc,view,idx,total,o){
     });
     var lmA=[0.5,1,2,5,10],LA=1,jA;
     for(jA=0;jA<lmA.length;jA++){LA=lmA[jA];if(LA*1000/S>=22)break}
-    var blA=LA*1000/S,bxA=mg+8,byA=PH-mg-9;
+    var blA=LA*1000/S,bxA=mg+9,byA=cy0-8;
     for(var qA=0;qA<4;qA++)p.rect(bxA+qA*blA/4,byA,blA/4,1.6,qA%2?'#ffffff':INK,INK,0.2);
     p.text(bxA,byA-1.5,'0',6.5,{col:INK,anchor:'middle'});
     p.text(bxA+blA,byA-1.5,(LA<1?'0,5':String(LA))+' m',6.5,{col:INK,anchor:'middle'});
@@ -6417,13 +6495,13 @@ function sheetPage(doc,view,idx,total,o){
     demCapa=(view==='demol'&&o.capa)?o.capa:(view==='demol'?'x':null);
     var inner=scene(LIGHT,40/S,view,{sel:null,nodes:false,tags:tags,noctl:true,dims:o.dims,flat:true,marks:o.marks!==false&&!o.ante,ldim:o.ldim!==false&&!o.ante,nonum:!!o.ante});
     demCapa=null;
-    p.raw('q '+pn(mg+1)+' '+pn(mg+19)+' '+pn(cx-mg-2)+' '+pn(PH-2*mg-19-1)+' re W n');
+    p.raw('q '+pn(mg+1)+' '+pn(mg+28)+' '+pn(cx-mg-2)+' '+pn(PH-2*mg-28-bandH)+' re W n');
     p.svg('<g transform="translate('+f2(ox)+' '+f2(oy)+') scale('+km+')'+(gira?' matrix(0 -1 1 0 0 0)':'')+'">'+inner+'</g>',{hatchStep:1.75,dem:LIGHT.dem,demBg:LIGHT.demBg});
     p.raw('Q');
     /* barra de escala */
     var lm=[0.5,1,2,5,10],L=1;
     for(var j=0;j<lm.length;j++){L=lm[j];if(L*1000/S>=22)break}
-    var bl=L*1000/S,bx=mg+8,by=PH-mg-9;
+    var bl=L*1000/S,bx=mg+9,by=cy0-8;
     for(var q=0;q<4;q++)p.rect(bx+q*bl/4,by,bl/4,1.6,q%2?'#ffffff':INK,INK,0.2);
     p.text(bx,by-1.5,'0',6.5,{col:INK,anchor:'middle'});
     p.text(bx+bl,by-1.5,(L<1?'0,5':String(L))+' m',6.5,{col:INK,anchor:'middle'});
@@ -6433,43 +6511,56 @@ function sheetPage(doc,view,idx,total,o){
     S=o.scale&&o.scale!=='auto'?+o.scale:50;
   }
 
-  /* cajetín */
-  var cajH=60*f,cy0=PH-mg-cajH,px0=cx+4*f,pw=Wc-8*f;
-  p.rect(cx,cy0,PW-mg-cx,cajH,'#ffffff',null,0);
-  p.line(cx,cy0,PW-mg,cy0,INK,0.25);
-  var ly=cy0+3*f;
-  if(o.logo){
-    var lw=o.logo.w,lh=o.logo.h,mh=11*f,mw=pw*0.55,sc=Math.min(mw/lw,mh/lh);
-    p.img(o.logoIdx,px0,ly,lw*sc,lh*sc);
-  }else p.text(px0,ly+7*f,'RANUSE DESIGN',11*f,{bold:true,col:INK});
-  p.text(PW-mg-4*f,ly+4*f,'Alcobendas',6.5*f,{col:MUTED,anchor:'end'});
-  var gy=cy0+16*f;
-  p.line(cx,gy,PW-mg,gy,LINEC,0.2);
-  function cell(x,y,lab,val,w,bold){
-    p.text(x,y+2.4*f,lab.toUpperCase(),5*f,{col:MUTED});
-    p.text(x,y+7.2*f,fitTxt(val,w,!!bold,8*f*25.4/72),8*f,{bold:!!bold,col:INK});
+  /* cajetín: banda inferior con la identificación del proyecto, la lámina y las observaciones */
+  var px0=cx+5*f,pw=Wc-10*f;
+  p.rect(mg,cy0,PW-2*mg,bandH,'#ffffff',null,0);
+  p.line(mg,cy0,PW-mg,cy0,MARCA,0.3);
+  var W0=PW-2*mg,fr=[0.15,0.18,0.13,0.12,0.20,0.12],xs=[mg],cuenta0=0;
+  fr.forEach(function(q){cuenta0+=q;xs.push(mg+W0*cuenta0)});
+  var cwBox=W0-(xs[6]-mg); /* lo que queda a la derecha: recuadro del código */
+  var by1=cy0+7*f,tpt=7.4*f;
+  for(var qx=1;qx<=5;qx++)p.line(xs[qx],cy0+5*f,xs[qx],PH-mg-5*f,LINEC,0.25);
+  function campo(x,y,lab,val,w,bold){
+    p.text(x,y,lab.toUpperCase(),4.8*f+0.4,{bold:true,col:MUTED,sp:0.35});
+    var t=fitTxt(String(val),w,!!bold,tpt*25.4/72);
+    p.text(x,y+5.6*f,t,tpt,{bold:!!bold,col:INK});
   }
-  cell(px0,gy,'Proyecto',v.nombre||'Sin nombre',pw,true);
-  var gyd=gy+9.6*f;p.line(cx,gyd,PW-mg,gyd,LINEC,0.2);
-  cell(px0,gyd,'Dirección',v.direccion||'—',pw);
-  var gy2=gyd+9.6*f;p.line(cx,gy2,PW-mg,gy2,LINEC,0.2);
-  cell(px0,gy2,'Cliente',v.cliente||'—',pw*0.44);
-  cell(px0+pw*0.46,gy2,'Planta',v.planta||'—',pw*0.26);
-  cell(px0+pw*0.74,gy2,'Medición',fdate(v.fecha),pw*0.26);
-  var gy3=gy2+9.6*f;p.line(cx,gy3,PW-mg,gy3,LINEC,0.2);
-  cell(px0,gy3,'Lámina',VNAME[view],pw*0.4,true);
-  cell(px0+pw*0.42,gy3,'Escala','1:'+S,pw*0.2,true);
-  cell(px0+pw*0.62,gy3,'Papel',A3?'A3':'A4',pw*0.16);
-  cell(px0+pw*0.8,gy3,'Hoja',idx+'/'+total,pw*0.2,true);
-  p.text(px0,PH-mg-1.6*f,'Cotas en cm, longitud de muro a ejes. Medidas de obra a comprobar antes de ejecutar.',4.8*f,{col:MUTED});
+  /* logotipo */
+  if(o.logo){
+    var lw=o.logo.w,lh=o.logo.h,mh=11*f,mw=(xs[1]-xs[0])-12*f,sc=Math.min(mw/lw,mh/lh);
+    p.img(o.logoIdx,xs[0]+6*f,cy0+(bandH-lh*sc)/2,lw*sc,lh*sc);
+  }else p.text(xs[0]+6*f,cy0+bandH/2+2,'RANUSE DESIGN',11*f,{light:true,col:INK,sp:0.8});
+  /* proyecto y dirección */
+  campo(xs[1]+6*f,by1,'Proyecto',v.nombre||'Sin nombre',xs[2]-xs[1]-10*f,true);
+  campo(xs[1]+6*f,by1+13*f,'Dirección',v.direccion||'—',xs[2]-xs[1]-10*f);
+  /* cliente y planta */
+  campo(xs[2]+6*f,by1,'Cliente',v.cliente||'—',xs[3]-xs[2]-10*f,true);
+  campo(xs[2]+6*f,by1+13*f,'Planta',v.planta||'—',xs[3]-xs[2]-10*f);
+  /* medición, escala y papel */
+  campo(xs[3]+6*f,by1,'Escala','1:'+S,xs[4]-xs[3]-10*f,true);
+  campo(xs[3]+6*f,by1+13*f,'Medición · papel',fdate(v.fecha)+' · '+(A3?'A3':'A4'),xs[4]-xs[3]-10*f);
+  /* observaciones */
+  p.text(xs[4]+6*f,by1,'OBSERVACIONES',4.8*f+0.4,{bold:true,col:MUTED,sp:0.35});
+  var obsTxt=(o.obs&&String(o.obs).trim())?String(o.obs).trim():'';
+  var obsL=['1. Cotas en cm, medidas '+(st.v.cb==='int'?'de cara interior a cara interior':'a ejes de muro')+(o.dims==='dob'?' (la línea exterior, de cara exterior a cara exterior)':'')+'.','2. Todas las medidas deberán ser comprobadas en obra antes de comenzar ningún trabajo.'];
+  if(obsTxt)obsL.push('3. '+obsTxt);
+  var yy=by1+5.6*f;
+  obsL.forEach(function(t){wrapTxt(t,xs[5]-xs[4]-12*f,5.6*f*25.4/72,3).forEach(function(l){if(yy<PH-mg-3*f){p.text(xs[4]+6*f,yy,l,5.6*f+0.3,{col:INK});yy+=3.5*f}})});
+  /* título de la lámina y hoja */
+  campo(xs[5]+6*f,by1,'Título de la lámina',tit.toUpperCase(),xs[6]-xs[5]-10*f,true);
+  campo(xs[5]+6*f,by1+13*f,'Hoja',idx+' / '+total,xs[6]-xs[5]-10*f);
+  /* recuadro con el código de la lámina */
+  p.rect(xs[6],cy0,cwBox,bandH,MARCA,null,0);
+  p.text(xs[6]+cwBox/2,cy0+bandH/2+5*f,codLam,26*f+2,{light:true,col:'#ffffff',anchor:'middle'});
+  p.text(xs[6]+cwBox/2,cy0+6*f,'LÁMINA',4.6*f+0.4,{bold:true,col:'#ffffff',anchor:'middle',sp:0.4});
 
   /* columna de leyendas y tablas */
-  var y=mg+8*f,limit=cy0-4*f,rh=5.4*f+(A3?0:0.4),xL=px0,xR=PW-mg-4*f;
+  var y=mg+10*f,limit=cy0-4*f,rh=5.6*f+(A3?0:0.4),xL=px0,xR=PW-mg-5*f;
   function room(h){return y+h<=limit}
   function sect(t){
     if(!room(10*f))return false;
-    p.text(xL,y+3*f,t.toUpperCase(),5.8*f+0.4,{bold:true,col:MUTED});
-    p.line(xL,y+4.6*f,xR,y+4.6*f,LINEC,0.2);y+=7.4*f;return true;
+    p.text(xL,y+3*f,t.toUpperCase(),5.2*f+0.4,{bold:true,col:MUTED,sp:0.45});
+    p.line(xL,y+4.8*f,xR,y+4.8*f,LINEC,0.25);y+=8*f;return true;
   }
   function rowTxt(a,bTxt){
     p.text(xL,y+3.6*f,fitTxt(a,pw*0.68,false,body*25.4/72),body,{col:INK});
@@ -6486,7 +6577,7 @@ function sheetPage(doc,view,idx,total,o){
       if(!room(rh))return;
       var sy=y+rh/2-0.9*f;
       if(kind==='hat')p.hatch([[xL,sy-0.2],[xL+11,sy-0.2],[xL+11,sy+2.2],[xL,sy+2.2]],1.4,0.22,LIGHT.demBg,LIGHT.dem);
-      else p.rect(xL,sy,11,2,kind,null);
+      else p.rect(xL,sy,11,2.2,kind===LIGHT.nw?hexMix(kind,'#ffffff',0.72):'#ffffff',kind,0.3);
       p.text(xL+14,y+3.6*f,label,body,{col:INK});y+=rh;
     }
     if(view==='actual'||view==='distrib')swatch(INK,view==='actual'?'Muro existente':'Muro (existente y nuevo)');
@@ -6519,7 +6610,7 @@ function sheetPage(doc,view,idx,total,o){
       Object.keys(codes2).forEach(function(mid){
         if(!room(rh*1.2))return;
         var m=matOf(view,mid);
-        p.rect(xL,y+0.7*f,11,3.8*f,hexMix(m.c,'#ffffff',0.35),INK,0.15);
+        p.rect(xL,y+0.7*f,11,3.8*f,hexMix(m.c,'#ffffff',0.55),INK,0.15);
         p.text(xL+14,y+3.6*f,fitTxt(codes2[mid]+'  '+m.n,pw-14-18,false,body*25.4/72),body,{col:INK});
         p.text(xR,y+3.6*f,m2((areaBy[mid]||0)/10000)+' m²',body,{col:INK,anchor:'end',bold:true});
         y+=rh*1.2;
