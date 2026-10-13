@@ -602,6 +602,33 @@ function TabMoodboard({ projectId }) {
   );
 }
 
+// Qué subir en cada parte del proyecto (las fases del portal). Cada fila rellena el nombre y el tipo al pulsarla.
+const GUIA_SUBIDA = [
+  { fase: 'Fase 0 · Diseño previo', items: ['Anteproyecto · distribución (PDF desde Planos)', 'Planos del anteproyecto con la propuesta de zonas'] },
+  { fase: 'Fase 1 · Planos generales', items: ['Plano · Estado actual', 'Plano · Cotas', 'Plano · Demoliciones', 'Plano · Distribución', 'Plano · Implantación (obra nueva)'] },
+  { fase: 'Fase 2 · Instalaciones', items: ['Plano · Electricidad', 'Plano · Iluminación', 'Climatización y fontanería (si las coordináis vosotros)'] },
+  { fase: 'Fase 3 · Interiorismo y materialidad', items: ['Plano · Techos', 'Plano · Suelos', 'Plano · Acabados', 'Plano · Alzados', 'Memoria de calidades', 'Detalles constructivos'] },
+  { fase: 'Fase 5 · Maquinaria y equipamiento', items: ['Plano · Distribución con maquinaria', 'Listado de maquinaria y equipamiento'] },
+  { fase: 'Fase 6 · Documentación de apoyo', items: ['Planos · dossier completo', 'Memoria de carpintería', 'Otra documentación de apoyo'] },
+];
+function GuiaSubida({ onElegir }) {
+  const [abierta, setAbierta] = useState(false);
+  return (
+    <div style={{ margin: '0 0 0.8rem', border: '1px solid rgba(190,176,162,0.25)', borderRadius: 10, padding: '0.5rem 0.8rem' }}>
+      <button type="button" className="ap-btn ap-btn-sm" onClick={() => setAbierta(a => !a)}>{abierta ? 'Ocultar' : 'Ver'} qué subir en cada parte</button>
+      {abierta && GUIA_SUBIDA.map(g => (
+        <div key={g.fase} style={{ marginTop: '0.6rem' }}>
+          <div style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: 4 }}>{g.fase}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {g.items.map(it => <button key={it} type="button" className="ap-btn ap-btn-sm" onClick={() => onElegir(it)} title="Rellena el nombre del documento">{it}</button>)}
+          </div>
+        </div>
+      ))}
+      {abierta && <p style={{ fontSize: '0.78rem', opacity: 0.65, margin: '0.6rem 0 0' }}>Pulsa una opción para rellenar el nombre; después elige el archivo. Los planos de la herramienta de Planos se suben desde ahí y te dicen a qué fase van.</p>}
+    </div>
+  );
+}
+
 function TabDocumentos({ projectId }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -620,6 +647,7 @@ function TabDocumentos({ projectId }) {
 
   return (
     <div className="ap-tab-content">
+      <GuiaSubida onElegir={(txt) => { setDocName(txt); setDocType(/^Plano|^Planos|^Anteproyecto/i.test(txt) ? 'plano' : 'otro'); }} />
       <div className="ap-upload-row">
         <input className="ap-field-input" value={docName} onChange={e=>setDocName(e.target.value)} placeholder="Nombre del documento"/>
         <select className="ap-select ap-select-sm" value={docType} onChange={e=>setDocType(e.target.value)}>{DOC_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select>

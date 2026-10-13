@@ -498,7 +498,7 @@ body.crm .top .brand{display:none}
         <label class="fld"><span>Escala</span><select id="x-scale"><option value="auto">Automática (la mayor que quepa)</option><option value="20">1:20</option><option value="25">1:25</option><option value="50">1:50</option><option value="75">1:75</option><option value="100">1:100</option><option value="200">1:200</option></select></label>
         <div class="btns"><button class="pri" id="b-pdf">PDF de esta lámina</button><button id="b-pdfall">PDF con todas las láminas</button></div>
         <div class="btns"><button id="b-prev">Vista previa de las láminas</button><button id="b-pdfproj" hidden>PDF con todas las plantas del proyecto</button><button id="b-prevproj" hidden>Vista previa de todas las plantas</button></div>
-        <div class="btns" id="crm-pdf" hidden><button id="b-pdfdoc">Subir esta lámina a Documentos</button><button id="b-pdfdocall">Subir dossier a Documentos</button></div>
+        <p class="note" id="crm-pdf-nota" style="margin:0 0 6px"></p><div class="btns" id="crm-pdf" hidden><button id="b-pdfdoc">Subir esta lámina a Documentos</button><button id="b-pdfdocall">Subir dossier a Documentos</button></div>
         <div class="btns"><button id="b-pdfcarp">Memoria de carpinterías (PDF)</button><button id="b-csvcarp">Carpinterías (CSV)</button></div>
         <details class="addcat">
           <summary>Logo del cajetín</summary>
@@ -3934,6 +3934,7 @@ function hint(){
   $('hint').textContent=t;
 }
 function toolbar(){
+  try{notaSubida()}catch(e){}
   var bs=$('tools').querySelectorAll('button[data-tool]');
   for(var i=0;i<bs.length;i++)bs[i].setAttribute('aria-pressed',String(bs[i].getAttribute('data-tool')===st.tool));
   if($('b-curve'))$('b-curve').setAttribute('aria-pressed',String(!!st.penCurve&&st.tool==='pen'));
@@ -6589,9 +6590,22 @@ $('b-svg').addEventListener('click',function(){
 $('b-json').addEventListener('click',function(){saveFile(slug()+'.json',JSON.stringify(st.v,null,1),'Datos')});
 $('b-pdf').addEventListener('click',function(){exportPDF('view')});
 $('b-pdfall').addEventListener('click',function(){exportPDF('all')});
+/* a qué parte del proyecto va cada lámina (las fases son las del portal del cliente) */
+function destinoLamina(view,ante){
+  var m={actual:['Planos generales','Fase 1'],cotas:['Planos generales','Fase 1'],demol:['Planos generales','Fase 1'],interv:['Planos generales','Fase 1 (implantación)'],
+    elec:['Instalaciones','Fase 2'],ilum:['Instalaciones','Fase 2'],techos:['Interiorismo y materialidad','Fase 3'],acab:['Interiorismo y materialidad','Fase 3'],alz:['Interiorismo y materialidad','Fase 3'],suelos:['Interiorismo y materialidad','Fase 3']};
+  if(view==='distrib')return ante?['Diseño previo (anteproyecto)','Fase 0']:['Planos generales; con la maquinaria colocada, Maquinaria y equipamiento','Fase 1 / Fase 5'];
+  return m[view]||['Documentación de apoyo','Fase 6'];
+}
+function notaSubida(){
+  var el=$('crm-pdf-nota');if(!el)return;
+  var d=destinoLamina(st.view,false);
+  el.textContent='Esta lámina ('+(VNAME[st.view]||st.view)+') va en: '+d[1]+' · '+d[0]+'. El dossier completo va en Documentación de apoyo (Fase 6).';
+}
 function subirPdfCrm(mode){
   if(!bbox()){toast('Dibuja algo antes de exportar');return}
-  if(!window.confirm('El PDF se guardará en Documentos del proyecto y el cliente lo verá en su portal. ¿Continuar?'))return;
+  var dst=mode==='all'?['Documentación de apoyo','Fase 6']:destinoLamina(st.view,false);
+  if(!window.confirm('El PDF se guardará en Documentos del proyecto (tipo plano), pensado para: '+dst[1]+' · '+dst[0]+'. El cliente lo verá en su portal. ¿Continuar?'))return;
   var bytes;
   try{bytes=buildPDF(mode,pdfOpts())}catch(e){toast('No se pudo generar el PDF');return}
   var titulo=(mode==='all'?'Planos · dossier completo':'Plano · '+VNAME[st.view])+(st.v.nombre?' · '+st.v.nombre:'');
