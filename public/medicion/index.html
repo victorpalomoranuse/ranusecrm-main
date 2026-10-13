@@ -1507,6 +1507,40 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){st.spPoly=null;drawPal();render()}
   else if(e.key==='Enter'){spCerrar()}
 });
+/* editar el contorno de una zona de suelo/techo: arrastrar puntos, añadir puntos, quitarlos y mover la zona entera */
+function spAPoly(sp){
+  if(sp.pts)return;
+  var pp=spPts(sp),n=nd(sp.n);
+  sp.pts=pp.map(function(q){return {x:f2(q.x-n.x),y:f2(q.y-n.y)}});
+}
+function spSnapV(sp,i,w){
+  var pts=spPts(sp),tol=14/st.k,c=polyCentro(pts),fc=faceAt(c,st.view)||faceAt(w,st.view),vx=[],vy=[],k;
+  if(fc)for(k=0;k<fc.inner.length;k++){
+    var q=fc.inner[k];
+    if(Math.hypot(q.x-w.x,q.y-w.y)<tol)return {x:f2(q.x),y:f2(q.y)};
+    vx.push(q.x);vy.push(q.y);
+  }
+  pts.forEach(function(q,j){if(j!==i){vx.push(q.x);vy.push(q.y)}});
+  function al(v,l){var b=null,bd=tol;l.forEach(function(u){var d=Math.abs(u-v);if(d<bd){bd=d;b=u}});return b}
+  var ax=al(w.x,vx),ay=al(w.y,vy);
+  return {x:f2(ax!==null?ax:Math.round(w.x/5)*5),y:f2(ay!==null?ay:Math.round(w.y/5)*5)};
+}
+function pintaListaZonas(v){
+  var zk=zkind(v),cod=zoneCodes(v),its=[],fs0=roomFaces(v);
+  (st.v.zn||[]).forEach(function(z){
+    if(z.k!==zk)return;
+    var f=null;fs0.forEach(function(q){if(!f&&zoneIn(q,zk)===z)f=q});
+    its.push({sel:{t:'zn',id:z.id},txt:(cod[z.mat]||'')+' · '+(matOf(v,z.mat).n||'')+(z.nm?' · '+z.nm:'')+(f?' · '+m2((f.area-spEn(f,zk))/10000)+' m²':'')+' (sala)'});
+  });
+  (st.v.sp||[]).forEach(function(r){
+    if(r.k!==zk)return;
+    its.push({sel:{t:'sp',id:r.id},txt:(cod[r.mat]||'')+' · '+(matOf(v,r.mat).n||'')+(r.nm?' · '+r.nm:'')+' · '+m2(spArea(r)/10000)+' m² (zona)'});
+  });
+  if(!its.length)return;
+  var h='<div style="width:100%;margin-top:10px"><div class="lab" style="margin:0 0 4px">Zonas de este plano (toca una para seleccionarla, editarla o borrarla)</div><div style="display:flex;flex-wrap:wrap;gap:6px">';
+  its.forEach(function(it){var on=st.sel&&st.sel.t===it.sel.t&&st.sel.id===it.sel.id;h+='<button data-zsel="'+it.sel.t+':'+it.sel.id+'" aria-pressed="'+!!on+'" style="font-size:12px;min-height:34px">'+esc(it.txt)+'</button>'});
+  $('alz-modo').insertAdjacentHTML('beforeend',h+'</div></div>');
+}
 function zoneCodes(view){
   var zk=zkind(view),m={},k=0,pre=MCODE[view];
   st.v.zn.forEach(function(z){if(z.k===zk&&!m[z.mat])m[z.mat]=pre+(++k)});
@@ -2102,7 +2136,7 @@ function save(){
     catch(e){$('saved').textContent='Este navegador no deja guardar en el dispositivo. Usa la nube o descarga los datos.'}
   },300);
 }
-function commit(selToo){if(st.v.mm&&st.v.mm.length)st.v.mm=st.v.mm.filter(function(z){return wl(z.wall)});if(st.v.rc&&st.v.rc.length)st.v.rc=st.v.rc.filter(function(z){return wl(z.wall)});if(st.v.fz&&st.v.fz.length)st.v.fz=st.v.fz.filter(function(z){return wl(z.wall)});save();render();if(selToo!==false)panelSel();panelRest()}
+function commit(selToo){if(st.v.mm&&st.v.mm.length)st.v.mm=st.v.mm.filter(function(z){return wl(z.wall)});if(st.v.rc&&st.v.rc.length)st.v.rc=st.v.rc.filter(function(z){return wl(z.wall)});if(st.v.fz&&st.v.fz.length)st.v.fz=st.v.fz.filter(function(z){return wl(z.wall)});save();render();if(selToo!==false)panelSel();panelRest();if(st.view==='suelos'||st.view==='techos'){try{drawPal()}catch(e){}}}
 function undo(){
   if(!hist.length)return;
   redo.push(JSON.stringify(st.v));st.v=JSON.parse(hist.pop());st.sel=null;st.dg=null;fields();commit();
@@ -2333,15 +2367,24 @@ function scene(C,k,view,o){
         if(r.cl.show==='trama')h+='<polygon points="'+rps+'" style="fill:'+C.bg+';stroke:'+C.label+';stroke-width:'+f2(1.2*px)+'"/>';
         h+=clSvg(C,px,rpoly,r.cl);
       }
+      if(sl&&o.nodes){ /* manijas: puntos del contorno y, entre ellos, puntos para añadir uno nuevo */
+        rpp.forEach(function(a,i){
+          var b=rpp[(i+1)%rpp.length],on=st.spVsel&&st.spVsel.id===r.id&&st.spVsel.i===i;
+          h+='<circle cx="'+f2((a.x+b.x)/2)+'" cy="'+f2((a.y+b.y)/2)+'" r="'+f2(4*px)+'" style="fill:'+C.bg+';stroke:'+C.accent+';stroke-width:'+f2(1.4*px)+'"/>';
+          h+='<circle cx="'+f2(a.x)+'" cy="'+f2(a.y)+'" r="'+f2((on?8:6)*px)+'" style="fill:'+(on?C.accent:C.bg)+';stroke:'+C.accent+';stroke-width:'+f2(2*px)+'"/>';
+        });
+      }
       if(st.verMedZonas!==false&&rpp.length>=3){
-        var nz=rpp.length;
+        var nz=rpp.length,yaCot=[];
         rpp.forEach(function(a,i){
           var b=rpp[(i+1)%nz],dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy);
           if(L<10)return;
+          var ori=Math.abs(dx)>=Math.abs(dy)?'h':'v',rep0=yaCot.some(function(c){return c.o===ori&&Math.abs(c.l-L)<1.5});
+          if(!rep0)yaCot.push({o:ori,l:L});
           var ux=dx/L,uy=dy/L,onx=uy,ony=-ux,mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
           if(inPoly({x:mx+onx*2,y:my+ony*2},rpp)){onx=-onx;ony=-ony} /* normal hacia fuera de la zona */
           var off=14*px,ix=-onx*off,iy=-ony*off;
-          h+=dimW(C,px,a.x+ix,a.y+iy,b.x+ix,b.y+iy,fmtU(L),C.label);
+          if(!rep0)h+=dimW(C,px,a.x+ix,a.y+iy,b.x+ix,b.y+iy,fmtU(L),C.label);
           var d0=rayWalls(mx+onx*1.5,my+ony*1.5,onx,ony,view);
           if(d0!=null&&d0>3&&d0<3000)h+=dimW(C,px,mx,my,mx+onx*d0,my+ony*d0,fmtU(d0),C.ok);
         });
@@ -2987,6 +3030,26 @@ svg.addEventListener('pointerdown',function(e){
     gesture={type:'drdraw',id:e.pointerId,k:st.drK||'line',p0:wd0,p1:wd0,moved:false};
     return;
   }
+  if(st.tool==='select'&&!pan&&st.sel&&st.sel.t==='sp'&&(st.view==='suelos'||st.view==='techos')){
+    var spo=by(st.v.sp,st.sel.id),wsp=toW(p);
+    if(spo){
+      var spp0=spPts(spo),tolv=Math.max(14/st.k,6),vi=-1,mi=-1,ii;
+      for(ii=0;ii<spp0.length;ii++)if(Math.hypot(spp0[ii].x-wsp.x,spp0[ii].y-wsp.y)<tolv){vi=ii;break}
+      if(vi<0)for(ii=0;ii<spp0.length;ii++){var qa=spp0[ii],qb=spp0[(ii+1)%spp0.length];if(Math.hypot((qa.x+qb.x)/2-wsp.x,(qa.y+qb.y)/2-wsp.y)<tolv){mi=ii;break}}
+      if(vi>=0||mi>=0){
+        snap();
+        if(mi>=0){ /* punto nuevo en la mitad de ese lado */
+          spAPoly(spo);
+          var nA=spo.pts[mi],nB=spo.pts[(mi+1)%spo.pts.length];
+          spo.pts.splice(mi+1,0,{x:f2((nA.x+nB.x)/2),y:f2((nA.y+nB.y)/2)});vi=mi+1;
+        }
+        st.spVsel={id:spo.id,i:vi};
+        gesture={type:'dragSpV',id:e.pointerId,sp:spo,i:vi,moved:false,nuevo:mi>=0,sx:p.x,sy:p.y};
+        panelSel();render();return;
+      }
+      if(inPoly(wsp,spp0)){snap();gesture={type:'dragSpB',id:e.pointerId,sp:spo,last:wsp,moved:false,sx:p.x,sy:p.y};return}
+    }
+  }
   if(st.tool==='select'&&!pan){
     var wdr=toW(p),hdr=pickDr(wdr,Math.max(16/st.k,6),st.view);
     if(hdr){snap();st.sel={t:'dr',id:hdr.id};gesture={type:'dragDr',id:e.pointerId,it:hdr,last:wdr,tot:{x:0,y:0},moved:false,sx:p.x,sy:p.y};panelSel();render();return}
@@ -3056,6 +3119,20 @@ svg.addEventListener('pointermove',function(e){
     if(!st.muroLibre&&(gesture.k==='line'||gesture.k==='arrow'||gesture.k==='dim')){var ddx=q1.x-q0.x,ddy=q1.y-q0.y;if(Math.abs(ddy)<=Math.abs(ddx)*0.1)q1={x:q1.x,y:q0.y};else if(Math.abs(ddx)<=Math.abs(ddy)*0.1)q1={x:q0.x,y:q1.y}}
     gesture.p1=q1;gesture.moved=true;
     var e0=drEstilo();st.drPrev={t:gesture.k,pts:[q0,q1],col:e0.col,w:e0.w,dash:e0.dash,fill:e0.fill,fs:e0.fs};req();
+  }else if(gesture.type==='dragSpV'&&gesture.id===e.pointerId){
+    if(!gesture.moved&&Math.hypot(p.x-gesture.sx,p.y-gesture.sy)<6)return;
+    if(!gesture.moved){spAPoly(gesture.sp);gesture.moved=true}
+    var npv=spSnapV(gesture.sp,gesture.i,toW(p)),nov=nd(gesture.sp.n);
+    gesture.sp.pts[gesture.i]={x:f2(npv.x-nov.x),y:f2(npv.y-nov.y)};req();
+  }else if(gesture.type==='dragSpB'&&gesture.id===e.pointerId){
+    if(!gesture.moved&&Math.hypot(p.x-gesture.sx,p.y-gesture.sy)<6)return;
+    gesture.moved=true;
+    var wmb=toW(p),txb=Math.round((wmb.x-gesture.last.x)/5)*5,tyb=Math.round((wmb.y-gesture.last.y)/5)*5;
+    if(txb||tyb){
+      if(gesture.sp.pts)gesture.sp.pts=gesture.sp.pts.map(function(q){return {x:f2(q.x+txb),y:f2(q.y+tyb)}});
+      else{gesture.sp.dx=f2(gesture.sp.dx+txb);gesture.sp.dy=f2(gesture.sp.dy+tyb)}
+      gesture.last={x:gesture.last.x+txb,y:gesture.last.y+tyb};req();
+    }
   }else if(gesture.type==='dragDr'&&gesture.id===e.pointerId){
     if(!gesture.moved&&Math.hypot(p.x-gesture.sx,p.y-gesture.sy)<6)return;
     gesture.moved=true;
@@ -3142,6 +3219,8 @@ function endPtr(e){
     }else render();
     return;
   }
+  if(g.type==='dragSpV'&&g.id===e.pointerId){gesture=null;if(!g.moved&&!g.nuevo){hist.pop();panelSel();render();return}commit();panelSel();return}
+  if(g.type==='dragSpB'&&g.id===e.pointerId){gesture=null;if(!g.moved){hist.pop();if(e.type==='pointerup')tap(toW(loc(e)));return}commit();return}
   if(g.type==='dragDr'&&g.id===e.pointerId){gesture=null;if(!g.moved){hist.pop();return}commit();return}
   if(g.type==='draw'&&g.id===e.pointerId){gesture=null;updPrev([]);if(e.type==='pointerup')finishStroke(g.pts)}
   else if(g.type==='tap'&&g.id===e.pointerId){gesture=null;if(!g.moved&&e.type==='pointerup')tap(toW(loc(e)))}
@@ -3948,7 +4027,11 @@ function bloqueGenerado(res,err){
   $('img-save').hidden=false;$('img-gen').hidden=true;
 }
 $('fly-img').addEventListener('click',function(){flyClose();abrirModalImg(null)});
+var pvFlag=false,pvT=null;
+/* al copiar en el plano se sustituye lo que hubiera en el portapapeles del sistema (p. ej. una foto antigua) para que Ctrl+V pegue el bloque y no abra el generador de bloques */
+function limpiaPortapapeles(){try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText('Ranuse · copiado en el plano').catch(function(){})}catch(e){}}
 document.addEventListener('paste',function(e){
+  pvFlag=true;
   var items=(e.clipboardData&&e.clipboardData.items)||[],f=null,i;
   for(i=0;i<items.length;i++)if(items[i].kind==='file'&&/^image\//.test(items[i].type)){f=items[i].getAsFile();break}
   var ae=document.activeElement,enCampo=ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
@@ -4166,6 +4249,7 @@ function drawPal(){
       if(st.sueloModo==='poli')$('pal-n').textContent='Elige el material y toca los puntos del contorno de la zona (una esquina tras otra). Los tramos salen rectos (horizontal o vertical) y se pegan a las esquinas de la sala; con «Líneas rectas: no» dibujas libre. Para cerrarla, toca el primer punto o pulsa «Cerrar la zona». Solo esa zona llevará ese material.';
       if(st.sueloModo==='parte')$('pal-n').textContent='Elige el material y ARRASTRA un rectángulo dentro de la sala: solo esa parte llevará ese material (el resto conserva el suyo). Luego ajusta sus medidas en el panel.';
     }
+    if(v==='suelos'||v==='techos')pintaListaZonas(v);
     $('alz-h-w').hidden=!(v==='alz'&&(st.alzModo==='franja-inf'||st.alzModo==='franja-sup'));
     if(v==='alz'){
       st.alzModo=st.alzModo||'pared';
@@ -4187,6 +4271,8 @@ function drawPal(){
   $('pal').innerHTML=PTK[v].map(function(d){return '<button data-pal="'+d.id+'" aria-pressed="'+(st.pal[v]===d.id&&st.tool==='pt')+'">'+ptThumb(d)+d.n+'</button>'}).join('');
 }
 $('alz-modo').addEventListener('click',function(e){
+  var bz=e.target.closest('button[data-zsel]');
+  if(bz){var pz=bz.getAttribute('data-zsel').split(':');st.sel={t:pz[0],id:pz.slice(1).join(':')};st.tool='select';toolbar();hint();render();panelSel();drawPal();return}
   var bs=e.target.closest('button[data-sm]');
   if(bs){
     var sm=bs.getAttribute('data-sm');
@@ -4454,7 +4540,9 @@ function panelSel(focus){
     h+='<label class="fld"><span>Material</span><select data-t="sp_mat">'+MATS[spv].map(function(m){return '<option value="'+m.id+'"'+(m.id===sp.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label>';
     h+='<label class="fld"><span>Nombre (opcional)</span><input data-t="sp_nm" value="'+esc(sp.nm||'')+'" placeholder="Zona de entreno" autocomplete="off"></label>';
     if(!sp.pts)h+=fld('sp_bw','Ancho (cm)',sp.bw)+fld('sp_bh','Fondo (cm)',sp.bh);
-    else h+='<p class="note">Zona dibujada con '+sp.pts.length+' puntos. Para cambiarle la forma, bórrala y vuelve a dibujarla.</p>';
+    else h+='<p class="note">Zona dibujada con '+sp.pts.length+' puntos.</p>';
+    h+='<p class="note">Para cambiar el contorno (en «Seleccionar»): arrastra un punto grande para moverlo, toca el puntito de la mitad de un lado para añadir uno, o arrastra el interior para mover toda la zona. Los puntos se pegan a las esquinas de la sala y se alinean entre sí.</p>';
+    if(st.spVsel&&st.spVsel.id===sp.id&&sp.pts&&sp.pts.length>3)h+='<div class="btns"><button data-a="spdelv">Quitar el punto seleccionado</button></div>';
     if(sq&&sbx&&!sp.pts)h+=fld('sp_x','Distancia desde la esquina izquierda (cm)',sq.x0-sbx.x0)+fld('sp_y','Distancia desde la esquina de arriba (cm)',sq.y0-sbx.y0);
     h+=colocHtml(sp,spPts(sp));
     h+='<div class="btns"><button class="danger" data-a="del">Borrar esta parte</button></div>';
@@ -4822,6 +4910,7 @@ function doAction(a,el){
     if(!rcVis(st.view)){st.view='interv';toolbar()}
     commit();toast('Recrecido añadido. Ajusta el tramo, la cara y el espesor en el panel.');return;
   }
+  if(a==='spdelv'&&s.t==='sp'){var spq=by(st.v.sp,s.id);if(spq&&spq.pts&&spq.pts.length>3&&st.spVsel&&st.spVsel.id===spq.id){snap();spq.pts.splice(st.spVsel.i,1);st.spVsel=null;commit();panelSel()}return}
   if(a==='angpiv'){st.angPiv=sv;panelSel();return}
   if(a==='angd'&&s.t==='wall'){var wag=wl(s.id);if(wag){snap();girarMuro(wag,angMuro(wag)+(+sv));commit(false);panelSel()}return}
   if(a==='angort'&&s.t==='wall'){var wao=wl(s.id);if(wao){snap();girarMuro(wao,Math.round(angMuro(wao)/90)*90);commit(false);panelSel()}return}
@@ -7474,9 +7563,13 @@ document.addEventListener('keydown',function(e){
   var k=e.key.toLowerCase();
   if(k==='z'&&!e.shiftKey){e.preventDefault();undo()}
   else if(k==='y'||(k==='z'&&e.shiftKey)){e.preventDefault();redoit()}
-  else if(k==='c'){e.preventDefault();copiarSel()}
+  else if(k==='c'){e.preventDefault();if(copiarSel())limpiaPortapapeles()}
   else if(k==='x'){e.preventDefault();if(copiarSel(true)){closeQE();if(st.multi.length)borrarMulti();else doAction('del',$('a-del'));toast('Cortado')}}
-  else if(k==='v'){/* se resuelve en el evento «paste»: imagen del portapapeles → crear bloque; si no, pegar lo copiado en el plano */}
+  else if(k==='v'){
+    /* se resuelve en el evento «paste» (imagen del portapapeles → crear bloque; si no, pegar lo copiado). Si el navegador no lanza ese evento, se pega igualmente lo copiado en el plano */
+    pvFlag=false;clearTimeout(pvT);
+    pvT=setTimeout(function(){if(!pvFlag&&clip&&!$('imgmod'))pegar(true)},150);
+  }
   else if(k==='d'){e.preventDefault();if(copiarSel(true))pegar(false)}
 });
 cmd('Copiar',['cc','copiar'],'Copia lo seleccionado',function(){copiarSel()});
