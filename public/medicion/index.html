@@ -285,6 +285,7 @@ body.crm .top .brand{display:none}
           <div class="mdrop" id="menu-ver" hidden>
             <button data-do="z-fit">Encajar el plano</button>
             <button data-do="marcas" id="mi-marcas">Etiquetas de alzado: ocultas</button>
+            <button data-do="cotamuros" id="mi-cotamuros">Cotas de los muros al trabajar: ocultas</button>
             <button data-do="z-in">Acercar</button>
             <button data-do="z-out">Alejar</button>
             <hr>
@@ -2553,7 +2554,7 @@ function scene(C,k,view,o){
     h+=txt(C,px,(a.x+b.x)/2,(a.y+b.y)/2-6*px,s,c.len==null?C.warn:(bad?C.dem:C.ok),12,500);
   });
   var cent=(o.dims&&o.dims!=='simple')?wallCent(view):null;
-  var ocultaCM=(view==='suelos'||view==='techos')&&!st.verCotasMuros; /* en suelos y techos solo se ven las medidas de las zonas (las de los muros se pueden activar) */
+  var ocultaCM=(view==='suelos'||view==='techos'||view==='acab'||view==='elec'||view==='ilum')&&!st.verCotasMuros&&!o.flat; /* trabajando en pantalla, en suelos y techos solo se ven las medidas de las zonas (las de los muros se activan con el botón); al exportar salen todas */
   (ocultaCM?[]:(cent?dimWalls(view):v.walls)).forEach(function(w){
     if(!wallVis(w,view))return;
     if(w.arc){ // una sola cota por arco: longitud y radio
@@ -4329,7 +4330,7 @@ $('alz-modo').addEventListener('click',function(e){
   if(bs){
     var sm=bs.getAttribute('data-sm');
     if(sm==='cerrar'){spCerrar();return}
-    if(sm==='cotamuros'){st.verCotasMuros=!st.verCotasMuros;drawPal();render();return}
+    if(sm==='cotamuros'){alternarCotaMuros();return}
     if(sm==='medzonas'){st.verMedZonas=st.verMedZonas===false;drawPal();render();return}
     if(sm==='equipo'){st.verEqSuelo=st.verEqSuelo===false;drawPal();render();return}
     if(sm==='libre'){st.spLibre=!st.spLibre;st.spHover=null;drawPal();render();return}
@@ -7264,7 +7265,10 @@ aplicarTema(temaGuardado()||((window.matchMedia&&window.matchMedia('(prefers-col
 $('m-theme').addEventListener('change',function(){aplicarTema($('m-theme').value,true)});
 function esMovil(){return window.matchMedia&&window.matchMedia('(max-width:1024px)').matches}
 /* las etiquetas de alzado (círculos con flecha) estorban al dibujar: por defecto ocultas en pantalla; el PDF las lleva siempre que se pida */
-function marcasUi(){var b=document.getElementById('mi-marcas');if(b)b.textContent='Etiquetas de alzado: '+(st.verMarcas?'visibles':'ocultas')}
+function marcasUi(){cotaMurosUi();var b=document.getElementById('mi-marcas');if(b)b.textContent='Etiquetas de alzado: '+(st.verMarcas?'visibles':'ocultas')}
+function cotaMurosUi(){var b=document.getElementById('mi-cotamuros');if(b)b.textContent='Cotas de los muros al trabajar: '+(st.verCotasMuros?'visibles':'ocultas')}
+function alternarCotaMuros(){st.verCotasMuros=!st.verCotasMuros;try{localStorage.setItem('ranuse-plano-cotamuros',st.verCotasMuros?'1':'0')}catch(e){}cotaMurosUi();try{drawPal()}catch(e){}render();toast(st.verCotasMuros?'Cotas de los muros visibles en Suelos, Techos, Acabados, Electricidad e Iluminación':'Plano limpio: sin cotas de muros en Suelos, Techos, Acabados, Electricidad e Iluminación (al exportar salen todas)')}
+try{st.verCotasMuros=localStorage.getItem('ranuse-plano-cotamuros')==='1'}catch(e){}
 function alternarMarcas(){st.verMarcas=!st.verMarcas;try{localStorage.setItem('ranuse-plano-marcas',st.verMarcas?'1':'0')}catch(e){}marcasUi();render();toast(st.verMarcas?'Etiquetas de alzado visibles':'Etiquetas de alzado ocultas (siguen saliendo en el PDF)')}
 try{st.verMarcas=localStorage.getItem('ranuse-plano-marcas')==='1'}catch(e){}
 function panelAlternar(){
@@ -7295,6 +7299,7 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
       cerrar();
       if(id==='panel')panelAlternar();
       else if(id==='marcas')alternarMarcas();
+      else if(id==='cotamuros')alternarCotaMuros();
       else if(id==='cmdp')cmdAbrir('');
       else if(id==='ayuda')ayudaAbrir();
       else if(id==='sketchup')skAbrir();
