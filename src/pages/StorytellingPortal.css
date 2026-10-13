@@ -161,3 +161,11 @@
 
 .sp-planosec{padding:12vh 8vw 2vh;max-width:1200px;margin:0 auto}
 .sp-planosec h2{font-weight:300;font-size:clamp(1.8rem,3.6vw,2.9rem);line-height:1.2;letter-spacing:-.01em;margin-bottom:26px}
+
+/* planos del espacio, paso a paso (Entendemos el espacio) */
+.sp-pasos{margin-top:4vh}
+.sp-paso-im{display:grid;gap:18px}
+.sp-paso-im--2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.sp-paso-im figure{margin:0}
+.sp-paso-im figcaption{font-size:.66rem;letter-spacing:.22em;text-transform:uppercase;color:var(--beige-d);text-align:center;margin-top:10px}
+@media (max-width:760px){.sp-paso-im--2{grid-template-columns:1fr}}

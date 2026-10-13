@@ -20,6 +20,41 @@ function agrupar(bloques) {
   return grupos;
 }
 
+// Planos del espacio que se enseñan uno tras otro en «Entendemos el espacio»:
+// 1 Estado actual · 2 Demoliciones e implantación (cuando las hay) · 3 Distribución · y después las zonas con sus renders
+const PASOS_PLANO = [
+  { k: 'estado', nombre: 'Estado actual', titulos: ['Estado actual'], texto: 'Así es el espacio hoy: medidas reales, estructura y todo lo que condiciona el diseño.' },
+  { k: 'obra', nombre: 'Demoliciones e implantación', titulos: ['Demoliciones', 'Implantación'], texto: 'Lo que se retira y lo que se construye de nuevo para preparar el espacio.' },
+  { k: 'distrib', nombre: 'Distribución', titulos: ['Distribución'], texto: 'Cómo se reparte el espacio: las zonas, la maquinaria y los recorridos.' },
+];
+const TITULOS_PASO = PASOS_PLANO.flatMap(p => p.titulos);
+const esPaso = (b) => b.tipo === 'plano' && !!b.imagen_url && TITULOS_PASO.includes(b.titulo);
+
+function PasosPlano({ bloques }) {
+  const items = bloques.filter(esPaso);
+  const pasos = PASOS_PLANO.map(p => ({ ...p, bl: p.titulos.map(t => items.find(b => b.titulo === t)).filter(Boolean) })).filter(p => p.bl.length);
+  if (!pasos.length) return null;
+  return (
+    <div className="sp-pasos">
+      {pasos.map((p, i) => (
+        <div key={p.k} className="sp-paso sp-blk sp-blk--wide">
+          <p className="sp-lbl sp-rv">Paso {i + 1} · {p.nombre}</p>
+          <div className={`sp-paso-im sp-paso-im--${p.bl.length} sp-rv`}>
+            {p.bl.map(b => (
+              <figure key={b.id} className="sp-plano">
+                <img src={b.imagen_url} alt={b.titulo} loading="lazy" style={{ objectFit: 'contain' }} />
+                {p.bl.length > 1 && <figcaption>{b.titulo}</figcaption>}
+              </figure>
+            ))}
+          </div>
+          <p className="sp-plano-t sp-rv">{p.bl.find(b => b.texto)?.texto || p.texto}</p>
+        </div>
+      ))}
+      <p className="sp-lbl sp-rv sp-paso-sig" style={{ textAlign: 'center', marginTop: '8vh' }}>Y ahora, las zonas</p>
+    </div>
+  );
+}
+
 function irA(id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); }
 
 // Imágenes que se pueden ampliar al pulsarlas (no el logo ni la portada)
@@ -328,7 +363,8 @@ export function StorytellingPortal({ project, dossier, code }) {
             </div>
           </div>
           <Renders primero={i === 0} tituloZona={c.titulo} textoZona={c.texto} items={[...(c.render_url ? [{ id: 'main', imagen_url: c.render_url, titulo: c.titulo }] : []), ...c.bloques.filter(b => b.tipo === 'render')]} />
-          <Bloques bloques={c.bloques.filter(b => b.tipo !== 'render')} capitulos={capitulos} equipo={project.equipment} />
+          <PasosPlano bloques={c.bloques} />
+          <Bloques bloques={c.bloques.filter(b => b.tipo !== 'render' && !esPaso(b))} capitulos={capitulos} equipo={project.equipment} />
           {c.servicios.length > 0 && (
             <div className="sp-blk">
               <p className="sp-lbl sp-rv">Soluciones y servicios</p>

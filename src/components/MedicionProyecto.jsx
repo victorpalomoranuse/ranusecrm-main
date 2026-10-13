@@ -112,6 +112,26 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           const { data } = await api.put(`/medicion/${m.visita.id}`, { project_id: projectId, data: m.visita });
           responder({ type: 'saved', id: m.visita.id, updated: data.updated });
         } catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo guardar en el CRM' }); }
+      } else if (m.type === 'publicar-historia' && m.imagen && m.titulo) {
+        if (!projectId) { responder({ type: 'error', message: 'Vincula este plano a un proyecto para publicarlo en su historia' }); return; }
+        try {
+          const blob = await (await fetch(m.imagen)).blob();
+          const form = new FormData();
+          form.append('file', blob, `plano-${String(m.titulo).toLowerCase().replace(/[^a-z0-9]+/g, '-')}.jpg`);
+          const { data: up } = await api.post(`/historia/${projectId}/subir`, form);
+          const { data: h } = await api.get(`/historia/${projectId}`);
+          if (!(h.capitulos || []).length) { responder({ type: 'error', message: 'Este proyecto aún no tiene historia: créala primero en la pestaña de Historia' }); return; }
+          let cap = (h.capitulos || []).find(c => /entendemos el espacio/i.test(c.titulo));
+          if (!cap) {
+            const r = await api.post(`/historia/${projectId}/capitulos`, { titulo: 'Entendemos el espacio' });
+            cap = r.data.capitulo;
+            await api.put(`/historia/${projectId}/capitulos/orden`, { ids: [cap.id, ...(h.capitulos || []).map(c => c.id)] });
+          }
+          const existente = (h.bloques || []).find(b => b.capitulo_id === cap.id && b.tipo === 'plano' && b.titulo === m.titulo);
+          if (existente) await api.put(`/historia/bloques/${existente.id}`, { imagen_url: up.url });
+          else await api.post(`/historia/capitulos/${cap.id}/bloques`, { tipo: 'plano', titulo: m.titulo, imagen_url: up.url });
+          responder({ type: 'info', message: `«${m.titulo}» publicado en la historia, en «Entendemos el espacio»` });
+        } catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo publicar en la historia' }); }
       } else if (m.type === 'subir-pdf' && m.bytes) {
         if (!projectId) { responder({ type: 'error', message: 'Vincula este plano a un proyecto para subir el PDF a sus Documentos' }); return; }
         try {

@@ -498,7 +498,7 @@ body.crm .top .brand{display:none}
         <label class="fld"><span>Escala</span><select id="x-scale"><option value="auto">Automática (la mayor que quepa)</option><option value="20">1:20</option><option value="25">1:25</option><option value="50">1:50</option><option value="75">1:75</option><option value="100">1:100</option><option value="200">1:200</option></select></label>
         <div class="btns"><button class="pri" id="b-pdf">PDF de esta lámina</button><button id="b-pdfall">PDF con todas las láminas</button></div>
         <div class="btns"><button id="b-prev">Vista previa de las láminas</button><button id="b-pdfproj" hidden>PDF con todas las plantas del proyecto</button><button id="b-prevproj" hidden>Vista previa de todas las plantas</button></div>
-        <p class="note" id="crm-pdf-nota" style="margin:0 0 6px"></p><div class="btns" id="crm-pdf" hidden><button id="b-pdfdoc">Subir esta lámina a Documentos</button><button id="b-pdfdocall">Subir dossier a Documentos</button></div>
+        <p class="note" id="crm-pdf-nota" style="margin:0 0 6px"></p><div class="btns" id="crm-pdf" hidden><button id="b-historia" title="Publica esta lámina como imagen en «Entendemos el espacio» de la historia del cliente">Publicar en la historia del cliente</button><button id="b-pdfdoc">Subir esta lámina a Documentos</button><button id="b-pdfdocall">Subir dossier a Documentos</button></div>
         <div class="btns"><button id="b-pdfcarp">Memoria de carpinterías (PDF)</button><button id="b-csvcarp">Carpinterías (CSV)</button></div>
         <details class="addcat">
           <summary>Logo del cajetín</summary>
@@ -6597,10 +6597,29 @@ function destinoLamina(view,ante){
   if(view==='distrib')return ante?['Diseño previo (anteproyecto)','Fase 0']:['Planos generales; con la maquinaria colocada, Maquinaria y equipamiento','Fase 1 / Fase 5'];
   return m[view]||['Documentación de apoyo','Fase 6'];
 }
+/* láminas que se enseñan al cliente en la historia (capítulo «Entendemos el espacio»), una tras otra */
+var PASOS_HIST={actual:'Estado actual',demol:'Demoliciones',interv:'Implantación',distrib:'Distribución'};
+function publicarHistoria(){
+  var titulo=PASOS_HIST[st.view];
+  if(!titulo){toast('En la historia del cliente se publican: Estado actual, Demoliciones, Implantación y Distribución. Cambia a una de esas láminas.');return}
+  if(!CRM){toast('Solo está disponible dentro del CRM');return}
+  var s=buildSVG();if(!s){toast('Dibuja algo antes de publicar');return}
+  if(!window.confirm('Se publicará «'+titulo+'» en la historia del cliente, dentro de «Entendemos el espacio» (sustituye a la anterior si ya estaba). El cliente la verá en su portal. ¿Continuar?'))return;
+  var img=new Image();
+  img.onload=function(){
+    var W0=Math.min(2400,Math.max(1400,img.width*2)),k=W0/img.width,c=document.createElement('canvas');
+    c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+    var g=c.getContext('2d');g.fillStyle='#ffffff';g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);
+    crmPost({type:'publicar-historia',titulo:titulo,imagen:c.toDataURL('image/jpeg',0.92)});
+    toast('Publicando en la historia…');
+  };
+  img.onerror=function(){toast('No se pudo preparar la imagen del plano')};
+  img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s);
+}
 function notaSubida(){
   var el=$('crm-pdf-nota');if(!el)return;
   var d=destinoLamina(st.view,false);
-  el.textContent='Esta lámina ('+(VNAME[st.view]||st.view)+') va en: '+d[1]+' · '+d[0]+'. El dossier completo va en Documentación de apoyo (Fase 6).';
+  el.textContent='Esta lámina ('+(VNAME[st.view]||st.view)+') va en: '+d[1]+' · '+d[0]+'. El dossier completo va en Documentación de apoyo (Fase 6).'+(PASOS_HIST[st.view]?' Esta también se puede publicar en la historia del cliente («Entendemos el espacio»).':'');
 }
 function subirPdfCrm(mode){
   if(!bbox()){toast('Dibuja algo antes de exportar');return}
@@ -6613,6 +6632,7 @@ function subirPdfCrm(mode){
   toast('Subiendo a Documentos…');
 }
 $('b-pdfdoc').addEventListener('click',function(){subirPdfCrm('view')});
+$('b-historia').addEventListener('click',publicarHistoria);
 $('b-pdfdocall').addEventListener('click',function(){subirPdfCrm('all')});
 $('b-pdfcarp').addEventListener('click',function(){if(!st.v.ops.length){toast('Aún no hay puertas ni ventanas');return}exportPDF('carp')});
 $('b-csvcarp').addEventListener('click',function(){if(!st.v.ops.length){toast('Aún no hay puertas ni ventanas');return}saveFile(slug()+'-carpinterias.csv',carpCSV(),'CSV')});
