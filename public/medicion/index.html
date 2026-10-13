@@ -1463,9 +1463,30 @@ function applyCl(key,n){
   snap();o.cl[key.slice(3)]=n;commit(false);panelSel();
 }
 /* dibujar la zona de un suelo o techo punto a punto */
+function spSnap(w){
+  var pl=st.spPoly||[],prev=pl[pl.length-1],libre=!!st.spLibre,tol=14/st.k;
+  var fc=faceAt(prev||w,st.view)||faceAt(w,st.view),vx=[],vy=[],i;
+  if(fc){
+    for(i=0;i<fc.inner.length;i++){
+      var q=fc.inner[i];
+      if(Math.hypot(q.x-w.x,q.y-w.y)<tol&&!(prev&&Math.hypot(q.x-prev.x,q.y-prev.y)<1))return {x:f2(q.x),y:f2(q.y)}; /* esquina de la sala */
+      vx.push(q.x);vy.push(q.y);
+    }
+  }
+  pl.forEach(function(q){vx.push(q.x);vy.push(q.y)});
+  var x=w.x,y=w.y,fijaX=false,fijaY=false;
+  if(prev&&!libre){ /* recto: horizontal o vertical respecto al punto anterior */
+    if(Math.abs(x-prev.x)>=Math.abs(y-prev.y)){y=prev.y;fijaY=true}else{x=prev.x;fijaX=true}
+  }
+  function alinea(v,lista){var b=null,bd=tol;lista.forEach(function(u){var d=Math.abs(u-v);if(d<bd){bd=d;b=u}});return b}
+  if(!fijaX){var ax=alinea(x,vx);x=ax!==null?ax:Math.round(x/5)*5}
+  if(!fijaY){var ay=alinea(y,vy);y=ay!==null?ay:Math.round(y/5)*5}
+  return {x:f2(x),y:f2(y)};
+}
 function spTap(w){
-  var p=drSnap(w),pl=st.spPoly=st.spPoly||[];
-  if(pl.length>=3&&Math.hypot(p.x-pl[0].x,p.y-pl[0].y)<16/st.k){spCerrar();return}
+  var pl=st.spPoly=st.spPoly||[];
+  if(pl.length>=3&&Math.hypot(w.x-pl[0].x,w.y-pl[0].y)<16/st.k){spCerrar();return}
+  var p=spSnap(w);
   var ult=pl[pl.length-1];
   if(ult&&Math.hypot(p.x-ult.x,p.y-ult.y)<2/st.k){if(pl.length>=3)spCerrar();return}
   pl.push(p);drawPal();render();
@@ -1479,7 +1500,7 @@ function spCerrar(){
   var nq=nearNode(cen.x,cen.y,1e9,null);if(!nq)return;
   snap();
   var nsp={id:uid('q'),k:zkind(st.view),n:nq.id,dx:0,dy:0,pts:pl.map(function(q){return {x:f2(q.x-nq.x),y:f2(q.y-nq.y)}}),mat:st.pal[st.view],nm:''};
-  st.v.sp.push(nsp);st.sel={t:'sp',id:nsp.id};st.spPoly=null;commit();drawPal();
+  st.v.sp.push(nsp);st.sel={t:'sp',id:nsp.id};st.spPoly=null;st.spHover=null;commit();drawPal();
 }
 document.addEventListener('keydown',function(e){
   if(!(st&&st.spPoly&&st.spPoly.length)||(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)))return;
@@ -2318,6 +2339,7 @@ function scene(C,k,view,o){
       var spp=st.spPoly;
       h+='<polyline points="'+spp.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ')+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(2*px)+';stroke-dasharray:'+f2(6*px)+' '+f2(4*px)+'"/>';
       spp.forEach(function(p,i){h+='<circle cx="'+f2(p.x)+'" cy="'+f2(p.y)+'" r="'+f2((i===0?6:3.5)*px)+'" style="fill:'+C.accent+'"/>'});
+      if(st.spHover){var lp=spp[spp.length-1];h+=ln(lp.x,lp.y,st.spHover.x,st.spHover.y,C.accent,1.4*px,'round','')+'<circle cx="'+f2(st.spHover.x)+'" cy="'+f2(st.spHover.y)+'" r="'+f2(4*px)+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(1.6*px)+'"/>'}
     }
   }
   v.walls.forEach(function(w){
@@ -4030,8 +4052,8 @@ function drawPal(){
     $('alz-modo').hidden=v!=='alz'&&v!=='suelos'&&v!=='techos';
     if(v==='suelos'||v==='techos'){
       st.sueloModo=st.sueloModo||'sala';
-      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Rectángulo (arrastra)'],['poli','Dibujar la zona (puntos)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('')+(st.sueloModo==='poli'&&st.spPoly&&st.spPoly.length>=3?'<button data-sm="cerrar" class="pri">Cerrar la zona</button>':'');
-      if(st.sueloModo==='poli')$('pal-n').textContent='Elige el material y toca los puntos del contorno de la zona (una esquina tras otra). Para cerrarla, toca el primer punto o pulsa «Cerrar la zona». Solo esa zona llevará ese material.';
+      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Rectángulo (arrastra)'],['poli','Dibujar la zona (puntos)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('')+(st.sueloModo==='poli'?'<button data-sm="libre" aria-pressed="'+!st.spLibre+'" title="Con las líneas rectas, cada tramo sale horizontal o vertical y se pega a las esquinas de la sala">Líneas rectas: '+(st.spLibre?'no':'sí')+'</button>':'')+(st.sueloModo==='poli'&&st.spPoly&&st.spPoly.length>=3?'<button data-sm="cerrar" class="pri">Cerrar la zona</button>':'');
+      if(st.sueloModo==='poli')$('pal-n').textContent='Elige el material y toca los puntos del contorno de la zona (una esquina tras otra). Los tramos salen rectos (horizontal o vertical) y se pegan a las esquinas de la sala; con «Líneas rectas: no» dibujas libre. Para cerrarla, toca el primer punto o pulsa «Cerrar la zona». Solo esa zona llevará ese material.';
       if(st.sueloModo==='parte')$('pal-n').textContent='Elige el material y ARRASTRA un rectángulo dentro de la sala: solo esa parte llevará ese material (el resto conserva el suyo). Luego ajusta sus medidas en el panel.';
     }
     $('alz-h-w').hidden=!(v==='alz'&&(st.alzModo==='franja-inf'||st.alzModo==='franja-sup'));
@@ -4059,7 +4081,8 @@ $('alz-modo').addEventListener('click',function(e){
   if(bs){
     var sm=bs.getAttribute('data-sm');
     if(sm==='cerrar'){spCerrar();return}
-    st.sueloModo=sm;st.spPoly=null;st.tool='paint';drawPal();toolbar();hint();render();return;
+    if(sm==='libre'){st.spLibre=!st.spLibre;st.spHover=null;drawPal();render();return}
+    st.sueloModo=sm;st.spPoly=null;st.spHover=null;st.tool='paint';drawPal();toolbar();hint();render();return;
   }
   var bd=e.target.closest('button[data-dm]');
   if(bd){st.demModo=bd.getAttribute('data-dm');st.tool='paint';drawPal();toolbar();hint();return}
@@ -7282,7 +7305,7 @@ cmd('Seleccionar todo',['sa','todo'],'Selecciona todo lo visible',function(){sel
 
 /* ---------- atajos de teclado: deshacer, rehacer, copiar, pegar, duplicar ---------- */
 var curW={x:0,y:0},clip=null;
-svg.addEventListener('pointermove',function(e){curW=toW(loc(e))});
+svg.addEventListener('pointermove',function(e){curW=toW(loc(e));if(st.spPoly&&st.spPoly.length&&st.tool==='paint'&&st.sueloModo==='poli'){st.spHover=spSnap(curW);req()}});
 function copiarSel(silencio){
   if(st.multi.length)return copiarMulti();
   var s=st.sel;if(!s){toast('Toca primero lo que quieres copiar');return false}
