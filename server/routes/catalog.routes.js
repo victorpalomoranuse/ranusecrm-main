@@ -324,7 +324,8 @@ function svgBloqueValido(frag) {
 }
 router.put('/products/:id/bloques', async (req, res) => {
   try {
-    const { largo, fondo, alto, shapes, svg: svgIn, merge } = req.body || {};
+    const { largo, fondo, alto, shapes, svg: svgIn, merge, fallback } = req.body || {};
+    const fb = fallback && typeof fallback === 'object' ? fallback : {};
     if (!svgIn || typeof svgIn !== 'object') return res.status(400).json({ error: 'Datos del bloque no válidos' });
     // con merge solo se cambian las vistas que se mandan; las medidas que falten salen de lo que ya tiene el producto
     let previo = null;
@@ -333,9 +334,10 @@ router.put('/products/:id/bloques', async (req, res) => {
       previo = pr || null;
     }
     const svg = merge ? { ...(previo?.bloques?.svg || {}), ...Object.fromEntries(Object.entries(svgIn).filter(([, v]) => v)) } : svgIn;
-    const L = Number(largo) || Number(previo?.bloques?.largo) || Number(previo?.longitud) || 0;
-    const D = Number(fondo) || Number(previo?.bloques?.fondo) || Number(previo?.ancho) || 0;
-    const H = Number(alto) || Number(previo?.bloques?.alto) || Number(previo?.altura) || 0;
+    // medidas: las del dibujo; si faltan, las que ya tiene el producto; y si tampoco, las del propio archivo subido
+    const L = Number(largo) || Number(previo?.bloques?.largo) || Number(previo?.longitud) || Number(fb.largo) || 0;
+    const D = Number(fondo) || Number(previo?.bloques?.fondo) || Number(previo?.ancho) || Number(fb.fondo) || 0;
+    const H = Number(alto) || Number(previo?.bloques?.alto) || Number(previo?.altura) || Number(fb.alto) || 0;
     if (!(L > 0 && D > 0 && H > 0)) return res.status(400).json({ error: merge ? 'Faltan medidas: rellena el largo, el ancho y el alto del producto en el catálogo' : 'Datos del bloque no válidos' });
     const vistas = ['planta', 'alzado', 'lateral'];
     for (const v of vistas) {

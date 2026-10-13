@@ -3937,7 +3937,7 @@ function abrirModalDXF(lista,archivo,prod){
       var dw={planta:[bq.largo,bq.fondo],alzado:[bq.largo,bq.alto||100],lateral:[bq.fondo,bq.alto||100]}[src]; /* ancho y alto del dibujo elegido */
       var dT=asig==='planta'?{largo:dw[0],fondo:dw[1],alto:0}:asig==='alzado'?{largo:dw[0],fondo:0,alto:dw[1]}:{largo:0,fondo:dw[0],alto:dw[1]};
       genProd[prod.id]=true;panelSel();
-      crmPost({type:'guardarBloqueProducto',id:prod.id,vista:asig,frag:frag,largo:dT.largo,fondo:dT.fondo,alto:dT.alto});
+      crmPost({type:'guardarBloqueProducto',id:prod.id,vista:asig,frag:frag,largo:dT.largo,fondo:dT.fondo,alto:dT.alto,fb:{largo:bq.largo,fondo:bq.fondo,alto:bq.alto||100}});
       var lib=$('dxf-lib');
       if(lib&&lib.checked){var nmB=(m.querySelector('input[data-n="'+ci+'"]').value||'').trim()||bq.nombre,itB={nombre:nmB,categoria:'Mi biblioteca',largo:bq.largo,fondo:bq.fondo,alto:bq.alto||100,origen:'Subido desde '+archivo,planta:'',alzado:'',lateral:''};itB[asig]=frag;crmPost({type:'guardarBiblioteca',items:[itB]})}
       toast('Guardando '+NV3[asig].toLowerCase()+' en el producto'+(lib&&lib.checked?' y en tu biblioteca':'')+'…');cerrarModalDXF();return;

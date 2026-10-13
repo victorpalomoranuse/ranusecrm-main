@@ -88,7 +88,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
         try {
           const svg = { planta: '', alzado: '', lateral: '' };
           svg[m.vista] = m.frag;
-          const { data } = await api.put(`/catalog/products/${m.id}/bloques`, { largo: m.largo, fondo: m.fondo, alto: m.alto, svg, merge: true });
+          const { data } = await api.put(`/catalog/products/${m.id}/bloques`, { largo: m.largo, fondo: m.fondo, alto: m.alto, svg, merge: true, fallback: m.fb });
           const b = data.product?.bloques || {};
           responder({ type: 'bloqueProducto', id: m.id, bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, svg: b.svg || svg } });
         } catch (err) { responder({ type: 'bloqueProductoError', id: m.id, message: err.response?.data?.error || 'No se pudo guardar el bloque en el producto' }); }
