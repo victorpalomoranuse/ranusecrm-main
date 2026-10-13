@@ -2285,6 +2285,26 @@ function selDims(C,px,w,view){
     if(esSel){ // exterior: de cara exterior a cara exterior
       var dE=t/2+14*px,o0=s0-t,o1=s1+t;
       h+=ln(P(o0,t/2,-1).x,P(o0,t/2,-1).y,P(o0,dE+4*px,-1).x,P(o0,dE+4*px,-1).y,AZUL,px*0.8)+ln(P(o1,t/2,-1).x,P(o1,t/2,-1).y,P(o1,dE+4*px,-1).x,P(o1,dE+4*px,-1).y,AZUL,px*0.8);
+      /* muros que llegan a este por fuera (en T): la cota exterior se parte en esquina → muro y muro → esquina */
+      var cortes=[],enCadena=wl2._chain||[wl2];
+      st.v.walls.forEach(function(x){
+        if(enCadena.indexOf(x)>=0||x===wl2||!wallVis(x,view))return;
+        [x.a,x.b].forEach(function(nid){
+          var np=nd(nid),no=nd(x.a===nid?x.b:x.a),rx=np.x-g.a.x,ry=np.y-g.a.y,sv=rx*g.ux+ry*g.uy,dv=rx*-ni.x+ry*-ni.y;
+          if(Math.abs(dv)>t/2+1.5||sv<=s0+1||sv>=s1-1)return;
+          if((no.x-np.x)*-ni.x+(no.y-np.y)*-ni.y>0&&cortes.every(function(c){return Math.abs(c.s-sv)>1}))cortes.push({s:sv,t:x.t});
+        });
+      });
+      cortes.sort(function(p,q){return p.s-q.s});
+      if(cortes.length){
+        /* por puntos (eje de muro a eje de muro): no se cuenta lo que se solapa en las uniones */
+        var ini=0;
+        cortes.forEach(function(c){
+          azul(P(ini,dE,-1),P(c.s,dE,-1),c.s-ini,null);
+          ini=c.s;
+        });
+        azul(P(ini,dE,-1),P(L,dE,-1),L-ini,null);
+      }else
       azul(P(o0,dE,-1),P(o1,dE,-1),shown+2*t,{wall:wl2.id,kind:'wsel',chain:!!wl2._chain,nid:null,delta:(L-clear)-2*t});
     }
   }
