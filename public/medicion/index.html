@@ -4576,6 +4576,7 @@ function panelSel(focus){
     var w=wl(s.id),g=wg(w);
     h+='<div class="rowh"><strong>Muro</strong><span class="muted">en el plano: '+fmt(g.l)+' cm</span></div>';
     h+=fld('len','Medida real (cm)',w.m?w.len:null,fmt(g.l));
+    if(w.m===true&&Math.abs(g.l-w.len)>1.5)h+='<div class="note" style="margin:6px 0;color:var(--dem)">Ojo: escribiste <b>'+fmtU(w.len)+'</b> para este muro, pero en el dibujo mide <b>'+fmtU(g.l)+'</b> (por eso sale en rojo con la medida entre paréntesis). Elige cuál vale:</div><div class="btns"><button data-a="lenreal">Dejar la del dibujo ('+fmtU(g.l)+')</button><button data-a="lenmov">Mover el muro a '+fmtU(w.len)+'</button></div>';
     h+='<button class="pri" data-a="applynext" style="width:100%">Aplicar y siguiente</button>';
     h+=fld('w_ang','Ángulo (°) respecto a la horizontal',Math.round(angMuro(w)*10)/10);
     h+='<div class="seg3" style="margin:0 0 6px">'+[['a','Gira desde el inicio'],['c','Desde el centro'],['b','Desde el final']].map(function(p){return '<button data-a="angpiv" data-s="'+p[0]+'" aria-pressed="'+((st.angPiv||'a')===p[0])+'">'+p[1]+'</button>'}).join('')+'</div>';
@@ -5061,6 +5062,8 @@ function doAction(a,el){
   }
   if(a==='spadd'){st.spAdd=!st.spAdd;panelSel();render();toast(st.spAdd?'Toca un lado de la zona para añadir un punto':'Tocar una línea la mueve entera');return}
   if(a==='spdelv'&&s.t==='sp'){var spq=by(st.v.sp,s.id);if(spq&&spq.pts&&spq.pts.length>3&&st.spVsel&&st.spVsel.id===spq.id){snap();spq.pts.splice(st.spVsel.i,1);st.spVsel=null;commit();panelSel()}return}
+  if(a==='lenreal'&&s.t==='wall'){var wr=wl(s.id);if(wr){snap();wr.len=Math.round(wg(wr).l*10)/10;wr.m=true;commit()}return}
+  if(a==='lenmov'&&s.t==='wall'){var wm2=wl(s.id);if(wm2){snap();setWallLen(wm2,wm2.len);commit()}return}
   if(a==='angpiv'){st.angPiv=sv;panelSel();return}
   if(a==='angd'&&s.t==='wall'){var wag=wl(s.id);if(wag){snap();girarMuro(wag,angMuro(wag)+(+sv));commit(false);panelSel()}return}
   if(a==='angort'&&s.t==='wall'){var wao=wl(s.id);if(wao){snap();girarMuro(wao,Math.round(angMuro(wao)/90)*90);commit(false);panelSel()}return}
