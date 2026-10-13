@@ -24,7 +24,9 @@
 .sp-rail a.sp-on span,.sp-rail:hover a span{opacity:1;transform:none}
 
 .sp-hero{height:100vh;height:100dvh;min-height:560px;position:relative;display:flex;align-items:flex-end;color:#fff;background:#2a2622}
-.sp-hero-bg{position:absolute;inset:0}
+.sp-hero-bg{position:absolute;inset:0;overflow:hidden}
+/* portada difuminada: se intuye el ambiente pero no se ve el diseño (no da pistas antes de la presentación) */
+.sp-hero-bg img{filter:blur(26px) brightness(.85) saturate(.85);transform:scale(1.15)}
 .sp-hero-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,16,12,.25),rgba(20,16,12,.65))}
 .sp-hero-t{position:relative;padding:0 8vw 11vh;max-width:900px}
 .sp-kicker{font-size:.7rem;letter-spacing:.32em;text-transform:uppercase;font-weight:500;opacity:.85;margin-bottom:18px}
