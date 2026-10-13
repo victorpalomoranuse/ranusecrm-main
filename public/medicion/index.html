@@ -2708,7 +2708,34 @@ latIn.forEach(function(inp){
   inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();applyLat(inp);inp.blur()}else if(e.key==='Escape'){inp.blur();render()}});
   inp.addEventListener('change',function(){applyLat(inp)});
 });
-var genProd={},subirProd=null;
+var genProd={},subirProd=null,pendLib=null;
+/* elegir un bloque de la biblioteca propia para asignárselo a un producto del catálogo */
+function abrirBibProducto(prod){
+  var cerrar=function(){var b=$('bibmod');if(b)b.remove()};cerrar();
+  var m=document.createElement('div');m.id='bibmod';m.className='dxfmod';
+  m.innerHTML='<div class="dxfbox"><header><h3>Elige un bloque de tu biblioteca para «'+esc(prod.nombre)+'»</h3><p class="note" style="margin:0">Después eliges qué vista es (planta, frente o lateral). Se copia al producto; el de la biblioteca no cambia.</p><div style="margin-top:8px"><input id="bib-q" type="search" placeholder="Buscar por nombre…" style="width:100%"></div></header><div class="dxfgrid" id="bib-g"></div><footer><span style="flex:1"></span><button id="bib-x">Cancelar</button></footer></div>';
+  document.body.appendChild(m);
+  function lista(){
+    var q=($('bib-q').value||'').trim().toLowerCase(),its=catalog().filter(function(c){return c.biblioteca&&(!q||(c.nombre+' '+(c.categoria||'')).toLowerCase().indexOf(q)>=0)}).slice(0,150);
+    $('bib-g').innerHTML=its.length?its.map(function(c){return '<div class="dxfcard" data-bib="'+esc(c.id)+'" style="cursor:pointer"><div class="dxfpv" style="min-height:96px;display:flex;align-items:center;justify-content:center">'+thumb(c)+'</div><b style="font-size:12px">'+esc(c.nombre)+'</b><small>'+esc(catsDe(c).join(', '))+' · '+fmt(c.w)+' × '+fmt(c.d)+' cm</small></div>'}).join(''):'<p class="note" style="padding:16px">No hay bloques en tu biblioteca todavía. Sube uno desde un DXF y marca «Guardar también en mi biblioteca».</p>';
+  }
+  lista();
+  $('bib-q').addEventListener('input',lista);
+  $('bib-x').addEventListener('click',cerrar);
+  m.addEventListener('mousedown',function(e){if(e.target===m)cerrar()});
+  $('bib-g').addEventListener('click',function(e){
+    var card=e.target.closest('[data-bib]');if(!card)return;
+    var id=card.getAttribute('data-bib'),c=catById(id);if(!c)return;
+    cerrar();
+    if(bloquesFull[id])bibElegido(prod,c,bloquesFull[id]);
+    else{pendLib={id:id,prod:prod,c:c};crmPost({type:'pedirBloque',id:id});toast('Cargando el bloque…')}
+  });
+}
+function bibElegido(prod,c,BF){
+  var sv=BF.svg||{},vs=['planta','alzado','lateral'].filter(function(v){return sv[v]});
+  if(!vs.length){toast('Ese bloque no tiene dibujo');return}
+  abrirModalDXF([{nombre:c.nombre,categoria:'',largo:BF.largo,fondo:BF.fondo,alto:BF.alto||100,vistas:vs,planta:sv.planta||'',alzado:sv.alzado||'',lateral:sv.lateral||''}],c.nombre,{id:prod.id,nombre:prod.nombre,deBiblioteca:true});
+}
 var qd=$('qd'),dimEd=null;
 function closeDimEd(){dimEd=null;qd.hidden=true}
 function openDimEd(h){
@@ -3708,6 +3735,13 @@ $('prod-dxf').addEventListener('change',function(e){
   rd.readAsText(f);
 });
 function cerrarModalDXF(){var m=$('dxfmod');if(m)m.remove()}
+var NV3={planta:'Planta',alzado:'Frente',lateral:'Lateral'};
+function asigHtml(b,i){
+  var vs=(b.vistas&&b.vistas.length)?b.vistas:['planta'],h='';
+  if(vs.length>1)h+='<label class="fld" style="margin:6px 0 0"><span>Dibujo que uso</span><select data-src="'+i+'">'+vs.map(function(v){return '<option value="'+v+'">'+NV3[v]+'</option>'}).join('')+'</select></label>';
+  h+='<label class="fld" style="margin:6px 0 0"><span>Este dibujo es la…</span><select data-asig="'+i+'">'+['planta','alzado','lateral'].map(function(v){return '<option value="'+v+'"'+(v===vs[0]?' selected':'')+'>'+NV3[v]+'</option>'}).join('')+'</select></label>';
+  return h;
+}
 function abrirModalDXF(lista,archivo,prod){
   cerrarModalDXF();
   lista=lista.slice().sort(function(a,b){return (a.generico?1:0)-(b.generico?1:0)||(a.aprox?1:0)-(b.aprox?1:0)||a.nombre.localeCompare(b.nombre)});
@@ -3722,7 +3756,7 @@ function abrirModalDXF(lista,archivo,prod){
     svg+='</div>';pv[i]=svg;svg='<div class="dxfpv" data-pv="'+i+'" style="min-height:96px"></div>';
     var marca=!b.generico&&!b.aprox;
     return '<div class="dxfcard'+(marca?'':' off')+'" data-i="'+i+'" data-v="'+(b.vistas||[]).join(',')+'" data-q="'+esc((b.nombre+' '+(b.original||'')+' '+(b.categoria||'')).toLowerCase())+'"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-k="'+i+'"'+(marca?' checked':'')+'> <span>Guardar</span></label>'+svg+
-      '<input type="text" data-n="'+i+'" value="'+esc(b.nombre)+'" aria-label="Nombre del bloque"><small>'+esc(b.categoria||'')+' · '+fmt(b.largo)+' × '+fmt(b.fondo)+(b.alto?' × '+fmt(b.alto):'')+' cm'+(b.aprox?' · tamaño dudoso, revísalo':'')+(b.generico&&!b.aprox?' · parece un grupo':'')+'</small></div>';
+      '<input type="text" data-n="'+i+'" value="'+esc(b.nombre)+'" aria-label="Nombre del bloque">'+(prod?asigHtml(b,i):'')+'<small>'+esc(b.categoria||'')+' · '+fmt(b.largo)+' × '+fmt(b.fondo)+(b.alto?' × '+fmt(b.alto):'')+' cm'+(b.aprox?' · tamaño dudoso, revísalo':'')+(b.generico&&!b.aprox?' · parece un grupo':'')+'</small></div>';
   }).join('');
   m.innerHTML='<div class="dxfbox"><header><h3>Importar bloques de «'+esc(archivo)+'»</h3><p class="note" style="margin:0">Marca los que quieras en tu biblioteca. Solo se guarda el dibujo (sin textos ni marcos), a escala. Usa solo bloques que tengas derecho a reutilizar.</p>'+
     '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input id="dxf-q" type="search" placeholder="Buscar por nombre…" style="flex:1;min-width:160px"><select id="dxf-v"><option value="" selected>Todas las piezas</option><option value="3">Con las 3 vistas</option><option value="planta">Con planta</option><option value="alzado">Con frente</option><option value="solo-alzado">Solo frente (sin planta)</option></select></div></header>'+
@@ -3754,6 +3788,8 @@ function abrirModalDXF(lista,archivo,prod){
     [].forEach.call(m.querySelectorAll('input[data-k]'),function(c){c.checked=false});
     ['dxf-all','dxf-none'].forEach(function(id){$(id).hidden=true});
     $('dxf-cat').closest('label').hidden=true;
+    if(!prod.deBiblioteca)m.querySelector('footer').insertAdjacentHTML('afterbegin','<label style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" id="dxf-lib" checked> Guardar también en mi biblioteca (para usarlo en otros productos)</label>');
+    m.addEventListener('change',function(e){var sv=e.target.getAttribute&&e.target.getAttribute('data-src');if(sv!==null&&sv!==undefined){var as=m.querySelector('select[data-asig="'+sv+'"]');if(as)as.value=e.target.value}});
     var cuenta0=cuenta;cuenta=function(){cuenta0();var n=m.querySelectorAll('input[data-k]:checked').length;$('dxf-save').textContent=n?'Usar para este producto':'Marca uno';$('dxf-save').disabled=!n};
   }
   $('dxf-q').addEventListener('input',filtra);$('dxf-v').addEventListener('change',filtra);
@@ -3764,11 +3800,17 @@ function abrirModalDXF(lista,archivo,prod){
   $('dxf-save').addEventListener('click',function(){
     if(prod){
       var ck=m.querySelector('input[data-k]:checked');if(!ck)return;
-      var bq=lista[+ck.getAttribute('data-k')];
-      if(!bq||!bq.planta){toast('Ese bloque no tiene vista de planta: elige otro');return}
+      var ci=+ck.getAttribute('data-k'),bq=lista[ci];if(!bq)return;
+      var srcSel=m.querySelector('select[data-src="'+ci+'"]'),src=srcSel?srcSel.value:((bq.vistas&&bq.vistas[0])||'planta');
+      var asig=m.querySelector('select[data-asig="'+ci+'"]').value,frag=bq[src];
+      if(!frag){toast('Ese bloque no tiene esa vista: elige otra');return}
+      var dw={planta:[bq.largo,bq.fondo],alzado:[bq.largo,bq.alto||100],lateral:[bq.fondo,bq.alto||100]}[src]; /* ancho y alto del dibujo elegido */
+      var dT=asig==='planta'?{largo:dw[0],fondo:dw[1],alto:0}:asig==='alzado'?{largo:dw[0],fondo:0,alto:dw[1]}:{largo:0,fondo:dw[0],alto:dw[1]};
       genProd[prod.id]=true;panelSel();
-      crmPost({type:'guardarBloqueProducto',id:prod.id,largo:bq.largo,fondo:bq.fondo,alto:bq.alto||100,planta:bq.planta,alzado:bq.alzado||'',lateral:bq.lateral||''});
-      toast('Guardando el bloque en el producto…');cerrarModalDXF();return;
+      crmPost({type:'guardarBloqueProducto',id:prod.id,vista:asig,frag:frag,largo:dT.largo,fondo:dT.fondo,alto:dT.alto});
+      var lib=$('dxf-lib');
+      if(lib&&lib.checked){var nmB=(m.querySelector('input[data-n="'+ci+'"]').value||'').trim()||bq.nombre,itB={nombre:nmB,categoria:'Mi biblioteca',largo:bq.largo,fondo:bq.fondo,alto:bq.alto||100,origen:'Subido desde '+archivo,planta:'',alzado:'',lateral:''};itB[asig]=frag;crmPost({type:'guardarBiblioteca',items:[itB]})}
+      toast('Guardando '+NV3[asig].toLowerCase()+' en el producto'+(lib&&lib.checked?' y en tu biblioteca':'')+'…');cerrarModalDXF();return;
     }
     var catFija=($('dxf-cat').value||'').trim(),items=[];
     [].forEach.call(m.querySelectorAll('input[data-k]:checked'),function(c){
@@ -4217,7 +4259,7 @@ function panelSel(focus){
     if(CRM&&ce0&&!ce0.biblioteca&&!ce0.generico&&/^[0-9a-f]{8}-/.test(String(ce0.id))){
       var gen0=genProd[ce0.id];
       h+='<div class="lab">Bloque de este producto</div><p class="note" style="margin:0 0 6px">'+(ce0.bloque?'Tiene bloque propio: se dibuja así en el plano y en SketchUp.':'Aún no tiene bloque propio: ahora sale un símbolo genérico.')+' Lo que hagas aquí se guarda en el producto, para todos los planos.</p>';
-      h+='<div class="btns"><button data-a="prodgen"'+(gen0?' disabled':'')+'>'+(gen0?'Generando… (unos minutos)':(ce0.bloque?'✨ Volver a generar con IA':'✨ Generar con IA (desde la foto)'))+'</button><button data-a="prodsubir">Subir bloque (DXF de Rayon…)</button></div>';
+      h+='<div class="btns"><button data-a="prodgen"'+(gen0?' disabled':'')+'>'+(gen0?'Generando… (unos minutos)':(ce0.bloque?'✨ Volver a generar con IA':'✨ Generar con IA (desde la foto)'))+'</button><button data-a="prodsubir">Subir bloque (DXF de Rayon…)</button><button data-a="prodbib">Usar un bloque de mi biblioteca…</button></div>';
       if(!ce0.foto)h+='<p class="note">Para generarlo con IA el producto necesita foto y medidas en el catálogo.</p>';
     }
     if(ce0&&ce0.generico){
@@ -4716,6 +4758,7 @@ function doAction(a,el){
     crmPost({type:'generarBloqueProducto',id:pc0.id,largo:pe.w||pc0.w,fondo:pe.d||pc0.d,alto:ph});
     toast('Generando el bloque con IA… puede tardar unos minutos. Puedes seguir trabajando.');return;
   }
+  if(a==='prodbib'&&s.t==='eq'){var pe3=by(st.v.eq,s.id);if(!pe3)return;var pc3=catById(pe3.cid);if(pc3)abrirBibProducto(pc3);return}
   if(a==='prodsubir'&&s.t==='eq'){var pe2=by(st.v.eq,s.id);if(!pe2)return;subirProd=catById(pe2.cid);if(!subirProd)return;$('prod-dxf').click();return}
   if(a==='eqcat'){var q3=by(st.v.eq,s.id);saveCat({id:q3.cid||('c'+Date.now().toString(36)),nombre:q3.nm,tipo:q3.ty,w:q3.w,d:q3.d,ref:q3.ref||''});toast('Medidas guardadas en el catálogo');return}
   if(a==='rcadd'&&s.t==='wall'){
@@ -6992,8 +7035,8 @@ if(CRM){
       var cb=catById(m.id),bb=m.bloque;
       if(cb&&bb&&bb.svg){
         bloquesFull[m.id]=bb;
-        cb.bloque={planta:bb.svg.planta,largo:bb.largo,fondo:bb.fondo};
-        cb.vistas=['planta'].concat(bb.svg.alzado?['alzado']:[]).concat(bb.svg.lateral?['lateral']:[]);
+        if(bb.svg.planta)cb.bloque={planta:bb.svg.planta,largo:bb.largo,fondo:bb.fondo};
+        cb.vistas=(bb.svg.planta?['planta']:[]).concat(bb.svg.alzado?['alzado']:[]).concat(bb.svg.lateral?['lateral']:[]);
         cb.w=bb.largo;cb.d=bb.fondo;cb.alto=bb.alto;
       }
       render();panelSel();drawCat();toast('Bloque guardado en el producto: ya se usa en todos los planos.');
@@ -7001,6 +7044,7 @@ if(CRM){
       delete genProd[m.id];panelSel();toast(m.message||'No se pudo guardar el bloque');
     }else if(m.type==='bloque'){
       if(m.id&&m.bloque){bloquesFull[m.id]=m.bloque;render()}
+      if(pendLib&&m.id===pendLib.id&&m.bloque){var pl0=pendLib;pendLib=null;bibElegido(pl0.prod,pl0.c,m.bloque)}
     }else if(m.type==='modo'){
       modoPantalla(!!m.fullscreen);
     }else if(m.type==='info'){

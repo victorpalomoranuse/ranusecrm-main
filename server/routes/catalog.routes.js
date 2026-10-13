@@ -324,17 +324,28 @@ function svgBloqueValido(frag) {
 }
 router.put('/products/:id/bloques', async (req, res) => {
   try {
-    const { largo, fondo, alto, shapes, svg } = req.body || {};
-    const L = Number(largo), D = Number(fondo), H = Number(alto);
-    if (!(L > 0 && D > 0 && H > 0) || !svg || typeof svg !== 'object') return res.status(400).json({ error: 'Datos del bloque no válidos' });
+    const { largo, fondo, alto, shapes, svg: svgIn, merge } = req.body || {};
+    if (!svgIn || typeof svgIn !== 'object') return res.status(400).json({ error: 'Datos del bloque no válidos' });
+    // con merge solo se cambian las vistas que se mandan; las medidas que falten salen de lo que ya tiene el producto
+    let previo = null;
+    if (merge) {
+      const { data: pr } = await supabase.from('catalog_products').select('longitud, ancho, altura, bloques').eq('id', req.params.id).maybeSingle();
+      previo = pr || null;
+    }
+    const svg = merge ? { ...(previo?.bloques?.svg || {}), ...Object.fromEntries(Object.entries(svgIn).filter(([, v]) => v)) } : svgIn;
+    const L = Number(largo) || Number(previo?.bloques?.largo) || Number(previo?.longitud) || 0;
+    const D = Number(fondo) || Number(previo?.bloques?.fondo) || Number(previo?.ancho) || 0;
+    const H = Number(alto) || Number(previo?.bloques?.alto) || Number(previo?.altura) || 0;
+    if (!(L > 0 && D > 0 && H > 0)) return res.status(400).json({ error: merge ? 'Faltan medidas: rellena el largo, el ancho y el alto del producto en el catálogo' : 'Datos del bloque no válidos' });
     const vistas = ['planta', 'alzado', 'lateral'];
     for (const v of vistas) {
       if (svg[v] != null && svg[v] !== '' && !svgBloqueValido(svg[v])) return res.status(400).json({ error: `El dibujo de ${v} contiene elementos no permitidos` });
     }
-    if (!svg.planta) return res.status(400).json({ error: 'Falta el dibujo de la planta' });
+    if (!svg.planta && !svg.alzado && !svg.lateral) return res.status(400).json({ error: 'Falta el dibujo' });
+    if (!merge && !svg.planta) return res.status(400).json({ error: 'Falta el dibujo de la planta' });
     const bloques = {
       largo: L, fondo: D, alto: H,
-      shapes: shapes && typeof shapes === 'object' ? shapes : null,
+      shapes: merge ? (previo?.bloques?.shapes || null) : (shapes && typeof shapes === 'object' ? shapes : null),
       svg: { planta: svg.planta || '', alzado: svg.alzado || '', lateral: svg.lateral || '' },
       actualizado: new Date().toISOString(),
     };

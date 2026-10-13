@@ -84,11 +84,13 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           responder({ type: 'bloqueProducto', id: m.id, bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, svg: b.svg } });
         } catch (err) { responder({ type: 'bloqueProductoError', id: m.id, message: err.response?.data?.error || 'No se pudo generar el bloque' }); }
       }
-      else if (m.type === 'guardarBloqueProducto' && m.id && m.planta) {
+      else if (m.type === 'guardarBloqueProducto' && m.id && m.vista && m.frag) {
         try {
-          const svg = { planta: m.planta, alzado: m.alzado || '', lateral: m.lateral || '' };
-          await api.put(`/catalog/products/${m.id}/bloques`, { largo: m.largo, fondo: m.fondo, alto: m.alto, shapes: null, svg });
-          responder({ type: 'bloqueProducto', id: m.id, bloque: { largo: m.largo, fondo: m.fondo, alto: m.alto, svg } });
+          const svg = { planta: '', alzado: '', lateral: '' };
+          svg[m.vista] = m.frag;
+          const { data } = await api.put(`/catalog/products/${m.id}/bloques`, { largo: m.largo, fondo: m.fondo, alto: m.alto, svg, merge: true });
+          const b = data.product?.bloques || {};
+          responder({ type: 'bloqueProducto', id: m.id, bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, svg: b.svg || svg } });
         } catch (err) { responder({ type: 'bloqueProductoError', id: m.id, message: err.response?.data?.error || 'No se pudo guardar el bloque en el producto' }); }
       }
       else if (m.type === 'pedirMiniaturas' && Array.isArray(m.ids)) {

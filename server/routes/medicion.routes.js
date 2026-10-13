@@ -216,6 +216,8 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
           ...(p.bloques?.svg?.planta ? {
             bloque: { planta: p.bloques.svg.planta, largo: p.bloques.largo, fondo: p.bloques.fondo },
             vistas: ['planta', ...(p.bloques.svg.alzado ? ['alzado'] : []), ...(p.bloques.svg.lateral ? ['lateral'] : [])],
+          } : (p.bloques?.svg?.alzado || p.bloques?.svg?.lateral) ? {
+            vistas: [...(p.bloques.svg.alzado ? ['alzado'] : []), ...(p.bloques.svg.lateral ? ['lateral'] : [])],
           } : {}),
         });
       } else if (cat.type === 'iluminacion') {
