@@ -2423,7 +2423,7 @@ function scene(C,k,view,o){
             var q2=spPts(r2);if(!q2)return false;
             return q2.some(function(c1,j){var c2=q2[(j+1)%q2.length];return (Math.hypot(c1.x-a.x,c1.y-a.y)<1.5&&Math.hypot(c2.x-b.x,c2.y-b.y)<1.5)||(Math.hypot(c1.x-b.x,c1.y-b.y)<1.5&&Math.hypot(c2.x-a.x,c2.y-a.y)<1.5)});
           });
-          if(!rep0&&!compartido&&!(o.flat&&tocaMuro)){
+          if(!rep0&&!compartido&&!(o.flat&&tocaMuro&&st.verCotasMuros)){ /* un lado pegado al muro solo se omite si las cotas de los muros ya están en la lámina */
             h+=dimW(C,px,a.x+ix,a.y+iy,b.x+ix,b.y+iy,fmtU(L),C.label);
             if(colectaDim){var vt=Math.abs(dx)<Math.abs(dy);dimHits.push({kind:'spe',sp:r.id,i:i,val:L,x:(a.x+b.x)/2+ix+(vt?14*px:0),y:(a.y+b.y)/2+iy+(vt?4*px:-5*px)})}
           }
