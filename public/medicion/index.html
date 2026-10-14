@@ -271,6 +271,7 @@ body.crm .top .brand{display:none}
             <button data-do="b-cloud" id="mi-cloud" hidden>Guardar ahora</button>
             <button data-do="b-pdf">PDF de esta lámina</button>
             <button data-do="b-pdfall">PDF con todas las láminas</button>
+            <button data-do="b-lams">Elegir láminas del PDF…</button>
             <button data-do="b-prev">Vista previa de las láminas</button>
             <button data-do="b-pdfproj" id="mi-proj" hidden>PDF con todas las plantas del proyecto</button>
             <button data-do="b-pdfdoc" id="mi-docs" hidden>Subir lámina a Documentos</button>
@@ -500,7 +501,7 @@ body.crm .top .brand{display:none}
         <label class="fld"><span>Orientación del plano</span><select id="x-orient"><option value="auto">Automática (en horizontal si así sale más grande)</option><option value="normal">Tal como está dibujado</option><option value="girado">Girado 90° (en horizontal)</option></select></label>
         <label class="fld"><span>Escala</span><select id="x-scale"><option value="auto">Automática (la mayor que quepa)</option><option value="20">1:20</option><option value="25">1:25</option><option value="50">1:50</option><option value="75">1:75</option><option value="100">1:100</option><option value="200">1:200</option></select></label>
         <div class="btns"><button class="pri" id="b-pdf">PDF de esta lámina</button><button id="b-pdfall">PDF con todas las láminas</button></div>
-        <div class="btns"><button id="b-prev">Vista previa de las láminas</button><button id="b-pdfproj" hidden>PDF con todas las plantas del proyecto</button><button id="b-prevproj" hidden>Vista previa de todas las plantas</button></div>
+        <div class="btns"><button id="b-lams" title="Elige qué láminas lleva el PDF con todas">Elegir láminas…</button><button id="b-prev">Vista previa de las láminas</button><button id="b-pdfproj" hidden>PDF con todas las plantas del proyecto</button><button id="b-prevproj" hidden>Vista previa de todas las plantas</button></div>
         <p class="note" id="crm-pdf-nota" style="margin:0 0 6px"></p><div class="btns" id="crm-pdf" hidden><button id="b-historia" title="Publica esta lámina como imagen en «Entendemos el espacio» de la historia del cliente">Publicar en la historia del cliente</button><button id="b-pdfdoc">Subir esta lámina a Documentos</button><button id="b-pdfdocall">Subir dossier a Documentos</button></div>
         <div class="btns"><button id="b-pdfcarp">Memoria de carpinterías (PDF)</button><button id="b-csvcarp">Carpinterías (CSV)</button></div>
         <details class="addcat">
@@ -4638,6 +4639,7 @@ function hint(){
   $('hint').textContent=t;
 }
 function toolbar(){
+  try{lamEtiqueta()}catch(e){}
   try{notaSubida()}catch(e){}
   var bs=$('tools').querySelectorAll('button[data-tool]');
   for(var i=0;i<bs.length;i++){var tn=bs[i].getAttribute('data-tool');bs[i].setAttribute('aria-pressed',String(tn==='diag'?(st.cotasT&&st.tool==='draw'):tn==='draw'?(st.tool==='draw'&&!st.cotasT):tn===st.tool))}
@@ -6038,6 +6040,32 @@ function viewHas(view){
    La distribución se trabaja desde el principio, por eso la pestaña está arriba, pero en el dossier cierra el plano. */
 var ORDEN_OBRA=['actual','cotas','demol','interv','elec','ilum','techos','acab','alz','suelos','distrib'];
 function dossierViews(){return ORDEN_OBRA.filter(viewHas)}
+/* qué láminas lleva el PDF con todas (por defecto todas) */
+function lamOn(k){return !(st.lamOff&&st.lamOff[k])}
+function lamExtras(){return [['distrib','Distribución con la maquinaria colocada (al principio)'],['cal','Memoria de calidades'],['carp','Memoria de carpinterías'],['det','Detalles constructivos']]}
+function lamEtiqueta(){
+  var b=document.getElementById('b-pdfall');if(!b||!st.v)return;
+  var tot=dossierViews().length+lamExtras().length,off=Object.keys(st.lamOff||{}).filter(function(k){return st.lamOff[k]}).length;
+  b.textContent=off?'PDF con '+Math.max(0,tot-off)+' láminas elegidas':'PDF con todas las láminas';
+}
+function abrirLaminas(){
+  var m0=document.getElementById('lammod');if(m0)m0.remove();
+  var vs=dossierViews(),m=document.createElement('div');m.id='lammod';m.className='dxfmod';
+  function fila(k,n){return '<label class="fld chk" style="margin:0"><input type="checkbox" data-lam="'+k+'"'+(lamOn(k)?' checked':'')+'><span>'+esc(n)+'</span></label>'}
+  m.innerHTML='<div class="dxfbox" style="max-width:520px"><header><h3>Qué láminas llevan los PDF</h3><p class="note" style="margin:0">Marca las que quieres. Vale para «PDF con todas las láminas» y para la vista previa. Lo que no tenga contenido no sale aunque esté marcado.</p></header>'+
+    '<div style="padding:12px 18px;display:grid;gap:8px;max-height:56vh;overflow:auto">'+vs.map(function(k){return fila(k,(COD_LAM[k]?COD_LAM[k]+' · ':'')+VNAME[k])}).join('')+'<div style="height:1px;background:#e7e2dd;margin:2px 0"></div>'+lamExtras().map(function(x){return fila(x[0],x[1])}).join('')+'</div>'+
+    '<footer><button id="lam-t">Todas</button><button id="lam-n">Ninguna</button><span style="flex:1"></span><button id="lam-p">Vista previa</button><button class="pri" id="lam-d">Descargar PDF</button></footer></div>';
+  document.body.appendChild(m);
+  function guarda(){st.lamOff={};[].forEach.call(m.querySelectorAll('input[data-lam]'),function(c){if(!c.checked)st.lamOff[c.getAttribute('data-lam')]=true});try{localStorage.setItem('ranuse-lam-off',JSON.stringify(st.lamOff))}catch(e){}lamEtiqueta()}
+  m.addEventListener('change',guarda);
+  function marca(v){[].forEach.call(m.querySelectorAll('input[data-lam]'),function(c){c.checked=v});guarda()}
+  document.getElementById('lam-t').addEventListener('click',function(){marca(true)});
+  document.getElementById('lam-n').addEventListener('click',function(){marca(false)});
+  document.getElementById('lam-d').addEventListener('click',function(){guarda();m.remove();exportPDF('all')});
+  document.getElementById('lam-p').addEventListener('click',function(){guarda();m.remove();verPrevia(false)});
+  m.addEventListener('mousedown',function(e){if(e.target===m)m.remove()});
+}
+try{st.lamOff=JSON.parse(localStorage.getItem('ranuse-lam-off')||'{}')||{}}catch(e){st.lamOff={}}
 
 
 /* ---------- memoria de carpinterías ---------- */
@@ -7312,6 +7340,7 @@ function buildPDF(mode,opt,lista){
   lumUsedList().forEach(function(l){var r=LUMRGB[l.id];if(r&&r.rgb&&!lumIdx[l.id])lumIdx[l.id]=doc.image(r.w,r.h,r.rgb)});
   var v0=st.v,antes=plan.length,views=mode==='all'?dossierViews():(mode==='carp'||mode==='det'||mode==='cal')?[]:[st.view];
   if(mode==='all'&&!views.length)views=[st.view];
+  if(mode==='all')views=views.filter(lamOn);
   views.forEach(function(vw){
     if(vw==='alz'){var ap=alzPages(opt);ap.pages.forEach(function(pg){plan.push({view:'alz',alz:{S:ap.S,els:pg}})});if(!ap.pages.length)plan.push({view:'alz',alz:null})}
     else if(vw==='demol'){
@@ -7321,10 +7350,10 @@ function buildPDF(mode,opt,lista){
     }
     else plan.push({view:vw});
   });
-  if(mode==='all'&&(v0.eq.length||(v0.mm||[]).length)){var iante=antes-1;plan.forEach(function(pp,i){if(i>=antes&&(pp.view==='cotas'||pp.view==='actual'))iante=i});plan.splice(iante+1,0,{view:'distrib',ante:true})}
-  if(mode==='all'||mode==='cal')calPlan(opt).forEach(function(c){plan.push(c)});
-  if(mode==='all'||mode==='carp')carpPlan(opt).forEach(function(c){plan.push(c)});
-  if(mode==='all'||mode==='det')detPlan(opt).forEach(function(c){plan.push(c)});
+  if(mode==='all'&&lamOn('distrib')&&(v0.eq.length||(v0.mm||[]).length)){var iante=antes-1;plan.forEach(function(pp,i){if(i>=antes&&(pp.view==='cotas'||pp.view==='actual'))iante=i});plan.splice(iante+1,0,{view:'distrib',ante:true})}
+  if((mode==='all'&&lamOn('cal'))||mode==='cal')calPlan(opt).forEach(function(c){plan.push(c)});
+  if((mode==='all'&&lamOn('carp'))||mode==='carp')carpPlan(opt).forEach(function(c){plan.push(c)});
+  if((mode==='all'&&lamOn('det'))||mode==='det')detPlan(opt).forEach(function(c){plan.push(c)});
   for(var kk=antes;kk<plan.length;kk++)plan[kk].v=vv;
   });
   st.v=orig;
@@ -7389,7 +7418,7 @@ function actualizaBotonesPlantas(){
 function verPrevia(todas){
   if(!todas&&!bbox()){toast('Dibuja algo antes de ver la vista previa');return}
   var bytes;
-  try{bytes=buildPDF('all',pdfOpts(),todas?plantasDelProyecto():null)}catch(e){toast('No se pudo generar la vista previa');return}
+  try{bytes=buildPDF('all',pdfOpts(),todas?plantasDelProyecto():null)}catch(e){toast('No hay ninguna lámina marcada: elige alguna en «Elegir láminas»');return}
   var url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})),m=document.getElementById('prevpdf');
   if(m)m.remove();
   m=document.createElement('div');m.id='prevpdf';m.className='dxfmod';
@@ -7400,6 +7429,7 @@ function verPrevia(todas){
   m.addEventListener('click',function(e){if(e.target===m)cerrar()});
 }
 $('b-prev').addEventListener('click',function(){verPrevia(false)});
+$('b-lams').addEventListener('click',abrirLaminas);
 $('b-prevproj').addEventListener('click',function(){verPrevia(true)});
 $('b-pdfproj').addEventListener('click',function(){
   var bytes;
@@ -7483,7 +7513,7 @@ function exportPDF(mode){
   if(mode!=='cal'&&!bbox()){toast('Dibuja algo antes de exportar');return}
   if(!st.v.nombre&&!window.__avisoDatos){window.__avisoDatos=1;toast('Consejo: pon el nombre y la dirección en «Archivo → Datos del proyecto» para que salgan en el cajetín')}
   var bytes;
-  try{bytes=buildPDF(mode,pdfOpts())}catch(e){toast('No se pudo generar el PDF');return}
+  try{bytes=buildPDF(mode,pdfOpts())}catch(e){toast(mode==='all'?'No hay ninguna lámina marcada: elige alguna en «Elegir láminas»':'No se pudo generar el PDF');return}
   saveFile(slug()+(mode==='all'?'-dossier':mode==='carp'?'-carpinterias':mode==='det'?'-detalles':mode==='cal'?'-calidades':'-'+st.view)+'.pdf',bytes,'PDF');
 }
 
@@ -7572,7 +7602,7 @@ function subirPdfCrm(mode){
   var dst=mode==='all'?['Documentación de apoyo','Fase 6']:destinoLamina(st.view,false);
   if(!window.confirm('El PDF se guardará en Documentos del proyecto (tipo plano), pensado para: '+dst[1]+' · '+dst[0]+'. El cliente lo verá en su portal. ¿Continuar?'))return;
   var bytes;
-  try{bytes=buildPDF(mode,pdfOpts())}catch(e){toast('No se pudo generar el PDF');return}
+  try{bytes=buildPDF(mode,pdfOpts())}catch(e){toast(mode==='all'?'No hay ninguna lámina marcada: elige alguna en «Elegir láminas»':'No se pudo generar el PDF');return}
   var titulo=(mode==='all'?'Planos · dossier completo':(COD_LAM[st.view]||'')+' · '+VNAME[st.view])+(st.v.nombre?' · '+st.v.nombre:'');
   crmPost({type:'subir-pdf',nombre:titulo,filename:slug()+(mode==='all'?'-dossier':'-'+st.view)+'.pdf',bytes:bytes.buffer});
   toast('Subiendo a Documentos…');
