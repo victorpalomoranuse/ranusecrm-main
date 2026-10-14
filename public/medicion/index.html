@@ -345,7 +345,7 @@ body.crm .top .brand{display:none}
         <button data-tool="door" title="Puerta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20V4h12v16"/><path d="M4 20h16"/><path d="M15 12h.01"/></svg><span class="lb">Puerta</span></button>
         <button data-tool="win" title="Ventana"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14"/><path d="M12 5v14M4 12h16"/></svg><span class="lb">Ventana</span></button>
         <button data-tool="pillar" title="Pilar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" fill="currentColor"/></svg><span class="lb">Pilar</span></button>
-        <button data-tool="diag" title="Diagonal de control"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19L19 5"/><path d="M5 14v5h5M19 10V5h-5"/></svg><span class="lb">Diagonal</span></button>
+        <button data-tool="diag" title="Cotas: arrastra de un punto a otro (se pegan a esquinas, caras de muros y zonas) y mide la distancia"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18"/><path d="M3 14v8M21 14v8"/><path d="M7 11l-3 3 3 3M17 11l3 3-3 3" transform="translate(0 -5)"/></svg><span class="lb">Cotas</span></button>
         <button data-tool="draw" title="Dibujo libre: líneas, rectángulos, círculos, polilíneas, flechas, cotas libres, textos y nubes de revisión. También para trazar tus propios bloques."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/></svg><span class="lb">Dibujo</span></button>
         <button data-tool="equip" title="Biblioteca de bloques: máquinas, cocinas, baños, mobiliario, personas…"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4M6 8v8M18 8v8M21 10v4M6 12h12"/></svg><span class="lb">Bloques</span></button>
         <button data-tool="pt" id="t-pt" hidden title="Colocar punto"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg><span class="lb">Punto</span></button>
@@ -1109,9 +1109,36 @@ var ZCOLS=['azul','verde','naranja','rojo','gris'];
 var DRCOL={ink:null,rojo:'#d0342c',azul:'#2b7cff',verde:'#2f9e60',naranja:'#e08a1e',gris:'#8a8a8a'};
 function drColor(C,k){return DRCOL[k]||C.ink}
 function drEstilo(){st.drSt=st.drSt||{col:'ink',w:1.4,dash:false,fill:false,fs:12};return st.drSt}
+/* puntos a los que se pega el dibujo: ejes de muro, esquinas de las caras, puntos de las zonas, huecos y equipamiento */
+function puntosClave(){
+  var out=[];
+  st.v.nodes.forEach(function(n){out.push({x:n.x,y:n.y})});
+  var porNodo={};
+  st.v.walls.forEach(function(w){if(w.arc)return;[w.a,w.b].forEach(function(id){(porNodo[id]=porNodo[id]||[]).push(w)})});
+  Object.keys(porNodo).forEach(function(id){
+    var n=nd(id),ws=porNodo[id];
+    if(ws.length<2){ /* extremo libre: las dos esquinas del grosor */
+      var w=ws[0],g=wg(w),h=w.t/2;out.push({x:n.x-g.uy*h,y:n.y+g.ux*h},{x:n.x+g.uy*h,y:n.y-g.ux*h});return;
+    }
+    for(var i=0;i<ws.length;i++)for(var j=i+1;j<ws.length;j++){
+      var g1=wg(ws[i]),g2=wg(ws[j]),den=g1.ux*g2.uy-g1.uy*g2.ux;if(Math.abs(den)<0.05)continue;
+      [1,-1].forEach(function(s1){[1,-1].forEach(function(s2){
+        /* intersección de la cara s1 del muro i con la cara s2 del muro j */
+        var o1x=n.x-g1.uy*s1*ws[i].t/2,o1y=n.y+g1.ux*s1*ws[i].t/2,o2x=n.x-g2.uy*s2*ws[j].t/2,o2y=n.y+g2.ux*s2*ws[j].t/2;
+        var tt=((o2x-o1x)*g2.uy-(o2y-o1y)*g2.ux)/den;
+        out.push({x:o1x+g1.ux*tt,y:o1y+g1.uy*tt});
+      })});
+    }
+  });
+  (st.v.sp||[]).forEach(function(r){var pp=spPts(r);if(pp)pp.forEach(function(q){out.push({x:q.x,y:q.y})})});
+  (st.v.eq||[]).forEach(function(e){var r=eqRect(e);out.push({x:r.x0,y:r.y0},{x:r.x1,y:r.y0},{x:r.x1,y:r.y1},{x:r.x0,y:r.y1})});
+  (st.v.ops||[]).forEach(function(o){try{var q=og(o),h=q.w.t/2,nx=q.nx,ny=q.ny;[[q.x1,q.y1],[q.x2,q.y2]].forEach(function(e){out.push({x:e[0]+nx*h,y:e[1]+ny*h},{x:e[0]-nx*h,y:e[1]-ny*h})})}catch(er){}});
+  return out;
+}
 function drSnap(p,tipo){
-  var n=nearNode(p.x,p.y,14/st.k,null),q=n?{x:n.x,y:n.y}:{x:Math.round(p.x/5)*5,y:Math.round(p.y/5)*5};
-  return q;
+  var tol=14/st.k,best=null,bd=tol;
+  puntosClave().forEach(function(q){var d=Math.hypot(q.x-p.x,q.y-p.y);if(d<bd){bd=d;best=q}});
+  return best?{x:f2(best.x),y:f2(best.y)}:{x:Math.round(p.x/5)*5,y:Math.round(p.y/5)*5};
 }
 function drBox(it){
   var a=it.pts[0],b=it.pts[1]||a;
@@ -4492,14 +4519,14 @@ var HINTS={
 };
 function hint(){
   var t=HINTS[st.tool];
-  if(st.tool==='diag'&&st.dg)t='Ahora toca la otra esquina.';
+  if(st.cotasT&&st.tool==='draw')t='Cotas: arrastra de un punto a otro (se pegan a esquinas, caras de muros y zonas) y te dice la distancia. Para cambiarla, tócala con «Seleccionar».';
   if(st.tool==='pen'&&!st.penSeen&&!st.fingerDraws)t='Con el lápiz se dibuja. Con el dedo se mueve el plano.';
   $('hint').textContent=t;
 }
 function toolbar(){
   try{notaSubida()}catch(e){}
   var bs=$('tools').querySelectorAll('button[data-tool]');
-  for(var i=0;i<bs.length;i++)bs[i].setAttribute('aria-pressed',String(bs[i].getAttribute('data-tool')===st.tool));
+  for(var i=0;i<bs.length;i++){var tn=bs[i].getAttribute('data-tool');bs[i].setAttribute('aria-pressed',String(tn==='diag'?(st.cotasT&&st.tool==='draw'):tn==='draw'?(st.tool==='draw'&&!st.cotasT):tn===st.tool))}
   if($('b-curve'))$('b-curve').setAttribute('aria-pressed',String(!!st.penCurve&&st.tool==='pen'));
   if($('b-libre'))$('b-libre').setAttribute('aria-pressed',String(!!st.muroLibre));
   if(st.tool==='mm'&&st.view!=='distrib')st.tool='select';
@@ -5401,6 +5428,8 @@ $('tools').addEventListener('click',function(e){
   if(b.id==='b-curve'){st.penCurve=!st.penCurve;st.tool='pen';st.dg=null;toolbar();render();return}
   if(b.id==='b-libre'){alternarLibre();return}
   var t=b.getAttribute('data-tool');if(!t)return;
+  if(t==='diag'){st.cotasT=true;st.tool='draw';st.drK='dim';st.drPoly=null;st.dg=null;toolbar();hint();render();flyClose();return}
+  st.cotasT=false;
   st.tool=t;st.dg=null;
   if(t==='equip'&&st.view!=='distrib'&&!(placeVista!=='planta'&&st.view==='alz')){st.view='distrib';placeVista='planta';save()}
   toolbar();render();
@@ -7815,7 +7844,7 @@ cmd('Seleccionar / mover',['mm','sel','mover','seleccionar'],'Tocar, mover y edi
 cmd('Puerta',['op','pu','puerta'],'Colocar puerta',porTool('door'));
 cmd('Ventana',['vn','ve','ventana'],'Colocar ventana',porTool('win'));
 cmd('Pilar',['pi','pilar'],'Colocar pilar',porTool('pillar'));
-cmd('Diagonal de control',['dg','diagonal'],'Medir una diagonal',porTool('diag'));
+cmd('Cotas',['dg','diagonal','cota','cotas','medir'],'Medir de un punto a otro',porTool('diag'));
 cmd('Bloques de la biblioteca',['bl','mq','ma','maquina','bloques'],'Colocar un bloque (máquina, mueble, sanitario, persona…)',porTool('equip'));
 cmd('Punto (luz / mecanismo)',['pt','punto'],'En Iluminación y Electricidad',porTool('pt'));
 cmd('Pintar con material',['bb','pa','pintar'],'En Suelos, Techos y Acabados',porTool('paint'));
@@ -8179,7 +8208,7 @@ $('fly-op').addEventListener('click',function(e){
   if(flyTool!=='draw')return;
   var b=e.target.closest('button');if(!b)return;
   var st0=drEstilo(),k=b.getAttribute('data-drk');
-  if(k){st.drK=k;st.tool='draw';st.drPoly=null;toolbar();hint();flyClose();toast('Dibujo: '+(DRK.filter(function(x){return x[0]===k})[0]||['',''])[1]+(k==='text'?' — toca donde va el texto':k==='poly'?' — toca los puntos':' — arrastra sobre el plano'));return}
+  if(k){st.cotasT=false;st.drK=k;st.tool='draw';st.drPoly=null;toolbar();hint();flyClose();toast('Dibujo: '+(DRK.filter(function(x){return x[0]===k})[0]||['',''])[1]+(k==='text'?' — toca donde va el texto':k==='poly'?' — toca los puntos':' — arrastra sobre el plano'));return}
   if(b.getAttribute('data-drc'))st0.col=b.getAttribute('data-drc');
   else if(b.getAttribute('data-drw'))st0.w=+b.getAttribute('data-drw');
   else if(b.getAttribute('data-drd'))st0.dash=!st0.dash;
