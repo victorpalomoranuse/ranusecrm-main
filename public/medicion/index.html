@@ -496,6 +496,7 @@ body.crm .top .brand{display:none}
         <h2>Láminas PDF</h2>
         <p class="note">Plano a escala real con leyendas, carpinterías, mediciones y cajetín. Las leyendas se generan solas según la lámina.</p>
         <label class="fld"><span>Papel</span><select id="x-paper"><option value="A3">A3 apaisado</option><option value="A4">A4 apaisado</option></select></label>
+        <label class="fld"><span>Equipamiento en la lámina de Suelos</span><select id="x-eqsuelo"><option value="1">Sí (suave, detrás del despiece)</option><option value="0">No</option></select></label>
         <label class="fld"><span>Cotas de ubicación del equipamiento (distancia a los muros, en Distribución)</span><select id="x-eqloc"><option value="0">No</option><option value="1">Sí</option></select></label>
         <label class="fld"><span>Cotas de luminarias a paredes</span><select id="x-ldim"><option value="1">Sí</option><option value="0">No</option></select></label>
         <label class="fld"><span>Marcas de alzado en planta</span><select id="x-marks"><option value="1">Sí (distribución y acabados)</option><option value="0">No</option></select></label>
@@ -1691,7 +1692,7 @@ function clipSegPoly(a,b,poly){
   return out;
 }
 /* líneas del despiece recortadas a la sala */
-function clSvg(C,px,poly,cl,col){
+function clSvg(C,px,poly,cl,col,suave){
   var tl=clTiles(poly,cl);if(!tl)return '';
   var seen={},d='',k=function(p){return Math.round(p.x*10)+','+Math.round(p.y*10)};
   tl.forEach(function(q){
@@ -1701,7 +1702,7 @@ function clSvg(C,px,poly,cl,col){
       clipSegPoly(a,b,poly).forEach(function(sg){d+='M'+f2(sg[0].x)+' '+f2(sg[0].y)+' L'+f2(sg[1].x)+' '+f2(sg[1].y)+' '});
     }
   });
-  return d?'<path d="'+d+'" style="fill:none;stroke:'+(col||C.dim)+';stroke-width:'+f2(0.45*px)+'"/>':'';
+  return d?'<path d="'+d+'" style="fill:none;stroke:'+(col||C.dim)+';stroke-width:'+f2((suave?0.32:0.45)*px)+(suave?';stroke-opacity:.5':'')+'"/>':'';
 }
 function clObj(){var s=st.sel;if(!s)return null;return s.t==='zn'?by(st.v.zn,s.id):s.t==='sp'?by(st.v.sp,s.id):null}
 function colocHtml(o,poly){
@@ -2665,7 +2666,7 @@ function scene(C,k,view,o){
       }else h+='<polygon points="'+pts+'" style="fill:'+(o.flat?hexMix(m.c,'#ffffff',0.55):m.c)+(o.flat?'':';fill-opacity:.62')+';stroke:'+(sl?C.accent:'none')+';stroke-width:'+f2(3*px)+'"/>';
       if(z.cl&&z.cl.pat){
         if(z.cl.show==='trama')h+='<polygon points="'+pts+'" style="fill:'+C.bg+';stroke:none"/>';
-        h+=clSvg(C,px,f.inner,z.cl,hexMix((o.flat?hexMix(m.c,'#ffffff',0.55):m.c),'#000000',0.16));
+        h+=clSvg(C,px,f.inner,z.cl,hexMix((o.flat?hexMix(m.c,'#ffffff',0.55):m.c),'#000000',0.16),!!o.flat);
       }
       var l1=(codes[z.mat]||'')+(z.nm?'  '+z.nm:''),l2=m2((f.area-spEn(f,zk))/10000)+' m²'+(view==='techos'&&z.h?'  ·  h '+fmtU(z.h):'');
       var hZ=hexMix(m.c,'#ffffff',o.flat?0.55:0.4);zlab+=txt(C,px,f.cx,f.cy-2*px,l1,C.label,13,600,hZ)+txt(C,px,f.cx,f.cy+14*px,l2,C.label,11,500,hZ);
@@ -2684,7 +2685,7 @@ function scene(C,k,view,o){
       if(r.cl&&r.cl.pat){
         var rpoly=rpp;
         if(r.cl.show==='trama')h+='<polygon points="'+rps+'" style="fill:'+C.bg+';stroke:'+C.label+';stroke-width:'+f2(1.2*px)+'"/>';
-        h+=clSvg(C,px,rpoly,r.cl,hexMix((o.flat?hexMix(m.c,'#ffffff',0.55):m.c),'#000000',0.16));
+        h+=clSvg(C,px,rpoly,r.cl,hexMix((o.flat?hexMix(m.c,'#ffffff',0.55):m.c),'#000000',0.16),!!o.flat);
       }
       if(sl&&o.nodes){ /* manijas: puntos del contorno y, entre ellos, puntos para añadir uno nuevo */
         rpp.forEach(function(a,i){
@@ -2712,6 +2713,18 @@ function scene(C,k,view,o){
             return q2.some(function(c1,j){var c2=q2[(j+1)%q2.length];return (Math.hypot(c1.x-a.x,c1.y-a.y)<1.5&&Math.hypot(c2.x-b.x,c2.y-b.y)<1.5)||(Math.hypot(c1.x-b.x,c1.y-b.y)<1.5&&Math.hypot(c2.x-a.x,c2.y-a.y)<1.5)});
           });
           if(!rep0&&!compartido&&!(o.flat&&tocaMuro&&st.verCotasMuros)){ /* un lado pegado al muro solo se omite si las cotas de los muros ya están en la lámina */
+            /* en lámina, un lado pegado a un muro se acota por fuera del muro (si ahí no hay otra zona) */
+            var fuera=false,eOx=0,eOy=0;
+            if(o.flat&&tocaMuro){
+              var tMax=v.walls.reduce(function(m,w){return Math.max(m,w.t)},0),dE=tMax+16*px,pE={x:mx+onx*(dE+6*px),y:my+ony*(dE+6*px)};
+              eOx=onx*dE;eOy=ony*dE;
+              fuera=!(v.sp||[]).some(function(r2){if(r2===r||r2.k!==zk)return false;var q2=spPts(r2);return q2&&inPoly(pE,q2)})&&!roomFaces(view).some(function(f2r){return inPoly(pE,f2r.inner)});
+            }
+            if(fuera){
+              var cEx=hexMix(C.label,'#ffffff',0.55);
+              h+=ln(a.x,a.y,a.x+eOx+onx*3*px,a.y+eOy+ony*3*px,cEx,0.6*px)+ln(b.x,b.y,b.x+eOx+onx*3*px,b.y+eOy+ony*3*px,cEx,0.6*px);
+              h+=dimW(C,px,a.x+eOx,a.y+eOy,b.x+eOx,b.y+eOy,fmtU(L),hexMix(C.label,'#ffffff',0.4),true,{inw:{x:onx,y:ony},out:zOut});
+            }else
             h+=dimW(C,px,a.x+ix,a.y+iy,b.x+ix,b.y+iy,fmtU(L),o.flat?hexMix(C.label,'#ffffff',0.4):C.label,!!o.flat,{inw:{x:ix,y:iy},halo:hCol,out:zOut});
             if(colectaDim){var vt=Math.abs(dx)<Math.abs(dy);dimHits.push({kind:'spe',sp:r.id,i:i,a0:a0,val:L,x:(a.x+b.x)/2+ix+(vt?(ix>=0?1:-1)*14*px:0),y:(a.y+b.y)/2+iy+(vt?4*px:(iy>0?13*px:-5*px))})}
           }
@@ -2731,7 +2744,7 @@ function scene(C,k,view,o){
       if(st.spHover){var lp=spp[spp.length-1];h+=ln(lp.x,lp.y,st.spHover.x,st.spHover.y,C.accent,1.4*px,'round','')+'<circle cx="'+f2(st.spHover.x)+'" cy="'+f2(st.spHover.y)+'" r="'+f2(4*px)+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(1.6*px)+'"/>'}
     }
   }
-  if(view==='suelos'&&st.verEqSuelo!==false&&!o.flat){ /* solo mientras trabajas; al exportar la lámina de suelos va sin máquinas */
+  if(view==='suelos'&&(o.flat?o.eqsuelo!==false:st.verEqSuelo!==false)){ /* al exportar, según el ajuste «Equipamiento en Suelos» */
     (v.eq||[]).forEach(function(e){
       var r=eqRect(e);
       h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')">'+(o.flat?'<rect width="'+e.w+'" height="'+e.d+'" rx="'+f2(3*px)+'" style="fill:'+C.bg+';fill-opacity:.9;stroke:'+hexMix(C.label,'#ffffff',0.55)+';stroke-width:'+f2(0.6*px)+'"/>':'')+eqSym(e.ty,e.w,e.d,o.flat?hexMix(C.blk||C.ink,'#ffffff',0.45):(C.blk||C.ink),px,e.cid)+'</g>';
@@ -6078,11 +6091,21 @@ function lamOn(k){return !(st.lamOff&&st.lamOff[k])}
 function lamExtras(){
   var o=null;try{o=pdfOpts()}catch(e){o={paper:'A3'}}
   var v=st.v,out=[];
-  if(v.eq.length||(v.mm||[]).length)out.push(['distrib','Distribución con la maquinaria colocada (al principio)']);
+  if(v.eq.length||(v.mm||[]).length)out.push(['ante','A.05 · Distribución']);
   try{if(calPlan(o).length)out.push(['cal','Memoria de calidades'])}catch(e){}
   try{if(carpPlan(o).length)out.push(['carp','Memoria de carpinterías'])}catch(e){}
   try{if(detPlan(o).length)out.push(['det','Detalles constructivos'])}catch(e){}
   return out;
+}
+/* filas del selector, en el orden de los códigos: A (estado, cotas, demoliciones, implantación, distribución), IE, I y M */
+function lamFilas(fila){
+  var out=[],hayAnte=lamExtras().some(function(x){return x[0]==='ante'});
+  function v(k,nom){out.push(fila(k,COD_LAM[k]+' · '+(nom||VNAME[k]),!viewHas(k),false))}
+  ['actual','cotas','demol','interv'].forEach(function(k){v(k)});
+  if(hayAnte)out.push(fila('ante','A.05 · Distribución',false,true));
+  ['elec','ilum','techos','acab','alz','suelos'].forEach(function(k){v(k)});
+  v('distrib','Mobiliario y equipamiento');
+  return out.join('');
 }
 function lamAviso(){toast('Las láminas que has marcado no tienen contenido en este plano, así que no hay nada que sacar. Marca otras en «Elegir láminas».')}
 /* láminas del PDF: las que tienen contenido (salvo las que quites) y, además, las vacías que marques a propósito */
@@ -6097,7 +6120,7 @@ function abrirLaminas(){
   var vs=ORDEN_OBRA.slice(),m=document.createElement('div');m.id='lammod';m.className='dxfmod';
   function fila(k,n,vacia,extra){var on=extra?lamOn(k):(vacia?!!(st.lamForce&&st.lamForce[k]):lamOn(k));return '<label class="fld chk" style="margin:0"><input type="checkbox" data-lam="'+k+'"'+(extra?' data-x="1"':'')+(vacia?' data-v="1"':'')+(on?' checked':'')+'><span>'+esc(n)+(vacia?' <small style="color:#9a8f86">(aún sin contenido en este plano)</small>':'')+'</span></label>'}
   m.innerHTML='<div class="dxfbox" style="max-width:520px"><header><h3>Qué láminas llevan los PDF</h3><p class="note" style="margin:0">Marca las que quieres. Vale para «PDF con todas las láminas» y para la vista previa. Lo que no tenga contenido no sale aunque esté marcado.</p></header>'+
-    '<div style="padding:12px 18px;display:grid;gap:8px;max-height:56vh;overflow:auto">'+vs.map(function(k){return fila(k,(COD_LAM[k]?COD_LAM[k]+' · ':'')+VNAME[k],!viewHas(k),false)}).join('')+'<div style="height:1px;background:#e7e2dd;margin:2px 0"></div>'+lamExtras().map(function(x){return fila(x[0],x[1],false,true)}).join('')+'</div>'+
+    '<div style="padding:12px 18px;display:grid;gap:8px;max-height:56vh;overflow:auto">'+lamFilas(fila)+'<div style="height:1px;background:#e7e2dd;margin:2px 0"></div>'+lamExtras().filter(function(x){return x[0]!=='ante'}).map(function(x){return fila(x[0],x[1],false,true)}).join('')+'</div>'+
     '<footer><button id="lam-t">Todas</button><button id="lam-n">Ninguna</button><span style="flex:1"></span><button id="lam-p">Vista previa</button><button class="pri" id="lam-d">Descargar PDF</button></footer></div>';
   document.body.appendChild(m);
   function guarda(){
@@ -6956,7 +6979,7 @@ function sheetPage(doc,view,idx,total,o){
 
   /* título de la lámina: etiqueta pequeña con letras espaciadas y título ligero */
   var codLam=codigoLamina(doc,view,o.ante);
-  var tit=(view==='distrib'?(o.ante?'Anteproyecto · distribución':'Distribución'):VNAME[view])+(o.capaN?' · '+o.capaN:'');
+  var tit=(view==='distrib'?(o.ante?'Anteproyecto · distribución':'Mobiliario y equipamiento'):VNAME[view])+(o.capaN?' · '+o.capaN:'');
   p.text(mg+9,mg+10,('Lámina '+idx+' de '+total+' · '+(v.nombre||'Sin nombre')).toUpperCase(),5.6*f+0.6,{bold:true,col:MUTED,sp:0.5});
   p.text(mg+9,mg+22,tit,22*f+2,{light:true,col:INK});
   p.rect(mg+9,mg+25.5,12*f,0.5,MARCA,null,0);
@@ -6986,7 +7009,7 @@ function sheetPage(doc,view,idx,total,o){
     else{for(var i=0;i<SCALES.length;i++)if(SCALES[i]>=need){S=SCALES[i];break}}
     var km=10/S,bw=(gira?hc:wc)*km,bh=(gira?wc:hc)*km,ox=gira?ax+(aw-bw)/2-b.y0*km:ax+(aw-bw)/2-b.x0*km,oy=gira?ay+(ah-bh)/2+b.x1*km:ay+(ah-bh)/2-b.y0*km;
     demCapa=(view==='demol'&&o.capa)?o.capa:(view==='demol'?'x':null);
-    var inner=scene(LIGHT,40/S,view,{sel:null,nodes:false,tags:tags,noctl:true,dims:o.dims,flat:true,marks:o.marks!==false&&!o.ante,ldim:o.ldim!==false&&!o.ante,eqloc:!!o.eqloc&&!o.ante,nonum:!!o.ante});
+    var inner=scene(LIGHT,40/S,view,{sel:null,nodes:false,tags:tags,noctl:true,dims:o.dims,flat:true,marks:o.marks!==false&&!o.ante,ldim:o.ldim!==false&&!o.ante,eqloc:!!o.eqloc&&!o.ante,eqsuelo:o.eqsuelo!==false,nonum:!!o.ante});
     demCapa=null;
     p.raw('q '+pn(mg+1)+' '+pn(mg+28)+' '+pn(cx-mg-2)+' '+pn(PH-2*mg-28-bandH)+' re W n');
     p.svg('<g transform="translate('+f2(ox)+' '+f2(oy)+') scale('+km+')'+(gira?' matrix(0 -1 1 0 0 0)':'')+'">'+inner+'</g>',{hatchStep:1.75,dem:LIGHT.dem,demBg:LIGHT.demBg});
@@ -7398,7 +7421,7 @@ function buildPDF(mode,opt,lista){
     }
     else plan.push({view:vw});
   });
-  if(mode==='all'&&lamOn('distrib')&&(v0.eq.length||(v0.mm||[]).length)){var iante=antes-1;plan.forEach(function(pp,i){if(i>=antes&&(pp.view==='cotas'||pp.view==='actual'))iante=i});plan.splice(iante+1,0,{view:'distrib',ante:true})}
+  if(mode==='all'&&lamOn('ante')&&(v0.eq.length||(v0.mm||[]).length)){var iante=antes-1;plan.forEach(function(pp,i){if(i>=antes&&(pp.view==='cotas'||pp.view==='actual'))iante=i});plan.splice(iante+1,0,{view:'distrib',ante:true})}
   if((mode==='all'&&lamOn('cal'))||mode==='cal')calPlan(opt).forEach(function(c){plan.push(c)});
   if((mode==='all'&&lamOn('carp'))||mode==='carp')carpPlan(opt).forEach(function(c){plan.push(c)});
   if((mode==='all'&&lamOn('det'))||mode==='det')detPlan(opt).forEach(function(c){plan.push(c)});
@@ -7451,7 +7474,7 @@ function loadLogoFile(file){
   if(propio){var im=new Image();im.onload=function(){try{setLogoFromImg(im,false);logoUi()}catch(e){}};im.src=propio}
   else logoPorDefecto();
 })();
-function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0',eqloc:$('x-eqloc')&&$('x-eqloc').value==='1'}}
+function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0',eqloc:$('x-eqloc')&&$('x-eqloc').value==='1',eqsuelo:!($('x-eqsuelo')&&$('x-eqsuelo').value==='0')}}
 /* planos de todas las plantas del proyecto (el actual con lo último que has dibujado), ordenados de abajo arriba */
 function plantasDelProyecto(){
   var l=(cloud||[]).map(function(c){return c.id===st.v.id?st.v:norm(JSON.parse(JSON.stringify(c)))});
