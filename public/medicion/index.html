@@ -1,4 +1,63 @@
-<!doctype html><html lang="es"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html lang="es"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}/* ---------- pestaña Tutorial ---------- */
+#views button[data-view="tutorial"]{border-left:1px solid var(--line);margin-left:6px;padding-left:14px;font-weight:600}
+.tuto{position:fixed;left:0;right:0;bottom:0;top:56px;z-index:60;background:var(--bg);display:grid;grid-template-columns:300px minmax(0,1fr);color:var(--ink);font-family:Montserrat,system-ui,sans-serif}
+.tuto[hidden]{display:none}
+.tuto-nav{overflow:auto;border-right:1px solid var(--line);padding:22px 16px;background:var(--panel)}
+.tuto-nav h2{margin:0 0 4px;font-size:18px;font-weight:600}
+.tuto-nav>p{margin:0 0 14px;font-size:12.5px;line-height:1.5;color:var(--muted)}
+.tuto-prog{height:5px;border-radius:5px;background:var(--line);overflow:hidden;margin:8px 0 4px}
+.tuto-prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+#tuto-prog{font-size:11.5px;color:var(--muted);margin-bottom:14px}
+#tuto-lec{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+#tuto-lec button{width:100%;text-align:left;display:flex;gap:10px;align-items:flex-start;background:none;border:1px solid transparent;border-radius:10px;padding:9px 10px;cursor:pointer;color:var(--ink);font:inherit}
+#tuto-lec button:hover{background:var(--bg)}
+#tuto-lec button.on{background:var(--bg);border-color:var(--line)}
+#tuto-lec .tn{flex:none;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font-size:11px;font-weight:600;color:var(--accent);background:var(--panel)}
+#tuto-lec button.on .tn{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+#tuto-lec b{display:block;font-size:13px;font-weight:600}
+#tuto-lec small{display:block;font-size:11.5px;color:var(--muted);margin-top:1px}
+.tuto-x{margin-top:16px;width:100%;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:9px;cursor:pointer;font:inherit;color:var(--ink)}
+.tuto-body{overflow:auto;padding:30px 36px 60px}
+.tuto-body>*{max-width:820px;margin-left:auto;margin-right:auto}
+.tuto-body .tkick{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600}
+.tuto-body h2{margin:6px auto 12px;font-size:28px;font-weight:600;letter-spacing:-.01em}
+.tuto-body h3{margin:26px auto 8px;font-size:15px;font-weight:600}
+.tuto-body p,.tuto-body li{font-size:14px;line-height:1.65}
+.tuto-body .lead{font-size:16px;line-height:1.6}
+.tuto-body ul.tul{padding-left:20px;margin:8px auto}
+.tuto-body ul.tul li{margin:5px 0}
+.tuto-body ol.tsteps{list-style:none;counter-reset:ts;padding:0;margin:10px auto;display:grid;gap:8px}
+.tuto-body ol.tsteps li{counter-increment:ts;position:relative;padding:10px 14px 10px 46px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.tuto-body ol.tsteps li::before{content:counter(ts);position:absolute;left:12px;top:9px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:12px;font-weight:600}
+.tuto-body .ttip{margin:14px auto;padding:12px 14px;border-left:3px solid var(--brand);background:var(--panel);border-radius:0 10px 10px 0;font-size:13.5px;line-height:1.6}
+.tuto-body .tcards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px auto}
+.tuto-body .tcards>div{padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.tuto-body .tcards p{margin:6px 0 0;font-size:13.5px}
+.tuto-body .tmap{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;margin:10px auto}
+.tuto-body .tg{width:100%;height:auto;margin:10px auto;display:block;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px}
+.tuto-body .tbtns{display:flex;flex-wrap:wrap;gap:8px;margin:16px auto}
+.tuto-body .tgo{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:9px 14px;cursor:pointer;text-align:left}
+.tuto-body .tgo:hover{border-color:var(--accent)}
+.tuto-body .tgo.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.tuto-body .tmap .tgo{display:grid;gap:3px}
+.tuto-body .tmap .tgo span{font-size:12px;color:var(--muted)}
+.tuto-body kbd{font:600 11.5px ui-monospace,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px;background:var(--panel)}
+.tuto-body code{font:12.5px ui-monospace,monospace;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+.tuto-body .tfoot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:34px;padding-top:16px;border-top:1px solid var(--line)}
+.tuto-body .tdone{font-size:13px;display:flex;gap:8px;align-items:center;cursor:pointer}
+.tuto-body .tchk{display:grid;gap:8px;margin:12px auto}
+.tuto-body .tck{display:flex;gap:12px;align-items:flex-start;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;cursor:pointer}
+.tuto-body .tck span{display:grid;gap:2px}
+.tuto-body .tck small{color:var(--muted);font-size:12px}
+.tuto-body .tcmds{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 18px}
+.tuto-body .tcmds>span{display:flex;justify-content:space-between;gap:10px;font-size:13px;border-bottom:1px solid var(--line);padding:5px 0}
+@media (max-width:820px){
+  .tuto{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+  .tuto-nav{max-height:34vh;border-right:0;border-bottom:1px solid var(--line);padding:14px 16px}
+  .tuto-body{padding:20px 16px 50px}
+  .tuto-body .tcards{grid-template-columns:1fr}
+}
+</style></head><body>
 <title>Planos Ranuse</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&display=swap">
 <style>
@@ -316,6 +375,7 @@ body.crm .top .brand{display:none}
       <button data-view="acab">Acabados</button>
       <button data-view="alz">Alzados</button>
       <button data-view="suelos">Suelos</button>
+      <button data-view="tutorial" id="v-tuto">Tutorial</button>
     </div>
     <div class="top-r">
       <button id="b-undo" title="Deshacer">↶ <span class="hide-s">Deshacer</span></button><button id="b-redo" title="Rehacer">↷</button>
@@ -497,7 +557,7 @@ body.crm .top .brand{display:none}
         <p class="note">Plano a escala real con leyendas, carpinterías, mediciones y cajetín. Las leyendas se generan solas según la lámina.</p>
         <label class="fld"><span>Papel</span><select id="x-paper"><option value="A3">A3 apaisado</option><option value="A4">A4 apaisado</option></select></label>
         <label class="fld"><span>Equipamiento en la lámina de Suelos</span><select id="x-eqsuelo"><option value="1">Sí (suave, detrás del despiece)</option><option value="0">No</option></select></label>
-        <label class="fld"><span>Cotas de ubicación del equipamiento (distancia a los muros, en Distribución)</span><select id="x-eqloc"><option value="0">No</option><option value="1">Sí</option></select></label>
+        <label class="fld"><span>Cotas de ubicación del equipamiento (distancia a los muros, en Distribución)</span><select id="x-eqloc"><option value="1">Sí</option><option value="0">No</option></select></label>
         <label class="fld"><span>Cotas de luminarias a paredes</span><select id="x-ldim"><option value="1">Sí</option><option value="0">No</option></select></label>
         <label class="fld"><span>Marcas de alzado en planta</span><select id="x-marks"><option value="1">Sí (distribución y acabados)</option><option value="0">No</option></select></label>
         <label class="fld"><span>Cotas</span><select id="x-dims"><option value="ext">Con líneas de cota por fuera</option><option value="dob">Con dos líneas: interior y exterior</option><option value="int">Con líneas de cota por dentro</option><option value="simple">Solo el número en cada muro</option></select></label>
@@ -516,6 +576,16 @@ body.crm .top .brand{display:none}
       </section>
       <section class="blk" id="cloudblk" hidden><h2>Planos de este proyecto</h2><div id="cloud"></div></section>
     </aside>
+  </div>
+  <div class="tuto" id="tuto" hidden role="region" aria-label="Tutorial de Planos">
+    <aside class="tuto-nav">
+      <h2>Aprende Planos</h2>
+      <p>Lecciones cortas para aprender a medir, proyectar y sacar las láminas. Cada una tiene botones «Probar» que te llevan a la herramienta.</p>
+      <div class="tuto-prog"><i id="tuto-bar"></i></div><div id="tuto-prog"></div>
+      <ol id="tuto-lec"></ol>
+      <button class="tuto-x" id="tuto-x">Volver al plano</button>
+    </aside>
+    <article class="tuto-body" id="tuto-body"></article>
   </div>
   <div class="helpm" id="helpm" hidden>
   <div class="helpb" role="dialog" aria-label="Ayuda">
@@ -4781,7 +4851,7 @@ function toolbar(){
   if($('b-libre'))$('b-libre').setAttribute('aria-pressed',String(!!st.muroLibre));
   if(st.tool==='mm'&&st.view!=='distrib')st.tool='select';
   var vs=$('views').querySelectorAll('button');
-  for(var j=0;j<vs.length;j++)vs[j].className=vs[j].getAttribute('data-view')===st.view?'on':'';
+  for(var j=0;j<vs.length;j++){var vk=vs[j].getAttribute('data-view');vs[j].className=(vk==='tutorial'?(document.getElementById('tuto')&&!document.getElementById('tuto').hidden):vk===st.view)?'on':''}
   var L=[['ex','Existente'],['dem','Demoler'],['new','Nuevo']];
   $('defstate').innerHTML=L.map(function(x){return '<button data-a="defstate" data-s="'+x[0]+'" aria-pressed="'+(st.defState===x[0])+'">'+x[1]+'</button>'}).join('');
   var DB=[['ejes','A ejes de muro'],['int','Cara interior']];
@@ -4827,7 +4897,7 @@ function drawPal(){
     $('alz-modo').hidden=v!=='alz'&&v!=='suelos'&&v!=='techos';
     if(v==='suelos'||v==='techos'){
       st.sueloModo=st.sueloModo||'sala';
-      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Rectángulo (arrastra)'],['poli','Dibujar la zona (puntos)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('')+(v==='suelos'||v==='techos'?'<button data-sm="medzonas" aria-pressed="'+(st.verMedZonas!==false)+'" title="Enseña el largo de cada lado de las zonas y a cuánto está cada lado del muro">Medidas de las zonas: '+(st.verMedZonas!==false?'sí':'no')+'</button>':'')+('<button data-sm="cotamuros" aria-pressed="'+!!st.verCotasMuros+'" title="Enseña también las cotas de los muros">Cotas de los muros: '+(st.verCotasMuros?'sí':'no')+'</button>')+(v==='suelos'?'<button data-sm="equipo" aria-pressed="'+(st.verEqSuelo!==false)+'" title="Enseña las máquinas y el mobiliario sobre el suelo">Ver equipamiento: '+(st.verEqSuelo!==false?'sí':'no')+'</button>':'')+(st.sueloModo==='poli'?'<button data-sm="libre" aria-pressed="'+!st.spLibre+'" title="Con las líneas rectas, cada tramo sale horizontal o vertical y se pega a las esquinas de la sala">Líneas rectas: '+(st.spLibre?'no':'sí')+'</button>':'')+(st.sueloModo==='poli'&&st.spPoly&&st.spPoly.length>=3?'<button data-sm="cerrar" class="pri">Cerrar la zona</button>':'');
+      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Rectángulo (arrastra)'],['poli','Dibujar la zona (puntos)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('')+(v==='suelos'||v==='techos'?'<button data-sm="medzonas" aria-pressed="'+(st.verMedZonas!==false)+'" title="Enseña el largo de cada lado de las zonas y a cuánto está cada lado del muro">Medidas de las zonas: '+(st.verMedZonas!==false?'sí':'no')+'</button>':'')+('<button data-sm="cotamuros" aria-pressed="'+!!st.verCotasMuros+'" title="Enseña también las cotas de los muros">Cotas de los muros: '+(st.verCotasMuros?'sí':'no')+'</button>')+(v==='suelos'?'<button data-sm="equipo" aria-pressed="'+(st.verEqSuelo!==false)+'" title="Enseña las máquinas y el mobiliario sobre el suelo">Ver equipamiento: '+(st.verEqSuelo!==false?'sí':'no')+'</button>':'')+(v==='suelos'?'<button data-sm="rodapie" aria-pressed="'+infoOn('rodapie')+'" title="Si el rodapié ya existe o no lo vas a tocar, quítalo: no sale en la lámina de suelos">Rodapié en la lámina: '+(infoOn('rodapie')?'sí':'no')+'</button>':'')+(st.sueloModo==='poli'?'<button data-sm="libre" aria-pressed="'+!st.spLibre+'" title="Con las líneas rectas, cada tramo sale horizontal o vertical y se pega a las esquinas de la sala">Líneas rectas: '+(st.spLibre?'no':'sí')+'</button>':'')+(st.sueloModo==='poli'&&st.spPoly&&st.spPoly.length>=3?'<button data-sm="cerrar" class="pri">Cerrar la zona</button>':'');
       if(st.sueloModo==='poli')$('pal-n').textContent='Elige el material y toca los puntos del contorno de la zona (una esquina tras otra). Los tramos salen rectos (horizontal o vertical) y se pegan a las esquinas de la sala; con «Líneas rectas: no» dibujas libre. Para cerrarla, toca el primer punto o pulsa «Cerrar la zona». Solo esa zona llevará ese material.';
       if(st.sueloModo==='parte')$('pal-n').textContent='Elige el material y ARRASTRA un rectángulo dentro de la sala: solo esa parte llevará ese material (el resto conserva el suyo). Luego ajusta sus medidas en el panel.';
     }
@@ -4862,6 +4932,7 @@ $('alz-modo').addEventListener('click',function(e){
     var sm=bs.getAttribute('data-sm');
     if(sm==='cerrar'){spCerrar();return}
     if(sm==='cotamuros'){alternarCotaMuros();return}
+    if(sm==='rodapie'){snap();st.v.info=st.v.info||{};if(infoOn('rodapie'))st.v.info.rodapie=false;else delete st.v.info.rodapie;save();drawPal();toast(infoOn('rodapie')?'El rodapié (ml) sale en la lámina de suelos':'Sin rodapié en la lámina: ya existe o no se toca');return}
     if(sm==='medzonas'){st.verMedZonas=st.verMedZonas===false;drawPal();render();return}
     if(sm==='equipo'){st.verEqSuelo=st.verEqSuelo===false;drawPal();render();return}
     if(sm==='libre'){st.spLibre=!st.spLibre;st.spHover=null;drawPal();render();return}
@@ -5720,7 +5791,7 @@ $('tools').addEventListener('click',function(e){
   if(t==='draw'){st.drK=st.drK||'line';st.drPoly=null}
   if(t==='equip'||t==='door'||t==='win'||t==='draw')flyOpen(t,b);else flyClose();
 });
-$('views').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;st.view=b.getAttribute('data-view');st.led=null;st.cnFrom=null;closeQE();st.tool='select';st.dg=null;if(st.sel&&st.sel.t==='eq'&&st.view!=='distrib'){st.sel=null;panelSel()}toolbar();save();render()});
+$('views').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(b.getAttribute('data-view')==='tutorial'){tutoAbrir();return}tutoCerrar();st.view=b.getAttribute('data-view');st.led=null;st.cnFrom=null;closeQE();st.tool='select';st.dg=null;if(st.sel&&st.sel.t==='eq'&&st.view!=='distrib'){st.sel=null;panelSel()}toolbar();save();render()});
 $('b-undo').addEventListener('click',undo);
 $('b-redo').addEventListener('click',redoit);
 $('z-fit').addEventListener('click',fit);
@@ -7622,7 +7693,7 @@ function loadLogoFile(file){
   if(propio){var im=new Image();im.onload=function(){try{setLogoFromImg(im,false);logoUi()}catch(e){}};im.src=propio}
   else logoPorDefecto();
 })();
-function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0',eqloc:$('x-eqloc')&&$('x-eqloc').value==='1',eqsuelo:!($('x-eqsuelo')&&$('x-eqsuelo').value==='0')}}
+function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0',eqloc:!($('x-eqloc')&&$('x-eqloc').value==='0'),eqsuelo:!($('x-eqsuelo')&&$('x-eqsuelo').value==='0')}}
 /* planos de todas las plantas del proyecto (el actual con lo último que has dibujado), ordenados de abajo arriba */
 function plantasDelProyecto(){
   var l=(cloud||[]).map(function(c){return c.id===st.v.id?st.v:norm(JSON.parse(JSON.stringify(c)))});
@@ -8300,8 +8371,150 @@ document.addEventListener('keydown',function(e){
   if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA'||e.ctrlKey||e.metaKey||e.altKey)return;
   if(!$('skm').hidden){if(e.key==='Escape')$('skm').hidden=true;return}
   if(!$('helpm').hidden){if(e.key==='Escape')ayudaCerrar();return}
+  if($('tuto')&&!$('tuto').hidden){if(e.key==='Escape')tutoCerrar();return}
   if(e.key.length===1&&/[a-zA-Z0-9+\-?]/.test(e.key)){e.preventDefault();cmdAbrir(e.key)}
 });
+/* ---------- pestaña Tutorial: lecciones para aprender a usar Planos ---------- */
+var TUTO_SVG={
+  flujo:'<svg viewBox="0 0 720 92" class="tg" role="img" aria-label="Orden de trabajo: estado actual, cotas, demoliciones, implantación, distribución, suelos, techos y acabados, instalaciones y PDF">'+
+    ['Estado actual','Demoliciones','Implantación','Distribución','Suelos · Techos · Acabados','Electricidad · Iluminación','PDF'].map(function(t,i){
+      var x=6+i*102,w=96;
+      return '<g><rect x="'+x+'" y="22" width="'+w+'" height="46" rx="8" fill="var(--panel)" stroke="var(--line)"/><text x="'+(x+w/2)+'" y="'+(t.length>14?42:50)+'" text-anchor="middle" font-size="10.5" font-weight="600" fill="var(--ink)">'+(t.indexOf(' · ')>0?t.split(' · ')[0]:t)+'</text>'+(t.indexOf(' · ')>0?'<text x="'+(x+w/2)+'" y="56" text-anchor="middle" font-size="9" fill="var(--muted)">'+t.split(' · ').slice(1).join(' · ')+'</text>':'')+'<text x="'+(x+w/2)+'" y="14" text-anchor="middle" font-size="10" fill="var(--accent)" font-weight="700">'+(i+1)+'</text></g>'+(i<6?'<path d="M'+(x+w+1)+' 45h4" stroke="var(--accent)" stroke-width="1.5"/>':'');
+    }).join('')+'</svg>',
+  cota:'<svg viewBox="0 0 520 150" class="tg" role="img" aria-label="Cota a cara interior frente a cota a ejes">'+
+    '<rect x="40" y="40" width="440" height="14" fill="var(--ink)"/><rect x="40" y="96" width="440" height="14" fill="var(--ink)"/><rect x="40" y="40" width="14" height="70" fill="var(--ink)"/><rect x="466" y="40" width="14" height="70" fill="var(--ink)"/>'+
+    '<path d="M54 82h412" stroke="#2b7cff" stroke-width="1.4"/><path d="M54 76v12M466 76v12" stroke="#2b7cff"/><text x="260" y="76" text-anchor="middle" font-size="12" font-weight="600" fill="#2b7cff">412 · cara interior (lo que mide el albañil)</text>'+
+    '<path d="M47 128h426" stroke="var(--muted)" stroke-width="1"/><path d="M47 122v12M473 122v12" stroke="var(--muted)"/><text x="260" y="146" text-anchor="middle" font-size="11" fill="var(--muted)">426 · a ejes de muro</text></svg>',
+  capas:'<svg viewBox="0 0 520 170" class="tg" role="img" aria-label="Acabado encima, sistema de obra debajo">'+
+    '<rect x="30" y="20" width="230" height="22" rx="4" fill="#efe9e0" stroke="var(--line)"/><text x="145" y="35" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">ACABADO · Pintura lisa NCS S 0502-Y</text>'+
+    '<rect x="30" y="46" width="230" height="22" rx="4" fill="#cfdde9" stroke="var(--line)"/><text x="145" y="61" text-anchor="middle" font-size="12" fill="var(--ink)">SISTEMA · Falso techo de pladur</text>'+
+    '<rect x="30" y="72" width="230" height="22" rx="4" fill="#e6e6e6" stroke="var(--line)" stroke-dasharray="4 3"/><text x="145" y="87" text-anchor="middle" font-size="12" fill="var(--muted)">LO QUE YA HAY (forjado, estructura)</text>'+
+    '<text x="290" y="35" font-size="12" fill="var(--ink)">→ lo que se ve en la lámina:  T1</text><text x="290" y="61" font-size="12" fill="var(--ink)">→ lo que hay que ejecutar:  O1</text><text x="290" y="87" font-size="12" fill="var(--muted)">→ no se toca</text>'+
+    '<text x="30" y="128" font-size="12" fill="var(--ink)">Si no haces obra, solo eliges el acabado y dejas «Sin intervención».</text><text x="30" y="148" font-size="12" fill="var(--muted)">Si respetas lo que hay, marca la zona como «Existente».</text></svg>',
+  menu:'<svg viewBox="0 0 520 170" class="tg" role="img" aria-label="Menú de clic derecho sobre un dibujo">'+
+    '<rect x="30" y="30" width="120" height="70" rx="4" fill="none" stroke="var(--ink)" stroke-width="1.6"/><rect x="48" y="48" width="50" height="34" fill="none" stroke="var(--ink)" stroke-width="1.6"/>'+
+    '<g transform="translate(190 20)"><rect width="220" height="130" rx="10" fill="var(--panel)" stroke="var(--line)"/>'+['Editar','Agrupar (2 dibujos)','Crear bloque con estos dibujos…','Duplicar','Borrar'].map(function(t,i){return '<text x="14" y="'+(26+i*24)+'" font-size="12" fill="'+(i===4?'#b3261e':'var(--ink)')+'">'+t+'</text>'}).join('')+'</g>'+
+    '<path d="M150 80l36-20" stroke="var(--accent)" stroke-width="1.4" marker-end="url(#fl)"/><defs><marker id="fl" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0l8 4-8 4z" fill="var(--accent)"/></marker></defs></svg>'
+};
+var TUTO=[
+ {id:'inicio',t:'Empieza aquí',s:'Cómo está organizado Planos',b:function(){return ''+
+  '<p class="lead">Planos sirve para <b>medir un espacio, proyectarlo y sacar las láminas</b> (con cajetín, leyenda y mediciones) sin salir del CRM. Dibujas <u>una sola vez</u> y cada pestaña te enseña lo mismo desde un punto de vista.</p>'+
+  '<h3>Dos ideas que hay que tener claras</h3>'+
+  '<div class="tcards"><div><b>1 · El estado de cada elemento</b><p>Abajo del lienzo eliges <i>Existente · Demoler · Nuevo</i> <u>antes de dibujar</u>. Es lo que es cada muro, puerta o pilar en la obra: ya está y se queda, ya está y se quita, o se construye.</p></div>'+
+  '<div><b>2 · Las pestañas (láminas)</b><p>Son vistas del <u>mismo</u> plano, no planos distintos. Cada una enseña los elementos según su estado y se exporta a su propia hoja del PDF.</p></div></div>'+
+  '<h3>El orden de trabajo recomendado</h3>'+TUTO_SVG.flujo+
+  '<h3>Mapa de pestañas</h3><div class="tmap">'+
+  [['actual','Estado actual','Cómo está hoy el espacio. Aquí se dibuja y se mide.'],['cotas','Cotas','El plano final acotado, de cara interior a cara interior.'],['demol','Demoliciones','Lo que se mantiene (gris) y lo que se quita (rojo rayado).'],['interv','Implantación','Lo existente y lo nuevo que se construye.'],['distrib','Distribución','Máquinas y mobiliario del catálogo, con etiquetas y leyenda.'],['suelos','Suelos','Pavimentos, despiece y colocación, mediciones y rodapié.'],['techos','Techos','Acabados de techo y sistemas (pladur, registrable…).'],['acab','Acabados','Acabados y sistemas en cada cara de pared.'],['alz','Alzados','Cada pared de frente, con su acabado y carpinterías.'],['elec','Electricidad','Enchufes, interruptores, datos y tomas.'],['ilum','Iluminación','Luminarias, cotas a paredes y circuitos.']].map(function(x){return '<button class="tgo" data-go="view:'+x[0]+'"><b>'+x[1]+'</b><span>'+x[2]+'</span></button>'}).join('')+'</div>'}},
+ {id:'muros',t:'Dibujar muros',s:'Herramienta Muros',b:function(){return ''+
+  '<p class="lead">El plano empieza por los muros. Dibujas el contorno <b>a mano alzada</b> y Planos lo endereza solo.</p>'+
+  '<ol class="tsteps"><li>Ve a <b>Estado actual</b> y elige <b>Existente</b> (abajo del lienzo).</li><li>Pulsa <b>Muros</b> en la barra de herramientas.</li><li>Arrastra para trazar cada muro. Salen a 90° (horizontales o verticales) y se enderezan al soltar.</li><li>Cierra la sala volviendo al primer punto: los muros se unen solos en las esquinas.</li><li>Pulsa <b>Seleccionar</b>, toca un muro y <b>escribe su medida real</b> en las cotas azules.</li></ol>'+
+  '<div class="ttip"><b>Diagonales y curvas.</b> Activa <b>Libre</b> para muros que no sean a 90°. Con <b>Curva</b> activada, un trazo curvo se convierte en un arco.</div>'+
+  '<div class="ttip"><b>Si algo sale mal.</b> <kbd>Ctrl</kbd>+<kbd>Z</kbd> deshace. Tocando un muro, el panel de la derecha te deja cambiar su grosor, su estado y su ángulo.</div>'+
+  '<div class="tbtns"><button class="tgo pri" data-go="view:actual;tool:pen">Probar ahora: Estado actual + Muros</button></div>'}},
+ {id:'huecos',t:'Puertas y ventanas',s:'Colocarlas y medirlas',b:function(){return ''+
+  '<p class="lead">Las puertas y ventanas se pegan a un muro y se miden desde las caras interiores.</p>'+
+  '<ol class="tsteps"><li>Pulsa <b>Puerta</b> o <b>Ventana</b>; se abre el panel con los tipos (abatible, corredera, plegable…).</li><li>Toca el muro donde va.</li><li>Con <b>Seleccionar</b>, tócala para cambiar ancho, alto, antepecho, apertura y material en el panel.</li><li>Para colocarla con precisión, toca las cotas que salen a cada lado y <b>escribe la distancia</b> a la esquina o a la otra abertura.</li></ol>'+
+  '<div class="ttip">Las carpinterías se numeran solas (P1, V1…) y salen en la leyenda y en la memoria de carpinterías del PDF.</div>'+
+  '<div class="tbtns"><button class="tgo pri" data-go="tool:door">Probar: Puerta</button><button class="tgo" data-go="tool:win">Probar: Ventana</button></div>'}},
+ {id:'cotas',t:'Medidas y cotas',s:'Escribir medidas y medir punto a punto',b:function(){return ''+
+  '<p class="lead">En Planos <b>las medidas se escriben</b>: tocas una cota y pones el número; el plano se corrige solo.</p>'+TUTO_SVG.cota+
+  '<h3>Cotas de los muros</h3><ul class="tul"><li>Toca un muro: salen sus cotas en azul. Tócalas para cambiarlas.</li><li>Por defecto miden la <b>cara interior</b>, que es lo que necesita quien ejecuta. Se puede cambiar a ejes en <i>Archivo → Cotas</i> al exportar.</li><li>Al trabajar en Suelos, Techos o Acabados las cotas de los muros se ocultan para no ensuciar; actívalas en <i>Ver → Cotas de los muros al trabajar</i>.</li></ul>'+
+  '<h3>Herramienta Cotas (punto a punto)</h3><ol class="tsteps"><li>Pulsa <b>Cotas</b>.</li><li>Arrastra de un punto a otro: se pegan a <b>esquinas interiores</b>, caras de muros, puntos de zonas y esquinas de máquinas.</li><li>Te dice la distancia. Para cambiarla, tócala con Seleccionar.</li></ol>'+
+  '<div class="tbtns"><button class="tgo pri" data-go="view:cotas;tool:diag">Probar: herramienta Cotas</button></div>'}},
+ {id:'estados',t:'Existente, demoler y nuevo',s:'El estado de los elementos',b:function(){return ''+
+  '<p class="lead">Un mismo plano cuenta tres historias: lo que hay, lo que se quita y lo que se hace.</p>'+
+  '<ul class="tul"><li><b>Existente</b>: ya está y se queda.</li><li><b>Demoler</b>: ya está y se quita.</li><li><b>Nuevo</b>: se construye.</li></ul>'+
+  '<ol class="tsteps"><li>Dibuja el espacio actual con <b>Existente</b>.</li><li>En <b>Demoliciones</b>, toca lo que se va a quitar y cámbiale el estado a <i>Demoler</i> (sale rayado en rojo).</li><li>En <b>Implantación</b>, elige <b>Nuevo</b> y dibuja los muros, puertas y ventanas nuevos.</li></ol>'+
+  '<div class="ttip">Las láminas finales (Cotas, Distribución, Suelos…) muestran <b>Existente + Nuevo</b>: lo demolido ya no aparece.</div>'+
+  '<div class="tbtns"><button class="tgo pri" data-go="view:demol">Ir a Demoliciones</button><button class="tgo" data-go="view:interv">Ir a Implantación</button></div>'}},
+ {id:'distrib',t:'Distribución y bloques',s:'Máquinas, mobiliario y etiquetas',b:function(){return ''+
+  '<p class="lead">Aquí colocas las máquinas del catálogo de Ranuse y el mobiliario. Cada pieza sale con su <b>etiqueta</b> (E1, F1…) y entra en la leyenda.</p>'+
+  '<ol class="tsteps"><li>Entra en <b>Distribución</b> y pulsa <b>Bloques</b>.</li><li>Busca la máquina (o navega por familias) y arrástrala al plano.</li><li>Tócala para moverla, girarla o cambiar sus medidas. Si el producto del catálogo tiene bloque propio, se dibuja con su forma real.</li><li>Toca las distancias que salen a los muros o a otras máquinas y <b>escribe la que quieras</b>: la pieza se mueve.</li><li><kbd>Ctrl</kbd>+<kbd>C</kbd> y <kbd>Ctrl</kbd>+<kbd>V</kbd> copian y pegan una pieza o una selección.</li></ol>'+
+  '<h3>Si falta un bloque</h3><ul class="tul"><li><b>Crear un bloque desde una imagen</b> (botón con ✨): pegas una foto y la IA dibuja la planta.</li><li><b>Dibujarlo tú</b> con la herramienta Dibujo y, con clic derecho, <i>Crear bloque</i> (lección «Dibujo, grupos y bloques»).</li></ul>'+
+  '<div class="ttip">Para ver en pantalla las distancias de <u>todas</u> las piezas a los muros: <i>Ver → Ubicación del equipamiento en pantalla</i>. En el PDF se activa en el panel de exportar.</div>'+
+  '<div class="tbtns"><button class="tgo pri" data-go="view:distrib;tool:equip">Probar: Bloques</button></div>'}},
+ {id:'suelos',t:'Suelos, techos y paredes',s:'Acabado, sistema, color y despiece',b:function(){return ''+
+  '<p class="lead">En Suelos, Techos y Acabados separas <b>lo que se ve (acabado)</b> de <b>lo que hay que ejecutar (sistema / obra)</b>.</p>'+TUTO_SVG.capas+
+  '<h3>Pintar una superficie</h3><ol class="tsteps"><li>Entra en la pestaña (Suelos, Techos o Acabados).</li><li>Elige en la paleta un <b>acabado</b> y toca dentro de una sala (o sobre una pared). Si solo tocas acabados no se añade obra.</li><li>Si hay obra, elige un <b>sistema</b> en el bloque de abajo y toca la zona: el acabado se queda como estaba.</li><li>Para una parte de la sala, usa <b>Rectángulo</b> o <b>Dibujar la zona (puntos)</b>.</li></ol>'+
+  '<h3>Color con código NCS o RAL</h3><ul class="tul"><li>Toca la zona; en el panel escribe el código en <b>Código de color</b> (por ejemplo <code>S 0502-Y</code> o <code>RAL 9010</code>). El color se calcula solo.</li><li>Cada código distinto tiene su propia referencia (T1, T2…) en la leyenda.</li><li><b>+ Otro color…</b> en la paleta crea uno nuevo con nombre.</li></ul>'+
+  '<h3>Editar la zona</h3><ul class="tul"><li>Arrastra un <b>punto</b> para moverlo; arrastra una <b>línea</b> para moverla entera; toca su medida y escríbela.</li><li><b>Al cambiar una medida</b> decide qué extremo se mueve (por defecto, el que no está pegado a un muro).</li><li><b>Pegar a los muros</b> corrige puntos que quedan a pocos cm de una cara. Las zonas no se meten dentro de los muros.</li><li>Marca <b>Existente: se mantiene</b> para respetar lo que hay: sale en la leyenda pero no se mide ni se pide.</li></ul>'+
+  '<h3>Despiece y colocación</h3><ul class="tul"><li>En el panel de la zona elige el <b>tipo de colocación</b> (recto, rompejuntas, diagonal) y el formato de pieza.</li><li><b>Optimizar colocación</b> busca el inicio con menos cortes y menos merma; <b>Comparar formatos</b> te enseña cuál desperdicia menos.</li><li>El <b>margen de pedido</b> (por defecto 10 %) da las piezas a pedir.</li></ul>'+
+  '<div class="tbtns"><button class="tgo pri" data-go="view:suelos">Ir a Suelos</button><button class="tgo" data-go="view:techos">Ir a Techos</button><button class="tgo" data-go="view:acab">Ir a Acabados</button></div>'}},
+ {id:'dibujo',t:'Dibujo, grupos y bloques propios',s:'Clic derecho, doble clic y distancias',b:function(){return ''+
+  '<p class="lead">La herramienta <b>Dibujo</b> sirve para líneas, rectángulos, círculos, polilíneas, flechas, textos, nubes de revisión y zonas.</p>'+TUTO_SVG.menu+
+  '<ul class="tul"><li><b>Seleccionar varios</b>: arrastra un recuadro con <i>Seleccionar</i> o usa <kbd>Mayús</kbd> + clic.</li><li><b>Clic derecho</b> sobre un dibujo: <i>Editar</i>, <i>Agrupar</i>, <i>Desagrupar</i>, <i>Crear bloque</i>, <i>Duplicar</i> o <i>Borrar</i>.</li><li><b>Doble clic</b> para editar: un texto pide el texto nuevo; una línea o cota, su largo; el resto se abre en el panel.</li><li>Un <b>grupo</b> se mueve, copia y borra entero.</li><li>Al seleccionar un dibujo o un grupo salen sus <b>distancias a los muros</b>: escríbelas para colocarlo.</li></ul>'+
+  '<div class="ttip"><b>Crear un bloque.</b> Dibuja la pieza (por ejemplo un espejo), selecciónala, clic derecho → <i>Crear bloque</i>. En Distribución, el dibujo se convierte en una pieza colocada con etiqueta y leyenda.</div>'+
+  '<div class="tbtns"><button class="tgo pri" data-go="tool:draw">Probar: Dibujo</button></div>'}},
+ {id:'instal',t:'Electricidad e iluminación',s:'Puntos, luminarias y circuitos',b:function(){return ''+
+  '<p class="lead">En <b>Electricidad</b> e <b>Iluminación</b> colocas símbolos sobre el plano.</p>'+
+  '<ol class="tsteps"><li>Entra en la pestaña y elige un símbolo (enchufe, interruptor, foco, tira LED…).</li><li>Toca el plano para colocarlo; arrástralo para moverlo. Las tiras y carriles se hacen con dos toques.</li><li>En Iluminación, las luminarias salen del catálogo con sus lúmenes y foto; la lámina las agrupa y cuenta.</li><li>Los puntos muestran su distancia a las paredes: tócala para cambiarla.</li><li>Para unir un interruptor con sus luminarias, usa <b>Unir encendidos</b>.</li></ol>'+
+  '<div class="tbtns"><button class="tgo pri" data-go="view:elec">Ir a Electricidad</button><button class="tgo" data-go="view:ilum">Ir a Iluminación</button></div>'}},
+ {id:'pdf',t:'Láminas y PDF',s:'Cajetín, qué láminas salen y cómo exportar',b:function(){return ''+
+  '<p class="lead">Cada pestaña es una lámina con cajetín, leyenda y mediciones. Exportas una sola o todas.</p>'+
+  '<ol class="tsteps"><li><b>Archivo → Datos del proyecto</b>: nombre, cliente, dirección, planta y fecha. Salen en el cajetín. Puedes poner el logo.</li><li><b>Qué información enseñar en las láminas</b>: quita leyenda, carpinterías, mediciones, rodapié o despiece cuando no hagan falta.</li><li>En el panel <b>Exportar</b> elige papel (A3/A4), escala, orientación y tipo de cotas.</li><li><b>Elegir láminas…</b> marca cuáles lleva el PDF con todas (también las que aún no tienen contenido).</li><li><b>Vista previa</b> para revisar antes de descargar.</li><li><b>PDF de esta lámina</b> o <b>PDF con todas</b>. También puedes subirla a Documentos o publicarla en la historia del cliente.</li></ol>'+
+  '<h3>Códigos de lámina</h3><p>A.01–A.05 anteproyecto, IE instalaciones, I interiorismo (techos, acabados, alzados, suelos), M mobiliario y equipamiento, D documentación.</p>'+
+  '<div class="ttip">En Suelos, el equipamiento se ve al trabajar; al exportar puedes elegir si sale o no.</div>'}},
+ {id:'atajos',t:'Atajos y trucos',s:'Trabajar más rápido',b:function(){var cm=(typeof CMDS!=='undefined'?CMDS:[]).map(function(c){return '<span><span>'+esc(c.n)+'</span><code>'+esc(c.k[0].toUpperCase())+'</code></span>'}).join('');return ''+
+  '<p class="lead">Unos cuantos gestos que ahorran mucho tiempo.</p>'+
+  '<ul class="tul"><li><b>Mover la vista</b>: barra espaciadora o botón central del ratón (con el dedo, arrastrar).</li><li><b>Zoom</b>: rueda del ratón o pellizco.</li><li><kbd>Ctrl</kbd>+<kbd>Z</kbd> deshacer · <kbd>Ctrl</kbd>+<kbd>Y</kbd> rehacer.</li><li><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd> copiar y pegar · <kbd>Supr</kbd> borrar · <kbd>Esc</kbd> cancelar.</li><li><b>Escribe una letra</b> sin tener nada seleccionado y se abre el buscador de comandos (por ejemplo <kbd>W</kbd> para Muros).</li><li>Si un muro, una zona o una pieza no hace lo que esperas, <b>tócalo y mira el panel de la derecha</b>: casi todo se ajusta ahí.</li></ul>'+
+  '<h3>Comandos</h3><div class="tcmds">'+cm+'</div>'}},
+ {id:'lista',t:'Tu primer proyecto',s:'Lista para practicar paso a paso',b:function(){return ''+
+  '<p class="lead">Sigue esta lista con un espacio real o inventado. Marca cada paso cuando lo tengas.</p>'+
+  '<div class="tchk">'+[['Datos del proyecto (nombre, cliente, dirección)','Archivo → Datos del proyecto'],['Dibujar los muros existentes y escribir sus medidas','Estado actual'],['Colocar puertas y ventanas con sus medidas','Estado actual'],['Marcar lo que se demuele','Demoliciones'],['Dibujar lo nuevo','Implantación'],['Colocar máquinas y mobiliario','Distribución'],['Elegir suelos (y despiece si hace falta)','Suelos'],['Elegir techos y acabados de pared (con código de color)','Techos · Acabados'],['Instalaciones','Electricidad · Iluminación'],['Revisar con la vista previa','Archivo / panel Exportar'],['Elegir láminas y exportar el PDF','Panel Exportar']].map(function(x,i){return '<label class="tck"><input type="checkbox" data-tck="'+i+'"><span><b>'+x[0]+'</b><small>'+x[1]+'</small></span></label>'}).join('')+'</div>'+
+  '<div class="ttip">¿Atascado? Cada lección tiene botones «Probar» que te llevan a la herramienta. Y siempre puedes volver aquí desde la pestaña <b>Tutorial</b>.</div>'}}
+];
+var tutoEstado={lec:'inicio',done:{},tck:{}};
+try{var tj=JSON.parse(localStorage.getItem('ranuse-tuto')||'{}');if(tj&&typeof tj==='object'){tutoEstado.done=tj.done||{};tutoEstado.tck=tj.tck||{};tutoEstado.lec=tj.lec||'inicio'}}catch(e){}
+function tutoGuarda(){try{localStorage.setItem('ranuse-tuto',JSON.stringify({done:tutoEstado.done,tck:tutoEstado.tck,lec:tutoEstado.lec}))}catch(e){}}
+function tutoNav(){
+  var el=$('tuto-lec'),n=0;
+  el.innerHTML=TUTO.map(function(l,i){var d=!!tutoEstado.done[l.id];if(d)n++;return '<li><button data-tl="'+l.id+'" class="'+(l.id===tutoEstado.lec?'on':'')+'"><span class="tn">'+(d?'✓':(i+1))+'</span><span><b>'+esc(l.t)+'</b><small>'+esc(l.s)+'</small></span></button></li>'}).join('');
+  $('tuto-prog').textContent=n+' de '+TUTO.length+' lecciones hechas';
+  $('tuto-bar').style.width=Math.round(n/TUTO.length*100)+'%';
+}
+function tutoLec(id){
+  var i=0;for(var k=0;k<TUTO.length;k++)if(TUTO[k].id===id)i=k;
+  var l=TUTO[i];tutoEstado.lec=l.id;tutoGuarda();
+  var h='<div class="tkick">Lección '+(i+1)+' de '+TUTO.length+'</div><h2>'+esc(l.t)+'</h2>'+l.b();
+  h+='<div class="tfoot"><label class="tdone"><input type="checkbox" id="tuto-done"'+(tutoEstado.done[l.id]?' checked':'')+'> Marcar como hecha</label><span style="flex:1"></span>'+(i>0?'<button class="tgo" data-tl="'+TUTO[i-1].id+'">← '+esc(TUTO[i-1].t)+'</button>':'')+(i<TUTO.length-1?'<button class="tgo pri" data-tl="'+TUTO[i+1].id+'">'+esc(TUTO[i+1].t)+' →</button>':'')+'</div>';
+  var b=$('tuto-body');b.innerHTML=h;b.scrollTop=0;
+  [].forEach.call(b.querySelectorAll('input[data-tck]'),function(c){c.checked=!!tutoEstado.tck[c.getAttribute('data-tck')]});
+  tutoNav();
+}
+function tutoIr(spec){
+  tutoCerrar();
+  String(spec||'').split(';').forEach(function(p){
+    var kv=p.split(':'),k=kv[0],v=kv[1],b=null;
+    if(k==='view')b=document.querySelector('#views [data-view="'+v+'"]');
+    else if(k==='tool')b=document.querySelector('#tools [data-tool="'+v+'"]');
+    if(b&&!b.hidden)b.click();
+  });
+  var t=(document.getElementById('hint')||{}).textContent;
+  if(t)toast(t.slice(0,140));
+}
+function tutoAbrir(){
+  var hd=document.querySelector('header'),top=hd?Math.round(hd.getBoundingClientRect().bottom):56;
+  var t=$('tuto');t.style.top=top+'px';t.hidden=false;
+  var vs=document.querySelectorAll('#views button');for(var j=0;j<vs.length;j++)vs[j].className=vs[j].getAttribute('data-view')==='tutorial'?'on':'';
+  try{localStorage.setItem('ranuse-tuto-visto','1')}catch(e){}
+  tutoLec(tutoEstado.lec);
+}
+function tutoCerrar(){
+  var t=$('tuto');if(!t||t.hidden)return;t.hidden=true;
+  var vs=document.querySelectorAll('#views button');for(var j=0;j<vs.length;j++)vs[j].className=vs[j].getAttribute('data-view')===st.view?'on':'';
+}
+$('tuto').addEventListener('click',function(e){
+  var g=e.target.closest('[data-go]');if(g){tutoIr(g.getAttribute('data-go'));return}
+  var l=e.target.closest('[data-tl]');if(l){tutoLec(l.getAttribute('data-tl'));return}
+  if(e.target.closest('#tuto-x')){tutoCerrar();return}
+});
+$('tuto').addEventListener('change',function(e){
+  if(e.target.id==='tuto-done'){tutoEstado.done[tutoEstado.lec]=e.target.checked;tutoGuarda();tutoNav();return}
+  var c=e.target.closest('input[data-tck]');if(c){tutoEstado.tck[c.getAttribute('data-tck')]=c.checked;tutoGuarda()}
+});
+/* la primera vez, un aviso discreto para que sepan que existe */
+try{if(!localStorage.getItem('ranuse-tuto-visto')&&!localStorage.getItem('ranuse-tuto-aviso')){localStorage.setItem('ranuse-tuto-aviso','1');setTimeout(function(){try{toast('¿Primera vez? En la pestaña «Tutorial» tienes lecciones paso a paso.')}catch(e){}},2500)}}catch(e){}
+
 /* ayuda */
 function ayudaAbrir(){
   var g=$('help-cmds');
