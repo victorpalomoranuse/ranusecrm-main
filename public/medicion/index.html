@@ -2731,7 +2731,7 @@ function scene(C,k,view,o){
       if(st.spHover){var lp=spp[spp.length-1];h+=ln(lp.x,lp.y,st.spHover.x,st.spHover.y,C.accent,1.4*px,'round','')+'<circle cx="'+f2(st.spHover.x)+'" cy="'+f2(st.spHover.y)+'" r="'+f2(4*px)+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(1.6*px)+'"/>'}
     }
   }
-  if(view==='suelos'&&st.verEqSuelo!==false){
+  if(view==='suelos'&&st.verEqSuelo!==false&&!o.flat){ /* solo mientras trabajas; al exportar la lámina de suelos va sin máquinas */
     (v.eq||[]).forEach(function(e){
       var r=eqRect(e);
       h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')">'+(o.flat?'<rect width="'+e.w+'" height="'+e.d+'" rx="'+f2(3*px)+'" style="fill:'+C.bg+';fill-opacity:.9;stroke:'+hexMix(C.label,'#ffffff',0.55)+';stroke-width:'+f2(0.6*px)+'"/>':'')+eqSym(e.ty,e.w,e.d,o.flat?hexMix(C.blk||C.ink,'#ffffff',0.45):(C.blk||C.ink),px,e.cid)+'</g>';
