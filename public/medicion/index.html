@@ -2712,7 +2712,7 @@ function scene(C,k,view,o){
             return q2.some(function(c1,j){var c2=q2[(j+1)%q2.length];return (Math.hypot(c1.x-a.x,c1.y-a.y)<1.5&&Math.hypot(c2.x-b.x,c2.y-b.y)<1.5)||(Math.hypot(c1.x-b.x,c1.y-b.y)<1.5&&Math.hypot(c2.x-a.x,c2.y-a.y)<1.5)});
           });
           if(!rep0&&!compartido&&!(o.flat&&tocaMuro&&st.verCotasMuros)){ /* un lado pegado al muro solo se omite si las cotas de los muros ya están en la lámina */
-            h+=dimW(C,px,a.x+ix,a.y+iy,b.x+ix,b.y+iy,fmtU(L),C.label,false,{inw:{x:ix,y:iy},halo:hCol,out:zOut});
+            h+=dimW(C,px,a.x+ix,a.y+iy,b.x+ix,b.y+iy,fmtU(L),o.flat?hexMix(C.label,'#ffffff',0.4):C.label,!!o.flat,{inw:{x:ix,y:iy},halo:hCol,out:zOut});
             if(colectaDim){var vt=Math.abs(dx)<Math.abs(dy);dimHits.push({kind:'spe',sp:r.id,i:i,a0:a0,val:L,x:(a.x+b.x)/2+ix+(vt?(ix>=0?1:-1)*14*px:0),y:(a.y+b.y)/2+iy+(vt?4*px:(iy>0?13*px:-5*px))})}
           }
           /* la distancia al muro no se dibuja si cruza otra zona de suelo (solo ensuciaría) */
@@ -2734,7 +2734,7 @@ function scene(C,k,view,o){
   if(view==='suelos'&&st.verEqSuelo!==false){
     (v.eq||[]).forEach(function(e){
       var r=eqRect(e);
-      h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')">'+eqSym(e.ty,e.w,e.d,C.blk||C.ink,px,e.cid)+'</g>';
+      h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')">'+(o.flat?'<rect width="'+e.w+'" height="'+e.d+'" rx="'+f2(3*px)+'" style="fill:'+C.bg+';fill-opacity:.9;stroke:'+hexMix(C.label,'#ffffff',0.55)+';stroke-width:'+f2(0.6*px)+'"/>':'')+eqSym(e.ty,e.w,e.d,o.flat?hexMix(C.blk||C.ink,'#ffffff',0.45):(C.blk||C.ink),px,e.cid)+'</g>';
     });
     if(!o.nonum&&!o.flat&&(v.eq||[]).length)zlab+='';
   }
@@ -6075,21 +6075,36 @@ var ORDEN_OBRA=['actual','cotas','demol','interv','elec','ilum','techos','acab',
 function dossierViews(){return ORDEN_OBRA.filter(viewHas)}
 /* qué láminas lleva el PDF con todas (por defecto todas) */
 function lamOn(k){return !(st.lamOff&&st.lamOff[k])}
-function lamExtras(){return [['distrib','Distribución con la maquinaria colocada (al principio)'],['cal','Memoria de calidades'],['carp','Memoria de carpinterías'],['det','Detalles constructivos']]}
+function lamExtras(){
+  var o=null;try{o=pdfOpts()}catch(e){o={paper:'A3'}}
+  var v=st.v,out=[];
+  if(v.eq.length||(v.mm||[]).length)out.push(['distrib','Distribución con la maquinaria colocada (al principio)']);
+  try{if(calPlan(o).length)out.push(['cal','Memoria de calidades'])}catch(e){}
+  try{if(carpPlan(o).length)out.push(['carp','Memoria de carpinterías'])}catch(e){}
+  try{if(detPlan(o).length)out.push(['det','Detalles constructivos'])}catch(e){}
+  return out;
+}
+function lamAviso(){toast('Las láminas que has marcado no tienen contenido en este plano, así que no hay nada que sacar. Marca otras en «Elegir láminas».')}
+/* láminas del PDF: las que tienen contenido (salvo las que quites) y, además, las vacías que marques a propósito */
+function lamViews(){return ORDEN_OBRA.filter(function(k){return viewHas(k)?lamOn(k):!!(st.lamForce&&st.lamForce[k])})}
 function lamEtiqueta(){
   var b=document.getElementById('b-pdfall');if(!b||!st.v)return;
-  var tot=dossierViews().length+lamExtras().length,off=Object.keys(st.lamOff||{}).filter(function(k){return st.lamOff[k]}).length;
-  b.textContent=off?'PDF con '+Math.max(0,tot-off)+' láminas elegidas':'PDF con todas las láminas';
+  var n=lamViews().length+lamExtras().filter(function(x){return lamOn(x[0])}).length,tot=dossierViews().length+lamExtras().length;
+  b.textContent=n!==tot?'PDF con '+n+' lámina'+(n===1?'':'s')+' elegida'+(n===1?'':'s'):'PDF con todas las láminas';
 }
 function abrirLaminas(){
   var m0=document.getElementById('lammod');if(m0)m0.remove();
-  var vs=dossierViews(),m=document.createElement('div');m.id='lammod';m.className='dxfmod';
-  function fila(k,n){return '<label class="fld chk" style="margin:0"><input type="checkbox" data-lam="'+k+'"'+(lamOn(k)?' checked':'')+'><span>'+esc(n)+'</span></label>'}
+  var vs=ORDEN_OBRA.slice(),m=document.createElement('div');m.id='lammod';m.className='dxfmod';
+  function fila(k,n,vacia,extra){var on=extra?lamOn(k):(vacia?!!(st.lamForce&&st.lamForce[k]):lamOn(k));return '<label class="fld chk" style="margin:0"><input type="checkbox" data-lam="'+k+'"'+(extra?' data-x="1"':'')+(vacia?' data-v="1"':'')+(on?' checked':'')+'><span>'+esc(n)+(vacia?' <small style="color:#9a8f86">(aún sin contenido en este plano)</small>':'')+'</span></label>'}
   m.innerHTML='<div class="dxfbox" style="max-width:520px"><header><h3>Qué láminas llevan los PDF</h3><p class="note" style="margin:0">Marca las que quieres. Vale para «PDF con todas las láminas» y para la vista previa. Lo que no tenga contenido no sale aunque esté marcado.</p></header>'+
-    '<div style="padding:12px 18px;display:grid;gap:8px;max-height:56vh;overflow:auto">'+vs.map(function(k){return fila(k,(COD_LAM[k]?COD_LAM[k]+' · ':'')+VNAME[k])}).join('')+'<div style="height:1px;background:#e7e2dd;margin:2px 0"></div>'+lamExtras().map(function(x){return fila(x[0],x[1])}).join('')+'</div>'+
+    '<div style="padding:12px 18px;display:grid;gap:8px;max-height:56vh;overflow:auto">'+vs.map(function(k){return fila(k,(COD_LAM[k]?COD_LAM[k]+' · ':'')+VNAME[k],!viewHas(k),false)}).join('')+'<div style="height:1px;background:#e7e2dd;margin:2px 0"></div>'+lamExtras().map(function(x){return fila(x[0],x[1],false,true)}).join('')+'</div>'+
     '<footer><button id="lam-t">Todas</button><button id="lam-n">Ninguna</button><span style="flex:1"></span><button id="lam-p">Vista previa</button><button class="pri" id="lam-d">Descargar PDF</button></footer></div>';
   document.body.appendChild(m);
-  function guarda(){st.lamOff={};[].forEach.call(m.querySelectorAll('input[data-lam]'),function(c){if(!c.checked)st.lamOff[c.getAttribute('data-lam')]=true});try{localStorage.setItem('ranuse-lam-off',JSON.stringify(st.lamOff))}catch(e){}lamEtiqueta()}
+  function guarda(){
+    st.lamOff={};st.lamForce={};
+    [].forEach.call(m.querySelectorAll('input[data-lam]'),function(c){var k=c.getAttribute('data-lam');if(c.getAttribute('data-v')&&!c.getAttribute('data-x')){if(c.checked)st.lamForce[k]=true}else if(!c.checked)st.lamOff[k]=true});
+    try{localStorage.setItem('ranuse-lam-off',JSON.stringify(st.lamOff));localStorage.setItem('ranuse-lam-force',JSON.stringify(st.lamForce))}catch(e){}lamEtiqueta()
+  }
   m.addEventListener('change',guarda);
   function marca(v){[].forEach.call(m.querySelectorAll('input[data-lam]'),function(c){c.checked=v});guarda()}
   document.getElementById('lam-t').addEventListener('click',function(){marca(true)});
@@ -6099,6 +6114,7 @@ function abrirLaminas(){
   m.addEventListener('mousedown',function(e){if(e.target===m)m.remove()});
 }
 try{st.lamOff=JSON.parse(localStorage.getItem('ranuse-lam-off')||'{}')||{}}catch(e){st.lamOff={}}
+try{st.lamForce=JSON.parse(localStorage.getItem('ranuse-lam-force')||'{}')||{}}catch(e){st.lamForce={}}
 
 
 /* ---------- memoria de carpinterías ---------- */
@@ -7372,8 +7388,7 @@ function buildPDF(mode,opt,lista){
   (st.v.cal||[]).forEach(function(c){var mn=c.pid&&calMin[c.pid];if(mn&&mn.rgb&&calIdx[c.pid]==null)calIdx[c.pid]=doc.image(mn.w,mn.h,mn.rgb)});
   lumUsedList().forEach(function(l){var r=LUMRGB[l.id];if(r&&r.rgb&&!lumIdx[l.id])lumIdx[l.id]=doc.image(r.w,r.h,r.rgb)});
   var v0=st.v,antes=plan.length,views=mode==='all'?dossierViews():(mode==='carp'||mode==='det'||mode==='cal')?[]:[st.view];
-  if(mode==='all'&&!views.length)views=[st.view];
-  if(mode==='all')views=views.filter(lamOn);
+  if(mode==='all')views=lamViews();
   views.forEach(function(vw){
     if(vw==='alz'){var ap=alzPages(opt);ap.pages.forEach(function(pg){plan.push({view:'alz',alz:{S:ap.S,els:pg}})});if(!ap.pages.length)plan.push({view:'alz',alz:null})}
     else if(vw==='demol'){
@@ -7451,7 +7466,7 @@ function actualizaBotonesPlantas(){
 function verPrevia(todas){
   if(!todas&&!bbox()){toast('Dibuja algo antes de ver la vista previa');return}
   var bytes;
-  try{bytes=buildPDF('all',pdfOpts(),todas?plantasDelProyecto():null)}catch(e){toast('No hay ninguna lámina marcada: elige alguna en «Elegir láminas»');return}
+  try{bytes=buildPDF('all',pdfOpts(),todas?plantasDelProyecto():null)}catch(e){if(e&&e.message==='vacío')lamAviso();else toast('No se pudo generar la vista previa');return}
   var url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})),m=document.getElementById('prevpdf');
   if(m)m.remove();
   m=document.createElement('div');m.id='prevpdf';m.className='dxfmod';
@@ -7546,7 +7561,7 @@ function exportPDF(mode){
   if(mode!=='cal'&&!bbox()){toast('Dibuja algo antes de exportar');return}
   if(!st.v.nombre&&!window.__avisoDatos){window.__avisoDatos=1;toast('Consejo: pon el nombre y la dirección en «Archivo → Datos del proyecto» para que salgan en el cajetín')}
   var bytes;
-  try{bytes=buildPDF(mode,pdfOpts())}catch(e){toast(mode==='all'?'No hay ninguna lámina marcada: elige alguna en «Elegir láminas»':'No se pudo generar el PDF');return}
+  try{bytes=buildPDF(mode,pdfOpts())}catch(e){if(mode==='all'&&e&&e.message==='vacío')lamAviso();else toast('No se pudo generar el PDF');return}
   saveFile(slug()+(mode==='all'?'-dossier':mode==='carp'?'-carpinterias':mode==='det'?'-detalles':mode==='cal'?'-calidades':'-'+st.view)+'.pdf',bytes,'PDF');
 }
 
@@ -7635,7 +7650,7 @@ function subirPdfCrm(mode){
   var dst=mode==='all'?['Documentación de apoyo','Fase 6']:destinoLamina(st.view,false);
   if(!window.confirm('El PDF se guardará en Documentos del proyecto (tipo plano), pensado para: '+dst[1]+' · '+dst[0]+'. El cliente lo verá en su portal. ¿Continuar?'))return;
   var bytes;
-  try{bytes=buildPDF(mode,pdfOpts())}catch(e){toast(mode==='all'?'No hay ninguna lámina marcada: elige alguna en «Elegir láminas»':'No se pudo generar el PDF');return}
+  try{bytes=buildPDF(mode,pdfOpts())}catch(e){if(mode==='all'&&e&&e.message==='vacío')lamAviso();else toast('No se pudo generar el PDF');return}
   var titulo=(mode==='all'?'Planos · dossier completo':(COD_LAM[st.view]||'')+' · '+VNAME[st.view])+(st.v.nombre?' · '+st.v.nombre:'');
   crmPost({type:'subir-pdf',nombre:titulo,filename:slug()+(mode==='all'?'-dossier':'-'+st.view)+'.pdf',bytes:bytes.buffer});
   toast('Subiendo a Documentos…');
