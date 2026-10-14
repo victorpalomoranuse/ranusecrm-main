@@ -7519,11 +7519,7 @@ function sheetPage(doc,view,idx,total,o){
     rows.push(['Ventanas nuevas',String(cnt(v.ops,'new','win'))]);
     if((v.rc||[]).length){var rcl=0;v.rc.forEach(function(rc){var q=rcPoly(rc);if(q)rcl+=q.len});rows.push(['Recrecidos en pared',v.rc.length+' · '+m2(rcl/100)+' ml · '+m2(rcl*alt/10000)+' m²'])}
   }else if(view==='distrib'){
-    rows.push(['Bloques colocados',v.eq.length+' · '+eqTipos().lista.length+(eqTipos().lista.length===1?' tipo':' tipos')]);
-    rows.push(['Paso mínimo entre máquinas',fmt(num(v.paso)||80)+' cm']);
-    var nb=0;
-    for(var ia=0;ia<v.eq.length;ia++)for(var ib=ia+1;ib<v.eq.length;ib++){var qq=rgap(eqRect(v.eq[ia]),eqRect(v.eq[ib])),pz=pasoPar(v.eq[ia],v.eq[ib]);if(pz!=null&&(qq.ov||qq.g<pz))nb++}
-    rows.push(['Pasos por debajo del mínimo',String(nb)]);
+    rows.push(['Altura del espacio',fmt(wallH())+' cm']);
   }else if(view==='ilum'||view==='elec'){
     var np3=0,ml3={led:0,carril:0};
     v.pts.forEach(function(q){
