@@ -3027,7 +3027,7 @@ function scene(C,k,view,o){
       if(q2.g>=300)continue;
       var gc=pmx==null?C.dim:(low?C.dem:C.ok),suave=!!o.flat;
       if(suave)gc=hexMix(gc,'#ffffff',0.4);
-      var mostrar=suave||(sel&&sel.t==='eq'&&(sel.id===eqs[ia].id||sel.id===eqs[ib].id)); /* trabajando: el plano limpio; las distancias salen al seleccionar un bloque */
+      var mostrar=!o.ante&&(suave||(sel&&sel.t==='eq'&&(sel.id===eqs[ia].id||sel.id===eqs[ib].id))); /* trabajando: el plano limpio; las distancias salen al seleccionar un bloque */
       if(!mostrar)continue;
       if(q2.dy<0&&q2.dx>0){
         var yy=(Math.max(ra.y0,rb.y0)+Math.min(ra.y1,rb.y1))/2,l=ra.x0<rb.x0?ra:rb,r2=ra.x0<rb.x0?rb:ra;
@@ -7166,7 +7166,7 @@ function sheetPage(doc,view,idx,total,o){
 
   /* título de la lámina: etiqueta pequeña con letras espaciadas y título ligero */
   var codLam=codigoLamina(doc,view,o.ante);
-  var tit=(view==='distrib'?(o.ante?'Anteproyecto · distribución':'Mobiliario y equipamiento'):VNAME[view])+(o.capaN?' · '+o.capaN:'');
+  var tit=(view==='distrib'?(o.ante?'Distribución':'Mobiliario y equipamiento'):VNAME[view])+(o.capaN?' · '+o.capaN:'');
   p.text(mg+9,mg+10,('Lámina '+idx+' de '+total+' · '+(v.nombre||'Sin nombre')).toUpperCase(),5.6*f+0.6,{bold:true,col:MUTED,sp:0.5});
   p.text(mg+9,mg+22,tit,22*f+2,{light:true,col:INK});
   p.rect(mg+9,mg+25.5,12*f,0.5,MARCA,null,0);
@@ -7196,7 +7196,7 @@ function sheetPage(doc,view,idx,total,o){
     else{for(var i=0;i<SCALES.length;i++)if(SCALES[i]>=need){S=SCALES[i];break}}
     var km=10/S,bw=(gira?hc:wc)*km,bh=(gira?wc:hc)*km,ox=gira?ax+(aw-bw)/2-b.y0*km:ax+(aw-bw)/2-b.x0*km,oy=gira?ay+(ah-bh)/2+b.x1*km:ay+(ah-bh)/2-b.y0*km;
     demCapa=(view==='demol'&&o.capa)?o.capa:(view==='demol'?'x':null);
-    var inner=scene(LIGHT,40/S,view,{sel:null,nodes:false,tags:tags,noctl:true,dims:o.dims,flat:true,marks:o.marks!==false&&!o.ante,ldim:o.ldim!==false&&!o.ante,eqloc:!!o.eqloc&&!o.ante,eqsuelo:o.eqsuelo!==false,nonum:!!o.ante});
+    var inner=scene(LIGHT,40/S,view,{sel:null,nodes:false,tags:tags,noctl:true,dims:o.dims,flat:true,marks:o.marks!==false&&!o.ante,ldim:o.ldim!==false&&!o.ante,eqloc:!!o.eqloc&&!o.ante,eqsuelo:o.eqsuelo!==false,ante:!!o.ante,nonum:!!o.ante});
     demCapa=null;
     p.raw('q '+pn(mg+1)+' '+pn(mg+28)+' '+pn(cx-mg-2)+' '+pn(PH-2*mg-28-bandH)+' re W n');
     p.svg('<g transform="translate('+f2(ox)+' '+f2(oy)+') scale('+km+')'+(gira?' matrix(0 -1 1 0 0 0)':'')+'">'+inner+'</g>',{hatchStep:1.75,dem:LIGHT.dem,demBg:LIGHT.demBg});
