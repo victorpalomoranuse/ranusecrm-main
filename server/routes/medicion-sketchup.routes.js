@@ -28,7 +28,8 @@ router.get('/:id/:firma', async (req, res) => {
     const modelo = data.data?.modelo3d;
     if (!modelo) return res.status(409).json({ error: 'El plano todavía no tiene modelo: ábrelo y dibuja algo para que se guarde' });
     res.set('Cache-Control', 'no-store');
-    res.json({ updated: new Date(data.updated_at).getTime(), nombre: data.nombre || modelo.nombre || 'Plano', modelo });
+    // «updated» va en segundos: SketchUp en Windows no admite enteros de más de 32 bits
+    res.json({ updated: Math.floor(new Date(data.updated_at).getTime() / 1000), nombre: data.nombre || modelo.nombre || 'Plano', modelo });
   } catch (err) {
     console.error('medicion-publico:', err);
     res.status(500).json({ error: 'No se pudo leer el plano' });

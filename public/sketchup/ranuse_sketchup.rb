@@ -17,7 +17,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.0.0'.freeze
+    VERSION = '1.0.1'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -33,6 +33,7 @@ module Ranuse
     end
 
     def self.guardar_ajuste(clave, valor)
+      valor = valor.to_s if valor.is_a?(Integer) && valor.abs > 2_000_000_000
       modelo.set_attribute(DICT, clave, valor)
     end
 
@@ -116,12 +117,13 @@ module Ranuse
         return
       end
       datos = JSON.parse(cuerpo)
-      if !forzar && datos['updated'].to_i == ajuste('actualizado', 0).to_i
+      # La marca de cambio se guarda como texto: en Windows SketchUp no admite enteros de más de 32 bits
+      if !forzar && datos['updated'].to_s == ajuste('actualizado', '0').to_s
         UI.messagebox('El plano no ha cambiado desde la última actualización.') unless silencioso
         return
       end
       reconstruir(datos)
-      guardar_ajuste('actualizado', datos['updated'].to_i)
+      guardar_ajuste('actualizado', datos['updated'].to_s)
       Sketchup.status_text = "Ranuse: plano «#{datos['nombre']}» actualizado"
     end
 
