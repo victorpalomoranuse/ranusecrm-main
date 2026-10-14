@@ -3019,15 +3019,16 @@ function scene(C,k,view,o){
       var sua=!!o.flat;
       eqs.forEach(function(e){
         if(sel&&sel.t==='eq'&&sel.id===e.id)return;
-        var r=eqRect(e),mejor={h:null,v:null};
+        var r=eqRect(e),mejor={h:null,v:null},ocupado={h:false,v:false};
         [[1,0,r.x1,r.cy],[-1,0,r.x0,r.cy],[0,1,r.cx,r.y1],[0,-1,r.cx,r.y0]].forEach(function(d){
-          var rd=rayDist(d[2],d[3],d[0],d[1],'*');if(!rd||!(rd.d>2)||rd.d>600)return;
-          var k=d[0]!==0?'h':'v';if(!mejor[k]||rd.d<mejor[k].rd.d)mejor[k]={d:d,rd:rd};
+          var rd=rayDist(d[2],d[3],d[0],d[1],e.id),k=d[0]!==0?'h':'v';
+          /* si en esa dirección hay otra máquina, esa dirección ya tiene su cota hasta ella (no se acota hasta el muro: de eso se encarga la de al lado) */
+          if(!rd||rd.kind!=='w'||!(rd.d>2)||rd.d>600)return;if(!mejor[k]||rd.d<mejor[k].rd.d)mejor[k]={d:d,rd:rd};
         });
         ['h','v'].forEach(function(k){
-          var m=mejor[k];if(!m)return;var d=m.d,rd=m.rd;
+          var m=mejor[k];if(!m||ocupado[k])return;var d=m.d,rd=m.rd;
           if(colectaDim)dimHits.push({kind:'eqd',eq:e.id,ux:d[0],uy:d[1],val:rd.d,x:d[2]+d[0]*rd.d/2+(d[0]===0?14*px:0),y:d[3]+d[1]*rd.d/2-(d[0]===0?0:5*px)});
-          gl+=dimW(C,px,d[2],d[3],d[2]+d[0]*rd.d,d[3]+d[1]*rd.d,fmtU(rd.d),sua?hexMix(C.dim,'#ffffff',0.2):C.dim,sua);
+          gl+=dimW(C,px,d[2],d[3],d[2]+d[0]*rd.d,d[3]+d[1]*rd.d,fmtU(rd.d),sua?hexMix(C.ok,'#ffffff',0.4):C.ok,sua);
         });
       });
     }
@@ -3246,7 +3247,7 @@ function dimCfg(w,mode,cent,view,px){
   var toC=(cent.x-mx)*nx+(cent.y-my)*ny,sg=(toC>=0?1:-1)*(mode==='int'?1:-1);
   nx*=sg;ny*=sg;
   var ops=(w.opsV||st.v.ops.filter(function(o){return o.wall===w.id})).filter(function(o){return opVis(o,view)}).sort(function(a,b){return a.p-b.p});
-  var d1=w.t/2+16*px,d2=ops.length?d1+16*px:d1;
+  var d1=w.t/2+16*px,d2=ops.length?d1+(16+Math.abs(nx)*26)*px:d1; /* en muros verticales los números de la primera fila van entre las dos líneas: más separación para que no se crucen */
   return {g:g,nx:nx,ny:ny,ops:ops,d1:d1,d2:d2,mx:mx,my:my};
 }
 function dimTextPos(c,px,d){var o=d+9*px+Math.abs(c.nx)*12*px;return {x:c.mx+c.nx*o,y:c.my+c.ny*o+4*px}}
