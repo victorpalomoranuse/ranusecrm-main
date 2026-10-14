@@ -2984,7 +2984,7 @@ function scene(C,k,view,o){
   if(view==='ilum'||view==='elec'){
     if(st.led&&o.nodes)h+='<circle cx="'+f2(st.led.x)+'" cy="'+f2(st.led.y)+'" r="'+f2(6*px)+'" style="fill:'+C.accent+'"/>';
   }
-  if(view==='distrib'&&(v.sp||[]).some(function(r){return r.k==='s'})){ /* líneas de corte del suelo: solo el contorno, muy suave */
+  if(view==='distrib'&&!o.flat&&(v.sp||[]).some(function(r){return r.k==='s'})){ /* líneas de corte del suelo: solo el contorno, muy suave */
     var cz=zoneCodes('suelos');
     (v.sp||[]).forEach(function(r){
       if(r.k!=='s')return;
