@@ -1416,7 +1416,7 @@ function txUsed(){
 }
 /* colores propios de este plano (p. ej. dos pinturas lisas de distinto color): cada uno es un material con su propio código */
 function matsDe(view){return (MATS[view]||[]).concat(((st&&st.v&&st.v.cpal)||[]).filter(function(c){return c.v&&c.v.indexOf(view)>=0}))}
-function nuevoColor(view){
+function nuevoColor(view,alCrear){
   var base=(MATS[view]||[])[0],nom=window.prompt('Nombre del material con su color (por ejemplo «Pintura lisa blanco roto»):',(base?base.n:'Pintura')+' · ');
   if(!nom||!nom.trim())return;
   var inp=document.createElement('input');inp.type='color';inp.value=(base&&/^#[0-9a-f]{6}$/i.test(base.c))?base.c:'#e8e2d8';
@@ -1426,7 +1426,9 @@ function nuevoColor(view){
     var vs=view==='suelos'?['suelos']:view==='techos'?['techos']:['acab'];
     var c={id:'cp'+Date.now().toString(36),n:nom.trim().slice(0,60),c:inp.value,v:vs};
     st.v.cpal.push(c);st.pal[view==='alz'?'acab':view]=c.id;st.tool='paint';
-    inp.remove();commit(false);try{drawPal()}catch(e){}toolbar();hint();toast('Color añadido: «'+c.n+'». Pinta con él o elígelo en el panel de cada zona.');
+    inp.remove();
+    if(alCrear)alCrear(c);
+    commit(false);try{drawPal()}catch(e){}toolbar();hint();panelSel();toast('Color añadido: «'+c.n+'»'+(alCrear?' y puesto en esta zona.':'. Pinta con él o elígelo en el panel de cada zona.'));
   });
   inp.addEventListener('blur',function(){setTimeout(function(){if(inp.parentNode)inp.remove()},400)});
   inp.click();
@@ -5054,7 +5056,7 @@ function panelSel(focus){
     var sp=by(st.v.sp,s.id),spv=sp.k==='s'?'suelos':'techos',sq=spRect(sp),sfa=sq&&faceAt({x:sq.cx,y:sq.cy},spv),sbx=sfa?sfa.inner.reduce(function(a,q){return {x0:Math.min(a.x0,q.x),y0:Math.min(a.y0,q.y)}},{x0:1e9,y0:1e9}):null;
     h+='<div class="rowh"><strong>'+(sp.k==='s'?'Parte del suelo':'Parte del techo')+'</strong><span class="muted">'+m2(spArea(sp)/10000)+' m²</span></div>';
     h+='<p class="note">Solo esta parte lleva este material; el resto de la sala conserva el suyo.</p>';
-    h+='<label class="fld"><span>Material</span><select data-t="sp_mat">'+matsDe(spv).map(function(m){return '<option value="'+m.id+'"'+(m.id===sp.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label>';
+    h+='<label class="fld"><span>Material</span><select data-t="sp_mat">'+matsDe(spv).map(function(m){return '<option value="'+m.id+'"'+(m.id===sp.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label><div class="btns"><button data-a="zcolor">+ Otro color para esta zona…</button></div>';
     h+='<label class="fld"><span>Nombre (opcional)</span><input data-t="sp_nm" value="'+esc(sp.nm||'')+'" placeholder="Zona de entreno" autocomplete="off"></label>';
     if(!sp.pts)h+=fld('sp_bw','Ancho (cm)',sp.bw)+fld('sp_bh','Fondo (cm)',sp.bh);
     else h+='<p class="note">Zona dibujada con '+sp.pts.length+' puntos.</p>';
@@ -5080,7 +5082,7 @@ function panelSel(focus){
     roomFaces(zv).forEach(function(f){if(!zf&&zoneIn(f,z.k)===z)zf=f});
     h+='<div class="rowh"><strong>'+(z.k==='s'?'Suelo':'Techo')+'</strong>'+(zf?'<span class="muted">'+m2(zf.area/10000)+' m²</span>':'')+'</div>';
     h+='<label class="fld"><span>Nombre de la sala</span><input data-t="zn_nm" value="'+esc(z.nm||'')+'" placeholder="Sala de entreno" autocomplete="off"></label>';
-    h+='<label class="fld"><span>Material</span><select data-t="zn_mat">'+matsDe(zv).map(function(m){return '<option value="'+m.id+'"'+(m.id===z.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label>';
+    h+='<label class="fld"><span>Material</span><select data-t="zn_mat">'+matsDe(zv).map(function(m){return '<option value="'+m.id+'"'+(m.id===z.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label><div class="btns"><button data-a="zcolor">+ Otro color para esta zona…</button></div>';
     if(z.k==='t')h+=fld('zn_h','Altura libre bajo el techo (cm)',z.h,String(fmt(num(st.v.altura)||260)));
     if(zf&&z.k==='s')h+='<p class="note">Rodapié: '+m2(Math.max(0,zf.per-zf.doorW)/100)+' ml (perímetro menos puertas). Los m² son útiles, descontando el grosor de los muros.</p>';
     h+='<label class="fld chk"><input type="checkbox" data-t="zn_ex"'+(z.ex?' checked':'')+'><span>'+(z.k==='s'?'Suelo':'Techo')+' existente: se mantiene (no se mide ni se pide)</span></label>';
@@ -5454,6 +5456,7 @@ function doAction(a,el){
   }
   if(a==='spancla'){var ordA=['auto','fin','ini','centro'];st.spAncla=ordA[(ordA.indexOf(st.spAncla||'auto')+1)%4];panelSel();return}
   if(a==='sppega'&&s.t==='sp'){var spg0=by(st.v.sp,s.id);if(spg0){snap();var nc=spPegaMuros(spg0,5);if(nc){commit();toast('Ajustados '+nc+' puntos a la cara de los muros')}else{hist.pop();toast('Todos los puntos ya están en la cara de los muros')}}return}
+  if(a==='zcolor'){var zq=clObj();if(zq){nuevoColor(zq.k==='s'?'suelos':'techos',function(c){zq.mat=c.id})}return}
   if(a==='spadd'){st.spAdd=!st.spAdd;panelSel();render();toast(st.spAdd?'Toca un lado de la zona para añadir un punto':'Tocar una línea la mueve entera');return}
   if(a==='spdelv'&&s.t==='sp'){var spq=by(st.v.sp,s.id);if(spq&&spq.pts&&spq.pts.length>3&&st.spVsel&&st.spVsel.id===spq.id){snap();spq.pts.splice(st.spVsel.i,1);st.spVsel=null;commit();panelSel()}return}
   if(a==='lenreal'&&s.t==='wall'){var wr=wl(s.id);if(wr){snap();wr.len=Math.round(wg(wr).l*10)/10;wr.m=true;commit()}return}
