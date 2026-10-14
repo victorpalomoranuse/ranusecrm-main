@@ -338,7 +338,7 @@ body.crm .top .brand{display:none}
       </div>
       <div class="stage-body">
       <div class="tools" id="tools" role="group" aria-label="Herramientas">
-        <button data-tool="pen" title="Dibujar muros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/></svg><span class="lb">Dibujar</span></button>
+        <button data-tool="pen" title="Muros: dibuja paredes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/></svg><span class="lb">Muros</span></button>
         <button id="b-curve" aria-pressed="false" title="Muros curvos: dibuja un trazo curvo y se convierte en un arco"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18C4 10 10 4 20 4"/></svg><span class="lb">Curva</span></button>
         <button id="b-libre" aria-pressed="false" title="Por norma los muros salen a 90° (horizontales o verticales). Activa «Libre» para dibujar muros en diagonal."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19L19 5"/><path d="M5 5v14h14" opacity=".35"/></svg><span class="lb">Libre</span></button>
         <button data-tool="select" title="Seleccionar y mover"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l12 8-5.5 1.5L10 18z"/></svg><span class="lb">Seleccionar</span></button>
@@ -755,7 +755,7 @@ function example(){
   return v;
 }
 
-var st={v:null,view:'actual',tool:'pen',defState:'ex',sel:null,k:0.4,tx:60,ty:60,fingerDraws:true,penSeen:false,dg:null,side:'b',dims:'ext',pal:{demol:'rz-s',ilum:'foco',elec:'enchufe',suelos:'porc',techos:'pint',acab:'pint'},led:null};
+var st={v:null,view:'actual',tool:'select',defState:'ex',sel:null,k:0.4,tx:60,ty:60,fingerDraws:true,penSeen:false,dg:null,side:'b',dims:'ext',pal:{demol:'rz-s',ilum:'foco',elec:'enchufe',suelos:'porc',techos:'pint',acab:'pint'},led:null};
 var hist=[],redo=[],W=0,H=0,firstFit=true,db=null,cloud=[];
 try{var raw=CRM?null:localStorage.getItem(LS);if(raw){var o=JSON.parse(raw);if(o&&o.v&&o.v.nodes){st.v=o.v;st.view=o.view||'actual';if(o.dims)st.dims=o.dims}}}catch(e){}
 if(!st.v)st.v=CRM?newVisit():example();
@@ -5318,7 +5318,7 @@ $('tools').addEventListener('click',function(e){
   if(t==='draw'){st.drK=st.drK||'line';st.drPoly=null}
   if(t==='equip'||t==='door'||t==='win'||t==='draw')flyOpen(t,b);else flyClose();
 });
-$('views').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;st.view=b.getAttribute('data-view');st.led=null;st.cnFrom=null;closeQE();if(st.view==='ilum'||st.view==='elec')st.tool='pt';else if(st.view==='suelos'||st.view==='techos'||st.view==='acab'||st.view==='alz')st.tool='paint';else if(st.tool==='pt'||st.tool==='paint')st.tool='select';if(st.sel&&st.sel.t==='eq'&&st.view!=='distrib'){st.sel=null;panelSel()}toolbar();save();render()});
+$('views').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;st.view=b.getAttribute('data-view');st.led=null;st.cnFrom=null;closeQE();st.tool='select';st.dg=null;if(st.sel&&st.sel.t==='eq'&&st.view!=='distrib'){st.sel=null;panelSel()}toolbar();save();render()});
 $('b-undo').addEventListener('click',undo);
 $('b-redo').addEventListener('click',redoit);
 $('z-fit').addEventListener('click',fit);
@@ -7718,7 +7718,7 @@ function porTool(t){return function(){var b=document.querySelector('#tools [data
 function porVista(v){return function(){var b=document.querySelector('#views [data-view="'+v+'"]');if(b)b.click()}}
 function porId(id){return function(){var e=$(id);if(e&&!e.hidden)e.click();else toast('No disponible ahora')}}
 function porData(a,sv){return function(){var e=document.querySelector('[data-a="'+a+'"][data-s="'+sv+'"]');if(e)e.click()}}
-cmd('Dibujar muros',['w','mu','muro','pared'],'Herramienta de muros',porTool('pen'));
+cmd('Muros',['w','mu','muro','pared','dibujar muros'],'Herramienta de muros',porTool('pen'));
 cmd('Muros libres (diagonales) / a 90°',['lb','libre','diagonales'],'Por norma los muros salen a 90°',function(){alternarLibre()});
 cmd('Enderezar muros casi rectos',['en','enderezar','recto'],'Corrige inclinaciones de hasta 3 cm',function(){enderezarMuros()});
 cmd('Muros curvos sí / no',['cv','curva','arco'],'Un trazo curvo se convierte en arco',porId('b-curve'));
