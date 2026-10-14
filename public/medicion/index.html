@@ -1416,6 +1416,37 @@ function txUsed(){
 }
 /* colores propios de este plano (p. ej. dos pinturas lisas de distinto color): cada uno es un material con su propio código */
 function matsDe(view){return (MATS[view]||[]).concat(((st&&st.v&&st.v.cpal)||[]).filter(function(c){return c.v&&c.v.indexOf(view)>=0}))}
+var RAL_HEX={'9010':'#f1ede1','9003':'#f4f4f4','9016':'#f6f6f6','9001':'#e9e0d2','9002':'#d7d5cb','9018':'#cfd3cd','7035':'#cbd0cc','7038':'#b4b8b0','7040':'#9da3a6','7044':'#cac4b0','7047':'#d0d0d0','7032':'#b8b799','7016':'#383e42','7021':'#2f3234','9005':'#0e0e10','1013':'#e3d9c6','1015':'#e6d2b5','6021':'#89ac76','5024':'#5d9b9b','3012':'#c1876b'};
+var NCS_PRE=['S 0500-N','S 0502-Y','S 0502-B','S 0505-Y20R','S 1002-Y','S 1002-R','S 1500-N','S 2005-Y20R','S 2500-N','S 3005-Y50R','S 4500-N','S 7500-N','RAL 9010','RAL 9003','RAL 9016','RAL 7035','RAL 7044','RAL 7016','RAL 9005'];
+var NCS_PURO={Y:[255,211,0],R:[196,2,51],B:[0,135,189],G:[0,159,107]};
+/* NCS: se calcula un color aproximado en pantalla (el real lo da el abanico NCS); RAL: tabla de los más usados */
+function codigoHex(cod){
+  var t=String(cod||'').trim().toUpperCase(),m=/^RAL\s*(\d{4})$/.exec(t);
+  if(m)return RAL_HEX[m[1]]||null;
+  m=/^(?:NCS\s*)?S?\s*(\d{2})(\d{2})\s*-\s*(?:(N)|([YRBG])(?:(\d{2})([YRBG]))?)$/.exec(t);
+  if(!m)return null;
+  var bl=+m[1],ch=+m[2],wh=Math.max(0,100-bl-ch),hue=[128,128,128];
+  if(m[4]){var a=NCS_PURO[m[4]];if(m[6]){var b=NCS_PURO[m[6]],p=(+m[5])/100;hue=[0,1,2].map(function(i){return a[i]*(1-p)+b[i]*p})}else hue=a}
+  var rgb=[0,1,2].map(function(i){var v=(wh*255+bl*25+ch*hue[i])/100;return Math.max(0,Math.min(255,Math.round(v)))});
+  return '#'+rgb.map(function(v){return ('0'+v.toString(16)).slice(-2)}).join('');
+}
+/* variante de un material con un código de color: tiene su propia referencia (T1, T2…) y su color */
+function colorDe(view,base,cod,hex,actualiza){
+  var v=st.v;v.cpal=v.cpal||[];
+  var vs=view==='suelos'?['suelos']:view==='techos'?['techos']:['acab'],bm=(MATS[view]||[]).filter(function(m){return m.id===base})[0]||{n:'Material'};
+  var ex=v.cpal.filter(function(c){return c.base===base&&c.cod===cod&&c.v.indexOf(view)>=0})[0];
+  if(ex){if(actualiza&&hex)ex.c=hex;return ex.id}
+  var c={id:'cp'+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36),n:bm.n+' · '+cod,c:hex||bm.c,v:vs,base:base,cod:cod};
+  v.cpal.push(c);return c.id;
+}
+function matOpts(view,curId){
+  var cur=matOf(view,curId),b=cur.base||curId;
+  return matsDe(view).filter(function(m){return !m.base}).map(function(m){return '<option value="'+m.id+'"'+(m.id===b?' selected':'')+'>'+esc(m.n)+'</option>'}).join('');
+}
+function codColorHtml(z,view){
+  var m=matOf(view,z.mat),hex=/^#[0-9a-f]{6}$/i.test(m.c)?m.c:'#e8e2d8';
+  return '<label class="fld"><span>Código de color (NCS o RAL)</span><div style="display:flex;gap:8px;align-items:center"><input data-t="z_cod" list="dl-cod" value="'+esc(m.cod||'')+'" placeholder="NCS S 0502-Y o RAL 9010" autocomplete="off" style="flex:1"><input type="color" data-t="z_hex" value="'+hex+'" title="Color tal como se verá en el plano" style="width:46px;height:38px;padding:2px"></div></label><datalist id="dl-cod">'+NCS_PRE.map(function(x){return '<option value="'+x+'">'}).join('')+'</datalist><p class="note" style="margin:0 0 6px">Escribe el código y el color se calcula solo (en NCS es aproximado); si quieres afinarlo, cámbialo con el cuadro de color. Cada código tiene su propia referencia (T1, T2…) en la leyenda.</p>';
+}
 function nuevoColor(view,alCrear){
   var base=(MATS[view]||[])[0],nom=window.prompt('Nombre del material con su color (por ejemplo «Pintura lisa blanco roto»):',(base?base.n:'Pintura')+' · ');
   if(!nom||!nom.trim())return;
@@ -2688,7 +2719,7 @@ function scene(C,k,view,o){
         h+=clSvg(C,px,f.inner,z.cl,hexMix((o.flat?hexMix(m.c,'#ffffff',0.55):m.c),'#000000',0.16),!!o.flat);
       }
       var l1=(codes[z.mat]||'')+(z.nm?'  '+z.nm:''),l2=m2((f.area-spEn(f,zk))/10000)+' m²'+(view==='techos'&&z.h?'  ·  h '+fmtU(z.h):'');
-      var hZ=hexMix(m.c,'#ffffff',o.flat?0.55:0.4);zlab+=txt(C,px,f.cx,f.cy-2*px,l1,C.label,13,600,hZ)+txt(C,px,f.cx,f.cy+14*px,l2,C.label,11,500,hZ);
+      var hZ=hexMix(m.c,'#ffffff',o.flat?0.55:0.4);zlab+=txt(C,px,f.cx,f.cy-2*px,l1,C.label,13,600,hZ)+txt(C,px,f.cx,f.cy+14*px,l2,C.label,11,500,hZ)+(m.cod?txt(C,px,f.cx,f.cy+28*px,m.cod,C.dim,9,500,hZ):'');
     });
     (v.sp||[]).forEach(function(r){
       if(r.k!==zk)return;
@@ -2754,7 +2785,7 @@ function scene(C,k,view,o){
           if(d0!=null&&d0>3&&d0<(o.flat?160:3000)&&!cruzaOtra)h+=dimW(C,px,mx,my,mx+onx*dR,my+ony*dR,fmtU(dR),o.flat?hexMix(C.ok,'#ffffff',0.3):C.ok,!!o.flat,{halo:hCol,out:zOut});
         });
       }
-      zlab+=zOut.s+txt(C,px,q.cx,q.cy-2*px,(codes[r.mat]||'')+(r.nm?'  '+r.nm:''),C.label,12,600,hCol)+txt(C,px,q.cx,q.cy+13*px,m2(spArea(r)/10000)+' m²',C.label,10.5,500,hCol);
+      zlab+=zOut.s+txt(C,px,q.cx,q.cy-2*px,(codes[r.mat]||'')+(r.nm?'  '+r.nm:''),C.label,12,600,hCol)+txt(C,px,q.cx,q.cy+13*px,m2(spArea(r)/10000)+' m²',C.label,10.5,500,hCol)+(m.cod?txt(C,px,q.cx,q.cy+26*px,m.cod,C.dim,9,500,hCol):'');
     });
     if(o.nodes&&st.spPoly&&st.spPoly.length){ /* zona que se está dibujando */
       var spp=st.spPoly;
@@ -5056,7 +5087,7 @@ function panelSel(focus){
     var sp=by(st.v.sp,s.id),spv=sp.k==='s'?'suelos':'techos',sq=spRect(sp),sfa=sq&&faceAt({x:sq.cx,y:sq.cy},spv),sbx=sfa?sfa.inner.reduce(function(a,q){return {x0:Math.min(a.x0,q.x),y0:Math.min(a.y0,q.y)}},{x0:1e9,y0:1e9}):null;
     h+='<div class="rowh"><strong>'+(sp.k==='s'?'Parte del suelo':'Parte del techo')+'</strong><span class="muted">'+m2(spArea(sp)/10000)+' m²</span></div>';
     h+='<p class="note">Solo esta parte lleva este material; el resto de la sala conserva el suyo.</p>';
-    h+='<label class="fld"><span>Material</span><select data-t="sp_mat">'+matsDe(spv).map(function(m){return '<option value="'+m.id+'"'+(m.id===sp.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label><div class="btns"><button data-a="zcolor">+ Otro color para esta zona…</button></div>';
+    h+='<label class="fld"><span>Material</span><select data-t="sp_mat">'+matOpts(spv,sp.mat)+'</select></label>'+codColorHtml(sp,spv);
     h+='<label class="fld"><span>Nombre (opcional)</span><input data-t="sp_nm" value="'+esc(sp.nm||'')+'" placeholder="Zona de entreno" autocomplete="off"></label>';
     if(!sp.pts)h+=fld('sp_bw','Ancho (cm)',sp.bw)+fld('sp_bh','Fondo (cm)',sp.bh);
     else h+='<p class="note">Zona dibujada con '+sp.pts.length+' puntos.</p>';
@@ -5082,7 +5113,7 @@ function panelSel(focus){
     roomFaces(zv).forEach(function(f){if(!zf&&zoneIn(f,z.k)===z)zf=f});
     h+='<div class="rowh"><strong>'+(z.k==='s'?'Suelo':'Techo')+'</strong>'+(zf?'<span class="muted">'+m2(zf.area/10000)+' m²</span>':'')+'</div>';
     h+='<label class="fld"><span>Nombre de la sala</span><input data-t="zn_nm" value="'+esc(z.nm||'')+'" placeholder="Sala de entreno" autocomplete="off"></label>';
-    h+='<label class="fld"><span>Material</span><select data-t="zn_mat">'+matsDe(zv).map(function(m){return '<option value="'+m.id+'"'+(m.id===z.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label><div class="btns"><button data-a="zcolor">+ Otro color para esta zona…</button></div>';
+    h+='<label class="fld"><span>Material</span><select data-t="zn_mat">'+matOpts(zv,z.mat)+'</select></label>'+codColorHtml(z,zv);
     if(z.k==='t')h+=fld('zn_h','Altura libre bajo el techo (cm)',z.h,String(fmt(num(st.v.altura)||260)));
     if(zf&&z.k==='s')h+='<p class="note">Rodapié: '+m2(Math.max(0,zf.per-zf.doorW)/100)+' ml (perímetro menos puertas). Los m² son útiles, descontando el grosor de los muros.</p>';
     h+='<label class="fld chk"><input type="checkbox" data-t="zn_ex"'+(z.ex?' checked':'')+'><span>'+(z.k==='s'?'Suelo':'Techo')+' existente: se mantiene (no se mide ni se pide)</span></label>';
@@ -5566,7 +5597,25 @@ $('side').addEventListener('change',function(e){
     commit(false);panelSel();return;
   }
   if((t==='zn_ex'&&st.sel&&st.sel.t==='zn')||(t==='sp_ex'&&st.sel&&st.sel.t==='sp')){var qz=t==='zn_ex'?by(st.v.zn,st.sel.id):by(st.v.sp,st.sel.id);if(qz){snap();if(e.target.checked)qz.ex=true;else delete qz.ex;commit(false);panelSel()}return}
-  if(t==='sp_mat'&&st.sel&&st.sel.t==='sp'){var qm=by(st.v.sp,st.sel.id);if(qm){snap();qm.mat=e.target.value;commit(false);panelSel()}return}
+  if((t==='z_cod'||t==='z_hex')&&st.sel&&(st.sel.t==='zn'||st.sel.t==='sp')){
+    var zc=clObj();if(!zc)return;
+    var vz=zc.k==='s'?'suelos':'techos',cur=matOf(vz,zc.mat),base=cur.base||zc.mat;
+    snap();
+    if(t==='z_cod'){
+      var cod=e.target.value.trim().toUpperCase();
+      if(!cod)zc.mat=base;
+      else{
+        var hx=codigoHex(cod);
+        if(!hx){hx=cur.cod?cur.c:null;toast('No reconozco ese código como NCS ni RAL: elige el color a mano en el cuadro de al lado')}
+        zc.mat=colorDe(vz,base,cod,hx||cur.c,true);
+      }
+    }else{
+      var hx2=e.target.value;
+      zc.mat=colorDe(vz,base,cur.cod||('Color '+hx2.toUpperCase()),hx2,true);
+    }
+    commit(false);panelSel();return;
+  }
+  if(t==='sp_mat'&&st.sel&&st.sel.t==='sp'){var qm=by(st.v.sp,st.sel.id);if(qm){snap();var cm=matOf('suelos',qm.mat);var vq=qm.k==='s'?'suelos':'techos',cq=matOf(vq,qm.mat);qm.mat=cq.cod?colorDe(vq,e.target.value,cq.cod,codigoHex(cq.cod)||cq.c):e.target.value;commit(false);panelSel()}return}
   if(t==='sp_nm'&&st.sel&&st.sel.t==='sp'){var qn=by(st.v.sp,st.sel.id);if(qn){snap();qn.nm=e.target.value.slice(0,60);commit(false)}return}
   if(t==='rz_mat'&&st.sel&&st.sel.t==='rz'){
     var rzz=by(st.v.rz,st.sel.id);if(!rzz)return;snap();rzz.mat=e.target.value;commit(false);panelSel();
@@ -5577,7 +5626,7 @@ $('side').addEventListener('change',function(e){
     commit(false);
   }else if(t&&st.sel&&st.sel.t==='zn'){
     var z=by(st.v.zn,st.sel.id);if(!z)return;
-    snap();if(t==='zn_nm')z.nm=e.target.value.trim();else if(t==='zn_mat')z.mat=e.target.value;
+    snap();if(t==='zn_nm')z.nm=e.target.value.trim();else if(t==='zn_mat'){var vzn=z.k==='s'?'suelos':'techos',czn=matOf(vzn,z.mat);z.mat=czn.cod?colorDe(vzn,e.target.value,czn.cod,codigoHex(czn.cod)||czn.c):e.target.value}
     commit(false);panelSel();
   }else if(t&&t.indexOf('op_')===0&&st.sel&&st.sel.t==='op'){
     var oq=opn(st.sel.id);if(!oq)return;
