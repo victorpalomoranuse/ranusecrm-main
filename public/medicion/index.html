@@ -1390,6 +1390,36 @@ function spPegaMuros(sp,tol){
   });
   return cambios;
 }
+function spMuros(sp){var vw=sp.k==='s'?'suelos':'techos';return st.v.walls.filter(function(w){return !w.arc&&wallVis(w,vw)})}
+/* un punto que cae dentro del grueso de un muro se saca hasta su cara interior más cercana */
+function spSinPenetrar(sp){
+  var pts=spPts(sp);if(!pts||pts.length<3)return 0;
+  var ws=spMuros(sp),n0=nd(sp.n),ch=0,res=pts.map(function(p){
+    var q={x:p.x,y:p.y},it,movido=false;
+    for(it=0;it<3;it++){
+      var mv=null;
+      ws.forEach(function(w){
+        var g=wg(w),h=w.t/2,rx=q.x-g.a.x,ry=q.y-g.a.y,sv=rx*g.ux+ry*g.uy,dv=-rx*g.uy+ry*g.ux;
+        if(sv<-h||sv>g.l+h||Math.abs(dv)>=h-0.15)return;
+        var sh=dv>=0?h-dv:-h-dv;
+        if(!mv||Math.abs(sh)<Math.abs(mv.sh))mv={sh:sh,nx:-g.uy,ny:g.ux};
+      });
+      if(!mv)break;
+      q={x:q.x+mv.nx*mv.sh,y:q.y+mv.ny*mv.sh};movido=true;
+    }
+    if(movido)ch++;
+    return q;
+  });
+  if(ch){spAPoly(sp);sp.pts=res.map(function(q){return {x:f2(q.x-n0.x),y:f2(q.y-n0.y)}})}
+  return ch;
+}
+/* ¿está este punto sobre la cara de un muro? */
+function spEnCara(sp,p){
+  return spMuros(sp).some(function(w){
+    var g=wg(w),h=w.t/2,rx=p.x-g.a.x,ry=p.y-g.a.y,sv=rx*g.ux+ry*g.uy,dv=-rx*g.uy+ry*g.ux;
+    return sv>=-h-0.5&&sv<=g.l+h+0.5&&Math.abs(Math.abs(dv)-h)<0.6;
+  });
+}
 function spRuns(pp){
   var n=pp.length,out=[],col=[],k,e;
   for(k=0;k<n;k++){
@@ -2258,7 +2288,7 @@ function save(){
     catch(e){$('saved').textContent='Este navegador no deja guardar en el dispositivo. Usa la nube o descarga los datos.'}
   },300);
 }
-function commit(selToo){if(st.v.mm&&st.v.mm.length)st.v.mm=st.v.mm.filter(function(z){return wl(z.wall)});if(st.v.rc&&st.v.rc.length)st.v.rc=st.v.rc.filter(function(z){return wl(z.wall)});if(st.v.fz&&st.v.fz.length)st.v.fz=st.v.fz.filter(function(z){return wl(z.wall)});save();render();if(selToo!==false)panelSel();panelRest();if(st.view==='suelos'||st.view==='techos'){try{drawPal()}catch(e){}}}
+function commit(selToo){(st.v.sp||[]).forEach(function(q){try{spSinPenetrar(q)}catch(e){}});if(st.v.mm&&st.v.mm.length)st.v.mm=st.v.mm.filter(function(z){return wl(z.wall)});if(st.v.rc&&st.v.rc.length)st.v.rc=st.v.rc.filter(function(z){return wl(z.wall)});if(st.v.fz&&st.v.fz.length)st.v.fz=st.v.fz.filter(function(z){return wl(z.wall)});save();render();if(selToo!==false)panelSel();panelRest();if(st.view==='suelos'||st.view==='techos'){try{drawPal()}catch(e){}}}
 function undo(){
   if(!hist.length)return;
   redo.push(JSON.stringify(st.v));st.v=JSON.parse(hist.pop());st.sel=null;st.dg=null;fields();commit();
@@ -3041,13 +3071,22 @@ function commitDimEd(){
   if(h.kind==='spe'){
     if(!(n>0&&n<=100000)){toast('Escribe una medida válida');return}
     var sq0=by(st.v.sp,h.sp);if(!sq0)return;
-    var pt0=spPts(sq0),N0=pt0.length,A0=pt0[h.a0!=null?h.a0:h.i],B0=pt0[(h.i+1)%N0],C0=pt0[(h.i+2)%N0];
+    var pt0=spPts(sq0),N0=pt0.length,ia=h.a0!=null?h.a0:h.i,ib=(h.i+1)%N0,A0=pt0[ia],B0=pt0[ib];
     var L0=Math.hypot(B0.x-A0.x,B0.y-A0.y);if(!L0||Math.abs(n-L0)<0.01)return;
-    var ux0=(B0.x-A0.x)/L0,uy0=(B0.y-A0.y)/L0,dl0=n-L0,vx0=C0.x-B0.x,vy0=C0.y-B0.y,lc=Math.hypot(vx0,vy0)||1;
+    var ux0=(B0.x-A0.x)/L0,uy0=(B0.y-A0.y)/L0,dl0=n-L0;
+    /* qué extremo se mueve: según el ajuste del panel o, en automático, el que NO está pegado a un muro */
+    var finEsB=Math.abs(ux0)>=Math.abs(uy0)?B0.x>=A0.x:B0.y>=A0.y,modo=st.spAncla||'auto',parte;
+    if(modo==='centro')parte='c';
+    else if(modo==='auto'){var peA=spEnCara(sq0,A0),peB=spEnCara(sq0,B0);parte=peA!==peB?(peB?'a':'b'):(finEsB?'b':'a')}
+    else if(modo==='fin')parte=finEsB?'b':'a';
+    else parte=finEsB?'a':'b';
     snap();spAPoly(sq0);
-    var nn0=nd(sq0.n),mv=function(j){var o0=pt0[j];sq0.pts[j]={x:f2(o0.x+ux0*dl0-nn0.x),y:f2(o0.y+uy0*dl0-nn0.y)}};
-    mv((h.i+1)%N0);
-    if(Math.abs((vx0*ux0+vy0*uy0)/lc)<0.2&&N0>3)mv((h.i+2)%N0); /* lado siguiente perpendicular: se desliza entero */
+    var nn0=nd(sq0.n),movido={};
+    var mvV=function(j,f){if(movido[j])return;movido[j]=1;var o0=pt0[j];sq0.pts[j]={x:f2(o0.x+ux0*dl0*f-nn0.x),y:f2(o0.y+uy0*dl0*f-nn0.y)}};
+    var perp=function(j,k){var P=pt0[j],Q=pt0[k],lq=Math.hypot(Q.x-P.x,Q.y-P.y)||1;return Math.abs(((Q.x-P.x)*ux0+(Q.y-P.y)*uy0)/lq)<0.2&&N0>3};
+    var mueveB=function(f){mvV(ib,f);var ic=(ib+1)%N0;if(perp(ib,ic))mvV(ic,f)}; /* un lado perpendicular que sigue se desliza entero */
+    var mueveA=function(f){mvV(ia,f);var ip=(ia+N0-1)%N0;if(perp(ia,ip))mvV(ip,f)};
+    if(parte==='b')mueveB(1);else if(parte==='a')mueveA(-1);else{mueveB(0.5);mueveA(-0.5)}
     commit();return;
   }
   if(h.kind==='eqd'||h.kind==='eqg'){
@@ -4810,7 +4849,7 @@ function panelSel(focus){
     if(!sp.pts)h+=fld('sp_bw','Ancho (cm)',sp.bw)+fld('sp_bh','Fondo (cm)',sp.bh);
     else h+='<p class="note">Zona dibujada con '+sp.pts.length+' puntos.</p>';
     h+='<p class="note">Para cambiar el contorno (en «Seleccionar»): arrastra un punto grande para moverlo, arrastra una <b>línea</b> para moverla entera (o toca su medida y escríbela), o arrastra el interior para mover toda la zona. Se pegan a las esquinas de la sala y a las otras zonas.</p>';
-    h+='<div class="btns"><button data-a="spadd" aria-pressed="'+!!st.spAdd+'">Añadir puntos: '+(st.spAdd?'sí (toca un lado)':'no')+'</button><button data-a="sppega" title="Corrige los puntos que quedan a unos pocos cm de la cara de un muro (dentro o fuera) y los pega a ella">Pegar a los muros</button></div>';
+    h+='<div class="btns"><button data-a="spadd" aria-pressed="'+!!st.spAdd+'">Añadir puntos: '+(st.spAdd?'sí (toca un lado)':'no')+'</button><button data-a="spancla" title="Al escribir una medida de un lado, qué extremo se mueve. Automático: el que no está pegado a un muro.">Al cambiar una medida: '+({auto:'automático',fin:'se mueve el final (derecha/abajo)',ini:'se mueve el principio (izquierda/arriba)',centro:'se reparte a los dos lados'})[st.spAncla||'auto']+'</button><button data-a="sppega" title="Corrige los puntos que quedan a unos pocos cm de la cara de un muro (dentro o fuera) y los pega a ella">Pegar a los muros</button></div>';
     if(st.spVsel&&st.spVsel.id===sp.id&&sp.pts&&sp.pts.length>3)h+='<div class="btns"><button data-a="spdelv">Quitar el punto seleccionado</button></div>';
     if(sq&&sbx&&!sp.pts)h+=fld('sp_x','Distancia desde la esquina izquierda (cm)',sq.x0-sbx.x0)+fld('sp_y','Distancia desde la esquina de arriba (cm)',sq.y0-sbx.y0);
     h+='<label class="fld chk"><input type="checkbox" data-t="sp_ex"'+(sp.ex?' checked':'')+'><span>Existente: se mantiene (no se mide ni se pide)</span></label>';
@@ -5200,6 +5239,7 @@ function doAction(a,el){
     if(rw){snap();qo.cl.w=rw.w;qo.cl.h=rw.h;qo.cl.ox=rw.ox;qo.cl.oy=rw.oy;commit(false);panelSel();toast('Formato '+rw.w+' × '+rw.h+' aplicado')}
     return;
   }
+  if(a==='spancla'){var ordA=['auto','fin','ini','centro'];st.spAncla=ordA[(ordA.indexOf(st.spAncla||'auto')+1)%4];panelSel();return}
   if(a==='sppega'&&s.t==='sp'){var spg0=by(st.v.sp,s.id);if(spg0){snap();var nc=spPegaMuros(spg0,5);if(nc){commit();toast('Ajustados '+nc+' puntos a la cara de los muros')}else{hist.pop();toast('Todos los puntos ya están en la cara de los muros')}}return}
   if(a==='spadd'){st.spAdd=!st.spAdd;panelSel();render();toast(st.spAdd?'Toca un lado de la zona para añadir un punto':'Tocar una línea la mueve entera');return}
   if(a==='spdelv'&&s.t==='sp'){var spq=by(st.v.sp,s.id);if(spq&&spq.pts&&spq.pts.length>3&&st.spVsel&&st.spVsel.id===spq.id){snap();spq.pts.splice(st.spVsel.i,1);st.spVsel=null;commit();panelSel()}return}
