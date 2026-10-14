@@ -1354,7 +1354,7 @@ function drGuardarBloque(lista){
   if(!(largo>=1&&largo<=5000&&fondo>=1&&fondo<=5000)){toast('El dibujo debe medir entre 1 cm y 50 m');return}
   var nombre=window.prompt('Nombre del bloque (ocupa '+fmt(largo)+' × '+fmt(fondo)+' cm):','');
   if(!nombre||!nombre.trim())return;
-  var cat=window.prompt('Categoría (varias separadas con coma):','Mi biblioteca')||'Mi biblioteca';
+  var cat=window.prompt('Categoría (varias separadas con coma):',/espejo/i.test(nombre)?'Mobiliario · Espejos':'Mi biblioteca')||'Mi biblioteca';
   var tr=function(q){return f2(q.x-x0)+' '+f2(q.y-y0)};
   var frag='',A=' stroke="#000000" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"';
   l.forEach(function(it){
@@ -1365,8 +1365,22 @@ function drGuardarBloque(lista){
     else if(it.t==='poly')frag+='<path d="M'+it.pts.map(tr).join('L')+(it.cl?'Z':'')+'"'+A+'/>';
   });
   var item={nombre:nombre.trim().slice(0,120),categoria:cat.split(',').map(function(x){return x.trim()}).filter(Boolean).join(' | ')||'Mi biblioteca',largo:largo,fondo:fondo,alto:100,planta:frag,origen:'Dibujado en Planos'};
-  if(CRM){crmPost({type:'guardarBiblioteca',items:[item]});toast('Guardando el bloque en la biblioteca…')}
-  else{saveCat({id:'dib'+Date.now().toString(36),nombre:item.nombre,tipo:'gen',w:largo,d:fondo,categoria:item.categoria,ref:item.origen,biblioteca:true,vistas:['planta'],bloque:{planta:frag,largo:largo,fondo:fondo}});toast('Bloque guardado en este dispositivo')}
+  var tmpId='dib'+Date.now().toString(36),ent={id:tmpId,nombre:item.nombre,tipo:'gen',w:largo,d:fondo,categoria:item.categoria,ref:item.origen,vistas:['planta'],bloque:{planta:frag,largo:largo,fondo:fondo}};
+  if(CRM){ent.oculto=true;custom.push(ent);crmPost({type:'guardarBiblioteca',items:[item]});toast('Guardando el bloque en la biblioteca…')}
+  else{ent.biblioteca=true;saveCat(ent);toast('Bloque guardado en este dispositivo')}
+  /* en Distribución, los dibujos pasan a ser una pieza colocada: sale con su etiqueta en el plano y en la leyenda */
+  if(st.view==='distrib'){
+    var cx0=(x0+x1)/2,cy0=(y0+y1)/2,nq0=nearNode(cx0,cy0,1e9,null);
+    if(nq0){
+      snap();
+      var ids0={};l.forEach(function(it){ids0[it.id]=1});
+      st.v.dr=st.v.dr.filter(function(q){return !ids0[q.id]});
+      var ne0={id:uid('e'),n:nq0.id,dx:f2(cx0-nq0.x),dy:f2(cy0-nq0.y),w:largo,d:fondo,rot:0,nm:item.nombre,ty:'gen',cid:tmpId,ref:''};
+      st.v.eq.push(ne0);st.sel={t:'eq',id:ne0.id};st.multi=[];
+      if(CRM)st.pendBib={eq:ne0.id,nombre:item.nombre,tmp:tmpId};
+      commit();toast('«'+item.nombre+'» ahora es una pieza del plano, con su etiqueta y en la leyenda');
+    }
+  }
 }
 function rzArea(r){
   if(r.part&&r.bw>0&&r.bh>0)return r.bw*r.bh;
@@ -4152,7 +4166,7 @@ function alPlegarCat(e){
   var td=e.target.closest('button[data-cat-todo]');
   if(td){
     var abre=td.getAttribute('data-cat-todo')==='1';
-    catalog().forEach(function(c){catsDe(c).forEach(function(g){catAbierto[g]=abre})});
+    catalog().forEach(function(c){if(c.oculto)return;catsDe(c).forEach(function(g){catAbierto[g]=abre})});
     FAMILIAS.forEach(function(f){catAbierto['F:'+f]=abre});
     drawCat();return;
   }
@@ -4174,6 +4188,7 @@ function ordenarBloques(l,ord){
 function drawCat(){
   var q=(($('cat-q')&&$('cat-q').value)||'').trim().toLowerCase(),fam={},ord=($('cat-ord')&&$('cat-ord').value)||'nombre';
   catalog().forEach(function(c){
+    if(c.oculto)return;
     if(q&&(c.nombre+' '+(c.categoria||'')+' '+(c.ref||'')+' '+catsDe(c).map(familiaDe).join(' ')).toLowerCase().indexOf(q)<0)return;
     catsDe(c).forEach(function(g){
       var f=familiaDe(g);
@@ -7859,6 +7874,7 @@ if(CRM){
       var nuevos=(m.items||[]).filter(function(c){return c&&c.id&&c.nombre&&c.w>0&&c.d>0});
       nuevos.forEach(function(c){if(c.completo){bloquesFull[c.id]=c.completo;delete c.completo}});
       cloudCat=cloudCat.filter(function(c){return !nuevos.some(function(n){return n.id===c.id})}).concat(nuevos);
+      if(st.pendBib){var pb=st.pendBib,nn=nuevos.filter(function(n){return n.nombre===pb.nombre})[0];if(nn){var eqp=by(st.v.eq,pb.eq);if(eqp){eqp.cid=nn.id;save()}custom=custom.filter(function(c){return c.id!==pb.tmp});st.pendBib=null;render()}}
       drawCat();toast(nuevos.length+' bloques en tu biblioteca. Los encuentras en el catálogo, categoría «'+(nuevos[0]&&nuevos[0].categoria||'Mi biblioteca')+'».');
     }else if(m.type==='miniaturas'){
       Object.keys(m.items||{}).forEach(function(id){var f=m.items[id];if(f&&f.uri){calMin[id]={uri:f.uri,pw:f.pw,ph:f.ph,rgb:null};prepMinRgb(id)}});
