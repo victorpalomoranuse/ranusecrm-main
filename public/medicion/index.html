@@ -7647,7 +7647,7 @@ function buildPDF(mode,opt,lista){
   });
   st.v=orig;
   if(!plan.length)throw new Error('vacío');
-  try{plan.forEach(function(pp,i){st.v=pp.v||orig;if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li,calIdx:calIdx};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else if(pp.kind==='cal')calPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{orient:opt.orient,ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim})});}finally{st.v=orig}
+  try{plan.forEach(function(pp,i){st.v=pp.v||orig;if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li,calIdx:calIdx};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else if(pp.kind==='cal')calPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{orient:opt.orient,ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim,eqloc:opt.eqloc,eqsuelo:opt.eqsuelo})});}finally{st.v=orig}
   return doc.bytes();
 }
 /* orden de las plantas en el dossier: sótano, baja, entreplanta, 1, 2…, cubierta */
