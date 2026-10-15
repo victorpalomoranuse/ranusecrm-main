@@ -106,6 +106,15 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
     .text(`Antes de dibujar un solo plano, hemos imaginado cómo se vive cada momento. ${esHome ? 'Esta es la historia de un día de entrenamiento en tu nuevo home gym.' : 'Esta es la historia de tu gimnasio.'}`, M + 24, H - 120, { width: 460 });
   doc.fillOpacity(1);
 
+  // ── El punto de partida (objetivo del proyecto) ─────────────────────
+  if (historia.objetivo) {
+    nuevaPagina();
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text('EL PUNTO DE PARTIDA', M, 56, { characterSpacing: 3 });
+    doc.font('Helvetica').fontSize(26).fillColor(INK).text(esHome ? 'Lo que buscas en tu home gym.' : 'Lo que buscas con este proyecto.', M, 76, { width: W - 2 * M });
+    doc.font('Helvetica').fontSize(12).fillColor(TXT).text(historia.objetivo, M, 140, { width: Math.min(W - 2 * M, 560), height: H - 140 - 60, lineGap: 4, ellipsis: true });
+    pie(project.project_name);
+  }
+
   // ── El recorrido (plano de distribución) ────────────────────────────
   if (historia.plano?.imagen_url) {
     nuevaPagina();

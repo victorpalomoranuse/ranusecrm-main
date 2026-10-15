@@ -158,8 +158,13 @@ export async function getHistoriaPublica(projectId) {
   const { data: pl } = await supabase.from('client_projects').select('plano_imagen_url, plano_texto').eq('id', projectId).maybeSingle();
   const plano = pl?.plano_imagen_url ? { imagen_url: pl.plano_imagen_url, texto: pl.plano_texto || null } : null;
 
+  // Objetivo del proyecto: el resumen para el cliente del Programa de Necesidades (si ya está escrito)
+  const { data: nf } = await supabase.from('project_needs_forms').select('client_summary').eq('project_id', projectId).maybeSingle();
+  const objetivo = nf?.client_summary?.trim() || null;
+
   return {
     tipo_proyecto: h.tipo_proyecto,
+    objetivo,
     estilo,
     plano,
     capitulos: capitulos.map(c => ({

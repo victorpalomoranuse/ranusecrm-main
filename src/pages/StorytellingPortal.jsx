@@ -228,6 +228,7 @@ function Bloques({ bloques, capitulos, equipo }) {
   });
 }
 
+const PARRAFOS = new RegExp(String.fromCharCode(10) + '[ \t]*' + String.fromCharCode(10));
 export function StorytellingPortal({ project, dossier, code }) {
   const historia = project.historia;
   const capitulos = historia.capitulos;
@@ -236,6 +237,7 @@ export function StorytellingPortal({ project, dossier, code }) {
   const paleta = moodboard.palette || [];
   const estilo = historia.estilo || null;
   const plano = historia.plano || null;
+  const objetivo = historia.objetivo || null;
   const hayMood = imagenesMood.length > 0 || paleta.length > 0 || !!moodboard.description || !!estilo;
   const planos = historia.entregables || [];
   const esHome = historia.tipo_proyecto === 'home_gym';
@@ -243,6 +245,7 @@ export function StorytellingPortal({ project, dossier, code }) {
 
   const secciones = [
     { id: 'sp-top', label: 'Portada' },
+    ...(objetivo ? [{ id: 'sp-objetivo', label: 'El objetivo' }] : []),
     ...(plano ? [{ id: 'sp-plano', label: 'El recorrido' }] : []),
     ...(hayMood ? [{ id: 'sp-atmosfera', label: 'La atmósfera' }] : []),
     ...capitulos.map((c, i) => ({ id: `sp-c-${c.id}`, label: c.titulo || `Capítulo ${i + 1}` })),
@@ -281,7 +284,7 @@ export function StorytellingPortal({ project, dossier, code }) {
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
     return () => { io.disconnect(); clearTimeout(t); window.removeEventListener('scroll', onScroll); };
-  }, [capitulos.length, hayMood, !!plano]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [capitulos.length, hayMood, !!plano, !!objetivo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
   const urlZip = code ? `${base}/historia-publica/${encodeURIComponent(code)}/renders.zip` : null;
@@ -318,6 +321,14 @@ export function StorytellingPortal({ project, dossier, code }) {
         </div>
         <div className="sp-scroll">Desliza</div>
       </section>
+
+      {objetivo && (
+        <section className="sp-mood sp-objetivo" id="sp-objetivo">
+          <p className="sp-label sp-rv">El punto de partida</p>
+          <h2 className="sp-rv">{esHome ? 'Lo que buscas en tu home gym.' : 'Lo que buscas con este proyecto.'}</h2>
+          {objetivo.split(PARRAFOS).filter(p => p.trim()).map((p, i) => <p key={i} className="sp-lead sp-rv" style={{ whiteSpace: 'pre-line' }}>{p.trim()}</p>)}
+        </section>
+      )}
 
       {plano && (
         <section className="sp-planosec" id="sp-plano">
