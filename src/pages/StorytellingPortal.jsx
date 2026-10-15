@@ -172,6 +172,7 @@ function Bloques({ bloques, capitulos, equipo, materiales }) {
                 <div className="sp-eq-img">{e.image_url ? <img src={e.image_url} alt={e.name} loading="lazy" style={{ objectFit: 'contain' }} /> : null}</div>
                 <h5>{e.name}</h5>
                 {e.brand && <p>{e.brand}</p>}
+                {e.show_quantity !== false && e.quantity > 0 && <p className="sp-eq-q">Cantidad: {e.quantity}</p>}
               </div>
             ))}
           </div>

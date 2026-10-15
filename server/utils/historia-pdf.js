@@ -234,6 +234,7 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
           const bufE = img(e.image_url); try { if (bufE) doc.image(bufE, x + 8, yy + 8, { fit: [wc - 16, 120], align: 'center', valign: 'center' }); } catch { /* imagen no válida */ }
           doc.font('Helvetica-Bold').fontSize(9).fillColor(INK).text(e.name || '', x + 10, yy + 136, { width: wc - 20, height: 24, ellipsis: true });
           if (e.brand) doc.font('Helvetica').fontSize(7.5).fillColor(BEIGE_D).text(String(e.brand).toUpperCase(), x + 10, yy + 168, { width: wc - 20, lineBreak: false });
+          if (e.show_quantity !== false && e.quantity > 0) doc.font('Helvetica-Bold').fontSize(8.5).fillColor(INK).text(`× ${e.quantity}`, x + 10, yy + 168, { width: wc - 20, align: 'right', lineBreak: false });
         });
         y = H;
       } else if (g.tipo === 'render') {

@@ -177,3 +177,5 @@
 .sp-docs-tec a{display:flex;justify-content:space-between;gap:14px;padding:13px 16px;margin-bottom:8px;border:1px solid #4a433c;border-radius:10px;color:#fff;text-decoration:none;font-size:.88rem}
 .sp-docs-tec a:hover{border-color:#b8aca0}
 .sp-docs-tec a span{color:#b8aca0;white-space:nowrap}
+
+.sp-eq-i p.sp-eq-q{margin-top:6px;color:var(--ink,#1a1714);letter-spacing:.04em;text-transform:none}

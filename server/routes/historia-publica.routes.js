@@ -71,12 +71,12 @@ router.get('/:code/historia.pdf', async (req, res) => {
     if (!project) return res.status(404).json({ error: 'Código no válido' });
     const historia = await getHistoriaPublica(project.id);
     if (!historia) return res.status(404).json({ error: 'Este proyecto no tiene historia' });
-    const { data: equipo } = await supabase.from('project_equipment_selections').select('name, brand, image_url').eq('project_id', project.id).not('image_url', 'is', null).order('display_order', { ascending: true, nullsFirst: false }).limit(8);
+    const { data: equipo } = await supabase.from('project_equipment_selections').select('name, brand, image_url, quantity, show_quantity').eq('project_id', project.id).not('image_url', 'is', null).order('display_order', { ascending: true, nullsFirst: false }).limit(8);
     const { data: imagenes } = await supabase.from('project_moodboard_images').select('url').eq('project_id', project.id).order('display_order', { ascending: true });
 
     const [{ data: eqSel }, { data: matSel }] = await Promise.all([
-      supabase.from('project_equipment_selections').select('id, name, brand, image_url').eq('project_id', project.id),
-      supabase.from('project_material_selections').select('id, name, brand, image_url').eq('project_id', project.id),
+      supabase.from('project_equipment_selections').select('id, name, brand, image_url, quantity, show_quantity').eq('project_id', project.id),
+      supabase.from('project_material_selections').select('id, name, brand, image_url, quantity').eq('project_id', project.id),
     ]);
     const seleccionables = [...(eqSel || []).map(e => ({ ...e, clave: 'e:' + e.id })), ...(matSel || []).map(m => ({ ...m, clave: 'm:' + m.id }))];
 
