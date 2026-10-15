@@ -2102,8 +2102,8 @@ function lumGroups(){
   st.v.pts.forEach(function(q){
     if(q.v!=='ilum'||q.s==='dem')return;
     var d=ptDef(q.k);if(!d)return;
-    var key=(q.lid||('k:'+q.k))+(d.lin?'|'+ptMont(q):'');
-    if(ix[key]==null){ix[key]=gs.length;gs.push({key:key,lid:q.lid||null,k:q.k,mo:d.lin?ptMont(q):null,n:0,len:0,ids:[]})}
+    var key=(q.lid||('k:'+q.k))+(d.lin?'|'+ptMont(q)+'|'+ptPerfil(q):'');
+    if(ix[key]==null){ix[key]=gs.length;gs.push({key:key,lid:q.lid||null,k:q.k,mo:d.lin?ptMont(q):null,pf:d.lin?ptPerfil(q):'',n:0,len:0,ids:[]})}
     var g=gs[ix[key]];g.n++;g.ids.push(q.id);
     if(d.lin)g.len+=ptLen(q);
   });
@@ -2139,7 +2139,7 @@ function lumExtras(C,px,view,o){
       if(q.v!=='ilum'||q.s==='dem')return;
       var d=ptDef(q.k);if(!d)return;
       var u=px*1.9*ptSz(q),c=ptPos(q);
-      if(d.lin){var mi=ptMidInfo(q),a=mi.a,mo0=ptMont(q);h+=txt(C,px,mi.x+Math.sin(a)*12*px,mi.y-Math.cos(a)*12*px+4*px,(tg[q.id]||'')+(mo0!=='techo'?' · '+MONT_CORTO[mo0]:''),C.label,11,700)}
+      if(d.lin){var mi=ptMidInfo(q),a=mi.a,mo0=ptMont(q);h+=txt(C,px,mi.x+Math.sin(a)*12*px,mi.y-Math.cos(a)*12*px+4*px,(tg[q.id]||'')+(mo0!=='techo'?' · '+MONT_CORTO[mo0]:'')+(ptPerfil(q)?' · '+PERFIL_CORTO[ptPerfil(q)].replace('perfil ',''):''),C.label,11,700)}
       else{
         var r=5.5*u;
         h+=txt(C,px,c.x+r+8*px,c.y-r*0.5,tg[q.id]||'',C.label,11,700);
@@ -2331,6 +2331,11 @@ function ptPos2(p){var n=nd(p.n);return {x:n.x+p.dx2,y:n.y+p.dy2}}
 /* tiras y carriles: dónde van (montaje) y su recorrido (recta o polilínea) */
 var MONT=[['techo','En techo'],['pared','En pared'],['suelo','En suelo'],['mueble','En mueble o estantería']];
 var MONT_CORTO={techo:'techo',pared:'pared',suelo:'suelo',mueble:'mueble'};
+/* perfiles genéricos para las tiras (aparte de las luminarias del catálogo) */
+var PERFIL=[['','Sin perfil (solo la tira)'],['sup','Perfil de superficie'],['emp','Perfil empotrado'],['mol','Perfil de moldura (luz indirecta)'],['esq','Perfil de esquina'],['col','Perfil suspendido'],['rod','Perfil de rodapié o zócalo']];
+var PERFIL_CORTO={sup:'perfil de superficie',emp:'perfil empotrado',mol:'perfil de moldura',esq:'perfil de esquina',col:'perfil suspendido',rod:'perfil de rodapié'};
+function ptPerfil(q){return q.pf&&PERFIL_CORTO[q.pf]?q.pf:''}
+function perfilSel(dt,cur,etq){return '<label class="fld"><span>'+(etq||'Perfil')+'</span><select data-t="'+dt+'">'+PERFIL.map(function(m){return '<option value="'+m[0]+'"'+(cur===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('')+'</select></label>'}
 function ptMont(q){return q.mo&&MONT_CORTO[q.mo]?q.mo:'techo'}
 function ptVerts(q){var n=nd(q.n);if(q.vx&&q.vx.length>=2)return q.vx.map(function(v){return {x:n.x+v.x,y:n.y+v.y}});return [ptPos(q),ptPos2(q)]}
 function ptLen(q){var v=ptVerts(q),t=0,i;for(i=1;i<v.length;i++)t+=Math.hypot(v[i].x-v[i-1].x,v[i].y-v[i-1].y);return t}
@@ -2553,6 +2558,7 @@ function ledFin(){
   var nq=nearNode(pts[0].x,pts[0].y,1e9,null);if(!nq){st.ledPts=null;return}
   snap();
   var np={id:uid('l'),n:nq.id,dx:0,dy:0,dx2:0,dy2:0,k:ctx.kid,a:0,h:null,v:st.view,mo:st.ledMont||'techo'};
+  if(st.ledPerf)np.pf=st.ledPerf;
   if(ctx.lid)np.lid=ctx.lid;
   st.v.pts.push(np);ptSetVerts(np,pts);
   st.ledPts=null;st.ledCtx=null;st.sel={t:'pt',id:np.id};st.ptVsel=null;
@@ -5088,9 +5094,11 @@ function drawPal(){
     var modoL=st.ledModo||'poli',mb=function(k,t,on){return '<button data-led="'+k+'" aria-pressed="'+on+'">'+t+'</button>'};
     $('alz-modo').innerHTML=mb('modo:poli','Varios tramos (polilínea)',modoL==='poli')+mb('modo:recta','Un solo tramo (2 toques)',modoL==='recta')+mb('orto','Líneas a 90°: '+(st.ledOrto===false?'no (libres)':'sí'),st.ledOrto!==false)+
       MONT.map(function(m){return mb('mont:'+m[0],m[1],(st.ledMont||'techo')===m[0])}).join('')+
+      '<div style="grid-column:1/-1">'+perfilSel('led_pf',st.ledPerf||'','Perfil')+'</div>'+
       (st.ledPts&&st.ledPts.length>=2?'<button data-led="fin" class="pri">Terminar tira</button>':'')+(st.ledPts&&st.ledPts.length?'<button data-led="cancel">Cancelar</button>':'');
   }
 }
+$('alz-modo').addEventListener('change',function(e){var t=e.target&&e.target.getAttribute('data-t');if(t==='led_pf'){st.ledPerf=e.target.value;hint()}});
 $('alz-modo').addEventListener('click',function(e){
   var bled=e.target.closest('button[data-led]');if(bled){ledOpt(bled.getAttribute('data-led'));return}
   var bz=e.target.closest('button[data-zsel]');
@@ -5415,6 +5423,7 @@ function panelSel(focus){
     if(pd.lin){
       var nvs=ptVerts(q).length;
       h+='<label class="fld"><span>Dónde va</span><select data-t="pt_mo">'+MONT.map(function(m){return '<option value="'+m[0]+'"'+(ptMont(q)===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('')+'</select></label>';
+      h+=perfilSel('pt_pf',ptPerfil(q),'Perfil');
       h+='<p class="note">Longitud: '+m2(ptLen(q)/100)+' m · '+nvs+' puntos'+(nvs>2?' (polilínea)':' (recta)')+'.</p>';
       h+='<p class="note" style="margin:0 0 6px">Arrastra un punto para moverlo, o la tira entera desde su línea. Con «Añadir puntos» tocas un tramo para crear uno nuevo.</p>';
       h+='<div class="btns"><button data-a="ptadd" aria-pressed="'+!!st.ptAdd+'">Añadir puntos: '+(st.ptAdd?'sí (toca un tramo)':'no')+'</button>'+(st.ptVsel!=null&&nvs>2?'<button data-a="ptdelv">Quitar el punto elegido</button>':'')+(nvs>2?'<button data-a="ptrecta">Dejarla recta (solo los extremos)</button>':'')+'</div>';
@@ -5891,6 +5900,7 @@ $('side').addEventListener('change',function(e){
     commit(false);panelSel();return;
   }
   if((t==='zn_ex'&&st.sel&&st.sel.t==='zn')||(t==='sp_ex'&&st.sel&&st.sel.t==='sp')){var qz=t==='zn_ex'?by(st.v.zn,st.sel.id):by(st.v.sp,st.sel.id);if(qz){snap();if(e.target.checked)qz.ex=true;else delete qz.ex;commit(false);panelSel()}return}
+  if(t==='pt_pf'&&st.sel&&st.sel.t==='pt'){var qp2=by(st.v.pts,st.sel.id);if(qp2){snap();if(e.target.value)qp2.pf=e.target.value;else delete qp2.pf;commit(false);panelSel()}return}
   if(t==='pt_mo'&&st.sel&&st.sel.t==='pt'){var qm2=by(st.v.pts,st.sel.id);if(qm2){snap();qm2.mo=e.target.value;commit(false);panelSel()}return}
   if((t==='sp_sis'||t==='zn_sis')&&st.sel&&(st.sel.t==='sp'||st.sel.t==='zn')){var zs=clObj();if(zs){snap();if(e.target.value)zs.sis=e.target.value;else delete zs.sis;commit(false);panelSel()}return}
   if((t==='z_cod'||t==='z_hex')&&st.sel&&(st.sel.t==='zn'||st.sel.t==='sp')){
@@ -7597,7 +7607,7 @@ function sheetPage(doc,view,idx,total,o){
         else p.svg('<g transform="translate('+f2(xL+bx/2)+' '+f2(y+0.5*f+bx/2)+')">'+ptSym(g.k,INK,0.5)+'</g>');
         var tx0=xL+bx+3,qty=d.lin?m2(g.len/100)+' ml':'× '+g.n;
         p.text(tx0,y+3.6*f,g.tag,body+1,{bold:true,col:INK});
-        p.text(tx0+8*f,y+3.6*f,fitTxt((cat?cat.n:d.n)+(g.mo&&g.mo!=='techo'?' · '+MONT_CORTO[g.mo]:''),pw-(tx0-xL)-8*f-16,false,body*25.4/72),body,{col:INK});
+        p.text(tx0+8*f,y+3.6*f,fitTxt((cat?cat.n:d.n)+(g.mo&&g.mo!=='techo'?' · '+MONT_CORTO[g.mo]:'')+(g.pf?' · '+PERFIL_CORTO[g.pf]:''),pw-(tx0-xL)-8*f-16,false,body*25.4/72),body,{col:INK});
         p.text(xR,y+3.6*f,qty,body,{col:INK,anchor:'end',bold:true});
         var l2='';
         if(cat&&cat.lm){var tt=d.lin?cat.lm*g.len/100:cat.lm*g.n;totLm+=tt;l2=fmt(cat.lm)+' lm'+(d.lin?'/m':' c/u')+'  ·  total '+fmt(tt)+' lm'}
