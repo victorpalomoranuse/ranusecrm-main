@@ -2538,6 +2538,14 @@ function pickPt(wp,tol){
   });
   return best;
 }
+/* líneas a 90°: casi siempre horizontal o vertical; solo si el trazo es claramente diagonal sale a 45° */
+function ledAng(last,pnt){
+  var dx=pnt.x-last.x,dy=pnt.y-last.y,ax=Math.abs(dx),ay=Math.abs(dy),r={x:pnt.x,y:pnt.y};
+  if(ax<1&&ay<1)return r;
+  if(Math.min(ax,ay)<=Math.max(ax,ay)*0.577){if(ax>=ay)r.y=last.y;else r.x=last.x}
+  else{var m=(ax+ay)/2;r.x=last.x+(dx<0?-m:m);r.y=last.y+(dy<0?-m:m)}
+  return r;
+}
 /* termina la tira que se está dibujando */
 function ledFin(){
   var pts=st.ledPts,ctx=st.ledCtx;
@@ -4346,8 +4354,8 @@ function tap(w){
     var nq0=nearNode(w.x,w.y,1e9,null);
     if(!nq0){toast('Dibuja primero el contorno de la sala');return}
     if(kd.lin){
-      var modoL=st.ledModo||'recta',lastL=st.ledPts&&st.ledPts[st.ledPts.length-1],pnt={x:w.x,y:w.y};
-      if(lastL&&st.ledOrto!==false){var ddx0=pnt.x-lastL.x,ddy0=pnt.y-lastL.y;if(Math.abs(ddy0)<=Math.abs(ddx0)*0.15)pnt.y=lastL.y;else if(Math.abs(ddx0)<=Math.abs(ddy0)*0.15)pnt.x=lastL.x}
+      var modoL=st.ledModo||'poli',lastL=st.ledPts&&st.ledPts[st.ledPts.length-1],pnt={x:w.x,y:w.y};
+      if(lastL&&st.ledOrto!==false)pnt=ledAng(lastL,pnt);
       pnt={x:Math.round(pnt.x/5)*5,y:Math.round(pnt.y/5)*5};
       if(!st.ledPts||!st.ledPts.length){st.ledPts=[pnt];st.ledCtx={kid:kid,lid:lidP};drawPal();render();hint();toast(modoL==='poli'?'Toca los siguientes puntos. Para acabar, toca otra vez el último punto o pulsa «Terminar tira».':'Toca el punto final');return}
       if(modoL==='poli'&&Math.hypot(pnt.x-lastL.x,pnt.y-lastL.y)<14/st.k){if(st.ledPts.length>=2)ledFin();return} /* tocar de nuevo el último punto = terminar */
@@ -4988,7 +4996,7 @@ function hint(){
   var t=HINTS[st.tool];
   if(st.cotasT&&st.tool==='draw')t='Cotas: arrastra de un punto a otro (se pegan a esquinas, caras de muros y zonas) y te dice la distancia. Para cambiarla, tócala con «Seleccionar».';
   if(st.tool==='pen'&&!st.penSeen&&!st.fingerDraws)t='Con el lápiz se dibuja. Con el dedo se mueve el plano.';
-  if(st.tool==='pt'&&st.view==='ilum'&&st.ledPts&&st.ledPts.length)t=(st.ledModo==='poli'?'Toca los puntos de la tira. Para acabar, toca otra vez el último punto, pulsa Intro o «Terminar tira». Esc cancela.':'Toca el punto final de la tira. Esc cancela.');
+  if(st.tool==='pt'&&st.view==='ilum'&&st.ledPts&&st.ledPts.length)t=((st.ledModo||'poli')==='poli'?'Toca los puntos de la tira. Para acabar, toca otra vez el último punto, pulsa Intro o «Terminar tira». Esc cancela.':'Toca el punto final de la tira. Esc cancela.');
   $('hint').textContent=t;
 }
 function toolbar(){
@@ -5070,15 +5078,15 @@ function drawPal(){
   if(v!=='ilum'&&v!=='elec'){blk.hidden=true;return}
   blk.hidden=false;
   $('pal-h').textContent=v==='ilum'?'Puntos de luz':'Mecanismos';
-  $('pal-n').textContent=PTK[v].some(function(d){return d.lin})?'Elige un símbolo y toca el plano. Las tiras y carriles se dibujan rectas (dos toques) o en polilínea (varios toques); elige abajo dónde van. Los apliques se pegan solos a la pared.':'Elige un símbolo y toca el plano. Se pega solo a la pared más cercana. Toca un símbolo para cambiar su altura o girarlo.';
+  $('pal-n').textContent=PTK[v].some(function(d){return d.lin})?'Elige un símbolo y toca el plano. Las tiras y carriles se dibujan por tramos (a 90° casi siempre, o libres) y abajo eliges dónde van. Los apliques se pegan solos a la pared.':'Elige un símbolo y toca el plano. Se pega solo a la pared más cercana. Toca un símbolo para cambiar su altura o girarlo.';
   $('pal').innerHTML=PTK[v].map(function(d){return '<button data-pal="'+d.id+'" aria-pressed="'+(st.pal[v]===d.id&&st.tool==='pt')+'">'+ptThumb(d)+d.n+'</button>'}).join('');
   /* opciones de las tiras y carriles */
   var kk=st.pal.ilum;if(kk&&kk.indexOf('lum:')===0){var lq=lumById(kk.slice(4));kk=lq&&lq.sym}
   var linSel=v==='ilum'&&kk&&ptDef(kk)&&ptDef(kk).lin;
   $('alz-modo').hidden=!linSel;$('alz-h-w').hidden=true;
   if(linSel){
-    var modoL=st.ledModo||'recta',mb=function(k,t,on){return '<button data-led="'+k+'" aria-pressed="'+on+'">'+t+'</button>'};
-    $('alz-modo').innerHTML=mb('modo:recta','Recta (2 toques)',modoL==='recta')+mb('modo:poli','Polilínea (varios toques)',modoL==='poli')+mb('orto','Líneas rectas: '+(st.ledOrto===false?'no':'sí'),st.ledOrto!==false)+
+    var modoL=st.ledModo||'poli',mb=function(k,t,on){return '<button data-led="'+k+'" aria-pressed="'+on+'">'+t+'</button>'};
+    $('alz-modo').innerHTML=mb('modo:poli','Varios tramos (polilínea)',modoL==='poli')+mb('modo:recta','Un solo tramo (2 toques)',modoL==='recta')+mb('orto','Líneas a 90°: '+(st.ledOrto===false?'no (libres)':'sí'),st.ledOrto!==false)+
       MONT.map(function(m){return mb('mont:'+m[0],m[1],(st.ledMont||'techo')===m[0])}).join('')+
       (st.ledPts&&st.ledPts.length>=2?'<button data-led="fin" class="pri">Terminar tira</button>':'')+(st.ledPts&&st.ledPts.length?'<button data-led="cancel">Cancelar</button>':'');
   }
@@ -8627,7 +8635,7 @@ var TUTO=[
   '<div class="tbtns"><button class="tgo pri" data-go="tool:draw">Probar: Dibujo</button></div>'}},
  {id:'instal',t:'Electricidad e iluminación',s:'Puntos, luminarias y circuitos',b:function(){return ''+
   '<p class="lead">En <b>Electricidad</b> e <b>Iluminación</b> colocas símbolos sobre el plano.</p>'+
-  '<ol class="tsteps"><li>Entra en la pestaña y elige un símbolo (enchufe, interruptor, foco, tira LED…).</li><li>Toca el plano para colocarlo; arrástralo para moverlo. Las tiras y carriles se hacen con dos toques.</li><li>En Iluminación, las luminarias salen del catálogo con sus lúmenes y foto; la lámina las agrupa y cuenta.</li><li><b>Tiras LED y carriles</b>: elige <i>Recta</i> (dos toques) o <i>Polilínea</i> (varios toques; para acabar, toca otra vez el último punto, pulsa Intro o «Terminar tira») y marca dónde van: <i>en techo, en pared, en suelo o en mueble</i>. Cada una se dibuja distinta y sale aparte en la leyenda. Al seleccionarla puedes arrastrar sus puntos o añadir más.</li><li>Los puntos muestran su distancia a las paredes: tócala para cambiarla.</li><li>Para unir un interruptor con sus luminarias, usa <b>Unir encendidos</b>.</li></ol>'+
+  '<ol class="tsteps"><li>Entra en la pestaña y elige un símbolo (enchufe, interruptor, foco, tira LED…).</li><li>Toca el plano para colocarlo; arrástralo para moverlo. Las tiras y carriles se hacen con dos toques.</li><li>En Iluminación, las luminarias salen del catálogo con sus lúmenes y foto; la lámina las agrupa y cuenta.</li><li><b>Tiras LED y carriles</b>: los tramos salen a 90° casi siempre (quita «Líneas a 90°» para dibujar libres); toca los puntos y, para acabar, toca otra vez el último punto, pulsa Intro o «Terminar tira» (o elige «Un solo tramo» para hacerla con dos toques). Marca dónde van: <i>en techo, en pared, en suelo o en mueble</i>. Cada una se dibuja distinta y sale aparte en la leyenda. Al seleccionarla puedes arrastrar sus puntos o añadir más.</li><li>Los puntos muestran su distancia a las paredes: tócala para cambiarla.</li><li>Para unir un interruptor con sus luminarias, usa <b>Unir encendidos</b>.</li></ol>'+
   '<div class="tbtns"><button class="tgo pri" data-go="view:elec">Ir a Electricidad</button><button class="tgo" data-go="view:ilum">Ir a Iluminación</button></div>'}},
  {id:'pdf',t:'Láminas y PDF',s:'Cajetín, qué láminas salen y cómo exportar',b:function(){return ''+
   '<p class="lead">Cada pestaña es una lámina con cajetín, leyenda y mediciones. Exportas una sola o todas.</p>'+
