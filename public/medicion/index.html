@@ -2037,7 +2037,7 @@ function acabCodes(view){
   return m;
 }
 var PTK={
-  ilum:[{id:'foco',n:'Foco empotrado'},{id:'plaf',n:'Plafón de superficie'},{id:'colg',n:'Luminaria colgante'},{id:'aplq',n:'Aplique de pared',wall:1},{id:'led',n:'Tira LED',lin:1},{id:'carril',n:'Carril de luz',lin:1}],
+  ilum:[{id:'foco',n:'Foco empotrado'},{id:'plaf',n:'Plafón de superficie'},{id:'colg',n:'Luminaria colgante'},{id:'aplq',n:'Aplique de pared',wall:1},{id:'pie',n:'Lámpara de pie'},{id:'suel',n:'Empotrado de suelo'},{id:'led',n:'Tira LED',lin:1},{id:'carril',n:'Carril de luz',lin:1}],
   elec:[{id:'enchufe',n:'Enchufe',wall:1,h:30},{id:'inter',n:'Interruptor',wall:1,h:110},{id:'conm',n:'Conmutador',wall:1,h:110},{id:'datos',n:'Toma de datos',wall:1,h:30},{id:'tv',n:'Toma de TV',wall:1,h:110},{id:'fuerza',n:'Toma de fuerza',wall:1,h:30},{id:'cuadro',n:'Cuadro eléctrico',wall:1,h:150}]
 };
 function ptDef(k){for(var g in PTK)for(var i=0;i<PTK[g].length;i++)if(PTK[g][i].id===k)return PTK[g][i];return null}
@@ -2050,6 +2050,8 @@ function ptSym(k,col,u){
   else if(k==='plaf')o=C(r)+C(r*0.45,1);
   else if(k==='colg')o='<circle cx="0" cy="0" r="'+f2(r*1.6)+'" fill="none" stroke="'+col+'" stroke-width="'+f2(0.8*u)+'" stroke-dasharray="'+f2(2*u)+' '+f2(1.5*u)+'"/>'+C(r*0.8)+C(r*0.25,1);
   else if(k==='aplq')o=C(4.5*u,0,-2*u)+L(4.5*u,-6.5*u,4.5*u,6.5*u,1.9);
+  else if(k==='pie')o=C(r*0.8)+C(r*0.28,1)+L(-r*1.3,-r*1.3,-r*0.95,-r*0.95)+L(r*1.3,-r*1.3,r*0.95,-r*0.95)+L(-r*1.3,r*1.3,-r*0.95,r*0.95)+L(r*1.3,r*1.3,r*0.95,r*0.95);
+  else if(k==='suel')o='<rect x="'+f2(-r)+'" y="'+f2(-r)+'" width="'+f2(2*r)+'" height="'+f2(2*r)+'" '+A+'/>'+C(r*0.5)+L(0,-r*0.5,0,r*0.5,0.8)+L(-r*0.5,0,r*0.5,0,0.8);
   else if(k==='enchufe'){var q=r*0.85;o=C(q)+'<path d="M0 '+f2(-q)+' A'+f2(q)+' '+f2(q)+' 0 0 1 0 '+f2(q)+' Z" '+F+'/>'}
   else if(k==='inter')o=C(r*0.55,1)+L(0,0,-r*1.7,-r*1.2);
   else if(k==='conm')o=C(r*0.55,1)+L(0,0,-r*1.7,-r*1.2)+L(0,0,-r*1.7,r*1.2);
@@ -2102,8 +2104,8 @@ function lumGroups(){
   st.v.pts.forEach(function(q){
     if(q.v!=='ilum'||q.s==='dem')return;
     var d=ptDef(q.k);if(!d)return;
-    var key=(q.lid||('k:'+q.k))+(d.lin?'|'+ptMont(q)+'|'+ptPerfil(q):'');
-    if(ix[key]==null){ix[key]=gs.length;gs.push({key:key,lid:q.lid||null,k:q.k,mo:d.lin?ptMont(q):null,pf:d.lin?ptPerfil(q):'',n:0,len:0,ids:[]})}
+    var mq=ptMontAny(q),key=(q.lid||('k:'+q.k))+'|'+mq+(d.lin?'|'+ptPerfil(q):'');
+    if(ix[key]==null){ix[key]=gs.length;gs.push({key:key,lid:q.lid||null,k:q.k,mo:mq,pf:d.lin?ptPerfil(q):'',n:0,len:0,ids:[]})}
     var g=gs[ix[key]];g.n++;g.ids.push(q.id);
     if(d.lin)g.len+=ptLen(q);
   });
@@ -2139,7 +2141,7 @@ function lumExtras(C,px,view,o){
       if(q.v!=='ilum'||q.s==='dem')return;
       var d=ptDef(q.k);if(!d)return;
       var u=px*1.9*ptSz(q),c=ptPos(q);
-      if(d.lin){var mi=ptMidInfo(q),a=mi.a,mo0=ptMont(q);h+=txt(C,px,mi.x+Math.sin(a)*12*px,mi.y-Math.cos(a)*12*px+4*px,(tg[q.id]||'')+(mo0!=='techo'?' · '+MONT_CORTO[mo0]:'')+(ptPerfil(q)?' · '+PERFIL_CORTO[ptPerfil(q)].replace('perfil ',''):''),C.label,11,700)}
+      if(d.lin){var mi=ptMidInfo(q),a=mi.a,mo0=ptMont(q);h+=txt(C,px,mi.x+Math.sin(a)*12*px,mi.y-Math.cos(a)*12*px+4*px,(tg[q.id]||'')+(mo0!=='techo'?' · '+MONT_CORTO[mo0]:'')+(ptPerfil(q)?' · '+PERFIL_CORTO[ptPerfil(q)].replace('perfil ',''):''),lumColor(mo0)||C.label,11,700)}
       else{
         var r=5.5*u;
         h+=txt(C,px,c.x+r+8*px,c.y-r*0.5,tg[q.id]||'',C.label,11,700);
@@ -2332,6 +2334,22 @@ function ptPos2(p){var n=nd(p.n);return {x:n.x+p.dx2,y:n.y+p.dy2}}
 var MONT=[['techo','En techo'],['pared','En pared'],['suelo','En suelo'],['mueble','En mueble o estantería']];
 var MONT_CORTO={techo:'techo',pared:'pared',suelo:'suelo',mueble:'mueble'};
 /* perfiles genéricos para las tiras (aparte de las luminarias del catálogo) */
+/* montaje de los puntos de luz: por defecto según el símbolo; se puede cambiar en el panel */
+var MONT_P=[['techo','En techo'],['pared','En pared'],['suelo','En suelo'],['pie','De pie'],['mueble','En mueble o estantería']];
+var MONT_ALL={techo:'techo',pared:'pared',suelo:'suelo',pie:'de pie',mueble:'mueble'};
+var LUMCOL_DEF={techo:'#4d4640',pared:'#1f6f78',suelo:'#a96a12',pie:'#6b5a8f',mueble:'#2f7d4f'};
+function ptMontAny(q){
+  var d=ptDef(q.k);
+  if(d&&d.lin)return ptMont(q);
+  if(q.mo&&MONT_ALL[q.mo])return q.mo;
+  return q.k==='aplq'?'pared':q.k==='pie'?'pie':q.k==='suel'?'suelo':'techo';
+}
+/* colores de los símbolos de iluminación por montaje (se activa en la paleta de Iluminación) */
+function lumColor(mo){
+  if(!(st&&st.v&&st.v.lumColOn))return null;
+  return (st.v.lumCol&&/^#[0-9a-f]{6}$/i.test(st.v.lumCol[mo]||'')&&st.v.lumCol[mo])||LUMCOL_DEF[mo]||null;
+}
+function ptColor(C,q){return q.v==='ilum'?(lumColor(ptMontAny(q))||C.ink):C.ink}
 var PERFIL=[['','Sin perfil (solo la tira)'],['sup','Perfil de superficie'],['emp','Perfil empotrado'],['mol','Perfil de moldura (luz indirecta)'],['esq','Perfil de esquina'],['col','Perfil suspendido'],['rod','Perfil de rodapié o zócalo']];
 var PERFIL_CORTO={sup:'perfil de superficie',emp:'perfil empotrado',mol:'perfil de moldura',esq:'perfil de esquina',col:'perfil suspendido',rod:'perfil de rodapié'};
 function ptPerfil(q){return q.pf&&PERFIL_CORTO[q.pf]?q.pf:''}
@@ -2372,7 +2390,7 @@ function ledTrazo(C,px,a,b,col,mo){
   return ln(a.x,a.y,b.x,b.y,col,2.2*px,'butt',';stroke-dasharray:'+f2(5*px)+' '+f2(3*px));
 }
 function ptDraw(C,px,p,sel,mode){
-  if(mode!=='dem'&&mode!=='ghost')return ptDraw0(C,px,p,sel,C.ink);
+  if(mode!=='dem'&&mode!=='ghost')return ptDraw0(C,px,p,sel,ptColor(C,p));
   var cc=ptPos(p),cr=9*px,base=ptDraw0(C,px,p,sel,C.dem);
   var xs=ln(cc.x-cr,cc.y-cr,cc.x+cr,cc.y+cr,C.dem,1.6*px,'round')+ln(cc.x-cr,cc.y+cr,cc.x+cr,cc.y-cr,C.dem,1.6*px,'round');
   return (mode==='ghost'?'<g style="opacity:.55">':'<g>')+base+xs+'</g>';
@@ -2568,6 +2586,7 @@ function ledOpt(k){
   if(k==='modo:recta'||k==='modo:poli'){st.ledModo=k.slice(5);st.ledPts=null}
   else if(k==='orto')st.ledOrto=st.ledOrto===false;
   else if(k.indexOf('mont:')===0)st.ledMont=k.slice(5);
+  else if(k==='colores'){snap();st.v.lumColOn=!st.v.lumColOn;save()}
   else if(k==='fin'){ledFin();return}
   else if(k==='cancel')st.ledPts=null;
   drawPal();hint();render();
@@ -5089,16 +5108,24 @@ function drawPal(){
   /* opciones de las tiras y carriles */
   var kk=st.pal.ilum;if(kk&&kk.indexOf('lum:')===0){var lq=lumById(kk.slice(4));kk=lq&&lq.sym}
   var linSel=v==='ilum'&&kk&&ptDef(kk)&&ptDef(kk).lin;
-  $('alz-modo').hidden=!linSel;$('alz-h-w').hidden=true;
+  $('alz-modo').hidden=v!=='ilum';$('alz-h-w').hidden=true;
+  var colHtml='';
+  if(v==='ilum'){
+    var cOn=!!st.v.lumColOn;
+    colHtml='<button data-led="colores" aria-pressed="'+cOn+'" style="grid-column:1/-1" title="Cada montaje (techo, pared, suelo, de pie…) con su color, en el plano y en la leyenda">Colores por montaje: '+(cOn?'sí':'no')+'</button>';
+    if(cOn)colHtml+='<div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:6px 10px">'+MONT_P.map(function(m){return '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px"><input type="color" data-t="lcol" data-mo="'+m[0]+'" value="'+(lumColor(m[0])||LUMCOL_DEF[m[0]])+'" style="width:34px;height:28px;padding:1px"><span>'+m[1]+'</span></label>'}).join('')+'</div>';
+    $('alz-modo').innerHTML=colHtml;
+  }
   if(linSel){
     var modoL=st.ledModo||'poli',mb=function(k,t,on){return '<button data-led="'+k+'" aria-pressed="'+on+'">'+t+'</button>'};
-    $('alz-modo').innerHTML=mb('modo:poli','Varios tramos (polilínea)',modoL==='poli')+mb('modo:recta','Un solo tramo (2 toques)',modoL==='recta')+mb('orto','Líneas a 90°: '+(st.ledOrto===false?'no (libres)':'sí'),st.ledOrto!==false)+
+    $('alz-modo').innerHTML=colHtml+mb('modo:poli','Varios tramos (polilínea)',modoL==='poli')+mb('modo:recta','Un solo tramo (2 toques)',modoL==='recta')+mb('orto','Líneas a 90°: '+(st.ledOrto===false?'no (libres)':'sí'),st.ledOrto!==false)+
       MONT.map(function(m){return mb('mont:'+m[0],m[1],(st.ledMont||'techo')===m[0])}).join('')+
       '<div style="grid-column:1/-1">'+perfilSel('led_pf',st.ledPerf||'','Perfil')+'</div>'+
       (st.ledPts&&st.ledPts.length>=2?'<button data-led="fin" class="pri">Terminar tira</button>':'')+(st.ledPts&&st.ledPts.length?'<button data-led="cancel">Cancelar</button>':'');
   }
 }
 $('alz-modo').addEventListener('change',function(e){var t=e.target&&e.target.getAttribute('data-t');if(t==='led_pf'){st.ledPerf=e.target.value;hint()}});
+$('alz-modo').addEventListener('input',function(e){var t=e.target&&e.target.getAttribute('data-t');if(t==='lcol'){st.v.lumCol=st.v.lumCol||{};st.v.lumCol[e.target.getAttribute('data-mo')]=e.target.value;req();save()}});
 $('alz-modo').addEventListener('click',function(e){
   var bled=e.target.closest('button[data-led]');if(bled){ledOpt(bled.getAttribute('data-led'));return}
   var bz=e.target.closest('button[data-zsel]');
@@ -5430,6 +5457,7 @@ function panelSel(focus){
     }
     else{
       if(q.v==='ilum')lumDims(q).forEach(function(m){h+=fld('pt_d_'+m.dir,'Distancia a la pared '+DIRN[m.dir]+' (cm)',m.d)});
+      if(q.v==='ilum')h+='<label class="fld"><span>Dónde va</span><select data-t="pt_mo">'+MONT_P.map(function(m){return '<option value="'+m[0]+'"'+(ptMontAny(q)===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('')+'</select></label>';
       h+='<div class="btns"><button data-a="ptrot">Girar 90°</button>'+(q.v==='ilum'?'<button data-a="ptnd">'+(q.nd?'Mostrar cotas':'Ocultar cotas')+'</button>':'')+'</div>';
     }
     if(q.v==='ilum'){
@@ -7602,12 +7630,12 @@ function sheetPage(doc,view,idx,total,o){
         if(im){var sc=Math.min((bx-0.8)/cat.pw,(bx-0.8)/cat.ph);p.img(im,xL+(bx-cat.pw*sc)/2,y+0.5*f+(bx-cat.ph*sc)/2,cat.pw*sc,cat.ph*sc)}
         else if(d.lin){
           var dashL=g.k!=='led'?null:(g.mo==='pared'?null:g.mo==='suelo'?[0.3,1.1]:g.mo==='mueble'?[2.2,0.8,0.5,0.8]:[1.6,1]);
-          p.line(xL+1.5,y+0.5*f+bx/2,xL+bx-1.5,y+0.5*f+bx/2,INK,g.k==='led'?0.5:1.3,dashL);
+          p.line(xL+1.5,y+0.5*f+bx/2,xL+bx-1.5,y+0.5*f+bx/2,lumColor(g.mo)||INK,g.k==='led'?0.5:1.3,dashL);
         }
-        else p.svg('<g transform="translate('+f2(xL+bx/2)+' '+f2(y+0.5*f+bx/2)+')">'+ptSym(g.k,INK,0.5)+'</g>');
+        else p.svg('<g transform="translate('+f2(xL+bx/2)+' '+f2(y+0.5*f+bx/2)+')">'+ptSym(g.k,lumColor(g.mo)||INK,0.5)+'</g>');
         var tx0=xL+bx+3,qty=d.lin?m2(g.len/100)+' ml':'× '+g.n;
         p.text(tx0,y+3.6*f,g.tag,body+1,{bold:true,col:INK});
-        p.text(tx0+8*f,y+3.6*f,fitTxt((cat?cat.n:d.n)+(g.mo&&g.mo!=='techo'?' · '+MONT_CORTO[g.mo]:'')+(g.pf?' · '+PERFIL_CORTO[g.pf]:''),pw-(tx0-xL)-8*f-16,false,body*25.4/72),body,{col:INK});
+        p.text(tx0+8*f,y+3.6*f,fitTxt((cat?cat.n:d.n)+(g.mo&&(g.mo!=='techo'||st.v.lumColOn)?' · '+MONT_ALL[g.mo]:'')+(g.pf?' · '+PERFIL_CORTO[g.pf]:''),pw-(tx0-xL)-8*f-16,false,body*25.4/72),body,{col:INK});
         p.text(xR,y+3.6*f,qty,body,{col:INK,anchor:'end',bold:true});
         var l2='';
         if(cat&&cat.lm){var tt=d.lin?cat.lm*g.len/100:cat.lm*g.n;totLm+=tt;l2=fmt(cat.lm)+' lm'+(d.lin?'/m':' c/u')+'  ·  total '+fmt(tt)+' lm'}
@@ -8645,7 +8673,7 @@ var TUTO=[
   '<div class="tbtns"><button class="tgo pri" data-go="tool:draw">Probar: Dibujo</button></div>'}},
  {id:'instal',t:'Electricidad e iluminación',s:'Puntos, luminarias y circuitos',b:function(){return ''+
   '<p class="lead">En <b>Electricidad</b> e <b>Iluminación</b> colocas símbolos sobre el plano.</p>'+
-  '<ol class="tsteps"><li>Entra en la pestaña y elige un símbolo (enchufe, interruptor, foco, tira LED…).</li><li>Toca el plano para colocarlo; arrástralo para moverlo. Las tiras y carriles se hacen con dos toques.</li><li>En Iluminación, las luminarias salen del catálogo con sus lúmenes y foto; la lámina las agrupa y cuenta.</li><li><b>Tiras LED y carriles</b>: los tramos salen a 90° casi siempre (quita «Líneas a 90°» para dibujar libres); toca los puntos y, para acabar, toca otra vez el último punto, pulsa Intro o «Terminar tira» (o elige «Un solo tramo» para hacerla con dos toques). Marca dónde van: <i>en techo, en pared, en suelo o en mueble</i>. Cada una se dibuja distinta y sale aparte en la leyenda. Al seleccionarla puedes arrastrar sus puntos o añadir más.</li><li>Los puntos muestran su distancia a las paredes: tócala para cambiarla.</li><li>Para unir un interruptor con sus luminarias, usa <b>Unir encendidos</b>.</li></ol>'+
+  '<ol class="tsteps"><li>Entra en la pestaña y elige un símbolo (enchufe, interruptor, foco, tira LED…).</li><li>Toca el plano para colocarlo; arrástralo para moverlo. Las tiras y carriles se hacen con dos toques.</li><li>En Iluminación, las luminarias salen del catálogo con sus lúmenes y foto; la lámina las agrupa y cuenta.</li><li><b>Tiras LED y carriles</b>: los tramos salen a 90° casi siempre (quita «Líneas a 90°» para dibujar libres); toca los puntos y, para acabar, toca otra vez el último punto, pulsa Intro o «Terminar tira» (o elige «Un solo tramo» para hacerla con dos toques). Marca dónde van: <i>en techo, en pared, en suelo o en mueble</i>. Cada una se dibuja distinta y sale aparte en la leyenda. Al seleccionarla puedes arrastrar sus puntos o añadir más.</li><li><b>Colores por montaje</b>: en la paleta de Iluminación, «Colores por montaje: sí» pinta los símbolos según dónde van (techo, pared, suelo, de pie, mueble), con el color que elijas para cada uno, en el plano y en la leyenda. A cada punto le pones su montaje en el panel, en «Dónde va».</li><li>Los puntos muestran su distancia a las paredes: tócala para cambiarla.</li><li>Para unir un interruptor con sus luminarias, usa <b>Unir encendidos</b>.</li></ol>'+
   '<div class="tbtns"><button class="tgo pri" data-go="view:elec">Ir a Electricidad</button><button class="tgo" data-go="view:ilum">Ir a Iluminación</button></div>'}},
  {id:'pdf',t:'Láminas y PDF',s:'Cajetín, qué láminas salen y cómo exportar',b:function(){return ''+
   '<p class="lead">Cada pestaña es una lámina con cajetín, leyenda y mediciones. Exportas una sola o todas.</p>'+
