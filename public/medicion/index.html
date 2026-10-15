@@ -2140,7 +2140,7 @@ function lumExtras(C,px,view,o){
       if(q.v!=='ilum'||q.s==='dem')return;
       var d=ptDef(q.k);if(!d)return;
       var u=px*1.9*ptSz(q),c=ptPos(q);
-      if(d.lin){var mi=ptMidInfo(q),a=mi.a,mo0=ptMont(q);h+=txt(C,px,mi.x+Math.sin(a)*12*px,mi.y-Math.cos(a)*12*px+4*px,(tg[q.id]||'')+(mo0!=='techo'?' · '+MONT_CORTO[mo0]:'')+(ptPerfil(q)?' · '+PERFIL_CORTO[ptPerfil(q)].replace('perfil ',''):''),lumColor(mo0)||C.label,11,700)}
+      if(d.lin){var mi=ptMidInfo(q),a=mi.a,mo0=ptMont(q);h+=txt(C,px,mi.x+Math.sin(a)*12*px,mi.y-Math.cos(a)*12*px+4*px,(tg[q.id]||''),lumColor(mo0)||C.label,11,700)} /* en el plano solo la referencia; montaje y perfil están en la leyenda */
       else{
         var r=5.5*u;
         h+=txt(C,px,c.x+r+8*px,c.y-r*0.5,tg[q.id]||'',C.label,11,700);
@@ -2336,7 +2336,8 @@ var MONT_CORTO={techo:'techo',pared:'pared',suelo:'suelo',mueble:'mueble'};
 /* montaje de los puntos de luz: por defecto según el símbolo; se puede cambiar en el panel */
 var MONT_P=[['techo','En techo'],['pared','En pared'],['suelo','En suelo'],['pie','De pie'],['mueble','En mueble o estantería']];
 var MONT_ALL={techo:'techo',pared:'pared',suelo:'suelo',pie:'de pie',mueble:'mueble'};
-var LUMCOL_DEF={techo:'#4d4640',pared:'#1f6f78',suelo:'#a96a12',pie:'#6b5a8f',mueble:'#2f7d4f'};
+var LUMCOL_DEF={techo:'#d9480f',pared:'#1f6f78',suelo:'#5f8a1f',pie:'#7048e8',mueble:'#c2255c'};
+function lumColOn(){return !!(st&&st.v)&&st.v.lumColOn!==false} /* por defecto activados: se quitan en la paleta de Iluminación */
 function ptMontAny(q){
   var d=ptDef(q.k);
   if(d&&d.lin)return ptMont(q);
@@ -2345,7 +2346,7 @@ function ptMontAny(q){
 }
 /* colores de los símbolos de iluminación por montaje (se activa en la paleta de Iluminación) */
 function lumColor(mo){
-  if(!(st&&st.v&&st.v.lumColOn))return null;
+  if(!lumColOn())return null;
   return (st.v.lumCol&&/^#[0-9a-f]{6}$/i.test(st.v.lumCol[mo]||'')&&st.v.lumCol[mo])||LUMCOL_DEF[mo]||null;
 }
 function ptColor(C,q){return q.v==='ilum'?(lumColor(ptMontAny(q))||C.ink):C.ink}
@@ -2585,7 +2586,7 @@ function ledOpt(k){
   if(k==='modo:recta'||k==='modo:poli'){st.ledModo=k.slice(5);st.ledPts=null}
   else if(k==='orto')st.ledOrto=st.ledOrto===false;
   else if(k.indexOf('mont:')===0)st.ledMont=k.slice(5);
-  else if(k==='colores'){snap();st.v.lumColOn=!st.v.lumColOn;save()}
+  else if(k==='colores'){snap();st.v.lumColOn=!lumColOn();save()}
   else if(k==='fin'){ledFin();return}
   else if(k==='cancel')st.ledPts=null;
   drawPal();hint();render();
@@ -5110,7 +5111,7 @@ function drawPal(){
   $('alz-modo').hidden=v!=='ilum';$('alz-h-w').hidden=true;
   var colHtml='';
   if(v==='ilum'){
-    var cOn=!!st.v.lumColOn;
+    var cOn=lumColOn();
     colHtml='<button data-led="colores" aria-pressed="'+cOn+'" style="grid-column:1/-1" title="Cada montaje (techo, pared, suelo, de pie…) con su color, en el plano y en la leyenda">Colores por montaje: '+(cOn?'sí':'no')+'</button>';
     if(cOn)colHtml+='<div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:6px 10px">'+MONT_P.map(function(m){return '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px"><input type="color" data-t="lcol" data-mo="'+m[0]+'" value="'+(lumColor(m[0])||LUMCOL_DEF[m[0]])+'" style="width:34px;height:28px;padding:1px"><span>'+m[1]+'</span></label>'}).join('')+'</div>';
     $('alz-modo').innerHTML=colHtml;
@@ -7658,7 +7659,7 @@ function sheetPage(doc,view,idx,total,o){
         else p.svg('<g transform="translate('+f2(xL+bx/2)+' '+f2(y+0.5*f+bx/2)+')">'+ptSym(g.k,lumColor(g.mo)||INK,0.5)+'</g>');
         var tx0=xL+bx+3,qty=d.lin?m2(g.len/100)+' ml':'× '+g.n;
         p.text(tx0,y+3.6*f,g.tag,body+1,{bold:true,col:INK});
-        p.text(tx0+8*f,y+3.6*f,fitTxt((cat?cat.n:d.n)+(g.mo&&(g.mo!=='techo'||st.v.lumColOn)?' · '+MONT_ALL[g.mo]:'')+(g.pf?' · '+PERFIL_CORTO[g.pf]:''),pw-(tx0-xL)-8*f-16,false,body*25.4/72),body,{col:INK});
+        p.text(tx0+8*f,y+3.6*f,fitTxt((cat?cat.n:d.n)+(g.mo&&(g.mo!=='techo'||lumColOn())?' · '+MONT_ALL[g.mo]:'')+(g.pf?' · '+PERFIL_CORTO[g.pf]:''),pw-(tx0-xL)-8*f-16,false,body*25.4/72),body,{col:INK});
         p.text(xR,y+3.6*f,qty,body,{col:INK,anchor:'end',bold:true});
         var l2='';
         if(cat&&cat.lm){var tt=d.lin?cat.lm*g.len/100:cat.lm*g.n;totLm+=tt;l2=fmt(cat.lm)+' lm'+(d.lin?'/m':' c/u')+'  ·  total '+fmt(tt)+' lm'}
