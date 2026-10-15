@@ -3264,6 +3264,10 @@ function dimChain(C,px,w,mode,cent,view,tags){
   var ttn=meas?(esInt?w.len-(L-clear):w.len):(esInt?clear:L);
   if(bad)tt+=' ('+fmtU(L)+')';
   var tcol=meas?(bad?C.dem:C.label):C.warn;
+  if(colectaDim){
+    var dTot=c.ops.length?c.d2:c.d1,pT=P((S0+S1)/2,dTot+9*px+Math.abs(c.nx)*12*px);
+    dimHits.push({x:pT.x,y:pT.y+3*px,wall:w.id,kind:'wsel',chain:!!w._chain,nid:null,delta:L-clear,val:ttn});
+  }
   if(c.ops.length){
     var segs=[],last=S0;
     c.ops.forEach(function(o){
@@ -3392,6 +3396,7 @@ function commitDimEd(){
     if(!(n>0&&n<=100000)){toast('Escribe una medida válida');return}
     if(Math.abs(n-h.val)<0.01)return;
     var eje=n+h.delta,cb0=st.v.cb;
+    if(!(st.sel&&st.sel.t==='wall'&&st.sel.id===h.wall))st.sel={t:'wall',id:h.wall}; /* la cota total de un muro sin seleccionar: se selecciona y se cambia */
     st.v.cb='ejes'; /* ya está convertido a ejes */
     try{if(h.nid)applyField('adj:'+h.nid+':'+h.wall,String(eje),false,true);else applyField('len',String(eje),false,true)}finally{st.v.cb=cb0}
     return;
