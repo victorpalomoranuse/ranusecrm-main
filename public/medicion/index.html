@@ -394,6 +394,7 @@ body.crm .top .brand{display:none}
           <select id="fly-ord" aria-label="Ordenar por"><option value="nombre">Nombre (A–Z)</option><option value="tam">Tamaño: de mayor a menor</option><option value="tam-a">Tamaño: de menor a mayor</option><option value="bloque">Con dibujo o foto primero</option></select>
           <div class="seg3" id="fly-vista" hidden style="margin:8px 0"></div>
           <button id="fly-img" style="width:100%;margin:6px 0" title="Pega o sube una foto de un objeto y la herramienta dibuja su planta, alzado y lateral a escala">✨ Crear bloque desde una imagen…</button>
+          <button id="fly-dxf" style="width:100%;margin:0 0 6px" title="Sube un archivo DXF con uno o varios bloques (de un fabricante, de tus bibliotecas o de tus planos): verás cada uno dibujado y eliges cuáles guardar en tu biblioteca">⬆ Subir bloques (DXF)…</button>
           <div class="catgrid" id="fly-cat"></div>
         </div>
         <div id="fly-op" class="catgrid" hidden></div>
@@ -4519,6 +4520,9 @@ function cargarDXF(cb){
   sc.onload=cb;sc.onerror=function(){$('dxf-st').textContent='No se pudo cargar el lector de DXF.'};
   document.head.appendChild(sc);
 }
+$('fly-dxf').addEventListener('click',function(){$('dxf-file').click()});
+/* el estado de la subida también sale como aviso (el panel donde está el texto puede estar cerrado) */
+try{new MutationObserver(function(){var t=$('dxf-st').textContent;if(t)toast(t)}).observe($('dxf-st'),{childList:true,characterData:true,subtree:true})}catch(e){}
 $('dxf-file').addEventListener('change',function(e){
   var f=e.target.files&&e.target.files[0];if(!f)return;
   $('dxf-st').textContent='Leyendo «'+f.name+'»…';
@@ -8471,7 +8475,7 @@ var TUTO=[
  {id:'distrib',t:'Distribución y bloques',s:'Máquinas, mobiliario y etiquetas',b:function(){return ''+
   '<p class="lead">Aquí colocas las máquinas del catálogo de Ranuse y el mobiliario. Cada pieza sale con su <b>etiqueta</b> (E1, F1…) y entra en la leyenda.</p>'+
   '<ol class="tsteps"><li>Entra en <b>Distribución</b> y pulsa <b>Bloques</b>.</li><li>Busca la máquina (o navega por familias) y arrástrala al plano.</li><li>Tócala para moverla, girarla o cambiar sus medidas. Si el producto del catálogo tiene bloque propio, se dibuja con su forma real.</li><li>Toca las distancias que salen a los muros o a otras máquinas y <b>escribe la que quieras</b>: la pieza se mueve.</li><li><kbd>Ctrl</kbd>+<kbd>C</kbd> y <kbd>Ctrl</kbd>+<kbd>V</kbd> copian y pegan una pieza o una selección.</li></ol>'+
-  '<h3>Si falta un bloque</h3><ul class="tul"><li><b>Crear un bloque desde una imagen</b> (botón con ✨): pegas una foto y la IA dibuja la planta.</li><li><b>Dibujarlo tú</b> con la herramienta Dibujo y, con clic derecho, <i>Crear bloque</i> (lección «Dibujo, grupos y bloques»).</li></ul>'+
+  '<h3>Si falta un bloque</h3><ul class="tul"><li><b>Crear un bloque desde una imagen</b> (botón con ✨): pegas una foto y la IA dibuja la planta.</li><li><b>Subir bloques</b> (botón ⬆ de la biblioteca): eliges un archivo DXF, ves cada bloque dibujado y marcas los que quieres guardar.</li><li><b>Dibujarlo tú</b> con la herramienta Dibujo y, con clic derecho, <i>Crear bloque</i> (lección «Dibujo, grupos y bloques»).</li></ul>'+
   '<div class="ttip">Para ver en pantalla las distancias de <u>todas</u> las piezas a los muros: <i>Ver → Ubicación del equipamiento en pantalla</i>. En el PDF se activa en el panel de exportar.</div>'+
   '<div class="tbtns"><button class="tgo pri" data-go="view:distrib;tool:equip">Probar: Bloques</button></div>'}},
  {id:'suelos',t:'Suelos, techos y paredes',s:'Acabado, sistema, color y despiece',b:function(){return ''+
