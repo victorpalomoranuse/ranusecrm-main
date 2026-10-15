@@ -125,7 +125,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
         try {
           const blob = await (await fetch(m.imagen)).blob();
           const form = new FormData();
-          form.append('file', blob, `plano-${String(m.titulo).toLowerCase().replace(/[^a-z0-9]+/g, '-')}.jpg`);
+          form.append('file', blob, `plano-${String(m.titulo).toLowerCase().replace(/[^a-z0-9]+/g, '-')}.png`);
           const { data: up } = await api.post(`/historia/${projectId}/subir`, form);
           const { data: h } = await api.get(`/historia/${projectId}`);
           if (!(h.capitulos || []).length) { responder({ type: 'error', message: 'Este proyecto aún no tiene historia: créala primero en la pestaña de Historia' }); return; }
