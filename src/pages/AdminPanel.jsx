@@ -2349,6 +2349,21 @@ const ETIQUETAS_PERMISOS = {
   ventas: 'Ventas', finanzas: 'Finanzas',
 };
 const PERMISOS_CONFIGURABLES = Object.keys(ETIQUETAS_PERMISOS);
+// Qué secciones del menú abre cada casilla (se muestra en el editor de roles)
+const PERMISOS_ABRE = {
+  dashboard: 'Dashboard (ahora el menú solo se lo enseña al administrador superior)',
+  trabajos: 'Trabajos',
+  leads: 'Leads antiguo, Métricas, Asistente Setter, Mi Agenda',
+  proyectos: 'Proyectos y Planos',
+  clientes: 'Clientes',
+  catalogo: 'Catálogo',
+  referencias: 'Referencias',
+  recursos: 'Recursos',
+  contactos: 'Proveedores',
+  ventas: 'Ventas, Asistente IA, Relación de obra',
+  finanzas: 'Finanzas, Asistente Finanzas, Relación de obra',
+};
+const SIEMPRE_ABIERTAS = 'Todos los roles ven siempre: Inicio, Mi día y Mis Comisiones. Solo el administrador superior ve: Presupuestos, Pedidos, Tareas, Empleados, Roles y Ajustes (no se pueden dar a un rol).';
 
 function useRoles() {
   const [roles,setRoles]=useState([]); const [loadingRoles,setLoadingRoles]=useState(true);
@@ -2392,7 +2407,7 @@ function RoleModal({ role, onClose, onSaved }) {
   const [name,setName]=useState(role?.name||''); const [permissions,setPermissions]=useState(()=>{const base={};PERMISOS_CONFIGURABLES.forEach(k=>{base[k]=role?.permissions?.[k]===true;});return base;}); const [loading,setLoading]=useState(false); const [error,setError]=useState('');
   const togglePerm=(key)=>setPermissions(prev=>({...prev,[key]:!prev[key]}));
   const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim())return;setError('');setLoading(true);try{let data;if(isEdit){({data}=await api.put(`/roles/${role.id}`,{name,permissions}));onSaved(data.role,true);}else{({data}=await api.post('/roles',{name,permissions}));onSaved(data.role,false);}}catch(err){setError(err.response?.data?.error||`Error al ${isEdit?'guardar':'crear'} el rol`);}finally{setLoading(false);}};
-  return (<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>{isEdit?'Editar rol':'Nuevo rol'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form"><div className="ap-field"><label>Nombre del rol *</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Comercial, Diseñador, Marketing..." required autoFocus/></div><div className="ap-field"><label>Secciones visibles</label><div className="ap-perms-list">{PERMISOS_CONFIGURABLES.map(key=>(<label key={key} className="ap-perm-item"><input type="checkbox" checked={permissions[key]} onChange={()=>togglePerm(key)}/><span><strong>{ETIQUETAS_PERMISOS[key]}</strong></span></label>))}</div></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={loading||!name.trim()}>{loading?'Guardando...':isEdit?'Guardar cambios':'Crear rol'}</button></div></form></div></div>);
+  return (<div className="ap-modal-overlay" onClick={onClose}><div className="ap-modal" onClick={e=>e.stopPropagation()}><div className="ap-modal-head"><h2>{isEdit?'Editar rol':'Nuevo rol'}</h2><button className="ap-modal-close" onClick={onClose}><X size={16}/></button></div><form onSubmit={handleSubmit} className="ap-modal-form"><div className="ap-field"><label>Nombre del rol *</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Comercial, Diseñador, Marketing..." required autoFocus/></div><div className="ap-field"><label>Secciones visibles</label><div className="ap-perms-list">{PERMISOS_CONFIGURABLES.map(key=>(<label key={key} className="ap-perm-item"><input type="checkbox" checked={permissions[key]} onChange={()=>togglePerm(key)}/><span><strong>{ETIQUETAS_PERMISOS[key]}</strong>{PERMISOS_ABRE[key]&&<small style={{display:'block',opacity:0.55,fontSize:'0.72rem',marginTop:2}}>Abre: {PERMISOS_ABRE[key]}</small>}</span></label>))}</div><p style={{fontSize:'0.72rem',opacity:0.55,marginTop:8}}>{SIEMPRE_ABIERTAS}</p></div>{error&&<p className="ap-error">{error}</p>}<div className="ap-modal-actions"><button type="button" className="ap-btn ap-btn-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="ap-btn ap-btn-primary" disabled={loading||!name.trim()}>{loading?'Guardando...':isEdit?'Guardar cambios':'Crear rol'}</button></div></form></div></div>);
 }
 
 function SectionRoles() {
