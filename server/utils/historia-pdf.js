@@ -197,7 +197,7 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
     for (const g of grupos) {
       if (g.tipo === 'plano') {
         const b = g.items[0]; if (!b.imagen_url) continue;
-        paginaContenido();
+        if (y > 70) paginaContenido(); /* la primera página del capítulo ya está abierta: no dejarla en blanco */
         doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text((b.titulo || 'EL RECORRIDO').toUpperCase(), M, y, { characterSpacing: 2.5, lineBreak: false });
         const bufP = img(b.imagen_url);
         try { if (bufP) doc.image(bufP, M, y + 18, { fit: [W - 2 * M, 360], align: 'center', valign: 'center' }); } catch { /* imagen no válida */ }
@@ -211,7 +211,7 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
         y = H;
       } else if (g.tipo === 'galeria') {
         const b = g.items[0]; const fotos = (b.elementos || []).slice(0, 6); if (!fotos.length) continue;
-        paginaContenido();
+        if (y > 70) paginaContenido(); /* la primera página del capítulo ya está abierta: no dejarla en blanco */
         doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text((b.titulo || 'EL ESPACIO').toUpperCase(), M, y, { characterSpacing: 2.5, lineBreak: false });
         y += 18;
         cubrir(doc, img(fotos[0]), M, y, W - 2 * M, 250);
@@ -225,7 +225,7 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
           ? (b.elementos || []).filter(x => /^[em]:/.test(x)).map(x => seleccionables.find(e => e.clave === x)).filter(e => e && e.image_url).slice(0, 8)
           : equipo.filter(e => e.image_url).slice(0, 8);
         if (!lista.length) continue;
-        paginaContenido();
+        if (y > 70) paginaContenido(); /* la primera página del capítulo ya está abierta: no dejarla en blanco */
         doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text((b.titulo || 'LO QUE TENDRÁS A MANO').toUpperCase(), M, y, { characterSpacing: 2.5, lineBreak: false });
         y += 24; const cols = 4; const gap = 14; const wc = (W - 2 * M - gap * (cols - 1)) / cols;
         lista.forEach((e, k) => {
