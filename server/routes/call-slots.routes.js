@@ -5,6 +5,8 @@ import { sendEmail } from '../services/email.service.js';
 import { madridToUtcDate } from '../utils/timezone.js';
 import { avisarLlamada } from '../utils/aviso-llamada.js';
 import { ESTADOS_VALIDOS } from './setting.routes.js';
+import crypto from 'crypto';
+import { ocupadoGoogle, solapa, urlGoogleValida } from '../utils/google-busy.js';
 
 const router = express.Router();
 // Mismo permiso que Setting — es la misma gente (comerciales/closer) la que
@@ -20,6 +22,65 @@ async function empleadoActual(req) {
   const { data } = await supabase.from('employees').select('id, name, email').eq('email', req.user.email).maybeSingle();
   return data;
 }
+
+// Token del feed .ics de llamadas de cada empleado (se deriva de JWT_SECRET, no hace falta guardarlo)
+export function tokenFeedLlamadas(empId) {
+  return crypto.createHash('sha256').update(`${process.env.JWT_SECRET}:llamadas:${empId}`).digest('hex').slice(0, 32);
+}
+
+// Ocupación de Google Calendar de los empleados que lo han conectado: Map empId -> intervalos
+async function bloqueosGoogle(empIds, desde, hasta) {
+  const mapa = new Map();
+  const ids = [...new Set(empIds.filter(Boolean))];
+  if (!ids.length) return mapa;
+  const { data: emps } = await supabase.from('employees').select('id, google_ical_url').in('id', ids).not('google_ical_url', 'is', null);
+  await Promise.all((emps || []).map(async e => {
+    try { mapa.set(e.id, await ocupadoGoogle(e.google_ical_url, desde, hasta)); }
+    catch (err) { console.error('Google Calendar no disponible para', e.id, err.message); }
+  }));
+  return mapa;
+}
+async function hueco_ocupado_en_google(slot) {
+  const d = madridToUtcDate(slot.fecha, '00:00:00');
+  const m = await bloqueosGoogle([slot.employee_id], new Date(d.getTime() - 86400000), new Date(d.getTime() + 2 * 86400000));
+  return solapa(m.get(slot.employee_id) || [], slot.fecha, slot.hora_inicio, slot.hora_fin);
+}
+
+/**
+ * GET /api/call-slots/google — estado de mi conexión con Google Calendar
+ * PUT /api/call-slots/google { url } — conecta (dirección secreta en formato iCal)
+ * DELETE /api/call-slots/google — desconecta
+ */
+router.get('/google', async (req, res) => {
+  const emp = await empleadoActual(req);
+  if (!emp) return res.status(403).json({ error: 'No se ha encontrado tu ficha de empleado' });
+  const { data } = await supabase.from('employees').select('google_ical_url').eq('id', emp.id).maybeSingle();
+  const base = `${req.protocol}://${req.get('host')}`;
+  res.json({ conectado: !!data?.google_ical_url, feed_url: `${base}/api/calendar/llamadas/${emp.id}/${tokenFeedLlamadas(emp.id)}.ics` });
+});
+router.put('/google', async (req, res) => {
+  try {
+    const emp = await empleadoActual(req);
+    if (!emp) return res.status(403).json({ error: 'No se ha encontrado tu ficha de empleado' });
+    const url = String(req.body.url || '').trim();
+    if (!urlGoogleValida(url)) return res.status(400).json({ error: 'Esa no es la «dirección secreta en formato iCal» de Google Calendar (empieza por https://calendar.google.com/calendar/ical/ y acaba en .ics)' });
+    const ahora = new Date();
+    try { await ocupadoGoogle(url, ahora, new Date(ahora.getTime() + 86400000)); }
+    catch { return res.status(400).json({ error: 'No he podido leer ese calendario. Comprueba que has copiado la dirección completa.' }); }
+    const { error } = await supabase.from('employees').update({ google_ical_url: url }).eq('id', emp.id);
+    if (error) throw error;
+    res.json({ conectado: true });
+  } catch (error) {
+    console.error('Error al conectar Google Calendar:', error);
+    res.status(500).json({ error: 'No se pudo guardar la conexión (¿falta la columna google_ical_url?)' });
+  }
+});
+router.delete('/google', async (req, res) => {
+  const emp = await empleadoActual(req);
+  if (!emp) return res.status(403).json({ error: 'No se ha encontrado tu ficha de empleado' });
+  await supabase.from('employees').update({ google_ical_url: null }).eq('id', emp.id);
+  res.json({ conectado: false });
+});
 
 /**
  * GET /api/call-slots
@@ -41,7 +102,20 @@ router.get('/', async (req, res) => {
     if (to) query = query.lte('fecha', to);
     const { data, error } = await query;
     if (error) throw error;
-    res.json({ slots: data });
+    // Huecos libres que caen en un evento del Google Calendar de su dueño: se marcan (o se quitan si piden solo disponibles)
+    let slots = data;
+    const libres = slots.filter(s => !s.ocupado);
+    if (libres.length) {
+      const fechas = libres.map(s => s.fecha).sort();
+      const desde = new Date(madridToUtcDate(fechas[0], '00:00:00').getTime() - 86400000);
+      const hasta = new Date(madridToUtcDate(fechas[fechas.length - 1], '00:00:00').getTime() + 2 * 86400000);
+      const mapa = await bloqueosGoogle(libres.map(s => s.employee_id), desde, hasta);
+      if (mapa.size) {
+        slots = slots.map(s => (!s.ocupado && mapa.has(s.employee_id) && solapa(mapa.get(s.employee_id), s.fecha, s.hora_inicio, s.hora_fin)) ? { ...s, bloqueado_google: true } : s);
+        if (disponibles === 'true') slots = slots.filter(s => !s.bloqueado_google);
+      }
+    }
+    res.json({ slots });
   } catch (error) {
     console.error('Error al listar huecos de llamada:', error);
     res.status(500).json({ error: 'Error al listar huecos de llamada' });
@@ -203,6 +277,7 @@ router.post('/:id/reservar', async (req, res) => {
     if (errSlot) throw errSlot;
     if (!slot) return res.status(404).json({ error: 'Hueco no encontrado' });
     if (slot.ocupado) return res.status(409).json({ error: 'Este hueco ya está reservado — elige otro.' });
+    if (await hueco_ocupado_en_google(slot)) return res.status(409).json({ error: 'Esa persona tiene otra cosa en su Google Calendar a esa hora — elige otro hueco.' });
 
     const { data: updatedSlot, error: errUpd } = await supabase
       .from('call_slots')
@@ -258,6 +333,11 @@ router.post('/agendar', async (req, res) => {
 
     const { data: emp } = await supabase.from('employees').select('id, name, email').eq('id', employee_id).maybeSingle();
     if (!emp) return res.status(404).json({ error: 'Empleado no encontrado' });
+    {
+      const fin = new Date(inicio.getTime() + (Number(duracion_min) || 30) * 60000);
+      const m = await bloqueosGoogle([emp.id], new Date(inicio.getTime() - 86400000), new Date(fin.getTime() + 86400000));
+      if ((m.get(emp.id) || []).some(([x, y]) => x < fin.getTime() && y > inicio.getTime())) return res.status(409).json({ error: emp.name + ' tiene otra cosa en su Google Calendar a esa hora — elige otra.' });
+    }
 
     let leadId = setting_lead_id;
     if (!leadId) {

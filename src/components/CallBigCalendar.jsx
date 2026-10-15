@@ -25,7 +25,7 @@ function slotToEvent(s, mostrarEmpleado) {
   const [h1, mi1] = s.hora_inicio.split(':').map(Number);
   const [h2, mi2] = s.hora_fin.split(':').map(Number);
   const nombreEmpleado = s.empleado?.name || '';
-  const title = s.ocupado
+  const title = s.bloqueado_google ? `Ocupado en Google${mostrarEmpleado && nombreEmpleado ? ` · ${nombreEmpleado}` : ''}` : s.ocupado
     ? (s.lead?.nombre || 'Reservado') + (mostrarEmpleado && nombreEmpleado ? ` · ${nombreEmpleado}` : '')
     : `Libre · ${nombreEmpleado}`;
   return {
@@ -55,7 +55,8 @@ export function CallBigCalendar({ slots, onSelectEvent, height = 600, defaultVie
   const eventPropGetter = (event) => {
     const s = event.resource;
     let background = '#6b7280';
-    if (s.ocupado) background = '#a78bfa';
+    if (s.bloqueado_google) background = '#9ca3af';
+    else if (s.ocupado) background = '#a78bfa';
     else background = '#22c55e';
     return { style: { backgroundColor: background, border: 'none', color: '#0b0b0d', fontWeight: 600, fontSize: '0.72rem' } };
   };

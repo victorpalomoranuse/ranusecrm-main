@@ -24,6 +24,42 @@ router.get('/feed-url', authenticateToken, (req, res) => {
   });
 });
 
+/**
+ * GET /api/calendar/llamadas/:empId/:token.ics
+ * Llamadas reservadas de un empleado, para suscribirlas en su Google Calendar
+ * (así lo que se agenda en el CRM también se ve allí). Solo lectura.
+ */
+router.get('/llamadas/:empId/:token.ics', async (req, res) => {
+  const esperado = crypto.createHash('sha256').update(`${process.env.JWT_SECRET}:llamadas:${req.params.empId}`).digest('hex').slice(0, 32);
+  if (req.params.token !== esperado) return res.status(404).send('Not found');
+  try {
+    const desde = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const { data: slots } = await supabase.from('call_slots')
+      .select('id, fecha, hora_inicio, hora_fin, lead:setting_leads(nombre, telefono, instagram)')
+      .eq('employee_id', req.params.empId).eq('ocupado', true).gte('fecha', desde);
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Ranuse Design//CRM//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Llamadas Ranuse'];
+    (slots || []).forEach(s => {
+      const f = s.fecha.replace(/-/g, '');
+      const t = (h) => h.slice(0, 5).replace(':', '') + '00';
+      lines.push('BEGIN:VEVENT');
+      lines.push(`UID:llamada-${s.id}@ranusedesign.com`);
+      lines.push(`DTSTAMP:${dateStamp(new Date())}`);
+      lines.push(`DTSTART;TZID=Europe/Madrid:${f}T${t(s.hora_inicio)}`);
+      lines.push(`DTEND;TZID=Europe/Madrid:${f}T${t(s.hora_fin)}`);
+      lines.push(foldLine(`SUMMARY:${icsEscape('Llamada' + (s.lead?.nombre ? ' · ' + s.lead.nombre : ''))}`));
+      const d = [s.lead?.telefono && 'Tel: ' + s.lead.telefono, s.lead?.instagram && 'Instagram: ' + s.lead.instagram].filter(Boolean).join('\n');
+      if (d) lines.push(foldLine(`DESCRIPTION:${icsEscape(d)}`));
+      lines.push('END:VEVENT');
+    });
+    lines.push('END:VCALENDAR');
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.send(lines.join('\r\n'));
+  } catch (e) {
+    console.error('Error en el feed de llamadas:', e);
+    res.status(500).send('Error');
+  }
+});
+
 function icsEscape(str) {
   return String(str || '')
     .replace(/\\/g, '\\\\')

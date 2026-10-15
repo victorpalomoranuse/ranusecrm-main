@@ -20,7 +20,7 @@ const requireSetting = requirePermission('leads');
 // es de donde salen los % de cierre por separado/combinado. "rechazo" y
 // "seguimiento_futuro" son dos desenlaces más de la llamada, aparte de
 // "no_responde"/"no_califica" (que son de antes de llegar a hablar).
-export const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'agendado', 'recolectando_info', 'prioridad', 'venta_1', 'venta_2', 'venta_extra', 'rechazo', 'seguimiento_futuro', 'no_responde'];
+export const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'agendado', 'recolectando_info', 'prioridad', 'seguimiento_pago', 'venta_1', 'venta_2', 'venta_extra', 'rechazo', 'seguimiento_futuro', 'no_responde'];
 
 // Origen del contacto — usado tanto en el formulario manual como por el
 // Asistente Setter (que debe preguntar cuál aplica cuando no lo tenga claro,

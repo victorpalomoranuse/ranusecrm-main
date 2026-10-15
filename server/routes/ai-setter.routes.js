@@ -14,7 +14,7 @@ router.use(authenticateToken, requirePermission('leads'));
 // "venta_1"/"venta_2" = compró el servicio 1 / el servicio 2 — independientes
 // entre sí, se puede comprar solo uno o los dos. "rechazo" y
 // "seguimiento_futuro" son dos desenlaces más de la llamada.
-const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'agendado', 'recolectando_info', 'prioridad', 'venta_1', 'venta_2', 'venta_extra', 'rechazo', 'seguimiento_futuro', 'no_responde'];
+const ESTADOS_VALIDOS = ['nuevo', 'interesado', 'no_califica', 'contacto_nuevo', 'pitcheo_agenda', 'agendado', 'recolectando_info', 'prioridad', 'seguimiento_pago', 'venta_1', 'venta_2', 'venta_extra', 'rechazo', 'seguimiento_futuro', 'no_responde'];
 
 // Origen del contacto — las 4 opciones que debe distinguir el setter, más
 // dos categorías que solo se usan automáticamente (WhatsApp orgánico sin

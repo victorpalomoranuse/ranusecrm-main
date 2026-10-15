@@ -27,6 +27,65 @@ function hhmm(t) {
 }
 
 // Regla de disponibilidad recurrente ("Lunes a Viernes 10-14h, llamadas de 30 min").
+// Conexión con el Google Calendar de cada persona: sin cuentas ni permisos, solo la «dirección secreta en formato iCal».
+// El CRM lee de ahí cuándo estás ocupado y marca esos huecos para que no se reserven encima.
+// A la inversa, el CRM ofrece un enlace con tus llamadas reservadas para suscribirlas en Google Calendar.
+function GoogleCalendarCard({ toast, onCambio }) {
+  const [estado, setEstado] = useState(null);
+  const [abierto, setAbierto] = useState(false);
+  const [url, setUrl] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  useEffect(() => { api.get('/call-slots/google').then(r => setEstado(r.data)).catch(() => setEstado({ conectado: false })); }, []);
+  const conectar = async () => {
+    setGuardando(true);
+    try { await api.put('/call-slots/google', { url }); setEstado(e => ({ ...e, conectado: true })); setUrl(''); setAbierto(false); toast('Google Calendar conectado', 'success'); onCambio?.(); }
+    catch (e) { toast(e.response?.data?.error || 'No se pudo conectar', 'error'); }
+    finally { setGuardando(false); }
+  };
+  const desconectar = async () => {
+    try { await api.delete('/call-slots/google'); setEstado(e => ({ ...e, conectado: false })); toast('Google Calendar desconectado', 'success'); onCambio?.(); }
+    catch { toast('No se pudo desconectar', 'error'); }
+  };
+  const copiar = async () => { try { await navigator.clipboard.writeText(estado.feed_url); toast('Enlace copiado', 'success'); } catch { toast('No se pudo copiar', 'error'); } };
+  const caja = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '0.9rem 1rem', marginBottom: '1rem' };
+  const paso = { fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, margin: '2px 0' };
+  return (
+    <div style={caja}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div>
+          <strong style={{ fontSize: '0.9rem', color: '#fff' }}>Google Calendar</strong>
+          <p style={{ ...paso, margin: 0 }}>{estado?.conectado ? 'Conectado: los huecos en los que ya tienes algo en Google salen como «Ocupado en Google» y no se pueden reservar.' : 'Conéctalo para que no te reserven llamadas encima de lo que ya tienes en Google Calendar.'}</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {estado?.conectado && <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={desconectar}>Desconectar</button>}
+          <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setAbierto(a => !a)}>{abierto ? 'Cerrar' : estado?.conectado ? 'Cambiar o ver pasos' : 'Conectar'}</button>
+        </div>
+      </div>
+      {abierto && (
+        <div style={{ marginTop: 12 }}>
+          <p style={{ ...paso, color: '#fff', fontWeight: 600 }}>1 · Que Google nos diga cuándo estás ocupado</p>
+          <p style={paso}>a) Abre calendar.google.com desde un ordenador y pulsa la rueda de arriba a la derecha → «Configuración».</p>
+          <p style={paso}>b) A la izquierda, en «Configuración de mis calendarios», pulsa tu calendario (el que lleva tu nombre).</p>
+          <p style={paso}>c) Baja hasta «Integrar el calendario» y copia la «Dirección secreta en formato iCal» (empieza por https://calendar.google.com/calendar/ical/ y acaba en .ics).</p>
+          <p style={paso}>d) Pégala aquí y pulsa «Guardar». No la compartas: quien la tenga puede ver tu calendario.</p>
+          <div style={{ display: 'flex', gap: 8, margin: '8px 0 14px', flexWrap: 'wrap' }}>
+            <input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" value={url} onChange={e => setUrl(e.target.value)} />
+            <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" disabled={!url.trim() || guardando} onClick={conectar}>{guardando ? 'Comprobando…' : 'Guardar'}</button>
+          </div>
+          <p style={{ ...paso, color: '#fff', fontWeight: 600 }}>2 · Ver tus llamadas del CRM dentro de Google (opcional)</p>
+          <p style={paso}>En Google Calendar, a la izquierda, junto a «Otros calendarios» pulsa «+» → «Desde URL», pega este enlace y pulsa «Añadir calendario». Google tarda un rato en actualizarlo (a veces varias horas).</p>
+          {estado?.feed_url && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              <input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} readOnly value={estado.feed_url} onFocus={e => e.target.select()} />
+              <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={copiar}>Copiar</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReglasDisponibilidad({ reglas, onChange, toast }) {
   const [dia, setDia] = useState('1');
   const [inicio, setInicio] = useState('');
@@ -286,7 +345,7 @@ function BuscarLeadPicker({ slotId, onReservado, toast }) {
 // Panel que se abre al pinchar un hueco en el calendario grande.
 const ESTADOS_LEAD = [
   ['nuevo', 'Nuevo'], ['interesado', 'Interesado'], ['no_califica', 'No califica'], ['contacto_nuevo', 'Contacto Nuevo'],
-  ['pitcheo_agenda', 'Pitcheo Agenda'], ['agendado', 'Agendado'], ['recolectando_info', 'Recolectando Info.'], ['prioridad', 'Prioridad'],
+  ['pitcheo_agenda', 'Pitcheo Agenda'], ['agendado', 'Agendado'], ['recolectando_info', 'Recolectando Info.'], ['prioridad', 'Prioridad'], ['seguimiento_pago', 'Seguimiento de pago'],
   ['venta_1', 'Venta 1 ✓'], ['venta_2', 'Venta 2 ✓'], ['venta_extra', 'Venta extra ✓'], ['rechazo', 'Rechazo'], ['seguimiento_futuro', 'Seguimiento futuro'], ['no_responde', 'No responde'],
 ];
 
@@ -632,6 +691,7 @@ export function SectionAgenda() {
 
       {!(esAdmin && verTodos) && (
         <>
+          <GoogleCalendarCard toast={toast} onCambio={cargar} />
           <ReglasDisponibilidad reglas={misReglas} onChange={(fn) => setReglas(prev => fn(prev))} toast={toast} />
           <NuevoHuecoForm onCreado={(nuevos) => setSlots(prev => [...prev, ...nuevos])} toast={toast} />
         </>
@@ -657,6 +717,8 @@ export function SectionAgenda() {
                       </strong>
                       {s.ocupado ? (
                         <span style={{ fontSize: '0.68rem', padding: '2px 9px', borderRadius: 20, background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>Reservado{s.lead ? `: ${s.lead.nombre}` : ''}</span>
+                      ) : s.bloqueado_google ? (
+                        <span style={{ fontSize: '0.68rem', padding: '2px 9px', borderRadius: 20, background: 'rgba(156,163,175,0.15)', color: '#9ca3af' }}>Ocupado en Google</span>
                       ) : (
                         <span style={{ fontSize: '0.68rem', padding: '2px 9px', borderRadius: 20, background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>Libre</span>
                       )}

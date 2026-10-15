@@ -64,6 +64,7 @@ const ESTADOS = {
   agendado:           { label: 'Agendado',                color: '#a78bfa' },
   recolectando_info:  { label: 'Recolectando Info.',      color: '#f97316' },
   prioridad:          { label: 'Prioridad',                color: '#eab308' },
+  seguimiento_pago:   { label: 'Seguimiento de pago',      color: '#14b8a6' },
   venta_1:            { label: 'Venta 1 ✓',                color: '#22c55e' },
   venta_2:            { label: 'Venta 2 ✓',                color: '#16a34a' },
   venta_extra:        { label: 'Venta extra ✓',            color: '#0d9488' },
@@ -71,7 +72,7 @@ const ESTADOS = {
   seguimiento_futuro: { label: 'Seguimiento futuro',       color: '#0ea5e9' },
   no_responde:        { label: 'No responde',              color: '#ef4444' },
 };
-const ORDEN = ['nuevo','interesado','no_califica','contacto_nuevo','pitcheo_agenda','agendado','recolectando_info','prioridad','venta_1','venta_2','venta_extra','rechazo','seguimiento_futuro','no_responde'];
+const ORDEN = ['nuevo','interesado','no_califica','contacto_nuevo','pitcheo_agenda','agendado','recolectando_info','prioridad','seguimiento_pago','venta_1','venta_2','venta_extra','rechazo','seguimiento_futuro','no_responde'];
 // Origen del contacto — las mismas 4 categorías que usa el Asistente Setter,
 // más un par de casos que solo se dan automáticamente (WhatsApp orgánico sin
 // anuncio, y Otro para lo suelto).
