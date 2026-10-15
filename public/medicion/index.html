@@ -899,12 +899,19 @@ function catalog(){
 }
 function catById(id){var l=catalog();for(var i=0;i<l.length;i++)if(l[i].id===id)return l[i];return null}
 function eqRect(e){
-  var c=pc(e),sw=((((e.rot||0)%180)+180)%180)!==0,hw=(sw?e.d:e.w)/2,hh=(sw?e.w:e.d)/2;
+  var c=pc(e),a=(e.rot||0)*Math.PI/180,co=Math.abs(Math.cos(a)),si=Math.abs(Math.sin(a));
+  if(co<1e-9)co=0;if(si<1e-9)si=0;
+  var hw=(e.w*co+e.d*si)/2,hh=(e.w*si+e.d*co)/2; /* caja que envuelve la pieza girada (a 90° es la de siempre) */
   return {x0:c.x-hw,y0:c.y-hh,x1:c.x+hw,y1:c.y+hh,cx:c.x,cy:c.y};
 }
 function pickEq(p){
   var a=st.v.eq;
-  for(var i=a.length-1;i>=0;i--){var r=eqRect(a[i]);if(p.x>=r.x0&&p.x<=r.x1&&p.y>=r.y0&&p.y<=r.y1)return a[i]}
+  for(var i=a.length-1;i>=0;i--){
+    var r=eqRect(a[i]);
+    if(!(p.x>=r.x0&&p.x<=r.x1&&p.y>=r.y0&&p.y<=r.y1))continue;
+    var an=-(a[i].rot||0)*Math.PI/180,dx=p.x-r.cx,dy=p.y-r.cy,lx=Math.cos(an)*dx-Math.sin(an)*dy,ly=Math.sin(an)*dx+Math.cos(an)*dy;
+    if(Math.abs(lx)<=a[i].w/2&&Math.abs(ly)<=a[i].d/2)return a[i];
+  }
   return null;
 }
 var MATS={
@@ -5016,7 +5023,7 @@ function seg3(cur,act){
 }
 (function(){var u=document.getElementById('unidad');if(!u)return;u.value=UNIT;u.addEventListener('change',function(){UNIT=UNIDADES[u.value]?u.value:'cm';try{localStorage.setItem('ranuse-unidad',UNIT)}catch(e){}render();panelSel();toast('Unidad: '+UNIT+' (los datos se guardan igual; solo cambia cómo se escriben)')})})();
 function fld(key,label,val,ph){
-  var sin=/^(w_ang|pil_cnt|dr_fs|dr_wd|cl_j|cl_mg)$/.test(key);
+  var sin=/^(w_ang|pil_cnt|dr_fs|dr_wd|cl_j|cl_mg|eq_rot)$/.test(key);
   if(!sin)label=String(label).replace(/cm/g,UNL());
   return '<label class="fld"><span>'+label+'</span><input data-f="'+key+'" inputmode="decimal" autocomplete="off" value="'+(val==null?'':(sin?f2(val):toU(val)))+'"'+(ph!=null?' placeholder="'+(sin||isNaN(+ph)?ph:toU(+ph))+'"':'')+'></label>';
 }
@@ -5079,7 +5086,8 @@ function panelSel(focus){
     var e=by(st.v.eq,s.id),ix=st.v.eq.indexOf(e)+1;
     var tqp=eqTipos().porId[e.id];
     h+='<div class="rowh"><strong>'+(tqp?tqp.cod:ix)+' · '+esc(e.nm)+'</strong><span class="muted">giro '+e.rot+'°</span></div>';
-    h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="eqrotl" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="eqrot" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="eqrot180" title="Girar 180°">180°</button><button data-a="eqflx" aria-pressed="'+!!e.fx+'" title="Espejo izquierda-derecha">⇋ Espejo</button><button data-a="eqfly" aria-pressed="'+!!e.fy+'" title="Espejo arriba-abajo">⇅ Espejo</button></div>';
+    h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="eqrotl45" title="Girar 45° a la izquierda">⟲ 45°</button><button data-a="eqrot45" title="Girar 45° a la derecha">⟳ 45°</button><button data-a="eqrotl" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="eqrot" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="eqrot180" title="Girar 180°">180°</button><button data-a="eqflx" aria-pressed="'+!!e.fx+'" title="Espejo izquierda-derecha">⇋ Espejo</button><button data-a="eqfly" aria-pressed="'+!!e.fy+'" title="Espejo arriba-abajo">⇅ Espejo</button></div>';
+    h+=fld('eq_rot','Ángulo exacto (°)',((e.rot||0)%360+360)%360)+'<div class="btns tr"><button data-a="eqrotl5" title="Girar 5° a la izquierda">⟲ 5°</button><button data-a="eqrot5" title="Girar 5° a la derecha">⟳ 5°</button><button data-a="eqrot0" title="Dejarla sin girar">0°</button></div>';
     h+=previewEq(e);
     var ce0=catById(e.cid);
     if(ce0&&ce0.biblioteca){
@@ -5417,7 +5425,7 @@ function girarMuro(w,ang){
 function applyField(key,val,adv,raw){
   var s=st.sel;if(!s)return;
   var n=num(val);
-  if(!raw&&!/^(w_ang|pil_cnt|dr_fs|dr_wd|cl_j)$/.test(key))n=fromU(n);
+  if(!raw&&!/^(w_ang|pil_cnt|dr_fs|dr_wd|cl_j|eq_rot)$/.test(key))n=fromU(n);
   if(/^cl_/.test(key)){applyCl(key,n);return}
   if(s.t==='wall'){
     var w=wl(s.id);if(!w)return;
@@ -5478,6 +5486,7 @@ function applyField(key,val,adv,raw){
     var q=by(st.v.eq,s.id);if(!q)return;
     if(/^eq_pm[IDFT]$/.test(key)){snap();var kk='pm'+key.slice(5);if(String(val).trim()==='')delete q[kk];else if(n>=0&&n<=500)q[kk]=n;else{hist.pop();toast('Escribe una distancia entre 0 y 500 cm');return}commit(false);return}
     if(key==='eq_pm'){snap();if(String(val).trim()==='')delete q.pm;else if(n>=0&&n<=500)q.pm=n;else{hist.pop();toast('Escribe una distancia entre 0 y 500 cm');return}commit(false);return}
+    if(key==='eq_rot'){if(!isFinite(n)){toast('Escribe un ángulo en grados');return}snap();q.rot=((n%360)+360)%360;commit(false);panelSel();return}
     if(!(n>0&&n<=5000)){toast('Escribe una medida válida');return}
     snap();
     var rt=q.d/q.w;
@@ -5597,7 +5606,11 @@ function doAction(a,el){
   if(a==='ptnd'){var q1=by(st.v.pts,s.id);snap();q1.nd=q1.nd?0:1;commit();return}
   if(a==='cnstart'){st.cnFrom=s.id;st.tool='cn';toolbar();hint();render();toast('Toca las luminarias que enciende');return}
   if(a==='ptrot'){var qr=by(st.v.pts,s.id);snap();qr.a=((qr.a||0)+90)%360;commit();return}
-  if(a==='eqrot'||a==='eqrotl'||a==='eqrot180'){var q1=by(st.v.eq,s.id);snap();q1.rot=((q1.rot||0)+(a==='eqrot'?90:a==='eqrotl'?270:180))%360;commit();return}
+  if(/^eqrot/.test(a)&&s.t==='eq'){
+    var q1=by(st.v.eq,s.id);if(!q1)return;
+    var paso={eqrot:90,eqrotl:-90,eqrot180:180,eqrot45:45,eqrotl45:-45,eqrot5:5,eqrotl5:-5}[a];
+    snap();q1.rot=a==='eqrot0'?0:((((q1.rot||0)+paso)%360)+360)%360;commit();return;
+  }
   if(a==='eqflx'||a==='eqfly'){var q1f=by(st.v.eq,s.id);snap();if(a==='eqflx')q1f.fx=!q1f.fx;else q1f.fy=!q1f.fy;commit();return}
   if(a==='eqdup'){var q2=by(st.v.eq,s.id);snap();var cp=JSON.parse(JSON.stringify(q2));cp.id=uid('e');cp.dx=f2(cp.dx+30);cp.dy=f2(cp.dy+30);st.v.eq.push(cp);st.sel={t:'eq',id:cp.id};commit();return}
   if(a==='pasoprod'&&s.t==='eq'){var pq=by(st.v.eq,s.id),pcq=pq&&catById(pq.cid);if(!pcq)return;var pg=function(S){return pq['pm'+S]!=null&&pq['pm'+S]!==''?pq['pm'+S]:null};crmPost({type:'guardarPasoProducto',id:pcq.id,paso:{I:pg('I'),D:pg('D'),F:pg('F'),T:pg('T')}});pcq.paso={I:pg('I'),D:pg('D'),F:pg('F'),T:pg('T')};return}
