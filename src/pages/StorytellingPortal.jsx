@@ -58,27 +58,35 @@ function PasosPlano({ bloques }) {
 function irA(id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); }
 
 // Imágenes que se pueden ampliar al pulsarlas (no el logo ni la portada)
-const SEL_AMPLIAR = '.sp-full img, .sp-rends img, .sp-zona-i img, .sp-dt-i img, .sp-im img, .sp-gal img, .sp-tiles img, .sp-plano img, .sp-card-i img, .sp-eq-img img';
+const SEL_AMPLIAR = '.sp-full:not(.sp-blur) img, .sp-rends img, .sp-zona-i img, .sp-dt-i img, .sp-im img, .sp-gal img, .sp-tiles img, .sp-plano img, .sp-card-i img, .sp-eq-img img';
 
 // Galería de renders de una zona: 1 = a toda pantalla, 2 = en dos columnas, 3 o más = una grande y el resto debajo
 function Renders({ items, tituloZona, textoZona, primero }) {
-  const lista = items.filter(r => r.imagen_url);
+  // Portada del capítulo (id 'main'): si debajo hay más renders, va desenfocada y el render nítido se ve dentro del capítulo
+  const hayMas = items.some(r => r.id !== 'main' && r.imagen_url);
+  const portadaDesenfocada = hayMas && items.some(r => r.id === 'main' && r.imagen_url);
+  const lista = items.filter(r => r.imagen_url && !(portadaDesenfocada && r.id === 'main'));
   if (!lista.length) return null;
   const pie = (r) => {
     const t = r.titulo && r.titulo !== tituloZona ? r.titulo : '';
     const x = r.texto && r.texto.length <= 140 && !(textoZona || '').startsWith(r.texto.slice(0, 40)) ? r.texto : '';
     return [t, x].filter(Boolean).join(' — ');
   };
+  const portadaImg = portadaDesenfocada ? items.find(r => r.id === 'main').imagen_url : null;
+  const hero = portadaImg ? <div className="sp-full sp-blur sp-rv"><img src={portadaImg} alt="" loading={primero ? 'eager' : 'lazy'} /></div> : null;
   if (lista.length === 1) {
     const r = lista[0];
     return (
       <div>
+        {hero}
         <div className="sp-full sp-rv"><img src={r.imagen_url} alt={r.titulo || tituloZona || ''} loading={primero ? 'eager' : 'lazy'} /></div>
         {pie(r) && <p className="sp-cap">{pie(r)}</p>}
       </div>
     );
   }
   return (
+    <>
+    {hero}
     <div className={`sp-rends sp-rends--${Math.min(lista.length, 4)} sp-rv`}>
       {lista.map((r, i) => (
         <figure key={r.id || i} className={i === 0 ? 'sp-rend-main' : ''}>
@@ -87,6 +95,7 @@ function Renders({ items, tituloZona, textoZona, primero }) {
         </figure>
       ))}
     </div>
+    </>
   );
 }
 

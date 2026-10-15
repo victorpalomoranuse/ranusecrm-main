@@ -179,3 +179,6 @@
 .sp-docs-tec a span{color:#b8aca0;white-space:nowrap}
 
 .sp-eq-i p.sp-eq-q{margin-top:6px;color:var(--ink,#1a1714);letter-spacing:.04em;text-transform:none}
+
+.sp-full.sp-blur{height:46vh;min-height:300px}
+.sp-full.sp-blur img{filter:blur(18px) brightness(.82);transform:scale(1.12)!important;cursor:default!important}
