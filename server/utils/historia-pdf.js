@@ -222,12 +222,24 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
         });
         y = H;
       } else if (g.tipo === 'render') {
+        // Los renders se enseñan enteros, con su proporción real (antes se recortaban a una tira de 200 pt)
+        const vistos = new Set();
         for (const b of g.items) {
-          necesito(236);
-          cubrir(doc, img(b.imagen_url), M, y, W - 2 * M, 200);
+          const buf = img(b.imagen_url);
+          if (buf && vistos.has(buf)) continue; /* el mismo render repetido no se pone dos veces */
+          if (buf) vistos.add(buf);
+          let dim = null;
+          try { if (buf) { const im = doc.openImage(buf); dim = { w: im.width, h: im.height }; } } catch { /* imagen no válida */ }
+          const anchoMax = W - 2 * M, altoMax = H - 50 - 70 - 34;
+          let w = anchoMax, h = dim ? anchoMax * dim.h / dim.w : 200;
+          if (h > altoMax) { h = altoMax; w = dim ? h * dim.w / dim.h : anchoMax; }
+          necesito(h + 40);
+          const x0 = M + (anchoMax - w) / 2;
+          if (buf && dim) { try { doc.image(buf, x0, y, { fit: [w, h] }); } catch { cubrir(doc, buf, M, y, anchoMax, 200); h = 200; } }
+          else cubrir(doc, buf, M, y, anchoMax, 200);
           const pieTxt = [b.titulo, b.texto].filter(Boolean).join(' — ');
-          if (pieTxt) doc.font('Helvetica').fontSize(8.5).fillColor(BEIGE_D).text(pieTxt, M, y + 206, { width: W - 2 * M, height: 24, ellipsis: true });
-          y += 236;
+          if (pieTxt) doc.font('Helvetica').fontSize(8.5).fillColor(BEIGE_D).text(pieTxt, M, y + h + 6, { width: anchoMax, height: 24, ellipsis: true });
+          y += h + 36;
         }
       } else if (g.tipo === 'imagen_texto') {
         const b = g.items[0];
