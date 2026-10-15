@@ -365,7 +365,6 @@ body.crm .top .brand{display:none}
     </div>
     <div class="seg" id="views" role="group" aria-label="Vista del plano">
       <button data-view="actual">Estado actual</button>
-      <button data-view="cotas">Cotas</button>
       <button data-view="distrib">Distribución</button>
       <button data-view="demol">Demoliciones</button>
       <button data-view="interv">Implantación</button>
@@ -6495,7 +6494,7 @@ function viewHas(view){
 }
 /* orden de las láminas del PDF, en el orden en que se ejecuta la obra: lo último, el mobiliario y la planta de máquinas (y después las carpinterías).
    La distribución se trabaja desde el principio, por eso la pestaña está arriba, pero en el dossier cierra el plano. */
-var ORDEN_OBRA=['actual','cotas','demol','interv','elec','ilum','techos','acab','alz','suelos','distrib'];
+var ORDEN_OBRA=['actual','demol','interv','elec','ilum','techos','acab','alz','suelos','distrib'];
 function dossierViews(){return ORDEN_OBRA.filter(viewHas)}
 /* qué láminas lleva el PDF con todas (por defecto todas) */
 function lamOn(k){return !(st.lamOff&&st.lamOff[k])}
@@ -6510,10 +6509,11 @@ function lamExtras(){
 }
 /* filas del selector, en el orden de los códigos: A (estado, cotas, demoliciones, implantación, distribución), IE, I y M */
 function lamFilas(fila){
-  var out=[],hayAnte=lamExtras().some(function(x){return x[0]==='ante'});
-  function v(k,nom){out.push(fila(k,COD_LAM[k]+' · '+(nom||VNAME[k]),!viewHas(k),false))}
-  ['actual','cotas','demol','interv'].forEach(function(k){v(k)});
-  if(hayAnte)out.push(fila('ante','A.05 · Distribución',false,true));
+  var out=[],hayAnte=lamExtras().some(function(x){return x[0]==='ante'}),cp=lamCodPrevistos();
+  function v(k,nom){out.push(fila(k,(cp[k]?cp[k]+' · ':'')+(nom||VNAME[k]),!viewHas(k),false))}
+  v('actual');
+  if(hayAnte)out.push(fila('ante',(cp.ante?cp.ante+' · ':'')+'Distribución',false,true));
+  ['demol','interv'].forEach(function(k){v(k)});
   ['elec','ilum','techos','acab','alz','suelos'].forEach(function(k){v(k)});
   v('distrib','Mobiliario y equipamiento');
   return out.join('');
@@ -6526,24 +6526,29 @@ function lamEtiqueta(){
   var n=lamViews().length+lamExtras().filter(function(x){return lamOn(x[0])}).length,tot=dossierViews().length+lamExtras().length;
   b.textContent=n!==tot?'PDF con '+n+' lámina'+(n===1?'':'s')+' elegida'+(n===1?'':'s'):'PDF con todas las láminas';
 }
-function abrirLaminas(){
+function lamLista(fila){
+  return lamFilas(fila)+'<div style="height:1px;background:#e7e2dd;margin:2px 0"></div>'+lamExtras().filter(function(x){return x[0]!=='ante'}).map(function(x){return fila(x[0],x[1],false,true)}).join('');
+}
+function abrirLaminas(modo){
   var m0=document.getElementById('lammod');if(m0)m0.remove();
   var vs=ORDEN_OBRA.slice(),m=document.createElement('div');m.id='lammod';m.className='dxfmod';
   function fila(k,n,vacia,extra){var on=extra?lamOn(k):(vacia?!!(st.lamForce&&st.lamForce[k]):lamOn(k));return '<label class="fld chk" style="margin:0"><input type="checkbox" data-lam="'+k+'"'+(extra?' data-x="1"':'')+(vacia?' data-v="1"':'')+(on?' checked':'')+'><span>'+esc(n)+(vacia?' <small style="color:#9a8f86">(aún sin contenido en este plano)</small>':'')+'</span></label>'}
-  m.innerHTML='<div class="dxfbox" style="max-width:520px"><header><h3>Qué láminas llevan los PDF</h3><p class="note" style="margin:0">Marca las que quieres. Vale para «PDF con todas las láminas» y para la vista previa. Lo que no tenga contenido no sale aunque esté marcado.</p></header>'+
-    '<div style="padding:12px 18px;display:grid;gap:8px;max-height:56vh;overflow:auto">'+lamFilas(fila)+'<div style="height:1px;background:#e7e2dd;margin:2px 0"></div>'+lamExtras().filter(function(x){return x[0]!=='ante'}).map(function(x){return fila(x[0],x[1],false,true)}).join('')+'</div>'+
-    '<footer><button id="lam-t">Todas</button><button id="lam-n">Ninguna</button><span style="flex:1"></span><button id="lam-p">Vista previa</button><button class="pri" id="lam-d">Descargar PDF</button></footer></div>';
+  m.innerHTML='<div class="dxfbox" style="max-width:520px"><header><h3>'+(modo==='subir'?'Qué láminas lleva el dossier':'Qué láminas llevan los PDF')+'</h3><p class="note" style="margin:0">'+(modo==='subir'?'Marca las láminas que se suben a Documentos. ':'')+'Marca las que quieres. Vale para «PDF con todas las láminas» y para la vista previa. La numeración (A.01, A.02…) se ajusta sola a las que salgan. Lo que no tenga contenido no sale aunque esté marcado.</p></header>'+
+    '<div id="lam-list" style="padding:12px 18px;display:grid;gap:8px;max-height:56vh;overflow:auto">'+lamLista(fila)+'</div>'+
+    '<footer><button id="lam-t">Todas</button><button id="lam-n">Ninguna</button><span style="flex:1"></span>'+(modo==='subir'?'<button id="lam-x">Cancelar</button><button id="lam-p">Vista previa</button><button class="pri" id="lam-d">Subir dossier</button>':'<button id="lam-p">Vista previa</button><button class="pri" id="lam-d">Descargar PDF</button>')+'</footer></div>';
   document.body.appendChild(m);
   function guarda(){
     st.lamOff={};st.lamForce={};
     [].forEach.call(m.querySelectorAll('input[data-lam]'),function(c){var k=c.getAttribute('data-lam');if(c.getAttribute('data-v')&&!c.getAttribute('data-x')){if(c.checked)st.lamForce[k]=true}else if(!c.checked)st.lamOff[k]=true});
-    try{localStorage.setItem('ranuse-lam-off',JSON.stringify(st.lamOff));localStorage.setItem('ranuse-lam-force',JSON.stringify(st.lamForce))}catch(e){}lamEtiqueta()
+    try{localStorage.setItem('ranuse-lam-off',JSON.stringify(st.lamOff));localStorage.setItem('ranuse-lam-force',JSON.stringify(st.lamForce))}catch(e){}lamEtiqueta();
+    var lst=m.querySelector('#lam-list');if(lst){var sc=lst.scrollTop;lst.innerHTML=lamLista(fila);lst.scrollTop=sc}
   }
   m.addEventListener('change',guarda);
   function marca(v){[].forEach.call(m.querySelectorAll('input[data-lam]'),function(c){c.checked=v});guarda()}
   document.getElementById('lam-t').addEventListener('click',function(){marca(true)});
   document.getElementById('lam-n').addEventListener('click',function(){marca(false)});
-  document.getElementById('lam-d').addEventListener('click',function(){guarda();m.remove();exportPDF('all')});
+  document.getElementById('lam-d').addEventListener('click',function(){guarda();m.remove();if(modo==='subir')subirPdfCrm('all');else exportPDF('all')});
+  if(document.getElementById('lam-x'))document.getElementById('lam-x').addEventListener('click',function(){m.remove()});
   document.getElementById('lam-p').addEventListener('click',function(){guarda();m.remove();verPrevia(false)});
   m.addEventListener('mousedown',function(e){if(e.target===m)m.remove()});
 }
@@ -7372,11 +7377,29 @@ function drawDet(){
   $('b-pdfdet').addEventListener('click',function(){if(!detSel().length){toast('Elige o añade algún detalle');return}exportPDF('det')});
 })();
 /* código de cada lámina, por orden de obra: A arquitectura · IE instalaciones · I interiorismo · M maquinaria · D documentación de apoyo */
-var COD_LAM={actual:'A.01',cotas:'A.02',demol:'A.03',interv:'A.04',elec:'IE.01',ilum:'IE.02',techos:'I.01',acab:'I.02',alz:'I.03',suelos:'I.04',distrib:'M.01',carp:'D.01',cal:'D.02',det:'D.03'};
+/* grupos: A anteproyecto, IE instalaciones, I interiorismo, M mobiliario y equipamiento, D documentación.
+   Dentro de cada grupo las láminas se numeran en orden según las que realmente salen en el PDF (A.01, A.02…), no con un número fijo */
+var CAT_LAM={actual:'A',cotas:'A',demol:'A',interv:'A',ante:'A',elec:'IE',ilum:'IE',techos:'I',acab:'I',alz:'I',suelos:'I',distrib:'M',carp:'D',cal:'D',det:'D'};
+var ORDEN_COD=['actual','ante','demol','interv','elec','ilum','techos','acab','alz','suelos','distrib','cal','carp','det'];
 function codigoLamina(doc,clave,ante){
-  var c=(clave==='distrib'&&ante)?'A.05':(COD_LAM[clave]||'A.00');
-  doc._cod=doc._cod||{};var n=doc._cod[c]=(doc._cod[c]||0)+1;
-  return n>1?c+'-'+String.fromCharCode(64+n):c;
+  var k=(clave==='distrib'&&ante)?'ante':clave,cat=CAT_LAM[k]||'A';
+  doc._vc=doc._vc||{};doc._cn=doc._cn||{};
+  if(!doc._vc[k]){doc._cn[cat]=(doc._cn[cat]||0)+1;doc._vc[k]={c:cat+'.'+('0'+doc._cn[cat]).slice(-2),n:0}}
+  var e=doc._vc[k];e.n++;
+  return e.n>1?e.c+'-'+String.fromCharCode(64+e.n):e.c;
+}
+/* código de una lámina exportada sola: la primera de su grupo */
+function lamCodSolo(view){return (CAT_LAM[view]||'A')+'.01'}
+/* códigos que tendrá cada lámina con lo que está marcado ahora */
+function lamCodPrevistos(){
+  var cn={},out={},ex=lamExtras().map(function(x){return x[0]});
+  ORDEN_COD.forEach(function(k){
+    var inc;
+    if(k==='ante'||k==='cal'||k==='carp'||k==='det')inc=lamOn(k)&&ex.indexOf(k)>=0;
+    else inc=viewHas(k)?lamOn(k):!!(st.lamForce&&st.lamForce[k]);
+    if(inc){var c=CAT_LAM[k];cn[c]=(cn[c]||0)+1;out[k]=c+'.'+('0'+cn[c]).slice(-2)}
+  });
+  return out;
 }
 function sheetPage(doc,view,idx,total,o){
   window.__infoView=view;
@@ -8119,13 +8142,13 @@ function subirPdfCrm(mode){
   if(!window.confirm('El PDF se guardará en Documentos del proyecto (tipo plano), pensado para: '+dst[1]+' · '+dst[0]+'. El cliente lo verá en su portal. ¿Continuar?'))return;
   var bytes;
   try{bytes=buildPDF(mode,pdfOpts())}catch(e){if(mode==='all'&&e&&e.message==='vacío')lamAviso();else toast('No se pudo generar el PDF');return}
-  var titulo=(mode==='all'?'Planos · dossier completo':(COD_LAM[st.view]||'')+' · '+VNAME[st.view])+(st.v.nombre?' · '+st.v.nombre:'');
+  var titulo=(mode==='all'?'Planos · dossier completo':lamCodSolo(st.view)+' · '+VNAME[st.view])+(st.v.nombre?' · '+st.v.nombre:'');
   crmPost({type:'subir-pdf',nombre:titulo,filename:slug()+(mode==='all'?'-dossier':'-'+st.view)+'.pdf',bytes:bytes.buffer});
   toast('Subiendo a Documentos…');
 }
 $('b-pdfdoc').addEventListener('click',function(){subirPdfCrm('view')});
 $('b-historia').addEventListener('click',publicarHistoria);
-$('b-pdfdocall').addEventListener('click',function(){subirPdfCrm('all')});
+$('b-pdfdocall').addEventListener('click',function(){abrirLaminas('subir')});
 $('b-pdfcarp').addEventListener('click',function(){if(!st.v.ops.length){toast('Aún no hay puertas ni ventanas');return}exportPDF('carp')});
 $('b-csvcarp').addEventListener('click',function(){if(!st.v.ops.length){toast('Aún no hay puertas ni ventanas');return}saveFile(slug()+'-carpinterias.csv',carpCSV(),'CSV')});
 $('x-logo').addEventListener('change',function(e){loadLogoFile(e.target.files&&e.target.files[0]);e.target.value=''});
@@ -8525,7 +8548,7 @@ cmd('Medir a ejes de muro',['me','ejes'],'Las cotas miden de eje a eje',porData(
 cmd('Cotas sencillas',['cs'],'Solo el número en cada muro',porData('dims','simple'));
 cmd('Cotas por fuera',['ce'],'Líneas de cota exteriores',porData('dims','ext'));
 cmd('Cotas por dentro',['ci'],'Líneas de cota interiores',porData('dims','int'));
-[['actual','Lámina: Estado actual',['v1','ea','actual']],['cotas','Lámina: Cotas',['v2','co','cotas']],['distrib','Lámina: Distribución',['v3','ds','distribucion']],['demol','Lámina: Demoliciones',['v4','dm','demoliciones']],['interv','Lámina: Implantación',['v5','im','implantacion','iv','intervencion']],['elec','Lámina: Electricidad',['v6','el','electricidad']],['ilum','Lámina: Iluminación',['v7','il','iluminacion']],['techos','Lámina: Techos',['v8','te','techos']],['acab','Lámina: Acabados',['v9','ac','acabados']],['alz','Lámina: Alzados',['v10','al','alzados']],['suelos','Lámina: Suelos',['v11','su','suelos']]].forEach(function(v){cmd(v[1],v[2],'Cambiar de lámina',porVista(v[0]))});
+[['actual','Lámina: Estado actual',['v1','ea','actual']],['distrib','Lámina: Distribución',['v3','ds','distribucion']],['demol','Lámina: Demoliciones',['v4','dm','demoliciones']],['interv','Lámina: Implantación',['v5','im','implantacion','iv','intervencion']],['elec','Lámina: Electricidad',['v6','el','electricidad']],['ilum','Lámina: Iluminación',['v7','il','iluminacion']],['techos','Lámina: Techos',['v8','te','techos']],['acab','Lámina: Acabados',['v9','ac','acabados']],['alz','Lámina: Alzados',['v10','al','alzados']],['suelos','Lámina: Suelos',['v11','su','suelos']]].forEach(function(v){cmd(v[1],v[2],'Cambiar de lámina',porVista(v[0]))});
 cmd('Deshacer',['u','z','deshacer','undo'],'Deshacer el último cambio',function(){undo()});
 cmd('Rehacer',['y','rehacer','redo'],'Rehacer',function(){redoit()});
 cmd('Encajar el plano',['ze','f','encajar'],'Ver todo el plano',function(){fit()});
@@ -8630,7 +8653,7 @@ var TUTO=[
   '<div><b>2 · Las pestañas (láminas)</b><p>Son vistas del <u>mismo</u> plano, no planos distintos. Cada una enseña los elementos según su estado y se exporta a su propia hoja del PDF.</p></div></div>'+
   '<h3>El orden de trabajo recomendado</h3>'+TUTO_SVG.flujo+
   '<h3>Mapa de pestañas</h3><div class="tmap">'+
-  [['actual','Estado actual','Cómo está hoy el espacio. Aquí se dibuja y se mide.'],['cotas','Cotas','El plano final acotado, de cara interior a cara interior.'],['demol','Demoliciones','Lo que se mantiene (gris) y lo que se quita (rojo rayado).'],['interv','Implantación','Lo existente y lo nuevo que se construye.'],['distrib','Distribución','Máquinas y mobiliario del catálogo, con etiquetas y leyenda.'],['suelos','Suelos','Pavimentos, despiece y colocación, mediciones y rodapié.'],['techos','Techos','Acabados de techo y sistemas (pladur, registrable…).'],['acab','Acabados','Acabados y sistemas en cada cara de pared.'],['alz','Alzados','Cada pared de frente, con su acabado y carpinterías.'],['elec','Electricidad','Enchufes, interruptores, datos y tomas.'],['ilum','Iluminación','Luminarias, cotas a paredes y circuitos.']].map(function(x){return '<button class="tgo" data-go="view:'+x[0]+'"><b>'+x[1]+'</b><span>'+x[2]+'</span></button>'}).join('')+'</div>'}},
+  [['actual','Estado actual','Cómo está hoy el espacio. Aquí se dibuja y se mide.'],['demol','Demoliciones','Lo que se mantiene (gris) y lo que se quita (rojo rayado).'],['interv','Implantación','Lo existente y lo nuevo que se construye.'],['distrib','Distribución','Máquinas y mobiliario del catálogo, con etiquetas y leyenda.'],['suelos','Suelos','Pavimentos, despiece y colocación, mediciones y rodapié.'],['techos','Techos','Acabados de techo y sistemas (pladur, registrable…).'],['acab','Acabados','Acabados y sistemas en cada cara de pared.'],['alz','Alzados','Cada pared de frente, con su acabado y carpinterías.'],['elec','Electricidad','Enchufes, interruptores, datos y tomas.'],['ilum','Iluminación','Luminarias, cotas a paredes y circuitos.']].map(function(x){return '<button class="tgo" data-go="view:'+x[0]+'"><b>'+x[1]+'</b><span>'+x[2]+'</span></button>'}).join('')+'</div>'}},
  {id:'muros',t:'Dibujar muros',s:'Herramienta Muros',b:function(){return ''+
   '<p class="lead">El plano empieza por los muros. Dibujas el contorno <b>a mano alzada</b> y Planos lo endereza solo.</p>'+
   '<ol class="tsteps"><li>Ve a <b>Estado actual</b> y elige <b>Existente</b> (abajo del lienzo).</li><li>Pulsa <b>Muros</b> en la barra de herramientas.</li><li>Arrastra para trazar cada muro. Salen a 90° (horizontales o verticales) y se enderezan al soltar.</li><li>Cierra la sala volviendo al primer punto: los muros se unen solos en las esquinas.</li><li>Pulsa <b>Seleccionar</b>, toca un muro y <b>escribe su medida real</b> en las cotas azules.</li></ol>'+
@@ -8644,9 +8667,9 @@ var TUTO=[
   '<div class="tbtns"><button class="tgo pri" data-go="tool:door">Probar: Puerta</button><button class="tgo" data-go="tool:win">Probar: Ventana</button></div>'}},
  {id:'cotas',t:'Medidas y cotas',s:'Escribir medidas y medir punto a punto',b:function(){return ''+
   '<p class="lead">En Planos <b>las medidas se escriben</b>: tocas una cota y pones el número; el plano se corrige solo.</p>'+TUTO_SVG.cota+
-  '<h3>Cotas de los muros</h3><ul class="tul"><li>Toca un muro: salen sus cotas en azul. Tócalas para cambiarlas.</li><li>Por defecto miden la <b>cara interior</b>, que es lo que necesita quien ejecuta. Se puede cambiar a ejes en <i>Archivo → Cotas</i> al exportar.</li><li>Al trabajar en Suelos, Techos o Acabados las cotas de los muros se ocultan para no ensuciar; actívalas en <i>Ver → Cotas de los muros al trabajar</i>.</li></ul>'+
+  '<h3>Cotas de los muros</h3><ul class="tul"><li>Toca un muro: salen sus cotas en azul. Tócalas para cambiarlas.</li><li>Las cotas salen en las láminas de Estado actual y de Distribución. Por defecto miden la <b>cara interior</b>, que es lo que necesita quien ejecuta. Se puede cambiar a ejes en <i>Archivo → Cotas</i> al exportar.</li><li>Al trabajar en Suelos, Techos o Acabados las cotas de los muros se ocultan para no ensuciar; actívalas en <i>Ver → Cotas de los muros al trabajar</i>.</li></ul>'+
   '<h3>Herramienta Cotas (punto a punto)</h3><ol class="tsteps"><li>Pulsa <b>Cotas</b>.</li><li>Arrastra de un punto a otro: se pegan a <b>esquinas interiores</b>, caras de muros, puntos de zonas y esquinas de máquinas.</li><li>Te dice la distancia. Para cambiarla, tócala con Seleccionar.</li></ol>'+
-  '<div class="tbtns"><button class="tgo pri" data-go="view:cotas;tool:diag">Probar: herramienta Cotas</button></div>'}},
+  '<div class="tbtns"><button class="tgo pri" data-go="view:actual;tool:diag">Probar: herramienta Cotas</button></div>'}},
  {id:'estados',t:'Existente, demoler y nuevo',s:'El estado de los elementos',b:function(){return ''+
   '<p class="lead">Un mismo plano cuenta tres historias: lo que hay, lo que se quita y lo que se hace.</p>'+
   '<ul class="tul"><li><b>Existente</b>: ya está y se queda.</li><li><b>Demoler</b>: ya está y se quita.</li><li><b>Nuevo</b>: se construye.</li></ul>'+
@@ -8678,7 +8701,7 @@ var TUTO=[
  {id:'pdf',t:'Láminas y PDF',s:'Cajetín, qué láminas salen y cómo exportar',b:function(){return ''+
   '<p class="lead">Cada pestaña es una lámina con cajetín, leyenda y mediciones. Exportas una sola o todas.</p>'+
   '<ol class="tsteps"><li><b>Archivo → Datos del proyecto</b>: nombre, cliente, dirección, planta y fecha. Salen en el cajetín. Puedes poner el logo.</li><li><b>Qué información enseñar en las láminas</b>: quita leyenda, carpinterías, mediciones, rodapié o despiece cuando no hagan falta.</li><li>En el panel <b>Exportar</b> elige papel (A3/A4), escala, orientación y tipo de cotas.</li><li><b>Elegir láminas…</b> marca cuáles lleva el PDF con todas (también las que aún no tienen contenido).</li><li><b>Vista previa</b> para revisar antes de descargar.</li><li><b>PDF de esta lámina</b> o <b>PDF con todas</b>. También puedes subirla a Documentos o publicarla en la historia del cliente.</li></ol>'+
-  '<h3>Códigos de lámina</h3><p>A.01–A.05 anteproyecto, IE instalaciones, I interiorismo (techos, acabados, alzados, suelos), M mobiliario y equipamiento, D documentación.</p>'+
+  '<h3>Códigos de lámina</h3><p>Cada grupo lleva su letra: A anteproyecto (estado actual, distribución, demoliciones, implantación), IE instalaciones, I interiorismo (techos, acabados, alzados, suelos), M mobiliario y equipamiento, D documentación. Dentro de cada grupo se numeran según las láminas que salgan en el PDF (A.01, A.02…): si quitas una, las demás se renumeran solas.</p>'+
   '<div class="ttip">En Suelos, el equipamiento se ve al trabajar; al exportar puedes elegir si sale o no.</div>'}},
  {id:'atajos',t:'Atajos y trucos',s:'Trabajar más rápido',b:function(){var cm=(typeof CMDS!=='undefined'?CMDS:[]).map(function(c){return '<span><span>'+esc(c.n)+'</span><code>'+esc(c.k[0].toUpperCase())+'</code></span>'}).join('');return ''+
   '<p class="lead">Unos cuantos gestos que ahorran mucho tiempo.</p>'+
