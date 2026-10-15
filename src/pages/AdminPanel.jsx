@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { Home, Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays } from 'lucide-react';
+import { Home, Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays, Search } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
@@ -996,7 +996,7 @@ function SortableCategoryPill({ cat, active, count, onClick, onRename, onDelete 
 }
 
 function CatalogoLibrary() {
-  const [tab,setTab]=useState('material'); const [activeCat,setActiveCat]=useState('all'); const [categories,setCategories]=useState([]); const [products,setProducts]=useState([]); const [types,setTypes]=useState([]); const [loading,setLoading]=useState(true); const [newCatName,setNewCatName]=useState(''); const [addingCat,setAddingCat]=useState(false); const [showCatInput,setShowCatInput]=useState(false); const [showProductModal,setShowProductModal]=useState(false); const [editProduct,setEditProduct]=useState(null); const [confirm,setConfirm]=useState(null); const [cart,setCart]=useState([]); const [showCart,setShowCart]=useState(false); const [showTypeInput,setShowTypeInput]=useState(false); const [newTypeName,setNewTypeName]=useState(''); const [addingType,setAddingType]=useState(false);
+  const [tab,setTab]=useState('material'); const [busca,setBusca]=useState('');const [activeCat,setActiveCat]=useState('all'); const [categories,setCategories]=useState([]); const [products,setProducts]=useState([]); const [types,setTypes]=useState([]); const [loading,setLoading]=useState(true); const [newCatName,setNewCatName]=useState(''); const [addingCat,setAddingCat]=useState(false); const [showCatInput,setShowCatInput]=useState(false); const [showProductModal,setShowProductModal]=useState(false); const [editProduct,setEditProduct]=useState(null); const [confirm,setConfirm]=useState(null); const [cart,setCart]=useState([]); const [showCart,setShowCart]=useState(false); const [showTypeInput,setShowTypeInput]=useState(false); const [newTypeName,setNewTypeName]=useState(''); const [addingType,setAddingType]=useState(false);
   const {toast}=useToast();
   const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}));
   const addToCart=(product)=>setCart(prev=>prev.some(p=>p.id===product.id)?prev:[...prev,product]);
@@ -1008,7 +1008,7 @@ function CatalogoLibrary() {
   const handleRenameType=async(type)=>{const name=window.prompt(`Nuevo nombre para "${type.name}"`,type.name);if(!name||!name.trim()||name.trim()===type.name)return;try{const{data}=await api.put(`/catalog/types/${type.id}`,{name:name.trim()});setTypes(prev=>prev.map(t=>t.id===type.id?data.type:t));toast.success('Tipo renombrado');}catch{toast.error('Error al renombrar tipo');}};
   const filteredCats=categories.filter(c=>c.type===tab);
   const inCategory=(p,catId)=>p.category_id===catId||p.extra_categories?.some(ec=>ec.id===catId);
-  const visibleProducts=products.filter(p=>p.category?.type===tab&&(activeCat==='all'||inCategory(p,activeCat))).sort((a,b)=>{if(activeCat==='all'){const catA=a.category?.name||'';const catB=b.category?.name||'';if(catA!==catB)return catA.localeCompare(catB);}return(a.display_order??999999)-(b.display_order??999999);});
+  const qBusca=busca.trim().toLowerCase();const norm=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');const qn=norm(qBusca);const visibleProducts=products.filter(p=>p.category?.type===tab&&(qn?norm([p.name,p.brand,p.code,p.reference,p.description,p.category?.name].join(' ')).includes(qn):(activeCat==='all'||inCategory(p,activeCat)))).sort((a,b)=>{if(activeCat==='all'){const catA=a.category?.name||'';const catB=b.category?.name||'';if(catA!==catB)return catA.localeCompare(catB);}return(a.display_order??999999)-(b.display_order??999999);});
   const handleAddCategory=async(e)=>{e.preventDefault();if(!newCatName.trim())return;setAddingCat(true);try{const{data}=await api.post('/catalog/categories',{name:newCatName.trim(),type:tab});setCategories(prev=>[...prev,data.category]);setNewCatName('');setShowCatInput(false);}catch{toast.error('Error al crear categoría');}finally{setAddingCat(false);}};
   const handleDeleteCategory=(id,name)=>{setConfirm({message:`¿Eliminar "${name}" y todos sus productos?`,onConfirm:async()=>{try{await api.delete(`/catalog/categories/${id}`);setCategories(prev=>prev.filter(c=>c.id!==id));setProducts(prev=>prev.filter(p=>p.category_id!==id));if(activeCat===id)setActiveCat('all');toast.success('Categoría eliminada');}catch{toast.error('Error al eliminar');}setConfirm(null);},onCancel:()=>setConfirm(null)});};
   const handleRenameCategory=async(cat)=>{const name=window.prompt(`Nuevo nombre para "${cat.name}"`,cat.name);if(!name||!name.trim()||name.trim()===cat.name)return;try{const{data}=await api.put(`/catalog/categories/${cat.id}`,{name:name.trim()});setCategories(prev=>prev.map(c=>c.id===cat.id?data.category:c));toast.success('Categoría renombrada');}catch{toast.error('Error al renombrar categoría');}};
@@ -1016,7 +1016,7 @@ function CatalogoLibrary() {
   const handleDeleteProduct=(id)=>{setConfirm({message:'¿Eliminar este producto del catálogo?',onConfirm:async()=>{try{await api.delete(`/catalog/products/${id}`);setProducts(prev=>prev.filter(p=>p.id!==id));toast.success('Producto eliminado');}catch{toast.error('Error al eliminar producto');}setConfirm(null);},onCancel:()=>setConfirm(null)});};
   const handleDuplicateProduct=async(id)=>{try{const{data}=await api.post(`/catalog/products/${id}/duplicate`);setProducts(prev=>[data.product,...prev]);toast.success('Producto duplicado');}catch{toast.error('Error al duplicar producto');}};
   const handleProductSaved=(product)=>{setProducts(prev=>{const idx=prev.findIndex(p=>p.id===product.id);if(idx>=0){const updated=[...prev];updated[idx]=product;return updated;}return[...prev,product];});setActiveCat(product.category_id);};
-  const handleCatalogDragEnd=async(event)=>{const{active,over}=event;if(!active||!over||active.id===over.id||activeCat==='all')return;const oldIndex=visibleProducts.findIndex(p=>p.id===active.id);const newIndex=visibleProducts.findIndex(p=>p.id===over.id);const newVisible=arrayMove(visibleProducts,oldIndex,newIndex);setProducts(prev=>prev.map(p=>{const idx=newVisible.findIndex(v=>v.id===p.id);if(idx>=0)return{...p,display_order:idx};return p;}));try{await api.put('/catalog/products/reorder',{ids:newVisible.map(p=>p.id)});}catch{toast.error('Error al guardar el orden');const{data}=await api.get('/catalog/products');setProducts(data.products||[]);}};
+  const handleCatalogDragEnd=async(event)=>{const{active,over}=event;if(!active||!over||active.id===over.id||activeCat==='all'||qBusca)return;const oldIndex=visibleProducts.findIndex(p=>p.id===active.id);const newIndex=visibleProducts.findIndex(p=>p.id===over.id);const newVisible=arrayMove(visibleProducts,oldIndex,newIndex);setProducts(prev=>prev.map(p=>{const idx=newVisible.findIndex(v=>v.id===p.id);if(idx>=0)return{...p,display_order:idx};return p;}));try{await api.put('/catalog/products/reorder',{ids:newVisible.map(p=>p.id)});}catch{toast.error('Error al guardar el orden');const{data}=await api.get('/catalog/products');setProducts(data.products||[]);}};
   if(loading) return <div className="ap-loading">Cargando catálogo…</div>;
   return (
     <div className="ap-catalog-shell">
@@ -1044,6 +1044,7 @@ function CatalogoLibrary() {
       </div>
       {tab==='renders'&&<RendersLibrary/>}
       {tab!=='renders'&&<div className="ap-catalog-filters">
+        <div style={{position:'relative',flex:'1 1 100%',marginBottom:8}}><Search size={14} style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',opacity:0.5}}/><input className="ap-field-input" style={{paddingLeft:30,paddingRight:30}} placeholder="Buscar en el catálogo (nombre, marca, código, categoría)…" value={busca} onChange={e=>setBusca(e.target.value)}/>{busca&&<button type="button" aria-label="Borrar búsqueda" onClick={()=>setBusca('')} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'none',border:0,color:'inherit',cursor:'pointer',opacity:0.6}}>×</button>}</div>
         <div className="ap-catalog-filter-pills">
           <button className={`ap-catalog-pill${activeCat==='all'?' active':''}`} onClick={()=>setActiveCat('all')}>Todo ({products.filter(p=>p.category?.type===tab).length})</button>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
@@ -1055,10 +1056,10 @@ function CatalogoLibrary() {
         </div>
         <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={()=>setShowProductModal(true)}><Plus size={13}/> Producto</button>
       </div>}
-      {tab!=='renders'&&(visibleProducts.length===0?(<p className="ap-empty-sm" style={{textAlign:'center',paddingTop:'2rem'}}>{filteredCats.length===0?'Crea una categoría primero.':'No hay productos. Añade el primero.'}</p>):(
+      {tab!=='renders'&&(visibleProducts.length===0?(<p className="ap-empty-sm" style={{textAlign:'center',paddingTop:'2rem'}}>{qBusca?`Nada coincide con «${busca.trim()}».`:filteredCats.length===0?'Crea una categoría primero.':'No hay productos. Añade el primero.'}</p>):(
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCatalogDragEnd}>
           <SortableContext items={visibleProducts.map(p=>p.id)} strategy={rectSortingStrategy}>
-            <div className="ap-catalog-grid">{visibleProducts.map(p=>(<SortableCatalogCard key={p.id} p={p} inCart={cart.some(c=>c.id===p.id)} onEdit={setEditProduct} onDelete={handleDeleteProduct} onDuplicate={handleDuplicateProduct} onCart={addToCart} onRemoveCart={removeFromCart} showHandle={activeCat!=='all'}/>))}</div>
+            <div className="ap-catalog-grid">{visibleProducts.map(p=>(<SortableCatalogCard key={p.id} p={p} inCart={cart.some(c=>c.id===p.id)} onEdit={setEditProduct} onDelete={handleDeleteProduct} onDuplicate={handleDuplicateProduct} onCart={addToCart} onRemoveCart={removeFromCart} showHandle={activeCat!=='all'&&!qBusca}/>))}</div>
           </SortableContext>
         </DndContext>
       ))}
