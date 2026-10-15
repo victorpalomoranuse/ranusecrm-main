@@ -119,7 +119,7 @@ function Visor({ fotos, i, onCambiar, onCerrar }) {
   );
 }
 
-function Bloques({ bloques, capitulos, equipo }) {
+function Bloques({ bloques, capitulos, equipo, materiales }) {
 
   return agrupar(bloques).map((g, gi) => {
     if (g.tipo === 'render') {
@@ -156,7 +156,11 @@ function Bloques({ bloques, capitulos, equipo }) {
     }
     if (g.tipo === 'equipo') {
       const b = g.items[0];
-      const items = (equipo || []).filter(e => e.image_url).slice(0, 8);
+      // Con «#sel» en el bloque: solo lo elegido para este capítulo, en su orden. Sin él (proyectos antiguos): todos los equipos con foto, como siempre.
+      const elegido = (b.elementos || []).includes('#sel');
+      const items = elegido
+        ? (b.elementos || []).filter(x => /^[em]:/.test(x)).map(x => (x[0] === 'e' ? equipo : materiales || []).find?.(e => String(e.id) === x.slice(2))).filter(Boolean).slice(0, 12)
+        : (equipo || []).filter(e => e.image_url).slice(0, 8);
       if (!items.length) return null;
       return (
         <div key={b.id} className="sp-blk">
@@ -165,7 +169,7 @@ function Bloques({ bloques, capitulos, equipo }) {
           <div className="sp-eq sp-rv">
             {items.map(e => (
               <div key={e.id || e.name} className="sp-eq-i">
-                <div className="sp-eq-img"><img src={e.image_url} alt={e.name} loading="lazy" style={{ objectFit: 'contain' }} /></div>
+                <div className="sp-eq-img">{e.image_url ? <img src={e.image_url} alt={e.name} loading="lazy" style={{ objectFit: 'contain' }} /> : null}</div>
                 <h5>{e.name}</h5>
                 {e.brand && <p>{e.brand}</p>}
               </div>
@@ -375,7 +379,7 @@ export function StorytellingPortal({ project, dossier, code }) {
           </div>
           <Renders primero={i === 0} tituloZona={c.titulo} textoZona={c.texto} items={[...(c.render_url ? [{ id: 'main', imagen_url: c.render_url, titulo: c.titulo }] : []), ...c.bloques.filter(b => b.tipo === 'render')]} />
           <PasosPlano bloques={c.bloques} />
-          <Bloques bloques={c.bloques.filter(b => b.tipo !== 'render' && !esPaso(b))} capitulos={capitulos} equipo={project.equipment} />
+          <Bloques bloques={c.bloques.filter(b => b.tipo !== 'render' && !esPaso(b))} capitulos={capitulos} equipo={project.equipment} materiales={project.materials} />
           {c.servicios.length > 0 && (
             <div className="sp-blk">
               <p className="sp-lbl sp-rv">Soluciones y servicios</p>

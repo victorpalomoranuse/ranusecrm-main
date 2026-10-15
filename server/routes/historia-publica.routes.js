@@ -74,10 +74,16 @@ router.get('/:code/historia.pdf', async (req, res) => {
     const { data: equipo } = await supabase.from('project_equipment_selections').select('name, brand, image_url').eq('project_id', project.id).not('image_url', 'is', null).order('display_order', { ascending: true, nullsFirst: false }).limit(8);
     const { data: imagenes } = await supabase.from('project_moodboard_images').select('url').eq('project_id', project.id).order('display_order', { ascending: true });
 
+    const [{ data: eqSel }, { data: matSel }] = await Promise.all([
+      supabase.from('project_equipment_selections').select('id, name, brand, image_url').eq('project_id', project.id),
+      supabase.from('project_material_selections').select('id, name, brand, image_url').eq('project_id', project.id),
+    ]);
+    const seleccionables = [...(eqSel || []).map(e => ({ ...e, clave: 'e:' + e.id })), ...(matSel || []).map(m => ({ ...m, clave: 'm:' + m.id }))];
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="proyecto-creativo-${limpio(project.project_name)}.pdf"`);
     await generarHistoriaPdf(res, {
-      project, historia, equipo: equipo || [],
+      project, historia, equipo: equipo || [], seleccionables,
       moodboard: { description: project.moodboard_description || '', palette: project.moodboard_palette || [], images: imagenes || [] },
       responsable: project.responsible,
     });

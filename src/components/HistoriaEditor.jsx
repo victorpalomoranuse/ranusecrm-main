@@ -16,7 +16,7 @@ const TIPOS_BLOQUE = [
   { id: 'zona', label: 'Zona' },
   { id: 'detalle', label: 'Detalle' },
   { id: 'galeria', label: 'Galería de renders' },
-  { id: 'equipo', label: 'Equipo (de Listados)' },
+  { id: 'equipo', label: 'Equipamiento y materiales' },
 ];
 const ETIQUETAS = [
   { id: 'incluido', label: 'Incluido' },
@@ -545,6 +545,103 @@ function GaleriaBloque({ projectId, b, guardar }) {
   );
 }
 
+// Equipamiento y materiales de un capítulo: se eligen, se crean y se ordenan aquí mismo.
+// Todo vive en Listados (lo que se crea aquí aparece allí) y el bloque solo guarda cuáles se enseñan y en qué orden:
+// elementos = ['#sel', 'e:<id de equipo>', 'm:<id de material>', ...]. Sin '#sel' el bloque funciona como siempre
+// (todos los equipos con foto de Listados), así que los proyectos antiguos no cambian.
+function EquipoCapitulo({ projectId, b, guardar }) {
+  const [eq, setEq] = useState([]);
+  const [mat, setMat] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [aviso, setAviso] = useState('');
+  const [nuevo, setNuevo] = useState(null);
+  const [anadir, setAnadir] = useState('');
+  const recargar = useCallback(async () => {
+    try {
+      const [a, m] = await Promise.all([api.get(`/client-projects/${projectId}/equipment`), api.get(`/client-projects/${projectId}/materials`)]);
+      setEq(a.data.equipment || []); setMat(m.data.materials || []);
+    } catch { setAviso('No se pudo cargar Listados'); }
+    finally { setCargando(false); }
+  }, [projectId]);
+  useEffect(() => { recargar(); }, [recargar]);
+
+  const todos = [...eq.map(e => ({ ...e, _id: 'e:' + e.id, _t: 'Equipo' })), ...mat.map(m => ({ ...m, _id: 'm:' + m.id, _t: 'Material' }))];
+  const modoSel = (b.elementos || []).includes('#sel');
+  const ids = (b.elementos || []).filter(x => /^[em]:/.test(x));
+  const elegidos = ids.map(id => todos.find(t => t._id === id)).filter(Boolean);
+  const libres = todos.filter(t => !ids.includes(t._id));
+  const poner = (lista) => guardar({ elementos: ['#sel', ...lista] });
+  const mover = (i, d) => { const n = [...ids]; const j = i + d; if (j < 0 || j >= n.length) return; [n[i], n[j]] = [n[j], n[i]]; poner(n); };
+  const quitar = (id) => poner(ids.filter(x => x !== id));
+  const ruta = (t) => `/client-projects/${projectId}/${t._t === 'Equipo' ? 'equipment' : 'materials'}/${t.id}`;
+  const cambiar = async (t, campos) => { try { await api.put(ruta(t), campos); await recargar(); } catch (e) { setAviso(e.response?.data?.error || 'No se pudo guardar'); } };
+  const crear = async () => {
+    if (!nuevo?.name?.trim()) { setAviso('Ponle un nombre'); return; }
+    setAviso('');
+    try {
+      const esEq = nuevo.tipo === 'Equipo';
+      const { data } = await api.post(`/client-projects/${projectId}/${esEq ? 'equipment' : 'materials'}`, { name: nuevo.name, brand: nuevo.brand || null, image_url: nuevo.image_url || null, category_type: esEq ? 'mobiliario' : 'material' });
+      const creado = esEq ? data.equipment : data.material;
+      setNuevo(null);
+      await recargar();
+      poner([...ids, (esEq ? 'e:' : 'm:') + creado.id]);
+    } catch (e) { setAviso(e.response?.data?.error || 'No se pudo crear'); }
+  };
+  const miniatura = { width: 46, height: 46, objectFit: 'contain', background: 'rgba(255,255,255,0.06)', borderRadius: 6, flex: 'none' };
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      {!modoSel && <p style={{ ...muted, color: '#f5b748', marginBottom: 6 }}>Ahora este bloque enseña todos los equipos con foto de Listados (como siempre). Elige aquí los de este capítulo y se enseñarán solo esos.</p>}
+      {cargando && <p style={muted}>Cargando Listados…</p>}
+      {modoSel && !elegidos.length && !cargando && <p style={muted}>Este capítulo no enseña ningún equipo ni material todavía.</p>}
+      {elegidos.map((t, i) => (
+        <div key={t._id} style={{ ...row, marginBottom: 6, padding: '6px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+          {t.image_url ? <img src={t.image_url} alt="" style={miniatura} /> : <div style={{ ...miniatura, display: 'grid', placeItems: 'center', ...muted }}>sin foto</div>}
+          <div style={{ flex: 1, minWidth: 150 }}>
+            <input className="ap-field-input" style={{ marginBottom: 3 }} defaultValue={t.name} onBlur={e => e.target.value.trim() && e.target.value.trim() !== t.name && cambiar(t, { name: e.target.value })} />
+            <div style={row}>
+              <input className="ap-field-input" style={{ flex: 1, minWidth: 90 }} placeholder="Marca" defaultValue={t.brand || ''} onBlur={e => (e.target.value.trim() || '') !== (t.brand || '') && cambiar(t, { brand: e.target.value })} />
+              <span style={muted}>{t._t}</span>
+            </div>
+          </div>
+          <Subir projectId={projectId} label={t.image_url ? 'Cambiar foto' : 'Subir foto'} onUrl={u => cambiar(t, { image_url: u })} />
+          <button type="button" className="ap-btn-icon" title="Subir" onClick={() => mover(i, -1)}><ChevronUp size={13} /></button>
+          <button type="button" className="ap-btn-icon" title="Bajar" onClick={() => mover(i, 1)}><ChevronDown size={13} /></button>
+          <button type="button" className="ap-btn-icon" title="Quitar de este capítulo (sigue en Listados)" onClick={() => quitar(t._id)}><X size={13} /></button>
+        </div>
+      ))}
+      <div style={{ ...row, marginTop: 6 }}>
+        <select className="ap-select" style={{ width: 'auto', maxWidth: 260 }} value={anadir} onChange={e => setAnadir(e.target.value)}>
+          <option value="">Añadir desde Listados…</option>
+          {libres.map(t => <option key={t._id} value={t._id}>{t._t}: {t.name}{t.brand ? ' · ' + t.brand : ''}</option>)}
+        </select>
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" disabled={!anadir} onClick={() => { poner([...ids, anadir]); setAnadir(''); }}><Plus size={11} /> Añadir</button>
+        {libres.some(t => t.image_url) && <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => poner([...ids, ...libres.filter(t => t.image_url).map(t => t._id)])}>Añadir todos los que tienen foto</button>}
+        {!nuevo && <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => setNuevo({ tipo: 'Equipo', name: '', brand: '', image_url: '' })}><Plus size={11} /> Crear nuevo en Listados</button>}
+      </div>
+      {nuevo && (
+        <div style={{ ...box, marginTop: 8 }}>
+          <div style={{ ...row, marginBottom: 6 }}>
+            <select className="ap-select" style={{ width: 'auto' }} value={nuevo.tipo} onChange={e => setNuevo({ ...nuevo, tipo: e.target.value })}>
+              <option>Equipo</option><option>Material</option>
+            </select>
+            <input className="ap-field-input" style={{ flex: 1, minWidth: 140 }} placeholder="Nombre (por ejemplo, Cinta de correr X2)" value={nuevo.name} onChange={e => setNuevo({ ...nuevo, name: e.target.value })} />
+            <input className="ap-field-input" style={{ flex: 1, minWidth: 100 }} placeholder="Marca" value={nuevo.brand} onChange={e => setNuevo({ ...nuevo, brand: e.target.value })} />
+          </div>
+          <div style={row}>
+            {nuevo.image_url && <img src={nuevo.image_url} alt="" style={miniatura} />}
+            <Subir projectId={projectId} label={nuevo.image_url ? 'Cambiar foto' : 'Subir foto'} onUrl={u => setNuevo(n => ({ ...n, image_url: u }))} />
+            <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={crear}>Crear y añadir a este capítulo</button>
+            <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => { setNuevo(null); setAviso(''); }}>Cancelar</button>
+          </div>
+          <p style={{ ...muted, marginTop: 4 }}>Se crea en la pestaña Listados del proyecto: allí lo podrás completar (precio, enlace, ficha…).</p>
+        </div>
+      )}
+      {aviso && <p className="ap-error" style={{ marginTop: 6 }}>{aviso}</p>}
+    </div>
+  );
+}
+
 function BloqueEditor({ projectId, b, idx, mover, llamar }) {
   const guardar = (campos) => llamar(() => api.put(`/historia/bloques/${b.id}`, campos));
   const vacio = b.tipo === 'equipo' ? false : b.tipo === 'galeria' ? !(b.elementos || []).length : (!b.texto?.trim() && !b.imagen_url);
@@ -572,7 +669,7 @@ function BloqueEditor({ projectId, b, idx, mover, llamar }) {
           onSave={v => guardar({ elementos: v.split('\n') })} />
       )}
       {b.tipo === 'galeria' && <GaleriaBloque projectId={projectId} b={b} guardar={guardar} />}
-      {b.tipo === 'equipo' && <p style={muted}>Se rellena solo con el equipamiento de la pestaña Listados (solo salen los equipos que tengan foto).</p>}
+      {b.tipo === 'equipo' && <EquipoCapitulo projectId={projectId} b={b} guardar={guardar} />}
       {b.tipo === 'plano' && <p style={{ ...muted, marginBottom: 6 }}>Sube el plano como imagen (JPG/PNG). Debajo se genera sola la leyenda con los capítulos. El PDF del plano se sube en Entregables.</p>}
       <div style={{ ...row, display: b.tipo === 'galeria' || b.tipo === 'equipo' ? 'none' : 'flex' }}>
         <Miniatura url={b.imagen_url} onQuitar={() => guardar({ imagen_url: null })} />

@@ -64,7 +64,7 @@ function velo(doc, x, y, w, h, opacidad, color = '#14110f') {
   doc.save().fillOpacity(opacidad).fillColor(color).rect(x, y, w, h).fill().restore();
 }
 
-export async function generarHistoriaPdf(res, { project, historia, moodboard, responsable, equipo = [] }) {
+export async function generarHistoriaPdf(res, { project, historia, moodboard, responsable, equipo = [], seleccionables = [] }) {
   const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 0, autoFirstPage: false, info: { Title: `${project.project_name} — Proyecto creativo`, Author: 'Ranuse Design' } });
   doc.pipe(res);
 
@@ -90,6 +90,7 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
     c.servicios.forEach(s => s.imagen_url && urls.add(s.imagen_url));
   });
   equipo.slice(0, 8).forEach(e => e.image_url && urls.add(e.image_url));
+  seleccionables.forEach(e => e.image_url && urls.add(e.image_url));
   const lista = [...urls];
   const buffers = await Promise.all(lista.map(descargarImagen));
   const img = (url) => (url ? buffers[lista.indexOf(url)] || null : null);
@@ -218,7 +219,12 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
         resto.forEach((u, k) => cubrir(doc, img(u), M + k * (wf + gap), y + 262, wf, 140));
         y = H;
       } else if (g.tipo === 'equipo') {
-        const b = g.items[0]; const lista = equipo.filter(e => e.image_url).slice(0, 8); if (!lista.length) continue;
+        const b = g.items[0];
+        // «#sel»: solo lo elegido para este capítulo, en su orden; sin él, todos los equipos con foto (como siempre)
+        const lista = (b.elementos || []).includes('#sel')
+          ? (b.elementos || []).filter(x => /^[em]:/.test(x)).map(x => seleccionables.find(e => e.clave === x)).filter(e => e && e.image_url).slice(0, 8)
+          : equipo.filter(e => e.image_url).slice(0, 8);
+        if (!lista.length) continue;
         paginaContenido();
         doc.font('Helvetica-Bold').fontSize(8).fillColor(BEIGE_D).text((b.titulo || 'LO QUE TENDRÁS A MANO').toUpperCase(), M, y, { characterSpacing: 2.5, lineBreak: false });
         y += 24; const cols = 4; const gap = 14; const wc = (W - 2 * M - gap * (cols - 1)) / cols;
