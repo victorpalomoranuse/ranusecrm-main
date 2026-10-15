@@ -234,6 +234,8 @@ function Bloques({ bloques, capitulos, equipo, materiales }) {
 
 const PARRAFOS = new RegExp(String.fromCharCode(10) + '[ \t]*' + String.fromCharCode(10));
 export function StorytellingPortal({ project, dossier, code }) {
+  // Planos subidos desde la herramienta (dossier de ejecución, láminas): se enseñan en «De la historia a la obra»
+  const docsTecnicos = (project.documents || []).filter(d => d.doc_type === 'plano');
   const historia = project.historia;
   const capitulos = historia.capitulos;
   const moodboard = project.moodboard || {};
@@ -429,6 +431,12 @@ export function StorytellingPortal({ project, dossier, code }) {
         <h2 className="sp-rv">De la historia a la obra</h2>
         <p className="sp-cta-t sp-rv">Con la experiencia diseñada, nos ocupamos de que se construya exactamente así: documentación técnica, proveedores, partidas y acompañamiento.</p>
         <div className="sp-s2 sp-rv"><div>Documentación técnica y especificaciones</div><div>Proveedores y partidas</div><div>Acompañamiento en obra</div></div>
+        {docsTecnicos.length > 0 && (
+          <div className="sp-docs-tec sp-rv">
+            <p>Documentación técnica de tu proyecto</p>
+            {docsTecnicos.map(d => <a key={d.id} href={d.url} target="_blank" rel="noopener noreferrer">{d.name || 'Documento'} <span>Descargar →</span></a>)}
+          </div>
+        )}
         <a className="sp-btn sp-rv" href={hrefEjecucion} target={project.responsible_email ? undefined : '_blank'} rel="noopener noreferrer">Quiero pasar a la ejecución</a>
       </section>
       <footer className="sp-footer">Ranuse Design</footer>

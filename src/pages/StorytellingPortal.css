@@ -171,3 +171,9 @@
 .sp-paso-im figure{margin:0}
 .sp-paso-im figcaption{font-size:.66rem;letter-spacing:.22em;text-transform:uppercase;color:var(--beige-d);text-align:center;margin-top:10px}
 @media (max-width:760px){.sp-paso-im--2{grid-template-columns:1fr}}
+
+.sp-docs-tec{max-width:560px;margin:34px auto 0;text-align:left}
+.sp-docs-tec p{font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:#b8aca0;margin:0 0 10px}
+.sp-docs-tec a{display:flex;justify-content:space-between;gap:14px;padding:13px 16px;margin-bottom:8px;border:1px solid #4a433c;border-radius:10px;color:#fff;text-decoration:none;font-size:.88rem}
+.sp-docs-tec a:hover{border-color:#b8aca0}
+.sp-docs-tec a span{color:#b8aca0;white-space:nowrap}
