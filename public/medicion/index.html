@@ -6544,7 +6544,7 @@ function abrirLaminas(modo){
     var lst=m.querySelector('#lam-list');if(lst){var sc=lst.scrollTop;lst.innerHTML=lamLista(fila);lst.scrollTop=sc}
   }
   m.addEventListener('change',guarda);
-  function marca(v){[].forEach.call(m.querySelectorAll('input[data-lam]'),function(c){c.checked=v});guarda()}
+  function marca(v){[].forEach.call(m.querySelectorAll('input[data-lam]'),function(c){c.checked=v&&c.getAttribute('data-v')&&!c.getAttribute('data-x')?false:v});guarda()} /* «Todas» marca las que tienen contenido; las vacías hay que marcarlas a propósito */
   document.getElementById('lam-t').addEventListener('click',function(){marca(true)});
   document.getElementById('lam-n').addEventListener('click',function(){marca(false)});
   document.getElementById('lam-d').addEventListener('click',function(){guarda();m.remove();if(modo==='subir')subirPdfCrm('all');else exportPDF('all')});
