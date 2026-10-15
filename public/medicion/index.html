@@ -2671,13 +2671,13 @@ function selDims(C,px,w,view){
       });
       cortes.sort(function(p,q){return p.s-q.s});
       if(cortes.length){
-        /* por puntos (eje de muro a eje de muro): no se cuenta lo que se solapa en las uniones */
-        var ini=0;
+        /* de la esquina exterior a la cara del muro que llega, y de su otra cara a la otra esquina (nunca al eje) */
+        var ini=o0;
         cortes.forEach(function(c){
-          azul(P(ini,dE,-1),P(c.s,dE,-1),c.s-ini,null);
-          ini=c.s;
+          azul(P(ini,dE,-1),P(c.s-c.t/2,dE,-1),c.s-c.t/2-ini,null);
+          ini=c.s+c.t/2;
         });
-        azul(P(ini,dE,-1),P(L,dE,-1),L-ini,null);
+        azul(P(ini,dE,-1),P(o1,dE,-1),o1-ini,null);
       }else
       azul(P(o0,dE,-1),P(o1,dE,-1),shown+2*t,{wall:wl2.id,kind:'wsel',chain:!!wl2._chain,nid:null,delta:(L-clear)-2*t});
     }
@@ -3137,6 +3137,26 @@ function wallCent(view){
   return n?{x:sx/n,y:sy/n}:{x:0,y:0};
 }
 /* dir = hacia qué lado se dibuja la línea de cota: si hay una sala en ese lado, esa es la que se mide (en un tabique entre dos salas) */
+/* hueco libre de un muro entre las caras de los muros que llegan a sus extremos: la sala es el lado donde hay muro en los DOS extremos.
+   Así se mide siempre de cara interior a cara interior, aunque el muro continúe recto por un lado o haya un tabique al otro (nunca hasta el eje) */
+function spanVecinos(w,view){
+  var g=wg(w),L=g.l,nx=-g.uy,ny=g.ux,r=[{},{}];
+  st.v.walls.forEach(function(o){
+    if(o===w||o.arc||!wallVis(o,view))return;
+    [[w.a,0],[w.b,1]].forEach(function(e){
+      var far=o.a===e[0]?o.b:(o.b===e[0]?o.a:null);if(!far)return;
+      var p0=nd(e[0]),p1=nd(far),dx=p1.x-p0.x,dy=p1.y-p0.y,ln2=Math.hypot(dx,dy);if(ln2<1)return;
+      var ox=dx/ln2,oy=dy/ln2,cr=Math.abs(g.ux*oy-g.uy*ox);
+      if(cr<0.5)return; /* en línea o casi: no es una esquina */
+      var side=(ox*nx+oy*ny)>0?1:-1,red=(o.t/2)/cr;
+      if(!(r[e[1]][side]>=red))r[e[1]][side]=red;
+    });
+  });
+  var cand=[1,-1].filter(function(sd){return r[0][sd]!=null&&r[1][sd]!=null});
+  if(cand.length!==1)return null;
+  var sd=cand[0],s0=r[0][sd],s1=L-r[1][sd];
+  return s1-s0>=0.5?{s0:s0,s1:s1,lado:sd}:null;
+}
 function spanInterior(w,view,cent,dir){
   if(w._chain){ // cadena de muros acotada como uno solo: de la cara interior del primero a la del último
     var f0=w._seq[0],f1=w._seq[w._seq.length-1],sf=spanInterior(f0.w,view,cent,dir),sl=spanInterior(f1.w,view,cent,dir);
@@ -3145,6 +3165,7 @@ function spanInterior(w,view,cent,dir){
     return {s0:dF?sf.s0:LF-sf.s1,s1:oL+(dL?sl.s1:LL-sl.s0),lado:(sf.lado||1)*(dF?1:-1)};
   }
   if(!st.v||st.v.cb!=='int'||w.arc)return null;
+  var svn=spanVecinos(w,view);if(svn)return svn;
   var g=wg(w),mx=(g.a.x+g.b.x)/2,my=(g.a.y+g.b.y)/2,nx=-g.uy,ny=g.ux,sc=(cent.x-mx)*nx+(cent.y-my)*ny,best=null,bsc=-1;
   roomFaces(view).forEach(function(f){
     f.edges.forEach(function(e,i){
