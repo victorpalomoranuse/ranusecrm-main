@@ -3659,7 +3659,10 @@ function commitDimEd(){
       try{applyField('adj:'+nidC+':'+HW.id,String(eje),false,true)}finally{st.v.cb=cb0}
       return;
     }
-    if(!(st.sel&&st.sel.t==='wall'&&st.sel.id===h.wall))st.sel={t:'wall',id:h.wall}; /* la cota total de un muro sin seleccionar: se selecciona y se cambia */
+    if(h.nid){ /* cota lateral azul: la mueve el muro que está seleccionado (el que llega a ese punto), nunca el muro de la propia cota */
+      var selN=st.sel&&st.sel.t==='wall'?wl(st.sel.id):null;
+      if(!selN||selN.id===h.wall||(selN.a!==h.nid&&selN.b!==h.nid)){toast('Selecciona el muro que quieres mover y toca esa medida');return}
+    }else if(!(st.sel&&st.sel.t==='wall'&&st.sel.id===h.wall))st.sel={t:'wall',id:h.wall}; /* la cota total de un muro sin seleccionar: se selecciona y se cambia */
     st.v.cb='ejes'; /* ya está convertido a ejes */
     try{if(h.nid)applyField('adj:'+h.nid+':'+h.wall,String(eje),false,true);else applyField('len',String(eje),false,true)}finally{st.v.cb=cb0}
     return;
