@@ -567,6 +567,8 @@ body.crm .top .brand{display:none}
         <div class="btns"><button id="b-lams" title="Elige qué láminas lleva el PDF con todas">Elegir láminas…</button><button id="b-prev">Vista previa de las láminas</button><button id="b-pdfproj" hidden>PDF con todas las plantas del proyecto</button><button id="b-prevproj" hidden>Vista previa de todas las plantas</button></div>
         <p class="note" id="crm-pdf-nota" style="margin:0 0 6px"></p><div class="btns" id="crm-pdf" hidden><button id="b-historia" title="Publica esta lámina como imagen en «Entendemos el espacio» de la historia del cliente">Publicar en la historia del cliente</button><button id="b-pdfdoc">Subir esta lámina a Documentos</button><button id="b-pdfdocall">Subir dossier a Documentos</button></div>
         <div class="btns"><button id="b-pdfcarp">Memoria de carpinterías (PDF)</button><button id="b-csvcarp">Carpinterías (CSV)</button></div>
+        <p class="note" style="margin:8px 0 4px">Para pedir precios a proveedores: todo lo del plano (equipamiento, iluminación, carpinterías, suelos, techos, paredes…) con cantidades, medidas y las columnas de precio y plazo vacías.</p>
+        <div class="btns"><button id="b-csvprecios">Listado para pedir precios (Excel / CSV)</button><button id="b-txtprecios">Copiar listado para un correo</button></div>
         <details class="addcat">
           <summary>Logo del cajetín</summary>
           <p class="note" id="logo-st"></p>
@@ -6750,6 +6752,47 @@ function carpCSV(){
   carpList().forEach(function(c){rows.push([c.tag,c.t==='door'?'Puerta':'Ventana',fmt(c.w),fmt(c.h),c.t==='win'?fmt(c.sill):'',ESTN[c.s]||c.s,c.loc,c.tip,c.mat,c.col,c.vid,c.obs,(c.w*c.h/10000).toFixed(2).replace('.',',')])});
   return '﻿'+rows.map(function(r){return r.map(function(x){x=String(x==null?'':x);return /[;"\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x}).join(';')}).join('\r\n');
 }
+/* listado para pedir precios a proveedores: lo que hay en el plano, agrupado, con cantidades y medidas y las columnas de precio vacías */
+function preciosFilas(){
+  var v=st.v,out=[],r;
+  try{r=buildResumen()}catch(e){r={}}
+  function add(grupo,cod,nombre,ref,medidas,cant,unid,obs){out.push({grupo:grupo,cod:cod||'',nombre:nombre||'',ref:ref||'',medidas:medidas||'',cant:cant,unid:unid||'ud',obs:obs||''})}
+  var tp=eqTipos().lista;
+  tp.forEach(function(t){
+    var e=t.eq,c=catById(e.cid)||{};
+    add('Equipamiento',t.cod,t.nm,e.ref||c.ref||c.referencia||c.marca||c.brand||'',e.w&&e.d?fmt(e.w)+' × '+fmt(e.d)+' cm':'',t.n,'ud','');
+  });
+  lumGroups().forEach(function(g){
+    var d=ptDef(g.k),c=g.cat||{},nm=c.n||(d?d.n:g.k);
+    var det=[c.lm?c.lm+' lm':'',c.w?c.w+' W':'',c.kel?c.kel+' K':''].filter(Boolean).join(' · ');
+    var mo=g.mo?'montaje: '+g.mo:'';
+    if(g.len>0)add('Iluminación',g.tag,nm,c.ref||'',det,r2(g.len/100),'ml',[mo,g.pf?'perfil: '+g.pf:'',g.n+' tramo'+(g.n===1?'':'s')].filter(Boolean).join(' · '));
+    else add('Iluminación',g.tag,nm,c.ref||'',det,g.n,'ud',mo);
+  });
+  (r.electricidad||[]).forEach(function(q){add('Instalación eléctrica','',q.nombre,'','',q.n,'ud','')});
+  carpList().filter(function(c){return c.s!=='dem'}).forEach(function(c){
+    add('Carpinterías',c.tag,(c.t==='door'?'Puerta':'Ventana')+(c.tip?' · '+c.tip:''),'',fmt(c.w)+' × '+fmt(c.h)+' cm'+(c.t==='win'&&c.sill?' (antepecho '+fmt(c.sill)+')':''),1,'ud',[c.mat,c.col,c.vid,c.obs,c.loc&&'en '+c.loc].filter(Boolean).join(' · '));
+  });
+  (r.suelos||[]).forEach(function(q){add('Suelos','',q.nombre,'','',r2(q.m2),'m²','')});
+  (r.techos||[]).forEach(function(q){add('Techos','',q.nombre,'','',r2(q.m2),'m²','')});
+  (r.paredes||[]).forEach(function(q){add('Acabados de paredes','',q.nombre,'','',r2(q.m2),'m²','')});
+  (r.obra_a_medida||[]).forEach(function(m){add('Obra a medida',m.codigo,m.nombre,'',fmt(m.largo_cm)+' × '+fmt(m.fondo_cm)+' × '+fmt(m.alto_cm)+' cm',1,'ud',m.tipo+' · '+m.ejecuta)});
+  (r.calidades||[]).forEach(function(c){add('Calidades',c.sala,c.producto,c.marca,c.acabado,c.cantidad||1,'ud',[c.categoria,c.nota].filter(Boolean).join(' · '))});
+  return out;
+}
+function preciosCSV(){
+  var rows=[['Partida','Código','Descripción','Referencia / marca','Medidas / detalle','Cantidad','Unidad','Observaciones','Precio unitario (€)','Total (€)','Plazo de entrega']];
+  preciosFilas().forEach(function(f){rows.push([f.grupo,f.cod,f.nombre,f.ref,f.medidas,String(f.cant).replace('.',','),f.unid,f.obs,'','',''])});
+  return '﻿'+rows.map(function(r){return r.map(function(x){x=String(x==null?'':x);return /[;"\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x}).join(';')}).join('\r\n');
+}
+function preciosTexto(){
+  var fs=preciosFilas(),g='',out=['Solicitud de precio','Por favor, indicadnos precio unitario, total y plazo de entrega de lo siguiente:',''];
+  fs.forEach(function(f){
+    if(f.grupo!==g){g=f.grupo;out.push('',g.toUpperCase())}
+    out.push('- '+(f.cod?f.cod+' · ':'')+f.nombre+(f.ref?' ('+f.ref+')':'')+(f.medidas?' · '+f.medidas:'')+' — '+String(f.cant).replace('.',',')+' '+f.unid+(f.obs?' · '+f.obs:''));
+  });
+  return out.join('\n');
+}
 function carpPlan(o){
   var items=carpList();if(!items.length)return [];
   var A3=o.paper!=='A4',f=A3?1:0.76,PH=A3?297:210;
@@ -8324,6 +8367,12 @@ $('b-pdfdoc').addEventListener('click',function(){subirPdfCrm('view')});
 $('b-historia').addEventListener('click',publicarHistoria);
 $('b-pdfdocall').addEventListener('click',function(){abrirLaminas('subir')});
 $('b-pdfcarp').addEventListener('click',function(){if(!st.v.ops.length){toast('Aún no hay puertas ni ventanas');return}exportPDF('carp')});
+$('b-csvprecios').addEventListener('click',function(){if(!preciosFilas().length){toast('Aún no hay equipamiento ni nada que listar en el plano');return}saveFile(slug()+'-listado-precios.csv',preciosCSV(),'CSV')});
+$('b-txtprecios').addEventListener('click',function(){
+  if(!preciosFilas().length){toast('Aún no hay nada que listar en el plano');return}
+  var t=preciosTexto();
+  try{navigator.clipboard.writeText(t).then(function(){toast('Listado copiado: pégalo en el correo')},function(){toast('No se pudo copiar')})}catch(e){toast('No se pudo copiar')}
+});
 $('b-csvcarp').addEventListener('click',function(){if(!st.v.ops.length){toast('Aún no hay puertas ni ventanas');return}saveFile(slug()+'-carpinterias.csv',carpCSV(),'CSV')});
 $('x-logo').addEventListener('change',function(e){loadLogoFile(e.target.files&&e.target.files[0]);e.target.value=''});
 $('tx-f').addEventListener('change',function(e){
