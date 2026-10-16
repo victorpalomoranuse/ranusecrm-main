@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { History, Plus, Trash2 } from 'lucide-react';
+import { History, Plus, Trash2, Pencil, Search } from 'lucide-react';
 import api from '../services/api';
 
 // Conversaciones guardadas de un asistente de IA. Cada persona ve solo las
@@ -10,13 +10,14 @@ export function useConversaciones(asistente) {
   const [lista, setLista] = useState([]);
   const [convId, setConvId] = useState(null);
   const [errorConv, setErrorConv] = useState('');
+  const [q, setQ] = useState('');
 
   const cargar = useCallback(() => {
-    api.get('/ia-conversaciones', { params: { asistente } })
+    api.get('/ia-conversaciones', { params: { asistente, q: q.trim() || undefined } })
       .then(r => { setLista(r.data.conversaciones || []); setErrorConv(''); })
       .catch(() => setErrorConv('No se pudieron cargar las conversaciones guardadas'));
-  }, [asistente]);
-  useEffect(() => { cargar(); }, [cargar]);
+  }, [asistente, q]);
+  useEffect(() => { const t = setTimeout(cargar, q ? 300 : 0); return () => clearTimeout(t); }, [cargar, q]);
 
   // Guarda la conversación (crea o actualiza) y devuelve los mensajes con los adjuntos ya como enlaces
   const guardar = async (mensajes) => {
@@ -38,14 +39,18 @@ export function useConversaciones(asistente) {
     if (id === convId) setConvId(null);
     cargar();
   };
-  return { lista, convId, guardar, abrir, nueva, borrar, errorConv };
+  const renombrar = async (id, titulo) => {
+    try { await api.patch(`/ia-conversaciones/${id}`, { titulo }); cargar(); }
+    catch { setErrorConv('No se pudo poner el nombre'); }
+  };
+  return { lista, convId, guardar, abrir, nueva, borrar, errorConv, q, setQ, renombrar };
 }
 
 const fmt = (iso) => new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 export function PanelConversaciones({ conv, onAbrir, onNueva, disabled }) {
   const [abierto, setAbierto] = useState(false);
-  const { lista, convId, borrar, errorConv } = conv;
+  const { lista, convId, borrar, errorConv, q, setQ, renombrar } = conv;
 
   return (
     <div style={{ marginBottom: '0.75rem' }}>
@@ -60,14 +65,20 @@ export function PanelConversaciones({ conv, onAbrir, onNueva, disabled }) {
       </div>
       {errorConv && <p className="ap-error" style={{ marginTop: 6 }}>{errorConv}</p>}
       {abierto && (
-        <div style={{ marginTop: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, maxHeight: 280, overflowY: 'auto' }}>
-          {lista.length === 0 && <p style={{ margin: 0, padding: '0.8rem 1rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>Todavía no hay conversaciones guardadas. Se guardan solas en cuanto el asistente responde.</p>}
+        <div style={{ marginTop: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, maxHeight: 320, overflowY: 'auto' }}>
+          <div style={{ position: 'sticky', top: 0, padding: '0.5rem 0.7rem', background: '#17171a', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Search size={13} style={{ opacity: 0.5 }} />
+            <input className="ap-field-input" style={{ flex: 1, margin: 0 }} placeholder="Buscar por nombre o por lo que se habló…" value={q} onChange={e => setQ(e.target.value)} />
+            {q && <button type="button" className="ap-btn-icon" title="Borrar búsqueda" onClick={() => setQ('')}>×</button>}
+          </div>
+          {lista.length === 0 && <p style={{ margin: 0, padding: '0.8rem 1rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>{q ? 'Ninguna conversación coincide con esa búsqueda.' : 'Todavía no hay conversaciones guardadas. Se guardan solas en cuanto el asistente responde.'}</p>}
           {lista.map(c => (
             <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.55rem 0.9rem', borderTop: '1px solid rgba(255,255,255,0.05)', background: c.id === convId ? 'rgba(186,175,165,0.14)' : 'transparent' }}>
               <button type="button" onClick={() => { setAbierto(false); onAbrir(c.id); }} disabled={disabled} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, minWidth: 0 }}>
                 <div style={{ fontSize: '0.84rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.titulo || 'Conversación'}</div>
                 <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)' }}>{fmt(c.updated_at)}</div>
               </button>
+              <button type="button" className="ap-btn-icon" title="Ponerle nombre" onClick={() => { const n = window.prompt('Nombre de la conversación (déjalo vacío para volver al automático)', (c.titulo || '').replace(/^✎\s*/, '')); if (n !== null) renombrar(c.id, n); }}><Pencil size={13} /></button>
               <button type="button" className="ap-btn-icon" title="Borrar conversación" onClick={() => window.confirm('¿Borrar esta conversación?') && borrar(c.id)}><Trash2 size={13} /></button>
             </div>
           ))}

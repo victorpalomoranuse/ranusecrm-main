@@ -38,6 +38,8 @@ async function procesarAdjuntos(mensajes, userId) {
   return salida;
 }
 
+const MARCA = '✎ ';
+const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const textoDe = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? (c.find(b => b.type === 'text')?.text || '') : '');
 
 // Título automático: @usuario de Instagram si sale + primeras palabras de lo que se pidió
@@ -54,6 +56,14 @@ router.get('/', async (req, res) => {
   try {
     const asistente = ASISTENTES.includes(req.query.asistente) ? req.query.asistente : null;
     if (!asistente) return res.status(400).json({ error: 'asistente no válido' });
+    const q = norm(req.query.q).trim();
+    if (q) { // búsqueda: en el nombre y en todo lo que se habló (también lo que dijo la IA)
+      const { data, error } = await supabase.from('ia_conversaciones').select('id, titulo, updated_at, mensajes').eq('user_id', req.user.id).eq('asistente', asistente).order('updated_at', { ascending: false }).limit(300);
+      if (error) throw error;
+      const hallados = (data || []).filter(c => norm(c.titulo).includes(q) || (c.mensajes || []).some(m => norm(typeof m.content === 'string' ? m.content : Array.isArray(m.content) ? m.content.filter(b => b.type === 'text').map(b => b.text).join(' ') : '').includes(q)))
+        .slice(0, 60).map(({ id, titulo, updated_at }) => ({ id, titulo, updated_at }));
+      return res.json({ conversaciones: hallados });
+    }
     const { data, error } = await supabase.from('ia_conversaciones').select('id, titulo, updated_at').eq('user_id', req.user.id).eq('asistente', asistente).order('updated_at', { ascending: false }).limit(60);
     if (error) throw error;
     res.json({ conversaciones: data });
@@ -78,7 +88,9 @@ router.put('/', async (req, res) => {
     const titulo = tituloDe(limpios);
     const ahora = new Date().toISOString();
     if (id) {
-      const { data, error } = await supabase.from('ia_conversaciones').update({ mensajes: limpios, titulo, updated_at: ahora }).eq('id', id).eq('user_id', req.user.id).select('id, titulo').maybeSingle();
+      const { data: previa } = await supabase.from('ia_conversaciones').select('titulo').eq('id', id).eq('user_id', req.user.id).maybeSingle();
+      const tituloFinal = previa?.titulo?.startsWith(MARCA) ? previa.titulo : titulo; // si le pusiste nombre, se queda
+      const { data, error } = await supabase.from('ia_conversaciones').update({ mensajes: limpios, titulo: tituloFinal, updated_at: ahora }).eq('id', id).eq('user_id', req.user.id).select('id, titulo').maybeSingle();
       if (error) throw error;
       if (data) return res.json({ id: data.id, titulo: data.titulo, mensajes: limpios });
     }
@@ -86,6 +98,24 @@ router.put('/', async (req, res) => {
     if (error) throw error;
     res.json({ id: data.id, titulo: data.titulo, mensajes: limpios });
   } catch (e) { fail(res, e, e.message || 'Error al guardar la conversación'); }
+});
+
+// Poner nombre a una conversación (se queda aunque la conversación siga; si lo dejas vacío vuelve el título automático)
+router.patch('/:id', async (req, res) => {
+  try {
+    const nombre = String(req.body?.titulo || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    let titulo;
+    if (nombre) titulo = MARCA + nombre.replace(/^✎\s*/, '');
+    else {
+      const { data: c } = await supabase.from('ia_conversaciones').select('mensajes').eq('id', req.params.id).eq('user_id', req.user.id).maybeSingle();
+      if (!c) return res.status(404).json({ error: 'Conversación no encontrada' });
+      titulo = tituloDe(c.mensajes || []);
+    }
+    const { data, error } = await supabase.from('ia_conversaciones').update({ titulo }).eq('id', req.params.id).eq('user_id', req.user.id).select('id, titulo').maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Conversación no encontrada' });
+    res.json(data);
+  } catch (e) { fail(res, e, 'Error al poner nombre a la conversación'); }
 });
 
 router.delete('/:id', async (req, res) => {
