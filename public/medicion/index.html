@@ -894,7 +894,7 @@ var UNIDADES={cm:{f:1,d:1},mm:{f:0.1,d:0},m:{f:100,d:3}},UNIT='cm';
 try{var uu=localStorage.getItem('ranuse-unidad');if(UNIDADES[uu])UNIT=uu}catch(e){}
 function UNL(){return UNIT}
 function toU(n){var u=UNIDADES[UNIT],k=Math.pow(10,u.d+1);return Math.round(n/u.f*(UNIT==='cm'?10:UNIT==='mm'?1:1000))/(UNIT==='cm'?10:UNIT==='mm'?1:1000)}
-function fmtU(n){return UNIT==='cm'?String(Math.round(n)):String(toU(n))}
+function fmtU(n){return UNIT==='cm'?String(Math.round(n*10)/10):String(toU(n))}
 function fromU(x){return x*UNIDADES[UNIT].f}
 function m2(n){return (Math.round(n*10)/10).toFixed(1).replace('.',',')}
 function num(s){var n=parseFloat(String(s).replace(',','.'));return isFinite(n)?n:NaN}
@@ -3514,9 +3514,10 @@ function dimChain(C,px,w,mode,cent,view,tags){
     var pts=[S0];segs.forEach(function(sg){pts.push(sg.b)});
     h+=line(S0,S1,c.d1);
     pts.forEach(function(s){h+=ext(s,c.d1)+tick(s,c.d1)});
-    if(colectaDim&&!w._chain)segs.forEach(function(sg){
-      var pl=P((sg.a+sg.b)/2,c.d1+9*px+Math.abs(c.nx)*12*px);
-      dimHits.push({x:pl.x,y:pl.y+3*px,wall:w.id,kind:sg.k,opId:sg.id,base:sg.base,val:sg.b-sg.a});
+    if(colectaDim)segs.forEach(function(sg){
+      var pl=P((sg.a+sg.b)/2,c.d1+9*px+Math.abs(c.nx)*12*px),ro=w._chain?opn(sg.id):null;
+      if(w._chain&&!ro)return;
+      dimHits.push({x:pl.x,y:pl.y+3*px,wall:w._chain?ro.wall:w.id,kind:sg.k,opId:sg.id,base:sg.base,val:sg.b-sg.a,chainRef:w._chain?w:null});
     });
     segs.forEach(function(sg){h+=lab(sg.a,sg.b,c.d1,sg.t,sg.op?C.accent:C.label,sg.op?600:500)});
     h+=line(S0,S1,c.d2)+ext(S0,c.d2)+ext(S1,c.d2)+tick(S0,c.d2)+tick(S1,c.d2)+lab(S0,S1,c.d2,tt,tcol,600);
@@ -3697,8 +3698,14 @@ function commitDimEd(){
   var L=wg(w).l,old=h.val;if(Math.abs(n-old)<0.01)return;
   snap();
   if(h.kind==='op'){if(!(n>0)){toast('Escribe un ancho válido');hist.pop();return}o.w=n}
-  else if(h.kind==='gap')o.p=h.base+n;
-  else o.p=h.base-n-o.w;
+  else{
+    var pc=h.kind==='gap'?h.base+n:h.base-n-o.w; /* posición en el tramo acotado */
+    if(h.chainRef){ /* varios muros acotados juntos: se pasa a la posición dentro de su propio muro */
+      var ci=-1;h.chainRef._seq.forEach(function(it,ix){if(it.w===w)ci=ix});
+      if(ci>=0){var off=h.chainRef._offs[ci],dirC=h.chainRef._seq[ci].w.a===h.chainRef._seq[ci].ini;pc=dirC?pc-off:L-(pc-off)-o.w}
+    }
+    o.p=pc;
+  }
   o.p=f2(Math.max(0,Math.min(Math.max(0,L-o.w),o.p)));
   commit();
 }
