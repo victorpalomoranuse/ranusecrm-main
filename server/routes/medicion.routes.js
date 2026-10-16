@@ -4,6 +4,7 @@ import compression from 'compression';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
 import { cantidadesDePlano } from '../utils/planos.js';
+import { disenadorDe, proyectoEsDe } from '../utils/asignados.js';
 import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
@@ -13,6 +14,27 @@ import { urlSketchup } from './medicion-sketchup.routes.js';
 
 const router = express.Router();
 router.use(authenticateToken, requirePermission('proyectos'));
+
+// Diseñadores: solo planos de proyectos que tienen asignados (o que han creado ellos)
+async function planoPermitido(req, planoId) {
+  const emp = await disenadorDe(req);
+  if (!emp) return true;
+  const { data } = await supabase.from('mediciones').select('project_id, created_by').eq('id', planoId).maybeSingle();
+  if (!data) return true; // plano nuevo
+  if (data.created_by === req.user.id) return true;
+  return !!data.project_id && proyectoEsDe(emp, data.project_id);
+}
+router.param('id', async (req, res, next, id) => {
+  try {
+    if (!/^\/[^/]+(\/sketchup)?$/.test(req.path)) return next(); // solo /:id y /:id/sketchup (los planos)
+    if (await planoPermitido(req, id)) return next();
+    return res.status(403).json({ error: 'Este plano es de un proyecto que no tienes asignado.' });
+  } catch (e) { console.error('guardia plano:', e); return res.status(500).json({ error: 'No se pudo comprobar el acceso al plano' }); }
+});
+async function proyectoPermitido(req, projectId) {
+  const emp = await disenadorDe(req);
+  return !emp || proyectoEsDe(emp, projectId);
+}
 
 // ── Catálogo → herramienta ─────────────────────────────────────────────────
 const SIMBOLO_MAQUINA = [
@@ -287,7 +309,14 @@ router.get('/dashboard', async (req, res) => {
       ]);
       [...(usr || []), ...(emp || [])].forEach(x => { if (x?.id && x.name) nombres[x.id] = x.name; });
     }
-    const planos = (data || []).map(m => {
+    const emp = await disenadorDe(req); // diseñadores: solo planos de sus proyectos asignados o creados por ellos
+    let visibles = data || [];
+    if (emp) {
+      const { data: mios } = await supabase.from('client_projects').select('id').eq('responsible_id', emp.id);
+      const ids = new Set((mios || []).map(p => p.id));
+      visibles = visibles.filter(m => (m.project_id && ids.has(m.project_id)) || m.created_by === req.user.id);
+    }
+    const planos = visibles.map(m => {
       const r = m.resumen || {};
       return {
         id: m.id, project_id: m.project_id, proyecto: m.project || null,
@@ -332,6 +361,7 @@ router.get('/', async (req, res) => {
   try {
     const { project_id } = req.query;
     if (!project_id) return res.status(400).json({ error: 'project_id requerido' });
+    if (!(await proyectoPermitido(req, project_id))) return res.status(403).json({ error: 'Este proyecto no está asignado a ti.' });
     const { data, error } = await supabase.from('mediciones').select('id, data, updated_at').eq('project_id', project_id).order('updated_at', { ascending: false }).limit(30);
     if (error) throw error;
     res.json({ mediciones: (data || []).map(m => ({ ...m.data, id: m.id, updated: new Date(m.updated_at).getTime() })) });
@@ -416,6 +446,7 @@ router.get('/cantidades', async (req, res) => {
   try {
     const { project_id, plano_id } = req.query;
     if (!project_id) return res.status(400).json({ error: 'project_id requerido' });
+    if (!(await proyectoPermitido(req, project_id))) return res.status(403).json({ error: 'Este proyecto no está asignado a ti.' });
     const { resumen, ...salida } = await cantidadesDePlano(project_id, plano_id);
     res.json(salida);
   } catch (err) {

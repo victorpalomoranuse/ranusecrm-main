@@ -2,7 +2,9 @@ import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
 
-const requireProyectos = requirePermission('proyectos');
+import { disenadorDe, guardiaProyecto } from '../utils/asignados.js';
+// permiso de proyectos + (si es diseñador) solo los proyectos que tiene asignados
+const requireProyectos = [requirePermission('proyectos'), guardiaProyecto];
 const requireTrabajos = requirePermission('trabajos');
 import { uploadProjectRender, deleteProjectRender, uploadProjectDocument, deleteProjectDocument, uploadProjectInvoice, deleteProjectInvoice, uploadDiagnosisImage, deleteDiagnosisImage, uploadMoodboardImage, deleteMoodboardImage } from '../utils/storage.js';
 import { uploadRenderFile, uploadDocumentFile, uploadDiagnosisImageFile, uploadMoodboardImages, handleMulterError } from '../middleware/upload.middleware.js';
@@ -101,10 +103,13 @@ async function applyDefaultCategories(projectId) {
  */
 router.get('/', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const emp = await disenadorDe(req); // diseñadores: solo sus proyectos asignados
+    let query = supabase
       .from('client_projects')
       .select('*, responsible:employees!responsible_id(id, name)')
       .order('created_at', { ascending: false });
+    if (emp) query = query.eq('responsible_id', emp.id);
+    const { data, error } = await query;
 
     if (error) throw error;
     res.json({ projects: data });
