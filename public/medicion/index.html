@@ -8655,11 +8655,18 @@ function buildResumen(){
   roomFaces('suelos').forEach(function(f){
     var z=zoneIn(f,'s'),zt=zoneIn(f,'t');
     salas.push({nombre:(z&&z.nm)||(zt&&zt.nm)||'',area_m2:r2(f.area/10000),perimetro_ml:r2(f.per/100)});
-    if(z){var m=matOf('suelos',z.mat);(suelos[z.mat]=suelos[z.mat]||{id:z.mat,nombre:m.n,m2:0}).m2+=f.area/10000}
+    if(z&&!z.ex){var m=matOf('suelos',z.mat);(suelos[z.mat]=suelos[z.mat]||{id:z.mat,nombre:m.n,m2:0}).m2+=(f.area-spEn(f,'s'))/10000} /* sin lo que tapa una zona parcial (p. ej. el caucho) */
   });
   roomFaces('techos').forEach(function(f){
     var z=zoneIn(f,'t');
-    if(z){var m=matOf('techos',z.mat);(techos[z.mat]=techos[z.mat]||{id:z.mat,nombre:m.n,m2:0}).m2+=f.area/10000}
+    if(z&&!z.ex){var m=matOf('techos',z.mat);(techos[z.mat]=techos[z.mat]||{id:z.mat,nombre:m.n,m2:0}).m2+=(f.area-spEn(f,'t'))/10000}
+  });
+  /* zonas parciales (un trozo de la sala con otro material, como el caucho): también cuentan */
+  (v.sp||[]).forEach(function(r){
+    if(!r.mat||r.ex)return;
+    var dst=r.k==='s'?suelos:r.k==='t'?techos:null;if(!dst)return;
+    var vw=r.k==='s'?'suelos':'techos',m=matOf(vw,r.mat);
+    (dst[r.mat]=dst[r.mat]||{id:r.mat,nombre:m.n,m2:0}).m2+=spArea(r)/10000;
   });
   var acc={};
   v.walls.forEach(function(w){if(!wallVis(w,'acab'))return;['p','m'].forEach(function(sd){sumaAreasCara(acc,w,sd)})});
