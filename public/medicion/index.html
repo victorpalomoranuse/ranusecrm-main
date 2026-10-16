@@ -5718,7 +5718,8 @@ function applyField(key,val,adv,raw){
       if(disc<0){toast('Con esa medida el muro no llega a cortar');return}
       var r1=-pnn+Math.sqrt(disc),r2=-pnn-Math.sqrt(disc),dsel=Math.abs(r1)<Math.abs(r2)?r1:r2;
       snap();
-      if(st.side==='c'){
+      var ajg=wg(aj),perpAj=Math.abs(ajg.ux*gw.ux+ajg.uy*gw.uy)<0.3; /* la cota va a un muro que llega de lado: lo que se mueve es SIEMPRE el muro seleccionado, entero (como en Rayon) */
+      if(st.side==='c'||perpAj){
         /* baja (o sube) la pared entera: todos sus tramos en línea, no solo el que está seleccionado */
         var fr={},idsP=lineaCompleta(w);idsP.forEach(function(k){var qn=nd(k);fr[k]={x:qn.x,y:qn.y}});
         moveNodes(idsP,nx3*dsel,ny3*dsel,fr);relen(idsP);
