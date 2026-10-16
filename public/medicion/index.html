@@ -6798,11 +6798,11 @@ function carpCSV(){
 function preciosFilas(){
   var v=st.v,out=[],r;
   try{r=buildResumen()}catch(e){r={}}
-  function add(grupo,cod,nombre,ref,medidas,cant,unid,obs,foto){out.push({grupo:grupo,cod:cod||'',nombre:nombre||'',ref:ref||'',medidas:medidas||'',cant:cant,unid:unid||'ud',obs:obs||'',foto:foto||null,k:'f'+out.length})}
+  function add(grupo,cod,nombre,ref,medidas,cant,unid,obs,foto,sub){out.push({grupo:grupo,sub:sub||'',cod:cod||'',nombre:nombre||'',ref:ref||'',medidas:medidas||'',cant:cant,unid:unid||'ud',obs:obs||'',foto:foto||null,k:'f'+out.length})}
   var tp=eqTipos().lista;
   tp.forEach(function(t){
     var e=t.eq,c=catById(e.cid)||{};
-    add('Equipamiento',t.cod,t.nm,e.ref||c.ref||c.referencia||c.marca||c.brand||'',e.w&&e.d?fmt(e.w)+' × '+fmt(e.d)+' cm':'',t.n,'ud','',e.cid?{t:'min',id:e.cid}:null);
+    add('Equipamiento',t.cod,t.nm,e.ref||c.ref||c.referencia||c.marca||c.brand||'',e.w&&e.d?fmt(e.w)+' × '+fmt(e.d)+' cm':'',t.n,'ud','',e.cid?{t:'min',id:e.cid}:null,t.fam||'');
   });
   lumGroups().forEach(function(g){
     var d=ptDef(g.k),c=g.cat||{},nm=c.n||(d?d.n:g.k);
@@ -6901,18 +6901,31 @@ function preciosAbrir(){
   function seleccion(){var l=preciosFilas();return l.filter(function(f){return !preciosOff[f.nombre+'|'+f.cod]})}
   function pinta(){
     var box=document.getElementById('prc-list');if(!box)return;
-    var sc=box.scrollTop,h='',g='';
-    preciosFilas().forEach(function(f){
-      if(f.grupo!==g){g=f.grupo;h+='<div class="lab" style="margin-top:8px">'+esc(g)+'</div>'}
+    var sc=box.scrollTop,h='',g='',sb='',todas=preciosFilas();
+    function marcaDe(fn){var tot=0,on=0;todas.forEach(function(x){if(fn(x)){tot++;if(!preciosOff[x.nombre+'|'+x.cod])on++}});return on===tot?'1':on===0?'0':'2'}
+    todas.forEach(function(f){
+      if(f.grupo!==g){g=f.grupo;sb='';h+='<label class="fld chk" style="margin:10px 0 2px;display:flex;gap:8px;align-items:center"><input type="checkbox" data-g="'+esc(g)+'" data-st="'+marcaDe(function(x){return x.grupo===g})+'"><span class="lab" style="margin:0">'+esc(g)+' · toda la categoría</span></label>'}
+      if(f.sub&&f.sub!==sb){sb=f.sub;h+='<label class="fld chk" style="margin:6px 0 0 6px;display:flex;gap:8px;align-items:center"><input type="checkbox" data-g="'+esc(g)+'" data-sub="'+esc(sb)+'" data-st="'+marcaDe(function(x){return x.grupo===g&&x.sub===sb})+'"><span class="muted" style="font-size:12px;font-weight:600">'+esc(sb)+'</span></label>'}
       var ph=preciosFoto(f),on=!preciosOff[f.nombre+'|'+f.cod];
       h+='<label class="fld chk" style="margin:0;display:grid;grid-template-columns:20px 44px 1fr auto;gap:8px;align-items:center;padding:3px 0"><input type="checkbox" data-k="'+esc(f.nombre+'|'+f.cod)+'"'+(on?' checked':'')+'>'+
         (ph&&ph.uri?'<img src="'+ph.uri+'" alt="" style="width:44px;height:44px;object-fit:contain;background:#fff;border-radius:6px">':'<span style="width:44px;height:44px;border-radius:6px;background:var(--field);display:block"></span>')+
         '<span>'+(f.cod?'<b>'+esc(f.cod)+'</b> · ':'')+esc(f.nombre)+(f.medidas?' <small class="muted">· '+esc(f.medidas)+'</small>':'')+'</span><b>'+esc(String(f.cant).replace('.',','))+' '+esc(f.unid)+'</b></label>';
     });
     box.innerHTML=h;box.scrollTop=sc;
+    [].forEach.call(box.querySelectorAll('input[data-st]'),function(c){var v=c.getAttribute('data-st');c.checked=v==='1';c.indeterminate=v==='2'});
   }
   window.__preciosPinta=pinta;pinta();
-  m.addEventListener('change',function(e){var k=e.target.getAttribute&&e.target.getAttribute('data-k');if(k==null)return;if(e.target.checked)delete preciosOff[k];else preciosOff[k]=1});
+  m.addEventListener('change',function(e){
+    var gr=e.target.getAttribute&&e.target.getAttribute('data-g');
+    if(gr!=null){ /* casilla de una categoría (o subcategoría) entera */
+      var sub=e.target.getAttribute('data-sub');
+      preciosFilas().forEach(function(f){if(f.grupo===gr&&(sub==null||f.sub===sub)){if(e.target.checked)delete preciosOff[f.nombre+'|'+f.cod];else preciosOff[f.nombre+'|'+f.cod]=1}});
+      pinta();return;
+    }
+    var k=e.target.getAttribute&&e.target.getAttribute('data-k');if(k==null)return;
+    if(e.target.checked)delete preciosOff[k];else preciosOff[k]=1;
+    pinta();
+  });
   document.getElementById('prc-t').addEventListener('click',function(){preciosOff={};pinta()});
   document.getElementById('prc-n').addEventListener('click',function(){preciosFilas().forEach(function(f){preciosOff[f.nombre+'|'+f.cod]=1});pinta()});
   function conSel(fn){var l=seleccion();if(!l.length){toast('Marca al menos una línea');return}fn(l)}
