@@ -5686,8 +5686,9 @@ function applyField(key,val,adv,raw){
       var r1=-pnn+Math.sqrt(disc),r2=-pnn-Math.sqrt(disc),dsel=Math.abs(r1)<Math.abs(r2)?r1:r2;
       snap();
       if(st.side==='c'){
-        var fr={};fr[w.a]={x:nd(w.a).x,y:nd(w.a).y};fr[w.b]={x:nd(w.b).x,y:nd(w.b).y};
-        moveNodes([w.a,w.b],nx3*dsel,ny3*dsel,fr);relen([w.a,w.b]);
+        /* baja (o sube) la pared entera: todos sus tramos en línea, no solo el que está seleccionado */
+        var fr={},idsP=lineaCompleta(w);idsP.forEach(function(k){var qn=nd(k);fr[k]={x:qn.x,y:qn.y}});
+        moveNodes(idsP,nx3*dsel,ny3*dsel,fr);relen(idsP);
       }else{
         var lx=nn3.x-far.x,ly=nn3.y-far.y,ll=Math.hypot(lx,ly)||1;
         nn3.x=Math.round(far.x+lx/ll*n);nn3.y=Math.round(far.y+ly/ll*n);relen([nid]);
