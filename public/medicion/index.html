@@ -3648,6 +3648,17 @@ function commitDimEd(){
     if(!(n>0&&n<=100000)){toast('Escribe una medida válida');return}
     if(Math.abs(n-h.val)<0.01)return;
     var eje=n+h.delta,cb0=st.v.cb;
+    /* con un muro seleccionado que llega a este (en esquina o en T): la medida cambia moviendo ESE muro entero, alejándolo o acercándolo del otro extremo */
+    var selW=st.sel&&st.sel.t==='wall'?wl(st.sel.id):null,HW=wl(h.wall),nidC=null;
+    if(selW&&HW&&selW!==HW&&!h.nid){
+      var gS=wg(selW),gH=wg(HW);
+      if(Math.abs(gS.ux*gH.ux+gS.uy*gH.uy)<0.3){[HW.a,HW.b].forEach(function(id){if(id===selW.a||id===selW.b)nidC=id})}
+    }
+    if(nidC){
+      st.v.cb='ejes';
+      try{applyField('adj:'+nidC+':'+HW.id,String(eje),false,true)}finally{st.v.cb=cb0}
+      return;
+    }
     if(!(st.sel&&st.sel.t==='wall'&&st.sel.id===h.wall))st.sel={t:'wall',id:h.wall}; /* la cota total de un muro sin seleccionar: se selecciona y se cambia */
     st.v.cb='ejes'; /* ya está convertido a ejes */
     try{if(h.nid)applyField('adj:'+h.nid+':'+h.wall,String(eje),false,true);else applyField('len',String(eje),false,true)}finally{st.v.cb=cb0}
