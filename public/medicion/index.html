@@ -404,6 +404,7 @@ body.crm .top .brand{display:none}
         <button id="b-curve" aria-pressed="false" title="Muros curvos: dibuja un trazo curvo y se convierte en un arco"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18C4 10 10 4 20 4"/></svg><span class="lb">Curva</span></button>
         <button id="b-libre" aria-pressed="false" title="Por norma los muros salen a 90° (horizontales o verticales). Activa «Libre» para dibujar muros en diagonal."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19L19 5"/><path d="M5 5v14h14" opacity=".35"/></svg><span class="lb">Libre</span></button>
         <button data-tool="select" title="Seleccionar y mover"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l12 8-5.5 1.5L10 18z"/></svg><span class="lb">Seleccionar</span></button>
+        <button data-tool="brush" title="Pincel: copia las propiedades de un elemento (muro, puerta, ventana, máquina, suelo…) y las pega en otros del mismo tipo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 3l3 3-9 9-3-3z"/><path d="M9 12c-2.5 0-4 1.5-4 4 0 1.5-1 3-2 3 4 1 9 0 9-4"/></svg><span class="lb">Pincel</span></button>
         <button data-tool="door" title="Puerta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20V4h12v16"/><path d="M4 20h16"/><path d="M15 12h.01"/></svg><span class="lb">Puerta</span></button>
         <button data-tool="win" title="Ventana"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14"/><path d="M12 5v14M4 12h16"/></svg><span class="lb">Ventana</span></button>
         <button data-tool="pillar" title="Pilar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" fill="currentColor"/></svg><span class="lb">Pilar</span></button>
@@ -4375,9 +4376,33 @@ function ponerMaquina(w){
   commit();toolbar();hint();
   toast(ent.nombre+' colocada. Arrástrala para moverla; para otra, elígela de nuevo.');
 }
+var PINCEL_CLAVES={wall:['s','t','tm','h','tipo','f','fs','fx','fr'],op:['s','tip','mat','col','vid','obs'],eq:['rot','fx','fy','lock'],pil:['s'],pt:['lid','k','mo','pf','sz'],sp:['mat','sis','cl','ex'],zn:['mat','sis','cl','ex'],rc:['t','mat','sol'],mm:['k','of','luz','mat','h','d','y0']};
+var PINCEL_NOM={wall:'muro',op:'puerta/ventana',eq:'máquina',pil:'pilar',pt:'punto',sp:'zona',zn:'zona',rc:'recrecido',mm:'obra a medida'};
+function pincelElem(h){
+  var lst={wall:st.v.walls,op:st.v.ops,eq:st.v.eq,pil:st.v.pil,pt:st.v.pts,sp:st.v.sp,zn:st.v.zn,rc:st.v.rc,mm:st.v.mm}[h.t];
+  return lst?by(lst,h.id):null;
+}
+function pincelTap(w,tol){
+  var h=pick(w,tol,st.view);
+  if(!h||!PINCEL_CLAVES[h.t]){toast(st.pincel?'Toca el elemento al que quieres pegar las propiedades':'Toca el elemento del que quieres copiar las propiedades');return}
+  var q=pincelElem(h);if(!q)return;
+  if(!st.pincel||(st.pincel.t===h.t&&st.pincel.id===h.id)){
+    if(st.pincel&&st.pincel.id===h.id){st.pincel=null;st.sel=null;render();panelSel();toast('Pincel vacío: toca el elemento del que copiar');return}
+    var props={};PINCEL_CLAVES[h.t].forEach(function(k){if(q[k]!==undefined)props[k]=JSON.parse(JSON.stringify(q[k]))});
+    st.pincel={t:h.t,id:h.id,props:props,pv:q.v};st.sel=h;render();panelSel();
+    toast('Copiado de ese '+PINCEL_NOM[h.t]+'. Toca ahora los que quieras cambiar (vuelve a tocar el original para elegir otro)');return;
+  }
+  if(st.pincel.t!==h.t&&!(st.pincel.t==='sp'&&h.t==='zn')&&!(st.pincel.t==='zn'&&h.t==='sp')){toast('Ese es un '+PINCEL_NOM[h.t]+' y lo copiado es un '+PINCEL_NOM[st.pincel.t]+': toca uno del mismo tipo');return}
+  if(h.t==='pt'&&st.pincel.pv!==q.v){toast('Los puntos de iluminación y los de electricidad no se mezclan');return}
+  snap();
+  PINCEL_CLAVES[h.t].forEach(function(k){if(st.pincel.props[k]!==undefined)q[k]=JSON.parse(JSON.stringify(st.pincel.props[k]));else delete q[k]});
+  if(h.t==='wall'){if(!q.tm)aplicarTipo(q);st.v.ops.forEach(function(o){if(o.wall===q.id&&st.pincel.props.s!==undefined)o.s=st.pincel.props.s})}
+  st.sel=h;commit(false);panelSel();
+}
 function tap(w){
   st.multi=[];
   var tol=18/st.k;
+  if(st.tool==='brush'){pincelTap(w,tol);return}
   if(st.tool==='draw'&&(st.drK==='text'||st.drK==='poly'||st.drK==='zonap')){drTap(w);return}
   if((st.view==='suelos'||st.view==='techos')&&!(st.spPoly&&st.spPoly.length)){
     var dsp=null;
@@ -5107,6 +5132,7 @@ function fit(){
   render();
 }
 var HINTS={
+  brush:'Pincel: toca el elemento del que quieres copiar las propiedades (estado, grosor, tipo, acabados, material…) y luego toca los que quieras cambiar. Para elegir otro original, vuelve a tocar el primero.',
   draw:'Dibujo libre: arrastra para dibujar líneas, rectángulos, círculos, flechas, cotas y nubes; en la polilínea y el texto, toca. Tócalo con «Seleccionar» para moverlo, cambiarlo o borrarlo.',
   mm:'Toca junto a un muro para pegarle el elemento de obra a medida (mueble, panelado, retroiluminado u hornacina). Luego ajusta sus medidas en el panel.',
   pen:'Los muros salen a 90° (usa «Libre» para diagonales). Dibuja el contorno de la sala a mano alzada: se ve el muro ya recto y se endereza solo al soltar. Con «Curva» activada, un trazo curvo se convierte en un arco. Después toca cada muro y escribe su medida.',
@@ -5128,6 +5154,7 @@ function hint(){
   $('hint').textContent=t;
 }
 function toolbar(){
+  if(st.tool!=='brush')st.pincel=null;
   try{lamEtiqueta()}catch(e){}
   try{notaSubida()}catch(e){}
   var bs=$('tools').querySelectorAll('button[data-tool]');
@@ -5320,7 +5347,7 @@ function panelSel(focus){
     if(st.multi.every(function(m){return m.t==='dr'})){
       h+='<p class="note">Clic derecho sobre ellos: agrupar, crear bloque, duplicar o borrar. Las distancias a los muros se pueden escribir para colocarlos.</p><div class="btns"><button data-a="dragrupar">Agrupar</button><button data-a="drdesagrupar">Desagrupar</button><button data-a="drbloquesel">Crear bloque…</button></div>';
     }
-    h+=''+multiPropsHtml()+'<p class="note" style="margin:8px 0 2px">Girar todo el grupo alrededor de su centro:</p><div class="btns tr"><button data-a="mrot:-90" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="mrot:-45">⟲ 45°</button><button data-a="mrot:-5">⟲ 5°</button><button data-a="mrot:5">⟳ 5°</button><button data-a="mrot:45">⟳ 45°</button><button data-a="mrot:90" title="Girar 90° a la derecha">⟳ 90°</button></div><div class="btns"><button data-a="mdup">Duplicar</button><button data-a="mclear">Quitar selección</button></div><div class="btns"><button class="danger" data-a="mdel">Borrar todo</button></div>';
+    h+=''+multiPropsHtml()+'<p class="note" style="margin:8px 0 2px">Girar todo el grupo alrededor de su centro:</p><div class="btns tr"><button data-a="mrot:-90" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="mrot:-45">⟲ 45°</button><button data-a="mrot:-5">⟲ 5°</button><button data-a="mrot:5">⟳ 5°</button><button data-a="mrot:45">⟳ 45°</button><button data-a="mrot:90" title="Girar 90° a la derecha">⟳ 90°</button></div><p class="note" style="margin:8px 0 2px">Voltear (espejo) todo el grupo:</p><div class="btns tr"><button data-a="mflip:h" title="Espejo izquierda ↔ derecha">⇋ Izquierda ↔ derecha</button><button data-a="mflip:v" title="Espejo arriba ↔ abajo">⇅ Arriba ↔ abajo</button></div><div class="btns"><button data-a="mdup">Duplicar</button><button data-a="mclear">Quitar selección</button></div><div class="btns"><button class="danger" data-a="mdel">Borrar todo</button></div>';
     el.innerHTML=h;mostrarSel();return;
   }
   if(s&&s.t==='wall'&&!wl(s.id))s=st.sel=null;
@@ -5834,6 +5861,7 @@ function applyField(key,val,adv,raw){
 }
 function doAction(a,el){
   if(a.indexOf('mrot:')===0){rotarMulti(parseFloat(a.slice(5)));return}
+  if(a.indexOf('mflip:')===0){voltearMulti(a.slice(6));return}
   if(a.indexOf('mwstate:')===0||a.indexOf('mostate:')===0){
     var svm=a.split(':')[1],esW=a.charAt(1)==='w';snap();
     multiItems(esW?'wall':'op').forEach(function(q){var old=q.s;q.s=svm;if(esW)st.v.ops.forEach(function(o){if(o.wall===q.id&&o.s===old)o.s=svm})});
@@ -9146,6 +9174,44 @@ function multiEdit(t,el){
   else return;
   commit(false);panelSel();
   toast('Cambiado en '+((t.indexOf('m_op')===0?os:ws).length)+' elemento'+((t.indexOf('m_op')===0?os:ws).length===1?'':'s'));
+}
+/* voltea todo lo seleccionado: h = espejo izquierda↔derecha, v = espejo arriba↔abajo */
+function voltearMulti(eje){
+  var v=st.v,m=st.multi;if(!m||!m.length)return;
+  var nodos={},eqs=[],pils=[],pts=[],drs=[],muros=[];
+  m.forEach(function(it){
+    if(it.t==='wall'){var w=wl(it.id);if(w){nodos[w.a]=1;nodos[w.b]=1;muros.push(w)}}
+    else if(it.t==='eq'){var e=by(v.eq,it.id);if(e)eqs.push({q:e,c:pc(e)})}
+    else if(it.t==='pil'){var p=pl(it.id);if(p)pils.push({q:p,c:pc(p)})}
+    else if(it.t==='pt'){var q=by(v.pts,it.id);if(q){var linea=(q.vx&&q.vx.length>=2)||q.dx2!=null;pts.push({q:q,linea:linea,vs:(linea?ptVerts(q):[ptPos(q)]).map(function(r){return {x:r.x,y:r.y}})})}}
+    else if(it.t==='dr'){var d=by(v.dr,it.id);if(d)drs.push(d)}
+  });
+  var x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  function cuenta(x,y){x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)}
+  Object.keys(nodos).forEach(function(id){var n=nd(id);if(n)cuenta(n.x,n.y)});
+  eqs.forEach(function(o){var r=eqRect(o.q);cuenta(r.x0,r.y0);cuenta(r.x1,r.y1)});
+  pils.forEach(function(o){cuenta(o.c.x,o.c.y)});
+  pts.forEach(function(o){o.vs.forEach(function(r){cuenta(r.x,r.y)})});
+  drs.forEach(function(d){d.pts.forEach(function(r){cuenta(r.x,r.y)})});
+  if(x0>x1)return;
+  var cx=(x0+x1)/2,cy=(y0+y1)/2,H=eje==='h';
+  function Mi(p){return H?{x:2*cx-p.x,y:p.y}:{x:p.x,y:2*cy-p.y}}
+  snap();
+  eqs.forEach(function(o){o.n=Mi(o.c)});pils.forEach(function(o){o.n=Mi(o.c)});
+  pts.forEach(function(o){o.vs=o.vs.map(Mi)});
+  Object.keys(nodos).forEach(function(id){var n=nd(id);if(n){var r=Mi(n);n.x=f2(r.x);n.y=f2(r.y)}});
+  eqs.forEach(function(o){var n=nd(o.q.n);o.q.dx=f2(o.n.x-n.x);o.q.dy=f2(o.n.y-n.y);o.q.rot=((-(o.q.rot||0))%360+360)%360;if(H)o.q.fx=!o.q.fx;else o.q.fy=!o.q.fy});
+  pils.forEach(function(o){var n=nd(o.q.n);o.q.dx=f2(o.n.x-n.x);o.q.dy=f2(o.n.y-n.y)});
+  pts.forEach(function(o){if(o.linea)ptSetVerts(o.q,o.vs);else{var n=nd(o.q.n);o.q.dx=f2(o.vs[0].x-n.x);o.q.dy=f2(o.vs[0].y-n.y)}});
+  drs.forEach(function(d){d.pts=d.pts.map(function(r){var q=Mi(r);return {x:f2(q.x),y:f2(q.y)}})});
+  /* en un espejo el lado «principal» de cada muro pasa al otro: acabados por cara y hacia dónde abren las puertas */
+  muros.forEach(function(w){
+    ['f','fs','fx','fr'].forEach(function(k){if(w[k]){var a=w[k].p,b=w[k].m;if(b!=null)w[k].p=b;else delete w[k].p;if(a!=null)w[k].m=a;else delete w[k].m}});
+  });
+  var ids={};muros.forEach(function(w){ids[w.id]=1});
+  (v.ops||[]).forEach(function(o){if(ids[o.wall])o.side=o.side>=0?-1:1});
+  relen(Object.keys(nodos));
+  commit();panelSel();
 }
 function borrarMulti(){
   if(!st.multi.length)return;
