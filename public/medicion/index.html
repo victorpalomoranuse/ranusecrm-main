@@ -2793,18 +2793,30 @@ function dimW(C,px,x1,y1,x2,y2,t,col,suave,zo){
 var AZUL='#2b7cff';
 /* sin sala cerrada: el interior va de la cara del muro que llega en un extremo a la del otro (o al extremo libre); el lado es hacia donde van los muros vecinos */
 function spanAbierto(w,view){
-  var g=wg(w),s0=0,s1=g.l,lado=0,adj=[];
+  var g=wg(w),s0=0,s1=g.l,lado=0,adj=[],libre=[false,false];
   [[w.a,0],[w.b,1]].forEach(function(e){
-    var aj=adjAll(w,e[0]).filter(function(o){return wallVis(o,view)})[0];if(!aj)return;
+    var aj=adjAll(w,e[0]).filter(function(o){return wallVis(o,view)})[0];
+    if(!aj){
+      /* el extremo puede apoyarse en el cuerpo de otro muro sin que haya un punto en común: también cuenta como unido */
+      var q=nd(e[0]),host=st.v.walls.filter(function(o){
+        if(o===w||o.arc||!wallVis(o,view)||o.a===e[0]||o.b===e[0])return false;
+        var og=wg(o);return segDist(q,og.a,og.b)<o.t/2+1&&Math.abs(og.ux*g.uy-og.uy*g.ux)>0.5;
+      })[0];
+      if(host)adj.push({fin:e[1],t:host.t,dot:0});else libre[e[1]]=true;
+      return;
+    }
     var ga=wg(aj),sg=aj.a===e[0]?1:-1,dot=sg*(ga.ux*-g.uy+ga.uy*g.ux);
     adj.push({fin:e[1],t:aj.t,dot:dot});
     if(!lado&&Math.abs(dot)>0.2)lado=dot>0?1:-1;
   });
+  if(!lado){var cc=wallCent(view);lado=((cc.x-(g.a.x+g.b.x)/2)*-g.uy+(cc.y-(g.a.y+g.b.y)/2)*g.ux)>=0?1:-1}
   /* el muro vecino solo quita espacio si sale hacia el lado que se mide; si sale hacia el otro, la cota llega hasta la esquina */
   adj.forEach(function(q){
     if(lado&&Math.abs(q.dot)>0.2&&(q.dot>0?1:-1)!==lado)return;
     if(q.fin===0)s0=q.t/2;else s1=g.l-q.t/2;
   });
+  /* extremo suelto de un muro que sale de otro: la cota llega hasta el final real del muro (con su grosor), no hasta el punto */
+  if(adj.length){if(libre[1])s1=g.l+w.t/2;if(libre[0])s0=-w.t/2}
   return adj.length&&s1-s0>=0.5?{s0:s0,s1:s1,lado:lado||1}:null;
 }
 function selDims(C,px,w,view){
@@ -3332,6 +3344,8 @@ function spanInterior(w,view,cent,dir){
   if(!st.v||st.v.cb!=='int'||w.arc)return null;
   var svn=spanVecinos(w,view);if(svn)return svn;
   var g=wg(w),mx=(g.a.x+g.b.x)/2,my=(g.a.y+g.b.y)/2,nx=-g.uy,ny=g.ux,sc=(cent.x-mx)*nx+(cent.y-my)*ny,best=null,bsc=-1;
+  var sa0=spanAbierto(w,view); /* muro con un extremo suelto: la cota llega hasta su final real */
+  if(sa0&&(sa0.s1>g.l+0.5||sa0.s0<-0.5))return sa0;
   roomFaces(view).forEach(function(f){
     f.edges.forEach(function(e,i){
       if(e.w!==w)return;
