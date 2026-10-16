@@ -480,6 +480,10 @@ body.crm .top .brand{display:none}
           <label class="fld"><span>Lúmenes (por metro si es tira o carril)</span><input id="lc-lm" inputmode="decimal" placeholder="600"></label>
           <label class="fld"><span>Vatios</span><input id="lc-w" inputmode="decimal" placeholder="7"></label>
           <label class="fld"><span>Temperatura de color (K)</span><input id="lc-k" inputmode="decimal" placeholder="3000"></label>
+          <label class="fld chk"><input type="checkbox" id="lc-gen"><span>Genérico: todavía no hay producto elegido (a definir con el proveedor)</span></label>
+          <label class="fld"><span>Diámetro del agujero (mm) · empotrables</span><input id="lc-hole" inputmode="decimal" placeholder="68"></label>
+          <label class="fld"><span>Componentes (una línea cada uno)</span><textarea id="lc-comp" rows="3" placeholder="Aro: Aro empotrable blanco ref. 123&#10;Lámpara: GU10 5 W 3000 K&#10;Perfil: PF-12 aluminio&#10;Driver: 24 V 30 W" style="width:100%"></textarea></label>
+          <p class="note" style="margin:0 0 6px">Para un foco que lleva aro + bombilla, o una tira LED con su perfil y driver: escribe cada pieza en una línea y saldrán bajo el producto en la leyenda. Con la foto del producto principal basta.</p>
           <label class="fld"><span>Foto</span><input id="lc-f" type="file" accept="image/png,image/jpeg,image/webp"></label>
           <div class="btns"><button class="pri" id="lc-save">Guardar</button><button id="lc-del">Quitar</button></div>
         </details>
@@ -5052,7 +5056,7 @@ function saveLum(ent,noCloud){
 }
 function lcFill(l){
   $('lc-ref').value=l?l.ref||'':'';$('lc-n').value=l?l.n:'';$('lc-sym').value=l?l.sym:'foco';
-  $('lc-lm').value=l&&l.lm?l.lm:'';$('lc-w').value=l&&l.w?l.w:'';$('lc-k').value=l&&l.k?l.k:'';$('lc-f').value='';lcPhoto=l&&l.uri?{uri:l.uri,pw:l.pw,ph:l.ph}:null;
+  $('lc-lm').value=l&&l.lm?l.lm:'';$('lc-w').value=l&&l.w?l.w:'';$('lc-k').value=l&&l.k?l.k:'';$('lc-hole').value=l&&l.hole?l.hole:'';$('lc-gen').checked=!!(l&&l.gen);$('lc-comp').value=l&&l.comp?l.comp:'';$('lc-f').value='';lcPhoto=l&&l.uri?{uri:l.uri,pw:l.pw,ph:l.ph}:null;
 }
 $('lc-sel').addEventListener('change',function(){lcFill(lumById($('lc-sel').value))});
 $('lc-f').addEventListener('change',function(){
@@ -5061,7 +5065,7 @@ $('lc-f').addEventListener('change',function(){
 });
 $('lc-save').addEventListener('click',function(){
   var n=$('lc-n').value.trim();if(!n){toast('Escribe el nombre de la luminaria');return}
-  var id=$('lc-sel').value||('lm'+Date.now().toString(36)),ent={id:id,ref:$('lc-ref').value.trim(),n:n,sym:$('lc-sym').value,lm:num($('lc-lm').value)||0,w:num($('lc-w').value)||0,k:num($('lc-k').value)||0};
+  var id=$('lc-sel').value||('lm'+Date.now().toString(36)),ent={id:id,ref:$('lc-ref').value.trim(),n:n,sym:$('lc-sym').value,lm:num($('lc-lm').value)||0,w:num($('lc-w').value)||0,k:num($('lc-k').value)||0,gen:$('lc-gen').checked,hole:num($('lc-hole').value)||0,comp:$('lc-comp').value.trim()};
   if(lcPhoto){ent.uri=lcPhoto.uri;ent.pw=lcPhoto.pw;ent.ph=lcPhoto.ph}
   saveLum(ent);$('lc-sel').value=id;drawLum();render();panelSel();toast('Luminaria guardada');
 });
@@ -6805,12 +6809,12 @@ function preciosFilas(){
     add('Equipamiento',t.cod,t.nm,e.ref||c.ref||c.referencia||c.marca||c.brand||'',e.w&&e.d?fmt(e.w)+' × '+fmt(e.d)+' cm':'',t.n,'ud','',e.cid?{t:'min',id:e.cid}:null,t.fam||'');
   });
   lumGroups().forEach(function(g){
-    var d=ptDef(g.k),c=g.cat||{},nm=c.n||(d?d.n:g.k);
-    var det=[c.lm?c.lm+' lm':'',c.w?c.w+' W':'',c.kel?c.kel+' K':''].filter(Boolean).join(' · ');
+    var d=ptDef(g.k),c=g.cat||{},nm=(c.n?c.n+(c.gen?' (genérico)':''):(d?d.n:g.k));
+    var det=[c.hole?'Ø agujero '+c.hole+' mm':'',c.lm?c.lm+' lm':'',c.w?c.w+' W':'',c.k?c.k+' K':''].filter(Boolean).join(' · ');
     var mo=g.mo?'montaje: '+g.mo:'';
     var fl=g.lid?{t:'lum',id:g.lid}:null;
-    if(g.len>0)add('Iluminación',g.tag,nm,c.ref||'',det,r2(g.len/100),'ml',[mo,g.pf?'perfil: '+g.pf:'',g.n+' tramo'+(g.n===1?'':'s')].filter(Boolean).join(' · '),fl);
-    else add('Iluminación',g.tag,nm,c.ref||'',det,g.n,'ud',mo,fl);
+    if(g.len>0)add('Iluminación',g.tag,nm,c.ref||'',det,r2(g.len/100),'ml',[mo,g.pf?'perfil: '+g.pf:'',g.n+' tramo'+(g.n===1?'':'s'),c.comp?String(c.comp).replace(/\s*\n\s*/g,' / '):''].filter(Boolean).join(' · '),fl);
+    else add('Iluminación',g.tag,nm,c.ref||'',det,g.n,'ud',[mo,c.comp?String(c.comp).replace(/\s*\n\s*/g,' / '):''].filter(Boolean).join(' · '),fl);
   });
   (r.electricidad||[]).forEach(function(q){add('Instalación eléctrica','',q.nombre,'','',q.n,'ud','')});
   carpList().filter(function(c){return c.s!=='dem'}).forEach(function(c){
@@ -8034,7 +8038,9 @@ function sheetPage(doc,view,idx,total,o){
     var gsL=lumGroups(),totLm=0;
     if(gsL.length&&sect('Luminarias')){
       gsL.forEach(function(g){
-        var cat=g.cat,d=ptDef(g.k),rh2=12.4*f,bx=10.4*f;
+        var cat=g.cat,d=ptDef(g.k),bx=10.4*f;
+        var compL=cat&&cat.comp?String(cat.comp).split(/\n/).map(function(t){return t.trim()}).filter(Boolean).slice(0,5):[];
+        var rh2=12.4*f+compL.length*3.5*f;
         if(!room(rh2)){return}
         p.rect(xL,y+0.5*f,bx,bx,'#ffffff',LINEC,0.2);
         var im=cat&&o.lumIdx&&o.lumIdx[cat.id];
@@ -8046,14 +8052,15 @@ function sheetPage(doc,view,idx,total,o){
         else p.svg('<g transform="translate('+f2(xL+bx/2)+' '+f2(y+0.5*f+bx/2)+')">'+ptSym(g.k,lumColor(g.mo)||INK,0.5)+'</g>');
         var tx0=xL+bx+3,qty=d.lin?m2(g.len/100)+' ml':'× '+g.n;
         p.text(tx0,y+3.6*f,g.tag,body+1,{bold:true,col:INK});
-        p.text(tx0+8*f,y+3.6*f,fitTxt((cat?cat.n:d.n)+(g.mo&&(g.mo!=='techo'||lumColOn())?' · '+MONT_ALL[g.mo]:'')+(g.pf?' · '+PERFIL_CORTO[g.pf]:''),pw-(tx0-xL)-8*f-16,false,body*25.4/72),body,{col:INK});
+        p.text(tx0+8*f,y+3.6*f,fitTxt((cat?cat.n+(cat.gen?' (genérico)':''):d.n)+(g.mo&&(g.mo!=='techo'||lumColOn())?' · '+MONT_ALL[g.mo]:'')+(g.pf?' · '+PERFIL_CORTO[g.pf]:''),pw-(tx0-xL)-8*f-16,false,body*25.4/72),body,{col:INK});
         p.text(xR,y+3.6*f,qty,body,{col:INK,anchor:'end',bold:true});
         var l2='';
         if(cat&&cat.lm){var tt=d.lin?cat.lm*g.len/100:cat.lm*g.n;totLm+=tt;l2=fmt(cat.lm)+' lm'+(d.lin?'/m':' c/u')+'  ·  total '+fmt(tt)+' lm'}
         else l2=cat?'Lúmenes sin indicar':'Sin luminaria del catálogo';
         p.text(tx0,y+7.3*f,fitTxt(l2,pw-(tx0-xL),false,(body-1)*25.4/72),body-1,{col:INK});
-        var l3=cat?[cat.w?cat.w+' W':'',cat.k?cat.k+' K':'',cat.ref||''].filter(Boolean).join('  ·  '):'';
+        var l3=cat?[cat.hole?'Ø agujero '+fmt(cat.hole)+' mm':'',cat.w?cat.w+' W':'',cat.k?cat.k+' K':'',cat.gen?'producto a definir':(cat.ref||'')].filter(Boolean).join('  ·  '):'';
         if(l3)p.text(tx0,y+10.8*f,fitTxt(l3,pw-(tx0-xL),false,(body-1.4)*25.4/72),body-1.4,{col:MUTED});
+        compL.forEach(function(t,ci){p.text(tx0,y+14.4*f+ci*3.5*f,fitTxt('+ '+t,pw-(tx0-xL),false,(body-1.6)*25.4/72),body-1.6,{col:MUTED})});
         y+=rh2;
       });
       if(totLm>0&&room(rh*2)){
