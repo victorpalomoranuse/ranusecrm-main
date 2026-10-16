@@ -654,7 +654,7 @@ var TAN12=0.2126, AXDEG=8;
 
 function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
 function newVisit(){return norm({id:'v'+Date.now().toString(36),nombre:'',cliente:'',fecha:today(),altura:260,paso:80,notas:'',seq:1,nodes:[],walls:[],ops:[],pil:[],ctl:[],eq:[],pts:[],zn:[],rz:[],cn:[],updated:Date.now()})}
-function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.rc=v.rc||[];v.dr=v.dr||[];v.sp=v.sp||[];v.cal=v.cal||[];v.mm=v.mm||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];if(!v.cb||v.cbv!==2){v.cb='int';v.cbv=2} /* las cotas miden por defecto la cara interior; los planos antiguos guardados «a ejes» se pasan una vez a interior (después se respeta lo que elijas) */
+function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.rc=v.rc||[];v.dr=v.dr||[];v.sp=v.sp||[];v.cal=v.cal||[];v.mm=v.mm||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];v.cb='int';v.cbv=2; /* las medidas son SIEMPRE de cara interior a cara interior (ya no existe «a ejes de muro») */ if(false){} /* las cotas miden por defecto la cara interior; los planos antiguos guardados «a ejes» se pasan una vez a interior (después se respeta lo que elijas) */
 soldarNodos(v);try{limpiaSolapes(v)}catch(e){}(v.sp||[]).forEach(function(r){if(r.pts&&r.pts.length>3){var l=limpiaPuntosZona(r.pts);if(l.length>=3)r.pts=l}});return v}
 /* dos puntos a menos de 1,5 cm son el mismo (si no, la sala no se detecta como cerrada) */
 function limpiaPuntosZona(pts){
@@ -2830,8 +2830,8 @@ function dimW(C,px,x1,y1,x2,y2,t,col,suave,zo){
 /* muro seleccionado: sus medidas en azul sobre la propia línea (interior por dentro, exterior por fuera) y la interior de los muros que lo cortan; se tocan para cambiarlas */
 var AZUL='#2b7cff';
 /* sin sala cerrada: el interior va de la cara del muro que llega en un extremo a la del otro (o al extremo libre); el lado es hacia donde van los muros vecinos */
-function spanAbierto(w,view){
-  var g=wg(w),s0=0,s1=g.l,lado=0,adj=[],libre=[false,false];
+function spanAbierto(w,view,dir){
+  var g=wg(w),s0=0,s1=g.l,lado=0,adj=[],libre=[false,false],ladoDir=dir?(dir.nx*-g.uy+dir.ny*g.ux>=0?1:-1):0;
   [[w.a,0],[w.b,1]].forEach(function(e){
     var aj=adjAll(w,e[0]).filter(function(o){return wallVis(o,view)})[0];
     if(!aj){
@@ -2844,18 +2844,31 @@ function spanAbierto(w,view){
       return;
     }
     var ga=wg(aj),sg=aj.a===e[0]?1:-1,dot=sg*(ga.ux*-g.uy+ga.uy*g.ux);
-    adj.push({fin:e[1],t:aj.t,dot:dot});
+    /* con el lado de la cota conocido: de todos los muros que salen de este extremo, ¿hay alguno hacia ese lado? */
+    var hacia=null;
+    if(ladoDir){
+      adjAll(w,e[0]).filter(function(o){return wallVis(o,view)}).forEach(function(o){
+        var go=wg(o),so=o.a===e[0]?1:-1,d2=so*(go.ux*-g.uy+go.uy*g.ux);
+        if(d2*ladoDir>0.2&&!hacia)hacia=o;
+      });
+    }
+    adj.push({fin:e[1],t:hacia?hacia.t:aj.t,dot:dot,hacia:ladoDir?!!hacia:null});
     if(!lado&&Math.abs(dot)>0.2)lado=dot>0?1:-1;
   });
+  if(ladoDir)lado=ladoDir;
   if(!lado){var cc=wallCent(view);lado=((cc.x-(g.a.x+g.b.x)/2)*-g.uy+(cc.y-(g.a.y+g.b.y)/2)*g.ux)>=0?1:-1}
   /* el muro vecino solo quita espacio si sale hacia el lado que se mide; si sale hacia el otro, la cota llega hasta la esquina */
   adj.forEach(function(q){
-    if(lado&&Math.abs(q.dot)>0.2&&(q.dot>0?1:-1)!==lado)return;
+    if(q.hacia===false){ /* la cota va por un lado donde no sale ningún muro de este extremo: llega hasta la esquina real (la cara del otro muro) */
+      if(q.fin===0)s0=-q.t/2;else s1=g.l+q.t/2;
+      return;
+    }
+    if(lado&&q.hacia==null&&Math.abs(q.dot)>0.2&&(q.dot>0?1:-1)!==lado)return;
     if(q.fin===0)s0=q.t/2;else s1=g.l-q.t/2;
   });
   /* extremo suelto de un muro que sale de otro: la cota llega hasta el final real del muro (con su grosor), no hasta el punto */
   if(adj.length){if(libre[1])s1=g.l+w.t/2;if(libre[0])s0=-w.t/2}
-  return adj.length&&s1-s0>=0.5?{s0:s0,s1:s1,lado:lado||1}:null;
+  return adj.length&&s1-s0>=0.5?{s0:s0,s1:s1,lado:lado||1,libre:libre[0]||libre[1]}:null;
 }
 function selDims(C,px,w,view){
   var h='',cent=wallCent(view);
@@ -3382,8 +3395,8 @@ function spanInterior(w,view,cent,dir){
   if(!st.v||st.v.cb!=='int'||w.arc)return null;
   var svn=spanVecinos(w,view);if(svn)return svn;
   var g=wg(w),mx=(g.a.x+g.b.x)/2,my=(g.a.y+g.b.y)/2,nx=-g.uy,ny=g.ux,sc=(cent.x-mx)*nx+(cent.y-my)*ny,best=null,bsc=-1;
-  var sa0=spanAbierto(w,view); /* muro con un extremo suelto: la cota llega hasta su final real */
-  if(sa0&&(sa0.s1>g.l+0.5||sa0.s0<-0.5))return sa0;
+  var sa0=spanAbierto(w,view,dir); /* muro con un extremo suelto: la cota llega hasta su final real */
+  if(sa0&&sa0.libre)return sa0;
   roomFaces(view).forEach(function(f){
     f.edges.forEach(function(e,i){
       if(e.w!==w)return;
@@ -3396,7 +3409,7 @@ function spanInterior(w,view,cent,dir){
       }
     });
   });
-  return best||spanAbierto(w,view); /* sin sala cerrada: el hueco libre va de la cara del muro vecino al otro extremo */
+  return best||spanAbierto(w,view,dir); /* sin sala cerrada: el hueco libre va de la cara del muro vecino al otro extremo */
 }
 /* diferencia entre el eje del muro y su hueco libre (0 si se trabaja a ejes) */
 /* desplazamiento entre el eje del muro y el punto desde el que se miden las distancias de los huecos (igual que las cotas del plano) */
@@ -3493,7 +3506,7 @@ function dimTextPos(c,px,d){var o=d+9*px+Math.abs(c.nx)*12*px;return {x:c.mx+c.n
 function dimChain(C,px,w,mode,cent,view,tags){
   var c=dimCfg(w,mode,cent,view,px),g=c.g,L=g.l,h='',col=C.dim;
   function P(s,d){return {x:g.a.x+g.ux*s+c.nx*d,y:g.a.y+g.uy*s+c.ny*d}}
-  var sp=spanInterior(w,view,cent,{nx:c.nx,ny:c.ny}),S0=sp?Math.max(0,sp.s0):0,S1=sp?Math.min(L+80,sp.s1):L,esInt=!!sp;
+  var sp=spanInterior(w,view,cent,{nx:c.nx,ny:c.ny}),S0=sp?Math.max(-w.t,sp.s0):0,S1=sp?Math.min(L+80,sp.s1):L,esInt=!!sp;
   function ext(s,d){var a=P(s,esInt?-w.t/2:w.t/2+3*px),b=P(s,d+4*px);return ln(a.x,a.y,b.x,b.y,col,0.7*px)}
   function tick(s,d){var p=P(s,d),tx=(g.ux+c.nx)/Math.SQRT2*3*px,ty=(g.uy+c.ny)/Math.SQRT2*3*px;return ln(p.x-tx,p.y-ty,p.x+tx,p.y+ty,col,1*px)}
   function line(s0,s1,d){var a=P(s0,d),b=P(s1,d);return ln(a.x,a.y,b.x,b.y,col,0.75*px)}
@@ -3555,13 +3568,13 @@ function placeQE(){
 function placeQBase(){
   var b=$('qbase');if(!b)return;
   if(qe.hidden){b.hidden=true;return}
-  b.hidden=false;b.textContent='Medida: '+(st.v.cb==='int'?'cara interior (hueco libre)':'a ejes de muro')+'  ⇄';
+  b.hidden=false;b.textContent='Medida: cara interior (hueco libre)';
   b.style.left=Math.max(90,Math.min(W-90,parseFloat(qe.style.left)||0))+'px';b.style.top=Math.max(34,(parseFloat(qe.style.top)||0)-22)+'px';
 }
 $('qbase').addEventListener('pointerdown',function(e){e.preventDefault()});
 $('qbase').addEventListener('click',function(e){
-  e.preventDefault();snap();st.v.cb=st.v.cb==='int'?'ejes':'int';commit(false);toolbar();placeQBase();
-  toast(st.v.cb==='int'?'Las medidas que escribas serán de cara interior a cara interior':'Las medidas que escribas serán a ejes de muro');
+  e.preventDefault();
+  toast('Las medidas que escribas son de cara interior a cara interior');
   try{qe.focus()}catch(_){}
 });
 var qaI=$('qa'),qbI=$('qb'),qa2I=$('qa2'),qb2I=$('qb2'),latIn=[qaI,qa2I,qbI,qb2I],latAct=null;
@@ -5177,8 +5190,7 @@ function toolbar(){
   for(var j=0;j<vs.length;j++){var vk=vs[j].getAttribute('data-view');vs[j].className=(vk==='tutorial'?(document.getElementById('tuto')&&!document.getElementById('tuto').hidden):vk===st.view)?'on':''}
   var L=[['ex','Existente'],['dem','Demoler'],['new','Nuevo']];
   $('defstate').innerHTML=L.map(function(x){return '<button data-a="defstate" data-s="'+x[0]+'" aria-pressed="'+(st.defState===x[0])+'">'+x[1]+'</button>'}).join('');
-  var DB=[['ejes','A ejes de muro'],['int','Cara interior']];
-  $('dimbase').innerHTML=DB.map(function(x){return '<button data-a="dimbase" data-s="'+x[0]+'" aria-pressed="'+((st.v.cb||'ejes')===x[0])+'">'+x[1]+'</button>'}).join('');
+  $('dimbase').innerHTML='<span class="note" style="margin:0">Siempre de cara interior a cara interior (hueco libre)</span>';
   var DL=[['simple','Sencillas'],['ext','Exterior'],['int','Interior'],['dob','Doble']];
   $('dimsel').innerHTML=DL.map(function(x){return '<button data-a="dims" data-s="'+x[0]+'" aria-pressed="'+(st.dims===x[0])+'">'+x[1]+'</button>'}).join('');
   $('t-pt').hidden=!(st.view==='ilum'||st.view==='elec');
