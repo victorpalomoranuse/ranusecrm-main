@@ -2669,10 +2669,28 @@ function sideNames(w){
   if(Math.abs(g.ux)>=Math.abs(g.uy))return g.a.x<=g.b.x?{a:'Izquierda',b:'Derecha'}:{a:'Derecha',b:'Izquierda'};
   return g.a.y<=g.b.y?{a:'Arriba',b:'Abajo'}:{a:'Abajo',b:'Arriba'};
 }
+function lineaCompleta(w){
+  var g=wg(w),ids={},cola=[w.a,w.b],todos=st.v.walls;
+  ids[w.a]=1;ids[w.b]=1;
+  while(cola.length){
+    var nid=cola.pop();
+    todos.forEach(function(o){
+      if(o.id===w.id||o.arc||(o.a!==nid&&o.b!==nid))return;
+      var og=wg(o);
+      if(!og.l||Math.abs(og.ux*g.uy-og.uy*g.ux)>0.02)return; /* solo los que siguen en línea recta */
+      var otro=o.a===nid?o.b:o.a;
+      if(ids[otro])return;
+      var q=nd(otro);if(!q)return;
+      if(Math.abs((q.x-g.a.x)*g.uy-(q.y-g.a.y)*g.ux)>2)return;
+      ids[otro]=1;cola.push(otro);
+    });
+  }
+  return Object.keys(ids);
+}
 function slideEnd(w,nodeId,delta,moved){
   var g=wg(w),sgn=nodeId===w.b?1:-1,dx=g.ux*sgn*delta,dy=g.uy*sgn*delta;
   var adj=adjOf(w,nodeId),ids=[nodeId];
-  if(adj){var ag=wg(adj);if(Math.abs(ag.ux*g.ux+ag.uy*g.uy)<0.3)ids=[adj.a,adj.b]}
+  if(adj){var ag=wg(adj);if(Math.abs(ag.ux*g.ux+ag.uy*g.uy)<0.3)ids=lineaCompleta(adj)}
   ids.forEach(function(id){
     if(moved[id])return;moved[id]=1;
     var n=nd(id);n.x=Math.round(n.x+dx);n.y=Math.round(n.y+dy);
@@ -2685,7 +2703,7 @@ function setWallLen(w,n){
   else slideEnd(w,w.b,delta,moved);
   st.v.walls.forEach(function(o){
     if(o.id===w.id)return;
-    if((moved[o.a]||moved[o.b])&&!(moved[o.a]&&moved[o.b])&&o.m!==true)o.len=null;
+    if((moved[o.a]||moved[o.b])&&!(moved[o.a]&&moved[o.b])){if(o.m===true)o.len=Math.round(wg(o).l);else o.len=null}
   });
   w.len=n;w.m=true;
 }
@@ -3921,8 +3939,8 @@ svg.addEventListener('pointerdown',function(e){
       if(sw0&&wallVis(sw0,st.view)){
         var g0=wg(sw0);
         if(segDist(wq0,g0.a,g0.b)<Math.max(16/st.k,sw0.t/2)){
-          var from={};from[sw0.a]={x:g0.a.x,y:g0.a.y};from[sw0.b]={x:g0.b.x,y:g0.b.y};
-          snap();gesture={type:'dragWall',id:e.pointerId,w:sw0,from:from,nx:-g0.uy,ny:g0.ux,p0:wq0,moved:false,sx:p.x,sy:p.y};return;
+          var from={},idsW=lineaCompleta(sw0);idsW.forEach(function(k){var qn=nd(k);from[k]={x:qn.x,y:qn.y}});
+          snap();gesture={type:'dragWall',id:e.pointerId,w:sw0,ids:idsW,from:from,nx:-g0.uy,ny:g0.ux,p0:wq0,moved:false,sx:p.x,sy:p.y};return;
         }
       }
     }
@@ -4014,8 +4032,8 @@ svg.addEventListener('pointermove',function(e){
     if(!gesture.moved&&Math.hypot(p.x-gesture.sx,p.y-gesture.sy)<7)return;
     gesture.moved=true;closeQE();
     var wm=toW(p),dd=Math.round((wm.x-gesture.p0.x)*gesture.nx+(wm.y-gesture.p0.y)*gesture.ny);
-    moveNodes([gesture.w.a,gesture.w.b],gesture.nx*dd,gesture.ny*dd,gesture.from);
-    relen([gesture.w.a,gesture.w.b]);req();
+    moveNodes(gesture.ids,gesture.nx*dd,gesture.ny*dd,gesture.from);
+    relen(gesture.ids);req();
   }else if((gesture.type==='marquee'||gesture.type==='fzdrag'||gesture.type==='rzdrag'||gesture.type==='spdrag')&&gesture.id===e.pointerId){
     gesture.x1=p.x;gesture.y1=p.y;
     if(!gesture.moved&&Math.hypot(p.x-gesture.x0,p.y-gesture.y0)<7)return;
