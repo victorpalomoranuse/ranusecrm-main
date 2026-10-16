@@ -3520,12 +3520,12 @@ function dimChain(C,px,w,mode,cent,view,tags){
     dimHits.push({x:pT.x,y:pT.y+3*px,wall:w.id,kind:'wsel',chain:!!w._chain,nid:null,delta:L-clear,val:ttn});
   }
   if(c.ops.length){
-    var segs=[],last=S0;
+    var segs=[],last=S0,prevOp=null;
     c.ops.forEach(function(o){
       var s0=Math.max(last,Math.min(S1,o.p)),s1=Math.min(S1,o.p+o.w);
-      if(s0-last>0.5)segs.push({a:last,b:s0,t:fmtU(s0-last),op:false,k:'gap',id:o.id,base:last});
+      if(s0-last>0.5)segs.push({a:last,b:s0,t:fmtU(s0-last),op:false,k:'gap',id:o.id,base:last,prev:prevOp});
       if(s1>s0)segs.push({a:s0,b:s1,t:((tags&&tags[o.id])?tags[o.id]+' ':'')+fmtU(o.w),op:true,k:'op',id:o.id});
-      last=Math.max(last,s1);
+      last=Math.max(last,s1);prevOp=o.id;
     });
     if(S1-last>0.5)segs.push({a:last,b:S1,t:fmtU(S1-last),op:false,k:'last',id:c.ops[c.ops.length-1].id,base:S1});
     var pts=[S0];segs.forEach(function(sg){pts.push(sg.b)});
@@ -3534,7 +3534,7 @@ function dimChain(C,px,w,mode,cent,view,tags){
     if(colectaDim)segs.forEach(function(sg){
       var pl=P((sg.a+sg.b)/2,c.d1+9*px+Math.abs(c.nx)*12*px),ro=w._chain?opn(sg.id):null;
       if(w._chain&&!ro)return;
-      dimHits.push({x:pl.x,y:pl.y+3*px,wall:w._chain?ro.wall:w.id,kind:sg.k,opId:sg.id,base:sg.base,val:sg.b-sg.a,chainRef:w._chain?w:null});
+      dimHits.push({x:pl.x,y:pl.y+3*px,wall:w._chain?ro.wall:w.id,kind:sg.k,opId:sg.id,base:sg.base,val:sg.b-sg.a,prev:sg.prev||null,chainRef:w._chain?w:null});
     });
     segs.forEach(function(sg){h+=lab(sg.a,sg.b,c.d1,sg.t,sg.op?C.accent:C.label,sg.op?600:500)});
     h+=line(S0,S1,c.d2)+ext(S0,c.d2)+ext(S1,c.d2)+tick(S0,c.d2)+tick(S1,c.d2)+lab(S0,S1,c.d2,tt,tcol,600);
@@ -3727,6 +3727,15 @@ function commitDimEd(){
   var w=wl(h.wall),o=opn(h.opId);if(!w||!o)return;
   if(!(n>=0&&n<=5000)){toast('Escribe una distancia válida');return}
   var L=wg(w).l,old=h.val;if(Math.abs(n-old)<0.01)return;
+  /* la distancia entre dos puertas/ventanas: se mueve la que está seleccionada (la de antes del hueco), no la otra */
+  if(h.kind==='gap'&&h.prev&&st.sel&&st.sel.t==='op'&&st.sel.id===h.prev){
+    var pv=opn(h.prev),pw0=pv&&wl(pv.wall);
+    if(pv&&pw0){
+      var pcNew=(h.base+h.val)-n-pv.w,Lp=wg(pw0).l;
+      if(h.chainRef){var cj=-1;h.chainRef._seq.forEach(function(it,ix){if(it.w===pw0)cj=ix});if(cj>=0){var offp=h.chainRef._offs[cj],dp=h.chainRef._seq[cj].w.a===h.chainRef._seq[cj].ini;pcNew=dp?pcNew-offp:Lp-(pcNew-offp)-pv.w}}
+      snap();pv.p=f2(Math.max(0,Math.min(Math.max(0,Lp-pv.w),pcNew)));commit();return;
+    }
+  }
   snap();
   if(h.kind==='op'){if(!(n>0)){toast('Escribe un ancho válido');hist.pop();return}o.w=n}
   else{
