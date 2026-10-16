@@ -5320,7 +5320,7 @@ function panelSel(focus){
     if(st.multi.every(function(m){return m.t==='dr'})){
       h+='<p class="note">Clic derecho sobre ellos: agrupar, crear bloque, duplicar o borrar. Las distancias a los muros se pueden escribir para colocarlos.</p><div class="btns"><button data-a="dragrupar">Agrupar</button><button data-a="drdesagrupar">Desagrupar</button><button data-a="drbloquesel">Crear bloque…</button></div>';
     }
-    h+='<p class="note" style="margin:8px 0 2px">Girar todo el grupo alrededor de su centro:</p><div class="btns tr"><button data-a="mrot:-90" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="mrot:-45">⟲ 45°</button><button data-a="mrot:-5">⟲ 5°</button><button data-a="mrot:5">⟳ 5°</button><button data-a="mrot:45">⟳ 45°</button><button data-a="mrot:90" title="Girar 90° a la derecha">⟳ 90°</button></div><div class="btns"><button data-a="mdup">Duplicar</button><button data-a="mclear">Quitar selección</button></div><div class="btns"><button class="danger" data-a="mdel">Borrar todo</button></div>';
+    h+=''+multiPropsHtml()+'<p class="note" style="margin:8px 0 2px">Girar todo el grupo alrededor de su centro:</p><div class="btns tr"><button data-a="mrot:-90" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="mrot:-45">⟲ 45°</button><button data-a="mrot:-5">⟲ 5°</button><button data-a="mrot:5">⟳ 5°</button><button data-a="mrot:45">⟳ 45°</button><button data-a="mrot:90" title="Girar 90° a la derecha">⟳ 90°</button></div><div class="btns"><button data-a="mdup">Duplicar</button><button data-a="mclear">Quitar selección</button></div><div class="btns"><button class="danger" data-a="mdel">Borrar todo</button></div>';
     el.innerHTML=h;mostrarSel();return;
   }
   if(s&&s.t==='wall'&&!wl(s.id))s=st.sel=null;
@@ -5834,6 +5834,11 @@ function applyField(key,val,adv,raw){
 }
 function doAction(a,el){
   if(a.indexOf('mrot:')===0){rotarMulti(parseFloat(a.slice(5)));return}
+  if(a.indexOf('mwstate:')===0||a.indexOf('mostate:')===0){
+    var svm=a.split(':')[1],esW=a.charAt(1)==='w';snap();
+    multiItems(esW?'wall':'op').forEach(function(q){var old=q.s;q.s=svm;if(esW)st.v.ops.forEach(function(o){if(o.wall===q.id&&o.s===old)o.s=svm})});
+    commit();panelSel();return;
+  }
   if(a==='mdel'){borrarMulti();return}
   if(a==='mclear'){st.multi=[];render();panelSel();return}
   if(a==='dragrupar'){drAgrupar();return}
@@ -5960,6 +5965,7 @@ function doAction(a,el){
 $('side').addEventListener('change',function(e){
   var k=e.target.getAttribute&&e.target.getAttribute('data-f');if(k)applyField(k,e.target.value,false);
   var t=e.target.getAttribute&&e.target.getAttribute('data-t');
+  if(t&&t.indexOf('m_')===0&&st.multi&&st.multi.length){multiEdit(t,e.target);return}
   if(t==='pt_lid'&&st.sel&&st.sel.t==='pt'){
     var ql=by(st.v.pts,st.sel.id);if(!ql)return;snap();
     var li2=lumById(e.target.value);if(li2){ql.lid=li2.id;ql.k=li2.sym}else delete ql.lid;
@@ -9095,6 +9101,51 @@ function rotarMulti(deg){
   relen(Object.keys(nodos));
   commit();panelSel();
   if(pils.length&&Math.abs(Math.round(deg/90)*90-deg)>0.01)toast('Los pilares se giran de posición, pero siguen rectos (solo giran del todo en 90°)');
+}
+/* propiedades que se pueden cambiar a la vez en una selección de varios muros o varias puertas/ventanas */
+function multiItems(t){
+  var out=[];
+  (st.multi||[]).forEach(function(m){if(m.t!==t)return;var q=t==='wall'?wl(m.id):opn(m.id);if(q)out.push(q)});
+  return out;
+}
+function comun(l,f){if(!l.length)return '';var a=f(l[0]);for(var i=1;i<l.length;i++)if(f(l[i])!==a)return '';return a==null?'':a}
+function multiPropsHtml(){
+  var ws=multiItems('wall'),os=multiItems('op'),h='';
+  function segE(act,cur){var L=[['ex','Existente'],['dem','Demoler'],['new','Nuevo']];return '<div class="seg3">'+L.map(function(x){return '<button data-a="'+act+':'+x[0]+'" aria-pressed="'+(cur===x[0])+'">'+x[1]+'</button>'}).join('')+'</div>'}
+  if(ws.length){
+    var comT=comun(ws,function(w){return w.t}),comH=comun(ws,function(w){return w.h}),comTipo=comun(ws,function(w){return w.tipo||''});
+    h+='<div class="lab" style="margin-top:12px">Ajustar los '+ws.length+' muros a la vez</div>';
+    h+='<div class="lab">Estado</div>'+segE('mwstate',comun(ws,function(w){return w.s}));
+    h+='<label class="fld"><span>Grosor (cm)'+(comT===''?' · ahora varía':'')+'</span><input data-t="m_thick" inputmode="decimal" autocomplete="off" value="'+(comT===''?'':toU(comT))+'" placeholder="'+(comT===''?'varios':'')+'"></label>';
+    h+='<label class="fld"><span>Altura (cm) · vacío = altura general</span><input data-t="m_h" inputmode="decimal" autocomplete="off" value="'+(comH===''?'':toU(comH))+'" placeholder="'+fmt(wallH())+'"></label>';
+    h+='<label class="fld"><span>Tipo de muro o tabique</span><select data-t="m_tipo"><option value="">'+(comTipo===''&&ws.some(function(w){return w.tipo})?'Varios (no cambiar)':'Sin definir')+'</option>'+Object.keys(DLIB).filter(function(k){return DLIB[k].wall}).map(function(k){return '<option value="'+k+'"'+(comTipo===k?' selected':'')+'>'+esc(DLIB[k].n)+'</option>'}).join('')+'</select></label>';
+    if(st.view==='acab'||st.view==='alz'){
+      h+='<div class="lab" style="margin-top:8px">Acabado de las dos caras</div>';
+      h+='<label class="fld"><span>Acabado</span><select data-t="m_wf"><option value="">Elegir para aplicar a todos…</option>'+matsAc('acab').map(function(m){return '<option value="'+m.id+'">'+m.n+'</option>'}).join('')+'</select></label>';
+      h+=sisSelHtml('acab','','m_ws');
+      h+='<p class="note" style="margin:0 0 6px">Se aplica a las dos caras de cada muro. Para una sola cara, selecciona ese muro solo.</p>';
+    }
+  }
+  if(os.length){
+    h+='<div class="lab" style="margin-top:12px">Ajustar las '+os.length+' puertas/ventanas a la vez</div>';
+    h+='<div class="lab">Estado</div>'+segE('mostate',comun(os,function(o){return o.s}));
+    h+='<label class="fld"><span>Material</span><input data-t="m_op_mat" list="dl-mat" value="'+esc(comun(os,function(o){return o.mat||''}))+'" placeholder="Aluminio, madera, PVC…" autocomplete="off"></label>';
+    if(os.some(function(o){return o.t==='win'}))h+='<label class="fld"><span>Vidrio (ventanas)</span><input data-t="m_op_vid" list="dl-vid" value="'+esc(comun(os.filter(function(o){return o.t==='win'}),function(o){return o.vid||''}))+'" placeholder="Doble 4+16+4 bajo emisivo" autocomplete="off"></label>';
+  }
+  return h;
+}
+function multiEdit(t,el){
+  var ws=multiItems('wall'),os=multiItems('op'),v=el.value,n;
+  if(t==='m_thick'){n=fromU(num(v));if(!(n>0&&n<=300)){toast('Escribe un grosor válido');return}snap();ws.forEach(function(w){w.t=n;w.tm=true})}
+  else if(t==='m_h'){snap();if(String(v).trim()==='')ws.forEach(function(w){delete w.h});else{n=fromU(num(v));if(!(n>=50&&n<=1000)){toast('Escribe una altura entre 50 y 1000');hist.pop();return}ws.forEach(function(w){w.h=n})}}
+  else if(t==='m_tipo'){snap();ws.forEach(function(w){if(v)w.tipo=v;else delete w.tipo;delete w.tm;aplicarTipo(w)})}
+  else if(t==='m_wf'){snap();ws.forEach(function(w){w.f=w.f||{};['p','m'].forEach(function(sd){if(v)w.f[sd]=v;else delete w.f[sd]})})}
+  else if(t==='m_ws'){snap();ws.forEach(function(w){w.fs=w.fs||{};['p','m'].forEach(function(sd){if(v)w.fs[sd]=v;else delete w.fs[sd]})})}
+  else if(t==='m_op_mat'){snap();os.forEach(function(o){o.mat=v.trim()})}
+  else if(t==='m_op_vid'){snap();os.forEach(function(o){if(o.t==='win')o.vid=v.trim()})}
+  else return;
+  commit(false);panelSel();
+  toast('Cambiado en '+((t.indexOf('m_op')===0?os:ws).length)+' elemento'+((t.indexOf('m_op')===0?os:ws).length===1?'':'s'));
 }
 function borrarMulti(){
   if(!st.multi.length)return;
