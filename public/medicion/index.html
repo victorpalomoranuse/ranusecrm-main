@@ -3723,8 +3723,10 @@ function labelHit(w){
   return bd<dw?best:null;
 }
 
+/* las cotas siempre dicen lo que mide el muro dibujado: nada de «~» ni de avisos en rojo por medidas antiguas */
+function syncLens(){st.v.walls.forEach(function(w){var l=Math.round(wg(w).l);if(w.m!==true||w.len!==l){w.len=l;w.m=true}})}
 function render(){
-  ensureTx();ensureLums();
+  syncLens();ensureTx();ensureLums();
   var r=cvw.getBoundingClientRect();W=r.width;H=r.height;
   if(W<10||H<10)return;
   if(qeId)placeQE();
