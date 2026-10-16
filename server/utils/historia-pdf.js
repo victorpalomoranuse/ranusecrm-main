@@ -158,11 +158,7 @@ export async function generarHistoriaPdf(res, { project, historia, moodboard, re
   for (let ci = 0; ci < capitulos.length; ci++) {
     const c = capitulos[ci];
     const num = String(ci + 1).padStart(2, '0');
-    let render = img(c.render_url);
-    // Si el capítulo ya enseña renders más abajo, la portada va desenfocada (el render nítido se ve dentro del capítulo)
-    if (render && c.bloques.some(b => b.tipo === 'render' && b.imagen_url)) {
-      try { render = await sharp(render).resize({ width: 1400 }).blur(22).jpeg({ quality: 80 }).toBuffer(); } catch { /* si falla, se deja nítida */ }
-    }
+    const render = img(c.render_url);
 
     // Página de apertura: render a pantalla completa con el título encima
     nuevaPagina(render ? '#14110f' : PAPER);
