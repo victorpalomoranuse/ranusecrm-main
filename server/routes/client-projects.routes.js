@@ -1330,6 +1330,67 @@ router.put('/:id/phase-content/:phaseNumber', authenticateToken, requireProyecto
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * GET /api/client-projects/:id/panel
+ * Todo lo que un diseñador necesita ver de un vistazo: cómo está el espacio ahora,
+ * qué se ha pedido (cliente y equipo) y cómo va cada parte del proyecto.
+ */
+router.get('/:id/panel', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const pid = req.params.id;
+    const { data: proy, error: errP } = await supabase.from('client_projects')
+      .select('id, client_name, project_name, phase, urgency, status, tipo_proyecto, cover_image_url, created_at, notes, responsible:employees!responsible_id(id, name)')
+      .eq('id', pid).maybeSingle();
+    if (errP) throw errP;
+    if (!proy) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    const cuenta = (tabla, col = 'project_id') => supabase.from(tabla).select('id', { count: 'exact', head: true }).eq(col, pid).then(r => r.count || 0);
+    const [form, notas, tareas, planos, moodN, rendersN, docsN, equipN, matN, caps] = await Promise.all([
+      supabase.from('project_needs_forms').select('id, status, brief, client_summary, admin_notes, filled_by_name, submitted_at').eq('project_id', pid).maybeSingle().then(r => r.data),
+      supabase.from('project_notes').select('id, content, created_at').eq('project_id', pid).order('created_at', { ascending: false }).limit(8).then(r => r.data || []),
+      supabase.from('tasks').select('id, title, description, done, priority, due_date, assigned_to').eq('project_id', pid).order('done', { ascending: true }).order('due_date', { ascending: true, nullsFirst: false }).limit(30).then(r => r.data || []),
+      supabase.from('mediciones').select('id, nombre, resumen, updated_at').eq('project_id', pid).order('updated_at', { ascending: false }).limit(5).then(r => r.data || []),
+      cuenta('project_moodboard_images'), cuenta('project_renders'), cuenta('project_documents'),
+      cuenta('project_equipment_selections'), cuenta('project_material_selections'),
+      supabase.from('capitulos').select('id, titulo, render_url').eq('proyecto_id', pid).order('orden', { ascending: true }).then(r => r.data || []),
+    ]);
+    let fotos = [], medidas = [];
+    if (form?.id) {
+      const [f, m] = await Promise.all([
+        supabase.from('project_needs_form_photos').select('url, caption').eq('form_id', form.id).order('display_order', { ascending: true }).limit(12).then(r => r.data || []),
+        supabase.from('project_needs_form_measurements').select('space_name, largo, ancho, alto, notes').eq('form_id', form.id).order('display_order', { ascending: true }).then(r => r.data || []),
+      ]);
+      fotos = f; medidas = m;
+    }
+    const p0 = planos[0] || null, r = p0?.resumen || null;
+    const plano = p0 ? {
+      id: p0.id, nombre: p0.nombre || 'Sin nombre', actualizado: p0.updated_at, total: planos.length,
+      m2: r ? Math.round((r.salas || []).reduce((t, x) => t + (x.area_m2 || 0), 0) * 10) / 10 : null,
+      salas: r ? (r.salas || []).length : null, altura: r?.altura_cm || null,
+      puertas: r?.puertas ?? null, ventanas: r?.ventanas ?? null,
+      equipos: r ? (r.equipos || []).reduce((t, x) => t + (x.n || 0), 0) : null,
+      luminarias: r ? (r.luminarias || []).reduce((t, x) => t + (x.n || 0), 0) : null,
+    } : null;
+    res.json({
+      proyecto: { id: proy.id, cliente: proy.client_name, nombre: proy.project_name, fase: proy.phase, urgencia: proy.urgency, estado: proy.status, tipo: proy.tipo_proyecto, responsable: proy.responsible?.name || null, creado: proy.created_at },
+      espacio: { fotos, medidas, plano },
+      pedido: {
+        brief: form?.brief || '', resumen_cliente: form?.client_summary || '', notas_equipo: form?.admin_notes || '',
+        formulario: form ? { estado: form.status, rellenado_por: form.filled_by_name || null, enviado: form.submitted_at } : null,
+        notas: notas, tareas,
+      },
+      progreso: {
+        necesidades: { formulario: form?.status || null, fotos: fotos.length, medidas: medidas.length },
+        portada: !!proy.cover_image_url, moodboard: moodN, renders: rendersN, documentos: docsN,
+        historia: { capitulos: caps.length },
+        planos: planos.length, equipos: equipN, materiales: matN,
+      },
+    });
+  } catch (e) {
+    console.error('Error en el panel del proyecto:', e);
+    res.status(500).json({ error: 'No se pudo cargar el resumen del proyecto' });
+  }
+});
+
+/**
  * GET /api/client-projects/:id/diagnosis
  */
 router.get('/:id/diagnosis', authenticateToken, requireProyectos, async (req, res) => {

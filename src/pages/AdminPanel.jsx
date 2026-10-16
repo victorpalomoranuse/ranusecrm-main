@@ -27,6 +27,7 @@ import { SectionInicio } from './SectionInicio';
 import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { MedicionProyecto } from '../components/MedicionProyecto';
 import { TabHistoria, SelectorTipoHistoria, GuiaProyecto, EstiloMoodboard } from '../components/HistoriaEditor';
+import { ResumenProyecto } from '../components/ResumenProyecto';
 import { AgenteProyecto } from '../components/AgenteProyecto';
 import { RecetaColor } from '../components/RecetaColor';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -298,7 +299,7 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{id:'necesidades',label:'1 · Necesidades'},{id:'portada',label:'2 · Portada'},{id:'moodboard',label:'3 · Moodboard'},{id:'historia',label:'4 · Historia'},{id:'agente',label:'Asistente'},{id:'medicion',label:'Planos'},{id:'catalogo',label:'Listados'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'renders',label:'Resultado',soloSinHistoria:true},{id:'fases',label:'Categorías',soloSinHistoria:true},{id:'facturas',label:'Facturas'},{id:'trabajos',label:'Trabajos web'}];
+const MGR_TABS = [{id:'resumen',label:'Resumen'},{id:'necesidades',label:'1 · Necesidades'},{id:'portada',label:'2 · Portada'},{id:'moodboard',label:'3 · Moodboard'},{id:'historia',label:'4 · Historia'},{id:'agente',label:'Asistente'},{id:'medicion',label:'Planos'},{id:'catalogo',label:'Listados'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'renders',label:'Resultado',soloSinHistoria:true},{id:'fases',label:'Categorías',soloSinHistoria:true},{id:'facturas',label:'Facturas'},{id:'trabajos',label:'Trabajos web'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
@@ -2183,7 +2184,7 @@ function TabNecesidades({ projectId }) {
 }
 
 function ProjectManagerModal({ project, onClose }) {
-  const [tab, setTab] = useState('necesidades');
+  const [tab, setTab] = useState('resumen');
   const [descargandoMemoria, setDescargandoMemoria] = useState(false);
 
   const handleMemoria = async () => {
@@ -2246,7 +2247,8 @@ function ProjectManagerModal({ project, onClose }) {
         </div>
         <div className="ap-mgr-tabs">{MGR_TABS.map(t=>(<button key={t.id} className={`ap-mgr-tab${tab===t.id?' active':''}`} title={t.soloSinHistoria?'Solo se muestra al cliente en proyectos SIN historia':undefined} style={t.soloSinHistoria&&project.tipo_proyecto?{opacity:0.5}:undefined} onClick={()=>setTab(t.id)}>{t.label}</button>))}</div>
         <div className="ap-mgr-body">
-          <GuiaProyecto/>
+          {tab==='resumen'&&<ResumenProyecto project={project} onIr={setTab}/>}
+          {tab!=='resumen'&&<GuiaProyecto/>}
           {tab==='portada'&&<TabPortada project={project} onUpdated={(url)=>{project.cover_image_url=url;}}/>}
           {tab==='fases'&&<TabCategorias projectId={project.id}/>}
           {tab==='necesidades'&&<TabNecesidades projectId={project.id}/>}
