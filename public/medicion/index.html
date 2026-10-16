@@ -569,7 +569,7 @@ body.crm .top .brand{display:none}
         <p class="note" id="crm-pdf-nota" style="margin:0 0 6px"></p><div class="btns" id="crm-pdf" hidden><button id="b-historia" title="Publica esta lámina como imagen en «Entendemos el espacio» de la historia del cliente">Publicar en la historia del cliente</button><button id="b-pdfdoc">Subir esta lámina a Documentos</button><button id="b-pdfdocall">Subir dossier a Documentos</button></div>
         <div class="btns"><button id="b-pdfcarp">Memoria de carpinterías (PDF)</button><button id="b-csvcarp">Carpinterías (CSV)</button></div>
         <p class="note" style="margin:8px 0 4px">Para pedir precios a proveedores: todo lo del plano (equipamiento, iluminación, carpinterías, suelos, techos, paredes…) con cantidades, medidas y las columnas de precio y plazo vacías.</p>
-        <div class="btns"><button class="pri" id="b-pdfprecios">Listado para pedir precios (PDF con fotos)</button><button id="b-csvprecios">Excel / CSV</button><button id="b-txtprecios">Copiar para correo</button></div>
+        <div class="btns"><button class="pri" id="b-pdfprecios">Listado en PDF con fotos (elegir qué incluir)</button><button id="b-csvprecios">Excel / CSV</button><button id="b-txtprecios">Copiar para correo</button></div>
         <details class="addcat">
           <summary>Logo del cajetín</summary>
           <p class="note" id="logo-st"></p>
@@ -6845,25 +6845,36 @@ function preciosFoto(f){
 }
 /* PDF A4 vertical para mandar a proveedores: foto, descripción, cantidad y hueco para el precio (sin datos del cliente) */
 function buildPreciosPDF(sel){
-  var doc=new PdfDoc('Solicitud de precio'),PW=210,PH=297,mg=14,rh=27,hh=8,pages=[],cur=null,y=0,i;
+  var soloEq=sel.every(function(f){return f.grupo==='Equipamiento'});
+  var hayOtros=sel.some(function(f){return f.grupo!=='Equipamiento'});
+  var doc=new PdfDoc(soloEq?'Listado de equipamiento':'Listado'),PW=210,PH=297,mg=14,rhEq=32,rhOt=27,hh=8,y=0;
   var li=0;if(LOGO)li=doc.image(LOGO.w,LOGO.h,LOGO.rgb);
-  var cols=[['',0.15],['Descripción',0.5],['Cantidad',0.13],['Precio unitario',0.22]],W=PW-2*mg,xs=[],a=mg;
+  /* equipamiento: listado (foto grande, descripción y cantidad); el resto de partidas llevan además hueco para el precio */
+  var cols=hayOtros?[['',0.17],['Descripción',0.48],['Cantidad',0.13],['Precio unitario',0.22]]:[['',0.2],['Descripción',0.62],['Cantidad',0.18]],W=PW-2*mg,xs=[],a=mg;
   cols.forEach(function(c){xs.push(a);a+=c[1]*W});
-  var idx={},n=0;
+  var idx={};
   sel.forEach(function(f){var ph=preciosFoto(f);if(ph&&ph.rgb&&ph.w>0&&idx[f.k]==null)idx[f.k]=doc.image(ph.w,ph.h,ph.rgb)});
   var porPag=[],grp='',lista=[];
   sel.forEach(function(f){if(f.grupo!==grp){grp=f.grupo;lista.push({grupo:grp})}lista.push({f:f})});
   var alto=PH-mg-34-mg-8,usado=0,pag=[];
-  lista.forEach(function(r){var h=r.grupo?hh:rh;if(usado+h>alto&&pag.length){porPag.push(pag);pag=[];usado=0}if(r.f&&!pag.length&&porPag.length)pag.push({grupo:r.f.grupo+' (continúa)'}),usado+=hh;pag.push(r);usado+=h});
+  function altoDe(r){return r.grupo?hh:(r.f.grupo==='Equipamiento'?rhEq:rhOt)}
+  lista.forEach(function(r){
+    var h=altoDe(r);
+    if(usado+h>alto&&pag.length){porPag.push(pag);pag=[];usado=0}
+    if(r.f&&!pag.length&&porPag.length){pag.push({grupo:r.f.grupo+' (continúa)'});usado+=hh}
+    pag.push(r);usado+=h;
+  });
   if(pag.length)porPag.push(pag);
+  var titulo=soloEq?'Listado de equipamiento':'Listado del proyecto';
   porPag.forEach(function(rows,pi){
     var p=doc.page(PW,PH);
     if(li){var sc=Math.min(34/LOGO.w,9/LOGO.h);p.img(li,mg,mg,LOGO.w*sc,LOGO.h*sc)}
-    p.text(PW-mg,mg+4,('Solicitud de precio').toUpperCase(),7,{bold:true,col:MUTED,sp:0.5,anchor:'end'});
+    p.text(PW-mg,mg+4,'LISTADO',7,{bold:true,col:MUTED,sp:0.5,anchor:'end'});
     p.text(PW-mg,mg+9.5,new Date().toLocaleDateString('es-ES'),6.4,{col:MUTED,anchor:'end'});
     if(pi===0){
-      p.text(mg,mg+22,'Solicitud de precio',17,{light:true,col:INK});
-      wrapTxt('Por favor, indicadnos el precio unitario, el total y el plazo de entrega de lo siguiente (precios sin IVA, indicando si incluye transporte).',W,2.6,2).forEach(function(t,j){p.text(mg,mg+28.5+j*4.2,t,7,{col:MUTED})});
+      p.text(mg,mg+22,titulo,17,{light:true,col:INK});
+      var intro=soloEq?'Equipamiento del proyecto, con foto y cantidad de cada producto.':'Equipamiento del proyecto con foto y cantidad. En las demás partidas, por favor indicadnos precio unitario, total y plazo de entrega (sin IVA, indicando si incluye transporte).';
+      wrapTxt(intro,W,2.6,2).forEach(function(t,j){p.text(mg,mg+28.5+j*4.2,t,7,{col:MUTED})});
     }
     var y0=mg+(pi===0?38:20);y=y0;
     p.rect(mg,y,W,hh,'#efe9df',null);
@@ -6871,22 +6882,45 @@ function buildPreciosPDF(sel){
     y+=hh;p.line(mg,y,mg+W,y,INK,0.3);
     rows.forEach(function(r){
       if(r.grupo){p.text(mg+1.5,y+5.4,r.grupo.toUpperCase(),6.2,{bold:true,col:INK,sp:0.3});y+=hh;p.line(mg,y,mg+W,y,LINEC,0.2);return}
-      var f=r.f,ph=preciosFoto(f),bx=rh-5;
+      var f=r.f,eq=f.grupo==='Equipamiento',rh=eq?rhEq:rhOt,ph=preciosFoto(f),bx=rh-5;
       p.rect(xs[0]+1.5,y+2.5,bx,bx,'#ffffff',LINEC,0.2);
       if(idx[f.k]!=null&&ph){var sc2=Math.min((bx-1)/ph.w,(bx-1)/ph.h);p.img(idx[f.k],xs[0]+1.5+(bx-ph.w*sc2)/2,y+2.5+(bx-ph.h*sc2)/2,ph.w*sc2,ph.h*sc2)}
-      var tx=xs[1]+1.5,tw=cols[1][1]*W-3,ty=y+6;
-      if(f.cod)p.text(tx,ty,f.cod,6,{bold:true,col:MARCA});
-      var lines=wrapTxt(f.nombre,tw-(f.cod?9:0),2.6,2);
-      lines.forEach(function(t,j){p.text(tx+(f.cod?9:0),ty+j*4,t,7.2,{bold:true,col:INK})});
-      var ty2=ty+lines.length*4+0.8;
-      [f.ref,f.medidas,f.obs].filter(Boolean).forEach(function(t,j){if(ty2+j*3.6<y+rh-1)p.text(tx,ty2+j*3.6,fitTxt(t,tw,false,2.3),6.2,{col:MUTED})});
-      p.text(xs[2]+1.5,y+rh/2+1.6,String(f.cant).replace('.',',')+' '+f.unid,9,{bold:true,col:INK});
-      p.rect(xs[3]+1.5,y+rh/2-3,cols[3][1]*W-3,7,null,LINEC,0.25);
+      var tx=xs[1]+1.5,tw=cols[1][1]*W-3,ty=y+7;
+      if(f.cod)p.text(tx,ty,f.cod,6.2,{bold:true,col:MARCA});
+      var lines=wrapTxt(f.nombre,tw-(f.cod?9:0),eq?3:2.6,2);
+      lines.forEach(function(t,j){p.text(tx+(f.cod?9:0),ty+j*(eq?4.6:4),t,eq?8.4:7.2,{bold:true,col:INK})});
+      var ty2=ty+lines.length*(eq?4.6:4)+1;
+      [f.ref,f.medidas,f.obs].filter(Boolean).forEach(function(t,j){if(ty2+j*3.8<y+rh-1)p.text(tx,ty2+j*3.8,fitTxt(t,tw,false,2.4),6.4,{col:MUTED})});
+      var cant=String(f.cant).replace('.',',');
+      if(eq){
+        p.text(xs[2]+(cols[2][1]*W)/2,y+rh/2+2.4,'× '+cant,13,{bold:true,col:INK,anchor:'middle'});
+        if(f.unid!=='ud')p.text(xs[2]+(cols[2][1]*W)/2,y+rh/2+7,f.unid,6.4,{col:MUTED,anchor:'middle'});
+      }else{
+        p.text(xs[2]+1.5,y+rh/2+1.6,cant+' '+f.unid,9,{bold:true,col:INK});
+        if(hayOtros)p.rect(xs[3]+1.5,y+rh/2-3,cols[3][1]*W-3,7,null,LINEC,0.25);
+      }
       y+=rh;p.line(mg,y,mg+W,y,LINEC,0.15);
     });
     p.text(PW/2,PH-mg+1,(pi+1)+' / '+porPag.length,6,{col:MUTED,anchor:'middle'});
   });
   return doc.bytes();
+}
+/* las fotos del catálogo llegan del servidor: se piden (de 40 en 40, reintentando las que fallaron) y el PDF espera a que estén */
+function preciosPedirFotos(ids){
+  var falta=ids.filter(function(i){return !(calMin[i]&&calMin[i].uri)});
+  falta.forEach(function(i){delete calMin['?'+i]});
+  for(var i=0;i<falta.length;i+=40){try{pedirMinis(falta.slice(i,i+40))}catch(e){}}
+}
+function preciosFotosListas(filas,cb){
+  var ids=[];filas.forEach(function(f){if(f.foto&&f.foto.t==='min'&&ids.indexOf(f.foto.id)<0)ids.push(f.foto.id)});
+  var t0=Date.now(),avisado=false;
+  (function paso(){
+    var sin=ids.filter(function(i){return !(calMin[i]&&calMin[i].rgb)});
+    var asentado=window.__minisT&&Date.now()-window.__minisT>2500; /* ya contestó el servidor: las que faltan no tienen foto */
+    if(!sin.length||asentado||Date.now()-t0>15000){cb();return}
+    if(!avisado&&Date.now()-t0>800){avisado=true;toast('Cargando las fotos del catálogo…')}
+    setTimeout(paso,300);
+  })();
 }
 /* ventana para elegir qué se pide y sacar el PDF, el Excel o el texto del correo */
 var preciosOff={};
@@ -6894,9 +6928,9 @@ function preciosAbrir(){
   var m0=document.getElementById('prcmod');if(m0)m0.remove();
   var filas=preciosFilas();if(!filas.length){toast('Aún no hay nada que listar en el plano');return}
   var ids=[];filas.forEach(function(f){if(f.foto&&f.foto.t==='min'&&ids.indexOf(f.foto.id)<0)ids.push(f.foto.id)});
-  try{pedirMinis(ids)}catch(e){}
+  preciosPedirFotos(ids);
   var m=document.createElement('div');m.id='prcmod';m.className='dxfmod';
-  m.innerHTML='<div class="dxfbox" style="max-width:640px"><header><h3>Listado para pedir precios</h3><p class="note" style="margin:0">Marca lo que quieres pedir. El PDF lleva foto, descripción y cantidad, con un hueco para el precio. No lleva el nombre del cliente.</p></header><div id="prc-list" style="padding:10px 18px;display:grid;gap:4px;max-height:58vh;overflow:auto"></div><footer><button id="prc-t">Todo</button><button id="prc-n">Nada</button><span style="flex:1"></span><button id="prc-x">Excel (CSV)</button><button id="prc-c">Copiar para correo</button><button class="pri" id="prc-p">PDF con fotos</button></footer></div>';
+  m.innerHTML='<div class="dxfbox" style="max-width:640px"><header><h3>Listado de equipamiento y partidas</h3><p class="note" style="margin:0">Marca lo que quieres incluir. El PDF lleva foto, descripción y cantidad (el equipamiento como listado; las demás partidas, con hueco para el precio). No lleva el nombre del cliente.</p></header><div id="prc-list" style="padding:10px 18px;display:grid;gap:4px;max-height:58vh;overflow:auto"></div><footer><button id="prc-t">Todo</button><button id="prc-n">Nada</button><span style="flex:1"></span><button id="prc-x">Excel (CSV)</button><button id="prc-c">Copiar para correo</button><button class="pri" id="prc-p">PDF con fotos</button></footer></div>';
   document.body.appendChild(m);
   function seleccion(){var l=preciosFilas();return l.filter(function(f){return !preciosOff[f.nombre+'|'+f.cod]})}
   function pinta(){
@@ -6929,7 +6963,7 @@ function preciosAbrir(){
   document.getElementById('prc-t').addEventListener('click',function(){preciosOff={};pinta()});
   document.getElementById('prc-n').addEventListener('click',function(){preciosFilas().forEach(function(f){preciosOff[f.nombre+'|'+f.cod]=1});pinta()});
   function conSel(fn){var l=seleccion();if(!l.length){toast('Marca al menos una línea');return}fn(l)}
-  document.getElementById('prc-p').addEventListener('click',function(){conSel(function(l){var b;try{b=buildPreciosPDF(l)}catch(e){toast('No se pudo generar el PDF');return}saveFile(slug()+'-solicitud-precios.pdf',b,'PDF')})});
+  document.getElementById('prc-p').addEventListener('click',function(){conSel(function(l){preciosPedirFotos(l.filter(function(f){return f.foto&&f.foto.t==='min'}).map(function(f){return f.foto.id}));preciosFotosListas(l,function(){var b;try{b=buildPreciosPDF(l)}catch(e){toast('No se pudo generar el PDF');return}saveFile(slug()+'-listado.pdf',b,'PDF')})})});
   document.getElementById('prc-x').addEventListener('click',function(){conSel(function(l){saveFile(slug()+'-listado-precios.csv',preciosCSV(l),'CSV')})});
   document.getElementById('prc-c').addEventListener('click',function(){conSel(function(l){try{navigator.clipboard.writeText(preciosTexto(l)).then(function(){toast('Listado copiado: pégalo en el correo')},function(){toast('No se pudo copiar')})}catch(e){toast('No se pudo copiar')}})});
   m.addEventListener('mousedown',function(e){if(e.target===m){m.remove();window.__preciosPinta=null}});
@@ -8766,6 +8800,7 @@ if(CRM){
       if(st.pendBib){var pb=st.pendBib,nn=nuevos.filter(function(n){return n.nombre===pb.nombre})[0];if(nn){var eqp=by(st.v.eq,pb.eq);if(eqp){eqp.cid=nn.id;save()}custom=custom.filter(function(c){return c.id!==pb.tmp});st.pendBib=null;render()}}
       drawCat();toast(nuevos.length+' bloques en tu biblioteca. Los encuentras en el catálogo, categoría «'+(nuevos[0]&&nuevos[0].categoria||'Mi biblioteca')+'».');
     }else if(m.type==='miniaturas'){
+      window.__minisT=Date.now();
       Object.keys(m.items||{}).forEach(function(id){var f=m.items[id];if(f&&f.uri){calMin[id]={uri:f.uri,pw:f.pw,ph:f.ph,rgb:null};prepMinRgb(id)}});
       drawCal();try{if(window.__preciosPinta)window.__preciosPinta()}catch(e){}
     }else if(m.type==='bibliotecaActualizada'){
