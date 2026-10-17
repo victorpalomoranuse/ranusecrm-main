@@ -4,7 +4,7 @@ import compression from 'compression';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
 import { cantidadesDePlano } from '../utils/planos.js';
-import { disenadorDe, proyectoEsDe } from '../utils/asignados.js';
+import { disenadorDe, proyectoEsDe, proyectosDe } from '../utils/asignados.js';
 import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
@@ -312,8 +312,7 @@ router.get('/dashboard', async (req, res) => {
     const emp = await disenadorDe(req); // diseñadores: solo planos de sus proyectos asignados o creados por ellos
     let visibles = data || [];
     if (emp) {
-      const { data: mios } = await supabase.from('client_projects').select('id').eq('responsible_id', emp.id);
-      const ids = new Set((mios || []).map(p => p.id));
+      const ids = new Set(await proyectosDe(emp));
       visibles = visibles.filter(m => (m.project_id && ids.has(m.project_id)) || m.created_by === req.user.id);
     }
     const planos = visibles.map(m => {

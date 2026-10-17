@@ -23,10 +23,22 @@ export async function disenadorDe(req) {
   return emp;
 }
 
+// Proyectos de un diseñador: donde es responsable + donde está en la lista de asignados (si la tabla aún no existe, solo los de responsable)
+export async function proyectosDe(emp) {
+  const [{ data: a }, { data: b }] = await Promise.all([
+    supabase.from('client_projects').select('id').eq('responsible_id', emp.id),
+    supabase.from('project_assignees').select('project_id').eq('employee_id', emp.id),
+  ]);
+  return [...new Set([...(a || []).map(p => p.id), ...(b || []).map(p => p.project_id)])];
+}
+
 export async function proyectoEsDe(emp, projectId) {
   if (!projectId) return true;
   const { data } = await supabase.from('client_projects').select('responsible_id').eq('id', projectId).maybeSingle();
-  return !!data && data.responsible_id === emp.id;
+  if (!data) return false;
+  if (data.responsible_id === emp.id) return true;
+  const { data: a } = await supabase.from('project_assignees').select('employee_id').eq('project_id', projectId).eq('employee_id', emp.id).maybeSingle();
+  return !!a;
 }
 
 // Rutas /:id de proyectos: un diseñador solo entra en los suyos

@@ -114,6 +114,8 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const [error, setError] = useState('');
   const [employees, setEmployees] = useState([]);
   const [responsibleId, setResponsibleId] = useState(project?.responsible?.id || project?.responsible_id || '');
+  const [asignados, setAsignados] = useState([]); // otros diseñadores con acceso (además del responsable)
+  const [asigAviso, setAsigAviso] = useState('');
   const [ventaId, setVentaId] = useState(project?.venta_id || '');
   const [ventas, setVentas] = useState([]);
   const [buscarVenta, setBuscarVenta] = useState('');
@@ -122,6 +124,7 @@ function ClientProjectModal({ project, onClose, onSaved }) {
   const [capitulosExtra, setCapitulosExtra] = useState([]);
 
   useEffect(() => { api.get('/employees').then(r => setEmployees(r.data.employees || [])).catch(() => {}); }, []);
+  useEffect(() => { if (project?.id) api.get('/client-projects/' + project.id + '/asignados').then(r => { setAsignados((r.data.asignados || []).map(a => a.id)); if (r.data.sinTabla) setAsigAviso('Para asignar a más de una persona falta ejecutar el SQL v75 en Supabase.'); }).catch(() => {}); }, [project?.id]);
   useEffect(() => { api.get('/ventas').then(r => setVentas(r.data.ventas || [])).catch(() => {}); }, []);
 
   // Si es un proyecto ya creado sin enlazar, sugiere automáticamente la venta
@@ -151,6 +154,8 @@ function ClientProjectModal({ project, onClose, onSaved }) {
       let saved;
       if (isEdit) { const { data } = await api.put(`/client-projects/${project.id}`, payload); saved = data.project; }
       else { const { data } = await api.post('/client-projects', payload); saved = data.project; }
+      try { await api.put('/client-projects/' + saved.id + '/asignados', { employee_ids: asignados.filter(id => id !== responsibleId) }); }
+      catch (err2) { if (asignados.length) { setError(err2.response?.data?.error || 'El proyecto se guardó, pero no se pudieron guardar los diseñadores asignados'); setLoading(false); onSaved(saved); return; } }
       onSaved(saved);
     } catch (err) { setError(err.response?.data?.error || 'Error al guardar el proyecto'); } finally { setLoading(false); }
   };
@@ -210,6 +215,18 @@ function ClientProjectModal({ project, onClose, onSaved }) {
               <option value="">Sin asignar</option>
               {employees.map(e => <option key={e.id} value={e.id}>{e.name} — {e.email}</option>)}
             </select>
+          </div>
+          <div className="ap-field">
+            <label>Más personas con acceso <span className="ap-optional">(también ven este proyecto y sus planos)</span></label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {employees.filter(e => e.id !== responsibleId).map(e => (
+                <label key={e.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, cursor: 'pointer', fontSize: '0.78rem' }}>
+                  <input type="checkbox" checked={asignados.includes(e.id)} onChange={() => setAsignados(a => a.includes(e.id) ? a.filter(x => x !== e.id) : [...a, e.id])} /> {e.name}
+                </label>
+              ))}
+            </div>
+            {asigAviso && <span className="ap-field-hint" style={{ color: '#f59e0b' }}>{asigAviso}</span>}
+            <span className="ap-field-hint">El responsable y estas personas ven el proyecto. El administrador ve todos.</span>
           </div>
           {!isEdit && (
             <div className="ap-field">

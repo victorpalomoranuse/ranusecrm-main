@@ -77,6 +77,7 @@ export function ResumenVista({ d, onIr }) {
       {/* ficha */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '1rem', alignItems: 'center' }}>
         <span style={chip('#baafa5')}>Responsable: {p.responsable || 'sin asignar'}</span>
+        {p.asignados?.length > 0 && <span style={chip('#06b6d4')}>Con acceso: {p.asignados.join(', ')}</span>}
         <span style={chip('#8b5cf6')}>Fase {p.fase}</span>
         {p.urgencia && p.urgencia !== 'normal' && <span style={chip('#ef4444')}>Urgencia: {p.urgencia}</span>}
         <span style={chip(hecho === pasosL.length ? '#22c55e' : '#f59e0b')}>{hecho} de {pasosL.length} partes listas</span>

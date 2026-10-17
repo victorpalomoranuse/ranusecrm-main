@@ -2,7 +2,7 @@ import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
 
-import { disenadorDe, guardiaProyecto } from '../utils/asignados.js';
+import { disenadorDe, guardiaProyecto, proyectosDe } from '../utils/asignados.js';
 // permiso de proyectos + (si es diseñador) solo los proyectos que tiene asignados
 const requireProyectos = [requirePermission('proyectos'), guardiaProyecto];
 const requireTrabajos = requirePermission('trabajos');
@@ -108,7 +108,11 @@ router.get('/', authenticateToken, requireProyectos, async (req, res) => {
       .from('client_projects')
       .select('*, responsible:employees!responsible_id(id, name)')
       .order('created_at', { ascending: false });
-    if (emp) query = query.eq('responsible_id', emp.id);
+    if (emp) {
+      const ids = await proyectosDe(emp);
+      if (!ids.length) return res.json({ projects: [] });
+      query = query.in('id', ids);
+    }
     const { data, error } = await query;
 
     if (error) throw error;
@@ -1330,6 +1334,31 @@ router.put('/:id/phase-content/:phaseNumber', authenticateToken, requireProyecto
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * GET /api/client-projects/:id/asignados — diseñadores con acceso al proyecto (además del responsable)
+ * PUT /api/client-projects/:id/asignados { employee_ids: [...] } — solo el administrador
+ */
+router.get('/:id/asignados', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('project_assignees').select('employee_id, employee:employees(id, name, email)').eq('project_id', req.params.id);
+    if (error) return res.json({ asignados: [], sinTabla: true });
+    res.json({ asignados: (data || []).map(a => a.employee).filter(Boolean) });
+  } catch (e) { console.error('asignados:', e); res.status(500).json({ error: 'No se pudieron cargar los asignados' }); }
+});
+router.put('/:id/asignados', authenticateToken, requireAdminSuperior, async (req, res) => {
+  try {
+    const ids = [...new Set((Array.isArray(req.body?.employee_ids) ? req.body.employee_ids : []).filter(x => typeof x === 'string'))];
+    const pid = req.params.id;
+    const { error: e0 } = await supabase.from('project_assignees').delete().eq('project_id', pid);
+    if (e0) return res.status(500).json({ error: 'Falta crear la tabla de asignados (ejecuta el SQL v75 en Supabase).' });
+    if (ids.length) {
+      const { error } = await supabase.from('project_assignees').insert(ids.map(employee_id => ({ project_id: pid, employee_id })));
+      if (error) throw error;
+    }
+    res.json({ ok: true, total: ids.length });
+  } catch (e) { console.error('asignados put:', e); res.status(500).json({ error: 'No se pudieron guardar los asignados' }); }
+});
+
+/**
  * GET /api/client-projects/:id/panel
  * Todo lo que un diseñador necesita ver de un vistazo: cómo está el espacio ahora,
  * qué se ha pedido (cliente y equipo) y cómo va cada parte del proyecto.
@@ -1343,6 +1372,7 @@ router.get('/:id/panel', authenticateToken, requireProyectos, async (req, res) =
     if (errP) throw errP;
     if (!proy) return res.status(404).json({ error: 'Proyecto no encontrado' });
     const cuenta = (tabla, col = 'project_id') => supabase.from(tabla).select('id', { count: 'exact', head: true }).eq(col, pid).then(r => r.count || 0);
+    const asig = await supabase.from('project_assignees').select('employee:employees(id, name)').eq('project_id', pid).then(r => (r.data || []).map(x => x.employee?.name).filter(Boolean));
     const [form, notas, tareas, planos, moodN, rendersN, docsN, equipN, matN, caps] = await Promise.all([
       supabase.from('project_needs_forms').select('id, status, brief, client_summary, admin_notes, filled_by_name, submitted_at').eq('project_id', pid).maybeSingle().then(r => r.data),
       supabase.from('project_notes').select('id, content, created_at').eq('project_id', pid).order('created_at', { ascending: false }).limit(8).then(r => r.data || []),
@@ -1370,7 +1400,7 @@ router.get('/:id/panel', authenticateToken, requireProyectos, async (req, res) =
       luminarias: r ? (r.luminarias || []).reduce((t, x) => t + (x.n || 0), 0) : null,
     } : null;
     res.json({
-      proyecto: { id: proy.id, cliente: proy.client_name, nombre: proy.project_name, fase: proy.phase, urgencia: proy.urgency, estado: proy.status, tipo: proy.tipo_proyecto, responsable: proy.responsible?.name || null, creado: proy.created_at },
+      proyecto: { id: proy.id, cliente: proy.client_name, nombre: proy.project_name, fase: proy.phase, urgencia: proy.urgency, estado: proy.status, tipo: proy.tipo_proyecto, responsable: proy.responsible?.name || null, asignados: asig, creado: proy.created_at },
       espacio: { fotos, medidas, plano },
       pedido: {
         brief: form?.brief || '', resumen_cliente: form?.client_summary || '', notas_equipo: form?.admin_notes || '',
