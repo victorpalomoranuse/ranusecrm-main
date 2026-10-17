@@ -2815,6 +2815,40 @@ function ln(x1,y1,x2,y2,stroke,sw,cap,extra){
 function txt(C,px,x,y,s,col,size,weight,halo){
   return '<text x="'+f2(x)+'" y="'+f2(y)+'" text-anchor="middle" style="fill:'+col+';font-size:'+f2(size*px)+'px;font-weight:'+(weight||500)+';paint-order:stroke;stroke:'+(halo||C.halo)+';stroke-width:'+f2(3*px)+'px;stroke-linejoin:round">'+s+'</text>';
 }
+/* cotas de los pilares: distancia de cada lado al muro más cercano y a otro pilar; se pueden escribir para colocarlos */
+function pilBox(p){
+  var cs=pilCells(p),x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  cs.forEach(function(c){x0=Math.min(x0,c.x-p.w/2);y0=Math.min(y0,c.y-p.d/2);x1=Math.max(x1,c.x+p.w/2);y1=Math.max(y1,c.y+p.d/2)});
+  return {x0:x0,y0:y0,x1:x1,y1:y1,cx:(x0+x1)/2,cy:(y0+y1)/2};
+}
+function pilRay(ox,oy,dx,dy,skip,view){
+  var best=rayWalls(ox,oy,dx,dy,view),otro=null;
+  st.v.pil.forEach(function(q){
+    if(q===skip||!stVis(q.s,view))return;
+    var r=pilBox(q),t=null;
+    if(dx!==0&&oy>=r.y0&&oy<=r.y1){if(dx>0&&r.x0>=ox)t=r.x0-ox;if(dx<0&&r.x1<=ox)t=ox-r.x1}
+    if(dy!==0&&ox>=r.x0&&ox<=r.x1){if(dy>0&&r.y0>=oy)t=r.y0-oy;if(dy<0&&r.y1<=oy)t=oy-r.y1}
+    if(t!==null&&(best==null||t<best)){best=t;otro=q}
+  });
+  return best==null?null:{d:best,otro:otro};
+}
+function pilDims(C,px,view,sel,suave){
+  var h='';
+  st.v.pil.forEach(function(p,ip){
+    if(!stVis(p.s,view))return;
+    var esSel=!!(sel&&sel.t==='pil'&&sel.id===p.id);
+    if(view!=='actual'&&!esSel)return; /* en Estado actual salen todas; en las demás láminas, solo las del pilar seleccionado */
+    var b=pilBox(p);
+    [[1,0,b.x1,b.cy],[-1,0,b.x0,b.cy],[0,1,b.cx,b.y1],[0,-1,b.cx,b.y0]].forEach(function(d){
+      var r=pilRay(d[2],d[3],d[0],d[1],p,view);
+      if(!r||!(r.d>=1)||r.d>1500)return;
+      if(r.otro&&!esSel&&st.v.pil.indexOf(r.otro)<ip)return; /* una cota entre dos pilares se dibuja una sola vez */
+      if(colectaDim)dimHits.push({kind:'pild',pil:p.id,other:r.otro?r.otro.id:null,ux:d[0],uy:d[1],val:r.d,x:d[2]+d[0]*r.d/2+(d[0]===0?14*px:0),y:d[3]+d[1]*r.d/2-(d[0]===0?0:5*px)});
+      h+=dimW(C,px,d[2],d[3],d[2]+d[0]*r.d,d[3]+d[1]*r.d,fmtU(r.d),r.otro?C.ok:C.dim,suave);
+    });
+  });
+  return h;
+}
 function dimW(C,px,x1,y1,x2,y2,t,col,suave,zo){
   var a=Math.atan2(y2-y1,x2-x1),nx=-Math.sin(a)*(suave?3:4)*px,ny=Math.cos(a)*(suave?3:4)*px,vert=Math.abs(x2-x1)<Math.abs(y2-y1),lw=px*(suave?0.7:1.2);
   var lin=ln(x1,y1,x2,y2,col,lw)+ln(x1-nx,y1-ny,x1+nx,y1+ny,col,lw)+ln(x2-nx,y2-ny,x2+nx,y2+ny,col,lw);
@@ -3190,6 +3224,7 @@ function scene(C,k,view,o){
     var fill=(view==='demol'&&p.s==='dem')?'url(#hat)':stCol(p.s,view,C);
     pilCells(p).forEach(function(c){h+='<rect x="'+f2(c.x-p.w/2)+'" y="'+f2(c.y-p.d/2)+'" width="'+f2(p.w)+'" height="'+f2(p.d)+'" style="fill:'+(o.flat&&!(view==='demol'&&p.s==='dem')?C.bg:fill)+';stroke:'+(view==='demol'&&p.s==='dem'?C.dem:(o.flat?fill:'none'))+';stroke-width:'+f2((o.flat?1.5:1)*px)+'"/>'});
   });
+  h+=pilDims(C,px,view,sel,!!o.flat);
   if(view==='cotas')v.pil.forEach(function(p){
     if(!stVis(p.s,view))return;
     var c=pc(p);
@@ -3707,6 +3742,14 @@ function commitDimEd(){
     var dm=drSeleccion();if(!dm.length)return;
     snap();dm.forEach(function(q){q.pts=q.pts.map(function(r){return {x:f2(r.x+h.ux*dl2),y:f2(r.y+h.uy*dl2)}})});
     commit();return;
+  }
+  if(h.kind==='pild'){
+    if(!(n>=0&&n<=5000)){toast('Escribe una distancia válida');return}
+    var mp=pl(h.pil),pux=h.ux,puy=h.uy;
+    if(h.other&&st.sel&&st.sel.t==='pil'&&st.sel.id===h.other){mp=pl(h.other);pux=-pux;puy=-puy} /* entre dos pilares se mueve el seleccionado */
+    if(!mp)return;
+    var dlp=h.val-n;if(Math.abs(dlp)<0.01)return;
+    snap();mp.dx=f2(mp.dx+pux*dlp);mp.dy=f2(mp.dy+puy*dlp);commit();return;
   }
   if(h.kind==='eqd'||h.kind==='eqg'){
     if(!(n>=0&&n<=5000)){toast('Escribe una distancia válida');return}
