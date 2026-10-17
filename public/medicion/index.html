@@ -898,7 +898,9 @@ var UNIDADES={cm:{f:1,d:1},mm:{f:0.1,d:0},m:{f:100,d:3}},UNIT='cm';
 try{var uu=localStorage.getItem('ranuse-unidad');if(UNIDADES[uu])UNIT=uu}catch(e){}
 function UNL(){return UNIT}
 function toU(n){var u=UNIDADES[UNIT],k=Math.pow(10,u.d+1);return Math.round(n/u.f*(UNIT==='cm'?10:UNIT==='mm'?1:1000))/(UNIT==='cm'?10:UNIT==='mm'?1:1000)}
-function fmtU(n){return UNIT==='cm'?String(Math.round(n*10)/10):String(toU(n))}
+/* en pantalla las cotas enseñan decimales (coinciden con lo que se escribe); en las láminas y PDF salen enteros, más limpios */
+var DECIMALES=true;
+function fmtU(n){return UNIT==='cm'?String(DECIMALES?Math.round(n*10)/10:Math.round(n)):String(toU(n))}
 function fromU(x){return x*UNIDADES[UNIT].f}
 function m2(n){return (Math.round(n*10)/10).toFixed(1).replace('.',',')}
 function num(s){var n=parseFloat(String(s).replace(',','.'));return isFinite(n)?n:NaN}
@@ -2997,6 +2999,19 @@ function mmSvg(C,px,sel,o,filtro,colBase){
 function scene(C,k,view,o){
   if(view==='alz')return sceneAlz(C,k,o);
   var v=st.v,px=1/k,h='';
+  var dlPre;
+  function dlInit(){
+    if(dlPre)return dlPre;
+    dlPre={ocup:[],ok:{}};
+    var cn=(o.dims&&o.dims!=='simple')?wallCent(view):null;
+    var oc=((view==='suelos'||view==='techos')||((view==='acab'||view==='elec'||view==='ilum')&&!o.flat))&&!st.verCotasMuros;
+    if(!cn||oc)return dlPre;
+    dimWalls(view).slice().sort(function(a,b){return wLen(b)-wLen(a)}).forEach(function(w){
+      if(!wallVis(w,view)||w.arc)return;
+      if(dimLibre(C,px,w,o.dims,cn,view,dlPre.ocup))dlPre.ok[w.id]=1;
+    });
+    return dlPre;
+  }
   var hs=f2(7*px);
   h+='<defs><pattern id="hat" width="'+hs+'" height="'+hs+'" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="'+hs+'" height="'+hs+'" style="fill:'+C.demBg+'"/><line x1="0" y1="0" x2="0" y2="'+hs+'" style="stroke:'+C.dem+';stroke-width:'+f2(2*px)+'"/></pattern></defs>';
   var sel=o.sel,cc0=wallCent(view);
@@ -3290,6 +3305,7 @@ function scene(C,k,view,o){
         ['h','v'].forEach(function(k){
           var m=mejor[k];if(!m||ocupado[k])return;var d=m.d,rd=m.rd;
           if(colectaDim)dimHits.push({kind:'eqd',eq:e.id,ux:d[0],uy:d[1],val:rd.d,x:d[2]+d[0]*rd.d/2+(d[0]===0?14*px:0),y:d[3]+d[1]*rd.d/2-(d[0]===0?0:5*px)});
+          if(sua&&!lblLibre(px,d[2],d[3],d[2]+d[0]*rd.d,d[3]+d[1]*rd.d,fmtU(rd.d),dlInit().ocup))return; /* en lámina, si el número se pisa con otro, no se pone */
           gl+=dimW(C,px,d[2],d[3],d[2]+d[0]*rd.d,d[3]+d[1]*rd.d,fmtU(rd.d),sua?hexMix(C.ok,'#ffffff',0.4):C.ok,sua);
         });
       });
@@ -3359,7 +3375,7 @@ function scene(C,k,view,o){
       }
       return;
     }
-    if(cent){h+=dimChain(C,px,w,o.dims,cent,view,o.tags);return}
+    if(cent){if(o.flat&&!dlInit().ok[w.id])return;h+=dimChain(C,px,w,o.dims,cent,view,o.tags);return}
     var g=wg(w),nx=-g.uy,ny=g.ux;
     if((cc0.x-(g.a.x+g.b.x)/2)*nx+(cc0.y-(g.a.y+g.b.y)/2)*ny>0){nx=-nx;ny=-ny}
     var off=w.t/2+12*px,meas=w.m===true,diff=meas?Math.abs(g.l-w.len):0,bad=meas&&diff>1.5;
@@ -3535,6 +3551,21 @@ function dimCfg(w,mode,cent,view,px){
   var ops=(w.opsV||st.v.ops.filter(function(o){return o.wall===w.id})).filter(function(o){return opVis(o,view)}).sort(function(a,b){return a.p-b.p});
   var d1=w.t/2+16*px,d2=ops.length?d1+(16+Math.abs(nx)*26)*px:d1; /* en muros verticales los números de la primera fila van entre las dos líneas: más separación para que no se crucen */
   return {g:g,nx:nx,ny:ny,ops:ops,d1:d1,d2:d2,mx:mx,my:my};
+}
+/* láminas: una cota de muro solo se dibuja si su número no se pisa con el de otra ya puesta (se empieza por los muros largos) y el muro no es un tramo diminuto */
+function dimLibre(C,px,w,mode,cent,view,ocup){
+  var L=wLen(w);
+  if(L<45&&!st.v.ops.some(function(o){return o.wall===w.id}))return false;
+  var c=dimCfg(w,mode,cent,view,px),p=dimTextPos(c,px,c.ops.length?c.d2:c.d1),t=fmtU(L),tw=txtW(t,true,11*px,600,0),th=11*px;
+  var r={x0:p.x-tw/2-2*px,x1:p.x+tw/2+2*px,y0:p.y-th,y1:p.y+th*0.35};
+  for(var i=0;i<ocup.length;i++){var q=ocup[i];if(r.x0<q.x1&&r.x1>q.x0&&r.y0<q.y1&&r.y1>q.y0)return false}
+  ocup.push(r);return true;
+}
+function lblLibre(px,x1,y1,x2,y2,t,ocup){
+  var vert=Math.abs(x2-x1)<Math.abs(y2-y1),tx=(x1+x2)/2+(vert?14*px:0),ty=(y1+y2)/2+(vert?4*px:-5*px),tw=txtW(t,false,9.5*px,400,0),th=9.5*px;
+  var r={x0:tx-tw/2-2*px,x1:tx+tw/2+2*px,y0:ty-th,y1:ty+th*0.35};
+  for(var i=0;i<ocup.length;i++){var q=ocup[i];if(r.x0<q.x1&&r.x1>q.x0&&r.y0<q.y1&&r.y1>q.y0)return false}
+  ocup.push(r);return true;
 }
 function dimTextPos(c,px,d){var o=d+9*px+Math.abs(c.nx)*12*px;return {x:c.mx+c.nx*o,y:c.my+c.ny*o+4*px}}
 /* cotas con líneas: tramos entre huecos + total, por fuera o por dentro del muro */
@@ -8341,7 +8372,8 @@ function sheetPage(doc,view,idx,total,o){
   }
   return p;
 }
-function buildPDF(mode,opt,lista,Doc){
+function buildPDF(mode,opt,lista,Doc){var d0=DECIMALES;DECIMALES=false;try{return buildPDF0(mode,opt,lista,Doc)}finally{DECIMALES=d0}}
+function buildPDF0(mode,opt,lista,Doc){
   var orig=st.v,vs=(lista&&lista.length)?lista:[st.v];
   var doc=new (Doc||PdfDoc)('Ranuse · '+(st.v.nombre||'Visita')),li=0;
   if(LOGO)li=doc.image(LOGO.w,LOGO.h,LOGO.rgb);
@@ -8534,7 +8566,8 @@ function exportPDF(mode){
 function slug(){return (st.v.nombre||'visita').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'visita'}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 var VNAME={actual:'Estado actual',cotas:'Plano de cotas',demol:'Demoliciones',interv:'Implantación',distrib:'Distribución',suelos:'Suelos',techos:'Techos',acab:'Acabados de paredes',alz:'Alzados',ilum:'Iluminación',elec:'Electricidad'};
-function buildSVG(){
+function buildSVG(){var d0=DECIMALES;DECIMALES=false;try{return buildSVG0()}finally{DECIMALES=d0}}
+function buildSVG0(){
   var b=bbox();if(!b)return null;
   var kx=0.5,m=150,wcm=b.x1-b.x0+2*m,hcm=b.y1-b.y0+2*m;
   var leg=(st.view==='distrib'&&st.v.eq.length)?st.v.eq.length*16+30:0;
