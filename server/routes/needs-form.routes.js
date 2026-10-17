@@ -544,6 +544,15 @@ router.get('/public/:code', async (req, res) => {
   }
 });
 
+// Datos mínimos para la página de subir fotos desde el móvil (/subir/CODIGO)
+router.get('/public/:code/resumen', async (req, res) => {
+  try {
+    const { data } = await supabase.from('client_projects').select('id, project_name').eq('access_code', String(req.params.code).toUpperCase()).maybeSingle();
+    if (!data) return res.status(404).json({ error: 'Código no válido' });
+    res.json({ nombre: data.project_name || 'Proyecto' });
+  } catch (err) { res.status(500).json({ error: 'Error al cargar el proyecto' }); }
+});
+
 router.put('/public/:code', async (req, res) => {
   try {
     const projectId = await resolveProjectIdByCode(req.params.code);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MapPin, ClipboardList, Route, BookOpen, Ruler, Camera, CheckCircle2, Circle, CircleDot, ChevronDown, ChevronUp, CalendarClock } from 'lucide-react';
+import { MapPin, ClipboardList, Route, BookOpen, Ruler, Camera, CheckCircle2, Circle, CircleDot, ChevronDown, ChevronUp, CalendarClock, Smartphone } from 'lucide-react';
 import api from '../services/api';
 
 // Resumen visual del proyecto para el diseñador: cómo está el espacio ahora,
@@ -60,11 +60,14 @@ export function ResumenProyecto({ project, onIr }) {
 
   if (error) return <p className="ap-error">{error}</p>;
   if (!d) return <p style={muted}>Cargando resumen…</p>;
-  return <ResumenVista d={d} onIr={onIr} />;
+  return <ResumenVista d={d} onIr={onIr} codigo={project.access_code} />;
 }
 
-export function ResumenVista({ d, onIr }) {
+export function ResumenVista({ d, onIr, codigo }) {
   const [manual, setManual] = useState(false);
+  const [movil, setMovil] = useState(false);
+  const enlace = codigo ? window.location.origin + '/subir/' + codigo : '';
+  const copiar = async () => { try { await navigator.clipboard.writeText(enlace); } catch { /* sin portapapeles */ } };
   const { proyecto: p, espacio: esp, pedido: ped } = d;
   const pl = esp.plano;
   const tareasAbiertas = (ped.tareas || []).filter(t => !t.done);
@@ -98,6 +101,21 @@ export function ResumenVista({ d, onIr }) {
           <div style={{ ...muted, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: '0.9rem' }}>
             <Camera size={15} /> Todavía no hay fotos del estado actual.
             <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => onIr('necesidades')}>Añadir fotos y medidas</button>
+          </div>
+        )}
+        {codigo && (
+          <div style={{ marginBottom: '0.9rem' }}>
+            <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setMovil(m => !m)}><Smartphone size={13} /> Subir fotos desde el móvil</button>
+            {movil && (
+              <div style={{ marginTop: 8, padding: '0.7rem 0.9rem', borderRadius: 10, background: 'rgba(255,255,255,0.04)' }}>
+                <p style={{ ...muted, margin: '0 0 6px' }}>Abre este enlace en el móvil (sin entrar al CRM): haces la foto o la eliges de la galería y se guarda sola en este proyecto.</p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input className="ap-field-input" readOnly value={enlace} onFocus={e => e.target.select()} style={{ flex: 1, minWidth: 200 }} />
+                  <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={copiar}>Copiar</button>
+                  <a className="ap-btn ap-btn-ghost ap-btn-xs" href={'https://wa.me/?text=' + encodeURIComponent('Fotos del espacio: ' + enlace)} target="_blank" rel="noopener noreferrer">Enviar por WhatsApp</a>
+                </div>
+              </div>
+            )}
           </div>
         )}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>

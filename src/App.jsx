@@ -15,6 +15,7 @@ import { ClienteLogin } from './pages/ClienteLogin';
 import { ClientePanel } from './pages/ClientePanel';
 import { RestablecerContrasena } from './pages/RestablecerContrasena';
 import { PlanosEditor } from './pages/PlanosEditor';
+import { SubirFotos } from './pages/SubirFotos';
 import './App.css';
 
 function AdminGuard({ children }) {
@@ -64,6 +65,9 @@ function App() {
               <Route path="/" element={<Home />} />
               <Route path="/proyectos" element={<Proyectos />} />
               <Route path="/proyecto/:projectId" element={<ProjectGallery />} />
+
+              {/* Subir fotos del estado actual desde el móvil (sin entrar al CRM) */}
+              <Route path="/subir/:code" element={<SubirFotos />} />
 
               {/* Portal cliente */}
               <Route path="/mi-proyecto" element={<MiProyecto />} />
