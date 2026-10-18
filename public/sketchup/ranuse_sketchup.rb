@@ -2,7 +2,8 @@
 # Ranuse Design · Planos → SketchUp
 #
 # Lee un plano de la herramienta de planos del CRM y construye el modelo 3D en SketchUp:
-# muros con sus puertas y ventanas, suelos y techos con su material, pilares y máquinas
+# muros con sus puertas y ventanas, suelos y techos con su material (también techos a una y dos aguas
+# con sus vigas, cerchas y correas), pilares y máquinas
 # (con su huella real y su altura). Cuando el plano cambia, se actualiza solo el grupo
 # «RANUSE PLANO»: lo que modeles tú aparte no se toca.
 #
@@ -17,7 +18,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.0.1'.freeze
+    VERSION = '1.1.0'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -204,6 +205,328 @@ module Ranuse
       prisma(entidades, puntos, z0, z1)
     end
 
+    # ── Techos con forma (a dos aguas, a un agua) y su estructura ─────────────
+    def self.punto_en_poligono?(x, y, pts)
+      dentro = false
+      j = pts.size - 1
+      pts.each_with_index do |pi, i|
+        pj = pts[j]
+        if ((pi[1] > y) != (pj[1] > y)) && (x < (pj[0] - pi[0]) * (y - pi[1]) / (pj[1] - pi[1]).to_f + pi[0])
+          dentro = !dentro
+        end
+        j = i
+      end
+      dentro
+    end
+
+    def self.dist_segmento(x, y, a, b)
+      dx = b[0] - a[0]
+      dy = b[1] - a[1]
+      l2 = dx * dx + dy * dy
+      return Math.hypot(x - a[0], y - a[1]) if l2 < 1e-9
+      t = ((x - a[0]) * dx + (y - a[1]) * dy) / l2
+      t = 0.0 if t < 0.0
+      t = 1.0 if t > 1.0
+      Math.hypot(x - (a[0] + t * dx), y - (a[1] + t * dy))
+    end
+
+    def self.techo_pts(tc)
+      (tc['pts'] || []).map { |p| [p[0].to_f, p[1].to_f] }
+    end
+
+    def self.techo_cubre?(tc, x, y, margen)
+      pts = techo_pts(tc)
+      return false if pts.size < 3
+      return true if punto_en_poligono?(x, y, pts)
+      pts.each_with_index do |p, i|
+        return true if dist_segmento(x, y, p, pts[(i + 1) % pts.size]) <= margen
+      end
+      false
+    end
+
+    # Altura de la cubierta en un punto del plano (cm)
+    def self.techo_z(tc, x, y)
+      ha = tc['ha'].to_f
+      hc = tc['hc'].to_f
+      x0 = tc['x0'].to_f
+      x1 = tc['x1'].to_f
+      y0 = tc['y0'].to_f
+      y1 = tc['y1'].to_f
+      horizontal = tc['ej'] != 'v'
+      if tc['fo'] == 'dos'
+        c = horizontal ? (y0 + y1) / 2.0 : (x0 + x1) / 2.0
+        medio = horizontal ? (y1 - y0) / 2.0 : (x1 - x0) / 2.0
+        return ha if medio < 0.01
+        d = horizontal ? (y - c).abs : (x - c).abs
+        d = medio if d > medio
+        ha + (hc - ha) * (1.0 - d / medio)
+      elsif tc['fo'] == 'una'
+        ini = horizontal ? y0 : x0
+        largo = horizontal ? (y1 - y0) : (x1 - x0)
+        return ha if largo < 0.01
+        t = ((horizontal ? y : x) - ini) / largo
+        t = 0.0 if t < 0.0
+        t = 1.0 if t > 1.0
+        t = 1.0 - t unless tc['inv']
+        ha + (hc - ha) * t
+      else
+        ha
+      end
+    end
+
+    def self.techos_inclinados(plano)
+      (plano['techos'] || []).select { |tc| tc['fo'] == 'dos' || tc['fo'] == 'una' }
+    end
+
+    # Altura que tiene que alcanzar un muro (o un pilar) en un punto: la de la cubierta si está debajo de una
+    def self.altura_en(techos, x, y, defecto)
+      mejor = nil
+      techos.each do |tc|
+        next unless techo_cubre?(tc, x, y, 25.0)
+        z = techo_z(tc, x, y)
+        mejor = z if mejor.nil? || z > mejor
+      end
+      mejor || defecto
+    end
+
+    def self.sala_con_cubierta?(pts, techos)
+      techos.any? do |tc|
+        tp = techo_pts(tc)
+        next false if tp.size < 3
+        sala = pts.map { |p| [p[0].to_f, p[1].to_f] }
+        # la cubierta es de esta sala si alguna esquina suya cae dentro de la sala o pegada a su borde
+        tp.any? do |p|
+          punto_en_poligono?(p[0], p[1], sala) || sala.each_with_index.any? { |q, i| dist_segmento(p[0], p[1], q, sala[(i + 1) % sala.size]) < 30.0 }
+        end
+      end
+    end
+
+    # Prisma con 8 vértices: base y tope (listas de 4 puntos en el mismo orden)
+    def self.prisma_inclinado(entidades, base, tope)
+      caras = []
+      caras << entidades.add_face(base)
+      caras << entidades.add_face(tope)
+      4.times do |i|
+        j = (i + 1) % 4
+        caras << entidades.add_face(base[i], base[j], tope[j], tope[i])
+      end
+      caras.all? { |c| c }
+    rescue StandardError
+      false
+    end
+
+    # Tramo de muro cuya parte alta sigue la cubierta (se parte donde cruza la cumbrera)
+    def self.caja_muro_techo(entidades, ax, ay, ux, uy, t, s0, s1, z0, techos, altura_def)
+      return nil if (s1 - s0) < 0.5
+      cortes = [s0, s1]
+      techos.each do |tc|
+        next unless tc['fo'] == 'dos'
+        if tc['ej'] != 'v'
+          c = (tc['y0'].to_f + tc['y1'].to_f) / 2.0
+          den = uy
+          num = c - ay
+        else
+          c = (tc['x0'].to_f + tc['x1'].to_f) / 2.0
+          den = ux
+          num = c - ax
+        end
+        next if den.abs < 1e-6
+        sc = num / den
+        cortes << sc if sc > s0 + 0.5 && sc < s1 - 0.5
+      end
+      cortes.sort!
+      nx = -uy
+      ny = ux
+      h = t / 2.0
+      hecho = false
+      cortes.each_cons(2) do |sa, sb|
+        next if sb - sa < 0.5
+        esq = [[sa, -h], [sb, -h], [sb, h], [sa, h]].map { |s_, o| [ax + ux * s_ + nx * o, ay + uy * s_ + ny * o] }
+        base = esq.map { |p| pt(p[0], p[1], z0) }
+        tope = esq.map { |p| pt(p[0], p[1], altura_en(techos, p[0], p[1], altura_def)) }
+        return nil unless prisma_inclinado(entidades, base, tope)
+        hecho = true
+      end
+      hecho ? true : nil
+    end
+
+    # Un tramo de muro en su grupo: con la parte alta inclinada si hay cubierta; si algo falla, recto
+    def self.pieza_muro(ents, mat, ax, ay, ux, uy, t, s0, s1, z0, z1, h_mu, techos)
+      pg = ents.add_group
+      hecho = false
+      if !techos.empty? && z1 >= h_mu - 0.5
+        hecho = (caja_muro_techo(pg.entities, ax, ay, ux, uy, t, s0, s1, z0, techos, z1) ? true : false) rescue false
+        unless hecho
+          pg.erase!
+          pg = ents.add_group
+        end
+      end
+      hecho = caja_muro(pg.entities, ax, ay, ux, uy, t, s0, s1, z0, z1) unless hecho
+      if hecho
+        pg.material = mat
+      else
+        pg.erase!
+      end
+    end
+
+    # Recorta un polígono [[x, y], ...] dejando la parte donde (coordenada eje - c) * lado >= 0
+    def self.recortar(pts, eje, c, lado)
+      salida = []
+      n = pts.size
+      n.times do |i|
+        a = pts[i]
+        b = pts[(i + 1) % n]
+        da = (a[eje] - c) * lado
+        db = (b[eje] - c) * lado
+        salida << a if da >= 0
+        if (da >= 0) != (db >= 0)
+          t = da / (da - db)
+          salida << [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
+        end
+      end
+      salida
+    end
+
+    # Intervalos de una recta (x = c si eje 0, y = c si eje 1) que quedan dentro del polígono
+    def self.tramos_recta(pts, eje, c)
+      ts = []
+      n = pts.size
+      n.times do |i|
+        a = pts[i]
+        b = pts[(i + 1) % n]
+        a0 = a[eje]
+        b0 = b[eje]
+        if (a0 <= c && b0 > c) || (b0 <= c && a0 > c)
+          ts << a[1 - eje] + (b[1 - eje] - a[1 - eje]) * (c - a0) / (b0 - a0)
+        end
+      end
+      ts.sort!
+      r = []
+      i = 0
+      while i + 1 < ts.size
+        r << [ts[i], ts[i + 1]]
+        i += 2
+      end
+      r
+    end
+
+    # Viga rectangular de a a b (cada punto [x, y, z_superior]); cuelga h por debajo y mide w de ancho
+    def self.viga(ents, a, b, w, h, mat)
+      dx = b[0] - a[0]
+      dy = b[1] - a[1]
+      l = Math.hypot(dx, dy)
+      return nil if l < 0.5
+      nx = -dy / l * w / 2.0
+      ny = dx / l * w / 2.0
+      g = ents.add_group
+      pa_m = [a[0] - nx, a[1] - ny]
+      pa_p = [a[0] + nx, a[1] + ny]
+      pb_m = [b[0] - nx, b[1] - ny]
+      pb_p = [b[0] + nx, b[1] + ny]
+      base = [pt(pa_m[0], pa_m[1], a[2] - h), pt(pb_m[0], pb_m[1], b[2] - h), pt(pb_p[0], pb_p[1], b[2] - h), pt(pa_p[0], pa_p[1], a[2] - h)]
+      tope = [pt(pa_m[0], pa_m[1], a[2]), pt(pb_m[0], pb_m[1], b[2]), pt(pb_p[0], pb_p[1], b[2]), pt(pa_p[0], pa_p[1], a[2])]
+      if prisma_inclinado(g.entities, base, tope)
+        g.material = mat
+      else
+        g.erase!
+      end
+      nil
+    end
+
+    # Recta dentro del polígono: se parte en la cumbrera para que cada trozo siga la pendiente
+    def self.viga_recta(ents, tc, eje, c, t0, t1, w, h, drop, mat, parte)
+      cortes = [t0, t1]
+      if parte && tc['fo'] == 'dos'
+        cr = (eje == 0) ? ((tc['y0'].to_f + tc['y1'].to_f) / 2.0) : ((tc['x0'].to_f + tc['x1'].to_f) / 2.0)
+        horizontal = tc['ej'] != 'v'
+        # solo se parte si la recta cruza la cumbrera: eje 0 (x = c) recorre y; la cumbrera horizontal está en y = centro
+        cortes << cr if ((eje == 0 && horizontal) || (eje == 1 && !horizontal)) && cr > t0 + 0.5 && cr < t1 - 0.5
+      end
+      cortes.sort!
+      cortes.each_cons(2) do |ta, tb|
+        next if tb - ta < 0.5
+        pa = eje == 0 ? [c, ta] : [ta, c]
+        pb = eje == 0 ? [c, tb] : [tb, c]
+        a = [pa[0], pa[1], techo_z(tc, pa[0], pa[1]) - drop]
+        b = [pb[0], pb[1], techo_z(tc, pb[0], pb[1]) - drop]
+        viga(ents, a, b, w, h, mat)
+      end
+    end
+
+    # Cubierta (a una o dos aguas) con sus cerchas/vigas y correas, o vigas bajo un techo plano
+    def self.construir_techo(ents, tc, etiqueta, mat_viga)
+      pts = techo_pts(tc)
+      return if pts.size < 3
+      g = ents.add_group
+      g.name = 'Cubierta'
+      g.layer = etiqueta
+      fo = tc['fo']
+      if fo == 'dos' || fo == 'una'
+        partes = [pts]
+        if fo == 'dos'
+          if tc['ej'] != 'v'
+            c = (tc['y0'].to_f + tc['y1'].to_f) / 2.0
+            partes = [recortar(pts, 1, c, 1), recortar(pts, 1, c, -1)]
+          else
+            c = (tc['x0'].to_f + tc['x1'].to_f) / 2.0
+            partes = [recortar(pts, 0, c, 1), recortar(pts, 0, c, -1)]
+          end
+        end
+        partes.each do |pp|
+          next if pp.size < 3
+          cara = g.entities.add_face(pp.map { |p| pt(p[0], p[1], techo_z(tc, p[0], p[1])) })
+          next unless cara
+          cara.reverse! if cara.normal.z < 0
+          cara.material = material('Ranuse cubierta', '#b9bdc2')
+          cara.back_material = material('Ranuse techo cubierta', tc['c'] || '#f6f4f1')
+        end
+      end
+      x0 = tc['x0'].to_f
+      x1 = tc['x1'].to_f
+      y0 = tc['y0'].to_f
+      y1 = tc['y1'].to_f
+      correa_h = (tc['cr'] && fo != 'plano') ? 12.0 : 0.0
+      vg = tc['vg']
+      if vg
+        s = vg['s'].to_f
+        s = 60.0 if s < 20.0
+        w = vg['w'].to_f
+        w = 10.0 if w < 2.0
+        h = vg['h'].to_f
+        h = 20.0 if h < 4.0
+        # eje 0: vigas con x = c (corren en y); eje 1: vigas con y = c (corren en x)
+        eje = if fo == 'plano'
+                vg['d'] == 'v' ? 0 : 1
+              else
+                tc['ej'] != 'v' ? 0 : 1
+              end
+        ini = eje == 0 ? x0 : y0
+        fin = eje == 0 ? x1 : y1
+        c = ini + s / 2.0
+        while c < fin
+          tramos_recta(pts, eje, c).each do |t0, t1|
+            viga_recta(g.entities, tc, eje, c, t0, t1, w, h, correa_h, mat_viga, true)
+          end
+          c += s
+        end
+      end
+      cr = tc['cr']
+      if cr && fo != 'plano'
+        s = cr['s'].to_f
+        s = 100.0 if s < 30.0
+        eje = tc['ej'] != 'v' ? 1 : 0
+        ini = eje == 0 ? x0 : y0
+        fin = eje == 0 ? x1 : y1
+        c = ini + s / 2.0
+        while c < fin
+          tramos_recta(pts, eje, c).each do |t0, t1|
+            viga_recta(g.entities, tc, eje, c, t0, t1, 8.0, 12.0, 0.0, mat_viga, false)
+          end
+          c += s
+        end
+      end
+    end
+
     def self.construir(ents, plano)
       vista = ajuste('estado', 'final')
       altura = plano['altura'].to_f
@@ -217,6 +540,8 @@ module Ranuse
       mat_marco = material('Ranuse marco', '#9aa0a6')
       mat_maq = material('Ranuse máquina', '#34343a')
       mat_pilar = material('Ranuse pilar', '#cfcac2')
+      mat_viga = material('Ranuse viga', '#a97c50')
+      techos_inc = techos_inclinados(plano)
 
       et_muros = etiqueta('Ranuse - Muros')
       et_suelos = etiqueta('Ranuse - Suelos')
@@ -268,22 +593,12 @@ module Ranuse
           piezas << [p0, p1, 0.0, sill] if sill > 0.5
           piezas << [p0, p1, tope, h_mu] if tope < h_mu - 0.5
           piezas.each do |s0, s1, z0, z1|
-            pg = g.entities.add_group
-            if caja_muro(pg.entities, ax, ay, ux, uy, t, s0, s1, z0, z1)
-              pg.material = mat
-            else
-              pg.erase!
-            end
+            pieza_muro(g.entities, mat, ax, ay, ux, uy, t, s0, s1, z0, z1, h_mu, techos_inc)
           end
           carpinteria(g.entities, o, ax, ay, ux, uy, t, p0, p1, sill, tope, mat_vidrio, mat_madera, mat_marco)
           cur = [cur, p1].max
         end
-        pg = g.entities.add_group
-        if caja_muro(pg.entities, ax, ay, ux, uy, t, cur, largo + t / 2.0, 0.0, h_mu)
-          pg.material = mat
-        else
-          pg.erase!
-        end
+        pieza_muro(g.entities, mat, ax, ay, ux, uy, t, cur, largo + t / 2.0, 0.0, h_mu, h_mu, techos_inc)
       end
 
       # Suelos y techos por sala
@@ -302,6 +617,7 @@ module Ranuse
           cara.back_material = cara.material if cara.material
         end
         next unless ajuste('techos', false)
+        next if sala_con_cubierta?(pts, techos_inc) # esa sala lleva su cubierta con forma
         techo = sa['techo']
         gt = ents.add_group
         gt.name = "Techo #{sa['nombre']}".strip
@@ -310,6 +626,17 @@ module Ranuse
         if ct
           ct.reverse! if ct.normal.z > 0
           ct.material = material("Ranuse techo #{techo ? techo['n'] : 'blanco'}", techo ? techo['c'] : '#f6f4f1')
+        end
+      end
+
+      # Techos con forma y vigas (solo si los techos están visibles)
+      if ajuste('techos', false)
+        (plano['techos'] || []).each do |tc|
+          begin
+            construir_techo(ents, tc, et_techos, mat_viga)
+          rescue StandardError
+            # un techo con datos raros no debe romper el resto del modelo
+          end
         end
       end
 
@@ -323,7 +650,7 @@ module Ranuse
         d = p['d'].to_f / 2.0
         cx = p['cx'].to_f
         cy = p['cy'].to_f
-        prisma(g.entities, [[cx - w, cy - d], [cx + w, cy - d], [cx + w, cy + d], [cx - w, cy + d]], 0.0, altura)
+        prisma(g.entities, [[cx - w, cy - d], [cx + w, cy - d], [cx + w, cy + d], [cx - w, cy + d]], 0.0, altura_en(techos_inc, cx, cy, altura))
         g.material = mat_pilar
       end
 

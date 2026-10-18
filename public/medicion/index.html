@@ -1952,6 +1952,87 @@ function clSvg(C,px,poly,cl,col,suave){
   });
   return d?'<path d="'+d+'" style="fill:none;stroke:'+(col||C.dim)+';stroke-width:'+f2((suave?0.32:0.45)*px)+(suave?';stroke-opacity:.5':'')+'"/>':'';
 }
+/* techos con forma (plano, a dos aguas, a un agua) y su estructura (vigas, cerchas, correas): se ven en la lámina de techos y se construyen en SketchUp */
+/* intervalos de una recta (x=c o y=c) dentro de un polígono */
+function techoTramos(poly,eje,c){
+  var ts=[],n=poly.length,i;
+  for(i=0;i<n;i++){
+    var a=poly[i],b=poly[(i+1)%n],a0=eje==='x'?a.x:a.y,b0=eje==='x'?b.x:b.y,a1=eje==='x'?a.y:a.x,b1=eje==='x'?b.y:b.x;
+    if((a0<=c&&b0>c)||(b0<=c&&a0>c)){ts.push(a1+(b1-a1)*(c-a0)/(b0-a0))}
+  }
+  ts.sort(function(p,q){return p-q});
+  var out=[];for(i=0;i+1<ts.length;i+=2)out.push([ts[i],ts[i+1]]);
+  return out;
+}
+function techoSvg(C,px,view){
+  var h='';
+  if(view!=='techos')return h;
+  roomFaces('techos').forEach(function(f){
+    var z=zoneIn(f,'t');if(!z||z.ex||(!z.fo&&!z.vg))return;
+    var b=techoBox(f.inner),fo=z.fo||'plano',ej=z.ej==='v'?'v':'h',col=C.accent||C.dim,H=num(st.v.altura)||260;
+    var ha=z.ha!=null?z.ha:H,hc=z.hc!=null?z.hc:H+150;
+    function seg(x1,y1,x2,y2,w,dash,op){return ln(x1,y1,x2,y2,col,w,'butt',(dash?';stroke-dasharray:'+dash:'')+(op?';opacity:'+op:''))}
+    /* vigas */
+    if(z.vg){
+      var vs=z.vg.s>0?z.vg.s:60,vw=Math.max(z.vg.w||10,2),dir=fo==='plano'?(z.vg.d==='v'?'v':'h'):(ej==='h'?'v':'h'); /* con cubierta, las vigas van de alero a alero (perpendiculares a la cumbrera) */
+      if(dir==='h'){for(var yy=b.y0+vs/2;yy<b.y1;yy+=vs)techoTramos(f.inner,'y',yy).forEach(function(t){h+=seg(t[0],yy,t[1],yy,vw,'',0.45)})}
+      else{for(var xx=b.x0+vs/2;xx<b.x1;xx+=vs)techoTramos(f.inner,'x',xx).forEach(function(t){h+=seg(xx,t[0],xx,t[1],vw,'',0.45)})}
+    }
+    if(fo!=='plano'&&z.cr){
+      var cs=z.cr.s>0?z.cr.s:100;
+      if(ej==='h'){for(var y2=b.y0+cs/2;y2<b.y1;y2+=cs)techoTramos(f.inner,'y',y2).forEach(function(t){h+=seg(t[0],y2,t[1],y2,4*px,'',0.6)})}
+      else{for(var x2=b.x0+cs/2;x2<b.x1;x2+=cs)techoTramos(f.inner,'x',x2).forEach(function(t){h+=seg(x2,t[0],x2,t[1],4*px,'',0.6)})}
+    }
+    if(fo==='dos'){ /* cumbrera */
+      if(ej==='h')h+=seg(b.x0,b.cy,b.x1,b.cy,2.2*px,f2(10*px)+' '+f2(3*px)+' '+f2(2*px)+' '+f2(3*px));
+      else h+=seg(b.cx,b.y0,b.cx,b.y1,2.2*px,f2(10*px)+' '+f2(3*px)+' '+f2(2*px)+' '+f2(3*px));
+    }
+    /* flechas de caída (hacia el alero) */
+    if(fo!=='plano'){
+      var L=Math.min(60,(ej==='h'?(b.y1-b.y0):(b.x1-b.x0))/ (fo==='dos'?4:3));
+      function flecha(x,y,dx,dy){var ex=x+dx*L,ey=y+dy*L;return seg(x,y,ex,ey,1.4*px)+seg(ex,ey,ex-dx*8*px-dy*5*px,ey-dy*8*px+dx*5*px,1.4*px)+seg(ex,ey,ex-dx*8*px+dy*5*px,ey-dy*8*px-dx*5*px,1.4*px)}
+      var pts=fo==='dos'?(ej==='h'?[[b.cx-(b.x1-b.x0)/4,b.cy,0,-1],[b.cx-(b.x1-b.x0)/4,b.cy,0,1],[b.cx+(b.x1-b.x0)/4,b.cy,0,-1],[b.cx+(b.x1-b.x0)/4,b.cy,0,1]]:[[b.cx,b.cy-(b.y1-b.y0)/4,-1,0],[b.cx,b.cy-(b.y1-b.y0)/4,1,0],[b.cx,b.cy+(b.y1-b.y0)/4,-1,0],[b.cx,b.cy+(b.y1-b.y0)/4,1,0]])
+        :(ej==='h'?[[b.cx-(b.x1-b.x0)/4,b.cy,0,z.inv?-1:1],[b.cx+(b.x1-b.x0)/4,b.cy,0,z.inv?-1:1]]:[[b.cx,b.cy-(b.y1-b.y0)/4,z.inv?-1:1,0],[b.cx,b.cy+(b.y1-b.y0)/4,z.inv?-1:1,0]]);
+      pts.forEach(function(q){h+=flecha(q[0],q[1],q[2],q[3])});
+    }
+    var rot=fo==='plano'?(z.vg?'Vigas '+fmtU(z.vg.w||10)+' × '+fmtU(z.vg.h||20)+' cada '+fmtU(z.vg.s||60):''):(fo==='dos'?'Cumbrera '+fmtU(hc)+' · alero '+fmtU(ha):'Alto '+fmtU(hc)+' · bajo '+fmtU(ha));
+    if(rot)h+=txt(C,px,b.cx,b.cy+(fo==='dos'&&ej==='h'?18*px:0)+16*px,rot,col,11,700);
+  });
+  return h;
+}
+var TECHO_FORMAS=[['plano','Plano'],['dos','A dos aguas (nave)'],['una','A un agua (inclinado)']];
+function techoBox(poly){
+  var x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  poly.forEach(function(p){x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y)});
+  return {x0:x0,y0:y0,x1:x1,y1:y1,cx:(x0+x1)/2,cy:(y0+y1)/2};
+}
+function techoPanel(z,zf){
+  var fo=z.fo||'plano',H=num(st.v.altura)||260,h='';
+  h+='<div class="lab" style="margin-top:12px">Forma del techo</div>';
+  h+='<label class="fld"><select data-t="zn_fo">'+TECHO_FORMAS.map(function(x){return '<option value="'+x[0]+'"'+(fo===x[0]?' selected':'')+'>'+x[1]+'</option>'}).join('')+'</select></label>';
+  if(fo!=='plano'){
+    var ej=z.ej==='v'?'v':'h';
+    h+='<div class="seg3" style="margin:0 0 6px">'+[['h','Cumbrera ↔ (horizontal)'],['v','Cumbrera ↕ (vertical)']].map(function(p){return '<button data-a="znej:'+p[0]+'" aria-pressed="'+(ej===p[0])+'">'+p[1]+'</button>'}).join('')+'</div>';
+    h+=fld('zn_ha','Altura en el alero (cm)',z.ha,String(H));
+    h+=fld('zn_hc',fo==='dos'?'Altura de la cumbrera (cm)':'Altura del lado alto (cm)',z.hc,String(H+150));
+    if(zf){
+      var b=techoBox(zf.inner),vano=ej==='h'?(b.y1-b.y0):(b.x1-b.x0),rec=fo==='dos'?vano/2:vano,ha=z.ha!=null?z.ha:H,hc=z.hc!=null?z.hc:H+150;
+      if(rec>0)h+='<p class="note" style="margin:0 0 6px">Pendiente: '+(Math.round((hc-ha)/rec*1000)/10)+' % ('+(Math.round(Math.atan((hc-ha)/rec)*1800/Math.PI)/10)+'°) · vano de '+m2(vano/100)+' m.</p>';
+    }
+    if(fo==='una')h+='<label class="fld chk"><input type="checkbox" data-t="zn_inv"'+(z.inv?' checked':'')+'><span>Invertir (el lado bajo pasa al otro lado)</span></label>';
+  }
+  h+='<label class="fld chk"><input type="checkbox" data-t="zn_vg"'+(z.vg?' checked':'')+'><span>Dibujar vigas'+(fo==='plano'?'':' / cerchas')+' (aparecen en SketchUp)</span></label>';
+  if(z.vg){
+    h+=fld('zn_vgs','Separación entre ejes (cm)',z.vg.s,'60')+fld('zn_vgw','Ancho de la viga (cm)',z.vg.w,'10')+fld('zn_vgh','Canto de la viga (cm)',z.vg.h,'20');
+    if(fo==='plano')h+='<div class="seg3" style="margin:0 0 6px">'+[['h','Vigas ↔'],['v','Vigas ↕']].map(function(p){return '<button data-a="znvgd:'+p[0]+'" aria-pressed="'+((z.vg.d||'h')===p[0])+'">'+p[1]+'</button>'}).join('')+'</div>';
+  }
+  if(fo!=='plano'){
+    h+='<label class="fld chk"><input type="checkbox" data-t="zn_cr"'+(z.cr?' checked':'')+'><span>Dibujar correas (paralelas a la cumbrera)</span></label>';
+    if(z.cr)h+=fld('zn_crs','Separación de correas (cm)',z.cr.s,'100');
+  }
+  h+='<p class="note" style="margin:6px 0 0">Las paredes de dentro de esta sala suben hasta el techo (en los hastiales se ve el triángulo). En SketchUp hay que activar «Mostrar techos» para ver la cubierta y las vigas.</p>';
+  return h;
+}
 function clObj(){var s=st.sel;if(!s)return null;return s.t==='zn'?by(st.v.zn,s.id):s.t==='sp'?by(st.v.sp,s.id):null}
 function colocHtml(o,poly){
   var cl=o.cl,h='<div class="lab" style="margin-top:12px">Colocación y despiece</div>';
@@ -3240,6 +3321,7 @@ function scene(C,k,view,o){
     pilCells(p).forEach(function(c){h+='<rect x="'+f2(c.x-p.w/2)+'" y="'+f2(c.y-p.d/2)+'" width="'+f2(p.w)+'" height="'+f2(p.d)+'" style="fill:'+(o.flat&&!(view==='demol'&&p.s==='dem')?C.bg:fill)+';stroke:'+(view==='demol'&&p.s==='dem'?C.dem:(o.flat?fill:'none'))+';stroke-width:'+f2((o.flat?1.5:1)*px)+'"/>'});
   });
   h+=pilDims(C,px,view,sel,!!o.flat);
+  h+=techoSvg(C,px,view);
   if(view==='cotas')v.pil.forEach(function(p){
     if(!stVis(p.s,view))return;
     var c=pc(p);
@@ -5680,6 +5762,7 @@ function panelSel(focus){
     h+='<label class="fld"><span>Nombre de la sala</span><input data-t="zn_nm" value="'+esc(z.nm||'')+'" placeholder="Sala de entreno" autocomplete="off"></label>';
     h+='<label class="fld"><span>Material</span><select data-t="zn_mat">'+matOpts(zv,z.mat)+'</select></label>'+codColorHtml(z,zv)+sisSelHtml(zv,z.sis,'zn_sis');
     if(z.k==='t')h+=fld('zn_h','Altura libre bajo el techo (cm)',z.h,String(fmt(num(st.v.altura)||260)));
+    if(z.k==='t'&&!z.ex)h+=techoPanel(z,zf);
     if(zf&&z.k==='s')h+='<p class="note">Rodapié: '+m2(Math.max(0,zf.per-zf.doorW)/100)+' ml (perímetro menos puertas). Los m² son útiles, descontando el grosor de los muros.</p>';
     h+='<label class="fld chk"><input type="checkbox" data-t="zn_ex"'+(z.ex?' checked':'')+'><span>'+(z.k==='s'?'Suelo':'Techo')+' existente: se mantiene (no se mide ni se pide)</span></label>';
     h+=colocHtml(z,zf?zf.inner:null);
@@ -5961,6 +6044,15 @@ function applyField(key,val,adv,raw){
     snap();if(key==='eqa_x')qa.x=n;else if(key==='eqa_w')qa.w=Math.max(5,n);else qa.h=Math.max(5,n);commit(false);
   }else if(s.t==='zn'){
     var zq=by(st.v.zn,s.id);if(!zq)return;
+    var RZ={zn_ha:[100,2000,'altura'],zn_hc:[100,2000,'altura'],zn_vgs:[20,500,'separación'],zn_vgw:[2,60,'ancho'],zn_vgh:[4,100,'canto'],zn_crs:[30,500,'separación']};
+    if(RZ[key]){
+      var rg=RZ[key];if(!(n>=rg[0]&&n<=rg[1])){toast('Escribe un valor de '+rg[2]+' entre '+rg[0]+' y '+rg[1]+' cm');return}
+      snap();
+      if(key==='zn_ha')zq.ha=n;else if(key==='zn_hc')zq.hc=n;
+      else if(key==='zn_crs'){zq.cr=zq.cr||{};zq.cr.s=n}
+      else{zq.vg=zq.vg||{};zq.vg[key==='zn_vgs'?'s':key==='zn_vgw'?'w':'h']=n}
+      commit(false);panelSel();return;
+    }
     if(!(n>=100&&n<=1000)){toast('Escribe una altura entre 100 y 1000 cm');return}
     snap();zq.h=n;commit(false);
   }else if(s.t==='pt'){
@@ -5980,6 +6072,11 @@ function applyField(key,val,adv,raw){
   }
 }
 function doAction(a,el){
+  if(a.indexOf('znej:')===0||a.indexOf('znvgd:')===0){
+    var zt=st.sel&&st.sel.t==='zn'?by(st.v.zn,st.sel.id):null;if(!zt)return;
+    snap();if(a.indexOf('znej:')===0)zt.ej=a.slice(5)==='v'?'v':'h';else{zt.vg=zt.vg||{s:60,w:10,h:20};zt.vg.d=a.slice(6)==='v'?'v':'h'}
+    commit(false);panelSel();return;
+  }
   if(a.indexOf('mrot:')===0){rotarMulti(parseFloat(a.slice(5)));return}
   if(a.indexOf('mflip:')===0){voltearMulti(a.slice(6));return}
   if(a.indexOf('mwstate:')===0||a.indexOf('mostate:')===0){
@@ -6220,7 +6317,12 @@ $('side').addEventListener('change',function(e){
     commit(false);
   }else if(t&&st.sel&&st.sel.t==='zn'){
     var z=by(st.v.zn,st.sel.id);if(!z)return;
-    snap();if(t==='zn_nm')z.nm=e.target.value.trim();else if(t==='zn_mat'){var vzn=z.k==='s'?'suelos':'techos',czn=matOf(vzn,z.mat);z.mat=czn.cod?colorDe(vzn,e.target.value,czn.cod,codigoHex(czn.cod)||czn.c):e.target.value}
+    snap();
+    if(t==='zn_fo'){var vfo=e.target.value;if(vfo==='plano'){delete z.fo}else{z.fo=vfo;var Hh=num(st.v.altura)||260;if(z.ha==null)z.ha=Hh;if(z.hc==null)z.hc=Hh+150;if(!z.ej)z.ej='h'}}
+    else if(t==='zn_inv'){if(e.target.checked)z.inv=true;else delete z.inv}
+    else if(t==='zn_vg'){if(e.target.checked)z.vg=z.vg||{s:60,w:10,h:20,d:'h'};else delete z.vg}
+    else if(t==='zn_cr'){if(e.target.checked)z.cr=z.cr||{s:100};else delete z.cr}
+    else if(t==='zn_nm')z.nm=e.target.value.trim();else if(t==='zn_mat'){var vzn=z.k==='s'?'suelos':'techos',czn=matOf(vzn,z.mat);z.mat=czn.cod?colorDe(vzn,e.target.value,czn.cod,codigoHex(czn.cod)||czn.c):e.target.value}
     commit(false);panelSel();
   }else if(t&&t.indexOf('op_')===0&&st.sel&&st.sel.t==='op'){
     var oq=opn(st.sel.id);if(!oq)return;
@@ -8834,6 +8936,14 @@ function buildModelo3d(){
     var zs=zoneIn(f,'s'),zt=zoneIn(f,'t'),ms=zs?matOf('suelos',zs.mat):null,mt=zt?matOf('techos',zt.mat):null;
     out.salas.push({nombre:(zs&&zs.nm)||(zt&&zt.nm)||'',pts:f.inner.map(function(p){return [f2(p.x),f2(p.y)]}),
       suelo:ms?{n:ms.n,c:ms.c}:null,techo:mt?{n:mt.n,c:mt.c}:null});
+  });
+  out.techos=[];
+  roomFaces('techos').forEach(function(f){
+    var z=zoneIn(f,'t');if(!z||z.ex||(!z.fo&&!z.vg))return;
+    var m=matOf('techos',z.mat),H=num(v.altura)||260,b=techoBox(f.inner);
+    out.techos.push({pts:f.inner.map(function(p){return [f2(p.x),f2(p.y)]}),fo:z.fo||'plano',ej:z.ej==='v'?'v':'h',inv:!!z.inv,
+      ha:z.ha!=null?z.ha:H,hc:z.hc!=null?z.hc:H+150,x0:f2(b.x0),y0:f2(b.y0),x1:f2(b.x1),y1:f2(b.y1),
+      vg:z.vg?{s:z.vg.s||60,w:z.vg.w||10,h:z.vg.h||20,d:z.vg.d==='v'?'v':'h'}:null,cr:z.cr?{s:z.cr.s||100}:null,c:m?m.c:'#f6f4f1'});
   });
   out.a_medida=(v.mm||[]).filter(function(m){return m.k!=='hor'}).map(function(m){var q=mmPoly(m);return q?{nombre:mmNombre(m),pts:q.pts.map(function(p){return [f2(p.x),f2(p.y)]}),z0:f2(m.y0||0),z1:f2((m.y0||0)+m.h),luz:!!m.luz}:null}).filter(Boolean);
   v.pil.forEach(function(p){pilCells(p).forEach(function(c){out.pilares.push({cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,estado:p.s||'ex'})})});
