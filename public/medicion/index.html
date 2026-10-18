@@ -1964,6 +1964,50 @@ function techoTramos(poly,eje,c){
   var out=[];for(i=0;i+1<ts.length;i+=2)out.push([ts[i],ts[i+1]]);
   return out;
 }
+/* rectas de vigas ('vg') o correas ('cr') de un techo: reparto automático por separación, con las que la persona ha movido (mv) o quitado (del) */
+function techoLin(z,inner,tipo){
+  var cfg=tipo==='vg'?z.vg:z.cr;if(!cfg)return null;
+  var b=techoBox(inner),fo=z.fo||'plano',ej=z.ej==='v'?'v':'h',eje,s;
+  if(tipo==='vg'){s=cfg.s>0?cfg.s:60;eje=(fo==='plano'?(cfg.d==='v'?'v':'h'):(ej==='h'?'v':'h'))==='h'?'y':'x'}
+  else{s=cfg.s>0?cfg.s:100;eje=ej==='h'?'y':'x'}
+  var ini=eje==='y'?b.y0:b.x0,fin=eje==='y'?b.y1:b.x1,items=[],k=0,mv=cfg.mv||{},del=cfg.del||{};
+  for(var c0=ini+s/2;c0<fin;c0+=s,k++){
+    if(del[k])continue;
+    var c=c0+(+mv[k]||0);if(c<=ini||c>=fin)continue;
+    items.push({k:k,c:c,tr:techoTramos(inner,eje,c)});
+  }
+  return {eje:eje,s:s,ini:ini,fin:fin,items:items};
+}
+function techoFaceDe(z){var zf=null;roomFaces('techos').forEach(function(f){if(!zf&&zoneIn(f,'t')===z)zf=f});return zf}
+function techoReset(z){if(z.vg){delete z.vg.mv;delete z.vg.del}if(z.cr){delete z.cr.mv;delete z.cr.del}if(st.sel&&st.sel.t==='zn'&&st.sel.id===z.id)st.sel.el=null}
+function techoQuita(z,el){
+  if(!z||!el)return;
+  if(el.k==='tl'){z.tl=(z.tl||[]).filter(function(q,i){return i!==el.i});if(!z.tl.length)delete z.tl}
+  else{var cg=el.k==='vg'?z.vg:z.cr;if(cg){cg.del=cg.del||{};cg.del[el.i]=1;if(cg.mv)delete cg.mv[el.i]}}
+  if(st.sel&&st.sel.t==='zn'&&st.sel.id===z.id)st.sel.el=null;
+}
+/* lo que hay bajo un punto del plano de techos: un tragaluz, una correa o una viga */
+function pickTecho(p){
+  var best=null,bd=1e9;
+  roomFaces('techos').forEach(function(f){
+    var z=zoneIn(f,'t');if(!z||z.ex||best&&best.k==='tl')return;
+    if(!inPoly(p,f.inner))return;
+    (z.tl||[]).forEach(function(t,ix){if(Math.abs(p.x-t.x)<=t.w/2+2&&Math.abs(p.y-t.y)<=t.d/2+2)best={zid:z.id,el:{k:'tl',i:ix}}});
+    if(best)return;
+    var fo=z.fo||'plano';
+    ['cr','vg'].forEach(function(tp){
+      if(tp==='cr'&&fo==='plano')return;
+      var TL=techoLin(z,f.inner,tp);if(!TL)return;
+      var tol=Math.max(6/st.k,tp==='vg'?((z.vg.w||10)/2):4);
+      TL.items.forEach(function(it){
+        var d=Math.abs((TL.eje==='y'?p.y:p.x)-it.c);if(d>tol||d>=bd)return;
+        var a=TL.eje==='y'?p.x:p.y;
+        if(it.tr.some(function(t){return a>=t[0]-tol&&a<=t[1]+tol})){bd=d;best={zid:z.id,el:{k:tp,i:it.k}}}
+      });
+    });
+  });
+  return best;
+}
 /* medición de un techo: superficie real de la cubierta, vigas/cerchas, correas y tragaluces (lo que se pide a proveedores y entra en presupuestos) */
 function techoMedicion(z,inner){
   var b=techoBox(inner),H=num(st.v.altura)||260,fo=z.fo||'plano',ej=z.ej==='v'?'v':'h';
@@ -1975,43 +2019,43 @@ function techoMedicion(z,inner){
   for(i=0;i<n;i++){var p=inner[i],q=inner[(i+1)%n];area+=p.x*q.y-q.x*p.y}
   area=Math.abs(area)/2/10000;
   var out={forma:fo,planta_m2:r2(area),cubierta_m2:r2(area*fp),pendiente_pct:fo==='plano'||fo==='boveda'||rec<=0?0:r2((hc-ha)/rec*100),vigas:null,correas:null,tragaluces:null};
-  function lineas(eje,ini,fin,s,fac){
+  function lineas(TL,fac){
     var nn=0,ml=0;
-    for(var c=ini+s/2;c<fin;c+=s)techoTramos(inner,eje,c).forEach(function(t){nn++;ml+=(t[1]-t[0])*fac});
+    TL.items.forEach(function(it){it.tr.forEach(function(t){nn++;ml+=(t[1]-t[0])*fac})});
     return {n:nn,ml:r2(ml/100)};
   }
   if(z.vg){
-    var s=z.vg.s>0?z.vg.s:60,dir=fo==='plano'?(z.vg.d==='v'?'v':'h'):(ej==='h'?'v':'h');
-    var L=dir==='h'?lineas('y',b.y0,b.y1,s,1):lineas('x',b.x0,b.x1,s,fo==='plano'?1:fp); /* con cubierta, las vigas siguen la pendiente */
-    if(dir==='h'&&fo!=='plano')L.ml=r2(L.ml*fp);
-    out.vigas={n:L.n,ml:L.ml,s:s,w:z.vg.w||10,h:z.vg.h||20};
+    var TV=techoLin(z,inner,'vg'),L=lineas(TV,fo==='plano'?1:fp); /* con cubierta, las vigas siguen la pendiente */
+    out.vigas={n:L.n,ml:L.ml,s:TV.s,w:z.vg.w||10,h:z.vg.h||20};
   }
   if(z.cr&&fo!=='plano'){
-    var cs=z.cr.s>0?z.cr.s:100,C2=ej==='h'?lineas('y',b.y0,b.y1,cs,1):lineas('x',b.x0,b.x1,cs,1);
-    out.correas={n:C2.n,ml:C2.ml,s:cs};
+    var TC=techoLin(z,inner,'cr'),C2=lineas(TC,1);
+    out.correas={n:C2.n,ml:C2.ml,s:TC.s};
   }
   if(z.tl&&z.tl.length)out.tragaluces={n:z.tl.length,m2:r2(z.tl.reduce(function(a,t){return a+t.w*t.d*fp/10000},0))};
   return out;
 }
-function techoSvg(C,px,view){
+function techoSvg(C,px,view,sel){
   var h='';
   if(view!=='techos')return h;
   roomFaces('techos').forEach(function(f){
     var z=zoneIn(f,'t');if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
     var b=techoBox(f.inner),fo=z.fo||'plano',ej=z.ej==='v'?'v':'h',col=C.accent||C.dim,H=num(st.v.altura)||260;
     var ha=z.ha!=null?z.ha:H,hc=z.hc!=null?z.hc:H+150;
-    function seg(x1,y1,x2,y2,w,dash,op){return ln(x1,y1,x2,y2,col,w,'butt',(dash?';stroke-dasharray:'+dash:'')+(op?';opacity:'+op:''))}
-    /* vigas */
-    if(z.vg){
-      var vs=z.vg.s>0?z.vg.s:60,vw=Math.max(z.vg.w||10,2),dir=fo==='plano'?(z.vg.d==='v'?'v':'h'):(ej==='h'?'v':'h'); /* con cubierta, las vigas van de alero a alero (perpendiculares a la cumbrera) */
-      if(dir==='h'){for(var yy=b.y0+vs/2;yy<b.y1;yy+=vs)techoTramos(f.inner,'y',yy).forEach(function(t){h+=seg(t[0],yy,t[1],yy,vw,'',0.45)})}
-      else{for(var xx=b.x0+vs/2;xx<b.x1;xx+=vs)techoTramos(f.inner,'x',xx).forEach(function(t){h+=seg(xx,t[0],xx,t[1],vw,'',0.45)})}
+    function seg(x1,y1,x2,y2,w,dash,op,cc){return ln(x1,y1,x2,y2,cc||col,w,'butt',(dash?';stroke-dasharray:'+dash:'')+(op?';opacity:'+op:''))}
+    var selE=sel&&sel.t==='zn'&&sel.id===z.id?sel.el:null,colSel=C.warn||'#e8a33d';
+    /* vigas (cada una se puede seleccionar, mover y quitar) */
+    function rectas(tp,wd,op){
+      var TL=techoLin(z,f.inner,tp);if(!TL)return;
+      TL.items.forEach(function(it){
+        var esSel=!!(selE&&selE.k===tp&&selE.i===it.k);
+        it.tr.forEach(function(t){
+          h+=TL.eje==='y'?seg(t[0],it.c,t[1],it.c,esSel?wd+3*px:wd,'',esSel?0.95:op,esSel?colSel:null):seg(it.c,t[0],it.c,t[1],esSel?wd+3*px:wd,'',esSel?0.95:op,esSel?colSel:null);
+        });
+      });
     }
-    if(fo!=='plano'&&z.cr){
-      var cs=z.cr.s>0?z.cr.s:100;
-      if(ej==='h'){for(var y2=b.y0+cs/2;y2<b.y1;y2+=cs)techoTramos(f.inner,'y',y2).forEach(function(t){h+=seg(t[0],y2,t[1],y2,4*px,'',0.6)})}
-      else{for(var x2=b.x0+cs/2;x2<b.x1;x2+=cs)techoTramos(f.inner,'x',x2).forEach(function(t){h+=seg(x2,t[0],x2,t[1],4*px,'',0.6)})}
-    }
+    if(z.vg)rectas('vg',Math.max(z.vg.w||10,2),0.45); /* con cubierta, las vigas van de alero a alero (perpendiculares a la cumbrera) */
+    if(fo!=='plano'&&z.cr)rectas('cr',4*px,0.6);
     if(fo==='dos'||fo==='boveda'){ /* cumbrera / clave */
       if(ej==='h')h+=seg(b.x0,b.cy,b.x1,b.cy,2.2*px,f2(10*px)+' '+f2(3*px)+' '+f2(2*px)+' '+f2(3*px));
       else h+=seg(b.cx,b.y0,b.cx,b.y1,2.2*px,f2(10*px)+' '+f2(3*px)+' '+f2(2*px)+' '+f2(3*px));
@@ -2025,8 +2069,8 @@ function techoSvg(C,px,view){
       pts.forEach(function(q){h+=flecha(q[0],q[1],q[2],q[3])});
     }
     (z.tl||[]).forEach(function(t,i){
-      var x0=t.x-t.w/2,y0=t.y-t.d/2,x1=t.x+t.w/2,y1=t.y+t.d/2;
-      h+='<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(t.w)+'" height="'+f2(t.d)+'" style="fill:'+col+';fill-opacity:.12;stroke:'+col+';stroke-width:'+f2(1.6*px)+'"/>';
+      var x0=t.x-t.w/2,y0=t.y-t.d/2,x1=t.x+t.w/2,y1=t.y+t.d/2,esT=!!(selE&&selE.k==='tl'&&selE.i===i);
+      h+='<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(t.w)+'" height="'+f2(t.d)+'" style="fill:'+(esT?colSel:col)+';fill-opacity:'+(esT?.3:.12)+';stroke:'+(esT?colSel:col)+';stroke-width:'+f2((esT?2.6:1.6)*px)+'"/>';
       h+=seg(x0,y0,x1,y1,1*px,'',0.7)+seg(x1,y0,x0,y1,1*px,'',0.7);
       h+=txt(C,px,t.x,y1+13*px,'T'+(i+1)+' · '+fmtU(t.w)+' × '+fmtU(t.d),col,10,700);
     });
@@ -2041,8 +2085,25 @@ function techoBox(poly){
   poly.forEach(function(p){x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y)});
   return {x0:x0,y0:y0,x1:x1,y1:y1,cx:(x0+x1)/2,cy:(y0+y1)/2};
 }
+function techoElPanel(z,zf,el){
+  var caja='<div class="note" style="margin:8px 0;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.05)">';
+  if(el.k==='tl'){
+    var t=(z.tl||[])[el.i];if(!t)return '';
+    return caja+'<b>Tragaluz T'+(el.i+1)+' seleccionado</b><br>Arrástralo en el plano para moverlo; el tamaño y las distancias están más abajo.</div><div class="btns"><button class="danger" data-a="teel:quitar">Quitar este tragaluz</button></div>';
+  }
+  var cfg=el.k==='vg'?z.vg:z.cr;if(!cfg||!zf)return '';
+  var TL=techoLin(z,zf.inner,el.k),it=null;
+  TL.items.forEach(function(q){if(q.k===el.i)it=q});
+  if(!it)return '';
+  var nom=el.k==='vg'?(z.fo&&z.fo!=='plano'?'Viga / cercha':'Viga'):'Correa';
+  var h=caja+'<b>'+nom+' nº '+(el.i+1)+' seleccionada</b><br>Arrástrala en el plano para moverla; con Suprimir se quita.</div>';
+  h+=fld('zn_elpos',(TL.eje==='y'?'Distancia al borde de arriba (cm)':'Distancia al borde izquierdo (cm)'),Math.round(it.c-TL.ini));
+  h+='<div class="btns">'+((cfg.mv&&cfg.mv[el.i])?'<button data-a="teel:volver">Volver a su sitio</button>':'')+'<button class="danger" data-a="teel:quitar">Quitar '+(el.k==='vg'?'esta viga':'esta correa')+'</button></div>';
+  return h;
+}
 function techoPanel(z,zf){
   var fo=z.fo||'plano',H=num(st.v.altura)||260,h='';
+  if(st.sel&&st.sel.t==='zn'&&st.sel.id===z.id&&st.sel.el)h+=techoElPanel(z,zf,st.sel.el);
   h+='<div class="lab" style="margin-top:12px">Forma del techo</div>';
   h+='<label class="fld"><select data-t="zn_fo">'+TECHO_FORMAS.map(function(x){return '<option value="'+x[0]+'"'+(fo===x[0]?' selected':'')+'>'+x[1]+'</option>'}).join('')+'</select></label>';
   if(fo!=='plano'){
@@ -2066,6 +2127,8 @@ function techoPanel(z,zf){
     h+='<label class="fld chk"><input type="checkbox" data-t="zn_cr"'+(z.cr?' checked':'')+'><span>Dibujar correas (paralelas a la cumbrera)</span></label>';
     if(z.cr)h+=fld('zn_crs','Separación de correas (cm)',z.cr.s,'100');
   }
+  ['vg','cr'].forEach(function(tp){var cg=tp==='vg'?z.vg:z.cr;if(cg&&((cg.mv&&Object.keys(cg.mv).length)||(cg.del&&Object.keys(cg.del).length)))h+='<div class="btns"><button data-a="teel:auto:'+tp+'">Volver al reparto automático de '+(tp==='vg'?'las vigas':'las correas')+'</button></div>'});
+  if(fo!=='plano'||z.vg)h+='<p class="note" style="margin:0 0 6px">En la lámina de techos puedes tocar y arrastrar cada viga, correa o tragaluz para moverla.</p>';
   if(zf){
     var tm=techoMedicion(z,zf.inner),lin=[];
     if(fo!=='plano')lin.push('Cubierta '+m2(tm.cubierta_m2)+' m² reales ('+m2(tm.planta_m2)+' m² en planta)');
@@ -3375,7 +3438,7 @@ function scene(C,k,view,o){
     pilCells(p).forEach(function(c){h+='<rect x="'+f2(c.x-p.w/2)+'" y="'+f2(c.y-p.d/2)+'" width="'+f2(p.w)+'" height="'+f2(p.d)+'" style="fill:'+(o.flat&&!(view==='demol'&&p.s==='dem')?C.bg:fill)+';stroke:'+(view==='demol'&&p.s==='dem'?C.dem:(o.flat?fill:'none'))+';stroke-width:'+f2((o.flat?1.5:1)*px)+'"/>'});
   });
   h+=pilDims(C,px,view,sel,!!o.flat);
-  h+=techoSvg(C,px,view);
+  h+=techoSvg(C,px,view,sel);
   if(view==='cotas')v.pil.forEach(function(p){
     if(!stVis(p.s,view))return;
     var c=pc(p);
@@ -4236,6 +4299,16 @@ svg.addEventListener('pointerdown',function(e){
       var oo=opn(ho.id);
       if(oo){snap();st.sel=ho;gesture={type:'dragOp',id:e.pointerId,o:oo,moved:false,sx:p.x,sy:p.y};panelSel();render();return}
     }
+    if(ho&&ho.t==='zn'&&ho.el&&st.tool==='select'&&st.view==='techos'){
+      var zte=by(st.v.zn,ho.id),fte=zte&&techoFaceDe(zte);
+      if(zte&&fte){
+        snap();st.sel={t:'zn',id:ho.id,el:ho.el};
+        var gte={type:'dragTe',id:e.pointerId,z:zte,el:ho.el,w0:wo,moved:false,sx:p.x,sy:p.y,box:techoBox(fte.inner)};
+        if(ho.el.k==='tl'){var tq0=(zte.tl||[])[ho.el.i];if(tq0){gte.x0=tq0.x;gte.y0=tq0.y}}
+        else{var TL0=techoLin(zte,fte.inner,ho.el.k);gte.eje=TL0.eje;gte.ini=TL0.ini;gte.fin=TL0.fin;gte.base=TL0.ini+TL0.s/2+ho.el.i*TL0.s;gte.mv0=+((ho.el.k==='vg'?zte.vg:zte.cr).mv||{})[ho.el.i]||0}
+        gesture=gte;panelSel();render();return;
+      }
+    }
     if(ho&&ho.t==='pil'){
       var pp=pl(ho.id);
       if(pp){var pcn=pc(pp);snap();st.sel=ho;gesture={type:'dragPil',id:e.pointerId,pil:pp,ox:wo.x-pcn.x,oy:wo.y-pcn.y,moved:false,sx:p.x,sy:p.y};panelSel();render();return}
@@ -4373,6 +4446,22 @@ svg.addEventListener('pointermove',function(e){
     pq.dx=f2(Math.round((wpl.x-gesture.ox-anp.x)/5)*5);
     pq.dy=f2(Math.round((wpl.y-gesture.oy-anp.y)/5)*5);
     req();
+  }else if(gesture.type==='dragTe'&&gesture.id===e.pointerId){
+    if(!gesture.moved&&Math.hypot(p.x-gesture.sx,p.y-gesture.sy)<6)return;
+    gesture.moved=true;
+    var wte=toW(p),dxe=wte.x-gesture.w0.x,dye=wte.y-gesture.w0.y,ez=gesture.z,el=gesture.el,bz=gesture.box;
+    if(el.k==='tl'){
+      var tqe=(ez.tl||[])[el.i];
+      if(tqe){tqe.x=Math.max(bz.x0,Math.min(bz.x1,gesture.x0+Math.round(dxe/5)*5));tqe.y=Math.max(bz.y0,Math.min(bz.y1,gesture.y0+Math.round(dye/5)*5))}
+    }else{
+      var cge=el.k==='vg'?ez.vg:ez.cr;
+      if(cge){
+        var nce=gesture.base+gesture.mv0+Math.round((gesture.eje==='y'?dye:dxe)/5)*5;
+        nce=Math.max(gesture.ini+5,Math.min(gesture.fin-5,nce));
+        cge.mv=cge.mv||{};var mvn=Math.round(nce-gesture.base);if(mvn)cge.mv[el.i]=mvn;else delete cge.mv[el.i];
+      }
+    }
+    req();
   }else if(gesture.type==='dragEq'&&gesture.id===e.pointerId){
     var wq=toW(p),ee=gesture.eq,an=nd(ee.n);
     ee.dx=f2(Math.round((wq.x-gesture.ox-an.x)/5)*5);
@@ -4481,6 +4570,11 @@ function endPtr(e){
     gesture=null;
     if(!g.moved){hist.pop();return}
     commit();
+  }
+  else if(g.type==='dragTe'&&g.id===e.pointerId){
+    gesture=null;
+    if(!g.moved){hist.pop();return}
+    commit();panelSel();
   }
   else if(g.type==='dragPil'&&g.id===e.pointerId){
     gesture=null;
@@ -4601,6 +4695,7 @@ function pick(w,tol,view){
     var g=wg(wa),d=segDist(p,g.a,g.b);
     if(d<Math.max(tol,wa.t/2)&&d<bd){bd=d;best={t:'wall',id:wa.id}}
   });
+  if(!best&&view==='techos'){var pte=pickTecho(p);if(pte)best={t:'zn',id:pte.zid,el:pte.el}}
   if(!best&&(view==='suelos'||view==='techos')){
     (st.v.sp||[]).forEach(function(r){if(r.k!==zkind(view))return;var pp=spPts(r);if(pp&&inPoly(p,pp))best={t:'sp',id:r.id}});
   }
@@ -6106,6 +6201,13 @@ function applyField(key,val,adv,raw){
   }else if(s.t==='zn'){
     var zq=by(st.v.zn,s.id);if(!zq)return;
     var RZ={zn_ha:[100,2000,'altura'],zn_hc:[100,2000,'altura'],zn_vgs:[20,500,'separación'],zn_vgw:[2,60,'ancho'],zn_vgh:[4,100,'canto'],zn_crs:[30,500,'separación']};
+    if(key==='zn_elpos'&&st.sel&&st.sel.el&&st.sel.el.k!=='tl'){
+      var fE=techoFaceDe(zq),TE=fE&&techoLin(zq,fE.inner,st.sel.el.k),cE=st.sel.el.k==='vg'?zq.vg:zq.cr;
+      if(!TE||!cE)return;
+      if(!(n>5&&n<TE.fin-TE.ini-5)){toast('Escribe una distancia dentro de la sala');return}
+      snap();cE.mv=cE.mv||{};var mE=Math.round(TE.ini+n-(TE.ini+TE.s/2+st.sel.el.i*TE.s));if(mE)cE.mv[st.sel.el.i]=mE;else delete cE.mv[st.sel.el.i];
+      commit(false);panelSel();return;
+    }
     var mtl=/^zn_tl([wdxy]):(\d+)$/.exec(key);
     if(mtl){
       var tq=(zq.tl||[])[+mtl[2]];if(!tq)return;
@@ -6120,8 +6222,8 @@ function applyField(key,val,adv,raw){
       var rg=RZ[key];if(!(n>=rg[0]&&n<=rg[1])){toast('Escribe un valor de '+rg[2]+' entre '+rg[0]+' y '+rg[1]+' cm');return}
       snap();
       if(key==='zn_ha')zq.ha=n;else if(key==='zn_hc')zq.hc=n;
-      else if(key==='zn_crs'){zq.cr=zq.cr||{};zq.cr.s=n}
-      else{zq.vg=zq.vg||{};zq.vg[key==='zn_vgs'?'s':key==='zn_vgw'?'w':'h']=n}
+      else if(key==='zn_crs'){zq.cr=zq.cr||{};if(zq.cr.s!==n){delete zq.cr.mv;delete zq.cr.del}zq.cr.s=n}
+      else{zq.vg=zq.vg||{};if(key==='zn_vgs'&&zq.vg.s!==n){delete zq.vg.mv;delete zq.vg.del}zq.vg[key==='zn_vgs'?'s':key==='zn_vgw'?'w':'h']=n}
       commit(false);panelSel();return;
     }
     if(!(n>=100&&n<=1000)){toast('Escribe una altura entre 100 y 1000 cm');return}
@@ -6143,6 +6245,14 @@ function applyField(key,val,adv,raw){
   }
 }
 function doAction(a,el){
+  if(a.indexOf('teel:')===0){
+    var zE=st.sel&&st.sel.t==='zn'?by(st.v.zn,st.sel.id):null;if(!zE)return;
+    var pa=a.split(':'),el0=st.sel.el;snap();
+    if(pa[1]==='auto'){var cg0=pa[2]==='vg'?zE.vg:zE.cr;if(cg0){delete cg0.mv;delete cg0.del}}
+    else if(el0&&pa[1]==='quitar')techoQuita(zE,el0);
+    else if(el0&&pa[1]==='volver'){var cg1=el0.k==='vg'?zE.vg:zE.cr;if(cg1&&cg1.mv)delete cg1.mv[el0.i]}
+    commit(false);panelSel();return;
+  }
   if(a.indexOf('zntl:')===0){
     var zt2=st.sel&&st.sel.t==='zn'?by(st.v.zn,st.sel.id):null;if(!zt2)return;
     snap();
@@ -6160,7 +6270,7 @@ function doAction(a,el){
   }
   if(a.indexOf('znej:')===0||a.indexOf('znvgd:')===0){
     var zt=st.sel&&st.sel.t==='zn'?by(st.v.zn,st.sel.id):null;if(!zt)return;
-    snap();if(a.indexOf('znej:')===0)zt.ej=a.slice(5)==='v'?'v':'h';else{zt.vg=zt.vg||{s:60,w:10,h:20};zt.vg.d=a.slice(6)==='v'?'v':'h'}
+    snap();techoReset(zt);if(a.indexOf('znej:')===0)zt.ej=a.slice(5)==='v'?'v':'h';else{zt.vg=zt.vg||{s:60,w:10,h:20};zt.vg.d=a.slice(6)==='v'?'v':'h'}
     commit(false);panelSel();return;
   }
   if(a.indexOf('mrot:')===0){rotarMulti(parseFloat(a.slice(5)));return}
@@ -6275,6 +6385,7 @@ function doAction(a,el){
   if(a==='rcside'&&s.t==='rc'){var rcx=by(st.v.rc,s.id);if(rcx){snap();rcx.sd=sv;commit()}return}
   if(a==='del'){
     snap();
+    if(s.t==='zn'&&s.el){techoQuita(by(st.v.zn,s.id),s.el);commit();panelSel();return}
     if(s.t==='dr')st.v.dr=st.v.dr.filter(function(q){return q.id!==s.id});
     else if(s.t==='rc')st.v.rc=st.v.rc.filter(function(q){return q.id!==s.id});
     else if(s.t==='mm')st.v.mm=st.v.mm.filter(function(q){return q.id!==s.id});
@@ -6404,7 +6515,7 @@ $('side').addEventListener('change',function(e){
   }else if(t&&st.sel&&st.sel.t==='zn'){
     var z=by(st.v.zn,st.sel.id);if(!z)return;
     snap();
-    if(t==='zn_fo'){var vfo=e.target.value;if(vfo==='plano'){delete z.fo}else{z.fo=vfo;var Hh=num(st.v.altura)||260;if(z.ha==null)z.ha=Hh;if(z.hc==null)z.hc=Hh+150;if(!z.ej)z.ej='h'}}
+    if(t==='zn_fo'){var vfo=e.target.value;techoReset(z);if(vfo==='plano'){delete z.fo}else{z.fo=vfo;var Hh=num(st.v.altura)||260;if(z.ha==null)z.ha=Hh;if(z.hc==null)z.hc=Hh+150;if(!z.ej)z.ej='h'}}
     else if(t==='zn_inv'){if(e.target.checked)z.inv=true;else delete z.inv}
     else if(t==='zn_vg'){if(e.target.checked)z.vg=z.vg||{s:60,w:10,h:20,d:'h'};else delete z.vg}
     else if(t==='zn_cr'){if(e.target.checked)z.cr=z.cr||{s:100};else delete z.cr}
@@ -9042,7 +9153,7 @@ function buildModelo3d(){
     var m=matOf('techos',z.mat),H=num(v.altura)||260,b=techoBox(f.inner);
     out.techos.push({id:z.id,pts:f.inner.map(function(p){return [f2(p.x),f2(p.y)]}),fo:z.fo||'plano',ej:z.ej==='v'?'v':'h',inv:!!z.inv,
       ha:z.ha!=null?z.ha:H,hc:z.hc!=null?z.hc:H+150,x0:f2(b.x0),y0:f2(b.y0),x1:f2(b.x1),y1:f2(b.y1),
-      vg:z.vg?{s:z.vg.s||60,w:z.vg.w||10,h:z.vg.h||20,d:z.vg.d==='v'?'v':'h'}:null,cr:z.cr?{s:z.cr.s||100}:null,c:m?m.c:'#f6f4f1',tl:(z.tl||[]).map(function(t){return {x:f2(t.x),y:f2(t.y),w:t.w,d:t.d}})});
+      vg:z.vg?{s:z.vg.s||60,w:z.vg.w||10,h:z.vg.h||20,d:z.vg.d==='v'?'v':'h',mv:z.vg.mv||{},del:z.vg.del||{}}:null,cr:z.cr?{s:z.cr.s||100,mv:z.cr.mv||{},del:z.cr.del||{}}:null,c:m?m.c:'#f6f4f1',tl:(z.tl||[]).map(function(t){return {x:f2(t.x),y:f2(t.y),w:t.w,d:t.d}})});
   });
   out.a_medida=(v.mm||[]).filter(function(m){return m.k!=='hor'}).map(function(m){var q=mmPoly(m);return q?{id:m.id,nombre:mmNombre(m),pts:q.pts.map(function(p){return [f2(p.x),f2(p.y)]}),z0:f2(m.y0||0),z1:f2((m.y0||0)+m.h),luz:!!m.luz}:null}).filter(Boolean);
   v.pil.forEach(function(p){pilCells(p).forEach(function(c,ci){out.pilares.push({id:p.id+'-'+ci,cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,estado:p.s||'ex'})})});

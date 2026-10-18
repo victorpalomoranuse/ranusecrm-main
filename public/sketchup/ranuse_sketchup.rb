@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.5.0'.freeze
+    VERSION = '1.5.1'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -722,12 +722,19 @@ module Ranuse
               end
         ini = eje == 0 ? x0 : y0
         fin = eje == 0 ? x1 : y1
-        c = ini + s / 2.0
-        while c < fin
-          tramos_recta(pts, eje, c).each do |t0, t1|
-            viga_recta(g.entities, tc, eje, c, t0, t1, w, h, correa_h, mat_viga, true)
+        c0 = ini + s / 2.0
+        k = 0
+        movidas = vg['mv'] || {}
+        quitadas = vg['del'] || {}
+        while c0 < fin
+          c = c0 + movidas[k.to_s].to_f
+          if !quitadas[k.to_s] && c > ini && c < fin
+            tramos_recta(pts, eje, c).each do |t0, t1|
+              viga_recta(g.entities, tc, eje, c, t0, t1, w, h, correa_h, mat_viga, true)
+            end
           end
-          c += s
+          c0 += s
+          k += 1
         end
       end
       cr = tc['cr']
@@ -737,12 +744,19 @@ module Ranuse
         eje = tc['ej'] != 'v' ? 1 : 0
         ini = eje == 0 ? x0 : y0
         fin = eje == 0 ? x1 : y1
-        c = ini + s / 2.0
-        while c < fin
-          tramos_recta(pts, eje, c).each do |t0, t1|
-            viga_recta(g.entities, tc, eje, c, t0, t1, 8.0, 12.0, 0.0, mat_viga, false)
+        c0 = ini + s / 2.0
+        k = 0
+        movidas = cr['mv'] || {}
+        quitadas = cr['del'] || {}
+        while c0 < fin
+          c = c0 + movidas[k.to_s].to_f
+          if !quitadas[k.to_s] && c > ini && c < fin
+            tramos_recta(pts, eje, c).each do |t0, t1|
+              viga_recta(g.entities, tc, eje, c, t0, t1, 8.0, 12.0, 0.0, mat_viga, false)
+            end
           end
-          c += s
+          c0 += s
+          k += 1
         end
       end
     end
