@@ -47,6 +47,13 @@ export async function cantidadesDePlano(projectId, planoId) {
   (r.carpinterias || []).filter(c => c.estado === 'new').forEach(c => { const k = `${c.tipo}|${c.ancho}|${c.alto}`; (porMed[k] ||= { ...c, n: 0 }).n++; });
   Object.values(porMed).forEach(c => libre('Reforma', `${c.tipo === 'puerta' ? 'Puerta' : 'Ventana'} nueva ${c.ancho}×${c.alto} cm`, 'ud', c.n));
   (r.electricidad || []).forEach(e => libre('Reforma', `Electricidad: ${e.nombre}`, 'ud', e.n));
+  (r.cubiertas || []).forEach(c => {
+    const sala = c.sala ? ` (${c.sala})` : '';
+    if (c.forma !== 'plano') libre('Reforma', `${c.forma === 'dos' ? 'Cubierta a dos aguas' : 'Cubierta a un agua'}${sala}`, 'm²', c.cubierta_m2);
+    if (c.vigas) libre('Reforma', `Vigas ${c.vigas.w}×${c.vigas.h} cm cada ${c.vigas.s} cm${sala} (${c.vigas.n} piezas)`, 'ml', c.vigas.ml);
+    if (c.correas) libre('Reforma', `Correas cada ${c.correas.s} cm${sala} (${c.correas.n} piezas)`, 'ml', c.correas.ml);
+    if (c.tragaluces) libre('Reforma', `Tragaluces${sala}`, 'ud', c.tragaluces.n);
+  });
   libre('Reforma', 'Retirada de instalaciones existentes (reparar hueco)', 'ud', r.instalaciones_retirar);
 
   return { planos: lista, plano: { id: plano.id, nombre: plano.nombre || 'Sin nombre' }, filas, resumen: r };

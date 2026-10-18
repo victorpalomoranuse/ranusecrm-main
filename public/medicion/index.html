@@ -1964,6 +1964,34 @@ function techoTramos(poly,eje,c){
   var out=[];for(i=0;i+1<ts.length;i+=2)out.push([ts[i],ts[i+1]]);
   return out;
 }
+/* medición de un techo: superficie real de la cubierta, vigas/cerchas, correas y tragaluces (lo que se pide a proveedores y entra en presupuestos) */
+function techoMedicion(z,inner){
+  var b=techoBox(inner),H=num(st.v.altura)||260,fo=z.fo||'plano',ej=z.ej==='v'?'v':'h';
+  var ha=z.ha!=null?z.ha:H,hc=z.hc!=null?z.hc:H+150;
+  var vano=ej==='h'?(b.y1-b.y0):(b.x1-b.x0),rec=fo==='dos'?vano/2:vano;
+  var fp=(fo==='plano'||rec<=0)?1:Math.sqrt(1+Math.pow((hc-ha)/rec,2)); /* cuánto más larga es la pendiente que su proyección en planta */
+  var area=0,i,n=inner.length;
+  for(i=0;i<n;i++){var p=inner[i],q=inner[(i+1)%n];area+=p.x*q.y-q.x*p.y}
+  area=Math.abs(area)/2/10000;
+  var out={forma:fo,planta_m2:r2(area),cubierta_m2:r2(area*fp),pendiente_pct:fo==='plano'||rec<=0?0:r2((hc-ha)/rec*100),vigas:null,correas:null,tragaluces:null};
+  function lineas(eje,ini,fin,s,fac){
+    var nn=0,ml=0;
+    for(var c=ini+s/2;c<fin;c+=s)techoTramos(inner,eje,c).forEach(function(t){nn++;ml+=(t[1]-t[0])*fac});
+    return {n:nn,ml:r2(ml/100)};
+  }
+  if(z.vg){
+    var s=z.vg.s>0?z.vg.s:60,dir=fo==='plano'?(z.vg.d==='v'?'v':'h'):(ej==='h'?'v':'h');
+    var L=dir==='h'?lineas('y',b.y0,b.y1,s,1):lineas('x',b.x0,b.x1,s,fo==='plano'?1:fp); /* con cubierta, las vigas siguen la pendiente */
+    if(dir==='h'&&fo!=='plano')L.ml=r2(L.ml*fp);
+    out.vigas={n:L.n,ml:L.ml,s:s,w:z.vg.w||10,h:z.vg.h||20};
+  }
+  if(z.cr&&fo!=='plano'){
+    var cs=z.cr.s>0?z.cr.s:100,C2=ej==='h'?lineas('y',b.y0,b.y1,cs,1):lineas('x',b.x0,b.x1,cs,1);
+    out.correas={n:C2.n,ml:C2.ml,s:cs};
+  }
+  if(z.tl&&z.tl.length)out.tragaluces={n:z.tl.length,m2:r2(z.tl.reduce(function(a,t){return a+t.w*t.d*fp/10000},0))};
+  return out;
+}
 function techoSvg(C,px,view){
   var h='';
   if(view!=='techos')return h;
@@ -2035,6 +2063,14 @@ function techoPanel(z,zf){
   if(fo!=='plano'){
     h+='<label class="fld chk"><input type="checkbox" data-t="zn_cr"'+(z.cr?' checked':'')+'><span>Dibujar correas (paralelas a la cumbrera)</span></label>';
     if(z.cr)h+=fld('zn_crs','Separación de correas (cm)',z.cr.s,'100');
+  }
+  if(zf){
+    var tm=techoMedicion(z,zf.inner),lin=[];
+    if(fo!=='plano')lin.push('Cubierta '+m2(tm.cubierta_m2)+' m² reales ('+m2(tm.planta_m2)+' m² en planta)');
+    if(tm.vigas)lin.push(tm.vigas.n+' vigas de '+fmtU(tm.vigas.w)+' × '+fmtU(tm.vigas.h)+' cm · '+m2(tm.vigas.ml)+' ml');
+    if(tm.correas)lin.push(tm.correas.n+' correas · '+m2(tm.correas.ml)+' ml');
+    if(tm.tragaluces)lin.push(tm.tragaluces.n+' tragaluz'+(tm.tragaluces.n===1?'':'ces')+' · '+m2(tm.tragaluces.m2)+' m²');
+    if(lin.length)h+='<div class="note" style="margin:8px 0;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.05)"><b>Cálculo automático</b><br>'+lin.join('<br>')+'<br><span style="opacity:.7">Las vigas se reparten solas con esa separación (empiezan a media separación del borde); se cuentan en cada tramo recto.</span></div>';
   }
   /* tragaluces: ventanas en la cubierta */
   var bx=zf?techoBox(zf.inner):null;
@@ -7071,6 +7107,13 @@ function preciosFilas(){
     else add('Iluminación',g.tag,nm,c.ref||'',det,g.n,'ud',[mo,c.comp?String(c.comp).replace(/\s*\n\s*/g,' / '):''].filter(Boolean).join(' · '),fl);
   });
   (r.electricidad||[]).forEach(function(q){add('Instalación eléctrica','',q.nombre,'','',q.n,'ud','')});
+  (r.cubiertas||[]).forEach(function(c,i){
+    var sala=c.sala?' · '+c.sala:'',cod='CU'+(i+1);
+    if(c.forma!=='plano')add('Estructura de techos',cod,(c.forma==='dos'?'Cubierta a dos aguas':'Cubierta a un agua')+sala,'','pendiente '+m2(c.pendiente_pct)+' %',c.cubierta_m2,'m²','superficie real de la cubierta');
+    if(c.vigas)add('Estructura de techos',cod,('Vigas '+(c.forma==='plano'?'':'/ cerchas ')+sala.replace(/^ · /,'')).trim(),'',fmt(c.vigas.w)+' × '+fmt(c.vigas.h)+' cm · cada '+fmt(c.vigas.s)+' cm',c.vigas.ml,'ml',c.vigas.n+' piezas');
+    if(c.correas)add('Estructura de techos',cod,('Correas '+sala.replace(/^ · /,'')).trim(),'','cada '+fmt(c.correas.s)+' cm',c.correas.ml,'ml',c.correas.n+' piezas');
+    if(c.tragaluces)add('Estructura de techos',cod,'Tragaluces'+sala,'','',c.tragaluces.n,'ud',m2(c.tragaluces.m2)+' m² en total');
+  });
   carpList().filter(function(c){return c.s!=='dem'}).forEach(function(c){
     add('Carpinterías',c.tag,(c.t==='door'?'Puerta':'Ventana')+(c.tip?' · '+c.tip:''),'',fmt(c.w)+' × '+fmt(c.h)+' cm'+(c.t==='win'&&c.sill?' (antepecho '+fmt(c.sill)+')':''),1,'ud',[c.mat,c.col,c.vid,c.obs,c.loc&&'en '+c.loc].filter(Boolean).join(' · '));
   });
@@ -8946,6 +8989,12 @@ function buildResumen(){
   var inst={};
   v.pts.forEach(function(q){if(q.v==='ilum'||q.s==='dem')return;var d=ptDef(q.k);if(!d)return;(inst[q.k]=inst[q.k]||{tipo:q.k,nombre:d.n,n:0}).n++});
   out.electricidad=Object.keys(inst).map(function(k){return inst[k]});
+  out.cubiertas=[];
+  roomFaces('techos').forEach(function(f){
+    var z=zoneIn(f,'t');if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
+    var tm=techoMedicion(z,f.inner),sala=(z.nm)||'';
+    tm.sala=sala;out.cubiertas.push(tm);
+  });
   out.instalaciones_retirar=v.pts.filter(function(q){return q.s==='dem'}).length;
   out.carpinterias=carpList().map(function(c){return {ref:c.tag,tipo:c.t==='door'?'puerta':'ventana',ancho:c.w,alto:c.h,estado:c.s,ubicacion:c.loc}});
   return out;
