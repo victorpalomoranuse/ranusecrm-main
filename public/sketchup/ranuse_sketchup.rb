@@ -21,7 +21,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.2.0'.freeze
+    VERSION = '1.2.1'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -170,7 +170,11 @@ module Ranuse
           peticion.start do |_req, respuesta|
             begin
               if respuesta.status_code == 200
-                File.open(archivo_modelo(u), 'wb') { |f| f.write(respuesta.body) }
+                ruta = archivo_modelo(u)
+                File.open(ruta, 'wb') { |f| f.write(respuesta.body) }
+                # si lo descargado no es un modelo de SketchUp (p. ej. una página de aviso de Drive), no se usa
+                cab = File.binread(ruta, 100).to_s
+                File.delete(ruta) unless cab.include?("S\0k\0e\0t\0c\0h\0U\0p\0".b)
               end
             rescue StandardError
               # si no se puede guardar, esa máquina saldrá como una caja

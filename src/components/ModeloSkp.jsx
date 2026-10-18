@@ -11,6 +11,8 @@ export function ModeloSkp({ product }) {
   const [subiendo, setSubiendo] = useState(null); // % de subida
   const [error, setError] = useState('');
   const ref = useRef(null);
+  const [enlace, setEnlace] = useState('');
+  const [enlazando, setEnlazando] = useState(false);
 
   const subir = async (file) => {
     if (!file) return;
@@ -26,6 +28,15 @@ export function ModeloSkp({ product }) {
       if (product.bloques) product.bloques.skp = data.skp; else product.bloques = { skp: data.skp };
     } catch (e) { setError(e.response?.data?.error || 'No se pudo subir el modelo'); }
     finally { setSubiendo(null); if (ref.current) ref.current.value = ''; }
+  };
+  const enlazar = async () => {
+    setError(''); setEnlazando(true);
+    try {
+      const { data } = await api.post(`/catalog/products/${product.id}/skp-enlace`, { url: enlace }, { timeout: 60000 });
+      setSkp(data.skp); setEnlace('');
+      if (product.bloques) product.bloques.skp = data.skp; else product.bloques = { skp: data.skp };
+    } catch (e) { setError(e.response?.data?.error || 'No se pudo enlazar el modelo'); }
+    finally { setEnlazando(false); }
   };
   const girar = async (rot) => {
     try { const { data } = await api.put(`/catalog/products/${product.id}/skp`, { rot }); setSkp(data.skp); if (product.bloques) product.bloques.skp = data.skp; }
@@ -43,13 +54,13 @@ export function ModeloSkp({ product }) {
       <label>Modelo 3D de SketchUp <span className="ap-optional">(opcional)</span></label>
       {skp ? (
         <div style={{ padding: '0.6rem 0.8rem', borderRadius: 10, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}>
-          <div style={{ fontSize: '0.82rem' }}>✓ <b>{skp.nombre || 'modelo.skp'}</b>{skp.bytes ? ` · ${mb(skp.bytes)}` : ''}</div>
+          <div style={{ fontSize: '0.82rem' }}>✓ <b>{skp.nombre || 'modelo.skp'}</b>{skp.bytes ? ` · ${mb(skp.bytes)}` : ''}{skp.externo ? ' · enlazado (no ocupa espacio en el CRM)' : ''}</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
             <span style={{ fontSize: '0.74rem' }}>Giro del modelo:</span>
             <select className="ap-select" style={{ width: 'auto' }} value={skp.rot || 0} onChange={e => girar(Number(e.target.value))}>
               {[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}
             </select>
-            <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => ref.current?.click()}>Cambiar archivo</button>
+            <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => ref.current?.click()}>Subir otro archivo</button>
             <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={quitar}>Quitar</button>
           </div>
         </div>
@@ -58,10 +69,14 @@ export function ModeloSkp({ product }) {
           {subiendo != null ? `Subiendo… ${subiendo}%` : 'Subir modelo (.skp)'}
         </button>
       )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+        <input className="ap-field-input" style={{ flex: 1, minWidth: 180 }} placeholder="…o pega el enlace de Drive / Dropbox al .skp" value={enlace} onChange={e => setEnlace(e.target.value)} />
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={enlazar} disabled={!enlace.trim() || enlazando}>{enlazando ? 'Comprobando…' : 'Enlazar'}</button>
+      </div>
       <input ref={ref} type="file" accept=".skp" style={{ display: 'none' }} onChange={e => subir(e.target.files?.[0])} />
       {subiendo != null && skp && <p style={nota}>Subiendo… {subiendo}%</p>}
       {error && <p className="ap-error" style={{ marginTop: 6 }}>{error}</p>}
-      <p style={nota}>Al actualizar el plano en SketchUp, cada vez que haya este producto aparecerá este modelo en su sitio (con su giro y su espejo). Si el modelo sale girado, cambia el «giro del modelo». Hasta 60 MB; mejor un modelo ligero.</p>
+      <p style={nota}>Al actualizar el plano en SketchUp, cada vez que haya este producto aparecerá este modelo en su sitio (con su giro y su espejo). Si el modelo sale girado, cambia el «giro del modelo». Para no ocupar espacio en el CRM, lo mejor es enlazarlo desde Drive o Dropbox (compartido con «cualquiera con el enlace»). Si lo subes, hasta 60 MB: purga el modelo antes en SketchUp (Ventana → Información del modelo → Estadísticas → Purgar sin usar).</p>
     </div>
   );
 }

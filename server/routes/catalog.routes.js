@@ -436,6 +436,45 @@ router.post('/products/:id/skp', uploadSkpFile, handleMulterError, async (req, r
     res.status(500).json({ error: 'No se pudo enlazar el modelo' });
   }
 });
+// Enlazar un modelo por URL (Google Drive, Dropbox…) en vez de subirlo: no ocupa espacio en el CRM
+function urlDirecta(u) {
+  let url;
+  try { url = new URL(String(u).trim()); } catch { return null; }
+  if (url.protocol !== 'https:') return null;
+  if (url.hostname === 'drive.google.com') {
+    const m = /\/file\/d\/([^/]+)/.exec(url.pathname) || null;
+    const id = m ? m[1] : url.searchParams.get('id');
+    return id ? `https://drive.google.com/uc?export=download&id=${id}` : null;
+  }
+  if (/(^|\.)dropbox\.com$/.test(url.hostname)) { url.searchParams.delete('dl'); url.searchParams.set('dl', '1'); return url.toString(); }
+  return url.toString();
+}
+router.post('/products/:id/skp-enlace', async (req, res) => {
+  try {
+    const directa = urlDirecta(req.body?.url);
+    if (!directa) return res.status(400).json({ error: 'Pega un enlace https (por ejemplo, de Google Drive o Dropbox) al archivo .skp' });
+    // se comprueba que de ahí sale de verdad un modelo de SketchUp
+    let cab = '';
+    try {
+      const r = await fetch(directa, { headers: { Range: 'bytes=0-199' }, redirect: 'follow', signal: AbortSignal.timeout(20000) });
+      if (!r.ok && r.status !== 206) throw new Error('http ' + r.status);
+      cab = Buffer.from(await r.arrayBuffer()).subarray(0, 100).toString('utf16le');
+    } catch { /* se avisa abajo */ }
+    if (!/SketchUp/i.test(cab)) return res.status(400).json({ error: 'No he podido leer un modelo de SketchUp en ese enlace. Comprueba que el archivo está compartido con «cualquiera que tenga el enlace» y que es un .skp.' });
+    const { data: pr, error: e0 } = await supabase.from('catalog_products').select('id, bloques').eq('id', req.params.id).maybeSingle();
+    if (e0) throw e0;
+    if (!pr) return res.status(404).json({ error: 'Producto no encontrado' });
+    const antiguo = rutaDeUrl(pr.bloques?.skp?.url); // si antes se había subido al CRM, se libera ese espacio
+    const skp = { url: directa, externo: true, rot: Number(pr.bloques?.skp?.rot) || 0, nombre: 'Modelo por enlace', actualizado: new Date().toISOString() };
+    const { error } = await supabase.from('catalog_products').update({ bloques: { ...(pr.bloques || {}), skp } }).eq('id', req.params.id);
+    if (error) throw error;
+    if (antiguo) await supabase.storage.from(BUCKET_SKP).remove([antiguo]).catch(() => {});
+    res.status(201).json({ skp });
+  } catch (err) {
+    console.error('catalog skp enlace:', err);
+    res.status(500).json({ error: 'No se pudo enlazar el modelo' });
+  }
+});
 router.put('/products/:id/skp', async (req, res) => {
   try {
     const rot = ((Math.round(Number(req.body?.rot) || 0) % 360) + 360) % 360;
