@@ -5571,6 +5571,8 @@ function panelSel(focus){
     var tqp=eqTipos().porId[e.id];
     h+='<div class="rowh"><strong>'+(tqp?tqp.cod:ix)+' · '+esc(e.nm)+'</strong><span class="muted">giro '+e.rot+'°</span></div>';
     h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="eqrotl45" title="Girar 45° a la izquierda">⟲ 45°</button><button data-a="eqrot45" title="Girar 45° a la derecha">⟳ 45°</button><button data-a="eqrotl" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="eqrot" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="eqrot180" title="Girar 180°">180°</button><button data-a="eqflx" aria-pressed="'+!!e.fx+'" title="Espejo izquierda-derecha">⇋ Espejo</button><button data-a="eqfly" aria-pressed="'+!!e.fy+'" title="Espejo arriba-abajo">⇅ Espejo</button></div>';
+    var cskp=catById(e.cid);
+    if(cskp&&cskp.skp)h+='<p class="note" style="margin:6px 0">✓ Tiene un modelo 3D de SketchUp enlazado: aparece en SketchUp en su sitio, con este giro.</p>';
     h+=fld('eq_rot','Ángulo exacto (°)',((e.rot||0)%360+360)%360)+'<div class="btns tr"><button data-a="eqrotl5" title="Girar 5° a la izquierda">⟲ 5°</button><button data-a="eqrot5" title="Girar 5° a la derecha">⟳ 5°</button><button data-a="eqrot0" title="Dejarla sin girar">0°</button></div>';
     h+=previewEq(e);
     var ce0=catById(e.cid);
@@ -8950,6 +8952,7 @@ function buildModelo3d(){
   v.eq.forEach(function(e){
     var c=pc(e),cat=catById(e.cid);
     out.equipos.push({cid:e.cid||'',nombre:e.nm,cx:f2(c.x),cy:f2(c.y),w:e.w,d:e.d,rot:e.rot||0,fx:!!e.fx,fy:!!e.fy,alto:(cat&&cat.alto)||110,
+      skp:(cat&&cat.skp)?{url:cat.skp.url,rot:cat.skp.rot||0}:null,
       largo:(cat&&cat.bloque&&cat.bloque.largo)||e.w,fondo:(cat&&cat.bloque&&cat.bloque.fondo)||e.d,huella:espejoHuella(huellaDe(cat),e,(cat&&cat.bloque&&cat.bloque.largo)||e.w,(cat&&cat.bloque&&cat.bloque.fondo)||e.d)});
   });
   return out;

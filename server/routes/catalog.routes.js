@@ -1,7 +1,7 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
-import { uploadCatalogPhotoFile, handleMulterError } from '../middleware/upload.middleware.js';
+import { uploadCatalogPhotoFile, uploadSkpFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { uploadCatalogPhoto, deleteCatalogPhoto, copyCatalogPhoto } from '../utils/storage.js';
 import sharp from 'sharp';
 import { callClaude } from '../utils/anthropic.js';
@@ -355,6 +355,10 @@ router.put('/products/:id/bloques', async (req, res) => {
       const { data: pr2 } = await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle();
       if (pr2?.bloques?.paso) bloques.paso = pr2.bloques.paso;
     } else if (previo.bloques?.paso) bloques.paso = previo.bloques.paso;
+    {
+      const skpPrev = previo?.bloques?.skp || (await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle()).data?.bloques?.skp;
+      if (skpPrev) bloques.skp = skpPrev;
+    }
     // Las medidas del bloque son las medidas reales del producto: largo → longitud, fondo → ancho
     const { data, error } = await supabase.from('catalog_products').update({ bloques, longitud: L, ancho: D, altura: H }).eq('id', req.params.id).select('id, longitud, ancho, altura, bloques').single();
     if (error) throw error;
@@ -405,9 +409,60 @@ router.post('/products/:id/bloques/generar', async (req, res) => {
   }
 });
 
+// ── Modelo 3D de SketchUp (.skp) enlazado a un producto ───────────────────
+// El plugin de SketchUp lo descarga y lo coloca donde esté el producto en el plano.
+const BUCKET_SKP = 'project-documents';
+const rutaDeUrl = (url) => { const m = /\/object\/public\/[^/]+\/(.+)$/.exec(String(url || '')); return m ? decodeURIComponent(m[1]) : null; };
+router.post('/products/:id/skp', uploadSkpFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Falta el archivo .skp' });
+    const cab = req.file.buffer.subarray(0, 100).toString('utf16le');
+    if (!/SketchUp/i.test(cab)) return res.status(400).json({ error: 'Ese archivo no parece un modelo de SketchUp' });
+    const { data: pr, error: e0 } = await supabase.from('catalog_products').select('id, bloques').eq('id', req.params.id).maybeSingle();
+    if (e0) throw e0;
+    if (!pr) return res.status(404).json({ error: 'Producto no encontrado' });
+    const ruta = `modelos-skp/${req.params.id}-${Date.now()}.skp`;
+    const { error: eUp } = await supabase.storage.from(BUCKET_SKP).upload(ruta, req.file.buffer, { contentType: 'application/octet-stream', upsert: true });
+    if (eUp) return res.status(500).json({ error: 'No se pudo guardar el archivo: ' + eUp.message });
+    const { data: { publicUrl } } = supabase.storage.from(BUCKET_SKP).getPublicUrl(ruta);
+    const antiguo = rutaDeUrl(pr.bloques?.skp?.url);
+    const skp = { url: publicUrl, rot: Number(pr.bloques?.skp?.rot) || 0, nombre: req.file.originalname, bytes: req.file.size, actualizado: new Date().toISOString() };
+    const { error } = await supabase.from('catalog_products').update({ bloques: { ...(pr.bloques || {}), skp } }).eq('id', req.params.id);
+    if (error) throw error;
+    if (antiguo) await supabase.storage.from(BUCKET_SKP).remove([antiguo]).catch(() => {});
+    res.status(201).json({ skp });
+  } catch (err) {
+    console.error('catalog skp:', err);
+    res.status(500).json({ error: 'No se pudo enlazar el modelo' });
+  }
+});
+router.put('/products/:id/skp', async (req, res) => {
+  try {
+    const rot = ((Math.round(Number(req.body?.rot) || 0) % 360) + 360) % 360;
+    const { data: pr } = await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle();
+    if (!pr?.bloques?.skp) return res.status(404).json({ error: 'Este producto no tiene modelo enlazado' });
+    const skp = { ...pr.bloques.skp, rot };
+    const { error } = await supabase.from('catalog_products').update({ bloques: { ...pr.bloques, skp } }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ skp });
+  } catch (err) { res.status(500).json({ error: 'No se pudo cambiar el giro del modelo' }); }
+});
+router.delete('/products/:id/skp', async (req, res) => {
+  try {
+    const { data: pr } = await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle();
+    const ruta = rutaDeUrl(pr?.bloques?.skp?.url);
+    const { skp, ...resto } = pr?.bloques || {};
+    const { error } = await supabase.from('catalog_products').update({ bloques: Object.keys(resto).length ? resto : null }).eq('id', req.params.id);
+    if (error) throw error;
+    if (ruta) await supabase.storage.from(BUCKET_SKP).remove([ruta]).catch(() => {});
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: 'No se pudo quitar el modelo' }); }
+});
+
 router.delete('/products/:id/bloques', async (req, res) => {
   try {
-    const { error } = await supabase.from('catalog_products').update({ bloques: null }).eq('id', req.params.id);
+    const { data: prev } = await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle();
+    const { error } = await supabase.from('catalog_products').update({ bloques: prev?.bloques?.skp ? { skp: prev.bloques.skp } : null }).eq('id', req.params.id);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) {

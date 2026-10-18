@@ -3,7 +3,8 @@
 #
 # Lee un plano de la herramienta de planos del CRM y construye el modelo 3D en SketchUp:
 # muros con sus puertas y ventanas, suelos y techos con su material (también techos a una y dos aguas
-# con sus vigas, cerchas y correas), pilares y máquinas
+# con sus vigas, cerchas y correas), pilares y máquinas (si el producto del catálogo tiene un modelo
+# 3D de SketchUp enlazado, se coloca ese modelo en su sitio)
 # (con su huella real y su altura). Cuando el plano cambia, se actualiza solo el grupo
 # «RANUSE PLANO»: lo que modeles tú aparte no se toca.
 #
@@ -13,12 +14,14 @@
 
 require 'sketchup.rb'
 require 'json'
+require 'digest'
+require 'tmpdir'
 
 module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.1.0'.freeze
+    VERSION = '1.2.0'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -123,14 +126,88 @@ module Ranuse
         UI.messagebox('El plano no ha cambiado desde la última actualización.') unless silencioso
         return
       end
-      reconstruir(datos)
-      guardar_ajuste('actualizado', datos['updated'].to_s)
-      Sketchup.status_text = "Ranuse: plano «#{datos['nombre']}» actualizado"
+      urls = ((datos['modelo'] || {})['equipos'] || []).map { |e| e['skp'] && e['skp']['url'] }.compact.uniq
+      Sketchup.status_text = "Ranuse: descargando #{urls.size} modelo(s) 3D…" unless urls.empty?
+      descargar_modelos(urls) do
+        begin
+          reconstruir(datos)
+          guardar_ajuste('actualizado', datos['updated'].to_s)
+          Sketchup.status_text = "Ranuse: plano «#{datos['nombre']}» actualizado"
+        rescue => e
+          UI.messagebox("No se pudo construir el modelo:\n#{e.message}") unless silencioso
+        end
+      end
+    end
+
+    # ── Modelos 3D de los productos (.skp enlazados en el catálogo) ───────────
+    def self.carpeta_modelos
+      dir = File.join(Dir.tmpdir, 'ranuse_modelos')
+      Dir.mkdir(dir) unless File.directory?(dir)
+      dir
+    end
+
+    def self.archivo_modelo(url)
+      File.join(carpeta_modelos, Digest::MD5.hexdigest(url.to_s) + '.skp')
+    end
+
+    def self.modelo_descargado?(url)
+      ruta = archivo_modelo(url)
+      File.exist?(ruta) && File.size(ruta) > 0
+    end
+
+    # Descarga (una sola vez; queda en caché) los modelos que aún no están y llama al bloque cuando terminan
+    def self.descargar_modelos(urls, &hecho)
+      pendientes = urls.reject { |u| modelo_descargado?(u) }
+      return hecho.call if pendientes.empty?
+      restantes = pendientes.size
+      terminar = lambda do
+        restantes -= 1
+        hecho.call if restantes <= 0
+      end
+      pendientes.each do |u|
+        begin
+          peticion = Sketchup::Http::Request.new(u, Sketchup::Http::GET)
+          peticion.start do |_req, respuesta|
+            begin
+              if respuesta.status_code == 200
+                File.open(archivo_modelo(u), 'wb') { |f| f.write(respuesta.body) }
+              end
+            rescue StandardError
+              # si no se puede guardar, esa máquina saldrá como una caja
+            end
+            terminar.call
+          end
+        rescue StandardError
+          terminar.call
+        end
+      end
+    end
+
+    # Coloca el modelo 3D de un producto: centrado en su caja, apoyado en el suelo, con el giro del modelo,
+    # el espejo y el giro que tiene la máquina en el plano. Devuelve true si lo consigue.
+    def self.colocar_modelo(ents, e)
+      skp = e['skp']
+      return false unless skp && skp['url'] && modelo_descargado?(skp['url'])
+      @modelos ||= {}
+      ruta = archivo_modelo(skp['url'])
+      defn = (@modelos[ruta] ||= modelo.definitions.load(ruta))
+      return false unless defn
+      b = defn.bounds
+      centrar = Geom::Transformation.translation(Geom::Vector3d.new(-b.center.x, -b.center.y, -b.min.z))
+      giro_modelo = Geom::Transformation.rotation(ORIGIN, Z_AXIS, skp['rot'].to_f.degrees)
+      espejo = Geom::Transformation.scaling(ORIGIN, e['fx'] ? -1.0 : 1.0, e['fy'] ? -1.0 : 1.0, 1.0)
+      giro_plano = Geom::Transformation.rotation(ORIGIN, Z_AXIS, (-e['rot'].to_f).degrees) # el plano tiene el eje y hacia abajo
+      sitio = Geom::Transformation.translation(Geom::Vector3d.new(e['cx'].to_f.cm, -e['cy'].to_f.cm, 0))
+      ents.add_instance(defn, sitio * giro_plano * espejo * giro_modelo * centrar)
+      true
+    rescue StandardError
+      false
     end
 
     # ── Construcción del modelo ──────────────────────────────────────────────
     def self.reconstruir(datos)
       m = modelo
+      @modelos = {}
       plano = datos['modelo']
       m.start_operation('Actualizar plano Ranuse', true)
       begin
@@ -662,8 +739,12 @@ module Ranuse
         g.set_attribute(DICT, 'cid', e['cid'].to_s)
         alto = e['alto'].to_f
         alto = 110.0 if alto <= 0
-        huella(g.entities, e, alto)
-        g.material = mat_maq
+        if colocar_modelo(g.entities, e)
+          g.name = "#{e['nombre']} (modelo 3D)"
+        else
+          huella(g.entities, e, alto)
+          g.material = mat_maq
+        end
       end
     end
 

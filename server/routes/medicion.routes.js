@@ -235,6 +235,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
           foto: p.photo_url || null,
           paso: p.bloques?.paso || null,
           enlace: /^https?:\/\//i.test(p.link || '') ? p.link : null,
+          skp: p.bloques?.skp?.url ? { url: p.bloques.skp.url, rot: Number(p.bloques.skp.rot) || 0 } : null,
           alto: Number(p.altura) > 0 ? Number(p.altura) : null,
           ...(p.bloques?.svg?.planta ? {
             bloque: { planta: p.bloques.svg.planta, largo: p.bloques.largo, fondo: p.bloques.fondo },
