@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.5.1'.freeze
+    VERSION = '1.5.2'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -70,8 +70,14 @@ module Ranuse
       end
     end
 
+    # Los techos se ven si la persona los activó; si nunca lo decidió, se ven cuando el plano tiene techos con forma o vigas
+    def self.techos_activos?
+      v = ajuste('techos', nil)
+      v.nil? ? (@techos_por_defecto ? true : false) : v
+    end
+
     def self.alternar_techos
-      guardar_ajuste('techos', !ajuste('techos', false))
+      guardar_ajuste('techos', !techos_activos?)
       guardar_ajuste('actualizado', 0)
       sincronizar(false)
     end
@@ -762,6 +768,7 @@ module Ranuse
     end
 
     def self.construir(ents, plano)
+      @techos_por_defecto = !(plano['techos'] || []).empty?
       vista = ajuste('estado', 'final')
       altura = plano['altura'].to_f
       altura = 260.0 if altura <= 0
@@ -849,7 +856,7 @@ module Ranuse
             cara.back_material = cara.material if cara.material
           end
         end
-        next unless ajuste('techos', false)
+        next unless techos_activos?
         next if sala_con_cubierta?(pts, techos_inc) # esa sala lleva su cubierta con forma
         techo = sa['techo']
         gt = elemento(ents, "techo:#{sa['idT'] || ks}", firma([sa['techo'], pts, altura, sa['nombre']]), "Techo #{sa['nombre']}".strip, et_techos)
@@ -862,12 +869,13 @@ module Ranuse
       end
 
       # Techos con forma y vigas (solo si los techos están visibles)
-      if ajuste('techos', false)
+      if techos_activos?
         (plano['techos'] || []).each_with_index do |tc, i_tc|
           begin
             construir_techo(ents, tc, et_techos, mat_viga, "cub:#{tc['id'] || i_tc}", firma(tc))
-          rescue StandardError
+          rescue StandardError => e
             # un techo con datos raros no debe romper el resto del modelo
+            puts "Ranuse: no se pudo dibujar un techo (#{e.message})"
           end
         end
       end
@@ -995,7 +1003,7 @@ unless file_loaded?(__FILE__)
   cmd_auto = crear.call('Sincronización automática', 'Ranuse: actualizar solo cada pocos segundos', 'auto') { Ranuse::PlanoSU.alternar_auto }
   cmd_auto.set_validation_proc { Ranuse::PlanoSU.instance_variable_get(:@timer) ? MF_CHECKED : MF_UNCHECKED }
   cmd_techos = crear.call('Mostrar techos', 'Ranuse: mostrar u ocultar los techos', 'techos') { Ranuse::PlanoSU.alternar_techos }
-  cmd_techos.set_validation_proc { Ranuse::PlanoSU.ajuste('techos', false) ? MF_CHECKED : MF_UNCHECKED }
+  cmd_techos.set_validation_proc { Ranuse::PlanoSU.techos_activos? ? MF_CHECKED : MF_UNCHECKED }
   cmd_estado = crear.call('Estado: hoy / final', 'Ranuse: cambiar entre cómo está hoy y cómo quedará', 'estado') { Ranuse::PlanoSU.alternar_estado }
 
   menu_raiz = (UI.respond_to?(:menu) && (UI.menu('Extensions') || UI.menu('Plugins')))
