@@ -1968,12 +1968,13 @@ function techoTramos(poly,eje,c){
 function techoMedicion(z,inner){
   var b=techoBox(inner),H=num(st.v.altura)||260,fo=z.fo||'plano',ej=z.ej==='v'?'v':'h';
   var ha=z.ha!=null?z.ha:H,hc=z.hc!=null?z.hc:H+150;
-  var vano=ej==='h'?(b.y1-b.y0):(b.x1-b.x0),rec=fo==='dos'?vano/2:vano;
-  var fp=(fo==='plano'||rec<=0)?1:Math.sqrt(1+Math.pow((hc-ha)/rec,2)); /* cuánto más larga es la pendiente que su proyección en planta */
+  var vano=ej==='h'?(b.y1-b.y0):(b.x1-b.x0),rec=(fo==='dos'||fo==='boveda')?vano/2:vano;
+  var fp=(fo==='plano'||rec<=0)?1:Math.sqrt(1+Math.pow((hc-ha)/rec,2));
+  if(fo==='boveda'&&hc>ha&&rec>0){var fb=hc-ha,Rb=(rec*rec+fb*fb)/(2*fb);fp=Rb*Math.asin(Math.min(1,rec/Rb))/rec} /* la bóveda es más larga que su luz: longitud del arco */ /* cuánto más larga es la pendiente que su proyección en planta */
   var area=0,i,n=inner.length;
   for(i=0;i<n;i++){var p=inner[i],q=inner[(i+1)%n];area+=p.x*q.y-q.x*p.y}
   area=Math.abs(area)/2/10000;
-  var out={forma:fo,planta_m2:r2(area),cubierta_m2:r2(area*fp),pendiente_pct:fo==='plano'||rec<=0?0:r2((hc-ha)/rec*100),vigas:null,correas:null,tragaluces:null};
+  var out={forma:fo,planta_m2:r2(area),cubierta_m2:r2(area*fp),pendiente_pct:fo==='plano'||fo==='boveda'||rec<=0?0:r2((hc-ha)/rec*100),vigas:null,correas:null,tragaluces:null};
   function lineas(eje,ini,fin,s,fac){
     var nn=0,ml=0;
     for(var c=ini+s/2;c<fin;c+=s)techoTramos(inner,eje,c).forEach(function(t){nn++;ml+=(t[1]-t[0])*fac});
@@ -2011,7 +2012,7 @@ function techoSvg(C,px,view){
       if(ej==='h'){for(var y2=b.y0+cs/2;y2<b.y1;y2+=cs)techoTramos(f.inner,'y',y2).forEach(function(t){h+=seg(t[0],y2,t[1],y2,4*px,'',0.6)})}
       else{for(var x2=b.x0+cs/2;x2<b.x1;x2+=cs)techoTramos(f.inner,'x',x2).forEach(function(t){h+=seg(x2,t[0],x2,t[1],4*px,'',0.6)})}
     }
-    if(fo==='dos'){ /* cumbrera */
+    if(fo==='dos'||fo==='boveda'){ /* cumbrera / clave */
       if(ej==='h')h+=seg(b.x0,b.cy,b.x1,b.cy,2.2*px,f2(10*px)+' '+f2(3*px)+' '+f2(2*px)+' '+f2(3*px));
       else h+=seg(b.cx,b.y0,b.cx,b.y1,2.2*px,f2(10*px)+' '+f2(3*px)+' '+f2(2*px)+' '+f2(3*px));
     }
@@ -2019,7 +2020,7 @@ function techoSvg(C,px,view){
     if(fo!=='plano'){
       var L=Math.min(60,(ej==='h'?(b.y1-b.y0):(b.x1-b.x0))/ (fo==='dos'?4:3));
       function flecha(x,y,dx,dy){var ex=x+dx*L,ey=y+dy*L;return seg(x,y,ex,ey,1.4*px)+seg(ex,ey,ex-dx*8*px-dy*5*px,ey-dy*8*px+dx*5*px,1.4*px)+seg(ex,ey,ex-dx*8*px+dy*5*px,ey-dy*8*px-dx*5*px,1.4*px)}
-      var pts=fo==='dos'?(ej==='h'?[[b.cx-(b.x1-b.x0)/4,b.cy,0,-1],[b.cx-(b.x1-b.x0)/4,b.cy,0,1],[b.cx+(b.x1-b.x0)/4,b.cy,0,-1],[b.cx+(b.x1-b.x0)/4,b.cy,0,1]]:[[b.cx,b.cy-(b.y1-b.y0)/4,-1,0],[b.cx,b.cy-(b.y1-b.y0)/4,1,0],[b.cx,b.cy+(b.y1-b.y0)/4,-1,0],[b.cx,b.cy+(b.y1-b.y0)/4,1,0]])
+      var pts=(fo==='dos'||fo==='boveda')?(ej==='h'?[[b.cx-(b.x1-b.x0)/4,b.cy,0,-1],[b.cx-(b.x1-b.x0)/4,b.cy,0,1],[b.cx+(b.x1-b.x0)/4,b.cy,0,-1],[b.cx+(b.x1-b.x0)/4,b.cy,0,1]]:[[b.cx,b.cy-(b.y1-b.y0)/4,-1,0],[b.cx,b.cy-(b.y1-b.y0)/4,1,0],[b.cx,b.cy+(b.y1-b.y0)/4,-1,0],[b.cx,b.cy+(b.y1-b.y0)/4,1,0]])
         :(ej==='h'?[[b.cx-(b.x1-b.x0)/4,b.cy,0,z.inv?-1:1],[b.cx+(b.x1-b.x0)/4,b.cy,0,z.inv?-1:1]]:[[b.cx,b.cy-(b.y1-b.y0)/4,z.inv?-1:1,0],[b.cx,b.cy+(b.y1-b.y0)/4,z.inv?-1:1,0]]);
       pts.forEach(function(q){h+=flecha(q[0],q[1],q[2],q[3])});
     }
@@ -2029,12 +2030,12 @@ function techoSvg(C,px,view){
       h+=seg(x0,y0,x1,y1,1*px,'',0.7)+seg(x1,y0,x0,y1,1*px,'',0.7);
       h+=txt(C,px,t.x,y1+13*px,'T'+(i+1)+' · '+fmtU(t.w)+' × '+fmtU(t.d),col,10,700);
     });
-    var rot=fo==='plano'?(z.vg?'Vigas '+fmtU(z.vg.w||10)+' × '+fmtU(z.vg.h||20)+' cada '+fmtU(z.vg.s||60):''):(fo==='dos'?'Cumbrera '+fmtU(hc)+' · alero '+fmtU(ha):'Alto '+fmtU(hc)+' · bajo '+fmtU(ha));
+    var rot=fo==='plano'?(z.vg?'Vigas '+fmtU(z.vg.w||10)+' × '+fmtU(z.vg.h||20)+' cada '+fmtU(z.vg.s||60):''):(fo==='dos'?'Cumbrera '+fmtU(hc)+' · alero '+fmtU(ha):fo==='boveda'?'Clave '+fmtU(hc)+' · arranque '+fmtU(ha):'Alto '+fmtU(hc)+' · bajo '+fmtU(ha));
     if(rot)h+=txt(C,px,b.cx,b.cy+(fo==='dos'&&ej==='h'?18*px:0)+16*px,rot,col,11,700);
   });
   return h;
 }
-var TECHO_FORMAS=[['plano','Plano'],['dos','A dos aguas (nave)'],['una','A un agua (inclinado)']];
+var TECHO_FORMAS=[['plano','Plano'],['dos','A dos aguas (nave)'],['una','A un agua (inclinado)'],['boveda','Curvo (bóveda de nave con cerchas en arco)']];
 function techoBox(poly){
   var x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
   poly.forEach(function(p){x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y)});
@@ -2047,11 +2048,12 @@ function techoPanel(z,zf){
   if(fo!=='plano'){
     var ej=z.ej==='v'?'v':'h';
     h+='<div class="seg3" style="margin:0 0 6px">'+[['h','Cumbrera ↔ (horizontal)'],['v','Cumbrera ↕ (vertical)']].map(function(p){return '<button data-a="znej:'+p[0]+'" aria-pressed="'+(ej===p[0])+'">'+p[1]+'</button>'}).join('')+'</div>';
-    h+=fld('zn_ha','Altura en el alero (cm)',z.ha,String(H));
-    h+=fld('zn_hc',fo==='dos'?'Altura de la cumbrera (cm)':'Altura del lado alto (cm)',z.hc,String(H+150));
+    h+=fld('zn_ha',fo==='boveda'?'Altura en el arranque del arco (cm)':'Altura en el alero (cm)',z.ha,String(H));
+    h+=fld('zn_hc',fo==='dos'?'Altura de la cumbrera (cm)':fo==='boveda'?'Altura de la clave, en el centro (cm)':'Altura del lado alto (cm)',z.hc,String(H+150));
     if(zf){
-      var b=techoBox(zf.inner),vano=ej==='h'?(b.y1-b.y0):(b.x1-b.x0),rec=fo==='dos'?vano/2:vano,ha=z.ha!=null?z.ha:H,hc=z.hc!=null?z.hc:H+150;
-      if(rec>0)h+='<p class="note" style="margin:0 0 6px">Pendiente: '+(Math.round((hc-ha)/rec*1000)/10)+' % ('+(Math.round(Math.atan((hc-ha)/rec)*1800/Math.PI)/10)+'°) · vano de '+m2(vano/100)+' m.</p>';
+      var b=techoBox(zf.inner),vano=ej==='h'?(b.y1-b.y0):(b.x1-b.x0),rec=(fo==='dos'||fo==='boveda')?vano/2:vano,ha=z.ha!=null?z.ha:H,hc=z.hc!=null?z.hc:H+150;
+      if(fo==='boveda'&&hc>ha&&rec>0){var fl=hc-ha,Rr=(rec*rec+fl*fl)/(2*fl);h+='<p class="note" style="margin:0 0 6px">Arco de '+m2(vano/100)+' m de luz y '+m2(fl/100)+' m de flecha: radio '+m2(Rr/100)+' m.</p>'}
+      else if(rec>0)h+='<p class="note" style="margin:0 0 6px">Pendiente: '+(Math.round((hc-ha)/rec*1000)/10)+' % ('+(Math.round(Math.atan((hc-ha)/rec)*1800/Math.PI)/10)+'°) · vano de '+m2(vano/100)+' m.</p>';
     }
     if(fo==='una')h+='<label class="fld chk"><input type="checkbox" data-t="zn_inv"'+(z.inv?' checked':'')+'><span>Invertir (el lado bajo pasa al otro lado)</span></label>';
   }
@@ -2081,7 +2083,7 @@ function techoPanel(z,zf){
     if(bx)h+=fld('zn_tlx:'+i,'Centro: distancia al borde izquierdo (cm)',Math.round(t.x-bx.x0))+fld('zn_tly:'+i,'Centro: distancia al borde de arriba (cm)',Math.round(t.y-bx.y0));
   });
   h+='<div class="btns"><button data-a="zntl:add">+ Añadir tragaluz</button></div>';
-  if(fo==='dos')h+='<p class="note" style="margin:0 0 6px">En una cubierta a dos aguas el tragaluz tiene que quedar en una sola vertiente (sin cruzar la cumbrera).</p>';
+  if(fo!=='plano')h+='<p class="note" style="margin:0 0 6px">El tragaluz sigue la pendiente de la cubierta (si cruza la cumbrera o la clave, se parte en dos y queda a cada lado).</p>';
   h+='<p class="note" style="margin:6px 0 0">Las paredes de dentro de esta sala suben hasta el techo (en los hastiales se ve el triángulo). En SketchUp hay que activar «Mostrar techos» para ver la cubierta y las vigas.</p>';
   return h;
 }
@@ -7109,7 +7111,7 @@ function preciosFilas(){
   (r.electricidad||[]).forEach(function(q){add('Instalación eléctrica','',q.nombre,'','',q.n,'ud','')});
   (r.cubiertas||[]).forEach(function(c,i){
     var sala=c.sala?' · '+c.sala:'',cod='CU'+(i+1);
-    if(c.forma!=='plano')add('Estructura de techos',cod,(c.forma==='dos'?'Cubierta a dos aguas':'Cubierta a un agua')+sala,'','pendiente '+m2(c.pendiente_pct)+' %',c.cubierta_m2,'m²','superficie real de la cubierta');
+    if(c.forma!=='plano')add('Estructura de techos',cod,(c.forma==='dos'?'Cubierta a dos aguas':c.forma==='boveda'?'Cubierta curva (bóveda)':'Cubierta a un agua')+sala,'','pendiente '+m2(c.pendiente_pct)+' %',c.cubierta_m2,'m²','superficie real de la cubierta');
     if(c.vigas)add('Estructura de techos',cod,('Vigas '+(c.forma==='plano'?'':'/ cerchas ')+sala.replace(/^ · /,'')).trim(),'',fmt(c.vigas.w)+' × '+fmt(c.vigas.h)+' cm · cada '+fmt(c.vigas.s)+' cm',c.vigas.ml,'ml',c.vigas.n+' piezas');
     if(c.correas)add('Estructura de techos',cod,('Correas '+sala.replace(/^ · /,'')).trim(),'','cada '+fmt(c.correas.s)+' cm',c.correas.ml,'ml',c.correas.n+' piezas');
     if(c.tragaluces)add('Estructura de techos',cod,'Tragaluces'+sala,'','',c.tragaluces.n,'ud',m2(c.tragaluces.m2)+' m² en total');

@@ -49,7 +49,7 @@ export async function cantidadesDePlano(projectId, planoId) {
   (r.electricidad || []).forEach(e => libre('Reforma', `Electricidad: ${e.nombre}`, 'ud', e.n));
   (r.cubiertas || []).forEach(c => {
     const sala = c.sala ? ` (${c.sala})` : '';
-    if (c.forma !== 'plano') libre('Reforma', `${c.forma === 'dos' ? 'Cubierta a dos aguas' : 'Cubierta a un agua'}${sala}`, 'm²', c.cubierta_m2);
+    if (c.forma !== 'plano') libre('Reforma', `${c.forma === 'dos' ? 'Cubierta a dos aguas' : c.forma === 'boveda' ? 'Cubierta curva (bóveda)' : 'Cubierta a un agua'}${sala}`, 'm²', c.cubierta_m2);
     if (c.vigas) libre('Reforma', `Vigas ${c.vigas.w}×${c.vigas.h} cm cada ${c.vigas.s} cm${sala} (${c.vigas.n} piezas)`, 'ml', c.vigas.ml);
     if (c.correas) libre('Reforma', `Correas cada ${c.correas.s} cm${sala} (${c.correas.n} piezas)`, 'ml', c.correas.ml);
     if (c.tragaluces) libre('Reforma', `Tragaluces${sala}`, 'ud', c.tragaluces.n);

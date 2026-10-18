@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.4.0'.freeze
+    VERSION = '1.5.0'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -398,6 +398,32 @@ module Ranuse
       false
     end
 
+    FACETAS = 16 # la bóveda se hace con tiras planas (así muros, vigas y tragaluces encajan)
+
+    # Altura de un arco circular (semiluz = medio, flecha) a una distancia d del centro
+    def self.arco_z(medio, flecha, hc, d)
+      r = (medio * medio + flecha * flecha) / (2.0 * flecha)
+      q = r * r - d * d
+      q = 0.0 if q < 0.0
+      (hc - r) + Math.sqrt(q)
+    end
+
+    # Líneas (en la coordenada que cambia) donde la cubierta cambia de pendiente: la cumbrera, o cada tira de la bóveda
+    def self.techo_pliegues(tc)
+      horizontal = tc['ej'] != 'v'
+      lo = (horizontal ? tc['y0'] : tc['x0']).to_f
+      hi = (horizontal ? tc['y1'] : tc['x1']).to_f
+      c = (lo + hi) / 2.0
+      if tc['fo'] == 'dos'
+        [c]
+      elsif tc['fo'] == 'boveda'
+        paso = (hi - lo) / 2.0 / FACETAS
+        (-FACETAS..FACETAS).map { |i| c + i * paso }
+      else
+        []
+      end
+    end
+
     # Altura de la cubierta en un punto del plano (cm)
     def self.techo_z(tc, x, y)
       ha = tc['ha'].to_f
@@ -407,6 +433,21 @@ module Ranuse
       y0 = tc['y0'].to_f
       y1 = tc['y1'].to_f
       horizontal = tc['ej'] != 'v'
+      if tc['fo'] == 'boveda'
+        c = horizontal ? (y0 + y1) / 2.0 : (x0 + x1) / 2.0
+        medio = horizontal ? (y1 - y0) / 2.0 : (x1 - x0) / 2.0
+        flecha = hc - ha
+        return ha if medio < 0.01 || flecha < 0.01
+        d = (horizontal ? y : x) - c
+        d = d.abs
+        d = medio if d > medio
+        paso = medio / FACETAS
+        k = (d / paso).floor
+        k = FACETAS - 1 if k >= FACETAS
+        z0 = ha + arco_z(medio, flecha, hc, k * paso) - arco_z(medio, flecha, hc, medio)
+        z1 = ha + arco_z(medio, flecha, hc, (k + 1) * paso) - arco_z(medio, flecha, hc, medio)
+        return z0 + (z1 - z0) * (d - k * paso) / paso
+      end
       if tc['fo'] == 'dos'
         c = horizontal ? (y0 + y1) / 2.0 : (x0 + x1) / 2.0
         medio = horizontal ? (y1 - y0) / 2.0 : (x1 - x0) / 2.0
@@ -429,7 +470,7 @@ module Ranuse
     end
 
     def self.techos_inclinados(plano)
-      (plano['techos'] || []).select { |tc| tc['fo'] == 'dos' || tc['fo'] == 'una' }
+      (plano['techos'] || []).select { |tc| %w[dos una boveda].include?(tc['fo']) }
     end
 
     # Altura que tiene que alcanzar un muro (o un pilar) en un punto: la de la cubierta si está debajo de una
@@ -474,19 +515,14 @@ module Ranuse
       return nil if (s1 - s0) < 0.5
       cortes = [s0, s1]
       techos.each do |tc|
-        next unless tc['fo'] == 'dos'
-        if tc['ej'] != 'v'
-          c = (tc['y0'].to_f + tc['y1'].to_f) / 2.0
-          den = uy
-          num = c - ay
-        else
-          c = (tc['x0'].to_f + tc['x1'].to_f) / 2.0
-          den = ux
-          num = c - ax
-        end
+        next unless tc['fo'] == 'dos' || tc['fo'] == 'boveda'
+        horizontal = tc['ej'] != 'v'
+        den = horizontal ? uy : ux
         next if den.abs < 1e-6
-        sc = num / den
-        cortes << sc if sc > s0 + 0.5 && sc < s1 - 0.5
+        techo_pliegues(tc).each do |c|
+          sc = (horizontal ? c - ay : c - ax) / den
+          cortes << sc if sc > s0 + 0.5 && sc < s1 - 0.5
+        end
       end
       cortes.sort!
       nx = -uy
@@ -590,11 +626,12 @@ module Ranuse
     # Recta dentro del polígono: se parte en la cumbrera para que cada trozo siga la pendiente
     def self.viga_recta(ents, tc, eje, c, t0, t1, w, h, drop, mat, parte)
       cortes = [t0, t1]
-      if parte && tc['fo'] == 'dos'
-        cr = (eje == 0) ? ((tc['y0'].to_f + tc['y1'].to_f) / 2.0) : ((tc['x0'].to_f + tc['x1'].to_f) / 2.0)
+      if parte && (tc['fo'] == 'dos' || tc['fo'] == 'boveda')
         horizontal = tc['ej'] != 'v'
-        # solo se parte si la recta cruza la cumbrera: eje 0 (x = c) recorre y; la cumbrera horizontal está en y = centro
-        cortes << cr if ((eje == 0 && horizontal) || (eje == 1 && !horizontal)) && cr > t0 + 0.5 && cr < t1 - 0.5
+        # solo se parte si la recta cruza la cumbrera / las aristas de la bóveda: eje 0 (x = c) recorre y; la cumbrera horizontal está en y = centro
+        if (eje == 0 && horizontal) || (eje == 1 && !horizontal)
+          techo_pliegues(tc).each { |cr| cortes << cr if cr > t0 + 0.5 && cr < t1 - 0.5 }
+        end
       end
       cortes.sort!
       cortes.each_cons(2) do |ta, tb|
@@ -608,7 +645,7 @@ module Ranuse
     end
 
     # Tragaluces: un rectángulo sobre la cubierta, con vidrio (solo si cae entero en esta vertiente)
-    def self.tragaluces_en_cara(ents, tc, parte)
+    def self.tragaluces_en_cara(ents, tc, parte, limites = [])
       (tc['tl'] || []).each do |t|
         begin
           x = t['x'].to_f
@@ -616,25 +653,11 @@ module Ranuse
           w = t['w'].to_f / 2.0
           d = t['d'].to_f / 2.0
           esq = [[x - w, y - d], [x + w, y - d], [x + w, y + d], [x - w, y + d]]
-          next unless esq.all? { |p| punto_en_poligono?(p[0], p[1], parte) }
+          # el tragaluz se recorta a esta parte de la cubierta (si cruza la cumbrera o una arista de la bóveda, queda a cada lado)
+          limites.each { |eje, val, lado| esq = recortar(esq, eje, val, lado) }
+          next if esq.size < 3
+          next unless esq.all? { |p| techo_cubre?(tc, p[0], p[1], 0.6) }
           zs = esq.map { |p| techo_z(tc, p[0], p[1]) }
-          # solo si el rectángulo queda en un plano (no cruza la cumbrera)
-          a = esq[0]
-          b = esq[1]
-          c = esq[3]
-          dz1 = zs[1] - zs[0]
-          dz2 = zs[3] - zs[0]
-          dx1 = b[0] - a[0]
-          dy1 = b[1] - a[1]
-          dx2 = c[0] - a[0]
-          dy2 = c[1] - a[1]
-          det = dx1 * dy2 - dx2 * dy1
-          next if det.abs < 1e-6
-          # z esperado en la 4ª esquina si el plano fuera uno solo
-          pend_x = (dz1 * dy2 - dz2 * dy1) / det
-          pend_y = (dx1 * dz2 - dx2 * dz1) / det
-          z3 = zs[0] + pend_x * (esq[2][0] - a[0]) + pend_y * (esq[2][1] - a[1])
-          next if (z3 - zs[2]).abs > 0.5
           cara = ents.add_face(esq.each_with_index.map { |p, i| pt(p[0], p[1], zs[i]) })
           next unless cara
           cara.reverse! if cara.normal.z < 0
@@ -654,25 +677,28 @@ module Ranuse
       g = elemento(ents, clave, sig, 'Cubierta', etiqueta)
       return unless g
       fo = tc['fo']
-      if fo == 'dos' || fo == 'una'
-        partes = [pts]
+      if fo == 'dos' || fo == 'una' || fo == 'boveda'
+        eje_c = tc['ej'] != 'v' ? 1 : 0
+        partes = [[pts, []]]
         if fo == 'dos'
-          if tc['ej'] != 'v'
-            c = (tc['y0'].to_f + tc['y1'].to_f) / 2.0
-            partes = [recortar(pts, 1, c, 1), recortar(pts, 1, c, -1)]
-          else
-            c = (tc['x0'].to_f + tc['x1'].to_f) / 2.0
-            partes = [recortar(pts, 0, c, 1), recortar(pts, 0, c, -1)]
+          c = techo_pliegues(tc)[0]
+          partes = [[recortar(pts, eje_c, c, 1), [[eje_c, c, 1]]], [recortar(pts, eje_c, c, -1), [[eje_c, c, -1]]]]
+        elsif fo == 'boveda'
+          ps = techo_pliegues(tc)
+          partes = []
+          (0...ps.size - 1).each do |i|
+            tira = recortar(recortar(pts, eje_c, ps[i], 1), eje_c, ps[i + 1], -1)
+            partes << [tira, [[eje_c, ps[i], 1], [eje_c, ps[i + 1], -1]]]
           end
         end
-        partes.each do |pp|
+        partes.each do |pp, lim|
           next if pp.size < 3
           cara = g.entities.add_face(pp.map { |p| pt(p[0], p[1], techo_z(tc, p[0], p[1])) })
           next unless cara
           cara.reverse! if cara.normal.z < 0
           cara.material = material('Ranuse cubierta', '#b9bdc2')
           cara.back_material = material('Ranuse techo cubierta', tc['c'] || '#f6f4f1')
-          tragaluces_en_cara(g.entities, tc, pp)
+          tragaluces_en_cara(g.entities, tc, pp, lim)
         end
       end
       x0 = tc['x0'].to_f
