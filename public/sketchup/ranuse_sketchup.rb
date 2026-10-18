@@ -4,7 +4,9 @@
 # Lee un plano de la herramienta de planos del CRM y construye el modelo 3D en SketchUp:
 # muros con sus puertas y ventanas, suelos y techos con su material (también techos a una y dos aguas
 # con sus vigas, cerchas y correas), pilares y máquinas (si el producto del catálogo tiene un modelo
-# 3D de SketchUp enlazado, se coloca ese modelo en su sitio)
+# 3D de SketchUp enlazado, se coloca ese modelo en su sitio).
+# Al actualizar solo se tocan las piezas que han cambiado en el plano: lo que hayas pintado, movido,
+# ajustado o borrado en SketchUp se respeta (un muro que no cambia en el plano no se vuelve a hacer).
 # (con su huella real y su altura). Cuando el plano cambia, se actualiza solo el grupo
 # «RANUSE PLANO»: lo que modeles tú aparte no se toca.
 #
@@ -21,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.2.1'.freeze
+    VERSION = '1.4.0'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -84,7 +86,7 @@ module Ranuse
 
     # ── Descarga y actualización ─────────────────────────────────────────────
     # silencioso = true cuando lo llama el temporizador (no molesta con mensajes si no hay cambios)
-    def self.sincronizar(silencioso = false, forzar = false)
+    def self.sincronizar(silencioso = false, forzar = false, desde_cero = false)
       url = ajuste('url', '').to_s
       if url.empty?
         UI.messagebox('Primero conecta con un plano: Extensiones → Ranuse → Conectar con un plano…') unless silencioso
@@ -97,7 +99,7 @@ module Ranuse
         peticion.start do |_req, respuesta|
           @pidiendo = false
           begin
-            procesar(respuesta, silencioso, forzar)
+            procesar(respuesta, silencioso, forzar, desde_cero)
           rescue => e
             UI.messagebox("No se pudo construir el modelo:\n#{e.message}") unless silencioso
           end
@@ -108,7 +110,7 @@ module Ranuse
       end
     end
 
-    def self.procesar(respuesta, silencioso, forzar)
+    def self.procesar(respuesta, silencioso, forzar, desde_cero = false)
       codigo = respuesta.status_code
       cuerpo = respuesta.body.to_s
       if codigo != 200
@@ -130,7 +132,7 @@ module Ranuse
       Sketchup.status_text = "Ranuse: descargando #{urls.size} modelo(s) 3D…" unless urls.empty?
       descargar_modelos(urls) do
         begin
-          reconstruir(datos)
+          reconstruir(datos, desde_cero)
           guardar_ajuste('actualizado', datos['updated'].to_s)
           Sketchup.status_text = "Ranuse: plano «#{datos['nombre']}» actualizado"
         rescue => e
@@ -209,19 +211,90 @@ module Ranuse
     end
 
     # ── Construcción del modelo ──────────────────────────────────────────────
-    def self.reconstruir(datos)
+    # Firma de un elemento: si no cambia, la pieza que ya está en SketchUp no se toca
+    def self.firma(obj)
+      Digest::MD5.hexdigest(JSON.generate(obj))
+    end
+
+    def self.clave_poligono(pts)
+      Digest::MD5.hexdigest(pts.map { |p| [p[0].to_f.round, p[1].to_f.round] }.inspect)[0, 10]
+    end
+
+    # Crea el grupo de un elemento solo si hace falta. Devuelve el grupo nuevo, o nil si no hay que tocar nada:
+    #  · ya está en SketchUp con la misma firma (se respeta lo que hayas pintado o movido),
+    #  · lo borraste tú y en el plano sigue igual (no se vuelve a crear).
+    # Si cambió en el plano, se rehace esa pieza.
+    def self.elemento(ents, clave, sig, nombre, etiqueta)
+      @nuevas[clave] = sig
+      viejo = @existentes[clave]
+      if viejo && viejo.valid?
+        if viejo.get_attribute(DICT, 'firma') == sig
+          @mantenidos += 1
+          return nil
+        end
+        viejo.erase!
+        @existentes.delete(clave)
+        @rehechos += 1
+      elsif @ignorados[clave]
+        return nil if @ignorados[clave] == sig
+        @ignorados.delete(clave) # cambió en el plano: se vuelve a crear
+      end
+      g = ents.add_group
+      g.name = nombre
+      g.layer = etiqueta
+      g.set_attribute(DICT, 'clave', clave)
+      g.set_attribute(DICT, 'firma', sig)
+      g
+    end
+
+    # desde_cero = true: borra todo el grupo y lo rehace entero (descarta lo que hayas cambiado a mano)
+    def self.reconstruir(datos, desde_cero = false)
       m = modelo
       @modelos = {}
       plano = datos['modelo']
       m.start_operation('Actualizar plano Ranuse', true)
       begin
-        antiguo = m.entities.grep(Sketchup::Group).find { |g| g.valid? && g.get_attribute(DICT, 'raiz') }
-        antiguo.erase! if antiguo
-        raiz = m.entities.add_group
-        raiz.name = NOMBRE_GRUPO
-        raiz.set_attribute(DICT, 'raiz', true)
+        raiz = m.entities.grep(Sketchup::Group).find { |g| g.valid? && g.get_attribute(DICT, 'raiz') }
+        if raiz && (desde_cero || raiz.get_attribute(DICT, 'v2').nil?)
+          raiz.erase! # versión anterior del plugin o pedido expreso: se rehace entero
+          raiz = nil
+        end
+        @existentes = {}
+        @ignorados = {}
+        @nuevas = {}
+        @mantenidos = 0
+        @rehechos = 0
+        if raiz
+          raiz.entities.grep(Sketchup::Group).each do |g|
+            k = g.valid? ? g.get_attribute(DICT, 'clave') : nil
+            @existentes[k] = g if k
+          end
+          previas = begin
+            JSON.parse(raiz.get_attribute(DICT, 'claves', '{}'))
+          rescue StandardError
+            {}
+          end
+          @ignorados = begin
+            JSON.parse(raiz.get_attribute(DICT, 'ignorados', '{}'))
+          rescue StandardError
+            {}
+          end
+          # lo que se hizo la última vez y ya no está lo ha borrado la persona: se respeta
+          previas.each { |k, sig| @ignorados[k] = sig unless @existentes[k] }
+          @existentes.each_key { |k| @ignorados.delete(k) }
+        else
+          raiz = m.entities.add_group
+          raiz.name = NOMBRE_GRUPO
+          raiz.set_attribute(DICT, 'raiz', true)
+        end
+        raiz.set_attribute(DICT, 'v2', true)
         raiz.set_attribute(DICT, 'plano', datos['nombre'].to_s)
         construir(raiz.entities, plano)
+        # lo que ya no está en el plano se quita
+        @existentes.each { |k, g| g.erase! if g.valid? && !@nuevas.key?(k) }
+        @ignorados.delete_if { |k, _| !@nuevas.key?(k) }
+        raiz.set_attribute(DICT, 'claves', JSON.generate(@nuevas))
+        raiz.set_attribute(DICT, 'ignorados', JSON.generate(@ignorados))
         m.commit_operation
       rescue => e
         m.abort_operation
@@ -534,13 +607,52 @@ module Ranuse
       end
     end
 
+    # Tragaluces: un rectángulo sobre la cubierta, con vidrio (solo si cae entero en esta vertiente)
+    def self.tragaluces_en_cara(ents, tc, parte)
+      (tc['tl'] || []).each do |t|
+        begin
+          x = t['x'].to_f
+          y = t['y'].to_f
+          w = t['w'].to_f / 2.0
+          d = t['d'].to_f / 2.0
+          esq = [[x - w, y - d], [x + w, y - d], [x + w, y + d], [x - w, y + d]]
+          next unless esq.all? { |p| punto_en_poligono?(p[0], p[1], parte) }
+          zs = esq.map { |p| techo_z(tc, p[0], p[1]) }
+          # solo si el rectángulo queda en un plano (no cruza la cumbrera)
+          a = esq[0]
+          b = esq[1]
+          c = esq[3]
+          dz1 = zs[1] - zs[0]
+          dz2 = zs[3] - zs[0]
+          dx1 = b[0] - a[0]
+          dy1 = b[1] - a[1]
+          dx2 = c[0] - a[0]
+          dy2 = c[1] - a[1]
+          det = dx1 * dy2 - dx2 * dy1
+          next if det.abs < 1e-6
+          # z esperado en la 4ª esquina si el plano fuera uno solo
+          pend_x = (dz1 * dy2 - dz2 * dy1) / det
+          pend_y = (dx1 * dz2 - dx2 * dz1) / det
+          z3 = zs[0] + pend_x * (esq[2][0] - a[0]) + pend_y * (esq[2][1] - a[1])
+          next if (z3 - zs[2]).abs > 0.5
+          cara = ents.add_face(esq.each_with_index.map { |p, i| pt(p[0], p[1], zs[i]) })
+          next unless cara
+          cara.reverse! if cara.normal.z < 0
+          vidrio = material('Ranuse vidrio tragaluz', '#9ecbe8', 0.35)
+          cara.material = vidrio
+          cara.back_material = vidrio
+        rescue StandardError
+          # un tragaluz que no se pueda dibujar no rompe el resto
+        end
+      end
+    end
+
     # Cubierta (a una o dos aguas) con sus cerchas/vigas y correas, o vigas bajo un techo plano
-    def self.construir_techo(ents, tc, etiqueta, mat_viga)
+    def self.construir_techo(ents, tc, etiqueta, mat_viga, clave, sig)
       pts = techo_pts(tc)
       return if pts.size < 3
-      g = ents.add_group
-      g.name = 'Cubierta'
-      g.layer = etiqueta
+      g = elemento(ents, clave, sig, 'Cubierta', etiqueta)
+      return unless g
       fo = tc['fo']
       if fo == 'dos' || fo == 'una'
         partes = [pts]
@@ -560,6 +672,7 @@ module Ranuse
           cara.reverse! if cara.normal.z < 0
           cara.material = material('Ranuse cubierta', '#b9bdc2')
           cara.back_material = material('Ranuse techo cubierta', tc['c'] || '#f6f4f1')
+          tragaluces_en_cara(g.entities, tc, pp)
         end
       end
       x0 = tc['x0'].to_f
@@ -633,18 +746,17 @@ module Ranuse
       mat_luz = material('Ranuse retroiluminado', '#fff2b3')
 
       # Obra a medida (muebles de obra, panelados, retroiluminados)
-      (plano['a_medida'] || []).each do |am|
+      (plano['a_medida'] || []).each_with_index do |am, i_am|
         pts = (am['pts'] || []).map { |q| [q[0].to_f, q[1].to_f] }
         next if pts.size < 3
-        g = ents.add_group
-        g.name = am['nombre'] || 'Obra a medida'
-        g.layer = et_med
+        g = elemento(ents, "mm:#{am['id'] || i_am}", firma(am), am['nombre'] || 'Obra a medida', et_med)
+        next unless g
         prisma(g.entities, pts, am['z0'].to_f, am['z1'].to_f)
         g.material = am['luz'] ? mat_luz : mat_med
       end
 
       # Muros con sus huecos
-      (plano['muros'] || []).each do |mu|
+      (plano['muros'] || []).each_with_index do |mu, i_mu|
         next unless visible?(mu['estado'], vista)
         ax, ay = mu['a']
         bx, by = mu['b']
@@ -658,9 +770,8 @@ module Ranuse
         t = 12.0 if t <= 0
         h_mu = mu['h'].to_f
         h_mu = altura if h_mu <= 0
-        g = ents.add_group
-        g.name = 'Muro'
-        g.layer = et_muros
+        g = elemento(ents, "muro:#{mu['id'] || i_mu}", firma([mu, altura, vista, techos_inc]), 'Muro', et_muros)
+        next unless g
         mat = { 'ex' => mat_ex, 'new' => mat_nuevo, 'dem' => mat_dem }[mu['estado']] || mat_ex
         huecos = (mu['ab'] || []).select { |o| visible?(o['estado'], vista) }.sort_by { |o| o['p'].to_f }
         cur = -t / 2.0
@@ -687,22 +798,22 @@ module Ranuse
         pts = sa['pts']
         next if pts.nil? || pts.size < 3
         suelo = sa['suelo']
-        g = ents.add_group
-        g.name = "Suelo #{sa['nombre']}".strip
-        g.layer = et_suelos
-        cara = prisma(g.entities, pts, 0.0, 0.0)
-        cara ||= g.entities.add_face(pts.map { |p| pt(p[0], p[1], 0) })
-        if cara
-          cara.reverse! if cara.normal.z < 0
-          cara.material = material("Ranuse suelo #{suelo['n']}", suelo['c']) if suelo
-          cara.back_material = cara.material if cara.material
+        ks = clave_poligono(pts)
+        g = elemento(ents, "suelo:#{sa['idS'] || ks}", firma([sa['suelo'], pts, sa['nombre']]), "Suelo #{sa['nombre']}".strip, et_suelos)
+        if g
+          cara = prisma(g.entities, pts, 0.0, 0.0)
+          cara ||= g.entities.add_face(pts.map { |p| pt(p[0], p[1], 0) })
+          if cara
+            cara.reverse! if cara.normal.z < 0
+            cara.material = material("Ranuse suelo #{suelo['n']}", suelo['c']) if suelo
+            cara.back_material = cara.material if cara.material
+          end
         end
         next unless ajuste('techos', false)
         next if sala_con_cubierta?(pts, techos_inc) # esa sala lleva su cubierta con forma
         techo = sa['techo']
-        gt = ents.add_group
-        gt.name = "Techo #{sa['nombre']}".strip
-        gt.layer = et_techos
+        gt = elemento(ents, "techo:#{sa['idT'] || ks}", firma([sa['techo'], pts, altura, sa['nombre']]), "Techo #{sa['nombre']}".strip, et_techos)
+        next unless gt
         ct = gt.entities.add_face(pts.map { |p| pt(p[0], p[1], altura) })
         if ct
           ct.reverse! if ct.normal.z > 0
@@ -712,9 +823,9 @@ module Ranuse
 
       # Techos con forma y vigas (solo si los techos están visibles)
       if ajuste('techos', false)
-        (plano['techos'] || []).each do |tc|
+        (plano['techos'] || []).each_with_index do |tc, i_tc|
           begin
-            construir_techo(ents, tc, et_techos, mat_viga)
+            construir_techo(ents, tc, et_techos, mat_viga, "cub:#{tc['id'] || i_tc}", firma(tc))
           rescue StandardError
             # un techo con datos raros no debe romper el resto del modelo
           end
@@ -722,24 +833,24 @@ module Ranuse
       end
 
       # Pilares
-      (plano['pilares'] || []).each do |p|
+      (plano['pilares'] || []).each_with_index do |p, i_p|
         next unless visible?(p['estado'], vista)
-        g = ents.add_group
-        g.name = 'Pilar'
-        g.layer = et_muros
         w = p['w'].to_f / 2.0
         d = p['d'].to_f / 2.0
         cx = p['cx'].to_f
         cy = p['cy'].to_f
-        prisma(g.entities, [[cx - w, cy - d], [cx + w, cy - d], [cx + w, cy + d], [cx - w, cy + d]], 0.0, altura_en(techos_inc, cx, cy, altura))
+        alto_p = altura_en(techos_inc, cx, cy, altura)
+        g = elemento(ents, "pilar:#{p['id'] || i_p}", firma([p, alto_p, vista]), 'Pilar', et_muros)
+        next unless g
+        prisma(g.entities, [[cx - w, cy - d], [cx + w, cy - d], [cx + w, cy + d], [cx - w, cy + d]], 0.0, alto_p)
         g.material = mat_pilar
       end
 
       # Máquinas
-      (plano['equipos'] || []).each do |e|
-        g = ents.add_group
-        g.name = e['nombre'].to_s
-        g.layer = et_maq
+      (plano['equipos'] || []).each_with_index do |e, i_e|
+        con_modelo = e['skp'] && e['skp']['url'] ? modelo_descargado?(e['skp']['url']) : false
+        g = elemento(ents, "eq:#{e['id'] || i_e}", firma([e, con_modelo]), e['nombre'].to_s, et_maq)
+        next unless g
         g.set_attribute(DICT, 'cid', e['cid'].to_s)
         alto = e['alto'].to_f
         alto = 110.0 if alto <= 0
@@ -836,6 +947,11 @@ unless file_loaded?(__FILE__)
 
   cmd_conectar = crear.call('Conectar con un plano…', 'Ranuse: conectar con un plano del CRM', 'logo') { Ranuse::PlanoSU.conectar }
   cmd_actualizar = crear.call('Actualizar ahora', 'Ranuse: actualizar el modelo desde el plano', 'actualizar') { Ranuse::PlanoSU.sincronizar(false, true) }
+  cmd_cero = crear.call('Rehacer todo desde cero', 'Ranuse: borra lo que hayas cambiado a mano y rehace todo el modelo desde el plano', 'actualizar') do
+    if UI.messagebox("Esto rehace todo el modelo desde el plano y se pierde lo que hayas pintado, movido o borrado a mano en el grupo «RANUSE PLANO».\n\n¿Continuar?", MB_YESNO) == IDYES
+      Ranuse::PlanoSU.sincronizar(false, true, true)
+    end
+  end
   cmd_auto = crear.call('Sincronización automática', 'Ranuse: actualizar solo cada pocos segundos', 'auto') { Ranuse::PlanoSU.alternar_auto }
   cmd_auto.set_validation_proc { Ranuse::PlanoSU.instance_variable_get(:@timer) ? MF_CHECKED : MF_UNCHECKED }
   cmd_techos = crear.call('Mostrar techos', 'Ranuse: mostrar u ocultar los techos', 'techos') { Ranuse::PlanoSU.alternar_techos }
@@ -845,7 +961,7 @@ unless file_loaded?(__FILE__)
   menu_raiz = (UI.respond_to?(:menu) && (UI.menu('Extensions') || UI.menu('Plugins')))
   if menu_raiz
     menu = menu_raiz.add_submenu('Ranuse')
-    [cmd_conectar, cmd_actualizar, cmd_auto, cmd_techos, cmd_estado].each { |c| menu.add_item(c) }
+    [cmd_conectar, cmd_actualizar, cmd_auto, cmd_techos, cmd_estado, cmd_cero].each { |c| menu.add_item(c) }
   end
 
   barra = UI::Toolbar.new('Ranuse')
