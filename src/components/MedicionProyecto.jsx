@@ -138,6 +138,19 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           const existente = (h.bloques || []).find(b => b.capitulo_id === cap.id && b.tipo === 'plano' && b.titulo === m.titulo);
           if (existente) await api.put(`/historia/bloques/${existente.id}`, { imagen_url: up.url });
           else await api.post(`/historia/capitulos/${cap.id}/bloques`, { tipo: 'plano', titulo: m.titulo, imagen_url: up.url });
+          // El mismo plano en PDF (vectorial) en Documentos: el portal enseña un enlace «Abrir en PDF» para ampliarlo sin perder nitidez
+          if (m.pdf) {
+            try {
+              const nombrePdf = `Plano · ${m.titulo}`;
+              const { data: dl } = await api.get(`/client-projects/${projectId}/documents`);
+              for (const d of (dl.documents || []).filter(x => x.name === nombrePdf)) await api.delete(`/client-projects/${projectId}/documents/${d.id}`);
+              const fp = new FormData();
+              fp.append('file', new Blob([m.pdf], { type: 'application/pdf' }), `plano-${String(m.titulo).toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`);
+              fp.append('name', nombrePdf);
+              fp.append('doc_type', 'plano');
+              await api.post(`/client-projects/${projectId}/documents`, fp);
+            } catch { /* la imagen ya está publicada; el PDF es un extra */ }
+          }
           responder({ type: 'info', message: `«${m.titulo}» publicado en la historia, en «Entendemos el espacio»` });
         } catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo publicar en la historia' }); }
       } else if (m.type === 'subir-pdf' && m.bytes) {

@@ -30,7 +30,7 @@ const PASOS_PLANO = [
 const TITULOS_PASO = PASOS_PLANO.flatMap(p => p.titulos);
 const esPaso = (b) => b.tipo === 'plano' && !!b.imagen_url && TITULOS_PASO.includes(b.titulo);
 
-function PasosPlano({ bloques }) {
+function PasosPlano({ bloques, docs = [] }) {
   const items = bloques.filter(esPaso);
   const pasos = PASOS_PLANO.map(p => ({ ...p, bl: p.titulos.map(t => items.find(b => b.titulo === t)).filter(Boolean) })).filter(p => p.bl.length);
   if (!pasos.length) return null;
@@ -44,6 +44,7 @@ function PasosPlano({ bloques }) {
               <figure key={b.id} className="sp-plano">
                 <img src={b.imagen_url} alt={b.titulo} loading="lazy" style={{ objectFit: 'contain' }} />
                 {p.bl.length > 1 && <figcaption>{b.titulo}</figcaption>}
+                {(() => { const pdf = docs.find(d => d.name === `Plano · ${b.titulo}`); return pdf ? <a className="sp-plano-pdf" href={pdf.url} target="_blank" rel="noopener noreferrer">Abrir en PDF · se amplía sin perder nitidez ↗</a> : null; })()}
               </figure>
             ))}
           </div>
@@ -386,7 +387,7 @@ export function StorytellingPortal({ project, dossier, code }) {
             </div>
           </div>
           <Renders primero={i === 0} tituloZona={c.titulo} textoZona={c.texto} items={[...(c.render_url ? [{ id: 'main', imagen_url: c.render_url, titulo: c.titulo }] : []), ...c.bloques.filter(b => b.tipo === 'render')]} />
-          <PasosPlano bloques={c.bloques} />
+          <PasosPlano bloques={c.bloques} docs={docsTecnicos} />
           <Bloques bloques={c.bloques.filter(b => b.tipo !== 'render' && !esPaso(b))} capitulos={capitulos} equipo={project.equipment} materiales={project.materials} />
           {c.servicios.length > 0 && (
             <div className="sp-blk">

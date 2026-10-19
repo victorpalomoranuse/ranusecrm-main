@@ -567,7 +567,7 @@ body.crm .top .brand{display:none}
         <label class="fld"><span>Marcas de alzado en planta</span><select id="x-marks"><option value="1">Sí (distribución y acabados)</option><option value="0">No</option></select></label>
         <label class="fld"><span>Cotas</span><select id="x-dims"><option value="ext">Con líneas de cota por fuera</option><option value="dob">Con dos líneas: interior y exterior</option><option value="int">Con líneas de cota por dentro</option><option value="simple">Solo el número en cada muro</option></select></label>
         <label class="fld"><span>Orientación del plano</span><select id="x-orient"><option value="auto">Automática (en horizontal si así sale más grande)</option><option value="normal">Tal como está dibujado</option><option value="girado">Girado 90° (en horizontal)</option></select></label>
-        <label class="fld"><span>Escala</span><select id="x-scale"><option value="auto">Automática (la mayor que quepa)</option><option value="20">1:20</option><option value="25">1:25</option><option value="50">1:50</option><option value="75">1:75</option><option value="100">1:100</option><option value="200">1:200</option></select></label>
+        <label class="fld"><span>Escala</span><select id="x-scale"><option value="auto">Automática (la mayor que quepa)</option><option value="20">1:20</option><option value="25">1:25</option><option value="50">1:50</option><option value="75">1:75</option><option value="100">1:100</option><option value="125">1:125</option><option value="200">1:200</option></select></label>
         <div class="btns"><button class="pri" id="b-pdf">PDF de esta lámina</button><button id="b-pdfall">PDF con todas las láminas</button></div>
         <div class="btns"><button id="b-lams" title="Elige qué láminas lleva el PDF con todas">Elegir láminas…</button><button id="b-prev">Vista previa de las láminas</button><button id="b-pdfproj" hidden>PDF con todas las plantas del proyecto</button><button id="b-prevproj" hidden>Vista previa de todas las plantas</button></div>
         <p class="note" id="crm-pdf-nota" style="margin:0 0 6px"></p><div class="btns" id="crm-pdf" hidden><button id="b-historia" title="Publica esta lámina como imagen en «Entendemos el espacio» de la historia del cliente">Publicar en la historia del cliente</button><button id="b-pdfdoc">Subir esta lámina a Documentos</button><button id="b-pdfdocall">Subir dossier a Documentos</button></div>
@@ -7184,7 +7184,7 @@ PdfDoc.prototype={
 /* ---------- láminas PDF ---------- */
 var LSL='ranuse-logo-v1',LOGO=null;
 cargaFuentesPdf();
-var SCALES=[10,20,25,30,40,50,60,75,100,150,200,250,500];
+var SCALES=[10,20,25,30,40,50,60,75,100,125,150,200,250,500];
 var INK='#111111',MUTED='#8e847b',LINEC='#e4dfda',MARCA='#baafa5',MARCA_F='#f7f5f3';
 function fdate(s){var m=/^(\d{4})-(\d\d)-(\d\d)$/.exec(s||'');return m?m[3]+'/'+m[2]+'/'+m[1]:(s||'—')}
 function fitTxt(s,maxW,bold,size){
@@ -9048,10 +9048,11 @@ function publicarHistoria(){
   if(!window.confirm('Se publicará «'+titulo+'» en la historia del cliente, dentro de «Entendemos el espacio» (sustituye a la anterior si ya estaba). El cliente la verá en su portal. ¿Continuar?'))return;
   var img=new Image();
   img.onload=function(){
-    var W0=Math.min(4200,Math.max(2400,img.width*2)),k=W0/img.width,c=document.createElement('canvas');
+    var W0=Math.min(5600,Math.max(4400,img.width*3)),k=W0/img.width,c=document.createElement('canvas'); /* alta resolución: se ve nítida al ampliar en el portal */
     c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
     var g=c.getContext('2d');g.fillStyle='#ffffff';g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);
-    crmPost({type:'publicar-historia',titulo:titulo,imagen:c.toDataURL('image/png')});
+    var pdfB=null;try{pdfB=buildPDF(st.view==='distrib'?'ante':'uno',pdfOpts()).buffer}catch(e){pdfB=null} /* y el mismo plano en PDF (vectorial) para abrirlo y ampliarlo sin perder nitidez */
+    crmPost({type:'publicar-historia',titulo:titulo,imagen:c.toDataURL('image/png'),pdf:pdfB});
     toast('Publicando en la historia…');
   };
   img.onerror=function(){toast('No se pudo preparar la imagen del plano')};
