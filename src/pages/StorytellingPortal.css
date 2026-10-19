@@ -169,7 +169,9 @@
 /* planos del espacio, paso a paso (Entendemos el espacio) */
 .sp-pasos{margin-top:4vh}
 .sp-paso-im{display:grid;gap:18px}
-.sp-paso-im--2{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* las láminas ocupan todo el ancho (una debajo de otra) para que las cotas se lean bien */
+.sp-paso-im--2{grid-template-columns:1fr}
+.sp-paso-im .sp-plano img{max-height:none;width:100%}
 .sp-paso-im figure{margin:0}
 .sp-paso-im figcaption{font-size:.66rem;letter-spacing:.22em;text-transform:uppercase;color:var(--beige-d);text-align:center;margin-top:10px}
 @media (max-width:760px){.sp-paso-im--2{grid-template-columns:1fr}}
