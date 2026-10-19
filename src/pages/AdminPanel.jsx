@@ -410,6 +410,7 @@ function TabMoodboard({ projectId }) {
   const [showCombinador, setShowCombinador] = useState(false);
   const [comboSaved, setComboSaved] = useState(false);
   const fileRef = useRef();
+  const comboRef = useRef();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useEffect(() => {
@@ -427,7 +428,27 @@ function TabMoodboard({ projectId }) {
   useEffect(() => {
     const onMessage = (e) => {
       if (e.origin !== window.location.origin) return;
-      if (e.data?.type !== 'ranuse-combo-selected') return;
+      const tipo = e.data?.type;
+      const responder = (msg) => comboRef.current?.contentWindow?.postMessage(msg, window.location.origin);
+      // El Combinador pide su catálogo propio (colores, suelos y estilos del estudio)
+      if (tipo === 'ranuse-combo-listo') {
+        api.get('/combinador/custom').then(r => responder({ type: 'ranuse-combo-datos', custom: r.data.custom })).catch(() => {});
+        return;
+      }
+      if (tipo === 'ranuse-combo-guardar-custom') {
+        api.put('/combinador/custom', { custom: e.data.custom })
+          .then(() => responder({ type: 'ranuse-combo-guardado', ok: true }))
+          .catch(() => responder({ type: 'ranuse-combo-guardado', ok: false }));
+        return;
+      }
+      // «Proponer desde el moodboard»: la IA mira las imágenes y elige el punto de partida
+      if (tipo === 'ranuse-combo-pedir-moodboard') {
+        api.post(`/combinador/moodboard/${projectId}`, { catalogo: e.data.catalogo })
+          .then(r => responder({ type: 'ranuse-combo-sugerencia', ok: true, data: r.data.data }))
+          .catch(err => responder({ type: 'ranuse-combo-sugerencia', ok: false, error: err.response?.data?.error || 'No se pudo proponer desde el moodboard' }));
+        return;
+      }
+      if (tipo !== 'ranuse-combo-selected') return;
       const nuevaDescripcion = e.data.description || '';
       const nuevaPaleta = Array.isArray(e.data.palette) ? e.data.palette : [];
       setDescription(nuevaDescripcion);
@@ -535,6 +556,7 @@ function TabMoodboard({ projectId }) {
           <>
             <p className="ap-order-hint" style={{ margin: '0.5rem 0' }}>Elige una combinación y pulsa "Guardar en el proyecto" en la tarjeta — rellena la descripción y la paleta de abajo automáticamente.</p>
             <iframe
+              ref={comboRef}
               src="/combinador/index.html?embed=1"
               title="Combinador de colores"
               style={{ width: '100%', height: 720, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, background: '#F3F1EE' }}

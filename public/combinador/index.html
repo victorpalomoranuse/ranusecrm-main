@@ -60,6 +60,15 @@ main{max-width:1040px;margin:0 auto;padding:20px 20px 60px}
 .mchip svg{width:18px;height:18px;display:block}
 .btn{border:1px solid var(--line);background:none;border-radius:10px;padding:9px 14px;font-weight:600;font-size:14px;justify-self:start}
 .empty{color:var(--muted)}
+.btn.dark{background:var(--ink);color:var(--bg);border-color:var(--ink)}.btn[disabled]{opacity:.55;cursor:wait}
+.mbres{margin-top:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:12px 14px;font-size:14px;display:grid;gap:8px}
+.mbres b{font-weight:700}.mbres .sm{color:var(--muted);font-size:13px}
+.my summary{cursor:pointer;font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--sandD)}
+.my h3{font-size:15px;margin:18px 0 8px}.frm{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.frm input[type=text],.frm select{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:8px 10px;font:inherit;font-size:14px;min-width:0}
+.frm input[type=color]{width:42px;height:38px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.mylist{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.mylist .chip{padding:5px 6px 5px 6px}.mylist .chip button{border:0;background:none;font-weight:800;padding:0 2px;color:var(--muted)}
+.chip.sm{font-size:13px;padding:4px 10px 4px 4px}.chip.sm.av[aria-pressed="true"]{border-color:#b3261e;box-shadow:0 0 0 1px #b3261e}
 .foot{color:var(--muted);font-size:13px;margin-top:26px}
 @media (max-width:520px){.grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.sw{padding:4px 4px 6px;gap:4px}.sw i{height:44px}.sw b{font-size:11px}.sw small{display:none}}
 </style>
@@ -67,6 +76,11 @@ main{max-width:1040px;margin:0 auto;padding:20px 20px 60px}
 <body>
 <header class="top"><div><small>RANUSE DESIGN</small><h1>Combinador Ranuse</h1><p>Elige un suelo o un color y te decimos en qué porcentaje usarlo y con qué acompañarlo.</p></div></header>
 <main>
+ <section class="step mb" id="mbstep" hidden><h2>Partir del moodboard del proyecto</h2>
+  <p class="note" style="margin:0 0 10px">La IA mira las imágenes del moodboard y elige por ti el suelo o color de partida, el ambiente y el estilo. Después las reglas del sistema Ranuse montan las combinaciones.</p>
+  <button type="button" class="btn dark" id="mbgo">Proponer desde el moodboard</button>
+  <div id="mbres" class="mbres" hidden></div>
+ </section>
  <section class="step"><h2>1 · ¿Por dónde empiezas?</h2>
   <div class="seg" role="group" aria-label="Punto de partida"><button type="button" data-mode="floor" aria-pressed="true">Un suelo</button><button type="button" data-mode="color" aria-pressed="false">Un color</button></div>
   <div class="grid" id="picks" role="radiogroup" aria-label="Elige"></div>
@@ -81,16 +95,11 @@ main{max-width:1040px;margin:0 auto;padding:20px 20px 60px}
   <p class="note">Con máquinas negras, el Negro Carbono entra siempre en la paleta. Lacadas, toman el color del 30 %.</p>
  </section>
  <section class="step"><h2>4 · Estilo decorativo</h2>
-  <div class="seg" role="group" aria-label="Estilo decorativo" style="flex-wrap:wrap">
-   <button type="button" data-style="all" aria-pressed="true">Todos</button>
-   <button type="button" data-style="medi" aria-pressed="false">Mediterráneo</button>
-   <button type="button" data-style="nordico" aria-pressed="false">Nórdico claro</button>
-   <button type="button" data-style="industrial" aria-pressed="false">Industrial</button>
-   <button type="button" data-style="premium" aria-pressed="false">Premium oscuro</button>
-  </div>
+  <div class="seg" id="stylebtns" role="group" aria-label="Estilo decorativo" style="flex-wrap:wrap"></div>
   <p class="note" id="stylenote"></p>
  </section>
  <section class="res" id="res" aria-live="polite"></section>
+ <section class="step" id="mystep" hidden><details class="my"><summary>Mis colores, suelos y estilos</summary><div id="mybody"></div></details></section>
  <p class="foot">Combinaciones del sistema Estilo Ranuse: reparto 60/30/10, baja saturación y suelos de caucho premium en loseta de 100 × 100. Los colores en pantalla son orientativos; confírmalos con la muestra NCS.</p>
 </main>
 <script>
@@ -222,14 +231,14 @@ function ncs(h){const c=rgb(h).map(v=>v/255),mx=Math.max(...c),mn=Math.min(...c)
 function parse(code){const m=/S (\d\d)(\d\d)-(\S+)/.exec(code);return m?{s:+m[1],c:+m[2],h:m[3]}:{s:0,c:0,h:"N"}}
 let CUSTOM={},SEL={};
 function col(id){
- if(P[id]){const[n,code,hex,role,mats,lim]=P[id];return{id,key:id,n,code,hex,role,mats,lim,own:1}}
+ if(P[id]){const[n,code,hex,role,mats,lim,cust]=P[id];return{id,key:id,n,code,hex,role,mats,lim,own:1,cust}}
  if(LIB[id]){const[n,fam,eq,ohex,oncs,tex,usos,imp,nivel,nota,extra]=LIB[id];const x=extra||{};
   if(eq){const b=P[eq];return{id,key:eq,n,eq:b[0],code:b[1],hex:b[2],lib:1,fam,tex,usos,imp,nivel,nota,mats:usos.join(", "),...x}}
   return{id,key:id,n,code:oncs,hex:ohex,lib:1,out:1,fam,tex,usos,imp,nivel,nota,mats:usos.join(", "),...x}}
  if(CUSTOM[id]){const hex=CUSTOM[id];return{id,key:id,n:id==="cmach"?"Máquinas (color propio)":id==="club"?"Color del club":id==="xwall"?"Color actual de las paredes":id==="xceil"?"Color actual del techo":id==="xfloor"?"Color actual del suelo":"Tapizado existente",code:ncs(hex),hex,custom:1}}
  return null}
 const counts=c=>parse(c.code).c>=5;
-const accentC=c=>["marino","barro","oxido","burdeos"].includes(c.key)||(!c.own&&parse(c.code).c>=20);
+const accentC=c=>["marino","barro","oxido","burdeos"].includes(c.key)||(!c.own&&parse(c.code).c>=20)||(c.cust&&c.role==="Acento");
 const warmC=c=>{const p=parse(c.code);return p.c>=2&&(p.h[0]==="Y"||(p.h.includes("R")&&!p.h.includes("B")))};
 const yellowC=c=>{const p=parse(c.code);return p.c>=2&&/^Y([1-4]0R)?$/.test(p.h)};
 const y50=c=>parse(c.code).h==="Y50R";
@@ -332,7 +341,10 @@ function styleFit(ids){
   industrial:(has(STYLE_COLD)?2.5:0)+(dL<60?1:0)-(has(["lino","arena","duna","barro","ante","roble"])?3:0),
   premium:(dL<=30?2.5:0)+(has(["carbono","grafito","pizarra"])?1.5:0)+(has(["ante","roble","barro","burdeos"])?1:0)-(has(["cemento","pedernal","acero"])?1:0)};
  const best=Object.keys(sc).sort((a,b)=>sc[b]-sc[a])[0];return{best,sc}}
-function matchesStyle(k,ids){if(STYLE==="all")return true;if(k&&k.style)return k.style.includes(STYLE);return styleFit(ids).best===STYLE}
+let CSTYLE={};
+function customStyleScore(cs,ids){const dL=Lstar(P[ids[0]][2]);let sc=0;ids.forEach((x,i)=>{if(cs.like.includes(x))sc+=i===0?3:2;if(cs.avoid.includes(x))sc-=4});
+ if(cs.lum==="clara"&&dL>=75)sc+=1.5;else if(cs.lum==="media"&&dL>=40&&dL<75)sc+=1.5;else if(cs.lum==="oscura"&&dL<40)sc+=1.5;else if(cs.lum&&cs.lum!=="any")sc-=1.5;return sc}
+function matchesStyle(k,ids){if(STYLE==="all")return true;if(CSTYLE[STYLE])return customStyleScore(CSTYLE[STYLE],ids)>=2;if(k&&k.style)return k.style.includes(STYLE);return styleFit(ids).best===STYLE}
 function conflicts(ids){const cs=ids.map(col);let bad=false;
  cs.forEach(c=>{if(c.key==="cuarzo"&&cs.some(yellowC))bad=true;if(c.key==="acero"&&cs.some(x=>y50(x)&&parse(x.code).c>=5))bad=true;
   if(c.key==="burdeos"&&cs.some(x=>["barro","oxido"].includes(x.key)))bad=true;if((c.key==="titanio"||c.key==="indigo")&&cs.some(y50))bad=true});return bad}
@@ -343,7 +355,7 @@ function generate(S,G){
  if(S.small){for(const d of ["humo","lino"])out.push({ids:[d,"carbono"],score:10,why:["Espacio pequeño: dominante muy claro y Negro Carbono, sin acentos."]});return out}
  for(const d of ids){
   if(S.exist.wall){const wk=col(S.exist.wall),dk=P[wk.key]?wk.key:nearest(wk.hex).id;if(d!==dk)continue}
-  else if(P[d][3]==="Secundario")continue;const dL=L(d);
+  else if(P[d][3]==="Secundario"||P[d][3]==="Acento")continue;const dL=L(d);
   if(!S.exist.wall&&(lum==="clara"&&dL<80||lum==="media"&&(dL<45||dL>=80)||lum==="oscura"&&dL>=45))continue;
   for(const s of ids){if(s===d||ACCENT_ONLY.includes(s))continue;
    if(Math.abs(L(s)-dL)<6)continue;
@@ -524,7 +536,7 @@ function matsFor(id,i){const libs=Object.keys(LIB).map(col).filter(m=>m.key===id
 const ACC=[["musgo","Verde"],["indigo","Azul"],["burdeos","Burdeos"],["barro","Terracota"]];
 const COLD=["indigo","marino","musgo","barro","oxido","burdeos","titanio"];
 const ADJ={calma:"Sereno",amplitud:"Luminoso",hogar:"Cálido",foco:"Técnico",energia:"Intenso",exclusiva:"Sobrio"};
-const FLOORS=Object.keys(LIB).filter(id=>LIB[id][1]==="Suelo técnico");
+let FLOORS=Object.keys(LIB).filter(id=>LIB[id][1]==="Suelo técnico");
 let MODE="floor",PICK="marble_sand",AMB="neutral",ACCENT="musgo",MACH="black",STYLE="all";
 const BASE_S=()=>({exist:{},upg:"3",sens:"all",mach:"carbono",tap:"auto",lvl:"C",small:false,floor:"auto",thread:"none",line:"all"});
 function swFloor(id){const c=col(id),img=FLOORIMG[id];return`<button type="button" class="sw" data-p="${id}" aria-pressed="${PICK===id}"><i style="${img?`background-image:url(${img})`:`background:${c.hex}`}"></i><b>${c.n}</b><small>${c.eq?"≈ "+c.eq:"fuera de paleta"}</small></button>`}
@@ -536,7 +548,7 @@ function mk(ids,S,base){const[d,s,a]=ids;const app={wall:d,ceil:d,floor:floorFor
 function constraint(ids){const X=MODE==="color"?PICK:null;
  if(MACH!=="custom"&&!ids.includes("carbono"))return false;
  if(X&&!ids.includes(X))return false;
- if(X&&["roble","barro","oxido","burdeos"].includes(X)&&ids[2]!==X)return false;
+ if(X&&ACCENT_ONLY.includes(X)&&ids[2]!==X)return false;
  if(AMB==="accent"&&!(X&&COLD.includes(X))){if(ids[2]!==ACCENT)return false;if(ids.slice(0,2).some(i=>COLD.includes(i)))return false}
  else if(ids.some(i=>COLD.includes(i)&&i!==X))return false;
  return true}
@@ -548,9 +560,9 @@ function results(){
  const S=BASE_S();if(MODE==="floor")S.exist={floor:PICK};
  const cand=[],seen=new Set();
  const add=(k,own,base)=>{const ids=k.bar.map(b=>b[0]),key=ids.join("-");if(seen.has(key)||!constraint(ids))return;
-  const{a}=resolve(k,S);if(check(k,S,a).w.length)return;seen.add(key);cand.push({k,own,ids,sc:base+affinity(ids)+(own?2:0)})};
+  const{a}=resolve(k,S);if(check(k,S,a).w.length)return;seen.add(key);cand.push({k,own,ids,sc:base+affinity(ids)+(own?2:0)+(CSTYLE[STYLE]?customStyleScore(CSTYLE[STYLE],ids):0)})};
  COMBOS.forEach(k=>add(k,true,6));
- generate(S,{line:"all",lum:"all",sens:"all"}).filter(o=>o.ids.length===3).slice(0,600).forEach((o,i)=>add(mk(o.ids,S),false,o.score/3));
+ generate(S,{line:"all",lum:"all",sens:"all"}).filter(o=>o.ids.length===3&&(!(MODE==="color"&&MERGED.P.includes(PICK))||constraint(o.ids))).slice(0,CSTYLE[STYLE]?2500:600).forEach((o,i)=>add(mk(o.ids,S),false,o.score/3));
  cand.sort((x,y)=>y.sc-x.sc);
  // Si hay un estilo decorativo elegido, nos quedamos solo con las que encajan — pero
  // si eso deja menos de 3 (puede pasar con combinaciones de partida muy concretas),
@@ -580,7 +592,7 @@ function render(){
  document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===MODE));
  document.querySelectorAll("[data-amb]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.amb===AMB));
  document.querySelectorAll("[data-mc]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mc===MACH));
- document.querySelectorAll("[data-style]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.style===STYLE));
+ $("stylebtns").innerHTML=STYLES().map(([id,n])=>`<button type="button" data-style="${id}" aria-pressed="${id===STYLE}">${n}</button>`).join("");
  $("stylenote").textContent=STYLE==="all"?"Si no eliges ninguno, se mezclan todos los estilos.":`Priorizando combinaciones ${STYLE_LABEL[STYLE].toLowerCase()}. Si tu suelo/color de partida no da suficientes, se completa con el resto.`;
  $("picks").innerHTML=MODE==="floor"?FLOORS.map(swFloor).join(""):Object.keys(P).map(swColor).join("");
  const colorPick=MODE==="color"&&COLD.includes(PICK);
@@ -600,5 +612,70 @@ document.addEventListener("click",e=>{const t=e.target.closest("button");if(!t)r
  else if(t.dataset.style){STYLE=t.dataset.style;render();$("res").scrollIntoView({behavior:"smooth",block:"start"})}
  else if(t.dataset.copy){const s=decodeURIComponent(t.dataset.copy);(navigator.clipboard?navigator.clipboard.writeText(s):Promise.reject()).then(()=>{t.textContent="Copiada"},()=>{t.textContent="No se pudo copiar"});setTimeout(()=>t.textContent="Copiar paleta",1600)}
  else if(t.dataset.save){const payload=JSON.parse(decodeURIComponent(t.dataset.save));window.parent.postMessage({type:"ranuse-combo-selected",...payload},"*");t.textContent="Guardada ✓";setTimeout(()=>t.textContent="Guardar en el proyecto",1600)}});
+// ── Catálogo propio: colores, suelos y estilos que añade el estudio (se guardan en el CRM) ──
+const limpia=t=>String(t||"").replace(/[^\p{L}\p{N} \-.,()\/%·]/gu,"").trim().slice(0,60);
+const STYLES_BASE=[["all","Todos"],["medi","Mediterráneo"],["nordico","Nórdico claro"],["industrial","Industrial"],["premium","Premium oscuro"]];
+const STYLES=()=>[...STYLES_BASE,...Object.keys(CSTYLE).map(id=>[id,CSTYLE[id].n])];
+let MY={colores:[],suelos:[],estilos:[]},MERGED={P:[],LIB:[],ACC:[],COLD:[],AO:[],ST:[]},NS={like:new Set(),avoid:new Set()};
+function unmerge(){MERGED.P.forEach(id=>delete P[id]);MERGED.LIB.forEach(id=>delete LIB[id]);
+ [[ACC,MERGED.ACC],[COLD,MERGED.COLD],[ACCENT_ONLY,MERGED.AO]].forEach(([arr,ids])=>ids.forEach(id=>{const i=arr.findIndex(x=>(Array.isArray(x)?x[0]:x)===id);if(i>=0)arr.splice(i,1)}));
+ MERGED.ST.forEach(id=>{delete CSTYLE[id];delete STYLE_LABEL[id]});MERGED={P:[],LIB:[],ACC:[],COLD:[],AO:[],ST:[]}}
+function mergeCustom(d){unmerge();
+ (d.colores||[]).forEach(c=>{const hex=norm(c.hex);if(!hex||!c.id||P[c.id])return;
+  P[c.id]=[c.n,ncs(hex),hex,c.role||"Dominante",c.mats||"pintura, panel",c.role==="Acento"?"Acento: máx. 1 superficie":"","cust"];MERGED.P.push(c.id);
+  if(c.role==="Acento"){ACCENT_ONLY.push(c.id);COLD.push(c.id);ACC.push([c.id,c.n]);MERGED.AO.push(c.id);MERGED.COLD.push(c.id);MERGED.ACC.push(c.id)}});
+ (d.suelos||[]).forEach(x=>{const hex=norm(x.hex);if(!x.id||LIB[x.id])return;const eq=x.eq&&P[x.eq]?x.eq:null;if(!eq&&!hex)return;
+  LIB[x.id]=[x.n,"Suelo técnico",eq,eq?null:hex,eq?null:ncs(hex),x.tex||"rubber",["suelo"],true,"B",x.nota||(eq?"":"Fuera de paleta: cuenta como color."),undefined];MERGED.LIB.push(x.id)});
+ (d.estilos||[]).forEach(e=>{if(!e.id||STYLE_LABEL[e.id])return;CSTYLE[e.id]={n:e.n,like:(e.like||[]).filter(i=>P[i]),avoid:(e.avoid||[]).filter(i=>P[i]),lum:e.lum||"any"};STYLE_LABEL[e.id]=e.n;MERGED.ST.push(e.id)});
+ FLOORS=Object.keys(LIB).filter(id=>LIB[id][1]==="Suelo técnico");
+ if(MODE==="floor"&&!LIB[PICK])PICK="marble_sand";if(MODE==="color"&&!P[PICK])PICK="lino";
+ if(STYLE!=="all"&&!STYLE_LABEL[STYLE])STYLE="all";if(!P[ACCENT])ACCENT="musgo"}
+const newId=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+function guardarMy(){$("mysave")&&($("mysave").textContent="Guardando…");window.parent.postMessage({type:"ranuse-combo-guardar-custom",custom:MY},"*")}
+function cambiaMy(){mergeCustom(MY);render();renderMy();guardarMy()}
+function renderMy(){
+ const pn=id=>P[id]?P[id][0]:id,colorOpts=Object.keys(P).map(id=>`<option value="${id}">${P[id][0]}</option>`).join("");
+ const chipSet=(set,kind)=>Object.keys(P).map(id=>`<button type="button" class="chip sm${kind==="avoid"?" av":""}" data-my="${kind}:${id}" aria-pressed="${NS[kind].has(id)}"><i style="background:${P[id][2]}"></i>${P[id][0]}</button>`).join("");
+ $("mybody").innerHTML=`<p class="note">Lo que añadas aquí se guarda para todo el estudio y entra en las combinaciones como si fuera del sistema. <span id="mysave"></span></p>
+ <h3>Añadir un color</h3><div class="frm"><input type="text" id="mc-n" placeholder="Nombre (ej. Verde Salvia)" maxlength="40"><input type="color" id="mc-h" value="#8a9a8c"><select id="mc-r"><option value="Dominante">Dominante (paredes)</option><option value="Secundario">Secundario (paneles)</option><option value="Acento">Acento (una superficie)</option></select><input type="text" id="mc-m" placeholder="Material (ej. pintura, madera)" maxlength="60"><button type="button" class="btn" data-my="addc">Añadir color</button></div>
+ <div class="mylist">${MY.colores.map(c=>`<span class="chip"><i style="background:${c.hex}"></i>${c.n} · ${c.role}<button type="button" data-my="del:colores:${c.id}" title="Quitar">×</button></span>`).join("")||'<span class="note">Aún no has añadido colores.</span>'}</div>
+ <h3>Añadir un suelo</h3><div class="frm"><input type="text" id="ms-n" placeholder="Nombre (ej. Terra Oscuro)" maxlength="40"><input type="color" id="ms-h" value="#555555"><select id="ms-t"><option value="rubber">Moteado</option><option value="rubberflat">Liso</option><option value="marble">Marmoleado</option></select><select id="ms-e"><option value="">Color propio (fuera de paleta)</option>${colorOpts.replace(/<option value="(\w+)">/g,'<option value="$1">≈ ')}</select><button type="button" class="btn" data-my="adds">Añadir suelo</button></div>
+ <div class="mylist">${MY.suelos.map(c=>`<span class="chip"><i style="background:${c.hex}"></i>${c.n}<button type="button" data-my="del:suelos:${c.id}" title="Quitar">×</button></span>`).join("")||'<span class="note">Aún no has añadido suelos.</span>'}</div>
+ <h3>Añadir un estilo</h3><div class="frm"><input type="text" id="me-n" placeholder="Nombre (ej. Rústico moderno)" maxlength="40"><select id="me-l"><option value="any">Cualquier luminosidad</option><option value="clara">Claro</option><option value="media">Medio</option><option value="oscura">Oscuro</option></select></div>
+ <p class="note">Colores que encajan con este estilo:</p><div class="chips">${chipSet(NS.like,"like")}</div>
+ <p class="note">Colores que no encajan:</p><div class="chips">${chipSet(NS.avoid,"avoid")}</div>
+ <div class="frm" style="margin-top:10px"><button type="button" class="btn" data-my="adde">Añadir estilo</button></div>
+ <div class="mylist">${MY.estilos.map(c=>`<span class="chip">${c.n} · ${(c.like||[]).length} colores<button type="button" data-my="del:estilos:${c.id}" title="Quitar">×</button></span>`).join("")||'<span class="note">Aún no has añadido estilos.</span>'}</div>`}
+document.addEventListener("click",e=>{const t=e.target.closest("button[data-my]");if(!t)return;const a=t.dataset.my;
+ if(a==="addc"){const n=limpia($("mc-n").value),hex=norm($("mc-h").value);if(!n||!hex){$("mc-n").focus();return}
+  MY.colores.push({id:newId("xc"),n,hex,role:$("mc-r").value,mats:limpia($("mc-m").value)});cambiaMy()}
+ else if(a==="adds"){const n=limpia($("ms-n").value),hex=norm($("ms-h").value);if(!n||!hex){$("ms-n").focus();return}
+  MY.suelos.push({id:newId("xs"),n,hex,tex:$("ms-t").value,eq:$("ms-e").value||null});cambiaMy()}
+ else if(a==="adde"){const n=limpia($("me-n").value);if(!n||!NS.like.size){$("me-n").focus();return}
+  MY.estilos.push({id:newId("xe"),n,lum:$("me-l").value,like:[...NS.like],avoid:[...NS.avoid]});NS={like:new Set(),avoid:new Set()};cambiaMy()}
+ else if(a.startsWith("del:")){const[,k,id]=a.split(":");MY[k]=MY[k].filter(x=>x.id!==id);cambiaMy()}
+ else if(a.startsWith("like:")||a.startsWith("avoid:")){const[k,id]=a.split(":");const o=k==="like"?"avoid":"like";NS[k].has(id)?NS[k].delete(id):(NS[k].add(id),NS[o].delete(id));
+  const n=$("me-n")?$("me-n").value:"",l=$("me-l")?$("me-l").value:"any";renderMy();$("me-n").value=n;$("me-l").value=l}});
+// ── Partir del moodboard del proyecto (la IA elige el punto de partida) ──
+let SUG=null;
+function catalogoParaIA(){return{suelos:FLOORS.map(id=>{const c=col(id);return{id,n:c.n,hex:c.hex,eq:c.eq||null,fleck:c.fleck||null}}),
+ colores:Object.keys(P).map(id=>({id,n:P[id][0],ncs:P[id][1],hex:P[id][2],rol:P[id][3]})),acentos:ACC.map(a=>a[0]),estilos:STYLES().filter(x=>x[0]!=="all").map(x=>({id:x[0],n:x[1]}))}}
+function aplicaOpcion(o){if(!o)return;MODE=o.mode==="color"?"color":"floor";PICK=o.pick;AMB=o.ambiente==="accent"?"accent":"neutral";if(o.acento&&P[o.acento])ACCENT=o.acento;STYLE=o.estilo&&STYLE_LABEL[o.estilo]?o.estilo:"all";render();$("res").scrollIntoView({behavior:"smooth",block:"start"})}
+function pintaSug(){const r=$("mbres");if(!SUG){r.hidden=true;return}r.hidden=false;
+ const nom=o=>(o.mode==="color"?(P[o.pick]||[o.pick])[0]:(LIB[o.pick]||[o.pick])[0]);
+ const ob=SUG.observado||{};
+ r.innerHTML=`<div><b>Lo que ha visto:</b> ${[ob.ambiente,(ob.materiales||[]).join(", "),(ob.colores||[]).join(", ")].filter(Boolean).join(" · ")}</div>
+ <div><b>Propuesta:</b> ${SUG.principal.mode==="color"?"color":"suelo"} ${nom(SUG.principal)}${SUG.principal.ambiente==="accent"&&SUG.principal.acento?" con toque de "+(P[SUG.principal.acento]||[SUG.principal.acento])[0]:" en neutro"}${SUG.principal.estilo&&SUG.principal.estilo!=="all"?" · estilo "+(STYLE_LABEL[SUG.principal.estilo]||""):""}</div>
+ <div class="sm">${SUG.principal.razon||""}</div>
+ ${SUG.alternativa?`<div><button type="button" class="btn" id="mbalt">Ver otra opción: ${(SUG.alternativa.mode==="color"?"color ":"suelo ")+nom(SUG.alternativa)}</button> <span class="sm">${SUG.alternativa.razon||""}</span></div>`:""}`;
+ const b=$("mbalt");if(b)b.onclick=()=>aplicaOpcion(SUG.alternativa)}
+$("mbgo").addEventListener("click",()=>{$("mbgo").disabled=true;$("mbgo").textContent="Mirando el moodboard…";window.parent.postMessage({type:"ranuse-combo-pedir-moodboard",catalogo:catalogoParaIA()},"*")});
+window.addEventListener("message",e=>{if(e.origin!==location.origin)return;const d=e.data||{};
+ if(d.type==="ranuse-combo-datos"){MY={colores:d.custom&&d.custom.colores||[],suelos:d.custom&&d.custom.suelos||[],estilos:d.custom&&d.custom.estilos||[]};mergeCustom(MY);render();renderMy()}
+ else if(d.type==="ranuse-combo-guardado"){const el=$("mysave");if(el){el.textContent=d.ok?"✓ Guardado":"No se pudo guardar";setTimeout(()=>{const x=$("mysave");if(x)x.textContent=""},2500)}}
+ else if(d.type==="ranuse-combo-sugerencia"){$("mbgo").disabled=false;$("mbgo").textContent="Proponer desde el moodboard";
+  if(!d.ok){SUG=null;const r=$("mbres");r.hidden=false;r.textContent=d.error||"No se pudo proponer";return}
+  SUG=d.data;pintaSug();aplicaOpcion(SUG.principal)}});
+if(EMBED){$("mbstep").hidden=false;$("mystep").hidden=false;renderMy();window.parent.postMessage({type:"ranuse-combo-listo"},"*")}
 render();
 </script></body></html>
