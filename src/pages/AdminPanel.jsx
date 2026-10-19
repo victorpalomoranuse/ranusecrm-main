@@ -29,6 +29,7 @@ import { MedicionProyecto } from '../components/MedicionProyecto';
 import { TabHistoria, SelectorTipoHistoria, GuiaProyecto, EstiloMoodboard } from '../components/HistoriaEditor';
 import { ResumenProyecto } from '../components/ResumenProyecto';
 import { RenderPrompts } from '../components/RenderPrompts';
+import { ImportarDePlanos } from '../components/ImportarDePlanos';
 import { ModeloSkp } from '../components/ModeloSkp';
 import { AgenteProyecto } from '../components/AgenteProyecto';
 import { RecetaColor } from '../components/RecetaColor';
@@ -1238,7 +1239,9 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
 function TabAsignaciones({ projectId, categoryId, listadosIntro, listadosTitle, onIntroUpdated }) {
   const [tab,setTab]=useState('material'); const [categories,setCategories]=useState([]); const [products,setProducts]=useState([]); const [types,setTypes]=useState([]); const [assigned,setAssigned]=useState({materials:[],equipment:[]}); const [loading,setLoading]=useState(true); const [expandedCat,setExpandedCat]=useState(null);
   const [intro,setIntro]=useState(listadosIntro||''); const [title,setTitle]=useState(listadosTitle||''); const [savingIntro,setSavingIntro]=useState(false);
+  const [showImp,setShowImp]=useState(false);
   const {toast}=useToast();
+  const recargarAsignados=()=>Promise.all([api.get(`/client-projects/${projectId}/materials`),api.get(`/client-projects/${projectId}/equipment`)]).then(([m,e])=>setAssigned({materials:m.data.materials||[],equipment:e.data.equipment||[]})).catch(()=>{});
   const handleSaveIntro=async()=>{setSavingIntro(true);try{await api.put(`/client-projects/${projectId}/listados-intro`,{intro,title});onIntroUpdated?.(intro,title);toast.success('Guardado');}catch{toast.error('Error al guardar');}finally{setSavingIntro(false);}};
   const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}));
   useEffect(()=>{Promise.all([api.get('/catalog/categories'),api.get('/catalog/products'),api.get('/catalog/types'),api.get(`/client-projects/${projectId}/materials`),api.get(`/client-projects/${projectId}/equipment`)]).then(([cats,prods,typs,mats,equip])=>{setCategories(cats.data.categories||[]);setProducts(prods.data.products||[]);const t=typs.data.types||[];setTypes(t);if(t.length&&!t.some(x=>x.slug===tab))setTab(t[0].slug);setAssigned({materials:mats.data.materials||[],equipment:equip.data.equipment||[]});}).catch(()=>{}).finally(()=>setLoading(false));},[projectId]);
@@ -1257,6 +1260,8 @@ function TabAsignaciones({ projectId, categoryId, listadosIntro, listadosTitle, 
   const assignedList=assignedForTab(tab);
   return (
     <div className="ap-tab-content">
+      {showImp&&<ImportarDePlanos projectId={projectId} onClose={()=>setShowImp(false)} onHecho={(r)=>{setShowImp(false);recargarAsignados();toast.success(`${r.anadidos||0} añadido${(r.anadidos||0)===1?'':'s'}${r.actualizados?` · ${r.actualizados} actualizado${r.actualizados===1?'':'s'}`:''}`);}}/>}
+      {categoryId==null&&(<div style={{marginBottom:'1rem'}}><button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowImp(true)}><Ruler size={13}/> Traer desde los planos</button><span style={{marginLeft:10,fontSize:'0.74rem',color:'rgba(255,255,255,0.45)'}}>Vuelca el equipamiento y los materiales medidos en Planos; luego los editas.</span></div>)}
       {categoryId==null&&(
         <div className="ap-field" style={{marginBottom:'1.25rem'}}>
           <label>Título de la sección <span className="ap-optional">(opcional — por defecto "Listados"; en un anteproyecto puedes poner "Selección orientativa")</span></label>
