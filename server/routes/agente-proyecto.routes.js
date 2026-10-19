@@ -26,7 +26,7 @@ async function imagenParaIA(url) {
 }
 
 // Reúne lo que el proyecto ya sabe: es el "contexto fijo" del asistente.
-async function contextoProyecto(projectId) {
+export async function contextoProyecto(projectId) {
   const { data: p } = await supabase.from('client_projects')
     .select('project_name, tipo_proyecto, phase, notes, condicionantes, moodboard_description, moodboard_palette, moodboard_estilo_nombre, moodboard_estilo')
     .eq('id', projectId).single();

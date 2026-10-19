@@ -28,6 +28,7 @@ import { ProyectoCompletoModal } from './ProyectoCompleto';
 import { MedicionProyecto } from '../components/MedicionProyecto';
 import { TabHistoria, SelectorTipoHistoria, GuiaProyecto, EstiloMoodboard } from '../components/HistoriaEditor';
 import { ResumenProyecto } from '../components/ResumenProyecto';
+import { RenderPrompts } from '../components/RenderPrompts';
 import { ModeloSkp } from '../components/ModeloSkp';
 import { AgenteProyecto } from '../components/AgenteProyecto';
 import { RecetaColor } from '../components/RecetaColor';
@@ -317,7 +318,7 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
-const MGR_TABS = [{id:'resumen',label:'Resumen'},{id:'necesidades',label:'1 · Necesidades'},{id:'portada',label:'2 · Portada'},{id:'moodboard',label:'3 · Moodboard'},{id:'historia',label:'4 · Historia'},{id:'agente',label:'Asistente'},{id:'medicion',label:'Planos'},{id:'catalogo',label:'Listados'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'renders',label:'Resultado',soloSinHistoria:true},{id:'fases',label:'Categorías',soloSinHistoria:true},{id:'facturas',label:'Facturas'},{id:'trabajos',label:'Trabajos web'}];
+const MGR_TABS = [{id:'resumen',label:'Resumen'},{id:'necesidades',label:'1 · Necesidades'},{id:'portada',label:'2 · Portada'},{id:'moodboard',label:'3 · Moodboard'},{id:'historia',label:'4 · Historia'},{id:'agente',label:'Asistente'},{id:'promptsrender',label:'Prompts de render'},{id:'medicion',label:'Planos'},{id:'catalogo',label:'Listados'},{id:'documentos',label:'Documentos'},{id:'tours',label:'Tour 3D'},{id:'notas',label:'Notas'},{id:'renders',label:'Resultado',soloSinHistoria:true},{id:'fases',label:'Categorías',soloSinHistoria:true},{id:'facturas',label:'Facturas'},{id:'trabajos',label:'Trabajos web'}];
 const DOC_TYPES = ['plano','contrato','factura','otro'];
 
 function SortableRenderThumb({ r, onDelete, isFirst }) {
@@ -2280,6 +2281,7 @@ function ProjectManagerModal({ project, onClose }) {
           {tab==='catalogo'&&<TabAsignaciones projectId={project.id} listadosIntro={project.listados_intro_text} listadosTitle={project.listados_title} onIntroUpdated={(v,t)=>{project.listados_intro_text=v;project.listados_title=t;}}/>}
           {tab==='historia'&&<TabHistoria project={project}/>}
           {tab==='agente'&&<AgenteProyecto project={project}/>}
+          {tab==='promptsrender'&&<RenderPrompts project={project}/>}
           {tab==='medicion'&&<MedicionProyecto project={project}/>}
           {tab==='trabajos'&&<TabTrabajosWeb project={project}/>}
         </div>
