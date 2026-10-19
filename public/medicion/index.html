@@ -3743,9 +3743,25 @@ function corridaDe(w,view,stop){
   while((nx=sig(cur,node,us))){us[nx.id]=1;var ini=nx.a===node?nx.b:nx.a;seq.unshift({w:nx,ini:ini,fin:node});node=ini;cur=nx}
   return seq.length>1?armaCadena(seq,w):null;
 }
+/* lado «de fuera» de un muro: el que tiene menos muros por delante (un rayo perpendicular desde su centro). 1 = el lado de la normal, -1 = el contrario, 0 = igual (se decide por el centro del plano) */
+function ladoExterior(w,view){
+  var g=wg(w),nx=-g.uy,ny=g.ux,mx=(g.a.x+g.b.x)/2,my=(g.a.y+g.b.y)/2,cnt=[0,0];
+  st.v.walls.forEach(function(o){
+    if(o===w||!wallVis(o,view))return;
+    var q=wg(o),ex=q.b.x-q.a.x,ey=q.b.y-q.a.y;
+    [1,-1].forEach(function(sd,i){
+      var dx=sd*nx,dy=sd*ny,ox=mx+dx*((w.t||12)/2+2),oy=my+dy*((w.t||12)/2+2),den=dx*ey-dy*ex;
+      if(Math.abs(den)<1e-9)return;
+      var tt=((q.a.x-ox)*ey-(q.a.y-oy)*ex)/den,uu=((q.a.x-ox)*dy-(q.a.y-oy)*dx)/den;
+      if(tt>0&&uu>=0&&uu<=1)cnt[i]++;
+    });
+  });
+  return cnt[0]<cnt[1]?1:cnt[0]>cnt[1]?-1:0;
+}
 function dimCfg(w,mode,cent,view,px){
   var g=wg(w),nx=-g.uy,ny=g.ux,mx=(g.a.x+g.b.x)/2,my=(g.a.y+g.b.y)/2;
   var toC=(cent.x-mx)*nx+(cent.y-my)*ny,sg=(toC>=0?1:-1)*(mode==='int'?1:-1);
+  if(mode!=='int'){var lex=ladoExterior(w,view);if(lex)sg=lex} /* las cotas van por fuera siempre que se pueda: del lado con menos muros delante, no solo lejos del centro del plano */
   nx*=sg;ny*=sg;
   var ops=(w.opsV||st.v.ops.filter(function(o){return o.wall===w.id})).filter(function(o){return opVis(o,view)}).sort(function(a,b){return a.p-b.p});
   var d1=w.t/2+16*px,d2=ops.length?d1+(16+Math.abs(nx)*26)*px:d1; /* en muros verticales los números de la primera fila van entre las dos líneas: más separación para que no se crucen */
