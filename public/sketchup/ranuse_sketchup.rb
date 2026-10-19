@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.5.2'.freeze
+    VERSION = '1.6.0'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -230,14 +230,33 @@ module Ranuse
     #  · ya está en SketchUp con la misma firma (se respeta lo que hayas pintado o movido),
     #  · lo borraste tú y en el plano sigue igual (no se vuelve a crear).
     # Si cambió en el plano, se rehace esa pieza.
-    def self.elemento(ents, clave, sig, nombre, etiqueta)
+    # Material que has puesto tú (no es uno de los de Ranuse)
+    def self.material_usuario(m)
+      return nil unless m
+      (m.respond_to?(:valid?) && !m.valid?) || m.name.to_s.start_with?('Ranuse ') ? nil : m
+    rescue StandardError
+      nil
+    end
+
+    # El grupo de un elemento con su material: si pintaste el elemento a mano, al rehacerlo se conserva tu color
+    def self.pintar(g, clave, defecto)
+      g.material = (@pintura ||= {})[clave] || defecto
+    end
+
+    def self.elemento(ents, clave, sig, nombre, etiqueta, alt = nil)
       @nuevas[clave] = sig
       viejo = @existentes[clave]
       if viejo && viejo.valid?
-        if viejo.get_attribute(DICT, 'firma') == sig
+        firma_vieja = viejo.get_attribute(DICT, 'firma')
+        if firma_vieja == sig || (alt && firma_vieja == alt)
+          viejo.set_attribute(DICT, 'firma', sig) if firma_vieja != sig
           @mantenidos += 1
           return nil
         end
+        # si cambió en el plano y se rehace, se guarda lo que habías pintado a mano para volver a ponerlo
+        (@pintura ||= {})[clave] = material_usuario(viejo.material)
+        cara0 = viejo.entities.grep(Sketchup::Face).first rescue nil
+        (@pintura_cara ||= {})[clave] = material_usuario(cara0.material) if cara0
         viejo.erase!
         @existentes.delete(clave)
         @rehechos += 1
@@ -268,6 +287,8 @@ module Ranuse
         @existentes = {}
         @ignorados = {}
         @nuevas = {}
+        @pintura = {}
+        @pintura_cara = {}
         @mantenidos = 0
         @rehechos = 0
         if raiz
@@ -558,11 +579,7 @@ module Ranuse
         end
       end
       hecho = caja_muro(pg.entities, ax, ay, ux, uy, t, s0, s1, z0, z1) unless hecho
-      if hecho
-        pg.material = mat
-      else
-        pg.erase!
-      end
+      pg.erase! unless hecho # el material va en el grupo del muro entero, no en cada trozo
     end
 
     # Recorta un polígono [[x, y], ...] dejando la parte donde (coordenada eje - c) * lado >= 0
@@ -622,7 +639,7 @@ module Ranuse
       base = [pt(pa_m[0], pa_m[1], a[2] - h), pt(pb_m[0], pb_m[1], b[2] - h), pt(pb_p[0], pb_p[1], b[2] - h), pt(pa_p[0], pa_p[1], a[2] - h)]
       tope = [pt(pa_m[0], pa_m[1], a[2]), pt(pb_m[0], pb_m[1], b[2]), pt(pb_p[0], pb_p[1], b[2]), pt(pa_p[0], pa_p[1], a[2])]
       if prisma_inclinado(g.entities, base, tope)
-        g.material = mat
+        g.material = mat if mat
       else
         g.erase!
       end
@@ -676,13 +693,30 @@ module Ranuse
       end
     end
 
-    # Cubierta (a una o dos aguas) con sus cerchas/vigas y correas, o vigas bajo un techo plano
+    # Lo que define la forma de una cubierta (lo que afecta a los muros y a la cubierta misma, sin vigas ni tragaluces)
+    def self.techo_geom(tc)
+      tc.reject { |k, _| %w[vg cr tl c id].include?(k) }
+    end
+
+    # Cubierta (a una o dos aguas) con sus cerchas/vigas y correas, o vigas bajo un techo plano.
+    # Tres piezas independientes: la superficie (con los tragaluces), las vigas y las correas.
     def self.construir_techo(ents, tc, etiqueta, mat_viga, clave, sig)
       pts = techo_pts(tc)
       return if pts.size < 3
-      g = elemento(ents, clave, sig, 'Cubierta', etiqueta)
-      return unless g
       fo = tc['fo']
+      geom = techo_geom(tc)
+      if fo == 'dos' || fo == 'una' || fo == 'boveda'
+        g = elemento(ents, clave, firma(['superficie', geom, tc['tl'], tc['c']]), 'Cubierta', etiqueta)
+        if g
+          construir_superficie(g, tc, pts, fo)
+          pintar(g, clave, nil)
+        end
+      end
+      construir_vigas(ents, tc, pts, fo, geom, etiqueta, mat_viga, clave)
+      construir_correas(ents, tc, pts, fo, geom, etiqueta, mat_viga, clave)
+    end
+
+    def self.construir_superficie(g, tc, pts, fo)
       if fo == 'dos' || fo == 'una' || fo == 'boveda'
         eje_c = tc['ej'] != 'v' ? 1 : 0
         partes = [[pts, []]]
@@ -707,6 +741,9 @@ module Ranuse
           tragaluces_en_cara(g.entities, tc, pp, lim)
         end
       end
+    end
+
+    def self.construir_vigas(ents, tc, pts, fo, geom, etiqueta, mat_viga, clave)
       x0 = tc['x0'].to_f
       x1 = tc['x1'].to_f
       y0 = tc['y0'].to_f
@@ -714,6 +751,9 @@ module Ranuse
       correa_h = (tc['cr'] && fo != 'plano') ? 12.0 : 0.0
       vg = tc['vg']
       if vg
+        clave_v = "#{clave}:vigas"
+        g = elemento(ents, clave_v, firma(['vigas', geom, vg, correa_h]), 'Vigas', etiqueta)
+        return unless g
         s = vg['s'].to_f
         s = 60.0 if s < 20.0
         w = vg['w'].to_f
@@ -736,15 +776,26 @@ module Ranuse
           c = c0 + movidas[k.to_s].to_f
           if !quitadas[k.to_s] && c > ini && c < fin
             tramos_recta(pts, eje, c).each do |t0, t1|
-              viga_recta(g.entities, tc, eje, c, t0, t1, w, h, correa_h, mat_viga, true)
+              viga_recta(g.entities, tc, eje, c, t0, t1, w, h, correa_h, nil, true)
             end
           end
           c0 += s
           k += 1
         end
+        pintar(g, clave_v, mat_viga)
       end
+    end
+
+    def self.construir_correas(ents, tc, pts, fo, geom, etiqueta, mat_viga, clave)
+      x0 = tc['x0'].to_f
+      x1 = tc['x1'].to_f
+      y0 = tc['y0'].to_f
+      y1 = tc['y1'].to_f
       cr = tc['cr']
       if cr && fo != 'plano'
+        clave_c = "#{clave}:correas"
+        g = elemento(ents, clave_c, firma(['correas', geom, cr]), 'Correas', etiqueta)
+        return unless g
         s = cr['s'].to_f
         s = 100.0 if s < 30.0
         eje = tc['ej'] != 'v' ? 1 : 0
@@ -758,12 +809,13 @@ module Ranuse
           c = c0 + movidas[k.to_s].to_f
           if !quitadas[k.to_s] && c > ini && c < fin
             tramos_recta(pts, eje, c).each do |t0, t1|
-              viga_recta(g.entities, tc, eje, c, t0, t1, 8.0, 12.0, 0.0, mat_viga, false)
+              viga_recta(g.entities, tc, eje, c, t0, t1, 8.0, 12.0, 0.0, nil, false)
             end
           end
           c0 += s
           k += 1
         end
+        pintar(g, clave_c, mat_viga)
       end
     end
 
@@ -796,10 +848,11 @@ module Ranuse
       (plano['a_medida'] || []).each_with_index do |am, i_am|
         pts = (am['pts'] || []).map { |q| [q[0].to_f, q[1].to_f] }
         next if pts.size < 3
-        g = elemento(ents, "mm:#{am['id'] || i_am}", firma(am), am['nombre'] || 'Obra a medida', et_med)
+        clave_mm = "mm:#{am['id'] || i_am}"
+        g = elemento(ents, clave_mm, firma(am), am['nombre'] || 'Obra a medida', et_med)
         next unless g
         prisma(g.entities, pts, am['z0'].to_f, am['z1'].to_f)
-        g.material = am['luz'] ? mat_luz : mat_med
+        pintar(g, clave_mm, am['luz'] ? mat_luz : mat_med)
       end
 
       # Muros con sus huecos
@@ -817,7 +870,12 @@ module Ranuse
         t = 12.0 if t <= 0
         h_mu = mu['h'].to_f
         h_mu = altura if h_mu <= 0
-        g = elemento(ents, "muro:#{mu['id'] || i_mu}", firma([mu, altura, vista, techos_inc]), 'Muro', et_muros)
+        # a un muro solo le afecta la forma de las cubiertas que tiene encima (no sus vigas, correas ni tragaluces)
+        techos_muro = techos_inc.select do |tc|
+          [0.0, 0.25, 0.5, 0.75, 1.0].any? { |f| techo_cubre?(tc, ax + dx * f, ay + dy * f, 25.0 + t) }
+        end.map { |tc| techo_geom(tc) }
+        clave_mu = "muro:#{mu['id'] || i_mu}"
+        g = elemento(ents, clave_mu, firma([mu, altura, vista, techos_muro]), 'Muro', et_muros, firma([mu, altura, vista, techos_inc]))
         next unless g
         mat = { 'ex' => mat_ex, 'new' => mat_nuevo, 'dem' => mat_dem }[mu['estado']] || mat_ex
         huecos = (mu['ab'] || []).select { |o| visible?(o['estado'], vista) }.sort_by { |o| o['p'].to_f }
@@ -832,12 +890,13 @@ module Ranuse
           piezas << [p0, p1, 0.0, sill] if sill > 0.5
           piezas << [p0, p1, tope, h_mu] if tope < h_mu - 0.5
           piezas.each do |s0, s1, z0, z1|
-            pieza_muro(g.entities, mat, ax, ay, ux, uy, t, s0, s1, z0, z1, h_mu, techos_inc)
+            pieza_muro(g.entities, mat, ax, ay, ux, uy, t, s0, s1, z0, z1, h_mu, techos_muro)
           end
           carpinteria(g.entities, o, ax, ay, ux, uy, t, p0, p1, sill, tope, mat_vidrio, mat_madera, mat_marco)
           cur = [cur, p1].max
         end
-        pieza_muro(g.entities, mat, ax, ay, ux, uy, t, cur, largo + t / 2.0, 0.0, h_mu, h_mu, techos_inc)
+        pieza_muro(g.entities, mat, ax, ay, ux, uy, t, cur, largo + t / 2.0, 0.0, h_mu, h_mu, techos_muro)
+        pintar(g, clave_mu, mat)
       end
 
       # Suelos y techos por sala
@@ -846,25 +905,27 @@ module Ranuse
         next if pts.nil? || pts.size < 3
         suelo = sa['suelo']
         ks = clave_poligono(pts)
-        g = elemento(ents, "suelo:#{sa['idS'] || ks}", firma([sa['suelo'], pts, sa['nombre']]), "Suelo #{sa['nombre']}".strip, et_suelos)
+        clave_su = "suelo:#{sa['idS'] || ks}"
+        g = elemento(ents, clave_su, firma([sa['suelo'], pts, sa['nombre']]), "Suelo #{sa['nombre']}".strip, et_suelos)
         if g
           cara = prisma(g.entities, pts, 0.0, 0.0)
           cara ||= g.entities.add_face(pts.map { |p| pt(p[0], p[1], 0) })
           if cara
             cara.reverse! if cara.normal.z < 0
-            cara.material = material("Ranuse suelo #{suelo['n']}", suelo['c']) if suelo
+            cara.material = (@pintura_cara ||= {})[clave_su] || (suelo ? material("Ranuse suelo #{suelo['n']}", suelo['c']) : nil)
             cara.back_material = cara.material if cara.material
           end
         end
         next unless techos_activos?
         next if sala_con_cubierta?(pts, techos_inc) # esa sala lleva su cubierta con forma
         techo = sa['techo']
-        gt = elemento(ents, "techo:#{sa['idT'] || ks}", firma([sa['techo'], pts, altura, sa['nombre']]), "Techo #{sa['nombre']}".strip, et_techos)
+        clave_te = "techo:#{sa['idT'] || ks}"
+        gt = elemento(ents, clave_te, firma([sa['techo'], pts, altura, sa['nombre']]), "Techo #{sa['nombre']}".strip, et_techos)
         next unless gt
         ct = gt.entities.add_face(pts.map { |p| pt(p[0], p[1], altura) })
         if ct
           ct.reverse! if ct.normal.z > 0
-          ct.material = material("Ranuse techo #{techo ? techo['n'] : 'blanco'}", techo ? techo['c'] : '#f6f4f1')
+          ct.material = (@pintura_cara ||= {})[clave_te] || material("Ranuse techo #{techo ? techo['n'] : 'blanco'}", techo ? techo['c'] : '#f6f4f1')
         end
       end
 
@@ -888,10 +949,11 @@ module Ranuse
         cx = p['cx'].to_f
         cy = p['cy'].to_f
         alto_p = altura_en(techos_inc, cx, cy, altura)
-        g = elemento(ents, "pilar:#{p['id'] || i_p}", firma([p, alto_p, vista]), 'Pilar', et_muros)
+        clave_pi = "pilar:#{p['id'] || i_p}"
+        g = elemento(ents, clave_pi, firma([p, alto_p, vista]), 'Pilar', et_muros)
         next unless g
         prisma(g.entities, [[cx - w, cy - d], [cx + w, cy - d], [cx + w, cy + d], [cx - w, cy + d]], 0.0, alto_p)
-        g.material = mat_pilar
+        pintar(g, clave_pi, mat_pilar)
       end
 
       # Máquinas
