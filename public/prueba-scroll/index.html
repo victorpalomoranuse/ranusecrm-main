@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>Prueba · Render con scroll</title>
+<title>Prueba · Recorrido con profundidad</title>
 <style>
 :root{--ink:#fff;--bg:#0b0b0d;--acc:#c9a8ff}
 *{box-sizing:border-box;margin:0}
@@ -14,15 +14,12 @@ html,body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-sys
 .intro p,.fin p{color:#b9b9c2;max-width:36ch;margin:auto;font-size:16px;line-height:1.5}
 .intro .flecha{margin-top:18px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#8d8d97;animation:bob 1.6s ease-in-out infinite}
 @keyframes bob{50%{transform:translateY(8px)}}
-/* escenario fijo: el scroll mueve la cámara */
 .track{position:relative}
 .stage{position:sticky;top:0;height:100svh;overflow:hidden;background:#000}
-.esc{position:absolute;inset:0;opacity:0;will-change:opacity,transform}
-.esc .cam{position:absolute;left:50%;top:50%;width:max(100vw,calc(100svh*1.46));aspect-ratio:1.46/1;will-change:transform}
-.esc img{width:100%;height:100%;object-fit:cover;display:block;user-select:none;-webkit-user-drag:none}
-.esc::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,0) 46%),linear-gradient(to bottom,rgba(0,0,0,.35),rgba(0,0,0,0) 22%);pointer-events:none}
-/* puntos tocables: viajan con la imagen */
-.hs{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border:0;background:none;padding:0;cursor:pointer;z-index:3}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block}
+.shade{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.7),rgba(0,0,0,0) 44%),linear-gradient(to bottom,rgba(0,0,0,.3),rgba(0,0,0,0) 20%);pointer-events:none;z-index:2}
+.hs{position:absolute;left:0;top:0;width:44px;height:44px;margin:-22px 0 0 -22px;border:0;background:none;padding:0;cursor:pointer;z-index:3;opacity:0;pointer-events:none;will-change:transform,opacity}
+.hs.v{pointer-events:auto}
 .hs i{position:absolute;inset:13px;border-radius:50%;background:#fff;box-shadow:0 0 0 0 rgba(255,255,255,.7);animation:pulso 2s infinite}
 .hs.on i{background:var(--acc);animation:none;box-shadow:0 0 0 6px rgba(201,168,255,.35)}
 @keyframes pulso{70%{box-shadow:0 0 0 14px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
@@ -32,7 +29,6 @@ html,body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-sys
 .txt p{margin-top:8px;max-width:36ch;color:#d4d4da;font-size:15px;line-height:1.45}
 .txt>div{position:absolute;left:22px;right:22px;bottom:calc(34px + env(safe-area-inset-bottom));opacity:0;transform:translateY(16px);transition:opacity .45s,transform .45s}
 .txt>div.on{opacity:1;transform:none}
-/* ficha de un punto */
 .ficha{position:absolute;left:14px;right:14px;top:max(14px,env(safe-area-inset-top));z-index:6;background:rgba(18,18,22,.86);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 16px;max-width:380px;margin:auto;transform:translateY(-120%);opacity:0;transition:transform .35s,opacity .35s}
 .ficha.on{transform:none;opacity:1}
 .ficha b{display:block;font-size:16px;margin-bottom:4px}
@@ -41,6 +37,8 @@ html,body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-sys
 .prog{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:5;display:grid;gap:7px}
 .prog i{display:block;width:4px;height:22px;border-radius:2px;background:rgba(255,255,255,.28);transition:background .3s,height .3s}
 .prog i.on{background:#fff;height:34px}
+.carga{position:absolute;inset:0;display:grid;place-content:center;z-index:7;background:#000;color:#8d8d97;font-size:14px;letter-spacing:.1em;text-transform:uppercase;transition:opacity .6s}
+.carga.fuera{opacity:0;pointer-events:none}
 .fin h2{font-size:clamp(26px,6vw,44px);letter-spacing:-.02em}
 .fin a{display:inline-block;margin-top:10px;padding:12px 22px;border-radius:99px;background:#fff;color:#000;text-decoration:none;font-weight:600}
 @media(prefers-reduced-motion:reduce){.hs i{animation:none}}
@@ -55,62 +53,55 @@ html,body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-sys
 
 <div class="track" id="track">
   <div class="stage" id="stage">
+    <canvas id="gl"></canvas>
+    <div class="shade"></div>
     <div class="prog" id="prog"></div>
     <div class="ficha" id="ficha" role="status"></div>
     <div class="txt" id="txt"></div>
+    <div class="carga" id="carga">Preparando el recorrido…</div>
   </div>
 </div>
 
 <section class="fin">
   <h2>Esto es una prueba</h2>
-  <p>Mismo recorrido con tus renders: la cámara avanza con el dedo y cada punto enlaza con el producto o el acabado del proyecto.</p>
+  <p>Cada render lleva un mapa de profundidad: al avanzar, lo cercano se mueve más rápido que lo lejano, como si caminaras por la sala.</p>
   <a href="#" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">Volver a empezar</a>
 </section>
 
 <script>
 (function(){
 'use strict';
-/* Cada escena: imagen, texto, cámara (de → a: zoom y desplazamiento en % de la imagen) y puntos (x,y en % de la imagen) */
+/* Cada escena: render + mapa de profundidad, punto de fuga (fx,fy en %), y puntos tocables (x,y en % de la imagen) */
 var ESC=[
- {img:'r0.jpg',n:'01 · Sala principal',t:'Entras y todo el techo te guía',p:'Luz lineal que marca el recorrido hasta el fondo de la sala.',
-  fx:72,fy:42,
+ {n:'01 · Sala principal',t:'Entras y todo el techo te guía',p:'Luz lineal que marca el recorrido hasta el fondo de la sala.',fx:72,fy:42,
   hs:[{x:41,y:50,t:'Vinilo «X-360»',d:'Gráfica de pared a medida. Zona pensada para foto y contenido de redes.',r:'Rotulación'},{x:34,y:19,t:'Luminaria lineal',d:'Perfil LED empotrado en el techo que dibuja la perspectiva de la nave.',r:'Iluminación'}]},
- {img:'r1.jpg',n:'02 · Recepción',t:'Primera impresión: galería',p:'Expositores retroiluminados con la identidad de la marca.',
-  fx:58,fy:46,
+ {n:'02 · Recepción',t:'Primera impresión: galería',p:'Expositores retroiluminados con la identidad de la marca.',fx:58,fy:46,
   hs:[{x:20,y:45,t:'Expositores luminosos',d:'Cajas con fotografía retroiluminada. Se cambian sin obra.',r:'Obra a medida'},{x:78,y:62,t:'Mostrador de tienda',d:'Barriles metálicos reutilizados como expositores de producto.',r:'Mobiliario'}]},
- {img:'r4.jpg',n:'03 · Tienda y lounge',t:'Donde se queda el cliente',p:'Merchandising, sofá y un gran ventanal de luz.',
-  fx:50,fy:50,
+ {n:'03 · Tienda y lounge',t:'Donde se queda el cliente',p:'Merchandising, sofá y un gran ventanal de luz.',fx:50,fy:50,
   hs:[{x:50,y:42,t:'Logotipo luminoso',d:'Letrero circular retroiluminado, el punto focal de la entrada.',r:'Rotulación'},{x:72,y:80,t:'Zona lounge',d:'Sofá chesterfield y mesa baja. Uso: espera y reuniones cortas.',r:'Mobiliario'}]},
- {img:'r3.jpg',n:'04 · Sala de fuerza',t:'Espacio abierto, columna a la vista',p:'Los pilares existentes se integran como parte del diseño.',
-  fx:52,fy:44,
+ {n:'04 · Sala de fuerza',t:'Espacio abierto, columna a la vista',p:'Los pilares existentes se integran como parte del diseño.',fx:52,fy:44,
   hs:[{x:52,y:52,t:'Pilar existente',d:'Se conserva y se integra: marca el límite entre dos zonas.',r:'Estado actual'},{x:84,y:34,t:'Escalera a la entreplanta',d:'Conecta la sala con la zona de cardio.',r:'Obra'}]},
- {img:'r2.jpg',n:'05 · Cardio',t:'Arriba, el neón manda',p:'Entreplanta con vistas a toda la sala.',
-  fx:62,fy:44,
+ {n:'05 · Cardio',t:'Arriba, el neón manda',p:'Entreplanta con vistas a toda la sala.',fx:62,fy:44,
   hs:[{x:63,y:34,t:'Rótulo de neón',d:'Letras retroiluminadas en violeta sobre pared negra.',r:'Rotulación'},{x:80,y:66,t:'Cintas de correr',d:'Equipos de cardio alineados de cara al ventanal.',r:'Equipamiento'}]},
- {img:'r5.jpg',n:'06 · Racks',t:'Wall of Beasts',p:'La zona de peso libre, con la pared de marca de fondo.',
-  fx:62,fy:46,
+ {n:'06 · Racks',t:'Wall of Beasts',p:'La zona de peso libre, con la pared de marca de fondo.',fx:62,fy:46,
   hs:[{x:74,y:40,t:'Pared de marca',d:'Logotipo a gran formato con luz perimetral.',r:'Rotulación'},{x:84,y:66,t:'Racks de sentadilla',d:'Estructuras alineadas para entrenar en paralelo.',r:'Equipamiento'}]}
 ];
+var N=ESC.length,IA=2200/1550; /* proporción de los renders */
 var $=function(i){return document.getElementById(i)};
-var track=$('track'),stage=$('stage'),txt=$('txt'),prog=$('prog'),ficha=$('ficha');
-var N=ESC.length,VH=function(){return window.innerHeight};
-track.style.height=(N*110+100)+'svh';
-var els=[],txts=[],dots=[];
+var track=$('track'),stage=$('stage'),txt=$('txt'),prog=$('prog'),ficha=$('ficha'),cv=$('gl'),carga=$('carga');
+track.style.height=(N*120+100)+'svh';
+
+/* ── interfaz: textos, puntos y barra de progreso ── */
+var txts=[],dots=[],hsEl=[];
 ESC.forEach(function(e,i){
-  var d=document.createElement('div');d.className='esc';
-  var cam=document.createElement('div');cam.className='cam';
-  var im=new Image();im.src=e.img;im.alt=e.t;im.decoding='async';if(i>1)im.loading='lazy';cam.appendChild(im);
-  e.hs.forEach(function(h,k){
-    var b=document.createElement('button');b.className='hs';b.style.left=h.x+'%';b.style.top=h.y+'%';b.setAttribute('aria-label',h.t);b.innerHTML='<i></i>';
-    b.addEventListener('click',function(ev){ev.stopPropagation();abre(h,b)});
-    cam.appendChild(b);
-  });
-  d.appendChild(cam);stage.insertBefore(d,stage.firstChild);els.push({d:d,cam:cam});
   var t=document.createElement('div');t.innerHTML='<div class="n">'+e.n+'</div><h2>'+e.t+'</h2><p>'+e.p+'</p>';txt.appendChild(t);txts.push(t);
-  var p=document.createElement('i');prog.appendChild(p);dots.push(p);
+  var d=document.createElement('i');prog.appendChild(d);dots.push(d);
+  hsEl[i]=e.hs.map(function(h){
+    var b=document.createElement('button');b.className='hs';b.setAttribute('aria-label',h.t);b.innerHTML='<i></i>';
+    b.addEventListener('click',function(ev){ev.stopPropagation();abre(h,b)});
+    stage.appendChild(b);return b;
+  });
 });
-/* orden de capas: la escena 0 debajo */
-els.slice().reverse().forEach(function(o,i){stage.insertBefore(o.d,stage.firstChild)});
 var abierto=null;
 function cierra(){ficha.classList.remove('on');if(abierto)abierto.classList.remove('on');abierto=null}
 function abre(h,b){
@@ -121,37 +112,121 @@ function abre(h,b){
   ficha.classList.add('on');
 }
 stage.addEventListener('click',cierra);
-var ease=function(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2};
-var cur=0,obj=0;
-function medir(){
-  var r=track.getBoundingClientRect(),total=r.height-VH();
-  obj=Math.max(0,Math.min(1,-r.top/total))*(N-0.0001); /* 0..N */
+
+/* ── WebGL: cada píxel se mueve según su profundidad ── */
+var gl=cv.getContext('webgl',{antialias:false,alpha:false});
+if(!gl){carga.textContent='Tu navegador no admite este recorrido';return}
+var VS='attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+var FS=[
+'precision highp float;',
+'uniform sampler2D uIA,uDA,uIB,uDB;',
+'uniform vec2 uRes,uFA,uFB;uniform float uTA,uTB,uMix,uAsp,uSw;',
+'vec3 escena(sampler2D img,sampler2D dep,float t,vec2 foc,vec2 uv){',
+'  vec2 p=uv;',
+'  vec2 sway=vec2(uSw*0.018,uSw*0.006);',                       /* balanceo suave de la cámara al caminar */
+'  for(int i=0;i<10;i++){',
+'    float n=texture2D(dep,p).r;',
+'    float k=0.16+n*1.15;',                                      /* lo cercano (n alto) avanza más que lo lejano */
+'    p=foc+(uv-foc)/(1.0+t*k)-sway*(n-0.35);',
+'  }',
+'  return texture2D(img,clamp(p,0.002,0.998)).rgb;',
+'}',
+'void main(){',
+'  vec2 s=vec2(gl_FragCoord.x/uRes.x,1.0-gl_FragCoord.y/uRes.y);',
+'  float va=uRes.x/uRes.y;vec2 uv=s;',
+'  if(va<uAsp)uv.x=0.5+(s.x-0.5)*(va/uAsp);else uv.y=0.5+(s.y-0.5)*(uAsp/va);',
+'  vec3 a=escena(uIA,uDA,uTA,uFA,uv);',
+'  vec3 c=a;',
+'  if(uMix>0.002){vec3 b=escena(uIB,uDB,uTB,uFB,uv);c=mix(a,b,uMix);}',
+'  gl_FragColor=vec4(c,1.0);',
+'}'
+].join('\n');
+function sh(t,s){var o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(o));return o}
+var pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,VS));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(pr);gl.useProgram(pr);
+var buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+var loc=gl.getAttribLocation(pr,'a');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+var U={};['uIA','uDA','uIB','uDB','uRes','uFA','uFB','uTA','uTB','uMix','uAsp','uSw'].forEach(function(n){U[n]=gl.getUniformLocation(pr,n)});
+gl.uniform1i(U.uIA,0);gl.uniform1i(U.uDA,1);gl.uniform1i(U.uIB,2);gl.uniform1i(U.uDB,3);gl.uniform1f(U.uAsp,IA);
+
+function textura(bmp){
+  var t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,bmp);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  return t;
 }
-function pinta(){
-  cur+=(obj-cur)*0.12; /* inercia: el movimiento sigue un instante al soltar */
-  if(Math.abs(obj-cur)<0.0005)cur=obj;
-  var idx=Math.min(N-1,Math.floor(cur)),f=cur-idx;
-  els.forEach(function(o,i){
-    var e=ESC[i],local=cur-i; /* <0 aún no, 0..1 activa, >1 pasada */
-    /* avance continuo hacia el punto de fuga: la cámara «camina» y sigue avanzando mientras se funde con la siguiente */
-    var p=Math.max(0,Math.min(1.3,local));
-    var s=1+0.62*Math.pow(p,1.15);
-    var x=-(e.fx-50)*(s-1)*0.72,y=-(e.fy-50)*(s-1)*0.72;
-    var op=local<-0.3?0:local<0?(local+0.3)/0.3:local<=0.7?1:local<1.0?1-(local-0.7)/0.3:0;
-    if(i===0&&local<0)op=1;
-    o.d.style.opacity=op;o.d.style.visibility=op>0.01?'visible':'hidden';
-    o.cam.style.transform='translate(-50%,-50%) translate('+x.toFixed(3)+'%,'+y.toFixed(3)+'%) scale('+s.toFixed(4)+')';
+function bitmap(url,w){return fetch(url).then(function(r){return r.blob()}).then(function(b){return createImageBitmap(b,{resizeWidth:w,resizeQuality:'high'})})}
+var T=[],prof=[]; /* texturas y mapas pequeños (para colocar los puntos) */
+function cargaEscena(i){
+  return Promise.all([bitmap('r'+i+'.jpg',1500),bitmap('d'+i+'.jpg',640)]).then(function(r){
+    T[i]={img:textura(r[0]),dep:textura(r[1])};
+    var c=document.createElement('canvas');c.width=160;c.height=113;var x=c.getContext('2d');x.drawImage(r[1],0,0,160,113);
+    var d=x.getImageData(0,0,160,113).data,m=new Float32Array(160*113);for(var k=0;k<m.length;k++)m[k]=d[k*4]/255;
+    prof[i]=m;
   });
-  var act=Math.min(N-1,Math.max(0,Math.round(cur-0.2)));
-  txts.forEach(function(t,i){t.classList.toggle('on',i===act)});
-  dots.forEach(function(d,i){d.classList.toggle('on',i===act)});
-  if(act!==pinta.act){pinta.act=act;cierra()}
-  if(cur!==obj)requestAnimationFrame(pinta);
 }
-function tick(){medir();requestAnimationFrame(pinta)}
+function nProf(i,px,py){var m=prof[i];if(!m)return 0.4;var x=Math.max(0,Math.min(159,Math.round(px*159))),y=Math.max(0,Math.min(112,Math.round(py*112)));return m[y*160+x]}
+
+/* ── tamaño y bucle ── */
+var W=0,H=0,DPR=Math.min(window.devicePixelRatio||1,1.6);
+function medida(){
+  W=stage.clientWidth;H=stage.clientHeight;cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);
+  gl.viewport(0,0,cv.width,cv.height);gl.uniform2f(U.uRes,cv.width,cv.height);
+}
+var cur=0,obj=0,listo=false,ocupado=false;
+function lee(){var r=track.getBoundingClientRect(),total=r.height-stage.clientHeight;obj=Math.max(0,Math.min(1,-r.top/total))*(N-0.0001)}
+/* % de la imagen → píxeles de pantalla, con el mismo avance que lleva el shader */
+function aPantalla(i,x,y,t,fx,fy,sw){
+  var n=nProf(i,x/100,y/100),k=0.16+n*1.15,u=x/100,v=y/100;
+  u=fx+(u+sw*0.018*(n-0.35)-fx)*(1+t*k);v=fy+(v+sw*0.006*(n-0.35)-fy)*(1+t*k);
+  var va=W/H,sx,sy;
+  if(va<IA){sx=0.5+(u-0.5)/(va/IA);sy=v}else{sx=u;sy=0.5+(v-0.5)/(IA/va)}
+  return {x:sx*W,y:sy*H,n:n};
+}
+function dibuja(){
+  ocupado=false;
+  cur+=(obj-cur)*0.1;if(Math.abs(obj-cur)<0.0004)cur=obj;
+  var i=Math.min(N-1,Math.floor(cur)),f=cur-i;
+  /* la escena i avanza con el scroll; al final se funde con la siguiente, que ya empieza a moverse */
+  var tA=Math.min(1.35,f*1.0+(f>0.72?(f-0.72)*0.9:0));
+  var mix=0;if(i<N-1&&f>0.68)mix=Math.min(1,(f-0.68)/0.3);mix=mix*mix*(3-2*mix);
+  var tB=mix>0?Math.max(0,(f-0.68))*0.9:0;
+  var fa=ESC[i],fb=ESC[Math.min(N-1,i+1)];
+  var sw=Math.sin(cur*3.1)*1.0;
+  if(T[i]){
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,T[i].img);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,T[i].dep);
+    var jb=T[i+1]?i+1:i;
+    gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,T[jb].img);gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,T[jb].dep);
+    gl.uniform2f(U.uFA,fa.fx/100,fa.fy/100);gl.uniform2f(U.uFB,fb.fx/100,fb.fy/100);
+    gl.uniform1f(U.uTA,tA*0.9);gl.uniform1f(U.uTB,tB);gl.uniform1f(U.uMix,T[i+1]||i===N-1?(i<N-1?mix:0):0);gl.uniform1f(U.uSw,sw);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  }
+  /* puntos de la escena activa: viajan con la profundidad de su objeto */
+  var act=Math.min(N-1,Math.max(0,Math.round(cur-0.15)));
+  hsEl.forEach(function(arr,ei){
+    arr.forEach(function(b,k){
+      var vis=ei===act&&listo;
+      if(vis){
+        var h=ESC[ei].hs[k],p=aPantalla(ei,h.x,h.y,tA*0.9,ESC[ei].fx/100,ESC[ei].fy/100,sw);
+        var dentro=p.x>10&&p.x<W-10&&p.y>10&&p.y<H*0.78;
+        b.style.transform='translate('+p.x.toFixed(1)+'px,'+p.y.toFixed(1)+'px)';
+        b.style.opacity=dentro?(mix>0.2?Math.max(0,1-(mix-0.2)/0.4):1):0;b.classList.toggle('v',dentro&&mix<0.5);
+      }else{b.style.opacity=0;b.classList.remove('v')}
+    });
+  });
+  txts.forEach(function(t,k){t.classList.toggle('on',k===act)});
+  dots.forEach(function(d,k){d.classList.toggle('on',k===act)});
+  if(act!==dibuja.act){dibuja.act=act;cierra()}
+  if(cur!==obj)pide();
+}
+function pide(){if(!ocupado){ocupado=true;requestAnimationFrame(dibuja)}}
+function tick(){lee();pide()}
 window.addEventListener('scroll',tick,{passive:true});
-window.addEventListener('resize',tick);
-tick();
+window.addEventListener('resize',function(){medida();tick()});
+medida();
+/* se cargan las dos primeras escenas y el resto detrás, para entrar rápido */
+cargaEscena(0).then(function(){return cargaEscena(1)}).then(function(){listo=true;carga.classList.add('fuera');tick()}).catch(function(e){carga.textContent='No se pudo cargar el recorrido'});
+(function sig(i){if(i>=N)return;cargaEscena(i).then(function(){tick();sig(i+1)}).catch(function(){sig(i+1)})})(2);
 })();
 </script>
 </body>
