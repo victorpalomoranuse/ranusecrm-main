@@ -112,6 +112,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .cvw{position:relative;flex:1;min-height:0}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
 .hint{position:absolute;left:10px;top:10px;max-width:calc(100% - 140px);pointer-events:none;font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.qdd{position:absolute;z-index:6;transform:translate(-50%,0);min-height:28px;padding:2px 10px;font-size:12px;font-weight:600;border:1.5px solid var(--dem,#b3402f);color:var(--dem,#b3402f);background:var(--panel,#fff);border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.16);white-space:nowrap}
 .qe{position:absolute;z-index:5;width:64px;min-height:28px;padding:2px 6px;font-size:13px;text-align:center;font-weight:600;border:1.5px solid var(--accent);border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.16);transform:translate(-50%,-50%)}
 .qs{width:56px;min-height:26px;font-size:12px;border-color:var(--new);color:var(--new);z-index:4}
 .dxfmod{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:12px}
@@ -418,6 +419,7 @@ body.crm .top .brand{display:none}
       <div class="cvw" id="cvw">
         <svg id="cv" role="img" aria-label="Plano de la sala"></svg>
         <input id="qd" class="qe" inputmode="decimal" autocomplete="off" aria-label="Distancia en centímetros" hidden>
+        <button id="qdd" class="qdd" type="button" hidden title="Quitar esta cota de la lámina (se puede volver a poner en «Ajustar cotas», o deshaciendo)">Quitar cota</button>
         <input id="qe" class="qe" inputmode="decimal" autocomplete="off" aria-label="Medida real del muro en centímetros" hidden>
         <input id="qa" class="qe qs" inputmode="decimal" autocomplete="off" aria-label="Medida del muro lateral al inicio" hidden>
         <input id="qa2" class="qe qs" inputmode="decimal" autocomplete="off" aria-label="Medida del otro muro lateral al inicio" hidden>
@@ -3142,7 +3144,7 @@ function pilDims(C,px,view,sel,suave,ocup){
       var kP='p:'+p.id+':'+d[0]+','+d[1];
       if(ADJ&&!ADJ.adj&&ocultoK(ADJ.view,kP))return;
       if(ocup&&!esSel&&(cruzaGiro(d[2],d[3],d[2]+d[0]*r.d,d[3]+d[1]*r.d,view,4*px)||!lblLibre(px,d[2],d[3],d[2]+d[0]*r.d,d[3]+d[1]*r.d,fmtU(r.d),ocup,suave?9.5:12)))return; /* si el número se pisa con otro, esa distancia no se pone (seleccionando el pilar salen todas) */
-      if(colectaDim)dimHits.push({kind:'pild',pil:p.id,other:r.otro?r.otro.id:null,ux:d[0],uy:d[1],val:r.d,x:d[2]+d[0]*r.d/2+(d[0]===0?14*px:0),y:d[3]+d[1]*r.d/2-(d[0]===0?0:5*px)});
+      if(colectaDim)dimHits.push({k:kP,kind:'pild',pil:p.id,other:r.otro?r.otro.id:null,ux:d[0],uy:d[1],val:r.d,x:d[2]+d[0]*r.d/2+(d[0]===0?14*px:0),y:d[3]+d[1]*r.d/2-(d[0]===0?0:5*px)});
       h+=dimW(C,px,d[2],d[3],d[2]+d[0]*r.d,d[3]+d[1]*r.d,fmtU(r.d),r.otro?C.ok:C.dim,suave,{k:kP});
     });
   });
@@ -3477,12 +3479,12 @@ function scene0(C,k,view,o){
               h+=dimW(C,px,a.x+eOx,a.y+eOy,b.x+eOx,b.y+eOy,fmtU(L),hexMix(C.label,'#ffffff',0.4),true,{inw:{x:onx,y:ony},out:zOut,k:'z:'+r.id+':'+i});
             }else
             h+=dimW(C,px,a.x+ix,a.y+iy,b.x+ix,b.y+iy,fmtU(L),oscuro?'#f4f4f4':(o.flat?hexMix(C.label,'#ffffff',0.4):C.label),!!o.flat,{inw:{x:ix,y:iy},halo:hCol,out:zOut,k:'z:'+r.id+':'+i});
-            if(colectaDim){var vt=Math.abs(dx)<Math.abs(dy);dimHits.push({kind:'spe',rot:vt,sp:r.id,i:i,a0:a0,val:L,x:(a.x+b.x)/2+ix+(vt?(ix>=0?1:-1)*14*px:0),y:(a.y+b.y)/2+iy+(vt?4*px:(iy>0?13*px:-5*px))})}
+            if(colectaDim&&!ocultoK(view,'z:'+r.id+':'+i)){var vt=Math.abs(dx)<Math.abs(dy);dimHits.push({k:'z:'+r.id+':'+i,kind:'spe',rot:vt,sp:r.id,i:i,a0:a0,val:L,x:(a.x+b.x)/2+ix+(vt?(ix>=0?1:-1)*14*px:0),y:(a.y+b.y)/2+iy+(vt?4*px:(iy>0?13*px:-5*px))})}
           }
           /* la distancia al muro no se dibuja si cruza otra zona de suelo (solo ensuciaría) */
           var cruzaOtra=d0!=null&&(v.sp||[]).some(function(r2){if(r2===r||r2.k!==zk)return false;var pp2=spPts(r2);return pp2&&inPoly({x:mx+onx*d0/2,y:my+ony*d0/2},pp2)});
           var dR=d0==null?null:d0+1.5; /* distancia real desde el propio lado (el rayo salía 1,5 cm hacia fuera) */
-          if(colectaDim&&d0!=null&&d0>3&&d0<3000&&!cruzaOtra)dimHits.push({kind:'spg',rot:!(Math.abs(onx)>Math.abs(ony)),sp:r.id,i:i,a0:a0,ux:onx,uy:ony,val:dR,x:mx+onx*dR/2+(Math.abs(onx)>Math.abs(ony)?0:14*px),y:my+ony*dR/2+(Math.abs(onx)>Math.abs(ony)?-5*px:4*px)});
+          if(colectaDim&&d0!=null&&d0>3&&d0<3000&&!cruzaOtra&&!ocultoK(view,'z:'+r.id+':g'+i))dimHits.push({k:'z:'+r.id+':g'+i,kind:'spg',rot:!(Math.abs(onx)>Math.abs(ony)),sp:r.id,i:i,a0:a0,ux:onx,uy:ony,val:dR,x:mx+onx*dR/2+(Math.abs(onx)>Math.abs(ony)?0:14*px),y:my+ony*dR/2+(Math.abs(onx)>Math.abs(ony)?-5*px:4*px)});
           if(d0!=null&&d0>3&&d0<(o.flat?160:3000)&&!cruzaOtra)h+=dimW(C,px,mx,my,mx+onx*dR,my+ony*dR,fmtU(dR),oscuro?'#d4f0df':(o.flat?hexMix(C.ok,'#ffffff',0.3):C.ok),!!o.flat,{halo:hCol,out:zOut,k:'z:'+r.id+':g'+i});
         });
       }
@@ -3617,7 +3619,7 @@ function scene0(C,k,view,o){
         });
         ['h','v'].forEach(function(k){
           var m=mejor[k];if(!m||ocupado[k])return;var d=m.d,rd=m.rd;
-          if(colectaDim)dimHits.push({kind:'eqd',eq:e.id,ux:d[0],uy:d[1],val:rd.d,x:d[2]+d[0]*rd.d/2+(d[0]===0?14*px:0),y:d[3]+d[1]*rd.d/2-(d[0]===0?0:5*px)});
+          if(colectaDim&&!ocultoK(view,'e:'+e.id+':'+d[0]+','+d[1]))dimHits.push({k:'e:'+e.id+':'+d[0]+','+d[1],kind:'eqd',eq:e.id,ux:d[0],uy:d[1],val:rd.d,x:d[2]+d[0]*rd.d/2+(d[0]===0?14*px:0),y:d[3]+d[1]*rd.d/2-(d[0]===0?0:5*px)});
           var kE='e:'+e.id+':'+d[0]+','+d[1];
           if(!o.adj&&ocultoK(view,kE))return;
           if(sua&&!lblLibre(px,d[2],d[3],d[2]+d[0]*rd.d,d[3]+d[1]*rd.d,fmtU(rd.d),dlInit().ocup))return; /* en lámina, si el número se pisa con otro, no se pone */
@@ -3639,11 +3641,11 @@ function scene0(C,k,view,o){
       if(q2.dy<0&&q2.dx>0){
         var yy=(Math.max(ra.y0,rb.y0)+Math.min(ra.y1,rb.y1))/2,l=ra.x0<rb.x0?ra:rb,r2=ra.x0<rb.x0?rb:ra;
         gl+=dimW(C,px,l.x1,yy,r2.x0,yy,fmtU(q2.g),gc,suave,{k:'q:'+eqs[ia].id+':'+eqs[ib].id});
-        if(colectaDim)dimHits.push({kind:'eqg',a:eqs[ia].id,b:eqs[ib].id,ux:(ra===l?1:-1),uy:0,x:(l.x1+r2.x0)/2,y:yy-5*px,val:q2.g});
+        if(colectaDim&&!ocultoK(view,'q:'+eqs[ia].id+':'+eqs[ib].id))dimHits.push({k:'q:'+eqs[ia].id+':'+eqs[ib].id,kind:'eqg',a:eqs[ia].id,b:eqs[ib].id,ux:(ra===l?1:-1),uy:0,x:(l.x1+r2.x0)/2,y:yy-5*px,val:q2.g});
       }else if(q2.dx<0&&q2.dy>0){
         var xx=(Math.max(ra.x0,rb.x0)+Math.min(ra.x1,rb.x1))/2,t2=ra.y0<rb.y0?ra:rb,b2=ra.y0<rb.y0?rb:ra;
         gl+=dimW(C,px,xx,t2.y1,xx,b2.y0,fmtU(q2.g),gc,suave,{k:'q:'+eqs[ia].id+':'+eqs[ib].id});
-        if(colectaDim)dimHits.push({kind:'eqg',a:eqs[ia].id,b:eqs[ib].id,ux:0,uy:(ra===t2?1:-1),x:xx+14*px,y:(t2.y1+b2.y0)/2,val:q2.g});
+        if(colectaDim&&!ocultoK(view,'q:'+eqs[ia].id+':'+eqs[ib].id))dimHits.push({k:'q:'+eqs[ia].id+':'+eqs[ib].id,kind:'eqg',a:eqs[ia].id,b:eqs[ib].id,ux:0,uy:(ra===t2?1:-1),x:xx+14*px,y:(t2.y1+b2.y0)/2,val:q2.g});
       }
     }
     var tiposEq=eqTipos(),etqEq='',etqPl=eqEtqUbica(px);
@@ -3665,7 +3667,7 @@ function scene0(C,k,view,o){
         var r3=eqRect(se2);
         [[1,0,r3.x1,r3.cy],[-1,0,r3.x0,r3.cy],[0,1,r3.cx,r3.y1],[0,-1,r3.cx,r3.y0]].forEach(function(d){
           var rd=rayDist(d[2],d[3],d[0],d[1],se2.id);
-          if(rd&&rd.d>2&&colectaDim)dimHits.push({kind:'eqd',eq:se2.id,ux:d[0],uy:d[1],val:rd.d,x:d[2]+d[0]*rd.d/2+(d[0]===0?14*px:0),y:d[3]+d[1]*rd.d/2-(d[0]===0?0:5*px)});
+          if(rd&&rd.d>2&&colectaDim)dimHits.push({k:'e:'+se2.id+':'+d[0]+','+d[1],kind:'eqd',eq:se2.id,ux:d[0],uy:d[1],val:rd.d,x:d[2]+d[0]*rd.d/2+(d[0]===0?14*px:0),y:d[3]+d[1]*rd.d/2-(d[0]===0?0:5*px)});
           if(rd&&rd.d>2)h+=dimW(C,px,d[2],d[3],d[2]+d[0]*rd.d,d[3]+d[1]*rd.d,fmtU(rd.d),rd.kind==='e'?(function(){var oe=eqs.filter(function(q){return q.id!==se2.id});var mn=pasoEq(se2);return mn==null?C.dim:(rd.d<mn?C.dem:C.ok)})():C.dim);
         });
       }
@@ -3961,9 +3963,9 @@ function dimChain(C,px,w,mode,cent,view,tags){
   var ttn=meas?(esInt?w.len-(L-clear):w.len):(esInt?clear:L);
   if(bad)tt+=' ('+fmtU(L)+')';
   var tcol=meas?(bad?C.dem:C.label):C.warn;
-  if(colectaDim){
+  if(colectaDim&&!(ADJ&&ocultoK(ADJ.view,'w:'+wid+':t'))){
     var dTot=c.ops.length?c.d2:c.d1,pT=P(S0+(S1-S0)*dimFrac,dTot+OFF);
-    dimHits.push({rot:rotC,x:pT.x,y:pT.y+3*px,wall:w.id,kind:'wsel',chain:!!w._chain,nid:null,delta:L-clear,val:ttn});
+    dimHits.push({k:'w:'+wid+':t',rot:rotC,x:pT.x,y:pT.y+3*px,wall:w.id,kind:'wsel',chain:!!w._chain,nid:null,delta:L-clear,val:ttn});
   }
   if(c.ops.length){
     var segs=[],last=S0,prevOp=null;
@@ -3978,10 +3980,10 @@ function dimChain(C,px,w,mode,cent,view,tags){
     h+=line(S0,S1,c.d1);
     pts.forEach(function(s){h+=ext(s,c.d1)+tick(s,c.d1)});
     var hitsSegs=function(){segs.forEach(function(sg){
-      if(dimOc&&!sg._h)return; /* número oculto: tampoco se puede tocar */
+      if(!sg._h)return; /* número oculto: tampoco se puede tocar */
       var pl=P((sg.a+sg.b)/2,c.d1+OFF),ro=w._chain?opn(sg.id):null;
       if(w._chain&&!ro)return;
-      dimHits.push({rot:rotC,x:pl.x,y:pl.y+3*px,wall:w._chain?ro.wall:w.id,kind:sg.k,opId:sg.id,base:sg.base,val:sg.b-sg.a,prev:sg.prev||null,chainRef:w._chain?w:null});
+      dimHits.push({k:'w:'+wid+':'+(sg.op?'o':'g')+sg.id+(sg.k==='last'?'L':''),rot:rotC,x:pl.x,y:pl.y+3*px,wall:w._chain?ro.wall:w.id,kind:sg.k,opId:sg.id,base:sg.base,val:sg.b-sg.a,prev:sg.prev||null,chainRef:w._chain?w:null});
     })};
     segs.slice().sort(function(a,b){return (b.b-b.a)-(a.b-a.a)}).forEach(function(sg){sg._h=lab(sg.a,sg.b,c.d1,sg.t,sg.op?C.accent:C.label,sg.op?600:500,true,undefined,'w:'+wid+':'+(sg.op?'o':'g')+sg.id+(sg.k==='last'?'L':''));h+=sg._h});
     if(colectaDim)hitsSegs();
@@ -4080,12 +4082,23 @@ function bibElegido(prod,c,BF){
   if(!vs.length){toast('Ese bloque no tiene dibujo');return}
   abrirModalDXF([{nombre:c.nombre,categoria:'',largo:BF.largo,fondo:BF.fondo,alto:BF.alto||100,vistas:vs,planta:sv.planta||'',alzado:sv.alzado||'',lateral:sv.lateral||''}],c.nombre,{id:prod.id,nombre:prod.nombre,deBiblioteca:true});
 }
-var qd=$('qd'),dimEd=null;
-function closeDimEd(){dimEd=null;qd.hidden=true}
+var qd=$('qd'),qdd=$('qdd'),dimEd=null;
+function closeDimEd(){dimEd=null;qd.hidden=true;qdd.hidden=true}
+qdd.addEventListener('pointerdown',function(e){e.preventDefault()}); /* para que el campo no pierda el foco antes de pulsar */
+qdd.addEventListener('click',function(e){
+  e.preventDefault();
+  var h=dimEd;if(!h||!h.k){closeDimEd();return}
+  closeDimEd();snap();
+  st.v.oc=st.v.oc||{};st.v.oc[st.view]=st.v.oc[st.view]||{};st.v.oc[st.view][h.k]=1;
+  commit(false);toolbar();render();
+  toast('Cota quitada de esta lámina. Para volver a ponerla: «Ajustar cotas» → Mostrar (o deshacer).');
+});
 function openDimEd(h){
   closeQE();dimEd=h;
   qd.value=toU(h.val);qd.hidden=false;
   qd.style.left=Math.max(40,Math.min(W-40,st.tx+h.x*st.k))+'px';qd.style.top=Math.max(20,Math.min(H-20,st.ty+h.y*st.k))+'px';
+  qdd.hidden=!h.k;
+  if(h.k){qdd.style.left=Math.max(60,Math.min(W-60,st.tx+h.x*st.k))+'px';qdd.style.top=Math.max(20,Math.min(H-30,st.ty+h.y*st.k))+'px';qdd.style.marginTop='20px'}
   qd.focus();try{qd.select()}catch(_){}
 }
 function commitDimEd(){
@@ -5725,7 +5738,7 @@ function toolbar(){
   $('defstate').innerHTML=L.map(function(x){return '<button data-a="defstate" data-s="'+x[0]+'" aria-pressed="'+(st.defState===x[0])+'">'+x[1]+'</button>'}).join('');
   $('dimbase').innerHTML='<span class="note" style="margin:0">Siempre de cara interior a cara interior (hueco libre)</span>';
   var DL=[['simple','Sencillas'],['ext','Exterior'],['int','Interior'],['dob','Doble']];
-  $('dimsel').innerHTML=DL.map(function(x){return '<button data-a="dims" data-s="'+x[0]+'" aria-pressed="'+(st.dims===x[0])+'">'+x[1]+'</button>'}).join('')+'<button data-a="cotasAdj" aria-pressed="'+(!!st.cotasAdj)+'" title="Elige qué cotas y etiquetas salen en esta lámina: toca una para ocultarla, moverla o volver a ponerla">Ajustar cotas</button><button data-a="cotasTodas" aria-pressed="'+(!!st.cotasTodas)+'" title="Por defecto el plano se ve limpio: los números que se pisan no se ponen (acércate o selecciona un muro y salen). Aquí puedes ver todos.">Ver todas</button>';
+  $('dimsel').innerHTML=DL.map(function(x){return '<button data-a="dims" data-s="'+x[0]+'" aria-pressed="'+(st.dims===x[0])+'">'+x[1]+'</button>'}).join('')+'<button data-a="cotasAdj" aria-pressed="'+(!!st.cotasAdj)+'" title="Elige qué cotas y etiquetas salen en esta lámina: toca una para ocultarla, moverla o volver a ponerla">Ajustar cotas'+(function(){var n=Object.keys(ocVista(st.view)).length;return n?' · '+n+' oculta'+(n===1?'':'s'):''})()+'</button><button data-a="cotasTodas" aria-pressed="'+(!!st.cotasTodas)+'" title="Por defecto el plano se ve limpio: los números que se pisan no se ponen (acércate o selecciona un muro y salen). Aquí puedes ver todos.">Ver todas</button>';
   $('t-pt').hidden=!(st.view==='ilum'||st.view==='elec');
   $('t-paint').hidden=!(st.view==='suelos'||st.view==='techos'||st.view==='acab'||st.view==='alz'||st.view==='demol');
   if((st.tool==='pt'||st.tool==='cn')&&($('t-pt').hidden||(st.tool==='cn'&&st.view!=='ilum')))st.tool='select';
