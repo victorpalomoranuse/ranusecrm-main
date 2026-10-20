@@ -44,6 +44,7 @@ export default function RenderInteractivoEditor({ projectId, url, existente, onG
   const [prof, setProf] = useState(existente?.profundidad_url || '');
   const [mov, setMov] = useState(analizaMov(existente?.movimiento).dir);
   const [inten, setInten] = useState(analizaMov(existente?.movimiento).inten);
+  const [relieve, setRelieve] = useState(analizaMov(existente?.movimiento).relieve);
   const [puntos, setPuntos] = useState(existente?.puntos || []);
   const [progreso, setProgreso] = useState(0.5);
   const [colocar, setColocar] = useState(false);
@@ -89,7 +90,7 @@ export default function RenderInteractivoEditor({ projectId, url, existente, onG
   const guardar = async () => {
     setGuardando(true); setError('');
     try {
-      const { data } = await api.put(`/historia/${projectId}/interactivos`, { imagen_url: url, profundidad_url: prof, movimiento: mov + ':' + inten, puntos });
+      const { data } = await api.put(`/historia/${projectId}/interactivos`, { imagen_url: url, profundidad_url: prof, movimiento: mov + ':' + inten + ':' + relieve, puntos });
       onGuardado(data.interactivo);
     } catch (e) { setError(e.response?.data?.error || 'No se pudo guardar'); }
     finally { setGuardando(false); }
@@ -127,7 +128,7 @@ export default function RenderInteractivoEditor({ projectId, url, existente, onG
           </div>
         ) : (
           <>
-            <RenderRecorrido src={url} prof={prof} mov={mov + ':' + inten} puntos={puntos} modo="editor" progreso={progreso} colocar={colocar}
+            <RenderRecorrido src={url} prof={prof} mov={mov + ':' + inten + ':' + relieve} puntos={puntos} modo="editor" progreso={progreso} colocar={colocar}
               onColocar={(p) => { if (puntos.length >= 12) return; const nuevos = [...puntos, { ...p, titulo: '', texto: '' }]; setPuntos(nuevos); setColocar(false); escribirIA(nuevos, [nuevos.length - 1]); }} altura={Math.min(460, Math.round(window.innerHeight * 0.5))} />
             <div style={{ ...fila, margin: '10px 0' }}>
               <input type="range" min="0" max="1" step="0.005" value={progreso} onChange={e => { cancelAnimationFrame(animando.current); setProgreso(+e.target.value); }} style={{ flex: 1, minWidth: 160 }} aria-label="Avance del recorrido" />
@@ -145,7 +146,13 @@ export default function RenderInteractivoEditor({ projectId, url, existente, onG
                 <input type="range" min="20" max="100" step="5" value={inten} onChange={e => setInten(+e.target.value)} style={{ flex: 1, minWidth: 140 }} aria-label="Intensidad del movimiento" />
                 <span style={{ ...muted, width: 38 }}>{inten} %</span>
               </div>
-              <p style={{ ...muted, marginTop: 4 }}>Si ves bandas estiradas junto a un objeto muy cercano, baja la intensidad. «Avanzar» y «Retroceder» funcionan mejor en vistas con fondo (pasillos, salas profundas); los laterales, con equipos en primer plano.</p>
+              <div style={{ ...fila, marginTop: 6 }}>
+                <span style={muted}>Relieve 3D</span>
+                <input type="range" min="0" max="100" step="5" value={relieve} onChange={e => setRelieve(+e.target.value)} style={{ flex: 1, minWidth: 140 }} aria-label="Relieve 3D" />
+                <span style={{ ...muted, width: 38 }}>{relieve} %</span>
+              </div>
+              <p style={{ ...muted, marginTop: 4 }}>El relieve hace que lo cercano se mueva más que lo lejano, pero puede deformar objetos finos (barras, máquinas). Con 0 % solo se mueve la cámara y los objetos no se tocan.</p>
+              <p style={{ ...muted, marginTop: 4 }}>Si ves objetos deformados, baja el relieve. «Avanzar» y «Retroceder» funcionan mejor en vistas con fondo (pasillos, salas profundas); los laterales, con equipos en primer plano.</p>
             </div>
             <div style={{ ...caja, marginBottom: 10 }}>
               <div style={{ ...fila, justifyContent: 'space-between', marginBottom: 6 }}>

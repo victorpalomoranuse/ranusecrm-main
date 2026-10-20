@@ -17,7 +17,7 @@ const VS = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
 const FS = `
 precision highp float;
 uniform sampler2D uI,uD;
-uniform vec2 uRes,uF;uniform float uT,uL,uAsp,uSw;
+uniform vec2 uRes,uF;uniform float uT,uL,uAsp,uSw,uR;
 void main(){
   vec2 s=vec2(gl_FragCoord.x/uRes.x,1.0-gl_FragCoord.y/uRes.y);
   float va=uRes.x/uRes.y;vec2 uv=s;
@@ -25,23 +25,23 @@ void main(){
   vec2 p=uv;
   vec2 sway=vec2(uSw*0.012-uL*0.034,uSw*0.004);
   for(int i=0;i<10;i++){
-    float n=texture2D(uD,p).r;
+    float n=0.5+(texture2D(uD,p).r-0.5)*uR; /* uR = relieve: 0 mueve todo igual (sin deformar), 1 usa toda la profundidad */
     float k=0.12+n*0.95;
     p=uF+(uv-uF)/(1.0+uT*k)-sway*(n-0.35);
   }
   float e=0.010;
   float g=abs(texture2D(uD,p+vec2(e,0.0)).r-texture2D(uD,p-vec2(e,0.0)).r)+abs(texture2D(uD,p+vec2(0.0,e)).r-texture2D(uD,p-vec2(0.0,e)).r);
-  float w=1.0-smoothstep(0.05,0.22,g)*0.75;
+  float w=1.0-smoothstep(0.05,0.22,g*uR)*0.75;
   p=mix(uv,p,w);
   gl_FragColor=vec4(texture2D(uI,clamp(p,0.002,0.998)).rgb,1.0);
 }`;
 
-// el movimiento se guarda como «dirección» o «dirección:intensidad» (20-100). Sin intensidad, 75.
+// el movimiento se guarda como «dirección:intensidad:relieve». Intensidad 10-100 (normal 75); relieve 0-100 (normal 35: 0 = solo se mueve la cámara, sin deformar los objetos)
 export function analizaMov(m) {
-  const [d, i] = String(m || 'adelante').split(':');
+  const [d, i, r] = String(m || 'adelante').split(':');
   const dir = ['adelante', 'atras', 'izq', 'dcha'].includes(d) ? d : 'adelante';
-  const n = Number(i);
-  return { dir, inten: n >= 10 && n <= 100 ? n : 75 };
+  const n = Number(i), q = r === undefined || r === '' ? NaN : Number(r);
+  return { dir, inten: n >= 10 && n <= 100 ? n : 75, relieve: q >= 0 && q <= 100 ? q : 35 };
 }
 
 // estado de la cámara (avance, desplazamiento lateral) según el movimiento y el progreso 0..1
@@ -80,7 +80,7 @@ export default function RenderRecorrido({ src, prof, mov = 'adelante', puntos = 
   const [fallo, setFallo] = useState(false);
   const [listo, setListo] = useState(false);
   const [abierto, setAbierto] = useState(null);
-  vivo.current = { mov, puntos, progreso, colocar };
+  vivo.current = { mov, puntos, progreso, colocar, rel: analizaMov(mov).relieve / 100 };
 
   useEffect(() => {
     setFallo(false); setListo(false);
@@ -96,7 +96,7 @@ export default function RenderRecorrido({ src, prof, mov = 'adelante', puntos = 
     } catch { setFallo(true); return undefined; }
     const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     const loc = gl.getAttribLocation(progSh, 'a'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    const U = {}; ['uI', 'uD', 'uRes', 'uF', 'uT', 'uL', 'uAsp', 'uSw'].forEach(n => { U[n] = gl.getUniformLocation(progSh, n); });
+    const U = {}; ['uI', 'uD', 'uRes', 'uF', 'uT', 'uL', 'uAsp', 'uSw', 'uR'].forEach(n => { U[n] = gl.getUniformLocation(progSh, n); });
     gl.uniform1i(U.uI, 0); gl.uniform1i(U.uD, 1);
     const textura = (c) => {
       const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
@@ -118,7 +118,7 @@ export default function RenderRecorrido({ src, prof, mov = 'adelante', puntos = 
     };
     const FOC = [0.5, 0.46];
     const aPantalla = (x, y, t, lat, sw) => {
-      const n = nProf(x / 100, y / 100), k = 0.12 + n * 0.95;
+      const n = 0.5 + (nProf(x / 100, y / 100) - 0.5) * vivo.current.rel, k = 0.12 + n * 0.95;
       let u = x / 100, v = y / 100;
       u = FOC[0] + (u + (sw * 0.012 - lat * 0.034) * (n - 0.35) - FOC[0]) * (1 + t * k);
       v = FOC[1] + (v + sw * 0.004 * (n - 0.35) - FOC[1]) * (1 + t * k);
@@ -138,12 +138,12 @@ export default function RenderRecorrido({ src, prof, mov = 'adelante', puntos = 
       const v = vivo.current;
       cur += (obj - cur) * 0.14; if (Math.abs(obj - cur) < 0.0004) cur = obj;
       const neutro = modo === 'editor' && v.colocar; // «colocando puntos»: imagen sin mover
-      const { dir, inten } = analizaMov(v.mov), k = inten / 75; /* 75 = lo normal */
+      const { dir, inten, relieve } = analizaMov(v.mov), k = inten / 75, rel = relieve / 100; /* 75 = lo normal */
       const [t0, lat0] = neutro ? [0, 0] : estadoCamara(dir, cur);
       const t = t0 * k, lat = lat0 * k;
       const sw = neutro || dir === 'izq' || dir === 'dcha' ? 0 : Math.sin(cur * 3.1) * k;
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tI); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tD);
-      gl.uniform2f(U.uF, FOC[0], FOC[1]); gl.uniform1f(U.uT, t); gl.uniform1f(U.uL, lat); gl.uniform1f(U.uAsp, asp); gl.uniform1f(U.uSw, sw);
+      gl.uniform2f(U.uF, FOC[0], FOC[1]); gl.uniform1f(U.uT, t); gl.uniform1f(U.uL, lat); gl.uniform1f(U.uAsp, asp); gl.uniform1f(U.uSw, sw); gl.uniform1f(U.uR, rel);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       (v.puntos || []).forEach((p, i) => {
         const b = botones.current[i]; if (!b) return;

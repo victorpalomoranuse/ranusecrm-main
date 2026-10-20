@@ -313,7 +313,7 @@ router.put('/:projectId/interactivos', async (req, res) => {
     const fila = { proyecto_id: req.params.projectId, imagen_url, updated_at: new Date().toISOString() };
     const prof = url(req.body.profundidad_url);
     if (prof) fila.profundidad_url = prof;
-    if (/^(adelante|atras|izq|dcha)(:d{1,3})?$/.test(String(req.body.movimiento || ''))) fila.movimiento = req.body.movimiento;
+    if (/^(adelante|atras|izq|dcha)(:[0-9]{1,3}){0,2}$/.test(String(req.body.movimiento || ''))) fila.movimiento = req.body.movimiento;
     if (req.body.puntos !== undefined) fila.puntos = limpiarPuntos(req.body.puntos);
     const { data: previo } = await supabase.from('render_interactivos').select('id').eq('proyecto_id', req.params.projectId).eq('imagen_url', imagen_url).maybeSingle();
     if (!previo && !fila.profundidad_url) return res.status(400).json({ error: 'Falta el mapa de profundidad' });
