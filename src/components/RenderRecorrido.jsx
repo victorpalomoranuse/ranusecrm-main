@@ -36,12 +36,12 @@ void main(){
   gl_FragColor=vec4(texture2D(uI,clamp(p,0.002,0.998)).rgb,1.0);
 }`;
 
-// el movimiento se guarda como «dirección:intensidad:relieve». Intensidad 10-100 (normal 75); relieve 0-100 (normal 35: 0 = solo se mueve la cámara, sin deformar los objetos)
+// el movimiento se guarda como «dirección:intensidad:relieve». Intensidad 10-100 (normal 75); relieve 0-100 (normal 0 = solo se mueve la cámara, sin deformar los objetos)
 export function analizaMov(m) {
   const [d, i, r] = String(m || 'adelante').split(':');
   const dir = ['adelante', 'atras', 'izq', 'dcha'].includes(d) ? d : 'adelante';
   const n = Number(i), q = r === undefined || r === '' ? NaN : Number(r);
-  return { dir, inten: n >= 10 && n <= 100 ? n : 75, relieve: q >= 0 && q <= 100 ? q : 35 };
+  return { dir, inten: n >= 10 && n <= 100 ? n : 75, relieve: q >= 0 && q <= 100 ? q : 0 };
 }
 
 // estado de la cámara (avance, desplazamiento lateral) según el movimiento y el progreso 0..1

@@ -117,9 +117,9 @@ export default function RecorridoEscenas({ escenas }) {
       cur += (obj - cur) * 0.12; if (Math.abs(obj - cur) < 0.0004) cur = obj;
       const i = Math.min(N - 1, Math.floor(cur)), f = cur - i, ultima = i >= N - 1;
       // la escena avanza con el scroll; al final se funde con la siguiente, que ya empieza a moverse (movimiento continuo)
-      const sA = ultima ? Math.min(1, f) : Math.min(1.35, f + (f > 0.72 ? (f - 0.72) * 0.9 : 0));
-      let mix = 0; if (!ultima && f > 0.68) mix = Math.min(1, (f - 0.68) / 0.3); mix = mix * mix * (3 - 2 * mix);
-      const sB = !ultima && mix > 0 ? Math.max(0, f - 0.68) * 0.9 : 0;
+      const sA = ultima ? Math.min(1, f) : Math.min(1.35, f + (f > 0.76 ? (f - 0.76) * 0.9 : 0));
+      let mix = 0; if (!ultima && f > 0.76) mix = Math.min(1, (f - 0.76) / 0.22); mix = mix * mix * (3 - 2 * mix);
+      const sB = !ultima && mix > 0 ? Math.max(0, f - 0.76) * 0.9 : 0;
       asegura(i); asegura(i + 1); asegura(i - 1);
       for (let k = 0; k < N; k++) if (Math.abs(k - i) > 2) suelta(k);
       const A = tex[i], j = ultima ? i : i + 1, B = tex[j];
