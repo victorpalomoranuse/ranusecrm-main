@@ -970,6 +970,15 @@ function pilEn(p,tol){
   });
   return best;
 }
+/* ¿hay un número de cota (tocable) justo debajo del puntero? */
+function dimHitEn(w){
+  var r=null;
+  dimHits.forEach(function(h){
+    var dx=(w.x-h.x)*st.k,dy=(w.y-h.y)*st.k;
+    if((h.rot||h.ux===0)?(Math.abs(dx)<14&&Math.abs(dy)<26):(Math.abs(dx)<24&&Math.abs(dy)<11))r=h;
+  });
+  return r;
+}
 function pickEq(p){
   if(pilEn(p,0))return null; /* un pilar encima del bloque: se toca el pilar */
   var a=capaVis('eq')?porZ(eqV(st.view)):[];
@@ -3187,7 +3196,7 @@ function nearAdj(w){
 function descCota(key){
   var p=key.split(':'),t=p[0],sub=p[2];
   if(t==='w'){var w=wl(p[1]);return 'Cota de muro'+(w?' de '+fmtU(wg(w).l)+' cm':'')+(!sub?' · completa':sub==='t'?' · medida total':sub==='x'?' · medida exterior':sub.charAt(0)==='o'?' · hueco':' · tramo')}
-  if(t==='p')return 'Pilar · distancia '+({'1,0':'a la derecha','-1,0':'a la izquierda','0,1':'hacia abajo','0,-1':'hacia arriba'}[sub]||'');
+  if(t==='p')return sub==='w'?'Pilar · su ancho':sub==='d'?'Pilar · su fondo':'Pilar · distancia '+({'1,0':'a la derecha','-1,0':'a la izquierda','0,1':'hacia abajo','0,-1':'hacia arriba'}[sub]||'');
   if(t==='e'){var e=by(st.v.eq,p[1]);return (e?e.nm:'Máquina')+' · distancia al muro'}
   if(t==='q')return 'Distancia entre dos máquinas';
   if(t==='t'){var o=opn(p[1]);return 'Etiqueta de '+(o?(o.t==='door'?'puerta':'ventana'):'hueco')}
@@ -3278,7 +3287,25 @@ function pilRay(ox,oy,dx,dy,skip,view){
     if(dy!==0&&ox>=r.x0&&ox<=r.x1){if(dy>0&&r.y0>=oy)t=r.y0-oy;if(dy<0&&r.y1<=oy)t=oy-r.y1}
     if(t!==null&&(best==null||t<best)){best=t;otro=q}
   });
-  return best==null?null:{d:best,otro:otro};
+  var bloque=false;
+  eqV(view).forEach(function(e){ /* bloques (máquinas, armarios...) */
+    var r=eqRect(e),t=null;
+    if(dx!==0&&oy>=r.y0&&oy<=r.y1){if(dx>0&&r.x0>=ox)t=r.x0-ox;if(dx<0&&r.x1<=ox)t=ox-r.x1}
+    if(dy!==0&&ox>=r.x0&&ox<=r.x1){if(dy>0&&r.y0>=oy)t=r.y0-oy;if(dy<0&&r.y1<=oy)t=oy-r.y1}
+    if(t!==null&&(best==null||t<best)){best=t;otro=null;bloque=true}
+  });
+  if(view==='distrib')(st.v.mm||[]).forEach(function(m){ /* obra a medida (armarios, muebles de obra) */
+    var q=mmPoly(m);if(!q)return;
+    var pp=q.pts,i,t=null;
+    for(i=0;i<pp.length;i++){
+      var a=pp[i],b=pp[(i+1)%pp.length],ex=b.x-a.x,ey=b.y-a.y,den=dx*ey-dy*ex;
+      if(Math.abs(den)<1e-9)continue;
+      var tt=((a.x-ox)*ey-(a.y-oy)*ex)/den,uu=((a.x-ox)*dy-(a.y-oy)*dx)/den;
+      if(tt>=0&&uu>=0&&uu<=1&&(t===null||tt<t))t=tt;
+    }
+    if(t!==null&&(best==null||t<best)){best=t;otro=null;bloque=true}
+  });
+  return best==null?null:{d:best,otro:otro,bloque:bloque};
 }
 function pilDims(C,px,view,sel,suave,ocup){
   var h='';
@@ -3295,7 +3322,18 @@ function pilDims(C,px,view,sel,suave,ocup){
       if(ADJ&&!ADJ.adj&&ocultoK(ADJ.view,kP))return;
       if(ocup&&!esSel&&(cruzaGiro(d[2],d[3],d[2]+d[0]*r.d,d[3]+d[1]*r.d,view,4*px)||!lblLibre(px,d[2],d[3],d[2]+d[0]*r.d,d[3]+d[1]*r.d,fmtU(r.d),ocup,suave?9.5:12)))return; /* si el número se pisa con otro, esa distancia no se pone (seleccionando el pilar salen todas) */
       if(colectaDim)dimHits.push({k:kP,kind:'pild',pil:p.id,other:r.otro?r.otro.id:null,ux:d[0],uy:d[1],val:r.d,x:d[2]+d[0]*r.d/2+(d[0]===0?14*px:0),y:d[3]+d[1]*r.d/2-(d[0]===0?0:5*px)});
-      h+=dimW(C,px,d[2],d[3],d[2]+d[0]*r.d,d[3]+d[1]*r.d,fmtU(r.d),r.otro?C.ok:C.dim,suave,{k:kP});
+      h+=dimW(C,px,d[2],d[3],d[2]+d[0]*r.d,d[3]+d[1]*r.d,fmtU(r.d),(r.otro||r.bloque)?C.ok:C.dim,suave,{k:kP});
+    });
+    /* medidas del propio pilar: su ancho y su fondo (se pueden escribir tocando el número) */
+    if((p.cnt||1)>1)return;
+    var cenP=wallCent(view),bP=pilBox(p),sepP=11*px,sPil=(bP.cy<cenP.y)?1:-1,sPx=(bP.cx<cenP.x)?1:-1;
+    [['w',p.w,bP.x0,bP.x1,sPil>0?bP.y1+sepP:bP.y0-sepP,true],['d',p.d,bP.y0,bP.y1,sPx>0?bP.x1+sepP:bP.x0-sepP,false]].forEach(function(q){
+      var kS='p:'+p.id+':'+q[0];
+      if(ADJ&&!ADJ.adj&&ocultoK(ADJ.view,kS))return;
+      var ax=q[5]?q[2]:q[4],ay=q[5]?q[4]:q[2],bx=q[5]?q[3]:q[4],by2=q[5]?q[4]:q[3];
+      if(ocup&&!esSel&&!lblLibre(px,ax,ay,bx,by2,fmtU(q[1]),ocup,suave?9.5:12))return;
+      if(colectaDim)dimHits.push({k:kS,kind:'pilsz',pil:p.id,dim:q[0],rot:!q[5],val:q[1],x:q[5]?(ax+bx)/2:(ax+11*px),y:q[5]?(ay-9*px):(ay+by2)/2});
+      h+=dimW(C,px,ax,ay,bx,by2,fmtU(q[1]),C.accent||C.dim,suave,{k:kS});
     });
   });
   return h;
@@ -4275,6 +4313,12 @@ function openDimEd(h){
 function commitDimEd(){
   if(!dimEd)return;
   var h=dimEd,n=fromU(num(qd.value));closeDimEd();
+  if(h.kind==='pilsz'){ /* tamaño de un pilar: se escribe el ancho o el fondo */
+    var pz=pl(h.pil);if(!pz)return;
+    if(!(n>=1&&n<=2000)){toast('Escribe una medida válida');return}
+    if(Math.abs(n-h.val)<0.01)return;
+    snap();if(h.dim==='w')pz.w=n;else pz.d=n;commit(false);panelSel();return;
+  }
   if(h.kind==='drlib'){ /* cota libre: se escribe el largo y se mueve el segundo extremo (el primero se queda) */
     var dl=by(st.v.dr,h.id);if(!dl)return;
     if(!(n>=0.1&&n<=100000)){toast('Escribe una medida válida');return}
@@ -4661,7 +4705,7 @@ svg.addEventListener('pointerdown',function(e){
     if(hm&&esMulti(hm)){snap();gesture={type:'dragMulti',id:e.pointerId,last:wm0,tot:{x:0,y:0},p0:wm0,moved:false,sx:p.x,sy:p.y};return}
   }
   if((st.view==='distrib'||st.view==='actual'||st.view==='demol')&&(st.tool==='select'||st.tool==='equip')&&!pan){
-    var w0=toW(p),he=pickEq(w0);
+    var w0=toW(p),he=dimHitEn(w0)?null:pickEq(w0);
     if(he){
       snap();st.sel={t:'eq',id:he.id};
       var hc=pc(he);
@@ -4693,6 +4737,7 @@ svg.addEventListener('pointerdown',function(e){
   }
   if((st.tool==='select'||st.tool==='door'||st.tool==='win'||st.tool==='pillar')&&!pan){
     var wo=toW(p),ho=pick(wo,Math.max(16/st.k,6),st.view);
+    if(ho&&(ho.t==='op'||ho.t==='pil')&&dimHitEn(wo))ho=null; /* el número de una cota manda: un toque lo edita */
     if(ho&&ho.t==='op'){
       var oo=opn(ho.id);
       if(oo){snap();st.sel=ho;gesture={type:'dragOp',id:e.pointerId,o:oo,moved:false,sx:p.x,sy:p.y};panelSel();render();return}
