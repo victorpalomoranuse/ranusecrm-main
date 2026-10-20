@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import './StorytellingPortal.css';
-import RenderRecorrido from '../components/RenderRecorrido';
+import RecorridoEscenas from '../components/RecorridoEscenas';
 
 // Vista de storytelling del portal del cliente. Solo se usa cuando el
 // proyecto tiene capítulos (project.historia); los proyectos antiguos siguen
@@ -70,7 +70,7 @@ function Renders({ items, tituloZona, textoZona, primero, interactivos }) {
     const resto = items.filter(r => !conRecorrido.includes(r));
     return (
       <>
-        {conRecorrido.map((r, i) => { const x = interactivos[r.imagen_url]; return <RenderRecorrido key={r.id || i} src={r.imagen_url} prof={x.prof} mov={x.mov} puntos={x.puntos} alt={r.titulo || tituloZona || ''} />; })}
+        <RecorridoEscenas escenas={conRecorrido.map(r => { const x = interactivos[r.imagen_url]; return { src: r.imagen_url, prof: x.prof, mov: x.mov, puntos: x.puntos || [], alt: r.titulo || tituloZona || '' }; })} />
         <Renders items={resto.filter(r => !(r.id === 'main' && conRecorrido.some(c => c.imagen_url === r.imagen_url)))} tituloZona={tituloZona} textoZona={textoZona} primero={primero && !conRecorrido.length} />
       </>
     );

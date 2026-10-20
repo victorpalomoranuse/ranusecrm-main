@@ -53,7 +53,7 @@ export function estadoCamara(dir, s) {
   return [0.77 * q, 0];
 }
 
-function cargaImg(url, ancho) {
+export function cargaImg(url, ancho) {
   return new Promise((ok, ko) => {
     const im = new Image();
     im.crossOrigin = 'anonymous';
