@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Prueba · Render con scroll</title>
+<style>
+:root{--ink:#fff;--bg:#0b0b0d;--acc:#c9a8ff}
+*{box-sizing:border-box;margin:0}
+html,body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.intro,.fin{min-height:100svh;display:grid;place-content:center;text-align:center;padding:24px;gap:14px}
+.intro h1{font-size:clamp(28px,7vw,56px);letter-spacing:-.02em;line-height:1.05}
+.intro p,.fin p{color:#b9b9c2;max-width:36ch;margin:auto;font-size:16px;line-height:1.5}
+.intro .flecha{margin-top:18px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#8d8d97;animation:bob 1.6s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(8px)}}
+/* escenario fijo: el scroll mueve la cámara */
+.track{position:relative}
+.stage{position:sticky;top:0;height:100svh;overflow:hidden;background:#000}
+.esc{position:absolute;inset:0;opacity:0;will-change:opacity,transform}
+.esc .cam{position:absolute;left:50%;top:50%;width:max(100vw,calc(100svh*1.46));aspect-ratio:1.46/1;will-change:transform}
+.esc img{width:100%;height:100%;object-fit:cover;display:block;user-select:none;-webkit-user-drag:none}
+.esc::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,0) 46%),linear-gradient(to bottom,rgba(0,0,0,.35),rgba(0,0,0,0) 22%);pointer-events:none}
+/* puntos tocables: viajan con la imagen */
+.hs{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border:0;background:none;padding:0;cursor:pointer;z-index:3}
+.hs i{position:absolute;inset:13px;border-radius:50%;background:#fff;box-shadow:0 0 0 0 rgba(255,255,255,.7);animation:pulso 2s infinite}
+.hs.on i{background:var(--acc);animation:none;box-shadow:0 0 0 6px rgba(201,168,255,.35)}
+@keyframes pulso{70%{box-shadow:0 0 0 14px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+.txt{position:absolute;left:0;right:0;bottom:0;padding:0 22px calc(34px + env(safe-area-inset-bottom));z-index:4;pointer-events:none}
+.txt .n{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--acc);margin-bottom:6px}
+.txt h2{font-size:clamp(26px,6.4vw,46px);letter-spacing:-.02em;line-height:1.05;max-width:16ch}
+.txt p{margin-top:8px;max-width:36ch;color:#d4d4da;font-size:15px;line-height:1.45}
+.txt>div{position:absolute;left:22px;right:22px;bottom:calc(34px + env(safe-area-inset-bottom));opacity:0;transform:translateY(16px);transition:opacity .45s,transform .45s}
+.txt>div.on{opacity:1;transform:none}
+/* ficha de un punto */
+.ficha{position:absolute;left:14px;right:14px;top:max(14px,env(safe-area-inset-top));z-index:6;background:rgba(18,18,22,.86);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:14px 16px;max-width:380px;margin:auto;transform:translateY(-120%);opacity:0;transition:transform .35s,opacity .35s}
+.ficha.on{transform:none;opacity:1}
+.ficha b{display:block;font-size:16px;margin-bottom:4px}
+.ficha span{font-size:14px;color:#cfcfd6;line-height:1.4}
+.ficha small{display:block;margin-top:8px;color:#8d8d97;font-size:12px}
+.prog{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:5;display:grid;gap:7px}
+.prog i{display:block;width:4px;height:22px;border-radius:2px;background:rgba(255,255,255,.28);transition:background .3s,height .3s}
+.prog i.on{background:#fff;height:34px}
+.fin h2{font-size:clamp(26px,6vw,44px);letter-spacing:-.02em}
+.fin a{display:inline-block;margin-top:10px;padding:12px 22px;border-radius:99px;background:#fff;color:#000;text-decoration:none;font-weight:600}
+@media(prefers-reduced-motion:reduce){.hs i{animation:none}}
+</style>
+</head>
+<body>
+<section class="intro">
+  <h1>XTHOR<br>Powerhouse</h1>
+  <p>Recorre el espacio deslizando. Toca los puntos para ver los detalles.</p>
+  <div class="flecha">Desliza ↓</div>
+</section>
+
+<div class="track" id="track">
+  <div class="stage" id="stage">
+    <div class="prog" id="prog"></div>
+    <div class="ficha" id="ficha" role="status"></div>
+    <div class="txt" id="txt"></div>
+  </div>
+</div>
+
+<section class="fin">
+  <h2>Esto es una prueba</h2>
+  <p>Mismo recorrido con tus renders: la cámara avanza con el dedo y cada punto enlaza con el producto o el acabado del proyecto.</p>
+  <a href="#" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">Volver a empezar</a>
+</section>
+
+<script>
+(function(){
+'use strict';
+/* Cada escena: imagen, texto, cámara (de → a: zoom y desplazamiento en % de la imagen) y puntos (x,y en % de la imagen) */
+var ESC=[
+ {img:'r0.jpg',n:'01 · Sala principal',t:'Entras y todo el techo te guía',p:'Luz lineal que marca el recorrido hasta el fondo de la sala.',
+  fx:72,fy:42,
+  hs:[{x:41,y:50,t:'Vinilo «X-360»',d:'Gráfica de pared a medida. Zona pensada para foto y contenido de redes.',r:'Rotulación'},{x:34,y:19,t:'Luminaria lineal',d:'Perfil LED empotrado en el techo que dibuja la perspectiva de la nave.',r:'Iluminación'}]},
+ {img:'r1.jpg',n:'02 · Recepción',t:'Primera impresión: galería',p:'Expositores retroiluminados con la identidad de la marca.',
+  fx:58,fy:46,
+  hs:[{x:20,y:45,t:'Expositores luminosos',d:'Cajas con fotografía retroiluminada. Se cambian sin obra.',r:'Obra a medida'},{x:78,y:62,t:'Mostrador de tienda',d:'Barriles metálicos reutilizados como expositores de producto.',r:'Mobiliario'}]},
+ {img:'r4.jpg',n:'03 · Tienda y lounge',t:'Donde se queda el cliente',p:'Merchandising, sofá y un gran ventanal de luz.',
+  fx:50,fy:50,
+  hs:[{x:50,y:42,t:'Logotipo luminoso',d:'Letrero circular retroiluminado, el punto focal de la entrada.',r:'Rotulación'},{x:72,y:80,t:'Zona lounge',d:'Sofá chesterfield y mesa baja. Uso: espera y reuniones cortas.',r:'Mobiliario'}]},
+ {img:'r3.jpg',n:'04 · Sala de fuerza',t:'Espacio abierto, columna a la vista',p:'Los pilares existentes se integran como parte del diseño.',
+  fx:52,fy:44,
+  hs:[{x:52,y:52,t:'Pilar existente',d:'Se conserva y se integra: marca el límite entre dos zonas.',r:'Estado actual'},{x:84,y:34,t:'Escalera a la entreplanta',d:'Conecta la sala con la zona de cardio.',r:'Obra'}]},
+ {img:'r2.jpg',n:'05 · Cardio',t:'Arriba, el neón manda',p:'Entreplanta con vistas a toda la sala.',
+  fx:62,fy:44,
+  hs:[{x:63,y:34,t:'Rótulo de neón',d:'Letras retroiluminadas en violeta sobre pared negra.',r:'Rotulación'},{x:80,y:66,t:'Cintas de correr',d:'Equipos de cardio alineados de cara al ventanal.',r:'Equipamiento'}]},
+ {img:'r5.jpg',n:'06 · Racks',t:'Wall of Beasts',p:'La zona de peso libre, con la pared de marca de fondo.',
+  fx:62,fy:46,
+  hs:[{x:74,y:40,t:'Pared de marca',d:'Logotipo a gran formato con luz perimetral.',r:'Rotulación'},{x:84,y:66,t:'Racks de sentadilla',d:'Estructuras alineadas para entrenar en paralelo.',r:'Equipamiento'}]}
+];
+var $=function(i){return document.getElementById(i)};
+var track=$('track'),stage=$('stage'),txt=$('txt'),prog=$('prog'),ficha=$('ficha');
+var N=ESC.length,VH=function(){return window.innerHeight};
+track.style.height=(N*110+100)+'svh';
+var els=[],txts=[],dots=[];
+ESC.forEach(function(e,i){
+  var d=document.createElement('div');d.className='esc';
+  var cam=document.createElement('div');cam.className='cam';
+  var im=new Image();im.src=e.img;im.alt=e.t;im.decoding='async';if(i>1)im.loading='lazy';cam.appendChild(im);
+  e.hs.forEach(function(h,k){
+    var b=document.createElement('button');b.className='hs';b.style.left=h.x+'%';b.style.top=h.y+'%';b.setAttribute('aria-label',h.t);b.innerHTML='<i></i>';
+    b.addEventListener('click',function(ev){ev.stopPropagation();abre(h,b)});
+    cam.appendChild(b);
+  });
+  d.appendChild(cam);stage.insertBefore(d,stage.firstChild);els.push({d:d,cam:cam});
+  var t=document.createElement('div');t.innerHTML='<div class="n">'+e.n+'</div><h2>'+e.t+'</h2><p>'+e.p+'</p>';txt.appendChild(t);txts.push(t);
+  var p=document.createElement('i');prog.appendChild(p);dots.push(p);
+});
+/* orden de capas: la escena 0 debajo */
+els.slice().reverse().forEach(function(o,i){stage.insertBefore(o.d,stage.firstChild)});
+var abierto=null;
+function cierra(){ficha.classList.remove('on');if(abierto)abierto.classList.remove('on');abierto=null}
+function abre(h,b){
+  if(abierto===b){cierra();return}
+  if(abierto)abierto.classList.remove('on');
+  abierto=b;b.classList.add('on');
+  ficha.innerHTML='<b>'+h.t+'</b><span>'+h.d+'</span><small>'+h.r+' · ficha del proyecto (aquí enlazaría con el producto del catálogo)</small>';
+  ficha.classList.add('on');
+}
+stage.addEventListener('click',cierra);
+var ease=function(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2};
+var cur=0,obj=0;
+function medir(){
+  var r=track.getBoundingClientRect(),total=r.height-VH();
+  obj=Math.max(0,Math.min(1,-r.top/total))*(N-0.0001); /* 0..N */
+}
+function pinta(){
+  cur+=(obj-cur)*0.12; /* inercia: el movimiento sigue un instante al soltar */
+  if(Math.abs(obj-cur)<0.0005)cur=obj;
+  var idx=Math.min(N-1,Math.floor(cur)),f=cur-idx;
+  els.forEach(function(o,i){
+    var e=ESC[i],local=cur-i; /* <0 aún no, 0..1 activa, >1 pasada */
+    /* avance continuo hacia el punto de fuga: la cámara «camina» y sigue avanzando mientras se funde con la siguiente */
+    var p=Math.max(0,Math.min(1.3,local));
+    var s=1+0.62*Math.pow(p,1.15);
+    var x=-(e.fx-50)*(s-1)*0.72,y=-(e.fy-50)*(s-1)*0.72;
+    var op=local<-0.3?0:local<0?(local+0.3)/0.3:local<=0.7?1:local<1.0?1-(local-0.7)/0.3:0;
+    if(i===0&&local<0)op=1;
+    o.d.style.opacity=op;o.d.style.visibility=op>0.01?'visible':'hidden';
+    o.cam.style.transform='translate(-50%,-50%) translate('+x.toFixed(3)+'%,'+y.toFixed(3)+'%) scale('+s.toFixed(4)+')';
+  });
+  var act=Math.min(N-1,Math.max(0,Math.round(cur-0.2)));
+  txts.forEach(function(t,i){t.classList.toggle('on',i===act)});
+  dots.forEach(function(d,i){d.classList.toggle('on',i===act)});
+  if(act!==pinta.act){pinta.act=act;cierra()}
+  if(cur!==obj)requestAnimationFrame(pinta);
+}
+function tick(){medir();requestAnimationFrame(pinta)}
+window.addEventListener('scroll',tick,{passive:true});
+window.addEventListener('resize',tick);
+tick();
+})();
+</script>
+</body>
+</html>
