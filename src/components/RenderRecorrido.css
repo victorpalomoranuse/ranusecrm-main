@@ -21,7 +21,10 @@
 .rr-prog{position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:5;display:grid;gap:7px;pointer-events:none}
 .rr-prog i{display:block;width:4px;height:20px;border-radius:2px;background:rgba(255,255,255,.35);transition:background .3s,height .3s}
 .rr-prog i.on{background:#fff;height:32px}
-.rr-zona{position:absolute;left:clamp(22px,6vw,90px);right:clamp(22px,6vw,90px);bottom:20%;z-index:4;pointer-events:none;color:#fff;text-shadow:0 2px 34px rgba(0,0,0,.55);will-change:transform,opacity,filter;opacity:0}
-.rr-zona span{display:block;font-size:.72rem;letter-spacing:.34em;text-transform:uppercase;font-weight:500;opacity:.85;margin-bottom:14px}
-.rr-zona strong{display:block;font-weight:300;font-size:clamp(2.2rem,7.5vw,5.6rem);line-height:1.02;letter-spacing:-.01em;max-width:14ch}
+.rr-zona{position:absolute;left:clamp(18px,3.2vw,44px);top:clamp(78px,11vh,104px);max-width:min(300px,62vw);z-index:4;pointer-events:none;color:#fff;text-shadow:0 1px 14px rgba(0,0,0,.6);will-change:transform,opacity,filter;opacity:0}
+.rr-zona span{display:block;font-size:.6rem;letter-spacing:.3em;text-transform:uppercase;font-weight:500;opacity:.85;margin-bottom:6px}
+.rr-zona strong{display:block;font-weight:400;font-size:clamp(1.05rem,3.4vw,1.55rem);line-height:1.15;letter-spacing:.01em}
 @media(prefers-reduced-motion:reduce){.rr-zona{opacity:1!important;transform:none!important;filter:none!important}}
+.sp-recorrido{margin:0;padding:0}
+.rr-zona p{margin:8px 0 0;font-size:.74rem;line-height:1.45;font-weight:300;opacity:.9}
+.rr-zona::before{content:"";position:absolute;inset:-34px -44px -30px -30px;background:radial-gradient(ellipse at 30% 40%,rgba(0,0,0,.5),rgba(0,0,0,0) 72%);z-index:-1;pointer-events:none}

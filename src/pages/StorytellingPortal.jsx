@@ -270,6 +270,18 @@ export function StorytellingPortal({ project, dossier, code }) {
 
   /* orden: objetivo (necesidades) → plano → «Entendemos el espacio» → estilo → el resto de zonas */
   const iEsp = capitulos.findIndex(c => /entendemos el espacio/i.test(c.titulo || ''));
+  /* el recorrido: TODOS los renders del proyecto seguidos, zona tras zona, en un único escenario */
+  const escenasRec = capitulos.flatMap((c, i) => {
+    const vistos = new Set(), urls = [];
+    [c.render_url, ...c.bloques.filter(b => b.tipo === 'render').map(b => b.imagen_url)].forEach(u => { if (u && !vistos.has(u)) { vistos.add(u); urls.push(u); } });
+    return urls.map((u, k) => {
+      const x = (historia.interactivos || {})[u];
+      return { src: u, prof: x ? x.prof : null, mov: x ? x.mov : 'adelante:75:0', puntos: x ? (x.puntos || []) : [], alt: c.titulo || '', inicio: k === 0, zona: { num: capitulos.length > 1 ? String(i + 1).padStart(2, '0') : '', titulo: c.titulo, texto: c.texto } };
+    });
+  });
+  const recorrido = escenasRec.length ? (
+    <section className="sp-recorrido" id="sp-recorrido"><RecorridoEscenas escenas={escenasRec} /></section>
+  ) : null;
   const atmosfera = hayMood ? (
         <section className="sp-mood" id="sp-atmosfera">
           <p className="sp-label sp-rv">La atmósfera</p>
@@ -294,7 +306,8 @@ export function StorytellingPortal({ project, dossier, code }) {
     ...(objetivo ? [{ id: 'sp-objetivo', label: 'El objetivo' }] : []),
     ...(plano ? [{ id: 'sp-plano', label: 'El recorrido' }] : []),
     ...(hayMood && iEsp < 0 ? [{ id: 'sp-atmosfera', label: 'La atmósfera' }] : []),
-    ...capitulos.flatMap((c, i) => [{ id: `sp-c-${c.id}`, label: c.titulo || `Capítulo ${i + 1}` }, ...(hayMood && i === iEsp ? [{ id: 'sp-atmosfera', label: 'La atmósfera' }] : [])]),
+    ...(recorrido && iEsp < 0 ? [{ id: 'sp-recorrido', label: 'Recorre el espacio' }] : []),
+    ...capitulos.flatMap((c, i) => [{ id: `sp-c-${c.id}`, label: c.titulo || `Capítulo ${i + 1}` }, ...(hayMood && i === iEsp ? [{ id: 'sp-atmosfera', label: 'La atmósfera' }] : []), ...(recorrido && i === iEsp ? [{ id: 'sp-recorrido', label: 'Recorre el espacio' }] : [])]),
     { id: 'sp-dossier', label: 'Tu dossier' },
     { id: 'sp-siguiente', label: 'Siguiente paso' },
   ];
@@ -391,6 +404,7 @@ export function StorytellingPortal({ project, dossier, code }) {
       )}
 
       {iEsp < 0 && atmosfera}
+      {iEsp < 0 && recorrido}
 
       {capitulos.map((c, i) => (
         <Fragment key={c.id}>
@@ -403,7 +417,6 @@ export function StorytellingPortal({ project, dossier, code }) {
               {c.texto && <p className="sp-text">{c.texto}</p>}
             </div>
           </div>
-          <Renders primero={i === 0} interactivos={historia.interactivos} numZona={capitulos.length > 1 ? String(i + 1).padStart(2, '0') : ''} tituloZona={c.titulo} textoZona={c.texto} items={[...(c.render_url ? [{ id: 'main', imagen_url: c.render_url, titulo: c.titulo }] : []), ...c.bloques.filter(b => b.tipo === 'render')]} />
           <PasosPlano bloques={c.bloques} docs={docsTecnicos} />
           <Bloques bloques={c.bloques.filter(b => b.tipo !== 'render' && !esPaso(b))} capitulos={capitulos} equipo={project.equipment} materiales={project.materials} />
           {c.servicios.length > 0 && (
@@ -426,6 +439,7 @@ export function StorytellingPortal({ project, dossier, code }) {
           {c.tour_url && <div className="sp-blk"><a className="sp-tour" href={c.tour_url} target="_blank" rel="noopener noreferrer">Recorrer este espacio en 360º</a></div>}
         </section>
         {i === iEsp && atmosfera}
+        {i === iEsp && recorrido}
         </Fragment>
       ))}
 

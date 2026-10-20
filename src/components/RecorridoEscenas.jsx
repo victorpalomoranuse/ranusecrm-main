@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { analizaMov, estadoCamara, cargaImg } from './RenderRecorrido';
 import './RenderRecorrido.css';
 
-// Recorrido continuo: los renders de una zona se encadenan en un solo escenario fijo. Al deslizar, la cámara
-// avanza por el primero y, sin parar, «entra» en el siguiente (fundido con el movimiento todavía en marcha),
-// así se siente que uno se mueve por el espacio de una vista a otra. Si algo falla, se enseñan las imágenes sin más.
+// Recorrido continuo: TODOS los renders del proyecto, en orden, en un solo escenario fijo. Al deslizar, la cámara avanza por
+// el primero y, sin parar, «entra» en el siguiente (fundido con el movimiento todavía en marcha): uno se mueve por el espacio
+// de una vista a otra sin salir nunca del recorrido. Al empezar una zona nueva, su nombre aparece pequeño, arriba a la izquierda, y se desvanece.
+// Cada escena: { src, prof (mapa de profundidad, opcional), mov, puntos, alt, inicio (primera de su zona), zona: { num, titulo, texto } }.
+// Si algo falla, se enseñan las imágenes sin más.
 
 const VS = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
 const FS = `
@@ -35,8 +37,17 @@ void main(){
   gl_FragColor=vec4(c,1.0);
 }`;
 const FOC = [0.5, 0.46];
+const S0 = 0.216; // avance con el que una escena «llega» del fundido: la siguiente sigue desde ahí, sin saltos
+const INI = 0.76, SPAN = 0.22; // el fundido ocupa el último cuarto de cada escena
 
-export default function RecorridoEscenas({ escenas, zona }) {
+const recorta = (t, n = 190) => {
+  const s = String(t || '').trim().replace(/\s+/g, ' ');
+  if (s.length <= n) return s;
+  const corte = s.slice(0, n), p = Math.max(corte.lastIndexOf('. '), corte.lastIndexOf('? '), corte.lastIndexOf('! '));
+  return p > 60 ? corte.slice(0, p + 1) : corte.replace(/\s+\S*$/, '') + '…';
+};
+
+export default function RecorridoEscenas({ escenas }) {
   const N = escenas.length;
   const outer = useRef(null), stage = useRef(null), cv = useRef(null), botones = useRef([]), zonaRef = useRef(null);
   const [fallo, setFallo] = useState(false);
@@ -75,16 +86,19 @@ export default function RecorridoEscenas({ escenas, zona }) {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       return t;
     };
+    const llano = () => { const c = document.createElement('canvas'); c.width = 4; c.height = 4; const x = c.getContext('2d'); x.fillStyle = '#808080'; x.fillRect(0, 0, 4, 4); return c; }; // render sin mapa de profundidad: todo a la misma distancia
     const asegura = (i) => {
       if (i < 0 || i >= N || tex[i] || cargando[i]) return;
       cargando[i] = true;
       const e = datos.current[i];
-      Promise.all([cargaImg(e.src, anchoImg), cargaImg(e.prof, 1100)]).then(([a, d]) => {
+      Promise.all([cargaImg(e.src, anchoImg), e.prof ? cargaImg(e.prof, 1100) : Promise.resolve({ c: llano() })]).then(([a, d]) => {
         cargando[i] = false; if (muerto) return;
-        const c = document.createElement('canvas'); c.width = 160; c.height = 113;
-        const x = c.getContext('2d'); x.drawImage(d.c, 0, 0, 160, 113);
-        const px = x.getImageData(0, 0, 160, 113).data, m = new Float32Array(160 * 113); for (let k = 0; k < m.length; k++) m[k] = px[k * 4] / 255;
-        mapas[i] = m;
+        if (e.prof) {
+          const c = document.createElement('canvas'); c.width = 160; c.height = 113;
+          const x = c.getContext('2d'); x.drawImage(d.c, 0, 0, 160, 113);
+          const px = x.getImageData(0, 0, 160, 113).data, m = new Float32Array(160 * 113); for (let k = 0; k < m.length; k++) m[k] = px[k * 4] / 255;
+          mapas[i] = m;
+        }
         tex[i] = { img: textura(a.c, true), dep: textura(d.c, false), asp: a.w / a.h };
         setListo(true); tick();
       }).catch(() => { cargando[i] = false; if (i === 0 && !muerto) setFallo(true); });
@@ -100,8 +114,8 @@ export default function RecorridoEscenas({ escenas, zona }) {
     const nProf = (i, px, py) => { const m = mapas[i]; if (!m) return 0.4; const x = Math.max(0, Math.min(159, Math.round(px * 159))), y = Math.max(0, Math.min(112, Math.round(py * 112))); return m[y * 160 + x]; };
     const aPantalla = (i, x, y, t, lat, sw, rel) => {
       const n = 0.5 + (nProf(i, x / 100, y / 100) - 0.5) * rel, k = 0.12 + n * 0.95, asp = tex[i] ? tex[i].asp : 1.5;
-      let u = FOC[0] + (x / 100 + (sw * 0.012 - lat * 0.034) * (n - 0.35) - FOC[0]) * (1 + t * k);
-      let v = FOC[1] + (y / 100 + sw * 0.004 * (n - 0.35) - FOC[1]) * (1 + t * k);
+      const u = FOC[0] + (x / 100 + (sw * 0.012 - lat * 0.034) * (n - 0.35) - FOC[0]) * (1 + t * k);
+      const v = FOC[1] + (y / 100 + sw * 0.004 * (n - 0.35) - FOC[1]) * (1 + t * k);
       const va = W / H; let sx, sy;
       if (va < asp) { sx = 0.5 + (u - 0.5) / (va / asp); sy = v; } else { sx = u; sy = 0.5 + (v - 0.5) / (asp / va); }
       return { x: sx * W, y: sy * H };
@@ -110,25 +124,18 @@ export default function RecorridoEscenas({ escenas, zona }) {
     const estado = (e, s) => {
       const { dir, inten, relieve } = analizaMov(e.mov), k = inten / 75;
       const [t, lat] = estadoCamara(dir, s);
-      return { t: t * k, lat: lat * k, sw: (dir === 'izq' || dir === 'dcha') ? 0 : Math.sin(s * 3.1) * k, rel: relieve / 100 };
+      return { t: t * k, lat: lat * k, sw: (dir === 'izq' || dir === 'dcha') ? 0 : Math.sin(s * 3.1) * k, rel: e.prof ? relieve / 100 : 0 };
     };
     let actual = -1;
     const dibuja = () => {
       ocupado = false; if (muerto) return;
       cur += (obj - cur) * 0.12; if (Math.abs(obj - cur) < 0.0004) cur = obj;
-      // nombre de la zona: aparece al entrar en el recorrido y se va desvaneciendo (subiendo y desenfocándose) al avanzar por la primera vista
-      const zr = zonaRef.current;
-      if (zr) {
-        const sale = Math.max(0, Math.min(1, (cur - 0.32) / 0.4)), ent = entra * entra * (3 - 2 * entra);
-        zr.style.opacity = (ent * (1 - sale)).toFixed(3);
-        zr.style.transform = 'translateY(' + (-(cur * 70) + (1 - ent) * 40).toFixed(1) + 'px) scale(' + (1 + Math.min(cur, 1) * 0.08).toFixed(3) + ')';
-        zr.style.filter = sale > 0.01 ? 'blur(' + (sale * 7).toFixed(1) + 'px)' : 'none';
-      }
       const i = Math.min(N - 1, Math.floor(cur)), f = cur - i, ultima = i >= N - 1;
-      // la escena avanza con el scroll; al final se funde con la siguiente, que ya empieza a moverse (movimiento continuo)
-      const sA = ultima ? Math.min(1, f) : Math.min(1.35, f + (f > 0.76 ? (f - 0.76) * 0.9 : 0));
-      let mix = 0; if (!ultima && f > 0.76) mix = Math.min(1, (f - 0.76) / 0.22); mix = mix * mix * (3 - 2 * mix);
-      const sB = !ultima && mix > 0 ? Math.max(0, f - 0.76) * 0.9 : 0;
+      // la escena avanza con el scroll; al final se funde con la siguiente, que ya empieza a moverse (movimiento continuo, sin saltos)
+      const s0 = i > 0 ? S0 : 0, base = s0 + (1 - s0) * f;
+      const sA = ultima ? Math.min(1, base) : Math.min(1.35, base + (f > INI ? (f - INI) * 0.9 : 0));
+      let mix = 0; if (!ultima && f > INI) mix = Math.min(1, (f - INI) / SPAN); mix = mix * mix * (3 - 2 * mix);
+      const sB = !ultima && mix > 0 ? Math.max(0, f - INI) * 0.9 : 0;
       asegura(i); asegura(i + 1); asegura(i - 1);
       for (let k = 0; k < N; k++) if (Math.abs(k - i) > 2) suelta(k);
       const A = tex[i], j = ultima ? i : i + 1, B = tex[j];
@@ -144,9 +151,24 @@ export default function RecorridoEscenas({ escenas, zona }) {
         gl.uniform1f(U.uMix, usaB ? mix : 0);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
-      // puntos tocables: los de la escena que se ve (y los de la siguiente al fundirse)
       const dom = mix > 0.5 ? j : i;
       if (dom !== actual) { actual = dom; setAct(dom); setAbierto(null); }
+      // nombre de la zona: solo en la primera vista de cada zona; aparece al llegar a ella y se desvanece subiendo y desenfocándose
+      const zr = zonaRef.current;
+      if (zr) {
+        const ed = datos.current[dom], sd = dom === i ? f : Math.max(0, f - INI) * 0.9;
+        let op = 0, sale = 0;
+        if (ed && ed.inicio) {
+          sale = Math.max(0, Math.min(1, (sd - 0.36) / 0.4));
+          op = Math.min(1, sd / 0.16) * (1 - sale);
+          if (dom === 0) { const ent = entra * entra * (3 - 2 * entra); op = Math.min(1, ent) * (1 - sale); }
+          if (mix > 0 && !ultima) op *= dom === j ? Math.max(0, 2 * mix - 1) : Math.max(0, 1 - 2 * mix); // cruce limpio entre el nombre que sale y el que entra
+        }
+        zr.style.opacity = op.toFixed(3);
+        zr.style.transform = 'translateY(' + (-(Math.min(sd, 1) * 22)).toFixed(1) + 'px)';
+        zr.style.filter = sale > 0.01 ? 'blur(' + (sale * 3).toFixed(1) + 'px)' : 'none';
+      }
+      // puntos tocables: los de la escena que se ve (y los de la siguiente al fundirse)
       datos.current.forEach((e, k) => {
         const lista = botones.current[k] || [];
         const visible = (k === i && mix < 0.4) || (k === j && !ultima && mix > 0.6);
@@ -175,21 +197,22 @@ export default function RecorridoEscenas({ escenas, zona }) {
       tex.forEach(t => { if (t) { gl.deleteTexture(t.img); gl.deleteTexture(t.dep); } });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [N, escenas.map(e => e.src + e.prof).join('|')]);
+  }, [N, escenas.map(e => e.src + (e.prof || '')).join('|')]);
 
   if (fallo) {
     return <>{escenas.map((e, i) => <div className="rr-plano" key={i}><img src={e.src} alt={e.alt || ''} loading="lazy" /></div>)}</>;
   }
-  const cap = escenas[act] || escenas[0];
+  const cap = escenas[act] || escenas[0], z = cap.zona;
   return (
-    <div ref={outer} className="rr-track" style={N > 1 ? { height: (N * 125 + 90) + 'svh' } : undefined}>
+    <div ref={outer} className="rr-track" style={N > 1 ? { height: (N * 115 + 90) + 'svh' } : undefined}>
       <div ref={stage} className="rr-stage" onClick={() => setAbierto(null)} role="img" aria-label={cap.alt || ''}>
         <canvas ref={cv} className="rr-cv" />
         <div className="rr-sombra" />
-        {zona && zona.titulo && (
+        {z && z.titulo && (
           <div ref={zonaRef} className="rr-zona" aria-hidden="true">
-            {zona.num && <span>Zona {zona.num}</span>}
-            <strong>{zona.titulo}</strong>
+            {z.num && <span>Zona {z.num}</span>}
+            <strong>{z.titulo}</strong>
+            {cap.inicio && z.texto && <p>{recorta(z.texto, 105)}</p>}
           </div>
         )}
         {!listo && <img className="rr-previa" src={escenas[0].src} alt="" />}
