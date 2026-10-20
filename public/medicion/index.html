@@ -948,11 +948,22 @@ function eqRect(e){
   return {x0:c.x-hw,y0:c.y-hh,x1:c.x+hw,y1:c.y+hh,cx:c.x,cy:c.y};
 }
 /* cada bloque tiene estado (e.s): 'ex' ya está (sale en Estado actual y se mantiene en Distribución), 'dem' se retira (Estado actual y Demoliciones), sin estado = nuevo (Distribución) */
+/* capas: el orden en que se dibujan los grupos de elementos (de abajo a arriba) y si se ven; además, cada elemento se puede subir o bajar dentro de su capa (z) */
+var CAPAS_NOM={mm:'Obra a medida',eq:'Bloques (máquinas y mobiliario)',pil:'Pilares',dr:'Dibujos y notas'};
+function capasOrden(){
+  var d=['mm','eq','pil','dr'],c=[];
+  ((st.v&&st.v.capas)||[]).forEach(function(x){if(d.indexOf(x)>=0&&c.indexOf(x)<0)c.push(x)});
+  d.forEach(function(x){if(c.indexOf(x)<0)c.push(x)});
+  return c;
+}
+function capaVis(id){return !(st.v&&st.v.capasOc&&st.v.capasOc[id])}
+function porZ(list){return list.map(function(q,i){return {q:q,i:i}}).sort(function(a,b){return ((a.q.z||0)-(b.q.z||0))||(a.i-b.i)}).map(function(o){return o.q})}
 function eqVis(e,view){return stVis(e.s||'new',view)}
 function eqV(view){return st.v.eq.filter(function(e){return eqVis(e,view)})}
 function pilEn(p,tol){
   var best=null;
-  st.v.pil.forEach(function(q){
+  if(!capaVis('pil'))return null;
+  porZ(st.v.pil).forEach(function(q){
     if(!stVis(q.s,st.view))return;
     pilCells(q).forEach(function(c){if(Math.abs(p.x-c.x)<=q.w/2+tol/2&&Math.abs(p.y-c.y)<=q.d/2+tol/2)best=q});
   });
@@ -960,7 +971,7 @@ function pilEn(p,tol){
 }
 function pickEq(p){
   if(pilEn(p,0))return null; /* un pilar encima del bloque: se toca el pilar */
-  var a=eqV(st.view);
+  var a=capaVis('eq')?porZ(eqV(st.view)):[];
   for(var i=a.length-1;i>=0;i--){
     var r=eqRect(a[i]);
     if(!(p.x>=r.x0&&p.x<=r.x1&&p.y>=r.y0&&p.y<=r.y1))continue;
@@ -1347,7 +1358,7 @@ function drHit(it,p,tol){
 function drVisible(it,view){return it.vw==='*'||it.vw===view}
 function pickDr(p,tol,view){
   var r=null;
-  (st.v.dr||[]).forEach(function(it){if(drVisible(it,view)&&drHit(it,p,tol))r=it});
+  if(capaVis('dr'))porZ(st.v.dr||[]).forEach(function(it){if(drVisible(it,view)&&drHit(it,p,tol))r=it});
   return r;
 }
 function drNube(a,b,r){ // contorno de nube: arcos a lo largo del rectángulo
@@ -1473,9 +1484,14 @@ function drMenu(e){
   ctxAbre(e.clientX,e.clientY,op);
   return true;
 }
-function drSvg(C,px,view,sel,o){
+function drItemsSvg(C,px,view,sel){
   var h='';
-  (st.v.dr||[]).forEach(function(it){if(drVisible(it,view))h+=drItemSvg(C,px,it,sel&&sel.t==='dr'&&sel.id===it.id)});
+  if(!capaVis('dr'))return h;
+  porZ(st.v.dr||[]).forEach(function(it){if(drVisible(it,view))h+=drItemSvg(C,px,it,sel&&sel.t==='dr'&&sel.id===it.id)});
+  return h;
+}
+function drSvg(C,px,view,sel,o,sinItems){
+  var h=sinItems?'':drItemsSvg(C,px,view,sel);
   if(o&&o.nodes&&st.tool==='select'&&view!=='alz'){
     var dsel=drSeleccion().filter(function(q){return drVisible(q,view)});
     if(dsel.length){
@@ -3178,6 +3194,19 @@ function descCota(key){
   if(t==='s')return 'Nombre o referencia de la zona '+(+p[1]+1);
   return key;
 }
+function capasPanel(){
+  var n={mm:(st.v.mm||[]).length,eq:st.v.eq.length,pil:st.v.pil.length,dr:(st.v.dr||[]).length},ord=capasOrden().slice().reverse(),h='';
+  h+='<div class="rowh"><strong>Capas</strong><button data-a="capasOn" class="pri" style="min-height:32px">Listo</button></div>';
+  h+='<p class="note">Arriba del todo lo que se dibuja por delante. Sube o baja una capa con las flechas, y escóndela con el ojo (también deja de salir en el PDF). Para un elemento suelto, selecciónalo y usa «Traer al frente» o «Enviar atrás».</p>';
+  ord.forEach(function(id,i){
+    h+='<div class="rowh" style="margin-top:8px;align-items:center"><span style="flex:1"><b>'+CAPAS_NOM[id]+'</b> <span class="muted">· '+n[id]+'</span></span>'+
+      '<button data-a="capa:up:'+id+'" title="Subir (más al frente)"'+(i===0?' disabled':'')+'>▲</button>'+
+      '<button data-a="capa:down:'+id+'" title="Bajar (más al fondo)"'+(i===ord.length-1?' disabled':'')+'>▼</button>'+
+      '<button data-a="capa:ver:'+id+'" aria-pressed="'+capaVis(id)+'" title="Mostrar u ocultar esta capa">'+(capaVis(id)?'👁':'—')+'</button></div>';
+  });
+  h+='<p class="note" style="margin-top:10px">Los muros, las puertas y las cotas siempre van en su sitio: las capas ordenan bloques, pilares, obra a medida y dibujos.</p>';
+  return h;
+}
 function ajustePanel(){
   var view=st.view,oc=ocVista(view),mv=mvVista(view),h='';
   h+='<div class="rowh"><strong>Ajustar cotas y etiquetas</strong><button data-a="cotasAdj" class="pri" style="min-height:32px">Listo</button></div>';
@@ -3671,14 +3700,15 @@ function scene0(C,k,view,o){
   /* los pilares van delante de los bloques: en las láminas con bloques se dibujan después de ellos */
   function pintaPil(){
     var r='';
-    v.pil.forEach(function(p){
+    porZ(v.pil).forEach(function(p){
       if(!stVis(p.s,view))return;
       var fill=(view==='demol'&&p.s==='dem')?'url(#hat)':stCol(p.s,view,C);
       pilCells(p).forEach(function(c){r+='<rect x="'+f2(c.x-p.w/2)+'" y="'+f2(c.y-p.d/2)+'" width="'+f2(p.w)+'" height="'+f2(p.d)+'" style="fill:'+(o.flat&&!(view==='demol'&&p.s==='dem')?C.bg:fill)+';stroke:'+(view==='demol'&&p.s==='dem'?C.dem:(o.flat?fill:'none'))+';stroke-width:'+f2((o.flat?1.5:1)*px)+'"/>'});
     });
     return r;
   }
-  if(!(view==='distrib'||view==='actual'||view==='demol'))h+=pintaPil();
+  var eqVista=(view==='distrib'||view==='actual'||view==='demol'),ordNE=capasOrden(),drTemprano=!eqVista&&ordNE.indexOf('dr')<ordNE.indexOf('pil');
+  if(!eqVista){if(drTemprano)h+=drItemsSvg(C,px,view,sel);if(capaVis('pil'))h+=pintaPil()}
   h+=techoSvg(C,px,view,sel);
   if(view==='cotas')v.pil.forEach(function(p){
     if(!stVis(p.s,view))return;
@@ -3726,7 +3756,8 @@ function scene0(C,k,view,o){
   }
   if(view==='distrib'||view==='actual'||view==='demol'){
     var distr=view==='distrib';
-    if(distr){var mmr=mmSvg(C,px,sel,o,function(){return true});h+=mmr.h;zlab+=mmr.z}
+    var Lmm='',Leq='';
+    if(distr){var mmr=mmSvg(C,px,sel,o,function(){return true});Lmm=mmr.h;zlab+=mmr.z}
     var paso=num(v.paso)||80,eqs=eqV(view),bad={},gl='';
     if(distr&&sel&&sel.t==='eq'){
       var se=by(eqs,sel.id);
@@ -3775,9 +3806,9 @@ function scene0(C,k,view,o){
       }
     }
     var tiposEq=eqTipos(),etqEq='',etqPl=eqEtqUbica(px);
-    eqs.forEach(function(e,i){
+    porZ(eqs).forEach(function(e,i){
       var r=eqRect(e),col=(bad[e.id]||(e.s==='dem'&&!distr))?C.dem:(C.blk||C.ink),tq=tiposEq.porId[e.id];
-      h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')"><rect width="'+e.w+'" height="'+e.d+'" style="fill:'+C.bg+'"/>'+eqSym(e.ty,e.w,e.d,col,px,e.cid)+'</g>';
+      Leq+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')"><rect width="'+e.w+'" height="'+e.d+'" style="fill:'+C.bg+'"/>'+eqSym(e.ty,e.w,e.d,col,px,e.cid)+'</g>';
       if(!o.nonum&&tq&&distr){
         var pl=etqPl[e.id]||{lx:r.x1+10*px,ly:r.y0+7*px,ax:r.x1,ay:r.y0+Math.min(7*px,(r.y1-r.y0)/2),rr:Math.max(8,5.2+tq.cod.length*2.6)*px},lx=pl.lx,ly=pl.ly,rr=pl.rr;
         var dl=Math.hypot(pl.ax-lx,pl.ay-ly)||1;
@@ -3786,7 +3817,8 @@ function scene0(C,k,view,o){
         etqEq+='<text x="'+f2(lx)+'" y="'+f2(ly+3.4*px)+'" text-anchor="middle" style="fill:#ffffff;font-size:'+f2(9.5*px)+'px;font-weight:700">'+esc(tq.cod)+'</text>';
       }
     });
-    h+=pintaPil(); /* los pilares, delante de los bloques */
+    var CAPA={mm:Lmm,eq:Leq,pil:capaVis('pil')?pintaPil():'',dr:drItemsSvg(C,px,view,sel)}; /* las capas, en el orden elegido (de abajo a arriba) */
+    capasOrden().forEach(function(id){if(capaVis(id)&&CAPA[id])h+=CAPA[id]});
     h+=gl+etqEq; /* las etiquetas van encima de todo el equipamiento */
     if(distr&&sel&&sel.t==='eq'){
       var se2=by(eqs,sel.id);
@@ -3832,7 +3864,7 @@ function scene0(C,k,view,o){
   h+=pilDims(C,px,view,sel,!!o.flat,(o.flat||limpio)?dlInit().ocup:null);
   if(sel&&sel.t==='op'){var lo=opn(sel.id);if(lo&&opVis(lo,view)){var lq=og(lo);h+=txt(C,px,(lq.x1+lq.x2)/2+lq.nx*(lq.w.t/2+26*px),(lq.y1+lq.y2)/2+lq.ny*(lq.w.t/2+26*px)+4*px,fmtU(lo.w)+' × '+fmtU(lo.h),C.accent,12,600)}}
   if(o.nodes&&sel&&sel.t==='wall'){var swz=wl(sel.id);if(swz&&wallVis(swz,view))h+=selDims(C,px,swz,view)}
-  h+=drSvg(C,px,view,sel,o);
+  h+=drSvg(C,px,view,sel,o,eqVista||drTemprano);
   if(o.marks&&view==='acab')h+=elevMarks(C,px);
   h+=zlab;
   if(o.flat&&!o.ante&&view!=='suelos'&&view!=='techos'&&view!=='alz'){var zet=zonaEtiquetas(view);if(zet.length>1)zet.forEach(function(e,iz){h+=adjK('s:'+iz,txt(C,px,e.f.cx,e.f.cy,e.tag,C.dim,9.5,600),e.f.cx,e.f.cy)})}
@@ -5930,7 +5962,7 @@ function toolbar(){
   $('defstate').innerHTML=L.map(function(x){return '<button data-a="defstate" data-s="'+x[0]+'" aria-pressed="'+(st.defState===x[0])+'">'+x[1]+'</button>'}).join('');
   $('dimbase').innerHTML='<span class="note" style="margin:0">Siempre de cara interior a cara interior (hueco libre)</span>';
   var DL=[['simple','Sencillas'],['ext','Exterior'],['int','Interior'],['dob','Doble']];
-  if($('rejsel'))$('rejsel').innerHTML=[['0','Libre'],['1','1 cm'],['5','5 cm']].map(function(x){return '<button data-a="rejilla" data-s="'+x[0]+'" aria-pressed="'+((+st.rejilla||0)===+x[0])+'" title="Paso con el que se mueven los elementos al arrastrarlos">'+x[1]+'</button>'}).join('')+'<button data-a="imanOn" aria-pressed="'+(st.imanOn!==false)+'" title="Los bloques se pegan al ras de muros, pilares y otros bloques al arrastrarlos (Alt lo quita al momento)">Imán</button>';
+  if($('rejsel'))$('rejsel').innerHTML=[['0','Libre'],['1','1 cm'],['5','5 cm']].map(function(x){return '<button data-a="rejilla" data-s="'+x[0]+'" aria-pressed="'+((+st.rejilla||0)===+x[0])+'" title="Paso con el que se mueven los elementos al arrastrarlos">'+x[1]+'</button>'}).join('')+'<button data-a="capasOn" aria-pressed="'+(!!st.capasOn)+'" title="Ordena qué va por delante: bloques, pilares, obra a medida y dibujos">Capas</button><button data-a="imanOn" aria-pressed="'+(st.imanOn!==false)+'" title="Los bloques se pegan al ras de muros, pilares y otros bloques al arrastrarlos (Alt lo quita al momento)">Imán</button>';
   $('dimsel').innerHTML=DL.map(function(x){return '<button data-a="dims" data-s="'+x[0]+'" aria-pressed="'+(st.dims===x[0])+'">'+x[1]+'</button>'}).join('')+'<button data-a="cotasAdj" aria-pressed="'+(!!st.cotasAdj)+'" title="Elige qué cotas y etiquetas salen en esta lámina: toca una para ocultarla, moverla o volver a ponerla">Ajustar cotas'+(function(){var n=Object.keys(ocVista(st.view)).length;return n?' · '+n+' oculta'+(n===1?'':'s'):''})()+'</button><button data-a="cotasTodas" aria-pressed="'+(!!st.cotasTodas)+'" title="Por defecto el plano se ve limpio: los números que se pisan no se ponen (acércate o selecciona un muro y salen). Aquí puedes ver todos.">Ver todas</button>';
   $('t-pt').hidden=!(st.view==='ilum'||st.view==='elec');
   $('t-paint').hidden=!(st.view==='suelos'||st.view==='techos'||st.view==='acab'||st.view==='alz'||st.view==='demol');
@@ -6102,6 +6134,7 @@ function previewEq(e){
 function panelSel(focus){
   var el=$('sel'),s=st.sel,h='';
   if(st.cotasAdj){el.innerHTML=ajustePanel();mostrarSel();return}
+  if(st.capasOn){el.innerHTML=capasPanel();mostrarSel();return}
   if(st.multi&&st.multi.length){
     var cnt={};st.multi.forEach(function(m){cnt[m.t]=(cnt[m.t]||0)+1});
     var NOM={wall:'muro',op:'puerta/ventana',pil:'pilar',eq:'máquina',pt:'punto',dr:'dibujo'};
@@ -6131,6 +6164,7 @@ function panelSel(focus){
     var e=by(st.v.eq,s.id),ix=st.v.eq.indexOf(e)+1;
     var tqp=eqTipos().porId[e.id];
     h+='<div class="rowh"><strong>'+(tqp?tqp.cod:ix)+' · '+esc(e.nm)+'</strong><span class="muted">giro '+e.rot+'°</span></div>';
+    h+='<div class="btns tr"><button data-a="zfront" title="Dibujarlo por encima de los demás bloques">Traer al frente</button><button data-a="zback" title="Dibujarlo por debajo de los demás bloques">Enviar atrás</button></div>';
     h+='<div class="lab">Estado del bloque</div>'+seg3(e.s||'new','eqstate')+'<p class="note" style="margin:4px 0 8px">'+(e.s==='ex'?'Ya está en el espacio: sale en Estado actual y se mantiene en Distribución.':e.s==='dem'?'Ya está y se retira: sale en Estado actual y en Demoliciones, no en Distribución.':'Nuevo: solo sale en Distribución (y cuenta en el presupuesto).')+'</p>';
     h+='<div class="lab">Pegar al ras del muro, pilar o bloque más cercano</div><div class="btns tr"><button data-a="eqpg:-1,0" title="Pegar a la izquierda">⟵ Izquierda</button><button data-a="eqpg:1,0" title="Pegar a la derecha">Derecha ⟶</button><button data-a="eqpg:0,-1" title="Pegar hacia arriba">↑ Arriba</button><button data-a="eqpg:0,1" title="Pegar hacia abajo">↓ Abajo</button></div><p class="note" style="margin:2px 0 6px">Al arrastrar un bloque también se pega solo al ras de muros, pilares y otros bloques cercanos (con Alt pulsado no).</p>';
     h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="eqrotl45" title="Girar 45° a la izquierda">⟲ 45°</button><button data-a="eqrot45" title="Girar 45° a la derecha">⟳ 45°</button><button data-a="eqrotl" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="eqrot" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="eqrot180" title="Girar 180°">180°</button><button data-a="eqflx" aria-pressed="'+!!e.fx+'" title="Espejo izquierda-derecha">⇋ Espejo</button><button data-a="eqfly" aria-pressed="'+!!e.fy+'" title="Espejo arriba-abajo">⇅ Espejo</button></div>';
@@ -6249,6 +6283,7 @@ function panelSel(focus){
   }else if(s.t==='pil'){
     var p=pl(s.id);
     h+='<div class="rowh"><strong>Pilar</strong></div>';
+    h+='<div class="btns tr"><button data-a="zfront">Traer al frente</button><button data-a="zback">Enviar atrás</button></div>';
     h+=fld('pil_w','Ancho (cm)',p.w)+fld('pil_d','Fondo (cm)',p.d);
     h+='<div class="lab">Repetir en hilera (separador de ambientes)</div><p class="note" style="margin:0 0 6px">Pon más de 1 para crear una fila de pilares, lamas o celosía que separe zonas sin cerrar del todo la sala.</p>';
     h+=fld('pil_cnt','Cantidad',p.cnt||1)+fld('pil_sep','Separación entre ejes (cm)',p.sep>0?p.sep:((p.dir==='v'?p.d:p.w)+10));
@@ -6261,6 +6296,7 @@ function panelSel(focus){
   }else if(s.t==='dr'){
     var dr=by(st.v.dr,s.id),dnom=(DRK.filter(function(x){return x[0]===dr.t})[0]||['',''])[1];
     h+='<div class="rowh"><strong>'+esc(dnom)+'</strong><span class="muted">dibujo libre</span></div>';
+    h+='<div class="btns tr"><button data-a="zfront">Traer al frente</button><button data-a="zback">Enviar atrás</button></div>';
     if(dr.t==='text'||dr.t==='zona')h+='<label class="fld"><span>'+(dr.t==='zona'?'Nombre de la zona':'Texto')+'</span><textarea data-t="dr_txt" rows="'+(dr.t==='zona'?2:3)+'">'+esc(dr.txt||'')+'</textarea></label>'+fld('dr_fs',dr.t==='zona'?'Tamaño del nombre':'Tamaño del texto',dr.fs||(dr.t==='zona'?14:12));
     if(dr.t==='zona')h+='<p class="note">Superficie de la zona: <b>'+m2(polyArea(dr.pts)/10000)+' m²</b> (sale en el plano y en las mediciones de la lámina).</p>';
     if(dr.t==='dim')h+='<p class="note">Medida: <b>'+fmt(Math.hypot(dr.pts[1].x-dr.pts[0].x,dr.pts[1].y-dr.pts[0].y))+' cm</b></p>';
@@ -6698,6 +6734,18 @@ function doAction(a,el){
   var s=st.sel,sv=el.getAttribute('data-s');
   if(a==='defstate'){st.defState=sv;toolbar();return}
   if(a==='dims'){st.dims=sv;toolbar();save();render();return}
+  if((a==='zfront'||a==='zback')&&st.sel){
+    var lz={eq:st.v.eq,pil:st.v.pil,dr:st.v.dr}[st.sel.t],itz=lz&&by(lz,st.sel.id);
+    if(itz){snap();var zs=lz.map(function(q){return q.z||0});itz.z=a==='zfront'?Math.max.apply(null,zs)+1:Math.min.apply(null,zs)-1;commit();toast(a==='zfront'?'Al frente':'Enviado atrás')}
+    return;
+  }
+  if(a==='capasOn'){st.capasOn=!st.capasOn;if(st.capasOn)st.cotasAdj=false;toolbar();panelSel();render();return}
+  if(a.indexOf('capa:')===0){
+    var pc2=a.split(':'),ord=capasOrden();snap();st.v.capas=ord;
+    if(pc2[1]==='up'||pc2[1]==='down'){var ix=ord.indexOf(pc2[2]),jx=pc2[1]==='up'?ix+1:ix-1;if(ix>=0&&jx>=0&&jx<ord.length){var tmp=ord[ix];ord[ix]=ord[jx];ord[jx]=tmp}}
+    else if(pc2[1]==='ver'){st.v.capasOc=st.v.capasOc||{};if(st.v.capasOc[pc2[2]])delete st.v.capasOc[pc2[2]];else st.v.capasOc[pc2[2]]=1}
+    commit(false);panelSel();render();return;
+  }
   if(a==='rejilla'){st.rejilla=+sv||0;try{localStorage.setItem('ranuse-plano-rejilla',String(st.rejilla))}catch(e){}toolbar();return}
   if(a==='imanOn'){st.imanOn=st.imanOn===false;try{localStorage.setItem('ranuse-plano-iman',st.imanOn?'1':'0')}catch(e){}toolbar();toast(st.imanOn?'Imán activado: los bloques se pegan al ras':'Imán desactivado');return}
   if(a==='cotasAdj'){st.cotasAdj=!st.cotasAdj;st.adjSel=null;if(st.cotasAdj){st.sel=null;st.multi=[];closeQE()}toolbar();panelSel();render();hint();return}
@@ -6981,6 +7029,7 @@ $('side').addEventListener('keydown',function(e){
 $('side').addEventListener('click',function(e){var b=e.target.closest('[data-a]');if(b)doAction(b.getAttribute('data-a'),b)});
 $('defstate').addEventListener('click',function(e){var b=e.target.closest('[data-a]');if(b)doAction(b.getAttribute('data-a'),b)});
 $('dimsel').addEventListener('click',function(e){var b=e.target.closest('[data-a]');if(b)doAction(b.getAttribute('data-a'),b)});
+if($('rejsel'))$('rejsel').addEventListener('click',function(e){var b=e.target.closest('[data-a]');if(b)doAction(b.getAttribute('data-a'),b)}); /* Mover (libre / 1 / 5 cm), Imán y Capas */
 $('dimbase').addEventListener('click',function(e){
   var b=e.target.closest('[data-s]');if(!b)return;
   snap();st.v.cb=b.getAttribute('data-s')==='int'?'int':'ejes';commit(false);toolbar();
