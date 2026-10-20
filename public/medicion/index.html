@@ -948,7 +948,16 @@ function eqRect(e){
 /* cada bloque tiene estado (e.s): 'ex' ya está (sale en Estado actual y se mantiene en Distribución), 'dem' se retira (Estado actual y Demoliciones), sin estado = nuevo (Distribución) */
 function eqVis(e,view){return stVis(e.s||'new',view)}
 function eqV(view){return st.v.eq.filter(function(e){return eqVis(e,view)})}
+function pilEn(p,tol){
+  var best=null;
+  st.v.pil.forEach(function(q){
+    if(!stVis(q.s,st.view))return;
+    pilCells(q).forEach(function(c){if(Math.abs(p.x-c.x)<=q.w/2+tol/2&&Math.abs(p.y-c.y)<=q.d/2+tol/2)best=q});
+  });
+  return best;
+}
 function pickEq(p){
+  if(pilEn(p,0))return null; /* un pilar encima del bloque: se toca el pilar */
   var a=eqV(st.view);
   for(var i=a.length-1;i>=0;i--){
     var r=eqRect(a[i]);
@@ -3593,11 +3602,17 @@ function scene0(C,k,view,o){
       h+=adjK('t:'+op.id,txt(C,px,mx+tnx*toff,my+tny*toff+4*px,o.tags[op.id],C.label,11,600),mx+tnx*toff,my+tny*toff);
     }
   });
-  v.pil.forEach(function(p){
-    if(!stVis(p.s,view))return;
-    var fill=(view==='demol'&&p.s==='dem')?'url(#hat)':stCol(p.s,view,C);
-    pilCells(p).forEach(function(c){h+='<rect x="'+f2(c.x-p.w/2)+'" y="'+f2(c.y-p.d/2)+'" width="'+f2(p.w)+'" height="'+f2(p.d)+'" style="fill:'+(o.flat&&!(view==='demol'&&p.s==='dem')?C.bg:fill)+';stroke:'+(view==='demol'&&p.s==='dem'?C.dem:(o.flat?fill:'none'))+';stroke-width:'+f2((o.flat?1.5:1)*px)+'"/>'});
-  });
+  /* los pilares van delante de los bloques: en las láminas con bloques se dibujan después de ellos */
+  function pintaPil(){
+    var r='';
+    v.pil.forEach(function(p){
+      if(!stVis(p.s,view))return;
+      var fill=(view==='demol'&&p.s==='dem')?'url(#hat)':stCol(p.s,view,C);
+      pilCells(p).forEach(function(c){r+='<rect x="'+f2(c.x-p.w/2)+'" y="'+f2(c.y-p.d/2)+'" width="'+f2(p.w)+'" height="'+f2(p.d)+'" style="fill:'+(o.flat&&!(view==='demol'&&p.s==='dem')?C.bg:fill)+';stroke:'+(view==='demol'&&p.s==='dem'?C.dem:(o.flat?fill:'none'))+';stroke-width:'+f2((o.flat?1.5:1)*px)+'"/>'});
+    });
+    return r;
+  }
+  if(!(view==='distrib'||view==='actual'||view==='demol'))h+=pintaPil();
   h+=techoSvg(C,px,view,sel);
   if(view==='cotas')v.pil.forEach(function(p){
     if(!stVis(p.s,view))return;
@@ -3705,6 +3720,7 @@ function scene0(C,k,view,o){
         etqEq+='<text x="'+f2(lx)+'" y="'+f2(ly+3.4*px)+'" text-anchor="middle" style="fill:#ffffff;font-size:'+f2(9.5*px)+'px;font-weight:700">'+esc(tq.cod)+'</text>';
       }
     });
+    h+=pintaPil(); /* los pilares, delante de los bloques */
     h+=gl+etqEq; /* las etiquetas van encima de todo el equipamiento */
     if(distr&&sel&&sel.t==='eq'){
       var se2=by(eqs,sel.id);
