@@ -315,7 +315,8 @@ function estadoCapitulo(c, bloques) {
   const bl = bloques.filter(b => b.capitulo_id === c.id);
   return {
     texto: (c.texto || '').trim().length > 15,
-    render: !!c.render_url || bl.some(b => b.tipo === 'render' && b.imagen_url),
+    /* «Entendemos el espacio» enseña planos, no renders: no se le exige render principal */
+    render: !!c.render_url || bl.some(b => b.tipo === 'render' && b.imagen_url) || /entendemos el espacio/i.test(c.titulo || ''),
     detalles: bl.filter(b => !['render', 'equipo', 'plano'].includes(b.tipo) && lleno(b)).length,
     equipo: bl.some(b => b.tipo === 'equipo'),
   };
