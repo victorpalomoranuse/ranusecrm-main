@@ -105,6 +105,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .seg{max-width:100%;display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
 .seg button{border:0;border-radius:0;background:transparent}
 .seg button+button{border-left:1px solid var(--line)}
+#pisos{margin-left:8px;flex:0 0 auto}#pisos .add{font-weight:700}#pisos-pnl{margin:6px 0 10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px}#pisos-pnl .fld{margin:6px 0}
 .main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px}
 .stage{display:flex;flex-direction:column;min-width:0;min-height:380px;background:var(--stage);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .tools{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
@@ -381,6 +382,7 @@ body.crm .top .brand{display:none}
       <button data-view="suelos">Suelos</button>
       <button data-view="tutorial" id="v-tuto">Tutorial</button>
     </div>
+    <div class="seg" id="pisos" role="group" aria-label="Plantas del plano"></div>
     <div class="top-r">
       <button id="b-undo" title="Deshacer">↶ <span class="hide-s">Deshacer</span></button><button id="b-redo" title="Rehacer">↷</button>
       <select id="m-theme" aria-label="Interfaz"><option value="light">Blanca</option><option value="dark">Negra</option><option value="cad">AutoCAD</option></select>
@@ -452,6 +454,7 @@ body.crm .top .brand{display:none}
         <label class="fld"><span>Proyecto</span><input id="v-nombre" placeholder="Gimnasio de Javier"></label>
         <label class="fld"><span>Cliente</span><input id="v-cliente" placeholder="Nombre del cliente"></label>
         <label class="fld"><span>Planta de este plano</span><input id="v-planta" list="dl-plantas" placeholder="Planta baja, Planta 1…" autocomplete="off"></label><datalist id="dl-plantas"><option value="Sótano"><option value="Planta baja"><option value="Entreplanta"><option value="Planta 1"><option value="Planta 2"><option value="Planta 3"><option value="Cubierta"></datalist>
+        <div id="pisos-pnl"></div>
         <label class="fld"><span>Dirección del proyecto</span><input id="v-direccion" placeholder="Calle, número, localidad"></label>
         <label class="fld"><span>Fecha de medición</span><input id="v-fecha" type="date"></label>
         <label class="fld"><span>Altura de las paredes (cm)</span><input id="v-altura" inputmode="decimal" placeholder="260"></label>
@@ -4528,7 +4531,7 @@ function render(){
   }
   fondoMenu();
   dimHits=[];cotaLineas=[];colectaDim=true;
-  svg.innerHTML='<g id="vp" transform="translate('+f2(st.tx)+' '+f2(st.ty)+') scale('+st.k+')">'+gridSvg(CSS,st.k)+fondoSvg(st.view)+scene(CSS,st.k,st.view,{sel:st.sel,nodes:true,dims:st.dims,limpio:true,adj:!!st.cotasAdj,adjSel:st.adjSel,marks:!!st.verMarcas})+multiSvg()+'<path id="prev" style="fill:none;stroke:var(--accent);stroke-width:'+f2(2.4/st.k)+';stroke-linecap:round;stroke-linejoin:round"/></g>';
+  svg.innerHTML='<g id="vp" transform="translate('+f2(st.tx)+' '+f2(st.ty)+') scale('+st.k+')">'+gridSvg(CSS,st.k)+fondoSvg(st.view)+pisoFantasmaSvg(st.view)+scene(CSS,st.k,st.view,{sel:st.sel,nodes:true,dims:st.dims,limpio:true,adj:!!st.cotasAdj,adjSel:st.adjSel,marks:!!st.verMarcas})+multiSvg()+'<path id="prev" style="fill:none;stroke:var(--accent);stroke-width:'+f2(2.4/st.k)+';stroke-linecap:round;stroke-linejoin:round"/></g>';
   colectaDim=false;
 }
 var raf=0;
@@ -7241,6 +7244,7 @@ document.addEventListener('change',function(e){
   save();render();panelRest();drawPasoFam();
 });
 function fields(){
+  try{pisosUi()}catch(e){}
   try{drawCal()}catch(e){}
   try{actualizaBotonesPlantas()}catch(e){}
   $('v-nombre').value=st.v.nombre||'';$('v-cliente').value=st.v.cliente||'';$('v-direccion').value=st.v.direccion||'';$('v-planta').value=st.v.planta||'';
@@ -7249,7 +7253,7 @@ function fields(){
   drawPasoFam();
 }
 ['nombre','cliente','direccion','planta','fecha','notas'].forEach(function(k){
-  $('v-'+k).addEventListener('input',function(e){st.v[k]=e.target.value;save()});
+  $('v-'+k).addEventListener('input',function(e){st.v[k]=e.target.value;if(k==='planta'){var pp=st.v.pisos&&st.v.pisos[pisoIdx()];if(pp){pp.nombre=e.target.value;pisosUi()}}save()});
 });
 $('v-altura').addEventListener('input',function(e){var n=num(e.target.value);if(n>=100&&n<=1000){st.v.altura=n;save();panelRest()}});
 $('v-paso').addEventListener('input',function(e){var n=num(e.target.value);if(n>=20&&n<=300){st.v.paso=n;save();render();panelRest()}});
@@ -9229,7 +9233,7 @@ function sheetPage(doc,view,idx,total,o){
   }
   return p;
 }
-function buildPDF(mode,opt,lista,Doc){var d0=DECIMALES;DECIMALES=!(opt&&opt.dec===false); /* los decimales de las cotas se ven (se pueden redondear en el panel de exportar) */
+function buildPDF(mode,opt,lista,Doc){if(!(lista&&lista.length)&&mode==='all'&&pisosOn())lista=pisosVisitas(st.v);var d0=DECIMALES;DECIMALES=!(opt&&opt.dec===false); /* los decimales de las cotas se ven (se pueden redondear en el panel de exportar) */
   try{return buildPDF0(mode,opt,lista,Doc)}finally{DECIMALES=d0;PAGE_ROT=0}}
 function buildPDF0(mode,opt,lista,Doc){
   var orig=st.v,vs=(lista&&lista.length)?lista:[st.v];
@@ -9311,7 +9315,8 @@ function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',p
 function plantasDelProyecto(){
   var l=(cloud||[]).map(function(c){return c.id===st.v.id?st.v:norm(JSON.parse(JSON.stringify(c)))});
   if(!l.some(function(v){return v.id===st.v.id}))l.push(st.v);
-  return l.sort(function(a,b){return plantaRango(a.planta)-plantaRango(b.planta)||String(a.nombre).localeCompare(String(b.nombre))});
+  var fl=[];l.forEach(function(v){pisosVisitas(v).forEach(function(q){fl.push(q)})}); /* un plano con varias plantas aporta cada una */
+  return fl.sort(function(a,b){return plantaRango(a.planta)-plantaRango(b.planta)||String(a.nombre).localeCompare(String(b.nombre))});
 }
 function hayVariasPlantas(){return CRM&&(cloud||[]).length>1}
 function actualizaBotonesPlantas(){
@@ -9621,7 +9626,32 @@ function drawCloud(){
 /* ---------- conexión con el CRM (proyecto, catálogo y presupuestos) ---------- */
 function r2(n){return Math.round(n*100)/100}
 /* Cantidades medidas: se guardan junto al plano y las usa el CRM (presupuestos, asistentes) */
+/* suma los resúmenes de varias plantas: números se suman, listas se juntan (con la planta en las salas), objetos se mezclan */
+function mezclaResumen(a,b){
+  Object.keys(b).forEach(function(k){
+    var x=a[k],y=b[k];
+    if(x==null){a[k]=y;return}
+    if(k==='altura_cm'){a[k]=Math.max(x,y);return}
+    if(typeof y==='number'&&typeof x==='number')a[k]=r2(x+y);
+    else if(Array.isArray(y)&&Array.isArray(x))a[k]=x.concat(y);
+    else if(y&&typeof y==='object'&&x&&typeof x==='object')mezclaResumen(x,y);
+  });
+}
 function buildResumen(){
+  if(!pisosOn())return buildResumen1();
+  var orig=st.v,tot=null;
+  try{
+    orig.pisos.forEach(function(p){
+      st.v=pisoVisita(orig,p);
+      var r=buildResumen1();
+      ['salas','carpinterias','cubiertas'].forEach(function(k){if(Array.isArray(r[k]))r[k].forEach(function(q){q.planta=p.nombre})});
+      if(Array.isArray(r.salas))r.salas.forEach(function(q){q.nombre=p.nombre+(q.nombre?' · '+q.nombre:'')});
+      if(tot)mezclaResumen(tot,r);else tot=r;
+    });
+  }finally{st.v=orig}
+  return tot;
+}
+function buildResumen1(){
   var v=st.v,alt=wallH(),s=stats(),out={altura_cm:alt};
   out.muros={existente_ml:r2(s.ex/100),demoler_ml:r2(s.dem/100),demoler_m2:r2(areaEst('dem')),nuevo_ml:r2(s.nw/100),nuevo_m2:r2(areaEst('new'))};
   out.puertas=s.doors;out.ventanas=s.wins;
@@ -9689,6 +9719,19 @@ function huellaDe(cat){
 }
 function espejoHuella(h,e,L,T){if(!h||!(e.fx||e.fy))return h;return h.map(function(p){return p.map(function(q){return [e.fx?f2(L-q[0]):q[0],e.fy?f2(T-q[1]):q[1]]}).reverse()})}
 function buildModelo3d(){
+  if(!pisosOn())return buildModelo3d1();
+  var orig=st.v,out={version:2,nombre:orig.nombre||'',altura:0,plantas:[]};
+  try{
+    orig.pisos.forEach(function(p,i){
+      st.v=pisoVisita(orig,p);
+      var m=buildModelo3d1();m.id=p.id;m.nombre=p.nombre;m.z=pisoCota(orig,i);m.forjado=i>0?(p.forj==null?25:+p.forj):0;
+      out.plantas.push(m);
+    });
+  }finally{st.v=orig}
+  out.altura=out.plantas[0].altura;
+  return out;
+}
+function buildModelo3d1(){
   var v=st.v,out={version:1,nombre:v.nombre||'',altura:wallH(),muros:[],salas:[],pilares:[],equipos:[]};
   v.walls.forEach(function(w){
     var g=wg(w);
@@ -9726,6 +9769,114 @@ function modoPantalla(f){
   b.title=f?'Cerrar el editor y volver':'Abrir el editor a pantalla completa';
 }
 $('m-full').addEventListener('click',function(){crmPost({type:crmFull?'cerrar':'ampliar'})});
+/* ══ Plantas dentro del mismo plano ══
+   El plano que se está editando (st.v) siempre trae los datos de LA PLANTA ACTIVA, así todo el resto del código funciona igual.
+   Las demás plantas esperan guardadas en st.v.pisos[i].b y se intercambian al cambiar de planta. */
+var PISO_KEYS=['nodes','walls','ops','pil','ctl','eq','eqa','pts','zn','rz','cn','fz','rc','dr','sp','mm','cal','oc','mv','co','capas','capasOc','fondo','altura'];
+function pisosOn(v){v=v||st.v;return !!(v&&v.pisos&&v.pisos.length>1)}
+function pisoIdx(v){v=v||st.v;if(!v.pisos)return -1;for(var i=0;i<v.pisos.length;i++)if(v.pisos[i].id===v.piso)return i;return -1}
+function pisosAsegura(v){
+  if(!v.pisos||!v.pisos.length){v.pisos=[{id:'pl0',nombre:v.planta||'Planta baja',forj:25,b:null}];v.piso='pl0'}
+  if(pisoIdx(v)<0)v.piso=v.pisos[0].id;
+}
+function pisoDatos(v,p){return p.id===v.piso?v:(p.b||{})}
+function pisoAltura(v,p){var d=pisoDatos(v,p);return num(d.altura)||260}
+/* cota del suelo terminado de la planta i (cm): alturas libres de las de abajo + los forjados */
+function pisoCota(v,i){var z=0;for(var j=1;j<=i;j++){var q=v.pisos[j];z+=pisoAltura(v,v.pisos[j-1])+(q.forj==null?25:+q.forj)}return z}
+/* los datos de una planta como si fuera un plano suelto (PDF, resumen, modelo 3D) */
+function pisoVisita(v,p){
+  if(p.id===v.piso)return v;
+  var o={};Object.keys(v).forEach(function(k){if(PISO_KEYS.indexOf(k)<0)o[k]=v[k]});
+  var b=p.b||{};Object.keys(b).forEach(function(k){o[k]=b[k]});
+  o.planta=p.nombre;o.pisos=null;o.piso=null;if(!o.altura)o.altura=260;
+  return norm(o);
+}
+function pisosVisitas(v){return pisosOn(v)?v.pisos.map(function(p){return pisoVisita(v,p)}):[v]}
+function pisoGuardar(){
+  var p=st.v.pisos&&st.v.pisos[pisoIdx()];if(!p)return;
+  var b={};PISO_KEYS.forEach(function(k){if(st.v[k]!==undefined)b[k]=st.v[k]});p.b=b;
+}
+function pisoCargar(p){
+  PISO_KEYS.forEach(function(k){delete st.v[k]});
+  var b=p.b||{};Object.keys(b).forEach(function(k){st.v[k]=b[k]});p.b=null;
+  st.v.piso=p.id;st.v.planta=p.nombre;if(!st.v.altura)st.v.altura=260;norm(st.v);
+}
+function pisoCambiar(id){
+  if(!pisosOn()||id===st.v.piso)return;
+  var t=null;st.v.pisos.forEach(function(p){if(p.id===id)t=p});if(!t)return;
+  gesture=null;
+  pisoGuardar();pisoCargar(t);
+  hist.length=0;redo=[];st.sel=null;st.multi=[];st.adjSel=null;
+  try{fields()}catch(e){}
+  try{toolbar()}catch(e){}
+  save();panelSel();fit();
+  toast('Planta: '+t.nombre);
+}
+function pisoNuevo(){
+  pisosAsegura(st.v);
+  var n=st.v.pisos.length,sug='Planta '+n,nom=window.prompt('Nombre de la nueva planta (se coloca encima de «'+st.v.pisos[n-1].nombre+'»):',sug);
+  if(nom===null)return;
+  nom=(nom||'').trim()||sug;
+  var cp=(st.v.walls.length||st.v.pil.length)&&window.confirm('¿Copiar los muros y pilares de «'+st.v.planta+'» como punto de partida? Aceptar = copiar · Cancelar = planta en blanco');
+  pisoCrear(nom,cp);
+}
+/* crea una planta encima de las que hay y pasa a ella; con copiar, parte de los muros y pilares de la planta activa */
+function pisoCrear(nom,copiar){
+  pisosAsegura(st.v);
+  var b={nodes:[],walls:[],ops:[],pil:[],ctl:[],eq:[],eqa:[],pts:[],zn:[],rz:[],cn:[],fz:[],rc:[],dr:[],sp:[],mm:[],cal:[],altura:st.v.altura||260};
+  if(copiar){b.nodes=JSON.parse(JSON.stringify(st.v.nodes));b.walls=JSON.parse(JSON.stringify(st.v.walls));b.pil=JSON.parse(JSON.stringify(st.v.pil))}
+  var id='pl'+Date.now().toString(36)+Math.floor(Math.random()*1e4);
+  st.v.pisos.push({id:id,nombre:nom,forj:25,b:b});
+  pisoCambiar(id);
+}
+function pisoBorrar(){
+  if(!pisosOn())return;
+  var i=pisoIdx(),p=st.v.pisos[i];
+  if(!window.confirm('¿Borrar «'+p.nombre+'» con todo lo que tiene dibujado? No se puede deshacer.'))return;
+  var otro=st.v.pisos[i>0?i-1:1];
+  st.v.pisos.splice(i,1);
+  pisoCargar(otro);
+  hist.length=0;redo=[];st.sel=null;st.multi=[];
+  try{fields()}catch(e){}
+  save();panelSel();fit();toast('Planta borrada');
+}
+function pisoFantasmaSvg(view){
+  if(view==='alz'||st.fantasma===false||!pisosOn())return '';
+  var i=pisoIdx();if(i<1)return '';
+  var d=pisoDatos(st.v,st.v.pisos[i-1]),nm={};
+  (d.nodes||[]).forEach(function(n){nm[n.id]=n});
+  var h='<g style="pointer-events:none;opacity:.28">';
+  (d.walls||[]).forEach(function(w){var a=nm[w.a],b=nm[w.b];if(a&&b)h+='<line x1="'+f2(a.x)+'" y1="'+f2(a.y)+'" x2="'+f2(b.x)+'" y2="'+f2(b.y)+'" stroke="#6b7280" stroke-width="'+(w.t||12)+'"/>'});
+  (d.pil||[]).forEach(function(p){var n=nm[p.n];if(n)h+='<rect x="'+f2(n.x+p.dx-p.w/2)+'" y="'+f2(n.y+p.dy-p.d/2)+'" width="'+p.w+'" height="'+p.d+'" fill="#6b7280"/>'});
+  return h+'</g>';
+}
+function pisosUi(){
+  var el=$('pisos');if(!el)return;
+  var on=pisosOn(),h='';
+  if(on)st.v.pisos.forEach(function(p){h+='<button data-pisox="ir" data-piso="'+esc(p.id)+'"'+(p.id===st.v.piso?' class="on"':'')+' title="Ver y dibujar esta planta">'+esc(p.nombre||'Planta')+'</button>'});
+  h+='<button data-pisox="nuevo" class="add" title="'+(on?'Añadir otra planta encima':'Este plano tiene una sola planta. Añade otra para modelarlas juntas en SketchUp')+'">'+(on?'＋':'＋ Planta')+'</button>';
+  el.innerHTML=h;
+  var pn=$('pisos-pnl');if(!pn)return;
+  if(!on){pn.innerHTML='';pn.hidden=true;return}
+  pn.hidden=false;
+  var i=pisoIdx(),p=st.v.pisos[i],z=pisoCota(st.v,i);
+  pn.innerHTML='<div><strong>Plantas del plano</strong> · el suelo de «'+esc(p.nombre)+'» está a '+Math.round(z)+' cm. La altura de las paredes de más abajo es la de esta planta.</div>'+
+    (i>0?'<label class="fld"><span>Forjado sobre la planta de abajo (cm)</span><input id="p-forj" inputmode="decimal" value="'+(p.forj==null?25:p.forj)+'"></label><label class="fld" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="p-fant"'+(st.fantasma!==false?' checked':'')+'><span>Ver la planta de abajo en gris</span></label>':'')+
+    '<div class="btns"><button data-pisox="borrar" class="danger">Borrar esta planta</button></div>';
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest&&e.target.closest('[data-pisox]');if(!b)return;
+  var a=b.getAttribute('data-pisox');
+  if(a==='ir')pisoCambiar(b.getAttribute('data-piso'));
+  else if(a==='nuevo')pisoNuevo();
+  else if(a==='borrar')pisoBorrar();
+});
+document.addEventListener('input',function(e){
+  if(e.target&&e.target.id==='p-forj'){var n=num(e.target.value),p=st.v.pisos&&st.v.pisos[pisoIdx()];if(p&&n>=0&&n<=300){p.forj=n;save()}}
+});
+document.addEventListener('change',function(e){
+  if(e.target&&e.target.id==='p-fant'){st.fantasma=e.target.checked;render()}
+});
 /* ══ Plano del cliente (PDF o imagen) → estado actual con IA; queda de fondo para ajustarlo encima ══ */
 var PIA={busy:false,img:null,w:0,h:0,el:null},fondoMem={};
 function fondoSrc(){
@@ -9772,35 +9923,27 @@ function cargaPdfJs(){
   });
 }
 /* devuelve {data (para la IA), mini (para el fondo), w, h}; la imagen se reduce a 1568 px de lado largo para que sus coordenadas coincidan con las que ve la IA */
-function planoIALeer(file){
-  var MAXL=1568;
-  function salida(cv){
-    var fo=document.createElement('canvas');fo.width=cv.width;fo.height=cv.height;
-    var fx=fo.getContext('2d');fx.fillStyle='#fff';fx.fillRect(0,0,fo.width,fo.height);fx.drawImage(cv,0,0);
-    return {data:fo.toDataURL('image/jpeg',0.88),mini:fo.toDataURL('image/jpeg',0.55),w:cv.width,h:cv.height};
-  }
-  if(/pdf/i.test(file.type)||/\.pdf$/i.test(file.name)){
-    return cargaPdfJs().then(function(lib){return file.arrayBuffer().then(function(buf){return lib.getDocument({data:buf}).promise})}).then(function(doc){
-      var n=1;
-      if(doc.numPages>1){
-        var r=window.prompt('Este PDF tiene '+doc.numPages+' páginas. ¿Cuál es el plano de la planta? (1-'+doc.numPages+')','1');
-        if(r===null)return Promise.reject(null);
-        n=Math.max(1,Math.min(doc.numPages,parseInt(r,10)||1));
-      }
-      return doc.getPage(n).then(function(pg){
-        var v0=pg.getViewport({scale:1}),vp=pg.getViewport({scale:MAXL/Math.max(v0.width,v0.height)}),cv=document.createElement('canvas');
-        cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
-        var cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);
-        return pg.render({canvasContext:cx,viewport:vp}).promise.then(function(){return salida(cv)});
-      });
-    });
-  }
+function piaSalida(cv){
+  var fo=document.createElement('canvas');fo.width=cv.width;fo.height=cv.height;
+  var fx=fo.getContext('2d');fx.fillStyle='#fff';fx.fillRect(0,0,fo.width,fo.height);fx.drawImage(cv,0,0);
+  return {data:fo.toDataURL('image/jpeg',0.88),mini:fo.toDataURL('image/jpeg',0.55),w:cv.width,h:cv.height};
+}
+var PIA_MAXL=1568;
+function piaPaginaPdf(doc,n){
+  return doc.getPage(n).then(function(pg){
+    var v0=pg.getViewport({scale:1}),vp=pg.getViewport({scale:PIA_MAXL/Math.max(v0.width,v0.height)}),cv=document.createElement('canvas');
+    cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+    var cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);
+    return pg.render({canvasContext:cx,viewport:vp}).promise.then(function(){return piaSalida(cv)});
+  });
+}
+function piaImagen(file){
   return new Promise(function(ok,ko){
     var url=URL.createObjectURL(file),im=new Image();
     im.onload=function(){
-      var sc=Math.min(1,MAXL/Math.max(im.naturalWidth,im.naturalHeight)),cv=document.createElement('canvas');
+      var sc=Math.min(1,PIA_MAXL/Math.max(im.naturalWidth,im.naturalHeight)),cv=document.createElement('canvas');
       cv.width=Math.round(im.naturalWidth*sc);cv.height=Math.round(im.naturalHeight*sc);
-      cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);URL.revokeObjectURL(url);ok(salida(cv));
+      cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);URL.revokeObjectURL(url);ok(piaSalida(cv));
     };
     im.onerror=function(){URL.revokeObjectURL(url);ko(new Error('No se pudo abrir esa imagen'))};
     im.src=url;
@@ -9814,15 +9957,50 @@ function planoIAAbrir(){
     inp.addEventListener('change',function(){var fl=inp.files&&inp.files[0];inp.value='';if(fl)planoIAArchivo(fl)})}
   inp.click();
 }
+/* manda una imagen a la IA y espera su respuesta (la contesta el CRM con planoIAResultado / planoIAError) */
+function planoIAEnviar(im,txt){
+  return new Promise(function(ok,ko){
+    var t=setTimeout(function(){PIA.espera=null;ko(new Error('La IA ha tardado demasiado. Inténtalo de nuevo.'))},9*60*1000);
+    PIA.espera={ok:function(p){clearTimeout(t);ok(p)},ko:function(e){clearTimeout(t);ko(e)}};
+    planoIAOcupado(true,txt);
+    crmPost({type:'planoIA',imagen:im.data,w:im.w,h:im.h});
+  });
+}
 function planoIAArchivo(fl){
   if(fl.size>40*1024*1024){toast('Ese archivo pesa demasiado (máx. 40 MB)');return}
-  if(st.v.walls.length&&!window.confirm('Este plano ya tiene dibujo. Al terminar de leer el plano del cliente, sus muros, puertas, ventanas y pilares sustituirán a los actuales (podrás deshacerlo). ¿Continuar?'))return;
+  var esPdf=/pdf/i.test(fl.type)||/\.pdf$/i.test(fl.name);
   planoIAOcupado(true,'Preparando el plano…');
-  planoIALeer(fl).then(function(im){
-    PIA.img=im;
-    planoIAOcupado(true,'La IA está leyendo el plano… puede tardar hasta un minuto');
-    crmPost({type:'planoIA',imagen:im.data,w:im.w,h:im.h});
-  }).catch(function(e){planoIAFin();if(e)toast((e&&e.message)||'No se pudo abrir el archivo')});
+  (esPdf?cargaPdfJs().then(function(lib){return fl.arrayBuffer().then(function(b){return lib.getDocument({data:b}).promise})}):Promise.resolve(null)).then(function(doc){
+    var n=doc?doc.numPages:1,paginas=[1],multi=false;
+    if(n>1){
+      var MAXP=6,k=Math.min(n,MAXP);
+      if(window.confirm('Este PDF tiene '+n+' páginas. ¿Importar cada página como una planta distinta de este plano (las '+k+' primeras)?\nAceptar = una planta por página · Cancelar = elegir una sola página')){paginas=[];for(var i=1;i<=k;i++)paginas.push(i);multi=true}
+      else{
+        var r=window.prompt('¿Qué página es el plano de la planta? (1-'+n+')','1');
+        if(r===null)return Promise.reject(null);
+        paginas=[Math.max(1,Math.min(n,parseInt(r,10)||1))];
+      }
+    }
+    if(st.v.walls.length&&!window.confirm(multi?'Este plano ya tiene dibujo en «'+(st.v.planta||'esta planta')+'». La primera página sustituirá a lo dibujado ahí (se puede deshacer) y el resto de páginas serán plantas nuevas. ¿Continuar?':'Esta planta ya tiene dibujo. Al terminar de leer el plano del cliente, sus muros, puertas, ventanas y pilares sustituirán a los actuales (podrás deshacerlo). ¿Continuar?'))return Promise.reject(null);
+    var avisos=[],hecho=0;
+    return paginas.reduce(function(prev,pg,idx){
+      return prev.then(function(){
+        var et=paginas.length>1?' (página '+(idx+1)+' de '+paginas.length+')':'';
+        planoIAOcupado(true,'Preparando el plano…'+et);
+        return (doc?piaPaginaPdf(doc,pg):piaImagen(fl)).then(function(im){
+          return planoIAEnviar(im,'La IA está leyendo el plano'+et+'… puede tardar hasta un minuto').then(function(p){
+            if(idx>0){pisoCrear('Planta '+idx,false)} /* cada página siguiente, una planta nueva encima */
+            var r=planoIAAplicar(p,im,paginas.length>1);
+            if(r&&r.ok)hecho++;
+            if(r&&r.nota)avisos.push(r.nota);
+          });
+        });
+      });
+    },Promise.resolve()).then(function(){
+      planoIAFin();
+      if(paginas.length>1)toast(hecho+' de '+paginas.length+' plantas importadas. Revisa cada una, cambia el nombre en «Planta de este plano» y ajusta lo que haga falta.'+(avisos.length?' '+avisos[0]:''));
+    });
+  }).catch(function(e){planoIAFin();if(e)toast((e&&e.message)||'No se pudo leer el plano')});
 }
 /* agrupa valores casi iguales (los muros rectos quedan exactamente alineados y las esquinas se unen) */
 function piaAgrupa(vals,tol){
@@ -9907,33 +10085,36 @@ function planoIAConstruir(p,cm){
   });
   return {nodes:nodes,walls:walls,ops:ops,pil:pil,fondo:{x:Math.round(-minx*cm),y:Math.round(-miny*cm),w:Math.round(W*cm),h:Math.round(H*cm)}};
 }
-function planoIAResultado(p){
-  planoIAFin();
-  if(!p||!p.muros||!p.muros.length||!PIA.img){toast('La IA no ha devuelto muros');return}
+/* la contestación del CRM llega aquí y despierta al que esperaba */
+function planoIAResultado(p){var e=PIA.espera;PIA.espera=null;if(e)e.ok(p)}
+function planoIAError(msg){var e=PIA.espera;PIA.espera=null;if(e)e.ko(new Error(msg||'No se pudo leer el plano'));else{planoIAFin();toast(msg||'No se pudo leer el plano')}}
+/* dibuja en la planta activa lo que ha leído la IA. Devuelve {ok,nota} */
+function planoIAAplicar(p,im,sinPreguntar){
+  if(!p||!p.muros||!p.muros.length||!im){toast('La IA no ha devuelto muros');return {ok:false}}
   var es=piaEscala(p),cm,nota='';
   if(es){cm=es.cm;nota=es.de>1&&es.n<es.de?' Las cotas del plano no coinciden entre sí: revisa las medidas.':''}
   else{
     var Lmax=0;p.muros.forEach(function(m){Lmax=Math.max(Lmax,Math.hypot(m.x2-m.x1,m.y2-m.y1))});
-    var pr=window.prompt('No he encontrado cotas legibles en el plano. ¿Cuánto mide en realidad el muro más largo ('+UNL()+')? Con eso calculo la escala.','');
+    var pr=window.prompt('No he encontrado cotas legibles en el plano'+(st.v.planta?' de «'+st.v.planta+'»':'')+'. ¿Cuánto mide en realidad el muro más largo ('+UNL()+')? Con eso calculo la escala.','');
     var real=fromU(num(pr));
-    if(!(real>20)){toast('Sin una medida de referencia no se puede dar escala al plano');return}
+    if(!(real>20)){toast('Sin una medida de referencia no se puede dar escala al plano');return {ok:false}}
     cm=real/Lmax;
   }
   var B;
-  try{B=planoIAConstruir({muros:p.muros,puertas:p.puertas,ventanas:p.ventanas,pilares:p.pilares,w:p.w||PIA.img.w,h:p.h||PIA.img.h},cm)}catch(e){toast('No se pudo montar el plano: '+e.message);return}
-  if(!B.walls.length){toast('No se ha podido montar ningún muro');return}
+  try{B=planoIAConstruir({muros:p.muros,puertas:p.puertas,ventanas:p.ventanas,pilares:p.pilares,w:p.w||im.w,h:p.h||im.h},cm)}catch(e){toast('No se pudo montar el plano: '+e.message);return {ok:false}}
+  if(!B.walls.length){toast('No se ha podido montar ningún muro');return {ok:false}}
   snap();
   st.v.nodes=B.nodes;st.v.walls=B.walls;st.v.ops=B.ops;st.v.pil=B.pil;st.v.ctl=[];
   ['mm','rc','fz'].forEach(function(k){if(Array.isArray(st.v[k]))st.v[k]=[]});
-  var fid='f'+Date.now().toString(36);
+  var fid='f'+Date.now().toString(36)+Math.floor(Math.random()*1e4);
   st.v.fondo={id:fid,x:B.fondo.x,y:B.fondo.y,w:B.fondo.w,h:B.fondo.h,op:0.45,on:true};
-  try{localStorage.setItem('ranuse-plano-fondo-'+fid,PIA.img.mini)}catch(e){}
-  fondoMem[fid]=null;delete fondoMem[fid];
-  try{var b0=atob(PIA.img.mini.split(',')[1]),u0=new Uint8Array(b0.length);for(var i=0;i<b0.length;i++)u0[i]=b0.charCodeAt(i);fondoMem[fid]=URL.createObjectURL(new Blob([u0],{type:'image/jpeg'}))}catch(e){}
+  try{localStorage.setItem('ranuse-plano-fondo-'+fid,im.mini)}catch(e){}
+  try{var b0=atob(im.mini.split(',')[1]),u0=new Uint8Array(b0.length);for(var i=0;i<b0.length;i++)u0[i]=b0.charCodeAt(i);fondoMem[fid]=URL.createObjectURL(new Blob([u0],{type:'image/jpeg'}))}catch(e){}
   st.view='actual';st.sel=null;
   try{toolbar()}catch(e){}
   commit();fit();
-  toast('Estado actual dibujado: '+B.walls.length+' muros, '+B.ops.length+' puertas/ventanas, '+B.pil.length+' pilares. Revísalo sobre el plano del cliente (Archivo → transparencia).'+nota+(p.aviso?' IA: '+p.aviso:''));
+  if(!sinPreguntar)toast('Estado actual dibujado: '+B.walls.length+' muros, '+B.ops.length+' puertas/ventanas, '+B.pil.length+' pilares. Revísalo sobre el plano del cliente (Archivo → transparencia).'+nota+(p.aviso?' IA: '+p.aviso:''));
+  return {ok:true,nota:nota};
 }
 function crmPost(m){try{m.src='ranuse-medicion';window.parent.postMessage(m,location.origin)}catch(e){}}
 function hhmm(){var d=new Date();return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)}
@@ -9947,7 +10128,7 @@ function crmSaveNow(force){
   if(!crmReady)return;
   clearTimeout(crmT);
   var v=st.v;
-  if(!force&&!(v.walls.length||v.eq.length||v.pts.length))return;
+  if(!force&&!(v.walls.length||v.eq.length||v.pts.length||pisosOn(v)))return;
   v.updated=Date.now();
   try{v.resumen=buildResumen()}catch(e){}
   try{v.modelo3d=buildModelo3d()}catch(e){}
@@ -10000,7 +10181,7 @@ if(CRM){
     }else if(m.type==='enlaceSketchup'){
       $('sk-url').value=m.url||'';$('sk-msg').textContent=m.url?'Enlace de solo lectura de este plano. Quien lo tenga puede ver el modelo, pero no cambiarlo.':(m.message||'No se pudo crear el enlace');
     }else if(m.type==='planoIAResultado'){planoIAResultado(m.plano);
-    }else if(m.type==='planoIAError'){planoIAFin();toast(m.message||'No se pudo leer el plano');
+    }else if(m.type==='planoIAError'){planoIAError(m.message);
     }else if(m.type==='bloqueGenerado'){bloqueGenerado(m.bloque,null);
     }else if(m.type==='bloqueError'){bloqueGenerado(null,m.message);
     }else if(m.type==='biblioteca'){

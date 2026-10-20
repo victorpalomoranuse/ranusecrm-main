@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.6.1'.freeze
+    VERSION = '1.7.0'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -209,7 +209,7 @@ module Ranuse
       giro_modelo = Geom::Transformation.rotation(ORIGIN, Z_AXIS, skp['rot'].to_f.degrees)
       espejo = Geom::Transformation.scaling(ORIGIN, e['fx'] ? -1.0 : 1.0, e['fy'] ? -1.0 : 1.0, 1.0)
       giro_plano = Geom::Transformation.rotation(ORIGIN, Z_AXIS, (-e['rot'].to_f).degrees) # el plano tiene el eje y hacia abajo
-      sitio = Geom::Transformation.translation(Geom::Vector3d.new(e['cx'].to_f.cm, -e['cy'].to_f.cm, 0))
+      sitio = Geom::Transformation.translation(Geom::Vector3d.new(e['cx'].to_f.cm, -e['cy'].to_f.cm, (@z_base || 0.0).cm))
       ents.add_instance(defn, sitio * giro_plano * espejo * giro_modelo * centrar)
       true
     rescue StandardError
@@ -240,10 +240,20 @@ module Ranuse
 
     # El grupo de un elemento con su material: si pintaste el elemento a mano, al rehacerlo se conserva tu color
     def self.pintar(g, clave, defecto)
-      g.material = (@pintura ||= {})[clave] || defecto
+      g.material = (@pintura ||= {})["#{@pref}#{clave}"] || defecto
+    end
+
+    # Clave de un elemento dentro de su planta (las plantas de arriba llevan prefijo para no chocar con las de abajo)
+    def self.kp(clave)
+      "#{@pref}#{clave}"
     end
 
     def self.elemento(ents, clave, sig, nombre, etiqueta, alt = nil)
+      clave = kp(clave)
+      if (@z_base || 0.0) != 0.0 # si la planta cambia de altura, se rehace
+        sig = "#{sig}z#{@z_base.round(1)}"
+        alt = "#{alt}z#{@z_base.round(1)}" if alt
+      end
       @nuevas[clave] = sig
       viejo = @existentes[clave]
       if viejo && viejo.valid?
@@ -353,7 +363,7 @@ module Ranuse
 
     # Punto de SketchUp a partir de coordenadas del plano (cm). El eje y del plano va hacia abajo: se invierte.
     def self.pt(x, y, z = 0)
-      Geom::Point3d.new(x.to_f.cm, -y.to_f.cm, z.to_f.cm)
+      Geom::Point3d.new(x.to_f.cm, -y.to_f.cm, (z.to_f + (@z_base || 0.0)).cm)
     end
 
     # Extruye hacia arriba un polígono (lista de [x, y] del plano) desde z0 hasta z1
@@ -819,7 +829,38 @@ module Ranuse
       end
     end
 
+    # Un plano con varias plantas trae plano['plantas'] (cada una con su z y sus muros, pilares…); se apilan en el mismo grupo
     def self.construir(ents, plano)
+      plantas = plano['plantas']
+      return construir_planta(ents, plano) if plantas.nil? || plantas.empty?
+      plantas.each_with_index do |pl, i|
+        @z_base = pl['z'].to_f
+        @pref = i.zero? ? '' : "p#{pl['id'] || i}:"
+        construir_planta(ents, pl)
+        forjado(ents, pl) if i > 0 && pl['forjado'].to_f > 0
+      end
+    ensure
+      @z_base = 0.0
+      @pref = ''
+    end
+
+    # Losa entre una planta y la de abajo: bajo el suelo de cada sala de la planta, del grosor del forjado
+    def self.forjado(ents, pl)
+      grosor = pl['forjado'].to_f
+      mat_f = material('Ranuse forjado', '#b9b4ab')
+      et = etiqueta('Ranuse - Forjados')
+      (pl['salas'] || []).each do |sa|
+        pts = sa['pts']
+        next if pts.nil? || pts.size < 3
+        clave = "forjado:#{sa['idS'] || clave_poligono(pts)}"
+        g = elemento(ents, clave, firma([pts, grosor]), "Forjado #{sa['nombre']}".strip, et)
+        next unless g
+        prisma(g.entities, pts, -grosor, -0.2)
+        pintar(g, clave, mat_f)
+      end
+    end
+
+    def self.construir_planta(ents, plano)
       @techos_por_defecto = !(plano['techos'] || []).empty?
       vista = ajuste('estado', 'final')
       altura = plano['altura'].to_f
@@ -912,7 +953,7 @@ module Ranuse
           cara ||= g.entities.add_face(pts.map { |p| pt(p[0], p[1], 0) })
           if cara
             cara.reverse! if cara.normal.z < 0
-            cara.material = (@pintura_cara ||= {})[clave_su] || (suelo ? material("Ranuse suelo #{suelo['n']}", suelo['c']) : nil)
+            cara.material = (@pintura_cara ||= {})[kp(clave_su)] || (suelo ? material("Ranuse suelo #{suelo['n']}", suelo['c']) : nil)
             cara.back_material = cara.material if cara.material
           end
         end
@@ -925,7 +966,7 @@ module Ranuse
         ct = gt.entities.add_face(pts.map { |p| pt(p[0], p[1], altura) })
         if ct
           ct.reverse! if ct.normal.z > 0
-          ct.material = (@pintura_cara ||= {})[clave_te] || material("Ranuse techo #{techo ? techo['n'] : 'blanco'}", techo ? techo['c'] : '#f6f4f1')
+          ct.material = (@pintura_cara ||= {})[kp(clave_te)] || material("Ranuse techo #{techo ? techo['n'] : 'blanco'}", techo ? techo['c'] : '#f6f4f1')
         end
       end
 
