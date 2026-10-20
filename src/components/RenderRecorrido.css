@@ -21,3 +21,7 @@
 .rr-prog{position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:5;display:grid;gap:7px;pointer-events:none}
 .rr-prog i{display:block;width:4px;height:20px;border-radius:2px;background:rgba(255,255,255,.35);transition:background .3s,height .3s}
 .rr-prog i.on{background:#fff;height:32px}
+.rr-zona{position:absolute;left:clamp(22px,6vw,90px);right:clamp(22px,6vw,90px);bottom:20%;z-index:4;pointer-events:none;color:#fff;text-shadow:0 2px 34px rgba(0,0,0,.55);will-change:transform,opacity,filter;opacity:0}
+.rr-zona span{display:block;font-size:.72rem;letter-spacing:.34em;text-transform:uppercase;font-weight:500;opacity:.85;margin-bottom:14px}
+.rr-zona strong{display:block;font-weight:300;font-size:clamp(2.2rem,7.5vw,5.6rem);line-height:1.02;letter-spacing:-.01em;max-width:14ch}
+@media(prefers-reduced-motion:reduce){.rr-zona{opacity:1!important;transform:none!important;filter:none!important}}

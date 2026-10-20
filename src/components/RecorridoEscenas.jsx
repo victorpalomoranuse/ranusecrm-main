@@ -36,9 +36,9 @@ void main(){
 }`;
 const FOC = [0.5, 0.46];
 
-export default function RecorridoEscenas({ escenas }) {
+export default function RecorridoEscenas({ escenas, zona }) {
   const N = escenas.length;
-  const outer = useRef(null), stage = useRef(null), cv = useRef(null), botones = useRef([]);
+  const outer = useRef(null), stage = useRef(null), cv = useRef(null), botones = useRef([]), zonaRef = useRef(null);
   const [fallo, setFallo] = useState(false);
   const [listo, setListo] = useState(false);
   const [act, setAct] = useState(0);
@@ -52,7 +52,7 @@ export default function RecorridoEscenas({ escenas }) {
     const gl2 = el.getContext('webgl2', { antialias: false, alpha: false });
     const gl = gl2 || el.getContext('webgl', { antialias: false, alpha: false }) || el.getContext('experimental-webgl');
     if (!gl) { setFallo(true); return undefined; }
-    let muerto = false, raf = 0, ocupado = false, W = 0, H = 0, cur = 0, obj = 0, pr = null;
+    let muerto = false, raf = 0, ocupado = false, W = 0, H = 0, cur = 0, obj = 0, entra = 1, pr = null;
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
     try {
       const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
@@ -95,6 +95,7 @@ export default function RecorridoEscenas({ escenas }) {
       const o = outer.current; if (!o) return;
       const r = o.getBoundingClientRect(), total = r.height - st.clientHeight;
       obj = (total > 0 ? Math.max(0, Math.min(1, -r.top / total)) : 0) * (N - 0.0001);
+      entra = Math.max(0, Math.min(1, 1 - r.top / Math.max(1, st.clientHeight))); /* 0 = aún no se ve, 1 = ya está fijo en pantalla */
     };
     const nProf = (i, px, py) => { const m = mapas[i]; if (!m) return 0.4; const x = Math.max(0, Math.min(159, Math.round(px * 159))), y = Math.max(0, Math.min(112, Math.round(py * 112))); return m[y * 160 + x]; };
     const aPantalla = (i, x, y, t, lat, sw, rel) => {
@@ -115,6 +116,14 @@ export default function RecorridoEscenas({ escenas }) {
     const dibuja = () => {
       ocupado = false; if (muerto) return;
       cur += (obj - cur) * 0.12; if (Math.abs(obj - cur) < 0.0004) cur = obj;
+      // nombre de la zona: aparece al entrar en el recorrido y se va desvaneciendo (subiendo y desenfocándose) al avanzar por la primera vista
+      const zr = zonaRef.current;
+      if (zr) {
+        const sale = Math.max(0, Math.min(1, (cur - 0.32) / 0.4)), ent = entra * entra * (3 - 2 * entra);
+        zr.style.opacity = (ent * (1 - sale)).toFixed(3);
+        zr.style.transform = 'translateY(' + (-(cur * 70) + (1 - ent) * 40).toFixed(1) + 'px) scale(' + (1 + Math.min(cur, 1) * 0.08).toFixed(3) + ')';
+        zr.style.filter = sale > 0.01 ? 'blur(' + (sale * 7).toFixed(1) + 'px)' : 'none';
+      }
       const i = Math.min(N - 1, Math.floor(cur)), f = cur - i, ultima = i >= N - 1;
       // la escena avanza con el scroll; al final se funde con la siguiente, que ya empieza a moverse (movimiento continuo)
       const sA = ultima ? Math.min(1, f) : Math.min(1.35, f + (f > 0.76 ? (f - 0.76) * 0.9 : 0));
@@ -177,6 +186,12 @@ export default function RecorridoEscenas({ escenas }) {
       <div ref={stage} className="rr-stage" onClick={() => setAbierto(null)} role="img" aria-label={cap.alt || ''}>
         <canvas ref={cv} className="rr-cv" />
         <div className="rr-sombra" />
+        {zona && zona.titulo && (
+          <div ref={zonaRef} className="rr-zona" aria-hidden="true">
+            {zona.num && <span>Zona {zona.num}</span>}
+            <strong>{zona.titulo}</strong>
+          </div>
+        )}
         {!listo && <img className="rr-previa" src={escenas[0].src} alt="" />}
         {escenas.map((e, k) => (e.puntos || []).map((p, n) => (
           <button key={k + '-' + n} ref={b => { (botones.current[k] = botones.current[k] || [])[n] = b; }} type="button" className={'rr-punto' + (abierto && abierto.i === k + '-' + n ? ' on' : '')} aria-label={p.titulo || 'Punto'}
