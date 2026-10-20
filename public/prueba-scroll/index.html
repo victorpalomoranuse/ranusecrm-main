@@ -37,6 +37,10 @@ html,body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-sys
 .prog{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:5;display:grid;gap:7px}
 .prog i{display:block;width:4px;height:22px;border-radius:2px;background:rgba(255,255,255,.28);transition:background .3s,height .3s}
 .prog i.on{background:#fff;height:34px}
+.mando{position:absolute;left:12px;top:max(12px,env(safe-area-inset-top));z-index:5;display:flex;align-items:center;gap:4px;background:rgba(18,18,22,.7);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);border-radius:99px;padding:4px 6px 4px 12px}
+.mando b{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#a9a9b3;margin-right:4px;font-weight:600}
+.mando button{width:34px;height:34px;border-radius:50%;border:0;background:transparent;color:#fff;font-size:14px;cursor:pointer}
+.mando button.on{background:#fff;color:#000}
 .carga{position:absolute;inset:0;display:grid;place-content:center;z-index:7;background:#000;color:#8d8d97;font-size:14px;letter-spacing:.1em;text-transform:uppercase;transition:opacity .6s}
 .carga.fuera{opacity:0;pointer-events:none}
 .fin h2{font-size:clamp(26px,6vw,44px);letter-spacing:-.02em}
@@ -58,6 +62,7 @@ html,body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-sys
     <div class="prog" id="prog"></div>
     <div class="ficha" id="ficha" role="status"></div>
     <div class="txt" id="txt"></div>
+    <div class="mando" id="mando" aria-label="Movimiento de la cámara en esta escena"><b>Movimiento</b><button data-m="izq" aria-label="Hacia la izquierda">◀</button><button data-m="adelante" aria-label="Hacia delante">▲</button><button data-m="atras" aria-label="Hacia atrás">▼</button><button data-m="dcha" aria-label="Hacia la derecha">▶</button></div>
     <div class="carga" id="carga">Preparando el recorrido…</div>
   </div>
 </div>
@@ -112,6 +117,9 @@ function abre(h,b){
   ficha.classList.add('on');
 }
 stage.addEventListener('click',cierra);
+var mando=$('mando');
+mando.addEventListener('click',function(ev){ev.stopPropagation();var b=ev.target.closest('button');if(!b)return;mov[dibuja.act||0]=b.getAttribute('data-m');try{localStorage.setItem('prueba-mov',JSON.stringify(mov))}catch(e){}mandoUi();pide()});
+function mandoUi(){var a=dibuja.act||0;[].forEach.call(mando.querySelectorAll('button'),function(b){b.classList.toggle('on',b.getAttribute('data-m')===mov[a])})}
 
 /* ── WebGL: cada píxel se mueve según su profundidad ── */
 var gl=cv.getContext('webgl',{antialias:false,alpha:false})||cv.getContext('experimental-webgl');
@@ -120,13 +128,13 @@ var VS='attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
 var FS=[
 'precision highp float;',
 'uniform sampler2D uIA,uDA,uIB,uDB;',
-'uniform vec2 uRes,uFA,uFB;uniform float uTA,uTB,uMix,uAsp,uSw;',
-'vec3 escena(sampler2D img,sampler2D dep,float t,vec2 foc,vec2 uv){',
+'uniform vec2 uRes,uFA,uFB;uniform float uTA,uLA,uTB,uLB,uMix,uAsp,uSw;',
+'vec3 escena(sampler2D img,sampler2D dep,float t,float lat,vec2 foc,vec2 uv){',
 '  vec2 p=uv;',
-'  vec2 sway=vec2(uSw*0.018,uSw*0.006);',                       /* balanceo suave de la cámara al caminar */
+'  vec2 sway=vec2(uSw*0.012-lat*0.034,uSw*0.004);',                       /* balanceo suave de la cámara al caminar */
 '  for(int i=0;i<10;i++){',
 '    float n=texture2D(dep,p).r;',
-'    float k=0.16+n*1.15;',                                      /* lo cercano (n alto) avanza más que lo lejano */
+'    float k=0.12+n*0.95;',                                      /* lo cercano (n alto) avanza más que lo lejano */
 '    p=foc+(uv-foc)/(1.0+t*k)-sway*(n-0.35);',
 '  }',
 '  return texture2D(img,clamp(p,0.002,0.998)).rgb;',
@@ -135,9 +143,9 @@ var FS=[
 '  vec2 s=vec2(gl_FragCoord.x/uRes.x,1.0-gl_FragCoord.y/uRes.y);',
 '  float va=uRes.x/uRes.y;vec2 uv=s;',
 '  if(va<uAsp)uv.x=0.5+(s.x-0.5)*(va/uAsp);else uv.y=0.5+(s.y-0.5)*(uAsp/va);',
-'  vec3 a=escena(uIA,uDA,uTA,uFA,uv);',
+'  vec3 a=escena(uIA,uDA,uTA,uLA,uFA,uv);',
 '  vec3 c=a;',
-'  if(uMix>0.002){vec3 b=escena(uIB,uDB,uTB,uFB,uv);c=mix(a,b,uMix);}',
+'  if(uMix>0.002){vec3 b=escena(uIB,uDB,uTB,uLB,uFB,uv);c=mix(a,b,uMix);}',
 '  gl_FragColor=vec4(c,1.0);',
 '}'
 ].join('\n');
@@ -145,7 +153,7 @@ function sh(t,s){var o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(
 var pr;try{pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,VS));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(pr);gl.useProgram(pr);}catch(er){carga.textContent='Tu móvil no admite este recorrido ('+er.message.slice(0,80)+')';return}
 var buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
 var loc=gl.getAttribLocation(pr,'a');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
-var U={};['uIA','uDA','uIB','uDB','uRes','uFA','uFB','uTA','uTB','uMix','uAsp','uSw'].forEach(function(n){U[n]=gl.getUniformLocation(pr,n)});
+var U={};['uIA','uDA','uIB','uDB','uRes','uFA','uFB','uTA','uLA','uTB','uLB','uMix','uAsp','uSw'].forEach(function(n){U[n]=gl.getUniformLocation(pr,n)});
 gl.uniform1i(U.uIA,0);gl.uniform1i(U.uDA,1);gl.uniform1i(U.uIB,2);gl.uniform1i(U.uDB,3);gl.uniform1f(U.uAsp,IA);
 
 function textura(bmp){
@@ -187,10 +195,21 @@ function medida(){
 }
 var cur=0,obj=0,listo=false,ocupado=false;
 function lee(){var r=track.getBoundingClientRect(),total=r.height-stage.clientHeight;obj=Math.max(0,Math.min(1,-r.top/total))*(N-0.0001)}
+/* movimiento de cada escena: adelante, atras, izq, dcha (se elige con los botones y se recuerda) */
+var MOV=['adelante','atras','izq','dcha'],mov=[];
+try{mov=JSON.parse(localStorage.getItem('prueba-mov')||'[]')}catch(e){}
+ESC.forEach(function(e,i){if(MOV.indexOf(mov[i])<0)mov[i]='adelante'});
+function estado(dir,s){ /* s = avance de la escena (0..1.35) → [avance hacia delante, desplazamiento lateral] */
+  var q=Math.max(0,Math.min(1.35,s)),c=Math.min(1,q);
+  if(dir==='adelante')return [0.85*q*0.9,0];
+  if(dir==='atras')return [0.85*(1-c)*0.9,0];
+  if(dir==='dcha')return [0.28,-1+2*Math.min(1.2,q)];
+  return [0.28,1-2*Math.min(1.2,q)]; /* izq */
+}
 /* % de la imagen → píxeles de pantalla, con el mismo avance que lleva el shader */
-function aPantalla(i,x,y,t,fx,fy,sw){
-  var n=nProf(i,x/100,y/100),k=0.16+n*1.15,u=x/100,v=y/100;
-  u=fx+(u+sw*0.018*(n-0.35)-fx)*(1+t*k);v=fy+(v+sw*0.006*(n-0.35)-fy)*(1+t*k);
+function aPantalla(i,x,y,t,lat,fx,fy,sw){
+  var n=nProf(i,x/100,y/100),k=0.12+n*0.95,u=x/100,v=y/100;
+  u=fx+(u+(sw*0.012-lat*0.034)*(n-0.35)-fx)*(1+t*k);v=fy+(v+sw*0.004*(n-0.35)-fy)*(1+t*k);
   var va=W/H,sx,sy;
   if(va<IA){sx=0.5+(u-0.5)/(va/IA);sy=v}else{sx=u;sy=0.5+(v-0.5)/(IA/va)}
   return {x:sx*W,y:sy*H,n:n};
@@ -200,17 +219,17 @@ function dibuja(){
   cur+=(obj-cur)*0.1;if(Math.abs(obj-cur)<0.0004)cur=obj;
   var i=Math.min(N-1,Math.floor(cur)),f=cur-i;
   /* la escena i avanza con el scroll; al final se funde con la siguiente, que ya empieza a moverse */
-  var tA=Math.min(1.35,f*1.0+(f>0.72?(f-0.72)*0.9:0));
+  var sA=Math.min(1.35,f*1.0+(f>0.72?(f-0.72)*0.9:0)),eA=estado(mov[i],sA);
   var mix=0;if(i<N-1&&f>0.68)mix=Math.min(1,(f-0.68)/0.3);mix=mix*mix*(3-2*mix);
-  var tB=mix>0?Math.max(0,(f-0.68))*0.9:0;
+  var jn=Math.min(N-1,i+1),eB=estado(mov[jn],mix>0?Math.max(0,(f-0.68))*0.9:0);
   var fa=ESC[i],fb=ESC[Math.min(N-1,i+1)];
-  var sw=Math.sin(cur*3.1)*1.0;
+  var sw=Math.sin(cur*3.1)*(mov[i]==='adelante'||mov[i]==='atras'?1.0:0.0);
   if(T[i]){
     gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,T[i].img);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,T[i].dep);
     var jb=T[i+1]?i+1:i;
     gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,T[jb].img);gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,T[jb].dep);
     gl.uniform2f(U.uFA,fa.fx/100,fa.fy/100);gl.uniform2f(U.uFB,fb.fx/100,fb.fy/100);
-    gl.uniform1f(U.uTA,tA*0.9);gl.uniform1f(U.uTB,tB);gl.uniform1f(U.uMix,T[i+1]||i===N-1?(i<N-1?mix:0):0);gl.uniform1f(U.uSw,sw);
+    gl.uniform1f(U.uTA,eA[0]);gl.uniform1f(U.uLA,eA[1]);gl.uniform1f(U.uTB,eB[0]);gl.uniform1f(U.uLB,eB[1]);gl.uniform1f(U.uMix,T[i+1]||i===N-1?(i<N-1?mix:0):0);gl.uniform1f(U.uSw,sw);
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   }
   /* puntos de la escena activa: viajan con la profundidad de su objeto */
@@ -219,7 +238,7 @@ function dibuja(){
     arr.forEach(function(b,k){
       var vis=ei===act&&listo;
       if(vis){
-        var h=ESC[ei].hs[k],p=aPantalla(ei,h.x,h.y,tA*0.9,ESC[ei].fx/100,ESC[ei].fy/100,sw);
+        var h=ESC[ei].hs[k],p=aPantalla(ei,h.x,h.y,eA[0],eA[1],ESC[ei].fx/100,ESC[ei].fy/100,sw);
         var dentro=p.x>10&&p.x<W-10&&p.y>10&&p.y<H*0.78;
         b.style.transform='translate('+p.x.toFixed(1)+'px,'+p.y.toFixed(1)+'px)';
         b.style.opacity=dentro?(mix>0.2?Math.max(0,1-(mix-0.2)/0.4):1):0;b.classList.toggle('v',dentro&&mix<0.5);
@@ -228,7 +247,7 @@ function dibuja(){
   });
   txts.forEach(function(t,k){t.classList.toggle('on',k===act)});
   dots.forEach(function(d,k){d.classList.toggle('on',k===act)});
-  if(act!==dibuja.act){dibuja.act=act;cierra()}
+  if(act!==dibuja.act){dibuja.act=act;cierra();mandoUi()}
   if(cur!==obj)pide();
 }
 function pide(){if(!ocupado){ocupado=true;requestAnimationFrame(dibuja)}}
