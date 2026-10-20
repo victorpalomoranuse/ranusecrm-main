@@ -328,6 +328,10 @@ body.crm .top .brand{display:none}
           <div class="mdrop" id="menu-archivo" hidden>
             <button data-do="datos">Datos del proyecto (nombre, dirección, cliente…)</button>
             <button data-do="info">Qué información enseñar en las láminas…</button>
+            <button data-do="planoia" title="Sube el plano que te da el cliente (PDF o foto) y la IA dibuja el estado actual para que lo ajustes">Importar plano del cliente (PDF o imagen)…</button>
+            <button data-do="fondo-ver" id="mi-fondo" hidden>Plano del cliente de fondo: visible</button>
+            <button data-do="fondo-op" id="mi-fondo-op" hidden>Plano del cliente: cambiar transparencia</button>
+            <button data-do="fondo-q" id="mi-fondo-q" hidden>Quitar el plano del cliente de fondo</button>
             <button data-do="b-cloud" id="mi-cloud" hidden>Guardar ahora</button>
             <button data-do="b-pdf">PDF de esta lámina</button>
             <button data-do="b-pdfall">PDF con todas las láminas</button>
@@ -4522,8 +4526,9 @@ function render(){
     if(!qcur.hidden&&document.activeElement===qcur)showOK(qcur,qAct);
     else{qok.hidden=true;qAct=null;clearTimeout(qokT)}
   }
+  fondoMenu();
   dimHits=[];cotaLineas=[];colectaDim=true;
-  svg.innerHTML='<g id="vp" transform="translate('+f2(st.tx)+' '+f2(st.ty)+') scale('+st.k+')">'+gridSvg(CSS,st.k)+scene(CSS,st.k,st.view,{sel:st.sel,nodes:true,dims:st.dims,limpio:true,adj:!!st.cotasAdj,adjSel:st.adjSel,marks:!!st.verMarcas})+multiSvg()+'<path id="prev" style="fill:none;stroke:var(--accent);stroke-width:'+f2(2.4/st.k)+';stroke-linecap:round;stroke-linejoin:round"/></g>';
+  svg.innerHTML='<g id="vp" transform="translate('+f2(st.tx)+' '+f2(st.ty)+') scale('+st.k+')">'+gridSvg(CSS,st.k)+fondoSvg(st.view)+scene(CSS,st.k,st.view,{sel:st.sel,nodes:true,dims:st.dims,limpio:true,adj:!!st.cotasAdj,adjSel:st.adjSel,marks:!!st.verMarcas})+multiSvg()+'<path id="prev" style="fill:none;stroke:var(--accent);stroke-width:'+f2(2.4/st.k)+';stroke-linecap:round;stroke-linejoin:round"/></g>';
   colectaDim=false;
 }
 var raf=0;
@@ -9721,6 +9726,215 @@ function modoPantalla(f){
   b.title=f?'Cerrar el editor y volver':'Abrir el editor a pantalla completa';
 }
 $('m-full').addEventListener('click',function(){crmPost({type:crmFull?'cerrar':'ampliar'})});
+/* ══ Plano del cliente (PDF o imagen) → estado actual con IA; queda de fondo para ajustarlo encima ══ */
+var PIA={busy:false,img:null,w:0,h:0,el:null},fondoMem={};
+function fondoSrc(){
+  var f=st.v.fondo;if(!f||!f.id)return null;
+  if(fondoMem[f.id])return fondoMem[f.id];
+  try{
+    var d=localStorage.getItem('ranuse-plano-fondo-'+f.id);
+    if(d){var b=atob(d.split(',')[1]),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);fondoMem[f.id]=URL.createObjectURL(new Blob([u],{type:'image/jpeg'}));return fondoMem[f.id]}
+  }catch(e){}
+  return null;
+}
+function fondoSvg(view){
+  var f=st.v.fondo;if(!f||f.on===false||view==='alz')return '';
+  var src=fondoSrc();if(!src)return '';
+  return '<image href="'+src+'" x="'+f2(f.x)+'" y="'+f2(f.y)+'" width="'+f2(f.w)+'" height="'+f2(f.h)+'" preserveAspectRatio="none" opacity="'+(f.op||0.45)+'" style="pointer-events:none"/>';
+}
+function fondoMenu(){
+  var f=st.v&&st.v.fondo,hay=!!(f&&f.id&&fondoSrc());
+  ['mi-fondo','mi-fondo-op','mi-fondo-q'].forEach(function(id){var b=document.getElementById(id);if(b)b.hidden=!hay});
+  var b0=document.getElementById('mi-fondo');if(b0&&hay)b0.textContent='Plano del cliente de fondo: '+(f.on===false?'oculto (mostrar)':'visible (ocultar)');
+}
+function fondoAccion(id){
+  var f=st.v.fondo;if(!f)return;
+  if(id==='fondo-q'){if(!window.confirm('¿Quitar el plano del cliente que está de fondo? Los muros dibujados se quedan.'))return;snap();delete st.v.fondo;commit();return}
+  snap();
+  if(id==='fondo-ver')f.on=f.on===false;
+  else{var o=[0.25,0.45,0.7,1],i=o.indexOf(f.op||0.45);f.op=o[(i+1)%o.length];toast('Transparencia del plano: '+Math.round(f.op*100)+' %')}
+  commit();
+}
+function planoIAOcupado(on,txt){
+  PIA.busy=on;
+  if(!PIA.el){PIA.el=document.createElement('div');PIA.el.style.cssText='position:fixed;top:64px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 16px;border-radius:10px;z-index:9999;font:600 14px system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.3)';document.body.appendChild(PIA.el)}
+  PIA.el.hidden=!on;if(on)PIA.el.textContent=txt||'Leyendo el plano…';
+}
+function planoIAFin(){planoIAOcupado(false)}
+function cargaPdfJs(){
+  return new Promise(function(ok,ko){
+    if(window.pdfjsLib)return ok(window.pdfjsLib);
+    var sc=document.createElement('script'),B='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+    sc.src=B+'pdf.min.js';
+    sc.onload=function(){try{window.pdfjsLib.GlobalWorkerOptions.workerSrc=B+'pdf.worker.min.js';ok(window.pdfjsLib)}catch(e){ko(e)}};
+    sc.onerror=function(){ko(new Error('No se pudo cargar el lector de PDF (¿sin conexión?)'))};
+    document.head.appendChild(sc);
+  });
+}
+/* devuelve {data (para la IA), mini (para el fondo), w, h}; la imagen se reduce a 1568 px de lado largo para que sus coordenadas coincidan con las que ve la IA */
+function planoIALeer(file){
+  var MAXL=1568;
+  function salida(cv){
+    var fo=document.createElement('canvas');fo.width=cv.width;fo.height=cv.height;
+    var fx=fo.getContext('2d');fx.fillStyle='#fff';fx.fillRect(0,0,fo.width,fo.height);fx.drawImage(cv,0,0);
+    return {data:fo.toDataURL('image/jpeg',0.88),mini:fo.toDataURL('image/jpeg',0.55),w:cv.width,h:cv.height};
+  }
+  if(/pdf/i.test(file.type)||/\.pdf$/i.test(file.name)){
+    return cargaPdfJs().then(function(lib){return file.arrayBuffer().then(function(buf){return lib.getDocument({data:buf}).promise})}).then(function(doc){
+      var n=1;
+      if(doc.numPages>1){
+        var r=window.prompt('Este PDF tiene '+doc.numPages+' páginas. ¿Cuál es el plano de la planta? (1-'+doc.numPages+')','1');
+        if(r===null)return Promise.reject(null);
+        n=Math.max(1,Math.min(doc.numPages,parseInt(r,10)||1));
+      }
+      return doc.getPage(n).then(function(pg){
+        var v0=pg.getViewport({scale:1}),vp=pg.getViewport({scale:MAXL/Math.max(v0.width,v0.height)}),cv=document.createElement('canvas');
+        cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+        var cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);
+        return pg.render({canvasContext:cx,viewport:vp}).promise.then(function(){return salida(cv)});
+      });
+    });
+  }
+  return new Promise(function(ok,ko){
+    var url=URL.createObjectURL(file),im=new Image();
+    im.onload=function(){
+      var sc=Math.min(1,MAXL/Math.max(im.naturalWidth,im.naturalHeight)),cv=document.createElement('canvas');
+      cv.width=Math.round(im.naturalWidth*sc);cv.height=Math.round(im.naturalHeight*sc);
+      cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);URL.revokeObjectURL(url);ok(salida(cv));
+    };
+    im.onerror=function(){URL.revokeObjectURL(url);ko(new Error('No se pudo abrir esa imagen'))};
+    im.src=url;
+  });
+}
+function planoIAAbrir(){
+  if(!CRM){toast('Esta función está disponible dentro del CRM');return}
+  if(PIA.busy){toast('Ya se está leyendo un plano');return}
+  var inp=document.getElementById('pia-file');
+  if(!inp){inp=document.createElement('input');inp.type='file';inp.id='pia-file';inp.accept='application/pdf,image/*';inp.hidden=true;document.body.appendChild(inp);
+    inp.addEventListener('change',function(){var fl=inp.files&&inp.files[0];inp.value='';if(fl)planoIAArchivo(fl)})}
+  inp.click();
+}
+function planoIAArchivo(fl){
+  if(fl.size>40*1024*1024){toast('Ese archivo pesa demasiado (máx. 40 MB)');return}
+  if(st.v.walls.length&&!window.confirm('Este plano ya tiene dibujo. Al terminar de leer el plano del cliente, sus muros, puertas, ventanas y pilares sustituirán a los actuales (podrás deshacerlo). ¿Continuar?'))return;
+  planoIAOcupado(true,'Preparando el plano…');
+  planoIALeer(fl).then(function(im){
+    PIA.img=im;
+    planoIAOcupado(true,'La IA está leyendo el plano… puede tardar hasta un minuto');
+    crmPost({type:'planoIA',imagen:im.data,w:im.w,h:im.h});
+  }).catch(function(e){planoIAFin();if(e)toast((e&&e.message)||'No se pudo abrir el archivo')});
+}
+/* agrupa valores casi iguales (los muros rectos quedan exactamente alineados y las esquinas se unen) */
+function piaAgrupa(vals,tol){
+  var idx=vals.map(function(v,i){return i}).sort(function(a,b){return vals[a]-vals[b]}),out=vals.slice(),i=0;
+  while(i<idx.length){
+    var j=i,ini=vals[idx[i]];
+    while(j+1<idx.length&&vals[idx[j+1]]-vals[idx[j]]<=tol&&vals[idx[j+1]]-ini<=tol*2)j++;
+    var sum=0,q;for(q=i;q<=j;q++)sum+=vals[idx[q]];
+    var m=sum/(j-i+1);for(q=i;q<=j;q++)out[idx[q]]=m;
+    i=j+1;
+  }
+  return out;
+}
+function piaEscala(p){
+  var r=[];
+  (p.escala||[]).forEach(function(e){var d=Math.hypot(e.x2-e.x1,e.y2-e.y1);if(d>30&&e.cm>20)r.push(e.cm/d)});
+  if(!r.length)return null;
+  r.sort(function(a,b){return a-b});
+  var med=r[r.length>>1],bien=r.filter(function(x){return Math.abs(x/med-1)<0.15});
+  return {cm:bien[bien.length>>1],n:bien.length,de:r.length};
+}
+/* del resultado de la IA (píxeles) a muros, puertas, ventanas y pilares del plano (cm). No toca el estado: devuelve los datos. */
+function planoIAConstruir(p,cm){
+  var W=p.w,H=p.h,tol=Math.max(3,Math.min(7,0.004*Math.max(W,H)));
+  var segs=(p.muros||[]).filter(function(m){return Math.hypot(m.x2-m.x1,m.y2-m.y1)>=2*tol});
+  var xs=[],ys=[];
+  segs.forEach(function(m){xs.push(m.x1,m.x2);ys.push(m.y1,m.y2)});
+  xs=piaAgrupa(xs,tol);ys=piaAgrupa(ys,tol);
+  var pts=[],seg=[],key={};
+  function pt(x,y){var k=x.toFixed(1)+','+y.toFixed(1);if(key[k]==null){key[k]=pts.length;pts.push({x:x,y:y})}return key[k]}
+  segs.forEach(function(m,i){
+    var a=pt(xs[2*i],ys[2*i]),b=pt(xs[2*i+1],ys[2*i+1]);
+    if(a!==b&&!seg.some(function(q){return (q.a===a&&q.b===b)||(q.a===b&&q.b===a)}))seg.push({a:a,b:b,e:m.espesor_px||0});
+  });
+  /* una esquina que cae sobre otro muro lo parte en dos */
+  function dsp(n,q){
+    var A=pts[q.a],B=pts[q.b],dx=B.x-A.x,dy=B.y-A.y,L2=dx*dx+dy*dy,t=((n.x-A.x)*dx+(n.y-A.y)*dy)/L2;
+    return {t:t,d:Math.hypot(n.x-(A.x+t*dx),n.y-(A.y+t*dy)),L:Math.sqrt(L2)};
+  }
+  for(var it=0,cambio=true;cambio&&it<2000;it++){
+    cambio=false;
+    for(var ni=0;ni<pts.length&&!cambio;ni++)for(var si=0;si<seg.length&&!cambio;si++){
+      var q=seg[si];if(q.a===ni||q.b===ni)continue;
+      var r=dsp(pts[ni],q);
+      if(r.t>0&&r.t<1&&r.d<=tol*1.3&&r.t*r.L>tol*1.5&&(1-r.t)*r.L>tol*1.5){
+        var b0=q.b;q.b=ni;seg.push({a:ni,b:b0,e:q.e});cambio=true;
+      }
+    }
+  }
+  var minx=Infinity,miny=Infinity;pts.forEach(function(q){minx=Math.min(minx,q.x);miny=Math.min(miny,q.y)});
+  var X=function(x){return Math.round((x-minx)*cm)},Y=function(y){return Math.round((y-miny)*cm)};
+  var nodes=pts.map(function(q){return {id:uid('n'),x:X(q.x),y:Y(q.y)}});
+  var ge=seg.map(function(q){return q.e}).filter(function(e){return e>0}).sort(function(a,b){return a-b}),emed=ge.length?ge[ge.length>>1]:0;
+  var walls=seg.map(function(q){
+    var e=Math.round((q.e||emed)*cm);if(!(e>=6))e=15;e=Math.max(6,Math.min(60,e));
+    return {id:uid('w'),a:nodes[q.a].id,b:nodes[q.b].id,len:null,m:false,s:'ex',t:e};
+  });
+  var ops=[];
+  function hueco(h,door){
+    var cx=X(h.x),cy=Y(h.y),best=null;
+    walls.forEach(function(w){
+      var A=nodes.filter(function(n){return n.id===w.a})[0],B=nodes.filter(function(n){return n.id===w.b})[0],dx=B.x-A.x,dy=B.y-A.y,L=Math.hypot(dx,dy);if(L<30)return;
+      var t=((cx-A.x)*dx+(cy-A.y)*dy)/(L*L);t=Math.max(0,Math.min(1,t));
+      var d=Math.hypot(cx-(A.x+t*dx),cy-(A.y+t*dy));
+      if(!best||d<best.d)best={w:w,d:d,s:t*L,L:L};
+    });
+    if(!best||best.d>Math.max(30,16*cm))return;
+    var ow=h.ancho_cm>=50&&h.ancho_cm<=400?h.ancho_cm:(h.ancho_px>0?h.ancho_px*cm:(door?82:100));
+    ow=Math.round(Math.max(40,Math.min(door?300:400,ow)));
+    if(best.L<ow+10)ow=Math.max(30,Math.round(best.L-10));
+    ops.push({id:uid('o'),wall:best.w.id,t:door?'door':'win',p:Math.round(Math.max(0,Math.min(best.L-ow,best.s-ow/2))),w:ow,h:door?210:120,sill:door?0:100,side:1,flip:false,s:'ex'});
+  }
+  (p.puertas||[]).forEach(function(h){hueco(h,true)});
+  (p.ventanas||[]).forEach(function(h){hueco(h,false)});
+  var pil=[];
+  (p.pilares||[]).forEach(function(c){
+    var cx=X(c.x),cy=Y(c.y),nn=null;
+    nodes.forEach(function(n){var d=Math.hypot(n.x-cx,n.y-cy);if(!nn||d<nn.d)nn={n:n,d:d}});
+    if(!nn)return;
+    var w=Math.max(10,Math.min(150,Math.round((c.ancho_px||0)*cm)||30)),d=Math.max(10,Math.min(150,Math.round((c.fondo_px||0)*cm)||w));
+    pil.push({id:uid('p'),n:nn.n.id,dx:cx-nn.n.x,dy:cy-nn.n.y,w:w,d:d,s:'ex'});
+  });
+  return {nodes:nodes,walls:walls,ops:ops,pil:pil,fondo:{x:Math.round(-minx*cm),y:Math.round(-miny*cm),w:Math.round(W*cm),h:Math.round(H*cm)}};
+}
+function planoIAResultado(p){
+  planoIAFin();
+  if(!p||!p.muros||!p.muros.length||!PIA.img){toast('La IA no ha devuelto muros');return}
+  var es=piaEscala(p),cm,nota='';
+  if(es){cm=es.cm;nota=es.de>1&&es.n<es.de?' Las cotas del plano no coinciden entre sí: revisa las medidas.':''}
+  else{
+    var Lmax=0;p.muros.forEach(function(m){Lmax=Math.max(Lmax,Math.hypot(m.x2-m.x1,m.y2-m.y1))});
+    var pr=window.prompt('No he encontrado cotas legibles en el plano. ¿Cuánto mide en realidad el muro más largo ('+UNL()+')? Con eso calculo la escala.','');
+    var real=fromU(num(pr));
+    if(!(real>20)){toast('Sin una medida de referencia no se puede dar escala al plano');return}
+    cm=real/Lmax;
+  }
+  var B;
+  try{B=planoIAConstruir({muros:p.muros,puertas:p.puertas,ventanas:p.ventanas,pilares:p.pilares,w:p.w||PIA.img.w,h:p.h||PIA.img.h},cm)}catch(e){toast('No se pudo montar el plano: '+e.message);return}
+  if(!B.walls.length){toast('No se ha podido montar ningún muro');return}
+  snap();
+  st.v.nodes=B.nodes;st.v.walls=B.walls;st.v.ops=B.ops;st.v.pil=B.pil;st.v.ctl=[];
+  ['mm','rc','fz'].forEach(function(k){if(Array.isArray(st.v[k]))st.v[k]=[]});
+  var fid='f'+Date.now().toString(36);
+  st.v.fondo={id:fid,x:B.fondo.x,y:B.fondo.y,w:B.fondo.w,h:B.fondo.h,op:0.45,on:true};
+  try{localStorage.setItem('ranuse-plano-fondo-'+fid,PIA.img.mini)}catch(e){}
+  fondoMem[fid]=null;delete fondoMem[fid];
+  try{var b0=atob(PIA.img.mini.split(',')[1]),u0=new Uint8Array(b0.length);for(var i=0;i<b0.length;i++)u0[i]=b0.charCodeAt(i);fondoMem[fid]=URL.createObjectURL(new Blob([u0],{type:'image/jpeg'}))}catch(e){}
+  st.view='actual';st.sel=null;
+  try{toolbar()}catch(e){}
+  commit();fit();
+  toast('Estado actual dibujado: '+B.walls.length+' muros, '+B.ops.length+' puertas/ventanas, '+B.pil.length+' pilares. Revísalo sobre el plano del cliente (Archivo → transparencia).'+nota+(p.aviso?' IA: '+p.aviso:''));
+}
 function crmPost(m){try{m.src='ranuse-medicion';window.parent.postMessage(m,location.origin)}catch(e){}}
 function hhmm(){var d=new Date();return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)}
 function crmQueue(){
@@ -9785,6 +9999,8 @@ if(CRM){
       cloud=cloud.filter(function(c){return c.id!==m.id});drawCloud();toast('Plano borrado');
     }else if(m.type==='enlaceSketchup'){
       $('sk-url').value=m.url||'';$('sk-msg').textContent=m.url?'Enlace de solo lectura de este plano. Quien lo tenga puede ver el modelo, pero no cambiarlo.':(m.message||'No se pudo crear el enlace');
+    }else if(m.type==='planoIAResultado'){planoIAResultado(m.plano);
+    }else if(m.type==='planoIAError'){planoIAFin();toast(m.message||'No se pudo leer el plano');
     }else if(m.type==='bloqueGenerado'){bloqueGenerado(m.bloque,null);
     }else if(m.type==='bloqueError'){bloqueGenerado(null,m.message);
     }else if(m.type==='biblioteca'){
@@ -9878,6 +10094,8 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
       else if(id==='marcas')alternarMarcas();
       else if(id==='datos')abrirDatos();
       else if(id==='info')abrirInfoLam();
+      else if(id==='planoia')planoIAAbrir();
+      else if(id==='fondo-ver'||id==='fondo-op'||id==='fondo-q')fondoAccion(id);
       else if(id==='cotamuros')alternarCotaMuros();
       else if(id==='ubicacion'){st.verUbic=!st.verUbic;var bu=document.getElementById('mi-ubic');if(bu)bu.textContent='Ubicación del equipamiento en pantalla: '+(st.verUbic?'visible':'oculta');if(st.view!=='distrib'){st.view='distrib';toolbar()}render();toast(st.verUbic?'Se ven las distancias de cada pieza a los muros (en Distribución)':'Plano limpio: las distancias salen al seleccionar una pieza')}
       else if(id==='cmdp')cmdAbrir('');

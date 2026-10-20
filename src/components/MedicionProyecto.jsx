@@ -76,6 +76,12 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           responder({ type: 'bloqueGenerado', bloque: data.bloque });
         } catch (err) { responder({ type: 'bloqueError', message: err.response?.data?.error || 'No se pudo generar el bloque' }); }
       }
+      else if (m.type === 'planoIA' && typeof m.imagen === 'string') {
+        try {
+          const { data } = await api.post('/medicion/plano-ia', { imagen: m.imagen, w: m.w, h: m.h, nota: m.nota }, { timeout: 600000 });
+          responder({ type: 'planoIAResultado', plano: data });
+        } catch (err) { responder({ type: 'planoIAError', message: err.response?.data?.error || 'No se pudo leer el plano' }); }
+      }
       else if (m.type === 'generarBloqueProducto' && m.id) {
         try {
           const { data } = await api.post(`/catalog/products/${m.id}/bloques/generar`, { largo: m.largo, fondo: m.fondo, alto: m.alto }, { timeout: 600000 });

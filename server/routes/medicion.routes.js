@@ -117,6 +117,61 @@ router.post('/bloque-ia', async (req, res) => {
   }
 });
 
+// ── Plano del cliente (imagen o PDF ya convertido a imagen) → estado actual ──
+// La IA lee el plano y devuelve muros, puertas, ventanas y pilares en PÍXELES de la imagen enviada,
+// más cotas de referencia para sacar la escala. No guarda nada: la herramienta lo dibuja y se ajusta a mano.
+const TOOL_PLANO = {
+  name: 'entregar_plano',
+  description: 'Entrega el plano leído: muros, huecos y pilares en píxeles de la imagen, y cotas de referencia para la escala.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      muros: { type: 'array', description: 'Segmentos de muro (eje central). Los muros que se encuentran DEBEN compartir exactamente las mismas coordenadas en el punto de unión. Incluye el perímetro y los tabiques interiores.', items: { type: 'object', properties: { x1: { type: 'number' }, y1: { type: 'number' }, x2: { type: 'number' }, y2: { type: 'number' }, espesor_px: { type: 'number' } }, required: ['x1', 'y1', 'x2', 'y2'] } },
+      puertas: { type: 'array', items: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, ancho_px: { type: 'number', description: 'Ancho del hueco en píxeles' }, ancho_cm: { type: 'number', description: 'Si el plano lo indica o es una puerta típica' } }, required: ['x', 'y'] } },
+      ventanas: { type: 'array', items: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, ancho_px: { type: 'number' }, ancho_cm: { type: 'number' } }, required: ['x', 'y'] } },
+      pilares: { type: 'array', items: { type: 'object', properties: { x: { type: 'number', description: 'Centro' }, y: { type: 'number' }, ancho_px: { type: 'number' }, fondo_px: { type: 'number' } }, required: ['x', 'y', 'ancho_px', 'fondo_px'] } },
+      escala: { type: 'array', description: 'Cotas escritas en el plano que midas sobre la imagen (de punto a punto), para calcular cm por píxel. Mínimo 2 si las hay.', items: { type: 'object', properties: { x1: { type: 'number' }, y1: { type: 'number' }, x2: { type: 'number' }, y2: { type: 'number' }, cm: { type: 'number' } }, required: ['x1', 'y1', 'x2', 'y2', 'cm'] } },
+      aviso: { type: 'string', description: 'Dudas o partes que no se leen bien (en español, breve).' },
+    },
+    required: ['muros'],
+  },
+};
+router.post('/plano-ia', async (req, res) => {
+  try {
+    const m = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.imagen || ''));
+    if (!m) return res.status(400).json({ error: 'La imagen no es válida (usa PNG, JPG o WebP)' });
+    if (Buffer.from(m[2], 'base64').length > 12 * 1024 * 1024) return res.status(400).json({ error: 'La imagen pesa demasiado' });
+    const w = Math.round(Number(req.body.w)), h = Math.round(Number(req.body.h));
+    if (!(w > 50 && w <= 4000 && h > 50 && h <= 4000)) return res.status(400).json({ error: 'Faltan las dimensiones de la imagen' });
+    const tipo = m[1] === 'png' ? 'image/png' : m[1] === 'webp' ? 'image/webp' : 'image/jpeg';
+    const r = await callClaude({
+      system: 'Eres un delineante que pasa a limpio planos de planta de locales. Recibes la imagen de un plano que entrega un cliente y la transcribes con la herramienta entregar_plano. Reglas: las coordenadas son PÍXELES de la imagen (origen arriba-izquierda, x a la derecha, y hacia abajo); la imagen mide ' + w + ' x ' + h + ' px. Dibuja cada muro como un segmento sobre su eje central; los muros que se unen comparten exactamente el mismo punto. Divide un muro largo donde otro tabique se une a él. No inventes muros que no se ven; ignora muebles, cotas, textos, marco y cajetín. Puertas y ventanas: centro del hueco sobre el muro y su ancho. Pilares: solo los macizos dibujados dentro del local. En "escala" pon 2 a 4 cotas escritas en el plano (preferiblemente largas y en direcciones distintas), midiendo con cuidado sus extremos sobre la imagen. Si no hay ninguna cota legible, deja escala vacío.',
+      maxTokens: 12000,
+      tools: [TOOL_PLANO],
+      messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: tipo, data: m[2] } }, { type: 'text', text: 'Transcribe este plano de la planta con entregar_plano.' + (req.body.nota ? ' Nota de quien lo sube: ' + String(req.body.nota).slice(0, 300) : '') }] }],
+    });
+    const uso = (r.content || []).find(c => c.type === 'tool_use' && c.name === 'entregar_plano');
+    const p = uso?.input;
+    if (!p || !Array.isArray(p.muros) || !p.muros.length) return res.status(422).json({ error: 'La IA no ha podido leer muros en ese plano. Prueba con una imagen más nítida o recortada solo a la planta.' });
+    const n = (v) => Number.isFinite(Number(v)) ? Number(v) : null;
+    const lista = (a, campos, max) => (Array.isArray(a) ? a : []).slice(0, max).map(o => {
+      const r2 = {}; for (const c of campos) r2[c] = n(o?.[c]); return r2;
+    }).filter(o => campos.every(c => c === 'cm' || c.startsWith('ancho') || c === 'fondo_px' || c === 'espesor_px' || o[c] !== null));
+    res.json({
+      w, h,
+      muros: lista(p.muros, ['x1', 'y1', 'x2', 'y2', 'espesor_px'], 400),
+      puertas: lista(p.puertas, ['x', 'y', 'ancho_px', 'ancho_cm'], 100),
+      ventanas: lista(p.ventanas, ['x', 'y', 'ancho_px', 'ancho_cm'], 100),
+      pilares: lista(p.pilares, ['x', 'y', 'ancho_px', 'fondo_px'], 100),
+      escala: lista(p.escala, ['x1', 'y1', 'x2', 'y2', 'cm'], 8).filter(o => o.cm > 0),
+      aviso: String(p.aviso || '').slice(0, 400),
+    });
+  } catch (err) {
+    console.error('medicion plano-ia:', err);
+    res.status(500).json({ error: err.message?.includes('clave de la IA') ? err.message : 'No se pudo leer el plano. Inténtalo de nuevo.' });
+  }
+});
+
 // ── Biblioteca propia de bloques (importados desde DXF, etc.) ─────────────
 const ETIQUETAS_PLANTA = new Set(['path', 'g', 'line', 'rect', 'circle', 'polygon']);
 function plantaValida(frag) {
