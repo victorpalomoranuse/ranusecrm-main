@@ -400,6 +400,7 @@ body.crm .top .brand{display:none}
           <select id="fly-ord" aria-label="Ordenar por"><option value="nombre">Nombre (A–Z)</option><option value="tam">Tamaño: de mayor a menor</option><option value="tam-a">Tamaño: de menor a mayor</option><option value="bloque">Con dibujo o foto primero</option></select>
           <div class="seg3" id="fly-vista" hidden style="margin:8px 0"></div>
           <button id="fly-img" style="width:100%;margin:6px 0" title="Pega o sube una foto de un objeto y la herramienta dibuja su planta, alzado y lateral a escala">✨ Crear bloque desde una imagen…</button>
+          <button id="fly-esc" style="width:100%;margin:0 0 6px" title="Escribe la altura que hay que salvar y la escalera se calcula sola: peldaños, huella y contrahuella según normativa. Recta, en L o en U">🪜 Crear escalera (se calcula sola)…</button>
           <button id="fly-dxf" style="width:100%;margin:0 0 6px" title="Sube un archivo DXF con uno o varios bloques (de un fabricante, de tus bibliotecas o de tus planos): verás cada uno dibujado y eliges cuáles guardar en tu biblioteca">⬆ Subir bloques (DXF)…</button>
           <div class="catgrid" id="fly-cat"></div>
         </div>
@@ -945,7 +946,7 @@ function stCol(s,view,C){return (view==='actual'||FINALV[view])?C.ink:(s==='ex'?
 /* ---------- máquinas: catálogo común, símbolos fijos ---------- */
 function catalog(){
   var m={},out=[];
-  DEFCAT.concat(custom).concat(cloudCat).forEach(function(c){if(!m[c.id]){m[c.id]=c;out.push(c)}else{out[out.indexOf(m[c.id])]=c;m[c.id]=c}});
+  DEFCAT.concat(custom).concat(cloudCat).concat(escCats()).forEach(function(c){if(!m[c.id]){m[c.id]=c;out.push(c)}else{out[out.indexOf(m[c.id])]=c;m[c.id]=c}});
   return out;
 }
 function catById(id){var l=catalog();for(var i=0;i<l.length;i++)if(l[i].id===id)return l[i];return null}
@@ -5639,6 +5640,7 @@ function cargarDXF(cb){
   document.head.appendChild(sc);
 }
 $('fly-dxf').addEventListener('click',function(){$('dxf-file').click()});
+$('fly-esc').addEventListener('click',function(){flyClose();escModal(null)});
 /* el estado de la subida también sale como aviso (el panel donde está el texto puede estar cerrado) */
 try{new MutationObserver(function(){var t=$('dxf-st').textContent;if(t)toast(t)}).observe($('dxf-st'),{childList:true,characterData:true,subtree:true})}catch(e){}
 $('dxf-file').addEventListener('change',function(e){
@@ -6225,6 +6227,7 @@ function panelSel(focus){
     var tqp=eqTipos().porId[e.id];
     h+='<div class="rowh"><strong>'+(tqp?tqp.cod:ix)+' · '+esc(e.nm)+'</strong><span class="muted">giro '+e.rot+'°</span></div>';
     h+='<div class="btns tr"><button data-a="zfront" title="Dibujarlo por encima de los demás bloques">Traer al frente</button><button data-a="zback" title="Dibujarlo por debajo de los demás bloques">Enviar atrás</button></div>';
+    if(e.bl&&e.bl.esc)h+='<div class="btns tr"><button data-a="escedit" class="pri" title="Cambia la altura, el ancho o el tipo y se recalculan los peldaños">Editar la escalera</button></div><p class="note">'+esc(escResumen(e.bl.esc))+'</p>';
     h+='<div class="lab">Estado del bloque</div>'+seg3(e.s||'new','eqstate')+'<p class="note" style="margin:4px 0 8px">'+(e.s==='ex'?'Ya está en el espacio: sale en Estado actual y se mantiene en Distribución.':e.s==='dem'?'Ya está y se retira: sale en Estado actual y en Demoliciones, no en Distribución.':'Nuevo: solo sale en Distribución (y cuenta en el presupuesto).')+'</p>';
     h+='<div class="lab">Pegar al ras del muro, pilar o bloque más cercano</div><div class="btns tr"><button data-a="eqpg:-1,0" title="Pegar a la izquierda">⟵ Izquierda</button><button data-a="eqpg:1,0" title="Pegar a la derecha">Derecha ⟶</button><button data-a="eqpg:0,-1" title="Pegar hacia arriba">↑ Arriba</button><button data-a="eqpg:0,1" title="Pegar hacia abajo">↓ Abajo</button></div><p class="note" style="margin:2px 0 6px">Al arrastrar un bloque también se pega solo al ras de muros, pilares y otros bloques cercanos (con Alt pulsado no).</p>';
     h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="eqrotl45" title="Girar 45° a la izquierda">⟲ 45°</button><button data-a="eqrot45" title="Girar 45° a la derecha">⟳ 45°</button><button data-a="eqrotl" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="eqrot" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="eqrot180" title="Girar 180°">180°</button><button data-a="eqflx" aria-pressed="'+!!e.fx+'" title="Espejo izquierda-derecha">⇋ Espejo</button><button data-a="eqfly" aria-pressed="'+!!e.fy+'" title="Espejo arriba-abajo">⇅ Espejo</button></div>';
@@ -6794,6 +6797,7 @@ function doAction(a,el){
   var s=st.sel,sv=el.getAttribute('data-s');
   if(a==='defstate'){st.defState=sv;toolbar();return}
   if(a==='dims'){st.dims=sv;toolbar();save();render();return}
+  if(a==='escedit'&&st.sel&&st.sel.t==='eq'){escModal(st.sel.id);return}
   if((a==='zfront'||a==='zback')&&st.sel){
     var lz={eq:st.v.eq,pil:st.v.pil,dr:st.v.dr}[st.sel.t],itz=lz&&by(lz,st.sel.id);
     if(itz){snap();var zs=lz.map(function(q){return q.z||0});itz.z=a==='zfront'?Math.max.apply(null,zs)+1:Math.min.apply(null,zs)-1;commit();toast(a==='zfront'?'Al frente':'Enviado atrás')}
@@ -9725,6 +9729,7 @@ function buildModelo3d(){
     orig.pisos.forEach(function(p,i){
       st.v=pisoVisita(orig,p);
       var m=buildModelo3d1();m.id=p.id;m.nombre=p.nombre;m.z=pisoCota(orig,i);m.forjado=i>0?(p.forj==null?25:+p.forj):0;
+      m.huecos=i>0?out.plantas[i-1].equipos.filter(function(q){return q.hueco}).map(function(q){return q.hueco}):[]; /* el hueco de la escalera de abajo en el forjado de esta planta */
       out.plantas.push(m);
     });
   }finally{st.v=orig}
@@ -9757,6 +9762,8 @@ function buildModelo3d1(){
     var c=pc(e),cat=catById(e.cid);
     out.equipos.push({id:e.id,estado:e.s||'new',cid:e.cid||'',nombre:e.nm,cx:f2(c.x),cy:f2(c.y),w:e.w,d:e.d,rot:e.rot||0,fx:!!e.fx,fy:!!e.fy,alto:(cat&&cat.alto)||110,
       skp:(cat&&cat.skp)?{url:cat.skp.url,rot:cat.skp.rot||0}:null,
+      escalera:(cat&&cat.esc)?escPeldanos3d(cat.esc,e,(cat.bloque&&cat.bloque.largo)||e.w,(cat.bloque&&cat.bloque.fondo)||e.d):null,
+      hueco:(cat&&cat.esc&&cat.esc.hueco!==false)?escHueco(e,c):null,
       largo:(cat&&cat.bloque&&cat.bloque.largo)||e.w,fondo:(cat&&cat.bloque&&cat.bloque.fondo)||e.d,huella:espejoHuella(huellaDe(cat),e,(cat&&cat.bloque&&cat.bloque.largo)||e.w,(cat&&cat.bloque&&cat.bloque.fondo)||e.d)});
   });
   return out;
@@ -9769,6 +9776,142 @@ function modoPantalla(f){
   b.title=f?'Cerrar el editor y volver':'Abrir el editor a pantalla completa';
 }
 $('m-full').addEventListener('click',function(){crmPost({type:crmFull?'cerrar':'ampliar'})});
+/* ══ Escalera: se calcula sola a partir de la altura que hay que salvar ══ */
+function escCats(){
+  var l=[];
+  ((st.v&&st.v.eq)||[]).forEach(function(e){
+    if(e.bl&&e.cid)l.push({id:e.cid,nombre:e.nm,tipo:'gen',w:e.bl.largo,d:e.bl.fondo,alto:e.bl.alto,categoria:'Escaleras',ref:'',vistas:['planta'],bloque:{planta:e.bl.planta,largo:e.bl.largo,fondo:e.bl.fondo},esc:e.bl.esc,oculto:true});
+  });
+  return l;
+}
+var ESC_USO={comercial:{cMax:17.5,gMin:28,aMin:100,nom:'uso público / comercial'},vivienda:{cMax:20,gMin:22,aMin:80,nom:'vivienda'}};
+/* o = {H alto a salvar, A ancho, tipo 'recta'|'L'|'U', giro 'dcha'|'izq', uso}. Devuelve peldaños (cajas en cm, con su altura), medidas y comprobaciones */
+function escCalc(o){
+  var H=+o.H,A=+o.A,U=ESC_USO[o.uso]||ESC_USO.comercial,tipo=o.tipo||'recta';
+  if(!(H>=40&&H<=1200))return {error:'La altura a salvar debe estar entre 40 y 1200 cm'};
+  if(!(A>=50&&A<=400))return {error:'El ancho debe estar entre 50 y 400 cm'};
+  var n=Math.max(2,Math.ceil(H/U.cMax-1e-9)),c=H/n;
+  var g=Math.round((63-2*c)*2)/2;g=Math.max(U.gMin,Math.min(34,g)); /* regla de Blondel: 2·contrahuella + huella ≈ 63 cm */
+  var nota='';
+  if(tipo!=='recta'&&n<5){tipo='recta';nota='Con tan pocos peldaños la escalera sale recta.'}
+  var m=tipo==='recta'?n:Math.ceil(n/2),T=[],gap=10,largo,fondo,i,j,fl=o.giro==='izq';
+  if(tipo==='recta'){
+    for(i=1;i<n;i++)T.push({x:(i-1)*g,y:0,w:g,d:A,h:i*c});
+    largo=(n-1)*g;fondo=A;
+  }else if(tipo==='L'){
+    for(i=1;i<m;i++)T.push({x:(i-1)*g,y:0,w:g,d:A,h:i*c});
+    T.push({x:(m-1)*g,y:0,w:A,d:A,h:m*c,desc:1});
+    for(j=1;j<=n-m-1;j++)T.push({x:(m-1)*g,y:A+(j-1)*g,w:A,d:g,h:(m+j)*c});
+    largo=(m-1)*g+A;fondo=A+(n-m-1)*g;
+  }else{
+    for(i=1;i<m;i++)T.push({x:(i-1)*g,y:0,w:g,d:A,h:i*c});
+    T.push({x:(m-1)*g,y:0,w:A,d:2*A+gap,h:m*c,desc:1});
+    for(j=1;j<=n-m-1;j++)T.push({x:(m-1)*g-j*g,y:A+gap,w:g,d:A,h:(m+j)*c});
+    largo=(m-1)*g+A;fondo=2*A+gap;
+  }
+  if(fl&&tipo!=='recta')T=T.map(function(t){return {x:t.x,y:fondo-t.y-t.d,w:t.w,d:t.d,h:t.h,desc:t.desc}});
+  var r1=function(v){return Math.round(v*10)/10};
+  T=T.map(function(t){return {x:r1(t.x),y:r1(t.y),w:r1(t.w),d:r1(t.d),h:r1(t.h),desc:t.desc}});
+  /* recorrido (flecha) */
+  var cy=A/2,P=[];
+  if(tipo==='recta')P=[[g*0.3,cy],[largo-g*0.3,cy]];
+  else if(tipo==='L')P=[[g*0.3,cy],[(m-1)*g+A/2,cy],[(m-1)*g+A/2,fondo-g*0.3]];
+  else P=[[g*0.3,cy],[(m-1)*g+A/2,cy],[(m-1)*g+A/2,A+gap+A/2],[g*0.3,A+gap+A/2]];
+  if(fl&&tipo!=='recta')P=P.map(function(q){return [q[0],fondo-q[1]]});
+  var reglas=[];
+  reglas.push({ok:c<=U.cMax+1e-6&&c>=13,t:'Contrahuella '+r1(c)+' cm (entre 13 y '+U.cMax+')'});
+  reglas.push({ok:g>=U.gMin-1e-6,t:'Huella '+r1(g)+' cm (mínimo '+U.gMin+')'});
+  reglas.push({ok:2*c+g>=54&&2*c+g<=70,t:'2 × contrahuella + huella = '+r1(2*c+g)+' cm (entre 54 y 70)'});
+  reglas.push({ok:A>=U.aMin,t:'Ancho '+A+' cm (mínimo '+U.aMin+' para '+U.nom+')'});
+  return {tipo:tipo,n:n,peldanos:n-1,c:r1(c),g:g,A:A,H:H,largo:r1(largo),fondo:r1(fondo),treads:T,flecha:P,reglas:reglas,nota:nota,giro:fl?'izq':'dcha',uso:o.uso||'comercial'};
+}
+function escNombre(r){return 'Escalera '+(r.tipo==='recta'?'recta':r.tipo==='L'?'en L':'en U')+' · '+r.A+' cm · '+r.peldanos+' peldaños'}
+function escResumen(e){return e.n+' contrahuellas de '+e.c+' cm y '+e.peldanos+' peldaños de '+e.g+' cm de huella para salvar '+e.H+' cm. Ocupa '+e.largo+' × '+e.fondo+' cm.'}
+/* dibujo en planta: cada peldaño es un rectángulo (con su altura anotada para el 3D) y una flecha marca el sentido de subida */
+function escPlanta(r,color){
+  var A=' stroke="'+(color||'#000000')+'" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"',o='';
+  r.treads.forEach(function(t){o+='<rect x="'+t.x+'" y="'+t.y+'" width="'+t.w+'" height="'+t.d+'" data-h="'+t.h+'"'+A+'/>'});
+  var P=r.flecha,d='M'+P.map(function(q){return f2(q[0])+' '+f2(q[1])}).join('L');
+  o+='<path d="'+d+'"'+A+'/>';
+  var a=P[P.length-2],b=P[P.length-1],ang=Math.atan2(b[1]-a[1],b[0]-a[0]),L=14,W=6;
+  var p1=[b[0]-L*Math.cos(ang)+W*Math.sin(ang),b[1]-L*Math.sin(ang)-W*Math.cos(ang)],p2=[b[0]-L*Math.cos(ang)-W*Math.sin(ang),b[1]-L*Math.sin(ang)+W*Math.cos(ang)];
+  o+='<polygon points="'+f2(b[0])+','+f2(b[1])+' '+f2(p1[0])+','+f2(p1[1])+' '+f2(p2[0])+','+f2(p2[1])+'"'+A.replace('fill="none"','fill="'+(color||'#000000')+'"')+'/>';
+  o+='<circle cx="'+f2(P[0][0])+'" cy="'+f2(P[0][1])+'" r="3"'+A.replace('fill="none"','fill="'+(color||'#000000')+'"')+'/>';
+  return o;
+}
+/* peldaños para SketchUp: polígonos con su altura, con el mismo espejo que lleva la pieza */
+function escPeldanos3d(esc,e,L,T){
+  return esc.treads.map(function(t){
+    var x0=t.x,x1=t.x+t.w,y0=t.y,y1=t.y+t.d;
+    if(e.fx){var a=L-x1,b=L-x0;x0=a;x1=b}
+    if(e.fy){var c=T-y1,d=T-y0;y0=c;y1=d}
+    return {pts:[[f2(x0),f2(y0)],[f2(x1),f2(y0)],[f2(x1),f2(y1)],[f2(x0),f2(y1)]],h:t.h};
+  });
+}
+/* hueco en el forjado de arriba: la huella de la escalera, girada como esté */
+function escHueco(e,c){
+  var a=(e.rot||0)*Math.PI/180,co=Math.cos(a),si=Math.sin(a),hw=e.w/2,hd=e.d/2;
+  return [[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]].map(function(p){return [f2(c.x+p[0]*co-p[1]*si),f2(c.y+p[0]*si+p[1]*co)]});
+}
+function escAlturaDefecto(){
+  if(pisosOn()){var i=pisoIdx();if(i>=0&&i<st.v.pisos.length-1)return Math.round(pisoAltura(st.v,st.v.pisos[i])+(st.v.pisos[i+1].forj==null?25:+st.v.pisos[i+1].forj))}
+  return Math.round(num(st.v.altura)||260);
+}
+function escModal(editId){
+  var ed=editId?by(st.v.eq,editId):null,prev=ed&&ed.bl&&ed.bl.esc;
+  var v={H:prev?prev.H:escAlturaDefecto(),A:prev?prev.A:100,tipo:prev?prev.tipo:'recta',giro:prev?prev.giro:'dcha',uso:prev?prev.uso:'comercial',hueco:prev?prev.hueco!==false:true};
+  var m=document.getElementById('escmod');if(m)m.remove();
+  m=document.createElement('div');m.id='escmod';m.className='dxfmod';
+  m.innerHTML='<div class="dxfbox" style="max-width:760px"><header><h3>Escalera</h3><p class="note" style="margin:0">Escribe la altura que hay que salvar y el resto se calcula solo: número de peldaños, huella y contrahuella según normativa.</p></header>'+
+    '<div style="padding:12px 16px;overflow:auto;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))"><div>'+
+    '<label class="fld"><span>Tipo</span><select id="es-tipo"><option value="recta">Recta</option><option value="L">En L (con descansillo)</option><option value="U">En U (dos tramos)</option></select></label>'+
+    '<label class="fld" id="es-giro-w"><span>Gira hacia</span><select id="es-giro"><option value="dcha">La derecha</option><option value="izq">La izquierda</option></select></label>'+
+    '<label class="fld"><span>Altura a salvar (cm) <small id="es-hn"></small></span><input id="es-h" inputmode="decimal"></label>'+
+    '<label class="fld"><span>Ancho de la escalera (cm)</span><input id="es-a" inputmode="decimal"></label>'+
+    '<label class="fld"><span>Uso</span><select id="es-uso"><option value="comercial">Público / comercial (CTE: huella ≥ 28, contrahuella ≤ 17,5)</option><option value="vivienda">Vivienda (huella ≥ 22, contrahuella ≤ 20)</option></select></label>'+
+    '<label class="fld" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="es-hueco"><span>Hace hueco en el forjado de la planta de arriba</span></label>'+
+    '</div><div><div id="es-prev" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;min-height:150px;display:grid;place-items:center"></div><div id="es-res" style="margin-top:8px;font-size:.85rem"></div></div></div>'+
+    '<footer><button class="pri" id="es-ok">'+(ed?'Actualizar la escalera':'Colocar en el plano')+'</button><button id="es-x">Cancelar</button><span class="note" id="es-aviso" style="margin:0"></span></footer></div>';
+  document.body.appendChild(m);
+  var g=function(i){return document.getElementById(i)};
+  g('es-tipo').value=v.tipo;g('es-giro').value=v.giro;g('es-h').value=v.H;g('es-a').value=v.A;g('es-uso').value=v.uso;g('es-hueco').checked=v.hueco;
+  g('es-hn').textContent=pisosOn()?'(sale de la altura de esta planta + el forjado)':'';
+  var res=null;
+  function calc(){
+    v.tipo=g('es-tipo').value;v.giro=g('es-giro').value;v.uso=g('es-uso').value;v.H=num(g('es-h').value);v.A=num(g('es-a').value);v.hueco=g('es-hueco').checked;
+    g('es-giro-w').style.display=v.tipo==='recta'?'none':'';
+    res=escCalc(v);
+    if(res.error){g('es-prev').innerHTML='';g('es-res').innerHTML='<span style="color:var(--bad,#c33)">'+esc(res.error)+'</span>';g('es-ok').disabled=true;return}
+    g('es-ok').disabled=false;
+    var pad=20,vb=(-pad)+' '+(-pad)+' '+(res.largo+2*pad)+' '+(res.fondo+2*pad),sc=Math.min(300/(res.largo+2*pad),200/(res.fondo+2*pad));
+    g('es-prev').innerHTML='<svg viewBox="'+vb+'" width="'+Math.round((res.largo+2*pad)*sc)+'" height="'+Math.round((res.fondo+2*pad)*sc)+'" style="color:var(--ink)">'+escPlanta(res,'currentColor')+'</svg>';
+    g('es-res').innerHTML='<b>'+res.n+' contrahuellas · '+res.peldanos+' peldaños</b><br>Contrahuella '+res.c+' cm · huella '+res.g+' cm<br>Ocupa '+res.largo+' × '+res.fondo+' cm ('+(Math.round(res.largo*res.fondo/100)/100)+' m²)'+
+      res.reglas.map(function(q){return '<div style="color:'+(q.ok?'var(--ok,#2a8)':'var(--bad,#c33)')+'">'+(q.ok?'✓ ':'⚠ ')+esc(q.t)+'</div>'}).join('')+(res.nota?'<div class="note">'+esc(res.nota)+'</div>':'')+
+      '<div class="note">Es un cálculo orientativo: revísalo con el CTE DB-SUA y con el técnico responsable antes de ejecutarlo.</div>';
+  }
+  ['es-tipo','es-giro','es-uso','es-hueco'].forEach(function(i){g(i).addEventListener('change',calc)});
+  ['es-h','es-a'].forEach(function(i){g(i).addEventListener('input',calc)});
+  function cerrar(){m.remove()}
+  g('es-x').addEventListener('click',cerrar);
+  m.addEventListener('click',function(e){if(e.target===m)cerrar()});
+  g('es-ok').addEventListener('click',function(){
+    if(!res||res.error)return;
+    var bl={planta:escPlanta(res),largo:res.largo,fondo:res.fondo,alto:res.H,esc:{tipo:res.tipo,giro:res.giro,uso:res.uso,n:res.n,peldanos:res.peldanos,c:res.c,g:res.g,A:res.A,H:res.H,largo:res.largo,fondo:res.fondo,treads:res.treads,hueco:v.hueco}};
+    var nom=escNombre(res);
+    if(ed){
+      snap();ed.bl=bl;ed.w=res.largo;ed.d=res.fondo;ed.nm=nom;commit();cerrar();toast('Escalera actualizada: '+escResumen(res));return;
+    }
+    var cx=(W/2-st.tx)/st.k,cy=(H/2-st.ty)/st.k,nq=nearNode(cx,cy,1e9,null);
+    if(!nq){toast('Dibuja primero el contorno de la sala');return}
+    snap();
+    var ne={id:uid('e'),n:nq.id,dx:f2(cx-nq.x),dy:f2(cy-nq.y),w:res.largo,d:res.fondo,rot:0,nm:nom,ty:'gen',cid:uid('esc'),ref:'',bl:bl};
+    if(st.view==='actual')ne.s='ex';
+    st.v.eq.push(ne);st.sel={t:'eq',id:ne.id};st.multi=[];
+    if(st.view==='actual'||st.view==='demol'||st.view==='interv'||st.view==='alz'){st.view='distrib';try{toolbar()}catch(e2){}}
+    commit();cerrar();toast(nom+' colocada. Arrástrala a su sitio y gírala si hace falta.');
+  });
+  calc();
+}
 /* ══ Plantas dentro del mismo plano ══
    El plano que se está editando (st.v) siempre trae los datos de LA PLANTA ACTIVA, así todo el resto del código funciona igual.
    Las demás plantas esperan guardadas en st.v.pisos[i].b y se intercambian al cambiar de planta. */

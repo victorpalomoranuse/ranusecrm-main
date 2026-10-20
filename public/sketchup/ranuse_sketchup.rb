@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.7.0'.freeze
+    VERSION = '1.8.0'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -845,6 +845,25 @@ module Ranuse
     end
 
     # Losa entre una planta y la de abajo: bajo el suelo de cada sala de la planta, del grosor del forjado
+    # Prisma con agujeros (huecos de escalera). Si un hueco no se puede abrir, la losa se hace igualmente.
+    def self.prisma_con_huecos(ents, puntos, huecos, z0, z1)
+      return prisma(ents, puntos, z0, z1) if huecos.nil? || huecos.empty?
+      cara = ents.add_face(puntos.map { |p| pt(p[0], p[1], z0) })
+      return nil unless cara
+      cara.reverse! if cara.normal.z < 0
+      huecos.each do |h|
+        begin
+          hc = ents.add_face(h.map { |p| pt(p[0].to_f, p[1].to_f, z0) })
+          hc.erase! if hc && hc.valid?
+        rescue => _
+          # sin hueco en esa escalera
+        end
+      end
+      alto = z1.to_f - z0.to_f
+      cara.pushpull(alto.cm) if alto.abs > 0.01
+      cara
+    end
+
     def self.forjado(ents, pl)
       grosor = pl['forjado'].to_f
       mat_f = material('Ranuse forjado', '#b9b4ab')
@@ -853,9 +872,10 @@ module Ranuse
         pts = sa['pts']
         next if pts.nil? || pts.size < 3
         clave = "forjado:#{sa['idS'] || clave_poligono(pts)}"
-        g = elemento(ents, clave, firma([pts, grosor]), "Forjado #{sa['nombre']}".strip, et)
+        g = elemento(ents, clave, firma([pts, grosor, pl['huecos']]), "Forjado #{sa['nombre']}".strip, et)
         next unless g
-        prisma(g.entities, pts, -grosor, -0.2)
+        propios = (pl['huecos'] || []).select { |h| h.is_a?(Array) && h.size >= 3 && h.all? { |p| punto_en_poligono?(p[0].to_f, p[1].to_f, pts) } }
+        prisma_con_huecos(g.entities, pts, propios, -grosor, -0.2)
         pintar(g, clave, mat_f)
       end
     end
@@ -1064,6 +1084,19 @@ module Ranuse
         x = bx * (w / largo) - w / 2.0
         y = by * (d / fondo) - d / 2.0
         [cx + x * c - y * s, cy + x * s + y * c]
+      end
+      # Escalera: cada peldaño es una caja desde el suelo hasta su altura (con el mismo giro y espejo de la pieza)
+      if e['escalera'].is_a?(Array) && !e['escalera'].empty?
+        hecho_esc = false
+        e['escalera'].each do |t|
+          pts = (t['pts'] || []).map { |p| transformar.call(p[0].to_f, p[1].to_f) }
+          begin
+            hecho_esc = true if prisma(ents, pts, 0.0, t['h'].to_f)
+          rescue => _
+            # un peldaño degenerado no debe impedir el resto
+          end
+        end
+        return if hecho_esc
       end
       hecho = false
       (e['huella'] || []).each do |poli|
