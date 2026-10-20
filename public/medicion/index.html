@@ -1014,6 +1014,8 @@ var OPK=[
   {id:'p-bols',t:'door',n:'Corredera empotrada',w:90,h:210,sill:0,tip:'Corredera empotrada'},
   {id:'p-cris',t:'door',n:'Puerta de cristal',w:90,h:210,sill:0,tip:'Abatible',mat:'Vidrio templado'},
   {id:'p-pleg',t:'door',n:'Puerta plegable',w:90,h:210,sill:0,tip:'Plegable'},
+  {id:'p-hueco',t:'door',n:'Hueco de puerta (sin hoja)',w:90,h:210,sill:0,tip:'Hueco'},
+  {id:'p-hueco-d',t:'door',n:'Hueco de paso amplio (sin hoja)',w:160,h:210,sill:0,tip:'Hueco'},
   {id:'g-secc',t:'door',n:'Portón seccional de nave',w:400,h:450,sill:0,tip:'Seccional',mat:'Panel sándwich'},
   {id:'g-secc2',t:'door',n:'Portón seccional de garaje',w:250,h:220,sill:0,tip:'Seccional',mat:'Panel sándwich'},
   {id:'g-basc',t:'door',n:'Portón basculante de garaje',w:250,h:210,sill:0,tip:'Basculante',mat:'Chapa lacada'},
@@ -1116,6 +1118,7 @@ function opPreset(t){var k=st&&st.opK&&st.opK[t];return opKById(k)||opKById(t===
 function opSym(o){
   var t=String(o.tip||(o.t==='door'?'Abatible':'Practicable'));
   if(o.t==='door'){
+    if(/hueco|sin hoja|paso libre/i.test(t))return 'hueco';
     if(/seccion|basculan|enroll/i.test(t))return 'sec';
     if(/empotr/i.test(t))return 'bols';
     if(/corred/i.test(t))return /2|doble/i.test(t)?'corr2':'corr';
@@ -1162,6 +1165,8 @@ function opSymSvg(op,q,col,t,px){
       var o1=-t*0.22,o2=t*0.22;
       if(sym==='corr'){h+=L(0,o1,w*0.6,o1,2.2)+L(w*0.4,o1,w,o1,1,true)+flecha(w*0.85,o1,1)}
       else{h+=L(0,o1,w*0.55,o1,2.2)+L(w*0.45,o2,w,o2,2.2)+flecha(w*0.3,o1,-1)+flecha(w*0.7,o2,1)}
+    }else if(sym==='hueco'){ /* un paso sin hoja: solo las dos jambas del hueco, sin hoja ni arco */
+      h+=L(0,-t/2,0,t/2,1.6)+L(w,-t/2,w,t/2,1.6);
     }else if(sym==='sec'){
       h+=L(0,0,w,0,2.6)+L(0,-t*0.3,w,-t*0.3,1,true)+L(0,0,0,-t*0.3,1)+L(w,0,w,-t*0.3,1)+L(w*0.5,-t*0.3,w*0.5,-t*0.3,1)+flecha(w*0.5,-t*0.3,1);
     }else if(sym==='bols'){
@@ -3152,7 +3157,7 @@ function save(){
     catch(e){$('saved').textContent='Este navegador no deja guardar en el dispositivo. Usa la nube o descarga los datos.'}
   },300);
 }
-function commit(selToo){try{limpiaSolapes(st.v)}catch(e){}(st.v.sp||[]).forEach(function(q){try{spSinPenetrar(q)}catch(e){}});if(st.v.mm&&st.v.mm.length)st.v.mm=st.v.mm.filter(function(z){return wl(z.wall)});if(st.v.rc&&st.v.rc.length)st.v.rc=st.v.rc.filter(function(z){return wl(z.wall)});if(st.v.fz&&st.v.fz.length)st.v.fz=st.v.fz.filter(function(z){return wl(z.wall)});save();render();if(selToo!==false)panelSel();panelRest();if(st.view==='suelos'||st.view==='techos'){try{drawPal()}catch(e){}}}
+function commit(selToo){try{limpiaSolapes(st.v)}catch(e){}try{escSync()}catch(e){}(st.v.sp||[]).forEach(function(q){try{spSinPenetrar(q)}catch(e){}});if(st.v.mm&&st.v.mm.length)st.v.mm=st.v.mm.filter(function(z){return wl(z.wall)});if(st.v.rc&&st.v.rc.length)st.v.rc=st.v.rc.filter(function(z){return wl(z.wall)});if(st.v.fz&&st.v.fz.length)st.v.fz=st.v.fz.filter(function(z){return wl(z.wall)});save();render();if(selToo!==false)panelSel();panelRest();if(st.view==='suelos'||st.view==='techos'){try{drawPal()}catch(e){}}}
 function undo(){
   if(!hist.length)return;
   redo.push(JSON.stringify(st.v));st.v=JSON.parse(hist.pop());st.v.cb='int';st.sel=null;st.dg=null;fields();commit();
@@ -3855,7 +3860,7 @@ function scene0(C,k,view,o){
     var tiposEq=eqTipos(),etqEq='',etqPl=eqEtqUbica(px);
     porZ(eqs).forEach(function(e,i){
       var r=eqRect(e),col=(bad[e.id]||(e.s==='dem'&&!distr))?C.dem:(C.blk||C.ink),tq=tiposEq.porId[e.id];
-      Leq+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')"><rect width="'+e.w+'" height="'+e.d+'" style="fill:'+C.bg+'"/>'+eqSym(e.ty,e.w,e.d,col,px,e.cid)+'</g>';
+      Leq+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')"><rect width="'+e.w+'" height="'+e.d+'" style="fill:none"/>'+eqSym(e.ty,e.w,e.d,col,px,e.cid)+'</g>';
       if(!o.nonum&&tq&&distr){
         var pl=etqPl[e.id]||{lx:r.x1+10*px,ly:r.y0+7*px,ax:r.x1,ay:r.y0+Math.min(7*px,(r.y1-r.y0)/2),rr:Math.max(8,5.2+tq.cod.length*2.6)*px},lx=pl.lx,ly=pl.ly,rr=pl.rr;
         var dl=Math.hypot(pl.ax-lx,pl.ay-ly)||1;
@@ -5493,6 +5498,7 @@ var ETQ_FAM={'Máquinas y equipamiento':['E','#5a5148'],'Cocinas':['C','#a0612a'
 function eqTipos(){
   var porId={},lista=[],idx={},cont={};
   eqV('distrib').forEach(function(e){
+    if(e.rol==='llega')return; /* la llegada de una escalera no lleva etiqueta propia */
     var c=catById(e.cid),fam=familiaDe(c?catsDe(c)[0]:''),key=(e.cid||e.nm)+'|'+fam,t=idx[key];
     if(!t){
       var pf=ETQ_FAM[fam]||ETQ_FAM['Otros'];
@@ -6227,7 +6233,10 @@ function panelSel(focus){
     var tqp=eqTipos().porId[e.id];
     h+='<div class="rowh"><strong>'+(tqp?tqp.cod:ix)+' · '+esc(e.nm)+'</strong><span class="muted">giro '+e.rot+'°</span></div>';
     h+='<div class="btns tr"><button data-a="zfront" title="Dibujarlo por encima de los demás bloques">Traer al frente</button><button data-a="zback" title="Dibujarlo por debajo de los demás bloques">Enviar atrás</button></div>';
-    if(e.bl&&e.bl.esc)h+='<div class="btns tr"><button data-a="escedit" class="pri" title="Cambia la altura, el ancho o el tipo y se recalculan los peldaños">Editar la escalera</button></div><p class="note">'+esc(escResumen(e.bl.esc))+'</p>';
+    if(e.bl&&e.bl.esc){
+      var ppn=e.pp&&st.v.pisos&&st.v.pisos.filter(function(p){return p.id===e.pp})[0],pos=pisosOn()&&pisoIdx()<st.v.pisos.length-1;
+      h+='<div class="btns tr"><button data-a="escedit" class="pri" title="Cambia la altura, el ancho o el tipo y se recalculan los peldaños">Editar la escalera</button>'+(!e.par&&pos?'<button data-a="escpar" title="La dibuja también en la planta de arriba, conectada con esta">Conectar con la planta de arriba</button>':'')+'</div><p class="note">'+esc(escResumen(e.bl.esc))+(e.par&&ppn?' Conectada con «'+esc(ppn.nombre)+'»: '+(e.rol==='llega'?'aquí es donde llega. ':'aquí es donde sube. ')+'Lo que cambies se copia a la otra planta.':'')+'</p>';
+    }
     h+='<div class="lab">Estado del bloque</div>'+seg3(e.s||'new','eqstate')+'<p class="note" style="margin:4px 0 8px">'+(e.s==='ex'?'Ya está en el espacio: sale en Estado actual y se mantiene en Distribución.':e.s==='dem'?'Ya está y se retira: sale en Estado actual y en Demoliciones, no en Distribución.':'Nuevo: solo sale en Distribución (y cuenta en el presupuesto).')+'</p>';
     h+='<div class="lab">Pegar al ras del muro, pilar o bloque más cercano</div><div class="btns tr"><button data-a="eqpg:-1,0" title="Pegar a la izquierda">⟵ Izquierda</button><button data-a="eqpg:1,0" title="Pegar a la derecha">Derecha ⟶</button><button data-a="eqpg:0,-1" title="Pegar hacia arriba">↑ Arriba</button><button data-a="eqpg:0,1" title="Pegar hacia abajo">↓ Abajo</button></div><p class="note" style="margin:2px 0 6px">Al arrastrar un bloque también se pega solo al ras de muros, pilares y otros bloques cercanos (con Alt pulsado no).</p>';
     h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="eqrotl45" title="Girar 45° a la izquierda">⟲ 45°</button><button data-a="eqrot45" title="Girar 45° a la derecha">⟳ 45°</button><button data-a="eqrotl" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="eqrot" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="eqrot180" title="Girar 180°">180°</button><button data-a="eqflx" aria-pressed="'+!!e.fx+'" title="Espejo izquierda-derecha">⇋ Espejo</button><button data-a="eqfly" aria-pressed="'+!!e.fy+'" title="Espejo arriba-abajo">⇅ Espejo</button></div>';
@@ -6798,6 +6807,7 @@ function doAction(a,el){
   if(a==='defstate'){st.defState=sv;toolbar();return}
   if(a==='dims'){st.dims=sv;toolbar();save();render();return}
   if(a==='escedit'&&st.sel&&st.sel.t==='eq'){escModal(st.sel.id);return}
+  if(a==='escpar'&&st.sel&&st.sel.t==='eq'){var ee=by(st.v.eq,st.sel.id);if(ee){snap();var rp=escCrearPar(ee);if(rp===true){commit();toast('Conectada: también sale en la planta de arriba')}else{hist.pop();toast(rp)}}return}
   if((a==='zfront'||a==='zback')&&st.sel){
     var lz={eq:st.v.eq,pil:st.v.pil,dr:st.v.dr}[st.sel.t],itz=lz&&by(lz,st.sel.id);
     if(itz){snap();var zs=lz.map(function(q){return q.z||0});itz.z=a==='zfront'?Math.max.apply(null,zs)+1:Math.min.apply(null,zs)-1;commit();toast(a==='zfront'?'Al frente':'Enviado atrás')}
@@ -9688,7 +9698,7 @@ function buildResumen1(){
   v.rz.forEach(function(r){var ar=rzArea(r)/10000;if(ar){if(r.k==='s')sa+=ar;else te+=ar}});
   out.levantar_suelo_m2=r2(sa);out.desmontar_techo_m2=r2(te);
   var eq={};
-  v.eq.forEach(function(e){if(e.s==='ex'||e.s==='dem')return;var k=e.cid||e.nm;(eq[k]=eq[k]||{cid:e.cid||'',nombre:e.nm,n:0,w:e.w,d:e.d}).n++}); /* lo que ya existe no se compra */
+  v.eq.forEach(function(e){if(e.s==='ex'||e.s==='dem'||(e.bl&&e.bl.esc))return;var k=e.cid||e.nm;(eq[k]=eq[k]||{cid:e.cid||'',nombre:e.nm,n:0,w:e.w,d:e.d}).n++}); /* lo que ya existe no se compra */
   out.equipos=Object.keys(eq).map(function(k){return eq[k]});
   out.luminarias=lumGroups().map(function(g){var d=ptDef(g.k);return {lid:g.lid||'',nombre:g.cat?g.cat.n:(d?d.n:g.k),tipo:g.k,n:g.n,ml:r2(g.len/100)}});
   var inst={};
@@ -9759,6 +9769,7 @@ function buildModelo3d1(){
   out.a_medida=(v.mm||[]).filter(function(m){return m.k!=='hor'}).map(function(m){var q=mmPoly(m);return q?{id:m.id,nombre:mmNombre(m),pts:q.pts.map(function(p){return [f2(p.x),f2(p.y)]}),z0:f2(m.y0||0),z1:f2((m.y0||0)+m.h),luz:!!m.luz}:null}).filter(Boolean);
   v.pil.forEach(function(p){pilCells(p).forEach(function(c,ci){out.pilares.push({id:p.id+'-'+ci,cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,estado:p.s||'ex'})})});
   v.eq.forEach(function(e){
+    if(e.rol==='llega')return; /* la llegada de una escalera es la misma escalera: no se modela dos veces */
     var c=pc(e),cat=catById(e.cid);
     out.equipos.push({id:e.id,estado:e.s||'new',cid:e.cid||'',nombre:e.nm,cx:f2(c.x),cy:f2(c.y),w:e.w,d:e.d,rot:e.rot||0,fx:!!e.fx,fy:!!e.fy,alto:(cat&&cat.alto)||110,
       skp:(cat&&cat.skp)?{url:cat.skp.url,rot:cat.skp.rot||0}:null,
@@ -9823,21 +9834,97 @@ function escCalc(o){
   reglas.push({ok:g>=U.gMin-1e-6,t:'Huella '+r1(g)+' cm (mínimo '+U.gMin+')'});
   reglas.push({ok:2*c+g>=54&&2*c+g<=70,t:'2 × contrahuella + huella = '+r1(2*c+g)+' cm (entre 54 y 70)'});
   reglas.push({ok:A>=U.aMin,t:'Ancho '+A+' cm (mínimo '+U.aMin+' para '+U.nom+')'});
-  return {tipo:tipo,n:n,peldanos:n-1,c:r1(c),g:g,A:A,H:H,largo:r1(largo),fondo:r1(fondo),treads:T,flecha:P,reglas:reglas,nota:nota,giro:fl?'izq':'dcha',uso:o.uso||'comercial'};
+  return {tipo:tipo,n:n,peldanos:n-1,c:r1(c),g:g,A:A,H:H,largo:r1(largo),fondo:r1(fondo),treads:T,flecha:P,reglas:reglas,nota:nota,giro:fl?'izq':'dcha',uso:o.uso||'comercial',corte:o.corte||'corte',hCorte:+o.hCorte>0?+o.hCorte:120};
 }
 function escNombre(r){return 'Escalera '+(r.tipo==='recta'?'recta':r.tipo==='L'?'en L':'en U')+' · '+r.A+' cm · '+r.peldanos+' peldaños'}
 function escResumen(e){return e.n+' contrahuellas de '+e.c+' cm y '+e.peldanos+' peldaños de '+e.g+' cm de huella para salvar '+e.H+' cm. Ocupa '+e.largo+' × '+e.fondo+' cm.'}
-/* dibujo en planta: cada peldaño es un rectángulo (con su altura anotada para el 3D) y una flecha marca el sentido de subida */
-function escPlanta(r,color){
-  var A=' stroke="'+(color||'#000000')+'" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"',o='';
-  r.treads.forEach(function(t){o+='<rect x="'+t.x+'" y="'+t.y+'" width="'+t.w+'" height="'+t.d+'" data-h="'+t.h+'"'+A+'/>'});
-  var P=r.flecha,d='M'+P.map(function(q){return f2(q[0])+' '+f2(q[1])}).join('L');
+/* borde que comparten dos peldaños consecutivos (donde va la línea de corte) */
+function escBorde(a,b){
+  var e=0.8,x0,x1,y0,y1;
+  if(Math.abs(a.x+a.w-b.x)<e||Math.abs(b.x+b.w-a.x)<e){var x=Math.abs(a.x+a.w-b.x)<e?b.x:a.x;y0=Math.max(a.y,b.y);y1=Math.min(a.y+a.d,b.y+b.d);return y1>y0?[x,y0,x,y1]:null}
+  if(Math.abs(a.y+a.d-b.y)<e||Math.abs(b.y+b.d-a.y)<e){var y=Math.abs(a.y+a.d-b.y)<e?b.y:a.y;x0=Math.max(a.x,b.x);x1=Math.min(a.x+a.w,b.x+b.w);return x1>x0?[x0,y,x1,y]:null}
+  return null;
+}
+/* dibujo en planta. Un plano se corta a ~1,20 m del suelo: en la planta donde SUBE la escalera se ven los peldaños hasta el corte y una
+   línea de corte en zigzag; en la planta a la que LLEGA se ve lo que queda por encima del corte. r.corte: 'corte' (lo habitual), 'disc' (lo demás a trazos) o 'completa' */
+function escPlanta(r,color,rol){
+  rol=rol||'sube';
+  var col=color||'#000000',modo=r.corte||'corte',cut=+r.hCorte>0?+r.hCorte:120;
+  var A=' stroke="'+col+'" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"',AD=A+' stroke-dasharray="6 4" stroke-opacity="0.55"',F=A.replace('fill="none"','fill="'+col+'"'),o='';
+  var T=r.treads,k=-1,i;
+  for(i=0;i<T.length;i++)if(T[i].h>cut){k=i;break}
+  T.forEach(function(t,i){
+    var sobre=k>=0&&i>=k,rc='<rect x="'+t.x+'" y="'+t.y+'" width="'+t.w+'" height="'+t.d+'" data-h="'+t.h+'"';
+    if(modo==='completa'){o+=rc+(rol==='sube'?A:AD)+'/>';return}
+    var solido=rol==='sube'?!sobre:sobre;
+    if(solido)o+=rc+A+'/>';else if(modo==='disc')o+=rc+AD+'/>';
+  });
+  if(modo!=='completa'&&k>0){ /* línea de corte: un zigzag sobre el borde entre el último peldaño de abajo y el primero de arriba */
+    var b=escBorde(T[k-1],T[k]);
+    if(b){
+      var dx=b[2]-b[0],dy=b[3]-b[1],L=Math.hypot(dx,dy)||1,ux=dx/L,uy=dy/L,nx=-uy,ny=ux,e0=[b[0]-ux*4,b[1]-uy*4],e1=[b[2]+ux*4,b[3]+uy*4],Lc=L+8;
+      var pt=function(u,n){return f2(e0[0]+ux*u+nx*n)+' '+f2(e0[1]+uy*u+ny*n)};
+      o+='<path d="M'+pt(0,0)+'L'+pt(Lc*0.4,0)+'L'+pt(Lc*0.46,9)+'L'+pt(Lc*0.54,-9)+'L'+pt(Lc*0.6,0)+'L'+pt(Lc,0)+'"'+A.replace('stroke-width="1"','stroke-width="1.6"')+'/>';
+    }
+  }
+  var P=(rol==='llega'?r.flecha.slice().reverse():r.flecha),d='M'+P.map(function(q){return f2(q[0])+' '+f2(q[1])}).join('L');
   o+='<path d="'+d+'"'+A+'/>';
-  var a=P[P.length-2],b=P[P.length-1],ang=Math.atan2(b[1]-a[1],b[0]-a[0]),L=14,W=6;
-  var p1=[b[0]-L*Math.cos(ang)+W*Math.sin(ang),b[1]-L*Math.sin(ang)-W*Math.cos(ang)],p2=[b[0]-L*Math.cos(ang)-W*Math.sin(ang),b[1]-L*Math.sin(ang)+W*Math.cos(ang)];
-  o+='<polygon points="'+f2(b[0])+','+f2(b[1])+' '+f2(p1[0])+','+f2(p1[1])+' '+f2(p2[0])+','+f2(p2[1])+'"'+A.replace('fill="none"','fill="'+(color||'#000000')+'"')+'/>';
-  o+='<circle cx="'+f2(P[0][0])+'" cy="'+f2(P[0][1])+'" r="3"'+A.replace('fill="none"','fill="'+(color||'#000000')+'"')+'/>';
+  var a=P[P.length-2],bb=P[P.length-1],ang=Math.atan2(bb[1]-a[1],bb[0]-a[0]),Lh=14,Wh=6;
+  var p1=[bb[0]-Lh*Math.cos(ang)+Wh*Math.sin(ang),bb[1]-Lh*Math.sin(ang)-Wh*Math.cos(ang)],p2=[bb[0]-Lh*Math.cos(ang)-Wh*Math.sin(ang),bb[1]-Lh*Math.sin(ang)+Wh*Math.cos(ang)];
+  o+='<polygon points="'+f2(bb[0])+','+f2(bb[1])+' '+f2(p1[0])+','+f2(p1[1])+' '+f2(p2[0])+','+f2(p2[1])+'"'+F+'/>';
+  o+='<circle cx="'+f2(P[0][0])+'" cy="'+f2(P[0][1])+'" r="3"'+F+'/>';
   return o;
+}
+/* el bloque completo (dibujo + datos) de una escalera, según su papel en esta planta: 'sube' o 'llega' */
+function escBl(r,rol){
+  return {planta:escPlanta(r,null,rol),largo:r.largo,fondo:r.fondo,alto:r.H,esc:{tipo:r.tipo,giro:r.giro,uso:r.uso,n:r.n,peldanos:r.peldanos,c:r.c,g:r.g,A:r.A,H:r.H,largo:r.largo,fondo:r.fondo,treads:r.treads,flecha:r.flecha,corte:r.corte||'corte',hCorte:r.hCorte||120,hueco:r.hueco!==false}};
+}
+function escNodoCerca(nodes,x,y){var b=null;(nodes||[]).forEach(function(n){var d=Math.hypot(n.x-x,n.y-y);if(!b||d<b.d)b={n:n,d:d}});return b&&b.n}
+/* crea la pareja de una escalera en la planta de arriba (la llegada), en el mismo sitio. Devuelve true, o un texto con el motivo si no se pudo */
+function escCrearPar(e){
+  if(!pisosOn())return 'No hay otra planta';
+  var i=pisoIdx(),p=st.v.pisos[i+1];
+  if(!p)return 'Esta es la última planta: crea antes la de arriba (＋ Planta)';
+  var b=p.b;if(!b||!b.nodes||!b.nodes.length)return 'Dibuja antes los muros de «'+p.nombre+'» y pulsa «Conectar con la planta de arriba»';
+  b.eq=b.eq||[];
+  if(!e.lid)e.lid=uid('l');
+  if(b.eq.some(function(q){return q.lid===e.lid}))return true;
+  var c=pc(e),nn=escNodoCerca(b.nodes,c.x,c.y);
+  var q={id:uid('e'),n:nn.id,dx:f2(c.x-nn.x),dy:f2(c.y-nn.y),w:e.w,d:e.d,rot:e.rot||0,nm:e.nm,ty:'gen',cid:uid('esc'),ref:'',lid:e.lid,rol:'llega',par:true,pp:st.v.piso,bl:escBl(e.bl.esc,'llega')};
+  if(e.fx)q.fx=e.fx;if(e.fy)q.fy=e.fy;if(e.s)q.s=e.s;
+  b.eq.push(q);
+  e.par=true;e.pp=p.id;e.rol=e.rol||'sube';
+  return true;
+}
+/* las dos mitades de una escalera se mantienen iguales: lo que cambias en una planta (sitio, giro, medidas) se copia a la otra. Si borras una, desaparece la otra. */
+function escSync(){
+  if(!pisosOn())return;
+  var activos=st.v.eq.filter(function(e){return e.lid&&e.par&&e.bl&&e.bl.esc});
+  var piso={};st.v.pisos.forEach(function(p){piso[p.id]=p});
+  /* 1. la planta activa manda sobre su pareja */
+  activos.forEach(function(e){
+    var p=piso[e.pp];
+    if(!p){e.par=false;delete e.pp;return}
+    if(p.id===st.v.piso)return;
+    var b=p.b;if(!b||!b.eq)return;
+    var o=b.eq.filter(function(q){return q.lid===e.lid})[0];
+    if(!o)return;
+    var c=pc(e),nn=(b.nodes||[]).filter(function(n){return n.id===o.n})[0]||escNodoCerca(b.nodes,c.x,c.y);
+    if(!nn)return;
+    var rol=e.rol==='llega'?'sube':'llega';
+    o.n=nn.id;o.dx=f2(c.x-nn.x);o.dy=f2(c.y-nn.y);o.w=e.w;o.d=e.d;o.rot=e.rot||0;o.nm=e.nm;o.rol=rol;o.bl=escBl(e.bl.esc,rol);
+    if(e.fx)o.fx=e.fx;else delete o.fx;if(e.fy)o.fy=e.fy;else delete o.fy;
+  });
+  /* 2. si una escalera ya no tiene a su pareja (la borraste), se va también */
+  var tiene=function(p,lid){var l=p.id===st.v.piso?st.v.eq:((p.b&&p.b.eq)||[]);return l.some(function(q){return q.lid===lid})};
+  var quita=function(l,planta){return l.filter(function(q){
+    if(!q.lid||!q.par)return true;
+    var pp=piso[q.pp];
+    if(!pp){q.par=false;delete q.pp;return true} /* la planta de la pareja ya no existe: se queda como escalera suelta */
+    return tiene(pp,q.lid);
+  })};
+  st.v.eq=quita(st.v.eq);
+  st.v.pisos.forEach(function(p){if(p.id!==st.v.piso&&p.b&&p.b.eq)p.b.eq=quita(p.b.eq)});
 }
 /* peldaños para SketchUp: polígonos con su altura, con el mismo espejo que lleva la pieza */
 function escPeldanos3d(esc,e,L,T){
@@ -9859,56 +9946,64 @@ function escAlturaDefecto(){
 }
 function escModal(editId){
   var ed=editId?by(st.v.eq,editId):null,prev=ed&&ed.bl&&ed.bl.esc;
-  var v={H:prev?prev.H:escAlturaDefecto(),A:prev?prev.A:100,tipo:prev?prev.tipo:'recta',giro:prev?prev.giro:'dcha',uso:prev?prev.uso:'comercial',hueco:prev?prev.hueco!==false:true};
+  var sig=pisosOn()&&pisoIdx()>=0&&pisoIdx()<st.v.pisos.length-1;
+  var v={H:prev?prev.H:escAlturaDefecto(),A:prev?prev.A:100,tipo:prev?prev.tipo:'recta',giro:prev?prev.giro:'dcha',uso:prev?prev.uso:'comercial',hueco:prev?prev.hueco!==false:true,corte:prev?prev.corte||'corte':'corte',hCorte:prev?prev.hCorte||120:120,par:true};
   var m=document.getElementById('escmod');if(m)m.remove();
   m=document.createElement('div');m.id='escmod';m.className='dxfmod';
-  m.innerHTML='<div class="dxfbox" style="max-width:760px"><header><h3>Escalera</h3><p class="note" style="margin:0">Escribe la altura que hay que salvar y el resto se calcula solo: número de peldaños, huella y contrahuella según normativa.</p></header>'+
+  m.innerHTML='<div class="dxfbox" style="max-width:780px"><header><h3>Escalera</h3><p class="note" style="margin:0">Escribe la altura que hay que salvar y el resto se calcula solo: número de peldaños, huella y contrahuella según normativa.</p></header>'+
     '<div style="padding:12px 16px;overflow:auto;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))"><div>'+
     '<label class="fld"><span>Tipo</span><select id="es-tipo"><option value="recta">Recta</option><option value="L">En L (con descansillo)</option><option value="U">En U (dos tramos)</option></select></label>'+
     '<label class="fld" id="es-giro-w"><span>Gira hacia</span><select id="es-giro"><option value="dcha">La derecha</option><option value="izq">La izquierda</option></select></label>'+
     '<label class="fld"><span>Altura a salvar (cm) <small id="es-hn"></small></span><input id="es-h" inputmode="decimal"></label>'+
     '<label class="fld"><span>Ancho de la escalera (cm)</span><input id="es-a" inputmode="decimal"></label>'+
     '<label class="fld"><span>Uso</span><select id="es-uso"><option value="comercial">Público / comercial (CTE: huella ≥ 28, contrahuella ≤ 17,5)</option><option value="vivienda">Vivienda (huella ≥ 22, contrahuella ≤ 20)</option></select></label>'+
+    '<label class="fld"><span>En el plano se dibuja</span><select id="es-corte"><option value="corte">Cortada a una altura, con línea de corte (lo habitual)</option><option value="disc">Cortada, y lo que pasa del corte a trazos</option><option value="completa">Completa</option></select></label>'+
+    '<label class="fld" id="es-hc-w"><span>Altura del corte (cm)</span><input id="es-hc" inputmode="decimal"></label>'+
     '<label class="fld" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="es-hueco"><span>Hace hueco en el forjado de la planta de arriba</span></label>'+
+    (!ed&&sig?'<label class="fld" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="es-par" checked><span>Dibujarla también en la planta de arriba (conectadas: lo que cambies en una se cambia en la otra)</span></label>':'')+
     '</div><div><div id="es-prev" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;min-height:150px;display:grid;place-items:center"></div><div id="es-res" style="margin-top:8px;font-size:.85rem"></div></div></div>'+
     '<footer><button class="pri" id="es-ok">'+(ed?'Actualizar la escalera':'Colocar en el plano')+'</button><button id="es-x">Cancelar</button><span class="note" id="es-aviso" style="margin:0"></span></footer></div>';
   document.body.appendChild(m);
   var g=function(i){return document.getElementById(i)};
-  g('es-tipo').value=v.tipo;g('es-giro').value=v.giro;g('es-h').value=v.H;g('es-a').value=v.A;g('es-uso').value=v.uso;g('es-hueco').checked=v.hueco;
+  g('es-tipo').value=v.tipo;g('es-giro').value=v.giro;g('es-h').value=v.H;g('es-a').value=v.A;g('es-uso').value=v.uso;g('es-hueco').checked=v.hueco;g('es-corte').value=v.corte;g('es-hc').value=v.hCorte;
   g('es-hn').textContent=pisosOn()?'(sale de la altura de esta planta + el forjado)':'';
-  var res=null;
+  var res=null,rolEd=ed&&ed.rol==='llega'?'llega':'sube';
   function calc(){
-    v.tipo=g('es-tipo').value;v.giro=g('es-giro').value;v.uso=g('es-uso').value;v.H=num(g('es-h').value);v.A=num(g('es-a').value);v.hueco=g('es-hueco').checked;
+    v.tipo=g('es-tipo').value;v.giro=g('es-giro').value;v.uso=g('es-uso').value;v.H=num(g('es-h').value);v.A=num(g('es-a').value);v.hueco=g('es-hueco').checked;v.corte=g('es-corte').value;v.hCorte=num(g('es-hc').value)||120;
+    if(g('es-par'))v.par=g('es-par').checked;
     g('es-giro-w').style.display=v.tipo==='recta'?'none':'';
+    g('es-hc-w').style.display=v.corte==='completa'?'none':'';
     res=escCalc(v);
     if(res.error){g('es-prev').innerHTML='';g('es-res').innerHTML='<span style="color:var(--bad,#c33)">'+esc(res.error)+'</span>';g('es-ok').disabled=true;return}
     g('es-ok').disabled=false;
     var pad=20,vb=(-pad)+' '+(-pad)+' '+(res.largo+2*pad)+' '+(res.fondo+2*pad),sc=Math.min(300/(res.largo+2*pad),200/(res.fondo+2*pad));
-    g('es-prev').innerHTML='<svg viewBox="'+vb+'" width="'+Math.round((res.largo+2*pad)*sc)+'" height="'+Math.round((res.fondo+2*pad)*sc)+'" style="color:var(--ink)">'+escPlanta(res,'currentColor')+'</svg>';
+    g('es-prev').innerHTML='<svg viewBox="'+vb+'" width="'+Math.round((res.largo+2*pad)*sc)+'" height="'+Math.round((res.fondo+2*pad)*sc)+'" style="color:var(--ink)">'+escPlanta(res,'currentColor',rolEd)+'</svg>';
     g('es-res').innerHTML='<b>'+res.n+' contrahuellas · '+res.peldanos+' peldaños</b><br>Contrahuella '+res.c+' cm · huella '+res.g+' cm<br>Ocupa '+res.largo+' × '+res.fondo+' cm ('+(Math.round(res.largo*res.fondo/100)/100)+' m²)'+
       res.reglas.map(function(q){return '<div style="color:'+(q.ok?'var(--ok,#2a8)':'var(--bad,#c33)')+'">'+(q.ok?'✓ ':'⚠ ')+esc(q.t)+'</div>'}).join('')+(res.nota?'<div class="note">'+esc(res.nota)+'</div>':'')+
       '<div class="note">Es un cálculo orientativo: revísalo con el CTE DB-SUA y con el técnico responsable antes de ejecutarlo.</div>';
   }
-  ['es-tipo','es-giro','es-uso','es-hueco'].forEach(function(i){g(i).addEventListener('change',calc)});
-  ['es-h','es-a'].forEach(function(i){g(i).addEventListener('input',calc)});
+  ['es-tipo','es-giro','es-uso','es-hueco','es-corte','es-par'].forEach(function(i){if(g(i))g(i).addEventListener('change',calc)});
+  ['es-h','es-a','es-hc'].forEach(function(i){g(i).addEventListener('input',calc)});
   function cerrar(){m.remove()}
   g('es-x').addEventListener('click',cerrar);
   m.addEventListener('click',function(e){if(e.target===m)cerrar()});
   g('es-ok').addEventListener('click',function(){
     if(!res||res.error)return;
-    var bl={planta:escPlanta(res),largo:res.largo,fondo:res.fondo,alto:res.H,esc:{tipo:res.tipo,giro:res.giro,uso:res.uso,n:res.n,peldanos:res.peldanos,c:res.c,g:res.g,A:res.A,H:res.H,largo:res.largo,fondo:res.fondo,treads:res.treads,hueco:v.hueco}};
+    res.hueco=v.hueco;
     var nom=escNombre(res);
     if(ed){
-      snap();ed.bl=bl;ed.w=res.largo;ed.d=res.fondo;ed.nm=nom;commit();cerrar();toast('Escalera actualizada: '+escResumen(res));return;
+      snap();ed.bl=escBl(res,rolEd);ed.w=res.largo;ed.d=res.fondo;ed.nm=nom;commit();cerrar();toast('Escalera actualizada: '+escResumen(res));return;
     }
     var cx=(W/2-st.tx)/st.k,cy=(H/2-st.ty)/st.k,nq=nearNode(cx,cy,1e9,null);
     if(!nq){toast('Dibuja primero el contorno de la sala');return}
     snap();
-    var ne={id:uid('e'),n:nq.id,dx:f2(cx-nq.x),dy:f2(cy-nq.y),w:res.largo,d:res.fondo,rot:0,nm:nom,ty:'gen',cid:uid('esc'),ref:'',bl:bl};
+    var ne={id:uid('e'),n:nq.id,dx:f2(cx-nq.x),dy:f2(cy-nq.y),w:res.largo,d:res.fondo,rot:0,nm:nom,ty:'gen',cid:uid('esc'),ref:'',lid:uid('l'),rol:'sube',bl:escBl(res,'sube')};
     if(st.view==='actual')ne.s='ex';
     st.v.eq.push(ne);st.sel={t:'eq',id:ne.id};st.multi=[];
+    var aviso='';
+    if(v.par&&sig){var pr=escCrearPar(ne);if(pr!==true)aviso=' '+pr+'.'}
     if(st.view==='actual'||st.view==='demol'||st.view==='interv'||st.view==='alz'){st.view='distrib';try{toolbar()}catch(e2){}}
-    commit();cerrar();toast(nom+' colocada. Arrástrala a su sitio y gírala si hace falta.');
+    commit();cerrar();toast(nom+' colocada.'+(ne.par?' También sale en la planta de arriba: están conectadas.':'')+aviso+' Arrástrala a su sitio y gírala si hace falta.');
   });
   calc();
 }

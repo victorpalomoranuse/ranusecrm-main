@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.8.0'.freeze
+    VERSION = '1.8.1'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -1039,6 +1039,7 @@ module Ranuse
       ancho = p1 - p0
       return if ancho < 5
       if o['tipo'] == 'door'
+        return if o['tip'].to_s =~ /hueco|sin hoja|paso libre/i # un hueco de paso no lleva hoja
         vidrio = (o['mat'].to_s =~ /vidrio|cristal/i)
         pg = ents.add_group
         pg.name = 'Puerta'
