@@ -572,11 +572,11 @@ body.crm .top .brand{display:none}
         <p class="note">Plano a escala real con leyendas, carpinterías, mediciones y cajetín. Las leyendas se generan solas según la lámina.</p>
         <label class="fld"><span>Papel</span><select id="x-paper"><option value="A3">A3 apaisado</option><option value="A4">A4 apaisado</option></select></label>
         <label class="fld"><span>Equipamiento en la lámina de Suelos</span><select id="x-eqsuelo"><option value="1">Sí (suave, detrás del despiece)</option><option value="0">No</option></select></label>
-        <label class="fld"><span>Cotas de ubicación del equipamiento (distancia a los muros, en Distribución)</span><select id="x-eqloc"><option value="1">Sí</option><option value="0">No</option></select></label>
+        <label class="fld"><span>Distancias de los bloques (en Distribución)</span><select id="x-eqloc"><option value="1">Solo al muro más cercano (limpio)</option><option value="2">Al muro y entre bloques (muchas cifras)</option><option value="0">Ninguna</option></select></label>
         <label class="fld"><span>Cotas de luminarias a paredes</span><select id="x-ldim"><option value="1">Sí</option><option value="0">No</option></select></label>
         <label class="fld"><span>Marcas de alzado en planta</span><select id="x-marks"><option value="1">Sí (distribución y acabados)</option><option value="0">No</option></select></label>
         <label class="fld"><span>Cotas</span><select id="x-dims"><option value="ext">Con líneas de cota por fuera</option><option value="dob">Con dos líneas: interior y exterior</option><option value="int">Con líneas de cota por dentro</option><option value="simple">Solo el número en cada muro</option></select></label>
-        <label class="fld"><span>Decimales en las cotas</span><select id="x-dec"><option value="1">Se ven cuando los hay (212,5 · 145)</option><option value="0">Redondeadas (213 · 145)</option></select></label>
+        <label class="fld"><span>Decimales en las cotas</span><select id="x-dec"><option value="0">Al centímetro, más limpio (213 · 145 · 0,93 m)</option><option value="1">Con milímetros cuando los hay (212,5 · 145 · 0,932 m)</option></select></label>
         <label class="fld"><span>Orientación del plano</span><select id="x-orient"><option value="auto">Automática (en horizontal si así sale más grande)</option><option value="normal">Tal como está dibujado</option><option value="girado">Girado 90° (en horizontal)</option></select></label>
         <label class="fld"><span>Escala</span><select id="x-scale"><option value="auto">Automática (la mayor que quepa)</option><option value="20">1:20</option><option value="25">1:25</option><option value="50">1:50</option><option value="75">1:75</option><option value="100">1:100</option><option value="125">1:125</option><option value="200">1:200</option></select></label>
         <div class="btns"><button class="pri" id="b-pdf">PDF de esta lámina</button><button id="b-pdfall">PDF con todas las láminas</button></div>
@@ -913,7 +913,7 @@ function rd5(v){var g=st&&st.rejilla>0?st.rejilla:0;return g?Math.round(v/g)*g:M
 function toU(n){var u=UNIDADES[UNIT],k=Math.pow(10,u.d+1);return Math.round(n/u.f*(UNIT==='cm'?10:UNIT==='mm'?1:1000))/(UNIT==='cm'?10:UNIT==='mm'?1:1000)}
 /* en pantalla las cotas enseñan decimales (coinciden con lo que se escribe); en las láminas y PDF salen enteros, más limpios */
 var DECIMALES=true;
-function fmtU(n){return UNIT==='cm'?String(DECIMALES?Math.round(n*10)/10:Math.round(n)):String(toU(n))}
+function fmtU(n){return UNIT==='cm'?String(DECIMALES?Math.round(n*10)/10:Math.round(n)):(UNIT==='m'&&!DECIMALES?String(Math.round(n)/100):String(toU(n)))}
 function fromU(x){return x*UNIDADES[UNIT].f}
 function m2(n){return (Math.round(n*10)/10).toFixed(1).replace('.',',')}
 function num(s){var n=parseFloat(String(s).replace(',','.'));return isFinite(n)?n:NaN}
@@ -3845,7 +3845,7 @@ function scene0(C,k,view,o){
       if(q2.g>=300)continue;
       var gc=pmx==null?C.dim:(low?C.dem:C.ok),suave=!!o.flat;
       if(suave)gc=hexMix(gc,'#ffffff',0.4);
-      var mostrar=!o.ante&&(suave||(sel&&sel.t==='eq'&&(sel.id===eqs[ia].id||sel.id===eqs[ib].id))); /* trabajando: el plano limpio; las distancias salen al seleccionar un bloque */
+      var mostrar=!o.ante&&((suave&&o.eqgap)||(sel&&sel.t==='eq'&&(sel.id===eqs[ia].id||sel.id===eqs[ib].id))); /* en lámina, las distancias entre bloques solo si se piden; trabajando, salen al seleccionar un bloque */
       if(!mostrar)continue;
       if(q2.dy<0&&q2.dx>0){
         var yy=(Math.max(ra.y0,rb.y0)+Math.min(ra.y1,rb.y1))/2,l=ra.x0<rb.x0?ra:rb,r2=ra.x0<rb.x0?rb:ra;
@@ -8810,7 +8810,7 @@ function sheetPage(doc,view,idx,total,o){
     var km=10/S,bw=(gira?hc:wc)*km,bh=(gira?wc:hc)*km,ox=gira?ax+(aw-bw)/2-b.y0*km:ax+(aw-bw)/2-b.x0*km,oy=gira?ay+(ah-bh)/2+b.x1*km:ay+(ah-bh)/2-b.y0*km;
     demCapa=(view==='demol'&&o.capa)?o.capa:(view==='demol'?'x':null);
     PAGE_ROT=gira?-90:0;
-    var inner=scene(LIGHT,40/S,view,{sel:null,nodes:false,tags:tags,noctl:true,dims:o.dims,flat:true,marks:o.marks!==false&&!o.ante,ldim:o.ldim!==false&&!o.ante,eqloc:!!o.eqloc&&!o.ante,eqsuelo:o.eqsuelo!==false,ante:!!o.ante,nonum:!!o.ante});
+    var inner=scene(LIGHT,40/S,view,{sel:null,nodes:false,tags:tags,noctl:true,dims:o.dims,flat:true,marks:o.marks!==false&&!o.ante,ldim:o.ldim!==false&&!o.ante,eqloc:!!o.eqloc&&!o.ante,eqgap:!!o.eqgap&&!o.ante,eqsuelo:o.eqsuelo!==false,ante:!!o.ante,nonum:!!o.ante});
     demCapa=null;PAGE_ROT=0;if(gira)inner=contraGiro(inner);
     p.raw('q '+pn(mg+1)+' '+pn(mg+28)+' '+pn(cx-mg-2)+' '+pn(PH-2*mg-28-bandH)+' re W n');
     p.svg('<g transform="translate('+f2(ox)+' '+f2(oy)+') scale('+km+')'+(gira?' matrix(0 -1 1 0 0 0)':'')+'">'+inner+'</g>',{hatchStep:1.75,dem:LIGHT.dem,demBg:LIGHT.demBg});
@@ -9279,7 +9279,7 @@ function buildPDF0(mode,opt,lista,Doc){
   });
   st.v=orig;
   if(!plan.length)throw new Error('vacío');
-  try{plan.forEach(function(pp,i){st.v=pp.v||orig;if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li,calIdx:calIdx};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else if(pp.kind==='cal')calPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{orient:opt.orient,ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim,eqloc:opt.eqloc,eqsuelo:opt.eqsuelo})});}finally{st.v=orig}
+  try{plan.forEach(function(pp,i){st.v=pp.v||orig;if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li,calIdx:calIdx};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else if(pp.kind==='cal')calPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{orient:opt.orient,ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim,eqloc:opt.eqloc,eqgap:opt.eqgap,eqsuelo:opt.eqsuelo})});}finally{st.v=orig}
   return doc.bytes();
 }
 /* orden de las plantas en el dossier: sótano, baja, entreplanta, 1, 2…, cubierta */
@@ -9324,7 +9324,7 @@ function loadLogoFile(file){
   if(propio){var im=new Image();im.onload=function(){try{setLogoFromImg(im,false);logoUi()}catch(e){}};im.src=propio}
   else logoPorDefecto();
 })();
-function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,dec:!($('x-dec')&&$('x-dec').value==='0'),marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0',eqloc:!($('x-eqloc')&&$('x-eqloc').value==='0'),eqsuelo:!($('x-eqsuelo')&&$('x-eqsuelo').value==='0')}}
+function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,dec:!($('x-dec')&&$('x-dec').value==='0'),marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0',eqloc:!($('x-eqloc')&&$('x-eqloc').value==='0'),eqgap:!!($('x-eqloc')&&$('x-eqloc').value==='2'),eqsuelo:!($('x-eqsuelo')&&$('x-eqsuelo').value==='0')}}
 /* planos de todas las plantas del proyecto (el actual con lo último que has dibujado), ordenados de abajo arriba */
 function plantasDelProyecto(){
   var l=(cloud||[]).map(function(c){return c.id===st.v.id?st.v:norm(JSON.parse(JSON.stringify(c)))});

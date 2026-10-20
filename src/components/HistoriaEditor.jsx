@@ -513,7 +513,7 @@ function PasoRevisar({ project, data, plano, estilo, inter, irA }) {
     if (!e.texto) avisos.push({ nivel: 'falta', t: 'Capítulo ' + (i + 1) + ' «' + c.titulo + '»: falta el texto.', paso: 'renders' });
     if (!e.render) avisos.push({ nivel: 'falta', t: 'Capítulo ' + (i + 1) + ' «' + c.titulo + '»: falta el render principal.', paso: 'renders' });
   });
-  if (!plano?.imagen_url) avisos.push({ nivel: 'info', t: 'No hay plano de distribución: esa sección no se muestra (es opcional).', paso: 'espacio' });
+  if (!plano?.imagen_url && !data.bloques.some(b => esPasoPlano(b) && b.imagen_url)) avisos.push({ nivel: 'info', t: 'No hay planos del espacio: esa parte no se muestra (es opcional).', paso: 'espacio' });
   if (!estilo?.nombre && !estilo?.texto) avisos.push({ nivel: 'info', t: 'Todavía no se ha definido el estilo del proyecto.', paso: 'estilo' });
   if (!data.bloques.some(b => b.tipo === 'equipo' && (b.elementos || []).includes('#sel'))) avisos.push({ nivel: 'info', t: 'Ningún capítulo enseña todavía la selección de equipamiento.', paso: 'equipamiento' });
   const pend = data.entregables.filter(e => e.estado !== 'entregado').length;
@@ -555,7 +555,8 @@ function HistoriaGuiada({ project, projectId, data, llamar, inter, recargarInter
   const estados = caps.map(c => estadoCapitulo(c, data.bloques));
   const visibles = caps.filter(c => c.visible);
   const completos = caps.filter((c, i) => !c.visible || (estados[i].texto && estados[i].render)).length;
-  const hechos = (id) => (id === 'espacio' ? !!plano?.imagen_url
+  const planosEspacio = data.bloques.filter(b => esPasoPlano(b) && b.imagen_url); /* los planos publicados desde la herramienta de Planos (estado actual, distribución…) */
+  const hechos = (id) => (id === 'espacio' ? (!!plano?.imagen_url || planosEspacio.length > 0)
     : id === 'estilo' ? !!(estilo?.nombre || estilo?.texto)
     : id === 'renders' ? completos === caps.length && caps.length > 0
     : id === 'detalles' ? estados.some(e => e.detalles > 0)
