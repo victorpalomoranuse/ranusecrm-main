@@ -10,6 +10,7 @@ import { uploadProjectRender, deleteProjectRender, uploadProjectDocument, delete
 import { uploadRenderFile, uploadDocumentFile, uploadDiagnosisImageFile, uploadMoodboardImages, handleMulterError } from '../middleware/upload.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
 import { crearHistoria, getHistoriaPublica, TIPOS_PROYECTO } from '../utils/historia.js';
+import { puedeDescargar } from '../utils/portal.js';
 
 const router = express.Router();
 
@@ -236,7 +237,10 @@ router.get('/by-code/:code', async (req, res) => {
     }
 
     // Solo proyectos con capítulos: los antiguos devuelven null y el portal no cambia
-    const historia = await getHistoriaPublica(projectId).catch(() => null);
+    const historiaCompleta = await getHistoriaPublica(projectId).catch(() => null);
+    // sin usuario asignado el proyecto se ve como en un portfolio: sin documentos ni entregables descargables
+    const descarga = await puedeDescargar(req, projectId).catch(() => false);
+    const historia = historiaCompleta && !descarga ? { ...historiaCompleta, entregables: [] } : historiaCompleta;
 
     const responsible_email = project.responsible?.email || null;
     const responsible_name = project.responsible?.name || null;
@@ -265,7 +269,8 @@ router.get('/by-code/:code', async (req, res) => {
         responsible_name,
         responsible_email,
         renders: allRenders,
-        documents: documentsResult.data || [],
+        puede_descargar: descarga,
+        documents: descarga ? (documentsResult.data || []) : [],
         diagnosis: diagnosisData
           ? { ...diagnosisData, images: diagnosisImages }
           : null,

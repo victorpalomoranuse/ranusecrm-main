@@ -10,6 +10,8 @@ const PHASE_STATUS_LABELS = {
   proximamente: 'Próximamente',
 };
 
+import { PermisoDescarga, usePuedeDescargar, SoloConPermiso, tokensSesion } from '../components/PortalPermisos';
+
 async function downloadRender(url, filename) {
   try {
     const res = await fetch(url);
@@ -34,6 +36,8 @@ function renderFilename(render, idx) {
 }
 
 function DownloadButton({ url, filename, className }) {
+  const puede = usePuedeDescargar();
+  if (!puede) return null; /* sin usuario, el enlace es un portfolio: no se descarga */
   return (
     <button
       type="button"
@@ -208,7 +212,7 @@ function MaterialesSection({ materials, label }) {
               {m.brand && <span className="mp-sel-sub">{m.brand}</span>}
               {m.category && <span className="mp-sel-tag">{m.category}</span>}
               {m.location && <span className="mp-sel-location">→ {m.location}</span>}
-              {m.datasheet_url && <a href={m.datasheet_url} target="_blank" rel="noopener noreferrer" className="mp-sel-datasheet" onClick={ev => ev.stopPropagation()}>Ficha técnica ↗</a>}
+              <SoloConPermiso>{m.datasheet_url && <a href={m.datasheet_url} target="_blank" rel="noopener noreferrer" className="mp-sel-datasheet" onClick={ev => ev.stopPropagation()}>Ficha técnica ↗</a>}</SoloConPermiso>
             </div>
           </div>
         ))}
@@ -290,7 +294,7 @@ function MobiliarioSection({ equipment, label }) {
                 {e.category && <span className="mp-sel-tag">{e.category}</span>}
                 {e.location && <span className="mp-sel-location">→ {e.location}</span>}
                 {e.show_quantity !== false && <span className="mp-sel-qty">×{e.quantity || 1}</span>}
-                {e.datasheet_url && <a href={e.datasheet_url} target="_blank" rel="noopener noreferrer" className="mp-sel-datasheet" onClick={ev => ev.stopPropagation()}>Ficha técnica ↗</a>}
+                <SoloConPermiso>{e.datasheet_url && <a href={e.datasheet_url} target="_blank" rel="noopener noreferrer" className="mp-sel-datasheet" onClick={ev => ev.stopPropagation()}>Ficha técnica ↗</a>}</SoloConPermiso>
                 {e.show_purchase_link && e.purchase_link && (
                   <a
                     href={e.purchase_link}
@@ -947,6 +951,11 @@ function NeedsFormSection({ code }) {
 }
 
 export function MiProyecto() {
+  const [puede, setPuede] = useState(false);
+  return <PermisoDescarga.Provider value={puede}><MiProyectoCuerpo onPermiso={setPuede} /></PermisoDescarga.Provider>;
+}
+
+function MiProyectoCuerpo({ onPermiso }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const code = params.get('code');
@@ -959,11 +968,19 @@ export function MiProyecto() {
   useEffect(() => {
     if (!code) { setLoading(false); setError('Sin código.'); return; }
     const base = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-    fetch(`${base}/client-projects/by-code/${encodeURIComponent(code)}`)
-      .then(async r => {
-        const data = await r.json();
+    // se prueba con cada sesión guardada (equipo o cliente) hasta que una tenga acceso a este proyecto; sin ninguna, se ve como portfolio
+    (async () => {
+      let r, data;
+      for (const tk of [...tokensSesion(), '']) {
+        r = await fetch(`${base}/client-projects/by-code/${encodeURIComponent(code)}`, tk ? { headers: { Authorization: 'Bearer ' + tk } } : undefined);
+        data = await r.json();
+        if (!r.ok || !data.project || data.project.puede_descargar) break;
+      }
+      return { r, data };
+    })()
+      .then(({ r, data }) => {
         if (!r.ok || !data.project) setError(data.error || 'Código no válido');
-        else setProject(data.project);
+        else { setProject(data.project); onPermiso(!!data.project.puede_descargar); }
       })
       .catch(() => setError('No se pudo conectar.'))
       .finally(() => setLoading(false));
@@ -997,7 +1014,7 @@ export function MiProyecto() {
         dossier={(
           <div className="mp sp-legacy">
             <div className="mp-main">
-              <NeedsFormSection code={code} />
+              {project.puede_descargar && <NeedsFormSection code={code} />}
               <ListadosSection materials={project.materials} equipment={project.equipment} catalogTypes={project.catalog_types} intro={project.listados_intro_text} title={project.listados_title} />
               {hayGlobal && (
                 <div className="mp-sections">
@@ -1054,7 +1071,7 @@ export function MiProyecto() {
         </div>
 
         <div className="mp-phases">
-          <NeedsFormSection code={code} />
+          {project.puede_descargar && <NeedsFormSection code={code} />}
           <MoodboardSection moodboard={project.moodboard} />
           {categories.map(category => (
             <CategoryBlock key={category.id} category={category} />

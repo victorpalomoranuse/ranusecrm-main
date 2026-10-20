@@ -3,6 +3,7 @@ import archiver from 'archiver';
 import { supabase } from '../config/supabase.js';
 import { getHistoriaPublica } from '../utils/historia.js';
 import { generarHistoriaPdf } from '../utils/historia-pdf.js';
+import { puedeDescargar, firmaDescarga } from '../utils/portal.js';
 
 // Descargas públicas (con el código de acceso del cliente) de la historia.
 // Solo sirven lo que el cliente ya ve en su portal.
@@ -19,10 +20,21 @@ const extension = (url, tipoMime) => {
 
 // ZIP con todos los renders del proyecto: el principal de cada capítulo y las
 // imágenes de sus bloques, en el orden de la historia.
+// los botones de descarga piden aquí un enlace firmado de 2 minutos; solo se da a quien tiene usuario con acceso
+router.post('/:code/enlace', async (req, res) => {
+  try {
+    const { data: project } = await supabase.from('client_projects').select('id').eq('access_code', String(req.params.code).toUpperCase()).single();
+    if (!project) return res.status(404).json({ error: 'Código no válido' });
+    if (!(await puedeDescargar(req, project.id))) return res.status(403).json({ error: 'Para descargar necesitas acceder con tu usuario' });
+    res.json({ token: firmaDescarga(project.id) });
+  } catch (e) { res.status(500).json({ error: 'No se pudo preparar la descarga' }); }
+});
+
 router.get('/:code/renders.zip', async (req, res) => {
   try {
     const { data: project } = await supabase.from('client_projects').select('id, project_name').eq('access_code', String(req.params.code).toUpperCase()).single();
     if (!project) return res.status(404).json({ error: 'Código no válido' });
+    if (!(await puedeDescargar(req, project.id))) return res.status(403).json({ error: 'Para descargar necesitas acceder con tu usuario' });
     const historia = await getHistoriaPublica(project.id);
     if (!historia) return res.status(404).json({ error: 'Este proyecto no tiene historia' });
 
@@ -69,6 +81,7 @@ router.get('/:code/historia.pdf', async (req, res) => {
       .select('id, client_name, project_name, cover_image_url, moodboard_description, moodboard_palette, responsible:employees!responsible_id(name, email)')
       .eq('access_code', String(req.params.code).toUpperCase()).single();
     if (!project) return res.status(404).json({ error: 'Código no válido' });
+    if (!(await puedeDescargar(req, project.id))) return res.status(403).json({ error: 'Para descargar necesitas acceder con tu usuario' });
     const historia = await getHistoriaPublica(project.id);
     if (!historia) return res.status(404).json({ error: 'Este proyecto no tiene historia' });
     const { data: equipo } = await supabase.from('project_equipment_selections').select('name, brand, image_url, quantity, show_quantity').eq('project_id', project.id).not('image_url', 'is', null).order('display_order', { ascending: true, nullsFirst: false }).limit(8);

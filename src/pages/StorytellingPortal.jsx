@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import './StorytellingPortal.css';
 import RecorridoEscenas from '../components/RecorridoEscenas';
+import { BotonDescarga, usePuedeDescargar } from '../components/PortalPermisos';
 
 // Vista de storytelling del portal del cliente. Solo se usa cuando el
 // proyecto tiene capítulos (project.historia); los proyectos antiguos siguen
@@ -349,17 +350,18 @@ export function StorytellingPortal({ project, dossier, code }) {
   const urlZip = code ? `${base}/historia-publica/${encodeURIComponent(code)}/renders.zip` : null;
   const urlPdf = code ? `${base}/historia-publica/${encodeURIComponent(code)}/historia.pdf` : null;
   const hayRenders = capitulos.some(c => c.render_url || c.bloques.some(b => b.imagen_url));
+  const puedeDescargar = usePuedeDescargar();
 
   const asunto = encodeURIComponent(`Quiero pasar a la ejecución — ${project.project_name || ''}`);
   const hrefEjecucion = project.responsible_email ? `mailto:${project.responsible_email}?subject=${asunto}` : WA_LINK;
 
   return (
-    <div className="sp" ref={rootRef} onClick={abrirVisor}>
+    <div className={'sp' + (puedeDescargar ? '' : ' sp-protegido')} ref={rootRef} onClick={abrirVisor} onContextMenu={e => { if (!puedeDescargar) e.preventDefault(); }}>
       {visor && <Visor fotos={visor.fotos} i={visor.i} onCambiar={cambiarVisor} onCerrar={cerrarVisor} />}
       <div className="sp-bar" ref={barRef} />
       <header className="sp-header">
         <a className="sp-logo" href="/"><img src="/iconoRanuse.ico" alt="" /><span>Ranuse Design</span></a>
-        {urlPdf && <a className="sp-pdf" href={urlPdf} download>Descargar PDF</a>}
+        {urlPdf && <BotonDescarga className="sp-pdf" code={code} archivo="historia.pdf">Descargar PDF</BotonDescarga>}
       </header>
 
       <nav className="sp-rail" aria-label="Capítulos">
@@ -447,9 +449,10 @@ export function StorytellingPortal({ project, dossier, code }) {
         <div className="sp-dossier-h">
           <p className="sp-label sp-rv">Tu dossier</p>
           <h2 className="sp-rv">Todo lo que necesitas para avanzar, en un solo lugar.</h2>
+          {!puedeDescargar && <p className="sp-rv" style={{ marginTop: 18, fontSize: '.8rem', opacity: .75 }}>Esta es una vista del proyecto para consultar. Las descargas (PDF, renders y documentos) están disponibles para los clientes con usuario: <a href="/cliente" style={{ textDecoration: 'underline' }}>acceder</a>.</p>}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {urlPdf && <a className="sp-btn sp-rv" style={{ marginTop: 26, padding: '12px 28px' }} href={urlPdf} download>Descargar PDF del proyecto</a>}
-            {urlZip && hayRenders && <a className="sp-btn sp-rv" style={{ marginTop: 26, padding: '12px 28px', background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,.35)' }} href={urlZip} download>Descargar todos los renders (ZIP)</a>}
+            {urlPdf && <BotonDescarga className="sp-btn sp-rv" style={{ marginTop: 26, padding: '12px 28px', cursor: 'pointer' }} code={code} archivo="historia.pdf">Descargar PDF del proyecto</BotonDescarga>}
+            {urlZip && hayRenders && <BotonDescarga className="sp-btn sp-rv" style={{ marginTop: 26, padding: '12px 28px', background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,.35)' , cursor: 'pointer' }} code={code} archivo="renders.zip">Descargar todos los renders (ZIP)</BotonDescarga>}
           </div>
         </div>
         {planos.length > 0 && (

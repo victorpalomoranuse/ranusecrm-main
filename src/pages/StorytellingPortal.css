@@ -186,3 +186,6 @@
 
 .sp-full.sp-blur{height:46vh;min-height:300px}
 .sp-full.sp-blur img{filter:blur(18px) brightness(.82);transform:scale(1.12)!important;cursor:default!important}
+
+/* vista de portfolio (sin usuario): las imágenes no se arrastran ni se guardan con el menú táctil */
+.sp-protegido img{-webkit-user-drag:none;user-drag:none;-webkit-touch-callout:none}
