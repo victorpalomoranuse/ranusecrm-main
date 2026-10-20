@@ -247,8 +247,10 @@ router.get('/by-code/:code', async (req, res) => {
 
     const allRenders = rendersResult.data || [];
     const allTours = toursResult.data || [];
-    const allMaterials = materialsResult.data || [];
-    const allEquipment = equipmentResult.data || [];
+    // vista de portfolio (sin usuario): se ve la selección (foto, nombre, marca…) pero nada comercial ni interno
+    const soloVista = (x) => (descarga ? x : { ...x, purchase_link: null, show_purchase_link: false, datasheet_url: null, quantity: null, show_quantity: false, notes: null });
+    const allMaterials = (materialsResult.data || []).map(soloVista);
+    const allEquipment = (equipmentResult.data || []).map(soloVista);
     const allCategories = categoriesResult.data || [];
 
     const categoryIds = allCategories.map(c => c.id);
@@ -258,7 +260,7 @@ router.get('/by-code/:code', async (req, res) => {
 
     const categories = allCategories.map(c => ({
       ...c,
-      items: (allCategoryItems || []).filter(i => i.category_id === c.id),
+      items: (allCategoryItems || []).filter(i => i.category_id === c.id).map(i => (descarga ? i : { ...i, file_url: null })),
       materials: allMaterials.filter(m => m.category_id === c.id),
       equipment: allEquipment.filter(e => e.category_id === c.id),
     }));
@@ -277,7 +279,7 @@ router.get('/by-code/:code', async (req, res) => {
         materials: allMaterials,
         equipment: allEquipment,
         catalog_types: catalogTypesResult.data || [],
-        notes: notesResult.data || [],
+        notes: descarga ? (notesResult.data || []) : [],
         tours: allTours,
         categories,
         historia,
