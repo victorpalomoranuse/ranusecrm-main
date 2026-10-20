@@ -12,7 +12,12 @@ import { uploadCatalogPhoto } from '../utils/storage.js';
 const router = express.Router();
 // admin_superior siempre pasa; trabajador necesita el permiso "ventas"
 // (comerciales) — así el asistente lo pueden usar tanto Víctor como su equipo.
-router.use(authenticateToken, requirePermission('ventas'));
+// el Asistente IA (presupuestos y creación de productos del catálogo) lo usa quien tiene «Ventas» o el permiso propio «Asistente IA»
+const permitirAsistente = (req, res, next) => {
+  if (req.user?.role === 'trabajador' && req.user.permissions?.asistente === true) return next();
+  return requirePermission('ventas')(req, res, next);
+};
+router.use(authenticateToken, permitirAsistente);
 
 const BASE_SYSTEM_PROMPT = `Eres el asistente de presupuestos de Ranuse Design, un estudio de diseño de espacios deportivos (home gyms, salas de entrenamiento, etc.) en España. Lo usan tanto Víctor (el dueño del estudio) como los comerciales del equipo.
 
