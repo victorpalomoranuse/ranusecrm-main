@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.6.0'.freeze
+    VERSION = '1.6.1'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -958,6 +958,7 @@ module Ranuse
 
       # Máquinas
       (plano['equipos'] || []).each_with_index do |e, i_e|
+        next unless e['estado'].nil? || visible?(e['estado'], vista) # lo que ya existe sale siempre; lo nuevo solo en «final»; lo que se retira, solo en «hoy»
         con_modelo = e['skp'] && e['skp']['url'] ? modelo_descargado?(e['skp']['url']) : false
         g = elemento(ents, "eq:#{e['id'] || i_e}", firma([e, con_modelo]), e['nombre'].to_s, et_maq)
         next unless g
