@@ -568,6 +568,7 @@ body.crm .top .brand{display:none}
         <label class="fld"><span>Cotas de luminarias a paredes</span><select id="x-ldim"><option value="1">Sí</option><option value="0">No</option></select></label>
         <label class="fld"><span>Marcas de alzado en planta</span><select id="x-marks"><option value="1">Sí (distribución y acabados)</option><option value="0">No</option></select></label>
         <label class="fld"><span>Cotas</span><select id="x-dims"><option value="ext">Con líneas de cota por fuera</option><option value="dob">Con dos líneas: interior y exterior</option><option value="int">Con líneas de cota por dentro</option><option value="simple">Solo el número en cada muro</option></select></label>
+        <label class="fld"><span>Decimales en las cotas</span><select id="x-dec"><option value="1">Se ven cuando los hay (212,5 · 145)</option><option value="0">Redondeadas (213 · 145)</option></select></label>
         <label class="fld"><span>Orientación del plano</span><select id="x-orient"><option value="auto">Automática (en horizontal si así sale más grande)</option><option value="normal">Tal como está dibujado</option><option value="girado">Girado 90° (en horizontal)</option></select></label>
         <label class="fld"><span>Escala</span><select id="x-scale"><option value="auto">Automática (la mayor que quepa)</option><option value="20">1:20</option><option value="25">1:25</option><option value="50">1:50</option><option value="75">1:75</option><option value="100">1:100</option><option value="125">1:125</option><option value="200">1:200</option></select></label>
         <div class="btns"><button class="pri" id="b-pdf">PDF de esta lámina</button><button id="b-pdfall">PDF con todas las láminas</button></div>
@@ -9178,7 +9179,8 @@ function sheetPage(doc,view,idx,total,o){
   }
   return p;
 }
-function buildPDF(mode,opt,lista,Doc){var d0=DECIMALES;DECIMALES=false;try{return buildPDF0(mode,opt,lista,Doc)}finally{DECIMALES=d0;PAGE_ROT=0}}
+function buildPDF(mode,opt,lista,Doc){var d0=DECIMALES;DECIMALES=!(opt&&opt.dec===false); /* los decimales de las cotas se ven (se pueden redondear en el panel de exportar) */
+  try{return buildPDF0(mode,opt,lista,Doc)}finally{DECIMALES=d0;PAGE_ROT=0}}
 function buildPDF0(mode,opt,lista,Doc){
   var orig=st.v,vs=(lista&&lista.length)?lista:[st.v];
   var doc=new (Doc||PdfDoc)('Ranuse · '+(st.v.nombre||'Visita')),li=0;
@@ -9254,7 +9256,7 @@ function loadLogoFile(file){
   if(propio){var im=new Image();im.onload=function(){try{setLogoFromImg(im,false);logoUi()}catch(e){}};im.src=propio}
   else logoPorDefecto();
 })();
-function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0',eqloc:!($('x-eqloc')&&$('x-eqloc').value==='0'),eqsuelo:!($('x-eqsuelo')&&$('x-eqsuelo').value==='0')}}
+function pdfOpts(){return {orient:($('x-orient')&&$('x-orient').value)||'auto',paper:$('x-paper').value,scale:$('x-scale').value,dims:$('x-dims').value,dec:!($('x-dec')&&$('x-dec').value==='0'),marks:$('x-marks').value!=='0',ldim:$('x-ldim').value!=='0',eqloc:!($('x-eqloc')&&$('x-eqloc').value==='0'),eqsuelo:!($('x-eqsuelo')&&$('x-eqsuelo').value==='0')}}
 /* planos de todas las plantas del proyecto (el actual con lo último que has dibujado), ordenados de abajo arriba */
 function plantasDelProyecto(){
   var l=(cloud||[]).map(function(c){return c.id===st.v.id?st.v:norm(JSON.parse(JSON.stringify(c)))});
