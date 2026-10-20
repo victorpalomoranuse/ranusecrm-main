@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, Sparkles, Trash2, MapPin } from 'lucide-react';
 import api from '../services/api';
-import RenderRecorrido, { MOVIMIENTOS } from './RenderRecorrido';
+import RenderRecorrido, { MOVIMIENTOS, analizaMov } from './RenderRecorrido';
 
 // Convierte un render normal en un render con recorrido: se genera el mapa de profundidad en el propio
 // navegador (no usa el servidor), se elige hacia dónde se mueve la cámara y se colocan puntos tocables.
@@ -40,9 +40,10 @@ const caja = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255
 const muted = { fontSize: '0.74rem', color: 'rgba(255,255,255,0.5)' };
 const fila = { display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' };
 
-export default function RenderInteractivoEditor({ projectId, url, existente, onGuardado, onCerrar }) {
+export default function RenderInteractivoEditor({ projectId, url, existente, onGuardado, onCerrar, contexto = '' }) {
   const [prof, setProf] = useState(existente?.profundidad_url || '');
-  const [mov, setMov] = useState(existente?.movimiento || 'adelante');
+  const [mov, setMov] = useState(analizaMov(existente?.movimiento).dir);
+  const [inten, setInten] = useState(analizaMov(existente?.movimiento).inten);
   const [puntos, setPuntos] = useState(existente?.puntos || []);
   const [progreso, setProgreso] = useState(0.5);
   const [colocar, setColocar] = useState(false);
@@ -50,6 +51,7 @@ export default function RenderInteractivoEditor({ projectId, url, existente, onG
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
   const animando = useRef(0);
+  const [escribiendo, setEscribiendo] = useState(false);
 
   useEffect(() => {
     const k = (e) => { if (e.key === 'Escape') onCerrar(); };
@@ -87,7 +89,7 @@ export default function RenderInteractivoEditor({ projectId, url, existente, onG
   const guardar = async () => {
     setGuardando(true); setError('');
     try {
-      const { data } = await api.put(`/historia/${projectId}/interactivos`, { imagen_url: url, profundidad_url: prof, movimiento: mov, puntos });
+      const { data } = await api.put(`/historia/${projectId}/interactivos`, { imagen_url: url, profundidad_url: prof, movimiento: mov + ':' + inten, puntos });
       onGuardado(data.interactivo);
     } catch (e) { setError(e.response?.data?.error || 'No se pudo guardar'); }
     finally { setGuardando(false); }
@@ -98,6 +100,15 @@ export default function RenderInteractivoEditor({ projectId, url, existente, onG
     catch (e) { setError(e.response?.data?.error || 'No se pudo quitar'); }
   };
   const cambiarPunto = (i, campos) => setPuntos(p => p.map((q, k) => (k === i ? { ...q, ...campos } : q)));
+  // la IA mira el render en el sitio de cada punto y escribe su título y su texto (solo los índices que se piden)
+  const escribirIA = async (lista, indices) => {
+    setError(''); setEscribiendo(true);
+    try {
+      const { data } = await api.post('/historia/' + projectId + '/ia-puntos', { imagen_url: url, contexto, puntos: indices.map(i => ({ i, x: lista[i].x, y: lista[i].y })) });
+      setPuntos(p => p.map((q, k) => { const r = data.puntos.find(x => x.i === k); return r ? { ...q, titulo: r.titulo, texto: r.texto } : q; }));
+    } catch (e) { setError(e.response?.data?.error || 'No se pudo escribir con la IA'); }
+    finally { setEscribiendo(false); }
+  };
 
   return (
     <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.8)', overflow: 'auto', padding: '2vh 2vw' }} onClick={onCerrar}>
@@ -116,8 +127,8 @@ export default function RenderInteractivoEditor({ projectId, url, existente, onG
           </div>
         ) : (
           <>
-            <RenderRecorrido src={url} prof={prof} mov={mov} puntos={puntos} modo="editor" progreso={progreso} colocar={colocar}
-              onColocar={(p) => { setPuntos(l => (l.length >= 12 ? l : [...l, { ...p, titulo: '', texto: '' }])); setColocar(false); }} altura={Math.min(460, Math.round(window.innerHeight * 0.5))} />
+            <RenderRecorrido src={url} prof={prof} mov={mov + ':' + inten} puntos={puntos} modo="editor" progreso={progreso} colocar={colocar}
+              onColocar={(p) => { if (puntos.length >= 12) return; const nuevos = [...puntos, { ...p, titulo: '', texto: '' }]; setPuntos(nuevos); setColocar(false); escribirIA(nuevos, [nuevos.length - 1]); }} altura={Math.min(460, Math.round(window.innerHeight * 0.5))} />
             <div style={{ ...fila, margin: '10px 0' }}>
               <input type="range" min="0" max="1" step="0.005" value={progreso} onChange={e => { cancelAnimationFrame(animando.current); setProgreso(+e.target.value); }} style={{ flex: 1, minWidth: 160 }} aria-label="Avance del recorrido" />
               <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={reproducir}>▶ Ver el recorrido</button>
@@ -129,14 +140,22 @@ export default function RenderInteractivoEditor({ projectId, url, existente, onG
                   <button key={m.id} type="button" className={`ap-btn ap-btn-sm ${mov === m.id ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => { setMov(m.id); setProgreso(0); }}>{m.icono} {m.label}</button>
                 ))}
               </div>
-              <p style={{ ...muted, marginTop: 4 }}>«Avanzar» y «Retroceder» funcionan mejor en vistas con fondo (pasillos, salas profundas); los laterales, con equipos en primer plano.</p>
+              <div style={{ ...fila, marginTop: 10 }}>
+                <span style={muted}>Intensidad del movimiento</span>
+                <input type="range" min="20" max="100" step="5" value={inten} onChange={e => setInten(+e.target.value)} style={{ flex: 1, minWidth: 140 }} aria-label="Intensidad del movimiento" />
+                <span style={{ ...muted, width: 38 }}>{inten} %</span>
+              </div>
+              <p style={{ ...muted, marginTop: 4 }}>Si ves bandas estiradas junto a un objeto muy cercano, baja la intensidad. «Avanzar» y «Retroceder» funcionan mejor en vistas con fondo (pasillos, salas profundas); los laterales, con equipos en primer plano.</p>
             </div>
             <div style={{ ...caja, marginBottom: 10 }}>
               <div style={{ ...fila, justifyContent: 'space-between', marginBottom: 6 }}>
                 <strong style={{ fontSize: '0.85rem' }}>Puntos tocables (opcional)</strong>
-                <button type="button" className={`ap-btn ap-btn-xs ${colocar ? 'ap-btn-primary' : 'ap-btn-ghost'}`} disabled={puntos.length >= 12} onClick={() => setColocar(c => !c)}><MapPin size={11} /> {colocar ? 'Toca la imagen…' : 'Colocar un punto'}</button>
+                <div style={fila}>
+                  {puntos.length > 0 && <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" disabled={escribiendo} onClick={() => escribirIA(puntos, puntos.map((_, i) => i))}><Sparkles size={11} /> {escribiendo ? 'Escribiendo…' : 'Escribir todos con IA'}</button>}
+                  <button type="button" className={`ap-btn ap-btn-xs ${colocar ? 'ap-btn-primary' : 'ap-btn-ghost'}`} disabled={puntos.length >= 12} onClick={() => setColocar(c => !c)}><MapPin size={11} /> {colocar ? 'Toca la imagen…' : 'Colocar un punto'}</button>
+                </div>
               </div>
-              <p style={{ ...muted, marginBottom: 6 }}>Pulsa «Colocar un punto» y toca el objeto en la imagen. El cliente lo verá como un círculo que abre una ficha con el título y el texto que escribas.</p>
+              <p style={{ ...muted, marginBottom: 6 }}>Pulsa «Colocar un punto» y toca el objeto en la imagen. La IA escribe el título y el texto mirando el render en ese punto; los puedes cambiar.</p>
               {puntos.map((p, i) => (
                 <div key={i} style={{ ...fila, marginBottom: 6, flexWrap: 'nowrap', alignItems: 'flex-start' }}>
                   <span style={{ ...muted, width: 16, paddingTop: 8 }}>{i + 1}</span>
@@ -144,6 +163,7 @@ export default function RenderInteractivoEditor({ projectId, url, existente, onG
                     <input className="ap-field-input" placeholder="Título (por ejemplo, Rótulo de neón)" value={p.titulo} maxLength={80} onChange={e => cambiarPunto(i, { titulo: e.target.value })} />
                     <input className="ap-field-input" placeholder="Texto corto (opcional)" value={p.texto} maxLength={300} onChange={e => cambiarPunto(i, { texto: e.target.value })} />
                   </div>
+                  <button type="button" className="ap-btn-icon" title="Escribir con IA" aria-label="Escribir este punto con IA" disabled={escribiendo} onClick={() => escribirIA(puntos, [i])}><Sparkles size={13} /></button>
                   <button type="button" className="ap-btn-icon" aria-label="Quitar punto" onClick={() => setPuntos(l => l.filter((_, k) => k !== i))}><Trash2 size={13} /></button>
                 </div>
               ))}

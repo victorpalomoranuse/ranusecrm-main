@@ -313,7 +313,7 @@ router.put('/:projectId/interactivos', async (req, res) => {
     const fila = { proyecto_id: req.params.projectId, imagen_url, updated_at: new Date().toISOString() };
     const prof = url(req.body.profundidad_url);
     if (prof) fila.profundidad_url = prof;
-    if (MOVIMIENTOS.includes(req.body.movimiento)) fila.movimiento = req.body.movimiento;
+    if (/^(adelante|atras|izq|dcha)(:d{1,3})?$/.test(String(req.body.movimiento || ''))) fila.movimiento = req.body.movimiento;
     if (req.body.puntos !== undefined) fila.puntos = limpiarPuntos(req.body.puntos);
     const { data: previo } = await supabase.from('render_interactivos').select('id').eq('proyecto_id', req.params.projectId).eq('imagen_url', imagen_url).maybeSingle();
     if (!previo && !fila.profundidad_url) return res.status(400).json({ error: 'Falta el mapa de profundidad' });
@@ -324,6 +324,48 @@ router.put('/:projectId/interactivos', async (req, res) => {
     if (error) throw error;
     res.json({ interactivo: data });
   } catch (e) { fail(res, e, 'No se pudo guardar el render interactivo (¿has ejecutado el SQL v78?)'); }
+});
+
+// La IA mira el render, ve cada punto marcado (círculo numerado) y escribe su título y su texto para el cliente
+const TOOL_PUNTOS = {
+  name: 'entregar_puntos',
+  description: 'Entrega el título y el texto de cada punto marcado en el render.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      puntos: { type: 'array', items: { type: 'object', properties: { n: { type: 'number', description: 'Número del punto' }, titulo: { type: 'string', description: 'Nombre del elemento, de 2 a 5 palabras' }, texto: { type: 'string', description: 'Una o dos frases para el cliente, máximo 200 caracteres' } }, required: ['n', 'titulo', 'texto'] } },
+    },
+    required: ['puntos'],
+  },
+};
+router.post('/:projectId/ia-puntos', async (req, res) => {
+  try {
+    const imagen = url(req.body.imagen_url);
+    const hostStorage = (() => { try { return new URL(process.env.SUPABASE_URL).host; } catch { return null; } })();
+    let host = null; try { host = imagen ? new URL(imagen).host : null; } catch { /* url no válida */ }
+    if (!imagen || !hostStorage || host !== hostStorage) return res.status(400).json({ error: 'La imagen no es un render subido a este proyecto' });
+    const puntos = (Array.isArray(req.body.puntos) ? req.body.puntos : []).slice(0, 12).map((p, i) => ({ n: i + 1, i: Number.isInteger(p?.i) ? p.i : i, x: Math.max(0, Math.min(100, Number(p?.x))), y: Math.max(0, Math.min(100, Number(p?.y))) })).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+    if (!puntos.length) return res.status(400).json({ error: 'No hay puntos que escribir' });
+    const r0 = await fetch(imagen);
+    if (!r0.ok) return res.status(400).json({ error: 'No se pudo leer el render' });
+    const buf = Buffer.from(await r0.arrayBuffer());
+    const { data: px, info } = await sharp(buf).rotate().resize(1400, 1400, { fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).raw().toBuffer({ resolveWithObject: true });
+    const W = info.width, H = info.height, rr = Math.max(14, Math.round(Math.min(W, H) * 0.022));
+    const marcas = puntos.map(p => { const cx = Math.round(p.x / 100 * W), cy = Math.round(p.y / 100 * H); return '<circle cx="' + cx + '" cy="' + cy + '" r="' + rr + '" fill="rgba(255,40,40,0.25)" stroke="#ff2828" stroke-width="3"/><text x="' + cx + '" y="' + (cy + rr * 0.4) + '" font-size="' + Math.round(rr * 1.2) + '" font-family="Arial,sans-serif" font-weight="700" text-anchor="middle" fill="#ffffff" stroke="#000000" stroke-width="1">' + p.n + '</text>'; }).join('');
+    const jpg = await sharp(px, { raw: { width: W, height: H, channels: info.channels } }).composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '">' + marcas + '</svg>'), top: 0, left: 0 }]).jpeg({ quality: 85 }).toBuffer();
+    const contexto = String(req.body.contexto || '').slice(0, 800);
+    const out = await callClaude({
+      system: 'Eres redactor de Ranuse Design, estudio de diseño de espacios deportivos. Te enseñan un render con círculos rojos numerados que marcan elementos. Para cada número, identifica qué elemento hay justo en ese punto y escribe, para el cliente: un título corto (nombre del elemento, de 2 a 5 palabras) y un texto de una o dos frases, máximo 200 caracteres, en español, cercano y concreto: qué es y qué aporta al espacio (material, luz, función) solo si se aprecia en la imagen. No inventes marcas, medidas ni precios. Entrega el resultado con la herramienta entregar_puntos.',
+      maxTokens: 1500,
+      tools: [TOOL_PUNTOS],
+      messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpg.toString('base64') } }, { type: 'text', text: 'Puntos marcados: ' + puntos.map(p => p.n).join(', ') + '.' + (contexto ? ' Contexto del capítulo: ' + contexto : '') }] }],
+    });
+    const uso = (out.content || []).find(c => c.type === 'tool_use' && c.name === 'entregar_puntos');
+    const lista = Array.isArray(uso?.input?.puntos) ? uso.input.puntos : [];
+    const resultado = puntos.map(p => { const q = lista.find(x => Number(x.n) === p.n); return q ? { i: p.i, titulo: String(q.titulo || '').trim().slice(0, 80), texto: String(q.texto || '').trim().slice(0, 300) } : null; }).filter(Boolean);
+    if (!resultado.length) return res.status(422).json({ error: 'La IA no ha podido describir los puntos. Inténtalo de nuevo.' });
+    res.json({ puntos: resultado });
+  } catch (e) { console.error('ia-puntos:', e); res.status(500).json({ error: e.message?.includes('clave de la IA') ? e.message : 'No se pudo escribir con la IA. Inténtalo de nuevo.' }); }
 });
 
 router.delete('/:projectId/interactivos', async (req, res) => {

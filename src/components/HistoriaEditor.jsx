@@ -290,7 +290,7 @@ function RendersConRecorrido({ projectId, capitulo, bloques, llamar, inter, reca
       </div>
       {sinTabla && <p style={{ ...muted, color: '#f5b748', marginTop: 6 }}>Para guardar recorridos falta ejecutar el SQL v78 (te lo pasa Claude).</p>}
       {abierto && (
-        <RenderInteractivoEditor projectId={projectId} url={abierto} existente={inter[abierto]}
+        <RenderInteractivoEditor projectId={projectId} url={abierto} existente={inter[abierto]} contexto={(capitulo.titulo || '') + '. ' + (capitulo.texto || '')}
           onGuardado={async () => { setAbierto(null); await recargarInter(); }} onCerrar={() => setAbierto(null)} />
       )}
     </div>

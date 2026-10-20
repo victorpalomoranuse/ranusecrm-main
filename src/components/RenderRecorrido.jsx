@@ -29,8 +29,20 @@ void main(){
     float k=0.12+n*0.95;
     p=uF+(uv-uF)/(1.0+uT*k)-sway*(n-0.35);
   }
+  float e=0.010;
+  float g=abs(texture2D(uD,p+vec2(e,0.0)).r-texture2D(uD,p-vec2(e,0.0)).r)+abs(texture2D(uD,p+vec2(0.0,e)).r-texture2D(uD,p-vec2(0.0,e)).r);
+  float w=1.0-smoothstep(0.05,0.22,g)*0.75;
+  p=mix(uv,p,w);
   gl_FragColor=vec4(texture2D(uI,clamp(p,0.002,0.998)).rgb,1.0);
 }`;
+
+// el movimiento se guarda como «dirección» o «dirección:intensidad» (20-100). Sin intensidad, 75.
+export function analizaMov(m) {
+  const [d, i] = String(m || 'adelante').split(':');
+  const dir = ['adelante', 'atras', 'izq', 'dcha'].includes(d) ? d : 'adelante';
+  const n = Number(i);
+  return { dir, inten: n >= 10 && n <= 100 ? n : 75 };
+}
 
 // estado de la cámara (avance, desplazamiento lateral) según el movimiento y el progreso 0..1
 export function estadoCamara(dir, s) {
@@ -126,8 +138,10 @@ export default function RenderRecorrido({ src, prof, mov = 'adelante', puntos = 
       const v = vivo.current;
       cur += (obj - cur) * 0.14; if (Math.abs(obj - cur) < 0.0004) cur = obj;
       const neutro = modo === 'editor' && v.colocar; // «colocando puntos»: imagen sin mover
-      const [t, lat] = neutro ? [0, 0] : estadoCamara(v.mov, cur);
-      const sw = neutro || v.mov === 'izq' || v.mov === 'dcha' ? 0 : Math.sin(cur * 3.1);
+      const { dir, inten } = analizaMov(v.mov), k = inten / 75; /* 75 = lo normal */
+      const [t0, lat0] = neutro ? [0, 0] : estadoCamara(dir, cur);
+      const t = t0 * k, lat = lat0 * k;
+      const sw = neutro || dir === 'izq' || dir === 'dcha' ? 0 : Math.sin(cur * 3.1) * k;
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tI); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tD);
       gl.uniform2f(U.uF, FOC[0], FOC[1]); gl.uniform1f(U.uT, t); gl.uniform1f(U.uL, lat); gl.uniform1f(U.uAsp, asp); gl.uniform1f(U.uSw, sw);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
