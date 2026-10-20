@@ -60,7 +60,8 @@ function cargaImg(url, ancho) {
     im.onload = () => {
       const k = Math.min(1, ancho / im.naturalWidth), c = document.createElement('canvas');
       c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
-      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      const cx = c.getContext('2d'); cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+      cx.drawImage(im, 0, 0, c.width, c.height);
       ok({ c, w: im.naturalWidth, h: im.naturalHeight });
     };
     im.onerror = () => ko(new Error('imagen'));
@@ -86,10 +87,11 @@ export default function RenderRecorrido({ src, prof, mov = 'adelante', puntos = 
     setFallo(false); setListo(false);
     const el = cv.current, st = stage.current;
     if (!el || !st) return undefined;
-    const gl = el.getContext('webgl', { antialias: false, alpha: false }) || el.getContext('experimental-webgl');
+    const gl2 = el.getContext('webgl2', { antialias: false, alpha: false });
+    const gl = gl2 || el.getContext('webgl', { antialias: false, alpha: false }) || el.getContext('experimental-webgl');
     if (!gl) { setFallo(true); return undefined; }
     let muerto = false, raf = 0, ocupado = false, W = 0, H = 0, cur = 0, obj = 0, asp = 1.5, prog = null, tex = [], progSh = null;
-    const DPR = Math.min(window.devicePixelRatio || 1, 1.6);
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
     try {
       const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
       progSh = gl.createProgram(); gl.attachShader(progSh, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(progSh, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(progSh); gl.useProgram(progSh);
@@ -98,10 +100,12 @@ export default function RenderRecorrido({ src, prof, mov = 'adelante', puntos = 
     const loc = gl.getAttribLocation(progSh, 'a'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     const U = {}; ['uI', 'uD', 'uRes', 'uF', 'uT', 'uL', 'uAsp', 'uSw', 'uR'].forEach(n => { U[n] = gl.getUniformLocation(progSh, n); });
     gl.uniform1i(U.uI, 0); gl.uniform1i(U.uD, 1);
-    const textura = (c) => {
+    const textura = (c, mip) => {
       const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      const conMip = !!(mip && gl2); // con WebGL2 se generan mipmaps (imagen nítida al reducirla, sin brillos ni dientes de sierra)
+      if (conMip) gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, conMip ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       tex.push(t); return t;
     };
@@ -158,9 +162,12 @@ export default function RenderRecorrido({ src, prof, mov = 'adelante', puntos = 
     const tick = () => { lee(); pide(); };
     const redim = () => { medida(); tick(); };
     medida();
-    Promise.all([cargaImg(src, 1500), cargaImg(prof, 640)]).then(([a, d]) => {
+    // calidad máxima: la textura es tan grande como lo permita el dispositivo (hasta 3840 px) y como pida la pantalla
+    const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 2048;
+    const anchoImg = Math.min(maxTex, 3840, Math.max(2000, Math.round((st.clientWidth || 600) * DPR * 2)));
+    Promise.all([cargaImg(src, anchoImg), cargaImg(prof, 1100)]).then(([a, d]) => {
       if (muerto) return;
-      tI = textura(a.c); tD = textura(d.c); asp = a.w / a.h; st.dataset.asp = String(asp);
+      tI = textura(a.c, true); tD = textura(d.c, false); asp = a.w / a.h; st.dataset.asp = String(asp);
       const c = document.createElement('canvas'); c.width = 160; c.height = 113;
       const x = c.getContext('2d'); x.drawImage(d.c, 0, 0, 160, 113);
       const px = x.getImageData(0, 0, 160, 113).data; mapa = new Float32Array(160 * 113);

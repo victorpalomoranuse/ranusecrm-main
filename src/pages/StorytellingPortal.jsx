@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import './StorytellingPortal.css';
 import RenderRecorrido from '../components/RenderRecorrido';
 
@@ -268,12 +268,33 @@ export function StorytellingPortal({ project, dossier, code }) {
   const esHome = historia.tipo_proyecto === 'home_gym';
   const portada = project.cover_image_url || capitulos.find(c => c.render_url)?.render_url || project.renders?.[0]?.url || null;
 
+  /* orden: objetivo (necesidades) → plano → «Entendemos el espacio» → estilo → el resto de zonas */
+  const iEsp = capitulos.findIndex(c => /entendemos el espacio/i.test(c.titulo || ''));
+  const atmosfera = hayMood ? (
+        <section className="sp-mood" id="sp-atmosfera">
+          <p className="sp-label sp-rv">La atmósfera</p>
+          <h2 className="sp-rv">{estilo?.nombre || 'El estilo que guía todo el proyecto.'}</h2>
+          {estilo?.texto && <p className="sp-lead sp-rv" style={{ whiteSpace: 'pre-line' }}>{estilo.texto}</p>}
+          {!estilo && moodboard.description && <p className="sp-lead sp-rv" style={{ whiteSpace: 'pre-line' }}>{moodboard.description}</p>}
+          {paleta.length > 0 && <div className="sp-pal sp-rv">{paleta.map((hex, i) => <div key={i} title={hex} style={{ background: hex }} />)}</div>}
+          {estilo && moodboard.description && (
+            <details className="sp-recipe sp-rv">
+              <summary>Cómo se combinan los colores</summary>
+              <p style={{ whiteSpace: 'pre-line' }}>{moodboard.description}</p>
+            </details>
+          )}
+          {imagenesMood.length > 0 && (
+            <div className="sp-tiles sp-rv">{imagenesMood.map((img, i) => <div key={img.id}><img src={img.url} alt="" loading={i < 4 ? 'eager' : 'lazy'} /></div>)}</div>
+          )}
+        </section>
+      ) : null;
+
   const secciones = [
     { id: 'sp-top', label: 'Portada' },
     ...(objetivo ? [{ id: 'sp-objetivo', label: 'El objetivo' }] : []),
     ...(plano ? [{ id: 'sp-plano', label: 'El recorrido' }] : []),
-    ...(hayMood ? [{ id: 'sp-atmosfera', label: 'La atmósfera' }] : []),
-    ...capitulos.map((c, i) => ({ id: `sp-c-${c.id}`, label: c.titulo || `Capítulo ${i + 1}` })),
+    ...(hayMood && iEsp < 0 ? [{ id: 'sp-atmosfera', label: 'La atmósfera' }] : []),
+    ...capitulos.flatMap((c, i) => [{ id: `sp-c-${c.id}`, label: c.titulo || `Capítulo ${i + 1}` }, ...(hayMood && i === iEsp ? [{ id: 'sp-atmosfera', label: 'La atmósfera' }] : [])]),
     { id: 'sp-dossier', label: 'Tu dossier' },
     { id: 'sp-siguiente', label: 'Siguiente paso' },
   ];
@@ -369,27 +390,11 @@ export function StorytellingPortal({ project, dossier, code }) {
         </section>
       )}
 
-      {hayMood && (
-        <section className="sp-mood" id="sp-atmosfera">
-          <p className="sp-label sp-rv">La atmósfera</p>
-          <h2 className="sp-rv">{estilo?.nombre || 'El estilo que guía todo el proyecto.'}</h2>
-          {estilo?.texto && <p className="sp-lead sp-rv" style={{ whiteSpace: 'pre-line' }}>{estilo.texto}</p>}
-          {!estilo && moodboard.description && <p className="sp-lead sp-rv" style={{ whiteSpace: 'pre-line' }}>{moodboard.description}</p>}
-          {paleta.length > 0 && <div className="sp-pal sp-rv">{paleta.map((hex, i) => <div key={i} title={hex} style={{ background: hex }} />)}</div>}
-          {estilo && moodboard.description && (
-            <details className="sp-recipe sp-rv">
-              <summary>Cómo se combinan los colores</summary>
-              <p style={{ whiteSpace: 'pre-line' }}>{moodboard.description}</p>
-            </details>
-          )}
-          {imagenesMood.length > 0 && (
-            <div className="sp-tiles sp-rv">{imagenesMood.map((img, i) => <div key={img.id}><img src={img.url} alt="" loading={i < 4 ? 'eager' : 'lazy'} /></div>)}</div>
-          )}
-        </section>
-      )}
+      {iEsp < 0 && atmosfera}
 
       {capitulos.map((c, i) => (
-        <section className="sp-chap" id={`sp-c-${c.id}`} key={c.id}>
+        <Fragment key={c.id}>
+        <section className="sp-chap" id={`sp-c-${c.id}`}>
           <div className="sp-chap-head sp-rv">
             {capitulos.length > 1 && <div className="sp-num">{String(i + 1).padStart(2, '0')}</div>}
             <div>
@@ -420,6 +425,8 @@ export function StorytellingPortal({ project, dossier, code }) {
           )}
           {c.tour_url && <div className="sp-blk"><a className="sp-tour" href={c.tour_url} target="_blank" rel="noopener noreferrer">Recorrer este espacio en 360º</a></div>}
         </section>
+        {i === iEsp && atmosfera}
+        </Fragment>
       ))}
 
       <section className="sp-dossier" id="sp-dossier">

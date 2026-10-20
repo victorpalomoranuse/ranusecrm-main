@@ -2,6 +2,7 @@ html {
   font-size: 18px; /* base: 1rem = 18px */
   scroll-behavior: smooth;
   overflow-x: hidden;
+  overflow-x: clip; /* clip no crea contenedor de scroll: así «position: sticky» funciona (hidden en html y body a la vez lo rompe) */
   box-sizing: border-box;
 }
 
@@ -28,6 +29,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  overflow-x: clip;
 }
 
 a {
