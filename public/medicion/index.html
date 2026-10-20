@@ -2803,6 +2803,15 @@ function rayDist(ox,oy,dx,dy,skipId){
     var t=((g.a.x-ox)*sy-(g.a.y-oy)*sx)/den,u=((g.a.x-ox)*dy-(g.a.y-oy)*dx)/den;
     if(t>=-w.t&&u>=0&&u<=1){var d=Math.max(0,t-w.t/2);if(d<best){best=d;kind='w'}}
   });
+  st.v.pil.forEach(function(p){ /* los pilares también paran la medida (y los bloques se pegan a su cara) */
+    if(!stVis(p.s,'distrib'))return;
+    pilCells(p).forEach(function(c){
+      var x0=c.x-p.w/2,x1=c.x+p.w/2,y0=c.y-p.d/2,y1=c.y+p.d/2,t=null;
+      if(dx!==0&&oy>=y0&&oy<=y1){if(dx>0&&x0>=ox)t=x0-ox;if(dx<0&&x1<=ox)t=ox-x1}
+      if(dy!==0&&ox>=x0&&ox<=x1){if(dy>0&&y0>=oy)t=y0-oy;if(dy<0&&y1<=oy)t=oy-y1}
+      if(t!==null&&t<best){best=t;kind='w'}
+    });
+  });
   eqV('distrib').forEach(function(e){
     if(e.id===skipId||skipId==='*')return;
     var r=eqRect(e),t=null;
@@ -2811,6 +2820,60 @@ function rayDist(ox,oy,dx,dy,skipId){
     if(t!==null&&t<best){best=t;kind='e'}
   });
   return best===Infinity?null:{d:best,kind:kind};
+}
+/* imán al arrastrar un bloque: sus bordes se pegan al ras de las caras de muros, pilares y otros bloques cercanos (Alt lo desactiva) */
+function objetivosIman(e){
+  var X=[],Y=[],P=[],v=st.v;
+  v.walls.forEach(function(w){
+    if(!wallVis(w,'distrib')||w.arc)return;
+    var g=wg(w),mnx=Math.min(g.a.x,g.b.x),mxx=Math.max(g.a.x,g.b.x),mny=Math.min(g.a.y,g.b.y),mxy=Math.max(g.a.y,g.b.y);
+    if(Math.abs(g.ux)<0.001){[g.a.x-w.t/2,g.a.x+w.t/2].forEach(function(x){X.push({p:x,a:mny-w.t/2,b:mxy+w.t/2})})}
+    else if(Math.abs(g.uy)<0.001){[g.a.y-w.t/2,g.a.y+w.t/2].forEach(function(y){Y.push({p:y,a:mnx-w.t/2,b:mxx+w.t/2})})}
+  });
+  v.pil.forEach(function(p){
+    if(!stVis(p.s,'distrib'))return;
+    pilCells(p).forEach(function(c){var x0=c.x-p.w/2,x1=c.x+p.w/2,y0=c.y-p.d/2,y1=c.y+p.d/2;P.push({x0:x0,y0:y0,x1:x1,y1:y1});X.push({p:x0,a:y0,b:y1},{p:x1,a:y0,b:y1});Y.push({p:y0,a:x0,b:x1},{p:y1,a:x0,b:x1})});
+  });
+  eqV('distrib').forEach(function(q){if(q.id===e.id)return;var r=eqRect(q);X.push({p:r.x0,a:r.y0,b:r.y1},{p:r.x1,a:r.y0,b:r.y1});Y.push({p:r.y0,a:r.x0,b:r.x1},{p:r.y1,a:r.x0,b:r.x1})});
+  return {X:X,Y:Y,P:P};
+}
+function imanEq(e,obj,tol){
+  var r0=eqRect(e),cx=[],cy=[];
+  obj.X.forEach(function(t){
+    if(r0.y1<t.a-tol||r0.y0>t.b+tol)return;
+    [r0.x0,r0.x1].forEach(function(ex){var d=t.p-ex;if(Math.abs(d)<=tol)cx.push(d)});
+  });
+  obj.Y.forEach(function(t){
+    if(r0.x1<t.a-tol||r0.x0>t.b+tol)return;
+    [r0.y0,r0.y1].forEach(function(ey){var d=t.p-ey;if(Math.abs(d)<=tol)cy.push(d)});
+  });
+  if(!cx.length&&!cy.length)return false;
+  function unicos(a){var o=[];a.sort(function(p,q){return Math.abs(p)-Math.abs(q)}).forEach(function(d){if(!o.some(function(q){return Math.abs(q-d)<0.01}))o.push(d)});return o.length?o:[0]}
+  cx=unicos(cx);cy=unicos(cy);
+  function choca(dx,dy){ /* ¿queda metido en un pilar? */
+    var a=r0.x0+dx,b=r0.x1+dx,c=r0.y0+dy,d=r0.y1+dy;
+    return (obj.P||[]).some(function(p){return a<p.x1-0.01&&b>p.x0+0.01&&c<p.y1-0.01&&d>p.y0+0.01});
+  }
+  var combos=[];
+  cx.forEach(function(dx){cy.forEach(function(dy){combos.push({dx:dx,dy:dy,c:Math.abs(dx)+Math.abs(dy)})})});
+  combos.sort(function(p,q){return p.c-q.c});
+  var el=combos.filter(function(k){return !choca(k.dx,k.dy)})[0]||combos[0];
+  if(!el||(!el.dx&&!el.dy))return false;
+  e.dx=f2(e.dx+el.dx);e.dy=f2(e.dy+el.dy);
+  return true;
+}
+/* pega el bloque, en una dirección, al ras de lo primero que encuentre (muro, pilar u otro bloque) */
+function eqPegar(e,ux,uy){
+  var r=eqRect(e),best=Infinity,i,n=12,pts=[];
+  for(i=0;i<=n;i++){
+    var t=i/n;
+    if(ux!==0)pts.push({x:ux>0?r.x1:r.x0,y:r.y0+(r.y1-r.y0)*Math.min(0.98,Math.max(0.02,t))});
+    else pts.push({x:r.x0+(r.x1-r.x0)*Math.min(0.98,Math.max(0.02,t)),y:uy>0?r.y1:r.y0});
+  }
+  pts.forEach(function(p){var rd=rayDist(p.x,p.y,ux,uy,e.id);if(rd&&rd.d<best)best=rd.d});
+  if(!isFinite(best)||best<0.01)return 0;
+  e.dx=f2(e.dx+ux*best);e.dy=f2(e.dy+uy*best);
+  return best;
 }
 function rgap(a,b){
   var dx=Math.max(a.x0-b.x1,b.x0-a.x1),dy=Math.max(a.y0-b.y1,b.y0-a.y1),ov=dx<0&&dy<0;
@@ -4527,7 +4590,7 @@ svg.addEventListener('pointerdown',function(e){
     if(he){
       snap();st.sel={t:'eq',id:he.id};
       var hc=pc(he);
-      gesture={type:'dragEq',id:e.pointerId,eq:he,ox:w0.x-hc.x,oy:w0.y-hc.y,moved:false};
+      gesture={type:'dragEq',id:e.pointerId,eq:he,ox:w0.x-hc.x,oy:w0.y-hc.y,moved:false,iman:(st.view==='distrib'||st.view==='actual')?objetivosIman(he):null};
       panelSel();render();return;
     }
   }
@@ -4726,6 +4789,7 @@ svg.addEventListener('pointermove',function(e){
     var wq=toW(p),ee=gesture.eq,an=nd(ee.n);
     ee.dx=f2(Math.round((wq.x-gesture.ox-an.x)/5)*5);
     ee.dy=f2(Math.round((wq.y-gesture.oy-an.y)/5)*5);
+    if(gesture.iman&&!e.altKey)imanEq(ee,gesture.iman,Math.max(2,Math.min(15,9/st.k)));
     gesture.moved=true;req();
   }else if(gesture.type==='dragCota'&&gesture.id===e.pointerId){
     if(!gesture.moved&&Math.hypot(p.x-gesture.sx,p.y-gesture.sy)<6)return;
@@ -6000,6 +6064,7 @@ function panelSel(focus){
     var tqp=eqTipos().porId[e.id];
     h+='<div class="rowh"><strong>'+(tqp?tqp.cod:ix)+' · '+esc(e.nm)+'</strong><span class="muted">giro '+e.rot+'°</span></div>';
     h+='<div class="lab">Estado del bloque</div>'+seg3(e.s||'new','eqstate')+'<p class="note" style="margin:4px 0 8px">'+(e.s==='ex'?'Ya está en el espacio: sale en Estado actual y se mantiene en Distribución.':e.s==='dem'?'Ya está y se retira: sale en Estado actual y en Demoliciones, no en Distribución.':'Nuevo: solo sale en Distribución (y cuenta en el presupuesto).')+'</p>';
+    h+='<div class="lab">Pegar al ras del muro, pilar o bloque más cercano</div><div class="btns tr"><button data-a="eqpg:-1,0" title="Pegar a la izquierda">⟵ Izquierda</button><button data-a="eqpg:1,0" title="Pegar a la derecha">Derecha ⟶</button><button data-a="eqpg:0,-1" title="Pegar hacia arriba">↑ Arriba</button><button data-a="eqpg:0,1" title="Pegar hacia abajo">↓ Abajo</button></div><p class="note" style="margin:2px 0 6px">Al arrastrar un bloque también se pega solo al ras de muros, pilares y otros bloques cercanos (con Alt pulsado no).</p>';
     h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="eqrotl45" title="Girar 45° a la izquierda">⟲ 45°</button><button data-a="eqrot45" title="Girar 45° a la derecha">⟳ 45°</button><button data-a="eqrotl" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="eqrot" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="eqrot180" title="Girar 180°">180°</button><button data-a="eqflx" aria-pressed="'+!!e.fx+'" title="Espejo izquierda-derecha">⇋ Espejo</button><button data-a="eqfly" aria-pressed="'+!!e.fy+'" title="Espejo arriba-abajo">⇅ Espejo</button></div>';
     var cskp=catById(e.cid);
     if(cskp&&cskp.skp)h+='<p class="note" style="margin:6px 0">✓ Tiene un modelo 3D de SketchUp enlazado: aparece en SketchUp en su sitio, con este giro.</p>';
@@ -6614,6 +6679,7 @@ function doAction(a,el){
     var paso={eqrot:90,eqrotl:-90,eqrot180:180,eqrot45:45,eqrotl45:-45,eqrot5:5,eqrotl5:-5}[a];
     snap();q1.rot=a==='eqrot0'?0:((((q1.rot||0)+paso)%360)+360)%360;commit();return;
   }
+  if(a.indexOf('eqpg:')===0&&s.t==='eq'){var qpg=by(st.v.eq,s.id),dv=a.slice(5).split(',');if(qpg){snap();var mvd=eqPegar(qpg,+dv[0],+dv[1]);if(!mvd){hist.pop();toast('No hay nada en esa dirección, o ya está pegado')}else{commit();toast('Pegado: se ha movido '+fmtU(mvd)+' cm')}}return}
   if(a==='eqflx'||a==='eqfly'){var q1f=by(st.v.eq,s.id);snap();if(a==='eqflx')q1f.fx=!q1f.fx;else q1f.fy=!q1f.fy;commit();return}
   if(a==='eqdup'){var q2=by(st.v.eq,s.id);snap();var cp=JSON.parse(JSON.stringify(q2));cp.id=uid('e');cp.dx=f2(cp.dx+30);cp.dy=f2(cp.dy+30);st.v.eq.push(cp);st.sel={t:'eq',id:cp.id};commit();return}
   if(a==='pasoprod'&&s.t==='eq'){var pq=by(st.v.eq,s.id),pcq=pq&&catById(pq.cid);if(!pcq)return;var pg=function(S){return pq['pm'+S]!=null&&pq['pm'+S]!==''?pq['pm'+S]:null};crmPost({type:'guardarPasoProducto',id:pcq.id,paso:{I:pg('I'),D:pg('D'),F:pg('F'),T:pg('T')}});pcq.paso={I:pg('I'),D:pg('D'),F:pg('F'),T:pg('T')};return}
