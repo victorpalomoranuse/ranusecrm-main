@@ -5278,10 +5278,12 @@ function tap(w){
     var entA=catById(placeId),BA=bloquesFull[placeId],ehA=elevHit(w);
     if(!entA){toast('Elige un producto del catálogo');return}
     if(!ehA){toast('Toca dentro de un alzado');return}
-    if(!BA||!BA.svg){pedirBloque(placeId);toast('Cargando el bloque… vuelve a tocar');return}
-    var bw=placeVista==='alzado'?BA.largo:BA.fondo;
+    var tieneVista=!!(entA.vistas&&entA.vistas.indexOf(placeVista)>=0);
+    if(tieneVista&&(!BA||!BA.svg)){pedirBloque(placeId);toast('Cargando el bloque… vuelve a tocar');return}
+    /* sin dibujo de frente o de lado, el bloque sale a su medida, a trazos y con su nombre */
+    var bw=(BA&&BA.svg&&tieneVista)?(placeVista==='alzado'?BA.largo:BA.fondo):(placeVista==='alzado'?entA.w:entA.d),bh=(BA&&BA.svg&&tieneVista)?BA.alto:(entA.alto||110);
     snap();
-    var nea={id:uid('a'),wall:ehA.w.id,sd:ehA.sd,x:f2(rd5((w.x-ehA.x))),cid:entA.id,nm:entA.nombre,vista:placeVista,w:bw,h:BA.alto};
+    var nea={id:uid('a'),wall:ehA.w.id,sd:ehA.sd,x:f2(rd5((w.x-ehA.x))),cid:entA.id,nm:entA.nombre,vista:placeVista,w:bw,h:bh};
     st.v.eqa.push(nea);st.sel={t:'eqa',id:nea.id};st.tool='select';flyClose();commit();toolbar();hint();return;
   }
   if(st.tool==='mm'){
@@ -5505,8 +5507,13 @@ $('fly-q').addEventListener('input',function(){$('cat-q').value=$('fly-q').value
 function alElegirBloque(e){
   if(arrastreBloque)return;
   var b=e.target.closest('button[data-cat]');if(!b)return;
-  placeId=b.getAttribute('data-cat');placeVista='planta';st.tool='equip';if(st.view!=='actual')st.view='distrib';st.dg=null;
+  placeId=b.getAttribute('data-cat');placeVista='planta';st.tool='equip';if(st.view!=='actual'&&st.view!=='alz')st.view='distrib';st.dg=null;
   var cc0=catById(placeId);
+  if(st.view==='alz'){ /* estando en Alzados, el bloque se coloca en el alzado: de frente (o de lado si solo tiene esa vista) */
+    placeVista=(cc0&&cc0.vistas&&cc0.vistas.length&&cc0.vistas.indexOf('alzado')<0&&cc0.vistas.indexOf('lateral')>=0)?'lateral':'alzado';
+    pedirBloque(placeId);toast('Toca un alzado para colocar «'+(cc0?cc0.nombre:'el bloque')+'»');
+    toolbar();drawCat();save();render();flyClose();return;
+  }
   if(cc0&&cc0.vistas&&cc0.vistas.length&&cc0.vistas.indexOf('planta')<0){placeVista=cc0.vistas[0];st.view='alz';pedirBloque(placeId);toast('Esta pieza solo tiene vista de '+(placeVista==='alzado'?'frente':'lado')+': toca un alzado para colocarla')}
   toolbar();drawCat();save();render();flyClose();
 }
@@ -6988,6 +6995,7 @@ $('tools').addEventListener('click',function(e){
   if(t==='diag'){st.cotasT=true;st.tool='draw';st.drK='dim';st.drPoly=null;st.dg=null;toolbar();hint();render();flyClose();return}
   st.cotasT=false;
   st.tool=t;st.dg=null;
+  if(t==='equip'&&st.view==='alz'&&placeVista==='planta')placeVista='alzado'; /* en Alzados, los bloques van en el alzado */
   if(t==='equip'&&st.view!=='distrib'&&st.view!=='actual'&&!(placeVista!=='planta'&&st.view==='alz')){st.view='distrib';placeVista='planta';save()}
   toolbar();render();
   if(t==='draw'){st.drK=st.drK||'line';st.drPoly=null}
