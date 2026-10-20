@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import './StorytellingPortal.css';
+import RenderRecorrido from '../components/RenderRecorrido';
 
 // Vista de storytelling del portal del cliente. Solo se usa cuando el
 // proyecto tiene capítulos (project.historia); los proyectos antiguos siguen
@@ -62,7 +63,18 @@ function irA(id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smoo
 const SEL_AMPLIAR = '.sp-full:not(.sp-blur) img, .sp-rends img, .sp-zona-i img, .sp-dt-i img, .sp-im img, .sp-gal img, .sp-tiles img, .sp-plano img, .sp-card-i img, .sp-eq-img img';
 
 // Galería de renders de una zona: 1 = a toda pantalla, 2 = en dos columnas, 3 o más = una grande y el resto debajo
-function Renders({ items, tituloZona, textoZona, primero }) {
+function Renders({ items, tituloZona, textoZona, primero, interactivos }) {
+  // Los renders con recorrido (mapa de profundidad) se enseñan primero, cada uno como sección que se mueve al deslizar; el resto, como siempre
+  const conRecorrido = items.filter(r => r.imagen_url && interactivos && interactivos[r.imagen_url]);
+  if (conRecorrido.length) {
+    const resto = items.filter(r => !conRecorrido.includes(r));
+    return (
+      <>
+        {conRecorrido.map((r, i) => { const x = interactivos[r.imagen_url]; return <RenderRecorrido key={r.id || i} src={r.imagen_url} prof={x.prof} mov={x.mov} puntos={x.puntos} alt={r.titulo || tituloZona || ''} />; })}
+        <Renders items={resto.filter(r => !(r.id === 'main' && conRecorrido.some(c => c.imagen_url === r.imagen_url)))} tituloZona={tituloZona} textoZona={textoZona} primero={primero && !conRecorrido.length} />
+      </>
+    );
+  }
   // Portada del capítulo (id 'main'): si el mismo render se repite en un bloque de render, se enseña solo en ese bloque (no duplicado)
   const principal = items.find(r => r.id === 'main' && r.imagen_url);
   const repetida = !!principal && items.some(r => r.id !== 'main' && r.imagen_url === principal.imagen_url);
@@ -386,7 +398,7 @@ export function StorytellingPortal({ project, dossier, code }) {
               {c.texto && <p className="sp-text">{c.texto}</p>}
             </div>
           </div>
-          <Renders primero={i === 0} tituloZona={c.titulo} textoZona={c.texto} items={[...(c.render_url ? [{ id: 'main', imagen_url: c.render_url, titulo: c.titulo }] : []), ...c.bloques.filter(b => b.tipo === 'render')]} />
+          <Renders primero={i === 0} interactivos={historia.interactivos} tituloZona={c.titulo} textoZona={c.texto} items={[...(c.render_url ? [{ id: 'main', imagen_url: c.render_url, titulo: c.titulo }] : []), ...c.bloques.filter(b => b.tipo === 'render')]} />
           <PasosPlano bloques={c.bloques} docs={docsTecnicos} />
           <Bloques bloques={c.bloques.filter(b => b.tipo !== 'render' && !esPaso(b))} capitulos={capitulos} equipo={project.equipment} materiales={project.materials} />
           {c.servicios.length > 0 && (

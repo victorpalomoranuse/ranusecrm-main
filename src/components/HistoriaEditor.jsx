@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, Upload, Sparkles, X, ExternalLink, FileText } from 'lucide-react';
 import api from '../services/api';
+import RenderInteractivoEditor from './RenderInteractivoEditor';
 
 // Editor de la "Historia" del Proyecto creativo (Servicio 1): capítulos,
 // bloques, servicios del espacio y entregables. Solo se usa en proyectos
@@ -266,8 +267,397 @@ function Miniatura({ url, onQuitar }) {
   );
 }
 
+// ── Renders del capítulo con su botón de recorrido (efecto de movimiento al deslizar) ──
+function RendersConRecorrido({ projectId, capitulo, bloques, llamar, inter, recargarInter, sinTabla }) {
+  const [abierto, setAbierto] = useState(null);
+  const vistos = new Set();
+  const items = [
+    ...(capitulo.render_url ? [{ url: capitulo.render_url, quitar: () => llamar(() => api.put('/historia/capitulos/' + capitulo.id, { render_url: null })) }] : []),
+    ...bloques.filter(b => b.tipo === 'render' && b.imagen_url).map(b => ({ url: b.imagen_url, quitar: () => llamar(() => api.put('/historia/bloques/' + b.id, { imagen_url: null })) })),
+  ].filter(it => (vistos.has(it.url) ? false : vistos.add(it.url)));
+  return (
+    <div>
+      <div style={{ ...row, alignItems: 'flex-start', gap: '0.9rem' }}>
+        {items.map(it => (
+          <div key={it.url} style={{ display: 'grid', gap: 5, justifyItems: 'center' }}>
+            <Miniatura url={it.url} onQuitar={it.quitar} />
+            <button type="button" className={'ap-btn ap-btn-xs ' + (inter[it.url] ? 'ap-btn-primary' : 'ap-btn-ghost')} title="Que el render se mueva al deslizar, como si caminaras por el espacio" onClick={() => setAbierto(it.url)}>
+              {inter[it.url] ? '✓ Con recorrido' : '✨ Recorrido'}
+            </button>
+          </div>
+        ))}
+        {!items.length && <span style={{ ...muted, color: '#f5b748' }}>Todavía no hay renders: sube el primero y será el principal del capítulo.</span>}
+      </div>
+      {sinTabla && <p style={{ ...muted, color: '#f5b748', marginTop: 6 }}>Para guardar recorridos falta ejecutar el SQL v78 (te lo pasa Claude).</p>}
+      {abierto && (
+        <RenderInteractivoEditor projectId={projectId} url={abierto} existente={inter[abierto]}
+          onGuardado={async () => { setAbierto(null); await recargarInter(); }} onCerrar={() => setAbierto(null)} />
+      )}
+    </div>
+  );
+}
+
+// ── Modo guiado: el proyecto paso a paso, en el orden de trabajo del estudio ──
+// 1 Necesidades · 2 Entender el espacio · 3 Estilo · 4 Renders · 5 Detalles diferenciales · 6 Equipamiento · 7 Listados y entrega · 8 Revisar
+const PASOS_GUIA = [
+  { id: 'necesidades', t: 'Necesidades' },
+  { id: 'espacio', t: 'Entender el espacio' },
+  { id: 'estilo', t: 'Estilo' },
+  { id: 'renders', t: 'Renders' },
+  { id: 'detalles', t: 'Detalles' },
+  { id: 'equipamiento', t: 'Equipamiento' },
+  { id: 'entrega', t: 'Listados y entrega' },
+  { id: 'revisar', t: 'Revisar' },
+];
+const lleno = (b) => b.texto?.trim() || b.imagen_url || b.tipo === 'equipo' || (b.tipo === 'galeria' && b.elementos?.length);
+
+function estadoCapitulo(c, bloques) {
+  const bl = bloques.filter(b => b.capitulo_id === c.id);
+  return {
+    texto: (c.texto || '').trim().length > 15,
+    render: !!c.render_url || bl.some(b => b.tipo === 'render' && b.imagen_url),
+    detalles: bl.filter(b => !['render', 'equipo', 'plano'].includes(b.tipo) && lleno(b)).length,
+    equipo: bl.some(b => b.tipo === 'equipo'),
+  };
+}
+
+function Seccion({ n, titulo, ok, children, abierta = false, nota }) {
+  return (
+    <details open={abierta} style={{ ...box, marginBottom: 10 }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', display: 'flex', gap: 8, alignItems: 'center', listStyle: 'none' }}>
+        <span style={{ width: 22, height: 22, borderRadius: '50%', display: 'inline-grid', placeItems: 'center', fontSize: '0.72rem', background: ok ? 'rgba(80,200,120,0.25)' : 'rgba(255,255,255,0.1)', color: ok ? '#7fe3a0' : 'inherit', flex: 'none' }}>{ok ? '✓' : n}</span>
+        {titulo}
+        {nota && <span style={{ ...muted, fontWeight: 400 }}>{nota}</span>}
+      </summary>
+      <div style={{ marginTop: 10 }}>{children}</div>
+    </details>
+  );
+}
+
+function Intro({ n, titulo, children }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <h3 style={{ marginBottom: 4 }}>{n} · {titulo}</h3>
+      <p style={muted}>{children}</p>
+    </div>
+  );
+}
+
+function AnadirCapitulo({ projectId, llamar }) {
+  const [abierto, setAbierto] = useState(false);
+  const [catalogo, setCatalogo] = useState([]);
+  const [titulo, setTitulo] = useState('');
+  const abrir = () => { setAbierto(a => !a); if (!catalogo.length) api.get('/historia/extras').then(r => setCatalogo(r.data.extras || [])).catch(() => {}); };
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={abrir}><Plus size={12} /> Añadir capítulo o zona</button>
+      {abierto && (
+        <div style={{ ...box, marginTop: 8 }}>
+          <p style={{ ...muted, marginBottom: 6 }}>Elige una zona ya preparada (con texto y bloques sugeridos):</p>
+          <div style={row}>
+            {catalogo.map(x => (
+              <button key={x.id} type="button" className="ap-btn ap-btn-ghost ap-btn-xs" title={x.descripcion || ''} onClick={() => { setAbierto(false); llamar(() => api.post('/historia/' + projectId + '/capitulos/extra', { extra_id: x.id })); }}>{x.titulo}</button>
+            ))}
+          </div>
+          <p style={{ ...muted, margin: '10px 0 4px' }}>O empieza en blanco:</p>
+          <div style={row}>
+            <input value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Título del capítulo" style={{ flex: 1, minWidth: 140 }} />
+            <button type="button" className="ap-btn ap-btn-primary ap-btn-xs" onClick={() => { if (!titulo.trim()) return; const t = titulo; setTitulo(''); setAbierto(false); llamar(() => api.post('/historia/' + projectId + '/capitulos', { titulo: t })); }}>Crear</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Ordenar, ocultar, añadir o eliminar capítulos (desplegable, para no estorbar)
+function GestionCapitulos({ projectId, caps, llamar }) {
+  const mover = (i, dir) => {
+    const ids = caps.map(c => c.id); const j = i + dir;
+    if (j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    llamar(() => api.put('/historia/' + projectId + '/capitulos/orden', { ids }));
+  };
+  return (
+    <details style={{ ...box, marginBottom: 12 }}>
+      <summary style={{ cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>Ordenar, ocultar o añadir capítulos</summary>
+      <div style={{ marginTop: 10 }}>
+        {caps.map((c, i) => (
+          <div key={c.id} style={{ ...row, flexWrap: 'nowrap', padding: '5px 2px', opacity: c.visible ? 1 : 0.5 }}>
+            <span style={{ ...muted, width: 20 }}>{i + 1}</span>
+            <span style={{ flex: 1, fontSize: '0.85rem' }}>{c.titulo}</span>
+            <button type="button" className="ap-btn-icon" title="Subir" onClick={() => mover(i, -1)}><ChevronUp size={14} /></button>
+            <button type="button" className="ap-btn-icon" title="Bajar" onClick={() => mover(i, 1)}><ChevronDown size={14} /></button>
+            <button type="button" className="ap-btn-icon" title={c.visible ? 'Ocultar al cliente' : 'Mostrar al cliente'} onClick={() => llamar(() => api.put('/historia/capitulos/' + c.id, { visible: !c.visible }))}>{c.visible ? <Eye size={14} /> : <EyeOff size={14} />}</button>
+            <button type="button" className="ap-btn-icon" title="Eliminar capítulo" onClick={() => window.confirm('¿Eliminar el capítulo "' + c.titulo + '" con todo lo que tiene? (Si solo quieres quitarlo del portal, ocúltalo.)') && llamar(() => api.delete('/historia/capitulos/' + c.id))}><Trash2 size={14} /></button>
+          </div>
+        ))}
+        <AnadirCapitulo projectId={projectId} llamar={llamar} />
+      </div>
+    </details>
+  );
+}
+
+function PasoRenders({ projectId, data, llamar, inter, recargarInter, sinTabla }) {
+  const caps = data.capitulos;
+  const primeroIncompleto = caps.findIndex(c => { const e = estadoCapitulo(c, data.bloques); return c.visible && !(e.texto && e.render); });
+  return (
+    <div>
+      <Intro n={4} titulo="Renders">Por cada capítulo: escribe el texto que lee el cliente y sube sus renders. El primero que subas es el principal (a pantalla completa). Pulsa «✨ Recorrido» en un render para que se mueva al deslizar, como si caminaras por el espacio.</Intro>
+      <GestionCapitulos projectId={projectId} caps={caps} llamar={llamar} />
+      {caps.map((c, i) => {
+        const e = estadoCapitulo(c, data.bloques);
+        const bloques = data.bloques.filter(b => b.capitulo_id === c.id).sort((a, b) => a.orden - b.orden);
+        return (
+          <Seccion key={c.id} n={i + 1} titulo={c.titulo} ok={e.texto && e.render} abierta={i === primeroIncompleto} nota={!c.visible ? '· oculto al cliente' : (!e.texto || !e.render) ? '· ' + [!e.texto && 'falta texto', !e.render && 'falta render'].filter(Boolean).join(' y ') : ''}>
+            <Campo label="Título" value={c.titulo} onSave={v => v.trim() && llamar(() => api.put('/historia/capitulos/' + c.id, { titulo: v }))} />
+            <Campo label="Texto de entrada (lo que lee el cliente)" rows={5} value={c.texto} onSave={v => llamar(() => api.put('/historia/capitulos/' + c.id, { texto: v }))}
+              ia contexto={'Introducción del capítulo "' + c.titulo + '"'} onReescribir={() => api.post('/historia/capitulos/' + c.id + '/ia-reescribir', {})} />
+            <div style={{ margin: '4px 0 10px' }}><SubirVariosRenders projectId={projectId} capitulo={c} bloques={bloques} llamar={llamar} /></div>
+            <RendersConRecorrido projectId={projectId} capitulo={c} bloques={bloques} llamar={llamar} inter={inter} recargarInter={recargarInter} sinTabla={sinTabla} />
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ ...muted, cursor: 'pointer' }}>Notas internas y tour virtual (opcional)</summary>
+              <div style={{ marginTop: 8 }}>
+                <Campo label="Detalle sensorial (guía interna: luz, olor, sonido, tacto)" value={c.sensorial} onSave={v => llamar(() => api.put('/historia/capitulos/' + c.id, { sensorial: v }))} />
+                <Campo label="Tour virtual (solo si el proyecto lo lleva)" value={c.tour_url} placeholder="https://…" onSave={v => llamar(() => api.put('/historia/capitulos/' + c.id, { tour_url: v }))} />
+              </div>
+            </details>
+          </Seccion>
+        );
+      })}
+    </div>
+  );
+}
+
+// Detalles diferenciales: lo que hace especial cada zona (bloques de imagen + texto, zona, detalle, galería)
+function PasoDetalles({ projectId, data, llamar }) {
+  return (
+    <div>
+      <Intro n={5} titulo="Detalles diferenciales">Lo que hace especial cada zona: un material, una luz, una solución a medida. Añade bloques de imagen y texto, de zona, de detalle o una galería. Un bloque sin texto ni imagen no se muestra al cliente. Es opcional.</Intro>
+      {data.capitulos.map((c, i) => {
+        const bloques = data.bloques.filter(b => b.capitulo_id === c.id).sort((a, b) => a.orden - b.orden);
+        const otros = bloques.filter(b => !['render', 'equipo', 'plano'].includes(b.tipo));
+        const mover = (idx, dir) => {
+          const ids = otros.map(b => b.id); const j = idx + dir;
+          if (j < 0 || j >= ids.length) return;
+          [ids[idx], ids[j]] = [ids[j], ids[idx]];
+          llamar(() => api.put('/historia/capitulos/' + c.id + '/bloques/orden', { ids: [...ids, ...bloques.filter(b => !ids.includes(b.id)).map(b => b.id)] }));
+        };
+        return (
+          <Seccion key={c.id} n={i + 1} titulo={c.titulo} ok={otros.some(lleno)} abierta={otros.length > 0 && i === data.capitulos.findIndex(x => data.bloques.some(b => b.capitulo_id === x.id && !['render', 'equipo', 'plano'].includes(b.tipo)))} nota={otros.length ? '· ' + otros.length + ' bloque' + (otros.length === 1 ? '' : 's') : ''}>
+            <div style={{ ...row, marginBottom: 10 }}>
+              {TIPOS_BLOQUE.filter(t => !['render', 'equipo'].includes(t.id)).map(t => (
+                <button key={t.id} type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => llamar(() => api.post('/historia/capitulos/' + c.id + '/bloques', { tipo: t.id, titulo: '' }))}><Plus size={11} /> {t.label}</button>
+              ))}
+            </div>
+            {otros.length === 0 && <p style={muted}>Todavía no hay detalles en este capítulo.</p>}
+            {otros.map((b, k) => <BloqueEditor key={b.id} projectId={projectId} b={b} idx={k} total={otros.length} mover={mover} llamar={llamar} />)}
+          </Seccion>
+        );
+      })}
+    </div>
+  );
+}
+
+// Equipamiento: primero la selección que ha hecho el estudio (Listados), destacada; después, qué se enseña en cada capítulo
+function PasoEquipamiento({ projectId, data, llamar, irATab }) {
+  const [eq, setEq] = useState([]);
+  const [mat, setMat] = useState([]);
+  useEffect(() => {
+    Promise.all([api.get('/client-projects/' + projectId + '/equipment'), api.get('/client-projects/' + projectId + '/materials')])
+      .then(([a, m]) => { setEq(a.data.equipment || []); setMat(m.data.materials || []); }).catch(() => {});
+  }, [projectId, data.bloques]);
+  const items = [...eq.map(e => ({ ...e, _t: 'Equipo' })), ...mat.map(m => ({ ...m, _t: 'Material' }))];
+  const conFoto = items.filter(i => i.image_url);
+  return (
+    <div>
+      <Intro n={6} titulo="Equipamiento">Aquí se luce la selección que ha hecho el estudio para este espacio. Primero revisa que esté completa y con foto; luego elige qué equipos y materiales se enseñan en cada capítulo.</Intro>
+      <div style={{ ...box, borderColor: 'rgba(186,175,165,0.5)', marginBottom: 14 }}>
+        <div style={{ ...row, justifyContent: 'space-between', marginBottom: 8 }}>
+          <strong>Nuestra selección · {items.length} elemento{items.length === 1 ? '' : 's'}</strong>
+          {irATab && <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => irATab('catalogo')}>Gestionar en Listados →</button>}
+        </div>
+        {items.length === 0 && <p style={muted}>Todavía no hay equipamiento ni materiales elegidos. Se eligen en la pestaña Listados.</p>}
+        {items.length > 0 && conFoto.length < items.length && <p style={{ ...muted, color: '#f5b748', marginBottom: 8 }}>{items.length - conFoto.length} sin foto: con foto se ve mucho mejor en el portal.</p>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(110px,1fr))', gap: 8 }}>
+          {items.map(i => (
+            <div key={i._t + i.id} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 6, textAlign: 'center' }}>
+              {i.image_url ? <img src={i.image_url} alt="" style={{ width: '100%', height: 76, objectFit: 'contain' }} /> : <div style={{ height: 76, display: 'grid', placeItems: 'center', ...muted }}>sin foto</div>}
+              <div style={{ fontSize: '0.74rem', marginTop: 4, lineHeight: 1.25 }}>{i.name}</div>
+              <div style={muted}>{i.brand || i._t}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {data.capitulos.map((c, ci) => {
+        const eqs = data.bloques.filter(b => b.capitulo_id === c.id && b.tipo === 'equipo').sort((a, b) => a.orden - b.orden);
+        return (
+          <Seccion key={c.id} n={ci + 1} titulo={c.titulo} ok={eqs.some(b => (b.elementos || []).includes('#sel'))} nota={eqs.length ? '' : '· no enseña equipamiento'}>
+            {eqs.length === 0 && (
+              <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => llamar(() => api.post('/historia/capitulos/' + c.id + '/bloques', { tipo: 'equipo', titulo: 'Equipamiento y materiales' }))}><Plus size={12} /> Enseñar equipamiento en este capítulo</button>
+            )}
+            {eqs.map((b, k) => <BloqueEditor key={b.id} projectId={projectId} b={b} idx={k} total={eqs.length} mover={() => {}} llamar={llamar} />)}
+          </Seccion>
+        );
+      })}
+    </div>
+  );
+}
+
+function PasoRevisar({ project, data, plano, estilo, inter, irA }) {
+  const avisos = [];
+  const ok = [];
+  data.capitulos.forEach((c, i) => {
+    const e = estadoCapitulo(c, data.bloques);
+    if (!c.visible) { avisos.push({ nivel: 'info', t: '«' + c.titulo + '» está oculto: el cliente no lo ve.', paso: 'renders' }); return; }
+    if (!e.texto) avisos.push({ nivel: 'falta', t: 'Capítulo ' + (i + 1) + ' «' + c.titulo + '»: falta el texto.', paso: 'renders' });
+    if (!e.render) avisos.push({ nivel: 'falta', t: 'Capítulo ' + (i + 1) + ' «' + c.titulo + '»: falta el render principal.', paso: 'renders' });
+  });
+  if (!plano?.imagen_url) avisos.push({ nivel: 'info', t: 'No hay plano de distribución: esa sección no se muestra (es opcional).', paso: 'espacio' });
+  if (!estilo?.nombre && !estilo?.texto) avisos.push({ nivel: 'info', t: 'Todavía no se ha definido el estilo del proyecto.', paso: 'estilo' });
+  if (!data.bloques.some(b => b.tipo === 'equipo' && (b.elementos || []).includes('#sel'))) avisos.push({ nivel: 'info', t: 'Ningún capítulo enseña todavía la selección de equipamiento.', paso: 'equipamiento' });
+  const pend = data.entregables.filter(e => e.estado !== 'entregado').length;
+  if (pend) avisos.push({ nivel: 'info', t: pend + ' entregable' + (pend === 1 ? '' : 's') + ' sin marcar como entregado.', paso: 'entrega' });
+  const conRec = Object.keys(inter).length;
+  if (conRec) ok.push(conRec + ' render' + (conRec === 1 ? '' : 's') + ' con recorrido.');
+  const nCap = data.capitulos.filter(c => c.visible).length;
+  ok.push(nCap + ' capítulo' + (nCap === 1 ? '' : 's') + ' visible' + (nCap === 1 ? '' : 's') + ' para el cliente.');
+  const faltan = avisos.filter(a => a.nivel === 'falta').length;
+  return (
+    <div>
+      <Intro n={8} titulo="Revisar">Un repaso antes de enseñárselo al cliente.</Intro>
+      <div style={{ ...box, borderColor: faltan ? 'rgba(245,183,72,0.5)' : 'rgba(80,200,120,0.45)', marginBottom: 12 }}>
+        <strong>{faltan ? 'Casi listo: ' + faltan + ' cosa' + (faltan === 1 ? '' : 's') + ' por completar' : '¡Todo lo importante está!'}</strong>
+        <p style={{ ...muted, marginTop: 4 }}>El cliente ve la historia en cuanto entra con su código; no hay que «publicar». Esto es solo una revisión.</p>
+      </div>
+      {avisos.map((a, i) => (
+        <div key={i} style={{ ...row, justifyContent: 'space-between', padding: '8px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span style={{ fontSize: '0.85rem', color: a.nivel === 'falta' ? '#f5b748' : 'inherit' }}>{a.nivel === 'falta' ? '⚠ ' : 'ℹ '}{a.t}</span>
+          <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => irA(a.paso)}>Ir a arreglarlo</button>
+        </div>
+      ))}
+      {ok.map((t, i) => <p key={i} style={{ fontSize: '0.85rem', padding: '6px 4px' }}>✓ {t}</p>)}
+      <div style={{ marginTop: 14 }}>
+        <a className="ap-btn ap-btn-primary" href={'/mi-proyecto?code=' + project.access_code} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Ver el portal del cliente</a>
+      </div>
+    </div>
+  );
+}
+
+function HistoriaGuiada({ project, projectId, data, llamar, inter, recargarInter, sinTabla, error, onAvanzado, irATab }) {
+  const [paso, setPaso] = useState(() => { try { return localStorage.getItem('ap_historia_paso_' + projectId) || 'renders'; } catch { return 'renders'; } });
+  const [plano, setPlano] = useState(null);
+  const [estilo, setEstilo] = useState(null);
+  useEffect(() => { api.get('/historia/' + projectId + '/plano').then(r => setPlano(r.data)).catch(() => setPlano({})); }, [projectId, paso]);
+  useEffect(() => { api.get('/historia/' + projectId + '/estilo').then(r => setEstilo(r.data)).catch(() => setEstilo({})); }, [projectId, paso]);
+
+  const caps = data.capitulos;
+  const estados = caps.map(c => estadoCapitulo(c, data.bloques));
+  const visibles = caps.filter(c => c.visible);
+  const completos = caps.filter((c, i) => !c.visible || (estados[i].texto && estados[i].render)).length;
+  const hechos = (id) => (id === 'espacio' ? !!plano?.imagen_url
+    : id === 'estilo' ? !!(estilo?.nombre || estilo?.texto)
+    : id === 'renders' ? completos === caps.length && caps.length > 0
+    : id === 'detalles' ? estados.some(e => e.detalles > 0)
+    : id === 'equipamiento' ? data.bloques.some(b => b.tipo === 'equipo' && (b.elementos || []).includes('#sel'))
+    : id === 'entrega' ? data.entregables.length > 0 && data.entregables.every(e => e.estado === 'entregado')
+    : false);
+  const idx = PASOS_GUIA.findIndex(p => p.id === paso);
+  const irA = (p) => { setPaso(p); try { localStorage.setItem('ap_historia_paso_' + projectId, p); } catch { /* sin storage */ } window.scrollTo?.({ top: 0 }); };
+  const pct = visibles.length ? Math.round(visibles.filter(c => { const e = estadoCapitulo(c, data.bloques); return e.texto && e.render; }).length / visibles.length * 100) : 0;
+  const enlace = (tab, texto) => <button type="button" className="ap-btn ap-btn-primary" onClick={() => irATab?.(tab)} disabled={!irATab}>{texto} →</button>;
+
+  return (
+    <div>
+      <div style={{ ...row, justifyContent: 'space-between', marginBottom: 10 }}>
+        <div>
+          <strong>El proyecto, paso a paso</strong>
+          <div style={muted}>Capítulos con texto y render: {pct} %</div>
+        </div>
+        <div style={row}>
+          <a className="ap-btn ap-btn-ghost ap-btn-sm" href={'/mi-proyecto?code=' + project.access_code} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} /> Ver portal</a>
+          <button type="button" className="ap-btn ap-btn-ghost ap-btn-xs" title="Todas las opciones juntas, como antes" onClick={onAvanzado}>Vista avanzada</button>
+        </div>
+      </div>
+
+      <div style={{ ...row, gap: 6, marginBottom: 14 }}>
+        {PASOS_GUIA.map((p, i) => (
+          <button key={p.id} type="button" onClick={() => irA(p.id)} className={'ap-btn ap-btn-sm ' + (paso === p.id ? 'ap-btn-primary' : 'ap-btn-ghost')} style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ width: 18, height: 18, borderRadius: '50%', display: 'inline-grid', placeItems: 'center', fontSize: '0.68rem', background: hechos(p.id) ? 'rgba(80,200,120,0.3)' : 'rgba(255,255,255,0.12)' }}>{hechos(p.id) ? '✓' : i + 1}</span>
+            {p.t}
+          </button>
+        ))}
+      </div>
+      {error && <p className="ap-error" style={{ marginBottom: 8 }}>{error}</p>}
+
+      {paso === 'necesidades' && (
+        <div>
+          <Intro n={1} titulo="Programa de necesidades">Siempre lo primero: qué pide el cliente y cómo es el espacio actual (fotos, medidas, planos). De aquí sale todo lo demás.</Intro>
+          <div style={box}>
+            <p style={{ fontSize: '0.88rem', marginBottom: 10 }}>El programa de necesidades se rellena en su propia pestaña.</p>
+            {enlace('necesidades', 'Abrir el programa de necesidades')}
+          </div>
+        </div>
+      )}
+
+      {paso === 'espacio' && (
+        <div>
+          <Intro n={2} titulo="Entender el espacio">El plano del espacio, con el recorrido: es lo primero que ve el cliente después de la portada. Si todavía no lo tienes, puedes saltar este paso y volver luego.</Intro>
+          <PlanoEditor projectId={projectId} project={project} caps={caps} />
+          {caps.filter(c => /entendemos el espacio/i.test(c.titulo)).map(c => (
+            <div key={c.id} style={{ marginTop: 12 }}><PlanosEspacio projectId={projectId} capitulo={c} bloques={data.bloques.filter(b => b.capitulo_id === c.id)} llamar={llamar} /></div>
+          ))}
+          <div style={{ ...box, marginTop: 12 }}>
+            <p style={{ fontSize: '0.85rem', marginBottom: 8 }}>¿Aún no tienes los planos? Se dibujan en la herramienta de Planos (estado actual, demoliciones, distribución) y desde allí se publican aquí con un botón.</p>
+            {irATab && <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => irATab('medicion')}>Abrir la herramienta de Planos →</button>}
+          </div>
+        </div>
+      )}
+
+      {paso === 'estilo' && (
+        <div>
+          <Intro n={3} titulo="Definir el estilo">La paleta y las imágenes del moodboard son la base: la IA las analiza y propone el nombre y la descripción del estilo, que el cliente ve en «La atmósfera».</Intro>
+          <EstiloMoodboard projectId={projectId} />
+          <div style={{ ...box, marginTop: 12 }}>
+            <p style={{ fontSize: '0.85rem', marginBottom: 8 }}>La paleta y las imágenes de referencia se suben en la pestaña Moodboard.</p>
+            {irATab && <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => irATab('moodboard')}>Abrir el moodboard →</button>}
+          </div>
+        </div>
+      )}
+
+      {paso === 'renders' && <PasoRenders projectId={projectId} data={data} llamar={llamar} inter={inter} recargarInter={recargarInter} sinTabla={sinTabla} />}
+      {paso === 'detalles' && <PasoDetalles projectId={projectId} data={data} llamar={llamar} />}
+      {paso === 'equipamiento' && <PasoEquipamiento projectId={projectId} data={data} llamar={llamar} irATab={irATab} />}
+
+      {paso === 'entrega' && (
+        <div>
+          <Intro n={7} titulo="Listados y entrega">Lo que cierra el proyecto: las soluciones y servicios del espacio, los listados de materiales y mobiliario, los documentos y la lista de lo que hay que entregar.</Intro>
+          <div style={{ ...row, marginBottom: 14 }}>
+            {irATab && <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => irATab('catalogo')}>Listados →</button>}
+            {irATab && <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => irATab('documentos')}>Documentos →</button>}
+            {irATab && <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => irATab('notas')}>Notas →</button>}
+          </div>
+          <h4 style={{ margin: '4px 0 8px' }}>Soluciones y servicios del espacio</h4>
+          <VistaServicios projectId={projectId} data={data} llamar={llamar} />
+          <h4 style={{ margin: '18px 0 8px' }}>Entregables</h4>
+          <VistaEntregables projectId={projectId} data={data} llamar={llamar} />
+        </div>
+      )}
+
+      {paso === 'revisar' && <PasoRevisar project={project} data={data} plano={plano} estilo={estilo} inter={inter} irA={irA} />}
+
+      <div style={{ ...row, justifyContent: 'space-between', marginTop: 18, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <button type="button" className="ap-btn ap-btn-ghost" disabled={idx <= 0} onClick={() => irA(PASOS_GUIA[idx - 1].id)}>← Anterior</button>
+        {idx < PASOS_GUIA.length - 1
+          ? <button type="button" className="ap-btn ap-btn-primary" onClick={() => irA(PASOS_GUIA[idx + 1].id)}>Siguiente: {PASOS_GUIA[idx + 1].t} →</button>
+          : <span style={muted}>Último paso</span>}
+      </div>
+    </div>
+  );
+}
+
 // ── Pestaña principal ──────────────────────────────────────────────────
-export function TabHistoria({ project }) {
+export function TabHistoria({ project, irATab }) {
   const projectId = project.id;
   const [data, setData] = useState(null);
   const [vista, setVista] = useState('capitulos');
@@ -277,6 +667,18 @@ export function TabHistoria({ project }) {
   const [selGen, setSelGen] = useState([]);
   const [extrasGen, setExtrasGen] = useState([]);
   const [generando, setGenerando] = useState(false);
+  const [modo, setModo] = useState(() => { try { return localStorage.getItem('ap_historia_modo') === 'avanzado' ? 'avanzado' : 'guiado'; } catch { return 'guiado'; } });
+  const [inter, setInter] = useState({});
+  const [sinTabla, setSinTabla] = useState(false);
+  const cambiarModo = (m) => { setModo(m); try { localStorage.setItem('ap_historia_modo', m); } catch { /* sin storage */ } };
+  const recargarInter = useCallback(async () => {
+    try {
+      const { data: r } = await api.get('/historia/' + projectId + '/interactivos');
+      const m = {}; (r.interactivos || []).forEach(i => { m[i.imagen_url] = i; });
+      setInter(m); setSinTabla(!!r.sinTabla);
+    } catch { /* sin recorridos */ }
+  }, [projectId]);
+  useEffect(() => { recargarInter(); }, [recargarInter]);
 
   const cargar = useCallback(async () => {
     try {
@@ -320,6 +722,10 @@ export function TabHistoria({ project }) {
 
   const capitulo = data.capitulos.find(c => c.id === capSel) || data.capitulos[0];
 
+  if (modo === 'guiado') {
+    return <HistoriaGuiada project={project} projectId={projectId} data={data} llamar={llamar} inter={inter} recargarInter={recargarInter} sinTabla={sinTabla} error={error} onAvanzado={() => cambiarModo('avanzado')} irATab={irATab} />;
+  }
+
   return (
     <div>
       <div style={{ ...row, justifyContent: 'space-between', marginBottom: 12 }}>
@@ -328,12 +734,15 @@ export function TabHistoria({ project }) {
             <button key={id} type="button" className={`ap-btn ap-btn-sm ${vista === id ? 'ap-btn-primary' : 'ap-btn-ghost'}`} onClick={() => setVista(id)}>{label}</button>
           ))}
         </div>
-        <a className="ap-btn ap-btn-ghost ap-btn-sm" href={`/mi-proyecto?code=${project.access_code}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} /> Ver portal del cliente</a>
+        <div style={row}>
+          <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => cambiarModo('guiado')}>Volver a la vista paso a paso</button>
+          <a className="ap-btn ap-btn-ghost ap-btn-sm" href={`/mi-proyecto?code=${project.access_code}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} /> Ver portal del cliente</a>
+        </div>
       </div>
       {error && <p className="ap-error" style={{ marginBottom: 8 }}>{error}</p>}
 
       {vista === 'capitulos' && (
-        <VistaCapitulos projectId={projectId} data={data} capitulo={capitulo} esPlano={capSel === 'plano'} setCapSel={setCapSel} llamar={llamar} project={project} />
+        <VistaCapitulos projectId={projectId} data={data} capitulo={capitulo} esPlano={capSel === 'plano'} setCapSel={setCapSel} llamar={llamar} project={project} inter={inter} recargarInter={recargarInter} sinTabla={sinTabla} />
       )}
       {vista === 'servicios' && <VistaServicios projectId={projectId} data={data} llamar={llamar} />}
       {vista === 'entregables' && <VistaEntregables projectId={projectId} data={data} llamar={llamar} />}
@@ -342,7 +751,7 @@ export function TabHistoria({ project }) {
 }
 
 // ── Capítulos + bloques ────────────────────────────────────────────────
-function VistaCapitulos({ projectId, data, capitulo, esPlano, setCapSel, llamar, project }) {
+function VistaCapitulos({ projectId, data, capitulo, esPlano, setCapSel, llamar, project, inter = {}, recargarInter = async () => {}, sinTabla = false }) {
   const caps = data.capitulos;
   const bloques = data.bloques.filter(b => b.capitulo_id === capitulo.id).sort((a, b) => a.orden - b.orden);
 
@@ -431,10 +840,7 @@ function VistaCapitulos({ projectId, data, capitulo, esPlano, setCapSel, llamar,
               <SubirVariosRenders projectId={projectId} capitulo={capitulo} bloques={bloques} llamar={llamar} />
             </div>
             <p style={{ ...muted, marginBottom: 6 }}>Selecciona todos los renders de este capítulo a la vez: el primero será el principal (a pantalla completa) y los demás van a los huecos de render de abajo.</p>
-            <div style={row}>
-              {capitulo.render_url ? <Miniatura url={capitulo.render_url} onQuitar={() => guardarCap({ render_url: null })} /> : <span style={{ ...muted, color: '#f5b748' }}>Falta el render principal</span>}
-              {bloques.filter(b => b.tipo === 'render' && b.imagen_url).map(b => <Miniatura key={b.id} url={b.imagen_url} onQuitar={() => llamar(() => api.put(`/historia/bloques/${b.id}`, { imagen_url: null }))} />)}
-            </div>
+            <RendersConRecorrido projectId={projectId} capitulo={capitulo} bloques={bloques} llamar={llamar} inter={inter} recargarInter={recargarInter} sinTabla={sinTabla} />
           </div>
           <Campo label="Título" value={capitulo.titulo} onSave={v => v.trim() && guardarCap({ titulo: v })} />
           <Campo label="Texto de entrada" rows={4} value={capitulo.texto} onSave={v => guardarCap({ texto: v })}

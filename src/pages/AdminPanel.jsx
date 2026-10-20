@@ -2306,7 +2306,7 @@ function ProjectManagerModal({ project, onClose }) {
           {tab==='tours'&&<TabTour projectId={project.id}/>}
           {tab==='notas'&&<TabNotas projectId={project.id}/>}
           {tab==='catalogo'&&<TabAsignaciones projectId={project.id} listadosIntro={project.listados_intro_text} listadosTitle={project.listados_title} onIntroUpdated={(v,t)=>{project.listados_intro_text=v;project.listados_title=t;}}/>}
-          {tab==='historia'&&<TabHistoria project={project}/>}
+          {tab==='historia'&&<TabHistoria project={project} irATab={setTab}/>}
           {tab==='agente'&&<AgenteProyecto project={project}/>}
           {tab==='promptsrender'&&<RenderPrompts project={project}/>}
           {tab==='medicion'&&<MedicionProyecto project={project}/>}

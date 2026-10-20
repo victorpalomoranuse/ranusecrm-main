@@ -288,6 +288,54 @@ router.put('/:projectId/plano', async (req, res) => {
   } catch (e) { fail(res, e, 'Error al guardar el plano'); }
 });
 
+// ── Renders interactivos (mapa de profundidad + movimiento + puntos tocables) ──
+// Tabla render_interactivos (SQL v78). Se identifican por la URL del render.
+const MOVIMIENTOS = ['adelante', 'atras', 'izq', 'dcha'];
+const limpiarPuntos = (arr) => (Array.isArray(arr) ? arr : []).slice(0, 12).map(p => ({
+  x: Math.max(0, Math.min(100, Number(p?.x))),
+  y: Math.max(0, Math.min(100, Number(p?.y))),
+  titulo: String(p?.titulo || '').trim().slice(0, 80),
+  texto: String(p?.texto || '').trim().slice(0, 300),
+})).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+
+router.get('/:projectId/interactivos', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('render_interactivos').select('imagen_url, profundidad_url, movimiento, puntos').eq('proyecto_id', req.params.projectId);
+    if (error) return res.json({ interactivos: [], sinTabla: /render_interactivos/.test(error.message || '') });
+    res.json({ interactivos: data || [] });
+  } catch (e) { fail(res, e, 'Error al obtener los renders interactivos'); }
+});
+
+router.put('/:projectId/interactivos', async (req, res) => {
+  try {
+    const imagen_url = url(req.body.imagen_url);
+    if (!imagen_url) return res.status(400).json({ error: 'Falta la imagen del render' });
+    const fila = { proyecto_id: req.params.projectId, imagen_url, updated_at: new Date().toISOString() };
+    const prof = url(req.body.profundidad_url);
+    if (prof) fila.profundidad_url = prof;
+    if (MOVIMIENTOS.includes(req.body.movimiento)) fila.movimiento = req.body.movimiento;
+    if (req.body.puntos !== undefined) fila.puntos = limpiarPuntos(req.body.puntos);
+    const { data: previo } = await supabase.from('render_interactivos').select('id').eq('proyecto_id', req.params.projectId).eq('imagen_url', imagen_url).maybeSingle();
+    if (!previo && !fila.profundidad_url) return res.status(400).json({ error: 'Falta el mapa de profundidad' });
+    const q = previo
+      ? supabase.from('render_interactivos').update(fila).eq('id', previo.id)
+      : supabase.from('render_interactivos').insert(fila);
+    const { data, error } = await q.select('imagen_url, profundidad_url, movimiento, puntos').single();
+    if (error) throw error;
+    res.json({ interactivo: data });
+  } catch (e) { fail(res, e, 'No se pudo guardar el render interactivo (¿has ejecutado el SQL v78?)'); }
+});
+
+router.delete('/:projectId/interactivos', async (req, res) => {
+  try {
+    const imagen_url = url(req.query.imagen_url);
+    if (!imagen_url) return res.status(400).json({ error: 'Falta la imagen del render' });
+    const { error } = await supabase.from('render_interactivos').delete().eq('proyecto_id', req.params.projectId).eq('imagen_url', imagen_url);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) { fail(res, e, 'No se pudo quitar el render interactivo'); }
+});
+
 // ── Estilo del proyecto (a partir del moodboard) ──────────────────────
 router.get('/:projectId/estilo', async (req, res) => {
   try {

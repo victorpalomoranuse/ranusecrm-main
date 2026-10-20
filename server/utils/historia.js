@@ -162,8 +162,18 @@ export async function getHistoriaPublica(projectId) {
   const { data: nf } = await supabase.from('project_needs_forms').select('client_summary').eq('project_id', projectId).maybeSingle();
   const objetivo = nf?.client_summary?.trim() || null;
 
+  // Renders interactivos (tabla v78; si aún no existe, ninguno): por URL del render, solo los que se ven en el portal
+  const { data: inter } = await supabase.from('render_interactivos').select('imagen_url, profundidad_url, movimiento, puntos').eq('proyecto_id', projectId);
+  const urlsVisibles = new Set([
+    ...capitulos.map(c => c.render_url),
+    ...bloques.flatMap(b => [b.imagen_url, ...(b.tipo === 'galeria' ? (b.elementos || []) : [])]),
+  ].filter(Boolean));
+  const interactivos = {};
+  (inter || []).forEach(i => { if (urlsVisibles.has(i.imagen_url)) interactivos[i.imagen_url] = { prof: i.profundidad_url, mov: i.movimiento, puntos: i.puntos || [] }; });
+
   return {
     tipo_proyecto: h.tipo_proyecto,
+    interactivos,
     objetivo,
     estilo,
     plano,

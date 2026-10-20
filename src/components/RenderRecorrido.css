@@ -1,0 +1,20 @@
+/* Render con recorrido: portal del cliente (sección alta con escenario fijo) y vista previa del admin */
+.rr-track{position:relative;height:210svh}
+.rr-stage{position:sticky;top:0;height:100svh;overflow:hidden;background:#111;touch-action:pan-y}
+.rr-stage.rr-edit{position:relative;height:420px;border-radius:10px;touch-action:auto}
+.rr-stage.rr-colocar{cursor:crosshair}
+.rr-cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+.rr-previa{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(2px)}
+.rr-sombra{position:absolute;inset:0;pointer-events:none;background:linear-gradient(to top,rgba(0,0,0,.35),rgba(0,0,0,0) 30%)}
+.rr-plano{height:84vh;min-height:420px;overflow:hidden;background:#eee}
+.rr-plano img{width:100%;height:100%;object-fit:cover;display:block}
+.rr-punto{position:absolute;left:0;top:0;width:44px;height:44px;margin:-22px 0 0 -22px;border:0;background:none;padding:0;cursor:pointer;z-index:3;opacity:0;will-change:transform,opacity}
+.rr-punto i{position:absolute;inset:13px;border-radius:50%;background:#fff;box-shadow:0 0 0 0 rgba(255,255,255,.7);animation:rr-pulso 2s infinite}
+.rr-punto.on i{background:#c9a8ff;animation:none;box-shadow:0 0 0 6px rgba(201,168,255,.35)}
+@keyframes rr-pulso{70%{box-shadow:0 0 0 14px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+.rr-ficha{position:absolute;left:14px;right:14px;bottom:22px;z-index:6;margin:auto;max-width:380px;background:rgba(18,18,22,.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:14px 38px 14px 16px;color:#fff;display:grid;gap:4px}
+.rr-ficha b{font-size:15px}
+.rr-ficha span{font-size:13.5px;color:#d3d3da;line-height:1.4}
+.rr-ficha button{position:absolute;top:6px;right:8px;border:0;background:none;color:#fff;font-size:22px;cursor:pointer;line-height:1}
+.rr-pista{position:absolute;left:0;right:0;bottom:18px;text-align:center;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.75);pointer-events:none;z-index:4}
+@media(prefers-reduced-motion:reduce){.rr-punto i{animation:none}.rr-track{height:auto}.rr-stage{position:relative;height:84vh}}
