@@ -10026,6 +10026,7 @@ function escSync(){
     var rol=e.rol==='llega'?'sube':'llega';
     o.n=nn.id;o.dx=f2(c.x-nn.x);o.dy=f2(c.y-nn.y);o.w=e.w;o.d=e.d;o.rot=e.rot||0;o.nm=e.nm;o.rol=rol;o.bl=escBl(e.bl.esc,rol);
     if(e.fx)o.fx=e.fx;else delete o.fx;if(e.fy)o.fy=e.fy;else delete o.fy;
+    if(e.s)o.s=e.s;else delete o.s; /* el estado (existente / nuevo) también va igual en las dos plantas */
   });
   /* 2. si una escalera ya no tiene a su pareja (la borraste), se va también */
   var tiene=function(p,lid){var l=p.id===st.v.piso?st.v.eq:((p.b&&p.b.eq)||[]);return l.some(function(q){return q.lid===lid})};
