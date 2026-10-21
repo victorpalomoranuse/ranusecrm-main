@@ -66,7 +66,7 @@ export default function RecorridoEscenas({ escenas }) {
     let muerto = false, raf = 0, ocupado = false, W = 0, H = 0, cur = 0, obj = 0, entra = 1, pr = null;
     // mirar un poco alrededor: el ratón (o la inclinación del móvil) y una respiración suave mueven la cámara, además del avance por profundidad
     const quieto = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let ptrX = 0, ptrY = 0, lookX = 0, lookY = 0, viz = true;
+    let ptrX = 0, ptrY = 0, dragX = 0, dragY = 0, drag = null, lookX = 0, lookY = 0, viz = true;
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
     try {
       const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
@@ -137,7 +137,8 @@ export default function RecorridoEscenas({ escenas }) {
       cur += (obj - cur) * 0.12; if (Math.abs(obj - cur) < 0.0004) cur = obj;
       if (!quieto) {
         const tt = performance.now() / 1000;
-        const oX = ptrX + Math.sin(tt * 0.45) * 0.28, oY = ptrY + Math.sin(tt * 0.31 + 1) * 0.18;
+        if (!drag) { dragX *= 0.985; dragY *= 0.985; } // al soltar, vuelve despacio a su sitio
+        const oX = ptrX + dragX + Math.sin(tt * 0.45) * 0.28, oY = ptrY + dragY + Math.sin(tt * 0.31 + 1) * 0.18;
         lookX += (oX - lookX) * 0.05; lookY += (oY - lookY) * 0.05;
       }
       gl.uniform2f(U.uLook, lookX, lookY);
@@ -200,16 +201,20 @@ export default function RecorridoEscenas({ escenas }) {
     const tick = () => { lee(); pide(); };
     const redim = () => { medida(); tick(); };
     medida(); asegura(0); asegura(1);
-    const alRaton = (ev) => { if (ev.pointerType && ev.pointerType !== 'mouse') return; ptrX = (ev.clientX / Math.max(1, window.innerWidth) - 0.5) * 2; ptrY = (ev.clientY / Math.max(1, window.innerHeight) - 0.5) * 2; };
+    // clic y arrastrar (ratón) o deslizar de lado (táctil) para mirar alrededor; deslizar hacia abajo sigue siendo pasar a la siguiente imagen
+    st.style.touchAction = 'pan-y'; st.style.userSelect = 'none'; st.style.cursor = quieto ? '' : 'grab';
+    const alBajar = (ev) => { if (quieto || (ev.pointerType === 'mouse' && ev.button !== 0) || ev.target.closest('button,a')) return; drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, bx: dragX, by: dragY }; st.style.cursor = 'grabbing'; try { st.setPointerCapture(ev.pointerId); } catch { /* sin captura */ } };
+    const alMover = (ev) => { if (!drag || ev.pointerId !== drag.id) return; const w = Math.max(1, W); dragX = Math.max(-1.4, Math.min(1.4, drag.bx - (ev.clientX - drag.x) / w * 3)); dragY = Math.max(-1, Math.min(1, drag.by - (ev.clientY - drag.y) / Math.max(1, H) * 3)); pide(); };
+    const alSoltar = (ev) => { if (drag && ev.pointerId === drag.id) { drag = null; st.style.cursor = 'grab'; } };
     const alGiro = (ev) => { if (ev.gamma == null || ev.beta == null) return; ptrX = Math.max(-1, Math.min(1, ev.gamma / 25)); ptrY = Math.max(-1, Math.min(1, (ev.beta - 50) / 25)); };
     const alVer = () => { lee(); pide(); };
-    if (!quieto) { window.addEventListener('pointermove', alRaton, { passive: true }); window.addEventListener('deviceorientation', alGiro, { passive: true }); document.addEventListener('visibilitychange', alVer); }
+    if (!quieto) { st.addEventListener('pointerdown', alBajar); st.addEventListener('pointermove', alMover); st.addEventListener('pointerup', alSoltar); st.addEventListener('pointercancel', alSoltar); window.addEventListener('deviceorientation', alGiro, { passive: true }); document.addEventListener('visibilitychange', alVer); }
     window.addEventListener('scroll', tick, { passive: true });
     window.addEventListener('resize', redim);
     return () => {
       muerto = true; cancelAnimationFrame(raf);
       window.removeEventListener('scroll', tick); window.removeEventListener('resize', redim);
-      window.removeEventListener('pointermove', alRaton); window.removeEventListener('deviceorientation', alGiro); document.removeEventListener('visibilitychange', alVer);
+      st.removeEventListener('pointerdown', alBajar); st.removeEventListener('pointermove', alMover); st.removeEventListener('pointerup', alSoltar); st.removeEventListener('pointercancel', alSoltar); window.removeEventListener('deviceorientation', alGiro); document.removeEventListener('visibilitychange', alVer);
       tex.forEach(t => { if (t) { gl.deleteTexture(t.img); gl.deleteTexture(t.dep); } });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
