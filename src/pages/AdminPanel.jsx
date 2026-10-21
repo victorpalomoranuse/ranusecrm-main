@@ -1042,13 +1042,15 @@ function SortableCategoryPill({ cat, active, count, onClick, onRename, onDelete 
 
 function CatalogoLibrary() {
   const [tab,setTab]=useState('material'); const [busca,setBusca]=useState('');const [activeCat,setActiveCat]=useState('all'); const [categories,setCategories]=useState([]); const [products,setProducts]=useState([]); const [types,setTypes]=useState([]); const [loading,setLoading]=useState(true); const [newCatName,setNewCatName]=useState(''); const [addingCat,setAddingCat]=useState(false); const [showCatInput,setShowCatInput]=useState(false); const [showProductModal,setShowProductModal]=useState(false); const [editProduct,setEditProduct]=useState(null); const [confirm,setConfirm]=useState(null); const [cart,setCart]=useState([]); const [showCart,setShowCart]=useState(false); const [showTypeInput,setShowTypeInput]=useState(false); const [newTypeName,setNewTypeName]=useState(''); const [addingType,setAddingType]=useState(false);
+  const [vista,setVista]=useState('marcas'); const [marcasAbiertas,setMarcasAbiertas]=useState({});
   const {toast}=useToast();
   const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}));
   const addToCart=(product)=>setCart(prev=>prev.some(p=>p.id===product.id)?prev:[...prev,product]);
   const removeFromCart=(id)=>setCart(prev=>prev.filter(p=>p.id!==id));
   const clearCart=()=>setCart([]);
   useEffect(()=>{Promise.all([api.get('/catalog/categories'),api.get('/catalog/products'),api.get('/catalog/types')]).then(([cats,prods,typs])=>{setCategories(cats.data.categories||[]);setProducts(prods.data.products||[]);const t=typs.data.types||[];setTypes(t);if(t.length&&!t.some(x=>x.slug===tab))setTab(t[0].slug);}).catch(()=>toast.error('Error al cargar catálogo')).finally(()=>setLoading(false));},[]);
-  const handleTabChange=(t)=>{setTab(t);setActiveCat('all');};
+  const handleTabChange=(t)=>{setTab(t);setActiveCat('all');setVista('categorias');};
+  const irAMarcas=()=>{setVista('marcas');if(tab==='renders'&&types.length)setTab(types[0].slug);};
   const handleAddType=async(e)=>{e.preventDefault();if(!newTypeName.trim())return;setAddingType(true);try{const{data}=await api.post('/catalog/types',{name:newTypeName.trim()});setTypes(prev=>[...prev,data.type]);setTab(data.type.slug);setActiveCat('all');setNewTypeName('');setShowTypeInput(false);}catch{toast.error('Error al crear tipo');}finally{setAddingType(false);}};
   const handleRenameType=async(type)=>{const name=window.prompt(`Nuevo nombre para "${type.name}"`,type.name);if(!name||!name.trim()||name.trim()===type.name)return;try{const{data}=await api.put(`/catalog/types/${type.id}`,{name:name.trim()});setTypes(prev=>prev.map(t=>t.id===type.id?data.type:t));toast.success('Tipo renombrado');}catch{toast.error('Error al renombrar tipo');}};
   const filteredCats=categories.filter(c=>c.type===tab);
@@ -1062,6 +1064,21 @@ function CatalogoLibrary() {
   const handleDuplicateProduct=async(id)=>{try{const{data}=await api.post(`/catalog/products/${id}/duplicate`);setProducts(prev=>[data.product,...prev]);toast.success('Producto duplicado');}catch{toast.error('Error al duplicar producto');}};
   const handleProductSaved=(product)=>{setProducts(prev=>{const idx=prev.findIndex(p=>p.id===product.id);if(idx>=0){const updated=[...prev];updated[idx]=product;return updated;}return[...prev,product];});setActiveCat(product.category_id);};
   const handleCatalogDragEnd=async(event)=>{const{active,over}=event;if(!active||!over||active.id===over.id||activeCat==='all'||qBusca)return;const oldIndex=visibleProducts.findIndex(p=>p.id===active.id);const newIndex=visibleProducts.findIndex(p=>p.id===over.id);const newVisible=arrayMove(visibleProducts,oldIndex,newIndex);setProducts(prev=>prev.map(p=>{const idx=newVisible.findIndex(v=>v.id===p.id);if(idx>=0)return{...p,display_order:idx};return p;}));try{await api.put('/catalog/products/reorder',{ids:newVisible.map(p=>p.id)});}catch{toast.error('Error al guardar el orden');const{data}=await api.get('/catalog/products');setProducts(data.products||[]);}};
+  // vista por marcas: marca → tipo de producto (la categoría sin su prefijo «E1.»)
+  const porMarcas=useMemo(()=>{
+    const limpio=n=>String(n||'').replace(/^[A-Za-z]{1,2}d+.s*/,'').trim()||'Sin categoría';
+    const filtrados=products.filter(p=>!qn||norm([p.name,p.brand,p.code,p.reference,p.description,p.category?.name].join(' ')).includes(qn));
+    const grupos=new Map();
+    filtrados.forEach(p=>{
+      const b=String(p.brand||'').trim();const k=b?norm(b).replace(/s+/g,' '):'';
+      if(!grupos.has(k))grupos.set(k,{k,nombres:{},tipos:new Map(),n:0});
+      const g=grupos.get(k);g.nombres[b]=(g.nombres[b]||0)+1;g.n++;
+      const t=limpio(p.category?.name);if(!g.tipos.has(t))g.tipos.set(t,[]);g.tipos.get(t).push(p);
+    });
+    const orden=(a,b)=>(a.display_order??999999)-(b.display_order??999999)||String(a.name||'').localeCompare(String(b.name||''),'es');
+    return [...grupos.values()].map(g=>({k:g.k,n:g.n,nombre:g.k?Object.entries(g.nombres).sort((a,b)=>b[1]-a[1])[0][0]:'Sin marca',tipos:[...g.tipos.entries()].sort((a,b)=>a[0].localeCompare(b[0],'es')).map(([t,ps])=>({t,ps:ps.sort(orden)}))}))
+      .sort((a,b)=>(a.k===''?1:0)-(b.k===''?1:0)||a.nombre.localeCompare(b.nombre,'es'));
+  },[products,qn]);
   if(loading) return <div className="ap-loading">Cargando catálogo…</div>;
   return (
     <div className="ap-catalog-shell">
@@ -1070,10 +1087,11 @@ function CatalogoLibrary() {
       {editProduct&&<ProductModal categories={categories} allProducts={products} product={editProduct} onClose={()=>setEditProduct(null)} onSaved={(p)=>{handleProductSaved(p);setEditProduct(null);}}/>}
       {showCart&&<CartPanel cart={cart} onRemove={removeFromCart} onClear={clearCart} onClose={()=>setShowCart(false)} toast={toast}/>}
       <div className="ap-catalog-type-tabs" style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:'0.3rem'}}>
+        <button className={`ap-catalog-type-btn${vista==='marcas'&&tab!=='renders'?' active':''}`} onClick={irAMarcas}>Por marcas</button>
         {types.map(t=>(
           <div key={t.id} style={{display:'inline-flex',alignItems:'center'}}>
-            <button className={`ap-catalog-type-btn${tab===t.slug?' active':''}`} onClick={()=>handleTabChange(t.slug)}>{t.name}</button>
-            {tab===t.slug&&<button type="button" className="ap-btn-icon" style={{marginLeft:2}} onClick={()=>handleRenameType(t)} title="Renombrar tipo"><Pencil size={11}/></button>}
+            <button className={`ap-catalog-type-btn${tab===t.slug&&vista==='categorias'?' active':''}`} onClick={()=>handleTabChange(t.slug)}>{t.name}</button>
+            {tab===t.slug&&vista==='categorias'&&<button type="button" className="ap-btn-icon" style={{marginLeft:2}} onClick={()=>handleRenameType(t)} title="Renombrar tipo"><Pencil size={11}/></button>}
           </div>
         ))}
         {showTypeInput?(
@@ -1090,7 +1108,7 @@ function CatalogoLibrary() {
       {tab==='renders'&&<RendersLibrary/>}
       {tab!=='renders'&&<div className="ap-catalog-filters">
         <div style={{position:'relative',flex:'1 1 100%',marginBottom:8}}><Search size={14} style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',opacity:0.5}}/><input className="ap-field-input" style={{paddingLeft:30,paddingRight:30}} placeholder="Buscar en el catálogo (nombre, marca, código, categoría)…" value={busca} onChange={e=>setBusca(e.target.value)}/>{busca&&<button type="button" aria-label="Borrar búsqueda" onClick={()=>setBusca('')} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'none',border:0,color:'inherit',cursor:'pointer',opacity:0.6}}>×</button>}</div>
-        <div className="ap-catalog-filter-pills">
+        {vista==='categorias'&&<div className="ap-catalog-filter-pills">
           <button className={`ap-catalog-pill${activeCat==='all'?' active':''}`} onClick={()=>setActiveCat('all')}>Todo ({products.filter(p=>p.category?.type===tab).length})</button>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
             <SortableContext items={filteredCats.map(c=>c.id)} strategy={rectSortingStrategy}>
@@ -1098,10 +1116,33 @@ function CatalogoLibrary() {
             </SortableContext>
           </DndContext>
           {showCatInput?(<form onSubmit={handleAddCategory} className="ap-catalog-cat-form"><input className="ap-catalog-cat-input" value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder="Nueva categoría…" autoFocus/><button type="submit" className="ap-btn ap-btn-primary ap-btn-sm" disabled={addingCat||!newCatName.trim()}>{addingCat?'…':'Crear'}</button><button type="button" className="ap-btn-icon" onClick={()=>{setShowCatInput(false);setNewCatName('');}}><X size={13}/></button></form>):(<button className="ap-catalog-pill ap-catalog-pill--add" onClick={()=>setShowCatInput(true)}><Plus size={11}/> Categoría</button>)}
-        </div>
+        </div>}
         <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={()=>setShowProductModal(true)}><Plus size={13}/> Producto</button>
       </div>}
-      {tab!=='renders'&&(visibleProducts.length===0?(<p className="ap-empty-sm" style={{textAlign:'center',paddingTop:'2rem'}}>{qBusca?`Nada coincide con «${busca.trim()}».`:filteredCats.length===0?'Crea una categoría primero.':'No hay productos. Añade el primero.'}</p>):(
+      {tab!=='renders'&&vista==='marcas'&&(porMarcas.length===0?(<p className="ap-empty-sm" style={{textAlign:'center',paddingTop:'2rem'}}>{qBusca?`Nada coincide con «${busca.trim()}».`:'No hay productos. Añade el primero.'}</p>):(
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={()=>{}}>
+          <SortableContext items={porMarcas.flatMap(g=>(qn||marcasAbiertas[g.k])?g.tipos.flatMap(t=>t.ps.map(p=>p.id)):[])} strategy={rectSortingStrategy}>
+            {porMarcas.map(g=>{const abierta=!!qn||!!marcasAbiertas[g.k];return(
+              <div key={g.k||'sin'} style={{marginBottom:'0.6rem',border:'1px solid rgba(255,255,255,0.08)',borderRadius:10,overflow:'hidden'}}>
+                <button type="button" className="ap-catalog-brand-head" onClick={()=>setMarcasAbiertas(prev=>({...prev,[g.k]:!prev[g.k]}))} style={{display:'flex',width:'100%',alignItems:'center',gap:'0.6rem',padding:'0.7rem 0.9rem',background:'rgba(255,255,255,0.04)',border:0,color:'inherit',cursor:'pointer',textAlign:'left',font:'inherit'}}>
+                  <span style={{display:'inline-block',transform:abierta?'rotate(90deg)':'none',transition:'transform .15s'}}>▸</span>
+                  <strong style={{fontSize:'0.95rem'}}>{g.nombre}</strong>
+                  <span style={{opacity:0.5,fontSize:'0.78rem'}}>{g.n} producto{g.n!==1?'s':''} · {g.tipos.length} tipo{g.tipos.length!==1?'s':''}</span>
+                </button>
+                {abierta&&<div style={{padding:'0.4rem 0.9rem 0.9rem'}}>
+                  {g.tipos.map(t=>(
+                    <div key={t.t} style={{marginTop:'0.7rem'}}>
+                      <div style={{fontSize:'0.78rem',textTransform:'uppercase',letterSpacing:'0.06em',opacity:0.6,marginBottom:'0.4rem'}}>{t.t} <span style={{opacity:0.6}}>({t.ps.length})</span></div>
+                      <div className="ap-catalog-grid">{t.ps.map(p=>(<SortableCatalogCard key={p.id} p={p} inCart={cart.some(c=>c.id===p.id)} onEdit={setEditProduct} onDelete={handleDeleteProduct} onDuplicate={handleDuplicateProduct} onCart={addToCart} onRemoveCart={removeFromCart} showHandle={false}/>))}</div>
+                    </div>
+                  ))}
+                </div>}
+              </div>
+            );})}
+          </SortableContext>
+        </DndContext>
+      ))}
+      {tab!=='renders'&&vista==='categorias'&&(visibleProducts.length===0?(<p className="ap-empty-sm" style={{textAlign:'center',paddingTop:'2rem'}}>{qBusca?`Nada coincide con «${busca.trim()}».`:filteredCats.length===0?'Crea una categoría primero.':'No hay productos. Añade el primero.'}</p>):(
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCatalogDragEnd}>
           <SortableContext items={visibleProducts.map(p=>p.id)} strategy={rectSortingStrategy}>
             <div className="ap-catalog-grid">{visibleProducts.map(p=>(<SortableCatalogCard key={p.id} p={p} inCart={cart.some(c=>c.id===p.id)} onEdit={setEditProduct} onDelete={handleDeleteProduct} onDuplicate={handleDuplicateProduct} onCart={addToCart} onRemoveCart={removeFromCart} showHandle={activeCat!=='all'&&!qBusca}/>))}</div>
