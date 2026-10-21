@@ -10009,6 +10009,8 @@ function escCrearPar(e){
 /* las dos mitades de una escalera se mantienen iguales: lo que cambias en una planta (sitio, giro, medidas) se copia a la otra. Si borras una, desaparece la otra. */
 function escSync(){
   if(!pisosOn())return;
+  /* una escalera que sube y aún no sale en la planta de arriba se conecta sola (si esa planta ya tiene muros); con nopar se queda suelta */
+  st.v.eq.filter(function(e){return e.rol==='sube'&&!e.par&&!e.nopar&&e.bl&&e.bl.esc}).forEach(function(e){try{escCrearPar(e)}catch(x){}});
   var activos=st.v.eq.filter(function(e){return e.lid&&e.par&&e.bl&&e.bl.esc});
   var piso={};st.v.pisos.forEach(function(p){piso[p.id]=p});
   /* 1. la planta activa manda sobre su pareja */
@@ -10112,6 +10114,7 @@ function escModal(editId){
     st.v.eq.push(ne);st.sel={t:'eq',id:ne.id};st.multi=[];
     var aviso='';
     if(v.par&&sig){var pr=escCrearPar(ne);if(pr!==true)aviso=' '+pr+'.'}
+    if(!v.par)ne.nopar=true;
     if(st.view==='actual'||st.view==='demol'||st.view==='interv'||st.view==='alz'){st.view='distrib';try{toolbar()}catch(e2){}}
     commit();cerrar();toast(nom+' colocada.'+(ne.par?' También sale en la planta de arriba: están conectadas.':'')+aviso+' Arrástrala a su sitio y gírala si hace falta.');
   });
