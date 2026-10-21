@@ -5513,12 +5513,19 @@ function eqTipos(){
   lista.sort(function(a,b){return FAMILIAS.indexOf(a.fam)-FAMILIAS.indexOf(b.fam)||a.cod.localeCompare(b.cod,'es',{numeric:true})});
   return {porId:porId,lista:lista};
 }
-var catAbierto={};
+var catAbierto={},catMarcaKeys=[];
+/* marca de un bloque del catálogo (si el servidor aún no la manda, sale de «Marca · Categoría» en su referencia) */
+function marcaDe(c){
+  var m=c&&(c.marca||c.brand);if(m)return String(m).trim();
+  if(c&&c.marca===undefined&&c.id&&!c.biblioteca&&typeof c.ref==='string'&&c.ref.indexOf(' · ')>0)return c.ref.split(' · ')[0].trim();
+  return '';
+}
 function alPlegarCat(e){
   var td=e.target.closest('button[data-cat-todo]');
   if(td){
     var abre=td.getAttribute('data-cat-todo')==='1';
     catalog().forEach(function(c){if(c.oculto)return;catsDe(c).forEach(function(g){catAbierto[g]=abre})});
+    catMarcaKeys.forEach(function(g){catAbierto[g]=abre});
     FAMILIAS.forEach(function(f){catAbierto['F:'+f]=abre});
     drawCat();return;
   }
@@ -5547,6 +5554,14 @@ function drawCat(){
       (fam[f]=fam[f]||{});(fam[f][g]=fam[f][g]||[]).push(c);
     });
   });
+  /* donde hay marcas, la familia se ordena por marca (y no por categoría) */
+  catMarcaKeys=[];
+  Object.keys(fam).forEach(function(f){
+    var vistos={},todos=[];Object.keys(fam[f]).forEach(function(g){fam[f][g].forEach(function(c){if(!vistos[c.id]){vistos[c.id]=1;todos.push(c)}})});
+    if(!todos.some(function(c){return marcaDe(c)}))return;
+    var nf={};todos.forEach(function(c){var k='M:'+f+'|'+(marcaDe(c)||'Sin marca');(nf[k]=nf[k]||[]).push(c)});
+    fam[f]=nf;Object.keys(nf).forEach(function(k){catMarcaKeys.push(k)});
+  });
   function btn(c){
     return '<button data-cat="'+esc(c.id)+'" aria-pressed="'+(placeId===c.id&&st.tool==='equip')+'">'+thumb(c)+'<span>'+esc(c.nombre)+'</span><small>'+fmt(c.w)+' × '+fmt(c.d)+' cm'+(c.bloque?' · ✓ bloque':'')+(c.generico?' · genérico':'')+(c.sinMedidas?' · sin medidas':'')+'</small></button>';
   }
@@ -5559,14 +5574,16 @@ function drawCat(){
     var out='<div class="famhead" data-f="'+esc(f)+'" role="button" tabindex="0" aria-expanded="'+fab+'"><span>'+(fab?'▾':'▸')+' '+esc(f)+'</span><span>'+tot+'</span></div>';
     if(!fab)return out;
     var norm5=function(t){return String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').slice(0,5)};
-    if(cats.length===1){ // una sola categoría: sin escalón intermedio
+    var porMarca=cats.length&&cats[0].indexOf('M:')===0;
+    cats.sort(function(a,b){if(!porMarca)return a.localeCompare(b,'es');var sa=/|Sin marca$/.test(a),sb=/|Sin marca$/.test(b);return sa-sb||a.localeCompare(b,'es',{sensitivity:'base'})});
+    if(cats.length===1&&!porMarca){ // una sola categoría: sin escalón intermedio
       var lu=ordenarBloques(fam[f][cats[0]],ord),limu=q?200:lu.length;
       out+=lu.slice(0,limu).map(btn).join('')+(lu.length>limu?'<p class="note" style="grid-column:1/-1">Mostrando '+limu+' de '+lu.length+'. Afina la búsqueda para ver el resto.</p>':'');
       return out;
     }
     cats.forEach(function(g){
-      var l=ordenarBloques(fam[f][g],ord),nombreG=g.replace(/^Biblioteca · /,''),etq=norm5(nombreG)===norm5(f)?'General':nombreG;
-      var abierto=q?true:(catAbierto[g]!==undefined?catAbierto[g]:l.length<=12),lim=q?200:l.length;
+      var l=ordenarBloques(fam[f][g],ord),nombreG=g.replace(/^Biblioteca · /,'').replace(/^M:[^|]*|/,''),etq=(!porMarca&&norm5(nombreG)===norm5(f))?'General':nombreG;
+      var abierto=q?true:(catAbierto[g]!==undefined?catAbierto[g]:(porMarca?false:l.length<=12)),lim=q?200:l.length;
       out+='<div class="cathead sub" data-g="'+esc(g)+'" role="button" tabindex="0" style="cursor:pointer" aria-expanded="'+abierto+'"><span>'+(abierto?'▾':'▸')+' '+esc(etq)+'</span> <span>'+l.length+'</span></div>'+(abierto?l.slice(0,lim).map(btn).join('')+(l.length>lim?'<p class="note" style="grid-column:1/-1">Mostrando '+lim+' de '+l.length+'. Afina la búsqueda para ver el resto.</p>':''):'');
     });
     return out;

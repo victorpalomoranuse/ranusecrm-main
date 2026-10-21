@@ -284,6 +284,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
           w: tieneMedidas ? Number(p.longitud) : 100,
           d: tieneMedidas ? Number(p.ancho) : 80,
           categoria: limpiarCategoria(cat.name) || 'Equipamiento',
+          marca: p.brand ? String(p.brand).trim() : '',
           ref: [p.brand, cat.name].filter(Boolean).join(' · '),
           sinMedidas: !tieneMedidas,
           // dibujo real de la planta (si el producto tiene bloque), a escala en cm
