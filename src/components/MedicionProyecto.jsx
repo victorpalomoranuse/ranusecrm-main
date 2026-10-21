@@ -10,11 +10,14 @@ import api from '../services/api';
 // - Desde la sección Planos: MedicionEditor con un plano concreto, uno nuevo,
 //   y con o sin proyecto vinculado.
 
+import { ImportarDePlanos } from './ImportarDePlanos';
+
 export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, nuevo = false, altura = 'calc(100vh - 250px)', fullscreen = false, onAmpliar, onCerrar }) {
   const frameRef = useRef(null);
   const datos = useRef({ visitas: null, catalogos: null, lista: false });
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(true);
+  const [verListados, setVerListados] = useState(false);
   const fullRef = useRef(fullscreen);
   useEffect(() => {
     fullRef.current = fullscreen;
@@ -125,6 +128,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
         try {
           const { data } = await api.put(`/medicion/${m.visita.id}`, { project_id: projectId, data: m.visita });
           responder({ type: 'saved', id: m.visita.id, updated: data.updated });
+          if (m.abrirListados) { if (projectId) setVerListados(true); else responder({ type: 'error', message: 'Vincula este plano a un proyecto para enviarlo a sus Listados' }); }
         } catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo guardar en el CRM' }); }
       } else if (m.type === 'publicar-historia' && m.imagen && m.titulo) {
         if (!projectId) { responder({ type: 'error', message: 'Vincula este plano a un proyecto para publicarlo en su historia' }); return; }
@@ -180,6 +184,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
 
   return (
     <div style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 10000, background: '#07090c' } : undefined}>
+      {verListados && projectId && <ImportarDePlanos projectId={projectId} onClose={() => setVerListados(false)} onHecho={(r) => { setVerListados(false); responder({ type: 'info', message: `Listados al día: ${r.anadidos || 0} añadidos${r.actualizados ? `, ${r.actualizados} actualizados` : ''}` }); }} />}
       {error && <p className="ap-error" style={fullscreen ? { position: 'absolute', top: 8, left: 8, zIndex: 2 } : undefined}>{error}</p>}
       {cargando && !error && <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>Cargando herramienta…</p>}
       <iframe

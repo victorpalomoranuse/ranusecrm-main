@@ -340,6 +340,7 @@ body.crm .top .brand{display:none}
             <button data-do="b-prev">Vista previa de las láminas</button>
             <button data-do="b-pdfproj" id="mi-proj" hidden>PDF con todas las plantas del proyecto</button>
             <button data-do="b-pdfdoc" id="mi-docs" hidden>Subir lámina a Documentos</button>
+            <button data-do="listados" id="mi-listados" hidden title="Lo que hay en el plano (bloques, luminarias, materiales) pasa al listado del proyecto, que es lo que ve el cliente">Enviar a Listados del proyecto…</button>
             <hr>
             <button data-do="b-svg">Plano SVG</button>
             <button data-do="b-json">Datos JSON</button>
@@ -400,6 +401,7 @@ body.crm .top .brand{display:none}
           <select id="fly-ord" aria-label="Ordenar por"><option value="nombre">Nombre (A–Z)</option><option value="tam">Tamaño: de mayor a menor</option><option value="tam-a">Tamaño: de menor a mayor</option><option value="bloque">Con dibujo o foto primero</option></select>
           <div class="seg3" id="fly-vista" hidden style="margin:8px 0"></div>
           <button id="fly-img" style="width:100%;margin:6px 0" title="Pega o sube una foto de un objeto y la herramienta dibuja su planta, alzado y lateral a escala">✨ Crear bloque desde una imagen…</button>
+          <button id="fly-rap" style="width:100%;margin:0 0 6px" title="Crea un bloque con su nombre y medidas al momento, sin tener que crear antes el producto en el catálogo. Luego sale en Listados y, si quieres, lo enlazas con un producto del catálogo">＋ Bloque rápido (sin catálogo)…</button>
           <button id="fly-esc" style="width:100%;margin:0 0 6px" title="Escribe la altura que hay que salvar y la escalera se calcula sola: peldaños, huella y contrahuella según normativa. Recta, en L o en U">🪜 Crear escalera (se calcula sola)…</button>
           <button id="fly-dxf" style="width:100%;margin:0 0 6px" title="Sube un archivo DXF con uno o varios bloques (de un fabricante, de tus bibliotecas o de tus planos): verás cada uno dibujado y eliges cuáles guardar en tu biblioteca">⬆ Subir bloques (DXF)…</button>
           <div class="catgrid" id="fly-cat"></div>
@@ -5647,6 +5649,7 @@ function cargarDXF(cb){
 }
 $('fly-dxf').addEventListener('click',function(){$('dxf-file').click()});
 $('fly-esc').addEventListener('click',function(){flyClose();escModal(null)});
+$('fly-rap').addEventListener('click',function(){flyClose();bloqueRapido()});
 /* el estado de la subida también sale como aviso (el panel donde está el texto puede estar cerrado) */
 try{new MutationObserver(function(){var t=$('dxf-st').textContent;if(t)toast(t)}).observe($('dxf-st'),{childList:true,characterData:true,subtree:true})}catch(e){}
 $('dxf-file').addEventListener('change',function(e){
@@ -9698,7 +9701,7 @@ function buildResumen1(){
   v.rz.forEach(function(r){var ar=rzArea(r)/10000;if(ar){if(r.k==='s')sa+=ar;else te+=ar}});
   out.levantar_suelo_m2=r2(sa);out.desmontar_techo_m2=r2(te);
   var eq={};
-  v.eq.forEach(function(e){if(e.s==='ex'||e.s==='dem'||(e.bl&&e.bl.esc))return;var k=e.cid||e.nm;(eq[k]=eq[k]||{cid:e.cid||'',nombre:e.nm,n:0,w:e.w,d:e.d}).n++}); /* lo que ya existe no se compra */
+  v.eq.forEach(function(e){if(e.s==='ex'||e.s==='dem'||(e.bl&&e.bl.esc))return;var k=e.cid||e.nm;(eq[k]=eq[k]||{cid:e.cid||'',nombre:e.nm,n:0,w:e.w,d:e.d,alto:(function(){var cc=catById(e.cid);return (cc&&(cc.alto||(cc.bloque&&cc.bloque.alto)))||null})(),categoria:(function(){var cc=catById(e.cid);return (cc&&cc.categoria)||''})()}).n++}); /* lo que ya existe no se compra */
   out.equipos=Object.keys(eq).map(function(k){return eq[k]});
   out.luminarias=lumGroups().map(function(g){var d=ptDef(g.k);return {lid:g.lid||'',nombre:g.cat?g.cat.n:(d?d.n:g.k),tipo:g.k,n:g.n,ml:r2(g.len/100)}});
   var inst={};
@@ -9787,11 +9790,79 @@ function modoPantalla(f){
   b.title=f?'Cerrar el editor y volver':'Abrir el editor a pantalla completa';
 }
 $('m-full').addEventListener('click',function(){crmPost({type:crmFull?'cerrar':'ampliar'})});
+/* ══ Bloque rápido: un bloque con nombre y medidas, sin crear antes el producto en el catálogo ══ */
+function bloqueRapidoPlanta(forma,L,T){
+  var A=' stroke="#000000" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"',o;
+  if(forma==='redondo'){
+    o=Math.abs(L-T)<1?'<circle cx="'+f2(L/2)+'" cy="'+f2(T/2)+'" r="'+f2(L/2-0.5)+'"'+A+'/>':'<rect x="0.5" y="0.5" width="'+f2(L-1)+'" height="'+f2(T-1)+'" rx="'+f2(Math.min(L,T)/2-0.5)+'"'+A+'/>';
+  }else{
+    o='<rect x="0.5" y="0.5" width="'+f2(L-1)+'" height="'+f2(T-1)+'"'+A+'/>';
+    if(forma==='cruz')o+='<line x1="0.5" y1="0.5" x2="'+f2(L-0.5)+'" y2="'+f2(T-0.5)+'"'+A+'/><line x1="'+f2(L-0.5)+'" y1="0.5" x2="0.5" y2="'+f2(T-0.5)+'"'+A+'/>';
+    if(forma==='respaldo')o+='<line x1="0.5" y1="'+f2(Math.min(12,T*0.22))+'" x2="'+f2(L-0.5)+'" y2="'+f2(Math.min(12,T*0.22))+'"'+A+'/>';
+  }
+  return o;
+}
+function bloqueRapido(){
+  var m=document.getElementById('rapmod');if(m)m.remove();
+  m=document.createElement('div');m.id='rapmod';m.className='dxfmod';
+  var fams=FAMILIAS.map(function(x){return '<option'+(x==='Mobiliario'?' selected':'')+'>'+esc(x)+'</option>'}).join('');
+  m.innerHTML='<div class="dxfbox" style="max-width:640px"><header><h3>Bloque rápido</h3><p class="note" style="margin:0">Ponle nombre y medidas y se coloca al momento. No hace falta crear un producto en el catálogo: sale igualmente en Listados y, si quieres, más tarde lo enlazas con uno.</p></header>'+
+    '<div style="padding:12px 16px;overflow:auto;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))"><div>'+
+    '<label class="fld"><span>Nombre</span><input id="rp-nm" placeholder="Mueble recepción, espejo grande, nevera…" maxlength="120"></label>'+
+    '<div style="display:flex;gap:8px"><label class="fld" style="flex:1"><span>Largo (cm)</span><input id="rp-l" inputmode="decimal" value="100"></label><label class="fld" style="flex:1"><span>Fondo (cm)</span><input id="rp-t" inputmode="decimal" value="60"></label><label class="fld" style="flex:1"><span>Alto (cm)</span><input id="rp-a" inputmode="decimal" value="90"></label></div>'+
+    '<label class="fld"><span>Forma en el plano</span><select id="rp-f"><option value="rect">Rectángulo</option><option value="redondo">Redondo / ovalado</option><option value="cruz">Rectángulo con cruz (equipo)</option><option value="respaldo">Mueble con respaldo</option></select></label>'+
+    '<label class="fld"><span>Tipo</span><select id="rp-c">'+fams+'</select></label>'+
+    '<label class="fld" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="rp-b" checked><span>Guardarlo en mi biblioteca para usarlo en otros planos</span></label>'+
+    '</div><div><div id="rp-prev" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;min-height:140px;display:grid;place-items:center"></div></div></div>'+
+    '<footer><button class="pri" id="rp-ok">Colocar en el plano</button><button id="rp-x">Cancelar</button></footer></div>';
+  document.body.appendChild(m);
+  var g=function(i){return document.getElementById(i)};
+  function vals(){return {nm:g('rp-nm').value.trim(),L:num(g('rp-l').value),T:num(g('rp-t').value),A:num(g('rp-a').value)||100,forma:g('rp-f').value,fam:g('rp-c').value,bib:g('rp-b').checked}}
+  function prev(){
+    var v=vals(),ok=v.L>=5&&v.L<=5000&&v.T>=5&&v.T<=5000;
+    g('rp-ok').disabled=!ok;
+    if(!ok){g('rp-prev').innerHTML='<span class="note">Pon un largo y un fondo (entre 5 y 5000 cm)</span>';return}
+    var sc=Math.min(260/v.L,180/v.T),p=8;
+    g('rp-prev').innerHTML='<svg viewBox="'+(-p)+' '+(-p)+' '+(v.L+2*p)+' '+(v.T+2*p)+'" width="'+Math.round((v.L+2*p)*sc)+'" height="'+Math.round((v.T+2*p)*sc)+'" style="color:var(--ink)">'+bloqueRapidoPlanta(v.forma,v.L,v.T).replace(/#000000/g,'currentColor').replace(/stroke-width="1"/g,'stroke-width="'+f2(1.2/sc)+'"')+'</svg>';
+  }
+  ['rp-l','rp-t'].forEach(function(i){g(i).addEventListener('input',prev)});g('rp-f').addEventListener('change',prev);
+  function cerrar(){m.remove()}
+  g('rp-x').addEventListener('click',cerrar);m.addEventListener('click',function(e){if(e.target===m)cerrar()});
+  g('rp-ok').addEventListener('click',function(){
+    var v=vals();
+    if(!v.nm){toast('Ponle un nombre al bloque');g('rp-nm').focus();return}
+    if(!(v.L>=5&&v.T>=5))return;
+    var cx=(W/2-st.tx)/st.k,cy=(H/2-st.ty)/st.k,nq=nearNode(cx,cy,1e9,null);
+    if(!nq){toast('Dibuja primero el contorno de la sala');return}
+    var frag=bloqueRapidoPlanta(v.forma,v.L,v.T),L=Math.round(v.L*10)/10,T=Math.round(v.T*10)/10;
+    snap();
+    var ne={id:uid('e'),n:nq.id,dx:f2(cx-nq.x),dy:f2(cy-nq.y),w:L,d:T,rot:0,nm:v.nm,ty:'gen',ref:''};
+    if(st.view==='actual')ne.s='ex';
+    if(v.bib){ /* se guarda en la biblioteca: la pieza usa ese bloque (misma ruta que los bloques dibujados) */
+      var item={nombre:v.nm.slice(0,120),categoria:v.fam,largo:L,fondo:T,alto:v.A,planta:frag,origen:'Bloque rápido'};
+      var tmpId='rap'+Date.now().toString(36),ent={id:tmpId,nombre:item.nombre,tipo:'gen',w:L,d:T,alto:v.A,categoria:v.fam,ref:'Bloque rápido',vistas:['planta'],bloque:{planta:frag,largo:L,fondo:T,alto:v.A}};
+      ne.cid=tmpId;
+      if(CRM){ent.oculto=true;custom.push(ent);crmPost({type:'guardarBiblioteca',items:[item]});st.pendBib={eq:ne.id,nombre:item.nombre,tmp:tmpId}}
+      else{ent.biblioteca=true;saveCat(ent)}
+    }else{ /* solo en este plano: el dibujo va dentro de la pieza */
+      ne.cid=uid('bq');ne.bl={planta:frag,largo:L,fondo:T,alto:v.A,categoria:v.fam};
+    }
+    st.v.eq.push(ne);st.sel={t:'eq',id:ne.id};st.multi=[];
+    if(st.view==='demol'||st.view==='interv'||st.view==='alz'||st.view==='actual'){st.view='distrib';try{toolbar()}catch(e2){}}
+    commit();cerrar();toast('«'+v.nm+'» colocado. Sale en Listados cuando lo envíes (Archivo → Enviar a Listados).');
+  });
+  prev();setTimeout(function(){var el=g('rp-nm');if(el)el.focus()},50);
+}
+function enviarListados(){
+  if(!CRM){toast('Esto funciona dentro del CRM, con el plano vinculado a un proyecto');return}
+  toast('Guardando el plano y abriendo el listado…');
+  crmSaveNow(true,true);
+}
 /* ══ Escalera: se calcula sola a partir de la altura que hay que salvar ══ */
 function escCats(){
   var l=[];
   ((st.v&&st.v.eq)||[]).forEach(function(e){
-    if(e.bl&&e.cid)l.push({id:e.cid,nombre:e.nm,tipo:'gen',w:e.bl.largo,d:e.bl.fondo,alto:e.bl.alto,categoria:'Escaleras',ref:'',vistas:['planta'],bloque:{planta:e.bl.planta,largo:e.bl.largo,fondo:e.bl.fondo},esc:e.bl.esc,oculto:true});
+    if(e.bl&&e.cid)l.push({id:e.cid,nombre:e.nm,tipo:'gen',w:e.bl.largo,d:e.bl.fondo,alto:e.bl.alto,categoria:e.bl.categoria||'Escaleras',ref:'',vistas:['planta'],bloque:{planta:e.bl.planta,largo:e.bl.largo,fondo:e.bl.fondo},esc:e.bl.esc,oculto:true});
   });
   return l;
 }
@@ -10362,7 +10433,7 @@ function crmQueue(){
   $('saved').textContent='Cambios sin guardar…';
   crmT=setTimeout(function(){crmSaveNow(false)},2500);
 }
-function crmSaveNow(force){
+function crmSaveNow(force,abrirListados){
   if(!crmReady)return;
   clearTimeout(crmT);
   var v=st.v;
@@ -10370,7 +10441,7 @@ function crmSaveNow(force){
   v.updated=Date.now();
   try{v.resumen=buildResumen()}catch(e){}
   try{v.modelo3d=buildModelo3d()}catch(e){}
-  crmPost({type:'save',visita:JSON.parse(JSON.stringify(v))});
+  crmPost({type:'save',visita:JSON.parse(JSON.stringify(v)),abrirListados:!!abrirListados});
   $('saved').textContent='Guardando en el CRM…';
 }
 function crmPrefill(){
@@ -10400,7 +10471,7 @@ if(CRM){
       });
       refreshAcab();
       crmReady=true;crmSkip=Date.now()+1500;
-      $('b-cloud').hidden=false;$('mi-sk').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
+      $('b-cloud').hidden=false;$('mi-sk').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('mi-listados').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
       var elegido=null;
       if(!m.nuevo){elegido=m.abrir?cloud.filter(function(c){return c.id===m.abrir})[0]:cloud[0]}
       if(elegido){st.v=norm(JSON.parse(JSON.stringify(elegido)));crmPrefill()}
@@ -10513,6 +10584,7 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
       else if(id==='marcas')alternarMarcas();
       else if(id==='datos')abrirDatos();
       else if(id==='info')abrirInfoLam();
+      else if(id==='listados')enviarListados();
       else if(id==='planoia')planoIAAbrir();
       else if(id==='fondo-ver'||id==='fondo-op'||id==='fondo-q')fondoAccion(id);
       else if(id==='cotamuros')alternarCotaMuros();

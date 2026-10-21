@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
@@ -1147,12 +1147,22 @@ function SectionCatalogo() {
   );
 }
 
-function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
+function SortableAssignedItem({ item, onUnassign, onUpdate, type, productos = [] }) {
   const {attributes,listeners,setNodeRef,transform,transition,isDragging}=useSortable({id:item.id});
   const style={transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.4:1};
   const [expanded,setExpanded]=useState(false); const [qty,setQty]=useState(item.quantity??1); const [ytUrl,setYtUrl]=useState(item.youtube_url||''); const [extraImgs,setExtraImgs]=useState(item.extra_images||[]); const [newImg,setNewImg]=useState(''); const [saving,setSaving]=useState(false); const [purchaseLink,setPurchaseLink]=useState(item.purchase_link||''); const [showLink,setShowLink]=useState(item.show_purchase_link||false); const [showQty,setShowQty]=useState(item.show_quantity!==false);
   const [code,setCode]=useState(item.code||''); const [datasheetUrl,setDatasheetUrl]=useState(item.datasheet_url||''); const [location,setLocation]=useState(item.location||'');
   const isMob=type==='mobiliario';
+  // enlazar (o desenlazar) con un producto del catálogo, aunque el elemento se haya creado desde un plano sin él
+  const [busca,setBusca]=useState('');
+  const candidatos=useMemo(()=>{const q=busca.trim().toLowerCase();if(!q)return [];return productos.filter(p=>(isMob?p.category?.type!=='material':p.category?.type==='material')&&(`${p.name||''} ${p.brand||''}`.toLowerCase().includes(q))).slice(0,8)},[busca,productos,isMob]);
+  const enlazar=async(p)=>{
+    const campos=p?{catalog_product_id:p.id,brand:item.brand||p.brand||null,image_url:item.image_url||p.photo_url||null}:{catalog_product_id:null};
+    try{
+      await api.put(`/client-projects/${item.project_id}/${isMob?'equipment':'materials'}/${item.id}`,campos);
+      onUpdate({...item,...campos},type);setBusca('');
+    }catch{window.alert('No se pudo enlazar con el catálogo');}
+  };
   const handleSave=async()=>{
     setSaving(true);
     try{
@@ -1176,6 +1186,7 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
       <div className="ap-catalog-product-info" style={{flex:1}}>
         <span className="ap-catalog-product-name">{item.name}</span>
         {item.category&&<span className="ap-cat-meta">{item.category}</span>}
+        {!item.catalog_product_id&&<span className="ap-cat-meta" style={{color:'#f5b748',marginLeft:4}} title="Este elemento no está enlazado con ningún producto del catálogo">· sin enlazar</span>}
         {item.code&&<span className="ap-cat-meta" style={{color:'rgba(186,175,165,0.7)',marginLeft:4}}>#{item.code}</span>}
         {item.location&&<span className="ap-cat-meta" style={{marginLeft:4}}>→ {item.location}</span>}
         {isMob&&<span className="ap-cat-meta" style={{color:'rgba(186,175,165,0.7)',marginLeft:4}}>×{qty}{item.youtube_url&&' · 🎬'}{item.extra_images?.length>0&&` · ${item.extra_images.length} img`}{showLink&&purchaseLink&&' · 🔗'}</span>}
@@ -1184,6 +1195,17 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type }) {
       <button className="ap-btn-icon" onClick={()=>onUnassign(item.id,type)}><X size={13}/></button>
       {expanded&&(
         <div className="ap-eq-detail-panel">
+          <div className="ap-field" style={{marginBottom:'0.75rem'}}>
+            <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Producto del catálogo</label>
+            {item.catalog_product_id
+              ?<div style={{display:'flex',alignItems:'center',gap:'0.5rem',flexWrap:'wrap'}}><span style={{fontSize:'0.8rem',color:'#8bae8f'}}>✓ Enlazado con un producto del catálogo</span><button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>enlazar(null)}>Quitar enlace</button></div>
+              :<>
+                <input className="ap-field-input" value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Busca un producto del catálogo para enlazarlo…"/>
+                {candidatos.map(p=>(<button key={p.id} type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{display:'flex',width:'100%',justifyContent:'flex-start',marginTop:4,gap:8,alignItems:'center'}} onClick={()=>enlazar(p)}>{p.photo_url&&<img src={p.photo_url} alt="" style={{width:24,height:24,objectFit:'cover',borderRadius:4}}/>}<span>{p.name}{p.brand?` · ${p.brand}`:''}</span></button>))}
+                {busca.trim()&&candidatos.length===0&&<p style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.45)',marginTop:4}}>No hay productos con ese nombre en el catálogo.</p>}
+                <p style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginTop:4}}>Al enlazarlo se completa la marca y la foto si estaban vacías. Lo demás que hayas editado se queda como está.</p>
+              </>}
+          </div>
           <div className="ap-field" style={{marginBottom:'0.75rem'}}>
             <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Unidades</label>
             <div style={{display:'flex',alignItems:'center',gap:'0.4rem'}}>
@@ -1277,7 +1299,7 @@ function TabAsignaciones({ projectId, categoryId, listadosIntro, listadosTitle, 
       <div className="ap-cat-tabs" style={{marginBottom:'1.25rem'}}>
         {types.map(t=>(<button key={t.id} className={`ap-cat-tab${tab===t.slug?' active':''}`} onClick={()=>setTab(t.slug)}>{t.name}</button>))}
       </div>
-      {assignedList.length>0&&(<div style={{marginBottom:'1.25rem'}}><p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.5rem'}}>{categoryId!=null?'Asignados a esta categoría':'Asignados a este proyecto'}</p><DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleAssignedDragEnd}><SortableContext items={assignedList.map(a=>a.id)} strategy={verticalListSortingStrategy}><div className="ap-catalog-products" style={{padding:0}}>{assignedList.map(a=>(<SortableAssignedItem key={a.id} item={{...a,project_id:projectId}} type={tab==='material'?'material':'mobiliario'} onUnassign={unassign} onUpdate={handleItemUpdate}/>))}</div></SortableContext></DndContext></div>)}
+      {assignedList.length>0&&(<div style={{marginBottom:'1.25rem'}}><p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.5rem'}}>{categoryId!=null?'Asignados a esta categoría':'Asignados a este proyecto'}</p><DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleAssignedDragEnd}><SortableContext items={assignedList.map(a=>a.id)} strategy={verticalListSortingStrategy}><div className="ap-catalog-products" style={{padding:0}}>{assignedList.map(a=>(<SortableAssignedItem key={a.id} item={{...a,project_id:projectId}} type={tab==='material'?'material':'mobiliario'} onUnassign={unassign} onUpdate={handleItemUpdate} productos={products}/>))}</div></SortableContext></DndContext></div>)}
       <p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.75rem'}}>Tu catálogo</p>
       {filteredCats.length===0&&<p className="ap-empty-sm">No hay categorías en el catálogo todavía.</p>}
       <div className="ap-catalog-categories">{filteredCats.map(cat=>{const catProducts=products.filter(p=>p.category_id===cat.id);const isOpen=expandedCat===cat.id;return(<div key={cat.id} className="ap-catalog-cat"><div className="ap-catalog-cat-header"><button className="ap-catalog-cat-toggle" onClick={()=>setExpandedCat(isOpen?null:cat.id)}><span className="ap-catalog-cat-arrow">{isOpen?'▾':'▸'}</span><span className="ap-catalog-cat-name">{cat.name}</span><span className="ap-catalog-cat-count">{catProducts.length}</span></button></div>{isOpen&&(<div className="ap-catalog-products">{catProducts.length===0&&<p className="ap-empty-sm" style={{paddingLeft:'1rem'}}>Sin productos.</p>}{catProducts.map(p=>{const already=isAssigned(p.id,tab);return(<div key={p.id} className="ap-catalog-product">{p.photo_url&&<img src={p.photo_url} alt={p.name} className="ap-catalog-product-img"/>}<div className="ap-catalog-product-info"><span className="ap-catalog-product-name">{p.name}</span>{p.price!=null&&<span className="ap-catalog-product-price">{Number(p.price).toLocaleString('es-ES',{style:'currency',currency:'EUR'})}</span>}{p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" className="ap-catalog-product-link">Ver producto ↗</a>}</div><button className={`ap-btn ap-btn-sm ${already?'ap-btn-ghost':'ap-btn-primary'}`} onClick={()=>!already&&assign(p)} disabled={already} style={{flexShrink:0}}>{already?'✓':<Plus size={13}/>}</button></div>);})}</div>)}</div>);})}</div>

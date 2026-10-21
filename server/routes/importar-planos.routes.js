@@ -46,7 +46,7 @@ async function propuesta(projectId, planoId) {
     filas.push({
       clave: `eq:${p ? p.id : norm(f.nombre)}`, tipo: 'equipo', grupo: f.grupo,
       nombre: p ? p.name : f.nombre, marca: p?.brand || '', imagen: p?.photo_url || '',
-      cantidad: cant, unidad: f.unidad === 'ml' ? 'ml' : 'ud', catalogo: !!p, producto_id: p?.id || null,
+      cantidad: cant, unidad: f.unidad === 'ml' ? 'ml' : 'ud', catalogo: !!p, producto_id: p?.id || null, medidas: f.medidas || '', familia: f.familia || '',
       categoria: p?.category?.name || '', category_type: p?.category?.type || (f.grupo === 'Iluminación' ? 'iluminacion' : 'mobiliario'),
       ...estadoEquipo(p, p ? p.name : f.nombre, cant),
     });
@@ -99,7 +99,7 @@ router.post('/:projectId', async (req, res) => {
       } else {
         const { error } = await supabase.from('project_equipment_selections').insert({
           project_id: req.params.projectId, name: f.nombre, brand: f.marca || null, category: f.categoria || null, category_type: f.category_type || 'mobiliario',
-          quantity: Math.round(f.cantidad), notes: f.unidad === 'ml' ? `${f.cantidad} ml medidos en los planos` : null,
+          quantity: Math.round(f.cantidad), notes: f.unidad === 'ml' ? `${f.cantidad} ml medidos en los planos` : (!f.catalogo && f.medidas ? `Bloque del plano: ${f.medidas}` : null),
           image_url: f.imagen || null, catalog_product_id: f.producto_id || null, show_quantity: true, show_purchase_link: false,
         });
         if (error) throw error;

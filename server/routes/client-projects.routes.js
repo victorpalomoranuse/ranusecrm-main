@@ -1659,11 +1659,12 @@ router.post('/:id/materials', authenticateToken, requireProyectos, async (req, r
  */
 router.put('/:id/materials/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { brand, category, location, notes, phase_number, code, datasheet_url, quantity, purchase_link, show_purchase_link, lumens, watts, color_temperature, color, name, image_url } = req.body;
+    const { brand, category, location, notes, phase_number, code, datasheet_url, quantity, purchase_link, show_purchase_link, lumens, watts, color_temperature, color, name, image_url, catalog_product_id } = req.body;
 
     const updates = {};
     if (name !== undefined && String(name).trim()) updates.name = String(name).trim();
     if (image_url !== undefined) updates.image_url = image_url?.trim() || null;
+    if (catalog_product_id !== undefined) updates.catalog_product_id = /^[0-9a-f-]{36}$/i.test(String(catalog_product_id || '')) ? catalog_product_id : null;
     if (brand !== undefined) updates.brand = brand?.trim() || null;
     if (category !== undefined) updates.category = category?.trim() || null;
     if (location !== undefined) updates.location = location?.trim() || null;
@@ -1982,12 +1983,13 @@ router.delete('/:id/notes/:noteId', authenticateToken, requireProyectos, async (
 });
 router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link, show_quantity, phase_number, code, datasheet_url, location, lumens, watts, color_temperature, color, name, brand, image_url } = req.body;
+    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link, show_quantity, phase_number, code, datasheet_url, location, lumens, watts, color_temperature, color, name, brand, image_url, catalog_product_id } = req.body;
 
     const updates = {};
     if (name !== undefined && String(name).trim()) updates.name = String(name).trim();
     if (brand !== undefined) updates.brand = brand?.trim() || null;
     if (image_url !== undefined) updates.image_url = image_url?.trim() || null;
+    if (catalog_product_id !== undefined) updates.catalog_product_id = /^[0-9a-f-]{36}$/i.test(String(catalog_product_id || '')) ? catalog_product_id : null;
     if (quantity !== undefined) updates.quantity = parseInt(quantity);
     if (youtube_url !== undefined) updates.youtube_url = youtube_url?.trim() || null;
     if (extra_images !== undefined) updates.extra_images = Array.isArray(extra_images) ? extra_images : [];

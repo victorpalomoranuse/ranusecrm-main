@@ -21,17 +21,17 @@ export async function cantidadesDePlano(projectId, planoId) {
   }
 
   const filas = [];
-  const cat = (grupo, id, nombre, n, ml) => {
+  const cat = (grupo, id, nombre, n, ml, ex) => {
     const p = productos[id];
     if (p) {
       const porMetro = /^(ml|m)$/i.test(p.pricing_unit || '');
       const cantidad = porMetro && ml > 0 ? Math.ceil(ml * 10) / 10 : n;
       filas.push({ grupo, tipo: 'catalogo', producto: p, nombre: p.name, unidad: p.pricing_unit || 'ud', cantidad });
     } else {
-      filas.push({ grupo, tipo: 'libre', nombre, categoria: 'mobiliario', unidad: ml > 0 ? 'ml' : 'ud', cantidad: ml > 0 ? Math.ceil(ml * 10) / 10 : n, aviso: 'Sin producto en el catálogo' });
+      filas.push({ grupo, tipo: 'libre', nombre, categoria: 'mobiliario', unidad: ml > 0 ? 'ml' : 'ud', cantidad: ml > 0 ? Math.ceil(ml * 10) / 10 : n, aviso: 'Sin producto en el catálogo', medidas: ex && ex.w > 0 && ex.d > 0 ? `${Math.round(ex.w * 10) / 10} × ${Math.round(ex.d * 10) / 10}${ex.alto > 0 ? ' × ' + Math.round(ex.alto * 10) / 10 : ''} cm` : null, familia: ex?.categoria || '' });
     }
   };
-  (r.equipos || []).forEach(e => cat('Equipamiento', e.cid, e.nombre, e.n, 0));
+  (r.equipos || []).forEach(e => cat('Equipamiento', e.cid, e.nombre, e.n, 0, e));
   (r.luminarias || []).forEach(l => cat('Iluminación', l.lid, l.nombre, l.n, l.ml));
 
   const libre = (grupo, nombre, unidad, cantidad) => { if (cantidad > 0) filas.push({ grupo, tipo: 'libre', nombre, categoria: 'reformas', unidad, cantidad }); };
