@@ -9805,27 +9805,62 @@ function bloqueRapidoPlanta(forma,L,T){
 function bloqueRapido(){
   var m=document.getElementById('rapmod');if(m)m.remove();
   m=document.createElement('div');m.id='rapmod';m.className='dxfmod';
-  var fams=FAMILIAS.map(function(x){return '<option'+(x==='Mobiliario'?' selected':'')+'>'+esc(x)+'</option>'}).join('');
-  m.innerHTML='<div class="dxfbox" style="max-width:640px"><header><h3>Bloque rápido</h3><p class="note" style="margin:0">Ponle nombre y medidas y se coloca al momento. No hace falta crear un producto en el catálogo: sale igualmente en Listados y, si quieres, más tarde lo enlazas con uno.</p></header>'+
-    '<div style="padding:12px 16px;overflow:auto;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))"><div>'+
+  /* categorías que ya existen en la biblioteca (para clasificarlo en una de ellas) + las familias de siempre */
+  var catsSet={};FAMILIAS.forEach(function(x){catsSet[x]=1});
+  catalog().forEach(function(c){catsDe(c).forEach(function(x){if(x&&x!=='Genéricos')catsSet[x]=1})});
+  var opcionesCat=Object.keys(catsSet).sort(function(a,b){return a.localeCompare(b,'es')}).map(function(x){return '<option value="'+esc(x)+'">'}).join('');
+  var dxf=null; /* pieza elegida de un DXF */
+  m.innerHTML='<div class="dxfbox" style="max-width:700px"><header><h3>Bloque rápido</h3><p class="note" style="margin:0">Ponle nombre y medidas, o sube un DXF con el dibujo, y se coloca al momento. No hace falta crear un producto en el catálogo: sale igualmente en Listados y, si quieres, más tarde lo enlazas con uno.</p></header>'+
+    '<div style="padding:12px 16px;overflow:auto;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))"><div>'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><button type="button" id="rp-dxf">⬆ Usar un dibujo DXF…</button><input type="file" id="rp-dxff" accept=".dxf" hidden><span class="note" id="rp-dxfs" style="margin:0"></span></div>'+
+    '<label class="fld" id="rp-pz-w" hidden><span>Pieza del DXF</span><select id="rp-pz"></select></label>'+
     '<label class="fld"><span>Nombre</span><input id="rp-nm" placeholder="Mueble recepción, espejo grande, nevera…" maxlength="120"></label>'+
     '<div style="display:flex;gap:8px"><label class="fld" style="flex:1"><span>Largo (cm)</span><input id="rp-l" inputmode="decimal" value="100"></label><label class="fld" style="flex:1"><span>Fondo (cm)</span><input id="rp-t" inputmode="decimal" value="60"></label><label class="fld" style="flex:1"><span>Alto (cm)</span><input id="rp-a" inputmode="decimal" value="90"></label></div>'+
-    '<label class="fld"><span>Forma en el plano</span><select id="rp-f"><option value="rect">Rectángulo</option><option value="redondo">Redondo / ovalado</option><option value="cruz">Rectángulo con cruz (equipo)</option><option value="respaldo">Mueble con respaldo</option></select></label>'+
-    '<label class="fld"><span>Tipo</span><select id="rp-c">'+fams+'</select></label>'+
+    '<label class="fld" id="rp-f-w"><span>Forma en el plano</span><select id="rp-f"><option value="rect">Rectángulo</option><option value="redondo">Redondo / ovalado</option><option value="cruz">Rectángulo con cruz (equipo)</option><option value="respaldo">Mueble con respaldo</option></select></label>'+
+    '<label class="fld"><span>Categoría (elige una existente o escribe una nueva; varias, separadas por comas)</span><input id="rp-c" list="rp-dl" value="Mobiliario" autocomplete="off" placeholder="Mobiliario, Baños y vestuarios…"></label><datalist id="rp-dl">'+opcionesCat+'</datalist>'+
     '<label class="fld" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="rp-b" checked><span>Guardarlo en mi biblioteca para usarlo en otros planos</span></label>'+
     '</div><div><div id="rp-prev" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;min-height:140px;display:grid;place-items:center"></div></div></div>'+
     '<footer><button class="pri" id="rp-ok">Colocar en el plano</button><button id="rp-x">Cancelar</button></footer></div>';
   document.body.appendChild(m);
   var g=function(i){return document.getElementById(i)};
-  function vals(){return {nm:g('rp-nm').value.trim(),L:num(g('rp-l').value),T:num(g('rp-t').value),A:num(g('rp-a').value)||100,forma:g('rp-f').value,fam:g('rp-c').value,bib:g('rp-b').checked}}
+  function vals(){return {nm:g('rp-nm').value.trim(),L:num(g('rp-l').value),T:num(g('rp-t').value),A:num(g('rp-a').value)||100,forma:g('rp-f').value,fam:(g('rp-c').value||'').split(',').map(function(x){return x.trim()}).filter(Boolean).join(' | ')||'Mobiliario',bib:g('rp-b').checked}}
+  function fragActual(v){return dxf?dxf.planta:bloqueRapidoPlanta(v.forma,v.L,v.T)}
   function prev(){
     var v=vals(),ok=v.L>=5&&v.L<=5000&&v.T>=5&&v.T<=5000;
     g('rp-ok').disabled=!ok;
     if(!ok){g('rp-prev').innerHTML='<span class="note">Pon un largo y un fondo (entre 5 y 5000 cm)</span>';return}
     var sc=Math.min(260/v.L,180/v.T),p=8;
-    g('rp-prev').innerHTML='<svg viewBox="'+(-p)+' '+(-p)+' '+(v.L+2*p)+' '+(v.T+2*p)+'" width="'+Math.round((v.L+2*p)*sc)+'" height="'+Math.round((v.T+2*p)*sc)+'" style="color:var(--ink)">'+bloqueRapidoPlanta(v.forma,v.L,v.T).replace(/#000000/g,'currentColor').replace(/stroke-width="1"/g,'stroke-width="'+f2(1.2/sc)+'"')+'</svg>';
+    g('rp-prev').innerHTML='<svg viewBox="'+(-p)+' '+(-p)+' '+(v.L+2*p)+' '+(v.T+2*p)+'" width="'+Math.round((v.L+2*p)*sc)+'" height="'+Math.round((v.T+2*p)*sc)+'" style="color:var(--ink)">'+(dxf?'<g transform="scale('+f2(v.L/dxf.largo*1e4)/1e4+' '+f2(v.T/dxf.fondo*1e4)/1e4+')">':'')+fragActual(v).replace(/#000000/g,'currentColor').replace(/stroke-width="([\d.]+)"/g,function(mm,w){return 'stroke-width="'+f2(1.2/sc/(dxf?Math.max(v.L/dxf.largo,v.T/dxf.fondo):1))+'"'})+(dxf?'</g>':'')+'</svg>';
   }
   ['rp-l','rp-t'].forEach(function(i){g(i).addEventListener('input',prev)});g('rp-f').addEventListener('change',prev);
+  /* DXF: se elige la pieza y sus medidas y su dibujo pasan al bloque */
+  var piezas=[];
+  function usarPieza(i){
+    var b=piezas[i];if(!b)return;
+    dxf={planta:b.planta,alzado:b.alzado||'',lateral:b.lateral||'',largo:b.largo,fondo:b.fondo,alto:b.alto||0,archivo:g('rp-dxfs').getAttribute('data-f')||'DXF'};
+    g('rp-nm').value=b.nombre||g('rp-nm').value;g('rp-l').value=f2(b.largo);g('rp-t').value=f2(b.fondo);if(b.alto)g('rp-a').value=f2(b.alto);
+    if(b.categoria&&(g('rp-c').value==='Mobiliario'||!g('rp-c').value))g('rp-c').value=b.categoria;
+    g('rp-f-w').hidden=true;prev();
+  }
+  g('rp-dxf').addEventListener('click',function(){g('rp-dxff').click()});
+  g('rp-dxff').addEventListener('change',function(e){
+    var fl=e.target.files&&e.target.files[0];if(!fl)return;
+    g('rp-dxfs').textContent='Leyendo «'+fl.name+'»…';g('rp-dxfs').setAttribute('data-f',fl.name);
+    var rd=new FileReader();
+    rd.onload=function(){cargarDXF(function(){setTimeout(function(){
+      try{
+        var res=window.RanuseDXF.piezasDe(String(rd.result),{archivo:fl.name});
+        piezas=(res.piezas||[]).slice().sort(function(a,b){return (a.generico?1:0)-(b.generico?1:0)||(a.aprox?1:0)-(b.aprox?1:0)||a.nombre.localeCompare(b.nombre)});
+        if(!piezas.length){g('rp-dxfs').textContent='Ese DXF no tiene piezas con dibujo.';return}
+        g('rp-dxfs').textContent=piezas.length+(piezas.length===1?' pieza':' piezas')+' en «'+fl.name+'»';
+        g('rp-pz').innerHTML=piezas.map(function(b,i){return '<option value="'+i+'">'+esc(b.nombre)+' · '+fmt(b.largo)+' × '+fmt(b.fondo)+' cm</option>'}).join('');
+        g('rp-pz-w').hidden=piezas.length<2;usarPieza(0);
+      }catch(err){g('rp-dxfs').textContent='No se pudo leer ese DXF ('+(err&&err.message||'error')+')'}
+    },30)})};
+    rd.onerror=function(){g('rp-dxfs').textContent='No se pudo abrir el archivo'};
+    rd.readAsText(fl);e.target.value='';
+  });
+  g('rp-pz').addEventListener('change',function(){usarPieza(+g('rp-pz').value)});
   function cerrar(){m.remove()}
   g('rp-x').addEventListener('click',cerrar);m.addEventListener('click',function(e){if(e.target===m)cerrar()});
   g('rp-ok').addEventListener('click',function(){
@@ -9834,18 +9869,22 @@ function bloqueRapido(){
     if(!(v.L>=5&&v.T>=5))return;
     var cx=(W/2-st.tx)/st.k,cy=(H/2-st.ty)/st.k,nq=nearNode(cx,cy,1e9,null);
     if(!nq){toast('Dibuja primero el contorno de la sala');return}
-    var frag=bloqueRapidoPlanta(v.forma,v.L,v.T),L=Math.round(v.L*10)/10,T=Math.round(v.T*10)/10;
+    var L=Math.round(v.L*10)/10,T=Math.round(v.T*10)/10;
+    /* el dibujo: el del DXF (con su escala si se han cambiado las medidas) o la forma elegida */
+    var frag=dxf?dxf.planta:bloqueRapidoPlanta(v.forma,L,T);
     snap();
     var ne={id:uid('e'),n:nq.id,dx:f2(cx-nq.x),dy:f2(cy-nq.y),w:L,d:T,rot:0,nm:v.nm,ty:'gen',ref:''};
     if(st.view==='actual')ne.s='ex';
     if(v.bib){ /* se guarda en la biblioteca: la pieza usa ese bloque (misma ruta que los bloques dibujados) */
-      var item={nombre:v.nm.slice(0,120),categoria:v.fam,largo:L,fondo:T,alto:v.A,planta:frag,origen:'Bloque rápido'};
-      var tmpId='rap'+Date.now().toString(36),ent={id:tmpId,nombre:item.nombre,tipo:'gen',w:L,d:T,alto:v.A,categoria:v.fam,ref:'Bloque rápido',vistas:['planta'],bloque:{planta:frag,largo:L,fondo:T,alto:v.A}};
+      var item={nombre:v.nm.slice(0,120),categoria:v.fam,largo:dxf?dxf.largo:L,fondo:dxf?dxf.fondo:T,alto:v.A,planta:frag,alzado:dxf?dxf.alzado:'',lateral:dxf?dxf.lateral:'',origen:dxf?'Importado de '+dxf.archivo:'Bloque rápido'};
+      var tmpId='rap'+Date.now().toString(36),vs=[item.planta&&'planta',item.alzado&&'alzado',item.lateral&&'lateral'].filter(Boolean);
+      var ent={id:tmpId,nombre:item.nombre,tipo:'gen',w:item.largo,d:item.fondo,alto:v.A,categoria:v.fam,ref:item.origen,vistas:vs,bloque:{planta:frag,largo:item.largo,fondo:item.fondo,alto:v.A}};
+      bloquesFull[tmpId]={largo:item.largo,fondo:item.fondo,alto:v.A,svg:{planta:item.planta||'',alzado:item.alzado||'',lateral:item.lateral||''}};
       ne.cid=tmpId;
       if(CRM){ent.oculto=true;custom.push(ent);crmPost({type:'guardarBiblioteca',items:[item]});st.pendBib={eq:ne.id,nombre:item.nombre,tmp:tmpId}}
       else{ent.biblioteca=true;saveCat(ent)}
     }else{ /* solo en este plano: el dibujo va dentro de la pieza */
-      ne.cid=uid('bq');ne.bl={planta:frag,largo:L,fondo:T,alto:v.A,categoria:v.fam};
+      ne.cid=uid('bq');ne.bl={planta:frag,largo:dxf?dxf.largo:L,fondo:dxf?dxf.fondo:T,alto:v.A,categoria:v.fam};
     }
     st.v.eq.push(ne);st.sel={t:'eq',id:ne.id};st.multi=[];
     if(st.view==='demol'||st.view==='interv'||st.view==='alz'||st.view==='actual'){st.view='distrib';try{toolbar()}catch(e2){}}
