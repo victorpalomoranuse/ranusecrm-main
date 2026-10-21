@@ -2095,7 +2095,10 @@ function techoMedicion(z,inner){
 }
 function techoSvg(C,px,view,sel){
   var h='';
-  if(view!=='techos')return h;
+  /* en iluminación y electricidad se ve la estructura del techo (vigas, correas, tragaluces) como referencia, más suave y sin poder tocarla */
+  var ref=view==='ilum'||view==='elec';
+  if(view!=='techos'&&!ref)return h;
+  if(ref)sel=null;
   roomFaces('techos').forEach(function(f){
     var z=zoneIn(f,'t');if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
     var b=techoBox(f.inner),fo=z.fo||'plano',ej=z.ej==='v'?'v':'h',col=C.accent||C.dim,H=num(st.v.altura)||260;
@@ -2112,14 +2115,14 @@ function techoSvg(C,px,view,sel){
         });
       });
     }
-    if(z.vg)rectas('vg',Math.max(z.vg.w||10,2),0.45); /* con cubierta, las vigas van de alero a alero (perpendiculares a la cumbrera) */
-    if(fo!=='plano'&&z.cr)rectas('cr',4*px,0.6);
-    if(fo==='dos'||fo==='boveda'){ /* cumbrera / clave */
+    if(z.vg)rectas('vg',Math.max(z.vg.w||10,2),ref?0.3:0.45); /* con cubierta, las vigas van de alero a alero (perpendiculares a la cumbrera) */
+    if(fo!=='plano'&&z.cr)rectas('cr',4*px,ref?0.4:0.6);
+    if(!ref&&(fo==='dos'||fo==='boveda')){ /* cumbrera / clave */
       if(ej==='h')h+=seg(b.x0,b.cy,b.x1,b.cy,2.2*px,f2(10*px)+' '+f2(3*px)+' '+f2(2*px)+' '+f2(3*px));
       else h+=seg(b.cx,b.y0,b.cx,b.y1,2.2*px,f2(10*px)+' '+f2(3*px)+' '+f2(2*px)+' '+f2(3*px));
     }
     /* flechas de caída (hacia el alero) */
-    if(fo!=='plano'){
+    if(fo!=='plano'&&!ref){
       var L=Math.min(60,(ej==='h'?(b.y1-b.y0):(b.x1-b.x0))/ (fo==='dos'?4:3));
       function flecha(x,y,dx,dy){var ex=x+dx*L,ey=y+dy*L;return seg(x,y,ex,ey,1.4*px)+seg(ex,ey,ex-dx*8*px-dy*5*px,ey-dy*8*px+dx*5*px,1.4*px)+seg(ex,ey,ex-dx*8*px+dy*5*px,ey-dy*8*px-dx*5*px,1.4*px)}
       var pts=(fo==='dos'||fo==='boveda')?(ej==='h'?[[b.cx-(b.x1-b.x0)/4,b.cy,0,-1],[b.cx-(b.x1-b.x0)/4,b.cy,0,1],[b.cx+(b.x1-b.x0)/4,b.cy,0,-1],[b.cx+(b.x1-b.x0)/4,b.cy,0,1]]:[[b.cx,b.cy-(b.y1-b.y0)/4,-1,0],[b.cx,b.cy-(b.y1-b.y0)/4,1,0],[b.cx,b.cy+(b.y1-b.y0)/4,-1,0],[b.cx,b.cy+(b.y1-b.y0)/4,1,0]])
@@ -2130,10 +2133,10 @@ function techoSvg(C,px,view,sel){
       var x0=t.x-t.w/2,y0=t.y-t.d/2,x1=t.x+t.w/2,y1=t.y+t.d/2,esT=!!(selE&&selE.k==='tl'&&selE.i===i);
       h+='<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(t.w)+'" height="'+f2(t.d)+'" style="fill:'+(esT?colSel:col)+';fill-opacity:'+(esT?.3:.12)+';stroke:'+(esT?colSel:col)+';stroke-width:'+f2((esT?2.6:1.6)*px)+'"/>';
       h+=seg(x0,y0,x1,y1,1*px,'',0.7)+seg(x1,y0,x0,y1,1*px,'',0.7);
-      h+=txt(C,px,t.x,y1+13*px,'T'+(i+1)+' · '+fmtU(t.w)+' × '+fmtU(t.d),col,10,700);
+      if(!ref)h+=txt(C,px,t.x,y1+13*px,'T'+(i+1)+' · '+fmtU(t.w)+' × '+fmtU(t.d),col,10,700);
     });
     var rot=fo==='plano'?(z.vg?'Vigas '+fmtU(z.vg.w||10)+' × '+fmtU(z.vg.h||20)+' cada '+fmtU(z.vg.s||60):''):(fo==='dos'?'Cumbrera '+fmtU(hc)+' · alero '+fmtU(ha):fo==='boveda'?'Clave '+fmtU(hc)+' · arranque '+fmtU(ha):'Alto '+fmtU(hc)+' · bajo '+fmtU(ha));
-    if(rot)h+=txt(C,px,b.cx,b.cy+(fo==='dos'&&ej==='h'?18*px:0)+16*px,rot,col,11,700);
+    if(rot&&!ref)h+=txt(C,px,b.cx,b.cy+(fo==='dos'&&ej==='h'?18*px:0)+16*px,rot,col,11,700);
   });
   return h;
 }
