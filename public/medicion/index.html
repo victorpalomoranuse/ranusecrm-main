@@ -6240,6 +6240,7 @@ function panelSel(focus){
       var ppn=e.pp&&st.v.pisos&&st.v.pisos.filter(function(p){return p.id===e.pp})[0],pos=pisosOn()&&pisoIdx()<st.v.pisos.length-1;
       h+='<div class="btns tr"><button data-a="escedit" class="pri" title="Cambia la altura, el ancho o el tipo y se recalculan los peldaños">Editar la escalera</button>'+(!e.par&&pos?'<button data-a="escpar" title="La dibuja también en la planta de arriba, conectada con esta">Conectar con la planta de arriba</button>':'')+'</div><p class="note">'+esc(escResumen(e.bl.esc))+(e.par&&ppn?' Conectada con «'+esc(ppn.nombre)+'»: '+(e.rol==='llega'?'aquí es donde llega. ':'aquí es donde sube. ')+'Lo que cambies se copia a la otra planta.':'')+'</p>';
     }
+    else if(pisosOn()&&pisoIdx()<st.v.pisos.length-1){h+='<div class="btns tr"><button data-a="eqarriba" title="Pone una copia de este bloque en el mismo sitio de la planta de arriba (por ejemplo, una escalera existente que sube)">Copiar a la planta de arriba</button></div>'}
     h+='<div class="lab">Estado del bloque</div>'+seg3(e.s||'new','eqstate')+'<p class="note" style="margin:4px 0 8px">'+(e.s==='ex'?'Ya está en el espacio: sale en Estado actual y se mantiene en Distribución.':e.s==='dem'?'Ya está y se retira: sale en Estado actual y en Demoliciones, no en Distribución.':'Nuevo: solo sale en Distribución (y cuenta en el presupuesto).')+'</p>';
     h+='<div class="lab">Pegar al ras del muro, pilar o bloque más cercano</div><div class="btns tr"><button data-a="eqpg:-1,0" title="Pegar a la izquierda">⟵ Izquierda</button><button data-a="eqpg:1,0" title="Pegar a la derecha">Derecha ⟶</button><button data-a="eqpg:0,-1" title="Pegar hacia arriba">↑ Arriba</button><button data-a="eqpg:0,1" title="Pegar hacia abajo">↓ Abajo</button></div><p class="note" style="margin:2px 0 6px">Al arrastrar un bloque también se pega solo al ras de muros, pilares y otros bloques cercanos (con Alt pulsado no).</p>';
     h+='<div class="lab">Girar e invertir</div><div class="btns tr"><button data-a="eqrotl45" title="Girar 45° a la izquierda">⟲ 45°</button><button data-a="eqrot45" title="Girar 45° a la derecha">⟳ 45°</button><button data-a="eqrotl" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="eqrot" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="eqrot180" title="Girar 180°">180°</button><button data-a="eqflx" aria-pressed="'+!!e.fx+'" title="Espejo izquierda-derecha">⇋ Espejo</button><button data-a="eqfly" aria-pressed="'+!!e.fy+'" title="Espejo arriba-abajo">⇅ Espejo</button></div>';
@@ -6810,6 +6811,7 @@ function doAction(a,el){
   if(a==='defstate'){st.defState=sv;toolbar();return}
   if(a==='dims'){st.dims=sv;toolbar();save();render();return}
   if(a==='escedit'&&st.sel&&st.sel.t==='eq'){escModal(st.sel.id);return}
+  if(a==='eqarriba'&&st.sel&&st.sel.t==='eq'){var eo=by(st.v.eq,st.sel.id);if(eo){var rc=eqCopiarArriba(eo);if(rc===true){toast('Copiado en la planta de arriba, en el mismo sitio')}else toast(rc)}return}
   if(a==='escpar'&&st.sel&&st.sel.t==='eq'){var ee=by(st.v.eq,st.sel.id);if(ee){snap();var rp=escCrearPar(ee);if(rp===true){commit();toast('Conectada: también sale en la planta de arriba')}else{hist.pop();toast(rp)}}return}
   if((a==='zfront'||a==='zback')&&st.sel){
     var lz={eq:st.v.eq,pil:st.v.pil,dr:st.v.dr}[st.sel.t],itz=lz&&by(lz,st.sel.id);
@@ -10004,6 +10006,18 @@ function escCrearPar(e){
   if(e.fx)q.fx=e.fx;if(e.fy)q.fy=e.fy;if(e.s)q.s=e.s;
   b.eq.push(q);
   e.par=true;e.pp=p.id;e.rol=e.rol||'sube';
+  return true;
+}
+/* copia un bloque suelto en el mismo sitio de la planta de arriba (no queda enlazado: es solo una copia). Devuelve true o el motivo */
+function eqCopiarArriba(e){
+  if(!pisosOn())return 'No hay otra planta';
+  var p=st.v.pisos[pisoIdx()+1];if(!p)return 'Esta es la última planta';
+  var b=p.b;if(!b||!b.nodes||!b.nodes.length)return 'Dibuja antes los muros de «'+p.nombre+'»';
+  b.eq=b.eq||[];
+  var c=pc(e),nn=escNodoCerca(b.nodes,c.x,c.y);
+  snap();
+  var q=JSON.parse(JSON.stringify(e));q.id=uid('e');q.n=nn.id;q.dx=f2(c.x-nn.x);q.dy=f2(c.y-nn.y);delete q.lid;delete q.par;delete q.pp;
+  b.eq.push(q);commit();
   return true;
 }
 /* las dos mitades de una escalera se mantienen iguales: lo que cambias en una planta (sitio, giro, medidas) se copia a la otra. Si borras una, desaparece la otra. */
