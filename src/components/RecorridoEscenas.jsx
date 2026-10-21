@@ -12,13 +12,13 @@ const VS = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
 const FS = `
 precision highp float;
 uniform sampler2D uIA,uDA,uIB,uDB;
-uniform vec2 uRes,uFA,uFB;
+uniform vec2 uRes,uFA,uFB,uLook;
 uniform float uTA,uLA,uTB,uLB,uSwA,uSwB,uRA,uRB,uMix,uAspA,uAspB;
 vec3 escena(sampler2D img,sampler2D dep,float t,float lat,float sw,float rel,vec2 foc,float asp,vec2 s){
   float va=uRes.x/uRes.y;vec2 uv=s;
   if(va<asp)uv.x=0.5+(s.x-0.5)*(va/asp);else uv.y=0.5+(s.y-0.5)*(asp/va);
   vec2 p=uv;
-  vec2 sway=vec2(sw*0.012-lat*0.034,sw*0.004);
+  vec2 sway=vec2(sw*0.012-lat*0.034,sw*0.004)+uLook*vec2(0.022,0.011);
   for(int i=0;i<10;i++){
     float n=0.5+(texture2D(dep,p).r-0.5)*rel;
     float k=0.12+n*0.95;
@@ -64,6 +64,9 @@ export default function RecorridoEscenas({ escenas }) {
     const gl = gl2 || el.getContext('webgl', { antialias: false, alpha: false }) || el.getContext('experimental-webgl');
     if (!gl) { setFallo(true); return undefined; }
     let muerto = false, raf = 0, ocupado = false, W = 0, H = 0, cur = 0, obj = 0, entra = 1, pr = null;
+    // mirar un poco alrededor: el ratón (o la inclinación del móvil) y una respiración suave mueven la cámara, además del avance por profundidad
+    const quieto = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let ptrX = 0, ptrY = 0, lookX = 0, lookY = 0, viz = true;
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
     try {
       const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
@@ -71,7 +74,7 @@ export default function RecorridoEscenas({ escenas }) {
     } catch { setFallo(true); return undefined; }
     const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     const loc = gl.getAttribLocation(pr, 'a'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    const U = {}; ['uIA', 'uDA', 'uIB', 'uDB', 'uRes', 'uFA', 'uFB', 'uTA', 'uLA', 'uTB', 'uLB', 'uSwA', 'uSwB', 'uRA', 'uRB', 'uMix', 'uAspA', 'uAspB'].forEach(n => { U[n] = gl.getUniformLocation(pr, n); });
+    const U = {}; ['uIA', 'uDA', 'uIB', 'uDB', 'uRes', 'uLook', 'uFA', 'uFB', 'uTA', 'uLA', 'uTB', 'uLB', 'uSwA', 'uSwB', 'uRA', 'uRB', 'uMix', 'uAspA', 'uAspB'].forEach(n => { U[n] = gl.getUniformLocation(pr, n); });
     gl.uniform1i(U.uIA, 0); gl.uniform1i(U.uDA, 1); gl.uniform1i(U.uIB, 2); gl.uniform1i(U.uDB, 3);
     const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 2048;
     // calidad máxima, cuidando la memoria: con varias escenas las texturas son algo más pequeñas y solo viven las cercanas
@@ -109,13 +112,15 @@ export default function RecorridoEscenas({ escenas }) {
       const o = outer.current; if (!o) return;
       const r = o.getBoundingClientRect(), total = r.height - st.clientHeight;
       obj = (total > 0 ? Math.max(0, Math.min(1, -r.top / total)) : 0) * (N - 0.0001);
+      viz = r.bottom > 0 && r.top < window.innerHeight && !document.hidden;
       entra = Math.max(0, Math.min(1, 1 - r.top / Math.max(1, st.clientHeight))); /* 0 = aún no se ve, 1 = ya está fijo en pantalla */
     };
     const nProf = (i, px, py) => { const m = mapas[i]; if (!m) return 0.4; const x = Math.max(0, Math.min(159, Math.round(px * 159))), y = Math.max(0, Math.min(112, Math.round(py * 112))); return m[y * 160 + x]; };
     const aPantalla = (i, x, y, t, lat, sw, rel) => {
+      const lx = lookX, ly = lookY;
       const n = 0.5 + (nProf(i, x / 100, y / 100) - 0.5) * rel, k = 0.12 + n * 0.95, asp = tex[i] ? tex[i].asp : 1.5;
-      const u = FOC[0] + (x / 100 + (sw * 0.012 - lat * 0.034) * (n - 0.35) - FOC[0]) * (1 + t * k);
-      const v = FOC[1] + (y / 100 + sw * 0.004 * (n - 0.35) - FOC[1]) * (1 + t * k);
+      const u = FOC[0] + (x / 100 + (sw * 0.012 - lat * 0.034 + lx * 0.022) * (n - 0.35) - FOC[0]) * (1 + t * k);
+      const v = FOC[1] + (y / 100 + (sw * 0.004 + ly * 0.011) * (n - 0.35) - FOC[1]) * (1 + t * k);
       const va = W / H; let sx, sy;
       if (va < asp) { sx = 0.5 + (u - 0.5) / (va / asp); sy = v; } else { sx = u; sy = 0.5 + (v - 0.5) / (asp / va); }
       return { x: sx * W, y: sy * H };
@@ -130,6 +135,12 @@ export default function RecorridoEscenas({ escenas }) {
     const dibuja = () => {
       ocupado = false; if (muerto) return;
       cur += (obj - cur) * 0.12; if (Math.abs(obj - cur) < 0.0004) cur = obj;
+      if (!quieto) {
+        const tt = performance.now() / 1000;
+        const oX = ptrX + Math.sin(tt * 0.45) * 0.28, oY = ptrY + Math.sin(tt * 0.31 + 1) * 0.18;
+        lookX += (oX - lookX) * 0.05; lookY += (oY - lookY) * 0.05;
+      }
+      gl.uniform2f(U.uLook, lookX, lookY);
       const i = Math.min(N - 1, Math.floor(cur)), f = cur - i, ultima = i >= N - 1;
       // la escena avanza con el scroll; al final se funde con la siguiente, que ya empieza a moverse (movimiento continuo, sin saltos)
       const s0 = i > 0 ? S0 : 0, base = s0 + (1 - s0) * f;
@@ -183,17 +194,22 @@ export default function RecorridoEscenas({ escenas }) {
           b.style.opacity = dentro ? Math.max(0, Math.min(1, op)) : 0; b.style.pointerEvents = dentro && op > 0.5 ? 'auto' : 'none';
         });
       });
-      if (cur !== obj) pide();
+      if (cur !== obj || (!quieto && viz)) pide();
     };
     const pide = () => { if (!ocupado && !muerto) { ocupado = true; raf = requestAnimationFrame(dibuja); } };
     const tick = () => { lee(); pide(); };
     const redim = () => { medida(); tick(); };
     medida(); asegura(0); asegura(1);
+    const alRaton = (ev) => { if (ev.pointerType && ev.pointerType !== 'mouse') return; ptrX = (ev.clientX / Math.max(1, window.innerWidth) - 0.5) * 2; ptrY = (ev.clientY / Math.max(1, window.innerHeight) - 0.5) * 2; };
+    const alGiro = (ev) => { if (ev.gamma == null || ev.beta == null) return; ptrX = Math.max(-1, Math.min(1, ev.gamma / 25)); ptrY = Math.max(-1, Math.min(1, (ev.beta - 50) / 25)); };
+    const alVer = () => { lee(); pide(); };
+    if (!quieto) { window.addEventListener('pointermove', alRaton, { passive: true }); window.addEventListener('deviceorientation', alGiro, { passive: true }); document.addEventListener('visibilitychange', alVer); }
     window.addEventListener('scroll', tick, { passive: true });
     window.addEventListener('resize', redim);
     return () => {
       muerto = true; cancelAnimationFrame(raf);
       window.removeEventListener('scroll', tick); window.removeEventListener('resize', redim);
+      window.removeEventListener('pointermove', alRaton); window.removeEventListener('deviceorientation', alGiro); document.removeEventListener('visibilitychange', alVer);
       tex.forEach(t => { if (t) { gl.deleteTexture(t.img); gl.deleteTexture(t.dep); } });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
