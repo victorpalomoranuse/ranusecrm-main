@@ -414,14 +414,14 @@ export function StorytellingPortal({ project, dossier, code }) {
         <Fragment key={c.id}>
         {mostrarCap[i] && (
         <section className="sp-chap" id={`sp-c-${c.id}`}>
-          <div className="sp-chap-head sp-rv">
+          {!(c.render_url||c.bloques.some(b=>b.tipo==='render'&&b.imagen_url))&&<div className="sp-chap-head sp-rv">
             {capitulos.length > 1 && <div className="sp-num">{String(i + 1).padStart(2, '0')}</div>}
             <div>
               <p className="sp-label" style={{ marginBottom: 10 }}>{capitulos.length > 1 ? 'Zona' : 'Tu espacio'}</p>
               <h2>{c.titulo}</h2>
               {c.texto && <p className="sp-text">{c.texto}</p>}
             </div>
-          </div>
+          </div>}
           <PasosPlano bloques={c.bloques} docs={docsTecnicos} />
           <Bloques bloques={c.bloques.filter(b => b.tipo !== 'render' && !esPaso(b))} capitulos={capitulos} equipo={project.equipment} materiales={project.materials} />
           {c.servicios.length > 0 && (
