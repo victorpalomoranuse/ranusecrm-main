@@ -414,7 +414,7 @@ export function StorytellingPortal({ project, dossier, code }) {
         <Fragment key={c.id}>
         {mostrarCap[i] && (
         <section className="sp-chap" id={`sp-c-${c.id}`}>
-          {!(c.render_url||c.bloques.some(b=>b.tipo==='render'&&b.imagen_url))&&<div className="sp-chap-head sp-rv">
+          {(i===iEsp||capitulos.length<2)&&<div className="sp-chap-head sp-rv">
             {capitulos.length > 1 && <div className="sp-num">{String(i + 1).padStart(2, '0')}</div>}
             <div>
               <p className="sp-label" style={{ marginBottom: 10 }}>{capitulos.length > 1 ? 'Zona' : 'Tu espacio'}</p>
