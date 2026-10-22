@@ -85,6 +85,12 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           responder({ type: 'planoIAResultado', plano: data });
         } catch (err) { responder({ type: 'planoIAError', message: err.response?.data?.error || 'No se pudo leer el plano' }); }
       }
+      else if (m.type === 'subirFotosProducto' && m.id && Array.isArray(m.imagenes)) {
+        try {
+          const { data } = await api.post(`/catalog/products/${m.id}/fotos`, { imagenes: m.imagenes.slice(0, 4), principal: !!m.principal }, { timeout: 120000 });
+          responder({ type: 'fotosProducto', id: m.id, foto: data.photo_url, n: data.n });
+        } catch (err) { responder({ type: 'fotosProductoError', id: m.id, message: err.response?.data?.error || 'No se pudieron guardar las fotos' }); }
+      }
       else if (m.type === 'generarBloqueProducto' && m.id) {
         try {
           const { data } = await api.post(`/catalog/products/${m.id}/bloques/generar`, { largo: m.largo, fondo: m.fondo, alto: m.alto }, { timeout: 600000 });

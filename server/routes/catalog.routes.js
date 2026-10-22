@@ -387,11 +387,49 @@ router.put('/products/:id/paso', async (req, res) => {
   }
 });
 
+// Fotos del producto subidas desde Planos: la primera puede ser la foto principal (photo_url) y el resto se guardan como fotos extra
+// (bloques.fotos) para generar el bloque con varias vistas del producto.
+router.post('/products/:id/fotos', async (req, res) => {
+  try {
+    const { data: p, error } = await supabase.from('catalog_products').select('id, photo_url, bloques').eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!p) return res.status(404).json({ error: 'Producto no encontrado' });
+    const bufs = [];
+    for (const d of (Array.isArray(req.body?.imagenes) ? req.body.imagenes.slice(0, 4) : [])) {
+      const m = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(d || ''));
+      if (!m) continue;
+      const b = Buffer.from(m[2], 'base64');
+      if (b.length > 12 * 1024 * 1024) continue;
+      const jpg = await sharp(b).rotate().resize(2000, 2000, { fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 88 }).toBuffer();
+      bufs.push(jpg);
+    }
+    if (!bufs.length) return res.status(400).json({ error: 'Las imágenes no son válidas (usa PNG, JPG o WebP)' });
+    const urls = [];
+    for (const b of bufs) urls.push(await uploadCatalogPhoto(b, 'foto.jpg', 'image/jpeg'));
+    const updates = {};
+    const extra = [...(Array.isArray(p.bloques?.fotos) ? p.bloques.fotos : [])];
+    let resto = urls;
+    if (req.body?.principal || !p.photo_url) {
+      if (p.photo_url) await deleteCatalogPhoto(p.photo_url);
+      updates.photo_url = urls[0];
+      resto = urls.slice(1);
+    }
+    const fotos = [...extra, ...resto].slice(-6);
+    updates.bloques = { ...(p.bloques || {}), fotos };
+    const { error: eUp } = await supabase.from('catalog_products').update(updates).eq('id', req.params.id);
+    if (eUp) throw eUp;
+    res.json({ ok: true, photo_url: updates.photo_url || p.photo_url, fotos, n: 1 + fotos.length });
+  } catch (err) {
+    console.error('catalog fotos:', err);
+    res.status(500).json({ error: 'No se pudieron guardar las fotos del producto' });
+  }
+});
+
 // Genera con IA un borrador de bloques (planta, alzado, lateral) a partir de la foto y las
 // medidas del producto. No guarda nada: el editor de bloques lo muestra para revisarlo.
 router.post('/products/:id/bloques/generar', async (req, res) => {
   try {
-    const { data: p, error } = await supabase.from('catalog_products').select('id, name, photo_url, longitud, ancho, altura').eq('id', req.params.id).maybeSingle();
+    const { data: p, error } = await supabase.from('catalog_products').select('id, name, photo_url, longitud, ancho, altura, bloques').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!p) return res.status(404).json({ error: 'Producto no encontrado' });
     if (!p.photo_url) return res.status(400).json({ error: 'El producto necesita una foto para generar los bloques' });
@@ -400,8 +438,13 @@ router.post('/products/:id/bloques/generar', async (req, res) => {
     const r = await fetch(p.photo_url);
     if (!r.ok) return res.status(400).json({ error: 'No se pudo leer la foto del producto' });
     const imagen = Buffer.from(await r.arrayBuffer());
+    // además de la foto principal, las fotos extra del producto (otras vistas)
+    const imagenes = [imagen];
+    for (const u of (Array.isArray(p.bloques?.fotos) ? p.bloques.fotos : []).slice(0, 3)) {
+      try { const rr = await fetch(u); if (rr.ok) imagenes.push(Buffer.from(await rr.arrayBuffer())); } catch { /* sin esa foto */ }
+    }
     // 1) modelo 3D a partir de la foto, proyectado a las tres vistas; 2) si el servicio 3D no responde, ensamblaje de piezas con IA
-    const b = await generarBloquesAuto({ imagen, largo, fondo, alto, nombre: p.name });
+    const b = await generarBloquesAuto({ imagen, imagenes, largo, fondo, alto, nombre: p.name });
     res.json({ bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, shapes: b.shapes, svg: b.svg, nota: b.nota, metodo: b.metodo } });
   } catch (err) {
     console.error('catalog bloques generar:', err);

@@ -6297,8 +6297,8 @@ function panelSel(focus){
     if(CRM&&ce0&&!ce0.biblioteca&&!ce0.generico&&/^[0-9a-f]{8}-/.test(String(ce0.id))){
       var gen0=genProd[ce0.id];
       h+='<div class="lab">Bloque de este producto</div><p class="note" style="margin:0 0 6px">'+(ce0.bloque?'Tiene bloque propio: se dibuja así en el plano y en SketchUp.':'Aún no tiene bloque propio: ahora sale un símbolo genérico.')+' Lo que hagas aquí se guarda en el producto, para todos los planos.</p>';
-      h+='<div class="btns"><button data-a="prodgen"'+(gen0?' disabled':'')+'>'+(gen0?'Generando… (unos minutos)':(ce0.bloque?'✨ Volver a generar con IA':'✨ Generar con IA (desde la foto)'))+'</button><button data-a="prodsubir">Subir bloque (DXF de Rayon…)</button><button data-a="prodbib">Usar un bloque de mi biblioteca…</button></div>';
-      if(!ce0.foto)h+='<p class="note">Para generarlo con IA el producto necesita foto y medidas en el catálogo.</p>';
+      h+='<div class="btns"><button data-a="prodgen"'+(gen0?' disabled':'')+'>'+(gen0?'Generando… (unos minutos)':(ce0.bloque?'✨ Volver a generar con IA':'✨ Generar con IA (desde la foto)'))+'</button><button data-a="prodfoto" title="Sube una o varias fotos (de frente, de lado, en perspectiva): se quedan en el producto del catálogo y se usan para generar su bloque">📷 Subir fotos del producto…</button><button data-a="prodsubir">Subir bloque (DXF de Rayon…)</button><button data-a="prodbib">Usar un bloque de mi biblioteca…</button></div>';
+      if(!ce0.foto)h+='<p class="note">Para generarlo con IA el producto necesita foto y medidas en el catálogo: puedes subir las fotos aquí mismo.</p>';
     }
     if(ce0&&ce0.generico){
       var reales=catalog().filter(function(c){return !c.generico&&c.id!==e.cid});
@@ -6923,6 +6923,21 @@ function doAction(a,el){
     toast('Generando el bloque con IA… puede tardar unos minutos. Puedes seguir trabajando.');return;
   }
   if(a==='prodbib'&&s.t==='eq'){var pe3=by(st.v.eq,s.id);if(!pe3)return;var pc3=catById(pe3.cid);if(pc3)abrirBibProducto(pc3);return}
+  if(a==='prodfoto'&&s.t==='eq'){
+    var pef=by(st.v.eq,s.id),pcf=pef&&catById(pef.cid);if(!pcf)return;
+    if(!CRM){toast('Esto solo funciona dentro del CRM');return}
+    var inpf=document.createElement('input');inpf.type='file';inpf.accept='image/*';inpf.multiple=true;
+    inpf.addEventListener('change',function(){
+      var fs0=[].slice.call(inpf.files||[],0,4);if(!fs0.length)return;
+      var principal=!pcf.foto||window.confirm('¿Usar la primera foto como foto principal del producto? (sustituye a la actual; Cancelar la deja y la añade como foto extra)');
+      var out=[],n=0;
+      fs0.forEach(function(fl,i){reducirImagen(fl,function(d){out[i]=d;if(++n===fs0.length){
+        crmPost({type:'subirFotosProducto',id:pcf.id,imagenes:out.filter(Boolean),principal:principal});
+        toast('Subiendo '+out.length+' foto'+(out.length>1?'s':'')+' al producto…');
+      }})});
+    });
+    inpf.click();return;
+  }
   if(a==='prodsubir'&&s.t==='eq'){var pe2=by(st.v.eq,s.id);if(!pe2)return;subirProd=catById(pe2.cid);if(!subirProd)return;$('prod-dxf').click();return}
   if(a==='eqcat'){var q3=by(st.v.eq,s.id);saveCat({id:q3.cid||('c'+Date.now().toString(36)),nombre:q3.nm,tipo:q3.ty,w:q3.w,d:q3.d,ref:q3.ref||''});toast('Medidas guardadas en el catálogo');return}
   if(a==='rcadd'&&s.t==='wall'){
@@ -10609,6 +10624,11 @@ if(CRM){
         cb.w=bb.largo;cb.d=bb.fondo;cb.alto=bb.alto;
       }
       render();panelSel();drawCat();toast('Bloque guardado en el producto: ya se usa en todos los planos.');
+    }else if(m.type==='fotosProducto'){
+      var cf=catById(m.id);if(cf&&m.foto){cf.foto=m.foto;cf.fotosN=m.n||1}
+      panelSel();drawCat();toast('Fotos guardadas en el producto del catálogo ('+(m.n||1)+'). Ya puedes generar su bloque con IA.');
+    }else if(m.type==='fotosProductoError'){
+      toast(m.message||'No se pudieron guardar las fotos');
     }else if(m.type==='bloqueProductoError'){
       delete genProd[m.id];panelSel();toast(m.message||'No se pudo guardar el bloque');
     }else if(m.type==='bloque'){
