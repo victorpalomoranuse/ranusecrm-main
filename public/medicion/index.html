@@ -5518,6 +5518,8 @@ function eqTipos(){
 }
 var catAbierto={},catMarcaKeys=[];
 /* marca de un bloque del catálogo (si el servidor aún no la manda, sale de «Marca · Categoría» en su referencia) */
+/* dentro de una marca, los bloques van agrupados por tipo de producto (su categoría) */
+function subCatDe(c){return (catsDe(c)[0]||'Genéricos').replace(/^Biblioteca · /,'')}
 function marcaDe(c){
   var m=c&&(c.marca||c.brand);if(m)return String(m).trim();
   if(c&&c.marca===undefined&&c.id&&!c.biblioteca&&typeof c.ref==='string'&&c.ref.indexOf(' · ')>0)return c.ref.split(' · ')[0].trim();
@@ -5547,6 +5549,15 @@ function ordenarBloques(l,ord){
     return a.nombre.localeCompare(b.nombre,'es',{numeric:true});
   });
 }
+function subGrupos(g,l,q,btn){
+  var gr={},orden=[];
+  l.forEach(function(c){var t=subCatDe(c);if(!gr[t]){gr[t]=[];orden.push(t)}gr[t].push(c)});
+  orden.sort(function(a,b){return a.localeCompare(b,'es')});
+  return orden.map(function(t){
+    var k='S:'+g+'|'+t,ab=q?true:!!catAbierto[k];
+    return '<div class="cathead sub" data-g="'+esc(k)+'" role="button" tabindex="0" style="cursor:pointer;padding-left:22px;font-size:.92em" aria-expanded="'+ab+'"><span>'+(ab?'▾':'▸')+' '+esc(t)+'</span> <span>'+gr[t].length+'</span></div>'+(ab?gr[t].slice(0,q?200:gr[t].length).map(btn).join(''):'');
+  }).join('');
+}
 function drawCat(){
   var q=(($('cat-q')&&$('cat-q').value)||'').trim().toLowerCase(),fam={},ord=($('cat-ord')&&$('cat-ord').value)||'nombre';
   catalog().forEach(function(c){
@@ -5563,7 +5574,7 @@ function drawCat(){
     var vistos={},todos=[];Object.keys(fam[f]).forEach(function(g){fam[f][g].forEach(function(c){if(!vistos[c.id]){vistos[c.id]=1;todos.push(c)}})});
     if(!todos.some(function(c){return marcaDe(c)}))return;
     var nf={};todos.forEach(function(c){var k='M:'+f+'|'+(marcaDe(c)||'Sin marca');(nf[k]=nf[k]||[]).push(c)});
-    fam[f]=nf;Object.keys(nf).forEach(function(k){catMarcaKeys.push(k)});
+    fam[f]=nf;Object.keys(nf).forEach(function(k){catMarcaKeys.push(k);nf[k].forEach(function(c){var sk='S:'+k+'|'+subCatDe(c);if(catMarcaKeys.indexOf(sk)<0)catMarcaKeys.push(sk)})});
   });
   function btn(c){
     return '<button data-cat="'+esc(c.id)+'" aria-pressed="'+(placeId===c.id&&st.tool==='equip')+'">'+thumb(c)+'<span>'+esc(c.nombre)+'</span><small>'+fmt(c.w)+' × '+fmt(c.d)+' cm'+(c.bloque?' · ✓ bloque':'')+(c.generico?' · genérico':'')+(c.sinMedidas?' · sin medidas':'')+'</small></button>';
@@ -5578,16 +5589,16 @@ function drawCat(){
     if(!fab)return out;
     var norm5=function(t){return String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').slice(0,5)};
     var porMarca=cats.length&&cats[0].indexOf('M:')===0;
-    cats.sort(function(a,b){if(!porMarca)return a.localeCompare(b,'es');var sa=/|Sin marca$/.test(a),sb=/|Sin marca$/.test(b);return sa-sb||a.localeCompare(b,'es',{sensitivity:'base'})});
+    cats.sort(function(a,b){if(!porMarca)return a.localeCompare(b,'es');var sa=/\|Sin marca$/.test(a),sb=/\|Sin marca$/.test(b);return sa-sb||a.localeCompare(b,'es',{sensitivity:'base'})});
     if(cats.length===1&&!porMarca){ // una sola categoría: sin escalón intermedio
       var lu=ordenarBloques(fam[f][cats[0]],ord),limu=q?200:lu.length;
       out+=lu.slice(0,limu).map(btn).join('')+(lu.length>limu?'<p class="note" style="grid-column:1/-1">Mostrando '+limu+' de '+lu.length+'. Afina la búsqueda para ver el resto.</p>':'');
       return out;
     }
     cats.forEach(function(g){
-      var l=ordenarBloques(fam[f][g],ord),nombreG=g.replace(/^Biblioteca · /,'').replace(/^M:[^|]*|/,''),etq=(!porMarca&&norm5(nombreG)===norm5(f))?'General':nombreG;
+      var l=ordenarBloques(fam[f][g],ord),nombreG=g.replace(/^Biblioteca · /,'').replace(/^M:[^|]*\|/,''),etq=(!porMarca&&norm5(nombreG)===norm5(f))?'General':nombreG;
       var abierto=q?true:(catAbierto[g]!==undefined?catAbierto[g]:(porMarca?false:l.length<=12)),lim=q?200:l.length;
-      out+='<div class="cathead sub" data-g="'+esc(g)+'" role="button" tabindex="0" style="cursor:pointer" aria-expanded="'+abierto+'"><span>'+(abierto?'▾':'▸')+' '+esc(etq)+'</span> <span>'+l.length+'</span></div>'+(abierto?l.slice(0,lim).map(btn).join('')+(l.length>lim?'<p class="note" style="grid-column:1/-1">Mostrando '+lim+' de '+l.length+'. Afina la búsqueda para ver el resto.</p>':''):'');
+      out+='<div class="cathead sub" data-g="'+esc(g)+'" role="button" tabindex="0" style="cursor:pointer" aria-expanded="'+abierto+'"><span>'+(abierto?'▾':'▸')+' '+esc(etq)+'</span> <span>'+l.length+'</span></div>'+(abierto?(porMarca?subGrupos(g,l,q,btn):l.slice(0,lim).map(btn).join(''))+(!porMarca&&l.length>lim?'<p class="note" style="grid-column:1/-1">Mostrando '+lim+' de '+l.length+'. Afina la búsqueda para ver el resto.</p>':''):'');
     });
     return out;
   }).join('')||'<p class="note" style="grid-column:1/-1">No hay bloques con ese nombre.</p>';
