@@ -75,7 +75,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
       }
       else if (m.type === 'generarBloque' && typeof m.imagen === 'string') {
         try {
-          const { data } = await api.post('/medicion/bloque-ia', { imagen: m.imagen, largo: m.largo, fondo: m.fondo, alto: m.alto, nombre: m.nombre }, { timeout: 600000 });
+          const { data } = await api.post('/medicion/bloque-ia', { imagen: m.imagen, imagenes: Array.isArray(m.imagenes) ? m.imagenes.slice(0, 4) : undefined, largo: m.largo, fondo: m.fondo, alto: m.alto, nombre: m.nombre }, { timeout: 600000 });
           responder({ type: 'bloqueGenerado', bloque: data.bloque });
         } catch (err) { responder({ type: 'bloqueError', message: err.response?.data?.error || 'No se pudo generar el bloque' }); }
       }

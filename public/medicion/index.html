@@ -5811,7 +5811,7 @@ function cerrarModalImg(){var m=$('imgmod');if(m)m.remove();imgGen=null}
 function reducirImagen(file,cb){
   var fr=new FileReader();
   fr.onload=function(){var im=new Image();im.onload=function(){
-    var k=Math.min(1,1024/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));
+    var k=Math.min(1,1400/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));
     var g=c.getContext('2d');g.fillStyle='#ffffff';g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0,c.width,c.height);cb(c.toDataURL('image/jpeg',0.88));
   };im.onerror=function(){toast('No se pudo leer esa imagen')};im.src=fr.result};
   fr.readAsDataURL(file);
@@ -5822,7 +5822,7 @@ function abrirModalImg(dataUrl){
     m.innerHTML='<div class="dxfbox" style="max-width:760px"><header><h3>Crear un bloque desde una imagen</h3><p class="note" style="margin:0">Pega una foto (Ctrl+V), arrástrala o súbela. Lo ideal: el objeto entero, bien visible y con fondo limpio. Si sabes sus medidas reales, ponlas (así sale a escala exacta). Si no, déjalas vacías y la IA las estima viendo la foto: revísalas. Es un primer dibujo: míralo antes de guardarlo.</p></header>'+
       '<div style="padding:12px 18px;overflow:auto;display:grid;gap:10px">'+
       '<div id="img-drop" style="border:1.5px dashed var(--line);border-radius:10px;min-height:150px;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;cursor:pointer"><span class="note" style="margin:0">Pega aquí la imagen con Ctrl+V,<br>arrástrala o toca para elegir un archivo</span></div>'+
-      '<input type="file" id="img-file" accept="image/*" hidden>'+
+      '<input type="file" id="img-file" accept="image/*" multiple hidden><div><button type="button" id="img-clr" hidden>Quitar las fotos</button></div>'+
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px"><label class="fld" style="margin:0"><span>Nombre</span><input id="img-nom" type="text" placeholder="Prensa de piernas" autocomplete="off"></label><label class="fld" style="margin:0"><span>Categoría</span><input id="img-cat" type="text" value="Mi biblioteca" autocomplete="off"></label>'+
       '<label class="fld" style="margin:0"><span id="img-l1">Largo</span><input id="img-l" inputmode="decimal" autocomplete="off"></label><label class="fld" style="margin:0"><span id="img-l2">Fondo</span><input id="img-f" inputmode="decimal" autocomplete="off"></label><label class="fld" style="margin:0"><span id="img-l3">Alto</span><input id="img-a" inputmode="decimal" autocomplete="off"></label></div>'+
       '<p class="note" id="img-msg" style="margin:0"></p><div id="img-res" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>'+
@@ -5830,11 +5830,13 @@ function abrirModalImg(dataUrl){
     document.body.appendChild(m);
     ['img-l1','img-l2','img-l3'].forEach(function(id,i){$(id).textContent=['Largo','Fondo','Alto'][i]+' ('+UNL()+')'});
     imgGen={dataUrl:null,res:null};
-    imgGen.ponImg=function(d){imgGen.dataUrl=d;imgGen.res=null;$('img-drop').innerHTML='<img src="'+d+'" alt="" style="max-height:200px;max-width:100%;border-radius:8px">';$('img-res').innerHTML='';$('img-save').hidden=true;$('img-gen').hidden=false;$('img-msg').textContent=''};
+    imgGen.imgs=[];
+    imgGen.ponImg=function(d){if(imgGen.imgs.length>=4){toast('Ya hay 4 fotos (el máximo)');return}imgGen.imgs.push(d);imgGen.dataUrl=imgGen.imgs[0];imgGen.res=null;$('img-drop').innerHTML='<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">'+imgGen.imgs.map(function(x){return '<img src="'+x+'" alt="" style="max-height:'+(imgGen.imgs.length>1?'110':'200')+'px;max-width:100%;border-radius:8px">'}).join('')+'</div><span class="note" style="margin:6px 0 0;display:block">'+imgGen.imgs.length+' foto'+(imgGen.imgs.length>1?'s':'')+(imgGen.imgs.length<4?' · pulsa o pega para añadir otra (de frente, de lado, en perspectiva…)':'')+'</span>';$('img-clr').hidden=false;$('img-res').innerHTML='';$('img-save').hidden=true;$('img-gen').hidden=false;$('img-msg').textContent=''};
     $('img-drop').addEventListener('click',function(){$('img-file').click()});
-    $('img-file').addEventListener('change',function(){var f=$('img-file').files[0];if(f)reducirImagen(f,imgGen.ponImg)});
+    $('img-file').addEventListener('change',function(){[].slice.call($('img-file').files||[],0,4).forEach(function(f){reducirImagen(f,imgGen.ponImg)});$('img-file').value=''});
+    $('img-clr').addEventListener('click',function(){imgGen.imgs=[];imgGen.dataUrl=null;imgGen.res=null;$('img-drop').innerHTML='<span class="note" style="margin:0">Pega aquí las fotos (Ctrl+V), arrástralas o pulsa para subirlas. Mejor 2-4: de frente, de lado y en perspectiva.</span>';$('img-clr').hidden=true;$('img-res').innerHTML='';$('img-save').hidden=true;$('img-gen').hidden=false;$('img-msg').textContent=''});
     $('img-drop').addEventListener('dragover',function(e){e.preventDefault()});
-    $('img-drop').addEventListener('drop',function(e){e.preventDefault();var f=e.dataTransfer&&e.dataTransfer.files[0];if(f&&/^image\//.test(f.type))reducirImagen(f,imgGen.ponImg)});
+    $('img-drop').addEventListener('drop',function(e){e.preventDefault();[].slice.call((e.dataTransfer&&e.dataTransfer.files)||[],0,4).forEach(function(f){if(/^image\//.test(f.type))reducirImagen(f,imgGen.ponImg)})});
     $('img-cancel').addEventListener('click',cerrarModalImg);
     m.addEventListener('mousedown',function(e){if(e.target===m)cerrarModalImg()});
     $('img-gen').addEventListener('click',function(){
@@ -5843,7 +5845,7 @@ function abrirModalImg(dataUrl){
       var L=fromU(num($('img-l').value)),F=fromU(num($('img-f').value)),A=fromU(num($('img-a').value));
       if(!(L>0&&F>0&&A>0)){L=0;F=0;A=0}
       $('img-gen').disabled=true;$('img-msg').textContent='Generando… puede tardar uno o dos minutos. No cierres esta ventana.';
-      crmPost({type:'generarBloque',imagen:imgGen.dataUrl,largo:L,fondo:F,alto:A,nombre:($('img-nom').value||'').trim()});
+      crmPost({type:'generarBloque',imagen:imgGen.dataUrl,imagenes:imgGen.imgs.slice(),largo:L,fondo:F,alto:A,nombre:($('img-nom').value||'').trim()});
     });
     $('img-save').addEventListener('click',function(){
       var r=imgGen.res;if(!r)return;

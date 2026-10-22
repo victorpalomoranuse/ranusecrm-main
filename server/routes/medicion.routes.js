@@ -90,6 +90,14 @@ router.post('/bloque-ia', async (req, res) => {
     if (!m) return res.status(400).json({ error: 'La imagen no es válida (usa PNG, JPG o WebP)' });
     const imagen = Buffer.from(m[2], 'base64');
     if (imagen.length > 12 * 1024 * 1024) return res.status(400).json({ error: 'La imagen pesa demasiado' });
+    // más fotos del mismo producto (de frente, de lado, en perspectiva): con ellas el dibujo sale mucho mejor
+    const imagenes = [imagen];
+    for (const d of (Array.isArray(req.body?.imagenes) ? req.body.imagenes.slice(0, 4) : [])) {
+      const mm = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(d || ''));
+      if (!mm || mm[2] === m[2]) continue;
+      const b = Buffer.from(mm[2], 'base64');
+      if (b.length <= 12 * 1024 * 1024) imagenes.push(b);
+    }
     let largo = Number(req.body.largo), fondo = Number(req.body.fondo), alto = Number(req.body.alto);
     const nombre = String(req.body.nombre || '').slice(0, 120);
     let estimadas = false;
@@ -108,7 +116,7 @@ router.post('/bloque-ia', async (req, res) => {
       if (![largo, fondo, alto].every(n => n > 0 && n <= 5000)) return res.status(422).json({ error: 'No se pudieron estimar las medidas: escríbelas tú' });
       estimadas = true;
     }
-    const b = await generarBloquesAuto({ imagen, largo, fondo, alto, nombre });
+    const b = await generarBloquesAuto({ imagen, imagenes, largo, fondo, alto, nombre });
     if (!b?.svg?.planta) return res.status(422).json({ error: 'No se pudo sacar un dibujo de esa imagen. Prueba con otra foto, con el objeto bien visible y fondo limpio.' });
     res.json({ bloque: { largo, fondo, alto, estimadas, svg: { planta: b.svg.planta || '', alzado: b.svg.alzado || '', lateral: b.svg.lateral || '' }, metodo: b.metodo || null, nota: b.nota || '' } });
   } catch (err) {

@@ -8,7 +8,7 @@ const MODEL = 'claude-sonnet-4-5-20250929';
  * Devuelve la respuesta completa de la API (content puede incluir bloques
  * de texto y/o tool_use).
  */
-export async function callClaude({ system, messages, tools, maxTokens = 2000 }) {
+export async function callClaude({ system, messages, tools, maxTokens = 2000, model }) {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY no configurada');
   }
@@ -20,7 +20,7 @@ export async function callClaude({ system, messages, tools, maxTokens = 2000 }) 
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: model || MODEL,
       max_tokens: maxTokens,
       system,
       messages,

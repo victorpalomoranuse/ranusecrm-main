@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import { callClaude } from './anthropic.js';
 import { generarBloques } from './bloques-ia.js';
 import { generarBloques3D } from './bloques-3d.js';
+import { generarBloquesDirecto } from './bloques-directo.js';
 
 // Mira la foto antes de generar: el modelo 3D automático reconstruye TODO lo que ve (personas, suelo, fondo),
 // así que si hay una persona o un ambiente el resultado sale con su silueta. En ese caso se usa el ensamblaje
@@ -20,7 +21,12 @@ export async function analizarFoto(imagen) {
   } catch { return { persona: false, ambiente: false, varios: false }; }
 }
 
-export async function generarBloquesAuto({ imagen, largo, fondo, alto, nombre }) {
+export async function generarBloquesAuto({ imagen, imagenes, largo, fondo, alto, nombre }) {
+  // método principal: la IA dibuja cada vista como un delineante (varias fotos si las hay). Si falla, se usan los métodos de reconstrucción de antes
+  try {
+    const b = await generarBloquesDirecto({ imagenes: imagenes && imagenes.length ? imagenes : [imagen], largo, fondo, alto, nombre, model: process.env.BLOQUES_MODELO || 'claude-sonnet-5-5' });
+    if (b.svg.planta && b.svg.planta.length > 200) return b;
+  } catch (e) { console.error('bloques: dibujo directo no disponible, se usa la reconstrucción:', e.message); }
   const f = await analizarFoto(imagen);
   const sucia = f.persona || f.ambiente || f.varios;
   if (!sucia) {
