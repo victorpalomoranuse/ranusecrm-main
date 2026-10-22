@@ -27,6 +27,10 @@ Reglas:
 - Estructura: los tubos y montantes típicos de 5-8 cm de sección dibújalos como "rect" con chaflán de 1-2 cm; en planta un montante lleva debajo su pie o placa (rectángulo más ancho) y, si procede, 1-2 círculos de 1-2 cm (tornillos). Los pies/bases son rectángulos más anchos que el montante.
 - Barras olímpicas: 220 cm de largo, 5 cm de diámetro; los discos y los topes se dibujan como rectángulos o círculos según la vista. Las poleas son círculos de 8-15 cm. Las columnas de pesas se dibujan como un rectángulo con líneas horizontales.
 - Detalle útil, no ruido: entre 25 y 90 elementos por vista. Que se entienda cada pieza, simétrica donde el producto lo sea. Sin textos ni cotas.
+- NO dibujes el recuadro exterior de las medidas ni ningún marco que no exista en el producto: el recuadro (0..LARGO × 0..FONDO) es solo el límite, no una pieza.
+- Dibuja cada pieza con su forma real, no con cajas genéricas: guías y raíles inclinados o de ancho variable como "poli" de 4-6 puntos; placas y plataformas con sus agujeros, grabados y topes (círculos pequeños, líneas); tubos con dos líneas (grosor real) y no con una sola; pletinas con sus orificios.
+- Si la foto está en perspectiva, rectifícala mentalmente: dibuja lo que se vería exactamente desde arriba, de frente o de lado (sin escorzo), con las proporciones reales a partir de las medidas dadas.
+- Mantén las piezas que son del mismo conjunto alineadas entre sí (ejes, pies, extremos) y respeta la simetría izquierda-derecha cuando exista.
 - Primero los elementos grandes (estructura), luego los de detalle.
 
 Responde SOLO con un JSON, sin nada alrededor:
@@ -80,22 +84,58 @@ async function preparar(buf) {
   return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpg.toString('base64') } };
 }
 
-export async function generarBloquesDirecto({ imagenes, largo, fondo, alto, nombre, model }) {
-  const fotos = [];
-  for (const b of (imagenes || []).slice(0, 5)) fotos.push(await preparar(b));
-  if (!fotos.length) throw new Error('Falta la foto');
-  const r = await callClaude({
-    system: SISTEMA, model, maxTokens: 16000,
-    messages: [{ role: 'user', content: [...fotos, { type: 'text', text: `Producto: ${nombre || 'sin nombre'}. ${fotos.length} foto(s). Medidas reales: LARGO ${largo} cm (ancho visto de frente), FONDO ${fondo} cm, ALTO ${alto} cm. Dibuja la planta, el alzado y el lateral.` }] }],
-  });
+function jsonDe(r) {
   const txt = (r.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
   const m = txt.match(/\{[\s\S]*\}/);
   if (!m) throw new Error('La IA no devolvió un dibujo válido. Inténtalo de nuevo.');
-  let j;
-  try { j = JSON.parse(m[0]); } catch { throw new Error('La IA devolvió el dibujo en un formato roto. Inténtalo de nuevo.'); }
+  try { return JSON.parse(m[0]); } catch { throw new Error('La IA devolvió el dibujo en un formato roto. Inténtalo de nuevo.'); }
+}
+const suelo = (W, H) => `<line x1="-4" y1="${H}" x2="${W + 4}" y2="${H}" stroke="#000000" stroke-width="2.4" fill="none" stroke-linecap="round"/>`;
+function aSvg(j, largo, fondo, alto) {
   const svg = { planta: dibujar(j.planta, largo, fondo), alzado: dibujar(j.alzado, largo, alto), lateral: dibujar(j.lateral, fondo, alto) };
-  const suelo = (W, H) => `<line x1="-4" y1="${H}" x2="${W + 4}" y2="${H}" stroke="#000000" stroke-width="2.4" fill="none" stroke-linecap="round"/>`;
   if (svg.alzado) svg.alzado += suelo(largo, alto);
   if (svg.lateral) svg.lateral += suelo(fondo, alto);
+  return svg;
+}
+// vista previa de las tres vistas para que la IA revise su propio dibujo
+async function vistaPrevia(svg, largo, fondo, alto) {
+  const dims = [[svg.planta, largo, fondo], [svg.alzado, largo, alto], [svg.lateral, fondo, alto]];
+  const H = 520, W = 640, piezas = [];
+  for (const [frag, w, h] of dims) {
+    const pad = Math.max(w, h) * 0.04;
+    const x = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-pad} ${-pad} ${w + 2 * pad} ${h + 2 * pad}" width="${W}" height="${H}"><rect x="${-pad}" y="${-pad}" width="${w + 2 * pad}" height="${h + 2 * pad}" fill="#ffffff"/><g transform="translate(0 0)">${(frag || '').replace(/stroke-width="([\d.]+)"/g, (mm, v) => `stroke-width="${Math.max(0.35, Number(v) * 0.6)}"`)}</g><rect x="${-pad}" y="${-pad}" width="${w + 2 * pad}" height="${h + 2 * pad}" fill="none" stroke="#bbbbbb" stroke-width="0.5"/></svg>`;
+    piezas.push(await sharp(Buffer.from(x), { density: 96 }).resize({ width: W, height: H, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer());
+  }
+  const png = await sharp({ create: { width: W * 3, height: H, channels: 3, background: '#ffffff' } }).composite(piezas.map((input, i) => ({ input, left: i * W, top: 0 }))).jpeg({ quality: 85 }).toBuffer();
+  return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: png.toString('base64') } };
+}
+
+export async function generarBloquesDirecto({ imagenes, largo, fondo, alto, nombre, model, refinar = true }) {
+  const fotos = [];
+  for (const b of (imagenes || []).slice(0, 5)) fotos.push(await preparar(b));
+  if (!fotos.length) throw new Error('Falta la foto');
+  const pedido = { type: 'text', text: `Producto: ${nombre || 'sin nombre'}. ${fotos.length} foto(s). Medidas reales: LARGO ${largo} cm (ancho visto de frente), FONDO ${fondo} cm, ALTO ${alto} cm. Dibuja la planta, el alzado y el lateral.` };
+  let j = null;
+  for (let intento = 0; intento < 2 && !j; intento++) { // si la IA gasta todo en pensar y no entrega el dibujo, se repite una vez
+    const r1 = await callClaude({ system: SISTEMA, model, maxTokens: 24000, messages: [{ role: 'user', content: [...fotos, pedido] }] });
+    try { j = jsonDe(r1); } catch (e) { if (intento) throw e; }
+  }
+  let svg = aSvg(j, largo, fondo, alto);
+  // segunda pasada: la IA ve su dibujo junto a las fotos, corrige lo que no cuadra (proporciones, piezas que faltan o sobran, ejes) y entrega la versión final
+  if (refinar && svg.planta) {
+    try {
+      const previa = await vistaPrevia(svg, largo, fondo, alto);
+      const r2 = await callClaude({
+        system: SISTEMA, model, maxTokens: 24000,
+        messages: [
+          { role: 'user', content: [...fotos, pedido] },
+          { role: 'assistant', content: JSON.stringify(j) },
+          { role: 'user', content: [previa, { type: 'text', text: 'Esta imagen es tu dibujo (de izquierda a derecha: planta, alzado y lateral). Compáralo con las fotos y corrige TODO lo que no coincida: piezas que faltan o sobran, proporciones, posiciones, simetría, alineación entre vistas, un recuadro exterior que no exista en el producto. Entrega el JSON COMPLETO y corregido (mismo formato), con más fidelidad y detalle útil.' }] },
+        ],
+      });
+      const j2 = jsonDe(r2), svg2 = aSvg(j2, largo, fondo, alto);
+      if (svg2.planta && svg2.planta.length > svg.planta.length * 0.5) { j = j2; svg = svg2; }
+    } catch (e) { console.error('bloques: la revisión del dibujo falló, se queda la primera versión:', e.message); }
+  }
   return { largo, fondo, alto, svg, metodo: 'dibujo', nota: String(j.nota || '').slice(0, 300) };
 }
