@@ -3800,7 +3800,7 @@ function scene0(C,k,view,o){
       var d0=rayWalls(c.x+a[0]*a[2],c.y+a[1]*a[2],a[0],a[1],view);if(d0==null||d0<1)return;
       h+=dimLine(C,px,c.x+a[0]*a[2],c.y+a[1]*a[2],c.x+a[0]*(a[2]+d0),c.y+a[1]*(a[2]+d0),fmtU(d0));
     });
-    h+=txt(C,px,c.x,c.y+p.d/2+15*px,fmtU(p.w)+' × '+fmtU(p.d),C.label,11,700);
+    if(sel&&sel.t==='pil'&&sel.id===p.id)h+=txt(C,px,c.x,c.y+p.d/2+15*px,fmtU(p.w)+' × '+fmtU(p.d),C.label,11,700); /* la medida va en la leyenda (P1, P2…); solo se ve al seleccionarlo */
   });
   v.pts.forEach(function(q){
     var ps=q.s||'new';
@@ -6424,6 +6424,10 @@ function panelSel(focus){
     var opo=opOff(wl(o.wall));
     h+=fld('op_p','Distancia desde el inicio del muro (cm, '+(st.v.cb==='int'&&opo?'desde la cara interior':'a ejes')+')',o.p-opo);
     h+=fld('op_pe','Distancia hasta el final del muro (cm, '+(st.v.cb==='int'?'hasta la cara interior':'a ejes')+')',wg(wl(o.wall)).l-o.p-o.w-opOffFin(wl(o.wall)));
+    (function(){ /* ubicar en el tramo libre entre las paredes: en el medio o pegada a un lado */
+      var gw=wg(wl(o.wall)),hor=Math.abs(gw.ux)>=Math.abs(gw.uy),ini=hor?(gw.ux>0?'izquierda':'derecha'):(gw.uy>0?'arriba':'abajo'),fin=hor?(gw.ux>0?'derecha':'izquierda'):(gw.uy>0?'abajo':'arriba');
+      h+='<div class="lab">Ubicar entre las paredes</div><div class="btns tr"><button data-a="opub:ini" title="Pegada a la pared de la '+ini+'">⇤ A la '+ini+'</button><button data-a="opub:cen" title="En el medio del tramo libre entre las dos paredes">↔ Centrar</button><button data-a="opub:fin" title="Pegada a la pared de la '+fin+'">A la '+fin+' ⇥</button></div>';
+    })();
     h+=fld('op_w','Ancho (cm)',o.w);
     h+=fld('op_h','Alto (cm)',o.h);
     if(o.t==='win')h+=fld('op_sill','Altura desde el suelo (cm)',o.sill);
@@ -6958,6 +6962,13 @@ function doAction(a,el){
     snap();q1.rot=a==='eqrot0'?0:((((q1.rot||0)+paso)%360)+360)%360;commit();return;
   }
   if(a.indexOf('eqpg:')===0&&s.t==='eq'){var qpg=by(st.v.eq,s.id),dv=a.slice(5).split(',');if(qpg){snap();var mvd=eqPegar(qpg,+dv[0],+dv[1]);if(!mvd){hist.pop();toast('No hay nada en esa dirección, o ya está pegado')}else{commit();toast('Pegado: se ha movido '+fmtU(mvd)+' cm')}}return}
+  if(a.indexOf('opub:')===0&&s.t==='op'){
+    var ou=opn(s.id);if(!ou)return;
+    var wu=wl(ou.wall),Lu=wg(wu).l,spu=spanDim(wu,st.view),s0u=spu?Math.max(0,spu.s0):0,s1u=spu?Math.min(Lu,spu.s1):Lu;
+    if(!(s1u-s0u>=ou.w)){toast('El tramo libre entre las paredes ('+fmtU(Math.max(0,s1u-s0u))+') es más corto que el hueco');return}
+    var modo=a.slice(5),pn=modo==='ini'?s0u:modo==='fin'?s1u-ou.w:s0u+(s1u-s0u-ou.w)/2;
+    snap();ou.p=f2(pn);commit();return;
+  }
   if(a==='eqflx'||a==='eqfly'){var q1f=by(st.v.eq,s.id);snap();if(a==='eqflx')q1f.fx=!q1f.fx;else q1f.fy=!q1f.fy;commit();return}
   if(a==='eqdup'){var q2=by(st.v.eq,s.id);snap();var cp=JSON.parse(JSON.stringify(q2));cp.id=uid('e');cp.dx=f2(cp.dx+30);cp.dy=f2(cp.dy+30);st.v.eq.push(cp);st.sel={t:'eq',id:cp.id};commit();return}
   if(a==='pasoprod'&&s.t==='eq'){var pq=by(st.v.eq,s.id),pcq=pq&&catById(pq.cid);if(!pcq)return;var pg=function(S){return pq['pm'+S]!=null&&pq['pm'+S]!==''?pq['pm'+S]:null};crmPost({type:'guardarPasoProducto',id:pcq.id,paso:{I:pg('I'),D:pg('D'),F:pg('F'),T:pg('T')}});pcq.paso={I:pg('I'),D:pg('D'),F:pg('F'),T:pg('T')};return}
@@ -9015,7 +9026,9 @@ function sheetPage(doc,view,idx,total,o){
       p.text(xL+14,y+3.6*f,'Ventana (V)',body,{col:INK});y+=rh;
     }
     if(room(rh)&&v.pil.some(function(q){return stVis(q.s,view)})){
-      p.rect(xL+4,y+rh/2-1.6,3,3,colDoor,null);p.text(xL+14,y+3.6*f,'Pilar',body,{col:INK});y+=rh;
+      if(view==='cotas'&&pilTipos(view).tipos.length){ /* en cotas, la leyenda dice qué es cada etiqueta P1, P2… y cuántos hay */
+        pilTipos(view).tipos.forEach(function(t){p.rect(xL+4,y+rh/2-1.6,3,3,colDoor,null);p.text(xL+14,y+3.6*f,t.tag+' · Pilar '+fmt(t.w)+' × '+fmt(t.d)+' cm · '+t.n+(t.n===1?' ud':' uds'),body,{col:INK});y+=rh});
+      }else{p.rect(xL+4,y+rh/2-1.6,3,3,colDoor,null);p.text(xL+14,y+3.6*f,'Pilar',body,{col:INK});y+=rh}
     }
     if(room(rh)){p.text(xL+5.5,y+3.6*f,'450',body,{col:INK,anchor:'middle'});p.text(xL+14,y+3.6*f,o.dims&&o.dims!=='simple'?'Líneas de cota en cm: tramos y total':'Cota medida en obra (cm)',body,{col:INK});y+=rh}
     if(unm&&room(rh)){p.text(xL+5.5,y+3.6*f,'~450',body,{col:LIGHT.warn,anchor:'middle'});p.text(xL+14,y+3.6*f,'Medida estimada, sin comprobar',body,{col:INK});y+=rh}
