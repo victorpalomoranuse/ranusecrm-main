@@ -199,14 +199,25 @@ function itemBiblioteca(r) {
   };
 }
 const COLS_BIB = 'id, nombre, categoria, largo, fondo, alto, planta, alzado, lado, origen';
+// Supabase devuelve como mucho 1000 filas por consulta: se pide por páginas para que, cuando la biblioteca pase de mil bloques, no desaparezcan los últimos
+async function pedirBiblioteca(columnas) {
+  const filas = [];
+  for (let desde = 0; desde < 20000; desde += 1000) {
+    const { data, error } = await supabase.from('biblioteca_bloques').select(columnas).order('categoria').order('nombre').order('id').range(desde, desde + 999);
+    if (error) return { error };
+    filas.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return { data: filas };
+}
 async function cargarBiblioteca() {
   // En el catálogo solo viaja la planta; el alzado y el lateral se piden al colocarlos (/bloque/:id)
-  const { data, error } = await supabase.from('biblioteca_bloques').select('id, nombre, categoria, largo, fondo, alto, planta, origen, alzado, lado').order('categoria').order('nombre').limit(2000);
+  const { data, error } = await pedirBiblioteca('id, nombre, categoria, largo, fondo, alto, planta, origen, alzado, lado');
   if (error) { // si la tabla aún no tiene las columnas de vistas (v73), se sigue con la planta
-    const { data: d2, error: e2 } = await supabase.from('biblioteca_bloques').select('id, nombre, categoria, largo, fondo, alto, planta, origen').order('categoria').order('nombre').limit(2000);
+    const { data: d2, error: e2 } = await pedirBiblioteca('id, nombre, categoria, largo, fondo, alto, planta, origen');
     return e2 ? [] : (d2 || []).map(itemBiblioteca);
   }
-  return (data || []).map(r => { const it = itemBiblioteca(r); return it; });
+  return (data || []).map(r => itemBiblioteca(r));
 }
 router.post('/biblioteca', async (req, res) => {
   try {
