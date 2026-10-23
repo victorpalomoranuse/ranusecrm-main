@@ -958,12 +958,28 @@ function opVis(o,view){var w=wl(o.wall);return !!w&&wallVis(w,view)&&stVis(o.s,v
 function stCol(s,view,C){return (view==='actual'||FINALV[view])?C.ink:(s==='ex'?C.dim:(s==='dem'?C.dem:C.nw))}
 
 /* ---------- máquinas: catálogo común, símbolos fijos ---------- */
+/* el catálogo base (los de siempre + tu biblioteca + el del CRM: más de mil bloques) se monta UNA vez y se reutiliza mientras no cambien esas listas;
+   antes se rehacía en cada consulta y, con muchos bloques en el plano, el programa iba a tirones */
+var catBase=null;
+function catalogBase(){
+  var cb=catBase;
+  if(cb&&cb.custom===custom&&cb.nC===custom.length&&cb.cloud===cloudCat&&cb.nK===cloudCat.length)return cb;
+  var idx={},out=[];
+  DEFCAT.concat(custom).concat(cloudCat).forEach(function(c){if(idx[c.id]===undefined){idx[c.id]=out.length;out.push(c)}else out[idx[c.id]]=c});
+  catBase={custom:custom,nC:custom.length,cloud:cloudCat,nK:cloudCat.length,out:out,idx:idx};
+  return catBase;
+}
 function catalog(){
-  var m={},out=[];
-  DEFCAT.concat(custom).concat(cloudCat).concat(escCats()).forEach(function(c){if(!m[c.id]){m[c.id]=c;out.push(c)}else{out[out.indexOf(m[c.id])]=c;m[c.id]=c}});
+  var b=catalogBase(),ex=escCats();
+  if(!ex.length)return b.out; /* sin bloques propios dentro del plano, es la misma lista de siempre (no se modifica) */
+  var out=b.out.slice(),pos={};
+  ex.forEach(function(c){var i=b.idx[c.id]!==undefined?b.idx[c.id]:pos[c.id];if(i!==undefined)out[i]=c;else{pos[c.id]=out.length;out.push(c)}});
   return out;
 }
-function catById(id){var l=catalog();for(var i=0;i<l.length;i++)if(l[i].id===id)return l[i];return null}
+function catById(id){
+  var ex=escCats();for(var j=ex.length-1;j>=0;j--)if(ex[j].id===id)return ex[j];
+  var b=catalogBase(),i=b.idx[id];return i===undefined?null:b.out[i];
+}
 function eqRect(e){
   var c=pc(e),a=(e.rot||0)*Math.PI/180,co=Math.abs(Math.cos(a)),si=Math.abs(Math.sin(a));
   if(co<1e-9)co=0;if(si<1e-9)si=0;
@@ -1297,19 +1313,24 @@ function drEstilo(){st.drSt=st.drSt||{col:'ink',w:1.4,dash:false,fill:false,fs:1
 /* etiquetas del equipamiento (E1, F2…): cada una busca un sitio donde no pise otras máquinas, ni muros, ni otras etiquetas */
 function eqEtqUbica(px){
   var eqs=eqV('distrib'),tipos=eqTipos(),out={},placed=[],ws=st.v.walls.filter(function(w){return wallVis(w,'distrib')&&!w.arc});
+  /* los rectángulos de todos los bloques se calculan UNA vez (antes se recalculaban en cada comparación: con cientos de bloques el plano iba a tirones) */
+  var Q=eqs.map(function(e){var q=eqRect(e);q.e=e;return q}),QM={};Q.forEach(function(q){QM[q.e.id]=q});
+  var WG=ws.map(function(w){return {g:wg(w),t:w.t}});
   eqs.forEach(function(e){
     var tq=tipos.porId[e.id];if(!tq)return;
-    var r=eqRect(e),rr=Math.max(8,5.2+tq.cod.length*2.6)*px,ay=Math.min(7*px,(r.y1-r.y0)/2);
+    var r=QM[e.id],rr=Math.max(8,5.2+tq.cod.length*2.6)*px,ay=Math.min(7*px,(r.y1-r.y0)/2);
     var C=[
       {lx:r.x1+10*px,ly:r.y0+7*px,ax:r.x1,ay:r.y0+ay},{lx:r.x0-10*px,ly:r.y0+7*px,ax:r.x0,ay:r.y0+ay},
       {lx:r.x1+10*px,ly:r.y1-7*px,ax:r.x1,ay:r.y1-ay},{lx:r.x0-10*px,ly:r.y1-7*px,ax:r.x0,ay:r.y1-ay},
       {lx:r.cx,ly:r.y0-10*px,ax:r.cx,ay:r.y0},{lx:r.cx,ly:r.y1+10*px,ax:r.cx,ay:r.y1},
       {lx:r.x1+10*px,ly:r.cy,ax:r.x1,ay:r.cy},{lx:r.x0-10*px,ly:r.cy,ax:r.x0,ay:r.cy}
     ],mejor=null,mp=1e9;
+    /* solo los bloques cercanos a los 8 sitios posibles de la etiqueta pueden pisarla */
+    var ex=10*px+rr+3*px,cerca=Q.filter(function(q){return q.e!==e&&q.x1>r.x0-ex&&q.x0<r.x1+ex&&q.y1>r.y0-ex&&q.y0<r.y1+ex});
     C.forEach(function(c){
       var pen=0;
-      eqs.forEach(function(o2){if(o2===e)return;var q=eqRect(o2);if(c.lx+rr>q.x0-px&&c.lx-rr<q.x1+px&&c.ly+rr>q.y0-px&&c.ly-rr<q.y1+px)pen+=10});
-      ws.forEach(function(w){var g=wg(w);if(segDist({x:c.lx,y:c.ly},g.a,g.b)<w.t/2+rr+px)pen+=10});
+      for(var k=0;k<cerca.length;k++){var q=cerca[k];if(c.lx+rr>q.x0-px&&c.lx-rr<q.x1+px&&c.ly+rr>q.y0-px&&c.ly-rr<q.y1+px)pen+=10}
+      for(var m=0;m<WG.length;m++){if(segDist({x:c.lx,y:c.ly},WG[m].g.a,WG[m].g.b)<WG[m].t/2+rr+px)pen+=10}
       placed.forEach(function(p){if(Math.hypot(p.lx-c.lx,p.ly-c.ly)<rr+p.rr+px)pen+=10});
       if(pen<mp){mp=pen;mejor=c}
     });
@@ -3881,8 +3902,13 @@ function scene0(C,k,view,o){
         });
       });
     }
+    /* pares de bloques: los rectángulos se calculan una vez y los pares lejanos (más de 3 m y más que cualquier distancia de paso) se saltan sin más;
+       antes se comparaban todos con todos recalculándolo todo, y con cientos de bloques el plano iba a tirones */
+    var RQ=distr?eqs.map(eqRect):[],maxPaso=0;
+    if(distr)eqs.forEach(function(e){maxPaso=Math.max(maxPaso,pasoEq(e)||0,num(e.pmI)||0,num(e.pmD)||0,num(e.pmF)||0,num(e.pmT)||0)});
     for(var ia=0;distr&&ia<eqs.length;ia++)for(var ib=ia+1;ib<eqs.length;ib++){
-      var ra=eqRect(eqs[ia]),rb=eqRect(eqs[ib]),q2=rgap(ra,rb);
+      var ra=RQ[ia],rb=RQ[ib],q2=rgap(ra,rb);
+      if(!q2.ov&&q2.g>=300&&q2.g>=maxPaso)continue;
       var pmx=pasoPar(eqs[ia],eqs[ib]);
       if(q2.ov){if(pmx!=null){bad[eqs[ia].id]=1;bad[eqs[ib].id]=1}continue}
       var low=pmx!=null&&q2.g<pmx;
@@ -6642,9 +6668,12 @@ function panelRest(){
   }
   var paso=num(v.paso)||80;
   if(v.eq.length){
-    var nb=0;
+    var nb=0,RQ=v.eq.map(eqRect),maxPaso=0;
+    v.eq.forEach(function(e){maxPaso=Math.max(maxPaso,pasoEq(e)||0,num(e.pmI)||0,num(e.pmD)||0,num(e.pmF)||0,num(e.pmT)||0)});
     for(var ia=0;ia<v.eq.length;ia++)for(var ib=ia+1;ib<v.eq.length;ib++){
-      var q=rgap(eqRect(v.eq[ia]),eqRect(v.eq[ib])),pmn=pasoPar(v.eq[ia],v.eq[ib]);
+      var q=rgap(RQ[ia],RQ[ib]);
+      if(!q.ov&&q.g>=maxPaso)continue; /* lejos de cualquier distancia mínima: no hay nada que avisar */
+      var pmn=pasoPar(v.eq[ia],v.eq[ib]);
       if(pmn==null)continue;
       if(q.ov){nb++;h+=row('b',(ia+1)+' y '+(ib+1)+' ('+esc(v.eq[ia].nm)+' y '+esc(v.eq[ib].nm)+') se solapan.')}
       else if(q.g<pmn){nb++;h+=row('b',(ia+1)+' y '+(ib+1)+': paso de '+fmt(q.g)+' cm, por debajo del mínimo de '+fmt(pmn)+' cm.')}
