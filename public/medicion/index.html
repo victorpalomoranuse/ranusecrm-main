@@ -6444,7 +6444,7 @@ function panelSel(focus){
   }else if(s.t==='pil'){
     var p=pl(s.id);
     h+='<div class="rowh"><strong>Pilar</strong></div>';
-    h+='<div class="btns tr"><button data-a="zfront">Traer al frente</button><button data-a="zback">Enviar atrás</button></div>';
+    h+='<div class="btns tr"><button data-a="zfront">Traer al frente</button><button data-a="zback">Enviar atrás</button><button data-a="pildup" title="Crea otro pilar igual (mismas medidas y estado) al lado; arrástralo a su sitio">Duplicar</button></div>';
     h+=fld('pil_w','Ancho (cm)',p.w)+fld('pil_d','Fondo (cm)',p.d);
     h+='<div class="lab">Repetir en hilera (separador de ambientes)</div><p class="note" style="margin:0 0 6px">Pon más de 1 para crear una fila de pilares, lamas o celosía que separe zonas sin cerrar del todo la sala.</p>';
     h+=fld('pil_cnt','Cantidad',p.cnt||1)+fld('pil_sep','Separación entre ejes (cm)',p.sep>0?p.sep:((p.dir==='v'?p.d:p.w)+10));
@@ -6970,6 +6970,7 @@ function doAction(a,el){
     snap();ou.p=f2(pn);commit();return;
   }
   if(a==='eqflx'||a==='eqfly'){var q1f=by(st.v.eq,s.id);snap();if(a==='eqflx')q1f.fx=!q1f.fx;else q1f.fy=!q1f.fy;commit();return}
+  if(a==='pildup'&&s.t==='pil'){var pq=pl(s.id);if(pq){snap();var pcp=JSON.parse(JSON.stringify(pq));pcp.id=uid('p');pcp.dx=f2(pcp.dx+Math.max(30,pq.w+10));st.v.pil.push(pcp);st.sel={t:'pil',id:pcp.id};commit();toast('Pilar duplicado: arrástralo a su sitio')}return}
   if(a==='eqdup'){var q2=by(st.v.eq,s.id);snap();var cp=JSON.parse(JSON.stringify(q2));cp.id=uid('e');cp.dx=f2(cp.dx+30);cp.dy=f2(cp.dy+30);st.v.eq.push(cp);st.sel={t:'eq',id:cp.id};commit();return}
   if(a==='pasoprod'&&s.t==='eq'){var pq=by(st.v.eq,s.id),pcq=pq&&catById(pq.cid);if(!pcq)return;var pg=function(S){return pq['pm'+S]!=null&&pq['pm'+S]!==''?pq['pm'+S]:null};crmPost({type:'guardarPasoProducto',id:pcq.id,paso:{I:pg('I'),D:pg('D'),F:pg('F'),T:pg('T')}});pcq.paso={I:pg('I'),D:pg('D'),F:pg('F'),T:pg('T')};return}
   if(a==='prodgen'&&s.t==='eq'){
@@ -11432,7 +11433,11 @@ function pegar(enCursor){
 }
 document.addEventListener('keydown',function(e){
   var t=e.target&&e.target.tagName;
-  if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA')return;
+  /* escribiendo en un campo no se toca nada, salvo Ctrl+C sin texto seleccionado: copia la pieza elegida (así se puede copiar un pilar justo después de cambiarle las medidas) */
+  if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA'){
+    var campo=e.target,sinSel=t==='INPUT'&&typeof campo.selectionStart==='number'&&campo.selectionStart===campo.selectionEnd;
+    if(!(sinSel&&(e.ctrlKey||e.metaKey)&&!e.altKey&&String(e.key).toLowerCase()==='c'&&st.sel))return;
+  }
   if(!(e.ctrlKey||e.metaKey)||e.altKey)return;
   var k=e.key.toLowerCase();
   if(k==='z'&&!e.shiftKey){e.preventDefault();undo()}
