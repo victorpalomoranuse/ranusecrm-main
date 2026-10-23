@@ -3439,9 +3439,27 @@ function selDims(C,px,w,view){
     var g=wg(wl2),sp=spanInterior(wl2,view,cent,null);if(!sp||!sp.lado)sp=spanAbierto(wl2,view);if(!sp||!sp.lado)return;
     var L=g.l,s0=Math.max(0,sp.s0),s1=Math.min(L+80,sp.s1),clear=s1-s0,ni={x:-g.uy*sp.lado,y:g.ux*sp.lado},t=wl2.t;
     function P(sv,d,sg){return {x:g.a.x+g.ux*sv+ni.x*d*(sg||1),y:g.a.y+g.uy*sv+ni.y*d*(sg||1)}}
-    var shown=wl2.m===true?(wl2.len-(L-clear)):clear,dI=t/2+14*px;
-    h+=ln(P(s0,t/2).x,P(s0,t/2).y,P(s0,dI+4*px).x,P(s0,dI+4*px).y,AZUL,px*0.8)+ln(P(s1,t/2).x,P(s1,t/2).y,P(s1,dI+4*px).x,P(s1,dI+4*px).y,AZUL,px*0.8);
-    azul(P(s0,dI),P(s1,dI),shown,{wall:wl2.id,kind:'wsel',chain:!!wl2._chain,nid:esSel?null:nid,delta:L-clear});
+    var shown=wl2.m===true?(wl2.len-(L-clear)):clear,dI=t/2+14*px,a0=s0,a1=s1,parcial=false;
+    /* la cota de una fila de muros que llega al muro seleccionado se corta en la pared que se apoya en ella por dentro (una pared entre dos estancias): mide hasta esa pared y no hasta el final de la fila */
+    if(!esSel&&nid){
+      var enC=wl2._chain||[wl2],cI=[];
+      st.v.walls.forEach(function(x){
+        if(enC.indexOf(x)>=0||x===wl2||!wallVis(x,view))return;
+        [x.a,x.b].forEach(function(id2){
+          var np=nd(id2),no=nd(x.a===id2?x.b:x.a),rx=np.x-g.a.x,ry=np.y-g.a.y,sv=rx*g.ux+ry*g.uy,dv=rx*ni.x+ry*ni.y;
+          if(Math.abs(dv)>t/2+1.5||sv<=s0+1||sv>=s1-1)return;
+          if((no.x-np.x)*ni.x+(no.y-np.y)*ni.y>0&&cI.every(function(c){return Math.abs(c.s-sv)>1}))cI.push({s:sv,t:x.t});
+        });
+      });
+      cI.sort(function(p,q){return p.s-q.s});
+      if(cI.length){
+        var nSel=nd(nid),sN=(nSel.x-g.a.x)*g.ux+(nSel.y-g.a.y)*g.uy;
+        if(sN<L/2)a1=cI[0].s-cI[0].t/2;else a0=cI[cI.length-1].s+cI[cI.length-1].t/2;
+        if(a1-a0>=0.5){parcial=true;shown=a1-a0}else{a0=s0;a1=s1}
+      }
+    }
+    h+=ln(P(a0,t/2).x,P(a0,t/2).y,P(a0,dI+4*px).x,P(a0,dI+4*px).y,AZUL,px*0.8)+ln(P(a1,t/2).x,P(a1,t/2).y,P(a1,dI+4*px).x,P(a1,dI+4*px).y,AZUL,px*0.8);
+    azul(P(a0,dI),P(a1,dI),shown,{wall:wl2.id,kind:'wsel',chain:!!wl2._chain,nid:esSel?null:nid,delta:parcial?L-shown:L-clear});
     if(esSel){ // exterior: de cara exterior a cara exterior
       var dE=t/2+14*px,o0=s0>0.5?s0-t:s0,o1=s1<L-0.5?s1+t:s1; /* un extremo suelto ya termina en su punta: solo se suma el grosor donde el muro se apoya en otro */
       h+=ln(P(o0,t/2,-1).x,P(o0,t/2,-1).y,P(o0,dE+4*px,-1).x,P(o0,dE+4*px,-1).y,AZUL,px*0.8)+ln(P(o1,t/2,-1).x,P(o1,t/2,-1).y,P(o1,dE+4*px,-1).x,P(o1,dE+4*px,-1).y,AZUL,px*0.8);
