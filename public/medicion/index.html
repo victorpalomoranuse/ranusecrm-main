@@ -668,7 +668,19 @@ var TAN12=0.2126, AXDEG=8;
 function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
 function newVisit(){return norm({id:'v'+Date.now().toString(36),nombre:'',cliente:'',fecha:today(),altura:260,paso:80,notas:'',seq:1,nodes:[],walls:[],ops:[],pil:[],ctl:[],eq:[],pts:[],zn:[],rz:[],cn:[],updated:Date.now()})}
 function norm(v){v.eq=v.eq||[];v.eqa=v.eqa||[];v.fz=v.fz||[];v.rc=v.rc||[];v.dr=v.dr||[];v.sp=v.sp||[];v.cal=v.cal||[];v.mm=v.mm||[];v.pts=v.pts||[];v.zn=v.zn||[];v.rz=v.rz||[];v.cn=v.cn||[];v.paso=v.paso||80;v.pil=v.pil||[];v.ctl=v.ctl||[];v.ops=v.ops||[];v.cb='int';v.cbv=2; /* las medidas son SIEMPRE de cara interior a cara interior (ya no existe «a ejes de muro») */ if(false){} /* las cotas miden por defecto la cara interior; los planos antiguos guardados «a ejes» se pasan una vez a interior (después se respeta lo que elijas) */
-soldarNodos(v);try{limpiaSolapes(v)}catch(e){}(v.sp||[]).forEach(function(r){if(r.pts&&r.pts.length>3){var l=limpiaPuntosZona(r.pts);if(l.length>=3)r.pts=l}});return v}
+soldarNodos(v);try{limpiaHuerfanos(v)}catch(e){}try{limpiaSolapes(v)}catch(e){}(v.sp||[]).forEach(function(r){if(r.pts&&r.pts.length>3){var l=limpiaPuntosZona(r.pts);if(l.length>=3)r.pts=l}});return v}
+/* bloques, pilares y puntos van anclados a un nudo: si ese nudo ya no existe (se borró o se soldó con otro), la pieza no tiene sitio y hacía fallar
+   el dibujo de la planta y el modelo 3D. Se quitan al cargar y se avisa. */
+function limpiaHuerfanos(v){
+  var ids={},n=0;(v.nodes||[]).forEach(function(q){ids[q.id]=1});
+  ['eq','pil','pts'].forEach(function(k){
+    if(!v[k])return;
+    var l=v[k].filter(function(e){return !e||e.n===undefined||e.n===null||ids[e.n]});
+    n+=v[k].length-l.length;v[k]=l;
+  });
+  if(n){v.huerfanos=(v.huerfanos||0)+n;setTimeout(function(){try{toast('Se han quitado '+n+' elemento'+(n>1?'s':'')+' de «'+(v.planta||v.nombre||'esta planta')+'» que estaban sueltos (sin muro al que anclarse).')}catch(e){}},400)}
+  return n;
+}
 /* dos puntos a menos de 1,5 cm son el mismo (si no, la sala no se detecta como cerrada) */
 function limpiaPuntosZona(pts){
   var out=[];
@@ -10660,7 +10672,7 @@ function crmSaveNow(force,abrirListados){
   if(!force&&!(v.walls.length||v.eq.length||v.pts.length||pisosOn(v)))return;
   v.updated=Date.now();
   try{v.resumen=buildResumen()}catch(e){}
-  try{v.modelo3d=buildModelo3d()}catch(e){}
+  try{v.modelo3d=buildModelo3d()}catch(e){delete v.modelo3d;try{toast('No se ha podido preparar el modelo 3D para SketchUp ('+e.message+'). Avísame para revisarlo.')}catch(e2){}}
   crmPost({type:'save',visita:JSON.parse(JSON.stringify(v)),abrirListados:!!abrirListados});
   $('saved').textContent='Guardando en el CRM…';
 }
