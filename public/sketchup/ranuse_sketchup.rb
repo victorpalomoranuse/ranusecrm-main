@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.8.1'.freeze
+    VERSION = '1.9.0'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -290,7 +290,9 @@ module Ranuse
       m.start_operation('Actualizar plano Ranuse', true)
       begin
         raiz = m.entities.grep(Sketchup::Group).find { |g| g.valid? && g.get_attribute(DICT, 'raiz') }
-        if raiz && (desde_cero || raiz.get_attribute(DICT, 'v2').nil?)
+        # un plano con varias plantas se reparte en un grupo por planta (v3); un modelo hecho con la versión anterior se rehace una vez
+        multiplanta = plano['plantas'].is_a?(Array) && plano['plantas'].length > 1
+        if raiz && (desde_cero || raiz.get_attribute(DICT, 'v2').nil? || (multiplanta && raiz.get_attribute(DICT, 'v3').nil?))
           raiz.erase! # versión anterior del plugin o pedido expreso: se rehace entero
           raiz = nil
         end
@@ -303,8 +305,16 @@ module Ranuse
         @rehechos = 0
         if raiz
           raiz.entities.grep(Sketchup::Group).each do |g|
-            k = g.valid? ? g.get_attribute(DICT, 'clave') : nil
-            @existentes[k] = g if k
+            next unless g.valid?
+            k = g.get_attribute(DICT, 'clave')
+            if k
+              @existentes[k] = g
+            elsif g.get_attribute(DICT, 'planta_id') # grupo de una planta: sus piezas están dentro
+              g.entities.grep(Sketchup::Group).each do |h|
+                kh = h.valid? ? h.get_attribute(DICT, 'clave') : nil
+                @existentes[kh] = h if kh
+              end
+            end
           end
           previas = begin
             JSON.parse(raiz.get_attribute(DICT, 'claves', '{}'))
@@ -325,6 +335,7 @@ module Ranuse
           raiz.set_attribute(DICT, 'raiz', true)
         end
         raiz.set_attribute(DICT, 'v2', true)
+        raiz.set_attribute(DICT, 'v3', true) if multiplanta
         raiz.set_attribute(DICT, 'plano', datos['nombre'].to_s)
         construir(raiz.entities, plano)
         # lo que ya no está en el plano se quita
@@ -829,6 +840,21 @@ module Ranuse
       end
     end
 
+    # Grupo de una planta dentro de «RANUSE PLANO»: se busca por su id y, si no existe, se crea
+    def self.grupo_planta(ents, pl, i)
+      id = (pl['id'] || i).to_s
+      g = ents.grep(Sketchup::Group).find { |x| x.valid? && x.get_attribute(DICT, 'planta_id') == id }
+      unless g
+        g = ents.add_group
+        g.set_attribute(DICT, 'planta_id', id)
+      end
+      nombre = pl['nombre'].to_s.strip
+      nombre = (i.zero? ? 'Planta baja' : "Planta #{i}") if nombre.empty?
+      g.name = nombre
+      g.layer = etiqueta("Ranuse - #{nombre}")
+      g
+    end
+
     # Un plano con varias plantas trae plano['plantas'] (cada una con su z y sus muros, pilares…); se apilan en el mismo grupo
     def self.construir(ents, plano)
       plantas = plano['plantas']
@@ -836,8 +862,10 @@ module Ranuse
       plantas.each_with_index do |pl, i|
         @z_base = pl['z'].to_f
         @pref = i.zero? ? '' : "p#{pl['id'] || i}:"
-        construir_planta(ents, pl)
-        forjado(ents, pl) if i > 0 && pl['forjado'].to_f > 0
+        # con varias plantas, cada una va en su propio grupo («Planta baja», «Planta 1»…) para poder ocultarla o moverla por separado
+        dentro = plantas.length > 1 ? grupo_planta(ents, pl, i).entities : ents
+        construir_planta(dentro, pl)
+        forjado(dentro, pl) if i > 0 && pl['forjado'].to_f > 0
       end
     ensure
       @z_base = 0.0
