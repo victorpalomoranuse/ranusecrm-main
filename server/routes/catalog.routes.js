@@ -6,11 +6,13 @@ import { uploadCatalogPhoto, deleteCatalogPhoto, copyCatalogPhoto } from '../uti
 import sharp from 'sharp';
 import { callClaude } from '../utils/anthropic.js';
 import { generarBloquesAuto } from '../utils/bloques-auto.js';
+import { vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
 
 const router = express.Router();
 
 // Todas las rutas requieren admin
 router.use(authenticateToken, requirePermission('catalogo'));
+router.use(vaciaCacheAlEscribir); // cualquier cambio del catálogo vacía la caché de la herramienta de planos
 
 function slugify(text) {
   return text

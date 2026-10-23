@@ -12,6 +12,9 @@ import api from '../services/api';
 
 import { ImportarDePlanos } from './ImportarDePlanos';
 
+// catálogo de la herramienta (más de mil bloques): se descarga una vez y se reutiliza unos minutos; se vacía al guardar cambios
+let catCache = { t: 0, data: null };
+
 export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, nuevo = false, altura = 'calc(100vh - 250px)', fullscreen = false, onAmpliar, onCerrar }) {
   const frameRef = useRef(null);
   const datos = useRef({ visitas: null, catalogos: null, lista: false });
@@ -45,7 +48,10 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
     const planos = projectId
       ? api.get('/medicion', { params: { project_id: projectId } }).then(r => r.data.mediciones || [])
       : (abrir ? api.get(`/medicion/${abrir}`).then(r => [r.data.plano]) : Promise.resolve([]));
-    Promise.all([planos, api.get('/medicion/catalogos')]).then(([p, c]) => {
+    const catalogos = (catCache.data && Date.now() - catCache.t < 3 * 60 * 1000)
+      ? Promise.resolve(catCache.data)
+      : api.get('/medicion/catalogos').then(r => { catCache = { t: Date.now(), data: r }; return r; });
+    Promise.all([planos, catalogos]).then(([p, c]) => {
       if (!vivo) return;
       datos.current.visitas = p;
       datos.current.catalogos = c.data || {};
@@ -70,6 +76,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
         catch { responder({ type: 'error', message: 'No se pudo cargar el bloque de ese producto' }); }
       }
       else if (m.type === 'guardarBiblioteca' && Array.isArray(m.items)) {
+        catCache = { t: 0, data: null };
         try { const { data } = await api.post('/medicion/biblioteca', { items: m.items }); responder({ type: 'biblioteca', items: data.items || [] }); }
         catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudieron guardar los bloques' }); }
       }
@@ -86,12 +93,13 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
         } catch (err) { responder({ type: 'planoIAError', message: err.response?.data?.error || 'No se pudo leer el plano' }); }
       }
       else if (m.type === 'subirFotosProducto' && m.id && Array.isArray(m.imagenes)) {
+        catCache = { t: 0, data: null };
         try {
           const { data } = await api.post(`/catalog/products/${m.id}/fotos`, { imagenes: m.imagenes.slice(0, 4), principal: !!m.principal }, { timeout: 120000 });
           responder({ type: 'fotosProducto', id: m.id, foto: data.photo_url, n: data.n });
         } catch (err) { responder({ type: 'fotosProductoError', id: m.id, message: err.response?.data?.error || 'No se pudieron guardar las fotos' }); }
       }
-      else if (m.type === 'generarBloqueProducto' && m.id) {
+      else if (m.type === 'generarBloqueProducto' && m.id) { catCache = { t: 0, data: null };
         try {
           const { data } = await api.post(`/catalog/products/${m.id}/bloques/generar`, { largo: m.largo, fondo: m.fondo, alto: m.alto }, { timeout: 600000 });
           const b = data.bloque;
@@ -99,7 +107,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           responder({ type: 'bloqueProducto', id: m.id, bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, svg: b.svg } });
         } catch (err) { responder({ type: 'bloqueProductoError', id: m.id, message: err.response?.data?.error || 'No se pudo generar el bloque' }); }
       }
-      else if (m.type === 'guardarBloqueProducto' && m.id && m.vista && m.frag) {
+      else if (m.type === 'guardarBloqueProducto' && m.id && m.vista && m.frag) { catCache = { t: 0, data: null };
         try {
           const svg = { planta: '', alzado: '', lateral: '' };
           svg[m.vista] = m.frag;
@@ -118,13 +126,13 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
         try { const { data } = await api.post('/medicion/miniaturas', { ids: m.ids }); responder({ type: 'miniaturas', items: data.items || {} }); }
         catch { /* sin fotos: la memoria sale igualmente */ }
       }
-      else if (m.type === 'actualizarBiblioteca' && m.id) {
+      else if (m.type === 'actualizarBiblioteca' && m.id) { catCache = { t: 0, data: null };
         try {
           const { data } = await api.patch(`/medicion/biblioteca/${String(m.id).replace(/^bib-/, '')}`, { categoria: m.categoria, nombre: m.nombre });
           responder({ type: 'bibliotecaActualizada', id: data.id, categoria: data.categoria, nombre: data.nombre });
         } catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo guardar el cambio' }); }
       }
-      else if (m.type === 'borrarBiblioteca' && m.id) {
+      else if (m.type === 'borrarBiblioteca' && m.id) { catCache = { t: 0, data: null };
         try { await api.delete(`/medicion/biblioteca/${String(m.id).replace(/^bib-/, '')}`); responder({ type: 'bibliotecaBorrada', id: m.id }); }
         catch (err) { responder({ type: 'error', message: err.response?.data?.error || 'No se pudo quitar de la biblioteca' }); }
       }

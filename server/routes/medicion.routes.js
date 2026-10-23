@@ -6,6 +6,7 @@ import { authenticateToken, requirePermission, requireAdminSuperior } from '../m
 import { cantidadesDePlano } from '../utils/planos.js';
 import { disenadorDe, proyectoEsDe, proyectosDe } from '../utils/asignados.js';
 import { generarBloquesAuto } from '../utils/bloques-auto.js';
+import { catalogoEnCache, guardaCatalogo, vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
 import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
 
@@ -14,6 +15,7 @@ import { urlSketchup } from './medicion-sketchup.routes.js';
 
 const router = express.Router();
 router.use(authenticateToken, requirePermission('proyectos'));
+router.use((req, res, next) => { if (/^\/biblioteca/.test(req.path)) return vaciaCacheAlEscribir(req, res, next); next(); });
 
 // Diseñadores: solo planos de proyectos que tienen asignados (o que han creado ellos)
 async function planoPermitido(req, planoId) {
@@ -267,6 +269,9 @@ router.delete('/biblioteca/:id', requireAdminSuperior, async (req, res) => {
 
 router.get('/catalogos', compression(), async (req, res) => { // comprimido: la biblioteca propia puede traer cientos de bloques
   try {
+    const claveCat = req.user?.role === 'admin_superior' ? 'admin' : 'resto';
+    const enCache = catalogoEnCache(claveCat);
+    if (enCache) return res.json(enCache);
     const columnas = 'id, name, brand, category_id, longitud, ancho, altura, lumens, watts, color_temperature, photo_url, display_order, link';
     const pedirProductos = (cols) => supabase.from('catalog_products').select(cols).order('display_order', { ascending: true, nullsFirst: false });
     const [{ data: cats }, conBloques] = await Promise.all([
@@ -335,7 +340,9 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
       const cat = catPorId[p.category_id];
       return cat ? { id: p.id, n: p.name, m: p.brand || '', c: limpiarCategoria(cat.name), t: cat.type } : null;
     }).filter(Boolean).slice(0, 4000);
-    res.json({ maquinas, luminarias, materiales, productos, admin: req.user?.role === 'admin_superior' });
+    const cuerpo = { maquinas, luminarias, materiales, productos, admin: req.user?.role === 'admin_superior' };
+    guardaCatalogo(claveCat, cuerpo);
+    res.json(cuerpo);
   } catch (err) {
     console.error('medicion/catalogos:', err);
     res.status(500).json({ error: 'No se pudo cargar el catálogo' });
