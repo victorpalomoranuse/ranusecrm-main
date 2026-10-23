@@ -6280,6 +6280,8 @@ function panelSel(focus){
     h+='<div class="rowh"><strong>'+(tqp?tqp.cod:ix)+' · '+esc(e.nm)+'</strong><span class="muted">giro '+e.rot+'°</span></div>';
     h+='<div class="btns tr"><button data-a="zfront" title="Dibujarlo por encima de los demás bloques">Traer al frente</button><button data-a="zback" title="Dibujarlo por debajo de los demás bloques">Enviar atrás</button></div>';
     if(e.bl&&e.bl.esc){
+      var visA=e.vis||'',visOpc=[['','Como se eligió al crearla'],['corte','Partida: solo se ve su parte, con línea de corte'],['disc','Partida, con el resto a trazos'],['total','Entera, en continuo'],['trazos','Entera, a trazos']];
+      h+='<label class="fld"><span>Cómo se dibuja en esta planta</span><select data-t="esc_vis">'+visOpc.map(function(o){return '<option value="'+o[0]+'"'+(o[0]===visA?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label>';
       var ppn=e.pp&&st.v.pisos&&st.v.pisos.filter(function(p){return p.id===e.pp})[0],pos=pisosOn()&&pisoIdx()<st.v.pisos.length-1;
       h+='<div class="btns tr"><button data-a="escedit" class="pri" title="Cambia la altura, el ancho o el tipo y se recalculan los peldaños">Editar la escalera</button>'+(!e.par&&pos?'<button data-a="escpar" title="La dibuja también en la planta de arriba, conectada con esta">Conectar con la planta de arriba</button>':'')+'</div><p class="note">'+esc(escResumen(e.bl.esc))+(e.par&&ppn?' Conectada con «'+esc(ppn.nombre)+'»: '+(e.rol==='llega'?'aquí es donde llega. ':'aquí es donde sube. ')+'Lo que cambies se copia a la otra planta.':'')+'</p>';
     }
@@ -7061,6 +7063,7 @@ $('side').addEventListener('change',function(e){
     else if(t==='mm_nota')mq.nota=e.target.value.trim();
     commit(false);panelSel();return;
   }
+  if(t==='esc_vis'&&st.sel&&st.sel.t==='eq'){var ev=by(st.v.eq,st.sel.id);if(ev&&ev.bl&&ev.bl.esc){snap();ev.vis=e.target.value||undefined;if(!ev.vis)delete ev.vis;ev.bl=escBl(ev.bl.esc,ev.rol||'sube',ev.vis);commit()}return}
   if(t==='rc_mat'&&st.sel&&st.sel.t==='rc'){var rcm=by(st.v.rc,st.sel.id);if(rcm){snap();rcm.mat=e.target.value.trim();commit(false)}return}
   if((t==='eq_cat'||t==='eq_nom')&&st.sel&&st.sel.t==='eq'){
     var qeq=by(st.v.eq,st.sel.id),cq=qeq&&catById(qeq.cid),vl=e.target.value.trim();
@@ -10025,11 +10028,13 @@ function escPlanta(r,color,rol){
   for(i=0;i<T.length;i++)if(T[i].h>cut){k=i;break}
   T.forEach(function(t,i){
     var sobre=k>=0&&i>=k,rc='<rect x="'+t.x+'" y="'+t.y+'" width="'+t.w+'" height="'+t.d+'" data-h="'+t.h+'"';
+    if(modo==='total'){o+=rc+A+'/>';return} /* entera, en continuo */
+    if(modo==='trazos'){o+=rc+AD+'/>';return} /* entera, a trazos */
     if(modo==='completa'){o+=rc+(rol==='sube'?A:AD)+'/>';return}
     var solido=rol==='sube'?!sobre:sobre;
     if(solido)o+=rc+A+'/>';else if(modo==='disc')o+=rc+AD+'/>';
   });
-  if(modo!=='completa'&&k>0){ /* línea de corte: un zigzag sobre el borde entre el último peldaño de abajo y el primero de arriba */
+  if((modo==='corte'||modo==='disc')&&k>0){ /* línea de corte: un zigzag sobre el borde entre el último peldaño de abajo y el primero de arriba */
     var b=escBorde(T[k-1],T[k]);
     if(b){
       var dx=b[2]-b[0],dy=b[3]-b[1],L=Math.hypot(dx,dy)||1,ux=dx/L,uy=dy/L,nx=-uy,ny=ux,e0=[b[0]-ux*4,b[1]-uy*4],e1=[b[2]+ux*4,b[3]+uy*4],Lc=L+8;
@@ -10037,7 +10042,7 @@ function escPlanta(r,color,rol){
       o+='<path d="M'+pt(0,0)+'L'+pt(Lc*0.4,0)+'L'+pt(Lc*0.46,9)+'L'+pt(Lc*0.54,-9)+'L'+pt(Lc*0.6,0)+'L'+pt(Lc,0)+'"'+A.replace('stroke-width="1"','stroke-width="1.6"')+'/>';
     }
   }
-  var P=(rol==='llega'?r.flecha.slice().reverse():r.flecha),d='M'+P.map(function(q){return f2(q[0])+' '+f2(q[1])}).join('L');
+  var P=r.flecha,d='M'+P.map(function(q){return f2(q[0])+' '+f2(q[1])}).join('L');
   o+='<path d="'+d+'"'+A+'/>';
   var a=P[P.length-2],bb=P[P.length-1],ang=Math.atan2(bb[1]-a[1],bb[0]-a[0]),Lh=14,Wh=6;
   var p1=[bb[0]-Lh*Math.cos(ang)+Wh*Math.sin(ang),bb[1]-Lh*Math.sin(ang)-Wh*Math.cos(ang)],p2=[bb[0]-Lh*Math.cos(ang)-Wh*Math.sin(ang),bb[1]-Lh*Math.sin(ang)+Wh*Math.cos(ang)];
@@ -10046,8 +10051,9 @@ function escPlanta(r,color,rol){
   return o;
 }
 /* el bloque completo (dibujo + datos) de una escalera, según su papel en esta planta: 'sube' o 'llega' */
-function escBl(r,rol){
-  return {planta:escPlanta(r,null,rol),largo:r.largo,fondo:r.fondo,alto:r.H,esc:{tipo:r.tipo,giro:r.giro,uso:r.uso,n:r.n,peldanos:r.peldanos,c:r.c,g:r.g,A:r.A,H:r.H,largo:r.largo,fondo:r.fondo,treads:r.treads,flecha:r.flecha,corte:r.corte||'corte',hCorte:r.hCorte||120,hueco:r.hueco!==false}};
+function escBl(r,rol,vis){
+  var rr=vis?Object.assign({},r,{corte:vis}):r;
+  return {planta:escPlanta(rr,null,rol),largo:r.largo,fondo:r.fondo,alto:r.H,esc:{tipo:r.tipo,giro:r.giro,uso:r.uso,n:r.n,peldanos:r.peldanos,c:r.c,g:r.g,A:r.A,H:r.H,largo:r.largo,fondo:r.fondo,treads:r.treads,flecha:r.flecha,corte:r.corte||'corte',hCorte:r.hCorte||120,hueco:r.hueco!==false}};
 }
 function escNodoCerca(nodes,x,y){var b=null;(nodes||[]).forEach(function(n){var d=Math.hypot(n.x-x,n.y-y);if(!b||d<b.d)b={n:n,d:d}});return b&&b.n}
 /* crea la pareja de una escalera en la planta de arriba (la llegada), en el mismo sitio. Devuelve true, o un texto con el motivo si no se pudo */
@@ -10096,7 +10102,7 @@ function escSync(){
     var c=pc(e),nn=(b.nodes||[]).filter(function(n){return n.id===o.n})[0]||escNodoCerca(b.nodes,c.x,c.y);
     if(!nn)return;
     var rol=e.rol==='llega'?'sube':'llega';
-    o.n=nn.id;o.dx=f2(c.x-nn.x);o.dy=f2(c.y-nn.y);o.w=e.w;o.d=e.d;o.rot=e.rot||0;o.nm=e.nm;o.rol=rol;o.bl=escBl(e.bl.esc,rol);
+    o.n=nn.id;o.dx=f2(c.x-nn.x);o.dy=f2(c.y-nn.y);o.w=e.w;o.d=e.d;o.rot=e.rot||0;o.nm=e.nm;o.rol=rol;o.bl=escBl(e.bl.esc,rol,o.vis);
     if(e.fx)o.fx=e.fx;else delete o.fx;if(e.fy)o.fy=e.fy;else delete o.fy;
     if(e.s)o.s=e.s;else delete o.s; /* el estado (existente / nuevo) también va igual en las dos plantas */
   });
@@ -10177,7 +10183,7 @@ function escModal(editId){
     res.hueco=v.hueco;
     var nom=escNombre(res);
     if(ed){
-      snap();ed.bl=escBl(res,rolEd);ed.w=res.largo;ed.d=res.fondo;ed.nm=nom;commit();cerrar();toast('Escalera actualizada: '+escResumen(res));return;
+      snap();ed.bl=escBl(res,rolEd,ed.vis);ed.w=res.largo;ed.d=res.fondo;ed.nm=nom;commit();cerrar();toast('Escalera actualizada: '+escResumen(res));return;
     }
     var cx=(W/2-st.tx)/st.k,cy=(H/2-st.ty)/st.k,nq=nearNode(cx,cy,1e9,null);
     if(!nq){toast('Dibuja primero el contorno de la sala');return}
