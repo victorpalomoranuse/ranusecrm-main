@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.9.2'.freeze
+    VERSION = '1.10.0'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -928,7 +928,7 @@ module Ranuse
     end
 
     def self.construir_planta(ents, plano)
-      @techos_por_defecto = !(plano['techos'] || []).empty?
+      @techos_por_defecto = !((plano['techos'] || []).empty? && (plano['cielos'] || []).empty?)
       vista = ajuste('estado', 'final')
       altura = plano['altura'].to_f
       altura = 260.0 if altura <= 0
@@ -1028,12 +1028,35 @@ module Ranuse
         next if sala_con_cubierta?(pts, techos_inc) # esa sala lleva su cubierta con forma
         techo = sa['techo']
         clave_te = "techo:#{sa['idT'] || ks}"
-        gt = elemento(ents, clave_te, firma([sa['techo'], pts, altura, sa['nombre']]), "Techo #{sa['nombre']}".strip, et_techos)
+        # cada sala puede tener su propia altura de techo; si no, la general del plano
+        alto_te = techo && techo['h'].to_f > 0 ? techo['h'].to_f : altura
+        gt = elemento(ents, clave_te, firma([sa['techo'], pts, alto_te, sa['nombre']]), "Techo #{sa['nombre']}".strip, et_techos, firma([sa['techo'], pts, altura, sa['nombre']]))
         next unless gt
-        ct = gt.entities.add_face(pts.map { |p| pt(p[0], p[1], altura) })
+        ct = gt.entities.add_face(pts.map { |p| pt(p[0], p[1], alto_te) })
         if ct
           ct.reverse! if ct.normal.z > 0
           ct.material = (@pintura_cara ||= {})[kp(clave_te)] || material("Ranuse techo #{techo ? techo['n'] : 'blanco'}", techo ? techo['c'] : '#f6f4f1')
+        end
+      end
+
+      # Partes de techo dibujadas a mano con altura propia (p. ej. una entreplanta): un cielo a esa altura
+      if techos_activos?
+        (plano['cielos'] || []).each_with_index do |ci, i_ci|
+          begin
+            pts_ci = (ci['pts'] || []).map { |p| [p[0].to_f, p[1].to_f] }
+            next if pts_ci.size < 3
+            clave_ci = "cielo:#{ci['id'] || i_ci}"
+            nom_ci = ci['nombre'].to_s.strip
+            gci = elemento(ents, clave_ci, firma([ci]), nom_ci.empty? ? 'Techo (parte)' : "Techo #{nom_ci}", et_techos)
+            next unless gci
+            cara = gci.entities.add_face(pts_ci.map { |p| pt(p[0], p[1], ci['h'].to_f) })
+            if cara
+              cara.reverse! if cara.normal.z > 0
+              cara.material = (@pintura_cara ||= {})[kp(clave_ci)] || material('Ranuse techo parte', ci['c'] || '#f6f4f1')
+            end
+          rescue StandardError => e
+            puts "Ranuse: no se pudo dibujar una parte de techo (#{e.message})"
+          end
         end
       end
 

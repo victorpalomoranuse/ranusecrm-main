@@ -2081,19 +2081,34 @@ function techoLin(z,inner,tipo){
   }
   return {eje:eje,s:s,ini:ini,fin:fin,items:items};
 }
-function techoFaceDe(z){var zf=null;roomFaces('techos').forEach(function(f){if(!zf&&zoneIn(f,'t')===z)zf=f});return zf}
+/* zonas de techo con su contorno: las salas (cerradas por muros) y las partes dibujadas a mano (p. ej. una entreplanta). Las dos pueden llevar forma, vigas, cerchas, correas y tragaluces. */
+function techoZonas(){
+  var out=[];
+  roomFaces('techos').forEach(function(f){var z=zoneIn(f,'t');if(z)out.push({z:z,f:f})});
+  (st.v.sp||[]).forEach(function(r){
+    if(r.k!=='t')return;
+    var p=spPts(r);if(!p||p.length<3)return;
+    var ar=polyArea(p),cx=0,cy=0;p.forEach(function(q){cx+=q.x;cy+=q.y});
+    out.push({z:r,f:{poly:p,inner:p,area:ar,per:0,doorW:0,cx:cx/p.length,cy:cy/p.length,wids:{},edges:[],sp:true}});
+  });
+  return out;
+}
+function znDe(id){return by(st.v.zn,id)||by(st.v.sp,id)}
+/* la zona de techo seleccionada: una sala o una parte dibujada */
+function znSel(){var s=st.sel;if(!s)return null;if(s.t==='zn')return znDe(s.id);if(s.t==='sp'){var r=by(st.v.sp,s.id);return r&&r.k==='t'?r:null}return null}
+function techoFaceDe(z){var zf=null;techoZonas().forEach(function(it){if(!zf&&it.z===z)zf=it.f});return zf}
 function techoReset(z){if(z.vg){delete z.vg.mv;delete z.vg.del}if(z.cr){delete z.cr.mv;delete z.cr.del}if(st.sel&&st.sel.t==='zn'&&st.sel.id===z.id)st.sel.el=null}
 function techoQuita(z,el){
   if(!z||!el)return;
   if(el.k==='tl'){z.tl=(z.tl||[]).filter(function(q,i){return i!==el.i});if(!z.tl.length)delete z.tl}
   else{var cg=el.k==='vg'?z.vg:z.cr;if(cg){cg.del=cg.del||{};cg.del[el.i]=1;if(cg.mv)delete cg.mv[el.i]}}
-  if(st.sel&&st.sel.t==='zn'&&st.sel.id===z.id)st.sel.el=null;
+  if(st.sel&&(st.sel.t==='zn'||st.sel.t==='sp')&&st.sel.id===z.id)st.sel.el=null;
 }
 /* lo que hay bajo un punto del plano de techos: un tragaluz, una correa o una viga */
 function pickTecho(p){
   var best=null,bd=1e9;
-  roomFaces('techos').forEach(function(f){
-    var z=zoneIn(f,'t');if(!z||z.ex||best&&best.k==='tl')return;
+  techoZonas().forEach(function(it){
+    var f=it.f,z=it.z;if(!z||z.ex||best&&best.k==='tl')return;
     if(!inPoly(p,f.inner))return;
     (z.tl||[]).forEach(function(t,ix){if(Math.abs(p.x-t.x)<=t.w/2+2&&Math.abs(p.y-t.y)<=t.d/2+2)best={zid:z.id,el:{k:'tl',i:ix}}});
     if(best)return;
@@ -2144,8 +2159,8 @@ function techoSvg(C,px,view,sel){
   var ref=view==='ilum'||view==='elec';
   if(view!=='techos'&&!ref)return h;
   if(ref)sel=null;
-  roomFaces('techos').forEach(function(f){
-    var z=zoneIn(f,'t');if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
+  techoZonas().forEach(function(it){
+    var f=it.f,z=it.z;if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
     var b=techoBox(f.inner),fo=z.fo||'plano',ej=z.ej==='v'?'v':'h',col=C.accent||C.dim,H=num(st.v.altura)||260;
     var ha=z.ha!=null?z.ha:H,hc=z.hc!=null?z.hc:H+150;
     function seg(x1,y1,x2,y2,w,dash,op,cc){return ln(x1,y1,x2,y2,cc||col,w,'butt',(dash?';stroke-dasharray:'+dash:'')+(op?';opacity:'+op:''))}
@@ -2209,7 +2224,7 @@ function techoElPanel(z,zf,el){
 }
 function techoPanel(z,zf){
   var fo=z.fo||'plano',H=num(st.v.altura)||260,h='';
-  if(st.sel&&st.sel.t==='zn'&&st.sel.id===z.id&&st.sel.el)h+=techoElPanel(z,zf,st.sel.el);
+  if(st.sel&&(st.sel.t==='zn'||st.sel.t==='sp')&&st.sel.id===z.id&&st.sel.el)h+=techoElPanel(z,zf,st.sel.el);
   h+='<div class="lab" style="margin-top:12px">Forma del techo</div>';
   h+='<label class="fld"><select data-t="zn_fo">'+TECHO_FORMAS.map(function(x){return '<option value="'+x[0]+'"'+(fo===x[0]?' selected':'')+'>'+x[1]+'</option>'}).join('')+'</select></label>';
   if(fo!=='plano'){
@@ -4840,7 +4855,7 @@ svg.addEventListener('pointerdown',function(e){
       if(oo){snap();st.sel=ho;gesture={type:'dragOp',id:e.pointerId,o:oo,moved:false,sx:p.x,sy:p.y};panelSel();render();return}
     }
     if(ho&&ho.t==='zn'&&ho.el&&st.tool==='select'&&st.view==='techos'){
-      var zte=by(st.v.zn,ho.id),fte=zte&&techoFaceDe(zte);
+      var zte=znDe(ho.id),fte=zte&&techoFaceDe(zte);
       if(zte&&fte){
         snap();st.sel={t:'zn',id:ho.id,el:ho.el};
         var gte={type:'dragTe',id:e.pointerId,z:zte,el:ho.el,w0:wo,moved:false,sx:p.x,sy:p.y,box:techoBox(fte.inner)};
@@ -6360,7 +6375,7 @@ function panelSel(focus){
   if(s&&s.t==='pt'&&!by(st.v.pts,s.id))s=st.sel=null;
   if(s&&s.t==='eqa'&&!by(st.v.eqa||[],s.id))s=st.sel=null;
   if(s&&s.t==='fz'&&!by(st.v.fz||[],s.id))s=st.sel=null;
-  if(s&&s.t==='zn'&&!by(st.v.zn,s.id))s=st.sel=null;
+  if(s&&s.t==='zn'&&!znDe(s.id))s=st.sel=null;
   if(s&&s.t==='rz'&&!by(st.v.rz,s.id))s=st.sel=null;
   if(s&&s.t==='sp'&&!by(st.v.sp,s.id))s=st.sel=null;
   if(s&&s.t==='mm'&&!by(st.v.mm,s.id))s=st.sel=null;
@@ -6561,6 +6576,11 @@ function panelSel(focus){
     if(st.spVsel&&st.spVsel.id===sp.id&&sp.pts&&sp.pts.length>3)h+='<div class="btns"><button data-a="spdelv">Quitar el punto seleccionado</button></div>';
     if(sq&&sbx&&!sp.pts)h+=fld('sp_x','Distancia desde la esquina izquierda (cm)',sq.x0-sbx.x0)+fld('sp_y','Distancia desde la esquina de arriba (cm)',sq.y0-sbx.y0);
     h+='<label class="fld chk"><input type="checkbox" data-t="sp_ex"'+(sp.ex?' checked':'')+'><span>Existente: se mantiene (no se mide ni se pide)</span></label>';
+    var spp=spPts(sp);if(sp.k==='t'&&spp&&spp.length>2){ /* una parte dibujada de techo (p. ej. una entreplanta) también tiene altura propia y puede llevar estructura */
+      h+=fld('zn_h','Altura libre bajo esta parte (cm)',sp.h,String(fmt(num(st.v.altura)||260)));
+      if(!sp.ex)h+=techoPanel(sp,techoFaceDe(sp));
+      else h+='<p class="note">Para dibujar la estructura (vigas, cerchas, correas) quita la marca de «Existente».</p>';
+    }
     h+=colocHtml(sp,spPts(sp));
     h+='<div class="btns"><button class="danger" data-a="del">Borrar esta parte</button></div>';
   }else if(s.t==='rz'){
@@ -6574,12 +6594,12 @@ function panelSel(focus){
     h+='<label class="fld"><span>Material existente</span><select data-t="rz_mat"><option value="">Sin definir</option>'+matsDe(rv).map(function(m){return '<option value="'+m.id+'"'+(m.id===rz.mat?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label>';
     h+='<div class="btns"><button class="danger" data-a="del">Dejar de retirar</button></div>';
   }else if(s.t==='zn'){
-    var z=by(st.v.zn,s.id),zv=z.k==='s'?'suelos':'techos',zf=null;
+    var z=znDe(s.id),zv=z.k==='s'?'suelos':'techos',zf=null;
     roomFaces(zv).forEach(function(f){if(!zf&&zoneIn(f,z.k)===z)zf=f});
     h+='<div class="rowh"><strong>'+(z.k==='s'?'Suelo':'Techo')+'</strong>'+(zf?'<span class="muted">'+m2(zf.area/10000)+' m²</span>':'')+'</div>';
     h+='<label class="fld"><span>Nombre de la sala</span><input data-t="zn_nm" value="'+esc(z.nm||'')+'" placeholder="Sala de entreno" autocomplete="off"></label>';
     h+='<label class="fld"><span>Material</span><select data-t="zn_mat">'+matOpts(zv,z.mat)+'</select></label>'+codColorHtml(z,zv)+sisSelHtml(zv,z.sis,'zn_sis');
-    if(z.k==='t')h+=fld('zn_h','Altura libre bajo el techo (cm)',z.h,String(fmt(num(st.v.altura)||260)));
+    if(z.k==='t'){h+=fld('zn_h','Altura libre bajo el techo (cm)',z.h,String(fmt(num(st.v.altura)||260)));if(z.h>0)h+='<div class="btns"><button data-a="znmuros" title="Pone los muros que rodean SOLO a esta sala a esa altura (los compartidos con otra sala no se tocan)">Muros de esta sala a ese alto</button></div>'}
     if(z.k==='t'&&!z.ex)h+=techoPanel(z,zf);
     if(zf&&z.k==='s')h+='<p class="note">Rodapié: '+m2(Math.max(0,zf.per-zf.doorW)/100)+' ml (perímetro menos puertas). Los m² son útiles, descontando el grosor de los muros.</p>';
     h+='<label class="fld chk"><input type="checkbox" data-t="zn_ex"'+(z.ex?' checked':'')+'><span>'+(z.k==='s'?'Suelo':'Techo')+' existente: se mantiene (no se mide ni se pide)</span></label>';
@@ -6863,8 +6883,8 @@ function applyField(key,val,adv,raw){
     var qa=by(st.v.eqa||[],s.id);if(!qa)return;
     if(!(n>=0&&n<=3000)){toast('Escribe una medida válida');return}
     snap();if(key==='eqa_x')qa.x=n;else if(key==='eqa_w')qa.w=Math.max(5,n);else qa.h=Math.max(5,n);commit(false);
-  }else if(s.t==='zn'){
-    var zq=by(st.v.zn,s.id);if(!zq)return;
+  }else if(s.t==='zn'||(s.t==='sp'&&/^zn_/.test(key))){
+    var zq=znDe(s.id);if(!zq)return;
     var RZ={zn_ha:[100,2000,'altura'],zn_hc:[100,2000,'altura'],zn_vgs:[20,500,'separación'],zn_vgw:[2,60,'ancho'],zn_vgh:[4,100,'canto'],zn_crs:[30,500,'separación']};
     if(key==='zn_elpos'&&st.sel&&st.sel.el&&st.sel.el.k!=='tl'){
       var fE=techoFaceDe(zq),TE=fE&&techoLin(zq,fE.inner,st.sel.el.k),cE=st.sel.el.k==='vg'?zq.vg:zq.cr;
@@ -6877,7 +6897,7 @@ function applyField(key,val,adv,raw){
     if(mtl){
       var tq=(zq.tl||[])[+mtl[2]];if(!tq)return;
       if(!(n>=(mtl[1]==='w'||mtl[1]==='d'?20:-100000)&&n<=100000)){toast('Escribe un valor válido');return}
-      var zf2=null;roomFaces('techos').forEach(function(f){if(!zf2&&zoneIn(f,'t')===zq)zf2=f});
+      var zf2=techoFaceDe(zq);
       var b2=zf2?techoBox(zf2.inner):{x0:0,y0:0};
       snap();
       if(mtl[1]==='w')tq.w=n;else if(mtl[1]==='d')tq.d=n;else if(mtl[1]==='x')tq.x=b2.x0+n;else tq.y=b2.y0+n;
@@ -6911,18 +6931,25 @@ function applyField(key,val,adv,raw){
 }
 function doAction(a,el){
   if(a.indexOf('teel:')===0){
-    var zE=st.sel&&st.sel.t==='zn'?by(st.v.zn,st.sel.id):null;if(!zE)return;
+    var zE=znSel();if(!zE)return;
     var pa=a.split(':'),el0=st.sel.el;snap();
     if(pa[1]==='auto'){var cg0=pa[2]==='vg'?zE.vg:zE.cr;if(cg0){delete cg0.mv;delete cg0.del}}
     else if(el0&&pa[1]==='quitar')techoQuita(zE,el0);
     else if(el0&&pa[1]==='volver'){var cg1=el0.k==='vg'?zE.vg:zE.cr;if(cg1&&cg1.mv)delete cg1.mv[el0.i]}
     commit(false);panelSel();return;
   }
+  if(a==='znmuros'){
+    var zm=znSel(),fm=zm&&techoFaceDe(zm);if(!zm||!fm||!(zm.h>0))return;
+    var cuenta={};roomFaces('techos').forEach(function(q){Object.keys(q.wids).forEach(function(id){cuenta[id]=(cuenta[id]||0)+1})});
+    var tocados=0,comp=0;snap();
+    Object.keys(fm.wids).forEach(function(id){var w=wl(id);if(!w)return;if(cuenta[id]>1){comp++;return}w.h=zm.h;tocados++});
+    commit(false);panelSel();toast(tocados+' muro'+(tocados===1?'':'s')+' a '+fmtU(zm.h)+(comp?' · '+comp+' compartido'+(comp===1?'':'s')+' con otra sala (sin tocar: ajústalos a mano)':''));return;
+  }
   if(a.indexOf('zntl:')===0){
-    var zt2=st.sel&&st.sel.t==='zn'?by(st.v.zn,st.sel.id):null;if(!zt2)return;
+    var zt2=znSel();if(!zt2)return;
     snap();
     if(a==='zntl:add'){
-      var zfa=null;roomFaces('techos').forEach(function(f){if(!zfa&&zoneIn(f,'t')===zt2)zfa=f});
+      var zfa=techoFaceDe(zt2);
       var ba=zfa?techoBox(zfa.inner):{cx:0,cy:0,x0:0,x1:0,y0:0,y1:0},nt=(zt2.tl||[]).length;
       /* un tragaluz nuevo: en el centro de la sala, algo desplazado si ya hay otros; si es a dos aguas, en la vertiente de abajo/izquierda */
       var cx0=ba.cx+(nt%2===1?-1:1)*Math.ceil(nt/2)*130,cy0=ba.cy;
@@ -6934,7 +6961,7 @@ function doAction(a,el){
     commit(false);panelSel();return;
   }
   if(a.indexOf('znej:')===0||a.indexOf('znvgd:')===0){
-    var zt=st.sel&&st.sel.t==='zn'?by(st.v.zn,st.sel.id):null;if(!zt)return;
+    var zt=znSel();if(!zt)return;
     snap();techoReset(zt);if(a.indexOf('znej:')===0)zt.ej=a.slice(5)==='v'?'v':'h';else{zt.vg=zt.vg||{s:60,w:10,h:20};zt.vg.d=a.slice(6)==='v'?'v':'h'}
     commit(false);panelSel();return;
   }
@@ -7106,7 +7133,7 @@ function doAction(a,el){
   if(a==='rcside'&&s.t==='rc'){var rcx=by(st.v.rc,s.id);if(rcx){snap();rcx.sd=sv;commit()}return}
   if(a==='del'){
     snap();
-    if(s.t==='zn'&&s.el){techoQuita(by(st.v.zn,s.id),s.el);commit();panelSel();return}
+    if(s.t==='zn'&&s.el){techoQuita(znDe(s.id),s.el);commit();panelSel();return}
     if(s.t==='dr')st.v.dr=st.v.dr.filter(function(q){return q.id!==s.id});
     else if(s.t==='rc')st.v.rc=st.v.rc.filter(function(q){return q.id!==s.id});
     else if(s.t==='mm')st.v.mm=st.v.mm.filter(function(q){return q.id!==s.id});
@@ -7235,8 +7262,8 @@ $('side').addEventListener('change',function(e){
     if(t.indexOf('wx_')===0){wq.fx=wq.fx||{};if(e.target.value)wq.fx[sd0]=e.target.value;else delete wq.fx[sd0]}
     else{wq.fr=wq.fr||{};if(e.target.checked)wq.fr[sd0]=true;else delete wq.fr[sd0]}
     commit(false);
-  }else if(t&&st.sel&&st.sel.t==='zn'){
-    var z=by(st.v.zn,st.sel.id);if(!z)return;
+  }else if(t&&znSel()&&(st.sel.t==='zn'||/^zn_/.test(t))){
+    var z=znSel();if(!z)return;
     snap();
     if(t==='zn_fo'){var vfo=e.target.value;techoReset(z);if(vfo==='plano'){delete z.fo}else{z.fo=vfo;var Hh=num(st.v.altura)||260;if(z.ha==null)z.ha=Hh;if(z.hc==null)z.hc=Hh+150;if(!z.ej)z.ej='h'}}
     else if(t==='zn_inv'){if(e.target.checked)z.inv=true;else delete z.inv}
@@ -9882,8 +9909,8 @@ function buildResumen1(){
   v.pts.forEach(function(q){if(q.v==='ilum'||q.s==='dem')return;var d=ptDef(q.k);if(!d)return;(inst[q.k]=inst[q.k]||{tipo:q.k,nombre:d.n,n:0}).n++});
   out.electricidad=Object.keys(inst).map(function(k){return inst[k]});
   out.cubiertas=[];
-  roomFaces('techos').forEach(function(f){
-    var z=zoneIn(f,'t');if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
+  techoZonas().forEach(function(it){
+    var f=it.f,z=it.z;if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
     var tm=techoMedicion(z,f.inner),sala=(z.nm)||'';
     tm.sala=sala;out.cubiertas.push(tm);
   });
@@ -9933,16 +9960,17 @@ function buildModelo3d1(){
   roomFaces('distrib').forEach(function(f){
     var zs=zoneIn(f,'s'),zt=zoneIn(f,'t'),ms=zs?matOf('suelos',zs.mat):null,mt=zt?matOf('techos',zt.mat):null;
     out.salas.push({idS:zs?zs.id:null,idT:zt?zt.id:null,nombre:(zs&&zs.nm)||(zt&&zt.nm)||'',pts:f.inner.map(function(p){return [f2(p.x),f2(p.y)]}),
-      suelo:ms?{n:ms.n,c:ms.c}:null,techo:mt?{n:mt.n,c:mt.c}:null});
+      suelo:ms?{n:ms.n,c:ms.c}:null,techo:mt?{n:mt.n,c:mt.c,h:(zt&&num(zt.h)>0)?num(zt.h):null}:null});
   });
   out.techos=[];
-  roomFaces('techos').forEach(function(f){
-    var z=zoneIn(f,'t');if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
+  techoZonas().forEach(function(it){
+    var f=it.f,z=it.z;if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
     var m=matOf('techos',z.mat),H=num(v.altura)||260,b=techoBox(f.inner);
     out.techos.push({id:z.id,pts:f.inner.map(function(p){return [f2(p.x),f2(p.y)]}),fo:z.fo||'plano',ej:z.ej==='v'?'v':'h',inv:!!z.inv,
-      ha:z.ha!=null?z.ha:H,hc:z.hc!=null?z.hc:H+150,x0:f2(b.x0),y0:f2(b.y0),x1:f2(b.x1),y1:f2(b.y1),
+      ha:z.ha!=null?z.ha:(z.h!=null?z.h:H),hc:z.hc!=null?z.hc:H+150,x0:f2(b.x0),y0:f2(b.y0),x1:f2(b.x1),y1:f2(b.y1),
       vg:z.vg?{s:z.vg.s||60,w:z.vg.w||10,h:z.vg.h||20,d:z.vg.d==='v'?'v':'h',mv:z.vg.mv||{},del:z.vg.del||{}}:null,cr:z.cr?{s:z.cr.s||100,mv:z.cr.mv||{},del:z.cr.del||{}}:null,c:m?m.c:'#f6f4f1',tl:(z.tl||[]).map(function(t){return {x:f2(t.x),y:f2(t.y),w:t.w,d:t.d}})});
   });
+  out.cielos=(v.sp||[]).filter(function(r){return r.k==='t'&&!r.ex&&num(r.h)>0}).map(function(r){var p=spPts(r),m=matOf('techos',r.mat);return p?{id:r.id,nombre:r.nm||'',h:num(r.h),pts:p.map(function(q){return [f2(q.x),f2(q.y)]}),c:(m&&m.c)||'#f6f4f1'}:null}).filter(Boolean);
   out.a_medida=(v.mm||[]).filter(function(m){return m.k!=='hor'}).map(function(m){var q=mmPoly(m);return q?{id:m.id,nombre:mmNombre(m),pts:q.pts.map(function(p){return [f2(p.x),f2(p.y)]}),z0:f2(m.y0||0),z1:f2((m.y0||0)+m.h),luz:!!m.luz}:null}).filter(Boolean);
   v.pil.forEach(function(p){pilCells(p).forEach(function(c,ci){out.pilares.push({id:p.id+'-'+ci,cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,estado:p.s||'ex'})})});
   v.eq.forEach(function(e){
