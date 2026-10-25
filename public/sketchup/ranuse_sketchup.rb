@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.9.0'.freeze
+    VERSION = '1.9.1'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -80,6 +80,25 @@ module Ranuse
       guardar_ajuste('techos', !techos_activos?)
       guardar_ajuste('actualizado', 0)
       sincronizar(false)
+    end
+
+    # Máquinas simples: cada máquina es una caja (largo × fondo × alto) en vez de todos los polígonos de su dibujo. El modelo pesa
+    # decenas de veces menos y SketchUp va mucho más fluido. Si la persona no lo ha elegido, se activa solo en planos con muchas máquinas.
+    def self.maquinas_simples?(plano)
+      v = ajuste('maquinas', nil)
+      @simples_efectivo = v.nil? ? (plano['equipos'] || []).length > 30 : v.to_s == 'simple' # lo que se está usando ahora (para el menú)
+    end
+
+    def self.simples_efectivo?
+      @simples_efectivo ? true : false
+    end
+
+    def self.alternar_maquinas
+      simples = !simples_efectivo? # si se estaban usando simples pasa a detalle, y al revés
+      guardar_ajuste('maquinas', simples ? 'simple' : 'detalle')
+      guardar_ajuste('actualizado', 0)
+      UI.messagebox(simples ? 'Máquinas simples: cada máquina se dibuja como una caja. SketchUp irá mucho más fluido.' : 'Máquinas con detalle: se dibuja el contorno completo de cada máquina.')
+      sincronizar(false, true)
     end
 
     def self.alternar_estado
@@ -1049,7 +1068,8 @@ module Ranuse
       (plano['equipos'] || []).each_with_index do |e, i_e|
         next unless e['estado'].nil? || visible?(e['estado'], vista) # lo que ya existe sale siempre; lo nuevo solo en «final»; lo que se retira, solo en «hoy»
         con_modelo = e['skp'] && e['skp']['url'] ? modelo_descargado?(e['skp']['url']) : false
-        g = elemento(ents, "eq:#{e['id'] || i_e}", firma([e, con_modelo]), e['nombre'].to_s, et_maq)
+        simples = maquinas_simples?(plano)
+        g = elemento(ents, "eq:#{e['id'] || i_e}", firma([e, con_modelo, simples]), e['nombre'].to_s, et_maq)
         next unless g
         g.set_attribute(DICT, 'cid', e['cid'].to_s)
         alto = e['alto'].to_f
@@ -1057,7 +1077,7 @@ module Ranuse
         if colocar_modelo(g.entities, e)
           g.name = "#{e['nombre']} (modelo 3D)"
         else
-          huella(g.entities, e, alto)
+          huella(g.entities, e, alto, simples)
           g.material = mat_maq
         end
       end
@@ -1097,7 +1117,7 @@ module Ranuse
 
     # Huella de la máquina: el contorno real del bloque (si lo tiene) extruido hasta su altura;
     # si no, una caja del tamaño de la máquina. Se gira como en el plano (sentido horario).
-    def self.huella(ents, e, alto)
+    def self.huella(ents, e, alto, simples = false)
       w = e['w'].to_f
       d = e['d'].to_f
       rot = e['rot'].to_f * Math::PI / 180.0
@@ -1128,7 +1148,7 @@ module Ranuse
         return if hecho_esc
       end
       hecho = false
-      (e['huella'] || []).each do |poli|
+      (simples ? [] : (e['huella'] || [])).each do |poli|
         pts = poli.map { |p| transformar.call(p[0].to_f, p[1].to_f) }
         begin
           hecho = true if prisma(ents, pts, 0.0, alto)
@@ -1170,12 +1190,14 @@ unless file_loaded?(__FILE__)
   cmd_auto.set_validation_proc { Ranuse::PlanoSU.instance_variable_get(:@timer) ? MF_CHECKED : MF_UNCHECKED }
   cmd_techos = crear.call('Mostrar techos', 'Ranuse: mostrar u ocultar los techos', 'techos') { Ranuse::PlanoSU.alternar_techos }
   cmd_techos.set_validation_proc { Ranuse::PlanoSU.techos_activos? ? MF_CHECKED : MF_UNCHECKED }
+  cmd_maq = crear.call('Máquinas simples (más fluido)', 'Ranuse: dibujar cada máquina como una caja para que SketchUp vaya más rápido', 'estado') { Ranuse::PlanoSU.alternar_maquinas }
+  cmd_maq.set_validation_proc { (Ranuse::PlanoSU.simples_efectivo? || Ranuse::PlanoSU.ajuste('maquinas', nil).to_s == 'simple') ? MF_CHECKED : MF_UNCHECKED }
   cmd_estado = crear.call('Estado: hoy / final', 'Ranuse: cambiar entre cómo está hoy y cómo quedará', 'estado') { Ranuse::PlanoSU.alternar_estado }
 
   menu_raiz = (UI.respond_to?(:menu) && (UI.menu('Extensions') || UI.menu('Plugins')))
   if menu_raiz
     menu = menu_raiz.add_submenu('Ranuse')
-    [cmd_conectar, cmd_actualizar, cmd_auto, cmd_techos, cmd_estado, cmd_cero].each { |c| menu.add_item(c) }
+    [cmd_conectar, cmd_actualizar, cmd_auto, cmd_techos, cmd_estado, cmd_maq, cmd_cero].each { |c| menu.add_item(c) }
   end
 
   barra = UI::Toolbar.new('Ranuse')
