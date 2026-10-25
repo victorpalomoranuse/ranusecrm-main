@@ -23,7 +23,7 @@ module Ranuse
   module PlanoSU
     DICT = 'ranuse_plano'.freeze
     NOMBRE_GRUPO = 'RANUSE PLANO'.freeze
-    VERSION = '1.9.1'.freeze
+    VERSION = '1.9.2'.freeze
 
     @pidiendo = false
     @timer = nil
@@ -1069,7 +1069,9 @@ module Ranuse
         next unless e['estado'].nil? || visible?(e['estado'], vista) # lo que ya existe sale siempre; lo nuevo solo en «final»; lo que se retira, solo en «hoy»
         con_modelo = e['skp'] && e['skp']['url'] ? modelo_descargado?(e['skp']['url']) : false
         simples = maquinas_simples?(plano)
-        g = elemento(ents, "eq:#{e['id'] || i_e}", firma([e, con_modelo, simples]), e['nombre'].to_s, et_maq)
+        # con detalle se usa la misma firma de siempre: al actualizar no se rehacen las máquinas de modelos hechos con versiones anteriores
+        firma_eq = simples ? firma([e, con_modelo, true]) : firma([e, con_modelo])
+        g = elemento(ents, "eq:#{e['id'] || i_e}", firma_eq, e['nombre'].to_s, et_maq)
         next unless g
         g.set_attribute(DICT, 'cid', e['cid'].to_s)
         alto = e['alto'].to_f
