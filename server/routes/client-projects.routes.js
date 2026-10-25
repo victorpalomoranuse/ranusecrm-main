@@ -12,6 +12,7 @@ import { callClaude } from '../utils/anthropic.js';
 import { crearHistoria, getHistoriaPublica, TIPOS_PROYECTO } from '../utils/historia.js';
 import { puedeDescargar } from '../utils/portal.js';
 
+import { TIPOS_REFERENCIA } from '../utils/moodboard-notas.js';
 const router = express.Router();
 
 function generateCode() {
@@ -950,6 +951,33 @@ router.put('/:id/moodboard/images/reorder', authenticateToken, requireProyectos,
   } catch (error) {
     console.error('Error al reordenar moodboard:', error);
     res.status(500).json({ error: 'Error al reordenar el moodboard' });
+  }
+});
+
+/**
+ * PUT /api/client-projects/:id/moodboard/images/:imageId
+ * Body: { tipo?, nota? } — qué se quiere de esa imagen (estilo general, detalle, material…) y un comentario libre.
+ * La IA lo usa para entender por qué está la imagen en el moodboard.
+ */
+router.put('/:id/moodboard/images/:imageId', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const cambios = {};
+    if (req.body?.tipo !== undefined) {
+      const tipo = String(req.body.tipo || '').trim();
+      if (tipo && !Object.keys(TIPOS_REFERENCIA).includes(tipo)) return res.status(400).json({ error: 'Tipo de referencia no válido' });
+      cambios.tipo = tipo || null;
+    }
+    if (req.body?.nota !== undefined) cambios.nota = String(req.body.nota || '').trim().slice(0, 600) || null;
+    if (!Object.keys(cambios).length) return res.status(400).json({ error: 'Nada que guardar' });
+    const { data, error } = await supabase.from('project_moodboard_images').update(cambios).eq('id', req.params.imageId).eq('project_id', req.params.id).select('*').single();
+    if (error) {
+      if (error.code === '42703' || /column .* does not exist|tipo|nota/i.test(error.message || '')) return res.status(409).json({ error: 'Falta ejecutar el SQL v80 en Supabase (columnas «tipo» y «nota» del moodboard)' });
+      throw error;
+    }
+    res.json({ image: data });
+  } catch (error) {
+    console.error('Error al guardar la nota de la imagen del moodboard:', error);
+    res.status(500).json({ error: 'No se pudo guardar la nota' });
   }
 });
 

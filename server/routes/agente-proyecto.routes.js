@@ -13,6 +13,7 @@ import { TOOL_CONOCIMIENTO, ejecutarConsultaConocimiento } from '../utils/conoci
 const router = express.Router();
 router.use(authenticateToken, requirePermission('proyectos'));
 
+import { imagenesMoodboard, bloquesConNotas } from '../utils/moodboard-notas.js';
 const fail = (res, e, msg) => { console.error(msg, e); res.status(500).json({ error: msg }); };
 const txt = (v) => (typeof v === 'string' ? (v.trim() || null) : v === null ? null : undefined);
 
@@ -33,7 +34,7 @@ export async function contextoProyecto(projectId) {
   if (!p) return null;
 
   const [{ data: imgs }, { data: form }, h, { data: equipos }, { data: materiales }] = await Promise.all([
-    supabase.from('project_moodboard_images').select('url').eq('project_id', projectId).order('display_order', { ascending: true }).limit(6),
+    imagenesMoodboard(projectId, 6).then(data => ({ data })),
     supabase.from('project_needs_forms').select('id, brief, client_summary').eq('project_id', projectId).maybeSingle(),
     getHistoriaAdmin(projectId).catch(() => null),
     supabase.from('project_equipment_selections').select('name, brand, quantity').eq('project_id', projectId).limit(40),
@@ -67,8 +68,9 @@ export async function contextoProyecto(projectId) {
     `EQUIPAMIENTO ELEGIDO: ${(equipos || []).map(e => `${e.name}${e.brand ? ` (${e.brand})` : ''}`).join('; ') || 'ninguno todavía'}`,
     `MATERIALES ELEGIDOS: ${(materiales || []).map(m => m.name + (m.location ? ` [${m.location}]` : '')).join('; ') || 'ninguno todavía'}`,
   ];
-  const imagenes = (await Promise.all((imgs || []).map(i => imagenParaIA(i.url)))).filter(Boolean);
-  return { texto: lineas.join('\n\n'), imagenes, hayMoodboard: imagenes.length > 0 };
+  // cada imagen del moodboard va seguida de la nota que Víctor puso (qué le gusta de ella), para que la IA entienda por qué está
+  const { bloques: imagenes, total } = await bloquesConNotas(imgs, imagenParaIA);
+  return { texto: lineas.join('\n\n'), imagenes, hayMoodboard: total > 0 };
 }
 
 const SYSTEM = `Eres el asistente de diseño de Víctor, de Ranuse Design (estudio de diseño integral de espacios de entrenamiento: gimnasios comerciales, home gyms, centros de alto rendimiento). Víctor está montando un proyecto y tú le ayudas como un compañero senior: analizas lo que ya hay en el proyecto (moodboard con sus IMÁGENES, paleta, estilo, medidas, respuestas del cliente, equipamiento, materiales) y le avisas de inconvenientes y le propones soluciones concretas.

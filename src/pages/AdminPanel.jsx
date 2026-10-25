@@ -385,14 +385,34 @@ function TabRenders({ projectId, phaseNumber }) {
   );
 }
 
-function SortableMoodboardThumb({ img, onDelete }) {
+// qué se quiere de cada imagen (la IA lo usa para entender por qué está en el moodboard)
+const TIPOS_REFERENCIA = [
+  ['', '¿Qué me gusta de esta imagen?'],
+  ['estilo', 'El estilo general'],
+  ['detalle', 'Un detalle concreto'],
+  ['material', 'Los materiales / acabados'],
+  ['color', 'Los colores'],
+  ['iluminacion', 'La iluminación'],
+  ['distribucion', 'La distribución'],
+  ['evitar', 'Lo que NO quiero'],
+];
+function SortableMoodboardThumb({ img, onDelete, onNota }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: img.id });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, zIndex: isDragging ? 10 : undefined };
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, zIndex: isDragging ? 10 : undefined, display: 'flex', flexDirection: 'column', gap: 6 };
+  const [nota, setNota] = useState(img.nota || '');
+  const guardaNota = () => { if ((img.nota || '') !== nota.trim()) onNota(img.id, { nota: nota.trim() }); };
   return (
-    <div ref={setNodeRef} style={style} className="ap-render-thumb">
-      <img src={img.url} alt=""/>
-      <button {...attributes} {...listeners} className="ap-render-drag-handle" type="button"><GripVertical size={12}/></button>
-      <div className="ap-render-overlay"><span/><button className="ap-btn-icon ap-render-del" onClick={()=>onDelete(img.id)}><Trash2 size={13}/></button></div>
+    <div ref={setNodeRef} style={style}>
+      <div className="ap-render-thumb" style={{ position: 'relative' }}>
+        <img src={img.url} alt=""/>
+        <button {...attributes} {...listeners} className="ap-render-drag-handle" type="button"><GripVertical size={12}/></button>
+        <div className="ap-render-overlay"><span/><button className="ap-btn-icon ap-render-del" onClick={()=>onDelete(img.id)}><Trash2 size={13}/></button></div>
+        {img.tipo==='evitar'&&<span style={{ position: 'absolute', left: 6, bottom: 6, background: '#b3402e', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4 }}>EVITAR</span>}
+      </div>
+      <select className="ap-field-input" style={{ fontSize: 12, padding: '4px 6px' }} value={img.tipo || ''} onChange={e=>onNota(img.id, { tipo: e.target.value })}>
+        {TIPOS_REFERENCIA.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+      </select>
+      <textarea className="ap-field-input" rows={2} style={{ fontSize: 12, padding: '4px 6px', resize: 'vertical' }} placeholder="Explica qué te gusta (ej. la luz cálida indirecta, el suelo de caucho oscuro…)" value={nota} maxLength={600} onChange={e=>setNota(e.target.value)} onBlur={guardaNota}/>
     </div>
   );
 }
@@ -523,6 +543,11 @@ function TabMoodboard({ projectId }) {
       setAddingRefIds(prev => prev.filter(id => id !== ref.id));
     }
   };
+  const handleNota = async (id, cambios) => {
+    setImages(prev => prev.map(i => i.id === id ? { ...i, ...cambios } : i));
+    try { await api.put(`/client-projects/${projectId}/moodboard/images/${id}`, cambios); setError(''); }
+    catch (e) { setError(e.response?.data?.error || 'No se pudo guardar la nota de la imagen'); }
+  };
   const handleDelete = async (id) => { try { await api.delete(`/client-projects/${projectId}/moodboard/images/${id}`); setImages(prev => prev.filter(i => i.id !== id)); } catch { setError('Error al eliminar la imagen'); } };
   const handleDragEnd = async (event) => {
     const { active, over } = event; if (!active || !over || active.id === over.id) return;
@@ -638,7 +663,7 @@ function TabMoodboard({ projectId }) {
       {images.length === 0 ? <div className="ap-empty"><p>No hay imágenes todavía.</p></div> : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={images.map(i => i.id)} strategy={rectSortingStrategy}>
-            <div className="ap-renders-grid">{images.map(img => <SortableMoodboardThumb key={img.id} img={img} onDelete={handleDelete}/>)}</div>
+            <div className="ap-renders-grid" style={{gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))"}}>{images.map(img => <SortableMoodboardThumb key={img.id} img={img} onDelete={handleDelete} onNota={handleNota}/>)}</div>
           </SortableContext>
         </DndContext>
       )}

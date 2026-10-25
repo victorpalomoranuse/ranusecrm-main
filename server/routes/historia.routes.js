@@ -455,6 +455,7 @@ router.post('/capitulos/:id/ia-reescribir', async (req, res) => {
 
 // Analiza la paleta, la receta de combinación y las IMÁGENES del moodboard y
 // propone el nombre del estilo y un texto que lo describe. No guarda nada.
+import { imagenesMoodboard, bloquesConNotas } from '../utils/moodboard-notas.js';
 async function imagenParaIA(url) {
   try {
     const r = await fetch(url);
@@ -468,14 +469,15 @@ router.post('/:projectId/ia-estilo', async (req, res) => {
   try {
     const { data: p } = await supabase.from('client_projects').select('project_name, tipo_proyecto, moodboard_description, moodboard_palette').eq('id', req.params.projectId).single();
     if (!p) return res.status(404).json({ error: 'Proyecto no encontrado' });
-    const { data: imgs } = await supabase.from('project_moodboard_images').select('url').eq('project_id', req.params.projectId).order('display_order', { ascending: true }).limit(8);
-    const imagenes = (await Promise.all((imgs || []).map(i => imagenParaIA(i.url)))).filter(Boolean);
+    const imgs = await imagenesMoodboard(req.params.projectId, 8);
+    const { bloques: imagenes, total: nImagenes } = await bloquesConNotas(imgs, imagenParaIA); // cada imagen con su nota (qué le gusta a Víctor de ella)
     const paleta = (p.moodboard_palette || []).join(', ');
-    if (!imagenes.length && !paleta && !p.moodboard_description) return res.status(400).json({ error: 'Añade antes imágenes o una paleta al moodboard' });
+    if (!nImagenes && !paleta && !p.moodboard_description) return res.status(400).json({ error: 'Añade antes imágenes o una paleta al moodboard' });
 
     const system = `Eres el director creativo de Ranuse Design, estudio de diseño de espacios deportivos (gimnasios y home gyms) en España. Te paso las imágenes de referencia del moodboard de un proyecto, su paleta de colores y la receta técnica con la que se combinan esos colores. Tu tarea: DEFINIR EL ESTILO del proyecto y hablar de él.
 
 Reglas:
+- Algunas imágenes llevan un comentario de Víctor que dice qué le interesa de ellas (el estilo general, un detalle, un material, un color, la luz…) o que son algo a EVITAR: hazle caso y no mezcles lo que no le interesa.
 - Observa las imágenes de verdad: materiales, texturas, luz, contrastes, tipografía y rotulación, ambiente y época. Menciona lo que ves, no generalidades.
 - La paleta y su receta ya existen: úsalas como apoyo (el tono, la temperatura, el contraste) pero NO las repitas ni cites códigos NCS ni porcentajes. Eso ya se explica aparte.
 - Primero un NOMBRE del estilo, corto y evocador (2-5 palabras, p. ej. "Industrial cálido y urbano").
@@ -498,7 +500,7 @@ Define el estilo.` },
     if (!salida) return res.status(502).json({ error: 'La IA no devolvió texto' });
     const nombre = /NOMBRE:\s*(.+)/i.exec(salida)?.[1]?.trim() || '';
     const texto = /TEXTO:\s*([\s\S]+)/i.exec(salida)?.[1]?.trim() || salida;
-    res.json({ nombre, texto, imagenes_analizadas: imagenes.length });
+    res.json({ nombre, texto, imagenes_analizadas: nImagenes });
   } catch (e) { fail(res, e, e.message || 'Error al definir el estilo'); }
 });
 
