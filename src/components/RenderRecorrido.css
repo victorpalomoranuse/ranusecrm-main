@@ -16,6 +16,8 @@
 .rr-ficha b{font-size:15px}
 .rr-ficha span{font-size:13.5px;color:#d3d3da;line-height:1.4}
 .rr-ficha button{position:absolute;top:6px;right:8px;border:0;background:none;color:#fff;font-size:22px;cursor:pointer;line-height:1}
+.rr-fit{position:absolute;right:12px;bottom:14px;z-index:6;border:1px solid rgba(255,255,255,.55);background:rgba(0,0,0,.38);color:#fff;font:inherit;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:6px 10px;border-radius:999px;cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.rr-fit:hover{background:rgba(0,0,0,.55)}
 .rr-pista{position:absolute;left:0;right:0;bottom:18px;text-align:center;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.75);pointer-events:none;z-index:4}
 @media(prefers-reduced-motion:reduce){.rr-punto i{animation:none}.rr-track{height:auto}.rr-stage{position:relative;height:84vh}}
 .rr-prog{position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:5;display:grid;gap:7px;pointer-events:none}

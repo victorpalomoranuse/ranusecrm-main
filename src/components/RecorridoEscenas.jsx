@@ -13,10 +13,18 @@ const FS = `
 precision highp float;
 uniform sampler2D uIA,uDA,uIB,uDB;
 uniform vec2 uRes,uFA,uFB,uLook;
+uniform float uFit;
 uniform float uTA,uLA,uTB,uLB,uSwA,uSwB,uRA,uRB,uMix,uAspA,uAspB;
 vec3 escena(sampler2D img,sampler2D dep,float t,float lat,float sw,float rel,vec2 foc,float asp,vec2 s){
-  float va=uRes.x/uRes.y;vec2 uv=s;
-  if(va<asp)uv.x=0.5+(s.x-0.5)*(va/asp);else uv.y=0.5+(s.y-0.5)*(asp/va);
+  float va=uRes.x/uRes.y;vec2 uv=s;bool fuera=false;vec2 bg=s;
+  if(uFit>0.5){
+    if(va<asp){float fh=va/asp;uv=vec2(s.x,0.5+(s.y-0.5)/fh);bg=vec2(0.5+(s.x-0.5)*fh,s.y);}
+    else{float fw=asp/va;uv=vec2(0.5+(s.x-0.5)/fw,s.y);bg=vec2(s.x,0.5+(s.y-0.5)*fw);}
+    fuera=uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0;
+    uv=clamp(uv,0.0,1.0);
+  }else{
+    if(va<asp)uv.x=0.5+(s.x-0.5)*(va/asp);else uv.y=0.5+(s.y-0.5)*(asp/va);
+  }
   vec2 p=uv;
   vec2 sway=vec2(sw*0.012-lat*0.034,sw*0.004)+uLook*vec2(0.022,0.011);
   for(int i=0;i<10;i++){
@@ -28,6 +36,7 @@ vec3 escena(sampler2D img,sampler2D dep,float t,float lat,float sw,float rel,vec
   float g=abs(texture2D(dep,p+vec2(e,0.0)).r-texture2D(dep,p-vec2(e,0.0)).r)+abs(texture2D(dep,p+vec2(0.0,e)).r-texture2D(dep,p-vec2(0.0,e)).r);
   float w=1.0-smoothstep(0.05,0.22,g*rel)*0.75;
   p=mix(uv,p,w);
+  if(fuera)return texture2D(img,clamp(bg,0.002,0.998),6.0).rgb*0.5;
   return texture2D(img,clamp(p,0.002,0.998)).rgb;
 }
 void main(){
@@ -54,6 +63,9 @@ export default function RecorridoEscenas({ escenas }) {
   const [listo, setListo] = useState(false);
   const [act, setAct] = useState(0);
   const [abierto, setAbierto] = useState(null); // { e, i }
+  const [entero, setEntero] = useState(true); // ver cada render completo (true) o rellenando la pantalla (false)
+  const enteroRef = useRef(true), redibuja = useRef(null);
+  enteroRef.current = entero;
   const datos = useRef(escenas); datos.current = escenas;
 
   useEffect(() => {
@@ -74,7 +86,7 @@ export default function RecorridoEscenas({ escenas }) {
     } catch { setFallo(true); return undefined; }
     const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     const loc = gl.getAttribLocation(pr, 'a'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    const U = {}; ['uIA', 'uDA', 'uIB', 'uDB', 'uRes', 'uLook', 'uFA', 'uFB', 'uTA', 'uLA', 'uTB', 'uLB', 'uSwA', 'uSwB', 'uRA', 'uRB', 'uMix', 'uAspA', 'uAspB'].forEach(n => { U[n] = gl.getUniformLocation(pr, n); });
+    const U = {}; ['uIA', 'uDA', 'uIB', 'uDB', 'uRes', 'uLook', 'uFit', 'uFA', 'uFB', 'uTA', 'uLA', 'uTB', 'uLB', 'uSwA', 'uSwB', 'uRA', 'uRB', 'uMix', 'uAspA', 'uAspB'].forEach(n => { U[n] = gl.getUniformLocation(pr, n); });
     gl.uniform1i(U.uIA, 0); gl.uniform1i(U.uDA, 1); gl.uniform1i(U.uIB, 2); gl.uniform1i(U.uDB, 3);
     const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 2048;
     // calidad máxima, cuidando la memoria: con varias escenas las texturas son algo más pequeñas y solo viven las cercanas
@@ -117,12 +129,14 @@ export default function RecorridoEscenas({ escenas }) {
     };
     const nProf = (i, px, py) => { const m = mapas[i]; if (!m) return 0.4; const x = Math.max(0, Math.min(159, Math.round(px * 159))), y = Math.max(0, Math.min(112, Math.round(py * 112))); return m[y * 160 + x]; };
     const aPantalla = (i, x, y, t, lat, sw, rel) => {
+      const fit = enteroRef.current;
       const lx = lookX, ly = lookY;
       const n = 0.5 + (nProf(i, x / 100, y / 100) - 0.5) * rel, k = 0.12 + n * 0.95, asp = tex[i] ? tex[i].asp : 1.5;
       const u = FOC[0] + (x / 100 + (sw * 0.012 - lat * 0.034 + lx * 0.022) * (n - 0.35) - FOC[0]) * (1 + t * k);
       const v = FOC[1] + (y / 100 + (sw * 0.004 + ly * 0.011) * (n - 0.35) - FOC[1]) * (1 + t * k);
       const va = W / H; let sx, sy;
-      if (va < asp) { sx = 0.5 + (u - 0.5) / (va / asp); sy = v; } else { sx = u; sy = 0.5 + (v - 0.5) / (asp / va); }
+      if (fit) { if (va < asp) { sx = u; sy = 0.5 + (v - 0.5) * (va / asp); } else { sx = 0.5 + (u - 0.5) * (asp / va); sy = v; } }
+      else if (va < asp) { sx = 0.5 + (u - 0.5) / (va / asp); sy = v; } else { sx = u; sy = 0.5 + (v - 0.5) / (asp / va); }
       return { x: sx * W, y: sy * H };
     };
     // estado de cámara de una escena según su avance s (0..1.35)
@@ -142,6 +156,7 @@ export default function RecorridoEscenas({ escenas }) {
         lookX += (oX - lookX) * 0.05; lookY += (oY - lookY) * 0.05;
       }
       gl.uniform2f(U.uLook, lookX, lookY);
+      gl.uniform1f(U.uFit, enteroRef.current ? 1 : 0);
       const i = Math.min(N - 1, Math.floor(cur)), f = cur - i, ultima = i >= N - 1;
       // la escena avanza con el scroll; al final se funde con la siguiente, que ya empieza a moverse (movimiento continuo, sin saltos)
       const s0 = i > 0 ? S0 : 0, base = s0 + (1 - s0) * f;
@@ -198,6 +213,7 @@ export default function RecorridoEscenas({ escenas }) {
       if (cur !== obj || (!quieto && viz)) pide();
     };
     const pide = () => { if (!ocupado && !muerto) { ocupado = true; raf = requestAnimationFrame(dibuja); } };
+    redibuja.current = pide;
     const tick = () => { lee(); pide(); };
     const redim = () => { medida(); tick(); };
     medida(); asegura(0); asegura(1);
@@ -251,6 +267,7 @@ export default function RecorridoEscenas({ escenas }) {
         {N > 1 && (
           <div className="rr-prog" aria-hidden="true">{escenas.map((_, k) => <i key={k} className={k === act ? 'on' : ''} />)}</div>
         )}
+        <button type="button" className="rr-fit" onClick={(ev) => { ev.stopPropagation(); setEntero(v => !v); setTimeout(() => redibuja.current && redibuja.current(), 0); }} title={entero ? 'Llenar toda la pantalla (se recortan los bordes)' : 'Ver cada render entero'}>{entero ? 'Llenar pantalla' : 'Ver entero'}</button>
         <div className="rr-pista" aria-hidden="true">{N > 1 ? 'Sigue deslizando: avanzas por el espacio' : 'Desliza para recorrer'}</div>
       </div>
     </div>
