@@ -52,6 +52,8 @@ function simboloMaquina(cat) {
 }
 function simboloLuminaria(cat, nombre) {
   const t = `${cat || ''} ${nombre || ''}`.toLowerCase();
+  if (/lineal|linear/.test(t)) return /colgante|pendant|suspend/.test(t) ? 'linealc' : 'lineal';
+  if (/panel|rectangular/.test(t)) return 'panel';
   if (/perfil|tira|strip/.test(t)) return 'led';
   if (/carril|track/.test(t)) return 'carril';
   if (/colgante|pendant|suspend/.test(t)) return 'colg';
