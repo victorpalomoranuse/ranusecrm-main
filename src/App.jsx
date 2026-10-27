@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { AdminAuthProvider, useAdminAuth } from './auth/AdminAuthContext';
 import { EquipoAuthProvider, useEquipoAuth } from './auth/EquipoAuthContext';
@@ -16,15 +16,18 @@ import { ClientePanel } from './pages/ClientePanel';
 import { RestablecerContrasena } from './pages/RestablecerContrasena';
 import { PlanosEditor } from './pages/PlanosEditor';
 import { SubirFotos } from './pages/SubirFotos';
+import { Rapido } from './pages/Rapido';
 import './App.css';
 
 function AdminGuard({ children }) {
   const { user, loading } = useAdminAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    if (!loading && !user) navigate('/admin', { replace: true });
-  }, [user, loading, navigate]);
+    // si hay que entrar, después del acceso se vuelve a la página que se pedía (p. ej. /rapido en el móvil)
+    if (!loading && !user) navigate('/admin', { replace: true, state: { volver: location.pathname } });
+  }, [user, loading, navigate, location.pathname]);
 
   if (loading) return null;
   return user ? children : null;
@@ -83,6 +86,11 @@ function App() {
               <Route path="/admin" element={<AdminLogin />} />
               <Route path="/admin/panel" element={
                 <AdminGuard><AdminPanel /></AdminGuard>
+              } />
+
+              {/* Anotar tareas y eventos desde el móvil */}
+              <Route path="/rapido" element={
+                <AdminGuard><Rapido /></AdminGuard>
               } />
 
               {/* Herramienta de planos en su propia pestaña */}

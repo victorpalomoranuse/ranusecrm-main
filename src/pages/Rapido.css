@@ -1,0 +1,54 @@
+.rp {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #0b0b0b;
+  color: #f3efe9;
+  font-family: inherit;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: max(14px, env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+.rp * { box-sizing: border-box; }
+.rp-top { display: flex; justify-content: space-between; align-items: center; padding: 6px 0 14px; }
+.rp-top strong { font-size: 1.15rem; letter-spacing: .02em; }
+.rp-panel { color: rgba(255,255,255,.55); font-size: .85rem; text-decoration: none; padding: 6px 10px; border: 1px solid rgba(255,255,255,.15); border-radius: 999px; }
+
+.rp-modos { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: #151515; padding: 5px; border-radius: 14px; margin-bottom: 14px; }
+.rp-modos button { border: 0; background: transparent; color: rgba(255,255,255,.6); font: inherit; font-size: 1rem; font-weight: 600; padding: 13px 8px; border-radius: 10px; cursor: pointer; }
+.rp-modos button.on { background: #baafa5; color: #111; }
+
+.rp-form { display: grid; gap: 4px; }
+.rp-titulo { width: 100%; font: inherit; font-size: 1.15rem; padding: 16px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,.18); background: #151515; color: #fff; outline: none; }
+.rp-titulo:focus { border-color: #baafa5; }
+.rp-etq { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.45); margin: 12px 0 2px; }
+.rp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.rp-chips button, .rp-otra { border: 1px solid rgba(255,255,255,.22); background: transparent; color: #f3efe9; font: inherit; font-size: .95rem; padding: 11px 14px; border-radius: 999px; cursor: pointer; position: relative; min-height: 44px; }
+.rp-chips button.on, .rp-otra.on { background: #baafa5; border-color: #baafa5; color: #111; font-weight: 600; }
+.rp-otra { display: inline-flex; align-items: center; overflow: hidden; }
+.rp-otra input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.rp-fila { display: flex; gap: 8px; align-items: center; }
+.rp-hora, .rp-sel, .rp-nota { font: inherit; font-size: 1rem; padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.18); background: #151515; color: #fff; }
+.rp-sel, .rp-nota { width: 100%; }
+.rp-lim { border: 0; background: transparent; color: rgba(255,255,255,.6); font: inherit; text-decoration: underline; padding: 8px; cursor: pointer; }
+.rp-colores { display: flex; gap: 10px; margin-top: 10px; }
+.rp-colores button { width: 34px; height: 34px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; }
+.rp-colores button.on { border-color: #fff; }
+.rp-mas { justify-self: start; margin-top: 10px; border: 0; background: transparent; color: rgba(255,255,255,.6); font: inherit; padding: 8px 0; cursor: pointer; }
+.rp-nota { margin-top: 10px; resize: vertical; }
+.rp-guardar { margin-top: 16px; width: 100%; border: 0; border-radius: 14px; background: #fff; color: #000; font: inherit; font-size: 1.1rem; font-weight: 700; padding: 17px; cursor: pointer; }
+.rp-guardar:disabled { opacity: .35; cursor: default; }
+
+.rp-cola { margin: 14px 0 0; font-size: .85rem; color: #e0b84a; }
+.rp-lista { margin-top: 26px; }
+.rp-lista h2 { font-size: .75rem; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.45); font-weight: 600; margin: 0 0 8px; }
+.rp-vacio { color: rgba(255,255,255,.35); font-size: .9rem; margin: 6px 0; }
+.rp-item { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+.rp-ok { width: 26px; height: 26px; flex: none; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); background: transparent; cursor: pointer; padding: 0; }
+.rp-ok:active { background: #8bae8f; border-color: #8bae8f; }
+.rp-punto { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.rp-tx { display: grid; min-width: 0; }
+.rp-tx b { font-weight: 500; font-size: 1rem; overflow-wrap: anywhere; }
+.rp-tx small { color: rgba(255,255,255,.5); font-size: .8rem; }
+
+.rp-aviso { position: fixed; left: 16px; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom)); max-width: 528px; margin: 0 auto; background: #f3efe9; color: #111; padding: 14px 16px; border-radius: 12px; font-weight: 600; text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,.5); z-index: 10; }

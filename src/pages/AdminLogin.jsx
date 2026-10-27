@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import './AdminLogin.css';
 
 export function AdminLogin() {
   const { login } = useAdminAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -23,7 +24,7 @@ export function AdminLogin() {
         localStorage.removeItem('admin_user');
         return;
       }
-      navigate('/admin/panel');
+      navigate(location.state?.volver && String(location.state.volver).startsWith('/') ? location.state.volver : '/admin/panel');
     } catch {
       setError('Email o contraseña incorrectos.');
     } finally {
