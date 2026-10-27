@@ -18,7 +18,7 @@ const CATEGORIES = [
   { value: 'otro',        label: 'Otro',           color: '#7d7d7d' },
 ];
 
-const UNITS = ['ud', 'm²', 'm', 'ml', 'h', 'kg', 'l', 'lote'];
+const UNITS = ['ud', 'm²', 'm', 'ml', 'h', 'kg', 'l', 'lote', 'paquete'];
 
 const STATUS_CFG = {
   borrador: { label: 'Borrador', color: 'rgba(255,255,255,0.35)' },

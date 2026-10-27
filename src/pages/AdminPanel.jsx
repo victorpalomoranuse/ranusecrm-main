@@ -999,6 +999,8 @@ function ProductModal({ categories, allProducts, product, onClose, onSaved }) {
               <select className="ap-select" value={pricingUnit} onChange={e=>setPricingUnit(e.target.value)}>
                 <option value="ud">Unidad</option>
                 <option value="m2">Metro cuadrado (m²)</option>
+                <option value="ml">Metro lineal (ml)</option>
+                <option value="paquete">Paquete</option>
               </select>
             </div>
             <div className="ap-field"><label>Descripción para el cliente <span className="ap-optional">(texto largo que sale en el presupuesto del cliente; el nombre de arriba puede ser corto)</span></label><textarea className="ap-diag-textarea" rows={4} value={descCliente} onChange={e=>setDescCliente(e.target.value)} placeholder="ej: Demolición de tabique de fábrica de ladrillo hasta 10 cm de espesor, incluida carga manual de escombros."/></div>
