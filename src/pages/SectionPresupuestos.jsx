@@ -669,6 +669,7 @@ function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate }) {
 
 function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
   const [guardarCat, setGuardarCat] = useState(''); // '' = no guardar en la biblioteca
+  const [foto, setFoto] = useState(null);
   const blank = { name:'', category:'material', quantity:'1', unit:'ud', pricing_mode:'margin', pvp_ref:'', purchase_dto:'', unit_cost:'0', markup_pct:'20', unit_price:'0', discount_pct:'0', brand:'', longitud:'', ancho:'', altura:'', color_bastidor:'', color_acolchado:'', tipo_acolchado:'' };
   const [d, setD] = useState(blank);
   const [saving, setSaving] = useState(false);
@@ -688,7 +689,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
   };
   const handleCostChange = v => { const cost=parseFloat(v)||0, markup=parseFloat(d.markup_pct)||0; setD(p=>({...p,unit_cost:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   const handleMarkupChange = v => { const cost=parseFloat(d.unit_cost)||0, markup=parseFloat(v)||0; setD(p=>({...p,markup_pct:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
-  const handleAdd = async () => { if(!d.name.trim()) return; setSaving(true); try { await onAdd({ ...d, guardar_cat: guardarCat || undefined }); setD(blank); setShowSpecs(false); } finally { setSaving(false); } };
+  const handleAdd = async () => { if(!d.name.trim()) return; setSaving(true); try { await onAdd({ ...d, guardar_cat: guardarCat || undefined, foto_file: guardarCat ? foto : undefined }); setD(blank); setFoto(null); setShowSpecs(false); } finally { setSaving(false); } };
   const handleAddChapter = async () => { if(!chapterName.trim()) return; setSaving(true); try { await onAddChapter(chapterName.trim()); setChapterName(''); setShowChapter(false); } finally { setSaving(false); } };
 
   const qty = parseFloat(d.quantity)||1;
@@ -765,6 +766,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
                 <option value="">No, solo en este presupuesto</option>
                 {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              {guardarCat && <input key={foto ? 'con' : 'sin'} type="file" accept="image/*" onChange={e=>setFoto(e.target.files?.[0]||null)} style={{fontSize:'0.72rem',maxWidth:220}} title="Foto del producto (opcional)"/>}
             </label>
           </td>
         </tr>
@@ -948,6 +950,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
   const handleAddItem = async (form) => {
     form = { ...form };
     const guardarCat = form.guardar_cat; delete form.guardar_cat;
+    const fotoFile = form.foto_file; delete form.foto_file;
     if (guardarCat) {
       // Se guarda también como producto del catálogo (queda en la Biblioteca para futuros presupuestos)
       try {
@@ -960,7 +963,10 @@ function BudgetEditor({ id, onBack, onOpen }) {
           longitud: form.longitud, ancho: form.ancho, altura: form.altura,
           color_bastidor: form.color_bastidor, color_acolchado: form.color_acolchado, tipo_acolchado: form.tipo_acolchado,
         };
-        const r = await api.post('/catalog/products', body);
+        const fd = new FormData();
+        Object.entries(body).forEach(([k, v]) => { if (v != null && v !== '') fd.append(k, v); });
+        if (fotoFile) fd.append('file', fotoFile);
+        const r = await api.post('/catalog/products', fd);
         const pid = r.data?.product?.id;
         if (pid) form.catalog_product_id = pid;
         setLibKey(k => k + 1);
