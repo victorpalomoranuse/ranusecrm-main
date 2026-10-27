@@ -438,7 +438,7 @@ router.post('/:id/duplicate', async (req, res) => {
 
 router.post('/:id/items', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, accessories_note } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, accessories_note, descripcion_cliente } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'nombre requerido' });
     const cost = parseFloat(unit_cost) || 0;
     const markup = parseFloat(markup_pct) ?? 20;
@@ -467,6 +467,7 @@ router.post('/:id/items', async (req, res) => {
       purchase_dto: purchase_dto ? parseFloat(purchase_dto) : null,
       pricing_mode: pricing_mode || 'margin',
       accessories_note: accessories_note?.trim() || null,
+      ...(descripcion_cliente?.trim() ? { descripcion_cliente: descripcion_cliente.trim() } : {}),
     }).select('*').single();
     if (error) throw error;
     res.status(201).json({ item: data });
@@ -486,7 +487,7 @@ router.put('/:id/items/reorder', async (req, res) => {
 
 router.put('/:id/items/:itemId', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, order_status, payment_status, delivery_date, provider, accessories_note } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, order_status, payment_status, delivery_date, provider, accessories_note, descripcion_cliente } = req.body;
     const updates = {};
     if (name !== undefined) updates.name = name.trim();
     if (category !== undefined) updates.category = category;
@@ -511,6 +512,7 @@ router.put('/:id/items/:itemId', async (req, res) => {
     if (delivery_date !== undefined) updates.delivery_date = delivery_date || null;
     if (provider !== undefined) updates.provider = provider?.trim() || null;
     if (accessories_note !== undefined) updates.accessories_note = accessories_note?.trim() || null;
+    if (descripcion_cliente !== undefined) updates.descripcion_cliente = descripcion_cliente?.trim() || null;
     const { data, error } = await supabase.from('budget_items').update(updates).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
     if (error) throw error;
     res.json({ item: data });
@@ -564,6 +566,7 @@ router.post('/:id/import', async (req, res) => {
         color_acolchado: a.catalog?.color_acolchado || null,
         tipo_acolchado: a.catalog?.tipo_acolchado || null,
         accessories_note: a.catalog?.included_accessories || null,
+        ...(a.catalog?.descripcion_cliente ? { descripcion_cliente: a.catalog.descripcion_cliente } : {}),
       };
     });
     const { data, error } = await supabase.from('budget_items').insert(toInsert).select('*');
@@ -794,7 +797,8 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       const textXforCalc = margin + 22 + imgH + 8;
       const textWforCalc = (margin + 195) - textXforCalc;
       doc.fontSize(8.5).font('Helvetica');
-      const nameH = doc.heightOfString(item.name || '', { width: textWforCalc });
+      const textoCliente = item.descripcion_cliente || item.name || '';
+      const nameH = doc.heightOfString(textoCliente, { width: textWforCalc });
       const brandH = item.brand ? doc.heightOfString(item.brand, { width: textWforCalc, fontSize: 7 }) : 0;
       const accessoriesH = item.accessories_note ? doc.heightOfString('Incluye: ' + item.accessories_note, { width: textWforCalc, fontSize: 6.5 }) : 0;
       const textBlockH = nameH + (brandH ? brandH + 3 : 0) + (accessoriesH ? accessoriesH + 3 : 0);
@@ -836,7 +840,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
 
       const textX = imgX + imgH + 8;
       const textW = (margin + 195) - textX;
-      doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica').text(item.name, textX, y + 8, { width: textW });
+      doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica').text(textoCliente, textX, y + 8, { width: textW });
       const nameBottom = doc.y;
       const subLines = item.brand || '';
       let afterBrandY = nameBottom;

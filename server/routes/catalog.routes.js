@@ -615,7 +615,7 @@ router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, 
 
 router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
-    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, nivel_uso, search_keywords, extra_category_ids, complement_ids } = req.body;
+    const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, nivel_uso, search_keywords, extra_category_ids, complement_ids, descripcion_cliente } = req.body;
     const updates = {};
     if (category_id !== undefined) updates.category_id = category_id;
     if (name !== undefined) updates.name = name.trim();
@@ -639,6 +639,7 @@ router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (re
     if (included_accessories !== undefined) updates.included_accessories = included_accessories?.trim() || null;
     if (nivel_uso !== undefined) updates.nivel_uso = nivel_uso?.trim() || null;
     if (search_keywords !== undefined) updates.search_keywords = search_keywords?.trim() || null;
+    if (descripcion_cliente !== undefined) updates.descripcion_cliente = descripcion_cliente?.trim() || null;
 
     if (req.file) {
       // Borrar foto anterior

@@ -593,6 +593,14 @@ function ItemRowEdit({ item, onSave, onCancel }) {
           <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={onCancel}>✕</button>
         </td>
       </tr>
+      <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
+        <td colSpan={10} style={{padding:'0.4rem 0.75rem'}}>
+          <div style={{display:'flex',flexDirection:'column',gap:2}}>
+            <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Descripción para el cliente <span style={{textTransform:'none',letterSpacing:0}}>(sale en el PDF del cliente; si está vacía sale el nombre)</span></label>
+            <textarea className="pres-cell-input" rows={2} value={d.descripcion_cliente||''} onChange={e=>setD(p=>({...p,descripcion_cliente:e.target.value}))} placeholder="Texto largo y bien escrito para el presupuesto del cliente" style={{width:'100%',resize:'vertical'}}/>
+          </div>
+        </td>
+      </tr>
       {showSpecs && (
         <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
           <td colSpan={13} style={{padding:'0.5rem 0.75rem'}}>
@@ -728,7 +736,7 @@ function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate }) {
 function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
   const [guardarCat, setGuardarCat] = useState(''); // '' = no guardar en la biblioteca
   const [foto, setFoto] = useState(null);
-  const blank = { name:'', category:'material', quantity:'1', unit:'ud', pricing_mode:'margin', pvp_ref:'', purchase_dto:'', unit_cost:'0', markup_pct:'20', unit_price:'0', discount_pct:'0', brand:'', longitud:'', ancho:'', altura:'', color_bastidor:'', color_acolchado:'', tipo_acolchado:'' };
+  const blank = { name:'', category:'material', quantity:'1', unit:'ud', pricing_mode:'margin', pvp_ref:'', purchase_dto:'', unit_cost:'0', markup_pct:'20', unit_price:'0', discount_pct:'0', brand:'', longitud:'', ancho:'', altura:'', color_bastidor:'', color_acolchado:'', tipo_acolchado:'', descripcion_cliente:'' };
   const [d, setD] = useState(blank);
   const [saving, setSaving] = useState(false);
   const [chapterName, setChapterName] = useState('');
@@ -829,6 +837,14 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
           </td>
         </tr>
       )}
+      <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
+        <td colSpan={10} style={{padding:'0.4rem 0.75rem'}}>
+          <div style={{display:'flex',flexDirection:'column',gap:2}}>
+            <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Descripción para el cliente <span style={{textTransform:'none',letterSpacing:0}}>(sale en el PDF del cliente; si está vacía sale el nombre)</span></label>
+            <textarea className="pres-cell-input" rows={2} value={d.descripcion_cliente||''} onChange={e=>setD(p=>({...p,descripcion_cliente:e.target.value}))} placeholder="Texto largo y bien escrito para el presupuesto del cliente" style={{width:'100%',resize:'vertical'}}/>
+          </div>
+        </td>
+      </tr>
       {showSpecs && (
         <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
           <td colSpan={10} style={{padding:'0.5rem 0.75rem'}}>
@@ -1018,6 +1034,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
           price: isPvp ? form.pvp_ref : form.unit_cost,
           purchase_dto: isPvp ? form.purchase_dto : '',
           default_margin_pct: isPvp ? '' : form.markup_pct,
+          descripcion_cliente: form.descripcion_cliente,
           longitud: form.longitud, ancho: form.ancho, altura: form.altura,
           color_bastidor: form.color_bastidor, color_acolchado: form.color_acolchado, tipo_acolchado: form.tipo_acolchado,
         };
@@ -1050,6 +1067,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
         pricing_mode: d.pricing_mode||'margin',
         brand: d.brand||null, longitud: d.longitud||null, ancho: d.ancho||null, altura: d.altura||null,
         color_bastidor: d.color_bastidor||null, color_acolchado: d.color_acolchado||null, tipo_acolchado: d.tipo_acolchado||null,
+        ...(d.descripcion_cliente != null ? { descripcion_cliente: d.descripcion_cliente || null } : {}),
       });
       setItems(prev => prev.map(i => i.id === itemId ? data.item : i));
       setEditingId(null);
@@ -1074,6 +1092,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
         pricing_mode: item.pricing_mode, catalog_product_id: item.catalog_product_id,
         brand: item.brand, longitud: item.longitud, ancho: item.ancho, altura: item.altura,
         color_bastidor: item.color_bastidor, color_acolchado: item.color_acolchado, tipo_acolchado: item.tipo_acolchado,
+        descripcion_cliente: item.descripcion_cliente || null,
       });
       setItems(prev => [...prev, data.item]);
       flash('Partida duplicada');
@@ -1138,6 +1157,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
       color_acolchado: product.color_acolchado || null,
       tipo_acolchado: product.tipo_acolchado || null,
       accessories_note: product.included_accessories || null,
+      descripcion_cliente: product.descripcion_cliente || null,
       quantity,
     });
     flash('Partida insertada desde catálogo');
