@@ -820,9 +820,9 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
           <td colSpan={10} style={{padding:'0.4rem 0.75rem'}}>
             <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'0.75rem',color:'rgba(255,255,255,0.6)'}}>
               <span>Guardar también en la biblioteca:</span>
-              <select className="pres-cell-select" value={guardarCat} onChange={e=>setGuardarCat(e.target.value)} style={{maxWidth:260}}>
-                <option value="">No, solo en este presupuesto</option>
-                {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+              <select className="pres-cell-select" value={guardarCat} onChange={e=>setGuardarCat(e.target.value)} style={{maxWidth:260,colorScheme:'dark'}}>
+                <option value="" style={{background:'#1a1a1a',color:'#fff'}}>No, solo en este presupuesto</option>
+                {categories.map(c=><option key={c.id} value={c.id} style={{background:'#1a1a1a',color:'#fff'}}>{c.name}</option>)}
               </select>
               {guardarCat && <input key={foto ? 'con' : 'sin'} type="file" accept="image/*" onChange={e=>setFoto(e.target.files?.[0]||null)} style={{fontSize:'0.72rem',maxWidth:220}} title="Foto del producto (opcional)"/>}
             </label>
