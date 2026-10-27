@@ -44,6 +44,7 @@ import aiFinanzasRoutes from './routes/ai-finanzas.routes.js';
 import settingRoutes from './routes/setting.routes.js';
 import memoriaRoutes from './routes/memoria.routes.js';
 import calendarFeedRoutes from './routes/calendar-feed.routes.js';
+import agendaRoutes from './routes/agenda.routes.js';
 import whatsappRoutes from './routes/whatsapp.routes.js';
 import { enviarResumenDiario } from './utils/resumen-diario.js';
 import callSlotsRoutes, { enviarRecordatoriosLlamadas, generarSlotsDesdeReglas } from './routes/call-slots.routes.js';
@@ -129,6 +130,7 @@ app.use('/api/setting', settingRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/memoria', memoriaRoutes);
 app.use('/api/calendar', calendarFeedRoutes);
+app.use('/api/agenda', agendaRoutes);
 app.use('/api/call-slots', callSlotsRoutes);
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada', path: req.path });
