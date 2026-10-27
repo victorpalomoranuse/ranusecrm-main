@@ -279,6 +279,8 @@ function BudgetList({ onOpen }) {
     } finally { setDuplicatingId(null); }
   };
 
+  const [vista, setVistaState] = useState(() => { try { return localStorage.getItem('pres_vista') || 'lista'; } catch { return 'lista'; } });
+  const setVista = v => { setVistaState(v); try { localStorage.setItem('pres_vista', v); } catch {} };
   const budgetByProject = Object.fromEntries(budgets.filter(b => b.project_id).map(b => [b.project_id, b]));
   const independienteBudgets = budgets.filter(b => !b.project_id);
   const visibleProjects = projects.filter(p => budgetByProject[p.id]);
@@ -297,12 +299,68 @@ function BudgetList({ onOpen }) {
             </button>
           ))}
         </div>
-        <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setShowNewModal(true)}><Plus size={13}/> Nuevo presupuesto</button>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 3 }}>
+            {[['lista', 'Lista'], ['tarjetas', 'Tarjetas']].map(([v, l]) => (
+              <button key={v} onClick={() => setVista(v)} style={{ padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.78rem', background: vista === v ? '#baafa5' : 'transparent', color: vista === v ? '#0a0a0a' : 'rgba(255,255,255,0.5)', fontWeight: vista === v ? 600 : 400 }}>{l}</button>
+            ))}
+          </div>
+          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setShowNewModal(true)}><Plus size={13}/> Nuevo presupuesto</button>
+        </div>
       </div>
 
       {showNewModal && <NewBudgetModal projects={activeProjects} onClose={() => setShowNewModal(false)} onCreate={handleCreate} />}
 
-      <div className="pres-grid">
+      {vista === 'lista' && (() => {
+        const filas = [
+          ...((tab === 'todos' || tab === 'independientes') ? independienteBudgets.map(b => ({ key: b.id, b, cliente: b.budget_number, nombre: b.budget_name || 'Sin nombre' })) : []),
+          ...((tab === 'todos' || tab === 'proyectos') ? visibleProjects.map(p => ({ key: p.id, b: budgetByProject[p.id], cliente: p.client_name, nombre: p.project_name })) : []),
+        ];
+        const sin = (tab === 'todos' || tab === 'proyectos') ? projectsWithoutBudget : [];
+        const th = { textAlign: 'left', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', fontWeight: 500, padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.1)' };
+        const td = { padding: '9px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.84rem', whiteSpace: 'nowrap' };
+        const num = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+        return (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                <th style={th}>Cliente</th><th style={th}>Proyecto</th><th style={th}>Estado</th>
+                <th style={{ ...th, textAlign: 'right' }}>Coste</th><th style={{ ...th, textAlign: 'right' }}>PVP total</th><th style={{ ...th, textAlign: 'right' }}>Beneficio</th><th style={{ ...th, textAlign: 'right' }}>Margen</th><th style={th}></th>
+              </tr></thead>
+              <tbody>
+                {filas.map(({ key, b, cliente, nombre }) => {
+                  const st = STATUS_CFG[b.status];
+                  return (
+                    <tr key={key} onClick={() => onOpen(b.id)} style={{ cursor: 'pointer' }} className="pres-lista-fila">
+                      <td style={{ ...td, color: 'rgba(255,255,255,0.55)' }}>{cliente}</td>
+                      <td style={{ ...td, color: '#fff', fontWeight: 500, whiteSpace: 'normal' }}>{nombre}</td>
+                      <td style={td}>{st && <span className="pres-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>}</td>
+                      <td style={num}>{fmt(b.itemCost)}</td>
+                      <td style={num}>{fmt(b.totalRevenue)}</td>
+                      <td style={{ ...num, color: b.totalProfit >= 0 ? '#8bae8f' : '#ae8b8b' }}>{fmt(b.totalProfit)}</td>
+                      <td style={{ ...num, color: b.margin >= 20 ? '#8bae8f' : b.margin >= 10 ? '#baafa5' : '#ae8b8b' }}>{Number(b.margin || 0).toFixed(1)}%</td>
+                      <td style={{ ...td, textAlign: 'right' }}>
+                        <button className="ap-btn-icon" onClick={e => handleDuplicate(b.id, e)} disabled={duplicatingId === b.id} title="Duplicar presupuesto"><Copy size={13}/></button>
+                        <button className="ap-btn-icon" onClick={e => handleDelete(b.id, e)} disabled={deletingId === b.id} title="Eliminar"><Trash2 size={13}/></button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {sin.map(p => (
+                  <tr key={p.id}>
+                    <td style={{ ...td, color: 'rgba(255,255,255,0.55)' }}>{p.client_name}</td>
+                    <td style={{ ...td, color: 'rgba(255,255,255,0.7)', whiteSpace: 'normal' }}>{p.project_name}</td>
+                    <td style={{ ...td, color: 'rgba(255,255,255,0.35)' }} colSpan={5}>Sin presupuesto</td>
+                    <td style={{ ...td, textAlign: 'right' }}><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => handleCreate({ project_id: p.id })}><Plus size={12}/> Crear</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      {vista === 'tarjetas' && <div className="pres-grid">
         {(tab === 'todos' || tab === 'independientes') && independienteBudgets.map(b => {
           const st = STATUS_CFG[b.status];
           return (
@@ -359,7 +417,7 @@ function BudgetList({ onOpen }) {
             </div>
           </div>
         ))}
-      </div>
+      </div>}
     </div>
   );
 }
