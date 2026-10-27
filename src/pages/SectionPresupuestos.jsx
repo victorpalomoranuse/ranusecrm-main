@@ -667,7 +667,8 @@ function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate }) {
   );
 }
 
-function NewItemRow({ onAdd, onAddChapter }) {
+function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
+  const [guardarCat, setGuardarCat] = useState(''); // '' = no guardar en la biblioteca
   const blank = { name:'', category:'material', quantity:'1', unit:'ud', pricing_mode:'margin', pvp_ref:'', purchase_dto:'', unit_cost:'0', markup_pct:'20', unit_price:'0', discount_pct:'0', brand:'', longitud:'', ancho:'', altura:'', color_bastidor:'', color_acolchado:'', tipo_acolchado:'' };
   const [d, setD] = useState(blank);
   const [saving, setSaving] = useState(false);
@@ -687,7 +688,7 @@ function NewItemRow({ onAdd, onAddChapter }) {
   };
   const handleCostChange = v => { const cost=parseFloat(v)||0, markup=parseFloat(d.markup_pct)||0; setD(p=>({...p,unit_cost:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   const handleMarkupChange = v => { const cost=parseFloat(d.unit_cost)||0, markup=parseFloat(v)||0; setD(p=>({...p,markup_pct:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
-  const handleAdd = async () => { if(!d.name.trim()) return; setSaving(true); try { await onAdd(d); setD(blank); setShowSpecs(false); } finally { setSaving(false); } };
+  const handleAdd = async () => { if(!d.name.trim()) return; setSaving(true); try { await onAdd({ ...d, guardar_cat: guardarCat || undefined }); setD(blank); setShowSpecs(false); } finally { setSaving(false); } };
   const handleAddChapter = async () => { if(!chapterName.trim()) return; setSaving(true); try { await onAddChapter(chapterName.trim()); setChapterName(''); setShowChapter(false); } finally { setSaving(false); } };
 
   const qty = parseFloat(d.quantity)||1;
@@ -755,6 +756,19 @@ function NewItemRow({ onAdd, onAddChapter }) {
           <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowSpecs(v=>!v)} style={{fontSize:'0.65rem',padding:'2px 5px',opacity:showSpecs?1:0.5}}>esp.</button>
         </td>
       </tr>
+      {categories.length > 0 && (
+        <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
+          <td colSpan={10} style={{padding:'0.4rem 0.75rem'}}>
+            <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'0.75rem',color:'rgba(255,255,255,0.6)'}}>
+              <span>Guardar también en la biblioteca:</span>
+              <select className="pres-cell-select" value={guardarCat} onChange={e=>setGuardarCat(e.target.value)} style={{maxWidth:260}}>
+                <option value="">No, solo en este presupuesto</option>
+                {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+          </td>
+        </tr>
+      )}
       {showSpecs && (
         <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
           <td colSpan={10} style={{padding:'0.5rem 0.75rem'}}>
@@ -927,7 +941,32 @@ function BudgetEditor({ id, onBack, onOpen }) {
     finally { setSavingFee(false); }
   };
 
+  const [catCats, setCatCats] = useState([]);
+  const [libKey, setLibKey] = useState(0);
+  useEffect(() => { api.get('/catalog/categories').then(r => setCatCats(r.data.categories || [])).catch(() => {}); }, []);
+
   const handleAddItem = async (form) => {
+    form = { ...form };
+    const guardarCat = form.guardar_cat; delete form.guardar_cat;
+    if (guardarCat) {
+      // Se guarda también como producto del catálogo (queda en la Biblioteca para futuros presupuestos)
+      try {
+        const isPvp = form.pricing_mode === 'pvp';
+        const body = {
+          category_id: guardarCat, name: form.name, brand: form.brand || '', pricing_unit: form.unit || 'ud',
+          price: isPvp ? form.pvp_ref : form.unit_cost,
+          purchase_dto: isPvp ? form.purchase_dto : '',
+          default_margin_pct: isPvp ? '' : form.markup_pct,
+          longitud: form.longitud, ancho: form.ancho, altura: form.altura,
+          color_bastidor: form.color_bastidor, color_acolchado: form.color_acolchado, tipo_acolchado: form.tipo_acolchado,
+        };
+        const r = await api.post('/catalog/products', body);
+        const pid = r.data?.product?.id;
+        if (pid) form.catalog_product_id = pid;
+        setLibKey(k => k + 1);
+        flash('Guardada en la biblioteca');
+      } catch { flash('La partida se añade, pero no se pudo guardar en la biblioteca', 'error'); }
+    }
     const { data } = await api.post(`/budgets/${id}/items`, { ...form, unit_cost: parseFloat(form.unit_cost)||0, unit_price: parseFloat(form.unit_price)||0, markup_pct: parseFloat(form.markup_pct)||20, quantity: parseFloat(form.quantity)||1, pvp_ref: parseFloat(form.pvp_ref)||null, purchase_dto: parseFloat(form.purchase_dto)||null, pricing_mode: form.pricing_mode||'margin' });
     setItems(prev => [...prev, data.item]);
   };
@@ -1066,7 +1105,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
   return (
     <div className="pres-editor" style={{ paddingRight: showLibrary ? 330 : 0 }}>
       {showPlanos && budget.project_id && <CantidadesPlanos projectId={budget.project_id} onClose={() => setShowPlanos(false)} onAdd={handleAddFromPlanos} />}
-      {showLibrary && <CatalogLibraryPanel onInsert={handleInsertFromLibrary} onClose={() => setShowLibrary(false)} />}
+      {showLibrary && <CatalogLibraryPanel key={libKey} onInsert={handleInsertFromLibrary} onClose={() => setShowLibrary(false)} />}
       {showLinkModal && <LinkProjectModal projects={unlinkedProjects.length > 0 ? unlinkedProjects : projects} budgetId={id} onClose={() => setShowLinkModal(false)} onLinked={handleLinked} />}
 
       <div className="pres-editor-head">
@@ -1243,7 +1282,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
                   <ItemRowDisplay key={item.id} item={item} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} onDuplicate={()=>handleDuplicateItem(item)} />
                 )
               )}
-              <NewItemRow onAdd={handleAddItem} onAddChapter={handleAddChapter} />
+              <NewItemRow categories={catCats} onAdd={handleAddItem} onAddChapter={handleAddChapter} />
             </tbody>
             {realItems.length > 0 && (
               <tfoot>
