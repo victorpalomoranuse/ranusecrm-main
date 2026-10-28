@@ -988,18 +988,16 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       const ahorroPack = packEur > 0 ? Math.min(packEur, total) : total * packPct / 100;
       const totalPack = total - ahorroPack;
       if (y > H - 130) { doc.addPage(); y = margin + 20; }
-      doc.rect(margin, y, W - margin * 2, 76).fill('#eef7f1');
-      doc.rect(margin, y, 4, 76).fill('#2e7d4f');
-      doc.fillColor('#2e7d4f').fontSize(7.5).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO', margin + 16, y + 10);
-      doc.fillColor('#1f6b40').fontSize(22).font('Helvetica-Bold').text('Ahorras ' + fmtEur(ahorroPack + totalSavings), margin + 16, y + 24, { width: W - margin * 2 - 200 });
-      doc.fillColor('#666666').fontSize(7.5).font('Helvetica').text(totalSavings > 0 ? fmtEur(ahorroPack) + ' por contratar todo junto + ' + fmtEur(totalSavings) + ' de descuentos ya aplicados' : 'Contratando todo el presupuesto en conjunto', margin + 16, y + 54, { width: W - margin * 2 - 200 });
-      doc.fillColor('#777777').fontSize(7).font('Helvetica').text('Total con la oferta', W - margin - 170, y + 14, { width: 154, align: 'right' });
-      doc.fillColor(BRAND.dark).fontSize(16).font('Helvetica-Bold').text(fmtEur(totalPack), W - margin - 170, y + 28, { width: 154, align: 'right' });
-      doc.fillColor('#999999').fontSize(7).font('Helvetica').text('en lugar de ' + fmtEur(total), W - margin - 170, y + 50, { width: 154, align: 'right' });
-      y += 92;
+      doc.rect(margin, y, W - margin * 2, 64).fill('#eef7f1');
+      doc.rect(margin, y, 4, 64).fill('#2e7d4f');
+      doc.fillColor('#2e7d4f').fontSize(8).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO', margin + 16, y + 11);
+      doc.fillColor('#555555').fontSize(10).font('Helvetica').text('El precio total es de', margin + 16, y + 33, { width: 150 });
+      doc.fillColor('#1f6b40').fontSize(24).font('Helvetica-Bold').text(fmtEur(totalPack), margin + 16, y + 26, { width: W - margin * 2 - 32, align: 'right' });
+      doc.fillColor('#777777').fontSize(7.5).font('Helvetica').text(parseFloat(iva) > 0 ? 'impuestos incluidos' : 'impuestos no incluidos', margin + 16, y + 52, { width: W - margin * 2 - 32, align: 'right' });
+      y += 80;
     }
 
-    if (showSavings && totalSavings > 0) {
+    if (showSavings && totalSavings > 0 && !(packEur > 0 || packPct > 0)) {
       if (y > H - 120) { doc.addPage(); y = margin + 20; }
       const pctAhorro = subtotalBruto > 0 ? (totalSavings / subtotalBruto) * 100 : 0;
       doc.rect(margin, y, W - margin * 2, 56).fill('#0a0a0a');
