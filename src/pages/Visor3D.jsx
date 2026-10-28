@@ -76,8 +76,8 @@ function muro(m, h0) {
   const sh = new THREE.Shape();
   sh.moveTo(0, 0); sh.lineTo(L, 0); sh.lineTo(L, alto); sh.lineTo(0, alto); sh.closePath();
   for (const o of m.ab || []) {
-    const x0 = Math.max(0.5, Math.min(L - 1, o.p - o.w / 2));
-    const x1 = Math.max(x0 + 1, Math.min(L - 0.5, o.p + o.w / 2));
+    const x0 = Math.max(0.5, Math.min(L - 1, o.p)); // «p» = distancia desde el inicio del muro al borde del hueco
+    const x1 = Math.max(x0 + 1, Math.min(L - 0.5, o.p + o.w));
     const y0 = Math.max(0, o.sill || 0);
     const y1 = Math.min(alto - 0.5, y0 + (o.h || 210));
     if (y1 <= y0) continue;
@@ -93,7 +93,7 @@ function muro(m, h0) {
   mesh.userData = { capa: 'muros', muroId: m.id };
   // puertas y ventanas: marco y hoja (puerta) o cristal (ventana), en el hueco del muro (el muro está en metros y centrado en su grosor)
   for (const o of m.ab || []) {
-    const x0 = Math.max(0.5, Math.min(L - 1, o.p - o.w / 2)), x1 = Math.max(x0 + 1, Math.min(L - 0.5, o.p + o.w / 2));
+    const x0 = Math.max(0.5, Math.min(L - 1, o.p)), x1 = Math.max(x0 + 1, Math.min(L - 0.5, o.p + o.w));
     const y0 = Math.max(0, o.sill || 0), y1 = Math.min(alto - 0.5, y0 + (o.h || 210));
     if (y1 <= y0) continue;
     const w = (x1 - x0) * CM, h = (y1 - y0) * CM, cx = ((x0 + x1) / 2) * CM, cy = ((y0 + y1) / 2) * CM, tt = (m.t || 12) * CM;
@@ -712,7 +712,7 @@ export default function Visor3D() {
               <input type="number" value={selHueco.nuevo[k]} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, [k]: e.target.value } }))} style={{ ...btn, width: 90 }} />
             </label>
           ))}
-          <div style={{ opacity: 0.55, fontSize: 11, margin: '4px 0 8px' }}>Posición = distancia desde el inicio del muro hasta el centro del hueco. Se cambia también en el plano 2D.</div>
+          <div style={{ opacity: 0.55, fontSize: 11, margin: '4px 0 8px' }}>Posición = distancia desde el inicio del muro hasta el borde del hueco. Se cambia también en el plano 2D.</div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button style={{ ...btn, background: '#2f6fa8' }} onClick={aplicarHueco}>Aplicar al plano</button>
             <button style={btn} onClick={() => setSelHueco(null)}>Cerrar</button>
