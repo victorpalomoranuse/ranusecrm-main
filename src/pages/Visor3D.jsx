@@ -424,6 +424,27 @@ export default function Visor3D() {
       }
     }, 60);
   };
+  // Render fotorrealista con IA: se manda la vista actual y vuelve mejorada
+  const [ia, setIa] = useState(null); // { estado: 'trabajando' | 'listo' | 'error', imagen, mensaje, estancia, estilo, extra }
+  const [iaForm, setIaForm] = useState(false);
+  const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '' });
+  const renderIA = async () => {
+    const { renderer, scene, cam } = api3d.current;
+    setIaForm(false);
+    setIa({ estado: 'trabajando' });
+    try {
+      const el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
+      const W = 1600, H = Math.round(W * h0 / w0);
+      renderer.setPixelRatio(1); renderer.setSize(W, H, false); cam.aspect = W / H; cam.updateProjectionMatrix();
+      renderer.render(scene, cam);
+      const imagen = renderer.domElement.toDataURL('image/jpeg', 0.92);
+      renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix();
+      const r = await api.post('/render-ia', { imagen, ...iaTxt }, { timeout: 180000 });
+      setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen });
+    } catch (e) {
+      setIa({ estado: 'error', mensaje: e.response?.data?.error || 'No se ha podido generar el render con IA' });
+    }
+  };
   const captura = () => {
     const { renderer, scene, cam } = api3d.current;
     renderer.render(scene, cam);
@@ -450,8 +471,39 @@ export default function Visor3D() {
           <option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option>
         </select>
         <button style={btn} onClick={captura}>📷 Captura</button>
+        <button style={{ ...btn, background: '#7a4fc4', borderColor: '#7a4fc4' }} onClick={() => setIaForm(true)} disabled={estado !== 'listo' || ia?.estado === 'trabajando'} title="La IA convierte esta vista en una foto realista">✨ Render con IA</button>
         <button style={{ ...btn, background: '#2f6fa8', borderColor: '#2f6fa8' }} onClick={renderAlta} disabled={renderizando || estado !== 'listo'} title="Imagen grande con sombras suaves (3200 px)">{renderizando ? 'Renderizando…' : '🖼 Render HD'}</button>
       </div>
+      {iaForm && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 5 }}>
+          <div style={{ background: '#1d1d1d', color: '#fff', borderRadius: 10, padding: 18, width: 380, fontSize: 13 }}>
+            <b style={{ fontSize: 15 }}>Render fotorrealista con IA</b>
+            <p style={{ opacity: 0.7, margin: '6px 0 10px' }}>Se manda lo que ves ahora en pantalla. Colócate bien la cámara antes.</p>
+            {[['estancia', 'Estancia (ej. salón, gimnasio privado)'], ['estilo', 'Estilo (ej. moderno, cálido, minimalista)'], ['extra', 'Algo más (ej. luz de tarde, suelo de roble claro)']].map(([k, ph]) => (
+              <input key={k} value={iaTxt[k]} onChange={e => setIaTxt(t => ({ ...t, [k]: e.target.value }))} placeholder={ph} style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 6 }} />
+            ))}
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+              <button style={btn} onClick={() => setIaForm(false)}>Cancelar</button>
+              <button style={{ ...btn, background: '#7a4fc4', borderColor: '#7a4fc4' }} onClick={renderIA}>Generar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {ia && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'grid', placeItems: 'center', zIndex: 6, padding: 16 }}>
+          <div style={{ background: '#1d1d1d', color: '#fff', borderRadius: 10, padding: 16, maxWidth: '92vw', maxHeight: '92vh', overflow: 'auto', fontSize: 13 }}>
+            {ia.estado === 'trabajando' && <p>Generando el render con IA… puede tardar un minuto.</p>}
+            {ia.estado === 'error' && <><p style={{ color: '#ff9b9b' }}>{ia.mensaje}</p><button style={btn} onClick={() => setIa(null)}>Cerrar</button></>}
+            {ia.estado === 'listo' && <>
+              <img src={ia.imagen} alt="Render con IA" style={{ maxWidth: '86vw', maxHeight: '72vh', display: 'block', borderRadius: 6 }} />
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <a style={{ ...btn, textDecoration: 'none' }} href={ia.imagen} download={(titulo || 'plano') + '-render-ia.png'}>Descargar</a>
+                <button style={btn} onClick={() => setIa(null)}>Cerrar</button>
+              </div>
+            </>}
+          </div>
+        </div>
+      )}
       {bibAbierta && (
         <div style={{ position: 'absolute', left: 12, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
           <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar en la biblioteca…" style={{ ...btn, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} />
