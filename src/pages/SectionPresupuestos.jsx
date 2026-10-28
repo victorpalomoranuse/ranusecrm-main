@@ -1293,6 +1293,22 @@ function BudgetEditor({ id, onBack, onOpen }) {
         ))}
       </div>
 
+      {parseFloat(packPct) > 0 && (() => {
+        const p = parseFloat(packPct);
+        const totalPack = sum.totalRev * (1 - p / 100);
+        const benPack = totalPack - sum.itemCost;
+        const margPack = totalPack > 0 ? (benPack / totalPack) * 100 : 0;
+        const dif = benPack - sum.profit;
+        return (
+          <div style={{display:'flex',alignItems:'center',gap:'1.5rem',flexWrap:'wrap',padding:'0.7rem 1rem',margin:'0 0 0.75rem',background:'rgba(139,174,143,0.07)',border:'1px dashed rgba(139,174,143,0.55)',borderRadius:8}}>
+            <span style={{fontSize:'0.72rem',color:'#a9cdad',fontWeight:600}}>Si el cliente acepta la oferta (−{p}%)</span>
+            <span style={{fontSize:'0.78rem',color:'rgba(255,255,255,0.7)'}}>Total cliente <strong style={{color:'#fff'}}>{fmt(totalPack)}</strong></span>
+            <span style={{fontSize:'0.78rem',color:'rgba(255,255,255,0.7)'}}>Beneficio <strong style={{color: benPack >= 0 ? '#8bae8f' : '#ae8b8b'}}>{fmt(benPack)}</strong> <span style={{color:'rgba(255,255,255,0.4)'}}>({dif >= 0 ? '+' : ''}{fmt(dif)} vs. sin oferta)</span></span>
+            <span style={{fontSize:'0.78rem',color:'rgba(255,255,255,0.7)'}}>Margen <strong style={{color: margPack >= 20 ? '#8bae8f' : margPack >= 10 ? '#baafa5' : '#ae8b8b'}}>{margPack.toFixed(1)}%</strong> <span style={{color:'rgba(255,255,255,0.4)'}}>(antes {sum.margin.toFixed(1)}%)</span></span>
+          </div>
+        );
+      })()}
+
       <div className="pres-fee-box">
         <span className="pres-fee-label">Honorarios</span>
         <select className="pres-cell-select" value={budget.design_fee_type} onChange={e=>setBudget(b=>({...b,design_fee_type:e.target.value}))} onBlur={()=>saveFee()}>
@@ -1360,7 +1376,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
               {showPdfOptions && (
                 <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'0.5rem 0.6rem',background:'rgba(255,255,255,0.04)',borderRadius:6,border:'1px solid rgba(255,255,255,0.08)',width:'100%'}}>
                   <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>Oferta «si contratas todo junto»:</span>
-                  <input className="ap-field-input" type="number" min="0" max="100" step="0.5" value={packPct} onChange={e=>setPackPct(e.target.value)} placeholder="0" style={{width:64,fontSize:'0.72rem'}} />
+                  <input className="ap-field-input" type="number" min="0" max="100" step="0.5" value={packPct} onChange={e=>setPackPct(e.target.value)} placeholder="0" style={{width:64,flex:'none',minWidth:0,fontSize:'0.72rem'}} />
                   <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>% de descuento</span>
                   {parseFloat(packPct) > 0 && <span className="pres-mono" style={{fontSize:'0.72rem',color:'#8bae8f'}}>→ total {fmt(sum.totalRev * (1 - parseFloat(packPct) / 100))} (ahorra {fmt(sum.totalRev * parseFloat(packPct) / 100)}, sin IVA)</span>}
                   <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" style={{marginLeft:'auto',fontSize:'0.7rem'}} disabled={savingPack} onClick={guardaPack}>{savingPack ? '…' : 'Guardar oferta'}</button>
@@ -1376,7 +1392,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
                   {calendario.map((h, i) => (
                     <div key={i} style={{display:'flex',alignItems:'center',gap:6}}>
                       <input className="ap-field-input" value={h.concepto} onChange={e => setCalendario(c => c.map((x, j) => j === i ? { ...x, concepto: e.target.value } : x))} placeholder="Ej: Al firmar el contrato" style={{flex:1,fontSize:'0.72rem',minWidth:140}} />
-                      <input className="ap-field-input" type="number" min="0" max="100" step="1" value={h.pct} onChange={e => setCalendario(c => c.map((x, j) => j === i ? { ...x, pct: e.target.value } : x))} style={{width:64,fontSize:'0.72rem'}} />
+                      <input className="ap-field-input" type="number" min="0" max="100" step="1" value={h.pct} onChange={e => setCalendario(c => c.map((x, j) => j === i ? { ...x, pct: e.target.value } : x))} style={{width:64,flex:'none',minWidth:0,fontSize:'0.72rem'}} />
                       <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>%</span>
                       <span className="pres-mono" style={{fontSize:'0.72rem',minWidth:90,textAlign:'right',color:'#baafa5'}}>{fmt(sum.totalRev * (parseFloat(h.pct) || 0) / 100)}</span>
                       <button type="button" className="ap-btn-icon" onClick={() => setCalendario(c => c.filter((_, j) => j !== i))} title="Quitar hito"><X size={12}/></button>
