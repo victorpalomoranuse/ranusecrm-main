@@ -67,6 +67,20 @@ function muro(m, h0) {
   g.translate(0, 0, -t / 2);
   g.scale(CM, CM, CM);
   const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: m.estado === 'new' ? 0xf1ece6 : 0xe4e0db, roughness: 0.95 }));
+  mesh.userData = { capa: 'muros', muroId: m.id };
+  // puertas y ventanas: marco y hoja (puerta) o cristal (ventana), en el hueco del muro (el muro está en metros y centrado en su grosor)
+  for (const o of m.ab || []) {
+    const x0 = Math.max(0.5, Math.min(L - 1, o.p - o.w / 2)), x1 = Math.max(x0 + 1, Math.min(L - 0.5, o.p + o.w / 2));
+    const y0 = Math.max(0, o.sill || 0), y1 = Math.min(alto - 0.5, y0 + (o.h || 210));
+    if (y1 <= y0) continue;
+    const w = (x1 - x0) * CM, h = (y1 - y0) * CM, cx = ((x0 + x1) / 2) * CM, cy = ((y0 + y1) / 2) * CM, tt = (m.t || 12) * CM;
+    const fr = 0.05, marco = new THREE.MeshStandardMaterial({ color: o.t === 'door' || o.tipo === 'door' ? 0x8a6a4a : 0xf2f2f2, roughness: 0.6 });
+    const parte = (bw, bh, bd, px, py, mat, extra) => { const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat); b.position.set(px, py, 0); b.castShadow = true; b.userData = { capa: 'huecos', ...(extra || {}) }; mesh.add(b); return b; };
+    parte(w, fr, tt * 1.02, cx, y1 * CM - fr / 2, marco); parte(w, fr, tt * 1.02, cx, y0 * CM + fr / 2, marco);
+    parte(fr, h, tt * 1.02, x0 * CM + fr / 2, cy, marco); parte(fr, h, tt * 1.02, x1 * CM - fr / 2, cy, marco);
+    if ((o.tipo || o.t) === 'door') parte(w - fr * 2, h - fr * 2, 0.04, cx, cy, new THREE.MeshStandardMaterial({ color: 0xc9a77c, roughness: 0.55 }));
+    else parte(w - fr * 2, h - fr * 2, 0.01, cx, cy, new THREE.MeshStandardMaterial({ color: 0xaed4ea, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.35 }));
+  }
   // El plano va en (x, y); en 3D, y del plano es z. El muro se dibuja a lo largo de X local y se gira hasta a→b.
   mesh.position.set(ax * CM, 0, ay * CM);
   mesh.rotation.y = -Math.atan2(by - ay, bx - ax);
@@ -74,7 +88,7 @@ function muro(m, h0) {
   return mesh;
 }
 
-function suelo(s) {
+function suelo(s, i) {
   const pts = (s.pts || []).map(p => new THREE.Vector2(p[0] * CM, p[1] * CM));
   if (pts.length < 3) return null;
   const g = new THREE.ShapeGeometry(new THREE.Shape(pts));
@@ -82,6 +96,7 @@ function suelo(s) {
   const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: color(s.suelo?.c, '#cfc9c2'), roughness: 0.85, side: THREE.DoubleSide }));
   mesh.position.y = 0.002;
   mesh.receiveShadow = true;
+  mesh.userData = { capa: 'suelos', salaKey: s.idS || ('s' + i) };
   return mesh;
 }
 
@@ -97,6 +112,7 @@ function maquina(e) {
   g.add(cuerpo);
   g.position.set(e.cx * CM, 0, e.cy * CM);
   g.rotation.y = -(e.rot || 0) * Math.PI / 180;
+  g.userData.capa = 'equipos';
   g.userData.equipo = e;
   g.userData.cuerpo = cuerpo;
   return g;
@@ -105,12 +121,12 @@ function maquina(e) {
 export function planta(m, z0) {
   const g = new THREE.Group();
   g.position.y = (z0 || 0) * CM;
-  (m.salas || []).forEach(s => { const x = suelo(s); if (x) g.add(x); });
+  (m.salas || []).forEach((s, i) => { const x = suelo(s, i); if (x) g.add(x); });
   (m.muros || []).forEach(w => { const x = muro(w, m.altura || 260); if (x) g.add(x); });
   (m.pilares || []).forEach(p => {
     const h = (m.altura || 260) * CM;
     const x = new THREE.Mesh(new THREE.BoxGeometry(p.w * CM, h, p.d * CM), new THREE.MeshStandardMaterial({ color: 0xd8d4cf, roughness: 0.9 }));
-    x.position.set(p.cx * CM, h / 2, p.cy * CM); x.castShadow = x.receiveShadow = true; g.add(x);
+    x.position.set(p.cx * CM, h / 2, p.cy * CM); x.castShadow = x.receiveShadow = true; x.userData.capa = 'pilares'; g.add(x);
   });
   (m.equipos || []).forEach(e => g.add(maquina(e)));
   return g;
@@ -135,6 +151,13 @@ export default function Visor3D() {
   const [filtro, setFiltro] = useState('');
   const [guardado, setGuardado] = useState('');
   const cargadaEscena = useRef(false);
+  const [acab, setAcab] = useState({ muros: {}, salas: {}, todosMuros: null, todosSuelos: null });
+  const [selAcab, setSelAcab] = useState(null);  // { tipo: 'muro' | 'suelo', id }
+  const [rev, setRev] = useState(0);             // sube cada vez que se rehace el plano 3D
+  const [capasAbierto, setCapasAbierto] = useState(false);
+  const [ocultas, setOcultas] = useState(() => { try { return JSON.parse(localStorage.getItem('visor3dOcultas') || '[]'); } catch { return []; } });
+  const selAcabRef = useRef(null);
+  useEffect(() => { selAcabRef.current = selAcab; }, [selAcab]);
   useEffect(() => { objsRef.current = objs; }, [objs]);
   useEffect(() => { herrRef.current = herr; }, [herr]);
 
@@ -181,7 +204,7 @@ export default function Visor3D() {
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null }); }
       const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
@@ -202,6 +225,7 @@ export default function Visor3D() {
         sol.shadow.camera.updateProjectionMatrix();
         setEstado('listo');
       }
+      setRev(v => v + 1);
       primera = false;
     }).catch(() => { if (vivo && primera) setEstado('error'); });
     cargar();
@@ -220,11 +244,19 @@ export default function Visor3D() {
       const r = dom.getBoundingClientRect();
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       rayo.setFromCamera(p2, cam);
-      const hit = rayo.intersectObjects(raiz.children, true).find(h => { let o = h.object; while (o) { if (o.userData.equipo) return true; o = o.parent; } return false; });
+      const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
+      const primero = rayo.intersectObjects(raiz.children, true).find(h => visible(h.object));
       if (sel) sel.userData.cuerpo.material.emissive.setHex(0x000000);
       sel = null;
-      if (hit) { let o = hit.object; while (o && !o.userData.equipo) o = o.parent; sel = o; o.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(o.userData.equipo); }
-      else setSeleccion(null);
+      let eq = null; if (primero) { let o = primero.object; while (o && !o.userData.equipo) o = o.parent; eq = o; }
+      if (eq) { sel = eq; eq.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(eq.userData.equipo); setSelAcab(null); }
+      else {
+        setSeleccion(null);
+        const u = primero?.object?.userData || {};
+        if (u.muroId) { setSelAcab({ tipo: 'muro', id: u.muroId }); setSelObj(null); }
+        else if (u.salaKey) { setSelAcab({ tipo: 'suelo', id: u.salaKey }); setSelObj(null); }
+        else setSelAcab(null);
+      }
     };
     dom.addEventListener('pointerdown', onDown);
     dom.addEventListener('pointerup', onUp);
@@ -244,7 +276,7 @@ export default function Visor3D() {
       rayo.setFromCamera(p2, cam);
       const h = rayo.intersectObjects(esc.children, true)[0];
       let o = h?.object; while (o && !o.userData.oid) o = o.parent;
-      return o || null;
+      return o && o.visible ? o : null;
     };
     let arrastre = null, trazo = null, previa = null;
     const onDownD = e => {
@@ -258,7 +290,7 @@ export default function Visor3D() {
       const o = objetoBajo(e);
       if (!o) return;
       const ob = objsRef.current.find(x => x.id === o.userData.oid); if (!ob) return;
-      setSelObj(ob.id);
+      setSelObj(ob.id); setSelAcab(null);
       const p = puntoSuelo(e); if (!p) return;
       ctrl.enabled = false; arrastre = { id: ob.id, dx: ob.cx - p.x, dy: ob.cy - p.y, mov: false };
       e.stopPropagation();
@@ -296,6 +328,29 @@ export default function Visor3D() {
     return () => { el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); renderer.dispose(); el.removeChild(renderer.domElement); };
   }, [id]);
 
+  // Colores de muros y suelos (cambian sin rehacer el plano)
+  useEffect(() => {
+    const a = api3d.current; if (!a.raiz) return;
+    a.raiz.traverse(o => {
+      if (!o.isMesh) return;
+      const u = o.userData;
+      if (u.muroId || u.salaKey) {
+        if (u.col0 === undefined) u.col0 = o.material.color.getHex();
+        const hex = u.muroId ? (acab.muros[u.muroId] || acab.todosMuros) : (acab.salas[u.salaKey] || acab.todosSuelos);
+        o.material.color.setHex(hex ? parseInt(hex.slice(1), 16) : u.col0);
+      }
+    });
+  }, [acab, rev, estado]);
+
+  // Capas (etiquetas): se ven u ocultan grupos de elementos
+  useEffect(() => {
+    const a = api3d.current; if (!a.raiz) return;
+    const aplica = o => { if (o.userData.capa) o.visible = !ocultas.includes(o.userData.capa); };
+    a.raiz.traverse(aplica);
+    a.esc.children.forEach(g => { g.visible = !ocultas.includes('obj:' + (objsRef.current.find(x => x.id === g.userData.oid)?.etiqueta || '')); });
+    try { localStorage.setItem('visor3dOcultas', JSON.stringify(ocultas)); } catch {}
+  }, [ocultas, rev, objs, estado]);
+
   // Los objetos de la escena se pintan a partir de la lista
   useEffect(() => {
     const a = api3d.current; if (!a.esc) return;
@@ -321,9 +376,10 @@ export default function Visor3D() {
       if (o.id === selObj) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(m.position); g.add(l); }
       g.position.set(o.cx * CM, 0, o.cy * CM); g.rotation.y = -(o.rot || 0) * Math.PI / 180;
       g.userData.oid = o.id;
+      g.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
       a.esc.add(g);
     });
-  }, [objs, selObj, estado, biblioteca]);
+  }, [objs, selObj, estado, biblioteca, ocultas]);
 
   // Guardado automático de la escena (sin pisar el dibujo del plano 2D)
   useEffect(() => {
@@ -331,10 +387,10 @@ export default function Visor3D() {
     if (guardado === 'inicial') { setGuardado(''); return; }
     setGuardado('Guardando…');
     const t = setTimeout(() => {
-      api.put('/medicion/' + id + '/escena3d', { objetos: objs }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
+      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
     }, 1200);
     return () => clearTimeout(t);
-  }, [objs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objs, acab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     api.get('/medicion/catalogos').then(r => setBiblioteca((r.data?.maquinas || []).filter(m => m.w > 0 && m.d > 0))).catch(() => setBiblioteca([]));
@@ -464,6 +520,7 @@ export default function Visor3D() {
         <button style={{ ...btn, ...(herr === 'sel' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('sel')} title="Seleccionar y mover objetos">↖ Mover</button>
         <button style={{ ...btn, ...(herr === 'caja' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('caja')} title="Arrastra sobre el suelo para dibujar una caja; luego le das altura">▭ Dibujar caja</button>
         <button style={{ ...btn, ...(bibAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setBibAbierta(v => !v)}>📚 Biblioteca</button>
+        <button style={{ ...btn, ...(capasAbierto ? { background: '#2f6fa8' } : {}) }} onClick={() => setCapasAbierto(v => !v)}>🏷 Capas</button>
         {guardado && guardado !== 'inicial' && <span style={{ color: '#555', fontSize: 12 }}>{guardado}</span>}
         <button style={btn} onClick={() => vista('persp')}>Perspectiva</button>
         <button style={btn} onClick={() => vista('planta')}>Planta</button>
@@ -504,6 +561,51 @@ export default function Visor3D() {
           </div>
         </div>
       )}
+      {capasAbierto && (() => {
+        const fijas = [['muros', 'Muros'], ['huecos', 'Puertas y ventanas'], ['suelos', 'Suelos'], ['pilares', 'Pilares'], ['equipos', 'Equipos del plano']];
+        const propias = [...new Set(objs.map(o => o.etiqueta || ''))];
+        const fila = (clave, nombre) => (
+          <label key={clave} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: 'pointer' }}>
+            <input type="checkbox" checked={!ocultas.includes(clave)} onChange={() => setOcultas(o => (o.includes(clave) ? o.filter(x => x !== clave) : [...o, clave]))} /> {nombre}
+          </label>
+        );
+        return (
+          <div style={{ position: 'absolute', left: bibAbierta ? 292 : 12, top: 56, width: 210, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '10px 12px', fontSize: 13, zIndex: 3 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Ver por capas</div>
+            {fijas.map(([k, n]) => fila(k, n))}
+            {propias.length > 0 && <div style={{ borderTop: '1px solid #333', marginTop: 6, paddingTop: 6, opacity: 0.7 }}>Tus objetos</div>}
+            {propias.map(t => fila('obj:' + t, t || 'Sin etiqueta'))}
+          </div>
+        );
+      })()}
+      {selAcab && !objSel && (() => {
+        const esMuro = selAcab.tipo === 'muro';
+        const actual = esMuro ? (acab.muros[selAcab.id] || acab.todosMuros) : (acab.salas[selAcab.id] || acab.todosSuelos);
+        const poner = hex => setAcab(a => esMuro ? { ...a, muros: { ...a.muros, [selAcab.id]: hex } } : { ...a, salas: { ...a.salas, [selAcab.id]: hex } });
+        const todos = hex => setAcab(a => esMuro ? { ...a, muros: {}, todosMuros: hex } : { ...a, salas: {}, todosSuelos: hex });
+        const quitar = () => setAcab(a => {
+          const m = { ...(esMuro ? a.muros : a.salas) }; delete m[selAcab.id];
+          return esMuro ? { ...a, muros: m } : { ...a, salas: m };
+        });
+        const paleta = ['#ffffff', '#f4f1ec', '#e8e2d8', '#d9cfc0', '#c9b9a0', '#b8a58c', '#a9b5a1', '#8fa3a8', '#7d8e9c', '#9d9a96', '#6e6a66', '#3a3a3c', '#c9a77c', '#8a6a4a', '#d9a7a0', '#b5695e'];
+        return (
+          <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>{esMuro ? 'Muro' : 'Suelo'}: color</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+              {paleta.map(c => <span key={c} onClick={() => poner(c)} title={c} style={{ width: 24, height: 24, background: c, border: '1px solid #555', borderRadius: 4, cursor: 'pointer' }} />)}
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <input type="color" value={actual || '#e4e0db'} onChange={e => poner(e.target.value)} />
+              <input value={actual || ''} placeholder="#RRGGBB" onChange={e => { const v = e.target.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(v)) poner(v); }} style={{ ...btn, width: 100 }} />
+            </label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {actual && <button style={btn} onClick={() => todos(actual)}>{esMuro ? 'A todos los muros' : 'A todos los suelos'}</button>}
+              <button style={btn} onClick={quitar}>Quitar color</button>
+              <button style={btn} onClick={() => setSelAcab(null)}>Cerrar</button>
+            </div>
+          </div>
+        );
+      })()}
       {bibAbierta && (
         <div style={{ position: 'absolute', left: 12, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
           <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar en la biblioteca…" style={{ ...btn, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} />
@@ -527,6 +629,7 @@ export default function Visor3D() {
               <input type="number" value={Math.round(objSel[k] * 10) / 10} onChange={e => cambiar(objSel.id, { [k]: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 90 }} />
             </label>
           ))}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Etiqueta</span><input value={objSel.etiqueta || ''} placeholder="Mobiliario…" onChange={e => cambiar(objSel.id, { etiqueta: e.target.value })} style={{ ...btn, width: 120 }} /></label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0' }}><span style={{ width: 70, opacity: 0.7 }}>Color</span><input type="color" value={objSel.color || (objSel.tipo === 'caja' ? '#9aa3ad' : '#2f6fa8')} onChange={e => cambiar(objSel.id, { color: e.target.value })} /></label>
           {objSel.tipo === 'bloque' && objSel.cid && (
             <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>

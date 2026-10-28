@@ -493,13 +493,17 @@ router.put('/:id/escena3d', async (req, res) => {
       nombre: String(o.nombre || '').slice(0, 120),
       cx: num(o.cx), cy: num(o.cy), rot: num(o.rot),
       w: Math.max(1, num(o.w, 100)), d: Math.max(1, num(o.d, 100)), alto: Math.max(1, num(o.alto, 100)),
-      rotM: num(o.rotM), z0: num(o.z0), color: /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : null,
+      etiqueta: String(o.etiqueta || '').slice(0, 40), rotM: num(o.rotM), z0: num(o.z0), color: /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : null,
       skp: o.skp?.url ? { url: String(o.skp.url).slice(0, 500), rot: num(o.skp.rot) } : null,
     })).filter(o => o.id);
     const { data: fila, error } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
-    const data = { ...fila.data, escena3d: { objetos: limpios, updated: Date.now() } };
+    const hex = v => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : null);
+    const mapa = m => Object.fromEntries(Object.entries(m && typeof m === 'object' ? m : {}).slice(0, 500).map(([k, v]) => [String(k).slice(0, 60), hex(v)]).filter(([, v]) => v));
+    const a = req.body?.acabados || {};
+    const acabados = { muros: mapa(a.muros), salas: mapa(a.salas), todosMuros: hex(a.todosMuros), todosSuelos: hex(a.todosSuelos) };
+    const data = { ...fila.data, escena3d: { objetos: limpios, acabados, updated: Date.now() } };
     const { error: e2 } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (e2) throw e2;
     res.json({ ok: true });
