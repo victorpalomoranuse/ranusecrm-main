@@ -283,7 +283,13 @@ router.get('/:projectId/pdf', authenticateToken, requireProyectos, async (req, r
         return s + (parseFloat(i.unit_price) || 0) * qty;
       }, 0);
       const gDto = parseFloat(data.budget.global_discount_pct) || 0;
-      const totalConDto = total * (1 - gDto / 100);
+      const baseGlobal = items.reduce((s, i) => {
+        const pvp = (i.pricing_mode || 'margin') === 'pvp';
+        if (pvp && (parseFloat(i.discount_pct) || 0) > 0) return s;
+        const qty = parseFloat(i.quantity) || 1;
+        return s + (pvp ? (parseFloat(i.pvp_ref) || 0) : (parseFloat(i.unit_price) || 0)) * qty;
+      }, 0);
+      const totalConDto = total - baseGlobal * gDto / 100;
       doc.fillColor('#888888').fontSize(9).font('Helvetica').text(`Presupuesto ${data.budget.budget_number || ''} — ${items.length} partida(s)`, M, doc.y);
       doc.moveDown(0.5);
       doc.fillColor(BRAND.dark).fontSize(16).font('Helvetica-Bold').text(`Total estimado: ${fmtEur(totalConDto)}`, M, doc.y);

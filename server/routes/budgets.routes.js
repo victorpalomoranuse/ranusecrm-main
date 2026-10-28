@@ -103,6 +103,20 @@ function lineListPrice(item) {
   return isPvpMode ? (parseFloat(item.pvp_ref) || 0) : (parseFloat(item.unit_price) || 0);
 }
 
+// El Dto. global NO se aplica sobre las partidas que ya llevan descuento propio (solo cuenta el descuento de partida, que solo existe en modo PVP+Dto)
+function lineaConDto(i) {
+  return (i.pricing_mode || 'margin') === 'pvp' && (parseFloat(i.discount_pct) || 0) > 0;
+}
+// Importe (tras su propio dto de partida) de las partidas sobre las que sí se aplica el Dto. global
+function baseDtoGlobal(items) {
+  return items.reduce((s, i) => {
+    if (lineaConDto(i)) return s;
+    const qty = parseFloat(i.quantity) || 1;
+    if ((i.pricing_mode || 'margin') === 'pvp') return s + (parseFloat(i.pvp_ref) || 0) * qty;
+    return s + (parseFloat(i.unit_price) || 0) * qty;
+  }, 0);
+}
+
 function computeTotals(items, feeType, feeValue, designHours, globalDiscountPct) {
   const itemCost = items.reduce((s, i) => {
     const qty = parseFloat(i.quantity) || 1;
@@ -132,7 +146,7 @@ function computeTotals(items, feeType, feeValue, designHours, globalDiscountPct)
   else if (feeType === 'hourly') designFee = (parseFloat(designHours) || 0) * feeVal;
   const subtotalAfterLines = itemRevenue + designFee;
   const globalDto = parseFloat(globalDiscountPct) || 0;
-  const globalDiscountAmount = subtotalAfterLines * globalDto / 100;
+  const globalDiscountAmount = (baseDtoGlobal(items) + designFee) * globalDto / 100;
   const totalRevenue = subtotalAfterLines - globalDiscountAmount;
   const totalDiscount = lineDiscountAmount + globalDiscountAmount;
   const totalProfit = totalRevenue - itemCost;
@@ -723,7 +737,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       return s + lineTotal * (parseFloat(i.discount_pct) || 0) / 100;
     }, 0);
     const subtotalAfterLines = subtotalBruto - lineDiscountTotal;
-    const globalDiscountAmount = subtotalAfterLines * globalDto / 100;
+    const globalDiscountAmount = baseDtoGlobal(items) * globalDto / 100;
     const subtotal = subtotalAfterLines - globalDiscountAmount;
     const totalSavings = lineDiscountTotal + globalDiscountAmount;
     const ivaAmount = subtotal * (parseFloat(iva) / 100);

@@ -67,7 +67,13 @@ function computeSummary(items, b) {
   // Subtotal antes del descuento global (partidas + honorarios), luego se le aplica el % global.
   const subtotalAfterLines = itemRev + fee;
   const globalDto = parseFloat(b.global_discount_pct) || 0;
-  const globalDiscountAmount = subtotalAfterLines * globalDto / 100;
+  // El Dto. global no se aplica sobre las partidas que ya tienen su propio dto (modo PVP+Dto con dto > 0); los honorarios sí entran.
+  const baseGlobal = realItems.reduce((s, i) => {
+    const qty = parseFloat(i.quantity)||1;
+    if ((i.pricing_mode||'margin') === 'pvp') return (parseFloat(i.discount_pct)||0) > 0 ? s : s + (parseFloat(i.pvp_ref)||0)*qty;
+    return s + (parseFloat(i.unit_price)||0)*qty;
+  }, 0);
+  const globalDiscountAmount = (baseGlobal + fee) * globalDto / 100;
   const totalRev = subtotalAfterLines - globalDiscountAmount;
 
   const profit = totalRev - itemCost;
