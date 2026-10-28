@@ -5,6 +5,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
+import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import api from '../services/api';
 
 // Visor 3D de un plano de Planos (lee su modelo3d). Pensado para gimnasios: paredes con puertas y ventanas,
@@ -136,6 +138,113 @@ function ajustarModelo(raw, w, d, h) {
 }
 
 const sel2 = (id, sel) => id === sel;
+function cartel(texto) {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
+  const cx = cv.getContext('2d'); cx.fillStyle = 'rgba(0,0,0,0.78)'; cx.beginPath(); cx.roundRect ? cx.roundRect(4, 8, 248, 48, 12) : cx.rect(4, 8, 248, 48); cx.fill();
+  cx.fillStyle = '#ffd34d'; cx.font = 'bold 34px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(texto, 128, 33);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true }));
+  sp.scale.set(0.5, 0.125, 1); sp.renderOrder = 1000; return sp;
+}
+// ── Sígueme: un perfil (u = hacia el lado, v = hacia arriba, en cm) recorre un camino, con esquinas en inglete
+const PERFILES = {
+  'Rodapié recto': [[0, 0], [1.5, 0], [1.5, 10], [0, 10]],
+  'Rodapié biselado': [[0, 0], [1.8, 0], [1.8, 8], [0.8, 10], [0, 10]],
+  'Moldura / cornisa': [[0, 0], [7, 0], [7, 1.5], [2.5, 5], [0, 5]],
+  'Cuadrado 5×5': [[0, 0], [5, 0], [5, 5], [0, 5]],
+  'Tubo Ø4': Array.from({ length: 16 }, (_, i) => [2 + 2 * Math.cos((i / 16) * 2 * Math.PI), 2 + 2 * Math.sin((i / 16) * 2 * Math.PI)]),
+  'Perfil en L': [[0, 0], [4, 0], [4, 1], [1, 1], [1, 4], [0, 4]],
+  'Bandeja 10×3': [[0, 0], [10, 0], [10, 3], [9.5, 3], [9.5, 0.5], [0.5, 0.5], [0.5, 3], [0, 3]],
+};
+function geometriaBarrido(path, perfil, esc, cerrado, lado) {
+  const n = path.length; if (n < 2 || perfil.length < 3) return null;
+  const m = cerrado ? n : n - 1, dirs = [];
+  for (let i = 0; i < m; i++) { const a = path[i], b = path[(i + 1) % n], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; dirs.push([(b[0] - a[0]) / L, (b[1] - a[1]) / L]); }
+  const norm = d => [-d[1] * lado, d[0] * lado], mit = [];
+  for (let i = 0; i < n; i++) {
+    let dp = cerrado ? dirs[(i + m - 1) % m] : (i > 0 ? dirs[i - 1] : null), dn = cerrado ? dirs[i % m] : (i < m ? dirs[i] : null);
+    if (!dp) dp = dn; if (!dn) dn = dp;
+    const n1 = norm(dp), n2 = norm(dn); let sx = n1[0] + n2[0], sy = n1[1] + n2[1]; const sl = Math.hypot(sx, sy);
+    if (sl < 1e-6) { mit.push([n1[0], n1[1]]); continue; }
+    sx /= sl; sy /= sl; const cs = Math.max(0.35, sx * n1[0] + sy * n1[1]); mit.push([sx / cs, sy / cs]);
+  }
+  const pos = [], idx = [], np = perfil.length;
+  for (let i = 0; i < n; i++) for (let j = 0; j < np; j++) { const u = perfil[j][0] * esc, v = perfil[j][1] * esc; pos.push((path[i][0] + mit[i][0] * u) * CM, v * CM, (path[i][1] + mit[i][1] * u) * CM); }
+  for (let i = 0; i < m; i++) { const i2 = (i + 1) % n; for (let j = 0; j < np; j++) { const j2 = (j + 1) % np, a = i * np + j, b = i * np + j2, c = i2 * np + j2, d = i2 * np + j; idx.push(a, b, c, a, c, d); } }
+  if (!cerrado) {
+    const tri = THREE.ShapeUtils.triangulateShape(perfil.map(p => new THREE.Vector2(p[0], p[1])), []), o = (n - 1) * np;
+    tri.forEach(t => { idx.push(t[0], t[1], t[2]); idx.push(o + t[2], o + t[1], o + t[0]); });
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+function puntoEnPoligono(pt, pts) { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) c = !c; } return c; }
+
+// ── Logos: SVG (contornos rellenos) o DXF (contornos cerrados) → formas con huecos, normalizadas a 100 cm de ancho
+function normalizarFormas(formas, anchoCm = 100) {
+  const todos = formas.flatMap(f => [...f.pts, ...f.holes.flat()]); if (!todos.length) return null;
+  const xs = todos.map(p => p[0]), ys = todos.map(p => p[1]), minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
+  const k = anchoCm / ((maxx - minx) || 1), cx = (minx + maxx) / 2;
+  const t = p => [Math.round((p[0] - cx) * k * 100) / 100, Math.round((p[1] - miny) * k * 100) / 100];
+  const dec = a => { const paso = Math.max(1, Math.ceil(a.length / 350)); return a.filter((_, i) => i % paso === 0).map(t); };
+  return { formas: formas.map(f => ({ pts: dec(f.pts), holes: f.holes.map(dec) })), alto: (maxy - miny) * k };
+}
+function formasDeSVG(texto) {
+  const data = new SVGLoader().parse(texto), formas = [];
+  data.paths.forEach(p => SVGLoader.createShapes(p).forEach(sh => formas.push({ pts: sh.getPoints(10).map(v => [v.x, -v.y]), holes: sh.holes.map(h => h.getPoints(10).map(v => [v.x, -v.y])) })));
+  return formas;
+}
+function formasDeDXF(texto) {
+  const lin = texto.split(/\r?\n/).map(s => s.trim()), pares = [];
+  for (let i = 0; i + 1 < lin.length; i += 2) pares.push([parseInt(lin[i], 10), lin[i + 1]]);
+  const ini = pares.findIndex((p, i) => p[0] === 2 && p[1] === 'ENTITIES' && i > 0 && pares[i - 1][1] === 'SECTION');
+  const ents = []; let cur = null;
+  for (let i = Math.max(0, ini); i < pares.length; i++) { const [c, v] = pares[i]; if (c === 0) { if (v === 'ENDSEC') break; cur = { t: v, d: [] }; ents.push(cur); } else if (cur) cur.d.push([c, v]); }
+  const cerrados = [], abiertos = []; let poli = null;
+  const lee = (d, c) => d.filter(p => p[0] === c).map(p => parseFloat(p[1]));
+  const arco = (cx, cy, r, a1, a2) => { let d = a2 - a1; if (d <= 0) d += 360; const n = Math.max(6, Math.ceil(d / 8)); return Array.from({ length: n + 1 }, (_, i) => [cx + r * Math.cos(((a1 + (d * i) / n) * Math.PI) / 180), cy + r * Math.sin(((a1 + (d * i) / n) * Math.PI) / 180)]); };
+  ents.forEach(e => {
+    const x = lee(e.d, 10), y = lee(e.d, 20), flag = parseInt((e.d.find(p => p[0] === 70) || [0, '0'])[1], 10) || 0;
+    if (e.t === 'LWPOLYLINE') { const pts = x.map((v, i) => [v, y[i]]); (flag & 1 ? cerrados : abiertos).push(pts); }
+    else if (e.t === 'POLYLINE') poli = { pts: [], cerrado: !!(flag & 1) };
+    else if (e.t === 'VERTEX' && poli) poli.pts.push([x[0], y[0]]);
+    else if (e.t === 'SEQEND' && poli) { (poli.cerrado ? cerrados : abiertos).push(poli.pts); poli = null; }
+    else if (e.t === 'LINE') abiertos.push([[x[0], y[0]], [lee(e.d, 11)[0], lee(e.d, 21)[0]]]);
+    else if (e.t === 'ARC') abiertos.push(arco(x[0], y[0], lee(e.d, 40)[0], lee(e.d, 50)[0], lee(e.d, 51)[0]));
+    else if (e.t === 'CIRCLE') { const pts = arco(x[0], y[0], lee(e.d, 40)[0], 0, 360); pts.pop(); cerrados.push(pts); }
+    else if (e.t === 'SPLINE') { const fx = lee(e.d, 11), fy = lee(e.d, 21), pts = fx.length ? fx.map((v, i) => [v, fy[i]]) : x.map((v, i) => [v, y[i]]); (flag & 1 ? cerrados : abiertos).push(pts); }
+  });
+  // unir los tramos abiertos que se tocan por los extremos hasta formar contornos cerrados
+  const todos = [...cerrados, ...abiertos].flat(), ex = todos.map(p => p[0]), ey = todos.map(p => p[1]);
+  const eps = Math.max(1e-6, (Math.max(...ex, 0) - Math.min(...ex, 0) + (Math.max(...ey, 0) - Math.min(...ey, 0))) * 1e-4);
+  const igual = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= eps;
+  let tramos = abiertos.filter(t => t.length >= 2).map(t => t.slice()), lazos = cerrados.filter(t => t.length >= 3).map(t => t.slice());
+  while (tramos.length) {
+    let t = tramos.shift(), unido = true;
+    while (unido && !igual(t[0], t[t.length - 1])) {
+      unido = false;
+      for (let i = 0; i < tramos.length; i++) {
+        const o = tramos[i];
+        if (igual(t[t.length - 1], o[0])) { t = t.concat(o.slice(1)); }
+        else if (igual(t[t.length - 1], o[o.length - 1])) { t = t.concat(o.slice().reverse().slice(1)); }
+        else if (igual(t[0], o[o.length - 1])) { t = o.concat(t.slice(1)); }
+        else if (igual(t[0], o[0])) { t = o.slice().reverse().concat(t.slice(1)); }
+        else continue;
+        tramos.splice(i, 1); unido = true; break;
+      }
+    }
+    if (t.length >= 4 && igual(t[0], t[t.length - 1])) { t.pop(); lazos.push(t); }
+  }
+  if (!lazos.length) return [];
+  // exteriores y huecos según la profundidad de anidamiento
+  const area = p => Math.abs(p.reduce((s, q, i) => s + q[0] * p[(i + 1) % p.length][1] - p[(i + 1) % p.length][0] * q[1], 0) / 2);
+  lazos.sort((a, b) => area(b) - area(a));
+  const prof = lazos.map((l, i) => lazos.filter((o, j) => j !== i && area(o) > area(l) && puntoEnPoligono(l[0], o)).length);
+  const formas = [];
+  lazos.forEach((l, i) => { if (prof[i] % 2 === 0) formas.push({ pts: l, holes: [], _i: i }); });
+  lazos.forEach((l, i) => { if (prof[i] % 2 === 1) { const padre = formas.filter(f => area(lazos[f._i]) > area(l) && puntoEnPoligono(l[0], lazos[f._i])).pop(); if (padre) padre.holes.push(l); } });
+  return formas.map(({ pts, holes }) => ({ pts, holes }));
+}
+
 // Contorno desplazado hacia dentro una distancia d (cm), con esquinas en inglete; vale para polígonos sencillos
 function insetPoligono(pts, d) {
   const n = pts.length; if (n < 3) return pts;
@@ -302,6 +411,11 @@ export default function Visor3D() {
   const curvoRef = useRef(false);
   useEffect(() => { curvoRef.current = curvo; }, [curvo]);
   const [zonaMenu, setZonaMenu] = useState(false);
+  const [sigueMenu, setSigueMenu] = useState(false);
+  const [perfilSel, setPerfilSel] = useState('Rodapié recto');
+  const perfilSelRef = useRef('Rodapié recto');
+  useEffect(() => { perfilSelRef.current = perfilSel; }, [perfilSel]);
+  const logoInput = useRef(null);
   const [lucesPl, setLucesPl] = useState([]);       // luminarias de la capa Iluminación del plano
   const [lumCat, setLumCat] = useState([]);          // catálogo de luminarias (lúmenes, vatios, kelvin)
   const [luzSel, setLuzSel] = useState(null);
@@ -324,6 +438,8 @@ export default function Visor3D() {
   useEffect(() => { selAcabRef.current = selAcab; }, [selAcab]);
   useEffect(() => { objsRef.current = objs; }, [objs]);
   useEffect(() => { herrRef.current = herr; }, [herr]);
+  const selObjRef = useRef(null);
+  useEffect(() => { selObjRef.current = selObj; }, [selObj]);
 
   useEffect(() => { document.title = 'Vista 3D · Ranuse'; }, []);
 
@@ -481,6 +597,12 @@ export default function Visor3D() {
       rayo.setFromCamera(p2, cam);
       return rayo.ray.intersectPlane(suelo, pt) ? imantar({ x: snap(pt.x / CM), y: snap(pt.z / CM) }) : null;
     };
+    const sueloRaw = e => {
+      const r = dom.getBoundingClientRect();
+      p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      rayo.setFromCamera(p2, cam);
+      return rayo.ray.intersectPlane(suelo, pt) ? { x: pt.x / CM, y: pt.z / CM } : null;
+    };
     const objetoBajo = e => {
       const r = dom.getBoundingClientRect();
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -491,8 +613,9 @@ export default function Visor3D() {
     };
     let arrastre = null, trazo = null, previa = null;
     let poli = [], poliLinea = null, poliAbajo = null, empuje = null;
-    let guiaA = null, guiaAbajo = null, guiaMarca = null, luzAbajo = null;
-    const esPoli = h => h === 'poli' || h === 'zonaS' || h === 'zonaT';
+    let guiaA = null, guiaAbajo = null, guiaMarca = null, luzAbajo = null, eje3 = null;
+    const esPoli = h => h === 'poli' || h === 'zonaS' || h === 'zonaT' || h === 'sigue';
+    let cierraLazo = false;
     let poliP = null, pAbajo = null, pLinea = null;
     const muroPorId = idm => (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []).find(m => m.id === idm);
     const golpePared = e => {
@@ -537,7 +660,13 @@ export default function Visor3D() {
       scene.add(poliLinea);
     };
     const cerrarPoli = () => {
-      if (poli.length >= 3) {
+      // (Enter cierra el camino abierto; volver al primer punto lo cierra en lazo)
+      if (herrRef.current === 'sigue' && poli.length >= 2) {
+        const xs = poli.map(p => p.x), ys = poli.map(p => p.y);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2, nombre = perfilSelRef.current;
+        const nuevo = { id: idNuevo(), tipo: 'barrido', nombre, perfilNombre: nombre, etiqueta: 'Molduras', cx, cy, rot: 0, w: 1, d: 1, alto: 1, z0: 0, color: '#ffffff', pts: poli.map(p => [p.x - cx, p.y - cy]), perfil: PERFILES[nombre], esc: 1, cerrado: cierraLazo && poli.length >= 3, lado: 1 };
+        setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id);
+      } else if (poli.length >= 3) {
         const xs = poli.map(p => p.x), ys = poli.map(p => p.y);
         const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
         const rel = poli.map(p => [p.x - cx, p.y - cy]), modo = herrRef.current;
@@ -604,6 +733,16 @@ export default function Visor3D() {
         previa = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x2f6fa8, transparent: true, opacity: 0.45 }));
         scene.add(previa); e.stopPropagation(); return;
       }
+      {
+        const gzG = api3d.current.gizmoG;
+        if (gzG) {
+          const r = dom.getBoundingClientRect();
+          p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+          rayo.setFromCamera(p2, cam);
+          const hg = rayo.intersectObjects(gzG.children, true)[0], ob0 = objsRef.current.find(x => x.id === selObjRef.current);
+          if (hg && ob0) { ctrl.enabled = false; eje3 = { eje: hg.object.userData.eje, id: ob0.id, cx0: ob0.cx, cy0: ob0.cy, z00: ob0.z0 || 0, p0: sueloRaw(e), y0: e.clientY, nuevo: {} }; e.stopPropagation(); return; }
+        }
+      }
       const o = objetoBajo(e);
       if (!o) return;
       const ob = objsRef.current.find(x => x.id === o.userData.oid); if (!ob) return;
@@ -614,6 +753,20 @@ export default function Visor3D() {
       e.stopPropagation();
     };
     const onMoveD = e => {
+      if (eje3) {
+        const g3 = esc.children.find(x => x.userData.oid === eje3.id); if (!g3) return;
+        if (eje3.eje === 'y') {
+          const dist = cam.position.distanceTo(g3.position), cmPx = ((2 * dist * Math.tan(cam.fov * Math.PI / 360)) / dom.clientHeight) * 100;
+          const z = Math.max(0, Math.round((eje3.z00 + (eje3.y0 - e.clientY) * cmPx) / 5) * 5); eje3.nuevo = { z0: z }; g3.position.y = (z - eje3.z00) * CM;
+        } else {
+          const p = sueloRaw(e);
+          if (p && eje3.p0) {
+            const dlt = eje3.eje === 'x' ? p.x - eje3.p0.x : p.y - eje3.p0.y, v = Math.round(((eje3.eje === 'x' ? eje3.cx0 : eje3.cy0) + dlt) / 5) * 5;
+            if (eje3.eje === 'x') { eje3.nuevo = { cx: v }; g3.position.x = v * CM; } else { eje3.nuevo = { cy: v }; g3.position.z = v * CM; }
+          }
+        }
+        return;
+      }
       if (esPoli(herrRef.current) && poli.length) { const p = puntoSuelo(e); if (p) dibujarPoli(p); return; }
       if (herrRef.current === 'zonaP' && poliP) { const g = golpePared(e); if (g && g.id === poliP.id) dibujarPared(new THREE.Vector3(...aMundoPared(g.mu, g.s, g.y, poliP.lado).toArray())); return; }
       if (empuje) {
@@ -637,6 +790,11 @@ export default function Visor3D() {
       }
     };
     const onUpD = e => {
+      if (eje3) {
+        const a3 = eje3; eje3 = null; ctrl.enabled = true;
+        if (Object.keys(a3.nuevo).length) setObjs(prev => prev.map(x => (x.id === a3.id ? { ...x, ...a3.nuevo } : x)));
+        return;
+      }
       if (pAbajo) {
         const d0 = Math.hypot(e.clientX - pAbajo[0], e.clientY - pAbajo[1]); pAbajo = null;
         if (d0 < 4) {
@@ -680,7 +838,7 @@ export default function Visor3D() {
         const d0 = Math.hypot(e.clientX - poliAbajo[0], e.clientY - poliAbajo[1]); poliAbajo = null;
         if (d0 < 4) {
           const p = puntoSuelo(e);
-          if (p) { if (poli.length >= 3 && Math.hypot(p.x - poli[0].x, p.y - poli[0].y) < 15) cerrarPoli(); else { poli.push(p); dibujarPoli(null); } }
+          if (p) { if (poli.length >= 3 && Math.hypot(p.x - poli[0].x, p.y - poli[0].y) < 15) { cierraLazo = true; cerrarPoli(); cierraLazo = false; } else { poli.push(p); dibujarPoli(null); } }
         }
         return;
       }
@@ -751,6 +909,45 @@ export default function Visor3D() {
     });
     a.scene.add(g); a.luzG = g;
   }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas]);
+
+  // Medidas (cotas) y flechas de ejes del objeto seleccionado (también las máquinas del plano: solo medidas)
+  useEffect(() => {
+    const a = api3d.current; if (!a.scene) return;
+    ['gizmoG', 'cotasG'].forEach(k => { if (a[k]) { a.scene.remove(a[k]); a[k].traverse(x => { x.geometry?.dispose(); x.material?.map?.dispose?.(); x.material?.dispose?.(); }); a[k] = null; } });
+    const ob = objs.find(x => x.id === selObj);
+    const d = ob ? { w: ob.w, d: ob.d, alto: ob.alto, cx: ob.cx, cy: ob.cy, rot: ob.rot || 0, z0: ob.z0 || 0, tipo: ob.tipo }
+      : (seleccion ? { w: seleccion.largo || seleccion.w, d: seleccion.fondo || seleccion.d, alto: seleccion.alto || 110, cx: seleccion.cx, cy: seleccion.cy, rot: seleccion.rot || 0, z0: 0 } : null);
+    if (!d) return;
+    if (!['zona', 'falsotecho', 'barrido'].includes(d.tipo)) {
+      const W = d.w * CM, D = d.d * CM, H = d.alto * CM, off = 0.14, g = new THREE.Group();
+      g.position.set(d.cx * CM, d.z0 * CM, d.cy * CM); g.rotation.y = -d.rot * Math.PI / 180;
+      const mat = new THREE.LineBasicMaterial({ color: 0xffc400, depthTest: false });
+      const lin = (p, q) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...p), new THREE.Vector3(...q)]), mat); l.renderOrder = 998; g.add(l); };
+      const txt = (t, p) => { const s = cartel(t); s.position.set(...p); g.add(s); };
+      lin([-W / 2, 0, D / 2 + off], [W / 2, 0, D / 2 + off]); lin([-W / 2, 0, D / 2 + off - 0.04], [-W / 2, 0, D / 2 + off + 0.04]); lin([W / 2, 0, D / 2 + off - 0.04], [W / 2, 0, D / 2 + off + 0.04]);
+      txt(Math.round(d.w * 10) / 10 + ' cm', [0, 0.06, D / 2 + off + 0.12]);
+      lin([W / 2 + off, 0, -D / 2], [W / 2 + off, 0, D / 2]); lin([W / 2 + off - 0.04, 0, -D / 2], [W / 2 + off + 0.04, 0, -D / 2]); lin([W / 2 + off - 0.04, 0, D / 2], [W / 2 + off + 0.04, 0, D / 2]);
+      txt(Math.round(d.d * 10) / 10 + ' cm', [W / 2 + off + 0.14, 0.06, 0]);
+      lin([-W / 2 - off, 0, D / 2 + off], [-W / 2 - off, H, D / 2 + off]); lin([-W / 2 - off - 0.04, H, D / 2 + off], [-W / 2 - off + 0.04, H, D / 2 + off]);
+      txt(Math.round(d.alto * 10) / 10 + ' cm', [-W / 2 - off - 0.16, H / 2, D / 2 + off]);
+      a.scene.add(g); a.cotasG = g;
+    }
+    if (ob && !(ob.tipo === 'zona' && ob.plano === 'pared') && ob.tipo !== 'falsotecho') {
+      const G = new THREE.Group(); G.position.set(ob.cx * CM, (ob.z0 || 0) * CM + (ob.alto * CM) / 2, ob.cy * CM);
+      const L = Math.max(0.5, Math.max(ob.w, ob.d, ob.alto) * CM * 0.6 + 0.25);
+      const flecha = (col, eje) => {
+        const g = new THREE.Group(), m = new THREE.MeshBasicMaterial({ color: col, depthTest: false });
+        const asta = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, L, 8), m); asta.position.y = L / 2;
+        const punta = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 12), m); punta.position.y = L + 0.1;
+        g.add(asta, punta);
+        if (eje === 'x') g.rotation.z = -Math.PI / 2; else if (eje === 'z') g.rotation.x = Math.PI / 2;
+        g.traverse(o => { o.userData.eje = eje; o.renderOrder = 999; });
+        return g;
+      };
+      G.add(flecha(0xe5484d, 'x'), flecha(0x46a758, 'y'), flecha(0x3e63dd, 'z'));
+      a.scene.add(G); a.gizmoG = G;
+    }
+  }, [objs, selObj, seleccion, estado, rev]);
 
   // Rodapié: sigue el perímetro de cada sala (por dentro) y se interrumpe en las puertas
   useEffect(() => {
@@ -838,6 +1035,36 @@ export default function Visor3D() {
         }
         gz.userData.oid = o.id; gz.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
         a.esc.add(gz);
+        return;
+      }
+      if (o.tipo === 'barrido' && Array.isArray(o.pts) && o.pts.length >= 2) {
+        const geo = geometriaBarrido(o.pts, o.perfil || PERFILES['Rodapié recto'], o.esc || 1, !!o.cerrado, o.lado === -1 ? -1 : 1); if (!geo) return;
+        const val = o.color, tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#ffffff'), roughness: 0.6, side: THREE.DoubleSide, emissive: o.id === selObj ? 0x335577 : 0x000000 });
+        if (tx) { mt.map = texturaDe(tx, true); mt.color.setHex(0xffffff); }
+        const mesh = new THREE.Mesh(geo, mt); mesh.castShadow = mesh.receiveShadow = true; mesh.position.y = (o.z0 || 0) * CM;
+        const gb = new THREE.Group(); gb.position.set(o.cx * CM, 0, o.cy * CM); gb.add(mesh);
+        gb.userData.oid = o.id; gb.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(gb);
+        return;
+      }
+      if (o.tipo === 'logo' && Array.isArray(o.formas) && o.formas.length) {
+        const k = (o.w || 100) / 100, geos = [];
+        o.formas.forEach(f => {
+          const sh = new THREE.Shape(f.pts.map(p => new THREE.Vector2(p[0] * CM * k, p[1] * CM * k)));
+          (f.holes || []).forEach(h => sh.holes.push(new THREE.Path(h.map(p => new THREE.Vector2(p[0] * CM * k, p[1] * CM * k)))));
+          try { geos.push(new THREE.ExtrudeGeometry(sh, { depth: Math.max(0.2, o.d || 2) * CM, bevelEnabled: false })); } catch (e) { /* forma no válida: se salta */ }
+        });
+        if (!geos.length) return;
+        const geo = geos.length > 1 ? mergeGeometries(geos) : geos[0];
+        if (o.plano === 'horizontal') geo.rotateX(-Math.PI / 2);
+        const val = o.color, tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#222222'), roughness: 0.5, metalness: 0.1, emissive: o.id === selObj ? 0x335577 : 0x000000 });
+        if (tx) { mt.map = texturaDe(tx, false); mt.color.setHex(0xffffff); }
+        const mesh = new THREE.Mesh(geo, mt); mesh.castShadow = mesh.receiveShadow = true; mesh.position.y = (o.z0 || 0) * CM;
+        const gl = new THREE.Group(); gl.position.set(o.cx * CM, 0, o.cy * CM); gl.rotation.y = -(o.rot || 0) * Math.PI / 180; gl.add(mesh);
+        gl.userData.oid = o.id; gl.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(gl);
         return;
       }
       if (o.tipo === 'falsotecho' && Array.isArray(o.pts) && o.pts.length >= 3) {
@@ -987,6 +1214,30 @@ export default function Visor3D() {
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'falsotecho', nombre: 'Falso techo con foseado', etiqueta: 'Techos', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, h: pl0.altura || 260, color: '#f6f4f1', pts: sala.pts.map(p => [p[0] - cx, p[1] - cy]), ft: { descenso: 15, gap: 12, luz: true, k: 3000 } };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setSelAcab(null);
   };
+  const importarLogo = async (archivo) => {
+    if (!archivo) return;
+    try {
+      const texto = await archivo.text();
+      const esDXF = /\.dxf$/i.test(archivo.name);
+      const formas = esDXF ? formasDeDXF(texto) : formasDeSVG(texto);
+      const norm = formas.length ? normalizarFormas(formas) : null;
+      if (!norm) { setAviso(esDXF ? 'No he encontrado contornos cerrados en ese DXF. Para que funcione, el logo debe estar hecho con líneas, arcos, círculos o polilíneas que formen contornos cerrados (si es un SVG o un PDF vectorial, mejor súbelo como SVG).' : 'No he encontrado formas rellenas en ese SVG. Si el logo está hecho solo con líneas, conviértelo antes a contornos (en Illustrator o Inkscape: «Contorno de trazo» o «Stroke to Path»).'); return; }
+      const { ctrl } = api3d.current;
+      const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', nombre: 'Logo ' + archivo.name.replace(/\.[^.]+$/, ''), etiqueta: 'Logos', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: 100, d: 2, alto: Math.round(norm.alto), ratio: norm.alto / 100, z0: 100, plano: 'vertical', color: '#222222', formas: norm.formas };
+      setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel');
+      setAviso('Logo creado (' + norm.formas.length + ' forma' + (norm.formas.length === 1 ? '' : 's') + '). Ajusta ancho, grosor y elevación en su ficha.');
+    } catch (e) { setAviso('No se ha podido leer ese archivo: ' + (e.message || 'formato no válido')); }
+  };
+  const moldurasSala = (salaKey) => {
+    const modelo = api3d.current.modelo; if (!modelo) return;
+    const pl0 = (modelo.plantas || [modelo])[0], sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === salaKey); if (!sala) return;
+    const xs = sala.pts.map(p => p[0]), ys = sala.pts.map(p => p[1]), cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const a = sala.pts[0], b = sala.pts[1], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / L, ny = (b[0] - a[0]) / L;
+    const lado = puntoEnPoligono([(a[0] + b[0]) / 2 + nx * 5, (a[1] + b[1]) / 2 + ny * 5], sala.pts) ? 1 : -1;
+    const nombre = perfilSelRef.current;
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'barrido', nombre, perfilNombre: nombre, etiqueta: 'Molduras', cx, cy, rot: 0, w: 1, d: 1, alto: 1, z0: 0, color: '#ffffff', pts: sala.pts.map(p => [p[0] - cx, p[1] - cy]), perfil: PERFILES[nombre], esc: 1, cerrado: true, lado };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setSelAcab(null);
+  };
   const anadirBloque = m => {
     const { ctrl } = api3d.current;
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'bloque', cid: m.id, nombre: m.nombre, cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: m.w, d: m.d, alto: m.alto || 110, z0: 0, color: null, skp: m.skp || null };
@@ -1118,7 +1369,7 @@ export default function Visor3D() {
   const btn = { background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
-      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP'].includes(herr) ? 'crosshair' : 'default' }} />
+      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue'].includes(herr) ? 'crosshair' : 'default' }} />
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={btn} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <b style={{ color: '#222', marginRight: 'auto' }}>{titulo}</b>
@@ -1132,6 +1383,15 @@ export default function Visor3D() {
           </div>}
         </div>
         <button style={{ ...btn, ...(herr === 'empujar' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('empujar')} title="Arrastra hacia arriba o abajo la cara de arriba de un objeto para cambiar su altura">⇅ Empujar/Tirar</button>
+        <div style={{ position: 'relative' }}>
+          <button style={{ ...btn, ...(herr === 'sigue' || sigueMenu ? { background: '#2f6fa8' } : {}) }} onClick={() => setSigueMenu(v => !v)} title="Un perfil recorre un camino (como «Sígueme» de SketchUp): rodapiés, molduras, tubos, bandejas…">➰ Sígueme</button>
+          {sigueMenu && <div style={{ position: 'absolute', top: 34, left: 0, background: 'rgba(20,20,20,0.97)', borderRadius: 8, padding: 6, zIndex: 8, width: 230, color: '#fff', fontSize: 13 }}>
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige el perfil y dibuja el camino en el suelo (Enter termina; volver al primer punto cierra en lazo)</div>
+            {Object.keys(PERFILES).map(n => <div key={n} onClick={() => { setPerfilSel(n); setHerr('sigue'); setSigueMenu(false); }} style={{ padding: '6px 8px', cursor: 'pointer', borderRadius: 4, background: perfilSel === n ? '#2a3a52' : 'transparent' }}>{n}</div>)}
+          </div>}
+        </div>
+        <button style={btn} onClick={() => logoInput.current?.click()} title="Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en un modelo 3D con grosor">🖼 Logo</button>
+        <input ref={logoInput} type="file" accept=".svg,.dxf" style={{ display: 'none' }} onChange={e => { importarLogo(e.target.files?.[0]); e.target.value = ''; }} />
         <div style={{ position: 'relative' }}>
           <button style={{ ...btn, ...(['zonaS', 'zonaT', 'zonaP'].includes(herr) || zonaMenu ? { background: '#2f6fa8' } : {}) }} onClick={() => setZonaMenu(v => !v)} title="Dibuja una forma sobre un suelo, techo o pared y dale su propio material">▨ Zonas</button>
           {zonaMenu && <div style={{ position: 'absolute', top: 34, left: 0, background: 'rgba(20,20,20,0.97)', borderRadius: 8, padding: 6, zIndex: 8, width: 230, color: '#fff', fontSize: 13 }}>
@@ -1360,6 +1620,7 @@ export default function Visor3D() {
             </label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {actual && <button style={btn} onClick={() => todos(actual)}>{esMuro ? 'A todos los muros' : 'A todos los suelos'}</button>}
+              {!esMuro && <button style={btn} onClick={() => moldurasSala(selAcab.id)} title="Un perfil (el elegido en Sígueme: rodapié, moldura…) recorre todo el perímetro de la sala">Moldura en el perímetro</button>}
               {!esMuro && <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => crearFalsoTecho(selAcab.id)} title="Crea un falso techo descolgado con un hueco perimetral (foseado) y luz LED">Falso techo con foseado</button>}
               <button style={btn} onClick={quitar}>Quitar color</button>
               <button style={btn} onClick={() => setSelAcab(null)}>Cerrar</button>
@@ -1421,12 +1682,38 @@ export default function Visor3D() {
       {objSel && (
         <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
           <input value={objSel.nombre} onChange={e => cambiar(objSel.id, { nombre: e.target.value })} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontWeight: 700, marginBottom: 8 }} />
-          {[['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación'], ['rot', 'Giro °']].filter(([k]) => !(objSel.tipo === 'mueble' && k === 'w') && !['zona', 'falsotecho'].includes(objSel.tipo)).map(([k, et]) => (
+          {[['cx', 'Posición X'], ['cy', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación'], ['rot', 'Giro °']].filter(([k]) => {
+            const t = objSel.tipo;
+            if (t === 'mueble' && k === 'w') return false;
+            if (t === 'zona' && objSel.plano === 'pared') return false;
+            if (['zona', 'falsotecho', 'barrido'].includes(t)) return k === 'cx' || k === 'cy' || (t === 'barrido' && k === 'z0');
+            if (t === 'logo' && ['w', 'd', 'alto'].includes(k)) return false;
+            return true;
+          }).map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <span style={{ width: 70, opacity: 0.7 }}>{et}</span>
               <input type="number" value={Math.round(objSel[k] * 10) / 10} onChange={e => cambiar(objSel.id, { [k]: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 90 }} />
             </label>
           ))}
+          {objSel.tipo === 'barrido' && (
+            <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Perfil que recorre el camino</div>
+              <select value={objSel.perfilNombre || ''} onChange={e => cambiar(objSel.id, { perfilNombre: e.target.value, perfil: PERFILES[e.target.value] })} style={{ ...btn, width: '100%', marginBottom: 6 }}>{Object.keys(PERFILES).map(n => <option key={n} value={n}>{n}</option>)}</select>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Escala</span><input type="number" step="0.1" value={objSel.esc || 1} onChange={e => cambiar(objSel.id, { esc: parseFloat(e.target.value) || 1 })} style={{ ...btn, width: 70 }} /></label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={!!objSel.cerrado} onChange={e => cambiar(objSel.id, { cerrado: e.target.checked })} /> Cerrar en lazo</label>
+              <button style={btn} onClick={() => cambiar(objSel.id, { lado: objSel.lado === -1 ? 1 : -1 })}>↔ Cambiar de lado</button>
+              <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>La elevación (arriba) sube o baja todo el perfil: 0 para un rodapié, cerca de la altura del techo para una cornisa.</div>
+            </div>
+          )}
+          {objSel.tipo === 'logo' && (
+            <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Logo</div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Ancho (cm)</span><input type="number" value={Math.round(objSel.w)} onChange={e => { const w = parseFloat(e.target.value) || 10; cambiar(objSel.id, { w, alto: Math.round(w * (objSel.ratio || 1)) }); }} style={{ ...btn, width: 80 }} /></label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Grosor (cm)</span><input type="number" step="0.5" value={objSel.d} onChange={e => cambiar(objSel.id, { d: parseFloat(e.target.value) || 1 })} style={{ ...btn, width: 80 }} /></label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Colocación</span><select value={objSel.plano || 'vertical'} onChange={e => cambiar(objSel.id, { plano: e.target.value })} style={btn}><option value="vertical">De pie (en pared)</option><option value="horizontal">Tumbado (en suelo)</option></select></label>
+              <div style={{ opacity: 0.5, fontSize: 11 }}>Alto resultante: {Math.round(objSel.alto)} cm. Para pegarlo a una pared, muévelo hasta ella y gíralo; la elevación es la altura del borde inferior.</div>
+            </div>
+          )}
           {objSel.tipo === 'falsotecho' && (() => {
             const F = objSel.ft || { descenso: 15, gap: 12, luz: true, k: 3000 }, set = c => cambiar(objSel.id, { ft: { ...F, ...c } });
             return (

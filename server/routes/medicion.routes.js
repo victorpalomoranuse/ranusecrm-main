@@ -483,7 +483,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo'];
 const BUCKET_TEX = 'project-documents';
 router.put('/:id/escena3d', async (req, res) => {
   try {
@@ -512,7 +512,16 @@ router.put('/:id/escena3d', async (req, res) => {
           w: Math.max(10, Math.min(300, num(m?.w, 60))), n: Math.max(0, Math.min(10, Math.round(num(m?.n, 1)))), nb: Math.max(0, Math.min(10, Math.round(num(m?.nb, 1)))), abierto: !!m?.abierto,
         })),
       } : undefined,
-      plano: ['suelo', 'techo', 'pared'].includes(o.plano) ? o.plano : undefined,
+      plano: ['suelo', 'techo', 'pared', 'vertical', 'horizontal'].includes(o.plano) ? o.plano : undefined,
+      perfilNombre: o.tipo === 'barrido' ? String(o.perfilNombre || '').slice(0, 40) : undefined,
+      perfil: o.tipo === 'barrido' && Array.isArray(o.perfil) ? o.perfil.slice(0, 40).map(p => [Math.max(-200, Math.min(200, num(p?.[0]))), Math.max(-200, Math.min(200, num(p?.[1])))]) : undefined,
+      esc: o.tipo === 'barrido' ? Math.max(0.1, Math.min(20, num(o.esc, 1))) : undefined,
+      cerrado: o.tipo === 'barrido' ? !!o.cerrado : undefined,
+      formas: o.tipo === 'logo' && Array.isArray(o.formas) ? (() => {
+        let total = 0;
+        const lim = a => (Array.isArray(a) ? a : []).slice(0, 400).map(p => [Math.round(num(p?.[0]) * 100) / 100, Math.round(num(p?.[1]) * 100) / 100]);
+        return o.formas.slice(0, 80).map(f => ({ pts: lim(f?.pts), holes: (Array.isArray(f?.holes) ? f.holes : []).slice(0, 40).map(lim) })).filter(f => { total += f.pts.length + f.holes.reduce((s, h) => s + h.length, 0); return f.pts.length >= 3 && total <= 8000; });
+      })() : undefined,
       muroId: o.muroId ? String(o.muroId).slice(0, 40) : undefined,
       lado: o.lado === -1 ? -1 : 1,
       h: Number.isFinite(parseFloat(o.h)) ? Math.max(0, Math.min(1000, parseFloat(o.h))) : undefined,
