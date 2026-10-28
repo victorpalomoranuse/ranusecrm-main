@@ -9,6 +9,7 @@ import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { catalogoEnCache, guardaCatalogo, vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
 import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
+import { uploadReferenceImageFile, handleMulterError } from '../middleware/upload.middleware.js';
 
 // Herramienta de medición en obra: guarda los planos por proyecto y le sirve el
 // catálogo del CRM (máquinas y luminarias) para colocarlas en el plano.
@@ -481,35 +482,83 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma'];
+const BUCKET_TEX = 'project-documents';
 router.put('/:id/escena3d', async (req, res) => {
   try {
     const objs = Array.isArray(req.body?.objetos) ? req.body.objetos.slice(0, 2000) : null;
     if (!objs) return res.status(400).json({ error: 'Escena no válida' });
     const num = (v, d = 0) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : d);
+    const hex = v => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : null);
+    const acab = v => (hex(v) || (/^tex:[\w-]{1,40}$/.test(v || '') ? v : null));
     const limpios = objs.map(o => ({
       id: String(o.id || '').slice(0, 40),
-      tipo: o.tipo === 'caja' ? 'caja' : 'bloque',
+      tipo: TIPOS_OBJ3D.includes(o.tipo) ? o.tipo : 'bloque',
       cid: o.cid ? String(o.cid).slice(0, 80) : null,
       nombre: String(o.nombre || '').slice(0, 120),
-      cx: num(o.cx), cy: num(o.cy), rot: num(o.rot),
+      etiqueta: String(o.etiqueta || '').slice(0, 40),
+      cx: num(o.cx), cy: num(o.cy), rot: num(o.rot), rotM: num(o.rotM),
       w: Math.max(1, num(o.w, 100)), d: Math.max(1, num(o.d, 100)), alto: Math.max(1, num(o.alto, 100)),
-      etiqueta: String(o.etiqueta || '').slice(0, 40), rotM: num(o.rotM), z0: num(o.z0), color: /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : null,
+      z0: num(o.z0), color: acab(o.color),
+      lum: o.tipo === 'luz' ? Math.max(0, Math.min(100, num(o.lum, 40))) : undefined,
+      k: o.tipo === 'luz' ? Math.max(1500, Math.min(10000, num(o.k, 3000))) : undefined,
+      pts: o.tipo === 'prisma' && Array.isArray(o.pts) ? o.pts.slice(0, 80).map(p => [num(p?.[0]), num(p?.[1])]) : undefined,
       skp: o.skp?.url ? { url: String(o.skp.url).slice(0, 500), rot: num(o.skp.rot) } : null,
     })).filter(o => o.id);
+    const mapa = m => Object.fromEntries(Object.entries(m && typeof m === 'object' ? m : {}).slice(0, 500).map(([k, v]) => [String(k).slice(0, 60), acab(v)]).filter(([, v]) => v));
+    const a = req.body?.acabados || {};
+    const acabados = { muros: mapa(a.muros), salas: mapa(a.salas), todosMuros: acab(a.todosMuros), todosSuelos: acab(a.todosSuelos) };
+    const paleta = (Array.isArray(req.body?.paleta) ? req.body.paleta : []).slice(0, 80).map(p => ({ nombre: String(p?.nombre || '').slice(0, 60), hex: hex(p?.hex) })).filter(p => p.hex);
     const { data: fila, error } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
-    const hex = v => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : null);
-    const mapa = m => Object.fromEntries(Object.entries(m && typeof m === 'object' ? m : {}).slice(0, 500).map(([k, v]) => [String(k).slice(0, 60), hex(v)]).filter(([, v]) => v));
-    const a = req.body?.acabados || {};
-    const acabados = { muros: mapa(a.muros), salas: mapa(a.salas), todosMuros: hex(a.todosMuros), todosSuelos: hex(a.todosSuelos) };
-    const data = { ...fila.data, escena3d: { objetos: limpios, acabados, updated: Date.now() } };
+    const previa = fila.data?.escena3d || {};
+    const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, texturas: previa.texturas || [], hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
     const { error: e2 } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (e2) throw e2;
     res.json({ ok: true });
   } catch (err) {
     console.error('medicion escena3d:', err);
     res.status(500).json({ error: 'No se pudo guardar la escena 3D' });
+  }
+});
+
+// Texturas del plano (fotos de parquet, microcemento, tejidos…): se suben, se reducen y se guardan en la escena del plano
+router.post('/:id/textura', uploadReferenceImageFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Falta la imagen' });
+    const buf = await sharp(req.file.buffer).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
+    const idTex = 't' + Date.now().toString(36);
+    const ruta = `texturas/${req.params.id}-${idTex}.jpg`;
+    const { error: eUp } = await supabase.storage.from(BUCKET_TEX).upload(ruta, buf, { contentType: 'image/jpeg', upsert: true });
+    if (eUp) throw eUp;
+    const { data: { publicUrl } } = supabase.storage.from(BUCKET_TEX).getPublicUrl(ruta);
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || { objetos: [] };
+    const tam = Math.max(5, Math.min(1000, parseFloat(req.body?.tam) || 60));
+    const tex = { id: idTex, nombre: String(req.body?.nombre || req.file.originalname || 'Textura').replace(/\.[^.]+$/, '').slice(0, 60), url: publicUrl, tam };
+    const data = { ...fila.data, escena3d: { ...esc, texturas: [...(esc.texturas || []), tex].slice(-60), updated: Date.now() } };
+    const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
+    if (error) throw error;
+    res.status(201).json({ textura: tex });
+  } catch (err) {
+    console.error('medicion textura:', err);
+    res.status(500).json({ error: 'No se pudo guardar la textura' });
+  }
+});
+router.delete('/:id/textura/:tid', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || {};
+    const data = { ...fila.data, escena3d: { ...esc, texturas: (esc.texturas || []).filter(t => t.id !== req.params.tid) } };
+    const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
+    if (error) throw error;
+    await supabase.storage.from(BUCKET_TEX).remove([`texturas/${req.params.id}-${req.params.tid}.jpg`]).catch(() => {});
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo quitar la textura' });
   }
 });
 
