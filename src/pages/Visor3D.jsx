@@ -11,6 +11,29 @@ import api from '../services/api';
 // suelos por sala, pilares y máquinas como bloques con sus medidas. Las medidas del plano van en cm.
 const CM = 0.01;
 
+// Texturas subidas: se descargan una vez y se reutilizan; la repetición se ajusta al tamaño real (cm) de cada textura
+const cacheTex = new Map();
+function texturaDe(t, uvEnCm) {
+  const k = uvEnCm ? 1 / t.tam : 1 / (t.tam * CM);
+  const clave = t.url + '|' + k;
+  let x = cacheTex.get(clave);
+  if (!x) {
+    x = new THREE.TextureLoader().load(t.url);
+    x.wrapS = x.wrapT = THREE.RepeatWrapping; x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 4; x.repeat.set(k, k);
+    cacheTex.set(clave, x);
+  }
+  return x;
+}
+// Aplica un color (#hex) o una textura ('tex:ID') a una malla; si no hay valor, vuelve a su color de origen
+function pintar(mesh, valor, texturas, uvEnCm) {
+  const u = mesh.userData;
+  if (u.col0 === undefined) u.col0 = mesh.material.color.getHex();
+  const t = valor && String(valor).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === valor) : null;
+  if (t) { mesh.material.map = texturaDe(t, uvEnCm); mesh.material.color.setHex(0xffffff); }
+  else { mesh.material.map = null; mesh.material.color.setHex(valor && /^#/.test(valor) ? parseInt(valor.slice(1), 16) : u.col0); }
+  mesh.material.needsUpdate = true;
+}
+
 // Modelos 3D asignados a los productos: se descargan una vez y se reutilizan (se clonan) en cada copia
 const cacheModelos = new Map();
 function cargarModelo(m) {
@@ -110,7 +133,7 @@ function techo(s, i, alto) {
   const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: color(s.techo?.c, '#f6f4f1'), roughness: 0.95, side: THREE.FrontSide }));
   mesh.position.y = h;
   mesh.receiveShadow = true;
-  mesh.userData = { capa: 'techos' };
+  mesh.userData = { capa: 'techos', techoKey: s.idT || ('s' + i) };
   return mesh;
 }
 
@@ -165,7 +188,13 @@ export default function Visor3D() {
   const [filtro, setFiltro] = useState('');
   const [guardado, setGuardado] = useState('');
   const cargadaEscena = useRef(false);
-  const [acab, setAcab] = useState({ muros: {}, salas: {}, todosMuros: null, todosSuelos: null });
+  const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, todosMuros: null, todosSuelos: null, todosTechos: null });
+  const [texturas, setTexturas] = useState([]);
+  const [paleta, setPaleta] = useState([]);
+  const [matAbierto, setMatAbierto] = useState(false);
+  const [matSel, setMatSel] = useState(null);      // { hex } o { id } (textura)
+  const matSelRef = useRef(null);
+  useEffect(() => { matSelRef.current = matSel; }, [matSel]);
   const [selAcab, setSelAcab] = useState(null);  // { tipo: 'muro' | 'suelo', id }
   const [rev, setRev] = useState(0);             // sube cada vez que se rehace el plano 3D
   const [capasAbierto, setCapasAbierto] = useState(false);
@@ -218,7 +247,7 @@ export default function Visor3D() {
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null }); }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); }
       const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
@@ -259,6 +288,11 @@ export default function Visor3D() {
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       rayo.setFromCamera(p2, cam);
       const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
+      if (herrRef.current === 'pincel') {
+        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => visible(x.object));
+        if (h) aplicarPincel(h, e.shiftKey);
+        return;
+      }
       const primero = rayo.intersectObjects(raiz.children, true).find(h => visible(h.object));
       if (sel) sel.userData.cuerpo.material.emissive.setHex(0x000000);
       sel = null;
@@ -293,8 +327,18 @@ export default function Visor3D() {
       return o && o.visible ? o : null;
     };
     let arrastre = null, trazo = null, previa = null;
+    const aplicarPincel = (hit, todos) => {
+      const mat = matSelRef.current; if (!mat) return;
+      const valor = mat.hex || ('tex:' + mat.id);
+      const u = hit.object.userData;
+      if (u.muroId) setAcab(a => (todos ? { ...a, muros: {}, todosMuros: valor } : { ...a, muros: { ...a.muros, [u.muroId]: valor } }));
+      else if (u.salaKey) setAcab(a => (todos ? { ...a, salas: {}, todosSuelos: valor } : { ...a, salas: { ...a.salas, [u.salaKey]: valor } }));
+      else if (u.techoKey) setAcab(a => (todos ? { ...a, techos: {}, todosTechos: valor } : { ...a, techos: { ...a.techos, [u.techoKey]: valor } }));
+      else { let o = hit.object; while (o && !o.userData.oid) o = o.parent; if (o) setObjs(prev => prev.map(x => (x.id === o.userData.oid ? { ...x, color: valor } : x))); }
+    };
     const onDownD = e => {
       if (e.button !== 0) return;
+      if (herrRef.current === 'pincel') return;
       if (herrRef.current === 'caja') {
         const p = puntoSuelo(e); if (!p) return;
         ctrl.enabled = false; trazo = p;
@@ -343,18 +387,17 @@ export default function Visor3D() {
   }, [id]);
 
   // Colores de muros y suelos (cambian sin rehacer el plano)
+  // (ver versión con texturas más abajo)
   useEffect(() => {
     const a = api3d.current; if (!a.raiz) return;
     a.raiz.traverse(o => {
       if (!o.isMesh) return;
       const u = o.userData;
-      if (u.muroId || u.salaKey) {
-        if (u.col0 === undefined) u.col0 = o.material.color.getHex();
-        const hex = u.muroId ? (acab.muros[u.muroId] || acab.todosMuros) : (acab.salas[u.salaKey] || acab.todosSuelos);
-        o.material.color.setHex(hex ? parseInt(hex.slice(1), 16) : u.col0);
-      }
+      if (u.muroId) pintar(o, acab.muros[u.muroId] || acab.todosMuros, texturas, true);
+      else if (u.salaKey) pintar(o, acab.salas[u.salaKey] || acab.todosSuelos, texturas, false);
+      else if (u.techoKey) pintar(o, acab.techos[u.techoKey] || acab.todosTechos, texturas, false);
     });
-  }, [acab, rev, estado]);
+  }, [acab, rev, estado, texturas]);
 
   // Capas (etiquetas): se ven u ocultan grupos de elementos
   useEffect(() => {
@@ -373,8 +416,10 @@ export default function Visor3D() {
       const w = o.w * CM, d = o.d * CM, h = o.alto * CM;
       const g = new THREE.Group();
       const mod = modeloDe(o);
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: color(o.color, o.tipo === 'caja' ? '#9aa3ad' : '#2f6fa8'), roughness: 0.55, metalness: o.tipo === 'caja' ? 0 : 0.15, emissive: o.id === selObj ? 0x335577 : 0x000000, transparent: !!mod, opacity: mod ? 0.18 : 1 }));
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: color(/^#/.test(o.color || '') ? o.color : null, o.tipo === 'caja' ? '#9aa3ad' : '#2f6fa8'), roughness: 0.55, metalness: o.tipo === 'caja' ? 0 : 0.15, emissive: o.id === selObj ? 0x335577 : 0x000000, transparent: !!mod, opacity: mod ? 0.18 : 1 }));
       m.position.y = h / 2 + (o.z0 || 0) * CM; m.castShadow = !mod; m.receiveShadow = !mod;
+      const tx = o.color && String(o.color).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === o.color) : null;
+      if (tx) { const mp = texturaDe(tx, true).clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, o.w / tx.tam), Math.max(0.2, o.alto / tx.tam)); m.material.map = mp; m.material.color.setHex(0xffffff); }
       g.add(m);
       if (mod) {
         // mientras baja el modelo se ve la caja fantasma; después, el modelo real en su lugar
@@ -393,7 +438,7 @@ export default function Visor3D() {
       g.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
       a.esc.add(g);
     });
-  }, [objs, selObj, estado, biblioteca, ocultas]);
+  }, [objs, selObj, estado, biblioteca, ocultas, texturas]);
 
   // Guardado automático de la escena (sin pisar el dibujo del plano 2D)
   useEffect(() => {
@@ -401,10 +446,10 @@ export default function Visor3D() {
     if (guardado === 'inicial') { setGuardado(''); return; }
     setGuardado('Guardando…');
     const t = setTimeout(() => {
-      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
+      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
     }, 1200);
     return () => clearTimeout(t);
-  }, [objs, acab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objs, acab, paleta]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     api.get('/medicion/catalogos').then(r => setBiblioteca((r.data?.maquinas || []).filter(m => m.w > 0 && m.d > 0))).catch(() => setBiblioteca([]));
@@ -527,7 +572,7 @@ export default function Visor3D() {
   const btn = { background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
-      <div ref={caja} style={{ position: 'absolute', inset: 0 }} />
+      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: herr === 'pincel' ? 'crosshair' : 'default' }} />
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={btn} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <b style={{ color: '#222', marginRight: 'auto' }}>{titulo}</b>
@@ -535,6 +580,7 @@ export default function Visor3D() {
         <button style={{ ...btn, ...(herr === 'caja' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('caja')} title="Arrastra sobre el suelo para dibujar una caja; luego le das altura">▭ Dibujar caja</button>
         <button style={{ ...btn, ...(bibAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setBibAbierta(v => !v)}>📚 Biblioteca</button>
         <button style={{ ...btn, ...(capasAbierto ? { background: '#2f6fa8' } : {}) }} onClick={() => setCapasAbierto(v => !v)}>🏷 Capas</button>
+        <button style={{ ...btn, ...(matAbierto || herr === 'pincel' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setMatAbierto(v => !v); if (matAbierto && herr === 'pincel') setHerr('sel'); }}>🎨 Materiales</button>
         {guardado && guardado !== 'inicial' && <span style={{ color: '#555', fontSize: 12 }}>{guardado}</span>}
         <button style={btn} onClick={() => vista('persp')}>Perspectiva</button>
         <button style={btn} onClick={() => vista('planta')}>Planta</button>
@@ -600,6 +646,73 @@ export default function Visor3D() {
           </div>
         );
       })()}
+      {matAbierto && (() => {
+        const base = ['#ffffff', '#f4f1ec', '#e8e2d8', '#d9cfc0', '#c9b9a0', '#b8a58c', '#a9b5a1', '#8fa3a8', '#7d8e9c', '#9d9a96', '#6e6a66', '#3a3a3c', '#c9a77c', '#8a6a4a', '#d9a7a0', '#b5695e'];
+        const elegir = m => { setMatSel(m); setHerr('pincel'); };
+        const esSel = m => matSel && ((m.hex && matSel.hex === m.hex) || (m.id && matSel.id === m.id));
+        const anadirColor = () => {
+          const nombre = (document.getElementById('mat-nombre')?.value || '').trim();
+          const hex = document.getElementById('mat-hex')?.value;
+          if (!/^#[0-9a-fA-F]{6}$/.test(hex || '')) return;
+          setPaleta(p => [...p, { nombre: nombre || hex, hex }]);
+          const e = document.getElementById('mat-nombre'); if (e) e.value = '';
+        };
+        const subir = async (archivo) => {
+          if (!archivo) return;
+          const tam = parseFloat(document.getElementById('mat-tam')?.value) || 60;
+          setGuardado('Subiendo textura…');
+          try {
+            const fd = new FormData(); fd.append('file', archivo); fd.append('tam', String(tam));
+            const r = await api.post('/medicion/' + id + '/textura', fd);
+            setTexturas(t => [...t, r.data.textura]); setGuardado('Textura subida ✓');
+          } catch (e) { setGuardado(e.response?.data?.error || 'No se pudo subir la textura'); }
+        };
+        const quitarTex = async (t) => {
+          try { await api.delete('/medicion/' + id + '/textura/' + t.id); setTexturas(x => x.filter(y => y.id !== t.id)); if (matSel?.id === t.id) setMatSel(null); } catch { setGuardado('No se pudo quitar'); }
+        };
+        return (
+          <div style={{ position: 'absolute', left: 12 + (bibAbierta ? 280 : 0) + (capasAbierto ? 222 : 0), top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>🎨 Materiales (pincel)</div>
+            <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 8 }}>Elige un material y haz clic en un muro, suelo, techo u objeto. Con Mayús + clic se aplica a todos los de ese tipo.</div>
+            <div style={{ opacity: 0.7, marginBottom: 4 }}>Colores</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+              {base.map(c => <span key={c} onClick={() => elegir({ hex: c })} title={c} style={{ width: 24, height: 24, background: c, borderRadius: 4, cursor: 'pointer', border: esSel({ hex: c }) ? '2px solid #4da3ff' : '1px solid #555' }} />)}
+            </div>
+            <div style={{ opacity: 0.7, marginBottom: 4 }}>Tu paleta (NCS, RAL, marcas…)</div>
+            {paleta.map((p, i) => (
+              <div key={i} onClick={() => elegir({ hex: p.hex })} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 2px', cursor: 'pointer', background: esSel({ hex: p.hex }) ? '#2a3a52' : 'transparent', borderRadius: 4 }}>
+                <span style={{ width: 20, height: 20, background: p.hex, borderRadius: 4, border: '1px solid #555', flex: 'none' }} />
+                <span style={{ flex: 1 }}>{p.nombre}</span><span style={{ opacity: 0.5, fontSize: 11 }}>{p.hex}</span>
+                <span onClick={e => { e.stopPropagation(); setPaleta(x => x.filter((_, j) => j !== i)); }} style={{ opacity: 0.6, padding: '0 4px' }}>✕</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 5, margin: '6px 0 10px' }}>
+              <input id="mat-nombre" placeholder="Nombre (ej. NCS S 1002-Y)" style={{ ...btn, flex: 1, minWidth: 0 }} />
+              <input id="mat-hex" type="color" defaultValue="#d9cfc0" style={{ width: 34, height: 30, padding: 0, border: 'none', background: 'none' }} />
+              <button style={btn} onClick={anadirColor}>+</button>
+            </div>
+            <div style={{ opacity: 0.7, marginBottom: 4 }}>Texturas</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
+              {texturas.map(t => (
+                <div key={t.id} onClick={() => elegir({ id: t.id })} title={t.nombre + ' · ' + t.tam + ' cm'} style={{ position: 'relative', cursor: 'pointer', border: esSel({ id: t.id }) ? '2px solid #4da3ff' : '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
+                  <img src={t.url} alt={t.nombre} style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
+                  <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.nombre}</div>
+                  <span onClick={e => { e.stopPropagation(); quitarTex(t); }} style={{ position: 'absolute', top: 1, right: 3, background: '#000a', borderRadius: 3, padding: '0 4px', fontSize: 11 }}>✕</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <label style={{ ...btn, display: 'inline-block' }}>Subir textura…
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { subir(e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+              <span style={{ opacity: 0.7 }}>tamaño real</span>
+              <input id="mat-tam" type="number" defaultValue={60} style={{ ...btn, width: 56 }} /><span style={{ opacity: 0.7 }}>cm</span>
+            </div>
+            <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>«Tamaño real» es lo que mide en la vida real el lado de la foto (ej. una loseta de 60 cm), para que no salga gigante.</div>
+            {herr === 'pincel' && <button style={{ ...btn, marginTop: 10, width: '100%' }} onClick={() => { setHerr('sel'); }}>Terminar pincel</button>}
+          </div>
+        );
+      })()}
       {selAcab && !objSel && (() => {
         const esMuro = selAcab.tipo === 'muro';
         const actual = esMuro ? (acab.muros[selAcab.id] || acab.todosMuros) : (acab.salas[selAcab.id] || acab.todosSuelos);
@@ -617,8 +730,8 @@ export default function Visor3D() {
               {paleta.map(c => <span key={c} onClick={() => poner(c)} title={c} style={{ width: 24, height: 24, background: c, border: '1px solid #555', borderRadius: 4, cursor: 'pointer' }} />)}
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <input type="color" value={actual || '#e4e0db'} onChange={e => poner(e.target.value)} />
-              <input value={actual || ''} placeholder="#RRGGBB" onChange={e => { const v = e.target.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(v)) poner(v); }} style={{ ...btn, width: 100 }} />
+              <input type="color" value={/^#/.test(actual || '') ? actual : '#e4e0db'} onChange={e => poner(e.target.value)} />
+              <input value={/^#/.test(actual || '') ? actual : ''} placeholder="#RRGGBB" onChange={e => { const v = e.target.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(v)) poner(v); }} style={{ ...btn, width: 100 }} />
             </label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {actual && <button style={btn} onClick={() => todos(actual)}>{esMuro ? 'A todos los muros' : 'A todos los suelos'}</button>}

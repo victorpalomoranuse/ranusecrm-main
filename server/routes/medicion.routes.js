@@ -507,7 +507,7 @@ router.put('/:id/escena3d', async (req, res) => {
     })).filter(o => o.id);
     const mapa = m => Object.fromEntries(Object.entries(m && typeof m === 'object' ? m : {}).slice(0, 500).map(([k, v]) => [String(k).slice(0, 60), acab(v)]).filter(([, v]) => v));
     const a = req.body?.acabados || {};
-    const acabados = { muros: mapa(a.muros), salas: mapa(a.salas), todosMuros: acab(a.todosMuros), todosSuelos: acab(a.todosSuelos) };
+    const acabados = { muros: mapa(a.muros), salas: mapa(a.salas), techos: mapa(a.techos), todosMuros: acab(a.todosMuros), todosSuelos: acab(a.todosSuelos), todosTechos: acab(a.todosTechos) };
     const paleta = (Array.isArray(req.body?.paleta) ? req.body.paleta : []).slice(0, 80).map(p => ({ nombre: String(p?.nombre || '').slice(0, 60), hex: hex(p?.hex) })).filter(p => p.hex);
     const { data: fila, error } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
