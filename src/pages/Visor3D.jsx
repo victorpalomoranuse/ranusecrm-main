@@ -57,7 +57,7 @@ function maquina(e) {
   const g = new THREE.Group();
   const cuerpo = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshStandardMaterial({ color: e.estado === 'ex' ? 0xb8b8b8 : 0x3a3f46, roughness: 0.55, metalness: 0.2 })
+    new THREE.MeshStandardMaterial({ color: e.estado === 'ex' ? 0xb8b8b8 : 0x2f6fa8, roughness: 0.5, metalness: 0.15 })
   );
   cuerpo.position.y = h / 2;
   cuerpo.castShadow = cuerpo.receiveShadow = true;
@@ -113,6 +113,9 @@ export default function Visor3D() {
     scene.add(sol);
     const raiz = new THREE.Group();
     scene.add(raiz);
+    const base = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0xd9d4cd, roughness: 1 }));
+    base.rotation.x = -Math.PI / 2; base.position.y = -0.02; base.receiveShadow = true;
+    scene.add(base);
     let raf = 0, vivo = true;
     const ajustar = () => {
       const w = el.clientWidth, h = el.clientHeight;
@@ -202,6 +205,35 @@ export default function Visor3D() {
     if (tipo === 'planta') cam.position.set(c.x, R * 1.6, c.z + 0.01);
     else cam.position.set(c.x + R * 0.9, Math.max(R * 0.8, 6), c.z + R * 0.9);
   };
+  // Render: una sola imagen grande con sombras suaves y de alta resolución (aunque el ordenador sea flojo, es un único fotograma)
+  const [renderizando, setRenderizando] = useState(false);
+  const renderAlta = () => {
+    const { renderer, scene, cam, sol } = api3d.current;
+    setRenderizando(true);
+    setTimeout(() => {
+      const el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
+      const sombra = sol.castShadow, mapa = sol.shadow.mapSize.x;
+      try {
+        const W = 3200, H = Math.round(W * h0 / w0);
+        renderer.setPixelRatio(1);
+        renderer.setSize(W, H, false);
+        cam.aspect = W / H; cam.updateProjectionMatrix();
+        renderer.shadowMap.enabled = true; sol.castShadow = true;
+        sol.shadow.mapSize.set(4096, 4096); sol.shadow.map?.dispose(); sol.shadow.map = null; sol.shadow.radius = 4;
+        renderer.render(scene, cam);
+        const a = document.createElement('a');
+        a.href = renderer.domElement.toDataURL('image/png');
+        a.download = (titulo || 'plano') + '-render.png';
+        a.click();
+      } catch (e) { alert('No se ha podido generar el render: ' + e.message + '. Prueba a bajar la calidad.'); }
+      finally {
+        renderer.setPixelRatio(pr0); renderer.setSize(w0, h0);
+        cam.aspect = w0 / h0; cam.updateProjectionMatrix();
+        sol.castShadow = sombra; sol.shadow.mapSize.set(mapa, mapa); sol.shadow.map?.dispose(); sol.shadow.map = null;
+        setRenderizando(false);
+      }
+    }, 60);
+  };
   const captura = () => {
     const { renderer, scene, cam } = api3d.current;
     renderer.render(scene, cam);
@@ -224,6 +256,7 @@ export default function Visor3D() {
           <option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option>
         </select>
         <button style={btn} onClick={captura}>📷 Captura</button>
+        <button style={{ ...btn, background: '#2f6fa8', borderColor: '#2f6fa8' }} onClick={renderAlta} disabled={renderizando || estado !== 'listo'} title="Imagen grande con sombras suaves (3200 px)">{renderizando ? 'Renderizando…' : '🖼 Render HD'}</button>
       </div>
       {seleccion && (
         <div style={{ position: 'absolute', right: 12, bottom: 12, width: 250, background: 'rgba(20,20,20,0.92)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13, lineHeight: 1.5 }}>
