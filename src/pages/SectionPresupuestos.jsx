@@ -1396,6 +1396,12 @@ function BudgetEditor({ id, onBack, onOpen }) {
                     <option value="pct">% de descuento</option>
                   </select>
                   {parseFloat(packVal) > 0 && <span className="pres-mono" style={{fontSize:'0.72rem',color:'#8bae8f'}}>→ el cliente ahorra {packMode === 'eur' ? fmt(parseFloat(packVal)) : fmt(sum.totalRev * parseFloat(packVal) / 100) + ' (sin IVA)'}</span>}
+                  {parseFloat(packVal) > 0 && (() => {
+                    const tp = sum.totalRev - packAhorroSinIva(sum.totalRev);
+                    const bp = tp - sum.itemCost;
+                    const mp = tp > 0 ? (bp / tp) * 100 : 0;
+                    return <span className="pres-mono" style={{fontSize:'0.72rem',color: bp >= 0 ? '#8bae8f' : '#ae8b8b',fontWeight:700}}>Tu beneficio: {fmt(bp)} · margen {mp.toFixed(1)}%</span>;
+                  })()}
                   <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" style={{marginLeft:'auto',fontSize:'0.7rem'}} disabled={savingPack} onClick={guardaPack}>{savingPack ? '…' : 'Guardar oferta'}</button>
                 </div>
               )}
