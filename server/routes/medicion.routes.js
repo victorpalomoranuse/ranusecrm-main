@@ -523,11 +523,12 @@ router.put('/:id/escena3d', async (req, res) => {
     const rd = req.body?.rodapie || {};
     const rodapie = { on: !!rd.on, alto: Math.max(2, Math.min(30, num(rd.alto, 10))), grosor: Math.max(0.5, Math.min(5, num(rd.grosor, 1.5))), color: hex(rd.color) || '#ffffff' };
     const guias = (Array.isArray(req.body?.guias) ? req.body.guias : []).slice(0, 60).map(g => ({ x1: num(g?.x1), y1: num(g?.y1), x2: num(g?.x2), y2: num(g?.y2) }));
+    const luces = Object.fromEntries(Object.entries(req.body?.luces && typeof req.body.luces === 'object' ? req.body.luces : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 40), { ap: Math.max(5, Math.min(140, num(v?.ap, 60))) }]));
     const { data: fila, error } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
     const previa = fila.data?.escena3d || {};
-    const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, rodapie, guias, texturas: previa.texturas || [], hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
+    const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, rodapie, guias, luces, texturas: previa.texturas || [], hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
     const { error: e2 } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (e2) throw e2;
     res.json({ ok: true });
@@ -646,6 +647,63 @@ router.patch('/:id/hueco', async (req, res) => {
   } catch (err) {
     console.error('medicion hueco:', err);
     res.status(500).json({ error: 'No se pudo cambiar el hueco en el plano' });
+  }
+});
+const KINDS_LUZ = ['foco', 'plaf', 'colg', 'aplq', 'pie', 'suel'];
+router.post('/:id/luminaria', async (req, res) => {
+  try {
+    const { x, y, kid, lid, h } = req.body || {};
+    if (!Number.isFinite(parseFloat(x)) || !Number.isFinite(parseFloat(y))) return res.status(400).json({ error: 'Falta la posición' });
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const data = fila.data || {};
+    if (!Array.isArray(data.nodes) || !data.nodes.length) return res.status(409).json({ error: 'El plano no tiene paredes todavía: dibuja alguna en Planos antes de colocar luces' });
+    const X = parseFloat(x), Y = parseFloat(y);
+    const nodo = data.nodes.reduce((m, n) => (Math.hypot(n.x - X, n.y - Y) < Math.hypot(m.x - X, m.y - Y) ? n : m), data.nodes[0]);
+    const pt = { id: 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4), n: nodo.id, dx: Math.round((X - nodo.x) * 10) / 10, dy: Math.round((Y - nodo.y) * 10) / 10, k: KINDS_LUZ.includes(kid) ? kid : 'foco', a: 0, h: Number.isFinite(parseFloat(h)) ? acota(h, 0, 600) : null, v: 'ilum' };
+    if (lid) pt.lid = String(lid).slice(0, 80);
+    (data.pts = Array.isArray(data.pts) ? data.pts : []).push(pt);
+    data.updated = Date.now();
+    const { error } = await supabase.from('mediciones').update({ data, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    if (error) throw error;
+    res.status(201).json({ ok: true, id: pt.id });
+  } catch (err) {
+    console.error('medicion luminaria:', err);
+    res.status(500).json({ error: 'No se pudo colocar la luminaria en el plano' });
+  }
+});
+router.patch('/:id/luminaria/:ptId', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const data = fila.data || {};
+    const pt = (data.pts || []).find(p => p.id === req.params.ptId);
+    if (!pt) return res.status(404).json({ error: 'No he encontrado esa luminaria en el plano' });
+    if (Number.isFinite(parseFloat(req.body?.h))) pt.h = acota(req.body.h, 0, 600);
+    if (Number.isFinite(parseFloat(req.body?.x)) && Number.isFinite(parseFloat(req.body?.y)) && data.nodes?.length) {
+      const n = data.nodes.find(q => q.id === pt.n) || data.nodes[0];
+      pt.dx = Math.round((parseFloat(req.body.x) - n.x) * 10) / 10; pt.dy = Math.round((parseFloat(req.body.y) - n.y) * 10) / 10;
+    }
+    data.updated = Date.now();
+    const { error } = await supabase.from('mediciones').update({ data, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo cambiar la luminaria' });
+  }
+});
+router.delete('/:id/luminaria/:ptId', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const data = fila.data || {};
+    data.pts = (data.pts || []).filter(p => p.id !== req.params.ptId);
+    data.updated = Date.now();
+    const { error } = await supabase.from('mediciones').update({ data, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo quitar la luminaria' });
   }
 });
 router.patch('/:id/equipo', async (req, res) => {

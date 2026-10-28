@@ -135,6 +135,7 @@ function ajustarModelo(raw, w, d, h) {
   return envoltorio;
 }
 
+const sel2 = (id, sel) => id === sel;
 function color(hex, def) {
   try { return new THREE.Color(hex || def); } catch { return new THREE.Color(def); }
 }
@@ -273,6 +274,13 @@ export default function Visor3D() {
   const [guias, setGuias] = useState([]);
   const guiasRef = useRef([]);
   const puntosSnapRef = useRef([]);
+  const [lucesPl, setLucesPl] = useState([]);       // luminarias de la capa Iluminación del plano
+  const [lumCat, setLumCat] = useState([]);          // catálogo de luminarias (lúmenes, vatios, kelvin)
+  const [luzSel, setLuzSel] = useState(null);
+  const [kindLuz, setKindLuz] = useState('foco');
+  const [lucesAj, setLucesAj] = useState({});        // ajustes solo-3D: ángulo de apertura de cada foco
+  const kindLuzRef = useRef('foco');
+  useEffect(() => { kindLuzRef.current = kindLuz; }, [kindLuz]);
   const [matsCat, setMatsCat] = useState([]);  // materiales del catálogo de Ranuse (con foto)
   useEffect(() => { guiasRef.current = guias; }, [guias]);
   const [paleta, setPaleta] = useState([]);
@@ -338,7 +346,7 @@ export default function Visor3D() {
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); }
       const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
@@ -361,6 +369,10 @@ export default function Visor3D() {
       }
       // guardamos el modelo y los puntos a los que se «imanta» el dibujo (extremos de muros y esquinas de salas)
       api3d.current.modelo = modelo;
+      {
+        const nodos = Object.fromEntries((pl?.nodes || []).map(n => [n.id, n]));
+        setLucesPl((pl?.pts || []).filter(p => p.v === 'ilum' && p.s !== 'dem' && nodos[p.n]).map(p => ({ id: p.id, kid: p.k, lid: p.lid || null, h: p.h, x: nodos[p.n].x + p.dx, y: nodos[p.n].y + p.dy })));
+      }
       puntosSnapRef.current = (modelo.plantas || [modelo]).flatMap(pl => [
         ...(pl.muros || []).flatMap(m => [{ x: m.a[0], y: m.a[1] }, { x: m.b[0], y: m.b[1] }]),
         ...(pl.salas || []).flatMap(s => (s.pts || []).map(p => ({ x: p[0], y: p[1] }))),
@@ -395,6 +407,11 @@ export default function Visor3D() {
       if (sel) sel.userData.cuerpo.material.emissive.setHex(0x000000);
       sel = null;
       setSelHueco(null);
+      {
+        const hl = api3d.current.luzG ? rayo.intersectObjects(api3d.current.luzG.children, false).find(x => x.object.userData.luzId) : null;
+        if (hl) { setLuzSel(hl.object.userData.luzId); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
+        setLuzSel(null);
+      }
       const uh = primero?.object?.userData?.hueco;
       if (uh) { setSelHueco({ ...uh, nuevo: { w: uh.w, h: uh.h, sill: uh.sill, p: uh.p } }); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
       let eq = null; if (primero) { let o = primero.object; while (o && !o.userData.equipo) o = o.parent; eq = o; }
@@ -446,7 +463,7 @@ export default function Visor3D() {
     };
     let arrastre = null, trazo = null, previa = null;
     let poli = [], poliLinea = null, poliAbajo = null, empuje = null;
-    let guiaA = null, guiaAbajo = null, guiaMarca = null;
+    let guiaA = null, guiaAbajo = null, guiaMarca = null, luzAbajo = null;
     const idNuevo = () => 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const dibujarPoli = (cursor) => {
       if (poliLinea) { scene.remove(poliLinea); poliLinea.geometry.dispose(); poliLinea = null; }
@@ -465,6 +482,7 @@ export default function Visor3D() {
       poli = []; dibujarPoli(null); setHerr('sel');
     };
     const onTecla = e => {
+      if (herrRef.current === 'luz' && e.key === 'Escape') { setHerr('sel'); return; }
       if (herrRef.current === 'guia' && e.key === 'Escape') { guiaA = null; if (guiaMarca) { scene.remove(guiaMarca); guiaMarca = null; } setHerr('sel'); return; }
       if (herrRef.current !== 'poli') return;
       if (e.key === 'Enter') cerrarPoli();
@@ -496,6 +514,7 @@ export default function Visor3D() {
       if (herrRef.current === 'pincel') return;
       if (herrRef.current === 'poli') { poliAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'guia') { guiaAbajo = [e.clientX, e.clientY]; return; }
+      if (herrRef.current === 'luz') { luzAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'empujar') {
         const r = dom.getBoundingClientRect();
         p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -547,6 +566,14 @@ export default function Visor3D() {
       }
     };
     const onUpD = e => {
+      if (luzAbajo) {
+        const d0 = Math.hypot(e.clientX - luzAbajo[0], e.clientY - luzAbajo[1]); luzAbajo = null;
+        if (d0 < 4) {
+          const p = puntoSuelo(e);
+          if (p) api.post('/medicion/' + id + '/luminaria', { x: p.x, y: p.y, kid: kindLuzRef.current }).then(() => { setGuardado('Luminaria colocada en el plano ✓'); api3d.current.recargar?.(); }).catch(er => setGuardado(er.response?.data?.error || 'No se pudo colocar la luminaria'));
+        }
+        return;
+      }
       if (guiaAbajo) {
         const d0 = Math.hypot(e.clientX - guiaAbajo[0], e.clientY - guiaAbajo[1]); guiaAbajo = null;
         if (d0 < 4) {
@@ -618,6 +645,27 @@ export default function Visor3D() {
     try { localStorage.setItem('visor3dOcultas', JSON.stringify(ocultas)); } catch {}
   }, [ocultas, rev, objs, estado]);
 
+  // Luminarias del plano: punto de luz visible y luz real (foco = cono con su ángulo de apertura)
+  useEffect(() => {
+    const a = api3d.current; if (!a.scene) return;
+    if (a.luzG) { a.scene.remove(a.luzG); a.luzG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); if (x.isLight && x.target) a.scene.remove(x.target); }); }
+    const g = new THREE.Group(); g.userData.capa = 'luces'; g.visible = !ocultas.includes('luces');
+    const ALT = { foco: 255, plaf: 255, colg: 200, aplq: 180, pie: 120, suel: 5 };
+    lucesPl.slice(0, 24).forEach(l => {
+      const cat = lumCat.find(c => c.id === l.lid), lm = cat?.lm || 800, K = cat?.k || 3000;
+      const hcm = l.h != null ? l.h : (ALT[l.kid] ?? 250), ap = lucesAj[l.id]?.ap ?? 60;
+      const col = new THREE.Color().setHSL(0.1, K < 3500 ? 0.55 : K < 5000 ? 0.1 : 0.0, K < 3500 ? 0.8 : 0.95);
+      const marca = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 12), new THREE.MeshBasicMaterial({ color: sel2(l.id, luzSel) ? 0x4da3ff : col }));
+      marca.position.set(l.x * CM, hcm * CM, l.y * CM); marca.userData = { luzId: l.id }; g.add(marca);
+      const inten = Math.max(5, lm / 12.57) * 0.5;
+      if (l.kid === 'foco' || l.kid === 'plaf') {
+        const s = new THREE.SpotLight(col, inten * 4, 0, Math.max(0.1, (ap / 2) * Math.PI / 180), 0.45, 2);
+        s.position.copy(marca.position); s.target.position.set(l.x * CM, 0, l.y * CM); g.add(s); g.add(s.target);
+      } else { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(marca.position); g.add(p); }
+    });
+    a.scene.add(g); a.luzG = g;
+  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas]);
+
   // Rodapié: sigue el perímetro de cada sala (por dentro) y se interrumpe en las puertas
   useEffect(() => {
     const a = api3d.current; if (!a.scene) return;
@@ -636,6 +684,7 @@ export default function Visor3D() {
           const u = { x: (B.x - A.x) / L, y: (B.y - A.y) / L };
           // huecos de puerta que caen sobre este lado
           const cortes = [];
+          // (las puertas cortan el rodapié)
           (pl.muros || []).forEach(m => {
             const wl = Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]); if (wl < 1) return;
             const v = { x: (m.b[0] - m.a[0]) / wl, y: (m.b[1] - m.a[1]) / wl };
@@ -744,13 +793,13 @@ export default function Visor3D() {
     if (guardado === 'inicial') { setGuardado(''); return; }
     setGuardado('Guardando…');
     const t = setTimeout(() => {
-      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
+      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias, luces: lucesAj }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
     }, 1200);
     return () => clearTimeout(t);
-  }, [objs, acab, paleta, rodapie, guias]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objs, acab, paleta, rodapie, guias, lucesAj]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    api.get('/medicion/catalogos').then(r => { setMatsCat((r.data?.materiales || []).filter(m => m.url)); return setBiblioteca((r.data?.maquinas || []).filter(m => m.w > 0 && m.d > 0)); }).catch(() => setBiblioteca([]));
+    api.get('/medicion/catalogos').then(r => { setLumCat(r.data?.luminarias || []); setMatsCat((r.data?.materiales || []).filter(m => m.url)); return setBiblioteca((r.data?.maquinas || []).filter(m => m.w > 0 && m.d > 0)); }).catch(() => setBiblioteca([]));
   }, []);
   const modeloDe = o => o.mod || (o.cid && biblioteca?.find(m => m.id === o.cid)?.modelo3d) || null;
 
@@ -931,7 +980,7 @@ export default function Visor3D() {
   const btn = { background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
-      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia'].includes(herr) ? 'crosshair' : 'default' }} />
+      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz'].includes(herr) ? 'crosshair' : 'default' }} />
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={btn} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <b style={{ color: '#222', marginRight: 'auto' }}>{titulo}</b>
@@ -946,6 +995,8 @@ export default function Visor3D() {
         </div>
         <button style={{ ...btn, ...(herr === 'empujar' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('empujar')} title="Arrastra hacia arriba o abajo la cara de arriba de un objeto para cambiar su altura">⇅ Empujar/Tirar</button>
         <button style={{ ...btn, ...(herr === 'guia' ? { background: '#d62bd6', borderColor: '#d62bd6' } : {}) }} onClick={() => setHerr('guia')} title="Clic en dos puntos para crear una línea guía infinita. El dibujo se imanta a las guías, a las esquinas y a los extremos de los muros. Esc para salir.">📏 Guía</button>
+        <button style={{ ...btn, ...(herr === 'luz' ? { background: '#c9a21a', borderColor: '#c9a21a', color: '#111' } : {}) }} onClick={() => setHerr('luz')} title="Clic en el suelo para colocar una luminaria: se crea también en la capa Iluminación del plano. Esc para salir.">💡 Luz</button>
+        {herr === 'luz' && <select value={kindLuz} onChange={e => setKindLuz(e.target.value)} style={btn}><option value="foco">Foco empotrado</option><option value="plaf">Plafón</option><option value="colg">Colgante</option><option value="aplq">Aplique</option><option value="pie">Lámpara de pie</option><option value="suel">Empotrado de suelo</option></select>}
         {guias.length > 0 && <button style={btn} onClick={() => setGuias([])} title="Quitar todas las guías">✕ Guías ({guias.length})</button>}
         <button style={{ ...btn, ...(bibAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setBibAbierta(v => !v)} title="Tus productos del catálogo de Ranuse">📦 Catálogo</button>
         <button style={{ ...btn, ...(b3dAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setB3dAbierta(v => !v)} title="Muebles y texturas gratuitos (Poly Haven, CC0)">🧰 Biblioteca 3D</button>
@@ -1000,7 +1051,7 @@ export default function Visor3D() {
         </div>
       )}
       {capasAbierto && (() => {
-        const fijas = [['muros', 'Muros'], ['huecos', 'Puertas y ventanas'], ['suelos', 'Suelos'], ['techos', 'Techos'], ['rodapie', 'Rodapié'], ['pilares', 'Pilares'], ['equipos', 'Equipos del plano']];
+        const fijas = [['muros', 'Muros'], ['huecos', 'Puertas y ventanas'], ['suelos', 'Suelos'], ['techos', 'Techos'], ['rodapie', 'Rodapié'], ['luces', 'Luces'], ['pilares', 'Pilares'], ['equipos', 'Equipos del plano']];
         const propias = [...new Set(objs.map(o => o.etiqueta || ''))];
         const fila = (clave, nombre) => (
           <label key={clave} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: 'pointer' }}>
@@ -1021,6 +1072,24 @@ export default function Visor3D() {
             </div>
             {propias.length > 0 && <div style={{ borderTop: '1px solid #333', marginTop: 6, paddingTop: 6, opacity: 0.7 }}>Tus objetos</div>}
             {propias.map(t => fila('obj:' + t, t || 'Sin etiqueta'))}
+          </div>
+        );
+      })()}
+      {luzSel && (() => {
+        const l = lucesPl.find(x => x.id === luzSel); if (!l) return null;
+        const cat = lumCat.find(c => c.id === l.lid), nombres = { foco: 'Foco empotrado', plaf: 'Plafón', colg: 'Luminaria colgante', aplq: 'Aplique', pie: 'Lámpara de pie', suel: 'Empotrado de suelo' };
+        const ap = lucesAj[l.id]?.ap ?? 60, spot = l.kid === 'foco' || l.kid === 'plaf';
+        return (
+          <div style={{ position: 'absolute', right: 12, top: 56, width: 260, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>💡 {nombres[l.kid] || 'Luminaria'} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(del plano)</span></div>
+            <div style={{ opacity: 0.75, marginBottom: 6 }}>{cat ? cat.n + ' · ' + (cat.lm || '?') + ' lm · ' + (cat.w || '?') + ' W · ' + (cat.k || '?') + ' K' : 'Sin luminaria del catálogo asignada (se usa una estándar de 800 lm)'}</div>
+            {spot && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Apertura del haz</span><input type="range" min="10" max="120" value={ap} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ap: parseInt(e.target.value, 10) } }))} style={{ flex: 1 }} /><span style={{ width: 34 }}>{ap}°</span></label>}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Altura (cm)</span><input type="number" defaultValue={Math.round(l.h != null ? l.h : ({ foco: 255, plaf: 255, colg: 200, aplq: 180, pie: 120, suel: 5 }[l.kid] ?? 250))} onBlur={e => api.patch('/medicion/' + id + '/luminaria/' + l.id, { h: e.target.value }).then(() => { setAviso('Altura guardada en el plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(() => setAviso('No se pudo cambiar la altura'))} style={{ ...btn, width: 80 }} /></label>
+            <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>El ángulo de apertura se guarda en el 3D; la altura y la posición se guardan también en el plano.</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={{ ...btn, background: '#7a2b2b' }} onClick={() => api.delete('/medicion/' + id + '/luminaria/' + l.id).then(() => { setLuzSel(null); setAviso('Luminaria quitada del plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(() => setAviso('No se pudo quitar'))}>Quitar</button>
+              <button style={btn} onClick={() => setLuzSel(null)}>Cerrar</button>
+            </div>
           </div>
         );
       })()}
