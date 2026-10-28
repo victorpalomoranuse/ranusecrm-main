@@ -375,7 +375,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { status, design_fee_type, design_fee_value, design_hours, notes, budget_name, project_id, global_discount_pct, payment_option_id, install_shipping_note, payment_schedule } = req.body;
+    const { status, design_fee_type, design_fee_value, design_hours, notes, budget_name, project_id, global_discount_pct, payment_option_id, install_shipping_note, payment_schedule, pack_discount_pct } = req.body;
     const updates = { updated_at: new Date().toISOString() };
     if (status !== undefined) updates.status = status;
     if (design_fee_type !== undefined) updates.design_fee_type = design_fee_type;
@@ -386,6 +386,7 @@ router.put('/:id', async (req, res) => {
     if (project_id !== undefined) updates.project_id = project_id || null;
     if (global_discount_pct !== undefined) updates.global_discount_pct = parseFloat(global_discount_pct) || 0;
     if (install_shipping_note !== undefined) updates.install_shipping_note = install_shipping_note?.trim() || null;
+    if (pack_discount_pct !== undefined) updates.pack_discount_pct = Math.max(0, Math.min(100, parseFloat(pack_discount_pct) || 0)) || null;
     if (payment_schedule !== undefined) {
       const lista = (Array.isArray(payment_schedule) ? payment_schedule : []).slice(0, 12)
         .map(h => ({ concepto: String(h?.concepto || '').trim().slice(0, 120), pct: Math.max(0, Math.min(100, parseFloat(h?.pct) || 0)) }))
@@ -951,6 +952,22 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     doc.fillColor(BRAND.dark).fontSize(11).font('Helvetica-Bold').text('TOTAL', totX, y + 4);
     doc.fillColor(BRAND.dark).fontSize(13).font('Helvetica-Bold').text(fmtEur(total), totX, y + 2, { width: totW, align: 'right' });
     y += 38;
+
+    // Oferta "si contratas todo junto": se enseña aparte, sin tocar el total normal
+    const packPct = parseFloat(budget.pack_discount_pct) || 0;
+    if (packPct > 0 && total > 0) {
+      const totalPack = total * (1 - packPct / 100);
+      const ahorroPack = total - totalPack;
+      if (y > H - 130) { doc.addPage(); y = margin + 20; }
+      doc.rect(margin, y, W - margin * 2, 62).fill('#f5f3f0');
+      doc.rect(margin, y, 4, 62).fill(BRAND.primary);
+      doc.fillColor(BRAND.primary).fontSize(7).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO', margin + 16, y + 9);
+      doc.fillColor(BRAND.dark).fontSize(9).font('Helvetica').text('Descuento del ' + packPct.toLocaleString('es-ES') + '% contratando todo el presupuesto en conjunto', margin + 16, y + 21, { width: W - margin * 2 - 190 });
+      doc.fillColor('#2e7d4f').fontSize(8.5).font('Helvetica-Bold').text('Ahorras ' + fmtEur(ahorroPack), margin + 16, y + 42);
+      doc.fillColor('#999999').fontSize(7).font('Helvetica').text('Total con la oferta', W - margin - 170, y + 12, { width: 154, align: 'right' });
+      doc.fillColor(BRAND.dark).fontSize(15).font('Helvetica-Bold').text(fmtEur(totalPack), W - margin - 170, y + 26, { width: 154, align: 'right' });
+      y += 78;
+    }
 
     if (showSavings && totalSavings > 0) {
       if (y > H - 120) { doc.addPage(); y = margin + 20; }

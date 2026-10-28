@@ -954,6 +954,18 @@ function BudgetEditor({ id, onBack, onOpen }) {
     finally { setSavingPaymentOption(false); }
   };
 
+  const [packPct, setPackPct] = useState('');
+  const [savingPack, setSavingPack] = useState(false);
+  useEffect(() => { setPackPct(budget?.pack_discount_pct != null ? String(budget.pack_discount_pct) : ''); }, [budget?.id]);
+  const guardaPack = async () => {
+    setSavingPack(true);
+    try {
+      const { data } = await api.put(`/budgets/${id}`, { pack_discount_pct: packPct });
+      setBudget(b => ({ ...b, pack_discount_pct: data.budget.pack_discount_pct }));
+      flash(packPct && parseFloat(packPct) > 0 ? 'Oferta guardada' : 'Oferta quitada');
+    } catch { flash('Error al guardar la oferta (¿falta el SQL v84?)', 'error'); }
+    finally { setSavingPack(false); }
+  };
   const [calendario, setCalendario] = useState([]);
   const [savingCal, setSavingCal] = useState(false);
   useEffect(() => { setCalendario(Array.isArray(budget?.payment_schedule) ? budget.payment_schedule : []); }, [budget?.id]);
@@ -1343,6 +1355,15 @@ function BudgetEditor({ id, onBack, onOpen }) {
                     <option value="">(ninguna / texto genérico)</option>
                     {paymentOptions.map(o=><option key={o.id} value={o.id}>{o.text.length>50?o.text.slice(0,50)+'…':o.text}</option>)}
                   </select>
+                </div>
+              )}
+              {showPdfOptions && (
+                <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'0.5rem 0.6rem',background:'rgba(255,255,255,0.04)',borderRadius:6,border:'1px solid rgba(255,255,255,0.08)',width:'100%'}}>
+                  <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>Oferta «si contratas todo junto»:</span>
+                  <input className="ap-field-input" type="number" min="0" max="100" step="0.5" value={packPct} onChange={e=>setPackPct(e.target.value)} placeholder="0" style={{width:64,fontSize:'0.72rem'}} />
+                  <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>% de descuento</span>
+                  {parseFloat(packPct) > 0 && <span className="pres-mono" style={{fontSize:'0.72rem',color:'#8bae8f'}}>→ total {fmt(sum.totalRev * (1 - parseFloat(packPct) / 100))} (ahorra {fmt(sum.totalRev * parseFloat(packPct) / 100)}, sin IVA)</span>}
+                  <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" style={{marginLeft:'auto',fontSize:'0.7rem'}} disabled={savingPack} onClick={guardaPack}>{savingPack ? '…' : 'Guardar oferta'}</button>
                 </div>
               )}
               {showPdfOptions && (
