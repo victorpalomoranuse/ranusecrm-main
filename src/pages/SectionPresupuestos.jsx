@@ -283,7 +283,13 @@ function BudgetList({ onOpen }) {
   const setVista = v => { setVistaState(v); try { localStorage.setItem('pres_vista', v); } catch {} };
   const budgetByProject = Object.fromEntries(budgets.filter(b => b.project_id).map(b => [b.project_id, b]));
   const independienteBudgets = budgets.filter(b => !b.project_id);
-  const visibleProjects = projects.filter(p => budgetByProject[p.id]);
+  // Todos los presupuestos con proyecto (uno por presupuesto: un proyecto puede tener varios, y el proyecto puede no estar en la lista de activos)
+  const visibleProjects = budgets.filter(b => b.project_id).map(b => ({
+    id: b.id,
+    client_name: b.project?.client_name || projects.find(p => p.id === b.project_id)?.client_name || '—',
+    project_name: b.project?.project_name || projects.find(p => p.id === b.project_id)?.project_name || b.budget_name || 'Sin nombre',
+    _b: b,
+  }));
   const activeProjects = projects.filter(p => (p.status || 'en_marcha') === 'en_marcha');
   const projectsWithoutBudget = activeProjects.filter(p => !budgetByProject[p.id]);
 
@@ -314,8 +320,9 @@ function BudgetList({ onOpen }) {
       {vista === 'lista' && (() => {
         const filas = [
           ...((tab === 'todos' || tab === 'independientes') ? independienteBudgets.map(b => ({ key: b.id, b, cliente: b.budget_number, nombre: b.budget_name || 'Sin nombre' })) : []),
-          ...((tab === 'todos' || tab === 'proyectos') ? visibleProjects.map(p => ({ key: p.id, b: budgetByProject[p.id], cliente: p.client_name, nombre: p.project_name })) : []),
+          ...((tab === 'todos' || tab === 'proyectos') ? visibleProjects.map(p => ({ key: p.id, b: p._b, cliente: p.client_name, nombre: p.project_name })) : []),
         ];
+        filas.sort((x, y) => String(y.b.created_at || '').localeCompare(String(x.b.created_at || '')));
         const sin = (tab === 'todos' || tab === 'proyectos') ? projectsWithoutBudget : [];
         const th = { textAlign: 'left', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', fontWeight: 500, padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.1)' };
         const td = { padding: '9px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.84rem', whiteSpace: 'nowrap' };
@@ -385,7 +392,7 @@ function BudgetList({ onOpen }) {
         })}
 
         {(tab === 'todos' || tab === 'proyectos') && visibleProjects.map(p => {
-          const b = budgetByProject[p.id];
+          const b = p._b;
           const st = STATUS_CFG[b.status];
           return (
             <div key={p.id} className="pres-card pres-card--has-budget" onClick={() => onOpen(b.id)}>
