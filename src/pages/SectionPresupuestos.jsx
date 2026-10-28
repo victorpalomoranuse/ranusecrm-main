@@ -485,6 +485,7 @@ function IaDescBtn({ d, setD }) {
   };
   return (
     <>
+      {d.id && <label style={{marginLeft:10,display:'inline-flex',alignItems:'center',gap:4,textTransform:'none',letterSpacing:0,cursor:'pointer'}} title="Se descuenta del total, pero no se cuenta como ahorro en el PDF del cliente (p. ej. un diseño que ya pagó)"><input type="checkbox" checked={d.ya_abonado === true} onChange={e => setD(p => ({ ...p, ya_abonado: e.target.checked }))} style={{accentColor:'#baafa5'}}/> Ya abonado (no cuenta como ahorro)</label>}
       <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={run} disabled={loading || !(d.name || '').trim()} style={{marginLeft:6,fontSize:'0.68rem',padding:'2px 8px',textTransform:'none',letterSpacing:0}}>{loading ? 'Escribiendo…' : (d.descripcion_cliente ? '✨ Mejorar con IA' : '✨ Desarrollar con IA')}</button>
       {err && <span style={{color:'#e08a82',marginLeft:6,textTransform:'none',letterSpacing:0}}>{err}</span>}
     </>
@@ -1139,6 +1140,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
         brand: d.brand||null, longitud: d.longitud||null, ancho: d.ancho||null, altura: d.altura||null,
         color_bastidor: d.color_bastidor||null, color_acolchado: d.color_acolchado||null, tipo_acolchado: d.tipo_acolchado||null,
         ...(d.descripcion_cliente != null ? { descripcion_cliente: d.descripcion_cliente || null } : {}),
+        ...(d.ya_abonado !== undefined && d.ya_abonado !== null ? { ya_abonado: d.ya_abonado === true } : {}),
       });
       setItems(prev => prev.map(i => i.id === itemId ? data.item : i));
       setEditingId(null);
@@ -1164,6 +1166,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
         brand: item.brand, longitud: item.longitud, ancho: item.ancho, altura: item.altura,
         color_bastidor: item.color_bastidor, color_acolchado: item.color_acolchado, tipo_acolchado: item.tipo_acolchado,
         descripcion_cliente: item.descripcion_cliente || null,
+        ya_abonado: item.ya_abonado === true ? true : undefined,
       });
       setItems(prev => [...prev, data.item]);
       flash('Partida duplicada');

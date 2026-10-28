@@ -477,7 +477,7 @@ router.post('/:id/duplicate', async (req, res) => {
 
 router.post('/:id/items', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, accessories_note, descripcion_cliente } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, accessories_note, descripcion_cliente, ya_abonado } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'nombre requerido' });
     const cost = parseFloat(unit_cost) || 0;
     const markup = parseFloat(markup_pct) ?? 20;
@@ -507,6 +507,7 @@ router.post('/:id/items', async (req, res) => {
       pricing_mode: pricing_mode || 'margin',
       accessories_note: accessories_note?.trim() || null,
       ...(descripcion_cliente?.trim() ? { descripcion_cliente: descripcion_cliente.trim() } : {}),
+      ...(ya_abonado === true ? { ya_abonado: true } : {}),
     }).select('*').single();
     if (error) throw error;
     res.status(201).json({ item: data });
@@ -526,7 +527,7 @@ router.put('/:id/items/reorder', async (req, res) => {
 
 router.put('/:id/items/:itemId', async (req, res) => {
   try {
-    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, order_status, payment_status, delivery_date, provider, accessories_note, descripcion_cliente } = req.body;
+    const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, order_status, payment_status, delivery_date, provider, accessories_note, descripcion_cliente, ya_abonado } = req.body;
     const updates = {};
     if (name !== undefined) updates.name = name.trim();
     if (category !== undefined) updates.category = category;
@@ -552,6 +553,7 @@ router.put('/:id/items/:itemId', async (req, res) => {
     if (provider !== undefined) updates.provider = provider?.trim() || null;
     if (accessories_note !== undefined) updates.accessories_note = accessories_note?.trim() || null;
     if (descripcion_cliente !== undefined) updates.descripcion_cliente = descripcion_cliente?.trim() || null;
+    if (ya_abonado !== undefined) updates.ya_abonado = ya_abonado === true;
     const { data, error } = await supabase.from('budget_items').update(updates).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
     if (error) throw error;
     res.json({ item: data });
@@ -732,11 +734,18 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     // y las filas de la tabla: pvp_ref para modo PVP, unit_price para modo margen.
     const globalDto = parseFloat(budget.global_discount_pct) || 0;
     const subtotalBruto = items.reduce((s, i) => s + lineListPrice(i) * (parseFloat(i.quantity) || 1), 0);
+    // Las partidas marcadas «ya abonado» (p. ej. un diseño que el cliente ya pagó) se descuentan, pero NO cuentan como ahorro.
     const lineDiscountTotal = items.reduce((s, i) => {
+      if (i.ya_abonado === true) return s;
       const lineTotal = lineListPrice(i) * (parseFloat(i.quantity) || 1);
       return s + lineTotal * (parseFloat(i.discount_pct) || 0) / 100;
     }, 0);
-    const subtotalAfterLines = subtotalBruto - lineDiscountTotal;
+    const abonadoTotal = items.reduce((s, i) => {
+      if (i.ya_abonado !== true) return s;
+      const lineTotal = lineListPrice(i) * (parseFloat(i.quantity) || 1);
+      return s + lineTotal * (parseFloat(i.discount_pct) || 0) / 100;
+    }, 0);
+    const subtotalAfterLines = subtotalBruto - lineDiscountTotal - abonadoTotal;
     const globalDiscountAmount = baseDtoGlobal(items) * globalDto / 100;
     const subtotal = subtotalAfterLines - globalDiscountAmount;
     const totalSavings = lineDiscountTotal + globalDiscountAmount;
@@ -912,7 +921,9 @@ router.get('/:id/pdf-cliente', async (req, res) => {
         .text(item.unit || 'ud', colUd.x, midY, { width: colUd.w, align: 'right' });
       if (colPu) doc.text(fmtEur(pvpBase), colPu.x, midY, { width: colPu.w, align: 'right' });
       if (colDto) {
-        if (lineDto > 0) {
+        if (item.ya_abonado === true && lineDto > 0) {
+          doc.fillColor('#777777').fontSize(7).font('Helvetica-Oblique').text('abonado', colDto.x, midY + 1, { width: colDto.w, align: 'right' });
+        } else if (lineDto > 0) {
           doc.fillColor('#c0392b').fontSize(8.5).font('Helvetica-Bold').text('-' + lineDto + '%', colDto.x, midY, { width: colDto.w, align: 'right' });
         } else {
           doc.fillColor('#aaaaaa').fontSize(8.5).font('Helvetica').text('—', colDto.x, midY, { width: colDto.w, align: 'right' });
@@ -954,11 +965,12 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     // aplicado "por dentro" sin ninguna línea que lo explicara).
     drawRow('Subtotal', fmtEur(showDiscount ? subtotalBruto : subtotal));
     if (showDiscount && lineDiscountTotal > 0) drawRow('Descuentos por producto', '-' + fmtEur(lineDiscountTotal), false, '#c0392b');
+    if (showDiscount && abonadoTotal > 0) drawRow('Ya abonado anteriormente', '-' + fmtEur(abonadoTotal), false, '#555555');
     if (showDiscount && globalDto > 0) drawRow('Descuento global', '-' + fmtEur(globalDiscountAmount), false, '#c0392b');
     // Base imponible = subtotal ya con los descuentos aplicados, sobre la que
     // se calculan IVA e IRPF. Si no hay descuentos, coincide con el Subtotal
     // de arriba, así que no hace falta repetirla.
-    if (showDiscount && (lineDiscountTotal > 0 || globalDto > 0)) drawRow('Base imponible', fmtEur(subtotal), true);
+    if (showDiscount && (lineDiscountTotal > 0 || abonadoTotal > 0 || globalDto > 0)) drawRow('Base imponible', fmtEur(subtotal), true);
     if (parseFloat(iva) > 0) drawRow('IVA (' + iva + '%)', fmtEur(ivaAmount));
     if (parseFloat(irpf) > 0) drawRow('Retención IRPF (' + irpf + '%)', '-' + fmtEur(irpfAmount), false, '#cc3333');
 
