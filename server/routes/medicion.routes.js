@@ -483,7 +483,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble'];
 const BUCKET_TEX = 'project-documents';
 router.put('/:id/escena3d', async (req, res) => {
   try {
@@ -504,6 +504,14 @@ router.put('/:id/escena3d', async (req, res) => {
       lum: o.tipo === 'luz' ? Math.max(0, Math.min(100, num(o.lum, 40))) : undefined,
       k: o.tipo === 'luz' ? Math.max(1500, Math.min(10000, num(o.k, 3000))) : undefined,
       caras: o.caras && typeof o.caras === 'object' ? Object.fromEntries(Object.entries(o.caras).slice(0, 12).map(([k, v]) => [String(k).slice(0, 2), acab(v)]).filter(([, v]) => v)) : undefined,
+      colorFrente: acab(o.colorFrente),
+      mueble: o.tipo === 'mueble' && o.mueble ? {
+        esp: Math.max(1, Math.min(5, num(o.mueble.esp, 1.8))), zocalo: Math.max(0, Math.min(30, num(o.mueble.zocalo, 10))), tirador: o.mueble.tirador === 'ninguno' ? 'ninguno' : 'barra',
+        modulos: (Array.isArray(o.mueble.modulos) ? o.mueble.modulos : []).slice(0, 40).map(m => ({
+          t: ['puertas', 'cajones', 'abierto', 'hueco'].includes(m?.t) ? m.t : 'puertas',
+          w: Math.max(10, Math.min(300, num(m?.w, 60))), n: Math.max(0, Math.min(10, Math.round(num(m?.n, 1)))), nb: Math.max(0, Math.min(10, Math.round(num(m?.nb, 1)))), abierto: !!m?.abierto,
+        })),
+      } : undefined,
       pts: o.tipo === 'prisma' && Array.isArray(o.pts) ? o.pts.slice(0, 80).map(p => [num(p?.[0]), num(p?.[1])]) : undefined,
       skp: o.skp?.url ? { url: String(o.skp.url).slice(0, 500), rot: num(o.skp.rot) } : null,
       mod: /^https:\/\/[^\s]+\/storage\/v1\/object\/public\//.test(o.mod?.url || '') ? { url: String(o.mod.url).slice(0, 600), tipo: ['gltf', 'glb', 'obj', 'dae'].includes(o.mod.tipo) ? o.mod.tipo : 'gltf', rot: num(o.mod.rot) } : undefined,

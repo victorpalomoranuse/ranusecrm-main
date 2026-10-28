@@ -48,6 +48,77 @@ function cargarModelo(m) {
   cacheModelos.set(m.url, p);
   return p;
 }
+// Mueble a medida por módulos: cuerpo (laterales, base, tapa, trasera, baldas), frentes (puertas, cajones, abierto o hueco) y tiradores.
+// Medidas en cm; el mueble queda centrado en X y Z, apoyado en el suelo, con el frente hacia +Z.
+function matMueble(valor, defHex, texturas, w, h) {
+  const m = new THREE.MeshStandardMaterial({ color: color(/^#/.test(valor || '') ? valor : null, defHex), roughness: 0.6, metalness: 0 });
+  const t = valor && String(valor).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === valor) : null;
+  if (t) { const mp = texturaDe(t, true).clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, w / t.tam), Math.max(0.2, h / t.tam)); m.map = mp; m.color.setHex(0xffffff); }
+  return m;
+}
+export function construirMueble(o, texturas) {
+  const M = o.mueble || {}, esp = (M.esp || 1.8) * CM, zoc = (M.zocalo ?? 10) * CM, ef = 1.9 * CM;
+  const D = o.d * CM, H = o.alto * CM, mods = M.modulos || [];
+  const total = mods.reduce((s, m) => s + m.w, 0) * CM;
+  const cuerpo = matMueble(o.color, '#e8e2d8', texturas, o.w, o.alto), frente = matMueble(o.colorFrente || o.color, '#f4f1ec', texturas, 60, o.alto);
+  const zocMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3c, roughness: 0.8 }), tiradorMat = new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.8 });
+  const g = new THREE.Group();
+  const caja = (w, h, d, px, py, pz, mat, zona, padre) => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(Math.max(w, 0.001), Math.max(h, 0.001), Math.max(d, 0.001)), mat);
+    b.position.set(px, py, pz); b.castShadow = b.receiveShadow = true; b.userData.zona = zona; (padre || g).add(b); return b;
+  };
+  let x = -total / 2;
+  mods.forEach(mod => {
+    const W = mod.w * CM, cx = x + W / 2, hc = H - zoc, y0 = zoc, zf = D / 2 + ef / 2 + 0.001;
+    if (zoc > 0) caja(W - 0.004, zoc, D - 0.05, cx, zoc / 2, -0.02, zocMat, 'cuerpo');
+    caja(esp, hc, D, x + esp / 2, y0 + hc / 2, 0, cuerpo, 'cuerpo');
+    caja(esp, hc, D, x + W - esp / 2, y0 + hc / 2, 0, cuerpo, 'cuerpo');
+    caja(W - 2 * esp, esp, D, cx, y0 + esp / 2, 0, cuerpo, 'cuerpo');
+    caja(W - 2 * esp, esp, D, cx, y0 + hc - esp / 2, 0, cuerpo, 'cuerpo');
+    caja(W - 2 * esp, hc - 2 * esp, 0.006, cx, y0 + hc / 2, -D / 2 + 0.003, cuerpo, 'cuerpo');
+    const nb = mod.t === 'abierto' ? (mod.nb ?? 3) : mod.t === 'puertas' ? (mod.nb ?? 1) : 0;
+    for (let i = 1; i <= nb; i++) caja(W - 2 * esp, esp, D - 0.02, cx, y0 + esp + (hc - 2 * esp) * (i / (nb + 1)), -0.01, cuerpo, 'cuerpo');
+    const conTirador = M.tirador !== 'ninguno';
+    if (mod.t === 'puertas') {
+      const nd = mod.n === 2 ? 2 : 1, wd = (W - 0.004) / nd, ang = 100 * Math.PI / 180;
+      for (let k = 0; k < nd; k++) {
+        const izq = nd === 1 || k === 0; // bisagra a la izquierda (la hoja derecha, a la derecha)
+        const bis = izq ? x + 0.002 + wd * k : x + 0.002 + wd * (k + 1);
+        const pivote = new THREE.Group(); pivote.position.set(bis, y0 + hc / 2, zf);
+        if (mod.abierto) pivote.rotation.y = izq ? -ang : ang;
+        caja(wd - 0.003, hc - 0.004, ef, izq ? wd / 2 : -wd / 2, 0, 0, frente, 'frente', pivote);
+        if (conTirador) caja(0.012, 0.14, 0.014, izq ? wd - 0.04 : -wd + 0.04, 0, ef / 2 + 0.007, tiradorMat, 'frente', pivote);
+        g.add(pivote);
+      }
+    } else if (mod.t === 'cajones') {
+      const nc = Math.max(1, mod.n || 3), hf = (hc - 0.004) / nc, saca = mod.abierto ? 0.28 : 0;
+      for (let i = 0; i < nc; i++) {
+        const yc = y0 + 0.002 + hf * i + hf / 2;
+        caja(W - 0.004, hf - 0.003, ef, cx, yc, zf + (i === 0 ? saca : 0), frente, 'frente');
+        if (conTirador) caja(Math.min(0.16, W * 0.5), 0.012, 0.014, cx, yc + hf * 0.3, zf + ef / 2 + 0.007 + (i === 0 ? saca : 0), tiradorMat, 'frente');
+        if (i === 0 && saca) caja(W - 2 * esp - 0.03, hf * 0.6, D * 0.75, cx, yc - 0.02, D / 2 - D * 0.375 + saca, cuerpo, 'cuerpo');
+      }
+    }
+    x += W;
+  });
+  return g;
+}
+// Lista de piezas y metros cuadrados de tablero del mueble (para fabricar o presupuestar)
+function despieceMueble(o) {
+  const M = o.mueble || {}, e = M.esp || 1.8, hc = o.alto - (M.zocalo ?? 10), D = o.d, filas = {};
+  const suma = (n, a, b, cant = 1) => { const k = n + ' ' + Math.round(a * 10) / 10 + ' × ' + Math.round(b * 10) / 10; filas[k] = (filas[k] || 0) + cant; };
+  let area = 0;
+  (M.modulos || []).forEach(m => {
+    const wi = m.w - 2 * e;
+    suma('Lateral', hc, D, 2); suma('Base y tapa', wi, D, 2); suma('Trasera (fina)', wi, hc - 2 * e); area += (2 * hc * D + 2 * wi * D + wi * (hc - 2 * e)) / 1e4;
+    const nb = m.t === 'abierto' ? (m.nb ?? 3) : m.t === 'puertas' ? (m.nb ?? 1) : 0;
+    if (nb) { suma('Balda', wi, D - 2, nb); area += nb * wi * (D - 2) / 1e4; }
+    if (m.t === 'puertas') { const nd = m.n === 2 ? 2 : 1; suma('Puerta', m.w / nd - 0.3, hc - 0.4, nd); area += nd * (m.w / nd - 0.3) * (hc - 0.4) / 1e4; }
+    if (m.t === 'cajones') { const nc = Math.max(1, m.n || 3); suma('Frente de cajón', m.w - 0.4, hc / nc - 0.3, nc); area += nc * (m.w - 0.4) * (hc / nc - 0.3) / 1e4; }
+  });
+  return { filas: Object.entries(filas), area: Math.round(area * 100) / 100 };
+}
+
 // El modelo se escala (sin deformarlo) para que quepa en las medidas del objeto y se apoya en el suelo, centrado
 function ajustarModelo(raw, w, d, h) {
   const g = raw.clone(true);
@@ -304,7 +375,7 @@ export default function Visor3D() {
       rayo.setFromCamera(p2, cam);
       const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
       if (herrRef.current === 'pincel') {
-        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => x.object.isMesh && visible(x.object));
+        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => x.object.isMesh && !x.object.userData.hit && visible(x.object));
         if (h) aplicarPincel(h, e.shiftKey);
         return;
       }
@@ -379,9 +450,10 @@ export default function Visor3D() {
       else {
         let o = hit.object; while (o && !o.userData.oid) o = o.parent;
         if (o) {
-          const idx = hit.face?.materialIndex, oid = o.userData.oid;
+          const idx = hit.face?.materialIndex, oid = o.userData.oid, zona = hit.object.userData.zona;
           setObjs(prev => prev.map(x => {
             if (x.id !== oid) return x;
+            if (x.tipo === 'mueble') return todos ? { ...x, color: valor, colorFrente: valor } : (zona === 'frente' ? { ...x, colorFrente: valor } : { ...x, color: valor });
             if (todos || idx === undefined || !['caja', 'prisma', 'bloque'].includes(x.tipo)) return { ...x, color: valor, caras: undefined };
             return { ...x, caras: { ...(x.caras || {}), [idx]: valor } }; // solo esa cara
           }));
@@ -401,7 +473,7 @@ export default function Visor3D() {
         const nrm = h.face.normal.clone().transformDirection(h.object.matrixWorld);
         if (nrm.y < 0.9) return; // solo se empuja o tira de la cara de arriba
         let o = h.object; while (o && !o.userData.oid) o = o.parent;
-        const ob = o && objsRef.current.find(x => x.id === o.userData.oid); if (!ob) return;
+        const ob = o && objsRef.current.find(x => x.id === o.userData.oid); if (!ob || !o.userData.malla) return;
         setSelObj(ob.id); ctrl.enabled = false;
         empuje = { id: ob.id, alto0: ob.alto, z0: ob.z0 || 0, y0: e.clientY, malla: o.userData.malla, nuevo: null };
         e.stopPropagation(); return;
@@ -503,6 +575,17 @@ export default function Visor3D() {
     const a = api3d.current; if (!a.esc) return;
     while (a.esc.children.length) { const o = a.esc.children[0]; a.esc.remove(o); o.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
     objs.forEach(o => {
+      if (o.tipo === 'mueble') {
+        const gm = new THREE.Group();
+        const cont = construirMueble(o, texturas); cont.position.y = (o.z0 || 0) * CM; gm.add(cont);
+        const hit = new THREE.Mesh(new THREE.BoxGeometry(o.w * CM, o.alto * CM, o.d * CM), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.y = (o.alto * CM) / 2 + (o.z0 || 0) * CM; hit.userData.hit = true; gm.add(hit);
+        if (o.id === selObj) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); gm.add(l); }
+        gm.position.set(o.cx * CM, 0, o.cy * CM); gm.rotation.y = -(o.rot || 0) * Math.PI / 180;
+        gm.userData.oid = o.id; gm.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(gm);
+        return;
+      }
       const w = o.w * CM, d = o.d * CM, h = o.alto * CM;
       const g = new THREE.Group();
       const mod = modeloDe(o);
@@ -580,6 +663,25 @@ export default function Visor3D() {
       setGuardado('Textura lista: haz clic en un muro, suelo o techo');
     } catch (e) { setGuardado(e.response?.data?.error || 'No se pudo usar la textura'); }
   };
+  const [muebleMenu, setMuebleMenu] = useState(false);
+  const PLANTILLAS_MUEBLE = {
+    'Bajo de cocina (3 módulos)': { d: 60, alto: 90, zocalo: 10, modulos: [{ t: 'puertas', w: 60, n: 1, nb: 1 }, { t: 'cajones', w: 60, n: 3 }, { t: 'puertas', w: 60, n: 2, nb: 1 }] },
+    'Armario alto (2 puertas)': { d: 60, alto: 220, zocalo: 8, modulos: [{ t: 'puertas', w: 50, n: 1, nb: 5 }, { t: 'puertas', w: 50, n: 1, nb: 5 }] },
+    'Mueble de TV': { d: 40, alto: 55, zocalo: 5, modulos: [{ t: 'puertas', w: 60, n: 1, nb: 0 }, { t: 'abierto', w: 80, nb: 0 }, { t: 'puertas', w: 60, n: 1, nb: 0 }] },
+    'Estantería abierta': { d: 30, alto: 200, zocalo: 0, modulos: [{ t: 'abierto', w: 80, nb: 5 }, { t: 'abierto', w: 80, nb: 5 }] },
+    'Mostrador / recepción': { d: 60, alto: 105, zocalo: 8, modulos: [{ t: 'cajones', w: 60, n: 3 }, { t: 'puertas', w: 90, n: 2, nb: 1 }, { t: 'puertas', w: 60, n: 1, nb: 1 }] },
+    'Cajonera': { d: 45, alto: 75, zocalo: 5, modulos: [{ t: 'cajones', w: 80, n: 4 }] },
+  };
+  const crearMueble = (nombre) => {
+    const p = PLANTILLAS_MUEBLE[nombre], { ctrl } = api3d.current;
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'mueble', nombre: nombre.replace(/ \(.*\)/, ''), etiqueta: 'Muebles a medida', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.modulos.reduce((s, m) => s + m.w, 0), d: p.d, alto: p.alto, z0: 0, color: '#e8e2d8', colorFrente: '#f4f1ec', mueble: { esp: 1.8, zocalo: p.zocalo, tirador: 'barra', modulos: p.modulos.map(m => ({ ...m })) } };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setMuebleMenu(false);
+  };
+  const cambiarModulos = (idObj, fn, extra) => setObjs(prev => prev.map(o => {
+    if (o.id !== idObj) return o;
+    const mods = fn((o.mueble?.modulos || []).map(m => ({ ...m })));
+    return { ...o, mueble: { ...o.mueble, modulos: mods, ...(extra || {}) }, w: mods.reduce((s, m) => s + (parseFloat(m.w) || 0), 0) };
+  }));
   const anadirBloque = m => {
     const { ctrl } = api3d.current;
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'bloque', cid: m.id, nombre: m.nombre, cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: m.w, d: m.d, alto: m.alto || 110, z0: 0, color: null, skp: m.skp || null };
@@ -718,6 +820,12 @@ export default function Visor3D() {
         <button style={{ ...btn, ...(herr === 'sel' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('sel')} title="Seleccionar y mover objetos">↖ Mover</button>
         <button style={{ ...btn, ...(herr === 'caja' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('caja')} title="Arrastra sobre el suelo para dibujar una caja; luego le das altura">▭ Dibujar caja</button>
         <button style={{ ...btn, ...(herr === 'poli' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('poli')} title="Haz clic punto a punto sobre el suelo; cierra con Enter o volviendo al primer punto. Luego se extruye (altura).">⬡ Contorno</button>
+        <div style={{ position: 'relative' }}>
+          <button style={{ ...btn, ...(muebleMenu ? { background: '#2f6fa8' } : {}) }} onClick={() => setMuebleMenu(v => !v)} title="Muebles a medida por módulos">🪑 Mueble a medida</button>
+          {muebleMenu && <div style={{ position: 'absolute', top: 34, left: 0, background: 'rgba(20,20,20,0.97)', borderRadius: 8, padding: 6, zIndex: 8, width: 250 }}>
+            {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={{ color: '#fff', padding: '6px 8px', cursor: 'pointer', fontSize: 13, borderRadius: 4 }}>{n}</div>)}
+          </div>}
+        </div>
         <button style={{ ...btn, ...(herr === 'empujar' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('empujar')} title="Arrastra hacia arriba o abajo la cara de arriba de un objeto para cambiar su altura">⇅ Empujar/Tirar</button>
         <button style={{ ...btn, ...(bibAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setBibAbierta(v => !v)} title="Tus productos del catálogo de Ranuse">📦 Catálogo</button>
         <button style={{ ...btn, ...(b3dAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setB3dAbierta(v => !v)} title="Muebles y texturas gratuitos (Poly Haven, CC0)">🧰 Biblioteca 3D</button>
@@ -956,14 +1064,52 @@ export default function Visor3D() {
         </div>
       )}
       {objSel && (
-        <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+        <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
           <input value={objSel.nombre} onChange={e => cambiar(objSel.id, { nombre: e.target.value })} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontWeight: 700, marginBottom: 8 }} />
-          {[['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación'], ['rot', 'Giro °']].map(([k, et]) => (
+          {[['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación'], ['rot', 'Giro °']].filter(([k]) => !(objSel.tipo === 'mueble' && k === 'w')).map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <span style={{ width: 70, opacity: 0.7 }}>{et}</span>
               <input type="number" value={Math.round(objSel[k] * 10) / 10} onChange={e => cambiar(objSel.id, { [k]: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 90 }} />
             </label>
           ))}
+          {objSel.tipo === 'mueble' && (() => {
+            const M = objSel.mueble || { modulos: [] }, desp = despieceMueble(objSel);
+            const tipos = [['puertas', 'Puertas'], ['cajones', 'Cajones'], ['abierto', 'Abierto'], ['hueco', 'Hueco']];
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Módulos · ancho total {Math.round(objSel.w)} cm</div>
+                {M.modulos.map((m, i) => (
+                  <div key={i} style={{ background: '#2a2a2a', borderRadius: 6, padding: 6, marginBottom: 5 }}>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <select value={m.t} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].t = e.target.value; return ms; })} style={{ ...btn, flex: 1, padding: '3px 4px' }}>{tipos.map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select>
+                      <input type="number" value={m.w} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].w = parseFloat(e.target.value) || 0; return ms; })} style={{ ...btn, width: 56, padding: '3px 4px' }} title="Ancho (cm)" />
+                      <span onClick={() => cambiarModulos(objSel.id, ms => { if (i > 0) [ms[i - 1], ms[i]] = [ms[i], ms[i - 1]]; return ms; })} style={{ cursor: 'pointer', padding: '0 3px' }} title="Mover a la izquierda">◀</span>
+                      <span onClick={() => cambiarModulos(objSel.id, ms => { if (i < ms.length - 1) [ms[i + 1], ms[i]] = [ms[i], ms[i + 1]]; return ms; })} style={{ cursor: 'pointer', padding: '0 3px' }} title="Mover a la derecha">▶</span>
+                      <span onClick={() => cambiarModulos(objSel.id, ms => ms.filter((_, j) => j !== i))} style={{ cursor: 'pointer', padding: '0 3px', opacity: 0.7 }} title="Quitar módulo">✕</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, fontSize: 12 }}>
+                      {m.t === 'puertas' && <label>Hojas <select value={m.n === 2 ? 2 : 1} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].n = parseInt(e.target.value, 10); return ms; })} style={{ ...btn, padding: '2px' }}><option value={1}>1</option><option value={2}>2</option></select></label>}
+                      {m.t === 'cajones' && <label>Cajones <input type="number" min="1" max="8" value={m.n || 3} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].n = parseInt(e.target.value, 10) || 1; return ms; })} style={{ ...btn, width: 44, padding: '2px 4px' }} /></label>}
+                      {(m.t === 'puertas' || m.t === 'abierto') && <label>Baldas <input type="number" min="0" max="10" value={m.nb ?? (m.t === 'abierto' ? 3 : 1)} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].nb = parseInt(e.target.value, 10) || 0; return ms; })} style={{ ...btn, width: 44, padding: '2px 4px' }} /></label>}
+                      {(m.t === 'puertas' || m.t === 'cajones') && <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!m.abierto} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].abierto = e.target.checked; return ms; })} /> Abierto</label>}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                  {tipos.map(([v, n]) => <button key={v} style={{ ...btn, padding: '3px 8px' }} onClick={() => cambiarModulos(objSel.id, ms => [...ms, { t: v, w: 60, n: v === 'cajones' ? 3 : 1, nb: v === 'abierto' ? 3 : 1 }])}>+ {n}</button>)}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Zócalo cm</span><input type="number" value={M.zocalo ?? 10} onChange={e => cambiar(objSel.id, { mueble: { ...M, zocalo: parseFloat(e.target.value) || 0 } })} style={{ ...btn, width: 70 }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Tablero cm</span><input type="number" step="0.1" value={M.esp ?? 1.8} onChange={e => cambiar(objSel.id, { mueble: { ...M, esp: parseFloat(e.target.value) || 1.8 } })} style={{ ...btn, width: 70 }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Tirador</span><select value={M.tirador || 'barra'} onChange={e => cambiar(objSel.id, { mueble: { ...M, tirador: e.target.value } })} style={btn}><option value="barra">Barra</option><option value="ninguno">Sin tirador</option></select></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Frentes</span><input type="color" value={/^#/.test(objSel.colorFrente || '') ? objSel.colorFrente : '#f4f1ec'} onChange={e => cambiar(objSel.id, { colorFrente: e.target.value })} /></label>
+                <details style={{ marginTop: 4 }}>
+                  <summary style={{ cursor: 'pointer', opacity: 0.8 }}>Despiece · {desp.area} m² de tablero</summary>
+                  <div style={{ fontSize: 11, opacity: 0.8, marginTop: 4 }}>{desp.filas.map(([k, n]) => <div key={k}>{n} × {k} cm</div>)}</div>
+                </details>
+                <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>Con el pincel 🎨, clic en un frente cambia el color de los frentes; en el cuerpo, el del cuerpo.</div>
+              </div>
+            );
+          })()}
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Etiqueta</span><input value={objSel.etiqueta || ''} placeholder="Mobiliario…" onChange={e => cambiar(objSel.id, { etiqueta: e.target.value })} style={{ ...btn, width: 120 }} /></label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0' }}><span style={{ width: 70, opacity: 0.7 }}>Color</span><input type="color" value={objSel.color || (objSel.tipo === 'caja' ? '#9aa3ad' : '#2f6fa8')} onChange={e => cambiar(objSel.id, { color: e.target.value })} /></label>
           {objSel.tipo === 'bloque' && objSel.cid && (
