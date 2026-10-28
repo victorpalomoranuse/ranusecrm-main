@@ -954,6 +954,25 @@ function BudgetEditor({ id, onBack, onOpen }) {
     finally { setSavingPaymentOption(false); }
   };
 
+  const [calendario, setCalendario] = useState([]);
+  const [savingCal, setSavingCal] = useState(false);
+  useEffect(() => { setCalendario(Array.isArray(budget?.payment_schedule) ? budget.payment_schedule : []); }, [budget?.id]);
+  const guardaCalendario = async (lista) => {
+    setSavingCal(true);
+    try {
+      const { data } = await api.put(`/budgets/${id}`, { payment_schedule: lista });
+      setBudget(b => ({ ...b, payment_schedule: data.budget.payment_schedule }));
+      flash('Calendario de pagos guardado');
+    } catch { flash('Error al guardar el calendario de pagos (¿falta el SQL v83?)', 'error'); }
+    finally { setSavingCal(false); }
+  };
+  const PRESETS_PAGO = [
+    ['100% por adelantado', [{ concepto: 'Pago íntegro al firmar', pct: 100 }]],
+    ['50% / 50%', [{ concepto: 'Al firmar / inicio', pct: 50 }, { concepto: 'Al finalizar', pct: 50 }]],
+    ['40 / 30 / 30', [{ concepto: 'Al firmar / inicio', pct: 40 }, { concepto: 'A mitad de obra', pct: 30 }, { concepto: 'Al finalizar', pct: 30 }]],
+  ];
+  const sumaCal = calendario.reduce((s, h) => s + (parseFloat(h.pct) || 0), 0);
+
   const [installNote, setInstallNote] = useState('');
   const [savingInstallNote, setSavingInstallNote] = useState(false);
   useEffect(() => { setInstallNote(budget?.install_shipping_note || ''); }, [budget?.id]);
@@ -1323,6 +1342,31 @@ function BudgetEditor({ id, onBack, onOpen }) {
                     <option value="">(ninguna / texto genérico)</option>
                     {paymentOptions.map(o=><option key={o.id} value={o.id}>{o.text.length>50?o.text.slice(0,50)+'…':o.text}</option>)}
                   </select>
+                </div>
+              )}
+              {showPdfOptions && (
+                <div style={{display:'flex',flexDirection:'column',gap:6,padding:'0.5rem 0.6rem',background:'rgba(255,255,255,0.04)',borderRadius:6,border:'1px solid rgba(255,255,255,0.08)',width:'100%'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                    <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>Calendario de pagos del cliente:</span>
+                    {PRESETS_PAGO.map(([n, l]) => <button key={n} type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{fontSize:'0.68rem'}} onClick={() => setCalendario(l.map(h => ({ ...h })))}>{n}</button>)}
+                    <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" style={{fontSize:'0.68rem'}} onClick={() => setCalendario(c => [...c, { concepto: '', pct: 0 }])}>+ Hito</button>
+                  </div>
+                  {calendario.map((h, i) => (
+                    <div key={i} style={{display:'flex',alignItems:'center',gap:6}}>
+                      <input className="ap-field-input" value={h.concepto} onChange={e => setCalendario(c => c.map((x, j) => j === i ? { ...x, concepto: e.target.value } : x))} placeholder="Ej: Al firmar el contrato" style={{flex:1,fontSize:'0.72rem',minWidth:140}} />
+                      <input className="ap-field-input" type="number" min="0" max="100" step="1" value={h.pct} onChange={e => setCalendario(c => c.map((x, j) => j === i ? { ...x, pct: e.target.value } : x))} style={{width:64,fontSize:'0.72rem'}} />
+                      <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>%</span>
+                      <span className="pres-mono" style={{fontSize:'0.72rem',minWidth:90,textAlign:'right',color:'#baafa5'}}>{fmt(sum.totalRev * (parseFloat(h.pct) || 0) / 100)}</span>
+                      <button type="button" className="ap-btn-icon" onClick={() => setCalendario(c => c.filter((_, j) => j !== i))} title="Quitar hito"><X size={12}/></button>
+                    </div>
+                  ))}
+                  {(calendario.length > 0 || (budget.payment_schedule || []).length > 0) && (
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{fontSize:'0.7rem',color: Math.abs(sumaCal - 100) < 0.01 ? '#8bae8f' : '#e08a82'}}>Suma: {sumaCal}% {Math.abs(sumaCal - 100) < 0.01 ? '✓' : '(debería sumar 100%)'}</span>
+                      <span style={{fontSize:'0.66rem',color:'rgba(255,255,255,0.35)'}}>Importes sin IVA aquí; en el PDF salen con el IVA que elijas.</span>
+                      <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" style={{marginLeft:'auto',fontSize:'0.7rem'}} disabled={savingCal} onClick={() => guardaCalendario(calendario)}>{savingCal ? '…' : 'Guardar calendario'}</button>
+                    </div>
+                  )}
                 </div>
               )}
               {showPdfOptions && (

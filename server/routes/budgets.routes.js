@@ -375,7 +375,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { status, design_fee_type, design_fee_value, design_hours, notes, budget_name, project_id, global_discount_pct, payment_option_id, install_shipping_note } = req.body;
+    const { status, design_fee_type, design_fee_value, design_hours, notes, budget_name, project_id, global_discount_pct, payment_option_id, install_shipping_note, payment_schedule } = req.body;
     const updates = { updated_at: new Date().toISOString() };
     if (status !== undefined) updates.status = status;
     if (design_fee_type !== undefined) updates.design_fee_type = design_fee_type;
@@ -386,6 +386,12 @@ router.put('/:id', async (req, res) => {
     if (project_id !== undefined) updates.project_id = project_id || null;
     if (global_discount_pct !== undefined) updates.global_discount_pct = parseFloat(global_discount_pct) || 0;
     if (install_shipping_note !== undefined) updates.install_shipping_note = install_shipping_note?.trim() || null;
+    if (payment_schedule !== undefined) {
+      const lista = (Array.isArray(payment_schedule) ? payment_schedule : []).slice(0, 12)
+        .map(h => ({ concepto: String(h?.concepto || '').trim().slice(0, 120), pct: Math.max(0, Math.min(100, parseFloat(h?.pct) || 0)) }))
+        .filter(h => h.concepto || h.pct > 0);
+      updates.payment_schedule = lista.length ? lista : null;
+    }
     if (payment_option_id !== undefined) {
       if (payment_option_id) {
         const { data: opt } = await supabase.from('budget_payment_options').select('text').eq('id', payment_option_id).single();
@@ -955,7 +961,8 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       y += 52;
     }
 
-    if (settings.bank_iban || settings.payment_methods || budget.payment_option_text) {
+    const calendarioPagos = Array.isArray(budget.payment_schedule) ? budget.payment_schedule.filter(h => h && parseFloat(h.pct) > 0) : [];
+    if (settings.bank_iban || settings.payment_methods || budget.payment_option_text || calendarioPagos.length) {
       y += 10;
       if (y > H - 100) { doc.addPage(); y = margin + 20; }
       doc.moveTo(margin, y).lineTo(W - margin, y).strokeColor('#eeeeee').lineWidth(0.3).stroke();
@@ -970,6 +977,19 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       } else if (settings.payment_methods) {
         doc.fillColor('#555555').fontSize(8).font('Helvetica').text(settings.payment_methods, margin, y);
         y += 11;
+      }
+      if (calendarioPagos.length) {
+        y += 4;
+        calendarioPagos.forEach((h, i) => {
+          if (y > H - 60) { doc.addPage(); y = margin + 20; }
+          const importe = total * (parseFloat(h.pct) / 100);
+          doc.fillColor('#555555').fontSize(8).font('Helvetica').text((i + 1) + '. ' + (h.concepto || 'Pago') + ' (' + Number(h.pct).toLocaleString('es-ES') + '%)', margin, y, { width: W - margin * 2 - 110 });
+          doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica-Bold').text(fmtEur(importe), W - margin - 100, y, { width: 100, align: 'right' });
+          y += 13;
+        });
+        const sumaPct = calendarioPagos.reduce((s, h) => s + (parseFloat(h.pct) || 0), 0);
+        if (Math.abs(sumaPct - 100) > 0.01) { doc.fillColor('#cc3333').fontSize(7).font('Helvetica').text('Aviso: el calendario suma ' + sumaPct + '%', margin, y); y += 10; }
+        doc.fillColor('#999999').fontSize(7).font('Helvetica-Oblique').text('Importes sobre el total del presupuesto' + (parseFloat(iva) > 0 ? ' (IVA incluido).' : '.'), margin, y); y += 11;
       }
       if (settings.payment_notes) { doc.fillColor('#888888').fontSize(7.5).font('Helvetica').text(settings.payment_notes, margin, y, { width: W - margin * 2 }); y += 11; }
     }
