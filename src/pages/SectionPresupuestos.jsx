@@ -459,6 +459,25 @@ function ChapterRow({ item, onEdit, onDelete }) {
   );
 }
 
+function IaDescBtn({ d, setD }) {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const run = async () => {
+    setLoading(true); setErr('');
+    try {
+      const { data } = await api.post('/budgets/ia-descripcion', { name: d.name, category: d.category, unit: d.unit, brand: d.brand, texto: d.descripcion_cliente });
+      setD(p => ({ ...p, descripcion_cliente: data.descripcion }));
+    } catch (e) { setErr(e.response?.data?.error || 'Error con la IA'); }
+    finally { setLoading(false); }
+  };
+  return (
+    <>
+      <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={run} disabled={loading || !(d.name || '').trim()} style={{marginLeft:6,fontSize:'0.68rem',padding:'2px 8px',textTransform:'none',letterSpacing:0}}>{loading ? 'Escribiendo…' : (d.descripcion_cliente ? '✨ Mejorar con IA' : '✨ Desarrollar con IA')}</button>
+      {err && <span style={{color:'#e08a82',marginLeft:6,textTransform:'none',letterSpacing:0}}>{err}</span>}
+    </>
+  );
+}
+
 function ItemRowEdit({ item, onSave, onCancel }) {
   const initMode = item.pricing_mode || 'margin';
   const [d, setD] = useState({
@@ -596,7 +615,7 @@ function ItemRowEdit({ item, onSave, onCancel }) {
       <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
         <td colSpan={10} style={{padding:'0.4rem 0.75rem'}}>
           <div style={{display:'flex',flexDirection:'column',gap:2}}>
-            <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Descripción para el cliente <span style={{textTransform:'none',letterSpacing:0}}>(sale en el PDF del cliente; si está vacía sale el nombre)</span></label>
+            <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Descripción para el cliente <span style={{textTransform:'none',letterSpacing:0}}>(sale en el PDF del cliente; si está vacía sale el nombre)</span> <IaDescBtn d={d} setD={setD}/></label>
             <textarea className="pres-cell-input" rows={2} value={d.descripcion_cliente||''} onChange={e=>setD(p=>({...p,descripcion_cliente:e.target.value}))} placeholder="Texto largo y bien escrito para el presupuesto del cliente" style={{width:'100%',resize:'vertical'}}/>
           </div>
         </td>
@@ -840,7 +859,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
       <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
         <td colSpan={10} style={{padding:'0.4rem 0.75rem'}}>
           <div style={{display:'flex',flexDirection:'column',gap:2}}>
-            <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Descripción para el cliente <span style={{textTransform:'none',letterSpacing:0}}>(sale en el PDF del cliente; si está vacía sale el nombre)</span></label>
+            <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Descripción para el cliente <span style={{textTransform:'none',letterSpacing:0}}>(sale en el PDF del cliente; si está vacía sale el nombre)</span> <IaDescBtn d={d} setD={setD}/></label>
             <textarea className="pres-cell-input" rows={2} value={d.descripcion_cliente||''} onChange={e=>setD(p=>({...p,descripcion_cliente:e.target.value}))} placeholder="Texto largo y bien escrito para el presupuesto del cliente" style={{width:'100%',resize:'vertical'}}/>
           </div>
         </td>

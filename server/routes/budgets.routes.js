@@ -10,6 +10,7 @@ import { authenticateToken, requireAdminSuperior } from '../middleware/auth.midd
 import { uploadBudgetPdf, deleteBudgetPdf } from '../utils/storage.js';
 import { internalAdminToken } from '../utils/internal-auth.js';
 import { computeCatalogPricing } from '../utils/pricing.js';
+import { callClaude } from '../utils/anthropic.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -341,6 +342,22 @@ router.get('/:id', async (req, res) => {
     const items = (data.items || []).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
     res.json({ budget: { ...data, items } });
   } catch (err) { res.status(500).json({ error: 'Error al obtener presupuesto' }); }
+});
+
+// Desarrolla con IA el texto que ve el cliente en el PDF a partir del nombre sencillo de la partida.
+router.post('/ia-descripcion', async (req, res) => {
+  try {
+    const { name, category, unit, brand, texto } = req.body || {};
+    if (!String(name || '').trim()) return res.status(400).json({ error: 'Pon primero el nombre de la partida' });
+    const r = await callClaude({
+      maxTokens: 500,
+      system: 'Eres arquitecto de reformas e interiorismo deportivo en España y redactas partidas de presupuesto para el cliente final. Con el nombre de la partida (y notas si las hay), escribe UNA descripción técnica y clara, en español, 1 a 3 frases, estilo "Demolición de tabique de fábrica de ladrillo hasta 10 cm de espesor, incluida carga manual de escombros.": qué se hace, materiales o características principales y qué incluye. No menciones el precio ni la unidad de cobro. No inventes marcas ni medidas que no se hayan dado; si no sabes un dato, hazlo genérico. Responde SOLO con el texto de la descripción, sin comillas ni encabezados.',
+      messages: [{ role: 'user', content: JSON.stringify({ partida: String(name).trim(), categoria: category || null, unidad: unit || null, marca: brand || null, texto_actual_a_mejorar: String(texto || '').trim() || null }) }],
+    });
+    const out = (r.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+    if (!out) return res.status(502).json({ error: 'La IA no devolvió texto' });
+    res.json({ descripcion: out });
+  } catch (err) { console.error('ia-descripcion:', err.message); res.status(500).json({ error: err.message?.includes('ANTHROPIC') || err.message?.includes('clave') ? err.message : 'No se pudo generar la descripción' }); }
 });
 
 router.post('/', async (req, res) => {
