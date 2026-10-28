@@ -18,6 +18,7 @@ import iaConversacionesRoutes from './routes/ia-conversaciones.routes.js';
 import conocimientoRoutes from './routes/conocimiento.routes.js';
 import medicionRoutes from './routes/medicion.routes.js';
 import renderIaRoutes from './routes/render-ia.routes.js';
+import biblioteca3dRoutes from './routes/biblioteca3d.routes.js';
 import medicionSketchupRoutes from './routes/medicion-sketchup.routes.js';
 import historiaPublicaRoutes from './routes/historia-publica.routes.js';
 import employeesRoutes from './routes/employees.routes.js';
@@ -105,6 +106,7 @@ app.use('/api/conocimiento', conocimientoRoutes);
 app.use('/api/medicion-publico', medicionSketchupRoutes); // enlace de solo lectura para SketchUp (firmado)
 app.use('/api/medicion', medicionRoutes);
 app.use('/api/render-ia', renderIaRoutes);
+app.use('/api/biblioteca3d', biblioteca3dRoutes);
 app.use('/api/historia-publica', historiaPublicaRoutes);
 app.use('/api/employees', employeesRoutes);
 app.use('/api/catalog', catalogRoutes);

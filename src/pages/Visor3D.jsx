@@ -190,6 +190,11 @@ export default function Visor3D() {
   const cargadaEscena = useRef(false);
   const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, todosMuros: null, todosSuelos: null, todosTechos: null });
   const [texturas, setTexturas] = useState([]);
+  const [b3dAbierta, setB3dAbierta] = useState(false);
+  const [b3d, setB3d] = useState(null);           // índice de la biblioteca 3D gratuita
+  const [b3dTab, setB3dTab] = useState('modelos');
+  const [b3dFiltro, setB3dFiltro] = useState('');
+  const [b3dCat, setB3dCat] = useState('');
   const [selHueco, setSelHueco] = useState(null); // hueco del plano seleccionado, con sus medidas nuevas
   const [eqNuevo, setEqNuevo] = useState(null);     // medidas nuevas del equipo del plano seleccionado
   const [aviso, setAviso] = useState('');
@@ -467,8 +472,26 @@ export default function Visor3D() {
   useEffect(() => {
     api.get('/medicion/catalogos').then(r => setBiblioteca((r.data?.maquinas || []).filter(m => m.w > 0 && m.d > 0))).catch(() => setBiblioteca([]));
   }, []);
-  const modeloDe = o => (o.cid && biblioteca?.find(m => m.id === o.cid)?.modelo3d) || null;
+  const modeloDe = o => o.mod || (o.cid && biblioteca?.find(m => m.id === o.cid)?.modelo3d) || null;
 
+  useEffect(() => {
+    if (!b3dAbierta || b3d) return;
+    api.get('/biblioteca3d').then(r => setB3d(r.data || { modelos: [], texturas: [] })).catch(() => setB3d({ modelos: [], texturas: [], error: true }));
+  }, [b3dAbierta, b3d]);
+  const anadirModelo3d = m => {
+    const { ctrl } = api3d.current;
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'bloque', cid: null, nombre: m.nombre, etiqueta: m.categoria, cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: m.w, d: m.d, alto: m.alto, z0: 0, color: null, mod: { url: m.url, tipo: 'gltf', rot: 0 } };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel');
+  };
+  const usarTexturaB3d = async (t) => {
+    try {
+      const r = await api.post('/medicion/' + id + '/textura-biblioteca', { texId: t.id, tam: t.tam });
+      const nueva = r.data.textura;
+      setTexturas(x => (x.some(y => y.id === nueva.id) ? x : [...x, nueva]));
+      setMatSel({ id: nueva.id }); setHerr('pincel'); setMatAbierto(true);
+      setGuardado('Textura lista: haz clic en un muro, suelo o techo');
+    } catch (e) { setGuardado(e.response?.data?.error || 'No se pudo usar la textura'); }
+  };
   const anadirBloque = m => {
     const { ctrl } = api3d.current;
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'bloque', cid: m.id, nombre: m.nombre, cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: m.w, d: m.d, alto: m.alto || 110, z0: 0, color: null, skp: m.skp || null };
@@ -606,7 +629,8 @@ export default function Visor3D() {
         <b style={{ color: '#222', marginRight: 'auto' }}>{titulo}</b>
         <button style={{ ...btn, ...(herr === 'sel' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('sel')} title="Seleccionar y mover objetos">↖ Mover</button>
         <button style={{ ...btn, ...(herr === 'caja' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('caja')} title="Arrastra sobre el suelo para dibujar una caja; luego le das altura">▭ Dibujar caja</button>
-        <button style={{ ...btn, ...(bibAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setBibAbierta(v => !v)}>📚 Biblioteca</button>
+        <button style={{ ...btn, ...(bibAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setBibAbierta(v => !v)} title="Tus productos del catálogo de Ranuse">📦 Catálogo</button>
+        <button style={{ ...btn, ...(b3dAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setB3dAbierta(v => !v)} title="Muebles y texturas gratuitos (Poly Haven, CC0)">🧰 Biblioteca 3D</button>
         <button style={{ ...btn, ...(capasAbierto ? { background: '#2f6fa8' } : {}) }} onClick={() => setCapasAbierto(v => !v)}>🏷 Capas</button>
         <button style={{ ...btn, ...(matAbierto || herr === 'pincel' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setMatAbierto(v => !v); if (matAbierto && herr === 'pincel') setHerr('sel'); }}>🎨 Materiales</button>
         {guardado && guardado !== 'inicial' && <span style={{ color: '#555', fontSize: 12 }}>{guardado}</span>}
@@ -666,7 +690,7 @@ export default function Visor3D() {
           </label>
         );
         return (
-          <div style={{ position: 'absolute', left: bibAbierta ? 292 : 12, top: 56, width: 210, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '10px 12px', fontSize: 13, zIndex: 3 }}>
+          <div style={{ position: 'absolute', left: 12 + (bibAbierta ? 280 : 0) + (b3dAbierta ? 280 : 0), top: 56, width: 210, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '10px 12px', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Ver por capas</div>
             {fijas.map(([k, n]) => fila(k, n))}
             {propias.length > 0 && <div style={{ borderTop: '1px solid #333', marginTop: 6, paddingTop: 6, opacity: 0.7 }}>Tus objetos</div>}
@@ -720,7 +744,7 @@ export default function Visor3D() {
           try { await api.delete('/medicion/' + id + '/textura/' + t.id); setTexturas(x => x.filter(y => y.id !== t.id)); if (matSel?.id === t.id) setMatSel(null); } catch { setGuardado('No se pudo quitar'); }
         };
         return (
-          <div style={{ position: 'absolute', left: 12 + (bibAbierta ? 280 : 0) + (capasAbierto ? 222 : 0), top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
+          <div style={{ position: 'absolute', left: 12 + (bibAbierta ? 280 : 0) + (b3dAbierta ? 280 : 0) + (capasAbierto ? 222 : 0), top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700, marginBottom: 2 }}>🎨 Materiales (pincel)</div>
             <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 8 }}>Elige un material y haz clic en un muro, suelo, techo u objeto. Con Mayús + clic se aplica a todos los de ese tipo.</div>
             <div style={{ opacity: 0.7, marginBottom: 4 }}>Colores</div>
@@ -790,11 +814,48 @@ export default function Visor3D() {
           </div>
         );
       })()}
+      {b3dAbierta && (() => {
+        const lista = (b3d?.[b3dTab] || []).filter(m => (!b3dCat || m.categoria === b3dCat) && (!b3dFiltro || (m.nombre + ' ' + m.categoria).toLowerCase().includes(b3dFiltro.toLowerCase())));
+        const cats = [...new Set((b3d?.[b3dTab] || []).map(m => m.categoria))].sort();
+        return (
+          <div style={{ position: 'absolute', left: 12 + (bibAbierta ? 280 : 0), top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
+            <div style={{ fontWeight: 700 }}>🧰 Biblioteca 3D <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>gratis · CC0</span></div>
+            <div style={{ display: 'flex', gap: 6, margin: '6px 0' }}>
+              <button style={{ ...btn, flex: 1, ...(b3dTab === 'modelos' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setB3dTab('modelos'); setB3dCat(''); }}>Muebles</button>
+              <button style={{ ...btn, flex: 1, ...(b3dTab === 'texturas' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setB3dTab('texturas'); setB3dCat(''); }}>Texturas</button>
+            </div>
+            <input value={b3dFiltro} onChange={e => setB3dFiltro(e.target.value)} placeholder="Buscar…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 6 }} />
+            <select value={b3dCat} onChange={e => setB3dCat(e.target.value)} style={{ ...btn, marginBottom: 8 }}>
+              <option value="">Todas las categorías</option>{cats.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <div style={{ overflow: 'auto', flex: 1 }}>
+              {!b3d && <p style={{ opacity: 0.6 }}>Cargando…</p>}
+              {b3d?.vacia && <p style={{ opacity: 0.7 }}>La biblioteca todavía no está cargada.</p>}
+              {b3dTab === 'modelos' && lista.map(m => (
+                <div key={m.id} onClick={() => anadirModelo3d(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer' }} title="Clic para colocarlo en el centro de la vista">
+                  <div>{m.nombre}</div><div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {m.w}×{m.d}×{m.alto} cm</div>
+                </div>
+              ))}
+              {b3dTab === 'texturas' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                  {lista.map(t => (
+                    <div key={t.id} onClick={() => usarTexturaB3d(t)} title={t.nombre + ' · ' + t.categoria} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
+                      <img src={t.url} alt={t.nombre} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
+                      <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.nombre}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ opacity: 0.45, fontSize: 10, marginTop: 6 }}>Modelos y texturas de Poly Haven (polyhaven.com), licencia CC0.</div>
+          </div>
+        );
+      })()}
       {bibAbierta && (
         <div style={{ position: 'absolute', left: 12, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
-          <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar en la biblioteca…" style={{ ...btn, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} />
+          <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar en el catálogo…" style={{ ...btn, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} />
           <div style={{ overflow: 'auto', flex: 1 }}>
-            {!biblioteca && <p style={{ opacity: 0.6 }}>Cargando biblioteca…</p>}
+            {!biblioteca && <p style={{ opacity: 0.6 }}>Cargando catálogo…</p>}
             {(biblioteca || []).filter(m => !filtro || (m.nombre + ' ' + (m.categoria || '') + ' ' + (m.marca || '')).toLowerCase().includes(filtro.toLowerCase())).slice(0, 80).map(m => (
               <div key={m.id} onClick={() => anadirBloque(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer' }} title="Clic para colocarlo en el centro de la vista">
                 <div>{m.nombre}</div>

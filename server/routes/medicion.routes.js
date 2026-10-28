@@ -10,6 +10,7 @@ import { catalogoEnCache, guardaCatalogo, vaciaCacheAlEscribir } from '../utils/
 import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
 import { uploadReferenceImageFile, handleMulterError } from '../middleware/upload.middleware.js';
+import { indiceBiblioteca3d } from './biblioteca3d.routes.js';
 
 // Herramienta de medición en obra: guarda los planos por proyecto y le sirve el
 // catálogo del CRM (máquinas y luminarias) para colocarlas en el plano.
@@ -504,6 +505,7 @@ router.put('/:id/escena3d', async (req, res) => {
       k: o.tipo === 'luz' ? Math.max(1500, Math.min(10000, num(o.k, 3000))) : undefined,
       pts: o.tipo === 'prisma' && Array.isArray(o.pts) ? o.pts.slice(0, 80).map(p => [num(p?.[0]), num(p?.[1])]) : undefined,
       skp: o.skp?.url ? { url: String(o.skp.url).slice(0, 500), rot: num(o.skp.rot) } : null,
+      mod: /^https:\/\/[^\s]+\/storage\/v1\/object\/public\//.test(o.mod?.url || '') ? { url: String(o.mod.url).slice(0, 600), tipo: ['gltf', 'glb', 'obj', 'dae'].includes(o.mod.tipo) ? o.mod.tipo : 'gltf', rot: num(o.mod.rot) } : undefined,
     })).filter(o => o.id);
     const mapa = m => Object.fromEntries(Object.entries(m && typeof m === 'object' ? m : {}).slice(0, 500).map(([k, v]) => [String(k).slice(0, 60), acab(v)]).filter(([, v]) => v));
     const a = req.body?.acabados || {};
@@ -545,6 +547,26 @@ router.post('/:id/textura', uploadReferenceImageFile, handleMulterError, async (
   } catch (err) {
     console.error('medicion textura:', err);
     res.status(500).json({ error: 'No se pudo guardar la textura' });
+  }
+});
+router.post('/:id/textura-biblioteca', async (req, res) => {
+  try {
+    const ind = await indiceBiblioteca3d();
+    const t = (ind?.texturas || []).find(x => x.id === req.body?.texId);
+    if (!t) return res.status(404).json({ error: 'Esa textura no está en la biblioteca' });
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || { objetos: [] };
+    const idTex = 'b_' + t.id;
+    if ((esc.texturas || []).some(x => x.id === idTex)) return res.json({ textura: esc.texturas.find(x => x.id === idTex) });
+    const tex = { id: idTex, nombre: t.nombre, url: t.url, tam: Math.max(5, Math.min(1000, parseFloat(req.body?.tam) || t.tam || 100)) };
+    const data = { ...fila.data, escena3d: { ...esc, texturas: [...(esc.texturas || []), tex].slice(-80), updated: Date.now() } };
+    const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
+    if (error) throw error;
+    res.status(201).json({ textura: tex });
+  } catch (err) {
+    console.error('medicion textura-biblioteca:', err);
+    res.status(500).json({ error: 'No se pudo añadir la textura' });
   }
 });
 router.delete('/:id/textura/:tid', async (req, res) => {
