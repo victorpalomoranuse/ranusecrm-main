@@ -460,7 +460,9 @@ router.put('/:id', async (req, res) => {
     const { project_id, data } = req.body || {};
     if (!data || typeof data !== 'object' || !Array.isArray(data.walls)) return res.status(400).json({ error: 'Datos de medición no válidos' });
     const ahora = new Date().toISOString();
-    const { data: previa } = await supabase.from('mediciones').select('id, project_id').eq('id', req.params.id).maybeSingle();
+    const { data: previa } = await supabase.from('mediciones').select('id, project_id, data').eq('id', req.params.id).maybeSingle();
+    if (previa?.data?.escena3d) data.escena3d = previa.data.escena3d; // el editor 2D no la toca: no se pierde al guardar
+    else delete data.escena3d;
     const fila = {
       id: req.params.id, data, resumen: data.resumen || null,
       nombre: String(data.nombre || '').slice(0, 200) || null, cliente: String(data.cliente || '').slice(0, 200) || null,
@@ -473,6 +475,36 @@ router.put('/:id', async (req, res) => {
   } catch (err) {
     console.error('medicion save:', err);
     res.status(500).json({ error: 'No se pudo guardar la medición' });
+  }
+});
+
+// Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
+// Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
+router.put('/:id/escena3d', async (req, res) => {
+  try {
+    const objs = Array.isArray(req.body?.objetos) ? req.body.objetos.slice(0, 2000) : null;
+    if (!objs) return res.status(400).json({ error: 'Escena no válida' });
+    const num = (v, d = 0) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : d);
+    const limpios = objs.map(o => ({
+      id: String(o.id || '').slice(0, 40),
+      tipo: o.tipo === 'caja' ? 'caja' : 'bloque',
+      cid: o.cid ? String(o.cid).slice(0, 80) : null,
+      nombre: String(o.nombre || '').slice(0, 120),
+      cx: num(o.cx), cy: num(o.cy), rot: num(o.rot),
+      w: Math.max(1, num(o.w, 100)), d: Math.max(1, num(o.d, 100)), alto: Math.max(1, num(o.alto, 100)),
+      z0: num(o.z0), color: /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : null,
+      skp: o.skp?.url ? { url: String(o.skp.url).slice(0, 500), rot: num(o.skp.rot) } : null,
+    })).filter(o => o.id);
+    const { data: fila, error } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const data = { ...fila.data, escena3d: { objetos: limpios, updated: Date.now() } };
+    const { error: e2 } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
+    if (e2) throw e2;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('medicion escena3d:', err);
+    res.status(500).json({ error: 'No se pudo guardar la escena 3D' });
   }
 });
 

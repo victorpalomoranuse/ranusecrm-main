@@ -92,6 +92,18 @@ export default function Visor3D() {
   const [calidad, setCalidad] = useState(() => { try { return localStorage.getItem('visor3dCalidad') || 'media'; } catch { return 'media'; } });
   const api3d = useRef({});
   const [seleccion, setSeleccion] = useState(null);
+  const [objs, setObjs] = useState([]);            // objetos de la escena 3D
+  const objsRef = useRef([]);
+  const [selObj, setSelObj] = useState(null);      // id del objeto seleccionado
+  const [herr, setHerr] = useState('sel');         // 'sel' | 'caja'
+  const herrRef = useRef('sel');
+  const [bibAbierta, setBibAbierta] = useState(false);
+  const [biblioteca, setBiblioteca] = useState(null);
+  const [filtro, setFiltro] = useState('');
+  const [guardado, setGuardado] = useState('');
+  const cargadaEscena = useRef(false);
+  useEffect(() => { objsRef.current = objs; }, [objs]);
+  useEffect(() => { herrRef.current = herr; }, [herr]);
 
   useEffect(() => { document.title = 'Vista 3D · Ranuse'; }, []);
 
@@ -113,6 +125,8 @@ export default function Visor3D() {
     scene.add(sol);
     const raiz = new THREE.Group();
     scene.add(raiz);
+    const esc = new THREE.Group(); // objetos colocados en el visor (biblioteca y cajas)
+    scene.add(esc);
     const base = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0xd9d4cd, roughness: 1 }));
     base.rotation.x = -Math.PI / 2; base.position.y = -0.02; base.receiveShadow = true;
     scene.add(base);
@@ -125,7 +139,7 @@ export default function Visor3D() {
     const bucle = () => { if (!vivo) return; raf = requestAnimationFrame(bucle); ctrl.update(); renderer.render(scene, cam); };
     ajustar(); bucle();
     window.addEventListener('resize', ajustar);
-    api3d.current = { renderer, scene, cam, ctrl, sol, raiz };
+    api3d.current = { renderer, scene, cam, ctrl, sol, raiz, esc, base, el };
 
     let ultima = null, primera = true;
     const cargar = () => api.get('/medicion/' + id).then(r => {
@@ -134,8 +148,8 @@ export default function Visor3D() {
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
-      const modelo = pl?.modelo3d;
-      if (!modelo) { if (primera) setEstado('sin-modelo'); return; }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); }
+      const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
       while (raiz.children.length) { const o = raiz.children[0]; raiz.remove(o); o.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
@@ -143,7 +157,8 @@ export default function Visor3D() {
       plantas.forEach(p => raiz.add(planta(p, p.z)));
       if (primera) {
         const caja3 = new THREE.Box3().setFromObject(raiz);
-        const c = caja3.getCenter(new THREE.Vector3()), s = caja3.getSize(new THREE.Vector3());
+        const vacio = caja3.isEmpty();
+        const c = vacio ? new THREE.Vector3(4, 0, 3) : caja3.getCenter(new THREE.Vector3()), s = vacio ? new THREE.Vector3(8, 0, 6) : caja3.getSize(new THREE.Vector3());
         const R = Math.max(s.x, s.z, 4);
         ctrl.target.copy(c);
         cam.position.set(c.x + R * 0.9, Math.max(R * 0.8, 6), c.z + R * 0.9);
@@ -167,6 +182,7 @@ export default function Visor3D() {
     const dom = renderer.domElement;
     const onDown = e => { abajo = [e.clientX, e.clientY]; };
     const onUp = e => {
+      if (herrRef.current === 'caja') return;
       if (!abajo || Math.hypot(e.clientX - abajo[0], e.clientY - abajo[1]) > 4) return; // fue arrastre, no clic
       const r = dom.getBoundingClientRect();
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -180,8 +196,119 @@ export default function Visor3D() {
     dom.addEventListener('pointerdown', onDown);
     dom.addEventListener('pointerup', onUp);
 
-    return () => { vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); renderer.dispose(); el.removeChild(renderer.domElement); };
+    // Diseño: mover objetos y dibujar cajas sobre el suelo
+    const suelo = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), pt = new THREE.Vector3();
+    const snap = v => Math.round(v / 5) * 5;
+    const puntoSuelo = e => {
+      const r = dom.getBoundingClientRect();
+      p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      rayo.setFromCamera(p2, cam);
+      return rayo.ray.intersectPlane(suelo, pt) ? { x: snap(pt.x / CM), y: snap(pt.z / CM) } : null;
+    };
+    const objetoBajo = e => {
+      const r = dom.getBoundingClientRect();
+      p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      rayo.setFromCamera(p2, cam);
+      const h = rayo.intersectObjects(esc.children, true)[0];
+      let o = h?.object; while (o && !o.userData.oid) o = o.parent;
+      return o || null;
+    };
+    let arrastre = null, trazo = null, previa = null;
+    const onDownD = e => {
+      if (e.button !== 0) return;
+      if (herrRef.current === 'caja') {
+        const p = puntoSuelo(e); if (!p) return;
+        ctrl.enabled = false; trazo = p;
+        previa = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x2f6fa8, transparent: true, opacity: 0.45 }));
+        scene.add(previa); e.stopPropagation(); return;
+      }
+      const o = objetoBajo(e);
+      if (!o) return;
+      const ob = objsRef.current.find(x => x.id === o.userData.oid); if (!ob) return;
+      setSelObj(ob.id);
+      const p = puntoSuelo(e); if (!p) return;
+      ctrl.enabled = false; arrastre = { id: ob.id, dx: ob.cx - p.x, dy: ob.cy - p.y, mov: false };
+      e.stopPropagation();
+    };
+    const onMoveD = e => {
+      if (trazo && previa) {
+        const p = puntoSuelo(e); if (!p) return;
+        const w = Math.max(5, Math.abs(p.x - trazo.x)), d = Math.max(5, Math.abs(p.y - trazo.y));
+        previa.scale.set(w * CM, 1, d * CM); previa.position.set((p.x + trazo.x) / 2 * CM, 0.5, (p.y + trazo.y) / 2 * CM);
+      } else if (arrastre) {
+        const p = puntoSuelo(e); if (!p) return;
+        arrastre.mov = true;
+        const o = esc.children.find(x => x.userData.oid === arrastre.id);
+        if (o) { o.position.x = (p.x + arrastre.dx) * CM; o.position.z = (p.y + arrastre.dy) * CM; arrastre.cx = p.x + arrastre.dx; arrastre.cy = p.y + arrastre.dy; }
+      }
+    };
+    const onUpD = e => {
+      if (trazo) {
+        const p = puntoSuelo(e);
+        scene.remove(previa); previa.geometry.dispose(); previa.material.dispose(); previa = null;
+        const t = trazo; trazo = null; ctrl.enabled = true;
+        if (p && Math.abs(p.x - t.x) >= 10 && Math.abs(p.y - t.y) >= 10) {
+          const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'caja', nombre: 'Caja', cx: (p.x + t.x) / 2, cy: (p.y + t.y) / 2, rot: 0, w: Math.abs(p.x - t.x), d: Math.abs(p.y - t.y), alto: 100, z0: 0, color: '#9aa3ad' };
+          setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel');
+        }
+      } else if (arrastre) {
+        const a = arrastre; arrastre = null; ctrl.enabled = true;
+        if (a.mov && a.cx != null) setObjs(prev => prev.map(x => x.id === a.id ? { ...x, cx: a.cx, cy: a.cy } : x));
+      }
+    };
+    el.addEventListener('pointerdown', onDownD, true);
+    window.addEventListener('pointermove', onMoveD);
+    window.addEventListener('pointerup', onUpD);
+
+    return () => { el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); renderer.dispose(); el.removeChild(renderer.domElement); };
   }, [id]);
+
+  // Los objetos de la escena se pintan a partir de la lista
+  useEffect(() => {
+    const a = api3d.current; if (!a.esc) return;
+    while (a.esc.children.length) { const o = a.esc.children[0]; a.esc.remove(o); o.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
+    objs.forEach(o => {
+      const w = o.w * CM, d = o.d * CM, h = o.alto * CM;
+      const g = new THREE.Group();
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: color(o.color, o.tipo === 'caja' ? '#9aa3ad' : '#2f6fa8'), roughness: 0.55, metalness: o.tipo === 'caja' ? 0 : 0.15, emissive: o.id === selObj ? 0x335577 : 0x000000 }));
+      m.position.y = h / 2 + (o.z0 || 0) * CM; m.castShadow = m.receiveShadow = true;
+      g.add(m);
+      if (o.id === selObj) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(m.position); g.add(l); }
+      g.position.set(o.cx * CM, 0, o.cy * CM); g.rotation.y = -(o.rot || 0) * Math.PI / 180;
+      g.userData.oid = o.id;
+      a.esc.add(g);
+    });
+  }, [objs, selObj, estado]);
+
+  // Guardado automático de la escena (sin pisar el dibujo del plano 2D)
+  useEffect(() => {
+    if (!cargadaEscena.current || estado !== 'listo') return;
+    if (guardado === 'inicial') { setGuardado(''); return; }
+    setGuardado('Guardando…');
+    const t = setTimeout(() => {
+      api.put('/medicion/' + id + '/escena3d', { objetos: objs }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [objs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!bibAbierta || biblioteca) return;
+    api.get('/medicion/catalogos').then(r => setBiblioteca((r.data?.maquinas || []).filter(m => m.w > 0 && m.d > 0))).catch(() => setBiblioteca([]));
+  }, [bibAbierta, biblioteca]);
+
+  const anadirBloque = m => {
+    const { ctrl } = api3d.current;
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'bloque', cid: m.id, nombre: m.nombre, cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: m.w, d: m.d, alto: m.alto || 110, z0: 0, color: null, skp: m.skp || null };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel');
+  };
+  const cambiar = (idObj, campos) => setObjs(prev => prev.map(o => o.id === idObj ? { ...o, ...campos } : o));
+  const borrar = idObj => { setObjs(prev => prev.filter(o => o.id !== idObj)); setSelObj(null); };
+  const duplicar = idObj => {
+    const o = objs.find(x => x.id === idObj); if (!o) return;
+    const n = { ...o, id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), cx: o.cx + 30, cy: o.cy + 30 };
+    setObjs(prev => [...prev, n]); setSelObj(n.id);
+  };
+  const objSel = objs.find(o => o.id === selObj) || null;
 
   // Calidad: en ordenadores sin tarjeta gráfica potente se baja la resolución y las sombras
   useEffect(() => {
@@ -250,6 +377,10 @@ export default function Visor3D() {
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={btn} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <b style={{ color: '#222', marginRight: 'auto' }}>{titulo}</b>
+        <button style={{ ...btn, ...(herr === 'sel' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('sel')} title="Seleccionar y mover objetos">↖ Mover</button>
+        <button style={{ ...btn, ...(herr === 'caja' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('caja')} title="Arrastra sobre el suelo para dibujar una caja; luego le das altura">▭ Dibujar caja</button>
+        <button style={{ ...btn, ...(bibAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setBibAbierta(v => !v)}>📚 Biblioteca</button>
+        {guardado && guardado !== 'inicial' && <span style={{ color: '#555', fontSize: 12 }}>{guardado}</span>}
         <button style={btn} onClick={() => vista('persp')}>Perspectiva</button>
         <button style={btn} onClick={() => vista('planta')}>Planta</button>
         <select style={btn} value={calidad} onChange={e => setCalidad(e.target.value)} title="Si va lento, baja la calidad">
@@ -258,7 +389,38 @@ export default function Visor3D() {
         <button style={btn} onClick={captura}>📷 Captura</button>
         <button style={{ ...btn, background: '#2f6fa8', borderColor: '#2f6fa8' }} onClick={renderAlta} disabled={renderizando || estado !== 'listo'} title="Imagen grande con sombras suaves (3200 px)">{renderizando ? 'Renderizando…' : '🖼 Render HD'}</button>
       </div>
-      {seleccion && (
+      {bibAbierta && (
+        <div style={{ position: 'absolute', left: 12, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
+          <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar en la biblioteca…" style={{ ...btn, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} />
+          <div style={{ overflow: 'auto', flex: 1 }}>
+            {!biblioteca && <p style={{ opacity: 0.6 }}>Cargando biblioteca…</p>}
+            {(biblioteca || []).filter(m => !filtro || (m.nombre + ' ' + (m.categoria || '') + ' ' + (m.marca || '')).toLowerCase().includes(filtro.toLowerCase())).slice(0, 80).map(m => (
+              <div key={m.id} onClick={() => anadirBloque(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer' }} title="Clic para colocarlo en el centro de la vista">
+                <div>{m.nombre}</div>
+                <div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {Math.round(m.w)}×{Math.round(m.d)} cm</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {objSel && (
+        <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+          <input value={objSel.nombre} onChange={e => cambiar(objSel.id, { nombre: e.target.value })} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontWeight: 700, marginBottom: 8 }} />
+          {[['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación'], ['rot', 'Giro °']].map(([k, et]) => (
+            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span style={{ width: 70, opacity: 0.7 }}>{et}</span>
+              <input type="number" value={Math.round(objSel[k] * 10) / 10} onChange={e => cambiar(objSel.id, { [k]: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 90 }} />
+            </label>
+          ))}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0' }}><span style={{ width: 70, opacity: 0.7 }}>Color</span><input type="color" value={objSel.color || (objSel.tipo === 'caja' ? '#9aa3ad' : '#2f6fa8')} onChange={e => cambiar(objSel.id, { color: e.target.value })} /></label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+            <button style={btn} onClick={() => cambiar(objSel.id, { rot: ((objSel.rot || 0) + 90) % 360 })}>⟳ 90°</button>
+            <button style={btn} onClick={() => duplicar(objSel.id)}>Duplicar</button>
+            <button style={{ ...btn, background: '#7a2b2b' }} onClick={() => borrar(objSel.id)}>Borrar</button>
+          </div>
+        </div>
+      )}
+      {seleccion && !objSel && (
         <div style={{ position: 'absolute', right: 12, bottom: 12, width: 250, background: 'rgba(20,20,20,0.92)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13, lineHeight: 1.5 }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>{seleccion.nombre || 'Equipo'}</div>
           <div>Medidas: {Math.round(seleccion.largo || seleccion.w)} × {Math.round(seleccion.fondo || seleccion.d)} × {Math.round(seleccion.alto || 110)} cm</div>
