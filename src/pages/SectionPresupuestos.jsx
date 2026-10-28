@@ -969,6 +969,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
   const PRESETS_PAGO = [
     ['100% por adelantado', [{ concepto: 'Pago íntegro al firmar', pct: 100 }]],
     ['50% / 50%', [{ concepto: 'Al firmar / inicio', pct: 50 }, { concepto: 'Al finalizar', pct: 50 }]],
+    ['50 / 40 / 10', [{ concepto: 'Al inicio (firma)', pct: 50 }, { concepto: 'A mitad de obra', pct: 40 }, { concepto: 'Al finalizar y entregar', pct: 10 }]],
     ['40 / 30 / 30', [{ concepto: 'Al firmar / inicio', pct: 40 }, { concepto: 'A mitad de obra', pct: 30 }, { concepto: 'Al finalizar', pct: 30 }]],
   ];
   const sumaCal = calendario.reduce((s, h) => s + (parseFloat(h.pct) || 0), 0);
