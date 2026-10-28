@@ -98,7 +98,7 @@ function muro(m, h0) {
     if (y1 <= y0) continue;
     const w = (x1 - x0) * CM, h = (y1 - y0) * CM, cx = ((x0 + x1) / 2) * CM, cy = ((y0 + y1) / 2) * CM, tt = (m.t || 12) * CM;
     const fr = 0.05, marco = new THREE.MeshStandardMaterial({ color: o.t === 'door' || o.tipo === 'door' ? 0x8a6a4a : 0xf2f2f2, roughness: 0.6 });
-    const parte = (bw, bh, bd, px, py, mat, extra) => { const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat); b.position.set(px, py, 0); b.castShadow = true; b.userData = { capa: 'huecos', ...(extra || {}) }; mesh.add(b); return b; };
+    const parte = (bw, bh, bd, px, py, mat, extra) => { const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat); b.position.set(px, py, 0); b.castShadow = true; b.userData = { capa: 'huecos', hueco: { muroId: m.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t }, ...(extra || {}) }; mesh.add(b); return b; };
     parte(w, fr, tt * 1.02, cx, y1 * CM - fr / 2, marco); parte(w, fr, tt * 1.02, cx, y0 * CM + fr / 2, marco);
     parte(fr, h, tt * 1.02, x0 * CM + fr / 2, cy, marco); parte(fr, h, tt * 1.02, x1 * CM - fr / 2, cy, marco);
     if ((o.tipo || o.t) === 'door') parte(w - fr * 2, h - fr * 2, 0.04, cx, cy, new THREE.MeshStandardMaterial({ color: 0xc9a77c, roughness: 0.55 }));
@@ -190,6 +190,9 @@ export default function Visor3D() {
   const cargadaEscena = useRef(false);
   const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, todosMuros: null, todosSuelos: null, todosTechos: null });
   const [texturas, setTexturas] = useState([]);
+  const [selHueco, setSelHueco] = useState(null); // hueco del plano seleccionado, con sus medidas nuevas
+  const [eqNuevo, setEqNuevo] = useState(null);     // medidas nuevas del equipo del plano seleccionado
+  const [aviso, setAviso] = useState('');
   const [paleta, setPaleta] = useState([]);
   const [matAbierto, setMatAbierto] = useState(false);
   const [matSel, setMatSel] = useState(null);      // { hex } o { id } (textura)
@@ -214,7 +217,13 @@ export default function Visor3D() {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xeeeae5);
+    {
+      const cv = document.createElement('canvas'); cv.width = 2; cv.height = 256;
+      const cx = cv.getContext('2d'), gr = cx.createLinearGradient(0, 0, 0, 256);
+      gr.addColorStop(0, '#8db6dc'); gr.addColorStop(0.55, '#d8e6ef'); gr.addColorStop(1, '#efe9e0');
+      cx.fillStyle = gr; cx.fillRect(0, 0, 2, 256);
+      const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; scene.background = t;
+    }
     const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
     const ctrl = new OrbitControls(cam, renderer.domElement);
     ctrl.enableDamping = true;
@@ -272,6 +281,7 @@ export default function Visor3D() {
       primera = false;
     }).catch(() => { if (vivo && primera) setEstado('error'); });
     cargar();
+    api3d.current.recargar = () => { ultima = null; return cargar(); };
     // El plano se edita en otra pestaña: se mira si ha cambiado cada pocos segundos
     const reloj = setInterval(() => { if (!document.hidden) cargar(); }, 6000);
 
@@ -296,8 +306,11 @@ export default function Visor3D() {
       const primero = rayo.intersectObjects(raiz.children, true).find(h => visible(h.object));
       if (sel) sel.userData.cuerpo.material.emissive.setHex(0x000000);
       sel = null;
+      setSelHueco(null);
+      const uh = primero?.object?.userData?.hueco;
+      if (uh) { setSelHueco({ ...uh, nuevo: { w: uh.w, h: uh.h, sill: uh.sill, p: uh.p } }); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
       let eq = null; if (primero) { let o = primero.object; while (o && !o.userData.equipo) o = o.parent; eq = o; }
-      if (eq) { sel = eq; eq.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(eq.userData.equipo); setSelAcab(null); }
+      if (eq) { sel = eq; eq.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(eq.userData.equipo); setEqNuevo({ w: eq.userData.equipo.largo || eq.userData.equipo.w, d: eq.userData.equipo.fondo || eq.userData.equipo.d, rot: eq.userData.equipo.rot || 0 }); setSelAcab(null); }
       else {
         setSeleccion(null);
         const u = primero?.object?.userData || {};
@@ -469,6 +482,21 @@ export default function Visor3D() {
     setObjs(prev => [...prev, n]); setSelObj(n.id);
   };
   const objSel = objs.find(o => o.id === selObj) || null;
+  const AVISO_PLANO = 'Guardado en el plano ✓. Si tienes Planos abierto en otra pestaña, recárgalo: si no, al guardar allí se perdería este cambio.';
+  const aplicarHueco = async () => {
+    if (!selHueco) return;
+    try {
+      await api.patch('/medicion/' + id + '/hueco', { opId: selHueco.id || undefined, muroId: selHueco.muroId, p0: selHueco.p, w0: selHueco.w, cambios: selHueco.nuevo });
+      setSelHueco(null); setAviso(AVISO_PLANO); api3d.current.recargar?.();
+    } catch (e) { setAviso(e.response?.data?.error || 'No se pudo cambiar el hueco'); }
+  };
+  const aplicarEquipo = async () => {
+    if (!seleccion || !eqNuevo) return;
+    try {
+      await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios: eqNuevo });
+      setSeleccion(null); setAviso(AVISO_PLANO); api3d.current.recargar?.();
+    } catch (e) { setAviso(e.response?.data?.error || 'No se pudo cambiar el equipo'); }
+  };
   const [subiendo, setSubiendo] = useState('');
   const asignarModelo = async (archivo) => {
     if (!archivo || !objSel?.cid) return;
@@ -549,10 +577,10 @@ export default function Visor3D() {
     setIa({ estado: 'trabajando' });
     try {
       const el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
-      const W = 1600, H = Math.round(W * h0 / w0);
+      const W = 2048, H = Math.round(W * h0 / w0);
       renderer.setPixelRatio(1); renderer.setSize(W, H, false); cam.aspect = W / H; cam.updateProjectionMatrix();
       renderer.render(scene, cam);
-      const imagen = renderer.domElement.toDataURL('image/jpeg', 0.92);
+      const imagen = renderer.domElement.toDataURL('image/jpeg', 0.95);
       renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix();
       const r = await api.post('/render-ia', { imagen, ...iaTxt }, { timeout: 180000 });
       setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen });
@@ -646,6 +674,27 @@ export default function Visor3D() {
           </div>
         );
       })()}
+      {aviso && (
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', maxWidth: 560, background: 'rgba(20,20,20,0.95)', color: '#fff', borderRadius: 8, padding: '8px 12px', fontSize: 13, zIndex: 7, display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span>{aviso}</span><button style={btn} onClick={() => setAviso('')}>OK</button>
+        </div>
+      )}
+      {selHueco && (
+        <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>{selHueco.tipo === 'door' ? 'Puerta' : selHueco.tipo === 'win' ? 'Ventana' : 'Hueco'} del plano</div>
+          {[['w', 'Ancho'], ['h', 'Alto'], ['sill', 'Antepecho'], ['p', 'Posición']].map(([k, et]) => (
+            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span style={{ width: 70, opacity: 0.7 }}>{et} cm</span>
+              <input type="number" value={selHueco.nuevo[k]} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, [k]: e.target.value } }))} style={{ ...btn, width: 90 }} />
+            </label>
+          ))}
+          <div style={{ opacity: 0.55, fontSize: 11, margin: '4px 0 8px' }}>Posición = distancia desde el inicio del muro hasta el centro del hueco. Se cambia también en el plano 2D.</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button style={{ ...btn, background: '#2f6fa8' }} onClick={aplicarHueco}>Aplicar al plano</button>
+            <button style={btn} onClick={() => setSelHueco(null)}>Cerrar</button>
+          </div>
+        </div>
+      )}
       {matAbierto && (() => {
         const base = ['#ffffff', '#f4f1ec', '#e8e2d8', '#d9cfc0', '#c9b9a0', '#b8a58c', '#a9b5a1', '#8fa3a8', '#7d8e9c', '#9d9a96', '#6e6a66', '#3a3a3c', '#c9a77c', '#8a6a4a', '#d9a7a0', '#b5695e'];
         const elegir = m => { setMatSel(m); setHerr('pincel'); };
@@ -789,8 +838,14 @@ export default function Visor3D() {
       {seleccion && !objSel && (
         <div style={{ position: 'absolute', right: 12, bottom: 12, width: 250, background: 'rgba(20,20,20,0.92)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13, lineHeight: 1.5 }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>{seleccion.nombre || 'Equipo'}</div>
-          <div>Medidas: {Math.round(seleccion.largo || seleccion.w)} × {Math.round(seleccion.fondo || seleccion.d)} × {Math.round(seleccion.alto || 110)} cm</div>
-          <div>Giro: {Math.round(seleccion.rot || 0)}°</div>
+          <div style={{ marginBottom: 4 }}>Alto: {Math.round(seleccion.alto || 110)} cm</div>
+          {eqNuevo && [['w', 'Largo'], ['d', 'Fondo'], ['rot', 'Giro °']].map(([k, et]) => (
+            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span style={{ width: 70, opacity: 0.7 }}>{et}</span>
+              <input type="number" value={eqNuevo[k]} onChange={e => setEqNuevo(s => ({ ...s, [k]: e.target.value }))} style={{ ...btn, width: 90 }} />
+            </label>
+          ))}
+          <button style={{ ...btn, background: '#2f6fa8', marginTop: 6 }} onClick={aplicarEquipo}>Aplicar al plano</button>
           <div>Estado: {seleccion.estado === 'ex' ? 'existente' : 'nuevo'}</div>
           <button style={{ ...btn, marginTop: 8 }} onClick={() => setSeleccion(null)}>Cerrar</button>
         </div>

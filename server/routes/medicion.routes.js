@@ -562,6 +562,69 @@ router.delete('/:id/textura/:tid', async (req, res) => {
   }
 });
 
+// Cambios hechos en el visor 3D sobre elementos del plano 2D (puertas, ventanas y máquinas): se escriben en el propio plano
+// y en su modelo 3D guardado, así el 2D y el 3D siempre dicen lo mismo.
+const contenedoresPlano = (d) => [d, ...(Array.isArray(d.pisos) ? d.pisos : [])];
+const acota = (v, a, b) => Math.max(a, Math.min(b, parseFloat(v)));
+router.patch('/:id/hueco', async (req, res) => {
+  try {
+    const { opId, muroId, p0, w0, cambios = {} } = req.body || {};
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const data = fila.data || {};
+    const lim = { w: [20, 800], h: [20, 500], sill: [0, 400], p: [0, 5000] };
+    const vals = {};
+    for (const k of Object.keys(lim)) if (Number.isFinite(parseFloat(cambios[k]))) vals[k] = acota(cambios[k], lim[k][0], lim[k][1]);
+    let hecho = false;
+    for (const c of contenedoresPlano(data)) for (const o of c.ops || []) {
+      if (opId ? o.id === opId : (o.wall === muroId && Math.abs(o.p - p0) < 1.5 && Math.abs(o.w - w0) < 1.5)) { Object.assign(o, vals); hecho = true; }
+    }
+    if (!hecho) return res.status(404).json({ error: 'No he encontrado ese hueco en el plano' });
+    const m3 = data.modelo3d;
+    if (m3) for (const pl of (m3.plantas || [m3])) for (const mu of pl.muros || []) if (mu.id === muroId) for (const ab of mu.ab || []) {
+      if (opId ? ab.id === opId : (Math.abs(ab.p - p0) < 1.5 && Math.abs(ab.w - w0) < 1.5)) Object.assign(ab, vals);
+    }
+    const ahora = new Date().toISOString();
+    data.updated = Date.now();
+    const { error } = await supabase.from('mediciones').update({ data, updated_at: ahora }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('medicion hueco:', err);
+    res.status(500).json({ error: 'No se pudo cambiar el hueco en el plano' });
+  }
+});
+router.patch('/:id/equipo', async (req, res) => {
+  try {
+    const { eqId, cambios = {} } = req.body || {};
+    if (!eqId) return res.status(400).json({ error: 'Falta el equipo' });
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const data = fila.data || {};
+    const vals = {};
+    if (Number.isFinite(parseFloat(cambios.w))) vals.w = acota(cambios.w, 5, 2000);
+    if (Number.isFinite(parseFloat(cambios.d))) vals.d = acota(cambios.d, 5, 2000);
+    if (Number.isFinite(parseFloat(cambios.rot))) vals.rot = ((parseFloat(cambios.rot) % 360) + 360) % 360;
+    let hecho = false;
+    for (const c of contenedoresPlano(data)) for (const e of c.eq || []) if (e.id === eqId) { Object.assign(e, vals); hecho = true; }
+    if (!hecho) return res.status(404).json({ error: 'No he encontrado ese equipo en el plano' });
+    const m3 = data.modelo3d;
+    if (m3) for (const pl of (m3.plantas || [m3])) for (const e of pl.equipos || []) if (e.id === eqId) {
+      Object.assign(e, vals);
+      if (vals.w !== undefined) e.largo = vals.w;
+      if (vals.d !== undefined) e.fondo = vals.d;
+    }
+    const ahora = new Date().toISOString();
+    data.updated = Date.now();
+    const { error } = await supabase.from('mediciones').update({ data, updated_at: ahora }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('medicion equipo:', err);
+    res.status(500).json({ error: 'No se pudo cambiar el equipo en el plano' });
+  }
+});
+
 // Enlace para SketchUp de un plano (solo lectura)
 router.post('/:id/sketchup', async (req, res) => {
   try {
