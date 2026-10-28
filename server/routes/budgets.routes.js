@@ -1001,14 +1001,16 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       }, 0);
       const descuentoMostrado = ahorroPack + abonadoNeg * (1 + (parseFloat(iva) || 0) / 100);
       if (y > H - 130) { doc.addPage(); y = margin + 20; }
-      doc.rect(margin, y, W - margin * 2, 64).fill('#eef7f1');
-      doc.rect(margin, y, 4, 64).fill('#2e7d4f');
+      const hCaja = abonadoNeg > 0 ? 78 : 64;
+      doc.rect(margin, y, W - margin * 2, hCaja).fill('#eef7f1');
+      doc.rect(margin, y, 4, hCaja).fill('#2e7d4f');
       doc.fillColor('#2e7d4f').fontSize(8).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO', margin + 16, y + 11);
       doc.fillColor('#555555').fontSize(10).font('Helvetica').text('El precio total es de', margin + 16, y + 30, { width: 150 });
       doc.fillColor('#2e7d4f').fontSize(10).font('Helvetica-Bold').text('Total descuentos: -' + fmtEur(descuentoMostrado), margin + 16, y + 46, { width: 260 });
       doc.fillColor('#1f6b40').fontSize(24).font('Helvetica-Bold').text(fmtEur(totalPack), margin + 16, y + 26, { width: W - margin * 2 - 32, align: 'right' });
       doc.fillColor('#777777').fontSize(7.5).font('Helvetica').text(parseFloat(iva) > 0 ? 'impuestos incluidos' : 'impuestos no incluidos', margin + 16, y + 52, { width: W - margin * 2 - 32, align: 'right' });
-      y += 80;
+      if (abonadoNeg > 0) doc.fillColor('#6b8f78').fontSize(7.5).font('Helvetica').text('La suma de descuentos incluye la oferta (' + fmtEur(ahorroPack) + ') más lo ya abonado anteriormente (' + fmtEur(abonadoNeg * (1 + (parseFloat(iva) || 0) / 100)) + '), impuestos incluidos.', margin + 16, y + 63, { width: W - margin * 2 - 32 });
+      y += hCaja + 16;
     }
 
     if (showSavings && totalSavings > 0 && !(packEur > 0 || packPct > 0)) {
