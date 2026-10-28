@@ -318,6 +318,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
           paso: p.bloques?.paso || null,
           enlace: /^https?:\/\//i.test(p.link || '') ? p.link : null,
           skp: p.bloques?.skp?.url ? { url: p.bloques.skp.url, rot: Number(p.bloques.skp.rot) || 0 } : null,
+          modelo3d: p.bloques?.modelo3d?.url ? { url: p.bloques.modelo3d.url, tipo: p.bloques.modelo3d.tipo || 'glb', rot: Number(p.bloques.modelo3d.rot) || 0 } : null,
           alto: Number(p.altura) > 0 ? Number(p.altura) : null,
           ...(p.bloques?.svg?.planta ? {
             bloque: { planta: p.bloques.svg.planta, largo: p.bloques.largo, fondo: p.bloques.fondo },
@@ -492,7 +493,7 @@ router.put('/:id/escena3d', async (req, res) => {
       nombre: String(o.nombre || '').slice(0, 120),
       cx: num(o.cx), cy: num(o.cy), rot: num(o.rot),
       w: Math.max(1, num(o.w, 100)), d: Math.max(1, num(o.d, 100)), alto: Math.max(1, num(o.alto, 100)),
-      z0: num(o.z0), color: /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : null,
+      rotM: num(o.rotM), z0: num(o.z0), color: /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : null,
       skp: o.skp?.url ? { url: String(o.skp.url).slice(0, 500), rot: num(o.skp.rot) } : null,
     })).filter(o => o.id);
     const { data: fila, error } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();

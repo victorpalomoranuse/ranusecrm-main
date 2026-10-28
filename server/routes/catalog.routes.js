@@ -1,7 +1,7 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
-import { uploadCatalogPhotoFile, uploadSkpFile, handleMulterError } from '../middleware/upload.middleware.js';
+import { uploadCatalogPhotoFile, uploadSkpFile, uploadModelo3dFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { uploadCatalogPhoto, deleteCatalogPhoto, copyCatalogPhoto } from '../utils/storage.js';
 import sharp from 'sharp';
 import { callClaude } from '../utils/anthropic.js';
@@ -360,6 +360,8 @@ router.put('/products/:id/bloques', async (req, res) => {
     {
       const skpPrev = previo?.bloques?.skp || (await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle()).data?.bloques?.skp;
       if (skpPrev) bloques.skp = skpPrev;
+      const m3Prev = previo?.bloques?.modelo3d || (await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle()).data?.bloques?.modelo3d;
+      if (m3Prev) bloques.modelo3d = m3Prev;
     }
     // Las medidas del bloque son las medidas reales del producto: largo → longitud, fondo → ancho
     const { data, error } = await supabase.from('catalog_products').update({ bloques, longitud: L, ancho: D, altura: H }).eq('id', req.params.id).select('id, longitud, ancho, altura, bloques').single();
@@ -494,6 +496,46 @@ function urlDirecta(u) {
   if (/(^|\.)dropbox\.com$/.test(url.hostname)) { url.searchParams.delete('dl'); url.searchParams.set('dl', '1'); return url.toString(); }
   return url.toString();
 }
+// ── Modelo 3D para el visor 3D (glb, gltf, obj, dae) asignado a un producto ──
+// Todas las veces que se coloque ese producto en el visor se verá con este modelo.
+const TIPOS_MODELO3D = { glb: 'model/gltf-binary', gltf: 'model/gltf+json', obj: 'text/plain', dae: 'model/vnd.collada+xml' };
+router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Falta el archivo del modelo' });
+    const ext = String(req.file.originalname.split('.').pop()).toLowerCase();
+    const { data: pr, error: e0 } = await supabase.from('catalog_products').select('id, bloques').eq('id', req.params.id).maybeSingle();
+    if (e0) throw e0;
+    if (!pr) return res.status(404).json({ error: 'Producto no encontrado' });
+    const ruta = `modelos-3d/${req.params.id}-${Date.now()}.${ext}`;
+    const { error: eUp } = await supabase.storage.from(BUCKET_SKP).upload(ruta, req.file.buffer, { contentType: TIPOS_MODELO3D[ext] || 'application/octet-stream', upsert: true });
+    if (eUp) throw eUp;
+    const { data: { publicUrl } } = supabase.storage.from(BUCKET_SKP).getPublicUrl(ruta);
+    const antiguo = rutaDeUrl(pr.bloques?.modelo3d?.url);
+    const modelo3d = { url: publicUrl, tipo: ext, rot: Number(pr.bloques?.modelo3d?.rot) || 0, nombre: req.file.originalname, bytes: req.file.size, actualizado: new Date().toISOString() };
+    const { error } = await supabase.from('catalog_products').update({ bloques: { ...(pr.bloques || {}), modelo3d } }).eq('id', req.params.id);
+    if (error) throw error;
+    if (antiguo) await supabase.storage.from(BUCKET_SKP).remove([antiguo]).catch(() => {});
+    res.status(201).json({ modelo3d });
+  } catch (err) {
+    console.error('catalog modelo3d:', err);
+    res.status(500).json({ error: 'No se pudo guardar el modelo 3D' });
+  }
+});
+router.delete('/products/:id/modelo3d', async (req, res) => {
+  try {
+    const { data: pr } = await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle();
+    if (!pr?.bloques?.modelo3d) return res.json({ ok: true });
+    const { modelo3d, ...resto } = pr.bloques;
+    const { error } = await supabase.from('catalog_products').update({ bloques: resto }).eq('id', req.params.id);
+    if (error) throw error;
+    const antiguo = rutaDeUrl(modelo3d.url);
+    if (antiguo) await supabase.storage.from(BUCKET_SKP).remove([antiguo]).catch(() => {});
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo quitar el modelo 3D' });
+  }
+});
+
 router.post('/products/:id/skp-enlace', async (req, res) => {
   try {
     const directa = urlDirecta(req.body?.url);

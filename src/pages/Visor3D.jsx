@@ -2,11 +2,44 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import api from '../services/api';
 
 // Visor 3D de un plano de Planos (lee su modelo3d). Pensado para gimnasios: paredes con puertas y ventanas,
 // suelos por sala, pilares y máquinas como bloques con sus medidas. Las medidas del plano van en cm.
 const CM = 0.01;
+
+// Modelos 3D asignados a los productos: se descargan una vez y se reutilizan (se clonan) en cada copia
+const cacheModelos = new Map();
+function cargarModelo(m) {
+  if (cacheModelos.has(m.url)) return cacheModelos.get(m.url);
+  const t = String(m.tipo || '').toLowerCase();
+  const p = new Promise((ok, mal) => {
+    if (t === 'obj') new OBJLoader().load(m.url, ok, undefined, mal);
+    else if (t === 'dae') new ColladaLoader().load(m.url, r => ok(r.scene), undefined, mal);
+    else new GLTFLoader().load(m.url, r => ok(r.scene), undefined, mal);
+  });
+  p.catch(() => cacheModelos.delete(m.url));
+  cacheModelos.set(m.url, p);
+  return p;
+}
+// El modelo se escala (sin deformarlo) para que quepa en las medidas del objeto y se apoya en el suelo, centrado
+function ajustarModelo(raw, w, d, h) {
+  const g = raw.clone(true);
+  const caja = new THREE.Box3().setFromObject(g);
+  const s = caja.getSize(new THREE.Vector3());
+  if (!(s.x > 0 && s.y > 0 && s.z > 0)) return null;
+  const k = Math.min(w / s.x, h / s.y, d / s.z);
+  const c = caja.getCenter(new THREE.Vector3());
+  const envoltorio = new THREE.Group();
+  g.position.set(-c.x, -caja.min.y, -c.z);
+  envoltorio.add(g);
+  envoltorio.scale.setScalar(k);
+  envoltorio.traverse(x => { if (x.isMesh) { x.castShadow = x.receiveShadow = true; } });
+  return envoltorio;
+}
 
 function color(hex, def) {
   try { return new THREE.Color(hex || def); } catch { return new THREE.Color(def); }
@@ -270,15 +303,27 @@ export default function Visor3D() {
     objs.forEach(o => {
       const w = o.w * CM, d = o.d * CM, h = o.alto * CM;
       const g = new THREE.Group();
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: color(o.color, o.tipo === 'caja' ? '#9aa3ad' : '#2f6fa8'), roughness: 0.55, metalness: o.tipo === 'caja' ? 0 : 0.15, emissive: o.id === selObj ? 0x335577 : 0x000000 }));
-      m.position.y = h / 2 + (o.z0 || 0) * CM; m.castShadow = m.receiveShadow = true;
+      const mod = modeloDe(o);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: color(o.color, o.tipo === 'caja' ? '#9aa3ad' : '#2f6fa8'), roughness: 0.55, metalness: o.tipo === 'caja' ? 0 : 0.15, emissive: o.id === selObj ? 0x335577 : 0x000000, transparent: !!mod, opacity: mod ? 0.18 : 1 }));
+      m.position.y = h / 2 + (o.z0 || 0) * CM; m.castShadow = !mod; m.receiveShadow = !mod;
       g.add(m);
+      if (mod) {
+        // mientras baja el modelo se ve la caja fantasma; después, el modelo real en su lugar
+        cargarModelo(mod).then(raw => {
+          if (!g.parent) return; // el objeto ya no está en la escena
+          const mm = ajustarModelo(raw, w, d, h);
+          if (!mm) return;
+          mm.rotation.y = -((mod.rot || 0) + (o.rotM || 0)) * Math.PI / 180;
+          mm.position.y = (o.z0 || 0) * CM;
+          g.add(mm); m.material.opacity = 0; m.material.needsUpdate = true;
+        }).catch(() => { m.material.opacity = 1; m.material.transparent = false; m.material.needsUpdate = true; });
+      }
       if (o.id === selObj) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(m.position); g.add(l); }
       g.position.set(o.cx * CM, 0, o.cy * CM); g.rotation.y = -(o.rot || 0) * Math.PI / 180;
       g.userData.oid = o.id;
       a.esc.add(g);
     });
-  }, [objs, selObj, estado]);
+  }, [objs, selObj, estado, biblioteca]);
 
   // Guardado automático de la escena (sin pisar el dibujo del plano 2D)
   useEffect(() => {
@@ -292,9 +337,9 @@ export default function Visor3D() {
   }, [objs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!bibAbierta || biblioteca) return;
     api.get('/medicion/catalogos').then(r => setBiblioteca((r.data?.maquinas || []).filter(m => m.w > 0 && m.d > 0))).catch(() => setBiblioteca([]));
-  }, [bibAbierta, biblioteca]);
+  }, []);
+  const modeloDe = o => (o.cid && biblioteca?.find(m => m.id === o.cid)?.modelo3d) || null;
 
   const anadirBloque = m => {
     const { ctrl } = api3d.current;
@@ -309,6 +354,24 @@ export default function Visor3D() {
     setObjs(prev => [...prev, n]); setSelObj(n.id);
   };
   const objSel = objs.find(o => o.id === selObj) || null;
+  const [subiendo, setSubiendo] = useState('');
+  const asignarModelo = async (archivo) => {
+    if (!archivo || !objSel?.cid) return;
+    if (/\.skp$/i.test(archivo.name)) { alert('Los archivos .skp de SketchUp no se pueden mostrar en el navegador. En SketchUp: Archivo → Exportar → Modelo 3D, y elige glTF (.glb) o COLLADA (.dae). Sube ese archivo.'); return; }
+    setSubiendo('Subiendo el modelo…');
+    try {
+      const fd = new FormData(); fd.append('file', archivo);
+      const r = await api.post('/catalog/products/' + objSel.cid + '/modelo3d', fd);
+      const nuevo = r.data?.modelo3d;
+      setBiblioteca(prev => (prev || []).map(m => m.id === objSel.cid ? { ...m, modelo3d: { url: nuevo.url, tipo: nuevo.tipo, rot: nuevo.rot } } : m));
+      setSubiendo('Modelo asignado ✓ (vale para todas las copias de este producto)');
+    } catch (e) { setSubiendo(e.response?.data?.error || 'No se pudo subir el modelo'); }
+  };
+  const quitarModelo = async () => {
+    if (!objSel?.cid) return;
+    try { await api.delete('/catalog/products/' + objSel.cid + '/modelo3d'); setBiblioteca(prev => (prev || []).map(m => m.id === objSel.cid ? { ...m, modelo3d: null } : m)); setSubiendo('Modelo quitado'); }
+    catch { setSubiendo('No se pudo quitar'); }
+  };
 
   // Calidad: en ordenadores sin tarjeta gráfica potente se baja la resolución y las sombras
   useEffect(() => {
@@ -413,6 +476,19 @@ export default function Visor3D() {
             </label>
           ))}
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0' }}><span style={{ width: 70, opacity: 0.7 }}>Color</span><input type="color" value={objSel.color || (objSel.tipo === 'caja' ? '#9aa3ad' : '#2f6fa8')} onChange={e => cambiar(objSel.id, { color: e.target.value })} /></label>
+          {objSel.tipo === 'bloque' && objSel.cid && (
+            <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
+              <div style={{ opacity: 0.7, marginBottom: 4 }}>Modelo 3D {modeloDe(objSel) ? '(asignado)' : '(sin modelo: se ve como caja)'}</div>
+              <label style={{ ...btn, display: 'inline-block' }}>
+                {modeloDe(objSel) ? 'Cambiar modelo…' : 'Asignar modelo 3D…'}
+                <input type="file" accept=".glb,.gltf,.obj,.dae,.skp" style={{ display: 'none' }} onChange={e => { asignarModelo(e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+              {modeloDe(objSel) && <button style={{ ...btn, marginLeft: 6 }} onClick={quitarModelo}>Quitar</button>}
+              {modeloDe(objSel) && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}><span style={{ width: 70, opacity: 0.7 }}>Giro modelo</span><input type="number" step="90" value={objSel.rotM || 0} onChange={e => cambiar(objSel.id, { rotM: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 90 }} /></label>}
+              {subiendo && <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4 }}>{subiendo}</div>}
+              <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae. Desde SketchUp: Archivo → Exportar → Modelo 3D.</div>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
             <button style={btn} onClick={() => cambiar(objSel.id, { rot: ((objSel.rot || 0) + 90) % 360 })}>⟳ 90°</button>
             <button style={btn} onClick={() => duplicar(objSel.id)}>Duplicar</button>

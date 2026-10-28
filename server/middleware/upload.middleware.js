@@ -99,6 +99,8 @@ const normalizarFoto = async (req, res, next) => {
 export const uploadDiagnosisImageFile = [subirFoto, normalizarFoto];
 // Modelo 3D de SketchUp (.skp) de un producto del catálogo: hasta 60 MB, en memoria
 export const uploadSkpFile = multer({ storage, limits: { fileSize: 60 * 1024 * 1024, files: 1 }, fileFilter: (req, file, cb) => (/\.skp$/i.test(file.originalname || '') ? cb(null, true) : cb(new Error('El archivo tiene que ser un modelo de SketchUp (.skp)'))) }).single('file');
+// Modelo 3D para el visor (glb, gltf, obj, dae) de un producto del catálogo: hasta 60 MB, en memoria
+export const uploadModelo3dFile = multer({ storage, limits: { fileSize: 60 * 1024 * 1024, files: 1 }, fileFilter: (req, file, cb) => (/\.(glb|gltf|obj|dae)$/i.test(file.originalname || '') ? cb(null, true) : cb(new Error('El modelo tiene que ser .glb, .gltf, .obj o .dae (desde SketchUp: Archivo → Exportar → Modelo 3D)'))) }).single('file');
 export const uploadCategoryItemFile = multer({ storage, fileFilter, limits: { fileSize: 20*1024*1024, files: 1 } }).single('file');
 export const uploadCategoryItemImages = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 15*1024*1024, files: 10 } }).array('images', 10);
 const categoryItemFieldFilter = (req, file, cb) => {
