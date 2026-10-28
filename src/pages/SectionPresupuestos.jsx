@@ -1397,7 +1397,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
                 <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'0.5rem 0.6rem',background:'rgba(255,255,255,0.04)',borderRadius:6,border:'1px solid rgba(255,255,255,0.08)',width:'100%'}}>
                   <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>Oferta «si contratas todo junto»:</span>
                   <input className="ap-field-input" type="number" min="0" step={packMode === 'eur' ? 50 : 0.5} value={packVal} onChange={e=>setPackVal(e.target.value)} placeholder="0" style={{width:90,flex:'none',minWidth:0,fontSize:'0.72rem'}} />
-                  <select className="ap-select" value={packMode} onChange={e=>setPackMode(e.target.value)} style={{fontSize:'0.72rem'}}>
+                  <select className="ap-select" value={packMode} onChange={e=>setPackMode(e.target.value)} style={{fontSize:'0.72rem',width:'auto',flex:'none',minWidth:0}}>
                     <option value="eur">€ (el cliente ve «Ahorras X €»)</option>
                     <option value="pct">% de descuento</option>
                   </select>
