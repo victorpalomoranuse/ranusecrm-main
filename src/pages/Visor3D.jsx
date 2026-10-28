@@ -304,7 +304,7 @@ export default function Visor3D() {
       rayo.setFromCamera(p2, cam);
       const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
       if (herrRef.current === 'pincel') {
-        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => visible(x.object));
+        const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => x.object.isMesh && visible(x.object));
         if (h) aplicarPincel(h, e.shiftKey);
         return;
       }
@@ -345,6 +345,30 @@ export default function Visor3D() {
       return o && o.visible ? o : null;
     };
     let arrastre = null, trazo = null, previa = null;
+    let poli = [], poliLinea = null, poliAbajo = null, empuje = null;
+    const idNuevo = () => 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    const dibujarPoli = (cursor) => {
+      if (poliLinea) { scene.remove(poliLinea); poliLinea.geometry.dispose(); poliLinea = null; }
+      const pts = cursor ? [...poli, cursor] : poli;
+      if (pts.length < 2) return;
+      poliLinea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x * CM, 0.03, p.y * CM))), new THREE.LineBasicMaterial({ color: 0x1b6dd6 }));
+      scene.add(poliLinea);
+    };
+    const cerrarPoli = () => {
+      if (poli.length >= 3) {
+        const xs = poli.map(p => p.x), ys = poli.map(p => p.y);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const nuevo = { id: idNuevo(), tipo: 'prisma', nombre: 'Volumen', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 100, z0: 0, color: '#9aa3ad', pts: poli.map(p => [p.x - cx, p.y - cy]) };
+        setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id);
+      }
+      poli = []; dibujarPoli(null); setHerr('sel');
+    };
+    const onTecla = e => {
+      if (herrRef.current !== 'poli') return;
+      if (e.key === 'Enter') cerrarPoli();
+      if (e.key === 'Escape') { poli = []; dibujarPoli(null); setHerr('sel'); }
+    };
+    window.addEventListener('keydown', onTecla);
     const aplicarPincel = (hit, todos) => {
       const mat = matSelRef.current; if (!mat) return;
       const valor = mat.hex || ('tex:' + mat.id);
@@ -352,11 +376,36 @@ export default function Visor3D() {
       if (u.muroId) setAcab(a => (todos ? { ...a, muros: {}, todosMuros: valor } : { ...a, muros: { ...a.muros, [u.muroId]: valor } }));
       else if (u.salaKey) setAcab(a => (todos ? { ...a, salas: {}, todosSuelos: valor } : { ...a, salas: { ...a.salas, [u.salaKey]: valor } }));
       else if (u.techoKey) setAcab(a => (todos ? { ...a, techos: {}, todosTechos: valor } : { ...a, techos: { ...a.techos, [u.techoKey]: valor } }));
-      else { let o = hit.object; while (o && !o.userData.oid) o = o.parent; if (o) setObjs(prev => prev.map(x => (x.id === o.userData.oid ? { ...x, color: valor } : x))); }
+      else {
+        let o = hit.object; while (o && !o.userData.oid) o = o.parent;
+        if (o) {
+          const idx = hit.face?.materialIndex, oid = o.userData.oid;
+          setObjs(prev => prev.map(x => {
+            if (x.id !== oid) return x;
+            if (todos || idx === undefined || !['caja', 'prisma', 'bloque'].includes(x.tipo)) return { ...x, color: valor, caras: undefined };
+            return { ...x, caras: { ...(x.caras || {}), [idx]: valor } }; // solo esa cara
+          }));
+        }
+      }
     };
     const onDownD = e => {
       if (e.button !== 0) return;
       if (herrRef.current === 'pincel') return;
+      if (herrRef.current === 'poli') { poliAbajo = [e.clientX, e.clientY]; return; }
+      if (herrRef.current === 'empujar') {
+        const r = dom.getBoundingClientRect();
+        p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+        rayo.setFromCamera(p2, cam);
+        const h = rayo.intersectObjects(esc.children, true).find(x => x.object.isMesh && x.face);
+        if (!h) return;
+        const nrm = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+        if (nrm.y < 0.9) return; // solo se empuja o tira de la cara de arriba
+        let o = h.object; while (o && !o.userData.oid) o = o.parent;
+        const ob = o && objsRef.current.find(x => x.id === o.userData.oid); if (!ob) return;
+        setSelObj(ob.id); ctrl.enabled = false;
+        empuje = { id: ob.id, alto0: ob.alto, z0: ob.z0 || 0, y0: e.clientY, malla: o.userData.malla, nuevo: null };
+        e.stopPropagation(); return;
+      }
       if (herrRef.current === 'caja') {
         const p = puntoSuelo(e); if (!p) return;
         ctrl.enabled = false; trazo = p;
@@ -372,6 +421,16 @@ export default function Visor3D() {
       e.stopPropagation();
     };
     const onMoveD = e => {
+      if (herrRef.current === 'poli' && poli.length) { const p = puntoSuelo(e); if (p) dibujarPoli(p); return; }
+      if (empuje) {
+        const m = empuje.malla, dist = cam.position.distanceTo(m.getWorldPosition(new THREE.Vector3()));
+        const cmPorPx = (2 * dist * Math.tan(cam.fov * Math.PI / 360) / dom.clientHeight) * 100;
+        const alto = Math.max(5, Math.round((empuje.alto0 + (empuje.y0 - e.clientY) * cmPorPx) / 5) * 5);
+        empuje.nuevo = alto;
+        const s = alto / empuje.alto0; m.scale.y = s;
+        if (m.userData.centrado) m.position.y = (empuje.z0 + empuje.alto0 * s / 2) * CM;
+        return;
+      }
       if (trazo && previa) {
         const p = puntoSuelo(e); if (!p) return;
         const w = Math.max(5, Math.abs(p.x - trazo.x)), d = Math.max(5, Math.abs(p.y - trazo.y));
@@ -384,6 +443,19 @@ export default function Visor3D() {
       }
     };
     const onUpD = e => {
+      if (poliAbajo) {
+        const d0 = Math.hypot(e.clientX - poliAbajo[0], e.clientY - poliAbajo[1]); poliAbajo = null;
+        if (d0 < 4) {
+          const p = puntoSuelo(e);
+          if (p) { if (poli.length >= 3 && Math.hypot(p.x - poli[0].x, p.y - poli[0].y) < 15) cerrarPoli(); else { poli.push(p); dibujarPoli(null); } }
+        }
+        return;
+      }
+      if (empuje) {
+        const a = empuje; empuje = null; ctrl.enabled = true;
+        if (a.nuevo) setObjs(prev => prev.map(x => (x.id === a.id ? { ...x, alto: a.nuevo } : x)));
+        return;
+      }
       if (trazo) {
         const p = puntoSuelo(e);
         scene.remove(previa); previa.geometry.dispose(); previa.material.dispose(); previa = null;
@@ -401,7 +473,7 @@ export default function Visor3D() {
     window.addEventListener('pointermove', onMoveD);
     window.addEventListener('pointerup', onUpD);
 
-    return () => { el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); renderer.dispose(); el.removeChild(renderer.domElement); };
+    return () => { window.removeEventListener('keydown', onTecla); el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); renderer.dispose(); el.removeChild(renderer.domElement); };
   }, [id]);
 
   // Colores de muros y suelos (cambian sin rehacer el plano)
@@ -434,10 +506,26 @@ export default function Visor3D() {
       const w = o.w * CM, d = o.d * CM, h = o.alto * CM;
       const g = new THREE.Group();
       const mod = modeloDe(o);
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: color(/^#/.test(o.color || '') ? o.color : null, o.tipo === 'caja' ? '#9aa3ad' : '#2f6fa8'), roughness: 0.55, metalness: o.tipo === 'caja' ? 0 : 0.15, emissive: o.id === selObj ? 0x335577 : 0x000000, transparent: !!mod, opacity: mod ? 0.18 : 1 }));
-      m.position.y = h / 2 + (o.z0 || 0) * CM; m.castShadow = !mod; m.receiveShadow = !mod;
-      const tx = o.color && String(o.color).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === o.color) : null;
-      if (tx) { const mp = texturaDe(tx, true).clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, o.w / tx.tam), Math.max(0.2, o.alto / tx.tam)); m.material.map = mp; m.material.color.setHex(0xffffff); }
+      const esPrisma = o.tipo === 'prisma' && Array.isArray(o.pts) && o.pts.length >= 3;
+      let geo;
+      if (esPrisma) {
+        const sh = new THREE.Shape(o.pts.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM)));
+        geo = new THREE.ExtrudeGeometry(sh, { depth: h, bevelEnabled: false });
+        geo.rotateX(-Math.PI / 2); // el contorno queda en el suelo y se eleva hacia arriba
+      } else geo = new THREE.BoxGeometry(w, h, d);
+      const liso = o.tipo === 'caja' || esPrisma;
+      const mats = Array.from({ length: esPrisma ? 2 : 6 }, (_, i) => {
+        const val = (o.caras && o.caras[i]) || o.color;
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, liso ? '#9aa3ad' : '#2f6fa8'), roughness: 0.55, metalness: liso ? 0 : 0.15, emissive: o.id === selObj ? 0x335577 : 0x000000, transparent: !!mod, opacity: mod ? 0.18 : 1 });
+        const tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
+        if (tx) { const mp = texturaDe(tx, true).clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, o.w / tx.tam), Math.max(0.2, o.alto / tx.tam)); mt.map = mp; mt.color.setHex(0xffffff); }
+        return mt;
+      });
+      const fantasma = v => mats.forEach(mt => { mt.opacity = v; mt.transparent = v < 1; mt.needsUpdate = true; });
+      const m = new THREE.Mesh(geo, mats);
+      m.position.y = (esPrisma ? 0 : h / 2) + (o.z0 || 0) * CM; m.castShadow = !mod; m.receiveShadow = !mod;
+      m.userData.centrado = !esPrisma;
+      g.userData.malla = m;
       g.add(m);
       if (mod) {
         // mientras baja el modelo se ve la caja fantasma; después, el modelo real en su lugar
@@ -447,8 +535,8 @@ export default function Visor3D() {
           if (!mm) return;
           mm.rotation.y = -((mod.rot || 0) + (o.rotM || 0)) * Math.PI / 180;
           mm.position.y = (o.z0 || 0) * CM;
-          g.add(mm); m.material.opacity = 0; m.material.needsUpdate = true;
-        }).catch(() => { m.material.opacity = 1; m.material.transparent = false; m.material.needsUpdate = true; });
+          g.add(mm); fantasma(0);
+        }).catch(() => { fantasma(1); });
       }
       if (o.id === selObj) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(m.position); g.add(l); }
       g.position.set(o.cx * CM, 0, o.cy * CM); g.rotation.y = -(o.rot || 0) * Math.PI / 180;
@@ -623,12 +711,14 @@ export default function Visor3D() {
   const btn = { background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
-      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: herr === 'pincel' ? 'crosshair' : 'default' }} />
+      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar'].includes(herr) ? 'crosshair' : 'default' }} />
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={btn} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <b style={{ color: '#222', marginRight: 'auto' }}>{titulo}</b>
         <button style={{ ...btn, ...(herr === 'sel' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('sel')} title="Seleccionar y mover objetos">↖ Mover</button>
         <button style={{ ...btn, ...(herr === 'caja' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('caja')} title="Arrastra sobre el suelo para dibujar una caja; luego le das altura">▭ Dibujar caja</button>
+        <button style={{ ...btn, ...(herr === 'poli' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('poli')} title="Haz clic punto a punto sobre el suelo; cierra con Enter o volviendo al primer punto. Luego se extruye (altura).">⬡ Contorno</button>
+        <button style={{ ...btn, ...(herr === 'empujar' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('empujar')} title="Arrastra hacia arriba o abajo la cara de arriba de un objeto para cambiar su altura">⇅ Empujar/Tirar</button>
         <button style={{ ...btn, ...(bibAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setBibAbierta(v => !v)} title="Tus productos del catálogo de Ranuse">📦 Catálogo</button>
         <button style={{ ...btn, ...(b3dAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setB3dAbierta(v => !v)} title="Muebles y texturas gratuitos (Poly Haven, CC0)">🧰 Biblioteca 3D</button>
         <button style={{ ...btn, ...(capasAbierto ? { background: '#2f6fa8' } : {}) }} onClick={() => setCapasAbierto(v => !v)}>🏷 Capas</button>

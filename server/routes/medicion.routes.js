@@ -503,6 +503,7 @@ router.put('/:id/escena3d', async (req, res) => {
       z0: num(o.z0), color: acab(o.color),
       lum: o.tipo === 'luz' ? Math.max(0, Math.min(100, num(o.lum, 40))) : undefined,
       k: o.tipo === 'luz' ? Math.max(1500, Math.min(10000, num(o.k, 3000))) : undefined,
+      caras: o.caras && typeof o.caras === 'object' ? Object.fromEntries(Object.entries(o.caras).slice(0, 12).map(([k, v]) => [String(k).slice(0, 2), acab(v)]).filter(([, v]) => v)) : undefined,
       pts: o.tipo === 'prisma' && Array.isArray(o.pts) ? o.pts.slice(0, 80).map(p => [num(p?.[0]), num(p?.[1])]) : undefined,
       skp: o.skp?.url ? { url: String(o.skp.url).slice(0, 500), rot: num(o.skp.rot) } : null,
       mod: /^https:\/\/[^\s]+\/storage\/v1\/object\/public\//.test(o.mod?.url || '') ? { url: String(o.mod.url).slice(0, 600), tipo: ['gltf', 'glb', 'obj', 'dae'].includes(o.mod.tipo) ? o.mod.tipo : 'gltf', rot: num(o.mod.rot) } : undefined,
