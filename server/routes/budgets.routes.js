@@ -1005,7 +1005,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       doc.rect(margin, y, 4, 64).fill('#2e7d4f');
       doc.fillColor('#2e7d4f').fontSize(8).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO', margin + 16, y + 11);
       doc.fillColor('#555555').fontSize(10).font('Helvetica').text('El precio total es de', margin + 16, y + 30, { width: 150 });
-      doc.fillColor('#2e7d4f').fontSize(8.5).font('Helvetica-Bold').text('Descuento: -' + fmtEur(descuentoMostrado), margin + 16, y + 46, { width: 200 });
+      doc.fillColor('#2e7d4f').fontSize(10).font('Helvetica-Bold').text('Total descuentos: -' + fmtEur(descuentoMostrado), margin + 16, y + 46, { width: 260 });
       doc.fillColor('#1f6b40').fontSize(24).font('Helvetica-Bold').text(fmtEur(totalPack), margin + 16, y + 26, { width: W - margin * 2 - 32, align: 'right' });
       doc.fillColor('#777777').fontSize(7.5).font('Helvetica').text(parseFloat(iva) > 0 ? 'impuestos incluidos' : 'impuestos no incluidos', margin + 16, y + 52, { width: W - margin * 2 - 32, align: 'right' });
       y += 80;
