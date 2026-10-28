@@ -349,7 +349,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
     const materiales = (await Promise.all(materialesBase.map(async p => {
       const foto = await fotoMiniatura(p.photo_url, true);
       if (!foto) return null;
-      return { id: p.id, n: p.name, cat: limpiarCategoria(catPorId[p.category_id].name), tw: Number(p.ancho) > 5 && Number(p.ancho) < 500 ? Number(p.ancho) : 60, ...foto };
+      return { id: p.id, n: p.name, cat: limpiarCategoria(catPorId[p.category_id].name), tw: Number(p.ancho) > 5 && Number(p.ancho) < 500 ? Number(p.ancho) : 60, url: p.photo_url || null, ...foto };
     }))).filter(Boolean);
     // Todos los productos (ligeros) para la memoria de calidades: mecanismos, grifería, sanitarios…
     const productos = (prods || []).map(p => {
@@ -520,11 +520,14 @@ router.put('/:id/escena3d', async (req, res) => {
     const a = req.body?.acabados || {};
     const acabados = { muros: mapa(a.muros), salas: mapa(a.salas), techos: mapa(a.techos), todosMuros: acab(a.todosMuros), todosSuelos: acab(a.todosSuelos), todosTechos: acab(a.todosTechos) };
     const paleta = (Array.isArray(req.body?.paleta) ? req.body.paleta : []).slice(0, 80).map(p => ({ nombre: String(p?.nombre || '').slice(0, 60), hex: hex(p?.hex) })).filter(p => p.hex);
+    const rd = req.body?.rodapie || {};
+    const rodapie = { on: !!rd.on, alto: Math.max(2, Math.min(30, num(rd.alto, 10))), grosor: Math.max(0.5, Math.min(5, num(rd.grosor, 1.5))), color: hex(rd.color) || '#ffffff' };
+    const guias = (Array.isArray(req.body?.guias) ? req.body.guias : []).slice(0, 60).map(g => ({ x1: num(g?.x1), y1: num(g?.y1), x2: num(g?.x2), y2: num(g?.y2) }));
     const { data: fila, error } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
     const previa = fila.data?.escena3d || {};
-    const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, texturas: previa.texturas || [], hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
+    const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, rodapie, guias, texturas: previa.texturas || [], hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
     const { error: e2 } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (e2) throw e2;
     res.json({ ok: true });
@@ -576,6 +579,26 @@ router.post('/:id/textura-biblioteca', async (req, res) => {
   } catch (err) {
     console.error('medicion textura-biblioteca:', err);
     res.status(500).json({ error: 'No se pudo añadir la textura' });
+  }
+});
+router.post('/:id/textura-catalogo', async (req, res) => {
+  try {
+    const { data: p } = await supabase.from('catalog_products').select('id, name, photo_url, ancho').eq('id', req.body?.prodId).maybeSingle();
+    if (!p?.photo_url) return res.status(404).json({ error: 'Ese material no tiene foto en el catálogo' });
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || { objetos: [] };
+    const idTex = 'c_' + p.id;
+    if ((esc.texturas || []).some(x => x.id === idTex)) return res.json({ textura: esc.texturas.find(x => x.id === idTex) });
+    const tam = Number(p.ancho) > 5 && Number(p.ancho) < 500 ? Number(p.ancho) : Math.max(5, Math.min(1000, parseFloat(req.body?.tam) || 60));
+    const tex = { id: idTex, nombre: p.name, url: p.photo_url, tam, prod: p.id };
+    const data = { ...fila.data, escena3d: { ...esc, texturas: [...(esc.texturas || []), tex].slice(-80), updated: Date.now() } };
+    const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
+    if (error) throw error;
+    res.status(201).json({ textura: tex });
+  } catch (err) {
+    console.error('medicion textura-catalogo:', err);
+    res.status(500).json({ error: 'No se pudo usar ese material' });
   }
 });
 router.delete('/:id/textura/:tid', async (req, res) => {

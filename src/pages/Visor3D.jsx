@@ -269,6 +269,12 @@ export default function Visor3D() {
   const [selHueco, setSelHueco] = useState(null); // hueco del plano seleccionado, con sus medidas nuevas
   const [eqNuevo, setEqNuevo] = useState(null);     // medidas nuevas del equipo del plano seleccionado
   const [aviso, setAviso] = useState('');
+  const [rodapie, setRodapie] = useState({ on: false, alto: 10, grosor: 1.5, color: '#ffffff' });
+  const [guias, setGuias] = useState([]);
+  const guiasRef = useRef([]);
+  const puntosSnapRef = useRef([]);
+  const [matsCat, setMatsCat] = useState([]);  // materiales del catálogo de Ranuse (con foto)
+  useEffect(() => { guiasRef.current = guias; }, [guias]);
   const [paleta, setPaleta] = useState([]);
   const [matAbierto, setMatAbierto] = useState(false);
   const [matSel, setMatSel] = useState(null);      // { hex } o { id } (textura)
@@ -332,7 +338,7 @@ export default function Visor3D() {
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); }
       const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
@@ -353,6 +359,12 @@ export default function Visor3D() {
         sol.shadow.camera.updateProjectionMatrix();
         setEstado('listo');
       }
+      // guardamos el modelo y los puntos a los que se «imanta» el dibujo (extremos de muros y esquinas de salas)
+      api3d.current.modelo = modelo;
+      puntosSnapRef.current = (modelo.plantas || [modelo]).flatMap(pl => [
+        ...(pl.muros || []).flatMap(m => [{ x: m.a[0], y: m.a[1] }, { x: m.b[0], y: m.b[1] }]),
+        ...(pl.salas || []).flatMap(s => (s.pts || []).map(p => ({ x: p[0], y: p[1] }))),
+      ]);
       setRev(v => v + 1);
       primera = false;
     }).catch(() => { if (vivo && primera) setEstado('error'); });
@@ -401,11 +413,28 @@ export default function Visor3D() {
     // Diseño: mover objetos y dibujar cajas sobre el suelo
     const suelo = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), pt = new THREE.Vector3();
     const snap = v => Math.round(v / 5) * 5;
+    const imantar = p => {
+      let mejor = null, dmin = 12;
+      for (const q of puntosSnapRef.current) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < dmin) { dmin = d; mejor = { x: q.x, y: q.y }; } }
+      if (mejor) return mejor;
+      const gs = guiasRef.current;
+      for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) {
+        const a = gs[i], b = gs[j], d1x = a.x2 - a.x1, d1y = a.y2 - a.y1, d2x = b.x2 - b.x1, d2y = b.y2 - b.y1, den = d1x * d2y - d1y * d2x;
+        if (Math.abs(den) < 1e-6) continue;
+        const t = ((b.x1 - a.x1) * d2y - (b.y1 - a.y1) * d2x) / den, q = { x: a.x1 + d1x * t, y: a.y1 + d1y * t };
+        if (Math.hypot(q.x - p.x, q.y - p.y) < 14) return q;
+      }
+      for (const a of gs) {
+        const dx = a.x2 - a.x1, dy = a.y2 - a.y1, L2 = dx * dx + dy * dy || 1, t = ((p.x - a.x1) * dx + (p.y - a.y1) * dy) / L2, q = { x: a.x1 + dx * t, y: a.y1 + dy * t };
+        if (Math.hypot(q.x - p.x, q.y - p.y) < 8) return q;
+      }
+      return p;
+    };
     const puntoSuelo = e => {
       const r = dom.getBoundingClientRect();
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       rayo.setFromCamera(p2, cam);
-      return rayo.ray.intersectPlane(suelo, pt) ? { x: snap(pt.x / CM), y: snap(pt.z / CM) } : null;
+      return rayo.ray.intersectPlane(suelo, pt) ? imantar({ x: snap(pt.x / CM), y: snap(pt.z / CM) }) : null;
     };
     const objetoBajo = e => {
       const r = dom.getBoundingClientRect();
@@ -417,6 +446,7 @@ export default function Visor3D() {
     };
     let arrastre = null, trazo = null, previa = null;
     let poli = [], poliLinea = null, poliAbajo = null, empuje = null;
+    let guiaA = null, guiaAbajo = null, guiaMarca = null;
     const idNuevo = () => 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const dibujarPoli = (cursor) => {
       if (poliLinea) { scene.remove(poliLinea); poliLinea.geometry.dispose(); poliLinea = null; }
@@ -435,6 +465,7 @@ export default function Visor3D() {
       poli = []; dibujarPoli(null); setHerr('sel');
     };
     const onTecla = e => {
+      if (herrRef.current === 'guia' && e.key === 'Escape') { guiaA = null; if (guiaMarca) { scene.remove(guiaMarca); guiaMarca = null; } setHerr('sel'); return; }
       if (herrRef.current !== 'poli') return;
       if (e.key === 'Enter') cerrarPoli();
       if (e.key === 'Escape') { poli = []; dibujarPoli(null); setHerr('sel'); }
@@ -464,6 +495,7 @@ export default function Visor3D() {
       if (e.button !== 0) return;
       if (herrRef.current === 'pincel') return;
       if (herrRef.current === 'poli') { poliAbajo = [e.clientX, e.clientY]; return; }
+      if (herrRef.current === 'guia') { guiaAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'empujar') {
         const r = dom.getBoundingClientRect();
         p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -515,6 +547,22 @@ export default function Visor3D() {
       }
     };
     const onUpD = e => {
+      if (guiaAbajo) {
+        const d0 = Math.hypot(e.clientX - guiaAbajo[0], e.clientY - guiaAbajo[1]); guiaAbajo = null;
+        if (d0 < 4) {
+          const p = puntoSuelo(e);
+          if (p) {
+            if (!guiaA) {
+              guiaA = p;
+              guiaMarca = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), new THREE.MeshBasicMaterial({ color: 0xd62bd6 })); guiaMarca.position.set(p.x * CM, 0.05, p.y * CM); scene.add(guiaMarca);
+            } else {
+              if (Math.hypot(p.x - guiaA.x, p.y - guiaA.y) > 5) { const A = guiaA; setGuias(prev => [...prev, { x1: A.x, y1: A.y, x2: p.x, y2: p.y }]); }
+              guiaA = null; if (guiaMarca) { scene.remove(guiaMarca); guiaMarca.geometry.dispose(); guiaMarca.material.dispose(); guiaMarca = null; }
+            }
+          }
+        }
+        return;
+      }
       if (poliAbajo) {
         const d0 = Math.hypot(e.clientX - poliAbajo[0], e.clientY - poliAbajo[1]); poliAbajo = null;
         if (d0 < 4) {
@@ -569,6 +617,67 @@ export default function Visor3D() {
     a.esc.children.forEach(g => { g.visible = !ocultas.includes('obj:' + (objsRef.current.find(x => x.id === g.userData.oid)?.etiqueta || '')); });
     try { localStorage.setItem('visor3dOcultas', JSON.stringify(ocultas)); } catch {}
   }, [ocultas, rev, objs, estado]);
+
+  // Rodapié: sigue el perímetro de cada sala (por dentro) y se interrumpe en las puertas
+  useEffect(() => {
+    const a = api3d.current; if (!a.scene) return;
+    if (a.rod) { a.scene.remove(a.rod); a.rod.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); a.rod = null; }
+    const modelo = a.modelo; if (!rodapie.on || !modelo) return;
+    const g = new THREE.Group(); g.userData.capa = 'rodapie'; g.visible = !ocultas.includes('rodapie');
+    const mat = new THREE.MeshStandardMaterial({ color: color(rodapie.color, '#ffffff'), roughness: 0.6 });
+    const dentro = (pt, pts) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > pt.y) !== (yj > pt.y) && pt.x < ((xj - xi) * (pt.y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+    (modelo.plantas || [modelo]).forEach(pl => {
+      const z0 = (pl.z || 0) * CM;
+      (pl.salas || []).forEach(s => {
+        const P = s.pts || [];
+        for (let i = 0; i < P.length; i++) {
+          const A = { x: P[i][0], y: P[i][1] }, B = { x: P[(i + 1) % P.length][0], y: P[(i + 1) % P.length][1] };
+          const L = Math.hypot(B.x - A.x, B.y - A.y); if (L < 5) continue;
+          const u = { x: (B.x - A.x) / L, y: (B.y - A.y) / L };
+          // huecos de puerta que caen sobre este lado
+          const cortes = [];
+          (pl.muros || []).forEach(m => {
+            const wl = Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]); if (wl < 1) return;
+            const v = { x: (m.b[0] - m.a[0]) / wl, y: (m.b[1] - m.a[1]) / wl };
+            if (Math.abs(v.x * u.y - v.y * u.x) > 0.02) return;
+            if (Math.abs((m.a[0] - A.x) * u.y - (m.a[1] - A.y) * u.x) > (m.t || 12) / 2 + 4) return;
+            (m.ab || []).filter(o => (o.tipo || o.t) === 'door').forEach(o => {
+              const t1 = (m.a[0] + v.x * o.p - A.x) * u.x + (m.a[1] + v.y * o.p - A.y) * u.y;
+              const t2 = (m.a[0] + v.x * (o.p + o.w) - A.x) * u.x + (m.a[1] + v.y * (o.p + o.w) - A.y) * u.y;
+              cortes.push([Math.min(t1, t2), Math.max(t1, t2)]);
+            });
+          });
+          cortes.sort((p, q) => p[0] - q[0]);
+          const tramos = []; let cur = 0;
+          cortes.forEach(([c0, c1]) => { if (c0 > cur + 1) tramos.push([cur, Math.min(c0, L)]); cur = Math.max(cur, c1); });
+          if (cur < L - 1) tramos.push([cur, L]);
+          let n = { x: -u.y, y: u.x };
+          const medio = { x: A.x + u.x * L / 2 + n.x * 5, y: A.y + u.y * L / 2 + n.y * 5 };
+          if (!dentro(medio, P)) n = { x: -n.x, y: -n.y };
+          tramos.forEach(([t0, t1]) => {
+            if (t1 - t0 < 2) return;
+            const c = { x: A.x + u.x * (t0 + t1) / 2 + n.x * rodapie.grosor / 2, y: A.y + u.y * (t0 + t1) / 2 + n.y * rodapie.grosor / 2 };
+            const b = new THREE.Mesh(new THREE.BoxGeometry((t1 - t0) * CM, rodapie.alto * CM, rodapie.grosor * CM), mat);
+            b.position.set(c.x * CM, z0 + rodapie.alto * CM / 2, c.y * CM); b.rotation.y = -Math.atan2(u.y, u.x); b.castShadow = b.receiveShadow = true; g.add(b);
+          });
+        }
+      });
+    });
+    a.scene.add(g); a.rod = g;
+  }, [rodapie, rev, estado, ocultas]);
+
+  // Líneas guía (discontinuas, infinitas) para dibujar y alinear
+  useEffect(() => {
+    const a = api3d.current; if (!a.scene) return;
+    if (a.guiaG) { a.scene.remove(a.guiaG); a.guiaG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
+    const g = new THREE.Group();
+    guias.forEach(gu => {
+      const dx = gu.x2 - gu.x1, dy = gu.y2 - gu.y1, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, K = 5000;
+      const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3((gu.x1 - ux * K) * CM, 0.04, (gu.y1 - uy * K) * CM), new THREE.Vector3((gu.x1 + ux * K) * CM, 0.04, (gu.y1 + uy * K) * CM)]), new THREE.LineDashedMaterial({ color: 0xd62bd6, dashSize: 0.15, gapSize: 0.1 }));
+      l.computeLineDistances(); g.add(l);
+    });
+    a.scene.add(g); a.guiaG = g;
+  }, [guias, estado]);
 
   // Los objetos de la escena se pintan a partir de la lista
   useEffect(() => {
@@ -635,13 +744,13 @@ export default function Visor3D() {
     if (guardado === 'inicial') { setGuardado(''); return; }
     setGuardado('Guardando…');
     const t = setTimeout(() => {
-      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
+      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
     }, 1200);
     return () => clearTimeout(t);
-  }, [objs, acab, paleta]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objs, acab, paleta, rodapie, guias]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    api.get('/medicion/catalogos').then(r => setBiblioteca((r.data?.maquinas || []).filter(m => m.w > 0 && m.d > 0))).catch(() => setBiblioteca([]));
+    api.get('/medicion/catalogos').then(r => { setMatsCat((r.data?.materiales || []).filter(m => m.url)); return setBiblioteca((r.data?.maquinas || []).filter(m => m.w > 0 && m.d > 0)); }).catch(() => setBiblioteca([]));
   }, []);
   const modeloDe = o => o.mod || (o.cid && biblioteca?.find(m => m.id === o.cid)?.modelo3d) || null;
 
@@ -653,6 +762,15 @@ export default function Visor3D() {
     const { ctrl } = api3d.current;
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'bloque', cid: null, nombre: m.nombre, etiqueta: m.categoria, cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: m.w, d: m.d, alto: m.alto, z0: 0, color: null, mod: { url: m.url, tipo: 'gltf', rot: 0 } };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel');
+  };
+  const usarMatCatalogo = async (mc) => {
+    try {
+      const r = await api.post('/medicion/' + id + '/textura-catalogo', { prodId: mc.id, tam: mc.tw });
+      const nueva = r.data.textura;
+      setTexturas(x => (x.some(y => y.id === nueva.id) ? x : [...x, nueva]));
+      setMatSel({ id: nueva.id }); setHerr('pincel');
+      setGuardado('Material del catálogo listo: haz clic en un muro, suelo o techo');
+    } catch (e) { setGuardado(e.response?.data?.error || 'No se pudo usar el material'); }
   };
   const usarTexturaB3d = async (t) => {
     try {
@@ -813,7 +931,7 @@ export default function Visor3D() {
   const btn = { background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
-      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar'].includes(herr) ? 'crosshair' : 'default' }} />
+      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia'].includes(herr) ? 'crosshair' : 'default' }} />
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={btn} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <b style={{ color: '#222', marginRight: 'auto' }}>{titulo}</b>
@@ -827,6 +945,8 @@ export default function Visor3D() {
           </div>}
         </div>
         <button style={{ ...btn, ...(herr === 'empujar' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('empujar')} title="Arrastra hacia arriba o abajo la cara de arriba de un objeto para cambiar su altura">⇅ Empujar/Tirar</button>
+        <button style={{ ...btn, ...(herr === 'guia' ? { background: '#d62bd6', borderColor: '#d62bd6' } : {}) }} onClick={() => setHerr('guia')} title="Clic en dos puntos para crear una línea guía infinita. El dibujo se imanta a las guías, a las esquinas y a los extremos de los muros. Esc para salir.">📏 Guía</button>
+        {guias.length > 0 && <button style={btn} onClick={() => setGuias([])} title="Quitar todas las guías">✕ Guías ({guias.length})</button>}
         <button style={{ ...btn, ...(bibAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setBibAbierta(v => !v)} title="Tus productos del catálogo de Ranuse">📦 Catálogo</button>
         <button style={{ ...btn, ...(b3dAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setB3dAbierta(v => !v)} title="Muebles y texturas gratuitos (Poly Haven, CC0)">🧰 Biblioteca 3D</button>
         <button style={{ ...btn, ...(capasAbierto ? { background: '#2f6fa8' } : {}) }} onClick={() => setCapasAbierto(v => !v)}>🏷 Capas</button>
@@ -880,7 +1000,7 @@ export default function Visor3D() {
         </div>
       )}
       {capasAbierto && (() => {
-        const fijas = [['muros', 'Muros'], ['huecos', 'Puertas y ventanas'], ['suelos', 'Suelos'], ['techos', 'Techos'], ['pilares', 'Pilares'], ['equipos', 'Equipos del plano']];
+        const fijas = [['muros', 'Muros'], ['huecos', 'Puertas y ventanas'], ['suelos', 'Suelos'], ['techos', 'Techos'], ['rodapie', 'Rodapié'], ['pilares', 'Pilares'], ['equipos', 'Equipos del plano']];
         const propias = [...new Set(objs.map(o => o.etiqueta || ''))];
         const fila = (clave, nombre) => (
           <label key={clave} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: 'pointer' }}>
@@ -891,6 +1011,14 @@ export default function Visor3D() {
           <div style={{ position: 'absolute', left: 12 + (bibAbierta ? 280 : 0) + (b3dAbierta ? 280 : 0), top: 56, width: 210, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '10px 12px', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Ver por capas</div>
             {fijas.map(([k, n]) => fila(k, n))}
+            <div style={{ borderTop: '1px solid #333', marginTop: 6, paddingTop: 6 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 4 }}><input type="checkbox" checked={rodapie.on} onChange={e => setRodapie(r => ({ ...r, on: e.target.checked }))} /> <b>Poner rodapié</b></label>
+              {rodapie.on && <div style={{ fontSize: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 62, opacity: 0.7 }}>Alto cm</span><input type="number" value={rodapie.alto} onChange={e => setRodapie(r => ({ ...r, alto: parseFloat(e.target.value) || 10 }))} style={{ ...btn, width: 60, padding: '2px 4px' }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 62, opacity: 0.7 }}>Grosor cm</span><input type="number" step="0.5" value={rodapie.grosor} onChange={e => setRodapie(r => ({ ...r, grosor: parseFloat(e.target.value) || 1.5 }))} style={{ ...btn, width: 60, padding: '2px 4px' }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 62, opacity: 0.7 }}>Color</span><input type="color" value={rodapie.color} onChange={e => setRodapie(r => ({ ...r, color: e.target.value }))} /></label>
+              </div>}
+            </div>
             {propias.length > 0 && <div style={{ borderTop: '1px solid #333', marginTop: 6, paddingTop: 6, opacity: 0.7 }}>Tus objetos</div>}
             {propias.map(t => fila('obj:' + t, t || 'Sin etiqueta'))}
           </div>
@@ -962,6 +1090,17 @@ export default function Visor3D() {
               <input id="mat-hex" type="color" defaultValue="#d9cfc0" style={{ width: 34, height: 30, padding: 0, border: 'none', background: 'none' }} />
               <button style={btn} onClick={anadirColor}>+</button>
             </div>
+            {matsCat.length > 0 && <>
+              <div style={{ opacity: 0.7, marginBottom: 4 }}>Del catálogo de Ranuse</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
+                {matsCat.slice(0, 60).map(mc => (
+                  <div key={mc.id} onClick={() => usarMatCatalogo(mc)} title={mc.n + ' · ' + (mc.cat || '')} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
+                    <img src={mc.url} alt={mc.n} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
+                    <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mc.n}</div>
+                  </div>
+                ))}
+              </div>
+            </>}
             <div style={{ opacity: 0.7, marginBottom: 4 }}>Texturas</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
               {texturas.map(t => (
