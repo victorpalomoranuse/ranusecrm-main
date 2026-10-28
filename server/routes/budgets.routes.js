@@ -1029,7 +1029,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
         if (Math.abs(sumaPct - 100) > 0.01) { doc.fillColor('#cc3333').fontSize(7).font('Helvetica').text('Aviso: el calendario suma ' + sumaPct + '%', margin, y); y += 10; }
         doc.fillColor('#999999').fontSize(7).font('Helvetica-Oblique').text('Importes sobre el total del presupuesto' + (parseFloat(iva) > 0 ? ' (IVA incluido).' : '.'), margin, y); y += 11;
       }
-      if (settings.payment_notes) { doc.fillColor('#888888').fontSize(7.5).font('Helvetica').text(settings.payment_notes, margin, y, { width: W - margin * 2 }); y += 11; }
+      if (settings.payment_notes && !calendarioPagos.length) { doc.fillColor('#888888').fontSize(7.5).font('Helvetica').text(settings.payment_notes, margin, y, { width: W - margin * 2 }); y += 11; }
     }
 
     if (settings.warranty_text) {
