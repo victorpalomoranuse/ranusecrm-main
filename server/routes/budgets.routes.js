@@ -983,15 +983,18 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     // Oferta "si contratas todo junto": se enseña aparte, sin tocar el total normal
     const packPct = parseFloat(budget.pack_discount_pct) || 0;
     const packEur = parseFloat(budget.pack_discount_eur) || 0;
+    let baseCalendario = total; // con oferta, el calendario de pagos se calcula sobre el precio de la oferta
     if ((packEur > 0 || packPct > 0) && total > 0) {
       // Si hay importe en euros manda sobre el %. El importe es lo que ahorra el cliente sobre el total final.
       const ahorroPack = packEur > 0 ? Math.min(packEur, total) : total * packPct / 100;
       const totalPack = total - ahorroPack;
+      baseCalendario = totalPack;
       if (y > H - 130) { doc.addPage(); y = margin + 20; }
       doc.rect(margin, y, W - margin * 2, 64).fill('#eef7f1');
       doc.rect(margin, y, 4, 64).fill('#2e7d4f');
       doc.fillColor('#2e7d4f').fontSize(8).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO', margin + 16, y + 11);
-      doc.fillColor('#555555').fontSize(10).font('Helvetica').text('El precio total es de', margin + 16, y + 33, { width: 150 });
+      doc.fillColor('#555555').fontSize(10).font('Helvetica').text('El precio total es de', margin + 16, y + 30, { width: 150 });
+      doc.fillColor('#2e7d4f').fontSize(8.5).font('Helvetica-Bold').text('Descuento: -' + fmtEur(ahorroPack), margin + 16, y + 46, { width: 200 });
       doc.fillColor('#1f6b40').fontSize(24).font('Helvetica-Bold').text(fmtEur(totalPack), margin + 16, y + 26, { width: W - margin * 2 - 32, align: 'right' });
       doc.fillColor('#777777').fontSize(7.5).font('Helvetica').text(parseFloat(iva) > 0 ? 'impuestos incluidos' : 'impuestos no incluidos', margin + 16, y + 52, { width: W - margin * 2 - 32, align: 'right' });
       y += 80;
@@ -1030,14 +1033,14 @@ router.get('/:id/pdf-cliente', async (req, res) => {
         y += 4;
         calendarioPagos.forEach((h, i) => {
           if (y > H - 60) { doc.addPage(); y = margin + 20; }
-          const importe = total * (parseFloat(h.pct) / 100);
+          const importe = baseCalendario * (parseFloat(h.pct) / 100);
           doc.fillColor('#555555').fontSize(8).font('Helvetica').text((i + 1) + '. ' + (h.concepto || 'Pago') + ' (' + Number(h.pct).toLocaleString('es-ES') + '%)', margin, y, { width: W - margin * 2 - 110 });
           doc.fillColor(BRAND.dark).fontSize(8.5).font('Helvetica-Bold').text(fmtEur(importe), W - margin - 100, y, { width: 100, align: 'right' });
           y += 13;
         });
         const sumaPct = calendarioPagos.reduce((s, h) => s + (parseFloat(h.pct) || 0), 0);
         if (Math.abs(sumaPct - 100) > 0.01) { doc.fillColor('#cc3333').fontSize(7).font('Helvetica').text('Aviso: el calendario suma ' + sumaPct + '%', margin, y); y += 10; }
-        doc.fillColor('#999999').fontSize(7).font('Helvetica-Oblique').text('Importes sobre el total del presupuesto' + (parseFloat(iva) > 0 ? ' (IVA incluido).' : '.'), margin, y); y += 11;
+        doc.fillColor('#999999').fontSize(7).font('Helvetica-Oblique').text((baseCalendario !== total ? 'Importes sobre el precio con la oferta' : 'Importes sobre el total del presupuesto') + (parseFloat(iva) > 0 ? ' (IVA incluido).' : '.'), margin, y); y += 11;
       }
       if (settings.payment_notes && !calendarioPagos.length) { doc.fillColor('#888888').fontSize(7.5).font('Helvetica').text(settings.payment_notes, margin, y, { width: W - margin * 2 }); y += 11; }
     }
