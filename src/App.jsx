@@ -15,6 +15,7 @@ import { ClienteLogin } from './pages/ClienteLogin';
 import { ClientePanel } from './pages/ClientePanel';
 import { RestablecerContrasena } from './pages/RestablecerContrasena';
 import { PlanosEditor } from './pages/PlanosEditor';
+import Visor3D from './pages/Visor3D';
 import { SubirFotos } from './pages/SubirFotos';
 import { Rapido } from './pages/Rapido';
 import './App.css';
@@ -96,6 +97,9 @@ function App() {
               {/* Herramienta de planos en su propia pestaña */}
               <Route path="/planos/editor" element={
                 <AdminGuard><PlanosEditor /></AdminGuard>
+              } />
+              <Route path="/planos/3d/:id" element={
+                <AdminGuard><Visor3D /></AdminGuard>
               } />
 
               {/* Equipo */}

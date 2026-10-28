@@ -55,6 +55,7 @@ function FilaPlano({ p, proyectos, onAbrir, onBorrar, onVincular }) {
         </div>
       )}
       <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => onAbrir(p)}>Abrir</button>
+      <button className="ap-btn ap-btn-ghost ap-btn-sm" title="Ver el plano en 3D" onClick={() => window.open('/planos/3d/' + p.id, '_blank')}>Ver en 3D</button>
       <button className="ap-btn ap-btn-ghost ap-btn-sm" title="Vincular a otro proyecto" onClick={() => setVinculando(v => !v)}><Link2 size={13} /></button>
       <button className="ap-btn-icon" title="Borrar plano" onClick={() => onBorrar(p)}><Trash2 size={13} /></button>
     </div>
