@@ -136,6 +136,30 @@ function ajustarModelo(raw, w, d, h) {
 }
 
 const sel2 = (id, sel) => id === sel;
+// Contorno desplazado hacia dentro una distancia d (cm), con esquinas en inglete; vale para polígonos sencillos
+function insetPoligono(pts, d) {
+  const n = pts.length; if (n < 3) return pts;
+  let a2 = 0; for (let i = 0; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n]; a2 += p[0] * q[1] - q[0] * p[1]; }
+  const sg = a2 > 0 ? 1 : -1; // orientación
+  const rectas = pts.map((p, i) => {
+    const q = pts[(i + 1) % n], L = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, ux = (q[0] - p[0]) / L, uy = (q[1] - p[1]) / L;
+    return { x: p[0] - sg * uy * d, y: p[1] + sg * ux * d, ux, uy }; // recta paralela, desplazada hacia dentro
+  });
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const A = rectas[(i + n - 1) % n], B = rectas[i], den = A.ux * B.uy - A.uy * B.ux;
+    if (Math.abs(den) < 1e-6) { out.push([B.x, B.y]); continue; }
+    const t = ((B.x - A.x) * B.uy - (B.y - A.y) * B.ux) / den;
+    out.push([A.x + A.ux * t, A.y + A.uy * t]);
+  }
+  return out;
+}
+// Curva cerrada suave que pasa por los puntos (para contornos curvos)
+function suavizar(pts) {
+  if (pts.length < 3) return pts;
+  const c = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p[0], 0, p[1])), true, 'centripetal');
+  return c.getPoints(Math.max(24, pts.length * 12)).slice(0, -1).map(v => [v.x, v.z]);
+}
 function color(hex, def) {
   try { return new THREE.Color(hex || def); } catch { return new THREE.Color(def); }
 }
@@ -274,6 +298,10 @@ export default function Visor3D() {
   const [guias, setGuias] = useState([]);
   const guiasRef = useRef([]);
   const puntosSnapRef = useRef([]);
+  const [curvo, setCurvo] = useState(false);       // contorno curvo en las zonas
+  const curvoRef = useRef(false);
+  useEffect(() => { curvoRef.current = curvo; }, [curvo]);
+  const [zonaMenu, setZonaMenu] = useState(false);
   const [lucesPl, setLucesPl] = useState([]);       // luminarias de la capa Iluminación del plano
   const [lumCat, setLumCat] = useState([]);          // catálogo de luminarias (lúmenes, vatios, kelvin)
   const [luzSel, setLuzSel] = useState(null);
@@ -464,6 +492,42 @@ export default function Visor3D() {
     let arrastre = null, trazo = null, previa = null;
     let poli = [], poliLinea = null, poliAbajo = null, empuje = null;
     let guiaA = null, guiaAbajo = null, guiaMarca = null, luzAbajo = null;
+    const esPoli = h => h === 'poli' || h === 'zonaS' || h === 'zonaT';
+    let poliP = null, pAbajo = null, pLinea = null;
+    const muroPorId = idm => (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []).find(m => m.id === idm);
+    const golpePared = e => {
+      const r = dom.getBoundingClientRect();
+      p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      rayo.setFromCamera(p2, cam);
+      const vis = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
+      const h = rayo.intersectObjects(raiz.children, true).find(x => x.object.isMesh && vis(x.object));
+      const u = h?.object?.userData; if (!u?.muroId) return null;
+      const mu = muroPorId(u.muroId); if (!mu) return null;
+      const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L;
+      const s = Math.round(((h.point.x / CM - mu.a[0]) * ux + (h.point.z / CM - mu.a[1]) * uy) / 5) * 5, yy = Math.max(0, Math.round(h.point.y / CM / 5) * 5);
+      const lado = ((cam.position.x / CM - mu.a[0]) * -uy + (cam.position.z / CM - mu.a[1]) * ux) >= 0 ? 1 : -1;
+      return { mu, s, y: yy, lado, id: u.muroId };
+    };
+    const aMundoPared = (mu, s, yy, lado) => {
+      const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, off = lado * ((mu.t || 12) / 2 + 0.4);
+      return new THREE.Vector3((mu.a[0] + ux * s - uy * off) * CM, yy * CM, (mu.a[1] + uy * s + ux * off) * CM);
+    };
+    const dibujarPared = (cursor) => {
+      if (pLinea) { scene.remove(pLinea); pLinea.geometry.dispose(); pLinea = null; }
+      if (!poliP) return;
+      const pts = cursor ? [...poliP.pts, cursor] : poliP.pts;
+      if (pts.length < 2) return;
+      pLinea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => aMundoPared(poliP.mu, p[0], p[1], poliP.lado))), new THREE.LineBasicMaterial({ color: 0x1b6dd6 }));
+      scene.add(pLinea);
+    };
+    const cerrarPared = () => {
+      if (poliP && poliP.pts.length >= 3) {
+        const pts = curvoRef.current ? suavizar(poliP.pts) : poliP.pts;
+        const nuevo = { id: idNuevo(), tipo: 'zona', plano: 'pared', muroId: poliP.id, lado: poliP.lado, nombre: 'Zona de pared', etiqueta: 'Zonas', cx: 0, cy: 0, rot: 0, w: 1, d: 1, alto: 1, z0: 0, color: '#c9b9a0', pts };
+        setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id);
+      }
+      poliP = null; dibujarPared(null); setHerr('sel');
+    };
     const idNuevo = () => 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const dibujarPoli = (cursor) => {
       if (poliLinea) { scene.remove(poliLinea); poliLinea.geometry.dispose(); poliLinea = null; }
@@ -476,7 +540,10 @@ export default function Visor3D() {
       if (poli.length >= 3) {
         const xs = poli.map(p => p.x), ys = poli.map(p => p.y);
         const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-        const nuevo = { id: idNuevo(), tipo: 'prisma', nombre: 'Volumen', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 100, z0: 0, color: '#9aa3ad', pts: poli.map(p => [p.x - cx, p.y - cy]) };
+        const rel = poli.map(p => [p.x - cx, p.y - cy]), modo = herrRef.current;
+        const nuevo = modo === 'poli'
+          ? { id: idNuevo(), tipo: 'prisma', nombre: 'Volumen', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 100, z0: 0, color: '#9aa3ad', pts: rel }
+          : { id: idNuevo(), tipo: 'zona', plano: modo === 'zonaT' ? 'techo' : 'suelo', h: modo === 'zonaT' ? ((api3d.current.modelo?.altura) || 260) : undefined, nombre: modo === 'zonaT' ? 'Zona de techo' : 'Zona de suelo', etiqueta: 'Zonas', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, color: '#c9b9a0', pts: curvoRef.current ? suavizar(rel) : rel };
         setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id);
       }
       poli = []; dibujarPoli(null); setHerr('sel');
@@ -484,7 +551,8 @@ export default function Visor3D() {
     const onTecla = e => {
       if (herrRef.current === 'luz' && e.key === 'Escape') { setHerr('sel'); return; }
       if (herrRef.current === 'guia' && e.key === 'Escape') { guiaA = null; if (guiaMarca) { scene.remove(guiaMarca); guiaMarca = null; } setHerr('sel'); return; }
-      if (herrRef.current !== 'poli') return;
+      if (herrRef.current === 'zonaP') { if (e.key === 'Enter') cerrarPared(); if (e.key === 'Escape') { poliP = null; dibujarPared(null); setHerr('sel'); } return; }
+      if (!esPoli(herrRef.current)) return;
       if (e.key === 'Enter') cerrarPoli();
       if (e.key === 'Escape') { poli = []; dibujarPoli(null); setHerr('sel'); }
     };
@@ -512,7 +580,8 @@ export default function Visor3D() {
     const onDownD = e => {
       if (e.button !== 0) return;
       if (herrRef.current === 'pincel') return;
-      if (herrRef.current === 'poli') { poliAbajo = [e.clientX, e.clientY]; return; }
+      if (esPoli(herrRef.current)) { poliAbajo = [e.clientX, e.clientY]; return; }
+      if (herrRef.current === 'zonaP') { pAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'guia') { guiaAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'luz') { luzAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'empujar') {
@@ -539,12 +608,14 @@ export default function Visor3D() {
       if (!o) return;
       const ob = objsRef.current.find(x => x.id === o.userData.oid); if (!ob) return;
       setSelObj(ob.id); setSelAcab(null);
+      if (o.userData.sinArrastre) return;
       const p = puntoSuelo(e); if (!p) return;
       ctrl.enabled = false; arrastre = { id: ob.id, dx: ob.cx - p.x, dy: ob.cy - p.y, mov: false };
       e.stopPropagation();
     };
     const onMoveD = e => {
-      if (herrRef.current === 'poli' && poli.length) { const p = puntoSuelo(e); if (p) dibujarPoli(p); return; }
+      if (esPoli(herrRef.current) && poli.length) { const p = puntoSuelo(e); if (p) dibujarPoli(p); return; }
+      if (herrRef.current === 'zonaP' && poliP) { const g = golpePared(e); if (g && g.id === poliP.id) dibujarPared(new THREE.Vector3(...aMundoPared(g.mu, g.s, g.y, poliP.lado).toArray())); return; }
       if (empuje) {
         const m = empuje.malla, dist = cam.position.distanceTo(m.getWorldPosition(new THREE.Vector3()));
         const cmPorPx = (2 * dist * Math.tan(cam.fov * Math.PI / 360) / dom.clientHeight) * 100;
@@ -566,6 +637,21 @@ export default function Visor3D() {
       }
     };
     const onUpD = e => {
+      if (pAbajo) {
+        const d0 = Math.hypot(e.clientX - pAbajo[0], e.clientY - pAbajo[1]); pAbajo = null;
+        if (d0 < 4) {
+          const g = golpePared(e);
+          if (g) {
+            if (!poliP) poliP = { id: g.id, mu: g.mu, lado: g.lado, pts: [] };
+            if (g.id === poliP.id) {
+              const P = poliP.pts;
+              if (P.length >= 3 && Math.hypot(g.s - P[0][0], g.y - P[0][1]) < 12) cerrarPared();
+              else { P.push([g.s, g.y]); dibujarPared(null); }
+            }
+          }
+        }
+        return;
+      }
       if (luzAbajo) {
         const d0 = Math.hypot(e.clientX - luzAbajo[0], e.clientY - luzAbajo[1]); luzAbajo = null;
         if (d0 < 4) {
@@ -732,7 +818,51 @@ export default function Visor3D() {
   useEffect(() => {
     const a = api3d.current; if (!a.esc) return;
     while (a.esc.children.length) { const o = a.esc.children[0]; a.esc.remove(o); o.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
+    const todosMuros = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []);
     objs.forEach(o => {
+      if (o.tipo === 'zona' && Array.isArray(o.pts) && o.pts.length >= 3) {
+        const gz = new THREE.Group();
+        const val = o.color, tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#9aa3ad'), roughness: 0.7, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, emissive: o.id === selObj ? 0x335577 : 0x000000 });
+        if (tx) { mt.map = texturaDe(tx, false); mt.color.setHex(0xffffff); }
+        const geo = new THREE.ShapeGeometry(new THREE.Shape(o.pts.map(p => new THREE.Vector2(p[0] * CM, p[1] * CM))));
+        const mesh = new THREE.Mesh(geo, mt); mesh.receiveShadow = true;
+        if (o.plano === 'pared') {
+          const mu = todosMuros.find(m => m.id === o.muroId); if (!mu) return;
+          const holder = new THREE.Group(); holder.position.set(mu.a[0] * CM, 0, mu.a[1] * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
+          mesh.position.z = (o.lado || 1) * (((mu.t || 12) / 2) * CM + 0.004); holder.add(mesh); gz.add(holder);
+          gz.userData.sinArrastre = true;
+        } else {
+          geo.rotateX(Math.PI / 2);
+          mesh.position.set(o.cx * CM, o.plano === 'techo' ? (o.h || 260) * CM - 0.004 : 0.005, o.cy * CM); gz.add(mesh);
+        }
+        gz.userData.oid = o.id; gz.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(gz);
+        return;
+      }
+      if (o.tipo === 'falsotecho' && Array.isArray(o.pts) && o.pts.length >= 3) {
+        const ft = o.ft || {}, D = ft.descenso ?? 15, H = (o.h || 260) * CM, inner = insetPoligono(o.pts, ft.gap ?? 12);
+        const gf = new THREE.Group(); gf.position.set(o.cx * CM, 0, o.cy * CM);
+        const val = o.color, tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#f6f4f1'), roughness: 0.9, emissive: o.id === selObj ? 0x335577 : 0x000000 });
+        if (tx) { mt.map = texturaDe(tx, false); mt.color.setHex(0xffffff); }
+        const prof = Math.max(0.01, Math.abs(D) * CM);
+        const geo = new THREE.ExtrudeGeometry(new THREE.Shape(inner.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM))), { depth: prof, bevelEnabled: false });
+        geo.rotateX(-Math.PI / 2);
+        const losa = new THREE.Mesh(geo, mt); losa.position.y = D >= 0 ? H - prof : H; losa.castShadow = losa.receiveShadow = true; gf.add(losa);
+        if (ft.luz !== false) {
+          const K = ft.k || 3000, led = new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(0.1, K < 3500 ? 0.6 : K < 5000 ? 0.15 : 0.02, K < 3500 ? 0.85 : 0.97) });
+          for (let i = 0; i < inner.length; i++) {
+            const p = inner[i], q = inner[(i + 1) % inner.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]); if (L < 2) continue;
+            const b = new THREE.Mesh(new THREE.BoxGeometry(L * CM, 0.01, 0.02), led);
+            b.position.set(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.005 : H + prof + 0.005), ((p[1] + q[1]) / 2) * CM); b.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); gf.add(b);
+          }
+        }
+        if (o.id === selObj) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(losa.position); gf.add(l); }
+        gf.userData.oid = o.id; gf.userData.sinArrastre = true; gf.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(gf);
+        return;
+      }
       if (o.tipo === 'mueble') {
         const gm = new THREE.Group();
         const cont = construirMueble(o, texturas); cont.position.y = (o.z0 || 0) * CM; gm.add(cont);
@@ -785,7 +915,7 @@ export default function Visor3D() {
       g.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
       a.esc.add(g);
     });
-  }, [objs, selObj, estado, biblioteca, ocultas, texturas]);
+  }, [objs, selObj, estado, biblioteca, ocultas, texturas, rev]);
 
   // Guardado automático de la escena (sin pisar el dibujo del plano 2D)
   useEffect(() => {
@@ -849,6 +979,14 @@ export default function Visor3D() {
     const mods = fn((o.mueble?.modulos || []).map(m => ({ ...m })));
     return { ...o, mueble: { ...o.mueble, modulos: mods, ...(extra || {}) }, w: mods.reduce((s, m) => s + (parseFloat(m.w) || 0), 0) };
   }));
+  const crearFalsoTecho = (salaKey) => {
+    const modelo = api3d.current.modelo; if (!modelo) return;
+    const pl0 = (modelo.plantas || [modelo])[0], sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === salaKey);
+    if (!sala) return;
+    const xs = sala.pts.map(p => p[0]), ys = sala.pts.map(p => p[1]), cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'falsotecho', nombre: 'Falso techo con foseado', etiqueta: 'Techos', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, h: pl0.altura || 260, color: '#f6f4f1', pts: sala.pts.map(p => [p[0] - cx, p[1] - cy]), ft: { descenso: 15, gap: 12, luz: true, k: 3000 } };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setSelAcab(null);
+  };
   const anadirBloque = m => {
     const { ctrl } = api3d.current;
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'bloque', cid: m.id, nombre: m.nombre, cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: m.w, d: m.d, alto: m.alto || 110, z0: 0, color: null, skp: m.skp || null };
@@ -980,7 +1118,7 @@ export default function Visor3D() {
   const btn = { background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
-      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz'].includes(herr) ? 'crosshair' : 'default' }} />
+      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP'].includes(herr) ? 'crosshair' : 'default' }} />
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={btn} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <b style={{ color: '#222', marginRight: 'auto' }}>{titulo}</b>
@@ -994,6 +1132,14 @@ export default function Visor3D() {
           </div>}
         </div>
         <button style={{ ...btn, ...(herr === 'empujar' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('empujar')} title="Arrastra hacia arriba o abajo la cara de arriba de un objeto para cambiar su altura">⇅ Empujar/Tirar</button>
+        <div style={{ position: 'relative' }}>
+          <button style={{ ...btn, ...(['zonaS', 'zonaT', 'zonaP'].includes(herr) || zonaMenu ? { background: '#2f6fa8' } : {}) }} onClick={() => setZonaMenu(v => !v)} title="Dibuja una forma sobre un suelo, techo o pared y dale su propio material">▨ Zonas</button>
+          {zonaMenu && <div style={{ position: 'absolute', top: 34, left: 0, background: 'rgba(20,20,20,0.97)', borderRadius: 8, padding: 6, zIndex: 8, width: 230, color: '#fff', fontSize: 13 }}>
+            {[['zonaS', 'En el suelo'], ['zonaT', 'En el techo'], ['zonaP', 'En una pared (o media pared)']].map(([h, n]) => <div key={h} onClick={() => { setHerr(h); setZonaMenu(false); }} style={{ padding: '6px 8px', cursor: 'pointer', borderRadius: 4 }}>{n}</div>)}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderTop: '1px solid #333', cursor: 'pointer' }}><input type="checkbox" checked={curvo} onChange={e => setCurvo(e.target.checked)} /> Contorno curvo (suave)</label>
+            <div style={{ opacity: 0.55, fontSize: 11, padding: '0 8px 4px' }}>Clic punto a punto; cierra con Enter o volviendo al primer punto.</div>
+          </div>}
+        </div>
         <button style={{ ...btn, ...(herr === 'guia' ? { background: '#d62bd6', borderColor: '#d62bd6' } : {}) }} onClick={() => setHerr('guia')} title="Clic en dos puntos para crear una línea guía infinita. El dibujo se imanta a las guías, a las esquinas y a los extremos de los muros. Esc para salir.">📏 Guía</button>
         <button style={{ ...btn, ...(herr === 'luz' ? { background: '#c9a21a', borderColor: '#c9a21a', color: '#111' } : {}) }} onClick={() => setHerr('luz')} title="Clic en el suelo para colocar una luminaria: se crea también en la capa Iluminación del plano. Esc para salir.">💡 Luz</button>
         {herr === 'luz' && <select value={kindLuz} onChange={e => setKindLuz(e.target.value)} style={btn}><option value="foco">Foco empotrado</option><option value="plaf">Plafón</option><option value="colg">Colgante</option><option value="aplq">Aplique</option><option value="pie">Lámpara de pie</option><option value="suel">Empotrado de suelo</option></select>}
@@ -1214,6 +1360,7 @@ export default function Visor3D() {
             </label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {actual && <button style={btn} onClick={() => todos(actual)}>{esMuro ? 'A todos los muros' : 'A todos los suelos'}</button>}
+              {!esMuro && <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => crearFalsoTecho(selAcab.id)} title="Crea un falso techo descolgado con un hueco perimetral (foseado) y luz LED">Falso techo con foseado</button>}
               <button style={btn} onClick={quitar}>Quitar color</button>
               <button style={btn} onClick={() => setSelAcab(null)}>Cerrar</button>
             </div>
@@ -1274,12 +1421,27 @@ export default function Visor3D() {
       {objSel && (
         <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
           <input value={objSel.nombre} onChange={e => cambiar(objSel.id, { nombre: e.target.value })} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontWeight: 700, marginBottom: 8 }} />
-          {[['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación'], ['rot', 'Giro °']].filter(([k]) => !(objSel.tipo === 'mueble' && k === 'w')).map(([k, et]) => (
+          {[['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación'], ['rot', 'Giro °']].filter(([k]) => !(objSel.tipo === 'mueble' && k === 'w') && !['zona', 'falsotecho'].includes(objSel.tipo)).map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <span style={{ width: 70, opacity: 0.7 }}>{et}</span>
               <input type="number" value={Math.round(objSel[k] * 10) / 10} onChange={e => cambiar(objSel.id, { [k]: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 90 }} />
             </label>
           ))}
+          {objSel.tipo === 'falsotecho' && (() => {
+            const F = objSel.ft || { descenso: 15, gap: 12, luz: true, k: 3000 }, set = c => cambiar(objSel.id, { ft: { ...F, ...c } });
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Falso techo</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.7 }}>Descenso (cm)</span><input type="number" value={F.descenso} onChange={e => set({ descenso: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 70 }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.7 }}>Foseado (cm)</span><input type="number" value={F.gap} onChange={e => set({ gap: parseFloat(e.target.value) || 2 })} style={{ ...btn, width: 70 }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.7 }}>Altura del techo</span><input type="number" value={objSel.h || 260} onChange={e => cambiar(objSel.id, { h: parseFloat(e.target.value) || 260 })} style={{ ...btn, width: 70 }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={F.luz !== false} onChange={e => set({ luz: e.target.checked })} /> Luz LED en el foseado</label>
+                {F.luz !== false && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.7 }}>Temperatura</span><select value={F.k || 3000} onChange={e => set({ k: parseInt(e.target.value, 10) })} style={btn}><option value={2700}>2700 K cálida</option><option value={3000}>3000 K</option><option value={4000}>4000 K neutra</option><option value={6000}>6000 K fría</option></select></label>}
+                <div style={{ opacity: 0.5, fontSize: 11 }}>Descenso negativo = el techo sube (relieve). El foseado es el hueco entre la pared y el falso techo.</div>
+              </div>
+            );
+          })()}
+          {objSel.tipo === 'zona' && <div style={{ opacity: 0.6, fontSize: 11, margin: '4px 0' }}>Zona pintable: cambia su color abajo, o usa el pincel 🎨 con una textura para darle otro material.</div>}
           {objSel.tipo === 'mueble' && (() => {
             const M = objSel.mueble || { modulos: [] }, desp = despieceMueble(objSel);
             const tipos = [['puertas', 'Puertas'], ['cajones', 'Cajones'], ['abierto', 'Abierto'], ['hueco', 'Hueco']];
