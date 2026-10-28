@@ -64,7 +64,8 @@ function maquina(e) {
   g.add(cuerpo);
   g.position.set(e.cx * CM, 0, e.cy * CM);
   g.rotation.y = -(e.rot || 0) * Math.PI / 180;
-  g.userData.nombre = e.nombre;
+  g.userData.equipo = e;
+  g.userData.cuerpo = cuerpo;
   return g;
 }
 
@@ -90,6 +91,7 @@ export default function Visor3D() {
   const [titulo, setTitulo] = useState('');
   const [calidad, setCalidad] = useState(() => { try { return localStorage.getItem('visor3dCalidad') || 'media'; } catch { return 'media'; } });
   const api3d = useRef({});
+  const [seleccion, setSeleccion] = useState(null);
 
   useEffect(() => { document.title = 'Vista 3D · Ranuse'; }, []);
 
@@ -122,28 +124,60 @@ export default function Visor3D() {
     window.addEventListener('resize', ajustar);
     api3d.current = { renderer, scene, cam, ctrl, sol, raiz };
 
-    api.get('/medicion/' + id).then(r => {
+    let ultima = null, primera = true;
+    const cargar = () => api.get('/medicion/' + id).then(r => {
       if (!vivo) return;
       const pl = r.data?.plano;
+      if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
+      ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
       const modelo = pl?.modelo3d;
-      if (!modelo) { setEstado('sin-modelo'); return; }
+      if (!modelo) { if (primera) setEstado('sin-modelo'); return; }
+      // se rehace el modelo con los datos nuevos, sin mover la cámara
+      sel = null; setSeleccion(null);
+      while (raiz.children.length) { const o = raiz.children[0]; raiz.remove(o); o.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
       const plantas = modelo.plantas || [modelo];
       plantas.forEach(p => raiz.add(planta(p, p.z)));
-      const caja3 = new THREE.Box3().setFromObject(raiz);
-      const c = caja3.getCenter(new THREE.Vector3()), s = caja3.getSize(new THREE.Vector3());
-      const R = Math.max(s.x, s.z, 4);
-      ctrl.target.copy(c);
-      cam.position.set(c.x + R * 0.9, Math.max(R * 0.8, 6), c.z + R * 0.9);
-      sol.position.set(c.x + R, R * 1.5, c.z + R * 0.5);
-      sol.target.position.copy(c); scene.add(sol.target);
-      const k = R * 1.2;
-      Object.assign(sol.shadow.camera, { left: -k, right: k, top: k, bottom: -k, near: 0.5, far: R * 5 });
-      sol.shadow.camera.updateProjectionMatrix();
-      setEstado('listo');
-    }).catch(() => { if (vivo) setEstado('error'); });
+      if (primera) {
+        const caja3 = new THREE.Box3().setFromObject(raiz);
+        const c = caja3.getCenter(new THREE.Vector3()), s = caja3.getSize(new THREE.Vector3());
+        const R = Math.max(s.x, s.z, 4);
+        ctrl.target.copy(c);
+        cam.position.set(c.x + R * 0.9, Math.max(R * 0.8, 6), c.z + R * 0.9);
+        sol.position.set(c.x + R, R * 1.5, c.z + R * 0.5);
+        sol.target.position.copy(c); scene.add(sol.target);
+        const k = R * 1.2;
+        Object.assign(sol.shadow.camera, { left: -k, right: k, top: k, bottom: -k, near: 0.5, far: R * 5 });
+        sol.shadow.camera.updateProjectionMatrix();
+        setEstado('listo');
+      }
+      primera = false;
+    }).catch(() => { if (vivo && primera) setEstado('error'); });
+    cargar();
+    // El plano se edita en otra pestaña: se mira si ha cambiado cada pocos segundos
+    const reloj = setInterval(() => { if (!document.hidden) cargar(); }, 6000);
 
-    return () => { vivo = false; cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); renderer.dispose(); el.removeChild(renderer.domElement); };
+    // Clic en una máquina: se resalta y se enseña su ficha
+    let sel = null;
+    const rayo = new THREE.Raycaster(), p2 = new THREE.Vector2();
+    let abajo = null;
+    const dom = renderer.domElement;
+    const onDown = e => { abajo = [e.clientX, e.clientY]; };
+    const onUp = e => {
+      if (!abajo || Math.hypot(e.clientX - abajo[0], e.clientY - abajo[1]) > 4) return; // fue arrastre, no clic
+      const r = dom.getBoundingClientRect();
+      p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      rayo.setFromCamera(p2, cam);
+      const hit = rayo.intersectObjects(raiz.children, true).find(h => { let o = h.object; while (o) { if (o.userData.equipo) return true; o = o.parent; } return false; });
+      if (sel) sel.userData.cuerpo.material.emissive.setHex(0x000000);
+      sel = null;
+      if (hit) { let o = hit.object; while (o && !o.userData.equipo) o = o.parent; sel = o; o.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(o.userData.equipo); }
+      else setSeleccion(null);
+    };
+    dom.addEventListener('pointerdown', onDown);
+    dom.addEventListener('pointerup', onUp);
+
+    return () => { vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); renderer.dispose(); el.removeChild(renderer.domElement); };
   }, [id]);
 
   // Calidad: en ordenadores sin tarjeta gráfica potente se baja la resolución y las sombras
@@ -191,6 +225,15 @@ export default function Visor3D() {
         </select>
         <button style={btn} onClick={captura}>📷 Captura</button>
       </div>
+      {seleccion && (
+        <div style={{ position: 'absolute', right: 12, bottom: 12, width: 250, background: 'rgba(20,20,20,0.92)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13, lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{seleccion.nombre || 'Equipo'}</div>
+          <div>Medidas: {Math.round(seleccion.largo || seleccion.w)} × {Math.round(seleccion.fondo || seleccion.d)} × {Math.round(seleccion.alto || 110)} cm</div>
+          <div>Giro: {Math.round(seleccion.rot || 0)}°</div>
+          <div>Estado: {seleccion.estado === 'ex' ? 'existente' : 'nuevo'}</div>
+          <button style={{ ...btn, marginTop: 8 }} onClick={() => setSeleccion(null)}>Cerrar</button>
+        </div>
+      )}
       {estado === 'cargando' && <p style={{ position: 'absolute', top: '45%', width: '100%', textAlign: 'center', color: '#555' }}>Cargando…</p>}
       {estado === 'sin-modelo' && <p style={{ position: 'absolute', top: '45%', width: '100%', textAlign: 'center', color: '#555' }}>Este plano todavía no tiene modelo 3D: ábrelo en Planos, dibuja algo y se guarda solo.</p>}
       {estado === 'error' && <p style={{ position: 'absolute', top: '45%', width: '100%', textAlign: 'center', color: '#a33' }}>No se ha podido cargar el plano.</p>}
