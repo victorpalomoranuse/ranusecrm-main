@@ -29,14 +29,20 @@ router.post('/', async (req, res) => {
   const clave = process.env.GEMINI_API_KEY;
   if (!clave) return res.status(503).json({ error: 'Falta configurar GEMINI_API_KEY en el servidor' });
   try {
-    const { imagen, estancia, estilo, paleta, extra } = req.body || {};
+    const { imagen, estancia, estilo, paleta, extra, libertad } = req.body || {};
     const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(String(imagen || ''));
     if (!m) return res.status(400).json({ error: 'Falta la imagen del visor (png, jpg o webp)' });
     const colores = Array.isArray(paleta) ? paleta.filter(p => p && p.nombre).slice(0, 12).map(p => `${String(p.nombre).slice(0, 40)}${p.hex ? ' (' + String(p.hex).slice(0, 9) + ')' : ''}`) : [];
+    // Cuánto puede inventar la IA: fiel (solo pule), equilibrado (ambiente y luz) o creativo (decora y amuebla con criterio)
+    const nivel = ['fiel', 'equilibrado', 'creativo'].includes(libertad) ? libertad : 'equilibrado';
+    const NIVELES = {
+      fiel: 'Respeta EXACTAMENTE la composición, la perspectiva, las proporciones y la posición de cada elemento. No añadas ni quites nada: solo mejora la luz, los materiales y las texturas.',
+      equilibrado: 'Respeta la distribución, la perspectiva y las proporciones del espacio, y los elementos principales (muros, puertas, ventanas y muebles). Sí puedes enriquecer la escena con luz natural cálida, reflejos, sombras suaves, texturas realistas en suelos y paredes, el exterior visible por las ventanas y pequeños detalles de ambiente coherentes con la estancia.',
+      creativo: 'Mantén la arquitectura (muros, huecos, medidas y perspectiva) y la distribución general, pero decora con criterio de interiorista: textiles, plantas, iluminación ambiente, accesorios y detalles que hagan que el espacio parezca vivido y de revista. No cambies el encuadre.',
+    };
     const instrucciones = [
-      'Convierte esta imagen de un modelo 3D de interiorismo en una fotografía de arquitectura realista.',
-      'Respeta EXACTAMENTE la composición, la perspectiva, las proporciones, la posición y el número de muebles, puertas y ventanas. No añadas ni quites elementos ni cambies el encuadre.',
-      'Mejora la iluminación (luz natural suave y sombras realistas), los materiales y las texturas, como en una foto hecha con una cámara profesional.',
+      'Convierte esta imagen de un modelo 3D de interiorismo en una fotografía profesional de revista de interiorismo y arquitectura: realista, nítida, con luz natural cálida, sombras suaves, reflejos creíbles, materiales con textura real y profundidad de campo, como hecha con una cámara réflex y un objetivo gran angular. Debe parecer una foto real, no un render ni una ilustración.',
+      NIVELES[nivel],
       colores.length ? 'Respeta con la máxima fidelidad estos colores y acabados: ' + colores.join('; ') + '.' : 'Mantén los colores de los materiales tal y como aparecen en la imagen.',
       estancia ? 'Estancia: ' + String(estancia).slice(0, 80) + '.' : '',
       estilo ? 'Estilo: ' + String(estilo).slice(0, 120) + '.' : '',

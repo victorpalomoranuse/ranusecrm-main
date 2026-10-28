@@ -483,7 +483,7 @@ export default function Visor3D() {
   // Render fotorrealista con IA: se manda la vista actual y vuelve mejorada
   const [ia, setIa] = useState(null); // { estado: 'trabajando' | 'listo' | 'error', imagen, mensaje, estancia, estilo, extra }
   const [iaForm, setIaForm] = useState(false);
-  const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '' });
+  const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '', libertad: 'equilibrado' });
   const renderIA = async () => {
     const { renderer, scene, cam } = api3d.current;
     setIaForm(false);
@@ -539,6 +539,14 @@ export default function Visor3D() {
             {[['estancia', 'Estancia (ej. salón, gimnasio privado)'], ['estilo', 'Estilo (ej. moderno, cálido, minimalista)'], ['extra', 'Algo más (ej. luz de tarde, suelo de roble claro)']].map(([k, ph]) => (
               <input key={k} value={iaTxt[k]} onChange={e => setIaTxt(t => ({ ...t, [k]: e.target.value }))} placeholder={ph} style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 6 }} />
             ))}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <span style={{ opacity: 0.7 }}>Libertad de la IA</span>
+              <select value={iaTxt.libertad} onChange={e => setIaTxt(t => ({ ...t, libertad: e.target.value }))} style={btn}>
+                <option value="fiel">Fiel al modelo (solo pule)</option>
+                <option value="equilibrado">Equilibrado (añade ambiente y luz)</option>
+                <option value="creativo">Creativo (decora con criterio)</option>
+              </select>
+            </label>
             <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
               <button style={btn} onClick={() => setIaForm(false)}>Cancelar</button>
               <button style={{ ...btn, background: '#7a4fc4', borderColor: '#7a4fc4' }} onClick={renderIA}>Generar</button>
