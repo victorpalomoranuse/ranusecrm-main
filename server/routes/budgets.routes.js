@@ -375,7 +375,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { status, design_fee_type, design_fee_value, design_hours, notes, budget_name, project_id, global_discount_pct, payment_option_id, install_shipping_note, payment_schedule, pack_discount_pct } = req.body;
+    const { status, design_fee_type, design_fee_value, design_hours, notes, budget_name, project_id, global_discount_pct, payment_option_id, install_shipping_note, payment_schedule, pack_discount_pct, pack_discount_eur } = req.body;
     const updates = { updated_at: new Date().toISOString() };
     if (status !== undefined) updates.status = status;
     if (design_fee_type !== undefined) updates.design_fee_type = design_fee_type;
@@ -386,6 +386,7 @@ router.put('/:id', async (req, res) => {
     if (project_id !== undefined) updates.project_id = project_id || null;
     if (global_discount_pct !== undefined) updates.global_discount_pct = parseFloat(global_discount_pct) || 0;
     if (install_shipping_note !== undefined) updates.install_shipping_note = install_shipping_note?.trim() || null;
+    if (pack_discount_eur !== undefined) updates.pack_discount_eur = Math.max(0, parseFloat(pack_discount_eur) || 0) || null;
     if (pack_discount_pct !== undefined) updates.pack_discount_pct = Math.max(0, Math.min(100, parseFloat(pack_discount_pct) || 0)) || null;
     if (payment_schedule !== undefined) {
       const lista = (Array.isArray(payment_schedule) ? payment_schedule : []).slice(0, 12)
@@ -955,13 +956,15 @@ router.get('/:id/pdf-cliente', async (req, res) => {
 
     // Oferta "si contratas todo junto": se enseña aparte, sin tocar el total normal
     const packPct = parseFloat(budget.pack_discount_pct) || 0;
-    if (packPct > 0 && total > 0) {
-      const totalPack = total * (1 - packPct / 100);
-      const ahorroPack = total - totalPack;
+    const packEur = parseFloat(budget.pack_discount_eur) || 0;
+    if ((packEur > 0 || packPct > 0) && total > 0) {
+      // Si hay importe en euros manda sobre el %. El importe es lo que ahorra el cliente sobre el total final.
+      const ahorroPack = packEur > 0 ? Math.min(packEur, total) : total * packPct / 100;
+      const totalPack = total - ahorroPack;
       if (y > H - 130) { doc.addPage(); y = margin + 20; }
       doc.rect(margin, y, W - margin * 2, 76).fill('#eef7f1');
       doc.rect(margin, y, 4, 76).fill('#2e7d4f');
-      doc.fillColor('#2e7d4f').fontSize(7.5).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO (-' + packPct.toLocaleString('es-ES') + '%)', margin + 16, y + 10);
+      doc.fillColor('#2e7d4f').fontSize(7.5).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO', margin + 16, y + 10);
       doc.fillColor('#1f6b40').fontSize(22).font('Helvetica-Bold').text('Ahorras ' + fmtEur(ahorroPack), margin + 16, y + 24, { width: W - margin * 2 - 200 });
       doc.fillColor('#666666').fontSize(7.5).font('Helvetica').text(totalSavings > 0 ? 'Con la oferta, tu ahorro total sobre tarifa sube a ' + fmtEur(totalSavings + ahorroPack) : 'Contratando todo el presupuesto en conjunto', margin + 16, y + 54, { width: W - margin * 2 - 200 });
       doc.fillColor('#777777').fontSize(7).font('Helvetica').text('Total con la oferta', W - margin - 170, y + 14, { width: 154, align: 'right' });

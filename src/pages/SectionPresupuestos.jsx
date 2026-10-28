@@ -961,16 +961,23 @@ function BudgetEditor({ id, onBack, onOpen }) {
     finally { setSavingPaymentOption(false); }
   };
 
-  const [packPct, setPackPct] = useState('');
+  const [packVal, setPackVal] = useState('');
+  const [packMode, setPackMode] = useState('eur'); // 'eur' (importe que ahorra) o 'pct'
   const [savingPack, setSavingPack] = useState(false);
-  useEffect(() => { setPackPct(budget?.pack_discount_pct != null ? String(budget.pack_discount_pct) : ''); }, [budget?.id]);
+  useEffect(() => {
+    if (parseFloat(budget?.pack_discount_eur) > 0) { setPackMode('eur'); setPackVal(String(budget.pack_discount_eur)); }
+    else if (parseFloat(budget?.pack_discount_pct) > 0) { setPackMode('pct'); setPackVal(String(budget.pack_discount_pct)); }
+    else setPackVal('');
+  }, [budget?.id]);
+  // Lo que se ahorra el cliente con la oferta: en euros es sobre el total final (con IVA); aquí se pasa a sin IVA para calcular el beneficio.
+  const packAhorroSinIva = (totalSinIva) => { const v = parseFloat(packVal) || 0; return packMode === 'eur' ? v / (1 + (parseFloat(pdfIva) || 0) / 100) : totalSinIva * v / 100; };
   const guardaPack = async () => {
     setSavingPack(true);
     try {
-      const { data } = await api.put(`/budgets/${id}`, { pack_discount_pct: packPct });
-      setBudget(b => ({ ...b, pack_discount_pct: data.budget.pack_discount_pct }));
-      flash(packPct && parseFloat(packPct) > 0 ? 'Oferta guardada' : 'Oferta quitada');
-    } catch { flash('Error al guardar la oferta (¿falta el SQL v84?)', 'error'); }
+      const { data } = await api.put(`/budgets/${id}`, packMode === 'eur' ? { pack_discount_eur: packVal, pack_discount_pct: '' } : { pack_discount_pct: packVal, pack_discount_eur: '' });
+      setBudget(b => ({ ...b, pack_discount_pct: data.budget.pack_discount_pct, pack_discount_eur: data.budget.pack_discount_eur }));
+      flash(packVal && parseFloat(packVal) > 0 ? 'Oferta guardada' : 'Oferta quitada');
+    } catch { flash('Error al guardar la oferta (¿falta el SQL v85?)', 'error'); }
     finally { setSavingPack(false); }
   };
   const [calendario, setCalendario] = useState([]);
@@ -1300,15 +1307,15 @@ function BudgetEditor({ id, onBack, onOpen }) {
         ))}
       </div>
 
-      {parseFloat(packPct) > 0 && (() => {
-        const p = parseFloat(packPct);
-        const totalPack = sum.totalRev * (1 - p / 100);
+      {parseFloat(packVal) > 0 && (() => {
+        const ahorro = packAhorroSinIva(sum.totalRev);
+        const totalPack = sum.totalRev - ahorro;
         const benPack = totalPack - sum.itemCost;
         const margPack = totalPack > 0 ? (benPack / totalPack) * 100 : 0;
         const dif = benPack - sum.profit;
         return (
           <div style={{display:'flex',alignItems:'center',gap:'1.5rem',flexWrap:'wrap',padding:'0.7rem 1rem',margin:'0 0 0.75rem',background:'rgba(139,174,143,0.07)',border:'1px dashed rgba(139,174,143,0.55)',borderRadius:8}}>
-            <span style={{fontSize:'0.72rem',color:'#a9cdad',fontWeight:600}}>Si el cliente acepta la oferta (−{p}%)</span>
+            <span style={{fontSize:'0.72rem',color:'#a9cdad',fontWeight:600}}>Si el cliente acepta la oferta (ahorra {fmt(ahorro)}{packMode === 'eur' ? ' con IVA' : ''})</span>
             <span style={{fontSize:'0.78rem',color:'rgba(255,255,255,0.7)'}}>Total cliente <strong style={{color:'#fff'}}>{fmt(totalPack)}</strong></span>
             <span style={{fontSize:'0.78rem',color:'rgba(255,255,255,0.7)'}}>Beneficio <strong style={{color: benPack >= 0 ? '#8bae8f' : '#ae8b8b'}}>{fmt(benPack)}</strong> <span style={{color:'rgba(255,255,255,0.4)'}}>({dif >= 0 ? '+' : ''}{fmt(dif)} vs. sin oferta)</span></span>
             <span style={{fontSize:'0.78rem',color:'rgba(255,255,255,0.7)'}}>Margen <strong style={{color: margPack >= 20 ? '#8bae8f' : margPack >= 10 ? '#baafa5' : '#ae8b8b'}}>{margPack.toFixed(1)}%</strong> <span style={{color:'rgba(255,255,255,0.4)'}}>(antes {sum.margin.toFixed(1)}%)</span></span>
@@ -1383,9 +1390,12 @@ function BudgetEditor({ id, onBack, onOpen }) {
               {showPdfOptions && (
                 <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'0.5rem 0.6rem',background:'rgba(255,255,255,0.04)',borderRadius:6,border:'1px solid rgba(255,255,255,0.08)',width:'100%'}}>
                   <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>Oferta «si contratas todo junto»:</span>
-                  <input className="ap-field-input" type="number" min="0" max="100" step="0.5" value={packPct} onChange={e=>setPackPct(e.target.value)} placeholder="0" style={{width:64,flex:'none',minWidth:0,fontSize:'0.72rem'}} />
-                  <span style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)'}}>% de descuento</span>
-                  {parseFloat(packPct) > 0 && <span className="pres-mono" style={{fontSize:'0.72rem',color:'#8bae8f'}}>→ total {fmt(sum.totalRev * (1 - parseFloat(packPct) / 100))} (ahorra {fmt(sum.totalRev * parseFloat(packPct) / 100)}, sin IVA)</span>}
+                  <input className="ap-field-input" type="number" min="0" step={packMode === 'eur' ? 50 : 0.5} value={packVal} onChange={e=>setPackVal(e.target.value)} placeholder="0" style={{width:90,flex:'none',minWidth:0,fontSize:'0.72rem'}} />
+                  <select className="ap-select" value={packMode} onChange={e=>setPackMode(e.target.value)} style={{fontSize:'0.72rem'}}>
+                    <option value="eur">€ (el cliente ve «Ahorras X €»)</option>
+                    <option value="pct">% de descuento</option>
+                  </select>
+                  {parseFloat(packVal) > 0 && <span className="pres-mono" style={{fontSize:'0.72rem',color:'#8bae8f'}}>→ el cliente ahorra {packMode === 'eur' ? fmt(parseFloat(packVal)) : fmt(sum.totalRev * parseFloat(packVal) / 100) + ' (sin IVA)'}</span>}
                   <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" style={{marginLeft:'auto',fontSize:'0.7rem'}} disabled={savingPack} onClick={guardaPack}>{savingPack ? '…' : 'Guardar oferta'}</button>
                 </div>
               )}
