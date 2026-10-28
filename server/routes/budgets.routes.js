@@ -103,6 +103,11 @@ function lineListPrice(item) {
   return isPvpMode ? (parseFloat(item.pvp_ref) || 0) : (parseFloat(item.unit_price) || 0);
 }
 
+// El dto. de partida solo existe en modo PVP+Dto; en modo Coste+% un discount_pct guardado de antes se ignora
+function dtoEfectivo(i) {
+  return (i.pricing_mode || 'margin') === 'pvp' ? (parseFloat(i.discount_pct) || 0) : 0;
+}
+
 // El Dto. global NO se aplica sobre las partidas que ya llevan descuento propio (solo cuenta el descuento de partida, que solo existe en modo PVP+Dto)
 function lineaConDto(i) {
   return (i.pricing_mode || 'margin') === 'pvp' && (parseFloat(i.discount_pct) || 0) > 0;
@@ -738,12 +743,12 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     const lineDiscountTotal = items.reduce((s, i) => {
       if (i.ya_abonado === true) return s;
       const lineTotal = lineListPrice(i) * (parseFloat(i.quantity) || 1);
-      return s + lineTotal * (parseFloat(i.discount_pct) || 0) / 100;
+      return s + lineTotal * dtoEfectivo(i) / 100;
     }, 0);
     const abonadoTotal = items.reduce((s, i) => {
       if (i.ya_abonado !== true) return s;
       const lineTotal = lineListPrice(i) * (parseFloat(i.quantity) || 1);
-      return s + lineTotal * (parseFloat(i.discount_pct) || 0) / 100;
+      return s + lineTotal * dtoEfectivo(i) / 100;
     }, 0);
     const subtotalAfterLines = subtotalBruto - lineDiscountTotal - abonadoTotal;
     const globalDiscountAmount = baseDtoGlobal(items) * globalDto / 100;
@@ -910,7 +915,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
 
       // Columnas numéricas
       const midY = y + rowH / 2 - 5;
-      const lineDto = parseFloat(item.discount_pct) || 0;
+      const lineDto = dtoEfectivo(item);
       const isPvpMode = (item.pricing_mode || 'margin') === 'pvp';
       const pvpBase = lineListPrice(item);
       // P. UNIT. = PVP bruto en modo PVP, precio venta en modo margen
