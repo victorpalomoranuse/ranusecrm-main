@@ -979,8 +979,8 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       doc.rect(margin, y, W - margin * 2, 76).fill('#eef7f1');
       doc.rect(margin, y, 4, 76).fill('#2e7d4f');
       doc.fillColor('#2e7d4f').fontSize(7.5).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO', margin + 16, y + 10);
-      doc.fillColor('#1f6b40').fontSize(22).font('Helvetica-Bold').text('Ahorras ' + fmtEur(ahorroPack), margin + 16, y + 24, { width: W - margin * 2 - 200 });
-      doc.fillColor('#666666').fontSize(7.5).font('Helvetica').text(totalSavings > 0 ? 'Con la oferta, tu ahorro total sobre tarifa sube a ' + fmtEur(totalSavings + ahorroPack) : 'Contratando todo el presupuesto en conjunto', margin + 16, y + 54, { width: W - margin * 2 - 200 });
+      doc.fillColor('#1f6b40').fontSize(22).font('Helvetica-Bold').text('Ahorras ' + fmtEur(ahorroPack + totalSavings), margin + 16, y + 24, { width: W - margin * 2 - 200 });
+      doc.fillColor('#666666').fontSize(7.5).font('Helvetica').text(totalSavings > 0 ? fmtEur(ahorroPack) + ' por contratar todo junto + ' + fmtEur(totalSavings) + ' de descuentos ya aplicados' : 'Contratando todo el presupuesto en conjunto', margin + 16, y + 54, { width: W - margin * 2 - 200 });
       doc.fillColor('#777777').fontSize(7).font('Helvetica').text('Total con la oferta', W - margin - 170, y + 14, { width: 154, align: 'right' });
       doc.fillColor(BRAND.dark).fontSize(16).font('Helvetica-Bold').text(fmtEur(totalPack), W - margin - 170, y + 28, { width: 154, align: 'right' });
       doc.fillColor('#999999').fontSize(7).font('Helvetica').text('en lugar de ' + fmtEur(total), W - margin - 170, y + 50, { width: 154, align: 'right' });
