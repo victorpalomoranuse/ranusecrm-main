@@ -959,23 +959,27 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       const totalPack = total * (1 - packPct / 100);
       const ahorroPack = total - totalPack;
       if (y > H - 130) { doc.addPage(); y = margin + 20; }
-      doc.rect(margin, y, W - margin * 2, 62).fill('#f5f3f0');
-      doc.rect(margin, y, 4, 62).fill(BRAND.primary);
-      doc.fillColor(BRAND.primary).fontSize(7).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO', margin + 16, y + 9);
-      doc.fillColor(BRAND.dark).fontSize(9).font('Helvetica').text('Descuento del ' + packPct.toLocaleString('es-ES') + '% contratando todo el presupuesto en conjunto', margin + 16, y + 21, { width: W - margin * 2 - 190 });
-      doc.fillColor('#2e7d4f').fontSize(8.5).font('Helvetica-Bold').text('Ahorras ' + fmtEur(ahorroPack), margin + 16, y + 42);
-      doc.fillColor('#999999').fontSize(7).font('Helvetica').text('Total con la oferta', W - margin - 170, y + 12, { width: 154, align: 'right' });
-      doc.fillColor(BRAND.dark).fontSize(15).font('Helvetica-Bold').text(fmtEur(totalPack), W - margin - 170, y + 26, { width: 154, align: 'right' });
-      y += 78;
+      doc.rect(margin, y, W - margin * 2, 76).fill('#eef7f1');
+      doc.rect(margin, y, 4, 76).fill('#2e7d4f');
+      doc.fillColor('#2e7d4f').fontSize(7.5).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO (-' + packPct.toLocaleString('es-ES') + '%)', margin + 16, y + 10);
+      doc.fillColor('#1f6b40').fontSize(22).font('Helvetica-Bold').text('Ahorras ' + fmtEur(ahorroPack), margin + 16, y + 24, { width: W - margin * 2 - 200 });
+      doc.fillColor('#666666').fontSize(7.5).font('Helvetica').text(totalSavings > 0 ? 'Con la oferta, tu ahorro total sobre tarifa sube a ' + fmtEur(totalSavings + ahorroPack) : 'Contratando todo el presupuesto en conjunto', margin + 16, y + 54, { width: W - margin * 2 - 200 });
+      doc.fillColor('#777777').fontSize(7).font('Helvetica').text('Total con la oferta', W - margin - 170, y + 14, { width: 154, align: 'right' });
+      doc.fillColor(BRAND.dark).fontSize(16).font('Helvetica-Bold').text(fmtEur(totalPack), W - margin - 170, y + 28, { width: 154, align: 'right' });
+      doc.fillColor('#999999').fontSize(7).font('Helvetica').text('en lugar de ' + fmtEur(total), W - margin - 170, y + 50, { width: 154, align: 'right' });
+      y += 92;
     }
 
     if (showSavings && totalSavings > 0) {
       if (y > H - 120) { doc.addPage(); y = margin + 20; }
-      doc.rect(margin, y, W - margin * 2, 36).fill('#0a0a0a');
-      doc.fillColor(BRAND.primary).fontSize(7).font('Helvetica-Bold').text('TU AHORRO CON RANUSE DESIGN', margin + 16, y + 8);
-      doc.fillColor('#ffffff').fontSize(14).font('Helvetica-Bold').text(fmtEur(totalSavings), margin + 16, y + 18);
-      doc.fillColor('rgba(255,255,255,0.4)').fontSize(7.5).font('Helvetica').text('Descuento total aplicado sobre precio de tarifa', W - margin - 200, y + 22, { width: 180, align: 'right' });
-      y += 52;
+      const pctAhorro = subtotalBruto > 0 ? (totalSavings / subtotalBruto) * 100 : 0;
+      doc.rect(margin, y, W - margin * 2, 56).fill('#0a0a0a');
+      doc.rect(margin, y, 4, 56).fill('#4caf7a');
+      doc.fillColor('#4caf7a').fontSize(8).font('Helvetica-Bold').text('TU AHORRO CON RANUSE DESIGN', margin + 18, y + 10);
+      doc.fillColor('#6fe0a0').fontSize(24).font('Helvetica-Bold').text(fmtEur(totalSavings), margin + 18, y + 23);
+      if (pctAhorro > 0) doc.fillColor('#6fe0a0').fontSize(13).font('Helvetica-Bold').text('-' + pctAhorro.toLocaleString('es-ES', { maximumFractionDigits: 1 }) + '%', W - margin - 120, y + 12, { width: 104, align: 'right' });
+      doc.fillColor('rgba(255,255,255,0.5)').fontSize(7.5).font('Helvetica').text('Descuento total aplicado sobre precio de tarifa', W - margin - 220, y + 36, { width: 204, align: 'right' });
+      y += 72;
     }
 
     const calendarioPagos = Array.isArray(budget.payment_schedule) ? budget.payment_schedule.filter(h => h && parseFloat(h.pct) > 0) : [];
