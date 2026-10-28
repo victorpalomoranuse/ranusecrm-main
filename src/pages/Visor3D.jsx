@@ -438,8 +438,14 @@ export default function Visor3D() {
   useEffect(() => { selAcabRef.current = selAcab; }, [selAcab]);
   useEffect(() => { objsRef.current = objs; }, [objs]);
   useEffect(() => { herrRef.current = herr; }, [herr]);
+  const seleccionRef = useRef(null);
+  const [grosorMuro, setGrosorMuro] = useState(12);
+  const grosorMuroRef = useRef(12);
+  useEffect(() => { grosorMuroRef.current = grosorMuro; }, [grosorMuro]);
+  const [medidaMuro, setMedidaMuro] = useState('');
   const selObjRef = useRef(null);
   useEffect(() => { selObjRef.current = selObj; }, [selObj]);
+  useEffect(() => { seleccionRef.current = seleccion; }, [seleccion]);
 
   useEffect(() => { document.title = 'Vista 3D · Ranuse'; }, []);
 
@@ -559,7 +565,7 @@ export default function Visor3D() {
       const uh = primero?.object?.userData?.hueco;
       if (uh) { setSelHueco({ ...uh, nuevo: { w: uh.w, h: uh.h, sill: uh.sill, p: uh.p } }); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
       let eq = null; if (primero) { let o = primero.object; while (o && !o.userData.equipo) o = o.parent; eq = o; }
-      if (eq) { sel = eq; eq.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(eq.userData.equipo); setEqNuevo({ w: eq.userData.equipo.largo || eq.userData.equipo.w, d: eq.userData.equipo.fondo || eq.userData.equipo.d, rot: eq.userData.equipo.rot || 0 }); setSelAcab(null); }
+      if (eq) { sel = eq; eq.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(eq.userData.equipo); setEqNuevo({ x: Math.round(eq.userData.equipo.cx), y: Math.round(eq.userData.equipo.cy), w: eq.userData.equipo.largo || eq.userData.equipo.w, d: eq.userData.equipo.fondo || eq.userData.equipo.d, rot: eq.userData.equipo.rot || 0 }); setSelAcab(null); }
       else {
         setSeleccion(null);
         const u = primero?.object?.userData || {};
@@ -614,6 +620,9 @@ export default function Visor3D() {
     let arrastre = null, trazo = null, previa = null;
     let poli = [], poliLinea = null, poliAbajo = null, empuje = null;
     let guiaA = null, guiaAbajo = null, guiaMarca = null, luzAbajo = null, eje3 = null;
+    let muroA = null, muroAbajo = null, muroLinea = null, nodoDrag = null;
+    const quitarMuroLinea = () => { if (muroLinea) { scene.remove(muroLinea); muroLinea.geometry.dispose(); muroLinea = null; } };
+    const terminarMuros = () => { muroA = null; quitarMuroLinea(); setMedidaMuro(''); setHerr('sel'); };
     const esPoli = h => h === 'poli' || h === 'zonaS' || h === 'zonaT' || h === 'sigue';
     let cierraLazo = false;
     let poliP = null, pAbajo = null, pLinea = null;
@@ -678,6 +687,7 @@ export default function Visor3D() {
       poli = []; dibujarPoli(null); setHerr('sel');
     };
     const onTecla = e => {
+      if (herrRef.current === 'muro' && (e.key === 'Escape' || e.key === 'Enter')) { terminarMuros(); return; }
       if (herrRef.current === 'luz' && e.key === 'Escape') { setHerr('sel'); return; }
       if (herrRef.current === 'guia' && e.key === 'Escape') { guiaA = null; if (guiaMarca) { scene.remove(guiaMarca); guiaMarca = null; } setHerr('sel'); return; }
       if (herrRef.current === 'zonaP') { if (e.key === 'Enter') cerrarPared(); if (e.key === 'Escape') { poliP = null; dibujarPared(null); setHerr('sel'); } return; }
@@ -713,6 +723,7 @@ export default function Visor3D() {
       if (herrRef.current === 'zonaP') { pAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'guia') { guiaAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'luz') { luzAbajo = [e.clientX, e.clientY]; return; }
+      if (herrRef.current === 'muro') { muroAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'empujar') {
         const r = dom.getBoundingClientRect();
         p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -734,12 +745,26 @@ export default function Visor3D() {
         scene.add(previa); e.stopPropagation(); return;
       }
       {
+        const ngG = api3d.current.nodoG;
+        if (ngG) {
+          const r = dom.getBoundingClientRect();
+          p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+          rayo.setFromCamera(p2, cam);
+          const hn = rayo.intersectObjects(ngG.children, true)[0];
+          if (hn) { ctrl.enabled = false; nodoDrag = { nodo: hn.object.userData.nodo, muroId: hn.object.userData.muroId, esfera: hn.object, p: null }; e.stopPropagation(); return; }
+        }
+      }
+      {
         const gzG = api3d.current.gizmoG;
         if (gzG) {
           const r = dom.getBoundingClientRect();
           p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
           rayo.setFromCamera(p2, cam);
-          const hg = rayo.intersectObjects(gzG.children, true)[0], ob0 = objsRef.current.find(x => x.id === selObjRef.current);
+          const hg = rayo.intersectObjects(gzG.children, true)[0], ob0 = objsRef.current.find(x => x.id === selObjRef.current), eqp = !ob0 ? seleccionRef.current : null;
+          if (hg && eqp) {
+            let g3p = null; raiz.traverse(o => { if (o.userData.equipo && o.userData.equipo.id === eqp.id) g3p = o; });
+            if (g3p) { ctrl.enabled = false; eje3 = { plan: true, eqId: eqp.id, g3: g3p, eje: hg.object.userData.eje, cx0: eqp.cx, cy0: eqp.cy, p0: sueloRaw(e), nuevo: {} }; e.stopPropagation(); return; }
+          }
           if (hg && ob0) { ctrl.enabled = false; eje3 = { eje: hg.object.userData.eje, id: ob0.id, cx0: ob0.cx, cy0: ob0.cy, z00: ob0.z0 || 0, p0: sueloRaw(e), y0: e.clientY, nuevo: {} }; e.stopPropagation(); return; }
         }
       }
@@ -753,8 +778,17 @@ export default function Visor3D() {
       e.stopPropagation();
     };
     const onMoveD = e => {
+      if (nodoDrag) { const p = puntoSuelo(e); if (p) { nodoDrag.p = p; nodoDrag.esfera.position.x = p.x * CM; nodoDrag.esfera.position.z = p.y * CM; } return; }
+      if (herrRef.current === 'muro' && muroA) {
+        let p = puntoSuelo(e); if (!p) return;
+        if (e.shiftKey) { if (Math.abs(p.x - muroA.x) > Math.abs(p.y - muroA.y)) p = { x: p.x, y: muroA.y }; else p = { x: muroA.x, y: p.y }; }
+        quitarMuroLinea();
+        muroLinea = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(muroA.x * CM, 0.05, muroA.y * CM), new THREE.Vector3(p.x * CM, 0.05, p.y * CM)]), new THREE.LineBasicMaterial({ color: 0x1b6dd6 }));
+        scene.add(muroLinea); setMedidaMuro(Math.round(Math.hypot(p.x - muroA.x, p.y - muroA.y)) + ' cm');
+        return;
+      }
       if (eje3) {
-        const g3 = esc.children.find(x => x.userData.oid === eje3.id); if (!g3) return;
+        const g3 = eje3.plan ? eje3.g3 : esc.children.find(x => x.userData.oid === eje3.id); if (!g3) return;
         if (eje3.eje === 'y') {
           const dist = cam.position.distanceTo(g3.position), cmPx = ((2 * dist * Math.tan(cam.fov * Math.PI / 360)) / dom.clientHeight) * 100;
           const z = Math.max(0, Math.round((eje3.z00 + (eje3.y0 - e.clientY) * cmPx) / 5) * 5); eje3.nuevo = { z0: z }; g3.position.y = (z - eje3.z00) * CM;
@@ -763,6 +797,7 @@ export default function Visor3D() {
           if (p && eje3.p0) {
             const dlt = eje3.eje === 'x' ? p.x - eje3.p0.x : p.y - eje3.p0.y, v = Math.round(((eje3.eje === 'x' ? eje3.cx0 : eje3.cy0) + dlt) / 5) * 5;
             if (eje3.eje === 'x') { eje3.nuevo = { cx: v }; g3.position.x = v * CM; } else { eje3.nuevo = { cy: v }; g3.position.z = v * CM; }
+            if (eje3.plan) eje3.nuevoPlan = { x: eje3.nuevo.cx ?? eje3.nuevoPlan?.x ?? eje3.cx0, y: eje3.nuevo.cy ?? eje3.nuevoPlan?.y ?? eje3.cy0 };
           }
         }
         return;
@@ -790,6 +825,31 @@ export default function Visor3D() {
       }
     };
     const onUpD = e => {
+      if (nodoDrag) {
+        const nd = nodoDrag; nodoDrag = null; ctrl.enabled = true;
+        if (nd.p) api.patch('/medicion/' + id + '/muro/' + nd.muroId, { [nd.nodo]: { x: nd.p.x, y: nd.p.y } }).then(() => { setAviso('Muro movido en el plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(er => setAviso(er.response?.data?.error || 'No se pudo mover el muro'));
+        return;
+      }
+      if (muroAbajo) {
+        const d0 = Math.hypot(e.clientX - muroAbajo[0], e.clientY - muroAbajo[1]); muroAbajo = null;
+        if (d0 < 4) {
+          let p = puntoSuelo(e);
+          if (p) {
+            if (muroA && e.shiftKey) { if (Math.abs(p.x - muroA.x) > Math.abs(p.y - muroA.y)) p = { x: p.x, y: muroA.y }; else p = { x: muroA.x, y: p.y }; }
+            if (!muroA) muroA = p;
+            else {
+              const A = muroA; muroA = p; quitarMuroLinea();
+              api.post('/medicion/' + id + '/muro', { x1: A.x, y1: A.y, x2: p.x, y2: p.y, t: grosorMuroRef.current }).then(() => { setGuardado('Muro creado en el plano ✓'); api3d.current.recargar?.(); }).catch(er => { setAviso(er.response?.data?.error || 'No se pudo crear el muro'); });
+            }
+          }
+        }
+        return;
+      }
+      if (eje3 && eje3.plan) {
+        const a3 = eje3; eje3 = null; ctrl.enabled = true;
+        if (a3.nuevoPlan) api.patch('/medicion/' + id + '/equipo', { eqId: a3.eqId, cambios: a3.nuevoPlan }).then(() => { setSeleccion(null); setAviso('Máquina movida en el plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(er => setAviso(er.response?.data?.error || 'No se pudo mover la máquina'));
+        return;
+      }
       if (eje3) {
         const a3 = eje3; eje3 = null; ctrl.enabled = true;
         if (Object.keys(a3.nuevo).length) setObjs(prev => prev.map(x => (x.id === a3.id ? { ...x, ...a3.nuevo } : x)));
@@ -932,9 +992,10 @@ export default function Visor3D() {
       txt(Math.round(d.alto * 10) / 10 + ' cm', [-W / 2 - off - 0.16, H / 2, D / 2 + off]);
       a.scene.add(g); a.cotasG = g;
     }
-    if (ob && !(ob.tipo === 'zona' && ob.plano === 'pared') && ob.tipo !== 'falsotecho') {
-      const G = new THREE.Group(); G.position.set(ob.cx * CM, (ob.z0 || 0) * CM + (ob.alto * CM) / 2, ob.cy * CM);
-      const L = Math.max(0.5, Math.max(ob.w, ob.d, ob.alto) * CM * 0.6 + 0.25);
+    const gz = ob || (seleccion ? { cx: seleccion.cx, cy: seleccion.cy, z0: 0, alto: seleccion.alto || 110, w: seleccion.largo || seleccion.w, d: seleccion.fondo || seleccion.d, plan: true } : null);
+    if (gz && !(gz.tipo === 'zona' && gz.plano === 'pared') && gz.tipo !== 'falsotecho') {
+      const G = new THREE.Group(); G.position.set(gz.cx * CM, (gz.z0 || 0) * CM + (gz.alto * CM) / 2, gz.cy * CM);
+      const L = Math.max(0.5, Math.max(gz.w, gz.d, gz.alto) * CM * 0.6 + 0.25);
       const flecha = (col, eje) => {
         const g = new THREE.Group(), m = new THREE.MeshBasicMaterial({ color: col, depthTest: false });
         const asta = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, L, 8), m); asta.position.y = L / 2;
@@ -944,10 +1005,24 @@ export default function Visor3D() {
         g.traverse(o => { o.userData.eje = eje; o.renderOrder = 999; });
         return g;
       };
-      G.add(flecha(0xe5484d, 'x'), flecha(0x46a758, 'y'), flecha(0x3e63dd, 'z'));
+      G.add(flecha(0xe5484d, 'x'), flecha(0x3e63dd, 'z')); if (!gz.plan) G.add(flecha(0x46a758, 'y'));
       a.scene.add(G); a.gizmoG = G;
     }
   }, [objs, selObj, seleccion, estado, rev]);
+
+  // Asas azules en los extremos del muro seleccionado: arrastrarlas mueve el muro (y los muros conectados) en el plano
+  useEffect(() => {
+    const a = api3d.current; if (!a.scene) return;
+    if (a.nodoG) { a.scene.remove(a.nodoG); a.nodoG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); a.nodoG = null; }
+    if (!selAcab || selAcab.tipo !== 'muro' || !a.modelo) return;
+    const mu = (a.modelo.plantas || [a.modelo]).flatMap(p => p.muros || []).find(m => m.id === selAcab.id); if (!mu) return;
+    const g = new THREE.Group();
+    [['a', mu.a], ['b', mu.b]].forEach(([k, p]) => {
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), new THREE.MeshBasicMaterial({ color: 0x1b6dd6, depthTest: false }));
+      s.position.set(p[0] * CM, ((mu.h || a.modelo.altura || 260) * CM) + 0.05, p[1] * CM); s.renderOrder = 999; s.userData = { nodo: k, muroId: mu.id }; g.add(s);
+    });
+    a.scene.add(g); a.nodoG = g;
+  }, [selAcab, rev, estado]);
 
   // Rodapié: sigue el perímetro de cada sala (por dentro) y se interrumpe en las puertas
   useEffect(() => {
@@ -1369,7 +1444,7 @@ export default function Visor3D() {
   const btn = { background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
-      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue'].includes(herr) ? 'crosshair' : 'default' }} />
+      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro'].includes(herr) ? 'crosshair' : 'default' }} />
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={btn} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <b style={{ color: '#222', marginRight: 'auto' }}>{titulo}</b>
@@ -1402,6 +1477,8 @@ export default function Visor3D() {
         </div>
         <button style={{ ...btn, ...(herr === 'guia' ? { background: '#d62bd6', borderColor: '#d62bd6' } : {}) }} onClick={() => setHerr('guia')} title="Clic en dos puntos para crear una línea guía infinita. El dibujo se imanta a las guías, a las esquinas y a los extremos de los muros. Esc para salir.">📏 Guía</button>
         <button style={{ ...btn, ...(herr === 'luz' ? { background: '#c9a21a', borderColor: '#c9a21a', color: '#111' } : {}) }} onClick={() => setHerr('luz')} title="Clic en el suelo para colocar una luminaria: se crea también en la capa Iluminación del plano. Esc para salir.">💡 Luz</button>
+        <button style={{ ...btn, ...(herr === 'muro' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('muro')} title="Dibuja muros: clic para empezar, clic para cada punto siguiente (Mayús = recto). Enter o Esc para terminar. Se crean también en el plano.">🧱 Muro</button>
+        {herr === 'muro' && <><select value={grosorMuro} onChange={e => setGrosorMuro(parseInt(e.target.value, 10))} style={btn} title="Grosor del muro">{[7, 10, 12, 15, 20, 25, 30].map(g => <option key={g} value={g}>{g} cm</option>)}</select>{medidaMuro && <b style={{ color: '#1b6dd6' }}>{medidaMuro}</b>}</>}
         {herr === 'luz' && <select value={kindLuz} onChange={e => setKindLuz(e.target.value)} style={btn}><option value="foco">Foco empotrado</option><option value="plaf">Plafón</option><option value="colg">Colgante</option><option value="aplq">Aplique</option><option value="pie">Lámpara de pie</option><option value="suel">Empotrado de suelo</option></select>}
         {guias.length > 0 && <button style={btn} onClick={() => setGuias([])} title="Quitar todas las guías">✕ Guías ({guias.length})</button>}
         <button style={{ ...btn, ...(bibAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setBibAbierta(v => !v)} title="Tus productos del catálogo de Ranuse">📦 Catálogo</button>
@@ -1610,6 +1687,20 @@ export default function Visor3D() {
         const paleta = ['#ffffff', '#f4f1ec', '#e8e2d8', '#d9cfc0', '#c9b9a0', '#b8a58c', '#a9b5a1', '#8fa3a8', '#7d8e9c', '#9d9a96', '#6e6a66', '#3a3a3c', '#c9a77c', '#8a6a4a', '#d9a7a0', '#b5695e'];
         return (
           <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+            {esMuro && (() => {
+              const mu = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []).find(m => m.id === selAcab.id);
+              if (!mu) return null;
+              const parche = campos => api.patch('/medicion/' + id + '/muro/' + mu.id, campos).then(() => { setAviso('Muro cambiado en el plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(er => setAviso(er.response?.data?.error || 'No se pudo cambiar el muro'));
+              return (
+                <div style={{ borderBottom: '1px solid #333', marginBottom: 8, paddingBottom: 8 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Muro del plano</div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 80, opacity: 0.7 }}>Grosor cm</span><input key={'t' + mu.id + rev} type="number" defaultValue={mu.t || 12} onBlur={e => parche({ t: e.target.value })} style={{ ...btn, width: 70 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 80, opacity: 0.7 }}>Alto cm</span><input key={'h' + mu.id + rev} type="number" defaultValue={Math.round(mu.h || api3d.current.modelo?.altura || 260)} onBlur={e => parche({ h: e.target.value })} style={{ ...btn, width: 70 }} /></label>
+                  <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 6 }}>Largo: {Math.round(Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]))} cm. Arrastra las bolas azules de los extremos para moverlo (mueve también los muros conectados).</div>
+                  <button style={{ ...btn, background: '#7a2b2b' }} onClick={() => { if (window.confirm('¿Borrar este muro del plano? Sus puertas y ventanas también se quitan.')) api.delete('/medicion/' + id + '/muro/' + mu.id).then(() => { setSelAcab(null); setAviso('Muro borrado del plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(er => setAviso(er.response?.data?.error || 'No se pudo borrar')); }}>Borrar muro</button>
+                </div>
+              );
+            })()}
             <div style={{ fontWeight: 700, marginBottom: 6 }}>{esMuro ? 'Muro' : 'Suelo'}: color</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
               {paleta.map(c => <span key={c} onClick={() => poner(c)} title={c} style={{ width: 24, height: 24, background: c, border: '1px solid #555', borderRadius: 4, cursor: 'pointer' }} />)}
@@ -1793,7 +1884,7 @@ export default function Visor3D() {
         <div style={{ position: 'absolute', right: 12, bottom: 12, width: 250, background: 'rgba(20,20,20,0.92)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13, lineHeight: 1.5 }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>{seleccion.nombre || 'Equipo'}</div>
           <div style={{ marginBottom: 4 }}>Alto: {Math.round(seleccion.alto || 110)} cm</div>
-          {eqNuevo && [['w', 'Largo'], ['d', 'Fondo'], ['rot', 'Giro °']].map(([k, et]) => (
+          {eqNuevo && [['x', 'Posición X'], ['y', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['rot', 'Giro °']].map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <span style={{ width: 70, opacity: 0.7 }}>{et}</span>
               <input type="number" value={eqNuevo[k]} onChange={e => setEqNuevo(s => ({ ...s, [k]: e.target.value }))} style={{ ...btn, width: 90 }} />

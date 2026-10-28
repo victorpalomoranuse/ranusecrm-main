@@ -663,6 +663,92 @@ router.patch('/:id/hueco', async (req, res) => {
     res.status(500).json({ error: 'No se pudo cambiar el hueco en el plano' });
   }
 });
+const nodoUsado = (data, nid, exceptoMuro) => {
+  for (const k of Object.keys(data)) {
+    if (k === 'nodes' || k === 'modelo3d' || k === 'escena3d' || !Array.isArray(data[k])) continue;
+    for (const o of data[k]) {
+      if (!o || typeof o !== 'object' || (k === 'walls' && o.id === exceptoMuro)) continue;
+      if (o.a === nid || o.b === nid || o.n === nid) return true;
+    }
+  }
+  return false;
+};
+const idCorto = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 4);
+const guardaPlano = async (id, data) => { data.updated = Date.now(); return supabase.from('mediciones').update({ data, updated_at: new Date().toISOString() }).eq('id', id); };
+const muros3dDe = (data) => { const m3 = data.modelo3d; return m3 ? (m3.plantas || [m3])[0] : null; };
+router.post('/:id/muro', async (req, res) => {
+  try {
+    const { x1, y1, x2, y2, t, h } = req.body || {};
+    const v = [x1, y1, x2, y2].map(parseFloat);
+    if (v.some(n => !Number.isFinite(n)) || Math.hypot(v[2] - v[0], v[3] - v[1]) < 5) return res.status(400).json({ error: 'El muro es demasiado corto' });
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const data = fila.data || {};
+    data.nodes = Array.isArray(data.nodes) ? data.nodes : []; data.walls = Array.isArray(data.walls) ? data.walls : [];
+    const nodoEn = (x, y) => data.nodes.find(n => Math.hypot(n.x - x, n.y - y) < 3);
+    const crea = (x, y) => { const n = { id: idCorto('n'), x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }; data.nodes.push(n); return n; };
+    const A = nodoEn(v[0], v[1]) || crea(v[0], v[1]), B = nodoEn(v[2], v[3]) || crea(v[2], v[3]);
+    if (A.id === B.id) return res.status(400).json({ error: 'El muro empieza y acaba en el mismo punto' });
+    const w = { id: idCorto('w'), a: A.id, b: B.id, len: Math.round(Math.hypot(B.x - A.x, B.y - A.y) * 10) / 10, m: true, s: 'new', t: acota(t || 12, 5, 60) };
+    if (Number.isFinite(parseFloat(h))) w.h = acota(h, 50, 1000);
+    data.walls.push(w);
+    const pl = muros3dDe(data);
+    if (pl) (pl.muros = pl.muros || []).push({ id: w.id, a: [A.x, A.y], b: [B.x, B.y], t: w.t, h: w.h || pl.altura || 260, estado: 'new', ab: [] });
+    const { error } = await guardaPlano(req.params.id, data);
+    if (error) throw error;
+    res.status(201).json({ ok: true, id: w.id });
+  } catch (err) {
+    console.error('medicion muro:', err);
+    res.status(500).json({ error: 'No se pudo crear el muro en el plano' });
+  }
+});
+router.patch('/:id/muro/:wid', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const data = fila.data || {}, w = (data.walls || []).find(q => q.id === req.params.wid);
+    if (!w) return res.status(404).json({ error: 'No he encontrado ese muro en el plano' });
+    if (Number.isFinite(parseFloat(req.body?.t))) w.t = acota(req.body.t, 5, 60);
+    if (Number.isFinite(parseFloat(req.body?.h))) w.h = acota(req.body.h, 50, 1000);
+    for (const [k, id] of [['a', w.a], ['b', w.b]]) {
+      const p = req.body?.[k], n = (data.nodes || []).find(q => q.id === id);
+      if (n && p && Number.isFinite(parseFloat(p.x)) && Number.isFinite(parseFloat(p.y))) { n.x = Math.round(parseFloat(p.x) * 10) / 10; n.y = Math.round(parseFloat(p.y) * 10) / 10; }
+    }
+    const nodo = id => (data.nodes || []).find(q => q.id === id);
+    for (const q of data.walls || []) { const A = nodo(q.a), B = nodo(q.b); if (A && B) q.len = Math.round(Math.hypot(B.x - A.x, B.y - A.y) * 10) / 10; }
+    const pl = muros3dDe(data);
+    if (pl) for (const m of pl.muros || []) {
+      const q = (data.walls || []).find(z => z.id === m.id); if (!q) continue;
+      const A = nodo(q.a), B = nodo(q.b); if (A && B) { m.a = [A.x, A.y]; m.b = [B.x, B.y]; }
+      if (q.t) m.t = q.t; if (q.h) m.h = q.h;
+    }
+    const { error } = await guardaPlano(req.params.id, data);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('medicion muro patch:', err);
+    res.status(500).json({ error: 'No se pudo cambiar el muro' });
+  }
+});
+router.delete('/:id/muro/:wid', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const data = fila.data || {}, w = (data.walls || []).find(q => q.id === req.params.wid);
+    if (!w) return res.status(404).json({ error: 'No he encontrado ese muro en el plano' });
+    data.walls = data.walls.filter(q => q.id !== w.id);
+    data.ops = (data.ops || []).filter(o => o.wall !== w.id); // sus puertas y ventanas se van con él
+    data.nodes = (data.nodes || []).filter(n => (n.id !== w.a && n.id !== w.b) || nodoUsado(data, n.id));
+    const pl = muros3dDe(data);
+    if (pl) pl.muros = (pl.muros || []).filter(m => m.id !== w.id);
+    const { error } = await guardaPlano(req.params.id, data);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('medicion muro delete:', err);
+    res.status(500).json({ error: 'No se pudo borrar el muro' });
+  }
+});
 const KINDS_LUZ = ['foco', 'plaf', 'colg', 'aplq', 'pie', 'suel'];
 router.post('/:id/luminaria', async (req, res) => {
   try {
@@ -731,12 +817,17 @@ router.patch('/:id/equipo', async (req, res) => {
     if (Number.isFinite(parseFloat(cambios.w))) vals.w = acota(cambios.w, 5, 2000);
     if (Number.isFinite(parseFloat(cambios.d))) vals.d = acota(cambios.d, 5, 2000);
     if (Number.isFinite(parseFloat(cambios.rot))) vals.rot = ((parseFloat(cambios.rot) % 360) + 360) % 360;
+    const px = parseFloat(cambios.x), py = parseFloat(cambios.y), muevo = Number.isFinite(px) && Number.isFinite(py);
     let hecho = false;
-    for (const c of contenedoresPlano(data)) for (const e of c.eq || []) if (e.id === eqId) { Object.assign(e, vals); hecho = true; }
+    for (const c of contenedoresPlano(data)) for (const e of c.eq || []) if (e.id === eqId) {
+      Object.assign(e, vals); hecho = true;
+      if (muevo) { const nodo = (c.nodes || data.nodes || []).find(n => n.id === e.n); if (nodo) { e.dx = Math.round((px - nodo.x) * 10) / 10; e.dy = Math.round((py - nodo.y) * 10) / 10; } }
+    }
     if (!hecho) return res.status(404).json({ error: 'No he encontrado ese equipo en el plano' });
     const m3 = data.modelo3d;
     if (m3) for (const pl of (m3.plantas || [m3])) for (const e of pl.equipos || []) if (e.id === eqId) {
       Object.assign(e, vals);
+      if (muevo) { e.cx = px; e.cy = py; }
       if (vals.w !== undefined) e.largo = vals.w;
       if (vals.d !== undefined) e.fondo = vals.d;
     }
