@@ -994,12 +994,18 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       const ahorroPack = packEur > 0 ? Math.min(packEur, total) : total * packPct / 100;
       const totalPack = total - ahorroPack;
       baseCalendario = totalPack;
+      // Las partidas en negativo (p. ej. un diseño ya abonado) se enseñan sumadas al descuento, con IVA como el resto del recuadro
+      const abonadoNeg = items.reduce((t, i) => {
+        const l = lineListPrice(i) * (1 - dtoEfectivo(i) / 100) * (parseFloat(i.quantity) || 1);
+        return l < 0 ? t - l : t;
+      }, 0);
+      const descuentoMostrado = ahorroPack + abonadoNeg * (1 + (parseFloat(iva) || 0) / 100);
       if (y > H - 130) { doc.addPage(); y = margin + 20; }
       doc.rect(margin, y, W - margin * 2, 64).fill('#eef7f1');
       doc.rect(margin, y, 4, 64).fill('#2e7d4f');
       doc.fillColor('#2e7d4f').fontSize(8).font('Helvetica-Bold').text('OFERTA SI CONTRATAS TODO JUNTO', margin + 16, y + 11);
       doc.fillColor('#555555').fontSize(10).font('Helvetica').text('El precio total es de', margin + 16, y + 30, { width: 150 });
-      doc.fillColor('#2e7d4f').fontSize(8.5).font('Helvetica-Bold').text('Descuento: -' + fmtEur(ahorroPack), margin + 16, y + 46, { width: 200 });
+      doc.fillColor('#2e7d4f').fontSize(8.5).font('Helvetica-Bold').text('Descuento: -' + fmtEur(descuentoMostrado), margin + 16, y + 46, { width: 200 });
       doc.fillColor('#1f6b40').fontSize(24).font('Helvetica-Bold').text(fmtEur(totalPack), margin + 16, y + 26, { width: W - margin * 2 - 32, align: 'right' });
       doc.fillColor('#777777').fontSize(7.5).font('Helvetica').text(parseFloat(iva) > 0 ? 'impuestos incluidos' : 'impuestos no incluidos', margin + 16, y + 52, { width: W - margin * 2 - 32, align: 'right' });
       y += 80;
