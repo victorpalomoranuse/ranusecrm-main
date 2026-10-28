@@ -100,6 +100,20 @@ function suelo(s, i) {
   return mesh;
 }
 
+// Techo de una sala: una sola cara que mira hacia abajo, así desde arriba se ve el interior y desde dentro se ve el techo
+function techo(s, i, alto) {
+  const pts = (s.pts || []).map(p => new THREE.Vector2(p[0] * CM, p[1] * CM));
+  if (pts.length < 3) return null;
+  const g = new THREE.ShapeGeometry(new THREE.Shape(pts));
+  g.rotateX(Math.PI / 2);
+  const h = ((s.techo && s.techo.h) || alto || 260) * CM;
+  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: color(s.techo?.c, '#f6f4f1'), roughness: 0.95, side: THREE.FrontSide }));
+  mesh.position.y = h;
+  mesh.receiveShadow = true;
+  mesh.userData = { capa: 'techos' };
+  return mesh;
+}
+
 function maquina(e) {
   const w = (e.largo || e.w || 100) * CM, d = (e.fondo || e.d || 100) * CM, h = (e.alto || 110) * CM;
   const g = new THREE.Group();
@@ -121,7 +135,7 @@ function maquina(e) {
 export function planta(m, z0) {
   const g = new THREE.Group();
   g.position.y = (z0 || 0) * CM;
-  (m.salas || []).forEach((s, i) => { const x = suelo(s, i); if (x) g.add(x); });
+  (m.salas || []).forEach((s, i) => { const x = suelo(s, i); if (x) g.add(x); const t = techo(s, i, m.altura); if (t) g.add(t); });
   (m.muros || []).forEach(w => { const x = muro(w, m.altura || 260); if (x) g.add(x); });
   (m.pilares || []).forEach(p => {
     const h = (m.altura || 260) * CM;
@@ -570,7 +584,7 @@ export default function Visor3D() {
         </div>
       )}
       {capasAbierto && (() => {
-        const fijas = [['muros', 'Muros'], ['huecos', 'Puertas y ventanas'], ['suelos', 'Suelos'], ['pilares', 'Pilares'], ['equipos', 'Equipos del plano']];
+        const fijas = [['muros', 'Muros'], ['huecos', 'Puertas y ventanas'], ['suelos', 'Suelos'], ['techos', 'Techos'], ['pilares', 'Pilares'], ['equipos', 'Equipos del plano']];
         const propias = [...new Set(objs.map(o => o.etiqueta || ''))];
         const fila = (clave, nombre) => (
           <label key={clave} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: 'pointer' }}>
