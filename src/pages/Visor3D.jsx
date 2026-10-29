@@ -69,6 +69,78 @@ function sobrescribirModelo(mm, o, texturas) {
   });
 }
 
+// ── Pintar una CARA: se parte de un triángulo y se crece por los vecinos mientras la superficie sea «suave» (el ángulo entre triángulos
+// contiguos no pase del límite). Así se pinta solo el asiento de un sillón, una cara de un muro o una chapa de una máquina.
+function regionTriangulos(geo, seed, angDeg) {
+  const pos = geo.attributes.position, idx = geo.index, nTri = idx ? idx.count / 3 : pos.count / 3;
+  if (seed == null || seed < 0 || seed >= nTri) return new Set();
+  geo.userData = geo.userData || {};
+  const cc = geo.userData.regCache || (geo.userData.regCache = {}), ck = seed + '|' + angDeg;
+  if (cc[ck]) return cc[ck];
+  if (angDeg >= 180) { const todos = new Set(); for (let t = 0; t < nTri; t++) todos.add(t); return (cc[ck] = todos); }
+  let ad = geo.userData.adj;
+  if (!ad) {
+    const normales = new Array(nTri), borde = new Map(), vi = (t, k) => (idx ? idx.getX(t * 3 + k) : t * 3 + k);
+    const hash = i => Math.round(pos.getX(i) * 1e4) + ',' + Math.round(pos.getY(i) * 1e4) + ',' + Math.round(pos.getZ(i) * 1e4);
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    for (let t = 0; t < nTri; t++) {
+      a.fromBufferAttribute(pos, vi(t, 0)); b.fromBufferAttribute(pos, vi(t, 1)); c.fromBufferAttribute(pos, vi(t, 2));
+      normales[t] = new THREE.Vector3().subVectors(b, a).cross(c.clone().sub(a)).normalize();
+      const hs = [hash(vi(t, 0)), hash(vi(t, 1)), hash(vi(t, 2))];
+      for (let e = 0; e < 3; e++) { const k = [hs[e], hs[(e + 1) % 3]].sort().join('|'); if (!borde.has(k)) borde.set(k, []); borde.get(k).push(t); }
+    }
+    const vecinos = Array.from({ length: nTri }, () => []);
+    borde.forEach(l => { for (let i = 0; i < l.length; i++) for (let j = 0; j < l.length; j++) if (i !== j) vecinos[l[i]].push(l[j]); });
+    ad = geo.userData.adj = { normales, vecinos };
+  }
+  const lim = Math.cos((angDeg * Math.PI) / 180), visto = new Set([seed]), cola = [seed];
+  while (cola.length) {
+    const t = cola.pop();
+    for (const n of ad.vecinos[t]) if (!visto.has(n) && ad.normales[n].dot(ad.normales[t]) >= lim && ad.normales[n].dot(ad.normales[seed]) > 0) { visto.add(n); cola.push(n); }
+  }
+  return (cc[ck] = visto);
+}
+function crearOverlay(mesh, tris, valor, texturas, uvEnCm) {
+  const geo = mesh.geometry, pos = geo.attributes.position, uv = geo.attributes.uv, idx = geo.index; if (!tris.size) return null;
+  const P = [], U = [], vi = (t, k) => (idx ? idx.getX(t * 3 + k) : t * 3 + k);
+  tris.forEach(t => { for (let k = 0; k < 3; k++) { const i = vi(t, k); P.push(pos.getX(i), pos.getY(i), pos.getZ(i)); if (uv) U.push(uv.getX(i), uv.getY(i)); } });
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); if (uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.computeVertexNormals();
+  const m = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.6, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+  const t = String(valor).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === valor) : null;
+  if (t) { const mp = texturaDe(t, uvEnCm).clone(); mp.needsUpdate = true; if (!uvEnCm) { const r = 1; mp.repeat.set(r, r); } m.map = mp; m.color.setHex(0xffffff); }
+  else if (/^#/.test(valor)) m.color.setHex(parseInt(valor.slice(1), 16));
+  const o = new THREE.Mesh(g, m); o.userData.overlay = true; o.receiveShadow = true; return o;
+}
+function nombreParte(grupo, malla) {
+  if (malla.userData.parte !== undefined) return malla.userData.parte;
+  let n = 0, res = null;
+  grupo.traverse(x => { if (!x.isMesh || x.userData.overlay || x.userData.hit || x.userData.parte !== undefined) return; if (x === malla) res = 'i' + n; n++; });
+  return res;
+}
+function claveRegion(hit) {
+  const x = hit.object; if (!x.isMesh || x.userData.overlay || x.userData.hit || hit.faceIndex == null) return null;
+  const u = x.userData;
+  if (u.muroId) return 'm:' + u.muroId + ':i0';
+  let ge = x; while (ge && !ge.userData.equipo) ge = ge.parent;
+  if (ge && u.parte !== undefined) return 'e:' + ge.userData.equipo.id + ':' + u.parte;
+  if (u.salaKey || u.techoKey || u.pilarId || u.hueco || ge) return null;
+  let g = x; while (g && !g.userData.oid) g = g.parent;
+  if (!g || g.userData.tipoObj === 'zona') return null;
+  const nombre = nombreParte(g, x); if (nombre == null) return null;
+  return 'o:' + g.userData.oid + ':' + nombre;
+}
+function aplicarRegiones(raizObj, prefijo, regiones, texturas) {
+  const creados = []; if (!regiones) return creados;
+  let n = 0;
+  raizObj.traverse(x => {
+    if (!x.isMesh || x.userData.overlay || x.userData.hit) return;
+    const nombre = x.userData.parte !== undefined ? x.userData.parte : ('i' + (n++)), lista = regiones[prefijo + nombre];
+    if (!lista || !lista.length) return;
+    lista.forEach(r => { const ov = crearOverlay(x, regionTriangulos(x.geometry, r.tri, r.ang || 25), r.valor, texturas, !!x.userData.muroId); if (ov) { x.add(ov); creados.push(ov); } });
+  });
+  return creados;
+}
+
 // Modelos 3D asignados a los productos: se descargan una vez y se reutilizan (se clonan) en cada copia
 const cacheModelos = new Map();
 function cargarModelo(m) {
@@ -498,7 +570,7 @@ export default function Visor3D() {
   const [filtro, setFiltro] = useState('');
   const [guardado, setGuardado] = useState('');
   const cargadaEscena = useRef(false);
-  const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, equipos: {}, pilares: {}, huecos: {}, todosMuros: null, todosSuelos: null, todosTechos: null, todosPilares: null });
+  const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, equipos: {}, pilares: {}, huecos: {}, regiones: {}, todosMuros: null, todosSuelos: null, todosTechos: null, todosPilares: null });
   const [texturas, setTexturas] = useState([]);
   const [b3dAbierta, setB3dAbierta] = useState(false);
   const [b3d, setB3d] = useState(null);           // índice de la biblioteca 3D gratuita
@@ -560,6 +632,12 @@ export default function Visor3D() {
   const seleccionRef = useRef(null);
   const acabRef = useRef(null);
   const rodapieRef = useRef({});
+  const [modoPincel, setModoPincel] = useState('cara');   // cara | pieza | todo
+  const [angCara, setAngCara] = useState(25);
+  const modoPincelRef = useRef('cara');
+  const angCaraRef = useRef(25);
+  useEffect(() => { modoPincelRef.current = modoPincel; }, [modoPincel]);
+  useEffect(() => { angCaraRef.current = angCara; }, [angCara]);
   const [medAbierta, setMedAbierta] = useState(false);
   const [medFilas, setMedFilas] = useState(null);
   const [refObj, setRefObj] = useState('');
@@ -645,7 +723,7 @@ export default function Visor3D() {
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
@@ -699,7 +777,7 @@ export default function Visor3D() {
       const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
       if (herrRef.current === 'pincel' || herrRef.current === 'gotero') {
         const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => x.object.isMesh && !x.object.userData.hit && visible(x.object));
-        if (h) { if (herrRef.current === 'gotero' || e.altKey) tomarMaterial(h); else aplicarPincel(h, e.shiftKey); }
+        if (h) { if (herrRef.current === 'gotero' || e.altKey) tomarMaterial(h); else aplicarPincel(h, e.shiftKey || modoPincelRef.current === 'todo'); }
         return;
       }
       const primero = rayo.intersectObjects(raiz.children, true).find(h => visible(h.object));
@@ -856,6 +934,14 @@ export default function Visor3D() {
       const mat = matSelRef.current; if (!mat) return;
       const valor = mat.hex || ('tex:' + mat.id);
       const u = hit.object.userData;
+      {
+        const clave = (modoPincelRef.current === 'cara' || modoPincelRef.current === 'pieza') && !todos ? claveRegion(hit) : null;
+        if (clave && (modoPincelRef.current === 'cara' || clave.startsWith('e:'))) {
+          const seed = hit.faceIndex, ang = modoPincelRef.current === 'pieza' ? 181 : angCaraRef.current;
+          setAcab(a => { const reg = { ...(a.regiones || {}) }; reg[clave] = [...(reg[clave] || []).filter(r => r.tri !== seed), { tri: seed, valor, ang }]; return { ...a, regiones: reg }; });
+          return;
+        }
+      }
       if (u.muroId) setAcab(a => (todos ? { ...a, muros: {}, todosMuros: valor } : { ...a, muros: { ...a.muros, [u.muroId]: valor } }));
       else if (u.salaKey) setAcab(a => (todos ? { ...a, salas: {}, todosSuelos: valor } : { ...a, salas: { ...a.salas, [u.salaKey]: valor } }));
       else if (u.techoKey) setAcab(a => (todos ? { ...a, techos: {}, todosTechos: valor } : { ...a, techos: { ...a.techos, [u.techoKey]: valor } }));
@@ -879,7 +965,10 @@ export default function Visor3D() {
     };
     const tomarMaterial = (hit) => {
       const u = hit.object.userData, ac = acabRef.current || {}; let valor = null;
-      if (u.muroId) valor = ac.muros?.[u.muroId] || ac.todosMuros;
+      let valorRegion = null;
+      { const ck = claveRegion(hit), lista = ck ? (ac.regiones || {})[ck] || [] : []; for (let i = lista.length - 1; i >= 0 && !valorRegion; i--) { if (regionTriangulos(hit.object.geometry, lista[i].tri, lista[i].ang || 25).has(hit.faceIndex)) valorRegion = lista[i].valor; } }
+      if (valorRegion) valor = valorRegion;
+      else if (u.muroId) valor = ac.muros?.[u.muroId] || ac.todosMuros;
       else if (u.salaKey) valor = ac.salas?.[u.salaKey] || ac.todosSuelos;
       else if (u.techoKey) valor = ac.techos?.[u.techoKey] || ac.todosTechos;
       else if (u.pilarId) valor = ac.pilares?.[u.pilarId] || ac.todosPilares;
@@ -1251,6 +1340,34 @@ export default function Visor3D() {
     a.scene.add(g); a.nodoG = g;
   }, [selAcab, rev, estado]);
 
+  // Las máquinas del plano se ven con su modelo 3D del catálogo si lo tienen (así se pueden pintar por partes)
+  useEffect(() => {
+    const a = api3d.current; if (!a.raiz || !biblioteca) return;
+    a.raiz.traverse(g => {
+      const e = g.userData.equipo; if (!e || !e.cid || g.userData.modeloCargado) return;
+      const mod = biblioteca.find(m => m.id === e.cid)?.modelo3d; if (!mod) return;
+      g.userData.modeloCargado = true;
+      cargarModelo(mod).then(raw => {
+        if (!g.parent) return;
+        const mm = ajustarModelo(raw, (e.largo || e.w) * CM, (e.fondo || e.d) * CM, (e.alto || 110) * CM); if (!mm) return;
+        sobrescribirModelo(mm, {}, texturas); mm.userData.modeloEq = true; mm.rotation.y = -((mod.rot || 0) * Math.PI) / 180; g.add(mm);
+        if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
+        const ov = aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov);
+      }).catch(() => { g.userData.modeloCargado = false; });
+    });
+  }, [rev, biblioteca, estado]);
+
+  // Caras pintadas en muros y en las máquinas del plano
+  useEffect(() => {
+    const a = api3d.current; if (!a.raiz) return;
+    (a.overlaysRaiz || []).forEach(o => { o.parent?.remove(o); o.geometry.dispose(); o.material.dispose(); }); a.overlaysRaiz = [];
+    const reg = acab.regiones || {};
+    a.raiz.traverse(x => {
+      if (x.isMesh && x.userData.muroId && !x.userData.overlay) a.overlaysRaiz.push(...aplicarRegiones(x, 'm:' + x.userData.muroId + ':', reg, texturas));
+      else if (x.userData.equipo) x.children.filter(c => c.userData.modeloEq).forEach(mm => a.overlaysRaiz.push(...aplicarRegiones(mm, 'e:' + x.userData.equipo.id + ':', reg, texturas)));
+    });
+  }, [acab.regiones, rev, estado, texturas]);
+
   // Rodapié: sigue el perímetro de cada sala (por dentro) y se interrumpe en las puertas
   useEffect(() => {
     const a = api3d.current; if (!a.scene) return;
@@ -1337,7 +1454,7 @@ export default function Visor3D() {
           geo.rotateX(Math.PI / 2);
           mesh.position.set(o.cx * CM, o.plano === 'techo' ? (o.h || 260) * CM - 0.004 : 0.005, o.cy * CM); gz.add(mesh);
         }
-        gz.userData.oid = o.id; gz.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        gz.userData.oid = o.id; gz.userData.tipoObj = 'zona'; gz.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
         a.esc.add(gz);
         return;
       }
@@ -1445,6 +1562,7 @@ export default function Visor3D() {
           mm.rotation.y = -((mod.rot || 0) + (o.rotM || 0)) * Math.PI / 180;
           mm.position.y = (o.z0 || 0) * CM;
           g.add(mm); fantasma(0);
+          aplicarRegiones(mm, 'o:' + o.id + ':', acab.regiones, texturas);
         }).catch(() => { fantasma(1); });
       }
       if (o.id === selObj) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(m.position); g.add(l); }
@@ -1453,7 +1571,8 @@ export default function Visor3D() {
       g.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
       a.esc.add(g);
     });
-  }, [objs, selObj, estado, biblioteca, ocultas, texturas, rev, ambiente.luces]);
+    a.esc.children.forEach(gr => aplicarRegiones(gr, 'o:' + gr.userData.oid + ':', acab.regiones, texturas));
+  }, [objs, selObj, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, acab.regiones]);
 
   // Guardado automático de la escena (sin pisar el dibujo del plano 2D)
   useEffect(() => {
@@ -2019,7 +2138,16 @@ export default function Visor3D() {
         return (
           <div style={{ position: 'absolute', left: 12 + (bibAbierta ? 280 : 0) + (b3dAbierta ? 280 : 0) + (capasAbierto ? 222 : 0), top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700, marginBottom: 2 }}>🎨 Materiales (pincel)</div>
-            <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 8 }}>Elige un material y haz clic en un muro, suelo, techo u objeto. Con Mayús + clic se aplica a todos los de ese tipo.</div>
+            <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 6 }}>Elige un material y haz clic en lo que quieras pintar. Alt + clic copia el material de lo que toques (gotero).</div>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+              {[['cara', 'Cara'], ['pieza', 'Pieza'], ['todo', 'Entero']].map(([v, n]) => <button key={v} style={{ ...btn, flex: 1, ...(modoPincel === v ? { background: '#2f6fa8' } : {}) }} onClick={() => setModoPincel(v)}>{n}</button>)}
+            </div>
+            <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>{modoPincel === 'cara' ? 'Cara: pinta solo la superficie que tocas (el asiento de un sillón, un lado de una pared, una chapa de una máquina), hasta donde llegue la curva suave.' : modoPincel === 'pieza' ? 'Pieza: pinta la parte completa (todo el muro, toda una pieza del modelo).' : 'Entero: pinta todo el elemento (todos los muros, todo el mueble…).'}</div>
+            {modoPincel === 'cara' && <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 95, opacity: 0.7 }}>Sensibilidad</span><input type="range" min="5" max="75" value={angCara} onChange={e => setAngCara(parseInt(e.target.value, 10))} style={{ flex: 1 }} /><span style={{ width: 34 }}>{angCara}°</span></label>
+              <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 4 }}>Baja el número si la pintura se «escapa» a otras caras; súbelo si deja trozos sin pintar.</div>
+              {Object.keys(acab.regiones || {}).length > 0 && <button style={{ ...btn, marginBottom: 8 }} onClick={() => { if (window.confirm('¿Quitar la pintura de todas las caras?')) setAcab(a => ({ ...a, regiones: {} })); }}>Quitar pintura de caras ({Object.values(acab.regiones).reduce((s, l) => s + l.length, 0)})</button>}
+            </>}
             <div style={{ opacity: 0.7, marginBottom: 4 }}>Colores</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
               {base.map(c => <span key={c} onClick={() => elegir({ hex: c })} title={c} style={{ width: 24, height: 24, background: c, borderRadius: 4, cursor: 'pointer', border: esSel({ hex: c }) ? '2px solid #4da3ff' : '1px solid #555' }} />)}
