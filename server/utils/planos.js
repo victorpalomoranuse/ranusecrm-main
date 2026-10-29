@@ -16,7 +16,13 @@ export function filasEscena3d(esc, m3) {
   if (!esc) return { filas, porCid, porProd };
   const libre = (grupo, nombre, unidad, cantidad, extra = {}) => { if (cantidad > 0) filas.push({ grupo, tipo: 'libre', nombre, categoria: 'reformas', unidad, cantidad: Math.round(cantidad * 100) / 100, ...extra }); };
   const texturas = esc.texturas || [], objs = esc.objetos || [], ac = esc.acabados || {};
-  const nombreAc = v => { if (!v) return null; if (String(v).startsWith('tex:')) { const t = texturas.find(x => 'tex:' + x.id === v); return t ? t.nombre : 'Textura'; } return 'Color ' + v; };
+  const paleta = esc.paleta || [];
+  const nombreAc = v => {
+    if (!v) return null;
+    if (String(v).startsWith('tex:')) { const t = texturas.find(x => 'tex:' + x.id === v); return t ? t.nombre : 'Textura'; }
+    const hex = String(v).slice(0, 7).toLowerCase(), p = paleta.find(x => String(x.hex || '').toLowerCase() === hex);
+    return (String(v).endsWith('!') ? 'LED ' : '') + (p ? p.nombre + ' (' + hex + ')' : 'Color ' + hex);
+  };
   const prodDe = v => { const t = String(v || '').startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === v) : null; return t?.prod || null; };
 
   // muebles a medida: una fila por mueble y el despiece sumado
@@ -75,15 +81,25 @@ export function filasEscena3d(esc, m3) {
     (cont[k] ||= { g, nombre: (o.nombre || o.tipo) + ' ' + Math.round(o.w) + ' × ' + Math.round(o.d) + ' × ' + Math.round(o.alto) + ' cm', n: 0 }).n++;
   });
   Object.values(cont).forEach(c => libre(c.g, c.nombre, 'ud', c.n));
-  // superficies acabadas por material (muros, suelos y techos de la planta 1)
+  // superficies por tipo (paredes, suelos y techos de la planta 1): total de cada tipo y reparto por material, para no mezclar lo que pintas en una pared con lo de un mueble o una máquina
   if (pl0) {
-    const m2 = {}; const suma = (v, a) => { if (v && a > 0) m2[v] = (m2[v] || 0) + a; };
+    const cats = { Paredes: {}, Suelos: {}, Techos: {} }, tot = { Paredes: 0, Suelos: 0, Techos: 0 };
+    const suma = (cat, v, a) => { if (!(a > 0)) return; tot[cat] += a; const k = v || '__sin'; cats[cat][k] = (cats[cat][k] || 0) + a; };
     (pl0.muros || []).forEach(mu => {
       const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) / 100, h = (mu.h || pl0.altura || 260) / 100, huecos = (mu.ab || []).reduce((s, a) => s + (a.w || 0) * (a.h || 0), 0) / 1e4;
-      suma(ac.muros?.[mu.id] || ac.todosMuros, L * h - huecos);
+      suma('Paredes', ac.muros?.[mu.id] || ac.todosMuros, L * h - huecos);
     });
-    (pl0.salas || []).forEach((s, i) => { suma(ac.salas?.[s.idS || 's' + i] || ac.todosSuelos, areaM2(s.pts)); suma(ac.techos?.[s.idT || 's' + i] || ac.todosTechos, areaM2(s.pts)); });
-    Object.entries(m2).forEach(([v, a]) => { const p = prodDe(v); if (p) (porProd[p] ||= { nombre: nombreAc(v), m2: 0 }).m2 += a; else libre('Acabados 3D', 'Acabado: ' + nombreAc(v), 'm²', a); });
+    (pl0.salas || []).forEach((s, i) => { suma('Suelos', ac.salas?.[s.idS || 's' + i] || ac.todosSuelos, areaM2(s.pts)); suma('Techos', ac.techos?.[s.idT || 's' + i] || ac.todosTechos, areaM2(s.pts)); });
+    Object.entries(cats).forEach(([cat, m]) => {
+      const grupo = 'Superficies · ' + cat;
+      libre(grupo, cat + ': superficie total', 'm²', tot[cat]);
+      Object.entries(m).forEach(([v, a]) => {
+        if (v === '__sin') { libre(grupo, cat + ' sin acabado asignado', 'm²', a); return; }
+        const p = prodDe(v);
+        if (p) { const e = (porProd[p] ||= { nombre: nombreAc(v), m2: 0, partes: {} }); e.m2 += a; e.partes[cat] = (e.partes[cat] || 0) + a; }
+        else libre(grupo, cat + ': ' + nombreAc(v), 'm²', a);
+      });
+    });
   }
   return { filas, porCid, porProd };
 }

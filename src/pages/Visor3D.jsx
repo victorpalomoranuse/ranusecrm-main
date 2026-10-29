@@ -280,7 +280,14 @@ const sel2 = (id, sel) => id === sel;
 // Materiales emisivos (LED): un color acabado en «!» brilla por sí mismo
 const esLed = v => /^#[0-9a-fA-F]{6}!$/.test(v || '');
 const ledEm = (m, v) => { if (esLed(v)) { m.emissive.set(v.slice(0, 7)); m.emissiveIntensity = 1.8; } };
-const kelvinHex = K => (K <= 2700 ? '#ffa757' : K <= 3000 ? '#ffb16e' : K <= 4000 ? '#ffcb9f' : K <= 5000 ? '#ffe4ce' : '#fff9fd');
+// Color de un cuerpo negro a la temperatura K (aproximación habitual), para luces y LED. KGLOBAL.luces = temperatura única para todas las luces artificiales
+const KGLOBAL = { luces: null };
+function kelvinColor(K) {
+  const t = Math.max(1000, Math.min(12000, K)) / 100, cl = v => Math.max(0, Math.min(255, v));
+  const r = t <= 66 ? 255 : cl(329.698727446 * Math.pow(t - 60, -0.1332047592)), g = t <= 66 ? cl(99.4708025861 * Math.log(t) - 161.1195681661) : cl(288.1221695283 * Math.pow(t - 60, -0.0755148492)), b = t >= 66 ? 255 : (t <= 19 ? 0 : cl(138.5177312231 * Math.log(t - 10) - 305.0447927307));
+  return new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
+}
+const kelvinHex = K => '#' + kelvinColor(KGLOBAL.luces || K).getHexString();
 RectAreaLightUniformsLib.init();
 // Luz de área (la que usan las tiras LED y los paneles luminosos): mira hacia dir; u = eje largo de la tira (si va en horizontal o vertical)
 function luzArea(g, pos, dir, w, h, col, inten, presup, u) {
@@ -390,7 +397,7 @@ function proyectarEnCamino(pts, px, py) {
   }
   return mejor;
 }
-const colorK = K => new THREE.Color().setHSL(0.1, K < 3500 ? 0.55 : K < 5000 ? 0.1 : 0, K < 3500 ? 0.8 : 0.95);
+const colorK = K => kelvinColor(KGLOBAL.luces || K);
 function construirCarril(o, presup, amb, seleccionado) {
   const g = new THREE.Group(), pts = o.pts || []; if (pts.length < 2) return g;
   const col = color(/^#/.test(o.color || '') ? o.color : null, '#111111');
@@ -700,6 +707,7 @@ export default function Visor3D() {
   const [hora, setHora] = useState(15);                       // hora del sol (6–21)
   const [ambiente, setAmbiente] = useState(() => { try { return { exposicion: 1, luces: 1, ...JSON.parse(localStorage.getItem('visor3dAmb') || '{}') }; } catch { return { exposicion: 1, luces: 1 }; } });
   const [ambAbierto, setAmbAbierto] = useState(false);
+  KGLOBAL.luces = ambiente.kLuces || null;
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
   const [kindFoco, setKindFoco] = useState('spot');
   const kindFocoRef = useRef('spot');
@@ -750,6 +758,12 @@ export default function Visor3D() {
   const seleccionRef = useRef(null);
   const acabRef = useRef(null);
   const rodapieRef = useRef({});
+  const [escenas, setEscenas] = useState([]);              // escenas guardadas: vista + capas + hora + textos de IA
+  const [escAbierta, setEscAbierta] = useState(false);
+  const [escNombre, setEscNombre] = useState('');
+  const [lote, setLote] = useState(null);
+  const panPrev = useRef({});
+  const derPrev = useRef({});
   const [renders, setRenders] = useState([]);           // galería de renders y panoramas del plano
   const [galAbierta, setGalAbierta] = useState(false);
   const [pano, setPano] = useState(null);                  // { url, guardado, meta } visor 360 abierto
@@ -847,7 +861,7 @@ export default function Visor3D() {
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
@@ -1383,9 +1397,9 @@ export default function Visor3D() {
     const g = new THREE.Group(); g.userData.capa = 'luces'; g.visible = !ocultas.includes('luces');
     const ALT = { foco: 255, plaf: 255, colg: 200, aplq: 180, pie: 120, suel: 5 };
     lucesPl.slice(0, 16).forEach(l => {
-      const cat = lumCat.find(c => c.id === l.lid), lm = cat?.lm || 800, K = cat?.k || 3000;
+      const cat = lumCat.find(c => c.id === l.lid), lm = lucesAj[l.id]?.lm ?? (cat?.lm || 800), K = lucesAj[l.id]?.k ?? (cat?.k || 3000);
       const hcm = l.h != null ? l.h : (ALT[l.kid] ?? 250), ap = lucesAj[l.id]?.ap ?? 60;
-      const col = new THREE.Color().setHSL(0.1, K < 3500 ? 0.55 : K < 5000 ? 0.1 : 0.0, K < 3500 ? 0.8 : 0.95);
+      const col = colorK(K);
       const { grupo: marca, luzPos } = construirLuminaria(l.kid, col, sel2(l.id, luzSel));
       marca.position.set(l.x * CM, hcm * CM, l.y * CM); marca.traverse(x => { x.userData.luzId = l.id; }); g.add(marca);
       const luzMundo = marca.position.clone().add(luzPos);
@@ -1396,7 +1410,7 @@ export default function Visor3D() {
       } else { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); }
     });
     a.scene.add(g); a.luzG = g;
-  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces]);
+  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces]);
 
   // Sol según la hora y exposición de la cámara
   useEffect(() => {
@@ -1405,11 +1419,11 @@ export default function Visor3D() {
     const d = (a.R || 8) * 3;
     a.sol.position.set(a.centro.x + d * Math.cos(az) * Math.cos(elev), a.centro.y + d * Math.sin(elev) + 1, a.centro.z + d * Math.sin(az) * Math.cos(elev));
     a.sol.intensity = 0.12 + 1.6 * Math.pow(Math.max(0, k), 0.7);
-    a.sol.color.setHSL(0.09, 0.5 * (1 - k) + 0.05, 0.75 + 0.2 * k);
+    if (ambiente.kSol) a.sol.color.copy(kelvinColor(ambiente.kSol)); else a.sol.color.setHSL(0.09, 0.5 * (1 - k) + 0.05, 0.75 + 0.2 * k);
     if (a.hemi) a.hemi.intensity = 0.35 + 0.8 * k;
     a.renderer.toneMappingExposure = ambiente.exposicion;
-    try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, luces: ambiente.luces })); } catch { /* sin almacenamiento */ }
-  }, [hora, ambiente.exposicion, ambiente.luces, estado, rev]);
+    try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null })); } catch { /* sin almacenamiento */ }
+  }, [hora, ambiente.exposicion, ambiente.luces, ambiente.kSol, estado, rev]);
 
   // Varias plantas: se pueden ocultar por separado
   useEffect(() => {
@@ -1648,10 +1662,10 @@ export default function Visor3D() {
         geo.rotateX(-Math.PI / 2);
         const losa = new THREE.Mesh(geo, mt); losa.position.y = D >= 0 ? H - prof : H; losa.castShadow = losa.receiveShadow = true; gf.add(losa);
         if (ft.luz !== false) {
-          const K = ft.k || 3000, led = new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(0.1, K < 3500 ? 0.6 : K < 5000 ? 0.15 : 0.02, K < 3500 ? 0.85 : 0.97) });
+          const K = ft.k || 3000, led = new THREE.MeshBasicMaterial({ color: colorK(K) });
           for (let i = 0; i < inner.length; i++) {
             const p = inner[i], q = inner[(i + 1) % inner.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]); if (L < 2) continue;
-            luzArea(gf, new THREE.Vector3(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.012 : H + prof + 0.012), ((p[1] + q[1]) / 2) * CM), new THREE.Vector3(0, 1, 0), L * CM, 0.06, new THREE.Color(kelvinHex(K)), 6 * ambiente.luces, presup, new THREE.Vector3((q[0] - p[0]) / L, 0, (q[1] - p[1]) / L));
+            luzArea(gf, new THREE.Vector3(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.012 : H + prof + 0.012), ((p[1] + q[1]) / 2) * CM), new THREE.Vector3(0, 1, 0), L * CM, 0.06, colorK(K), 6 * ambiente.luces, presup, new THREE.Vector3((q[0] - p[0]) / L, 0, (q[1] - p[1]) / L));
             const b = new THREE.Mesh(new THREE.BoxGeometry(L * CM, 0.01, 0.02), led);
             b.position.set(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.005 : H + prof + 0.005), ((p[1] + q[1]) / 2) * CM); b.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); gf.add(b);
           }
@@ -1718,7 +1732,7 @@ export default function Visor3D() {
       a.esc.add(g);
     });
     a.esc.children.forEach(gr => aplicarRegiones(gr, 'o:' + gr.userData.oid + ':', acab.regiones, texturas));
-  }, [objs, selObj, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, acab.regiones]);
+  }, [objs, selObj, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, ambiente.kLuces, acab.regiones]);
 
   // Guardado automático de la escena (sin pisar el dibujo del plano 2D)
   useEffect(() => {
@@ -1726,10 +1740,22 @@ export default function Visor3D() {
     if (guardado === 'inicial') { setGuardado(''); return; }
     setGuardado('Guardando…');
     const t = setTimeout(() => {
-      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias, luces: lucesAj, hora }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
+      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias, luces: lucesAj, hora, escenas }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
     }, 1200);
     return () => clearTimeout(t);
-  }, [objs, acab, paleta, rodapie, guias, lucesAj, hora]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objs, acab, paleta, rodapie, guias, lucesAj, hora, escenas]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Los paneles de la izquierda (catálogo, biblioteca 3D, capas, materiales) no se solapan: abrir uno cierra los demás; igual con los de la derecha
+  useEffect(() => {
+    const cur = { cat: bibAbierta, b3d: b3dAbierta, capas: capasAbierto, mat: matAbierto }, nuevo = Object.keys(cur).find(k => cur[k] && !panPrev.current[k]);
+    panPrev.current = cur;
+    if (nuevo) { if (nuevo !== 'cat') setBibAbierta(false); if (nuevo !== 'b3d') setB3dAbierta(false); if (nuevo !== 'capas') setCapasAbierto(false); if (nuevo !== 'mat') setMatAbierto(false); }
+  }, [bibAbierta, b3dAbierta, capasAbierto, matAbierto]);
+  useEffect(() => {
+    const cur = { gal: galAbierta, esc: escAbierta }, nuevo = Object.keys(cur).find(k => cur[k] && !derPrev.current[k]);
+    derPrev.current = cur;
+    if (nuevo === 'gal') setEscAbierta(false); if (nuevo === 'esc') setGalAbierta(false);
+  }, [galAbierta, escAbierta]);
 
   // Historial para deshacer y rehacer (lo que se escribe en el plano 2D no se deshace desde aquí)
   useEffect(() => {
@@ -2028,9 +2054,9 @@ export default function Visor3D() {
   const [ia, setIa] = useState(null); // { estado: 'trabajando' | 'listo' | 'error', imagen, mensaje, estancia, estilo, extra }
   const [iaForm, setIaForm] = useState(false);
   const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '', libertad: 'equilibrado' });
-  const metaActual = () => {
+  const metaActual = (txt = iaTxt) => {
     const { cam, ctrl } = api3d.current;
-    return { camara: { px: cam.position.x, py: cam.position.y, pz: cam.position.z, tx: ctrl.target.x, ty: ctrl.target.y, tz: ctrl.target.z, fov: cam.fov }, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, estancia: iaTxt.estancia, estilo: iaTxt.estilo, extra: iaTxt.extra, libertad: iaTxt.libertad };
+    return { camara: { px: cam.position.x, py: cam.position.y, pz: cam.position.z, tx: ctrl.target.x, ty: ctrl.target.y, tz: ctrl.target.z, fov: cam.fov }, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, estancia: txt.estancia, estilo: txt.estilo, extra: txt.extra, libertad: txt.libertad };
   };
   const salaBajoCamara = () => {
     const { cam } = api3d.current, m = api3d.current.modelo; if (!m) return '';
@@ -2063,23 +2089,65 @@ export default function Visor3D() {
     if (!pano || !panoCont.current) return;
     return abrirVisor360(panoCont.current, pano.url);
   }, [pano?.url]); // eslint-disable-line react-hooks/exhaustive-deps
-  const renderIA = async () => {
-    const { renderer, scene, cam } = api3d.current;
-    setIaForm(false);
-    setIa({ estado: 'trabajando' });
+  const esperar = ms => new Promise(r => setTimeout(r, ms));
+  const ocultarAyudas = () => { const a = api3d.current, gs = [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], v = gs.map(x => x && x.visible); gs.forEach(x => { if (x) x.visible = false; }); return () => gs.forEach((x, i) => { if (x) x.visible = v[i]; }); };
+  const soltarSeleccion = async () => { setSelObj(null); setSelAcab(null); setSelHueco(null); setLuzSel(null); setSeleccion(null); api3d.current.limpiarSel?.(); await esperar(150); };
+  const renderHDurl = async () => {
+    await soltarSeleccion();
+    const { renderer, scene, cam, sol } = api3d.current, el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
+    const sombra = sol.castShadow, mapa = sol.shadow.mapSize.x, restaura = ocultarAyudas();
     try {
-      const el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
+      const W = 3200, H = Math.round(W * h0 / w0);
+      renderer.setPixelRatio(1); renderer.setSize(W, H, false); cam.aspect = W / H; cam.updateProjectionMatrix();
+      renderer.shadowMap.enabled = true; sol.castShadow = true; sol.shadow.mapSize.set(4096, 4096); sol.shadow.map?.dispose(); sol.shadow.map = null; sol.shadow.radius = 4;
+      renderer.render(scene, cam);
+      return renderer.domElement.toDataURL('image/jpeg', 0.92);
+    } finally {
+      restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix();
+      sol.castShadow = sombra; sol.shadow.mapSize.set(mapa, mapa); sol.shadow.map?.dispose(); sol.shadow.map = null;
+    }
+  };
+  // ov = textos concretos (estancia, estilo…) y opc.autoGuardar = guardar directamente en la galería (para las escenas)
+  const renderIA = async (ov, opc = {}) => {
+    const { renderer, scene, cam } = api3d.current, txt = ov && ov.estilo !== undefined ? ov : iaTxt;
+    setIaForm(false); setIa({ estado: 'trabajando' });
+    try {
+      await soltarSeleccion();
+      const el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio(), restaura = ocultarAyudas();
       const W = 2048, H = Math.round(W * h0 / w0);
       renderer.setPixelRatio(1); renderer.setSize(W, H, false); cam.aspect = W / H; cam.updateProjectionMatrix();
       renderer.render(scene, cam);
       const imagen = renderer.domElement.toDataURL('image/jpeg', 0.95);
-      renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix();
-      const metaActualRender = metaActual();
-      const r = await api.post('/render-ia', { imagen, ...iaTxt }, { timeout: 180000 });
-      setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen, meta: metaActualRender, guardado: false });
+      restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix();
+      const meta = metaActual(txt);
+      const r = await api.post('/render-ia', { imagen, ...txt }, { timeout: 180000 });
+      if (opc.autoGuardar) { await guardarRender('ia', r.data.imagen, meta, opc.nombre); setIa(null); return true; }
+      setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen, meta, guardado: false });
+      return true;
     } catch (e) {
       setIa({ estado: 'error', mensaje: e.response?.data?.error || 'No se ha podido generar el render con IA' });
+      return false;
     }
+  };
+  // ── Escenas: una vista guardada (cámara, hora, luces, capas visibles y textos de IA) a la que se vuelve y desde la que se renderiza
+  const txtDe = e => ({ estancia: e.meta?.estancia || '', estilo: e.meta?.estilo || '', extra: e.meta?.extra || '', libertad: e.meta?.libertad || 'equilibrado' });
+  const irAEscena = async (e) => { restaurarVista(e.meta); setOcultas(e.ocultas || []); setIaTxt(t => ({ ...t, ...txtDe(e) })); await esperar(450); };
+  const guardarEscena = () => { const nombre = (escNombre || '').trim() || ('Escena ' + (escenas.length + 1)); setEscenas(x => [...x, { id: 'e' + Date.now().toString(36), nombre, meta: metaActual(), ocultas }]); setEscNombre(''); };
+  const actualizarEscena = id2 => { setEscenas(x => x.map(e => (e.id === id2 ? { ...e, meta: metaActual(), ocultas } : e))); setGuardado('Escena actualizada con la vista de ahora'); };
+  const renderEscena = async (e, tipo) => {
+    await irAEscena(e);
+    if (tipo === 'ia') return renderIA(txtDe(e), { autoGuardar: true, nombre: e.nombre });
+    try { const u = await renderHDurl(); const r = await guardarRender('hd', u, metaActual(txtDe(e)), e.nombre); return !!r; } catch { return false; }
+  };
+  const renderTodas = async (tipo) => {
+    if (!escenas.length) return;
+    if (!window.confirm(tipo === 'ia' ? 'Se generarán ' + escenas.length + ' renders con IA, uno por escena. Cada uno consume crédito de Gemini. ¿Continuar?' : 'Se generarán ' + escenas.length + ' renders HD, uno por escena, y se guardarán en la galería. ¿Continuar?')) return;
+    for (let i = 0; i < escenas.length; i++) {
+      setLote({ i: i + 1, n: escenas.length, tipo, nombre: escenas[i].nombre });
+      const ok = await renderEscena(escenas[i], tipo);
+      if (!ok && !window.confirm('No se ha podido hacer «' + escenas[i].nombre + '». ¿Continuar con las demás?')) break;
+    }
+    setLote(null); setGalAbierta(true); setAviso('Renders de las escenas terminados: están en la Galería.');
   };
   const captura = () => {
     const { renderer, scene, cam } = api3d.current;
@@ -2091,77 +2159,113 @@ export default function Visor3D() {
   };
 
   const btn = { background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
+  // ── interfaz común: barra superior, carril de herramientas y menús
+  const bTop = { background: '#333', color: '#fff', border: '1px solid #4a4a4a', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' };
+  const bOn = { background: '#2f6fa8', borderColor: '#2f6fa8' };
+  const sepTop = { width: 1, height: 22, background: '#444', margin: '0 2px', flex: 'none' };
+  const itemMenu = { padding: '6px 8px', cursor: 'pointer', borderRadius: 4 };
+  const railBtn = (activo, icono, etiqueta, titulo, onClick, color) => (
+    <button key={etiqueta} title={titulo} onClick={onClick} style={{ width: 50, padding: '5px 1px 3px', background: activo ? (color || '#2f6fa8') : 'transparent', color: activo && color === '#c9a21a' ? '#111' : '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+      <span style={{ fontSize: 17, lineHeight: '20px' }}>{icono}</span><span style={{ fontSize: 9, opacity: 0.85, whiteSpace: 'nowrap' }}>{etiqueta}</span>
+    </button>
+  );
+  const grupoRail = (hijos, ultimo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{hijos}</div>;
+  const menuRail = (abierto, setAbierto, boton, contenido, ancho) => (
+    <div key={'m' + (ancho || 0) + (boton.key || '')} style={{ position: 'relative' }}>
+      {boton}
+      {abierto && <div style={{ position: 'absolute', left: 56, top: 0, background: 'rgba(20,20,20,0.98)', borderRadius: 10, padding: 6, zIndex: 12, width: ancho || 240, color: '#fff', fontSize: 13, boxShadow: '0 6px 24px rgba(0,0,0,0.45)' }}>{contenido}</div>}
+    </div>
+  );
+  const AYUDA_HERR = {
+    sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo'], poli: ['Contorno', 'Clic punto a punto; Enter o volver al primer punto para cerrar'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de un objeto'],
+    muro: ['Muro', 'Clic para empezar y cada punto; Mayús = recto; Enter termina'], zonaS: ['Zona en suelo', 'Clic punto a punto; Enter cierra'], zonaT: ['Zona en techo', 'Clic punto a punto; Enter cierra'], zonaP: ['Zona en pared', 'Clic punto a punto sobre una pared; Enter cierra'],
+    sigue: ['Sígueme', 'Dibuja el camino por donde pasará el perfil; Enter termina'], carril: ['Carril', 'Dibuja el recorrido; Enter termina'], led: ['Tira LED', 'Dibuja el recorrido; Enter termina'], focoC: ['Focos', 'Clic en el carril para colocar; Esc sale'],
+    luz: ['Luz', 'Clic en el suelo para colocar la luminaria en el plano'], guia: ['Guía', 'Clic en dos puntos para crear una línea guía'], pincel: ['Pincel', 'Clic en lo que quieras pintar · Mayús = todo el elemento · Alt = copiar material'], gotero: ['Gotero', 'Clic en lo que quieras copiar'],
+  };
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
       <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
-      <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button style={btn} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
-        <b style={{ color: '#222', marginRight: 'auto' }}>{titulo}</b>
-        <button style={{ ...btn, ...(herr === 'sel' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('sel')} title="Seleccionar y mover objetos">↖ Mover</button>
-        <button style={{ ...btn, ...(herr === 'caja' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('caja')} title="Arrastra sobre el suelo para dibujar una caja; luego le das altura">▭ Dibujar caja</button>
-        <button style={{ ...btn, ...(herr === 'poli' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('poli')} title="Haz clic punto a punto sobre el suelo; cierra con Enter o volviendo al primer punto. Luego se extruye (altura).">⬡ Contorno</button>
-        <div style={{ position: 'relative' }}>
-          <button style={{ ...btn, ...(muebleMenu ? { background: '#2f6fa8' } : {}) }} onClick={() => setMuebleMenu(v => !v)} title="Muebles a medida por módulos">🪑 Mueble a medida</button>
-          {muebleMenu && <div style={{ position: 'absolute', top: 34, left: 0, background: 'rgba(20,20,20,0.97)', borderRadius: 8, padding: 6, zIndex: 8, width: 250 }}>
-            {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={{ color: '#fff', padding: '6px 8px', cursor: 'pointer', fontSize: 13, borderRadius: 4 }}>{n}</div>)}
-          </div>}
-        </div>
-        <button style={{ ...btn, ...(herr === 'empujar' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('empujar')} title="Arrastra hacia arriba o abajo la cara de arriba de un objeto para cambiar su altura">⇅ Empujar/Tirar</button>
-        <div style={{ position: 'relative' }}>
-          <button style={{ ...btn, ...(herr === 'sigue' || sigueMenu ? { background: '#2f6fa8' } : {}) }} onClick={() => setSigueMenu(v => !v)} title="Un perfil recorre un camino (como «Sígueme» de SketchUp): rodapiés, molduras, tubos, bandejas…">➰ Sígueme</button>
-          {sigueMenu && <div style={{ position: 'absolute', top: 34, left: 0, background: 'rgba(20,20,20,0.97)', borderRadius: 8, padding: 6, zIndex: 8, width: 230, color: '#fff', fontSize: 13 }}>
-            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige el perfil y dibuja el camino en el suelo (Enter termina; volver al primer punto cierra en lazo)</div>
-            {Object.keys(PERFILES).map(n => <div key={n} onClick={() => { setPerfilSel(n); setHerr('sigue'); setSigueMenu(false); }} style={{ padding: '6px 8px', cursor: 'pointer', borderRadius: 4, background: perfilSel === n ? '#2a3a52' : 'transparent' }}>{n}</div>)}
-          </div>}
-        </div>
-        <button style={btn} onClick={() => logoInput.current?.click()} title="Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en un modelo 3D con grosor">🖼 Logo</button>
-        <input ref={logoInput} type="file" accept=".svg,.dxf" style={{ display: 'none' }} onChange={e => { importarLogo(e.target.files?.[0]); e.target.value = ''; }} />
-        <div style={{ position: 'relative' }}>
-          <button style={{ ...btn, ...(['zonaS', 'zonaT', 'zonaP'].includes(herr) || zonaMenu ? { background: '#2f6fa8' } : {}) }} onClick={() => setZonaMenu(v => !v)} title="Dibuja una forma sobre un suelo, techo o pared y dale su propio material">▨ Zonas</button>
-          {zonaMenu && <div style={{ position: 'absolute', top: 34, left: 0, background: 'rgba(20,20,20,0.97)', borderRadius: 8, padding: 6, zIndex: 8, width: 230, color: '#fff', fontSize: 13 }}>
-            {[['zonaS', 'En el suelo'], ['zonaT', 'En el techo'], ['zonaP', 'En una pared (o media pared)']].map(([h, n]) => <div key={h} onClick={() => { setHerr(h); setZonaMenu(false); }} style={{ padding: '6px 8px', cursor: 'pointer', borderRadius: 4 }}>{n}</div>)}
+      {/* ── Barra superior: plano, historial, vistas, ambiente y salidas (render, 360, galería, despiece) ── */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(24,24,24,0.94)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)', overflowX: 'auto' }}>
+        <button style={bTop} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
+        <b style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</b>
+        {guardado && guardado !== 'inicial' && <span style={{ opacity: 0.55, fontSize: 11, whiteSpace: 'nowrap' }}>{guardado}</span>}
+        <span style={sepTop} />
+        <button style={bTop} onClick={() => deshacer()} title="Deshacer (Ctrl+Z)">↶</button>
+        <button style={bTop} onClick={() => rehacer()} title="Rehacer (Ctrl+Y)">↷</button>
+        <span style={sepTop} />
+        <button style={bTop} onClick={() => vista('persp')} title="Vista en perspectiva de todo el plano">Perspectiva</button>
+        <button style={bTop} onClick={() => vista('planta')} title="Vista desde arriba">Planta</button>
+        <button style={bTop} onClick={() => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }} title="Pone la cámara a la altura de los ojos (1,60 m): ideal antes de un render o un panorama">👁 Ojos</button>
+        <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">☀ Ambiente</button>
+        <button style={{ ...bTop, ...(escAbierta ? bOn : {}) }} onClick={() => setEscAbierta(v => !v)} title="Escenas guardadas: vistas a las que volver y desde las que renderizar">🎬 Escenas{escenas.length ? ' (' + escenas.length + ')' : ''}</button>
+        <span style={{ flex: 1, minWidth: 8 }} />
+        <select style={bTop} value={calidad} onChange={e => setCalidad(e.target.value)} title="Si va lento, baja la calidad"><option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option></select>
+        <button style={bTop} onClick={captura} title="Guarda la vista actual como imagen">📷</button>
+        <button style={bTop} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }} disabled={renderizando || estado !== 'listo'} title="Render HD limpio (3200 px) con sombras suaves">{renderizando ? 'Renderizando…' : '🖼 Render HD'}</button>
+        <button style={{ ...bTop, background: '#7a4fc4', borderColor: '#7a4fc4' }} onClick={abrirFormIA} disabled={estado !== 'listo' || ia?.estado === 'trabajando'} title="La IA convierte esta vista en una foto realista">✨ Render IA</button>
+        <button style={bTop} onClick={hacer360} disabled={generando360 || estado !== 'listo'} title="Panorama 360° desde donde está la cámara ahora mismo">{generando360 ? 'Generando…' : '🌐 360°'}</button>
+        <button style={{ ...bTop, ...(galAbierta ? bOn : {}) }} onClick={() => setGalAbierta(v => !v)} title="Renders y panoramas guardados">🖼 Galería{renders.length ? ' (' + renders.length + ')' : ''}</button>
+        <button style={bTop} onClick={abrirDespiece} title="Despiece y cantidades de todo lo diseñado (también salen en «Desde planos» del presupuesto)">📋 Despiece</button>
+        <button style={bTop} onClick={() => setAyudaAbierta(v => !v)} title="Atajos de teclado">?</button>
+      </div>
+
+      {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
+      <div style={{ position: 'absolute', top: 56, left: 8, width: 54, maxHeight: 'calc(100vh - 68px)', overflowY: 'auto', overflowX: 'visible', background: 'rgba(24,24,24,0.94)', borderRadius: 12, padding: '6px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+        {grupoRail([
+          railBtn(herr === 'sel', '↖', 'Seleccionar', 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
+          railBtn(herr === 'pincel' || matAbierto, '🎨', 'Materiales', 'Colores, texturas y LED: elige y pinta (cara, pieza o entero)', () => { setMatAbierto(v => !v); if (matAbierto && herr === 'pincel') setHerr('sel'); }),
+          railBtn(herr === 'gotero', '💧', 'Gotero', 'Copia el material de lo que toques y pásalo con el pincel (Alt + clic con el pincel)', () => setHerr('gotero')),
+        ])}
+        {grupoRail([
+          railBtn(herr === 'muro', '🧱', 'Muro', 'Dibuja muros: clic para empezar y cada punto; Mayús = recto. Se crean también en Planos (6)', () => setHerr('muro')),
+          railBtn(herr === 'caja', '▭', 'Caja', 'Arrastra sobre el suelo para dibujar una caja y luego dale altura (2)', () => setHerr('caja')),
+          railBtn(herr === 'poli', '⬡', 'Contorno', 'Clic punto a punto sobre el suelo; cierra con Enter. Luego se extruye (3)', () => setHerr('poli')),
+          railBtn(herr === 'empujar', '⇅', 'Empujar', 'Arrastra la cara de arriba de un objeto para cambiar su altura (4)', () => setHerr('empujar')),
+          menuRail(zonaMenu, setZonaMenu, railBtn(['zonaS', 'zonaT', 'zonaP'].includes(herr) || zonaMenu, '▨', 'Zonas', 'Dibuja una forma sobre un suelo, techo o pared y dale su propio material', () => setZonaMenu(v => !v)), (<>
+            {[['zonaS', 'En el suelo'], ['zonaT', 'En el techo'], ['zonaP', 'En una pared (o media pared)']].map(([h, n]) => <div key={h} onClick={() => { setHerr(h); setZonaMenu(false); }} style={itemMenu}>{n}</div>)}
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderTop: '1px solid #333', cursor: 'pointer' }}><input type="checkbox" checked={curvo} onChange={e => setCurvo(e.target.checked)} /> Contorno curvo (suave)</label>
             <div style={{ opacity: 0.55, fontSize: 11, padding: '0 8px 4px' }}>Clic punto a punto; cierra con Enter o volviendo al primer punto.</div>
-          </div>}
-        </div>
-        <button style={{ ...btn, ...(herr === 'guia' ? { background: '#d62bd6', borderColor: '#d62bd6' } : {}) }} onClick={() => setHerr('guia')} title="Clic en dos puntos para crear una línea guía infinita. El dibujo se imanta a las guías, a las esquinas y a los extremos de los muros. Esc para salir.">📏 Guía</button>
-        <button style={{ ...btn, ...(herr === 'luz' ? { background: '#c9a21a', borderColor: '#c9a21a', color: '#111' } : {}) }} onClick={() => setHerr('luz')} title="Clic en el suelo para colocar una luminaria: se crea también en la capa Iluminación del plano. Esc para salir.">💡 Luz</button>
-        <button style={{ ...btn, ...(herr === 'muro' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('muro')} title="Dibuja muros: clic para empezar, clic para cada punto siguiente (Mayús = recto). Enter o Esc para terminar. Se crean también en el plano.">🧱 Muro</button>
-        <div style={{ position: 'relative' }}>
-          <button style={{ ...btn, ...(herr === 'carril' || carrilMenu ? { background: '#c9a21a', borderColor: '#c9a21a', color: '#111' } : {}) }} onClick={() => setCarrilMenu(v => !v)} title="Carril magnético o trifásico al que se añaden focos">🛤 Carril</button>
-          {carrilMenu && <div style={{ position: 'absolute', top: 34, left: 0, background: 'rgba(20,20,20,0.97)', borderRadius: 8, padding: 6, zIndex: 8, width: 250, color: '#fff', fontSize: 13 }}>
-            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Dibuja el recorrido del carril en el suelo (Enter termina). Después añade focos: spots, lineales, proyectores o colgantes.</div>
-            {[['magnetico', 'Carril magnético (48 V, ultrafino)'], ['trifasico', 'Carril trifásico (230 V)']].map(([v, n]) => <div key={v} onClick={() => { setCarrilSis(v); setHerr('carril'); setCarrilMenu(false); }} style={{ padding: '6px 8px', cursor: 'pointer', borderRadius: 4 }}>{n}</div>)}
-            <div onClick={() => { setHerr('led'); setCarrilMenu(false); }} style={{ padding: '6px 8px', cursor: 'pointer', borderRadius: 4, borderTop: '1px solid #333' }} title="Cinta LED que sigue un recorrido y alumbra hacia abajo, arriba o a un lado">Tira LED (luz lineal)</div>
-          </div>}
-        </div>
-        {herr === 'focoC' && <><select value={kindFoco} onChange={e => setKindFoco(e.target.value)} style={btn}>{Object.entries(TIPOS_FOCO).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select><span style={{ color: '#c9a21a', fontSize: 12 }}>Clic en el carril para colocar · Esc para salir</span></>}
-        <button style={btn} onClick={() => deshacer()} title="Deshacer (Ctrl+Z)">↶</button>
-        <button style={btn} onClick={() => rehacer()} title="Rehacer (Ctrl+Y)">↷</button>
-        <button style={{ ...btn, ...(ambAbierto ? { background: '#2f6fa8' } : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">☀ Ambiente</button>
-        <button style={btn} onClick={abrirDespiece} title="Despiece y cantidades de todo lo diseñado en el 3D (también salen en «Desde planos» del presupuesto)">📋 Despiece</button>
-        <button style={btn} onClick={() => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }} title="Pone la cámara a la altura de los ojos (1,60 m): ideal antes de un render o un panorama">👁 Ojos</button>
-        <button style={btn} onClick={hacer360} disabled={generando360 || estado !== 'listo'} title="Panorama 360° desde donde está la cámara ahora mismo">{generando360 ? 'Generando 360…' : '🌐 360°'}</button>
-        <button style={{ ...btn, ...(galAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setGalAbierta(v => !v)} title="Renders y panoramas guardados">🖼 Galería{renders.length ? ' (' + renders.length + ')' : ''}</button>
-        <button style={btn} onClick={() => setAyudaAbierta(v => !v)} title="Atajos de teclado">?</button>
-        {herr === 'muro' && <><select value={grosorMuro} onChange={e => setGrosorMuro(parseInt(e.target.value, 10))} style={btn} title="Grosor del muro">{[7, 10, 12, 15, 20, 25, 30].map(g => <option key={g} value={g}>{g} cm</option>)}</select>{medidaMuro && <b style={{ color: '#1b6dd6' }}>{medidaMuro}</b>}</>}
-        {herr === 'luz' && <select value={kindLuz} onChange={e => setKindLuz(e.target.value)} style={btn}><option value="foco">Foco empotrado</option><option value="plaf">Plafón</option><option value="colg">Colgante</option><option value="aplq">Aplique</option><option value="pie">Lámpara de pie</option><option value="suel">Empotrado de suelo</option></select>}
-        {guias.length > 0 && <button style={btn} onClick={() => setGuias([])} title="Quitar todas las guías">✕ Guías ({guias.length})</button>}
-        <button style={{ ...btn, ...(bibAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setBibAbierta(v => !v)} title="Tus productos del catálogo de Ranuse">📦 Catálogo</button>
-        <button style={{ ...btn, ...(b3dAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setB3dAbierta(v => !v)} title="Muebles y texturas gratuitos (Poly Haven, CC0)">🧰 Biblioteca 3D</button>
-        <button style={{ ...btn, ...(capasAbierto ? { background: '#2f6fa8' } : {}) }} onClick={() => setCapasAbierto(v => !v)}>🏷 Capas</button>
-        <button style={{ ...btn, ...(matAbierto || herr === 'pincel' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setMatAbierto(v => !v); if (matAbierto && herr === 'pincel') setHerr('sel'); }}>🎨 Materiales</button>
-        <button style={{ ...btn, ...(herr === 'gotero' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('gotero')} title="Cuentagotas: haz clic en lo que quieras copiar y pasa a pincel para pegarlo (también Alt + clic con el pincel)">💧 Gotero</button>
-        {guardado && guardado !== 'inicial' && <span style={{ color: '#555', fontSize: 12 }}>{guardado}</span>}
-        <button style={btn} onClick={() => vista('persp')}>Perspectiva</button>
-        <button style={btn} onClick={() => vista('planta')}>Planta</button>
-        <select style={btn} value={calidad} onChange={e => setCalidad(e.target.value)} title="Si va lento, baja la calidad">
-          <option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option>
-        </select>
-        <button style={btn} onClick={captura}>📷 Captura</button>
-        <button style={{ ...btn, background: '#7a4fc4', borderColor: '#7a4fc4' }} onClick={abrirFormIA} disabled={estado !== 'listo' || ia?.estado === 'trabajando'} title="La IA convierte esta vista en una foto realista">✨ Render con IA</button>
-        <button style={{ ...btn, background: '#2f6fa8', borderColor: '#2f6fa8' }} onClick={renderAlta} disabled={renderizando || estado !== 'listo'} title="Imagen grande con sombras suaves (3200 px)">{renderizando ? 'Renderizando…' : '🖼 Render HD'}</button>
+          </>)),
+          menuRail(sigueMenu, setSigueMenu, railBtn(herr === 'sigue' || sigueMenu, '➰', 'Sígueme', 'Un perfil recorre un camino: rodapiés, molduras, tubos, bandejas…', () => setSigueMenu(v => !v)), (<>
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige el perfil y dibuja el camino en el suelo (Enter termina; volver al primer punto cierra en lazo)</div>
+            {Object.keys(PERFILES).map(n => <div key={n} onClick={() => { setPerfilSel(n); setHerr('sigue'); setSigueMenu(false); }} style={{ ...itemMenu, background: perfilSel === n ? '#2a3a52' : 'transparent' }}>{n}</div>)}
+          </>)),
+        ])}
+        {grupoRail([
+          railBtn(bibAbierta, '📦', 'Catálogo', 'Tus productos del catálogo de Ranuse', () => setBibAbierta(v => !v)),
+          railBtn(b3dAbierta, '🧰', 'Biblioteca', 'Muebles y texturas gratuitos (Poly Haven, CC0)', () => setB3dAbierta(v => !v)),
+          menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, '🪑', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
+            {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
+          </>), 250),
+          railBtn(false, '🖼', 'Logo', 'Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en 3D', () => logoInput.current?.click()),
+        ])}
+        {grupoRail([
+          railBtn(herr === 'luz', '💡', 'Luz', 'Clic en el suelo para colocar una luminaria: se crea también en la capa Iluminación del plano (7)', () => setHerr('luz'), '#c9a21a'),
+          menuRail(carrilMenu, setCarrilMenu, railBtn(herr === 'carril' || herr === 'led' || carrilMenu, '🛤', 'Carril / LED', 'Carriles con focos y tiras LED', () => setCarrilMenu(v => !v), '#c9a21a'), (<>
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Dibuja el recorrido en el suelo (Enter termina). En un carril añades después focos: spots, lineales, proyectores o colgantes.</div>
+            {[['magnetico', 'Carril magnético (48 V, ultrafino)'], ['trifasico', 'Carril trifásico (230 V)']].map(([v, n]) => <div key={v} onClick={() => { setCarrilSis(v); setHerr('carril'); setCarrilMenu(false); }} style={itemMenu}>{n}</div>)}
+            <div onClick={() => { setHerr('led'); setCarrilMenu(false); }} style={{ ...itemMenu, borderTop: '1px solid #333' }} title="Cinta LED que sigue un recorrido y alumbra hacia abajo, arriba o a un lado">Tira LED (luz lineal)</div>
+          </>), 260),
+        ])}
+        {grupoRail([
+          railBtn(herr === 'guia', '📏', 'Guía', 'Clic en dos puntos para crear una línea guía; el dibujo se imanta a ellas (5)', () => setHerr('guia'), '#d62bd6'),
+          railBtn(capasAbierto, '🏷', 'Capas', 'Mostrar u ocultar muros, suelos, techos, plantas y etiquetas', () => setCapasAbierto(v => !v)),
+        ], true)}
+        <input ref={logoInput} type="file" accept=".svg,.dxf" style={{ display: 'none' }} onChange={e => { importarLogo(e.target.files?.[0]); e.target.value = ''; }} />
       </div>
+
+      {/* ── Barra de opciones de la herramienta activa ── */}
+      {AYUDA_HERR[herr] && (
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', background: 'rgba(24,24,24,0.94)', color: '#fff', borderRadius: 18, padding: '5px 14px', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', zIndex: 6, maxWidth: '70vw', boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
+          <b>{AYUDA_HERR[herr][0]}</b><span style={{ opacity: 0.75 }}>{AYUDA_HERR[herr][1]}</span>
+          {herr === 'muro' && <><select value={grosorMuro} onChange={e => setGrosorMuro(parseInt(e.target.value, 10))} style={bTop} title="Grosor del muro">{[7, 10, 12, 15, 20, 25, 30].map(g => <option key={g} value={g}>{g} cm</option>)}</select>{medidaMuro && <b style={{ color: '#6fb3ff' }}>{medidaMuro}</b>}</>}
+          {herr === 'luz' && <select value={kindLuz} onChange={e => setKindLuz(e.target.value)} style={bTop}><option value="foco">Foco empotrado</option><option value="plaf">Plafón</option><option value="colg">Colgante</option><option value="aplq">Aplique</option><option value="pie">Lámpara de pie</option><option value="suel">Empotrado de suelo</option></select>}
+          {herr === 'focoC' && <select value={kindFoco} onChange={e => setKindFoco(e.target.value)} style={bTop}>{Object.entries(TIPOS_FOCO).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>}
+          {herr === 'pincel' && <span style={{ opacity: 0.9 }}>Modo: <b>{modoPincel === 'cara' ? 'Cara' : modoPincel === 'pieza' ? 'Pieza' : 'Entero'}</b></span>}
+          {herr === 'guia' && guias.length > 0 && <button style={bTop} onClick={() => setGuias([])}>✕ Quitar guías ({guias.length})</button>}
+        </div>
+      )}
       {iaForm && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 5 }}>
           <div style={{ background: '#1d1d1d', color: '#fff', borderRadius: 10, padding: 18, width: 380, fontSize: 13 }}>
@@ -2180,7 +2284,7 @@ export default function Visor3D() {
             </label>
             <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
               <button style={btn} onClick={() => setIaForm(false)}>Cancelar</button>
-              <button style={{ ...btn, background: '#7a4fc4', borderColor: '#7a4fc4' }} onClick={renderIA}>Generar</button>
+              <button style={{ ...btn, background: '#7a4fc4', borderColor: '#7a4fc4' }} onClick={() => renderIA()}>Generar</button>
             </div>
           </div>
         </div>
@@ -2210,7 +2314,7 @@ export default function Visor3D() {
           </label>
         );
         return (
-          <div style={{ position: 'absolute', left: 12 + (bibAbierta ? 280 : 0) + (b3dAbierta ? 280 : 0), top: 56, width: 210, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '10px 12px', fontSize: 13, zIndex: 3 }}>
+          <div style={{ position: 'absolute', left: 64, top: 56, width: 210, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '10px 12px', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Ver por capas</div>
             {fijas.map(([k, n]) => fila(k, n))}
             <div style={{ borderTop: '1px solid #333', marginTop: 6, paddingTop: 6 }}>
@@ -2235,7 +2339,12 @@ export default function Visor3D() {
           <div style={{ position: 'absolute', right: 12, top: 56, width: 260, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>💡 {nombres[l.kid] || 'Luminaria'} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(del plano)</span></div>
             <div style={{ opacity: 0.75, marginBottom: 6 }}>{cat ? cat.n + ' · ' + (cat.lm || '?') + ' lm · ' + (cat.w || '?') + ' W · ' + (cat.k || '?') + ' K' : 'Sin luminaria del catálogo asignada (se usa una estándar de 800 lm)'}</div>
-            {spot && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Apertura del haz</span><input type="range" min="10" max="120" value={ap} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ap: parseInt(e.target.value, 10) } }))} style={{ flex: 1 }} /><span style={{ width: 34 }}>{ap}°</span></label>}
+            {spot && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Apertura del haz</span><input type="range" min="10" max="120" value={ap} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: parseInt(e.target.value, 10) } }))} style={{ flex: 1 }} /><span style={{ width: 34 }}>{ap}°</span></label>}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Temperatura</span>
+              <select value={String(lucesAj[l.id]?.k ?? (cat?.k || 3000))} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, k: parseInt(e.target.value, 10) } }))} style={btn}>{[2200, 2700, 3000, 3500, 4000, 5000, 6500].map(k => <option key={k} value={k}>{k} K{k <= 2700 ? ' cálida' : k >= 5000 ? ' fría' : ''}</option>)}{![2200, 2700, 3000, 3500, 4000, 5000, 6500].includes(lucesAj[l.id]?.k ?? (cat?.k || 3000)) && <option value={lucesAj[l.id]?.k ?? (cat?.k || 3000)}>{lucesAj[l.id]?.k ?? (cat?.k || 3000)} K</option>}</select>
+              <span style={{ width: 14, height: 14, borderRadius: 7, background: kelvinHex(lucesAj[l.id]?.k ?? (cat?.k || 3000)), border: '1px solid #666' }} />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Lúmenes</span><input type="number" step="50" value={lucesAj[l.id]?.lm ?? (cat?.lm || 800)} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, lm: parseFloat(e.target.value) || 0 } }))} style={{ ...btn, width: 80 }} /></label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Altura (cm)</span><input type="number" defaultValue={Math.round(l.h != null ? l.h : ({ foco: 255, plaf: 255, colg: 200, aplq: 180, pie: 120, suel: 5 }[l.kid] ?? 250))} onBlur={e => api.patch('/medicion/' + id + '/luminaria/' + l.id, { h: e.target.value }).then(() => { setAviso('Altura guardada en el plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(() => setAviso('No se pudo cambiar la altura'))} style={{ ...btn, width: 80 }} /></label>
             <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>El ángulo de apertura se guarda en el 3D; la altura y la posición se guardan también en el plano.</div>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -2258,8 +2367,41 @@ export default function Visor3D() {
           <div style={{ color: '#fff', opacity: 0.5, fontSize: 11 }}>La imagen descargada es un panorama equirrectangular estándar: se abre en cualquier visor 360 (Facebook, Google Fotos, Kuula, etc.).</div>
         </div>
       )}
+      {escAbierta && (
+        <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 330, background: 'rgba(24,24,24,0.95)', color: '#fff', borderRadius: 10, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>🎬 Escenas <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>vistas guardadas</span></div>
+          <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 8 }}>Una escena recuerda la cámara, la hora, las luces, las capas visibles y los textos de la IA. Colócate, ponle nombre y guárdala: luego vuelves a ella o la renderizas.</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <input value={escNombre} onChange={e => setEscNombre(e.target.value)} placeholder="Nombre (ej. Salón desde la entrada)" onKeyDown={e => { if (e.key === 'Enter') guardarEscena(); }} style={{ ...btn, flex: 1, minWidth: 0 }} />
+            <button style={{ ...btn, background: '#2f6fa8' }} onClick={guardarEscena} title="Guarda la vista actual como escena">＋ Guardar</button>
+          </div>
+          {!escenas.length && <p style={{ opacity: 0.65 }}>Aún no hay escenas.</p>}
+          {escenas.map(e => (
+            <div key={e.id} style={{ borderTop: '1px solid #333', padding: '8px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input defaultValue={e.nombre} key={e.id + e.nombre} onBlur={ev => { if (ev.target.value !== e.nombre) setEscenas(x => x.map(y => (y.id === e.id ? { ...y, nombre: ev.target.value } : y))); }} style={{ ...btn, flex: 1, padding: '3px 6px', fontWeight: 700 }} />
+                <span onClick={() => { if (window.confirm('¿Borrar la escena «' + e.nombre + '»?')) setEscenas(x => x.filter(y => y.id !== e.id)); }} style={{ cursor: 'pointer', opacity: 0.6, padding: '0 4px' }} title="Borrar">✕</span>
+              </div>
+              <div style={{ opacity: 0.6, fontSize: 11, margin: '3px 0 5px' }}>{e.meta?.estancia ? e.meta.estancia + ' · ' : ''}{e.meta?.hora != null ? e.meta.hora + ' h' : ''}{(e.ocultas || []).length ? ' · ' + e.ocultas.length + ' capa(s) oculta(s)' : ''}</div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <button style={{ ...btn, padding: '3px 9px' }} onClick={() => irAEscena(e)}>Ir a la escena</button>
+                <button style={{ ...btn, padding: '3px 9px' }} onClick={() => actualizarEscena(e.id)} title="Sustituye la escena por la vista de ahora">Actualizar</button>
+                <button style={{ ...btn, padding: '3px 9px', background: '#7a4fc4' }} disabled={!!lote} onClick={() => renderEscena(e, 'ia')} title="Va a la escena y genera el render con IA, que se guarda en la galería">✨ IA</button>
+                <button style={{ ...btn, padding: '3px 9px' }} disabled={!!lote} onClick={() => renderEscena(e, 'hd')} title="Va a la escena y guarda un render HD en la galería">🖼 HD</button>
+              </div>
+            </div>
+          ))}
+          {escenas.length > 1 && (
+            <div style={{ borderTop: '1px solid #333', paddingTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button style={{ ...btn, background: '#7a4fc4' }} disabled={!!lote} onClick={() => renderTodas('ia')}>✨ Todas con IA ({escenas.length})</button>
+              <button style={btn} disabled={!!lote} onClick={() => renderTodas('hd')}>🖼 Todas en HD</button>
+            </div>
+          )}
+          {lote && <div style={{ marginTop: 8, color: '#8fb8de' }}>Renderizando {lote.i} de {lote.n}: {lote.nombre}…</div>}
+        </div>
+      )}
       {galAbierta && (
-        <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 330, background: 'rgba(20,20,20,0.95)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 6 }}>
+        <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 330, background: 'rgba(24,24,24,0.95)', color: '#fff', borderRadius: 10, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>🖼 Galería <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>renders y panoramas guardados</span></div>
           {!renders.length && <p style={{ opacity: 0.65 }}>Aún no has guardado ninguno. Genera un render con IA o un panorama 360° y pulsa «Guardar en la galería»: se guarda con la vista, la hora y los textos con los que lo hiciste.</p>}
           {renders.map(rd => (
@@ -2318,6 +2460,13 @@ export default function Visor3D() {
           {[['Hora del sol', hora, 6, 21, 0.5, v => setHora(v), hora + ':00'.slice(0, 0) + ' h'], ['Exposición', ambiente.exposicion, 0.3, 2.5, 0.05, v => setAmbiente(a => ({ ...a, exposicion: v })), ambiente.exposicion.toFixed(2)], ['Intensidad luces', ambiente.luces, 0.2, 4, 0.1, v => setAmbiente(a => ({ ...a, luces: v })), '×' + ambiente.luces.toFixed(1)]].map(([n, v, mn, mx, st, fn, tx]) => (
             <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 100, opacity: 0.75 }}>{n}</span><input type="range" min={mn} max={mx} step={st} value={v} onChange={e => fn(parseFloat(e.target.value))} style={{ flex: 1 }} /><span style={{ width: 44, textAlign: 'right' }}>{tx}</span></label>
           ))}
+          <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={ambiente.kLuces != null} onChange={e => setAmbiente(a => ({ ...a, kLuces: e.target.checked ? 3000 : null }))} /> Misma temperatura para todas las luces</label>
+            {ambiente.kLuces != null && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 100, opacity: 0.75 }}>Temperatura</span><input type="range" min="2200" max="6500" step="100" value={ambiente.kLuces} onChange={e => setAmbiente(a => ({ ...a, kLuces: parseInt(e.target.value, 10) }))} style={{ flex: 1 }} /><span style={{ width: 52, textAlign: 'right' }}>{ambiente.kLuces} K</span><span style={{ width: 14, height: 14, borderRadius: 7, background: kelvinHex(ambiente.kLuces), border: '1px solid #666' }} /></label>}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={ambiente.kSol != null} onChange={e => setAmbiente(a => ({ ...a, kSol: e.target.checked ? 5500 : null }))} /> Temperatura del sol manual</label>
+            {ambiente.kSol != null && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 100, opacity: 0.75 }}>Sol</span><input type="range" min="3000" max="8000" step="100" value={ambiente.kSol} onChange={e => setAmbiente(a => ({ ...a, kSol: parseInt(e.target.value, 10) }))} style={{ flex: 1 }} /><span style={{ width: 52, textAlign: 'right' }}>{ambiente.kSol} K</span></label>}
+            <div style={{ opacity: 0.5, fontSize: 11 }}>Sin marcar, cada luz usa su propia temperatura (la de su luminaria, carril o tira LED) y el sol cambia con la hora.</div>
+          </div>
           <div style={{ opacity: 0.5, fontSize: 11 }}>Si las luces se ven muy fuertes o muy flojas, ajusta «Intensidad luces». La exposición aclara u oscurece toda la escena.</div>
         </div>
       )}
@@ -2375,7 +2524,7 @@ export default function Visor3D() {
           try { await api.delete('/medicion/' + id + '/textura/' + t.id); setTexturas(x => x.filter(y => y.id !== t.id)); if (matSel?.id === t.id) setMatSel(null); } catch { setGuardado('No se pudo quitar'); }
         };
         return (
-          <div style={{ position: 'absolute', left: 12 + (bibAbierta ? 280 : 0) + (b3dAbierta ? 280 : 0) + (capasAbierto ? 222 : 0), top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
+          <div style={{ position: 'absolute', left: 64, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700, marginBottom: 2 }}>🎨 Materiales (pincel)</div>
             <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 6 }}>Elige un material y haz clic en lo que quieras pintar. Alt + clic copia el material de lo que toques (gotero).</div>
             <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
@@ -2507,7 +2656,7 @@ export default function Visor3D() {
         const lista = (b3d?.[b3dTab] || []).filter(m => (!b3dCat || m.categoria === b3dCat) && (!b3dFiltro || (m.nombre + ' ' + m.categoria).toLowerCase().includes(b3dFiltro.toLowerCase())));
         const cats = [...new Set((b3d?.[b3dTab] || []).map(m => m.categoria))].sort();
         return (
-          <div style={{ position: 'absolute', left: 12 + (bibAbierta ? 280 : 0), top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
+          <div style={{ position: 'absolute', left: 64, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700 }}>🧰 Biblioteca 3D <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>gratis · CC0</span></div>
             <div style={{ display: 'flex', gap: 6, margin: '6px 0' }}>
               <button style={{ ...btn, flex: 1, ...(b3dTab === 'modelos' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setB3dTab('modelos'); setB3dCat(''); }}>Muebles</button>
@@ -2541,7 +2690,7 @@ export default function Visor3D() {
         );
       })()}
       {bibAbierta && (
-        <div style={{ position: 'absolute', left: 12, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
+        <div style={{ position: 'absolute', left: 64, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
           <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar en el catálogo…" style={{ ...btn, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} />
           <div style={{ overflow: 'auto', flex: 1 }}>
             {!biblioteca && <p style={{ opacity: 0.6 }}>Cargando catálogo…</p>}

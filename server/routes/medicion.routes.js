@@ -548,12 +548,13 @@ router.put('/:id/escena3d', async (req, res) => {
     const rd = req.body?.rodapie || {};
     const rodapie = { on: !!rd.on, alto: Math.max(2, Math.min(30, num(rd.alto, 10))), grosor: Math.max(0.5, Math.min(5, num(rd.grosor, 1.5))), color: hex(rd.color) || '#ffffff' };
     const guias = (Array.isArray(req.body?.guias) ? req.body.guias : []).slice(0, 60).map(g => ({ x1: num(g?.x1), y1: num(g?.y1), x2: num(g?.x2), y2: num(g?.y2) }));
-    const luces = Object.fromEntries(Object.entries(req.body?.luces && typeof req.body.luces === 'object' ? req.body.luces : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 40), { ap: Math.max(5, Math.min(140, num(v?.ap, 60))) }]));
+    const luces = Object.fromEntries(Object.entries(req.body?.luces && typeof req.body.luces === 'object' ? req.body.luces : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 40), { ap: Math.max(5, Math.min(140, num(v?.ap, 60))), k: Number.isFinite(parseFloat(v?.k)) ? Math.max(1500, Math.min(10000, parseFloat(v.k))) : undefined, lm: Number.isFinite(parseFloat(v?.lm)) ? Math.max(0, Math.min(20000, parseFloat(v.lm))) : undefined }]));
     const { data: fila, error } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
     const previa = fila.data?.escena3d || {};
-    const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, rodapie, guias, luces, texturas: previa.texturas || [], renders: previa.renders || [], iaPrefs: previa.iaPrefs || null, hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
+    const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, rodapie, guias, luces, texturas: previa.texturas || [], renders: previa.renders || [], iaPrefs: previa.iaPrefs || null,
+      escenas: Array.isArray(req.body?.escenas) ? req.body.escenas.slice(0, 40).map(e => ({ id: String(e?.id || '').slice(0, 20), nombre: String(e?.nombre || 'Escena').slice(0, 60), meta: limpiaMeta(e?.meta), ocultas: (Array.isArray(e?.ocultas) ? e.ocultas : []).slice(0, 60).map(x => String(x).slice(0, 50)) })).filter(e => e.id) : (previa.escenas || []), hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
     const { error: e2 } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (e2) throw e2;
     res.json({ ok: true });
@@ -651,7 +652,7 @@ router.get('/:id/mediciones3d', async (req, res) => {
     const e3 = filasEscena3d(fila.data?.escena3d, fila.data?.modelo3d);
     const filas = [...e3.filas];
     Object.values(e3.porCid).forEach(c => filas.push({ grupo: 'Mobiliario 3D (catálogo)', nombre: c.nombre, unidad: 'ud', cantidad: c.n }));
-    Object.values(e3.porProd).forEach(c => filas.push({ grupo: 'Acabados 3D (catálogo)', nombre: c.nombre, unidad: 'm²', cantidad: Math.round(c.m2 * 100) / 100 }));
+    Object.values(e3.porProd).forEach(c => Object.entries(c.partes || {}).forEach(([cat, a]) => filas.push({ grupo: 'Superficies · ' + cat, nombre: c.nombre + ' (catálogo)', unidad: 'm²', cantidad: Math.round(a * 100) / 100 })));
     res.json({ filas });
   } catch (err) {
     console.error('medicion mediciones3d:', err);
