@@ -51,6 +51,7 @@ export function filasEscena3d(esc, m3) {
     const n = {}; (o.focos || []).forEach(f => { n[f.t] = (n[f.t] || 0) + 1; });
     Object.entries(n).forEach(([t, c]) => libre('Iluminación 3D', (TIPOS_FOCO[t] || t) + ' para carril', 'ud', c));
   });
+  objs.filter(o => o.tipo === 'led' && o.led).forEach(o => { const ml = largoCm(o.pts, o.led.cerrado) / 100; libre('Iluminación 3D', 'Tira LED ' + o.led.k + ' K, ' + o.led.lm + ' lm/m' + (o.nombre ? ' · ' + o.nombre : ''), 'ml', ml); libre('Iluminación 3D', 'Fuente de alimentación para tira LED (1 cada 5 m)', 'ud', Math.ceil(ml / 5)); });
   // molduras y rodapié
   objs.filter(o => o.tipo === 'barrido').forEach(o => libre('Molduras 3D', 'Moldura: ' + (o.perfilNombre || 'perfil') + (o.esc && o.esc !== 1 ? ' (escala ' + o.esc + ')' : ''), 'ml', largoCm(o.pts, o.cerrado) / 100));
   const pl0 = m3 ? (m3.plantas || [m3])[0] : null;

@@ -483,7 +483,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led'];
 const BUCKET_TEX = 'project-documents';
 router.put('/:id/escena3d', async (req, res) => {
   try {
@@ -491,7 +491,7 @@ router.put('/:id/escena3d', async (req, res) => {
     if (!objs) return res.status(400).json({ error: 'Escena no válida' });
     const num = (v, d = 0) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : d);
     const hex = v => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : null);
-    const acab = v => (hex(v) || (/^tex:[\w-]{1,40}$/.test(v || '') ? v : null));
+    const acab = v => (hex(v) || (/^#[0-9a-fA-F]{6}!$/.test(v || '') ? v : null) || (/^tex:[\w-]{1,40}$/.test(v || '') ? v : null));
     const limpios = objs.map(o => ({
       id: String(o.id || '').slice(0, 40),
       tipo: TIPOS_OBJ3D.includes(o.tipo) ? o.tipo : 'bloque',
@@ -527,6 +527,8 @@ router.put('/:id/escena3d', async (req, res) => {
       lado: o.lado === -1 ? -1 : 1,
       h: Number.isFinite(parseFloat(o.h)) ? Math.max(0, Math.min(1000, parseFloat(o.h))) : undefined,
       ft: o.tipo === 'falsotecho' && o.ft ? { descenso: Math.max(-100, Math.min(100, num(o.ft.descenso, 15))), gap: Math.max(2, Math.min(60, num(o.ft.gap, 12))), luz: o.ft.luz !== false, k: Math.max(1500, Math.min(10000, num(o.ft.k, 3000))) } : undefined,
+      ledDir: ['abajo', 'arriba', 'frente', 'atras', 'izq', 'der'].includes(o.ledDir) ? o.ledDir : undefined,
+      led: o.tipo === 'led' ? { ancho: Math.max(0.3, Math.min(10, num(o.led?.ancho, 1.2))), k: Math.max(1500, Math.min(10000, num(o.led?.k, 3000))), lm: Math.max(50, Math.min(3000, num(o.led?.lm, 800))), dir: ['abajo', 'arriba', 'izq', 'der'].includes(o.led?.dir) ? o.led.dir : 'abajo', cerrado: !!o.led?.cerrado } : undefined,
       sistema: o.tipo === 'carril' ? (o.sistema === 'trifasico' ? 'trifasico' : 'magnetico') : undefined,
       suspendido: o.tipo === 'carril' ? !!o.suspendido : undefined,
       focos: o.tipo === 'carril' && Array.isArray(o.focos) ? o.focos.slice(0, 80).map(f => ({
@@ -535,7 +537,7 @@ router.put('/:id/escena3d', async (req, res) => {
         lm: Math.max(0, Math.min(20000, num(f?.lm, 800))), k: Math.max(1500, Math.min(10000, num(f?.k, 3000))),
         ap: Math.max(5, Math.min(140, num(f?.ap, 36))), largo: Math.max(10, Math.min(300, num(f?.largo, 60))),
       })) : undefined,
-      pts: ['prisma', 'zona', 'falsotecho', 'barrido', 'carril'].includes(o.tipo) && Array.isArray(o.pts) ? o.pts.slice(0, 80).map(p => [num(p?.[0]), num(p?.[1])]) : undefined,
+      pts: ['prisma', 'zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(o.tipo) && Array.isArray(o.pts) ? o.pts.slice(0, 80).map(p => [num(p?.[0]), num(p?.[1])]) : undefined,
       skp: o.skp?.url ? { url: String(o.skp.url).slice(0, 500), rot: num(o.skp.rot) } : null,
       mod: /^https:\/\/[^\s]+\/storage\/v1\/object\/public\//.test(o.mod?.url || '') ? { url: String(o.mod.url).slice(0, 600), tipo: ['gltf', 'glb', 'obj', 'dae'].includes(o.mod.tipo) ? o.mod.tipo : 'gltf', rot: num(o.mod.rot) } : undefined,
     })).filter(o => o.id);
@@ -551,7 +553,7 @@ router.put('/:id/escena3d', async (req, res) => {
     if (error) throw error;
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
     const previa = fila.data?.escena3d || {};
-    const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, rodapie, guias, luces, texturas: previa.texturas || [], hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
+    const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, rodapie, guias, luces, texturas: previa.texturas || [], renders: previa.renders || [], iaPrefs: previa.iaPrefs || null, hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
     const { error: e2 } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (e2) throw e2;
     res.json({ ok: true });
@@ -654,6 +656,74 @@ router.get('/:id/mediciones3d', async (req, res) => {
   } catch (err) {
     console.error('medicion mediciones3d:', err);
     res.status(500).json({ error: 'No se pudo calcular el despiece' });
+  }
+});
+// Galería: renders con IA, renders HD y panoramas 360° guardados con la vista y los ajustes con los que se hicieron
+const limpiaMeta = (m) => {
+  const n = v => (Number.isFinite(parseFloat(v)) ? Math.round(parseFloat(v) * 1000) / 1000 : undefined), s = (v, l) => String(v || '').slice(0, l);
+  const c = m?.camara || {};
+  return {
+    camara: { px: n(c.px), py: n(c.py), pz: n(c.pz), tx: n(c.tx), ty: n(c.ty), tz: n(c.tz), fov: n(c.fov) },
+    hora: n(m?.hora), exposicion: n(m?.exposicion), luces: n(m?.luces),
+    estancia: s(m?.estancia, 80), estilo: s(m?.estilo, 120), extra: s(m?.extra, 400), libertad: ['fiel', 'equilibrado', 'creativo'].includes(m?.libertad) ? m.libertad : undefined,
+  };
+};
+router.post('/:id/render', async (req, res) => {
+  try {
+    const { imagen, tipo, nombre, meta } = req.body || {};
+    const m = /^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(String(imagen || ''));
+    if (!m) return res.status(400).json({ error: 'Falta la imagen' });
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > 16e6) return res.status(413).json({ error: 'La imagen es demasiado grande' });
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const t = ['ia', 'hd', '360'].includes(tipo) ? tipo : 'ia', rid = 'r' + Date.now().toString(36);
+    const full = await sharp(buf).resize({ width: t === '360' ? 4096 : 2400, withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
+    const thumb = await sharp(buf).resize({ width: 480, withoutEnlargement: true }).jpeg({ quality: 78 }).toBuffer();
+    const base = 'renders3d/' + req.params.id + '/' + rid;
+    for (const [ruta, b] of [[base + '.jpg', full], [base + '-t.jpg', thumb]]) {
+      const { error } = await supabase.storage.from(BUCKET_TEX).upload(ruta, b, { contentType: 'image/jpeg', upsert: true });
+      if (error) throw error;
+    }
+    const url = supabase.storage.from(BUCKET_TEX).getPublicUrl(base + '.jpg').data.publicUrl, turl = supabase.storage.from(BUCKET_TEX).getPublicUrl(base + '-t.jpg').data.publicUrl;
+    const render = { id: rid, tipo: t, nombre: String(nombre || '').slice(0, 80) || (t === '360' ? 'Panorama 360°' : t === 'hd' ? 'Render HD' : 'Render con IA'), url, thumb: turl, creado: new Date().toISOString(), meta: limpiaMeta(meta) };
+    const esc = fila.data?.escena3d || { objetos: [] };
+    const todos = [render, ...(esc.renders || [])], sobran = todos.slice(80);
+    const data = { ...fila.data, escena3d: { ...esc, renders: todos.slice(0, 80), iaPrefs: t === 'ia' ? { estancia: render.meta.estancia, estilo: render.meta.estilo, extra: render.meta.extra, libertad: render.meta.libertad } : (esc.iaPrefs || null), updated: Date.now() } };
+    const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
+    if (error) throw error;
+    if (sobran.length) await supabase.storage.from(BUCKET_TEX).remove(sobran.flatMap(r => ['renders3d/' + req.params.id + '/' + r.id + '.jpg', 'renders3d/' + req.params.id + '/' + r.id + '-t.jpg'])).catch(() => {});
+    res.status(201).json({ render });
+  } catch (err) {
+    console.error('medicion render:', err);
+    res.status(500).json({ error: 'No se pudo guardar en la galería' });
+  }
+});
+router.patch('/:id/render/:rid', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || {}, r = (esc.renders || []).find(x => x.id === req.params.rid);
+    if (!r) return res.status(404).json({ error: 'No he encontrado ese render' });
+    if (typeof req.body?.nombre === 'string') r.nombre = req.body.nombre.slice(0, 80);
+    const { error } = await supabase.from('mediciones').update({ data: { ...fila.data, escena3d: esc } }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ render: r });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo cambiar el nombre' });
+  }
+});
+router.delete('/:id/render/:rid', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || {};
+    const { error } = await supabase.from('mediciones').update({ data: { ...fila.data, escena3d: { ...esc, renders: (esc.renders || []).filter(x => x.id !== req.params.rid) } } }).eq('id', req.params.id);
+    if (error) throw error;
+    await supabase.storage.from(BUCKET_TEX).remove(['renders3d/' + req.params.id + '/' + req.params.rid + '.jpg', 'renders3d/' + req.params.id + '/' + req.params.rid + '-t.jpg']).catch(() => {});
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo borrar' });
   }
 });
 router.delete('/:id/textura/:tid', async (req, res) => {
