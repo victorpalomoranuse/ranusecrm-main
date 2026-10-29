@@ -16,24 +16,57 @@ const CM = 0.01;
 // Texturas subidas: se descargan una vez y se reutilizan; la repetición se ajusta al tamaño real (cm) de cada textura
 const cacheTex = new Map();
 function texturaDe(t, uvEnCm) {
-  const k = uvEnCm ? 1 / t.tam : 1 / (t.tam * CM);
-  const clave = t.url + '|' + k;
+  const k = uvEnCm ? 1 / t.tam : 1 / (t.tam * CM), j = t.junta && t.junta.mm > 0 ? t.junta : null;
+  const clave = t.url + '|' + k + '|' + (j ? j.hex + j.mm : '');
   let x = cacheTex.get(clave);
   if (!x) {
-    x = new THREE.TextureLoader().load(t.url);
+    if (j) {
+      // textura con junta: la pieza se dibuja un poco más pequeña sobre un fondo del color de la junta
+      const cv = document.createElement('canvas'); cv.width = cv.height = 512;
+      const cx = cv.getContext('2d'); cx.fillStyle = j.hex; cx.fillRect(0, 0, 512, 512);
+      x = new THREE.CanvasTexture(cv);
+      const img = new Image(); img.crossOrigin = 'anonymous';
+      img.onload = () => { const m = Math.min(0.4, j.mm / 10 / t.tam) * 512 / 2; cx.drawImage(img, m, m, 512 - 2 * m, 512 - 2 * m); x.needsUpdate = true; try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } };
+      img.src = t.url;
+    } else x = new THREE.TextureLoader().load(t.url);
     x.wrapS = x.wrapT = THREE.RepeatWrapping; x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 4; x.repeat.set(k, k);
     cacheTex.set(clave, x);
   }
   return x;
 }
 // Aplica un color (#hex) o una textura ('tex:ID') a una malla; si no hay valor, vuelve a su color de origen
-function pintar(mesh, valor, texturas, uvEnCm) {
+function pintar(mesh, valor, texturas, uvEnCm, repBox) {
   const u = mesh.userData;
   if (u.col0 === undefined) u.col0 = mesh.material.color.getHex();
   const t = valor && String(valor).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === valor) : null;
-  if (t) { mesh.material.map = texturaDe(t, uvEnCm); mesh.material.color.setHex(0xffffff); }
+  if (t) {
+    let mp = texturaDe(t, uvEnCm);
+    if (repBox) { mp = mp.clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, repBox[0] / t.tam), Math.max(0.2, repBox[1] / t.tam)); }
+    mesh.material.map = mp; mesh.material.color.setHex(0xffffff);
+  }
   else { mesh.material.map = null; mesh.material.color.setHex(valor && /^#/.test(valor) ? parseInt(valor.slice(1), 16) : u.col0); }
   mesh.material.needsUpdate = true;
+}
+
+function aplicarValorMat(m, val, texturas, o) {
+  if (!val) return;
+  const t = String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
+  if (t) { const mp = texturaDe(t, true).clone(); mp.needsUpdate = true; const r = Math.max(1, (o?.w || 100) / t.tam); mp.repeat.set(r, r); m.map = mp; m.color.setHex(0xffffff); }
+  else if (/^#/.test(val)) { m.map = null; m.color.setHex(parseInt(val.slice(1), 16)); }
+  m.needsUpdate = true;
+}
+// Cada copia de un modelo tiene sus propios materiales para poder pintarla sin tocar las demás; cada parte (malla) se puede pintar por separado
+function sobrescribirModelo(mm, o, texturas) {
+  let n = 0;
+  mm.traverse(x => {
+    if (!x.isMesh) return;
+    const clave = x.name || x.material?.name || ('parte' + (n++));
+    x.userData.parte = clave;
+    const arr = Array.isArray(x.material) ? x.material : [x.material], nuevos = arr.map(m0 => m0.clone());
+    const val = (o.partes && o.partes[clave]) || (/^#/.test(o.color || '') || String(o.color || '').startsWith('tex:') ? o.color : null);
+    nuevos.forEach(m => aplicarValorMat(m, val, texturas, o));
+    x.material = Array.isArray(x.material) ? nuevos : nuevos[0];
+  });
 }
 
 // Modelos 3D asignados a los productos: se descargan una vez y se reutilizan (se clonan) en cada copia
@@ -375,7 +408,7 @@ function muro(m, h0) {
     if (y1 <= y0) continue;
     const w = (x1 - x0) * CM, h = (y1 - y0) * CM, cx = ((x0 + x1) / 2) * CM, cy = ((y0 + y1) / 2) * CM, tt = (m.t || 12) * CM;
     const fr = 0.05, marco = new THREE.MeshStandardMaterial({ color: o.t === 'door' || o.tipo === 'door' ? 0x8a6a4a : 0xf2f2f2, roughness: 0.6 });
-    const parte = (bw, bh, bd, px, py, mat, extra) => { const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat); b.position.set(px, py, 0); b.castShadow = true; b.userData = { capa: 'huecos', hueco: { muroId: m.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t }, ...(extra || {}) }; mesh.add(b); return b; };
+    const parte = (bw, bh, bd, px, py, mat, extra) => { const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat); b.position.set(px, py, 0); b.castShadow = true; b.userData = { capa: 'huecos', hueco: { muroId: m.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t }, zona: mat === marco ? 'marco' : (mat.transparent ? 'cristal' : 'hoja'), ...(extra || {}) }; mesh.add(b); return b; };
     parte(w, fr, tt * 1.02, cx, y1 * CM - fr / 2, marco); parte(w, fr, tt * 1.02, cx, y0 * CM + fr / 2, marco);
     parte(fr, h, tt * 1.02, x0 * CM + fr / 2, cy, marco); parte(fr, h, tt * 1.02, x1 * CM - fr / 2, cy, marco);
     if ((o.tipo || o.t) === 'door') parte(w - fr * 2, h - fr * 2, 0.04, cx, cy, new THREE.MeshStandardMaterial({ color: 0xc9a77c, roughness: 0.55 }));
@@ -440,7 +473,7 @@ export function planta(m, z0) {
   (m.pilares || []).forEach(p => {
     const h = (m.altura || 260) * CM;
     const x = new THREE.Mesh(new THREE.BoxGeometry(p.w * CM, h, p.d * CM), new THREE.MeshStandardMaterial({ color: 0xd8d4cf, roughness: 0.9 }));
-    x.position.set(p.cx * CM, h / 2, p.cy * CM); x.castShadow = x.receiveShadow = true; x.userData.capa = 'pilares'; g.add(x);
+    x.position.set(p.cx * CM, h / 2, p.cy * CM); x.castShadow = x.receiveShadow = true; x.userData.capa = 'pilares'; x.userData.pilarId = p.id; g.add(x);
   });
   (m.equipos || []).forEach(e => g.add(maquina(e)));
   return g;
@@ -465,7 +498,7 @@ export default function Visor3D() {
   const [filtro, setFiltro] = useState('');
   const [guardado, setGuardado] = useState('');
   const cargadaEscena = useRef(false);
-  const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, todosMuros: null, todosSuelos: null, todosTechos: null });
+  const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, equipos: {}, pilares: {}, huecos: {}, todosMuros: null, todosSuelos: null, todosTechos: null, todosPilares: null });
   const [texturas, setTexturas] = useState([]);
   const [b3dAbierta, setB3dAbierta] = useState(false);
   const [b3d, setB3d] = useState(null);           // índice de la biblioteca 3D gratuita
@@ -525,6 +558,19 @@ export default function Visor3D() {
   useEffect(() => { objsRef.current = objs; }, [objs]);
   useEffect(() => { herrRef.current = herr; }, [herr]);
   const seleccionRef = useRef(null);
+  const acabRef = useRef(null);
+  const rodapieRef = useRef({});
+  const [medAbierta, setMedAbierta] = useState(false);
+  const [medFilas, setMedFilas] = useState(null);
+  const [refObj, setRefObj] = useState('');
+  const [refEje, setRefEje] = useState('x');
+  const [refGap, setRefGap] = useState(0);
+  const [matrizN, setMatrizN] = useState(3);
+  const [matrizDx, setMatrizDx] = useState(100);
+  const [matrizDy, setMatrizDy] = useState(0);
+  useEffect(() => { acabRef.current = acab; }, [acab]);
+  useEffect(() => { rodapieRef.current = rodapie; }, [rodapie]);
+  useEffect(() => { const f = () => setTexturas(t => [...t]); window.addEventListener('visor3d-tex', f); return () => window.removeEventListener('visor3d-tex', f); }, []);
   const [grosorMuro, setGrosorMuro] = useState(12);
   const grosorMuroRef = useRef(12);
   useEffect(() => { grosorMuroRef.current = grosorMuro; }, [grosorMuro]);
@@ -599,7 +645,7 @@ export default function Visor3D() {
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
@@ -651,9 +697,9 @@ export default function Visor3D() {
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       rayo.setFromCamera(p2, cam);
       const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
-      if (herrRef.current === 'pincel') {
+      if (herrRef.current === 'pincel' || herrRef.current === 'gotero') {
         const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => x.object.isMesh && !x.object.userData.hit && visible(x.object));
-        if (h) aplicarPincel(h, e.shiftKey);
+        if (h) { if (herrRef.current === 'gotero' || e.altKey) tomarMaterial(h); else aplicarPincel(h, e.shiftKey); }
         return;
       }
       const primero = rayo.intersectObjects(raiz.children, true).find(h => visible(h.object));
@@ -813,12 +859,17 @@ export default function Visor3D() {
       if (u.muroId) setAcab(a => (todos ? { ...a, muros: {}, todosMuros: valor } : { ...a, muros: { ...a.muros, [u.muroId]: valor } }));
       else if (u.salaKey) setAcab(a => (todos ? { ...a, salas: {}, todosSuelos: valor } : { ...a, salas: { ...a.salas, [u.salaKey]: valor } }));
       else if (u.techoKey) setAcab(a => (todos ? { ...a, techos: {}, todosTechos: valor } : { ...a, techos: { ...a.techos, [u.techoKey]: valor } }));
+      else if (u.pilarId) setAcab(a => (todos ? { ...a, pilares: {}, todosPilares: valor } : { ...a, pilares: { ...(a.pilares || {}), [u.pilarId]: valor } }));
+      else if (u.hueco && (u.zona === 'marco' || u.zona === 'hoja')) { const k = u.hueco.id || (u.hueco.muroId + ':' + u.hueco.p); setAcab(a => ({ ...a, huecos: { ...(a.huecos || {}), [k]: { ...((a.huecos || {})[k] || {}), [u.zona]: valor } } })); }
+      else if (u.equipo || (() => { let q = hit.object; while (q && !q.userData.equipo) q = q.parent; return !!q; })()) { let q = hit.object; while (q && !q.userData.equipo) q = q.parent; const eid = q.userData.equipo.id; setAcab(a => ({ ...a, equipos: { ...(a.equipos || {}), [eid]: valor } })); }
+      else if ((() => { let q = hit.object; while (q && q.userData.capa !== 'rodapie') q = q.parent; return !!q; })()) setRodapie(r => ({ ...r, color: valor }));
       else {
         let o = hit.object; while (o && !o.userData.oid) o = o.parent;
         if (o) {
           const idx = hit.face?.materialIndex, oid = o.userData.oid, zona = hit.object.userData.zona;
           setObjs(prev => prev.map(x => {
             if (x.id !== oid) return x;
+            if (u.parte !== undefined && x.tipo === 'bloque') return todos ? { ...x, color: valor, partes: undefined } : { ...x, partes: { ...(x.partes || {}), [u.parte]: valor } };
             if (x.tipo === 'mueble') return todos ? { ...x, color: valor, colorFrente: valor } : (zona === 'frente' ? { ...x, colorFrente: valor } : { ...x, color: valor });
             if (todos || idx === undefined || !['caja', 'prisma', 'bloque'].includes(x.tipo)) return { ...x, color: valor, caras: undefined };
             return { ...x, caras: { ...(x.caras || {}), [idx]: valor } }; // solo esa cara
@@ -826,9 +877,33 @@ export default function Visor3D() {
         }
       }
     };
+    const tomarMaterial = (hit) => {
+      const u = hit.object.userData, ac = acabRef.current || {}; let valor = null;
+      if (u.muroId) valor = ac.muros?.[u.muroId] || ac.todosMuros;
+      else if (u.salaKey) valor = ac.salas?.[u.salaKey] || ac.todosSuelos;
+      else if (u.techoKey) valor = ac.techos?.[u.techoKey] || ac.todosTechos;
+      else if (u.pilarId) valor = ac.pilares?.[u.pilarId] || ac.todosPilares;
+      else if (u.hueco) { const hh = u.hueco; valor = ac.huecos?.[hh.id || (hh.muroId + ':' + hh.p)]?.[u.zona === 'hoja' ? 'hoja' : 'marco']; }
+      else {
+        let eq = hit.object; while (eq && !eq.userData.equipo) eq = eq.parent;
+        if (eq) valor = ac.equipos?.[eq.userData.equipo.id];
+        else {
+          let ro = hit.object; while (ro && ro.userData.capa !== 'rodapie') ro = ro.parent;
+          if (ro) valor = rodapieRef.current.color;
+          else {
+            let o = hit.object; while (o && !o.userData.oid) o = o.parent; const ob = o && objsRef.current.find(x => x.id === o.userData.oid);
+            if (ob) valor = (u.parte !== undefined && ob.partes?.[u.parte]) || (ob.tipo === 'mueble' && u.zona === 'frente' ? (ob.colorFrente || ob.color) : (hit.face?.materialIndex !== undefined && ob.caras?.[hit.face.materialIndex])) || ob.color;
+          }
+        }
+      }
+      if (!valor) { const mt = Array.isArray(hit.object.material) ? hit.object.material[hit.face?.materialIndex || 0] : hit.object.material; valor = mt?.color ? '#' + mt.color.getHexString() : null; }
+      if (!valor) return;
+      setMatSel(String(valor).startsWith('tex:') ? { id: String(valor).slice(4) } : { hex: valor });
+      setHerr('pincel'); setMatAbierto(true); setGuardado('Material copiado: haz clic en lo que quieras pintar');
+    };
     const onDownD = e => {
       if (e.button !== 0) return;
-      if (herrRef.current === 'pincel') return;
+      if (herrRef.current === 'pincel' || herrRef.current === 'gotero') return;
       if (esPoli(herrRef.current)) { poliAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'zonaP') { pAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'guia') { guiaAbajo = [e.clientX, e.clientY]; return; }
@@ -1062,8 +1137,11 @@ export default function Visor3D() {
   useEffect(() => {
     const a = api3d.current; if (!a.raiz) return;
     a.raiz.traverse(o => {
+      if (o.userData.equipo && o.userData.cuerpo) { const e = o.userData.equipo; pintar(o.userData.cuerpo, acab.equipos?.[e.id], texturas, true, [e.largo || e.w, e.alto || 110]); return; }
       if (!o.isMesh) return;
       const u = o.userData;
+      if (u.pilarId) { pintar(o, acab.pilares?.[u.pilarId] || acab.todosPilares, texturas, true, u.dimBox || [30, 260]); return; }
+      if (u.hueco && (u.zona === 'marco' || u.zona === 'hoja')) { const hh = u.hueco; pintar(o, acab.huecos?.[hh.id || (hh.muroId + ':' + hh.p)]?.[u.zona], texturas, true, [hh.w || 90, hh.h || 210]); return; }
       if (u.muroId) pintar(o, acab.muros[u.muroId] || acab.todosMuros, texturas, true);
       else if (u.salaKey) pintar(o, acab.salas[u.salaKey] || acab.todosSuelos, texturas, false);
       else if (u.techoKey) pintar(o, acab.techos[u.techoKey] || acab.todosTechos, texturas, false);
@@ -1179,7 +1257,8 @@ export default function Visor3D() {
     if (a.rod) { a.scene.remove(a.rod); a.rod.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); a.rod = null; }
     const modelo = a.modelo; if (!rodapie.on || !modelo) return;
     const g = new THREE.Group(); g.userData.capa = 'rodapie'; g.visible = !ocultas.includes('rodapie');
-    const mat = new THREE.MeshStandardMaterial({ color: color(rodapie.color, '#ffffff'), roughness: 0.6 });
+    const mat = new THREE.MeshStandardMaterial({ color: color(/^#/.test(rodapie.color || '') ? rodapie.color : null, '#ffffff'), roughness: 0.6 });
+    if (String(rodapie.color || '').startsWith('tex:')) { const tx = texturas.find(x => 'tex:' + x.id === rodapie.color); if (tx) { mat.map = texturaDe(tx, true); mat.color.setHex(0xffffff); } }
     const dentro = (pt, pts) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > pt.y) !== (yj > pt.y) && pt.x < ((xj - xi) * (pt.y - yi)) / (yj - yi) + xi) c = !c; } return c; };
     (modelo.plantas || [modelo]).forEach(pl => {
       const z0 = (pl.z || 0) * CM;
@@ -1362,6 +1441,7 @@ export default function Visor3D() {
           if (!g.parent) return; // el objeto ya no está en la escena
           const mm = ajustarModelo(raw, w, d, h);
           if (!mm) return;
+          sobrescribirModelo(mm, o, texturas);
           mm.rotation.y = -((mod.rot || 0) + (o.rotM || 0)) * Math.PI / 180;
           mm.position.y = (o.z0 || 0) * CM;
           g.add(mm); fantasma(0);
@@ -1523,6 +1603,65 @@ export default function Visor3D() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }); // se vuelve a registrar en cada cambio para leer siempre el estado actual
+  const murosPlano = () => (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []);
+  const mitades = o => { const r = (o.rot || 0) * Math.PI / 180; return { hx: (Math.abs(o.w * Math.cos(r)) + Math.abs(o.d * Math.sin(r))) / 2, hy: (Math.abs(o.w * Math.sin(r)) + Math.abs(o.d * Math.cos(r))) / 2 }; };
+  const distMuro = (o, dir) => {
+    const { hx, hy } = mitades(o), D = { 'x-': [-1, 0], 'x+': [1, 0], 'y-': [0, -1], 'y+': [0, 1] }[dir], h = D[0] ? hx : hy;
+    let mejor = null;
+    murosPlano().forEach(mu => {
+      const ex = mu.b[0] - mu.a[0], ey = mu.b[1] - mu.a[1], den = D[0] * ey - D[1] * ex; if (Math.abs(den) < 1e-6) return;
+      const t = ((mu.a[0] - o.cx) * ey - (mu.a[1] - o.cy) * ex) / den, u = ((mu.a[0] - o.cx) * D[1] - (mu.a[1] - o.cy) * D[0]) / den;
+      if (t <= 0 || u < 0 || u > 1) return;
+      const L = Math.hypot(ex, ey) || 1, seno = Math.abs((D[0] * ey - D[1] * ex) / L), cara = t - ((mu.t || 12) / 2) / Math.max(0.2, seno) - h;
+      if (!mejor || cara < mejor.d) mejor = { d: cara, mu };
+    });
+    return mejor;
+  };
+  const setDistMuro = (o, dir, nueva) => {
+    const r = distMuro(o, dir); if (!r) return; const delta = r.d - nueva;
+    cambiar(o.id, { 'x-': { cx: o.cx - delta }, 'x+': { cx: o.cx + delta }, 'y-': { cy: o.cy - delta }, 'y+': { cy: o.cy + delta } }[dir]);
+  };
+  const objetivos = () => [
+    ...objs.filter(x => x.id !== selObj && !['zona', 'falsotecho', 'barrido', 'carril'].includes(x.tipo)).map(x => ({ k: 'o:' + x.id, n: x.nombre || x.tipo, cx: x.cx, cy: x.cy, ...mitades(x) })),
+    ...(api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.equipos || []).map(e => ({ k: 'e:' + e.id, n: (e.nombre || 'Máquina') + ' (plano)', cx: e.cx, cy: e.cy, ...mitades({ w: e.largo || e.w, d: e.fondo || e.d, rot: e.rot || 0 }) })),
+  ];
+  const colocarRespecto = (o) => {
+    const T = objetivos().find(t => t.k === refObj); if (!T) return;
+    const O = mitades(o), g = parseFloat(refGap) || 0;
+    if (refEje === 'x') cambiar(o.id, { cx: o.cx <= T.cx ? T.cx - T.hx - g - O.hx : T.cx + T.hx + g + O.hx });
+    else cambiar(o.id, { cy: o.cy <= T.cy ? T.cy - T.hy - g - O.hy : T.cy + T.hy + g + O.hy });
+  };
+  const pegarAPared = (o) => {
+    let mejor = null;
+    murosPlano().forEach(mu => {
+      const ex = mu.b[0] - mu.a[0], ey = mu.b[1] - mu.a[1], L2 = ex * ex + ey * ey || 1, t = Math.max(0, Math.min(1, ((o.cx - mu.a[0]) * ex + (o.cy - mu.a[1]) * ey) / L2));
+      const px = mu.a[0] + ex * t, py = mu.a[1] + ey * t, d = Math.hypot(o.cx - px, o.cy - py);
+      if (!mejor || d < mejor.d) { const L = Math.sqrt(L2); let nx = -ey / L, ny = ex / L; if ((o.cx - px) * nx + (o.cy - py) * ny < 0) { nx = -nx; ny = -ny; } mejor = { d, mu, px, py, nx, ny }; }
+    });
+    if (!mejor) { setAviso('No hay muros para pegarlo.'); return; }
+    const mitad = (mejor.mu.t || 12) / 2 + o.d / 2;
+    cambiar(o.id, { cx: Math.round((mejor.px + mejor.nx * mitad) * 10) / 10, cy: Math.round((mejor.py + mejor.ny * mitad) * 10) / 10, rot: (Math.round(Math.atan2(-mejor.nx, mejor.ny) * 180 / Math.PI) + 360) % 360 });
+  };
+  const centrarEnSala = (o) => {
+    const pl = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : []))[0];
+    const sala = (pl?.salas || []).find(s => puntoEnPoligono([o.cx, o.cy], s.pts));
+    if (!sala) { setAviso('El objeto no está dentro de ninguna sala.'); return; }
+    const xs = sala.pts.map(p => p[0]), ys = sala.pts.map(p => p[1]);
+    cambiar(o.id, { cx: Math.round((Math.min(...xs) + Math.max(...xs)) / 2), cy: Math.round((Math.min(...ys) + Math.max(...ys)) / 2) });
+  };
+  const repetir = (o) => {
+    const n = Math.max(2, Math.min(60, parseInt(matrizN, 10) || 2)), copias = [];
+    for (let i = 1; i < n; i++) copias.push({ ...o, id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + i, cx: o.cx + (parseFloat(matrizDx) || 0) * i, cy: o.cy + (parseFloat(matrizDy) || 0) * i });
+    setObjs(prev => [...prev, ...copias]);
+  };
+  const espejo = (o) => {
+    const dx = parseFloat(matrizDx) || 100, c = { ...o, id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), cx: o.cx + dx, rot: (360 - (o.rot || 0)) % 360 };
+    setObjs(prev => [...prev, c]); setSelObj(c.id);
+  };
+  const abrirDespiece = async () => {
+    setMedAbierta(true); setMedFilas(null);
+    try { const r = await api.get('/medicion/' + id + '/mediciones3d'); setMedFilas(r.data?.filas || []); } catch { setMedFilas([]); setAviso('No se pudo calcular el despiece'); }
+  };
   const AVISO_PLANO = 'Guardado en el plano ✓. Si tienes Planos abierto en otra pestaña, recárgalo: si no, al guardar allí se perdería este cambio.';
   const aplicarHueco = async () => {
     if (!selHueco) return;
@@ -1641,7 +1780,7 @@ export default function Visor3D() {
   const btn = { background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
-      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC'].includes(herr) ? 'crosshair' : 'default' }} />
+      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero'].includes(herr) ? 'crosshair' : 'default' }} />
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={btn} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <b style={{ color: '#222', marginRight: 'auto' }}>{titulo}</b>
@@ -1686,6 +1825,7 @@ export default function Visor3D() {
         <button style={btn} onClick={() => deshacer()} title="Deshacer (Ctrl+Z)">↶</button>
         <button style={btn} onClick={() => rehacer()} title="Rehacer (Ctrl+Y)">↷</button>
         <button style={{ ...btn, ...(ambAbierto ? { background: '#2f6fa8' } : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">☀ Ambiente</button>
+        <button style={btn} onClick={abrirDespiece} title="Despiece y cantidades de todo lo diseñado en el 3D (también salen en «Desde planos» del presupuesto)">📋 Despiece</button>
         <button style={btn} onClick={() => setAyudaAbierta(v => !v)} title="Atajos de teclado">?</button>
         {herr === 'muro' && <><select value={grosorMuro} onChange={e => setGrosorMuro(parseInt(e.target.value, 10))} style={btn} title="Grosor del muro">{[7, 10, 12, 15, 20, 25, 30].map(g => <option key={g} value={g}>{g} cm</option>)}</select>{medidaMuro && <b style={{ color: '#1b6dd6' }}>{medidaMuro}</b>}</>}
         {herr === 'luz' && <select value={kindLuz} onChange={e => setKindLuz(e.target.value)} style={btn}><option value="foco">Foco empotrado</option><option value="plaf">Plafón</option><option value="colg">Colgante</option><option value="aplq">Aplique</option><option value="pie">Lámpara de pie</option><option value="suel">Empotrado de suelo</option></select>}
@@ -1694,6 +1834,7 @@ export default function Visor3D() {
         <button style={{ ...btn, ...(b3dAbierta ? { background: '#2f6fa8' } : {}) }} onClick={() => setB3dAbierta(v => !v)} title="Muebles y texturas gratuitos (Poly Haven, CC0)">🧰 Biblioteca 3D</button>
         <button style={{ ...btn, ...(capasAbierto ? { background: '#2f6fa8' } : {}) }} onClick={() => setCapasAbierto(v => !v)}>🏷 Capas</button>
         <button style={{ ...btn, ...(matAbierto || herr === 'pincel' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setMatAbierto(v => !v); if (matAbierto && herr === 'pincel') setHerr('sel'); }}>🎨 Materiales</button>
+        <button style={{ ...btn, ...(herr === 'gotero' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('gotero')} title="Cuentagotas: haz clic en lo que quieras copiar y pasa a pincel para pegarlo (también Alt + clic con el pincel)">💧 Gotero</button>
         {guardado && guardado !== 'inicial' && <span style={{ color: '#555', fontSize: 12 }}>{guardado}</span>}
         <button style={btn} onClick={() => vista('persp')}>Perspectiva</button>
         <button style={btn} onClick={() => vista('planta')}>Planta</button>
@@ -1786,6 +1927,33 @@ export default function Visor3D() {
           </div>
         );
       })()}
+      {medAbierta && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'grid', placeItems: 'center', zIndex: 9, padding: 16 }}>
+          <div style={{ background: '#1d1d1d', color: '#fff', borderRadius: 10, padding: 16, width: 'min(720px, 94vw)', maxHeight: '88vh', overflow: 'auto', fontSize: 13 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}><b style={{ fontSize: 15, flex: 1 }}>📋 Despiece y cantidades del 3D</b><button style={btn} onClick={abrirDespiece}>Actualizar</button><button style={btn} onClick={() => setMedAbierta(false)}>Cerrar</button></div>
+            {!medFilas && <p style={{ opacity: 0.7 }}>Calculando…</p>}
+            {medFilas && !medFilas.length && <p style={{ opacity: 0.7 }}>Todavía no hay nada diseñado en el 3D que se pueda medir (muebles a medida, carriles, zonas, molduras, logos, objetos o acabados).</p>}
+            {medFilas && medFilas.length > 0 && <>
+              {[...new Set(medFilas.map(f => f.grupo))].map(gr => (
+                <div key={gr} style={{ marginBottom: 10 }}>
+                  <div style={{ fontWeight: 700, color: '#8fb8de', marginBottom: 2 }}>{gr}</div>
+                  {medFilas.filter(f => f.grupo === gr).map((f, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, padding: '3px 0', borderTop: '1px solid #2a2a2a' }}>
+                      <div style={{ flex: 1 }}>{f.nombre}{f.detalle && <div style={{ opacity: 0.55, fontSize: 11 }}>{f.detalle}</div>}{f.acabado && <div style={{ opacity: 0.55, fontSize: 11 }}>Acabado: {f.acabado}</div>}</div>
+                      <div style={{ width: 90, textAlign: 'right' }}>{f.cantidad} {f.unidad}</div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                <button style={btn} onClick={() => { const t = medFilas.map(f => [f.grupo, f.nombre, f.cantidad, f.unidad, f.detalle || ''].join('\t')).join('\n'); navigator.clipboard?.writeText(t); setGuardado('Copiado'); }}>Copiar</button>
+                <button style={btn} onClick={() => { const csv = ['Grupo;Concepto;Cantidad;Unidad;Detalle', ...medFilas.map(f => [f.grupo, f.nombre, String(f.cantidad).replace('.', ','), f.unidad, f.detalle || ''].map(x => '"' + String(x).replace(/"/g, '""') + '"').join(';'))].join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })); a.download = (titulo || 'plano') + '-despiece-3d.csv'; a.click(); }}>Descargar CSV</button>
+              </div>
+              <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>Estas mismas cantidades salen en «Desde planos» al crear un presupuesto. Los muebles y acabados del catálogo salen con su precio.</div>
+            </>}
+          </div>
+        </div>
+      )}
       {ambAbierto && (
         <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', width: 300, background: 'rgba(20,20,20,0.95)', color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 13, zIndex: 6 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>☀ Ambiente</div>
@@ -1898,6 +2066,23 @@ export default function Visor3D() {
               <input id="mat-tam" type="number" defaultValue={60} style={{ ...btn, width: 56 }} /><span style={{ opacity: 0.7 }}>cm</span>
             </div>
             <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>«Tamaño real» es lo que mide en la vida real el lado de la foto (ej. una loseta de 60 cm), para que no salga gigante.</div>
+            {matSel?.id && (() => {
+              const t = texturas.find(x => x.id === matSel.id); if (!t) return null;
+              const guarda = (junta, tam) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
+              return (
+                <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Textura elegida: {t.nombre}</div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Tamaño real cm</span><input key={'tam' + t.id + t.tam} id="tx-tam" type="number" defaultValue={t.tam} style={{ ...btn, width: 70 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (color)</span><input key={'jc' + t.id + (t.junta?.hex || '')} id="tx-jc" type="color" defaultValue={t.junta?.hex || '#bdbdbd'} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (mm)</span><input key={'jm' + t.id + (t.junta?.mm || 0)} id="tx-jm" type="number" step="0.5" defaultValue={t.junta?.mm || 0} style={{ ...btn, width: 70 }} /></label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => guarda({ hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) || 0 }, parseFloat(document.getElementById('tx-tam').value) || t.tam)}>Aplicar</button>
+                    <button style={btn} onClick={() => guarda(null, parseFloat(document.getElementById('tx-tam').value) || t.tam)}>Sin junta</button>
+                  </div>
+                  <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>La junta sirve para baldosas, azulejos y microlosetas: la foto debe ser UNA pieza y el tamaño real, lo que mide esa pieza.</div>
+                </div>
+              );
+            })()}
             {herr === 'pincel' && <button style={{ ...btn, marginTop: 10, width: '100%' }} onClick={() => { setHerr('sel'); }}>Terminar pincel</button>}
           </div>
         );
@@ -2000,7 +2185,7 @@ export default function Visor3D() {
       {objSel && (
         <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
           <input value={objSel.nombre} onChange={e => cambiar(objSel.id, { nombre: e.target.value })} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontWeight: 700, marginBottom: 8 }} />
-          {[['cx', 'Posición X'], ['cy', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación'], ['rot', 'Giro °']].filter(([k]) => {
+          {[['cx', 'Posición X'], ['cy', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Altura desde suelo'], ['rot', 'Giro °']].filter(([k]) => {
             const t = objSel.tipo;
             if (t === 'mueble' && k === 'w') return false;
             if (t === 'zona' && objSel.plano === 'pared') return false;
@@ -2013,6 +2198,43 @@ export default function Visor3D() {
               <input type="number" value={Math.round(objSel[k] * 10) / 10} onChange={e => cambiar(objSel.id, { [k]: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 90 }} />
             </label>
           ))}
+          {!['zona', 'falsotecho', 'barrido', 'carril'].includes(objSel.tipo) && (
+            <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Distancias hasta el muro (cm)</div>
+              {[['x-', '← izquierda'], ['x+', '→ derecha'], ['y-', '↑ arriba'], ['y+', '↓ abajo']].map(([dir, et]) => { const r = distMuro(objSel, dir); return (
+                <label key={dir + objSel.id + Math.round(objSel.cx) + Math.round(objSel.cy) + Math.round(objSel.rot || 0)} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                  <span style={{ width: 90, opacity: 0.7 }}>{et}</span>
+                  <input type="number" disabled={!r} defaultValue={r ? Math.round(r.d * 10) / 10 : ''} placeholder="sin muro" onBlur={e => { if (r && e.target.value !== '') setDistMuro(objSel, dir, parseFloat(e.target.value)); }} style={{ ...btn, width: 80 }} />
+                </label>
+              ); })}
+              <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 6 }}>Mide desde el borde del objeto hasta la cara del muro. Escribe otro valor y el objeto se mueve.</div>
+              <details>
+                <summary style={{ cursor: 'pointer', opacity: 0.85 }}>Distancia a otro objeto</summary>
+                <div style={{ marginTop: 4 }}>
+                  <select value={refObj} onChange={e => setRefObj(e.target.value)} style={{ ...btn, width: '100%', marginBottom: 4 }}><option value="">Elige el objeto de referencia…</option>{objetivos().map(t => <option key={t.k} value={t.k}>{t.n}</option>)}</select>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                    <select value={refEje} onChange={e => setRefEje(e.target.value)} style={btn}><option value="x">En horizontal (X)</option><option value="y">En vertical (Y)</option></select>
+                    <input type="number" value={refGap} onChange={e => setRefGap(e.target.value)} style={{ ...btn, width: 70 }} title="Separación entre bordes (cm)" /><span style={{ opacity: 0.7 }}>cm</span>
+                  </div>
+                  {(() => { const T = objetivos().find(t => t.k === refObj); if (!T) return null; const O = mitades(objSel), ahora = refEje === 'x' ? Math.abs(objSel.cx - T.cx) - T.hx - O.hx : Math.abs(objSel.cy - T.cy) - T.hy - O.hy; return <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 4 }}>Ahora hay {Math.round(ahora * 10) / 10} cm entre bordes.</div>; })()}
+                  <button style={{ ...btn, background: '#2f6fa8' }} disabled={!refObj} onClick={() => colocarRespecto(objSel)}>Colocar a esa distancia</button>
+                </div>
+              </details>
+              <details style={{ marginTop: 4 }}>
+                <summary style={{ cursor: 'pointer', opacity: 0.85 }}>Otras formas de colocar</summary>
+                <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <button style={btn} onClick={() => pegarAPared(objSel)} title="Lo apoya contra el muro más cercano, con la parte de atrás hacia el muro">Pegar a la pared más cercana</button>
+                  <button style={btn} onClick={() => centrarEnSala(objSel)}>Centrar en su sala</button>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12 }}>
+                    <span style={{ opacity: 0.7 }}>Repetir</span><input type="number" value={matrizN} onChange={e => setMatrizN(e.target.value)} style={{ ...btn, width: 44, padding: '2px 4px' }} />
+                    <span style={{ opacity: 0.7 }}>cada X</span><input type="number" value={matrizDx} onChange={e => setMatrizDx(e.target.value)} style={{ ...btn, width: 54, padding: '2px 4px' }} />
+                    <span style={{ opacity: 0.7 }}>Y</span><input type="number" value={matrizDy} onChange={e => setMatrizDy(e.target.value)} style={{ ...btn, width: 54, padding: '2px 4px' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}><button style={btn} onClick={() => repetir(objSel)}>Repetir en fila</button><button style={btn} onClick={() => espejo(objSel)} title="Copia simétrica a la distancia X indicada">Copia espejo (X)</button></div>
+                </div>
+              </details>
+            </div>
+          )}
           {objSel.tipo === 'carril' && (() => {
             const F = objSel.focos || [], L = Math.round(largoCamino(objSel.pts || []));
             const setFoco = (fid, c) => cambiar(objSel.id, { focos: F.map(f => (f.id === fid ? { ...f, ...c } : f)) });

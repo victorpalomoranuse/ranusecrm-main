@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import compression from 'compression';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
-import { cantidadesDePlano } from '../utils/planos.js';
+import { cantidadesDePlano, filasEscena3d } from '../utils/planos.js';
 import { disenadorDe, proyectoEsDe, proyectosDe } from '../utils/asignados.js';
 import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { catalogoEnCache, guardaCatalogo, vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
@@ -505,6 +505,7 @@ router.put('/:id/escena3d', async (req, res) => {
       k: o.tipo === 'luz' ? Math.max(1500, Math.min(10000, num(o.k, 3000))) : undefined,
       caras: o.caras && typeof o.caras === 'object' ? Object.fromEntries(Object.entries(o.caras).slice(0, 12).map(([k, v]) => [String(k).slice(0, 2), acab(v)]).filter(([, v]) => v)) : undefined,
       colorFrente: acab(o.colorFrente),
+      partes: o.partes && typeof o.partes === 'object' ? Object.fromEntries(Object.entries(o.partes).slice(0, 40).map(([k, v]) => [String(k).slice(0, 60), acab(v)]).filter(([, v]) => v)) : undefined,
       mueble: o.tipo === 'mueble' && o.mueble ? {
         esp: Math.max(1, Math.min(5, num(o.mueble.esp, 1.8))), zocalo: Math.max(0, Math.min(30, num(o.mueble.zocalo, 10))), tirador: o.mueble.tirador === 'ninguno' ? 'ninguno' : 'barra',
         modulos: (Array.isArray(o.mueble.modulos) ? o.mueble.modulos : []).slice(0, 40).map(m => ({
@@ -540,7 +541,7 @@ router.put('/:id/escena3d', async (req, res) => {
     })).filter(o => o.id);
     const mapa = m => Object.fromEntries(Object.entries(m && typeof m === 'object' ? m : {}).slice(0, 500).map(([k, v]) => [String(k).slice(0, 60), acab(v)]).filter(([, v]) => v));
     const a = req.body?.acabados || {};
-    const acabados = { muros: mapa(a.muros), salas: mapa(a.salas), techos: mapa(a.techos), todosMuros: acab(a.todosMuros), todosSuelos: acab(a.todosSuelos), todosTechos: acab(a.todosTechos) };
+    const acabados = { muros: mapa(a.muros), salas: mapa(a.salas), techos: mapa(a.techos), todosMuros: acab(a.todosMuros), todosSuelos: acab(a.todosSuelos), todosTechos: acab(a.todosTechos), equipos: mapa(a.equipos), pilares: mapa(a.pilares), todosPilares: acab(a.todosPilares), huecos: Object.fromEntries(Object.entries(a.huecos && typeof a.huecos === 'object' ? a.huecos : {}).slice(0, 500).map(([k, v]) => [String(k).slice(0, 60), { marco: acab(v?.marco), hoja: acab(v?.hoja) }])) };
     const paleta = (Array.isArray(req.body?.paleta) ? req.body.paleta : []).slice(0, 80).map(p => ({ nombre: String(p?.nombre || '').slice(0, 60), hex: hex(p?.hex) })).filter(p => p.hex);
     const rd = req.body?.rodapie || {};
     const rodapie = { on: !!rd.on, alto: Math.max(2, Math.min(30, num(rd.alto, 10))), grosor: Math.max(0.5, Math.min(5, num(rd.grosor, 1.5))), color: hex(rd.color) || '#ffffff' };
@@ -622,6 +623,37 @@ router.post('/:id/textura-catalogo', async (req, res) => {
   } catch (err) {
     console.error('medicion textura-catalogo:', err);
     res.status(500).json({ error: 'No se pudo usar ese material' });
+  }
+});
+router.patch('/:id/textura/:tid', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || {}, t = (esc.texturas || []).find(x => x.id === req.params.tid);
+    if (!t) return res.status(404).json({ error: 'No he encontrado esa textura' });
+    const j = req.body?.junta;
+    if (j && /^#[0-9a-fA-F]{6}$/.test(j.hex || '') && Number(j.mm) > 0) t.junta = { hex: j.hex, mm: Math.max(0.5, Math.min(30, Number(j.mm))) }; else delete t.junta;
+    if (Number.isFinite(parseFloat(req.body?.tam))) t.tam = Math.max(5, Math.min(1000, parseFloat(req.body.tam)));
+    const { error } = await supabase.from('mediciones').update({ data: { ...fila.data, escena3d: esc } }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ textura: t });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo cambiar la textura' });
+  }
+});
+// Despiece y cantidades de lo diseñado en el 3D
+router.get('/:id/mediciones3d', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const e3 = filasEscena3d(fila.data?.escena3d, fila.data?.modelo3d);
+    const filas = [...e3.filas];
+    Object.values(e3.porCid).forEach(c => filas.push({ grupo: 'Mobiliario 3D (catálogo)', nombre: c.nombre, unidad: 'ud', cantidad: c.n }));
+    Object.values(e3.porProd).forEach(c => filas.push({ grupo: 'Acabados 3D (catálogo)', nombre: c.nombre, unidad: 'm²', cantidad: Math.round(c.m2 * 100) / 100 }));
+    res.json({ filas });
+  } catch (err) {
+    console.error('medicion mediciones3d:', err);
+    res.status(500).json({ error: 'No se pudo calcular el despiece' });
   }
 });
 router.delete('/:id/textura/:tid', async (req, res) => {
