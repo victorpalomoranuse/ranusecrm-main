@@ -483,7 +483,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril'];
 const BUCKET_TEX = 'project-documents';
 router.put('/:id/escena3d', async (req, res) => {
   try {
@@ -526,7 +526,15 @@ router.put('/:id/escena3d', async (req, res) => {
       lado: o.lado === -1 ? -1 : 1,
       h: Number.isFinite(parseFloat(o.h)) ? Math.max(0, Math.min(1000, parseFloat(o.h))) : undefined,
       ft: o.tipo === 'falsotecho' && o.ft ? { descenso: Math.max(-100, Math.min(100, num(o.ft.descenso, 15))), gap: Math.max(2, Math.min(60, num(o.ft.gap, 12))), luz: o.ft.luz !== false, k: Math.max(1500, Math.min(10000, num(o.ft.k, 3000))) } : undefined,
-      pts: ['prisma', 'zona', 'falsotecho'].includes(o.tipo) && Array.isArray(o.pts) ? o.pts.slice(0, 80).map(p => [num(p?.[0]), num(p?.[1])]) : undefined,
+      sistema: o.tipo === 'carril' ? (o.sistema === 'trifasico' ? 'trifasico' : 'magnetico') : undefined,
+      suspendido: o.tipo === 'carril' ? !!o.suspendido : undefined,
+      focos: o.tipo === 'carril' && Array.isArray(o.focos) ? o.focos.slice(0, 80).map(f => ({
+        id: String(f?.id || '').slice(0, 20), t: ['spot', 'spotmini', 'proyector', 'lineal', 'colgante'].includes(f?.t) ? f.t : 'spot',
+        s: Math.max(0, Math.min(50000, num(f?.s))), yaw: num(f?.yaw), tilt: Math.max(-90, Math.min(90, num(f?.tilt, 20))),
+        lm: Math.max(0, Math.min(20000, num(f?.lm, 800))), k: Math.max(1500, Math.min(10000, num(f?.k, 3000))),
+        ap: Math.max(5, Math.min(140, num(f?.ap, 36))), largo: Math.max(10, Math.min(300, num(f?.largo, 60))),
+      })) : undefined,
+      pts: ['prisma', 'zona', 'falsotecho', 'barrido', 'carril'].includes(o.tipo) && Array.isArray(o.pts) ? o.pts.slice(0, 80).map(p => [num(p?.[0]), num(p?.[1])]) : undefined,
       skp: o.skp?.url ? { url: String(o.skp.url).slice(0, 500), rot: num(o.skp.rot) } : null,
       mod: /^https:\/\/[^\s]+\/storage\/v1\/object\/public\//.test(o.mod?.url || '') ? { url: String(o.mod.url).slice(0, 600), tipo: ['gltf', 'glb', 'obj', 'dae'].includes(o.mod.tipo) ? o.mod.tipo : 'gltf', rot: num(o.mod.rot) } : undefined,
     })).filter(o => o.id);
