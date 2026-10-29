@@ -389,6 +389,63 @@ export function abrirVisor360(cont, url) {
   return () => { vivo = false; window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('resize', ajusta); r.dispose(); tex.dispose(); g.dispose(); if (r.domElement.parentNode) r.domElement.parentNode.removeChild(r.domElement); };
 }
 
+// ── Alzados y plantas de detalle: vista casi ortogonal de una parte (un muro, un suelo o un techo) con cotas automáticas
+const cm0 = v => String(Math.round(v * 100));
+export function construirAlzadoMuro(mu, lado, hCm, zonas) {
+  const g = new THREE.Group(), L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) * CM, H = hCm * CM, t = (mu.t || 12) * CM, z = lado * (t / 2 + 0.03), k = Math.max(0.6, Math.max(L, H) / 6);
+  g.position.set(mu.a[0] * CM, 0, mu.a[1] * CM); g.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x111111, depthTest: false }), cotaMat = new THREE.LineBasicMaterial({ color: 0x0b3d91, depthTest: false }), rej = new THREE.LineBasicMaterial({ color: 0xd2d2d2, depthTest: false });
+  const linea = (pts, mat) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p[0], p[1], z))), mat); l.renderOrder = 997; g.add(l); };
+  const txt = (s, x, y) => { if (!s) return; const sp = cartel(s); sp.scale.multiplyScalar(k); sp.position.set(x, y, z + lado * 0.02); g.add(sp); };
+  const dimH = (x0, x1, y, s) => { linea([[x0, y], [x1, y]], cotaMat); linea([[x0, y - 0.06 * k], [x0, y + 0.06 * k]], cotaMat); linea([[x1, y - 0.06 * k], [x1, y + 0.06 * k]], cotaMat); txt(s, (x0 + x1) / 2, y + 0.13 * k); };
+  const dimV = (y0, y1, x, s) => { linea([[x, y0], [x, y1]], cotaMat); linea([[x - 0.06 * k, y0], [x + 0.06 * k, y0]], cotaMat); linea([[x - 0.06 * k, y1], [x + 0.06 * k, y1]], cotaMat); txt(s, x - 0.3 * k, (y0 + y1) / 2); };
+  for (let x = 0; x <= L + 1e-6; x += 0.5) linea([[x, 0], [x, H]], rej);
+  for (let y = 0; y <= H + 1e-6; y += 0.5) linea([[0, y], [L, y]], rej);
+  linea([[0, 0], [L, 0], [L, H], [0, H], [0, 0]], lineMat);
+  dimH(0, L, H + 0.3 * k, cm0(L) + ' cm'); dimV(0, H, -0.3 * k, cm0(H));
+  (mu.ab || []).forEach((o, i) => {
+    const x0 = o.p * CM, x1 = (o.p + o.w) * CM, y0 = (o.sill || 0) * CM, y1 = y0 + o.h * CM, base = -(0.25 + 0.27 * i) * k;
+    linea([[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]], lineMat);
+    txt(cm0(x1 - x0) + ' × ' + cm0(y1 - y0), (x0 + x1) / 2, (y0 + y1) / 2);
+    dimH(0, x0, base, cm0(x0)); dimH(x0, x1, base, cm0(x1 - x0)); dimH(x1, L, base, cm0(L - x1));
+    if (y0 > 0.005) dimV(0, y0, x1 + 0.18 * k, cm0(y0));
+    dimV(y0, y1, x1 + 0.18 * k + (y0 > 0.005 ? 0 : 0), '');
+  });
+  zonas.forEach(zn => {
+    const xs = zn.pts.map(p => p[0] * CM), ys = zn.pts.map(p => p[1] * CM), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    linea([[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]], cotaMat); txt(cm0(x1 - x0) + ' × ' + cm0(y1 - y0), (x0 + x1) / 2, (y0 + y1) / 2);
+    dimH(x0, x1, y0 - 0.12 * k, ''); dimV(0, y0, x0 - 0.12 * k, cm0(y0));
+  });
+  return g;
+}
+export function construirAlzadoPlanta(sala, yMundo, zonas) {
+  const g = new THREE.Group(), pts = sala.pts || [], xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const bx0 = Math.min(...xs), bx1 = Math.max(...xs), by0 = Math.min(...ys), by1 = Math.max(...ys), k = Math.max(0.6, Math.max(bx1 - bx0, by1 - by0) * CM / 6);
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x111111, depthTest: false }), cotaMat = new THREE.LineBasicMaterial({ color: 0x0b3d91, depthTest: false }), rej = new THREE.LineBasicMaterial({ color: 0xd2d2d2, depthTest: false });
+  const V = (x, y) => new THREE.Vector3(x * CM, yMundo, y * CM);
+  const linea = (arr, mat) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arr.map(p => V(p[0], p[1]))), mat); l.renderOrder = 997; g.add(l); };
+  const txt = (s, x, y) => { if (!s) return; const sp = cartel(s); sp.scale.multiplyScalar(k); sp.position.copy(V(x, y)); g.add(sp); };
+  for (let x = Math.ceil(bx0 / 50) * 50; x <= bx1; x += 50) linea([[x, by0], [x, by1]], rej);
+  for (let y = Math.ceil(by0 / 50) * 50; y <= by1; y += 50) linea([[bx0, y], [bx1, y]], rej);
+  linea([...pts, pts[0]], lineMat);
+  const cx = (bx0 + bx1) / 2, cy = (by0 + by1) / 2;
+  pts.forEach((p, i) => {
+    const q = pts[(i + 1) % pts.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]); if (L < 5) return;
+    const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2; let nx = -(q[1] - p[1]) / L, ny = (q[0] - p[0]) / L;
+    if ((mx - cx) * nx + (my - cy) * ny < 0) { nx = -nx; ny = -ny; }
+    const off = 40 * k;
+    linea([[p[0] + nx * off, p[1] + ny * off], [q[0] + nx * off, q[1] + ny * off]], cotaMat);
+    txt(String(Math.round(L)), mx + nx * off * 1.7, my + ny * off * 1.7);
+  });
+  const area = Math.abs(pts.reduce((s, p, i) => s + p[0] * pts[(i + 1) % pts.length][1] - pts[(i + 1) % pts.length][0] * p[1], 0) / 2) / 1e4;
+  txt(area.toFixed(2).replace('.', ',') + ' m²', cx, cy);
+  zonas.forEach(zn => {
+    const zx = zn.pts.map(p => p[0] + zn.cx), zy = zn.pts.map(p => p[1] + zn.cy), x0 = Math.min(...zx), x1 = Math.max(...zx), y0 = Math.min(...zy), y1 = Math.max(...zy);
+    linea([[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]], cotaMat); txt(String(Math.round(x1 - x0)) + ' × ' + Math.round(y1 - y0), (x0 + x1) / 2, (y0 + y1) / 2);
+  });
+  return g;
+}
+
 // ── Carriles de iluminación (magnético o trifásico) con focos que se añaden donde se quiera
 const TIPOS_FOCO = { spot: 'Spot (cilindro)', spotmini: 'Spot magnético mini', proyector: 'Proyector orientable', lineal: 'Lineal', colgante: 'Colgante' };
 const FOCO_DEF = { spot: { lm: 800, ap: 36 }, spotmini: { lm: 400, ap: 30 }, proyector: { lm: 1500, ap: 24 }, lineal: { lm: 1800, ap: 110, largo: 60 }, colgante: { lm: 600, ap: 120 } };
@@ -722,6 +779,9 @@ export default function Visor3D() {
   const [hora, setHora] = useState(15);                       // hora del sol (6–21)
   const [ambiente, setAmbiente] = useState(() => { try { return { exposicion: 1, luces: 1, ...JSON.parse(localStorage.getItem('visor3dAmb') || '{}') }; } catch { return { exposicion: 1, luces: 1 }; } });
   const [ambAbierto, setAmbAbierto] = useState(false);
+  const [alz, setAlz] = useState(null);                  // detalle abierto: { tipo: 'muro' | 'suelo' | 'techo', id, lado }
+  const [profAlz, setProfAlz] = useState(120);
+  const [zForm, setZForm] = useState({ x: 0, y: 90, w: 100, h: 100, forma: 'rect' });
   const [camAbierta, setCamAbierta] = useState(false);
   const [camInfo, setCamInfo] = useState(null);
   const [shiftY, setShiftY] = useState(0);
@@ -1569,6 +1629,26 @@ export default function Visor3D() {
     a.raiz.add(g); a.tapG = g;
   }, [tapetas, rev, estado, acab.huecos, texturas]);
 
+  // Alzado / planta de detalle: cotas automáticas de lo que se ve y corte para dejar solo esa parte
+  useEffect(() => {
+    const a = api3d.current; if (!a.scene) return;
+    if (a.alzG) { a.scene.remove(a.alzG); a.alzG.traverse(x => { x.geometry?.dispose(); x.material?.map?.dispose?.(); x.material?.dispose?.(); }); a.alzG = null; }
+    if (!alz || !a.modelo) { if (a.renderer) a.renderer.clippingPlanes = []; return; }
+    const pl0 = (a.modelo.plantas || [a.modelo])[0], H = pl0.altura || 260, prof = (profAlz || 100) * CM;
+    if (alz.tipo === 'muro') {
+      const mu = (pl0.muros || []).find(x => x.id === alz.id); if (!mu) return;
+      const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]), ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, n = new THREE.Vector3(-uy * alz.lado, 0, ux * alz.lado), c = new THREE.Vector3((mu.a[0] + ux * L / 2) * CM, 0, (mu.a[1] + uy * L / 2) * CM), t = ((mu.t || 12) / 2) * CM;
+      a.renderer.clippingPlanes = [new THREE.Plane().setFromNormalAndCoplanarPoint(n.clone().negate(), c.clone().add(n.clone().multiplyScalar(t + prof))), new THREE.Plane().setFromNormalAndCoplanarPoint(n.clone(), c.clone().sub(n.clone().multiplyScalar(t + 0.05)))];
+      a.alzG = construirAlzadoMuro(mu, alz.lado, mu.h || H, objs.filter(o => o.tipo === 'zona' && o.plano === 'pared' && o.muroId === mu.id));
+    } else {
+      const sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === alz.id); if (!sala) return;
+      const y = alz.tipo === 'techo' ? H * CM - 0.02 : 0.02;
+      a.renderer.clippingPlanes = [alz.tipo === 'techo' ? new THREE.Plane(new THREE.Vector3(0, 1, 0), -(H * CM - prof)) : new THREE.Plane(new THREE.Vector3(0, -1, 0), prof)];
+      a.alzG = construirAlzadoPlanta(sala, y, objs.filter(o => o.tipo === 'zona' && o.plano === alz.tipo));
+    }
+    a.scene.add(a.alzG);
+  }, [alz, objs, rev, estado, profAlz]);
+
   // Rodapié: sigue el perímetro de cada sala (por dentro) y se interrumpe en las puertas
   useEffect(() => {
     const a = api3d.current; if (!a.scene) return;
@@ -1956,6 +2036,7 @@ export default function Visor3D() {
       if (ctrl) return;
       const mapa = { '1': 'sel', '2': 'caja', '3': 'poli', '4': 'empujar', '5': 'guia', '6': 'muro', '7': 'luz' }; // las letras W A S D Q E son para moverse
       if (mapa[k]) setHerr(mapa[k]);
+      else if (k === 'escape' && alz) { salirAlzado(); }
       else if (k === 'escape') { setSelObj(null); setSelAcab(null); setSelHueco(null); setLuzSel(null); setSeleccion(null); api3d.current.limpiarSel?.(); }
       else if (k === ' ') { e.preventDefault(); document.activeElement?.blur?.(); setHerr('sel'); }
     };
@@ -2160,6 +2241,53 @@ export default function Visor3D() {
   const camPitch = g => { const { cam, ctrl } = api3d.current, h = Math.hypot(ctrl.target.x - cam.position.x, ctrl.target.z - cam.position.z) || 1; ctrl.target.y = cam.position.y + Math.tan(g * Math.PI / 180) * h; ctrl.update(); setCamInfo(camLee()); };
   const camFocal = f => { const { cam } = api3d.current; cam.fov = 2 * Math.atan(12 / f) * 180 / Math.PI; cam.updateProjectionMatrix(); setCamInfo(camLee()); };
   const camShift = v => { api3d.current.shiftY = v; setShiftY(v); api3d.current.cam.updateProjectionMatrix(); };
+  // Entrar en un alzado (muro) o en una planta de detalle (suelo / techo): cámara casi ortogonal fija, fondo blanco, corte para ver solo esa parte y cotas
+  const entrarAlzado = (tipo, idObj) => {
+    const a = api3d.current, m = a.modelo; if (!m) return;
+    const pl0 = (m.plantas || [m])[0], asp = a.cam.aspect || 1.6, VIS = 0.0873;
+    let target, pos, lado = 1;
+    if (tipo === 'muro') {
+      const mu = (pl0.muros || []).find(x => x.id === idObj); if (!mu) return;
+      const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]), ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, H = mu.h || pl0.altura || 260;
+      lado = ((a.cam.position.x / CM - mu.a[0]) * -uy + (a.cam.position.z / CM - mu.a[1]) * ux) >= 0 ? 1 : -1;
+      target = new THREE.Vector3(((mu.a[0] + ux * L / 2)) * CM, (H / 2) * CM, ((mu.a[1] + uy * L / 2)) * CM);
+      const dist = Math.max(H * CM * 1.45, L * CM * 1.25 / asp) / VIS;
+      pos = target.clone().add(new THREE.Vector3(-uy * lado, 0, ux * lado).multiplyScalar(dist));
+      setProfAlz(120);
+    } else {
+      const sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === idObj); if (!sala) return;
+      const xs = sala.pts.map(p => p[0]), ys = sala.pts.map(p => p[1]), W = Math.max(...xs) - Math.min(...xs), D = Math.max(...ys) - Math.min(...ys), H = pl0.altura || 260;
+      target = new THREE.Vector3(((Math.min(...xs) + Math.max(...xs)) / 2) * CM, tipo === 'techo' ? H * CM : 0, ((Math.min(...ys) + Math.max(...ys)) / 2) * CM);
+      const dist = Math.max(D * CM * 1.45, W * CM * 1.25 / asp) / VIS;
+      pos = target.clone().add(new THREE.Vector3(0, tipo === 'techo' ? -dist : dist, 0.0001));
+      setProfAlz(tipo === 'suelo' ? 100 : 60);
+    }
+    a.alzPrev = { pos: a.cam.position.clone(), target: a.ctrl.target.clone(), fov: a.cam.fov, bg: a.scene.background, shift: a.shiftY || 0 };
+    a.shiftY = 0; a.cam.fov = 5; a.cam.updateProjectionMatrix(); a.cam.position.copy(pos); a.ctrl.target.copy(target); a.ctrl.enableRotate = false; a.ctrl.update();
+    a.scene.background = new THREE.Color(0xffffff); if (a.base) a.base.visible = false;
+    setSelAcab(null); setSelObj(null); setAlz({ tipo, id: idObj, lado });
+  };
+  const salirAlzado = () => {
+    const a = api3d.current, p = a.alzPrev;
+    if (p) { a.cam.fov = p.fov; a.shiftY = p.shift; a.cam.updateProjectionMatrix(); a.cam.position.copy(p.pos); a.ctrl.target.copy(p.target); a.scene.background = p.bg; }
+    a.ctrl.enableRotate = true; if (a.base) a.base.visible = true; a.renderer.clippingPlanes = []; a.alzPrev = null; setAlz(null); a.ctrl.update();
+  };
+  // Zona por medidas: se escriben posición y tamaño exactos (cm) y se crea sobre el muro, el suelo o el techo que se está viendo
+  const crearZonaMedidas = () => {
+    const a = api3d.current, m = a.modelo, pl0 = m && (m.plantas || [m])[0]; if (!alz || !pl0) return;
+    const X = parseFloat(zForm.x) || 0, Y = parseFloat(zForm.y) || 0, W = Math.max(1, parseFloat(zForm.w) || 100), Hh = Math.max(1, parseFloat(zForm.h) || 100);
+    const col = matSel?.hex || (matSel?.id ? 'tex:' + matSel.id : '#c9b9a0');
+    const forma = (cx0, cy0) => (zForm.forma === 'oval' ? Array.from({ length: 48 }, (_, i) => [cx0 + (W / 2) * Math.cos((i / 48) * 2 * Math.PI), cy0 + (Hh / 2) * Math.sin((i / 48) * 2 * Math.PI)]) : [[cx0 - W / 2, cy0 - Hh / 2], [cx0 + W / 2, cy0 - Hh / 2], [cx0 + W / 2, cy0 + Hh / 2], [cx0 - W / 2, cy0 + Hh / 2]]);
+    const id2 = 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    if (alz.tipo === 'muro') {
+      setObjs(prev => [...prev, { id: id2, tipo: 'zona', plano: 'pared', muroId: alz.id, lado: alz.lado, nombre: 'Zona de pared', etiqueta: 'Zonas', cx: 0, cy: 0, rot: 0, w: W, d: 1, alto: Hh, z0: 0, color: col, pts: forma(X + W / 2, Y + Hh / 2) }]);
+    } else {
+      const sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === alz.id); if (!sala) return;
+      const bx0 = Math.min(...sala.pts.map(p => p[0])), by0 = Math.min(...sala.pts.map(p => p[1])), cx = bx0 + X + W / 2, cy = by0 + Y + Hh / 2;
+      setObjs(prev => [...prev, { id: id2, tipo: 'zona', plano: alz.tipo, h: alz.tipo === 'techo' ? (pl0.altura || 260) : undefined, nombre: alz.tipo === 'techo' ? 'Zona de techo' : 'Zona de suelo', etiqueta: 'Zonas', cx, cy, rot: 0, w: W, d: Hh, alto: 1, z0: 0, color: col, pts: forma(0, 0) }]);
+    }
+    setSelObj(id2);
+  };
   const esperar = ms => new Promise(r => setTimeout(r, ms));
   const ocultarAyudas = () => { const a = api3d.current, gs = [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], v = gs.map(x => x && x.visible); gs.forEach(x => { if (x) x.visible = false; }); return () => gs.forEach((x, i) => { if (x) x.visible = v[i]; }); };
   const soltarSeleccion = async () => { setSelObj(null); setSelAcab(null); setSelHueco(null); setLuzSel(null); setSeleccion(null); api3d.current.limpiarSel?.(); await esperar(150); };
@@ -2538,6 +2666,21 @@ export default function Visor3D() {
           </div>
         </div>
       )}
+      {alz && (
+        <div style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12, zIndex: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.35)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', maxWidth: '96vw' }}>
+          <b style={{ fontSize: 13 }}>📐 {alz.tipo === 'muro' ? 'Alzado del muro' : alz.tipo === 'suelo' ? 'Planta del suelo' : 'Planta del techo'}</b>
+          <label title={alz.tipo === 'muro' ? 'Hasta qué distancia delante del muro se ven los objetos (muebles, máquinas…)' : alz.tipo === 'suelo' ? 'Altura del corte horizontal' : 'Hasta cuántos cm bajo el techo se ve'}>Corte <input type="number" value={profAlz} onChange={e => setProfAlz(parseFloat(e.target.value) || 100)} style={{ ...btn, width: 62, padding: '2px 6px' }} /> cm</label>
+          <span style={{ width: 1, height: 20, background: '#444' }} />
+          <b>Zona por medidas</b>
+          <select value={zForm.forma} onChange={e => setZForm(f => ({ ...f, forma: e.target.value }))} style={{ ...btn, padding: '2px 6px' }}><option value="rect">Rectángulo</option><option value="oval">Óvalo</option></select>
+          {[['x', alz.tipo === 'muro' ? 'desde inicio' : 'desde esquina X'], ['y', alz.tipo === 'muro' ? 'desde suelo' : 'desde esquina Y'], ['w', 'ancho'], ['h', 'alto']].map(([k, et]) => <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ opacity: 0.65 }}>{et}</span><input type="number" value={zForm[k]} onChange={e => setZForm(f => ({ ...f, [k]: e.target.value }))} style={{ ...btn, width: 58, padding: '2px 5px' }} /></label>)}
+          <button style={{ ...btn, background: '#2f6fa8' }} onClick={crearZonaMedidas} title="Crea la zona con el material que tengas elegido en 🎨 Materiales (o beige si no hay ninguno)">＋ Crear zona</button>
+          <span style={{ width: 1, height: 20, background: '#444' }} />
+          <button style={btn} onClick={async () => { try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-' + alz.tipo + '-' + alz.id + '.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar la lámina: ' + (e.message || 'error')); } }} title="Guarda esta vista con todas sus cotas como imagen">⬇ Lámina</button>
+          <button style={{ ...btn, background: '#7a2b2b' }} onClick={salirAlzado}>Salir (Esc)</button>
+          <div style={{ flexBasis: '100%', opacity: 0.55, fontSize: 11 }}>Medidas en cm. Dibuja con las herramientas normales (▨ Zonas, 🎨 pincel…): al ser una vista de frente, todo cae exactamente donde haces clic. Rueda para acercar, arrastrar con el botón central o derecho para desplazarte.</div>
+        </div>
+      )}
       {camAbierta && camInfo && (
         <div style={{ position: 'absolute', top: 56, left: 70, width: 300, background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
           <div style={{ fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center' }}><span style={{ flex: 1 }}>🎥 Cámara</span><span onClick={() => setCamAbierta(false)} style={{ cursor: 'pointer', opacity: 0.6 }}>✕</span></div>
@@ -2762,6 +2905,9 @@ export default function Visor3D() {
             </label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {actual && <button style={btn} onClick={() => todos(actual)}>{esMuro ? 'A todos los muros' : 'A todos los suelos'}</button>}
+              {esMuro && <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => entrarAlzado('muro', selAcab.id)} title="Vista de frente de este muro solo, con todas sus medidas, para dibujar y marcar con precisión">📐 Alzado de este muro</button>}
+              {!esMuro && <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => entrarAlzado('suelo', selAcab.id)} title="Vista desde arriba de este suelo solo, con sus medidas">📐 Planta del suelo</button>}
+              {!esMuro && <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => entrarAlzado('techo', selAcab.id)} title="Vista del techo desde abajo, con sus medidas">📐 Planta del techo</button>}
               {!esMuro && <button style={btn} onClick={() => moldurasSala(selAcab.id)} title="Un perfil (el elegido en Sígueme: rodapié, moldura…) recorre todo el perímetro de la sala">Moldura en el perímetro</button>}
               {!esMuro && <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => crearFalsoTecho(selAcab.id)} title="Crea un falso techo descolgado con un hueco perimetral (foseado) y luz LED">Falso techo con foseado</button>}
               <button style={btn} onClick={quitar}>Quitar color</button>
