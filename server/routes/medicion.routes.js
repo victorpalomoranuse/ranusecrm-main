@@ -507,7 +507,7 @@ router.put('/:id/escena3d', async (req, res) => {
       colorFrente: acab(o.colorFrente),
       partes: o.partes && typeof o.partes === 'object' ? Object.fromEntries(Object.entries(o.partes).slice(0, 40).map(([k, v]) => [String(k).slice(0, 60), acab(v)]).filter(([, v]) => v)) : undefined,
       mueble: o.tipo === 'mueble' && o.mueble ? {
-        esp: Math.max(1, Math.min(5, num(o.mueble.esp, 1.8))), zocalo: Math.max(0, Math.min(30, num(o.mueble.zocalo, 10))), tirador: o.mueble.tirador === 'ninguno' ? 'ninguno' : 'barra',
+        esp: Math.max(1, Math.min(5, num(o.mueble.esp, 1.8))), zocalo: Math.max(0, Math.min(30, num(o.mueble.zocalo, 10))), tirador: ['barra', 'asa', 'pomo', 'pomoplano', 'unero', 'gola', 'push', 'ninguno'].includes(o.mueble.tirador) ? o.mueble.tirador : 'barra', tiradorColor: acab(o.mueble.tiradorColor) || undefined,
         modulos: (Array.isArray(o.mueble.modulos) ? o.mueble.modulos : []).slice(0, 40).map(m => ({
           t: ['puertas', 'cajones', 'abierto', 'hueco'].includes(m?.t) ? m.t : 'puertas',
           w: Math.max(10, Math.min(300, num(m?.w, 60))), n: Math.max(0, Math.min(10, Math.round(num(m?.n, 1)))), nb: Math.max(0, Math.min(10, Math.round(num(m?.nb, 1)))), abierto: !!m?.abierto,

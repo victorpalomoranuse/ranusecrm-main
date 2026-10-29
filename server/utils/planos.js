@@ -32,6 +32,15 @@ export function filasEscena3d(esc, m3) {
       if (m.t === 'cajones') { const nc = Math.max(1, m.n || 3); suma('Frente de cajón', m.w - 0.4, hc / nc - 0.3, nc); area += nc * (m.w - 0.4) * (hc / nc - 0.3) / 1e4; }
     });
     tablero += area;
+    {
+      let frentes = 0, ancho = 0;
+      (M.modulos || []).forEach(m => { if (m.t === 'puertas') { const nd = m.n === 2 ? 2 : 1; frentes += nd; ancho += m.w; } if (m.t === 'cajones') { const nc = Math.max(1, m.n || 3); frentes += nc; ancho += m.w * nc; } });
+      const T = M.tirador || 'barra', NOM = { barra: 'Tirador de barra', asa: 'Tirador de asa', pomo: 'Pomo', pomoplano: 'Pomo plano' };
+      if (NOM[T]) piezas[NOM[T] + ' (herraje)'] = frentes;
+      else if (T === 'gola') piezas['Perfil de gola (ml)'] = Math.round(ancho) / 100;
+      else if (T === 'unero') piezas['Fresado de uñero (frentes)'] = frentes;
+      else if (T === 'push') piezas['Mecanismo push open (frentes)'] = frentes;
+    }
     libre('Muebles a medida', (o.nombre || 'Mueble') + ' (' + Math.round(o.w) + ' × ' + Math.round(o.d) + ' × ' + Math.round(o.alto) + ' cm, ' + (M.modulos || []).length + ' módulos)', 'ud', 1, { detalle: Object.entries(piezas).map(([k, n]) => n + ' × ' + k).join('; '), acabado: [nombreAc(o.color), nombreAc(o.colorFrente)].filter(Boolean).join(' / ') });
   });
   libre('Muebles a medida', 'Tablero de muebles a medida (según despiece)', 'm²', tablero);

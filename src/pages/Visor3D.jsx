@@ -185,7 +185,31 @@ export function construirMueble(o, texturas) {
     caja(W - 2 * esp, hc - 2 * esp, 0.006, cx, y0 + hc / 2, -D / 2 + 0.003, cuerpo, 'cuerpo');
     const nb = mod.t === 'abierto' ? (mod.nb ?? 3) : mod.t === 'puertas' ? (mod.nb ?? 1) : 0;
     for (let i = 1; i <= nb; i++) caja(W - 2 * esp, esp, D - 0.02, cx, y0 + esp + (hc - 2 * esp) * (i / (nb + 1)), -0.01, cuerpo, 'cuerpo');
-    const conTirador = M.tirador !== 'ninguno';
+    const TIP = M.tirador || 'barra';
+    const tmat = M.tiradorColor ? new THREE.MeshStandardMaterial({ color: color(M.tiradorColor, '#b8b8b8'), roughness: 0.3, metalness: 0.8 }) : tiradorMat;
+    const oscuro = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.75 });
+    // fcx, fcy = centro del frente; z0 = cara delantera; fw, fh = medidas del frente; vert = puerta (tirador vertical); lado = borde libre de la hoja (1 derecha, -1 izquierda)
+    const tir = (padre, fcx, fcy, z0, fw, fh, vert, lado) => {
+      if (TIP === 'ninguno' || TIP === 'push') return;
+      const hx = vert ? fcx + lado * (fw / 2 - 0.04) : fcx, hy = vert ? fcy : fcy + fh * 0.3;
+      if (TIP === 'barra') { if (vert) caja(0.012, 0.14, 0.014, hx, hy, z0 + 0.007, tmat, 'frente', padre); else caja(Math.min(0.16, fw * 0.5), 0.012, 0.014, hx, hy, z0 + 0.007, tmat, 'frente', padre); }
+      else if (TIP === 'asa') {
+        if (vert) { const L = 0.14; caja(0.01, L, 0.01, hx, hy, z0 + 0.03, tmat, 'frente', padre); caja(0.01, 0.012, 0.03, hx, hy + L / 2 - 0.006, z0 + 0.015, tmat, 'frente', padre); caja(0.01, 0.012, 0.03, hx, hy - L / 2 + 0.006, z0 + 0.015, tmat, 'frente', padre); }
+        else { const L = Math.min(0.16, fw * 0.5); caja(L, 0.01, 0.01, hx, hy, z0 + 0.03, tmat, 'frente', padre); caja(0.012, 0.01, 0.03, hx - L / 2 + 0.006, hy, z0 + 0.015, tmat, 'frente', padre); caja(0.012, 0.01, 0.03, hx + L / 2 - 0.006, hy, z0 + 0.015, tmat, 'frente', padre); }
+      } else if (TIP === 'pomo' || TIP === 'pomoplano') {
+        const r = TIP === 'pomo' ? 0.015 : 0.02, h = TIP === 'pomo' ? 0.03 : 0.015, c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20), tmat);
+        c.rotation.x = Math.PI / 2; c.position.set(hx, vert ? hy + 0.12 * 0 : hy, z0 + h / 2); c.userData.zona = 'frente'; c.castShadow = true; padre.add(c);
+        if (TIP === 'pomo') { const s = new THREE.Mesh(new THREE.SphereGeometry(0.019, 14, 10), tmat); s.position.set(hx, hy, z0 + h + 0.004); s.userData.zona = 'frente'; padre.add(s); }
+      } else if (TIP === 'unero') {
+        // fresado en el canto: puerta, en el borde libre; cajón, en el borde de arriba
+        if (vert) caja(0.022, Math.min(0.3, fh * 0.45), 0.004, fcx + lado * (fw / 2 - 0.012), fcy, z0 + 0.0005, oscuro, 'frente', padre);
+        else caja(Math.min(fw * 0.85, 0.45), 0.022, 0.004, fcx, fcy + fh / 2 - 0.013, z0 + 0.0005, oscuro, 'frente', padre);
+      } else if (TIP === 'gola') {
+        // perfil de gola: canal continuo en el canto de arriba del frente
+        caja(fw - 0.004, 0.035, 0.005, fcx, fcy + fh / 2 - 0.0185, z0 + 0.0005, oscuro, 'frente', padre);
+        caja(fw - 0.004, 0.004, 0.012, fcx, fcy + fh / 2 - 0.037, z0 - 0.004, tmat, 'frente', padre);
+      }
+    };
     if (mod.t === 'puertas') {
       const nd = mod.n === 2 ? 2 : 1, wd = (W - 0.004) / nd, ang = 100 * Math.PI / 180;
       for (let k = 0; k < nd; k++) {
@@ -194,7 +218,7 @@ export function construirMueble(o, texturas) {
         const pivote = new THREE.Group(); pivote.position.set(bis, y0 + hc / 2, zf);
         if (mod.abierto) pivote.rotation.y = izq ? -ang : ang;
         caja(wd - 0.003, hc - 0.004, ef, izq ? wd / 2 : -wd / 2, 0, 0, frente, 'frente', pivote);
-        if (conTirador) caja(0.012, 0.14, 0.014, izq ? wd - 0.04 : -wd + 0.04, 0, ef / 2 + 0.007, tiradorMat, 'frente', pivote);
+        tir(pivote, izq ? wd / 2 : -wd / 2, 0, ef / 2, wd - 0.003, hc - 0.004, true, izq ? 1 : -1);
         g.add(pivote);
       }
     } else if (mod.t === 'cajones') {
@@ -202,7 +226,7 @@ export function construirMueble(o, texturas) {
       for (let i = 0; i < nc; i++) {
         const yc = y0 + 0.002 + hf * i + hf / 2;
         caja(W - 0.004, hf - 0.003, ef, cx, yc, zf + (i === 0 ? saca : 0), frente, 'frente');
-        if (conTirador) caja(Math.min(0.16, W * 0.5), 0.012, 0.014, cx, yc + hf * 0.3, zf + ef / 2 + 0.007 + (i === 0 ? saca : 0), tiradorMat, 'frente');
+        tir(g, cx, yc, zf + ef / 2 + (i === 0 ? saca : 0), W - 0.004, hf - 0.003, false, 0);
         if (i === 0 && saca) caja(W - 2 * esp - 0.03, hf * 0.6, D * 0.75, cx, yc - 0.02, D / 2 - D * 0.375 + saca, cuerpo, 'cuerpo');
       }
     }
@@ -223,7 +247,11 @@ function despieceMueble(o) {
     if (m.t === 'puertas') { const nd = m.n === 2 ? 2 : 1; suma('Puerta', m.w / nd - 0.3, hc - 0.4, nd); area += nd * (m.w / nd - 0.3) * (hc - 0.4) / 1e4; }
     if (m.t === 'cajones') { const nc = Math.max(1, m.n || 3); suma('Frente de cajón', m.w - 0.4, hc / nc - 0.3, nc); area += nc * (m.w - 0.4) * (hc / nc - 0.3) / 1e4; }
   });
-  return { filas: Object.entries(filas), area: Math.round(area * 100) / 100 };
+  let frentes = 0, ancho = 0;
+  (M.modulos || []).forEach(m => { if (m.t === 'puertas') { frentes += m.n === 2 ? 2 : 1; ancho += m.w; } if (m.t === 'cajones') { const nc = Math.max(1, m.n || 3); frentes += nc; ancho += m.w * nc; } });
+  const T = M.tirador || 'barra', NOM = { barra: 'Tirador de barra', asa: 'Tirador de asa', pomo: 'Pomo', pomoplano: 'Pomo plano' };
+  const extra = NOM[T] ? [[NOM[T] + ' (herraje)', frentes]] : T === 'gola' ? [['Perfil de gola, ml', Math.round(ancho) / 100]] : T === 'unero' ? [['Fresado de uñero (frentes)', frentes]] : T === 'push' ? [['Mecanismo push open (frentes)', frentes]] : [];
+  return { filas: [...Object.entries(filas), ...extra.map(([k, n]) => [k, n])], area: Math.round(area * 100) / 100 };
 }
 
 // El modelo se escala (sin deformarlo) para que quepa en las medidas del objeto y se apoya en el suelo, centrado
@@ -2468,7 +2496,8 @@ export default function Visor3D() {
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Zócalo cm</span><input type="number" value={M.zocalo ?? 10} onChange={e => cambiar(objSel.id, { mueble: { ...M, zocalo: parseFloat(e.target.value) || 0 } })} style={{ ...btn, width: 70 }} /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Tablero cm</span><input type="number" step="0.1" value={M.esp ?? 1.8} onChange={e => cambiar(objSel.id, { mueble: { ...M, esp: parseFloat(e.target.value) || 1.8 } })} style={{ ...btn, width: 70 }} /></label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Tirador</span><select value={M.tirador || 'barra'} onChange={e => cambiar(objSel.id, { mueble: { ...M, tirador: e.target.value } })} style={btn}><option value="barra">Barra</option><option value="ninguno">Sin tirador</option></select></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Tirador</span><select value={M.tirador || 'barra'} onChange={e => cambiar(objSel.id, { mueble: { ...M, tirador: e.target.value } })} style={btn}><option value="barra">Barra</option><option value="asa">Asa</option><option value="pomo">Pomo</option><option value="pomoplano">Pomo plano</option><option value="unero">Uñero (fresado)</option><option value="gola">Gola (perfil)</option><option value="push">Push open (sin tirador)</option><option value="ninguno">Sin tirador</option></select></label>
+                {['barra', 'asa', 'pomo', 'pomoplano', 'gola'].includes(M.tirador || 'barra') && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Herraje</span><select value={M.tiradorColor || ''} onChange={e => cambiar(objSel.id, { mueble: { ...M, tiradorColor: e.target.value || undefined } })} style={btn}><option value="">Inox</option><option value="#1a1a1a">Negro</option><option value="#c9a54a">Latón</option><option value="#f2f2f2">Blanco</option><option value="#b87333">Cobre</option></select></label>}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Frentes</span><input type="color" value={/^#/.test(objSel.colorFrente || '') ? objSel.colorFrente : '#f4f1ec'} onChange={e => cambiar(objSel.id, { colorFrente: e.target.value })} /></label>
                 <details style={{ marginTop: 4 }}>
                   <summary style={{ cursor: 'pointer', opacity: 0.8 }}>Despiece · {desp.area} m² de tablero</summary>
