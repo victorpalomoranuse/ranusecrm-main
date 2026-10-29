@@ -318,9 +318,24 @@ function construirLed(o, presup, amb, seleccionado) {
   return g;
 }
 // Luminarias del plano con forma (antes solo eran un punto): foco empotrado, plafón, colgante, aplique, lámpara de pie y empotrado de suelo
-function construirLuminaria(kid, col, sel) {
+function construirLuminaria(kid, col, sel, variante, tilt, yaw) {
   const g = new THREE.Group(), glow = new THREE.MeshBasicMaterial({ color: sel ? 0x4da3ff : col }), cuerpo = new THREE.MeshStandardMaterial({ color: sel ? 0x9cc8ff : 0xf2f2f2, roughness: 0.5 });
   let luzPos = new THREE.Vector3(0, -0.02, 0);
+  if (variante && (kid === 'foco' || kid === 'plaf')) {
+    const tr = ((tilt ?? 25) * Math.PI) / 180, yr = ((yaw || 0) * Math.PI) / 180;
+    const dir = new THREE.Vector3(Math.sin(tr) * Math.cos(yr), -Math.cos(tr), Math.sin(tr) * Math.sin(yr)).normalize();
+    const cab = new THREE.Group(), proy = variante === 'proy';
+    let largo = 0.1, r = 0.037;
+    if (variante === 'gimbal') { const aro = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.012, 24), cuerpo); aro.position.y = -0.006; g.add(aro); cab.position.y = -0.012; largo = 0.045; r = 0.03; }
+    else { const tallo = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.02), cuerpo); tallo.position.y = -0.025; g.add(tallo); cab.position.y = -0.05; if (proy) largo = 0.12; }
+    cab.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+    const cuerpoM = new THREE.Mesh(proy ? new THREE.BoxGeometry(0.07, largo, 0.07) : new THREE.CylinderGeometry(r, r, largo, 20), new THREE.MeshStandardMaterial({ color: sel ? 0x9cc8ff : 0x2a2a2a, roughness: 0.5, metalness: 0.4 }));
+    cuerpoM.position.y = -largo / 2; cab.add(cuerpoM);
+    const lente = new THREE.Mesh(new THREE.CircleGeometry(proy ? 0.03 : r * 0.85, 20), glow); lente.rotation.x = Math.PI / 2; lente.position.y = -largo - 0.001; cab.add(lente);
+    g.add(cab);
+    luzPos = cab.position.clone().add(dir.clone().multiplyScalar(largo));
+    return { grupo: g, luzPos, dir };
+  }
   if (kid === 'foco') { const aro = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.012, 24), cuerpo); aro.position.y = -0.006; const d = new THREE.Mesh(new THREE.CircleGeometry(0.036, 24), glow); d.rotation.x = Math.PI / 2; d.position.y = -0.0125; g.add(aro, d); }
   else if (kid === 'plaf') { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.07, 32), cuerpo); c.position.y = -0.035; const d = new THREE.Mesh(new THREE.CircleGeometry(0.15, 32), glow); d.rotation.x = Math.PI / 2; d.position.y = -0.0705; g.add(c, d); luzPos = new THREE.Vector3(0, -0.08, 0); }
   else if (kid === 'colg') { const cab = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.55, 6), cuerpo); cab.position.y = -0.275; const pant = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.16, 0.18, 24, 1, true), new THREE.MeshStandardMaterial({ color: sel ? 0x9cc8ff : 0xe8e2d8, roughness: 0.6, side: THREE.DoubleSide })); pant.position.y = -0.64; const b = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), glow); b.position.y = -0.66; g.add(cab, pant, b); luzPos = new THREE.Vector3(0, -0.68, 0); }
@@ -707,6 +722,10 @@ export default function Visor3D() {
   const [hora, setHora] = useState(15);                       // hora del sol (6–21)
   const [ambiente, setAmbiente] = useState(() => { try { return { exposicion: 1, luces: 1, ...JSON.parse(localStorage.getItem('visor3dAmb') || '{}') }; } catch { return { exposicion: 1, luces: 1 }; } });
   const [ambAbierto, setAmbAbierto] = useState(false);
+  const [camAbierta, setCamAbierta] = useState(false);
+  const [camInfo, setCamInfo] = useState(null);
+  const [shiftY, setShiftY] = useState(0);
+  const [mantenerNivel, setMantenerNivel] = useState(true);
   KGLOBAL.luces = ambiente.kLuces || null;
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
   const [kindFoco, setKindFoco] = useState('spot');
@@ -758,6 +777,7 @@ export default function Visor3D() {
   const seleccionRef = useRef(null);
   const acabRef = useRef(null);
   const rodapieRef = useRef({});
+  const [tapetas, setTapetas] = useState({});              // tapetas de puertas y ventanas, por hueco
   const [escenas, setEscenas] = useState([]);              // escenas guardadas: vista + capas + hora + textos de IA
   const [escAbierta, setEscAbierta] = useState(false);
   const [escNombre, setEscNombre] = useState('');
@@ -813,6 +833,10 @@ export default function Visor3D() {
       const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; scene.background = t;
     }
     const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
+    {
+      const orig = cam.updateProjectionMatrix.bind(cam);
+      cam.updateProjectionMatrix = () => { orig(); const s = api3d.current.shiftY || 0; if (s) { cam.projectionMatrix.elements[9] += 2 * s; cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert(); } };
+    }
     const ctrl = new OrbitControls(cam, renderer.domElement);
     ctrl.enableDamping = true;
     const hemi = new THREE.HemisphereLight(0xffffff, 0xcfc8bf, 1.1);
@@ -861,7 +885,7 @@ export default function Visor3D() {
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
@@ -1090,7 +1114,7 @@ export default function Visor3D() {
       else if (u.salaKey) setAcab(a => (todos ? { ...a, salas: {}, todosSuelos: valor } : { ...a, salas: { ...a.salas, [u.salaKey]: valor } }));
       else if (u.techoKey) setAcab(a => (todos ? { ...a, techos: {}, todosTechos: valor } : { ...a, techos: { ...a.techos, [u.techoKey]: valor } }));
       else if (u.pilarId) setAcab(a => (todos ? { ...a, pilares: {}, todosPilares: valor } : { ...a, pilares: { ...(a.pilares || {}), [u.pilarId]: valor } }));
-      else if (u.hueco && (u.zona === 'marco' || u.zona === 'hoja')) { const k = u.hueco.id || (u.hueco.muroId + ':' + u.hueco.p); setAcab(a => ({ ...a, huecos: { ...(a.huecos || {}), [k]: { ...((a.huecos || {})[k] || {}), [u.zona]: valor } } })); }
+      else if (u.hueco && (u.zona === 'marco' || u.zona === 'hoja' || u.zona === 'tapeta')) { const k = u.hueco.id || (u.hueco.muroId + ':' + u.hueco.p); setAcab(a => ({ ...a, huecos: { ...(a.huecos || {}), [k]: { ...((a.huecos || {})[k] || {}), [u.zona]: valor } } })); }
       else if (u.equipo || (() => { let q = hit.object; while (q && !q.userData.equipo) q = q.parent; return !!q; })()) { let q = hit.object; while (q && !q.userData.equipo) q = q.parent; const eid = q.userData.equipo.id; setAcab(a => ({ ...a, equipos: { ...(a.equipos || {}), [eid]: valor } })); }
       else if ((() => { let q = hit.object; while (q && q.userData.capa !== 'rodapie') q = q.parent; return !!q; })()) setRodapie(r => ({ ...r, color: valor }));
       else {
@@ -1116,7 +1140,7 @@ export default function Visor3D() {
       else if (u.salaKey) valor = ac.salas?.[u.salaKey] || ac.todosSuelos;
       else if (u.techoKey) valor = ac.techos?.[u.techoKey] || ac.todosTechos;
       else if (u.pilarId) valor = ac.pilares?.[u.pilarId] || ac.todosPilares;
-      else if (u.hueco) { const hh = u.hueco; valor = ac.huecos?.[hh.id || (hh.muroId + ':' + hh.p)]?.[u.zona === 'hoja' ? 'hoja' : 'marco']; }
+      else if (u.hueco) { const hh = u.hueco; valor = ac.huecos?.[hh.id || (hh.muroId + ':' + hh.p)]?.[u.zona === 'hoja' ? 'hoja' : u.zona === 'tapeta' ? 'tapeta' : 'marco']; }
       else {
         let eq = hit.object; while (eq && !eq.userData.equipo) eq = eq.parent;
         if (eq) valor = ac.equipos?.[eq.userData.equipo.id];
@@ -1312,7 +1336,7 @@ export default function Visor3D() {
         const d0 = Math.hypot(e.clientX - luzAbajo[0], e.clientY - luzAbajo[1]); luzAbajo = null;
         if (d0 < 4) {
           const p = puntoSuelo(e);
-          if (p) api.post('/medicion/' + id + '/luminaria', { x: p.x, y: p.y, kid: kindLuzRef.current }).then(() => { setGuardado('Luminaria colocada en el plano ✓'); api3d.current.recargar?.(); }).catch(er => setGuardado(er.response?.data?.error || 'No se pudo colocar la luminaria'));
+          if (p) { const tipo = kindLuzRef.current, esSpot = tipo === 'spot'; api.post('/medicion/' + id + '/luminaria', { x: p.x, y: p.y, kid: esSpot ? 'foco' : tipo }).then(r => { if (esSpot && r.data?.id) setLucesAj(a => ({ ...a, [r.data.id]: { ap: 36, v: 'spot', tilt: 25, yaw: 0 } })); setGuardado('Luminaria colocada en el plano ✓'); api3d.current.recargar?.(); }).catch(er => setGuardado(er.response?.data?.error || 'No se pudo colocar la luminaria')); }
         }
         return;
       }
@@ -1374,7 +1398,7 @@ export default function Visor3D() {
       if (!o.isMesh) return;
       const u = o.userData;
       if (u.pilarId) { pintar(o, acab.pilares?.[u.pilarId] || acab.todosPilares, texturas, true, u.dimBox || [30, 260]); return; }
-      if (u.hueco && (u.zona === 'marco' || u.zona === 'hoja')) { const hh = u.hueco; pintar(o, acab.huecos?.[hh.id || (hh.muroId + ':' + hh.p)]?.[u.zona], texturas, true, [hh.w || 90, hh.h || 210]); return; }
+      if (u.hueco && (u.zona === 'marco' || u.zona === 'hoja' || u.zona === 'tapeta')) { const hh = u.hueco; pintar(o, acab.huecos?.[hh.id || (hh.muroId + ':' + hh.p)]?.[u.zona], texturas, true, [hh.w || 90, hh.h || 210]); return; }
       if (u.muroId) pintar(o, acab.muros[u.muroId] || acab.todosMuros, texturas, true);
       else if (u.salaKey) pintar(o, acab.salas[u.salaKey] || acab.todosSuelos, texturas, false);
       else if (u.techoKey) pintar(o, acab.techos[u.techoKey] || acab.todosTechos, texturas, false);
@@ -1400,13 +1424,14 @@ export default function Visor3D() {
       const cat = lumCat.find(c => c.id === l.lid), lm = lucesAj[l.id]?.lm ?? (cat?.lm || 800), K = lucesAj[l.id]?.k ?? (cat?.k || 3000);
       const hcm = l.h != null ? l.h : (ALT[l.kid] ?? 250), ap = lucesAj[l.id]?.ap ?? 60;
       const col = colorK(K);
-      const { grupo: marca, luzPos } = construirLuminaria(l.kid, col, sel2(l.id, luzSel));
+      const aj = lucesAj[l.id] || {};
+      const { grupo: marca, luzPos, dir: dirL } = construirLuminaria(l.kid, col, sel2(l.id, luzSel), aj.v, aj.tilt, aj.yaw);
       marca.position.set(l.x * CM, hcm * CM, l.y * CM); marca.traverse(x => { x.userData.luzId = l.id; }); g.add(marca);
       const luzMundo = marca.position.clone().add(luzPos);
       const inten = Math.max(5, lm / 12.57) * 0.5 * ambiente.luces;
       if (l.kid === 'foco' || l.kid === 'plaf') {
         const s = new THREE.SpotLight(col, inten * 4, 0, Math.max(0.1, (ap / 2) * Math.PI / 180), 0.45, 2);
-        s.position.copy(luzMundo); s.target.position.set(l.x * CM, 0, l.y * CM); g.add(s); g.add(s.target);
+        s.position.copy(luzMundo); if (dirL) s.target.position.copy(luzMundo.clone().add(dirL.clone().multiplyScalar(2.5))); else s.target.position.set(l.x * CM, 0, l.y * CM); g.add(s); g.add(s.target);
       } else { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); }
     });
     a.scene.add(g); a.luzG = g;
@@ -1512,6 +1537,37 @@ export default function Visor3D() {
       else if (x.userData.equipo) x.children.filter(c => c.userData.modeloEq).forEach(mm => a.overlaysRaiz.push(...aplicarRegiones(mm, 'e:' + x.userData.equipo.id + ':', reg, texturas)));
     });
   }, [acab.regiones, rev, estado, texturas]);
+
+  // Tapetas (molduras alrededor de puertas y ventanas): dintel y dos jambas por lado del muro, y alféizar opcional en ventanas
+  useEffect(() => {
+    const a = api3d.current; if (!a.raiz) return;
+    if (a.tapG) { a.raiz.remove(a.tapG); a.tapG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); a.tapG = null; }
+    const modelo = a.modelo; if (!modelo || !Object.keys(tapetas).length) return;
+    const g = new THREE.Group();
+    (modelo.plantas || [modelo]).forEach(pl => (pl.muros || []).forEach(mu => (mu.ab || []).forEach(o => {
+      const key = o.id || (mu.id + ':' + o.p), c = tapetas[key]; if (!c || !c.on) return;
+      const val = acab.huecos?.[key]?.tapeta, ancho = (c.ancho || 7) * CM, vuelo = (c.vuelo || 1.2) * CM, t = (mu.t || 12) * CM;
+      const holder = new THREE.Group(); holder.position.set(mu.a[0] * CM, (pl.z || 0) * CM, mu.a[1] * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
+      const x0 = o.p * CM, x1 = (o.p + o.w) * CM, y0 = (o.sill || 0) * CM, y1 = y0 + o.h * CM, w = x1 - x0;
+      (c.lados === 'a' ? [1] : c.lados === 'b' ? [-1] : [1, -1]).forEach(s => {
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#ffffff'), roughness: 0.55 });
+        const tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
+        if (tx) { mt.map = texturaDe(tx, true).clone(); mt.map.needsUpdate = true; mt.map.repeat.set(Math.max(0.2, o.w / tx.tam), 1); mt.color.setHex(0xffffff); }
+        ledEm(mt, val);
+        const z = s * (t / 2 + vuelo / 2);
+        const tabla = (bw, bh, px, py, bd, pz) => {
+          const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mt); b.position.set(px, py, pz); b.castShadow = b.receiveShadow = true;
+          b.userData = { capa: 'huecos', hueco: { muroId: mu.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t }, zona: 'tapeta' }; holder.add(b);
+        };
+        tabla(w + 2 * ancho, ancho, (x0 + x1) / 2, y1 + ancho / 2, vuelo, z);        // dintel
+        tabla(ancho, y1 - y0, x0 - ancho / 2, (y0 + y1) / 2, vuelo, z);               // jamba izquierda
+        tabla(ancho, y1 - y0, x1 + ancho / 2, (y0 + y1) / 2, vuelo, z);               // jamba derecha
+        if (c.alfeizar && (o.tipo || o.t) === 'win') tabla(w + 2 * ancho + 2 * vuelo, 0.022, (x0 + x1) / 2, y0 - 0.011, 0.04, s * (t / 2 + 0.02)); // alféizar
+      });
+      g.add(holder);
+    })));
+    a.raiz.add(g); a.tapG = g;
+  }, [tapetas, rev, estado, acab.huecos, texturas]);
 
   // Rodapié: sigue el perímetro de cada sala (por dentro) y se interrumpe en las puertas
   useEffect(() => {
@@ -1740,10 +1796,10 @@ export default function Visor3D() {
     if (guardado === 'inicial') { setGuardado(''); return; }
     setGuardado('Guardando…');
     const t = setTimeout(() => {
-      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias, luces: lucesAj, hora, escenas }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
+      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias, luces: lucesAj, hora, escenas, tapetas }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
     }, 1200);
     return () => clearTimeout(t);
-  }, [objs, acab, paleta, rodapie, guias, lucesAj, hora, escenas]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objs, acab, paleta, rodapie, guias, lucesAj, hora, escenas, tapetas]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Los paneles de la izquierda (catálogo, biblioteca 3D, capas, materiales) no se solapan: abrir uno cierra los demás; igual con los de la derecha
   useEffect(() => {
@@ -2056,7 +2112,7 @@ export default function Visor3D() {
   const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '', libertad: 'equilibrado' });
   const metaActual = (txt = iaTxt) => {
     const { cam, ctrl } = api3d.current;
-    return { camara: { px: cam.position.x, py: cam.position.y, pz: cam.position.z, tx: ctrl.target.x, ty: ctrl.target.y, tz: ctrl.target.z, fov: cam.fov }, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, estancia: txt.estancia, estilo: txt.estilo, extra: txt.extra, libertad: txt.libertad };
+    return { camara: { px: cam.position.x, py: cam.position.y, pz: cam.position.z, tx: ctrl.target.x, ty: ctrl.target.y, tz: ctrl.target.z, fov: cam.fov }, shift: api3d.current.shiftY || 0, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, estancia: txt.estancia, estilo: txt.estilo, extra: txt.extra, libertad: txt.libertad };
   };
   const salaBajoCamara = () => {
     const { cam } = api3d.current, m = api3d.current.modelo; if (!m) return '';
@@ -2066,7 +2122,7 @@ export default function Visor3D() {
   const abrirFormIA = () => { setIaTxt(t => ({ ...t, estancia: t.estancia || salaBajoCamara() })); setIaForm(true); };
   const restaurarVista = (meta) => {
     const { cam, ctrl } = api3d.current, c = meta?.camara; if (!c || c.px == null) return;
-    cam.position.set(c.px, c.py, c.pz); ctrl.target.set(c.tx, c.ty, c.tz); if (c.fov) { cam.fov = c.fov; cam.updateProjectionMatrix(); } ctrl.update();
+    cam.position.set(c.px, c.py, c.pz); ctrl.target.set(c.tx, c.ty, c.tz); if (c.fov) cam.fov = c.fov; api3d.current.shiftY = meta.shift || 0; setShiftY(meta.shift || 0); cam.updateProjectionMatrix(); ctrl.update();
     if (meta.hora != null) setHora(meta.hora);
     if (meta.exposicion != null) setAmbiente(a => ({ ...a, exposicion: meta.exposicion, luces: meta.luces ?? a.luces }));
   };
@@ -2089,6 +2145,21 @@ export default function Visor3D() {
     if (!pano || !panoCont.current) return;
     return abrirVisor360(panoCont.current, pano.url);
   }, [pano?.url]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Cámara: altura, inclinación, focal y desplazamiento de lente (para verticales rectas), con valores en vivo
+  const camLee = () => {
+    const { cam, ctrl } = api3d.current, d = new THREE.Vector3().subVectors(ctrl.target, cam.position);
+    return { alt: Math.round(cam.position.y * 1000) / 10, pitch: Math.round(Math.atan2(d.y, Math.hypot(d.x, d.z)) * 1800 / Math.PI) / 10, f: Math.round(12 / Math.tan(cam.fov * Math.PI / 360)) };
+  };
+  useEffect(() => {
+    if (!camAbierta) return;
+    const f = () => { if (api3d.current.cam) setCamInfo(camLee()); }; f();
+    const t = setInterval(f, 300); return () => clearInterval(t);
+  }, [camAbierta]); // eslint-disable-line react-hooks/exhaustive-deps
+  const camAltura = cm => { const { cam, ctrl } = api3d.current, dy = cm / 100 - cam.position.y; cam.position.y += dy; if (mantenerNivel) ctrl.target.y += dy; ctrl.update(); setCamInfo(camLee()); };
+  const camNivelar = () => { const { cam, ctrl } = api3d.current; ctrl.target.y = cam.position.y; ctrl.update(); setCamInfo(camLee()); };
+  const camPitch = g => { const { cam, ctrl } = api3d.current, h = Math.hypot(ctrl.target.x - cam.position.x, ctrl.target.z - cam.position.z) || 1; ctrl.target.y = cam.position.y + Math.tan(g * Math.PI / 180) * h; ctrl.update(); setCamInfo(camLee()); };
+  const camFocal = f => { const { cam } = api3d.current; cam.fov = 2 * Math.atan(12 / f) * 180 / Math.PI; cam.updateProjectionMatrix(); setCamInfo(camLee()); };
+  const camShift = v => { api3d.current.shiftY = v; setShiftY(v); api3d.current.cam.updateProjectionMatrix(); };
   const esperar = ms => new Promise(r => setTimeout(r, ms));
   const ocultarAyudas = () => { const a = api3d.current, gs = [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], v = gs.map(x => x && x.visible); gs.forEach(x => { if (x) x.visible = false; }); return () => gs.forEach((x, i) => { if (x) x.visible = v[i]; }); };
   const soltarSeleccion = async () => { setSelObj(null); setSelAcab(null); setSelHueco(null); setLuzSel(null); setSeleccion(null); api3d.current.limpiarSel?.(); await esperar(150); };
@@ -2198,6 +2269,7 @@ export default function Visor3D() {
         <button style={bTop} onClick={() => vista('planta')} title="Vista desde arriba">Planta</button>
         <button style={bTop} onClick={() => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }} title="Pone la cámara a la altura de los ojos (1,60 m): ideal antes de un render o un panorama">👁 Ojos</button>
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">☀ Ambiente</button>
+        <button style={{ ...bTop, ...(camAbierta ? bOn : {}) }} onClick={() => setCamAbierta(v => !v)} title="Altura de la cámara, nivelarla, focal y verticales rectas">🎥 Cámara</button>
         <button style={{ ...bTop, ...(escAbierta ? bOn : {}) }} onClick={() => setEscAbierta(v => !v)} title="Escenas guardadas: vistas a las que volver y desde las que renderizar">🎬 Escenas{escenas.length ? ' (' + escenas.length + ')' : ''}</button>
         <span style={{ flex: 1, minWidth: 8 }} />
         <select style={bTop} value={calidad} onChange={e => setCalidad(e.target.value)} title="Si va lento, baja la calidad"><option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option></select>
@@ -2241,12 +2313,14 @@ export default function Visor3D() {
           railBtn(false, '🖼', 'Logo', 'Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en 3D', () => logoInput.current?.click()),
         ])}
         {grupoRail([
-          railBtn(herr === 'luz', '💡', 'Luz', 'Clic en el suelo para colocar una luminaria: se crea también en la capa Iluminación del plano (7)', () => setHerr('luz'), '#c9a21a'),
-          menuRail(carrilMenu, setCarrilMenu, railBtn(herr === 'carril' || herr === 'led' || carrilMenu, '🛤', 'Carril / LED', 'Carriles con focos y tiras LED', () => setCarrilMenu(v => !v), '#c9a21a'), (<>
-            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Dibuja el recorrido en el suelo (Enter termina). En un carril añades después focos: spots, lineales, proyectores o colgantes.</div>
+          menuRail(carrilMenu, setCarrilMenu, railBtn(['luz', 'carril', 'led', 'focoC'].includes(herr) || carrilMenu, '💡', 'Iluminación', 'Luminarias, spots, tiras LED y carriles con focos', () => setCarrilMenu(v => !v), '#c9a21a'), (<>
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Luminarias (se crean también en Planos)</div>
+            {[['foco', 'Foco empotrado'], ['spot', 'Spot orientable'], ['plaf', 'Plafón'], ['colg', 'Luminaria colgante'], ['aplq', 'Aplique de pared'], ['pie', 'Lámpara de pie'], ['suel', 'Empotrado de suelo']].map(([k, n]) => <div key={k} onClick={() => { setKindLuz(k); setHerr('luz'); setCarrilMenu(false); }} style={itemMenu}>{n}</div>)}
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '6px 8px 2px', borderTop: '1px solid #333', marginTop: 4 }}>Luz lineal</div>
+            <div onClick={() => { setHerr('led'); setCarrilMenu(false); }} style={itemMenu} title="Cinta LED que sigue un recorrido y alumbra hacia abajo, arriba o a un lado">Tira LED</div>
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '6px 8px 2px', borderTop: '1px solid #333', marginTop: 4 }}>Carriles (después se les añaden spots, lineales, proyectores o colgantes)</div>
             {[['magnetico', 'Carril magnético (48 V, ultrafino)'], ['trifasico', 'Carril trifásico (230 V)']].map(([v, n]) => <div key={v} onClick={() => { setCarrilSis(v); setHerr('carril'); setCarrilMenu(false); }} style={itemMenu}>{n}</div>)}
-            <div onClick={() => { setHerr('led'); setCarrilMenu(false); }} style={{ ...itemMenu, borderTop: '1px solid #333' }} title="Cinta LED que sigue un recorrido y alumbra hacia abajo, arriba o a un lado">Tira LED (luz lineal)</div>
-          </>), 260),
+          </>), 270),
         ])}
         {grupoRail([
           railBtn(herr === 'guia', '📏', 'Guía', 'Clic en dos puntos para crear una línea guía; el dibujo se imanta a ellas (5)', () => setHerr('guia'), '#d62bd6'),
@@ -2260,7 +2334,7 @@ export default function Visor3D() {
         <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', background: 'rgba(24,24,24,0.94)', color: '#fff', borderRadius: 18, padding: '5px 14px', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', zIndex: 6, maxWidth: '70vw', boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
           <b>{AYUDA_HERR[herr][0]}</b><span style={{ opacity: 0.75 }}>{AYUDA_HERR[herr][1]}</span>
           {herr === 'muro' && <><select value={grosorMuro} onChange={e => setGrosorMuro(parseInt(e.target.value, 10))} style={bTop} title="Grosor del muro">{[7, 10, 12, 15, 20, 25, 30].map(g => <option key={g} value={g}>{g} cm</option>)}</select>{medidaMuro && <b style={{ color: '#6fb3ff' }}>{medidaMuro}</b>}</>}
-          {herr === 'luz' && <select value={kindLuz} onChange={e => setKindLuz(e.target.value)} style={bTop}><option value="foco">Foco empotrado</option><option value="plaf">Plafón</option><option value="colg">Colgante</option><option value="aplq">Aplique</option><option value="pie">Lámpara de pie</option><option value="suel">Empotrado de suelo</option></select>}
+          {herr === 'luz' && <select value={kindLuz} onChange={e => setKindLuz(e.target.value)} style={bTop}><option value="foco">Foco empotrado</option><option value="spot">Spot orientable</option><option value="plaf">Plafón</option><option value="colg">Colgante</option><option value="aplq">Aplique</option><option value="pie">Lámpara de pie</option><option value="suel">Empotrado de suelo</option></select>}
           {herr === 'focoC' && <select value={kindFoco} onChange={e => setKindFoco(e.target.value)} style={bTop}>{Object.entries(TIPOS_FOCO).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>}
           {herr === 'pincel' && <span style={{ opacity: 0.9 }}>Modo: <b>{modoPincel === 'cara' ? 'Cara' : modoPincel === 'pieza' ? 'Pieza' : 'Entero'}</b></span>}
           {herr === 'guia' && guias.length > 0 && <button style={bTop} onClick={() => setGuias([])}>✕ Quitar guías ({guias.length})</button>}
@@ -2340,6 +2414,16 @@ export default function Visor3D() {
             <div style={{ fontWeight: 700, marginBottom: 4 }}>💡 {nombres[l.kid] || 'Luminaria'} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(del plano)</span></div>
             <div style={{ opacity: 0.75, marginBottom: 6 }}>{cat ? cat.n + ' · ' + (cat.lm || '?') + ' lm · ' + (cat.w || '?') + ' W · ' + (cat.k || '?') + ' K' : 'Sin luminaria del catálogo asignada (se usa una estándar de 800 lm)'}</div>
             {spot && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Apertura del haz</span><input type="range" min="10" max="120" value={ap} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: parseInt(e.target.value, 10) } }))} style={{ flex: 1 }} /><span style={{ width: 34 }}>{ap}°</span></label>}
+            {(l.kid === 'foco' || l.kid === 'plaf') && <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Tipo de foco</span>
+                <select value={lucesAj[l.id]?.v || ''} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, v: e.target.value || undefined, tilt: a[l.id]?.tilt ?? 25, yaw: a[l.id]?.yaw ?? 0 } }))} style={btn}>
+                  <option value="">{l.kid === 'plaf' ? 'Plafón fijo' : 'Empotrado fijo'}</option><option value="gimbal">Empotrado orientable</option><option value="spot">Spot de superficie</option><option value="proy">Proyector</option>
+                </select></label>
+              {lucesAj[l.id]?.v && <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Inclinación °</span><input type="number" step="5" value={lucesAj[l.id]?.tilt ?? 25} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), tilt: parseFloat(e.target.value) || 0 } }))} style={{ ...btn, width: 70 }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Giro °</span><input type="number" step="15" value={lucesAj[l.id]?.yaw ?? 0} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), yaw: parseFloat(e.target.value) || 0 } }))} style={{ ...btn, width: 70 }} /></label>
+              </>}
+            </>}
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Temperatura</span>
               <select value={String(lucesAj[l.id]?.k ?? (cat?.k || 3000))} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, k: parseInt(e.target.value, 10) } }))} style={btn}>{[2200, 2700, 3000, 3500, 4000, 5000, 6500].map(k => <option key={k} value={k}>{k} K{k <= 2700 ? ' cálida' : k >= 5000 ? ' fría' : ''}</option>)}{![2200, 2700, 3000, 3500, 4000, 5000, 6500].includes(lucesAj[l.id]?.k ?? (cat?.k || 3000)) && <option value={lucesAj[l.id]?.k ?? (cat?.k || 3000)}>{lucesAj[l.id]?.k ?? (cat?.k || 3000)} K</option>}</select>
               <span style={{ width: 14, height: 14, borderRadius: 7, background: kelvinHex(lucesAj[l.id]?.k ?? (cat?.k || 3000)), border: '1px solid #666' }} />
@@ -2454,6 +2538,21 @@ export default function Visor3D() {
           </div>
         </div>
       )}
+      {camAbierta && camInfo && (
+        <div style={{ position: 'absolute', top: 56, left: 70, width: 300, background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+          <div style={{ fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center' }}><span style={{ flex: 1 }}>🎥 Cámara</span><span onClick={() => setCamAbierta(false)} style={{ cursor: 'pointer', opacity: 0.6 }}>✕</span></div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.75 }}>Altura (cm)</span><input type="number" step="5" value={camInfo.alt} onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) camAltura(Math.max(5, v)); }} style={{ ...btn, width: 80 }} /></label>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
+            {[[160, 'De pie'], [120, 'Sentado'], [90, 'Mesa'], [400, 'Alta'], [900, 'Dron']].map(([v, n]) => <button key={v} style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => camAltura(v)}>{n} {v}</button>)}
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={mantenerNivel} onChange={e => setMantenerNivel(e.target.checked)} /> Al cambiar la altura, mantener la inclinación</label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.75 }}>Inclinación °</span><input type="number" step="1" value={camInfo.pitch} onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) camPitch(Math.max(-89, Math.min(89, v))); }} style={{ ...btn, width: 80 }} /><button style={{ ...btn, padding: '3px 8px', background: '#2f6fa8' }} onClick={camNivelar} title="Pone la cámara a nivel: mira al horizonte, sin subir ni bajar">Nivelar</button></label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.75 }}>Focal (mm)</span><input type="range" min="12" max="70" value={Math.max(12, Math.min(70, camInfo.f))} onChange={e => camFocal(parseInt(e.target.value, 10))} style={{ flex: 1 }} /><span style={{ width: 36, textAlign: 'right' }}>{camInfo.f}</span></label>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>{[[16, 'Muy ancha'], [24, 'Ancha'], [35, 'Normal'], [50, 'Corta']].map(([v, n]) => <button key={v} style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => camFocal(v)} title={n}>{v}</button>)}</div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.75 }}>Verticales rectas</span><input type="range" min="-0.5" max="0.5" step="0.01" value={shiftY} onChange={e => camShift(parseFloat(e.target.value))} style={{ flex: 1 }} /><button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => camShift(0)}>0</button></label>
+          <div style={{ opacity: 0.55, fontSize: 11 }}>Para fotos de interior: <b>nivela</b> la cámara (horizonte recto) y usa «Verticales rectas» para encuadrar más arriba o más abajo sin inclinarla, así las paredes no se «caen». El horizonte nunca se ladea. La altura, la focal y el desplazamiento se guardan en las escenas.</div>
+        </div>
+      )}
       {ambAbierto && (
         <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', width: 300, background: 'rgba(20,20,20,0.95)', color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 13, zIndex: 6 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>☀ Ambiente</div>
@@ -2486,12 +2585,31 @@ export default function Visor3D() {
       {selHueco && (
         <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>{selHueco.tipo === 'door' ? 'Puerta' : selHueco.tipo === 'win' ? 'Ventana' : 'Hueco'} del plano</div>
-          {[['w', 'Ancho'], ['h', 'Alto'], ['sill', 'Antepecho'], ['p', 'Posición']].map(([k, et]) => (
+          {[['w', 'Ancho'], ['h', 'Alto'], ['sill', selHueco.tipo === 'door' ? 'Altura suelo' : 'Antepecho'], ['p', 'Posición']].map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <span style={{ width: 70, opacity: 0.7 }}>{et} cm</span>
               <input type="number" value={selHueco.nuevo[k]} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, [k]: e.target.value } }))} style={{ ...btn, width: 90 }} />
             </label>
           ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6, fontSize: 12 }}>
+            <span style={{ opacity: 0.7 }}>Subir / bajar {selHueco.tipo === 'door' ? 'la puerta' : 'la ventana'}</span>
+            {[[-10, '−10'], [-5, '−5'], [5, '+5'], [10, '+10']].map(([d, n]) => <button key={d} style={{ ...btn, padding: '2px 7px', fontSize: 11 }} onClick={() => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, sill: Math.max(0, (parseFloat(s.nuevo.sill) || 0) + d) } }))}>{n}</button>)}
+          </div>
+          {(() => {
+            const key = selHueco.id || (selHueco.muroId + ':' + selHueco.p), c = tapetas[key] || { on: false, ancho: 7, vuelo: 1.2, lados: 'ambos', alfeizar: false }, set = n => setTapetas(t => ({ ...t, [key]: { ...c, ...n } }));
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '4px 0 6px', paddingTop: 6 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer', fontWeight: 700 }}><input type="checkbox" checked={!!c.on} onChange={e => set({ on: e.target.checked })} /> Tapetas</label>
+                {c.on && <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>Ancho cm</span><input type="number" step="0.5" value={c.ancho} onChange={e => set({ ancho: parseFloat(e.target.value) || 7 })} style={{ ...btn, width: 70 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>Vuelo cm</span><input type="number" step="0.2" value={c.vuelo} onChange={e => set({ vuelo: parseFloat(e.target.value) || 1.2 })} style={{ ...btn, width: 70 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>En</span><select value={c.lados} onChange={e => set({ lados: e.target.value })} style={btn}><option value="ambos">Ambos lados</option><option value="a">Un lado (A)</option><option value="b">El otro lado (B)</option></select></label>
+                  {selHueco.tipo === 'win' && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, cursor: 'pointer' }}><input type="checkbox" checked={!!c.alfeizar} onChange={e => set({ alfeizar: e.target.checked })} /> Con alféizar</label>}
+                  <div style={{ opacity: 0.5, fontSize: 11 }}>Para darles otro color o material, usa el pincel 🎨 sobre la tapeta. Salen en el despiece (metros lineales).</div>
+                </>}
+              </div>
+            );
+          })()}
           <div style={{ opacity: 0.55, fontSize: 11, margin: '4px 0 8px' }}>Posición = distancia desde el inicio del muro hasta el borde del hueco. Se cambia también en el plano 2D.</div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button style={{ ...btn, background: '#2f6fa8' }} onClick={aplicarHueco}>Aplicar al plano</button>

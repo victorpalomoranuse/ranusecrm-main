@@ -66,6 +66,16 @@ export function filasEscena3d(esc, m3) {
     const puertas = (pl0.muros || []).reduce((s, mu) => s + (mu.ab || []).filter(a => (a.tipo || a.t) === 'door').reduce((q, a) => q + (a.w || 0), 0), 0);
     libre('Molduras 3D', 'Rodapié de ' + esc.rodapie.alto + ' cm (perímetro de salas, descontadas puertas)', 'ml', Math.max(0, perim - puertas) / 100);
   }
+  if (pl0 && esc.tapetas) {
+    let ml = 0, n = 0;
+    (pl0.muros || []).forEach(mu => (mu.ab || []).forEach(o => {
+      const c = esc.tapetas[o.id || (mu.id + ':' + o.p)]; if (!c || !c.on) return;
+      const f = c.lados === 'a' || c.lados === 'b' ? 1 : 2, a = c.ancho || 7;
+      ml += f * ((o.w + 2 * a) + 2 * o.h) / 100; n++;
+      if (c.alfeizar && (o.tipo || o.t) === 'win') ml += f * (o.w + 2 * a + 4) / 100;
+    }));
+    if (ml > 0) libre('Carpintería 3D', 'Tapetas en ' + n + ' hueco' + (n === 1 ? '' : 's') + ' (puertas y ventanas)', 'ml', ml);
+  }
   // zonas, falsos techos, logos
   objs.filter(o => o.tipo === 'zona').forEach(o => libre('Acabados 3D', 'Zona pintada (' + o.plano + '): ' + (nombreAc(o.color) || 'sin material'), 'm²', areaM2(o.pts)));
   objs.filter(o => o.tipo === 'falsotecho').forEach(o => {

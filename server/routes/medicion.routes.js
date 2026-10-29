@@ -543,17 +543,18 @@ router.put('/:id/escena3d', async (req, res) => {
     })).filter(o => o.id);
     const mapa = m => Object.fromEntries(Object.entries(m && typeof m === 'object' ? m : {}).slice(0, 500).map(([k, v]) => [String(k).slice(0, 60), acab(v)]).filter(([, v]) => v));
     const a = req.body?.acabados || {};
-    const acabados = { muros: mapa(a.muros), salas: mapa(a.salas), techos: mapa(a.techos), todosMuros: acab(a.todosMuros), todosSuelos: acab(a.todosSuelos), todosTechos: acab(a.todosTechos), equipos: mapa(a.equipos), pilares: mapa(a.pilares), todosPilares: acab(a.todosPilares), regiones: Object.fromEntries(Object.entries(a.regiones && typeof a.regiones === 'object' ? a.regiones : {}).slice(0, 600).map(([k, l]) => [String(k).slice(0, 90), (Array.isArray(l) ? l : []).slice(0, 60).map(r => ({ tri: Math.max(0, Math.floor(num(r?.tri))), valor: acab(r?.valor), ang: Math.max(2, Math.min(181, num(r?.ang, 25))) })).filter(r => r.valor)])), huecos: Object.fromEntries(Object.entries(a.huecos && typeof a.huecos === 'object' ? a.huecos : {}).slice(0, 500).map(([k, v]) => [String(k).slice(0, 60), { marco: acab(v?.marco), hoja: acab(v?.hoja) }])) };
+    const acabados = { muros: mapa(a.muros), salas: mapa(a.salas), techos: mapa(a.techos), todosMuros: acab(a.todosMuros), todosSuelos: acab(a.todosSuelos), todosTechos: acab(a.todosTechos), equipos: mapa(a.equipos), pilares: mapa(a.pilares), todosPilares: acab(a.todosPilares), regiones: Object.fromEntries(Object.entries(a.regiones && typeof a.regiones === 'object' ? a.regiones : {}).slice(0, 600).map(([k, l]) => [String(k).slice(0, 90), (Array.isArray(l) ? l : []).slice(0, 60).map(r => ({ tri: Math.max(0, Math.floor(num(r?.tri))), valor: acab(r?.valor), ang: Math.max(2, Math.min(181, num(r?.ang, 25))) })).filter(r => r.valor)])), huecos: Object.fromEntries(Object.entries(a.huecos && typeof a.huecos === 'object' ? a.huecos : {}).slice(0, 500).map(([k, v]) => [String(k).slice(0, 60), { marco: acab(v?.marco), hoja: acab(v?.hoja), tapeta: acab(v?.tapeta) }])) };
     const paleta = (Array.isArray(req.body?.paleta) ? req.body.paleta : []).slice(0, 80).map(p => ({ nombre: String(p?.nombre || '').slice(0, 60), hex: hex(p?.hex) })).filter(p => p.hex);
     const rd = req.body?.rodapie || {};
     const rodapie = { on: !!rd.on, alto: Math.max(2, Math.min(30, num(rd.alto, 10))), grosor: Math.max(0.5, Math.min(5, num(rd.grosor, 1.5))), color: hex(rd.color) || '#ffffff' };
     const guias = (Array.isArray(req.body?.guias) ? req.body.guias : []).slice(0, 60).map(g => ({ x1: num(g?.x1), y1: num(g?.y1), x2: num(g?.x2), y2: num(g?.y2) }));
-    const luces = Object.fromEntries(Object.entries(req.body?.luces && typeof req.body.luces === 'object' ? req.body.luces : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 40), { ap: Math.max(5, Math.min(140, num(v?.ap, 60))), k: Number.isFinite(parseFloat(v?.k)) ? Math.max(1500, Math.min(10000, parseFloat(v.k))) : undefined, lm: Number.isFinite(parseFloat(v?.lm)) ? Math.max(0, Math.min(20000, parseFloat(v.lm))) : undefined }]));
+    const luces = Object.fromEntries(Object.entries(req.body?.luces && typeof req.body.luces === 'object' ? req.body.luces : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 40), { ap: Math.max(5, Math.min(140, num(v?.ap, 60))), k: Number.isFinite(parseFloat(v?.k)) ? Math.max(1500, Math.min(10000, parseFloat(v.k))) : undefined, lm: Number.isFinite(parseFloat(v?.lm)) ? Math.max(0, Math.min(20000, parseFloat(v.lm))) : undefined, v: ['gimbal', 'spot', 'proy'].includes(v?.v) ? v.v : undefined, tilt: Number.isFinite(parseFloat(v?.tilt)) ? Math.max(-90, Math.min(90, parseFloat(v.tilt))) : undefined, yaw: Number.isFinite(parseFloat(v?.yaw)) ? parseFloat(v.yaw) % 360 : undefined }]));
     const { data: fila, error } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
     const previa = fila.data?.escena3d || {};
     const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, rodapie, guias, luces, texturas: previa.texturas || [], renders: previa.renders || [], iaPrefs: previa.iaPrefs || null,
+      tapetas: req.body?.tapetas === undefined ? (previa.tapetas || {}) : Object.fromEntries(Object.entries(req.body.tapetas && typeof req.body.tapetas === 'object' ? req.body.tapetas : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { on: !!v?.on, ancho: Math.max(2, Math.min(30, num(v?.ancho, 7))), vuelo: Math.max(0.3, Math.min(6, num(v?.vuelo, 1.2))), lados: ['ambos', 'a', 'b'].includes(v?.lados) ? v.lados : 'ambos', alfeizar: !!v?.alfeizar }])),
       escenas: Array.isArray(req.body?.escenas) ? req.body.escenas.slice(0, 40).map(e => ({ id: String(e?.id || '').slice(0, 20), nombre: String(e?.nombre || 'Escena').slice(0, 60), meta: limpiaMeta(e?.meta), ocultas: (Array.isArray(e?.ocultas) ? e.ocultas : []).slice(0, 60).map(x => String(x).slice(0, 50)) })).filter(e => e.id) : (previa.escenas || []), hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
     const { error: e2 } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (e2) throw e2;
@@ -665,7 +666,7 @@ const limpiaMeta = (m) => {
   const c = m?.camara || {};
   return {
     camara: { px: n(c.px), py: n(c.py), pz: n(c.pz), tx: n(c.tx), ty: n(c.ty), tz: n(c.tz), fov: n(c.fov) },
-    hora: n(m?.hora), exposicion: n(m?.exposicion), luces: n(m?.luces),
+    shift: n(m?.shift), hora: n(m?.hora), exposicion: n(m?.exposicion), luces: n(m?.luces),
     estancia: s(m?.estancia, 80), estilo: s(m?.estilo, 120), extra: s(m?.extra, 400), libertad: ['fiel', 'equilibrado', 'creativo'].includes(m?.libertad) ? m.libertad : undefined,
   };
 };
