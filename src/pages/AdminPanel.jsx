@@ -1331,6 +1331,61 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type, productos = []
   );
 }
 
+// Producto de un solo uso para el listado: se pega la foto (Ctrl+V), el enlace y el nombre. No pasa por el catálogo
+function ProductoSuelto({ projectId, categoryType, categoryId, onCreado }) {
+  const [abierto, setAbierto] = useState(false); const [name, setName] = useState(''); const [link, setLink] = useState(''); const [qty, setQty] = useState(1); const [notes, setNotes] = useState('');
+  const [foto, setFoto] = useState(null); const [fotoUrl, setFotoUrl] = useState(''); const [prev, setPrev] = useState(''); const [busy, setBusy] = useState(false); const [leyendo, setLeyendo] = useState(false);
+  const { toast } = useToast();
+  useEffect(() => { if (!foto) { setPrev(fotoUrl); return; } const u = URL.createObjectURL(foto); setPrev(u); return () => URL.revokeObjectURL(u); }, [foto, fotoUrl]);
+  const onPaste = (e) => {
+    const it = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+    if (it) { e.preventDefault(); setFoto(it.getAsFile()); setFotoUrl(''); }
+  };
+  const leerEnlace = async (url) => {
+    if (!/^https?:\/\//i.test(url)) return; setLeyendo(true);
+    try { const { data } = await api.get(`/client-projects/${projectId}/link-info`, { params: { url } }); if (data.title && !name.trim()) setName(data.title); if (data.image && !foto && !fotoUrl) setFotoUrl(data.image); }
+    catch { /* si no se puede leer, se rellena a mano */ } finally { setLeyendo(false); }
+  };
+  const anadir = async () => {
+    if (!name.trim()) return; setBusy(true);
+    try {
+      const f = new FormData(); f.append('name', name.trim()); f.append('quantity', String(qty || 1)); f.append('category_type', categoryType || 'mobiliario');
+      if (link.trim()) f.append('purchase_link', link.trim()); if (notes.trim()) f.append('notes', notes.trim()); if (categoryId != null) f.append('category_id', categoryId);
+      if (foto) f.append('file', foto, foto.name || 'foto.png'); else if (fotoUrl) f.append('image_url', fotoUrl);
+      const { data } = await api.post(`/client-projects/${projectId}/equipment-suelto`, f);
+      onCreado(data.equipment); toast.success(`"${name.trim()}" añadido al listado`);
+      setName(''); setLink(''); setQty(1); setNotes(''); setFoto(null); setFotoUrl('');
+    } catch (err) { toast.error(err.response?.data?.error || 'No se pudo añadir'); } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ marginBottom: '1.25rem', border: '1px dashed rgba(255,255,255,0.18)', borderRadius: 10, padding: '0.7rem 0.9rem' }} onPaste={onPaste}>
+      <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setAbierto(v => !v)}><Plus size={13} /> Producto suelto (sin catálogo)</button>
+      <span style={{ marginLeft: 10, fontSize: '0.74rem', color: 'rgba(255,255,255,0.45)' }}>Pega la foto, el enlace y el nombre: solo vale para este proyecto y no se guarda en el catálogo.</span>
+      {abierto && (
+        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12 }}>
+          <div style={{ width: 120, height: 120, borderRadius: 8, background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', textAlign: 'center', fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)', padding: 4, boxSizing: 'border-box' }}>
+            {prev ? <img src={prev} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : 'Pega aquí la foto (Ctrl+V)'}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <input className="ap-field-input" placeholder="Enlace del producto (se intenta leer su nombre y foto)" value={link} onChange={e => setLink(e.target.value)} onBlur={e => leerEnlace(e.target.value.trim())} onPaste={e => { const t = e.clipboardData?.getData('text'); if (t && /^https?:\/\//i.test(t.trim()) && !e.clipboardData.files?.length) setTimeout(() => leerEnlace(t.trim()), 50); }} />
+            <input className="ap-field-input" placeholder={leyendo ? 'Leyendo el enlace…' : 'Nombre'} value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') anadir(); }} />
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.5)' }}>Cantidad</span>
+              <input className="ap-field-input" type="number" min="1" style={{ width: 70 }} value={qty} onChange={e => setQty(e.target.value)} />
+              <input className="ap-field-input" placeholder="Nota (opcional)" style={{ flex: 1, minWidth: 120 }} value={notes} onChange={e => setNotes(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label className="ap-btn ap-btn-ghost ap-btn-sm" style={{ cursor: 'pointer' }}>Elegir foto…<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { setFoto(e.target.files?.[0] || null); setFotoUrl(''); e.target.value = ''; }} /></label>
+              <input className="ap-field-input" placeholder="…o enlace de la imagen" style={{ flex: 1, minWidth: 140 }} value={fotoUrl} onChange={e => { setFotoUrl(e.target.value); setFoto(null); }} />
+              <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" disabled={!name.trim() || busy} onClick={anadir}>{busy ? 'Añadiendo…' : 'Añadir al listado'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TabAsignaciones({ projectId, categoryId, listadosIntro, listadosTitle, onIntroUpdated }) {
   const [tab,setTab]=useState('material'); const [categories,setCategories]=useState([]); const [products,setProducts]=useState([]); const [types,setTypes]=useState([]); const [assigned,setAssigned]=useState({materials:[],equipment:[]}); const [loading,setLoading]=useState(true); const [expandedCat,setExpandedCat]=useState(null);
   const [intro,setIntro]=useState(listadosIntro||''); const [title,setTitle]=useState(listadosTitle||''); const [savingIntro,setSavingIntro]=useState(false);
@@ -1372,6 +1427,7 @@ function TabAsignaciones({ projectId, categoryId, listadosIntro, listadosTitle, 
         {types.map(t=>(<button key={t.id} className={`ap-cat-tab${tab===t.slug?' active':''}`} onClick={()=>setTab(t.slug)}>{t.name}</button>))}
       </div>
       {assignedList.length>0&&(<div style={{marginBottom:'1.25rem'}}><p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.5rem'}}>{categoryId!=null?'Asignados a esta categoría':'Asignados a este proyecto'}</p><DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleAssignedDragEnd}><SortableContext items={assignedList.map(a=>a.id)} strategy={verticalListSortingStrategy}><div className="ap-catalog-products" style={{padding:0}}>{assignedList.map(a=>(<SortableAssignedItem key={a.id} item={{...a,project_id:projectId}} type={tab==='material'?'material':'mobiliario'} onUnassign={unassign} onUpdate={handleItemUpdate} productos={products}/>))}</div></SortableContext></DndContext></div>)}
+      {tab!=='material'&&<ProductoSuelto projectId={projectId} categoryType={tab} categoryId={categoryId} onCreado={(eq)=>setAssigned(prev=>({...prev,equipment:[eq,...prev.equipment]}))}/>}
       <p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.75rem'}}>Tu catálogo</p>
       {filteredCats.length===0&&<p className="ap-empty-sm">No hay categorías en el catálogo todavía.</p>}
       <div className="ap-catalog-categories">{filteredCats.map(cat=>{const catProducts=products.filter(p=>p.category_id===cat.id);const isOpen=expandedCat===cat.id;return(<div key={cat.id} className="ap-catalog-cat"><div className="ap-catalog-cat-header"><button className="ap-catalog-cat-toggle" onClick={()=>setExpandedCat(isOpen?null:cat.id)}><span className="ap-catalog-cat-arrow">{isOpen?'▾':'▸'}</span><span className="ap-catalog-cat-name">{cat.name}</span><span className="ap-catalog-cat-count">{catProducts.length}</span></button></div>{isOpen&&(<div className="ap-catalog-products">{catProducts.length===0&&<p className="ap-empty-sm" style={{paddingLeft:'1rem'}}>Sin productos.</p>}{catProducts.map(p=>{const already=isAssigned(p.id,tab);return(<div key={p.id} className="ap-catalog-product">{p.photo_url&&<img src={p.photo_url} alt={p.name} className="ap-catalog-product-img"/>}<div className="ap-catalog-product-info"><span className="ap-catalog-product-name">{p.name}</span>{p.price!=null&&<span className="ap-catalog-product-price">{Number(p.price).toLocaleString('es-ES',{style:'currency',currency:'EUR'})}</span>}{p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" className="ap-catalog-product-link">Ver producto ↗</a>}</div><button className={`ap-btn ap-btn-sm ${already?'ap-btn-ghost':'ap-btn-primary'}`} onClick={()=>!already&&assign(p)} disabled={already} style={{flexShrink:0}}>{already?'✓':<Plus size={13}/>}</button></div>);})}</div>)}</div>);})}</div>

@@ -1843,6 +1843,55 @@ router.post('/:id/equipment', authenticateToken, requireProyectos, async (req, r
 });
 
 /**
+ * GET /api/client-projects/:id/link-info?url=...
+ * Lee el nombre y la foto principal de la página de un producto (etiquetas og:title / og:image) para rellenar un producto suelto al pegar su enlace.
+ */
+router.get('/:id/link-info', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const u = new URL(String(req.query.url || '').trim());
+    if (!/^https?:$/.test(u.protocol) || /^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|0\.|\[)/i.test(u.hostname) || !u.hostname.includes('.')) return res.status(400).json({ error: 'Enlace no válido' });
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 7000);
+    const r = await fetch(u.href, { signal: ctl.signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RanuseBot/1.0)', 'Accept': 'text/html' } }).finally(() => clearTimeout(t));
+    const html = (await r.text()).slice(0, 1500000);
+    const meta = (k) => {
+      const a = html.match(new RegExp('<meta[^>]+(?:property|name)=["\']' + k + '["\'][^>]*content=["\']([^"\']+)["\']', 'i')) || html.match(new RegExp('<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:property|name)=["\']' + k + '["\']', 'i'));
+      return a ? a[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim() : '';
+    };
+    let title = meta('og:title') || meta('twitter:title') || (html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || '').trim();
+    let image = meta('og:image') || meta('twitter:image') || '';
+    if (image) { try { image = new URL(image, u.href).href; } catch { image = ''; } }
+    res.json({ title: title.slice(0, 160), image });
+  } catch (error) {
+    res.status(200).json({ title: '', image: '' });
+  }
+});
+
+/**
+ * POST /api/client-projects/:id/equipment-suelto
+ * Producto de un solo uso para el listado del proyecto: nombre, enlace y foto (archivo o URL). No se guarda en el catálogo.
+ */
+router.post('/:id/equipment-suelto', authenticateToken, requireProyectos, uploadRenderFile, handleMulterError, async (req, res) => {
+  try {
+    const b = req.body || {}, name = String(b.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Falta el nombre' });
+    let image_url = /^https?:\/\//i.test(b.image_url || '') ? String(b.image_url).trim() : null;
+    if (req.file) image_url = await uploadProjectRender(req.file.buffer, req.file.originalname || 'foto.png', req.file.mimetype, req.params.id);
+    const link = /^https?:\/\//i.test(b.purchase_link || '') ? String(b.purchase_link).trim() : null;
+    const { data, error } = await supabase.from('project_equipment_selections').insert({
+      project_id: req.params.id, name: name.slice(0, 200), brand: b.brand?.trim() || null, category: b.category?.trim() || null,
+      category_type: b.category_type?.trim() || 'mobiliario', quantity: Number(b.quantity) > 0 ? parseInt(b.quantity) : 1,
+      notes: b.notes?.trim() || null, catalog_product_id: null, image_url, purchase_link: link, show_purchase_link: !!link, show_quantity: true,
+      category_id: b.category_id || null,
+    }).select('*').single();
+    if (error) throw error;
+    res.status(201).json({ equipment: data });
+  } catch (error) {
+    console.error('Error al crear producto suelto:', error);
+    res.status(500).json({ error: 'No se pudo añadir el producto' });
+  }
+});
+
+/**
  * DELETE /api/client-projects/:id/equipment/:selId
  */
 router.delete('/:id/equipment/:selId', authenticateToken, requireProyectos, async (req, res) => {
