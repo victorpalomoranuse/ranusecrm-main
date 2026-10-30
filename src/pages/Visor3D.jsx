@@ -2448,9 +2448,32 @@ export default function Visor3D() {
     if (!b3dAbierta || b3d) return;
     api.get('/biblioteca3d').then(r => setB3d(r.data || { modelos: [], texturas: [] })).catch(() => setB3d({ modelos: [], texturas: [], error: true }));
   }, [b3dAbierta, b3d]);
+  // «Mis modelos»: sube un modelo suelto (planta, mueble…), mide su tamaño real y lo deja en la biblioteca
+  const [subiendoMio, setSubiendoMio] = useState('');
+  const subirMio = async (file, categoria) => {
+    if (!file) return;
+    setSubiendoMio('Subiendo «' + file.name + '»…');
+    try {
+      const fd = new FormData(); fd.append('file', file); fd.append('categoria', categoria || 'Mis modelos');
+      const r = await api.post('/biblioteca3d/mios', fd); let m = r.data.modelo;
+      setSubiendoMio('Midiendo el modelo…');
+      try {
+        const obj = await cargarModelo({ url: m.url, tipo: m.tipo }), tam = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
+        const cm = v => { let c = v * 100; if (c > 1000) c = v <= 1000 ? v : v / 10; return Math.max(1, Math.round(c)); };
+        const dims = { w: cm(tam.x), d: cm(tam.z), alto: cm(tam.y) };
+        const r2 = await api.put('/biblioteca3d/mios/' + m.id, dims); m = r2.data.modelo;
+      } catch { /* se queda con 100 cm; se puede estirar después en su ficha */ }
+      setB3d(b => ({ ...(b || {}), vacia: false, mios: [...(b?.mios || []), m] })); setB3dTab('mios'); setB3dCat('');
+      setSubiendoMio('«' + m.nombre + '» añadido ✓ (' + m.w + '×' + m.d + '×' + m.alto + ' cm). Haz clic en él para colocarlo.');
+    } catch (e) { setSubiendoMio(e.response?.data?.error || 'No se pudo subir el modelo'); }
+  };
+  const quitarMio = async (m) => {
+    if (!window.confirm('¿Quitar «' + m.nombre + '» de Mis modelos? Los que ya colocaste en un plano dejarán de verse.')) return;
+    try { await api.delete('/biblioteca3d/mios/' + m.id); setB3d(b => ({ ...b, mios: (b.mios || []).filter(x => x.id !== m.id) })); } catch { setSubiendoMio('No se pudo quitar'); }
+  };
   const anadirModelo3d = m => {
     const { ctrl } = api3d.current;
-    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'bloque', cid: null, nombre: m.nombre, etiqueta: m.categoria, cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: m.w, d: m.d, alto: m.alto, z0: 0, color: null, mod: { url: m.url, tipo: 'gltf', rot: 0 } };
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'bloque', cid: null, nombre: m.nombre, etiqueta: m.categoria, cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: m.w, d: m.d, alto: m.alto, z0: 0, color: null, mod: { url: m.url, tipo: m.tipo || 'gltf', rot: 0 } };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel');
   };
   const usarMatCatalogo = async (mc) => {
@@ -3605,6 +3628,7 @@ export default function Visor3D() {
             <div style={{ fontWeight: 700 }}>🧰 Biblioteca 3D <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>gratis · CC0</span></div>
             <div style={{ display: 'flex', gap: 6, margin: '6px 0' }}>
               <button style={{ ...btn, flex: 1, ...(b3dTab === 'modelos' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setB3dTab('modelos'); setB3dCat(''); }}>Muebles</button>
+              <button style={{ ...btn, flex: 1, ...(b3dTab === 'mios' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setB3dTab('mios'); setB3dCat(''); }}>Mis modelos</button>
               <button style={{ ...btn, flex: 1, ...(b3dTab === 'texturas' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setB3dTab('texturas'); setB3dCat(''); }}>Texturas</button>
             </div>
             <input value={b3dFiltro} onChange={e => setB3dFiltro(e.target.value)} placeholder="Buscar…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 6 }} />
@@ -3614,10 +3638,21 @@ export default function Visor3D() {
             <div style={{ overflow: 'auto', flex: 1 }}>
               {!b3d && <p style={{ opacity: 0.6 }}>Cargando…</p>}
               {b3d?.vacia && <p style={{ opacity: 0.7 }}>La biblioteca todavía no está cargada.</p>}
-              {b3dTab === 'modelos' && lista.map(m => (
+              {b3dTab === 'mios' && (
+                <div style={{ marginBottom: 8 }}>
+                  <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#2f6fa8', cursor: 'pointer' }}>⬆ Subir modelo (planta, mueble…)
+                    <input type="file" accept=".glb,.gltf,.obj,.dae,.zip" style={{ display: 'none' }} onChange={e => { subirMio(e.target.files?.[0], b3dCat || 'Mis modelos'); e.target.value = ''; }} />
+                  </label>
+                  <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>Vale .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda para todos tus planos y no hace falta ligarlo a ningún producto.</div>
+                  {subiendoMio && <div style={{ fontSize: 11, marginTop: 4, color: '#9fd0ff' }}>{subiendoMio}</div>}
+                  {!lista.length && !subiendoMio && <p style={{ opacity: 0.6, fontSize: 12 }}>Todavía no has subido ninguno.</p>}
+                </div>
+              )}
+              {(b3dTab === 'modelos' || b3dTab === 'mios') && lista.map(m => (
                 <div key={m.id} onClick={() => anadirModelo3d(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center' }} title="Clic para colocarlo en el centro de la vista">
-                  <Miniatura mod={{ url: m.url, tipo: 'gltf' }} size={64} />
-                  <div style={{ minWidth: 0 }}><div>{m.nombre}</div><div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {m.w}×{m.d}×{m.alto} cm</div></div>
+                  <Miniatura mod={{ url: m.url, tipo: m.tipo || 'gltf' }} size={64} />
+                  <div style={{ minWidth: 0, flex: 1 }}><div>{m.nombre}</div><div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {m.w}×{m.d}×{m.alto} cm</div></div>
+                  {m.mio && <span onClick={e => { e.stopPropagation(); quitarMio(m); }} title="Quitar de Mis modelos" style={{ padding: '0 5px', opacity: 0.6 }}>✕</span>}
                 </div>
               ))}
               {b3dTab === 'texturas' && (
