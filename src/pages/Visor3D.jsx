@@ -12,6 +12,8 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import api from '../services/api';
@@ -1095,6 +1097,19 @@ export default function Visor3D() {
   const [filtro, setFiltro] = useState('');
   const [solo3d, setSolo3d] = useState(true);
   const [persona, setPersona] = useState(false);
+  // Panel de Render (como el de D5): ajustes finos de la imagen final y botón de renderizar
+  const FX0 = { contraste: 1, saturacion: 1, calidez: 0, vineta: 0, bloom: 0 };
+  const [fx, setFx] = useState(() => { try { return { ...FX0, ...JSON.parse(localStorage.getItem('visor3dFx') || '{}') }; } catch { return FX0; } });
+  const [renderAbierto, setRenderAbierto] = useState(false);
+  const [resRender, setResRender] = useState(() => { try { return parseInt(localStorage.getItem('visor3dRes') || '3200', 10) || 3200; } catch { return 3200; } });
+  const [formatoRender, setFormatoRender] = useState('jpg');
+  const [sombraSuave, setSombraSuave] = useState(true);
+  const fxActivo = fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.bloom > 0;
+  useEffect(() => { try { localStorage.setItem('visor3dFx', JSON.stringify(fx)); localStorage.setItem('visor3dRes', String(resRender)); } catch { /* sin almacenamiento */ } }, [fx, resRender]);
+  useEffect(() => {
+    const a = api3d.current; if (a.gradeU) { a.gradeU.contraste.value = fx.contraste; a.gradeU.saturacion.value = fx.saturacion; a.gradeU.calidez.value = fx.calidez; a.gradeU.vineta.value = fx.vineta; }
+    if (a.bloomPass) a.bloomPass.strength = fx.bloom;
+  }, [fx, realista, estado]);
   // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
   const [lente, setLente] = useState(50);
   useEffect(() => {
@@ -2026,23 +2041,30 @@ export default function Visor3D() {
     if (a.composer) { a.composer.dispose?.(); a.composer = null; }
     if (a.envTex) { a.envTex.dispose(); a.envTex = null; }
     a.scene.environment = null;
-    if (!realista) return;
+    a.gradeU = null; a.bloomPass = null;
+    if (!realista && !fxActivo) return;
     try {
-      const pm = new THREE.PMREMGenerator(a.renderer);
-      a.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose();
-      a.scene.environment = a.envTex; a.scene.environmentIntensity = 0.55;
+      if (realista) { const pm = new THREE.PMREMGenerator(a.renderer); a.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose(); a.scene.environment = a.envTex; a.scene.environmentIntensity = 0.55; }
       const sz = a.renderer.getSize(new THREE.Vector2());
       const rt = new THREE.WebGLRenderTarget(sz.x, sz.y, { type: THREE.HalfFloatType, samples: 4 });
       const comp = new EffectComposer(a.renderer, rt);
       comp.addPass(new RenderPass(a.scene, a.cam));
-      const ao = new GTAOPass(a.scene, a.cam, sz.x, sz.y);
-      ao.updateGtaoMaterial({ radius: 0.3, distanceExponent: 1.5, thickness: 1, scale: 1.2, samples: 12 });
-      ao.blendIntensity = 0.9;
-      comp.addPass(ao);
+      if (realista) {
+        const ao = new GTAOPass(a.scene, a.cam, sz.x, sz.y);
+        ao.updateGtaoMaterial({ radius: 0.3, distanceExponent: 1.5, thickness: 1, scale: 1.2, samples: 12 });
+        ao.blendIntensity = 0.9;
+        comp.addPass(ao);
+      }
+      if (fx.bloom > 0) { const bp = new UnrealBloomPass(new THREE.Vector2(sz.x, sz.y), fx.bloom, 0.6, 0.85); comp.addPass(bp); a.bloomPass = bp; }
       comp.addPass(new OutputPass());
+      // corrección de color final: contraste, saturación, calidez y viñeta
+      const U = { contraste: { value: fx.contraste }, saturacion: { value: fx.saturacion }, calidez: { value: fx.calidez }, vineta: { value: fx.vineta } };
+      comp.addPass(new ShaderPass({ uniforms: { tDiffuse: { value: null }, ...U }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform sampler2D tDiffuse; uniform float contraste; uniform float saturacion; uniform float calidez; uniform float vineta; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); vec3 col = (c.rgb - 0.5) * contraste + 0.5; float l = dot(col, vec3(0.2126, 0.7152, 0.0722)); col = mix(vec3(l), col, saturacion); col.r += calidez * 0.06; col.b -= calidez * 0.06; col *= 1.0 - vineta * smoothstep(0.35, 0.9, distance(vUv, vec2(0.5))); gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a); }' }));
+      a.gradeU = U;
       a.composer = comp; a.compW = null;
     } catch (e) { console.warn('modo realista', e); setRealista(false); }
-  }, [realista, estado]);
+  }, [realista, estado, fxActivo, fx.bloom > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Varias plantas: se pueden ocultar por separado
   useEffect(() => {
@@ -3064,13 +3086,13 @@ export default function Visor3D() {
     const { renderer, scene, cam, sol } = api3d.current, el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
     const sombra = sol.castShadow, mapa = sol.shadow.mapSize.x, restaura = ocultarAyudas();
     try {
-      const W = 3200, H = Math.round(W * h0 / w0);
+      const W = resRender, H = Math.round(W * h0 / w0), a1 = api3d.current;
       renderer.setPixelRatio(1); renderer.setSize(W, H, false); cam.aspect = W / H; cam.updateProjectionMatrix();
-      renderer.shadowMap.enabled = true; sol.castShadow = true; sol.shadow.mapSize.set(4096, 4096); sol.shadow.map?.dispose(); sol.shadow.map = null; sol.shadow.radius = 4;
-      renderer.render(scene, cam);
-      return renderer.domElement.toDataURL('image/jpeg', 0.92);
+      renderer.shadowMap.enabled = true; sol.castShadow = true; sol.shadow.mapSize.set(4096, 4096); sol.shadow.map?.dispose(); sol.shadow.map = null; sol.shadow.radius = sombraSuave ? 4 : 1;
+      if (a1.composer) { a1.composer.setPixelRatio(1); a1.composer.setSize(W, H); a1.composer.render(); } else renderer.render(scene, cam);
+      return renderer.domElement.toDataURL(formatoRender === 'png' ? 'image/png' : 'image/jpeg', 0.92);
     } finally {
-      restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix();
+      restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix(); api3d.current.compW = null;
       sol.castShadow = sombra; sol.shadow.mapSize.set(mapa, mapa); sol.shadow.map?.dispose(); sol.shadow.map = null;
     }
   };
@@ -3252,6 +3274,7 @@ export default function Visor3D() {
         <button style={{ ...bTop, ...(planta2d ? { background: '#2f6fa8' } : {}) }} onClick={() => (planta2d ? salirPlanta2d() : entrarPlanta2d())} disabled={estado !== 'listo' || !!alz || !!axo} title="Vista desde arriba en 2D: dibuja zonas de suelo o pinta salas enteras con tus texturas">📐 Planta 2D</button>
         <button style={{ ...bTop, ...(persona ? { background: '#2f6fa8' } : {}) }} onClick={() => setPersona(v => !v)} title="Te pone dentro del espacio, a la altura de los ojos: andas despacio con W A S D y giras la vista con el ratón">🚶 Recorrer</button>
         <button style={bTop} onClick={() => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }} title="Pone la cámara a la altura de los ojos (1,60 m): ideal antes de un render o un panorama">👁 Ojos</button>
+        <button style={{ ...bTop, ...(renderAbierto ? bOn : { background: '#7a4fc9' }), fontWeight: 700 }} onClick={() => { setRenderAbierto(v => !v); setSelObj(null); setSeleccion(null); }} title="Panel de render: luz, color, efectos y calidad de la imagen final, como en D5">🎬 Render</button>
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">☀ Ambiente</button>
         <button style={{ ...bTop, ...(camAbierta ? bOn : {}) }} onClick={() => setCamAbierta(v => !v)} title="Altura de la cámara, nivelarla, focal y verticales rectas">🎥 Cámara</button>
         <button style={{ ...bTop, ...(escAbierta ? bOn : {}) }} onClick={() => setEscAbierta(v => !v)} title="Escenas guardadas: vistas a las que volver y desde las que renderizar">🎬 Escenas{escenas.length ? ' (' + escenas.length + ')' : ''}</button>
@@ -3567,6 +3590,50 @@ export default function Visor3D() {
           <div style={{ opacity: 0.55, fontSize: 11 }}>Para fotos de interior: <b>nivela</b> la cámara (horizonte recto) y usa «Verticales rectas» para encuadrar más arriba o más abajo sin inclinarla, así las paredes no se «caen». El horizonte nunca se ladea. La altura, la focal y el desplazamiento se guardan en las escenas.</div>
         </div>
       )}
+      {renderAbierto && (() => {
+        const fila = (n, v, mn, mx, st, fn, tx) => (
+          <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>{n}</span><input type="range" min={mn} max={mx} step={st} value={v} onChange={e => fn(parseFloat(e.target.value))} style={{ flex: 1 }} /><span style={{ width: 46, textAlign: 'right', fontSize: 11 }}>{tx}</span></label>
+        );
+        const sec = (t, hijos) => <div style={{ borderTop: '1px solid #333', paddingTop: 8, marginTop: 8 }}><div style={{ fontWeight: 700, marginBottom: 6, color: '#c9b6ff' }}>{t}</div>{hijos}</div>;
+        const nombreRes = { 1920: 'Full HD · 1920 px', 3200: 'Alta · 3200 px', 3840: '4K · 3840 px', 5120: '5K · 5120 px' };
+        return (
+          <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 300, overflowY: 'auto', background: 'rgba(20,20,22,0.97)', color: '#fff', borderRadius: 8, padding: '0 14px 14px', fontSize: 13, zIndex: 8 }}>
+            <div style={{ position: 'sticky', top: 0, background: 'rgb(20,20,22)', padding: '12px 0 8px', zIndex: 2, display: 'flex', alignItems: 'center' }}><b style={{ flex: 1, fontSize: 15 }}>🎬 Render</b><button style={{ ...btn, padding: '2px 8px' }} onClick={() => setRenderAbierto(false)}>✕</button></div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+              <button style={{ ...btn, flex: 1, ...(!realista ? { background: '#2f6fa8' } : {}) }} onClick={() => setRealista(false)} title="Vista rápida">Rápido</button>
+              <button style={{ ...btn, flex: 1, ...(realista ? { background: '#7a4fc9' } : {}) }} onClick={() => setRealista(true)} title="Reflejos, sombras de contacto y bordes suaves en tiempo real">✨ Realista</button>
+            </div>
+            {sec('Sol y luz', <>
+              {fila('Hora del sol', hora, 6, 21, 0.5, v => setHora(v), hora + ' h')}
+              {fila('Exposición', ambiente.exposicion, 0.3, 2.5, 0.05, v => setAmbiente(a => ({ ...a, exposicion: v })), ambiente.exposicion.toFixed(2))}
+              {fila('Intensidad luces', ambiente.luces, 0.2, 4, 0.1, v => setAmbiente(a => ({ ...a, luces: v })), '×' + ambiente.luces.toFixed(1))}
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={sombraSuave} onChange={e => setSombraSuave(e.target.checked)} /> Sombras suaves en el render final</label>
+            </>)}
+            {sec('Color', <>
+              {fila('Contraste', fx.contraste, 0.6, 1.6, 0.02, v => setFx(x => ({ ...x, contraste: v })), fx.contraste.toFixed(2))}
+              {fila('Saturación', fx.saturacion, 0, 2, 0.05, v => setFx(x => ({ ...x, saturacion: v })), fx.saturacion.toFixed(2))}
+              {fila('Calidez', fx.calidez, -1, 1, 0.05, v => setFx(x => ({ ...x, calidez: v })), (fx.calidez > 0 ? '+' : '') + fx.calidez.toFixed(2))}
+            </>)}
+            {sec('Efectos', <>
+              {fila('Resplandor', fx.bloom, 0, 1.5, 0.05, v => setFx(x => ({ ...x, bloom: v })), fx.bloom.toFixed(2))}
+              {fila('Viñeta', fx.vineta, 0, 1, 0.05, v => setFx(x => ({ ...x, vineta: v })), fx.vineta.toFixed(2))}
+              <button style={btn} onClick={() => setFx(FX0)}>Quitar efectos</button>
+            </>)}
+            {sec('Cámara', <>
+              {fila('Óptica', lente, 12, 110, 1, v => ponerLente(v), lente + '°')}
+              <div style={{ opacity: 0.55, fontSize: 11 }}>El encuadre es el de la vista actual. Muévete antes de renderizar o guarda una escena.</div>
+            </>)}
+            {sec('Salida', <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Resolución</span><select value={resRender} onChange={e => setResRender(parseInt(e.target.value, 10))} style={{ ...btn, flex: 1 }}>{Object.entries(nombreRes).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}><span style={{ width: 92, opacity: 0.75 }}>Formato</span><select value={formatoRender} onChange={e => setFormatoRender(e.target.value)} style={{ ...btn, flex: 1 }}><option value="jpg">JPG (ligero)</option><option value="png">PNG (sin pérdida)</option></select></label>
+              <button style={{ ...btn, width: '100%', background: '#7a4fc9', fontWeight: 700, padding: '9px 0', fontSize: 14 }} disabled={renderizando || estado !== 'listo'} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.' + (formatoRender === 'png' ? 'png' : 'jpg'); el.click(); setGuardado('Render descargado ✓'); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }}>{renderizando ? 'Renderizando…' : '🎬 Renderizar y descargar'}</button>
+              <button style={{ ...btn, width: '100%', marginTop: 6 }} disabled={renderizando || estado !== 'listo'} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); await guardarRender('hd', u, metaActual(), undefined); setGuardado('Render guardado en la galería ✓'); } catch (e) { setAviso('No se ha podido guardar el render'); } setRenderizando(false); }}>Guardar en la galería</button>
+              <button style={{ ...btn, width: '100%', marginTop: 6 }} onClick={() => setIaForm(true)} title="Mejora la vista con IA usando tus materiales como referencia">🤖 Render con IA</button>
+              <button style={{ ...btn, width: '100%', marginTop: 6 }} onClick={exportarGLB} title="Descarga el modelo para abrirlo en D5 o Blender">⬇ Exportar a D5 (.glb)</button>
+            </>)}
+          </div>
+        );
+      })()}
       {ambAbierto && (
         <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', width: 300, background: 'rgba(20,20,20,0.95)', color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 13, zIndex: 6 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>☀ Ambiente</div>
