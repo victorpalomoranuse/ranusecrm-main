@@ -1509,9 +1509,9 @@ export default function Visor3D() {
           const hg = rayo.intersectObjects(gzG.children, true)[0], ob0 = objsRef.current.find(x => x.id === selObjRef.current), eqp = !ob0 ? seleccionRef.current : null;
           if (hg && eqp) {
             let g3p = null; raiz.traverse(o => { if (o.userData.equipo && o.userData.equipo.id === eqp.id) g3p = o; });
-            if (g3p) { ctrl.enabled = false; eje3 = { plan: true, eqId: eqp.id, g3: g3p, eje: hg.object.userData.eje, cx0: eqp.cx, cy0: eqp.cy, z00: eqp.z0 || 0, y0: e.clientY, p0: sueloRaw(e), nuevo: {} }; e.stopPropagation(); return; }
+            if (g3p) { ctrl.enabled = false; eje3 = { plan: true, eqId: eqp.id, g3: g3p, eje: hg.object.userData.eje, rot0: eqp.rot || 0, cx0: eqp.cx, cy0: eqp.cy, z00: eqp.z0 || 0, y0: e.clientY, p0: sueloRaw(e), nuevo: {} }; e.stopPropagation(); return; }
           }
-          if (hg && ob0) { ctrl.enabled = false; eje3 = { eje: hg.object.userData.eje, id: ob0.id, cx0: ob0.cx, cy0: ob0.cy, z00: ob0.z0 || 0, p0: sueloRaw(e), y0: e.clientY, nuevo: {} }; e.stopPropagation(); return; }
+          if (hg && ob0) { ctrl.enabled = false; eje3 = { eje: hg.object.userData.eje, id: ob0.id, rot0: ob0.rot || 0, cx0: ob0.cx, cy0: ob0.cy, z00: ob0.z0 || 0, p0: sueloRaw(e), y0: e.clientY, nuevo: {} }; e.stopPropagation(); return; }
         }
       }
       const o = objetoBajo(e);
@@ -1559,6 +1559,14 @@ export default function Visor3D() {
       }
       if (eje3) {
         const g3 = eje3.plan ? eje3.g3 : esc.children.find(x => x.userData.oid === eje3.id); if (!g3) return;
+        if (eje3.eje === 'rot') {
+          const p = sueloRaw(e); if (!p) return;
+          const ang = Math.atan2(p.y - eje3.cy0, p.x - eje3.cx0); if (eje3.ang0 === undefined) eje3.ang0 = ang;
+          let r = eje3.rot0 + ((ang - eje3.ang0) * 180) / Math.PI; r = e.altKey ? Math.round(r) : Math.round(r / 5) * 5; r = ((r % 360) + 360) % 360;
+          g3.rotation.y = -r * Math.PI / 180; eje3.nuevo = { rot: r }; if (eje3.plan) eje3.nuevoPlan = { rot: r };
+          setGuardado('Giro: ' + r + '°');
+          return;
+        }
         if (eje3.eje === 'y') {
           const dist = cam.position.distanceTo(g3.position), cmPx = ((2 * dist * Math.tan(cam.fov * Math.PI / 360)) / dom.clientHeight) * 100;
           const z = Math.max(0, Math.round((eje3.z00 + (eje3.y0 - e.clientY) * cmPx) / 5) * 5); eje3.nuevo = { z0: z }; g3.position.y = eje3.plan ? z * CM : (z - eje3.z00) * CM; if (eje3.plan) eje3.nuevoPlan = { z0: z };
@@ -1647,7 +1655,7 @@ export default function Visor3D() {
       }
       if (eje3 && eje3.plan) {
         const a3 = eje3; eje3 = null; ctrl.enabled = true;
-        if (a3.nuevoPlan) api.patch('/medicion/' + id + '/equipo', { eqId: a3.eqId, cambios: a3.nuevoPlan }).then(() => { setSeleccion(null); setAviso('Máquina movida en el plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(er => setAviso(er.response?.data?.error || 'No se pudo mover la máquina'));
+        if (a3.nuevoPlan) api.patch('/medicion/' + id + '/equipo', { eqId: a3.eqId, cambios: a3.nuevoPlan }).then(() => { const q = a3.nuevoPlan; setSeleccion(s => (s ? { ...s, ...(q.x != null ? { cx: q.x, cy: q.y } : {}), ...(q.rot != null ? { rot: q.rot } : {}), ...(q.z0 != null ? { z0: q.z0 } : {}) } : s)); setEqNuevo(s => (s ? { ...s, ...(q.x != null ? { x: Math.round(q.x), y: Math.round(q.y) } : {}), ...(q.rot != null ? { rot: Math.round(q.rot) } : {}), ...(q.z0 != null ? { z0: Math.round(q.z0) } : {}) } : s)); setGuardado('Cambiado en el plano ✓ (si tienes Planos abierto, recárgalo)'); api3d.current.recargar?.(); }).catch(er => setAviso(er.response?.data?.error || 'No se pudo mover la máquina'));
         return;
       }
       if (eje3) {
@@ -1837,6 +1845,11 @@ export default function Visor3D() {
         return g;
       };
       G.add(flecha(0xe5484d, 'x'), flecha(0x3e63dd, 'z')); if (!gz.plan) G.add(flecha(0x46a758, 'y'));
+      { // anillo en el suelo: arrastrarlo gira el objeto alrededor de su centro (de 5 en 5°; con Alt, libre)
+        const R = Math.max(0.35, Math.hypot(gz.w * CM, gz.d * CM) / 2 + 0.2);
+        const anillo = new THREE.Mesh(new THREE.TorusGeometry(R, 0.035, 8, 64), new THREE.MeshBasicMaterial({ color: 0xffc400, depthTest: false, transparent: true, opacity: 0.9 }));
+        anillo.rotation.x = Math.PI / 2; anillo.position.y = -(gz.alto * CM) / 2 + 0.03; anillo.renderOrder = 999; anillo.userData.eje = 'rot'; G.add(anillo);
+      }
       a.scene.add(G); a.gizmoG = G;
     }
   }, [objs, selObj, seleccion, estado, rev, mtick, modosEq]);
@@ -2188,7 +2201,7 @@ export default function Visor3D() {
         }).catch(() => { fantasma(1); });
       }
       if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(m.position); g.add(l); }
-      g.position.set(o.cx * CM, 0, o.cy * CM); g.rotation.y = -(o.rot || 0) * Math.PI / 180;
+      g.position.set(o.cx * CM, 0, o.cy * CM); g.rotation.y = -(o.rot || 0) * Math.PI / 180; if (o.espejo) g.scale.x = -1;
       luzLedObjeto(g, o, presup, ambiente.luces);
       g.userData.oid = o.id;
       g.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
@@ -2480,9 +2493,18 @@ export default function Visor3D() {
     if (!selHueco) return;
     try {
       await api.patch('/medicion/' + id + '/hueco', { opId: selHueco.id || undefined, muroId: selHueco.muroId, p0: selHueco.p, w0: selHueco.w, cambios });
-      setSelHueco(s => (s ? { ...s, p: cambios.p ?? s.p, w: cambios.w ?? s.w, h: cambios.h ?? s.h, sill: cambios.sill ?? s.sill, nuevo: { ...s.nuevo, ...cambios } } : s));
+      setSelHueco(s => (s ? { ...s, p: cambios.p ?? s.p, w: cambios.w ?? s.w, h: cambios.h ?? s.h, sill: cambios.sill ?? s.sill, tip: cambios.tip ?? s.tip, mat: cambios.mat ?? s.mat, nuevo: { ...s.nuevo, ...cambios } } : s));
       setGuardado('Cambiado en el plano ✓ (si tienes Planos abierto, recárgalo)'); api3d.current.recargar?.();
     } catch (e) { setAviso(e.response?.data?.error || 'No se pudo cambiar el hueco'); }
+  };
+  // Máquina del plano: se escribe en el plano al momento y la ficha sigue abierta
+  const aplicarEquipoSuave = async (cambios) => {
+    if (!seleccion) return;
+    try {
+      await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios });
+      setSeleccion(s => (s ? { ...s, ...(cambios.x != null ? { cx: parseFloat(cambios.x) } : {}), ...(cambios.y != null ? { cy: parseFloat(cambios.y) } : {}), ...(cambios.w != null ? { w: parseFloat(cambios.w), largo: parseFloat(cambios.w) } : {}), ...(cambios.d != null ? { d: parseFloat(cambios.d), fondo: parseFloat(cambios.d) } : {}), ...(cambios.alto != null ? { alto: parseFloat(cambios.alto) } : {}), ...(cambios.rot != null ? { rot: parseFloat(cambios.rot) } : {}), ...(cambios.z0 != null ? { z0: parseFloat(cambios.z0) } : {}) } : s));
+      setGuardado('Cambiado en el plano ✓ (si tienes Planos abierto, recárgalo)'); api3d.current.recargar?.();
+    } catch (e) { setAviso(e.response?.data?.error || 'No se pudo cambiar el equipo'); }
   };
   const aplicarHueco = async () => {
     if (!selHueco) return;
@@ -2491,6 +2513,25 @@ export default function Visor3D() {
       setSelHueco(null); setAviso(AVISO_PLANO); api3d.current.recargar?.();
     } catch (e) { setAviso(e.response?.data?.error || 'No se pudo cambiar el hueco'); }
   };
+  // Al escribir en la ficha de una máquina o de una puerta/ventana se aplica solo, sin pulsar «Aplicar al plano»
+  useEffect(() => {
+    if (!seleccion || !eqNuevo) return;
+    const act = { x: seleccion.cx, y: seleccion.cy, w: seleccion.w || seleccion.largo, d: seleccion.d || seleccion.fondo, alto: seleccion.alto || 110, rot: seleccion.rot || 0, z0: seleccion.z0 || 0 };
+    const dif = {}; let hay = false;
+    for (const k of Object.keys(act)) { const v = parseFloat(eqNuevo[k]); if (Number.isFinite(v) && Math.abs(v - (Number(act[k]) || 0)) >= 0.9) { dif[k] = v; hay = true; } }
+    if (!hay) return;
+    const t = setTimeout(() => aplicarEquipoSuave(dif), 900);
+    return () => clearTimeout(t);
+  }, [eqNuevo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!selHueco?.nuevo) return;
+    const n = selHueco.nuevo, dif = {}; let hay = false;
+    for (const k of ['w', 'h', 'sill', 'p']) { const v = parseFloat(n[k]); if (Number.isFinite(v) && Math.abs(v - (Number(selHueco[k]) || 0)) >= 0.9) { dif[k] = v; hay = true; } }
+    for (const k of ['tip', 'mat']) if (n[k] && n[k] !== selHueco[k]) { dif[k] = n[k]; hay = true; }
+    if (!hay) return;
+    const t = setTimeout(() => aplicarHuecoSuave(dif), 900);
+    return () => clearTimeout(t);
+  }, [selHueco?.nuevo]); // eslint-disable-line react-hooks/exhaustive-deps
   const aplicarEquipo = async () => {
     if (!seleccion || !eqNuevo) return;
     try {
@@ -3415,6 +3456,14 @@ export default function Visor3D() {
               <input type="number" value={Math.round(objSel[k] * 10) / 10} onChange={e => cambiar(objSel.id, { [k]: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 90 }} />
             </label>
           ))}
+          {!['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(objSel.tipo) && (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+              <button style={btn} onClick={() => cambiar(objSel.id, { rot: (((objSel.rot || 0) - 90) % 360 + 360) % 360 })} title="Gira 90° a la izquierda (tecla R: a la derecha)">⟲ 90°</button>
+              <button style={btn} onClick={() => cambiar(objSel.id, { rot: ((objSel.rot || 0) + 90) % 360 })}>⟳ 90°</button>
+              <button style={btn} onClick={() => cambiar(objSel.id, { rot: ((objSel.rot || 0) + 180) % 360 })}>↻ 180°</button>
+              <button style={{ ...btn, ...(objSel.espejo ? { background: '#2f6fa8' } : {}) }} onClick={() => cambiar(objSel.id, { espejo: !objSel.espejo })} title="Voltea el objeto como en un espejo (izquierda ↔ derecha)">⇋ Voltear</button>
+            </div>
+          )}
           {!['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(objSel.tipo) && (
             <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>Distancias hasta el muro (cm)</div>

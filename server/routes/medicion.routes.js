@@ -502,7 +502,7 @@ router.put('/:id/escena3d', async (req, res) => {
       nombre: String(o.nombre || '').slice(0, 120),
       etiqueta: String(o.etiqueta || '').slice(0, 40),
       grupo: o.grupo ? String(o.grupo).slice(0, 30) : undefined,
-      cx: num(o.cx), cy: num(o.cy), rot: num(o.rot), rotM: num(o.rotM),
+      cx: num(o.cx), cy: num(o.cy), rot: num(o.rot), rotM: num(o.rotM), espejo: o.espejo ? true : undefined,
       w: Math.max(1, num(o.w, 100)), d: Math.max(1, num(o.d, 100)), alto: Math.max(1, num(o.alto, 100)),
       z0: num(o.z0), color: acab(o.color),
       lum: o.tipo === 'luz' ? Math.max(0, Math.min(100, num(o.lum, 40))) : undefined,
@@ -559,7 +559,7 @@ router.put('/:id/escena3d', async (req, res) => {
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
     const previa = fila.data?.escena3d || {};
     const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, rodapie, guias, luces, texturas: previa.texturas || [], renders: previa.renders || [], iaPrefs: previa.iaPrefs || null,
-      modelosEq: req.body?.modelosEq === undefined ? (previa.modelosEq || {}) : Object.fromEntries(Object.entries(req.body.modelosEq && typeof req.body.modelosEq === 'object' ? req.body.modelosEq : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { modo: ['auto', 'caber', 'estirar', 'nativo'].includes(v?.modo) ? v.modo : 'auto', rotM: [0, 90, 180, 270].includes(Number(v?.rotM)) ? Number(v.rotM) : 0 }])),
+      modelosEq: req.body?.modelosEq === undefined ? (previa.modelosEq || {}) : Object.fromEntries(Object.entries(req.body.modelosEq && typeof req.body.modelosEq === 'object' ? req.body.modelosEq : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { modo: ['auto', 'caber', 'estirar', 'nativo'].includes(v?.modo) ? v.modo : 'auto', rotM: [0, 90, 180, 270].includes(Number(v?.rotM)) ? Number(v.rotM) : 0, espejo: v?.espejo ? true : undefined }])),
       huecosCfg: req.body?.huecosCfg === undefined ? (previa.huecosCfg || {}) : Object.fromEntries(Object.entries(req.body.huecosCfg && typeof req.body.huecosCfg === 'object' ? req.body.huecosCfg : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { abierta: Math.max(0, Math.min(110, num(v?.abierta, 0))), bisagra: v?.bisagra === 'der' ? 'der' : 'izq', sentido: v?.sentido === 'B' ? 'B' : 'A' }])),
       tapetas: req.body?.tapetas === undefined ? (previa.tapetas || {}) : Object.fromEntries(Object.entries(req.body.tapetas && typeof req.body.tapetas === 'object' ? req.body.tapetas : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { on: !!v?.on, ancho: Math.max(2, Math.min(30, num(v?.ancho, 7))), vuelo: Math.max(0.3, Math.min(6, num(v?.vuelo, 1.2))), lados: ['ambos', 'a', 'b'].includes(v?.lados) ? v.lados : 'ambos', alfeizar: !!v?.alfeizar }])),
       escenas: Array.isArray(req.body?.escenas) ? req.body.escenas.slice(0, 40).map(e => ({ id: String(e?.id || '').slice(0, 20), nombre: String(e?.nombre || 'Escena').slice(0, 60), meta: limpiaMeta(e?.meta), ocultas: (Array.isArray(e?.ocultas) ? e.ocultas : []).slice(0, 60).map(x => String(x).slice(0, 50)) })).filter(e => e.id) : (previa.escenas || []), hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
