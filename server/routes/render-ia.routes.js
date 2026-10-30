@@ -69,15 +69,21 @@ router.post('/', async (req, res) => {
       if (!b64) return res.status(502).json({ error: 'OpenAI no ha devuelto ninguna imagen' });
       return res.json({ imagen: 'data:image/png;base64,' + b64 });
     }
-    const r = await fetch(`${API}/models/${modelo()}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': clave },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: instrucciones }, { inlineData: { mimeType: m[1], data: m[2] } }] }],
-        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
-      }),
-    });
-    const j = await r.json().catch(() => ({}));
+    // Tamaño de salida (1K, 2K o 4K) con GEMINI_IMAGE_SIZE: solo lo admiten los modelos Pro; si el modelo no lo acepta se reintenta sin él
+    const tam = ['1K', '2K', '4K'].includes(process.env.GEMINI_IMAGE_SIZE) ? process.env.GEMINI_IMAGE_SIZE : null;
+    const llamarG = async (t) => {
+      const rr = await fetch(`${API}/models/${modelo()}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': clave },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: instrucciones }, { inlineData: { mimeType: m[1], data: m[2] } }] }],
+          generationConfig: { responseModalities: ['TEXT', 'IMAGE'], ...(t ? { imageConfig: { imageSize: t } } : {}) },
+        }),
+      });
+      return { rr, jj: await rr.json().catch(() => ({})) };
+    };
+    let { rr: r, jj: j } = await llamarG(tam);
+    if (!r.ok && tam && /imageConfig|imageSize|unknown name|invalid json/i.test(JSON.stringify(j?.error || {}))) ({ rr: r, jj: j } = await llamarG(null));
     if (!r.ok) {
       console.error('render-ia Gemini', r.status, j?.error?.message);
       return res.status(502).json({ error: 'Gemini no ha podido generar la imagen' + (j?.error?.message ? ': ' + String(j.error.message).slice(0, 200) : '') });

@@ -2315,7 +2315,7 @@ export default function Visor3D() {
   };
   const asignarModeloEq = async (archivo) => {
     if (!archivo || !seleccion?.cid) return;
-    if (/\.skp$/i.test(archivo.name)) { alert('Los archivos .skp de SketchUp no se pueden mostrar en el navegador. En SketchUp: Archivo → Exportar → Modelo 3D, y elige glTF (.glb) o COLLADA (.dae). Sube ese archivo.'); return; }
+    if (/\.skp$/i.test(archivo.name)) { alert('Los archivos .skp de SketchUp no se pueden mostrar en el navegador, hay que exportarlos.\n\nEn SketchUp: selecciona el objeto → Archivo → Exportar → Modelo 3D. Elige glTF (.glb) si tu versión lo ofrece (lleva las texturas dentro), o COLLADA (.dae). En las opciones marca «Exportar solo la selección actual» y «Triangular todas las caras».\n\nSi eliges .dae, SketchUp crea además una carpeta con las texturas: comprime el .dae y esa carpeta en un único .zip y sube el .zip.'); return; }
     setSubiendo('Subiendo el modelo…');
     try {
       const fd = new FormData(); fd.append('file', archivo);
@@ -2350,7 +2350,7 @@ export default function Visor3D() {
   const [subiendo, setSubiendo] = useState('');
   const asignarModelo = async (archivo) => {
     if (!archivo || !objSel?.cid) return;
-    if (/\.skp$/i.test(archivo.name)) { alert('Los archivos .skp de SketchUp no se pueden mostrar en el navegador. En SketchUp: Archivo → Exportar → Modelo 3D, y elige glTF (.glb) o COLLADA (.dae). Sube ese archivo.'); return; }
+    if (/\.skp$/i.test(archivo.name)) { alert('Los archivos .skp de SketchUp no se pueden mostrar en el navegador, hay que exportarlos.\n\nEn SketchUp: selecciona el objeto → Archivo → Exportar → Modelo 3D. Elige glTF (.glb) si tu versión lo ofrece (lleva las texturas dentro), o COLLADA (.dae). En las opciones marca «Exportar solo la selección actual» y «Triangular todas las caras».\n\nSi eliges .dae, SketchUp crea además una carpeta con las texturas: comprime el .dae y esa carpeta en un único .zip y sube el .zip.'); return; }
     setSubiendo('Subiendo el modelo…');
     try {
       const fd = new FormData(); fd.append('file', archivo);
@@ -3445,12 +3445,12 @@ export default function Visor3D() {
               <div style={{ opacity: 0.7, marginBottom: 4 }}>Modelo 3D {modeloDe(objSel) ? '(asignado)' : '(sin modelo: se ve como caja)'}</div>
               <label style={{ ...btn, display: 'inline-block' }}>
                 {modeloDe(objSel) ? 'Cambiar modelo…' : 'Asignar modelo 3D…'}
-                <input type="file" accept=".glb,.gltf,.obj,.dae,.skp" style={{ display: 'none' }} onChange={e => { asignarModelo(e.target.files?.[0]); e.target.value = ''; }} />
+                <input type="file" accept=".glb,.gltf,.obj,.dae,.zip,.skp" style={{ display: 'none' }} onChange={e => { asignarModelo(e.target.files?.[0]); e.target.value = ''; }} />
               </label>
               {modeloDe(objSel) && <button style={{ ...btn, marginLeft: 6 }} onClick={quitarModelo}>Quitar</button>}
               {modeloDe(objSel) && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}><span style={{ width: 70, opacity: 0.7 }}>Giro modelo</span><input type="number" step="90" value={objSel.rotM || 0} onChange={e => cambiar(objSel.id, { rotM: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 90 }} /></label>}
               {subiendo && <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4 }}>{subiendo}</div>}
-              <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae. Desde SketchUp: Archivo → Exportar → Modelo 3D.</div>
+              <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas. Desde SketchUp: Archivo → Exportar → Modelo 3D.</div>
             </div>
           )}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
@@ -3477,12 +3477,12 @@ export default function Visor3D() {
               <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
                 <div style={{ opacity: 0.75, marginBottom: 4 }}>Modelo 3D del producto {mod ? '(asignado)' : '(se ve como caja)'}</div>
                 <label style={{ ...btn, display: 'inline-block' }}>{mod ? 'Reemplazar por mi archivo…' : 'Subir mi modelo 3D…'}
-                  <input type="file" accept=".glb,.gltf,.obj,.dae,.skp" style={{ display: 'none' }} onChange={e => { asignarModeloEq(e.target.files?.[0]); e.target.value = ''; }} />
+                  <input type="file" accept=".glb,.gltf,.obj,.dae,.zip,.skp" style={{ display: 'none' }} onChange={e => { asignarModeloEq(e.target.files?.[0]); e.target.value = ''; }} />
                 </label>
                 {mod && <button style={{ ...btn, marginLeft: 6 }} onClick={quitarModeloEq}>Quitar</button>}
                 {mod && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}><span style={{ opacity: 0.7 }}>Giro del modelo</span><select value={mod.rot || 0} onChange={e => girarModeloEq(parseInt(e.target.value, 10))} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></label>}
                 {subiendo && <div style={{ fontSize: 11, opacity: 0.8, marginTop: 4 }}>{subiendo}</div>}
-                <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda en el producto del catálogo y se ve igual en todos los planos. Si sale girado, usa «Giro del modelo».</div>
+                <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda en el producto del catálogo y se ve igual en todos los planos. Si sale girado, usa «Giro del modelo».</div>
               </div>
             );
           })()}

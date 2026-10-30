@@ -7,6 +7,7 @@ import sharp from 'sharp';
 import { callClaude } from '../utils/anthropic.js';
 import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
+import JSZip from 'jszip';
 
 const router = express.Router();
 
@@ -499,6 +500,20 @@ function urlDirecta(u) {
 // ── Modelo 3D para el visor 3D (glb, gltf, obj, dae) asignado a un producto ──
 // Todas las veces que se coloque ese producto en el visor se verá con este modelo.
 const TIPOS_MODELO3D = { glb: 'model/gltf-binary', gltf: 'model/gltf+json', obj: 'text/plain', dae: 'model/vnd.collada+xml' };
+const MIME_MODELO = { glb: 'model/gltf-binary', gltf: 'model/gltf+json', bin: 'application/octet-stream', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', dae: 'model/vnd.collada+xml', obj: 'text/plain', mtl: 'text/plain' };
+async function listarRecursivo(prefijo, prof = 0) {
+  const { data } = await supabase.storage.from(BUCKET_SKP).list(prefijo, { limit: 300 });
+  let out = [];
+  for (const f of data || []) { if (f.id) out.push(prefijo + '/' + f.name); else if (prof < 3) out.push(...await listarRecursivo(prefijo + '/' + f.name, prof + 1)); }
+  return out;
+}
+// Quita del almacenamiento los archivos de un modelo 3D antiguo (un solo archivo o toda su carpeta si venía en un .zip)
+async function quitarModelo3dArchivos(m) {
+  try {
+    if (m?.carpeta) { const lista = await listarRecursivo(m.carpeta); if (lista.length) await supabase.storage.from(BUCKET_SKP).remove(lista); }
+    else { const r = rutaDeUrl(m?.url); if (r) await supabase.storage.from(BUCKET_SKP).remove([r]); }
+  } catch { /* sin limpiar: no es grave */ }
+}
 router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Falta el archivo del modelo' });
@@ -506,15 +521,34 @@ router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, asy
     const { data: pr, error: e0 } = await supabase.from('catalog_products').select('id, bloques').eq('id', req.params.id).maybeSingle();
     if (e0) throw e0;
     if (!pr) return res.status(404).json({ error: 'Producto no encontrado' });
-    const ruta = `modelos-3d/${req.params.id}-${Date.now()}.${ext}`;
-    const { error: eUp } = await supabase.storage.from(BUCKET_SKP).upload(ruta, req.file.buffer, { contentType: TIPOS_MODELO3D[ext] || 'application/octet-stream', upsert: true });
-    if (eUp) throw eUp;
-    const { data: { publicUrl } } = supabase.storage.from(BUCKET_SKP).getPublicUrl(ruta);
-    const antiguo = rutaDeUrl(pr.bloques?.modelo3d?.url);
-    const modelo3d = { url: publicUrl, tipo: ext, rot: Number(pr.bloques?.modelo3d?.rot) || 0, nombre: req.file.originalname, bytes: req.file.size, actualizado: new Date().toISOString() };
+    const base = `modelos-3d/${req.params.id}-${Date.now()}`;
+    let url, tipo = ext, carpeta = null;
+    if (ext === 'zip') {
+      // un .zip con el modelo (.glb, .gltf, .dae u .obj) y sus texturas: se sube todo conservando las rutas para que las texturas se encuentren
+      const zip = await JSZip.loadAsync(req.file.buffer);
+      const entradas = Object.values(zip.files).filter(f => !f.dir && !/(^|\/)(__MACOSX|\.DS_Store)(\/|$)/.test(f.name) && !f.name.startsWith('/') && !f.name.split('/').includes('..'));
+      if (!entradas.length || entradas.length > 300) return res.status(400).json({ error: 'El .zip está vacío o tiene demasiados archivos' });
+      const principal = ['glb', 'gltf', 'dae', 'obj'].map(e => entradas.find(f => f.name.toLowerCase().endsWith('.' + e))).find(Boolean);
+      if (!principal) return res.status(400).json({ error: 'No hay ningún .glb, .gltf, .dae u .obj dentro del .zip' });
+      for (const f of entradas) {
+        const buf = await f.async('nodebuffer'); if (buf.length > 25e6) continue;
+        const e2 = f.name.split('.').pop().toLowerCase();
+        const { error } = await supabase.storage.from(BUCKET_SKP).upload(base + '/' + f.name, buf, { contentType: MIME_MODELO[e2] || 'application/octet-stream', upsert: true });
+        if (error && f === principal) throw error;
+      }
+      url = supabase.storage.from(BUCKET_SKP).getPublicUrl(base + '/' + principal.name).data.publicUrl;
+      tipo = principal.name.split('.').pop().toLowerCase(); carpeta = base;
+    } else {
+      const ruta = `${base}.${ext}`;
+      const { error: eUp } = await supabase.storage.from(BUCKET_SKP).upload(ruta, req.file.buffer, { contentType: MIME_MODELO[ext] || 'application/octet-stream', upsert: true });
+      if (eUp) throw eUp;
+      url = supabase.storage.from(BUCKET_SKP).getPublicUrl(ruta).data.publicUrl;
+    }
+    const antiguo = pr.bloques?.modelo3d;
+    const modelo3d = { url, tipo, ...(carpeta ? { carpeta } : {}), rot: Number(antiguo?.rot) || 0, nombre: req.file.originalname, bytes: req.file.size, actualizado: new Date().toISOString() };
     const { error } = await supabase.from('catalog_products').update({ bloques: { ...(pr.bloques || {}), modelo3d } }).eq('id', req.params.id);
     if (error) throw error;
-    if (antiguo) await supabase.storage.from(BUCKET_SKP).remove([antiguo]).catch(() => {});
+    if (antiguo) await quitarModelo3dArchivos(antiguo);
     res.status(201).json({ modelo3d });
   } catch (err) {
     console.error('catalog modelo3d:', err);
@@ -541,8 +575,7 @@ router.delete('/products/:id/modelo3d', async (req, res) => {
     const { modelo3d, ...resto } = pr.bloques;
     const { error } = await supabase.from('catalog_products').update({ bloques: resto }).eq('id', req.params.id);
     if (error) throw error;
-    const antiguo = rutaDeUrl(modelo3d.url);
-    if (antiguo) await supabase.storage.from(BUCKET_SKP).remove([antiguo]).catch(() => {});
+    await quitarModelo3dArchivos(modelo3d);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'No se pudo quitar el modelo 3D' });
