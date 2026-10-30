@@ -201,6 +201,51 @@ function cargarModelo(m) {
   cacheModelos.set(m.url, p);
   return p;
 }
+// Miniaturas de los modelos 3D (para verlos antes de importarlos): un solo visor pequeño, una a una, y se guardan en memoria
+const cacheMini = new Map();
+let miniR = null, colaMini = Promise.resolve();
+function miniaturaModelo(m) {
+  const k = m.url;
+  if (cacheMini.has(k)) return cacheMini.get(k);
+  const p = (colaMini = colaMini.then(async () => {
+    const obj = await cargarModelo(m);
+    if (!miniR) {
+      miniR = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      miniR.setSize(160, 160); miniR.setPixelRatio(1); miniR.outputColorSpace = THREE.SRGBColorSpace;
+      miniR.toneMapping = THREE.ACESFilmicToneMapping;
+    }
+    const sc = new THREE.Scene();
+    sc.add(new THREE.HemisphereLight(0xffffff, 0x666670, 1.5));
+    const dl = new THREE.DirectionalLight(0xffffff, 2.2); dl.position.set(3, 5, 4); sc.add(dl);
+    const g = obj.clone(true); sc.add(g);
+    const caja = new THREE.Box3().setFromObject(g), cen = caja.getCenter(new THREE.Vector3()), tam = caja.getSize(new THREE.Vector3());
+    g.position.sub(cen);
+    const r = Math.max(tam.length() / 2, 1e-4), cam = new THREE.PerspectiveCamera(35, 1, r * 0.05, r * 20);
+    cam.position.set(r * 1.5, r * 1.1, r * 1.9); cam.lookAt(0, 0, 0);
+    miniR.render(sc, cam);
+    const url = miniR.domElement.toDataURL('image/png');
+    sc.traverse(o => { if (o.isMesh && o !== g) { /* la geometría y los materiales son del modelo en caché: no se liberan */ } });
+    return url;
+  }).catch(() => null));
+  cacheMini.set(k, p);
+  return p;
+}
+function Miniatura({ mod, foto, size = 56 }) {
+  const [src, setSrc] = useState(() => (mod && cacheMini.get(mod.url)?.__v) || null);
+  const ref = useRef(null);
+  useEffect(() => {
+    let vivo = true, io = null;
+    const lanzar = () => { if (mod?.url) miniaturaModelo(mod).then(u => { if (vivo && u) setSrc(u); }); };
+    if (typeof IntersectionObserver !== 'undefined' && ref.current) { io = new IntersectionObserver(es => { if (es[0].isIntersecting) { io.disconnect(); lanzar(); } }); io.observe(ref.current); } else lanzar();
+    return () => { vivo = false; io?.disconnect(); };
+  }, [mod?.url]);
+  const img = src || foto;
+  return (
+    <div ref={ref} style={{ width: size, height: size, flex: '0 0 ' + size + 'px', background: '#2a2a2c', borderRadius: 6, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {img ? <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} /> : <span style={{ opacity: 0.35, fontSize: 11 }}>{mod ? '…' : 'sin 3D'}</span>}
+    </div>
+  );
+}
 // Mueble a medida por módulos: cuerpo (laterales, base, tapa, trasera, baldas), frentes (puertas, cajones, abierto o hueco) y tiradores.
 // Medidas en cm; el mueble queda centrado en X y Z, apoyado en el suelo, con el frente hacia +Z.
 function matMueble(valor, defHex, texturas, w, h) {
@@ -943,6 +988,7 @@ export default function Visor3D() {
   const [bibAbierta, setBibAbierta] = useState(false);
   const [biblioteca, setBiblioteca] = useState(null);
   const [filtro, setFiltro] = useState('');
+  const [solo3d, setSolo3d] = useState(true);
   const [guardado, setGuardado] = useState('');
   const cargadaEscena = useRef(false);
   const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, equipos: {}, pilares: {}, huecos: {}, regiones: {}, todosMuros: null, todosSuelos: null, todosTechos: null, todosPilares: null });
@@ -3448,8 +3494,9 @@ export default function Visor3D() {
               {!b3d && <p style={{ opacity: 0.6 }}>Cargando…</p>}
               {b3d?.vacia && <p style={{ opacity: 0.7 }}>La biblioteca todavía no está cargada.</p>}
               {b3dTab === 'modelos' && lista.map(m => (
-                <div key={m.id} onClick={() => anadirModelo3d(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer' }} title="Clic para colocarlo en el centro de la vista">
-                  <div>{m.nombre}</div><div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {m.w}×{m.d}×{m.alto} cm</div>
+                <div key={m.id} onClick={() => anadirModelo3d(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center' }} title="Clic para colocarlo en el centro de la vista">
+                  <Miniatura mod={{ url: m.url, tipo: 'gltf' }} size={64} />
+                  <div style={{ minWidth: 0 }}><div>{m.nombre}</div><div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {m.w}×{m.d}×{m.alto} cm</div></div>
                 </div>
               ))}
               {b3dTab === 'texturas' && (
@@ -3472,12 +3519,23 @@ export default function Visor3D() {
           <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar en el catálogo…" style={{ ...btn, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} />
           <div style={{ overflow: 'auto', flex: 1 }}>
             {!biblioteca && <p style={{ opacity: 0.6 }}>Cargando catálogo…</p>}
-            {(biblioteca || []).filter(m => !filtro || (m.nombre + ' ' + (m.categoria || '') + ' ' + (m.marca || '')).toLowerCase().includes(filtro.toLowerCase())).slice(0, 80).map(m => (
-              <div key={m.id} onClick={() => anadirBloque(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer' }} title="Clic para colocarlo en el centro de la vista">
-                <div>{m.nombre}</div>
-                <div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {Math.round(m.w)}×{Math.round(m.d)} cm</div>
-              </div>
-            ))}
+            {(() => {
+              const con3d = (biblioteca || []).filter(m => m.modelo3d), lista = solo3d ? con3d : (biblioteca || []);
+              const vis = lista.filter(m => !filtro || (m.nombre + ' ' + (m.categoria || '') + ' ' + (m.marca || '')).toLowerCase().includes(filtro.toLowerCase()));
+              return (<>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, opacity: 0.8, marginBottom: 6, cursor: 'pointer' }}><input type="checkbox" checked={solo3d} onChange={e => setSolo3d(e.target.checked)} />Solo los que tienen 3D ({con3d.length} de {(biblioteca || []).length})</label>
+                {biblioteca && !vis.length && <p style={{ opacity: 0.6, fontSize: 12 }}>{solo3d && !filtro ? 'Ningún producto tiene modelo 3D todavía. Sube uno desde la ficha de una máquina en el plano, o desmarca la casilla.' : 'Sin resultados.'}</p>}
+                {vis.slice(0, 80).map(m => (
+                  <div key={m.id} onClick={() => anadirBloque(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center' }} title="Clic para colocarlo en el centro de la vista">
+                    <Miniatura mod={m.modelo3d} foto={m.foto} size={64} />
+                    <div style={{ minWidth: 0 }}>
+                      <div>{m.nombre}</div>
+                      <div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {Math.round(m.w)}×{Math.round(m.d)} cm{m.modelo3d ? ' · 3D ✓' : ''}</div>
+                    </div>
+                  </div>
+                ))}
+              </>);
+            })()}
           </div>
         </div>
       )}
