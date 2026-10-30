@@ -681,6 +681,11 @@ router.patch('/:id/textura/:tid', async (req, res) => {
     const j = req.body?.junta;
     if (j && /^#[0-9a-fA-F]{6}$/.test(j.hex || '') && Number(j.mm) > 0) t.junta = { hex: j.hex, mm: Math.max(0.5, Math.min(30, Number(j.mm))) }; else delete t.junta;
     if (Number.isFinite(parseFloat(req.body?.tam))) t.tam = Math.max(5, Math.min(1000, parseFloat(req.body.tam)));
+    // propiedades del material: rugosidad, metal y relieve (0–1)
+    if (req.body && 'pbr' in req.body) {
+      const pb = req.body.pbr, q = v => Math.max(0, Math.min(1, Number(v) || 0));
+      if (pb && typeof pb === 'object') { const o = {}; if (pb.rough != null) o.rough = q(pb.rough); if (pb.metal != null) o.metal = q(pb.metal); if (Number(pb.relieve) > 0) o.relieve = q(pb.relieve); if (Object.keys(o).length) t.pbr = o; else delete t.pbr; } else delete t.pbr;
+    }
     // giro (°) y desplazamiento (cm) de la textura
     for (const [k, a, b] of [['rot', -360, 360], ['ox', -1000, 1000], ['oy', -1000, 1000]]) if (k in (req.body || {})) { const v = Math.max(a, Math.min(b, parseFloat(req.body[k]) || 0)); if (v) t[k] = v; else delete t[k]; }
     // despiece: la foto se corta en piezas de w×h cm con la junta elegida (recto o trabado)

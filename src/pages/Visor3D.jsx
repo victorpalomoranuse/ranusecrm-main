@@ -35,11 +35,18 @@ function aplicaEspejos(scene) {
     if (!o.isMesh || !o.material) return;
     for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
       if (m.metalness === undefined) continue;
+      const pb = m.map?.userData?.pbr;
       if (m.map?.userData?.espejo) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
-        m.metalness = 1; m.roughness = 0.04; m.envMap = envEsp; m.envMapIntensity = 1.4; m.needsUpdate = true;
+        m.metalness = 1; m.roughness = 0.04; m.envMap = envEsp; m.envMapIntensity = 1.4; m.bumpMap = null; m.needsUpdate = true;
+      } else if (pb) {
+        if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
+        const z = m.userData.esp0 || {};
+        m.metalness = pb.metal ?? z.metalness ?? 0; m.roughness = pb.rough ?? z.roughness ?? 0.6; m.envMap = (pb.metal || 0) > 0.3 ? envEsp : null; m.envMapIntensity = 1.2;
+        if (pb.relieve > 0) { m.bumpMap = m.map; m.bumpScale = pb.relieve * 4; } else m.bumpMap = null;
+        m.needsUpdate = true;
       } else if (m.userData.espOn) {
-        const z = m.userData.esp0 || {}; m.userData.espOn = false; m.envMap = null; m.metalness = z.metalness ?? 0; m.roughness = z.roughness ?? 0.6; m.envMapIntensity = z.envMapIntensity ?? 1; m.needsUpdate = true;
+        const z = m.userData.esp0 || {}; m.userData.espOn = false; m.envMap = null; m.bumpMap = null; m.metalness = z.metalness ?? 0; m.roughness = z.roughness ?? 0.6; m.envMapIntensity = z.envMapIntensity ?? 1; m.needsUpdate = true;
       }
     }
   });
@@ -76,8 +83,8 @@ function dibujaDesp(cx, img, t, j) {
 }
 function texturaDe(t, uvEnCm) {
   const k = uvEnCm ? 1 / t.tam : 1 / (t.tam * CM), j = t.junta && t.junta.mm > 0 ? t.junta : null;
-  if (t.espejo) espejoSucio = true;
-  const clave = t.url.slice(0, 200) + '|' + k + '|' + (t.rot || 0) + '|' + (t.ox || 0) + '|' + (t.oy || 0) + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '');
+  if (t.espejo || t.pbr) espejoSucio = true;
+  const clave = t.url.slice(0, 200) + '|' + k + '|' + (t.rot || 0) + '|' + (t.ox || 0) + '|' + (t.oy || 0) + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '') + (t.pbr ? JSON.stringify(t.pbr) : '');
   let x = cacheTex.get(clave);
   if (!x) {
     if (t.espejo) {
@@ -100,6 +107,7 @@ function texturaDe(t, uvEnCm) {
       img.src = t.url;
     } else x = new THREE.TextureLoader().load(t.url);
     x.wrapS = x.wrapT = THREE.RepeatWrapping; x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 4; x.repeat.set(k, k);
+    if (t.pbr) x.userData.pbr = t.pbr;
     if (t.rot || t.ox || t.oy) { x.center.set(0.5, 0.5); x.rotation = (t.rot || 0) * Math.PI / 180; x.offset.set((t.ox || 0) / t.tam, (t.oy || 0) / t.tam); }
     cacheTex.set(clave, x);
   }
@@ -1101,6 +1109,10 @@ export default function Visor3D() {
   const FX0 = { contraste: 1, saturacion: 1, calidez: 0, vineta: 0, bloom: 0 };
   const [fx, setFx] = useState(() => { try { return { ...FX0, ...JSON.parse(localStorage.getItem('visor3dFx') || '{}') }; } catch { return FX0; } });
   const [renderAbierto, setRenderAbierto] = useState(false);
+  const [entorno, setEntorno] = useState(() => { try { return localStorage.getItem('visor3dEntorno') || 'estudio'; } catch { return 'estudio'; } });
+  const [entInt, setEntInt] = useState(0.55);
+  useEffect(() => { try { localStorage.setItem('visor3dEntorno', entorno); } catch { /* sin almacenamiento */ } }, [entorno]);
+  useEffect(() => { const sc = api3d.current.scene; if (sc?.environment) sc.environmentIntensity = entInt; }, [entInt, realista, entorno, estado]);
   const [resRender, setResRender] = useState(() => { try { return parseInt(localStorage.getItem('visor3dRes') || '3200', 10) || 3200; } catch { return 3200; } });
   const [formatoRender, setFormatoRender] = useState('jpg');
   const [sombraSuave, setSombraSuave] = useState(true);
@@ -2044,7 +2056,17 @@ export default function Visor3D() {
     a.gradeU = null; a.bloomPass = null;
     if (!realista && !fxActivo) return;
     try {
-      if (realista) { const pm = new THREE.PMREMGenerator(a.renderer); a.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose(); a.scene.environment = a.envTex; a.scene.environmentIntensity = 0.55; }
+      if (realista) {
+        const pm = new THREE.PMREMGenerator(a.renderer), CIELOS = { dia: ['#5f9cff', '#dbe8f5', '#a09584', 0], atardecer: ['#34426f', '#ffae78', '#4a3a33', 0.5], calido: ['#7a5230', '#e0a566', '#3a2a1c', 0.55], noche: ['#0a1020', '#27345a', '#0a0a0c', 0] };
+        if (entorno !== 'estudio' && CIELOS[entorno]) {
+          const [c1, c2, c3, sol] = CIELOS[entorno], cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512; const cx = cv.getContext('2d'), g = cx.createLinearGradient(0, 0, 0, 512);
+          g.addColorStop(0, c1); g.addColorStop(0.5, c2); g.addColorStop(0.52, c3); g.addColorStop(1, c3); cx.fillStyle = g; cx.fillRect(0, 0, 1024, 512);
+          if (sol) { const rg = cx.createRadialGradient(700, 220, 4, 700, 220, 150); rg.addColorStop(0, 'rgba(255,240,210,1)'); rg.addColorStop(1, 'rgba(255,200,140,0)'); cx.fillStyle = rg; cx.fillRect(0, 0, 1024, 512); }
+          const et = new THREE.CanvasTexture(cv); et.mapping = THREE.EquirectangularReflectionMapping; et.colorSpace = THREE.SRGBColorSpace;
+          a.envTex = pm.fromEquirectangular(et).texture; et.dispose();
+        } else a.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+        pm.dispose(); a.scene.environment = a.envTex; a.scene.environmentIntensity = entInt;
+      }
       const sz = a.renderer.getSize(new THREE.Vector2());
       const rt = new THREE.WebGLRenderTarget(sz.x, sz.y, { type: THREE.HalfFloatType, samples: 4 });
       const comp = new EffectComposer(a.renderer, rt);
@@ -2064,7 +2086,7 @@ export default function Visor3D() {
       a.gradeU = U;
       a.composer = comp; a.compW = null;
     } catch (e) { console.warn('modo realista', e); setRealista(false); }
-  }, [realista, estado, fxActivo, fx.bloom > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [realista, estado, fxActivo, fx.bloom > 0, entorno]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Varias plantas: se pueden ocultar por separado
   useEffect(() => {
@@ -3603,6 +3625,18 @@ export default function Visor3D() {
               <button style={{ ...btn, flex: 1, ...(!realista ? { background: '#2f6fa8' } : {}) }} onClick={() => setRealista(false)} title="Vista rápida">Rápido</button>
               <button style={{ ...btn, flex: 1, ...(realista ? { background: '#7a4fc9' } : {}) }} onClick={() => setRealista(true)} title="Reflejos, sombras de contacto y bordes suaves en tiempo real">✨ Realista</button>
             </div>
+            {sec('Preajustes de ambiente', <>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <button style={btn} onClick={() => { setRealista(true); setEntorno('dia'); setHora(14); setAmbiente(a => ({ ...a, exposicion: 1, luces: 1, kLuces: null })); setFx(FX0); }}>☀ Día claro</button>
+                <button style={{ ...btn, background: '#7a4fc9' }} onClick={() => { setRealista(true); setEntorno('calido'); setHora(21); setAmbiente(a => ({ ...a, exposicion: 1.2, luces: 2.4, kLuces: 2700 })); setFx({ contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.45 }); }} title="Luz cálida de interior con resplandor, como un render de gimnasio nocturno">🌙 Interior cálido</button>
+                <button style={btn} onClick={() => { setRealista(true); setEntorno('noche'); setHora(21); setAmbiente(a => ({ ...a, exposicion: 1.1, luces: 2.2, kLuces: null })); setFx({ ...FX0, bloom: 0.35, vineta: 0.2 }); }}>🌃 Noche</button>
+              </div>
+            </>)}
+            {sec('Entorno (mapa)', <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Mapa</span><select value={entorno} onChange={e => { setEntorno(e.target.value); if (!realista) setRealista(true); }} style={{ ...btn, flex: 1 }}><option value="estudio">Estudio</option><option value="dia">Cielo de día</option><option value="atardecer">Atardecer</option><option value="calido">Interior cálido</option><option value="noche">Noche</option></select></label>
+              {fila('Intensidad', entInt, 0, 2, 0.05, v => setEntInt(v), entInt.toFixed(2))}
+              <div style={{ opacity: 0.55, fontSize: 11 }}>Es lo que reflejan los materiales brillantes, el cristal y el espejo. Funciona con ✨ Realista.</div>
+            </>)}
             {sec('Sol y luz', <>
               {fila('Hora del sol', hora, 6, 21, 0.5, v => setHora(v), hora + ' h')}
               {fila('Exposición', ambiente.exposicion, 0.3, 2.5, 0.05, v => setAmbiente(a => ({ ...a, exposicion: v })), ambiente.exposicion.toFixed(2))}
@@ -3816,8 +3850,8 @@ export default function Visor3D() {
               const t = texturas.find(x => x.id === matSel.id); if (!t) return null;
               if (t.fijo) return <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8, opacity: 0.75, fontSize: 11 }}>{t.nombre}: acabado reflectante. Refleja un entorno de estudio (con ✨ Realista se nota más). Pinta con él muros, suelos u objetos.</div>;
               const lee = () => { const tp = document.getElementById('tx-dt').value; if (tp === 'none') return null; return { tipo: tp, w: parseFloat(document.getElementById('tx-dw').value) || 60, h: parseFloat(document.getElementById('tx-dh').value) || 30, corte: document.getElementById('tx-dc').value, var: parseFloat(document.getElementById('tx-dv').value) || 0 }; };
-              const guarda = (junta, tam, desp, extra) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam, desp: desp || null, rot: t.rot || 0, ox: t.ox || 0, oy: t.oy || 0, ...(extra || {}) }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
-              const aplicarTodo = () => { const dsp = lee(); guarda(t.junta && !document.getElementById('tx-jm') ? t.junta : (parseFloat(document.getElementById('tx-jm').value) > 0 ? { hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) } : null), dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp, { rot: parseFloat(document.getElementById('tx-rot').value) || 0, ox: parseFloat(document.getElementById('tx-ox').value) || 0, oy: parseFloat(document.getElementById('tx-oy').value) || 0 }); };
+              const guarda = (junta, tam, desp, extra) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam, desp: desp || null, rot: t.rot || 0, ox: t.ox || 0, oy: t.oy || 0, pbr: t.pbr || null, ...(extra || {}) }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
+              const aplicarTodo = () => { const dsp = lee(); guarda(t.junta && !document.getElementById('tx-jm') ? t.junta : (parseFloat(document.getElementById('tx-jm').value) > 0 ? { hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) } : null), dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp, { rot: parseFloat(document.getElementById('tx-rot').value) || 0, ox: parseFloat(document.getElementById('tx-ox').value) || 0, oy: parseFloat(document.getElementById('tx-oy').value) || 0, pbr: { rough: parseFloat(document.getElementById('tx-ro').value), metal: parseFloat(document.getElementById('tx-me').value), relieve: parseFloat(document.getElementById('tx-re').value) } }); };
               const diferido = () => { clearTimeout(window.__txT); window.__txT = setTimeout(aplicarTodo, 700); };
               return (
                 <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8 }} onChange={diferido}>
@@ -3831,6 +3865,11 @@ export default function Visor3D() {
                     <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => { const dsp = lee(); guarda({ hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) || 0 }, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Aplicar</button>
                     <button style={btn} onClick={() => { const dsp = lee(); guarda(null, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Sin junta</button>
                   </div>
+                  <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Material (como D5)</div>
+                  {[['Rugosidad', 'tx-ro', t.pbr?.rough ?? 0.6, 'Mate (1) ↔ brillante (0)'], ['Metal', 'tx-me', t.pbr?.metal ?? 0, 'Plástico/piedra (0) ↔ metal (1)'], ['Relieve', 'tx-re', t.pbr?.relieve ?? 0, 'Textura en relieve usando la propia foto']].map(([n, i, v, ayuda]) => (
+                    <label key={i + t.id + (t.pbr ? 1 : 0)} title={ayuda} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>{n}</span><input id={i} type="range" min="0" max="1" step="0.05" defaultValue={v} style={{ flex: 1 }} /></label>
+                  ))}
+                  <button style={{ ...btn, marginBottom: 4 }} onClick={() => guarda(t.junta || null, t.tam, t.desp, { pbr: null })}>Restablecer material</button>
                   <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Despiece</div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Colocación</span>
                     <select key={'dt' + t.id + (t.desp?.tipo || '')} id="tx-dt" defaultValue={t.desp?.tipo || 'none'} style={btn}><option value="none">Sin despiece (la foto es 1 pieza)</option><option value="recto">Recto (a cuadro)</option><option value="mitad">Trabado ½ (ladrillo)</option><option value="tercio">Trabado ⅓</option></select></label>
