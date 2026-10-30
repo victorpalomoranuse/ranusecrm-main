@@ -544,6 +544,19 @@ export function construirHoja(o, mu, cfg, valHoja, texturas) {
   giratoria(iw, cx, izq); return g;
 }
 
+// Pegar un objeto de fondo o.d al muro más cercano a (cx, cy). Devuelve la posición y el giro, y «hueco» = separación actual entre su espalda y el muro (cm)
+function pegarCalc(muros, o, cx, cy) {
+  let mejor = null;
+  muros.forEach(mu => {
+    const ex = mu.b[0] - mu.a[0], ey = mu.b[1] - mu.a[1], L2 = ex * ex + ey * ey || 1, t = Math.max(0, Math.min(1, ((cx - mu.a[0]) * ex + (cy - mu.a[1]) * ey) / L2));
+    const px = mu.a[0] + ex * t, py = mu.a[1] + ey * t, d = Math.hypot(cx - px, cy - py);
+    if (!mejor || d < mejor.d) { const L = Math.sqrt(L2); let nx = -ey / L, ny = ex / L; if ((cx - px) * nx + (cy - py) * ny < 0) { nx = -nx; ny = -ny; } mejor = { d, mu, px, py, nx, ny }; }
+  });
+  if (!mejor) return null;
+  const mitad = (mejor.mu.t || 12) / 2 + (o.d || 0) / 2;
+  return { cx: Math.round((mejor.px + mejor.nx * mitad) * 10) / 10, cy: Math.round((mejor.py + mejor.ny * mitad) * 10) / 10, rot: (Math.round((Math.atan2(-mejor.nx, mejor.ny) * 180) / Math.PI) + 360) % 360, hueco: mejor.d - mitad };
+}
+
 // ── Carriles de iluminación (magnético o trifásico) con focos que se añaden donde se quiera
 const TIPOS_FOCO = { spot: 'Spot (cilindro)', spotmini: 'Spot magnético mini', proyector: 'Proyector orientable', lineal: 'Lineal', colgante: 'Colgante' };
 const FOCO_DEF = { spot: { lm: 800, ap: 36 }, spotmini: { lm: 400, ap: 30 }, proyector: { lm: 1500, ap: 24 }, lineal: { lm: 1800, ap: 110, largo: 60 }, colgante: { lm: 600, ap: 120 } };
@@ -1496,7 +1509,16 @@ export default function Visor3D() {
         const p = puntoSuelo(e); if (!p) return;
         arrastre.mov = true;
         const o = esc.children.find(x => x.userData.oid === arrastre.id);
-        if (o) { o.position.x = (p.x + arrastre.dx) * CM; o.position.z = (p.y + arrastre.dy) * CM; arrastre.cx = p.x + arrastre.dx; arrastre.cy = p.y + arrastre.dy; }
+        if (o) {
+          let nx = p.x + arrastre.dx, ny = p.y + arrastre.dy; arrastre.rot = undefined;
+          const ob = objsRef.current.find(x => x.id === arrastre.id);
+          if (imanRef.current && ob && !ob.pts && !['luz', 'led', 'carril', 'zona', 'falsotecho', 'barrido'].includes(ob.tipo)) {
+            const ms = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(pl => pl.muros || []);
+            const r = pegarCalc(ms, ob, nx, ny);
+            if (r && r.hueco < 14 && r.hueco > -25) { nx = r.cx; ny = r.cy; arrastre.rot = r.rot; o.rotation.y = -r.rot * Math.PI / 180; }
+          }
+          o.position.x = nx * CM; o.position.z = ny * CM; arrastre.cx = nx; arrastre.cy = ny;
+        }
       }
     };
     const onUpD = e => {
@@ -1617,7 +1639,7 @@ export default function Visor3D() {
         }
       } else if (arrastre) {
         const a = arrastre; arrastre = null; ctrl.enabled = true;
-        if (a.mov && a.cx != null) setObjs(prev => prev.map(x => x.id === a.id ? { ...x, cx: a.cx, cy: a.cy } : x));
+        if (a.mov && a.cx != null) setObjs(prev => prev.map(x => (x.id === a.id ? { ...x, cx: a.cx, cy: a.cy, ...(a.rot !== undefined ? { rot: a.rot } : {}) } : x)));
       }
     };
     el.addEventListener('pointerdown', onDownD, true);
@@ -2293,15 +2315,20 @@ export default function Visor3D() {
     else cambiar(o.id, { cy: o.cy <= T.cy ? T.cy - T.hy - g - O.hy : T.cy + T.hy + g + O.hy });
   };
   const pegarAPared = (o) => {
-    let mejor = null;
-    murosPlano().forEach(mu => {
-      const ex = mu.b[0] - mu.a[0], ey = mu.b[1] - mu.a[1], L2 = ex * ex + ey * ey || 1, t = Math.max(0, Math.min(1, ((o.cx - mu.a[0]) * ex + (o.cy - mu.a[1]) * ey) / L2));
-      const px = mu.a[0] + ex * t, py = mu.a[1] + ey * t, d = Math.hypot(o.cx - px, o.cy - py);
-      if (!mejor || d < mejor.d) { const L = Math.sqrt(L2); let nx = -ey / L, ny = ex / L; if ((o.cx - px) * nx + (o.cy - py) * ny < 0) { nx = -nx; ny = -ny; } mejor = { d, mu, px, py, nx, ny }; }
-    });
-    if (!mejor) { setAviso('No hay muros para pegarlo.'); return; }
-    const mitad = (mejor.mu.t || 12) / 2 + o.d / 2;
-    cambiar(o.id, { cx: Math.round((mejor.px + mejor.nx * mitad) * 10) / 10, cy: Math.round((mejor.py + mejor.ny * mitad) * 10) / 10, rot: (Math.round(Math.atan2(-mejor.nx, mejor.ny) * 180 / Math.PI) + 360) % 360 });
+    const r = pegarCalc(murosPlano(), o, o.cx, o.cy);
+    if (!r) { setAviso('No hay muros para pegarlo.'); return; }
+    cambiar(o.id, { cx: r.cx, cy: r.cy, rot: r.rot });
+  };
+  // Una máquina del plano: se pega al muro más cercano (o se gira 180° si queda mirando hacia el muro) y se escribe en el plano
+  const pegarEquipo = async () => {
+    const r = pegarCalc(murosPlano(), { d: parseFloat(eqNuevo?.d) || seleccion.d || seleccion.fondo }, seleccion.cx, seleccion.cy);
+    if (!r) { setAviso('No hay muros para pegarla.'); return; }
+    try { await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios: { x: r.cx, y: r.cy, rot: r.rot } }); setSeleccion(null); setAviso('Máquina pegada a la pared en el plano ✓. Si tienes Planos abierto, recárgalo. Si queda mirando al muro, usa «Girar 180°».'); api3d.current.recargar?.(); }
+    catch (e) { setAviso(e.response?.data?.error || 'No se pudo pegar la máquina'); }
+  };
+  const girarEquipo180 = async () => {
+    try { await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios: { rot: ((seleccion.rot || 0) + 180) % 360 } }); setSeleccion(null); setAviso('Máquina girada 180° en el plano ✓'); api3d.current.recargar?.(); }
+    catch (e) { setAviso(e.response?.data?.error || 'No se pudo girar'); }
   };
   const centrarEnSala = (o) => {
     const pl = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : []))[0];
@@ -3287,6 +3314,11 @@ export default function Visor3D() {
                   <button style={{ ...btn, background: '#2f6fa8' }} disabled={!refObj} onClick={() => colocarRespecto(objSel)}>Colocar a esa distancia</button>
                 </div>
               </details>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+                <button style={btn} onClick={() => cambiar(objSel.id, { z0: 0 })} title="Baja el objeto hasta apoyarlo en el suelo (altura 0)">⬇ Apoyar en el suelo</button>
+                <button style={btn} onClick={() => pegarAPared(objSel)} title="Lo apoya contra el muro más cercano, con la parte de atrás hacia el muro, a la altura que tenga">▐ Pegar a la pared</button>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 12, cursor: 'pointer' }} title="Al arrastrar un objeto cerca de un muro se pega y se gira solo"><input type="checkbox" checked={imanActivo} onChange={e => setImanActivo(e.target.checked)} /> Imán a las paredes al arrastrar</label>
               <details style={{ marginTop: 4 }}>
                 <summary style={{ cursor: 'pointer', opacity: 0.85 }}>Otras formas de colocar</summary>
                 <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -3491,6 +3523,10 @@ export default function Visor3D() {
           ))}
           {seleccion.cid && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d && <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 6, cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={estirarAlAplicar} onChange={e => setEstirarAlAplicar(e.target.checked)} style={{ marginTop: 2 }} /><span>Ajustar el modelo a estas medidas (lo deforma si hace falta)</span></label>}
           <button style={{ ...btn, background: '#2f6fa8', marginTop: 6 }} onClick={aplicarEquipo}>Aplicar al plano</button>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+            <button style={btn} onClick={pegarEquipo} title="La apoya contra el muro más cercano, con la parte de atrás hacia el muro, y lo escribe en el plano">▐ Pegar a la pared</button>
+            <button style={btn} onClick={girarEquipo180} title="Por si queda mirando hacia el muro">⟲ Girar 180°</button>
+          </div>
           {seleccion.cid && (() => {
             const mod = biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d;
             return (
