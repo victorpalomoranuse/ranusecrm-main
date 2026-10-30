@@ -417,6 +417,7 @@ function ListadoGroup({ group, onZoom }) {
                     {item.code && <span className="mp-listado-code">Cód. {item.code}</span>}
                     {showUds && <span className="mp-listado-uds">Uds: {uds}</span>}
                   </span>
+                  {item.notes && <span className="mp-listado-notes">{item.notes}</span>}
                   {(item.lumens || item.watts || item.color_temperature || item.color) && (
                     <span className="mp-listado-specs">
                       {item.lumens && <span className="mp-listado-spec">{item.lumens} lm</span>}
