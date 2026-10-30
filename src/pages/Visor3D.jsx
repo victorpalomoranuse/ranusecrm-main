@@ -1016,6 +1016,8 @@ export default function Visor3D() {
     }
     const ctrl = new OrbitControls(cam, renderer.domElement);
     ctrl.enableDamping = true;
+    // Como en SketchUp: botón central = girar la vista (con Mayús = desplazar), botón derecho = desplazar, rueda = acercar
+    ctrl.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
     const hemi = new THREE.HemisphereLight(0xffffff, 0xcfc8bf, 1.1);
     scene.add(hemi);
     const sol = new THREE.DirectionalLight(0xffffff, 1.6);
@@ -2515,14 +2517,14 @@ export default function Visor3D() {
       setProfAlz(tipo === 'suelo' ? 100 : 60);
     }
     a.alzPrev = { pos: a.cam.position.clone(), target: a.ctrl.target.clone(), fov: a.cam.fov, bg: a.scene.background, shift: a.shiftY || 0 };
-    a.shiftY = 0; a.cam.fov = 5; a.cam.updateProjectionMatrix(); a.cam.position.copy(pos); a.ctrl.target.copy(target); a.ctrl.enableRotate = false; a.ctrl.update();
+    a.shiftY = 0; a.cam.fov = 5; a.cam.updateProjectionMatrix(); a.cam.position.copy(pos); a.ctrl.target.copy(target); a.ctrl.enableRotate = false; a.ctrl.mouseButtons.MIDDLE = THREE.MOUSE.PAN; a.ctrl.update();
     a.scene.background = new THREE.Color(0xffffff); if (a.base) a.base.visible = false;
     setSelAcab(null); setSelObj(null); setAlz({ tipo, id: idObj, lado });
   };
   const salirAlzado = () => {
     const a = api3d.current, p = a.alzPrev;
     if (p) { a.cam.fov = p.fov; a.shiftY = p.shift; a.cam.updateProjectionMatrix(); a.cam.position.copy(p.pos); a.ctrl.target.copy(p.target); a.scene.background = p.bg; }
-    a.ctrl.enableRotate = true; if (a.base) a.base.visible = true; a.renderer.clippingPlanes = []; a.alzPrev = null; setAlz(null); a.ctrl.update();
+    a.ctrl.enableRotate = true; a.ctrl.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE; if (a.base) a.base.visible = true; a.renderer.clippingPlanes = []; a.alzPrev = null; setAlz(null); a.ctrl.update();
   };
   // Zona por medidas: se escriben posición y tamaño exactos (cm) y se crea sobre el muro, el suelo o el techo que se está viendo
   const crearZonaMedidas = () => {
@@ -2978,7 +2980,7 @@ export default function Visor3D() {
           <b>Atajos</b> <span style={{ opacity: 0.6 }}>(no funcionan escribiendo en un campo)</span><br />
           <b>Ctrl+Z</b> deshacer · <b>Ctrl+Y</b> rehacer · <b>Supr</b> borrar · <b>Ctrl+D</b> duplicar · <b>R</b> girar 90°<br />
           <b>Flechas</b> mover 5 cm (con Mayús 50) · <b>Re Pág / Av Pág</b> subir/bajar<br />
-          <b>W A S D</b> moverse (delante, atrás, lados) · <b>Q / E</b> bajar / subir · <b>Mayús</b> más rápido<br /><b>1</b> mover · <b>2</b> caja · <b>3</b> contorno · <b>4</b> empujar · <b>5</b> guía · <b>6</b> muro · <b>7</b> luz · <b>Esc</b> deseleccionar (o cancelar lo que estés dibujando) · <b>Espacio</b> herramienta Seleccionar
+          <b>Botón central</b> (rueda pulsada) girar la vista · con <b>Mayús</b> desplazarla · <b>Botón derecho</b> desplazar · <b>Rueda</b> acercar<br /><b>W A S D</b> moverse (delante, atrás, lados) · <b>Q / E</b> bajar / subir · <b>Mayús</b> más rápido<br /><b>1</b> mover · <b>2</b> caja · <b>3</b> contorno · <b>4</b> empujar · <b>5</b> guía · <b>6</b> muro · <b>7</b> luz · <b>Esc</b> deseleccionar (o cancelar lo que estés dibujando) · <b>Espacio</b> herramienta Seleccionar
         </div>
       )}
       {aviso && (
