@@ -875,6 +875,11 @@ export default function Visor3D() {
   const [objs, setObjs] = useState([]);            // objetos de la escena 3D
   const objsRef = useRef([]);
   const [selObj, setSelObj] = useState(null);      // id del objeto seleccionado
+  const [multi, setMulti] = useState({ base: null, ids: [] }); // resto de la selección múltiple (Mayús/Ctrl + clic); solo vale mientras selObj sea su base
+  const selExtra = multi.base === selObj && selObj ? multi.ids : [];
+  const selIdsRef = useRef(new Set()); selIdsRef.current = new Set([selObj, ...selExtra].filter(Boolean));
+  const selExtraRef = useRef([]); selExtraRef.current = selExtra;
+  const selExtraKey = selExtra.join(',');
   const [herr, setHerr] = useState('sel');         // 'sel' | 'caja'
   const herrRef = useRef('sel');
   const [bibAbierta, setBibAbierta] = useState(false);
@@ -1446,10 +1451,19 @@ export default function Visor3D() {
       const o = objetoBajo(e);
       if (!o) return;
       const ob = objsRef.current.find(x => x.id === o.userData.oid); if (!ob) return;
-      setSelObj(ob.id); setSelAcab(null);
+      const miembros = x => (x.grupo ? objsRef.current.filter(y => y.grupo === x.grupo).map(y => y.id) : [x.id]);
+      const actuales = [selObjRef.current, ...selExtraRef.current].filter(Boolean);
+      setSelAcab(null);
+      if (e.shiftKey || e.ctrlKey || e.metaKey) { // Mayús / Ctrl: añadir o quitar de la selección (si está agrupado, entra todo el grupo)
+        const m = miembros(ob), sel = m.every(i => actuales.includes(i)) ? actuales.filter(i => !m.includes(i)) : [...new Set([...actuales, ...m])];
+        setSelObj(sel[0] || null); setMulti({ base: sel[0] || null, ids: sel.slice(1) }); e.stopPropagation(); return;
+      }
+      let sel = actuales;
+      if (!actuales.includes(ob.id)) { sel = [ob.id, ...miembros(ob).filter(i => i !== ob.id)]; setSelObj(ob.id); setMulti({ base: ob.id, ids: sel.slice(1) }); }
       if (o.userData.sinArrastre) return;
       const p = puntoSuelo(e); if (!p) return;
-      ctrl.enabled = false; arrastre = { id: ob.id, dx: ob.cx - p.x, dy: ob.cy - p.y, mov: false };
+      const otros = sel.filter(i => i !== ob.id).map(i => objsRef.current.find(x => x.id === i)).filter(q => q && !q.pts).map(q => ({ id: q.id, dx0: q.cx - ob.cx, dy0: q.cy - ob.cy }));
+      ctrl.enabled = false; arrastre = { id: ob.id, dx: ob.cx - p.x, dy: ob.cy - p.y, mov: false, otros };
       e.stopPropagation();
     };
     const onMoveD = e => {
@@ -1514,12 +1528,13 @@ export default function Visor3D() {
         if (o) {
           let nx = p.x + arrastre.dx, ny = p.y + arrastre.dy; arrastre.rot = undefined;
           const ob = objsRef.current.find(x => x.id === arrastre.id);
-          if (imanRef.current && ob && !ob.pts && !['luz', 'led', 'carril', 'zona', 'falsotecho', 'barrido'].includes(ob.tipo)) {
+          if (imanRef.current && ob && !ob.pts && !arrastre.otros.length && !['luz', 'led', 'carril', 'zona', 'falsotecho', 'barrido'].includes(ob.tipo)) {
             const ms = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(pl => pl.muros || []);
             const r = pegarCalc(ms, ob, nx, ny);
             if (r && r.hueco < 14 && r.hueco > -25) { nx = r.cx; ny = r.cy; arrastre.rot = r.rot; o.rotation.y = -r.rot * Math.PI / 180; }
           }
           o.position.x = nx * CM; o.position.z = ny * CM; arrastre.cx = nx; arrastre.cy = ny;
+          arrastre.otros.forEach(q => { const m = esc.children.find(x => x.userData.oid === q.id); if (m) { m.position.x = (nx + q.dx0) * CM; m.position.z = (ny + q.dy0) * CM; } });
         }
       }
     };
@@ -1641,7 +1656,7 @@ export default function Visor3D() {
         }
       } else if (arrastre) {
         const a = arrastre; arrastre = null; ctrl.enabled = true;
-        if (a.mov && a.cx != null) setObjs(prev => prev.map(x => (x.id === a.id ? { ...x, cx: a.cx, cy: a.cy, ...(a.rot !== undefined ? { rot: a.rot } : {}) } : x)));
+        if (a.mov && a.cx != null) setObjs(prev => prev.map(x => { if (x.id === a.id) return { ...x, cx: a.cx, cy: a.cy, ...(a.rot !== undefined ? { rot: a.rot } : {}) }; const q = a.otros.find(t => t.id === x.id); return q ? { ...x, cx: a.cx + q.dx0, cy: a.cy + q.dy0 } : x; }));
       }
     };
     el.addEventListener('pointerdown', onDownD, true);
@@ -1783,11 +1798,11 @@ export default function Visor3D() {
       g.userData.modeloCargado = true;
       cargarModelo(mod).then(raw => {
         if (!g.parent) return;
-        const giroE = ((mod.rot || 0) % 180) !== 0;
+        const rotE = (mod.rot || 0) + (modosEq[e.id]?.rotM || 0), giroE = (rotE % 180) !== 0;
         const mm = ajustarModelo(raw, (giroE ? (e.d || e.fondo) : (e.w || e.largo)) * CM, (giroE ? (e.w || e.largo) : (e.d || e.fondo)) * CM, (e.alto || 110) * CM, modosEq[e.id]?.modo || 'auto'); if (!mm) return;
         mm.userData.girado = giroE;
         setMtick(v => v + 1);
-        sobrescribirModelo(mm, {}, texturas); mm.userData.modeloEq = true; mm.rotation.y = -((mod.rot || 0) * Math.PI) / 180; g.add(mm);
+        sobrescribirModelo(mm, {}, texturas); mm.userData.modeloEq = true; mm.rotation.y = -(rotE * Math.PI) / 180; g.add(mm);
         if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
         const ov = aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov);
       }).catch(() => { g.userData.modeloCargado = false; });
@@ -1966,7 +1981,7 @@ export default function Visor3D() {
       if (o.tipo === 'zona' && Array.isArray(o.pts) && o.pts.length >= 3) {
         const gz = new THREE.Group();
         const val = o.color, tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
-        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#9aa3ad'), roughness: 0.7, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, emissive: o.id === selObj ? 0x335577 : 0x000000 });
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#9aa3ad'), roughness: 0.7, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, emissive: selIdsRef.current.has(o.id) ? 0x335577 : 0x000000 });
         if (tx) { mt.map = texturaDe(tx, false); mt.color.setHex(0xffffff); }
         ledEm(mt, val);
         const geo = new THREE.ShapeGeometry(new THREE.Shape(o.pts.map(p => new THREE.Vector2(p[0] * CM, p[1] * CM))));
@@ -1990,13 +2005,13 @@ export default function Visor3D() {
         return;
       }
       if (o.tipo === 'led' && Array.isArray(o.pts) && o.pts.length >= 2) {
-        const gl = construirLed(o, presup, ambiente.luces, o.id === selObj);
+        const gl = construirLed(o, presup, ambiente.luces, selIdsRef.current.has(o.id));
         gl.position.set(o.cx * CM, 0, o.cy * CM); gl.userData.oid = o.id; gl.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
         a.esc.add(gl);
         return;
       }
       if (o.tipo === 'carril' && Array.isArray(o.pts) && o.pts.length >= 2) {
-        const gc = construirCarril(o, presup, ambiente.luces, o.id === selObj);
+        const gc = construirCarril(o, presup, ambiente.luces, selIdsRef.current.has(o.id));
         gc.position.set(o.cx * CM, 0, o.cy * CM); gc.userData.oid = o.id; gc.userData.carril = true; gc.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
         a.esc.add(gc);
         return;
@@ -2004,7 +2019,7 @@ export default function Visor3D() {
       if (o.tipo === 'barrido' && Array.isArray(o.pts) && o.pts.length >= 2) {
         const geo = geometriaBarrido(o.pts, o.perfil || PERFILES['Rodapié recto'], o.esc || 1, !!o.cerrado, o.lado === -1 ? -1 : 1); if (!geo) return;
         const val = o.color, tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
-        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#ffffff'), roughness: 0.6, side: THREE.DoubleSide, emissive: o.id === selObj ? 0x335577 : 0x000000 });
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#ffffff'), roughness: 0.6, side: THREE.DoubleSide, emissive: selIdsRef.current.has(o.id) ? 0x335577 : 0x000000 });
         if (tx) { mt.map = texturaDe(tx, true); mt.color.setHex(0xffffff); }
         const mesh = new THREE.Mesh(geo, mt); mesh.castShadow = mesh.receiveShadow = true; mesh.position.y = (o.z0 || 0) * CM;
         const gb = new THREE.Group(); gb.position.set(o.cx * CM, 0, o.cy * CM); gb.add(mesh);
@@ -2023,7 +2038,7 @@ export default function Visor3D() {
         const geo = geos.length > 1 ? mergeGeometries(geos) : geos[0];
         if (o.plano === 'horizontal') geo.rotateX(-Math.PI / 2);
         const val = o.color, tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
-        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#222222'), roughness: 0.5, metalness: 0.1, emissive: o.id === selObj ? 0x335577 : 0x000000 });
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#222222'), roughness: 0.5, metalness: 0.1, emissive: selIdsRef.current.has(o.id) ? 0x335577 : 0x000000 });
         if (tx) { mt.map = texturaDe(tx, false); mt.color.setHex(0xffffff); }
         const mesh = new THREE.Mesh(geo, mt); mesh.castShadow = mesh.receiveShadow = true; mesh.position.y = (o.z0 || 0) * CM;
         const gl = new THREE.Group(); gl.position.set(o.cx * CM, 0, o.cy * CM); gl.rotation.y = -(o.rot || 0) * Math.PI / 180; gl.add(mesh);
@@ -2035,7 +2050,7 @@ export default function Visor3D() {
         const ft = o.ft || {}, D = ft.descenso ?? 15, H = (o.h || 260) * CM, inner = insetPoligono(o.pts, ft.gap ?? 12);
         const gf = new THREE.Group(); gf.position.set(o.cx * CM, 0, o.cy * CM);
         const val = o.color, tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
-        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#f6f4f1'), roughness: 0.9, emissive: o.id === selObj ? 0x335577 : 0x000000 });
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#f6f4f1'), roughness: 0.9, emissive: selIdsRef.current.has(o.id) ? 0x335577 : 0x000000 });
         if (tx) { mt.map = texturaDe(tx, false); mt.color.setHex(0xffffff); }
         const prof = Math.max(0.01, Math.abs(D) * CM);
         const geo = new THREE.ExtrudeGeometry(new THREE.Shape(inner.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM))), { depth: prof, bevelEnabled: false });
@@ -2050,7 +2065,7 @@ export default function Visor3D() {
             b.position.set(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.005 : H + prof + 0.005), ((p[1] + q[1]) / 2) * CM); b.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); gf.add(b);
           }
         }
-        if (o.id === selObj) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(losa.position); gf.add(l); }
+        if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(losa.position); gf.add(l); }
         gf.userData.oid = o.id; gf.userData.sinArrastre = true; gf.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
         a.esc.add(gf);
         return;
@@ -2060,7 +2075,7 @@ export default function Visor3D() {
         const cont = construirMueble(o, texturas); cont.position.y = (o.z0 || 0) * CM; gm.add(cont);
         const hit = new THREE.Mesh(new THREE.BoxGeometry(o.w * CM, o.alto * CM, o.d * CM), new THREE.MeshBasicMaterial({ visible: false }));
         hit.position.y = (o.alto * CM) / 2 + (o.z0 || 0) * CM; hit.userData.hit = true; gm.add(hit);
-        if (o.id === selObj) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); gm.add(l); }
+        if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); gm.add(l); }
         gm.position.set(o.cx * CM, 0, o.cy * CM); gm.rotation.y = -(o.rot || 0) * Math.PI / 180;
         gm.userData.oid = o.id; gm.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
         a.esc.add(gm);
@@ -2079,7 +2094,7 @@ export default function Visor3D() {
       const liso = o.tipo === 'caja' || esPrisma;
       const mats = Array.from({ length: esPrisma ? 2 : 6 }, (_, i) => {
         const val = (o.caras && o.caras[i]) || o.color;
-        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, liso ? '#9aa3ad' : '#2f6fa8'), roughness: 0.55, metalness: liso ? 0 : 0.15, emissive: o.id === selObj ? 0x335577 : 0x000000, transparent: !!mod, opacity: mod ? 0.18 : 1 });
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, liso ? '#9aa3ad' : '#2f6fa8'), roughness: 0.55, metalness: liso ? 0 : 0.15, emissive: selIdsRef.current.has(o.id) ? 0x335577 : 0x000000, transparent: !!mod, opacity: mod ? 0.18 : 1 });
         const tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
         if (tx) { const mp = texturaDe(tx, true).clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, o.w / tx.tam), Math.max(0.2, o.alto / tx.tam)); mt.map = mp; mt.color.setHex(0xffffff); }
         ledEm(mt, val);
@@ -2105,7 +2120,7 @@ export default function Visor3D() {
           aplicarRegiones(mm, 'o:' + o.id + ':', acab.regiones, texturas);
         }).catch(() => { fantasma(1); });
       }
-      if (o.id === selObj) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(m.position); g.add(l); }
+      if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(m.position); g.add(l); }
       g.position.set(o.cx * CM, 0, o.cy * CM); g.rotation.y = -(o.rot || 0) * Math.PI / 180;
       luzLedObjeto(g, o, presup, ambiente.luces);
       g.userData.oid = o.id;
@@ -2113,7 +2128,7 @@ export default function Visor3D() {
       a.esc.add(g);
     });
     a.esc.children.forEach(gr => aplicarRegiones(gr, 'o:' + gr.userData.oid + ':', acab.regiones, texturas));
-  }, [objs, selObj, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, ambiente.kLuces, acab.regiones]);
+  }, [objs, selObj, selExtraKey, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, ambiente.kLuces, acab.regiones]);
 
   // Guardado automático de la escena (sin pisar el dibujo del plano 2D)
   useEffect(() => {
@@ -2246,6 +2261,15 @@ export default function Visor3D() {
     const n = { ...o, id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), cx: o.cx + 30, cy: o.cy + 30 };
     setObjs(prev => [...prev, n]); setSelObj(n.id);
   };
+  const idsSel = [selObj, ...selExtra].filter(Boolean);
+  const agrupar = () => { const g = 'g' + Date.now().toString(36); setObjs(prev => prev.map(o => (idsSel.includes(o.id) ? { ...o, grupo: g } : o))); setGuardado('Agrupados: al pulsar uno se seleccionan todos'); };
+  const desagrupar = () => { setObjs(prev => prev.map(o => { if (!idsSel.includes(o.id) || !o.grupo) return o; const { grupo, ...r } = o; return r; })); setGuardado('Grupo deshecho'); };
+  const borrarSel = () => { setObjs(prev => prev.filter(o => !idsSel.includes(o.id))); setSelObj(null); };
+  const duplicarSel = () => {
+    const t = Date.now().toString(36), gmap = {}, nuevos = objs.filter(o => idsSel.includes(o.id)).map(o => ({ ...o, id: 'o' + t + Math.random().toString(36).slice(2, 5), cx: o.cx + 30, cy: o.cy + 30, ...(o.grupo ? { grupo: (gmap[o.grupo] = gmap[o.grupo] || 'g' + t + Math.random().toString(36).slice(2, 4)) } : {}) }));
+    if (!nuevos.length) return; setObjs(prev => [...prev, ...nuevos]); setSelObj(nuevos[0].id); setMulti({ base: nuevos[0].id, ids: nuevos.slice(1).map(o => o.id) });
+  };
+  const moverSel = c => setObjs(prev => prev.map(o => { if (!idsSel.includes(o.id)) return o; const r = {}; for (const k of Object.keys(c)) r[k] = k === 'z0' ? Math.max(0, (o.z0 || 0) + c[k]) : (o[k] || 0) + c[k]; return { ...o, ...r }; }));
   const objSel = objs.find(o => o.id === selObj) || null;
   const aplicarSnap = s => { saltoRef.current = true; setObjs(s.objs); setAcab(s.acab); setRodapie(s.rodapie); setGuias(s.guias); };
   const deshacer = () => {
@@ -2269,9 +2293,13 @@ export default function Visor3D() {
       if ((tag === 'input' || tag === 'select') && !(ctrl && (k === 'z' || k === 'y'))) return;
       if (ctrl && k === 'z' && !e.shiftKey) { e.preventDefault(); deshacer(); return; }
       if (ctrl && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); rehacer(); return; }
-      if (ctrl && k === 'd' && selObj) { e.preventDefault(); duplicar(selObj); return; }
+      if (ctrl && k === 'd' && selObj) { e.preventDefault(); if (selExtra.length) duplicarSel(); else duplicar(selObj); return; }
       if (['poli', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'carril', 'muro'].includes(herr) && (k === 'enter' || k === 'escape')) return; // lo gestiona la propia herramienta
-      if ((k === 'delete' || k === 'backspace') && selObj) { e.preventDefault(); borrar(selObj); return; }
+      if ((k === 'delete' || k === 'backspace') && selObj) { e.preventDefault(); if (selExtra.length) borrarSel(); else borrar(selObj); return; }
+      if (selExtra.length && !ctrl && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'pageup', 'pagedown'].includes(k)) {
+        e.preventDefault(); const paso = e.shiftKey ? 50 : 5;
+        moverSel({ arrowleft: { cx: -paso }, arrowright: { cx: paso }, arrowup: { cy: -paso }, arrowdown: { cy: paso }, pageup: { z0: paso }, pagedown: { z0: -paso } }[k]); return;
+      }
       if (selObj && !ctrl && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'pageup', 'pagedown'].includes(k)) {
         e.preventDefault(); const paso = e.shiftKey ? 50 : 5, o = objs.find(x => x.id === selObj); if (!o) return;
         const c = { arrowleft: { cx: o.cx - paso }, arrowright: { cx: o.cx + paso }, arrowup: { cy: o.cy - paso }, arrowdown: { cy: o.cy + paso }, pageup: { z0: (o.z0 || 0) + paso }, pagedown: { z0: Math.max(0, (o.z0 || 0) - paso) } }[k];
@@ -2399,7 +2427,7 @@ export default function Visor3D() {
   const aplicarEquipo = async () => {
     if (!seleccion || !eqNuevo) return;
     try {
-      if (estirarAlAplicar && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d) { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar' } })); }
+      if (estirarAlAplicar && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d) { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { ...m[seleccion.id], modo: 'estirar' } })); }
       await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios: eqNuevo });
       setSeleccion(null); setAviso(AVISO_PLANO); api3d.current.recargar?.();
     } catch (e) { setAviso(e.response?.data?.error || 'No se pudo cambiar el equipo'); }
@@ -3291,7 +3319,20 @@ export default function Visor3D() {
           </div>
         </div>
       )}
-      {objSel && (
+      {selExtra.length > 0 && (
+        <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>{idsSel.length} objetos seleccionados</div>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            <button style={{ ...btn, background: '#2f6fa8' }} onClick={agrupar} title="Al pulsar uno del grupo se seleccionan todos y se mueven juntos">Agrupar</button>
+            <button style={btn} onClick={desagrupar}>Desagrupar</button>
+            <button style={btn} onClick={duplicarSel}>Duplicar</button>
+            <button style={btn} onClick={() => moverSel({ z0: -100000 })} title="Los apoya en el suelo">⬇ Al suelo</button>
+            <button style={{ ...btn, background: '#a33' }} onClick={borrarSel}>Borrar</button>
+          </div>
+          <div style={{ opacity: 0.6, fontSize: 11, marginTop: 8 }}>Mayús o Ctrl + clic añade o quita objetos. Arrastra uno para mover todos; flechas y Re Pág / Av Pág también. Esc deselecciona.</div>
+        </div>
+      )}
+      {objSel && !selExtra.length && (
         <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
           <input value={objSel.nombre} onChange={e => cambiar(objSel.id, { nombre: e.target.value })} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontWeight: 700, marginBottom: 8 }} />
           {[['cx', 'Posición X'], ['cy', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Altura desde suelo'], ['rot', 'Giro °']].filter(([k]) => {
@@ -3559,7 +3600,8 @@ export default function Visor3D() {
                   <input type="file" accept=".glb,.gltf,.obj,.dae,.zip,.skp" style={{ display: 'none' }} onChange={e => { asignarModeloEq(e.target.files?.[0]); e.target.value = ''; }} />
                 </label>
                 {mod && <button style={{ ...btn, marginLeft: 6 }} onClick={quitarModeloEq}>Quitar</button>}
-                {mod && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}><span style={{ opacity: 0.7 }}>Giro del modelo</span><select value={mod.rot || 0} onChange={e => girarModeloEq(parseInt(e.target.value, 10))} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></label>}
+                {mod && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }} title="Gira el modelo solo en esta máquina"><span style={{ opacity: 0.7 }}>Giro del modelo (solo esta)</span><select value={modosEq[seleccion.id]?.rotM || 0} onChange={e => { const v = parseInt(e.target.value, 10); refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'auto', ...m[seleccion.id], rotM: v } })); }} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></label>}
+                {mod && <details style={{ marginTop: 4, fontSize: 11 }}><summary style={{ cursor: 'pointer', opacity: 0.7 }}>Giro base del producto</summary><div style={{ opacity: 0.6, margin: '4px 0' }}>Afecta a TODAS las máquinas iguales. Úsalo solo si el archivo viene girado de origen.</div><select value={mod.rot || 0} onChange={e => girarModeloEq(parseInt(e.target.value, 10))} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></details>}
                 {subiendo && <div style={{ fontSize: 11, opacity: 0.8, marginTop: 4 }}>{subiendo}</div>}
                 <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda en el producto del catálogo y se ve igual en todos los planos. Si sale girado, usa «Giro del modelo».</div>
               </div>
@@ -3573,7 +3615,7 @@ export default function Visor3D() {
               <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Tamaño del modelo</div>
                 {nat ? <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6, lineHeight: 1.5 }}>El archivo mide <b>{fm(nat[0])} × {fm(nat[1])} × {fm(nat[2])} cm</b> (largo × fondo × alto).<br />En el plano pone {fm(seleccion.w || seleccion.largo)} × {fm(seleccion.d || seleccion.fondo)} × {fm(seleccion.alto || 110)} cm.<br />Ahora se ve a <b>{fm(mos[0])} × {fm(mos[1])} × {fm(mos[2])} cm</b>.</div> : <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 6 }}>Cargando el modelo…</div>}
-                <select value={modo} onChange={e => { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: e.target.value } })); }} style={{ ...btn, width: '100%', marginBottom: 6 }}>
+                <select value={modo} onChange={e => { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { ...m[seleccion.id], modo: e.target.value } })); }} style={{ ...btn, width: '100%', marginBottom: 6 }}>
                   <option value="auto">Automático (tamaño del archivo si es razonable)</option>
                   <option value="nativo">Tamaño original del archivo</option>
                   <option value="caber">Mantener proporciones dentro de las medidas del plano</option>
