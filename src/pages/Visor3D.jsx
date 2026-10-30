@@ -418,6 +418,47 @@ function giroAuto(raw, w, d) {
   const rm = s.x / s.z, rc = w / d;
   return ((rm > 1.15 && rc < 1 / 1.15) || (rm < 1 / 1.15 && rc > 1.15)) ? 90 : 0;
 }
+// Alinear el modelo 3D con el dibujo de la planta del producto (el bloque que se ve en Planos): se compara la silueta del modelo visto desde arriba,
+// girado 0/90/180/270°, con el dibujo 2D y se queda el giro que más se parece. Devuelve { rot, parecido, claro } (rot = giro total del modelo en grados)
+async function alinearConBloque(raw, planta, L, F) {
+  const N = 96;
+  // 1) máscara del dibujo 2D: se pinta el SVG y se rellena el interior (lo que no se alcanza desde el borde)
+  const sw = Math.max(L, F) / 70, svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + L + ' ' + F + '" width="' + N + '" height="' + N + '" preserveAspectRatio="none"><rect width="' + L + '" height="' + F + '" fill="#fff"/>' + planta.replace(/#000000/g, '#000').replace(/stroke-width="([\d.]+)"/g, (m, v) => 'stroke-width="' + Math.max(parseFloat(v), sw) + '"') + '</svg>';
+  const img = await new Promise((ok, mal) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => mal(new Error('svg')); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); });
+  const cv = document.createElement('canvas'); cv.width = cv.height = N; const cx = cv.getContext('2d', { willReadFrequently: true }); cx.fillStyle = '#fff'; cx.fillRect(0, 0, N, N); cx.drawImage(img, 0, 0, N, N);
+  const px = cx.getImageData(0, 0, N, N).data, vacio = i => px[i * 4] > 225 && px[i * 4 + 1] > 225 && px[i * 4 + 2] > 225, ext = new Uint8Array(N * N), cola = [];
+  const mete = i => { if (!ext[i] && vacio(i)) { ext[i] = 1; cola.push(i); } };
+  for (let k = 0; k < N; k++) { mete(k); mete((N - 1) * N + k); mete(k * N); mete(k * N + N - 1); }
+  while (cola.length) { const i = cola.pop(), x = i % N; if (x > 0) mete(i - 1); if (x < N - 1) mete(i + 1); if (i >= N) mete(i - N); if (i < N * (N - 1)) mete(i + N); }
+  let mask = new Uint8Array(N * N), area = 0; for (let i = 0; i < N * N; i++) { mask[i] = ext[i] ? 0 : 1; area += mask[i]; }
+  if (area < N * N * 0.12) { area = 0; for (let i = 0; i < N * N; i++) { mask[i] = vacio(i) ? 0 : 1; area += mask[i]; } } // dibujo abierto: se usan los trazos
+  if (area < 20) return null;
+  // 2) triángulos del modelo en planta (x, z)
+  raw.updateMatrixWorld(true); const tr = []; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; const v = new THREE.Vector3();
+  raw.traverse(m => {
+    if (!m.isMesh || !m.geometry?.attributes?.position) return;
+    const P = m.geometry.attributes.position, I = m.geometry.index, n = I ? I.count : P.count, paso = Math.max(1, Math.floor(n / 3 / 30000)) * 3;
+    const get = k => { const j = I ? I.getX(k) : k; v.fromBufferAttribute(P, j).applyMatrix4(m.matrixWorld); return [v.x, v.z]; };
+    for (let k = 0; k + 2 < n; k += paso) { const a = get(k), b = get(k + 1), c = get(k + 2); tr.push(a, b, c); for (const p of [a, b, c]) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); z0 = Math.min(z0, p[1]); z1 = Math.max(z1, p[1]); } }
+  });
+  if (!tr.length || !(x1 > x0) || !(z1 > z0)) return null;
+  const cxm = (x0 + x1) / 2, czm = (z0 + z1) / 2, res = {}; const cv2 = document.createElement('canvas'); cv2.width = cv2.height = N; const c2 = cv2.getContext('2d', { willReadFrequently: true });
+  for (const r of [0, 90, 180, 270]) {
+    const th = -r * Math.PI / 180, co = Math.cos(th), si = Math.sin(th), dx = (r % 180) ? (z1 - z0) : (x1 - x0), dz = (r % 180) ? (x1 - x0) : (z1 - z0);
+    c2.clearRect(0, 0, N, N); c2.fillStyle = '#000'; c2.beginPath();
+    for (let t = 0; t < tr.length; t += 3) {
+      const Q = [0, 1, 2].map(q => { const p = tr[t + q], X = p[0] - cxm, Z = p[1] - czm; return [((X * co + Z * si) / dx + 0.5) * N, ((-X * si + Z * co) / dz + 0.5) * N]; });
+      if ((Q[1][0] - Q[0][0]) * (Q[2][1] - Q[0][1]) - (Q[1][1] - Q[0][1]) * (Q[2][0] - Q[0][0]) < 0) Q.reverse(); // mismo sentido en todos: si no, al solaparse se anulan
+      c2.moveTo(Q[0][0], Q[0][1]); c2.lineTo(Q[1][0], Q[1][1]); c2.lineTo(Q[2][0], Q[2][1]); c2.closePath();
+    }
+    c2.fill();
+    const d = c2.getImageData(0, 0, N, N).data; let inter = 0, uni = 0;
+    for (let i = 0; i < N * N; i++) { const a = d[i * 4 + 3] > 100 ? 1 : 0, b = mask[i]; inter += a & b; uni += a | b; }
+    res[r] = uni ? inter / uni : 0;
+  }
+  const orden = Object.entries(res).sort((p, q) => q[1] - p[1]);
+  return { rot: parseInt(orden[0][0], 10), parecido: orden[0][1], claro: orden[0][1] - orden[1][1] > 0.02, res };
+}
 // El modelo se escala (sin deformarlo) para que quepa en las medidas del objeto y se apoya en el suelo, centrado
 // modo: 'caber' (mantiene proporciones y cabe en las medidas), 'estirar' (se deforma hasta las medidas exactas), 'nativo' (tamaño del archivo, en metros)
 // o 'auto' (tamaño original si es razonable; si no, cabe). Sin modo = 'caber'.
@@ -2079,7 +2120,7 @@ export default function Visor3D() {
       g.userData.modeloCargado = true;
       cargarModelo(mod).then(raw => {
         if (!g.parent) return;
-        const rotE = (mod.rot || 0) + (modosEq[e.id]?.rotM || 0) + (!mod.rot && !modosEq[e.id]?.rotM ? giroAuto(raw, e.w || e.largo, e.d || e.fondo) : 0), giroE = (rotE % 180) !== 0;
+        const rotE = (mod.rot || 0) + (modosEq[e.id]?.rotM || 0) + (!mod.rot && !modosEq[e.id]?.rotM && !modosEq[e.id]?.alin ? giroAuto(raw, e.w || e.largo, e.d || e.fondo) : 0), giroE = (rotE % 180) !== 0;
         const mm = ajustarModelo(raw, (giroE ? (e.d || e.fondo) : (e.w || e.largo)) * CM, (giroE ? (e.w || e.largo) : (e.d || e.fondo)) * CM, (e.alto || 110) * CM, modosEq[e.id]?.modo || 'estirar'); if (!mm) return;
         mm.userData.girado = giroE;
         setMtick(v => v + 1);
@@ -2690,6 +2731,22 @@ export default function Visor3D() {
   const abrirDespiece = async () => {
     setMedAbierta(true); setMedFilas(null);
     try { const r = await api.get('/medicion/' + id + '/mediciones3d'); setMedFilas(r.data?.filas || []); } catch { setMedFilas([]); setAviso('No se pudo calcular el despiece'); }
+  };
+  // «Alinear con el plano»: gira el modelo 3D para que coincida con el dibujo de la planta del producto (en esta máquina o en todas las iguales)
+  const [alinMsg, setAlinMsg] = useState('');
+  const alinearConPlano = async (todas) => {
+    const eq = seleccion; if (!eq?.cid) return;
+    const prod = biblioteca?.find(m => m.id === eq.cid), mod = prod?.modelo3d, bq = prod?.bloque;
+    if (!mod || !bq?.planta) { setAlinMsg('Este producto no tiene dibujo de planta (bloque) en Planos con el que comparar'); return; }
+    setAlinMsg('Comparando el modelo con el dibujo del plano…');
+    try {
+      const raw = await cargarModelo(mod), r = await alinearConBloque(raw, bq.planta, bq.largo || prod.w, bq.fondo || prod.d);
+      if (!r) { setAlinMsg('No he podido sacar la silueta (el dibujo de la planta está vacío o el modelo no tiene geometría)'); return; }
+      const rotM = ((r.rot - (mod.rot || 0)) % 360 + 360) % 360;
+      const ids = todas ? ((api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(pl => pl?.equipos || []).filter(x => x.cid === eq.cid).map(x => x.id)) : [eq.id];
+      refrescarModelosEq(); setModosEq(m => { const n = { ...m }; (ids.length ? ids : [eq.id]).forEach(i => { n[i] = { modo: 'estirar', ...n[i], rotM, alin: true }; }); return n; });
+      setAlinMsg('Alineado: giro ' + r.rot + '° (parecido ' + Math.round(r.parecido * 100) + '%)' + (todas ? ' en ' + (ids.length || 1) + ' máquinas' : '') + (r.claro ? '' : '. La planta es casi simétrica: el frente puede quedar al revés, si es así usa «Giro del modelo» 180°'));
+    } catch (e) { setAlinMsg('No se pudo alinear: ' + (e.message || 'error')); }
   };
   const refrescarModelosEq = () => {
     api3d.current.raiz?.traverse(g => {
@@ -4148,6 +4205,7 @@ export default function Visor3D() {
                 </label>
                 {mod && <button style={{ ...btn, marginLeft: 6 }} onClick={quitarModeloEq}>Quitar</button>}
                 {mod && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }} title="Gira el modelo solo en esta máquina"><span style={{ opacity: 0.7 }}>Giro del modelo (solo esta)</span><select value={modosEq[seleccion.id]?.rotM || 0} onChange={e => { const v = parseInt(e.target.value, 10); refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], rotM: v } })); }} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></label>}
+                {mod && biblioteca?.find(m => m.id === seleccion.cid)?.bloque?.planta && <div style={{ marginTop: 6 }}><button style={{ ...btn, background: '#2f6fa8' }} onClick={() => alinearConPlano(false)} title="Compara el modelo con el dibujo de la planta de Planos y lo gira para que coincidan">🧭 Alinear con el plano</button><button style={{ ...btn, marginLeft: 6 }} onClick={() => alinearConPlano(true)} title="Lo mismo en todas las máquinas de este producto">en todas las iguales</button>{alinMsg && <div style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>{alinMsg}</div>}</div>}
                 {mod && <details style={{ marginTop: 4, fontSize: 11 }}><summary style={{ cursor: 'pointer', opacity: 0.7 }}>Giro base del producto</summary><div style={{ opacity: 0.6, margin: '4px 0' }}>Afecta a TODAS las máquinas iguales. Úsalo solo si el archivo viene girado de origen.</div><select value={mod.rot || 0} onChange={e => girarModeloEq(parseInt(e.target.value, 10))} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></details>}
                 {subiendo && <div style={{ fontSize: 11, opacity: 0.8, marginTop: 4 }}>{subiendo}</div>}
                 <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda en el producto del catálogo y se ve igual en todos los planos. Si sale girado, usa «Giro del modelo».</div>
