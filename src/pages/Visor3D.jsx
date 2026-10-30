@@ -8,6 +8,11 @@ import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import api from '../services/api';
 
 // Visor 3D de un plano de Planos (lee su modelo3d). Pensado para gimnasios: paredes con puertas y ventanas,
@@ -912,6 +917,7 @@ export default function Visor3D() {
   const navigate = useNavigate();
   const caja = useRef(null);
   const [estado, setEstado] = useState('cargando');
+  const [realista, setRealista] = useState(() => { try { return localStorage.getItem('visor3dRealista') === '1'; } catch { return false; } });
   const [titulo, setTitulo] = useState('');
   const [calidad, setCalidad] = useState(() => { try { return localStorage.getItem('visor3dCalidad') || 'media'; } catch { return 'media'; } });
   const api3d = useRef({});
@@ -1099,7 +1105,7 @@ export default function Visor3D() {
       renderer.setSize(w, h);
       cam.aspect = w / h; cam.updateProjectionMatrix();
     };
-    const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, ultLod = 0, enMov = false, ema = 16, escala = 1, ultGob = performance.now(), sinSombras = false;
+    const vR2 = new THREE.Vector2(); const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, ultLod = 0, enMov = false, ema = 16, escala = 1, ultGob = performance.now(), sinSombras = false;
     const hud = document.createElement('div'); hud.style.cssText = 'position:absolute;left:8px;bottom:8px;font:11px monospace;color:#fff;background:rgba(0,0,0,0.45);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:5'; el.appendChild(hud);
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
     const bucle = () => {
@@ -1124,7 +1130,11 @@ export default function Visor3D() {
         } else if (!movi && L.some(it => it.peq)) L.forEach(it => { if (it.peq) { it.peq = false; it.mm.visible = true; it.prox?.(false); } });
       }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
-      ctrl.update(); renderer.render(scene, cam);
+      ctrl.update();
+      if (a0.composer) {
+        const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
+        a0.composer.render();
+      } else renderer.render(scene, cam);
       // regulador automático: si va a menos de ~25 fps baja la resolución y, si aun así va lento, quita las sombras; si sobra potencia, la recupera
       if (ahora - ultGob > 1000) {
         ultGob = ahora; const base = a0.prBase || 1;
@@ -1800,6 +1810,31 @@ export default function Visor3D() {
     a.renderer.toneMappingExposure = ambiente.exposicion;
     try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null })); } catch { /* sin almacenamiento */ }
   }, [hora, ambiente.exposicion, ambiente.luces, ambiente.kSol, estado, rev]);
+
+  // Modo realista: reflejos de un entorno de estudio, oclusión ambiental (sombras de contacto) y bordes suavizados. Es opcional: en equipos flojos se deja apagado.
+  useEffect(() => {
+    const a = api3d.current; if (!a.renderer || estado === 'cargando') return;
+    try { localStorage.setItem('visor3dRealista', realista ? '1' : '0'); } catch { /* sin almacenamiento */ }
+    if (a.composer) { a.composer.dispose?.(); a.composer = null; }
+    if (a.envTex) { a.envTex.dispose(); a.envTex = null; }
+    a.scene.environment = null;
+    if (!realista) return;
+    try {
+      const pm = new THREE.PMREMGenerator(a.renderer);
+      a.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose();
+      a.scene.environment = a.envTex; a.scene.environmentIntensity = 0.55;
+      const sz = a.renderer.getSize(new THREE.Vector2());
+      const rt = new THREE.WebGLRenderTarget(sz.x, sz.y, { type: THREE.HalfFloatType, samples: 4 });
+      const comp = new EffectComposer(a.renderer, rt);
+      comp.addPass(new RenderPass(a.scene, a.cam));
+      const ao = new GTAOPass(a.scene, a.cam, sz.x, sz.y);
+      ao.updateGtaoMaterial({ radius: 0.3, distanceExponent: 1.5, thickness: 1, scale: 1.2, samples: 12 });
+      ao.blendIntensity = 0.9;
+      comp.addPass(ao);
+      comp.addPass(new OutputPass());
+      a.composer = comp; a.compW = null;
+    } catch (e) { console.warn('modo realista', e); setRealista(false); }
+  }, [realista, estado]);
 
   // Varias plantas: se pueden ocultar por separado
   useEffect(() => {
@@ -2830,6 +2865,7 @@ export default function Visor3D() {
         <button style={{ ...bTop, ...(camAbierta ? bOn : {}) }} onClick={() => setCamAbierta(v => !v)} title="Altura de la cámara, nivelarla, focal y verticales rectas">🎥 Cámara</button>
         <button style={{ ...bTop, ...(escAbierta ? bOn : {}) }} onClick={() => setEscAbierta(v => !v)} title="Escenas guardadas: vistas a las que volver y desde las que renderizar">🎬 Escenas{escenas.length ? ' (' + escenas.length + ')' : ''}</button>
         <span style={{ flex: 1, minWidth: 8 }} />
+        <button style={{ ...bTop, ...(realista ? { background: '#2f6fa8' } : {}) }} onClick={() => setRealista(v => !v)} title="Reflejos, sombras de contacto y bordes suaves. Si va lento, apágalo">✨ Realista</button>
         <select style={bTop} value={calidad} onChange={e => setCalidad(e.target.value)} title="Si va lento, baja la calidad"><option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option></select>
         <button style={bTop} onClick={captura} title="Guarda la vista actual como imagen">📷</button>
         <button style={bTop} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }} disabled={renderizando || estado !== 'listo'} title="Render HD limpio (3200 px) con sombras suaves">{renderizando ? 'Renderizando…' : '🖼 Render HD'}</button>
