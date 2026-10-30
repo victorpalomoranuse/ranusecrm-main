@@ -2932,6 +2932,27 @@ export default function Visor3D() {
     if (p) { a.cam.fov = p.fov; a.shiftY = p.shift; a.cam.updateProjectionMatrix(); a.cam.position.copy(p.pos); a.ctrl.target.copy(p.target); a.scene.background = p.bg; }
     a.ctrl.enableRotate = true; a.ctrl.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE; if (a.base) a.base.visible = true; a.renderer.clippingPlanes = []; a.alzPrev = null; setAlz(null); a.ctrl.update();
   };
+  // Planta 2D: vista cenital de todo el plano (sin techos) para dibujar zonas de suelo y pintar salas como en un editor 2D
+  const [planta2d, setPlanta2d] = useState(null); // { ocultasAntes }
+  const entrarPlanta2d = () => {
+    const a = api3d.current, m = a.modelo; if (!m || planta2d) return;
+    const pl0 = (m.plantas || [m])[0], pts = [...(pl0.salas || []).flatMap(s => s.pts), ...(pl0.muros || []).flatMap(mu => [mu.a, mu.b])];
+    if (!pts.length) { setAviso('Este plano no tiene salas ni muros que ver desde arriba'); return; }
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), W = Math.max(...xs) - Math.min(...xs), D = Math.max(...ys) - Math.min(...ys), asp = a.cam.aspect || 1.6, VIS = 0.0873;
+    const target = new THREE.Vector3(((Math.min(...xs) + Math.max(...xs)) / 2) * CM, 0, ((Math.min(...ys) + Math.max(...ys)) / 2) * CM);
+    const dist = Math.max(D * CM * 1.15, W * CM * 1.1 / asp) / VIS;
+    a.alzPrev = { pos: a.cam.position.clone(), target: a.ctrl.target.clone(), fov: a.cam.fov, bg: a.scene.background, shift: a.shiftY || 0 };
+    a.shiftY = 0; a.cam.fov = 5; a.cam.updateProjectionMatrix(); a.cam.position.copy(target).add(new THREE.Vector3(0, dist, 0.0001)); a.ctrl.target.copy(target);
+    a.ctrl.enableRotate = false; a.ctrl.mouseButtons.MIDDLE = THREE.MOUSE.PAN; a.ctrl.update();
+    a.scene.background = new THREE.Color(0xf4f2ee); if (a.base) a.base.visible = false;
+    setPlanta2d({ ocultasAntes: ocultas }); setOcultas(o => (o.includes('techos') ? o : [...o, 'techos'])); setSelObj(null); setSelAcab(null); setHerr('zonaS'); setFormaDib('poli');
+  };
+  const salirPlanta2d = () => {
+    const a = api3d.current, p = a.alzPrev;
+    if (p) { a.cam.fov = p.fov; a.shiftY = p.shift; a.cam.updateProjectionMatrix(); a.cam.position.copy(p.pos); a.ctrl.target.copy(p.target); a.scene.background = p.bg; }
+    a.ctrl.enableRotate = true; a.ctrl.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE; if (a.base) a.base.visible = true; a.alzPrev = null; a.ctrl.update();
+    setOcultas(planta2d?.ocultasAntes || []); setPlanta2d(null); setHerr('sel');
+  };
   // Zona por medidas: se escriben posición y tamaño exactos (cm) y se crea sobre el muro, el suelo o el techo que se está viendo
   const crearZonaMedidas = () => {
     const a = api3d.current, m = a.modelo, pl0 = m && (m.plantas || [m])[0]; if (!alz || !pl0) return;
@@ -3089,6 +3110,16 @@ export default function Visor3D() {
     sigue: ['Sígueme', 'Dibuja el camino por donde pasará el perfil; Enter termina'], carril: ['Carril', 'Dibuja el recorrido; Enter termina'], led: ['Tira LED', 'Dibuja el recorrido; Enter termina'], focoC: ['Focos', 'Clic en el carril para colocar; Esc sale'],
     luz: ['Luz', 'Clic en el suelo para colocar la luminaria en el plano'], guia: ['Guía', 'Clic en dos puntos para crear una línea guía'], pincel: ['Pincel', 'Clic en lo que quieras pintar · Mayús = todo el elemento · Alt = copiar material'], gotero: ['Gotero', 'Clic en lo que quieras copiar'],
   };
+  const barra2d = planta2d && (
+    <div style={{ position: 'absolute', left: railW, top: 56, zIndex: 6, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', maxWidth: '60vw' }}>
+      <b>📐 Planta 2D</b>
+      <button style={{ ...bTop, ...(herr === 'zonaS' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setHerr('zonaS'); setMatAbierto(false); }} title="Clic punto a punto sobre el suelo; Enter cierra la zona">▨ Dibujar zona</button>
+      <button style={{ ...bTop, ...(herr === 'pincel' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setHerr('pincel'); setMatAbierto(true); }} title="Elige un material y haz clic en una sala para pintarla entera">🎨 Pintar sala entera</button>
+      <button style={{ ...bTop, ...(herr === 'sel' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('sel')} title="Selecciona una zona para moverla o cambiarla">↖ Seleccionar</button>
+      <button style={bTop} onClick={salirPlanta2d}>Salir</button>
+      <span style={{ opacity: 0.6, width: '100%' }}>Rueda = zoom · botón derecho = mover la vista · el material se elige en la barra de arriba</span>
+    </div>
+  );
   const barraMaterial = ['zonaS', 'zonaT', 'zonaP'].includes(herr) && (
     <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', top: 96, zIndex: 6, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', maxWidth: '86vw', overflowX: 'auto' }}>
       <span style={{ opacity: 0.7, whiteSpace: 'nowrap' }}>Material de la zona:</span>
@@ -3101,6 +3132,7 @@ export default function Visor3D() {
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
       {barraMaterial}
+      {barra2d}
       <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
       {/* ── Barra superior: plano, historial, vistas, ambiente y salidas (render, 360, galería, despiece) ── */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(24,24,24,0.94)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)', overflowX: 'auto' }}>
@@ -3118,6 +3150,7 @@ export default function Visor3D() {
           🔭 <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 80 }} /> <b style={{ minWidth: 70 }}>{lente}° · {mmDe(lente)} mm</b>
           <select value="" onChange={e => { if (e.target.value) ponerLente(parseFloat(e.target.value)); }} style={bTop}><option value="">Óptica…</option><option value="90">Gran angular (90°)</option><option value="65">Interior amplio (65°)</option><option value="50">Interior natural (50°)</option><option value="30">Como una persona (30°)</option><option value="25">Teleobjetivo (25°)</option></select>
         </span>
+        <button style={{ ...bTop, ...(planta2d ? { background: '#2f6fa8' } : {}) }} onClick={() => (planta2d ? salirPlanta2d() : entrarPlanta2d())} disabled={estado !== 'listo' || !!alz} title="Vista desde arriba en 2D: dibuja zonas de suelo o pinta salas enteras con tus texturas">📐 Planta 2D</button>
         <button style={{ ...bTop, ...(persona ? { background: '#2f6fa8' } : {}) }} onClick={() => setPersona(v => !v)} title="Te pone dentro del espacio, a la altura de los ojos: andas despacio con W A S D y giras la vista con el ratón">🚶 Recorrer</button>
         <button style={bTop} onClick={() => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }} title="Pone la cámara a la altura de los ojos (1,60 m): ideal antes de un render o un panorama">👁 Ojos</button>
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">☀ Ambiente</button>
