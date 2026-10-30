@@ -652,6 +652,12 @@ function insetPoligono(pts, d) {
   }
   return out;
 }
+// Puntos de un rectángulo u óvalo a partir de dos esquinas opuestas
+function puntosForma(forma, x0, y0, x1, y1) {
+  const ax = Math.min(x0, x1), bx = Math.max(x0, x1), ay = Math.min(y0, y1), by = Math.max(y0, y1);
+  if (forma === 'oval') { const cx = (ax + bx) / 2, cy = (ay + by) / 2, rx = (bx - ax) / 2, ry = (by - ay) / 2; return Array.from({ length: 48 }, (_, i) => [cx + rx * Math.cos((i / 48) * 2 * Math.PI), cy + ry * Math.sin((i / 48) * 2 * Math.PI)]); }
+  return [[ax, ay], [bx, ay], [bx, by], [ax, by]];
+}
 // Curva cerrada suave que pasa por los puntos (para contornos curvos)
 function suavizar(pts) {
   if (pts.length < 3) return pts;
@@ -795,6 +801,13 @@ export default function Visor3D() {
   const [hora, setHora] = useState(15);                       // hora del sol (6–21)
   const [ambiente, setAmbiente] = useState(() => { try { return { exposicion: 1, luces: 1, ...JSON.parse(localStorage.getItem('visor3dAmb') || '{}') }; } catch { return { exposicion: 1, luces: 1 }; } });
   const [ambAbierto, setAmbAbierto] = useState(false);
+  const [imanActivo, setImanActivo] = useState(true);      // imán a paredes, vértices y guías
+  const [gridCm, setGridCm] = useState(5);                    // salto de la rejilla al dibujar
+  const [formaDib, setFormaDib] = useState('poli');           // poli | rect | oval
+  const imanRef = useRef(true), gridRef = useRef(5), formaRef = useRef('poli');
+  useEffect(() => { imanRef.current = imanActivo; }, [imanActivo]);
+  useEffect(() => { gridRef.current = gridCm; }, [gridCm]);
+  useEffect(() => { formaRef.current = formaDib; }, [formaDib]);
   const [alz, setAlz] = useState(null);                  // detalle abierto: { tipo: 'muro' | 'suelo' | 'techo', id, lado }
   const [profAlz, setProfAlz] = useState(120);
   const [zForm, setZForm] = useState({ x: 0, y: 90, w: 100, h: 100, forma: 'rect' });
@@ -1048,11 +1061,22 @@ export default function Visor3D() {
 
     // Diseño: mover objetos y dibujar cajas sobre el suelo
     const suelo = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), pt = new THREE.Vector3();
-    const snap = v => Math.round(v / 5) * 5;
+    const snap = v => { const g = gridRef.current || 5; return Math.round(v / g) * g; };
     const imantar = p => {
+      if (!imanRef.current) return p;
       let mejor = null, dmin = 12;
       for (const q of puntosSnapRef.current) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < dmin) { dmin = d; mejor = { x: q.x, y: q.y }; } }
       if (mejor) return mejor;
+      {
+        const m = api3d.current.modelo;
+        if (m) for (const pl of (m.plantas || [m])) for (const s of (pl.salas || [])) {
+          const P = s.pts || [];
+          for (let i = 0; i < P.length; i++) {
+            const a = P[i], b = P[(i + 1) % P.length], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.y - a[1]) * dy) / L2)), q = { x: a[0] + dx * t, y: a[1] + dy * t };
+            if (Math.hypot(q.x - p.x, q.y - p.y) < 7) return q;
+          }
+        }
+      }
       const gs = guiasRef.current;
       for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) {
         const a = gs[i], b = gs[j], d1x = a.x2 - a.x1, d1y = a.y2 - a.y1, d2x = b.x2 - b.x1, d2y = b.y2 - b.y1, den = d1x * d2y - d1y * d2x;
@@ -1089,7 +1113,7 @@ export default function Visor3D() {
     let arrastre = null, trazo = null, previa = null;
     let poli = [], poliLinea = null, poliAbajo = null, empuje = null;
     let guiaA = null, guiaAbajo = null, guiaMarca = null, luzAbajo = null, eje3 = null;
-    let muroA = null, muroAbajo = null, muroLinea = null, nodoDrag = null;
+    let muroA = null, muroAbajo = null, muroLinea = null, nodoDrag = null, vertDrag = null;
     const quitarMuroLinea = () => { if (muroLinea) { scene.remove(muroLinea); muroLinea.geometry.dispose(); muroLinea = null; } };
     const terminarMuros = () => { muroA = null; quitarMuroLinea(); setMedidaMuro(''); setHerr('sel'); };
     const esPoli = h => h === 'poli' || h === 'zonaS' || h === 'zonaT' || h === 'sigue' || h === 'carril' || h === 'led';
@@ -1097,6 +1121,17 @@ export default function Visor3D() {
     let cierraLazo = false;
     let poliP = null, pAbajo = null, pLinea = null;
     const muroPorId = idm => (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []).find(m => m.id === idm);
+    const snapPared = (mu, rs, ry, Lcm) => {
+      const g = gridRef.current || 5; let s = Math.round(rs / g) * g, y = Math.round(ry / g) * g;
+      if (!imanRef.current) return [s, y];
+      const H = mu.h || api3d.current.modelo?.altura || 260, xsL = [0, Lcm], ysL = [0, H], pts = [[0, 0], [Lcm, 0], [Lcm, H], [0, H]];
+      (mu.ab || []).forEach(o => { const x0 = o.p, x1 = o.p + o.w, y0 = o.sill || 0, y1 = y0 + o.h; xsL.push(x0, x1); ysL.push(y0, y1); pts.push([x0, y0], [x1, y0], [x1, y1], [x0, y1]); });
+      objsRef.current.filter(o => o.tipo === 'zona' && o.plano === 'pared' && o.muroId === mu.id).forEach(o => o.pts.forEach(p => { pts.push([p[0], p[1]]); xsL.push(p[0]); ysL.push(p[1]); }));
+      let mejor = null, dm = 10; pts.forEach(p => { const d = Math.hypot(p[0] - rs, p[1] - ry); if (d < dm) { dm = d; mejor = p; } });
+      if (mejor) return [mejor[0], mejor[1]];
+      xsL.forEach(x => { if (Math.abs(x - rs) < 6) s = x; }); ysL.forEach(yv => { if (Math.abs(yv - ry) < 6) y = yv; });
+      return [s, y];
+    };
     const golpePared = e => {
       const r = dom.getBoundingClientRect();
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -1106,7 +1141,7 @@ export default function Visor3D() {
       const u = h?.object?.userData; if (!u?.muroId) return null;
       const mu = muroPorId(u.muroId); if (!mu) return null;
       const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L;
-      const s = Math.round(((h.point.x / CM - mu.a[0]) * ux + (h.point.z / CM - mu.a[1]) * uy) / 5) * 5, yy = Math.max(0, Math.round(h.point.y / CM / 5) * 5);
+      const sn = snapPared(mu, (h.point.x / CM - mu.a[0]) * ux + (h.point.z / CM - mu.a[1]) * uy, h.point.y / CM, L), s = sn[0], yy = Math.max(0, sn[1]);
       const lado = ((cam.position.x / CM - mu.a[0]) * -uy + (cam.position.z / CM - mu.a[1]) * ux) >= 0 ? 1 : -1;
       return { mu, s, y: yy, lado, id: u.muroId };
     };
@@ -1133,7 +1168,8 @@ export default function Visor3D() {
     const idNuevo = () => 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const dibujarPoli = (cursor) => {
       if (poliLinea) { scene.remove(poliLinea); poliLinea.geometry.dispose(); poliLinea = null; }
-      const pts = cursor ? [...poli, cursor] : poli;
+      const ptsF = cursor && poli.length === 1 && ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli' ? puntosForma(formaRef.current, poli[0].x, poli[0].y, cursor.x, cursor.y).map(([x, y]) => ({ x, y })) : null;
+      const pts = ptsF ? [...ptsF, ptsF[0]] : (cursor ? [...poli, cursor] : poli);
       if (pts.length < 2) return;
       poliLinea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x * CM, 0.03, p.y * CM))), new THREE.LineBasicMaterial({ color: 0x1b6dd6 }));
       scene.add(poliLinea);
@@ -1267,6 +1303,21 @@ export default function Visor3D() {
         scene.add(previa); e.stopPropagation(); return;
       }
       {
+        const vg = api3d.current.vertG, ob0 = objsRef.current.find(x => x.id === selObjRef.current);
+        if (vg && ob0 && Array.isArray(ob0.pts)) {
+          const r = dom.getBoundingClientRect();
+          p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+          rayo.setFromCamera(p2, cam);
+          const hv = rayo.intersectObjects(vg.children, true)[0];
+          if (hv) {
+            const u = hv.object.userData;
+            if (u.mid !== undefined) { const i = u.mid, A = ob0.pts[i], B = ob0.pts[(i + 1) % ob0.pts.length], np = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2]; setObjs(prev => prev.map(x => (x.id === ob0.id ? { ...x, pts: [...x.pts.slice(0, i + 1), np, ...x.pts.slice(i + 1)] } : x))); }
+            else { ctrl.enabled = false; vertDrag = { id: ob0.id, idx: u.vert, esfera: hv.object, ob: ob0, p: null }; }
+            e.stopPropagation(); return;
+          }
+        }
+      }
+      {
         const ngG = api3d.current.nodoG;
         if (ngG) {
           const r = dom.getBoundingClientRect();
@@ -1300,6 +1351,21 @@ export default function Visor3D() {
       e.stopPropagation();
     };
     const onMoveD = e => {
+      if (vertDrag) {
+        const ob = vertDrag.ob, esf = vertDrag.esfera, r = dom.getBoundingClientRect();
+        p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+        rayo.setFromCamera(p2, cam);
+        if (ob.tipo === 'zona' && ob.plano === 'pared') {
+          const mu = muroPorId(ob.muroId); if (!mu) return;
+          const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, lado = ob.lado || 1;
+          const plano = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(-uy * lado, 0, ux * lado), new THREE.Vector3(mu.a[0] * CM, 0, mu.a[1] * CM));
+          if (rayo.ray.intersectPlane(plano, pt)) { const sn = snapPared(mu, (pt.x / CM - mu.a[0]) * ux + (pt.z / CM - mu.a[1]) * uy, pt.y / CM, L), yy = Math.max(0, sn[1]); vertDrag.p = [sn[0], yy]; esf.position.copy(aMundoPared(mu, sn[0], yy, lado)); }
+        } else {
+          const plano = new THREE.Plane(new THREE.Vector3(0, 1, 0), -esf.position.y);
+          if (rayo.ray.intersectPlane(plano, pt)) { const q = imantar({ x: snap(pt.x / CM), y: snap(pt.z / CM) }); vertDrag.p = [q.x - ob.cx, q.y - ob.cy]; esf.position.x = q.x * CM; esf.position.z = q.y * CM; }
+        }
+        return;
+      }
       if (nodoDrag) { const p = puntoSuelo(e); if (p) { nodoDrag.p = p; nodoDrag.esfera.position.x = p.x * CM; nodoDrag.esfera.position.z = p.y * CM; } return; }
       if (herrRef.current === 'muro' && muroA) {
         let p = puntoSuelo(e); if (!p) return;
@@ -1347,6 +1413,7 @@ export default function Visor3D() {
       }
     };
     const onUpD = e => {
+      if (vertDrag) { const vd = vertDrag; vertDrag = null; ctrl.enabled = true; if (vd.p) setObjs(prev => prev.map(x => (x.id === vd.id ? { ...x, pts: x.pts.map((q, i) => (i === vd.idx ? vd.p : q)) } : x))); return; }
       if (focoAbajo) {
         const d0 = Math.hypot(e.clientX - focoAbajo[0], e.clientY - focoAbajo[1]); focoAbajo = null;
         if (d0 < 4) {
@@ -1405,7 +1472,7 @@ export default function Visor3D() {
             if (g.id === poliP.id) {
               const P = poliP.pts;
               if (P.length >= 3 && Math.hypot(g.s - P[0][0], g.y - P[0][1]) < 12) cerrarPared();
-              else { P.push([g.s, g.y]); dibujarPared(null); }
+              else { P.push([g.s, g.y]); if (formaRef.current !== 'poli' && P.length === 2) { poliP.pts = puntosForma(formaRef.current, P[0][0], P[0][1], P[1][0], P[1][1]); cerrarPared(); } else dibujarPared(null); }
             }
           }
         }
@@ -1439,7 +1506,12 @@ export default function Visor3D() {
         const d0 = Math.hypot(e.clientX - poliAbajo[0], e.clientY - poliAbajo[1]); poliAbajo = null;
         if (d0 < 4) {
           const p = puntoSuelo(e);
-          if (p) { if (poli.length >= 3 && Math.hypot(p.x - poli[0].x, p.y - poli[0].y) < 15) { cierraLazo = true; cerrarPoli(); cierraLazo = false; } else { poli.push(p); dibujarPoli(null); } }
+          if (p) {
+            const formaTool = ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli';
+            if (formaTool && poli.length === 1) { poli = puntosForma(formaRef.current, poli[0].x, poli[0].y, p.x, p.y).map(([x, y]) => ({ x, y })); cerrarPoli(); }
+            else if (poli.length >= 3 && Math.hypot(p.x - poli[0].x, p.y - poli[0].y) < 15) { cierraLazo = true; cerrarPoli(); cierraLazo = false; }
+            else { poli.push(p); dibujarPoli(null); }
+          }
         }
         return;
       }
@@ -1667,6 +1739,29 @@ export default function Visor3D() {
     }
     a.scene.add(a.alzG);
   }, [alz, objs, rev, estado, profAlz]);
+
+  // Asas de los vértices de la forma seleccionada: azules = vértices (arrastrar), verdes = punto medio de un lado (clic para añadir un vértice)
+  useEffect(() => {
+    const a = api3d.current; if (!a.scene) return;
+    if (a.vertG) { a.scene.remove(a.vertG); a.vertG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); a.vertG = null; }
+    const ob = objs.find(x => x.id === selObj);
+    if (!ob || !['zona', 'prisma', 'falsotecho'].includes(ob.tipo) || !Array.isArray(ob.pts) || ob.pts.length < 2 || !a.modelo) return;
+    const H = a.modelo.altura || 260, muros = (a.modelo.plantas || [a.modelo]).flatMap(p => p.muros || []);
+    const pared = ob.tipo === 'zona' && ob.plano === 'pared', mu = pared ? muros.find(m => m.id === ob.muroId) : null;
+    if (pared && !mu) return;
+    const mundo = p => {
+      if (mu) { const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, off = (ob.lado || 1) * ((mu.t || 12) / 2 + 0.4); return new THREE.Vector3((mu.a[0] + ux * p[0] - uy * off) * CM, p[1] * CM, (mu.a[1] + uy * p[0] + ux * off) * CM); }
+      const y = ob.tipo === 'zona' ? (ob.plano === 'techo' ? (ob.h || H) * CM - 0.02 : 0.03) : ob.tipo === 'prisma' ? ((ob.z0 || 0) + ob.alto) * CM + 0.02 : (ob.h || H) * CM;
+      return new THREE.Vector3((ob.cx + p[0]) * CM, y, (ob.cy + p[1]) * CM);
+    };
+    const xs = ob.pts.map(p => p[0]), ys = ob.pts.map(p => p[1]), tam = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * CM, r = alz ? Math.max(0.06, tam / 55) : Math.max(0.04, Math.min(0.09, tam / 40));
+    const g = new THREE.Group();
+    ob.pts.forEach((p, i) => {
+      const v = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12), new THREE.MeshBasicMaterial({ color: 0x1b6dd6, depthTest: false })); v.position.copy(mundo(p)); v.renderOrder = 999; v.userData = { vert: i }; g.add(v);
+      if (ob.pts.length >= 3 || i === 0) { const q = ob.pts[(i + 1) % ob.pts.length], m = new THREE.Mesh(new THREE.SphereGeometry(r * 0.6, 12, 10), new THREE.MeshBasicMaterial({ color: 0x2ecc71, depthTest: false })); m.position.copy(mundo([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2])); m.renderOrder = 999; m.userData = { mid: i }; g.add(m); }
+    });
+    a.scene.add(g); a.vertG = g;
+  }, [objs, selObj, rev, estado, alz]);
 
   // Rodapié: sigue el perímetro de cada sala (por dentro) y se interrumpe en las puertas
   useEffect(() => {
@@ -2196,13 +2291,18 @@ export default function Visor3D() {
     try { localStorage.setItem('visor3dCalidad', calidad); } catch {}
   }, [calidad, estado]);
 
+  // Vista general: restablece focal y desplazamiento de lente (si no, tras un alzado o con otra focal se veía deformada) y encuadra TODO el plano
   const vista = tipo => {
-    const { cam, ctrl, raiz } = api3d.current;
-    const b = new THREE.Box3().setFromObject(raiz), c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3());
-    const R = Math.max(s.x, s.z, 4);
-    ctrl.target.copy(c);
-    if (tipo === 'planta') cam.position.set(c.x, R * 1.6, c.z + 0.01);
-    else cam.position.set(c.x + R * 0.9, Math.max(R * 0.8, 6), c.z + R * 0.9);
+    const a = api3d.current, { cam, ctrl, raiz, esc } = a;
+    if (alz) salirAlzado();
+    cam.fov = 45; a.shiftY = 0; setShiftY(0); cam.updateProjectionMatrix();
+    const b = new THREE.Box3().setFromObject(raiz), be = new THREE.Box3().setFromObject(esc); if (!be.isEmpty()) b.union(be);
+    const vacio = b.isEmpty(), cen = vacio ? new THREE.Vector3(4, 1, 3) : b.getCenter(new THREE.Vector3()), tam = vacio ? new THREE.Vector3(8, 2.6, 6) : b.getSize(new THREE.Vector3());
+    const tg = Math.tan((cam.fov * Math.PI) / 360), asp = cam.aspect || 1.6;
+    ctrl.target.copy(cen);
+    if (tipo === 'planta') { const h = Math.max((tam.z * 0.6) / tg, (tam.x * 0.6) / asp / tg); cam.position.set(cen.x, cen.y + h + tam.y, cen.z + 0.001); }
+    else { const r = Math.max(2, 0.5 * Math.hypot(tam.x, tam.y, tam.z)), dist = (r / Math.sin((cam.fov * Math.PI) / 360)) * 1.02; cam.position.copy(cen).add(new THREE.Vector3(0.75, 0.6, 0.75).normalize().multiplyScalar(dist)); }
+    ctrl.update();
   };
   // Render: una sola imagen grande con sombras suaves y de alta resolución (aunque el ordenador sea flojo, es un único fotograma)
   const [renderizando, setRenderizando] = useState(false);
@@ -2507,6 +2607,11 @@ export default function Visor3D() {
           {herr === 'focoC' && <select value={kindFoco} onChange={e => setKindFoco(e.target.value)} style={bTop}>{Object.entries(TIPOS_FOCO).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>}
           {herr === 'pincel' && <span style={{ opacity: 0.9 }}>Modo: <b>{modoPincel === 'cara' ? 'Cara' : modoPincel === 'pieza' ? 'Pieza' : 'Entero'}</b></span>}
           {herr === 'guia' && guias.length > 0 && <button style={bTop} onClick={() => setGuias([])}>✕ Quitar guías ({guias.length})</button>}
+          {['poli', 'zonaS', 'zonaT', 'zonaP'].includes(herr) && <select value={formaDib} onChange={e => setFormaDib(e.target.value)} style={bTop} title="Forma que se dibuja"><option value="poli">Polígono (clic a clic)</option><option value="rect">Rectángulo (2 clics)</option><option value="oval">Óvalo (2 clics)</option></select>}
+          {['poli', 'zonaS', 'zonaT', 'zonaP', 'muro', 'sigue', 'carril', 'led', 'guia', 'luz'].includes(herr) && <>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} title="Atrae el dibujo a paredes, esquinas, vértices y guías. Desmárcalo para dibujar libre, sin conectar"><input type="checkbox" checked={imanActivo} onChange={e => setImanActivo(e.target.checked)} /> Imán</label>
+            <select value={gridCm} onChange={e => setGridCm(parseFloat(e.target.value))} style={bTop} title="Salto de la rejilla al dibujar"><option value={1}>1 cm</option><option value={5}>5 cm</option><option value={10}>10 cm</option><option value={50}>50 cm</option></select>
+          </>}
         </div>
       )}
       {iaForm && (
@@ -2711,6 +2816,8 @@ export default function Visor3D() {
         <div style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12, zIndex: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.35)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', maxWidth: '96vw' }}>
           <b style={{ fontSize: 13 }}>📐 {alz.tipo === 'muro' ? 'Alzado del muro' : alz.tipo === 'suelo' ? 'Planta del suelo' : 'Planta del techo'}</b>
           <label title={alz.tipo === 'muro' ? 'Hasta qué distancia delante del muro se ven los objetos (muebles, máquinas…)' : alz.tipo === 'suelo' ? 'Altura del corte horizontal' : 'Hasta cuántos cm bajo el techo se ve'}>Corte <input type="number" value={profAlz} onChange={e => setProfAlz(parseFloat(e.target.value) || 100)} style={{ ...btn, width: 62, padding: '2px 6px' }} /> cm</label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} title="Atrae el dibujo a esquinas, bordes de huecos y vértices. Desmárcalo para dibujar libre"><input type="checkbox" checked={imanActivo} onChange={e => setImanActivo(e.target.checked)} /> Imán</label>
+          <select value={gridCm} onChange={e => setGridCm(parseFloat(e.target.value))} style={{ ...btn, padding: '2px 6px' }} title="Salto de la rejilla"><option value={1}>1 cm</option><option value={5}>5 cm</option><option value={10}>10 cm</option></select>
           <span style={{ width: 1, height: 20, background: '#444' }} />
           <b>Zona por medidas</b>
           <select value={zForm.forma} onChange={e => setZForm(f => ({ ...f, forma: e.target.value }))} style={{ ...btn, padding: '2px 6px' }}><option value="rect">Rectángulo</option><option value="oval">Óvalo</option></select>
@@ -3061,6 +3168,25 @@ export default function Visor3D() {
               </details>
             </div>
           )}
+          {['zona', 'prisma', 'falsotecho'].includes(objSel.tipo) && Array.isArray(objSel.pts) && (() => {
+            const pared = objSel.tipo === 'zona' && objSel.plano === 'pared', off = pared ? [0, 0] : [objSel.cx, objSel.cy];
+            const setPt = (i, k, v) => setObjs(prev => prev.map(x => (x.id === objSel.id ? { ...x, pts: x.pts.map((q, j) => (j === i ? (k === 0 ? [v - off[0], q[1]] : [q[0], v - off[1]]) : q)) } : x)));
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>Vértices (cm)</div>
+                <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 4 }}>{pared ? 'Desde el inicio del muro y desde el suelo.' : 'Coordenadas en el plano.'} Arrastra las bolas azules; clic en una verde añade un vértice a ese lado.</div>
+                {objSel.pts.map((p, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                    <b style={{ width: 16, fontSize: 11 }}>{i + 1}</b>
+                    <input type="number" value={Math.round((p[0] + off[0]) * 10) / 10} onChange={e => setPt(i, 0, parseFloat(e.target.value) || 0)} style={{ ...btn, width: 68, padding: '2px 4px' }} />
+                    <input type="number" value={Math.round((p[1] + off[1]) * 10) / 10} onChange={e => setPt(i, 1, parseFloat(e.target.value) || 0)} style={{ ...btn, width: 68, padding: '2px 4px' }} />
+                    <span onClick={() => { if (objSel.pts.length > 3) setObjs(prev => prev.map(x => (x.id === objSel.id ? { ...x, pts: x.pts.filter((_, j) => j !== i) } : x))); }} style={{ cursor: objSel.pts.length > 3 ? 'pointer' : 'default', opacity: objSel.pts.length > 3 ? 0.7 : 0.25, padding: '0 4px' }} title="Quitar vértice">✕</span>
+                  </div>
+                ))}
+                <button style={{ ...btn, marginTop: 4 }} onClick={() => setObjs(prev => prev.map(x => { if (x.id !== objSel.id) return x; const A = x.pts[x.pts.length - 1], B = x.pts[0]; return { ...x, pts: [...x.pts, [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2]] }; }))}>＋ Añadir vértice</button>
+              </div>
+            );
+          })()}
           {objSel.tipo === 'led' && (() => {
             const Lk = objSel.led || { ancho: 1.2, k: 3000, lm: 800, dir: 'abajo' }, set = c => cambiar(objSel.id, { led: { ...Lk, ...c } }), ml = largoCamino(objSel.pts || []) / 100;
             return (
