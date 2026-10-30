@@ -12,6 +12,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import api from '../services/api';
 
@@ -74,7 +75,7 @@ function dibujaDesp(cx, img, t, j) {
 function texturaDe(t, uvEnCm) {
   const k = uvEnCm ? 1 / t.tam : 1 / (t.tam * CM), j = t.junta && t.junta.mm > 0 ? t.junta : null;
   if (t.espejo) espejoSucio = true;
-  const clave = t.url.slice(0, 200) + '|' + k + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '');
+  const clave = t.url.slice(0, 200) + '|' + k + '|' + (t.rot || 0) + '|' + (t.ox || 0) + '|' + (t.oy || 0) + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '');
   let x = cacheTex.get(clave);
   if (!x) {
     if (t.espejo) {
@@ -97,6 +98,7 @@ function texturaDe(t, uvEnCm) {
       img.src = t.url;
     } else x = new THREE.TextureLoader().load(t.url);
     x.wrapS = x.wrapT = THREE.RepeatWrapping; x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 4; x.repeat.set(k, k);
+    if (t.rot || t.ox || t.oy) { x.center.set(0.5, 0.5); x.rotation = (t.rot || 0) * Math.PI / 180; x.offset.set((t.ox || 0) / t.tam, (t.oy || 0) / t.tam); }
     cacheTex.set(clave, x);
   }
   return x;
@@ -1052,6 +1054,19 @@ export default function Visor3D() {
   const [filtro, setFiltro] = useState('');
   const [solo3d, setSolo3d] = useState(true);
   const [persona, setPersona] = useState(false);
+  // Exporta el espacio (muros, suelos, puertas, ventanas, máquinas y objetos) a .glb para abrirlo en D5, Blender, etc. Medidas en metros, Y arriba
+  const exportarGLB = () => {
+    const a = api3d.current; if (!a.raiz) return;
+    setGuardado('Preparando el archivo para D5…');
+    const ocultos = [];
+    [a.raiz, a.esc].forEach(g => g.traverse(o => { if (o.visible && (o.userData?.eje || o.userData?.guia || o.userData?.asa || o.isLine || o.isSprite || o.isLight || (o.isMesh && o.material && !Array.isArray(o.material) && o.material.depthTest === false))) { o.visible = false; ocultos.push(o); } }));
+    new GLTFExporter().parse([a.raiz, a.esc], buf => {
+      ocultos.forEach(o => { o.visible = true; });
+      const blob = new Blob([buf], { type: 'model/gltf-binary' }), u = URL.createObjectURL(blob), l = document.createElement('a');
+      l.href = u; l.download = (String(titulo || 'espacio').replace(/[^\w-]+/g, '-') || 'espacio') + '.glb'; l.click(); setTimeout(() => URL.revokeObjectURL(u), 4000);
+      setGuardado('Archivo .glb descargado ✓ (' + (blob.size / 1048576).toFixed(1) + ' MB). Ábrelo en D5: Importar → modelo');
+    }, err => { ocultos.forEach(o => { o.visible = true; }); console.warn('glb', err); setAviso('No se pudo exportar el modelo'); }, { binary: true, onlyVisible: true, trs: false, maxTextureSize: 2048 });
+  };
   const [guardado, setGuardado] = useState('');
   const cargadaEscena = useRef(false);
   const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, equipos: {}, pilares: {}, huecos: {}, regiones: {}, todosMuros: null, todosSuelos: null, todosTechos: null, todosPilares: null });
@@ -3003,6 +3018,7 @@ export default function Visor3D() {
         <span style={sepTop} />
         <button style={bTop} onClick={() => vista('persp')} title="Vista en perspectiva de todo el plano">Perspectiva</button>
         <button style={bTop} onClick={() => vista('planta')} title="Vista desde arriba">Planta</button>
+        <button style={bTop} onClick={exportarGLB} title="Descarga el espacio en 3D (.glb) para abrirlo en D5 Render, Blender, etc. y hacer ahí un render fiel">⬇ Exportar a D5</button>
         <button style={{ ...bTop, ...(persona ? { background: '#2f6fa8' } : {}) }} onClick={() => setPersona(v => !v)} title="Te pone dentro del espacio, a la altura de los ojos: andas despacio con W A S D y giras la vista con el ratón">🚶 Recorrer</button>
         <button style={bTop} onClick={() => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }} title="Pone la cámara a la altura de los ojos (1,60 m): ideal antes de un render o un panorama">👁 Ojos</button>
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">☀ Ambiente</button>
@@ -3502,10 +3518,14 @@ export default function Visor3D() {
               const t = texturas.find(x => x.id === matSel.id); if (!t) return null;
               if (t.fijo) return <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8, opacity: 0.75, fontSize: 11 }}>{t.nombre}: acabado reflectante. Refleja un entorno de estudio (con ✨ Realista se nota más). Pinta con él muros, suelos u objetos.</div>;
               const lee = () => { const tp = document.getElementById('tx-dt').value; if (tp === 'none') return null; return { tipo: tp, w: parseFloat(document.getElementById('tx-dw').value) || 60, h: parseFloat(document.getElementById('tx-dh').value) || 30, corte: document.getElementById('tx-dc').value, var: parseFloat(document.getElementById('tx-dv').value) || 0 }; };
-              const guarda = (junta, tam, desp) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam, desp: desp || null }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
+              const guarda = (junta, tam, desp, extra) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam, desp: desp || null, rot: t.rot || 0, ox: t.ox || 0, oy: t.oy || 0, ...(extra || {}) }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
+              const aplicarTodo = () => { const dsp = lee(); guarda(t.junta && !document.getElementById('tx-jm') ? t.junta : (parseFloat(document.getElementById('tx-jm').value) > 0 ? { hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) } : null), dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp, { rot: parseFloat(document.getElementById('tx-rot').value) || 0, ox: parseFloat(document.getElementById('tx-ox').value) || 0, oy: parseFloat(document.getElementById('tx-oy').value) || 0 }); };
+              const diferido = () => { clearTimeout(window.__txT); window.__txT = setTimeout(aplicarTodo, 700); };
               return (
-                <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Textura elegida: {t.nombre}</div>
+                <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8 }} onChange={diferido}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Textura elegida: {t.nombre} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(se aplica solo al cambiar)</span></div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Giro °</span><input key={'rt' + t.id + (t.rot || 0)} id="tx-rot" type="number" step="15" defaultValue={t.rot || 0} style={{ ...btn, width: 60 }} /><button style={btn} onClick={() => guarda(t.junta || null, t.tam, t.desp, { rot: ((t.rot || 0) + 90) % 360 })}>+90°</button></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Mover cm</span><span>x</span><input key={'ox' + t.id + (t.ox || 0)} id="tx-ox" type="number" defaultValue={t.ox || 0} style={{ ...btn, width: 56 }} /><span>y</span><input key={'oy' + t.id + (t.oy || 0)} id="tx-oy" type="number" defaultValue={t.oy || 0} style={{ ...btn, width: 56 }} /></label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Tamaño real cm</span><input key={'tam' + t.id + t.tam} id="tx-tam" type="number" defaultValue={t.tam} style={{ ...btn, width: 70 }} /></label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (color)</span><input key={'jc' + t.id + (t.junta?.hex || '')} id="tx-jc" type="color" defaultValue={t.junta?.hex || '#bdbdbd'} /></label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (mm)</span><input key={'jm' + t.id + (t.junta?.mm || 0)} id="tx-jm" type="number" step="0.5" defaultValue={t.junta?.mm || 0} style={{ ...btn, width: 70 }} /></label>

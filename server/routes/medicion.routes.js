@@ -681,6 +681,8 @@ router.patch('/:id/textura/:tid', async (req, res) => {
     const j = req.body?.junta;
     if (j && /^#[0-9a-fA-F]{6}$/.test(j.hex || '') && Number(j.mm) > 0) t.junta = { hex: j.hex, mm: Math.max(0.5, Math.min(30, Number(j.mm))) }; else delete t.junta;
     if (Number.isFinite(parseFloat(req.body?.tam))) t.tam = Math.max(5, Math.min(1000, parseFloat(req.body.tam)));
+    // giro (°) y desplazamiento (cm) de la textura
+    for (const [k, a, b] of [['rot', -360, 360], ['ox', -1000, 1000], ['oy', -1000, 1000]]) if (k in (req.body || {})) { const v = Math.max(a, Math.min(b, parseFloat(req.body[k]) || 0)); if (v) t[k] = v; else delete t[k]; }
     // despiece: la foto se corta en piezas de w×h cm con la junta elegida (recto o trabado)
     const d = req.body?.desp;
     if (d && ['recto', 'mitad', 'tercio'].includes(d.tipo) && Number(d.w) >= 2 && Number(d.h) >= 2) {
