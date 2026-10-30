@@ -1014,6 +1014,7 @@ export default function Visor3D() {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = false; // las sombras del sol se recalculan unas 4 veces por segundo, no en cada fotograma: con muchos modelos pesados era lo que más frenaba
     const scene = new THREE.Scene();
     {
       const cv = document.createElement('canvas'); cv.width = 2; cv.height = 256;
@@ -1049,7 +1050,7 @@ export default function Visor3D() {
       renderer.setSize(w, h);
       cam.aspect = w / h; cam.updateProjectionMatrix();
     };
-    const teclas = new Set(); let ultimoT = performance.now();
+    const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0;
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
     const bucle = () => {
       if (!vivo) return; raf = requestAnimationFrame(bucle);
@@ -1060,6 +1061,7 @@ export default function Visor3D() {
         if (teclas.has('e')) vM.y += 1; if (teclas.has('q')) vM.y -= 1;
         if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (teclas.has('shift') ? 9 : 3)); cam.position.add(vM); ctrl.target.add(vM); }
       }
+      if (ahora - ultSombra > 250) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
       ctrl.update(); renderer.render(scene, cam);
     };
     const enCampo = e => { const t = (e.target?.tagName || '').toLowerCase(); return t === 'input' || t === 'textarea' || t === 'select' || e.target?.isContentEditable; };
