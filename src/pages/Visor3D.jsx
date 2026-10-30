@@ -841,7 +841,7 @@ function maquina(e) {
   cuerpo.position.y = h / 2;
   cuerpo.castShadow = cuerpo.receiveShadow = true;
   g.add(cuerpo);
-  g.position.set(e.cx * CM, 0, e.cy * CM);
+  g.position.set(e.cx * CM, (e.z0 || 0) * CM, e.cy * CM);
   g.rotation.y = -(e.rot || 0) * Math.PI / 180;
   g.userData.capa = 'equipos';
   g.userData.equipo = e;
@@ -1147,7 +1147,7 @@ export default function Visor3D() {
       const uh = primero?.object?.userData?.hueco;
       if (uh) { setSelHueco({ ...uh, nuevo: { w: uh.w, h: uh.h, sill: uh.sill, p: uh.p, tip: uh.tip, mat: uh.mat } }); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
       let eq = null; if (primero) { let o = primero.object; while (o && !o.userData.equipo) o = o.parent; eq = o; }
-      if (eq) { sel = eq; eq.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(eq.userData.equipo); setEqNuevo({ alto: Math.round(eq.userData.equipo.alto || 110), x: Math.round(eq.userData.equipo.cx), y: Math.round(eq.userData.equipo.cy), w: eq.userData.equipo.w || eq.userData.equipo.largo, d: eq.userData.equipo.d || eq.userData.equipo.fondo, rot: eq.userData.equipo.rot || 0 }); setSelAcab(null); }
+      if (eq) { sel = eq; eq.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(eq.userData.equipo); setEqNuevo({ z0: Math.round(eq.userData.equipo.z0 || 0), alto: Math.round(eq.userData.equipo.alto || 110), x: Math.round(eq.userData.equipo.cx), y: Math.round(eq.userData.equipo.cy), w: eq.userData.equipo.w || eq.userData.equipo.largo, d: eq.userData.equipo.d || eq.userData.equipo.fondo, rot: eq.userData.equipo.rot || 0 }); setSelAcab(null); }
       else {
         setSeleccion(null);
         const u = primero?.object?.userData || {};
@@ -1436,7 +1436,7 @@ export default function Visor3D() {
           const hg = rayo.intersectObjects(gzG.children, true)[0], ob0 = objsRef.current.find(x => x.id === selObjRef.current), eqp = !ob0 ? seleccionRef.current : null;
           if (hg && eqp) {
             let g3p = null; raiz.traverse(o => { if (o.userData.equipo && o.userData.equipo.id === eqp.id) g3p = o; });
-            if (g3p) { ctrl.enabled = false; eje3 = { plan: true, eqId: eqp.id, g3: g3p, eje: hg.object.userData.eje, cx0: eqp.cx, cy0: eqp.cy, p0: sueloRaw(e), nuevo: {} }; e.stopPropagation(); return; }
+            if (g3p) { ctrl.enabled = false; eje3 = { plan: true, eqId: eqp.id, g3: g3p, eje: hg.object.userData.eje, cx0: eqp.cx, cy0: eqp.cy, z00: eqp.z0 || 0, y0: e.clientY, p0: sueloRaw(e), nuevo: {} }; e.stopPropagation(); return; }
           }
           if (hg && ob0) { ctrl.enabled = false; eje3 = { eje: hg.object.userData.eje, id: ob0.id, cx0: ob0.cx, cy0: ob0.cy, z00: ob0.z0 || 0, p0: sueloRaw(e), y0: e.clientY, nuevo: {} }; e.stopPropagation(); return; }
         }
@@ -1479,13 +1479,13 @@ export default function Visor3D() {
         const g3 = eje3.plan ? eje3.g3 : esc.children.find(x => x.userData.oid === eje3.id); if (!g3) return;
         if (eje3.eje === 'y') {
           const dist = cam.position.distanceTo(g3.position), cmPx = ((2 * dist * Math.tan(cam.fov * Math.PI / 360)) / dom.clientHeight) * 100;
-          const z = Math.max(0, Math.round((eje3.z00 + (eje3.y0 - e.clientY) * cmPx) / 5) * 5); eje3.nuevo = { z0: z }; g3.position.y = (z - eje3.z00) * CM;
+          const z = Math.max(0, Math.round((eje3.z00 + (eje3.y0 - e.clientY) * cmPx) / 5) * 5); eje3.nuevo = { z0: z }; g3.position.y = eje3.plan ? z * CM : (z - eje3.z00) * CM; if (eje3.plan) eje3.nuevoPlan = { z0: z };
         } else {
           const p = sueloRaw(e);
           if (p && eje3.p0) {
             const dlt = eje3.eje === 'x' ? p.x - eje3.p0.x : p.y - eje3.p0.y, v = Math.round(((eje3.eje === 'x' ? eje3.cx0 : eje3.cy0) + dlt) / 5) * 5;
             if (eje3.eje === 'x') { eje3.nuevo = { cx: v }; g3.position.x = v * CM; } else { eje3.nuevo = { cy: v }; g3.position.z = v * CM; }
-            if (eje3.plan) eje3.nuevoPlan = { x: eje3.nuevo.cx ?? eje3.nuevoPlan?.x ?? eje3.cx0, y: eje3.nuevo.cy ?? eje3.nuevoPlan?.y ?? eje3.cy0 };
+            if (eje3.plan) eje3.nuevoPlan = { ...eje3.nuevoPlan, x: eje3.nuevo.cx ?? eje3.nuevoPlan?.x ?? eje3.cx0, y: eje3.nuevo.cy ?? eje3.nuevoPlan?.y ?? eje3.cy0 };
           }
         }
         return;
@@ -3532,7 +3532,7 @@ export default function Visor3D() {
             <button style={{ ...btn, background: '#2f6fa8', padding: '4px 10px' }} onClick={aplicarEquipo}>Aplicar al plano</button>
             <button style={btn} onClick={() => setSeleccion(null)}>✕</button>
           </div>
-          {eqNuevo && [['x', 'Posición X'], ['y', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['rot', 'Giro °']].map(([k, et]) => (
+          {eqNuevo && [['x', 'Posición X'], ['y', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación (z)'], ['rot', 'Giro °']].map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <span style={{ width: 70, opacity: 0.7 }}>{et}</span>
               <input type="number" value={eqNuevo[k]} onChange={e => setEqNuevo(s => ({ ...s, [k]: e.target.value }))} style={{ ...btn, width: 90 }} />
@@ -3540,6 +3540,10 @@ export default function Visor3D() {
           ))}
           {seleccion.cid && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d && <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 6, cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={estirarAlAplicar} onChange={e => setEstirarAlAplicar(e.target.checked)} style={{ marginTop: 2 }} /><span>Ajustar el modelo a estas medidas (lo deforma si hace falta)</span></label>}
           <button style={{ ...btn, background: '#2f6fa8', marginTop: 6 }} onClick={aplicarEquipo}>Aplicar al plano</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 12 }}>
+            <span style={{ flex: 1, opacity: 0.75 }}>Subir / bajar</span>
+            {[[-10, '−10'], [-5, '−5'], [5, '+5'], [10, '+10']].map(([d, n]) => <button key={d} style={{ ...btn, padding: '2px 7px', fontSize: 11 }} onClick={() => setEqNuevo(s => ({ ...s, z0: Math.max(0, (parseFloat(s.z0) || 0) + d) }))}>{n}</button>)}
+          </div>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
             <button style={btn} onClick={pegarEquipo} title="La apoya contra el muro más cercano, con la parte de atrás hacia el muro, y lo escribe en el plano">▐ Pegar a la pared</button>
             <button style={btn} onClick={girarEquipo180} title="Por si queda mirando hacia el muro">⟲ Girar 180°</button>

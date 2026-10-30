@@ -937,6 +937,7 @@ router.patch('/:id/equipo', async (req, res) => {
     if (Number.isFinite(parseFloat(cambios.d))) vals.d = acota(cambios.d, 5, 2000);
     if (Number.isFinite(parseFloat(cambios.rot))) vals.rot = ((parseFloat(cambios.rot) % 360) + 360) % 360;
     if (Number.isFinite(parseFloat(cambios.alto))) vals.alto = acota(cambios.alto, 5, 1000);
+    if (Number.isFinite(parseFloat(cambios.z0))) vals.z0 = acota(cambios.z0, 0, 1000);
     const px = parseFloat(cambios.x), py = parseFloat(cambios.y), muevo = Number.isFinite(px) && Number.isFinite(py);
     let hecho = false;
     for (const c of contenedoresPlano(data)) for (const e of c.eq || []) if (e.id === eqId) {
