@@ -2957,6 +2957,58 @@ export default function Visor3D() {
       sol.castShadow = sombra; sol.shadow.mapSize.set(mapa, mapa); sol.shadow.map?.dispose(); sol.shadow.map = null;
     }
   };
+  // Ficha de materiales y elementos de la escena para la IA: cada textura o color usado, con su muestra real, y el inventario de equipamiento
+  const fichaMateriales = async () => {
+    const nombreColor = hex => {
+      const m = /^#?([0-9a-f]{6})/i.exec(hex || ''); if (!m) return '';
+      const r = parseInt(m[1].slice(0, 2), 16) / 255, g = parseInt(m[1].slice(2, 4), 16) / 255, b = parseInt(m[1].slice(4, 6), 16) / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+      const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1)); let h = 0;
+      if (d) { h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360; }
+      if (l > 0.93) return 'blanco'; if (l < 0.1) return 'negro';
+      if (s < 0.12) return l > 0.75 ? 'gris claro' : l > 0.4 ? 'gris medio' : 'gris oscuro';
+      if (h >= 20 && h < 50 && s < 0.5 && l > 0.7) return 'beige'; if (h >= 15 && h < 50 && l < 0.45) return 'marrón';
+      const n = h < 15 || h >= 345 ? 'rojo' : h < 40 ? 'naranja' : h < 65 ? 'amarillo' : h < 165 ? 'verde' : h < 195 ? 'turquesa' : h < 255 ? 'azul' : h < 290 ? 'violeta' : 'rosa';
+      return (l > 0.72 ? n + ' claro' : l < 0.3 ? n + ' oscuro' : n);
+    };
+    const usos = new Map(); // valor → zonas
+    const poner = (v, zona) => { if (!v || typeof v !== 'string') return; v = v.replace(/!$/, ''); if (!usos.has(v)) usos.set(v, new Set()); usos.get(v).add(zona); };
+    poner(acab.todosSuelos, 'suelo'); Object.values(acab.salas || {}).forEach(v => poner(v, 'suelo'));
+    poner(acab.todosMuros, 'paredes'); Object.values(acab.muros || {}).forEach(v => poner(v, 'paredes'));
+    poner(acab.todosTechos, 'techo'); Object.values(acab.techos || {}).forEach(v => poner(v, 'techo'));
+    poner(acab.todosPilares, 'pilares'); Object.values(acab.pilares || {}).forEach(v => poner(v, 'pilares'));
+    Object.values(acab.equipos || {}).forEach(v => poner(v, 'máquinas'));
+    Object.values(acab.huecos || {}).forEach(h => poner(h?.hoja, 'puertas y ventanas'));
+    objs.forEach(o => { poner(o.color, 'objeto «' + (o.nombre || o.tipo) + '»'); Object.values(o.partes || {}).forEach(v => poner(v, 'objeto «' + (o.nombre || o.tipo) + '»')); });
+    const lista = [], jpeg = (cv, max = 384) => { const k = Math.min(1, max / Math.max(cv.width, cv.height)), c2 = document.createElement('canvas'); c2.width = Math.max(1, Math.round(cv.width * k)); c2.height = Math.max(1, Math.round(cv.height * k)); c2.getContext('2d').drawImage(cv, 0, 0, c2.width, c2.height); return c2.toDataURL('image/jpeg', 0.82); };
+    for (const [v, zs] of [...usos.entries()].slice(0, 12)) {
+      const zona = [...zs].slice(0, 3).join(', ');
+      if (v.startsWith('tex:')) {
+        const t = texturas.find(x => 'tex:' + x.id === v); if (!t) continue;
+        if (t.espejo) { lista.push({ zona, descr: t.nombre + ': superficie reflectante tipo espejo/metal pulido, refleja el entorno' }); continue; }
+        let d = '«' + t.nombre + '», pieza/foto de ' + t.tam + ' cm de lado';
+        if (t.desp) d += '; despiece ' + ({ recto: 'a cuadro', mitad: 'trabado a media pieza (ladrillo)', tercio: 'trabado a tercios' })[t.desp.tipo] + ' con piezas de ' + t.desp.w + '×' + t.desp.h + ' cm';
+        if (t.junta?.mm > 0) d += '; juntas de ' + t.junta.mm + ' mm color ' + (nombreColor(t.junta.hex) || t.junta.hex);
+        if (t.rot) d += '; giradas ' + t.rot + '°';
+        let ref = null;
+        try {
+          const x = texturaDe(t, true);
+          if ((t.desp || t.junta?.mm > 0) && x.image instanceof HTMLCanvasElement) ref = jpeg(x.image);
+          else ref = await new Promise(ok => { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { try { ok(jpeg(im)); } catch { ok(null); } }; im.onerror = () => ok(null); im.src = t.url; setTimeout(() => ok(null), 6000); });
+        } catch { ref = null; }
+        lista.push({ zona, descr: d, ref });
+      } else if (/^#[0-9a-f]{6}/i.test(v)) lista.push({ zona, descr: 'color ' + (nombreColor(v) || '') + ' (' + v.slice(0, 7) + ')' });
+    }
+    // vidrios de puertas y ventanas
+    const mod = api3d.current.modelo, vid = new Set();
+    for (const pl of (mod?.plantas || (mod ? [mod] : []))) for (const mu of (pl.muros || [])) for (const a of (mu.ab || [])) if (/vidrio|cristal/i.test(a.mat || '')) vid.add(a.mat);
+    vid.forEach(vv => lista.push({ zona: 'puertas y ventanas', descr: vv.replace(/^Vidrio/i, 'cristal').toLowerCase() }));
+    // inventario: lo que existe, para que la IA no añada ni quite nada
+    const cuenta = new Map(), suma = n => { n = String(n || '').trim(); if (n) cuenta.set(n, (cuenta.get(n) || 0) + 1); };
+    for (const pl of (mod?.plantas || (mod ? [mod] : []))) (pl.equipos || []).forEach(e => suma(e.nombre || e.nm));
+    objs.forEach(o => { if (!['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(o.tipo)) suma(o.nombre || o.etiqueta); });
+    const inventario = [...cuenta.entries()].map(([n, c]) => (c > 1 ? c + '× ' : '') + n);
+    return { materiales: lista.slice(0, 8), inventario };
+  };
   // ov = textos concretos (estancia, estilo…) y opc.autoGuardar = guardar directamente en la galería (para las escenas)
   const renderIA = async (ov, opc = {}) => {
     const { renderer, scene, cam } = api3d.current, txt = ov && ov.estilo !== undefined ? ov : iaTxt;
@@ -2970,7 +3022,8 @@ export default function Visor3D() {
       const imagen = renderer.domElement.toDataURL('image/jpeg', 0.95);
       restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix();
       const meta = metaActual(txt);
-      const r = await api.post('/render-ia', { imagen, ...txt }, { timeout: 180000 });
+      const ficha = await fichaMateriales().catch(() => ({}));
+      const r = await api.post('/render-ia', { imagen, ...txt, ...ficha }, { timeout: 180000 });
       if (opc.autoGuardar) { await guardarRender('ia', r.data.imagen, meta, opc.nombre); setIa(null); return true; }
       setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen, meta, guardado: false });
       return true;

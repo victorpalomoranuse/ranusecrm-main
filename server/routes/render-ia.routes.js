@@ -33,7 +33,7 @@ router.post('/', async (req, res) => {
   const clave = prov === 'openai' ? process.env.OPENAI_API_KEY : process.env.GEMINI_API_KEY;
   if (!clave) return res.status(503).json({ error: 'Falta configurar ' + (prov === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY') + ' en el servidor' });
   try {
-    const { imagen, estancia, estilo, paleta, extra, libertad } = req.body || {};
+    const { imagen, estancia, estilo, paleta, extra, libertad, materiales, inventario } = req.body || {};
     const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(String(imagen || ''));
     if (!m) return res.status(400).json({ error: 'Falta la imagen del visor (png, jpg o webp)' });
     const colores = Array.isArray(paleta) ? paleta.filter(p => p && p.nombre).slice(0, 12).map(p => `${String(p.nombre).slice(0, 40)}${p.hex ? ' (' + String(p.hex).slice(0, 9) + ')' : ''}`) : [];
@@ -44,26 +44,36 @@ router.post('/', async (req, res) => {
       equilibrado: 'Respeta la distribución, la perspectiva y las proporciones del espacio, y los elementos principales (muros, puertas, ventanas y muebles). Sí puedes enriquecer la escena con luz natural cálida, reflejos, sombras suaves, texturas realistas en suelos y paredes, el exterior visible por las ventanas y pequeños detalles de ambiente coherentes con la estancia.',
       creativo: 'Mantén la arquitectura (muros, huecos, medidas y perspectiva) y la distribución general, pero decora con criterio de interiorista: textiles, plantas, iluminación ambiente, accesorios y detalles que hagan que el espacio parezca vivido y de revista. No cambies el encuadre.',
     };
+    // Muestras reales de los materiales de la escena (imagen + descripción) para que la IA los reconozca y no invente otros
+    const muestras = (Array.isArray(materiales) ? materiales : []).slice(0, 8).map(x => ({ zona: String(x?.zona || '').slice(0, 60), descr: String(x?.descr || '').slice(0, 300), ref: /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(String(x?.ref || '')) })).filter(x => x.descr || x.ref);
+    const conRef = muestras.filter(x => x.ref);
+    const txtMateriales = muestras.length ? 'MATERIALES REALES DEL PROYECTO (reprodúcelos con exactitud en cada zona: mismo color, veta, dibujo, tamaño de pieza y junta; no cambies de material ni inventes otros): ' + muestras.map(x => x.zona + ': ' + x.descr + (x.ref ? ' [muestra en la imagen ' + (conRef.indexOf(x) + 2) + ']' : '')).join(' | ') + '.' + (conRef.length ? ' Las imágenes 2 a ' + (conRef.length + 1) + ' son solo muestras de material (no forman parte de la escena): no las pongas en la foto.' : '') : '';
+    const txtInventario = Array.isArray(inventario) && inventario.length ? 'EQUIPAMIENTO Y ELEMENTOS QUE EXISTEN en la escena (no añadas ni quites ninguno, ni cambies su forma): ' + inventario.slice(0, 40).map(v => String(v).slice(0, 80)).join('; ') + '.' : '';
     const instrucciones = [
       'Convierte esta imagen de un modelo 3D de interiorismo en una fotografía profesional de revista de interiorismo y arquitectura: realista, nítida, con luz natural cálida, sombras suaves, reflejos creíbles, materiales con textura real y profundidad de campo, como hecha con una cámara réflex y un objetivo gran angular. Debe parecer una foto real, no un render ni una ilustración.',
       NIVELES[nivel],
       colores.length ? 'Respeta con la máxima fidelidad estos colores y acabados: ' + colores.join('; ') + '.' : 'Mantén los colores de los materiales tal y como aparecen en la imagen.',
+      txtMateriales,
+      txtInventario,
       estancia ? 'Estancia: ' + String(estancia).slice(0, 80) + '.' : '',
       estilo ? 'Estilo: ' + String(estilo).slice(0, 120) + '.' : '',
       extra ? String(extra).slice(0, 400) : '',
     ].filter(Boolean).join(' ');
     if (prov === 'openai') {
       const modeloO = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
-      const llamar = async (fidelidad) => {
+      const llamar = async (fidelidad, refs = true) => {
         const fd = new FormData();
         fd.append('model', modeloO); fd.append('prompt', instrucciones); fd.append('size', 'auto'); fd.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
         if (fidelidad) fd.append('input_fidelity', 'high');
-        fd.append('image', new Blob([Buffer.from(m[2], 'base64')], { type: m[1] }), 'vista.' + (m[1] === 'image/png' ? 'png' : 'jpg'));
+        const usa = refs && conRef.length;
+        fd.append(usa ? 'image[]' : 'image', new Blob([Buffer.from(m[2], 'base64')], { type: m[1] }), 'vista.' + (m[1] === 'image/png' ? 'png' : 'jpg'));
+        if (usa) conRef.forEach((x, i) => fd.append('image[]', new Blob([Buffer.from(x.ref[2], 'base64')], { type: x.ref[1] }), 'muestra' + (i + 2) + '.' + (x.ref[1] === 'image/png' ? 'png' : 'jpg')));
         const rr = await fetch('https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: 'Bearer ' + clave }, body: fd });
         return { rr, jj: await rr.json().catch(() => ({})) };
       };
       let { rr, jj } = await llamar(true);
       if (!rr.ok && /input_fidelity|unknown|unsupported/i.test(JSON.stringify(jj?.error || {}))) ({ rr, jj } = await llamar(false));
+      if (!rr.ok && conRef.length) ({ rr, jj } = await llamar(false, false)); // si no admite varias imágenes, se manda solo la vista (las muestras siguen descritas en el texto)
       if (!rr.ok) { console.error('render-ia OpenAI', rr.status, jj?.error?.message); return res.status(502).json({ error: 'ChatGPT (OpenAI) no ha podido generar la imagen' + (jj?.error?.message ? ': ' + String(jj.error.message).slice(0, 220) : '') }); }
       const b64 = jj?.data?.[0]?.b64_json;
       if (!b64) return res.status(502).json({ error: 'OpenAI no ha devuelto ninguna imagen' });
@@ -76,7 +86,7 @@ router.post('/', async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': clave },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: instrucciones }, { inlineData: { mimeType: m[1], data: m[2] } }] }],
+          contents: [{ parts: [{ text: instrucciones }, { inlineData: { mimeType: m[1], data: m[2] } }, ...conRef.map(x => ({ inlineData: { mimeType: x.ref[1], data: x.ref[2] } }))] }],
           generationConfig: { responseModalities: ['TEXT', 'IMAGE'], ...(t ? { imageConfig: { imageSize: t } } : {}) },
         }),
       });
