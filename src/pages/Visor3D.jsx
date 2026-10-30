@@ -1068,11 +1068,13 @@ export default function Visor3D() {
       renderer.setSize(w, h);
       cam.aspect = w / h; cam.updateProjectionMatrix();
     };
-    const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, ultLod = 0, enMov = false;
+    const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, ultLod = 0, enMov = false, ema = 16, escala = 1, ultGob = performance.now(), sinSombras = false;
+    const hud = document.createElement('div'); hud.style.cssText = 'position:absolute;left:8px;bottom:8px;font:11px monospace;color:#fff;background:rgba(0,0,0,0.45);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:5'; el.appendChild(hud);
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
     const bucle = () => {
       if (!vivo) return; raf = requestAnimationFrame(bucle);
-      const ahora = performance.now(), dt = Math.min(0.05, (ahora - ultimoT) / 1000); ultimoT = ahora;
+      const ahora = performance.now(), dtReal = ahora - ultimoT, dt = Math.min(0.05, dtReal / 1000); ultimoT = ahora;
+      ema = ema * 0.92 + Math.min(dtReal, 200) * 0.08;
       if (teclas.size) {
         cam.getWorldDirection(vF); vF.y = 0; if (vF.lengthSq() < 1e-6) vF.set(0, 0, -1); vF.normalize(); vR.crossVectors(vF, ARRIBA).normalize(); vM.set(0, 0, 0);
         if (teclas.has('w')) vM.add(vF); if (teclas.has('s')) vM.sub(vF); if (teclas.has('d')) vM.add(vR); if (teclas.has('a')) vM.sub(vR);
@@ -1081,7 +1083,7 @@ export default function Visor3D() {
       }
       // mientras la cámara se mueve se dibuja a menor resolución y al parar vuelve a la normal: el movimiento va fluido aunque haya muchos modelos
       const movi = teclas.size > 0 || ahora - ultMov < 180;
-      if (movi !== enMov) { enMov = movi; const base = api3d.current.prBase || 1; renderer.setPixelRatio(movi ? Math.min(base, 0.7) : base); }
+      if (movi !== enMov) { enMov = movi; const base = api3d.current.prBase || 1; renderer.setPixelRatio(movi ? Math.min(base * escala, 0.7) : base * escala); }
       // simplificación al mover: los modelos que se ven pequeños (lejos) se ocultan o se cambian por su caja hasta que la cámara se para
       const a0 = api3d.current, L = a0.lodList;
       if (L && L.length) {
@@ -1092,6 +1094,14 @@ export default function Visor3D() {
       }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
       ctrl.update(); renderer.render(scene, cam);
+      // regulador automático: si va a menos de ~25 fps baja la resolución y, si aun así va lento, quita las sombras; si sobra potencia, la recupera
+      if (ahora - ultGob > 1000) {
+        ultGob = ahora; const base = a0.prBase || 1;
+        if (ema > 42 && escala > 0.5) { escala = Math.max(0.5, escala - 0.15); renderer.setPixelRatio(base * escala); }
+        else if (ema > 42 && !sinSombras) { sinSombras = true; renderer.shadowMap.enabled = false; sol.castShadow = false; scene.traverse(o => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.needsUpdate = true; }); } }); }
+        else if (ema < 22 && escala < 1) { escala = Math.min(1, escala + 0.1); renderer.setPixelRatio(base * escala); }
+        hud.textContent = Math.round(1000 / Math.max(1, ema)) + ' fps · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triáng. · ' + renderer.info.render.calls + ' llamadas' + (escala < 1 ? ' · res ' + Math.round(escala * 100) + '%' : '') + (sinSombras ? ' · sin sombras' : '');
+      }
     };
     const enCampo = e => { const t = (e.target?.tagName || '').toLowerCase(); return t === 'input' || t === 'textarea' || t === 'select' || e.target?.isContentEditable; };
     const tDown = e => { if (enCampo(e) || e.ctrlKey || e.metaKey || e.altKey) return; const k = e.key.toLowerCase(); if (k.length === 1 && 'wasdqe'.includes(k)) { teclas.add(k); e.preventDefault(); } else if (k === 'shift') teclas.add('shift'); };
