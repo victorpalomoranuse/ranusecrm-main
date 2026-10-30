@@ -926,6 +926,27 @@ router.delete('/:id/luminaria/:ptId', async (req, res) => {
     res.status(500).json({ error: 'No se pudo quitar la luminaria' });
   }
 });
+// Quita una máquina del plano (y de su modelo 3D guardado)
+router.delete('/:id/equipo/:eqId', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const data = fila.data || {}, eqId = req.params.eqId;
+    let hecho = false;
+    for (const c of contenedoresPlano(data)) if (Array.isArray(c.eq)) { const n = c.eq.length; c.eq = c.eq.filter(e => e.id !== eqId); if (c.eq.length !== n) hecho = true; }
+    if (!hecho) return res.status(404).json({ error: 'No he encontrado esa máquina en el plano' });
+    const m3 = data.modelo3d;
+    if (m3) for (const pl of (m3.plantas || [m3])) if (Array.isArray(pl.equipos)) pl.equipos = pl.equipos.filter(e => e.id !== eqId);
+    if (data.escena3d?.modelosEq) delete data.escena3d.modelosEq[eqId];
+    data.updated = Date.now();
+    const { error } = await supabase.from('mediciones').update({ data, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('medicion equipo borrar:', err);
+    res.status(500).json({ error: 'No se pudo eliminar la máquina' });
+  }
+});
 router.patch('/:id/equipo', async (req, res) => {
   try {
     const { eqId, cambios = {} } = req.body || {};

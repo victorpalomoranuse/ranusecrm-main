@@ -2375,6 +2375,7 @@ export default function Visor3D() {
       if (ctrl && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); rehacer(); return; }
       if (ctrl && k === 'd' && selObj) { e.preventDefault(); if (selExtra.length) duplicarSel(); else duplicar(selObj); return; }
       if (['poli', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'carril', 'muro'].includes(herr) && (k === 'enter' || k === 'escape')) return; // lo gestiona la propia herramienta
+      if ((k === 'delete' || k === 'backspace') && !selObj && seleccion) { e.preventDefault(); eliminarEquipo(); return; }
       if ((k === 'delete' || k === 'backspace') && selObj) { e.preventDefault(); if (selExtra.length) borrarSel(); else borrar(selObj); return; }
       if (selExtra.length && !ctrl && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'pageup', 'pagedown'].includes(k)) {
         e.preventDefault(); const paso = e.shiftKey ? 50 : 5;
@@ -2435,6 +2436,11 @@ export default function Visor3D() {
     if (!r) { setAviso('No hay muros para pegarla.'); return; }
     try { await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios: { x: r.cx, y: r.cy, rot: r.rot } }); setSeleccion(null); setAviso('Máquina pegada a la pared en el plano ✓. Si tienes Planos abierto, recárgalo. Si queda mirando al muro, usa «Girar 180°».'); api3d.current.recargar?.(); }
     catch (e) { setAviso(e.response?.data?.error || 'No se pudo pegar la máquina'); }
+  };
+  const eliminarEquipo = async () => {
+    if (!seleccion || !window.confirm('¿Eliminar «' + (seleccion.nombre || 'esta máquina') + '» del plano? Desaparece también de Planos y de las cantidades.')) return;
+    try { await api.delete('/medicion/' + id + '/equipo/' + seleccion.id); setSeleccion(null); setEqNuevo(null); setGuardado('Máquina eliminada del plano ✓ (si tienes Planos abierto, recárgalo)'); api3d.current.limpiarSel?.(); api3d.current.recargar?.(); }
+    catch (e) { setAviso(e.response?.data?.error || 'No se pudo eliminar la máquina'); }
   };
   const girarEquipo180 = async () => {
     try { await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios: { rot: ((seleccion.rot || 0) + 180) % 360 } }); setSeleccion(null); setAviso('Máquina girada 180° en el plano ✓'); api3d.current.recargar?.(); }
@@ -3706,6 +3712,7 @@ export default function Visor3D() {
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
             <button style={btn} onClick={pegarEquipo} title="La apoya contra el muro más cercano, con la parte de atrás hacia el muro, y lo escribe en el plano">▐ Pegar a la pared</button>
             <button style={btn} onClick={girarEquipo180} title="Por si queda mirando hacia el muro">⟲ Girar 180°</button>
+            <button style={{ ...btn, background: '#a33' }} onClick={eliminarEquipo} title="Quita la máquina del plano (también en Planos). Tecla Supr">🗑 Eliminar</button>
           </div>
           {seleccion.cid && (() => {
             const mod = biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d;
