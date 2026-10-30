@@ -2507,6 +2507,7 @@ export default function Visor3D() {
   const aplicarEquipoSuave = async (cambios) => {
     if (!seleccion) return;
     try {
+      if (estirarAlAplicar && (cambios.w != null || cambios.d != null || cambios.alto != null) && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d) { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { ...m[seleccion.id], modo: 'estirar' } })); }
       await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios });
       setSeleccion(s => (s ? { ...s, ...(cambios.x != null ? { cx: parseFloat(cambios.x) } : {}), ...(cambios.y != null ? { cy: parseFloat(cambios.y) } : {}), ...(cambios.w != null ? { w: parseFloat(cambios.w), largo: parseFloat(cambios.w) } : {}), ...(cambios.d != null ? { d: parseFloat(cambios.d), fondo: parseFloat(cambios.d) } : {}), ...(cambios.alto != null ? { alto: parseFloat(cambios.alto) } : {}), ...(cambios.rot != null ? { rot: parseFloat(cambios.rot) } : {}), ...(cambios.z0 != null ? { z0: parseFloat(cambios.z0) } : {}) } : s));
       setGuardado('Cambiado en el plano ✓ (si tienes Planos abierto, recárgalo)'); api3d.current.recargar?.();
