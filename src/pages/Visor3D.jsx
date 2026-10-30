@@ -1055,7 +1055,7 @@ export default function Visor3D() {
       renderer.setSize(w, h);
       cam.aspect = w / h; cam.updateProjectionMatrix();
     };
-    const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0;
+    const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, enMov = false;
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
     const bucle = () => {
       if (!vivo) return; raf = requestAnimationFrame(bucle);
@@ -1066,6 +1066,9 @@ export default function Visor3D() {
         if (teclas.has('e')) vM.y += 1; if (teclas.has('q')) vM.y -= 1;
         if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (teclas.has('shift') ? 9 : 3)); cam.position.add(vM); ctrl.target.add(vM); }
       }
+      // mientras la cámara se mueve se dibuja a menor resolución y al parar vuelve a la normal: el movimiento va fluido aunque haya muchos modelos
+      const movi = teclas.size > 0 || ahora - ultMov < 180;
+      if (movi !== enMov) { enMov = movi; const base = api3d.current.prBase || 1; renderer.setPixelRatio(movi ? Math.min(base, 0.7) : base); }
       if (ahora - ultSombra > 250) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
       ctrl.update(); renderer.render(scene, cam);
     };
@@ -1073,6 +1076,7 @@ export default function Visor3D() {
     const tDown = e => { if (enCampo(e) || e.ctrlKey || e.metaKey || e.altKey) return; const k = e.key.toLowerCase(); if (k.length === 1 && 'wasdqe'.includes(k)) { teclas.add(k); e.preventDefault(); } else if (k === 'shift') teclas.add('shift'); };
     const tUp = e => { teclas.delete(e.key.toLowerCase()); };
     window.addEventListener('keydown', tDown); window.addEventListener('keyup', tUp); window.addEventListener('blur', () => teclas.clear());
+    ctrl.addEventListener('change', () => { ultMov = performance.now(); });
     ajustar(); bucle();
     window.addEventListener('resize', ajustar);
     api3d.current = { renderer, scene, cam, ctrl, sol, raiz, esc, base, el, hemi };
@@ -2454,8 +2458,8 @@ export default function Visor3D() {
   // Calidad: en ordenadores sin tarjeta gráfica potente se baja la resolución y las sombras
   useEffect(() => {
     const a = api3d.current; if (!a.renderer) return;
-    const q = { baja: [1, 0, 512], media: [Math.min(window.devicePixelRatio, 1.5), 1, 1024], alta: [window.devicePixelRatio, 1, 2048] }[calidad];
-    a.renderer.setPixelRatio(q[0]);
+    const q = { baja: [1, 0, 512], media: [1, 1, 1024], alta: [window.devicePixelRatio, 1, 2048] }[calidad];
+    a.prBase = q[0]; a.renderer.setPixelRatio(q[0]);
     a.renderer.shadowMap.enabled = !!q[1];
     a.sol.castShadow = !!q[1];
     a.sol.shadow.mapSize.set(q[2], q[2]);
