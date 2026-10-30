@@ -681,6 +681,12 @@ router.patch('/:id/textura/:tid', async (req, res) => {
     const j = req.body?.junta;
     if (j && /^#[0-9a-fA-F]{6}$/.test(j.hex || '') && Number(j.mm) > 0) t.junta = { hex: j.hex, mm: Math.max(0.5, Math.min(30, Number(j.mm))) }; else delete t.junta;
     if (Number.isFinite(parseFloat(req.body?.tam))) t.tam = Math.max(5, Math.min(1000, parseFloat(req.body.tam)));
+    // despiece: la foto se corta en piezas de w×h cm con la junta elegida (recto o trabado)
+    const d = req.body?.desp;
+    if (d && ['recto', 'mitad', 'tercio'].includes(d.tipo) && Number(d.w) >= 2 && Number(d.h) >= 2) {
+      const lim = (v, a, b) => Math.max(a, Math.min(b, Number(v) || 0));
+      t.desp = { tipo: d.tipo, w: lim(d.w, 2, 300), h: lim(d.h, 2, 300), corte: d.corte === 'material' ? 'material' : 'pieza', var: lim(d.var, 0, 40) };
+    } else if (req.body && 'desp' in req.body) delete t.desp;
     const { error } = await supabase.from('mediciones').update({ data: { ...fila.data, escena3d: esc } }).eq('id', req.params.id);
     if (error) throw error;
     res.json({ textura: t });

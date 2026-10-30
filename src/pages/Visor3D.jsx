@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -21,12 +21,73 @@ const CM = 0.01;
 
 // Texturas subidas: se descargan una vez y se reutilizan; la repetición se ajusta al tamaño real (cm) de cada textura
 const cacheTex = new Map();
+// Espejos y metales: son «texturas» fijas del visor (tex:espejo…) que además se pintan reflectantes. Hace falta un entorno que reflejar
+const ESPEJOS = [
+  { id: 'espejo', nombre: 'Espejo', hex: '#e9f0f4' }, { id: 'espejo-bronce', nombre: 'Espejo bronce', hex: '#b08d6a' },
+  { id: 'espejo-ahumado', nombre: 'Espejo ahumado', hex: '#4a5258' }, { id: 'cromo', nombre: 'Cromo', hex: '#ffffff' },
+].map(e => ({ id: e.id, nombre: e.nombre, tam: 100, espejo: e.hex, fijo: true, url: (() => { try { const cv = document.createElement('canvas'); cv.width = 96; cv.height = 56; const cx = cv.getContext('2d'), g = cx.createLinearGradient(0, 0, 96, 56); g.addColorStop(0, '#fff'); g.addColorStop(0.45, e.hex); g.addColorStop(0.55, '#fff'); g.addColorStop(1, e.hex); cx.fillStyle = g; cx.fillRect(0, 0, 96, 56); return cv.toDataURL(); } catch { return ''; } })() }));
+let envEsp = null, espejoSucio = false;
+function aplicaEspejos(scene) {
+  scene.traverse(o => {
+    if (!o.isMesh || !o.material) return;
+    for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
+      if (m.metalness === undefined) continue;
+      if (m.map?.userData?.espejo) {
+        if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
+        m.metalness = 1; m.roughness = 0.04; m.envMap = envEsp; m.envMapIntensity = 1.4; m.needsUpdate = true;
+      } else if (m.userData.espOn) {
+        const z = m.userData.esp0 || {}; m.userData.espOn = false; m.envMap = null; m.metalness = z.metalness ?? 0; m.roughness = z.roughness ?? 0.6; m.envMapIntensity = z.envMapIntensity ?? 1; m.needsUpdate = true;
+      }
+    }
+  });
+}
+// Despiece: piezas de w×h cm. La textura repite un tramo de varias piezas (más variación) y las filas se desplazan si el aparejo es trabado
+function fraccionDesp(r) { let best = [1, 1], err = 1e9; for (let b = 1; b <= 6; b++) { const a = Math.max(1, Math.round(r * b)), e = Math.abs(a / b - r) / r; if (e < err - 1e-9) { err = e; best = [a, b]; } } return best; }
+export function periodoDesp(d) {
+  const [a, b] = fraccionDesp(d.w / d.h);
+  let cols = b, rows = a; const n = Math.max(1, Math.round(4 / Math.min(cols, rows))); cols *= n; rows *= n;
+  const mult = d.tipo === 'mitad' ? 2 : d.tipo === 'tercio' ? 3 : 1;
+  if (rows % mult) { cols *= mult; rows *= mult; }
+  if (cols > 16 || rows > 16) { cols = b; rows = a; if (rows % mult) { cols *= mult; rows *= mult; } }
+  return { cols, rows, S: Math.round(cols * d.w) };
+}
+function dibujaDesp(cx, img, t, j) {
+  const d = t.desp, { cols, rows } = periodoDesp(d), N = 2048, pw = N / cols, ph = N / rows;
+  const jx = j ? Math.min(0.4, j.mm / 10 / d.w) * pw : 0, jy = j ? Math.min(0.4, j.mm / 10 / d.h) * ph : 0;
+  cx.fillStyle = j ? j.hex : '#bdbdbd'; cx.fillRect(0, 0, N, N);
+  let sem = 12345; const rnd = () => (sem = (sem * 16807) % 2147483647) / 2147483647, ar = pw / ph;
+  for (let r = 0; r < rows; r++) {
+    const off = d.tipo === 'mitad' ? (r % 2) * 0.5 : d.tipo === 'tercio' ? (r % 3) / 3 : 0;
+    for (let c = 0; c < cols; c++) {
+      let sx = 0, sy = 0, sw = img.width, sh = img.height;
+      if (d.corte === 'material') { const f = 0.35 + rnd() * 0.3; sw = img.width * f; sh = sw / ar; if (sh > img.height) { sh = img.height; sw = sh * ar; } sx = rnd() * (img.width - sw); sy = rnd() * (img.height - sh); }
+      else if (sw / sh > ar) { const w2 = sh * ar; sx = (sw - w2) / 2; sw = w2; } else { const h2 = sw / ar; sy = (sh - h2) / 2; sh = h2; }
+      const v = (rnd() * 2 - 1) * (d.var || 0) / 100, x = (c + off) * pw;
+      for (const dx of [0, -N]) {
+        const px = x + dx + jx / 2, py = r * ph + jy / 2; if (px > N || px + pw < 0) continue;
+        cx.drawImage(img, sx, sy, sw, sh, px, py, pw - jx, ph - jy);
+        if (v) { cx.fillStyle = v > 0 ? 'rgba(255,255,255,' + v + ')' : 'rgba(0,0,0,' + (-v) + ')'; cx.fillRect(px, py, pw - jx, ph - jy); }
+      }
+    }
+  }
+}
 function texturaDe(t, uvEnCm) {
   const k = uvEnCm ? 1 / t.tam : 1 / (t.tam * CM), j = t.junta && t.junta.mm > 0 ? t.junta : null;
-  const clave = t.url + '|' + k + '|' + (j ? j.hex + j.mm : '');
+  if (t.espejo) espejoSucio = true;
+  const clave = t.url.slice(0, 200) + '|' + k + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '');
   let x = cacheTex.get(clave);
   if (!x) {
-    if (j) {
+    if (t.espejo) {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 4; const cx = cv.getContext('2d'); cx.fillStyle = t.espejo; cx.fillRect(0, 0, 4, 4);
+      x = new THREE.CanvasTexture(cv); x.userData.espejo = t.id;
+    } else if (t.desp) {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 2048;
+      const cx = cv.getContext('2d'); cx.fillStyle = j ? j.hex : '#bdbdbd'; cx.fillRect(0, 0, 2048, 2048);
+      x = new THREE.CanvasTexture(cv);
+      const img = new Image(); img.crossOrigin = 'anonymous';
+      img.onload = () => { dibujaDesp(cx, img, t, j); x.needsUpdate = true; try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } };
+      img.src = t.url;
+    } else if (j) {
       // textura con junta: la pieza se dibuja un poco más pequeña sobre un fondo del color de la junta
       const cv = document.createElement('canvas'); cv.width = cv.height = 512;
       const cx = cv.getContext('2d'); cx.fillStyle = j.hex; cx.fillRect(0, 0, 512, 512);
@@ -51,6 +112,7 @@ function pintar(mesh, valor, texturas, uvEnCm, repBox) {
     mesh.material.map = mp; mesh.material.color.setHex(0xffffff);
   }
   else { mesh.material.map = null; mesh.material.color.setHex(valor && /^#/.test(valor) ? parseInt(valor.slice(1), 16) : u.col0); }
+  espejoSucio = true;
   if (mesh.material.emissive && !Array.isArray(mesh.material)) {
     if (esLed(valor)) { mesh.material.emissive.set(valor.slice(0, 7)); mesh.material.emissiveIntensity = 1.8; u.ledAplicado = true; }
     else if (u.ledAplicado) { mesh.material.emissive.setHex(0x000000); mesh.material.emissiveIntensity = 1; u.ledAplicado = false; }
@@ -992,7 +1054,8 @@ export default function Visor3D() {
   const [guardado, setGuardado] = useState('');
   const cargadaEscena = useRef(false);
   const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, equipos: {}, pilares: {}, huecos: {}, regiones: {}, todosMuros: null, todosSuelos: null, todosTechos: null, todosPilares: null });
-  const [texturas, setTexturas] = useState([]);
+  const [texturasBase, setTexturas] = useState([]);
+  const texturas = useMemo(() => [...ESPEJOS, ...texturasBase], [texturasBase]);
   const [b3dAbierta, setB3dAbierta] = useState(false);
   const [b3d, setB3d] = useState(null);           // índice de la biblioteca 3D gratuita
   const [b3dTab, setB3dTab] = useState('modelos');
@@ -1125,6 +1188,7 @@ export default function Visor3D() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.shadowMap.autoUpdate = false; // las sombras del sol se recalculan unas 4 veces por segundo, no en cada fotograma: con muchos modelos pesados era lo que más frenaba
     const scene = new THREE.Scene();
+    try { const pm = new THREE.PMREMGenerator(renderer); envEsp = pm.fromScene(new RoomEnvironment(), 0.03).texture; pm.dispose(); } catch { envEsp = null; }
     {
       const cv = document.createElement('canvas'); cv.width = 2; cv.height = 256;
       const cx = cv.getContext('2d'), gr = cx.createLinearGradient(0, 0, 0, 256);
@@ -1184,6 +1248,7 @@ export default function Visor3D() {
         } else if (!movi && L.some(it => it.peq)) L.forEach(it => { if (it.peq) { it.peq = false; it.mm.visible = true; it.prox?.(false); } });
       }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
+      if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene); }
       ctrl.update();
       if (a0.composer) {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
@@ -3396,7 +3461,7 @@ export default function Visor3D() {
                 <div key={t.id} onClick={() => elegir({ id: t.id })} title={t.nombre + ' · ' + t.tam + ' cm'} style={{ position: 'relative', cursor: 'pointer', border: esSel({ id: t.id }) ? '2px solid #4da3ff' : '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
                   <img src={t.url} alt={t.nombre} style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
                   <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.nombre}</div>
-                  <span onClick={e => { e.stopPropagation(); quitarTex(t); }} style={{ position: 'absolute', top: 1, right: 3, background: '#000a', borderRadius: 3, padding: '0 4px', fontSize: 11 }}>✕</span>
+                  {!t.fijo && <span onClick={e => { e.stopPropagation(); quitarTex(t); }} style={{ position: 'absolute', top: 1, right: 3, background: '#000a', borderRadius: 3, padding: '0 4px', fontSize: 11 }}>✕</span>}
                 </div>
               ))}
             </div>
@@ -3410,7 +3475,9 @@ export default function Visor3D() {
             <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>«Tamaño real» es lo que mide en la vida real el lado de la foto (ej. una loseta de 60 cm), para que no salga gigante.</div>
             {matSel?.id && (() => {
               const t = texturas.find(x => x.id === matSel.id); if (!t) return null;
-              const guarda = (junta, tam) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
+              if (t.fijo) return <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8, opacity: 0.75, fontSize: 11 }}>{t.nombre}: acabado reflectante. Refleja un entorno de estudio (con ✨ Realista se nota más). Pinta con él muros, suelos u objetos.</div>;
+              const lee = () => { const tp = document.getElementById('tx-dt').value; if (tp === 'none') return null; return { tipo: tp, w: parseFloat(document.getElementById('tx-dw').value) || 60, h: parseFloat(document.getElementById('tx-dh').value) || 30, corte: document.getElementById('tx-dc').value, var: parseFloat(document.getElementById('tx-dv').value) || 0 }; };
+              const guarda = (junta, tam, desp) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam, desp: desp || null }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
               return (
                 <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8 }}>
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>Textura elegida: {t.nombre}</div>
@@ -3418,9 +3485,18 @@ export default function Visor3D() {
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (color)</span><input key={'jc' + t.id + (t.junta?.hex || '')} id="tx-jc" type="color" defaultValue={t.junta?.hex || '#bdbdbd'} /></label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (mm)</span><input key={'jm' + t.id + (t.junta?.mm || 0)} id="tx-jm" type="number" step="0.5" defaultValue={t.junta?.mm || 0} style={{ ...btn, width: 70 }} /></label>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => guarda({ hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) || 0 }, parseFloat(document.getElementById('tx-tam').value) || t.tam)}>Aplicar</button>
-                    <button style={btn} onClick={() => guarda(null, parseFloat(document.getElementById('tx-tam').value) || t.tam)}>Sin junta</button>
+                    <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => { const dsp = lee(); guarda({ hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) || 0 }, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Aplicar</button>
+                    <button style={btn} onClick={() => { const dsp = lee(); guarda(null, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Sin junta</button>
                   </div>
+                  <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Despiece</div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Colocación</span>
+                    <select key={'dt' + t.id + (t.desp?.tipo || '')} id="tx-dt" defaultValue={t.desp?.tipo || 'none'} style={btn}><option value="none">Sin despiece (la foto es 1 pieza)</option><option value="recto">Recto (a cuadro)</option><option value="mitad">Trabado ½ (ladrillo)</option><option value="tercio">Trabado ⅓</option></select></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Pieza cm</span>
+                    <input key={'dw' + t.id + (t.desp?.w || 0)} id="tx-dw" type="number" defaultValue={t.desp?.w || 60} style={{ ...btn, width: 56 }} /><span>×</span><input key={'dh' + t.id + (t.desp?.h || 0)} id="tx-dh" type="number" defaultValue={t.desp?.h || 30} style={{ ...btn, width: 56 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>La foto es</span>
+                    <select key={'dc' + t.id + (t.desp?.corte || '')} id="tx-dc" defaultValue={t.desp?.corte || 'pieza'} style={btn}><option value="pieza">Una pieza (se repite)</option><option value="material">Material continuo (cada pieza distinta)</option></select></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Variación tono %</span><input key={'dv' + t.id + (t.desp?.var || 0)} id="tx-dv" type="number" defaultValue={t.desp?.var ?? 6} style={{ ...btn, width: 56 }} /></label>
+                  <div style={{ opacity: 0.5, fontSize: 11 }}>Elige la colocación, el tamaño de cada pieza, la junta de arriba y pulsa «Aplicar».</div>
                   <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>La junta sirve para baldosas, azulejos y microlosetas: la foto debe ser UNA pieza y el tamaño real, lo que mide esa pieza.</div>
                 </div>
               );
