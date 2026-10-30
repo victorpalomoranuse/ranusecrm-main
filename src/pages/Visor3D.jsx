@@ -1051,6 +1051,7 @@ export default function Visor3D() {
   const [biblioteca, setBiblioteca] = useState(null);
   const [filtro, setFiltro] = useState('');
   const [solo3d, setSolo3d] = useState(true);
+  const [persona, setPersona] = useState(false);
   const [guardado, setGuardado] = useState('');
   const cargadaEscena = useRef(false);
   const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, equipos: {}, pilares: {}, huecos: {}, regiones: {}, todosMuros: null, todosSuelos: null, todosTechos: null, todosPilares: null });
@@ -1233,8 +1234,8 @@ export default function Visor3D() {
       if (teclas.size) {
         cam.getWorldDirection(vF); vF.y = 0; if (vF.lengthSq() < 1e-6) vF.set(0, 0, -1); vF.normalize(); vR.crossVectors(vF, ARRIBA).normalize(); vM.set(0, 0, 0);
         if (teclas.has('w')) vM.add(vF); if (teclas.has('s')) vM.sub(vF); if (teclas.has('d')) vM.add(vR); if (teclas.has('a')) vM.sub(vR);
-        if (teclas.has('e')) vM.y += 1; if (teclas.has('q')) vM.y -= 1;
-        if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (teclas.has('shift') ? 9 : 3)); cam.position.add(vM); ctrl.target.add(vM); }
+        if (api3d.current.persona) vM.y = 0; else { if (teclas.has('e')) vM.y += 1; if (teclas.has('q')) vM.y -= 1; }
+        if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (api3d.current.persona ? (teclas.has('shift') ? 3.2 : 1.3) : (teclas.has('shift') ? 9 : 3))); cam.position.add(vM); ctrl.target.add(vM); }
       }
       // mientras la cámara se mueve se dibuja a menor resolución y al parar vuelve a la normal: el movimiento va fluido aunque haya muchos modelos
       const movi = teclas.size > 0 || ahora - ultMov < 180;
@@ -1929,6 +1930,29 @@ export default function Visor3D() {
     a.renderer.toneMappingExposure = ambiente.exposicion;
     try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null })); } catch { /* sin almacenamiento */ }
   }, [hora, ambiente.exposicion, ambiente.luces, ambiente.kSol, estado, rev]);
+
+  // Modo persona: la cámara se queda a la altura de los ojos y solo gira sobre sí misma; se anda con W A S D (despacio) y la rueda cambia el zoom de la lente
+  useEffect(() => {
+    const a = api3d.current; if (!a.ctrl || !a.cam || estado === 'cargando') return;
+    const { cam, ctrl } = a, el = a.renderer.domElement;
+    if (!persona) {
+      if (a.persona) {
+        a.persona = false; ctrl.minDistance = 0; ctrl.maxDistance = Infinity; ctrl.enablePan = true; ctrl.enableZoom = true; ctrl.rotateSpeed = 1; ctrl.dampingFactor = 0.05; ctrl.minPolarAngle = 0; ctrl.maxPolarAngle = Math.PI;
+        cam.fov = a.fov0 || 50; cam.updateProjectionMatrix();
+        const d = new THREE.Vector3(); cam.getWorldDirection(d); d.y = 0; if (d.lengthSq() < 1e-6) d.set(0, 0, -1); d.normalize();
+        const t = cam.position.clone().addScaledVector(d, 4); t.y = 0.8; cam.position.addScaledVector(d, -4); cam.position.y = 3.2; ctrl.target.copy(t); ctrl.update();
+      }
+      return;
+    }
+    a.persona = true; a.fov0 = a.fov0 || cam.fov;
+    const d = new THREE.Vector3(); cam.getWorldDirection(d); d.y = 0; if (d.lengthSq() < 1e-6) d.set(0, 0, -1); d.normalize();
+    cam.position.y = 1.6; ctrl.minDistance = ctrl.maxDistance = 0.05; ctrl.target.copy(cam.position).addScaledVector(d, 0.05);
+    ctrl.enablePan = false; ctrl.enableZoom = false; ctrl.rotateSpeed = 0.45; ctrl.dampingFactor = 0.2; ctrl.minPolarAngle = Math.PI * 0.12; ctrl.maxPolarAngle = Math.PI * 0.88;
+    cam.fov = 62; cam.updateProjectionMatrix(); ctrl.update();
+    const rueda = e => { e.preventDefault(); cam.fov = Math.max(28, Math.min(85, cam.fov + (e.deltaY > 0 ? 3 : -3))); cam.updateProjectionMatrix(); };
+    el.addEventListener('wheel', rueda, { passive: false });
+    return () => el.removeEventListener('wheel', rueda);
+  }, [persona, estado]);
 
   // Modo realista: reflejos de un entorno de estudio, oclusión ambiental (sombras de contacto) y bordes suavizados. Es opcional: en equipos flojos se deja apagado.
   useEffect(() => {
@@ -2979,6 +3003,7 @@ export default function Visor3D() {
         <span style={sepTop} />
         <button style={bTop} onClick={() => vista('persp')} title="Vista en perspectiva de todo el plano">Perspectiva</button>
         <button style={bTop} onClick={() => vista('planta')} title="Vista desde arriba">Planta</button>
+        <button style={{ ...bTop, ...(persona ? { background: '#2f6fa8' } : {}) }} onClick={() => setPersona(v => !v)} title="Te pone dentro del espacio, a la altura de los ojos: andas despacio con W A S D y giras la vista con el ratón">🚶 Recorrer</button>
         <button style={bTop} onClick={() => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }} title="Pone la cámara a la altura de los ojos (1,60 m): ideal antes de un render o un panorama">👁 Ojos</button>
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">☀ Ambiente</button>
         <button style={{ ...bTop, ...(camAbierta ? bOn : {}) }} onClick={() => setCamAbierta(v => !v)} title="Altura de la cámara, nivelarla, focal y verticales rectas">🎥 Cámara</button>
