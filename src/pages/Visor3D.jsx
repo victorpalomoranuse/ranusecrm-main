@@ -3212,12 +3212,13 @@ export default function Visor3D() {
             <button style={{ ...btn, background: '#2f6fa8', padding: '4px 10px' }} onClick={aplicarHueco} title="Escribe en el plano las medidas, el tipo y la hoja de arriba">Aplicar al plano</button>
             <button style={{ ...btn, padding: '4px 8px' }} onClick={() => setSelHueco(null)}>✕</button>
           </div>
-          {[['w', 'Ancho'], ['h', 'Alto'], ['sill', selHueco.tipo === 'door' ? 'Altura suelo' : 'Antepecho'], ['p', 'Posición']].map(([k, et]) => (
+          {[['w', 'Ancho'], ['h', 'Alto'], ['sill', 'Altura desde el suelo'], ['p', 'Posición']].map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <span style={{ width: 70, opacity: 0.7 }}>{et} cm</span>
               <input type="number" value={selHueco.nuevo[k]} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, [k]: e.target.value } }))} style={{ ...btn, width: 90 }} />
             </label>
           ))}
+          <div style={{ fontSize: 11, opacity: 0.65, margin: '0 0 6px' }}>Borde de abajo a {Math.round(parseFloat(selHueco.nuevo.sill) || 0)} cm del suelo · borde de arriba a {Math.round((parseFloat(selHueco.nuevo.sill) || 0) + (parseFloat(selHueco.nuevo.h) || 0))} cm</div>
           {(() => {
             const esP = selHueco.tipo === 'door', key = selHueco.id || (selHueco.muroId + ':' + selHueco.p), c = huecosCfg[key] || { abierta: 0, bisagra: 'izq', sentido: 'A' }, set = n => setHuecosCfg(t => ({ ...t, [key]: { ...c, ...n } }));
             const tip = selHueco.nuevo.tip || (esP ? 'Abatible' : 'Practicable'), tips = esP ? DOOR_TIPS : WIN_TIPS, corredera = /corredera|seccional|enrollable|plegable|basculante/i.test(tip);
