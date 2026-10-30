@@ -11,6 +11,7 @@ import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
 import { uploadReferenceImageFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { indiceBiblioteca3d } from './biblioteca3d.routes.js';
+import { leerModelosBib } from '../utils/modelos-bib.js';
 
 // Herramienta de medición en obra: guarda los planos por proyecto y le sirve el
 // catálogo del CRM (máquinas y luminarias) para colocarlas en el plano.
@@ -215,13 +216,15 @@ async function pedirBiblioteca(columnas) {
   return { data: filas };
 }
 async function cargarBiblioteca() {
+  const mb = await leerModelosBib().catch(() => ({}));
+  const conModelo = (it) => (mb[it.id]?.url ? { ...it, modelo3d: { url: mb[it.id].url, tipo: mb[it.id].tipo || 'glb', rot: Number(mb[it.id].rot) || 0 } } : it);
   // En el catálogo solo viaja la planta; el alzado y el lateral se piden al colocarlos (/bloque/:id)
   const { data, error } = await pedirBiblioteca('id, nombre, categoria, largo, fondo, alto, planta, origen, alzado, lado');
   if (error) { // si la tabla aún no tiene las columnas de vistas (v73), se sigue con la planta
     const { data: d2, error: e2 } = await pedirBiblioteca('id, nombre, categoria, largo, fondo, alto, planta, origen');
-    return e2 ? [] : (d2 || []).map(itemBiblioteca);
+    return e2 ? [] : (d2 || []).map(r => conModelo(itemBiblioteca(r)));
   }
-  return (data || []).map(r => itemBiblioteca(r));
+  return (data || []).map(r => conModelo(itemBiblioteca(r)));
 }
 router.post('/biblioteca', async (req, res) => {
   try {

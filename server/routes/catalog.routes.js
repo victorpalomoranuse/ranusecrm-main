@@ -8,6 +8,21 @@ import { callClaude } from '../utils/anthropic.js';
 import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
 import JSZip from 'jszip';
+import { leerModelosBib, guardarModeloBib } from '../utils/modelos-bib.js';
+
+// Las piezas de la biblioteca propia (ids «bib-…») guardan su modelo 3D en un archivo aparte, no en catalog_products
+const esBib = (id) => String(id).startsWith('bib-');
+async function productoOBib(id) {
+  if (!esBib(id)) { const { data, error } = await supabase.from('catalog_products').select('id, bloques').eq('id', id).maybeSingle(); if (error) throw error; return data; }
+  const { data: b, error } = await supabase.from('biblioteca_bloques').select('id').eq('id', id.slice(4)).maybeSingle();
+  if (error) throw error;
+  return b ? { id, bloques: { modelo3d: (await leerModelosBib())[id] } } : null;
+}
+const guardaModelo = async (id, pr, modelo3d) => {
+  if (esBib(id)) return guardarModeloBib(id, modelo3d);
+  const { modelo3d: _q, ...resto } = pr.bloques || {};
+  return supabase.from('catalog_products').update({ bloques: modelo3d ? { ...resto, modelo3d } : resto }).eq('id', id);
+};
 
 const router = express.Router();
 
@@ -518,8 +533,7 @@ router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, asy
   try {
     if (!req.file) return res.status(400).json({ error: 'Falta el archivo del modelo' });
     const ext = String(req.file.originalname.split('.').pop()).toLowerCase();
-    const { data: pr, error: e0 } = await supabase.from('catalog_products').select('id, bloques').eq('id', req.params.id).maybeSingle();
-    if (e0) throw e0;
+    const pr = await productoOBib(req.params.id);
     if (!pr) return res.status(404).json({ error: 'Producto no encontrado' });
     const base = `modelos-3d/${req.params.id}-${Date.now()}`;
     let url, tipo = ext, carpeta = null;
@@ -546,7 +560,7 @@ router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, asy
     }
     const antiguo = pr.bloques?.modelo3d;
     const modelo3d = { url, tipo, ...(carpeta ? { carpeta } : {}), rot: Number(antiguo?.rot) || 0, nombre: req.file.originalname, bytes: req.file.size, actualizado: new Date().toISOString() };
-    const { error } = await supabase.from('catalog_products').update({ bloques: { ...(pr.bloques || {}), modelo3d } }).eq('id', req.params.id);
+    const { error } = await guardaModelo(req.params.id, pr, modelo3d);
     if (error) throw error;
     if (antiguo) await quitarModelo3dArchivos(antiguo);
     res.status(201).json({ modelo3d });
@@ -558,10 +572,10 @@ router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, asy
 router.put('/products/:id/modelo3d', async (req, res) => {
   try {
     const rot = ((Number(req.body?.rot) % 360) + 360) % 360;
-    const { data: pr } = await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle();
+    const pr = await productoOBib(req.params.id);
     if (!pr?.bloques?.modelo3d) return res.status(404).json({ error: 'Este producto no tiene modelo 3D' });
     const modelo3d = { ...pr.bloques.modelo3d, rot };
-    const { error } = await supabase.from('catalog_products').update({ bloques: { ...pr.bloques, modelo3d } }).eq('id', req.params.id);
+    const { error } = await guardaModelo(req.params.id, pr, modelo3d);
     if (error) throw error;
     res.json({ modelo3d });
   } catch (err) {
@@ -570,12 +584,11 @@ router.put('/products/:id/modelo3d', async (req, res) => {
 });
 router.delete('/products/:id/modelo3d', async (req, res) => {
   try {
-    const { data: pr } = await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle();
+    const pr = await productoOBib(req.params.id);
     if (!pr?.bloques?.modelo3d) return res.json({ ok: true });
-    const { modelo3d, ...resto } = pr.bloques;
-    const { error } = await supabase.from('catalog_products').update({ bloques: resto }).eq('id', req.params.id);
+    const { error } = await guardaModelo(req.params.id, pr, null);
     if (error) throw error;
-    await quitarModelo3dArchivos(modelo3d);
+    await quitarModelo3dArchivos(pr.bloques.modelo3d);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'No se pudo quitar el modelo 3D' });
