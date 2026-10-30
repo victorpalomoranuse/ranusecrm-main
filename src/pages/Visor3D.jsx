@@ -2953,6 +2953,36 @@ export default function Visor3D() {
     a.ctrl.enableRotate = true; a.ctrl.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE; if (a.base) a.base.visible = true; a.alzPrev = null; a.ctrl.update();
     setOcultas(planta2d?.ocultasAntes || []); setPlanta2d(null); setHerr('sel');
   };
+  // Axonométrica: vista isométrica sin perspectiva (cámara casi ortogonal a 45° y 35,26°), con o sin techos, girable de 90° en 90°
+  const [axo, setAxo] = useState(null); // { az, ocultasAntes, sinTecho }
+  const colocarAxo = (az, base) => {
+    const a = api3d.current, m = a.modelo; if (!m) return false;
+    const pl0 = (m.plantas || [m])[0], pts = [...(pl0.salas || []).flatMap(s => s.pts), ...(pl0.muros || []).flatMap(mu => [mu.a, mu.b])];
+    if (!pts.length) return false;
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), W = Math.max(...xs) - Math.min(...xs), D = Math.max(...ys) - Math.min(...ys), H = pl0.altura || 260;
+    const R = Math.hypot(W, D, H) / 2 * CM * 1.02, asp = a.cam.aspect || 1.6;
+    let fov = 5, dist = R / (Math.tan(fov * Math.PI / 360) * Math.min(1, asp));
+    if (dist > 440) { fov = Math.min(30, Math.atan(R / (440 * Math.min(1, asp))) * 360 / Math.PI); dist = R / (Math.tan(fov * Math.PI / 360) * Math.min(1, asp)); }
+    const target = new THREE.Vector3(((Math.min(...xs) + Math.max(...xs)) / 2) * CM, H * CM * 0.3, ((Math.min(...ys) + Math.max(...ys)) / 2) * CM);
+    const el = Math.atan(1 / Math.SQRT2), A = az * Math.PI / 180;
+    if (base) a.alzPrev = { pos: a.cam.position.clone(), target: a.ctrl.target.clone(), fov: a.cam.fov, bg: a.scene.background, shift: a.shiftY || 0 };
+    a.shiftY = 0; a.cam.fov = fov; a.cam.far = 1200; a.cam.updateProjectionMatrix();
+    a.cam.position.set(target.x + Math.sin(A) * Math.cos(el) * dist, target.y + Math.sin(el) * dist, target.z + Math.cos(A) * Math.cos(el) * dist); a.ctrl.target.copy(target); a.ctrl.update();
+    return true;
+  };
+  const entrarAxo = () => {
+    if (axo) return;
+    if (!colocarAxo(45, true)) { setAviso('Este plano no tiene salas ni muros que ver'); return; }
+    const a = api3d.current; a.scene.background = new THREE.Color(0xffffff); if (a.base) a.base.visible = false;
+    setAxo({ az: 45, ocultasAntes: ocultas, sinTecho: true }); setOcultas(o => (o.includes('techos') ? o : [...o, 'techos'])); setSelObj(null); setSelAcab(null);
+  };
+  const girarAxo = d => { const az = (axo.az + d + 360) % 360; colocarAxo(az, false); setAxo(x => ({ ...x, az })); };
+  const techosAxo = () => { setAxo(x => ({ ...x, sinTecho: !x.sinTecho })); setOcultas(o => (o.includes('techos') ? o.filter(k => k !== 'techos') : [...o, 'techos'])); };
+  const salirAxo = () => {
+    const a = api3d.current, p = a.alzPrev;
+    if (p) { a.cam.fov = p.fov; a.shiftY = p.shift; a.cam.updateProjectionMatrix(); a.cam.position.copy(p.pos); a.ctrl.target.copy(p.target); a.scene.background = p.bg; }
+    if (a.base) a.base.visible = true; a.alzPrev = null; a.ctrl.update(); setOcultas(axo?.ocultasAntes || []); setAxo(null);
+  };
   // Zona por medidas: se escriben posición y tamaño exactos (cm) y se crea sobre el muro, el suelo o el techo que se está viendo
   const crearZonaMedidas = () => {
     const a = api3d.current, m = a.modelo, pl0 = m && (m.plantas || [m])[0]; if (!alz || !pl0) return;
@@ -3120,6 +3150,16 @@ export default function Visor3D() {
       <span style={{ opacity: 0.6, width: '100%' }}>Rueda = zoom · botón derecho = mover la vista · el material se elige en la barra de arriba</span>
     </div>
   );
+  const barraAxo = axo && (
+    <div style={{ position: 'absolute', left: railW, top: 56, zIndex: 6, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', maxWidth: '60vw' }}>
+      <b>🧊 Axonométrica</b>
+      <button style={bTop} onClick={() => girarAxo(-90)} title="Gira la vista 90° a la izquierda">⟲ 90°</button>
+      <button style={bTop} onClick={() => girarAxo(90)} title="Gira la vista 90° a la derecha">⟳ 90°</button>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={axo.sinTecho} onChange={techosAxo} />Sin techos</label>
+      <button style={bTop} onClick={salirAxo}>Salir</button>
+      <span style={{ opacity: 0.6, width: '100%' }}>Rueda = zoom · arrastrar = girar libre · botón derecho = mover · Exportar la imagen con 📷 / Render HD</span>
+    </div>
+  );
   const barraMaterial = ['zonaS', 'zonaT', 'zonaP'].includes(herr) && (
     <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', top: 96, zIndex: 6, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', maxWidth: '86vw', overflowX: 'auto' }}>
       <span style={{ opacity: 0.7, whiteSpace: 'nowrap' }}>Material de la zona:</span>
@@ -3133,6 +3173,7 @@ export default function Visor3D() {
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
       {barraMaterial}
       {barra2d}
+      {barraAxo}
       <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
       {/* ── Barra superior: plano, historial, vistas, ambiente y salidas (render, 360, galería, despiece) ── */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(24,24,24,0.94)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)', overflowX: 'auto' }}>
@@ -3150,7 +3191,8 @@ export default function Visor3D() {
           🔭 <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 80 }} /> <b style={{ minWidth: 70 }}>{lente}° · {mmDe(lente)} mm</b>
           <select value="" onChange={e => { if (e.target.value) ponerLente(parseFloat(e.target.value)); }} style={bTop}><option value="">Óptica…</option><option value="90">Gran angular (90°)</option><option value="65">Interior amplio (65°)</option><option value="50">Interior natural (50°)</option><option value="30">Como una persona (30°)</option><option value="25">Teleobjetivo (25°)</option></select>
         </span>
-        <button style={{ ...bTop, ...(planta2d ? { background: '#2f6fa8' } : {}) }} onClick={() => (planta2d ? salirPlanta2d() : entrarPlanta2d())} disabled={estado !== 'listo' || !!alz} title="Vista desde arriba en 2D: dibuja zonas de suelo o pinta salas enteras con tus texturas">📐 Planta 2D</button>
+        <button style={{ ...bTop, ...(axo ? { background: '#2f6fa8' } : {}) }} onClick={() => (axo ? salirAxo() : entrarAxo())} disabled={estado !== 'listo' || !!alz || !!planta2d} title="Vista axonométrica (isométrica): sin perspectiva, como en un plano de arquitectura 3D">🧊 Axonométrica</button>
+        <button style={{ ...bTop, ...(planta2d ? { background: '#2f6fa8' } : {}) }} onClick={() => (planta2d ? salirPlanta2d() : entrarPlanta2d())} disabled={estado !== 'listo' || !!alz || !!axo} title="Vista desde arriba en 2D: dibuja zonas de suelo o pinta salas enteras con tus texturas">📐 Planta 2D</button>
         <button style={{ ...bTop, ...(persona ? { background: '#2f6fa8' } : {}) }} onClick={() => setPersona(v => !v)} title="Te pone dentro del espacio, a la altura de los ojos: andas despacio con W A S D y giras la vista con el ratón">🚶 Recorrer</button>
         <button style={bTop} onClick={() => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }} title="Pone la cámara a la altura de los ojos (1,60 m): ideal antes de un render o un panorama">👁 Ojos</button>
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">☀ Ambiente</button>
