@@ -1012,7 +1012,7 @@ export default function Visor3D() {
   const seleccionRef = useRef(null);
   const acabRef = useRef(null);
   const rodapieRef = useRef({});
-  const [estirarAlAplicar, setEstirarAlAplicar] = useState(true);
+  const estirarAlAplicar = true; // las medidas escritas siempre mandan: el modelo se ajusta a ellas
   const [modosEq, setModosEq] = useState({});               // cómo se ajusta el modelo 3D de cada máquina del plano
   const [mtick, setMtick] = useState(0);
   const [huecosCfg, setHuecosCfg] = useState({});          // apertura, bisagra y sentido de cada puerta y ventana (solo 3D)
@@ -1878,7 +1878,7 @@ export default function Visor3D() {
       cargarModelo(mod).then(raw => {
         if (!g.parent) return;
         const rotE = (mod.rot || 0) + (modosEq[e.id]?.rotM || 0) + (!mod.rot && !modosEq[e.id]?.rotM ? giroAuto(raw, e.w || e.largo, e.d || e.fondo) : 0), giroE = (rotE % 180) !== 0;
-        const mm = ajustarModelo(raw, (giroE ? (e.d || e.fondo) : (e.w || e.largo)) * CM, (giroE ? (e.w || e.largo) : (e.d || e.fondo)) * CM, (e.alto || 110) * CM, modosEq[e.id]?.modo || 'auto'); if (!mm) return;
+        const mm = ajustarModelo(raw, (giroE ? (e.d || e.fondo) : (e.w || e.largo)) * CM, (giroE ? (e.w || e.largo) : (e.d || e.fondo)) * CM, (e.alto || 110) * CM, modosEq[e.id]?.modo || 'estirar'); if (!mm) return;
         mm.userData.girado = giroE;
         setMtick(v => v + 1);
         sobrescribirModelo(mm, {}, texturas); mm.userData.modeloEq = true; mm.rotation.y = -(rotE * Math.PI) / 180; g.add(mm);
@@ -3704,7 +3704,7 @@ export default function Visor3D() {
               <input type="number" value={eqNuevo[k]} onChange={e => setEqNuevo(s => ({ ...s, [k]: e.target.value }))} style={{ ...btn, width: 90 }} />
             </label>
           ))}
-          {seleccion.cid && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d && <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 6, cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={estirarAlAplicar} onChange={e => setEstirarAlAplicar(e.target.checked)} style={{ marginTop: 2 }} /><span>Ajustar el modelo a estas medidas (lo deforma si hace falta)</span></label>}
+          
           <button style={{ ...btn, background: '#2f6fa8', marginTop: 6 }} onClick={aplicarEquipo}>Aplicar al plano</button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 12 }}>
             <span style={{ flex: 1, opacity: 0.75 }}>Subir / bajar</span>
@@ -3724,7 +3724,7 @@ export default function Visor3D() {
                   <input type="file" accept=".glb,.gltf,.obj,.dae,.zip,.skp" style={{ display: 'none' }} onChange={e => { asignarModeloEq(e.target.files?.[0]); e.target.value = ''; }} />
                 </label>
                 {mod && <button style={{ ...btn, marginLeft: 6 }} onClick={quitarModeloEq}>Quitar</button>}
-                {mod && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }} title="Gira el modelo solo en esta máquina"><span style={{ opacity: 0.7 }}>Giro del modelo (solo esta)</span><select value={modosEq[seleccion.id]?.rotM || 0} onChange={e => { const v = parseInt(e.target.value, 10); refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'auto', ...m[seleccion.id], rotM: v } })); }} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></label>}
+                {mod && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }} title="Gira el modelo solo en esta máquina"><span style={{ opacity: 0.7 }}>Giro del modelo (solo esta)</span><select value={modosEq[seleccion.id]?.rotM || 0} onChange={e => { const v = parseInt(e.target.value, 10); refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], rotM: v } })); }} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></label>}
                 {mod && <details style={{ marginTop: 4, fontSize: 11 }}><summary style={{ cursor: 'pointer', opacity: 0.7 }}>Giro base del producto</summary><div style={{ opacity: 0.6, margin: '4px 0' }}>Afecta a TODAS las máquinas iguales. Úsalo solo si el archivo viene girado de origen.</div><select value={mod.rot || 0} onChange={e => girarModeloEq(parseInt(e.target.value, 10))} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></details>}
                 {subiendo && <div style={{ fontSize: 11, opacity: 0.8, marginTop: 4 }}>{subiendo}</div>}
                 <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda en el producto del catálogo y se ve igual en todos los planos. Si sale girado, usa «Giro del modelo».</div>
@@ -3733,7 +3733,7 @@ export default function Visor3D() {
           })()}
           {seleccion.cid && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d && (() => {
             let mmE = null; mtick; api3d.current.raiz?.traverse(g => { if (g.userData.equipo?.id === seleccion.id) g.children.forEach(c => { if (c.userData.modeloEq) mmE = c; }); });
-            const gi = !!mmE?.userData?.girado, n0 = mmE?.userData?.nativo, m0 = mmE?.userData?.mostrado, nat = n0 && (gi ? [n0[1], n0[0], n0[2]] : n0), mos = m0 && (gi ? [m0[1], m0[0], m0[2]] : m0), modo = modosEq[seleccion.id]?.modo || 'auto';
+            const gi = !!mmE?.userData?.girado, n0 = mmE?.userData?.nativo, m0 = mmE?.userData?.mostrado, nat = n0 && (gi ? [n0[1], n0[0], n0[2]] : n0), mos = m0 && (gi ? [m0[1], m0[0], m0[2]] : m0), modo = modosEq[seleccion.id]?.modo || 'estirar';
             const fm = v => Math.round(v);
             return (
               <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
