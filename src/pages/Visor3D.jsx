@@ -521,7 +521,8 @@ export function MenuRail({ abierto, boton, ancho, children }) {
 // ── Puertas, ventanas y portones por tipo (los que usa Planos): hoja o cristal en su sitio y con la apertura que se quiera ver
 const DOOR_TIPS = ['Abatible', 'Doble hoja', 'Corredera', 'Corredera 2 hojas', 'Corredera empotrada', 'Plegable', 'Hueco', 'Seccional', 'Basculante', 'Enrollable'];
 const WIN_TIPS = ['Practicable', 'Doble hoja', 'Oscilobatiente', 'Corredera', 'Fija'];
-const DOOR_MATS = ['Madera maciza', 'Vidrio templado', 'Chapa lacada', 'Panel sándwich', 'Lama de aluminio'];
+const VIDRIOS = ['Vidrio templado', 'Vidrio satinado', 'Vidrio ahumado', 'Vidrio azulado', 'Vidrio espejo'];
+const DOOR_MATS = ['Madera maciza', ...VIDRIOS, 'Chapa lacada', 'Panel sándwich', 'Lama de aluminio'];
 export function construirHoja(o, mu, cfg, valHoja, texturas) {
   const g = new THREE.Group(), esPuerta = (o.tipo || o.t) === 'door', tip = String(o.tip || (esPuerta ? 'Abatible' : 'Practicable')).toLowerCase(), mat = String(o.mat || '');
   const t = (mu.t || 12) * CM, fr = 0.05, x0 = o.p * CM, x1 = (o.p + o.w) * CM, y0 = (o.sill || 0) * CM, y1 = y0 + o.h * CM;
@@ -529,7 +530,14 @@ export function construirHoja(o, mu, cfg, valHoja, texturas) {
   const vidrio = !esPuerta || /vidrio|cristal|glass/i.test(mat + ' ' + String(o.nm || '')), metal = /chapa|panel|lama|alum|metal/i.test(mat) || /seccional|basculante|enrollable/.test(tip);
   const hojaM = new THREE.MeshStandardMaterial({ color: metal ? 0x9aa0a6 : esPuerta ? 0xc9a77c : 0xf2f2f2, roughness: metal ? 0.45 : 0.6, metalness: metal ? 0.5 : 0 });
   aplicarValorMat(hojaM, valHoja, texturas, o);
-  const vidM = new THREE.MeshStandardMaterial({ color: 0xaed4ea, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.35, side: THREE.DoubleSide });
+  // Tipos de cristal: transparente (por defecto), satinado (esmerilado), ahumado, azulado y espejo. Reflejan el entorno en modo ✨ Realista
+  const tv = (mat + ' ' + String(o.nm || '')).toLowerCase();
+  const vp = /satinad|esmeril|transl/.test(tv) ? { color: 0xe8f0f4, roughness: 0.55, opacity: 0.62, metalness: 0 }
+    : /ahumad|tintad|oscur|fum/.test(tv) ? { color: 0x3a4a52, roughness: 0.03, opacity: 0.55, metalness: 0.1 }
+    : /espejo|reflect/.test(tv) ? { color: 0x9fb0b8, roughness: 0.02, opacity: 0.8, metalness: 0.9 }
+    : /azul/.test(tv) ? { color: 0x6fb2dc, roughness: 0.04, opacity: 0.4, metalness: 0.1 }
+    : { color: 0xaed4ea, roughness: 0.04, opacity: 0.32, metalness: 0.1 };
+  const vidM = new THREE.MeshPhysicalMaterial({ ...vp, transparent: true, side: THREE.DoubleSide, depthWrite: false, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.6, specularIntensity: 1 });
   const manM = new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.8 });
   const info = { muroId: mu.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat };
   const pieza = (padre, bw, bh, bd, px, py, pz, m, zona) => { const b = new THREE.Mesh(new THREE.BoxGeometry(Math.max(bw, 0.002), Math.max(bh, 0.002), Math.max(bd, 0.002)), m); b.position.set(px, py, pz); b.castShadow = true; b.userData = { capa: 'huecos', hueco: info, zona }; padre.add(b); return b; };
@@ -3226,6 +3234,8 @@ export default function Visor3D() {
               <div style={{ borderBottom: '1px solid #333', marginBottom: 6, paddingBottom: 6 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Tipo</span>
                   <select value={tip} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, tip: e.target.value } }))} style={btn}>{[...new Set([...tips, tip])].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
+                {!esP && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Cristal</span>
+                  <select value={selHueco.nuevo.mat || ''} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, mat: e.target.value || undefined } }))} style={btn}><option value="">(la del plano)</option>{['Vidrio transparente', ...VIDRIOS.slice(1)].map(n => <option key={n} value={n}>{n.replace('Vidrio ', '')}</option>)}</select></label>}
                 {esP && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Hoja</span>
                   <select value={selHueco.nuevo.mat || ''} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, mat: e.target.value || undefined } }))} style={btn}><option value="">(la del plano)</option>{DOOR_MATS.map(n => <option key={n} value={n}>{n}</option>)}</select></label>}
                 {tip !== 'Hueco' && tip !== 'Fija' && <>
