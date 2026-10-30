@@ -1185,7 +1185,7 @@ export default function Visor3D() {
       api3d.current.modelo = modelo;
       {
         const nodos = Object.fromEntries((pl?.nodes || []).map(n => [n.id, n]));
-        setLucesPl((pl?.pts || []).filter(p => p.v === 'ilum' && p.s !== 'dem' && nodos[p.n]).map(p => ({ id: p.id, kid: p.k, lid: p.lid || null, h: p.h, x: nodos[p.n].x + p.dx, y: nodos[p.n].y + p.dy })));
+        setLucesPl((pl?.pts || []).filter(p => p.v === 'ilum' && p.s !== 'dem' && nodos[p.n] && !String(p.id).startsWith('l3_')).map(p => ({ id: p.id, kid: p.k, lid: p.lid || null, h: p.h, x: nodos[p.n].x + p.dx, y: nodos[p.n].y + p.dy })));
       }
       puntosSnapRef.current = (modelo.plantas || [modelo]).flatMap(pl => [
         ...(pl.muros || []).flatMap(m => [{ x: m.a[0], y: m.a[1] }, { x: m.b[0], y: m.b[1] }]),

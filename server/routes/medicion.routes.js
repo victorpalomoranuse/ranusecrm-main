@@ -488,6 +488,41 @@ router.put('/:id', async (req, res) => {
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
 const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led'];
 const BUCKET_TEX = 'project-documents';
+// Las luminarias que se ponen solo en el 3D (focos y colgantes de un carril, y objetos con nombre de lámpara) también se escriben en el plano,
+// en su capa de iluminación. Llevan un id que empieza por «l3_»: cada vez que se guarda la escena 3D se vuelven a calcular.
+function puntoEnCaminoSrv(pts, s) {
+  let resto = Math.max(0, s);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    if (resto <= L || i === pts.length - 2) { const t = Math.min(1, resto / L); return { x: a[0] + (b[0] - a[0]) * t, y: a[1] + (b[1] - a[1]) * t }; }
+    resto -= L;
+  }
+  return null;
+}
+function sincronizaLuces3d(data, objs) {
+  const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+  const previos = Array.isArray(data.pts) ? data.pts : [];
+  const resto = previos.filter(p => !String(p.id || '').startsWith('l3_'));
+  const nuevos = [];
+  const pon = (id, x, y, k, h) => {
+    if (!nodes.length || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const nodo = nodes.reduce((m, n) => (Math.hypot(n.x - x, n.y - y) < Math.hypot(m.x - x, m.y - y) ? n : m), nodes[0]);
+    nuevos.push({ id: 'l3_' + String(id).slice(0, 40), n: nodo.id, dx: Math.round((x - nodo.x) * 10) / 10, dy: Math.round((y - nodo.y) * 10) / 10, k, a: 0, h: Number.isFinite(h) ? Math.max(0, Math.min(600, Math.round(h))) : null, v: 'ilum', s: 'new' });
+  };
+  for (const o of objs) {
+    if (o.tipo === 'carril' && Array.isArray(o.pts) && o.pts.length >= 2) {
+      for (const f of o.focos || []) {
+        const p = puntoEnCaminoSrv(o.pts, f.s); if (!p) continue;
+        pon(o.id + '_' + f.id, p.x, p.y, f.t === 'colgante' || f.t === 'lineal' ? 'colg' : 'foco', o.z0 || 0);
+      }
+    } else if (['bloque', 'luz'].includes(o.tipo) && /p[eé]ndulo|colgante|l[aá]mpara|plaf[oó]n|aplique|luminaria|foco|downlight|spot/i.test((o.nombre || '') + ' ' + (o.etiqueta || ''))) {
+      const t = ((o.nombre || '') + ' ' + (o.etiqueta || '')).toLowerCase();
+      const k = /p[eé]ndulo|colgante/.test(t) ? 'colg' : /plaf[oó]n/.test(t) ? 'plaf' : /aplique/.test(t) ? 'aplq' : /pie|suelo/.test(t) ? 'pie' : 'foco';
+      pon(o.id, o.cx, o.cy, k, (o.z0 || 0) + (k === 'colg' ? (o.alto || 0) : 0));
+    }
+  }
+  data.pts = [...resto, ...nuevos];
+}
 router.put('/:id/escena3d', async (req, res) => {
   try {
     const objs = Array.isArray(req.body?.objetos) ? req.body.objetos.slice(0, 2000) : null;
@@ -563,6 +598,7 @@ router.put('/:id/escena3d', async (req, res) => {
       huecosCfg: req.body?.huecosCfg === undefined ? (previa.huecosCfg || {}) : Object.fromEntries(Object.entries(req.body.huecosCfg && typeof req.body.huecosCfg === 'object' ? req.body.huecosCfg : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { abierta: Math.max(0, Math.min(110, num(v?.abierta, 0))), bisagra: v?.bisagra === 'der' ? 'der' : 'izq', sentido: v?.sentido === 'B' ? 'B' : 'A' }])),
       tapetas: req.body?.tapetas === undefined ? (previa.tapetas || {}) : Object.fromEntries(Object.entries(req.body.tapetas && typeof req.body.tapetas === 'object' ? req.body.tapetas : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { on: !!v?.on, ancho: Math.max(2, Math.min(30, num(v?.ancho, 7))), vuelo: Math.max(0.3, Math.min(6, num(v?.vuelo, 1.2))), lados: ['ambos', 'a', 'b'].includes(v?.lados) ? v.lados : 'ambos', alfeizar: !!v?.alfeizar }])),
       escenas: Array.isArray(req.body?.escenas) ? req.body.escenas.slice(0, 40).map(e => ({ id: String(e?.id || '').slice(0, 20), nombre: String(e?.nombre || 'Escena').slice(0, 60), meta: limpiaMeta(e?.meta), ocultas: (Array.isArray(e?.ocultas) ? e.ocultas : []).slice(0, 60).map(x => String(x).slice(0, 50)) })).filter(e => e.id) : (previa.escenas || []), hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
+    sincronizaLuces3d(data, limpios);
     const { error: e2 } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (e2) throw e2;
     res.json({ ok: true });
