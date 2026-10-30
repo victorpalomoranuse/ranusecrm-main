@@ -526,7 +526,7 @@ export function construirHoja(o, mu, cfg, valHoja, texturas) {
   const g = new THREE.Group(), esPuerta = (o.tipo || o.t) === 'door', tip = String(o.tip || (esPuerta ? 'Abatible' : 'Practicable')).toLowerCase(), mat = String(o.mat || '');
   const t = (mu.t || 12) * CM, fr = 0.05, x0 = o.p * CM, x1 = (o.p + o.w) * CM, y0 = (o.sill || 0) * CM, y1 = y0 + o.h * CM;
   const ix0 = x0 + fr, ix1 = x1 - fr, iy0 = esPuerta ? y0 : y0 + fr, iy1 = y1 - fr, iw = ix1 - ix0, ih = iy1 - iy0, cx = (ix0 + ix1) / 2, cy = (iy0 + iy1) / 2;
-  const vidrio = !esPuerta || /vidrio|cristal/i.test(mat), metal = /chapa|panel|lama|alum|metal/i.test(mat) || /seccional|basculante|enrollable/.test(tip);
+  const vidrio = !esPuerta || /vidrio|cristal|glass/i.test(mat + ' ' + String(o.nm || '')), metal = /chapa|panel|lama|alum|metal/i.test(mat) || /seccional|basculante|enrollable/.test(tip);
   const hojaM = new THREE.MeshStandardMaterial({ color: metal ? 0x9aa0a6 : esPuerta ? 0xc9a77c : 0xf2f2f2, roughness: metal ? 0.45 : 0.6, metalness: metal ? 0.5 : 0 });
   aplicarValorMat(hojaM, valHoja, texturas, o);
   const vidM = new THREE.MeshStandardMaterial({ color: 0xaed4ea, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.35, side: THREE.DoubleSide });

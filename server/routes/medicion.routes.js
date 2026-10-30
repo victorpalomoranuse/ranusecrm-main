@@ -1001,6 +1001,11 @@ router.get('/:id', async (req, res) => {
     const { data, error } = await supabase.from('mediciones').select('id, project_id, data, updated_at').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Plano no encontrado' });
+    // el modelo 3D guardado antes de que llevara el nombre de cada hueco: se le pone, para que «puerta de cristal» se vea como cristal
+    try {
+      const d0 = data.data || {}, m3 = d0.modelo3d;
+      if (m3) for (const c of contenedoresPlano(d0)) { const por = Object.fromEntries((c.ops || []).filter(o => o.nm).map(o => [o.id, o.nm])); if (Object.keys(por).length) for (const pl of (m3.plantas || [m3])) for (const mu of pl.muros || []) for (const ab of mu.ab || []) if (!ab.nm && por[ab.id]) ab.nm = por[ab.id]; }
+    } catch { /* sin nombres: se sigue */ }
     res.json({ plano: { ...data.data, id: data.id, updated: new Date(data.updated_at).getTime() }, project_id: data.project_id });
   } catch (err) {
     res.status(500).json({ error: 'No se pudo cargar el plano' });

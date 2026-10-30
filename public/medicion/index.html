@@ -9979,7 +9979,7 @@ function buildModelo3d1(){
   v.walls.forEach(function(w){
     var g=wg(w);
     out.muros.push({id:w.id,a:[f2(g.a.x),f2(g.a.y)],b:[f2(g.b.x),f2(g.b.y)],t:w.t||12,h:wh(w),estado:w.s||'ex',
-      ab:v.ops.filter(function(o){return o.wall===w.id}).map(function(o){return {id:o.id,p:f2(o.p),w:f2(o.w),h:f2(o.h),sill:f2(o.sill||0),tipo:o.t,tip:o.tip||'',mat:o.mat||'',estado:o.s||'ex'}})});
+      ab:v.ops.filter(function(o){return o.wall===w.id}).map(function(o){return {id:o.id,p:f2(o.p),w:f2(o.w),h:f2(o.h),sill:f2(o.sill||0),tipo:o.t,tip:o.tip||'',mat:o.mat||'',nm:o.nm||'',estado:o.s||'ex'}})});
   });
   roomFaces('distrib').forEach(function(f){
     var zs=zoneIn(f,'s'),zt=zoneIn(f,'t'),ms=zs?matOf('suelos',zs.mat):null,mt=zt?matOf('techos',zt.mat):null;
