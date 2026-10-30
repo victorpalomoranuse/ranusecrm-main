@@ -1054,6 +1054,15 @@ export default function Visor3D() {
   const [filtro, setFiltro] = useState('');
   const [solo3d, setSolo3d] = useState(true);
   const [persona, setPersona] = useState(false);
+  // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
+  const [lente, setLente] = useState(50);
+  useEffect(() => {
+    const t = setInterval(() => { const cam = api3d.current.cam; if (cam && Math.abs(cam.fov - lenteRef.current) > 0.5) { lenteRef.current = Math.round(cam.fov); setLente(Math.round(cam.fov)); } }, 400);
+    return () => clearInterval(t);
+  }, []);
+  const lenteRef = useRef(50);
+  const ponerLente = g => { const cam = api3d.current.cam; if (!cam) return; g = Math.max(12, Math.min(110, Math.round(g))); cam.fov = g; cam.updateProjectionMatrix(); lenteRef.current = g; setLente(g); if (api3d.current.persona) api3d.current.fovPersona = g; };
+  const mmDe = g => Math.round(12 / Math.tan((g * Math.PI / 180) / 2));
   // Exporta el espacio (muros, suelos, puertas, ventanas, máquinas y objetos) a .glb para abrirlo en D5, Blender, etc. Medidas en metros, Y arriba
   const exportarGLB = () => {
     const a = api3d.current; if (!a.raiz) return;
@@ -3105,6 +3114,10 @@ export default function Visor3D() {
         <button style={bTop} onClick={() => vista('persp')} title="Vista en perspectiva de todo el plano">Perspectiva</button>
         <button style={bTop} onClick={() => vista('planta')} title="Vista desde arriba">Planta</button>
         <button style={bTop} onClick={exportarGLB} title="Descarga el espacio en 3D (.glb) para abrirlo en D5 Render, Blender, etc. y hacer ahí un render fiel">⬇ Exportar a D5</button>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff', fontSize: 12 }} title="Óptica de la cámara: menos grados = más zoom (como un teleobjetivo); más grados = gran angular. Una persona mirando ve cómodo entre 45° y 60°">
+          🔭 <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 80 }} /> <b style={{ minWidth: 70 }}>{lente}° · {mmDe(lente)} mm</b>
+          <select value="" onChange={e => { if (e.target.value) ponerLente(parseFloat(e.target.value)); }} style={bTop}><option value="">Óptica…</option><option value="90">Gran angular (90°)</option><option value="65">Interior amplio (65°)</option><option value="50">Como una persona (50°)</option><option value="35">Foto de producto (35°)</option><option value="25">Teleobjetivo (25°)</option></select>
+        </span>
         <button style={{ ...bTop, ...(persona ? { background: '#2f6fa8' } : {}) }} onClick={() => setPersona(v => !v)} title="Te pone dentro del espacio, a la altura de los ojos: andas despacio con W A S D y giras la vista con el ratón">🚶 Recorrer</button>
         <button style={bTop} onClick={() => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }} title="Pone la cámara a la altura de los ojos (1,60 m): ideal antes de un render o un panorama">👁 Ojos</button>
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">☀ Ambiente</button>
