@@ -527,6 +527,7 @@ router.put('/:id/escena3d', async (req, res) => {
       lado: o.lado === -1 ? -1 : 1,
       h: Number.isFinite(parseFloat(o.h)) ? Math.max(0, Math.min(1000, parseFloat(o.h))) : undefined,
       ft: o.tipo === 'falsotecho' && o.ft ? { descenso: Math.max(-100, Math.min(100, num(o.ft.descenso, 15))), gap: Math.max(2, Math.min(60, num(o.ft.gap, 12))), luz: o.ft.luz !== false, k: Math.max(1500, Math.min(10000, num(o.ft.k, 3000))) } : undefined,
+      ajuste: ['caber', 'estirar', 'nativo'].includes(o.ajuste) ? o.ajuste : undefined,
       ledDir: ['abajo', 'arriba', 'frente', 'atras', 'izq', 'der'].includes(o.ledDir) ? o.ledDir : undefined,
       led: o.tipo === 'led' ? { ancho: Math.max(0.3, Math.min(10, num(o.led?.ancho, 1.2))), k: Math.max(1500, Math.min(10000, num(o.led?.k, 3000))), lm: Math.max(50, Math.min(3000, num(o.led?.lm, 800))), dir: ['abajo', 'arriba', 'izq', 'der'].includes(o.led?.dir) ? o.led.dir : 'abajo', cerrado: !!o.led?.cerrado } : undefined,
       sistema: o.tipo === 'carril' ? (o.sistema === 'trifasico' ? 'trifasico' : 'magnetico') : undefined,
@@ -554,6 +555,7 @@ router.put('/:id/escena3d', async (req, res) => {
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
     const previa = fila.data?.escena3d || {};
     const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, rodapie, guias, luces, texturas: previa.texturas || [], renders: previa.renders || [], iaPrefs: previa.iaPrefs || null,
+      modelosEq: req.body?.modelosEq === undefined ? (previa.modelosEq || {}) : Object.fromEntries(Object.entries(req.body.modelosEq && typeof req.body.modelosEq === 'object' ? req.body.modelosEq : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { modo: ['auto', 'caber', 'estirar', 'nativo'].includes(v?.modo) ? v.modo : 'auto' }])),
       huecosCfg: req.body?.huecosCfg === undefined ? (previa.huecosCfg || {}) : Object.fromEntries(Object.entries(req.body.huecosCfg && typeof req.body.huecosCfg === 'object' ? req.body.huecosCfg : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { abierta: Math.max(0, Math.min(110, num(v?.abierta, 0))), bisagra: v?.bisagra === 'der' ? 'der' : 'izq', sentido: v?.sentido === 'B' ? 'B' : 'A' }])),
       tapetas: req.body?.tapetas === undefined ? (previa.tapetas || {}) : Object.fromEntries(Object.entries(req.body.tapetas && typeof req.body.tapetas === 'object' ? req.body.tapetas : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { on: !!v?.on, ancho: Math.max(2, Math.min(30, num(v?.ancho, 7))), vuelo: Math.max(0.3, Math.min(6, num(v?.vuelo, 1.2))), lados: ['ambos', 'a', 'b'].includes(v?.lados) ? v.lados : 'ambos', alfeizar: !!v?.alfeizar }])),
       escenas: Array.isArray(req.body?.escenas) ? req.body.escenas.slice(0, 40).map(e => ({ id: String(e?.id || '').slice(0, 20), nombre: String(e?.nombre || 'Escena').slice(0, 60), meta: limpiaMeta(e?.meta), ocultas: (Array.isArray(e?.ocultas) ? e.ocultas : []).slice(0, 60).map(x => String(x).slice(0, 50)) })).filter(e => e.id) : (previa.escenas || []), hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
@@ -931,6 +933,7 @@ router.patch('/:id/equipo', async (req, res) => {
     if (Number.isFinite(parseFloat(cambios.w))) vals.w = acota(cambios.w, 5, 2000);
     if (Number.isFinite(parseFloat(cambios.d))) vals.d = acota(cambios.d, 5, 2000);
     if (Number.isFinite(parseFloat(cambios.rot))) vals.rot = ((parseFloat(cambios.rot) % 360) + 360) % 360;
+    if (Number.isFinite(parseFloat(cambios.alto))) vals.alto = acota(cambios.alto, 5, 1000);
     const px = parseFloat(cambios.x), py = parseFloat(cambios.y), muevo = Number.isFinite(px) && Number.isFinite(py);
     let hecho = false;
     for (const c of contenedoresPlano(data)) for (const e of c.eq || []) if (e.id === eqId) {

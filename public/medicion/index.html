@@ -10000,7 +10000,7 @@ function buildModelo3d1(){
   v.eq.forEach(function(e){
     if(e.rol==='llega')return; /* la llegada de una escalera es la misma escalera: no se modela dos veces */
     var c=pc(e),cat=catById(e.cid);
-    out.equipos.push({id:e.id,estado:e.s||'new',cid:e.cid||'',nombre:e.nm,cx:f2(c.x),cy:f2(c.y),w:e.w,d:e.d,rot:e.rot||0,fx:!!e.fx,fy:!!e.fy,alto:(cat&&cat.alto)||110,
+    out.equipos.push({id:e.id,estado:e.s||'new',cid:e.cid||'',nombre:e.nm,cx:f2(c.x),cy:f2(c.y),w:e.w,d:e.d,rot:e.rot||0,fx:!!e.fx,fy:!!e.fy,alto:(e.alto>0?e.alto:(cat&&cat.alto)||110),
       skp:(cat&&cat.skp)?{url:cat.skp.url,rot:cat.skp.rot||0}:null,
       escalera:(cat&&cat.esc)?escPeldanos3d(cat.esc,e,(cat.bloque&&cat.bloque.largo)||e.w,(cat.bloque&&cat.bloque.fondo)||e.d):null,
       hueco:(cat&&cat.esc&&cat.esc.hueco!==false)?escHueco(e,c):null,

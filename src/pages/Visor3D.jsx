@@ -261,17 +261,24 @@ function despieceMueble(o) {
 }
 
 // El modelo se escala (sin deformarlo) para que quepa en las medidas del objeto y se apoya en el suelo, centrado
-function ajustarModelo(raw, w, d, h) {
+// modo: 'caber' (mantiene proporciones y cabe en las medidas), 'estirar' (se deforma hasta las medidas exactas), 'nativo' (tamaño del archivo, en metros)
+// o 'auto' (tamaño original si es razonable; si no, cabe). Sin modo = 'caber'.
+function ajustarModelo(raw, w, d, h, modo) {
   const g = raw.clone(true);
   const caja = new THREE.Box3().setFromObject(g);
   const s = caja.getSize(new THREE.Vector3());
   if (!(s.x > 0 && s.y > 0 && s.z > 0)) return null;
-  const k = Math.min(w / s.x, h / s.y, d / s.z);
+  const mayor = Math.max(s.x, s.y, s.z) * 100;
+  const efectivo = modo === 'auto' ? (mayor >= 20 && mayor <= 1500 ? 'nativo' : 'caber') : (modo || 'caber');
+  const sc = efectivo === 'estirar' ? new THREE.Vector3(w / s.x, h / s.y, d / s.z) : efectivo === 'nativo' ? new THREE.Vector3(1, 1, 1) : new THREE.Vector3().setScalar(Math.min(w / s.x, h / s.y, d / s.z));
   const c = caja.getCenter(new THREE.Vector3());
   const envoltorio = new THREE.Group();
   g.position.set(-c.x, -caja.min.y, -c.z);
   envoltorio.add(g);
-  envoltorio.scale.setScalar(k);
+  envoltorio.scale.copy(sc);
+  envoltorio.userData.nativo = [s.x * 100, s.z * 100, s.y * 100];                       // largo, fondo, alto del archivo (cm)
+  envoltorio.userData.mostrado = [s.x * sc.x * 100, s.z * sc.z * 100, s.y * sc.y * 100]; // lo que se ve (cm)
+  envoltorio.userData.modoEfectivo = efectivo;
   envoltorio.traverse(x => { if (x.isMesh) { x.castShadow = x.receiveShadow = true; } });
   return envoltorio;
 }
@@ -812,7 +819,7 @@ function techo(s, i, alto) {
 }
 
 function maquina(e) {
-  const w = (e.largo || e.w || 100) * CM, d = (e.fondo || e.d || 100) * CM, h = (e.alto || 110) * CM;
+  const w = (e.w || e.largo || 100) * CM, d = (e.d || e.fondo || 100) * CM, h = (e.alto || 110) * CM;
   const g = new THREE.Group();
   const cuerpo = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
@@ -943,6 +950,8 @@ export default function Visor3D() {
   const seleccionRef = useRef(null);
   const acabRef = useRef(null);
   const rodapieRef = useRef({});
+  const [modosEq, setModosEq] = useState({});               // cómo se ajusta el modelo 3D de cada máquina del plano
+  const [mtick, setMtick] = useState(0);
   const [huecosCfg, setHuecosCfg] = useState({});          // apertura, bisagra y sentido de cada puerta y ventana (solo 3D)
   const [tapetas, setTapetas] = useState({});              // tapetas de puertas y ventanas, por hueco
   const [escenas, setEscenas] = useState([]);              // escenas guardadas: vista + capas + hora + textos de IA
@@ -1052,7 +1061,7 @@ export default function Visor3D() {
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); setModosEq(pl?.escena3d?.modelosEq || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
@@ -1122,7 +1131,7 @@ export default function Visor3D() {
       const uh = primero?.object?.userData?.hueco;
       if (uh) { setSelHueco({ ...uh, nuevo: { w: uh.w, h: uh.h, sill: uh.sill, p: uh.p, tip: uh.tip, mat: uh.mat } }); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
       let eq = null; if (primero) { let o = primero.object; while (o && !o.userData.equipo) o = o.parent; eq = o; }
-      if (eq) { sel = eq; eq.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(eq.userData.equipo); setEqNuevo({ x: Math.round(eq.userData.equipo.cx), y: Math.round(eq.userData.equipo.cy), w: eq.userData.equipo.largo || eq.userData.equipo.w, d: eq.userData.equipo.fondo || eq.userData.equipo.d, rot: eq.userData.equipo.rot || 0 }); setSelAcab(null); }
+      if (eq) { sel = eq; eq.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(eq.userData.equipo); setEqNuevo({ alto: Math.round(eq.userData.equipo.alto || 110), x: Math.round(eq.userData.equipo.cx), y: Math.round(eq.userData.equipo.cy), w: eq.userData.equipo.w || eq.userData.equipo.largo, d: eq.userData.equipo.d || eq.userData.equipo.fondo, rot: eq.userData.equipo.rot || 0 }); setSelAcab(null); }
       else {
         setSeleccion(null);
         const u = primero?.object?.userData || {};
@@ -1620,7 +1629,7 @@ export default function Visor3D() {
   useEffect(() => {
     const a = api3d.current; if (!a.raiz) return;
     a.raiz.traverse(o => {
-      if (o.userData.equipo && o.userData.cuerpo) { const e = o.userData.equipo; pintar(o.userData.cuerpo, acab.equipos?.[e.id], texturas, true, [e.largo || e.w, e.alto || 110]); return; }
+      if (o.userData.equipo && o.userData.cuerpo) { const e = o.userData.equipo; pintar(o.userData.cuerpo, acab.equipos?.[e.id], texturas, true, [e.w || e.largo, e.alto || 110]); return; }
       if (!o.isMesh) return;
       const u = o.userData;
       if (u.pilarId) { pintar(o, acab.pilares?.[u.pilarId] || acab.todosPilares, texturas, true, u.dimBox || [30, 260]); return; }
@@ -1687,8 +1696,10 @@ export default function Visor3D() {
     const a = api3d.current; if (!a.scene) return;
     ['gizmoG', 'cotasG'].forEach(k => { if (a[k]) { a.scene.remove(a[k]); a[k].traverse(x => { x.geometry?.dispose(); x.material?.map?.dispose?.(); x.material?.dispose?.(); }); a[k] = null; } });
     const ob = objs.find(x => x.id === selObj);
+    let mmE = null; if (!ob && seleccion) a.raiz?.traverse(g => { if (g.userData.equipo?.id === seleccion.id) g.children.forEach(c => { if (c.userData.modeloEq) mmE = c; }); });
+    const mos = mmE?.userData?.mostrado;
     const d = ob ? { w: ob.w, d: ob.d, alto: ob.alto, cx: ob.cx, cy: ob.cy, rot: ob.rot || 0, z0: ob.z0 || 0, tipo: ob.tipo }
-      : (seleccion ? { w: seleccion.largo || seleccion.w, d: seleccion.fondo || seleccion.d, alto: seleccion.alto || 110, cx: seleccion.cx, cy: seleccion.cy, rot: seleccion.rot || 0, z0: 0 } : null);
+      : (seleccion ? { w: mos ? mos[0] : (seleccion.w || seleccion.largo), d: mos ? mos[1] : (seleccion.d || seleccion.fondo), alto: mos ? mos[2] : (seleccion.alto || 110), cx: seleccion.cx, cy: seleccion.cy, rot: seleccion.rot || 0, z0: 0 } : null);
     if (!d) return;
     if (!['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(d.tipo)) {
       const W = d.w * CM, D = d.d * CM, H = d.alto * CM, off = 0.14, g = new THREE.Group();
@@ -1704,7 +1715,7 @@ export default function Visor3D() {
       txt(Math.round(d.alto * 10) / 10 + ' cm', [-W / 2 - off - 0.16, H / 2, D / 2 + off]);
       a.scene.add(g); a.cotasG = g;
     }
-    const gz = ob || (seleccion ? { cx: seleccion.cx, cy: seleccion.cy, z0: 0, alto: seleccion.alto || 110, w: seleccion.largo || seleccion.w, d: seleccion.fondo || seleccion.d, plan: true } : null);
+    const gz = ob || (seleccion ? { cx: seleccion.cx, cy: seleccion.cy, z0: 0, alto: seleccion.alto || 110, w: seleccion.w || seleccion.largo, d: seleccion.d || seleccion.fondo, plan: true } : null);
     if (gz && !(gz.tipo === 'zona' && gz.plano === 'pared') && gz.tipo !== 'falsotecho') {
       const G = new THREE.Group(); G.position.set(gz.cx * CM, (gz.z0 || 0) * CM + (gz.alto * CM) / 2, gz.cy * CM);
       const L = Math.max(0.5, Math.max(gz.w, gz.d, gz.alto) * CM * 0.6 + 0.25);
@@ -1720,7 +1731,7 @@ export default function Visor3D() {
       G.add(flecha(0xe5484d, 'x'), flecha(0x3e63dd, 'z')); if (!gz.plan) G.add(flecha(0x46a758, 'y'));
       a.scene.add(G); a.gizmoG = G;
     }
-  }, [objs, selObj, seleccion, estado, rev]);
+  }, [objs, selObj, seleccion, estado, rev, mtick, modosEq]);
 
   // Asas azules en los extremos del muro seleccionado: arrastrarlas mueve el muro (y los muros conectados) en el plano
   useEffect(() => {
@@ -1745,13 +1756,14 @@ export default function Visor3D() {
       g.userData.modeloCargado = true;
       cargarModelo(mod).then(raw => {
         if (!g.parent) return;
-        const mm = ajustarModelo(raw, (e.largo || e.w) * CM, (e.fondo || e.d) * CM, (e.alto || 110) * CM); if (!mm) return;
+        const mm = ajustarModelo(raw, (e.w || e.largo) * CM, (e.d || e.fondo) * CM, (e.alto || 110) * CM, modosEq[e.id]?.modo || 'auto'); if (!mm) return;
+        setMtick(v => v + 1);
         sobrescribirModelo(mm, {}, texturas); mm.userData.modeloEq = true; mm.rotation.y = -((mod.rot || 0) * Math.PI) / 180; g.add(mm);
         if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
         const ov = aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov);
       }).catch(() => { g.userData.modeloCargado = false; });
     });
-  }, [rev, biblioteca, estado]);
+  }, [rev, biblioteca, estado, modosEq]);
 
   // Caras pintadas en muros y en las máquinas del plano
   useEffect(() => {
@@ -2054,7 +2066,7 @@ export default function Visor3D() {
         // mientras baja el modelo se ve la caja fantasma; después, el modelo real en su lugar
         cargarModelo(mod).then(raw => {
           if (!g.parent) return; // el objeto ya no está en la escena
-          const mm = ajustarModelo(raw, w, d, h);
+          const mm = ajustarModelo(raw, w, d, h, o.ajuste);
           if (!mm) return;
           sobrescribirModelo(mm, o, texturas);
           mm.rotation.y = -((mod.rot || 0) + (o.rotM || 0)) * Math.PI / 180;
@@ -2079,10 +2091,10 @@ export default function Visor3D() {
     if (guardado === 'inicial') { setGuardado(''); return; }
     setGuardado('Guardando…');
     const t = setTimeout(() => {
-      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias, luces: lucesAj, hora, escenas, tapetas, huecosCfg }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
+      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias, luces: lucesAj, hora, escenas, tapetas, huecosCfg, modelosEq: modosEq }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
     }, 1200);
     return () => clearTimeout(t);
-  }, [objs, acab, paleta, rodapie, guias, lucesAj, hora, escenas, tapetas, huecosCfg]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objs, acab, paleta, rodapie, guias, lucesAj, hora, escenas, tapetas, huecosCfg, modosEq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Los paneles de la izquierda (catálogo, biblioteca 3D, capas, materiales) no se solapan: abrir uno cierra los demás; igual con los de la derecha
   useEffect(() => {
@@ -2266,7 +2278,7 @@ export default function Visor3D() {
   };
   const objetivos = () => [
     ...objs.filter(x => x.id !== selObj && !['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(x.tipo)).map(x => ({ k: 'o:' + x.id, n: x.nombre || x.tipo, cx: x.cx, cy: x.cy, ...mitades(x) })),
-    ...(api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.equipos || []).map(e => ({ k: 'e:' + e.id, n: (e.nombre || 'Máquina') + ' (plano)', cx: e.cx, cy: e.cy, ...mitades({ w: e.largo || e.w, d: e.fondo || e.d, rot: e.rot || 0 }) })),
+    ...(api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.equipos || []).map(e => ({ k: 'e:' + e.id, n: (e.nombre || 'Máquina') + ' (plano)', cx: e.cx, cy: e.cy, ...mitades({ w: e.w || e.largo, d: e.d || e.fondo, rot: e.rot || 0 }) })),
   ];
   const colocarRespecto = (o) => {
     const T = objetivos().find(t => t.k === refObj); if (!T) return;
@@ -3448,6 +3460,7 @@ export default function Visor3D() {
                 <input type="file" accept=".glb,.gltf,.obj,.dae,.zip,.skp" style={{ display: 'none' }} onChange={e => { asignarModelo(e.target.files?.[0]); e.target.value = ''; }} />
               </label>
               {modeloDe(objSel) && <button style={{ ...btn, marginLeft: 6 }} onClick={quitarModelo}>Quitar</button>}
+              {modeloDe(objSel) && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}><span style={{ width: 70, opacity: 0.7 }}>Ajuste</span><select value={objSel.ajuste || 'caber'} onChange={e => cambiar(objSel.id, { ajuste: e.target.value })} style={btn}><option value="caber">Mantener proporciones</option><option value="estirar">Estirar a las medidas</option><option value="nativo">Tamaño original</option></select></label>}
               {modeloDe(objSel) && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}><span style={{ width: 70, opacity: 0.7 }}>Giro modelo</span><input type="number" step="90" value={objSel.rotM || 0} onChange={e => cambiar(objSel.id, { rotM: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 90 }} /></label>}
               {subiendo && <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4 }}>{subiendo}</div>}
               <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas. Desde SketchUp: Archivo → Exportar → Modelo 3D.</div>
@@ -3463,8 +3476,7 @@ export default function Visor3D() {
       {seleccion && !objSel && (
         <div style={{ position: 'absolute', right: 12, bottom: 12, width: 250, background: 'rgba(20,20,20,0.92)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13, lineHeight: 1.5 }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>{seleccion.nombre || 'Equipo'}</div>
-          <div style={{ marginBottom: 4 }}>Alto: {Math.round(seleccion.alto || 110)} cm</div>
-          {eqNuevo && [['x', 'Posición X'], ['y', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['rot', 'Giro °']].map(([k, et]) => (
+          {eqNuevo && [['x', 'Posición X'], ['y', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['rot', 'Giro °']].map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <span style={{ width: 70, opacity: 0.7 }}>{et}</span>
               <input type="number" value={eqNuevo[k]} onChange={e => setEqNuevo(s => ({ ...s, [k]: e.target.value }))} style={{ ...btn, width: 90 }} />
@@ -3483,6 +3495,25 @@ export default function Visor3D() {
                 {mod && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}><span style={{ opacity: 0.7 }}>Giro del modelo</span><select value={mod.rot || 0} onChange={e => girarModeloEq(parseInt(e.target.value, 10))} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></label>}
                 {subiendo && <div style={{ fontSize: 11, opacity: 0.8, marginTop: 4 }}>{subiendo}</div>}
                 <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda en el producto del catálogo y se ve igual en todos los planos. Si sale girado, usa «Giro del modelo».</div>
+              </div>
+            );
+          })()}
+          {seleccion.cid && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d && (() => {
+            let mmE = null; mtick; api3d.current.raiz?.traverse(g => { if (g.userData.equipo?.id === seleccion.id) g.children.forEach(c => { if (c.userData.modeloEq) mmE = c; }); });
+            const nat = mmE?.userData?.nativo, mos = mmE?.userData?.mostrado, modo = modosEq[seleccion.id]?.modo || 'auto';
+            const fm = v => Math.round(v);
+            return (
+              <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Tamaño del modelo</div>
+                {nat ? <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6, lineHeight: 1.5 }}>El archivo mide <b>{fm(nat[0])} × {fm(nat[1])} × {fm(nat[2])} cm</b> (largo × fondo × alto).<br />En el plano pone {fm(seleccion.w || seleccion.largo)} × {fm(seleccion.d || seleccion.fondo)} × {fm(seleccion.alto || 110)} cm.<br />Ahora se ve a <b>{fm(mos[0])} × {fm(mos[1])} × {fm(mos[2])} cm</b>.</div> : <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 6 }}>Cargando el modelo…</div>}
+                <select value={modo} onChange={e => { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: e.target.value } })); }} style={{ ...btn, width: '100%', marginBottom: 6 }}>
+                  <option value="auto">Automático (tamaño del archivo si es razonable)</option>
+                  <option value="nativo">Tamaño original del archivo</option>
+                  <option value="caber">Mantener proporciones dentro de las medidas del plano</option>
+                  <option value="estirar">Estirar hasta las medidas del plano</option>
+                </select>
+                {nat && <button style={btn} onClick={() => api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios: { w: nat[0], d: nat[1], alto: nat[2] } }).then(() => { setSeleccion(null); setAviso('Medidas del modelo puestas en el plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(er => setAviso(er.response?.data?.error || 'No se pudo cambiar'))} title="Cambia el largo, fondo y alto de la máquina en el plano por los del modelo">Poner en el plano las medidas del modelo</button>}
+                <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Si el modelo está bien dibujado, lo normal es usar su tamaño original. Los números del plano pueden venir del catálogo y ser aproximados.</div>
               </div>
             );
           })()}
