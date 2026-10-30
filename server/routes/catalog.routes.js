@@ -521,6 +521,19 @@ router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, asy
     res.status(500).json({ error: 'No se pudo guardar el modelo 3D' });
   }
 });
+router.put('/products/:id/modelo3d', async (req, res) => {
+  try {
+    const rot = ((Number(req.body?.rot) % 360) + 360) % 360;
+    const { data: pr } = await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle();
+    if (!pr?.bloques?.modelo3d) return res.status(404).json({ error: 'Este producto no tiene modelo 3D' });
+    const modelo3d = { ...pr.bloques.modelo3d, rot };
+    const { error } = await supabase.from('catalog_products').update({ bloques: { ...pr.bloques, modelo3d } }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ modelo3d });
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo girar el modelo' });
+  }
+});
 router.delete('/products/:id/modelo3d', async (req, res) => {
   try {
     const { data: pr } = await supabase.from('catalog_products').select('bloques').eq('id', req.params.id).maybeSingle();

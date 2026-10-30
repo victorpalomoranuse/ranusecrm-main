@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -446,6 +446,22 @@ export function construirAlzadoPlanta(sala, yMundo, zonas) {
   return g;
 }
 
+// Menú desplegable del carril de herramientas: se coloca con position fixed junto al botón (sin recortes) y se sube si no cabe por abajo
+export function MenuRail({ abierto, boton, ancho, children }) {
+  const ref = useRef(null), mref = useRef(null), [pos, setPos] = useState(null);
+  useLayoutEffect(() => {
+    if (!abierto || !ref.current) { setPos(null); return; }
+    const r = ref.current.getBoundingClientRect(), h = mref.current ? mref.current.offsetHeight : 320;
+    setPos({ left: r.right + 6, top: Math.max(54, Math.min(r.top, window.innerHeight - h - 8)) });
+  }, [abierto]);
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      {boton}
+      {abierto && <div ref={mref} style={{ position: 'fixed', left: pos ? pos.left : -9999, top: pos ? pos.top : 0, background: 'rgba(20,20,20,0.98)', borderRadius: 10, padding: 6, zIndex: 20, width: ancho || 240, maxHeight: 'calc(100vh - 62px)', overflowY: 'auto', color: '#fff', fontSize: 13, boxShadow: '0 6px 24px rgba(0,0,0,0.45)' }}>{children}</div>}
+    </div>
+  );
+}
+
 // ── Carriles de iluminación (magnético o trifásico) con focos que se añaden donde se quiera
 const TIPOS_FOCO = { spot: 'Spot (cilindro)', spotmini: 'Spot magnético mini', proyector: 'Proyector orientable', lineal: 'Lineal', colgante: 'Colgante' };
 const FOCO_DEF = { spot: { lm: 800, ap: 36 }, spotmini: { lm: 400, ap: 30 }, proyector: { lm: 1500, ap: 24 }, lineal: { lm: 1800, ap: 110, largo: 60 }, colgante: { lm: 600, ap: 120 } };
@@ -782,6 +798,9 @@ export default function Visor3D() {
   const [alz, setAlz] = useState(null);                  // detalle abierto: { tipo: 'muro' | 'suelo' | 'techo', id, lado }
   const [profAlz, setProfAlz] = useState(120);
   const [zForm, setZForm] = useState({ x: 0, y: 90, w: 100, h: 100, forma: 'rect' });
+  const [railCols, setRailCols] = useState(() => (typeof window !== 'undefined' && window.innerHeight < 700 ? 2 : 1));
+  useEffect(() => { const f = () => setRailCols(window.innerHeight < 700 ? 2 : 1); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
+  const railW = railCols * 56 + 10;
   const [camAbierta, setCamAbierta] = useState(false);
   const [camInfo, setCamInfo] = useState(null);
   const [shiftY, setShiftY] = useState(0);
@@ -2102,6 +2121,33 @@ export default function Visor3D() {
     setMedAbierta(true); setMedFilas(null);
     try { const r = await api.get('/medicion/' + id + '/mediciones3d'); setMedFilas(r.data?.filas || []); } catch { setMedFilas([]); setAviso('No se pudo calcular el despiece'); }
   };
+  const refrescarModelosEq = () => {
+    api3d.current.raiz?.traverse(g => {
+      if (!g.userData.equipo) return;
+      g.children.filter(c => c.userData.modeloEq).forEach(c => { g.remove(c); c.traverse(x => { x.geometry?.dispose(); }); });
+      g.userData.modeloCargado = false;
+      if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = true; g.userData.cuerpo.castShadow = true; }
+    });
+  };
+  const asignarModeloEq = async (archivo) => {
+    if (!archivo || !seleccion?.cid) return;
+    if (/\.skp$/i.test(archivo.name)) { alert('Los archivos .skp de SketchUp no se pueden mostrar en el navegador. En SketchUp: Archivo → Exportar → Modelo 3D, y elige glTF (.glb) o COLLADA (.dae). Sube ese archivo.'); return; }
+    setSubiendo('Subiendo el modelo…');
+    try {
+      const fd = new FormData(); fd.append('file', archivo);
+      const r = await api.post('/catalog/products/' + seleccion.cid + '/modelo3d', fd), nuevo = r.data?.modelo3d;
+      setBiblioteca(prev => (prev || []).map(m => (m.id === seleccion.cid ? { ...m, modelo3d: { url: nuevo.url, tipo: nuevo.tipo, rot: nuevo.rot } } : m)));
+      refrescarModelosEq(); setSubiendo('Modelo asignado ✓ (se guarda en el producto del catálogo)');
+    } catch (e) { setSubiendo(e.response?.data?.error || 'No se pudo subir el modelo (¿es un producto del catálogo?)'); }
+  };
+  const quitarModeloEq = async () => {
+    try { await api.delete('/catalog/products/' + seleccion.cid + '/modelo3d'); setBiblioteca(prev => (prev || []).map(m => (m.id === seleccion.cid ? { ...m, modelo3d: null } : m))); refrescarModelosEq(); setSubiendo('Modelo quitado: vuelve a verse como caja'); }
+    catch { setSubiendo('No se pudo quitar el modelo'); }
+  };
+  const girarModeloEq = async (rot) => {
+    try { const r = await api.put('/catalog/products/' + seleccion.cid + '/modelo3d', { rot }); setBiblioteca(prev => (prev || []).map(m => (m.id === seleccion.cid && m.modelo3d ? { ...m, modelo3d: { ...m.modelo3d, rot: r.data.modelo3d.rot } } : m))); refrescarModelosEq(); }
+    catch { setSubiendo('No se pudo girar el modelo'); }
+  };
   const AVISO_PLANO = 'Guardado en el plano ✓. Si tienes Planos abierto en otra pestaña, recárgalo: si no, al guardar allí se perdería este cambio.';
   const aplicarHueco = async () => {
     if (!selHueco) return;
@@ -2364,17 +2410,12 @@ export default function Visor3D() {
   const sepTop = { width: 1, height: 22, background: '#444', margin: '0 2px', flex: 'none' };
   const itemMenu = { padding: '6px 8px', cursor: 'pointer', borderRadius: 4 };
   const railBtn = (activo, icono, etiqueta, titulo, onClick, color) => (
-    <button key={etiqueta} title={titulo} onClick={onClick} style={{ width: 50, padding: '5px 1px 3px', background: activo ? (color || '#2f6fa8') : 'transparent', color: activo && color === '#c9a21a' ? '#111' : '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-      <span style={{ fontSize: 17, lineHeight: '20px' }}>{icono}</span><span style={{ fontSize: 9, opacity: 0.85, whiteSpace: 'nowrap' }}>{etiqueta}</span>
+    <button key={etiqueta} title={titulo} onClick={onClick} style={{ width: 50, padding: '3px 1px 2px', background: activo ? (color || '#2f6fa8') : 'transparent', color: activo && color === '#c9a21a' ? '#111' : '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+      <span style={{ fontSize: 16, lineHeight: '18px' }}>{icono}</span><span style={{ fontSize: 9, opacity: 0.85, whiteSpace: 'nowrap' }}>{etiqueta}</span>
     </button>
   );
   const grupoRail = (hijos, ultimo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{hijos}</div>;
-  const menuRail = (abierto, setAbierto, boton, contenido, ancho) => (
-    <div key={'m' + (ancho || 0) + (boton.key || '')} style={{ position: 'relative' }}>
-      {boton}
-      {abierto && <div style={{ position: 'absolute', left: 56, top: 0, background: 'rgba(20,20,20,0.98)', borderRadius: 10, padding: 6, zIndex: 12, width: ancho || 240, color: '#fff', fontSize: 13, boxShadow: '0 6px 24px rgba(0,0,0,0.45)' }}>{contenido}</div>}
-    </div>
-  );
+  const menuRail = (abierto, setAbierto, boton, contenido, ancho) => <MenuRail key={'m' + (boton.key || '')} abierto={abierto} ancho={ancho} boton={boton}>{contenido}</MenuRail>;
   const AYUDA_HERR = {
     sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo'], poli: ['Contorno', 'Clic punto a punto; Enter o volver al primer punto para cerrar'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de un objeto'],
     muro: ['Muro', 'Clic para empezar y cada punto; Mayús = recto; Enter termina'], zonaS: ['Zona en suelo', 'Clic punto a punto; Enter cierra'], zonaT: ['Zona en techo', 'Clic punto a punto; Enter cierra'], zonaP: ['Zona en pared', 'Clic punto a punto sobre una pared; Enter cierra'],
@@ -2411,7 +2452,7 @@ export default function Visor3D() {
       </div>
 
       {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
-      <div style={{ position: 'absolute', top: 56, left: 8, width: 54, maxHeight: 'calc(100vh - 68px)', overflowY: 'auto', overflowX: 'visible', background: 'rgba(24,24,24,0.94)', borderRadius: 12, padding: '6px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+      <div style={{ position: 'absolute', top: 54, left: 8, display: 'flex', flexDirection: 'column', flexWrap: 'wrap', alignContent: 'flex-start', gap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 62px)', background: 'rgba(24,24,24,0.94)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
         {grupoRail([
           railBtn(herr === 'sel', '↖', 'Seleccionar', 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
           railBtn(herr === 'pincel' || matAbierto, '🎨', 'Materiales', 'Colores, texturas y LED: elige y pinta (cara, pieza o entero)', () => { setMatAbierto(v => !v); if (matAbierto && herr === 'pincel') setHerr('sel'); }),
@@ -2516,7 +2557,7 @@ export default function Visor3D() {
           </label>
         );
         return (
-          <div style={{ position: 'absolute', left: 64, top: 56, width: 210, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '10px 12px', fontSize: 13, zIndex: 3 }}>
+          <div style={{ position: 'absolute', left: railW, top: 56, width: 210, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '10px 12px', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Ver por capas</div>
             {fijas.map(([k, n]) => fila(k, n))}
             <div style={{ borderTop: '1px solid #333', marginTop: 6, paddingTop: 6 }}>
@@ -2682,7 +2723,7 @@ export default function Visor3D() {
         </div>
       )}
       {camAbierta && camInfo && (
-        <div style={{ position: 'absolute', top: 56, left: 70, width: 300, background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+        <div style={{ position: 'absolute', top: 56, left: railW + 6, width: 300, background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 13, zIndex: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
           <div style={{ fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center' }}><span style={{ flex: 1 }}>🎥 Cámara</span><span onClick={() => setCamAbierta(false)} style={{ cursor: 'pointer', opacity: 0.6 }}>✕</span></div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.75 }}>Altura (cm)</span><input type="number" step="5" value={camInfo.alt} onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) camAltura(Math.max(5, v)); }} style={{ ...btn, width: 80 }} /></label>
           <div style={{ display: 'flex', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
@@ -2785,7 +2826,7 @@ export default function Visor3D() {
           try { await api.delete('/medicion/' + id + '/textura/' + t.id); setTexturas(x => x.filter(y => y.id !== t.id)); if (matSel?.id === t.id) setMatSel(null); } catch { setGuardado('No se pudo quitar'); }
         };
         return (
-          <div style={{ position: 'absolute', left: 64, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
+          <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700, marginBottom: 2 }}>🎨 Materiales (pincel)</div>
             <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 6 }}>Elige un material y haz clic en lo que quieras pintar. Alt + clic copia el material de lo que toques (gotero).</div>
             <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
@@ -2920,7 +2961,7 @@ export default function Visor3D() {
         const lista = (b3d?.[b3dTab] || []).filter(m => (!b3dCat || m.categoria === b3dCat) && (!b3dFiltro || (m.nombre + ' ' + m.categoria).toLowerCase().includes(b3dFiltro.toLowerCase())));
         const cats = [...new Set((b3d?.[b3dTab] || []).map(m => m.categoria))].sort();
         return (
-          <div style={{ position: 'absolute', left: 64, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
+          <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700 }}>🧰 Biblioteca 3D <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>gratis · CC0</span></div>
             <div style={{ display: 'flex', gap: 6, margin: '6px 0' }}>
               <button style={{ ...btn, flex: 1, ...(b3dTab === 'modelos' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setB3dTab('modelos'); setB3dCat(''); }}>Muebles</button>
@@ -2954,7 +2995,7 @@ export default function Visor3D() {
         );
       })()}
       {bibAbierta && (
-        <div style={{ position: 'absolute', left: 64, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
+        <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
           <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar en el catálogo…" style={{ ...btn, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} />
           <div style={{ overflow: 'auto', flex: 1 }}>
             {!biblioteca && <p style={{ opacity: 0.6 }}>Cargando catálogo…</p>}
@@ -3189,6 +3230,21 @@ export default function Visor3D() {
             </label>
           ))}
           <button style={{ ...btn, background: '#2f6fa8', marginTop: 6 }} onClick={aplicarEquipo}>Aplicar al plano</button>
+          {seleccion.cid && (() => {
+            const mod = biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d;
+            return (
+              <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
+                <div style={{ opacity: 0.75, marginBottom: 4 }}>Modelo 3D del producto {mod ? '(asignado)' : '(se ve como caja)'}</div>
+                <label style={{ ...btn, display: 'inline-block' }}>{mod ? 'Reemplazar por mi archivo…' : 'Subir mi modelo 3D…'}
+                  <input type="file" accept=".glb,.gltf,.obj,.dae,.skp" style={{ display: 'none' }} onChange={e => { asignarModeloEq(e.target.files?.[0]); e.target.value = ''; }} />
+                </label>
+                {mod && <button style={{ ...btn, marginLeft: 6 }} onClick={quitarModeloEq}>Quitar</button>}
+                {mod && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}><span style={{ opacity: 0.7 }}>Giro del modelo</span><select value={mod.rot || 0} onChange={e => girarModeloEq(parseInt(e.target.value, 10))} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></label>}
+                {subiendo && <div style={{ fontSize: 11, opacity: 0.8, marginTop: 4 }}>{subiendo}</div>}
+                <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda en el producto del catálogo y se ve igual en todos los planos. Si sale girado, usa «Giro del modelo».</div>
+              </div>
+            );
+          })()}
           <div>Estado: {seleccion.estado === 'ex' ? 'existente' : 'nuevo'}</div>
           <button style={{ ...btn, marginTop: 8 }} onClick={() => setSeleccion(null)}>Cerrar</button>
         </div>
