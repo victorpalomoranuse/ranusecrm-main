@@ -462,6 +462,81 @@ export function MenuRail({ abierto, boton, ancho, children }) {
   );
 }
 
+// ── Puertas, ventanas y portones por tipo (los que usa Planos): hoja o cristal en su sitio y con la apertura que se quiera ver
+const DOOR_TIPS = ['Abatible', 'Doble hoja', 'Corredera', 'Corredera 2 hojas', 'Corredera empotrada', 'Plegable', 'Hueco', 'Seccional', 'Basculante', 'Enrollable'];
+const WIN_TIPS = ['Practicable', 'Doble hoja', 'Oscilobatiente', 'Corredera', 'Fija'];
+const DOOR_MATS = ['Madera maciza', 'Vidrio templado', 'Chapa lacada', 'Panel sándwich', 'Lama de aluminio'];
+export function construirHoja(o, mu, cfg, valHoja, texturas) {
+  const g = new THREE.Group(), esPuerta = (o.tipo || o.t) === 'door', tip = String(o.tip || (esPuerta ? 'Abatible' : 'Practicable')).toLowerCase(), mat = String(o.mat || '');
+  const t = (mu.t || 12) * CM, fr = 0.05, x0 = o.p * CM, x1 = (o.p + o.w) * CM, y0 = (o.sill || 0) * CM, y1 = y0 + o.h * CM;
+  const ix0 = x0 + fr, ix1 = x1 - fr, iy0 = esPuerta ? y0 : y0 + fr, iy1 = y1 - fr, iw = ix1 - ix0, ih = iy1 - iy0, cx = (ix0 + ix1) / 2, cy = (iy0 + iy1) / 2;
+  const vidrio = !esPuerta || /vidrio|cristal/i.test(mat), metal = /chapa|panel|lama|alum|metal/i.test(mat) || /seccional|basculante|enrollable/.test(tip);
+  const hojaM = new THREE.MeshStandardMaterial({ color: metal ? 0x9aa0a6 : esPuerta ? 0xc9a77c : 0xf2f2f2, roughness: metal ? 0.45 : 0.6, metalness: metal ? 0.5 : 0 });
+  aplicarValorMat(hojaM, valHoja, texturas, o);
+  const vidM = new THREE.MeshStandardMaterial({ color: 0xaed4ea, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.35, side: THREE.DoubleSide });
+  const manM = new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.8 });
+  const info = { muroId: mu.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat };
+  const pieza = (padre, bw, bh, bd, px, py, pz, m, zona) => { const b = new THREE.Mesh(new THREE.BoxGeometry(Math.max(bw, 0.002), Math.max(bh, 0.002), Math.max(bd, 0.002)), m); b.position.set(px, py, pz); b.castShadow = true; b.userData = { capa: 'huecos', hueco: info, zona }; padre.add(b); return b; };
+  const sgn = cfg.sentido === 'B' ? -1 : 1, abierta = Math.max(0, Math.min(110, cfg.abierta || 0)), ang = (abierta * Math.PI) / 180, pct = Math.min(1, abierta / 100), izq = cfg.bisagra !== 'der';
+  const hy = esPuerta ? Math.min(iy1 - 0.1, y0 + 1.0) : cy;
+  // hoja con cristal: marco fino + cristal (ventanas y puertas de vidrio)
+  const panelVidrio = (padre, w0, px, pz) => {
+    pieza(padre, w0, 0.04, 0.045, px, iy1 - 0.02, pz, hojaM, 'hoja'); pieza(padre, w0, 0.04, 0.045, px, iy0 + 0.02, pz, hojaM, 'hoja');
+    pieza(padre, 0.04, ih, 0.045, px - w0 / 2 + 0.02, cy, pz, hojaM, 'hoja'); pieza(padre, 0.04, ih, 0.045, px + w0 / 2 - 0.02, cy, pz, hojaM, 'hoja');
+    pieza(padre, w0 - 0.08, ih - 0.08, 0.01, px, cy, pz, vidM, 'cristal');
+  };
+  const panelSolido = (padre, w0, px, pz, grosor = 0.04) => pieza(padre, w0 - 0.004, ih - 0.004, grosor, px, cy, pz, hojaM, 'hoja');
+  const giratoria = (w0, centro, bisIzq) => {
+    const pivot = new THREE.Group(); pivot.position.set(bisIzq ? centro - w0 / 2 : centro + w0 / 2, 0, 0); pivot.rotation.y = (bisIzq ? -ang : ang) * sgn;
+    const off = bisIzq ? w0 / 2 : -w0 / 2;
+    if (vidrio) panelVidrio(pivot, w0, off, 0); else panelSolido(pivot, w0, off, 0);
+    if (!(tip === 'fija')) pieza(pivot, 0.012, 0.12, 0.03, bisIzq ? w0 - 0.06 : -w0 + 0.06, hy, 0.03, manM, 'hoja');
+    g.add(pivot);
+  };
+  if (esPuerta) {
+    if (tip === 'hueco') return g;
+    if (tip.includes('corredera empotrada')) { const m1 = new THREE.Group(); m1.position.x = (izq ? 1 : -1) * pct * (iw + 0.04); if (vidrio) panelVidrio(m1, iw, cx, 0); else panelSolido(m1, iw, cx, 0); g.add(m1); return g; }
+    if (tip.includes('corredera 2')) {
+      const A = new THREE.Group(), B = new THREE.Group(); A.position.x = pct * (iw / 2); B.position.x = -pct * (iw / 2) * 0;
+      const zA = sgn * (t / 2 + 0.03), zB = sgn * (t / 2 + 0.07);
+      if (vidrio) { panelVidrio(A, iw / 2 + 0.03, ix0 + iw / 4, zA); panelVidrio(B, iw / 2 + 0.03, ix0 + (3 * iw) / 4, zB); } else { panelSolido(A, iw / 2 + 0.03, ix0 + iw / 4, zA); panelSolido(B, iw / 2 + 0.03, ix0 + (3 * iw) / 4, zB); }
+      pieza(g, iw * 1.1, 0.03, 0.1, cx, iy1 + 0.035, sgn * (t / 2 + 0.05), manM, 'hoja'); g.add(A, B); return g;
+    }
+    if (tip.includes('corredera')) {
+      const m1 = new THREE.Group(), z = sgn * (t / 2 + 0.03); m1.position.x = (izq ? 1 : -1) * pct * (iw + 0.04);
+      if (vidrio) panelVidrio(m1, iw + 0.04, cx, z); else panelSolido(m1, iw + 0.04, cx, z);
+      pieza(g, iw * 2 + 0.2, 0.03, 0.05, izq ? cx + iw / 2 : cx - iw / 2, iy1 + 0.035, z, manM, 'hoja'); g.add(m1); return g;
+    }
+    if (tip.includes('plegable')) {
+      const n = 4, pw = iw / n, a = pct * 1.2; let x = ix0;
+      for (let i = 0; i < n; i++) { const w1 = pw * Math.cos(a), m1 = pieza(g, pw - 0.004, ih - 0.004, 0.03, x + w1 / 2, cy, 0, hojaM, 'hoja'); m1.rotation.y = (i % 2 ? a : -a) * sgn; x += w1; }
+      return g;
+    }
+    if (tip.includes('seccional')) {
+      const n = 5, sh = ih / n; for (let i = 0; i < n; i++) pieza(g, iw - 0.004, sh - 0.012, 0.045, cx, iy0 + sh * (i + 0.5) + pct * ih, 0, hojaM, 'hoja');
+      return g;
+    }
+    if (tip.includes('enrollable')) {
+      const n = 26, sh = ih / n, vis = Math.ceil(n * (1 - pct)); for (let i = 0; i < vis; i++) pieza(g, iw - 0.004, sh - 0.004, 0.03, cx, iy1 - sh * (i + 0.5), 0, hojaM, 'hoja');
+      pieza(g, iw + 0.04, 0.14, 0.16, cx, iy1 + 0.06, sgn * (t / 2 + 0.02), hojaM, 'hoja'); return g;
+    }
+    if (tip.includes('basculante')) {
+      const pivot = new THREE.Group(); pivot.position.set(0, iy1, 0); pivot.rotation.x = pct * 1.45 * sgn; pivot.userData = {};
+      pieza(pivot, iw - 0.004, ih - 0.004, 0.045, cx, -ih / 2, 0, hojaM, 'hoja'); g.add(pivot); return g;
+    }
+    if (tip.includes('doble')) { giratoria(iw / 2, ix0 + iw / 4, true); giratoria(iw / 2, ix0 + (3 * iw) / 4, false); return g; }
+    giratoria(iw, cx, izq); return g;
+  }
+  // ventanas
+  if (tip === 'fija') { pieza(g, iw, ih, 0.01, cx, cy, 0, vidM, 'cristal'); return g; }
+  if (tip.includes('corredera')) {
+    const A = new THREE.Group(); A.position.x = pct * (iw / 2);
+    panelVidrio(A, iw / 2 + 0.03, ix0 + iw / 4, sgn * 0.02); panelVidrio(g, iw / 2 + 0.03, ix0 + (3 * iw) / 4, sgn * -0.02); g.add(A); return g;
+  }
+  if (tip.includes('doble')) { giratoria(iw / 2, ix0 + iw / 4, true); giratoria(iw / 2, ix0 + (3 * iw) / 4, false); return g; }
+  giratoria(iw, cx, izq); return g;
+}
+
 // ── Carriles de iluminación (magnético o trifásico) con focos que se añaden donde se quiera
 const TIPOS_FOCO = { spot: 'Spot (cilindro)', spotmini: 'Spot magnético mini', proyector: 'Proyector orientable', lineal: 'Lineal', colgante: 'Colgante' };
 const FOCO_DEF = { spot: { lm: 800, ap: 36 }, spotmini: { lm: 400, ap: 30 }, proyector: { lm: 1500, ap: 24 }, lineal: { lm: 1800, ap: 110, largo: 60 }, colgante: { lm: 600, ap: 120 } };
@@ -698,11 +773,10 @@ function muro(m, h0) {
     if (y1 <= y0) continue;
     const w = (x1 - x0) * CM, h = (y1 - y0) * CM, cx = ((x0 + x1) / 2) * CM, cy = ((y0 + y1) / 2) * CM, tt = (m.t || 12) * CM;
     const fr = 0.05, marco = new THREE.MeshStandardMaterial({ color: o.t === 'door' || o.tipo === 'door' ? 0x8a6a4a : 0xf2f2f2, roughness: 0.6 });
-    const parte = (bw, bh, bd, px, py, mat, extra) => { const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat); b.position.set(px, py, 0); b.castShadow = true; b.userData = { capa: 'huecos', hueco: { muroId: m.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t }, zona: mat === marco ? 'marco' : (mat.transparent ? 'cristal' : 'hoja'), ...(extra || {}) }; mesh.add(b); return b; };
+    const parte = (bw, bh, bd, px, py, mat, extra) => { const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat); b.position.set(px, py, 0); b.castShadow = true; b.userData = { capa: 'huecos', hueco: { muroId: m.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat }, zona: mat === marco ? 'marco' : (mat.transparent ? 'cristal' : 'hoja'), ...(extra || {}) }; mesh.add(b); return b; };
     parte(w, fr, tt * 1.02, cx, y1 * CM - fr / 2, marco); parte(w, fr, tt * 1.02, cx, y0 * CM + fr / 2, marco);
     parte(fr, h, tt * 1.02, x0 * CM + fr / 2, cy, marco); parte(fr, h, tt * 1.02, x1 * CM - fr / 2, cy, marco);
-    if ((o.tipo || o.t) === 'door') parte(w - fr * 2, h - fr * 2, 0.04, cx, cy, new THREE.MeshStandardMaterial({ color: 0xc9a77c, roughness: 0.55 }));
-    else parte(w - fr * 2, h - fr * 2, 0.01, cx, cy, new THREE.MeshStandardMaterial({ color: 0xaed4ea, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.35 }));
+    // la hoja o el cristal se construyen aparte (según el tipo: abatible, corredera, plegable…)
   }
   // El plano va en (x, y); en 3D, y del plano es z. El muro se dibuja a lo largo de X local y se gira hasta a→b.
   mesh.position.set(ax * CM, 0, ay * CM);
@@ -869,6 +943,7 @@ export default function Visor3D() {
   const seleccionRef = useRef(null);
   const acabRef = useRef(null);
   const rodapieRef = useRef({});
+  const [huecosCfg, setHuecosCfg] = useState({});          // apertura, bisagra y sentido de cada puerta y ventana (solo 3D)
   const [tapetas, setTapetas] = useState({});              // tapetas de puertas y ventanas, por hueco
   const [escenas, setEscenas] = useState([]);              // escenas guardadas: vista + capas + hora + textos de IA
   const [escAbierta, setEscAbierta] = useState(false);
@@ -977,7 +1052,7 @@ export default function Visor3D() {
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
@@ -1045,7 +1120,7 @@ export default function Visor3D() {
         setLuzSel(null);
       }
       const uh = primero?.object?.userData?.hueco;
-      if (uh) { setSelHueco({ ...uh, nuevo: { w: uh.w, h: uh.h, sill: uh.sill, p: uh.p } }); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
+      if (uh) { setSelHueco({ ...uh, nuevo: { w: uh.w, h: uh.h, sill: uh.sill, p: uh.p, tip: uh.tip, mat: uh.mat } }); setSeleccion(null); setSelAcab(null); setSelObj(null); return; }
       let eq = null; if (primero) { let o = primero.object; while (o && !o.userData.equipo) o = o.parent; eq = o; }
       if (eq) { sel = eq; eq.userData.cuerpo.material.emissive.setHex(0x335577); setSeleccion(eq.userData.equipo); setEqNuevo({ x: Math.round(eq.userData.equipo.cx), y: Math.round(eq.userData.equipo.cy), w: eq.userData.equipo.largo || eq.userData.equipo.w, d: eq.userData.equipo.fondo || eq.userData.equipo.d, rot: eq.userData.equipo.rot || 0 }); setSelAcab(null); }
       else {
@@ -1689,6 +1764,20 @@ export default function Visor3D() {
     });
   }, [acab.regiones, rev, estado, texturas]);
 
+  // Hojas de puertas y cristales de ventanas según su tipo, con la apertura elegida
+  useEffect(() => {
+    const a = api3d.current; if (!a.raiz) return;
+    if (a.hojaG) { a.raiz.remove(a.hojaG); a.hojaG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); a.hojaG = null; }
+    const modelo = a.modelo; if (!modelo) return;
+    const g = new THREE.Group();
+    (modelo.plantas || [modelo]).forEach(pl => (pl.muros || []).forEach(mu => (mu.ab || []).forEach(o => {
+      const key = o.id || (mu.id + ':' + o.p), holder = new THREE.Group();
+      holder.position.set(mu.a[0] * CM, (pl.z || 0) * CM, mu.a[1] * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
+      holder.add(construirHoja(o, mu, huecosCfg[key] || {}, acab.huecos?.[key]?.hoja, texturas)); g.add(holder);
+    })));
+    a.raiz.add(g); a.hojaG = g;
+  }, [huecosCfg, rev, estado, acab.huecos, texturas]);
+
   // Tapetas (molduras alrededor de puertas y ventanas): dintel y dos jambas por lado del muro, y alféizar opcional en ventanas
   useEffect(() => {
     const a = api3d.current; if (!a.raiz) return;
@@ -1708,7 +1797,7 @@ export default function Visor3D() {
         const z = s * (t / 2 + vuelo / 2);
         const tabla = (bw, bh, px, py, bd, pz) => {
           const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mt); b.position.set(px, py, pz); b.castShadow = b.receiveShadow = true;
-          b.userData = { capa: 'huecos', hueco: { muroId: mu.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t }, zona: 'tapeta' }; holder.add(b);
+          b.userData = { capa: 'huecos', hueco: { muroId: mu.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat }, zona: 'tapeta' }; holder.add(b);
         };
         tabla(w + 2 * ancho, ancho, (x0 + x1) / 2, y1 + ancho / 2, vuelo, z);        // dintel
         tabla(ancho, y1 - y0, x0 - ancho / 2, (y0 + y1) / 2, vuelo, z);               // jamba izquierda
@@ -1990,10 +2079,10 @@ export default function Visor3D() {
     if (guardado === 'inicial') { setGuardado(''); return; }
     setGuardado('Guardando…');
     const t = setTimeout(() => {
-      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias, luces: lucesAj, hora, escenas, tapetas }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
+      api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias, luces: lucesAj, hora, escenas, tapetas, huecosCfg }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
     }, 1200);
     return () => clearTimeout(t);
-  }, [objs, acab, paleta, rodapie, guias, lucesAj, hora, escenas, tapetas]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objs, acab, paleta, rodapie, guias, lucesAj, hora, escenas, tapetas, huecosCfg]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Los paneles de la izquierda (catálogo, biblioteca 3D, capas, materiales) no se solapan: abrir uno cierra los demás; igual con los de la derecha
   useEffect(() => {
@@ -2336,7 +2425,7 @@ export default function Visor3D() {
   // Render fotorrealista con IA: se manda la vista actual y vuelve mejorada
   const [ia, setIa] = useState(null); // { estado: 'trabajando' | 'listo' | 'error', imagen, mensaje, estancia, estilo, extra }
   const [iaForm, setIaForm] = useState(false);
-  const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '', libertad: 'equilibrado' });
+  const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '', libertad: 'equilibrado', proveedor: 'openai' });
   const metaActual = (txt = iaTxt) => {
     const { cam, ctrl } = api3d.current;
     return { camara: { px: cam.position.x, py: cam.position.y, pz: cam.position.z, tx: ctrl.target.x, ty: ctrl.target.y, tz: ctrl.target.z, fov: cam.fov }, shift: api3d.current.shiftY || 0, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, estancia: txt.estancia, estilo: txt.estilo, extra: txt.extra, libertad: txt.libertad };
@@ -2475,7 +2564,7 @@ export default function Visor3D() {
     }
   };
   // ── Escenas: una vista guardada (cámara, hora, luces, capas visibles y textos de IA) a la que se vuelve y desde la que se renderiza
-  const txtDe = e => ({ estancia: e.meta?.estancia || '', estilo: e.meta?.estilo || '', extra: e.meta?.extra || '', libertad: e.meta?.libertad || 'equilibrado' });
+  const txtDe = e => ({ estancia: e.meta?.estancia || '', estilo: e.meta?.estilo || '', extra: e.meta?.extra || '', libertad: e.meta?.libertad || 'equilibrado', proveedor: iaTxt.proveedor });
   const irAEscena = async (e) => { restaurarVista(e.meta); setOcultas(e.ocultas || []); setIaTxt(t => ({ ...t, ...txtDe(e) })); await esperar(450); };
   const guardarEscena = () => { const nombre = (escNombre || '').trim() || ('Escena ' + (escenas.length + 1)); setEscenas(x => [...x, { id: 'e' + Date.now().toString(36), nombre, meta: metaActual(), ocultas }]); setEscNombre(''); };
   const actualizarEscena = id2 => { setEscenas(x => x.map(e => (e.id === id2 ? { ...e, meta: metaActual(), ocultas } : e))); setGuardado('Escena actualizada con la vista de ahora'); };
@@ -2628,6 +2717,13 @@ export default function Visor3D() {
                 <option value="fiel">Fiel al modelo (solo pule)</option>
                 <option value="equilibrado">Equilibrado (añade ambiente y luz)</option>
                 <option value="creativo">Creativo (decora con criterio)</option>
+              </select>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+              <span style={{ opacity: 0.7 }}>Motor de imagen</span>
+              <select value={iaTxt.proveedor || 'openai'} onChange={e => setIaTxt(t => ({ ...t, proveedor: e.target.value }))} style={btn}>
+                <option value="openai">ChatGPT (OpenAI)</option>
+                <option value="gemini">Gemini (Google)</option>
               </select>
             </label>
             <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
@@ -2882,6 +2978,25 @@ export default function Visor3D() {
               <input type="number" value={selHueco.nuevo[k]} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, [k]: e.target.value } }))} style={{ ...btn, width: 90 }} />
             </label>
           ))}
+          {(() => {
+            const esP = selHueco.tipo === 'door', key = selHueco.id || (selHueco.muroId + ':' + selHueco.p), c = huecosCfg[key] || { abierta: 0, bisagra: 'izq', sentido: 'A' }, set = n => setHuecosCfg(t => ({ ...t, [key]: { ...c, ...n } }));
+            const tip = selHueco.nuevo.tip || (esP ? 'Abatible' : 'Practicable'), tips = esP ? DOOR_TIPS : WIN_TIPS, corredera = /corredera|seccional|enrollable|plegable|basculante/i.test(tip);
+            return (
+              <div style={{ borderBottom: '1px solid #333', marginBottom: 6, paddingBottom: 6 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Tipo</span>
+                  <select value={tip} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, tip: e.target.value } }))} style={btn}>{[...new Set([...tips, tip])].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
+                {esP && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Hoja</span>
+                  <select value={selHueco.nuevo.mat || ''} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, mat: e.target.value || undefined } }))} style={btn}><option value="">(la del plano)</option>{DOOR_MATS.map(n => <option key={n} value={n}>{n}</option>)}</select></label>}
+                {tip !== 'Hueco' && tip !== 'Fija' && <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>{corredera ? 'Abierta %' : 'Abierta °'}</span><input type="range" min="0" max={corredera ? 100 : 110} value={c.abierta || 0} onChange={e => set({ abierta: parseInt(e.target.value, 10) })} style={{ flex: 1 }} /><span style={{ width: 34, textAlign: 'right' }}>{c.abierta || 0}</span></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Bisagra</span>
+                    <select value={c.bisagra || 'izq'} onChange={e => set({ bisagra: e.target.value })} style={btn}><option value="izq">Izquierda</option><option value="der">Derecha</option></select>
+                    <select value={c.sentido || 'A'} onChange={e => set({ sentido: e.target.value })} style={btn} title="Hacia qué lado del muro abre"><option value="A">Abre al lado A</option><option value="B">Abre al lado B</option></select></label>
+                </>}
+                <div style={{ opacity: 0.5, fontSize: 11 }}>El tipo y la hoja se escriben en el plano al pulsar «Aplicar al plano». La apertura es solo para verla en el 3D.</div>
+              </div>
+            );
+          })()}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6, fontSize: 12 }}>
             <span style={{ opacity: 0.7 }}>Subir / bajar {selHueco.tipo === 'door' ? 'la puerta' : 'la ventana'}</span>
             {[[-10, '−10'], [-5, '−5'], [5, '+5'], [10, '+10']].map(([d, n]) => <button key={d} style={{ ...btn, padding: '2px 7px', fontSize: 11 }} onClick={() => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, sill: Math.max(0, (parseFloat(s.nuevo.sill) || 0) + d) } }))}>{n}</button>)}

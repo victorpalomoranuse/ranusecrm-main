@@ -554,6 +554,7 @@ router.put('/:id/escena3d', async (req, res) => {
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
     const previa = fila.data?.escena3d || {};
     const data = { ...fila.data, escena3d: { objetos: limpios, acabados, paleta, rodapie, guias, luces, texturas: previa.texturas || [], renders: previa.renders || [], iaPrefs: previa.iaPrefs || null,
+      huecosCfg: req.body?.huecosCfg === undefined ? (previa.huecosCfg || {}) : Object.fromEntries(Object.entries(req.body.huecosCfg && typeof req.body.huecosCfg === 'object' ? req.body.huecosCfg : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { abierta: Math.max(0, Math.min(110, num(v?.abierta, 0))), bisagra: v?.bisagra === 'der' ? 'der' : 'izq', sentido: v?.sentido === 'B' ? 'B' : 'A' }])),
       tapetas: req.body?.tapetas === undefined ? (previa.tapetas || {}) : Object.fromEntries(Object.entries(req.body.tapetas && typeof req.body.tapetas === 'object' ? req.body.tapetas : {}).slice(0, 300).map(([k, v]) => [String(k).slice(0, 60), { on: !!v?.on, ancho: Math.max(2, Math.min(30, num(v?.ancho, 7))), vuelo: Math.max(0.3, Math.min(6, num(v?.vuelo, 1.2))), lados: ['ambos', 'a', 'b'].includes(v?.lados) ? v.lados : 'ambos', alfeizar: !!v?.alfeizar }])),
       escenas: Array.isArray(req.body?.escenas) ? req.body.escenas.slice(0, 40).map(e => ({ id: String(e?.id || '').slice(0, 20), nombre: String(e?.nombre || 'Escena').slice(0, 60), meta: limpiaMeta(e?.meta), ocultas: (Array.isArray(e?.ocultas) ? e.ocultas : []).slice(0, 60).map(x => String(x).slice(0, 50)) })).filter(e => e.id) : (previa.escenas || []), hora: Math.max(0, Math.min(24, num(req.body?.hora, 15))), updated: Date.now() } };
     const { error: e2 } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
@@ -756,6 +757,7 @@ router.patch('/:id/hueco', async (req, res) => {
     const lim = { w: [20, 800], h: [20, 500], sill: [0, 400], p: [0, 5000] };
     const vals = {};
     for (const k of Object.keys(lim)) if (Number.isFinite(parseFloat(cambios[k]))) vals[k] = acota(cambios[k], lim[k][0], lim[k][1]);
+    for (const k of ['tip', 'mat']) if (typeof cambios[k] === 'string' && cambios[k].trim() && cambios[k].length <= 40) vals[k] = cambios[k].trim();
     let hecho = false;
     for (const c of contenedoresPlano(data)) for (const o of c.ops || []) {
       if (opId ? o.id === opId : (o.wall === muroId && Math.abs(o.p - p0) < 1.5 && Math.abs(o.w - w0) < 1.5)) { Object.assign(o, vals); hecho = true; }

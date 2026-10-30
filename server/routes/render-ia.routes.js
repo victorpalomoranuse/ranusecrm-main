@@ -3,7 +3,8 @@ import { authenticateToken, requirePermission } from '../middleware/auth.middlew
 
 // Render fotorrealista con IA de imágenes (Gemini, «Nano Banana»): recibe la imagen del visor 3D
 // (render limpio con materiales y luz) más la paleta de colores y devuelve la imagen mejorada.
-// Necesita la variable GEMINI_API_KEY en el servidor. El modelo se puede cambiar con GEMINI_IMAGE_MODEL.
+// Motores: ChatGPT / OpenAI (variable OPENAI_API_KEY, modelo OPENAI_IMAGE_MODEL, por defecto gpt-image-1) o Gemini (GEMINI_API_KEY, GEMINI_IMAGE_MODEL).
+// Si no se indica motor, se usa OpenAI cuando hay clave y, si no, Gemini.
 const router = express.Router();
 router.use(authenticateToken, requirePermission('proyectos'));
 
@@ -13,21 +14,24 @@ const modelo = () => process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
 // ¿Está configurada la clave? Y qué modelos de imagen ve la cuenta (sin enseñar la clave)
 router.get('/estado', async (req, res) => {
   const clave = process.env.GEMINI_API_KEY;
-  if (!clave) return res.json({ configurado: false });
+  const openai = !!process.env.OPENAI_API_KEY;
+  if (!clave) return res.json({ configurado: false, openai });
   try {
     const r = await fetch(`${API}/models?pageSize=200`, { headers: { 'x-goog-api-key': clave } });
     if (!r.ok) return res.json({ configurado: true, valida: false, estado: r.status });
     const j = await r.json();
     const imagen = (j.models || []).map(m => String(m.name || '').replace(/^models\//, '')).filter(n => /image/i.test(n));
-    res.json({ configurado: true, valida: true, modelo: modelo(), modelosDeImagen: imagen });
+    res.json({ configurado: true, openai, valida: true, modelo: modelo(), modelosDeImagen: imagen });
   } catch (e) {
     res.json({ configurado: true, valida: false, error: 'No se pudo consultar a Google' });
   }
 });
 
 router.post('/', async (req, res) => {
-  const clave = process.env.GEMINI_API_KEY;
-  if (!clave) return res.status(503).json({ error: 'Falta configurar GEMINI_API_KEY en el servidor' });
+  const { proveedor } = req.body || {};
+  const prov = proveedor === 'gemini' ? 'gemini' : proveedor === 'openai' ? 'openai' : (process.env.OPENAI_API_KEY ? 'openai' : 'gemini');
+  const clave = prov === 'openai' ? process.env.OPENAI_API_KEY : process.env.GEMINI_API_KEY;
+  if (!clave) return res.status(503).json({ error: 'Falta configurar ' + (prov === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY') + ' en el servidor' });
   try {
     const { imagen, estancia, estilo, paleta, extra, libertad } = req.body || {};
     const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(String(imagen || ''));
@@ -48,6 +52,23 @@ router.post('/', async (req, res) => {
       estilo ? 'Estilo: ' + String(estilo).slice(0, 120) + '.' : '',
       extra ? String(extra).slice(0, 400) : '',
     ].filter(Boolean).join(' ');
+    if (prov === 'openai') {
+      const modeloO = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+      const llamar = async (fidelidad) => {
+        const fd = new FormData();
+        fd.append('model', modeloO); fd.append('prompt', instrucciones); fd.append('size', 'auto'); fd.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
+        if (fidelidad) fd.append('input_fidelity', 'high');
+        fd.append('image', new Blob([Buffer.from(m[2], 'base64')], { type: m[1] }), 'vista.' + (m[1] === 'image/png' ? 'png' : 'jpg'));
+        const rr = await fetch('https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: 'Bearer ' + clave }, body: fd });
+        return { rr, jj: await rr.json().catch(() => ({})) };
+      };
+      let { rr, jj } = await llamar(true);
+      if (!rr.ok && /input_fidelity|unknown|unsupported/i.test(JSON.stringify(jj?.error || {}))) ({ rr, jj } = await llamar(false));
+      if (!rr.ok) { console.error('render-ia OpenAI', rr.status, jj?.error?.message); return res.status(502).json({ error: 'ChatGPT (OpenAI) no ha podido generar la imagen' + (jj?.error?.message ? ': ' + String(jj.error.message).slice(0, 220) : '') }); }
+      const b64 = jj?.data?.[0]?.b64_json;
+      if (!b64) return res.status(502).json({ error: 'OpenAI no ha devuelto ninguna imagen' });
+      return res.json({ imagen: 'data:image/png;base64,' + b64 });
+    }
     const r = await fetch(`${API}/models/${modelo()}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': clave },
