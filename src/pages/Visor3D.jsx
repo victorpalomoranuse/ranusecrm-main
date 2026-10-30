@@ -153,13 +153,44 @@ export function registraLod(a, mm, prox) {
   const r = new THREE.Box3().setFromObject(mm).getSize(new THREE.Vector3()).length() / 2;
   (a.lodList = a.lodList || []).push({ mm, r: r > 0 ? r : 1, prox, peq: false });
 }
+// Un modelo de SketchUp o de un fabricante suele traer cientos de piezas sueltas: cada una es una «llamada de dibujo» y es lo que más frena.
+// Al descargarlo se unen todas las piezas que comparten material en una sola malla (una vez, y se reutiliza en todas las copias).
+// Las partes pintables pasan a ser los materiales del modelo.
+function fusionarModelo(raw) {
+  try {
+    raw.updateMatrixWorld(true);
+    const grupos = new Map(), sueltas = [];
+    raw.traverse(m => {
+      if (!m.isMesh || !m.geometry) return;
+      if (m.isSkinnedMesh || m.isInstancedMesh || Array.isArray(m.material) || !m.geometry.attributes.position) { sueltas.push(m); return; }
+      const k = m.material.uuid + (m.material.vertexColors ? 'c' : '');
+      if (!grupos.has(k)) grupos.set(k, { mat: m.material, geos: [] });
+      const g = m.geometry.clone(); g.applyMatrix4(m.matrixWorld);
+      for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n) && !(n === 'color' && m.material.vertexColors)) g.deleteAttribute(n);
+      if (!g.attributes.normal) g.computeVertexNormals();
+      if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      if (!g.index) { const n = g.attributes.position.count, ix = new (n > 65535 ? Uint32Array : Uint16Array)(n); for (let i = 0; i < n; i++) ix[i] = i; g.setIndex(new THREE.BufferAttribute(ix, 1)); }
+      if (m.matrixWorld.determinant() < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } }
+      grupos.get(k).geos.push(g);
+    });
+    const out = new THREE.Group(); let i = 0;
+    grupos.forEach(({ mat, geos }) => {
+      const geo = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+      if (!geo) throw new Error('fusion');
+      const me = new THREE.Mesh(geo, mat); me.name = mat.name || ('parte' + (i++)); out.add(me);
+    });
+    sueltas.forEach(m => { const me = m.clone(false); me.matrix.copy(m.matrixWorld); me.matrix.decompose(me.position, me.quaternion, me.scale); out.add(me); });
+    out.userData.fusionado = true;
+    return out.children.length ? out : raw;
+  } catch (e) { console.warn('fusionarModelo', e); return raw; }
+}
 function cargarModelo(m) {
   if (cacheModelos.has(m.url)) return cacheModelos.get(m.url);
   const t = String(m.tipo || '').toLowerCase();
   const p = new Promise((ok, mal) => {
-    if (t === 'obj') new OBJLoader().load(m.url, ok, undefined, mal);
-    else if (t === 'dae') new ColladaLoader().load(m.url, r => ok(r.scene), undefined, mal);
-    else new GLTFLoader().load(m.url, r => ok(r.scene), undefined, mal);
+    if (t === 'obj') new OBJLoader().load(m.url, r => ok(fusionarModelo(r)), undefined, mal);
+    else if (t === 'dae') new ColladaLoader().load(m.url, r => ok(fusionarModelo(r.scene)), undefined, mal);
+    else new GLTFLoader().load(m.url, r => ok(fusionarModelo(r.scene)), undefined, mal);
   });
   p.catch(() => cacheModelos.delete(m.url));
   cacheModelos.set(m.url, p);
