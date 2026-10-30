@@ -148,6 +148,11 @@ function aplicarRegiones(raizObj, prefijo, regiones, texturas) {
 
 // Modelos 3D asignados a los productos: se descargan una vez y se reutilizan (se clonan) en cada copia
 const cacheModelos = new Map();
+// Registro de modelos pesados: mientras la cámara se mueve, los que se ven pequeños o lejanos se simplifican (ver el bucle del visor)
+export function registraLod(a, mm, prox) {
+  const r = new THREE.Box3().setFromObject(mm).getSize(new THREE.Vector3()).length() / 2;
+  (a.lodList = a.lodList || []).push({ mm, r: r > 0 ? r : 1, prox, peq: false });
+}
 function cargarModelo(m) {
   if (cacheModelos.has(m.url)) return cacheModelos.get(m.url);
   const t = String(m.tipo || '').toLowerCase();
@@ -1063,7 +1068,7 @@ export default function Visor3D() {
       renderer.setSize(w, h);
       cam.aspect = w / h; cam.updateProjectionMatrix();
     };
-    const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, enMov = false;
+    const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, ultLod = 0, enMov = false;
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
     const bucle = () => {
       if (!vivo) return; raf = requestAnimationFrame(bucle);
@@ -1077,7 +1082,15 @@ export default function Visor3D() {
       // mientras la cámara se mueve se dibuja a menor resolución y al parar vuelve a la normal: el movimiento va fluido aunque haya muchos modelos
       const movi = teclas.size > 0 || ahora - ultMov < 180;
       if (movi !== enMov) { enMov = movi; const base = api3d.current.prBase || 1; renderer.setPixelRatio(movi ? Math.min(base, 0.7) : base); }
-      if (ahora - ultSombra > 250) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
+      // simplificación al mover: los modelos que se ven pequeños (lejos) se ocultan o se cambian por su caja hasta que la cámara se para
+      const a0 = api3d.current, L = a0.lodList;
+      if (L && L.length) {
+        if (movi && ahora - ultLod > 150) {
+          ultLod = ahora; a0.lodList = L.filter(it => it.mm.parent);
+          a0.lodList.forEach(it => { it.mm.getWorldPosition(vM); const peq = it.r * it.mm.parent.getWorldScale(vR).x / Math.max(0.1, cam.position.distanceTo(vM)) < 0.06; if (peq !== it.peq) { it.peq = peq; it.mm.visible = !peq; it.prox?.(peq); } });
+        } else if (!movi && L.some(it => it.peq)) L.forEach(it => { if (it.peq) { it.peq = false; it.mm.visible = true; it.prox?.(false); } });
+      }
+      if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
       ctrl.update(); renderer.render(scene, cam);
     };
     const enCampo = e => { const t = (e.target?.tagName || '').toLowerCase(); return t === 'input' || t === 'textarea' || t === 'select' || e.target?.isContentEditable; };
@@ -1816,6 +1829,7 @@ export default function Visor3D() {
         setMtick(v => v + 1);
         sobrescribirModelo(mm, {}, texturas); mm.userData.modeloEq = true; mm.rotation.y = -(rotE * Math.PI) / 180; g.add(mm);
         if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
+        registraLod(a, mm, v => { if (g.userData.cuerpo) g.userData.cuerpo.material.visible = v; });
         const ov = aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov);
       }).catch(() => { g.userData.modeloCargado = false; });
     });
@@ -2128,7 +2142,7 @@ export default function Visor3D() {
           sobrescribirModelo(mm, o, texturas);
           mm.rotation.y = -rotO * Math.PI / 180;
           mm.position.y = (o.z0 || 0) * CM;
-          g.add(mm); fantasma(0);
+          g.add(mm); fantasma(0); registraLod(api3d.current, mm, null);
           aplicarRegiones(mm, 'o:' + o.id + ':', acab.regiones, texturas);
         }).catch(() => { fantasma(1); });
       }
