@@ -1083,11 +1083,11 @@ export default function Visor3D() {
       }
       // mientras la cámara se mueve se dibuja a menor resolución y al parar vuelve a la normal: el movimiento va fluido aunque haya muchos modelos
       const movi = teclas.size > 0 || ahora - ultMov < 180;
-      if (movi !== enMov) { enMov = movi; const base = api3d.current.prBase || 1; renderer.setPixelRatio(movi ? Math.min(base * escala, 0.7) : base * escala); }
+      enMov = movi;
       // simplificación al mover: los modelos que se ven pequeños (lejos) se ocultan o se cambian por su caja hasta que la cámara se para
       const a0 = api3d.current, L = a0.lodList;
       if (L && L.length) {
-        if (movi && ahora - ultLod > 150) {
+        if (false && movi && ahora - ultLod > 150) {
           ultLod = ahora; a0.lodList = L.filter(it => it.mm.parent);
           a0.lodList.forEach(it => { it.mm.getWorldPosition(vM); const peq = it.r * it.mm.parent.getWorldScale(vR).x / Math.max(0.1, cam.position.distanceTo(vM)) < 0.06; if (peq !== it.peq) { it.peq = peq; it.mm.visible = !peq; it.prox?.(peq); } });
         } else if (!movi && L.some(it => it.peq)) L.forEach(it => { if (it.peq) { it.peq = false; it.mm.visible = true; it.prox?.(false); } });
