@@ -1224,6 +1224,7 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type, productos = []
   const style={transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.4:1};
   const [expanded,setExpanded]=useState(false); const [qty,setQty]=useState(item.quantity??1); const [ytUrl,setYtUrl]=useState(item.youtube_url||''); const [extraImgs,setExtraImgs]=useState(item.extra_images||[]); const [newImg,setNewImg]=useState(''); const [saving,setSaving]=useState(false); const [purchaseLink,setPurchaseLink]=useState(item.purchase_link||''); const [showLink,setShowLink]=useState(item.show_purchase_link||false); const [showQty,setShowQty]=useState(item.show_quantity!==false);
   const [code,setCode]=useState(item.code||''); const [datasheetUrl,setDatasheetUrl]=useState(item.datasheet_url||''); const [location,setLocation]=useState(item.location||'');
+  const [fName,setFName]=useState(item.name||''); const [fBrand,setFBrand]=useState(item.brand||''); const [fColor,setFColor]=useState(item.color||''); const [fNotes,setFNotes]=useState(item.notes||''); const [fImg,setFImg]=useState(item.image_url||'');
   const isMob=type==='mobiliario';
   // enlazar (o desenlazar) con un producto del catálogo, aunque el elemento se haya creado desde un plano sin él
   const [busca,setBusca]=useState('');
@@ -1240,8 +1241,9 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type, productos = []
     try{
       const shared={code:code||null,datasheet_url:datasheetUrl||null,location:location||null,quantity:qty,purchase_link:purchaseLink||null,show_purchase_link:showLink};
       if(isMob){
-        await api.put(`/client-projects/${item.project_id}/equipment/${item.id}`,{...shared,youtube_url:ytUrl||null,extra_images:extraImgs,show_quantity:showQty});
-        onUpdate({...item,...shared,youtube_url:ytUrl||null,extra_images:extraImgs,show_quantity:showQty},type);
+        const ficha={name:fName.trim()||item.name,brand:fBrand||null,color:fColor||null,notes:fNotes||null,image_url:fImg||null};
+        await api.put(`/client-projects/${item.project_id}/equipment/${item.id}`,{...shared,...ficha,youtube_url:ytUrl||null,extra_images:extraImgs,show_quantity:showQty});
+        onUpdate({...item,...shared,...ficha,youtube_url:ytUrl||null,extra_images:extraImgs,show_quantity:showQty},type);
       }else{
         await api.put(`/client-projects/${item.project_id}/materials/${item.id}`,shared);
         onUpdate({...item,...shared},type);
@@ -1252,21 +1254,34 @@ function SortableAssignedItem({ item, onUnassign, onUpdate, type, productos = []
   const addImg=()=>{const url=newImg.trim();if(!url||extraImgs.includes(url))return;setExtraImgs(prev=>[...prev,url]);setNewImg('');};
   const removeImg=(url)=>setExtraImgs(prev=>prev.filter(u=>u!==url));
   return (
-    <div ref={setNodeRef} style={style} className="ap-catalog-product ap-catalog-product--expand">
-      <button {...attributes} {...listeners} style={{background:'none',border:'none',cursor:'grab',color:'rgba(255,255,255,0.3)',padding:'0 4px',flexShrink:0,display:'flex',alignItems:'center'}} type="button"><GripVertical size={13}/></button>
-      {item.image_url&&<img src={item.image_url} alt={item.name} className="ap-catalog-product-img"/>}
-      <div className="ap-catalog-product-info" style={{flex:1}}>
-        <span className="ap-catalog-product-name">{item.name}</span>
-        {item.category&&<span className="ap-cat-meta">{item.category}</span>}
-        {!item.catalog_product_id&&<span className="ap-cat-meta" style={{color:'#f5b748',marginLeft:4}} title="Este elemento no está enlazado con ningún producto del catálogo">· sin enlazar</span>}
-        {item.code&&<span className="ap-cat-meta" style={{color:'rgba(186,175,165,0.7)',marginLeft:4}}>#{item.code}</span>}
-        {item.location&&<span className="ap-cat-meta" style={{marginLeft:4}}>→ {item.location}</span>}
-        {isMob&&<span className="ap-cat-meta" style={{color:'rgba(186,175,165,0.7)',marginLeft:4}}>×{qty}{item.youtube_url&&' · 🎬'}{item.extra_images?.length>0&&` · ${item.extra_images.length} img`}{showLink&&purchaseLink&&' · 🔗'}</span>}
+    <div ref={setNodeRef} style={{...style,gridColumn:expanded?'1 / -1':undefined,display:'flex',flexDirection:'column',alignItems:'stretch',background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.09)',borderRadius:12,overflow:'hidden',padding:0}} className="ap-catalog-product ap-catalog-product--expand">
+      <div style={{position:'relative',aspectRatio:'4 / 3',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center'}}>
+        {item.image_url?<img src={item.image_url} alt={item.name} style={{width:'100%',height:'100%',objectFit:'contain'}}/>:<span style={{color:'#999',fontSize:'0.72rem'}}>sin foto</span>}
+        <button {...attributes} {...listeners} title="Arrastra para cambiar el orden" style={{position:'absolute',top:6,left:6,background:'rgba(0,0,0,0.55)',border:'none',borderRadius:6,cursor:'grab',color:'#fff',padding:'3px 4px',display:'flex'}} type="button"><GripVertical size={13}/></button>
+        <button className="ap-btn-icon" title="Quitar del listado" onClick={()=>onUnassign(item.id,type)} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.55)',borderRadius:6}}><X size={13}/></button>
+        {isMob&&<span style={{position:'absolute',bottom:6,right:6,background:'rgba(0,0,0,0.75)',color:'#fff',borderRadius:12,padding:'1px 9px',fontSize:'0.74rem',fontWeight:700}}>×{qty}</span>}
       </div>
-      <button className="ap-btn ap-btn-ghost ap-btn-sm" style={{flexShrink:0,fontSize:'0.72rem'}} onClick={()=>setExpanded(v=>!v)} type="button"><Pencil size={11}/> {expanded?'Cerrar':'Detalle'}</button>
-      <button className="ap-btn-icon" onClick={()=>onUnassign(item.id,type)}><X size={13}/></button>
+      <div style={{padding:'10px 12px',display:'flex',flexDirection:'column',gap:3,flex:1}}>
+        <span style={{fontWeight:600,fontSize:'0.9rem',lineHeight:1.25}}>{item.name}</span>
+        <span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.5)'}}>{[item.brand,item.category].filter(Boolean).join(' · ')}{item.code?` · #${item.code}`:''}</span>
+        {item.color&&<span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.75)'}}>Color: {item.color}</span>}
+        {item.notes&&<span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.55)',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{item.notes}</span>}
+        <span style={{fontSize:'0.68rem',color:'rgba(255,255,255,0.4)'}}>{item.location?`→ ${item.location}`:''}{showLink&&purchaseLink?' · 🔗':''}{!item.catalog_product_id?<span style={{color:'#f5b748'}} title="No está enlazado con ningún producto del catálogo"> · suelto</span>:null}</span>
+        <div style={{marginTop:'auto',paddingTop:6}}><button className="ap-btn ap-btn-ghost ap-btn-sm" style={{fontSize:'0.72rem',width:'100%'}} onClick={()=>setExpanded(v=>!v)} type="button"><Pencil size={11}/> {expanded?'Cerrar':'Editar ficha'}</button></div>
+      </div>
       {expanded&&(
         <div className="ap-eq-detail-panel">
+          {isMob&&(<div style={{marginBottom:'0.75rem'}}>
+            <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.5rem'}}>
+              <div className="ap-field" style={{flex:2}}><label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',display:'block',marginBottom:'0.3rem'}}>Nombre</label><input className="ap-field-input" value={fName} onChange={e=>setFName(e.target.value)}/></div>
+              <div className="ap-field" style={{flex:1}}><label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',display:'block',marginBottom:'0.3rem'}}>Marca</label><input className="ap-field-input" value={fBrand} onChange={e=>setFBrand(e.target.value)}/></div>
+            </div>
+            <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.5rem'}}>
+              <div className="ap-field" style={{flex:1}}><label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',display:'block',marginBottom:'0.3rem'}}>Color / acabado</label><input className="ap-field-input" value={fColor} onChange={e=>setFColor(e.target.value)} placeholder="Ej. Negro mate con tapizado marrón"/></div>
+              <div className="ap-field" style={{flex:1}}><label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',display:'block',marginBottom:'0.3rem'}}>Foto (enlace)</label><input className="ap-field-input" value={fImg} onChange={e=>setFImg(e.target.value)} placeholder="https://…"/></div>
+            </div>
+            <div className="ap-field"><label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',display:'block',marginBottom:'0.3rem'}}>Especificaciones (medidas, peso, potencia, materiales…)</label><textarea className="ap-diag-textarea" rows={3} value={fNotes} onChange={e=>setFNotes(e.target.value)} placeholder="Ej. 210×90×150 cm · 120 kg · motor 3 CV · tapizado antideslizante"/></div>
+          </div>)}
           <div className="ap-field" style={{marginBottom:'0.75rem'}}>
             <label style={{fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',marginBottom:'0.3rem',display:'block'}}>Producto del catálogo</label>
             {item.catalog_product_id
@@ -1403,6 +1418,7 @@ function TabAsignaciones({ projectId, categoryId, listadosIntro, listadosTitle, 
   const isAssigned=(productId,type)=>assignedForTab(type).some(a=>a.catalog_product_id===productId);
   const handleAssignedDragEnd=async(event)=>{const{active,over}=event;if(!active||!over||active.id===over.id)return;const isMat=tab==='material';const list=assignedForTab(tab);const oldIndex=list.findIndex(a=>a.id===active.id);const newIndex=list.findIndex(a=>a.id===over.id);const newList=arrayMove(list,oldIndex,newIndex);setAssigned(prev=>{const key=isMat?'materials':'equipment';const others=prev[key].filter(x=>!newList.some(n=>n.id===x.id));return{...prev,[key]:[...others,...newList]};});const endpoint=isMat?`/client-projects/${projectId}/materials/reorder`:`/client-projects/${projectId}/equipment/reorder`;try{await api.put(endpoint,{ids:newList.map(a=>a.id)});}catch{toast.error('Error al guardar el orden');}};
   const assign=async(product)=>{const isMat=product.category?.type==='material';const type=isMat?'material':(product.category?.type||'mobiliario');if(isAssigned(product.id,type)){toast.error(`"${product.name}" ya está asignado`);return;}const endpoint=isMat?`/client-projects/${projectId}/materials`:`/client-projects/${projectId}/equipment`;try{const lightingSpecs={lumens:product.lumens||null,watts:product.watts||null,color_temperature:product.color_temperature||null,color:product.color||null};const payload=isMat?{name:product.name,category:product.category?.name,category_type:product.category?.type,catalog_product_id:product.id,image_url:product.photo_url||null,...lightingSpecs}:{name:product.name,category:product.category?.name,category_type:product.category?.type,catalog_product_id:product.id,quantity:1,image_url:product.photo_url||null,extra_images:[],youtube_url:null,...lightingSpecs};if(categoryId!=null)payload.category_id=categoryId;const{data}=await api.post(endpoint,payload);setAssigned(prev=>isMat?{...prev,materials:[data.material,...prev.materials]}:{...prev,equipment:[data.equipment,...prev.equipment]});toast.success(`"${product.name}" añadido`);}catch{toast.error('Error al asignar producto');}};
+  const descargarPdf=async(tipo)=>{try{const base=import.meta.env.VITE_API_URL||'http://localhost:3001/api';const token=localStorage.getItem('admin_token');const res=await fetch(`${base}/client-projects/${projectId}/pdf-presupuesto?tipo=${encodeURIComponent(tipo)}`,{headers:{Authorization:`Bearer ${token}`}});if(!res.ok)throw new Error();const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`listado-presupuesto-${tipo}.pdf`;a.click();URL.revokeObjectURL(url);}catch{toast.error('No se pudo generar el PDF');}};
   const unassign=async(id,type)=>{const isMat=type==='material';const endpoint=isMat?`/client-projects/${projectId}/materials/${id}`:`/client-projects/${projectId}/equipment/${id}`;try{await api.delete(endpoint);setAssigned(prev=>isMat?{...prev,materials:prev.materials.filter(m=>m.id!==id)}:{...prev,equipment:prev.equipment.filter(e=>e.id!==id)});}catch{toast.error('Error al quitar producto');}};
   const handleItemUpdate=(updatedItem,type)=>{const key=type==='mobiliario'?'equipment':'materials';setAssigned(prev=>({...prev,[key]:prev[key].map(x=>x.id===updatedItem.id?updatedItem:x)}));toast.success('Detalles guardados');};
   if(loading) return <div className="ap-loading">Cargando…</div>;
@@ -1426,7 +1442,12 @@ function TabAsignaciones({ projectId, categoryId, listadosIntro, listadosTitle, 
       <div className="ap-cat-tabs" style={{marginBottom:'1.25rem'}}>
         {types.map(t=>(<button key={t.id} className={`ap-cat-tab${tab===t.slug?' active':''}`} onClick={()=>setTab(t.slug)}>{t.name}</button>))}
       </div>
-      {assignedList.length>0&&(<div style={{marginBottom:'1.25rem'}}><p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.5rem'}}>{categoryId!=null?'Asignados a esta categoría':'Asignados a este proyecto'}</p><DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleAssignedDragEnd}><SortableContext items={assignedList.map(a=>a.id)} strategy={verticalListSortingStrategy}><div className="ap-catalog-products" style={{padding:0}}>{assignedList.map(a=>(<SortableAssignedItem key={a.id} item={{...a,project_id:projectId}} type={tab==='material'?'material':'mobiliario'} onUnassign={unassign} onUpdate={handleItemUpdate} productos={products}/>))}</div></SortableContext></DndContext></div>)}
+      {assignedList.length>0&&(<div style={{marginBottom:'1.25rem'}}><p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.5rem'}}>{categoryId!=null?'Asignados a esta categoría':'Asignados a este proyecto'}</p><DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleAssignedDragEnd}><SortableContext items={assignedList.map(a=>a.id)} strategy={rectSortingStrategy}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))',gap:'0.8rem',padding:0}}>{assignedList.map(a=>(<SortableAssignedItem key={a.id} item={{...a,project_id:projectId}} type={tab==='material'?'material':'mobiliario'} onUnassign={unassign} onUpdate={handleItemUpdate} productos={products}/>))}</div></SortableContext></DndContext></div>)}
+      {assignedList.length>0&&(<div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:'1rem'}}>
+        <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={()=>descargarPdf(tab)}>📄 PDF para pedir presupuestos (esta sección)</button>
+        <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>descargarPdf('todo')}>PDF de todo el listado</button>
+        <span style={{fontSize:'0.72rem',color:'rgba(255,255,255,0.45)'}}>Con foto, color, especificaciones, enlace y huecos para precio y plazo.</span>
+      </div>)}
       {tab!=='material'&&<ProductoSuelto projectId={projectId} categoryType={tab} categoryId={categoryId} onCreado={(eq)=>setAssigned(prev=>({...prev,equipment:[eq,...prev.equipment]}))}/>}
       <p style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'rgba(255,255,255,0.3)',marginBottom:'0.75rem'}}>Tu catálogo</p>
       {filteredCats.length===0&&<p className="ap-empty-sm">No hay categorías en el catálogo todavía.</p>}

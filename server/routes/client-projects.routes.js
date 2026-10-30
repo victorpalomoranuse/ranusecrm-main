@@ -2060,7 +2060,7 @@ router.delete('/:id/notes/:noteId', authenticateToken, requireProyectos, async (
 });
 router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (req, res) => {
   try {
-    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link, show_quantity, phase_number, code, datasheet_url, location, lumens, watts, color_temperature, color, name, brand, image_url, catalog_product_id } = req.body;
+    const { quantity, youtube_url, extra_images, purchase_link, show_purchase_link, show_quantity, phase_number, code, datasheet_url, location, lumens, watts, color_temperature, color, name, brand, image_url, catalog_product_id, notes } = req.body;
 
     const updates = {};
     if (name !== undefined && String(name).trim()) updates.name = String(name).trim();
@@ -2081,6 +2081,7 @@ router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (
     if (watts !== undefined) updates.watts = watts ? parseFloat(watts) : null;
     if (color_temperature !== undefined) updates.color_temperature = color_temperature?.trim() || null;
     if (color !== undefined) updates.color = color?.trim() || null;
+    if (notes !== undefined) updates.notes = notes?.trim() || null;
 
     const { data, error } = await supabase
       .from('project_equipment_selections')
@@ -2095,6 +2096,67 @@ router.put('/:id/equipment/:selId', authenticateToken, requireProyectos, async (
   } catch (error) {
     console.error('Error al actualizar equipo:', error);
     res.status(500).json({ error: 'Error al actualizar equipo' });
+  }
+});
+/**
+ * GET /api/client-projects/:id/pdf-presupuesto?tipo=<slug de la sección>|todo
+ * Listado con fichas (foto, nombre, marca, color, especificaciones, enlace y unidades) y huecos para que el proveedor ponga precio y plazo.
+ */
+router.get('/:id/pdf-presupuesto', authenticateToken, requireProyectos, async (req, res) => {
+  try {
+    const { data: project } = await supabase.from('client_projects').select('project_name, client_name, listados_title').eq('id', req.params.id).single();
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    const tipo = String(req.query.tipo || 'todo');
+    const [matsRes, equipRes] = await Promise.all([
+      supabase.from('project_material_selections').select('*').eq('project_id', req.params.id).order('display_order', { ascending: true, nullsFirst: false }),
+      supabase.from('project_equipment_selections').select('*').eq('project_id', req.params.id).order('display_order', { ascending: true, nullsFirst: false }),
+    ]);
+    let items = [...(equipRes.data || []).map(x => ({ ...x, _t: x.category_type || 'mobiliario' })), ...(matsRes.data || []).map(x => ({ ...x, _t: 'material' }))];
+    if (tipo !== 'todo') items = items.filter(x => x._t === tipo);
+    if (!items.length) return res.status(400).json({ error: 'No hay nada en esta sección para exportar' });
+    const PDFDocument = (await import('pdfkit')).default, sharp = (await import('sharp')).default;
+    const foto = async (url) => {
+      if (!/^https?:\/\//i.test(url || '')) return null;
+      try { const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 6000); const r = await fetch(url, { signal: ctl.signal }).finally(() => clearTimeout(t)); if (!r.ok) return null; return await sharp(Buffer.from(await r.arrayBuffer())).resize(360, 360, { fit: 'inside', background: '#ffffff' }).flatten({ background: '#ffffff' }).jpeg({ quality: 82 }).toBuffer(); } catch { return null; }
+    };
+    const fotos = [];
+    for (let i = 0; i < items.length; i += 6) fotos.push(...await Promise.all(items.slice(i, i + 6).map(x => foto(x.image_url))));
+    const doc = new PDFDocument({ size: 'A4', margin: 36, bufferPages: true });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="listado-presupuesto.pdf"');
+    doc.pipe(res);
+    const W = doc.page.width, M = 36, ancho = W - M * 2, norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+    doc.font('Helvetica-Bold').fontSize(18).fillColor('#111').text('Solicitud de presupuesto', M, M);
+    doc.font('Helvetica').fontSize(10).fillColor('#555').text(norm(project.listados_title || project.project_name || '') + (project.client_name ? '  ·  ' + norm(project.client_name) : '') + '  ·  ' + new Date().toLocaleDateString('es-ES'), M, doc.y + 2);
+    doc.moveDown(0.6).fontSize(9).fillColor('#333').text('Rogamos nos remitan su oferta con precio unitario, plazo de entrega, condiciones de pago y garantía para los siguientes artículos. Si algún artículo no está disponible, indiquen la alternativa equivalente.', M, doc.y, { width: ancho });
+    let y = doc.y + 12; const H = 104;
+    items.forEach((it, i) => {
+      if (y + H > doc.page.height - 50) { doc.addPage(); y = M; }
+      doc.roundedRect(M, y, ancho, H, 6).lineWidth(0.7).strokeColor('#c9c9c9').stroke();
+      const f = fotos[i], fx = M + 8;
+      if (f) { try { doc.image(f, fx, y + 8, { fit: [88, 88], align: 'center', valign: 'center' }); } catch { /* imagen no válida */ } }
+      else { doc.rect(fx, y + 8, 88, 88).fillColor('#f1f1f1').fill(); doc.fontSize(7).fillColor('#aaa').text('sin foto', fx, y + 48, { width: 88, align: 'center' }); }
+      const tx = M + 108, tw = ancho - 108 - 118;
+      doc.font('Helvetica-Bold').fontSize(11).fillColor('#111').text(norm(it.name), tx, y + 9, { width: tw, height: 28, ellipsis: true });
+      doc.font('Helvetica').fontSize(8.5).fillColor('#666').text([it.brand, it.category, it.code && '#' + it.code].filter(Boolean).map(norm).join('  ·  '), tx, doc.y + 1, { width: tw, height: 11, ellipsis: true });
+      const specs = [it.color && 'Color/acabado: ' + norm(it.color), it.lumens && it.lumens + ' lm', it.watts && it.watts + ' W', it.color_temperature && norm(it.color_temperature), it.location && 'Ubicación: ' + norm(it.location)].filter(Boolean).join('   ');
+      if (specs) doc.fontSize(8.5).fillColor('#333').text(specs, tx, doc.y + 3, { width: tw, height: 11, ellipsis: true });
+      if (it.notes) doc.fontSize(8.5).fillColor('#333').text(norm(it.notes), tx, doc.y + 3, { width: tw, height: 24, ellipsis: true });
+      const link = /^https?:\/\//i.test(it.purchase_link || '') ? it.purchase_link : (/^https?:\/\//i.test(it.datasheet_url || '') ? it.datasheet_url : '');
+      if (link) doc.fontSize(7.5).fillColor('#1a56db').text(norm(link).slice(0, 70) + (link.length > 70 ? '…' : ''), tx, y + H - 15, { width: tw, link, underline: true, lineBreak: false });
+      const rx = M + ancho - 110;
+      doc.moveTo(rx - 6, y + 8).lineTo(rx - 6, y + H - 8).lineWidth(0.5).strokeColor('#ddd').stroke();
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#111').text('Cantidad', rx, y + 9, { width: 104 }).fontSize(15).text(String(it.quantity ?? 1) + ' ud', rx, y + 20, { width: 104 });
+      doc.font('Helvetica').fontSize(8).fillColor('#555').text('Precio unitario:', rx, y + 46).text('Plazo (días):', rx, y + 72);
+      doc.moveTo(rx, y + 66).lineTo(rx + 100, y + 66).lineWidth(0.5).strokeColor('#999').stroke(); doc.moveTo(rx, y + 92).lineTo(rx + 100, y + 92).stroke();
+      y += H + 8;
+    });
+    const n = doc.bufferedPageRange().count;
+    for (let p = 0; p < n; p++) { doc.switchToPage(p); doc.font('Helvetica').fontSize(8).fillColor('#999').text('Ranuse Design · ' + (p + 1) + '/' + n, M, doc.page.height - 30, { width: ancho, align: 'right', lineBreak: false }); }
+    doc.end();
+  } catch (error) {
+    console.error('Error al generar el PDF de presupuesto:', error);
+    if (!res.headersSent) res.status(500).json({ error: 'No se pudo generar el PDF' });
   }
 });
 router.get('/:id/pdf-materiales', authenticateToken, requireProyectos, async (req, res) => {
