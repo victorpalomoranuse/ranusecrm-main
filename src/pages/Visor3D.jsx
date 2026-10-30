@@ -2378,6 +2378,15 @@ export default function Visor3D() {
     catch { setSubiendo('No se pudo girar el modelo'); }
   };
   const AVISO_PLANO = 'Guardado en el plano ✓. Si tienes Planos abierto en otra pestaña, recárgalo: si no, al guardar allí se perdería este cambio.';
+  // Para los botones de subir y bajar: se escribe en el plano al momento y el panel sigue abierto
+  const aplicarHuecoSuave = async (cambios) => {
+    if (!selHueco) return;
+    try {
+      await api.patch('/medicion/' + id + '/hueco', { opId: selHueco.id || undefined, muroId: selHueco.muroId, p0: selHueco.p, w0: selHueco.w, cambios });
+      setSelHueco(s => (s ? { ...s, p: cambios.p ?? s.p, w: cambios.w ?? s.w, h: cambios.h ?? s.h, sill: cambios.sill ?? s.sill, nuevo: { ...s.nuevo, ...cambios } } : s));
+      setGuardado('Cambiado en el plano ✓ (si tienes Planos abierto, recárgalo)'); api3d.current.recargar?.();
+    } catch (e) { setAviso(e.response?.data?.error || 'No se pudo cambiar el hueco'); }
+  };
   const aplicarHueco = async () => {
     if (!selHueco) return;
     try {
@@ -3016,8 +3025,12 @@ export default function Visor3D() {
         </div>
       )}
       {selHueco && (
-        <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>{selHueco.tipo === 'door' ? 'Puerta' : selHueco.tipo === 'win' ? 'Ventana' : 'Hueco'} del plano</div>
+        <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 70px)', overflowY: 'auto', background: 'rgba(20,20,20,0.96)', color: '#fff', borderRadius: 8, padding: '0 14px 12px', fontSize: 13 }}>
+          <div style={{ position: 'sticky', top: 0, background: 'rgb(20,20,20)', padding: '12px 0 8px', marginBottom: 4, zIndex: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <b style={{ flex: 1 }}>{selHueco.tipo === 'door' ? 'Puerta' : selHueco.tipo === 'win' ? 'Ventana' : 'Hueco'} del plano</b>
+            <button style={{ ...btn, background: '#2f6fa8', padding: '4px 10px' }} onClick={aplicarHueco} title="Escribe en el plano las medidas, el tipo y la hoja de arriba">Aplicar al plano</button>
+            <button style={{ ...btn, padding: '4px 8px' }} onClick={() => setSelHueco(null)}>✕</button>
+          </div>
           {[['w', 'Ancho'], ['h', 'Alto'], ['sill', selHueco.tipo === 'door' ? 'Altura suelo' : 'Antepecho'], ['p', 'Posición']].map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <span style={{ width: 70, opacity: 0.7 }}>{et} cm</span>
@@ -3045,7 +3058,7 @@ export default function Visor3D() {
           })()}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6, fontSize: 12 }}>
             <span style={{ opacity: 0.7 }}>Subir / bajar {selHueco.tipo === 'door' ? 'la puerta' : 'la ventana'}</span>
-            {[[-10, '−10'], [-5, '−5'], [5, '+5'], [10, '+10']].map(([d, n]) => <button key={d} style={{ ...btn, padding: '2px 7px', fontSize: 11 }} onClick={() => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, sill: Math.max(0, (parseFloat(s.nuevo.sill) || 0) + d) } }))}>{n}</button>)}
+            {[[-10, '−10'], [-5, '−5'], [5, '+5'], [10, '+10']].map(([d, n]) => <button key={d} style={{ ...btn, padding: '2px 7px', fontSize: 11 }} onClick={() => aplicarHuecoSuave({ sill: Math.max(0, (parseFloat(selHueco.nuevo.sill) || 0) + d) })}>{n}</button>)}
           </div>
           {(() => {
             const key = selHueco.id || (selHueco.muroId + ':' + selHueco.p), c = tapetas[key] || { on: false, ancho: 7, vuelo: 1.2, lados: 'ambos', alfeizar: false }, set = n => setTapetas(t => ({ ...t, [key]: { ...c, ...n } }));
