@@ -260,6 +260,14 @@ function despieceMueble(o) {
   return { filas: [...Object.entries(filas), ...extra.map(([k, n]) => [k, n])], area: Math.round(area * 100) / 100 };
 }
 
+// Si el archivo viene con el largo en el otro eje (alargado de lado cuando la caja es alargada de frente, o al revés), devuelve 90 para girarlo.
+// Solo se usa cuando nadie ha girado a mano ni el producto ni esta pieza; con formas casi cuadradas no se toca.
+function giroAuto(raw, w, d) {
+  const s = new THREE.Box3().setFromObject(raw).getSize(new THREE.Vector3());
+  if (!(s.x > 0 && s.z > 0 && w > 0 && d > 0)) return 0;
+  const rm = s.x / s.z, rc = w / d;
+  return ((rm > 1.15 && rc < 1 / 1.15) || (rm < 1 / 1.15 && rc > 1.15)) ? 90 : 0;
+}
 // El modelo se escala (sin deformarlo) para que quepa en las medidas del objeto y se apoya en el suelo, centrado
 // modo: 'caber' (mantiene proporciones y cabe en las medidas), 'estirar' (se deforma hasta las medidas exactas), 'nativo' (tamaño del archivo, en metros)
 // o 'auto' (tamaño original si es razonable; si no, cabe). Sin modo = 'caber'.
@@ -1802,7 +1810,7 @@ export default function Visor3D() {
       g.userData.modeloCargado = true;
       cargarModelo(mod).then(raw => {
         if (!g.parent) return;
-        const rotE = (mod.rot || 0) + (modosEq[e.id]?.rotM || 0), giroE = (rotE % 180) !== 0;
+        const rotE = (mod.rot || 0) + (modosEq[e.id]?.rotM || 0) + (!mod.rot && !modosEq[e.id]?.rotM ? giroAuto(raw, e.w || e.largo, e.d || e.fondo) : 0), giroE = (rotE % 180) !== 0;
         const mm = ajustarModelo(raw, (giroE ? (e.d || e.fondo) : (e.w || e.largo)) * CM, (giroE ? (e.w || e.largo) : (e.d || e.fondo)) * CM, (e.alto || 110) * CM, modosEq[e.id]?.modo || 'auto'); if (!mm) return;
         mm.userData.girado = giroE;
         setMtick(v => v + 1);
@@ -2114,11 +2122,11 @@ export default function Visor3D() {
         // mientras baja el modelo se ve la caja fantasma; después, el modelo real en su lugar
         cargarModelo(mod).then(raw => {
           if (!g.parent) return; // el objeto ya no está en la escena
-          const giroO = (((mod.rot || 0) + (o.rotM || 0)) % 180) !== 0;
+          const rotO = (mod.rot || 0) + (o.rotM || 0) + (!mod.rot && !o.rotM ? giroAuto(raw, w, d) : 0), giroO = (rotO % 180) !== 0;
           const mm = ajustarModelo(raw, giroO ? d : w, giroO ? w : d, h, o.ajuste || 'estirar');
           if (!mm) return;
           sobrescribirModelo(mm, o, texturas);
-          mm.rotation.y = -((mod.rot || 0) + (o.rotM || 0)) * Math.PI / 180;
+          mm.rotation.y = -rotO * Math.PI / 180;
           mm.position.y = (o.z0 || 0) * CM;
           g.add(mm); fantasma(0);
           aplicarRegiones(mm, 'o:' + o.id + ':', acab.regiones, texturas);
