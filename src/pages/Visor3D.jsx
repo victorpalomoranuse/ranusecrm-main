@@ -1478,7 +1478,7 @@ export default function Visor3D() {
     const cerrarPared = () => {
       if (poliP && poliP.pts.length >= 3) {
         const pts = curvoRef.current ? suavizar(poliP.pts) : poliP.pts;
-        const nuevo = { id: idNuevo(), tipo: 'zona', plano: 'pared', muroId: poliP.id, lado: poliP.lado, nombre: 'Zona de pared', etiqueta: 'Zonas', cx: 0, cy: 0, rot: 0, w: 1, d: 1, alto: 1, z0: 0, color: '#c9b9a0', pts };
+        const nuevo = { id: idNuevo(), tipo: 'zona', plano: 'pared', muroId: poliP.id, lado: poliP.lado, nombre: 'Zona de pared', etiqueta: 'Zonas', cx: 0, cy: 0, rot: 0, w: 1, d: 1, alto: 1, z0: 0, color: matSelRef.current?.id ? 'tex:' + matSelRef.current.id : (matSelRef.current?.hex || '#c9b9a0'), pts };
         setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id);
       }
       poliP = null; dibujarPared(null); setHerr('sel');
@@ -1515,7 +1515,7 @@ export default function Visor3D() {
         const rel = poli.map(p => [p.x - cx, p.y - cy]), modo = herrRef.current;
         const nuevo = modo === 'poli'
           ? { id: idNuevo(), tipo: 'prisma', nombre: 'Volumen', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 100, z0: 0, color: '#9aa3ad', pts: rel }
-          : { id: idNuevo(), tipo: 'zona', plano: modo === 'zonaT' ? 'techo' : 'suelo', h: modo === 'zonaT' ? ((api3d.current.modelo?.altura) || 260) : undefined, nombre: modo === 'zonaT' ? 'Zona de techo' : 'Zona de suelo', etiqueta: 'Zonas', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, color: '#c9b9a0', pts: curvoRef.current ? suavizar(rel) : rel };
+          : { id: idNuevo(), tipo: 'zona', plano: modo === 'zonaT' ? 'techo' : 'suelo', h: modo === 'zonaT' ? ((api3d.current.modelo?.altura) || 260) : undefined, nombre: modo === 'zonaT' ? 'Zona de techo' : 'Zona de suelo', etiqueta: 'Zonas', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, color: matSelRef.current?.id ? 'tex:' + matSelRef.current.id : (matSelRef.current?.hex || '#c9b9a0'), pts: curvoRef.current ? suavizar(rel) : rel };
         setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id);
       }
       poli = []; dibujarPoli(null); setHerr('sel');
@@ -3080,8 +3080,18 @@ export default function Visor3D() {
     sigue: ['Sígueme', 'Dibuja el camino por donde pasará el perfil; Enter termina'], carril: ['Carril', 'Dibuja el recorrido; Enter termina'], led: ['Tira LED', 'Dibuja el recorrido; Enter termina'], focoC: ['Focos', 'Clic en el carril para colocar; Esc sale'],
     luz: ['Luz', 'Clic en el suelo para colocar la luminaria en el plano'], guia: ['Guía', 'Clic en dos puntos para crear una línea guía'], pincel: ['Pincel', 'Clic en lo que quieras pintar · Mayús = todo el elemento · Alt = copiar material'], gotero: ['Gotero', 'Clic en lo que quieras copiar'],
   };
+  const barraMaterial = ['zonaS', 'zonaT', 'zonaP'].includes(herr) && (
+    <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', top: 96, zIndex: 6, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', maxWidth: '86vw', overflowX: 'auto' }}>
+      <span style={{ opacity: 0.7, whiteSpace: 'nowrap' }}>Material de la zona:</span>
+      {texturas.map(t => <img key={t.id} src={t.url} alt={t.nombre} title={t.nombre} onClick={() => setMatSel({ id: t.id })} style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', flex: 'none', border: matSel?.id === t.id ? '2px solid #4da3ff' : '1px solid #555' }} />)}
+      <input type="color" value={matSel?.hex || '#c9b9a0'} onChange={e => setMatSel({ hex: e.target.value })} title="Un color liso" style={{ width: 34, height: 34, padding: 0, border: 'none', background: 'none', flex: 'none' }} />
+      <button style={bTop} onClick={() => setMatAbierto(true)} title="Sube una foto y crea una textura nueva (con despiece y junta)">＋ Textura nueva</button>
+      <span style={{ opacity: 0.55, whiteSpace: 'nowrap' }}>{matSel ? 'Dibuja la zona y saldrá con este material' : 'Elige uno, o cámbialo luego'}</span>
+    </div>
+  );
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
+      {barraMaterial}
       <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
       {/* ── Barra superior: plano, historial, vistas, ambiente y salidas (render, 360, galería, despiece) ── */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(24,24,24,0.94)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)', overflowX: 'auto' }}>
@@ -3942,7 +3952,18 @@ export default function Visor3D() {
               </div>
             );
           })()}
-          {objSel.tipo === 'zona' && <div style={{ opacity: 0.6, fontSize: 11, margin: '4px 0' }}>Zona pintable: cambia su color abajo, o usa el pincel 🎨 con una textura para darle otro material.</div>}
+          {objSel.tipo === 'zona' && (
+            <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Material de la zona</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginBottom: 6 }}>
+                {texturas.map(t => <img key={t.id} src={t.url} alt={t.nombre} title={t.nombre} onClick={() => cambiar(objSel.id, { color: 'tex:' + t.id })} style={{ width: '100%', height: 38, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: objSel.color === 'tex:' + t.id ? '2px solid #4da3ff' : '1px solid #555' }} />)}
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input type="color" value={/^#/.test(objSel.color || '') ? objSel.color : '#c9b9a0'} onChange={e => cambiar(objSel.id, { color: e.target.value })} title="Un color liso" />
+                <button style={btn} onClick={() => setMatAbierto(true)}>＋ Textura nueva</button>
+              </div>
+            </div>
+          )}
           {objSel.tipo === 'mueble' && (() => {
             const M = objSel.mueble || { modulos: [] }, desp = despieceMueble(objSel);
             const tipos = [['puertas', 'Puertas'], ['cajones', 'Cajones'], ['abierto', 'Abierto'], ['hueco', 'Hueco']];
