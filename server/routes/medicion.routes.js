@@ -756,7 +756,7 @@ router.patch('/:id/hueco', async (req, res) => {
     const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
     const data = fila.data || {};
-    const lim = { w: [20, 800], h: [20, 500], sill: [0, 400], p: [0, 5000] };
+    const lim = { w: [20, 3000], h: [20, 1000], sill: [0, 400], p: [0, 5000] };
     const vals = {};
     for (const k of Object.keys(lim)) if (Number.isFinite(parseFloat(cambios[k]))) vals[k] = acota(cambios[k], lim[k][0], lim[k][1]);
     for (const k of ['tip', 'mat']) if (typeof cambios[k] === 'string' && cambios[k].trim() && cambios[k].length <= 40) vals[k] = cambios[k].trim();

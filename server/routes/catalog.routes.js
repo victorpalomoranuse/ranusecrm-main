@@ -552,7 +552,7 @@ router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, asy
     res.status(201).json({ modelo3d });
   } catch (err) {
     console.error('catalog modelo3d:', err);
-    res.status(500).json({ error: 'No se pudo guardar el modelo 3D' });
+    res.status(500).json({ error: 'No se pudo guardar el modelo 3D' + (err?.message ? ': ' + String(err.message).slice(0, 160) : '') });
   }
 });
 router.put('/products/:id/modelo3d', async (req, res) => {
