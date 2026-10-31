@@ -769,6 +769,10 @@ function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate }) {
 function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
   const [guardarCat, setGuardarCat] = useState(''); // '' = no guardar en la biblioteca
   const [foto, setFoto] = useState(null);
+  const [fotoUrl, setFotoUrl] = useState('');
+  const [fotoPrev, setFotoPrev] = useState('');
+  useEffect(() => { if (!foto) { setFotoPrev(/^https?:/i.test(fotoUrl) ? fotoUrl : ''); return; } const u = URL.createObjectURL(foto); setFotoPrev(u); return () => URL.revokeObjectURL(u); }, [foto, fotoUrl]);
+  const pegarFoto = (e) => { const it = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/')); if (it) { e.preventDefault(); setFoto(it.getAsFile()); setFotoUrl(''); } };
   const blank = { name:'', category:'material', quantity:'1', unit:'ud', pricing_mode:'margin', pvp_ref:'', purchase_dto:'', unit_cost:'0', markup_pct:'20', unit_price:'0', discount_pct:'0', brand:'', longitud:'', ancho:'', altura:'', color_bastidor:'', color_acolchado:'', tipo_acolchado:'', descripcion_cliente:'' };
   const [d, setD] = useState(blank);
   const [saving, setSaving] = useState(false);
@@ -788,7 +792,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
   };
   const handleCostChange = v => { const cost=parseFloat(v)||0, markup=parseFloat(d.markup_pct)||0; setD(p=>({...p,unit_cost:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   const handleMarkupChange = v => { const cost=parseFloat(d.unit_cost)||0, markup=parseFloat(v)||0; setD(p=>({...p,markup_pct:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
-  const handleAdd = async () => { if(!d.name.trim()) return; setSaving(true); try { await onAdd({ ...d, guardar_cat: guardarCat || undefined, foto_file: guardarCat ? foto : undefined }); setD(blank); setFoto(null); setShowSpecs(false); } finally { setSaving(false); } };
+  const handleAdd = async () => { if(!d.name.trim()) return; setSaving(true); try { await onAdd({ ...d, guardar_cat: guardarCat || undefined, foto_file: foto || undefined, foto_url: fotoUrl.trim() || undefined }); setD(blank); setFoto(null); setFotoUrl(''); setShowSpecs(false); } finally { setSaving(false); } };
   const handleAddChapter = async () => { if(!chapterName.trim()) return; setSaving(true); try { await onAddChapter(chapterName.trim()); setChapterName(''); setShowChapter(false); } finally { setSaving(false); } };
 
   const qty = parseFloat(d.quantity)||1;
@@ -865,11 +869,22 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
                 <option value="" style={{background:'#1a1a1a',color:'#fff'}}>No, solo en este presupuesto</option>
                 {categories.map(c=><option key={c.id} value={c.id} style={{background:'#1a1a1a',color:'#fff'}}>{c.name}</option>)}
               </select>
-              {guardarCat && <input key={foto ? 'con' : 'sin'} type="file" accept="image/*" onChange={e=>setFoto(e.target.files?.[0]||null)} style={{fontSize:'0.72rem',maxWidth:220}} title="Foto del producto (opcional)"/>}
             </label>
           </td>
         </tr>
       )}
+      <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}} onPaste={pegarFoto}>
+        <td colSpan={10} style={{padding:'0.4rem 0.75rem'}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',fontSize:'0.75rem',color:'rgba(255,255,255,0.6)'}}>
+            <div style={{width:54,height:54,borderRadius:8,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',color:'#999',fontSize:'0.62rem',textAlign:'center',flex:'none'}}>{fotoPrev?<img src={fotoPrev} alt="" style={{width:'100%',height:'100%',objectFit:'contain'}}/>:'sin foto'}</div>
+            <span>Foto de la partida (aunque no se guarde en el catálogo): pégala con <b>Ctrl+V</b>,</span>
+            <label className="ap-btn ap-btn-ghost ap-btn-sm" style={{cursor:'pointer'}}>elegir archivo…<input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{setFoto(e.target.files?.[0]||null);setFotoUrl('');e.target.value='';}}/></label>
+            <span>o enlace:</span>
+            <input className="pres-cell-input" placeholder="https://…" value={fotoUrl} onChange={e=>{setFotoUrl(e.target.value);setFoto(null);}} style={{maxWidth:240}}/>
+            {(foto||fotoUrl)&&<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>{setFoto(null);setFotoUrl('');}}>quitar</button>}
+          </div>
+        </td>
+      </tr>
       <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
         <td colSpan={10} style={{padding:'0.4rem 0.75rem'}}>
           <div style={{display:'flex',flexDirection:'column',gap:2}}>
@@ -1097,6 +1112,11 @@ function BudgetEditor({ id, onBack, onOpen }) {
     form = { ...form };
     const guardarCat = form.guardar_cat; delete form.guardar_cat;
     const fotoFile = form.foto_file; delete form.foto_file;
+    const fotoUrl = form.foto_url; delete form.foto_url;
+    if (!guardarCat && fotoFile) {
+      try { const fd = new FormData(); fd.append('file', fotoFile, fotoFile.name || 'foto.png'); const r = await api.post(`/budgets/${id}/items/foto`, fd); form.image_url = r.data?.url; }
+      catch { flash('No se pudo subir la foto; la partida se añade sin ella', 'error'); }
+    } else if (!guardarCat && fotoUrl) form.image_url = fotoUrl;
     if (guardarCat) {
       // Se guarda también como producto del catálogo (queda en la Biblioteca para futuros presupuestos)
       try {
@@ -1122,6 +1142,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
     }
     const { data } = await api.post(`/budgets/${id}/items`, { ...form, unit_cost: parseFloat(form.unit_cost)||0, unit_price: parseFloat(form.unit_price)||0, markup_pct: parseFloat(form.markup_pct)||20, quantity: parseFloat(form.quantity)||1, pvp_ref: parseFloat(form.pvp_ref)||null, purchase_dto: parseFloat(form.purchase_dto)||null, pricing_mode: form.pricing_mode||'margin' });
     setItems(prev => [...prev, data.item]);
+    if (data.aviso) flash(data.aviso, 'error');
   };
 
   const handleAddChapter = async (name) => {

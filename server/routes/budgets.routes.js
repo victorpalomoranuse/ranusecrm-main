@@ -7,7 +7,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requireAdminSuperior } from '../middleware/auth.middleware.js';
-import { uploadBudgetPdf, deleteBudgetPdf } from '../utils/storage.js';
+import { uploadBudgetPdf, deleteBudgetPdf, uploadProjectRender } from '../utils/storage.js';
+import { uploadRenderFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { internalAdminToken } from '../utils/internal-auth.js';
 import { computeCatalogPricing } from '../utils/pricing.js';
 import { callClaude } from '../utils/anthropic.js';
@@ -480,6 +481,15 @@ router.post('/:id/duplicate', async (req, res) => {
   }
 });
 
+// Foto de una partida (pegada o elegida): se sube y devuelve su enlace. No pasa por el catálogo.
+router.post('/:id/items/foto', uploadRenderFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ninguna imagen' });
+    const url = await uploadProjectRender(req.file.buffer, req.file.originalname || 'foto.png', req.file.mimetype, 'presupuesto-' + req.params.id);
+    res.status(201).json({ url });
+  } catch (err) { res.status(500).json({ error: 'No se pudo subir la foto' }); }
+});
+
 router.post('/:id/items', async (req, res) => {
   try {
     const { name, category, quantity, unit, unit_cost, markup_pct, unit_price, catalog_product_id, brand, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, discount_pct, pvp_ref, purchase_dto, pricing_mode, accessories_note, descripcion_cliente, ya_abonado } = req.body;
@@ -515,7 +525,14 @@ router.post('/:id/items', async (req, res) => {
       ...(ya_abonado === true ? { ya_abonado: true } : {}),
     }).select('*').single();
     if (error) throw error;
-    res.status(201).json({ item: data });
+    // foto propia de la partida (necesita la columna image_url: migración v87). Si aún no existe, la partida se crea igual y se avisa
+    let item = data, aviso = null;
+    const foto = String(req.body?.image_url || '').trim();
+    if (/^https?:\/\//i.test(foto)) {
+      const r2 = await supabase.from('budget_items').update({ image_url: foto }).eq('id', data.id).select('*').single();
+      if (r2.error) aviso = 'La partida se ha creado pero la foto no se ha guardado: falta ejecutar la migración v87 en Supabase.'; else item = r2.data;
+    }
+    res.status(201).json({ item, aviso });
   } catch (err) { res.status(500).json({ error: 'Error al anadir partida' }); }
 });
 
@@ -561,7 +578,13 @@ router.put('/:id/items/:itemId', async (req, res) => {
     if (ya_abonado !== undefined) updates.ya_abonado = ya_abonado === true;
     const { data, error } = await supabase.from('budget_items').update(updates).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
     if (error) throw error;
-    res.json({ item: data });
+    let item = data;
+    if (req.body?.image_url !== undefined) {
+      const foto = /^https?:\/\//i.test(String(req.body.image_url || '')) ? String(req.body.image_url).trim() : null;
+      const r2 = await supabase.from('budget_items').update({ image_url: foto }).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
+      if (!r2.error) item = r2.data;
+    }
+    res.json({ item });
   } catch (err) { res.status(500).json({ error: 'Error al actualizar partida' }); }
 });
 
