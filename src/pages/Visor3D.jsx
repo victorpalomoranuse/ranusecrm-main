@@ -2826,8 +2826,12 @@ export default function Visor3D() {
     { g: 'Vista', n: 'Perspectiva', k: '0', t: '0', f: () => vista('persp') },
     { g: 'Vista', n: 'Planta', k: '9', t: '9', f: () => vista('planta') },
     { g: 'Vista', n: 'Axonométrica', k: '8', t: '8', f: () => (axo ? salirAxo() : entrarAxo()) },
-    { g: 'Vista', n: 'Planta 2D', k: '', f: () => (planta2d ? salirPlanta2d() : entrarPlanta2d()) },
-    { g: 'Vista', n: 'Recorrer (persona)', k: '', f: () => setPersona(v => !v) },
+    { g: 'Vista', n: 'Planta 2D', k: '7', t: '7', f: () => (planta2d ? salirPlanta2d() : entrarPlanta2d()) },
+    { g: 'Vista', n: 'Recorrer (persona)', k: '6', t: '6', f: () => setPersona(v => !v) },
+    { g: 'Vista', n: 'Altura de los ojos', k: '5', t: '5', f: () => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); } },
+    { g: 'Vista', n: 'Cámara (altura, focal)', k: '4', t: '4', f: () => setCamAbierta(v => !v) },
+    { g: 'Vista', n: 'Escenas guardadas', k: '3', t: '3', f: () => setEscAbierta(v => !v) },
+    { g: 'Panel', n: 'Abrir este plano en Planos', k: 'O', t: 'o', f: () => abrirEnPlanos() },
     { g: 'Vista', n: 'Capas', k: '', f: () => setCapasAbierto(v => !v) },
     { g: 'Panel', n: 'Catálogo', k: '', f: () => setBibAbierta(v => !v) },
     { g: 'Panel', n: 'Biblioteca', k: '', f: () => setB3dAbierta(v => !v) },
@@ -3386,6 +3390,7 @@ export default function Visor3D() {
       <span style={{ lineHeight: 0, padding: '2px 0' }}>{typeof icono === 'string' && ICONOS[icono] ? <Ic n={icono} /> : <span style={{ fontSize: 16, lineHeight: '18px' }}>{icono}</span>}</span><span style={{ fontSize: 8.5, opacity: 0.85, whiteSpace: 'nowrap', letterSpacing: '-0.2px' }}>{etiqueta}</span>
     </button>
   );
+  const abrirEnPlanos = () => { if (!window.open('/planos/editor?abrir=' + encodeURIComponent(id), '_blank')) setAviso('El navegador ha bloqueado la pestaña nueva: permite las ventanas emergentes para esta página'); };
   const [menuTop, setMenuTop] = useState(null);
   const menuTop2 = (titulo, clave, items, derecha) => (
     <span style={{ position: 'relative', flex: 'none' }}>
@@ -3393,7 +3398,7 @@ export default function Visor3D() {
       {menuTop === clave && <>
         <div onClick={() => setMenuTop(null)} style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
         <div style={{ position: 'absolute', top: 34, ...(derecha ? { right: 0 } : { left: 0 }), minWidth: 230, background: 'rgb(30,30,30)', border: '1px solid #444', borderRadius: 8, padding: 4, zIndex: 21, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-          {items.map(([n, fn, activo, desact, tit]) => <div key={n} title={tit} onClick={() => { if (desact) return; setMenuTop(null); fn(); }} style={{ padding: '7px 10px', borderRadius: 5, cursor: desact ? 'default' : 'pointer', opacity: desact ? 0.4 : 1, background: activo ? '#2f6fa8' : 'transparent', fontSize: 13, color: '#fff' }}>{n}</div>)}
+          {items.map(([n, fn, activo, desact, tit, tecla]) => <div key={n} title={tit} onClick={() => { if (desact) return; setMenuTop(null); fn(); }} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '7px 10px', borderRadius: 5, cursor: desact ? 'default' : 'pointer', opacity: desact ? 0.4 : 1, background: activo ? '#6b6159' : 'transparent', fontSize: 13, color: '#fff' }}><span style={{ flex: 1 }}>{n}</span>{tecla && <kbd style={{ background: '#34302c', border: '1px solid #4f4842', borderRadius: 4, padding: '0 7px', fontSize: 11, color: '#d4c9bb' }}>{tecla}</kbd>}</div>)}
         </div>
       </>}
     </span>
@@ -3444,6 +3449,7 @@ export default function Visor3D() {
       {/* ── Barra superior: plano, historial, vistas, ambiente y salidas (render, 360, galería, despiece) ── */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(22,20,18,0.95)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
         <button style={bTop} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
+        <button style={bTop} onClick={() => abrirEnPlanos()} title="Abre este mismo plano en Planos, en otra pestaña (O)">Planos ↗</button>
         <b style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</b>
         {guardado && guardado !== 'inicial' && <span style={{ opacity: 0.55, fontSize: 11, whiteSpace: 'nowrap' }}>{guardado}</span>}
         <span style={sepTop} />
@@ -3452,14 +3458,14 @@ export default function Visor3D() {
         <span style={sepTop} />
         <span style={sepTop} />
         {menuTop2('Vista', 'vista', [
-          ['Perspectiva', () => vista('persp'), false, false, 'Vista en perspectiva de todo el plano'],
-          ['Planta', () => vista('planta'), false, false, 'Vista desde arriba'],
-          ['Axonométrica', () => (axo ? salirAxo() : entrarAxo()), !!axo, estado !== 'listo' || !!alz || !!planta2d, 'Vista isométrica, sin perspectiva'],
-          ['Planta 2D', () => (planta2d ? salirPlanta2d() : entrarPlanta2d()), !!planta2d, estado !== 'listo' || !!alz || !!axo, 'Vista desde arriba en 2D para dibujar zonas y pintar salas'],
-          ['Recorrer (persona)', () => setPersona(v => !v), persona, false, 'Dentro del espacio a la altura de los ojos; W A S D para andar'],
-          ['Altura de los ojos', () => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }, false, false, 'Cámara a 1,60 m'],
-          ['Cámara…', () => setCamAbierta(v => !v), camAbierta, false, 'Altura, nivelar, focal y verticales rectas'],
-          ['Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), () => setEscAbierta(v => !v), escAbierta, false, 'Vistas guardadas'],
+          ['Perspectiva', () => vista('persp'), false, false, 'Vista en perspectiva de todo el plano', '0'],
+          ['Planta', () => vista('planta'), false, false, 'Vista desde arriba', '9'],
+          ['Axonométrica', () => (axo ? salirAxo() : entrarAxo()), !!axo, estado !== 'listo' || !!alz || !!planta2d, 'Vista isométrica, sin perspectiva', '8'],
+          ['Planta 2D', () => (planta2d ? salirPlanta2d() : entrarPlanta2d()), !!planta2d, estado !== 'listo' || !!alz || !!axo, 'Vista desde arriba en 2D para dibujar zonas y pintar salas', '7'],
+          ['Recorrer (persona)', () => setPersona(v => !v), persona, false, 'Dentro del espacio a la altura de los ojos; W A S D para andar', '6'],
+          ['Altura de los ojos', () => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }, false, false, 'Cámara a 1,60 m', '5'],
+          ['Cámara…', () => setCamAbierta(v => !v), camAbierta, false, 'Altura, nivelar, focal y verticales rectas', '4'],
+          ['Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), () => setEscAbierta(v => !v), escAbierta, false, 'Vistas guardadas', '3'],
         ])}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff', fontSize: 12, flex: 'none', whiteSpace: 'nowrap' }} title="Óptica de la cámara: menos grados = más zoom; más grados = gran angular. Una persona ve nítido unos 30°">
           <Ic n="cinta" /> <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 70 }} /> <b style={{ minWidth: 28 }}>{lente}°</b>
