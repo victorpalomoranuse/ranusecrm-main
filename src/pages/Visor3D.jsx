@@ -2823,6 +2823,25 @@ export default function Visor3D() {
     { g: 'Render', n: 'Despiece y cantidades', k: '', f: () => abrirDespiece() },
   ];
   const [cmdPal, setCmdPal] = useState(null); // paleta de comandos { q, i }
+  // Ayuda: tutorial paso a paso, asistente al que preguntar «cómo hago X» y lista de peticiones (lo que se pidió y aún no se puede)
+  const [ayudaTab, setAyudaTab] = useState('tutorial');
+  const [chat, setChat] = useState([]);
+  const [chatTxt, setChatTxt] = useState('');
+  const [chatBusy, setChatBusy] = useState(false);
+  const [peticiones, setPeticiones] = useState(null);
+  const chatFin = useRef(null);
+  useEffect(() => { chatFin.current?.scrollIntoView?.({ block: 'end' }); }, [chat, chatBusy]);
+  useEffect(() => { if (ayudaAbierta && ayudaTab === 'peticiones' && peticiones === null) api.get('/visor-ayuda/peticiones').then(r => setPeticiones(r.data?.peticiones || [])).catch(() => setPeticiones([])); }, [ayudaAbierta, ayudaTab, peticiones]);
+  useEffect(() => { if (estado !== 'listo') return; try { if (!localStorage.getItem('visor3dTutorialVisto')) { localStorage.setItem('visor3dTutorialVisto', '1'); setAyudaAbierta(true); setAyudaTab('tutorial'); } } catch { /* sin almacenamiento */ } }, [estado]);
+  const preguntar = async (txt) => {
+    const q = String(txt ?? chatTxt).trim(); if (!q || chatBusy) return;
+    const nuevo = [...chat, { r: 'user', t: q }]; setChat(nuevo); setChatTxt(''); setChatBusy(true);
+    try {
+      const r = await api.post('/visor-ayuda', { mensajes: nuevo.map(m => ({ role: m.r, content: m.t })) }, { timeout: 60000 });
+      setChat([...nuevo, { r: 'assistant', t: r.data.respuesta, pet: r.data.peticion }]); if (r.data.peticion) setPeticiones(null);
+    } catch (e) { setChat([...nuevo, { r: 'assistant', t: e.response?.data?.error || 'No he podido contestar ahora mismo' }]); }
+    finally { setChatBusy(false); }
+  };
   const murosPlano = () => (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []);
   const mitades = o => { const r = (o.rot || 0) * Math.PI / 180; return { hx: (Math.abs(o.w * Math.cos(r)) + Math.abs(o.d * Math.sin(r))) / 2, hy: (Math.abs(o.w * Math.sin(r)) + Math.abs(o.d * Math.cos(r))) / 2 }; };
   const distMuro = (o, dir) => {
@@ -3442,7 +3461,7 @@ export default function Visor3D() {
           ['Despiece y cantidades', abrirDespiece, false, false, 'Despiece y cantidades de todo lo diseñado'],
           ['Exportar a D5 (.glb)', exportarGLB, false, false, 'Descarga el espacio en 3D para abrirlo en D5 o Blender'],
         ], true)}
-        <button style={bTop} onClick={() => setAyudaAbierta(v => !v)} title="Atajos de teclado">?</button>
+        <button style={{ ...bTop, ...(ayudaAbierta ? bOn : {}) }} onClick={() => setAyudaAbierta(v => !v)} title="Tutorial, preguntar cómo se hace algo y lista de atajos">? Ayuda</button>
       </div>
 
       {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
@@ -3826,21 +3845,85 @@ export default function Visor3D() {
         </div>
       )}
       {ayudaAbierta && (
-        <div style={{ position: 'absolute', top: 56, right: 12, width: 380, maxHeight: 'calc(100vh - 70px)', overflowY: 'auto', background: 'rgba(22,20,18,0.97)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 12, zIndex: 8, lineHeight: 1.5 }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}><b style={{ flex: 1, fontSize: 14 }}>Comandos</b><button style={{ ...btn, padding: '2px 8px' }} onClick={() => setAyudaAbierta(false)}>✕</button></div>
-          <div style={{ opacity: 0.7, marginBottom: 8 }}>Pulsa <b>Ctrl+K</b> o <b>/</b> para buscar cualquier comando por su nombre. Las letras no funcionan escribiendo en un campo.</div>
-          {['Herramientas', 'Edición', 'Vista', 'Panel', 'Render'].map(g => (
-            <div key={g} style={{ marginBottom: 6 }}>
-              <div style={{ opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 10, margin: '4px 0 2px' }}>{g}</div>
-              {comandos().filter(x => x.g === g).map(x => <div key={x.n} onClick={() => { x.f(); }} style={{ display: 'flex', alignItems: 'center', padding: '2px 4px', cursor: 'pointer', borderRadius: 4 }}><span style={{ flex: 1 }}>{x.n}</span>{x.k && <kbd style={{ background: '#34302c', border: '1px solid #4f4842', borderRadius: 4, padding: '0 6px', fontSize: 11 }}>{x.k}</kbd>}</div>)}
-            </div>
-          ))}
-          <div style={{ opacity: 0.6, marginTop: 6, borderTop: '1px solid #3a342f', paddingTop: 6 }}>
-            <b>W A S D</b> moverse · <b>Q / E</b> bajar / subir · <b>Mayús</b> más rápido<br />
-            <b>Flechas</b> mover 5 cm (con Mayús 50) · <b>Re Pág / Av Pág</b> subir/bajar<br />
-            <b>Botón central</b> girar la vista · con <b>Mayús</b> desplazarla · <b>Botón derecho</b> desplazar · <b>Rueda</b> acercar<br />
-            <b>Esc</b> deselecciona o cancela · <b>Enter</b> cierra lo que dibujas
+        <div style={{ position: 'absolute', top: 56, right: 12, bottom: 12, width: 400, display: 'flex', flexDirection: 'column', background: 'rgba(22,20,18,0.97)', color: '#fff', borderRadius: 8, fontSize: 12, zIndex: 8, lineHeight: 1.5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '10px 12px 6px' }}>
+            {[['tutorial', 'Tutorial'], ['preguntar', 'Preguntar'], ['comandos', 'Atajos'], ['peticiones', 'Peticiones' + (peticiones ? ' (' + peticiones.filter(x => x.estado === 'nueva').length + ')' : '')]].map(([k, n]) => <button key={k} style={{ ...btn, padding: '4px 9px', fontSize: 12, ...(ayudaTab === k ? { background: '#6b6159', borderColor: '#baafa5' } : {}) }} onClick={() => setAyudaTab(k)}>{n}</button>)}
+            <span style={{ flex: 1 }} /><button style={{ ...btn, padding: '2px 8px' }} onClick={() => setAyudaAbierta(false)}>✕</button>
           </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 14px 12px' }}>
+            {ayudaTab === 'tutorial' && <>
+              <div style={{ opacity: 0.7, marginBottom: 8 }}>Los pasos básicos, en orden. El botón «Hacerlo» activa la herramienta por ti.</div>
+              {[
+          ['Moverte por el espacio', 'Arrastra con el botón izquierdo para girar la vista, botón derecho para desplazarla y la rueda para acercar. W A S D para andar, Q y E para bajar y subir.', null],
+          ['Dibujar una forma y darle altura', 'Pulsa R (rectángulo), C (círculo) o G (polígono) y dibuja sobre el suelo. La forma nace plana y pasa sola a «Empujar»: tira de la cara de arriba hacia arriba. Mientras dibujas puedes escribir una medida en cm y pulsar Enter.', 'Rectángulo'],
+          ['Hacer muros', 'Pulsa M, haz clic en cada punto y termina con Enter. Mayús = recto. Los muros también aparecen en Planos. Haz clic en un muro, puerta o ventana para cambiar sus medidas.', 'Muro'],
+          ['Colocar máquinas y objetos', 'Abre Catálogo (tus productos con 3D) o Biblioteca → Mis modelos (para subir plantas y objetos sueltos). Haz clic en uno para colocarlo; después ajusta medidas, giro y elevación en su ficha.', 'Catálogo'],
+          ['Cambiar el suelo con una textura', 'Abre Vista → Planta 2D, elige «Dibujar zona» o «Pintar sala entera», escoge la textura en la barra de arriba y dibuja o haz clic en la sala. En Pintura puedes subir una foto como textura y ajustar su despiece y juntas.', 'Planta 2D'],
+          ['Luz y tiras LED', 'En Iluminación eliges luminarias, tira LED o carril. La tira LED se dibuja punto a punto y en su ficha ajustas altura, temperatura y hacia dónde alumbra. En Ambiente cambias la hora del sol.', 'Tira LED'],
+          ['Ocultar cosas', 'Selecciona algo y pulsa H para ocultarlo sin borrarlo. «Mostrar» en la barra de la izquierda lo devuelve todo.', 'Ocultar selección'],
+          ['Sacar un render', 'Abre Render: elige Realista y un preajuste (Día, Interior cálido, Noche), ajusta color y efectos, y pulsa «Renderizar y descargar». Para más calidad usa Salida → Exportar a D5 y renderiza ahí. «Render con IA» le da realismo final.', 'Render'],
+          ['Buscar cualquier comando', 'Pulsa Ctrl+K o la tecla / y escribe lo que quieres hacer. Si no sabes cómo hacer algo, usa la pestaña «Preguntar» de esta ayuda.', null],
+        ].map(([t, d, cmd], i) => (
+                <div key={t} style={{ border: '1px solid #3a342f', borderRadius: 8, padding: '8px 10px', marginBottom: 8, background: 'rgba(255,255,255,0.03)' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}><span style={{ color: '#baafa5' }}>{i + 1}.</span> {t}</div>
+                  <div style={{ opacity: 0.8 }}>{d}</div>
+                  {cmd && <button style={{ ...btn, marginTop: 6, padding: '3px 10px', fontSize: 12 }} onClick={() => { comandos().find(x => x.n === cmd)?.f(); }}>Hacerlo: {cmd}</button>}
+                </div>
+              ))}
+              <button style={{ ...btn, width: '100%' }} onClick={() => setAyudaTab('preguntar')}>¿Dudas? Pregúntale al asistente</button>
+            </>}
+            {ayudaTab === 'preguntar' && <>
+              {!chat.length && <>
+                <div style={{ opacity: 0.8, marginBottom: 8 }}>Pregunta cómo hacer algo y te lo explica paso a paso. Si no se puede hacer todavía, queda apuntado como petición.</div>
+                {['¿Cómo cambio el suelo de una sala?', '¿Cómo pongo una tira LED?', '¿Cómo giro una máquina?', '¿Cómo subo una planta en 3D?', '¿Cómo saco un render?', '¿Cómo exporto a D5?'].map(q => <div key={q} onClick={() => preguntar(q)} style={{ border: '1px solid #3a342f', borderRadius: 14, padding: '5px 10px', marginBottom: 5, cursor: 'pointer', background: 'rgba(255,255,255,0.03)' }}>{q}</div>)}
+              </>}
+              {chat.map((m, i) => {
+                const cmds = [...String(m.t).matchAll(/\[\[cmd:([^\]]+)\]\]/g)].map(x => x[1].trim()), txt = String(m.t).replace(/\[\[cmd:[^\]]+\]\]/g, '').trim();
+                return (
+                  <div key={i} style={{ margin: '8px 0', textAlign: m.r === 'user' ? 'right' : 'left' }}>
+                    <div style={{ display: 'inline-block', maxWidth: '92%', textAlign: 'left', whiteSpace: 'pre-wrap', padding: '7px 10px', borderRadius: 10, background: m.r === 'user' ? '#6b6159' : 'rgba(255,255,255,0.07)' }}>{txt}</div>
+                    {m.r !== 'user' && cmds.length > 0 && <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>{cmds.map(n => <button key={n} style={{ ...btn, padding: '3px 10px', fontSize: 12 }} onClick={() => comandos().find(x => x.n === n)?.f()}>Hacerlo: {n}</button>)}</div>}
+                    {m.pet && <div style={{ marginTop: 4, color: '#d4c9bb', fontSize: 11 }}>📝 Petición apuntada: «{m.pet}»</div>}
+                  </div>
+                );
+              })}
+              {chatBusy && <div style={{ opacity: 0.6, margin: '8px 0' }}>Pensando…</div>}
+              <div ref={chatFin} />
+            </>}
+            {ayudaTab === 'comandos' && <>
+              <div style={{ opacity: 0.7, marginBottom: 8 }}>Pulsa <b>Ctrl+K</b> o <b>/</b> para buscar cualquier comando. Las letras no funcionan escribiendo en un campo.</div>
+              {['Herramientas', 'Edición', 'Vista', 'Panel', 'Render'].map(g => (
+                <div key={g} style={{ marginBottom: 6 }}>
+                  <div style={{ opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 10, margin: '4px 0 2px' }}>{g}</div>
+                  {comandos().filter(x => x.g === g).map(x => <div key={x.n} onClick={() => x.f()} style={{ display: 'flex', alignItems: 'center', padding: '2px 4px', cursor: 'pointer', borderRadius: 4 }}><span style={{ flex: 1 }}>{x.n}</span>{x.k && <kbd style={{ background: '#34302c', border: '1px solid #4f4842', borderRadius: 4, padding: '0 6px', fontSize: 11 }}>{x.k}</kbd>}</div>)}
+                </div>
+              ))}
+              <div style={{ opacity: 0.6, marginTop: 6, borderTop: '1px solid #3a342f', paddingTop: 6 }}>
+                <b>W A S D</b> moverse · <b>Q / E</b> bajar / subir · <b>Mayús</b> más rápido<br />
+                <b>Flechas</b> mover 5 cm (con Mayús 50) · <b>Re Pág / Av Pág</b> subir/bajar<br />
+                <b>Botón central</b> girar la vista · con <b>Mayús</b> desplazarla · <b>Botón derecho</b> desplazar · <b>Rueda</b> acercar<br />
+                <b>Esc</b> deselecciona o cancela · <b>Enter</b> cierra lo que dibujas
+              </div>
+            </>}
+            {ayudaTab === 'peticiones' && <>
+              <div style={{ opacity: 0.7, marginBottom: 8 }}>Lo que se ha pedido al asistente y todavía no se puede hacer. Marca cada una cuando esté hecha o descartada.</div>
+              {peticiones === null && <div style={{ opacity: 0.6 }}>Cargando…</div>}
+              {peticiones?.length === 0 && <div style={{ opacity: 0.6 }}>No hay ninguna petición apuntada.</div>}
+              {(peticiones || []).map(p => (
+                <div key={p.id} style={{ border: '1px solid #3a342f', borderRadius: 8, padding: '7px 10px', marginBottom: 6, opacity: p.estado === 'nueva' ? 1 : 0.55 }}>
+                  <div style={{ fontWeight: 600 }}>{p.texto}</div>
+                  <div style={{ opacity: 0.55, fontSize: 11 }}>{new Date(p.fecha).toLocaleDateString('es-ES')}{p.usuario ? ' · ' + p.usuario : ''}</div>
+                  <select value={p.estado} onChange={e => api.patch('/visor-ayuda/peticiones/' + p.id, { estado: e.target.value }).then(() => setPeticiones(l => l.map(x => (x.id === p.id ? { ...x, estado: e.target.value } : x)))).catch(() => {})} style={{ ...btn, padding: '2px 6px', fontSize: 11, marginTop: 4 }}><option value="nueva">Pendiente</option><option value="hecha">Hecha</option><option value="descartada">Descartada</option></select>
+                </div>
+              ))}
+            </>}
+          </div>
+          {ayudaTab === 'preguntar' && (
+            <div style={{ display: 'flex', gap: 6, padding: '8px 12px 12px', borderTop: '1px solid #3a342f' }}>
+              <input value={chatTxt} onChange={e => setChatTxt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') preguntar(); }} placeholder="Escribe tu duda…" style={{ flex: 1, background: '#2c2824', border: '1px solid #4f4842', color: '#fff', borderRadius: 6, padding: '7px 9px', fontSize: 13, outline: 'none' }} />
+              <button style={{ ...btn, background: '#6b6159' }} disabled={chatBusy || !chatTxt.trim()} onClick={() => preguntar()}>Enviar</button>
+            </div>
+          )}
         </div>
       )}
       {cmdPal && (() => {
