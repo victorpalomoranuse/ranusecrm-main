@@ -1342,6 +1342,7 @@ export default function Visor3D() {
       cam.aspect = w / h; cam.updateProjectionMatrix();
     };
     const vR2 = new THREE.Vector2(); const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, ultLod = 0, enMov = false, ema = 16, escala = 1, ultGob = performance.now(), sinSombras = false;
+    let gpuNombre = ''; try { const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); gpuNombre = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '').replace(/ANGLE (|)$/g, '').replace(/Direct3D.*|vs_.*|(0x[0-9a-f]+)/gi, '').slice(0, 42); } catch { /* sin datos */ }
     const hud = document.createElement('div'); hud.style.cssText = 'position:absolute;left:8px;bottom:8px;font:11px monospace;color:#fff;background:rgba(0,0,0,0.45);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:5'; el.appendChild(hud);
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
     const bucle = () => {
@@ -1380,7 +1381,7 @@ export default function Visor3D() {
         if (ema > 42 && escala > 0.5) { escala = Math.max(0.5, escala - 0.15); renderer.setPixelRatio(base * escala); }
         else if (ema > 42 && !sinSombras) { sinSombras = true; renderer.shadowMap.enabled = false; sol.castShadow = false; scene.traverse(o => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.needsUpdate = true; }); } }); }
         else if (ema < 22 && escala < 1) { escala = Math.min(1, escala + 0.1); renderer.setPixelRatio(base * escala); }
-        hud.textContent = Math.round(1000 / Math.max(1, ema)) + ' fps · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triáng. · ' + renderer.info.render.calls + ' llamadas' + (escala < 1 ? ' · res ' + Math.round(escala * 100) + '%' : '') + (sinSombras ? ' · sin sombras' : '');
+        hud.textContent = Math.round(1000 / Math.max(1, ema)) + ' fps · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triáng. · ' + renderer.info.render.calls + ' llamadas' + (escala < 1 ? ' · res ' + Math.round(escala * 100) + '%' : '') + (sinSombras ? ' · sin sombras' : '') + (a0.composer ? ' · con efectos' : '') + ' · ' + (gpuNombre || 'gpu ?') + ' · px ' + renderer.getPixelRatio().toFixed(1);
       }
     };
     const enCampo = e => { const t = (e.target?.tagName || '').toLowerCase(); return t === 'input' || t === 'textarea' || t === 'select' || e.target?.isContentEditable; };
