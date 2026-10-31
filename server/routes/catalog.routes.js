@@ -837,10 +837,34 @@ router.delete('/products/:id', async (req, res) => {
   try {
     const { data: product } = await supabase
       .from('catalog_products')
-      .select('photo_url')
+      .select('photo_url, name, brand, link')
       .eq('id', req.params.id)
       .single();
-    if (product?.photo_url) await deleteCatalogPhoto(product.photo_url);
+    // Si el producto está en proyectos o presupuestos, esas partidas se quedan: se desenlazan del catálogo y se les deja su foto, marca y enlace
+    const TABLAS = ['project_equipment_selections', 'project_material_selections', 'budget_items'];
+    for (const tabla of TABLAS) {
+      try {
+        const { data: filas } = await supabase.from(tabla).select('*').eq('catalog_product_id', req.params.id);
+        for (const fila of (filas || [])) {
+          const rellena = {};
+          if (product?.photo_url && 'image_url' in fila && !fila.image_url) rellena.image_url = product.photo_url;
+          if (product?.brand && 'brand' in fila && !fila.brand) rellena.brand = product.brand;
+          if (product?.link && 'purchase_link' in fila && !fila.purchase_link) rellena.purchase_link = product.link;
+          if (Object.keys(rellena).length) await supabase.from(tabla).update(rellena).eq('id', fila.id);
+        }
+        // budget_items puede no tener aún la columna image_url (migración v87): se intenta aparte, sin romper nada
+        if (tabla === 'budget_items' && product?.photo_url) await supabase.from(tabla).update({ image_url: product.photo_url }).eq('catalog_product_id', req.params.id).is('image_url', null);
+        await supabase.from(tabla).update({ catalog_product_id: null }).eq('catalog_product_id', req.params.id);
+      } catch (e) { console.error('desenlazar', tabla, e.message); }
+    }
+    // la foto solo se borra del almacenamiento si ya no la usa ninguna partida
+    if (product?.photo_url) {
+      let enUso = false;
+      for (const tabla of TABLAS) {
+        try { const { data: r } = await supabase.from(tabla).select('id').eq('image_url', product.photo_url).limit(1); if (r?.length) { enUso = true; break; } } catch { /* la tabla puede no tener image_url */ }
+      }
+      if (!enUso) await deleteCatalogPhoto(product.photo_url);
+    }
     const { error } = await supabase.from('catalog_products').delete().eq('id', req.params.id);
     if (error) throw error;
     res.json({ message: 'Producto eliminado' });
