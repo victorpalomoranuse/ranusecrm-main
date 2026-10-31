@@ -302,6 +302,8 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
     // series dentro de cada marca (columna opcional: si aún no existe la migración, se ignora)
     const { data: serRows, error: serErr } = await supabase.from('catalog_products').select('id, series');
     const serMap = serErr ? {} : Object.fromEntries((serRows || []).filter(r => r.series).map(r => [r.id, String(r.series)]));
+    const { data: carRows, error: carErr } = await supabase.from('catalog_products').select('id, carga');
+    const carMap = carErr ? {} : Object.fromEntries((carRows || []).filter(r => r.carga).map(r => [r.id, String(r.carga)]));
 
     const maquinas = [];
     const luminariasBase = [];
@@ -320,6 +322,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
           categoria: limpiarCategoria(cat.name) || 'Equipamiento',
           marca: p.brand ? String(p.brand).trim() : '',
           serie: serMap[p.id] || '',
+          carga: carMap[p.id] || '',
           ref: [p.brand, cat.name].filter(Boolean).join(' · '),
           sinMedidas: !tieneMedidas,
           // dibujo real de la planta (si el producto tiene bloque), a escala en cm

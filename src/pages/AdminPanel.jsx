@@ -858,7 +858,7 @@ function TabNotas({ projectId }) {
 
 function ProductModal({ categories, allProducts, product, onClose, onSaved }) {
   const isEdit = !!product;
-  const [name,setName]=useState(product?.name||''); const [brand,setBrand]=useState(product?.brand||''); const [series,setSeries]=useState(product?.series||''); const [categoryId,setCategoryId]=useState(product?.category_id||categories[0]?.id||''); const [price,setPrice]=useState(product?.price!=null?String(product.price):''); const [link,setLink]=useState(product?.link||''); const [notes,setNotes]=useState(product?.notes||''); const [file,setFile]=useState(null); const [preview,setPreview]=useState(product?.photo_url||null); const [saving,setSaving]=useState(false); const [error,setError]=useState('');
+  const [name,setName]=useState(product?.name||''); const [brand,setBrand]=useState(product?.brand||''); const [series,setSeries]=useState(product?.series||''); const [carga,setCarga]=useState(product?.carga||''); const [categoryId,setCategoryId]=useState(product?.category_id||categories[0]?.id||''); const [price,setPrice]=useState(product?.price!=null?String(product.price):''); const [link,setLink]=useState(product?.link||''); const [notes,setNotes]=useState(product?.notes||''); const [file,setFile]=useState(null); const [preview,setPreview]=useState(product?.photo_url||null); const [saving,setSaving]=useState(false); const [error,setError]=useState('');
   const [longitud,setLongitud]=useState(product?.longitud!=null?String(product.longitud):'');
   const [ancho,setAncho]=useState(product?.ancho!=null?String(product.ancho):'');
   const [altura,setAltura]=useState(product?.altura!=null?String(product.altura):'');
@@ -914,7 +914,7 @@ function ProductModal({ categories, allProducts, product, onClose, onSaved }) {
     window.addEventListener('paste',onPaste);
     return()=>window.removeEventListener('paste',onPaste);
   },[]);
-  const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim()||!categoryId)return;setSaving(true);setError('');try{const form=new FormData();form.append('category_id',categoryId);form.append('name',name.trim());if(brand)form.append('brand',brand.trim());form.append('series',series.trim());if(price)form.append('price',price);if(link)form.append('link',link.trim());if(notes)form.append('notes',notes.trim());if(file)form.append('file',file);if(longitud)form.append('longitud',longitud);if(ancho)form.append('ancho',ancho);if(altura)form.append('altura',altura);if(colorBastidor)form.append('color_bastidor',colorBastidor.trim());if(colorAcolchado)form.append('color_acolchado',colorAcolchado.trim());if(tipoAcolchado)form.append('tipo_acolchado',tipoAcolchado.trim());if(lumens)form.append('lumens',lumens);if(watts)form.append('watts',watts);if(colorTemperature)form.append('color_temperature',colorTemperature.trim());if(color)form.append('color',color.trim());if(purchaseDto)form.append('purchase_dto',purchaseDto);if(defaultMarginPct)form.append('default_margin_pct',defaultMarginPct);form.append('pricing_unit',pricingUnit);if(includedAccessories)form.append('included_accessories',includedAccessories.trim());if(descCliente||product?.descripcion_cliente)form.append('descripcion_cliente',descCliente.trim());if(nivelUso)form.append('nivel_uso',nivelUso);if(searchKeywords)form.append('search_keywords',searchKeywords.trim());const primaryType=categories.find(c=>c.id===categoryId)?.type;const validExtraIds=extraCategoryIds.filter(id=>id!==categoryId&&categories.find(c=>c.id===id)?.type===primaryType);form.append('extra_category_ids',JSON.stringify(validExtraIds));form.append('complement_ids',JSON.stringify(complementIds.filter(id=>id!==product?.id)));let data;if(isEdit){({data}=await api.put(`/catalog/products/${product.id}`,form));}else{({data}=await api.post('/catalog/products',form));}onSaved(data.product);onClose();}catch{setError('Error al guardar producto');}finally{setSaving(false);}};
+  const handleSubmit=async(e)=>{e.preventDefault();if(!name.trim()||!categoryId)return;setSaving(true);setError('');try{const form=new FormData();form.append('category_id',categoryId);form.append('name',name.trim());if(brand)form.append('brand',brand.trim());form.append('series',series.trim());form.append('carga',carga);if(price)form.append('price',price);if(link)form.append('link',link.trim());if(notes)form.append('notes',notes.trim());if(file)form.append('file',file);if(longitud)form.append('longitud',longitud);if(ancho)form.append('ancho',ancho);if(altura)form.append('altura',altura);if(colorBastidor)form.append('color_bastidor',colorBastidor.trim());if(colorAcolchado)form.append('color_acolchado',colorAcolchado.trim());if(tipoAcolchado)form.append('tipo_acolchado',tipoAcolchado.trim());if(lumens)form.append('lumens',lumens);if(watts)form.append('watts',watts);if(colorTemperature)form.append('color_temperature',colorTemperature.trim());if(color)form.append('color',color.trim());if(purchaseDto)form.append('purchase_dto',purchaseDto);if(defaultMarginPct)form.append('default_margin_pct',defaultMarginPct);form.append('pricing_unit',pricingUnit);if(includedAccessories)form.append('included_accessories',includedAccessories.trim());if(descCliente||product?.descripcion_cliente)form.append('descripcion_cliente',descCliente.trim());if(nivelUso)form.append('nivel_uso',nivelUso);if(searchKeywords)form.append('search_keywords',searchKeywords.trim());const primaryType=categories.find(c=>c.id===categoryId)?.type;const validExtraIds=extraCategoryIds.filter(id=>id!==categoryId&&categories.find(c=>c.id===id)?.type===primaryType);form.append('extra_category_ids',JSON.stringify(validExtraIds));form.append('complement_ids',JSON.stringify(complementIds.filter(id=>id!==product?.id)));let data;if(isEdit){({data}=await api.put(`/catalog/products/${product.id}`,form));}else{({data}=await api.post('/catalog/products',form));}onSaved(data.product);onClose();}catch{setError('Error al guardar producto');}finally{setSaving(false);}};
   return (
     <div className="ap-confirm-overlay" onClick={onClose}>
       <div className="ap-modal-inner" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
@@ -925,6 +925,7 @@ function ProductModal({ categories, allProducts, product, onClose, onSaved }) {
           {isEdit&&product?.id&&<ModeloSkp product={product}/>}
           <div className="ap-field"><label>Marca / Proveedor</label><input className="ap-field-input" list="product-providers" value={brand} onChange={e=>setBrand(e.target.value)} placeholder="ej: Tarkett…"/><datalist id="product-providers">{providers.map(p=><option key={p.id} value={p.name}/>)}</datalist></div>
           <div className="ap-field"><label>Serie <span className="ap-optional">(opcional — ej. Genesis, Genesis RX, Black Series)</span></label><input className="ap-field-input" list="series-sugeridas" value={series} onChange={e=>setSeries(e.target.value)} placeholder="ej: Genesis RX"/></div>
+          <div className="ap-field"><label>Tipo de carga <span className="ap-optional">(máquinas: discos o placas)</span></label><select className="ap-field-input" value={carga} onChange={e=>setCarga(e.target.value)} style={{colorScheme:'dark'}}><option value="">— sin indicar —</option>{CARGAS.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select></div>
           <div className="ap-field"><label>Categoría *</label><select className="ap-select" value={categoryId} onChange={e=>setCategoryId(e.target.value)} required><option value="">Seleccionar…</option>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
           {(() => { const sameTypeOthers = categories.filter(c => c.id !== categoryId && c.type === categories.find(x => x.id === categoryId)?.type); if (!sameTypeOthers.length) return null; return (
             <div className="ap-field">
@@ -1072,7 +1073,7 @@ function SortableCategoryPill({ cat, active, count, onClick, onRename, onDelete 
 
 function CatalogoLibrary() {
   const [tab,setTab]=useState('material'); const [busca,setBusca]=useState('');const [activeCat,setActiveCat]=useState('all'); const [categories,setCategories]=useState([]); const [products,setProducts]=useState([]); const [types,setTypes]=useState([]); const [loading,setLoading]=useState(true); const [newCatName,setNewCatName]=useState(''); const [addingCat,setAddingCat]=useState(false); const [showCatInput,setShowCatInput]=useState(false); const [showProductModal,setShowProductModal]=useState(false); const [editProduct,setEditProduct]=useState(null); const [confirm,setConfirm]=useState(null); const [cart,setCart]=useState([]); const [showCart,setShowCart]=useState(false); const [showTypeInput,setShowTypeInput]=useState(false); const [newTypeName,setNewTypeName]=useState(''); const [addingType,setAddingType]=useState(false);
-  const [vista,setVista]=useState('marcas'); const [marcasAbiertas,setMarcasAbiertas]=useState({});
+  const [cargaF,setCargaF]=useState(''); const [vista,setVista]=useState('marcas'); const [marcasAbiertas,setMarcasAbiertas]=useState({});
   const {toast}=useToast();
   const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}));
   const addToCart=(product)=>setCart(prev=>prev.some(p=>p.id===product.id)?prev:[...prev,product]);
@@ -1100,7 +1101,7 @@ function CatalogoLibrary() {
   const recargarProductos=()=>api.get('/catalog/products').then(r=>setProducts(r.data.products||[])).catch(()=>{});
   const porMarcas=useMemo(()=>{
     const limpio=n=>String(n||'').replace(/^[A-Za-z]{1,2}\.?\d+\.?\s*/,'').trim()||'Sin categoría';
-    const filtrados=products.filter(p=>p.category?.type===tab&&(!qn||norm([p.name,p.brand,p.series,p.code,p.reference,p.description,p.category?.name].join(' ')).includes(qn)));
+    const filtrados=products.filter(p=>p.category?.type===tab&&(!cargaF||String(p.carga||'')===cargaF)&&(!qn||norm([p.name,p.brand,p.series,p.code,p.reference,p.description,p.category?.name].join(' ')).includes(qn)));
     const grupos=new Map();
     filtrados.forEach(p=>{
       const b=String(p.brand||'').trim();const k=b?norm(b).replace(/\s+/g,' '):'';
@@ -1115,7 +1116,7 @@ function CatalogoLibrary() {
     const aTipos=m=>[...m.entries()].sort((a,b)=>a[0].localeCompare(b[0],'es')).map(([t,ps])=>({t,ps:ps.sort(orden)}));
     return [...grupos.values()].map(g=>({k:g.k,n:g.n,nombre:g.k?Object.entries(g.nombres).sort((a,b)=>b[1]-a[1])[0][0]:'Sin marca',tipos:aTipos(g.tipos),series:[...g.series.values()].sort((a,b)=>(a.sk===''?1:0)-(b.sk===''?1:0)||a.s.localeCompare(b.s,'es')).map(se=>({sk:se.sk,s:se.s,n:se.n,tipos:aTipos(se.tipos)}))}))
       .sort((a,b)=>(a.k===''?1:0)-(b.k===''?1:0)||a.nombre.localeCompare(b.nombre,'es'));
-  },[products,qn,tab]);
+  },[products,qn,tab,cargaF]);
   if(loading) return <div className="ap-loading">Cargando catálogo…</div>;
   return (
     <div className="ap-catalog-shell">
@@ -1146,6 +1147,7 @@ function CatalogoLibrary() {
       {tab!=='renders'&&<div className="ap-catalog-filters">
         <div style={{position:'relative',flex:'1 1 100%',marginBottom:8}}><Search size={14} style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',opacity:0.5}}/><input className="ap-field-input" style={{paddingLeft:30,paddingRight:30}} placeholder="Buscar en el catálogo (nombre, marca, código, categoría)…" value={busca} onChange={e=>setBusca(e.target.value)}/>{busca&&<button type="button" aria-label="Borrar búsqueda" onClick={()=>setBusca('')} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'none',border:0,color:'inherit',cursor:'pointer',opacity:0.6}}>×</button>}</div>
         {conMarcas&&<div style={{display:'inline-flex',gap:4,marginBottom:8}}><button type="button" className={`ap-catalog-pill${vista==='marcas'?' active':''}`} onClick={()=>setVista('marcas')}>Por marcas</button><button type="button" className={`ap-catalog-pill${vista==='categorias'?' active':''}`} onClick={()=>setVista('categorias')}>Por categorías</button></div>}
+        {tab==='mobiliario'&&<div style={{display:'inline-flex',gap:4,marginBottom:8,marginLeft:8,flexWrap:'wrap',alignItems:'center'}}><span style={{opacity:0.5,fontSize:'0.75rem'}}>Carga:</span><button type="button" className={`ap-catalog-pill${cargaF===''?' active':''}`} onClick={()=>setCargaF('')}>Todas</button>{CARGAS.map(([k,n])=><button key={k} type="button" className={`ap-catalog-pill${cargaF===k?' active':''}`} onClick={()=>setCargaF(k)}>{n} ({products.filter(p=>p.category?.type===tab&&p.carga===k).length})</button>)}<CargaBulk onDone={recargarProductos}/></div>}
         {!verMarcas&&<div className="ap-catalog-filter-pills">
           <button className={`ap-catalog-pill${activeCat==='all'?' active':''}`} onClick={()=>setActiveCat('all')}>Todo ({products.filter(p=>p.category?.type===tab).length})</button>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
@@ -1214,7 +1216,7 @@ function SortableCatalogCard({ p, inCart, onEdit, onDelete, onDuplicate, onCart,
       </div>
       <div className="ap-catalog-card-body">
         <span className="ap-catalog-card-name">{p.name}</span>
-        {p.brand&&<span className="ap-catalog-card-brand">{p.brand}</span>}
+        {p.brand&&<span className="ap-catalog-card-brand">{p.brand}</span>}{p.carga&&<span className="ap-catalog-card-brand" style={{color:'#d4c9bb',opacity:0.9}}>{cargaNombre(p.carga)}</span>}
         {p.price!=null&&<span className="ap-catalog-card-price">{Number(p.price).toLocaleString('es-ES',{style:'currency',currency:'EUR'})}</span>}
         {p.notes&&<span className="ap-catalog-card-notes">{p.notes}</span>}
         {p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" className="ap-catalog-card-link">Ver ↗</a>}
@@ -1250,6 +1252,38 @@ function SeriesBulk({ marca, series, onDone }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Tipo de carga de las máquinas: discos (plate loaded), placas (selectorizada)… Se asigna por palabra del nombre o en la ficha del producto
+const CARGAS=[['discos','Discos'],['placas','Placas'],['libre','Peso libre'],['cardio','Cardio'],['funcional','Funcional']];
+const cargaNombre=v=>(CARGAS.find(x=>x[0]===v)||[v,v])[1];
+function CargaBulk({ onDone }) {
+  const [abierto, setAbierto] = useState(false); const [contiene, setContiene] = useState(''); const [valor, setValor] = useState('discos'); const [marca, setMarca] = useState(''); const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false);
+  const aplicar = async (quitar) => {
+    if (!contiene.trim()) { setMsg('Escribe la palabra que lleva el nombre de esas máquinas'); return; }
+    setBusy(true); setMsg('');
+    try { const { data } = await api.post('/catalog/carga-bulk', { brand: marca.trim(), contiene: contiene.trim(), valor: quitar ? '' : valor }); setMsg(`${data.actualizados} producto${data.actualizados===1?'':'s'} ${quitar?'sin tipo de carga':'como «'+cargaNombre(valor)+'»'}`); setContiene(''); onDone?.(); }
+    catch (e) { setMsg(e.response?.data?.error || 'No se pudo asignar'); } finally { setBusy(false); }
+  };
+  return (
+    <span style={{display:'inline-block',marginLeft:8}}>
+      <button type="button" className="ap-catalog-pill" onClick={()=>setAbierto(v=>!v)}>{abierto?'Cerrar':'Clasificar por carga…'}</button>
+      {abierto&&(
+        <div style={{marginTop:8,padding:'0.6rem 0.8rem',border:'1px dashed rgba(255,255,255,0.18)',borderRadius:8,fontSize:'0.78rem',maxWidth:560}}>
+          <div style={{opacity:0.7,marginBottom:6}}>Las máquinas cuyo nombre contenga una palabra pasan a un tipo de carga. Ejemplos: «plate loaded» → Discos, «selectorizada» → Placas.</div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+            <input className="ap-field-input" style={{maxWidth:170}} placeholder="Palabra en el nombre" value={contiene} onChange={e=>setContiene(e.target.value)}/>
+            <span>→</span>
+            <select className="ap-field-input" style={{maxWidth:150,colorScheme:'dark'}} value={valor} onChange={e=>setValor(e.target.value)}>{CARGAS.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select>
+            <input className="ap-field-input" style={{maxWidth:150}} placeholder="Solo marca (opcional)" value={marca} onChange={e=>setMarca(e.target.value)}/>
+            <button type="button" className="ap-btn ap-btn-primary ap-btn-sm" disabled={busy} onClick={()=>aplicar(false)}>{busy?'…':'Asignar'}</button>
+            <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" disabled={busy} onClick={()=>aplicar(true)}>Quitar</button>
+          </div>
+          {msg&&<div style={{marginTop:6,color:'#d4c9bb'}}>{msg}</div>}
+        </div>
+      )}
+    </span>
   );
 }
 

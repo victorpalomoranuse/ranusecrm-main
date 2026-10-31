@@ -1146,6 +1146,7 @@ export default function Visor3D() {
   const [solo3d, setSolo3d] = useState(true);
   const [marcasAbiertas, setMarcasAbiertas] = useState({}); // marca → abierta
   const [marcaSel, setMarcaSel] = useState('');
+  const [cargaSel, setCargaSel] = useState('');
   const [persona, setPersona] = useState(false);
   const [sinGpu, setSinGpu] = useState(false);
   useEffect(() => { if (estado === 'cargando') return; let cerrado = false; try { cerrado = sessionStorage.getItem('visor3dSinGpuCerrado') === '1'; } catch { /* sin almacenamiento */ } setSinGpu(GL_SOFTWARE && !cerrado); }, [estado]);
@@ -4286,11 +4287,12 @@ export default function Visor3D() {
                 {biblioteca && !vis.length && <p style={{ opacity: 0.6, fontSize: 12 }}>{solo3d && !filtro ? 'Ningún producto tiene modelo 3D todavía. Sube uno desde la ficha de una máquina en el plano, o desmarca la casilla.' : 'Sin resultados.'}</p>}
                 {(() => {
                   const marcas = [...new Set(lista.map(m => (m.marca || '').trim() || 'Sin marca'))].sort((a, b) => (a === 'Sin marca') - (b === 'Sin marca') || a.localeCompare(b, 'es'));
-                  const visM = vis.filter(m => !marcaSel || ((m.marca || '').trim() || 'Sin marca') === marcaSel);
+                  const visM = vis.filter(m => (!marcaSel || ((m.marca || '').trim() || 'Sin marca') === marcaSel) && (!cargaSel || m.carga === cargaSel));
                   const grupos = marcas.map(mk => [mk, visM.filter(m => ((m.marca || '').trim() || 'Sin marca') === mk).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'))]).filter(([, l]) => l.length);
                   const abierta = mk => !!filtro || !!marcaSel || !!marcasAbiertas[mk] || grupos.length === 1;
                   return (<>
                     <select value={marcaSel} onChange={e => setMarcaSel(e.target.value)} style={{ ...btn, width: '100%', marginBottom: 6, boxSizing: 'border-box' }}><option value="">Todas las marcas ({marcas.length})</option>{marcas.map(mk => <option key={mk} value={mk}>{mk}</option>)}</select>
+                    <select value={cargaSel} onChange={e => setCargaSel(e.target.value)} style={{ ...btn, width: '100%', marginBottom: 6, boxSizing: 'border-box' }}><option value="">Toda la carga (discos y placas)</option><option value="discos">Discos</option><option value="placas">Placas</option><option value="libre">Peso libre</option><option value="cardio">Cardio</option><option value="funcional">Funcional</option></select>
                     {grupos.map(([mk, items]) => (
                       <div key={mk} style={{ marginBottom: 4 }}>
                         <div onClick={() => setMarcasAbiertas(a => ({ ...a, [mk]: !a[mk] }))} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 6px', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', borderRadius: 6, fontWeight: 700, fontSize: 12 }}>
@@ -4301,7 +4303,7 @@ export default function Visor3D() {
                             <Miniatura mod={m.modelo3d} foto={m.foto} size={56} />
                             <div style={{ minWidth: 0 }}>
                               <div style={{ fontSize: 12.5, lineHeight: 1.25 }}>{m.nombre}</div>
-                              <div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {Math.round(m.w)}×{Math.round(m.d)} cm{m.modelo3d ? ' · 3D ✓' : ''}</div>
+                              <div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria}{m.carga ? ' · ' + ({ discos: 'Discos', placas: 'Placas', libre: 'Peso libre', cardio: 'Cardio', funcional: 'Funcional' }[m.carga] || m.carga) : ''} · {Math.round(m.w)}×{Math.round(m.d)} cm{m.modelo3d ? ' · 3D ✓' : ''}</div>
                             </div>
                           </div>
                         ))}</div>)); })()}
