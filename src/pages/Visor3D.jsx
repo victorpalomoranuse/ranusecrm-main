@@ -29,7 +29,7 @@ const ESPEJOS = [
   { id: 'espejo', nombre: 'Espejo', hex: '#e9f0f4' }, { id: 'espejo-bronce', nombre: 'Espejo bronce', hex: '#b08d6a' },
   { id: 'espejo-ahumado', nombre: 'Espejo ahumado', hex: '#4a5258' }, { id: 'cromo', nombre: 'Cromo', hex: '#ffffff' },
 ].map(e => ({ id: e.id, nombre: e.nombre, tam: 100, espejo: e.hex, fijo: true, url: (() => { try { const cv = document.createElement('canvas'); cv.width = 96; cv.height = 56; const cx = cv.getContext('2d'), g = cx.createLinearGradient(0, 0, 96, 56); g.addColorStop(0, '#fff'); g.addColorStop(0.45, e.hex); g.addColorStop(0.55, '#fff'); g.addColorStop(1, e.hex); cx.fillStyle = g; cx.fillRect(0, 0, 96, 56); return cv.toDataURL(); } catch { return ''; } })() }));
-let envEsp = null, espejoSucio = false;
+let envEsp = null, espejoSucio = false, GL_SOFTWARE = false;
 function aplicaEspejos(scene) {
   scene.traverse(o => {
     if (!o.isMesh || !o.material) return;
@@ -1147,6 +1147,8 @@ export default function Visor3D() {
   const [marcasAbiertas, setMarcasAbiertas] = useState({}); // marca → abierta
   const [marcaSel, setMarcaSel] = useState('');
   const [persona, setPersona] = useState(false);
+  const [sinGpu, setSinGpu] = useState(false);
+  useEffect(() => { if (estado === 'cargando') return; let cerrado = false; try { cerrado = sessionStorage.getItem('visor3dSinGpuCerrado') === '1'; } catch { /* sin almacenamiento */ } setSinGpu(GL_SOFTWARE && !cerrado); }, [estado]);
   // Panel de Render (como el de D5): ajustes finos de la imagen final y botón de renderizar
   const FX0 = { contraste: 1, saturacion: 1, calidez: 0, vineta: 0, bloom: 0 };
   const [fx, setFx] = useState(() => { try { return { ...FX0, ...JSON.parse(localStorage.getItem('visor3dFx') || '{}') }; } catch { return FX0; } });
@@ -1359,7 +1361,7 @@ export default function Visor3D() {
       cam.aspect = w / h; cam.updateProjectionMatrix();
     };
     const vR2 = new THREE.Vector2(); const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, ultLod = 0, enMov = false, ema = 16, escala = 1, ultGob = performance.now(), sinSombras = false;
-    let gpuNombre = ''; try { const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); gpuNombre = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '').replace(/ANGLE (|)$/g, '').replace(/Direct3D.*|vs_.*|(0x[0-9a-f]+)/gi, '').slice(0, 42); } catch { /* sin datos */ }
+    let gpuNombre = ''; try { const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); const bruto = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : ''); GL_SOFTWARE = /basic render|swiftshader|llvmpipe|software/i.test(bruto); gpuNombre = bruto.replace(/ANGLE (|)$/g, '').replace(/Direct3D.*|vs_.*|(0x[0-9a-f]+)/gi, '').slice(0, 42); } catch { /* sin datos */ }
     const hud = document.createElement('div'); hud.style.cssText = 'position:absolute;left:8px;bottom:8px;font:11px monospace;color:#fff;background:rgba(0,0,0,0.45);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:5'; el.appendChild(hud);
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
     const bucle = () => {
@@ -3442,6 +3444,13 @@ export default function Visor3D() {
   );
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#eeeae5', accentColor: '#baafa5' }}>
+      {sinGpu && (
+        <div style={{ position: 'absolute', left: '50%', top: 58, transform: 'translateX(-50%)', width: 'min(620px, 92vw)', zIndex: 40, background: 'rgb(60,40,28)', border: '1px solid #c9965a', color: '#fff', borderRadius: 10, padding: '12px 16px', fontSize: 13, lineHeight: 1.5, boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+          <b>Tu navegador no está usando la tarjeta gráfica</b> (usa un modo de emergencia por software). Por eso va lento y con baja calidad.<br />
+          <b>Arréglalo así:</b> en Chrome o Edge abre <b>Ajustes → Sistema</b> y activa <b>«Usar aceleración por hardware cuando esté disponible»</b>; reinicia el navegador. Si no mejora, instala los controladores de la gráfica (NVIDIA, AMD o Intel) desde Windows Update. Si estás viendo esto dentro de la app de Claude, ábrelo en Chrome.<br />
+          <button style={{ ...btn, marginTop: 8 }} onClick={() => { setSinGpu(false); try { sessionStorage.setItem('visor3dSinGpuCerrado', '1'); } catch { /* sin almacenamiento */ } }}>Entendido</button>
+        </div>
+      )}
       {barraMaterial}
       {barra2d}
       {barraAxo}
