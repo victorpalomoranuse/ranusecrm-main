@@ -299,6 +299,9 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
     // Si la columna "bloques" aún no existe en la base de datos, se sigue sin ella
     const prods = conBloques.error ? (await pedirProductos(columnas)).data : conBloques.data;
     const catPorId = Object.fromEntries((cats || []).map(c => [c.id, c]));
+    // series dentro de cada marca (columna opcional: si aún no existe la migración, se ignora)
+    const { data: serRows, error: serErr } = await supabase.from('catalog_products').select('id, series');
+    const serMap = serErr ? {} : Object.fromEntries((serRows || []).filter(r => r.series).map(r => [r.id, String(r.series)]));
 
     const maquinas = [];
     const luminariasBase = [];
@@ -316,6 +319,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
           d: tieneMedidas ? Number(p.ancho) : 80,
           categoria: limpiarCategoria(cat.name) || 'Equipamiento',
           marca: p.brand ? String(p.brand).trim() : '',
+          serie: serMap[p.id] || '',
           ref: [p.brand, cat.name].filter(Boolean).join(' · '),
           sinMedidas: !tieneMedidas,
           // dibujo real de la planta (si el producto tiene bloque), a escala en cm

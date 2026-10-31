@@ -4260,7 +4260,7 @@ export default function Visor3D() {
                         <div onClick={() => setMarcasAbiertas(a => ({ ...a, [mk]: !a[mk] }))} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 6px', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', borderRadius: 6, fontWeight: 700, fontSize: 12 }}>
                           <span style={{ width: 10, opacity: 0.7 }}>{abierta(mk) ? '▾' : '▸'}</span><span style={{ flex: 1 }}>{mk}</span><span style={{ opacity: 0.5, fontWeight: 400 }}>{items.length}</span>
                         </div>
-                        {abierta(mk) && items.slice(0, 80).map(m => (
+                        {abierta(mk) && (() => { const sers = [...new Set(items.map(m => m.serie || ''))].sort((x, y) => (x === '') - (y === '') || x.localeCompare(y, 'es')); return sers.map(sr => (<div key={sr || 'sin'}>{(sers.length > 1 || sr) && <div style={{ padding: '4px 6px', fontSize: 11, color: '#d4c9bb', background: 'rgba(186,175,165,0.12)', borderRadius: 4, margin: '4px 0 2px' }}>{sr || 'Sin serie'}</div>}{items.filter(m => (m.serie || '') === sr).slice(0, 80).map(m => (
                           <div key={m.id} onClick={() => anadirBloque(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center' }} title="Clic para colocarlo en el centro de la vista">
                             <Miniatura mod={m.modelo3d} foto={m.foto} size={56} />
                             <div style={{ minWidth: 0 }}>
@@ -4268,7 +4268,7 @@ export default function Visor3D() {
                               <div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {Math.round(m.w)}×{Math.round(m.d)} cm{m.modelo3d ? ' · 3D ✓' : ''}</div>
                             </div>
                           </div>
-                        ))}
+                        ))}</div>)); })()}
                       </div>
                     ))}
                   </>);

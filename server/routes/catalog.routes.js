@@ -655,6 +655,23 @@ router.delete('/products/:id/bloques', async (req, res) => {
   }
 });
 
+// Series dentro de una marca. Asigna una serie a todos los productos de la marca cuyo nombre contenga un texto (necesita la columna series: migración v88)
+router.post('/series-bulk', async (req, res) => {
+  try {
+    const norm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+    const brand = norm(req.body?.brand), contiene = norm(req.body?.contiene), serie = String(req.body?.serie ?? '').trim().slice(0, 60);
+    if (!contiene) return res.status(400).json({ error: 'Escribe la palabra que lleva el nombre de esos productos' });
+    const { data, error } = await supabase.from('catalog_products').select('id, name, brand, series');
+    if (error) return res.status(400).json({ error: 'Falta ejecutar la migración v88 en Supabase (columna series)' });
+    const ids = (data || []).filter(p => (!brand || norm(p.brand) === brand) && norm(p.name).includes(contiene)).map(p => p.id);
+    for (let i = 0; i < ids.length; i += 100) {
+      const { error: e2 } = await supabase.from('catalog_products').update({ series: serie || null }).in('id', ids.slice(i, i + 100));
+      if (e2) throw e2;
+    }
+    res.json({ actualizados: ids.length });
+  } catch (err) { console.error('series-bulk:', err); res.status(500).json({ error: 'No se pudieron asignar las series' }); }
+});
+
 router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
     const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, nivel_uso, search_keywords, extra_category_ids, complement_ids } = req.body;
@@ -703,6 +720,7 @@ router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, 
       .select('*, category:catalog_categories!catalog_products_category_id_fkey(id, name, type)')
       .single();
     if (error) throw error;
+    if (typeof req.body?.series === 'string' && req.body.series.trim()) { const rs = await supabase.from('catalog_products').update({ series: req.body.series.trim().slice(0, 60) }).eq('id', data.id); if (!rs.error) data.series = req.body.series.trim().slice(0, 60); }
     await syncExtraCategories(data.id, extra_category_ids);
     await syncComplements(data.id, complement_ids);
     const { data: extraRows } = await supabase.from('catalog_product_categories').select('category:catalog_categories(id, name, type)').eq('product_id', data.id);
@@ -758,6 +776,7 @@ router.put('/products/:id', uploadCatalogPhotoFile, handleMulterError, async (re
       ? await supabase.from('catalog_products').update(updates).eq('id', req.params.id).select(selectCols).single()
       : await supabase.from('catalog_products').select(selectCols).eq('id', req.params.id).single();
     if (error) throw error;
+    if (req.body?.series !== undefined) { const sv = String(req.body.series || '').trim().slice(0, 60) || null; const rs = await supabase.from('catalog_products').update({ series: sv }).eq('id', req.params.id); if (!rs.error) data.series = sv; }
     await syncExtraCategories(data.id, extra_category_ids);
     await syncComplements(data.id, complement_ids);
     const { data: extraRows } = await supabase.from('catalog_product_categories').select('category:catalog_categories(id, name, type)').eq('product_id', data.id);
