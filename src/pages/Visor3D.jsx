@@ -2752,9 +2752,11 @@ export default function Visor3D() {
         cambiar(selObj, c); return;
       }
       if (k === 'r' && selObj && !ctrl) { const o = objs.find(x => x.id === selObj); if (o) cambiar(selObj, { rot: ((o.rot || 0) + 90) % 360 }); return; }
+      if (k === '/' || (ctrl && k === 'k')) { e.preventDefault(); setCmdPal({ q: '', i: 0 }); return; }
       if (ctrl) return;
-      const mapa = { '1': 'sel', '2': 'caja', '3': 'poli', '4': 'empujar', '5': 'guia', '6': 'muro', '7': 'luz' }; // las letras W A S D Q E son para moverse
-      if (mapa[k]) setHerr(mapa[k]);
+      const cmdTecla = comandos().find(x => x.t === k);
+      if (cmdTecla) { e.preventDefault(); cmdTecla.f(); }
+      else if (k === 'escape' && cmdPal) setCmdPal(null);
       else if (k === 'escape' && alz) { salirAlzado(); }
       else if (k === 'escape') { setSelObj(null); setSelAcab(null); setSelHueco(null); setLuzSel(null); setSeleccion(null); api3d.current.limpiarSel?.(); }
       else if (k === ' ') { e.preventDefault(); document.activeElement?.blur?.(); setHerr('sel'); }
@@ -2762,6 +2764,45 @@ export default function Visor3D() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }); // se vuelve a registrar en cada cambio para leer siempre el estado actual
+  // Comandos: cada uno tiene su letra (t) y se pueden buscar con Ctrl+K o /. Las mismas letras salen en la ayuda (?)
+  const comandos = () => [
+    { g: 'Herramientas', n: 'Seleccionar', k: 'V / Espacio', t: 'v', f: () => setHerr('sel') },
+    { g: 'Herramientas', n: 'Rectángulo', k: 'R', t: 'r', f: () => { setFormaDib('rect'); setHerr('poli'); } },
+    { g: 'Herramientas', n: 'Círculo', k: 'C', t: 'c', f: () => { setFormaDib('oval'); setHerr('poli'); } },
+    { g: 'Herramientas', n: 'Polígono', k: 'G', t: 'g', f: () => { setFormaDib('poli'); setHerr('poli'); } },
+    { g: 'Herramientas', n: 'Empujar / Tirar', k: 'P', t: 'p', f: () => setHerr('empujar') },
+    { g: 'Herramientas', n: 'Muro', k: 'M', t: 'm', f: () => setHerr('muro') },
+    { g: 'Herramientas', n: 'Zona en el suelo', k: 'Z', t: 'z', f: () => setHerr('zonaS') },
+    { g: 'Herramientas', n: 'Tira LED', k: 'L', t: 'l', f: () => setHerr('led') },
+    { g: 'Herramientas', n: 'Luminaria', k: 'F', t: 'f', f: () => { setKindLuz('foco'); setHerr('luz'); } },
+    { g: 'Herramientas', n: 'Pintura', k: 'B', t: 'b', f: () => { setMatAbierto(true); setHerr('pincel'); } },
+    { g: 'Herramientas', n: 'Cuentagotas', k: 'I', t: 'i', f: () => setHerr('gotero') },
+    { g: 'Herramientas', n: 'Cinta métrica (guía)', k: 'T', t: 't', f: () => setHerr('guia') },
+    { g: 'Edición', n: 'Ocultar selección', k: 'H', f: () => ocultarSel() },
+    { g: 'Edición', n: 'Mostrar todo lo oculto', k: '', f: () => mostrarTodo() },
+    { g: 'Edición', n: 'Deshacer', k: 'Ctrl+Z', f: () => deshacer() },
+    { g: 'Edición', n: 'Rehacer', k: 'Ctrl+Y', f: () => rehacer() },
+    { g: 'Edición', n: 'Girar 90° lo seleccionado', k: 'R (con algo seleccionado)', f: () => { const o = objs.find(x => x.id === selObj); if (o) cambiar(selObj, { rot: ((o.rot || 0) + 90) % 360 }); } },
+    { g: 'Edición', n: 'Duplicar', k: 'Ctrl+D', f: () => { if (selObj) duplicar(selObj); } },
+    { g: 'Edición', n: 'Borrar', k: 'Supr', f: () => { if (selObj) borrar(selObj); } },
+    { g: 'Vista', n: 'Perspectiva', k: '0', t: '0', f: () => vista('persp') },
+    { g: 'Vista', n: 'Planta', k: '9', t: '9', f: () => vista('planta') },
+    { g: 'Vista', n: 'Axonométrica', k: '8', t: '8', f: () => (axo ? salirAxo() : entrarAxo()) },
+    { g: 'Vista', n: 'Planta 2D', k: '', f: () => (planta2d ? salirPlanta2d() : entrarPlanta2d()) },
+    { g: 'Vista', n: 'Recorrer (persona)', k: '', f: () => setPersona(v => !v) },
+    { g: 'Vista', n: 'Capas', k: '', f: () => setCapasAbierto(v => !v) },
+    { g: 'Panel', n: 'Catálogo', k: '', f: () => setBibAbierta(v => !v) },
+    { g: 'Panel', n: 'Biblioteca', k: '', f: () => setB3dAbierta(v => !v) },
+    { g: 'Panel', n: 'Materiales', k: '', f: () => setMatAbierto(v => !v) },
+    { g: 'Panel', n: 'Ambiente (sol y luces)', k: '', f: () => setAmbAbierto(v => !v) },
+    { g: 'Panel', n: 'Render', k: '', f: () => setRenderAbierto(v => !v) },
+    { g: 'Render', n: 'Modo realista (reflejos y sombras)', k: '', f: () => setRealista(v => !v) },
+    { g: 'Render', n: 'Render HD (descargar)', k: '', f: async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); } },
+    { g: 'Render', n: 'Render con IA', k: '', f: () => abrirFormIA() },
+    { g: 'Render', n: 'Exportar a D5 (.glb)', k: '', f: () => exportarGLB() },
+    { g: 'Render', n: 'Despiece y cantidades', k: '', f: () => abrirDespiece() },
+  ];
+  const [cmdPal, setCmdPal] = useState(null); // paleta de comandos { q, i }
   const murosPlano = () => (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []);
   const mitades = o => { const r = (o.rot || 0) * Math.PI / 180; return { hx: (Math.abs(o.w * Math.cos(r)) + Math.abs(o.d * Math.sin(r))) / 2, hy: (Math.abs(o.w * Math.sin(r)) + Math.abs(o.d * Math.cos(r))) / 2 }; };
   const distMuro = (o, dir) => {
@@ -3277,10 +3318,10 @@ export default function Visor3D() {
     a.click();
   };
 
-  const btn = { background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
+  const btn = { background: '#2c2824', color: '#fff', border: '1px solid #4a443f', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 };
   // ── interfaz común: barra superior, carril de herramientas y menús
-  const bTop = { background: '#333', color: '#fff', border: '1px solid #4a4a4a', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' };
-  const bOn = { background: '#2f6fa8', borderColor: '#2f6fa8' };
+  const bTop = { background: '#34302c', color: '#fff', border: '1px solid #4f4842', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' };
+  const bOn = { background: '#6b6159', borderColor: '#6b6159' };
   const sepTop = { width: 1, height: 22, background: '#444', margin: '0 2px', flex: 'none' };
   const itemMenu = { padding: '6px 8px', cursor: 'pointer', borderRadius: 4 };
   const railBtn = (activo, icono, etiqueta, titulo, onClick, color) => (
@@ -3289,12 +3330,12 @@ export default function Visor3D() {
     </button>
   );
   const [menuTop, setMenuTop] = useState(null);
-  const menuTop2 = (titulo, clave, items) => (
+  const menuTop2 = (titulo, clave, items, derecha) => (
     <span style={{ position: 'relative', flex: 'none' }}>
       <button style={{ ...bTop, ...(menuTop === clave ? bOn : {}) }} onClick={() => setMenuTop(m => (m === clave ? null : clave))}>{titulo} ▾</button>
       {menuTop === clave && <>
         <div onClick={() => setMenuTop(null)} style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
-        <div style={{ position: 'absolute', top: 34, left: 0, minWidth: 210, background: 'rgb(30,30,30)', border: '1px solid #444', borderRadius: 8, padding: 4, zIndex: 21, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+        <div style={{ position: 'absolute', top: 34, ...(derecha ? { right: 0 } : { left: 0 }), minWidth: 230, background: 'rgb(30,30,30)', border: '1px solid #444', borderRadius: 8, padding: 4, zIndex: 21, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
           {items.map(([n, fn, activo, desact, tit]) => <div key={n} title={tit} onClick={() => { if (desact) return; setMenuTop(null); fn(); }} style={{ padding: '7px 10px', borderRadius: 5, cursor: desact ? 'default' : 'pointer', opacity: desact ? 0.4 : 1, background: activo ? '#2f6fa8' : 'transparent', fontSize: 13, color: '#fff' }}>{n}</div>)}
         </div>
       </>}
@@ -3309,17 +3350,17 @@ export default function Visor3D() {
     luz: ['Luz', 'Clic en el suelo para colocar la luminaria en el plano'], guia: ['Cinta métrica', 'Clic en dos puntos para crear una línea guía'], pincel: ['Pincel', 'Clic en lo que quieras pintar · Mayús = todo el elemento · Alt = copiar material'], gotero: ['Cuentagotas', 'Clic en lo que quieras copiar'],
   };
   const barra2d = planta2d && (
-    <div style={{ position: 'absolute', left: railW, top: 56, zIndex: 6, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', maxWidth: '60vw' }}>
+    <div style={{ position: 'absolute', left: railW, top: 56, zIndex: 6, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', maxWidth: '60vw' }}>
       <b>📐 Planta 2D</b>
-      <button style={{ ...bTop, ...(herr === 'zonaS' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setHerr('zonaS'); setMatAbierto(false); }} title="Clic punto a punto sobre el suelo; Enter cierra la zona">▨ Dibujar zona</button>
-      <button style={{ ...bTop, ...(herr === 'pincel' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setHerr('pincel'); setMatAbierto(true); }} title="Elige un material y haz clic en una sala para pintarla entera">🎨 Pintar sala entera</button>
-      <button style={{ ...bTop, ...(herr === 'sel' ? { background: '#2f6fa8' } : {}) }} onClick={() => setHerr('sel')} title="Selecciona una zona para moverla o cambiarla">↖ Seleccionar</button>
+      <button style={{ ...bTop, ...(herr === 'zonaS' ? { background: '#6b6159' } : {}) }} onClick={() => { setHerr('zonaS'); setMatAbierto(false); }} title="Clic punto a punto sobre el suelo; Enter cierra la zona">▨ Dibujar zona</button>
+      <button style={{ ...bTop, ...(herr === 'pincel' ? { background: '#6b6159' } : {}) }} onClick={() => { setHerr('pincel'); setMatAbierto(true); }} title="Elige un material y haz clic en una sala para pintarla entera">🎨 Pintar sala entera</button>
+      <button style={{ ...bTop, ...(herr === 'sel' ? { background: '#6b6159' } : {}) }} onClick={() => setHerr('sel')} title="Selecciona una zona para moverla o cambiarla">↖ Seleccionar</button>
       <button style={bTop} onClick={salirPlanta2d}>Salir</button>
       <span style={{ opacity: 0.6, width: '100%' }}>Rueda = zoom · botón derecho = mover la vista · el material se elige en la barra de arriba</span>
     </div>
   );
   const barraAxo = axo && (
-    <div style={{ position: 'absolute', left: railW, top: 56, zIndex: 6, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', maxWidth: '60vw' }}>
+    <div style={{ position: 'absolute', left: railW, top: 56, zIndex: 6, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', maxWidth: '60vw' }}>
       <b>🧊 Axonométrica</b>
       <button style={bTop} onClick={() => girarAxo(-90)} title="Gira la vista 90° a la izquierda">⟲ 90°</button>
       <button style={bTop} onClick={() => girarAxo(90)} title="Gira la vista 90° a la derecha">⟳ 90°</button>
@@ -3329,22 +3370,22 @@ export default function Visor3D() {
     </div>
   );
   const barraMaterial = ['zonaS', 'zonaT', 'zonaP'].includes(herr) && (
-    <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', top: 96, zIndex: 6, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', maxWidth: '86vw', overflowX: 'auto' }}>
+    <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', top: 96, zIndex: 6, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', maxWidth: '86vw', overflowX: 'auto' }}>
       <span style={{ opacity: 0.7, whiteSpace: 'nowrap' }}>Material de la zona:</span>
-      {texturas.map(t => <img key={t.id} src={t.url} alt={t.nombre} title={t.nombre} onClick={() => setMatSel({ id: t.id })} style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', flex: 'none', border: matSel?.id === t.id ? '2px solid #4da3ff' : '1px solid #555' }} />)}
+      {texturas.map(t => <img key={t.id} src={t.url} alt={t.nombre} title={t.nombre} onClick={() => setMatSel({ id: t.id })} style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', flex: 'none', border: matSel?.id === t.id ? '2px solid #baafa5' : '1px solid #555' }} />)}
       <input type="color" value={matSel?.hex || '#c9b9a0'} onChange={e => setMatSel({ hex: e.target.value })} title="Un color liso" style={{ width: 34, height: 34, padding: 0, border: 'none', background: 'none', flex: 'none' }} />
       <button style={bTop} onClick={() => setMatAbierto(true)} title="Sube una foto y crea una textura nueva (con despiece y junta)">＋ Textura nueva</button>
       <span style={{ opacity: 0.55, whiteSpace: 'nowrap' }}>{matSel ? 'Dibuja la zona y saldrá con este material' : 'Elige uno, o cámbialo luego'}</span>
     </div>
   );
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#eeeae5' }}>
+    <div style={{ position: 'fixed', inset: 0, background: '#eeeae5', accentColor: '#baafa5' }}>
       {barraMaterial}
       {barra2d}
       {barraAxo}
       <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
       {/* ── Barra superior: plano, historial, vistas, ambiente y salidas (render, 360, galería, despiece) ── */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(24,24,24,0.94)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(22,20,18,0.95)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
         <button style={bTop} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <b style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</b>
         {guardado && guardado !== 'inicial' && <span style={{ opacity: 0.55, fontSize: 11, whiteSpace: 'nowrap' }}>{guardado}</span>}
@@ -3365,12 +3406,12 @@ export default function Visor3D() {
         ])}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff', fontSize: 12, flex: 'none', whiteSpace: 'nowrap' }} title="Óptica de la cámara: menos grados = más zoom; más grados = gran angular. Una persona ve nítido unos 30°">
           <Ic n="cinta" /> <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 70 }} /> <b style={{ minWidth: 28 }}>{lente}°</b>
-          <select value="" onChange={e => { if (e.target.value) ponerLente(parseFloat(e.target.value)); }} style={{ ...bTop, width: 74 }}><option value="">Óptica</option><option value="90">Gran angular 90°</option><option value="65">Interior amplio 65°</option><option value="50">Interior natural 50°</option><option value="30">Como persona 30°</option><option value="25">Tele 25°</option></select>
+          <select value="" onChange={e => { if (e.target.value) ponerLente(parseFloat(e.target.value)); }} style={{ ...bTop, width: 92 }}><option value="">Óptica…</option><option value="90">Gran angular 90°</option><option value="65">Interior amplio 65°</option><option value="50">Interior natural 50°</option><option value="30">Como persona 30°</option><option value="25">Tele 25°</option></select>
         </span>
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">Ambiente</button>
-        <button style={{ ...bTop, ...(renderAbierto ? bOn : { background: '#7a4fc9' }), fontWeight: 700 }} onClick={() => { setRenderAbierto(v => !v); setSelObj(null); setSeleccion(null); }} title="Panel de render: luz, color, efectos y calidad de la imagen final">Render</button>
+        <button style={{ ...bTop, ...(renderAbierto ? bOn : { background: '#8c8076' }), fontWeight: 700 }} onClick={() => { setRenderAbierto(v => !v); setSelObj(null); setSeleccion(null); }} title="Panel de render: luz, color, efectos y calidad de la imagen final">Render</button>
         <span style={{ flex: 1, minWidth: 8 }} />
-        <button style={{ ...bTop, ...(realista ? { background: '#2f6fa8' } : {}) }} onClick={() => setRealista(v => !v)} title="Reflejos, sombras de contacto y bordes suaves. Si va lento, apágalo">Realista</button>
+        <button style={{ ...bTop, ...(realista ? { background: '#6b6159' } : {}) }} onClick={() => setRealista(v => !v)} title="Reflejos, sombras de contacto y bordes suaves. Si va lento, apágalo">Realista</button>
         <select style={bTop} value={calidad} onChange={e => setCalidad(e.target.value)} title="Si va lento, baja la calidad"><option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option></select>
         {menuTop2('Salida', 'salida', [
           ['Captura de la vista', captura, false, false, 'Guarda la vista actual como imagen'],
@@ -3380,12 +3421,12 @@ export default function Visor3D() {
           ['Galería' + (renders.length ? ' (' + renders.length + ')' : ''), () => setGalAbierta(v => !v), galAbierta, false, 'Renders y panoramas guardados'],
           ['Despiece y cantidades', abrirDespiece, false, false, 'Despiece y cantidades de todo lo diseñado'],
           ['Exportar a D5 (.glb)', exportarGLB, false, false, 'Descarga el espacio en 3D para abrirlo en D5 o Blender'],
-        ])}
+        ], true)}
         <button style={bTop} onClick={() => setAyudaAbierta(v => !v)} title="Atajos de teclado">?</button>
       </div>
 
       {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
-      <div style={{ position: 'absolute', top: 54, left: 8, display: 'flex', flexDirection: 'column', flexWrap: 'wrap', alignContent: 'flex-start', gap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 62px)', background: 'rgba(24,24,24,0.94)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+      <div style={{ position: 'absolute', top: 54, left: 8, display: 'flex', flexDirection: 'column', flexWrap: 'wrap', alignContent: 'flex-start', gap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 62px)', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
         {grupoRail([
           railBtn(herr === 'sel', 'sel', 'Seleccionar', 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
           railBtn(false, 'ocultar', 'Ocultar', 'Oculta lo seleccionado sin borrarlo (H)', ocultarSel),
@@ -3406,7 +3447,7 @@ export default function Visor3D() {
           </>)),
           menuRail(sigueMenu, setSigueMenu, railBtn(herr === 'sigue' || sigueMenu, 'sigue', 'Sígueme', 'Un perfil recorre un camino: rodapiés, molduras, tubos, bandejas…', () => setSigueMenu(v => !v)), (<>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige el perfil y dibuja el camino en el suelo (Enter termina; volver al primer punto cierra en lazo)</div>
-            {Object.keys(PERFILES).map(n => <div key={n} onClick={() => { setPerfilSel(n); setHerr('sigue'); setSigueMenu(false); }} style={{ ...itemMenu, background: perfilSel === n ? '#2a3a52' : 'transparent' }}>{n}</div>)}
+            {Object.keys(PERFILES).map(n => <div key={n} onClick={() => { setPerfilSel(n); setHerr('sigue'); setSigueMenu(false); }} style={{ ...itemMenu, background: perfilSel === n ? '#3a342f' : 'transparent' }}>{n}</div>)}
           </>)),
         ], false, 'Construir')}
         {grupoRail([
@@ -3440,9 +3481,9 @@ export default function Visor3D() {
 
       {/* ── Barra de opciones de la herramienta activa ── */}
       {AYUDA_HERR[herr] && (
-        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', background: 'rgba(24,24,24,0.94)', color: '#fff', borderRadius: 18, padding: '5px 14px', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', zIndex: 6, maxWidth: '70vw', boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', background: 'rgba(22,20,18,0.95)', color: '#fff', borderRadius: 18, padding: '5px 14px', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', zIndex: 6, maxWidth: '70vw', boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
           <b>{AYUDA_HERR[herr][0]}</b><span style={{ opacity: 0.75 }}>{AYUDA_HERR[herr][1]}</span>
-          {herr === 'muro' && <><select value={grosorMuro} onChange={e => setGrosorMuro(parseInt(e.target.value, 10))} style={bTop} title="Grosor del muro">{[7, 10, 12, 15, 20, 25, 30].map(g => <option key={g} value={g}>{g} cm</option>)}</select>{medidaMuro && <b style={{ color: '#6fb3ff' }}>{medidaMuro}</b>}</>}
+          {herr === 'muro' && <><select value={grosorMuro} onChange={e => setGrosorMuro(parseInt(e.target.value, 10))} style={bTop} title="Grosor del muro">{[7, 10, 12, 15, 20, 25, 30].map(g => <option key={g} value={g}>{g} cm</option>)}</select>{medidaMuro && <b style={{ color: '#d4c9bb' }}>{medidaMuro}</b>}</>}
           {herr === 'luz' && <select value={kindLuz} onChange={e => setKindLuz(e.target.value)} style={bTop}><option value="foco">Foco empotrado</option><option value="spot">Spot orientable</option><option value="plaf">Plafón</option><option value="colg">Colgante</option><option value="aplq">Aplique</option><option value="pie">Lámpara de pie</option><option value="suel">Empotrado de suelo</option></select>}
           {herr === 'focoC' && <select value={kindFoco} onChange={e => setKindFoco(e.target.value)} style={bTop}>{Object.entries(TIPOS_FOCO).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>}
           {herr === 'pincel' && <span style={{ opacity: 0.9 }}>Modo: <b>{modoPincel === 'cara' ? 'Cara' : modoPincel === 'pieza' ? 'Pieza' : 'Entero'}</b></span>}
@@ -3479,7 +3520,7 @@ export default function Visor3D() {
             </label>
             <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
               <button style={btn} onClick={() => setIaForm(false)}>Cancelar</button>
-              <button style={{ ...btn, background: '#7a4fc4', borderColor: '#7a4fc4' }} onClick={() => renderIA()}>Generar</button>
+              <button style={{ ...btn, background: '#8c8076', borderColor: '#8c8076' }} onClick={() => renderIA()}>Generar</button>
             </div>
           </div>
         </div>
@@ -3493,7 +3534,7 @@ export default function Visor3D() {
               <img src={ia.imagen} alt="Render con IA" style={{ maxWidth: '86vw', maxHeight: '72vh', display: 'block', borderRadius: 6 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 <a style={{ ...btn, textDecoration: 'none' }} href={ia.imagen} download={(titulo || 'plano') + '-render-ia.png'}>Descargar</a>
-                <button style={{ ...btn, background: ia.guardado ? '#2a6b3a' : '#7a4fc4', borderColor: 'transparent' }} disabled={ia.guardado} onClick={async () => { const r = await guardarRender('ia', ia.imagen, ia.meta); if (r) setIa(x => ({ ...x, guardado: true })); }}>{ia.guardado ? 'Guardado en la galería ✓' : '⭐ Guardar en la galería'}</button>
+                <button style={{ ...btn, background: ia.guardado ? '#2a6b3a' : '#8c8076', borderColor: 'transparent' }} disabled={ia.guardado} onClick={async () => { const r = await guardarRender('ia', ia.imagen, ia.meta); if (r) setIa(x => ({ ...x, guardado: true })); }}>{ia.guardado ? 'Guardado en la galería ✓' : '⭐ Guardar en la galería'}</button>
                 <button style={btn} onClick={() => setIa(null)}>Cerrar</button>
               </div>
             </>}
@@ -3509,7 +3550,7 @@ export default function Visor3D() {
           </label>
         );
         return (
-          <div style={{ position: 'absolute', left: railW, top: 56, width: 210, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '10px 12px', fontSize: 13, zIndex: 3 }}>
+          <div style={{ position: 'absolute', left: railW, top: 56, width: 210, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '10px 12px', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Ver por capas</div>
             {fijas.map(([k, n]) => fila(k, n))}
             <div style={{ borderTop: '1px solid #333', marginTop: 6, paddingTop: 6 }}>
@@ -3531,7 +3572,7 @@ export default function Visor3D() {
         const cat = lumCat.find(c => c.id === l.lid), nombres = { foco: 'Foco empotrado', plaf: 'Plafón', colg: 'Luminaria colgante', aplq: 'Aplique', pie: 'Lámpara de pie', suel: 'Empotrado de suelo' };
         const ap = lucesAj[l.id]?.ap ?? 60, spot = l.kid === 'foco' || l.kid === 'plaf';
         return (
-          <div style={{ position: 'absolute', right: 12, top: 56, width: 260, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+          <div style={{ position: 'absolute', right: 12, top: 56, width: 260, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>💡 {nombres[l.kid] || 'Luminaria'} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(del plano)</span></div>
             <div style={{ opacity: 0.75, marginBottom: 6 }}>{cat ? cat.n + ' · ' + (cat.lm || '?') + ' lm · ' + (cat.w || '?') + ' W · ' + (cat.k || '?') + ' K' : 'Sin luminaria del catálogo asignada (se usa una estándar de 800 lm)'}</div>
             {spot && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Apertura del haz</span><input type="range" min="10" max="120" value={ap} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: parseInt(e.target.value, 10) } }))} style={{ flex: 1 }} /><span style={{ width: 34 }}>{ap}°</span></label>}
@@ -3563,7 +3604,7 @@ export default function Visor3D() {
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 10, display: 'flex', flexDirection: 'column', padding: 12, gap: 8 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#fff', flexWrap: 'wrap' }}>
             <b style={{ flex: 1 }}>🌐 Panorama 360° <span style={{ fontWeight: 400, opacity: 0.6, fontSize: 12 }}>arrastra para mirar alrededor · rueda para acercar</span></b>
-            {!pano.guardado && !pano.id && <button style={{ ...btn, background: '#7a4fc4' }} onClick={async () => { const r = await guardarRender('360', pano.url, pano.meta); if (r) setPano(p => ({ ...p, guardado: true })); }}>⭐ Guardar en la galería</button>}
+            {!pano.guardado && !pano.id && <button style={{ ...btn, background: '#8c8076' }} onClick={async () => { const r = await guardarRender('360', pano.url, pano.meta); if (r) setPano(p => ({ ...p, guardado: true })); }}>⭐ Guardar en la galería</button>}
             {pano.guardado && <span style={{ color: '#7bd88f' }}>Guardado ✓</span>}
             <a style={{ ...btn, textDecoration: 'none' }} href={pano.url} download={(titulo || 'plano') + '-panorama-360.jpg'}>Descargar</a>
             <button style={btn} onClick={() => setPano(null)}>Cerrar</button>
@@ -3578,7 +3619,7 @@ export default function Visor3D() {
           <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 8 }}>Una escena recuerda la cámara, la hora, las luces, las capas visibles y los textos de la IA. Colócate, ponle nombre y guárdala: luego vuelves a ella o la renderizas.</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             <input value={escNombre} onChange={e => setEscNombre(e.target.value)} placeholder="Nombre (ej. Salón desde la entrada)" onKeyDown={e => { if (e.key === 'Enter') guardarEscena(); }} style={{ ...btn, flex: 1, minWidth: 0 }} />
-            <button style={{ ...btn, background: '#2f6fa8' }} onClick={guardarEscena} title="Guarda la vista actual como escena">＋ Guardar</button>
+            <button style={{ ...btn, background: '#6b6159' }} onClick={guardarEscena} title="Guarda la vista actual como escena">＋ Guardar</button>
           </div>
           {!escenas.length && <p style={{ opacity: 0.65 }}>Aún no hay escenas.</p>}
           {escenas.map(e => (
@@ -3591,14 +3632,14 @@ export default function Visor3D() {
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                 <button style={{ ...btn, padding: '3px 9px' }} onClick={() => irAEscena(e)}>Ir a la escena</button>
                 <button style={{ ...btn, padding: '3px 9px' }} onClick={() => actualizarEscena(e.id)} title="Sustituye la escena por la vista de ahora">Actualizar</button>
-                <button style={{ ...btn, padding: '3px 9px', background: '#7a4fc4' }} disabled={!!lote} onClick={() => renderEscena(e, 'ia')} title="Va a la escena y genera el render con IA, que se guarda en la galería">✨ IA</button>
+                <button style={{ ...btn, padding: '3px 9px', background: '#8c8076' }} disabled={!!lote} onClick={() => renderEscena(e, 'ia')} title="Va a la escena y genera el render con IA, que se guarda en la galería">✨ IA</button>
                 <button style={{ ...btn, padding: '3px 9px' }} disabled={!!lote} onClick={() => renderEscena(e, 'hd')} title="Va a la escena y guarda un render HD en la galería">🖼 HD</button>
               </div>
             </div>
           ))}
           {escenas.length > 1 && (
             <div style={{ borderTop: '1px solid #333', paddingTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button style={{ ...btn, background: '#7a4fc4' }} disabled={!!lote} onClick={() => renderTodas('ia')}>✨ Todas con IA ({escenas.length})</button>
+              <button style={{ ...btn, background: '#8c8076' }} disabled={!!lote} onClick={() => renderTodas('ia')}>✨ Todas con IA ({escenas.length})</button>
               <button style={btn} disabled={!!lote} onClick={() => renderTodas('hd')}>🖼 Todas en HD</button>
             </div>
           )}
@@ -3669,7 +3710,7 @@ export default function Visor3D() {
           <b>Zona por medidas</b>
           <select value={zForm.forma} onChange={e => setZForm(f => ({ ...f, forma: e.target.value }))} style={{ ...btn, padding: '2px 6px' }}><option value="rect">Rectángulo</option><option value="oval">Óvalo</option></select>
           {[['x', alz.tipo === 'muro' ? 'desde inicio' : 'desde esquina X'], ['y', alz.tipo === 'muro' ? 'desde suelo' : 'desde esquina Y'], ['w', 'ancho'], ['h', 'alto']].map(([k, et]) => <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ opacity: 0.65 }}>{et}</span><input type="number" value={zForm[k]} onChange={e => setZForm(f => ({ ...f, [k]: e.target.value }))} style={{ ...btn, width: 58, padding: '2px 5px' }} /></label>)}
-          <button style={{ ...btn, background: '#2f6fa8' }} onClick={crearZonaMedidas} title="Crea la zona con el material que tengas elegido en 🎨 Materiales (o beige si no hay ninguno)">＋ Crear zona</button>
+          <button style={{ ...btn, background: '#6b6159' }} onClick={crearZonaMedidas} title="Crea la zona con el material que tengas elegido en 🎨 Materiales (o beige si no hay ninguno)">＋ Crear zona</button>
           <span style={{ width: 1, height: 20, background: '#444' }} />
           <button style={btn} onClick={async () => { try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-' + alz.tipo + '-' + alz.id + '.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar la lámina: ' + (e.message || 'error')); } }} title="Guarda esta vista con todas sus cotas como imagen">⬇ Lámina</button>
           <button style={{ ...btn, background: '#7a2b2b' }} onClick={salirAlzado}>Salir (Esc)</button>
@@ -3684,7 +3725,7 @@ export default function Visor3D() {
             {[[160, 'De pie'], [120, 'Sentado'], [90, 'Mesa'], [400, 'Alta'], [900, 'Dron']].map(([v, n]) => <button key={v} style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => camAltura(v)}>{n} {v}</button>)}
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={mantenerNivel} onChange={e => setMantenerNivel(e.target.checked)} /> Al cambiar la altura, mantener la inclinación</label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.75 }}>Inclinación °</span><input type="number" step="1" value={camInfo.pitch} onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) camPitch(Math.max(-89, Math.min(89, v))); }} style={{ ...btn, width: 80 }} /><button style={{ ...btn, padding: '3px 8px', background: '#2f6fa8' }} onClick={camNivelar} title="Pone la cámara a nivel: mira al horizonte, sin subir ni bajar">Nivelar</button></label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.75 }}>Inclinación °</span><input type="number" step="1" value={camInfo.pitch} onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) camPitch(Math.max(-89, Math.min(89, v))); }} style={{ ...btn, width: 80 }} /><button style={{ ...btn, padding: '3px 8px', background: '#6b6159' }} onClick={camNivelar} title="Pone la cámara a nivel: mira al horizonte, sin subir ni bajar">Nivelar</button></label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.75 }}>Focal (mm)</span><input type="range" min="12" max="70" value={Math.max(12, Math.min(70, camInfo.f))} onChange={e => camFocal(parseInt(e.target.value, 10))} style={{ flex: 1 }} /><span style={{ width: 36, textAlign: 'right' }}>{camInfo.f}</span></label>
           <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>{[[16, 'Muy ancha'], [24, 'Ancha'], [35, 'Normal'], [50, 'Corta']].map(([v, n]) => <button key={v} style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => camFocal(v)} title={n}>{v}</button>)}</div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.75 }}>Verticales rectas</span><input type="range" min="-0.5" max="0.5" step="0.01" value={shiftY} onChange={e => camShift(parseFloat(e.target.value))} style={{ flex: 1 }} /><button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => camShift(0)}>0</button></label>
@@ -3695,19 +3736,19 @@ export default function Visor3D() {
         const fila = (n, v, mn, mx, st, fn, tx) => (
           <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>{n}</span><input type="range" min={mn} max={mx} step={st} value={v} onChange={e => fn(parseFloat(e.target.value))} style={{ flex: 1 }} /><span style={{ width: 46, textAlign: 'right', fontSize: 11 }}>{tx}</span></label>
         );
-        const sec = (t, hijos) => <div style={{ borderTop: '1px solid #333', paddingTop: 8, marginTop: 8 }}><div style={{ fontWeight: 700, marginBottom: 6, color: '#c9b6ff' }}>{t}</div>{hijos}</div>;
+        const sec = (t, hijos) => <div style={{ borderTop: '1px solid #333', paddingTop: 8, marginTop: 8 }}><div style={{ fontWeight: 700, marginBottom: 6, color: '#baafa5' }}>{t}</div>{hijos}</div>;
         const nombreRes = { 1920: 'Full HD · 1920 px', 3200: 'Alta · 3200 px', 3840: '4K · 3840 px', 5120: '5K · 5120 px' };
         return (
-          <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 300, overflowY: 'auto', background: 'rgba(20,20,22,0.97)', color: '#fff', borderRadius: 8, padding: '0 14px 14px', fontSize: 13, zIndex: 8 }}>
-            <div style={{ position: 'sticky', top: 0, background: 'rgb(20,20,22)', padding: '12px 0 8px', zIndex: 2, display: 'flex', alignItems: 'center' }}><b style={{ flex: 1, fontSize: 15 }}>🎬 Render</b><button style={{ ...btn, padding: '2px 8px' }} onClick={() => setRenderAbierto(false)}>✕</button></div>
+          <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 300, overflowY: 'auto', background: 'rgba(22,20,18,0.97)', color: '#fff', borderRadius: 8, padding: '0 14px 14px', fontSize: 13, zIndex: 8 }}>
+            <div style={{ position: 'sticky', top: 0, background: 'rgb(22,20,18)', padding: '12px 0 8px', zIndex: 2, display: 'flex', alignItems: 'center' }}><b style={{ flex: 1, fontSize: 15 }}>🎬 Render</b><button style={{ ...btn, padding: '2px 8px' }} onClick={() => setRenderAbierto(false)}>✕</button></div>
             <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
-              <button style={{ ...btn, flex: 1, ...(!realista ? { background: '#2f6fa8' } : {}) }} onClick={() => setRealista(false)} title="Vista rápida">Rápido</button>
-              <button style={{ ...btn, flex: 1, ...(realista ? { background: '#7a4fc9' } : {}) }} onClick={() => setRealista(true)} title="Reflejos, sombras de contacto y bordes suaves en tiempo real">✨ Realista</button>
+              <button style={{ ...btn, flex: 1, ...(!realista ? { background: '#6b6159' } : {}) }} onClick={() => setRealista(false)} title="Vista rápida">Rápido</button>
+              <button style={{ ...btn, flex: 1, ...(realista ? { background: '#8c8076' } : {}) }} onClick={() => setRealista(true)} title="Reflejos, sombras de contacto y bordes suaves en tiempo real">✨ Realista</button>
             </div>
             {sec('Preajustes de ambiente', <>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                 <button style={btn} onClick={() => { setRealista(true); setEntorno('dia'); setHora(14); setAmbiente(a => ({ ...a, exposicion: 1, luces: 1, kLuces: null })); setFx(FX0); }}>☀ Día claro</button>
-                <button style={{ ...btn, background: '#7a4fc9' }} onClick={() => { setRealista(true); setEntorno('calido'); setHora(21); setAmbiente(a => ({ ...a, exposicion: 1.2, luces: 2.4, kLuces: 2700 })); setFx({ contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.45 }); }} title="Luz cálida de interior con resplandor, como un render de gimnasio nocturno">🌙 Interior cálido</button>
+                <button style={{ ...btn, background: '#8c8076' }} onClick={() => { setRealista(true); setEntorno('calido'); setHora(21); setAmbiente(a => ({ ...a, exposicion: 1.2, luces: 2.4, kLuces: 2700 })); setFx({ contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.45 }); }} title="Luz cálida de interior con resplandor, como un render de gimnasio nocturno">🌙 Interior cálido</button>
                 <button style={btn} onClick={() => { setRealista(true); setEntorno('noche'); setHora(21); setAmbiente(a => ({ ...a, exposicion: 1.1, luces: 2.2, kLuces: null })); setFx({ ...FX0, bloom: 0.35, vineta: 0.2 }); }}>🌃 Noche</button>
               </div>
             </>)}
@@ -3739,7 +3780,7 @@ export default function Visor3D() {
             {sec('Salida', <>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Resolución</span><select value={resRender} onChange={e => setResRender(parseInt(e.target.value, 10))} style={{ ...btn, flex: 1 }}>{Object.entries(nombreRes).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}><span style={{ width: 92, opacity: 0.75 }}>Formato</span><select value={formatoRender} onChange={e => setFormatoRender(e.target.value)} style={{ ...btn, flex: 1 }}><option value="jpg">JPG (ligero)</option><option value="png">PNG (sin pérdida)</option></select></label>
-              <button style={{ ...btn, width: '100%', background: '#7a4fc9', fontWeight: 700, padding: '9px 0', fontSize: 14 }} disabled={renderizando || estado !== 'listo'} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.' + (formatoRender === 'png' ? 'png' : 'jpg'); el.click(); setGuardado('Render descargado ✓'); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }}>{renderizando ? 'Renderizando…' : '🎬 Renderizar y descargar'}</button>
+              <button style={{ ...btn, width: '100%', background: '#8c8076', fontWeight: 700, padding: '9px 0', fontSize: 14 }} disabled={renderizando || estado !== 'listo'} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.' + (formatoRender === 'png' ? 'png' : 'jpg'); el.click(); setGuardado('Render descargado ✓'); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }}>{renderizando ? 'Renderizando…' : '🎬 Renderizar y descargar'}</button>
               <button style={{ ...btn, width: '100%', marginTop: 6 }} disabled={renderizando || estado !== 'listo'} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); await guardarRender('hd', u, metaActual(), undefined); setGuardado('Render guardado en la galería ✓'); } catch (e) { setAviso('No se ha podido guardar el render'); } setRenderizando(false); }}>Guardar en la galería</button>
               <button style={{ ...btn, width: '100%', marginTop: 6 }} onClick={() => setIaForm(true)} title="Mejora la vista con IA usando tus materiales como referencia">🤖 Render con IA</button>
               <button style={{ ...btn, width: '100%', marginTop: 6 }} onClick={exportarGLB} title="Descarga el modelo para abrirlo en D5 o Blender">⬇ Exportar a D5 (.glb)</button>
@@ -3748,7 +3789,7 @@ export default function Visor3D() {
         );
       })()}
       {ambAbierto && (
-        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', width: 300, background: 'rgba(20,20,20,0.95)', color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 13, zIndex: 6 }}>
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', width: 300, background: 'rgba(22,20,18,0.95)', color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 13, zIndex: 6 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>☀ Ambiente</div>
           {[['Hora del sol', hora, 6, 21, 0.5, v => setHora(v), hora + ':00'.slice(0, 0) + ' h'], ['Exposición', ambiente.exposicion, 0.3, 2.5, 0.05, v => setAmbiente(a => ({ ...a, exposicion: v })), ambiente.exposicion.toFixed(2)], ['Intensidad luces', ambiente.luces, 0.2, 4, 0.1, v => setAmbiente(a => ({ ...a, luces: v })), '×' + ambiente.luces.toFixed(1)]].map(([n, v, mn, mx, st, fn, tx]) => (
             <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 100, opacity: 0.75 }}>{n}</span><input type="range" min={mn} max={mx} step={st} value={v} onChange={e => fn(parseFloat(e.target.value))} style={{ flex: 1 }} /><span style={{ width: 44, textAlign: 'right' }}>{tx}</span></label>
@@ -3764,23 +3805,49 @@ export default function Visor3D() {
         </div>
       )}
       {ayudaAbierta && (
-        <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', width: 420, background: 'rgba(20,20,20,0.95)', color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 12, zIndex: 6, lineHeight: 1.6 }}>
-          <b>Atajos</b> <span style={{ opacity: 0.6 }}>(no funcionan escribiendo en un campo)</span><br />
-          <b>Ctrl+Z</b> deshacer · <b>Ctrl+Y</b> rehacer · <b>Supr</b> borrar · <b>Ctrl+D</b> duplicar · <b>R</b> girar 90°<br />
-          <b>Flechas</b> mover 5 cm (con Mayús 50) · <b>Re Pág / Av Pág</b> subir/bajar<br />
-          <b>Botón central</b> (rueda pulsada) girar la vista · con <b>Mayús</b> desplazarla · <b>Botón derecho</b> desplazar · <b>Rueda</b> acercar<br /><b>W A S D</b> moverse (delante, atrás, lados) · <b>Q / E</b> bajar / subir · <b>Mayús</b> más rápido<br /><b>1</b> mover · <b>2</b> caja · <b>3</b> contorno · <b>4</b> empujar · <b>5</b> guía · <b>6</b> muro · <b>7</b> luz · <b>Esc</b> deseleccionar (o cancelar lo que estés dibujando) · <b>Espacio</b> herramienta Seleccionar
+        <div style={{ position: 'absolute', top: 56, right: 12, width: 380, maxHeight: 'calc(100vh - 70px)', overflowY: 'auto', background: 'rgba(22,20,18,0.97)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 12, zIndex: 8, lineHeight: 1.5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}><b style={{ flex: 1, fontSize: 14 }}>Comandos</b><button style={{ ...btn, padding: '2px 8px' }} onClick={() => setAyudaAbierta(false)}>✕</button></div>
+          <div style={{ opacity: 0.7, marginBottom: 8 }}>Pulsa <b>Ctrl+K</b> o <b>/</b> para buscar cualquier comando por su nombre. Las letras no funcionan escribiendo en un campo.</div>
+          {['Herramientas', 'Edición', 'Vista', 'Panel', 'Render'].map(g => (
+            <div key={g} style={{ marginBottom: 6 }}>
+              <div style={{ opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: 10, margin: '4px 0 2px' }}>{g}</div>
+              {comandos().filter(x => x.g === g).map(x => <div key={x.n} onClick={() => { x.f(); }} style={{ display: 'flex', alignItems: 'center', padding: '2px 4px', cursor: 'pointer', borderRadius: 4 }}><span style={{ flex: 1 }}>{x.n}</span>{x.k && <kbd style={{ background: '#34302c', border: '1px solid #4f4842', borderRadius: 4, padding: '0 6px', fontSize: 11 }}>{x.k}</kbd>}</div>)}
+            </div>
+          ))}
+          <div style={{ opacity: 0.6, marginTop: 6, borderTop: '1px solid #3a342f', paddingTop: 6 }}>
+            <b>W A S D</b> moverse · <b>Q / E</b> bajar / subir · <b>Mayús</b> más rápido<br />
+            <b>Flechas</b> mover 5 cm (con Mayús 50) · <b>Re Pág / Av Pág</b> subir/bajar<br />
+            <b>Botón central</b> girar la vista · con <b>Mayús</b> desplazarla · <b>Botón derecho</b> desplazar · <b>Rueda</b> acercar<br />
+            <b>Esc</b> deselecciona o cancela · <b>Enter</b> cierra lo que dibujas
+          </div>
         </div>
       )}
+      {cmdPal && (() => {
+        const norm = t => String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const lista = comandos().filter(x => !cmdPal.q || norm(x.n + ' ' + x.g).includes(norm(cmdPal.q))).slice(0, 9), idx = Math.min(cmdPal.i, Math.max(0, lista.length - 1));
+        const ejecuta = x => { setCmdPal(null); x?.f(); };
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 30, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: 90, background: 'rgba(0,0,0,0.25)' }} onClick={() => setCmdPal(null)}>
+            <div style={{ width: 460, background: 'rgb(30,27,24)', border: '1px solid #4f4842', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.5)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+              <input autoFocus value={cmdPal.q} placeholder="Escribe un comando: rectángulo, render, ocultar, planta…" onChange={e => setCmdPal({ q: e.target.value, i: 0 })}
+                onKeyDown={e => { if (e.key === 'Escape') setCmdPal(null); else if (e.key === 'ArrowDown') { e.preventDefault(); setCmdPal(p => ({ ...p, i: Math.min(p.i + 1, lista.length - 1) })); } else if (e.key === 'ArrowUp') { e.preventDefault(); setCmdPal(p => ({ ...p, i: Math.max(0, p.i - 1) })); } else if (e.key === 'Enter') { e.preventDefault(); ejecuta(lista[idx]); } }}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: 'transparent', border: 'none', borderBottom: '1px solid #3a342f', color: '#fff', fontSize: 15, outline: 'none' }} />
+              {lista.map((x, i) => <div key={x.n} onClick={() => ejecuta(x)} onMouseEnter={() => setCmdPal(p => ({ ...p, i }))} style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', cursor: 'pointer', background: i === idx ? '#3a342f' : 'transparent', color: '#fff', fontSize: 13 }}><span style={{ flex: 1 }}>{x.n}</span><span style={{ opacity: 0.45, fontSize: 11, marginRight: 8 }}>{x.g}</span>{x.k && <kbd style={{ background: '#34302c', border: '1px solid #4f4842', borderRadius: 4, padding: '0 6px', fontSize: 11 }}>{x.k}</kbd>}</div>)}
+              {!lista.length && <div style={{ padding: '12px 14px', opacity: 0.6 }}>Ningún comando se llama así</div>}
+            </div>
+          </div>
+        );
+      })()}
       {aviso && (
-        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', maxWidth: 560, background: 'rgba(20,20,20,0.95)', color: '#fff', borderRadius: 8, padding: '8px 12px', fontSize: 13, zIndex: 7, display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', maxWidth: 560, background: 'rgba(22,20,18,0.95)', color: '#fff', borderRadius: 8, padding: '8px 12px', fontSize: 13, zIndex: 7, display: 'flex', gap: 10, alignItems: 'center' }}>
           <span>{aviso}</span><button style={btn} onClick={() => setAviso('')}>OK</button>
         </div>
       )}
       {selHueco && (
-        <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 70px)', overflowY: 'auto', background: 'rgba(20,20,20,0.96)', color: '#fff', borderRadius: 8, padding: '0 14px 12px', fontSize: 13 }}>
-          <div style={{ position: 'sticky', top: 0, background: 'rgb(20,20,20)', padding: '12px 0 8px', marginBottom: 4, zIndex: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 70px)', overflowY: 'auto', background: 'rgba(22,20,18,0.96)', color: '#fff', borderRadius: 8, padding: '0 14px 12px', fontSize: 13 }}>
+          <div style={{ position: 'sticky', top: 0, background: 'rgb(22,20,18)', padding: '12px 0 8px', marginBottom: 4, zIndex: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
             <b style={{ flex: 1 }}>{selHueco.tipo === 'door' ? 'Puerta' : selHueco.tipo === 'win' ? 'Ventana' : 'Hueco'} del plano</b>
-            <button style={{ ...btn, background: '#2f6fa8', padding: '4px 10px' }} onClick={aplicarHueco} title="Escribe en el plano las medidas, el tipo y la hoja de arriba">Aplicar al plano</button>
+            <button style={{ ...btn, background: '#6b6159', padding: '4px 10px' }} onClick={aplicarHueco} title="Escribe en el plano las medidas, el tipo y la hoja de arriba">Aplicar al plano</button>
             <button style={{ ...btn, padding: '4px 8px' }} onClick={() => setSelHueco(null)}>✕</button>
           </div>
           {[['w', 'Ancho'], ['h', 'Alto'], ['sill', 'Altura desde el suelo'], ['p', 'Posición']].map(([k, et]) => (
@@ -3832,7 +3899,7 @@ export default function Visor3D() {
           })()}
           <div style={{ opacity: 0.55, fontSize: 11, margin: '4px 0 8px' }}>Posición = distancia desde el inicio del muro hasta el borde del hueco. Se cambia también en el plano 2D.</div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button style={{ ...btn, background: '#2f6fa8' }} onClick={aplicarHueco}>Aplicar al plano</button>
+            <button style={{ ...btn, background: '#6b6159' }} onClick={aplicarHueco}>Aplicar al plano</button>
             <button style={btn} onClick={() => setSelHueco(null)}>Cerrar</button>
           </div>
         </div>
@@ -3862,11 +3929,11 @@ export default function Visor3D() {
           try { await api.delete('/medicion/' + id + '/textura/' + t.id); setTexturas(x => x.filter(y => y.id !== t.id)); if (matSel?.id === t.id) setMatSel(null); } catch { setGuardado('No se pudo quitar'); }
         };
         return (
-          <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
+          <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700, marginBottom: 2 }}>🎨 Materiales (pincel)</div>
             <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 6 }}>Elige un material y haz clic en lo que quieras pintar. Alt + clic copia el material de lo que toques (gotero).</div>
             <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
-              {[['cara', 'Cara'], ['pieza', 'Pieza'], ['todo', 'Entero']].map(([v, n]) => <button key={v} style={{ ...btn, flex: 1, ...(modoPincel === v ? { background: '#2f6fa8' } : {}) }} onClick={() => setModoPincel(v)}>{n}</button>)}
+              {[['cara', 'Cara'], ['pieza', 'Pieza'], ['todo', 'Entero']].map(([v, n]) => <button key={v} style={{ ...btn, flex: 1, ...(modoPincel === v ? { background: '#6b6159' } : {}) }} onClick={() => setModoPincel(v)}>{n}</button>)}
             </div>
             <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>{modoPincel === 'cara' ? 'Cara: pinta solo la superficie que tocas (el asiento de un sillón, un lado de una pared, una chapa de una máquina), hasta donde llegue la curva suave.' : modoPincel === 'pieza' ? 'Pieza: pinta la parte completa (todo el muro, toda una pieza del modelo).' : 'Entero: pinta todo el elemento (todos los muros, todo el mueble…).'}</div>
             {modoPincel === 'cara' && <>
@@ -3876,16 +3943,16 @@ export default function Visor3D() {
             </>}
             <div style={{ opacity: 0.7, marginBottom: 4 }}>Colores</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
-              {base.map(c => <span key={c} onClick={() => elegir({ hex: c })} title={c} style={{ width: 24, height: 24, background: c, borderRadius: 4, cursor: 'pointer', border: esSel({ hex: c }) ? '2px solid #4da3ff' : '1px solid #555' }} />)}
+              {base.map(c => <span key={c} onClick={() => elegir({ hex: c })} title={c} style={{ width: 24, height: 24, background: c, borderRadius: 4, cursor: 'pointer', border: esSel({ hex: c }) ? '2px solid #baafa5' : '1px solid #555' }} />)}
             </div>
             <div style={{ opacity: 0.7, marginBottom: 4 }}>💡 Luz LED (material emisivo)</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 4 }}>
-              {[['#ffa757', '2700 K cálida'], ['#ffb16e', '3000 K'], ['#ffcb9f', '4000 K neutra'], ['#ffe4ce', '5000 K'], ['#fff9fd', '6500 K fría'], ['#ff2a2a', 'Rojo'], ['#22ff66', 'Verde'], ['#2a5bff', 'Azul'], ['#ff2ad4', 'Magenta'], ['#2affea', 'Cian']].map(([h, n]) => <span key={h} onClick={() => elegir({ hex: h + '!' })} title={'LED ' + n} style={{ width: 24, height: 24, background: h, borderRadius: 12, cursor: 'pointer', boxShadow: '0 0 8px ' + h, border: esSel({ hex: h + '!' }) ? '2px solid #4da3ff' : '1px solid #555' }} />)}
+              {[['#ffa757', '2700 K cálida'], ['#ffb16e', '3000 K'], ['#ffcb9f', '4000 K neutra'], ['#ffe4ce', '5000 K'], ['#fff9fd', '6500 K fría'], ['#ff2a2a', 'Rojo'], ['#22ff66', 'Verde'], ['#2a5bff', 'Azul'], ['#ff2ad4', 'Magenta'], ['#2affea', 'Cian']].map(([h, n]) => <span key={h} onClick={() => elegir({ hex: h + '!' })} title={'LED ' + n} style={{ width: 24, height: 24, background: h, borderRadius: 12, cursor: 'pointer', boxShadow: '0 0 8px ' + h, border: esSel({ hex: h + '!' }) ? '2px solid #baafa5' : '1px solid #555' }} />)}
             </div>
             <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>Pinta con ellos una cara, una caja o una zona y se ilumina. Una <b>caja</b> o una <b>zona</b> LED además alumbra la sala.</div>
             <div style={{ opacity: 0.7, marginBottom: 4 }}>Tu paleta (NCS, RAL, marcas…)</div>
             {paleta.map((p, i) => (
-              <div key={i} onClick={() => elegir({ hex: p.hex })} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 2px', cursor: 'pointer', background: esSel({ hex: p.hex }) ? '#2a3a52' : 'transparent', borderRadius: 4 }}>
+              <div key={i} onClick={() => elegir({ hex: p.hex })} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 2px', cursor: 'pointer', background: esSel({ hex: p.hex }) ? '#3a342f' : 'transparent', borderRadius: 4 }}>
                 <span style={{ width: 20, height: 20, background: p.hex, borderRadius: 4, border: '1px solid #555', flex: 'none' }} />
                 <span style={{ flex: 1 }}>{p.nombre}</span><span style={{ opacity: 0.5, fontSize: 11 }}>{p.hex}</span>
                 <span onClick={e => { e.stopPropagation(); setPaleta(x => x.filter((_, j) => j !== i)); }} style={{ opacity: 0.6, padding: '0 4px' }}>✕</span>
@@ -3910,7 +3977,7 @@ export default function Visor3D() {
             <div style={{ opacity: 0.7, marginBottom: 4 }}>Texturas</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
               {texturas.map(t => (
-                <div key={t.id} onClick={() => elegir({ id: t.id })} title={t.nombre + ' · ' + t.tam + ' cm'} style={{ position: 'relative', cursor: 'pointer', border: esSel({ id: t.id }) ? '2px solid #4da3ff' : '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
+                <div key={t.id} onClick={() => elegir({ id: t.id })} title={t.nombre + ' · ' + t.tam + ' cm'} style={{ position: 'relative', cursor: 'pointer', border: esSel({ id: t.id }) ? '2px solid #baafa5' : '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
                   <img src={t.url} alt={t.nombre} style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
                   <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.nombre}</div>
                   {!t.fijo && <span onClick={e => { e.stopPropagation(); quitarTex(t); }} style={{ position: 'absolute', top: 1, right: 3, background: '#000a', borderRadius: 3, padding: '0 4px', fontSize: 11 }}>✕</span>}
@@ -3941,7 +4008,7 @@ export default function Visor3D() {
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (color)</span><input key={'jc' + t.id + (t.junta?.hex || '')} id="tx-jc" type="color" defaultValue={t.junta?.hex || '#bdbdbd'} /></label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (mm)</span><input key={'jm' + t.id + (t.junta?.mm || 0)} id="tx-jm" type="number" step="0.5" defaultValue={t.junta?.mm || 0} style={{ ...btn, width: 70 }} /></label>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => { const dsp = lee(); guarda({ hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) || 0 }, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Aplicar</button>
+                    <button style={{ ...btn, background: '#6b6159' }} onClick={() => { const dsp = lee(); guarda({ hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) || 0 }, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Aplicar</button>
                     <button style={btn} onClick={() => { const dsp = lee(); guarda(null, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Sin junta</button>
                   </div>
                   <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Material (como D5)</div>
@@ -3977,7 +4044,7 @@ export default function Visor3D() {
         });
         const paleta = ['#ffffff', '#f4f1ec', '#e8e2d8', '#d9cfc0', '#c9b9a0', '#b8a58c', '#a9b5a1', '#8fa3a8', '#7d8e9c', '#9d9a96', '#6e6a66', '#3a3a3c', '#c9a77c', '#8a6a4a', '#d9a7a0', '#b5695e'];
         return (
-          <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+          <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
             {esMuro && (() => {
               const mu = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []).find(m => m.id === selAcab.id);
               if (!mu) return null;
@@ -4002,11 +4069,11 @@ export default function Visor3D() {
             </label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {actual && <button style={btn} onClick={() => todos(actual)}>{esMuro ? 'A todos los muros' : 'A todos los suelos'}</button>}
-              {esMuro && <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => entrarAlzado('muro', selAcab.id)} title="Vista de frente de este muro solo, con todas sus medidas, para dibujar y marcar con precisión">📐 Alzado de este muro</button>}
-              {!esMuro && <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => entrarAlzado('suelo', selAcab.id)} title="Vista desde arriba de este suelo solo, con sus medidas">📐 Planta del suelo</button>}
-              {!esMuro && <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => entrarAlzado('techo', selAcab.id)} title="Vista del techo desde abajo, con sus medidas">📐 Planta del techo</button>}
+              {esMuro && <button style={{ ...btn, background: '#6b6159' }} onClick={() => entrarAlzado('muro', selAcab.id)} title="Vista de frente de este muro solo, con todas sus medidas, para dibujar y marcar con precisión">📐 Alzado de este muro</button>}
+              {!esMuro && <button style={{ ...btn, background: '#6b6159' }} onClick={() => entrarAlzado('suelo', selAcab.id)} title="Vista desde arriba de este suelo solo, con sus medidas">📐 Planta del suelo</button>}
+              {!esMuro && <button style={{ ...btn, background: '#6b6159' }} onClick={() => entrarAlzado('techo', selAcab.id)} title="Vista del techo desde abajo, con sus medidas">📐 Planta del techo</button>}
               {!esMuro && <button style={btn} onClick={() => moldurasSala(selAcab.id)} title="Un perfil (el elegido en Sígueme: rodapié, moldura…) recorre todo el perímetro de la sala">Moldura en el perímetro</button>}
-              {!esMuro && <button style={{ ...btn, background: '#2f6fa8' }} onClick={() => crearFalsoTecho(selAcab.id)} title="Crea un falso techo descolgado con un hueco perimetral (foseado) y luz LED">Falso techo con foseado</button>}
+              {!esMuro && <button style={{ ...btn, background: '#6b6159' }} onClick={() => crearFalsoTecho(selAcab.id)} title="Crea un falso techo descolgado con un hueco perimetral (foseado) y luz LED">Falso techo con foseado</button>}
               <button style={btn} onClick={quitar}>Quitar color</button>
               <button style={btn} onClick={() => setSelAcab(null)}>Cerrar</button>
             </div>
@@ -4017,12 +4084,12 @@ export default function Visor3D() {
         const lista = (b3d?.[b3dTab] || []).filter(m => (!b3dCat || m.categoria === b3dCat) && (!b3dFiltro || (m.nombre + ' ' + m.categoria).toLowerCase().includes(b3dFiltro.toLowerCase())));
         const cats = [...new Set((b3d?.[b3dTab] || []).map(m => m.categoria))].sort();
         return (
-          <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
+          <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700 }}>🧰 Biblioteca 3D <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>gratis · CC0</span></div>
             <div style={{ display: 'flex', gap: 6, margin: '6px 0' }}>
-              <button style={{ ...btn, flex: 1, ...(b3dTab === 'modelos' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setB3dTab('modelos'); setB3dCat(''); }}>Muebles</button>
-              <button style={{ ...btn, flex: 1, ...(b3dTab === 'mios' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setB3dTab('mios'); setB3dCat(''); }}>Mis modelos</button>
-              <button style={{ ...btn, flex: 1, ...(b3dTab === 'texturas' ? { background: '#2f6fa8' } : {}) }} onClick={() => { setB3dTab('texturas'); setB3dCat(''); }}>Texturas</button>
+              <button style={{ ...btn, flex: 1, ...(b3dTab === 'modelos' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('modelos'); setB3dCat(''); }}>Muebles</button>
+              <button style={{ ...btn, flex: 1, ...(b3dTab === 'mios' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('mios'); setB3dCat(''); }}>Mis modelos</button>
+              <button style={{ ...btn, flex: 1, ...(b3dTab === 'texturas' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('texturas'); setB3dCat(''); }}>Texturas</button>
             </div>
             <input value={b3dFiltro} onChange={e => setB3dFiltro(e.target.value)} placeholder="Buscar…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 6 }} />
             <select value={b3dCat} onChange={e => setB3dCat(e.target.value)} style={{ ...btn, marginBottom: 8 }}>
@@ -4033,11 +4100,11 @@ export default function Visor3D() {
               {b3d?.vacia && <p style={{ opacity: 0.7 }}>La biblioteca todavía no está cargada.</p>}
               {b3dTab === 'mios' && (
                 <div style={{ marginBottom: 8 }}>
-                  <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#2f6fa8', cursor: 'pointer' }}>⬆ Subir modelo (planta, mueble…)
+                  <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#6b6159', cursor: 'pointer' }}>⬆ Subir modelo (planta, mueble…)
                     <input type="file" accept=".glb,.gltf,.obj,.dae,.zip" style={{ display: 'none' }} onChange={e => { subirMio(e.target.files?.[0], b3dCat || 'Mis modelos'); e.target.value = ''; }} />
                   </label>
                   <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>Vale .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda para todos tus planos y no hace falta ligarlo a ningún producto.</div>
-                  {subiendoMio && <div style={{ fontSize: 11, marginTop: 4, color: '#9fd0ff' }}>{subiendoMio}</div>}
+                  {subiendoMio && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{subiendoMio}</div>}
                   {!lista.length && !subiendoMio && <p style={{ opacity: 0.6, fontSize: 12 }}>Todavía no has subido ninguno.</p>}
                 </div>
               )}
@@ -4064,7 +4131,7 @@ export default function Visor3D() {
         );
       })()}
       {bibAbierta && (
-        <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
+        <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
           <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar en el catálogo…" style={{ ...btn, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} />
           <div style={{ overflow: 'auto', flex: 1 }}>
             {!biblioteca && <p style={{ opacity: 0.6 }}>Cargando catálogo…</p>}
@@ -4089,10 +4156,10 @@ export default function Visor3D() {
         </div>
       )}
       {selExtra.length > 0 && (
-        <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+        <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>{idsSel.length} objetos seleccionados</div>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            <button style={{ ...btn, background: '#2f6fa8' }} onClick={agrupar} title="Al pulsar uno del grupo se seleccionan todos y se mueven juntos">Agrupar</button>
+            <button style={{ ...btn, background: '#6b6159' }} onClick={agrupar} title="Al pulsar uno del grupo se seleccionan todos y se mueven juntos">Agrupar</button>
             <button style={btn} onClick={desagrupar}>Desagrupar</button>
             <button style={btn} onClick={duplicarSel}>Duplicar</button>
             <button style={btn} onClick={() => moverSel({ z0: -100000 })} title="Los apoya en el suelo">⬇ Al suelo</button>
@@ -4102,7 +4169,7 @@ export default function Visor3D() {
         </div>
       )}
       {objSel && !selExtra.length && (
-        <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+        <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
           <input value={objSel.nombre} onChange={e => cambiar(objSel.id, { nombre: e.target.value })} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontWeight: 700, marginBottom: 8 }} />
           {[['cx', 'Posición X'], ['cy', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Altura desde suelo'], ['rot', 'Giro °']].filter(([k]) => {
             const t = objSel.tipo;
@@ -4122,7 +4189,7 @@ export default function Visor3D() {
               <button style={btn} onClick={() => cambiar(objSel.id, { rot: (((objSel.rot || 0) - 90) % 360 + 360) % 360 })} title="Gira 90° a la izquierda (tecla R: a la derecha)">⟲ 90°</button>
               <button style={btn} onClick={() => cambiar(objSel.id, { rot: ((objSel.rot || 0) + 90) % 360 })}>⟳ 90°</button>
               <button style={btn} onClick={() => cambiar(objSel.id, { rot: ((objSel.rot || 0) + 180) % 360 })}>↻ 180°</button>
-              <button style={{ ...btn, ...(objSel.espejo ? { background: '#2f6fa8' } : {}) }} onClick={() => cambiar(objSel.id, { espejo: !objSel.espejo })} title="Voltea el objeto como en un espejo (izquierda ↔ derecha)">⇋ Voltear</button>
+              <button style={{ ...btn, ...(objSel.espejo ? { background: '#6b6159' } : {}) }} onClick={() => cambiar(objSel.id, { espejo: !objSel.espejo })} title="Voltea el objeto como en un espejo (izquierda ↔ derecha)">⇋ Voltear</button>
             </div>
           )}
           {!['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(objSel.tipo) && (
@@ -4144,7 +4211,7 @@ export default function Visor3D() {
                     <input type="number" value={refGap} onChange={e => setRefGap(e.target.value)} style={{ ...btn, width: 70 }} title="Separación entre bordes (cm)" /><span style={{ opacity: 0.7 }}>cm</span>
                   </div>
                   {(() => { const T = objetivos().find(t => t.k === refObj); if (!T) return null; const O = mitades(objSel), ahora = refEje === 'x' ? Math.abs(objSel.cx - T.cx) - T.hx - O.hx : Math.abs(objSel.cy - T.cy) - T.hy - O.hy; return <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 4 }}>Ahora hay {Math.round(ahora * 10) / 10} cm entre bordes.</div>; })()}
-                  <button style={{ ...btn, background: '#2f6fa8' }} disabled={!refObj} onClick={() => colocarRespecto(objSel)}>Colocar a esa distancia</button>
+                  <button style={{ ...btn, background: '#6b6159' }} disabled={!refObj} onClick={() => colocarRespecto(objSel)}>Colocar a esa distancia</button>
                 </div>
               </details>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
@@ -4286,7 +4353,7 @@ export default function Visor3D() {
             <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>Material de la zona</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginBottom: 6 }}>
-                {texturas.map(t => <img key={t.id} src={t.url} alt={t.nombre} title={t.nombre} onClick={() => cambiar(objSel.id, { color: 'tex:' + t.id })} style={{ width: '100%', height: 38, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: objSel.color === 'tex:' + t.id ? '2px solid #4da3ff' : '1px solid #555' }} />)}
+                {texturas.map(t => <img key={t.id} src={t.url} alt={t.nombre} title={t.nombre} onClick={() => cambiar(objSel.id, { color: 'tex:' + t.id })} style={{ width: '100%', height: 38, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: objSel.color === 'tex:' + t.id ? '2px solid #baafa5' : '1px solid #555' }} />)}
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <input type="color" value={/^#/.test(objSel.color || '') ? objSel.color : '#c9b9a0'} onChange={e => cambiar(objSel.id, { color: e.target.value })} title="Un color liso" />
@@ -4360,7 +4427,7 @@ export default function Visor3D() {
         <div style={{ position: 'absolute', right: 12, top: 56, width: 250, maxHeight: 'calc(100vh - 70px)', overflowY: 'auto', background: 'rgba(20,20,20,0.92)', color: '#fff', borderRadius: 8, padding: '0 14px 12px', fontSize: 13, lineHeight: 1.5 }}>
           <div style={{ position: 'sticky', top: 0, background: 'rgba(20,20,20,0.98)', padding: '10px 0 6px', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, zIndex: 2 }}>
             <div style={{ fontWeight: 700, flex: 1 }}>{seleccion.nombre || 'Equipo'}</div>
-            <button style={{ ...btn, background: '#2f6fa8', padding: '4px 10px' }} onClick={aplicarEquipo}>Aplicar al plano</button>
+            <button style={{ ...btn, background: '#6b6159', padding: '4px 10px' }} onClick={aplicarEquipo}>Aplicar al plano</button>
             <button style={btn} onClick={() => setSeleccion(null)}>✕</button>
           </div>
           {eqNuevo && [['x', 'Posición X'], ['y', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación (z)'], ['rot', 'Giro °']].map(([k, et]) => (
@@ -4370,7 +4437,7 @@ export default function Visor3D() {
             </label>
           ))}
           
-          <button style={{ ...btn, background: '#2f6fa8', marginTop: 6 }} onClick={aplicarEquipo}>Aplicar al plano</button>
+          <button style={{ ...btn, background: '#6b6159', marginTop: 6 }} onClick={aplicarEquipo}>Aplicar al plano</button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 12 }}>
             <span style={{ flex: 1, opacity: 0.75 }}>Subir / bajar</span>
             {[[-10, '−10'], [-5, '−5'], [5, '+5'], [10, '+10']].map(([d, n]) => <button key={d} style={{ ...btn, padding: '2px 7px', fontSize: 11 }} onClick={() => setEqNuevo(s => ({ ...s, z0: Math.max(0, (parseFloat(s.z0) || 0) + d) }))}>{n}</button>)}
@@ -4390,7 +4457,7 @@ export default function Visor3D() {
                 </label>
                 {mod && <button style={{ ...btn, marginLeft: 6 }} onClick={quitarModeloEq}>Quitar</button>}
                 {mod && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }} title="Gira el modelo solo en esta máquina"><span style={{ opacity: 0.7 }}>Giro del modelo (solo esta)</span><select value={modosEq[seleccion.id]?.rotM || 0} onChange={e => { const v = parseInt(e.target.value, 10); refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], rotM: v } })); }} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></label>}
-                {mod && biblioteca?.find(m => m.id === seleccion.cid)?.bloque?.planta && <div style={{ marginTop: 6 }}><button style={{ ...btn, background: '#2f6fa8' }} onClick={() => alinearConPlano(false)} title="Compara el modelo con el dibujo de la planta de Planos y lo gira para que coincidan">🧭 Alinear con el plano</button><button style={{ ...btn, marginLeft: 6 }} onClick={() => alinearConPlano(true)} title="Lo mismo en todas las máquinas de este producto">en todas las iguales</button>{alinMsg && <div style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>{alinMsg}</div>}</div>}
+                {mod && biblioteca?.find(m => m.id === seleccion.cid)?.bloque?.planta && <div style={{ marginTop: 6 }}><button style={{ ...btn, background: '#6b6159' }} onClick={() => alinearConPlano(false)} title="Compara el modelo con el dibujo de la planta de Planos y lo gira para que coincidan">🧭 Alinear con el plano</button><button style={{ ...btn, marginLeft: 6 }} onClick={() => alinearConPlano(true)} title="Lo mismo en todas las máquinas de este producto">en todas las iguales</button>{alinMsg && <div style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>{alinMsg}</div>}</div>}
                 {mod && <details style={{ marginTop: 4, fontSize: 11 }}><summary style={{ cursor: 'pointer', opacity: 0.7 }}>Giro base del producto</summary><div style={{ opacity: 0.6, margin: '4px 0' }}>Afecta a TODAS las máquinas iguales. Úsalo solo si el archivo viene girado de origen.</div><select value={mod.rot || 0} onChange={e => girarModeloEq(parseInt(e.target.value, 10))} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></details>}
                 {subiendo && <div style={{ fontSize: 11, opacity: 0.8, marginTop: 4 }}>{subiendo}</div>}
                 <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>Formatos: .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda en el producto del catálogo y se ve igual en todos los planos. Si sale girado, usa «Giro del modelo».</div>
