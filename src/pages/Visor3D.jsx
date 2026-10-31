@@ -105,7 +105,7 @@ function texturaDe(t, uvEnCm) {
       const img = new Image(); img.crossOrigin = 'anonymous';
       img.onload = () => { const m = Math.min(0.4, j.mm / 10 / t.tam) * 512 / 2; cx.drawImage(img, m, m, 512 - 2 * m, 512 - 2 * m); x.needsUpdate = true; try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } };
       img.src = t.url;
-    } else x = new THREE.TextureLoader().load(t.url);
+    } else x = new THREE.TextureLoader().load(t.url, () => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } });
     x.wrapS = x.wrapT = THREE.RepeatWrapping; x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 4; x.repeat.set(k, k);
     if (t.pbr) x.userData.pbr = t.pbr;
     if (t.rot || t.ox || t.oy) { x.center.set(0.5, 0.5); x.rotation = (t.rot || 0) * Math.PI / 180; x.offset.set((t.ox || 0) / t.tam, (t.oy || 0) / t.tam); }
@@ -271,7 +271,7 @@ function cargarModelo(m) {
     else if (t === 'dae') new ColladaLoader().load(m.url, r => ok(fusionarModelo(r.scene)), undefined, mal);
     else new GLTFLoader().load(m.url, r => ok(fusionarModelo(r.scene)), undefined, mal);
   });
-  p.catch(() => cacheModelos.delete(m.url));
+  p.then(() => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } }, () => {}); p.catch(() => cacheModelos.delete(m.url));
   cacheModelos.set(m.url, p);
   return p;
 }
@@ -1122,6 +1122,7 @@ export default function Visor3D() {
   const selExtraRef = useRef([]); selExtraRef.current = selExtra;
   const selExtraKey = selExtra.join(',');
   const ocultarRef = useRef(null);
+  useEffect(() => { api3d.current.despertar?.(); }); // cualquier cambio en la pantalla (estado de React) vuelve a dibujar un momento
   const [herr, setHerr] = useState('sel');         // 'sel' | 'caja'
   const herrRef = useRef('sel');
   const [bibAbierta, setBibAbierta] = useState(false);
@@ -1366,7 +1367,9 @@ export default function Visor3D() {
       }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
       if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene); }
-      ctrl.update();
+      if (ctrl.update()) a0.despierta = ahora + 400;
+      if (!(movi || ahora < (a0.despierta || 0))) { a0.reposo = true; return; } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
+      a0.reposo = false;
       if (a0.composer) {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
         a0.composer.render();
@@ -1387,7 +1390,10 @@ export default function Visor3D() {
     ctrl.addEventListener('change', () => { ultMov = performance.now(); });
     ajustar(); bucle();
     window.addEventListener('resize', ajustar);
-    api3d.current = { renderer, scene, cam, ctrl, sol, raiz, esc, base, el, hemi };
+    api3d.current = { renderer, scene, cam, ctrl, sol, raiz, esc, base, el, hemi, despierta: performance.now() + 2000, despertar: () => { api3d.current.despierta = performance.now() + 1500; } };
+    const despertar = () => api3d.current.despertar?.();
+    const evsD = ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'contextmenu'];
+    evsD.forEach(n => window.addEventListener(n, despertar, { passive: true })); window.addEventListener('visor3d-tex', despertar); window.addEventListener('resize', despertar); ctrl.addEventListener('change', despertar);
 
     let ultima = null, primera = true;
     const cargar = () => api.get('/medicion/' + id).then(r => {
@@ -1984,7 +1990,7 @@ export default function Visor3D() {
     window.addEventListener('pointermove', onMoveD);
     window.addEventListener('pointerup', onUpD);
 
-    return () => { window.removeEventListener('keydown', onTecla); el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); window.removeEventListener('keydown', tDown); window.removeEventListener('keyup', tUp); renderer.dispose(); el.removeChild(renderer.domElement); };
+    return () => { evsD.forEach(n => window.removeEventListener(n, despertar)); window.removeEventListener('visor3d-tex', despertar); window.removeEventListener('resize', despertar); window.removeEventListener('keydown', onTecla); el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); window.removeEventListener('keydown', tDown); window.removeEventListener('keyup', tUp); renderer.dispose(); el.removeChild(renderer.domElement); };
   }, [id]);
 
   // Colores de muros y suelos (cambian sin rehacer el plano)
@@ -3278,9 +3284,21 @@ export default function Visor3D() {
   const sepTop = { width: 1, height: 22, background: '#444', margin: '0 2px', flex: 'none' };
   const itemMenu = { padding: '6px 8px', cursor: 'pointer', borderRadius: 4 };
   const railBtn = (activo, icono, etiqueta, titulo, onClick, color) => (
-    <button key={etiqueta} title={titulo} onClick={onClick} style={{ width: 50, padding: '3px 1px 2px', background: activo ? (color || '#2f6fa8') : 'transparent', color: activo && color === '#c9a21a' ? '#111' : '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-      <span style={{ lineHeight: 0, padding: '2px 0' }}>{typeof icono === 'string' && ICONOS[icono] ? <Ic n={icono} /> : <span style={{ fontSize: 16, lineHeight: '18px' }}>{icono}</span>}</span><span style={{ fontSize: 9, opacity: 0.85, whiteSpace: 'nowrap' }}>{etiqueta}</span>
+    <button key={etiqueta} title={titulo} onClick={onClick} style={{ width: 54, padding: '3px 0 2px', background: activo ? (color || '#2f6fa8') : 'transparent', color: activo && color === '#c9a21a' ? '#111' : '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+      <span style={{ lineHeight: 0, padding: '2px 0' }}>{typeof icono === 'string' && ICONOS[icono] ? <Ic n={icono} /> : <span style={{ fontSize: 16, lineHeight: '18px' }}>{icono}</span>}</span><span style={{ fontSize: 8.5, opacity: 0.85, whiteSpace: 'nowrap', letterSpacing: '-0.2px' }}>{etiqueta}</span>
     </button>
+  );
+  const [menuTop, setMenuTop] = useState(null);
+  const menuTop2 = (titulo, clave, items) => (
+    <span style={{ position: 'relative', flex: 'none' }}>
+      <button style={{ ...bTop, ...(menuTop === clave ? bOn : {}) }} onClick={() => setMenuTop(m => (m === clave ? null : clave))}>{titulo} ▾</button>
+      {menuTop === clave && <>
+        <div onClick={() => setMenuTop(null)} style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
+        <div style={{ position: 'absolute', top: 34, left: 0, minWidth: 210, background: 'rgb(30,30,30)', border: '1px solid #444', borderRadius: 8, padding: 4, zIndex: 21, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          {items.map(([n, fn, activo, desact, tit]) => <div key={n} title={tit} onClick={() => { if (desact) return; setMenuTop(null); fn(); }} style={{ padding: '7px 10px', borderRadius: 5, cursor: desact ? 'default' : 'pointer', opacity: desact ? 0.4 : 1, background: activo ? '#2f6fa8' : 'transparent', fontSize: 13, color: '#fff' }}>{n}</div>)}
+        </div>
+      </>}
+    </span>
   );
   const grupoRail = (hijos, ultimo, titulo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{titulo && <span style={{ fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.45, padding: '2px 0' }}>{titulo}</span>}{hijos}</div>;
   const menuRail = (abierto, setAbierto, boton, contenido, ancho) => <MenuRail key={'m' + (boton.key || '')} abierto={abierto} ancho={ancho} boton={boton}>{contenido}</MenuRail>;
@@ -3326,7 +3344,7 @@ export default function Visor3D() {
       {barraAxo}
       <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
       {/* ── Barra superior: plano, historial, vistas, ambiente y salidas (render, 360, galería, despiece) ── */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(24,24,24,0.94)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)', overflowX: 'auto' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(24,24,24,0.94)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
         <button style={bTop} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>
         <b style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</b>
         {guardado && guardado !== 'inicial' && <span style={{ opacity: 0.55, fontSize: 11, whiteSpace: 'nowrap' }}>{guardado}</span>}
@@ -3334,30 +3352,35 @@ export default function Visor3D() {
         <button style={bTop} onClick={() => deshacer()} title="Deshacer (Ctrl+Z)">↶</button>
         <button style={bTop} onClick={() => rehacer()} title="Rehacer (Ctrl+Y)">↷</button>
         <span style={sepTop} />
-        <button style={bTop} onClick={() => vista('persp')} title="Vista en perspectiva de todo el plano">Perspectiva</button>
-        <button style={bTop} onClick={() => vista('planta')} title="Vista desde arriba">Planta</button>
-        <button style={bTop} onClick={exportarGLB} title="Descarga el espacio en 3D (.glb) para abrirlo en D5 Render, Blender, etc. y hacer ahí un render fiel">⬇ Exportar a D5</button>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff', fontSize: 12 }} title="Óptica de la cámara: menos grados = más zoom (como un teleobjetivo); más grados = gran angular. Una persona ve nítido unos 30°; para ver más espacio en pantalla se usa 50°">
-          🔭 <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 80 }} /> <b style={{ minWidth: 70 }}>{lente}° · {mmDe(lente)} mm</b>
-          <select value="" onChange={e => { if (e.target.value) ponerLente(parseFloat(e.target.value)); }} style={bTop}><option value="">Óptica…</option><option value="90">Gran angular (90°)</option><option value="65">Interior amplio (65°)</option><option value="50">Interior natural (50°)</option><option value="30">Como una persona (30°)</option><option value="25">Teleobjetivo (25°)</option></select>
+        <span style={sepTop} />
+        {menuTop2('Vista', 'vista', [
+          ['Perspectiva', () => vista('persp'), false, false, 'Vista en perspectiva de todo el plano'],
+          ['Planta', () => vista('planta'), false, false, 'Vista desde arriba'],
+          ['Axonométrica', () => (axo ? salirAxo() : entrarAxo()), !!axo, estado !== 'listo' || !!alz || !!planta2d, 'Vista isométrica, sin perspectiva'],
+          ['Planta 2D', () => (planta2d ? salirPlanta2d() : entrarPlanta2d()), !!planta2d, estado !== 'listo' || !!alz || !!axo, 'Vista desde arriba en 2D para dibujar zonas y pintar salas'],
+          ['Recorrer (persona)', () => setPersona(v => !v), persona, false, 'Dentro del espacio a la altura de los ojos; W A S D para andar'],
+          ['Altura de los ojos', () => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }, false, false, 'Cámara a 1,60 m'],
+          ['Cámara…', () => setCamAbierta(v => !v), camAbierta, false, 'Altura, nivelar, focal y verticales rectas'],
+          ['Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), () => setEscAbierta(v => !v), escAbierta, false, 'Vistas guardadas'],
+        ])}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fff', fontSize: 12, flex: 'none', whiteSpace: 'nowrap' }} title="Óptica de la cámara: menos grados = más zoom; más grados = gran angular. Una persona ve nítido unos 30°">
+          <Ic n="cinta" /> <input type="range" min="12" max="110" value={lente} onChange={e => ponerLente(parseFloat(e.target.value))} style={{ width: 70 }} /> <b style={{ minWidth: 28 }}>{lente}°</b>
+          <select value="" onChange={e => { if (e.target.value) ponerLente(parseFloat(e.target.value)); }} style={{ ...bTop, width: 74 }}><option value="">Óptica</option><option value="90">Gran angular 90°</option><option value="65">Interior amplio 65°</option><option value="50">Interior natural 50°</option><option value="30">Como persona 30°</option><option value="25">Tele 25°</option></select>
         </span>
-        <button style={{ ...bTop, ...(axo ? { background: '#2f6fa8' } : {}) }} onClick={() => (axo ? salirAxo() : entrarAxo())} disabled={estado !== 'listo' || !!alz || !!planta2d} title="Vista axonométrica (isométrica): sin perspectiva, como en un plano de arquitectura 3D">🧊 Axonométrica</button>
-        <button style={{ ...bTop, ...(planta2d ? { background: '#2f6fa8' } : {}) }} onClick={() => (planta2d ? salirPlanta2d() : entrarPlanta2d())} disabled={estado !== 'listo' || !!alz || !!axo} title="Vista desde arriba en 2D: dibuja zonas de suelo o pinta salas enteras con tus texturas">📐 Planta 2D</button>
-        <button style={{ ...bTop, ...(persona ? { background: '#2f6fa8' } : {}) }} onClick={() => setPersona(v => !v)} title="Te pone dentro del espacio, a la altura de los ojos: andas despacio con W A S D y giras la vista con el ratón">🚶 Recorrer</button>
-        <button style={bTop} onClick={() => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }} title="Pone la cámara a la altura de los ojos (1,60 m): ideal antes de un render o un panorama">👁 Ojos</button>
-        <button style={{ ...bTop, ...(renderAbierto ? bOn : { background: '#7a4fc9' }), fontWeight: 700 }} onClick={() => { setRenderAbierto(v => !v); setSelObj(null); setSeleccion(null); }} title="Panel de render: luz, color, efectos y calidad de la imagen final, como en D5">🎬 Render</button>
-        <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">☀ Ambiente</button>
-        <button style={{ ...bTop, ...(camAbierta ? bOn : {}) }} onClick={() => setCamAbierta(v => !v)} title="Altura de la cámara, nivelarla, focal y verticales rectas">🎥 Cámara</button>
-        <button style={{ ...bTop, ...(escAbierta ? bOn : {}) }} onClick={() => setEscAbierta(v => !v)} title="Escenas guardadas: vistas a las que volver y desde las que renderizar">🎬 Escenas{escenas.length ? ' (' + escenas.length + ')' : ''}</button>
+        <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">Ambiente</button>
+        <button style={{ ...bTop, ...(renderAbierto ? bOn : { background: '#7a4fc9' }), fontWeight: 700 }} onClick={() => { setRenderAbierto(v => !v); setSelObj(null); setSeleccion(null); }} title="Panel de render: luz, color, efectos y calidad de la imagen final">Render</button>
         <span style={{ flex: 1, minWidth: 8 }} />
-        <button style={{ ...bTop, ...(realista ? { background: '#2f6fa8' } : {}) }} onClick={() => setRealista(v => !v)} title="Reflejos, sombras de contacto y bordes suaves. Si va lento, apágalo">✨ Realista</button>
+        <button style={{ ...bTop, ...(realista ? { background: '#2f6fa8' } : {}) }} onClick={() => setRealista(v => !v)} title="Reflejos, sombras de contacto y bordes suaves. Si va lento, apágalo">Realista</button>
         <select style={bTop} value={calidad} onChange={e => setCalidad(e.target.value)} title="Si va lento, baja la calidad"><option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option></select>
-        <button style={bTop} onClick={captura} title="Guarda la vista actual como imagen">📷</button>
-        <button style={bTop} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }} disabled={renderizando || estado !== 'listo'} title="Render HD limpio (3200 px) con sombras suaves">{renderizando ? 'Renderizando…' : '🖼 Render HD'}</button>
-        <button style={{ ...bTop, background: '#7a4fc4', borderColor: '#7a4fc4' }} onClick={abrirFormIA} disabled={estado !== 'listo' || ia?.estado === 'trabajando'} title="La IA convierte esta vista en una foto realista">✨ Render IA</button>
-        <button style={bTop} onClick={hacer360} disabled={generando360 || estado !== 'listo'} title="Panorama 360° desde donde está la cámara ahora mismo">{generando360 ? 'Generando…' : '🌐 360°'}</button>
-        <button style={{ ...bTop, ...(galAbierta ? bOn : {}) }} onClick={() => setGalAbierta(v => !v)} title="Renders y panoramas guardados">🖼 Galería{renders.length ? ' (' + renders.length + ')' : ''}</button>
-        <button style={bTop} onClick={abrirDespiece} title="Despiece y cantidades de todo lo diseñado (también salen en «Desde planos» del presupuesto)">📋 Despiece</button>
+        {menuTop2('Salida', 'salida', [
+          ['Captura de la vista', captura, false, false, 'Guarda la vista actual como imagen'],
+          [renderizando ? 'Renderizando…' : 'Render HD', async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }, false, renderizando || estado !== 'listo', 'Render HD limpio con sombras suaves'],
+          ['Render con IA', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'La IA convierte esta vista en una foto realista'],
+          [generando360 ? 'Generando 360°…' : 'Panorama 360°', hacer360, false, generando360 || estado !== 'listo', 'Panorama 360° desde la cámara'],
+          ['Galería' + (renders.length ? ' (' + renders.length + ')' : ''), () => setGalAbierta(v => !v), galAbierta, false, 'Renders y panoramas guardados'],
+          ['Despiece y cantidades', abrirDespiece, false, false, 'Despiece y cantidades de todo lo diseñado'],
+          ['Exportar a D5 (.glb)', exportarGLB, false, false, 'Descarga el espacio en 3D para abrirlo en D5 o Blender'],
+        ])}
         <button style={bTop} onClick={() => setAyudaAbierta(v => !v)} title="Atajos de teclado">?</button>
       </div>
 
@@ -3372,7 +3395,7 @@ export default function Visor3D() {
           railBtn(herr === 'poli' && formaDib === 'rect', 'rect', 'Rectángulo', 'Dibuja un rectángulo sobre el suelo y luego tira hacia arriba para darle altura', () => { setFormaDib('rect'); setHerr('poli'); }),
           railBtn(herr === 'poli' && formaDib === 'oval', 'circ', 'Círculo', 'Dibuja un círculo o elipse y luego tira hacia arriba para darle altura', () => { setFormaDib('oval'); setHerr('poli'); }),
           railBtn(herr === 'poli' && formaDib === 'poli', 'poli', 'Polígono', 'Clic punto a punto; cierra con Enter. Luego tira hacia arriba para darle altura', () => { setFormaDib('poli'); setHerr('poli'); }),
-          railBtn(herr === 'empujar', 'empujar', 'Empujar/Tirar', 'Arrastra la cara de arriba de una forma para darle o cambiarle la altura', () => setHerr('empujar')),
+          railBtn(herr === 'empujar', 'empujar', 'Empujar', 'Arrastra la cara de arriba de una forma para darle o cambiarle la altura', () => setHerr('empujar')),
         ], false, 'Dibujar')}
         {grupoRail([
           railBtn(herr === 'muro', 'muro', 'Muro', 'Dibuja muros: clic para empezar y cada punto; Mayús = recto. Se crean también en Planos', () => setHerr('muro')),
