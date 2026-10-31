@@ -469,6 +469,13 @@ async function alinearConBloque(raw, planta, L, F) {
   const orden = Object.entries(res).sort((p, q) => q[1] - p[1]);
   return { rot: parseInt(orden[0][0], 10), parecido: orden[0][1], claro: orden[0][1] - orden[1][1] > 0.02, res };
 }
+// Alineado automático: una sola vez por producto y modelo. Si el parecido es bajo (<50 %) no se toca nada
+const autoAlinCache = new Map();
+function autoAlinear(cid, raw, prod, mod) {
+  const k = cid + '|' + mod.url;
+  if (!autoAlinCache.has(k)) autoAlinCache.set(k, alinearConBloque(raw, prod.bloque.planta, prod.bloque.largo || prod.w, prod.bloque.fondo || prod.d).then(r => (r && r.parecido >= 0.5 ? r : null)).catch(() => null));
+  return autoAlinCache.get(k);
+}
 // El modelo se escala (sin deformarlo) para que quepa en las medidas del objeto y se apoya en el suelo, centrado
 // modo: 'caber' (mantiene proporciones y cabe en las medidas), 'estirar' (se deforma hasta las medidas exactas), 'nativo' (tamaño del archivo, en metros)
 // o 'auto' (tamaño original si es razonable; si no, cabe). Sin modo = 'caber'.
@@ -2185,6 +2192,17 @@ export default function Visor3D() {
       g.userData.modeloCargado = true;
       cargarModelo(mod).then(raw => {
         if (!g.parent) return;
+        // si nadie lo ha girado a mano, se alinea solo con el dibujo de la planta del producto (y se guarda para todas las máquinas iguales)
+        const prod = biblioteca.find(m => m.id === e.cid), me = modosEq[e.id];
+        if (prod?.bloque?.planta && !me?.alin && !me?.rotM && !mod.rot && !autoAlinCache.get('x|' + e.cid)) {
+          autoAlinear(e.cid, raw, prod, mod).then(r => {
+            if (!r) { autoAlinCache.set('x|' + e.cid, true); g.userData.modeloCargado = false; setModosEq(m => ({ ...m })); return; }
+            const ids = (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(pl => pl?.equipos || []).filter(x => x.cid === e.cid).map(x => x.id);
+            refrescarModelosEq();
+            setModosEq(m => { const n = { ...m }; (ids.length ? ids : [e.id]).forEach(i => { if (!n[i]?.alin && !n[i]?.rotM) n[i] = { modo: 'estirar', ...n[i], rotM: r.rot % 360, alin: true }; }); return n; });
+          });
+          return;
+        }
         const rotE = (mod.rot || 0) + (modosEq[e.id]?.rotM || 0) + (!mod.rot && !modosEq[e.id]?.rotM && !modosEq[e.id]?.alin ? giroAuto(raw, e.w || e.largo, e.d || e.fondo) : 0), giroE = (rotE % 180) !== 0;
         const mm = ajustarModelo(raw, (giroE ? (e.d || e.fondo) : (e.w || e.largo)) * CM, (giroE ? (e.w || e.largo) : (e.d || e.fondo)) * CM, (e.alto || 110) * CM, modosEq[e.id]?.modo || 'estirar'); if (!mm) return;
         mm.userData.girado = giroE;
