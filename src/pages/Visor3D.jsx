@@ -1129,6 +1129,8 @@ export default function Visor3D() {
   const [biblioteca, setBiblioteca] = useState(null);
   const [filtro, setFiltro] = useState('');
   const [solo3d, setSolo3d] = useState(true);
+  const [marcasAbiertas, setMarcasAbiertas] = useState({}); // marca → abierta
+  const [marcaSel, setMarcaSel] = useState('');
   const [persona, setPersona] = useState(false);
   // Panel de Render (como el de D5): ajustes finos de la imagen final y botón de renderizar
   const FX0 = { contraste: 1, saturacion: 1, calidez: 0, vineta: 0, bloom: 0 };
@@ -4236,7 +4238,7 @@ export default function Visor3D() {
         );
       })()}
       {bibAbierta && (
-        <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
+        <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 310, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
           <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar en el catálogo…" style={{ ...btn, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} />
           <div style={{ overflow: 'auto', flex: 1 }}>
             {!biblioteca && <p style={{ opacity: 0.6 }}>Cargando catálogo…</p>}
@@ -4246,7 +4248,32 @@ export default function Visor3D() {
               return (<>
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, opacity: 0.8, marginBottom: 6, cursor: 'pointer' }}><input type="checkbox" checked={solo3d} onChange={e => setSolo3d(e.target.checked)} />Solo los que tienen 3D ({con3d.length} de {(biblioteca || []).length})</label>
                 {biblioteca && !vis.length && <p style={{ opacity: 0.6, fontSize: 12 }}>{solo3d && !filtro ? 'Ningún producto tiene modelo 3D todavía. Sube uno desde la ficha de una máquina en el plano, o desmarca la casilla.' : 'Sin resultados.'}</p>}
-                {vis.slice(0, 80).map(m => (
+                {(() => {
+                  const marcas = [...new Set(lista.map(m => (m.marca || '').trim() || 'Sin marca'))].sort((a, b) => (a === 'Sin marca') - (b === 'Sin marca') || a.localeCompare(b, 'es'));
+                  const visM = vis.filter(m => !marcaSel || ((m.marca || '').trim() || 'Sin marca') === marcaSel);
+                  const grupos = marcas.map(mk => [mk, visM.filter(m => ((m.marca || '').trim() || 'Sin marca') === mk).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'))]).filter(([, l]) => l.length);
+                  const abierta = mk => !!filtro || !!marcaSel || !!marcasAbiertas[mk] || grupos.length === 1;
+                  return (<>
+                    <select value={marcaSel} onChange={e => setMarcaSel(e.target.value)} style={{ ...btn, width: '100%', marginBottom: 6, boxSizing: 'border-box' }}><option value="">Todas las marcas ({marcas.length})</option>{marcas.map(mk => <option key={mk} value={mk}>{mk}</option>)}</select>
+                    {grupos.map(([mk, items]) => (
+                      <div key={mk} style={{ marginBottom: 4 }}>
+                        <div onClick={() => setMarcasAbiertas(a => ({ ...a, [mk]: !a[mk] }))} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 6px', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', borderRadius: 6, fontWeight: 700, fontSize: 12 }}>
+                          <span style={{ width: 10, opacity: 0.7 }}>{abierta(mk) ? '▾' : '▸'}</span><span style={{ flex: 1 }}>{mk}</span><span style={{ opacity: 0.5, fontWeight: 400 }}>{items.length}</span>
+                        </div>
+                        {abierta(mk) && items.slice(0, 80).map(m => (
+                          <div key={m.id} onClick={() => anadirBloque(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center' }} title="Clic para colocarlo en el centro de la vista">
+                            <Miniatura mod={m.modelo3d} foto={m.foto} size={56} />
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 12.5, lineHeight: 1.25 }}>{m.nombre}</div>
+                              <div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {Math.round(m.w)}×{Math.round(m.d)} cm{m.modelo3d ? ' · 3D ✓' : ''}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </>);
+                })()}
+                {false && vis.slice(0, 80).map(m => (
                   <div key={m.id} onClick={() => anadirBloque(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center' }} title="Clic para colocarlo en el centro de la vista">
                     <Miniatura mod={m.modelo3d} foto={m.foto} size={64} />
                     <div style={{ minWidth: 0 }}>
