@@ -670,6 +670,21 @@ export function construirAlzadoPlanta(sala, yMundo, zonas) {
 }
 
 // Menú desplegable del carril de herramientas: se coloca con position fixed junto al botón (sin recortes) y se sube si no cabe por abajo
+// Códigos NCS y RAL → color en pantalla. NCS: cálculo aproximado (el color exacto lo da el abanico NCS); RAL: tabla de los más usados. Es el mismo cálculo que usa Planos
+const RAL_HEX = { '9010': '#f1ede1', '9003': '#f4f4f4', '9016': '#f6f6f6', '9001': '#e9e0d2', '9002': '#d7d5cb', '9018': '#cfd3cd', '7035': '#cbd0cc', '7038': '#b4b8b0', '7040': '#9da3a6', '7044': '#cac4b0', '7047': '#d0d0d0', '7032': '#b8b799', '7016': '#383e42', '7021': '#2f3234', '9005': '#0e0e10', '1013': '#e3d9c6', '1015': '#e6d2b5', '6021': '#89ac76', '5024': '#5d9b9b', '3012': '#c1876b' };
+const NCS_PURO = { Y: [255, 211, 0], R: [196, 2, 51], B: [0, 135, 189], G: [0, 159, 107] };
+const NCS_PRE = ['S 0500-N', 'S 0502-Y', 'S 0502-B', 'S 0505-Y20R', 'S 1002-Y', 'S 1002-R', 'S 1500-N', 'S 2005-Y20R', 'S 2500-N', 'S 3005-Y50R', 'S 4500-N', 'S 7500-N', 'RAL 9010', 'RAL 9003', 'RAL 9016', 'RAL 7035', 'RAL 7044', 'RAL 7016', 'RAL 9005'];
+function codigoHex(cod) {
+  const t = String(cod || '').trim().toUpperCase();
+  let m = /^RAL\s*(\d{4})$/.exec(t);
+  if (m) return RAL_HEX[m[1]] || null;
+  m = /^(?:NCS\s*)?S?\s*(\d{2})(\d{2})\s*-\s*(?:(N)|([YRBG])(?:(\d{2})([YRBG]))?)$/.exec(t);
+  if (!m) return null;
+  const bl = +m[1], ch = +m[2], wh = Math.max(0, 100 - bl - ch);
+  let hue = [128, 128, 128];
+  if (m[4]) { const a = NCS_PURO[m[4]]; if (m[6]) { const b = NCS_PURO[m[6]], p = (+m[5]) / 100; hue = [0, 1, 2].map(i => a[i] * (1 - p) + b[i] * p); } else hue = a; }
+  return '#' + [0, 1, 2].map(i => Math.max(0, Math.min(255, Math.round((wh * 255 + bl * 25 + ch * hue[i]) / 100))).toString(16).padStart(2, '0')).join('');
+}
 // Iconos de línea de las herramientas (24×24, trazo del color del texto)
 const ICONOS = {
   sel: 'M5 3l14 8-6 2-3 6z', pintar: 'M4 12l7-8 9 9-8 7z M20 16c1.2 1.6 1.8 2.6 1.8 3.5a1.8 1.8 0 01-3.6 0c0-.9.6-1.9 1.8-3.5z',
@@ -4057,6 +4072,11 @@ export default function Visor3D() {
               {[['#ffa757', '2700 K cálida'], ['#ffb16e', '3000 K'], ['#ffcb9f', '4000 K neutra'], ['#ffe4ce', '5000 K'], ['#fff9fd', '6500 K fría'], ['#ff2a2a', 'Rojo'], ['#22ff66', 'Verde'], ['#2a5bff', 'Azul'], ['#ff2ad4', 'Magenta'], ['#2affea', 'Cian']].map(([h, n]) => <span key={h} onClick={() => elegir({ hex: h + '!' })} title={'LED ' + n} style={{ width: 24, height: 24, background: h, borderRadius: 12, cursor: 'pointer', boxShadow: '0 0 8px ' + h, border: esSel({ hex: h + '!' }) ? '2px solid #baafa5' : '1px solid #555' }} />)}
             </div>
             <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>Pinta con ellos una cara, una caja o una zona y se ilumina. Una <b>caja</b> o una <b>zona</b> LED además alumbra la sala.</div>
+            <div style={{ opacity: 0.7, marginBottom: 4 }}>NCS y RAL habituales</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 4 }}>
+              {NCS_PRE.map(cod => { const h = codigoHex(cod); return h && <span key={cod} onClick={() => { elegir({ hex: h }); setPaleta(x => (x.some(p => p.nombre === cod) ? x : [...x, { nombre: cod, hex: h }])); }} title={cod + ' · ' + h} style={{ width: 24, height: 24, background: h, borderRadius: 4, cursor: 'pointer', border: esSel({ hex: h }) ? '2px solid #baafa5' : '1px solid #555' }} />; })}
+            </div>
+            <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>Al pulsar uno se elige y se guarda en tu paleta con su código. Los colores NCS son <b>aproximados en pantalla</b>; el real lo da el abanico NCS. Escribe cualquier código abajo (NCS S 0502-Y, RAL 9010…) y el color se calcula solo.</div>
             <div style={{ opacity: 0.7, marginBottom: 4 }}>Tu paleta (NCS, RAL, marcas…)</div>
             {paleta.map((p, i) => (
               <div key={i} onClick={() => elegir({ hex: p.hex })} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 2px', cursor: 'pointer', background: esSel({ hex: p.hex }) ? '#3a342f' : 'transparent', borderRadius: 4 }}>
@@ -4066,7 +4086,8 @@ export default function Visor3D() {
               </div>
             ))}
             <div style={{ display: 'flex', gap: 5, margin: '6px 0 10px' }}>
-              <input id="mat-nombre" placeholder="Nombre (ej. NCS S 1002-Y)" style={{ ...btn, flex: 1, minWidth: 0 }} />
+              <input id="mat-nombre" list="dl-cod-3d" autoComplete="off" placeholder="Nombre o código (ej. NCS S 1002-Y)" onChange={e => { const h = codigoHex(e.target.value); const el = document.getElementById('mat-hex'); if (h && el) el.value = h; }} style={{ ...btn, flex: 1, minWidth: 0 }} />
+              <datalist id="dl-cod-3d">{NCS_PRE.map(x => <option key={x} value={x} />)}</datalist>
               <input id="mat-hex" type="color" defaultValue="#d9cfc0" style={{ width: 34, height: 30, padding: 0, border: 'none', background: 'none' }} />
               <button style={btn} onClick={anadirColor}>+</button>
             </div>
