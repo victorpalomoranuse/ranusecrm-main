@@ -663,6 +663,22 @@ export function construirAlzadoPlanta(sala, yMundo, zonas) {
 }
 
 // Menú desplegable del carril de herramientas: se coloca con position fixed junto al botón (sin recortes) y se sube si no cabe por abajo
+// Iconos de línea de las herramientas (24×24, trazo del color del texto)
+const ICONOS = {
+  sel: 'M5 3l14 8-6 2-3 6z', pintar: 'M4 12l7-8 9 9-8 7z M20 16c1.2 1.6 1.8 2.6 1.8 3.5a1.8 1.8 0 01-3.6 0c0-.9.6-1.9 1.8-3.5z',
+  gotero: 'M20.5 3.5a2.2 2.2 0 00-3.1 0L14 6.9l-1-1-1.5 1.5 1 1L5 16v3h3l7.6-7.6 1 1L18 11l-1-1 3.5-3.4a2.2 2.2 0 000-3.1z',
+  muro: 'M3 6h18v12H3z M3 12h18 M9 6v6 M15 12v6', rect: 'M4 6h16v12H4z', circ: 'M12 4a8 8 0 100 16 8 8 0 000-16z', poli: 'M12 3l8 6-3 11H7L4 9z',
+  empujar: 'M12 20V10 M8 13l4-4 4 4 M4 8l8-4 8 4', zona: 'M4 5h16v14H4z M4 12l8-7 M4 19L19 5 M12 19l7-7', sigue: 'M3 19c6 0 4-14 9-14s3 14 9 14',
+  catalogo: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8', biblioteca: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
+  mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4',
+  luz: 'M9 18h6 M10 21h4 M12 3a6 6 0 00-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0012 3z',
+  cinta: 'M3 16L16 3l5 5L8 21z M8 11l2 2 M11 8l2 2 M14 5l2 2', capas: 'M12 3l9 5-9 5-9-5z M3 13l9 5 9-5',
+  ocultar: 'M3 3l18 18 M10.6 6.2A9 9 0 0121 12a13 13 0 01-3 3.9 M6.6 6.6A13 13 0 003 12s3.5 6 9 6a9 9 0 003.4-.7 M9.9 9.9a3 3 0 004.2 4.2',
+  mostrar: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z M12 9a3 3 0 100 6 3 3 0 000-6z',
+};
+function Ic({ n }) {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>{(ICONOS[n] || '').split(' M').map((d, i) => <path key={i} d={(i ? 'M' : '') + d} />)}</svg>;
+}
 export function MenuRail({ abierto, boton, ancho, children }) {
   const ref = useRef(null), mref = useRef(null), [pos, setPos] = useState(null);
   useLayoutEffect(() => {
@@ -1098,6 +1114,7 @@ export default function Visor3D() {
   const selIdsRef = useRef(new Set()); selIdsRef.current = new Set([selObj, ...selExtra].filter(Boolean));
   const selExtraRef = useRef([]); selExtraRef.current = selExtra;
   const selExtraKey = selExtra.join(',');
+  const ocultarRef = useRef(null);
   const [herr, setHerr] = useState('sel');         // 'sel' | 'caja'
   const herrRef = useRef('sel');
   const [bibAbierta, setBibAbierta] = useState(false);
@@ -1591,11 +1608,12 @@ export default function Visor3D() {
         const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
         const rel = poli.map(p => [p.x - cx, p.y - cy]), modo = herrRef.current;
         const nuevo = modo === 'poli'
-          ? { id: idNuevo(), tipo: 'prisma', nombre: 'Volumen', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 100, z0: 0, color: '#9aa3ad', pts: rel }
+          ? { id: idNuevo(), tipo: 'prisma', nombre: 'Volumen', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 2, z0: 0, color: '#9aa3ad', pts: rel }
           : { id: idNuevo(), tipo: 'zona', plano: modo === 'zonaT' ? 'techo' : 'suelo', h: modo === 'zonaT' ? ((api3d.current.modelo?.altura) || 260) : undefined, nombre: modo === 'zonaT' ? 'Zona de techo' : 'Zona de suelo', etiqueta: 'Zonas', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, color: matSelRef.current?.id ? 'tex:' + matSelRef.current.id : (matSelRef.current?.hex || '#c9b9a0'), pts: curvoRef.current ? suavizar(rel) : rel };
         setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id);
       }
-      poli = []; dibujarPoli(null); setHerr('sel');
+      const eraForma = herrRef.current === 'poli' && poli.length >= 3;
+      poli = []; dibujarPoli(null); setHerr(eraForma ? 'empujar' : 'sel');
     };
     const onTecla = e => {
       if (herrRef.current === 'focoC' && (e.key === 'Escape' || e.key === 'Enter')) { setHerr('sel'); return; }
@@ -1981,9 +1999,12 @@ export default function Visor3D() {
   // Capas (etiquetas): se ven u ocultan grupos de elementos
   useEffect(() => {
     const a = api3d.current; if (!a.raiz) return;
-    const aplica = o => { if (o.userData.capa) o.visible = !ocultas.includes(o.userData.capa); };
+    const aplica = o => {
+      const k = o.userData.equipo?.id || o.userData.muroId, oculto = k && ocultas.includes('id:' + k);
+      if (o.userData.capa) o.visible = !ocultas.includes(o.userData.capa) && !oculto; else if (k && o.userData.equipo) o.visible = !oculto;
+    };
     a.raiz.traverse(aplica);
-    a.esc.children.forEach(g => { g.visible = !ocultas.includes('obj:' + (objsRef.current.find(x => x.id === g.userData.oid)?.etiqueta || '')); });
+    a.esc.children.forEach(g => { g.visible = !ocultas.includes('obj:' + (objsRef.current.find(x => x.id === g.userData.oid)?.etiqueta || '')) && !ocultas.includes('id:' + g.userData.oid); });
     try { localStorage.setItem('visor3dOcultas', JSON.stringify(ocultas)); } catch {}
   }, [ocultas, rev, objs, estado]);
 
@@ -2652,6 +2673,15 @@ export default function Visor3D() {
     setObjs(prev => [...prev, n]); setSelObj(n.id);
   };
   const idsSel = [selObj, ...selExtra].filter(Boolean);
+  // Ocultar lo seleccionado (objetos, máquinas del plano o muros): se oculta en la vista, no se borra. «Mostrar todo» lo devuelve
+  const nOcultos = ocultas.filter(k => k.startsWith('id:')).length;
+  const ocultarSel = () => {
+    const claves = [...idsSel.map(i => 'id:' + i), ...(seleccion && !selObj ? ['id:' + seleccion.id] : []), ...(selAcab && selAcab.tipo === 'muro' ? ['id:' + selAcab.id] : [])];
+    if (!claves.length) { setAviso('Selecciona algo y pulsa Ocultar (tecla H)'); return; }
+    setOcultas(o => [...new Set([...o, ...claves])]); setSelObj(null); setMulti({ base: null, ids: [] }); setSeleccion(null); setSelAcab(null);
+  };
+  const mostrarTodo = () => setOcultas(o => o.filter(k => !k.startsWith('id:')));
+  ocultarRef.current = ocultarSel;
   const agrupar = () => { const g = 'g' + Date.now().toString(36); setObjs(prev => prev.map(o => (idsSel.includes(o.id) ? { ...o, grupo: g } : o))); setGuardado('Agrupados: al pulsar uno se seleccionan todos'); };
   const desagrupar = () => { setObjs(prev => prev.map(o => { if (!idsSel.includes(o.id) || !o.grupo) return o; const { grupo, ...r } = o; return r; })); setGuardado('Grupo deshecho'); };
   const borrarSel = () => { setObjs(prev => prev.filter(o => !idsSel.includes(o.id))); setSelObj(null); };
@@ -2685,6 +2715,7 @@ export default function Visor3D() {
       if (ctrl && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); rehacer(); return; }
       if (ctrl && k === 'd' && selObj) { e.preventDefault(); if (selExtra.length) duplicarSel(); else duplicar(selObj); return; }
       if (['poli', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'carril', 'muro'].includes(herr) && (k === 'enter' || k === 'escape')) return; // lo gestiona la propia herramienta
+      if (k === 'h' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); ocultarRef.current?.(); return; }
       if ((k === 'delete' || k === 'backspace') && !selObj && seleccion) { e.preventDefault(); eliminarEquipo(); return; }
       if ((k === 'delete' || k === 'backspace') && selObj) { e.preventDefault(); if (selExtra.length) borrarSel(); else borrar(selObj); return; }
       if (selExtra.length && !ctrl && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'pageup', 'pagedown'].includes(k)) {
@@ -3230,16 +3261,16 @@ export default function Visor3D() {
   const itemMenu = { padding: '6px 8px', cursor: 'pointer', borderRadius: 4 };
   const railBtn = (activo, icono, etiqueta, titulo, onClick, color) => (
     <button key={etiqueta} title={titulo} onClick={onClick} style={{ width: 50, padding: '3px 1px 2px', background: activo ? (color || '#2f6fa8') : 'transparent', color: activo && color === '#c9a21a' ? '#111' : '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-      <span style={{ fontSize: 16, lineHeight: '18px' }}>{icono}</span><span style={{ fontSize: 9, opacity: 0.85, whiteSpace: 'nowrap' }}>{etiqueta}</span>
+      <span style={{ lineHeight: 0, padding: '2px 0' }}>{typeof icono === 'string' && ICONOS[icono] ? <Ic n={icono} /> : <span style={{ fontSize: 16, lineHeight: '18px' }}>{icono}</span>}</span><span style={{ fontSize: 9, opacity: 0.85, whiteSpace: 'nowrap' }}>{etiqueta}</span>
     </button>
   );
-  const grupoRail = (hijos, ultimo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{hijos}</div>;
+  const grupoRail = (hijos, ultimo, titulo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{titulo && <span style={{ fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.45, padding: '2px 0' }}>{titulo}</span>}{hijos}</div>;
   const menuRail = (abierto, setAbierto, boton, contenido, ancho) => <MenuRail key={'m' + (boton.key || '')} abierto={abierto} ancho={ancho} boton={boton}>{contenido}</MenuRail>;
   const AYUDA_HERR = {
-    sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo'], poli: ['Contorno', 'Clic punto a punto; Enter o volver al primer punto para cerrar'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de un objeto'],
+    sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo'], poli: ['Dibujar forma', 'Rectángulo y círculo: arrastra · Polígono: clic a clic, Enter cierra · después tira hacia arriba para darle altura'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de la forma para darle altura'],
     muro: ['Muro', 'Clic para empezar y cada punto; Mayús = recto; Enter termina'], zonaS: ['Zona en suelo', 'Clic punto a punto; Enter cierra'], zonaT: ['Zona en techo', 'Clic punto a punto; Enter cierra'], zonaP: ['Zona en pared', 'Clic punto a punto sobre una pared; Enter cierra'],
     sigue: ['Sígueme', 'Dibuja el camino por donde pasará el perfil; Enter termina'], carril: ['Carril', 'Dibuja el recorrido; Enter termina'], led: ['Tira LED', 'Dibuja el recorrido; Enter termina'], focoC: ['Focos', 'Clic en el carril para colocar; Esc sale'],
-    luz: ['Luz', 'Clic en el suelo para colocar la luminaria en el plano'], guia: ['Guía', 'Clic en dos puntos para crear una línea guía'], pincel: ['Pincel', 'Clic en lo que quieras pintar · Mayús = todo el elemento · Alt = copiar material'], gotero: ['Gotero', 'Clic en lo que quieras copiar'],
+    luz: ['Luz', 'Clic en el suelo para colocar la luminaria en el plano'], guia: ['Cinta métrica', 'Clic en dos puntos para crear una línea guía'], pincel: ['Pincel', 'Clic en lo que quieras pintar · Mayús = todo el elemento · Alt = copiar material'], gotero: ['Cuentagotas', 'Clic en lo que quieras copiar'],
   };
   const barra2d = planta2d && (
     <div style={{ position: 'absolute', left: railW, top: 56, zIndex: 6, background: 'rgba(20,20,20,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', maxWidth: '60vw' }}>
@@ -3315,35 +3346,42 @@ export default function Visor3D() {
       {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
       <div style={{ position: 'absolute', top: 54, left: 8, display: 'flex', flexDirection: 'column', flexWrap: 'wrap', alignContent: 'flex-start', gap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 62px)', background: 'rgba(24,24,24,0.94)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
         {grupoRail([
-          railBtn(herr === 'sel', '↖', 'Seleccionar', 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
-          railBtn(herr === 'pincel' || matAbierto, '🎨', 'Materiales', 'Colores, texturas y LED: elige y pinta (cara, pieza o entero)', () => { setMatAbierto(v => !v); if (matAbierto && herr === 'pincel') setHerr('sel'); }),
-          railBtn(herr === 'gotero', '💧', 'Gotero', 'Copia el material de lo que toques y pásalo con el pincel (Alt + clic con el pincel)', () => setHerr('gotero')),
-        ])}
+          railBtn(herr === 'sel', 'sel', 'Seleccionar', 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
+          railBtn(false, 'ocultar', 'Ocultar', 'Oculta lo seleccionado sin borrarlo (H)', ocultarSel),
+          nOcultos > 0 && railBtn(false, 'mostrar', 'Mostrar (' + nOcultos + ')', 'Vuelve a mostrar todo lo que ocultaste', mostrarTodo),
+        ].filter(Boolean))}
         {grupoRail([
-          railBtn(herr === 'muro', '🧱', 'Muro', 'Dibuja muros: clic para empezar y cada punto; Mayús = recto. Se crean también en Planos (6)', () => setHerr('muro')),
-          railBtn(herr === 'caja', '▭', 'Caja', 'Arrastra sobre el suelo para dibujar una caja y luego dale altura (2)', () => setHerr('caja')),
-          railBtn(herr === 'poli', '⬡', 'Contorno', 'Clic punto a punto sobre el suelo; cierra con Enter. Luego se extruye (3)', () => setHerr('poli')),
-          railBtn(herr === 'empujar', '⇅', 'Empujar', 'Arrastra la cara de arriba de un objeto para cambiar su altura (4)', () => setHerr('empujar')),
-          menuRail(zonaMenu, setZonaMenu, railBtn(['zonaS', 'zonaT', 'zonaP'].includes(herr) || zonaMenu, '▨', 'Zonas', 'Dibuja una forma sobre un suelo, techo o pared y dale su propio material', () => setZonaMenu(v => !v)), (<>
+          railBtn(herr === 'poli' && formaDib === 'rect', 'rect', 'Rectángulo', 'Dibuja un rectángulo sobre el suelo y luego tira hacia arriba para darle altura', () => { setFormaDib('rect'); setHerr('poli'); }),
+          railBtn(herr === 'poli' && formaDib === 'oval', 'circ', 'Círculo', 'Dibuja un círculo o elipse y luego tira hacia arriba para darle altura', () => { setFormaDib('oval'); setHerr('poli'); }),
+          railBtn(herr === 'poli' && formaDib === 'poli', 'poli', 'Polígono', 'Clic punto a punto; cierra con Enter. Luego tira hacia arriba para darle altura', () => { setFormaDib('poli'); setHerr('poli'); }),
+          railBtn(herr === 'empujar', 'empujar', 'Empujar/Tirar', 'Arrastra la cara de arriba de una forma para darle o cambiarle la altura', () => setHerr('empujar')),
+        ], false, 'Dibujar')}
+        {grupoRail([
+          railBtn(herr === 'muro', 'muro', 'Muro', 'Dibuja muros: clic para empezar y cada punto; Mayús = recto. Se crean también en Planos', () => setHerr('muro')),
+          menuRail(zonaMenu, setZonaMenu, railBtn(['zonaS', 'zonaT', 'zonaP'].includes(herr) || zonaMenu, 'zona', 'Zonas', 'Dibuja una forma sobre un suelo, techo o pared y dale su propio material', () => setZonaMenu(v => !v)), (<>
             {[['zonaS', 'En el suelo'], ['zonaT', 'En el techo'], ['zonaP', 'En una pared (o media pared)']].map(([h, n]) => <div key={h} onClick={() => { setHerr(h); setZonaMenu(false); }} style={itemMenu}>{n}</div>)}
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderTop: '1px solid #333', cursor: 'pointer' }}><input type="checkbox" checked={curvo} onChange={e => setCurvo(e.target.checked)} /> Contorno curvo (suave)</label>
             <div style={{ opacity: 0.55, fontSize: 11, padding: '0 8px 4px' }}>Clic punto a punto; cierra con Enter o volviendo al primer punto.</div>
           </>)),
-          menuRail(sigueMenu, setSigueMenu, railBtn(herr === 'sigue' || sigueMenu, '➰', 'Sígueme', 'Un perfil recorre un camino: rodapiés, molduras, tubos, bandejas…', () => setSigueMenu(v => !v)), (<>
+          menuRail(sigueMenu, setSigueMenu, railBtn(herr === 'sigue' || sigueMenu, 'sigue', 'Sígueme', 'Un perfil recorre un camino: rodapiés, molduras, tubos, bandejas…', () => setSigueMenu(v => !v)), (<>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige el perfil y dibuja el camino en el suelo (Enter termina; volver al primer punto cierra en lazo)</div>
             {Object.keys(PERFILES).map(n => <div key={n} onClick={() => { setPerfilSel(n); setHerr('sigue'); setSigueMenu(false); }} style={{ ...itemMenu, background: perfilSel === n ? '#2a3a52' : 'transparent' }}>{n}</div>)}
           </>)),
-        ])}
+        ], false, 'Construir')}
         {grupoRail([
-          railBtn(bibAbierta, '📦', 'Catálogo', 'Tus productos del catálogo de Ranuse', () => setBibAbierta(v => !v)),
-          railBtn(b3dAbierta, '🧰', 'Biblioteca', 'Muebles y texturas gratuitos (Poly Haven, CC0)', () => setB3dAbierta(v => !v)),
-          menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, '🪑', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
+          railBtn(herr === 'pincel' || matAbierto, 'pintar', 'Pintura', 'Colores, texturas y LED: elige y pinta (cara, pieza o entero)', () => { setMatAbierto(v => !v); if (matAbierto && herr === 'pincel') setHerr('sel'); }),
+          railBtn(herr === 'gotero', 'gotero', 'Cuentagotas', 'Copia el material de lo que toques y pásalo con la pintura (Alt + clic con la pintura)', () => setHerr('gotero')),
+        ], false, 'Pintar')}
+        {grupoRail([
+          railBtn(bibAbierta, 'catalogo', 'Catálogo', 'Tus productos del catálogo de Ranuse', () => setBibAbierta(v => !v)),
+          railBtn(b3dAbierta, 'biblioteca', 'Biblioteca', 'Mis modelos, muebles y texturas gratuitos', () => setB3dAbierta(v => !v)),
+          menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, 'mueble', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
             {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
           </>), 250),
-          railBtn(false, '🖼', 'Logo', 'Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en 3D', () => logoInput.current?.click()),
-        ])}
+          railBtn(false, 'logo', 'Logo', 'Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en 3D', () => logoInput.current?.click()),
+        ], false, 'Insertar')}
         {grupoRail([
-          menuRail(carrilMenu, setCarrilMenu, railBtn(['luz', 'carril', 'led', 'focoC'].includes(herr) || carrilMenu, '💡', 'Iluminación', 'Luminarias, spots, tiras LED y carriles con focos', () => setCarrilMenu(v => !v), '#c9a21a'), (<>
+          menuRail(carrilMenu, setCarrilMenu, railBtn(['luz', 'carril', 'led', 'focoC'].includes(herr) || carrilMenu, 'luz', 'Iluminación', 'Luminarias, spots, tiras LED y carriles con focos', () => setCarrilMenu(v => !v), '#c9a21a'), (<>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Luminarias (se crean también en Planos)</div>
             {[['foco', 'Foco empotrado'], ['spot', 'Spot orientable'], ['plaf', 'Plafón'], ['colg', 'Luminaria colgante'], ['aplq', 'Aplique de pared'], ['pie', 'Lámpara de pie'], ['suel', 'Empotrado de suelo']].map(([k, n]) => <div key={k} onClick={() => { setKindLuz(k); setHerr('luz'); setCarrilMenu(false); }} style={itemMenu}>{n}</div>)}
             <div style={{ opacity: 0.6, fontSize: 11, padding: '6px 8px 2px', borderTop: '1px solid #333', marginTop: 4 }}>Luz lineal</div>
@@ -3351,11 +3389,11 @@ export default function Visor3D() {
             <div style={{ opacity: 0.6, fontSize: 11, padding: '6px 8px 2px', borderTop: '1px solid #333', marginTop: 4 }}>Carriles (después se les añaden spots, lineales, proyectores o colgantes)</div>
             {[['magnetico', 'Carril magnético (48 V, ultrafino)'], ['trifasico', 'Carril trifásico (230 V)']].map(([v, n]) => <div key={v} onClick={() => { setCarrilSis(v); setHerr('carril'); setCarrilMenu(false); }} style={itemMenu}>{n}</div>)}
           </>), 270),
-        ])}
+        ], false, 'Luz')}
         {grupoRail([
-          railBtn(herr === 'guia', '📏', 'Guía', 'Clic en dos puntos para crear una línea guía; el dibujo se imanta a ellas (5)', () => setHerr('guia'), '#d62bd6'),
-          railBtn(capasAbierto, '🏷', 'Capas', 'Mostrar u ocultar muros, suelos, techos, plantas y etiquetas', () => setCapasAbierto(v => !v)),
-        ], true)}
+          railBtn(herr === 'guia', 'cinta', 'Cinta', 'Cinta métrica: clic en dos puntos para crear una línea guía; el dibujo se imanta a ellas', () => setHerr('guia')),
+          railBtn(capasAbierto, 'capas', 'Capas', 'Mostrar u ocultar muros, suelos, techos, plantas y etiquetas', () => setCapasAbierto(v => !v)),
+        ], true, 'Medir y ver')}
         <input ref={logoInput} type="file" accept=".svg,.dxf" style={{ display: 'none' }} onChange={e => { importarLogo(e.target.files?.[0]); e.target.value = ''; }} />
       </div>
 
