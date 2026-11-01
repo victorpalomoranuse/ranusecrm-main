@@ -285,6 +285,20 @@ router.delete('/biblioteca/:id', requireAdminSuperior, async (req, res) => {
   }
 });
 
+// Biblioteca de materiales de Ranuse (color + mapas PBR a 2K): un índice guardado en el almacenamiento, sin tablas nuevas
+let cacheMatRanuse = { t: 0, lista: [] };
+async function leerMaterialesRanuse() {
+  if (Date.now() - cacheMatRanuse.t < 10 * 60 * 1000 && cacheMatRanuse.lista.length) return cacheMatRanuse.lista;
+  try {
+    const { data, error } = await supabase.storage.from('project-documents').download('materiales-ranuse/indice.json');
+    if (error || !data) return cacheMatRanuse.lista;
+    const j = JSON.parse(await data.text());
+    cacheMatRanuse = { t: Date.now(), lista: Array.isArray(j) ? j : [] };
+  } catch { /* se queda con lo anterior */ }
+  return cacheMatRanuse.lista;
+}
+router.get('/materiales-ranuse', async (req, res) => { res.json({ materiales: await leerMaterialesRanuse() }); });
+
 router.get('/catalogos', compression(), async (req, res) => { // comprimido: la biblioteca propia puede traer cientos de bloques
   try {
     const claveCat = req.user?.role === 'admin_superior' ? 'admin' : 'resto';
@@ -638,6 +652,22 @@ router.post('/:id/textura', uploadReferenceImageFile, handleMulterError, async (
     console.error('medicion textura:', err);
     res.status(500).json({ error: 'No se pudo guardar la textura' });
   }
+});
+// Añade al plano un material de la biblioteca de Ranuse, con sus mapas PBR y sus ajustes de partida
+router.post('/:id/textura-ranuse', async (req, res) => {
+  try {
+    const m = (await leerMaterialesRanuse()).find(x => x.id === req.body?.matId);
+    if (!m) return res.status(404).json({ error: 'Ese material no está en la biblioteca' });
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || { objetos: [] }, ya = (esc.texturas || []).find(x => x.ranuse === m.id);
+    if (ya) return res.json({ textura: ya });
+    const tex = { id: 'r' + Date.now().toString(36), nombre: m.nombre, url: m.url, tam: m.tam || 100, maps: m.maps || undefined, pbr: m.pbr || undefined, ranuse: m.id };
+    const data = { ...fila.data, escena3d: { ...esc, texturas: [...(esc.texturas || []), tex].slice(-80), updated: Date.now() } };
+    const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
+    if (error) throw error;
+    res.status(201).json({ textura: tex });
+  } catch (err) { console.error('textura-ranuse:', err); res.status(500).json({ error: 'No se pudo añadir el material' }); }
 });
 router.post('/:id/textura-biblioteca', async (req, res) => {
   try {

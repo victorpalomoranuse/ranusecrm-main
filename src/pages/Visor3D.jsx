@@ -2691,6 +2691,18 @@ export default function Visor3D() {
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'bloque', cid: null, nombre: m.nombre, etiqueta: m.categoria, cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: m.w, d: m.d, alto: m.alto, z0: 0, color: null, mod: { url: m.url, tipo: m.tipo || 'gltf', rot: 0 } };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel');
   };
+  // Biblioteca de materiales de Ranuse (PBR): se cargan al abrir el panel de materiales
+  const [matsRanuse, setMatsRanuse] = useState(null);
+  const [catRanuse, setCatRanuse] = useState('');
+  useEffect(() => { if (matAbierto && matsRanuse === null) api.get('/medicion/materiales-ranuse').then(r => setMatsRanuse(r.data?.materiales || [])).catch(() => setMatsRanuse([])); }, [matAbierto, matsRanuse]);
+  const usarMatRanuse = async (m) => {
+    try {
+      const r = await api.post('/medicion/' + id + '/textura-ranuse', { matId: m.id }), nueva = r.data.textura;
+      setTexturas(x => (x.some(y => y.id === nueva.id) ? x : [...x, nueva]));
+      setMatSel({ id: nueva.id }); setHerr('pincel');
+      setGuardado('«' + m.nombre + '» listo: haz clic en un muro, suelo o techo');
+    } catch (e) { setGuardado(e.response?.data?.error || 'No se pudo usar el material'); }
+  };
   const usarMatCatalogo = async (mc) => {
     try {
       const r = await api.post('/medicion/' + id + '/textura-catalogo', { prodId: mc.id, tam: mc.tw });
@@ -4142,6 +4154,20 @@ export default function Visor3D() {
               <input id="mat-hex" type="color" defaultValue="#d9cfc0" style={{ width: 34, height: 30, padding: 0, border: 'none', background: 'none' }} />
               <button style={btn} onClick={anadirColor}>+</button>
             </div>
+            {matsRanuse?.length > 0 && <>
+              <div style={{ opacity: 0.7, marginBottom: 4 }}>Materiales de Ranuse <span style={{ opacity: 0.55, fontSize: 11 }}>(PBR: normales, rugosidad y AO)</span></div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                {['', ...new Set(matsRanuse.map(m => m.categoria))].map(cat => <span key={cat || 'todas'} onClick={() => setCatRanuse(cat)} style={{ padding: '2px 8px', borderRadius: 10, cursor: 'pointer', fontSize: 11, border: '1px solid #4f4842', background: catRanuse === cat ? '#6b6159' : 'transparent' }}>{cat || 'Todos'}</span>)}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
+                {matsRanuse.filter(m => !catRanuse || m.categoria === catRanuse).map(m => (
+                  <div key={m.id} onClick={() => usarMatRanuse(m)} title={m.nombre + ' · ' + m.categoria + ' · ' + (m.fuente || '')} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
+                    <img src={m.url} alt={m.nombre} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
+                    <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.nombre}</div>
+                  </div>
+                ))}
+              </div>
+            </>}
             {matsCat.length > 0 && <>
               <div style={{ opacity: 0.7, marginBottom: 4 }}>Del catálogo de Ranuse</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
