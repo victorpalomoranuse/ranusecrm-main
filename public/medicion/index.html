@@ -9958,7 +9958,7 @@ function buildResumen1(){
   v.rz.forEach(function(r){var ar=rzArea(r)/10000;if(ar){if(r.k==='s')sa+=ar;else te+=ar}});
   out.levantar_suelo_m2=r2(sa);out.desmontar_techo_m2=r2(te);
   var eq={};
-  v.eq.forEach(function(e){if(e.s==='ex'||e.s==='dem'||(e.bl&&e.bl.esc))return;var k=e.cid||e.nm;(eq[k]=eq[k]||{cid:e.cid||'',nombre:e.nm,n:0,w:e.w,d:e.d,alto:(function(){var cc=catById(e.cid);return (cc&&(cc.alto||(cc.bloque&&cc.bloque.alto)))||null})(),categoria:(function(){var cc=catById(e.cid);return (cc&&cc.categoria)||''})()}).n++}); /* lo que ya existe no se compra */
+  v.eq.forEach(function(e){if(e.s==='ex'||e.s==='dem'||(e.bl&&e.bl.esc))return;var k=e.cid||e.nm;(eq[k]=eq[k]||{cid:e.cid||'',nombre:e.nm,n:0,w:e.w,d:e.d,alto:(function(){var cc=catById(e.cid);return (cc&&(cc.alto||(cc.bloque&&cc.bloque.alto)))||null})(),categoria:(function(){var cc=catById(e.cid);return (cc&&cc.categoria)||''})(),familia:(function(){var cc=catById(e.cid);return cc?familiaDe(catsDe(cc)[0]):(e.bl&&e.bl.esc?'Escaleras':'Otros')})()}).n++}); /* lo que ya existe no se compra */
   out.equipos=Object.keys(eq).map(function(k){return eq[k]});
   out.luminarias=lumGroups().map(function(g){var d=ptDef(g.k);return {lid:g.lid||'',nombre:g.cat?g.cat.n:(d?d.n:g.k),tipo:g.k,n:g.n,ml:r2(g.len/100)}});
   var inst={};
@@ -11207,7 +11207,12 @@ function medDatos1(){
   S.push({id:'techos',t:'Techos por material',f:(R.techos||[]).map(function(p){return fila(p.nombre,null,p.m2,null)})});
   S.push({id:'salas',t:'Salas',f:(R.salas||[]).map(function(s){return fila(s.nombre||'Sala sin nombre',s.perimetro_ml,s.area_m2,null,'ml = perímetro · m² = superficie')})});
   S.push({id:'carp',t:'Carpinterías (puertas y ventanas)',f:(R.carpinterias||[]).map(function(c){return fila((c.ref?c.ref+' · ':'')+c.tipo+' '+c.ancho+' × '+c.alto+' cm',null,null,1,({ex:'existente',dem:'a retirar','new':'nueva'})[c.estado]||c.estado)})});
-  S.push({id:'equipos',t:'Equipos y bloques',f:(R.equipos||[]).map(function(e){return fila(e.nombre,null,null,e.n)})});
+  /* equipos separados por tipo: máquinas de gimnasio, mobiliario, sanitarios… (la familia sale de la categoría del bloque) */
+  var FAMS=[['Máquinas y equipamiento','Máquinas y equipamiento de gimnasio'],['Mobiliario','Mobiliario'],['Baños y vestuarios','Sanitarios y baños / vestuarios'],['Cocinas','Cocina'],['Climatización','Climatización'],['Escaleras','Escaleras y circulaciones'],['Puertas y ventanas','Puertas y ventanas (bloques)'],['Plantas y jardín','Plantas y jardín'],['Personas','Personas'],['Transporte','Transporte'],['Nave y exterior','Nave y exterior'],['Otros','Otros bloques']];
+  FAMS.forEach(function(fm){
+    var l=(R.equipos||[]).filter(function(e){return (e.familia||'Otros')===fm[0]});
+    S.push({id:'eq-'+fm[0],t:fm[1],f:l.map(function(e){return fila(e.nombre,null,null,e.n,e.categoria?String(e.categoria).replace(/^Biblioteca · /,''):'')})});
+  });
   S.push({id:'lum',t:'Iluminación',f:(R.luminarias||[]).map(function(l){return fila(l.nombre,l.ml||null,null,l.n||null)})});
   S.push({id:'elec',t:'Electricidad',f:(R.electricidad||[]).map(function(e){return fila(e.nombre,null,null,e.n)})});
   return S.filter(function(s){return s.f.length});
