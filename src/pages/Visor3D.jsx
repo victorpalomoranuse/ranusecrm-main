@@ -15,6 +15,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import api from '../services/api';
@@ -32,11 +33,22 @@ const ESPEJOS = [
 ].map(e => ({ id: e.id, nombre: e.nombre, tam: 100, espejo: e.hex, fijo: true, url: (() => { try { const cv = document.createElement('canvas'); cv.width = 96; cv.height = 56; const cx = cv.getContext('2d'), g = cx.createLinearGradient(0, 0, 96, 56); g.addColorStop(0, '#fff'); g.addColorStop(0.45, e.hex); g.addColorStop(0.55, '#fff'); g.addColorStop(1, e.hex); cx.fillStyle = g; cx.fillRect(0, 0, 96, 56); return cv.toDataURL(); } catch { return ''; } })() }));
 let envEsp = null, espejoSucio = false, GL_SOFTWARE = false;
 // Mapas PBR sueltos (normales, rugosidad, AO): se descargan una vez y cada material usa una copia con el mismo tiling, giro y desplazamiento que su textura base
-const cacheMapas = new Map();
-function texMapa(url) {
-  let t = cacheMapas.get(url);
-  if (!t) { t = new THREE.TextureLoader().load(url, () => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } }); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; cacheMapas.set(url, t); }
-  return t;
+const cacheMapas = new Map(); // url → { tex, listo }
+// Los mapas comprimidos KTX2 (Basis) ocupan mucho menos en la memoria de la gráfica. Si no se pueden leer, se usa el JPG equivalente
+let KTX2L = null;
+function texMapa(url, alt) {
+  let e = cacheMapas.get(url);
+  if (e) return e;
+  e = { tex: null, listo: false };
+  cacheMapas.set(url, e);
+  const alAcabar = () => { e.listo = true; espejoSucio = true; try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } };
+  if (/\.ktx2(\?|$)/i.test(url) && KTX2L) {
+    e.tex = KTX2L.load(url, alAcabar, undefined, () => { if (alt) { const e2 = texMapa(alt); cacheMapas.set(url, e2); espejoSucio = true; } });
+  } else {
+    e.tex = new THREE.TextureLoader().load(url, alAcabar);
+  }
+  e.tex.anisotropy = 4;
+  return e;
 }
 const COPIA_MAT = ['name', 'color', 'map', 'roughness', 'metalness', 'side', 'transparent', 'opacity', 'emissive', 'emissiveIntensity', 'flatShading', 'vertexColors', 'polygonOffset', 'polygonOffsetFactor', 'polygonOffsetUnits', 'depthWrite', 'alphaTest', 'bumpMap', 'bumpScale'];
 // Recorre la escena y aplica a cada material las propiedades PBR de su textura: rugosidad, metal, relieve, mapas, reflejos del entorno, clearcoat y emisión; los espejos se hacen reflectantes
@@ -70,11 +82,13 @@ function aplicaEspejos(scene) {
         if (P.emis > 0 && P.emisHex) { m.emissive.set(P.emisHex); m.emissiveIntensity = P.emis; m.userData.emisPbr = true; }
         else if (m.userData.emisPbr) { m.emissive.setHex(0x000000); m.emissiveIntensity = 1; m.userData.emisPbr = false; }
         // mapas PBR: se vuelven a crear solo si cambia el tiling, el giro o los archivos
-        const B = m.map, clave = JSON.stringify(mp || {}) + '|' + B.repeat.x + ',' + B.repeat.y + '|' + B.rotation + '|' + B.offset.x + ',' + B.offset.y;
-        if (m.userData.mapasClave !== clave) {
+        const B = m.map, alt = B.userData.mapsAlt || {}, clave = JSON.stringify(mp || {}) + '|' + B.repeat.x + ',' + B.repeat.y + '|' + B.rotation + '|' + B.offset.x + ',' + B.offset.y;
+        const ents = ['normal', 'rough', 'ao'].filter(k => mp?.[k]).map(k => [k, texMapa(mp[k], alt[k])]);
+        // se esperan a que todos los mapas estén descargados; al terminar de cargar se vuelve a pasar por aquí
+        if (ents.every(([, e]) => e.listo) && m.userData.mapasClave !== clave) {
           m.userData.mapasClave = clave;
-          const mk = url => { const t = texMapa(url).clone(); t.repeat.copy(B.repeat); t.rotation = B.rotation; t.center.copy(B.center); t.offset.copy(B.offset); t.needsUpdate = true; return t; };
-          m.normalMap = mp?.normal ? mk(mp.normal) : null; m.roughnessMap = mp?.rough ? mk(mp.rough) : null; m.aoMap = mp?.ao ? mk(mp.ao) : null;
+          const mk = k => { const e = ents.find(x => x[0] === k); if (!e) return null; const t = e[1].tex.clone(); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace; t.repeat.copy(B.repeat); t.rotation = B.rotation; t.center.copy(B.center); t.offset.copy(B.offset); t.needsUpdate = true; return t; };
+          m.normalMap = mk('normal'); m.roughnessMap = mk('rough'); m.aoMap = mk('ao');
         }
         if (m.normalMap) m.normalScale.set(P.normal ?? 1, P.normal ?? 1);
         m.needsUpdate = true;
@@ -119,7 +133,7 @@ function dibujaDesp(cx, img, t, j) {
 function texturaDe(t, uvEnCm) {
   const k = uvEnCm ? 1 / t.tam : 1 / (t.tam * CM), j = t.junta && t.junta.mm > 0 ? t.junta : null;
   if (t.espejo || t.pbr || t.maps) espejoSucio = true;
-  const clave = t.url.slice(0, 200) + '|' + k + '|' + (t.rot || 0) + '|' + (t.ox || 0) + '|' + (t.oy || 0) + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '') + (t.pbr ? JSON.stringify(t.pbr) : '') + (t.maps ? JSON.stringify(t.maps) : '');
+  const clave = t.url.slice(0, 200) + '|' + k + '|' + (t.rot || 0) + '|' + (t.ox || 0) + '|' + (t.oy || 0) + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '') + (t.pbr ? JSON.stringify(t.pbr) : '') + (t.maps ? JSON.stringify(t.maps) : '') + (KTX2L && t.ktx ? 'k' : '');
   let x = cacheTex.get(clave);
   if (!x) {
     if (t.espejo) {
@@ -143,7 +157,7 @@ function texturaDe(t, uvEnCm) {
     } else x = new THREE.TextureLoader().load(t.url, () => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } });
     x.wrapS = x.wrapT = THREE.RepeatWrapping; x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 4; x.repeat.set(k, k);
     if (t.pbr) x.userData.pbr = t.pbr;
-    if (t.maps) x.userData.mapsUrl = t.maps;
+    if (t.maps) { x.userData.mapsUrl = KTX2L && t.ktx ? { ...t.maps, ...Object.fromEntries(Object.entries(t.ktx).filter(([k]) => ['normal', 'rough', 'ao'].includes(k))) } : t.maps; x.userData.mapsAlt = t.maps; }
     if (t.rot || t.ox || t.oy) { x.center.set(0.5, 0.5); x.rotation = (t.rot || 0) * Math.PI / 180; x.offset.set((t.ox || 0) / t.tam, (t.oy || 0) / t.tam); }
     cacheTex.set(clave, x);
   }
@@ -1409,6 +1423,7 @@ export default function Visor3D() {
   useEffect(() => {
     const el = caja.current;
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    try { KTX2L = new KTX2Loader().setTranscoderPath('/basis/').detectSupport(renderer); } catch { KTX2L = null; }
     el.appendChild(renderer.domElement);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.shadowMap.enabled = true;

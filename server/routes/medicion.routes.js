@@ -670,7 +670,7 @@ router.post('/:id/textura-ranuse', async (req, res) => {
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
     const esc = fila.data?.escena3d || { objetos: [] }, ya = (esc.texturas || []).find(x => x.ranuse === m.id);
     if (ya) return res.json({ textura: ya });
-    const tex = { id: 'r' + Date.now().toString(36), nombre: m.nombre, url: m.url, tam: m.tam || 100, maps: m.maps || undefined, pbr: m.pbr || undefined, ranuse: m.id };
+    const tex = { id: 'r' + Date.now().toString(36), nombre: m.nombre, url: m.url, tam: m.tam || 100, maps: m.maps || undefined, ktx: m.ktx || undefined, pbr: m.pbr || undefined, ranuse: m.id };
     const data = { ...fila.data, escena3d: { ...esc, texturas: [...(esc.texturas || []), tex].slice(-80), updated: Date.now() } };
     const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (error) throw error;
