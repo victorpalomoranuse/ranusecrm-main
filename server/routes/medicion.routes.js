@@ -1047,7 +1047,7 @@ router.delete('/:id/muro/:wid', async (req, res) => {
     res.status(500).json({ error: 'No se pudo borrar el muro' });
   }
 });
-const KINDS_LUZ = ['foco', 'plaf', 'colg', 'aplq', 'pie', 'suel'];
+const KINDS_LUZ = ['foco', 'plaf', 'colg', 'aplq', 'pie', 'suel', 'esp', 'mue'];
 router.post('/:id/luminaria', async (req, res) => {
   try {
     const { x, y, kid, lid, h } = req.body || {};
