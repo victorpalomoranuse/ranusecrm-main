@@ -1129,7 +1129,8 @@
   width: 100%;
 }
 
-.ap-select option { background: #1a1a1a; }
+.ap-select { color-scheme: dark; }
+.ap-select option, .ap-select optgroup { background: #1a1a1a; color: #fff; }
 .ap-select-sm { width: auto; padding: 0.55rem 0.6rem; font-size: 0.82rem; }
 
 .ap-ssel { position: relative; width: 100%; }
@@ -1821,7 +1822,8 @@
   outline: none;
   cursor: pointer;
 }
-.ap-select option { background: #1a1a1a; }
+.ap-select { color-scheme: dark; }
+.ap-select option, .ap-select optgroup { background: #1a1a1a; color: #fff; }
 
 .ap-catalog-card-cat {
   position: absolute;
