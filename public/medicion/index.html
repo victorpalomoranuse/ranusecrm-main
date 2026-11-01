@@ -1883,7 +1883,22 @@ function spRect(r){
   var b=polyBox(p),c=r.pts?polyCentro(p):{x:(b.x0+b.x1)/2,y:(b.y0+b.y1)/2};
   return {x0:b.x0,y0:b.y0,x1:b.x1,y1:b.y1,cx:c.x,cy:c.y};
 }
-function spEn(f,k){var t=0;(st.v.sp||[]).forEach(function(r){if(r.k!==k)return;var q=spRect(r);if(q&&inPoly({x:q.cx,y:q.cy},f.poly))t+=spArea(r)});return t}
+/* lo que una zona parcial tapa DENTRO de esta sala (si la zona se sale a otras salas, solo cuenta el trozo que cae en esta): se mide por muestreo */
+function spEn(f,k){
+  var t=0,bf=polyBox(f.poly);
+  (st.v.sp||[]).forEach(function(r){
+    if(r.k!==k)return;var p=spPts(r);if(!p)return;
+    var q=spRect(r);if(!q)return;
+    var ar=polyArea(p),b=polyBox(p);
+    if(b.x1<bf.x0||b.x0>bf.x1||b.y1<bf.y0||b.y0>bf.y1)return;
+    if(ar<=f.area&&b.x0>=bf.x0&&b.x1<=bf.x1&&b.y0>=bf.y0&&b.y1<=bf.y1){if(inPoly({x:q.cx,y:q.cy},f.poly))t+=ar;return}
+    var x0=Math.max(b.x0,bf.x0),x1=Math.min(b.x1,bf.x1),y0=Math.max(b.y0,bf.y0),y1=Math.min(b.y1,bf.y1);
+    var st1=Math.max(5,Math.sqrt((x1-x0)*(y1-y0)/40000)),n=0;
+    for(var x=x0+st1/2;x<x1;x+=st1)for(var y=y0+st1/2;y<y1;y+=st1)if(inPoly({x:x,y:y},p)&&inPoly({x:x,y:y},f.poly))n++;
+    t+=n*st1*st1;
+  });
+  return Math.min(t,f.area);
+}
 /* lados rectos de un contorno: los tramos seguidos en la misma línea se acotan como uno solo (hasta el final) */
 /* los puntos de la zona que quedan a unos pocos cm de la cara de un muro (dentro o fuera) se pegan a ella */
 function spPegaMuros(sp,tol){
