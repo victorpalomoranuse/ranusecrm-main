@@ -287,6 +287,25 @@ function BudgetList({ onOpen }) {
 
   const [vista, setVistaState] = useState(() => { try { return localStorage.getItem('pres_vista') || 'lista'; } catch { return 'lista'; } });
   const setVista = v => { setVistaState(v); try { localStorage.setItem('pres_vista', v); } catch {} };
+  // Orden y filtro por estado de la lista (se recuerdan). Orden de estados al ordenar: aprobados, enviados, borradores
+  const [orden, setOrdenState] = useState(() => { try { return JSON.parse(localStorage.getItem('pres_orden') || 'null') || { col: 'fecha', dir: 'desc' }; } catch { return { col: 'fecha', dir: 'desc' }; } });
+  const [filtroEstado, setFiltroEstadoState] = useState(() => { try { return localStorage.getItem('pres_estado') || ''; } catch { return ''; } });
+  const setOrden = col => setOrdenState(o => { const n = o.col === col ? { col, dir: o.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: col === 'cliente' || col === 'nombre' ? 'asc' : 'desc' }; try { localStorage.setItem('pres_orden', JSON.stringify(n)); } catch {} return n; });
+  const setFiltroEstado = v => { setFiltroEstadoState(v); try { localStorage.setItem('pres_estado', v); } catch {} };
+  const RANGO_ESTADO = { aprobado: 0, enviado: 1, borrador: 2 };
+  const pasaEstado = b => !filtroEstado || b.status === filtroEstado;
+  const compara = (x, y) => { // x e y: { b, cliente, nombre }
+    const d = orden.dir === 'asc' ? 1 : -1, nn = v => Number(v || 0);
+    const v = orden.col === 'cliente' ? String(x.cliente).localeCompare(String(y.cliente), 'es', { numeric: true })
+      : orden.col === 'nombre' ? String(x.nombre).localeCompare(String(y.nombre), 'es', { numeric: true })
+      : orden.col === 'estado' ? (RANGO_ESTADO[x.b.status] ?? 9) - (RANGO_ESTADO[y.b.status] ?? 9)
+      : orden.col === 'coste' ? nn(x.b.itemCost) - nn(y.b.itemCost)
+      : orden.col === 'pvp' ? nn(x.b.totalRevenue) - nn(y.b.totalRevenue)
+      : orden.col === 'beneficio' ? nn(x.b.totalProfit) - nn(y.b.totalProfit)
+      : orden.col === 'margen' ? nn(x.b.margin) - nn(y.b.margin)
+      : String(x.b.created_at || '').localeCompare(String(y.b.created_at || ''));
+    return d * v;
+  };
   const budgetByProject = Object.fromEntries(budgets.filter(b => b.project_id).map(b => [b.project_id, b]));
   const independienteBudgets = budgets.filter(b => !b.project_id);
   // Todos los presupuestos con proyecto (uno por presupuesto: un proyecto puede tener varios, y el proyecto puede no estar en la lista de activos)
@@ -311,6 +330,11 @@ function BudgetList({ onOpen }) {
             </button>
           ))}
         </div>
+        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 3 }}>
+          {[['', 'Todos los estados'], ['aprobado', 'Aprobados'], ['enviado', 'Enviados'], ['borrador', 'Borradores']].map(([k, l]) => (
+            <button key={k || 'todos'} onClick={() => setFiltroEstado(k)} style={{ padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.78rem', background: filtroEstado === k ? '#baafa5' : 'transparent', color: filtroEstado === k ? '#0a0a0a' : 'rgba(255,255,255,0.6)' }}>{l}{k ? ' (' + budgets.filter(b => b.status === k).length + ')' : ''}</button>
+          ))}
+        </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 3 }}>
             {[['lista', 'Lista'], ['tarjetas', 'Tarjetas']].map(([v, l]) => (
@@ -328,8 +352,11 @@ function BudgetList({ onOpen }) {
           ...((tab === 'todos' || tab === 'independientes') ? independienteBudgets.map(b => ({ key: b.id, b, cliente: b.budget_number, nombre: b.budget_name || 'Sin nombre' })) : []),
           ...((tab === 'todos' || tab === 'proyectos') ? visibleProjects.map(p => ({ key: p.id, b: p._b, cliente: p.client_name, nombre: p.project_name })) : []),
         ];
-        filas.sort((x, y) => String(y.b.created_at || '').localeCompare(String(x.b.created_at || '')));
-        const sin = (tab === 'todos' || tab === 'proyectos') ? projectsWithoutBudget : [];
+        const filasFiltradas = filas.filter(x => pasaEstado(x.b)); filas.length = 0; filas.push(...filasFiltradas);
+        filas.sort(compara);
+        const sin = (tab === 'todos' || tab === 'proyectos') && !filtroEstado ? projectsWithoutBudget : [];
+        const flecha = col => (orden.col === col ? (orden.dir === 'asc' ? ' ▲' : ' ▼') : '');
+        const thO = (col, texto, extra = {}) => <th style={{ ...th, ...extra, cursor: 'pointer', userSelect: 'none', color: orden.col === col ? '#baafa5' : th.color }} onClick={() => setOrden(col)} title="Pulsa para ordenar">{texto}{flecha(col)}</th>;
         const th = { textAlign: 'left', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', fontWeight: 500, padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.1)' };
         const td = { padding: '9px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.84rem', whiteSpace: 'nowrap' };
         const num = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
@@ -337,8 +364,8 @@ function BudgetList({ onOpen }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>
-                <th style={th}>Cliente</th><th style={th}>Proyecto</th><th style={th}>Estado</th>
-                <th style={{ ...th, textAlign: 'right' }}>Coste</th><th style={{ ...th, textAlign: 'right' }}>PVP total</th><th style={{ ...th, textAlign: 'right' }}>Beneficio</th><th style={{ ...th, textAlign: 'right' }}>Margen</th><th style={th}></th>
+                {thO('cliente', 'Cliente')}{thO('nombre', 'Proyecto')}{thO('estado', 'Estado')}
+                {thO('coste', 'Coste', { textAlign: 'right' })}{thO('pvp', 'PVP total', { textAlign: 'right' })}{thO('beneficio', 'Beneficio', { textAlign: 'right' })}{thO('margen', 'Margen', { textAlign: 'right' })}<th style={th}></th>
               </tr></thead>
               <tbody>
                 {filas.map(({ key, b, cliente, nombre }) => {
@@ -374,7 +401,7 @@ function BudgetList({ onOpen }) {
       })()}
 
       {vista === 'tarjetas' && <div className="pres-grid">
-        {(tab === 'todos' || tab === 'independientes') && independienteBudgets.map(b => {
+        {(tab === 'todos' || tab === 'independientes') && independienteBudgets.filter(pasaEstado).map(b => ({ b, cliente: b.budget_number, nombre: b.budget_name || '' })).sort(compara).map(({ b }) => {
           const st = STATUS_CFG[b.status];
           return (
             <div key={b.id} className="pres-card pres-card--has-budget" onClick={() => onOpen(b.id)}>
@@ -397,7 +424,7 @@ function BudgetList({ onOpen }) {
           );
         })}
 
-        {(tab === 'todos' || tab === 'proyectos') && visibleProjects.map(p => {
+        {(tab === 'todos' || tab === 'proyectos') && visibleProjects.filter(p => pasaEstado(p._b)).map(p => ({ p, b: p._b, cliente: p.client_name, nombre: p.project_name })).sort(compara).map(({ p }) => {
           const b = p._b;
           const st = STATUS_CFG[b.status];
           return (
