@@ -179,7 +179,7 @@ function fetchImageBuffer(url) {
 }
 
 // Capítulos guardados para añadirlos a cualquier presupuesto con un clic (lista compartida, en el almacenamiento)
-const CAPITULOS_BASE = ['Trabajos previos', 'Demoliciones', 'Albañilería', 'Fontanería', 'Electricidad', 'Climatización', 'Carpintería', 'Pavimentos y revestimientos', 'Pintura', 'Iluminación', 'Equipamiento y maquinaria', 'Honorarios y gestión', 'Otros'];
+const CAPITULOS_BASE = ['Trabajos previos', 'Demoliciones', 'Albañilería', 'Fontanería y sanitarios', 'Electricidad', 'Climatización', 'Pavimentos y revestimientos', 'Cerrajería y carpintería', 'Vidrios y espejos', 'Pintura', 'Iluminación', 'Equipamiento y maquinaria', 'Mobiliario', 'Honorarios y gestión', 'Otros'];
 async function leerCapitulos() {
   try {
     const { data } = await supabase.storage.from('project-documents').download('presupuestos/capitulos.json');
