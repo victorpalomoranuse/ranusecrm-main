@@ -2434,10 +2434,12 @@ function wallH(){return num(st.v.altura)||260}
 /* altura de un muro: la suya si la tiene, y si no la general del plano */
 function wh(w){var n=num(w&&w.h);return n>0&&n<=5000?n:wallH()}
 /* m² de muro por estado, con la altura de cada muro */
-function areaEst(est){var t=0;st.v.walls.forEach(function(w){if(w.s===est)t+=wLen(w)*wh(w)});return t/10000}
-function wallArea(w){
-  var a=wg(w).l*wh(w);
-  st.v.ops.forEach(function(o){if(o.wall===w.id)a-=o.w*o.h});
+function areaEst(est){var t=0;st.v.walls.forEach(function(w){if(w.s===est)t+=wLen(w)*Math.max(faceH(w,"p"),faceH(w,"m"))});return t/10000}
+/* altura de una cara concreta: si se escribió una distinta (w.hc), vale esa; si no, la del muro */
+function faceH(w,sd){var n=num(w&&w.hc&&sd?w.hc[sd]:0);return n>0&&n<=5000?n:wh(w)}
+function wallArea(w,sd){
+  var H=sd?faceH(w,sd):wh(w),a=wg(w).l*H;
+  st.v.ops.forEach(function(o){if(o.wall===w.id)a-=o.w*Math.min(o.h,H)});
   return Math.max(0,a);
 }
 function faceName(w,sd){
@@ -2451,7 +2453,7 @@ function areaZona(z){return Math.max(0,z.x1-z.x0)*Math.max(0,z.y1-z.y0)}
 function sumaAreasCara(acc,w,sd){ // acumula cm² por material de una cara: lo que ocupan las zonas y el resto con el material base
   var zt=0;
   zonasDe(w,sd).forEach(function(z){var a=areaZona(z);zt+=a;if(z.mat)acc[z.mat]=(acc[z.mat]||0)+a});
-  if(w.f&&w.f[sd])acc[w.f[sd]]=(acc[w.f[sd]]||0)+Math.max(0,wallArea(w)-zt);
+  if(w.f&&w.f[sd])acc[w.f[sd]]=(acc[w.f[sd]]||0)+Math.max(0,wallArea(w,sd)-zt);
 }
 function alzadoDe(w,sd){var l=elevList('alz');for(var i=0;i<l.length;i++)if(l[i].w.id===w.id&&l[i].sd===sd)return l[i];return null}
 function acabCodes(view){
@@ -6500,6 +6502,7 @@ function panelSel(focus){
     h+='<div class="btns">'+[[-90,'−90°'],[-15,'−15°'],[-1,'−1°'],[1,'+1°'],[15,'+15°'],[90,'+90°']].map(function(p){return '<button data-a="angd" data-s="'+p[0]+'">'+p[1]+'</button>'}).join('')+'<button data-a="angort">Enderezar a 0° / 90°</button></div>';
     h+='<label class="fld"><span>Tipo de muro o tabique (sale en los detalles)</span><select data-t="w_tipo"><option value="">Sin definir'+(w.s==='new'?' (tabique de pladur 2+2)':'')+'</option>'+Object.keys(DLIB).filter(function(k){return DLIB[k].wall}).map(function(k){return '<option value="'+k+'"'+(w.tipo===k?' selected':'')+'>'+esc(DLIB[k].n)+'</option>'}).join('')+'</select></label>'+cuandoHtml(w.tipo||(w.s==='new'?'TAB-new':null));
     h+=fld('w_h','Altura de este muro (cm)',w.h,fmt(wallH()))+'<p class="note" style="margin:0 0 6px">Vacío = altura general ('+fmt(wallH())+' cm). Cuenta para los m² y para SketchUp.</p>';
+    h+='<div class="lab">¿Una cara más alta o más baja que la otra?</div>'+['p','m'].map(function(sd){return fld('w_hc_'+sd,'Altura · '+faceName(w,sd)+' (cm)',w.hc&&w.hc[sd],fmt(wh(w)))}).join('')+'<p class="note" style="margin:0 0 6px">Vacío = la altura del muro. Los m² de pintura, alicatado y picado de cada cara usan su propia altura.</p>';
     var aA=adjOf(w,w.a),aB=adjOf(w,w.b);
     if(aA||aB){
       h+='<div class="lab" style="margin-top:12px">Mover este muro cambiando los que lo cortan</div>';
@@ -6520,7 +6523,7 @@ function panelSel(focus){
       h+='<div class="lab" style="margin-top:12px">Acabado existente</div>';
       ['p','m'].forEach(function(sd){
         h+='<label class="fld"><span>'+faceName(w,sd)+'</span><select data-t="wx_'+sd+'"><option value="">Sin definir</option>'+BASEACAB.map(function(m){return '<option value="'+m.id+'"'+((w.fx&&w.fx[sd])===m.id?' selected':'')+'>'+m.n+'</option>'}).join('')+'</select></label>';
-        h+='<label class="fld chk"><input type="checkbox" data-t="wr_'+sd+'"'+((w.fr&&w.fr[sd])?' checked':'')+'><span>Retirar este acabado ('+m2(wallArea(w)/10000)+' m²)</span></label>';
+        h+='<label class="fld chk"><input type="checkbox" data-t="wr_'+sd+'"'+((w.fr&&w.fr[sd])?' checked':'')+'><span>Retirar este acabado ('+m2(wallArea(w,sd)/10000)+' m²)</span></label>';
       });
     }
     h+='<div class="btns"><button data-a="rcadd">Añadir recrecido en este muro</button></div>';
@@ -6805,6 +6808,12 @@ function applyField(key,val,adv,raw){
   if(/^cl_/.test(key)){applyCl(key,n);return}
   if(s.t==='wall'){
     var w=wl(s.id);if(!w)return;
+    if(key==='w_hc_p'||key==='w_hc_m'){
+      var sdh=key.slice(-1);
+      if(String(val).trim()===''){snap();if(w.hc){delete w.hc[sdh];if(!w.hc.p&&!w.hc.m)delete w.hc}commit(false);return}
+      if(!(n>=50&&n<=5000)){toast('Escribe una altura válida (50–5000 cm)');return}
+      snap();w.hc=w.hc||{};w.hc[sdh]=n;commit(false);return;
+    }
     if(key==='w_h'){
       if(String(val).trim()===''){snap();delete w.h;commit(false);return}
       if(!(n>0&&n<=5000)){toast('Escribe una altura válida');return}
@@ -9225,7 +9234,7 @@ function sheetPage(doc,view,idx,total,o){
       });
       if(view==='acab'){
         var sisW=sisCodes('acab'),areaW={};
-        v.walls.forEach(function(w){if(!w.fs||!wallVis(w,view))return;['p','m'].forEach(function(sd){var id=w.fs[sd];if(id)areaW[id]=(areaW[id]||0)+wallArea(w)})});
+        v.walls.forEach(function(w){if(!w.fs||!wallVis(w,view))return;['p','m'].forEach(function(sd){var id=w.fs[sd];if(id)areaW[id]=(areaW[id]||0)+wallArea(w,sd)})});
         if(Object.keys(sisW).length&&sect('Sistemas / obra')){
           Object.keys(sisW).forEach(function(sid){
             if(!room(rh*1.2))return;
@@ -9388,7 +9397,7 @@ function sheetPage(doc,view,idx,total,o){
     var rsA=0,rtA=0;v.rz.forEach(function(r){var ar=rzArea(r);if(ar){if(r.k==='s')rsA+=ar;else rtA+=ar}});
     if(rsA)rows.push(['Suelo a levantar',m2(rsA/10000)+' m²']);
     if(rtA)rows.push(['Techo a desmontar',m2(rtA/10000)+' m²']);
-    var wrm={},wrT=0;v.walls.forEach(function(w){if(!w.fr||!wallVis(w,view))return;['p','m'].forEach(function(sd){if(w.fr[sd]){var a=wallArea(w);wrT+=a;var k=(w.fx&&w.fx[sd])||'';wrm[k]=(wrm[k]||0)+a}})});
+    var wrm={},wrT=0;v.walls.forEach(function(w){if(!w.fr||!wallVis(w,view))return;['p','m'].forEach(function(sd){if(w.fr[sd]){var a=wallArea(w,sd);wrT+=a;var k=(w.fx&&w.fx[sd])||'';wrm[k]=(wrm[k]||0)+a}})});
     if(wrT){rows.push(['Acabados de pared a retirar',m2(wrT/10000)+' m²']);Object.keys(wrm).forEach(function(k){rows.push(['   '+(k?matOf('acab',k).n:'Material sin definir'),m2(wrm[k]/10000)+' m²'])})}
   }else if(view==='interv'){
     rows.push(['Muros nuevos',m2(sumL('new'))+' ml · '+m2(areaEst('new'))+' m²']);
@@ -11181,7 +11190,7 @@ function medDatos1(){
   var rsA=0,rtA=0;v.rz.forEach(function(r){var ar=rzArea(r);if(ar){if(r.k==='s')rsA+=ar;else rtA+=ar}});
   if(rsA)d.push(fila('Suelo a levantar',null,rsA/10000,null));
   if(rtA)d.push(fila('Falso techo a desmontar',null,rtA/10000,null));
-  var wrm={};v.walls.forEach(function(w){if(!w.fr||!wallVis(w,'demol'))return;['p','m'].forEach(function(sd){if(w.fr[sd]){var a=wallArea(w),k=(w.fx&&w.fx[sd])||'';wrm[k]=(wrm[k]||0)+a}})});
+  var wrm={};v.walls.forEach(function(w){if(!w.fr||!wallVis(w,'demol'))return;['p','m'].forEach(function(sd){if(w.fr[sd]){var a=wallArea(w,sd),k=(w.fx&&w.fx[sd])||'';wrm[k]=(wrm[k]||0)+a}})});
   Object.keys(wrm).forEach(function(k){d.push(fila('Picar acabado de pared: '+(k?matOf('acab',k).n:'material sin definir'),null,wrm[k]/10000,null,'alicatado o revestimiento a retirar'))});
   S.push({id:'demol',t:'Demoliciones y retiradas',f:d});
   /* Obra nueva */
