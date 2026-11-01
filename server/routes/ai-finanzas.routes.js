@@ -130,15 +130,37 @@ Si algún movimiento no se pudo procesar, dilo también ahí, claramente, aparte
 
 Sé directo — nada de explicaciones largas, Víctor tiene prisa y quiere ver rápido qué se ha creado.`;
 
-router.post('/chat', async (req, res) => {
-  try {
-    const { messages } = req.body;
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ error: 'messages es requerido' });
-    }
+// Un extracto largo tarda varios minutos (decenas de movimientos en varios turnos) y el proxy corta las peticiones largas. Por eso el chat se lanza como tarea en segundo plano:
+// POST /chat devuelve enseguida un identificador y la pantalla pregunta con GET /chat/:id hasta que termina.
+const trabajos = new Map(); // id → { userId, estado: 'trabajando' | 'listo' | 'error', creados, reply, error, t }
+setInterval(() => { const ya = Date.now() - 60 * 60 * 1000; for (const [k, v] of trabajos) if (v.t < ya) trabajos.delete(k); }, 10 * 60 * 1000).unref?.();
 
+router.post('/chat', async (req, res) => {
+  const { messages } = req.body || {};
+  if (!Array.isArray(messages) || messages.length === 0) return res.status(400).json({ error: 'messages es requerido' });
+  const id = 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const trabajo = { userId: req.user.id, estado: 'trabajando', creados: [], reply: '', error: '', t: Date.now() };
+  trabajos.set(id, trabajo);
+  res.status(202).json({ jobId: id });
+  try {
+    await ejecutarChat(messages, req.user.id, trabajo);
+    trabajo.estado = 'listo';
+  } catch (error) {
+    console.error('Error en asistente de finanzas:', error);
+    trabajo.estado = 'error'; trabajo.error = error.message || 'Error al consultar al asistente';
+  }
+  trabajo.t = Date.now();
+});
+router.get('/chat/:id', (req, res) => {
+  const t = trabajos.get(req.params.id);
+  if (!t || t.userId !== req.user.id) return res.status(404).json({ error: 'No encuentro esa tarea (puede que el servidor se haya reiniciado). Revisa en Finanzas lo que ya se haya creado.' });
+  res.json({ estado: t.estado, creados: t.creados, reply: t.reply, error: t.error });
+});
+
+async function ejecutarChat(messages, userId, trabajo) {
+  {
     let conversation = messages.map(m => ({ role: m.role, content: m.content }));
-    const creados = [];
+    const creados = trabajo.creados;
     let bestText = '';
     let lastResponse = null;
 
@@ -168,18 +190,15 @@ router.post('/chat', async (req, res) => {
 
       conversation.push({ role: 'assistant', content: lastResponse.content });
       const toolResults = await Promise.all(toolUses.map(async tu => {
-        const result = await crearMovimiento(tu.input, req.user.id);
+        const result = await crearMovimiento(tu.input, userId);
         if (result.creado) creados.push(result.movimiento);
         return { type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) };
       }));
       conversation.push({ role: 'user', content: toolResults });
     }
 
-    res.json({ reply: bestText || 'No he podido generar una respuesta.', creados });
-  } catch (error) {
-    console.error('Error en asistente de finanzas:', error);
-    res.status(500).json({ error: error.message || 'Error al consultar al asistente' });
+    trabajo.reply = bestText || 'No he podido generar una respuesta.';
   }
-});
+}
 
 export default router;

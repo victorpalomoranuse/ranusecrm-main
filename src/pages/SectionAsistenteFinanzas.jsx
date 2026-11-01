@@ -75,6 +75,7 @@ export function SectionAsistenteFinanzas() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [progreso, setProgreso] = useState(0);
   const [error, setError] = useState('');
   const [pendingFiles, setPendingFiles] = useState([]);
   const bottomRef = useRef(null);
@@ -131,12 +132,23 @@ export function SectionAsistenteFinanzas() {
     setPendingFiles([]);
     setLoading(true);
     try {
-      const { data } = await api.post('/ai-finanzas/chat', { messages: nextMessages });
+      // La tarea se hace en segundo plano en el servidor (un extracto largo tarda minutos) y aquí se pregunta cada pocos segundos cómo va
+      const { data: ini } = await api.post('/ai-finanzas/chat', { messages: nextMessages });
+      let data = null, fallos = 0;
+      for (let i = 0; i < 450 && !data; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const { data: st } = await api.get('/ai-finanzas/chat/' + ini.jobId); fallos = 0;
+          setProgreso(st.creados?.length || 0);
+          if (st.estado === 'listo') data = st; else if (st.estado === 'error') throw Object.assign(new Error(st.error), { mostrar: st.error });
+        } catch (e) { if (e.mostrar) throw e; if (++fallos > 8) throw e; }
+      }
+      if (!data) throw Object.assign(new Error('tiempo'), { mostrar: 'Está tardando más de lo normal. Mira en Finanzas lo que ya se ha creado antes de volver a enviarlo.' });
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply, creados: data.creados }]);
     } catch (err) {
-      setError(err.response?.data?.error || 'Error al consultar al asistente. Revisa que la clave de Claude esté configurada.');
+      setError(err.mostrar || err.response?.data?.error || 'Error al consultar al asistente. Revisa que la clave de Claude esté configurada.');
     } finally {
-      setLoading(false);
+      setLoading(false); setProgreso(0);
     }
   };
 
@@ -173,7 +185,7 @@ export function SectionAsistenteFinanzas() {
           )}
           {loading && (
             <div className="ai-msg ai-msg--assistant">
-              <div className="ai-msg-bubble ai-msg-bubble--loading">Leyendo los documentos…</div>
+              <div className="ai-msg-bubble ai-msg-bubble--loading">{progreso > 0 ? `Creando movimientos… ${progreso} hasta ahora. Un extracto largo puede tardar unos minutos: no cierres esta pantalla.` : 'Leyendo los documentos…'}</div>
             </div>
           )}
           <div ref={bottomRef} />
