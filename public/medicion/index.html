@@ -1887,7 +1887,7 @@ function spRect(r){
 function spEn(f,k){
   var t=0,bf=polyBox(f.poly);
   (st.v.sp||[]).forEach(function(r){
-    if(r.k!==k)return;var p=spPts(r);if(!p)return;
+    if(r.k!==k||r.sm)return;var p=spPts(r);if(!p)return;
     var q=spRect(r);if(!q)return;
     var ar=polyArea(p),b=polyBox(p);
     if(b.x1<bf.x0||b.x0>bf.x1||b.y1<bf.y0||b.y0>bf.y1)return;
@@ -6633,6 +6633,7 @@ function panelSel(focus){
     h+='<div class="btns"><button data-a="spadd" aria-pressed="'+!!st.spAdd+'">Añadir puntos: '+(st.spAdd?'sí (toca un lado)':'no')+'</button><button data-a="spancla" title="Al escribir una medida de un lado, qué extremo se mueve. Automático: el que no está pegado a un muro.">Al cambiar una medida: '+({auto:'automático',fin:'se mueve el final (derecha/abajo)',ini:'se mueve el principio (izquierda/arriba)',centro:'se reparte a los dos lados'})[st.spAncla||'auto']+'</button><button data-a="sppega" title="Corrige los puntos que quedan a unos pocos cm de la cara de un muro (dentro o fuera) y los pega a ella">Pegar a los muros</button></div>';
     if(st.spVsel&&st.spVsel.id===sp.id&&sp.pts&&sp.pts.length>3)h+='<div class="btns"><button data-a="spdelv">Quitar el punto seleccionado</button></div>';
     if(sq&&sbx&&!sp.pts)h+=fld('sp_x','Distancia desde la esquina izquierda (cm)',sq.x0-sbx.x0)+fld('sp_y','Distancia desde la esquina de arriba (cm)',sq.y0-sbx.y0);
+    h+='<label class="fld chk"><input type="checkbox" data-t="sp_sm"'+(sp.sm?' checked':'')+'><span>Solo para modelar en 3D: no cuenta en mediciones ni en el presupuesto (por si ya lo dibujaste otra vez para pintar)</span></label>';
     h+='<label class="fld chk"><input type="checkbox" data-t="sp_ex"'+(sp.ex?' checked':'')+'><span>Existente: se mantiene (no se mide ni se pide)</span></label>';
     var spp=spPts(sp);if(sp.k==='t'&&spp&&spp.length>2){ /* una parte dibujada de techo (p. ej. una entreplanta) también tiene altura propia y puede llevar estructura */
       h+=fld('zn_h','Altura libre bajo esta parte (cm)',sp.h,String(fmt(num(st.v.altura)||260)));
@@ -6660,6 +6661,7 @@ function panelSel(focus){
     if(z.k==='t'){h+=fld('zn_h','Altura libre bajo el techo (cm)',z.h,String(fmt(num(st.v.altura)||260)));if(z.h>0)h+='<div class="btns"><button data-a="znmuros" title="Pone los muros que rodean SOLO a esta sala a esa altura (los compartidos con otra sala no se tocan)">Muros de esta sala a ese alto</button></div>'}
     if(z.k==='t'&&!z.ex)h+=techoPanel(z,zf);
     if(zf&&z.k==='s')h+='<p class="note">Rodapié: '+m2(Math.max(0,zf.per-zf.doorW)/100)+' ml (perímetro menos puertas). Los m² son útiles, descontando el grosor de los muros.</p>';
+    h+='<label class="fld chk"><input type="checkbox" data-t="zn_sm"'+(z.sm?' checked':'')+'><span>Solo para modelar en 3D: no cuenta en mediciones ni en el presupuesto (por si ya lo dibujaste otra vez para pintar)</span></label>';
     h+='<label class="fld chk"><input type="checkbox" data-t="zn_ex"'+(z.ex?' checked':'')+'><span>'+(z.k==='s'?'Suelo':'Techo')+' existente: se mantiene (no se mide ni se pide)</span></label>';
     h+=colocHtml(z,zf?zf.inner:null);
     h+='<div class="btns"><button class="danger" data-a="del">Quitar material</button></div>';
@@ -7302,6 +7304,7 @@ $('side').addEventListener('change',function(e){
     }
     commit(false);panelSel();return;
   }
+  if((t==='zn_sm'&&st.sel&&st.sel.t==='zn')||(t==='sp_sm'&&st.sel&&st.sel.t==='sp')){var qm=t==='zn_sm'?by(st.v.zn,st.sel.id):by(st.v.sp,st.sel.id);if(qm){snap();if(e.target.checked)qm.sm=true;else delete qm.sm;commit(false);panelSel()}return}
   if((t==='zn_ex'&&st.sel&&st.sel.t==='zn')||(t==='sp_ex'&&st.sel&&st.sel.t==='sp')){var qz=t==='zn_ex'?by(st.v.zn,st.sel.id):by(st.v.sp,st.sel.id);if(qz){snap();if(e.target.checked)qz.ex=true;else delete qz.ex;commit(false);panelSel()}return}
   if(t==='pt_pf'&&st.sel&&st.sel.t==='pt'){var qp2=by(st.v.pts,st.sel.id);if(qp2){snap();if(e.target.value)qp2.pf=e.target.value;else delete qp2.pf;commit(false);panelSel()}return}
   if(t==='pt_mo'&&st.sel&&st.sel.t==='pt'){var qm2=by(st.v.pts,st.sel.id);if(qm2){snap();qm2.mo=e.target.value;commit(false);panelSel()}return}
@@ -9197,8 +9200,8 @@ function sheetPage(doc,view,idx,total,o){
   var roomsL=[];
   if(view==='suelos'||view==='techos'){
     var zk2=zkind(view),codes2=zoneCodes(view),areaBy={};
-    roomFaces(view).forEach(function(f){var z=zoneIn(f,zk2);if(z){areaBy[z.mat]=(areaBy[z.mat]||0)+f.area-spEn(f,zk2);roomsL.push({z:z,f:f})}});
-    (v.sp||[]).forEach(function(r){if(r.k===zk2)areaBy[r.mat]=(areaBy[r.mat]||0)+spArea(r)});
+    roomFaces(view).forEach(function(f){var z=zoneIn(f,zk2);if(z){if(!z.sm)areaBy[z.mat]=(areaBy[z.mat]||0)+f.area-spEn(f,zk2);roomsL.push({z:z,f:f})}});
+    (v.sp||[]).forEach(function(r){if(r.k===zk2&&!r.sm)areaBy[r.mat]=(areaBy[r.mat]||0)+spArea(r)});
     var exMat={};
     Object.keys(codes2).forEach(function(mid){
       var zs=(v.zn||[]).filter(function(z){return z.k===zk2&&z.mat===mid}).concat((v.sp||[]).filter(function(z){return z.k===zk2&&z.mat===mid}));
@@ -9951,15 +9954,15 @@ function buildResumen1(){
   roomFaces('suelos').forEach(function(f){
     var z=zoneIn(f,'s'),zt=zoneIn(f,'t');
     salas.push({nombre:(z&&z.nm)||(zt&&zt.nm)||'',area_m2:r2(f.area/10000),perimetro_ml:r2(f.per/100)});
-    if(z&&!z.ex){var m=matOf('suelos',z.mat);(suelos[z.mat]=suelos[z.mat]||{id:z.mat,nombre:m.n,m2:0}).m2+=(f.area-spEn(f,'s'))/10000} /* sin lo que tapa una zona parcial (p. ej. el caucho) */
+    if(z&&!z.ex&&!z.sm){var m=matOf('suelos',z.mat);(suelos[z.mat]=suelos[z.mat]||{id:z.mat,nombre:m.n,m2:0}).m2+=(f.area-spEn(f,'s'))/10000} /* sin lo que tapa una zona parcial (p. ej. el caucho) */
   });
   roomFaces('techos').forEach(function(f){
     var z=zoneIn(f,'t');
-    if(z&&!z.ex){var m=matOf('techos',z.mat);(techos[z.mat]=techos[z.mat]||{id:z.mat,nombre:m.n,m2:0}).m2+=(f.area-spEn(f,'t'))/10000}
+    if(z&&!z.ex&&!z.sm){var m=matOf('techos',z.mat);(techos[z.mat]=techos[z.mat]||{id:z.mat,nombre:m.n,m2:0}).m2+=(f.area-spEn(f,'t'))/10000}
   });
   /* zonas parciales (un trozo de la sala con otro material, como el caucho): también cuentan */
   (v.sp||[]).forEach(function(r){
-    if(!r.mat||r.ex)return;
+    if(!r.mat||r.ex||r.sm)return;
     var dst=r.k==='s'?suelos:r.k==='t'?techos:null;if(!dst)return;
     var vw=r.k==='s'?'suelos':'techos',m=matOf(vw,r.mat);
     (dst[r.mat]=dst[r.mat]||{id:r.mat,nombre:m.n,m2:0}).m2+=spArea(r)/10000;
