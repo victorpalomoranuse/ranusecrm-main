@@ -2914,7 +2914,7 @@ function ptDraw0(C,px,p,sel,col){
     return h+g0+'<rect x="'+f2(-rw/2)+'" y="'+f2(-rd/2)+'" width="'+f2(rw)+'" height="'+f2(rd)+'" style="fill:'+C.bg+';fill-opacity:.55;stroke:'+col+';stroke-width:'+f2(1.5*px)+'"/>'+ln(-rw/2,-rd/2,rw/2,rd/2,col,0.8*px)+ln(-rw/2,rd/2,rw/2,-rd/2,col,0.8*px)+'</g>';
   }
   if(sel)h+='<circle cx="'+f2(c.x)+'" cy="'+f2(c.y)+'" r="'+f2(13*px)+'" style="fill:'+C.accent+';opacity:.3"/>';
-  var u=px*1.9*ptSz(p),ar=(p.a||0)*Math.PI/180,off=(d&&d.wall)?-5*u:0;
+  var u=p.dc>0?p.dc/11:px*1.9*ptSz(p),ar=(p.a||0)*Math.PI/180,off=(d&&d.wall)?-5*u:0; /* con diámetro escrito el símbolo mide eso en cm reales */
   return h+'<g transform="translate('+f2(c.x+Math.cos(ar)*off)+' '+f2(c.y+Math.sin(ar)*off)+') rotate('+f2(p.a||0)+')">'+ptSym(p.k,col,u)+'</g>';
 }
 /* bloque real del producto (dibujado en el editor de bloques): planta a escala en cm, solo trazos */
@@ -6698,6 +6698,7 @@ function panelSel(focus){
       h+='<div class="btns"><button data-a="ptrot">Girar 90°</button>'+(q.v==='ilum'?'<button data-a="ptnd">'+(q.nd?'Mostrar cotas':'Ocultar cotas')+'</button>':'')+'</div>';
     }
     if(q.v==='ilum'){
+      if(!pd.lin&&!pd.rect)h+=fld('pt_dc','Diámetro real del símbolo (cm)',q.dc>0?q.dc:null,'automático')+'<p class="note" style="margin:0 0 6px">Escribe la medida real (por ejemplo 8 cm de un foco) y el símbolo se dibuja a escala; si lo dejas vacío, se ajusta solo al zoom.</p>';
       h+='<div class="lab">Tamaño del símbolo: ×'+(q.sz||1)+'</div><div class="btns"><button data-a="ptsm">Más pequeño</button><button data-a="ptbg">Más grande</button></div><div class="btns"><button data-a="ptsall">Igualar a todas de este tipo</button></div>';
       var from=cnList().filter(function(c){return c.b===q.id}).map(function(c){return (swTagMap()[c.a]||{}).tag}).filter(Boolean);
       h+='<p class="note">'+(from.length?'Se enciende desde '+from.join(', '):'Sin encendido unido.')+'</p>';
@@ -6987,6 +6988,11 @@ function applyField(key,val,adv,raw){
     snap();zq.h=n;commit(false);
   }else if(s.t==='pt'){
     var qp=by(st.v.pts,s.id);if(!qp)return;
+    if(key==='pt_dc'){
+      if(String(val).trim()===''){snap();delete qp.dc;commit(false);return}
+      if(!(n>=1&&n<=200)){toast('Escribe un diámetro entre 1 y 200 cm');return}
+      snap();qp.dc=n;commit(false);return;
+    }
     if(key==='pt_lw'||key==='pt_lf'||key==='pt_lt'){
       if(!(n>=1&&n<=2000)){toast('Escribe una medida entre 1 y 2000 cm');return}
       snap();if(key==='pt_lw')qp.w=n;else if(key==='pt_lf')qp.d=n;else qp.t=n;commit(false);panelSel();return;
@@ -7115,7 +7121,7 @@ function doAction(a,el){
   if(a==='oside'){var o2=opn(s.id);snap();o2.side=o2.side>=0?-1:1;commit();return}
   if(a==='oflip'){var o3=opn(s.id);snap();o3.flip=!o3.flip;commit();return}
   if(a==='ptsm'||a==='ptbg'){var qz=by(st.v.pts,s.id);snap();qz.sz=Math.max(0.4,Math.min(4,Math.round((qz.sz||1)*(a==='ptbg'?1.25:0.8)*100)/100));commit();return}
-  if(a==='ptsall'){var q0=by(st.v.pts,s.id);snap();st.v.pts.forEach(function(q){if(q.v==='ilum'&&(q.lid||('k:'+q.k))===(q0.lid||('k:'+q0.k)))q.sz=q0.sz||1});commit();return}
+  if(a==='ptsall'){var q0=by(st.v.pts,s.id);snap();st.v.pts.forEach(function(q){if(q.v==='ilum'&&(q.lid||('k:'+q.k))===(q0.lid||('k:'+q0.k)))q.sz=q0.sz||1;if(q0.dc>0)q.dc=q0.dc;else delete q.dc}});commit();return}
   if(a==='ptnd'){var q1=by(st.v.pts,s.id);snap();q1.nd=q1.nd?0:1;commit();return}
   if(a==='cnstart'){st.cnFrom=s.id;st.tool='cn';toolbar();hint();render();toast('Toca las luminarias que enciende');return}
   if(a==='ptrot'){var qr=by(st.v.pts,s.id);snap();qr.a=((qr.a||0)+90)%360;commit();return}
