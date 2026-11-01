@@ -54,8 +54,9 @@ function ResumenPorPeriodo({ periodos, tipo }) {
   return (
     <div className="fz-tabla">
       <div className="fz-row fz-row--head"><span>Periodo</span><span>Generado</span><span>Cobrado</span><span>Pendiente</span></div>
-      {periodos.map(p => {
-        const pago = p.pendiente > 0.01 ? fechaPagoPrevista(p.periodo, tipo) : null;
+      {periodos.map((p, i) => {
+        const pendEf = Math.min(...periodos.slice(0, i + 1).map(x => x.pendiente)); // lo que sigue sin cubrir hoy de ese mes (los pagos de más posteriores lo compensan)
+        const pago = pendEf > 0.5 ? fechaPagoPrevista(p.periodo, tipo) : null;
         return (
         <div key={p.periodo}>
           <div className="fz-row" style={{ cursor: p.porVenta?.length ? 'pointer' : 'default' }} onClick={() => p.porVenta?.length && setAbierto(a => a === p.periodo ? null : p.periodo)}>

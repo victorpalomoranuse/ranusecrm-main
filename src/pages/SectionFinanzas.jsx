@@ -446,10 +446,11 @@ function EquipoPeriodos() {
                 m.periodos.length === 0 ? <p className="ap-empty-sm" style={{ padding: '6px 12px' }}>Sin ingresos cobrados todavía.</p> : (
                   <div className="fz-tabla" style={{ marginTop: 4 }}>
                     <div className="fz-row fz-row--head"><span>Periodo</span><span>Generado</span><span>Cobrado</span><span>Pendiente</span></div>
-                    {m.periodos.map(p => {
+                    {m.periodos.map((p, i) => {
                       const clave = `${m.nombre}|${p.periodo}`;
+                      const pendEf = Math.min(...m.periodos.slice(0, i + 1).map(x => x.pendiente)); // lo que sigue sin cubrir hoy de ese mes
                       const expandible = true;
-                      const pago = p.pendiente > 0.01 ? fechaPagoPrevista(p.periodo, tipo) : null;
+                      const pago = pendEf > 0.5 ? fechaPagoPrevista(p.periodo, tipo) : null;
                       return (
                         <div key={p.periodo}>
                           <div className="fz-row" style={{ cursor: expandible ? 'pointer' : 'default' }} onClick={() => expandible && setPeriodoAbierto(a => a === clave ? null : clave)}>
