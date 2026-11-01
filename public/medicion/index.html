@@ -2146,7 +2146,7 @@ function techoQuita(z,el){
 function pickTecho(p){
   var best=null,bd=1e9;
   techoZonas().forEach(function(it){
-    var f=it.f,z=it.z;if(!z||z.ex||best&&best.k==='tl')return;
+    var f=it.f,z=it.z;if(!z||best&&best.k==='tl')return;
     if(!inPoly(p,f.inner))return;
     (z.tl||[]).forEach(function(t,ix){if(Math.abs(p.x-t.x)<=t.w/2+2&&Math.abs(p.y-t.y)<=t.d/2+2)best={zid:z.id,el:{k:'tl',i:ix}}});
     if(best)return;
@@ -2198,7 +2198,7 @@ function techoSvg(C,px,view,sel){
   if(view!=='techos'&&!ref)return h;
   if(ref)sel=null;
   techoZonas().forEach(function(it){
-    var f=it.f,z=it.z;if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
+    var f=it.f,z=it.z;if(!z||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
     var b=techoBox(f.inner),fo=z.fo||'plano',ej=z.ej==='v'?'v':'h',col=C.accent||C.dim,H=num(st.v.altura)||260;
     var ha=z.ha!=null?z.ha:H,hc=z.hc!=null?z.hc:H+150;
     function seg(x1,y1,x2,y2,w,dash,op,cc){return ln(x1,y1,x2,y2,cc||col,w,'butt',(dash?';stroke-dasharray:'+dash:'')+(op?';opacity:'+op:''))}
@@ -6637,8 +6637,7 @@ function panelSel(focus){
     h+='<label class="fld chk"><input type="checkbox" data-t="sp_ex"'+(sp.ex?' checked':'')+'><span>Existente: se mantiene (no se mide ni se pide)</span></label>';
     var spp=spPts(sp);if(sp.k==='t'&&spp&&spp.length>2){ /* una parte dibujada de techo (p. ej. una entreplanta) también tiene altura propia y puede llevar estructura */
       h+=fld('zn_h','Altura libre bajo esta parte (cm)',sp.h,String(fmt(num(st.v.altura)||260)));
-      if(!sp.ex)h+=techoPanel(sp,techoFaceDe(sp));
-      else h+='<p class="note">Para dibujar la estructura (vigas, cerchas, correas) quita la marca de «Existente».</p>';
+      h+=techoPanel(sp,techoFaceDe(sp));
     }
     h+=colocHtml(sp,spPts(sp));
     h+='<div class="btns"><button class="danger" data-a="del">Borrar esta parte</button></div>';
@@ -6659,7 +6658,7 @@ function panelSel(focus){
     h+='<label class="fld"><span>Nombre de la sala</span><input data-t="zn_nm" value="'+esc(z.nm||'')+'" placeholder="Sala de entreno" autocomplete="off"></label>';
     h+='<label class="fld"><span>Material</span><select data-t="zn_mat">'+matOpts(zv,z.mat)+'</select></label>'+codColorHtml(z,zv)+sisSelHtml(zv,z.sis,'zn_sis');
     if(z.k==='t'){h+=fld('zn_h','Altura libre bajo el techo (cm)',z.h,String(fmt(num(st.v.altura)||260)));if(z.h>0)h+='<div class="btns"><button data-a="znmuros" title="Pone los muros que rodean SOLO a esta sala a esa altura (los compartidos con otra sala no se tocan)">Muros de esta sala a ese alto</button></div>'}
-    if(z.k==='t'&&!z.ex)h+=techoPanel(z,zf);
+    if(z.k==='t')h+=techoPanel(z,zf);
     if(zf&&z.k==='s')h+='<p class="note">Rodapié: '+m2(Math.max(0,zf.per-zf.doorW)/100)+' ml (perímetro menos puertas). Los m² son útiles, descontando el grosor de los muros.</p>';
     h+='<label class="fld chk"><input type="checkbox" data-t="zn_sm"'+(z.sm?' checked':'')+'><span>Solo para modelar en 3D: no cuenta en mediciones ni en el presupuesto (por si ya lo dibujaste otra vez para pintar)</span></label>';
     h+='<label class="fld chk"><input type="checkbox" data-t="zn_ex"'+(z.ex?' checked':'')+'><span>'+(z.k==='s'?'Suelo':'Techo')+' existente: se mantiene (no se mide ni se pide)</span></label>';
@@ -9984,7 +9983,7 @@ function buildResumen1(){
   out.electricidad=Object.keys(inst).map(function(k){return inst[k]});
   out.cubiertas=[];
   techoZonas().forEach(function(it){
-    var f=it.f,z=it.z;if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
+    var f=it.f,z=it.z;if(!z||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
     var tm=techoMedicion(z,f.inner),sala=(z.nm)||'';
     tm.sala=sala;out.cubiertas.push(tm);
   });
@@ -10038,13 +10037,13 @@ function buildModelo3d1(){
   });
   out.techos=[];
   techoZonas().forEach(function(it){
-    var f=it.f,z=it.z;if(!z||z.ex||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
+    var f=it.f,z=it.z;if(!z||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
     var m=matOf('techos',z.mat),H=num(v.altura)||260,b=techoBox(f.inner);
     out.techos.push({id:z.id,pts:f.inner.map(function(p){return [f2(p.x),f2(p.y)]}),fo:z.fo||'plano',ej:z.ej==='v'?'v':'h',inv:!!z.inv,
       ha:z.ha!=null?z.ha:(z.h!=null?z.h:H),hc:z.hc!=null?z.hc:H+150,x0:f2(b.x0),y0:f2(b.y0),x1:f2(b.x1),y1:f2(b.y1),
       vg:z.vg?{s:z.vg.s||60,w:z.vg.w||10,h:z.vg.h||20,d:z.vg.d==='v'?'v':'h',mv:z.vg.mv||{},del:z.vg.del||{}}:null,cr:z.cr?{s:z.cr.s||100,mv:z.cr.mv||{},del:z.cr.del||{}}:null,c:m?m.c:'#f6f4f1',tl:(z.tl||[]).map(function(t){return {x:f2(t.x),y:f2(t.y),w:t.w,d:t.d}})});
   });
-  out.cielos=(v.sp||[]).filter(function(r){return r.k==='t'&&!r.ex&&num(r.h)>0}).map(function(r){var p=spPts(r),m=matOf('techos',r.mat);return p?{id:r.id,nombre:r.nm||'',h:num(r.h),pts:p.map(function(q){return [f2(q.x),f2(q.y)]}),c:(m&&m.c)||'#f6f4f1'}:null}).filter(Boolean);
+  out.cielos=(v.sp||[]).filter(function(r){return r.k==='t'&&num(r.h)>0}).map(function(r){var p=spPts(r),m=matOf('techos',r.mat);return p?{id:r.id,nombre:r.nm||'',h:num(r.h),pts:p.map(function(q){return [f2(q.x),f2(q.y)]}),c:(m&&m.c)||'#f6f4f1'}:null}).filter(Boolean);
   out.a_medida=(v.mm||[]).filter(function(m){return m.k!=='hor'}).map(function(m){var q=mmPoly(m);return q?{id:m.id,nombre:mmNombre(m),pts:q.pts.map(function(p){return [f2(p.x),f2(p.y)]}),z0:f2(m.y0||0),z1:f2((m.y0||0)+m.h),luz:!!m.luz}:null}).filter(Boolean);
   v.pil.forEach(function(p){pilCells(p).forEach(function(c,ci){out.pilares.push({id:p.id+'-'+ci,cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,estado:p.s||'ex'})})});
   v.eq.forEach(function(e){
