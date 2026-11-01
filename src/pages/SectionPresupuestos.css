@@ -332,3 +332,6 @@
 .pres-zona-nueva td { background: rgba(186,175,165,0.07) !important; border-bottom: 1px solid rgba(186,175,165,0.14); }
 .pres-zona-nueva td:first-child { box-shadow: inset 3px 0 0 #baafa5; }
 .pres-zona-etiqueta { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #baafa5; background: rgba(186,175,165,0.16); border-radius: 4px; padding: 2px 7px; }
+
+/* Capítulos: franja de ancho completo para que se distingan de las partidas */
+.pres-chapter-row td { background: rgba(186,175,165,0.16) !important; border-top: 2px solid #baafa5; border-bottom: 1px solid rgba(186,175,165,0.35); }

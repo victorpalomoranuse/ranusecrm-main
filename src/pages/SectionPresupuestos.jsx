@@ -478,7 +478,7 @@ function ChapterRow({ item, onEdit, onDelete }) {
       <td style={{ padding: '0.4rem 0.5rem', width: 24 }}>
         <button {...attributes} {...listeners} style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center' }}><GripVertical size={13}/></button>
       </td>
-      <td colSpan={8} style={{ padding: '0.4rem 0.5rem' }}>
+      <td colSpan={12} style={{ padding: '0.55rem 0.5rem' }}>
         {editing ? (
           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
             <input className="pres-cell-input" value={name} onChange={e => setName(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} style={{ flex: 1, fontWeight: 700 }} />
@@ -486,7 +486,7 @@ function ChapterRow({ item, onEdit, onDelete }) {
             <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setEditing(false); setName(item.name); }}>✕</button>
           </div>
         ) : (
-          <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#baafa5', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#baafa5', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             📁 {item.name}
           </span>
         )}
@@ -806,6 +806,9 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
   const [chapterName, setChapterName] = useState('');
   const [showChapter, setShowChapter] = useState(false);
   const [showSpecs, setShowSpecs] = useState(false);
+  const [capGuardados, setCapGuardados] = useState(null); // capítulos guardados para elegir con un clic
+  useEffect(() => { if (showChapter && capGuardados === null) api.get('/budgets/capitulos').then(r => setCapGuardados(r.data?.capitulos || [])).catch(() => setCapGuardados([])); }, [showChapter, capGuardados]);
+  const guardarLista = async (lista) => { setCapGuardados(lista); try { await api.put('/budgets/capitulos', { capitulos: lista }); } catch { /* si falla, se vuelve a cargar al reabrir */ } };
 
   const isPvp = d.pricing_mode === 'pvp';
 
@@ -841,17 +844,29 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
     <>
       {showChapter && (
         <tr className="pres-row pres-row--new">
-          <td colSpan={12}>
+          <td colSpan={13}>
             <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-              <input className="pres-cell-input" value={chapterName} onChange={e => setChapterName(e.target.value)} placeholder="Nombre del capítulo…" autoFocus onKeyDown={e => e.key === 'Enter' && handleAddChapter()} style={{ flex: 1 }} />
+              <span className="pres-zona-etiqueta">Capítulo</span>
+              <input className="pres-cell-input" value={chapterName} onChange={e => setChapterName(e.target.value)} placeholder="Nombre del capítulo nuevo…" autoFocus onKeyDown={e => e.key === 'Enter' && handleAddChapter()} style={{ flex: 1 }} />
               <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAddChapter} disabled={saving || !chapterName.trim()}>Añadir capítulo</button>
+              {chapterName.trim() && !(capGuardados || []).some(x => x.toLowerCase() === chapterName.trim().toLowerCase()) && <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => guardarLista([...(capGuardados || []), chapterName.trim()])} title="Lo guarda para elegirlo con un clic en cualquier presupuesto">☆ Guardar en mi lista</button>}
               <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setShowChapter(false)}>✕</button>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.45)' }}>Mis capítulos (clic para añadirlo):</span>
+              {capGuardados === null && <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>cargando…</span>}
+              {(capGuardados || []).map(n => (
+                <span key={n} style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid rgba(186,175,165,0.4)', borderRadius: 14, background: 'rgba(186,175,165,0.1)' }}>
+                  <button type="button" disabled={saving} onClick={async () => { setSaving(true); try { await onAddChapter(n); } finally { setSaving(false); } }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '3px 4px 3px 10px', fontSize: '0.75rem' }}>{n}</button>
+                  <button type="button" title="Quitar de mi lista" onClick={() => guardarLista((capGuardados || []).filter(x => x !== n))} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: '3px 8px 3px 2px', fontSize: '0.7rem' }}>✕</button>
+                </span>
+              ))}
             </div>
           </td>
           <td/>
         </tr>
       )}
-      <tr className="pres-zona-cabecera"><td colSpan={15}>＋ Añadir una partida nueva</td></tr>
+      <tr className="pres-zona-cabecera"><td colSpan={14}><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span>＋ Añadir una partida nueva</span><button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setShowChapter(v => !v)} style={{ textTransform: 'none', letterSpacing: 0 }}>📁 Añadir capítulo</button></div></td></tr>
       <tr className="pres-row pres-row--new pres-zona-nueva">
         <td><input className="pres-cell-input" value={d.name} onChange={e=>setD(p=>({...p,name:e.target.value}))} placeholder="Nueva partida…" onKeyDown={e=>e.key==='Enter'&&handleAdd()} /></td>
         <td><select className="pres-cell-select" value={d.category} onChange={e=>setD(p=>({...p,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></td>
@@ -890,7 +905,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
       </tr>
       {categories.length > 0 && (
         <tr className="pres-row pres-zona-nueva">
-          <td colSpan={15} style={{padding:'0.4rem 0.75rem'}}>
+          <td colSpan={14} style={{padding:'0.4rem 0.75rem'}}>
             <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'0.75rem',color:'rgba(255,255,255,0.6)'}}>
               <span className="pres-zona-etiqueta">Biblioteca</span><span>Guardar también en la biblioteca:</span>
               <select className="pres-cell-select" value={guardarCat} onChange={e=>setGuardarCat(e.target.value)} style={{maxWidth:260,colorScheme:'dark'}}>
@@ -902,7 +917,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
         </tr>
       )}
       <tr className="pres-row pres-zona-nueva" onPaste={pegarFoto}>
-        <td colSpan={15} style={{padding:'0.4rem 0.75rem'}}>
+        <td colSpan={14} style={{padding:'0.4rem 0.75rem'}}>
           <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',fontSize:'0.75rem',color:'rgba(255,255,255,0.6)'}}>
             <div style={{width:54,height:54,borderRadius:8,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',color:'#999',fontSize:'0.62rem',textAlign:'center',flex:'none'}}>{fotoPrev?<img src={fotoPrev} alt="" style={{width:'100%',height:'100%',objectFit:'contain'}}/>:'sin foto'}</div>
             <span className="pres-zona-etiqueta">Foto</span><span>Foto de la partida (aunque no se guarde en el catálogo): pégala con <b>Ctrl+V</b>,</span>
@@ -914,7 +929,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
         </td>
       </tr>
       <tr className="pres-row pres-zona-nueva">
-        <td colSpan={15} style={{padding:'0.4rem 0.75rem'}}>
+        <td colSpan={14} style={{padding:'0.4rem 0.75rem'}}>
           <div style={{display:'flex',flexDirection:'column',gap:2}}>
             <label className="pres-zona-etiqueta" style={{alignSelf:'flex-start'}}>Descripción para el cliente <span style={{textTransform:'none',letterSpacing:0}}>(sale en el PDF del cliente; si está vacía sale el nombre)</span> <IaDescBtn d={d} setD={setD}/></label>
             <textarea className="pres-cell-input" rows={2} value={d.descripcion_cliente||''} onChange={e=>setD(p=>({...p,descripcion_cliente:e.target.value}))} placeholder="Texto largo y bien escrito para el presupuesto del cliente" style={{width:'100%',resize:'vertical'}}/>
@@ -923,7 +938,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
       </tr>
       {showSpecs && (
         <tr className="pres-row pres-zona-nueva">
-          <td colSpan={15} style={{padding:'0.5rem 0.75rem'}}>
+          <td colSpan={14} style={{padding:'0.5rem 0.75rem'}}>
             <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap',alignItems:'flex-end'}}>
               <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:120}}>
                 <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Marca</label>

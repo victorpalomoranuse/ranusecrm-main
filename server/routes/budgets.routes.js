@@ -178,6 +178,25 @@ function fetchImageBuffer(url) {
   });
 }
 
+// Capítulos guardados para añadirlos a cualquier presupuesto con un clic (lista compartida, en el almacenamiento)
+const CAPITULOS_BASE = ['Trabajos previos', 'Demoliciones', 'Albañilería', 'Fontanería', 'Electricidad', 'Climatización', 'Carpintería', 'Pavimentos y revestimientos', 'Pintura', 'Iluminación', 'Equipamiento y maquinaria', 'Honorarios y gestión', 'Otros'];
+async function leerCapitulos() {
+  try {
+    const { data } = await supabase.storage.from('project-documents').download('presupuestos/capitulos.json');
+    if (data) { const j = JSON.parse(await data.text()); if (Array.isArray(j)) return j; }
+  } catch { /* se usa la lista base */ }
+  return CAPITULOS_BASE;
+}
+router.get('/capitulos', async (req, res) => { res.json({ capitulos: await leerCapitulos() }); });
+router.put('/capitulos', async (req, res) => {
+  try {
+    const lista = [...new Set((Array.isArray(req.body?.capitulos) ? req.body.capitulos : []).map(x => String(x || '').trim().slice(0, 80)).filter(Boolean))].slice(0, 100);
+    const { error } = await supabase.storage.from('project-documents').upload('presupuestos/capitulos.json', Buffer.from(JSON.stringify(lista)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
+    if (error) throw error;
+    res.json({ capitulos: lista });
+  } catch (err) { res.status(500).json({ error: 'No se pudieron guardar los capítulos' }); }
+});
+
 router.get('/dashboard', async (req, res) => {
   try {
     const [budgetsRes, projectsRes] = await Promise.all([
