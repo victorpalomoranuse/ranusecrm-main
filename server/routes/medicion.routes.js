@@ -695,6 +695,26 @@ router.post('/:id/textura-ranuse', async (req, res) => {
     res.status(201).json({ textura: tex });
   } catch (err) { console.error('textura-ranuse:', err); res.status(500).json({ error: 'No se pudo añadir el material' }); }
 });
+// Material liso: un color con sus propios ajustes (rugosidad, metal…). Se guarda como una textura de un solo color para que se comporte como cualquier otra
+router.post('/:id/textura-color', async (req, res) => {
+  try {
+    const hex = String(req.body?.hex || '').toLowerCase();
+    if (!/^#[0-9a-f]{6}$/.test(hex)) return res.status(400).json({ error: 'Color no válido' });
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || { objetos: [] };
+    const pb = req.body?.pbr && typeof req.body.pbr === 'object' ? req.body.pbr : {}, q = v => Math.max(0, Math.min(1, Number(v) || 0)), qr = (v, mx) => Math.max(0, Math.min(mx, Number(v) || 0)), pbr = {};
+    if (pb.rough != null) pbr.rough = q(pb.rough); if (pb.metal != null) pbr.metal = q(pb.metal); if (pb.env != null) pbr.env = qr(pb.env, 3); if (Number(pb.clearcoat) > 0) pbr.clearcoat = q(pb.clearcoat);
+    if (Number(pb.emis) > 0 && /^#[0-9a-fA-F]{6}$/.test(pb.emisHex || '')) { pbr.emis = qr(pb.emis, 3); pbr.emisHex = pb.emisHex; }
+    if (!Object.keys(pbr).length) pbr.rough = 0.6;
+    const png = await sharp({ create: { width: 8, height: 8, channels: 3, background: hex } }).png().toBuffer();
+    const tex = { id: 'c' + Date.now().toString(36), nombre: 'Color ' + hex.toUpperCase(), url: 'data:image/png;base64,' + png.toString('base64'), tam: 100, color: hex, pbr };
+    const data = { ...fila.data, escena3d: { ...esc, texturas: [...(esc.texturas || []), tex].slice(-80), updated: Date.now() } };
+    const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
+    if (error) throw error;
+    res.status(201).json({ textura: tex });
+  } catch (err) { console.error('textura-color:', err); res.status(500).json({ error: 'No se pudo crear el material' }); }
+});
 router.post('/:id/textura-biblioteca', async (req, res) => {
   try {
     const ind = await indiceBiblioteca3d();
@@ -743,11 +763,16 @@ router.patch('/:id/textura/:tid', async (req, res) => {
     if (!t) return res.status(404).json({ error: 'No he encontrado esa textura' });
     const j = req.body?.junta;
     if (j && /^#[0-9a-fA-F]{6}$/.test(j.hex || '') && Number(j.mm) > 0) t.junta = { hex: j.hex, mm: Math.max(0.5, Math.min(30, Number(j.mm))) }; else delete t.junta;
+    // color base de un material liso: se vuelve a generar su muestra de un solo color
+    if (t.color && /^#[0-9a-fA-F]{6}$/.test(req.body?.color || '') && req.body.color.toLowerCase() !== t.color) {
+      const hx = req.body.color.toLowerCase(), png = await sharp({ create: { width: 8, height: 8, channels: 3, background: hx } }).png().toBuffer();
+      t.color = hx; t.url = 'data:image/png;base64,' + png.toString('base64'); t.nombre = 'Color ' + hx.toUpperCase();
+    }
     if (Number.isFinite(parseFloat(req.body?.tam))) t.tam = Math.max(5, Math.min(1000, parseFloat(req.body.tam)));
     // propiedades del material: rugosidad, metal y relieve (0–1)
     if (req.body && 'pbr' in req.body) {
       const pb = req.body.pbr, q = v => Math.max(0, Math.min(1, Number(v) || 0));
-      if (pb && typeof pb === 'object') { const o = {}; if (pb.rough != null) o.rough = q(pb.rough); if (pb.metal != null) o.metal = q(pb.metal); if (Number(pb.relieve) > 0) o.relieve = q(pb.relieve); const qr = (v, mx) => Math.max(0, Math.min(mx, Number(v) || 0)); if (pb.normal != null) o.normal = qr(pb.normal, 3); if (pb.env != null) o.env = qr(pb.env, 3); if (Number(pb.clearcoat) > 0) o.clearcoat = q(pb.clearcoat); if (Number(pb.emis) > 0 && /^#[0-9a-fA-F]{6}$/.test(pb.emisHex || '')) { o.emis = qr(pb.emis, 3); o.emisHex = pb.emisHex; } if (Object.keys(o).length) t.pbr = o; else delete t.pbr; } else delete t.pbr;
+      if (pb && typeof pb === 'object') { const o = {}; if (pb.rough != null) o.rough = q(pb.rough); if (pb.metal != null) o.metal = q(pb.metal); if (Number(pb.relieve) > 0) o.relieve = q(pb.relieve); const qr = (v, mx) => Math.max(0, Math.min(mx, Number(v) || 0)); if (pb.normal != null) o.normal = qr(pb.normal, 3); if (pb.env != null) o.env = qr(pb.env, 3); if (Number(pb.clearcoat) > 0) o.clearcoat = q(pb.clearcoat); if (Number(pb.opac) > 0 && Number(pb.opac) < 1) o.opac = Math.max(0.05, q(pb.opac)); if (/^#[0-9a-fA-F]{6}$/.test(pb.tinte || '')) o.tinte = pb.tinte; if (Number(pb.emis) > 0 && /^#[0-9a-fA-F]{6}$/.test(pb.emisHex || '')) { o.emis = qr(pb.emis, 3); o.emisHex = pb.emisHex; } if (Object.keys(o).length) t.pbr = o; else delete t.pbr; } else delete t.pbr;
     }
     // giro (°) y desplazamiento (cm) de la textura
     for (const [k, a, b] of [['rot', -360, 360], ['ox', -1000, 1000], ['oy', -1000, 1000]]) if (k in (req.body || {})) { const v = Math.max(a, Math.min(b, parseFloat(req.body[k]) || 0)); if (v) t[k] = v; else delete t[k]; }

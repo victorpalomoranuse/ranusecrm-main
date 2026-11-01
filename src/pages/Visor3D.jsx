@@ -79,6 +79,9 @@ function aplicaEspejos(scene) {
         const usaEnv = (P.metal || 0) > 0.3 || P.env != null || (P.clearcoat || 0) > 0;
         m.envMap = usaEnv ? (scene.environment || envEsp) : null; m.envMapIntensity = P.env ?? 1.2;
         if (P.relieve > 0) { m.bumpMap = m.map; m.bumpScale = P.relieve * 4; } else m.bumpMap = null;
+        if (!m.userData.opac0) m.userData.opac0 = { t: m.transparent, o: m.opacity, d: m.depthWrite, c: m.color.getHex() };
+        if (P.opac != null && P.opac < 1) { m.transparent = true; m.opacity = P.opac; m.depthWrite = false; } else { m.transparent = m.userData.opac0.t; m.opacity = m.userData.opac0.o; m.depthWrite = m.userData.opac0.d; }
+        if (P.tinte) m.color.set(P.tinte); else m.color.setHex(m.userData.opac0.c);
         if (P.emis > 0 && P.emisHex) { m.emissive.set(P.emisHex); m.emissiveIntensity = P.emis; m.userData.emisPbr = true; }
         else if (m.userData.emisPbr) { m.emissive.setHex(0x000000); m.emissiveIntensity = 1; m.userData.emisPbr = false; }
         // mapas PBR: se vuelven a crear solo si cambia el tiling, el giro o los archivos
@@ -93,7 +96,8 @@ function aplicaEspejos(scene) {
         if (m.normalMap) m.normalScale.set(P.normal ?? 1, P.normal ?? 1);
         m.needsUpdate = true;
       } else if (m.userData.espOn) {
-        const z = m.userData.esp0 || {}; m.userData.espOn = false; m.envMap = null; m.bumpMap = null; m.normalMap = null; m.roughnessMap = null; m.aoMap = null; m.userData.mapasClave = null;
+        const z = m.userData.esp0 || {}; m.userData.espOn = false; m.envMap = null; m.bumpMap = null; m.normalMap = null;
+        if (m.userData.opac0) { m.transparent = m.userData.opac0.t; m.opacity = m.userData.opac0.o; m.depthWrite = m.userData.opac0.d; m.color.setHex(m.userData.opac0.c); } m.roughnessMap = null; m.aoMap = null; m.userData.mapasClave = null;
         if (m.userData.emisPbr) { m.emissive.setHex(0x000000); m.emissiveIntensity = 1; m.userData.emisPbr = false; }
         m.metalness = z.metalness ?? 0; m.roughness = z.roughness ?? 0.6; m.envMapIntensity = z.envMapIntensity ?? 1; m.needsUpdate = true;
       }
@@ -1853,6 +1857,7 @@ export default function Visor3D() {
       }
       if (!valor) { const mt = Array.isArray(hit.object.material) ? hit.object.material[hit.face?.materialIndex || 0] : hit.object.material; valor = mt?.color ? '#' + mt.color.getHexString() : null; }
       if (!valor) return;
+      api3d.current.ultimoGoteo = { hit, aplicar: aplicarPincel };
       setMatSel(String(valor).startsWith('tex:') ? { id: String(valor).slice(4) } : { hex: valor });
       if (herrRef.current === 'gotero') { setRenderAbierto(true); setPestanaRender('inspector'); setSelObj(null); setGuardado('Material seleccionado: ajústalo en el Inspector. Para pintarlo en otro sitio usa Pintura (B)'); }
       else { setHerr('pincel'); setMatAbierto(true); setGuardado('Material copiado: haz clic en lo que quieras pintar'); }
@@ -3625,7 +3630,7 @@ export default function Visor3D() {
               const quitarMapa = async (tipo) => { try { const r = await api.delete('/medicion/' + id + '/textura/' + t.id + '/mapa/' + tipo); setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x))); } catch { setGuardado('No se pudo quitar el mapa'); } };
               const lee = () => { const tp = document.getElementById('tx-dt').value; if (tp === 'none') return null; return { tipo: tp, w: parseFloat(document.getElementById('tx-dw').value) || 60, h: parseFloat(document.getElementById('tx-dh').value) || 30, corte: document.getElementById('tx-dc').value, var: parseFloat(document.getElementById('tx-dv').value) || 0 }; };
               const guarda = (junta, tam, desp, extra) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam, desp: desp || null, rot: t.rot || 0, ox: t.ox || 0, oy: t.oy || 0, pbr: t.pbr || null, ...(extra || {}) }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
-              const aplicarTodo = () => { const dsp = lee(); guarda(t.junta && !document.getElementById('tx-jm') ? t.junta : (parseFloat(document.getElementById('tx-jm').value) > 0 ? { hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) } : null), dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp, { rot: parseFloat(document.getElementById('tx-rot').value) || 0, ox: parseFloat(document.getElementById('tx-ox').value) || 0, oy: parseFloat(document.getElementById('tx-oy').value) || 0, pbr: (() => { const v = id2 => parseFloat(document.getElementById(id2)?.value); const en = v('tx-en'), cc = v('tx-cc'), em = v('tx-em'); return { rough: v('tx-ro'), metal: v('tx-me'), relieve: v('tx-re'), normal: v('tx-no'), env: en !== 1 ? en : undefined, clearcoat: cc > 0 ? cc : undefined, emis: em > 0 ? em : undefined, emisHex: em > 0 ? document.getElementById('tx-eh')?.value : undefined }; })() }); };
+              const aplicarTodo = () => { const dsp = lee(); guarda(t.junta && !document.getElementById('tx-jm') ? t.junta : (parseFloat(document.getElementById('tx-jm').value) > 0 ? { hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) } : null), dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp, { rot: parseFloat(document.getElementById('tx-rot').value) || 0, ox: parseFloat(document.getElementById('tx-ox').value) || 0, oy: parseFloat(document.getElementById('tx-oy').value) || 0, ...(t.color ? { color: document.getElementById('tx-cb')?.value } : {}), pbr: (() => { const v = id2 => parseFloat(document.getElementById(id2)?.value); const en = v('tx-en'), cc = v('tx-cc'), em = v('tx-em'), op = v('tx-op'), cb = document.getElementById('tx-cb')?.value; return { rough: v('tx-ro'), metal: v('tx-me'), relieve: v('tx-re'), normal: v('tx-no'), opac: op < 1 ? op : undefined, tinte: !t.color && cb && cb !== '#ffffff' ? cb : undefined, env: en !== 1 ? en : undefined, clearcoat: cc > 0 ? cc : undefined, emis: em > 0 ? em : undefined, emisHex: em > 0 ? document.getElementById('tx-eh')?.value : undefined }; })() }); };
               const diferido = () => { clearTimeout(window.__txT); window.__txT = setTimeout(aplicarTodo, 700); };
               return (
                 <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8 }} onChange={diferido}>
@@ -3639,15 +3644,16 @@ export default function Visor3D() {
                     <button style={{ ...btn, background: '#6b6159' }} onClick={() => { const dsp = lee(); guarda({ hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) || 0 }, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Aplicar</button>
                     <button style={btn} onClick={() => { const dsp = lee(); guarda(null, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Sin junta</button>
                   </div>
-                  <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Material (como D5)</div>
-                  {[['Rugosidad', 'tx-ro', t.pbr?.rough ?? 0.6, 'Mate (1) ↔ brillante (0)'], ['Metal', 'tx-me', t.pbr?.metal ?? 0, 'Plástico/piedra (0) ↔ metal (1)'], ['Relieve', 'tx-re', t.pbr?.relieve ?? 0, 'Textura en relieve usando la propia foto']].map(([n, i, v, ayuda]) => (
+                  <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Mapa</div>
+                  {[['Rugosidad', 'tx-ro', t.pbr?.rough ?? 0.6, 'Mate (1) ↔ brillante (0)'], ['Metálico', 'tx-me', t.pbr?.metal ?? 0, 'Plástico/piedra (0) ↔ metal (1)'], ['Relieve', 'tx-re', t.pbr?.relieve ?? 0, 'Textura en relieve usando la propia foto']].map(([n, i, v, ayuda]) => (
                     <label key={i + t.id + (t.pbr ? 1 : 0)} title={ayuda} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>{n}</span><input id={i} type="range" min="0" max="1" step="0.05" defaultValue={v} style={{ flex: 1 }} /></label>
                   ))}
-                  {[['Intensidad normal', 'tx-no', t.pbr?.normal ?? 1, 0, 3, 'Fuerza del mapa de normales (1 = la del archivo)'], ['Reflejos entorno', 'tx-en', t.pbr?.env ?? 1, 0, 3, 'Cuánto refleja el entorno (HDRI)'], ['Barniz', 'tx-cc', t.pbr?.clearcoat ?? 0, 0, 1, 'Capa de barniz brillante sobre el material (clearcoat)'], ['Emisión', 'tx-em', t.pbr?.emis ?? 0, 0, 3, 'El material brilla con luz propia']].map(([n, i, v, mn, mx, ayuda]) => (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }} title={t.color ? 'Color del material liso' : 'Tiñe la textura con este color (blanco = sin teñir)'}><span style={{ width: 90, opacity: 0.7 }}>Color base</span><input key={'cb' + t.id + (t.color || t.pbr?.tinte || '')} id="tx-cb" type="color" defaultValue={t.color || t.pbr?.tinte || '#ffffff'} style={{ width: 40, height: 26, padding: 0, border: 'none', background: 'none' }} /></label>
+                  {[['Opacidad', 'tx-op', t.pbr?.opac ?? 1, 0.05, 1, 'Transparencia: 1 = opaco'], ['Normal', 'tx-no', t.pbr?.normal ?? 1, 0, 3, 'Fuerza del mapa de normales (1 = la del archivo)'], ['Reflejos entorno', 'tx-en', t.pbr?.env ?? 1, 0, 3, 'Cuánto refleja el entorno (HDRI)'], ['Barniz', 'tx-cc', t.pbr?.clearcoat ?? 0, 0, 1, 'Capa de barniz brillante sobre el material (clearcoat)'], ['Emisivo', 'tx-em', t.pbr?.emis ?? 0, 0, 3, 'El material brilla con luz propia']].map(([n, i, v, mn, mx, ayuda]) => (
                     <label key={i + t.id + (t.pbr ? 1 : 0)} title={ayuda} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>{n}</span><input id={i} type="range" min={mn} max={mx} step="0.05" defaultValue={v} style={{ flex: 1 }} />{i === 'tx-em' && <input id="tx-eh" type="color" defaultValue={t.pbr?.emisHex || '#ffd9a0'} style={{ width: 28, height: 22, padding: 0, border: 'none', background: 'none' }} />}</label>
                   ))}
                   <div style={{ opacity: 0.7, margin: '6px 0 3px' }}>Mapas PBR (opcionales, 2K máx.)</div>
-                  {[['normal', 'Normales'], ['rough', 'Rugosidad'], ['ao', 'Oclusión (AO)']].map(([k, n]) => (
+                  {[['normal', 'Normales'], ['rough', 'Rugosidad'], ['ao', 'AO']].map(([k, n]) => (
                     <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                       <span style={{ width: 90, opacity: 0.7 }}>{n}</span>
                       {t.maps?.[k] ? <><span style={{ color: '#d4c9bb' }}>✓ cargado</span><span onClick={() => quitarMapa(k)} style={{ cursor: 'pointer', opacity: 0.7 }} title="Quitar">✕</span></> : <label style={{ ...btn, padding: '2px 8px', fontSize: 12, cursor: 'pointer' }}>subir…<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { subirMapa(k, e.target.files?.[0]); e.target.value = ''; }} /></label>}
@@ -4156,7 +4162,27 @@ export default function Visor3D() {
             </>}
 
             {pestanaRender === 'inspector' && <>
-              {matSel?.hex && !matSel?.id && <div style={{ marginTop: 10, padding: '8px 10px', border: '1px solid #3a342f', borderRadius: 8 }}><div style={{ fontWeight: 700, marginBottom: 6 }}>Color base</div><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 34, height: 34, borderRadius: 6, background: matSel.hex.slice(0, 7), border: '1px solid #666' }} /><code>{matSel.hex.slice(0, 7)}</code></div><div style={{ opacity: 0.6, fontSize: 11, marginTop: 6 }}>Es un color liso. Para ajustar rugosidad, normales o UV, pinta con una textura de la lista.</div><button style={{ ...btn, marginTop: 8, width: '100%' }} onClick={() => { setMatAbierto(true); setHerr('pincel'); }}>Pintar con este color</button></div>}
+              {matSel?.hex && !matSel?.id && (() => {
+                const hexL = matSel.hex.slice(0, 7);
+                const crear = async (extra) => {
+                  try {
+                    const pbr = { rough: 0.6, ...extra }, r = await api.post('/medicion/' + id + '/textura-color', { hex: hexL, pbr }), nueva = r.data.textura;
+                    setTexturas(x => (x.some(y => y.id === nueva.id) ? x : [...x, nueva]));
+                    const g = api3d.current.ultimoGoteo; matSelRef.current = { id: nueva.id }; g?.aplicar?.(g.hit, true);
+                    setMatSel({ id: nueva.id }); setGuardado('Material propio creado: ya puedes ajustarlo');
+                  } catch (e) { setAviso(e.response?.data?.error || 'No se pudo crear el material'); }
+                };
+                const sl = (n, k, mx, def) => <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 100, opacity: 0.75, fontSize: 12 }}>{n}</span><input type="range" min="0" max={mx} step="0.05" defaultValue={def} onChange={e => crear({ [k]: parseFloat(e.target.value) })} style={{ flex: 1 }} /></label>;
+                return (
+                  <div style={{ marginTop: 10, padding: '8px 10px', border: '1px solid #3a342f', borderRadius: 8 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Mapa</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}><span style={{ opacity: 0.7, fontSize: 12, width: 100 }}>Color base</span><span style={{ width: 28, height: 28, borderRadius: 6, background: hexL, border: '1px solid #666' }} /><code style={{ fontSize: 12 }}>{hexL}</code></div>
+                    {sl('Rugosidad', 'rough', 1, 0.6)}{sl('Metálico', 'metal', 1, 0)}{sl('Reflejos entorno', 'env', 3, 1)}{sl('Barniz', 'clearcoat', 1, 0)}
+                    <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>Es un color liso. Al mover cualquier ajuste se crea un material propio con ese color, se aplica a esta superficie y aparecen todos los ajustes (normales, AO, emisivo y UV).</div>
+                  </div>
+                );
+              })()}
+              {false && <div style={{ marginTop: 10, padding: '8px 10px', border: '1px solid #3a342f', borderRadius: 8 }}><div style={{ fontWeight: 700, marginBottom: 6 }}>Color base</div><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 34, height: 34, borderRadius: 6, background: matSel.hex.slice(0, 7), border: '1px solid #666' }} /><code>{matSel.hex.slice(0, 7)}</code></div><div style={{ opacity: 0.6, fontSize: 11, marginTop: 6 }}>Es un color liso. Para ajustar rugosidad, normales o UV, pinta con una textura de la lista.</div><button style={{ ...btn, marginTop: 8, width: '100%' }} onClick={() => { setMatAbierto(true); setHerr('pincel'); }}>Pintar con este color</button></div>}
               {!matSel?.id && !matSel?.hex
                 ? <div style={{ marginTop: 10, opacity: 0.75, lineHeight: 1.5 }}>Aquí se ajusta el material seleccionado: color base, normales, rugosidad, metálico, AO, emisivo y UV (estirar, desfase y rotar).<br /><br />Elige un material con <b>Pintura</b> (la lista de texturas o la biblioteca de Ranuse) y aparecerán sus ajustes.<button style={{ ...btn, marginTop: 8, width: '100%' }} onClick={() => { setMatAbierto(true); setHerr('pincel'); }}>Abrir Pintura</button></div>
                 : <div style={{ marginTop: 6 }}>{editorTextura()}</div>}
