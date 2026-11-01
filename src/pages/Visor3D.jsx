@@ -735,6 +735,13 @@ function codigoHex(cod) {
   if (m[4]) { const a = NCS_PURO[m[4]]; if (m[6]) { const b = NCS_PURO[m[6]], p = (+m[5]) / 100; hue = [0, 1, 2].map(i => a[i] * (1 - p) + b[i] * p); } else hue = a; }
   return '#' + [0, 1, 2].map(i => Math.max(0, Math.min(255, Math.round((wh * 255 + bl * 25 + ch * hue[i]) / 100))).toString(16).padStart(2, '0')).join('');
 }
+// Balance de blancos: temperatura (K) y tinte → multiplicador de color. 6500 K = sin cambio; menos K = imagen más cálida
+function wbVec(K, tinte) {
+  const c = kelvinColor(K), r = kelvinColor(6500), m = new THREE.Vector3(c.r / Math.max(r.r, 1e-3), c.g / Math.max(r.g, 1e-3), c.b / Math.max(r.b, 1e-3));
+  m.multiplyScalar(1 / (m.x * 0.2126 + m.y * 0.7152 + m.z * 0.0722));
+  m.y *= 1 - (tinte || 0) * 0.12; m.x *= 1 + (tinte || 0) * 0.06; m.z *= 1 + (tinte || 0) * 0.06;
+  return m;
+}
 // Iconos de línea de las herramientas (24×24, trazo del color del texto)
 const ICONOS = {
   sel: 'M5 3l14 8-6 2-3 6z', pintar: 'M4 12l7-8 9 9-8 7z M20 16c1.2 1.6 1.8 2.6 1.8 3.5a1.8 1.8 0 01-3.6 0c0-.9.6-1.9 1.8-3.5z',
@@ -1201,7 +1208,7 @@ export default function Visor3D() {
   const [sinGpu, setSinGpu] = useState(false);
   useEffect(() => { if (estado === 'cargando') return; let cerrado = false; try { cerrado = sessionStorage.getItem('visor3dSinGpuCerrado') === '1'; } catch { /* sin almacenamiento */ } setSinGpu(GL_SOFTWARE && !cerrado); }, [estado]);
   // Panel de Render (como el de D5): ajustes finos de la imagen final y botón de renderizar
-  const FX0 = { contraste: 1, saturacion: 1, calidez: 0, vineta: 0, bloom: 0 };
+  const FX0 = { contraste: 1, saturacion: 1, calidez: 0, vineta: 0, bloom: 0, exp: 0, realce: 0, sombra: 0, bb: 6500, tinte: 0 };
   const [fx, setFx] = useState(() => { try { return { ...FX0, ...JSON.parse(localStorage.getItem('visor3dFx') || '{}') }; } catch { return FX0; } });
   const [renderAbierto, setRenderAbierto] = useState(false);
   const [entorno, setEntorno] = useState(() => { try { return localStorage.getItem('visor3dEntorno') || 'estudio'; } catch { return 'estudio'; } });
@@ -1244,6 +1251,8 @@ export default function Visor3D() {
     }).catch(e => { console.warn('refinado', e); if (vivo) { setRefinar(false); setPtMsg('No se pudo activar el trazado de rayos en este equipo.'); } });
     return () => { vivo = false; };
   }, [refinar, estado]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [pestanaRender, setPestanaRender] = useState('ambiente');
+  const [modoAmb, setModoAmb] = useState(null); // geo | custom | hdri (si no se ha elegido, se deduce del entorno)
   const [tono, setTono] = useState(() => { try { return localStorage.getItem('visor3dTono') || 'aces'; } catch { return 'aces'; } });
   useEffect(() => {
     try { localStorage.setItem('visor3dTono', tono); } catch { /* sin almacenamiento */ }
@@ -1263,10 +1272,10 @@ export default function Visor3D() {
   const [resRender, setResRender] = useState(() => { try { return parseInt(localStorage.getItem('visor3dRes') || '3200', 10) || 3200; } catch { return 3200; } });
   const [formatoRender, setFormatoRender] = useState('jpg');
   const [sombraSuave, setSombraSuave] = useState(true);
-  const fxActivo = fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.bloom > 0;
+  const fxActivo = fx.contraste !== 1 || fx.saturacion !== 1 || fx.calidez !== 0 || fx.vineta > 0 || fx.bloom > 0 || fx.exp !== 0 || fx.realce !== 0 || fx.sombra !== 0 || fx.bb !== 6500 || fx.tinte !== 0;
   useEffect(() => { try { localStorage.setItem('visor3dFx', JSON.stringify(fx)); localStorage.setItem('visor3dRes', String(resRender)); } catch { /* sin almacenamiento */ } }, [fx, resRender]);
   useEffect(() => {
-    const a = api3d.current; if (a.gradeU) { a.gradeU.contraste.value = fx.contraste; a.gradeU.saturacion.value = fx.saturacion; a.gradeU.calidez.value = fx.calidez; a.gradeU.vineta.value = fx.vineta; }
+    const a = api3d.current; if (a.gradeU) { const u = a.gradeU; u.contraste.value = fx.contraste; u.saturacion.value = fx.saturacion; u.calidez.value = fx.calidez; u.vineta.value = fx.vineta; u.exposure.value = fx.exp; u.highlights.value = fx.realce; u.shadows.value = fx.sombra; u.wb.value = wbVec(fx.bb, fx.tinte); }
     if (a.bloomPass) a.bloomPass.strength = fx.bloom;
   }, [fx, realista, estado]);
   // Óptica: ángulo de visión vertical de la cámara (como el objetivo de una cámara). Menos grados = más zoom y menos deformación; más grados = gran angular
@@ -2204,12 +2213,12 @@ export default function Visor3D() {
     const t = Math.max(0, Math.min(1, (hora - 6) / 15)), elev = Math.max(0.05, Math.sin(Math.PI * t)) * (65 * Math.PI / 180), az = Math.PI * (1 - t), k = Math.sin(Math.PI * t);
     const d = (a.R || 8) * 3;
     a.sol.position.set(a.centro.x + d * Math.cos(az) * Math.cos(elev), a.centro.y + d * Math.sin(elev) + 1, a.centro.z + d * Math.sin(az) * Math.cos(elev));
-    a.sol.intensity = 0.12 + 1.6 * Math.pow(Math.max(0, k), 0.7);
+    a.sol.intensity = (0.12 + 1.6 * Math.pow(Math.max(0, k), 0.7)) * (ambiente.solOn === false ? 0 : (ambiente.solI ?? 1));
     if (ambiente.kSol) a.sol.color.copy(kelvinColor(ambiente.kSol)); else a.sol.color.setHSL(0.09, 0.5 * (1 - k) + 0.05, 0.75 + 0.2 * k);
     if (a.hemi) a.hemi.intensity = 0.35 + 0.8 * k;
     a.renderer.toneMappingExposure = ambiente.exposicion;
-    try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null })); } catch { /* sin almacenamiento */ }
-  }, [hora, ambiente.exposicion, ambiente.luces, ambiente.kSol, estado, rev]);
+    try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null, solI: ambiente.solI ?? 1, solOn: ambiente.solOn !== false })); } catch { /* sin almacenamiento */ }
+  }, [hora, ambiente.exposicion, ambiente.luces, ambiente.kSol, ambiente.solI, ambiente.solOn, estado, rev]);
 
   // Modo persona: la cámara se queda a la altura de los ojos y solo gira sobre sí misma; se anda con W A S D (despacio) y la rueda cambia el zoom de la lente
   useEffect(() => {
@@ -2279,9 +2288,9 @@ export default function Visor3D() {
       if (fx.bloom > 0) { const bp = new UnrealBloomPass(new THREE.Vector2(sz.x, sz.y), fx.bloom, 0.6, 0.85); comp.addPass(bp); a.bloomPass = bp; }
       comp.addPass(new OutputPass());
       // corrección de color final: contraste, saturación, calidez y viñeta
-      const U = { contraste: { value: fx.contraste }, saturacion: { value: fx.saturacion }, calidez: { value: fx.calidez }, vineta: { value: fx.vineta } };
+      const U = { contraste: { value: fx.contraste }, saturacion: { value: fx.saturacion }, calidez: { value: fx.calidez }, vineta: { value: fx.vineta }, exposure: { value: fx.exp }, highlights: { value: fx.realce }, shadows: { value: fx.sombra }, wb: { value: wbVec(fx.bb, fx.tinte) } };
       comp.addPass(new ShaderPass({ uniforms: { tDiffuse: { value: null }, ...U }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-        fragmentShader: 'uniform sampler2D tDiffuse; uniform float contraste; uniform float saturacion; uniform float calidez; uniform float vineta; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); vec3 col = (c.rgb - 0.5) * contraste + 0.5; float l = dot(col, vec3(0.2126, 0.7152, 0.0722)); col = mix(vec3(l), col, saturacion); col.r += calidez * 0.06; col.b -= calidez * 0.06; col *= 1.0 - vineta * smoothstep(0.35, 0.9, distance(vUv, vec2(0.5))); gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a); }' }));
+        fragmentShader: 'uniform sampler2D tDiffuse; uniform float contraste; uniform float saturacion; uniform float calidez; uniform float vineta; uniform float exposure; uniform float highlights; uniform float shadows; uniform vec3 wb; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); vec3 col = c.rgb * pow(2.0, exposure) * wb; float l0 = dot(col, vec3(0.2126, 0.7152, 0.0722)); col += shadows * 0.2 * (1.0 - smoothstep(0.0, 0.5, l0)); col += highlights * 0.2 * smoothstep(0.5, 1.0, l0); col = (col - 0.5) * contraste + 0.5; float l = dot(col, vec3(0.2126, 0.7152, 0.0722)); col = mix(vec3(l), col, saturacion); col.r += calidez * 0.06; col.b -= calidez * 0.06; col *= 1.0 - vineta * smoothstep(0.35, 0.9, distance(vUv, vec2(0.5))); gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a); }' }));
       a.gradeU = U;
       a.composer = comp; a.compW = null;
     } catch (e) { console.warn('modo realista', e); setRealista(false); }
@@ -3603,6 +3612,60 @@ export default function Visor3D() {
       <span style={{ opacity: 0.6, width: '100%' }}>Rueda = zoom · arrastrar = girar libre · botón derecho = mover · Exportar la imagen con 📷 / Render HD</span>
     </div>
   );
+  // Ajustes de la textura elegida (los usan el panel Pintura y la pestaña Inspector del panel Render)
+  const editorTextura = () => (() => {
+              const t = texturas.find(x => x.id === matSel.id); if (!t) return null;
+              if (t.fijo) return <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8, opacity: 0.75, fontSize: 11 }}>{t.nombre}: acabado reflectante. Refleja un entorno de estudio (con ✨ Realista se nota más). Pinta con él muros, suelos u objetos.</div>;
+              const subirMapa = async (tipo, file) => {
+                if (!file) return; setGuardado('Subiendo el mapa…');
+                try { const fd = new FormData(); fd.append('tipo', tipo); fd.append('file', file); const r = await api.post('/medicion/' + id + '/textura/' + t.id + '/mapa', fd); setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x))); setGuardado('Mapa añadido ✓'); }
+                catch (e) { setGuardado(e.response?.data?.error || 'No se pudo subir el mapa'); }
+              };
+              const quitarMapa = async (tipo) => { try { const r = await api.delete('/medicion/' + id + '/textura/' + t.id + '/mapa/' + tipo); setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x))); } catch { setGuardado('No se pudo quitar el mapa'); } };
+              const lee = () => { const tp = document.getElementById('tx-dt').value; if (tp === 'none') return null; return { tipo: tp, w: parseFloat(document.getElementById('tx-dw').value) || 60, h: parseFloat(document.getElementById('tx-dh').value) || 30, corte: document.getElementById('tx-dc').value, var: parseFloat(document.getElementById('tx-dv').value) || 0 }; };
+              const guarda = (junta, tam, desp, extra) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam, desp: desp || null, rot: t.rot || 0, ox: t.ox || 0, oy: t.oy || 0, pbr: t.pbr || null, ...(extra || {}) }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
+              const aplicarTodo = () => { const dsp = lee(); guarda(t.junta && !document.getElementById('tx-jm') ? t.junta : (parseFloat(document.getElementById('tx-jm').value) > 0 ? { hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) } : null), dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp, { rot: parseFloat(document.getElementById('tx-rot').value) || 0, ox: parseFloat(document.getElementById('tx-ox').value) || 0, oy: parseFloat(document.getElementById('tx-oy').value) || 0, pbr: (() => { const v = id2 => parseFloat(document.getElementById(id2)?.value); const en = v('tx-en'), cc = v('tx-cc'), em = v('tx-em'); return { rough: v('tx-ro'), metal: v('tx-me'), relieve: v('tx-re'), normal: v('tx-no'), env: en !== 1 ? en : undefined, clearcoat: cc > 0 ? cc : undefined, emis: em > 0 ? em : undefined, emisHex: em > 0 ? document.getElementById('tx-eh')?.value : undefined }; })() }); };
+              const diferido = () => { clearTimeout(window.__txT); window.__txT = setTimeout(aplicarTodo, 700); };
+              return (
+                <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8 }} onChange={diferido}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Textura elegida: {t.nombre} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(se aplica solo al cambiar)</span></div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Giro °</span><input key={'rt' + t.id + (t.rot || 0)} id="tx-rot" type="number" step="15" defaultValue={t.rot || 0} style={{ ...btn, width: 60 }} /><button style={btn} onClick={() => guarda(t.junta || null, t.tam, t.desp, { rot: ((t.rot || 0) + 90) % 360 })}>+90°</button></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Mover cm</span><span>x</span><input key={'ox' + t.id + (t.ox || 0)} id="tx-ox" type="number" defaultValue={t.ox || 0} style={{ ...btn, width: 56 }} /><span>y</span><input key={'oy' + t.id + (t.oy || 0)} id="tx-oy" type="number" defaultValue={t.oy || 0} style={{ ...btn, width: 56 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Tamaño real cm</span><input key={'tam' + t.id + t.tam} id="tx-tam" type="number" defaultValue={t.tam} style={{ ...btn, width: 70 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (color)</span><input key={'jc' + t.id + (t.junta?.hex || '')} id="tx-jc" type="color" defaultValue={t.junta?.hex || '#bdbdbd'} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (mm)</span><input key={'jm' + t.id + (t.junta?.mm || 0)} id="tx-jm" type="number" step="0.5" defaultValue={t.junta?.mm || 0} style={{ ...btn, width: 70 }} /></label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button style={{ ...btn, background: '#6b6159' }} onClick={() => { const dsp = lee(); guarda({ hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) || 0 }, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Aplicar</button>
+                    <button style={btn} onClick={() => { const dsp = lee(); guarda(null, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Sin junta</button>
+                  </div>
+                  <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Material (como D5)</div>
+                  {[['Rugosidad', 'tx-ro', t.pbr?.rough ?? 0.6, 'Mate (1) ↔ brillante (0)'], ['Metal', 'tx-me', t.pbr?.metal ?? 0, 'Plástico/piedra (0) ↔ metal (1)'], ['Relieve', 'tx-re', t.pbr?.relieve ?? 0, 'Textura en relieve usando la propia foto']].map(([n, i, v, ayuda]) => (
+                    <label key={i + t.id + (t.pbr ? 1 : 0)} title={ayuda} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>{n}</span><input id={i} type="range" min="0" max="1" step="0.05" defaultValue={v} style={{ flex: 1 }} /></label>
+                  ))}
+                  {[['Intensidad normal', 'tx-no', t.pbr?.normal ?? 1, 0, 3, 'Fuerza del mapa de normales (1 = la del archivo)'], ['Reflejos entorno', 'tx-en', t.pbr?.env ?? 1, 0, 3, 'Cuánto refleja el entorno (HDRI)'], ['Barniz', 'tx-cc', t.pbr?.clearcoat ?? 0, 0, 1, 'Capa de barniz brillante sobre el material (clearcoat)'], ['Emisión', 'tx-em', t.pbr?.emis ?? 0, 0, 3, 'El material brilla con luz propia']].map(([n, i, v, mn, mx, ayuda]) => (
+                    <label key={i + t.id + (t.pbr ? 1 : 0)} title={ayuda} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>{n}</span><input id={i} type="range" min={mn} max={mx} step="0.05" defaultValue={v} style={{ flex: 1 }} />{i === 'tx-em' && <input id="tx-eh" type="color" defaultValue={t.pbr?.emisHex || '#ffd9a0'} style={{ width: 28, height: 22, padding: 0, border: 'none', background: 'none' }} />}</label>
+                  ))}
+                  <div style={{ opacity: 0.7, margin: '6px 0 3px' }}>Mapas PBR (opcionales, 2K máx.)</div>
+                  {[['normal', 'Normales'], ['rough', 'Rugosidad'], ['ao', 'Oclusión (AO)']].map(([k, n]) => (
+                    <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                      <span style={{ width: 90, opacity: 0.7 }}>{n}</span>
+                      {t.maps?.[k] ? <><span style={{ color: '#d4c9bb' }}>✓ cargado</span><span onClick={() => quitarMapa(k)} style={{ cursor: 'pointer', opacity: 0.7 }} title="Quitar">✕</span></> : <label style={{ ...btn, padding: '2px 8px', fontSize: 12, cursor: 'pointer' }}>subir…<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { subirMapa(k, e.target.files?.[0]); e.target.value = ''; }} /></label>}
+                    </div>
+                  ))}
+                  <button style={{ ...btn, marginBottom: 4 }} onClick={() => guarda(t.junta || null, t.tam, t.desp, { pbr: null })}>Restablecer material</button>
+                  <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Despiece</div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Colocación</span>
+                    <select key={'dt' + t.id + (t.desp?.tipo || '')} id="tx-dt" defaultValue={t.desp?.tipo || 'none'} style={btn}><option value="none">Sin despiece (la foto es 1 pieza)</option><option value="recto">Recto (a cuadro)</option><option value="mitad">Trabado ½ (ladrillo)</option><option value="tercio">Trabado ⅓</option></select></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Pieza cm</span>
+                    <input key={'dw' + t.id + (t.desp?.w || 0)} id="tx-dw" type="number" defaultValue={t.desp?.w || 60} style={{ ...btn, width: 56 }} /><span>×</span><input key={'dh' + t.id + (t.desp?.h || 0)} id="tx-dh" type="number" defaultValue={t.desp?.h || 30} style={{ ...btn, width: 56 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>La foto es</span>
+                    <select key={'dc' + t.id + (t.desp?.corte || '')} id="tx-dc" defaultValue={t.desp?.corte || 'pieza'} style={btn}><option value="pieza">Una pieza (se repite)</option><option value="material">Material continuo (cada pieza distinta)</option></select></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Variación tono %</span><input key={'dv' + t.id + (t.desp?.var || 0)} id="tx-dv" type="number" defaultValue={t.desp?.var ?? 6} style={{ ...btn, width: 56 }} /></label>
+                  <div style={{ opacity: 0.5, fontSize: 11 }}>Elige la colocación, el tamaño de cada pieza, la junta de arriba y pulsa «Aplicar».</div>
+                  <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>La junta sirve para baldosas, azulejos y microlosetas: la foto debe ser UNA pieza y el tamaño real, lo que mide esa pieza.</div>
+                </div>
+              );
+            })();
   const barraMaterial = ['zonaS', 'zonaT', 'zonaP'].includes(herr) && (
     <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', top: 96, zIndex: 6, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', maxWidth: '86vw', overflowX: 'auto' }}>
       <span style={{ opacity: 0.7, whiteSpace: 'nowrap' }}>Material de la zona:</span>
@@ -3979,91 +4042,139 @@ export default function Visor3D() {
       )}
       {renderAbierto && (() => {
         const fila = (n, v, mn, mx, st, fn, tx) => (
-          <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>{n}</span><input type="range" min={mn} max={mx} step={st} value={v} onChange={e => fn(parseFloat(e.target.value))} style={{ flex: 1 }} /><span style={{ width: 46, textAlign: 'right', fontSize: 11 }}>{tx}</span></label>
+          <label key={n} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 112, opacity: 0.75, fontSize: 12 }}>{n}</span><input type="range" min={mn} max={mx} step={st} value={v} onChange={e => fn(parseFloat(e.target.value))} style={{ flex: 1 }} /><span style={{ width: 50, textAlign: 'right', fontSize: 11 }}>{tx}</span></label>
         );
         const sec = (t, hijos) => <div style={{ borderTop: '1px solid #333', paddingTop: 8, marginTop: 8 }}><div style={{ fontWeight: 700, marginBottom: 6, color: '#baafa5' }}>{t}</div>{hijos}</div>;
+        const seg = (opciones, valor, fn) => (
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 3, gap: 2, marginBottom: 8 }}>
+            {opciones.map(([k, n]) => <button key={k} onClick={() => fn(k)} style={{ flex: 1, padding: '5px 4px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12, background: valor === k ? '#baafa5' : 'transparent', color: valor === k ? '#0a0a0a' : '#ddd' }}>{n}</button>)}
+          </div>
+        );
         const nombreRes = { 1920: 'Full HD · 1920 px', 3200: 'Alta · 3200 px', 3840: '4K · 3840 px', 5120: '5K · 5120 px' };
+        const hdriOn = String(entorno).startsWith('hdri:');
+        const hh = Math.floor(hora), mm = Math.round((hora - hh) * 60), horaTxt = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+        const modo = modoAmb || (hdriOn ? 'hdri' : 'geo');
+        const cambiaModo = k => { setModoAmb(k); setRealista(true); if (k === 'hdri' && hdris.length && !hdriOn) setEntorno('hdri:' + hdris[0].id); else if (k !== 'hdri' && hdriOn) setEntorno('estudio'); };
         return (
-          <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 300, overflowY: 'auto', background: 'rgba(22,20,18,0.97)', color: '#fff', borderRadius: 8, padding: '0 14px 14px', fontSize: 13, zIndex: 8 }}>
-            <div style={{ position: 'sticky', top: 0, background: 'rgb(22,20,18)', padding: '12px 0 8px', zIndex: 2, display: 'flex', alignItems: 'center' }}><b style={{ flex: 1, fontSize: 15 }}>🎬 Render</b><button style={{ ...btn, padding: '2px 8px' }} onClick={() => setRenderAbierto(false)}>✕</button></div>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
-              <button style={{ ...btn, flex: 1, ...(!realista ? { background: '#6b6159' } : {}) }} onClick={() => setRealista(false)} title="Vista rápida">Rápido</button>
-              <button style={{ ...btn, flex: 1, ...(realista ? { background: '#8c8076' } : {}) }} onClick={() => setRealista(true)} title="Reflejos, sombras de contacto y bordes suaves en tiempo real">✨ Realista</button>
+          <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 320, overflowY: 'auto', background: 'rgba(22,20,18,0.97)', color: '#fff', borderRadius: 8, padding: '0 14px 14px', fontSize: 13, zIndex: 8 }}>
+            <div style={{ position: 'sticky', top: 0, background: 'rgb(22,20,18)', padding: '10px 0 0', zIndex: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ display: 'flex', gap: 14, flex: 1 }}>
+                  {[['ambiente', 'Ambiente'], ['efecto', 'Efecto'], ['inspector', 'Inspector'], ['salida', 'Salida']].map(([k, n]) => <span key={k} onClick={() => setPestanaRender(k)} style={{ cursor: 'pointer', fontWeight: pestanaRender === k ? 700 : 400, color: pestanaRender === k ? '#fff' : 'rgba(255,255,255,0.5)', borderBottom: pestanaRender === k ? '2px solid #baafa5' : '2px solid transparent', paddingBottom: 3 }}>{n}</span>)}
+                </div>
+                <button style={{ ...btn, padding: '2px 8px' }} onClick={() => setRenderAbierto(false)}>✕</button>
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                <button style={{ ...btn, flex: 1, padding: '4px 8px', ...(!realista ? { background: '#6b6159' } : {}) }} onClick={() => setRealista(false)} title="Vista rápida">Rápido</button>
+                <button style={{ ...btn, flex: 1, padding: '4px 8px', ...(realista ? { background: '#8c8076' } : {}) }} onClick={() => setRealista(true)} title="Reflejos, sombras de contacto y bordes suaves en tiempo real">✨ Realista</button>
+              </div>
             </div>
-            {sec('Preajustes de ambiente', <>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                <button style={btn} onClick={() => { setRealista(true); setEntorno('dia'); setHora(14); setAmbiente(a => ({ ...a, exposicion: 1, luces: 1, kLuces: null })); setFx(FX0); }}>☀ Día claro</button>
-                <button style={{ ...btn, background: '#8c8076' }} onClick={() => { setRealista(true); setEntorno('calido'); setHora(21); setAmbiente(a => ({ ...a, exposicion: 1.2, luces: 2.4, kLuces: 2700 })); setFx({ contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.45 }); }} title="Luz cálida de interior con resplandor, como un render de gimnasio nocturno">🌙 Interior cálido</button>
-                <button style={btn} onClick={() => { setRealista(true); setEntorno('noche'); setHora(21); setAmbiente(a => ({ ...a, exposicion: 1.1, luces: 2.2, kLuces: null })); setFx({ ...FX0, bloom: 0.35, vineta: 0.2 }); }}>🌃 Noche</button>
-              </div>
-            </>)}
-            {sec('Plantillas de luz por espacio', <>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {[
-                  ['Gimnasio', { ent: 'hdri:brown_photostudio_02', hora: 18, exp: 1.1, luces: 2.2, k: 4000, fx: { contraste: 1.08, saturacion: 1.05, calidez: 0.1, vineta: 0.15, bloom: 0.25 }, tono: 'agx' }],
-                  ['Recepción cálida', { ent: 'hdri:aft_lounge', hora: 19, exp: 1.15, luces: 2.4, k: 2700, fx: { contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.4 }, tono: 'agx' }],
-                  ['Vestuarios', { ent: 'estudio', hora: 12, exp: 1.05, luces: 1.8, k: 4000, fx: { ...FX0, vineta: 0.1 }, tono: 'neutral' }],
-                  ['Oficina / sala', { ent: 'hdri:blue_photo_studio', hora: 12, exp: 1, luces: 1.6, k: 4500, fx: FX0, tono: 'neutral' }],
-                  ['Exterior de día', { ent: 'hdri:autumn_field_puresky', hora: 14, exp: 1, luces: 1, k: null, fx: FX0, tono: 'aces', cielo: true }],
-                ].map(([n, p]) => <button key={n} style={btn} onClick={() => {
-                  setRealista(true); setEntorno(p.ent.startsWith('hdri:') && !hdris.some(h => 'hdri:' + h.id === p.ent) ? 'calido' : p.ent); setHora(p.hora);
-                  setAmbiente(a => ({ ...a, exposicion: p.exp, luces: p.luces, kLuces: p.k })); setFx(p.fx); setTono(p.tono); setFondoCielo(!!p.cielo);
-                }} title="Ajusta a la vez el entorno, la hora, las luces, el color y el tono de cámara">{n}</button>)}
-              </div>
-              <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Son puntos de partida: después puedes retocar cada ajuste. No colocan luminarias, solo el ambiente.</div>
-            </>)}
-            {sec('Entorno (mapa)', <>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Mapa</span><select value={entorno} onChange={e => { setEntorno(e.target.value); if (!realista) setRealista(true); }} style={{ ...btn, flex: 1 }}><option value="estudio">Estudio</option><option value="dia">Cielo de día</option><option value="atardecer">Atardecer</option><option value="calido">Interior cálido</option><option value="noche">Noche</option>{hdris.length > 0 && <optgroup label="HDRI de Ranuse (reales)">{hdris.map(h => <option key={h.id} value={'hdri:' + h.id}>{h.nombre}</option>)}</optgroup>}</select></label>
-              {fila('Intensidad', entInt, 0, 2, 0.05, v => setEntInt(v), entInt.toFixed(2))}
-              {fila('Rotación', entRot, 0, 360, 5, v => setEntRot(v), Math.round(entRot) + '°')}
-              {String(entorno).startsWith('hdri:') && <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12, marginBottom: 4 }}><input type="checkbox" checked={fondoCielo} onChange={e => setFondoCielo(e.target.checked)} /> Ver el cielo del HDRI de fondo</label>}
-              <div style={{ opacity: 0.55, fontSize: 11 }}>Es lo que reflejan los materiales brillantes, el cristal y el espejo. Funciona con ✨ Realista.</div>
-            </>)}
-            {sec('Sol y luz', <>
-              {fila('Hora del sol', hora, 6, 21, 0.5, v => setHora(v), hora + ' h')}
-              {fila('Exposición', ambiente.exposicion, 0.3, 2.5, 0.05, v => setAmbiente(a => ({ ...a, exposicion: v })), ambiente.exposicion.toFixed(2))}
-              {fila('Intensidad luces', ambiente.luces, 0.2, 4, 0.1, v => setAmbiente(a => ({ ...a, luces: v })), '×' + ambiente.luces.toFixed(1))}
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={sombraSuave} onChange={e => setSombraSuave(e.target.checked)} /> Sombras suaves en el render final</label>
-            </>)}
-            {sec('Color', <>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Tono (cámara)</span><select value={tono} onChange={e => setTono(e.target.value)} style={{ ...btn, flex: 1 }} title="Cómo se pasa la luz a la imagen"><option value="aces">ACES (cinematográfico)</option><option value="agx">AgX (suave, realista)</option><option value="neutral">Neutro (colores fieles)</option><option value="lineal">Lineal</option></select></label>
-              {fila('Contraste', fx.contraste, 0.6, 1.6, 0.02, v => setFx(x => ({ ...x, contraste: v })), fx.contraste.toFixed(2))}
-              {fila('Saturación', fx.saturacion, 0, 2, 0.05, v => setFx(x => ({ ...x, saturacion: v })), fx.saturacion.toFixed(2))}
-              {fila('Calidez', fx.calidez, -1, 1, 0.05, v => setFx(x => ({ ...x, calidez: v })), (fx.calidez > 0 ? '+' : '') + fx.calidez.toFixed(2))}
-            </>)}
-            {sec('Efectos', <>
-              {fila('Resplandor', fx.bloom, 0, 1.5, 0.05, v => setFx(x => ({ ...x, bloom: v })), fx.bloom.toFixed(2))}
-              {fila('Viñeta', fx.vineta, 0, 1, 0.05, v => setFx(x => ({ ...x, vineta: v })), fx.vineta.toFixed(2))}
-              <button style={btn} onClick={() => setFx(FX0)}>Quitar efectos</button>
-            </>)}
-            {sec('Refinado (trazado de rayos)', <>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={refinar} onChange={e => { setPtMsg(''); setRefinar(e.target.checked); }} /> Refinar al parar la cámara</label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0' }}><span style={{ width: 92, opacity: 0.75 }}>Calidad</span><select value={ptMax} onChange={e => setPtMax(parseInt(e.target.value, 10))} style={{ ...btn, flex: 1 }}><option value="60">Rápida (60 muestras)</option><option value="200">Normal (200)</option><option value="500">Alta (500)</option></select></label>
-              {ptMsg && <div style={{ fontSize: 11, color: '#d4c9bb', marginBottom: 4 }}>{ptMsg}</div>}
-              <div style={{ opacity: 0.55, fontSize: 11 }}>Calcula la luz real (rebotes, sombras suaves y reflejos). Solo para gráficas NVIDIA, AMD o Apple recientes; en equipos sin RTX se desactiva. Al mover la cámara vuelve a la vista rápida.</div>
-            </>)}
-            {sec('Cámara', <>
-              {fila('Óptica', lente, 12, 110, 1, v => ponerLente(v), lente + '°')}
-              <div style={{ opacity: 0.55, fontSize: 11 }}>El encuadre es el de la vista actual. Muévete antes de renderizar o guarda una escena.</div>
-            </>)}
-            {sec('Postproducción con IA', <>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12, marginBottom: 3 }}><input type="checkbox" checked={mejoraOpc.nitidez} onChange={e => setMejoraOpc(o => ({ ...o, nitidez: e.target.checked }))} /> Más nitidez y menos ruido</label>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12, marginBottom: 6 }}><input type="checkbox" checked={mejoraOpc.luz} onChange={e => setMejoraOpc(o => ({ ...o, luz: e.target.checked }))} /> Retocar luz y contraste (suave)</label>
-              <button style={{ ...btn, width: '100%' }} disabled={estado !== 'listo' || ia?.estado === 'trabajando'} onClick={mejorarConIA} title="Exporta la vista en alta resolución y la IA solo la retoca">✨ Mejorar la imagen con IA</button>
-              <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>La IA solo retoca la imagen ya renderizada: no cambia la geometría, los materiales ni los objetos. Para un cambio de ambiente completo sigue estando «Render con IA».</div>
-            </>)}
-            {sec('Render final en la nube', <>
-              <button style={{ ...btn, width: '100%', opacity: 0.5, cursor: 'not-allowed' }} disabled title="Todavía no hay ningún servicio conectado">☁ Render con Blender Cycles (próximamente)</button>
-              <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Está preparada la conexión, pero aún no hay un servicio de render en la nube elegido. Mientras tanto, usa «Exportar a D5» o el refinado con trazado de rayos.</div>
-            </>)}
-            {sec('Salida', <>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Resolución</span><select value={resRender} onChange={e => setResRender(parseInt(e.target.value, 10))} style={{ ...btn, flex: 1 }}>{Object.entries(nombreRes).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}><span style={{ width: 92, opacity: 0.75 }}>Formato</span><select value={formatoRender} onChange={e => setFormatoRender(e.target.value)} style={{ ...btn, flex: 1 }}><option value="jpg">JPG (ligero)</option><option value="png">PNG (sin pérdida)</option></select></label>
-              <button style={{ ...btn, width: '100%', background: '#8c8076', fontWeight: 700, padding: '9px 0', fontSize: 14 }} disabled={renderizando || estado !== 'listo'} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.' + (formatoRender === 'png' ? 'png' : 'jpg'); el.click(); setGuardado('Render descargado ✓'); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }}>{renderizando ? 'Renderizando…' : '🎬 Renderizar y descargar'}</button>
-              <button style={{ ...btn, width: '100%', marginTop: 6 }} disabled={renderizando || estado !== 'listo'} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); await guardarRender('hd', u, metaActual(), undefined); setGuardado('Render guardado en la galería ✓'); } catch (e) { setAviso('No se ha podido guardar el render'); } setRenderizando(false); }}>Guardar en la galería</button>
-              <button style={{ ...btn, width: '100%', marginTop: 6 }} onClick={() => setIaForm(true)} title="Mejora la vista con IA usando tus materiales como referencia">🤖 Render con IA</button>
-              <button style={{ ...btn, width: '100%', marginTop: 6 }} onClick={exportarGLB} title="Descarga el modelo para abrirlo en D5 o Blender">⬇ Exportar a D5 (.glb)</button>
-            </>)}
+
+            {pestanaRender === 'ambiente' && <>
+              {sec('Luminosidad global', <>
+                {seg([['geo', 'Geo Sky'], ['custom', 'Personalizado'], ['hdri', 'HDRI']], modo, cambiaModo)}
+                {modo === 'geo' && <>
+                  <div style={{ textAlign: 'center', fontSize: 22, fontWeight: 600, margin: '2px 0 4px' }}>{horaTxt}</div>
+                  {fila('Hora del sol', hora, 6, 21, 0.25, v => setHora(v), horaTxt)}
+                  {fila('Orientación al norte', entRot, 0, 360, 5, v => setEntRot(v), Math.round(entRot) + '°')}
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '4px 0 6px' }}>
+                    {[['dia', 'Día'], ['atardecer', 'Atardecer'], ['noche', 'Noche']].map(([k, n]) => <button key={k} style={{ ...btn, padding: '3px 10px', ...(entorno === k ? { background: '#6b6159' } : {}) }} onClick={() => { setRealista(true); setEntorno(k); }}>{n}</button>)}
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={ambiente.solOn !== false} onChange={e => setAmbiente(a => ({ ...a, solOn: e.target.checked }))} /> Sol</label>
+                  {ambiente.solOn !== false && fila('Intensidad del sol', ambiente.solI ?? 1, 0, 3, 0.05, v => setAmbiente(a => ({ ...a, solI: v })), '×' + (ambiente.solI ?? 1).toFixed(2))}
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={sombraSuave} onChange={e => setSombraSuave(e.target.checked)} /> Sombras suaves en el render final</label>
+                </>}
+                {modo === 'custom' && <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 112, opacity: 0.75, fontSize: 12 }}>Cielo</span><select value={['estudio', 'dia', 'atardecer', 'calido', 'noche'].includes(entorno) ? entorno : 'estudio'} onChange={e => { setRealista(true); setEntorno(e.target.value); }} style={{ ...btn, flex: 1 }}><option value="estudio">Estudio</option><option value="dia">Cielo de día</option><option value="atardecer">Atardecer</option><option value="calido">Interior cálido</option><option value="noche">Noche</option></select></label>
+                  {fila('Luz', entInt, 0, 2, 0.05, v => setEntInt(v), entInt.toFixed(2))}
+                  {fila('Rotar', entRot, 0, 360, 5, v => setEntRot(v), Math.round(entRot) + '°')}
+                </>}
+                {modo === 'hdri' && <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 112, opacity: 0.75, fontSize: 12 }}>HDRI</span><select value={hdriOn ? entorno : ''} onChange={e => { if (e.target.value) { setRealista(true); setEntorno(e.target.value); } }} style={{ ...btn, flex: 1 }}>{!hdriOn && <option value="">Elige uno…</option>}{hdris.map(h => <option key={h.id} value={'hdri:' + h.id}>{h.nombre}</option>)}</select></label>
+                  {!hdris.length && <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 4 }}>Cargando los HDRI…</div>}
+                  {fila('Luz', entInt, 0, 2, 0.05, v => setEntInt(v), entInt.toFixed(2))}
+                  {fila('Rotar', entRot, 0, 360, 5, v => setEntRot(v), Math.round(entRot) + '°')}
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={fondoCielo} onChange={e => setFondoCielo(e.target.checked)} /> Ver el cielo del HDRI de fondo</label>
+                </>}
+              </>)}
+              {sec('Luces del proyecto', <>
+                {fila('Intensidad luces', ambiente.luces, 0.2, 4, 0.1, v => setAmbiente(a => ({ ...a, luces: v })), '×' + ambiente.luces.toFixed(1))}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={ambiente.kLuces != null} onChange={e => setAmbiente(a => ({ ...a, kLuces: e.target.checked ? 3000 : null }))} /> Misma temperatura para todas las luces</label>
+                {ambiente.kLuces != null && fila('Temperatura', ambiente.kLuces, 2200, 6500, 100, v => setAmbiente(a => ({ ...a, kLuces: v })), ambiente.kLuces + ' K')}
+              </>)}
+              {sec('Plantillas de luz por espacio', <>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {[
+                    ['Gimnasio', { ent: 'hdri:brown_photostudio_02', hora: 18, exp: 1.1, luces: 2.2, k: 4000, fx: { ...FX0, contraste: 1.08, saturacion: 1.05, calidez: 0.1, vineta: 0.15, bloom: 0.25 }, tono: 'agx' }],
+                    ['Recepción cálida', { ent: 'hdri:aft_lounge', hora: 19, exp: 1.15, luces: 2.4, k: 2700, fx: { ...FX0, contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.4 }, tono: 'agx' }],
+                    ['Vestuarios', { ent: 'estudio', hora: 12, exp: 1.05, luces: 1.8, k: 4000, fx: { ...FX0, vineta: 0.1 }, tono: 'neutral' }],
+                    ['Oficina / sala', { ent: 'hdri:blue_photo_studio', hora: 12, exp: 1, luces: 1.6, k: 4500, fx: FX0, tono: 'neutral' }],
+                    ['Exterior de día', { ent: 'hdri:autumn_field_puresky', hora: 14, exp: 1, luces: 1, k: null, fx: FX0, tono: 'aces', cielo: true }],
+                    ['Día claro', { ent: 'dia', hora: 14, exp: 1, luces: 1, k: null, fx: FX0, tono: 'aces' }],
+                    ['Interior cálido', { ent: 'calido', hora: 21, exp: 1.2, luces: 2.4, k: 2700, fx: { ...FX0, contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.45 }, tono: 'agx' }],
+                    ['Noche', { ent: 'noche', hora: 21, exp: 1.1, luces: 2.2, k: null, fx: { ...FX0, bloom: 0.35, vineta: 0.2 }, tono: 'aces' }],
+                  ].map(([n, p]) => <button key={n} style={btn} onClick={() => {
+                    setRealista(true); setEntorno(p.ent.startsWith('hdri:') && !hdris.some(h => 'hdri:' + h.id === p.ent) ? 'calido' : p.ent); setHora(p.hora); setModoAmb(p.ent.startsWith('hdri:') ? 'hdri' : 'custom');
+                    setAmbiente(a => ({ ...a, exposicion: p.exp, luces: p.luces, kLuces: p.k })); setFx(p.fx); setTono(p.tono); setFondoCielo(!!p.cielo);
+                  }} title="Ajusta a la vez el entorno, la hora, las luces, el color y el tono de cámara">{n}</button>)}
+                </div>
+                <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Puntos de partida: después retoca cada ajuste. No colocan luminarias, solo el ambiente.</div>
+              </>)}
+            </>}
+
+            {pestanaRender === 'efecto' && <>
+              {sec('Tratamiento posterior', <>
+                {fila('Compensación exposición', fx.exp, -3, 3, 0.1, v => setFx(x => ({ ...x, exp: v })), (fx.exp > 0 ? '+' : '') + fx.exp.toFixed(1))}
+                {fila('Exposición base (cámara)', ambiente.exposicion, 0.3, 2.5, 0.05, v => setAmbiente(a => ({ ...a, exposicion: v })), ambiente.exposicion.toFixed(2))}
+                {fila('Contraste', fx.contraste, 0.6, 1.6, 0.02, v => setFx(x => ({ ...x, contraste: v })), fx.contraste.toFixed(2))}
+                {fila('Realce', fx.realce, -1, 1, 0.05, v => setFx(x => ({ ...x, realce: v })), (fx.realce > 0 ? '+' : '') + fx.realce.toFixed(2))}
+                {fila('Sombra', fx.sombra, -1, 1, 0.05, v => setFx(x => ({ ...x, sombra: v })), (fx.sombra > 0 ? '+' : '') + fx.sombra.toFixed(2))}
+                {fila('Saturación', fx.saturacion, 0, 2, 0.05, v => setFx(x => ({ ...x, saturacion: v })), fx.saturacion.toFixed(2))}
+                {fila('Balance de blancos', fx.bb, 2500, 10000, 100, v => setFx(x => ({ ...x, bb: v })), fx.bb + ' K')}
+                {fila('Tinte', fx.tinte, -1, 1, 0.05, v => setFx(x => ({ ...x, tinte: v })), (fx.tinte > 0 ? '+' : '') + fx.tinte.toFixed(2))}
+                {fila('Bloom (resplandor)', fx.bloom, 0, 1.5, 0.05, v => setFx(x => ({ ...x, bloom: v })), fx.bloom.toFixed(2))}
+                {fila('Viñeta', fx.vineta, 0, 1, 0.05, v => setFx(x => ({ ...x, vineta: v })), fx.vineta.toFixed(2))}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 112, opacity: 0.75, fontSize: 12 }}>Tono (cámara)</span><select value={tono} onChange={e => setTono(e.target.value)} style={{ ...btn, flex: 1 }} title="Cómo se pasa la luz a la imagen"><option value="aces">ACES (cinematográfico)</option><option value="agx">AgX (suave, realista)</option><option value="neutral">Neutro (colores fieles)</option><option value="lineal">Lineal</option></select></label>
+                <button style={btn} onClick={() => setFx(FX0)}>Restablecer efectos</button>
+              </>)}
+              {sec('Cámara', <>
+                {fila('Óptica', lente, 12, 110, 1, v => ponerLente(v), lente + '°')}
+                <div style={{ opacity: 0.55, fontSize: 11 }}>El encuadre es el de la vista actual. Muévete antes de renderizar o guarda una escena.</div>
+              </>)}
+            </>}
+
+            {pestanaRender === 'inspector' && <>
+              {!matSel?.id
+                ? <div style={{ marginTop: 10, opacity: 0.75, lineHeight: 1.5 }}>Aquí se ajusta el material seleccionado: color base, normales, rugosidad, metálico, AO, emisivo y UV (estirar, desfase y rotar).<br /><br />Elige un material con <b>Pintura</b> (la lista de texturas o la biblioteca de Ranuse) y aparecerán sus ajustes.<button style={{ ...btn, marginTop: 8, width: '100%' }} onClick={() => { setMatAbierto(true); setHerr('pincel'); }}>Abrir Pintura</button></div>
+                : <div style={{ marginTop: 6 }}>{editorTextura()}</div>}
+            </>}
+
+            {pestanaRender === 'salida' && <>
+              {sec('Refinado (trazado de rayos)', <>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={refinar} onChange={e => { setPtMsg(''); setRefinar(e.target.checked); }} /> Refinar al parar la cámara</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0' }}><span style={{ width: 92, opacity: 0.75 }}>Calidad</span><select value={ptMax} onChange={e => setPtMax(parseInt(e.target.value, 10))} style={{ ...btn, flex: 1 }}><option value="60">Rápida (60 muestras)</option><option value="200">Normal (200)</option><option value="500">Alta (500)</option></select></label>
+                {ptMsg && <div style={{ fontSize: 11, color: '#d4c9bb', marginBottom: 4 }}>{ptMsg}</div>}
+                <div style={{ opacity: 0.55, fontSize: 11 }}>Calcula la luz real (rebotes, sombras suaves y reflejos). Solo para gráficas NVIDIA, AMD o Apple recientes. Al mover la cámara vuelve a la vista rápida.</div>
+              </>)}
+              {sec('Postproducción con IA', <>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12, marginBottom: 3 }}><input type="checkbox" checked={mejoraOpc.nitidez} onChange={e => setMejoraOpc(o => ({ ...o, nitidez: e.target.checked }))} /> Más nitidez y menos ruido</label>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12, marginBottom: 6 }}><input type="checkbox" checked={mejoraOpc.luz} onChange={e => setMejoraOpc(o => ({ ...o, luz: e.target.checked }))} /> Retocar luz y contraste (suave)</label>
+                <button style={{ ...btn, width: '100%' }} disabled={estado !== 'listo' || ia?.estado === 'trabajando'} onClick={mejorarConIA} title="Exporta la vista en alta resolución y la IA solo la retoca">✨ Mejorar la imagen con IA</button>
+                <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>La IA solo retoca la imagen ya renderizada: no cambia la geometría, los materiales ni los objetos. Para un cambio de ambiente completo sigue estando «Render con IA».</div>
+              </>)}
+              {sec('Render final en la nube', <>
+                <button style={{ ...btn, width: '100%', opacity: 0.5, cursor: 'not-allowed' }} disabled title="Todavía no hay ningún servicio conectado">☁ Render con Blender Cycles (próximamente)</button>
+                <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Está preparada la conexión, pero aún no hay un servicio elegido. Mientras tanto, usa «Exportar a D5» o el refinado con trazado de rayos.</div>
+              </>)}
+              {sec('Exportar imagen', <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Resolución</span><select value={resRender} onChange={e => setResRender(parseInt(e.target.value, 10))} style={{ ...btn, flex: 1 }}>{Object.entries(nombreRes).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}><span style={{ width: 92, opacity: 0.75 }}>Formato</span><select value={formatoRender} onChange={e => setFormatoRender(e.target.value)} style={{ ...btn, flex: 1 }}><option value="jpg">JPG (ligero)</option><option value="png">PNG (sin pérdida)</option></select></label>
+                <button style={{ ...btn, width: '100%', background: '#8c8076', fontWeight: 700, padding: '9px 0', fontSize: 14 }} disabled={renderizando || estado !== 'listo'} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.' + (formatoRender === 'png' ? 'png' : 'jpg'); el.click(); setGuardado('Render descargado ✓'); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }}>{renderizando ? 'Renderizando…' : '🎬 Renderizar y descargar'}</button>
+                <button style={{ ...btn, width: '100%', marginTop: 6 }} disabled={renderizando || estado !== 'listo'} onClick={async () => { setRenderizando(true); try { const u = await renderHDurl(); await guardarRender('hd', u, metaActual(), undefined); setGuardado('Render guardado en la galería ✓'); } catch (e) { setAviso('No se ha podido guardar el render'); } setRenderizando(false); }}>Guardar en la galería</button>
+                <button style={{ ...btn, width: '100%', marginTop: 6 }} onClick={() => setIaForm(true)} title="Mejora la vista con IA usando tus materiales como referencia">🤖 Render con IA</button>
+                <button style={{ ...btn, width: '100%', marginTop: 6 }} onClick={exportarGLB} title="Descarga el modelo para abrirlo en D5 o Blender">⬇ Exportar a D5 (.glb)</button>
+              </>)}
+            </>}
           </div>
         );
       })()}
@@ -4355,59 +4466,7 @@ export default function Visor3D() {
               <input id="mat-tam" type="number" defaultValue={60} style={{ ...btn, width: 56 }} /><span style={{ opacity: 0.7 }}>cm</span>
             </div>
             <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>«Tamaño real» es lo que mide en la vida real el lado de la foto (ej. una loseta de 60 cm), para que no salga gigante.</div>
-            {matSel?.id && (() => {
-              const t = texturas.find(x => x.id === matSel.id); if (!t) return null;
-              if (t.fijo) return <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8, opacity: 0.75, fontSize: 11 }}>{t.nombre}: acabado reflectante. Refleja un entorno de estudio (con ✨ Realista se nota más). Pinta con él muros, suelos u objetos.</div>;
-              const subirMapa = async (tipo, file) => {
-                if (!file) return; setGuardado('Subiendo el mapa…');
-                try { const fd = new FormData(); fd.append('tipo', tipo); fd.append('file', file); const r = await api.post('/medicion/' + id + '/textura/' + t.id + '/mapa', fd); setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x))); setGuardado('Mapa añadido ✓'); }
-                catch (e) { setGuardado(e.response?.data?.error || 'No se pudo subir el mapa'); }
-              };
-              const quitarMapa = async (tipo) => { try { const r = await api.delete('/medicion/' + id + '/textura/' + t.id + '/mapa/' + tipo); setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x))); } catch { setGuardado('No se pudo quitar el mapa'); } };
-              const lee = () => { const tp = document.getElementById('tx-dt').value; if (tp === 'none') return null; return { tipo: tp, w: parseFloat(document.getElementById('tx-dw').value) || 60, h: parseFloat(document.getElementById('tx-dh').value) || 30, corte: document.getElementById('tx-dc').value, var: parseFloat(document.getElementById('tx-dv').value) || 0 }; };
-              const guarda = (junta, tam, desp, extra) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam, desp: desp || null, rot: t.rot || 0, ox: t.ox || 0, oy: t.oy || 0, pbr: t.pbr || null, ...(extra || {}) }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
-              const aplicarTodo = () => { const dsp = lee(); guarda(t.junta && !document.getElementById('tx-jm') ? t.junta : (parseFloat(document.getElementById('tx-jm').value) > 0 ? { hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) } : null), dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp, { rot: parseFloat(document.getElementById('tx-rot').value) || 0, ox: parseFloat(document.getElementById('tx-ox').value) || 0, oy: parseFloat(document.getElementById('tx-oy').value) || 0, pbr: (() => { const v = id2 => parseFloat(document.getElementById(id2)?.value); const en = v('tx-en'), cc = v('tx-cc'), em = v('tx-em'); return { rough: v('tx-ro'), metal: v('tx-me'), relieve: v('tx-re'), normal: v('tx-no'), env: en !== 1 ? en : undefined, clearcoat: cc > 0 ? cc : undefined, emis: em > 0 ? em : undefined, emisHex: em > 0 ? document.getElementById('tx-eh')?.value : undefined }; })() }); };
-              const diferido = () => { clearTimeout(window.__txT); window.__txT = setTimeout(aplicarTodo, 700); };
-              return (
-                <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8 }} onChange={diferido}>
-                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Textura elegida: {t.nombre} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(se aplica solo al cambiar)</span></div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Giro °</span><input key={'rt' + t.id + (t.rot || 0)} id="tx-rot" type="number" step="15" defaultValue={t.rot || 0} style={{ ...btn, width: 60 }} /><button style={btn} onClick={() => guarda(t.junta || null, t.tam, t.desp, { rot: ((t.rot || 0) + 90) % 360 })}>+90°</button></label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Mover cm</span><span>x</span><input key={'ox' + t.id + (t.ox || 0)} id="tx-ox" type="number" defaultValue={t.ox || 0} style={{ ...btn, width: 56 }} /><span>y</span><input key={'oy' + t.id + (t.oy || 0)} id="tx-oy" type="number" defaultValue={t.oy || 0} style={{ ...btn, width: 56 }} /></label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Tamaño real cm</span><input key={'tam' + t.id + t.tam} id="tx-tam" type="number" defaultValue={t.tam} style={{ ...btn, width: 70 }} /></label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (color)</span><input key={'jc' + t.id + (t.junta?.hex || '')} id="tx-jc" type="color" defaultValue={t.junta?.hex || '#bdbdbd'} /></label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (mm)</span><input key={'jm' + t.id + (t.junta?.mm || 0)} id="tx-jm" type="number" step="0.5" defaultValue={t.junta?.mm || 0} style={{ ...btn, width: 70 }} /></label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button style={{ ...btn, background: '#6b6159' }} onClick={() => { const dsp = lee(); guarda({ hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) || 0 }, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Aplicar</button>
-                    <button style={btn} onClick={() => { const dsp = lee(); guarda(null, dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp); }}>Sin junta</button>
-                  </div>
-                  <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Material (como D5)</div>
-                  {[['Rugosidad', 'tx-ro', t.pbr?.rough ?? 0.6, 'Mate (1) ↔ brillante (0)'], ['Metal', 'tx-me', t.pbr?.metal ?? 0, 'Plástico/piedra (0) ↔ metal (1)'], ['Relieve', 'tx-re', t.pbr?.relieve ?? 0, 'Textura en relieve usando la propia foto']].map(([n, i, v, ayuda]) => (
-                    <label key={i + t.id + (t.pbr ? 1 : 0)} title={ayuda} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>{n}</span><input id={i} type="range" min="0" max="1" step="0.05" defaultValue={v} style={{ flex: 1 }} /></label>
-                  ))}
-                  {[['Intensidad normal', 'tx-no', t.pbr?.normal ?? 1, 0, 3, 'Fuerza del mapa de normales (1 = la del archivo)'], ['Reflejos entorno', 'tx-en', t.pbr?.env ?? 1, 0, 3, 'Cuánto refleja el entorno (HDRI)'], ['Barniz', 'tx-cc', t.pbr?.clearcoat ?? 0, 0, 1, 'Capa de barniz brillante sobre el material (clearcoat)'], ['Emisión', 'tx-em', t.pbr?.emis ?? 0, 0, 3, 'El material brilla con luz propia']].map(([n, i, v, mn, mx, ayuda]) => (
-                    <label key={i + t.id + (t.pbr ? 1 : 0)} title={ayuda} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>{n}</span><input id={i} type="range" min={mn} max={mx} step="0.05" defaultValue={v} style={{ flex: 1 }} />{i === 'tx-em' && <input id="tx-eh" type="color" defaultValue={t.pbr?.emisHex || '#ffd9a0'} style={{ width: 28, height: 22, padding: 0, border: 'none', background: 'none' }} />}</label>
-                  ))}
-                  <div style={{ opacity: 0.7, margin: '6px 0 3px' }}>Mapas PBR (opcionales, 2K máx.)</div>
-                  {[['normal', 'Normales'], ['rough', 'Rugosidad'], ['ao', 'Oclusión (AO)']].map(([k, n]) => (
-                    <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                      <span style={{ width: 90, opacity: 0.7 }}>{n}</span>
-                      {t.maps?.[k] ? <><span style={{ color: '#d4c9bb' }}>✓ cargado</span><span onClick={() => quitarMapa(k)} style={{ cursor: 'pointer', opacity: 0.7 }} title="Quitar">✕</span></> : <label style={{ ...btn, padding: '2px 8px', fontSize: 12, cursor: 'pointer' }}>subir…<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { subirMapa(k, e.target.files?.[0]); e.target.value = ''; }} /></label>}
-                    </div>
-                  ))}
-                  <button style={{ ...btn, marginBottom: 4 }} onClick={() => guarda(t.junta || null, t.tam, t.desp, { pbr: null })}>Restablecer material</button>
-                  <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Despiece</div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Colocación</span>
-                    <select key={'dt' + t.id + (t.desp?.tipo || '')} id="tx-dt" defaultValue={t.desp?.tipo || 'none'} style={btn}><option value="none">Sin despiece (la foto es 1 pieza)</option><option value="recto">Recto (a cuadro)</option><option value="mitad">Trabado ½ (ladrillo)</option><option value="tercio">Trabado ⅓</option></select></label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Pieza cm</span>
-                    <input key={'dw' + t.id + (t.desp?.w || 0)} id="tx-dw" type="number" defaultValue={t.desp?.w || 60} style={{ ...btn, width: 56 }} /><span>×</span><input key={'dh' + t.id + (t.desp?.h || 0)} id="tx-dh" type="number" defaultValue={t.desp?.h || 30} style={{ ...btn, width: 56 }} /></label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>La foto es</span>
-                    <select key={'dc' + t.id + (t.desp?.corte || '')} id="tx-dc" defaultValue={t.desp?.corte || 'pieza'} style={btn}><option value="pieza">Una pieza (se repite)</option><option value="material">Material continuo (cada pieza distinta)</option></select></label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Variación tono %</span><input key={'dv' + t.id + (t.desp?.var || 0)} id="tx-dv" type="number" defaultValue={t.desp?.var ?? 6} style={{ ...btn, width: 56 }} /></label>
-                  <div style={{ opacity: 0.5, fontSize: 11 }}>Elige la colocación, el tamaño de cada pieza, la junta de arriba y pulsa «Aplicar».</div>
-                  <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>La junta sirve para baldosas, azulejos y microlosetas: la foto debe ser UNA pieza y el tamaño real, lo que mide esa pieza.</div>
-                </div>
-              );
-            })()}
+            {matSel?.id && !(renderAbierto && pestanaRender === 'inspector') && editorTextura()}
             {herr === 'pincel' && <button style={{ ...btn, marginTop: 10, width: '100%' }} onClick={() => { setHerr('sel'); }}>Terminar pincel</button>}
           </div>
         );
