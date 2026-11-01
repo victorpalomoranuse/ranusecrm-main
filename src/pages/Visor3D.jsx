@@ -3905,6 +3905,21 @@ export default function Visor3D() {
                 <button style={btn} onClick={() => { setRealista(true); setEntorno('noche'); setHora(21); setAmbiente(a => ({ ...a, exposicion: 1.1, luces: 2.2, kLuces: null })); setFx({ ...FX0, bloom: 0.35, vineta: 0.2 }); }}>🌃 Noche</button>
               </div>
             </>)}
+            {sec('Plantillas de luz por espacio', <>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {[
+                  ['Gimnasio', { ent: 'hdri:brown_photostudio_02', hora: 18, exp: 1.1, luces: 2.2, k: 4000, fx: { contraste: 1.08, saturacion: 1.05, calidez: 0.1, vineta: 0.15, bloom: 0.25 }, tono: 'agx' }],
+                  ['Recepción cálida', { ent: 'hdri:aft_lounge', hora: 19, exp: 1.15, luces: 2.4, k: 2700, fx: { contraste: 1.1, saturacion: 1.05, calidez: 0.35, vineta: 0.3, bloom: 0.4 }, tono: 'agx' }],
+                  ['Vestuarios', { ent: 'estudio', hora: 12, exp: 1.05, luces: 1.8, k: 4000, fx: { ...FX0, vineta: 0.1 }, tono: 'neutral' }],
+                  ['Oficina / sala', { ent: 'hdri:blue_photo_studio', hora: 12, exp: 1, luces: 1.6, k: 4500, fx: FX0, tono: 'neutral' }],
+                  ['Exterior de día', { ent: 'hdri:autumn_field_puresky', hora: 14, exp: 1, luces: 1, k: null, fx: FX0, tono: 'aces', cielo: true }],
+                ].map(([n, p]) => <button key={n} style={btn} onClick={() => {
+                  setRealista(true); setEntorno(p.ent.startsWith('hdri:') && !hdris.some(h => 'hdri:' + h.id === p.ent) ? 'calido' : p.ent); setHora(p.hora);
+                  setAmbiente(a => ({ ...a, exposicion: p.exp, luces: p.luces, kLuces: p.k })); setFx(p.fx); setTono(p.tono); setFondoCielo(!!p.cielo);
+                }} title="Ajusta a la vez el entorno, la hora, las luces, el color y el tono de cámara">{n}</button>)}
+              </div>
+              <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Son puntos de partida: después puedes retocar cada ajuste. No colocan luminarias, solo el ambiente.</div>
+            </>)}
             {sec('Entorno (mapa)', <>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Mapa</span><select value={entorno} onChange={e => { setEntorno(e.target.value); if (!realista) setRealista(true); }} style={{ ...btn, flex: 1 }}><option value="estudio">Estudio</option><option value="dia">Cielo de día</option><option value="atardecer">Atardecer</option><option value="calido">Interior cálido</option><option value="noche">Noche</option>{hdris.length > 0 && <optgroup label="HDRI de Ranuse (reales)">{hdris.map(h => <option key={h.id} value={'hdri:' + h.id}>{h.nombre}</option>)}</optgroup>}</select></label>
               {fila('Intensidad', entInt, 0, 2, 0.05, v => setEntInt(v), entInt.toFixed(2))}
