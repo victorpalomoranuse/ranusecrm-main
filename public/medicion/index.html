@@ -2847,7 +2847,8 @@ function lumColor(mo){
 function ptColor(C,q){return q.v==='ilum'?(lumColor(ptMontAny(q))||C.ink):C.ink}
 var PERFIL=[['','Sin perfil (solo la tira)'],['sup','Perfil de superficie'],['emp','Perfil empotrado'],['mol','Perfil de moldura (luz indirecta)'],['esq','Perfil de esquina'],['col','Perfil suspendido'],['rod','Perfil de rodapié o zócalo']];
 var PERFIL_CORTO={sup:'perfil de superficie',emp:'perfil empotrado',mol:'perfil de moldura',esq:'perfil de esquina',col:'perfil suspendido',rod:'perfil de rodapié'};
-function ptPerfil(q){return q.pf&&PERFIL_CORTO[q.pf]?q.pf:''}
+/* el perfil solo existe en la tira LED (tira + perfil); carriles y luminarias lineales ya vienen montados */
+function ptPerfil(q){return q.k==='led'&&q.pf&&PERFIL_CORTO[q.pf]?q.pf:''}
 function perfilSel(dt,cur,etq){return '<label class="fld"><span>'+(etq||'Perfil')+'</span><select data-t="'+dt+'">'+PERFIL.map(function(m){return '<option value="'+m[0]+'"'+(cur===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('')+'</select></label>'}
 function ptMont(q){return q.mo&&MONT_CORTO[q.mo]?q.mo:'techo'}
 function ptVerts(q){var n=nd(q.n);if(q.vx&&q.vx.length>=2)return q.vx.map(function(v){return {x:n.x+v.x,y:n.y+v.y}});return [ptPos(q),ptPos2(q)]}
@@ -3143,7 +3144,7 @@ function ledFin(){
   var nq=nearNode(pts[0].x,pts[0].y,1e9,null);if(!nq){st.ledPts=null;return}
   snap();
   var np={id:uid('l'),n:nq.id,dx:0,dy:0,dx2:0,dy2:0,k:ctx.kid,a:0,h:null,v:st.view,mo:st.ledMont||'techo'};
-  if(st.ledPerf)np.pf=st.ledPerf;
+  if(st.ledPerf&&ctx.kid==='led')np.pf=st.ledPerf;
   var kdL=ptDef(ctx.kid);if(kdL&&kdL.t)np.t=kdL.t;
   if(ctx.lid)np.lid=ctx.lid;
   st.v.pts.push(np);ptSetVerts(np,pts);
@@ -6324,7 +6325,7 @@ function drawPal(){
     var modoL=st.ledModo||'poli',mb=function(k,t,on){return '<button data-led="'+k+'" aria-pressed="'+on+'">'+t+'</button>'};
     $('alz-modo').innerHTML=colHtml+mb('modo:poli','Varios tramos (polilínea)',modoL==='poli')+mb('modo:recta','Un solo tramo (2 toques)',modoL==='recta')+mb('orto','Líneas a 90°: '+(st.ledOrto===false?'no (libres)':'sí'),st.ledOrto!==false)+
       MONT.map(function(m){return mb('mont:'+m[0],m[1],(st.ledMont||'techo')===m[0])}).join('')+
-      '<div style="grid-column:1/-1">'+perfilSel('led_pf',st.ledPerf||'','Perfil')+'</div>'+
+      (kk==='led'?'<div style="grid-column:1/-1">'+perfilSel('led_pf',st.ledPerf||'','Perfil')+'</div>':'')+
       (st.ledPts&&st.ledPts.length>=2?'<button data-led="fin" class="pri">Terminar tira</button>':'')+(st.ledPts&&st.ledPts.length?'<button data-led="cancel">Cancelar</button>':'');
   }
 }
@@ -6686,7 +6687,7 @@ function panelSel(focus){
     if(pd.lin){
       var nvs=ptVerts(q).length;
       h+='<label class="fld"><span>Dónde va</span><select data-t="pt_mo">'+MONT.map(function(m){return '<option value="'+m[0]+'"'+(ptMont(q)===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('')+'</select></label>';
-      h+=perfilSel('pt_pf',ptPerfil(q),'Perfil');
+      if(q.k==='led')h+=perfilSel('pt_pf',ptPerfil(q),'Perfil');
       h+='<p class="note">Longitud: '+m2(ptLen(q)/100)+' m · '+nvs+' puntos'+(nvs>2?' (polilínea)':' (recta)')+'.</p>';
       h+='<p class="note" style="margin:0 0 6px">Arrastra un punto para moverlo, o la tira entera desde su línea. Con «Añadir puntos» tocas un tramo para crear uno nuevo.</p>';
       h+='<div class="btns"><button data-a="ptadd" aria-pressed="'+!!st.ptAdd+'">Añadir puntos: '+(st.ptAdd?'sí (toca un tramo)':'no')+'</button>'+(st.ptVsel!=null&&nvs>2?'<button data-a="ptdelv">Quitar el punto elegido</button>':'')+(nvs>2?'<button data-a="ptrecta">Dejarla recta (solo los extremos)</button>':'')+'</div>';
