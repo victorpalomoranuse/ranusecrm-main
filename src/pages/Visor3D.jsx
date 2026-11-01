@@ -1353,6 +1353,8 @@ export default function Visor3D() {
   const [lucesPl, setLucesPl] = useState([]);       // luminarias de la capa Iluminación del plano
   const [lumCat, setLumCat] = useState([]);          // catálogo de luminarias (lúmenes, vatios, kelvin)
   const [luzSel, setLuzSel] = useState(null);
+  const [luzOver, setLuzOver] = useState({}); // posición y altura cambiadas desde el 3D: { id: { x, y, h } }
+  const luzTimer = useRef(null);
   const [kindLuz, setKindLuz] = useState('foco');
   const [lucesAj, setLucesAj] = useState({});        // ajustes solo-3D: ángulo de apertura de cada foco
   const kindLuzRef = useRef('foco');
@@ -2178,7 +2180,8 @@ export default function Visor3D() {
     if (a.luzG) { a.scene.remove(a.luzG); a.luzG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); if (x.isLight && x.target) a.scene.remove(x.target); }); }
     const g = new THREE.Group(); g.userData.capa = 'luces'; g.visible = !ocultas.includes('luces');
     const ALT = { foco: 255, plaf: 255, colg: 200, aplq: 180, pie: 120, suel: 5 };
-    lucesPl.slice(0, 16).forEach(l => {
+    lucesPl.slice(0, 16).forEach(l0 => {
+      const l = { ...l0, ...(luzOver[l0.id] || {}) };
       const cat = lumCat.find(c => c.id === l.lid), lm = lucesAj[l.id]?.lm ?? (cat?.lm || 800), K = lucesAj[l.id]?.k ?? (cat?.k || 3000);
       const hcm = l.h != null ? l.h : (ALT[l.kid] ?? 250), ap = lucesAj[l.id]?.ap ?? 60;
       const col = colorK(K);
@@ -2193,7 +2196,7 @@ export default function Visor3D() {
       } else { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); }
     });
     a.scene.add(g); a.luzG = g;
-  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces]);
+  }, [lucesPl, lumCat, lucesAj, luzSel, estado, ocultas, ambiente.luces, ambiente.kLuces, luzOver]);
 
   // Sol según la hora y exposición de la cámara
   useEffect(() => {
@@ -2920,6 +2923,10 @@ export default function Visor3D() {
         e.preventDefault(); const paso = e.shiftKey ? 50 : 5;
         moverSel({ arrowleft: { cx: -paso }, arrowright: { cx: paso }, arrowup: { cy: -paso }, arrowdown: { cy: paso }, pageup: { z0: paso }, pagedown: { z0: -paso } }[k]); return;
       }
+      if (luzSel && !selObj && !ctrl && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'pageup', 'pagedown'].includes(k)) {
+        e.preventDefault(); const paso = e.shiftKey ? 50 : 5;
+        moverLuz(k === 'arrowleft' ? -paso : k === 'arrowright' ? paso : 0, k === 'arrowup' ? -paso : k === 'arrowdown' ? paso : 0, k === 'pageup' ? paso : k === 'pagedown' ? -paso : 0); return;
+      }
       if (selObj && !ctrl && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'pageup', 'pagedown'].includes(k)) {
         e.preventDefault(); const paso = e.shiftKey ? 50 : 5, o = objs.find(x => x.id === selObj); if (!o) return;
         const c = { arrowleft: { cx: o.cx - paso }, arrowright: { cx: o.cx + paso }, arrowup: { cy: o.cy - paso }, arrowdown: { cy: o.cy + paso }, pageup: { z0: (o.z0 || 0) + paso }, pagedown: { z0: Math.max(0, (o.z0 || 0) - paso) } }[k];
@@ -2999,6 +3006,25 @@ export default function Visor3D() {
       setChat([...nuevo, { r: 'assistant', t: r.data.respuesta, pet: r.data.peticion }]); if (r.data.peticion) setPeticiones(null);
     } catch (e) { setChat([...nuevo, { r: 'assistant', t: e.response?.data?.error || 'No he podido contestar ahora mismo' }]); }
     finally { setChatBusy(false); }
+  };
+  // Mover la luminaria seleccionada (flechas) y pegarla al techo; se guarda en el plano medio segundo después del último cambio
+  useEffect(() => { setLuzOver({}); }, [rev]); // al recargar el plano, las posiciones ya vienen guardadas
+  const ALT_LUZ = { foco: 255, plaf: 255, colg: 200, aplq: 180, pie: 120, suel: 5 };
+  const luzEf = id => { const l0 = lucesPl.find(x => x.id === id); return l0 ? { ...l0, ...(luzOver[id] || {}) } : null; };
+  const moverLuz = (dx, dy, dh, absH) => {
+    const l = luzEf(luzSel); if (!l) return;
+    const h0 = l.h != null ? l.h : (ALT_LUZ[l.kid] ?? 250);
+    const nuevo = { x: l.x + dx, y: l.y + dy, h: Math.max(0, Math.min(600, absH != null ? absH : h0 + dh)) };
+    setLuzOver(o => ({ ...o, [l.id]: nuevo }));
+    clearTimeout(luzTimer.current);
+    luzTimer.current = setTimeout(() => {
+      api.patch('/medicion/' + id + '/luminaria/' + l.id, { x: nuevo.x, y: nuevo.y, h: nuevo.h }).then(() => setGuardado('Luminaria movida en el plano ✓ (si tienes Planos abierto, recárgalo)')).catch(() => setAviso('No se pudo guardar la posición de la luminaria'));
+    }, 600);
+  };
+  const alturaTecho = (x, y) => {
+    const m = api3d.current.modelo, pl0 = m && (m.plantas || [m])[0];
+    const sala = (pl0?.salas || []).find(sl => sl.pts && puntoEnPoligono([x, y], sl.pts));
+    return (sala?.techo?.h) || pl0?.altura || 260;
   };
   const murosPlano = () => (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []);
   const mitades = o => { const r = (o.rot || 0) * Math.PI / 180; return { hx: (Math.abs(o.w * Math.cos(r)) + Math.abs(o.d * Math.sin(r))) / 2, hy: (Math.abs(o.w * Math.sin(r)) + Math.abs(o.d * Math.cos(r))) / 2 }; };
@@ -3785,7 +3811,7 @@ export default function Visor3D() {
         );
       })()}
       {luzSel && (() => {
-        const l = lucesPl.find(x => x.id === luzSel); if (!l) return null;
+        const l = luzEf(luzSel); if (!l) return null;
         const cat = lumCat.find(c => c.id === l.lid), nombres = { foco: 'Foco empotrado', plaf: 'Plafón', colg: 'Luminaria colgante', aplq: 'Aplique', pie: 'Lámpara de pie', suel: 'Empotrado de suelo' };
         const ap = lucesAj[l.id]?.ap ?? 60, spot = l.kid === 'foco' || l.kid === 'plaf';
         return (
@@ -3808,7 +3834,9 @@ export default function Visor3D() {
               <span style={{ width: 14, height: 14, borderRadius: 7, background: kelvinHex(lucesAj[l.id]?.k ?? (cat?.k || 3000)), border: '1px solid #666' }} />
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Lúmenes</span><input type="number" step="50" value={lucesAj[l.id]?.lm ?? (cat?.lm || 800)} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, lm: parseFloat(e.target.value) || 0 } }))} style={{ ...btn, width: 80 }} /></label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Altura (cm)</span><input type="number" defaultValue={Math.round(l.h != null ? l.h : ({ foco: 255, plaf: 255, colg: 200, aplq: 180, pie: 120, suel: 5 }[l.kid] ?? 250))} onBlur={e => api.patch('/medicion/' + id + '/luminaria/' + l.id, { h: e.target.value }).then(() => { setAviso('Altura guardada en el plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(() => setAviso('No se pudo cambiar la altura'))} style={{ ...btn, width: 80 }} /></label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Altura (cm)</span><input key={'h' + Math.round(l.h ?? -1)} type="number" defaultValue={Math.round(l.h != null ? l.h : (ALT_LUZ[l.kid] ?? 250))} onBlur={e => moverLuz(0, 0, 0, parseFloat(e.target.value) || 0)} style={{ ...btn, width: 80 }} /></label>
+            {['foco', 'plaf', 'colg'].includes(l.kid) && <button style={{ ...btn, width: '100%', marginBottom: 6, background: '#6b6159' }} onClick={() => moverLuz(0, 0, 0, alturaTecho(l.x, l.y))} title="Sube la luminaria hasta el techo de esa sala">⬆ Pegar al techo ({Math.round(alturaTecho(l.x, l.y))} cm)</button>}
+            <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>Con la luminaria seleccionada: <b>flechas</b> la mueven 5 cm (con Mayús 50) y <b>Re Pág / Av Pág</b> la suben y bajan.</div>
             <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>El ángulo de apertura se guarda en el 3D; la altura y la posición se guardan también en el plano.</div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button style={{ ...btn, background: '#7a2b2b' }} onClick={() => api.delete('/medicion/' + id + '/luminaria/' + l.id).then(() => { setLuzSel(null); setAviso('Luminaria quitada del plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(() => setAviso('No se pudo quitar'))}>Quitar</button>
