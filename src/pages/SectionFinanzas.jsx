@@ -515,6 +515,9 @@ function PanelComisiones() {
   const [mesPublicado, setMesPublicado] = useState(null);
   const [publicando, setPublicando] = useState(false);
   const mesActual = mesActualStr();
+  // Se puede publicar el mes actual o uno anterior (p. ej. a 1 de noviembre, publicar solo octubre sin enseñar noviembre)
+  const mesesPosibles = [0, 1, 2, 3].map(k => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - k); return d.toISOString().slice(0, 7); });
+  const [mesElegido, setMesElegido] = useState(() => { const h = new Date(); return h.getDate() <= 7 ? mesesPosibles[1] : mesActualStr(); });
 
   const cargarPublicacion = useCallback(() => {
     api.get('/comisiones/publicacion').then(r => setMesPublicado(r.data.mesPublicado)).catch(() => {});
@@ -524,8 +527,8 @@ function PanelComisiones() {
   const publicarMesActual = async () => {
     setPublicando(true);
     try {
-      await api.put('/comisiones/publicacion', { mes: mesActual });
-      setMesPublicado(mesActual);
+      await api.put('/comisiones/publicacion', { mes: mesElegido });
+      setMesPublicado(mesElegido);
       setRefreshKey(k => k + 1);
     } catch {
       // noop
@@ -534,16 +537,19 @@ function PanelComisiones() {
     }
   };
 
-  const yaPublicado = mesPublicado && mesPublicado >= mesActual;
+  const yaPublicado = mesPublicado && mesPublicado >= mesElegido;
 
   return (
     <div className="fz-chart-card" style={{ marginBottom: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
         <p className="fz-chart-title" style={{ margin: 0 }}><Users size={15} /> Comisiones del equipo</p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select className="ap-select" style={{ width: 'auto', padding: '4px 8px' }} value={mesElegido} onChange={e => setMesElegido(e.target.value)} title="Hasta qué mes verá el equipo sus comisiones">
+            {mesesPosibles.map(m => <option key={m} value={m}>{fmtPeriodoLargo(m, 'mes')}</option>)}
+          </select>
           {!yaPublicado && (
             <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={publicando} onClick={publicarMesActual}>
-              {publicando ? 'Publicando…' : `Cerrar y publicar ${fmtPeriodoLargo(mesActual, 'mes').toLowerCase()} al equipo`}
+              {publicando ? 'Publicando…' : `Cerrar y publicar ${fmtPeriodoLargo(mesElegido, 'mes').toLowerCase()} al equipo`}
             </button>
           )}
           <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setModalConfig(true)}>Configurar equipo</button>
@@ -551,8 +557,8 @@ function PanelComisiones() {
       </div>
       <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 0, marginBottom: 12 }}>
         {yaPublicado
-          ? `El equipo ya puede ver ${fmtPeriodoLargo(mesActual, 'mes').toLowerCase()} en su panel de Mis Comisiones.`
-          : `El equipo todavía NO ve ${fmtPeriodoLargo(mesActual, 'mes').toLowerCase()} en su panel — solo ve hasta ${mesPublicado ? fmtPeriodoLargo(mesPublicado, 'mes').toLowerCase() : 'el último mes publicado'}. Tú sí ves todo en vivo aquí abajo. Publícalo cuando hayas revisado que los números están bien.`}
+          ? `El equipo ya puede ver ${fmtPeriodoLargo(mesPublicado, 'mes').toLowerCase()} (y los meses anteriores) en su panel de Mis Comisiones.`
+          : `El equipo todavía NO ve ${fmtPeriodoLargo(mesElegido, 'mes').toLowerCase()} en su panel — solo ve hasta ${mesPublicado ? fmtPeriodoLargo(mesPublicado, 'mes').toLowerCase() : 'el último mes publicado'}. Tú sí ves todo en vivo aquí abajo. Publícalo cuando hayas revisado que los números están bien.`}
       </p>
 
       <EquipoPeriodos key={refreshKey} />
