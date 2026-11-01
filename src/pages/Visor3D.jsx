@@ -3381,16 +3381,16 @@ export default function Visor3D() {
   const esperar = ms => new Promise(r => setTimeout(r, ms));
   const ocultarAyudas = () => { const a = api3d.current, gs = [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], v = gs.map(x => x && x.visible); gs.forEach(x => { if (x) x.visible = false; }); return () => gs.forEach((x, i) => { if (x) x.visible = v[i]; }); };
   const soltarSeleccion = async () => { setSelObj(null); setSelAcab(null); setSelHueco(null); setLuzSel(null); setSeleccion(null); api3d.current.limpiarSel?.(); await esperar(150); };
-  const renderHDurl = async () => {
+  const renderHDurl = async (opc = {}) => {
     await soltarSeleccion();
     const { renderer, scene, cam, sol } = api3d.current, el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
     const sombra = sol.castShadow, mapa = sol.shadow.mapSize.x, restaura = ocultarAyudas();
     try {
-      const W = resRender, H = Math.round(W * h0 / w0), a1 = api3d.current;
+      const W = opc.ancho || resRender, H = Math.round(W * h0 / w0), a1 = api3d.current;
       renderer.setPixelRatio(1); renderer.setSize(W, H, false); cam.aspect = W / H; cam.updateProjectionMatrix();
       renderer.shadowMap.enabled = true; sol.castShadow = true; sol.shadow.mapSize.set(4096, 4096); sol.shadow.map?.dispose(); sol.shadow.map = null; sol.shadow.radius = sombraSuave ? 4 : 1;
       if (a1.composer) { a1.composer.setPixelRatio(1); a1.composer.setSize(W, H); a1.composer.render(); } else renderer.render(scene, cam);
-      return renderer.domElement.toDataURL(formatoRender === 'png' ? 'image/png' : 'image/jpeg', 0.92);
+      return renderer.domElement.toDataURL((opc.fmt || formatoRender) === 'png' ? 'image/png' : 'image/jpeg', 0.92);
     } finally {
       restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix(); api3d.current.compW = null;
       sol.castShadow = sombra; sol.shadow.mapSize.set(mapa, mapa); sol.shadow.map?.dispose(); sol.shadow.map = null;
@@ -3449,6 +3449,16 @@ export default function Visor3D() {
     return { materiales: lista.slice(0, 8), inventario };
   };
   // ov = textos concretos (estancia, estilo…) y opc.autoGuardar = guardar directamente en la galería (para las escenas)
+  // Postproducción con IA: se exporta la imagen en alta resolución y la IA solo la mejora (nitidez, ruido, luz suave); nunca cambia la escena
+  const [mejoraOpc, setMejoraOpc] = useState({ nitidez: true, luz: false });
+  const mejorarConIA = async () => {
+    setIa({ estado: 'trabajando' });
+    try {
+      const imagen = await renderHDurl({ fmt: 'jpg', ancho: Math.min(resRender, 2560) });
+      const r = await api.post('/render-ia', { imagen, modo: 'mejora', ajustes: mejoraOpc, proveedor: iaTxt.proveedor }, { timeout: 240000 });
+      setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen, meta: metaActual(), guardado: false });
+    } catch (e) { setIa({ estado: 'error', mensaje: e.response?.data?.error || 'No se ha podido mejorar la imagen' }); }
+  };
   const renderIA = async (ov, opc = {}) => {
     const { renderer, scene, cam } = api3d.current, txt = ov && ov.estilo !== undefined ? ov : iaTxt;
     setIaForm(false); setIa({ estado: 'trabajando' });
@@ -3992,6 +4002,16 @@ export default function Visor3D() {
             {sec('Cámara', <>
               {fila('Óptica', lente, 12, 110, 1, v => ponerLente(v), lente + '°')}
               <div style={{ opacity: 0.55, fontSize: 11 }}>El encuadre es el de la vista actual. Muévete antes de renderizar o guarda una escena.</div>
+            </>)}
+            {sec('Postproducción con IA', <>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12, marginBottom: 3 }}><input type="checkbox" checked={mejoraOpc.nitidez} onChange={e => setMejoraOpc(o => ({ ...o, nitidez: e.target.checked }))} /> Más nitidez y menos ruido</label>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12, marginBottom: 6 }}><input type="checkbox" checked={mejoraOpc.luz} onChange={e => setMejoraOpc(o => ({ ...o, luz: e.target.checked }))} /> Retocar luz y contraste (suave)</label>
+              <button style={{ ...btn, width: '100%' }} disabled={estado !== 'listo' || ia?.estado === 'trabajando'} onClick={mejorarConIA} title="Exporta la vista en alta resolución y la IA solo la retoca">✨ Mejorar la imagen con IA</button>
+              <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>La IA solo retoca la imagen ya renderizada: no cambia la geometría, los materiales ni los objetos. Para un cambio de ambiente completo sigue estando «Render con IA».</div>
+            </>)}
+            {sec('Render final en la nube', <>
+              <button style={{ ...btn, width: '100%', opacity: 0.5, cursor: 'not-allowed' }} disabled title="Todavía no hay ningún servicio conectado">☁ Render con Blender Cycles (próximamente)</button>
+              <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Está preparada la conexión, pero aún no hay un servicio de render en la nube elegido. Mientras tanto, usa «Exportar a D5» o el refinado con trazado de rayos.</div>
             </>)}
             {sec('Salida', <>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Resolución</span><select value={resRender} onChange={e => setResRender(parseInt(e.target.value, 10))} style={{ ...btn, flex: 1 }}>{Object.entries(nombreRes).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>

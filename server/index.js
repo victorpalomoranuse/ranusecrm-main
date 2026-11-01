@@ -19,6 +19,7 @@ import conocimientoRoutes from './routes/conocimiento.routes.js';
 import medicionRoutes from './routes/medicion.routes.js';
 import renderIaRoutes from './routes/render-ia.routes.js';
 import visorAyudaRoutes from './routes/visor-ayuda.routes.js';
+import renderNubeRoutes from './routes/render-nube.routes.js';
 import biblioteca3dRoutes from './routes/biblioteca3d.routes.js';
 import medicionSketchupRoutes from './routes/medicion-sketchup.routes.js';
 import historiaPublicaRoutes from './routes/historia-publica.routes.js';
@@ -108,6 +109,7 @@ app.use('/api/medicion-publico', medicionSketchupRoutes); // enlace de solo lect
 app.use('/api/medicion', medicionRoutes);
 app.use('/api/render-ia', renderIaRoutes);
 app.use('/api/visor-ayuda', visorAyudaRoutes);
+app.use('/api/render-nube', renderNubeRoutes);
 app.use('/api/biblioteca3d', biblioteca3dRoutes);
 app.use('/api/historia-publica', historiaPublicaRoutes);
 app.use('/api/employees', employeesRoutes);

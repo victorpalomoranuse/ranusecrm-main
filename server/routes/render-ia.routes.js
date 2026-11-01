@@ -33,7 +33,7 @@ router.post('/', async (req, res) => {
   const clave = prov === 'openai' ? process.env.OPENAI_API_KEY : process.env.GEMINI_API_KEY;
   if (!clave) return res.status(503).json({ error: 'Falta configurar ' + (prov === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY') + ' en el servidor' });
   try {
-    const { imagen, estancia, estilo, paleta, extra, libertad, materiales, inventario } = req.body || {};
+    const { imagen, estancia, estilo, paleta, extra, libertad, materiales, inventario, modo, ajustes } = req.body || {};
     const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(String(imagen || ''));
     if (!m) return res.status(400).json({ error: 'Falta la imagen del visor (png, jpg o webp)' });
     const colores = Array.isArray(paleta) ? paleta.filter(p => p && p.nombre).slice(0, 12).map(p => `${String(p.nombre).slice(0, 40)}${p.hex ? ' (' + String(p.hex).slice(0, 9) + ')' : ''}`) : [];
@@ -49,7 +49,16 @@ router.post('/', async (req, res) => {
     const conRef = muestras.filter(x => x.ref);
     const txtMateriales = muestras.length ? 'MATERIALES REALES DEL PROYECTO (reprodúcelos con exactitud en cada zona: mismo color, veta, dibujo, tamaño de pieza y junta; no cambies de material ni inventes otros): ' + muestras.map(x => x.zona + ': ' + x.descr + (x.ref ? ' [muestra en la imagen ' + (conRef.indexOf(x) + 2) + ']' : '')).join(' | ') + '.' + (conRef.length ? ' Las imágenes 2 a ' + (conRef.length + 1) + ' son solo muestras de material (no forman parte de la escena): no las pongas en la foto.' : '') : '';
     const txtInventario = Array.isArray(inventario) && inventario.length ? 'EQUIPAMIENTO Y ELEMENTOS QUE EXISTEN en la escena (no añadas ni quites ninguno, ni cambies su forma): ' + inventario.slice(0, 40).map(v => String(v).slice(0, 80)).join('; ') + '.' : '';
-    const instrucciones = [
+    // Modo «mejora»: la imagen ya es un render terminado; la IA solo la retoca técnicamente y no cambia nada de lo que hay
+    const aj = ajustes && typeof ajustes === 'object' ? ajustes : {};
+    const instMejora = [
+      'Eres un retocador fotográfico profesional. La imagen es un render de interiorismo ya terminado. Tu único trabajo es mejorarla técnicamente, sin cambiar su contenido.',
+      'REGLAS ABSOLUTAS: no cambies la geometría, la perspectiva, el encuadre ni las proporciones. No cambies los materiales, los colores ni los acabados. No añadas, quites ni muevas ningún objeto, máquina, mueble, persona o elemento decorativo. No cambies textos ni logotipos. Si dudas, deja la imagen como está.',
+      aj.nitidez !== false ? 'Aumenta la nitidez y el detalle fino de las texturas, y limpia el ruido y el grano de la imagen.' : '',
+      aj.luz ? 'Retoca la luz con suavidad: mejora el contraste, el rango dinámico, las sombras y los reflejos, sin cambiar la dirección ni la intensidad general de la luz.' : '',
+      'Entrega la imagen con la mayor resolución y calidad posibles, con aspecto de fotografía real pero idéntica en contenido.',
+    ].filter(Boolean).join(' ');
+    const instrucciones = modo === 'mejora' ? instMejora : [
       'Convierte esta imagen de un modelo 3D de interiorismo en una fotografía profesional de revista de interiorismo y arquitectura: realista, nítida, con luz natural cálida, sombras suaves, reflejos creíbles, materiales con textura real y profundidad de campo, como hecha con una cámara réflex y un objetivo gran angular. Debe parecer una foto real, no un render ni una ilustración.',
       NIVELES[nivel],
       colores.length ? 'Respeta con la máxima fidelidad estos colores y acabados: ' + colores.join('; ') + '.' : 'Mantén los colores de los materiales tal y como aparecen en la imagen.',
