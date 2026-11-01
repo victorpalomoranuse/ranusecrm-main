@@ -1854,7 +1854,8 @@ export default function Visor3D() {
       if (!valor) { const mt = Array.isArray(hit.object.material) ? hit.object.material[hit.face?.materialIndex || 0] : hit.object.material; valor = mt?.color ? '#' + mt.color.getHexString() : null; }
       if (!valor) return;
       setMatSel(String(valor).startsWith('tex:') ? { id: String(valor).slice(4) } : { hex: valor });
-      setHerr('pincel'); setMatAbierto(true); setGuardado('Material copiado: haz clic en lo que quieras pintar');
+      if (herrRef.current === 'gotero') { setRenderAbierto(true); setPestanaRender('inspector'); setSelObj(null); setGuardado('Material seleccionado: ajústalo en el Inspector. Para pintarlo en otro sitio usa Pintura (B)'); }
+      else { setHerr('pincel'); setMatAbierto(true); setGuardado('Material copiado: haz clic en lo que quieras pintar'); }
     };
     const onDownD = e => {
       if (e.button !== 0) return;
@@ -3666,6 +3667,16 @@ export default function Visor3D() {
                 </div>
               );
             })();
+  // Pestañita de la vista (como la de D5): selector de material y pintura
+  const panelIzqAbierto = bibAbierta || b3dAbierta || capasAbierto || matAbierto;
+  const pildora = (
+    <div style={{ position: 'absolute', left: railW + 12 + (panelIzqAbierto ? 290 : 0), top: 58, zIndex: 6, display: 'flex', gap: 3, background: 'rgba(22,20,18,0.88)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 9, padding: 3 }}>
+      {[['gotero', 'Selector de material (I): haz clic en una superficie y su material sale en el Inspector', () => setHerr(herr === 'gotero' ? 'sel' : 'gotero')], ['pintar', 'Pintura (B): pinta con el material elegido', () => { setMatAbierto(true); setHerr('pincel'); }]].map(([ic, tit, fn]) => {
+        const act = ic === 'gotero' ? herr === 'gotero' : herr === 'pincel';
+        return <button key={ic} title={tit} onClick={fn} style={{ width: 32, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: 'none', cursor: 'pointer', background: act ? '#baafa5' : 'transparent', color: act ? '#111' : '#fff' }}><Ic n={ic} /></button>;
+      })}
+    </div>
+  );
   const barraMaterial = ['zonaS', 'zonaT', 'zonaP'].includes(herr) && (
     <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', top: 96, zIndex: 6, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', maxWidth: '86vw', overflowX: 'auto' }}>
       <span style={{ opacity: 0.7, whiteSpace: 'nowrap' }}>Material de la zona:</span>
@@ -3684,6 +3695,7 @@ export default function Visor3D() {
           <button style={{ ...btn, marginTop: 8 }} onClick={() => { setSinGpu(false); try { sessionStorage.setItem('visor3dSinGpuCerrado', '1'); } catch { /* sin almacenamiento */ } }}>Entendido</button>
         </div>
       )}
+      {pildora}
       {barraMaterial}
       {barra2d}
       {barraAxo}
@@ -3757,7 +3769,6 @@ export default function Visor3D() {
         ], false, 'Construir')}
         {grupoRail([
           railBtn(herr === 'pincel' || matAbierto, 'pintar', 'Pintura', 'Colores, texturas y LED: elige y pinta (cara, pieza o entero)', () => { setMatAbierto(v => !v); if (matAbierto && herr === 'pincel') setHerr('sel'); }),
-          railBtn(herr === 'gotero', 'gotero', 'Cuentagotas', 'Copia el material de lo que toques y pásalo con la pintura (Alt + clic con la pintura)', () => setHerr('gotero')),
         ], false, 'Pintar')}
         {grupoRail([
           railBtn(bibAbierta, 'catalogo', 'Catálogo', 'Tus productos del catálogo de Ranuse', () => setBibAbierta(v => !v)),
@@ -4145,7 +4156,8 @@ export default function Visor3D() {
             </>}
 
             {pestanaRender === 'inspector' && <>
-              {!matSel?.id
+              {matSel?.hex && !matSel?.id && <div style={{ marginTop: 10, padding: '8px 10px', border: '1px solid #3a342f', borderRadius: 8 }}><div style={{ fontWeight: 700, marginBottom: 6 }}>Color base</div><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 34, height: 34, borderRadius: 6, background: matSel.hex.slice(0, 7), border: '1px solid #666' }} /><code>{matSel.hex.slice(0, 7)}</code></div><div style={{ opacity: 0.6, fontSize: 11, marginTop: 6 }}>Es un color liso. Para ajustar rugosidad, normales o UV, pinta con una textura de la lista.</div><button style={{ ...btn, marginTop: 8, width: '100%' }} onClick={() => { setMatAbierto(true); setHerr('pincel'); }}>Pintar con este color</button></div>}
+              {!matSel?.id && !matSel?.hex
                 ? <div style={{ marginTop: 10, opacity: 0.75, lineHeight: 1.5 }}>Aquí se ajusta el material seleccionado: color base, normales, rugosidad, metálico, AO, emisivo y UV (estirar, desfase y rotar).<br /><br />Elige un material con <b>Pintura</b> (la lista de texturas o la biblioteca de Ranuse) y aparecerán sus ajustes.<button style={{ ...btn, marginTop: 8, width: '100%' }} onClick={() => { setMatAbierto(true); setHerr('pincel'); }}>Abrir Pintura</button></div>
                 : <div style={{ marginTop: 6 }}>{editorTextura()}</div>}
             </>}
