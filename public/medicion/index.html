@@ -7121,7 +7121,7 @@ function doAction(a,el){
   if(a==='oside'){var o2=opn(s.id);snap();o2.side=o2.side>=0?-1:1;commit();return}
   if(a==='oflip'){var o3=opn(s.id);snap();o3.flip=!o3.flip;commit();return}
   if(a==='ptsm'||a==='ptbg'){var qz=by(st.v.pts,s.id);snap();qz.sz=Math.max(0.4,Math.min(4,Math.round((qz.sz||1)*(a==='ptbg'?1.25:0.8)*100)/100));commit();return}
-  if(a==='ptsall'){var q0=by(st.v.pts,s.id);snap();st.v.pts.forEach(function(q){if(q.v==='ilum'&&(q.lid||('k:'+q.k))===(q0.lid||('k:'+q0.k)))q.sz=q0.sz||1;if(q0.dc>0)q.dc=q0.dc;else delete q.dc}});commit();return}
+  if(a==='ptsall'){var q0=by(st.v.pts,s.id);snap();st.v.pts.forEach(function(q){if(q.v==='ilum'&&(q.lid||('k:'+q.k))===(q0.lid||('k:'+q0.k))){q.sz=q0.sz||1;if(q0.dc>0)q.dc=q0.dc;else delete q.dc}});commit();return}
   if(a==='ptnd'){var q1=by(st.v.pts,s.id);snap();q1.nd=q1.nd?0:1;commit();return}
   if(a==='cnstart'){st.cnFrom=s.id;st.tool='cn';toolbar();hint();render();toast('Toca las luminarias que enciende');return}
   if(a==='ptrot'){var qr=by(st.v.pts,s.id);snap();qr.a=((qr.a||0)+90)%360;commit();return}
