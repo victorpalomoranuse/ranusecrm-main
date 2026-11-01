@@ -701,7 +701,7 @@ function ItemRowEdit({ item, onSave, onCancel }) {
   );
 }
 
-function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate }) {
+function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate, onChapter }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   const cat = CATEGORIES.find(c=>c.value===item.category)||CATEGORIES[0];
@@ -774,6 +774,7 @@ function ItemRowDisplay({ item, onEdit, onDelete, onDuplicate }) {
         <td className="pres-actions-cell">
           <button className="ap-btn-icon" onClick={onEdit}><Pencil size={12}/></button>
           <button className="ap-btn-icon" onClick={onDuplicate} title="Duplicar partida"><Copy size={12}/></button>
+          {onChapter && <button className="ap-btn-icon" onClick={onChapter} title="Convertir esta partida en un capítulo (franja de título)"><FolderPlus size={12}/></button>}
           <button className="ap-btn-icon pres-del" onClick={onDelete}><Trash2 size={12}/></button>
         </td>
       </tr>
@@ -1191,6 +1192,15 @@ function BudgetEditor({ id, onBack, onOpen }) {
   const handleAddChapter = async (name) => {
     const { data } = await api.post(`/budgets/${id}/items`, { name, is_chapter_header: true, category: 'otro', quantity: 0, unit: 'ud', unit_cost: 0, markup_pct: 0, unit_price: 0 });
     setItems(prev => [...prev, data.item]);
+    if (data.aviso) flash(data.aviso, 'error');
+  };
+  // Convierte una partida ya creada en capítulo (para las que se hicieron sin la columna de capítulos)
+  const handleConvertirCapitulo = async (item) => {
+    try {
+      const { data } = await api.put(`/budgets/${id}/items/${item.id}`, { is_chapter_header: true });
+      if (!data.item?.is_chapter_header) { flash('No se pudo convertir: falta ejecutar la migración v91 en Supabase.', 'error'); return; }
+      setItems(prev => prev.map(i => (i.id === item.id ? data.item : i)));
+    } catch { flash('No se pudo convertir en capítulo', 'error'); }
   };
 
   const handleUpdateItem = async (itemId, d) => {
@@ -1560,7 +1570,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
                 ) : editingId === item.id ? (
                   <ItemRowEdit key={item.id} item={item} onSave={d=>handleUpdateItem(item.id,d)} onCancel={()=>setEditingId(null)} />
                 ) : (
-                  <ItemRowDisplay key={item.id} item={item} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} onDuplicate={()=>handleDuplicateItem(item)} />
+                  <ItemRowDisplay key={item.id} item={item} onChapter={()=>handleConvertirCapitulo(item)} onEdit={()=>setEditingId(item.id)} onDelete={()=>handleDeleteItem(item.id)} onDuplicate={()=>handleDuplicateItem(item)} />
                 )
               )}
               <NewItemRow categories={catCats} onAdd={handleAddItem} onAddChapter={handleAddChapter} />

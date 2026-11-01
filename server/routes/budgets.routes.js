@@ -546,6 +546,11 @@ router.post('/:id/items', async (req, res) => {
     if (error) throw error;
     // foto propia de la partida (necesita la columna image_url: migración v87). Si aún no existe, la partida se crea igual y se avisa
     let item = data, aviso = null;
+    // capítulo: se marca aparte para que, si la columna aún no existe (migración v91), la partida se cree igual y se avise
+    if (req.body?.is_chapter_header === true) {
+      const rc = await supabase.from('budget_items').update({ is_chapter_header: true }).eq('id', data.id).select('*').single();
+      if (rc.error) aviso = 'El capítulo se ha creado como una partida normal: falta ejecutar la migración v91 en Supabase.'; else item = rc.data;
+    }
     const foto = String(req.body?.image_url || '').trim();
     if (/^https?:\/\//i.test(foto)) {
       const r2 = await supabase.from('budget_items').update({ image_url: foto }).eq('id', data.id).select('*').single();
@@ -598,6 +603,10 @@ router.put('/:id/items/:itemId', async (req, res) => {
     const { data, error } = await supabase.from('budget_items').update(updates).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
     if (error) throw error;
     let item = data;
+    if (req.body?.is_chapter_header !== undefined) {
+      const rc = await supabase.from('budget_items').update({ is_chapter_header: req.body.is_chapter_header === true }).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
+      if (!rc.error) item = rc.data;
+    }
     if (req.body?.image_url !== undefined) {
       const foto = /^https?:\/\//i.test(String(req.body.image_url || '')) ? String(req.body.image_url).trim() : null;
       const r2 = await supabase.from('budget_items').update({ image_url: foto }).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
