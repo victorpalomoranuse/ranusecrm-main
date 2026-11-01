@@ -2,6 +2,24 @@
 #views button[data-view="tutorial"]{border-left:1px solid var(--line);margin-left:6px;padding-left:14px;font-weight:600}
 .tuto{position:fixed;left:0;right:0;bottom:0;top:56px;z-index:60;background:var(--bg);display:grid;grid-template-columns:300px minmax(0,1fr);color:var(--ink);font-family:Montserrat,system-ui,sans-serif}
 .tuto[hidden]{display:none}
+.medp{position:fixed;left:0;right:0;bottom:0;top:56px;z-index:60;background:var(--bg);color:var(--ink);overflow:auto;padding:22px 28px 60px;font-family:Montserrat,system-ui,sans-serif}
+.medp[hidden]{display:none}
+.medp-bar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.medp-bar h2{margin:0 0 4px;font-size:20px;font-weight:600}
+.medp-bar p{margin:0;font-size:12.5px;color:var(--muted);max-width:640px;line-height:1.5}
+.medp-btns{display:flex;gap:6px;flex-wrap:wrap}
+.medp-btns button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;padding:7px 12px;cursor:pointer;font:inherit;font-size:12.5px}
+.medp-btns button:hover{border-color:var(--accent)}
+.medp-planta{margin:22px 0 4px;font-size:15px;color:var(--accent)}
+.meds{margin:0 0 22px;max-width:980px}
+.meds h3{margin:0 0 8px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent)}
+.medt{width:100%;border-collapse:collapse;font-size:13px}
+.medt th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:500;padding:6px 10px;border-bottom:1px solid var(--line)}
+.medt td{padding:7px 10px;border-bottom:1px solid var(--line)}
+.medt .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.medt .nt{color:var(--muted);font-size:11.5px}
+.medt tr.tot td{font-weight:700;border-top:2px solid var(--accent);background:rgba(127,127,127,.08)}
+@media print{header,#views,.medp-btns{display:none!important}.medp{position:static;overflow:visible;padding:0}}
 .tuto-nav{overflow:auto;border-right:1px solid var(--line);padding:22px 16px;background:var(--panel)}
 .tuto-nav h2{margin:0 0 4px;font-size:18px;font-weight:600}
 .tuto-nav>p{margin:0 0 14px;font-size:12.5px;line-height:1.5;color:var(--muted)}
@@ -381,6 +399,7 @@ body.crm .top .brand{display:none}
       <button data-view="acab">Acabados</button>
       <button data-view="alz">Alzados</button>
       <button data-view="suelos">Suelos</button>
+      <button data-view="mediciones" id="v-med" title="Todas las sumas del plano en tablas: demoliciones, alicatados, suelos, salas, carpinterías…">Mediciones</button>
       <button data-view="tutorial" id="v-tuto">Tutorial</button>
     </div>
     <div class="seg" id="pisos" role="group" aria-label="Plantas del plano"></div>
@@ -596,6 +615,10 @@ body.crm .top .brand{display:none}
       </section>
       <section class="blk" id="cloudblk" hidden><h2>Planos de este proyecto</h2><div id="cloud"></div></section>
     </aside>
+  </div>
+  <div class="medp" id="medp" hidden role="region" aria-label="Mediciones del plano">
+    <div class="medp-bar"><div><h2>Mediciones</h2><p>Todas las sumas de lo que has dibujado, listas para copiar o pasar a Excel. Se generan solas: pulsa «Actualizar» tras cambiar el plano.</p></div><div class="medp-btns"><button data-med="act">↻ Actualizar</button><button data-med="copiar">Copiar</button><button data-med="csv">Descargar Excel (CSV)</button><button data-med="imp">Imprimir</button><button data-med="cerrar">Volver al plano</button></div></div>
+    <div id="medp-body"></div>
   </div>
   <div class="tuto" id="tuto" hidden role="region" aria-label="Tutorial de Planos">
     <aside class="tuto-nav">
@@ -6181,7 +6204,7 @@ function toolbar(){
   if($('b-libre'))$('b-libre').setAttribute('aria-pressed',String(!!st.muroLibre));
   if(st.tool==='mm'&&st.view!=='distrib')st.tool='select';
   var vs=$('views').querySelectorAll('button');
-  for(var j=0;j<vs.length;j++){var vk=vs[j].getAttribute('data-view');vs[j].className=(vk==='tutorial'?(document.getElementById('tuto')&&!document.getElementById('tuto').hidden):vk===st.view)?'on':''}
+  for(var j=0;j<vs.length;j++){var vk=vs[j].getAttribute('data-view');vs[j].className=(vk==='tutorial'?(document.getElementById('tuto')&&!document.getElementById('tuto').hidden):vk==='mediciones'?(document.getElementById('medp')&&!document.getElementById('medp').hidden):vk===st.view)?'on':''}
   var L=[['ex','Existente'],['dem','Demoler'],['new','Nuevo']];
   $('defstate').innerHTML=L.map(function(x){return '<button data-a="defstate" data-s="'+x[0]+'" aria-pressed="'+(st.defState===x[0])+'">'+x[1]+'</button>'}).join('');
   $('dimbase').innerHTML='<span class="note" style="margin:0">Siempre de cara interior a cara interior (hueco libre)</span>';
@@ -7348,7 +7371,7 @@ $('tools').addEventListener('click',function(e){
   if(t==='draw'){st.drK=st.drK||'line';st.drPoly=null}
   if(t==='equip'||t==='door'||t==='win'||t==='draw')flyOpen(t,b);else flyClose();
 });
-$('views').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(b.getAttribute('data-view')==='tutorial'){tutoAbrir();return}tutoCerrar();st.adjSel=null;st.view=b.getAttribute('data-view');st.led=null;st.ledPts=null;st.cnFrom=null;closeQE();st.tool='select';st.dg=null;if(st.sel&&st.sel.t==='eq'&&st.view!=='distrib'){st.sel=null;panelSel()}toolbar();save();render()});
+$('views').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(b.getAttribute('data-view')==='tutorial'){tutoAbrir();return}if(b.getAttribute('data-view')==='mediciones'){medAbrir();return}tutoCerrar();medCerrar();st.adjSel=null;st.view=b.getAttribute('data-view');st.led=null;st.ledPts=null;st.cnFrom=null;closeQE();st.tool='select';st.dg=null;if(st.sel&&st.sel.t==='eq'&&st.view!=='distrib'){st.sel=null;panelSel()}toolbar();save();render()});
 $('b-undo').addEventListener('click',undo);
 $('b-redo').addEventListener('click',redoit);
 $('z-fit').addEventListener('click',fit);
@@ -11133,7 +11156,112 @@ function tutoIr(spec){
   var t=(document.getElementById('hint')||{}).textContent;
   if(t)toast(t.slice(0,140));
 }
+/* ── Página «Mediciones»: todas las sumas del plano (demoliciones, alicatados, suelos, techos, salas, carpinterías, equipos, luces…) en tablas, a página completa.
+   Se genera sola con lo que hay dibujado cada vez que se abre o se pulsa «Actualizar». */
+function medDatos1(){
+  var v=st.v,R=buildResumen1(),S=[];
+  function sumL(s){var t=0;v.walls.forEach(function(w){if(w.s===s)t+=wLen(w)});return t/100}
+  function cnt(a,s,t){return a.filter(function(q){return q.s===s&&(!t||q.t===t)}).length}
+  function fila(c,ml,m2v,ud,nota){return {c:c,ml:ml,m2:m2v,ud:ud,nota:nota||''}}
+  /* Demoliciones y retiradas */
+  var d=[],ml=sumL('dem');
+  if(ml||areaEst('dem'))d.push(fila('Muros a demoler',ml,areaEst('dem')/10000,null));
+  if(cnt(v.pil,'dem'))d.push(fila('Pilares a demoler',null,null,cnt(v.pil,'dem')));
+  if(cnt(v.ops,'dem','door'))d.push(fila('Puertas a retirar',null,null,cnt(v.ops,'dem','door')));
+  if(cnt(v.ops,'dem','win'))d.push(fila('Ventanas a retirar',null,null,cnt(v.ops,'dem','win')));
+  var gE={};v.eq.filter(function(e){return e.s==='dem'}).forEach(function(e){gE[e.nm]=(gE[e.nm]||0)+1});
+  Object.keys(gE).forEach(function(k){d.push(fila('Retirar: '+k,null,null,gE[k]))});
+  var dp=v.pts.filter(function(q){return q.s==='dem'}),dl=dp.filter(function(q){return !ptDef(q.k).lin}),dml=0;
+  dp.forEach(function(q){if(ptDef(q.k).lin)dml+=ptLen(q)});
+  var dI=dl.filter(function(q){return q.v==='ilum'}).length,dE=dl.filter(function(q){return q.v==='elec'}).length;
+  if(dI)d.push(fila('Luminarias a retirar',null,null,dI));
+  if(dE)d.push(fila('Mecanismos eléctricos a retirar',null,null,dE));
+  if(dml)d.push(fila('Tira o carril de luz a retirar',dml/100,null,null));
+  if(dl.length)d.push(fila('Huecos a reparar',null,null,dl.length));
+  var rsA=0,rtA=0;v.rz.forEach(function(r){var ar=rzArea(r);if(ar){if(r.k==='s')rsA+=ar;else rtA+=ar}});
+  if(rsA)d.push(fila('Suelo a levantar',null,rsA/10000,null));
+  if(rtA)d.push(fila('Falso techo a desmontar',null,rtA/10000,null));
+  var wrm={};v.walls.forEach(function(w){if(!w.fr||!wallVis(w,'demol'))return;['p','m'].forEach(function(sd){if(w.fr[sd]){var a=wallArea(w),k=(w.fx&&w.fx[sd])||'';wrm[k]=(wrm[k]||0)+a}})});
+  Object.keys(wrm).forEach(function(k){d.push(fila('Picar acabado de pared: '+(k?matOf('acab',k).n:'material sin definir'),null,wrm[k]/10000,null,'alicatado o revestimiento a retirar'))});
+  S.push({id:'demol',t:'Demoliciones y retiradas',f:d});
+  /* Obra nueva */
+  var n=[],mn=sumL('new');
+  if(mn||areaEst('new'))n.push(fila('Muros nuevos',mn,areaEst('new')/10000,null));
+  if(cnt(v.pil,'new'))n.push(fila('Pilares nuevos',null,null,cnt(v.pil,'new')));
+  if(cnt(v.ops,'new','door'))n.push(fila('Puertas nuevas',null,null,cnt(v.ops,'new','door')));
+  if(cnt(v.ops,'new','win'))n.push(fila('Ventanas nuevas',null,null,cnt(v.ops,'new','win')));
+  (R.recrecidos||[]).forEach(function(rc,i){n.push(fila('Recrecido '+(i+1)+(rc.material?' · '+rc.material:''),rc.largo_cm/100,rc.m2,null))});
+  S.push({id:'nuevo',t:'Obra nueva',f:n});
+  /* Acabados de pared (alicatados y revestimientos), suelos y techos por material */
+  S.push({id:'paredes',t:'Acabados de pared (alicatados y revestimientos)',f:(R.paredes||[]).map(function(p){return fila(p.nombre,null,p.m2,null)})});
+  S.push({id:'suelos',t:'Suelos por material',f:(R.suelos||[]).map(function(p){return fila(p.nombre,null,p.m2,null)})});
+  S.push({id:'techos',t:'Techos por material',f:(R.techos||[]).map(function(p){return fila(p.nombre,null,p.m2,null)})});
+  S.push({id:'salas',t:'Salas',f:(R.salas||[]).map(function(s){return fila(s.nombre||'Sala sin nombre',s.perimetro_ml,s.area_m2,null,'ml = perímetro · m² = superficie')})});
+  S.push({id:'carp',t:'Carpinterías (puertas y ventanas)',f:(R.carpinterias||[]).map(function(c){return fila((c.ref?c.ref+' · ':'')+c.tipo+' '+c.ancho+' × '+c.alto+' cm',null,null,1,({ex:'existente',dem:'a retirar','new':'nueva'})[c.estado]||c.estado)})});
+  S.push({id:'equipos',t:'Equipos y bloques',f:(R.equipos||[]).map(function(e){return fila(e.nombre,null,null,e.n)})});
+  S.push({id:'lum',t:'Iluminación',f:(R.luminarias||[]).map(function(l){return fila(l.nombre,l.ml||null,null,l.n||null)})});
+  S.push({id:'elec',t:'Electricidad',f:(R.electricidad||[]).map(function(e){return fila(e.nombre,null,null,e.n)})});
+  return S.filter(function(s){return s.f.length});
+}
+function medDatos(){
+  if(!pisosOn())return [{planta:'',sec:medDatos1()}];
+  var orig=st.v,out=[];
+  try{orig.pisos.forEach(function(p){st.v=pisoVisita(orig,p);out.push({planta:p.nombre,sec:medDatos1()})})}finally{st.v=orig}
+  return out;
+}
+function medNum(n,dec){return n==null?'':(Math.round(n*100)/100).toFixed(dec==null?2:dec).replace('.',',')}
+function medTabla(s){
+  var tieneMl=s.f.some(function(r){return r.ml!=null}),tieneM2=s.f.some(function(r){return r.m2!=null}),tieneUd=s.f.some(function(r){return r.ud!=null});
+  var tot={ml:0,m2:0,ud:0};s.f.forEach(function(r){tot.ml+=r.ml||0;tot.m2+=r.m2||0;tot.ud+=r.ud||0});
+  var h='<table class="medt"><thead><tr><th>Concepto</th>'+(tieneMl?'<th class="n">ml</th>':'')+(tieneM2?'<th class="n">m²</th>':'')+(tieneUd?'<th class="n">ud</th>':'')+'<th>Nota</th></tr></thead><tbody>';
+  s.f.forEach(function(r){h+='<tr><td>'+esc(r.c)+'</td>'+(tieneMl?'<td class="n">'+medNum(r.ml)+'</td>':'')+(tieneM2?'<td class="n">'+medNum(r.m2)+'</td>':'')+(tieneUd?'<td class="n">'+(r.ud==null?'':r.ud)+'</td>':'')+'<td class="nt">'+esc(r.nota)+'</td></tr>'});
+  if(s.f.length>1)h+='<tr class="tot"><td>Total</td>'+(tieneMl?'<td class="n">'+medNum(tot.ml)+'</td>':'')+(tieneM2?'<td class="n">'+medNum(tot.m2)+'</td>':'')+(tieneUd?'<td class="n">'+tot.ud+'</td>':'')+'<td></td></tr>';
+  return h+'</tbody></table>';
+}
+function medRender(){
+  var datos=medDatos(),h='';
+  datos.forEach(function(pl){
+    if(pl.planta)h+='<h2 class="medp-planta">'+esc(pl.planta)+'</h2>';
+    if(!pl.sec.length)h+='<p class="note">Todavía no hay nada que medir en esta planta. Dibuja muros, salas o equipos y vuelve aquí.</p>';
+    pl.sec.forEach(function(s){h+='<section class="meds"><h3>'+esc(s.t)+'</h3>'+medTabla(s)+'</section>'});
+  });
+  if(!h)h='<p class="note">Todavía no hay nada que medir. Dibuja muros, salas o equipos y vuelve aquí.</p>';
+  $('medp-body').innerHTML=h;
+  $('medp').__datos=datos;
+}
+function medCSV(){
+  var out=[['Planta','Apartado','Concepto','ml','m2','ud','Nota']];
+  ($('medp').__datos||medDatos()).forEach(function(pl){pl.sec.forEach(function(s){s.f.forEach(function(r){out.push([pl.planta,s.t,r.c,medNum(r.ml),medNum(r.m2),r.ud==null?'':r.ud,r.nota])})})});
+  return '﻿'+out.map(function(l){return l.map(function(x){x=String(x==null?'':x);return /[;"\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x}).join(';')}).join('\r\n');
+}
+function medTexto(){
+  var t='';
+  ($('medp').__datos||medDatos()).forEach(function(pl){
+    if(pl.planta)t+=pl.planta.toUpperCase()+'\n';
+    pl.sec.forEach(function(s){t+=s.t.toUpperCase()+'\n';s.f.forEach(function(r){t+=r.c+'\t'+[r.ml!=null?medNum(r.ml)+' ml':'',r.m2!=null?medNum(r.m2)+' m²':'',r.ud!=null?r.ud+' ud':''].filter(Boolean).join(' · ')+'\n'});t+='\n'});
+  });
+  return t;
+}
+function medAbrir(){
+  tutoCerrar();
+  var hd=document.querySelector('header'),top=hd?Math.round(hd.getBoundingClientRect().bottom):56,p=$('medp');
+  p.style.top=top+'px';p.hidden=false;medRender();
+  var vs=document.querySelectorAll('#views button');for(var j=0;j<vs.length;j++)vs[j].className=vs[j].getAttribute('data-view')==='mediciones'?'on':'';
+}
+function medCerrar(){
+  var p=$('medp');if(!p||p.hidden)return;p.hidden=true;
+  var vs=document.querySelectorAll('#views button');for(var j=0;j<vs.length;j++)vs[j].className=vs[j].getAttribute('data-view')===st.view?'on':'';
+}
+$('medp').addEventListener('click',function(e){
+  var b=e.target.closest('[data-med]');if(!b)return;var a=b.getAttribute('data-med');
+  if(a==='act'){medRender();toast('Mediciones actualizadas')}
+  else if(a==='csv')saveFile(slug()+'-mediciones.csv',medCSV(),'Mediciones (Excel)');
+  else if(a==='copiar'){try{navigator.clipboard.writeText(medTexto()).then(function(){toast('Mediciones copiadas: pégalas donde quieras')},function(){toast('No se pudo copiar')})}catch(er){toast('No se pudo copiar')}}
+  else if(a==='imp')window.print();
+  else if(a==='cerrar')medCerrar();
+});
 function tutoAbrir(){
+  if(typeof medCerrar==='function')medCerrar();
   var hd=document.querySelector('header'),top=hd?Math.round(hd.getBoundingClientRect().bottom):56;
   var t=$('tuto');t.style.top=top+'px';t.hidden=false;
   var vs=document.querySelectorAll('#views button');for(var j=0;j<vs.length;j++)vs[j].className=vs[j].getAttribute('data-view')==='tutorial'?'on':'';
