@@ -851,7 +851,8 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
           <td/>
         </tr>
       )}
-      <tr className="pres-row pres-row--new">
+      <tr className="pres-zona-cabecera"><td colSpan={15}>＋ Añadir una partida nueva</td></tr>
+      <tr className="pres-row pres-row--new pres-zona-nueva">
         <td><input className="pres-cell-input" value={d.name} onChange={e=>setD(p=>({...p,name:e.target.value}))} placeholder="Nueva partida…" onKeyDown={e=>e.key==='Enter'&&handleAdd()} /></td>
         <td><select className="pres-cell-select" value={d.category} onChange={e=>setD(p=>({...p,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></td>
         <td><input className="pres-cell-input pres-cell-num" type="number" min="0" step="0.01" value={d.quantity} onChange={e=>setD(p=>({...p,quantity:e.target.value}))} /></td>
@@ -888,10 +889,10 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
         </td>
       </tr>
       {categories.length > 0 && (
-        <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
-          <td colSpan={10} style={{padding:'0.4rem 0.75rem'}}>
+        <tr className="pres-row pres-zona-nueva">
+          <td colSpan={15} style={{padding:'0.4rem 0.75rem'}}>
             <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'0.75rem',color:'rgba(255,255,255,0.6)'}}>
-              <span>Guardar también en la biblioteca:</span>
+              <span className="pres-zona-etiqueta">Biblioteca</span><span>Guardar también en la biblioteca:</span>
               <select className="pres-cell-select" value={guardarCat} onChange={e=>setGuardarCat(e.target.value)} style={{maxWidth:260,colorScheme:'dark'}}>
                 <option value="" style={{background:'#1a1a1a',color:'#fff'}}>No, solo en este presupuesto</option>
                 {categories.map(c=><option key={c.id} value={c.id} style={{background:'#1a1a1a',color:'#fff'}}>{c.name}</option>)}
@@ -900,11 +901,11 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
           </td>
         </tr>
       )}
-      <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}} onPaste={pegarFoto}>
-        <td colSpan={10} style={{padding:'0.4rem 0.75rem'}}>
+      <tr className="pres-row pres-zona-nueva" onPaste={pegarFoto}>
+        <td colSpan={15} style={{padding:'0.4rem 0.75rem'}}>
           <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',fontSize:'0.75rem',color:'rgba(255,255,255,0.6)'}}>
             <div style={{width:54,height:54,borderRadius:8,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',color:'#999',fontSize:'0.62rem',textAlign:'center',flex:'none'}}>{fotoPrev?<img src={fotoPrev} alt="" style={{width:'100%',height:'100%',objectFit:'contain'}}/>:'sin foto'}</div>
-            <span>Foto de la partida (aunque no se guarde en el catálogo): pégala con <b>Ctrl+V</b>,</span>
+            <span className="pres-zona-etiqueta">Foto</span><span>Foto de la partida (aunque no se guarde en el catálogo): pégala con <b>Ctrl+V</b>,</span>
             <label className="ap-btn ap-btn-ghost ap-btn-sm" style={{cursor:'pointer'}}>elegir archivo…<input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{setFoto(e.target.files?.[0]||null);setFotoUrl('');e.target.value='';}}/></label>
             <span>o enlace:</span>
             <input className="pres-cell-input" placeholder="https://…" value={fotoUrl} onChange={e=>{setFotoUrl(e.target.value);setFoto(null);}} style={{maxWidth:240}}/>
@@ -912,17 +913,17 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
           </div>
         </td>
       </tr>
-      <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
-        <td colSpan={10} style={{padding:'0.4rem 0.75rem'}}>
+      <tr className="pres-row pres-zona-nueva">
+        <td colSpan={15} style={{padding:'0.4rem 0.75rem'}}>
           <div style={{display:'flex',flexDirection:'column',gap:2}}>
-            <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Descripción para el cliente <span style={{textTransform:'none',letterSpacing:0}}>(sale en el PDF del cliente; si está vacía sale el nombre)</span> <IaDescBtn d={d} setD={setD}/></label>
+            <label className="pres-zona-etiqueta" style={{alignSelf:'flex-start'}}>Descripción para el cliente <span style={{textTransform:'none',letterSpacing:0}}>(sale en el PDF del cliente; si está vacía sale el nombre)</span> <IaDescBtn d={d} setD={setD}/></label>
             <textarea className="pres-cell-input" rows={2} value={d.descripcion_cliente||''} onChange={e=>setD(p=>({...p,descripcion_cliente:e.target.value}))} placeholder="Texto largo y bien escrito para el presupuesto del cliente" style={{width:'100%',resize:'vertical'}}/>
           </div>
         </td>
       </tr>
       {showSpecs && (
-        <tr className="pres-row" style={{background:'rgba(186,175,165,0.04)'}}>
-          <td colSpan={10} style={{padding:'0.5rem 0.75rem'}}>
+        <tr className="pres-row pres-zona-nueva">
+          <td colSpan={15} style={{padding:'0.5rem 0.75rem'}}>
             <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap',alignItems:'flex-end'}}>
               <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:120}}>
                 <label style={{fontSize:'0.65rem',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Marca</label>
