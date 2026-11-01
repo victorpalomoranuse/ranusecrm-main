@@ -335,3 +335,6 @@
 
 /* Capítulos: franja de ancho completo para que se distingan de las partidas */
 .pres-chapter-row td { background: rgba(186,175,165,0.16) !important; border-top: 2px solid #baafa5; border-bottom: 1px solid rgba(186,175,165,0.35); }
+
+/* Oficios dentro de una zona: franja más fina y con sangría */
+.pres-chapter-row--n2 td { background: rgba(186,175,165,0.08) !important; border-top: 1px solid rgba(186,175,165,0.3); }

@@ -550,6 +550,7 @@ router.post('/:id/items', async (req, res) => {
     if (req.body?.is_chapter_header === true) {
       const rc = await supabase.from('budget_items').update({ is_chapter_header: true }).eq('id', data.id).select('*').single();
       if (rc.error) aviso = 'El capítulo se ha creado como una partida normal: falta ejecutar la migración v91 en Supabase.'; else item = rc.data;
+      if (!rc.error && Number(req.body?.nivel_capitulo) === 2) { const rn = await supabase.from('budget_items').update({ nivel_capitulo: 2 }).eq('id', data.id).select('*').single(); if (!rn.error) item = rn.data; else aviso = 'El capítulo se ha creado, pero falta ejecutar la migración v92 en Supabase para poder usar zonas y oficios.'; }
     }
     const foto = String(req.body?.image_url || '').trim();
     if (/^https?:\/\//i.test(foto)) {
@@ -603,6 +604,10 @@ router.put('/:id/items/:itemId', async (req, res) => {
     const { data, error } = await supabase.from('budget_items').update(updates).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
     if (error) throw error;
     let item = data;
+    if (req.body?.nivel_capitulo !== undefined) {
+      const rn = await supabase.from('budget_items').update({ nivel_capitulo: Number(req.body.nivel_capitulo) === 2 ? 2 : 1 }).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
+      if (!rn.error) item = rn.data;
+    }
     if (req.body?.is_chapter_header !== undefined) {
       const rc = await supabase.from('budget_items').update({ is_chapter_header: req.body.is_chapter_header === true }).eq('id', req.params.itemId).eq('budget_id', req.params.id).select('*').single();
       if (!rc.error) item = rc.data;
@@ -750,7 +755,7 @@ router.get('/:id/excel-proveedor', async (req, res) => {
 
 router.get('/:id/pdf-cliente', async (req, res) => {
   try {
-    const { iva: ivaRaw = 21, irpf: irpfRaw = 0, show_unit_price = 'true', show_discount = 'true', show_total_col = 'true', show_savings = 'true' } = req.query;
+    const { iva: ivaRaw = 21, irpf: irpfRaw = 0, show_unit_price = 'true', show_discount = 'true', show_total_col = 'true', show_savings = 'true', show_subtotals = 'true' } = req.query;
     // parseFloat('') da NaN, y el default de la desestructuración NO salta con
     // string vacío (solo con undefined) — si el campo IVA/IRPF% se queda vacío
     // un instante en el formulario, el query llega como '' y el TOTAL del PDF
@@ -761,6 +766,7 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     const showDiscount = show_discount !== 'false';
     const showTotalCol = show_total_col !== 'false';
     const showSavings = show_savings !== 'false';
+    const showSubtotals = show_subtotals !== 'false';
 
     const { data: budget, error } = await supabase
       .from('budgets')
@@ -878,6 +884,17 @@ router.get('/:id/pdf-cliente', async (req, res) => {
     if (colTot) doc.text('TOTAL',    colTot.x, y + 6, { width: colTot.w, align: 'right' });
     y += 22;
 
+    // Sumas por capítulo: una zona suma todo lo que hay hasta la siguiente zona (incluidos sus oficios); un oficio, hasta el siguiente oficio o zona
+    const totalLinea = it => { const base = lineListPrice(it), dto = dtoEfectivo(it); return ((it.pricing_mode || 'margin') === 'pvp' ? base * (1 - dto / 100) : base) * (parseFloat(it.quantity) || 1); };
+    const nivelDe = it => (Number(it.nivel_capitulo) === 2 ? 2 : 1);
+    const subtotales = new Map();
+    if (showSubtotals) items.forEach((it, i) => {
+      if (!it.is_chapter_header) return;
+      let suma = 0, hay = false;
+      for (let j = i + 1; j < items.length; j++) { const o = items[j]; if (o.is_chapter_header) { if (nivelDe(o) <= nivelDe(it)) break; continue; } suma += totalLinea(o); hay = true; }
+      if (hay) subtotales.set(it.id, suma);
+    });
+
     let rowNum = 1;
     for (const item of items) {
       // Los capítulos (is_chapter_header) son solo un separador visual entre
@@ -888,10 +905,11 @@ router.get('/:id/pdf-cliente', async (req, res) => {
       // número de línea, sin columnas numéricas y sin consumir la numeración
       // de las partidas.
       if (item.is_chapter_header) {
-        const chapH = 24;
+        const nv = nivelDe(item), chapH = nv === 2 ? 20 : 24, x0 = margin + (nv === 2 ? 14 : 0), anchoB = W - margin * 2 - (nv === 2 ? 14 : 0), st = subtotales.get(item.id);
         if (y + chapH > H - 140) { doc.addPage(); y = margin; }
-        doc.rect(margin, y, W - margin * 2, chapH).fill(BRAND.primary);
-        doc.fillColor('#ffffff').fontSize(9.5).font('Helvetica-Bold').text((item.name || '').toUpperCase(), margin + 10, y + chapH / 2 - 5, { width: W - margin * 2 - 20 });
+        doc.rect(x0, y, anchoB, chapH).fill(nv === 2 ? '#8b7f74' : BRAND.primary);
+        doc.fillColor('#ffffff').fontSize(nv === 2 ? 8.5 : 9.5).font('Helvetica-Bold').text((item.name || '').toUpperCase(), x0 + 10, y + chapH / 2 - 5, { width: anchoB - (st != null ? 200 : 20) });
+        if (st != null) doc.fontSize(nv === 2 ? 8 : 8.5).text('SUBTOTAL ' + fmtEur(st), x0 + anchoB - 190, y + chapH / 2 - 4.5, { width: 180, align: 'right' });
         y += chapH;
         continue;
       }

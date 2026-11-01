@@ -462,11 +462,35 @@ function BudgetList({ onOpen }) {
   );
 }
 
-function ChapterRow({ item, onEdit, onDelete }) {
+// Total de una partida para el cliente y su margen (misma cuenta que la fila de la tabla)
+function calcLinea(item) {
+  const qty = parseFloat(item.quantity) || 1;
+  if ((item.pricing_mode || 'margin') === 'pvp') {
+    const pvp = parseFloat(item.pvp_ref) || 0, dtoC = parseFloat(item.purchase_dto) || 0, dtoK = parseFloat(item.discount_pct) || 0, tot = pvp * qty * (1 - dtoK / 100);
+    return { total: tot, margen: tot - pvp * (1 - dtoC / 100) * qty };
+  }
+  const tot = (parseFloat(item.unit_price) || 0) * qty;
+  return { total: tot, margen: tot - (parseFloat(item.unit_cost) || 0) * qty };
+}
+// Para cada capítulo: lo que suman sus partidas hasta el siguiente capítulo de su mismo nivel o superior (una zona incluye sus oficios)
+function sumasPorCapitulo(items) {
+  const nv = i => (Number(i.nivel_capitulo) === 2 ? 2 : 1), mapa = {};
+  items.forEach((it, i) => {
+    if (!it.is_chapter_header) return;
+    let total = 0, margen = 0, n = 0;
+    for (let j = i + 1; j < items.length; j++) { const o = items[j]; if (o.is_chapter_header) { if (nv(o) <= nv(it)) break; continue; } const l = calcLinea(o); total += l.total; margen += l.margen; n++; }
+    mapa[it.id] = { total, margen, n };
+  });
+  return mapa;
+}
+const fmtSuma = n => Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function ChapterRow({ item, onEdit, onDelete, suma, onNivel }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
+  const nivel2 = Number(item.nivel_capitulo) === 2;
 
   const handleSave = async () => {
     await onEdit(item.id, { name });
@@ -474,11 +498,11 @@ function ChapterRow({ item, onEdit, onDelete }) {
   };
 
   return (
-    <tr ref={setNodeRef} style={style} className="pres-row pres-chapter-row">
+    <tr ref={setNodeRef} style={style} className={'pres-row pres-chapter-row' + (nivel2 ? ' pres-chapter-row--n2' : '')}>
       <td style={{ padding: '0.4rem 0.5rem', width: 24 }}>
         <button {...attributes} {...listeners} style={{ background: 'none', border: 'none', cursor: 'grab', color: 'rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center' }}><GripVertical size={13}/></button>
       </td>
-      <td colSpan={12} style={{ padding: '0.55rem 0.5rem' }}>
+      <td colSpan={suma ? 10 : 12} style={{ padding: '0.55rem 0.5rem', paddingLeft: nivel2 ? '1.6rem' : '0.5rem' }}>
         {editing ? (
           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
             <input className="pres-cell-input" value={name} onChange={e => setName(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} style={{ flex: 1, fontWeight: 700 }} />
@@ -486,11 +510,13 @@ function ChapterRow({ item, onEdit, onDelete }) {
             <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => { setEditing(false); setName(item.name); }}>✕</button>
           </div>
         ) : (
-          <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#baafa5', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            📁 {item.name}
+          <span style={{ fontWeight: nivel2 ? 700 : 800, fontSize: nivel2 ? '0.82rem' : '0.95rem', color: nivel2 ? '#d4c9bb' : '#baafa5', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            {nivel2 ? '↳ ' : '📁 '}{item.name}
+            <button type="button" onClick={() => onNivel?.(item, nivel2 ? 1 : 2)} title={nivel2 ? 'Es un oficio dentro de una zona. Pulsa para convertirlo en zona' : 'Es una zona. Pulsa para convertirlo en un oficio dentro de la zona de arriba'} style={{ marginLeft: 10, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)', borderRadius: 10, fontSize: '0.62rem', padding: '1px 8px', cursor: 'pointer', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>{nivel2 ? 'Oficio' : 'Zona'}</button>
           </span>
         )}
       </td>
+      {suma && <><td style={{ textAlign: 'left', fontWeight: 800, fontSize: nivel2 ? '0.82rem' : '0.92rem', color: '#fff', whiteSpace: 'nowrap' }} title="Suma de las partidas de este capítulo">{suma.n ? fmtSuma(suma.total) : <span style={{ opacity: 0.35, fontWeight: 400 }}>—</span>}</td><td style={{ textAlign: 'left', fontSize: '0.78rem', color: '#8bae8f', whiteSpace: 'nowrap' }}>{suma.n ? fmtSuma(suma.margen) : ''}</td></>}
       <td className="pres-actions-cell">
         <button className="ap-btn-icon" onClick={() => setEditing(true)}><Pencil size={12}/></button>
         <button className="ap-btn-icon pres-del" onClick={() => onDelete(item.id)}><Trash2 size={12}/></button>
@@ -807,6 +833,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
   const [chapterName, setChapterName] = useState('');
   const [showChapter, setShowChapter] = useState(false);
   const [showSpecs, setShowSpecs] = useState(false);
+  const [capNivel, setCapNivel] = useState(1); // 1 = zona, 2 = oficio dentro de una zona
   const [capGuardados, setCapGuardados] = useState(null); // capítulos guardados para elegir con un clic
   useEffect(() => { if (showChapter && capGuardados === null) api.get('/budgets/capitulos').then(r => setCapGuardados(r.data?.capitulos || [])).catch(() => setCapGuardados([])); }, [showChapter, capGuardados]);
   const guardarLista = async (lista) => { setCapGuardados(lista); try { await api.put('/budgets/capitulos', { capitulos: lista }); } catch { /* si falla, se vuelve a cargar al reabrir */ } };
@@ -824,7 +851,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
   const handleCostChange = v => { const cost=parseFloat(v)||0, markup=parseFloat(d.markup_pct)||0; setD(p=>({...p,unit_cost:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   const handleMarkupChange = v => { const cost=parseFloat(d.unit_cost)||0, markup=parseFloat(v)||0; setD(p=>({...p,markup_pct:v,unit_price:(cost*(1+markup/100)).toFixed(2)})); };
   const handleAdd = async () => { if(!d.name.trim()) return; setSaving(true); try { await onAdd({ ...d, guardar_cat: guardarCat || undefined, foto_file: foto || undefined, foto_url: fotoUrl.trim() || undefined }); setD(blank); setFoto(null); setFotoUrl(''); setShowSpecs(false); } finally { setSaving(false); } };
-  const handleAddChapter = async () => { if(!chapterName.trim()) return; setSaving(true); try { await onAddChapter(chapterName.trim()); setChapterName(''); setShowChapter(false); } finally { setSaving(false); } };
+  const handleAddChapter = async () => { if(!chapterName.trim()) return; setSaving(true); try { await onAddChapter(chapterName.trim(), capNivel); setChapterName(''); setShowChapter(false); } finally { setSaving(false); } };
 
   const qty = parseFloat(d.quantity)||1;
   let totalCliente, margenEur;
@@ -848,6 +875,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
           <td colSpan={13}>
             <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
               <span className="pres-zona-etiqueta">Capítulo</span>
+              <select className="pres-cell-select" value={capNivel} onChange={e => setCapNivel(Number(e.target.value))} style={{ maxWidth: 190, colorScheme: 'dark' }} title="Zona = un espacio (Sala de máquinas, Vestuarios). Oficio = una parte dentro de la zona de arriba (Electricidad, Pavimentos)"><option value={1}>Zona (espacio)</option><option value={2}>Oficio dentro de una zona</option></select>
               <input className="pres-cell-input" value={chapterName} onChange={e => setChapterName(e.target.value)} placeholder="Nombre del capítulo nuevo…" autoFocus onKeyDown={e => e.key === 'Enter' && handleAddChapter()} style={{ flex: 1 }} />
               <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={handleAddChapter} disabled={saving || !chapterName.trim()}>Añadir capítulo</button>
               {chapterName.trim() && !(capGuardados || []).some(x => x.toLowerCase() === chapterName.trim().toLowerCase()) && <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => guardarLista([...(capGuardados || []), chapterName.trim()])} title="Lo guarda para elegirlo con un clic en cualquier presupuesto">☆ Guardar en mi lista</button>}
@@ -858,7 +886,7 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
               {capGuardados === null && <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>cargando…</span>}
               {(capGuardados || []).map(n => (
                 <span key={n} style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid rgba(186,175,165,0.4)', borderRadius: 14, background: 'rgba(186,175,165,0.1)' }}>
-                  <button type="button" disabled={saving} onClick={async () => { setSaving(true); try { await onAddChapter(n); } finally { setSaving(false); } }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '3px 4px 3px 10px', fontSize: '0.75rem' }}>{n}</button>
+                  <button type="button" disabled={saving} onClick={async () => { setSaving(true); try { await onAddChapter(n, capNivel); } finally { setSaving(false); } }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '3px 4px 3px 10px', fontSize: '0.75rem' }}>{n}</button>
                   <button type="button" title="Quitar de mi lista" onClick={() => guardarLista((capGuardados || []).filter(x => x !== n))} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: '3px 8px 3px 2px', fontSize: '0.7rem' }}>✕</button>
                 </span>
               ))}
@@ -980,6 +1008,9 @@ function NewItemRow({ onAdd, onAddChapter, categories = [] }) {
 function BudgetEditor({ id, onBack, onOpen }) {
   const [budget, setBudget]   = useState(null);
   const [items, setItems]     = useState([]);
+  const [verSumas, setVerSumas] = useState(() => { try { return localStorage.getItem('pres_sumas') !== '0'; } catch { return true; } });
+  const [pdfSubtotales, setPdfSubtotales] = useState(true);
+  const sumasCap = verSumas ? sumasPorCapitulo(items) : {};
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -1090,6 +1121,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
         show_discount: pdfShowDiscount,
         show_total_col: pdfShowTotalCol,
         show_savings: pdfShowSavings,
+        show_subtotals: pdfSubtotales,
       });
       const res = await fetch(`${base}/budgets/${id}/pdf-cliente?${params}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error();
@@ -1189,10 +1221,17 @@ function BudgetEditor({ id, onBack, onOpen }) {
     if (data.aviso) flash(data.aviso, 'error');
   };
 
-  const handleAddChapter = async (name) => {
-    const { data } = await api.post(`/budgets/${id}/items`, { name, is_chapter_header: true, category: 'otro', quantity: 0, unit: 'ud', unit_cost: 0, markup_pct: 0, unit_price: 0 });
+  const handleAddChapter = async (name, nivel = 1) => {
+    const { data } = await api.post(`/budgets/${id}/items`, { name, is_chapter_header: true, nivel_capitulo: nivel, category: 'otro', quantity: 0, unit: 'ud', unit_cost: 0, markup_pct: 0, unit_price: 0 });
     setItems(prev => [...prev, data.item]);
     if (data.aviso) flash(data.aviso, 'error');
+  };
+  const handleNivelCapitulo = async (item, nivel) => {
+    try {
+      const { data } = await api.put(`/budgets/${id}/items/${item.id}`, { nivel_capitulo: nivel });
+      if (Number(data.item?.nivel_capitulo) !== nivel) { flash('No se pudo cambiar: falta ejecutar la migración v92 en Supabase.', 'error'); return; }
+      setItems(prev => prev.map(i => (i.id === item.id ? data.item : i)));
+    } catch { flash('No se pudo cambiar el nivel', 'error'); }
   };
   // Convierte una partida ya creada en capítulo (para las que se hicieron sin la columna de capítulos)
   const handleConvertirCapitulo = async (item) => {
@@ -1443,6 +1482,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
           <span className="pres-items-title">Partidas <span className="pres-items-count">{realItems.length}</span></span>
           <div style={{display:'flex',alignItems:'center',gap:'0.5rem',flexWrap:'wrap'}}>
           <div style={{display:'flex',alignItems:'center',gap:'0.4rem',flexWrap:'wrap'}}>
+              <label style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.7rem',color: verSumas ? '#baafa5' : 'rgba(255,255,255,0.4)',cursor:'pointer',userSelect:'none'}} title="Enseña en cada capítulo la suma de sus partidas (una zona suma también sus oficios)"><input type="checkbox" checked={verSumas} onChange={e=>{setVerSumas(e.target.checked);try{localStorage.setItem('pres_sumas',e.target.checked?'1':'0');}catch{}}} style={{accentColor:'#baafa5'}}/>Sumas por capítulo</label>
               <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={()=>setShowPdfOptions(v=>!v)} style={{fontSize:'0.7rem'}}>⚙ PDF opciones</button>
               {showPdfOptions && (
                 <div style={{display:'flex',alignItems:'center',gap:'0.5rem',flexWrap:'wrap',padding:'0.4rem 0.6rem',background:'rgba(255,255,255,0.04)',borderRadius:6,border:'1px solid rgba(255,255,255,0.08)'}}>
@@ -1456,6 +1496,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
                     ['Dto%', pdfShowDiscount, setPdfShowDiscount],
                     ['Total línea', pdfShowTotalCol, setPdfShowTotalCol],
                     ['Bloque ahorro', pdfShowSavings, setPdfShowSavings],
+                    ['Sumas por capítulo', pdfSubtotales, setPdfSubtotales],
                   ].map(([label, val, setter]) => (
                     <label key={label} style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.7rem',color: val ? '#baafa5' : 'rgba(255,255,255,0.3)',cursor:'pointer',userSelect:'none'}}>
                       <input type="checkbox" checked={val} onChange={e=>setter(e.target.checked)} style={{accentColor:'#baafa5'}} />
@@ -1566,7 +1607,7 @@ function BudgetEditor({ id, onBack, onOpen }) {
             <tbody>
               {items.map((item, idx) =>
                 item.is_chapter_header ? (
-                  <ChapterRow key={item.id} item={item} onEdit={handleUpdateItem} onDelete={handleDeleteItem} />
+                  <ChapterRow key={item.id} item={item} onEdit={handleUpdateItem} onDelete={handleDeleteItem} suma={verSumas ? sumasCap[item.id] : null} onNivel={handleNivelCapitulo} />
                 ) : editingId === item.id ? (
                   <ItemRowEdit key={item.id} item={item} onSave={d=>handleUpdateItem(item.id,d)} onCancel={()=>setEditingId(null)} />
                 ) : (
