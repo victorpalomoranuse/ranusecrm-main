@@ -1198,6 +1198,38 @@ export default function Visor3D() {
   const hdrisRef = useRef([]);
   useEffect(() => { hdrisRef.current = hdris; }, [hdris]);
   useEffect(() => { if (renderAbierto && !hdris.length) api.get('/medicion/hdri-ranuse').then(r => setHdris(r.data?.hdri || [])).catch(() => {}); }, [renderAbierto]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Refinado con trazado de rayos (three-gpu-pathtracer): al parar la cámara la imagen se va afinando. Desactivado por defecto; solo en gráficas que lo aguantan
+  const [refinar, setRefinar] = useState(() => { try { return localStorage.getItem('visor3dRefinar') === '1'; } catch { return false; } });
+  const [ptMsg, setPtMsg] = useState('');
+  const [ptMax, setPtMax] = useState(200);
+  const gpuApta = () => {
+    const r = api3d.current.renderer; if (!r) return false;
+    if (GL_SOFTWARE) return false;
+    const gl = r.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'), n = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '');
+    return /NVIDIA|GeForce|RTX|GTX|Radeon (RX|Pro)|Apple M\d/i.test(n) && !!gl.getExtension('EXT_color_buffer_float') && r.capabilities.maxTextureSize >= 8192;
+  };
+  useEffect(() => { api3d.current.ptMax = ptMax; }, [ptMax]);
+  useEffect(() => {
+    const a = api3d.current; if (!a.scene || estado !== 'listo') return;
+    try { localStorage.setItem('visor3dRefinar', refinar ? '1' : '0'); } catch { /* sin almacenamiento */ }
+    if (!refinar) { if (a.pt) { try { a.pt.dispose?.(); } catch { /* ya liberado */ } a.pt = null; a.ptReady = false; a.ptReconstruir = null; a.ptDesactivar = null; setPtMsg(''); } return; }
+    if (!gpuApta()) { setRefinar(false); setPtMsg('Tu gráfica no es apta para el trazado de rayos (hace falta una NVIDIA, AMD o Apple reciente con la aceleración activada).'); return; }
+    let vivo = true; setPtMsg('Preparando el refinado…');
+    if (!realista) setRealista(true);
+    a.ptDesactivar = (msg) => { setRefinar(false); setPtMsg(msg || ''); };
+    import('three-gpu-pathtracer').then(async ({ WebGLPathTracer }) => {
+      if (!vivo) return;
+      const pt = new WebGLPathTracer(a.renderer);
+      pt.tiles.set(2, 2); pt.bounces = 4; pt.filterGlossyFactor = 0.5; pt.renderDelay = 300; pt.minSamples = 3; pt.dynamicLowRes = true; pt.lowResScale = 0.3;
+      const construir = async () => { const restaura = ocultarAyudas(); try { await pt.setSceneAsync(a.scene, a.cam); } finally { restaura(); } };
+      await construir();
+      if (!vivo) { pt.dispose?.(); return; }
+      a.pt = pt; a.ptReady = true;
+      a.ptReconstruir = async () => { if (a.ptConstruyendo) return; a.ptConstruyendo = true; try { await construir(); } catch (e) { console.warn('refinado', e); } a.ptConstruyendo = false; };
+      setPtMsg('Refinado activo: la imagen se afina cuando dejas quieta la cámara.'); a.despierta = performance.now() + 500;
+    }).catch(e => { console.warn('refinado', e); if (vivo) { setRefinar(false); setPtMsg('No se pudo activar el trazado de rayos en este equipo.'); } });
+    return () => { vivo = false; };
+  }, [refinar, estado]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tono, setTono] = useState(() => { try { return localStorage.getItem('visor3dTono') || 'aces'; } catch { return 'aces'; } });
   useEffect(() => {
     try { localStorage.setItem('visor3dTono', tono); } catch { /* sin almacenamiento */ }
@@ -1333,6 +1365,7 @@ export default function Visor3D() {
   const [modosEq, setModosEq] = useState({});               // cómo se ajusta el modelo 3D de cada máquina del plano
   const [mtick, setMtick] = useState(0);
   const [huecosCfg, setHuecosCfg] = useState({});          // apertura, bisagra y sentido de cada puerta y ventana (solo 3D)
+  useEffect(() => { const a = api3d.current; if (a.pt) a.ptRebuild = performance.now() + 800; }, [objs, acab, texturas, ocultas, rev, hora, ambiente, modosEq, entorno, entRot, entInt, huecosCfg]); // la escena cambió: se vuelve a preparar
   const [tapetas, setTapetas] = useState({});              // tapetas de puertas y ventanas, por hueco
   const [escenas, setEscenas] = useState([]);              // escenas guardadas: vista + capas + hora + textos de IA
   const [escAbierta, setEscAbierta] = useState(false);
@@ -1444,10 +1477,16 @@ export default function Visor3D() {
       }
       if (!movi && ahora - ultSombra > 500) { renderer.shadowMap.needsUpdate = true; ultSombra = ahora; }
       if (espejoSucio && ahora - (a0.ultEsp || 0) > 250) { espejoSucio = false; a0.ultEsp = ahora; aplicaEspejos(scene); }
-      if (ctrl.update()) a0.despierta = ahora + 400;
-      if (!(movi || ahora < (a0.despierta || 0))) { a0.reposo = true; return; } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
+      if (ctrl.update()) { a0.despierta = ahora + 400; a0.pt?.updateCamera?.(); }
+      if (a0.ptRebuild && ahora >= a0.ptRebuild && a0.ptReconstruir) { a0.ptRebuild = 0; a0.ptReconstruir(); }
+      const refinando = !!(a0.pt && a0.ptReady && a0.pt.samples < (a0.ptMax || 200));
+      if (!(movi || ahora < (a0.despierta || 0) || refinando)) { a0.reposo = true; return; } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
       a0.reposo = false;
-      if (a0.composer) {
+      if (a0.pt && a0.ptReady) {
+        a0.pt.renderSample();
+        a0.ptLento = ema > 450 ? (a0.ptLento || 0) + 1 : 0; // si va muy lento se desactiva solo
+        if (a0.ptLento > 90) a0.ptDesactivar?.('Tu gráfica va justa para el trazado de rayos: lo he desactivado.');
+      } else if (a0.composer) {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
         a0.composer.render();
       } else renderer.render(scene, cam);
@@ -1457,7 +1496,7 @@ export default function Visor3D() {
         if (ema > 42 && escala > 0.5) { escala = Math.max(0.5, escala - 0.15); renderer.setPixelRatio(base * escala); }
         else if (ema > 42 && !sinSombras) { sinSombras = true; renderer.shadowMap.enabled = false; sol.castShadow = false; scene.traverse(o => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.needsUpdate = true; }); } }); }
         else if (ema < 22 && escala < 1) { escala = Math.min(1, escala + 0.1); renderer.setPixelRatio(base * escala); }
-        hud.textContent = Math.round(1000 / Math.max(1, ema)) + ' fps · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triáng. · ' + renderer.info.render.calls + ' llamadas' + (escala < 1 ? ' · res ' + Math.round(escala * 100) + '%' : '') + (sinSombras ? ' · sin sombras' : '') + (a0.composer ? ' · con efectos' : '') + ' · ' + (gpuNombre || 'gpu ?') + ' · px ' + renderer.getPixelRatio().toFixed(1);
+        hud.textContent = Math.round(1000 / Math.max(1, ema)) + ' fps · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triáng. · ' + renderer.info.render.calls + ' llamadas' + (escala < 1 ? ' · res ' + Math.round(escala * 100) + '%' : '') + (sinSombras ? ' · sin sombras' : '') + (a0.composer ? ' · con efectos' : '') + (a0.pt && a0.ptReady ? ' · refinado ' + a0.pt.samples + '/' + (a0.ptMax || 200) : '') + ' · ' + (gpuNombre || 'gpu ?') + ' · px ' + renderer.getPixelRatio().toFixed(1);
       }
     };
     const enCampo = e => { const t = (e.target?.tagName || '').toLowerCase(); return t === 'input' || t === 'textarea' || t === 'select' || e.target?.isContentEditable; };
@@ -3943,6 +3982,12 @@ export default function Visor3D() {
               {fila('Resplandor', fx.bloom, 0, 1.5, 0.05, v => setFx(x => ({ ...x, bloom: v })), fx.bloom.toFixed(2))}
               {fila('Viñeta', fx.vineta, 0, 1, 0.05, v => setFx(x => ({ ...x, vineta: v })), fx.vineta.toFixed(2))}
               <button style={btn} onClick={() => setFx(FX0)}>Quitar efectos</button>
+            </>)}
+            {sec('Refinado (trazado de rayos)', <>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={refinar} onChange={e => { setPtMsg(''); setRefinar(e.target.checked); }} /> Refinar al parar la cámara</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0' }}><span style={{ width: 92, opacity: 0.75 }}>Calidad</span><select value={ptMax} onChange={e => setPtMax(parseInt(e.target.value, 10))} style={{ ...btn, flex: 1 }}><option value="60">Rápida (60 muestras)</option><option value="200">Normal (200)</option><option value="500">Alta (500)</option></select></label>
+              {ptMsg && <div style={{ fontSize: 11, color: '#d4c9bb', marginBottom: 4 }}>{ptMsg}</div>}
+              <div style={{ opacity: 0.55, fontSize: 11 }}>Calcula la luz real (rebotes, sombras suaves y reflejos). Solo para gráficas NVIDIA, AMD o Apple recientes; en equipos sin RTX se desactiva. Al mover la cámara vuelve a la vista rápida.</div>
             </>)}
             {sec('Cámara', <>
               {fila('Óptica', lente, 12, 110, 1, v => ponerLente(v), lente + '°')}
