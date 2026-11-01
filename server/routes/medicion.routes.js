@@ -9,7 +9,7 @@ import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { catalogoEnCache, guardaCatalogo, vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
 import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
-import { uploadReferenceImageFile, handleMulterError } from '../middleware/upload.middleware.js';
+import { uploadReferenceImageFile, uploadHdriFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { indiceBiblioteca3d } from './biblioteca3d.routes.js';
 import { leerModelosBib } from '../utils/modelos-bib.js';
 
@@ -300,6 +300,24 @@ async function leerMaterialesRanuse() {
 router.get('/materiales-ranuse', async (req, res) => { res.json({ materiales: await leerMaterialesRanuse() }); });
 // HDRI de Ranuse (entornos para reflejos y luz ambiente)
 let cacheHdri = { t: 0, lista: [] };
+// Subir un HDRI propio (.hdr): se guarda en el almacenamiento y se añade al índice. Solo el administrador
+router.post('/hdri-ranuse', requireAdminSuperior, uploadHdriFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Falta el archivo .hdr' });
+    const id = 'mio-' + Date.now().toString(36), ruta = `materiales-ranuse/hdri/${id}.hdr`;
+    const { error: eUp } = await supabase.storage.from('project-documents').upload(ruta, req.file.buffer, { contentType: 'application/octet-stream', upsert: true });
+    if (eUp) throw eUp;
+    let lista = [];
+    try { const { data } = await supabase.storage.from('project-documents').download('materiales-ranuse/hdri.json'); if (data) lista = JSON.parse(await data.text()); } catch { /* índice nuevo */ }
+    const nombre = String(req.body?.nombre || req.file.originalname.replace(/.hdr$/i, '')).trim().slice(0, 60) || 'Mi HDRI';
+    const item = { id, nombre, tipo: 'mio', url: supabase.storage.from('project-documents').getPublicUrl(ruta).data.publicUrl, fuente: 'Subido por Ranuse' };
+    lista.push(item);
+    const { error } = await supabase.storage.from('project-documents').upload('materiales-ranuse/hdri.json', Buffer.from(JSON.stringify(lista)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
+    if (error) throw error;
+    cacheHdri = { t: 0, lista: [] };
+    res.status(201).json({ hdri: item });
+  } catch (err) { console.error('hdri subir:', err); res.status(500).json({ error: 'No se pudo guardar el HDRI' }); }
+});
 router.get('/hdri-ranuse', async (req, res) => {
   if (Date.now() - cacheHdri.t > 10 * 60 * 1000 || !cacheHdri.lista.length) {
     try { const { data } = await supabase.storage.from('project-documents').download('materiales-ranuse/hdri.json'); if (data) { const j = JSON.parse(await data.text()); cacheHdri = { t: Date.now(), lista: Array.isArray(j) ? j : [] }; } } catch { /* se queda con lo anterior */ }
