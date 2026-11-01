@@ -104,7 +104,13 @@ function ResumenPorPeriodo({ periodos, tipo }) {
   );
 }
 
-export function SectionMisComisiones({ como = null, enVivo = false } = {}) {
+export function SectionMisComisiones({ como: comoProp = null, enVivo: enVivoProp = false } = {}) {
+  // Si quien mira es el administrador, puede cambiar de persona para ver el panel de cualquiera del equipo
+  const [nombresEquipo, setNombresEquipo] = useState([]);
+  const [comoSel, setComoSel] = useState('');
+  const [enVivoSel, setEnVivoSel] = useState(false);
+  useEffect(() => { if (!comoProp) api.get('/comisiones/equipo/nombres').then(r => { if (r.data?.esAdmin) setNombresEquipo(r.data.nombres || []); }).catch(() => {}); }, [comoProp]);
+  const como = comoProp || comoSel || null, enVivo = comoProp ? enVivoProp : enVivoSel;
   const [periodoTipo, setPeriodoTipo] = useState('mes');
   const [mia, setMia] = useState(null);
   const [historico, setHistorico] = useState(null);
@@ -138,6 +144,17 @@ export function SectionMisComisiones({ como = null, enVivo = false } = {}) {
 
   return (
     <div className="ap-section">
+      {!comoProp && nombresEquipo.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, padding: '8px 12px', border: '1px dashed rgba(255,255,255,0.18)', borderRadius: 10 }}>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>Como administrador, ver el panel de:</span>
+          <select className="ap-select" style={{ width: 'auto', padding: '4px 8px', colorScheme: 'dark' }} value={comoSel} onChange={e => { setComoSel(e.target.value); setMia(null); setPeriodos(null); setHistorico(null); }}>
+            <option value="">Yo</option>
+            {nombresEquipo.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          {comoSel && <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, cursor: 'pointer', color: 'rgba(255,255,255,0.7)' }}><input type="checkbox" checked={enVivoSel} onChange={e => setEnVivoSel(e.target.checked)} /> Ver también lo que aún no está publicado</label>}
+          {comoSel && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Estás viendo el panel de {comoSel}.</span>}
+        </div>
+      )}
       <div className="ap-section-head">
         <div><h1>Mis Comisiones</h1><p>Lo que te corresponde, lo que ya se te ha pagado y lo que queda pendiente.</p></div>
         <button className="ap-btn ap-btn-ghost" onClick={() => setVerHistorico(v => !v)}>{verHistorico ? 'Ver mes a mes' : 'Ver pagos recibidos'}</button>

@@ -530,6 +530,12 @@ async function periodosDeComision(employeeId, nombre, tipo) {
  * y pendiente, calculado según la fecha real de cada ingreso cobrado en
  * sus proyectos asignados (modelo por_proyecto).
  */
+// Nombres del equipo, para que quien tenga permiso de Finanzas elija de quién ver el panel Mis Comisiones
+router.get('/equipo/nombres', authenticateToken, requireFinanzas, async (req, res) => {
+  const { data } = await supabase.from('equipo_comisiones').select('nombre').eq('activo', true).order('nombre');
+  res.json({ nombres: (data || []).map(x => x.nombre), esAdmin: req.user?.role === 'admin_superior' });
+});
+
 router.get('/mia/periodos', authenticateToken, async (req, res) => {
   try {
     const miConfig = await resolveMiConfig(req);
