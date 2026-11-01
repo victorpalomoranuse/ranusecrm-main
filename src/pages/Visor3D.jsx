@@ -15,6 +15,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import api from '../services/api';
 
@@ -1191,6 +1192,26 @@ export default function Visor3D() {
   const [renderAbierto, setRenderAbierto] = useState(false);
   const [entorno, setEntorno] = useState(() => { try { return localStorage.getItem('visor3dEntorno') || 'estudio'; } catch { return 'estudio'; } });
   const [entInt, setEntInt] = useState(0.55);
+  const [entRot, setEntRot] = useState(0);
+  const [fondoCielo, setFondoCielo] = useState(false);
+  const [hdris, setHdris] = useState([]);
+  const hdrisRef = useRef([]);
+  useEffect(() => { hdrisRef.current = hdris; }, [hdris]);
+  useEffect(() => { if (renderAbierto && !hdris.length) api.get('/medicion/hdri-ranuse').then(r => setHdris(r.data?.hdri || [])).catch(() => {}); }, [renderAbierto]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [tono, setTono] = useState(() => { try { return localStorage.getItem('visor3dTono') || 'aces'; } catch { return 'aces'; } });
+  useEffect(() => {
+    try { localStorage.setItem('visor3dTono', tono); } catch { /* sin almacenamiento */ }
+    const r = api3d.current.renderer; if (!r) return;
+    r.toneMapping = { aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping, lineal: THREE.LinearToneMapping }[tono] ?? THREE.ACESFilmicToneMapping;
+    api3d.current.scene?.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.needsUpdate = true; }); });
+  }, [tono, estado]);
+  useEffect(() => { // rotación del entorno y cielo de fondo
+    const a = api3d.current; if (!a.scene) return;
+    const g = entRot * Math.PI / 180; a.scene.environmentRotation.set(0, g, 0); a.scene.backgroundRotation.set(0, g, 0);
+    if (!a.fondoOrig) a.fondoOrig = a.scene.background;
+    if (fondoCielo && realista && a.hdrTex) { a.scene.background = a.hdrTex; a.scene.backgroundBlurriness = 0.25; }
+    else if (a.fondoOrig && !a.alzPrev) { a.scene.background = a.fondoOrig; a.scene.backgroundBlurriness = 0; }
+  }, [entRot, fondoCielo, realista, entorno, estado, hdris]);
   useEffect(() => { try { localStorage.setItem('visor3dEntorno', entorno); } catch { /* sin almacenamiento */ } }, [entorno]);
   useEffect(() => { const sc = api3d.current.scene; if (sc?.environment) sc.environmentIntensity = entInt; }, [entInt, realista, entorno, estado]);
   const [resRender, setResRender] = useState(() => { try { return parseInt(localStorage.getItem('visor3dRes') || '3200', 10) || 3200; } catch { return 3200; } });
@@ -2168,7 +2189,18 @@ export default function Visor3D() {
     try {
       if (realista) {
         const pm = new THREE.PMREMGenerator(a.renderer), CIELOS = { dia: ['#5f9cff', '#dbe8f5', '#a09584', 0], atardecer: ['#34426f', '#ffae78', '#4a3a33', 0.5], calido: ['#7a5230', '#e0a566', '#3a2a1c', 0.55], noche: ['#0a1020', '#27345a', '#0a0a0c', 0] };
-        if (entorno !== 'estudio' && CIELOS[entorno]) {
+        const hd = String(entorno).startsWith('hdri:') ? hdrisRef.current.find(x => 'hdri:' + x.id === entorno) : null;
+        if (hd) {
+          const tok = (a.envToken = (a.envToken || 0) + 1);
+          a.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture; // mientras baja el HDRI se usa el estudio
+          new RGBELoader().load(hd.url, tex => {
+            if (a.envToken !== tok) { tex.dispose(); return; }
+            tex.mapping = THREE.EquirectangularReflectionMapping;
+            const pm2 = new THREE.PMREMGenerator(a.renderer), env = pm2.fromEquirectangular(tex).texture; pm2.dispose();
+            a.envTex?.dispose?.(); a.envTex = env; a.hdrTex?.dispose?.(); a.hdrTex = tex; a.scene.environment = env;
+            try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ }
+          });
+        } else if (entorno !== 'estudio' && CIELOS[entorno]) {
           const [c1, c2, c3, sol] = CIELOS[entorno], cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512; const cx = cv.getContext('2d'), g = cx.createLinearGradient(0, 0, 0, 512);
           g.addColorStop(0, c1); g.addColorStop(0.5, c2); g.addColorStop(0.52, c3); g.addColorStop(1, c3); cx.fillStyle = g; cx.fillRect(0, 0, 1024, 512);
           if (sol) { const rg = cx.createRadialGradient(700, 220, 4, 700, 220, 150); rg.addColorStop(0, 'rgba(255,240,210,1)'); rg.addColorStop(1, 'rgba(255,200,140,0)'); cx.fillStyle = rg; cx.fillRect(0, 0, 1024, 512); }
@@ -2196,7 +2228,7 @@ export default function Visor3D() {
       a.gradeU = U;
       a.composer = comp; a.compW = null;
     } catch (e) { console.warn('modo realista', e); setRealista(false); }
-  }, [realista, estado, fxActivo, fx.bloom > 0, entorno]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [realista, estado, fxActivo, fx.bloom > 0, entorno, hdris]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Varias plantas: se pueden ocultar por separado
   useEffect(() => {
@@ -3874,8 +3906,10 @@ export default function Visor3D() {
               </div>
             </>)}
             {sec('Entorno (mapa)', <>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Mapa</span><select value={entorno} onChange={e => { setEntorno(e.target.value); if (!realista) setRealista(true); }} style={{ ...btn, flex: 1 }}><option value="estudio">Estudio</option><option value="dia">Cielo de día</option><option value="atardecer">Atardecer</option><option value="calido">Interior cálido</option><option value="noche">Noche</option></select></label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Mapa</span><select value={entorno} onChange={e => { setEntorno(e.target.value); if (!realista) setRealista(true); }} style={{ ...btn, flex: 1 }}><option value="estudio">Estudio</option><option value="dia">Cielo de día</option><option value="atardecer">Atardecer</option><option value="calido">Interior cálido</option><option value="noche">Noche</option>{hdris.length > 0 && <optgroup label="HDRI de Ranuse (reales)">{hdris.map(h => <option key={h.id} value={'hdri:' + h.id}>{h.nombre}</option>)}</optgroup>}</select></label>
               {fila('Intensidad', entInt, 0, 2, 0.05, v => setEntInt(v), entInt.toFixed(2))}
+              {fila('Rotación', entRot, 0, 360, 5, v => setEntRot(v), Math.round(entRot) + '°')}
+              {String(entorno).startsWith('hdri:') && <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12, marginBottom: 4 }}><input type="checkbox" checked={fondoCielo} onChange={e => setFondoCielo(e.target.checked)} /> Ver el cielo del HDRI de fondo</label>}
               <div style={{ opacity: 0.55, fontSize: 11 }}>Es lo que reflejan los materiales brillantes, el cristal y el espejo. Funciona con ✨ Realista.</div>
             </>)}
             {sec('Sol y luz', <>
@@ -3885,6 +3919,7 @@ export default function Visor3D() {
               <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={sombraSuave} onChange={e => setSombraSuave(e.target.checked)} /> Sombras suaves en el render final</label>
             </>)}
             {sec('Color', <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}><span style={{ width: 92, opacity: 0.75 }}>Tono (cámara)</span><select value={tono} onChange={e => setTono(e.target.value)} style={{ ...btn, flex: 1 }} title="Cómo se pasa la luz a la imagen"><option value="aces">ACES (cinematográfico)</option><option value="agx">AgX (suave, realista)</option><option value="neutral">Neutro (colores fieles)</option><option value="lineal">Lineal</option></select></label>
               {fila('Contraste', fx.contraste, 0.6, 1.6, 0.02, v => setFx(x => ({ ...x, contraste: v })), fx.contraste.toFixed(2))}
               {fila('Saturación', fx.saturacion, 0, 2, 0.05, v => setFx(x => ({ ...x, saturacion: v })), fx.saturacion.toFixed(2))}
               {fila('Calidez', fx.calidez, -1, 1, 0.05, v => setFx(x => ({ ...x, calidez: v })), (fx.calidez > 0 ? '+' : '') + fx.calidez.toFixed(2))}

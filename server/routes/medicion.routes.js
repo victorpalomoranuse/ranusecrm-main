@@ -298,6 +298,14 @@ async function leerMaterialesRanuse() {
   return cacheMatRanuse.lista;
 }
 router.get('/materiales-ranuse', async (req, res) => { res.json({ materiales: await leerMaterialesRanuse() }); });
+// HDRI de Ranuse (entornos para reflejos y luz ambiente)
+let cacheHdri = { t: 0, lista: [] };
+router.get('/hdri-ranuse', async (req, res) => {
+  if (Date.now() - cacheHdri.t > 10 * 60 * 1000 || !cacheHdri.lista.length) {
+    try { const { data } = await supabase.storage.from('project-documents').download('materiales-ranuse/hdri.json'); if (data) { const j = JSON.parse(await data.text()); cacheHdri = { t: Date.now(), lista: Array.isArray(j) ? j : [] }; } } catch { /* se queda con lo anterior */ }
+  }
+  res.json({ hdri: cacheHdri.lista });
+});
 
 router.get('/catalogos', compression(), async (req, res) => { // comprimido: la biblioteca propia puede traer cientos de bloques
   try {
