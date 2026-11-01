@@ -1215,8 +1215,8 @@ export default function Visor3D() {
   const [alz, setAlz] = useState(null);                  // detalle abierto: { tipo: 'muro' | 'suelo' | 'techo', id, lado }
   const [profAlz, setProfAlz] = useState(120);
   const [zForm, setZForm] = useState({ x: 0, y: 90, w: 100, h: 100, forma: 'rect' });
-  const [railCols, setRailCols] = useState(() => (typeof window !== 'undefined' && window.innerHeight < 700 ? 2 : 1));
-  useEffect(() => { const f = () => setRailCols(window.innerHeight < 700 ? 2 : 1); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
+  const [railCols, setRailCols] = useState(() => (typeof window !== 'undefined' && window.innerHeight < 1000 ? 2 : 1));
+  useEffect(() => { const f = () => setRailCols(window.innerHeight < 1000 ? 2 : 1); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   const railW = railCols * 56 + 10;
   const [camAbierta, setCamAbierta] = useState(false);
   const [camInfo, setCamInfo] = useState(null);
