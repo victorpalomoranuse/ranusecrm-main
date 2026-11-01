@@ -395,11 +395,14 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
       };
     }));
     // Materiales con foto → texturas para suelos, techos y paredes
-    const materialesBase = (prods || []).filter(p => p.photo_url && catPorId[p.category_id] && (catPorId[p.category_id].type === 'material' || ES_MATERIAL.test(catPorId[p.category_id].name)) && catPorId[p.category_id].type !== 'iluminacion');
+    // Solo los materiales con una textura subida (la foto del producto no vale como textura: no se repite bien)
+    const { data: texRows, error: texErr } = await supabase.from('catalog_products').select('id, textura_url');
+    const texMap = texErr ? {} : Object.fromEntries((texRows || []).filter(r => r.textura_url).map(r => [r.id, r.textura_url]));
+    const materialesBase = (prods || []).filter(p => texMap[p.id] && catPorId[p.category_id] && (catPorId[p.category_id].type === 'material' || ES_MATERIAL.test(catPorId[p.category_id].name)) && catPorId[p.category_id].type !== 'iluminacion');
     const materiales = (await Promise.all(materialesBase.map(async p => {
-      const foto = await fotoMiniatura(p.photo_url, true);
+      const foto = await fotoMiniatura(texMap[p.id], true);
       if (!foto) return null;
-      return { id: p.id, n: p.name, cat: limpiarCategoria(catPorId[p.category_id].name), tw: Number(p.ancho) > 5 && Number(p.ancho) < 500 ? Number(p.ancho) : 60, url: p.photo_url || null, ...foto };
+      return { id: p.id, n: p.name, cat: limpiarCategoria(catPorId[p.category_id].name), tw: Number(p.ancho) > 5 && Number(p.ancho) < 500 ? Number(p.ancho) : 60, url: texMap[p.id], ...foto };
     }))).filter(Boolean);
     // Todos los productos (ligeros) para la memoria de calidades: mecanismos, grifería, sanitarios…
     const productos = (prods || []).map(p => {
@@ -738,14 +741,16 @@ router.post('/:id/textura-biblioteca', async (req, res) => {
 router.post('/:id/textura-catalogo', async (req, res) => {
   try {
     const { data: p } = await supabase.from('catalog_products').select('id, name, photo_url, ancho').eq('id', req.body?.prodId).maybeSingle();
-    if (!p?.photo_url) return res.status(404).json({ error: 'Ese material no tiene foto en el catálogo' });
+    const { data: tx } = await supabase.from('catalog_products').select('textura_url').eq('id', req.body?.prodId).maybeSingle();
+    const urlTex = tx?.textura_url || p?.photo_url;
+    if (!urlTex) return res.status(404).json({ error: 'Ese material no tiene textura ni foto en el catálogo' });
     const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
     const esc = fila.data?.escena3d || { objetos: [] };
     const idTex = 'c_' + p.id;
     if ((esc.texturas || []).some(x => x.id === idTex)) return res.json({ textura: esc.texturas.find(x => x.id === idTex) });
     const tam = Number(p.ancho) > 5 && Number(p.ancho) < 500 ? Number(p.ancho) : Math.max(5, Math.min(1000, parseFloat(req.body?.tam) || 60));
-    const tex = { id: idTex, nombre: p.name, url: p.photo_url, tam, prod: p.id };
+    const tex = { id: idTex, nombre: p.name, url: urlTex, tam, prod: p.id };
     const data = { ...fila.data, escena3d: { ...esc, texturas: [...(esc.texturas || []), tex].slice(-80), updated: Date.now() } };
     const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (error) throw error;

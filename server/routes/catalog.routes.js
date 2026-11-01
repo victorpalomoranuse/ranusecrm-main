@@ -689,6 +689,22 @@ router.post('/series-bulk', async (req, res) => {
   } catch (err) { console.error('series-bulk:', err); res.status(500).json({ error: 'No se pudieron asignar las series' }); }
 });
 
+// Textura de un material (imagen que se repite en el 3D). Es distinta de la foto del producto. Necesita la columna textura_url (migración v90)
+router.post('/products/:id/textura', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Falta la imagen de la textura' });
+    const url = await uploadCatalogPhoto(req.file.buffer, req.file.originalname, req.file.mimetype);
+    const { error } = await supabase.from('catalog_products').update({ textura_url: url }).eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: 'Falta ejecutar la migración v90 en Supabase (columna textura_url)' });
+    res.status(201).json({ textura_url: url });
+  } catch (err) { console.error('textura de catálogo:', err); res.status(500).json({ error: 'No se pudo guardar la textura' }); }
+});
+router.delete('/products/:id/textura', async (req, res) => {
+  const { error } = await supabase.from('catalog_products').update({ textura_url: null }).eq('id', req.params.id);
+  if (error) return res.status(400).json({ error: 'No se pudo quitar la textura' });
+  res.json({ ok: true });
+});
+
 router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
     const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, nivel_uso, search_keywords, extra_category_ids, complement_ids } = req.body;
