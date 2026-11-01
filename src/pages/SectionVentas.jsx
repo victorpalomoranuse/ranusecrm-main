@@ -7,7 +7,7 @@ import './SectionVentas.css';
 const CANALES = ['instagram','tiktok','whatsapp','web','recomendacion','prospeccion','ads','evento','agente','otro'];
 
 function fmt(n) {
-  return Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+  return Number(n || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function fmtMes(mes) {
