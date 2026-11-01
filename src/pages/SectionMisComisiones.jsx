@@ -104,7 +104,7 @@ function ResumenPorPeriodo({ periodos, tipo }) {
   );
 }
 
-export function SectionMisComisiones() {
+export function SectionMisComisiones({ como = null, enVivo = false } = {}) {
   const [periodoTipo, setPeriodoTipo] = useState('mes');
   const [mia, setMia] = useState(null);
   const [historico, setHistorico] = useState(null);
@@ -115,24 +115,24 @@ export function SectionMisComisiones() {
 
   useEffect(() => {
     setLoading(true);
-    api.get('/comisiones/mia', { params: { periodo_tipo: periodoTipo, periodo: periodoActual(periodoTipo) } })
+    api.get('/comisiones/mia', { params: { periodo_tipo: periodoTipo, periodo: periodoActual(periodoTipo), ...(como ? { como } : {}) } })
       .then(r => setMia(r.data))
       .catch(() => setMia(null))
       .finally(() => setLoading(false));
-  }, [periodoTipo]);
+  }, [periodoTipo, como]);
 
   useEffect(() => {
     if (mia?.modelo !== 'por_proyecto') return;
     setCargandoPeriodos(true);
-    api.get('/comisiones/mia/periodos', { params: { tipo: periodoTipo } })
+    api.get('/comisiones/mia/periodos', { params: { tipo: periodoTipo, ...(como ? { como, en_vivo: enVivo ? '1' : '0' } : {}) } })
       .then(r => setPeriodos(r.data.periodos || []))
       .catch(() => setPeriodos(null))
       .finally(() => setCargandoPeriodos(false));
-  }, [periodoTipo, mia?.modelo]);
+  }, [periodoTipo, mia?.modelo, como, enVivo]);
 
   useEffect(() => {
     if (verHistorico && !historico) {
-      api.get('/comisiones/mi-historico').then(r => setHistorico(r.data)).catch(() => {});
+      api.get('/comisiones/mi-historico', { params: como ? { como } : {} }).then(r => setHistorico(r.data)).catch(() => {});
     }
   }, [verHistorico, historico]);
 

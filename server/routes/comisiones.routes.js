@@ -11,6 +11,11 @@ const TIPOS_PERIODO = ['mes', 'trimestre', 'año'];
 // (donde vive equipo_comisiones.employee_id) — son tablas distintas con ids
 // distintos. El email es el único dato fiable que los conecta.
 async function resolveMiConfig(req) {
+  // El admin puede ver el panel de otra persona del equipo tal como lo ve ella: ?como=<nombre>
+  if (req.query?.como && req.user?.role === 'admin_superior') {
+    const { data: m } = await supabase.from('equipo_comisiones').select('nombre, employee_id').eq('nombre', String(req.query.como)).maybeSingle();
+    return m ? { nombre: m.nombre, employeeId: m.employee_id || null } : null;
+  }
   const { data: employee } = await supabase.from('employees').select('id').eq('email', req.user.email).maybeSingle();
   if (!employee) return null;
   const { data: miConfig } = await supabase.from('equipo_comisiones').select('nombre').eq('employee_id', employee.id).maybeSingle();
@@ -532,7 +537,8 @@ router.get('/mia/periodos', authenticateToken, async (req, res) => {
     const tipo = TIPOS_PERIODO.includes(req.query.tipo) ? req.query.tipo : 'mes';
     let periodos = await periodosDeComision(miConfig.employeeId, miConfig.nombre, tipo);
     const mesTope = await mesPublicado();
-    if (mesTope) {
+    const verEnVivo = req.query?.como && req.query?.en_vivo === '1' && req.user?.role === 'admin_superior'; // el admin puede ver también lo no publicado
+    if (mesTope && !verEnVivo) {
       const tope = claveTopeParaTipo(mesTope, tipo);
       periodos = periodos.filter(p => p.periodo <= tope);
     }

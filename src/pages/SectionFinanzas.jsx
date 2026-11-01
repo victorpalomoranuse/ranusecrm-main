@@ -3,6 +3,7 @@ import api from '../services/api';
 import { Wallet, TrendingUp, TrendingDown, Plus, X, Trash2, BarChart2, PieChart, Users, Check, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { SearchableSelect } from '../components/SearchableSelect';
+import { SectionMisComisiones } from './SectionMisComisiones';
 import './SectionFinanzas.css';
 
 function fmt(n) {
@@ -368,6 +369,8 @@ function EquipoPeriodos() {
   const [periodoAbierto, setPeriodoAbierto] = useState(null);
   const [pagoInputs, setPagoInputs] = useState({});
   const [pagando, setPagando] = useState(null);
+  const [verComo, setVerComo] = useState(null); // nombre de la persona cuyo panel se está viendo
+  const [verEnVivo, setVerEnVivo] = useState(false);
 
   const cargar = useCallback(() => {
     setLoading(true);
@@ -407,6 +410,26 @@ function EquipoPeriodos() {
           ))}
         </div>
       </div>
+      {(equipo || []).length > 0 && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>Ver el panel de:</span>
+          {(equipo || []).map(m => <button key={m.nombre} type="button" className="ap-btn ap-btn-ghost ap-btn-xs" onClick={() => { setVerComo(m.nombre); setVerEnVivo(false); }}>{m.nombre}</button>)}
+        </div>
+      )}
+      {verComo && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setVerComo(null)}>
+          <div style={{ background: '#0f0f0f', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, width: 'min(1100px, 100%)', maxHeight: '92vh', overflow: 'auto', padding: '1rem 1.2rem' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+              <strong>Panel de {verComo}</strong>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, cursor: 'pointer', color: 'rgba(255,255,255,0.7)' }}><input type="checkbox" checked={verEnVivo} onChange={e => setVerEnVivo(e.target.checked)} /> Ver también lo que aún no está publicado</label>
+              <span style={{ flex: 1 }} />
+              <button type="button" className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => setVerComo(null)}>Cerrar</button>
+            </div>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', margin: '0 0 8px' }}>{verEnVivo ? 'Estás viendo todo en vivo, incluidos los meses que el equipo todavía no ve.' : 'Esto es exactamente lo que ve esa persona en su panel «Mis Comisiones» (solo hasta el mes publicado).'}</p>
+            <SectionMisComisiones como={verComo} enVivo={verEnVivo} />
+          </div>
+        </div>
+      )}
       <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: -6, marginBottom: 10 }}>El "Cobrado" de aquí abajo es un apunte tuyo, aparte de Finanzas — no crea ni lee ningún movimiento de Finanzas, para no mezclarlo con pagos antiguos que incluían otras cosas además de la comisión. Se actualiza al momento en el panel de esa persona. El "Pendiente" es un saldo acumulado: si un periodo se paga de más, el sobrante se resta del pendiente del siguiente (y si se paga de menos, el déficit se suma).</p>
 
       {loading ? <div className="ap-loading">Calculando…</div> : !equipo || conProyectos.length === 0 ? (
