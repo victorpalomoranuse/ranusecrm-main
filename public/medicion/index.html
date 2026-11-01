@@ -2546,8 +2546,8 @@ function lumGroups(){
   st.v.pts.forEach(function(q){
     if(q.v!=='ilum'||q.s==='dem')return;
     var d=ptDef(q.k);if(!d)return;
-    var mq=ptMontAny(q),key=(q.lid||('k:'+q.k))+'|'+mq+(d.lin?'|'+ptPerfil(q):'');
-    if(ix[key]==null){ix[key]=gs.length;gs.push({key:key,lid:q.lid||null,k:q.k,mo:mq,pf:d.lin?ptPerfil(q):'',n:0,len:0,ids:[]})}
+    var mq=ptMontAny(q),key=(q.lid||('k:'+q.k))+'|'+mq+(d.lin?'|'+ptPerfil(q):'')+(q.nm?'|n:'+q.nm:'');
+    if(ix[key]==null){ix[key]=gs.length;gs.push({key:key,nm:q.nm||'',lid:q.lid||null,k:q.k,mo:mq,pf:d.lin?ptPerfil(q):'',n:0,len:0,ids:[]})}
     var g=gs[ix[key]];g.n++;g.ids.push(q.id);
     if(d.lin)g.len+=ptLen(q);
   });
@@ -6421,6 +6421,7 @@ function panelSel(focus){
     if(st.multi.every(function(m){return m.t==='dr'})){
       h+='<p class="note">Clic derecho sobre ellos: agrupar, crear bloque, duplicar o borrar. Las distancias a los muros se pueden escribir para colocarlos.</p><div class="btns"><button data-a="dragrupar">Agrupar</button><button data-a="drdesagrupar">Desagrupar</button><button data-a="drbloquesel">Crear bloque…</button></div>';
     }
+    if(st.multi.filter(function(m){return m.t==='eq'||m.t==='pil'||m.t==='pt'}).length>1)h+='<p class="note" style="margin:8px 0 2px">Centrar entre sí (luces, máquinas, pilares):</p><div class="btns tr"><button data-a="mal:cy" title="Las deja en la misma fila (mismo Y), a la altura media">Misma fila ↔</button><button data-a="mal:cx" title="Las deja en la misma columna (mismo X)">Misma columna ↕</button><button data-a="mal:rx" title="Reparte a igual distancia de izquierda a derecha entre la primera y la última">Repartir ↔</button><button data-a="mal:ry" title="Reparte a igual distancia de arriba a abajo">Repartir ↕</button></div>';
     h+=''+multiPropsHtml()+'<p class="note" style="margin:8px 0 2px">Girar todo el grupo alrededor de su centro:</p><div class="btns tr"><button data-a="mrot:-90" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="mrot:-45">⟲ 45°</button><button data-a="mrot:-5">⟲ 5°</button><button data-a="mrot:5">⟳ 5°</button><button data-a="mrot:45">⟳ 45°</button><button data-a="mrot:90" title="Girar 90° a la derecha">⟳ 90°</button></div><p class="note" style="margin:8px 0 2px">Voltear (espejo) todo el grupo:</p><div class="btns tr"><button data-a="mflip:h" title="Espejo izquierda ↔ derecha">⇋ Izquierda ↔ derecha</button><button data-a="mflip:v" title="Espejo arriba ↔ abajo">⇅ Arriba ↔ abajo</button></div><div class="btns"><button data-a="mdup">Duplicar</button><button data-a="mclear">Quitar selección</button></div><div class="btns"><button class="danger" data-a="mdel">Borrar todo</button></div>';
     el.innerHTML=h;mostrarSel();return;
   }
@@ -6673,6 +6674,7 @@ function panelSel(focus){
     if(q.v==='ilum'){
       var lo=lumList().filter(function(l){var dd=ptDef(l.sym);return dd&&!!dd.lin===!!pd.lin});
       h+='<label class="fld"><span>Luminaria del catálogo</span><select data-t="pt_lid"><option value="">Genérica (solo símbolo)</option>'+lo.map(function(l){return '<option value="'+esc(l.id)+'"'+(l.id===q.lid?' selected':'')+'>'+esc(l.n)+'</option>'}).join('')+'</select></label>';
+      h+='<label class="fld"><span>Nombre propio (opcional)</span><input data-t="pt_nm" value="'+esc(q.nm||'')+'" placeholder="'+esc(q.lid&&lumById(q.lid)?lumById(q.lid).n:'Ej. Foco de pared zona máquinas')+'" autocomplete="off"></label><p class="note" style="margin:0 0 6px">Si escribes uno, sale con ese nombre en la leyenda, el listado y las mediciones. Las luces con el mismo nombre se agrupan.</p>';
       var cl=q.lid&&lumById(q.lid);
       if(cl)h+='<p class="note">'+(cl.lm?cl.lm+' lm':'')+(cl.w?' · '+cl.w+' W':'')+(cl.k?' · '+cl.k+' K':'')+(cl.ref?' · ref. '+esc(cl.ref):'')+'</p>';
     }
@@ -7036,6 +7038,7 @@ function doAction(a,el){
     snap();techoReset(zt);if(a.indexOf('znej:')===0)zt.ej=a.slice(5)==='v'?'v':'h';else{zt.vg=zt.vg||{s:60,w:10,h:20};zt.vg.d=a.slice(6)==='v'?'v':'h'}
     commit(false);panelSel();return;
   }
+  if(a.indexOf('mal:')===0){alinearMulti(a.slice(4));return}
   if(a.indexOf('mrot:')===0){rotarMulti(parseFloat(a.slice(5)));return}
   if(a.indexOf('mflip:')===0){voltearMulti(a.slice(6));return}
   if(a.indexOf('mwstate:')===0||a.indexOf('mostate:')===0){
@@ -7229,6 +7232,7 @@ $('side').addEventListener('change',function(e){
   var t=e.target.getAttribute&&e.target.getAttribute('data-t');
   if(t&&t.indexOf('ms_')===0&&st.multi&&st.multi.length){medidasMulti(t,e.target);return}
   if(t&&t.indexOf('m_')===0&&st.multi&&st.multi.length){multiEdit(t,e.target);return}
+  if(t==='pt_nm'&&st.sel&&st.sel.t==='pt'){var qn=by(st.v.pts,st.sel.id);if(qn){snap();var vn=String(e.target.value||'').trim().slice(0,80);if(vn)qn.nm=vn;else delete qn.nm;commit(false)}return}
   if(t==='pt_lid'&&st.sel&&st.sel.t==='pt'){
     var ql=by(st.v.pts,st.sel.id);if(!ql)return;snap();
     var li2=lumById(e.target.value);if(li2){ql.lid=li2.id;ql.k=li2.sym}else delete ql.lid;
@@ -8043,7 +8047,7 @@ function preciosFilas(){
     add('Equipamiento',t.cod,t.nm,e.ref||c.ref||c.referencia||c.marca||c.brand||'',e.w&&e.d?fmt(e.w)+' × '+fmt(e.d)+' cm':'',t.n,'ud','',e.cid?{t:'min',id:e.cid}:null,t.fam||'');
   });
   lumGroups().forEach(function(g){
-    var d=ptDef(g.k),c=g.cat||{},nm=(c.n?c.n+(c.gen?' (genérico)':''):(d?d.n:g.k));
+    var d=ptDef(g.k),c=g.cat||{},nm=g.nm||(c.n?c.n+(c.gen?' (genérico)':''):(d?d.n:g.k));
     var det=[c.hole?'Ø agujero '+c.hole+' mm':'',c.lm?c.lm+' lm':'',c.w?c.w+' W':'',c.k?c.k+' K':''].filter(Boolean).join(' · ');
     var mo=g.mo?'montaje: '+g.mo:'';
     var fl=g.lid?{t:'lum',id:g.lid}:null;
@@ -9302,7 +9306,7 @@ function sheetPage(doc,view,idx,total,o){
         else p.svg('<g transform="translate('+f2(xL+bx/2)+' '+f2(y+0.5*f+bx/2)+')">'+ptSym(g.k,lumColor(g.mo)||INK,0.5)+'</g>');
         var tx0=xL+bx+3,qty=d.lin?m2(g.len/100)+' ml':'× '+g.n;
         p.text(tx0,y+3.6*f,g.tag,body+1,{bold:true,col:INK});
-        p.text(tx0+8*f,y+3.6*f,fitTxt((cat?cat.n+(cat.gen?' (genérico)':''):d.n)+(g.mo&&(g.mo!=='techo'||lumColOn())?' · '+MONT_ALL[g.mo]:'')+(g.pf?' · '+PERFIL_CORTO[g.pf]:''),pw-(tx0-xL)-8*f-16,false,body*25.4/72),body,{col:INK});
+        p.text(tx0+8*f,y+3.6*f,fitTxt((g.nm||(cat?cat.n+(cat.gen?' (genérico)':''):d.n))+(g.mo&&(g.mo!=='techo'||lumColOn())?' · '+MONT_ALL[g.mo]:'')+(g.pf?' · '+PERFIL_CORTO[g.pf]:''),pw-(tx0-xL)-8*f-16,false,body*25.4/72),body,{col:INK});
         p.text(xR,y+3.6*f,qty,body,{col:INK,anchor:'end',bold:true});
         var l2='';
         if(cat&&cat.lm){var tt=d.lin?cat.lm*g.len/100:cat.lm*g.n;totLm+=tt;l2=fmt(cat.lm)+' lm'+(d.lin?'/m':' c/u')+'  ·  total '+fmt(tt)+' lm'}
@@ -9977,7 +9981,7 @@ function buildResumen1(){
   var eq={};
   v.eq.forEach(function(e){if(e.s==='ex'||e.s==='dem'||(e.bl&&e.bl.esc))return;var k=e.cid||e.nm;(eq[k]=eq[k]||{cid:e.cid||'',nombre:e.nm,n:0,w:e.w,d:e.d,alto:(function(){var cc=catById(e.cid);return (cc&&(cc.alto||(cc.bloque&&cc.bloque.alto)))||null})(),categoria:(function(){var cc=catById(e.cid);return (cc&&cc.categoria)||''})(),familia:(function(){var cc=catById(e.cid);return cc?familiaDe(catsDe(cc)[0]):(e.bl&&e.bl.esc?'Escaleras':'Otros')})()}).n++}); /* lo que ya existe no se compra */
   out.equipos=Object.keys(eq).map(function(k){return eq[k]});
-  out.luminarias=lumGroups().map(function(g){var d=ptDef(g.k);return {lid:g.lid||'',nombre:g.cat?g.cat.n:(d?d.n:g.k),tipo:g.k,n:g.n,ml:r2(g.len/100)}});
+  out.luminarias=lumGroups().map(function(g){var d=ptDef(g.k);return {lid:g.lid||'',nombre:g.nm||(g.cat?g.cat.n:(d?d.n:g.k)),tipo:g.k,n:g.n,ml:r2(g.len/100)}});
   var inst={};
   v.pts.forEach(function(q){if(q.v==='ilum'||q.s==='dem')return;var d=ptDef(q.k);if(!d)return;(inst[q.k]=inst[q.k]||{tipo:q.k,nombre:d.n,n:0}).n++});
   out.electricidad=Object.keys(inst).map(function(k){return inst[k]});
@@ -11423,6 +11427,31 @@ function rotarMulti(deg){
   commit();panelSel();
   if(pils.length&&Math.abs(Math.round(deg/90)*90-deg)>0.01)toast('Los pilares se giran de posición, pero siguen rectos (solo giran del todo en 90°)');
 }
+/* centrar y repartir lo seleccionado entre sí (luces, máquinas, pilares): en la misma fila o columna, o a igual distancia */
+function alinearMulti(modo){
+  var v=st.v,its=[];
+  (st.multi||[]).forEach(function(it){
+    if(it.t==='eq'||it.t==='pil'){var q=it.t==='eq'?by(v.eq,it.id):pl(it.id);if(q){var c0=pc(q);its.push({x:c0.x,y:c0.y,mv:function(dx,dy){q.dx=f2(q.dx+dx);q.dy=f2(q.dy+dy)}})}}
+    else if(it.t==='pt'){
+      var p=by(v.pts,it.id);if(!p)return;
+      var linea=(p.vx&&p.vx.length>=2)||p.dx2!=null;
+      if(linea){var vs=ptVerts(p),sx=0,sy=0;vs.forEach(function(r){sx+=r.x;sy+=r.y});its.push({x:sx/vs.length,y:sy/vs.length,mv:function(dx,dy){ptSetVerts(p,ptVerts(p).map(function(r){return {x:r.x+dx,y:r.y+dy}}))}})}
+      else{var c1=ptPos(p);its.push({x:c1.x,y:c1.y,mv:function(dx,dy){p.dx=f2(p.dx+dx);p.dy=f2(p.dy+dy)}})}
+    }
+  });
+  if(its.length<2){toast('Elige al menos 2 piezas (luces, máquinas o pilares)');return}
+  snap();
+  var n=its.length,h=modo.charAt(1)==='x'; /* cx/cy centran; rx/ry reparten */
+  if(modo.charAt(0)==='c'){
+    /* cx = misma columna (mismo X); cy = misma fila (mismo Y): se llevan a la media */
+    var med=0;its.forEach(function(o){med+=h?o.x:o.y});med/=n;
+    its.forEach(function(o){if(h)o.mv(med-o.x,0);else o.mv(0,med-o.y)});
+  }else{
+    var ord=its.slice().sort(function(a,b){return h?a.x-b.x:a.y-b.y}),a0=h?ord[0].x:ord[0].y,a1=h?ord[n-1].x:ord[n-1].y;
+    ord.forEach(function(o,i){var t=a0+(a1-a0)*i/(n-1);if(h)o.mv(t-o.x,0);else o.mv(0,t-o.y)});
+  }
+  commit();panelSel();toast('Colocadas');
+}
 /* medidas de una selección (o de un grupo): caja que envuelve todo lo seleccionado; se puede cambiar su ancho y alto, moverla o girarla */
 function recogeMulti(){
   var v=st.v,m=st.multi||[],c={nodos:{},eqs:[],pils:[],pts:[],drs:[]};
@@ -11662,6 +11691,7 @@ svg.addEventListener('pointermove',function(e){curW=toW(loc(e));if(st.spPoly&&st
 function copiarSel(silencio){
   if(st.multi.length)return copiarMulti();
   var s=st.sel;if(!s){toast('Toca primero lo que quieres copiar');return false}
+  if(s.t==='pt'){st.multi=[{t:'pt',id:s.id}];var okp=copiarMulti();st.multi=[];return okp}
   var v=st.v,item=null;
   if(s.t==='eq')item=by(v.eq,s.id);else if(s.t==='op')item=opn(s.id);else if(s.t==='pil')item=pl(s.id);
   else if(s.t==='eqa')item=by(v.eqa||[],s.id);
