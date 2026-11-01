@@ -30,25 +30,59 @@ const ESPEJOS = [
   { id: 'espejo-ahumado', nombre: 'Espejo ahumado', hex: '#4a5258' }, { id: 'cromo', nombre: 'Cromo', hex: '#ffffff' },
 ].map(e => ({ id: e.id, nombre: e.nombre, tam: 100, espejo: e.hex, fijo: true, url: (() => { try { const cv = document.createElement('canvas'); cv.width = 96; cv.height = 56; const cx = cv.getContext('2d'), g = cx.createLinearGradient(0, 0, 96, 56); g.addColorStop(0, '#fff'); g.addColorStop(0.45, e.hex); g.addColorStop(0.55, '#fff'); g.addColorStop(1, e.hex); cx.fillStyle = g; cx.fillRect(0, 0, 96, 56); return cv.toDataURL(); } catch { return ''; } })() }));
 let envEsp = null, espejoSucio = false, GL_SOFTWARE = false;
+// Mapas PBR sueltos (normales, rugosidad, AO): se descargan una vez y cada material usa una copia con el mismo tiling, giro y desplazamiento que su textura base
+const cacheMapas = new Map();
+function texMapa(url) {
+  let t = cacheMapas.get(url);
+  if (!t) { t = new THREE.TextureLoader().load(url, () => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } }); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; cacheMapas.set(url, t); }
+  return t;
+}
+const COPIA_MAT = ['name', 'color', 'map', 'roughness', 'metalness', 'side', 'transparent', 'opacity', 'emissive', 'emissiveIntensity', 'flatShading', 'vertexColors', 'polygonOffset', 'polygonOffsetFactor', 'polygonOffsetUnits', 'depthWrite', 'alphaTest', 'bumpMap', 'bumpScale'];
+// Recorre la escena y aplica a cada material las propiedades PBR de su textura: rugosidad, metal, relieve, mapas, reflejos del entorno, clearcoat y emisión; los espejos se hacen reflectantes
 function aplicaEspejos(scene) {
   scene.traverse(o => {
     if (!o.isMesh || !o.material) return;
-    for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
-      if (m.metalness === undefined) continue;
-      const pb = m.map?.userData?.pbr;
-      if (m.map?.userData?.espejo) {
+    const arr = Array.isArray(o.material) ? o.material : null;
+    (arr || [o.material]).forEach((m0, i) => {
+      let m = m0;
+      if (m.metalness === undefined) return;
+      const pb = m.map?.userData?.pbr, mp = m.map?.userData?.mapsUrl, esp = m.map?.userData?.espejo;
+      if (esp) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
         m.metalness = 1; m.roughness = 0.04; m.envMap = envEsp; m.envMapIntensity = 1.4; m.bumpMap = null; m.needsUpdate = true;
-      } else if (pb) {
+      } else if (pb || mp) {
         if (!m.userData.espOn) { m.userData.espOn = true; m.userData.esp0 = { metalness: m.metalness, roughness: m.roughness, envMapIntensity: m.envMapIntensity }; }
-        const z = m.userData.esp0 || {};
-        m.metalness = pb.metal ?? z.metalness ?? 0; m.roughness = pb.rough ?? z.roughness ?? 0.6; m.envMap = (pb.metal || 0) > 0.3 ? envEsp : null; m.envMapIntensity = 1.2;
-        if (pb.relieve > 0) { m.bumpMap = m.map; m.bumpScale = pb.relieve * 4; } else m.bumpMap = null;
+        const z = m.userData.esp0 || {}, P = pb || {};
+        // clearcoat: el material pasa a ser físico (capa de barniz)
+        if ((P.clearcoat || 0) > 0 && !m.isMeshPhysicalMaterial) {
+          const ph = new THREE.MeshPhysicalMaterial();
+          for (const k of COPIA_MAT) if (m[k] !== undefined) ph[k] = m[k]?.isColor ? m[k].clone() : m[k];
+          ph.userData = { ...m.userData };
+          if (arr) o.material[i] = ph; else o.material = ph;
+          m = ph;
+        }
+        if (m.isMeshPhysicalMaterial) { m.clearcoat = P.clearcoat || 0; m.clearcoatRoughness = 0.08; }
+        m.metalness = P.metal ?? z.metalness ?? 0; m.roughness = P.rough ?? z.roughness ?? 0.6;
+        const usaEnv = (P.metal || 0) > 0.3 || P.env != null || (P.clearcoat || 0) > 0;
+        m.envMap = usaEnv ? (scene.environment || envEsp) : null; m.envMapIntensity = P.env ?? 1.2;
+        if (P.relieve > 0) { m.bumpMap = m.map; m.bumpScale = P.relieve * 4; } else m.bumpMap = null;
+        if (P.emis > 0 && P.emisHex) { m.emissive.set(P.emisHex); m.emissiveIntensity = P.emis; m.userData.emisPbr = true; }
+        else if (m.userData.emisPbr) { m.emissive.setHex(0x000000); m.emissiveIntensity = 1; m.userData.emisPbr = false; }
+        // mapas PBR: se vuelven a crear solo si cambia el tiling, el giro o los archivos
+        const B = m.map, clave = JSON.stringify(mp || {}) + '|' + B.repeat.x + ',' + B.repeat.y + '|' + B.rotation + '|' + B.offset.x + ',' + B.offset.y;
+        if (m.userData.mapasClave !== clave) {
+          m.userData.mapasClave = clave;
+          const mk = url => { const t = texMapa(url).clone(); t.repeat.copy(B.repeat); t.rotation = B.rotation; t.center.copy(B.center); t.offset.copy(B.offset); t.needsUpdate = true; return t; };
+          m.normalMap = mp?.normal ? mk(mp.normal) : null; m.roughnessMap = mp?.rough ? mk(mp.rough) : null; m.aoMap = mp?.ao ? mk(mp.ao) : null;
+        }
+        if (m.normalMap) m.normalScale.set(P.normal ?? 1, P.normal ?? 1);
         m.needsUpdate = true;
       } else if (m.userData.espOn) {
-        const z = m.userData.esp0 || {}; m.userData.espOn = false; m.envMap = null; m.bumpMap = null; m.metalness = z.metalness ?? 0; m.roughness = z.roughness ?? 0.6; m.envMapIntensity = z.envMapIntensity ?? 1; m.needsUpdate = true;
+        const z = m.userData.esp0 || {}; m.userData.espOn = false; m.envMap = null; m.bumpMap = null; m.normalMap = null; m.roughnessMap = null; m.aoMap = null; m.userData.mapasClave = null;
+        if (m.userData.emisPbr) { m.emissive.setHex(0x000000); m.emissiveIntensity = 1; m.userData.emisPbr = false; }
+        m.metalness = z.metalness ?? 0; m.roughness = z.roughness ?? 0.6; m.envMapIntensity = z.envMapIntensity ?? 1; m.needsUpdate = true;
       }
-    }
+    });
   });
 }
 // Despiece: piezas de w×h cm. La textura repite un tramo de varias piezas (más variación) y las filas se desplazan si el aparejo es trabado
@@ -83,8 +117,8 @@ function dibujaDesp(cx, img, t, j) {
 }
 function texturaDe(t, uvEnCm) {
   const k = uvEnCm ? 1 / t.tam : 1 / (t.tam * CM), j = t.junta && t.junta.mm > 0 ? t.junta : null;
-  if (t.espejo || t.pbr) espejoSucio = true;
-  const clave = t.url.slice(0, 200) + '|' + k + '|' + (t.rot || 0) + '|' + (t.ox || 0) + '|' + (t.oy || 0) + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '') + (t.pbr ? JSON.stringify(t.pbr) : '');
+  if (t.espejo || t.pbr || t.maps) espejoSucio = true;
+  const clave = t.url.slice(0, 200) + '|' + k + '|' + (t.rot || 0) + '|' + (t.ox || 0) + '|' + (t.oy || 0) + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '') + (t.pbr ? JSON.stringify(t.pbr) : '') + (t.maps ? JSON.stringify(t.maps) : '');
   let x = cacheTex.get(clave);
   if (!x) {
     if (t.espejo) {
@@ -108,6 +142,7 @@ function texturaDe(t, uvEnCm) {
     } else x = new THREE.TextureLoader().load(t.url, () => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } });
     x.wrapS = x.wrapT = THREE.RepeatWrapping; x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 4; x.repeat.set(k, k);
     if (t.pbr) x.userData.pbr = t.pbr;
+    if (t.maps) x.userData.mapsUrl = t.maps;
     if (t.rot || t.ox || t.oy) { x.center.set(0.5, 0.5); x.rotation = (t.rot || 0) * Math.PI / 180; x.offset.set((t.ox || 0) / t.tam, (t.oy || 0) / t.tam); }
     cacheTex.set(clave, x);
   }
@@ -4139,9 +4174,15 @@ export default function Visor3D() {
             {matSel?.id && (() => {
               const t = texturas.find(x => x.id === matSel.id); if (!t) return null;
               if (t.fijo) return <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8, opacity: 0.75, fontSize: 11 }}>{t.nombre}: acabado reflectante. Refleja un entorno de estudio (con ✨ Realista se nota más). Pinta con él muros, suelos u objetos.</div>;
+              const subirMapa = async (tipo, file) => {
+                if (!file) return; setGuardado('Subiendo el mapa…');
+                try { const fd = new FormData(); fd.append('tipo', tipo); fd.append('file', file); const r = await api.post('/medicion/' + id + '/textura/' + t.id + '/mapa', fd); setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x))); setGuardado('Mapa añadido ✓'); }
+                catch (e) { setGuardado(e.response?.data?.error || 'No se pudo subir el mapa'); }
+              };
+              const quitarMapa = async (tipo) => { try { const r = await api.delete('/medicion/' + id + '/textura/' + t.id + '/mapa/' + tipo); setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x))); } catch { setGuardado('No se pudo quitar el mapa'); } };
               const lee = () => { const tp = document.getElementById('tx-dt').value; if (tp === 'none') return null; return { tipo: tp, w: parseFloat(document.getElementById('tx-dw').value) || 60, h: parseFloat(document.getElementById('tx-dh').value) || 30, corte: document.getElementById('tx-dc').value, var: parseFloat(document.getElementById('tx-dv').value) || 0 }; };
               const guarda = (junta, tam, desp, extra) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam, desp: desp || null, rot: t.rot || 0, ox: t.ox || 0, oy: t.oy || 0, pbr: t.pbr || null, ...(extra || {}) }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
-              const aplicarTodo = () => { const dsp = lee(); guarda(t.junta && !document.getElementById('tx-jm') ? t.junta : (parseFloat(document.getElementById('tx-jm').value) > 0 ? { hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) } : null), dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp, { rot: parseFloat(document.getElementById('tx-rot').value) || 0, ox: parseFloat(document.getElementById('tx-ox').value) || 0, oy: parseFloat(document.getElementById('tx-oy').value) || 0, pbr: { rough: parseFloat(document.getElementById('tx-ro').value), metal: parseFloat(document.getElementById('tx-me').value), relieve: parseFloat(document.getElementById('tx-re').value) } }); };
+              const aplicarTodo = () => { const dsp = lee(); guarda(t.junta && !document.getElementById('tx-jm') ? t.junta : (parseFloat(document.getElementById('tx-jm').value) > 0 ? { hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) } : null), dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp, { rot: parseFloat(document.getElementById('tx-rot').value) || 0, ox: parseFloat(document.getElementById('tx-ox').value) || 0, oy: parseFloat(document.getElementById('tx-oy').value) || 0, pbr: (() => { const v = id2 => parseFloat(document.getElementById(id2)?.value); const en = v('tx-en'), cc = v('tx-cc'), em = v('tx-em'); return { rough: v('tx-ro'), metal: v('tx-me'), relieve: v('tx-re'), normal: v('tx-no'), env: en !== 1 ? en : undefined, clearcoat: cc > 0 ? cc : undefined, emis: em > 0 ? em : undefined, emisHex: em > 0 ? document.getElementById('tx-eh')?.value : undefined }; })() }); };
               const diferido = () => { clearTimeout(window.__txT); window.__txT = setTimeout(aplicarTodo, 700); };
               return (
                 <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8 }} onChange={diferido}>
@@ -4158,6 +4199,16 @@ export default function Visor3D() {
                   <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Material (como D5)</div>
                   {[['Rugosidad', 'tx-ro', t.pbr?.rough ?? 0.6, 'Mate (1) ↔ brillante (0)'], ['Metal', 'tx-me', t.pbr?.metal ?? 0, 'Plástico/piedra (0) ↔ metal (1)'], ['Relieve', 'tx-re', t.pbr?.relieve ?? 0, 'Textura en relieve usando la propia foto']].map(([n, i, v, ayuda]) => (
                     <label key={i + t.id + (t.pbr ? 1 : 0)} title={ayuda} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>{n}</span><input id={i} type="range" min="0" max="1" step="0.05" defaultValue={v} style={{ flex: 1 }} /></label>
+                  ))}
+                  {[['Intensidad normal', 'tx-no', t.pbr?.normal ?? 1, 0, 3, 'Fuerza del mapa de normales (1 = la del archivo)'], ['Reflejos entorno', 'tx-en', t.pbr?.env ?? 1, 0, 3, 'Cuánto refleja el entorno (HDRI)'], ['Barniz', 'tx-cc', t.pbr?.clearcoat ?? 0, 0, 1, 'Capa de barniz brillante sobre el material (clearcoat)'], ['Emisión', 'tx-em', t.pbr?.emis ?? 0, 0, 3, 'El material brilla con luz propia']].map(([n, i, v, mn, mx, ayuda]) => (
+                    <label key={i + t.id + (t.pbr ? 1 : 0)} title={ayuda} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}><span style={{ width: 90, opacity: 0.7 }}>{n}</span><input id={i} type="range" min={mn} max={mx} step="0.05" defaultValue={v} style={{ flex: 1 }} />{i === 'tx-em' && <input id="tx-eh" type="color" defaultValue={t.pbr?.emisHex || '#ffd9a0'} style={{ width: 28, height: 22, padding: 0, border: 'none', background: 'none' }} />}</label>
+                  ))}
+                  <div style={{ opacity: 0.7, margin: '6px 0 3px' }}>Mapas PBR (opcionales, 2K máx.)</div>
+                  {[['normal', 'Normales'], ['rough', 'Rugosidad'], ['ao', 'Oclusión (AO)']].map(([k, n]) => (
+                    <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                      <span style={{ width: 90, opacity: 0.7 }}>{n}</span>
+                      {t.maps?.[k] ? <><span style={{ color: '#d4c9bb' }}>✓ cargado</span><span onClick={() => quitarMapa(k)} style={{ cursor: 'pointer', opacity: 0.7 }} title="Quitar">✕</span></> : <label style={{ ...btn, padding: '2px 8px', fontSize: 12, cursor: 'pointer' }}>subir…<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { subirMapa(k, e.target.files?.[0]); e.target.value = ''; }} /></label>}
+                    </div>
                   ))}
                   <button style={{ ...btn, marginBottom: 4 }} onClick={() => guarda(t.junta || null, t.tam, t.desp, { pbr: null })}>Restablecer material</button>
                   <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Despiece</div>

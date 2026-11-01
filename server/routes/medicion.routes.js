@@ -691,7 +691,7 @@ router.patch('/:id/textura/:tid', async (req, res) => {
     // propiedades del material: rugosidad, metal y relieve (0–1)
     if (req.body && 'pbr' in req.body) {
       const pb = req.body.pbr, q = v => Math.max(0, Math.min(1, Number(v) || 0));
-      if (pb && typeof pb === 'object') { const o = {}; if (pb.rough != null) o.rough = q(pb.rough); if (pb.metal != null) o.metal = q(pb.metal); if (Number(pb.relieve) > 0) o.relieve = q(pb.relieve); if (Object.keys(o).length) t.pbr = o; else delete t.pbr; } else delete t.pbr;
+      if (pb && typeof pb === 'object') { const o = {}; if (pb.rough != null) o.rough = q(pb.rough); if (pb.metal != null) o.metal = q(pb.metal); if (Number(pb.relieve) > 0) o.relieve = q(pb.relieve); const qr = (v, mx) => Math.max(0, Math.min(mx, Number(v) || 0)); if (pb.normal != null) o.normal = qr(pb.normal, 3); if (pb.env != null) o.env = qr(pb.env, 3); if (Number(pb.clearcoat) > 0) o.clearcoat = q(pb.clearcoat); if (Number(pb.emis) > 0 && /^#[0-9a-fA-F]{6}$/.test(pb.emisHex || '')) { o.emis = qr(pb.emis, 3); o.emisHex = pb.emisHex; } if (Object.keys(o).length) t.pbr = o; else delete t.pbr; } else delete t.pbr;
     }
     // giro (°) y desplazamiento (cm) de la textura
     for (const [k, a, b] of [['rot', -360, 360], ['ox', -1000, 1000], ['oy', -1000, 1000]]) if (k in (req.body || {})) { const v = Math.max(a, Math.min(b, parseFloat(req.body[k]) || 0)); if (v) t[k] = v; else delete t[k]; }
@@ -790,6 +790,42 @@ router.delete('/:id/render/:rid', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'No se pudo borrar' });
   }
+});
+// Mapas PBR de una textura (normales, rugosidad, oclusión ambiental): se suben reducidos a 2K como máximo y se guardan en la propia textura
+const TIPOS_MAPA = ['normal', 'rough', 'ao'];
+router.post('/:id/textura/:tid/mapa', uploadReferenceImageFile, handleMulterError, async (req, res) => {
+  try {
+    const tipo = String(req.body?.tipo || '');
+    if (!TIPOS_MAPA.includes(tipo)) return res.status(400).json({ error: 'Tipo de mapa no válido' });
+    if (!req.file) return res.status(400).json({ error: 'Falta la imagen' });
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || {}, t = (esc.texturas || []).find(x => x.id === req.params.tid);
+    if (!t) return res.status(404).json({ error: 'No he encontrado esa textura' });
+    const buf = await sharp(req.file.buffer).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+    const ruta = `texturas/${req.params.id}-${t.id}-${tipo}.jpg`;
+    const { error: eUp } = await supabase.storage.from(BUCKET_TEX).upload(ruta, buf, { contentType: 'image/jpeg', upsert: true });
+    if (eUp) throw eUp;
+    const { data: { publicUrl } } = supabase.storage.from(BUCKET_TEX).getPublicUrl(ruta);
+    t.maps = { ...(t.maps || {}), [tipo]: publicUrl + '?v=' + Date.now().toString(36) };
+    const { error } = await supabase.from('mediciones').update({ data: { ...fila.data, escena3d: esc } }).eq('id', req.params.id);
+    if (error) throw error;
+    res.status(201).json({ textura: t });
+  } catch (err) { console.error('medicion mapa:', err); res.status(500).json({ error: 'No se pudo guardar el mapa' }); }
+});
+router.delete('/:id/textura/:tid/mapa/:tipo', async (req, res) => {
+  try {
+    if (!TIPOS_MAPA.includes(req.params.tipo)) return res.status(400).json({ error: 'Tipo de mapa no válido' });
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || {}, t = (esc.texturas || []).find(x => x.id === req.params.tid);
+    if (!t) return res.status(404).json({ error: 'No he encontrado esa textura' });
+    if (t.maps) { delete t.maps[req.params.tipo]; if (!Object.keys(t.maps).length) delete t.maps; }
+    const { error } = await supabase.from('mediciones').update({ data: { ...fila.data, escena3d: esc } }).eq('id', req.params.id);
+    if (error) throw error;
+    supabase.storage.from(BUCKET_TEX).remove([`texturas/${req.params.id}-${t.id}-${req.params.tipo}.jpg`]).catch(() => {});
+    res.json({ textura: t });
+  } catch (err) { res.status(500).json({ error: 'No se pudo quitar el mapa' }); }
 });
 router.delete('/:id/textura/:tid', async (req, res) => {
   try {
