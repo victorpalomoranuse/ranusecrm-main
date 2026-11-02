@@ -293,11 +293,14 @@ function fusionarModelo(raw) {
   try {
     raw.updateMatrixWorld(true);
     const grupos = new Map(), sueltas = [];
+    // componente/grupo de SketchUp al que pertenece cada pieza (el nodo con nombre justo bajo la raíz; si la raíz tiene un solo hijo se baja un nivel)
+    let base = raw; for (let n = 0; n < 3 && base.children.length === 1 && !base.children[0].isMesh; n++) base = base.children[0];
+    const compDe = m => { let o = m; while (o && o.parent && o.parent !== base) o = o.parent; return o && o !== raw && o !== base ? (o.name || '') : ''; };
     raw.traverse(m => {
       if (!m.isMesh || !m.geometry) return;
       if (m.isSkinnedMesh || m.isInstancedMesh || Array.isArray(m.material) || !m.geometry.attributes.position) { sueltas.push(m); return; }
-      const k = m.material.uuid + (m.material.vertexColors ? 'c' : '');
-      if (!grupos.has(k)) grupos.set(k, { mat: m.material, geos: [] });
+      const comp = compDe(m), k = m.material.uuid + (m.material.vertexColors ? 'c' : '') + '|' + comp;
+      if (!grupos.has(k)) grupos.set(k, { mat: m.material, geos: [], comp });
       const g = m.geometry.clone(); g.applyMatrix4(m.matrixWorld);
       for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n) && !(n === 'color' && m.material.vertexColors)) g.deleteAttribute(n);
       if (!g.attributes.normal) g.computeVertexNormals();
@@ -307,10 +310,10 @@ function fusionarModelo(raw) {
       grupos.get(k).geos.push(g);
     });
     const out = new THREE.Group(); let i = 0;
-    grupos.forEach(({ mat, geos }) => {
+    grupos.forEach(({ mat, geos, comp }) => {
       const geo = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
       if (!geo) throw new Error('fusion');
-      const me = new THREE.Mesh(geo, mat); me.name = mat.name || ('parte' + (i++)); out.add(me);
+      const me = new THREE.Mesh(geo, mat); me.name = mat.name || ('parte' + (i++)); if (comp) me.userData.comp = comp; out.add(me);
     });
     sueltas.forEach(m => { const me = m.clone(false); me.matrix.copy(m.matrixWorld); me.matrix.decompose(me.position, me.quaternion, me.scale); out.add(me); });
     out.userData.fusionado = true;
@@ -1191,6 +1194,9 @@ export default function Visor3D() {
   const [seleccion, setSeleccion] = useState(null);
   const [objs, setObjs] = useState([]);            // objetos de la escena 3D
   const objsRef = useRef([]);
+  const [editMod, setEditMod] = useState(null);       // id del objeto con modelo en el que se ha entrado (doble clic) para borrar piezas
+  const editModRef = useRef(null);
+  useEffect(() => { editModRef.current = editMod; const h = e => { if (e.key === 'Escape') setEditMod(null); }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [editMod]);
   const [selObj, setSelObj] = useState(null);      // id del objeto seleccionado
   const [multi, setMulti] = useState({ base: null, ids: [] }); // resto de la selección múltiple (Mayús/Ctrl + clic); solo vale mientras selObj sea su base
   const selExtra = multi.base === selObj && selObj ? multi.ids : [];
@@ -1597,6 +1603,13 @@ export default function Visor3D() {
     const onDown = e => { abajo = [e.clientX, e.clientY]; };
     const onUp = e => {
       if (herrRef.current === 'caja') return;
+      if (editModRef.current && abajo && Math.hypot(e.clientX - abajo[0], e.clientY - abajo[1]) <= 4) {
+        const r0 = dom.getBoundingClientRect(); p2.set(((e.clientX - r0.left) / r0.width) * 2 - 1, -((e.clientY - r0.top) / r0.height) * 2 + 1); rayo.setFromCamera(p2, cam);
+        const vis0 = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
+        const h0 = rayo.intersectObjects(esc.children, true).find(x => x.object.isMesh && !x.object.userData.hit && vis0(x.object));
+        if (h0) { let g0 = h0.object; while (g0 && !g0.userData.oid) g0 = g0.parent; if (g0 && g0.userData.oid === editModRef.current) { const nom = h0.object.userData.comp || h0.object.name; if (nom) setObjs(prev => prev.map(ob => (ob.id === g0.userData.oid ? { ...ob, ocultosPartes: [...new Set([...(ob.ocultosPartes || []), nom])] } : ob))); return; } }
+        return;
+      }
       if (!abajo || Math.hypot(e.clientX - abajo[0], e.clientY - abajo[1]) > 4) return; // fue arrastre, no clic
       const r = dom.getBoundingClientRect();
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -1630,6 +1643,15 @@ export default function Visor3D() {
     };
     dom.addEventListener('pointerdown', onDown);
     dom.addEventListener('pointerup', onUp);
+    const onDbl = e => {
+      const r0 = dom.getBoundingClientRect(); p2.set(((e.clientX - r0.left) / r0.width) * 2 - 1, -((e.clientY - r0.top) / r0.height) * 2 + 1); rayo.setFromCamera(p2, cam);
+      const h0 = rayo.intersectObjects(esc.children, true).find(x => x.object.isMesh && !x.object.userData.hit);
+      if (!h0) { setEditMod(null); return; }
+      let g0 = h0.object; while (g0 && !g0.userData.oid) g0 = g0.parent;
+      const ob = g0 && objsRef.current.find(o => o.id === g0.userData.oid);
+      if (ob && ob.tipo === 'bloque') setEditMod(ob.id);
+    };
+    dom.addEventListener('dblclick', onDbl);
 
     // Diseño: mover objetos y dibujar cajas sobre el suelo
     const suelo = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), pt = new THREE.Vector3();
@@ -2159,7 +2181,7 @@ export default function Visor3D() {
     window.addEventListener('pointermove', onMoveD);
     window.addEventListener('pointerup', onUpD);
 
-    return () => { evsD.forEach(n => window.removeEventListener(n, despertar)); window.removeEventListener('visor3d-tex', despertar); window.removeEventListener('resize', despertar); window.removeEventListener('keydown', onTecla); el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); window.removeEventListener('keydown', tDown); window.removeEventListener('keyup', tUp); renderer.dispose(); el.removeChild(renderer.domElement); };
+    return () => { evsD.forEach(n => window.removeEventListener(n, despertar)); window.removeEventListener('visor3d-tex', despertar); window.removeEventListener('resize', despertar); window.removeEventListener('keydown', onTecla); el.removeEventListener('pointerdown', onDownD, true); window.removeEventListener('pointermove', onMoveD); window.removeEventListener('pointerup', onUpD); vivo = false; clearInterval(reloj); dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); dom.removeEventListener('dblclick', onDbl); cancelAnimationFrame(raf); window.removeEventListener('resize', ajustar); window.removeEventListener('keydown', tDown); window.removeEventListener('keyup', tUp); renderer.dispose(); el.removeChild(renderer.domElement); };
   }, [id]);
 
   // Colores de muros y suelos (cambian sin rehacer el plano)
@@ -2750,6 +2772,7 @@ export default function Visor3D() {
           const mm = ajustarModelo(raw, giroO ? d : w, giroO ? w : d, h, o.ajuste || 'estirar');
           if (!mm) return;
           sobrescribirModelo(mm, o, texturas);
+          if (o.ocultosPartes?.length) mm.traverse(x => { if (x.isMesh && o.ocultosPartes.includes(x.userData.comp || x.name)) x.visible = false; });
           mm.rotation.y = -rotO * Math.PI / 180;
           mm.position.y = (o.z0 || 0) * CM;
           g.add(mm); fantasma(0); registraLod(api3d.current, mm, null);
@@ -3932,6 +3955,19 @@ export default function Visor3D() {
             {(api3d.current.modelo?.plantas || []).length > 1 && <div style={{ borderTop: '1px solid #333', marginTop: 6, paddingTop: 6 }}><div style={{ opacity: 0.7, marginBottom: 2 }}>Plantas</div>{api3d.current.modelo.plantas.map((pl, i) => fila('planta:' + i, pl.nombre || ('Planta ' + (i + 1))))}</div>}
             {propias.length > 0 && <div style={{ borderTop: '1px solid #333', marginTop: 6, paddingTop: 6, opacity: 0.7 }}>Tus objetos</div>}
             {propias.map(t => fila('obj:' + t, t || 'Sin etiqueta'))}
+          </div>
+        );
+      })()}
+      {editMod && (() => {
+        const ob = objs.find(o => o.id === editMod); if (!ob) return null;
+        return (
+          <div style={{ position: 'absolute', left: '50%', top: 56, transform: 'translateX(-50%)', background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 13, zIndex: 5, maxWidth: 560 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>✏️ Dentro del modelo «{ob.nombre || 'objeto'}»</div>
+            <div style={{ opacity: 0.8, marginBottom: 8 }}>Haz clic en una pieza para borrarla (por ejemplo la imagen de fondo). Si el modelo viene de SketchUp, se borra el componente o grupo entero. Esc o «Listo» para salir.</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={btn} onClick={() => setEditMod(null)}>Listo</button>
+              {ob.ocultosPartes?.length > 0 && <button style={btn} onClick={() => setObjs(prev => prev.map(x => (x.id === ob.id ? { ...x, ocultosPartes: undefined } : x)))}>Restaurar piezas borradas ({ob.ocultosPartes.length})</button>}
+            </div>
           </div>
         );
       })()}
