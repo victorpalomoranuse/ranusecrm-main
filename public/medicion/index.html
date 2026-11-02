@@ -9847,11 +9847,17 @@ var INFO_LAM=[['ley_est','Leyenda · estados (existente, demolición, nuevo)'],[
 /* leyendas predeterminadas por lámina (se guardan en este navegador y valen para todos los planos nuevos; lo de cada plano manda sobre ellas) */
 var LSINFODEF='ranuseInfoDef';
 function infoDef(){try{return JSON.parse(localStorage.getItem(LSINFODEF)||'{}')||{}}catch(e){return {}}}
+/* valores de fábrica de qué información sale en cada lámina (lo que se ve cuando el plano y el usuario no han elegido otra cosa) */
+var INFO_FABRICA=(function(){
+  var KS=['ley_est','ley_mat','ley_eq','ley_lum','ley_sim','carp','med','total','rodapie','despiece'];
+  var P={actual:['ley_est','carp','med'],demol:['ley_est','ley_sim','med'],interv:['ley_est','ley_mat','carp','med'],elec:['ley_sim'],ilum:['ley_lum'],techos:['ley_mat','med','total'],acab:['ley_mat','med','total','despiece'],alz:['ley_mat','carp'],suelos:['ley_mat','med','total','rodapie','despiece'],distrib:['ley_eq']};
+  var o={};Object.keys(P).forEach(function(v){o[v]={};KS.forEach(function(k){o[v][k]=P[v].indexOf(k)>=0})});return o;
+})();
 function infoOn(k){
   var v=window.__infoView||st.view,iv=st.v&&st.v.infoV&&st.v.infoV[v];
   if(iv&&Object.prototype.hasOwnProperty.call(iv,k))return iv[k]!==false;
   if(st.v&&st.v.info&&st.v.info[k]===false)return false;
-  var dv=infoDef()[v];
+  var dv=infoDef()[v]||INFO_FABRICA[v];
   if(dv&&Object.prototype.hasOwnProperty.call(dv,k))return dv[k]!==false;
   return true;
 }
