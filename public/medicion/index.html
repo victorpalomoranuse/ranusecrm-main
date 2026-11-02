@@ -6729,6 +6729,7 @@ function panelSel(focus){
       h+='<label class="fld"><span>Dónde va</span><select data-t="pt_mo">'+MONT.map(function(m){return '<option value="'+m[0]+'"'+(ptMont(q)===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('')+'</select></label>';
       if(q.k==='led')h+=perfilSel('pt_pf',ptPerfil(q),'Perfil');
       h+=fld('pt_ll','Longitud total (cm)',Math.round(ptLen(q)))+'<label class="fld"><span>Al cambiarla, queda fijo</span><select data-t="pt_anc"><option value="a"'+(st.ptAnc!=='b'?' selected':'')+'>El inicio (se mueve el final)</option><option value="b"'+(st.ptAnc==='b'?' selected':'')+'>El final (se mueve el inicio)</option></select></label>';
+      if(nvs>2){var vsT=ptVerts(q),ti;h+='<div class="lab" style="margin-top:8px">Medida de cada tramo (cm)</div>';for(ti=0;ti<vsT.length-1;ti++)h+=fld('pt_sl_'+ti,'Tramo '+(ti+1),Math.round(Math.hypot(vsT[ti+1].x-vsT[ti].x,vsT[ti+1].y-vsT[ti].y)));h+='<p class="note" style="margin:0 0 6px">Al cambiar un tramo, el resto del carril se desplaza con él (o se queda fijo el otro extremo, según lo de arriba).</p>'}
       h+='<div class="btns"><button data-a="ptendereza" title="Deja cada tramo exactamente horizontal o vertical, el que le quede más cerca">Enderezar (horizontal / vertical)</button></div>';
       h+='<p class="note">Longitud: '+m2(ptLen(q)/100)+' m · '+nvs+' puntos'+(nvs>2?' (polilínea)':' (recta)')+'.</p>';
       if(q.k==='carril'){
@@ -7041,6 +7042,19 @@ function applyField(key,val,adv,raw){
       if(!(n>=(key==='rl_g'?0:1)&&n<=(key==='rl_n'?60:2000))){toast('Escribe un valor válido');return}
       if(key==='rl_n')st.rlN=Math.round(n);else if(key==='rl_l')st.rlL=n;else st.rlG=n;
       return;
+    }
+    if(key.indexOf('pt_sl_')===0){
+      var ts=+key.slice(6),vst=ptVerts(qp);
+      if(!(ts>=0&&ts<vst.length-1)||!(n>=5&&n<=100000)){toast('Escribe una medida válida (5 cm o más)');return}
+      var ex2=vst[ts+1].x-vst[ts].x,ey2=vst[ts+1].y-vst[ts].y,l2=Math.hypot(ex2,ey2);
+      if(!(l2>0))return;
+      var dd2=n-l2,ux=ex2/l2,uy=ey2/l2;
+      snap();
+      var nv=vst.map(function(r,ix){
+        if(st.ptAnc==='b')return ix<=ts?{x:r.x-ux*dd2,y:r.y-uy*dd2}:{x:r.x,y:r.y};
+        return ix>ts?{x:r.x+ux*dd2,y:r.y+uy*dd2}:{x:r.x,y:r.y};
+      });
+      ptSetVerts(qp,nv);commit(false);panelSel();return;
     }
     if(key==='pt_ll'){
       var vsl=ptVerts(qp),tl0=ptLen(qp);
