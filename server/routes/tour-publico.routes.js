@@ -37,4 +37,22 @@ router.get('/:id/:firma', async (req, res) => {
   }
 });
 
+// Lo que necesita el visor 3D en modo cliente para recorrer el espacio: el modelo, la escena (acabados, luces, objetos) y los puntos de luz del plano.
+// No se envía el resto de datos del plano (notas, importes, etc.).
+router.get('/:id/:firma/plano', async (req, res) => {
+  try {
+    const { id, firma } = req.params, esperada = firmaTour(id);
+    if (firma.length !== esperada.length || !crypto.timingSafeEqual(Buffer.from(firma), Buffer.from(esperada))) return res.status(403).json({ error: 'Enlace no válido' });
+    const { data, error } = await supabase.from('mediciones').select('id, nombre, data, updated_at').eq('id', id).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Plano no encontrado' });
+    const d = data.data || {};
+    res.set('Cache-Control', 'no-store');
+    res.json({ plano: { nombre: data.nombre || d.nombre || 'Tour', modelo3d: d.modelo3d || null, escena3d: d.escena3d || null, nodes: d.nodes || [], pts: (d.pts || []).filter(p => p.v === 'ilum'), id: data.id, updated: new Date(data.updated_at).getTime() } });
+  } catch (err) {
+    console.error('tour-publico plano:', err);
+    res.status(500).json({ error: 'No se pudo cargar el espacio' });
+  }
+});
+
 export default router;

@@ -73,6 +73,7 @@ function App() {
 
               {/* Subir fotos del estado actual desde el móvil (sin entrar al CRM) */}
               <Route path="/tour/:id/:firma" element={<TourPublico />} />
+              <Route path="/recorrido/:id/:firma" element={<Visor3D cliente />} />
               <Route path="/subir/:code" element={<SubirFotos />} />
 
               {/* Portal cliente */}

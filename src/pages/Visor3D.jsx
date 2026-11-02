@@ -20,7 +20,32 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import api from '../services/api';
+import apiReal from '../services/api';
+// En modo cliente (enlace público del recorrido) el visor solo lee: el plano sale del enlace firmado y cualquier escritura se rechaza
+let api = apiReal;
+const crearApiCliente = (id, firma) => {
+  const no = () => Promise.reject(new Error('Modo cliente: solo lectura'));
+  return { get: u => (u === '/medicion/' + id ? apiReal.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma) + '/plano') : no()), post: no, put: no, patch: no, delete: no };
+};
+// Recorrido a pie: los muros frenan al visitante (se desliza por ellos) y se pasa por los huecos de suelo a techo (puertas)
+const RADIO_PERSONA = 0.28;
+function frenaMuros(modelo, pos, mov) {
+  if (!modelo) return mov;
+  const choca = (x, z) => {
+    for (const pl of (modelo.plantas || [modelo])) for (const mu of (pl.muros || [])) {
+      const ax = mu.a[0] * CM, az = mu.a[1] * CM, dx = mu.b[0] * CM - ax, dz = mu.b[1] * CM - az, l2 = dx * dx + dz * dz; if (l2 < 1e-9) continue;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), d = Math.hypot(x - (ax + t * dx), z - (az + t * dz));
+      if (d >= RADIO_PERSONA + ((mu.t || 12) * CM) / 2) continue;
+      const sCm = (t * Math.sqrt(l2)) / CM;
+      if ((mu.ab || []).some(o => sCm >= o.p && sCm <= o.p + o.w && (o.sill || 0) <= 5 && o.h >= 190)) continue;
+      return true;
+    }
+    return false;
+  };
+  let mx = mov.x, mz = mov.z;
+  if (choca(pos.x + mx, pos.z + mz)) { if (!choca(pos.x + mx, pos.z)) mz = 0; else if (!choca(pos.x, pos.z + mz)) mx = 0; else { mx = 0; mz = 0; } }
+  mov.x = mx; mov.z = mz; return mov;
+}
 
 // Visor 3D de un plano de Planos (lee su modelo3d). Pensado para gimnasios: paredes con puertas y ventanas,
 // suelos por sala, pilares y máquinas como bloques con sus medidas. Las medidas del plano van en cm.
@@ -1244,8 +1269,9 @@ export function planta(m, z0) {
   return g;
 }
 
-export default function Visor3D() {
-  const { id } = useParams();
+export default function Visor3D({ cliente = false }) {
+  const { id, firma } = useParams();
+  if (cliente) api = crearApiCliente(id, firma);
   const navigate = useNavigate();
   const caja = useRef(null);
   const [estado, setEstado] = useState('cargando');
@@ -1553,20 +1579,21 @@ export default function Visor3D() {
     };
     const vR2 = new THREE.Vector2(); const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, ultLod = 0, enMov = false, ema = 16, escala = 1, ultGob = performance.now(), sinSombras = false;
     let gpuNombre = ''; try { const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); const bruto = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : ''); GL_SOFTWARE = /basic render|swiftshader|llvmpipe|software/i.test(bruto); gpuNombre = bruto.replace(/ANGLE (|)$/g, '').replace(/Direct3D.*|vs_.*|(0x[0-9a-f]+)/gi, '').slice(0, 42); } catch { /* sin datos */ }
-    const hud = document.createElement('div'); hud.style.cssText = 'position:absolute;left:8px;bottom:8px;font:11px monospace;color:#fff;background:rgba(0,0,0,0.45);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:5'; el.appendChild(hud);
+    const hud = document.createElement('div'); hud.style.cssText = 'position:absolute;left:8px;bottom:8px;font:11px monospace;color:#fff;background:rgba(0,0,0,0.45);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:5'; el.appendChild(hud); if (cliente) hud.style.display = 'none';
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
     const bucle = () => {
       if (!vivo) return; raf = requestAnimationFrame(bucle);
       const ahora = performance.now(), dtReal = ahora - ultimoT, dt = Math.min(0.05, dtReal / 1000); ultimoT = ahora;
       ema = ema * 0.92 + Math.min(dtReal, 200) * 0.08;
-      if (teclas.size) {
+      if (teclas.size || api3d.current.joy) {
         cam.getWorldDirection(vF); vF.y = 0; if (vF.lengthSq() < 1e-6) vF.set(0, 0, -1); vF.normalize(); vR.crossVectors(vF, ARRIBA).normalize(); vM.set(0, 0, 0);
         if (teclas.has('w')) vM.add(vF); if (teclas.has('s')) vM.sub(vF); if (teclas.has('d')) vM.add(vR); if (teclas.has('a')) vM.sub(vR);
+        { const jy = api3d.current.joy; if (jy) { vM.addScaledVector(vF, -jy.y); vM.addScaledVector(vR, jy.x); } }
         if (api3d.current.persona) vM.y = 0; else { if (teclas.has('e')) vM.y += 1; if (teclas.has('q')) vM.y -= 1; }
-        if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (api3d.current.persona ? (teclas.has('shift') ? 3.2 : 1.3) : (teclas.has('shift') ? 9 : 3))); cam.position.add(vM); ctrl.target.add(vM); }
+        if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (api3d.current.persona ? (teclas.has('shift') ? 3.2 : 1.3) : (teclas.has('shift') ? 9 : 3))); if (api3d.current.persona && cliente) frenaMuros(api3d.current.modelo, cam.position, vM); cam.position.add(vM); ctrl.target.add(vM); }
       }
       // mientras la cámara se mueve se dibuja a menor resolución y al parar vuelve a la normal: el movimiento va fluido aunque haya muchos modelos
-      const movi = teclas.size > 0 || ahora - ultMov < 180;
+      const movi = teclas.size > 0 || !!api3d.current.joy || ahora - ultMov < 180;
       enMov = movi;
       // simplificación al mover: los modelos que se ven pequeños (lejos) se ocultan o se cambian por su caja hasta que la cámara se para
       const a0 = api3d.current, L = a0.lodList;
@@ -1602,8 +1629,8 @@ export default function Visor3D() {
       }
     };
     const enCampo = e => { const t = (e.target?.tagName || '').toLowerCase(); return t === 'input' || t === 'textarea' || t === 'select' || e.target?.isContentEditable; };
-    const tDown = e => { if (enCampo(e) || e.ctrlKey || e.metaKey || e.altKey) return; const k = e.key.toLowerCase(); if (k.length === 1 && 'wasdqe'.includes(k)) { teclas.add(k); e.preventDefault(); } else if (k === 'shift') teclas.add('shift'); };
-    const tUp = e => { teclas.delete(e.key.toLowerCase()); };
+    const tDown = e => { if (enCampo(e) || e.ctrlKey || e.metaKey || e.altKey) return; const k = { arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' }[e.key.toLowerCase()] || e.key.toLowerCase(); if (k.length === 1 && 'wasdqe'.includes(k)) { teclas.add(k); e.preventDefault(); } else if (k === 'shift') teclas.add('shift'); };
+    const tUp = e => { teclas.delete({ arrowup: 'w', arrowdown: 's', arrowleft: 'a', arrowright: 'd' }[e.key.toLowerCase()] || e.key.toLowerCase()); };
     window.addEventListener('keydown', tDown); window.addEventListener('keyup', tUp); window.addEventListener('blur', () => teclas.clear());
     ctrl.addEventListener('change', () => { ultMov = performance.now(); });
     ajustar(); bucle();
@@ -1658,7 +1685,7 @@ export default function Visor3D() {
     cargar();
     api3d.current.recargar = () => { ultima = null; return cargar(); };
     // El plano se edita en otra pestaña: se mira si ha cambiado cada pocos segundos
-    const reloj = setInterval(() => { if (!document.hidden) cargar(); }, 6000);
+    const reloj = cliente ? null : setInterval(() => { if (!document.hidden) cargar(); }, 6000);
 
     // Clic en una máquina: se resalta y se enseña su ficha
     let sel = null;
@@ -2396,6 +2423,23 @@ export default function Visor3D() {
     try { localStorage.setItem('visor3dAmb', JSON.stringify({ exposicion: ambiente.exposicion, luces: ambiente.luces, kLuces: ambiente.kLuces ?? null, kSol: ambiente.kSol ?? null, solI: ambiente.solI ?? 1, solOn: ambiente.solOn !== false })); } catch { /* sin almacenamiento */ }
   }, [hora, ambiente.exposicion, ambiente.luces, ambiente.kSol, ambiente.solI, ambiente.solOn, estado, rev]);
 
+  // Modo cliente: se empieza dentro del espacio, en la primera parada del tour (o en el centro), con refinado por trazado de rayos si la gráfica lo aguanta
+  // y, si no, se ofrece el tour de panorámicas (que casi no pide nada al dispositivo)
+  const esTactil = useMemo(() => { try { return navigator.maxTouchPoints > 0 && window.matchMedia('(pointer: coarse)').matches; } catch { return false; } }, []);
+  const [paradasCli, setParadasCli] = useState([]);
+  const [joyPos, setJoyPos] = useState(null);
+  const [gpuFlojaCli, setGpuFlojaCli] = useState(false);
+  useEffect(() => {
+    if (!cliente || estado !== 'listo') return;
+    const a = api3d.current, par = (renders.filter(r => r.tipo === '360' && r.tour && r.meta?.camara)).sort((x, y) => String(x.creado).localeCompare(String(y.creado)));
+    setParadasCli(par);
+    if (par.length) {
+      const c = par[0].meta.camara, yaw = Math.atan2((c.tx ?? c.px) - c.px, (c.tz ?? c.pz + 1) - c.pz);
+      a.cam.position.set(c.px, 1.6, c.pz); a.ctrl.target.set(c.px + Math.sin(yaw), 1.6, c.pz + Math.cos(yaw)); a.ctrl.update();
+    }
+    setPersona(true);
+    if (!esTactil && gpuApta()) setRefinar(true); else setGpuFlojaCli(true);
+  }, [cliente, estado]); // eslint-disable-line react-hooks/exhaustive-deps
   // Modo persona: la cámara se queda a la altura de los ojos y solo gira sobre sí misma; se anda con W A S D (despacio) y la rueda cambia el zoom de la lente
   useEffect(() => {
     const a = api3d.current; if (!a.ctrl || !a.cam || estado === 'cargando') return;
@@ -4024,7 +4068,8 @@ export default function Visor3D() {
     </div>
   );
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#eeeae5', accentColor: '#baafa5' }}>
+    <div data-cliente={cliente ? '1' : undefined} style={{ position: 'fixed', inset: 0, background: '#eeeae5', accentColor: '#baafa5' }}>
+      {cliente && <style>{'[data-cliente] > :not([data-vista]) { display: none !important; }'}</style>}
       {sinGpu && (
         <div style={{ position: 'absolute', left: '50%', top: 58, transform: 'translateX(-50%)', width: 'min(620px, 92vw)', zIndex: 40, background: 'rgb(60,40,28)', border: '1px solid #c9965a', color: '#fff', borderRadius: 10, padding: '12px 16px', fontSize: 13, lineHeight: 1.5, boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
           <b>Tu navegador no está usando la tarjeta gráfica</b> (usa un modo de emergencia por software). Por eso va lento y con baja calidad.<br />
@@ -4036,7 +4081,29 @@ export default function Visor3D() {
       {barraMaterial}
       {barra2d}
       {barraAxo}
-      <div ref={caja} style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
+      <div ref={caja} data-vista="1" style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
+      {cliente && (
+        <div data-vista="1" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', color: '#fff', fontFamily: 'system-ui, sans-serif', textShadow: '0 1px 6px rgba(0,0,0,0.7)' }}>
+          <div style={{ position: 'absolute', left: 16, top: 14, right: 16 }}>
+            <div style={{ fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', color: '#c9a46c' }}>Ranuse Design</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{titulo}</div>
+            <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>{esTactil ? 'Arrastra para mirar · usa el joystick para andar' : 'Arrastra para mirar · W A S D o las flechas para andar · Shift para ir más rápido'}</div>
+            {!esTactil && refinar && <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>Al quedarte quieto, la imagen se afina a calidad de render.</div>}
+          </div>
+          {paradasCli.length > 0 && (
+            <button style={{ position: 'absolute', right: 14, top: 14, pointerEvents: 'auto', background: (gpuFlojaCli || /no es apta|No se pudo/.test(ptMsg)) ? '#c9a46c' : 'rgba(0,0,0,0.55)', color: (gpuFlojaCli || /no es apta|No se pudo/.test(ptMsg)) ? '#000' : '#fff', border: 'none', borderRadius: 20, padding: '8px 14px', cursor: 'pointer', fontSize: 13, textShadow: 'none' }}
+              onClick={() => navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma))}>{(gpuFlojaCli || /no es apta|No se pudo/.test(ptMsg)) ? 'Ver el tour de panorámicas (recomendado en este dispositivo)' : 'Ver el tour de panorámicas'}</button>
+          )}
+          {esTactil && (
+            <div style={{ position: 'absolute', left: 24, bottom: 28, width: 120, height: 120, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', border: '2px solid rgba(255,255,255,0.5)', pointerEvents: 'auto', touchAction: 'none' }}
+              onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); e.currentTarget.dataset.on = '1'; }}
+              onPointerMove={e => { if (e.currentTarget.dataset.on !== '1') return; const r = e.currentTarget.getBoundingClientRect(); let dx = (e.clientX - (r.left + 60)) / 50, dy = (e.clientY - (r.top + 60)) / 50; const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; } setJoyPos([dx, dy]); api3d.current.joy = Math.hypot(dx, dy) > 0.15 ? { x: dx, y: dy } : null; api3d.current.despertar?.(); }}
+              onPointerUp={e => { e.currentTarget.dataset.on = '0'; setJoyPos(null); api3d.current.joy = null; }} onPointerCancel={() => { setJoyPos(null); api3d.current.joy = null; }}>
+              <div style={{ position: 'absolute', left: 60 + (joyPos ? joyPos[0] * 50 : 0) - 24, top: 60 + (joyPos ? joyPos[1] * 50 : 0) - 24, width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.7)' }} />
+            </div>
+          )}
+        </div>
+      )}
       {/* ── Barra superior: plano, historial, vistas, ambiente y salidas (render, 360, galería, despiece) ── */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 46, background: 'rgba(22,20,18,0.95)', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', zIndex: 7, boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
         <button style={bTop} onClick={() => (window.history.length > 1 ? navigate(-1) : window.close())}>← Volver</button>

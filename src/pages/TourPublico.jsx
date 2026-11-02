@@ -113,6 +113,7 @@ export function TourPublico() {
           </button>
         ))}
       </div>
+      <a href={'/recorrido/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma)} style={{ position: 'absolute', right: 14, top: 14, background: 'rgba(0,0,0,0.55)', color: '#fff', textDecoration: 'none', borderRadius: 20, padding: '8px 14px', fontSize: 13 }}>Caminar libremente</a>
       {cargando && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(0,0,0,0.6)', borderRadius: 20, padding: '8px 16px', fontSize: 14 }}>Cargando…</div>}
       <div style={{ position: 'absolute', left: 16, top: 14, right: 16, pointerEvents: 'none', textShadow: '0 1px 6px rgba(0,0,0,0.7)' }}>
         <div style={{ fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', color: ORO }}>Ranuse Design · {datos.titulo}</div>
