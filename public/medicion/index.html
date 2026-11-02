@@ -2539,7 +2539,7 @@ function rayWalls(ox,oy,dx,dy,view){
 }
 function dimLine(C,px,x1,y1,x2,y2,t,col,tcol){
   col=col||C.dim;tcol=tcol||C.label;var a=Math.atan2(y2-y1,x2-x1),nx=-Math.sin(a)*3.5*px,ny=Math.cos(a)*3.5*px,vert=Math.abs(x2-x1)<Math.abs(y2-y1);
-  return ln(x1,y1,x2,y2,col,px*0.9)+ln(x1-nx,y1-ny,x1+nx,y1+ny,col,px*0.9)+ln(x2-nx,y2-ny,x2+nx,y2+ny,col,px*0.9)+(vert?txt(C,px,(x1+x2)/2+5*px,(y1+y2)/2+3.5*px,t,tcol,10,600).replace('text-anchor="middle"','text-anchor="start"'):txt(C,px,(x1+x2)/2,(y1+y2)/2-4*px,t,tcol,10,600)); /* en las cotas verticales el número va en horizontal, a un lado de la línea, sin que ella lo cruce */
+  return ln(x1,y1,x2,y2,col,px*0.9)+ln(x1-nx,y1-ny,x1+nx,y1+ny,col,px*0.9)+ln(x2-nx,y2-ny,x2+nx,y2+ny,col,px*0.9)+(vert?txtC(C,px,(x1+x2)/2+5*px,(y1+y2)/2+3.5*px,t,tcol,cotaFs(C),600).replace('text-anchor="middle"','text-anchor="start"'):txtC(C,px,(x1+x2)/2,(y1+y2)/2-4*px,t,tcol,cotaFs(C),600)); /* en las cotas verticales el número va en horizontal, a un lado de la línea, sin que ella lo cruce */
 }
 /* distancia a la pared más cercana en horizontal y en vertical (cara interior del muro) */
 function lumDims(q){
@@ -2989,7 +2989,7 @@ function ptDraw0(C,px,p,sel,col){
     return h+g0+'<rect x="'+f2(-rw/2)+'" y="'+f2(-rd/2)+'" width="'+f2(rw)+'" height="'+f2(rd)+'" style="fill:'+C.bg+';fill-opacity:.55;stroke:'+col+';stroke-width:'+f2(1.5*px)+'"/>'+ln(-rw/2,-rd/2,rw/2,rd/2,col,0.8*px)+ln(-rw/2,rd/2,rw/2,-rd/2,col,0.8*px)+'</g>';
   }
   if(sel)h+='<circle cx="'+f2(c.x)+'" cy="'+f2(c.y)+'" r="'+f2(13*px)+'" style="fill:'+C.accent+';opacity:.3"/>';
-  var u=p.dc>0?p.dc/11:px*1.9*ptSz(p),ar=(p.a||0)*Math.PI/180,off=(d&&d.wall)?-5*u:0; /* con diámetro escrito el símbolo mide eso en cm reales */
+  var u=p.dc>0?p.dc/(p.k==='cuadro'?15.4:11):px*1.9*ptSz(p),ar=(p.a||0)*Math.PI/180,off=(d&&d.wall)?-5*u:0; /* con diámetro escrito el símbolo mide eso en cm reales */
   return h+'<g transform="translate('+f2(c.x+Math.cos(ar)*off)+' '+f2(c.y+Math.sin(ar)*off)+') rotate('+f2(p.a||0)+')">'+ptSym(p.k,col,u)+'</g>';
 }
 /* bloque real del producto (dibujado en el editor de bloques): planta a escala en cm, solo trazos */
@@ -3476,6 +3476,9 @@ function angTxt(vertPlan){var pv=PAGE_ROT?!vertPlan:vertPlan;return (pv?-90:0)-P
 /* aumento de los textos del plano al exportar a lámina (en papel los números y etiquetas se leían muy pequeños) */
 var ZOOMF=1,ZSYM=1; /* ZSYM: igual que ZOOMF pero para los símbolos de luces, enchufes e interruptores (se encogen más al alejarse) */ /* en pantalla, al alejarte los textos y símbolos se encogen un poco (sin llegar a ser ilegibles) para que no se coman el plano */
 var TXTK=1,ESTR='todo'; /* ESTR: qué estructura del techo se dibuja como referencia al exportar Iluminación y Electricidad */
+/* tamaño único de las cotas: iguales entre sí y sin cambiar con el zoom (en lámina, algo más pequeñas) */
+function cotaFs(C){return 10.5*(C===LIGHT?0.85:1)}
+function txtC(){var z=ZOOMF;ZOOMF=1;try{return txt.apply(null,arguments)}finally{ZOOMF=z}}
 function txt(C,px,x,y,s,col,size,weight,halo,rot){
   size=size*TXTK*ZOOMF;
   var sty='fill:'+col+';font-size:'+f2(size*px)+'px;font-weight:'+(weight||500)+';paint-order:stroke;stroke:'+(halo||C.halo)+';stroke-width:'+f2(3*px)+'px;stroke-linejoin:round';
@@ -3584,12 +3587,12 @@ function dimW(C,px,x1,y1,x2,y2,t,col,suave,zo){
     tx=(x1+x2)/2+(vert?(zo.inw.x>=0?1:-1)*11*px:0);
     ty=vert?(y1+y2)/2:(y1+y2)/2+(zo.inw.y>0?13*px:-5*px);
   }
-  var fsz=(suave?9.5:12)*(C===LIGHT?0.82:1),angW=PAGE_ROT?angTxt(vert):undefined; /* en la lámina las cotas van algo más pequeñas que el resto de etiquetas */
+  var fsz=cotaFs(C)*(suave?0.92:1),angW=PAGE_ROT?angTxt(vert):undefined; /* en la lámina las cotas van algo más pequeñas que el resto de etiquetas */
   if(vert&&!PAGE_ROT){ /* en las cotas verticales el número va siempre en horizontal, a un lado de la línea y sin que ella lo cruce */
-    var sg0=(zo&&zo.inw&&zo.inw.x<0)?-1:1,hw=txtW(String(t),false,fsz*TXTK*ZOOMF*px,suave?400:500,0)/2;
-    tx=(x1+x2)/2+sg0*(hw+5*px);ty=(y1+y2)/2+0.35*fsz*TXTK*ZOOMF*px;
+    var sg0=(zo&&zo.inw&&zo.inw.x<0)?-1:1,hw=txtW(String(t),false,fsz*TXTK*px,suave?400:500,0)/2;
+    tx=(x1+x2)/2+sg0*(hw+5*px);ty=(y1+y2)/2+0.35*fsz*TXTK*px;
   }
-  var tt=angW===undefined?txt(C,px,tx,ty,t,col,fsz,suave?400:500,zo&&zo.halo):txt(C,px,tx,vert?ty:ty-0.35*fsz*px,t,col,fsz,suave?400:500,zo&&zo.halo,angW);
+  var tt=angW===undefined?txtC(C,px,tx,ty,t,col,fsz,suave?400:500,zo&&zo.halo):txtC(C,px,tx,vert?ty:ty-0.35*fsz*px,t,col,fsz,suave?400:500,zo&&zo.halo,angW);
   if(zo&&zo.k){lin=adjK(zo.k,lin,null,null,true);tt=adjK(zo.k,tt,tx,vert?ty:ty-0.35*fsz*px)} /* cada cota puede ocultarse o moverse en su lámina */
   if(zo&&zo.out){zo.out.s+=tt;return lin}
   return lin+tt;
@@ -4438,9 +4441,9 @@ function dimChain(C,px,w,mode,cent,view,tags){
     if(chk&&dimOc&&!(st.sel&&st.sel.t==='wall'&&st.sel.id===w.id)){var tw=txtW(t,true,11*px,wt>500?500:wt,0),th=11*px,r=(rotC&&PAGE_ROT)?{x0:p.x-th*0.65,x1:p.x+th*0.65,y0:p.y-tw/2-2*px,y1:p.y+tw/2+2*px}:{x0:p.x-tw/2-2*px,x1:p.x+tw/2+2*px,y0:p.y+4*px-th,y1:p.y+4*px+th*0.35};
       for(var i=0;i<dimOc.length;i++){var q=dimOc[i];if(r.x0<q.x1&&r.x1>q.x0&&r.y0<q.y1&&r.y1>q.y0)return ''}
       dimOc.push(r)}
-    if(rotC&&!PAGE_ROT){var hwL=txtW(String(t),false,11*(C===LIGHT?0.82:1)*TXTK*ZOOMF*px,wt>500?500:wt,0)/2;p={x:p.x+(c.nx>=0?1:-1)*(hwL-3*px),y:p.y}} /* número vertical → horizontal junto a la línea */
+    if(rotC&&!PAGE_ROT){var hwL=txtW(String(t),false,cotaFs(C)*TXTK*px,wt>500?500:wt,0)/2;p={x:p.x+(c.nx>=0?1:-1)*(hwL-3*px),y:p.y}} /* número vertical → horizontal junto a la línea */
     var angL=PAGE_ROT?angTxt(rotC):undefined,ccL=colr===C.label?hexMix(C.label,'#ffffff',0.3):colr,wwL=wt>500?500:wt;
-    var resL=angL===undefined?txt(C,px,p.x,p.y+4*px,t,ccL,11*(C===LIGHT?0.82:1),wwL):txt(C,px,p.x,p.y,t,ccL,11*(C===LIGHT?0.82:1),wwL,undefined,angL);
+    var resL=angL===undefined?txtC(C,px,p.x,p.y+4*px,t,ccL,cotaFs(C),wwL):txtC(C,px,p.x,p.y,t,ccL,cotaFs(C),wwL,undefined,angL);
     return key?adjK(key,resL,p.x,p.y):resL}
   var meas=w.m===true,bad=!esInt&&meas&&Math.abs(L-w.len)>1.5,clear=S1-S0,tt=meas?fmtU(esInt?w.len-(L-clear):w.len):'~'+fmtU(esInt?clear:L);
   var ttn=meas?(esInt?w.len-(L-clear):w.len):(esInt?clear:L);
@@ -6842,6 +6845,10 @@ function panelSel(focus){
       if(cl)h+='<p class="note">'+(cl.lm?cl.lm+' lm':'')+(cl.w?' · '+cl.w+' W':'')+(cl.k?' · '+cl.k+' K':'')+(cl.ref?' · ref. '+esc(cl.ref):'')+'</p>';
     }
     if(!pd.lin&&pd.h!=null)h+=fld('pt_h','Altura sobre el suelo (cm)',q.h);
+    if(!pd.lin&&!pd.rect){
+      var etqDc=q.k==='cuadro'?'Ancho del símbolo en el plano (cm)':'Tamaño real del símbolo (cm)';
+      h+=fld('pt_dc',etqDc,q.dc>0?q.dc:null,'automático')+'<p class="note" style="margin:0 0 6px">Escribe la medida que quieras ('+(q.k==='cuadro'?'por ejemplo 40 cm de ancho':'por ejemplo 8 cm')+') y el símbolo se dibuja a esa escala real. Vacío = se ajusta solo al zoom.</p><div class="btns"><button data-a="ptdcall" title="Aplica este tamaño a todos los símbolos del mismo tipo">Igualar a todos de este tipo</button></div>';
+    }
     if(pd.rect){h+=fld('pt_lw','Largo (cm)',q.w>0?q.w:pd.w)+fld('pt_lf','Fondo (cm)',q.d>0?q.d:pd.d)+'<div class="btns tr">'+[[60,60],[120,30],[30,30],[60,120],[120,60],[60,30]].map(function(m){return '<button data-a="ptmed:'+m[0]+','+m[1]+'" title="Medida habitual">'+m[0]+'×'+m[1]+'</button>'}).join('')+'</div>'}
     if(pd.lin&&(q.k==='lineal'||q.k==='linealc'))h+=fld('pt_lt','Ancho de la luminaria (cm)',q.t>0?q.t:pd.t);
     if(pd.lin){
@@ -6868,7 +6875,6 @@ function panelSel(focus){
       h+='<div class="btns"><button data-a="ptrot">Girar 90°</button>'+(q.v==='ilum'?'<button data-a="ptnd">'+(q.nd?'Mostrar cotas':'Ocultar cotas')+'</button>':'')+'</div>';
     }
     if(q.v==='ilum'){
-      if(!pd.lin&&!pd.rect)h+=fld('pt_dc','Diámetro real del símbolo (cm)',q.dc>0?q.dc:null,'automático')+'<p class="note" style="margin:0 0 6px">Escribe la medida real (por ejemplo 8 cm de un foco) y el símbolo se dibuja a escala; si lo dejas vacío, se ajusta solo al zoom.</p>';
       h+='<div class="lab">Tamaño del símbolo: ×'+(q.sz||1)+'</div><div class="btns"><button data-a="ptsm">Más pequeño</button><button data-a="ptbg">Más grande</button></div><div class="btns"><button data-a="ptsall">Igualar a todas de este tipo</button></div>';
       var from=cnList().filter(function(c){return c.b===q.id}).map(function(c){return (swTagMap()[c.a]||{}).tag}).filter(Boolean);
       h+='<p class="note">'+(from.length?'Se enciende desde '+from.join(', '):'Sin encendido unido.')+'</p>';
@@ -7361,6 +7367,7 @@ function doAction(a,el){
     commit();panelSel();toast(cambios?'Contorno enderezado':'Ya estaba recto, o los lados van muy torcidos para enderezarlos');return;
   }
   if(a==='ptsm'||a==='ptbg'){var qz=by(st.v.pts,s.id);snap();qz.sz=Math.max(0.4,Math.min(4,Math.round((qz.sz||1)*(a==='ptbg'?1.25:0.8)*100)/100));commit();return}
+  if(a==='ptdcall'&&s.t==='pt'){var qd0=by(st.v.pts,s.id);if(qd0){snap();st.v.pts.forEach(function(q){if(q.v===qd0.v&&q.k===qd0.k){if(qd0.dc>0)q.dc=qd0.dc;else delete q.dc}});commit();toast('Igualados');return}}
   if(a==='ptsall'){var q0=by(st.v.pts,s.id);snap();st.v.pts.forEach(function(q){if(q.v==='ilum'&&(q.lid||('k:'+q.k))===(q0.lid||('k:'+q0.k))){q.sz=q0.sz||1;if(q0.dc>0)q.dc=q0.dc;else delete q.dc}});commit();return}
   if(a==='ptnd'){var q1=by(st.v.pts,s.id);snap();q1.nd=q1.nd?0:1;commit();return}
   if(a==='cnstart'){st.cnFrom=s.id;st.tool='cn';toolbar();hint();render();toast('Toca las luminarias que enciende');return}
