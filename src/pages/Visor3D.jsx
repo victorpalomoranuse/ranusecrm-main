@@ -4027,12 +4027,57 @@ export default function Visor3D({ cliente = false }) {
     const sala = salaBajoCamara(); if (sala) L.push('La cámara está ahora en: ' + sala + '.');
     const f = await fichaMateriales().catch(() => ({ materiales: [], inventario: [] }));
     if (f.materiales?.length) L.push('Acabados de superficies: ' + f.materiales.map(m => m.zona + ' → ' + m.descr).join(' | ') + '.');
+    try { L.push('ILUMINACIÓN:\n' + iluminacionTexto()); } catch { /* sin datos de luz */ }
     if (f.inventario?.length) L.push('Equipamiento y objetos que EXISTEN: ' + f.inventario.join('; ') + '.');
     else L.push('No hay equipamiento ni objetos colocados todavía.');
     return { texto: L.join('\n').slice(0, 5500) };
   };
+  // Iluminación real del modelo para la IA: luminarias agrupadas (tipo, lúmenes, kelvin, apertura, altura), tiras y carriles por metros, entradas de luz natural,
+  // hora del sol y un cálculo orientativo de lux medios. Es lo que permite que la IA reproduzca los focos y la luz natural sin inventarlos.
+  const iluminacionTexto = () => {
+    const HT = api3d.current.modelo?.altura || 260, NOM = { foco: 'foco empotrado', plaf: 'plafón', spot: 'spot de carril orientable', spotl: 'spot lineal de carril', colg: 'luminaria colgante', aplq: 'aplique de pared', pie: 'lámpara de pie', suel: 'empotrado de suelo', esp: 'luz de espejo', mue: 'luz de mueble', carril: 'carril electrificado', led: 'tira LED', lineal: 'luminaria lineal', linealc: 'luminaria lineal colgada' };
+    const ALT = { foco: HT - 1, plaf: HT - 1, colg: HT - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: HT - 6, spotl: HT - 6 };
+    const grupos = new Map(); let lmTotal = 0, nTotal = 0;
+    lucesPl.forEach(l0 => {
+      const l = { ...l0, ...(luzOver[l0.id] || {}) }, aj = lucesAj[l.id] || {}, cat = lumCat.find(c => c.id === l.lid);
+      const lm = Math.round(aj.lm ?? (l.lm || cat?.lm || 800)), K = Math.round(aj.k ?? (cat?.k || 3000)), ap = Math.round(aj.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60));
+      if (l.vs) {
+        let m = 0; for (let i = 0; i < l.vs.length - 1; i++) m += Math.hypot(l.vs[i + 1][0] - l.vs[i][0], l.vs[i + 1][1] - l.vs[i][1]) / 100;
+        if (m < 0.05) return;
+        const clave = [l.kid, lm, K, Math.round(l.h ?? HT)].join('|'), g = grupos.get(clave) || { l, lm, K, m: 0, n: 0, lineal: true };
+        g.m += m; g.n++; grupos.set(clave, g);
+        if (l.kid !== 'carril') lmTotal += lm * m; return;
+      }
+      const h = Math.round(l.h ?? ALT[l.kid] ?? HT), proy = (l.kid === 'aplq' || l.kid === 'esp') ? (aj.proy || 'arriba_abajo') : '';
+      const clave = [l.kid, lm, K, ap, h, proy].join('|'), g = grupos.get(clave) || { l, lm, K, ap, h, proy, n: 0 };
+      g.n++; grupos.set(clave, g); lmTotal += lm; nTotal++;
+    });
+    const L = [];
+    const PROY = { arriba_abajo: 'luz hacia arriba y hacia abajo', arriba: 'luz hacia arriba', abajo: 'luz hacia abajo', difusa: 'luz difusa' };
+    [...grupos.values()].forEach(g => {
+      const nom = NOM[g.l.kid] || g.l.kid;
+      if (g.lineal) L.push((g.l.kid === 'carril' ? 'Carril electrificado' : 'Tira o luminaria lineal (' + nom + ')') + ': ' + (Math.round(g.m * 10) / 10) + ' m en total' + (g.l.kid === 'carril' ? '' : ', ' + g.lm + ' lm por metro, ' + g.K + ' K') + ', a ' + Math.round(g.l.h ?? HT) + ' cm de altura.');
+      else L.push(g.n + '× ' + nom + ': ' + g.lm + ' lm, ' + g.K + ' K, apertura del haz ' + g.ap + '°, a ' + g.h + ' cm de altura' + (g.proy ? ', ' + (PROY[g.proy] || g.proy) : '') + '.');
+    });
+    if (!L.length) L.push('No hay luminarias artificiales colocadas: la luz es solo natural.');
+    const mod = api3d.current.modelo, area = pts => Math.abs(pts.reduce((a, p, i) => { const q = pts[(i + 1) % pts.length]; return a + (p[0] * q[1] - q[0] * p[1]); }, 0)) / 2 / 1e4;
+    const m2 = (mod?.plantas || (mod ? [mod] : [])).reduce((a, pl) => a + (pl.salas || []).reduce((b, sa) => b + (sa.pts?.length >= 3 ? area(sa.pts) : 0), 0), 0);
+    if (lmTotal > 0 && m2 > 0) L.push('Flujo luminoso artificial total ≈ ' + Math.round(lmTotal) + ' lm sobre ≈ ' + Math.round(m2) + ' m² (unos ' + Math.round((lmTotal * 0.45) / m2) + ' lux de media con las luces encendidas): la estancia debe verse con esa cantidad de luz, ni más ni menos.');
+    if (ambiente.kLuces) L.push('Temperatura de color global de las luces forzada a ' + ambiente.kLuces + ' K.');
+    // entradas de luz natural
+    const huecos = [];
+    (mod?.plantas || (mod ? [mod] : [])).forEach(pl => (pl.muros || []).forEach(mu => (mu.ab || []).forEach(a => {
+      const txt = ((a.nm || '') + ' ' + (a.mat || '') + ' ' + (a.tip || '')).toLowerCase();
+      if (/ventan|ventanal|cristal|vidrio|escaparate|lucernar/.test(txt)) huecos.push((a.nm || a.tip || 'hueco acristalado') + ' de ' + Math.round(a.w) + '×' + Math.round(a.h) + ' cm, antepecho a ' + Math.round(a.sill || 0) + ' cm');
+    })));
+    L.push(huecos.length ? 'Entradas de luz natural (huecos acristalados): ' + huecos.join('; ') + '.' : 'No hay huecos acristalados dibujados: no entra luz natural.');
+    const hh = Math.floor(hora), mm = Math.round((hora - hh) * 60);
+    L.push(ambiente.solOn === false ? 'Sin sol directo (cielo cubierto).' : 'Hora del día: ' + hh + ':' + String(mm).padStart(2, '0') + ' (sol de esa hora entrando por los huecos).');
+    return L.join('\n');
+  };
   // Ficha de materiales editable (en el cuadro del render con IA): cada superficie con su acabado, su código NCS, una nota y una foto de referencia propia.
   // Lo que se pone aquí manda sobre lo que la IA «cree ver». Los cambios (menos las fotos) se recuerdan por plano en este navegador.
+  const [iaConLuz, setIaConLuz] = useState(true);   // el render con IA recibe la iluminación real del modelo
   const [fichaIA, setFichaIA] = useState(null);
   const [fichaCargando, setFichaCargando] = useState(false);
   const claveFicha = r => r.zona + '|' + (r.hex || r.descr);
@@ -4085,7 +4130,7 @@ export default function Visor3D({ cliente = false }) {
       restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix();
       const meta = metaActual(txt);
       const ficha = await (fichaIA && !opc.autoGuardar ? Promise.resolve(compilaFicha()) : fichaMateriales()).catch(() => ({}));
-      const r = await api.post('/render-ia', { imagen, ...txt, ...ficha }, { timeout: 180000 });
+      const r = await api.post('/render-ia', { imagen, ...txt, ...ficha, iluminacion: iaConLuz ? iluminacionTexto() : undefined }, { timeout: 180000 });
       if (opc.autoGuardar) { await guardarRender('ia', r.data.imagen, meta, opc.nombre); setIa(null); return true; }
       setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen, meta, guardado: false });
       return true;
@@ -4465,6 +4510,8 @@ export default function Visor3D({ cliente = false }) {
                 <option value="gemini">Gemini (Google)</option>
               </select>
             </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer' }} title="Se le dice a la IA cuántas luminarias hay, de qué tipo, con cuántos lúmenes, kelvin, apertura y altura, y por dónde entra la luz natural"><input type="checkbox" checked={iaConLuz} onChange={e => setIaConLuz(e.target.checked)} /> 💡 Respetar la iluminación real del modelo (focos, lúmenes, huecos…)</label>
+            {iaConLuz && <details style={{ marginTop: 4, fontSize: 12 }}><summary style={{ cursor: 'pointer', opacity: 0.8 }}>Ver la iluminación que se le manda</summary><pre style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0', padding: 6, background: '#262422', borderRadius: 6, maxHeight: 170, overflow: 'auto' }}>{iluminacionTexto()}</pre></details>}
             <button style={{ ...btn, width: '100%', marginTop: 8, background: fichaIA ? '#2c2824' : '#2f5f8a' }} disabled={fichaCargando} onClick={() => (fichaIA ? setFichaIA(null) : cargarFicha())} title="Revisa cada superficie de la vista: acabado, código NCS, una nota o una foto de referencia">{fichaCargando ? 'Leyendo los materiales…' : fichaIA ? '▲ Ocultar la ficha de materiales' : '📋 Revisar materiales de esta vista (recomendado)'}</button>
             {fichaIA && (
               <div style={{ marginTop: 8 }}>

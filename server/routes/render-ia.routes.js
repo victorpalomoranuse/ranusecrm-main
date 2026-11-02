@@ -64,7 +64,7 @@ router.post('/', async (req, res) => {
   const clave = prov === 'openai' ? process.env.OPENAI_API_KEY : process.env.GEMINI_API_KEY;
   if (!clave) return res.status(503).json({ error: 'Falta configurar ' + (prov === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY') + ' en el servidor' });
   try {
-    const { imagen, estancia, estilo, paleta, extra, libertad, materiales, inventario, modo, ajustes } = req.body || {};
+    const { imagen, estancia, estilo, paleta, extra, libertad, materiales, inventario, modo, ajustes, iluminacion } = req.body || {};
     const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(String(imagen || ''));
     if (!m) return res.status(400).json({ error: 'Falta la imagen del visor (png, jpg o webp)' });
     const colores = Array.isArray(paleta) ? paleta.filter(p => p && p.nombre).slice(0, 12).map(p => `${String(p.nombre).slice(0, 40)}${p.hex ? ' (' + String(p.hex).slice(0, 9) + ')' : ''}`) : [];
@@ -91,12 +91,14 @@ router.post('/', async (req, res) => {
     ].filter(Boolean).join(' ');
     // Modo «panorama»: la imagen es una panorámica 360° equirrectangular (estirada a 3:2); se fotorrealiza sin cambiar la proyección
     const instPano = 'Esta imagen es una panorámica 360° equirrectangular de un interior, tal como la leen los visores 360 (la línea del horizonte recta en el centro, el suelo abajo y el techo arriba, deformada en los extremos). Conviértela en una fotografía profesional realista de interiorismo con luz natural cálida, sombras suaves, reflejos creíbles y materiales con textura real, MANTENIENDO EXACTAMENTE la misma proyección equirrectangular, el mismo encuadre completo, la misma distribución y la posición de cada elemento. El borde izquierdo y el derecho deben seguir encajando entre sí (es un círculo completo). No recortes, no cambies la perspectiva ni añadas bordes. ' + [NIVELES.fiel, extra ? String(extra).slice(0, 300) : ''].join(' ');
+    const txtLuz = typeof iluminacion === 'string' && iluminacion.trim() ? 'ILUMINACIÓN REAL DEL PROYECTO (reprodúcela con realismo físico y no la inventes): ' + iluminacion.trim().slice(0, 3500) + ' REGLAS DE LUZ: respeta el número, el tipo y la posición de las luminarias que se ven (no añadas luminarias que no existan ni apagues las que sí); cada foco o spot proyecta un haz con la apertura indicada y deja su cono de luz y su pared iluminada (scallop) coherentes con la altura de montaje; la intensidad y la temperatura de color de cada luz deben corresponder a los lúmenes y a los kelvin indicados (3000 K cálida, 4000 K neutra); la luz natural entra solo por los huecos indicados, con la dirección y la dureza que corresponde a la hora; las sombras deben ser coherentes con esas fuentes; no aclares ni oscurezcas la estancia por tu cuenta.' : '';
     const dom = (modo === 'mejora' || modo === 'panorama') ? [] : await coloresDominantes(Buffer.from(m[2], 'base64'));
     const txtDominantes = dom.length ? 'COLORES DOMINANTES DEL MODELO que debes respetar (color y % de la imagen): ' + dom.map(c => c.hex + ' (' + c.pct + '%)').join(', ') + '. Las paredes, el suelo y el techo deben seguir teniendo estos tonos.' : '';
     const instrucciones = modo === 'panorama' ? instPano : modo === 'mejora' ? instMejora : [
       'Convierte esta imagen de un modelo 3D de interiorismo en una fotografía profesional de revista de interiorismo y arquitectura: realista, nítida, con luz natural cálida, sombras suaves, reflejos creíbles, materiales con textura real y profundidad de campo, como hecha con una cámara réflex y un objetivo gran angular. Debe parecer una foto real, no un render ni una ilustración.',
       'REGLA DE COLOR (obligatoria): cada pared, suelo, techo, mueble y objeto debe conservar el MISMO color base que tiene en la imagen del modelo. Solo puedes variar su luminosidad por la luz y las sombras, nunca su tono: una pared clara sigue siendo clara y una oscura sigue siendo oscura. No cambies de color ninguna pared. Una superficie de color liso es PINTURA LISA y uniforme: no le añadas textura, desgaste, microcemento, manchas ni vetas.',
       txtDominantes,
+      txtLuz,
       NIVELES[nivel],
       colores.length ? 'Respeta con la máxima fidelidad estos colores y acabados: ' + colores.join('; ') + '.' : 'Mantén los colores de los materiales tal y como aparecen en la imagen.',
       txtMateriales,
