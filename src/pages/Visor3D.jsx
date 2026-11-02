@@ -1306,6 +1306,8 @@ export default function Visor3D({ cliente = false }) {
   const [marcaSel, setMarcaSel] = useState('');
   const [cargaSel, setCargaSel] = useState('');
   const [persona, setPersona] = useState(false);
+  const [velPersona, setVelPersona] = useState(() => { try { const v = parseFloat(localStorage.getItem('visor3dVelPersona')); return v >= 0.2 && v <= 8 ? v : 1.3; } catch { return 1.3; } }); // m/s al recorrer como persona
+  useEffect(() => { api3d.current.velPersona = velPersona; try { localStorage.setItem('visor3dVelPersona', String(velPersona)); } catch { /* sin almacenamiento */ } }, [velPersona]);
   const [sinGpu, setSinGpu] = useState(false);
   useEffect(() => { if (estado === 'cargando') return; let cerrado = false; try { cerrado = sessionStorage.getItem('visor3dSinGpuCerrado') === '1'; } catch { /* sin almacenamiento */ } setSinGpu(GL_SOFTWARE && !cerrado); }, [estado]);
   // Panel de Render (como el de D5): ajustes finos de la imagen final y botón de renderizar
@@ -1590,7 +1592,7 @@ export default function Visor3D({ cliente = false }) {
         if (teclas.has('w')) vM.add(vF); if (teclas.has('s')) vM.sub(vF); if (teclas.has('d')) vM.add(vR); if (teclas.has('a')) vM.sub(vR);
         { const jy = api3d.current.joy; if (jy) { vM.addScaledVector(vF, -jy.y); vM.addScaledVector(vR, jy.x); } }
         if (api3d.current.persona) vM.y = 0; else { if (teclas.has('e')) vM.y += 1; if (teclas.has('q')) vM.y -= 1; }
-        if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (api3d.current.persona ? (teclas.has('shift') ? 3.2 : 1.3) : (teclas.has('shift') ? 9 : 3))); if (api3d.current.persona && cliente) frenaMuros(api3d.current.modelo, cam.position, vM); cam.position.add(vM); ctrl.target.add(vM); }
+        if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (api3d.current.persona ? (api3d.current.velPersona || 1.3) * (teclas.has('shift') ? 2.5 : 1) : (teclas.has('shift') ? 9 : 3))); if (api3d.current.persona && cliente) frenaMuros(api3d.current.modelo, cam.position, vM); cam.position.add(vM); ctrl.target.add(vM); }
       }
       // mientras la cámara se mueve se dibuja a menor resolución y al parar vuelve a la normal: el movimiento va fluido aunque haya muchos modelos
       const movi = teclas.size > 0 || !!api3d.current.joy || ahora - ultMov < 180;
@@ -4082,6 +4084,15 @@ export default function Visor3D({ cliente = false }) {
       {barra2d}
       {barraAxo}
       <div ref={caja} data-vista="1" style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
+      {persona && !cliente && (
+        <div style={{ position: 'absolute', left: '50%', bottom: 16, transform: 'translateX(-50%)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(22,20,18,0.9)', color: '#fff', borderRadius: 20, padding: '6px 14px', fontSize: 12 }} title="Velocidad al andar con W A S D. Con Shift va 2,5 veces más rápido">
+          <span>🚶 Velocidad</span>
+          <input type="range" min="0.2" max="6" step="0.1" value={velPersona} onChange={e => setVelPersona(parseFloat(e.target.value))} style={{ width: 130 }} />
+          <b style={{ minWidth: 52 }}>{velPersona.toFixed(1)} m/s</b>
+          <button style={{ ...btn, padding: '1px 8px' }} onClick={() => setVelPersona(1.3)} title="Velocidad normal de paseo">Paseo</button>
+          <button style={{ ...btn, padding: '1px 8px' }} onClick={() => setVelPersona(3)} title="Rápido, para recorrer espacios grandes">Rápido</button>
+        </div>
+      )}
       {cliente && (
         <div data-vista="1" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', color: '#fff', fontFamily: 'system-ui, sans-serif', textShadow: '0 1px 6px rgba(0,0,0,0.7)' }}>
           <div style={{ position: 'absolute', left: 16, top: 14, right: 16 }}>
