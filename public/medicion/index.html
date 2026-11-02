@@ -2480,7 +2480,7 @@ function acabCodes(view){
   return m;
 }
 var PTK={
-  ilum:[{id:'foco',n:'Foco empotrado'},{id:'plaf',n:'Plafón de superficie'},{id:'colg',n:'Luminaria colgante'},{id:'aplq',n:'Aplique de pared',wall:1},{id:'pie',n:'Lámpara de pie'},{id:'esp',n:'Luz de espejo',wall:1},{id:'mue',n:'Luz de mueble o estantería'},{id:'suel',n:'Empotrado de suelo'},{id:'led',n:'Tira LED',lin:1},{id:'carril',n:'Carril de luz',lin:1},{id:'lineal',n:'Luminaria lineal',lin:1,t:6},{id:'linealc',n:'Lineal colgante',lin:1,t:6},{id:'panel',n:'Panel rectangular',rect:1,w:60,d:60}],
+  ilum:[{id:'foco',n:'Foco empotrado'},{id:'plaf',n:'Plafón de superficie'},{id:'colg',n:'Luminaria colgante'},{id:'aplq',n:'Aplique de pared',wall:1},{id:'pie',n:'Lámpara de pie'},{id:'esp',n:'Luz de espejo',wall:1},{id:'spot',n:'Spot orientable (de carril)'},{id:'mue',n:'Luz de mueble o estantería'},{id:'suel',n:'Empotrado de suelo'},{id:'led',n:'Tira LED',lin:1},{id:'carril',n:'Carril de luz',lin:1},{id:'lineal',n:'Luminaria lineal',lin:1,t:6},{id:'linealc',n:'Lineal colgante',lin:1,t:6},{id:'panel',n:'Panel rectangular',rect:1,w:60,d:60}],
   elec:[{id:'enchufe',n:'Enchufe',wall:1,h:30},{id:'inter',n:'Interruptor',wall:1,h:110},{id:'conm',n:'Conmutador',wall:1,h:110},{id:'datos',n:'Toma de datos',wall:1,h:30},{id:'tv',n:'Toma de TV',wall:1,h:110},{id:'fuerza',n:'Toma de fuerza',wall:1,h:30},{id:'cuadro',n:'Cuadro eléctrico',wall:1,h:150}]
 };
 function ptDef(k){for(var g in PTK)for(var i=0;i<PTK[g].length;i++)if(PTK[g][i].id===k)return PTK[g][i];return null}
@@ -2493,6 +2493,7 @@ function ptSym(k,col,u){
   else if(k==='plaf')o=C(r)+C(r*0.45,1);
   else if(k==='colg')o='<circle cx="0" cy="0" r="'+f2(r*1.6)+'" fill="none" stroke="'+col+'" stroke-width="'+f2(0.8*u)+'" stroke-dasharray="'+f2(2*u)+' '+f2(1.5*u)+'"/>'+C(r*0.8)+C(r*0.25,1);
   else if(k==='aplq')o=C(4.5*u,0,-2*u)+L(4.5*u,-6.5*u,4.5*u,6.5*u,1.9);
+  else if(k==='spot')o=C(r*0.7)+C(r*0.25,1)+L(r*0.7,-r*0.7,r*1.5,-r*1.5,1.3);
   else if(k==='esp')o='<rect x="'+f2(-2*u)+'" y="'+f2(-7*u)+'" width="'+f2(4*u)+'" height="'+f2(14*u)+'" '+A+'/><line x1="'+f2(-2*u)+'" y1="'+f2(-7*u)+'" x2="'+f2(2*u)+'" y2="'+f2(-3*u)+'" fill="none" stroke="'+col+'" stroke-width="'+f2(0.7*u)+'"/>'+C(2*u,1,5.5*u)+C(2.8*u,0,5.5*u);
   else if(k==='mue')o='<rect x="'+f2(-r)+'" y="'+f2(-r*0.7)+'" width="'+f2(2*r)+'" height="'+f2(1.4*r)+'" '+A+'/>'+C(r*0.35,1)+L(-r*0.7,r*0.7+1.6*u,r*0.7,r*0.7+1.6*u,0.8);
   else if(k==='pie')o=C(r*0.8)+C(r*0.28,1)+L(-r*1.3,-r*1.3,-r*0.95,-r*0.95)+L(r*1.3,-r*1.3,r*0.95,-r*0.95)+L(-r*1.3,r*1.3,-r*0.95,r*0.95)+L(r*1.3,r*1.3,r*0.95,r*0.95);
@@ -2545,17 +2546,32 @@ function lumDims(q){
   });
   return [res.x,res.y].filter(Boolean);
 }
+function lumKey(q,d,mq){return (q.lid||('k:'+q.k))+'|'+mq+(d.lin?'|'+ptPerfil(q):'')+(q.nm?'|n:'+q.nm:'')}
+/* la misma luminaria lleva la misma etiqueta (L1, L2…) en todas las plantas: el orden sale de recorrer todas las plantas */
+function lumTagsGlobal(){
+  var raiz=st.v._raiz||st.v,pl=[],orden=[],vistos={};
+  if(raiz.pisos&&raiz.pisos.length>1)raiz.pisos.forEach(function(p){var dt=p.id===raiz.piso?raiz:(p.b||null);if(dt&&dt.pts)pl.push(dt.pts)});
+  else pl.push((raiz.pts)||[]);
+  pl.forEach(function(pts){pts.forEach(function(q){
+    if(q.v!=='ilum'||q.s==='dem')return;
+    var d=ptDef(q.k);if(!d)return;
+    var key=lumKey(q,d,ptMontAny(q));
+    if(vistos[key]==null){vistos[key]=orden.length;orden.push(key)}
+  })});
+  return vistos;
+}
 function lumGroups(){
-  var gs=[],ix={};
+  var gs=[],ix={},glob=lumTagsGlobal();
   st.v.pts.forEach(function(q){
     if(q.v!=='ilum'||q.s==='dem')return;
     var d=ptDef(q.k);if(!d)return;
-    var mq=ptMontAny(q),key=(q.lid||('k:'+q.k))+'|'+mq+(d.lin?'|'+ptPerfil(q):'')+(q.nm?'|n:'+q.nm:'');
+    var mq=ptMontAny(q),key=lumKey(q,d,mq);
     if(ix[key]==null){ix[key]=gs.length;gs.push({key:key,nm:q.nm||'',lid:q.lid||null,k:q.k,mo:mq,pf:d.lin?ptPerfil(q):'',n:0,len:0,ids:[]})}
     var g=gs[ix[key]];g.n++;g.ids.push(q.id);
     if(d.lin)g.len+=ptLen(q);
   });
-  gs.forEach(function(g,i){g.tag='L'+(i+1);g.cat=g.lid?lumById(g.lid):null});
+  gs.forEach(function(g,i){var gi=glob[g.key];g.gi=gi!=null?gi:1000+i;g.tag='L'+((gi!=null?gi:i)+1);g.cat=g.lid?lumById(g.lid):null});
+  gs.sort(function(a,b){return a.gi-b.gi});
   return gs;
 }
 function lumTagMap(){var m={};lumGroups().forEach(function(g){g.ids.forEach(function(id){m[id]=g.tag})});return m}
@@ -3966,11 +3982,7 @@ function scene0(C,k,view,o){
       if(r.k!=='s')return;
       var pp=spPts(r);if(!pp)return;
       h+='<polygon points="'+pp.map(function(q){return f2(q.x)+','+f2(q.y)}).join(' ')+'" style="fill:none;stroke:'+C.dim+';stroke-width:'+f2(1.1*px)+';stroke-dasharray:'+f2(7*px)+' '+f2(4*px)+';stroke-linejoin:round;opacity:.85"/>';
-      var etCorte=(cz[r.mat]||'')+' · corte de suelo';
-      if(!o.nonum){ /* la etiqueta busca el sitio que menos pisa máquinas, etiquetas y muros */
-        var pc=corteEtqPos(pp,px,etqPl0,etCorte.length);
-        zlab+=txt(C,px,pc.x,pc.y+3*px,etCorte,C.dim,o.flat?8.5:9,500);
-      }
+      /* solo la línea de corte: sin palabra ni código (no aportaban nada y estorbaban) */
     });
   }
   if(view==='distrib'||view==='actual'||view==='demol'){
@@ -6703,7 +6715,15 @@ function panelSel(focus){
       var nvs=ptVerts(q).length;
       h+='<label class="fld"><span>Dónde va</span><select data-t="pt_mo">'+MONT.map(function(m){return '<option value="'+m[0]+'"'+(ptMont(q)===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('')+'</select></label>';
       if(q.k==='led')h+=perfilSel('pt_pf',ptPerfil(q),'Perfil');
+      h+=fld('pt_ll','Longitud total (cm)',Math.round(ptLen(q)))+'<label class="fld"><span>Al cambiarla, queda fijo</span><select data-t="pt_anc"><option value="a"'+(st.ptAnc!=='b'?' selected':'')+'>El inicio (se mueve el final)</option><option value="b"'+(st.ptAnc==='b'?' selected':'')+'>El final (se mueve el inicio)</option></select></label>';
       h+='<p class="note">Longitud: '+m2(ptLen(q)/100)+' m · '+nvs+' puntos'+(nvs>2?' (polilínea)':' (recta)')+'.</p>';
+      if(q.k==='carril'){
+        var hijos=st.v.pts.filter(function(z){return z.rc===q.id}),nsp=hijos.filter(function(z){return z.k==='spot'}).length,nli=hijos.filter(function(z){return z.k==='lineal'}).length;
+        h+='<div class="lab" style="margin-top:12px">Llenar el carril</div><p class="note" style="margin:0 0 6px">Reparte spots o luminarias lineales a lo largo del carril. Después puedes mover, copiar o borrar cada una.</p>';
+        h+=fld('rl_n','Número de spots',st.rlN||4)+'<div class="btns"><button data-a="rlspots">Rellenar con spots</button></div>';
+        h+=fld('rl_l','Largo de cada luminaria lineal (cm)',st.rlL||60)+fld('rl_g','Hueco entre luminarias (cm)',st.rlG==null?0:st.rlG)+'<div class="btns"><button data-a="rllineal">Rellenar con luminarias lineales</button></div>';
+        if(nsp||nli)h+='<p class="note">En este carril: '+(nsp?nsp+' spot'+(nsp===1?'':'s'):'')+(nsp&&nli?' · ':'')+(nli?nli+' luminaria'+(nli===1?'':'s')+' lineal'+(nli===1?'':'es'):'')+'.</p><div class="btns"><button class="danger" data-a="rlquitar">Quitar lo que puse en este carril</button></div>';
+      }
       h+='<p class="note" style="margin:0 0 6px">Arrastra un punto para moverlo, o la tira entera desde su línea. Con «Añadir puntos» tocas un tramo para crear uno nuevo.</p>';
       h+='<div class="btns"><button data-a="ptadd" aria-pressed="'+!!st.ptAdd+'">Añadir puntos: '+(st.ptAdd?'sí (toca un tramo)':'no')+'</button>'+(st.ptVsel!=null&&nvs>2?'<button data-a="ptdelv">Quitar el punto elegido</button>':'')+(nvs>2?'<button data-a="ptrecta">Dejarla recta (solo los extremos)</button>':'')+'</div>';
     }
@@ -7003,6 +7023,17 @@ function applyField(key,val,adv,raw){
     snap();zq.h=n;commit(false);
   }else if(s.t==='pt'){
     var qp=by(st.v.pts,s.id);if(!qp)return;
+    if(key==='rl_n'||key==='rl_l'||key==='rl_g'){
+      if(!(n>=(key==='rl_g'?0:1)&&n<=(key==='rl_n'?60:2000))){toast('Escribe un valor válido');return}
+      if(key==='rl_n')st.rlN=Math.round(n);else if(key==='rl_l')st.rlL=n;else st.rlG=n;
+      return;
+    }
+    if(key==='pt_ll'){
+      var vsl=ptVerts(qp),tl0=ptLen(qp);
+      if(!(n>=5&&n<=100000)||!(tl0>0)){toast('Escribe una longitud válida (5 cm o más)');return}
+      var kf=n/tl0,anc=st.ptAnc==='b'?vsl[vsl.length-1]:vsl[0];
+      snap();ptSetVerts(qp,vsl.map(function(r){return {x:anc.x+(r.x-anc.x)*kf,y:anc.y+(r.y-anc.y)*kf}}));commit(false);panelSel();return;
+    }
     if(key==='pt_dc'){
       if(String(val).trim()===''){snap();delete qp.dc;commit(false);return}
       if(!(n>=1&&n<=200)){toast('Escribe un diámetro entre 1 y 200 cm');return}
@@ -7135,6 +7166,30 @@ function doAction(a,el){
   if(a==='pstate'){var p=pl(s.id);snap();p.s=sv;commit();return}
   if(a==='oside'){var o2=opn(s.id);snap();o2.side=o2.side>=0?-1:1;commit();return}
   if(a==='oflip'){var o3=opn(s.id);snap();o3.flip=!o3.flip;commit();return}
+  if((a==='rlspots'||a==='rllineal'||a==='rlquitar')&&s.t==='pt'){
+    var qc=by(st.v.pts,s.id);if(!qc||qc.k!=='carril')return;
+    if(a==='rlquitar'){snap();st.v.pts=st.v.pts.filter(function(z){return z.rc!==qc.id});commit();panelSel();return}
+    var vs=ptVerts(qc),tot=ptLen(qc);if(!(tot>0))return;
+    function en(d){var acc=0,i;for(i=1;i<vs.length;i++){var sl=Math.hypot(vs[i].x-vs[i-1].x,vs[i].y-vs[i-1].y);if(d<=acc+sl||i===vs.length-1){var t=sl?Math.max(0,Math.min(1,(d-acc)/sl)):0;return {x:vs[i-1].x+(vs[i].x-vs[i-1].x)*t,y:vs[i-1].y+(vs[i].y-vs[i-1].y)*t,i:i}}acc+=sl}return {x:vs[0].x,y:vs[0].y,i:1}}
+    var nd0=nd(qc.n),nuevos=[];
+    if(a==='rlspots'){
+      var nS=Math.max(1,Math.min(60,Math.round(st.rlN||4)));
+      for(var k=0;k<nS;k++){var pS=en(tot*(k+0.5)/nS);nuevos.push({id:uid('l'),n:qc.n,dx:f2(pS.x-nd0.x),dy:f2(pS.y-nd0.y),k:'spot',a:0,h:null,v:'ilum',mo:ptMont(qc),rc:qc.id,nd:true})}
+    }else{
+      var Ll=Math.max(10,st.rlL||60),Gg=Math.max(0,st.rlG==null?0:st.rlG),d0=0,tk=ptDef('lineal').t;
+      while(d0+Ll<=tot+0.5&&nuevos.length<200){
+        var d1=Math.min(tot,d0+Ll),pa=en(d0),pb=en(d1),sub=[{x:pa.x,y:pa.y}],ii;
+        for(ii=pa.i;ii<pb.i;ii++)sub.push({x:vs[ii].x,y:vs[ii].y});
+        sub.push({x:pb.x,y:pb.y});
+        var np={id:uid('l'),n:qc.n,dx:0,dy:0,dx2:0,dy2:0,k:'lineal',a:0,h:null,v:'ilum',mo:ptMont(qc),rc:qc.id,t:tk};
+        ptSetVerts(np,sub);nuevos.push(np);d0=d1+Gg;
+      }
+    }
+    if(!nuevos.length){toast('No cabe ninguna con esa medida');return}
+    snap();st.v.pts=st.v.pts.filter(function(z){return !(z.rc===qc.id&&z.k===(a==='rlspots'?'spot':'lineal'))});
+    nuevos.forEach(function(z){if(qc.s)z.s=qc.s;st.v.pts.push(z)});
+    commit();panelSel();toast(nuevos.length+(a==='rlspots'?' spots':' luminarias lineales')+' en el carril');return;
+  }
   if(a==='ptsm'||a==='ptbg'){var qz=by(st.v.pts,s.id);snap();qz.sz=Math.max(0.4,Math.min(4,Math.round((qz.sz||1)*(a==='ptbg'?1.25:0.8)*100)/100));commit();return}
   if(a==='ptsall'){var q0=by(st.v.pts,s.id);snap();st.v.pts.forEach(function(q){if(q.v==='ilum'&&(q.lid||('k:'+q.k))===(q0.lid||('k:'+q0.k))){q.sz=q0.sz||1;if(q0.dc>0)q.dc=q0.dc;else delete q.dc}});commit();return}
   if(a==='ptnd'){var q1=by(st.v.pts,s.id);snap();q1.nd=q1.nd?0:1;commit();return}
@@ -7256,6 +7311,7 @@ $('side').addEventListener('change',function(e){
   var t=e.target.getAttribute&&e.target.getAttribute('data-t');
   if(t&&t.indexOf('ms_')===0&&st.multi&&st.multi.length){medidasMulti(t,e.target);return}
   if(t&&t.indexOf('m_')===0&&st.multi&&st.multi.length){multiEdit(t,e.target);return}
+  if(t==='pt_anc'){st.ptAnc=e.target.value==='b'?'b':'a';return}
   if(t==='pt_nm'&&st.sel&&st.sel.t==='pt'){var qn=by(st.v.pts,st.sel.id);if(qn){snap();var vn=String(e.target.value||'').trim().slice(0,80);if(vn)qn.nm=vn;else delete qn.nm;commit(false)}return}
   if(t==='pt_lid'&&st.sel&&st.sel.t==='pt'){
     var ql=by(st.v.pts,st.sel.id);if(!ql)return;snap();
@@ -10460,7 +10516,8 @@ function pisoVisita(v,p){
   var o={};Object.keys(v).forEach(function(k){if(PISO_KEYS.indexOf(k)<0)o[k]=v[k]});
   var b=p.b||{};Object.keys(b).forEach(function(k){o[k]=b[k]});
   o.planta=p.nombre;o.pisos=null;o.piso=null;if(!o.altura)o.altura=260;
-  return norm(o);
+  var ov=norm(o);try{Object.defineProperty(ov,'_raiz',{value:v,enumerable:false,configurable:true})}catch(e){}
+  return ov;
 }
 function pisosVisitas(v){return pisosOn(v)?v.pisos.map(function(p){return pisoVisita(v,p)}):[v]}
 function pisoGuardar(){
