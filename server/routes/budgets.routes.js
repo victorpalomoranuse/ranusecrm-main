@@ -685,66 +685,170 @@ router.get('/:id/excel-proveedor', async (req, res) => {
   try {
     const { data: budget, error } = await supabase
       .from('budgets')
-      .select('budget_number, project:client_projects(project_name), items:budget_items(*)')
+      .select('budget_number, project:client_projects(project_name, client_name), items:budget_items(*)')
       .eq('id', req.params.id)
       .single();
     if (error || !budget) return res.status(404).json({ error: 'Presupuesto no encontrado' });
 
     const items = (budget.items || []).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Solicitud de precios');
-    const cols = [
-      ['Nº', 6], ['Capítulo', 22], ['Producto', 42], ['Marca', 16], ['Medidas (L x A x H)', 20],
-      ['Color bastidor', 16], ['Color acolchado', 16], ['Tipo acolchado', 16], ['Cantidad', 10], ['Unidad', 9],
-      ['Precio unitario proveedor (€)', 18], ['Total proveedor (€)', 16], ['Observaciones proveedor', 30],
-    ];
-    ws.columns = cols.map(([, width]) => ({ width }));
+    const ws = wb.addWorksheet('Solicitud de precios', { views: [{ showGridLines: false }] });
 
-    ws.mergeCells(1, 1, 1, cols.length);
-    ws.getCell('A1').value = `Solicitud de precios · Ranuse Design · Presupuesto ${budget.budget_number || ''}${budget.project?.project_name ? ' · ' + budget.project.project_name : ''}`;
-    ws.getCell('A1').font = { bold: true, size: 13 };
-    ws.mergeCells(2, 1, 2, cols.length);
-    ws.getCell('A2').value = 'Por favor, rellena las columnas en amarillo (precio unitario y observaciones). El total se calcula solo.';
-    ws.getCell('A2').font = { italic: true, color: { argb: 'FF666666' } };
+    // Misma estética que el PDF del presupuesto: bandas de capítulo en los colores de Ranuse,
+    // número de partida en gris, descripción redactada para el cliente y filas con fondo suave alterno.
+    const COL_CAP1 = 'FFBEB0A2', COL_CAP2 = 'FF8B7F74', COL_ZEBRA = 'FFFAF9F8', COL_CABECERA = 'FFF5F3F0', COL_INPUT = 'FFFFF3B0';
+    const FUENTE = 'Arial';
+    const anchos = [6, 62, 24, 9, 8, 15, 15, 28];
+    ws.columns = anchos.map(w => ({ width: w }));
+    const N = anchos.length;
+    const fino = { style: 'thin', color: { argb: 'FFEEEEEE' } };
 
-    const head = ws.getRow(4);
-    cols.forEach(([label], i) => { head.getCell(i + 1).value = label; });
-    head.eachCell(c => {
-      c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2B2B2B' } };
-      c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    ws.mergeCells(1, 1, 1, N);
+    const t = ws.getCell('A1');
+    t.value = 'PRESUPUESTO · SOLICITUD DE PRECIOS';
+    t.font = { name: FUENTE, bold: true, size: 14, color: { argb: 'FF2B2B2B' } };
+    ws.getRow(1).height = 26;
+    ws.mergeCells(2, 1, 2, N);
+    const datos = [budget.project?.project_name, budget.budget_number ? 'Nº ' + budget.budget_number : ''].filter(Boolean).join('  ·  ');
+    ws.getCell('A2').value = 'Ranuse Design' + (datos ? '  ·  ' + datos : '');
+    ws.getCell('A2').font = { name: FUENTE, size: 10, color: { argb: 'FF777777' } };
+    ws.mergeCells(3, 1, 3, N);
+    ws.getCell('A3').value = 'Rellena solo las celdas en amarillo (precio unitario y observaciones). El total de cada partida, los subtotales y el total final se calculan solos.';
+    ws.getCell('A3').font = { name: FUENTE, italic: true, size: 9, color: { argb: 'FF888888' } };
+
+    const head = ws.getRow(5);
+    ['Nº', 'DESCRIPCIÓN', 'MEDIDAS / ACABADOS', 'CANT.', 'UD', 'PRECIO UNIT. (€)', 'TOTAL (€)', 'OBSERVACIONES'].forEach((label, i) => {
+      const cell = head.getCell(i + 1);
+      cell.value = label;
+      cell.font = { name: FUENTE, bold: true, size: 8, color: { argb: 'FF888888' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COL_CABECERA } };
+      cell.alignment = { vertical: 'middle', horizontal: i >= 3 && i <= 6 ? 'right' : 'left' };
     });
-    head.height = 32;
+    head.height = 20;
 
-    let capitulo = '';
+    const nivelDe = it => (Number(it.nivel_capitulo) === 2 ? 2 : 1);
+    // Filas de partidas y de capítulos, para poder poner las sumas por capítulo con fórmula
+    const filas = [];
+    let r = 6;
     let n = 0;
-    let r = 5;
-    items.forEach(i => {
-      if (i.is_chapter_header) { capitulo = i.name || ''; return; }
+    items.forEach((i, idx) => {
+      if (i.is_chapter_header) { filas.push({ tipo: 'cap', it: i, row: r, nv: nivelDe(i), idx }); r += 1; return; }
       n += 1;
-      const medidas = [i.longitud, i.ancho, i.altura].filter(Boolean).join(' x ');
-      const row = ws.getRow(r);
-      [n, capitulo, i.name, i.brand, medidas, i.color_bastidor, i.color_acolchado, i.tipo_acolchado, Number(i.quantity) || 1, i.unit || 'ud'].forEach((v, k) => { row.getCell(k + 1).value = v ?? ''; });
-      row.getCell(12).value = { formula: `IF(K${r}="","",I${r}*K${r})` };
-      row.getCell(11).numFmt = '#,##0.00';
-      row.getCell(12).numFmt = '#,##0.00';
-      [11, 13].forEach(c => { row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3B0' } }; });
-      row.eachCell({ includeEmpty: true }, c => {
-        c.border = { top: { style: 'thin', color: { argb: 'FFDDDDDD' } }, bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } }, left: { style: 'thin', color: { argb: 'FFDDDDDD' } }, right: { style: 'thin', color: { argb: 'FFDDDDDD' } } };
-        c.alignment = { vertical: 'middle', wrapText: true };
-      });
+      filas.push({ tipo: 'par', it: i, row: r, n, idx });
       r += 1;
     });
 
-    ws.getCell(r + 1, 11).value = 'TOTAL';
-    ws.getCell(r + 1, 11).font = { bold: true };
-    ws.getCell(r + 1, 12).value = { formula: `SUM(L5:L${r - 1})` };
-    ws.getCell(r + 1, 12).font = { bold: true };
-    ws.getCell(r + 1, 12).numFmt = '#,##0.00';
-    ws.views = [{ state: 'frozen', ySplit: 4 }];
+    const sumaDe = filasG => {
+      const o = [...filasG].sort((a, b) => a - b), runs = [];
+      o.forEach(x => { const l = runs[runs.length - 1]; if (l && x === l[1] + 1) l[1] = x; else runs.push([x, x]); });
+      return runs.map(([a, b]) => (a === b ? 'G' + a : 'G' + a + ':G' + b)).join(',');
+    };
+    const lineasDe = (txt, ancho) => String(txt || '').split('\n').reduce((s, l) => s + Math.max(1, Math.ceil(l.length / ancho)), 0);
+    filas.forEach(fl => {
+      const row = ws.getRow(fl.row);
+      if (fl.tipo === 'cap') {
+        const sangria = fl.nv === 2 ? 1 : 0;
+        ws.mergeCells(fl.row, 1 + sangria, fl.row, 5);
+        const cell = row.getCell(1 + sangria);
+        cell.value = String(fl.it.name || '').toUpperCase();
+        for (let k = 1 + sangria; k <= N; k += 1) {
+          const cc = row.getCell(k);
+          cc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fl.nv === 2 ? COL_CAP2 : COL_CAP1 } };
+          cc.font = { name: FUENTE, bold: true, size: fl.nv === 2 ? 9 : 10, color: { argb: 'FFFFFFFF' } };
+          cc.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+        }
+        // Suma del capítulo: hasta el siguiente capítulo del mismo nivel o superior
+        const hijas = [];
+        for (let j = fl.idx + 1; j < items.length; j += 1) {
+          const o = items[j];
+          if (o.is_chapter_header) { if (nivelDe(o) <= fl.nv) break; continue; }
+          const pf = filas.find(x => x.idx === j);
+          if (pf) hijas.push(pf.row);
+        }
+        if (hijas.length) {
+          row.getCell(7).value = { formula: 'SUM(' + sumaDe(hijas) + ')' };
+          row.getCell(7).numFmt = '#,##0.00';
+          row.getCell(7).alignment = { vertical: 'middle', horizontal: 'right' };
+          row.getCell(6).value = 'SUBTOTAL';
+          row.getCell(6).alignment = { vertical: 'middle', horizontal: 'right' };
+        }
+        row.height = fl.nv === 2 ? 20 : 24;
+        return;
+      }
+      const i = fl.it;
+      const texto = i.descripcion_cliente || i.name || '';
+      const extra = i.accessories_note ? '\nIncluye: ' + i.accessories_note : '';
+      const medidas = [
+        [i.longitud, i.ancho, i.altura].filter(Boolean).join(' x '),
+        i.color_bastidor ? 'Bast: ' + i.color_bastidor : '',
+        i.color_acolchado ? 'Acol: ' + i.color_acolchado : '',
+        i.tipo_acolchado ? 'Tipo: ' + i.tipo_acolchado : '',
+        i.brand ? i.brand : '',
+      ].filter(Boolean).join('\n');
+      row.getCell(1).value = fl.n;
+      row.getCell(2).value = texto + extra;
+      row.getCell(3).value = medidas;
+      row.getCell(4).value = Number(i.quantity) || 1;
+      row.getCell(5).value = i.unit || 'ud';
+      row.getCell(7).value = { formula: 'IF(F' + fl.row + '="","",D' + fl.row + '*F' + fl.row + ')' };
+      row.getCell(6).numFmt = '#,##0.00';
+      row.getCell(7).numFmt = '#,##0.00';
+      for (let k = 1; k <= N; k += 1) {
+        const cc = row.getCell(k);
+        cc.border = { bottom: fino };
+        if (fl.n % 2 === 0) cc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COL_ZEBRA } };
+        cc.font = { name: FUENTE, size: 9, color: { argb: 'FF333333' } };
+        cc.alignment = { vertical: 'middle', wrapText: true, horizontal: k >= 4 && k <= 7 ? 'right' : 'left' };
+      }
+      row.getCell(1).font = { name: FUENTE, size: 8, bold: true, color: { argb: 'FFAAAAAA' } };
+      row.getCell(3).font = { name: FUENTE, size: 8, color: { argb: 'FF777777' } };
+      [6, 8].forEach(k => { row.getCell(k).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COL_INPUT } }; });
+      row.getCell(7).font = { name: FUENTE, size: 9, bold: true, color: { argb: 'FF2B2B2B' } };
+      row.height = Math.max(24, Math.max(lineasDe(texto + extra, 62), lineasDe(medidas, 24)) * 13 + 8);
+    });
+
+    // Totales (con fórmulas): las partidas se suman una sola vez, sin contar las sumas de capítulo
+    const filasPar = filas.filter(x => x.tipo === 'par').map(x => x.row);
+    const t0 = r + 1;
+    const rango = filasPar.length ? sumaDe(filasPar) : 'G6';
+    const etiqueta = (rw, texto, formula, negrita, formato) => {
+      ws.mergeCells(rw, 1, rw, 6);
+      const cl = ws.getCell(rw, 1);
+      cl.value = texto;
+      cl.font = { name: FUENTE, size: negrita ? 12 : 9.5, bold: !!negrita, color: { argb: 'FF444444' } };
+      cl.alignment = { horizontal: 'right', vertical: 'middle' };
+      const v = ws.getCell(rw, 7);
+      v.value = formula;
+      v.numFmt = formato || '#,##0.00';
+      v.font = { name: FUENTE, size: negrita ? 12 : 9.5, bold: !!negrita, color: { argb: 'FF111111' } };
+      v.alignment = { horizontal: 'right', vertical: 'middle' };
+      if (negrita) { for (let k = 1; k <= 7; k += 1) ws.getCell(rw, k).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COL_CABECERA } }; }
+    };
+    etiqueta(t0, 'Subtotal', { formula: 'SUM(' + rango + ')' });
+    // IVA: celda editable (por defecto 21 %)
+    ws.mergeCells(t0 + 1, 1, t0 + 1, 5);
+    const lIva = ws.getCell(t0 + 1, 1);
+    lIva.value = 'IVA (%)';
+    lIva.font = { name: FUENTE, size: 9.5, color: { argb: 'FF444444' } };
+    lIva.alignment = { horizontal: 'right', vertical: 'middle' };
+    const pIva = ws.getCell(t0 + 1, 6);
+    pIva.value = 21;
+    pIva.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COL_INPUT } };
+    pIva.font = { name: FUENTE, size: 9.5 };
+    pIva.alignment = { horizontal: 'right' };
+    const vIva = ws.getCell(t0 + 1, 7);
+    vIva.value = { formula: 'G' + t0 + '*F' + (t0 + 1) + '/100' };
+    vIva.numFmt = '#,##0.00';
+    vIva.font = { name: FUENTE, size: 9.5 };
+    vIva.alignment = { horizontal: 'right' };
+    etiqueta(t0 + 2, 'TOTAL', { formula: 'G' + t0 + '+G' + (t0 + 1) }, true);
+    ws.getRow(t0 + 2).height = 24;
+
+    ws.views = [{ state: 'frozen', ySplit: 5, showGridLines: false }];
+    ws.pageSetup = { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="solicitud-precios-${budget.budget_number || 'presupuesto'}.xlsx"`);
+    res.setHeader('Content-Disposition', 'attachment; filename="solicitud-precios-' + (budget.budget_number || 'presupuesto') + '.xlsx"');
     await wb.xlsx.write(res);
     res.end();
   } catch (err) {
