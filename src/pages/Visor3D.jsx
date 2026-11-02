@@ -27,11 +27,31 @@ const crearApiCliente = (id, firma) => {
   const no = () => Promise.reject(new Error('Modo cliente: solo lectura'));
   return { get: u => (u === '/medicion/' + id ? apiReal.get('/tour-publico/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma) + '/plano') : no()), post: no, put: no, patch: no, delete: no };
 };
-// Recorrido a pie: los muros frenan al visitante (se desliza por ellos) y se pasa por los huecos de suelo a techo (puertas)
-const RADIO_PERSONA = 0.28;
+const esMovil = () => { try { return window.matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent); } catch { return false; } };
+// Recorrido a pie: los muros frenan al visitante (se desliza por ellos), se pasa por los huecos de suelo a techo (puertas) y no se sale del interior:
+// solo se anda dentro de las salas (con medio metro de margen para cruzar puertas) o, si el plano no tiene salas, dentro del contorno de los muros
+const RADIO_PERSONA = 0.28, MARGEN_SALA = 40;
+function dentroDelEspacio(modelo, x, z) {
+  const plantas = modelo.plantas || [modelo];
+  let hay = false;
+  for (const pl of plantas) for (const sa of (pl.salas || [])) {
+    const pts = sa.pts; if (!pts || pts.length < 3) continue; hay = true;
+    if (puntoEnPoligono([x / CM, z / CM], pts)) return true;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[(i + 1) % pts.length], dx = q[0] - p[0], dy = q[1] - p[1], l2 = dx * dx + dy * dy;
+      const t = l2 ? Math.max(0, Math.min(1, ((x / CM - p[0]) * dx + (z / CM - p[1]) * dy) / l2)) : 0;
+      if (Math.hypot(x / CM - (p[0] + t * dx), z / CM - (p[1] + t * dy)) < MARGEN_SALA) return true;
+    }
+  }
+  if (hay) return false;
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const pl of plantas) for (const mu of (pl.muros || [])) for (const q of [mu.a, mu.b]) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); z0 = Math.min(z0, q[1]); z1 = Math.max(z1, q[1]); }
+  return x0 === Infinity || (x / CM >= x0 - 40 && x / CM <= x1 + 40 && z / CM >= z0 - 40 && z / CM <= z1 + 40);
+}
 function frenaMuros(modelo, pos, mov) {
   if (!modelo) return mov;
   const choca = (x, z) => {
+    if (!dentroDelEspacio(modelo, x, z)) return true;
     for (const pl of (modelo.plantas || [modelo])) for (const mu of (pl.muros || [])) {
       const ax = mu.a[0] * CM, az = mu.a[1] * CM, dx = mu.b[0] * CM - ax, dz = mu.b[1] * CM - az, l2 = dx * dx + dz * dz; if (l2 < 1e-9) continue;
       const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), d = Math.hypot(x - (ax + t * dx), z - (az + t * dz));
@@ -42,9 +62,16 @@ function frenaMuros(modelo, pos, mov) {
     }
     return false;
   };
-  let mx = mov.x, mz = mov.z;
-  if (choca(pos.x + mx, pos.z + mz)) { if (!choca(pos.x + mx, pos.z)) mz = 0; else if (!choca(pos.x, pos.z + mz)) mx = 0; else { mx = 0; mz = 0; } }
-  mov.x = mx; mov.z = mz; return mov;
+  // se avanza en pasos cortos para que ni a mucha velocidad se atraviese una pared
+  const n = Math.max(1, Math.ceil(Math.hypot(mov.x, mov.z) / 0.08)), sx = mov.x / n, sz = mov.z / n;
+  let cx = pos.x, cz = pos.z;
+  for (let i = 0; i < n; i++) {
+    if (!choca(cx + sx, cz + sz)) { cx += sx; cz += sz; }
+    else if (!choca(cx + sx, cz)) cx += sx;
+    else if (!choca(cx, cz + sz)) cz += sz;
+    else break;
+  }
+  mov.x = cx - pos.x; mov.z = cz - pos.z; return mov;
 }
 
 // Visor 3D de un plano de Planos (lee su modelo3d). Pensado para gimnasios: paredes con puertas y ventanas,
@@ -1279,7 +1306,8 @@ export default function Visor3D({ cliente = false }) {
   const [titulo, setTitulo] = useState('');
   const [calidad, setCalidad] = useState(() => { try { return localStorage.getItem('visor3dCalidad') || 'media'; } catch { return 'media'; } });
   const api3d = useRef({});
-  const [seleccion, setSeleccion] = useState(null);
+  const [seleccion, setSeleccionR] = useState(null);
+  const setSeleccion = cliente ? () => {} : setSeleccionR; // en modo cliente no se puede seleccionar nada
   const [objs, setObjs] = useState([]);            // objetos de la escena 3D
   const objsRef = useRef([]);
   const [rejAlz, setRejAlz] = useState(() => { try { return localStorage.getItem('visor3dRejAlz') === '1'; } catch { return false; } }); // rejilla de 50 cm en alzados y plantas de detalle (oculta por defecto)
@@ -1288,7 +1316,8 @@ export default function Visor3D({ cliente = false }) {
   const [editMod, setEditMod] = useState(null);       // id del objeto con modelo en el que se ha entrado (doble clic) para borrar piezas
   const editModRef = useRef(null);
   useEffect(() => { editModRef.current = editMod; const h = e => { if (e.key === 'Escape') setEditMod(null); }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [editMod]);
-  const [selObj, setSelObj] = useState(null);      // id del objeto seleccionado
+  const [selObj, setSelObjR] = useState(null);
+  const setSelObj = cliente ? () => {} : setSelObjR;      // id del objeto seleccionado
   const [multi, setMulti] = useState({ base: null, ids: [] }); // resto de la selección múltiple (Mayús/Ctrl + clic); solo vale mientras selObj sea su base
   const selExtra = multi.base === selObj && selObj ? multi.ids : [];
   const selIdsRef = useRef(new Set()); selIdsRef.current = new Set([selObj, ...selExtra].filter(Boolean));
@@ -1306,8 +1335,8 @@ export default function Visor3D({ cliente = false }) {
   const [marcaSel, setMarcaSel] = useState('');
   const [cargaSel, setCargaSel] = useState('');
   const [persona, setPersona] = useState(false);
-  const [velPersona, setVelPersona] = useState(() => { try { const v = parseFloat(localStorage.getItem('visor3dVelPersona')); return v >= 0.2 && v <= 8 ? v : 1.3; } catch { return 1.3; } }); // m/s al recorrer como persona
-  useEffect(() => { api3d.current.velPersona = velPersona; try { localStorage.setItem('visor3dVelPersona', String(velPersona)); } catch { /* sin almacenamiento */ } }, [velPersona]);
+  const [velPersona, setVelPersona] = useState(() => { if (cliente) return 2.2; try { const v = parseFloat(localStorage.getItem('visor3dVelPersona')); return v >= 0.2 && v <= 8 ? v : 1.3; } catch { return 1.3; } }); // m/s al recorrer como persona
+  useEffect(() => { api3d.current.velPersona = velPersona; try { if (!cliente) localStorage.setItem('visor3dVelPersona', String(velPersona)); } catch { /* sin almacenamiento */ } }, [velPersona]);
   const [sinGpu, setSinGpu] = useState(false);
   useEffect(() => { if (estado === 'cargando') return; let cerrado = false; try { cerrado = sessionStorage.getItem('visor3dSinGpuCerrado') === '1'; } catch { /* sin almacenamiento */ } setSinGpu(GL_SOFTWARE && !cerrado); }, [estado]);
   // Panel de Render (como el de D5): ajustes finos de la imagen final y botón de renderizar
@@ -1612,7 +1641,7 @@ export default function Visor3D({ cliente = false }) {
       const refinando = !!(a0.pt && a0.ptReady && a0.pt.samples < (a0.ptMax || 200));
       if (!(movi || ahora < (a0.despierta || 0) || refinando)) { a0.reposo = true; return; } // nada ha cambiado: no se dibuja y la tarjeta gráfica descansa
       a0.reposo = false;
-      if (a0.pt && a0.ptReady) {
+      if (a0.pt && a0.ptReady && !(cliente && movi)) {
         a0.pt.renderSample();
         a0.ptLento = ema > 450 ? (a0.ptLento || 0) + 1 : 0; // si va muy lento se desactiva solo
         if (a0.ptLento > 90) a0.ptDesactivar?.('Tu gráfica va justa para el trazado de rayos: lo he desactivado.');
@@ -1648,6 +1677,7 @@ export default function Visor3D({ cliente = false }) {
       const pl = r.data?.plano;
       if (!primera && pl?.updated === ultima) return; // sin cambios en el plano
       ultima = pl?.updated;
+      if (cliente && primera && esMovil() && (pl?.escena3d?.renders || []).some(r => r.tipo === '360' && r.tour)) { navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma), { replace: true }); return; }
       setTitulo(pl?.nombre || 'Plano');
       if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); setModosEq(pl?.escena3d?.modelosEq || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       const modelo = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
@@ -1739,6 +1769,7 @@ export default function Visor3D({ cliente = false }) {
     dom.addEventListener('pointerdown', onDown);
     dom.addEventListener('pointerup', onUp);
     const onDbl = e => {
+      if (cliente) return;
       const r0 = dom.getBoundingClientRect(); p2.set(((e.clientX - r0.left) / r0.width) * 2 - 1, -((e.clientY - r0.top) / r0.height) * 2 + 1); rayo.setFromCamera(p2, cam);
       const h0 = rayo.intersectObjects(esc.children, true).find(x => x.object.isMesh && !x.object.userData.hit);
       if (!h0) { setEditMod(null); return; }
@@ -1895,6 +1926,7 @@ export default function Visor3D({ cliente = false }) {
       poli = []; escrito = ''; setMedidaMuro(''); dibujarPoli(null); setHerr(eraForma ? 'empujar' : 'sel');
     };
     const onTecla = e => {
+      if (cliente) return;
       if (herrRef.current === 'focoC' && (e.key === 'Escape' || e.key === 'Enter')) { setHerr('sel'); return; }
       if (herrRef.current === 'muro' && (e.key === 'Escape' || e.key === 'Enter')) { terminarMuros(); return; }
       if (herrRef.current === 'luz' && e.key === 'Escape') { setHerr('sel'); return; }
@@ -2427,7 +2459,7 @@ export default function Visor3D({ cliente = false }) {
 
   // Modo cliente: se empieza dentro del espacio, en la primera parada del tour (o en el centro), con refinado por trazado de rayos si la gráfica lo aguanta
   // y, si no, se ofrece el tour de panorámicas (que casi no pide nada al dispositivo)
-  const esTactil = useMemo(() => { try { return navigator.maxTouchPoints > 0 && window.matchMedia('(pointer: coarse)').matches; } catch { return false; } }, []);
+  const esTactil = useMemo(() => esMovil(), []);
   const [paradasCli, setParadasCli] = useState([]);
   const [joyPos, setJoyPos] = useState(null);
   const [gpuFlojaCli, setGpuFlojaCli] = useState(false);
@@ -2440,6 +2472,7 @@ export default function Visor3D({ cliente = false }) {
       a.cam.position.set(c.px, 1.6, c.pz); a.ctrl.target.set(c.px + Math.sin(yaw), 1.6, c.pz + Math.cos(yaw)); a.ctrl.update();
     }
     setPersona(true);
+    if (!esTactil) { setRealista(true); setCalidad('alta'); }
     if (!esTactil && gpuApta()) setRefinar(true); else setGpuFlojaCli(true);
   }, [cliente, estado]); // eslint-disable-line react-hooks/exhaustive-deps
   // Modo persona: la cámara se queda a la altura de los ojos y solo gira sobre sí misma; se anda con W A S D (despacio) y la rueda cambia el zoom de la lente
@@ -2468,7 +2501,7 @@ export default function Visor3D({ cliente = false }) {
   // Modo realista: reflejos de un entorno de estudio, oclusión ambiental (sombras de contacto) y bordes suavizados. Es opcional: en equipos flojos se deja apagado.
   useEffect(() => {
     const a = api3d.current; if (!a.renderer || estado === 'cargando') return;
-    try { localStorage.setItem('visor3dRealista', realista ? '1' : '0'); } catch { /* sin almacenamiento */ }
+    try { if (!cliente) localStorage.setItem('visor3dRealista', realista ? '1' : '0'); } catch { /* sin almacenamiento */ }
     if (a.composer) { a.composer.dispose?.(); a.composer = null; }
     if (a.envTex) { a.envTex.dispose(); a.envTex = null; }
     a.scene.environment = null;
@@ -3238,6 +3271,7 @@ export default function Visor3D({ cliente = false }) {
   };
   useEffect(() => {
     const onKey = e => {
+      if (cliente) return;
       const tag = (e.target?.tagName || '').toLowerCase(), tipoIn = (e.target?.type || '').toLowerCase();
       const escribiendo = (tag === 'input' && !['number', 'range', 'color', 'checkbox'].includes(tipoIn)) || tag === 'textarea' || e.target?.isContentEditable;
       if (escribiendo) return;
@@ -3553,7 +3587,7 @@ export default function Visor3D({ cliente = false }) {
     a.sol.shadow.map?.dispose(); a.sol.shadow.map = null;
     a.raiz.traverse(o => { if (o.material) o.material.needsUpdate = true; });
     a.renderer.setSize(caja.current.clientWidth, caja.current.clientHeight);
-    try { localStorage.setItem('visor3dCalidad', calidad); } catch {}
+    try { if (!cliente) localStorage.setItem('visor3dCalidad', calidad); } catch {}
   }, [calidad, estado]);
 
   // Vista general: restablece focal y desplazamiento de lente (si no, tras un alzado o con otra focal se veía deformada) y encuadra TODO el plano
@@ -4101,6 +4135,20 @@ export default function Visor3D({ cliente = false }) {
             <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>{esTactil ? 'Arrastra para mirar · usa el joystick para andar' : 'Arrastra para mirar · W A S D o las flechas para andar · Shift para ir más rápido'}</div>
             {!esTactil && refinar && <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>Al quedarte quieto, la imagen se afina a calidad de render.</div>}
           </div>
+          {(estado === 'cargando' || estado === 'error' || sinGpu) && (
+            <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 'min(420px, 88vw)', textAlign: 'center', background: 'rgba(0,0,0,0.65)', borderRadius: 14, padding: '16px 18px', fontSize: 14, pointerEvents: 'auto', textShadow: 'none' }}>
+              {estado === 'cargando' && 'Cargando el espacio…'}
+              {estado === 'error' && 'No se ha podido abrir el recorrido.'}
+              {estado !== 'error' && estado !== 'cargando' && sinGpu && 'Este dispositivo no puede mostrar el recorrido en 3D con fluidez.'}
+              {(estado === 'error' || sinGpu) && paradasCli.length > 0 && <div style={{ marginTop: 10 }}><button style={{ background: '#c9a46c', color: '#000', border: 'none', borderRadius: 20, padding: '8px 14px', cursor: 'pointer' }} onClick={() => navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma))}>Ver el tour de panorámicas</button></div>}
+            </div>
+          )}
+          {estado === 'listo' && (
+            <div style={{ position: 'absolute', left: 14, bottom: esTactil ? 160 : 16, display: 'flex', gap: 6, alignItems: 'center', pointerEvents: 'auto', fontSize: 12, textShadow: 'none' }}>
+              <span style={{ opacity: 0.85 }}>Velocidad</span>
+              {[['Lento', 1.2], ['Normal', 2.2], ['Rápido', 4]].map(([n, v]) => <button key={n} onClick={() => setVelPersona(v)} style={{ background: velPersona === v ? '#c9a46c' : 'rgba(0,0,0,0.55)', color: velPersona === v ? '#000' : '#fff', border: 'none', borderRadius: 14, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>{n}</button>)}
+            </div>
+          )}
           {paradasCli.length > 0 && (
             <button style={{ position: 'absolute', right: 14, top: 14, pointerEvents: 'auto', background: (gpuFlojaCli || /no es apta|No se pudo/.test(ptMsg)) ? '#c9a46c' : 'rgba(0,0,0,0.55)', color: (gpuFlojaCli || /no es apta|No se pudo/.test(ptMsg)) ? '#000' : '#fff', border: 'none', borderRadius: 20, padding: '8px 14px', cursor: 'pointer', fontSize: 13, textShadow: 'none' }}
               onClick={() => navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma))}>{(gpuFlojaCli || /no es apta|No se pudo/.test(ptMsg)) ? 'Ver el tour de panorámicas (recomendado en este dispositivo)' : 'Ver el tour de panorámicas'}</button>
