@@ -1018,6 +1018,7 @@ function formasDeSVG(texto) {
   return formas;
 }
 // ── Imágenes sueltas (como «importar imagen» de SketchUp): se suben con su transparencia y se escalan; si traen fondo liso se puede quitar
+const cacheImagenes = new Map();
 function cargaImagen(fichero) {
   return new Promise((ok, mal) => { const u = URL.createObjectURL(fichero), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); ok(im); }; im.onerror = () => { URL.revokeObjectURL(u); mal(new Error('No se pudo leer la imagen')); }; im.src = u; });
 }
@@ -2796,7 +2797,10 @@ export default function Visor3D() {
       if (o.tipo === 'imagen' && o.url) {
         const wI = (o.w || 100) * CM, hI = (o.alto || 100) * CM, geo = new THREE.PlaneGeometry(wI, hI), horiz = o.plano === 'horizontal';
         const mt = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, transparent: true, alphaTest: 0.02, side: THREE.DoubleSide, emissive: selIdsRef.current.has(o.id) ? 0x223344 : 0x000000 });
-        new THREE.TextureLoader().setCrossOrigin('anonymous').load(o.url, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; mt.map = t; mt.needsUpdate = true; try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } });
+        // la textura se guarda por dirección: así no se vuelve a cargar cada vez que se rehace la escena (y no se avisa con 'visor3d-tex', que rehace la escena y haría un bucle)
+        const tc = cacheImagenes.get(o.url);
+        if (tc) { mt.map = tc; }
+        else new THREE.TextureLoader().setCrossOrigin('anonymous').load(o.url, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; cacheImagenes.set(o.url, t); mt.map = t; mt.needsUpdate = true; api3d.current.despierta = performance.now() + 400; });
         const mesh = new THREE.Mesh(geo, mt); mesh.castShadow = false; mesh.receiveShadow = true;
         if (horiz) { mesh.rotation.x = -Math.PI / 2; mesh.position.y = (o.z0 || 0) * CM + 0.01; } else mesh.position.y = (o.z0 || 0) * CM + hI / 2;
         const gi = new THREE.Group(); gi.position.set(o.cx * CM, 0, o.cy * CM); gi.rotation.y = -(o.rot || 0) * Math.PI / 180; gi.add(mesh);
