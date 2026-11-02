@@ -392,6 +392,9 @@ function fusionarModelo(raw) {
 // Modelos importados que salían negros: caras con las normales al revés (piezas finas, plantas, mallas de SketchUp) y materiales sin brillo ni luz propia.
 // Se dibujan por las dos caras y, si un material es de color negro puro sin textura, se aclara a un gris oscuro para que se vea su forma.
 function repararMateriales(raiz) {
+  try { return repararMateriales0(raiz); } catch (e) { console.warn('repararMateriales', e); return raiz; }
+}
+function repararMateriales0(raiz) {
   const vistos = new Set();
   raiz.traverse(o => {
     if (!o.isMesh) return;
