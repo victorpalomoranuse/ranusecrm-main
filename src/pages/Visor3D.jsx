@@ -1566,6 +1566,7 @@ export default function Visor3D() {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
         a0.composer.render();
       } else renderer.render(scene, cam);
+      if (a0.pedirFoto) { const cb = a0.pedirFoto; a0.pedirFoto = null; let u = null; try { u = renderer.domElement.toDataURL('image/jpeg', 0.9); } catch { /* sin imagen */ } cb(u); } // foto del fotograma recién dibujado, tal como se ve
       // regulador automático: si va a menos de ~25 fps baja la resolución y, si aun así va lento, quita las sombras; si sobra potencia, la recupera
       if (ahora - ultGob > 1000) {
         ultGob = ahora; const base = a0.prBase || 1;
@@ -3613,13 +3614,13 @@ export default function Visor3D() {
   const ocultarAyudas = () => { const a = api3d.current, gs = [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], v = gs.map(x => x && x.visible); gs.forEach(x => { if (x) x.visible = false; }); return () => gs.forEach((x, i) => { if (x) x.visible = v[i]; }); };
   const soltarSeleccion = async () => { setSelObj(null); setSelAcab(null); setSelHueco(null); setLuzSel(null); setSeleccion(null); api3d.current.limpiarSel?.(); await esperar(150); };
   // Foto de lo que se ve ahora (para el Estudio de ideas): se dibuja un fotograma tal cual está la vista, sin cambiar tamaño, sombras ni la selección
-  const capturaVista = () => {
+  const capturaVista = () => new Promise(ok => {
     const a = api3d.current, restaura = ocultarAyudas();
-    try {
-      if (a.composer) a.composer.render(); else a.renderer.render(a.scene, a.cam);
-      return a.renderer.domElement.toDataURL('image/jpeg', 0.9);
-    } finally { restaura(); }
-  };
+    const fin = u => { restaura(); ok(u); };
+    const t = setTimeout(() => { if (a.pedirFoto) { a.pedirFoto = null; fin(null); } }, 2500);
+    a.pedirFoto = u => { clearTimeout(t); fin(u); };
+    a.despierta = performance.now() + 400; // despierta el dibujo: el siguiente fotograma se guarda tal cual se ve
+  });
   const renderHDurl = async (opc = {}) => {
     await soltarSeleccion();
     const { renderer, scene, cam, sol } = api3d.current, el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
