@@ -1415,6 +1415,8 @@ export default function Visor3D({ cliente = false }) {
   const [proporcional, setProporcional] = useState(() => { try { return localStorage.getItem('visor3dProp') === '1'; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem('visor3dProp', proporcional ? '1' : '0'); } catch { /* sin almacenamiento */ } }, [proporcional]);
   const propBase = useRef(null);
+  const [propImg, setPropImg] = useState(() => { try { return localStorage.getItem('visor3dPropImg') !== '0'; } catch { return true; } }); // imágenes: por defecto mantienen su proporción
+  useEffect(() => { try { localStorage.setItem('visor3dPropImg', propImg ? '1' : '0'); } catch { /* sin almacenamiento */ } }, [propImg]);
   const botonProp = () => (<button type="button" style={{ ...btn, width: '100%', marginBottom: 6, background: proporcional ? '#8c8076' : undefined }} onClick={() => setProporcional(v => !v)} title="Con la cadena enlazada, al cambiar largo, fondo o alto, las otras dos medidas cambian en la misma proporción">{proporcional ? '🔗 Proporciones enlazadas' : '⛓ Proporciones libres'}</button>);
   const [velPersona, setVelPersona] = useState(() => { if (cliente) return 2.2; try { const v = parseFloat(localStorage.getItem('visor3dVelPersona')); return v >= 0.2 && v <= 8 ? v : 1.3; } catch { return 1.3; } }); // m/s al recorrer como persona
   useEffect(() => { api3d.current.velPersona = velPersona; try { if (!cliente) localStorage.setItem('visor3dVelPersona', String(velPersona)); } catch { /* sin almacenamiento */ } }, [velPersona]);
@@ -5499,12 +5501,13 @@ export default function Visor3D({ cliente = false }) {
             <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>Imagen</div>
               {(() => {
-                const ratio = (objSel.alto || 1) / (objSel.w || 1);
+                const baseImg = () => (propBase.current?.id === objSel.id && propBase.current.w > 0 ? propBase.current : { w: objSel.w || 1, alto: objSel.alto || 1 });
                 return <>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Ancho (cm)</span><input type="number" value={Math.round(objSel.w * 10) / 10} onChange={e => { const w = parseFloat(e.target.value) || 1; cambiar(objSel.id, { w, alto: Math.round(w * ratio * 10) / 10 }); }} style={{ ...btn, width: 90 }} /></label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Alto (cm)</span><input type="number" value={Math.round(objSel.alto * 10) / 10} onChange={e => { const al = parseFloat(e.target.value) || 1; cambiar(objSel.id, { alto: al, w: Math.round((al / ratio) * 10) / 10 }); }} style={{ ...btn, width: 90 }} /></label>
+                  <button type="button" style={{ ...btn, width: '100%', marginBottom: 6, background: propImg ? '#8c8076' : undefined }} onClick={() => setPropImg(v => !v)} title="Enlazada: al cambiar el ancho o el alto, el otro cambia en proporción. Libre: puedes estirar o aplastar la imagen">{propImg ? '🔗 Proporción enlazada' : '⛓ Proporción libre (deforma la imagen)'}</button>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Ancho (cm)</span><input type="number" value={Math.round(objSel.w * 10) / 10} onFocus={() => { propBase.current = { id: objSel.id, w: objSel.w, alto: objSel.alto }; }} onChange={e => { const w = parseFloat(e.target.value) || 1; if (propImg) { const b = baseImg(); cambiar(objSel.id, { w, alto: Math.round(w * (b.alto / b.w) * 10) / 10 }); } else cambiar(objSel.id, { w }); }} style={{ ...btn, width: 90 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Alto (cm)</span><input type="number" value={Math.round(objSel.alto * 10) / 10} onFocus={() => { propBase.current = { id: objSel.id, w: objSel.w, alto: objSel.alto }; }} onChange={e => { const al = parseFloat(e.target.value) || 1; if (propImg) { const b = baseImg(); cambiar(objSel.id, { alto: al, w: Math.round((al / (b.alto / b.w)) * 10) / 10 }); } else cambiar(objSel.id, { alto: al }); }} style={{ ...btn, width: 90 }} /></label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Colocación</span><select value={objSel.plano || 'vertical'} onChange={e => cambiar(objSel.id, { plano: e.target.value })} style={btn}><option value="vertical">De pie (vertical)</option><option value="horizontal">Tumbada (en el suelo)</option></select></label>
-                  <div style={{ opacity: 0.5, fontSize: 11 }}>La proporción se mantiene al cambiar el ancho o el alto. «Altura desde suelo» es el borde inferior.</div>
+                  <div style={{ opacity: 0.5, fontSize: 11 }}>Con la proporción enlazada, al cambiar el ancho o el alto el otro cambia a la vez. «Altura desde suelo» es el borde inferior.</div>
                 </>;
               })()}
             </div>
