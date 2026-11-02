@@ -30,6 +30,12 @@ Cuando el usuario comparta una imagen y pida una idea (un mural, un rótulo, un 
 Si pide «solo la imagen», «sin la pared» o «para imprimir», genera únicamente el diseño aislado: sin la pared, sin el local, sin marcos, en plano frontal y a pantalla completa, con buena resolución y listo para llevar a producción.
 Si pide cambios, parte de la imagen anterior y cambia solo lo pedido. No inventes medidas: si hacen falta, pregúntalas.`;
 
+// Cuando se pide «solo la imagen»: se obliga a generar un diseño nuevo, plano y a toda la imagen, sin habitación ni pared (si no, tiende a repetir la foto de la sala)
+const PIDE_SOLO = /solo (la )?imagen|sin (la )?(pared|habitaci|entorno|fondo)|para imprimir|solo (el|la) (mural|dise|ilustra|arte)|aislad/i;
+const FORMATOS = { vertical: '1024x1536', horizontal: '1536x1024', cuadrado: '1024x1024' };
+const EXTRA_SOLO = `
+IMPORTANTE (modo «solo el diseño»): crea una IMAGEN NUEVA que contenga ÚNICAMENTE la obra de arte del mural, vista de frente y plana (sin perspectiva), ocupando toda la imagen de borde a borde. NO incluyas ninguna pared, habitación, suelo, techo, ventana, caja, mueble, marco, sombra ni borde. No uses la foto de la sala como base: úsala solo como referencia del diseño elegido. Conserva el diseño, los colores y el texto de la idea anterior.`;
+
 router.post('/chat', async (req, res) => {
   const clave = process.env.OPENAI_API_KEY;
   if (!clave) return res.status(503).json({ error: 'Falta la clave de OpenAI en el servidor (variable OPENAI_API_KEY en Railway).' });
@@ -39,17 +45,23 @@ router.post('/chat', async (req, res) => {
     if (!texto && !imagenes.length) return res.status(400).json({ error: 'Escribe algo o adjunta una imagen' });
     const previo = /^resp_[A-Za-z0-9_-]{5,100}$/.test(String(req.body?.previousResponseId || '')) ? String(req.body.previousResponseId) : null;
     const contenido = [{ type: 'input_text', text: texto || 'Mira esta imagen.' }, ...imagenes.map(u => ({ type: 'input_image', image_url: u }))];
-    const herramienta = { type: 'image_generation', ...(process.env.OPENAI_IMAGE_MODEL ? { model: process.env.OPENAI_IMAGE_MODEL } : {}) };
+    const solo = req.body?.soloDiseno === true || PIDE_SOLO.test(texto);
+    const tam = FORMATOS[String(req.body?.formato || '')] || null;
+    const base = { type: 'image_generation', ...(process.env.OPENAI_IMAGE_MODEL ? { model: process.env.OPENAI_IMAGE_MODEL } : {}) };
+    const transp = solo && req.body?.transparente === true;
+    const herramienta = solo ? { ...base, action: 'generate', ...(tam ? { size: tam } : {}), ...(transp ? { background: 'transparent', output_format: 'png' } : {}) } : base;
+    if (solo) contenido[0].text += EXTRA_SOLO + (transp ? ' Sin fondo: el fondo debe ser totalmente transparente (solo el dibujo, recortado).' : '');
 
-    const llama = async (modelo) => {
+    const llama = async (modelo, simple = false) => {
       const r = await fetch(OPENAI + '/responses', {
         method: 'POST', headers: { Authorization: 'Bearer ' + clave, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: modelo, instructions: INSTRUCCIONES, tools: [herramienta], input: [{ role: 'user', content: contenido }], ...(previo ? { previous_response_id: previo } : {}) }),
+        body: JSON.stringify({ model: modelo, instructions: INSTRUCCIONES, tools: [simple ? base : herramienta], ...(solo && !simple ? { tool_choice: { type: 'image_generation' } } : {}), input: [{ role: 'user', content: contenido }], ...(previo ? { previous_response_id: previo } : {}) }),
       });
       return { r, j: await r.json().catch(() => ({})) };
     };
     let modelo = process.env.OPENAI_CHAT_MODEL || modeloElegido || 'gpt-5';
     let { r, j } = await llama(modelo);
+    if (!r.ok && solo && /action|size|tool_choice|background|output_format|image_generation/i.test(JSON.stringify(j?.error || {})) && !/does not exist|model_not_found/i.test(JSON.stringify(j?.error || {}))) ({ r, j } = await llama(modelo, true)); // si esta versión de la API no admite esos ajustes, se reintenta sin ellos
     if (!r.ok && !process.env.OPENAI_CHAT_MODEL && /does not exist|model_not_found|do not have access|not found/i.test(JSON.stringify(j?.error || {}))) {
       const otro = await elegirModelo(clave, modelo).catch(() => null);
       if (otro) { modelo = otro; modeloElegido = otro; console.log('estudio-ideas: modelo de chat →', otro); ({ r, j } = await llama(modelo)); }

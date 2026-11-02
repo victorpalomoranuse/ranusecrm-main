@@ -7,7 +7,7 @@ import './EstudioIdeas.css';
 
 const ATAJOS = [
   'Dame una idea de mural para esta pared',
-  'Ahora dame solo la imagen, sin la pared, para imprimir',
+  { texto: 'Ahora dame solo el mural, sin la pared ni nada más, para imprimir', solo: true },
   'Haz una variante con otros colores',
   'Más sencillo y minimalista',
 ];
@@ -39,6 +39,9 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
   const [trabajando, setTrabajando] = useState(false);
   const [error, setError] = useState('');
   const [grande, setGrande] = useState(null);
+  const [soloDiseno, setSoloDiseno] = useState(false);
+  const [formato, setFormato] = useState('auto');
+  const [transparente, setTransparente] = useState(true);
   const fin = useRef(null), fichero = useRef(null);
 
   useEffect(() => { fin.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [mensajes, trabajando]);
@@ -63,14 +66,14 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
     try { const u = await capturarVista(); if (u) setAdjuntas(a => [...a, u].slice(0, 4)); } catch { setError('No se pudo coger la vista del 3D'); }
   };
 
-  const enviar = async (t) => {
+  const enviar = async (t, forzarSolo = false) => {
     const msg = (t ?? texto).trim();
     if ((!msg && !adjuntas.length) || trabajando) return;
     const imgs = adjuntas;
     setMensajes(m => [...m, { rol: 'yo', texto: msg, imagenes: imgs }]);
     setTexto(''); setAdjuntas([]); setError(''); setTrabajando(true);
     try {
-      const r = await api.post('/estudio-ideas/chat', { texto: msg, imagenes: imgs, previousResponseId: previo }, { timeout: 280000 });
+      const r = await api.post('/estudio-ideas/chat', { texto: msg, imagenes: imgs, previousResponseId: previo, soloDiseno: forzarSolo || soloDiseno, formato, transparente }, { timeout: 280000 });
       setPrevio(r.data.id);
       setMensajes(m => [...m, { rol: 'ia', texto: r.data.texto, imagenes: r.data.imagenes || [], modelo: r.data.modelo }]);
     } catch (e) {
@@ -126,7 +129,7 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
       </div>
 
       <div className="ei-atajos">
-        {ATAJOS.map(a => <button key={a} type="button" className="ei-chip" disabled={trabajando} onClick={() => enviar(a)}>{a}</button>)}
+        {ATAJOS.map(a => { const t = typeof a === 'string' ? a : a.texto, so = typeof a !== 'string' && a.solo; return <button key={t} type="button" className="ei-chip" disabled={trabajando} onClick={() => enviar(t, so)}>{t}</button>; })}
       </div>
 
       {adjuntas.length > 0 && (
@@ -137,6 +140,11 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
         </div>
       )}
 
+      <div className="ei-opciones">
+        <label title="Genera solo el diseño, plano y a toda la imagen, sin pared ni habitación"><input type="checkbox" checked={soloDiseno} onChange={e => setSoloDiseno(e.target.checked)} /> Solo el diseño (sin pared ni entorno)</label>
+        {soloDiseno && <label title="El diseño sale recortado, sin fondo (PNG transparente)"><input type="checkbox" checked={transparente} onChange={e => setTransparente(e.target.checked)} /> Sin fondo</label>}
+        {soloDiseno && <label>Formato <select value={formato} onChange={e => setFormato(e.target.value)}><option value="auto">Automático</option><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option><option value="cuadrado">Cuadrado</option></select></label>}
+      </div>
       <div className="ei-caja">
         <input ref={fichero} type="file" accept="image/*" multiple hidden onChange={e => { adjuntar(e.target.files); e.target.value = ''; }} />
         <button type="button" className="ei-btn" onClick={() => fichero.current?.click()} title="Adjuntar una o varias imágenes (también puedes pegarlas con Ctrl+V)">📎 Imagen</button>
