@@ -777,7 +777,7 @@ const ICONOS = {
   muro: 'M3 6h18v12H3z M3 12h18 M9 6v6 M15 12v6', rect: 'M4 6h16v12H4z', circ: 'M12 4a8 8 0 100 16 8 8 0 000-16z', poli: 'M12 3l8 6-3 11H7L4 9z',
   empujar: 'M12 20V10 M8 13l4-4 4 4 M4 8l8-4 8 4', zona: 'M4 5h16v14H4z M4 12l8-7 M4 19L19 5 M12 19l7-7', sigue: 'M3 19c6 0 4-14 9-14s3 14 9 14',
   catalogo: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8', biblioteca: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
-  mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4', texto: 'M5 6h14 M12 6v13 M9 19h6', ideas: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z',
+  mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4', texto: 'M5 6h14 M12 6v13 M9 19h6', imagen: 'M4 5h16v14H4z M8 10a1.5 1.5 0 1 0 0-.01 M4 17l5-5 4 4 3-3 4 4', ideas: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z',
   luz: 'M9 18h6 M10 21h4 M12 3a6 6 0 00-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0012 3z',
   cinta: 'M3 16L16 3l5 5L8 21z M8 11l2 2 M11 8l2 2 M14 5l2 2', capas: 'M12 3l9 5-9 5-9-5z M3 13l9 5 9-5',
   ocultar: 'M3 3l18 18 M10.6 6.2A9 9 0 0121 12a13 13 0 01-3 3.9 M6.6 6.6A13 13 0 003 12s3.5 6 9 6a9 9 0 003.4-.7 M9.9 9.9a3 3 0 004.2 4.2',
@@ -1017,6 +1017,30 @@ function formasDeSVG(texto) {
   data.paths.forEach(p => SVGLoader.createShapes(p).forEach(sh => formas.push({ pts: sh.getPoints(10).map(v => [v.x, -v.y]), holes: sh.holes.map(h => h.getPoints(10).map(v => [v.x, -v.y])) })));
   return formas;
 }
+// ── Imágenes sueltas (como «importar imagen» de SketchUp): se suben con su transparencia y se escalan; si traen fondo liso se puede quitar
+function cargaImagen(fichero) {
+  return new Promise((ok, mal) => { const u = URL.createObjectURL(fichero), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); ok(im); }; im.onerror = () => { URL.revokeObjectURL(u); mal(new Error('No se pudo leer la imagen')); }; im.src = u; });
+}
+function esOpacaEnBordes(im) {
+  const k = Math.min(1, 200 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.max(2, Math.round(im.width * k)); c.height = Math.max(2, Math.round(im.height * k));
+  const x = c.getContext('2d'); x.drawImage(im, 0, 0, c.width, c.height); const d = x.getImageData(0, 0, c.width, c.height).data, W = c.width, H = c.height;
+  return [[0, 0], [W - 1, 0], [0, H - 1], [W - 1, H - 1]].every(([px, py]) => d[(py * W + px) * 4 + 3] > 200);
+}
+// el fondo liso se detecta por el color de las esquinas y se borra desde los bordes hacia dentro (no toca las zonas del mismo color que quedan dentro del dibujo)
+function quitarFondoLiso(im, tol = 40) {
+  const k = Math.min(1, 2048 / Math.max(im.width, im.height)), W = Math.round(im.width * k), H = Math.round(im.height * k), c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0, W, H); const img = x.getImageData(0, 0, W, H), d = img.data;
+  const esq = [[0, 0], [W - 1, 0], [0, H - 1], [W - 1, H - 1]].map(([px, py]) => { const i = (py * W + px) * 4; return [d[i], d[i + 1], d[i + 2]]; });
+  const bg = [0, 1, 2].map(ch => Math.round(esq.reduce((t, e) => t + e[ch], 0) / 4)), t2 = tol * tol;
+  const cerca = i => { const dr = d[i] - bg[0], dg = d[i + 1] - bg[1], db = d[i + 2] - bg[2]; return dr * dr + dg * dg + db * db <= t2; };
+  const vis = new Uint8Array(W * H), pila = [];
+  const mete = (px, py) => { if (px < 0 || py < 0 || px >= W || py >= H) return; const p = py * W + px; if (vis[p] || !cerca(p * 4)) return; vis[p] = 1; pila.push(p); };
+  for (let i = 0; i < W; i++) { mete(i, 0); mete(i, H - 1); } for (let j = 0; j < H; j++) { mete(0, j); mete(W - 1, j); }
+  while (pila.length) { const p = pila.pop(), px = p % W, py = (p - px) / W; d[p * 4 + 3] = 0; mete(px + 1, py); mete(px - 1, py); mete(px, py + 1); mete(px, py - 1); }
+  x.putImageData(img, 0, 0);
+  return new Promise(ok => c.toBlob(b => ok(b), 'image/png'));
+}
+
 // ── Texto 3D: las letras de una fuente (archivo en /fonts) se convierten en formas con huecos, como un logo
 const FUENTES = [['Montserrat', 'Montserrat (moderna)'], ['Oswald', 'Oswald (condensada)'], ['BebasNeue-Regular', 'Bebas Neue (mayúsculas)'], ['Anton-Regular', 'Anton (gruesa)'], ['ArchivoBlack-Regular', 'Archivo Black'], ['Staatliches-Regular', 'Staatliches'], ['RussoOne-Regular', 'Russo One'], ['Righteous-Regular', 'Righteous'], ['Orbitron', 'Orbitron (tecnológica)'], ['Bungee-Regular', 'Bungee (rótulo)'], ['Bangers-Regular', 'Bangers (cómic)'], ['PlayfairDisplay', 'Playfair (elegante con serifa)'], ['Cinzel', 'Cinzel (clásica romana)'], ['AbrilFatface-Regular', 'Abril Fatface'], ['Pacifico-Regular', 'Pacifico (rotulada)'], ['Lobster-Regular', 'Lobster'], ['DancingScript', 'Dancing Script (cursiva)'], ['Caveat', 'Caveat (a mano)'], ['PinyonScript-Regular', 'Pinyon Script (caligrafía)']];
 const cacheFuentes = new Map();
@@ -2769,6 +2793,17 @@ export default function Visor3D() {
         a.esc.add(gb);
         return;
       }
+      if (o.tipo === 'imagen' && o.url) {
+        const wI = (o.w || 100) * CM, hI = (o.alto || 100) * CM, geo = new THREE.PlaneGeometry(wI, hI), horiz = o.plano === 'horizontal';
+        const mt = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, transparent: true, alphaTest: 0.02, side: THREE.DoubleSide, emissive: selIdsRef.current.has(o.id) ? 0x223344 : 0x000000 });
+        new THREE.TextureLoader().setCrossOrigin('anonymous').load(o.url, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; mt.map = t; mt.needsUpdate = true; try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } });
+        const mesh = new THREE.Mesh(geo, mt); mesh.castShadow = false; mesh.receiveShadow = true;
+        if (horiz) { mesh.rotation.x = -Math.PI / 2; mesh.position.y = (o.z0 || 0) * CM + 0.01; } else mesh.position.y = (o.z0 || 0) * CM + hI / 2;
+        const gi = new THREE.Group(); gi.position.set(o.cx * CM, 0, o.cy * CM); gi.rotation.y = -(o.rot || 0) * Math.PI / 180; gi.add(mesh);
+        gi.userData.oid = o.id; gi.userData.malla = mesh; gi.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(gi);
+        return;
+      }
       if (o.tipo === 'logo' && Array.isArray(o.formas) && o.formas.length) {
         const k = (o.w || 100) / 100, geos = [];
         o.formas.forEach(f => {
@@ -3039,6 +3074,20 @@ export default function Visor3D() {
     const xs = sala.pts.map(p => p[0]), ys = sala.pts.map(p => p[1]), cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'falsotecho', nombre: 'Falso techo con foseado', etiqueta: 'Techos', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, h: pl0.altura || 260, color: '#f6f4f1', pts: sala.pts.map(p => [p[0] - cx, p[1] - cy]), ft: { descenso: 15, gap: 12, luz: true, k: 3000 } };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setSelAcab(null);
+  };
+  const imagenInput = useRef(null);
+  const importarImagen = async (fichero) => {
+    if (!fichero) return;
+    try {
+      setGuardado('Preparando la imagen…');
+      const im = await cargaImagen(fichero); let blob = fichero;
+      if (esOpacaEnBordes(im) && window.confirm('Esta imagen no tiene transparencia.\n\n¿Quitar el fondo liso (por ejemplo blanco)?\n\nAceptar = quitar el fondo · Cancelar = dejarla tal cual')) blob = await quitarFondoLiso(im);
+      const fd = new FormData(); fd.append('file', blob, 'imagen.png');
+      const r = (await api.post('/medicion/' + id + '/imagen3d', fd)).data, { ctrl } = api3d.current, ancho = 100;
+      const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'imagen', nombre: 'Imagen ' + fichero.name.replace(/\.[^.]+$/, '').slice(0, 30), etiqueta: 'Imágenes', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: ancho, d: 1, alto: Math.round(ancho * r.h / r.w), z0: 0, plano: 'vertical', url: r.url };
+      setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setGuardado('');
+      setAviso('Imagen colocada. Escálala con el ancho en su ficha (la proporción se mantiene), y muévela o gírala como cualquier objeto.');
+    } catch (e) { setGuardado(''); setAviso(e.response?.data?.error || e.message || 'No se pudo subir la imagen'); }
   };
   const [textoDlg, setTextoDlg] = useState(null);
   const [ideasAbierto, setIdeasAbierto] = useState(false);
@@ -4006,6 +4055,7 @@ export default function Visor3D() {
             {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
           </>), 250),
           railBtn(ideasAbierto, 'ideas', 'Ideas', 'Chat con ChatGPT: comparte una imagen o la vista actual, pide una idea (un mural, un ambiente…) y descarga solo la imagen', () => setIdeasAbierto(v => !v)),
+          railBtn(false, 'imagen', 'Imagen', 'Sube una imagen (PNG con transparencia, o con fondo liso que se quita) y se coloca en el 3D como en SketchUp; después la escalas', () => imagenInput.current?.click()),
           railBtn(false, 'texto', 'Texto 3D', 'Escribe una palabra y elige la fuente: se convierte en letras 3D', () => setTextoDlg({ texto: '', fuente: 'Montserrat' })),
           railBtn(false, 'logo', 'Logo', 'Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en 3D', () => logoInput.current?.click()),
         ], false, 'Insertar')}
@@ -4024,6 +4074,7 @@ export default function Visor3D() {
           railBtn(herr === 'guia', 'cinta', 'Cinta', 'Cinta métrica: clic en dos puntos para crear una línea guía; el dibujo se imanta a ellas', () => setHerr('guia')),
           railBtn(capasAbierto, 'capas', 'Capas', 'Mostrar u ocultar muros, suelos, techos, plantas y etiquetas', () => setCapasAbierto(v => !v)),
         ], true, 'Medir y ver')}
+        <input ref={imagenInput} type="file" accept="image/png,image/webp,image/jpeg" style={{ display: 'none' }} onChange={e => { importarImagen(e.target.files?.[0]); e.target.value = ''; }} />
         <input ref={logoInput} type="file" accept=".svg,.dxf" style={{ display: 'none' }} onChange={e => { importarLogo(e.target.files?.[0]); e.target.value = ''; }} />
       </div>
 
@@ -4979,7 +5030,7 @@ export default function Visor3D() {
             if (t === 'mueble' && k === 'w') return false;
             if (t === 'zona' && objSel.plano === 'pared') return false;
             if (['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(t)) return k === 'cx' || k === 'cy' || ((t === 'barrido' || t === 'carril' || t === 'led') && k === 'z0');
-            if (t === 'logo' && ['w', 'd', 'alto'].includes(k)) return false;
+            if ((t === 'logo' || t === 'imagen') && ['w', 'd', 'alto'].includes(k)) return false;
             return true;
           }).map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -5137,6 +5188,20 @@ export default function Visor3D() {
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={!!objSel.cerrado} onChange={e => cambiar(objSel.id, { cerrado: e.target.checked })} /> Cerrar en lazo</label>
               <button style={btn} onClick={() => cambiar(objSel.id, { lado: objSel.lado === -1 ? 1 : -1 })}>↔ Cambiar de lado</button>
               <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>La elevación (arriba) sube o baja todo el perfil: 0 para un rodapié, cerca de la altura del techo para una cornisa.</div>
+            </div>
+          )}
+          {objSel.tipo === 'imagen' && (
+            <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Imagen</div>
+              {(() => {
+                const ratio = (objSel.alto || 1) / (objSel.w || 1);
+                return <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Ancho (cm)</span><input type="number" value={Math.round(objSel.w * 10) / 10} onChange={e => { const w = parseFloat(e.target.value) || 1; cambiar(objSel.id, { w, alto: Math.round(w * ratio * 10) / 10 }); }} style={{ ...btn, width: 90 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Alto (cm)</span><input type="number" value={Math.round(objSel.alto * 10) / 10} onChange={e => { const al = parseFloat(e.target.value) || 1; cambiar(objSel.id, { alto: al, w: Math.round((al / ratio) * 10) / 10 }); }} style={{ ...btn, width: 90 }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Colocación</span><select value={objSel.plano || 'vertical'} onChange={e => cambiar(objSel.id, { plano: e.target.value })} style={btn}><option value="vertical">De pie (vertical)</option><option value="horizontal">Tumbada (en el suelo)</option></select></label>
+                  <div style={{ opacity: 0.5, fontSize: 11 }}>La proporción se mantiene al cambiar el ancho o el alto. «Altura desde suelo» es el borde inferior.</div>
+                </>;
+              })()}
             </div>
           )}
           {objSel.tipo === 'logo' && (

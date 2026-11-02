@@ -538,7 +538,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen'];
 const BUCKET_TEX = 'project-documents';
 // Las luminarias que se ponen solo en el 3D (focos y colgantes de un carril, y objetos con nombre de lámpara) también se escriben en el plano,
 // en su capa de iluminación. Llevan un id que empieza por «l3_»: cada vez que se guarda la escena 3D se vuelven a calcular.
@@ -586,6 +586,7 @@ router.put('/:id/escena3d', async (req, res) => {
       id: String(o.id || '').slice(0, 40),
       tipo: TIPOS_OBJ3D.includes(o.tipo) ? o.tipo : 'bloque',
       cid: o.cid ? String(o.cid).slice(0, 80) : null,
+      url: o.tipo === 'imagen' && String(o.url || '').startsWith('http') ? String(o.url).slice(0, 500) : undefined,
       nombre: String(o.nombre || '').slice(0, 120),
       etiqueta: String(o.etiqueta || '').slice(0, 40),
       grupo: o.grupo ? String(o.grupo).slice(0, 30) : undefined,
@@ -704,6 +705,18 @@ router.post('/:id/textura-ranuse', async (req, res) => {
   } catch (err) { console.error('textura-ranuse:', err); res.status(500).json({ error: 'No se pudo añadir el material' }); }
 });
 // Material liso: un color con sus propios ajustes (rugosidad, metal…). Se guarda como una textura de un solo color para que se comporte como cualquier otra
+// Imagen suelta para el 3D (con transparencia, como «importar imagen» de SketchUp): se guarda en PNG para conservar el fondo transparente
+router.post('/:id/imagen3d', uploadReferenceImageFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Falta la imagen' });
+    const png = await sharp(req.file.buffer).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).png({ compressionLevel: 9 }).toBuffer({ resolveWithObject: true });
+    const ruta = 'imagenes3d/' + req.params.id + '-' + Date.now().toString(36) + '.png';
+    const { error: eUp } = await supabase.storage.from(BUCKET_TEX).upload(ruta, png.data, { contentType: 'image/png', upsert: true });
+    if (eUp) throw eUp;
+    const { data: { publicUrl } } = supabase.storage.from(BUCKET_TEX).getPublicUrl(ruta);
+    res.status(201).json({ url: publicUrl, w: png.info.width, h: png.info.height });
+  } catch (err) { console.error('imagen3d:', err); res.status(500).json({ error: 'No se pudo guardar la imagen' }); }
+});
 router.post('/:id/textura-color', async (req, res) => {
   try {
     const hex = String(req.body?.hex || '').toLowerCase();
