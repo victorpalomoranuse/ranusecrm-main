@@ -2314,6 +2314,21 @@ export default function Visor3D() {
       // en la pared: el aplique mira hacia fuera (el ángulo del plano apunta hacia el muro)
       const ang = ((l.a || 0) * Math.PI) / 180, fuera = new THREE.Vector3(-Math.cos(ang), 0, -Math.sin(ang));
       if (esPared) marca.rotation.y = Math.atan2(fuera.x, fuera.z);
+      // color propio del cuerpo de la luminaria
+      if (/^#[0-9a-f]{6}$/i.test(aj.color || '')) marca.traverse(x => { if (x.isMesh && x.material && x.material.isMeshStandardMaterial) { x.material = x.material.clone(); x.material.color.set(aj.color); } });
+      // modelo 3D propio (sustituye al dibujo por defecto): se ajusta a la altura indicada y se ancla según el tipo
+      if (aj.mod?.url) {
+        const MH = { aplq: 24, esp: 8, foco: 6, plaf: 10, colg: 40, pie: 120, suel: 4, mue: 4 }[l.kid] || 20, mh = (aj.mh > 0 ? aj.mh : MH) * CM;
+        marca.children.slice().forEach(ch => { ch.visible = false; });
+        cargarModelo(aj.mod).then(raw => {
+          if (!g.parent) return;
+          const mm = ajustarModelo(raw, mh * 3, mh * 3, mh, 'caber'); if (!mm) return;
+          const hh = mm.userData.mostrado[2] / 100, dd = mm.userData.mostrado[1] / 100, env = new THREE.Group();
+          mm.rotation.y = ((aj.mrot || 0) * Math.PI) / 180; env.add(mm);
+          if (esPared) env.position.set(0, -hh / 2, dd / 2); else if (['foco', 'plaf', 'colg'].includes(l.kid)) env.position.y = -hh;
+          env.traverse(x => { x.userData.luzId = l.id; }); marca.add(env);
+        }).catch(() => {});
+      }
       const luzMundo = marca.position.clone().add(luzPos);
       if (esPared) {
         const proy = aj.proy || 'arriba_abajo', base = marca.position.clone().add(fuera.clone().multiplyScalar(0.08));
@@ -2946,6 +2961,18 @@ export default function Visor3D() {
         setFoto3dEstado('«' + m.nombre + '» creado ✓ (' + m.w + '×' + m.d + '×' + m.alto + ' cm). Haz clic en él para colocarlo.'); return;
       }
     } catch (e) { setFoto3dEstado(e.response?.data?.error || 'No se pudo crear el modelo'); }
+  };
+  // Modelo 3D propio para una luminaria del plano (aplique, foco…): se sube y se asigna solo a esa luminaria
+  const subirModeloLuz = async (file, idL) => {
+    if (!file) return;
+    if (file.name.toLowerCase().endsWith('.skp')) { alert('Los .skp no se pueden mostrar: expórtalo a .glb o .dae desde SketchUp.'); return; }
+    setGuardado('Subiendo el modelo…');
+    try {
+      const fd = new FormData(); fd.append('file', file); fd.append('categoria', 'Mis modelos');
+      const m = (await api.post('/biblioteca3d/mios', fd)).data.modelo;
+      setLucesAj(a => ({ ...a, [idL]: { ...(a[idL] || {}), ap: a[idL]?.ap ?? 60, mod: { url: m.url, tipo: m.tipo } } }));
+      setGuardado('Modelo asignado a la luminaria ✓');
+    } catch (e) { setAviso(e.response?.data?.error || 'No se pudo subir el modelo'); }
   };
   const quitarMio = async (m) => {
     if (!window.confirm('¿Quitar «' + m.nombre + '» de Mis modelos? Los que ya colocaste en un plano dejarán de verse.')) return;
@@ -4131,6 +4158,24 @@ export default function Visor3D() {
               <select value={lucesAj[l.id]?.proy || 'arriba_abajo'} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, proy: e.target.value } }))} style={{ ...btn, flex: 1 }}>
                 <option value="arriba_abajo">Arriba y abajo</option><option value="arriba">Solo hacia arriba</option><option value="abajo">Solo hacia abajo</option><option value="frontal">Frontal (hacia delante)</option><option value="difusa">Difusa en todas direcciones</option>
               </select></label>}
+            {!esLin && l.kid !== 'spot' && l.kid !== 'spotl' && <div style={{ borderTop: '1px solid #333', margin: '4px 0 8px', paddingTop: 8 }}>
+              {(() => {
+                const aj0 = lucesAj[l.id] || {}, pon = c => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, ...c } }));
+                return <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }} title="Color del cuerpo de la luminaria (solo en el dibujo por defecto)"><span style={{ width: 90, opacity: 0.7 }}>Color</span>
+                    <input type="color" value={aj0.color || '#f2f2f2'} onChange={e => pon({ color: e.target.value })} style={{ width: 40, height: 26, padding: 0, border: 'none', background: 'none' }} />
+                    {aj0.color && <button style={{ ...btn, padding: '2px 8px' }} onClick={() => pon({ color: undefined })}>Quitar</button>}</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Modelo 3D</span>
+                    <label style={{ ...btn, cursor: 'pointer', fontSize: 12 }}>{aj0.mod ? 'Cambiar…' : 'Subir…'}<input type="file" accept=".glb,.gltf,.obj,.dae,.zip" style={{ display: 'none' }} onChange={e => { subirModeloLuz(e.target.files?.[0], l.id); e.target.value = ''; }} /></label>
+                    {aj0.mod && <button style={{ ...btn, padding: '2px 8px' }} onClick={() => pon({ mod: undefined, mh: undefined, mrot: undefined })}>Quitar</button>}</div>
+                  {aj0.mod && <>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Alto (cm)</span><input type="number" value={aj0.mh ?? ''} placeholder="auto" onChange={e => pon({ mh: parseFloat(e.target.value) || undefined })} style={{ ...btn, width: 70 }} /></label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Giro modelo</span><select value={aj0.mrot || 0} onChange={e => pon({ mrot: parseInt(e.target.value, 10) || undefined })} style={btn}><option value={0}>0°</option><option value={90}>90°</option><option value={180}>180°</option><option value={270}>270°</option></select></label>
+                  </>}
+                  <button style={{ ...btn, width: '100%', fontSize: 12, marginTop: 2 }} title="Copia el color y el modelo de esta luminaria a todas las del mismo tipo" onClick={() => setLucesAj(a => { const n = { ...a }; lucesPl.filter(x => x.kid === l.kid).forEach(x => { n[x.id] = { ...(n[x.id] || {}), ap: n[x.id]?.ap ?? 60, color: aj0.color, mod: aj0.mod, mh: aj0.mh, mrot: aj0.mrot }; }); return n; })}>Igualar a todas las de este tipo</button>
+                </>;
+              })()}
+            </div>}
             {esLin && <div style={{ opacity: 0.85, marginBottom: 6 }}>Longitud: <b>{largoM.toFixed(2)} m</b> <span style={{ opacity: 0.55, fontSize: 11 }}>(viene del plano; se cambia en Planos)</span></div>}
             {l.kid === 'spot' && <>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Inclinación °</span><input type="number" step="5" value={lucesAj[l.id]?.tilt ?? 25} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), tilt: parseFloat(e.target.value) || 0 } }))} style={{ ...btn, width: 70 }} /></label>
