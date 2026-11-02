@@ -3870,11 +3870,11 @@ function scene0(C,k,view,o){
     });
     if(!o.nonum&&!o.flat&&(v.eq||[]).length)zlab+='';
   }
-  if((view==='ilum'||view==='elec')&&!o.ante){ /* mobiliario y máquinas: solo su símbolo, en tono suave, para ver qué se ilumina (sin nombre ni recuadro) */
+  if((view==='ilum'||view==='elec')&&!o.ante){ /* mobiliario y máquinas: su bloque tal como se ve en Distribución, sin nombre ni recuadro, para ver qué se ilumina */
     (v.eq||[]).forEach(function(e){
       if(e.s==='dem'||(e.bl&&e.bl.esc))return;
-      var r=eqRect(e),cs=C.blk||C.ink,suave=/^#[0-9a-f]{6}$/i.test(cs)&&C===LIGHT;
-      h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')"'+(suave?'':' style="opacity:.45"')+'>'+eqSym(e.ty,e.w,e.d,suave?hexMix(cs,'#ffffff',0.6):cs,px,e.cid)+'</g>';
+      var r=eqRect(e),cs=C.blk||C.ink;
+      h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')">'+eqSym(e.ty,e.w,e.d,cs,px,e.cid)+'</g>';
     });
   }
   if(o.flat){
