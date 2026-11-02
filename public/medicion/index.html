@@ -3574,7 +3574,7 @@ function dimW(C,px,x1,y1,x2,y2,t,col,suave,zo){
     tx=(x1+x2)/2+(vert?(zo.inw.x>=0?1:-1)*11*px:0);
     ty=vert?(y1+y2)/2:(y1+y2)/2+(zo.inw.y>0?13*px:-5*px);
   }
-  var fsz=suave?9.5:12,angW=PAGE_ROT?angTxt(vert):undefined;
+  var fsz=(suave?9.5:12)*(C===LIGHT?0.82:1),angW=PAGE_ROT?angTxt(vert):undefined; /* en la lámina las cotas van algo más pequeñas que el resto de etiquetas */
   if(vert&&!PAGE_ROT){ /* en las cotas verticales el número va siempre en horizontal, a un lado de la línea y sin que ella lo cruce */
     var sg0=(zo&&zo.inw&&zo.inw.x<0)?-1:1,hw=txtW(String(t),false,fsz*TXTK*ZOOMF*px,suave?400:500,0)/2;
     tx=(x1+x2)/2+sg0*(hw+5*px);ty=(y1+y2)/2+0.35*fsz*TXTK*ZOOMF*px;
@@ -4427,9 +4427,9 @@ function dimChain(C,px,w,mode,cent,view,tags){
     if(chk&&dimOc&&!(st.sel&&st.sel.t==='wall'&&st.sel.id===w.id)){var tw=txtW(t,true,11*px,wt>500?500:wt,0),th=11*px,r=(rotC&&PAGE_ROT)?{x0:p.x-th*0.65,x1:p.x+th*0.65,y0:p.y-tw/2-2*px,y1:p.y+tw/2+2*px}:{x0:p.x-tw/2-2*px,x1:p.x+tw/2+2*px,y0:p.y+4*px-th,y1:p.y+4*px+th*0.35};
       for(var i=0;i<dimOc.length;i++){var q=dimOc[i];if(r.x0<q.x1&&r.x1>q.x0&&r.y0<q.y1&&r.y1>q.y0)return ''}
       dimOc.push(r)}
-    if(rotC&&!PAGE_ROT){var hwL=txtW(String(t),false,11*TXTK*ZOOMF*px,wt>500?500:wt,0)/2;p={x:p.x+(c.nx>=0?1:-1)*(hwL-3*px),y:p.y}} /* número vertical → horizontal junto a la línea */
+    if(rotC&&!PAGE_ROT){var hwL=txtW(String(t),false,11*(C===LIGHT?0.82:1)*TXTK*ZOOMF*px,wt>500?500:wt,0)/2;p={x:p.x+(c.nx>=0?1:-1)*(hwL-3*px),y:p.y}} /* número vertical → horizontal junto a la línea */
     var angL=PAGE_ROT?angTxt(rotC):undefined,ccL=colr===C.label?hexMix(C.label,'#ffffff',0.3):colr,wwL=wt>500?500:wt;
-    var resL=angL===undefined?txt(C,px,p.x,p.y+4*px,t,ccL,11,wwL):txt(C,px,p.x,p.y,t,ccL,11,wwL,undefined,angL);
+    var resL=angL===undefined?txt(C,px,p.x,p.y+4*px,t,ccL,11*(C===LIGHT?0.82:1),wwL):txt(C,px,p.x,p.y,t,ccL,11*(C===LIGHT?0.82:1),wwL,undefined,angL);
     return key?adjK(key,resL,p.x,p.y):resL}
   var meas=w.m===true,bad=!esInt&&meas&&Math.abs(L-w.len)>1.5,clear=S1-S0,tt=meas?fmtU(esInt?w.len-(L-clear):w.len):'~'+fmtU(esInt?clear:L);
   var ttn=meas?(esInt?w.len-(L-clear):w.len):(esInt?clear:L);
@@ -9285,7 +9285,7 @@ function sheetPage(doc,view,idx,total,o){
     var km=10/S,bw=(gira?hc:wc)*km,bh=(gira?wc:hc)*km,ox=gira?ax+(aw-bw)/2-b.y0*km:ax+(aw-bw)/2-b.x0*km,oy=gira?ay+(ah-bh)/2+b.x1*km:ay+(ah-bh)/2-b.y0*km;
     demCapa=(view==='demol'&&o.capa)?o.capa:(view==='demol'?'x':null);
     PAGE_ROT=gira?-90:0;
-    TXTK=(o.txk&&o.txk!=='auto'&&+o.txk>0)?+o.txk:(S<=60?1.35:S<=100?1.2:S<=150?1.05:S<=250?0.92:0.8); /* automático: cuanto más pequeña sale la escala (planos grandes), más contenidos los textos */
+    TXTK=(o.txk&&o.txk!=='auto'&&+o.txk>0)?+o.txk:(S<=60?1.3:S<=100?1.1:S<=150?0.95:S<=250?0.82:0.7); /* automático: cuanto más pequeña sale la escala (planos grandes), más contenidos los textos */
     ESTR=o.estr||'todo';
     var inner;try{inner=scene(LIGHT,40/S,view,{sel:null,nodes:false,tags:tags,noctl:true,dims:o.dims,flat:true,marks:o.marks!==false&&!o.ante,ldim:o.ldim!==false&&!o.ante,eqloc:!!o.eqloc&&!o.ante,eqgap:!!o.eqgap&&!o.ante,eqsuelo:o.eqsuelo!==false,ante:!!o.ante,nonum:!!o.ante})}finally{TXTK=1;ESTR='todo'}
     demCapa=null;PAGE_ROT=0;if(gira)inner=contraGiro(inner);
@@ -9843,10 +9843,16 @@ $('b-pdfproj').addEventListener('click',function(){
 /* qué información sale en las láminas (por defecto todo) */
 var INFO_LAM=[['leyenda','Leyenda: estados, materiales y sistemas, equipos, luminarias y símbolos'],['carp','Carpinterías (puertas y ventanas)'],['med','Cuadro de mediciones'],['total','Total de m²'],['rodapie','Rodapié (ml)'],['despiece','Despiece y piezas a pedir']];
 /* la información de las láminas se puede fijar para todas o solo para una (la de esa lámina manda sobre la general) */
+/* leyendas predeterminadas por lámina (se guardan en este navegador y valen para todos los planos nuevos; lo de cada plano manda sobre ellas) */
+var LSINFODEF='ranuseInfoDef';
+function infoDef(){try{return JSON.parse(localStorage.getItem(LSINFODEF)||'{}')||{}}catch(e){return {}}}
 function infoOn(k){
   var v=window.__infoView||st.view,iv=st.v&&st.v.infoV&&st.v.infoV[v];
   if(iv&&Object.prototype.hasOwnProperty.call(iv,k))return iv[k]!==false;
-  return !(st.v&&st.v.info&&st.v.info[k]===false);
+  if(st.v&&st.v.info&&st.v.info[k]===false)return false;
+  var dv=infoDef()[v];
+  if(dv&&Object.prototype.hasOwnProperty.call(dv,k))return dv[k]!==false;
+  return true;
 }
 function abrirInfoLam(){
   window.__infoView=null;
@@ -9855,7 +9861,7 @@ function abrirInfoLam(){
   var m=document.createElement('div');m.id='infomod';m.className='dxfmod';
   m.innerHTML='<div class="dxfbox" style="max-width:540px"><header><h3>Qué información enseñar en las láminas</h3><p class="note" style="margin:0">Quita lo que no haga falta para no confundir (por ejemplo, el rodapié si ya existe). Los suelos que ya existen se marcan como «existente» en su propio panel.</p>'+
     '<div class="seg3" style="margin-top:8px"><button data-ambito="esta" aria-pressed="true">Solo esta lámina ('+esc(nombre)+')</button><button data-ambito="todas" aria-pressed="false">Todas las láminas</button></div></header><div id="inf-lista" style="padding:12px 18px;display:grid;gap:8px"></div>'+
-    '<footer><span style="flex:1"></span><button id="inf-x">Cancelar</button><button class="pri" id="inf-ok">Guardar</button></footer></div>';
+    '<footer><label class="fld chk" style="margin:0;flex:1"><input type="checkbox" id="inf-def"><span>Dejarlo como predeterminado para esta lámina en todos mis planos</span></label><button id="inf-x">Cancelar</button><button class="pri" id="inf-ok">Guardar</button></footer></div>';
   document.body.appendChild(m);
   var ambito='esta';
   function pinta(){
@@ -9881,6 +9887,8 @@ function abrirInfoLam(){
     snap();
     var mapa={};
     [].forEach.call(m.querySelectorAll('input[data-inf]'),function(c){mapa[c.getAttribute('data-inf')]=!!c.checked});
+    var dfc=document.getElementById('inf-def');
+    if(dfc&&dfc.checked){try{var dd=infoDef();dd[vw]=mapa;localStorage.setItem(LSINFODEF,JSON.stringify(dd))}catch(e){toast('No se pudo guardar el predeterminado en este navegador')}}
     if(ambito==='esta'){st.v.infoV=st.v.infoV||{};st.v.infoV[vw]=mapa}
     else{st.v.info={};Object.keys(mapa).forEach(function(k){if(!mapa[k])st.v.info[k]=false});st.v.infoV={}}
     save();cierra();toast(ambito==='esta'?'Guardado solo para la lámina «'+nombre+'»':'Guardado para todas las láminas');
