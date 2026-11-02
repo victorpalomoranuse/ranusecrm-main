@@ -2196,7 +2196,7 @@ function techoSvg(C,px,view,sel){
   /* en iluminación y electricidad se ve la estructura del techo (vigas, correas, tragaluces) como referencia, más suave y sin poder tocarla */
   var ref=view==='ilum'||view==='elec';
   if(view!=='techos'&&!ref)return h;
-  if(ref)sel=null;
+  if(ref&&!(sel&&sel.t==='zn'&&sel.el&&sel.el.k==='tl'))sel=null;
   techoZonas().forEach(function(it){
     var f=it.f,z=it.z;if(!z||(!z.fo&&!z.vg&&!(z.tl&&z.tl.length)))return;
     var b=techoBox(f.inner),fo=z.fo||'plano',ej=z.ej==='v'?'v':'h',col=C.accent||C.dim,H=num(st.v.altura)||260;
@@ -4952,7 +4952,7 @@ svg.addEventListener('pointerdown',function(e){
       var oo=opn(ho.id);
       if(oo){snap();st.sel=ho;gesture={type:'dragOp',id:e.pointerId,o:oo,moved:false,sx:p.x,sy:p.y};panelSel();render();return}
     }
-    if(ho&&ho.t==='zn'&&ho.el&&st.tool==='select'&&st.view==='techos'){
+    if(ho&&ho.t==='zn'&&ho.el&&st.tool==='select'&&(st.view==='techos'||((st.view==='ilum'||st.view==='elec')&&ho.el.k==='tl'))){
       var zte=znDe(ho.id),fte=zte&&techoFaceDe(zte);
       if(zte&&fte){
         snap();st.sel={t:'zn',id:ho.id,el:ho.el};
@@ -5384,7 +5384,7 @@ function pick(w,tol,view){
     var g=wg(wa),d=segDist(p,g.a,g.b);
     if(d<Math.max(tol,wa.t/2)&&d<bd){bd=d;best={t:'wall',id:wa.id}}
   });
-  if(!best&&view==='techos'){var pte=pickTecho(p);if(pte)best={t:'zn',id:pte.zid,el:pte.el}}
+  if(!best&&(view==='techos'||view==='ilum'||view==='elec')){var pte=pickTecho(p);if(pte&&(view==='techos'||pte.el.k==='tl'))best={t:'zn',id:pte.zid,el:pte.el}} /* en Iluminación y Electricidad solo se pueden tocar los tragaluces (para quitarlos o moverlos); vigas y correas son de referencia */
   if(!best&&(view==='suelos'||view==='techos')){
     (st.v.sp||[]).forEach(function(r){if(r.k!==zkind(view))return;var pp=spPts(r);if(pp&&inPoly(p,pp))best={t:'sp',id:r.id}});
   }
