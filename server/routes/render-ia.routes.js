@@ -1,4 +1,5 @@
 import express from 'express';
+import sharp from 'sharp';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 
 // Render fotorrealista con IA de imágenes (Gemini, «Nano Banana»): recibe la imagen del visor 3D
@@ -23,6 +24,21 @@ async function modelosImagenOpenAI(clave) {
     for (let i = 0; i < Math.max(va.length, vb.length); i++) { const d = (vb[i] || 0) - (va[i] || 0); if (d) return d; }
     return b.localeCompare(a);
   });
+}
+// Colores dominantes de la vista del modelo (k-medias sobre una miniatura): se le dicen a la IA como colores que no puede cambiar,
+// porque al «fotorrealizar» tiende a oscurecer o cambiar el tono de las paredes y los suelos.
+async function coloresDominantes(buf, k = 6) {
+  try {
+    const { data, info } = await sharp(buf).resize(48, 48, { fit: 'fill' }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const px = []; for (let i = 0; i < info.width * info.height; i++) px.push([data[i * 3], data[i * 3 + 1], data[i * 3 + 2]]);
+    let cs = Array.from({ length: k }, (_, i) => px[Math.floor(((i + 0.5) * px.length) / k)].slice()), asig = new Array(px.length).fill(0);
+    for (let it = 0; it < 9; it++) {
+      px.forEach((p, i) => { let b = 0, bd = Infinity; cs.forEach((c, j) => { const d = (p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2; if (d < bd) { bd = d; b = j; } }); asig[i] = b; });
+      cs = cs.map((c, j) => { const m = px.filter((_, i) => asig[i] === j); return m.length ? [0, 1, 2].map(ch => Math.round(m.reduce((a, p) => a + p[ch], 0) / m.length)) : c; });
+    }
+    const cuenta = new Array(k).fill(0); asig.forEach(j => { cuenta[j]++; });
+    return cs.map((c, j) => ({ hex: '#' + c.map(v => v.toString(16).padStart(2, '0')).join(''), pct: Math.round((cuenta[j] / px.length) * 100) })).filter(c => c.pct >= 4).sort((a, b) => b.pct - a.pct);
+  } catch { return []; }
 }
 const modelo = () => process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
 
@@ -56,7 +72,7 @@ router.post('/', async (req, res) => {
     const nivel = ['fiel', 'equilibrado', 'creativo'].includes(libertad) ? libertad : 'equilibrado';
     const NIVELES = {
       fiel: 'Respeta EXACTAMENTE la composición, la perspectiva, las proporciones y la posición de cada elemento. No añadas ni quites nada: solo mejora la luz, los materiales y las texturas.',
-      equilibrado: 'Respeta la distribución, la perspectiva y las proporciones del espacio, y los elementos principales (muros, puertas, ventanas y muebles). Sí puedes enriquecer la escena con luz natural cálida, reflejos, sombras suaves, texturas realistas en suelos y paredes, el exterior visible por las ventanas y pequeños detalles de ambiente coherentes con la estancia.',
+      equilibrado: 'Respeta la distribución, la perspectiva y las proporciones del espacio, y los elementos principales (muros, puertas, ventanas y muebles). Sí puedes enriquecer la escena con luz natural, reflejos, sombras suaves, texturas realistas en suelos y paredes, el exterior visible por las ventanas y pequeños detalles de ambiente coherentes con la estancia, SIN cambiar el color base de ninguna superficie.',
       creativo: 'Mantén la arquitectura (muros, huecos, medidas y perspectiva) y la distribución general, pero decora con criterio de interiorista: textiles, plantas, iluminación ambiente, accesorios y detalles que hagan que el espacio parezca vivido y de revista. No cambies el encuadre.',
     };
     // Muestras reales de los materiales de la escena (imagen + descripción) para que la IA los reconozca y no invente otros
@@ -75,8 +91,12 @@ router.post('/', async (req, res) => {
     ].filter(Boolean).join(' ');
     // Modo «panorama»: la imagen es una panorámica 360° equirrectangular (estirada a 3:2); se fotorrealiza sin cambiar la proyección
     const instPano = 'Esta imagen es una panorámica 360° equirrectangular de un interior, tal como la leen los visores 360 (la línea del horizonte recta en el centro, el suelo abajo y el techo arriba, deformada en los extremos). Conviértela en una fotografía profesional realista de interiorismo con luz natural cálida, sombras suaves, reflejos creíbles y materiales con textura real, MANTENIENDO EXACTAMENTE la misma proyección equirrectangular, el mismo encuadre completo, la misma distribución y la posición de cada elemento. El borde izquierdo y el derecho deben seguir encajando entre sí (es un círculo completo). No recortes, no cambies la perspectiva ni añadas bordes. ' + [NIVELES.fiel, extra ? String(extra).slice(0, 300) : ''].join(' ');
+    const dom = (modo === 'mejora' || modo === 'panorama') ? [] : await coloresDominantes(Buffer.from(m[2], 'base64'));
+    const txtDominantes = dom.length ? 'COLORES DOMINANTES DEL MODELO que debes respetar (color y % de la imagen): ' + dom.map(c => c.hex + ' (' + c.pct + '%)').join(', ') + '. Las paredes, el suelo y el techo deben seguir teniendo estos tonos.' : '';
     const instrucciones = modo === 'panorama' ? instPano : modo === 'mejora' ? instMejora : [
       'Convierte esta imagen de un modelo 3D de interiorismo en una fotografía profesional de revista de interiorismo y arquitectura: realista, nítida, con luz natural cálida, sombras suaves, reflejos creíbles, materiales con textura real y profundidad de campo, como hecha con una cámara réflex y un objetivo gran angular. Debe parecer una foto real, no un render ni una ilustración.',
+      'REGLA DE COLOR (obligatoria): cada pared, suelo, techo, mueble y objeto debe conservar el MISMO color base que tiene en la imagen del modelo. Solo puedes variar su luminosidad por la luz y las sombras, nunca su tono: una pared clara sigue siendo clara y una oscura sigue siendo oscura. No cambies de color ninguna pared.',
+      txtDominantes,
       NIVELES[nivel],
       colores.length ? 'Respeta con la máxima fidelidad estos colores y acabados: ' + colores.join('; ') + '.' : 'Mantén los colores de los materiales tal y como aparecen en la imagen.',
       txtMateriales,
