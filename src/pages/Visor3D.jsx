@@ -3749,7 +3749,7 @@ export default function Visor3D({ cliente = false }) {
     for (const pl of (m.plantas || [m])) for (const s of (pl.salas || [])) if (s.nombre && puntoEnPoligono([cam.position.x / CM, cam.position.z / CM], s.pts)) return s.nombre;
     return '';
   };
-  const abrirFormIA = () => { setIaTxt(t => ({ ...t, estancia: t.estancia || salaBajoCamara() })); setIaForm(true); };
+  const abrirFormIA = () => { setFichaIA(null); setIaTxt(t => ({ ...t, estancia: t.estancia || salaBajoCamara() })); setIaForm(true); };
   const restaurarVista = (meta) => {
     const { cam, ctrl } = api3d.current, c = meta?.camara; if (!c || c.px == null) return;
     cam.position.set(c.px, c.py, c.pz); ctrl.target.set(c.tx, c.ty, c.tz); if (c.fov) cam.fov = c.fov; api3d.current.shiftY = meta.shift || 0; setShiftY(meta.shift || 0); cam.updateProjectionMatrix(); ctrl.update();
@@ -3994,7 +3994,7 @@ export default function Visor3D({ cliente = false }) {
           else ref = await new Promise(ok => { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { try { ok(jpeg(im)); } catch { ok(null); } }; im.onerror = () => ok(null); im.src = t.url; setTimeout(() => ok(null), 6000); });
         } catch { ref = null; }
         lista.push({ zona, descr: d, ref });
-      } else if (/^#[0-9a-f]{6}/i.test(v)) lista.push({ zona, descr: 'color ' + (nombreColor(v) || '') + ' (' + v.slice(0, 7) + ')' });
+      } else if (/^#[0-9a-f]{6}/i.test(v)) lista.push({ zona, color: true, nombreColor: nombreColor(v) || '', hex: v.slice(0, 7), descr: 'pintura lisa mate de color ' + (nombreColor(v) || '') + ' (' + v.slice(0, 7) + '): superficie uniforme, sin textura, sin manchas ni desgaste' });
     }
     // vidrios de puertas y ventanas
     const mod = api3d.current.modelo, vid = new Set();
@@ -4005,8 +4005,38 @@ export default function Visor3D({ cliente = false }) {
     for (const pl of (mod?.plantas || (mod ? [mod] : []))) (pl.equipos || []).forEach(e => suma(e.nombre || e.nm));
     objs.forEach(o => { if (!['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(o.tipo)) suma(o.nombre || o.etiqueta); });
     const inventario = [...cuenta.entries()].map(([n, c]) => (c > 1 ? c + '× ' : '') + n);
-    return { materiales: lista.slice(0, 8), inventario };
+    return { materiales: lista.slice(0, 10), inventario };
   };
+  // Ficha de materiales editable (en el cuadro del render con IA): cada superficie con su acabado, su código NCS, una nota y una foto de referencia propia.
+  // Lo que se pone aquí manda sobre lo que la IA «cree ver». Los cambios (menos las fotos) se recuerdan por plano en este navegador.
+  const [fichaIA, setFichaIA] = useState(null);
+  const [fichaCargando, setFichaCargando] = useState(false);
+  const claveFicha = r => r.zona + '|' + (r.hex || r.descr);
+  const ACABADOS = { lisa: 'pintura lisa mate: superficie uniforme, SIN textura, SIN manchas, SIN desgaste, SIN microcemento', satinada: 'pintura lisa satinada: superficie uniforme con ligero brillo, SIN textura ni desgaste', segun: '' };
+  const cargarFicha = async () => {
+    setFichaCargando(true);
+    try {
+      const f = await fichaMateriales();
+      let guard = {}; try { guard = JSON.parse(localStorage.getItem('visor3dFicha:' + id) || '{}'); } catch { /* sin almacenamiento */ }
+      setFichaIA({ inventario: f.inventario, filas: (f.materiales || []).map(m => ({ ...m, acabado: 'lisa', ncs: '', extra: '', foto: null, ...(guard[claveFicha(m)] || {}) })) });
+    } catch { setAviso('No se pudo leer los materiales de la vista'); }
+    setFichaCargando(false);
+  };
+  const cambiaFila = (i, p) => setFichaIA(f => {
+    const filas = f.filas.map((r, j) => (j === i ? { ...r, ...p } : r));
+    try { const g = JSON.parse(localStorage.getItem('visor3dFicha:' + id) || '{}'); filas.forEach(r => { g[claveFicha(r)] = { acabado: r.acabado, ncs: r.ncs, extra: r.extra }; }); localStorage.setItem('visor3dFicha:' + id, JSON.stringify(g)); } catch { /* sin almacenamiento */ }
+    return { ...f, filas };
+  });
+  const compilaFicha = () => ({
+    inventario: fichaIA.inventario,
+    materiales: fichaIA.filas.map(r => {
+      let d = r.descr;
+      if (r.color) d = 'color ' + r.nombreColor + ' (' + r.hex + ')' + (ACABADOS[r.acabado] ? ': ' + ACABADOS[r.acabado] : '');
+      if (r.ncs && r.ncs.trim()) d += '. Código NCS ' + r.ncs.trim() + ': respeta exactamente ese color';
+      if (r.extra && r.extra.trim()) d += '. ' + r.extra.trim();
+      return { zona: r.zona, descr: d, ref: r.foto || r.ref || null };
+    }),
+  });
   // ov = textos concretos (estancia, estilo…) y opc.autoGuardar = guardar directamente en la galería (para las escenas)
   // Postproducción con IA: se exporta la imagen en alta resolución y la IA solo la mejora (nitidez, ruido, luz suave); nunca cambia la escena
   const [mejoraOpc, setMejoraOpc] = useState({ nitidez: true, luz: false });
@@ -4030,7 +4060,7 @@ export default function Visor3D({ cliente = false }) {
       const imagen = renderer.domElement.toDataURL('image/jpeg', 0.95);
       restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix();
       const meta = metaActual(txt);
-      const ficha = await fichaMateriales().catch(() => ({}));
+      const ficha = await (fichaIA && !opc.autoGuardar ? Promise.resolve(compilaFicha()) : fichaMateriales()).catch(() => ({}));
       const r = await api.post('/render-ia', { imagen, ...txt, ...ficha }, { timeout: 180000 });
       if (opc.autoGuardar) { await guardarRender('ia', r.data.imagen, meta, opc.nombre); setIa(null); return true; }
       setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen, meta, guardado: false });
@@ -4390,7 +4420,7 @@ export default function Visor3D({ cliente = false }) {
       )}
       {iaForm && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 5 }}>
-          <div style={{ background: '#1d1d1d', color: '#fff', borderRadius: 10, padding: 18, width: 380, fontSize: 13 }}>
+          <div style={{ background: '#1d1d1d', color: '#fff', borderRadius: 10, padding: 18, width: fichaIA ? 520 : 380, maxHeight: '92vh', overflowY: 'auto', fontSize: 13 }}>
             <b style={{ fontSize: 15 }}>Render fotorrealista con IA</b>
             <p style={{ opacity: 0.7, margin: '6px 0 10px' }}>Se manda lo que ves ahora en pantalla. Colócate bien la cámara antes.</p>
             {[['estancia', 'Estancia (ej. salón, gimnasio privado)'], ['estilo', 'Estilo (ej. moderno, cálido, minimalista)'], ['extra', 'Algo más (ej. luz de tarde, suelo de roble claro)']].map(([k, ph]) => (
@@ -4411,6 +4441,30 @@ export default function Visor3D({ cliente = false }) {
                 <option value="gemini">Gemini (Google)</option>
               </select>
             </label>
+            <button style={{ ...btn, width: '100%', marginTop: 8, background: fichaIA ? '#2c2824' : '#2f5f8a' }} disabled={fichaCargando} onClick={() => (fichaIA ? setFichaIA(null) : cargarFicha())} title="Revisa cada superficie de la vista: acabado, código NCS, una nota o una foto de referencia">{fichaCargando ? 'Leyendo los materiales…' : fichaIA ? '▲ Ocultar la ficha de materiales' : '📋 Revisar materiales de esta vista (recomendado)'}</button>
+            {fichaIA && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>Lo que pongas aquí es una orden para la IA. Si dejas todo como está, usa los colores y texturas del modelo, con las paredes lisas como pintura sin textura.</div>
+                {!fichaIA.filas.length && <div style={{ opacity: 0.7 }}>No hay acabados asignados en esta vista.</div>}
+                {fichaIA.filas.map((r, i) => (
+                  <div key={i} style={{ background: '#262422', borderRadius: 6, padding: 8, marginBottom: 6 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {r.color ? <span style={{ width: 22, height: 22, borderRadius: 4, background: r.hex, border: '1px solid #555', flex: '0 0 auto' }} /> : (r.foto || r.ref) ? <img src={r.foto || r.ref} alt="" style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4, flex: '0 0 auto' }} /> : null}
+                      <div style={{ minWidth: 0 }}><b style={{ textTransform: 'capitalize' }}>{r.zona}</b><div style={{ opacity: 0.6, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.color ? r.nombreColor + ' ' + r.hex : r.descr}</div></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
+                      {r.color && <select value={r.acabado} onChange={e => cambiaFila(i, { acabado: e.target.value })} style={{ ...btn, padding: '3px 6px' }}><option value="lisa">Pintura lisa mate</option><option value="satinada">Pintura lisa satinada</option><option value="segun">Como se ve (la IA decide)</option></select>}
+                      {r.color && <input value={r.ncs} onChange={e => cambiaFila(i, { ncs: e.target.value })} placeholder="NCS (ej. S 2005-Y20R)" style={{ ...btn, padding: '3px 6px', width: 150 }} />}
+                      <label style={{ ...btn, padding: '3px 8px', cursor: 'pointer' }}>{r.foto ? 'Cambiar foto' : '📎 Foto de referencia'}
+                        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (!f) return; const rd = new FileReader(); rd.onload = () => { const im = new Image(); im.onload = () => { const k = Math.min(1, 512 / Math.max(im.width, im.height)), c2 = document.createElement('canvas'); c2.width = Math.round(im.width * k); c2.height = Math.round(im.height * k); c2.getContext('2d').drawImage(im, 0, 0, c2.width, c2.height); cambiaFila(i, { foto: c2.toDataURL('image/jpeg', 0.85) }); }; im.src = rd.result; }; rd.readAsDataURL(f); }} />
+                      </label>
+                      {r.foto && <span onClick={() => cambiaFila(i, { foto: null })} style={{ cursor: 'pointer', opacity: 0.7 }} title="Quitar la foto">✕</span>}
+                    </div>
+                    <input value={r.extra} onChange={e => cambiaFila(i, { extra: e.target.value })} placeholder="Nota (ej. sin juntas visibles, mate, sin brillo)" style={{ ...btn, width: '100%', boxSizing: 'border-box', padding: '3px 6px', marginTop: 6 }} />
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
               <button style={btn} onClick={() => setIaForm(false)}>Cancelar</button>
               <button style={{ ...btn, background: '#8c8076', borderColor: '#8c8076' }} onClick={() => renderIA()}>Generar</button>
