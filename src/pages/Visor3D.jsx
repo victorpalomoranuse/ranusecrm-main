@@ -1573,7 +1573,8 @@ export default function Visor3D() {
       api3d.current.modelo = modelo;
       {
         const nodos = Object.fromEntries((pl?.nodes || []).map(n => [n.id, n]));
-        setLucesPl((pl?.pts || []).filter(p => p.v === 'ilum' && p.s !== 'dem' && nodos[p.n] && !String(p.id).startsWith('l3_')).map(p => ({ id: p.id, kid: p.k, lid: p.lid || null, h: p.h, x: nodos[p.n].x + p.dx, y: nodos[p.n].y + p.dy })));
+        setLucesPl((pl?.pts || []).filter(p => p.v === 'ilum' && p.s !== 'dem' && nodos[p.n] && !String(p.id).startsWith('l3_')).map(p => ({ id: p.id, kid: p.k, lid: p.lid || null, h: p.h, lm: p.lm > 0 ? p.lm : null, ap: p.ap > 0 ? p.ap : null, a: p.a || 0, w: p.w > 0 ? p.w : null, x: nodos[p.n].x + p.dx, y: nodos[p.n].y + p.dy,
+          vs: ['carril', 'led', 'lineal', 'linealc'].includes(p.k) ? ((p.vx && p.vx.length >= 2) ? p.vx.map(v => [nodos[p.n].x + v.x, nodos[p.n].y + v.y]) : [[nodos[p.n].x + p.dx, nodos[p.n].y + p.dy], [nodos[p.n].x + (p.dx2 ?? p.dx), nodos[p.n].y + (p.dy2 ?? p.dy)]]) : null })));
       }
       puntosSnapRef.current = (modelo.plantas || [modelo]).flatMap(pl => [
         ...(pl.muros || []).flatMap(m => [{ x: m.a[0], y: m.a[1] }, { x: m.b[0], y: m.b[1] }]),
@@ -2194,19 +2195,62 @@ export default function Visor3D() {
     const a = api3d.current; if (!a.scene) return;
     if (a.luzG) { a.scene.remove(a.luzG); a.luzG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); if (x.isLight && x.target) a.scene.remove(x.target); }); }
     const g = new THREE.Group(); g.userData.capa = 'luces'; g.visible = !ocultas.includes('luces');
-    const ALT = { foco: 255, plaf: 255, colg: 200, aplq: 180, pie: 120, suel: 5 };
-    lucesPl.slice(0, 16).forEach(l0 => {
+    const HT = a.modelo?.altura || 260;
+    const ALT = { foco: HT - 1, plaf: HT - 1, colg: HT - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: HT - 6, spotl: HT - 6 };
+    const matNegro = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5, metalness: 0.3 });
+    let nLuces = 0;
+    lucesPl.slice(0, 120).forEach(l0 => {
       const l = { ...l0, ...(luzOver[l0.id] || {}) };
-      const cat = lumCat.find(c => c.id === l.lid), lm = lucesAj[l.id]?.lm ?? (cat?.lm || 800), K = lucesAj[l.id]?.k ?? (cat?.k || 3000);
-      const hcm = l.h != null ? l.h : (ALT[l.kid] ?? 250), ap = lucesAj[l.id]?.ap ?? 60;
-      const col = colorK(K);
-      const aj = lucesAj[l.id] || {};
+      const cat = lumCat.find(c => c.id === l.lid), lm = lucesAj[l.id]?.lm ?? (l.lm || cat?.lm || 800), K = lucesAj[l.id]?.k ?? (cat?.k || 3000);
+      const col = colorK(K), aj = lucesAj[l.id] || {};
+      const ap = aj.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60);
+      const inten = Math.max(5, lm / 12.57) * 0.22 * ambiente.luces;
+      const puede = () => nLuces < 24 && (nLuces++, true);
+      // carriles, tiras LED y luminarias lineales: se modelan a lo largo de su recorrido
+      if (l.vs) {
+        const ceil = HT * CM, esC = l.kid === 'carril', esL = l.kid === 'led';
+        const ancho = esL ? 0.012 : esC ? 0.032 : 0.04, alto = esL ? 0.006 : esC ? 0.025 : 0.035;
+        const y = (l.h != null ? l.h * CM : ceil) - (esL ? 0.004 : alto / 2) - (l.kid === 'linealc' ? 0.5 : 0);
+        for (let i = 0; i < l.vs.length - 1; i++) {
+          const p = l.vs[i], q = l.vs[i + 1], L = Math.hypot(q[0] - p[0], q[1] - p[1]) * CM; if (L < 0.01) continue;
+          const m = new THREE.Mesh(new THREE.BoxGeometry(L, alto, ancho), esL || !esC ? new THREE.MeshBasicMaterial({ color: esL ? col : 0xf4f4f4 }) : matNegro);
+          m.position.set(((p[0] + q[0]) / 2) * CM, y, ((p[1] + q[1]) / 2) * CM); m.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); m.traverse(x => { x.userData.luzId = l.id; }); g.add(m);
+          if (!esC && puede()) { const pl = new THREE.PointLight(col, inten * 0.6, 0, 2); pl.position.set(m.position.x, y - 0.05, m.position.z); g.add(pl); }
+        }
+        return;
+      }
+      // spots de carril (orientable y lineal): cuelgan del propio carril, no flotan
+      if (l.kid === 'spot' || l.kid === 'spotl') {
+        const yTop = (l.h != null ? l.h : ALT[l.kid]) * CM, grp = new THREE.Group(), lin = l.kid === 'spotl';
+        const glow = new THREE.MeshBasicMaterial({ color: col });
+        const tallo = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.04, 0.02), matNegro); tallo.position.y = 0.02; grp.add(tallo);
+        let luzPos, dir = new THREE.Vector3(0, -1, 0);
+        if (lin) {
+          const len = (l.w || 60) * CM, barra = new THREE.Mesh(new THREE.BoxGeometry(len, 0.03, 0.03), matNegro); barra.position.y = -0.015; grp.add(barra);
+          const tubo = new THREE.Mesh(new THREE.BoxGeometry(len * 0.94, 0.004, 0.02), glow); tubo.position.y = -0.032; grp.add(tubo);
+          grp.rotation.y = -(l.a || 0) * Math.PI / 180; luzPos = new THREE.Vector3(0, -0.04, 0);
+        } else {
+          const tr = ((aj.tilt ?? 25) * Math.PI) / 180, yr = (((aj.yaw ?? l.a) || 0) * Math.PI) / 180;
+          dir = new THREE.Vector3(Math.sin(tr) * Math.cos(yr), -Math.cos(tr), Math.sin(tr) * Math.sin(yr)).normalize();
+          const cab = new THREE.Group(); cab.position.y = -0.005; cab.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+          const cu = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.09, 20), matNegro); cu.position.y = -0.045; cab.add(cu);
+          const lente = new THREE.Mesh(new THREE.CircleGeometry(0.029, 20), glow); lente.rotation.x = Math.PI / 2; lente.position.y = -0.091; cab.add(lente); grp.add(cab);
+          luzPos = cab.position.clone().add(dir.clone().multiplyScalar(0.09));
+        }
+        grp.position.set(l.x * CM, yTop, l.y * CM); grp.traverse(x => { x.userData.luzId = l.id; }); g.add(grp);
+        if (puede()) {
+          const lp = grp.position.clone().add(luzPos), sl = new THREE.SpotLight(col, inten * 2.5, 0, Math.max(0.1, (ap / 2) * Math.PI / 180), 0.45, 2);
+          sl.position.copy(lp); sl.target.position.copy(lp.clone().add(dir.clone().multiplyScalar(2.5))); g.add(sl); g.add(sl.target);
+        }
+        return;
+      }
+      const hcm = l.h != null ? l.h : (ALT[l.kid] ?? 250);
       const { grupo: marca, luzPos, dir: dirL } = construirLuminaria(l.kid, col, sel2(l.id, luzSel), aj.v, aj.tilt, aj.yaw);
       marca.position.set(l.x * CM, hcm * CM, l.y * CM); marca.traverse(x => { x.userData.luzId = l.id; }); g.add(marca);
       const luzMundo = marca.position.clone().add(luzPos);
-      const inten = Math.max(5, lm / 12.57) * 0.5 * ambiente.luces;
+      if (!puede()) return;
       if (l.kid === 'foco' || l.kid === 'plaf') {
-        const s = new THREE.SpotLight(col, inten * 4, 0, Math.max(0.1, (ap / 2) * Math.PI / 180), 0.45, 2);
+        const s = new THREE.SpotLight(col, inten * 2.5, 0, Math.max(0.1, (ap / 2) * Math.PI / 180), 0.45, 2);
         s.position.copy(luzMundo); if (dirL) s.target.position.copy(luzMundo.clone().add(dirL.clone().multiplyScalar(2.5))); else s.target.position.set(l.x * CM, 0, l.y * CM); g.add(s); g.add(s.target);
       } else { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); }
     });

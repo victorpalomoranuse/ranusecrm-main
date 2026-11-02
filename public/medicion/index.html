@@ -2566,7 +2566,7 @@ function insDe(g){
   var v=g.cat&&g.cat.ins;if(v&&INS_TXT[v])return INS_TXT[v];
   var k=g.k;return (k==='foco'||k==='suel'||k==='spot')?'empotrada':(k==='plaf'||k==='aplq'||k==='esp'||k==='mue'||k==='spotl'||k==='carril')?'de superficie':(k==='colg'||k==='linealc')?'colgada':'';
 }
-function lumKey(q,d,mq){return (q.lid||('k:'+q.k))+'|'+mq+(d.lin?'|'+ptPerfil(q):'')+(q.nm?'|n:'+q.nm:'')}
+function lumKey(q,d,mq){return (q.lid||('k:'+q.k))+'|'+mq+(d.lin?'|'+ptPerfil(q):'')+(q.nm?'|n:'+q.nm:'')+(q.lm>0?'|lm:'+q.lm:'')+(q.ap>0?'|ap:'+q.ap:'')}
 /* la misma luminaria lleva la misma etiqueta (L1, L2…) en todas las plantas: el orden sale de recorrer todas las plantas */
 function lumTagsGlobal(){
   var raiz=st.v._raiz||st.v,pl=[],orden=[],vistos={};
@@ -2586,7 +2586,7 @@ function lumGroups(){
     if(q.v!=='ilum'||q.s==='dem')return;
     var d=ptDef(q.k);if(!d)return;
     var mq=ptMontAny(q),key=lumKey(q,d,mq);
-    if(ix[key]==null){ix[key]=gs.length;gs.push({key:key,nm:q.nm||'',lid:q.lid||null,k:q.k,mo:mq,pf:d.lin?ptPerfil(q):'',n:0,len:0,ids:[]})}
+    if(ix[key]==null){ix[key]=gs.length;gs.push({key:key,nm:q.nm||'',lid:q.lid||null,k:q.k,mo:mq,pf:d.lin?ptPerfil(q):'',lm:q.lm>0?q.lm:0,ap:q.ap>0?q.ap:0,n:0,len:0,ids:[]})}
     var g=gs[ix[key]];g.n++;g.ids.push(q.id);
     if(d.lin)g.len+=ptLen(q);
   });
@@ -6854,6 +6854,10 @@ function panelSel(focus){
       if(cl)h+='<p class="note">'+(cl.lm?cl.lm+' lm':'')+(cl.w?' · '+cl.w+' W':'')+(cl.k?' · '+cl.k+' K':'')+(cl.ref?' · ref. '+esc(cl.ref):'')+'</p>';
     }
     if(!pd.lin&&pd.h!=null)h+=fld('pt_h','Altura sobre el suelo (cm)',q.h);
+    if(q.v==='ilum'){
+      var cl2=q.lid&&lumById(q.lid);
+      h+=fld('pt_lm','Lúmenes (lm)',q.lm>0?q.lm:null,cl2&&cl2.lm?cl2.lm+' (del catálogo)':'ej. 800')+fld('pt_ap','Ángulo de apertura (°)',q.ap>0?q.ap:null,'ej. 36 (estrecho) · 60 · 110 (amplio)');
+    }
     if(!pd.lin&&!pd.rect){
       var etqDc=q.k==='cuadro'?'Ancho del símbolo en el plano (cm)':'Tamaño real del símbolo (cm)';
       h+=fld('pt_dc',etqDc,q.dc>0?q.dc:null,'automático')+'<p class="note" style="margin:0 0 6px">Escribe la medida que quieras ('+(q.k==='cuadro'?'por ejemplo 40 cm de ancho':'por ejemplo 8 cm')+') y el símbolo se dibuja a esa escala real. Vacío = se ajusta solo al zoom.</p><div class="btns"><button data-a="ptdcall" title="Aplica este tamaño a todos los símbolos del mismo tipo">Igualar a todos de este tipo</button></div>';
@@ -7197,6 +7201,12 @@ function applyField(key,val,adv,raw){
       if(!(n>=5&&n<=100000)||!(tl0>0)){toast('Escribe una longitud válida (5 cm o más)');return}
       var kf=n/tl0,anc=st.ptAnc==='b'?vsl[vsl.length-1]:vsl[0];
       snap();ptSetVerts(qp,vsl.map(function(r){return {x:anc.x+(r.x-anc.x)*kf,y:anc.y+(r.y-anc.y)*kf}}));commit(false);panelSel();return;
+    }
+    if(key==='pt_lm'||key==='pt_ap'){
+      var kk=key==='pt_lm'?'lm':'ap';
+      if(String(val).trim()===''){snap();delete qp[kk];commit(false);return}
+      if(!(n>=1&&n<=(kk==='lm'?100000:180))){toast(kk==='lm'?'Escribe unos lúmenes entre 1 y 100000':'Escribe un ángulo entre 1° y 180°');return}
+      snap();qp[kk]=n;commit(false);return;
     }
     if(key==='pt_dc'){
       if(String(val).trim()===''){snap();delete qp.dc;commit(false);return}
@@ -9633,8 +9643,10 @@ function sheetPage(doc,view,idx,total,o){
         if(lMo)p.text(tx0,y+7.3*f,fitTxt(lMo,pw-(tx0-xL),false,(body-0.6)*25.4/72),body-0.6,{col:INK,bold:true});
         p.text(xR,y+3.6*f,qty,body,{col:INK,anchor:'end',bold:true});
         var l2='';
-        if(cat&&cat.lm){var tt=d.lin?cat.lm*g.len/100:cat.lm*g.n;totLm+=tt;l2=fmt(cat.lm)+' lm'+(d.lin?'/m':' c/u')+'  ·  total '+fmt(tt)+' lm'}
+        var lmU=g.lm||(cat&&cat.lm)||0;
+        if(lmU){var tt=d.lin?lmU*g.len/100:lmU*g.n;totLm+=tt;l2=fmt(lmU)+' lm'+(d.lin?'/m':' c/u')+'  ·  total '+fmt(tt)+' lm'}
         else l2=cat?'Lúmenes sin indicar':'Sin luminaria del catálogo';
+        if(g.ap)l2+='  ·  apertura '+fmt(g.ap)+'°';
         p.text(tx0,y+10.8*f,fitTxt(l2,pw-(tx0-xL),false,(body-1)*25.4/72),body-1,{col:INK});
         var l3=cat?[cat.hole?'Ø agujero '+fmt(cat.hole)+' mm':'',cat.w?cat.w+' W':'',cat.k?cat.k+' K':'',cat.gen?'producto a definir':(cat.ref||'')].filter(Boolean).join('  ·  '):'';
         if(l3)p.text(tx0,y+14.3*f,fitTxt(l3,pw-(tx0-xL),false,(body-1.4)*25.4/72),body-1.4,{col:MUTED});
