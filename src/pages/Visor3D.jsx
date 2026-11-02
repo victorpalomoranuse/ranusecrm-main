@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
+import opentype from 'opentype.js';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -760,7 +761,7 @@ const ICONOS = {
   muro: 'M3 6h18v12H3z M3 12h18 M9 6v6 M15 12v6', rect: 'M4 6h16v12H4z', circ: 'M12 4a8 8 0 100 16 8 8 0 000-16z', poli: 'M12 3l8 6-3 11H7L4 9z',
   empujar: 'M12 20V10 M8 13l4-4 4 4 M4 8l8-4 8 4', zona: 'M4 5h16v14H4z M4 12l8-7 M4 19L19 5 M12 19l7-7', sigue: 'M3 19c6 0 4-14 9-14s3 14 9 14',
   catalogo: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8', biblioteca: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
-  mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4',
+  mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4', texto: 'M5 6h14 M12 6v13 M9 19h6',
   luz: 'M9 18h6 M10 21h4 M12 3a6 6 0 00-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0012 3z',
   cinta: 'M3 16L16 3l5 5L8 21z M8 11l2 2 M11 8l2 2 M14 5l2 2', capas: 'M12 3l9 5-9 5-9-5z M3 13l9 5 9-5',
   ocultar: 'M3 3l18 18 M10.6 6.2A9 9 0 0121 12a13 13 0 01-3 3.9 M6.6 6.6A13 13 0 003 12s3.5 6 9 6a9 9 0 003.4-.7 M9.9 9.9a3 3 0 004.2 4.2',
@@ -999,6 +1000,22 @@ function formasDeSVG(texto) {
   const data = new SVGLoader().parse(texto), formas = [];
   data.paths.forEach(p => SVGLoader.createShapes(p).forEach(sh => formas.push({ pts: sh.getPoints(10).map(v => [v.x, -v.y]), holes: sh.holes.map(h => h.getPoints(10).map(v => [v.x, -v.y])) })));
   return formas;
+}
+// ── Texto 3D: las letras de una fuente (archivo en /fonts) se convierten en formas con huecos, como un logo
+const FUENTES = [['Montserrat', 'Montserrat (moderna)'], ['Oswald', 'Oswald (condensada)'], ['BebasNeue-Regular', 'Bebas Neue (mayúsculas)'], ['Anton-Regular', 'Anton (gruesa)'], ['ArchivoBlack-Regular', 'Archivo Black'], ['Staatliches-Regular', 'Staatliches'], ['RussoOne-Regular', 'Russo One'], ['Righteous-Regular', 'Righteous'], ['Orbitron', 'Orbitron (tecnológica)'], ['Bungee-Regular', 'Bungee (rótulo)'], ['Bangers-Regular', 'Bangers (cómic)'], ['PlayfairDisplay', 'Playfair (elegante con serifa)'], ['Cinzel', 'Cinzel (clásica romana)'], ['AbrilFatface-Regular', 'Abril Fatface'], ['Pacifico-Regular', 'Pacifico (rotulada)'], ['Lobster-Regular', 'Lobster'], ['DancingScript', 'Dancing Script (cursiva)'], ['Caveat', 'Caveat (a mano)'], ['PinyonScript-Regular', 'Pinyon Script (caligrafía)']];
+const cacheFuentes = new Map();
+function cargarFuente(id) {
+  if (!cacheFuentes.has(id)) cacheFuentes.set(id, fetch('/fonts/' + id + '.ttf').then(r => { if (!r.ok) throw new Error('No se pudo cargar la fuente'); return r.arrayBuffer(); }).then(b => opentype.parse(b)).catch(e => { cacheFuentes.delete(id); throw e; }));
+  return cacheFuentes.get(id);
+}
+async function formasDeTexto(texto, fuenteId) {
+  const font = await cargarFuente(fuenteId), lineas = String(texto).split('\n').filter(l => l.trim() !== '').slice(0, 6); if (!lineas.length) return null;
+  const T = 100, anchos = lineas.map(l => font.getAdvanceWidth(l, T)), maxW = Math.max(...anchos); let d = '';
+  lineas.forEach((l, i) => { d += font.getPath(l, (maxW - anchos[i]) / 2, T * 1.15 * i + T, T).toPathData(2) + ' '; });
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg"><path d="' + d + '"/></svg>', formas = formasDeSVG(svg);
+  const norm = formas.length ? normalizarFormas(formas) : null; if (!norm) return null;
+  norm.formas = norm.formas.map(f => { const dec = a => { const p = Math.max(1, Math.ceil(a.length / 90)); return a.filter((_, i) => i % p === 0); }; return { pts: dec(f.pts), holes: f.holes.map(dec) }; });
+  return norm;
 }
 function formasDeDXF(texto) {
   const lin = texto.split(/\r?\n/).map(s => s.trim()), pares = [];
@@ -2934,6 +2951,20 @@ export default function Visor3D() {
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'falsotecho', nombre: 'Falso techo con foseado', etiqueta: 'Techos', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, h: pl0.altura || 260, color: '#f6f4f1', pts: sala.pts.map(p => [p[0] - cx, p[1] - cy]), ft: { descenso: 15, gap: 12, luz: true, k: 3000 } };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setSelAcab(null);
   };
+  const [textoDlg, setTextoDlg] = useState(null);
+  const crearTexto = async () => {
+    const dlg = textoDlg; if (!dlg || !dlg.texto.trim()) return;
+    try {
+      const norm = await formasDeTexto(dlg.texto, dlg.fuente); if (!norm) { setAviso('No he podido dibujar ese texto con esa fuente.'); return; }
+      const { ctrl } = api3d.current, ancho = Math.max(30, Math.min(400, dlg.texto.length * 12));
+      const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', nombre: 'Texto «' + dlg.texto.split('\n')[0].slice(0, 24) + '»', etiqueta: 'Textos', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: ancho, d: 2, alto: Math.round(norm.alto * ancho / 100), ratio: norm.alto / 100, z0: 100, plano: 'vertical', color: '#222222', formas: norm.formas, texto: dlg.texto, fuente: dlg.fuente };
+      setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setTextoDlg(null);
+      setAviso('Texto creado. Ajusta tamaño, grosor, color y altura en su ficha; ahí también puedes cambiar el texto y la fuente.');
+    } catch (e) { setAviso('No se ha podido crear el texto: ' + (e.message || 'error')); }
+  };
+  const cambiarTexto = async (obj, texto, fuente) => {
+    try { const norm = await formasDeTexto(texto, fuente); if (!norm) return; cambiar(obj.id, { texto, fuente, formas: norm.formas, ratio: norm.alto / 100, alto: Math.round(norm.alto * obj.w / 100), nombre: 'Texto «' + texto.split('\n')[0].slice(0, 24) + '»' }); } catch { /* fuente no disponible */ }
+  };
   const importarLogo = async (archivo) => {
     if (!archivo) return;
     try {
@@ -3864,6 +3895,7 @@ export default function Visor3D() {
           menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, 'mueble', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
             {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
           </>), 250),
+          railBtn(false, 'texto', 'Texto 3D', 'Escribe una palabra y elige la fuente: se convierte en letras 3D', () => setTextoDlg({ texto: '', fuente: 'Montserrat' })),
           railBtn(false, 'logo', 'Logo', 'Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en 3D', () => logoInput.current?.click()),
         ], false, 'Insertar')}
         {grupoRail([
@@ -3973,6 +4005,17 @@ export default function Visor3D() {
           </div>
         );
       })()}
+      {textoDlg && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setTextoDlg(null)}>
+          <div style={{ width: 380, background: 'rgb(22,20,18)', color: '#fff', borderRadius: 10, padding: 16, fontSize: 13 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Texto 3D</div>
+            <textarea autoFocus rows={2} value={textoDlg.texto} placeholder="Escribe aquí (Intro = otra línea)" onChange={e => setTextoDlg(d => ({ ...d, texto: e.target.value }))} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontSize: 18, marginBottom: 8 }} />
+            <select value={textoDlg.fuente} onChange={e => setTextoDlg(d => ({ ...d, fuente: e.target.value }))} style={{ ...btn, width: '100%', marginBottom: 10 }}>{FUENTES.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select>
+            <div style={{ display: 'flex', gap: 6 }}><button style={{ ...btn, background: '#8c8076' }} onClick={crearTexto}>Crear texto</button><button style={btn} onClick={() => setTextoDlg(null)}>Cancelar</button></div>
+            <div style={{ opacity: 0.55, fontSize: 11, marginTop: 8 }}>Después lo mueves y lo ajustas como un logo: ancho, grosor, color, altura y cómo se coloca (de pie o tumbado).</div>
+          </div>
+        </div>
+      )}
       {editMod && (() => {
         const ob = objs.find(o => o.id === editMod); if (!ob) return null;
         return (
@@ -4938,7 +4981,11 @@ export default function Visor3D() {
           )}
           {objSel.tipo === 'logo' && (
             <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>Logo</div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>{objSel.texto != null ? 'Texto 3D' : 'Logo'}</div>
+              {objSel.texto != null && <>
+                <textarea key={'tx' + objSel.id} defaultValue={objSel.texto} rows={2} onBlur={e => { if (e.target.value.trim() && e.target.value !== objSel.texto) cambiarTexto(objSel, e.target.value, objSel.fuente || 'Montserrat'); }} style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 4, fontFamily: 'inherit', resize: 'vertical' }} />
+                <select value={objSel.fuente || 'Montserrat'} onChange={e => cambiarTexto(objSel, objSel.texto, e.target.value)} style={{ ...btn, width: '100%', marginBottom: 6 }}>{FUENTES.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select>
+              </>}
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Ancho (cm)</span><input type="number" value={Math.round(objSel.w)} onChange={e => { const w = parseFloat(e.target.value) || 10; cambiar(objSel.id, { w, alto: Math.round(w * (objSel.ratio || 1)) }); }} style={{ ...btn, width: 80 }} /></label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Grosor (cm)</span><input type="number" step="0.5" value={objSel.d} onChange={e => cambiar(objSel.id, { d: parseFloat(e.target.value) || 1 })} style={{ ...btn, width: 80 }} /></label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Colocación</span><select value={objSel.plano || 'vertical'} onChange={e => cambiar(objSel.id, { plano: e.target.value })} style={btn}><option value="vertical">De pie (en pared)</option><option value="horizontal">Tumbado (en suelo)</option></select></label>

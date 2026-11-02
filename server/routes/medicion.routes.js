@@ -610,6 +610,8 @@ router.put('/:id/escena3d', async (req, res) => {
       perfil: o.tipo === 'barrido' && Array.isArray(o.perfil) ? o.perfil.slice(0, 40).map(p => [Math.max(-200, Math.min(200, num(p?.[0]))), Math.max(-200, Math.min(200, num(p?.[1])))]) : undefined,
       esc: o.tipo === 'barrido' ? Math.max(0.1, Math.min(20, num(o.esc, 1))) : undefined,
       cerrado: o.tipo === 'barrido' ? !!o.cerrado : undefined,
+      texto: o.tipo === 'logo' && typeof o.texto === 'string' ? o.texto.slice(0, 120) : undefined,
+      fuente: o.tipo === 'logo' && typeof o.fuente === 'string' ? o.fuente.split('').filter(ch => /[A-Za-z0-9_-]/.test(ch)).join('').slice(0, 40) : undefined,
       formas: o.tipo === 'logo' && Array.isArray(o.formas) ? (() => {
         let total = 0;
         const lim = a => (Array.isArray(a) ? a : []).slice(0, 400).map(p => [Math.round(num(p?.[0]) * 100) / 100, Math.round(num(p?.[1]) * 100) / 100]);
