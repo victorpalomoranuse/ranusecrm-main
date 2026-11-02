@@ -794,6 +794,10 @@ var LIBDEF=[
   ['frigoam','Frigorífico americano','Biblioteca · Cocina',90,70,180],['lavadora','Lavadora / lavavajillas','Biblioteca · Cocina',60,60,85],
   ['mbajo','Mueble bajo de cocina','Biblioteca · Cocina',60,60,90],['malto','Mueble alto de cocina','Biblioteca · Cocina',60,35,70],
   ['isla','Isla de cocina','Biblioteca · Cocina',180,90,90],['campana','Campana extractora','Biblioteca · Cocina',60,50,50],
+  ['microondas','Microondas','Biblioteca · Cocina',50,40,30],['horno','Horno empotrado (en columna)','Biblioteca · Cocina',60,60,200],['hornomesa','Horno de sobremesa','Biblioteca · Cocina',60,45,40],
+  ['frigo','Frigorífico combi grande','Biblioteca · Cocina',70,70,200],['frigobajo','Frigorífico bajo encimera','Biblioteca · Cocina',60,60,85],['congbajo','Congelador bajo encimera','Biblioteca · Cocina',60,60,85],
+  ['congarcon','Congelador arcón','Biblioteca · Cocina',100,60,85],['expositor','Nevera expositor de bebidas','Biblioteca · Cocina',60,60,190],['lavavaj','Lavavajillas','Biblioteca · Cocina',60,60,85],
+  ['cocina','Cocina (fuegos + horno)','Biblioteca · Cocina',60,60,90],['placa','Placa de cocción 80','Biblioteca · Cocina',80,52,90],['cafetera','Máquina de café','Biblioteca · Cocina',45,50,45],
   ['sofa','Sofá 2 plazas','Biblioteca · Mobiliario',160,90,85],['sofa','Sofá 3 plazas','Biblioteca · Mobiliario',210,90,85],
   ['sofa','Sillón','Biblioteca · Mobiliario',90,85,85],['silla','Silla','Biblioteca · Mobiliario',45,45,90],
   ['taburete','Taburete','Biblioteca · Mobiliario',35,35,65],['mesa','Mesa 160 × 80','Biblioteca · Mobiliario',160,80,75],
@@ -852,6 +856,14 @@ function libSym(ty,L,T,c,px){
   else if(k==='frigo'){o+=R(0,0,L,T,2)+Ln(0,T*.14,L,T*.14)+R(L*.1,T*.2,L*.08,T*.3,1,F)+Ln(L*.2,T*.4,L*.8,T*.8)+Ln(L*.8,T*.4,L*.2,T*.8)}
   else if(k==='frigoam'){o+=R(0,0,L,T,2)+Ln(L/2,0,L/2,T)+Ln(0,T*.14,L,T*.14)+R(L*.4,T*.22,L*.04,T*.3,1,F)+R(L*.56,T*.22,L*.04,T*.3,1,F)}
   else if(k==='lavadora'){o+=R(0,0,L,T,2)+Ci(L/2,T*.54,Math.min(L,T)*.3)+Ci(L/2,T*.54,Math.min(L,T)*.17,A2)+Ln(L*.08,T*.12,L*.4,T*.12,A2)+Ci(L*.8,T*.12,2.2)}
+  else if(k==='microondas'){o+=R(0,0,L,T,2)+R(L*.07,T*.14,L*.62,T*.72,1,A2)+Ln(L*.77,T*.14,L*.77,T*.86,A2)+Ci(L*.88,T*.3,2.2)+Ci(L*.88,T*.7,2.2)}
+  else if(k==='horno'||k==='hornomesa'){o+=R(0,0,L,T,2)+R(L*.1,T*.1,L*.8,T*.8,2,A2)+Ln(L*.1,T*.28,L*.9,T*.28,A2)+Ci(L*.22,T*.19,1.8)+Ci(L*.5,T*.19,1.8)+Ci(L*.78,T*.19,1.8)}
+  else if(k==='frigobajo'||k==='congbajo'){var dsh=A+' stroke-dasharray="'+f2(4*px)+' '+f2(3*px)+'"';o+=R(0,0,L,T,2)+R(L*.1,T*.1,L*.8,T*.8,1,dsh)+Ln(0,T*.14,L,T*.14)+R(L*.1,T*.2,L*.08,T*.25,1,F);if(k==='congbajo')o+=Ln(L*.3,T*.45,L*.7,T*.8)+Ln(L*.7,T*.45,L*.3,T*.8)}
+  else if(k==='congarcon'){o+=R(0,0,L,T,2)+R(L*.05,T*.1,L*.9,T*.8,1,A2)+Ln(L*.05,T*.1,L*.95,T*.9,A2)+Ln(L*.95,T*.1,L*.05,T*.9,A2)}
+  else if(k==='expositor'){o+=R(0,0,L,T,2)+R(L*.08,T*.14,L*.84,T*.72,1,A2)+Ln(L/2,T*.14,L/2,T*.86,A2)+Ln(L*.08,T*.5,L*.92,T*.5,A2)}
+  else if(k==='lavavaj'){o+=R(0,0,L,T,2)+R(L*.1,T*.16,L*.8,T*.68,1,A2)+Ln(L*.1,T*.5,L*.9,T*.5,A2)+Ln(L*.1,T*.33,L*.9,T*.33,A2)+Ln(L*.1,T*.67,L*.9,T*.67,A2)+Ci(L*.86,T*.08,1.6,F)}
+  else if(k==='cocina'){o+=R(0,0,L,T,2);[[.28,.26],[.72,.26],[.28,.62],[.72,.62]].forEach(function(p,j){var rr=Math.min(L,T)*(j%2?.12:.09);o+=Ci(L*p[0],T*p[1],rr)+Ci(L*p[0],T*p[1],rr*.4,A2)});o+=Ln(0,T*.84,L,T*.84,A2)+R(L*.1,T*.88,L*.8,T*.06,1,F)}
+  else if(k==='cafetera'){o+=R(0,0,L,T,3)+Ci(L/2,T*.42,Math.min(L,T)*.22)+Ci(L/2,T*.42,Math.min(L,T)*.09,A2)+R(L*.2,T*.76,L*.6,T*.14,1,A2)}
   else if(k==='mbajo'){o+=R(0,0,L,T,1)+Ln(0,T-4,L,T-4,A2)+Ln(L/2,T-4,L/2,T,A2)}
   else if(k==='malto'){o+=R(0,0,L,T,1,A+' stroke-dasharray="'+f2(5*px)+' '+f2(3*px)+'"')+Ln(0,T,L,0,A2)}
   else if(k==='isla'){o+=R(0,0,L,T,2)+R(L*.04,T*.08,L*.92,T*.84,1,A2)+Ci(L*.5,T*.5,3,F)}
