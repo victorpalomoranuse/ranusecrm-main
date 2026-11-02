@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { Table2, Home, Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays, Search } from 'lucide-react';
+import { Sparkles, Table2, Home, Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays, Search } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
+import EstudioIdeas from '../components/EstudioIdeas';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
 import { SectionAsistenteSetter } from './SectionAsistenteSetter';
@@ -2864,6 +2865,7 @@ const NAV_ITEMS = [
   { id:'mis-comisiones', label:'Mis Comisiones', Icon:Wallet },
   { id:'proyectos', label:'Proyectos', Icon:FolderOpen, permission:'proyectos' },
   { id:'planos', label:'Planos', Icon:Ruler, permission:'proyectos' },
+  { id:'estudio-ideas', label:'Estudio de ideas', Icon:Sparkles, permission:'proyectos' },
   { id:'hojas', label:'Hojas', Icon:Table2 },
   { id:'clientes', label:'Clientes', Icon:UserCheck, permission:'clientes' },
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
@@ -2924,6 +2926,7 @@ export function AdminPanel() {
         {section==='mis-comisiones'&&<SectionMisComisiones/>}
         {section==='proyectos'&&<SectionProyectos/>}
         {section==='planos'&&<SectionPlanos/>}
+        {section==='estudio-ideas'&&<div style={{height:'calc(100vh - 140px)',minHeight:480}}><EstudioIdeas/></div>}
         {section==='hojas'&&<SectionHojas/>}
         {section==='clientes'&&<SectionClientes/>}
         {section==='empleados'&&<SectionEmpleados/>}

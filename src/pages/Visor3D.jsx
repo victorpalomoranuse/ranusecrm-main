@@ -7,6 +7,7 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
+import EstudioIdeas from '../components/EstudioIdeas';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -776,7 +777,7 @@ const ICONOS = {
   muro: 'M3 6h18v12H3z M3 12h18 M9 6v6 M15 12v6', rect: 'M4 6h16v12H4z', circ: 'M12 4a8 8 0 100 16 8 8 0 000-16z', poli: 'M12 3l8 6-3 11H7L4 9z',
   empujar: 'M12 20V10 M8 13l4-4 4 4 M4 8l8-4 8 4', zona: 'M4 5h16v14H4z M4 12l8-7 M4 19L19 5 M12 19l7-7', sigue: 'M3 19c6 0 4-14 9-14s3 14 9 14',
   catalogo: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8', biblioteca: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
-  mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4', texto: 'M5 6h14 M12 6v13 M9 19h6',
+  mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4', texto: 'M5 6h14 M12 6v13 M9 19h6', ideas: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z',
   luz: 'M9 18h6 M10 21h4 M12 3a6 6 0 00-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0012 3z',
   cinta: 'M3 16L16 3l5 5L8 21z M8 11l2 2 M11 8l2 2 M14 5l2 2', capas: 'M12 3l9 5-9 5-9-5z M3 13l9 5 9-5',
   ocultar: 'M3 3l18 18 M10.6 6.2A9 9 0 0121 12a13 13 0 01-3 3.9 M6.6 6.6A13 13 0 003 12s3.5 6 9 6a9 9 0 003.4-.7 M9.9 9.9a3 3 0 004.2 4.2',
@@ -2993,6 +2994,7 @@ export default function Visor3D() {
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setSelAcab(null);
   };
   const [textoDlg, setTextoDlg] = useState(null);
+  const [ideasAbierto, setIdeasAbierto] = useState(false);
   const crearTexto = async () => {
     const dlg = textoDlg; if (!dlg || !dlg.texto.trim()) return;
     try {
@@ -3948,6 +3950,7 @@ export default function Visor3D() {
           menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, 'mueble', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
             {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
           </>), 250),
+          railBtn(ideasAbierto, 'ideas', 'Ideas', 'Chat con ChatGPT: comparte una imagen o la vista actual, pide una idea (un mural, un ambiente…) y descarga solo la imagen', () => setIdeasAbierto(v => !v)),
           railBtn(false, 'texto', 'Texto 3D', 'Escribe una palabra y elige la fuente: se convierte en letras 3D', () => setTextoDlg({ texto: '', fuente: 'Montserrat' })),
           railBtn(false, 'logo', 'Logo', 'Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en 3D', () => logoInput.current?.click()),
         ], false, 'Insertar')}
@@ -4058,6 +4061,11 @@ export default function Visor3D() {
           </div>
         );
       })()}
+      {ideasAbierto && (
+        <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 460, maxWidth: 'calc(100% - 24px)', zIndex: 9 }}>
+          <EstudioIdeas oscuro capturarVista={() => renderHDurl({ fmt: 'jpg', ancho: 1600 })} onCerrar={() => setIdeasAbierto(false)} />
+        </div>
+      )}
       {textoDlg && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setTextoDlg(null)}>
           <div style={{ width: 380, background: 'rgb(22,20,18)', color: '#fff', borderRadius: 10, padding: 16, fontSize: 13 }} onClick={e => e.stopPropagation()}>
