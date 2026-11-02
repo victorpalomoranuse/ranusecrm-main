@@ -31,7 +31,7 @@ function descargar(url, nombre) {
   const a = document.createElement('a'); a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
 }
 
-export default function EstudioIdeas({ oscuro = false, capturarVista = null, onCerrar = null }) {
+export default function EstudioIdeas({ oscuro = false, capturarVista = null, onCerrar = null, obtenerContexto = null }) {
   const [mensajes, setMensajes] = useState([]);       // { rol: 'yo'|'ia', texto, imagenes, modelo }
   const [texto, setTexto] = useState('');
   const [adjuntas, setAdjuntas] = useState([]);       // data URLs que irán en el próximo mensaje
@@ -42,6 +42,8 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
   const [soloDiseno, setSoloDiseno] = useState(false);
   const [formato, setFormato] = useState('auto');
   const [transparente, setTransparente] = useState(true);
+  const [usarContexto, setUsarContexto] = useState(true);   // con el visor 3D: el agente conoce el modelo en cada mensaje
+  const [verContexto, setVerContexto] = useState('');
   const fin = useRef(null), fichero = useRef(null);
 
   useEffect(() => { fin.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [mensajes, trabajando]);
@@ -73,7 +75,8 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
     setMensajes(m => [...m, { rol: 'yo', texto: msg, imagenes: imgs }]);
     setTexto(''); setAdjuntas([]); setError(''); setTrabajando(true);
     try {
-      const r = await api.post('/estudio-ideas/chat', { texto: msg, imagenes: imgs, previousResponseId: previo, soloDiseno: forzarSolo || soloDiseno, formato, transparente }, { timeout: 280000 });
+      let contexto; if (obtenerContexto && usarContexto) { try { contexto = (await obtenerContexto())?.texto; } catch { contexto = undefined; } }
+      const r = await api.post('/estudio-ideas/chat', { texto: msg, imagenes: imgs, previousResponseId: previo, soloDiseno: forzarSolo || soloDiseno, formato, transparente, contexto }, { timeout: 280000 });
       setPrevio(r.data.id);
       setMensajes(m => [...m, { rol: 'ia', texto: r.data.texto, imagenes: r.data.imagenes || [], modelo: r.data.modelo }]);
     } catch (e) {
@@ -92,6 +95,13 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
         {onCerrar && <button type="button" className="ei-btn" onClick={onCerrar}>✕</button>}
       </div>
 
+      {obtenerContexto && (
+        <div className="ei-opciones" style={{ paddingTop: 6 }}>
+          <label title="El agente recibe en cada mensaje una descripción de tu modelo (espacio, medidas, acabados y equipamiento) y solo añade lo que le pidas"><input type="checkbox" checked={usarContexto} onChange={e => setUsarContexto(e.target.checked)} /> 🧠 Conoce el modelo (no inventa nada que no le pidas)</label>
+          {usarContexto && <button type="button" className="ei-btn" onClick={async () => { try { setVerContexto(verContexto ? '' : ((await obtenerContexto())?.texto || '')); } catch { setVerContexto('No se pudo leer el modelo'); } }}>{verContexto ? 'Ocultar lo que sabe' : 'Ver lo que sabe'}</button>}
+        </div>
+      )}
+      {verContexto && <pre style={{ margin: '0 14px 6px', padding: 8, maxHeight: 160, overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 11, background: 'rgba(0,0,0,0.08)', borderRadius: 6 }}>{verContexto}</pre>}
       <div className="ei-chat">
         {!mensajes.length && !trabajando && (
           <div className="ei-vacio">

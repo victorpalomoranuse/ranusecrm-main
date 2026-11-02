@@ -36,6 +36,16 @@ const FORMATOS = { vertical: '1024x1536', horizontal: '1536x1024', cuadrado: '10
 const EXTRA_SOLO = `
 IMPORTANTE (modo «solo el diseño»): crea una IMAGEN NUEVA que contenga ÚNICAMENTE la obra de arte del mural, vista de frente y plana (sin perspectiva), ocupando toda la imagen de borde a borde. NO incluyas ninguna pared, habitación, suelo, techo, ventana, caja, mueble, marco, sombra ni borde. No uses la foto de la sala como base: úsala solo como referencia del diseño elegido. Conserva el diseño, los colores y el texto de la idea anterior.`;
 
+// Con el visor 3D abierto, el agente recibe en cada mensaje una descripción del modelo (espacio, medidas, acabados, equipamiento) para que las ideas
+// encajen en él y no invente nada que no se le pida.
+const REGLAS_CONTEXTO = `
+
+CONTEXTO DEL MODELO 3D ACTUAL (es la realidad del proyecto: toda idea debe encajar en ella y respetarla):
+`;
+const FIN_CONTEXTO = `
+
+REGLAS CON ESTE MODELO: añade o cambia SOLO lo que el usuario te pida. No inventes elementos, muebles, ventanas, puertas, instalaciones ni materiales que no estén en el contexto ni te los hayan pedido. Respeta las medidas, los colores y los acabados del modelo (una superficie de color liso es pintura lisa, sin textura ni desgaste). Si para la idea te falta un dato (una medida, un material, un color), pregúntalo en vez de suponerlo. Al responder, di brevemente qué has añadido o cambiado.`;
+
 router.post('/chat', async (req, res) => {
   const clave = process.env.OPENAI_API_KEY;
   if (!clave) return res.status(503).json({ error: 'Falta la clave de OpenAI en el servidor (variable OPENAI_API_KEY en Railway).' });
@@ -45,6 +55,8 @@ router.post('/chat', async (req, res) => {
     if (!texto && !imagenes.length) return res.status(400).json({ error: 'Escribe algo o adjunta una imagen' });
     const previo = /^resp_[A-Za-z0-9_-]{5,100}$/.test(String(req.body?.previousResponseId || '')) ? String(req.body.previousResponseId) : null;
     const contenido = [{ type: 'input_text', text: texto || 'Mira esta imagen.' }, ...imagenes.map(u => ({ type: 'input_image', image_url: u }))];
+    const contexto = String(req.body?.contexto || '').trim().slice(0, 6000);
+    const instrucciones = INSTRUCCIONES + (contexto ? REGLAS_CONTEXTO + contexto + FIN_CONTEXTO : '');
     const solo = req.body?.soloDiseno === true || PIDE_SOLO.test(texto);
     const tam = FORMATOS[String(req.body?.formato || '')] || null;
     const base = { type: 'image_generation', ...(process.env.OPENAI_IMAGE_MODEL ? { model: process.env.OPENAI_IMAGE_MODEL } : {}) };
@@ -55,7 +67,7 @@ router.post('/chat', async (req, res) => {
     const llama = async (modelo, simple = false) => {
       const r = await fetch(OPENAI + '/responses', {
         method: 'POST', headers: { Authorization: 'Bearer ' + clave, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: modelo, instructions: INSTRUCCIONES, tools: [simple ? base : herramienta], ...(solo && !simple ? { tool_choice: { type: 'image_generation' } } : {}), input: [{ role: 'user', content: contenido }], ...(previo ? { previous_response_id: previo } : {}) }),
+        body: JSON.stringify({ model: modelo, instructions: instrucciones, tools: [simple ? base : herramienta], ...(solo && !simple ? { tool_choice: { type: 'image_generation' } } : {}), input: [{ role: 'user', content: contenido }], ...(previo ? { previous_response_id: previo } : {}) }),
       });
       return { r, j: await r.json().catch(() => ({})) };
     };

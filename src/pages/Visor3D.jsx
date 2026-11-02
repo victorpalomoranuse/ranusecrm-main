@@ -4007,6 +4007,25 @@ export default function Visor3D({ cliente = false }) {
     const inventario = [...cuenta.entries()].map(([n, c]) => (c > 1 ? c + '× ' : '') + n);
     return { materiales: lista.slice(0, 10), inventario };
   };
+  // Descripción del modelo para el agente de ideas: el espacio (salas, medidas, huecos), lo visible desde la cámara, los acabados y el equipamiento.
+  const contextoModelo = async () => {
+    const mod = api3d.current.modelo, L = [], area = pts => Math.abs(pts.reduce((a, p, i) => { const q = pts[(i + 1) % pts.length]; return a + (p[0] * q[1] - q[0] * p[1]); }, 0)) / 2 / 1e4;
+    L.push('Proyecto: ' + (titulo || 'Plano') + '.');
+    const plantas = mod?.plantas || (mod ? [mod] : []);
+    if (mod) L.push('Altura libre: ' + Math.round(mod.altura || 260) + ' cm.');
+    plantas.forEach((pl, pi) => {
+      const salas = (pl.salas || []).filter(sa => sa.pts?.length >= 3).map(sa => (sa.nombre || 'Sala') + ' (' + (Math.round(area(sa.pts) * 10) / 10) + ' m²)');
+      if (salas.length) L.push((plantas.length > 1 ? 'Planta ' + (pi + 1) + ' · ' : '') + 'Estancias: ' + salas.join(', ') + '.');
+      const huecos = {}; (pl.muros || []).forEach(mu => (mu.ab || []).forEach(a => { const n = (a.nm || a.tip || 'hueco'); huecos[n] = (huecos[n] || 0) + 1; }));
+      if (Object.keys(huecos).length) L.push('Huecos en muros: ' + Object.entries(huecos).map(([n, c]) => c + '× ' + n).join(', ') + '.');
+    });
+    const sala = salaBajoCamara(); if (sala) L.push('La cámara está ahora en: ' + sala + '.');
+    const f = await fichaMateriales().catch(() => ({ materiales: [], inventario: [] }));
+    if (f.materiales?.length) L.push('Acabados de superficies: ' + f.materiales.map(m => m.zona + ' → ' + m.descr).join(' | ') + '.');
+    if (f.inventario?.length) L.push('Equipamiento y objetos que EXISTEN: ' + f.inventario.join('; ') + '.');
+    else L.push('No hay equipamiento ni objetos colocados todavía.');
+    return { texto: L.join('\n').slice(0, 5500) };
+  };
   // Ficha de materiales editable (en el cuadro del render con IA): cada superficie con su acabado, su código NCS, una nota y una foto de referencia propia.
   // Lo que se pone aquí manda sobre lo que la IA «cree ver». Los cambios (menos las fotos) se recuerdan por plano en este navegador.
   const [fichaIA, setFichaIA] = useState(null);
@@ -4517,7 +4536,7 @@ export default function Visor3D({ cliente = false }) {
       })()}
       {ideasAbierto && (
         <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 460, maxWidth: 'calc(100% - 24px)', zIndex: 9 }}>
-          <EstudioIdeas oscuro capturarVista={capturaVista} onCerrar={() => setIdeasAbierto(false)} />
+          <EstudioIdeas oscuro capturarVista={capturaVista} obtenerContexto={contextoModelo} onCerrar={() => setIdeasAbierto(false)} />
         </div>
       )}
       {textoDlg && (
