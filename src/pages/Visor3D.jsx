@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
@@ -407,13 +409,26 @@ function repararMateriales0(raiz) {
   });
   return raiz;
 }
+// Los .glb de Sketchfab, de gltf-transform y de muchas tiendas vienen comprimidos (Draco, Meshopt o texturas KTX2): sin estos decodificadores no cargan
+// y el objeto se quedaba como una caja o con los materiales en negro.
+let dracoL = null, ktx2M = null;
+function nuevoGLTFLoader() {
+  const l = new GLTFLoader();
+  try { if (!dracoL) dracoL = new DRACOLoader().setDecoderPath('/draco/'); l.setDRACOLoader(dracoL); } catch { /* sin Draco */ }
+  try { l.setMeshoptDecoder(MeshoptDecoder); } catch { /* sin Meshopt */ }
+  try {
+    if (!ktx2M) { const rt = new THREE.WebGLRenderer(); ktx2M = new KTX2Loader().setTranscoderPath('/basis/').detectSupport(rt); rt.dispose(); rt.forceContextLoss?.(); }
+    l.setKTX2Loader(ktx2M);
+  } catch { /* sin KTX2 */ }
+  return l;
+}
 function cargarModelo(m) {
   if (cacheModelos.has(m.url)) return cacheModelos.get(m.url);
   const t = String(m.tipo || '').toLowerCase();
   const p = new Promise((ok, mal) => {
     if (t === 'obj') new OBJLoader().load(m.url, r => ok(repararMateriales(fusionarModelo(r))), undefined, mal);
     else if (t === 'dae') new ColladaLoader().load(m.url, r => ok(repararMateriales(fusionarModelo(r.scene))), undefined, mal);
-    else new GLTFLoader().load(m.url, r => ok(repararMateriales(fusionarModelo(r.scene))), undefined, mal);
+    else nuevoGLTFLoader().load(m.url, r => ok(repararMateriales(fusionarModelo(r.scene))), undefined, mal);
   });
   p.then(() => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } }, () => {}); p.catch(() => cacheModelos.delete(m.url));
   cacheModelos.set(m.url, p);
@@ -3002,7 +3017,7 @@ export default function Visor3D({ cliente = false }) {
           mm.position.y = (o.z0 || 0) * CM;
           g.add(mm); fantasma(0); m.visible = false; registraLod(api3d.current, mm, null);
           aplicarRegiones(mm, 'o:' + o.id + ':', acab.regiones, texturas);
-        }).catch(() => { fantasma(1); });
+        }).catch(e => { console.warn('modelo 3D no cargado', mod.url, e); setAviso('No se pudo cargar un modelo 3D («' + (o.etiqueta || o.nombre || 'objeto') + '»): ' + String(e?.message || e).slice(0, 120)); fantasma(1); });
       }
       if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(m.position); g.add(l); }
       g.position.set(o.cx * CM, 0, o.cy * CM); g.rotation.y = -(o.rot || 0) * Math.PI / 180; if (o.espejo) g.scale.x = -1;
