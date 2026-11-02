@@ -11425,6 +11425,15 @@ function medDatos1(){
   S.push({id:'nuevo',t:'Obra nueva',f:n});
   /* Acabados de pared (alicatados y revestimientos), suelos y techos por material */
   S.push({id:'paredes',t:'Acabados de pared (alicatados y revestimientos)',f:(R.paredes||[]).map(function(p){return fila(p.nombre,null,p.m2,null)})});
+  /* rodapié: por sala con suelo nuevo, perímetro menos las puertas; luego el total por material */
+  var rodF=[],rodM={};
+  roomFaces('suelos').forEach(function(f){
+    var z=zoneIn(f,'s'),zt=zoneIn(f,'t');
+    if(!z||z.ex||z.sm)return;
+    var ml=Math.max(0,f.per-f.doorW)/100,mn=matOf('suelos',z.mat).n||'suelo sin definir';
+    rodF.push(fila((z.nm||(zt&&zt.nm)||'Sala sin nombre')+' · '+mn,ml,null,null,'perímetro '+medNum(f.per/100)+' ml − puertas '+medNum(f.doorW/100)+' ml'));
+  });
+  S.push({id:'rodapie',t:'Rodapié (perímetro de cada sala menos puertas)',f:rodF});
   S.push({id:'suelos',t:'Suelos por material',f:(R.suelos||[]).map(function(p){return fila(p.nombre,null,p.m2,null)})});
   S.push({id:'techos',t:'Techos por material',f:(R.techos||[]).map(function(p){return fila(p.nombre,null,p.m2,null)})});
   S.push({id:'salas',t:'Salas',f:(R.salas||[]).map(function(s){return fila(s.nombre||'Sala sin nombre',s.perimetro_ml,s.area_m2,null,'ml = perímetro · m² = superficie')})});
