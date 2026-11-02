@@ -73,7 +73,9 @@ router.post('/', async (req, res) => {
       aj.luz ? 'Retoca la luz con suavidad: mejora el contraste, el rango dinámico, las sombras y los reflejos, sin cambiar la dirección ni la intensidad general de la luz.' : '',
       'Entrega la imagen con la mayor resolución y calidad posibles, con aspecto de fotografía real pero idéntica en contenido.',
     ].filter(Boolean).join(' ');
-    const instrucciones = modo === 'mejora' ? instMejora : [
+    // Modo «panorama»: la imagen es una panorámica 360° equirrectangular (estirada a 3:2); se fotorrealiza sin cambiar la proyección
+    const instPano = 'Esta imagen es una panorámica 360° equirrectangular de un interior, tal como la leen los visores 360 (la línea del horizonte recta en el centro, el suelo abajo y el techo arriba, deformada en los extremos). Conviértela en una fotografía profesional realista de interiorismo con luz natural cálida, sombras suaves, reflejos creíbles y materiales con textura real, MANTENIENDO EXACTAMENTE la misma proyección equirrectangular, el mismo encuadre completo, la misma distribución y la posición de cada elemento. El borde izquierdo y el derecho deben seguir encajando entre sí (es un círculo completo). No recortes, no cambies la perspectiva ni añadas bordes. ' + [NIVELES.fiel, extra ? String(extra).slice(0, 300) : ''].join(' ');
+    const instrucciones = modo === 'panorama' ? instPano : modo === 'mejora' ? instMejora : [
       'Convierte esta imagen de un modelo 3D de interiorismo en una fotografía profesional de revista de interiorismo y arquitectura: realista, nítida, con luz natural cálida, sombras suaves, reflejos creíbles, materiales con textura real y profundidad de campo, como hecha con una cámara réflex y un objetivo gran angular. Debe parecer una foto real, no un render ni una ilustración.',
       NIVELES[nivel],
       colores.length ? 'Respeta con la máxima fidelidad estos colores y acabados: ' + colores.join('; ') + '.' : 'Mantén los colores de los materiales tal y como aparecen en la imagen.',
@@ -87,7 +89,7 @@ router.post('/', async (req, res) => {
       let modeloO = process.env.OPENAI_IMAGE_MODEL || imagenOpenAI || 'gpt-image-1';
       const llamar = async (fidelidad, refs = true) => {
         const fd = new FormData();
-        fd.append('model', modeloO); fd.append('prompt', instrucciones); fd.append('size', 'auto'); fd.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
+        fd.append('model', modeloO); fd.append('prompt', instrucciones); fd.append('size', modo === 'panorama' ? (process.env.OPENAI_PANO_SIZE || '1536x1024') : 'auto'); fd.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
         if (fidelidad) fd.append('input_fidelity', 'high');
         const usa = refs && conRef.length;
         fd.append(usa ? 'image[]' : 'image', new Blob([Buffer.from(m[2], 'base64')], { type: m[1] }), 'vista.' + (m[1] === 'image/png' ? 'png' : 'jpg'));

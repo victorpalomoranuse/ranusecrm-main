@@ -3587,6 +3587,23 @@ export default function Visor3D() {
       setGenerando360(false);
     }, 60);
   };
+  // Prueba: la panorámica se manda a ChatGPT (estirada a 3:2, que es lo que admite) y el resultado se vuelve a estirar a 2:1 para el visor 360
+  const [panoIA, setPanoIA] = useState(false);
+  const hacer360IA = async () => {
+    const a = api3d.current; setPanoIA(true); setAviso('Panorama 360° con IA: generando la vista y enviándola a ChatGPT (1–3 min)…');
+    try {
+      const dir = new THREE.Vector3(); a.cam.getWorldDirection(dir);
+      const base = capturarEquirect(a.renderer, a.scene, a.cam.position, Math.atan2(dir.x, dir.z), 768, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]);
+      const carga = u => new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('imagen')); i.src = u; });
+      const redim = (img, w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); return c.toDataURL('image/png'); };
+      const envio = redim(await carga(base), 1536, 1024);
+      const r = await api.post('/render-ia', { imagen: envio, modo: 'panorama', proveedor: 'openai' }, { timeout: 240000 });
+      const sal = await carga(r.data.imagen), alto = sal.naturalHeight;
+      const url = redim(sal, alto * 2, alto).replace('image/png', 'image/png');
+      setPano({ url, guardado: false, meta: metaActual() }); setAviso('');
+    } catch (e) { setAviso(e.response?.data?.error || 'No se ha podido generar el panorama con IA: ' + (e.message || 'error')); }
+    setPanoIA(false);
+  };
   useEffect(() => {
     if (!pano || !panoCont.current) return;
     return abrirVisor360(panoCont.current, pano.url);
@@ -4031,6 +4048,7 @@ export default function Visor3D() {
           [renderizando ? 'Renderizando…' : 'Render HD', async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }, false, renderizando || estado !== 'listo', 'Render HD limpio con sombras suaves'],
           ['Render con IA', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'La IA convierte esta vista en una foto realista'],
           [generando360 ? 'Generando 360°…' : 'Panorama 360°', hacer360, false, generando360 || estado !== 'listo', 'Panorama 360° desde la cámara'],
+          [panoIA ? 'Panorama con IA…' : 'Panorama 360° con IA (prueba)', hacer360IA, false, panoIA || generando360 || estado !== 'listo', 'Manda la panorámica a ChatGPT para hacerla fotorrealista'],
           ['Galería' + (renders.length ? ' (' + renders.length + ')' : ''), () => setGalAbierta(v => !v), galAbierta, false, 'Renders y panoramas guardados'],
           ['Despiece y cantidades', abrirDespiece, false, false, 'Despiece y cantidades de todo lo diseñado'],
           ['Exportar a D5 (.glb)', exportarGLB, false, false, 'Descarga el espacio en 3D para abrirlo en D5 o Blender'],
