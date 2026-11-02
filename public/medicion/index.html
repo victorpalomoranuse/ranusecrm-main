@@ -6489,6 +6489,7 @@ function panelSel(focus){
     if(st.multi.every(function(m){return m.t==='dr'})){
       h+='<p class="note">Clic derecho sobre ellos: agrupar, crear bloque, duplicar o borrar. Las distancias a los muros se pueden escribir para colocarlos.</p><div class="btns"><button data-a="dragrupar">Agrupar</button><button data-a="drdesagrupar">Desagrupar</button><button data-a="drbloquesel">Crear bloque…</button></div>';
     }
+    if(st.multi.filter(function(m){var q=m.t==='pt'?by(st.v.pts,m.id):null;return q&&(q.k==='spot'||q.k==='spotl')}).length>1)h+='<p class="note" style="margin:8px 0 2px">Spots en el carril:</p><div class="btns"><button data-a="mcar:igual" title="Deja el mismo hueco entre todos, sin mover el primero ni el último">Repartir huecos iguales</button></div>'+fld('rl_hg','Hueco fijo entre spots (cm)',st.rlHG==null?10:st.rlHG)+'<div class="btns"><button data-a="mcar:fijo" title="Coloca los spots seguidos desde el primero con ese hueco entre cada uno">Aplicar ese hueco</button></div>';
     if(st.multi.filter(function(m){return m.t==='eq'||m.t==='pil'||m.t==='pt'}).length>1)h+='<p class="note" style="margin:8px 0 2px">Centrar entre sí (luces, máquinas, pilares):</p><div class="btns tr"><button data-a="mal:cy" title="Las deja en la misma fila (mismo Y), a la altura media">Misma fila ↔</button><button data-a="mal:cx" title="Las deja en la misma columna (mismo X)">Misma columna ↕</button><button data-a="mal:rx" title="Reparte a igual distancia de izquierda a derecha entre la primera y la última">Repartir ↔</button><button data-a="mal:ry" title="Reparte a igual distancia de arriba a abajo">Repartir ↕</button></div>';
     h+=''+multiPropsHtml()+'<p class="note" style="margin:8px 0 2px">Girar todo el grupo alrededor de su centro:</p><div class="btns tr"><button data-a="mrot:-90" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="mrot:-45">⟲ 45°</button><button data-a="mrot:-5">⟲ 5°</button><button data-a="mrot:5">⟳ 5°</button><button data-a="mrot:45">⟳ 45°</button><button data-a="mrot:90" title="Girar 90° a la derecha">⟳ 90°</button></div><p class="note" style="margin:8px 0 2px">Voltear (espejo) todo el grupo:</p><div class="btns tr"><button data-a="mflip:h" title="Espejo izquierda ↔ derecha">⇋ Izquierda ↔ derecha</button><button data-a="mflip:v" title="Espejo arriba ↔ abajo">⇅ Arriba ↔ abajo</button></div><div class="btns"><button data-a="mdup">Duplicar</button><button data-a="mclear">Quitar selección</button></div><div class="btns"><button class="danger" data-a="mdel">Borrar todo</button></div>';
     el.innerHTML=h;mostrarSel();return;
@@ -7148,6 +7149,7 @@ function doAction(a,el){
     commit(false);panelSel();return;
   }
   if(a.indexOf('mal:')===0){alinearMulti(a.slice(4));return}
+  if(a.indexOf('mcar:')===0){repartirCarril(a.slice(5));return}
   if(a.indexOf('mrot:')===0){rotarMulti(parseFloat(a.slice(5)));return}
   if(a.indexOf('mflip:')===0){voltearMulti(a.slice(6));return}
   if(a.indexOf('mwstate:')===0||a.indexOf('mostate:')===0){
@@ -7384,6 +7386,7 @@ function doAction(a,el){
 $('side').addEventListener('change',function(e){
   var k=e.target.getAttribute&&e.target.getAttribute('data-f');if(k)applyField(k,e.target.value,false);
   var t=e.target.getAttribute&&e.target.getAttribute('data-t');
+  if(t==='rl_hg'){var vhg=parseFloat(String(e.target.value).replace(',','.'));if(vhg>=0&&vhg<=1000)st.rlHG=vhg;return}
   if(t&&t.indexOf('ms_')===0&&st.multi&&st.multi.length){medidasMulti(t,e.target);return}
   if(t&&t.indexOf('m_')===0&&st.multi&&st.multi.length){multiEdit(t,e.target);return}
   if(t==='pt_anc'){st.ptAnc=e.target.value==='b'?'b':'a';return}
@@ -11585,6 +11588,33 @@ function rotarMulti(deg){
   if(pils.length&&Math.abs(Math.round(deg/90)*90-deg)>0.01)toast('Los pilares se giran de posición, pero siguen rectos (solo giran del todo en 90°)');
 }
 /* centrar y repartir lo seleccionado entre sí (luces, máquinas, pilares): en la misma fila o columna, o a igual distancia */
+/* spots (y spots lineales) seleccionados sobre un carril: repartir los huecos entre ellos, a lo largo del carril */
+function repartirCarril(modo){
+  var v=st.v,its=(st.multi||[]).map(function(m){return m.t==='pt'?by(v.pts,m.id):null}).filter(function(q){return q&&(q.k==='spot'||q.k==='spotl')});
+  if(its.length<2){toast('Elige al menos 2 spots del carril');return}
+  var car=null,cv=null;
+  its.forEach(function(q){if(!car&&q.rc){var cc=by(v.pts,q.rc);if(cc&&cc.k==='carril'){car=cc}}});
+  if(!car){toast('Estos spots no están sobre un carril: encástralos en uno primero');return}
+  var vs=ptVerts(car),tot=ptLen(car),segs=[],acc=0,i;
+  for(i=1;i<vs.length;i++){var l=Math.hypot(vs[i].x-vs[i-1].x,vs[i].y-vs[i-1].y);segs.push({a:vs[i-1],b:vs[i],l:l,s0:acc});acc+=l}
+  function lenDe(p){var best=0,bd=1e9;segs.forEach(function(sg){if(!sg.l)return;var t=Math.max(0,Math.min(1,((p.x-sg.a.x)*(sg.b.x-sg.a.x)+(p.y-sg.a.y)*(sg.b.y-sg.a.y))/(sg.l*sg.l))),px0=sg.a.x+(sg.b.x-sg.a.x)*t,py0=sg.a.y+(sg.b.y-sg.a.y)*t,dd=Math.hypot(p.x-px0,p.y-py0);if(dd<bd){bd=dd;best=sg.s0+t*sg.l}});return best}
+  function enLen(d){d=Math.max(0,Math.min(tot,d));for(var j=0;j<segs.length;j++){var sg=segs[j];if(d<=sg.s0+sg.l||j===segs.length-1){var t=sg.l?Math.max(0,Math.min(1,(d-sg.s0)/sg.l)):0;return {x:sg.a.x+(sg.b.x-sg.a.x)*t,y:sg.a.y+(sg.b.y-sg.a.y)*t,ang:Math.round(Math.atan2(sg.b.y-sg.a.y,sg.b.x-sg.a.x)*180/Math.PI)}}}return {x:vs[0].x,y:vs[0].y,ang:0}}
+  var it=its.map(function(q){var p=ptPos(q);return {q:q,c:lenDe(p),h:q.k==='spotl'?((q.w>0?q.w:ptDef('spotl').w)/2):0}});
+  it.sort(function(a,b){return a.c-b.c});
+  var n=it.length,W=0;it.forEach(function(o){W+=2*o.h});
+  var g;
+  if(modo==='fijo'){g=st.rlHG==null?10:st.rlHG}
+  else{var span=(it[n-1].c+it[n-1].h)-(it[0].c-it[0].h);g=(span-W)/(n-1);if(g<0){toast('No caben con esas medidas: los spots se pisarían');return}}
+  snap();
+  var nd0=nd(car.n),cur=it[0].c;
+  it.forEach(function(o,k){
+    if(k>0)cur=cur+it[k-1].h+g+o.h;
+    if(cur+o.h>tot+0.5&&modo==='fijo'){return}
+    o.c=cur;var pp=enLen(cur);
+    o.q.dx=f2(pp.x-nd0.x);o.q.dy=f2(pp.y-nd0.y);if(o.q.k==='spotl')o.q.a=pp.ang;
+  });
+  commit();panelSel();toast('Huecos de '+fmtU(g)+' entre spots');
+}
 function alinearMulti(modo){
   var v=st.v,its=[];
   (st.multi||[]).forEach(function(it){
