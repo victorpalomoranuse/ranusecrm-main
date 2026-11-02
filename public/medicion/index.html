@@ -9352,9 +9352,10 @@ function sheetPage(doc,view,idx,total,o){
   var y=mg+10*f,limit=cy0-4*f,rh=5.6*f+(A3?0:0.4),xL=px0,xR=PW-mg-5*f;
   function room(h){return y+h<=limit}
   /* «Leyenda» agrupa todos los cuadros de referencia: estados, materiales, sistemas, equipos, luminarias, simbología… */
-  var SECT_LEY={'Leyenda':1,'Suelos':1,'Techos':1,'Sistemas / obra':1,'Acabados':1,'Luminarias':1,'Encendidos':1,'Simbología':1,'Equipos':1,'Obra a medida':1};
+  var SECT_LEY={'Leyenda':'ley_est','Suelos':'ley_mat','Techos':'ley_mat','Sistemas / obra':'ley_mat','Acabados':'ley_mat','Luminarias':'ley_lum','Encendidos':'ley_lum','Simbología':'ley_sim','Equipos':'ley_eq','Obra a medida':'ley_eq'};
+  function leyOn(k){return infoOn('leyenda')&&infoOn(k)} /* 'leyenda' es el interruptor general de los planos antiguos; ahora cada bloque se elige por separado */
   function sect(t){
-    if(SECT_LEY[t]&&!infoOn('leyenda'))return false;
+    if(SECT_LEY[t]&&!leyOn(SECT_LEY[t]))return false;
     if(!room(10*f))return false;
     p.text(xL,y+3*f,t.toUpperCase(),5.2*f+0.4,{bold:true,col:MUTED,sp:0.45});
     p.line(xL,y+4.8*f,xR,y+4.8*f,LINEC,0.25);y+=8*f;return true;
@@ -9369,7 +9370,7 @@ function sheetPage(doc,view,idx,total,o){
   var unm=visW.some(function(w){return w.m!==true});
 
   /* leyenda de estados */
-  if(view!=='alz'&&view!=='acab'&&infoOn('leyenda')&&sect('Leyenda')){
+  if(view!=='alz'&&view!=='acab'&&sect('Leyenda')){
     function swatch(kind,label){
       if(!room(rh))return;
       var sy=y+rh/2-0.9*f;
@@ -9688,7 +9689,7 @@ function sheetPage(doc,view,idx,total,o){
   }
 
   /* equipos */
-  if(view==='distrib'&&!o.ante&&v.eq.length&&infoOn('leyenda')&&room(24*f)){
+  if(view==='distrib'&&!o.ante&&v.eq.length&&leyOn('ley_eq')&&room(24*f)){
     sect('Equipos');
     var tipos=eqTipos().lista,n=tipos.length,avail=limit-y-(v.notas?0:0),erh=Math.min(10.5*f,Math.max(5.2,avail/n)),th=Math.min(8*f,erh-1.4),tw=Math.min(15*f,pw*0.2),shown=n;
     if(erh<5.2*f){shown=Math.max(1,Math.floor(avail/(5.2*f))-1);erh=5.2*f}
@@ -9707,7 +9708,7 @@ function sheetPage(doc,view,idx,total,o){
   }
 
   /* obra a medida */
-  if(view==='distrib'&&!o.ante&&(v.mm||[]).length&&infoOn('leyenda')&&room(20*f)){
+  if(view==='distrib'&&!o.ante&&(v.mm||[]).length&&leyOn('ley_eq')&&room(20*f)){
     sect('Obra a medida');
     v.mm.forEach(function(m,i){
       if(y+8.6*f>limit)return;
@@ -9841,7 +9842,7 @@ $('b-pdfproj').addEventListener('click',function(){
 });
 /* nombre del proyecto, dirección, cliente, planta, fecha y observaciones del cajetín: se escriben aquí (no hace falta enlazar el plano a un proyecto del CRM) */
 /* qué información sale en las láminas (por defecto todo) */
-var INFO_LAM=[['leyenda','Leyenda: estados, materiales y sistemas, equipos, luminarias y símbolos'],['carp','Carpinterías (puertas y ventanas)'],['med','Cuadro de mediciones'],['total','Total de m²'],['rodapie','Rodapié (ml)'],['despiece','Despiece y piezas a pedir']];
+var INFO_LAM=[['ley_est','Leyenda · estados (existente, demolición, nuevo)'],['ley_mat','Leyenda · materiales, acabados y sistemas'],['ley_eq','Leyenda · equipos y obra a medida'],['ley_lum','Leyenda · luminarias y encendidos'],['ley_sim','Leyenda · simbología'],['carp','Carpinterías (puertas y ventanas)'],['med','Cuadro de mediciones'],['total','Total de m²'],['rodapie','Rodapié (ml)'],['despiece','Despiece y piezas a pedir']];
 /* la información de las láminas se puede fijar para todas o solo para una (la de esa lámina manda sobre la general) */
 /* leyendas predeterminadas por lámina (se guardan en este navegador y valen para todos los planos nuevos; lo de cada plano manda sobre ellas) */
 var LSINFODEF='ranuseInfoDef';
