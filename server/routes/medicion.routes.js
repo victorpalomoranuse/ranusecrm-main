@@ -10,6 +10,7 @@ import { catalogoEnCache, guardaCatalogo, vaciaCacheAlEscribir } from '../utils/
 import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
 import { firmaTour } from './tour-publico.routes.js';
+import { uploadProjectRender } from '../utils/storage.js';
 import { uploadReferenceImageFile, uploadHdriFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { indiceBiblioteca3d } from './biblioteca3d.routes.js';
 import { leerModelosBib } from '../utils/modelos-bib.js';
@@ -872,6 +873,50 @@ router.post('/:id/render', async (req, res) => {
 });
 // Firma del enlace público del tour 360° (el visor arma la dirección con el dominio de la web)
 router.get('/:id/tour-firma', (req, res) => res.json({ firma: firmaTour(req.params.id) }));
+// ── Publicar un render en la historia del cliente (el portal del proyecto). El visor pide los capítulos, el diseñador elige uno y confirma.
+router.get('/:id/historia', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('project_id, project:client_projects(id, client_name, project_name)').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    if (!fila.project_id) return res.json({ ligado: false, capitulos: [] });
+    const { data: caps, error } = await supabase.from('capitulos').select('id, titulo, orden, visible, render_url').eq('proyecto_id', fila.project_id).order('orden');
+    if (error) throw error;
+    res.json({ ligado: true, proyecto: fila.project || null, capitulos: caps || [] });
+  } catch (err) { res.status(500).json({ error: 'No se pudo leer la historia del proyecto' }); }
+});
+router.post('/:id/render/:rid/publicar', async (req, res) => {
+  try {
+    const { capituloId, titulo, texto, principal, mostrarCapitulo } = req.body || {};
+    const { data: fila } = await supabase.from('mediciones').select('data, project_id').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    if (!fila.project_id) return res.status(409).json({ error: 'Este plano no está ligado a ningún proyecto de cliente' });
+    const esc = fila.data?.escena3d || {}, r = (esc.renders || []).find(x => x.id === req.params.rid);
+    if (!r || r.tipo === '360') return res.status(404).json({ error: 'No he encontrado ese render' });
+    const { data: cap } = await supabase.from('capitulos').select('id, proyecto_id, visible').eq('id', String(capituloId || '')).maybeSingle();
+    if (!cap || cap.proyecto_id !== fila.project_id) return res.status(404).json({ error: 'Ese capítulo no es de este proyecto' });
+    // la imagen se copia al almacenamiento del proyecto: si luego se borra el render de la galería, el cliente sigue viéndolo
+    const rf = await fetch(r.url); if (!rf.ok) throw new Error('No se pudo leer el render');
+    const buf = Buffer.from(await rf.arrayBuffer());
+    const urlProyecto = await uploadProjectRender(buf, 'render.jpg', 'image/jpeg', fila.project_id);
+    const { data: ultimo } = await supabase.from('capitulo_bloques').select('orden').eq('capitulo_id', cap.id).order('orden', { ascending: false }).limit(1).maybeSingle();
+    const { data: bloque, error } = await supabase.from('capitulo_bloques').insert({
+      tipo: 'render', titulo: String(titulo || r.nombre || 'Render').trim().slice(0, 120) || null, texto: String(texto || '').trim().slice(0, 1000) || null, imagen_url: urlProyecto,
+      visible: true, proyecto_id: fila.project_id, capitulo_id: cap.id, orden: (ultimo?.orden ?? 0) + 1,
+    }).select('*').single();
+    if (error) throw error;
+    const cambios = { updated_at: new Date().toISOString() };
+    if (principal === true) cambios.render_url = urlProyecto;
+    if (mostrarCapitulo === true && cap.visible === false) cambios.visible = true;
+    await supabase.from('capitulos').update(cambios).eq('id', cap.id);
+    r.publicado = { capituloId: cap.id, bloqueId: bloque.id, en: new Date().toISOString(), principal: principal === true };
+    const { error: e2 } = await supabase.from('mediciones').update({ data: { ...fila.data, escena3d: esc } }).eq('id', req.params.id);
+    if (e2) throw e2;
+    res.json({ ok: true, render: r, bloque });
+  } catch (err) {
+    console.error('medicion publicar render:', err);
+    res.status(500).json({ error: 'No se pudo publicar el render' + (err?.message ? ': ' + String(err.message).slice(0, 140) : '') });
+  }
+});
 router.patch('/:id/render/:rid', async (req, res) => {
   try {
     const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();

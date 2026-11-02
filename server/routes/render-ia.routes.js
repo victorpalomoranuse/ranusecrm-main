@@ -140,4 +140,54 @@ router.post('/', async (req, res) => {
   }
 });
 
+// ── Editor de post-producción: edita un render con una instrucción y, si se manda una máscara (la zona pintada), solo esa zona.
+// La máscara es un PNG del mismo tamaño que la imagen: los píxeles transparentes son los que se editan. Opcionalmente, hasta 3 imágenes de referencia.
+const DATA_IMG = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/;
+router.post('/editar', async (req, res) => {
+  const clave = process.env.OPENAI_API_KEY;
+  if (!clave) return res.status(503).json({ error: 'Falta la clave de OpenAI en el servidor (variable OPENAI_API_KEY en Railway).' });
+  try {
+    const { imagen, mascara, instruccion, referencias } = req.body || {};
+    const m = DATA_IMG.exec(String(imagen || ''));
+    if (!m) return res.status(400).json({ error: 'Falta la imagen (png, jpg o webp)' });
+    const texto = String(instruccion || '').trim().slice(0, 1500);
+    if (!texto) return res.status(400).json({ error: 'Escribe qué quieres cambiar' });
+    const mk = /^data:image\/png;base64,(.+)$/.exec(String(mascara || ''));
+    const refs = (Array.isArray(referencias) ? referencias : []).slice(0, 3).map(x => DATA_IMG.exec(String(x || ''))).filter(Boolean);
+    const prompt = [
+      'Eres un retocador profesional de renders de interiorismo. Edita la primera imagen aplicando SOLO este cambio: «' + texto + '».',
+      mk ? 'El cambio se limita a la zona marcada con la máscara: no toques nada fuera de ella.' : 'Aplica el cambio conservando todo lo demás.',
+      'Mantén exactamente la composición, la perspectiva, la iluminación, los materiales y todos los elementos que no se mencionan.',
+      refs.length ? 'Las imágenes adicionales son referencias de lo que hay que incorporar (' + refs.length + '): no las pegues tal cual, intégralas con la perspectiva, la escala, la luz y las sombras de la escena.' : '',
+      'El resultado debe parecer una fotografía real.',
+    ].filter(Boolean).join(' ');
+    let modeloO = process.env.OPENAI_IMAGE_MODEL || imagenOpenAI || 'gpt-image-1';
+    const llamar = async ({ fidelidad = true, conRefs = true } = {}) => {
+      const fd = new FormData();
+      fd.append('model', modeloO); fd.append('prompt', prompt); fd.append('size', 'auto'); fd.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
+      if (fidelidad) fd.append('input_fidelity', 'high');
+      const usa = conRefs && refs.length;
+      fd.append(usa ? 'image[]' : 'image', new Blob([Buffer.from(m[2], 'base64')], { type: m[1] }), 'render.' + (m[1] === 'image/png' ? 'png' : 'jpg'));
+      if (usa) refs.forEach((x, i) => fd.append('image[]', new Blob([Buffer.from(x[2], 'base64')], { type: x[1] }), 'referencia' + (i + 1) + '.' + (x[1] === 'image/png' ? 'png' : 'jpg')));
+      if (mk) fd.append('mask', new Blob([Buffer.from(mk[1], 'base64')], { type: 'image/png' }), 'mascara.png');
+      const rr = await fetch('https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: 'Bearer ' + clave }, body: fd });
+      return { rr, jj: await rr.json().catch(() => ({})) };
+    };
+    let { rr, jj } = await llamar();
+    if (!rr.ok && !process.env.OPENAI_IMAGE_MODEL && /does not exist|model_not_found|do not have access|not found/i.test(JSON.stringify(jj?.error || {}))) {
+      const lista = await modelosImagenOpenAI(clave).catch(() => []);
+      if (lista.length && lista[0] !== modeloO) { modeloO = lista[0]; imagenOpenAI = modeloO; ({ rr, jj } = await llamar()); }
+    }
+    if (!rr.ok && /input_fidelity|unknown|unsupported/i.test(JSON.stringify(jj?.error || {}))) ({ rr, jj } = await llamar({ fidelidad: false }));
+    if (!rr.ok && refs.length) ({ rr, jj } = await llamar({ fidelidad: false, conRefs: false })); // si no admite varias imágenes, se edita sin las referencias
+    if (!rr.ok) { console.error('render-ia editar', rr.status, jj?.error?.message); return res.status(502).json({ error: 'ChatGPT no ha podido editar la imagen' + (jj?.error?.message ? ': ' + String(jj.error.message).slice(0, 220) : '') }); }
+    const b64 = jj?.data?.[0]?.b64_json;
+    if (!b64) return res.status(502).json({ error: 'OpenAI no ha devuelto ninguna imagen' });
+    res.json({ imagen: 'data:image/png;base64,' + b64, modelo: modeloO });
+  } catch (e) {
+    console.error('render-ia editar:', e);
+    res.status(500).json({ error: 'No se pudo editar la imagen: ' + String(e.message || e).slice(0, 200) });
+  }
+});
+
 export default router;

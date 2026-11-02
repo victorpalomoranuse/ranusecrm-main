@@ -10,6 +10,7 @@ import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
 import EstudioIdeas from '../components/EstudioIdeas';
+import EditorRender from '../components/EditorRender';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -1618,6 +1619,24 @@ export default function Visor3D({ cliente = false }) {
   const [pano, setPano] = useState(null);                  // { url, guardado, meta } visor 360 abierto
   const [generando360, setGenerando360] = useState(false);
   const panoCont = useRef(null);
+  const [pubDlg, setPubDlg] = useState(null);                // cuadro «Publicar en la historia del cliente»
+  const abrirPublicar = async rd => {
+    setPubDlg({ rd, cargando: true, capitulos: [], capId: '', titulo: rd.nombre || 'Render', texto: '', principal: false, mostrar: false, enviando: false, error: '' });
+    try {
+      const h = (await api.get('/medicion/' + id + '/historia')).data;
+      setPubDlg(d => d && ({ ...d, cargando: false, ligado: h.ligado, proyecto: h.proyecto, capitulos: h.capitulos || [], capId: (h.capitulos || [])[0]?.id || '' }));
+    } catch { setPubDlg(d => d && ({ ...d, cargando: false, error: 'No se pudo leer la historia del proyecto' })); }
+  };
+  const publicarRender = async () => {
+    const d = pubDlg; if (!d || !d.capId) return;
+    setPubDlg(x => ({ ...x, enviando: true, error: '' }));
+    try {
+      const r = await api.post('/medicion/' + id + '/render/' + d.rd.id + '/publicar', { capituloId: d.capId, titulo: d.titulo, texto: d.texto, principal: d.principal, mostrarCapitulo: d.mostrar }, { timeout: 90000 });
+      setRenders(x => x.map(y => (y.id === d.rd.id ? r.data.render : y)));
+      setPubDlg(null); setAviso('Publicado en la historia del cliente ✓');
+    } catch (e) { setPubDlg(x => x && ({ ...x, enviando: false, error: e.response?.data?.error || 'No se pudo publicar' })); }
+  };
+  const [editorRender, setEditorRender] = useState(null);   // render que se está retocando en el editor con IA
   const [verRender, setVerRender] = useState(null);       // render de la galería ampliado
   const [modoPincel, setModoPincel] = useState('cara');   // cara | pieza | todo
   const [angCara, setAngCara] = useState(25);
@@ -4408,6 +4427,7 @@ export default function Visor3D({ cliente = false }) {
               <img src={ia.imagen} alt="Render con IA" style={{ maxWidth: '86vw', maxHeight: '72vh', display: 'block', borderRadius: 6 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 <a style={{ ...btn, textDecoration: 'none' }} href={ia.imagen} download={(titulo || 'plano') + '-render-ia.png'}>Descargar</a>
+                <button style={btn} onClick={() => setEditorRender({ id: 'nuevo', url: ia.imagen, nombre: 'Render con IA', meta: ia.meta })} title="Abre el editor: pinta una zona y la IA la cambia">✏️ Seguir editando</button>
                 <button style={{ ...btn, background: ia.guardado ? '#2a6b3a' : '#8c8076', borderColor: 'transparent' }} disabled={ia.guardado} onClick={async () => { const r = await guardarRender('ia', ia.imagen, ia.meta); if (r) setIa(x => ({ ...x, guardado: true })); }}>{ia.guardado ? 'Guardado en la galería ✓' : '⭐ Guardar en la galería'}</button>
                 <button style={btn} onClick={() => setIa(null)}>Cerrar</button>
               </div>
@@ -4595,6 +4615,8 @@ export default function Visor3D({ cliente = false }) {
               <div style={{ opacity: 0.6, fontSize: 11, marginTop: 2 }}>{new Date(rd.creado).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}{rd.meta?.estancia ? ' · ' + rd.meta.estancia : ''}{rd.meta?.estilo ? ' · ' + rd.meta.estilo : ''}</div>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
                 <button style={{ ...btn, padding: '2px 8px' }} onClick={() => { restaurarVista(rd.meta); setAviso('Vista restaurada: cámara, hora y luces como cuando se hizo.'); }} title="Vuelve a la cámara, la hora y las luces de ese render">Ir a esta vista</button>
+                {rd.tipo !== '360' && <button style={{ ...btn, padding: '2px 8px', background: rd.publicado ? '#2a6b3a' : '#2f5f8a' }} onClick={() => abrirPublicar(rd)} title={rd.publicado ? 'Ya publicado en la historia del cliente. Pulsa para publicarlo otra vez en otro capítulo' : 'Publícalo en la historia del cliente sin descargarlo'}>{rd.publicado ? '📤 Publicado ✓' : '📤 Publicar'}</button>}
+                {rd.tipo !== '360' && <button style={{ ...btn, padding: '2px 8px', background: '#8c8076' }} onClick={() => setEditorRender(rd)} title="Pinta una zona, escribe qué cambiar y la IA lo retoca: cada cambio es una versión nueva">✏️ Editar con IA</button>}
                 {rd.tipo === 'ia' && <button style={{ ...btn, padding: '2px 8px' }} onClick={() => { restaurarVista(rd.meta); setIaTxt(t => ({ ...t, estancia: rd.meta?.estancia || '', estilo: rd.meta?.estilo || '', extra: rd.meta?.extra || '', libertad: rd.meta?.libertad || 'equilibrado' })); setIaForm(true); }} title="Vuelve a esa vista con los mismos textos y lo prepara para generar otro">Repetir con IA</button>}
                 <a style={{ ...btn, padding: '2px 8px', textDecoration: 'none' }} href={rd.url} download={rd.nombre + '.jpg'}>Descargar</a>
                 <button style={{ ...btn, padding: '2px 8px', background: '#7a2b2b' }} onClick={() => { if (window.confirm('¿Borrar «' + rd.nombre + '» de la galería?')) api.delete('/medicion/' + id + '/render/' + rd.id).then(() => setRenders(x => x.filter(y => y.id !== rd.id))).catch(() => setAviso('No se pudo borrar')); }}>Borrar</button>
@@ -4603,6 +4625,41 @@ export default function Visor3D({ cliente = false }) {
           ))}
         </div>
       )}
+      {pubDlg && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.7)', display: 'grid', placeItems: 'center', padding: 16 }} onClick={() => !pubDlg.enviando && setPubDlg(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 'min(460px, 94vw)', maxHeight: '92vh', overflowY: 'auto', background: '#1c1a18', color: '#fff', borderRadius: 12, padding: 16, fontSize: 13, boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>📤 Publicar en la historia del cliente</div>
+            <img src={pubDlg.rd.thumb || pubDlg.rd.url} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'contain', background: '#111', borderRadius: 6, marginBottom: 8 }} />
+            {pubDlg.cargando && <div style={{ opacity: 0.7 }}>Leyendo la historia del proyecto…</div>}
+            {!pubDlg.cargando && pubDlg.ligado === false && <div style={{ color: '#ffb59a' }}>Este plano no está ligado a ningún proyecto de cliente. Lígalo a un proyecto desde Planos para poder publicar.</div>}
+            {!pubDlg.cargando && pubDlg.ligado && !pubDlg.capitulos.length && <div style={{ color: '#ffb59a' }}>El proyecto «{pubDlg.proyecto?.project_name || ''}» todavía no tiene capítulos. Crea la historia en la ficha del proyecto.</div>}
+            {!pubDlg.cargando && pubDlg.ligado && pubDlg.capitulos.length > 0 && (() => {
+              const cap = pubDlg.capitulos.find(c => c.id === pubDlg.capId);
+              return <>
+                <div style={{ opacity: 0.75, marginBottom: 8 }}>Proyecto: <b>{pubDlg.proyecto?.project_name || '—'}</b>{pubDlg.proyecto?.client_name ? ' · ' + pubDlg.proyecto.client_name : ''}</div>
+                <label style={{ display: 'block', marginBottom: 6 }}>Capítulo
+                  <select value={pubDlg.capId} onChange={e => setPubDlg(d => ({ ...d, capId: e.target.value }))} style={{ ...btn, width: '100%', marginTop: 3 }}>{pubDlg.capitulos.map(c => <option key={c.id} value={c.id}>{c.titulo}{c.visible ? '' : ' (oculto al cliente)'}</option>)}</select>
+                </label>
+                <label style={{ display: 'block', marginBottom: 6 }}>Título
+                  <input value={pubDlg.titulo} onChange={e => setPubDlg(d => ({ ...d, titulo: e.target.value }))} style={{ ...btn, width: '100%', boxSizing: 'border-box', marginTop: 3 }} />
+                </label>
+                <label style={{ display: 'block', marginBottom: 6 }}>Texto para el cliente (opcional)
+                  <textarea value={pubDlg.texto} onChange={e => setPubDlg(d => ({ ...d, texto: e.target.value }))} rows={2} style={{ ...btn, width: '100%', boxSizing: 'border-box', marginTop: 3, fontFamily: 'inherit', resize: 'vertical' }} />
+                </label>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={pubDlg.principal} onChange={e => setPubDlg(d => ({ ...d, principal: e.target.checked }))} /> Usarlo también como imagen principal del capítulo{cap?.render_url ? ' (sustituye a la actual)' : ''}</label>
+                {cap && cap.visible === false && <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={pubDlg.mostrar} onChange={e => setPubDlg(d => ({ ...d, mostrar: e.target.checked }))} /> Hacer visible el capítulo (ahora el cliente no lo ve)</label>}
+                <div style={{ background: '#2a2520', borderRadius: 6, padding: '6px 8px', margin: '8px 0', fontSize: 12, opacity: 0.9 }}>⚠️ El cliente lo verá en su portal en cuanto lo publiques{cap && cap.visible === false && !pubDlg.mostrar ? ' (si el capítulo está oculto, no lo verá hasta que lo muestres)' : ''}.</div>
+              </>;
+            })()}
+            {pubDlg.error && <div style={{ color: '#ff9c8a', marginBottom: 6 }}>{pubDlg.error}</div>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button style={btn} disabled={pubDlg.enviando} onClick={() => setPubDlg(null)}>Cancelar</button>
+              <button style={{ ...btn, background: '#2f5f8a', fontWeight: 700, opacity: pubDlg.enviando || !pubDlg.capId ? 0.5 : 1 }} disabled={pubDlg.enviando || !pubDlg.capId} onClick={publicarRender}>{pubDlg.enviando ? 'Publicando…' : 'Publicar al cliente'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {editorRender && <EditorRender key={editorRender.id} src={editorRender.url} nombre={editorRender.nombre} galeria={renders.filter(r => r.tipo !== '360')} onCerrar={() => setEditorRender(null)} onElegir={rd => setEditorRender(rd)} renderInicial={editorRender.id !== 'nuevo' ? editorRender : null} onPublicar={rd => abrirPublicar(rd)} onGuardar={async (u, n) => (await guardarRender('ia', u, editorRender.meta, n)) || false} />}
       {verRender && (
         <div onClick={() => setVerRender(null)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 10, display: 'grid', placeItems: 'center', padding: 16, cursor: 'zoom-out' }}>
           <img src={verRender.url} alt={verRender.nombre} style={{ maxWidth: '94vw', maxHeight: '90vh', borderRadius: 6 }} />
