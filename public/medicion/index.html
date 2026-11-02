@@ -2598,8 +2598,8 @@ function cnPts(c){
   return p;
 }
 function cnCol(c){var m=swTagMap()[c.a];return CNC[((m?m.i:1)-1)%CNC.length]}
-function cnCurva(a,b,kmax){
-  var dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l,k=Math.min(0.2*l,kmax||80),mx=(a.x+b.x)/2+nx*k,my=(a.y+b.y)/2+ny*k,p=[];
+function cnCurva(a,b,kmax,fk){
+  var dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l,k=Math.min((fk||0.2)*l,kmax||80),mx=(a.x+b.x)/2+nx*k,my=(a.y+b.y)/2+ny*k,p=[];
   for(var i=0;i<=12;i++){var t=i/12;p.push({x:(1-t)*(1-t)*a.x+2*t*(1-t)*mx+t*t*b.x,y:(1-t)*(1-t)*a.y+2*t*(1-t)*my+t*t*b.y})}
   return p;
 }
@@ -2611,13 +2611,14 @@ function cnEdges(){
   lista.forEach(function(c){(gr[c.a]=gr[c.a]||[]).push(c)});
   Object.keys(gr).forEach(function(a){
     var sw0=by(st.v.pts,a);if(!sw0)return;
-    var cur=ptMid(sw0),rest=gr[a].map(function(c){return {c:c,p:ptMid(by(st.v.pts,c.b))}});
-    while(rest.length){
-      var bi=0,bd=1e18;rest.forEach(function(o,i){var d=Math.hypot(o.p.x-cur.x,o.p.y-cur.y);if(d<bd){bd=d;bi=i}});
-      var o=rest.splice(bi,1)[0];
-      out.push({c:o.c,pp:cnCurva(cur,o.p,out.length&&bd<400?30:80)});
+    var p0=ptMid(sw0),rest=gr[a].map(function(c){return {c:c,p:ptMid(by(st.v.pts,c.b))}});
+    /* el recorrido sigue el orden en que se unieron las luces (el que tú marcas), no uno automático */
+    var ord=rest;
+    var cur=p0;
+    ord.forEach(function(o,ix){
+      out.push({c:o.c,pp:cnCurva(cur,o.p,ix===0?40:16,0.08)});
       cur=o.p;
-    }
+    });
   });
   return out;
 }
