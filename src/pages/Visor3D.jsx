@@ -3637,11 +3637,11 @@ export default function Visor3D({ cliente = false }) {
       setGenerandoParada(false);
     }, 60);
   };
-  const copiarEnlaceTour = async () => {
-    if (!renders.some(r => r.tour)) { setAviso('Primero añade alguna parada del tour (menú Salida → Parada del tour).'); return; }
+  const copiarEnlaceTour = async (libre = false) => {
+    if (!libre && !renders.some(r => r.tour)) { setAviso('Primero añade alguna parada del tour (menú Salida → Parada del tour).'); return; }
     try {
-      const f = (await api.get('/medicion/' + id + '/tour-firma')).data.firma, u = window.location.origin + '/tour/' + encodeURIComponent(id) + '/' + f;
-      try { await navigator.clipboard.writeText(u); setAviso('Enlace del tour copiado: ' + u); } catch { window.prompt('Copia el enlace del tour:', u); }
+      const f = (await api.get('/medicion/' + id + '/tour-firma')).data.firma, u = window.location.origin + (libre ? '/recorrido/' : '/tour/') + encodeURIComponent(id) + '/' + f;
+      try { await navigator.clipboard.writeText(u); setAviso((libre ? 'Enlace del recorrido libre copiado: ' : 'Enlace del tour copiado: ') + u); } catch { window.prompt('Copia el enlace del tour:', u); }
     } catch { setAviso('No se pudo crear el enlace del tour'); }
   };
   const hacer360 = () => {
@@ -4140,7 +4140,8 @@ export default function Visor3D({ cliente = false }) {
           ['Render con IA', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'La IA convierte esta vista en una foto realista'],
           [generando360 ? 'Generando 360°…' : 'Panorama 360°', hacer360, false, generando360 || estado !== 'listo', 'Panorama 360° desde la cámara'],
           [generandoParada ? 'Creando parada…' : 'Parada del tour (360°)', paradaTour, false, generandoParada || generando360 || estado !== 'listo', 'Guarda una panorámica 360° de aquí como parada del tour del cliente'],
-          ['Copiar enlace del tour', copiarEnlaceTour, false, false, 'Enlace público (solo lectura) del tour 360° para el cliente'],
+          ['Copiar enlace del recorrido libre', () => copiarEnlaceTour(true), false, false, 'Enlace público (solo lectura): el cliente anda por el espacio; si su equipo es flojo se le ofrece el tour de panorámicas'],
+          ['Copiar enlace del tour', () => copiarEnlaceTour(false), false, false, 'Enlace público (solo lectura) del tour 360° para el cliente'],
           [panoIA ? 'Panorama con IA…' : 'Panorama 360° con IA (prueba)', hacer360IA, false, panoIA || generando360 || estado !== 'listo', 'Manda la panorámica a ChatGPT para hacerla fotorrealista'],
           ['Galería' + (renders.length ? ' (' + renders.length + ')' : ''), () => setGalAbierta(v => !v), galAbierta, false, 'Renders y panoramas guardados'],
           ['Despiece y cantidades', abrirDespiece, false, false, 'Despiece y cantidades de todo lo diseñado'],
