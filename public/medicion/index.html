@@ -19,7 +19,7 @@
 .medt .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .medt .nt{color:var(--muted);font-size:11.5px}
 .medt tr.tot td{font-weight:700;border-top:2px solid var(--accent);background:rgba(127,127,127,.08)}
-@media print{header,#views,.medp-btns{display:none!important}.medp{position:static;overflow:visible;padding:0}}
+@media print{header,#views,.medp-btns{display:none!important}.medp{position:static;overflow:visible;padding:0}html.imp-med,html.imp-med body{height:auto!important;overflow:visible!important}html.imp-med body>*:not(#medp){display:none!important}html.imp-med .meds{break-inside:avoid}html.imp-med .medp-planta{break-after:avoid}@page{margin:12mm}}
 .tuto-nav{overflow:auto;border-right:1px solid var(--line);padding:22px 16px;background:var(--panel)}
 .tuto-nav h2{margin:0 0 4px;font-size:18px;font-weight:600}
 .tuto-nav>p{margin:0 0 14px;font-size:12.5px;line-height:1.5;color:var(--muted)}
@@ -516,6 +516,9 @@ body.crm .top .brand{display:none}
           <label class="fld"><span>Componentes (una línea cada uno)</span><textarea id="lc-comp" rows="3" placeholder="Aro: Aro empotrable blanco ref. 123&#10;Lámpara: GU10 5 W 3000 K&#10;Perfil: PF-12 aluminio&#10;Driver: 24 V 30 W" style="width:100%"></textarea></label>
           <p class="note" style="margin:0 0 6px">Para un foco que lleva aro + bombilla, o una tira LED con su perfil y driver: escribe cada pieza en una línea y saldrán bajo el producto en la leyenda. Con la foto del producto principal basta.</p>
           <label class="fld"><span>Foto</span><input id="lc-f" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <label class="fld"><span>Instalación</span><select id="lc-ins"><option value="">Según el tipo de luminaria</option><option value="empotrada">Empotrada</option><option value="superficie">De superficie</option><option value="colgada">Colgada</option><option value="perfil">Con perfil</option></select></label>
+          <label class="fld"><span>Esquema del fabricante (apertura, empotrado, cotas)</span><input id="lc-f2" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <div class="btns"><button id="lc-pegar" type="button">Pegar imagen del portapapeles</button><button id="lc-qesq" type="button">Quitar esquema</button></div><p class="note" id="lc-esqprev" style="margin:0 0 6px"></p>
           <div class="btns"><button class="pri" id="lc-save">Guardar</button><button id="lc-del">Quitar</button></div>
         </details>
       </section>
@@ -2551,6 +2554,12 @@ function lumDims(q){
   });
   return [res.x,res.y].filter(Boolean);
 }
+/* cómo se instala una luminaria: lo elegido en su ficha o, si no, lo normal según su tipo */
+var INS_TXT={empotrada:'empotrada',superficie:'de superficie',colgada:'colgada',perfil:'con perfil'};
+function insDe(g){
+  var v=g.cat&&g.cat.ins;if(v&&INS_TXT[v])return INS_TXT[v];
+  var k=g.k;return (k==='foco'||k==='suel'||k==='spot')?'empotrada':(k==='plaf'||k==='aplq'||k==='esp'||k==='mue'||k==='spotl'||k==='carril')?'de superficie':(k==='colg'||k==='linealc')?'colgada':'';
+}
 function lumKey(q,d,mq){return (q.lid||('k:'+q.k))+'|'+mq+(d.lin?'|'+ptPerfil(q):'')+(q.nm?'|n:'+q.nm:'')}
 /* la misma luminaria lleva la misma etiqueta (L1, L2…) en todas las plantas: el orden sale de recorrer todas las plantas */
 function lumTagsGlobal(){
@@ -2676,7 +2685,7 @@ function ensureLums(){
   var add=false;
   ((st&&st.v&&st.v.lm)||[]).forEach(function(l){if(l&&l.id&&l.n&&l.sym&&!lumById(l.id)){LUMS.push(l);add=true}});
   if(add){try{localStorage.setItem(LSLUM,JSON.stringify(LUMS))}catch(e){}}
-  lumList().forEach(prepLumRgb);
+  lumList().forEach(function(l){prepLumRgb(l);prepLumEsq(l)});
 }
 
 /* ---------- alzados ---------- */
@@ -6199,15 +6208,49 @@ function lumPhotoUri(uri,cb){
   im.onerror=function(){cb(null)};
   im.src=uri;
 }
+/* esquema del fabricante: imagen grande (hasta 1100 px) que se pega o se sube y sale en la memoria de luminarias */
+var lcEsq=null,LUMESQ={};
+function lumEsqUri(uri,cb){
+  var im=new Image();
+  im.onload=function(){try{
+    var sc=Math.min(1,1100/Math.max(im.width,im.height)),w=Math.max(1,Math.round(im.width*sc)),h=Math.max(1,Math.round(im.height*sc));
+    var c=document.createElement('canvas');c.width=w;c.height=h;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(im,0,0,w,h);
+    cb({esq:c.toDataURL('image/jpeg',0.85),ew:w,eh:h});
+  }catch(e){cb(null)}};
+  im.onerror=function(){cb(null)};
+  im.src=uri;
+}
+function prepLumEsq(l){
+  if(!l||!l.esq||!(l.ew>0&&l.eh>0))return;
+  var cur=LUMESQ[l.id];if(cur&&cur.uri===l.esq)return;
+  LUMESQ[l.id]={uri:l.esq,w:0,h:0,rgb:null};
+  var im=new Image();
+  im.onload=function(){try{var c=document.createElement('canvas');c.width=l.ew;c.height=l.eh;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,l.ew,l.eh);x.drawImage(im,0,0,l.ew,l.eh);var d=x.getImageData(0,0,l.ew,l.eh).data,rgb=new Uint8Array(l.ew*l.eh*3);for(var i=0,j=0;i<d.length;i+=4){rgb[j++]=d[i];rgb[j++]=d[i+1];rgb[j++]=d[i+2]}LUMESQ[l.id]={uri:l.esq,w:l.ew,h:l.eh,rgb:rgb}}catch(e){}};
+  im.src=l.esq;
+}
+function lcEsqInfo(){$('lc-esqprev').textContent=lcEsq?'Esquema cargado ('+lcEsq.ew+' × '+lcEsq.eh+' px). Guarda la luminaria para conservarlo.':'Sin esquema. Sube un archivo o pega una imagen copiada (por ejemplo, la ficha del fabricante).'}
+$('lc-f2').addEventListener('change',function(){
+  var fl=$('lc-f2').files&&$('lc-f2').files[0];if(!fl)return;
+  var r=new FileReader();r.onload=function(){lumEsqUri(String(r.result),function(p){if(p){lcEsq=p;lcEsqInfo();toast('Esquema listo')}else toast('No se pudo leer la imagen')})};r.readAsDataURL(fl);
+});
+$('lc-pegar').addEventListener('click',function(){
+  if(!navigator.clipboard||!navigator.clipboard.read){toast('Este navegador no deja pegar imágenes con el botón: guarda la imagen y súbela con el archivo');return}
+  navigator.clipboard.read().then(function(items){
+    for(var i=0;i<items.length;i++){var ty=items[i].types.filter(function(t){return /^image\//.test(t)})[0];if(ty){items[i].getType(ty).then(function(b){var r=new FileReader();r.onload=function(){lumEsqUri(String(r.result),function(p){if(p){lcEsq=p;lcEsqInfo();toast('Esquema pegado')}else toast('No se pudo leer la imagen')})};r.readAsDataURL(b)});return}}
+    toast('No hay ninguna imagen en el portapapeles');
+  }).catch(function(){toast('No se pudo leer el portapapeles (permiso denegado)')});
+});
+$('lc-qesq').addEventListener('click',function(){lcEsq=null;lcEsqInfo();toast('Esquema quitado: guarda la luminaria para aplicarlo')});
 function saveLum(ent,noCloud){
   LUMS=LUMS.filter(function(l){return l.id!==ent.id});LUMS.push(ent);
   try{localStorage.setItem(LSLUM,JSON.stringify(LUMS))}catch(e){}
   if(!noCloud&&db){try{db.collection('luminarias').doc(ent.id).set(ent).catch(function(){})}catch(e){}}
-  prepLumRgb(ent);
+  prepLumRgb(ent);prepLumEsq(ent);
 }
 function lcFill(l){
   $('lc-ref').value=l?l.ref||'':'';$('lc-n').value=l?l.n:'';$('lc-sym').value=l?l.sym:'foco';
   $('lc-lm').value=l&&l.lm?l.lm:'';$('lc-w').value=l&&l.w?l.w:'';$('lc-k').value=l&&l.k?l.k:'';$('lc-hole').value=l&&l.hole?l.hole:'';$('lc-gen').checked=!!(l&&l.gen);$('lc-comp').value=l&&l.comp?l.comp:'';$('lc-f').value='';lcPhoto=l&&l.uri?{uri:l.uri,pw:l.pw,ph:l.ph}:null;
+  $('lc-ins').value=l&&l.ins?l.ins:'';lcEsq=l&&l.esq?{esq:l.esq,ew:l.ew,eh:l.eh}:null;lcEsqInfo();
 }
 $('lc-sel').addEventListener('change',function(){lcFill(lumById($('lc-sel').value))});
 $('lc-f').addEventListener('change',function(){
@@ -6218,6 +6261,8 @@ $('lc-save').addEventListener('click',function(){
   var n=$('lc-n').value.trim();if(!n){toast('Escribe el nombre de la luminaria');return}
   var id=$('lc-sel').value||('lm'+Date.now().toString(36)),ent={id:id,ref:$('lc-ref').value.trim(),n:n,sym:$('lc-sym').value,lm:num($('lc-lm').value)||0,w:num($('lc-w').value)||0,k:num($('lc-k').value)||0,gen:$('lc-gen').checked,hole:num($('lc-hole').value)||0,comp:$('lc-comp').value.trim()};
   if(lcPhoto){ent.uri=lcPhoto.uri;ent.pw=lcPhoto.pw;ent.ph=lcPhoto.ph}
+  if($('lc-ins').value)ent.ins=$('lc-ins').value;
+  if(lcEsq){ent.esq=lcEsq.esq;ent.ew=lcEsq.ew;ent.eh=lcEsq.eh}
   saveLum(ent);$('lc-sel').value=id;drawLum();render();panelSel();toast('Luminaria guardada');
 });
 $('lc-del').addEventListener('click',function(){
@@ -7718,6 +7763,40 @@ function calPage(doc,idx,total,o,pg){
     y+=rh;p.line(x0,y,x0+W,y,LINEC,0.15);
   });
 }
+/* memoria de luminarias: una ficha por luminaria usada, con su foto, sus datos, la cantidad y el esquema del fabricante */
+function lumPlan(o){
+  var gs=lumGroups().filter(function(g){return g.cat});
+  if(!gs.length)return [];
+  var per=4,pages=[];
+  for(var i=0;i<gs.length;i+=per)pages.push(gs.slice(i,i+per));
+  return pages.map(function(items){return {view:'carp',kind:'lum',items:items}});
+}
+function lumPage(doc,idx,total,o,pg){
+  var F=carpFrame(doc,idx,total,o,'Memoria de luminarias','Fichas de las luminarias del proyecto con su cantidad, instalación y esquema de montaje del fabricante.'),p=F.p,f=F.f,mg=F.mg,PW=F.PW,body=7*f+(F.A3?0:0.4);
+  var x0=mg+7,W=PW-2*mg-14,y0=mg+26,gap=6*f,cw=(W-gap)/2,PHh=F.A3?297:210,ch=(PHh-mg*2-26-(F.A3?24:19)-8-gap)/2;
+  pg.items.forEach(function(g,i){
+    var cat=g.cat,d=ptDef(g.k),cx=x0+(i%2)*(cw+gap),cy=y0+Math.floor(i/2)*(ch+gap),ins=insDe(g);
+    p.rect(cx,cy,cw,ch,'#ffffff',LINEC,0.25);
+    p.text(cx+4,cy+7*f,g.tag,body+3,{bold:true,col:INK});
+    p.text(cx+4+11*f,cy+7*f,fitTxt(g.nm||cat.n,cw-24*f,true,(body+1)*25.4/72),body+1,{bold:true,col:INK});
+    var qty=d&&d.lin?m2(g.len/100)+' ml · '+g.n+(g.n===1?' tramo':' tramos'):g.n+' ud';
+    p.text(cx+cw-4,cy+7*f,qty,body+1,{bold:true,col:INK,anchor:'end'});
+    var lin=[cat.ref?'Ref. '+cat.ref:'',cat.w?cat.w+' W':'',cat.k?cat.k+' K':'',cat.lm?fmt(cat.lm)+' lm':'',cat.hole?'Ø agujero '+fmt(cat.hole)+' mm':''].filter(Boolean).join('  ·  ');
+    p.text(cx+4,cy+12*f,fitTxt(lin||'Sin datos técnicos',cw-8,false,(body-0.6)*25.4/72),body-0.6,{col:MUTED});
+    p.text(cx+4,cy+16.5*f,fitTxt([MONT_ALL[g.mo]?'Montaje: '+MONT_ALL[g.mo]:'',ins?'Instalación: '+ins:''].filter(Boolean).join('  ·  '),cw-8,false,(body-0.6)*25.4/72),body-0.6,{col:INK});
+    var by0=cy+20*f,bh=ch-(by0-cy)-3,phw=Math.min(cw*0.26,bh*0.8);
+    var im=o.lumIdx&&o.lumIdx[cat.id];
+    p.rect(cx+4,by0,phw,phw,'#ffffff',LINEC,0.2);
+    if(im&&cat.pw>0){var sc=Math.min((phw-1)/cat.pw,(phw-1)/cat.ph);p.img(im,cx+4+(phw-cat.pw*sc)/2,by0+(phw-cat.ph*sc)/2,cat.pw*sc,cat.ph*sc)}
+    var ex=cx+4+phw+4,ew=cw-8-phw-4,eh=bh;
+    var ie=o.esqIdx&&o.esqIdx[cat.id],le=LUMESQ[cat.id];
+    p.rect(ex,by0,ew,eh,'#ffffff',LINEC,0.2);
+    if(ie&&le&&le.w>0){var se=Math.min((ew-2)/le.w,(eh-2)/le.h);p.img(ie,ex+(ew-le.w*se)/2,by0+(eh-le.h*se)/2,le.w*se,le.h*se)}
+    else p.text(ex+ew/2,by0+eh/2,'Esquema del fabricante: pégalo en la ficha de la luminaria',body-0.8,{col:MUTED,anchor:'middle'});
+    var compL=cat.comp?String(cat.comp).split(/\n/).map(function(t){return t.trim()}).filter(Boolean).slice(0,3):[];
+    compL.forEach(function(t,ci){p.text(cx+4,by0+phw+4*f+ci*3.5*f,fitTxt('+ '+t,phw+2,false,(body-1.8)*25.4/72),body-1.8,{col:MUTED})});
+  });
+}
 function drawPasoFam(){
   var b=$('pasofam');if(!b)return;
   b.innerHTML=FAMILIAS.map(function(f){
@@ -8157,6 +8236,7 @@ function lamExtras(){
   var v=st.v,out=[];
   if(v.eq.length||(v.mm||[]).length)out.push(['ante','A.05 · Distribución']);
   try{if(calPlan(o).length)out.push(['cal','Memoria de calidades'])}catch(e){}
+  try{if(lumPlan(o).length)out.push(['lum','Memoria de luminarias'])}catch(e){}
   try{if(carpPlan(o).length)out.push(['carp','Memoria de carpinterías'])}catch(e){}
   try{if(detPlan(o).length)out.push(['det','Detalles constructivos'])}catch(e){}
   return out;
@@ -8439,7 +8519,7 @@ function carpFrame(doc,idx,total,o,title,note){
   p.line(mg,fy,PW-mg,fy,MARCA,0.3);
   var fr=[0.12,0.22,0.15,0.12,0.25,0.08],xs=[mg],c0=0;
   fr.forEach(function(q){c0+=q;xs.push(mg+W0*c0)});
-  var codLam=codigoLamina(doc,/carpinter/i.test(title)?'carp':/calidades/i.test(title)?'cal':'det'),tpt=6.8*f;
+  var codLam=codigoLamina(doc,/carpinter/i.test(title)?'carp':/calidades/i.test(title)?'cal':/luminarias/i.test(title)?'lum':'det'),tpt=6.8*f;
   for(var qx=1;qx<=5;qx++)p.line(xs[qx],fy+3.5*f,xs[qx],PH-mg-3.5*f,LINEC,0.25);
   function campo(x,y,lab,val,w,bold){
     p.text(x,y,lab.toUpperCase(),4.4*f+0.4,{bold:true,col:MUTED,sp:0.35});
@@ -9214,8 +9294,8 @@ function drawDet(){
 /* código de cada lámina, por orden de obra: A arquitectura · IE instalaciones · I interiorismo · M maquinaria · D documentación de apoyo */
 /* grupos: A anteproyecto, IE instalaciones, I interiorismo, M mobiliario y equipamiento, D documentación.
    Dentro de cada grupo las láminas se numeran en orden según las que realmente salen en el PDF (A.01, A.02…), no con un número fijo */
-var CAT_LAM={actual:'A',cotas:'A',demol:'A',interv:'A',ante:'A',elec:'IE',ilum:'IE',techos:'I',acab:'I',alz:'I',suelos:'I',distrib:'M',carp:'D',cal:'D',det:'D'};
-var ORDEN_COD=['actual','ante','demol','interv','elec','ilum','techos','acab','alz','suelos','distrib','cal','carp','det'];
+var CAT_LAM={actual:'A',cotas:'A',demol:'A',interv:'A',ante:'A',elec:'IE',ilum:'IE',techos:'I',acab:'I',alz:'I',suelos:'I',distrib:'M',carp:'D',cal:'D',lum:'D',det:'D'};
+var ORDEN_COD=['actual','ante','demol','interv','elec','ilum','techos','acab','alz','suelos','distrib','cal','lum','carp','det'];
 function codigoLamina(doc,clave,ante){
   var k=(clave==='distrib'&&ante)?'ante':clave,cat=CAT_LAM[k]||'A';
   doc._vc=doc._vc||{};doc._cn=doc._cn||{};
@@ -9230,7 +9310,7 @@ function lamCodPrevistos(){
   var cn={},out={},ex=lamExtras().map(function(x){return x[0]});
   ORDEN_COD.forEach(function(k){
     var inc;
-    if(k==='ante'||k==='cal'||k==='carp'||k==='det')inc=lamOn(k)&&ex.indexOf(k)>=0;
+    if(k==='ante'||k==='cal'||k==='lum'||k==='carp'||k==='det')inc=lamOn(k)&&ex.indexOf(k)>=0;
     else inc=viewHas(k)?lamOn(k):!!(st.lamForce&&st.lamForce[k]);
     if(inc){var c=CAT_LAM[k];cn[c]=(cn[c]||0)+1;out[k]=c+'.'+('0'+cn[c]).slice(-2)}
   });
@@ -9495,7 +9575,7 @@ function sheetPage(doc,view,idx,total,o){
       gsL.forEach(function(g){
         var cat=g.cat,d=ptDef(g.k),bx=10.4*f;
         var compL=cat&&cat.comp?String(cat.comp).split(/\n/).map(function(t){return t.trim()}).filter(Boolean).slice(0,5):[];
-        var rh2=12.4*f+compL.length*3.5*f;
+        var rh2=15.9*f+compL.length*3.5*f;
         if(!room(rh2)){return}
         p.rect(xL,y+0.5*f,bx,bx,'#ffffff',LINEC,0.2);
         var im=cat&&o.lumIdx&&o.lumIdx[cat.id];
@@ -9505,17 +9585,19 @@ function sheetPage(doc,view,idx,total,o){
           p.line(xL+1.5,y+0.5*f+bx/2,xL+bx-1.5,y+0.5*f+bx/2,lumColor(g.mo)||INK,g.k==='led'?0.5:1.3,dashL);
         }
         else p.svg('<g transform="translate('+f2(xL+bx/2)+' '+f2(y+0.5*f+bx/2)+')">'+ptSym(g.k,lumColor(g.mo)||INK,0.5)+'</g>');
-        var tx0=xL+bx+3,qty=d.lin?m2(g.len/100)+' ml':'× '+g.n;
+        var tx0=xL+bx+3,qty=d.lin?m2(g.len/100)+' ml · '+g.n+(g.n===1?' tramo':' tramos'):'× '+g.n+' ud';
         p.text(tx0,y+3.6*f,g.tag,body+1,{bold:true,col:INK});
-        p.text(tx0+8*f,y+3.6*f,fitTxt((g.nm||(cat?cat.n+(cat.gen?' (genérico)':''):d.n))+(g.mo&&(g.mo!=='techo'||lumColOn())?' · '+MONT_ALL[g.mo]:'')+(g.pf?' · '+PERFIL_CORTO[g.pf]:''),pw-(tx0-xL)-8*f-16,false,body*25.4/72),body,{col:INK});
+        p.text(tx0+8*f,y+3.6*f,fitTxt((g.nm||(cat?cat.n+(cat.gen?' (genérico)':''):d.n)),pw-(tx0-xL)-8*f-34,false,body*25.4/72),body,{col:INK});
+        var lMo=[MONT_ALL[g.mo]?'En '+MONT_ALL[g.mo]:'',insDe(g),g.pf?PERFIL_CORTO[g.pf]:''].filter(Boolean).join(' · ');
+        if(lMo)p.text(tx0,y+7.3*f,fitTxt(lMo,pw-(tx0-xL),false,(body-0.6)*25.4/72),body-0.6,{col:INK,bold:true});
         p.text(xR,y+3.6*f,qty,body,{col:INK,anchor:'end',bold:true});
         var l2='';
         if(cat&&cat.lm){var tt=d.lin?cat.lm*g.len/100:cat.lm*g.n;totLm+=tt;l2=fmt(cat.lm)+' lm'+(d.lin?'/m':' c/u')+'  ·  total '+fmt(tt)+' lm'}
         else l2=cat?'Lúmenes sin indicar':'Sin luminaria del catálogo';
-        p.text(tx0,y+7.3*f,fitTxt(l2,pw-(tx0-xL),false,(body-1)*25.4/72),body-1,{col:INK});
+        p.text(tx0,y+10.8*f,fitTxt(l2,pw-(tx0-xL),false,(body-1)*25.4/72),body-1,{col:INK});
         var l3=cat?[cat.hole?'Ø agujero '+fmt(cat.hole)+' mm':'',cat.w?cat.w+' W':'',cat.k?cat.k+' K':'',cat.gen?'producto a definir':(cat.ref||'')].filter(Boolean).join('  ·  '):'';
-        if(l3)p.text(tx0,y+10.8*f,fitTxt(l3,pw-(tx0-xL),false,(body-1.4)*25.4/72),body-1.4,{col:MUTED});
-        compL.forEach(function(t,ci){p.text(tx0,y+14.4*f+ci*3.5*f,fitTxt('+ '+t,pw-(tx0-xL),false,(body-1.6)*25.4/72),body-1.6,{col:MUTED})});
+        if(l3)p.text(tx0,y+14.3*f,fitTxt(l3,pw-(tx0-xL),false,(body-1.4)*25.4/72),body-1.4,{col:MUTED});
+        compL.forEach(function(t,ci){p.text(tx0,y+17.9*f+ci*3.5*f,fitTxt('+ '+t,pw-(tx0-xL),false,(body-1.6)*25.4/72),body-1.6,{col:MUTED})});
         y+=rh2;
       });
       if(totLm>0&&room(rh*2)){
@@ -9735,13 +9817,13 @@ function buildPDF0(mode,opt,lista,Doc){
   var orig=st.v,vs=(lista&&lista.length)?lista:[st.v];
   var doc=new (Doc||PdfDoc)('Ranuse · '+(st.v.nombre||'Visita')),li=0;
   if(LOGO)li=doc.image(LOGO.w,LOGO.h,LOGO.rgb);
-  var txIdx={},lumIdx={},calIdx={},plan=[];
+  var txIdx={},lumIdx={},calIdx={},esqIdx={},plan=[];
   vs.forEach(function(vv){
   st.v=vv;
   txUsed().forEach(function(t){var r=TXRGB[t.id];if(r&&r.rgb&&txIdx[t.id]==null)txIdx[t.id]=doc.image(r.w,r.h,r.rgb)});
   (st.v.cal||[]).forEach(function(c){var mn=c.pid&&calMin[c.pid];if(mn&&mn.rgb&&calIdx[c.pid]==null)calIdx[c.pid]=doc.image(mn.w,mn.h,mn.rgb)});
-  lumUsedList().forEach(function(l){var r=LUMRGB[l.id];if(r&&r.rgb&&!lumIdx[l.id])lumIdx[l.id]=doc.image(r.w,r.h,r.rgb)});
-  var v0=st.v,antes=plan.length,views=mode==='all'?dossierViews():(mode==='carp'||mode==='det'||mode==='cal'||mode==='ante')?[]:[st.view];
+  lumUsedList().forEach(function(l){var r=LUMRGB[l.id];if(r&&r.rgb&&!lumIdx[l.id])lumIdx[l.id]=doc.image(r.w,r.h,r.rgb);var re=LUMESQ[l.id];if(re&&re.rgb&&!esqIdx[l.id])esqIdx[l.id]=doc.image(re.w,re.h,re.rgb)});
+  var v0=st.v,antes=plan.length,views=mode==='all'?dossierViews():(mode==='carp'||mode==='det'||mode==='cal'||mode==='lum'||mode==='ante')?[]:[st.view];
   if(mode==='all')views=lamViews();
   views.forEach(function(vw){
     if(vw==='alz'){var ap=alzPages(opt);ap.pages.forEach(function(pg){plan.push({view:'alz',alz:{S:ap.S,els:pg}})});if(!ap.pages.length)plan.push({view:'alz',alz:null})}
@@ -9755,13 +9837,14 @@ function buildPDF0(mode,opt,lista,Doc){
   if(mode==='ante')plan.push({view:'distrib',ante:true});
   if(mode==='all'&&lamOn('ante')&&(v0.eq.length||(v0.mm||[]).length)){var iante=antes-1;plan.forEach(function(pp,i){if(i>=antes&&(pp.view==='cotas'||pp.view==='actual'))iante=i});plan.splice(iante+1,0,{view:'distrib',ante:true})}
   if((mode==='all'&&lamOn('cal'))||mode==='cal')calPlan(opt).forEach(function(c){plan.push(c)});
+  if((mode==='all'&&lamOn('lum'))||mode==='lum')lumPlan(opt).forEach(function(c){plan.push(c)});
   if((mode==='all'&&lamOn('carp'))||mode==='carp')carpPlan(opt).forEach(function(c){plan.push(c)});
   if((mode==='all'&&lamOn('det'))||mode==='det')detPlan(opt).forEach(function(c){plan.push(c)});
   for(var kk=antes;kk<plan.length;kk++)plan[kk].v=vv;
   });
   st.v=orig;
   if(!plan.length)throw new Error('vacío');
-  try{plan.forEach(function(pp,i){st.v=pp.v||orig;if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li,calIdx:calIdx};if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else if(pp.kind==='cal')calPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{orient:opt.orient,ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim,eqloc:opt.eqloc,eqgap:opt.eqgap,eqsuelo:opt.eqsuelo})});}finally{st.v=orig}
+  try{plan.forEach(function(pp,i){st.v=pp.v||orig;if(pp.view==='carp'){var oo={paper:opt.paper,logo:LOGO,logoIdx:li,calIdx:calIdx,lumIdx:lumIdx,esqIdx:esqIdx};if(pp.kind==='lum')lumPage(doc,i+1,plan.length,oo,pp);else if(pp.kind==='det2')detPage(doc,i+1,plan.length,oo,pp);else if(pp.kind==='cal')calPage(doc,i+1,plan.length,oo,pp);else carpPage(doc,i+1,plan.length,oo,pp);return}sheetPage(doc,pp.view,i+1,plan.length,{orient:opt.orient,ante:pp.ante,capa:pp.capa,capaN:pp.capaN,paper:opt.paper,scale:opt.scale,dims:opt.dims,alz:pp.alz,logo:LOGO,logoIdx:li,txIdx:txIdx,marks:opt.marks,lumIdx:lumIdx,ldim:opt.ldim,eqloc:opt.eqloc,eqgap:opt.eqgap,eqsuelo:opt.eqsuelo})});}finally{st.v=orig}
   return doc.bytes();
 }
 /* orden de las plantas en el dossier: sótano, baja, entreplanta, 1, 2…, cubierta */
@@ -11517,7 +11600,7 @@ $('medp').addEventListener('click',function(e){
   if(a==='act'){medRender();toast('Mediciones actualizadas')}
   else if(a==='csv')saveFile(slug()+'-mediciones.csv',medCSV(),'Mediciones (Excel)');
   else if(a==='copiar'){try{navigator.clipboard.writeText(medTexto()).then(function(){toast('Mediciones copiadas: pégalas donde quieras')},function(){toast('No se pudo copiar')})}catch(er){toast('No se pudo copiar')}}
-  else if(a==='imp')window.print();
+  else if(a==='imp'){var he=document.documentElement;he.classList.add('imp-med');var quita=function(){he.classList.remove('imp-med');window.removeEventListener('afterprint',quita)};window.addEventListener('afterprint',quita);setTimeout(function(){window.print()},60)} /* imprime solo las mediciones, en todas sus páginas */
   else if(a==='cerrar')medCerrar();
 });
 function tutoAbrir(){
