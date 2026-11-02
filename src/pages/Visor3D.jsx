@@ -2215,7 +2215,7 @@ export default function Visor3D() {
           const p = l.vs[i], q = l.vs[i + 1], L = Math.hypot(q[0] - p[0], q[1] - p[1]) * CM; if (L < 0.01) continue;
           const m = new THREE.Mesh(new THREE.BoxGeometry(L, alto, ancho), esL || !esC ? new THREE.MeshBasicMaterial({ color: esL ? col : 0xf4f4f4 }) : matNegro);
           m.position.set(((p[0] + q[0]) / 2) * CM, y, ((p[1] + q[1]) / 2) * CM); m.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); m.traverse(x => { x.userData.luzId = l.id; }); g.add(m);
-          if (!esC && puede()) { const pl = new THREE.PointLight(col, inten * 0.6, 0, 2); pl.position.set(m.position.x, y - 0.05, m.position.z); g.add(pl); }
+          if (!esC && puede()) { const pl = new THREE.PointLight(col, Math.max(5, lm * (L / CM / 100) / 12.57) * 0.22 * ambiente.luces * 0.6, 0, 2); pl.position.set(m.position.x, y - 0.05, m.position.z); g.add(pl); }
         }
         return;
       }
@@ -3832,6 +3832,7 @@ export default function Visor3D() {
           menuRail(carrilMenu, setCarrilMenu, railBtn(['luz', 'carril', 'led', 'focoC'].includes(herr) || carrilMenu, 'luz', 'Iluminación', 'Luminarias, spots, tiras LED y carriles con focos', () => setCarrilMenu(v => !v), '#c9a21a'), (<>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Luminarias (se crean también en Planos)</div>
             {[['foco', 'Foco empotrado'], ['spot', 'Spot orientable'], ['plaf', 'Plafón'], ['colg', 'Luminaria colgante'], ['aplq', 'Aplique de pared'], ['pie', 'Lámpara de pie'], ['suel', 'Empotrado de suelo']].map(([k, n]) => <div key={k} onClick={() => { setKindLuz(k); setHerr('luz'); setCarrilMenu(false); }} style={itemMenu}>{n}</div>)}
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '6px 8px 2px', borderTop: '1px solid #333', marginTop: 4, lineHeight: 1.35 }}>Las tiras LED, carriles y spots que dibujas en Planos ya salen aquí solos: haz clic en uno y ajustas lúmenes, apertura y temperatura a la derecha. Lo de abajo solo si quieres dibujar uno nuevo a mano.</div>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '6px 8px 2px', borderTop: '1px solid #333', marginTop: 4 }}>Luz lineal</div>
             <div onClick={() => { setHerr('led'); setCarrilMenu(false); }} style={itemMenu} title="Cinta LED que sigue un recorrido y alumbra hacia abajo, arriba o a un lado">Tira LED</div>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '6px 8px 2px', borderTop: '1px solid #333', marginTop: 4 }}>Carriles (después se les añaden spots, lineales, proyectores o colgantes)</div>
@@ -3936,13 +3937,19 @@ export default function Visor3D() {
       })()}
       {luzSel && (() => {
         const l = luzEf(luzSel); if (!l) return null;
-        const cat = lumCat.find(c => c.id === l.lid), nombres = { foco: 'Foco empotrado', plaf: 'Plafón', colg: 'Luminaria colgante', aplq: 'Aplique', pie: 'Lámpara de pie', suel: 'Empotrado de suelo' };
-        const ap = lucesAj[l.id]?.ap ?? 60, spot = l.kid === 'foco' || l.kid === 'plaf';
+        const cat = lumCat.find(c => c.id === l.lid), nombres = { foco: 'Foco empotrado', plaf: 'Plafón', colg: 'Luminaria colgante', aplq: 'Aplique', pie: 'Lámpara de pie', suel: 'Empotrado de suelo', spot: 'Spot de carril', spotl: 'Spot lineal de carril', carril: 'Carril de luz', led: 'Tira LED', lineal: 'Luminaria lineal', linealc: 'Lineal colgante', esp: 'Luz de espejo', mue: 'Luz de mueble' };
+        const ap = lucesAj[l.id]?.ap ?? l.ap ?? (l.kid === 'spotl' ? 80 : 60), spot = l.kid === 'foco' || l.kid === 'plaf' || l.kid === 'spot' || l.kid === 'spotl', esLin = !!l.vs;
+        const largoM = esLin ? l.vs.slice(1).reduce((t, q, i) => t + Math.hypot(q[0] - l.vs[i][0], q[1] - l.vs[i][1]), 0) / 100 : 0;
         return (
           <div style={{ position: 'absolute', right: 12, top: 56, width: 260, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>💡 {nombres[l.kid] || 'Luminaria'} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(del plano)</span></div>
             <div style={{ opacity: 0.75, marginBottom: 6 }}>{cat ? cat.n + ' · ' + (cat.lm || '?') + ' lm · ' + (cat.w || '?') + ' W · ' + (cat.k || '?') + ' K' : 'Sin luminaria del catálogo asignada (se usa una estándar de 800 lm)'}</div>
-            {spot && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Apertura del haz</span><input type="range" min="10" max="120" value={ap} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: parseInt(e.target.value, 10) } }))} style={{ flex: 1 }} /><span style={{ width: 34 }}>{ap}°</span></label>}
+            {esLin && <div style={{ opacity: 0.85, marginBottom: 6 }}>Longitud: <b>{largoM.toFixed(2)} m</b> <span style={{ opacity: 0.55, fontSize: 11 }}>(viene del plano; se cambia en Planos)</span></div>}
+            {l.kid === 'spot' && <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Inclinación °</span><input type="number" step="5" value={lucesAj[l.id]?.tilt ?? 25} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), tilt: parseFloat(e.target.value) || 0 } }))} style={{ ...btn, width: 70 }} /></label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Giro °</span><input type="number" step="15" value={lucesAj[l.id]?.yaw ?? l.a ?? 0} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), tilt: a[l.id]?.tilt ?? 25, yaw: parseFloat(e.target.value) || 0 } }))} style={{ ...btn, width: 70 }} /></label>
+            </>}
+            {spot && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Apertura del haz</span><input type="range" min="10" max="180" value={ap} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: parseInt(e.target.value, 10) } }))} style={{ flex: 1 }} /><span style={{ width: 34 }}>{ap}°</span></label>}
             {(l.kid === 'foco' || l.kid === 'plaf') && <>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Tipo de foco</span>
                 <select value={lucesAj[l.id]?.v || ''} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, v: e.target.value || undefined, tilt: a[l.id]?.tilt ?? 25, yaw: a[l.id]?.yaw ?? 0 } }))} style={btn}>
@@ -3957,7 +3964,7 @@ export default function Visor3D() {
               <select value={String(lucesAj[l.id]?.k ?? (cat?.k || 3000))} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, k: parseInt(e.target.value, 10) } }))} style={btn}>{[2200, 2700, 3000, 3500, 4000, 5000, 6500].map(k => <option key={k} value={k}>{k} K{k <= 2700 ? ' cálida' : k >= 5000 ? ' fría' : ''}</option>)}{![2200, 2700, 3000, 3500, 4000, 5000, 6500].includes(lucesAj[l.id]?.k ?? (cat?.k || 3000)) && <option value={lucesAj[l.id]?.k ?? (cat?.k || 3000)}>{lucesAj[l.id]?.k ?? (cat?.k || 3000)} K</option>}</select>
               <span style={{ width: 14, height: 14, borderRadius: 7, background: kelvinHex(lucesAj[l.id]?.k ?? (cat?.k || 3000)), border: '1px solid #666' }} />
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Lúmenes</span><input type="number" step="50" value={lucesAj[l.id]?.lm ?? (cat?.lm || 800)} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, lm: parseFloat(e.target.value) || 0 } }))} style={{ ...btn, width: 80 }} /></label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>{esLin ? 'Lúmenes por metro' : 'Lúmenes'}</span><input type="number" step="50" value={lucesAj[l.id]?.lm ?? (l.lm || cat?.lm || 800)} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, lm: parseFloat(e.target.value) || 0 } }))} style={{ ...btn, width: 80 }} /></label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Altura (cm)</span><input key={'h' + Math.round(l.h ?? -1)} type="number" defaultValue={Math.round(l.h != null ? l.h : (ALT_LUZ[l.kid] ?? 250))} onBlur={e => moverLuz(0, 0, 0, parseFloat(e.target.value) || 0)} style={{ ...btn, width: 80 }} /></label>
             {['foco', 'plaf', 'colg'].includes(l.kid) && <button style={{ ...btn, width: '100%', marginBottom: 6, background: '#6b6159' }} onClick={() => moverLuz(0, 0, 0, alturaTecho(l.x, l.y))} title="Sube la luminaria hasta el techo de esa sala">⬆ Pegar al techo ({Math.round(alturaTecho(l.x, l.y))} cm)</button>}
             <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>Con la luminaria seleccionada: <b>flechas</b> la mueven 5 cm (con Mayús 50) y <b>Re Pág / Av Pág</b> la suben y bajan.</div>
