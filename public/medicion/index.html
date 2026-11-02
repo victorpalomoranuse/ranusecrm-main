@@ -11550,7 +11550,16 @@ function medDatos1(){
     var l=(R.equipos||[]).filter(function(e){return (e.familia||'Otros')===fm[0]});
     S.push({id:'eq-'+fm[0],t:fm[1],f:l.map(function(e){return fila(e.nombre,null,null,e.n,e.categoria?String(e.categoria).replace(/^Biblioteca · /,''):'')})});
   });
-  S.push({id:'lum',t:'Iluminación',f:(R.luminarias||[]).map(function(l){return fila(l.nombre,l.ml||null,null,l.n||null)})});
+  /* iluminación: una fila por luminaria (con su código L) y, si es de metros (tira, carril, lineal), debajo cada tramo por separado */
+  var lumF=[];
+  lumGroups().forEach(function(g){
+    var d=ptDef(g.k),nom=g.tag+' · '+(g.nm||(g.cat?g.cat.n:(d?d.n:g.k)))+(MONT_ALL[g.mo]?' · en '+MONT_ALL[g.mo]:'');
+    if(d&&d.lin){
+      lumF.push(fila(nom,g.len/100,null,g.n,g.n+(g.n===1?' tramo':' tramos')));
+      if(g.n>1)g.ids.forEach(function(id,i){var q=by(st.v.pts,id);if(q){var r=fila('   Tramo '+(i+1),ptLen(q)/100,null,null,'');r.sub=true;lumF.push(r)}});
+    }else lumF.push(fila(nom,null,null,g.n));
+  });
+  S.push({id:'lum',t:'Iluminación',f:lumF});
   S.push({id:'elec',t:'Electricidad',f:(R.electricidad||[]).map(function(e){return fila(e.nombre,null,null,e.n)})});
   return S.filter(function(s){return s.f.length});
 }
@@ -11563,9 +11572,9 @@ function medDatos(){
 function medNum(n,dec){return n==null?'':(Math.round(n*100)/100).toFixed(dec==null?2:dec).replace('.',',')}
 function medTabla(s){
   var tieneMl=s.f.some(function(r){return r.ml!=null}),tieneM2=s.f.some(function(r){return r.m2!=null}),tieneUd=s.f.some(function(r){return r.ud!=null});
-  var tot={ml:0,m2:0,ud:0};s.f.forEach(function(r){tot.ml+=r.ml||0;tot.m2+=r.m2||0;tot.ud+=r.ud||0});
+  var tot={ml:0,m2:0,ud:0};s.f.forEach(function(r){if(r.sub)return;tot.ml+=r.ml||0;tot.m2+=r.m2||0;tot.ud+=r.ud||0});
   var h='<table class="medt"><thead><tr><th>Concepto</th>'+(tieneMl?'<th class="n">ml</th>':'')+(tieneM2?'<th class="n">m²</th>':'')+(tieneUd?'<th class="n">ud</th>':'')+'<th>Nota</th></tr></thead><tbody>';
-  s.f.forEach(function(r){h+='<tr><td>'+esc(r.c)+'</td>'+(tieneMl?'<td class="n">'+medNum(r.ml)+'</td>':'')+(tieneM2?'<td class="n">'+medNum(r.m2)+'</td>':'')+(tieneUd?'<td class="n">'+(r.ud==null?'':r.ud)+'</td>':'')+'<td class="nt">'+esc(r.nota)+'</td></tr>'});
+  s.f.forEach(function(r){h+='<tr'+(r.sub?' class="sub" style="color:var(--muted)"':'')+'><td'+(r.sub?' style="padding-left:22px"':'')+'>'+esc(r.sub?r.c.trim():r.c)+'</td>'+(tieneMl?'<td class="n">'+medNum(r.ml)+'</td>':'')+(tieneM2?'<td class="n">'+medNum(r.m2)+'</td>':'')+(tieneUd?'<td class="n">'+(r.ud==null?'':r.ud)+'</td>':'')+'<td class="nt">'+esc(r.nota)+'</td></tr>'});
   if(s.f.length>1)h+='<tr class="tot"><td>Total</td>'+(tieneMl?'<td class="n">'+medNum(tot.ml)+'</td>':'')+(tieneM2?'<td class="n">'+medNum(tot.m2)+'</td>':'')+(tieneUd?'<td class="n">'+tot.ud+'</td>':'')+'<td></td></tr>';
   return h+'</tbody></table>';
 }
