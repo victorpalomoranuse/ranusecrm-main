@@ -2421,7 +2421,8 @@ export default function Visor3D() {
     const ob = objs.find(x => x.id === selObj);
     let mmE = null; if (!ob && seleccion) a.raiz?.traverse(g => { if (g.userData.equipo?.id === seleccion.id) g.children.forEach(c => { if (c.userData.modeloEq) mmE = c; }); });
     const m0 = mmE?.userData?.mostrado, mos = m0 && (mmE.userData.girado ? [m0[1], m0[0], m0[2]] : m0);
-    const d = ob ? { w: ob.w, d: ob.d, alto: ob.alto, cx: ob.cx, cy: ob.cy, rot: ob.rot || 0, z0: ob.z0 || 0, tipo: ob.tipo }
+    const bb = ob && ob.tipo === 'prisma' && Array.isArray(ob.pts) && ob.pts.length >= 3 ? [Math.max(...ob.pts.map(p => p[0])) - Math.min(...ob.pts.map(p => p[0])), Math.max(...ob.pts.map(p => p[1])) - Math.min(...ob.pts.map(p => p[1]))] : null; // un volumen dibujado: las cotas son las de su contorno
+    const d = ob ? { w: bb ? bb[0] : ob.w, d: bb ? bb[1] : ob.d, alto: ob.alto, cx: ob.cx, cy: ob.cy, rot: ob.rot || 0, z0: ob.z0 || 0, tipo: ob.tipo }
       : (seleccion ? { w: mos ? mos[0] : (seleccion.w || seleccion.largo), d: mos ? mos[1] : (seleccion.d || seleccion.fondo), alto: mos ? mos[2] : (seleccion.alto || 110), cx: seleccion.cx, cy: seleccion.cy, rot: seleccion.rot || 0, z0: 0 } : null);
     if (!d) return;
     if (!['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(d.tipo)) {
@@ -4907,7 +4908,17 @@ export default function Visor3D() {
           }).map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <span style={{ width: 70, opacity: 0.7 }}>{et}</span>
-              <input type="number" value={Math.round(objSel[k] * 10) / 10} onChange={e => cambiar(objSel.id, { [k]: parseFloat(e.target.value) || 0 })} style={{ ...btn, width: 90 }} />
+              {(() => {
+                // un volumen dibujado punto a punto: el largo y el fondo son los de su contorno real, y al cambiarlos el contorno se estira
+                const forma = objSel.tipo === 'prisma' && Array.isArray(objSel.pts) && objSel.pts.length >= 3 && (k === 'w' || k === 'd');
+                const eje = k === 'w' ? 0 : 1, real = forma ? Math.max(...objSel.pts.map(p => p[eje])) - Math.min(...objSel.pts.map(p => p[eje])) : 0;
+                const valor = forma ? real : objSel[k];
+                return <input key={forma ? k + Math.round(real * 10) : k} type="number" value={Math.round(valor * 10) / 10} onChange={e => {
+                  const v = parseFloat(e.target.value) || 0;
+                  if (forma && real > 0.01 && v > 0.1) { const kf = v / real, cm = (Math.max(...objSel.pts.map(p => p[eje])) + Math.min(...objSel.pts.map(p => p[eje]))) / 2; cambiar(objSel.id, { [k]: v, pts: objSel.pts.map(p => (eje === 0 ? [cm + (p[0] - cm) * kf, p[1]] : [p[0], cm + (p[1] - cm) * kf])) }); }
+                  else cambiar(objSel.id, { [k]: v });
+                }} style={{ ...btn, width: 90 }} />;
+              })()}
             </label>
           ))}
           {!['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(objSel.tipo) && (
