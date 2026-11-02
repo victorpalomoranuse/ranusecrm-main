@@ -3969,16 +3969,21 @@ export default function Visor3D({ cliente = false }) {
       return (l > 0.72 ? n + ' claro' : l < 0.3 ? n + ' oscuro' : n);
     };
     const usos = new Map(); // valor → zonas
-    const poner = (v, zona) => { if (!v || typeof v !== 'string') return; v = v.replace(/!$/, ''); if (!usos.has(v)) usos.set(v, new Set()); usos.get(v).add(zona); };
+    const poner = (v, zona) => {
+      if (!v || typeof v !== 'string') return; v = v.replace(/!$/, '');
+      if (v.startsWith('tex:')) { const t0 = texturas.find(x => 'tex:' + x.id === v), mc = t0 && !t0.desp && !(t0.junta?.mm > 0) && !t0.espejo && /^Color (#[0-9a-f]{6})/i.exec(t0.nombre || ''); if (mc) v = mc[1].toLowerCase(); }
+      if (!usos.has(v)) usos.set(v, new Set()); usos.get(v).add(zona);
+    };
     poner(acab.todosSuelos, 'suelo'); Object.values(acab.salas || {}).forEach(v => poner(v, 'suelo'));
     poner(acab.todosMuros, 'paredes'); Object.values(acab.muros || {}).forEach(v => poner(v, 'paredes'));
     poner(acab.todosTechos, 'techo'); Object.values(acab.techos || {}).forEach(v => poner(v, 'techo'));
     poner(acab.todosPilares, 'pilares'); Object.values(acab.pilares || {}).forEach(v => poner(v, 'pilares'));
+    Object.values(acab.regiones || {}).forEach(arr => (Array.isArray(arr) ? arr : []).forEach(r => poner(r?.valor, 'paredes (zonas pintadas aparte)')));
     Object.values(acab.equipos || {}).forEach(v => poner(v, 'máquinas'));
     Object.values(acab.huecos || {}).forEach(h => poner(h?.hoja, 'puertas y ventanas'));
     objs.forEach(o => { poner(o.color, 'objeto «' + (o.nombre || o.tipo) + '»'); Object.values(o.partes || {}).forEach(v => poner(v, 'objeto «' + (o.nombre || o.tipo) + '»')); });
     const lista = [], jpeg = (cv, max = 384) => { const k = Math.min(1, max / Math.max(cv.width, cv.height)), c2 = document.createElement('canvas'); c2.width = Math.max(1, Math.round(cv.width * k)); c2.height = Math.max(1, Math.round(cv.height * k)); c2.getContext('2d').drawImage(cv, 0, 0, c2.width, c2.height); return c2.toDataURL('image/jpeg', 0.82); };
-    for (const [v, zs] of [...usos.entries()].slice(0, 12)) {
+    for (const [v, zs] of [...usos.entries()].slice(0, 14)) {
       const zona = [...zs].slice(0, 3).join(', ');
       if (v.startsWith('tex:')) {
         const t = texturas.find(x => 'tex:' + x.id === v); if (!t) continue;
@@ -4005,7 +4010,7 @@ export default function Visor3D({ cliente = false }) {
     for (const pl of (mod?.plantas || (mod ? [mod] : []))) (pl.equipos || []).forEach(e => suma(e.nombre || e.nm));
     objs.forEach(o => { if (!['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(o.tipo)) suma(o.nombre || o.etiqueta); });
     const inventario = [...cuenta.entries()].map(([n, c]) => (c > 1 ? c + '× ' : '') + n);
-    return { materiales: lista.slice(0, 10), inventario };
+    return { materiales: lista.slice(0, 12), inventario };
   };
   // Descripción del modelo para el agente de ideas: el espacio (salas, medidas, huecos), lo visible desde la cámara, los acabados y el equipamiento.
   const contextoModelo = async () => {
