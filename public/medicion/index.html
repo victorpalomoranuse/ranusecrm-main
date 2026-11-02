@@ -518,7 +518,7 @@ body.crm .top .brand{display:none}
           <label class="fld"><span>Foto</span><input id="lc-f" type="file" accept="image/png,image/jpeg,image/webp"></label>
           <label class="fld"><span>Instalación</span><select id="lc-ins"><option value="">Según el tipo de luminaria</option><option value="empotrada">Empotrada</option><option value="superficie">De superficie</option><option value="colgada">Colgada</option><option value="perfil">Con perfil</option></select></label>
           <label class="fld"><span>Esquema del fabricante (apertura, empotrado, cotas)</span><input id="lc-f2" type="file" accept="image/png,image/jpeg,image/webp"></label>
-          <div class="btns"><button id="lc-pegar" type="button">Pegar imagen del portapapeles</button><button id="lc-qesq" type="button">Quitar esquema</button></div><p class="note" id="lc-esqprev" style="margin:0 0 6px"></p>
+          <div class="btns"><button id="lc-pegarf" type="button">Pegar foto</button><button id="lc-pegar" type="button">Pegar esquema</button><button id="lc-qesq" type="button">Quitar esquema</button></div><p class="note" id="lc-esqprev" style="margin:0 0 6px"></p>
           <div class="btns"><button class="pri" id="lc-save">Guardar</button><button id="lc-del">Quitar</button></div>
         </details>
       </section>
@@ -6240,6 +6240,13 @@ $('lc-pegar').addEventListener('click',function(){
     toast('No hay ninguna imagen en el portapapeles');
   }).catch(function(){toast('No se pudo leer el portapapeles (permiso denegado)')});
 });
+$('lc-pegarf').addEventListener('click',function(){
+  if(!navigator.clipboard||!navigator.clipboard.read){toast('Este navegador no deja pegar imágenes con el botón: sube la foto con el archivo');return}
+  navigator.clipboard.read().then(function(items){
+    for(var i=0;i<items.length;i++){var ty=items[i].types.filter(function(t){return /^image\//.test(t)})[0];if(ty){items[i].getType(ty).then(function(b){var r=new FileReader();r.onload=function(){lumPhotoUri(String(r.result),function(p){if(p){lcPhoto=p;toast('Foto pegada: guarda la luminaria')}else toast('No se pudo leer la imagen')})};r.readAsDataURL(b)});return}}
+    toast('No hay ninguna imagen en el portapapeles');
+  }).catch(function(){toast('No se pudo leer el portapapeles (permiso denegado)')});
+});
 $('lc-qesq').addEventListener('click',function(){lcEsq=null;lcEsqInfo();toast('Esquema quitado: guarda la luminaria para aplicarlo')});
 function saveLum(ent,noCloud){
   LUMS=LUMS.filter(function(l){return l.id!==ent.id});LUMS.push(ent);
@@ -9579,16 +9586,17 @@ function sheetPage(doc,view,idx,total,o){
         if(!room(rh2)){return}
         p.rect(xL,y+0.5*f,bx,bx,'#ffffff',LINEC,0.2);
         var im=cat&&o.lumIdx&&o.lumIdx[cat.id];
-        if(im){var sc=Math.min((bx-0.8)/cat.pw,(bx-0.8)/cat.ph);p.img(im,xL+(bx-cat.pw*sc)/2,y+0.5*f+(bx-cat.ph*sc)/2,cat.pw*sc,cat.ph*sc)}
-        else if(d.lin){
+        /* siempre el símbolo del plano; si la luminaria tiene foto, va a su lado */
+        if(im){p.rect(xL+bx+1.5,y+0.5*f,bx,bx,'#ffffff',LINEC,0.2);var sc=Math.min((bx-0.8)/cat.pw,(bx-0.8)/cat.ph);p.img(im,xL+bx+1.5+(bx-cat.pw*sc)/2,y+0.5*f+(bx-cat.ph*sc)/2,cat.pw*sc,cat.ph*sc)}
+        if(d.lin){
           var dashL=g.k!=='led'?null:(g.mo==='pared'?null:g.mo==='suelo'?[0.3,1.1]:g.mo==='mueble'?[2.2,0.8,0.5,0.8]:[1.6,1]);
           p.line(xL+1.5,y+0.5*f+bx/2,xL+bx-1.5,y+0.5*f+bx/2,lumColor(g.mo)||INK,g.k==='led'?0.5:1.3,dashL);
         }
         else p.svg('<g transform="translate('+f2(xL+bx/2)+' '+f2(y+0.5*f+bx/2)+')">'+ptSym(g.k,lumColor(g.mo)||INK,0.5)+'</g>');
-        var tx0=xL+bx+3,qty=d.lin?m2(g.len/100)+' ml · '+g.n+(g.n===1?' tramo':' tramos'):'× '+g.n+' ud';
+        var tx0=xL+(im?2*bx+1.5:bx)+3,qty=d.lin?m2(g.len/100)+' ml · '+g.n+(g.n===1?' tramo':' tramos'):'× '+g.n+' ud';
         p.text(tx0,y+3.6*f,g.tag,body+1,{bold:true,col:INK});
-        p.text(tx0+8*f,y+3.6*f,fitTxt((g.nm||(cat?cat.n+(cat.gen?' (genérico)':''):d.n)),pw-(tx0-xL)-8*f-34,false,body*25.4/72),body,{col:INK});
-        var lMo=[MONT_ALL[g.mo]?'En '+MONT_ALL[g.mo]:'',insDe(g),g.pf?PERFIL_CORTO[g.pf]:''].filter(Boolean).join(' · ');
+        p.text(tx0+8*f,y+3.6*f,fitTxt((g.nm||(cat?cat.n+(cat.gen?' (genérico)':''):d.n)),pw-(tx0-xL)-8*f-(qty.length*1.5+4),false,body*25.4/72),body,{col:INK});
+        var lMo=[MONT_ALL[g.mo]?'En '+MONT_ALL[g.mo]:'',insDe(g),g.pf?PERFIL_CORTO[g.pf]:'',cat&&cat.k?'luz '+fmt(cat.k)+' K':''].filter(Boolean).join(' · ');
         if(lMo)p.text(tx0,y+7.3*f,fitTxt(lMo,pw-(tx0-xL),false,(body-0.6)*25.4/72),body-0.6,{col:INK,bold:true});
         p.text(xR,y+3.6*f,qty,body,{col:INK,anchor:'end',bold:true});
         var l2='';
