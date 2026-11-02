@@ -422,12 +422,25 @@ function nuevoGLTFLoader() {
   } catch { /* sin KTX2 */ }
   return l;
 }
+// Si una textura no existe (un .dae u .obj subido sin su carpeta de imágenes) el material se quedaba en negro: se cambia por un gris neutro.
+function gestorTexturas() {
+  const g = { obj: null, faltan: 0 };
+  g.m = new THREE.LoadingManager();
+  g.m.onError = () => { g.faltan++; };
+  g.m.onLoad = () => {
+    if (!g.faltan || !g.obj) return;
+    g.obj.traverse(o => { if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(mt => { if (mt?.map && (!mt.map.image || !(mt.map.image.width > 0))) { mt.map = null; mt.color?.setHex(0xb4b4b4); mt.needsUpdate = true; } }); });
+    try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ }
+  };
+  return g;
+}
 function cargarModelo(m) {
   if (cacheModelos.has(m.url)) return cacheModelos.get(m.url);
   const t = String(m.tipo || '').toLowerCase();
   const p = new Promise((ok, mal) => {
-    if (t === 'obj') new OBJLoader().load(m.url, r => ok(repararMateriales(fusionarModelo(r))), undefined, mal);
-    else if (t === 'dae') new ColladaLoader().load(m.url, r => ok(repararMateriales(fusionarModelo(r.scene))), undefined, mal);
+    const gt = gestorTexturas();
+    if (t === 'obj') new OBJLoader(gt.m).load(m.url, r => ok(gt.obj = repararMateriales(fusionarModelo(r))), undefined, mal);
+    else if (t === 'dae') new ColladaLoader(gt.m).load(m.url, r => ok(gt.obj = repararMateriales(fusionarModelo(r.scene))), undefined, mal);
     else nuevoGLTFLoader().load(m.url, r => ok(repararMateriales(fusionarModelo(r.scene))), undefined, mal);
   });
   p.then(() => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } }, () => {}); p.catch(() => cacheModelos.delete(m.url));
@@ -488,12 +501,22 @@ function matMueble(valor, defHex, texturas, w, h) {
   ledEm(m, valor);
   return m;
 }
+// Uñero: perfil redondeado en el canto del frente donde entran los dedos (como los uñeros integrados de cocina). Se extruye a lo largo del eje X y queda centrado.
+function geoUnero(largo) {
+  const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(0.017, 0); sh.lineTo(0.017, -0.009); sh.quadraticCurveTo(0.017, -0.022, 0.006, -0.022); sh.lineTo(0, -0.022); sh.lineTo(0, 0);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: Math.max(0.02, largo), bevelEnabled: false });
+  g.rotateY(-Math.PI / 2); g.translate(Math.max(0.02, largo) / 2, 0, 0); return g;
+}
 export function construirMueble(o, texturas) {
   const M = o.mueble || {}, esp = (M.esp || 1.8) * CM, zoc = (M.zocalo ?? 10) * CM, ef = 1.9 * CM;
   const D = o.d * CM, H = o.alto * CM, mods = M.modulos || [];
   const total = mods.reduce((s, m) => s + m.w, 0) * CM;
   const cuerpo = matMueble(o.color, '#e8e2d8', texturas, o.w, o.alto), frente = matMueble(o.colorFrente || o.color, '#f4f1ec', texturas, 60, o.alto);
   const zocMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3c, roughness: 0.8 }), tiradorMat = new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.8 });
+  // encimera (tablero superior) y acabado del uñero: del mismo color que el frente, o negro, inox o blanco
+  const ENC = M.encimera && M.encimera.on ? M.encimera : null, encH = ENC ? Math.max(1, ENC.esp || 3) * CM : 0, encVuelo = ENC ? Math.max(0, ENC.vuelo ?? 2) * CM : 0;
+  const matEnc = ENC ? matMueble(ENC.color, '#c8c3bb', texturas, 120, 60) : null;
+  const uMat = M.uneroColor === 'inox' ? tiradorMat : /^#/.test(M.uneroColor || '') ? new THREE.MeshStandardMaterial({ color: color(M.uneroColor, '#1a1a1a'), roughness: 0.5, metalness: 0.1 }) : frente;
   const g = new THREE.Group();
   const caja = (w, h, d, px, py, pz, mat, zona, padre) => {
     const b = new THREE.Mesh(new THREE.BoxGeometry(Math.max(w, 0.001), Math.max(h, 0.001), Math.max(d, 0.001)), mat);
@@ -501,7 +524,8 @@ export function construirMueble(o, texturas) {
   };
   let x = -total / 2;
   mods.forEach(mod => {
-    const W = mod.w * CM, cx = x + W / 2, hc = H - zoc, y0 = zoc, zf = D / 2 + ef / 2 + 0.001;
+    const W = mod.w * CM, cx = x + W / 2, hc = H - zoc - encH, y0 = zoc, zf = D / 2 + ef / 2 + 0.001;
+    if (mod.t === 'regleta') { if (zoc > 0) caja(Math.max(W - 0.002, 0.005), zoc, D - 0.05, cx, zoc / 2, -0.02, zocMat, 'cuerpo'); caja(Math.max(W - 0.002, 0.005), hc, D + ef, cx, y0 + hc / 2, ef / 2, frente, 'frente'); x += W; return; }
     if (zoc > 0) caja(W - 0.004, zoc, D - 0.05, cx, zoc / 2, -0.02, zocMat, 'cuerpo');
     caja(esp, hc, D, x + esp / 2, y0 + hc / 2, 0, cuerpo, 'cuerpo');
     caja(esp, hc, D, x + W - esp / 2, y0 + hc / 2, 0, cuerpo, 'cuerpo');
@@ -526,9 +550,10 @@ export function construirMueble(o, texturas) {
         c.rotation.x = Math.PI / 2; c.position.set(hx, vert ? hy + 0.12 * 0 : hy, z0 + h / 2); c.userData.zona = 'frente'; c.castShadow = true; padre.add(c);
         if (TIP === 'pomo') { const s = new THREE.Mesh(new THREE.SphereGeometry(0.019, 14, 10), tmat); s.position.set(hx, hy, z0 + h + 0.004); s.userData.zona = 'frente'; padre.add(s); }
       } else if (TIP === 'unero') {
-        // fresado en el canto: puerta, en el borde libre; cajón, en el borde de arriba
-        if (vert) caja(0.022, Math.min(0.3, fh * 0.45), 0.004, fcx + lado * (fw / 2 - 0.012), fcy, z0 + 0.0005, oscuro, 'frente', padre);
-        else caja(Math.min(fw * 0.85, 0.45), 0.022, 0.004, fcx, fcy + fh / 2 - 0.013, z0 + 0.0005, oscuro, 'frente', padre);
+        // perfil de uñero: puerta, en el borde libre (todo el alto); cajón o puerta de abajo, en el canto de arriba (todo el ancho)
+        const un = vert ? (() => { const gm = geoUnero(fh - 0.03); gm.rotateZ(Math.PI / 2); return new THREE.Mesh(gm, uMat); })() : new THREE.Mesh(geoUnero(fw - 0.01), uMat);
+        if (vert) un.position.set(fcx + lado * (fw / 2) - (lado > 0 ? 0.022 : 0), fcy, z0); else un.position.set(fcx, fcy + fh / 2, z0);
+        un.castShadow = un.receiveShadow = true; un.userData.zona = 'frente'; padre.add(un);
       } else if (TIP === 'gola') {
         // perfil de gola: canal continuo en el canto de arriba del frente
         caja(fw - 0.004, 0.035, 0.005, fcx, fcy + fh / 2 - 0.0185, z0 + 0.0005, oscuro, 'frente', padre);
@@ -555,23 +580,41 @@ export function construirMueble(o, texturas) {
         if (i === 0 && saca) caja(W - 2 * esp - 0.03, hf * 0.6, D * 0.75, cx, yc - 0.02, D / 2 - D * 0.375 + saca, cuerpo, 'cuerpo');
       }
     }
+    else if (mod.t === 'nevera') {
+      // frigorífico bajo encimera: cuerpo del aparato dentro del hueco, puerta grande, puerta pequeña del congelador arriba y dos asas verticales en inox
+      const inox = mod.color === 'inox', ap = new THREE.MeshStandardMaterial({ color: inox ? 0xb9bcc0 : mod.color === 'negro' ? 0x1c1c1e : 0xf3f3f1, roughness: inox ? 0.35 : 0.4, metalness: inox ? 0.8 : 0.1 });
+      caja(W - 2 * esp - 0.004, hc - 2 * esp - 0.006, D - 0.06, cx, y0 + hc / 2, -0.01, ap, 'cuerpo');
+      const fw = W - 0.004, fh = hc - 0.004, yb = y0 + 0.002, hCong = Math.min(0.28, fh * 0.28);
+      caja(fw, fh - hCong - 0.003, ef, cx, yb + (fh - hCong - 0.003) / 2, zf, ap, 'frente');
+      caja(fw, hCong, ef, cx, yb + fh - hCong / 2, zf, ap, 'frente');
+      caja(0.012, Math.min(0.5, fh * 0.45), 0.016, cx + fw / 2 - 0.035, yb + (fh - hCong) * 0.6, zf + ef / 2 + 0.008, tiradorMat, 'frente');
+      caja(0.012, Math.min(0.12, hCong * 0.6), 0.016, cx + fw / 2 - 0.035, yb + fh - hCong / 2, zf + ef / 2 + 0.008, tiradorMat, 'frente');
+    }
     x += W;
   });
+  const CO = M.costados || {}, ceH = Math.max(1, CO.esp || 1.8) * CM, cI = CO.izq ? ceH : 0, cD = CO.der ? ceH : 0;
+  if (cI) caja(ceH, H - encH - zoc, D + ef, -(total / 2 + ceH / 2), zoc + (H - encH - zoc) / 2, ef / 2, frente, 'frente');
+  if (cD) caja(ceH, H - encH - zoc, D + ef, total / 2 + ceH / 2, zoc + (H - encH - zoc) / 2, ef / 2, frente, 'frente');
+  if (ENC) caja(total + cI + cD, encH, D + ef + encVuelo, (cD - cI) / 2, H - encH / 2, (ef + encVuelo) / 2, matEnc, 'encimera');
   return g;
 }
 // Lista de piezas y metros cuadrados de tablero del mueble (para fabricar o presupuestar)
 function despieceMueble(o) {
-  const M = o.mueble || {}, e = M.esp || 1.8, hc = o.alto - (M.zocalo ?? 10), D = o.d, filas = {};
+  const M = o.mueble || {}, e = M.esp || 1.8, hc = o.alto - (M.zocalo ?? 10) - (M.encimera?.on ? (M.encimera.esp || 3) : 0), D = o.d, filas = {};
   const suma = (n, a, b, cant = 1) => { const k = n + ' ' + Math.round(a * 10) / 10 + ' × ' + Math.round(b * 10) / 10; filas[k] = (filas[k] || 0) + cant; };
   let area = 0;
   (M.modulos || []).forEach(m => {
+    if (m.t === 'regleta') { suma('Regleta / relleno', hc, m.w); area += hc * m.w / 1e4; return; }
     const wi = m.w - 2 * e;
     suma('Lateral', hc, D, 2); suma('Base y tapa', wi, D, 2); suma('Trasera (fina)', wi, hc - 2 * e); area += (2 * hc * D + 2 * wi * D + wi * (hc - 2 * e)) / 1e4;
     const nb = m.t === 'abierto' ? (m.nb ?? 3) : m.t === 'puertas' ? (m.nb ?? 1) : 0;
     if (nb) { suma('Balda', wi, D - 2, nb); area += nb * wi * (D - 2) / 1e4; }
     if (m.t === 'puertas') { const nd = m.n === 2 ? 2 : 1; suma('Puerta', m.w / nd - 0.3, hc - 0.4, nd); area += nd * (m.w / nd - 0.3) * (hc - 0.4) / 1e4; }
     if (m.t === 'cajones') { const nc = Math.max(1, m.n || 3); suma('Frente de cajón', m.w - 0.4, hc / nc - 0.3, nc); area += nc * (m.w - 0.4) * (hc / nc - 0.3) / 1e4; }
+    if (m.t === 'nevera') suma('Frigorífico bajo encimera (aparato)', m.w - 0.4, hc - 0.4);
   });
+  if (M.costados?.izq || M.costados?.der) suma('Costado visto', o.alto - (M.zocalo ?? 10) - (M.encimera?.on ? (M.encimera.esp || 3) : 0), D + 1.9, (M.costados.izq ? 1 : 0) + (M.costados.der ? 1 : 0));
+  if (M.encimera?.on) { const L = (M.modulos || []).reduce((s2, m) => s2 + m.w, 0); suma('Encimera ' + (M.encimera.esp || 3) + ' cm', L, D + 1.9 + (M.encimera.vuelo ?? 2)); }
   let frentes = 0, ancho = 0;
   (M.modulos || []).forEach(m => { if (m.t === 'puertas') { frentes += m.n === 2 ? 2 : 1; ancho += m.w; } if (m.t === 'cajones') { const nc = Math.max(1, m.n || 3); frentes += nc; ancho += m.w * nc; } });
   const T = M.tirador || 'barra', NOM = { barra: 'Tirador de barra', asa: 'Tirador de asa', pomo: 'Pomo', pomoplano: 'Pomo plano' };
@@ -3086,7 +3129,7 @@ export default function Visor3D({ cliente = false }) {
     setSubiendoMio(pref + 'Subiendo «' + file.name + '»…');
     try {
       const fd = new FormData(); fd.append('file', file); fd.append('categoria', categoria || 'Mis modelos');
-      const r = await api.post('/biblioteca3d/mios', fd); let m = r.data.modelo;
+      const r = await api.post('/biblioteca3d/mios', fd); let m = r.data.modelo; const avisoTex = r.data.aviso || '';
       setSubiendoMio(pref + 'Midiendo el modelo…');
       try {
         const obj = await cargarModelo({ url: m.url, tipo: m.tipo }), tam = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
@@ -3095,7 +3138,8 @@ export default function Visor3D({ cliente = false }) {
         const r2 = await api.put('/biblioteca3d/mios/' + m.id, dims); m = r2.data.modelo;
       } catch { /* se queda con 100 cm; se puede estirar después en su ficha */ }
       setB3d(b => ({ ...(b || {}), vacia: false, mios: [...(b?.mios || []), m] })); setB3dTab('mios'); setB3dCat('');
-      setSubiendoMio(pref + '«' + m.nombre + '» añadido ✓ (' + m.w + '×' + m.d + '×' + m.alto + ' cm). Haz clic en él para colocarlo.');
+      setSubiendoMio(pref + '«' + m.nombre + '» añadido ✓ (' + m.w + '×' + m.d + '×' + m.alto + ' cm). Haz clic en él para colocarlo.' + (avisoTex ? ' ' + avisoTex : ''));
+      if (avisoTex) setAviso(avisoTex);
       return true;
     } catch (e) { setSubiendoMio(pref + '«' + file.name + '»: ' + (e.response?.data?.error || 'No se pudo subir el modelo')); return false; }
   };
@@ -3181,6 +3225,7 @@ export default function Visor3D({ cliente = false }) {
   const [muebleMenu, setMuebleMenu] = useState(false);
   const PLANTILLAS_MUEBLE = {
     'Bajo de cocina (3 módulos)': { d: 60, alto: 90, zocalo: 10, modulos: [{ t: 'puertas', w: 60, n: 1, nb: 1 }, { t: 'cajones', w: 60, n: 3 }, { t: 'puertas', w: 60, n: 2, nb: 1 }] },
+    'Bajo de cocina con nevera y encimera': { d: 60, alto: 90, zocalo: 10, encimera: { on: true, esp: 3, vuelo: 2 }, modulos: [{ t: 'puertas', w: 60, n: 1, nb: 1 }, { t: 'nevera', w: 60 }, { t: 'cajones', w: 60, n: 3 }, { t: 'puertas', w: 60, n: 2, nb: 1 }] },
     'Armario alto (2 puertas)': { d: 60, alto: 220, zocalo: 8, modulos: [{ t: 'puertas', w: 50, n: 1, nb: 5 }, { t: 'puertas', w: 50, n: 1, nb: 5 }] },
     'Mueble de TV': { d: 40, alto: 55, zocalo: 5, modulos: [{ t: 'puertas', w: 60, n: 1, nb: 0 }, { t: 'abierto', w: 80, nb: 0 }, { t: 'puertas', w: 60, n: 1, nb: 0 }] },
     'Estantería abierta': { d: 30, alto: 200, zocalo: 0, modulos: [{ t: 'abierto', w: 80, nb: 5 }, { t: 'abierto', w: 80, nb: 5 }] },
@@ -3189,7 +3234,7 @@ export default function Visor3D({ cliente = false }) {
   };
   const crearMueble = (nombre) => {
     const p = PLANTILLAS_MUEBLE[nombre], { ctrl } = api3d.current;
-    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'mueble', nombre: nombre.replace(/ \(.*\)/, ''), etiqueta: 'Muebles a medida', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.modulos.reduce((s, m) => s + m.w, 0), d: p.d, alto: p.alto, z0: 0, color: '#e8e2d8', colorFrente: '#f4f1ec', mueble: { esp: 1.8, zocalo: p.zocalo, tirador: 'barra', modulos: p.modulos.map(m => ({ ...m })) } };
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'mueble', nombre: nombre.replace(/ \(.*\)/, ''), etiqueta: 'Muebles a medida', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.modulos.reduce((s, m) => s + m.w, 0), d: p.d, alto: p.alto, z0: 0, color: '#e8e2d8', colorFrente: '#f4f1ec', mueble: { esp: 1.8, zocalo: p.zocalo, tirador: 'barra', ...(p.encimera ? { encimera: { ...p.encimera } } : {}), modulos: p.modulos.map(m => ({ ...m })) } };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setMuebleMenu(false);
   };
   const cambiarModulos = (idObj, fn, extra) => setObjs(prev => prev.map(o => {
@@ -5494,7 +5539,7 @@ export default function Visor3D({ cliente = false }) {
           )}
           {objSel.tipo === 'mueble' && (() => {
             const M = objSel.mueble || { modulos: [] }, desp = despieceMueble(objSel);
-            const tipos = [['puertas', 'Puertas'], ['cajones', 'Cajones'], ['abierto', 'Abierto'], ['hueco', 'Hueco']];
+            const tipos = [['puertas', 'Puertas'], ['cajones', 'Cajones'], ['abierto', 'Abierto'], ['hueco', 'Hueco'], ['nevera', 'Nevera'], ['regleta', 'Regleta']];
             return (
               <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Módulos · ancho total {Math.round(objSel.w)} cm</div>
@@ -5511,16 +5556,36 @@ export default function Visor3D({ cliente = false }) {
                       {m.t === 'puertas' && <label>Hojas <select value={m.n === 2 ? 2 : 1} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].n = parseInt(e.target.value, 10); return ms; })} style={{ ...btn, padding: '2px' }}><option value={1}>1</option><option value={2}>2</option></select></label>}
                       {m.t === 'cajones' && <label>Cajones <input type="number" min="1" max="8" value={m.n || 3} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].n = parseInt(e.target.value, 10) || 1; return ms; })} style={{ ...btn, width: 44, padding: '2px 4px' }} /></label>}
                       {(m.t === 'puertas' || m.t === 'abierto') && <label>Baldas <input type="number" min="0" max="10" value={m.nb ?? (m.t === 'abierto' ? 3 : 1)} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].nb = parseInt(e.target.value, 10) || 0; return ms; })} style={{ ...btn, width: 44, padding: '2px 4px' }} /></label>}
+                      {m.t === 'nevera' && <label>Acabado <select value={m.color || ''} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].color = e.target.value || undefined; return ms; })} style={{ ...btn, padding: '2px' }}><option value="">Blanca</option><option value="inox">Inox</option><option value="negro">Negra</option></select></label>}
                       {(m.t === 'puertas' || m.t === 'cajones') && <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!m.abierto} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].abierto = e.target.checked; return ms; })} /> Abierto</label>}
                     </div>
                   </div>
                 ))}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
-                  {tipos.map(([v, n]) => <button key={v} style={{ ...btn, padding: '3px 8px' }} onClick={() => cambiarModulos(objSel.id, ms => [...ms, { t: v, w: 60, n: v === 'cajones' ? 3 : 1, nb: v === 'abierto' ? 3 : 1 }])}>+ {n}</button>)}
+                  {tipos.map(([v, n]) => <button key={v} style={{ ...btn, padding: '3px 8px' }} onClick={() => cambiarModulos(objSel.id, ms => [...ms, { t: v, w: v === 'regleta' ? 5 : 60, n: v === 'cajones' ? 3 : 1, nb: v === 'abierto' ? 3 : 1 }])}>+ {n}</button>)}
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Zócalo cm</span><input type="number" value={M.zocalo ?? 10} onChange={e => cambiar(objSel.id, { mueble: { ...M, zocalo: parseFloat(e.target.value) || 0 } })} style={{ ...btn, width: 70 }} /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Tablero cm</span><input type="number" step="0.1" value={M.esp ?? 1.8} onChange={e => cambiar(objSel.id, { mueble: { ...M, esp: parseFloat(e.target.value) || 1.8 } })} style={{ ...btn, width: 70 }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}><span style={{ width: 70, opacity: 0.7 }}>Costados</span>
+                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!M.costados?.izq} onChange={e => cambiar(objSel.id, { mueble: { ...M, costados: { esp: 1.8, ...(M.costados || {}), izq: e.target.checked } } })} /> Izq.</label>
+                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!M.costados?.der} onChange={e => cambiar(objSel.id, { mueble: { ...M, costados: { esp: 1.8, ...(M.costados || {}), der: e.target.checked } } })} /> Der.</label>
+                  {(M.costados?.izq || M.costados?.der) && <label>Grosor cm <input type="number" step="0.1" min="1" max="6" value={M.costados.esp ?? 1.8} onChange={e => cambiar(objSel.id, { mueble: { ...M, costados: { ...M.costados, esp: parseFloat(e.target.value) || 1.8 } } })} style={{ ...btn, width: 50, padding: '2px 4px' }} /></label>}
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Encimera</span><input type="checkbox" checked={!!M.encimera?.on} onChange={e => cambiar(objSel.id, { mueble: { ...M, encimera: { esp: 3, vuelo: 2, ...(M.encimera || {}), on: e.target.checked } } })} /> <span style={{ opacity: 0.7, fontSize: 12 }}>tablero superior de todo el mueble</span></label>
+                {M.encimera?.on && (
+                  <div style={{ background: '#2a2a2a', borderRadius: 6, padding: 6, marginBottom: 5, fontSize: 12 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                      <label>Grosor cm <input type="number" step="0.5" min="1" max="12" value={M.encimera.esp ?? 3} onChange={e => cambiar(objSel.id, { mueble: { ...M, encimera: { ...M.encimera, esp: parseFloat(e.target.value) || 3 } } })} style={{ ...btn, width: 50, padding: '2px 4px' }} /></label>
+                      <label>Vuelo cm <input type="number" step="0.5" min="0" max="15" value={M.encimera.vuelo ?? 2} onChange={e => cambiar(objSel.id, { mueble: { ...M, encimera: { ...M.encimera, vuelo: parseFloat(e.target.value) || 0 } } })} style={{ ...btn, width: 50, padding: '2px 4px' }} /></label>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <label>Color <input type="color" value={/^#/.test(M.encimera.color || '') ? M.encimera.color.slice(0, 7) : '#c8c3bb'} onChange={e => cambiar(objSel.id, { mueble: { ...M, encimera: { ...M.encimera, color: e.target.value } } })} /></label>
+                      <select value={String(M.encimera.color || '').startsWith('tex:') ? M.encimera.color : ''} onChange={e => cambiar(objSel.id, { mueble: { ...M, encimera: { ...M.encimera, color: e.target.value || undefined } } })} style={{ ...btn, flex: 1, minWidth: 0 }} title="Usa una textura de tu proyecto (piedra, hormigón, madera…)"><option value="">Textura…</option>{texturas.filter(t => t.id && t.nombre).map(t => <option key={t.id} value={'tex:' + t.id}>{t.nombre}</option>)}</select>
+                    </div>
+                  </div>
+                )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Tirador</span><select value={M.tirador || 'barra'} onChange={e => cambiar(objSel.id, { mueble: { ...M, tirador: e.target.value } })} style={btn}><option value="barra">Barra</option><option value="asa">Asa</option><option value="pomo">Pomo</option><option value="pomoplano">Pomo plano</option><option value="unero">Uñero (fresado)</option><option value="gola">Gola (perfil)</option><option value="push">Push open (sin tirador)</option><option value="ninguno">Sin tirador</option></select></label>
+                {M.tirador === 'unero' && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Uñero</span><select value={M.uneroColor || ''} onChange={e => cambiar(objSel.id, { mueble: { ...M, uneroColor: e.target.value || undefined } })} style={btn}><option value="">Igual que el frente</option><option value="#1a1a1a">Negro</option><option value="inox">Inox</option><option value="#f2f2f2">Blanco</option></select></label>}
                 {['barra', 'asa', 'pomo', 'pomoplano', 'gola'].includes(M.tirador || 'barra') && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Herraje</span><select value={M.tiradorColor || ''} onChange={e => cambiar(objSel.id, { mueble: { ...M, tiradorColor: e.target.value || undefined } })} style={btn}><option value="">Inox</option><option value="#1a1a1a">Negro</option><option value="#c9a54a">Latón</option><option value="#f2f2f2">Blanco</option><option value="#b87333">Cobre</option></select></label>}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Frentes</span><input type="color" value={/^#/.test(objSel.colorFrente || '') ? objSel.colorFrente : '#f4f1ec'} onChange={e => cambiar(objSel.id, { colorFrente: e.target.value })} /></label>
                 <details style={{ marginTop: 4 }}>

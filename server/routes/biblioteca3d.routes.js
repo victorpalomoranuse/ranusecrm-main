@@ -87,12 +87,22 @@ router.post('/mios', uploadModelo3dFile, handleMulterError, async (req, res) => 
       if (error) throw error;
       url = supabase.storage.from(BUCKET).getPublicUrl(base + '.' + ext).data.publicUrl;
     }
+    let aviso;
+    if (ext !== 'zip' && ext !== 'glb') {
+      try {
+        const txt = req.file.buffer.toString('utf8');
+        const externas = ext === 'dae' ? new Set([...txt.matchAll(/<init_from>([^<]+\.(?:jpe?g|png|tga|bmp|tiff?|webp|gif))<\/init_from>/gi)].map(x => x[1]))
+          : ext === 'gltf' ? new Set((JSON.parse(txt).images || []).map(i => i.uri).filter(u => u && !String(u).startsWith('data:')))
+          : /^\s*mtllib\s/m.test(txt) ? new Set(['materiales .mtl y sus imágenes']) : new Set();
+        if (externas.size) aviso = 'Ojo: este .' + ext + ' usa ' + externas.size + ' archivo(s) externos de texturas que no se han subido, y se verá en negro o sin material. Súbelo como un .zip con el modelo y su carpeta de texturas juntos (en SketchUp: Archivo → Exportar → Modelo 3D, y comprime el .' + ext + ' con su carpeta), o expórtalo como .glb, que lleva las texturas dentro.';
+      } catch { /* sin análisis */ }
+    }
     const num = (v, d) => (Number(v) > 0 ? Math.min(5000, Number(v)) : d);
     const nombre = String(req.body?.nombre || nombreOk(req.file.originalname).replace(/\.[^.]+$/, '')).trim().slice(0, 80) || 'Modelo';
     const m = { id, nombre, categoria: String(req.body?.categoria || 'Mis modelos').trim().slice(0, 40) || 'Mis modelos', url, tipo, ...(carpeta ? { carpeta } : {}), w: num(req.body?.w, 100), d: num(req.body?.d, 100), alto: num(req.body?.alto, 100), mio: true };
     const lista = await leerLibres(); lista.push(m);
     const { error } = await guardarLibres(lista); if (error) throw error;
-    res.status(201).json({ modelo: m });
+    res.status(201).json({ modelo: m, ...(aviso ? { aviso } : {}) });
   } catch (err) {
     console.error('biblioteca3d mios:', err);
     res.status(500).json({ error: 'No se pudo guardar el modelo' + (err?.message ? ': ' + String(err.message).slice(0, 140) : '') });
