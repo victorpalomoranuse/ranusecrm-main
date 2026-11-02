@@ -42,6 +42,11 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
   const fin = useRef(null), fichero = useRef(null);
 
   useEffect(() => { fin.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [mensajes, trabajando]);
+  useEffect(() => {
+    if (!grande) return;
+    const h = e => { if (e.key === 'Escape') { e.stopPropagation(); setGrande(null); } };
+    window.addEventListener('keydown', h, true); return () => window.removeEventListener('keydown', h, true);
+  }, [grande]);
 
   const adjuntar = async (lista) => {
     try {
@@ -101,7 +106,7 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
               <div className="ei-imgs">
                 {m.imagenes.map((u, k) => (
                   <figure key={k}>
-                    <img src={u} alt="" onClick={() => setGrande(u)} />
+                    <img src={u} alt="" title="Clic para verla en grande" onClick={() => setGrande(u)} />
                     {m.rol === 'ia' && (
                       <figcaption>
                         <button type="button" className="ei-btn" onClick={() => descargar(u, 'idea-' + (i + 1) + (m.imagenes.length > 1 ? '-' + (k + 1) : '') + '.png')}>Descargar</button>
@@ -142,7 +147,15 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
         <button type="button" className="ei-btn ei-enviar" disabled={trabajando || (!texto.trim() && !adjuntas.length)} onClick={() => enviar()}>Enviar</button>
       </div>
 
-      {grande && <div className="ei-grande" onClick={() => setGrande(null)}><img src={grande} alt="" /></div>}
+      {grande && (
+        <>
+          <div className="ei-grande-barra">
+            <button type="button" className="ei-btn" onClick={() => descargar(grande, 'idea.png')}>Descargar</button>
+            <button type="button" className="ei-btn" onClick={() => setGrande(null)}>✕ Cerrar (Esc)</button>
+          </div>
+          <div className="ei-grande" onClick={() => setGrande(null)}><img src={grande} alt="" /></div>
+        </>
+      )}
     </div>
   );
 }
