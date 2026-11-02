@@ -2531,7 +2531,7 @@ function rayWalls(ox,oy,dx,dy,view){
 }
 function dimLine(C,px,x1,y1,x2,y2,t,col){
   col=col||C.dim;var a=Math.atan2(y2-y1,x2-x1),nx=-Math.sin(a)*3.5*px,ny=Math.cos(a)*3.5*px,vert=Math.abs(x2-x1)<Math.abs(y2-y1);
-  return ln(x1,y1,x2,y2,col,px*0.9)+ln(x1-nx,y1-ny,x1+nx,y1+ny,col,px*0.9)+ln(x2-nx,y2-ny,x2+nx,y2+ny,col,px*0.9)+txt(C,px,(x1+x2)/2+(vert?9*px:0),(y1+y2)/2+(vert?3.5*px:-4*px),t,C.label,10,600);
+  return ln(x1,y1,x2,y2,col,px*0.9)+ln(x1-nx,y1-ny,x1+nx,y1+ny,col,px*0.9)+ln(x2-nx,y2-ny,x2+nx,y2+ny,col,px*0.9)+(vert?txt(C,px,(x1+x2)/2+5*px,(y1+y2)/2+3.5*px,t,C.label,10,600).replace('text-anchor="middle"','text-anchor="start"'):txt(C,px,(x1+x2)/2,(y1+y2)/2-4*px,t,C.label,10,600)); /* en las cotas verticales el número va en horizontal, a un lado de la línea, sin que ella lo cruce */
 }
 /* distancia a la pared más cercana en horizontal y en vertical (cara interior del muro) */
 function lumDims(q){
