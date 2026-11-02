@@ -9,6 +9,21 @@ const router = express.Router();
 router.use(authenticateToken, requirePermission('proyectos'));
 
 const API = 'https://generativelanguage.googleapis.com/v1beta';
+
+// Modelo de imagen de OpenAI: si el configurado ya no existe (OpenAI los renueva), se busca entre los que ve la cuenta el más nuevo con «image» en el nombre
+let imagenOpenAI = null;
+const versionDe = id => (String(id).match(/\d+(\.\d+)?/g) || ['0']).map(Number);
+async function modelosImagenOpenAI(clave) {
+  const r = await fetch('https://api.openai.com/v1/models', { headers: { Authorization: 'Bearer ' + clave } });
+  const j = await r.json().catch(() => ({}));
+  const ids = (j.data || []).map(x => x.id).filter(id => /image/i.test(id) && !/dall-e|audio|realtime|transcribe/i.test(id));
+  return ids.sort((a, b) => {
+    const mini = (/mini/i.test(a) ? 1 : 0) - (/mini/i.test(b) ? 1 : 0); if (mini) return mini;
+    const va = versionDe(a), vb = versionDe(b);
+    for (let i = 0; i < Math.max(va.length, vb.length); i++) { const d = (vb[i] || 0) - (va[i] || 0); if (d) return d; }
+    return b.localeCompare(a);
+  });
+}
 const modelo = () => process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
 
 // ¿Está configurada la clave? Y qué modelos de imagen ve la cuenta (sin enseñar la clave)
@@ -69,7 +84,7 @@ router.post('/', async (req, res) => {
       extra ? String(extra).slice(0, 400) : '',
     ].filter(Boolean).join(' ');
     if (prov === 'openai') {
-      const modeloO = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+      let modeloO = process.env.OPENAI_IMAGE_MODEL || imagenOpenAI || 'gpt-image-1';
       const llamar = async (fidelidad, refs = true) => {
         const fd = new FormData();
         fd.append('model', modeloO); fd.append('prompt', instrucciones); fd.append('size', 'auto'); fd.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'high'); fd.append('n', '1');
@@ -81,6 +96,11 @@ router.post('/', async (req, res) => {
         return { rr, jj: await rr.json().catch(() => ({})) };
       };
       let { rr, jj } = await llamar(true);
+      if (!rr.ok && !process.env.OPENAI_IMAGE_MODEL && /does not exist|model_not_found|do not have access|not found/i.test(JSON.stringify(jj?.error || {}))) {
+        const lista = await modelosImagenOpenAI(clave).catch(() => []);
+        if (lista.length && lista[0] !== modeloO) { modeloO = lista[0]; imagenOpenAI = modeloO; console.log('render-ia: modelo de imagen de OpenAI →', modeloO); ({ rr, jj } = await llamar(true)); }
+        else if (!lista.length) jj = { error: { message: String(jj?.error?.message || '') + ' (y tu cuenta no ve ningún modelo de imagen: comprueba el saldo y el acceso en platform.openai.com)' } };
+      }
       if (!rr.ok && /input_fidelity|unknown|unsupported/i.test(JSON.stringify(jj?.error || {}))) ({ rr, jj } = await llamar(false));
       if (!rr.ok && conRef.length) ({ rr, jj } = await llamar(false, false)); // si no admite varias imágenes, se manda solo la vista (las muestras siguen descritas en el texto)
       if (!rr.ok) { console.error('render-ia OpenAI', rr.status, jj?.error?.message); return res.status(502).json({ error: 'ChatGPT (OpenAI) no ha podido generar la imagen' + (jj?.error?.message ? ': ' + String(jj.error.message).slice(0, 220) : '') }); }
