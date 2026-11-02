@@ -2588,9 +2588,32 @@ function cnPts(c){
   return p;
 }
 function cnCol(c){var m=swTagMap()[c.a];return CNC[((m?m.i:1)-1)%CNC.length]}
+function cnCurva(a,b,kmax){
+  var dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l,k=Math.min(0.2*l,kmax||80),mx=(a.x+b.x)/2+nx*k,my=(a.y+b.y)/2+ny*k,p=[];
+  for(var i=0;i<=12;i++){var t=i/12;p.push({x:(1-t)*(1-t)*a.x+2*t*(1-t)*mx+t*t*b.x,y:(1-t)*(1-t)*a.y+2*t*(1-t)*my+t*t*b.y})}
+  return p;
+}
+/* tramos de encendido que se dibujan: las luces de un mismo interruptor van «cosidas» (interruptor → la más cercana → la siguiente más cercana…) para que no salgan líneas larguísimas. Con st.v.cnCos=false cada luz va directa al interruptor */
+function cnEdges(){
+  var lista=cnList();
+  if(st.v.cnCos===false)return lista.map(function(c){return {c:c,pp:cnPts(c)}});
+  var gr={},out=[];
+  lista.forEach(function(c){(gr[c.a]=gr[c.a]||[]).push(c)});
+  Object.keys(gr).forEach(function(a){
+    var sw0=by(st.v.pts,a);if(!sw0)return;
+    var cur=ptMid(sw0),rest=gr[a].map(function(c){return {c:c,p:ptMid(by(st.v.pts,c.b))}});
+    while(rest.length){
+      var bi=0,bd=1e18;rest.forEach(function(o,i){var d=Math.hypot(o.p.x-cur.x,o.p.y-cur.y);if(d<bd){bd=d;bi=i}});
+      var o=rest.splice(bi,1)[0];
+      out.push({c:o.c,pp:cnCurva(cur,o.p,out.length&&bd<400?30:80)});
+      cur=o.p;
+    }
+  });
+  return out;
+}
 function pickCn(p,tol){
   var best=null,bd=tol;
-  cnList().forEach(function(c){var pp=cnPts(c);for(var i=0;i<pp.length-1;i++){var d=segDist(p,pp[i],pp[i+1]);if(d<bd){bd=d;best=c}}});
+  cnEdges().forEach(function(ed){var pp=ed.pp;for(var i=0;i<pp.length-1;i++){var d=segDist(p,pp[i],pp[i+1]);if(d<bd){bd=d;best=ed.c}}});
   return best;
 }
 function lumExtras(C,px,view,o){
@@ -2598,8 +2621,8 @@ function lumExtras(C,px,view,o){
   if(view!=='ilum'&&view!=='elec')return '';
   if(view==='ilum'){
     var tg=lumTagMap(),showD=o.ldim!==false&&st.v.ld!=='0';
-    if(st.v.cnVer!==false||(sel&&sel.t==='cn'))cnList().forEach(function(c){ /* encendidos: líneas muy finas y claras (la seleccionada sí destaca); se pueden ocultar en la paleta */
-      var pp=cnPts(c),col=cnCol(c),sl=sel&&sel.t==='cn'&&sel.id===c.id,i;
+    if(st.v.cnVer!==false||(sel&&sel.t==='cn'))cnEdges().forEach(function(ed){ var c=ed.c; /* encendidos: líneas muy finas y claras (la seleccionada sí destaca); se pueden ocultar en la paleta */
+      var pp=ed.pp,col=cnCol(c),sl=sel&&sel.t==='cn'&&sel.id===c.id,i;
       if(st.v.cnVer===false&&!sl)return;
       var suave=!sl;if(suave&&o.flat&&/^#[0-9a-f]{6}$/i.test(col))col=hexMix(col,'#ffffff',0.62);
       for(i=0;i<pp.length-1;i++)h+=ln(pp[i].x,pp[i].y,pp[i+1].x,pp[i+1].y,col,(sl?3.2:o.flat?0.8:0.9)*px,'round',suave?(o.flat?'':';stroke-opacity:.4'):'');
@@ -3198,6 +3221,7 @@ function ledOpt(k){
   else if(k.indexOf('mont:')===0)st.ledMont=k.slice(5);
   else if(k==='colores'){snap();st.v.lumColOn=!lumColOn();save()}
   else if(k==='encend'){snap();st.v.cnVer=st.v.cnVer===false;save()}
+  else if(k==='cosido'){snap();st.v.cnCos=st.v.cnCos===false;save()}
   else if(k==='fin'){ledFin();return}
   else if(k==='cancel')st.ledPts=null;
   drawPal();hint();render();
@@ -6390,7 +6414,7 @@ function drawPal(){
   var colHtml='';
   if(v==='ilum'){
     var cOn=lumColOn();
-    colHtml='<button data-led="encend" aria-pressed="'+(st.v.cnVer!==false)+'" style="grid-column:1/-1" title="Las líneas que unen cada interruptor con sus luces. Se pueden ocultar para dejar el plano limpio (también en la lámina)">Líneas de encendido: '+(st.v.cnVer!==false?'sí':'no')+'</button>'+'<button data-led="colores" aria-pressed="'+cOn+'" style="grid-column:1/-1" title="Cada montaje (techo, pared, suelo, de pie…) con su color, en el plano y en la leyenda">Colores por montaje: '+(cOn?'sí':'no')+'</button>';
+    colHtml='<button data-led="encend" aria-pressed="'+(st.v.cnVer!==false)+'" style="grid-column:1/-1" title="Las líneas que unen cada interruptor con sus luces. Se pueden ocultar para dejar el plano limpio (también en la lámina)">Líneas de encendido: '+(st.v.cnVer!==false?'sí':'no')+'</button>'+'<button data-led="cosido" aria-pressed="'+(st.v.cnCos!==false)+'" style="grid-column:1/-1" title="Las luces de un mismo interruptor se unen una detrás de otra (la más cercana primero) en vez de cada una directa al interruptor: líneas más cortas">Luces cosidas entre sí: '+(st.v.cnCos!==false?'sí':'no')+'</button>'+'<button data-led="colores" aria-pressed="'+cOn+'" style="grid-column:1/-1" title="Cada montaje (techo, pared, suelo, de pie…) con su color, en el plano y en la leyenda">Colores por montaje: '+(cOn?'sí':'no')+'</button>';
     if(cOn)colHtml+='<div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:6px 10px">'+MONT_P.map(function(m){return '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px"><input type="color" data-t="lcol" data-mo="'+m[0]+'" value="'+(lumColor(m[0])||LUMCOL_DEF[m[0]])+'" style="width:34px;height:28px;padding:1px"><span>'+m[1]+'</span></label>'}).join('')+'</div>';
     $('alz-modo').innerHTML=colHtml;
   }
