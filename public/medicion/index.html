@@ -3266,11 +3266,35 @@ function pegaACarril(q,wp){
   if(q.k==='spotl')q.a=best.ang;
   return true;
 }
+/* cara de pilar más cercana al punto (dentro de tol): punto sobre la cara y su normal hacia fuera. Los apliques, enchufes e interruptores también van en pilares */
+function nearestPilFace(wp,tol){
+  var best=null;
+  if(!capaVis('pil'))return null;
+  (st.v.pil||[]).forEach(function(p){
+    if(!stVis(p.s,st.view))return;
+    pilCells(p).forEach(function(c){
+      var x0=c.x-p.w/2,x1=c.x+p.w/2,y0=c.y-p.d/2,y1=c.y+p.d/2,ox=wp.x<x0?x0-wp.x:wp.x>x1?wp.x-x1:0,oy=wp.y<y0?y0-wp.y:wp.y>y1?wp.y-y1:0,r;
+      if(ox||oy){
+        if(ox>=oy)r={x:wp.x<x0?x0:x1,y:Math.max(y0,Math.min(y1,wp.y)),nx:wp.x<x0?-1:1,ny:0,d:Math.hypot(ox,oy)};
+        else r={x:Math.max(x0,Math.min(x1,wp.x)),y:wp.y<y0?y0:y1,nx:0,ny:wp.y<y0?-1:1,d:Math.hypot(ox,oy)};
+      }else{
+        var dl=wp.x-x0,dr=x1-wp.x,du=wp.y-y0,dd=y1-wp.y,m=Math.min(dl,dr,du,dd);
+        r=m===dl?{x:x0,y:wp.y,nx:-1,ny:0,d:dl}:m===dr?{x:x1,y:wp.y,nx:1,ny:0,d:dr}:m===du?{x:wp.x,y:y0,nx:0,ny:-1,d:du}:{x:wp.x,y:y1,nx:0,ny:1,d:dd};
+      }
+      if(r.d<=tol&&(!best||r.d<best.d))best=r;
+    });
+  });
+  return best;
+}
 function attachPt(q,wp){
   if(pegaACarril(q,wp))return;
   var d=ptDef(q.k),node=nd(q.n);
   if(d&&d.wall){
-    var nw=nearestWallPos(wp,60/st.k);
+    var nw=nearestWallPos(wp,60/st.k),pf=nearestPilFace(wp,60/st.k),dw=nw?segDist(wp,nw.g.a,nw.g.b):1e9;
+    if(pf&&pf.d<dw){
+      q.dx=f2(pf.x-node.x);q.dy=f2(pf.y-node.y);q.a=Math.round(Math.atan2(-pf.ny,-pf.nx)*180/Math.PI);
+      return;
+    }
     if(nw){
       var g=nw.g,bx=g.a.x+g.ux*nw.s,by2=g.a.y+g.uy*nw.s,nx=-g.uy,ny=g.ux,sg=((wp.x-bx)*nx+(wp.y-by2)*ny)>=0?1:-1;
       q.dx=f2(bx+nx*sg*nw.w.t/2-node.x);q.dy=f2(by2+ny*sg*nw.w.t/2-node.y);
