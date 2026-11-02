@@ -2433,7 +2433,7 @@ export default function Visor3D({ cliente = false }) {
   const [gpuFlojaCli, setGpuFlojaCli] = useState(false);
   useEffect(() => {
     if (!cliente || estado !== 'listo') return;
-    const a = api3d.current, par = (renders.filter(r => r.tipo === '360' && r.tour && r.meta?.camara)).sort((x, y) => String(x.creado).localeCompare(String(y.creado)));
+    const a = api3d.current, par = (renders.filter(r => r.tipo === '360' && r.tour && r.meta?.camara)).sort((x, y) => (y.entrada ? 1 : 0) - (x.entrada ? 1 : 0) || String(x.creado).localeCompare(String(y.creado)));
     setParadasCli(par);
     if (par.length) {
       const c = par[0].meta.camara, yaw = Math.atan2((c.tx ?? c.px) - c.px, (c.tz ?? c.pz + 1) - c.pz);
@@ -4455,7 +4455,8 @@ export default function Visor3D({ cliente = false }) {
               <img src={rd.thumb} alt={rd.nombre} onClick={() => (rd.tipo === '360' ? setPano({ url: rd.url, guardado: true, id: rd.id, meta: rd.meta }) : setVerRender(rd))} style={{ width: '100%', borderRadius: 6, cursor: 'pointer', display: 'block' }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                 <input defaultValue={rd.nombre} key={rd.id + rd.nombre} onBlur={e => { if (e.target.value !== rd.nombre) api.patch('/medicion/' + id + '/render/' + rd.id, { nombre: e.target.value }).then(r => setRenders(x => x.map(y => (y.id === rd.id ? r.data.render : y)))).catch(() => setAviso('No se pudo renombrar')); }} style={{ ...btn, flex: 1, padding: '2px 6px' }} />
-                {rd.tipo === '360' && <button style={{ ...btn, padding: '2px 6px', fontSize: 11, background: rd.tour ? '#2f6b3a' : undefined }} title="Las paradas marcadas forman el tour que ve el cliente" onClick={() => api.patch('/medicion/' + id + '/render/' + rd.id, { tour: !rd.tour }).then(r => setRenders(x => x.map(y => (y.id === rd.id ? r.data.render : y)))).catch(() => setAviso('No se pudo cambiar'))}>{rd.tour ? '✓ En el tour' : '＋ Al tour'}</button>}
+                {rd.tipo === '360' && rd.tour && <button style={{ ...btn, padding: '2px 6px', fontSize: 11, background: rd.entrada ? '#a8782f' : undefined }} title="El cliente empieza el tour (y el recorrido libre) en esta parada, mirando hacia donde miraba la cámara" onClick={() => api.patch('/medicion/' + id + '/render/' + rd.id, { entrada: !rd.entrada }).then(r => setRenders(r.data.renders || [])).catch(() => setAviso('No se pudo cambiar'))}>{rd.entrada ? '★ Entrada' : '☆ Entrada'}</button>}
+                {rd.tipo === '360' && <button style={{ ...btn, padding: '2px 6px', fontSize: 11, background: rd.tour ? '#2f6b3a' : undefined }} title="Las paradas marcadas forman el tour que ve el cliente" onClick={() => api.patch('/medicion/' + id + '/render/' + rd.id, { tour: !rd.tour }).then(r => setRenders(r.data.renders || [])).catch(() => setAviso('No se pudo cambiar'))}>{rd.tour ? '✓ En el tour' : '＋ Al tour'}</button>}
                 <span style={{ opacity: 0.55, fontSize: 10 }}>{rd.tipo === '360' ? '360°' : rd.tipo === 'hd' ? 'HD' : 'IA'}</span>
               </div>
               <div style={{ opacity: 0.6, fontSize: 11, marginTop: 2 }}>{new Date(rd.creado).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}{rd.meta?.estancia ? ' · ' + rd.meta.estancia : ''}{rd.meta?.estilo ? ' · ' + rd.meta.estilo : ''}</div>

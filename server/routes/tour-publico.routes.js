@@ -11,7 +11,7 @@ export function firmaTour(id) {
 // Paradas del tour de un plano, con su posición (en metros) y hacia dónde miraba la cámara al hacerlas
 export function paradasDeTour(escena3d) {
   return (escena3d?.renders || []).filter(r => r.tipo === '360' && r.tour && r.meta?.camara && Number.isFinite(r.meta.camara.px))
-    .sort((a, b) => String(a.creado).localeCompare(String(b.creado)))
+    .sort((a, b) => (b.entrada ? 1 : 0) - (a.entrada ? 1 : 0) || String(a.creado).localeCompare(String(b.creado)))
     .map(r => {
       const c = r.meta.camara;
       return { id: r.id, nombre: r.nombre, nota: r.nota || '', url: r.url, thumb: r.thumb, x: c.px, z: c.pz, yaw: Math.atan2((c.tx ?? c.px) - c.px, (c.tz ?? c.pz + 1) - c.pz) };

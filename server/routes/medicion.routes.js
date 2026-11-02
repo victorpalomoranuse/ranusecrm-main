@@ -879,10 +879,11 @@ router.patch('/:id/render/:rid', async (req, res) => {
     if (!r) return res.status(404).json({ error: 'No he encontrado ese render' });
     if (typeof req.body?.nombre === 'string') r.nombre = req.body.nombre.slice(0, 80);
     if (typeof req.body?.nota === 'string') r.nota = req.body.nota.slice(0, 300);
-    if (typeof req.body?.tour === 'boolean' && r.tipo === '360') r.tour = req.body.tour;
+    if (typeof req.body?.tour === 'boolean' && r.tipo === '360') { r.tour = req.body.tour; if (!r.tour) delete r.entrada; }
+    if (typeof req.body?.entrada === 'boolean' && r.tipo === '360') { (esc.renders || []).forEach(x => { delete x.entrada; }); if (req.body.entrada) { r.entrada = true; r.tour = true; } }
     const { error } = await supabase.from('mediciones').update({ data: { ...fila.data, escena3d: esc } }).eq('id', req.params.id);
     if (error) throw error;
-    res.json({ render: r });
+    res.json({ render: r, renders: esc.renders });
   } catch (err) {
     res.status(500).json({ error: 'No se pudo cambiar el nombre' });
   }
