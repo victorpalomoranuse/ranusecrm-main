@@ -671,7 +671,7 @@ export function abrirVisor360(cont, url) {
 
 // ── Alzados y plantas de detalle: vista casi ortogonal de una parte (un muro, un suelo o un techo) con cotas automáticas
 const cm0 = v => String(Math.round(v * 100));
-export function construirAlzadoMuro(mu, lado, hCm, zonas) {
+export function construirAlzadoMuro(mu, lado, hCm, zonas, rejilla) {
   const g = new THREE.Group(), L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) * CM, H = hCm * CM, t = (mu.t || 12) * CM, z = lado * (t / 2 + 0.03), k = Math.max(0.6, Math.max(L, H) / 6);
   g.position.set(mu.a[0] * CM, 0, mu.a[1] * CM); g.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
   const lineMat = new THREE.LineBasicMaterial({ color: 0x111111, depthTest: false }), cotaMat = new THREE.LineBasicMaterial({ color: 0x0b3d91, depthTest: false }), rej = new THREE.LineBasicMaterial({ color: 0xd2d2d2, depthTest: false });
@@ -679,8 +679,10 @@ export function construirAlzadoMuro(mu, lado, hCm, zonas) {
   const txt = (s, x, y) => { if (!s) return; const sp = cartel(s); sp.scale.multiplyScalar(k); sp.position.set(x, y, z + lado * 0.02); g.add(sp); };
   const dimH = (x0, x1, y, s) => { linea([[x0, y], [x1, y]], cotaMat); linea([[x0, y - 0.06 * k], [x0, y + 0.06 * k]], cotaMat); linea([[x1, y - 0.06 * k], [x1, y + 0.06 * k]], cotaMat); txt(s, (x0 + x1) / 2, y + 0.13 * k); };
   const dimV = (y0, y1, x, s) => { linea([[x, y0], [x, y1]], cotaMat); linea([[x - 0.06 * k, y0], [x + 0.06 * k, y0]], cotaMat); linea([[x - 0.06 * k, y1], [x + 0.06 * k, y1]], cotaMat); txt(s, x - 0.3 * k, (y0 + y1) / 2); };
-  for (let x = 0; x <= L + 1e-6; x += 0.5) linea([[x, 0], [x, H]], rej);
-  for (let y = 0; y <= H + 1e-6; y += 0.5) linea([[0, y], [L, y]], rej);
+  if (rejilla) {
+    for (let x = 0; x <= L + 1e-6; x += 0.5) linea([[x, 0], [x, H]], rej);
+    for (let y = 0; y <= H + 1e-6; y += 0.5) linea([[0, y], [L, y]], rej);
+  }
   linea([[0, 0], [L, 0], [L, H], [0, H], [0, 0]], lineMat);
   dimH(0, L, H + 0.3 * k, cm0(L) + ' cm'); dimV(0, H, -0.3 * k, cm0(H));
   (mu.ab || []).forEach((o, i) => {
@@ -698,15 +700,17 @@ export function construirAlzadoMuro(mu, lado, hCm, zonas) {
   });
   return g;
 }
-export function construirAlzadoPlanta(sala, yMundo, zonas) {
+export function construirAlzadoPlanta(sala, yMundo, zonas, rejilla) {
   const g = new THREE.Group(), pts = sala.pts || [], xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
   const bx0 = Math.min(...xs), bx1 = Math.max(...xs), by0 = Math.min(...ys), by1 = Math.max(...ys), k = Math.max(0.6, Math.max(bx1 - bx0, by1 - by0) * CM / 6);
   const lineMat = new THREE.LineBasicMaterial({ color: 0x111111, depthTest: false }), cotaMat = new THREE.LineBasicMaterial({ color: 0x0b3d91, depthTest: false }), rej = new THREE.LineBasicMaterial({ color: 0xd2d2d2, depthTest: false });
   const V = (x, y) => new THREE.Vector3(x * CM, yMundo, y * CM);
   const linea = (arr, mat) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arr.map(p => V(p[0], p[1]))), mat); l.renderOrder = 997; g.add(l); };
   const txt = (s, x, y) => { if (!s) return; const sp = cartel(s); sp.scale.multiplyScalar(k); sp.position.copy(V(x, y)); g.add(sp); };
-  for (let x = Math.ceil(bx0 / 50) * 50; x <= bx1; x += 50) linea([[x, by0], [x, by1]], rej);
-  for (let y = Math.ceil(by0 / 50) * 50; y <= by1; y += 50) linea([[bx0, y], [bx1, y]], rej);
+  if (rejilla) {
+    for (let x = Math.ceil(bx0 / 50) * 50; x <= bx1; x += 50) linea([[x, by0], [x, by1]], rej);
+    for (let y = Math.ceil(by0 / 50) * 50; y <= by1; y += 50) linea([[bx0, y], [bx1, y]], rej);
+  }
   linea([...pts, pts[0]], lineMat);
   const cx = (bx0 + bx1) / 2, cy = (by0 + by1) / 2;
   pts.forEach((p, i) => {
@@ -1194,6 +1198,8 @@ export default function Visor3D() {
   const [seleccion, setSeleccion] = useState(null);
   const [objs, setObjs] = useState([]);            // objetos de la escena 3D
   const objsRef = useRef([]);
+  const [rejAlz, setRejAlz] = useState(() => { try { return localStorage.getItem('visor3dRejAlz') === '1'; } catch { return false; } }); // rejilla de 50 cm en alzados y plantas de detalle (oculta por defecto)
+  useEffect(() => { try { localStorage.setItem('visor3dRejAlz', rejAlz ? '1' : '0'); } catch { /* sin almacenamiento */ } }, [rejAlz]);
   const [editMod, setEditMod] = useState(null);       // id del objeto con modelo en el que se ha entrado (doble clic) para borrar piezas
   const editModRef = useRef(null);
   useEffect(() => { editModRef.current = editMod; const h = e => { if (e.key === 'Escape') setEditMod(null); }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [editMod]);
@@ -2542,15 +2548,15 @@ export default function Visor3D() {
       const mu = (pl0.muros || []).find(x => x.id === alz.id); if (!mu) return;
       const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]), ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, n = new THREE.Vector3(-uy * alz.lado, 0, ux * alz.lado), c = new THREE.Vector3((mu.a[0] + ux * L / 2) * CM, 0, (mu.a[1] + uy * L / 2) * CM), t = ((mu.t || 12) / 2) * CM;
       a.renderer.clippingPlanes = [new THREE.Plane().setFromNormalAndCoplanarPoint(n.clone().negate(), c.clone().add(n.clone().multiplyScalar(t + prof))), new THREE.Plane().setFromNormalAndCoplanarPoint(n.clone(), c.clone().sub(n.clone().multiplyScalar(t + 0.05)))];
-      a.alzG = construirAlzadoMuro(mu, alz.lado, mu.h || H, objs.filter(o => o.tipo === 'zona' && o.plano === 'pared' && o.muroId === mu.id));
+      a.alzG = construirAlzadoMuro(mu, alz.lado, mu.h || H, objs.filter(o => o.tipo === 'zona' && o.plano === 'pared' && o.muroId === mu.id), rejAlz);
     } else {
       const sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === alz.id); if (!sala) return;
       const y = alz.tipo === 'techo' ? H * CM - 0.02 : 0.02;
       a.renderer.clippingPlanes = [alz.tipo === 'techo' ? new THREE.Plane(new THREE.Vector3(0, 1, 0), -(H * CM - prof)) : new THREE.Plane(new THREE.Vector3(0, -1, 0), prof)];
-      a.alzG = construirAlzadoPlanta(sala, y, objs.filter(o => o.tipo === 'zona' && o.plano === alz.tipo));
+      a.alzG = construirAlzadoPlanta(sala, y, objs.filter(o => o.tipo === 'zona' && o.plano === alz.tipo), rejAlz);
     }
     a.scene.add(a.alzG);
-  }, [alz, objs, rev, estado, profAlz]);
+  }, [alz, objs, rev, estado, profAlz, rejAlz]);
 
   // Asas de los vértices de la forma seleccionada: azules = vértices (arrastrar), verdes = punto medio de un lado (clic para añadir un vértice)
   useEffect(() => {
@@ -4123,6 +4129,7 @@ export default function Visor3D() {
       )}
       {alz && (
         <div style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12, zIndex: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.35)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', maxWidth: '96vw' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }} title="Cuadrícula de 50 cm sobre el alzado o la planta"><input type="checkbox" checked={rejAlz} onChange={e => setRejAlz(e.target.checked)} /> Cuadrícula</label>
           <b style={{ fontSize: 13 }}>📐 {alz.tipo === 'muro' ? 'Alzado del muro' : alz.tipo === 'suelo' ? 'Planta del suelo' : 'Planta del techo'}</b>
           <label title={alz.tipo === 'muro' ? 'Hasta qué distancia delante del muro se ven los objetos (muebles, máquinas…)' : alz.tipo === 'suelo' ? 'Altura del corte horizontal' : 'Hasta cuántos cm bajo el techo se ve'}>Corte <input type="number" value={profAlz} onChange={e => setProfAlz(parseFloat(e.target.value) || 100)} style={{ ...btn, width: 62, padding: '2px 6px' }} /> cm</label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} title="Atrae el dibujo a esquinas, bordes de huecos y vértices. Desmárcalo para dibujar libre"><input type="checkbox" checked={imanActivo} onChange={e => setImanActivo(e.target.checked)} /> Imán</label>
