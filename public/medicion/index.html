@@ -2594,11 +2594,12 @@ function lumExtras(C,px,view,o){
   if(view!=='ilum'&&view!=='elec')return '';
   if(view==='ilum'){
     var tg=lumTagMap(),showD=o.ldim!==false&&st.v.ld!=='0';
-    cnList().forEach(function(c){
+    if(st.v.cnVer!==false||(sel&&sel.t==='cn'))cnList().forEach(function(c){ /* encendidos: líneas muy finas y claras (la seleccionada sí destaca); se pueden ocultar en la paleta */
       var pp=cnPts(c),col=cnCol(c),sl=sel&&sel.t==='cn'&&sel.id===c.id,i;
-      var suave=o.flat&&!sl,colL=col;if(suave&&/^#[0-9a-f]{6}$/i.test(col))col=hexMix(col,'#ffffff',0.55); /* en la lámina las líneas de encendido van más finas y transparentes para que no tapen el plano */
-      for(i=0;i<pp.length-1;i++)h+=ln(pp[i].x,pp[i].y,pp[i+1].x,pp[i+1].y,col,(sl?3.2:suave?1.1:1.5)*px,'round',suave?';stroke-opacity:.38':'');
-      var e=pp[pp.length-1];h+='<circle cx="'+f2(e.x)+'" cy="'+f2(e.y)+'" r="'+f2((suave?2:2.6)*px)+'" style="fill:'+col+(suave?';fill-opacity:.45':'')+'"/>';
+      if(st.v.cnVer===false&&!sl)return;
+      var suave=!sl;if(suave&&o.flat&&/^#[0-9a-f]{6}$/i.test(col))col=hexMix(col,'#ffffff',0.62);
+      for(i=0;i<pp.length-1;i++)h+=ln(pp[i].x,pp[i].y,pp[i+1].x,pp[i+1].y,col,(sl?3.2:o.flat?0.8:0.9)*px,'round',suave?(o.flat?'':';stroke-opacity:.4'):'');
+      var e=pp[pp.length-1];h+='<circle cx="'+f2(e.x)+'" cy="'+f2(e.y)+'" r="'+f2((suave?1.6:2.6)*px)+'" style="fill:'+col+(suave&&!o.flat?';fill-opacity:.45':'')+'"/>';
     });
     /* cotas de las luces (a los muros y entre sí): en un azul grisáceo suave para que no recarguen el plano. Entre dos luces en fila se pone la cota entre ellas en vez de seguir hasta el muro */
     var CL='#6f9db0',CLT='#4f8196',pl=[],nb={};
@@ -2877,7 +2878,9 @@ function lumColor(mo){
   if(!lumColOn())return null;
   return (st.v.lumCol&&/^#[0-9a-f]{6}$/i.test(st.v.lumCol[mo]||'')&&st.v.lumCol[mo])||LUMCOL_DEF[mo]||null;
 }
-function ptColor(C,q){return q.v==='ilum'?(lumColor(ptMontAny(q))||C.ink):C.ink}
+var ELEC_COL={enchufe:'#d9480f',inter:'#1c7ed6',conm:'#1c7ed6',datos:'#7048e8',tv:'#0b7285',fuerza:'#c2255c',cuadro:'#2b8a3e'};
+function elecColor(k){return ELEC_COL[k]||null}
+function ptColor(C,q){return q.v==='ilum'?(lumColor(ptMontAny(q))||C.ink):(elecColor(q.k)||C.ink)}
 var PERFIL=[['','Sin perfil (solo la tira)'],['sup','Perfil de superficie'],['emp','Perfil empotrado'],['mol','Perfil de moldura (luz indirecta)'],['esq','Perfil de esquina'],['col','Perfil suspendido'],['rod','Perfil de rodapié o zócalo']];
 var PERFIL_CORTO={sup:'perfil de superficie',emp:'perfil empotrado',mol:'perfil de moldura',esq:'perfil de esquina',col:'perfil suspendido',rod:'perfil de rodapié'};
 /* el perfil solo existe en la tira LED (tira + perfil); carriles y luminarias lineales ya vienen montados */
@@ -3189,6 +3192,7 @@ function ledOpt(k){
   else if(k==='orto')st.ledOrto=st.ledOrto===false;
   else if(k.indexOf('mont:')===0)st.ledMont=k.slice(5);
   else if(k==='colores'){snap();st.v.lumColOn=!lumColOn();save()}
+  else if(k==='encend'){snap();st.v.cnVer=st.v.cnVer===false;save()}
   else if(k==='fin'){ledFin();return}
   else if(k==='cancel')st.ledPts=null;
   drawPal();hint();render();
@@ -6356,7 +6360,7 @@ function drawPal(){
   var colHtml='';
   if(v==='ilum'){
     var cOn=lumColOn();
-    colHtml='<button data-led="colores" aria-pressed="'+cOn+'" style="grid-column:1/-1" title="Cada montaje (techo, pared, suelo, de pie…) con su color, en el plano y en la leyenda">Colores por montaje: '+(cOn?'sí':'no')+'</button>';
+    colHtml='<button data-led="encend" aria-pressed="'+(st.v.cnVer!==false)+'" style="grid-column:1/-1" title="Las líneas que unen cada interruptor con sus luces. Se pueden ocultar para dejar el plano limpio (también en la lámina)">Líneas de encendido: '+(st.v.cnVer!==false?'sí':'no')+'</button>'+'<button data-led="colores" aria-pressed="'+cOn+'" style="grid-column:1/-1" title="Cada montaje (techo, pared, suelo, de pie…) con su color, en el plano y en la leyenda">Colores por montaje: '+(cOn?'sí':'no')+'</button>';
     if(cOn)colHtml+='<div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:6px 10px">'+MONT_P.map(function(m){return '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px"><input type="color" data-t="lcol" data-mo="'+m[0]+'" value="'+(lumColor(m[0])||LUMCOL_DEF[m[0]])+'" style="width:34px;height:28px;padding:1px"><span>'+m[1]+'</span></label>'}).join('')+'</div>';
     $('alz-modo').innerHTML=colHtml;
   }
@@ -9483,7 +9487,7 @@ function sheetPage(doc,view,idx,total,o){
         if(d.lin){
           if(k==='led')p.line(xL,y+rh*0.7,xL+12,y+rh*0.7,INK,0.5,[1.6,1]);
           else{p.line(xL,y+rh*0.7,xL+12,y+rh*0.7,INK,1.3);p.line(xL,y+rh*0.7,xL+12,y+rh*0.7,'#ffffff',0.55)}
-        }else p.svg('<g transform="translate('+(xL+6)+' '+f2(y+rh*0.7)+')">'+ptSym(k,INK,0.46)+'</g>');
+        }else p.svg('<g transform="translate('+(xL+6)+' '+f2(y+rh*0.7)+')">'+ptSym(k,elecColor(k)||INK,0.46)+'</g>');
         var nm=d.n+(hk.length===1?'  · a '+hk[0]+' cm':'');
         p.text(xL+16,y+4.6*f,fitTxt(nm,pw-16-14,false,body*25.4/72),body,{col:INK});
         p.text(xR,y+4.6*f,d.lin?m2(kk.len/100)+' m':'× '+kk.n,body,{col:INK,anchor:'end',bold:true});
