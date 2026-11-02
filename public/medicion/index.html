@@ -2525,7 +2525,7 @@ var DIRN={l:'izquierda',r:'derecha',u:'superior',d:'inferior'};
 function lumList(){var m={},out=[];LUMS.forEach(function(l){m[l.id]=1;out.push(l)});cloudLum.forEach(function(l){if(!m[l.id]){m[l.id]=1;out.push(l)}});return out}
 function lumById(id){var a=lumList();for(var i=0;i<a.length;i++)if(a[i].id===id)return a[i];return null}
 function isSw(q){return q.v==='elec'&&(q.k==='inter'||q.k==='conm')&&q.s!=='dem'}
-function ptSz(q){return (q.sz||1)*(q.v==='ilum'?(st.v.lsz||1):1)*ZOOMF}
+function ptSz(q){return (q.sz||1)*(q.v==='ilum'?(st.v.lsz||1):1)*ZSYM}
 function rayWalls(ox,oy,dx,dy,view){
   var best=Infinity;
   st.v.walls.forEach(function(w){
@@ -2668,7 +2668,7 @@ function lumExtras(C,px,view,o){
   }
   st.v.pts.forEach(function(q){
     if(!isSw(q))return;
-    var c=ptPos(q),r=5.5*px*1.9,m=sw[q.id],col=view==='ilum'?CNC[(m.i-1)%CNC.length]:C.label;
+    var c=ptPos(q),r=5.5*px*1.9*ZSYM,m=sw[q.id],col=view==='ilum'?CNC[(m.i-1)%CNC.length]:C.label;
     h+=txt(C,px,c.x+r+8*px,c.y-r*0.5,m.tag,col,11,700);
   });
   return h;
@@ -3474,7 +3474,7 @@ function ajustePanel(){
 var PAGE_ROT=0; /* al exportar, -90 si la lámina lleva el plano girado (todo lo que se dibuja gira con él) */
 function angTxt(vertPlan){var pv=PAGE_ROT?!vertPlan:vertPlan;return (pv?-90:0)-PAGE_ROT} /* giro del texto en el plano para que se lea en pie en la hoja: horizontal en las líneas horizontales y vertical (de abajo a arriba) en las verticales */
 /* aumento de los textos del plano al exportar a lámina (en papel los números y etiquetas se leían muy pequeños) */
-var ZOOMF=1; /* en pantalla, al alejarte los textos y símbolos se encogen un poco (sin llegar a ser ilegibles) para que no se coman el plano */
+var ZOOMF=1,ZSYM=1; /* ZSYM: igual que ZOOMF pero para los símbolos de luces, enchufes e interruptores (se encogen más al alejarse) */ /* en pantalla, al alejarte los textos y símbolos se encogen un poco (sin llegar a ser ilegibles) para que no se coman el plano */
 var TXTK=1,ESTR='todo'; /* ESTR: qué estructura del techo se dibuja como referencia al exportar Iluminación y Electricidad */
 function txt(C,px,x,y,s,col,size,weight,halo,rot){
   size=size*TXTK*ZOOMF;
@@ -3746,9 +3746,10 @@ function mmSvg(C,px,sel,o,filtro,colBase){
   return {h:h,z:z};
 }
 function scene(C,k,view,o){
-  var prev=ADJ,zprev=ZOOMF;ADJ={view:view,adj:!!o.adj&&!o.flat,hits:[],sel:o.adjSel||null,px:1/k};
+  var prev=ADJ,zprev=ZOOMF,zsprev=ZSYM;ADJ={view:view,adj:!!o.adj&&!o.flat,hits:[],sel:o.adjSel||null,px:1/k};
   ZOOMF=o.flat?1:Math.max(0.4,Math.min(1,Math.pow(k/0.45,0.6)));
-  try{var r=scene0(C,k,view,o);if(ADJ.adj)adjHits=ADJ.hits;return r}finally{ADJ=prev;ZOOMF=zprev}
+  ZSYM=Math.max(0.28,Math.min(1,Math.pow(k/0.45,0.95))); /* en pantalla k = zoom; al exportar k = 40/escala, así que los símbolos también se encogen en planos grandes */
+  try{var r=scene0(C,k,view,o);if(ADJ.adj)adjHits=ADJ.hits;return r}finally{ADJ=prev;ZOOMF=zprev;ZSYM=zsprev}
 }
 function scene0(C,k,view,o){
   if(view==='alz')return sceneAlz(C,k,o);
