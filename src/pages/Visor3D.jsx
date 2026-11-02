@@ -2260,7 +2260,7 @@ export default function Visor3D() {
     const g = new THREE.Group(); g.userData.capa = 'luces'; g.visible = !ocultas.includes('luces');
     const HT = a.modelo?.altura || 260;
     const ALT = { foco: HT - 1, plaf: HT - 1, colg: HT - 60, aplq: 180, pie: 120, suel: 5, esp: 160, mue: 90, spot: HT - 6, spotl: HT - 6 };
-    const matNegro = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5, metalness: 0.3 });
+    const matNegro = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5, metalness: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); // el desplazamiento evita que parpadee donde roza el techo
     let nLuces = 0;
     lucesPl.slice(0, 120).forEach(l0 => {
       const l = { ...l0, ...(luzOver[l0.id] || {}) };
@@ -2276,7 +2276,7 @@ export default function Visor3D() {
         const y = (l.h != null ? l.h * CM : ceil) - (esL ? 0.004 : alto / 2) - (l.kid === 'linealc' ? 0.5 : 0);
         for (let i = 0; i < l.vs.length - 1; i++) {
           const p = l.vs[i], q = l.vs[i + 1], L = Math.hypot(q[0] - p[0], q[1] - p[1]) * CM; if (L < 0.01) continue;
-          const m = new THREE.Mesh(new THREE.BoxGeometry(L, alto, ancho), esL || !esC ? new THREE.MeshBasicMaterial({ color: esL ? col : 0xf4f4f4 }) : matNegro);
+          const m = new THREE.Mesh(new THREE.BoxGeometry(L, alto, ancho), esL || !esC ? new THREE.MeshBasicMaterial({ color: esL ? col : 0xf4f4f4, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : matNegro);
           m.position.set(((p[0] + q[0]) / 2) * CM, y, ((p[1] + q[1]) / 2) * CM); m.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); m.traverse(x => { x.userData.luzId = l.id; }); g.add(m);
           if (!esC && puede()) { const pl = new THREE.PointLight(col, Math.max(5, lm * (L / CM / 100) / 12.57) * 0.22 * ambiente.luces * 0.6, 0, 2); pl.position.set(m.position.x, y - 0.05, m.position.z); g.add(pl); }
         }
