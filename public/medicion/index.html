@@ -5293,7 +5293,9 @@ function endPtr(e){
     gesture=null;$('marq').hidden=true;
     if(!g.moved||e.type!=='pointerup'){if(e.type==='pointerup')tap(toW(loc(e)));return}
     var a=toW({x:g.x0,y:g.y0}),b=toW({x:g.x1,y:g.y1}),rr={x0:Math.min(a.x,b.x),y0:Math.min(a.y,b.y),x1:Math.max(a.x,b.x),y1:Math.max(a.y,b.y)};
-    st.multi=elementosEn(rr,g.x1<g.x0);st.sel=null;closeQE();render();panelSel();
+    st.multi=elementosEn(rr,g.x1<g.x0);st.sel=null;
+    if(st.multi.length===1){st.sel=st.multi[0];st.multi=[]} /* un solo elemento en el recuadro: se trata como una selección normal (con todos sus campos) */
+    closeQE();render();panelSel();
     if(!st.multi.length)toast('No hay nada en esa área');
   }
   else if(g.type==='dragMulti'&&g.id===e.pointerId){
@@ -6521,6 +6523,8 @@ function panelSel(focus){
     if(st.multi.every(function(m){return m.t==='dr'})){
       h+='<p class="note">Clic derecho sobre ellos: agrupar, crear bloque, duplicar o borrar. Las distancias a los muros se pueden escribir para colocarlos.</p><div class="btns"><button data-a="dragrupar">Agrupar</button><button data-a="drdesagrupar">Desagrupar</button><button data-a="drbloquesel">Crear bloque…</button></div>';
     }
+    var nIl=st.multi.filter(function(m){var q=m.t==='pt'?by(st.v.pts,m.id):null;return q&&q.v==='ilum'}).length;
+    if(nIl>0){var nms={};st.multi.forEach(function(m){var q=m.t==='pt'?by(st.v.pts,m.id):null;if(q&&q.v==='ilum')nms[q.nm||'']=1});h+='<label class="fld"><span>Nombre propio de estas '+nIl+' luminarias (opcional)</span><input data-t="mu_nm" value="'+esc(Object.keys(nms).length===1?Object.keys(nms)[0]:'')+'" placeholder="Ej. Spots carril entrada" autocomplete="off"></label><p class="note" style="margin:0 0 6px">Se pone el mismo nombre a todas las luminarias seleccionadas; salen agrupadas con ese nombre en la leyenda y en las mediciones.</p>'}
     if(st.multi.filter(function(m){var q=m.t==='pt'?by(st.v.pts,m.id):null;return q&&(q.k==='spot'||q.k==='spotl')}).length>1)h+='<p class="note" style="margin:8px 0 2px">Spots en el carril:</p><div class="btns"><button data-a="mcar:igual" title="Deja el mismo hueco entre todos, sin mover el primero ni el último">Repartir huecos iguales</button></div>'+fld('rl_hg','Hueco fijo entre spots (cm)',st.rlHG==null?10:st.rlHG)+'<div class="btns"><button data-a="mcar:fijo" title="Coloca los spots seguidos desde el primero con ese hueco entre cada uno">Aplicar ese hueco</button></div>';
     if(st.multi.filter(function(m){return m.t==='eq'||m.t==='pil'||m.t==='pt'}).length>1)h+='<p class="note" style="margin:8px 0 2px">Centrar entre sí (luces, máquinas, pilares):</p><div class="btns tr"><button data-a="mal:cy" title="Las deja en la misma fila (mismo Y), a la altura media">Misma fila ↔</button><button data-a="mal:cx" title="Las deja en la misma columna (mismo X)">Misma columna ↕</button><button data-a="mal:rx" title="Reparte a igual distancia de izquierda a derecha entre la primera y la última">Repartir ↔</button><button data-a="mal:ry" title="Reparte a igual distancia de arriba a abajo">Repartir ↕</button></div>';
     h+=''+multiPropsHtml()+'<p class="note" style="margin:8px 0 2px">Girar todo el grupo alrededor de su centro:</p><div class="btns tr"><button data-a="mrot:-90" title="Girar 90° a la izquierda">⟲ 90°</button><button data-a="mrot:-45">⟲ 45°</button><button data-a="mrot:-5">⟲ 5°</button><button data-a="mrot:5">⟳ 5°</button><button data-a="mrot:45">⟳ 45°</button><button data-a="mrot:90" title="Girar 90° a la derecha">⟳ 90°</button></div><p class="note" style="margin:8px 0 2px">Voltear (espejo) todo el grupo:</p><div class="btns tr"><button data-a="mflip:h" title="Espejo izquierda ↔ derecha">⇋ Izquierda ↔ derecha</button><button data-a="mflip:v" title="Espejo arriba ↔ abajo">⇅ Arriba ↔ abajo</button></div><div class="btns"><button data-a="mdup">Duplicar</button><button data-a="mclear">Quitar selección</button></div><div class="btns"><button class="danger" data-a="mdel">Borrar todo</button></div>';
@@ -7418,6 +7422,7 @@ function doAction(a,el){
 $('side').addEventListener('change',function(e){
   var k=e.target.getAttribute&&e.target.getAttribute('data-f');if(k)applyField(k,e.target.value,false);
   var t=e.target.getAttribute&&e.target.getAttribute('data-t');
+  if(t==='mu_nm'){var vnm=String(e.target.value||'').trim().slice(0,80);snap();(st.multi||[]).forEach(function(m){var q=m.t==='pt'?by(st.v.pts,m.id):null;if(q&&q.v==='ilum'){if(vnm)q.nm=vnm;else delete q.nm}});commit(false);return}
   if(t==='rl_hg'){var vhg=parseFloat(String(e.target.value).replace(',','.'));if(vhg>=0&&vhg<=1000)st.rlHG=vhg;return}
   if(t&&t.indexOf('ms_')===0&&st.multi&&st.multi.length){medidasMulti(t,e.target);return}
   if(t&&t.indexOf('m_')===0&&st.multi&&st.multi.length){multiEdit(t,e.target);return}
