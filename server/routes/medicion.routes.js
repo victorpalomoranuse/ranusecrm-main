@@ -409,7 +409,9 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
       const cat = catPorId[p.category_id];
       return cat ? { id: p.id, n: p.name, m: p.brand || '', c: limpiarCategoria(cat.name), t: cat.type } : null;
     }).filter(Boolean).slice(0, 4000);
-    const cuerpo = { maquinas, luminarias, materiales, productos, admin: req.user?.role === 'admin_superior' };
+    const mbGen = await leerModelosBib().catch(() => ({}));
+    const modelosGen = Object.fromEntries(Object.entries(mbGen).filter(([k, v]) => k.startsWith('lib-') && v?.url).map(([k, v]) => [k, { url: v.url, tipo: v.tipo || 'glb', rot: Number(v.rot) || 0 }]));
+    const cuerpo = { maquinas, modelosGen, luminarias, materiales, productos, admin: req.user?.role === 'admin_superior' };
     guardaCatalogo(claveCat, cuerpo);
     res.json(cuerpo);
   } catch (err) {

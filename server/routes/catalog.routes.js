@@ -11,9 +11,10 @@ import JSZip from 'jszip';
 import { leerModelosBib, guardarModeloBib } from '../utils/modelos-bib.js';
 
 // Las piezas de la biblioteca propia (ids «bib-…») guardan su modelo 3D en un archivo aparte, no en catalog_products
-const esBib = (id) => String(id).startsWith('bib-');
+const esBib = (id) => /^(bib|lib)-/.test(String(id)); // lib-… = bloques genéricos de Planos (sin fila en la base de datos)
 async function productoOBib(id) {
   if (!esBib(id)) { const { data, error } = await supabase.from('catalog_products').select('id, bloques').eq('id', id).maybeSingle(); if (error) throw error; return data; }
+  if (String(id).startsWith('lib-')) return { id, bloques: { modelo3d: (await leerModelosBib())[id] } };
   const { data: b, error } = await supabase.from('biblioteca_bloques').select('id').eq('id', id.slice(4)).maybeSingle();
   if (error) throw error;
   return b ? { id, bloques: { modelo3d: (await leerModelosBib())[id] } } : null;

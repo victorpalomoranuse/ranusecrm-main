@@ -2803,7 +2803,7 @@ export default function Visor3D() {
   }, [objs, acab, rodapie, guias]);
 
   useEffect(() => {
-    api.get('/medicion/catalogos').then(r => { setLumCat(r.data?.luminarias || []); setMatsCat((r.data?.materiales || []).filter(m => m.url)); return setBiblioteca((r.data?.maquinas || []).filter(m => m.w > 0 && m.d > 0)); }).catch(() => setBiblioteca([]));
+    api.get('/medicion/catalogos').then(r => { setLumCat(r.data?.luminarias || []); setMatsCat((r.data?.materiales || []).filter(m => m.url)); return setBiblioteca((r.data?.maquinas || []).filter(m => m.w > 0 && m.d > 0).concat(Object.entries(r.data?.modelosGen || {}).map(([gid, mod]) => ({ id: gid, n: gid, w: 1, d: 1, generico: true, modelo3d: mod })))); }).catch(() => setBiblioteca([]));
   }, []);
   const modeloDe = o => o.mod || (o.cid && biblioteca?.find(m => m.id === o.cid)?.modelo3d) || null;
 
@@ -3185,7 +3185,7 @@ export default function Visor3D() {
     try {
       const fd = new FormData(); fd.append('file', archivo);
       const r = await api.post('/catalog/products/' + seleccion.cid + '/modelo3d', fd), nuevo = r.data?.modelo3d;
-      setBiblioteca(prev => (prev || []).map(m => (m.id === seleccion.cid ? { ...m, modelo3d: { url: nuevo.url, tipo: nuevo.tipo, rot: nuevo.rot } } : m)));
+      setBiblioteca(prev => { const p0 = prev || [], mod = { url: nuevo.url, tipo: nuevo.tipo, rot: nuevo.rot }; return p0.some(m => m.id === seleccion.cid) ? p0.map(m => (m.id === seleccion.cid ? { ...m, modelo3d: mod } : m)) : [...p0, { id: seleccion.cid, n: seleccion.cid, w: 1, d: 1, generico: true, modelo3d: mod }]; });
       refrescarModelosEq(); setSubiendo('Modelo asignado ✓ (se guarda en el producto del catálogo)');
     } catch (e) { setSubiendo(e.response?.data?.error || 'No se pudo subir el modelo (¿es un producto del catálogo?)'); }
   };
