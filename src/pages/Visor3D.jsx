@@ -2214,6 +2214,11 @@ export default function Visor3D() {
       if (poliAbajo) {
         const d0 = Math.hypot(e.clientX - poliAbajo[0], e.clientY - poliAbajo[1]); poliAbajo = null;
         if (d0 < 4) {
+          // Rectángulo, círculo y polígono: si el primer clic cae en una pared, la forma se dibuja sobre esa pared (como en SketchUp); en el suelo sigue creando el volumen
+          if (herrRef.current === 'poli' && poli.length === 0) {
+            const gp = golpePared(e);
+            if (gp) { poliP = { id: gp.id, mu: gp.mu, lado: gp.lado, pts: [[gp.s, gp.y]] }; dibujarPared(null); setHerr('zonaP'); setGuardado(formaRef.current === 'poli' ? 'Sobre la pared: clic punto a punto y Enter para cerrar' : 'Sobre la pared: haz clic en la esquina opuesta'); return; }
+          }
           let p = puntoSuelo(e);
           if (p) {
             const formaTool = ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli';
@@ -4032,8 +4037,8 @@ export default function Visor3D() {
           nOcultos > 0 && railBtn(false, 'mostrar', 'Mostrar (' + nOcultos + ')', 'Vuelve a mostrar todo lo que ocultaste', mostrarTodo),
         ].filter(Boolean))}
         {grupoRail([
-          railBtn(herr === 'poli' && formaDib === 'rect', 'rect', 'Rectángulo', 'Dibuja un rectángulo sobre el suelo y luego tira hacia arriba para darle altura', () => { setFormaDib('rect'); setHerr('poli'); }),
-          railBtn(herr === 'poli' && formaDib === 'oval', 'circ', 'Círculo', 'Dibuja un círculo o elipse y luego tira hacia arriba para darle altura', () => { setFormaDib('oval'); setHerr('poli'); }),
+          railBtn(herr === 'poli' && formaDib === 'rect', 'rect', 'Rectángulo', 'Dibuja un rectángulo sobre el suelo (y tira hacia arriba para darle altura) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('rect'); setHerr('poli'); }),
+          railBtn(herr === 'poli' && formaDib === 'oval', 'circ', 'Círculo', 'Dibuja un círculo o elipse sobre el suelo (y tira hacia arriba) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('oval'); setHerr('poli'); }),
           railBtn(herr === 'poli' && formaDib === 'poli', 'poli', 'Polígono', 'Clic punto a punto; cierra con Enter. Luego tira hacia arriba para darle altura', () => { setFormaDib('poli'); setHerr('poli'); }),
           railBtn(herr === 'empujar', 'empujar', 'Empujar', 'Arrastra la cara de arriba de una forma para darle o cambiarle la altura', () => setHerr('empujar')),
         ], false, 'Dibujar')}
