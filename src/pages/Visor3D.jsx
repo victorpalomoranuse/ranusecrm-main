@@ -303,6 +303,8 @@ export function registraLod(a, mm, prox) {
 // Un modelo de SketchUp o de un fabricante suele traer cientos de piezas sueltas: cada una es una «llamada de dibujo» y es lo que más frena.
 // Al descargarlo se unen todas las piezas que comparten material en una sola malla (una vez, y se reutiliza en todas las copias).
 // Las partes pintables pasan a ser los materiales del modelo.
+// Cambia un valor de material (#hex o tex:ID) por otro en todo un conjunto de datos (acabados, objetos…)
+const reemplazaValor = (x, a, b) => (typeof x === 'string' ? (x.toLowerCase() === a ? b : x) : Array.isArray(x) ? x.map(v => reemplazaValor(v, a, b)) : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, reemplazaValor(v, a, b)])) : x);
 function fusionarModelo(raw) {
   try {
     raw.updateMatrixWorld(true);
@@ -1230,6 +1232,7 @@ export default function Visor3D() {
   const objsRef = useRef([]);
   const [rejAlz, setRejAlz] = useState(() => { try { return localStorage.getItem('visor3dRejAlz') === '1'; } catch { return false; } }); // rejilla de 50 cm en alzados y plantas de detalle (oculta por defecto)
   useEffect(() => { try { localStorage.setItem('visor3dRejAlz', rejAlz ? '1' : '0'); } catch { /* sin almacenamiento */ } }, [rejAlz]);
+  const [soloEsta, setSoloEsta] = useState(false);     // al ajustar un color liso: solo la superficie cogida (true) o todas las que tengan ese color (false)
   const [editMod, setEditMod] = useState(null);       // id del objeto con modelo en el que se ha entrado (doble clic) para borrar piezas
   const editModRef = useRef(null);
   useEffect(() => { editModRef.current = editMod; const h = e => { if (e.key === 'Escape') setEditMod(null); }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [editMod]);
@@ -3789,6 +3792,14 @@ export default function Visor3D() {
                       {t.maps?.[k] ? <><span style={{ color: '#d4c9bb' }}>✓ cargado</span><span onClick={() => quitarMapa(k)} style={{ cursor: 'pointer', opacity: 0.7 }} title="Quitar">✕</span></> : <label style={{ ...btn, padding: '2px 8px', fontSize: 12, cursor: 'pointer' }}>subir…<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { subirMapa(k, e.target.files?.[0]); e.target.value = ''; }} /></label>}
                     </div>
                   ))}
+                  <button style={{ ...btn, marginBottom: 4, marginRight: 6 }} title="Crea una copia de este material y la pone solo en la superficie que cogiste, para ajustarla sin tocar las demás" onClick={async () => {
+                    try {
+                      const r = await api.post('/medicion/' + id + '/textura/' + t.id + '/duplicar'), nueva = r.data.textura;
+                      setTexturas(x => [...x, nueva]);
+                      const g = api3d.current.ultimoGoteo; matSelRef.current = { id: nueva.id }; g?.aplicar?.(g.hit, false);
+                      setMatSel({ id: nueva.id }); setGuardado('Material duplicado: lo que ajustes ahora solo afecta a esta superficie');
+                    } catch (e) { setAviso(e.response?.data?.error || 'No se pudo duplicar el material'); }
+                  }}>⧉ Duplicar material</button>
                   <button style={{ ...btn, marginBottom: 4 }} onClick={() => guarda(t.junta || null, t.tam, t.desp, { pbr: null })}>Restablecer material</button>
                   <div style={{ fontWeight: 700, margin: '10px 0 4px' }}>Despiece</div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Colocación</span>
@@ -4334,6 +4345,7 @@ export default function Visor3D() {
                     if (normal) { const fd = new FormData(); fd.append('tipo', 'normal'); fd.append('file', normal); nueva = (await api.post('/medicion/' + id + '/textura/' + nueva.id + '/mapa', fd)).data.textura; }
                     setTexturas(x => (x.some(y => y.id === nueva.id) ? x : [...x, nueva]));
                     const g = api3d.current.ultimoGoteo; matSelRef.current = { id: nueva.id }; g?.aplicar?.(g.hit, true);
+                    if (!soloEsta && matSel.hex) { const v0 = hexL.toLowerCase(), v1 = 'tex:' + nueva.id; setAcab(a => reemplazaValor(a, v0, v1)); setObjs(p => reemplazaValor(p, v0, v1)); }
                     setMatSel({ id: nueva.id }); setGuardado('Material propio creado: ya puedes ajustarlo');
                   } catch (e) { setAviso(e.response?.data?.error || 'No se pudo crear el material'); }
                 };
@@ -4343,6 +4355,7 @@ export default function Visor3D() {
                     <div style={{ fontWeight: 700, marginBottom: 6 }}>Mapa</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}><span style={{ opacity: 0.7, fontSize: 12, width: 100 }}>Color base</span><input type="color" key={hexL} defaultValue={hexL} title="Rueda de color" onChange={e => { const v = e.target.value; clearTimeout(window.__tcol); window.__tcol = setTimeout(() => crear({}, v), 500); }} style={{ width: 40, height: 30, padding: 0, border: '1px solid #666', borderRadius: 6, background: 'none', cursor: 'pointer' }} /><code style={{ fontSize: 12 }}>{hexL}</code></div>
                     {sl('Rugosidad', 'rough', 1, 0.6)}{sl('Metálico', 'metal', 1, 0)}{sl('Reflejos entorno', 'env', 3, 1)}{sl('Barniz', 'clearcoat', 1, 0)}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, margin: '4px 0', cursor: 'pointer' }} title="Por defecto, al ajustar se cambian todas las superficies que tengan este mismo color"><input type="checkbox" checked={soloEsta} onChange={e => setSoloEsta(e.target.checked)} /> Solo esta superficie (no las demás con el mismo color)</label>
                     <label style={{ ...btn, display: 'block', textAlign: 'center', margin: '6px 0 4px', cursor: 'pointer', fontSize: 12 }} title="Sube la imagen de un mapa normal: se crea un material propio con este color y ese relieve">⬆ Subir mapa normal (imagen)<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) crear({}, null, fl); }} /></label>
                     <button style={{ ...btn, width: '100%', fontSize: 12 }} onClick={() => setMatAbierto(true)} title="Sube una foto y crea una textura nueva para aplicarla">🖼 Cambiar por una textura de imagen…</button>
                     <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>Es un color liso. Al mover cualquier ajuste se crea un material propio con ese color, se aplica a esta superficie y aparecen todos los ajustes (normales, AO, emisivo y UV).</div>

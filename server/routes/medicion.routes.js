@@ -918,6 +918,22 @@ router.delete('/:id/textura/:tid/mapa/:tipo', async (req, res) => {
     res.json({ textura: t });
   } catch (err) { res.status(500).json({ error: 'No se pudo quitar el mapa' }); }
 });
+router.post('/:id/textura/:tid/duplicar', async (req, res) => {
+  try {
+    const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
+    if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });
+    const esc = fila.data?.escena3d || { objetos: [] }, t = (esc.texturas || []).find(x => x.id === req.params.tid);
+    if (!t) return res.status(404).json({ error: 'No he encontrado ese material' });
+    const copia = JSON.parse(JSON.stringify(t));
+    copia.id = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4);
+    copia.nombre = String(t.nombre || 'Material').replace(/ \(copia( \d+)?\)$/, '').slice(0, 60) + ' (copia)';
+    delete copia.prod;
+    const data = { ...fila.data, escena3d: { ...esc, texturas: [...(esc.texturas || []), copia].slice(-80), updated: Date.now() } };
+    const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
+    if (error) throw error;
+    res.status(201).json({ textura: copia });
+  } catch (err) { console.error('textura duplicar:', err); res.status(500).json({ error: 'No se pudo duplicar el material' }); }
+});
 router.delete('/:id/textura/:tid', async (req, res) => {
   try {
     const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
