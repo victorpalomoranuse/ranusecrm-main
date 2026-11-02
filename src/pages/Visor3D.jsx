@@ -3612,6 +3612,14 @@ export default function Visor3D() {
   const esperar = ms => new Promise(r => setTimeout(r, ms));
   const ocultarAyudas = () => { const a = api3d.current, gs = [a.gizmoG, a.cotasG, a.nodoG, a.guiaG], v = gs.map(x => x && x.visible); gs.forEach(x => { if (x) x.visible = false; }); return () => gs.forEach((x, i) => { if (x) x.visible = v[i]; }); };
   const soltarSeleccion = async () => { setSelObj(null); setSelAcab(null); setSelHueco(null); setLuzSel(null); setSeleccion(null); api3d.current.limpiarSel?.(); await esperar(150); };
+  // Foto de lo que se ve ahora (para el Estudio de ideas): se dibuja un fotograma tal cual está la vista, sin cambiar tamaño, sombras ni la selección
+  const capturaVista = () => {
+    const a = api3d.current, restaura = ocultarAyudas();
+    try {
+      if (a.composer) a.composer.render(); else a.renderer.render(a.scene, a.cam);
+      return a.renderer.domElement.toDataURL('image/jpeg', 0.9);
+    } finally { restaura(); }
+  };
   const renderHDurl = async (opc = {}) => {
     await soltarSeleccion();
     const { renderer, scene, cam, sol } = api3d.current, el = caja.current, w0 = el.clientWidth, h0 = el.clientHeight, pr0 = renderer.getPixelRatio();
@@ -4082,7 +4090,7 @@ export default function Visor3D() {
       })()}
       {ideasAbierto && (
         <div style={{ position: 'absolute', right: 12, top: 56, bottom: 12, width: 460, maxWidth: 'calc(100% - 24px)', zIndex: 9 }}>
-          <EstudioIdeas oscuro capturarVista={() => renderHDurl({ fmt: 'jpg', ancho: 1600 })} onCerrar={() => setIdeasAbierto(false)} />
+          <EstudioIdeas oscuro capturarVista={capturaVista} onCerrar={() => setIdeasAbierto(false)} />
         </div>
       )}
       {textoDlg && (
