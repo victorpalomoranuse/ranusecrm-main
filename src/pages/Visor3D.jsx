@@ -2901,6 +2901,31 @@ export default function Visor3D() {
       setSubiendoMio('«' + m.nombre + '» añadido ✓ (' + m.w + '×' + m.d + '×' + m.alto + ' cm). Haz clic en él para colocarlo.');
     } catch (e) { setSubiendoMio(e.response?.data?.error || 'No se pudo subir el modelo'); }
   };
+  // «Crear con ChatGPT»: foto del producto → modelo 3D (.glb) que se guarda en Mis modelos
+  const [foto3d, setFoto3d] = useState({ nombre: '', medidas: '' });
+  const [foto3dEstado, setFoto3dEstado] = useState('');
+  const crearConIA = async (file, categoria) => {
+    if (!file) return;
+    setFoto3dEstado('Enviando la foto a ChatGPT…');
+    try {
+      const fd = new FormData(); fd.append('file', file); fd.append('nombre', foto3d.nombre || file.name.replace(/\.[^.]+$/, '')); fd.append('medidas', foto3d.medidas); fd.append('categoria', categoria || 'Mis modelos');
+      const r = await api.post('/biblioteca3d/crear-ia', fd), trabajo = r.data.id;
+      for (;;) {
+        await new Promise(ok => setTimeout(ok, 5000));
+        const e = (await api.get('/biblioteca3d/crear-ia/' + trabajo)).data;
+        if (e.estado === 'trabajando') { setFoto3dEstado('ChatGPT está modelando… ' + e.segundos + ' s (suele tardar 1–5 minutos; puedes seguir trabajando)'); continue; }
+        if (e.estado === 'error') { setFoto3dEstado('No se pudo: ' + e.error); return; }
+        let m = e.modelo;
+        try {
+          const obj = await cargarModelo({ url: m.url, tipo: m.tipo }), tam = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
+          const cm = v => Math.max(1, Math.round(v * 100));
+          m = (await api.put('/biblioteca3d/mios/' + m.id, { w: cm(tam.x), d: cm(tam.z), alto: cm(tam.y) })).data.modelo;
+        } catch { /* se queda con 100 cm; se puede estirar después */ }
+        setB3d(b => ({ ...(b || {}), vacia: false, mios: [...(b?.mios || []), m] })); setB3dTab('mios'); setB3dCat('');
+        setFoto3dEstado('«' + m.nombre + '» creado ✓ (' + m.w + '×' + m.d + '×' + m.alto + ' cm). Haz clic en él para colocarlo.'); return;
+      }
+    } catch (e) { setFoto3dEstado(e.response?.data?.error || 'No se pudo crear el modelo'); }
+  };
   const quitarMio = async (m) => {
     if (!window.confirm('¿Quitar «' + m.nombre + '» de Mis modelos? Los que ya colocaste en un plano dejarán de verse.')) return;
     try { await api.delete('/biblioteca3d/mios/' + m.id); setB3d(b => ({ ...b, mios: (b.mios || []).filter(x => x.id !== m.id) })); } catch { setSubiendoMio('No se pudo quitar'); }
@@ -4762,6 +4787,16 @@ export default function Visor3D() {
                   </label>
                   <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>Vale .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda para todos tus planos y no hace falta ligarlo a ningún producto.</div>
                   {subiendoMio && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{subiendoMio}</div>}
+                  <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ Crear con ChatGPT desde una foto</div>
+                    <input value={foto3d.nombre} onChange={e => setFoto3d(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre del producto" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 4 }} />
+                    <input value={foto3d.medidas} onChange={e => setFoto3d(f => ({ ...f, medidas: e.target.value }))} placeholder="Medidas reales (opcional): 120×60×75 cm" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 4 }} />
+                    <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#8c8076', cursor: 'pointer' }}>Elegir foto y crear modelo
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { crearConIA(e.target.files?.[0], b3dCat || 'Mis modelos'); e.target.value = ''; }} />
+                    </label>
+                    <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Tarda unos minutos y se paga por uso con tu clave de OpenAI. Cuanto más clara la foto (producto entero, fondo limpio) y mejor las medidas, mejor sale.</div>
+                    {foto3dEstado && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{foto3dEstado}</div>}
+                  </div>
                   {!lista.length && !subiendoMio && <p style={{ opacity: 0.6, fontSize: 12 }}>Todavía no has subido ninguno.</p>}
                 </div>
               )}
