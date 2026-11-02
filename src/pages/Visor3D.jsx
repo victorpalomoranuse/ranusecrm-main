@@ -1411,6 +1411,11 @@ export default function Visor3D({ cliente = false }) {
   const [marcaSel, setMarcaSel] = useState('');
   const [cargaSel, setCargaSel] = useState('');
   const [persona, setPersona] = useState(false);
+  // Proporciones enlazadas (la cadenita de siempre): al cambiar largo, fondo o alto, los otros dos cambian en la misma proporción. Se parte de las medidas que había al entrar en el campo
+  const [proporcional, setProporcional] = useState(() => { try { return localStorage.getItem('visor3dProp') === '1'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem('visor3dProp', proporcional ? '1' : '0'); } catch { /* sin almacenamiento */ } }, [proporcional]);
+  const propBase = useRef(null);
+  const botonProp = () => (<button type="button" style={{ ...btn, width: '100%', marginBottom: 6, background: proporcional ? '#8c8076' : undefined }} onClick={() => setProporcional(v => !v)} title="Con la cadena enlazada, al cambiar largo, fondo o alto, las otras dos medidas cambian en la misma proporción">{proporcional ? '🔗 Proporciones enlazadas' : '⛓ Proporciones libres'}</button>);
   const [velPersona, setVelPersona] = useState(() => { if (cliente) return 2.2; try { const v = parseFloat(localStorage.getItem('visor3dVelPersona')); return v >= 0.2 && v <= 8 ? v : 1.3; } catch { return 1.3; } }); // m/s al recorrer como persona
   useEffect(() => { api3d.current.velPersona = velPersona; try { if (!cliente) localStorage.setItem('visor3dVelPersona', String(velPersona)); } catch { /* sin almacenamiento */ } }, [velPersona]);
   const [sinGpu, setSinGpu] = useState(false);
@@ -5319,6 +5324,7 @@ export default function Visor3D({ cliente = false }) {
       {objSel && !selExtra.length && (
         <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
           <input value={objSel.nombre} onChange={e => cambiar(objSel.id, { nombre: e.target.value })} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontWeight: 700, marginBottom: 8 }} />
+          {!['zona', 'falsotecho', 'barrido', 'carril', 'led', 'logo', 'imagen'].includes(objSel.tipo) && botonProp()}
           {[['cx', 'Posición X'], ['cy', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Altura desde suelo'], ['rot', 'Giro °']].filter(([k]) => {
             const t = objSel.tipo;
             if (t === 'mueble' && k === 'w') return false;
@@ -5334,8 +5340,13 @@ export default function Visor3D({ cliente = false }) {
                 const forma = objSel.tipo === 'prisma' && Array.isArray(objSel.pts) && objSel.pts.length >= 3 && (k === 'w' || k === 'd');
                 const eje = k === 'w' ? 0 : 1, real = forma ? Math.max(...objSel.pts.map(p => p[eje])) - Math.min(...objSel.pts.map(p => p[eje])) : 0;
                 const valor = forma ? real : objSel[k];
-                return <input key={forma ? k + Math.round(real * 10) : k} type="number" value={Math.round(valor * 10) / 10} onChange={e => {
+                return <input key={forma ? k + Math.round(real * 10) : k} type="number" value={Math.round(valor * 10) / 10} onFocus={() => { propBase.current = { id: objSel.id, k, w: forma && k === 'w' ? real : objSel.w, d: forma && k === 'd' ? real : objSel.d, alto: objSel.alto }; }} onChange={e => {
                   const v = parseFloat(e.target.value) || 0;
+                  if (proporcional && ['w', 'd', 'alto'].includes(k) && v > 0 && propBase.current?.id === objSel.id && propBase.current[k] > 0 && !forma) {
+                    const b = propBase.current, f = v / b[k], cam = { [k]: v };
+                    ['w', 'd', 'alto'].forEach(kk => { if (kk !== k && !(objSel.tipo === 'mueble' && kk === 'w') && b[kk] > 0) cam[kk] = Math.round(b[kk] * f * 10) / 10; });
+                    cambiar(objSel.id, cam); return;
+                  }
                   if (forma && real > 0.01 && v > 0.1) { const kf = v / real, cm = (Math.max(...objSel.pts.map(p => p[eje])) + Math.min(...objSel.pts.map(p => p[eje]))) / 2; cambiar(objSel.id, { [k]: v, pts: objSel.pts.map(p => (eje === 0 ? [cm + (p[0] - cm) * kf, p[1]] : [p[0], cm + (p[1] - cm) * kf])) }); }
                   else cambiar(objSel.id, { [k]: v });
                 }} style={{ ...btn, width: 90 }} />;
@@ -5626,10 +5637,19 @@ export default function Visor3D({ cliente = false }) {
             <button style={{ ...btn, background: '#6b6159', padding: '4px 10px' }} onClick={aplicarEquipo}>Aplicar al plano</button>
             <button style={btn} onClick={() => setSeleccion(null)}>✕</button>
           </div>
+          {eqNuevo && botonProp()}
           {eqNuevo && [['x', 'Posición X'], ['y', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación (z)'], ['rot', 'Giro °']].map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <span style={{ width: 70, opacity: 0.7 }}>{et}</span>
-              <input type="number" value={eqNuevo[k]} onChange={e => setEqNuevo(s => ({ ...s, [k]: e.target.value }))} style={{ ...btn, width: 90 }} />
+              <input type="number" value={eqNuevo[k]} onFocus={() => { propBase.current = { id: 'eq', k, w: parseFloat(eqNuevo.w), d: parseFloat(eqNuevo.d), alto: parseFloat(eqNuevo.alto) }; }} onChange={e => {
+                const val = e.target.value, v = parseFloat(val);
+                if (proporcional && ['w', 'd', 'alto'].includes(k) && v > 0 && propBase.current?.id === 'eq' && propBase.current[k] > 0) {
+                  const b = propBase.current, f = v / b[k], cam = { [k]: val };
+                  ['w', 'd', 'alto'].forEach(kk => { if (kk !== k && b[kk] > 0) cam[kk] = String(Math.round(b[kk] * f * 10) / 10); });
+                  setEqNuevo(s => ({ ...s, ...cam })); return;
+                }
+                setEqNuevo(s => ({ ...s, [k]: val }));
+              }} style={{ ...btn, width: 90 }} />
             </label>
           ))}
           
