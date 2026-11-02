@@ -4027,7 +4027,7 @@ export default function Visor3D({ cliente = false }) {
     const sala = salaBajoCamara(); if (sala) L.push('La cámara está ahora en: ' + sala + '.');
     const f = await fichaMateriales().catch(() => ({ materiales: [], inventario: [] }));
     if (f.materiales?.length) L.push('Acabados de superficies: ' + f.materiales.map(m => m.zona + ' → ' + m.descr).join(' | ') + '.');
-    try { L.push('ILUMINACIÓN:\n' + iluminacionTexto()); } catch { /* sin datos de luz */ }
+    try { L.push('ILUMINACIÓN:\n' + iluminacionSegura()); } catch { /* sin datos de luz */ }
     if (f.inventario?.length) L.push('Equipamiento y objetos que EXISTEN: ' + f.inventario.join('; ') + '.');
     else L.push('No hay equipamiento ni objetos colocados todavía.');
     return { texto: L.join('\n').slice(0, 5500) };
@@ -4075,6 +4075,7 @@ export default function Visor3D({ cliente = false }) {
     L.push(ambiente.solOn === false ? 'Sin sol directo (cielo cubierto).' : 'Hora del día: ' + hh + ':' + String(mm).padStart(2, '0') + ' (sol de esa hora entrando por los huecos).');
     return L.join('\n');
   };
+  const iluminacionSegura = () => { try { return iluminacionTexto(); } catch (e) { console.warn('iluminacion', e); return ''; } };
   // Ficha de materiales editable (en el cuadro del render con IA): cada superficie con su acabado, su código NCS, una nota y una foto de referencia propia.
   // Lo que se pone aquí manda sobre lo que la IA «cree ver». Los cambios (menos las fotos) se recuerdan por plano en este navegador.
   const [iaConLuz, setIaConLuz] = useState(true);   // el render con IA recibe la iluminación real del modelo
@@ -4130,7 +4131,7 @@ export default function Visor3D({ cliente = false }) {
       restaura(); renderer.setPixelRatio(pr0); renderer.setSize(w0, h0); cam.aspect = w0 / h0; cam.updateProjectionMatrix();
       const meta = metaActual(txt);
       const ficha = await (fichaIA && !opc.autoGuardar ? Promise.resolve(compilaFicha()) : fichaMateriales()).catch(() => ({}));
-      const r = await api.post('/render-ia', { imagen, ...txt, ...ficha, iluminacion: iaConLuz ? iluminacionTexto() : undefined }, { timeout: 180000 });
+      const r = await api.post('/render-ia', { imagen, ...txt, ...ficha, iluminacion: iaConLuz ? iluminacionSegura() : undefined }, { timeout: 180000 });
       if (opc.autoGuardar) { await guardarRender('ia', r.data.imagen, meta, opc.nombre); setIa(null); return true; }
       setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen, meta, guardado: false });
       return true;
@@ -4511,7 +4512,7 @@ export default function Visor3D({ cliente = false }) {
               </select>
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer' }} title="Se le dice a la IA cuántas luminarias hay, de qué tipo, con cuántos lúmenes, kelvin, apertura y altura, y por dónde entra la luz natural"><input type="checkbox" checked={iaConLuz} onChange={e => setIaConLuz(e.target.checked)} /> 💡 Respetar la iluminación real del modelo (focos, lúmenes, huecos…)</label>
-            {iaConLuz && <details style={{ marginTop: 4, fontSize: 12 }}><summary style={{ cursor: 'pointer', opacity: 0.8 }}>Ver la iluminación que se le manda</summary><pre style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0', padding: 6, background: '#262422', borderRadius: 6, maxHeight: 170, overflow: 'auto' }}>{iluminacionTexto()}</pre></details>}
+            {iaConLuz && <details style={{ marginTop: 4, fontSize: 12 }}><summary style={{ cursor: 'pointer', opacity: 0.8 }}>Ver la iluminación que se le manda</summary><pre style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0', padding: 6, background: '#262422', borderRadius: 6, maxHeight: 170, overflow: 'auto' }}>{iluminacionSegura() || 'No se pudo leer la iluminación.'}</pre></details>}
             <button style={{ ...btn, width: '100%', marginTop: 8, background: fichaIA ? '#2c2824' : '#2f5f8a' }} disabled={fichaCargando} onClick={() => (fichaIA ? setFichaIA(null) : cargarFicha())} title="Revisa cada superficie de la vista: acabado, código NCS, una nota o una foto de referencia">{fichaCargando ? 'Leyendo los materiales…' : fichaIA ? '▲ Ocultar la ficha de materiales' : '📋 Revisar materiales de esta vista (recomendado)'}</button>
             {fichaIA && (
               <div style={{ marginTop: 8 }}>
