@@ -2964,13 +2964,18 @@ export default function Visor3D() {
   }, [b3dAbierta, b3d]);
   // «Mis modelos»: sube un modelo suelto (planta, mueble…), mide su tamaño real y lo deja en la biblioteca
   const [subiendoMio, setSubiendoMio] = useState('');
-  const subirMio = async (file, categoria) => {
-    if (!file) return;
-    setSubiendoMio('Subiendo «' + file.name + '»…');
+  const subirMio = async (archivos, categoria) => {
+    const lista = Array.from(archivos || []).filter(Boolean);
+    let ok = 0;
+    for (let i = 0; i < lista.length; i++) { if (await subirMio1(lista[i], categoria, lista.length > 1 ? (i + 1) + '/' + lista.length + ' · ' : '')) ok++; }
+    if (lista.length > 1) setSubiendoMio(ok + ' de ' + lista.length + ' modelos añadidos ✓' + (ok < lista.length ? ' (los demás fallaron)' : ''));
+  };
+  const subirMio1 = async (file, categoria, pref = '') => {
+    setSubiendoMio(pref + 'Subiendo «' + file.name + '»…');
     try {
       const fd = new FormData(); fd.append('file', file); fd.append('categoria', categoria || 'Mis modelos');
       const r = await api.post('/biblioteca3d/mios', fd); let m = r.data.modelo;
-      setSubiendoMio('Midiendo el modelo…');
+      setSubiendoMio(pref + 'Midiendo el modelo…');
       try {
         const obj = await cargarModelo({ url: m.url, tipo: m.tipo }), tam = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
         const cm = v => { let c = v * 100; if (c > 1000) c = v <= 1000 ? v : v / 10; return Math.max(1, Math.round(c)); };
@@ -2978,17 +2983,21 @@ export default function Visor3D() {
         const r2 = await api.put('/biblioteca3d/mios/' + m.id, dims); m = r2.data.modelo;
       } catch { /* se queda con 100 cm; se puede estirar después en su ficha */ }
       setB3d(b => ({ ...(b || {}), vacia: false, mios: [...(b?.mios || []), m] })); setB3dTab('mios'); setB3dCat('');
-      setSubiendoMio('«' + m.nombre + '» añadido ✓ (' + m.w + '×' + m.d + '×' + m.alto + ' cm). Haz clic en él para colocarlo.');
-    } catch (e) { setSubiendoMio(e.response?.data?.error || 'No se pudo subir el modelo'); }
+      setSubiendoMio(pref + '«' + m.nombre + '» añadido ✓ (' + m.w + '×' + m.d + '×' + m.alto + ' cm). Haz clic en él para colocarlo.');
+      return true;
+    } catch (e) { setSubiendoMio(pref + '«' + file.name + '»: ' + (e.response?.data?.error || 'No se pudo subir el modelo')); return false; }
   };
   // «Crear con ChatGPT»: foto del producto → modelo 3D (.glb) que se guarda en Mis modelos
   const [foto3d, setFoto3d] = useState({ nombre: '', medidas: '' });
   const [foto3dEstado, setFoto3dEstado] = useState('');
-  const crearConIA = async (file, categoria) => {
-    if (!file) return;
-    setFoto3dEstado('Enviando la foto a ChatGPT…');
+  const [fotos3d, setFotos3d] = useState([]); // fotos del producto (elegidas o pegadas con Ctrl+V)
+  const anadirFotos3d = fs => setFotos3d(a => [...a, ...Array.from(fs || []).filter(f => String(f.type).startsWith('image'))].slice(0, 6));
+  const crearConIA = async (files, categoria) => {
+    const lista = Array.from(files || []);
+    if (!lista.length) return;
+    setFoto3dEstado('Enviando ' + (lista.length > 1 ? lista.length + ' fotos' : 'la foto') + ' a ChatGPT…');
     try {
-      const fd = new FormData(); fd.append('file', file); fd.append('nombre', foto3d.nombre || file.name.replace(/\.[^.]+$/, '')); fd.append('medidas', foto3d.medidas); fd.append('categoria', categoria || 'Mis modelos');
+      const fd = new FormData(); lista.forEach(f => fd.append('files', f)); fd.append('nombre', foto3d.nombre || lista[0].name.replace(/.[^.]+$/, '')); fd.append('medidas', foto3d.medidas); fd.append('categoria', categoria || 'Mis modelos');
       const r = await api.post('/biblioteca3d/crear-ia', fd), trabajo = r.data.id;
       for (;;) {
         await new Promise(ok => setTimeout(ok, 5000));
@@ -4943,18 +4952,23 @@ export default function Visor3D() {
               {b3d?.vacia && <p style={{ opacity: 0.7 }}>La biblioteca todavía no está cargada.</p>}
               {b3dTab === 'mios' && (
                 <div style={{ marginBottom: 8 }}>
-                  <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#6b6159', cursor: 'pointer' }}>⬆ Subir modelo (planta, mueble…)
-                    <input type="file" accept=".glb,.gltf,.obj,.dae,.zip" style={{ display: 'none' }} onChange={e => { subirMio(e.target.files?.[0], b3dCat || 'Mis modelos'); e.target.value = ''; }} />
+                  <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#6b6159', cursor: 'pointer' }}>⬆ Subir modelos (planta, mueble…)
+                    <input type="file" multiple accept=".glb,.gltf,.obj,.dae,.zip" style={{ display: 'none' }} onChange={e => { subirMio(e.target.files, b3dCat || 'Mis modelos'); e.target.value = ''; }} />
                   </label>
-                  <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>Vale .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda para todos tus planos y no hace falta ligarlo a ningún producto.</div>
+                  <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>Puedes elegir varios a la vez. Vale .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda para todos tus planos y no hace falta ligarlo a ningún producto.</div>
                   {subiendoMio && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{subiendoMio}</div>}
                   <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
                     <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ Crear con ChatGPT desde una foto</div>
                     <input value={foto3d.nombre} onChange={e => setFoto3d(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre del producto" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 4 }} />
                     <input value={foto3d.medidas} onChange={e => setFoto3d(f => ({ ...f, medidas: e.target.value }))} placeholder="Medidas reales (opcional): 120×60×75 cm" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 4 }} />
-                    <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#8c8076', cursor: 'pointer' }}>Elegir foto y crear modelo
-                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { crearConIA(e.target.files?.[0], b3dCat || 'Mis modelos'); e.target.value = ''; }} />
-                    </label>
+                    <div tabIndex={0} onPaste={e => { const fs = Array.from(e.clipboardData?.files || []); if (fs.length) { e.preventDefault(); anadirFotos3d(fs); } }} style={{ border: '1px dashed #6b6159', borderRadius: 6, padding: 6, outline: 'none' }} title="Haz clic aquí y pega con Ctrl+V">
+                      <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>Haz clic aquí y pega fotos con Ctrl+V (hasta 6, distintas vistas del producto)</div>
+                      {!!fotos3d.length && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>{fotos3d.map((f, i) => <div key={i + f.name + f.size} style={{ position: 'relative' }}><img src={URL.createObjectURL(f)} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4 }} /><span onClick={() => setFotos3d(a => a.filter((_, j) => j !== i))} style={{ position: 'absolute', top: -4, right: -4, background: '#000a', borderRadius: 8, padding: '0 4px', fontSize: 10, cursor: 'pointer' }}>✕</span></div>)}</div>}
+                      <label style={{ ...btn, display: 'block', textAlign: 'center', cursor: 'pointer', fontSize: 12 }}>＋ Elegir fotos
+                        <input type="file" multiple accept="image/*" style={{ display: 'none' }} onChange={e => { anadirFotos3d(e.target.files); e.target.value = ''; }} />
+                      </label>
+                    </div>
+                    <button disabled={!fotos3d.length} style={{ ...btn, display: 'block', width: '100%', marginTop: 4, background: '#8c8076', opacity: fotos3d.length ? 1 : 0.5 }} onClick={() => { crearConIA(fotos3d, b3dCat || 'Mis modelos'); setFotos3d([]); }}>Crear modelo{fotos3d.length > 1 ? ' con ' + fotos3d.length + ' fotos' : ''}</button>
                     <div style={{ opacity: 0.55, fontSize: 11, marginTop: 4 }}>Tarda unos minutos y se paga por uso con tu clave de OpenAI. Cuanto más clara la foto (producto entero, fondo limpio) y mejor las medidas, mejor sale.</div>
                     {foto3dEstado && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{foto3dEstado}</div>}
                   </div>

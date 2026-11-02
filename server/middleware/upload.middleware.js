@@ -111,6 +111,8 @@ export const uploadCategoryItemCreate = multer({ storage, fileFilter: categoryIt
 export const uploadMoodboardImages = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 15*1024*1024, files: 20 } }).array('images', 20);
 // HDRI propio para el entorno del visor 3D (.hdr, hasta 40 MB)
 export const uploadHdriFile = multer({ storage, limits: { fileSize: 40 * 1024 * 1024, files: 1 }, fileFilter: (req, file, cb) => (/.hdr$/i.test(file.originalname || '') ? cb(null, true) : cb(new Error('El HDRI tiene que ser un archivo .hdr (de Poly Haven, por ejemplo)'))) }).single('file');
+// Hasta 6 fotos de un mismo producto (Crear modelo 3D con IA)
+export const uploadFotosProducto = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 15*1024*1024, files: 6 } }).array('files', 6);
 export const uploadReferenceImageFile = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 15*1024*1024, files: 1 } }).single('file');
 
 // Handler de errores de multer

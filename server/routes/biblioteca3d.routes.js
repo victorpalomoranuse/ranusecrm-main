@@ -1,7 +1,7 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
-import { uploadModelo3dFile, uploadReferenceImageFile, handleMulterError } from '../middleware/upload.middleware.js';
+import { uploadModelo3dFile, uploadFotosProducto, handleMulterError } from '../middleware/upload.middleware.js';
 import JSZip from 'jszip';
 
 // Biblioteca 3D gratuita (modelos y texturas de Poly Haven, licencia CC0). No forma parte del catálogo de productos:
@@ -128,7 +128,7 @@ router.delete('/mios/:id', async (req, res) => {
 const trabajosIA = new Map();
 const OPENAI = 'https://api.openai.com/v1';
 const cabeceras = () => ({ Authorization: 'Bearer ' + process.env.OPENAI_API_KEY, 'Content-Type': 'application/json' });
-const instruccionesIA = (nombre, medidas) => `Eres un modelador 3D. Con la foto adjunta, construye un modelo 3D del producto «${nombre}» y entrégalo como UN archivo binario glTF (.glb) guardado en el directorio de salida (por ejemplo /mnt/data/modelo.glb).
+const instruccionesIA = (nombre, medidas) => `Eres un modelador 3D. Con la(s) foto(s) adjunta(s) (varias vistas del mismo producto si hay más de una), construye un modelo 3D del producto «${nombre}» y entrégalo como UN archivo binario glTF (.glb) guardado en el directorio de salida (por ejemplo /mnt/data/modelo.glb).
 Reglas:
 - Usa el código Python de tu herramienta. Si trimesh no está disponible, escribe tú mismo el .glb válido (cabecera GLB, chunk JSON y chunk BIN) con numpy y struct.
 - Modela con formas reales y reconocibles (cajas con bordes, cilindros, extrusiones, esferas, perfiles), no un bloque único. Respeta las proporciones de la foto.
@@ -137,10 +137,10 @@ Reglas:
 - ${medidas ? 'Medidas reales del producto: ' + medidas + '.' : 'Si no sabes las medidas reales, estima unas razonables para este tipo de producto.'}
 - Comprueba que el archivo se abre (carga el .glb con trimesh o revisa su cabecera) y que el tamaño total es el esperado.
 - Responde solo con una frase breve cuando acabes.`;
-async function ejecutaIA(job, buf, mime, nombre, medidas, categoria) {
+async function ejecutaIA(job, fotos, nombre, medidas, categoria) {
   try {
     const modelo = process.env.OPENAI_3D_MODEL || 'gpt-5';
-    const cuerpo = { model: modelo, background: true, tools: [{ type: 'code_interpreter', container: { type: 'auto' } }], input: [{ role: 'user', content: [{ type: 'input_text', text: instruccionesIA(nombre, medidas) }, { type: 'input_image', image_url: 'data:' + mime + ';base64,' + buf.toString('base64') }] }] };
+    const cuerpo = { model: modelo, background: true, tools: [{ type: 'code_interpreter', container: { type: 'auto' } }], input: [{ role: 'user', content: [{ type: 'input_text', text: instruccionesIA(nombre, medidas) }, ...fotos.map(f => ({ type: 'input_image', image_url: 'data:' + f.mimetype + ';base64,' + f.buffer.toString('base64') }))] }] };
     let r = await fetch(OPENAI + '/responses', { method: 'POST', headers: cabeceras(), body: JSON.stringify(cuerpo) });
     let j = await r.json();
     if (!r.ok) throw new Error(j?.error?.message || ('OpenAI respondió ' + r.status));
@@ -178,16 +178,17 @@ async function ejecutaIA(job, buf, mime, nombre, medidas, categoria) {
     Object.assign(job, { estado: 'error', error: String(e.message || e).slice(0, 300) });
   }
 }
-router.post('/crear-ia', uploadReferenceImageFile, handleMulterError, async (req, res) => {
+router.post('/crear-ia', uploadFotosProducto, handleMulterError, async (req, res) => {
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'Falta la clave de OpenAI en el servidor (variable OPENAI_API_KEY en Railway).' });
-  if (!req.file) return res.status(400).json({ error: 'Falta la foto del producto' });
-  const nombre = String(req.body?.nombre || nombreOk(req.file.originalname).replace(/\.[^.]+$/, '')).trim().slice(0, 80) || 'Producto';
+  const fotos = (req.files || []).map(f => ({ buffer: f.buffer, mimetype: f.mimetype || 'image/jpeg', originalname: f.originalname }));
+  if (!fotos.length) return res.status(400).json({ error: 'Falta la foto del producto' });
+  const nombre = String(req.body?.nombre || nombreOk(fotos[0].originalname).replace(/\.[^.]+$/, '')).trim().slice(0, 80) || 'Producto';
   const medidas = String(req.body?.medidas || '').trim().slice(0, 200);
   const id = 'ia' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   const job = { id, estado: 'trabajando', desde: Date.now() };
   trabajosIA.set(id, job);
   for (const [k, v] of trabajosIA) if (Date.now() - v.desde > 60 * 60 * 1000) trabajosIA.delete(k);
-  ejecutaIA(job, req.file.buffer, req.file.mimetype || 'image/jpeg', nombre, medidas, req.body?.categoria);
+  ejecutaIA(job, fotos, nombre, medidas, req.body?.categoria);
   res.status(202).json({ id });
 });
 router.get('/crear-ia/:id', (req, res) => {
