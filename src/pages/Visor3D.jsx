@@ -2439,14 +2439,23 @@ export default function Visor3D() {
   useEffect(() => {
     const a = api3d.current; if (!a.raiz || !biblioteca) return;
     a.raiz.traverse(g => {
-      const e = g.userData.equipo; if (!e || !e.cid || g.userData.modeloCargado) return;
-      const mod = biblioteca.find(m => m.id === e.cid)?.modelo3d; if (!mod) return;
+      const e = g.userData.equipo; if (!e || !e.cid) return;
+      const me0 = modosEq[e.id] || {}, firma = (me0.v3 || '') + '|' + (me0.mod3?.url || '');
+      if (g.userData.v3Firma !== undefined && g.userData.v3Firma !== firma) { // cambió lo que se ve en esta copia: se vuelve a la caja y se recarga
+        g.children.filter(c => c.userData.modeloEq).forEach(c => { g.remove(c); c.traverse(x => { x.geometry?.dispose(); }); });
+        if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = true; g.userData.cuerpo.castShadow = true; }
+        g.userData.modeloCargado = false;
+      }
+      g.userData.v3Firma = firma;
+      if (g.userData.modeloCargado) return;
+      if (me0.v3 === 'caja') return;
+      const mod = (me0.v3 === 'otro' && me0.mod3?.url) ? me0.mod3 : biblioteca.find(m => m.id === e.cid)?.modelo3d; if (!mod) return;
       g.userData.modeloCargado = true;
       cargarModelo(mod).then(raw => {
         if (!g.parent) return;
         // si nadie lo ha girado a mano, se alinea solo con el dibujo de la planta del producto (y se guarda para todas las máquinas iguales)
         const prod = biblioteca.find(m => m.id === e.cid), me = modosEq[e.id];
-        if (prod?.bloque?.planta && !me?.alin && !me?.rotM && !mod.rot && !autoAlinCache.get('x|' + e.cid)) {
+        if (me?.v3 !== 'otro' && prod?.bloque?.planta && !me?.alin && !me?.rotM && !mod.rot && !autoAlinCache.get('x|' + e.cid)) {
           autoAlinear(e.cid, raw, prod, mod).then(r => {
             if (!r) { autoAlinCache.set('x|' + e.cid, true); g.userData.modeloCargado = false; setModosEq(m => ({ ...m })); return; }
             const ids = (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(pl => pl?.equipos || []).filter(x => x.cid === e.cid).map(x => x.id);
@@ -5041,6 +5050,26 @@ export default function Visor3D() {
             <button style={btn} onClick={girarEquipo180} title="Por si queda mirando hacia el muro">⟲ Girar 180°</button>
             <button style={{ ...btn, background: '#a33' }} onClick={eliminarEquipo} title="Quita la máquina del plano (también en Planos). Tecla Supr">🗑 Eliminar</button>
           </div>
+          {seleccion.cid && (() => {
+            const v3 = modosEq[seleccion.id]?.v3 || '', fijaV3 = patch => { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], ...patch } })); };
+            const subirOtro = async (file) => {
+              if (!file) return; if (file.name.toLowerCase().endsWith('.skp')) { alert('Los .skp no se pueden mostrar: expórtalo a .glb o .dae desde SketchUp.'); return; }
+              setSubiendo('Subiendo el modelo para esta copia…');
+              try { const fd = new FormData(); fd.append('file', file); fd.append('categoria', 'Mis modelos'); const r = await api.post('/biblioteca3d/mios', fd), mm0 = r.data.modelo; fijaV3({ v3: 'otro', mod3: { url: mm0.url, tipo: mm0.tipo, rot: 0 } }); setSubiendo('Otro modelo asignado a esta copia ✓'); }
+              catch (er) { setSubiendo(er.response?.data?.error || 'No se pudo subir el modelo'); }
+            };
+            return (
+              <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
+                <div style={{ opacity: 0.75, marginBottom: 4 }}>Qué se ve en el 3D (solo esta copia)</div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                  <button style={{ ...btn, ...(v3 === '' ? { background: '#8c8076' } : {}) }} onClick={() => fijaV3({ v3: undefined, mod3: undefined })} title="El modelo del bloque, como en el resto de copias">Modelo del bloque</button>
+                  <button style={{ ...btn, ...(v3 === 'caja' ? { background: '#8c8076' } : {}) }} onClick={() => fijaV3({ v3: 'caja', mod3: undefined })} title="No usa el modelo: se ve como una caja con sus medidas">Solo caja</button>
+                  <label style={{ ...btn, cursor: 'pointer', ...(v3 === 'otro' ? { background: '#8c8076' } : {}) }} title="Sube otro modelo solo para esta copia; el bloque y el plano no cambian">Otro modelo…<input type="file" accept=".glb,.gltf,.obj,.dae,.zip" style={{ display: 'none' }} onChange={e => { subirOtro(e.target.files?.[0]); e.target.value = ''; }} /></label>
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 8 }}>Esto solo cambia el 3D de esta copia. El bloque y el plano se quedan igual.</div>
+              </div>
+            );
+          })()}
           {seleccion.cid && (() => {
             const mod = biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d;
             return (
