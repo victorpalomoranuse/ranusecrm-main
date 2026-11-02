@@ -389,13 +389,28 @@ function fusionarModelo(raw) {
     return out.children.length ? out : raw;
   } catch (e) { console.warn('fusionarModelo', e); return raw; }
 }
+// Modelos importados que salían negros: caras con las normales al revés (piezas finas, plantas, mallas de SketchUp) y materiales sin brillo ni luz propia.
+// Se dibujan por las dos caras y, si un material es de color negro puro sin textura, se aclara a un gris oscuro para que se vea su forma.
+function repararMateriales(raiz) {
+  const vistos = new Set();
+  raiz.traverse(o => {
+    if (!o.isMesh) return;
+    (Array.isArray(o.material) ? o.material : [o.material]).forEach(mt => {
+      if (!mt || vistos.has(mt.uuid)) return; vistos.add(mt.uuid);
+      if (mt.side === THREE.FrontSide) mt.side = THREE.DoubleSide;
+      if (mt.color && !mt.map && !mt.vertexColors && mt.color.r + mt.color.g + mt.color.b < 0.02 && !mt.emissiveMap && !(mt.emissive && mt.emissive.getHex() > 0)) mt.color.setRGB(0.12, 0.12, 0.12);
+      mt.needsUpdate = true;
+    });
+  });
+  return raiz;
+}
 function cargarModelo(m) {
   if (cacheModelos.has(m.url)) return cacheModelos.get(m.url);
   const t = String(m.tipo || '').toLowerCase();
   const p = new Promise((ok, mal) => {
-    if (t === 'obj') new OBJLoader().load(m.url, r => ok(fusionarModelo(r)), undefined, mal);
-    else if (t === 'dae') new ColladaLoader().load(m.url, r => ok(fusionarModelo(r.scene)), undefined, mal);
-    else new GLTFLoader().load(m.url, r => ok(fusionarModelo(r.scene)), undefined, mal);
+    if (t === 'obj') new OBJLoader().load(m.url, r => ok(repararMateriales(fusionarModelo(r))), undefined, mal);
+    else if (t === 'dae') new ColladaLoader().load(m.url, r => ok(repararMateriales(fusionarModelo(r.scene))), undefined, mal);
+    else new GLTFLoader().load(m.url, r => ok(repararMateriales(fusionarModelo(r.scene))), undefined, mal);
   });
   p.then(() => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } }, () => {}); p.catch(() => cacheModelos.delete(m.url));
   cacheModelos.set(m.url, p);
@@ -2982,7 +2997,7 @@ export default function Visor3D({ cliente = false }) {
           if (o.ocultosPartes?.length) mm.traverse(x => { if (x.isMesh && o.ocultosPartes.includes(x.userData.comp || x.name)) x.visible = false; });
           mm.rotation.y = -rotO * Math.PI / 180;
           mm.position.y = (o.z0 || 0) * CM;
-          g.add(mm); fantasma(0); registraLod(api3d.current, mm, null);
+          g.add(mm); fantasma(0); m.visible = false; registraLod(api3d.current, mm, null);
           aplicarRegiones(mm, 'o:' + o.id + ':', acab.regiones, texturas);
         }).catch(() => { fantasma(1); });
       }
