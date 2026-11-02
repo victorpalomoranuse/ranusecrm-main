@@ -4904,7 +4904,7 @@ export default function Visor3D() {
       })()}
       {b3dAbierta && (() => {
         const lista = (b3d?.[b3dTab] || []).filter(m => (!b3dCat || m.categoria === b3dCat) && (!b3dFiltro || (m.nombre + ' ' + m.categoria).toLowerCase().includes(b3dFiltro.toLowerCase())));
-        const cats = [...new Set((b3d?.[b3dTab] || []).map(m => m.categoria))].sort();
+        const cats = [...new Set([...(b3dTab === 'mios' ? (b3d?.catsMios || []) : []), ...(b3d?.[b3dTab] || []).map(m => m.categoria)])].sort();
         return (
           <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700 }}>🧰 Biblioteca 3D <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>gratis · CC0</span></div>
@@ -4917,6 +4917,22 @@ export default function Visor3D() {
             <select value={b3dCat} onChange={e => setB3dCat(e.target.value)} style={{ ...btn, marginBottom: 8 }}>
               <option value="">Todas las categorías</option>{cats.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
+            {b3dTab === 'mios' && (
+              <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+                <button style={{ ...btn, fontSize: 12, padding: '3px 8px' }} title="Crear una categoría nueva" onClick={async () => {
+                  const n = (window.prompt('Nombre de la nueva categoría:') || '').trim(); if (!n) return;
+                  try { const r = await api.post('/biblioteca3d/cats', { nombre: n }); setB3d(b => ({ ...b, catsMios: r.data.cats })); setB3dCat(n); } catch (e) { setAviso(e.response?.data?.error || 'No se pudo crear la categoría'); }
+                }}>＋ Categoría</button>
+                {b3dCat && <button style={{ ...btn, fontSize: 12, padding: '3px 8px' }} title="Cambiar el nombre de la categoría elegida" onClick={async () => {
+                  const n = (window.prompt('Nuevo nombre para «' + b3dCat + '»:', b3dCat) || '').trim(); if (!n || n === b3dCat) return;
+                  try { const r = await api.put('/biblioteca3d/cats', { de: b3dCat, a: n }); setB3d(b => ({ ...b, catsMios: r.data.cats, mios: r.data.mios })); setB3dCat(n); } catch (e) { setAviso(e.response?.data?.error || 'No se pudo cambiar el nombre'); }
+                }}>✎ Renombrar</button>}
+                {b3dCat && <button style={{ ...btn, fontSize: 12, padding: '3px 8px' }} title="Borra la categoría; sus modelos pasan a «Mis modelos»" onClick={async () => {
+                  if (!window.confirm('¿Borrar la categoría «' + b3dCat + '»?\n\nSus modelos no se borran: pasan a «Mis modelos».')) return;
+                  try { const r = await api.delete('/biblioteca3d/cats/' + encodeURIComponent(b3dCat)); setB3d(b => ({ ...b, catsMios: r.data.cats, mios: r.data.mios })); setB3dCat(''); } catch (e) { setAviso(e.response?.data?.error || 'No se pudo borrar la categoría'); }
+                }}>🗑 Borrar</button>}
+              </div>
+            )}
             <div style={{ overflow: 'auto', flex: 1 }}>
               {!b3d && <p style={{ opacity: 0.6 }}>Cargando…</p>}
               {b3d?.vacia && <p style={{ opacity: 0.7 }}>La biblioteca todavía no está cargada.</p>}
@@ -4944,6 +4960,10 @@ export default function Visor3D() {
                 <div key={m.id} onClick={() => anadirModelo3d(m)} style={{ padding: '6px 4px', borderTop: '1px solid #333', cursor: 'pointer', display: 'flex', gap: 8, alignItems: 'center' }} title="Clic para colocarlo en el centro de la vista">
                   <Miniatura mod={{ url: m.url, tipo: m.tipo || 'gltf' }} size={64} />
                   <div style={{ minWidth: 0, flex: 1 }}><div>{m.nombre}</div><div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria} · {m.w}×{m.d}×{m.alto} cm</div></div>
+                  {m.mio && <select value={m.categoria} title="Mover a otra categoría" onClick={e => e.stopPropagation()} onChange={async e => {
+                    const c = e.target.value; try { const r = await api.put('/biblioteca3d/mios/' + m.id, { categoria: c }); setB3d(b => ({ ...b, mios: (b.mios || []).map(x => (x.id === m.id ? r.data.modelo : x)) })); } catch { setAviso('No se pudo mover el modelo'); }
+                  }} style={{ ...btn, padding: '1px 2px', fontSize: 11, maxWidth: 70 }}>{[...new Set([m.categoria, 'Mis modelos', ...(b3d?.catsMios || [])])].sort().map(c => <option key={c} value={c}>{c}</option>)}</select>}
+                  {m.mio && <span onClick={e => { e.stopPropagation(); const n = (window.prompt('Nombre del modelo:', m.nombre) || '').trim(); if (n && n !== m.nombre) api.put('/biblioteca3d/mios/' + m.id, { nombre: n }).then(r => setB3d(b => ({ ...b, mios: (b.mios || []).map(x => (x.id === m.id ? r.data.modelo : x)) }))).catch(() => setAviso('No se pudo cambiar el nombre')); }} title="Cambiar el nombre" style={{ padding: '0 4px', opacity: 0.6 }}>✎</span>}
                   {m.mio && <span onClick={e => { e.stopPropagation(); quitarMio(m); }} title="Quitar de Mis modelos" style={{ padding: '0 5px', opacity: 0.6 }}>✕</span>}
                 </div>
               ))}

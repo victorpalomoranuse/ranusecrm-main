@@ -28,6 +28,42 @@ async function leerLibres() {
 async function guardarLibres(lista) {
   return supabase.storage.from(BUCKET).upload(RUTA_LIBRES, Buffer.from(JSON.stringify(lista)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
 }
+// Categorías de «Mis modelos»: se guardan aparte para poder crear categorías vacías (modelos-3d/_categorias.json)
+const RUTA_CATS = 'modelos-3d/_categorias.json';
+async function leerCats() {
+  try { const { data, error } = await supabase.storage.from(BUCKET).download(RUTA_CATS); if (error || !data) return []; const j = JSON.parse(await data.text()); return Array.isArray(j) ? j.filter(x => typeof x === 'string') : []; } catch { return []; }
+}
+async function guardarCats(lista) {
+  return supabase.storage.from(BUCKET).upload(RUTA_CATS, Buffer.from(JSON.stringify(lista)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
+}
+const limpiaCat = v => String(v || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+// los nombres de archivo con tildes llegan mal codificados (SofÃ¡ en vez de Sofá): se corrigen
+const nombreOk = n => { const t = String(n || ''); try { return /[ÃÂ]/.test(t) ? Buffer.from(t, 'latin1').toString('utf8') : t; } catch { return t; } };
+router.post('/cats', async (req, res) => {
+  try {
+    const n = limpiaCat(req.body?.nombre); if (!n) return res.status(400).json({ error: 'Escribe un nombre para la categoría' });
+    const lista = await leerCats(); if (!lista.some(x => x.toLowerCase() === n.toLowerCase())) lista.push(n);
+    const { error } = await guardarCats(lista); if (error) throw error;
+    res.status(201).json({ cats: lista });
+  } catch (e) { res.status(500).json({ error: 'No se pudo crear la categoría' }); }
+});
+router.put('/cats', async (req, res) => {
+  try {
+    const de = limpiaCat(req.body?.de), a = limpiaCat(req.body?.a); if (!de || !a) return res.status(400).json({ error: 'Faltan los nombres' });
+    const cats = (await leerCats()).filter(x => x !== de); if (!cats.some(x => x.toLowerCase() === a.toLowerCase())) cats.push(a);
+    const lista = await leerLibres(); lista.forEach(m => { if (m.categoria === de) m.categoria = a; });
+    const e1 = (await guardarCats(cats)).error, e2 = (await guardarLibres(lista)).error; if (e1 || e2) throw (e1 || e2);
+    res.json({ cats, mios: lista });
+  } catch (e) { res.status(500).json({ error: 'No se pudo cambiar el nombre' }); }
+});
+router.delete('/cats/:nombre', async (req, res) => {
+  try {
+    const n = limpiaCat(req.params.nombre), cats = (await leerCats()).filter(x => x !== n), lista = await leerLibres();
+    lista.forEach(m => { if (m.categoria === n) m.categoria = 'Mis modelos'; });
+    const e1 = (await guardarCats(cats)).error, e2 = (await guardarLibres(lista)).error; if (e1 || e2) throw (e1 || e2);
+    res.json({ cats, mios: lista });
+  } catch (e) { res.status(500).json({ error: 'No se pudo borrar la categoría' }); }
+});
 router.post('/mios', uploadModelo3dFile, handleMulterError, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Falta el archivo del modelo' });
@@ -52,7 +88,7 @@ router.post('/mios', uploadModelo3dFile, handleMulterError, async (req, res) => 
       url = supabase.storage.from(BUCKET).getPublicUrl(base + '.' + ext).data.publicUrl;
     }
     const num = (v, d) => (Number(v) > 0 ? Math.min(5000, Number(v)) : d);
-    const nombre = String(req.body?.nombre || req.file.originalname.replace(/\.[^.]+$/, '')).trim().slice(0, 80) || 'Modelo';
+    const nombre = String(req.body?.nombre || nombreOk(req.file.originalname).replace(/\.[^.]+$/, '')).trim().slice(0, 80) || 'Modelo';
     const m = { id, nombre, categoria: String(req.body?.categoria || 'Mis modelos').trim().slice(0, 40) || 'Mis modelos', url, tipo, ...(carpeta ? { carpeta } : {}), w: num(req.body?.w, 100), d: num(req.body?.d, 100), alto: num(req.body?.alto, 100), mio: true };
     const lista = await leerLibres(); lista.push(m);
     const { error } = await guardarLibres(lista); if (error) throw error;
@@ -145,7 +181,7 @@ async function ejecutaIA(job, buf, mime, nombre, medidas, categoria) {
 router.post('/crear-ia', uploadReferenceImageFile, handleMulterError, async (req, res) => {
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'Falta la clave de OpenAI en el servidor (variable OPENAI_API_KEY en Railway).' });
   if (!req.file) return res.status(400).json({ error: 'Falta la foto del producto' });
-  const nombre = String(req.body?.nombre || req.file.originalname.replace(/\.[^.]+$/, '')).trim().slice(0, 80) || 'Producto';
+  const nombre = String(req.body?.nombre || nombreOk(req.file.originalname).replace(/\.[^.]+$/, '')).trim().slice(0, 80) || 'Producto';
   const medidas = String(req.body?.medidas || '').trim().slice(0, 200);
   const id = 'ia' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   const job = { id, estado: 'trabajando', desde: Date.now() };
@@ -162,9 +198,9 @@ router.get('/crear-ia/:id', (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const ind = await indiceBiblioteca3d(), mios = await leerLibres();
-    if (!ind) return res.json({ modelos: [], texturas: [], mios, vacia: !mios.length });
-    res.json({ ...ind, mios });
+    const ind = await indiceBiblioteca3d(), mios = await leerLibres(), catsMios = await leerCats();
+    if (!ind) return res.json({ modelos: [], texturas: [], mios, catsMios, vacia: !mios.length });
+    res.json({ ...ind, mios, catsMios });
   } catch (err) {
     console.error('biblioteca3d:', err);
     res.status(500).json({ error: 'No se pudo cargar la biblioteca 3D' });
