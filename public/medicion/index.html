@@ -2529,9 +2529,9 @@ function rayWalls(ox,oy,dx,dy,view){
   });
   return best===Infinity?null:best;
 }
-function dimLine(C,px,x1,y1,x2,y2,t,col){
-  col=col||C.dim;var a=Math.atan2(y2-y1,x2-x1),nx=-Math.sin(a)*3.5*px,ny=Math.cos(a)*3.5*px,vert=Math.abs(x2-x1)<Math.abs(y2-y1);
-  return ln(x1,y1,x2,y2,col,px*0.9)+ln(x1-nx,y1-ny,x1+nx,y1+ny,col,px*0.9)+ln(x2-nx,y2-ny,x2+nx,y2+ny,col,px*0.9)+(vert?txt(C,px,(x1+x2)/2+5*px,(y1+y2)/2+3.5*px,t,C.label,10,600).replace('text-anchor="middle"','text-anchor="start"'):txt(C,px,(x1+x2)/2,(y1+y2)/2-4*px,t,C.label,10,600)); /* en las cotas verticales el número va en horizontal, a un lado de la línea, sin que ella lo cruce */
+function dimLine(C,px,x1,y1,x2,y2,t,col,tcol){
+  col=col||C.dim;tcol=tcol||C.label;var a=Math.atan2(y2-y1,x2-x1),nx=-Math.sin(a)*3.5*px,ny=Math.cos(a)*3.5*px,vert=Math.abs(x2-x1)<Math.abs(y2-y1);
+  return ln(x1,y1,x2,y2,col,px*0.9)+ln(x1-nx,y1-ny,x1+nx,y1+ny,col,px*0.9)+ln(x2-nx,y2-ny,x2+nx,y2+ny,col,px*0.9)+(vert?txt(C,px,(x1+x2)/2+5*px,(y1+y2)/2+3.5*px,t,tcol,10,600).replace('text-anchor="middle"','text-anchor="start"'):txt(C,px,(x1+x2)/2,(y1+y2)/2-4*px,t,tcol,10,600)); /* en las cotas verticales el número va en horizontal, a un lado de la línea, sin que ella lo cruce */
 }
 /* distancia a la pared más cercana en horizontal y en vertical (cara interior del muro) */
 function lumDims(q){
@@ -2600,6 +2600,20 @@ function lumExtras(C,px,view,o){
       for(i=0;i<pp.length-1;i++)h+=ln(pp[i].x,pp[i].y,pp[i+1].x,pp[i+1].y,col,(sl?3.2:suave?1.1:1.5)*px,'round',suave?';stroke-opacity:.38':'');
       var e=pp[pp.length-1];h+='<circle cx="'+f2(e.x)+'" cy="'+f2(e.y)+'" r="'+f2((suave?2:2.6)*px)+'" style="fill:'+col+(suave?';fill-opacity:.45':'')+'"/>';
     });
+    /* cotas de las luces (a los muros y entre sí): en un azul grisáceo suave para que no recarguen el plano. Entre dos luces en fila se pone la cota entre ellas en vez de seguir hasta el muro */
+    var CL='#6f9db0',CLT='#4f8196',pl=[],nb={};
+    st.v.pts.forEach(function(q){if(q.v!=='ilum'||q.s==='dem'||q.nd)return;var d0=ptDef(q.k);if(!d0||d0.lin)return;pl.push({q:q,c:ptPos(q),r:5.5*px*1.9*ptSz(q)*1.25})});
+    if(showD)pl.forEach(function(a){
+      pl.forEach(function(b){
+        if(a===b)return;
+        var dx=b.c.x-a.c.x,dy=b.c.y-a.c.y;
+        if(Math.abs(dy)<=12&&dx>0&&dx-a.r-b.r>6*px){var cur=nb[a.q.id+'r'];if(!cur||dx<cur.d)nb[a.q.id+'r']={d:dx,b:b,a:a}}
+        if(Math.abs(dx)<=12&&dy>0&&dy-a.r-b.r>6*px){var cur2=nb[a.q.id+'d'];if(!cur2||dy<cur2.d)nb[a.q.id+'d']={d:dy,b:b,a:a}}
+        if(Math.abs(dy)<=12&&dx<0){var cl=nb[a.q.id+'l'];if(!cl||-dx<cl.d)nb[a.q.id+'l']={d:-dx}}
+        if(Math.abs(dx)<=12&&dy<0){var cu=nb[a.q.id+'u'];if(!cu||-dy<cu.d)nb[a.q.id+'u']={d:-dy}}
+      });
+    });
+    Object.keys(nb).forEach(function(k){var m=nb[k];if(!m.b)return;h+=dimLine(C,px,m.a.c.x+(k.slice(-1)==='r'?m.a.r:0),m.a.c.y+(k.slice(-1)==='d'?m.a.r:0),m.b.c.x-(k.slice(-1)==='r'?m.b.r:0),m.b.c.y-(k.slice(-1)==='d'?m.b.r:0),fmtU(k.slice(-1)==='r'?m.b.c.x-m.a.c.x:m.b.c.y-m.a.c.y),CL,CLT)});
     st.v.pts.forEach(function(q){
       if(q.v!=='ilum'||q.s==='dem')return;
       var d=ptDef(q.k);if(!d)return;
@@ -2608,7 +2622,7 @@ function lumExtras(C,px,view,o){
       else{
         var r=5.5*u;
         h+=txt(C,px,c.x+r+8*px,c.y-r*0.5,tg[q.id]||'',C.label,11,700);
-        if(showD&&!q.nd)lumDims(q).forEach(function(m){var r0=r*1.25;if(m.d<=r0+2)return;h+=dimLine(C,px,c.x+m.dx*r0,c.y+m.dy*r0,m.x,m.y,fmtU(m.d))});
+        if(showD&&!q.nd)lumDims(q).forEach(function(m){var r0=r*1.25;if(m.d<=r0+2)return;var vc=nb[q.id+m.dir];if(vc&&vc.d<m.d)return;h+=dimLine(C,px,c.x+m.dx*r0,c.y+m.dy*r0,m.x,m.y,fmtU(m.d),CL,CLT)});
       }
     });
     if(st.cnFrom&&o.nodes){var fq=by(st.v.pts,st.cnFrom);if(fq){var fc=ptPos(fq);h+='<circle cx="'+f2(fc.x)+'" cy="'+f2(fc.y)+'" r="'+f2(15*px)+'" style="fill:none;stroke:'+C.accent+';stroke-width:'+f2(2.4*px)+'px"/>'}}
@@ -6659,6 +6673,7 @@ function panelSel(focus){
     if(!sp.pts)h+=fld('sp_bw','Ancho (cm)',sp.bw)+fld('sp_bh','Fondo (cm)',sp.bh);
     else h+='<p class="note">Zona dibujada con '+sp.pts.length+' puntos.</p>';
     h+='<p class="note">Para cambiar el contorno (en «Seleccionar»): arrastra un punto grande para moverlo, arrastra una <b>línea</b> para moverla entera (o toca su medida y escríbela), o arrastra el interior para mover toda la zona. Se pegan a las esquinas de la sala y a las otras zonas.</p>';
+    h+='<div class="btns"><button data-a="spendereza" title="Los lados que van casi rectos se dejan exactamente horizontales o verticales">Enderezar el contorno</button></div>';
     h+='<div class="btns"><button data-a="spadd" aria-pressed="'+!!st.spAdd+'">Añadir puntos: '+(st.spAdd?'sí (toca un lado)':'no')+'</button><button data-a="spancla" title="Al escribir una medida de un lado, qué extremo se mueve. Automático: el que no está pegado a un muro.">Al cambiar una medida: '+({auto:'automático',fin:'se mueve el final (derecha/abajo)',ini:'se mueve el principio (izquierda/arriba)',centro:'se reparte a los dos lados'})[st.spAncla||'auto']+'</button><button data-a="sppega" title="Corrige los puntos que quedan a unos pocos cm de la cara de un muro (dentro o fuera) y los pega a ella">Pegar a los muros</button></div>';
     if(st.spVsel&&st.spVsel.id===sp.id&&sp.pts&&sp.pts.length>3)h+='<div class="btns"><button data-a="spdelv">Quitar el punto seleccionado</button></div>';
     if(sq&&sbx&&!sp.pts)h+=fld('sp_x','Distancia desde la esquina izquierda (cm)',sq.x0-sbx.x0)+fld('sp_y','Distancia desde la esquina de arriba (cm)',sq.y0-sbx.y0);
@@ -6714,6 +6729,7 @@ function panelSel(focus){
       h+='<label class="fld"><span>Dónde va</span><select data-t="pt_mo">'+MONT.map(function(m){return '<option value="'+m[0]+'"'+(ptMont(q)===m[0]?' selected':'')+'>'+m[1]+'</option>'}).join('')+'</select></label>';
       if(q.k==='led')h+=perfilSel('pt_pf',ptPerfil(q),'Perfil');
       h+=fld('pt_ll','Longitud total (cm)',Math.round(ptLen(q)))+'<label class="fld"><span>Al cambiarla, queda fijo</span><select data-t="pt_anc"><option value="a"'+(st.ptAnc!=='b'?' selected':'')+'>El inicio (se mueve el final)</option><option value="b"'+(st.ptAnc==='b'?' selected':'')+'>El final (se mueve el inicio)</option></select></label>';
+      h+='<div class="btns"><button data-a="ptendereza" title="Deja cada tramo exactamente horizontal o vertical, el que le quede más cerca">Enderezar (horizontal / vertical)</button></div>';
       h+='<p class="note">Longitud: '+m2(ptLen(q)/100)+' m · '+nvs+' puntos'+(nvs>2?' (polilínea)':' (recta)')+'.</p>';
       if(q.k==='carril'){
         var hijos=st.v.pts.filter(function(z){return z.rc===q.id}),nsp=hijos.filter(function(z){return z.k==='spot'}).length,nli=hijos.filter(function(z){return z.k==='lineal'}).length;
@@ -7187,6 +7203,24 @@ function doAction(a,el){
     snap();st.v.pts=st.v.pts.filter(function(z){return !(z.rc===qc.id&&z.k===(a==='rlspots'?'spot':'lineal'))});
     nuevos.forEach(function(z){if(qc.s)z.s=qc.s;st.v.pts.push(z)});
     commit();panelSel();toast(nuevos.length+(a==='rlspots'?' spots':' luminarias lineales')+' en el carril');return;
+  }
+  if(a==='ptendereza'&&s.t==='pt'){
+    var qe=by(st.v.pts,s.id);if(!qe)return;
+    var ve=ptVerts(qe),ne=[{x:ve[0].x,y:ve[0].y}],ii2;
+    for(ii2=1;ii2<ve.length;ii2++){var pr=ne[ii2-1],ddx=ve[ii2].x-ve[ii2-1].x,ddy=ve[ii2].y-ve[ii2-1].y,ll=Math.hypot(ddx,ddy);ne.push(Math.abs(ddx)>=Math.abs(ddy)?{x:pr.x+(ddx<0?-ll:ll),y:pr.y}:{x:pr.x,y:pr.y+(ddy<0?-ll:ll)})}
+    snap();ptSetVerts(qe,ne);commit();panelSel();toast('Enderezado');return;
+  }
+  if(a==='spendereza'&&s.t==='sp'){
+    var se=by(st.v.sp,s.id);if(!se)return;
+    snap();spAPoly(se);
+    var P=se.pts,nP=P.length,cambios=0;
+    for(var it=0;it<3;it++)for(var jj=0;jj<nP;jj++){
+      var A=P[jj],B=P[(jj+1)%nP],ex=B.x-A.x,ey=B.y-A.y;
+      if(Math.hypot(ex,ey)<1)continue;
+      if(Math.abs(ex)<=Math.abs(ey)*0.36&&ex!==0){var mx=f2((A.x+B.x)/2);A.x=mx;B.x=mx;cambios++}
+      else if(Math.abs(ey)<=Math.abs(ex)*0.36&&ey!==0){var my=f2((A.y+B.y)/2);A.y=my;B.y=my;cambios++}
+    }
+    commit();panelSel();toast(cambios?'Contorno enderezado':'Ya estaba recto, o los lados van muy torcidos para enderezarlos');return;
   }
   if(a==='ptsm'||a==='ptbg'){var qz=by(st.v.pts,s.id);snap();qz.sz=Math.max(0.4,Math.min(4,Math.round((qz.sz||1)*(a==='ptbg'?1.25:0.8)*100)/100));commit();return}
   if(a==='ptsall'){var q0=by(st.v.pts,s.id);snap();st.v.pts.forEach(function(q){if(q.v==='ilum'&&(q.lid||('k:'+q.k))===(q0.lid||('k:'+q0.k))){q.sz=q0.sz||1;if(q0.dc>0)q.dc=q0.dc;else delete q.dc}});commit();return}
