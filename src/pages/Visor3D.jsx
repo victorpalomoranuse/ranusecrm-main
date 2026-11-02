@@ -2240,13 +2240,13 @@ export default function Visor3D() {
   useEffect(() => {
     const a = api3d.current; if (!a.raiz) return;
     const aplica = o => {
-      const k = o.userData.equipo?.id || o.userData.muroId, oculto = k && ocultas.includes('id:' + k);
+      const k = o.userData.equipo?.id || o.userData.muroId, oculto = k && (ocultas.includes('id:' + k) || (o.userData.equipo && modosEq[k]?.v3 === 'oculto'));
       if (o.userData.capa) o.visible = !ocultas.includes(o.userData.capa) && !oculto; else if (k && o.userData.equipo) o.visible = !oculto;
     };
     a.raiz.traverse(aplica);
     a.esc.children.forEach(g => { g.visible = !ocultas.includes('obj:' + (objsRef.current.find(x => x.id === g.userData.oid)?.etiqueta || '')) && !ocultas.includes('id:' + g.userData.oid); });
     try { localStorage.setItem('visor3dOcultas', JSON.stringify(ocultas)); } catch {}
-  }, [ocultas, rev, objs, estado]);
+  }, [ocultas, rev, objs, estado, modosEq]);
 
   // Luminarias del plano: punto de luz visible y luz real (foco = cono con su ángulo de apertura)
   useEffect(() => {
@@ -3016,13 +3016,13 @@ export default function Visor3D() {
   };
   const idsSel = [selObj, ...selExtra].filter(Boolean);
   // Ocultar lo seleccionado (objetos, máquinas del plano o muros): se oculta en la vista, no se borra. «Mostrar todo» lo devuelve
-  const nOcultos = ocultas.filter(k => k.startsWith('id:')).length;
+  const nOcultos = ocultas.filter(k => k.startsWith('id:')).length + Object.values(modosEq).filter(v => v?.v3 === 'oculto').length;
   const ocultarSel = () => {
     const claves = [...idsSel.map(i => 'id:' + i), ...(seleccion && !selObj ? ['id:' + seleccion.id] : []), ...(selAcab && selAcab.tipo === 'muro' ? ['id:' + selAcab.id] : [])];
     if (!claves.length) { setAviso('Selecciona algo y pulsa Ocultar (tecla H)'); return; }
     setOcultas(o => [...new Set([...o, ...claves])]); setSelObj(null); setMulti({ base: null, ids: [] }); setSeleccion(null); setSelAcab(null);
   };
-  const mostrarTodo = () => setOcultas(o => o.filter(k => !k.startsWith('id:')));
+  const mostrarTodo = () => { setOcultas(o => o.filter(k => !k.startsWith('id:'))); setModosEq(m => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v?.v3 === 'oculto' ? { ...v, v3: undefined } : v]))); };
   ocultarRef.current = ocultarSel;
   const agrupar = () => { const g = 'g' + Date.now().toString(36); setObjs(prev => prev.map(o => (idsSel.includes(o.id) ? { ...o, grupo: g } : o))); setGuardado('Agrupados: al pulsar uno se seleccionan todos'); };
   const desagrupar = () => { setObjs(prev => prev.map(o => { if (!idsSel.includes(o.id) || !o.grupo) return o; const { grupo, ...r } = o; return r; })); setGuardado('Grupo deshecho'); };
@@ -5134,6 +5134,7 @@ export default function Visor3D() {
                 <div style={{ opacity: 0.75, marginBottom: 4 }}>Qué se ve en el 3D (solo esta copia)</div>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
                   <button style={{ ...btn, ...(v3 === '' ? { background: '#8c8076' } : {}) }} onClick={() => fijaV3({ v3: undefined, mod3: undefined })} title="El modelo del bloque, como en el resto de copias">Modelo del bloque</button>
+                  <button style={{ ...btn, ...(v3 === 'oculto' ? { background: '#8c8076' } : {}) }} onClick={() => { fijaV3({ v3: 'oculto', mod3: undefined }); setSeleccion(null); }} title="No se ve en el 3D (sigue en el plano). Para devolverlo: «Mostrar todo»">No mostrar en 3D</button>
                   <button style={{ ...btn, ...(v3 === 'caja' ? { background: '#8c8076' } : {}) }} onClick={() => fijaV3({ v3: 'caja', mod3: undefined })} title="No usa el modelo: se ve como una caja con sus medidas">Solo caja</button>
                   <label style={{ ...btn, cursor: 'pointer', ...(v3 === 'otro' ? { background: '#8c8076' } : {}) }} title="Sube otro modelo solo para esta copia; el bloque y el plano no cambian">Otro modelo…<input type="file" accept=".glb,.gltf,.obj,.dae,.zip" style={{ display: 'none' }} onChange={e => { subirOtro(e.target.files?.[0]); e.target.value = ''; }} /></label>
                 </div>
