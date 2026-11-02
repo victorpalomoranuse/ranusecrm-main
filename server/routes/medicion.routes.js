@@ -9,6 +9,7 @@ import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { catalogoEnCache, guardaCatalogo, vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
 import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
+import { firmaTour } from './tour-publico.routes.js';
 import { uploadReferenceImageFile, uploadHdriFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { indiceBiblioteca3d } from './biblioteca3d.routes.js';
 import { leerModelosBib } from '../utils/modelos-bib.js';
@@ -839,7 +840,7 @@ const limpiaMeta = (m) => {
 };
 router.post('/:id/render', async (req, res) => {
   try {
-    const { imagen, tipo, nombre, meta } = req.body || {};
+    const { imagen, tipo, nombre, meta, tour, nota } = req.body || {};
     const m = /^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(String(imagen || ''));
     if (!m) return res.status(400).json({ error: 'Falta la imagen' });
     const buf = Buffer.from(m[2], 'base64');
@@ -855,7 +856,7 @@ router.post('/:id/render', async (req, res) => {
       if (error) throw error;
     }
     const url = supabase.storage.from(BUCKET_TEX).getPublicUrl(base + '.jpg').data.publicUrl, turl = supabase.storage.from(BUCKET_TEX).getPublicUrl(base + '-t.jpg').data.publicUrl;
-    const render = { id: rid, tipo: t, nombre: String(nombre || '').slice(0, 80) || (t === '360' ? 'Panorama 360°' : t === 'hd' ? 'Render HD' : 'Render con IA'), url, thumb: turl, creado: new Date().toISOString(), meta: limpiaMeta(meta) };
+    const render = { id: rid, tipo: t, nombre: String(nombre || '').slice(0, 80) || (t === '360' ? 'Panorama 360°' : t === 'hd' ? 'Render HD' : 'Render con IA'), url, thumb: turl, creado: new Date().toISOString(), meta: limpiaMeta(meta), ...(t === '360' && tour === true ? { tour: true } : {}), ...(nota ? { nota: String(nota).slice(0, 300) } : {}) };
     const esc = fila.data?.escena3d || { objetos: [] };
     const todos = [render, ...(esc.renders || [])], sobran = todos.slice(80);
     const data = { ...fila.data, escena3d: { ...esc, renders: todos.slice(0, 80), iaPrefs: t === 'ia' ? { estancia: render.meta.estancia, estilo: render.meta.estilo, extra: render.meta.extra, libertad: render.meta.libertad } : (esc.iaPrefs || null), updated: Date.now() } };
@@ -868,6 +869,8 @@ router.post('/:id/render', async (req, res) => {
     res.status(500).json({ error: 'No se pudo guardar en la galería' });
   }
 });
+// Firma del enlace público del tour 360° (el visor arma la dirección con el dominio de la web)
+router.get('/:id/tour-firma', (req, res) => res.json({ firma: firmaTour(req.params.id) }));
 router.patch('/:id/render/:rid', async (req, res) => {
   try {
     const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
@@ -875,6 +878,8 @@ router.patch('/:id/render/:rid', async (req, res) => {
     const esc = fila.data?.escena3d || {}, r = (esc.renders || []).find(x => x.id === req.params.rid);
     if (!r) return res.status(404).json({ error: 'No he encontrado ese render' });
     if (typeof req.body?.nombre === 'string') r.nombre = req.body.nombre.slice(0, 80);
+    if (typeof req.body?.nota === 'string') r.nota = req.body.nota.slice(0, 300);
+    if (typeof req.body?.tour === 'boolean' && r.tipo === '360') r.tour = req.body.tour;
     const { error } = await supabase.from('mediciones').update({ data: { ...fila.data, escena3d: esc } }).eq('id', req.params.id);
     if (error) throw error;
     res.json({ render: r });

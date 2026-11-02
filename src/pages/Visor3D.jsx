@@ -3576,6 +3576,30 @@ export default function Visor3D() {
     try { const r = await api.post('/medicion/' + id + '/render', { imagen, tipo, nombre, meta }, { timeout: 120000 }); setRenders(x => [r.data.render, ...x]); setGuardado('Guardado en la galería ✓'); return r.data.render; }
     catch (e) { setAviso(e.response?.data?.error || 'No se pudo guardar en la galería'); return null; }
   };
+  // Tour del cliente: cada parada es una panorámica 360° guardada con su posición; el enlace público las une con flechas y minimapa
+  const [generandoParada, setGenerandoParada] = useState(false);
+  const paradaTour = () => {
+    const nombre = (window.prompt('Nombre de esta parada del tour (por ejemplo «Entrada» o «Zona de pesas»):', 'Parada ' + (renders.filter(r => r.tour).length + 1)) || '').trim();
+    if (!nombre) return;
+    const nota = (window.prompt('Nota para el cliente (opcional):', '') || '').trim();
+    const a = api3d.current; setGenerandoParada(true); setAviso('Generando la parada «' + nombre + '»…');
+    setTimeout(async () => {
+      try {
+        const dir = new THREE.Vector3(); a.cam.getWorldDirection(dir);
+        const url = capturarEquirect(a.renderer, a.scene, a.cam.position, Math.atan2(dir.x, dir.z), 2048, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]);
+        const r = await api.post('/medicion/' + id + '/render', { imagen: url, tipo: '360', nombre, nota, tour: true, meta: metaActual() }, { timeout: 120000 });
+        setRenders(x => [r.data.render, ...x]); setAviso('Parada «' + nombre + '» añadida al tour ✓');
+      } catch (e) { setAviso(e.response?.data?.error || 'No se ha podido crear la parada: ' + (e.message || 'error')); }
+      setGenerandoParada(false);
+    }, 60);
+  };
+  const copiarEnlaceTour = async () => {
+    if (!renders.some(r => r.tour)) { setAviso('Primero añade alguna parada del tour (menú Salida → Parada del tour).'); return; }
+    try {
+      const f = (await api.get('/medicion/' + id + '/tour-firma')).data.firma, u = window.location.origin + '/tour/' + encodeURIComponent(id) + '/' + f;
+      try { await navigator.clipboard.writeText(u); setAviso('Enlace del tour copiado: ' + u); } catch { window.prompt('Copia el enlace del tour:', u); }
+    } catch { setAviso('No se pudo crear el enlace del tour'); }
+  };
   const hacer360 = () => {
     const a = api3d.current; setGenerando360(true);
     setTimeout(() => {
@@ -4048,6 +4072,8 @@ export default function Visor3D() {
           [renderizando ? 'Renderizando…' : 'Render HD', async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }, false, renderizando || estado !== 'listo', 'Render HD limpio con sombras suaves'],
           ['Render con IA', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'La IA convierte esta vista en una foto realista'],
           [generando360 ? 'Generando 360°…' : 'Panorama 360°', hacer360, false, generando360 || estado !== 'listo', 'Panorama 360° desde la cámara'],
+          [generandoParada ? 'Creando parada…' : 'Parada del tour (360°)', paradaTour, false, generandoParada || generando360 || estado !== 'listo', 'Guarda una panorámica 360° de aquí como parada del tour del cliente'],
+          ['Copiar enlace del tour', copiarEnlaceTour, false, false, 'Enlace público (solo lectura) del tour 360° para el cliente'],
           [panoIA ? 'Panorama con IA…' : 'Panorama 360° con IA (prueba)', hacer360IA, false, panoIA || generando360 || estado !== 'listo', 'Manda la panorámica a ChatGPT para hacerla fotorrealista'],
           ['Galería' + (renders.length ? ' (' + renders.length + ')' : ''), () => setGalAbierta(v => !v), galAbierta, false, 'Renders y panoramas guardados'],
           ['Despiece y cantidades', abrirDespiece, false, false, 'Despiece y cantidades de todo lo diseñado'],
@@ -4350,6 +4376,7 @@ export default function Visor3D() {
               <img src={rd.thumb} alt={rd.nombre} onClick={() => (rd.tipo === '360' ? setPano({ url: rd.url, guardado: true, id: rd.id, meta: rd.meta }) : setVerRender(rd))} style={{ width: '100%', borderRadius: 6, cursor: 'pointer', display: 'block' }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                 <input defaultValue={rd.nombre} key={rd.id + rd.nombre} onBlur={e => { if (e.target.value !== rd.nombre) api.patch('/medicion/' + id + '/render/' + rd.id, { nombre: e.target.value }).then(r => setRenders(x => x.map(y => (y.id === rd.id ? r.data.render : y)))).catch(() => setAviso('No se pudo renombrar')); }} style={{ ...btn, flex: 1, padding: '2px 6px' }} />
+                {rd.tipo === '360' && <button style={{ ...btn, padding: '2px 6px', fontSize: 11, background: rd.tour ? '#2f6b3a' : undefined }} title="Las paradas marcadas forman el tour que ve el cliente" onClick={() => api.patch('/medicion/' + id + '/render/' + rd.id, { tour: !rd.tour }).then(r => setRenders(x => x.map(y => (y.id === rd.id ? r.data.render : y)))).catch(() => setAviso('No se pudo cambiar'))}>{rd.tour ? '✓ En el tour' : '＋ Al tour'}</button>}
                 <span style={{ opacity: 0.55, fontSize: 10 }}>{rd.tipo === '360' ? '360°' : rd.tipo === 'hd' ? 'HD' : 'IA'}</span>
               </div>
               <div style={{ opacity: 0.6, fontSize: 11, marginTop: 2 }}>{new Date(rd.creado).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}{rd.meta?.estancia ? ' · ' + rd.meta.estancia : ''}{rd.meta?.estilo ? ' · ' + rd.meta.estilo : ''}</div>

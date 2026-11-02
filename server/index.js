@@ -23,6 +23,7 @@ import visorAyudaRoutes from './routes/visor-ayuda.routes.js';
 import renderNubeRoutes from './routes/render-nube.routes.js';
 import biblioteca3dRoutes from './routes/biblioteca3d.routes.js';
 import medicionSketchupRoutes from './routes/medicion-sketchup.routes.js';
+import tourPublicoRoutes from './routes/tour-publico.routes.js';
 import historiaPublicaRoutes from './routes/historia-publica.routes.js';
 import employeesRoutes from './routes/employees.routes.js';
 import catalogRoutes from './routes/catalog.routes.js';
@@ -107,6 +108,7 @@ app.use('/api/importar-planos', importarPlanosRoutes);
 app.use('/api/ia-conversaciones', iaConversacionesRoutes);
 app.use('/api/conocimiento', conocimientoRoutes);
 app.use('/api/medicion-publico', medicionSketchupRoutes); // enlace de solo lectura para SketchUp (firmado)
+app.use('/api/tour-publico', tourPublicoRoutes); // tour 360° para el cliente (solo lectura, firmado)
 app.use('/api/medicion', medicionRoutes);
 app.use('/api/render-ia', renderIaRoutes);
 app.use('/api/estudio-ideas', estudioIdeasRoutes);

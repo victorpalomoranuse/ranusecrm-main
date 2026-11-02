@@ -18,6 +18,7 @@ import { PlanosEditor } from './pages/PlanosEditor';
 import Visor3D from './pages/Visor3D';
 import { SubirFotos } from './pages/SubirFotos';
 import { Rapido } from './pages/Rapido';
+import { TourPublico } from './pages/TourPublico';
 import './App.css';
 
 function AdminGuard({ children }) {
@@ -71,6 +72,7 @@ function App() {
               <Route path="/proyecto/:projectId" element={<ProjectGallery />} />
 
               {/* Subir fotos del estado actual desde el móvil (sin entrar al CRM) */}
+              <Route path="/tour/:id/:firma" element={<TourPublico />} />
               <Route path="/subir/:code" element={<SubirFotos />} />
 
               {/* Portal cliente */}
