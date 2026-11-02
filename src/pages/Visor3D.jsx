@@ -4251,9 +4251,11 @@ export default function Visor3D() {
             {pestanaRender === 'inspector' && <>
               {matSel?.hex && !matSel?.id && (() => {
                 const hexL = matSel.hex.slice(0, 7);
-                const crear = async (extra) => {
+                const crear = async (extra, hexN, normal) => {
                   try {
-                    const pbr = { rough: 0.6, ...extra }, r = await api.post('/medicion/' + id + '/textura-color', { hex: hexL, pbr }), nueva = r.data.textura;
+                    const pbr = { rough: 0.6, ...extra }, r = await api.post('/medicion/' + id + '/textura-color', { hex: hexN || hexL, pbr });
+                    let nueva = r.data.textura;
+                    if (normal) { const fd = new FormData(); fd.append('tipo', 'normal'); fd.append('file', normal); nueva = (await api.post('/medicion/' + id + '/textura/' + nueva.id + '/mapa', fd)).data.textura; }
                     setTexturas(x => (x.some(y => y.id === nueva.id) ? x : [...x, nueva]));
                     const g = api3d.current.ultimoGoteo; matSelRef.current = { id: nueva.id }; g?.aplicar?.(g.hit, true);
                     setMatSel({ id: nueva.id }); setGuardado('Material propio creado: ya puedes ajustarlo');
@@ -4263,8 +4265,10 @@ export default function Visor3D() {
                 return (
                   <div style={{ marginTop: 10, padding: '8px 10px', border: '1px solid #3a342f', borderRadius: 8 }}>
                     <div style={{ fontWeight: 700, marginBottom: 6 }}>Mapa</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}><span style={{ opacity: 0.7, fontSize: 12, width: 100 }}>Color base</span><span style={{ width: 28, height: 28, borderRadius: 6, background: hexL, border: '1px solid #666' }} /><code style={{ fontSize: 12 }}>{hexL}</code></div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}><span style={{ opacity: 0.7, fontSize: 12, width: 100 }}>Color base</span><input type="color" key={hexL} defaultValue={hexL} title="Rueda de color" onChange={e => { const v = e.target.value; clearTimeout(window.__tcol); window.__tcol = setTimeout(() => crear({}, v), 500); }} style={{ width: 40, height: 30, padding: 0, border: '1px solid #666', borderRadius: 6, background: 'none', cursor: 'pointer' }} /><code style={{ fontSize: 12 }}>{hexL}</code></div>
                     {sl('Rugosidad', 'rough', 1, 0.6)}{sl('Metálico', 'metal', 1, 0)}{sl('Reflejos entorno', 'env', 3, 1)}{sl('Barniz', 'clearcoat', 1, 0)}
+                    <label style={{ ...btn, display: 'block', textAlign: 'center', margin: '6px 0 4px', cursor: 'pointer', fontSize: 12 }} title="Sube la imagen de un mapa normal: se crea un material propio con este color y ese relieve">⬆ Subir mapa normal (imagen)<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) crear({}, null, fl); }} /></label>
+                    <button style={{ ...btn, width: '100%', fontSize: 12 }} onClick={() => setMatAbierto(true)} title="Sube una foto y crea una textura nueva para aplicarla">🖼 Cambiar por una textura de imagen…</button>
                     <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>Es un color liso. Al mover cualquier ajuste se crea un material propio con ese color, se aplica a esta superficie y aparecen todos los ajustes (normales, AO, emisivo y UV).</div>
                   </div>
                 );
