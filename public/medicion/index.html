@@ -471,6 +471,12 @@ body.crm .top .brand{display:none}
     <aside class="side" id="side">
       <button class="side-close" id="b-side-close">✕ Cerrar panel</button>
       <section class="blk"><h2>Selección</h2><div id="sel"></div></section>
+      <section class="blk" id="tamblk">
+        <h2>Tamaños</h2>
+        <p class="note" style="margin:0 0 8px">Ajusta a la vez el tamaño de lo que se dibuja en el plano y en las láminas. 100 % = tamaño normal. Se guarda en este plano.</p>
+        <div id="tam-lista"></div>
+        <div class="btns"><button id="tam-reset" type="button">Volver a 100 %</button></div>
+      </section>
       <section class="blk">
         <h2>Visita</h2>
         <label class="fld"><span>Proyecto</span><input id="v-nombre" placeholder="Gimnasio de Javier"></label>
@@ -2488,7 +2494,7 @@ function acabCodes(view){
 }
 var PTK={
   ilum:[{id:'foco',n:'Foco empotrado'},{id:'plaf',n:'Plafón de superficie'},{id:'colg',n:'Luminaria colgante'},{id:'aplq',n:'Aplique de pared',wall:1},{id:'pie',n:'Lámpara de pie'},{id:'esp',n:'Luz de espejo',wall:1},{id:'spot',n:'Spot orientable (de carril)'},{id:'spotl',n:'Spot lineal (de carril)',rect:1,w:60,d:5},{id:'mue',n:'Luz de mueble o estantería'},{id:'suel',n:'Empotrado de suelo'},{id:'led',n:'Tira LED',lin:1},{id:'carril',n:'Carril de luz',lin:1},{id:'lineal',n:'Luminaria lineal',lin:1,t:6},{id:'linealc',n:'Lineal colgante',lin:1,t:6},{id:'panel',n:'Panel rectangular',rect:1,w:60,d:60}],
-  elec:[{id:'enchufe',n:'Enchufe',wall:1,h:30},{id:'inter',n:'Interruptor',wall:1,h:110},{id:'conm',n:'Conmutador',wall:1,h:110},{id:'datos',n:'Toma de datos',wall:1,h:30},{id:'tv',n:'Toma de TV',wall:1,h:110},{id:'fuerza',n:'Toma de fuerza',wall:1,h:30},{id:'cuadro',n:'Cuadro eléctrico',wall:1,h:150}]
+  elec:[{id:'enchufe',n:'Enchufe',wall:1,h:30},{id:'inter',n:'Interruptor',wall:1,h:110},{id:'conm',n:'Conmutador',wall:1,h:110},{id:'datos',n:'Toma de datos',wall:1,h:30},{id:'tv',n:'Toma de TV',wall:1,h:110},{id:'fuerza',n:'Toma de fuerza',wall:1,h:30},{id:'cuadro',n:'Cuadro eléctrico',wall:1,h:150,rect:1,w:40,d:25}]
 };
 function ptDef(k){for(var g in PTK)for(var i=0;i<PTK[g].length;i++)if(PTK[g][i].id===k)return PTK[g][i];return null}
 /* símbolos de puntos: se dibujan alrededor de (0,0); +x apunta a la pared; u = tamaño de un punto de papel */
@@ -2525,7 +2531,7 @@ var DIRN={l:'izquierda',r:'derecha',u:'superior',d:'inferior'};
 function lumList(){var m={},out=[];LUMS.forEach(function(l){m[l.id]=1;out.push(l)});cloudLum.forEach(function(l){if(!m[l.id]){m[l.id]=1;out.push(l)}});return out}
 function lumById(id){var a=lumList();for(var i=0;i<a.length;i++)if(a[i].id===id)return a[i];return null}
 function isSw(q){return q.v==='elec'&&(q.k==='inter'||q.k==='conm')&&q.s!=='dem'}
-function ptSz(q){return (q.sz||1)*(q.v==='ilum'?(st.v.lsz||1):1)*ZSYM}
+function ptSz(q){return (q.sz||1)*(q.v==='ilum'?(st.v.lsz||1):1)*ZSYM*(q.v==='ilum'?tamK('siml'):tamK('sime'))}
 function rayWalls(ox,oy,dx,dy,view){
   var best=Infinity;
   st.v.walls.forEach(function(w){
@@ -3477,10 +3483,13 @@ function angTxt(vertPlan){var pv=PAGE_ROT?!vertPlan:vertPlan;return (pv?-90:0)-P
 var ZOOMF=1,ZSYM=1; /* ZSYM: igual que ZOOMF pero para los símbolos de luces, enchufes e interruptores (se encogen más al alejarse) */ /* en pantalla, al alejarte los textos y símbolos se encogen un poco (sin llegar a ser ilegibles) para que no se coman el plano */
 var TXTK=1,ESTR='todo'; /* ESTR: qué estructura del techo se dibuja como referencia al exportar Iluminación y Electricidad */
 /* tamaño único de las cotas: iguales entre sí y sin cambiar con el zoom (en lámina, algo más pequeñas) */
-function cotaFs(C){return 10.5*(C===LIGHT?0.85:1)}
-function txtC(){var z=ZOOMF;ZOOMF=1;try{return txt.apply(null,arguments)}finally{ZOOMF=z}}
+var TAMS=[['all','Todo a la vez'],['cotas','Cotas (números de medidas)'],['etq','Etiquetas y textos (L1, E1, P1…)'],['siml','Símbolos de iluminación'],['sime','Símbolos de electricidad']];
+function tamK(k){var t=(st&&st.v&&st.v.tam)||{},a=+t.all>0?+t.all:1,v=+t[k]>0?+t[k]:1;return k==='all'?a:a*v}
+var NOETQ=false;
+function cotaFs(C){return 10.5*(C===LIGHT?0.85:1)*tamK('cotas')}
+function txtC(){var z=ZOOMF,n=NOETQ;ZOOMF=1;NOETQ=true;try{return txt.apply(null,arguments)}finally{ZOOMF=z;NOETQ=n}}
 function txt(C,px,x,y,s,col,size,weight,halo,rot){
-  size=size*TXTK*ZOOMF;
+  size=size*TXTK*ZOOMF*(NOETQ?1:tamK('etq'));
   var sty='fill:'+col+';font-size:'+f2(size*px)+'px;font-weight:'+(weight||500)+';paint-order:stroke;stroke:'+(halo||C.halo)+';stroke-width:'+f2(3*px)+'px;stroke-linejoin:round';
   if(rot!==undefined&&rot!==null) /* con giro, (x,y) es el centro del texto; va dentro de un grupo (lo único que el PDF gira) */
     return '<g transform="translate('+f2(x)+' '+f2(y)+')'+(rot?' rotate('+rot+')':'')+'"><text data-nr="1" x="0" y="'+f2(0.35*size*px)+'" text-anchor="middle" style="'+sty+'">'+s+'</text></g>';
@@ -4136,7 +4145,7 @@ function scene0(C,k,view,o){
         var dl=Math.hypot(pl.ax-lx,pl.ay-ly)||1;
         etqEq+=ln(pl.ax,pl.ay,lx+(pl.ax-lx)/dl*rr,ly+(pl.ay-ly)/dl*rr,tq.col,0.8*px,'butt');
         etqEq+='<circle cx="'+f2(lx)+'" cy="'+f2(ly)+'" r="'+f2(rr)+'" style="fill:'+tq.col+'"/>';
-        etqEq+='<text x="'+f2(lx)+'" y="'+f2(ly+3.4*px)+'" text-anchor="middle" style="fill:#ffffff;font-size:'+f2(9.5*px*TXTK)+'px;font-weight:700">'+esc(tq.cod)+'</text>';
+        etqEq+='<text x="'+f2(lx)+'" y="'+f2(ly+3.4*px)+'" text-anchor="middle" style="fill:#ffffff;font-size:'+f2(9.5*px*TXTK*tamK('etq'))+'px;font-weight:700">'+esc(tq.cod)+'</text>';
       }
     });
     var CAPA={mm:Lmm,eq:Leq,pil:capaVis('pil')?pintaPil():'',dr:drItemsSvg(C,px,view,sel)}; /* las capas, en el orden elegido (de abajo a arriba) */
@@ -6849,7 +6858,8 @@ function panelSel(focus){
       var etqDc=q.k==='cuadro'?'Ancho del símbolo en el plano (cm)':'Tamaño real del símbolo (cm)';
       h+=fld('pt_dc',etqDc,q.dc>0?q.dc:null,'automático')+'<p class="note" style="margin:0 0 6px">Escribe la medida que quieras ('+(q.k==='cuadro'?'por ejemplo 40 cm de ancho':'por ejemplo 8 cm')+') y el símbolo se dibuja a esa escala real. Vacío = se ajusta solo al zoom.</p><div class="btns"><button data-a="ptdcall" title="Aplica este tamaño a todos los símbolos del mismo tipo">Igualar a todos de este tipo</button></div>';
     }
-    if(pd.rect){h+=fld('pt_lw','Largo (cm)',q.w>0?q.w:pd.w)+fld('pt_lf','Fondo (cm)',q.d>0?q.d:pd.d)+'<div class="btns tr">'+[[60,60],[120,30],[30,30],[60,120],[120,60],[60,30]].map(function(m){return '<button data-a="ptmed:'+m[0]+','+m[1]+'" title="Medida habitual">'+m[0]+'×'+m[1]+'</button>'}).join('')+'</div>'}
+    if(pd.rect&&q.k==='cuadro')h+=fld('pt_lw','Ancho del cuadro (cm)',q.w>0?q.w:pd.w)+fld('pt_lf','Alto del cuadro en el plano (cm)',q.d>0?q.d:pd.d)+'<div class="btns tr">'+[[30,20],[40,25],[50,30],[60,40]].map(function(m){return '<button data-a="ptmed:'+m[0]+','+m[1]+'">'+m[0]+'×'+m[1]+'</button>'}).join('')+'</div>';
+    else if(pd.rect){h+=fld('pt_lw','Largo (cm)',q.w>0?q.w:pd.w)+fld('pt_lf','Fondo (cm)',q.d>0?q.d:pd.d)+'<div class="btns tr">'+[[60,60],[120,30],[30,30],[60,120],[120,60],[60,30]].map(function(m){return '<button data-a="ptmed:'+m[0]+','+m[1]+'" title="Medida habitual">'+m[0]+'×'+m[1]+'</button>'}).join('')+'</div>'}
     if(pd.lin&&(q.k==='lineal'||q.k==='linealc'))h+=fld('pt_lt','Ancho de la luminaria (cm)',q.t>0?q.t:pd.t);
     if(pd.lin){
       var nvs=ptVerts(q).length;
@@ -7827,7 +7837,21 @@ document.addEventListener('change',function(e){
   if(String(t.value).trim()==='')delete st.v.pasoF[f];else{var n=num(t.value);if(n>=0&&n<=500)st.v.pasoF[f]=n}
   save();render();panelRest();drawPasoFam();
 });
+function drawTam(){
+  var b=$('tam-lista');if(!b)return;
+  var t=(st.v&&st.v.tam)||{};
+  b.innerHTML=TAMS.map(function(x){var v=Math.round((+t[x[0]]>0?+t[x[0]]:1)*100);return '<label class="fld" style="margin-bottom:6px"><span style="display:flex;justify-content:space-between"><b style="font-weight:'+(x[0]==='all'?700:500)+'">'+x[1]+'</b><output>'+v+' %</output></span><input type="range" data-tam="'+x[0]+'" min="30" max="300" step="5" value="'+v+'"></label>'}).join('');
+}
+document.addEventListener('input',function(e){
+  var r=e.target&&e.target.getAttribute&&e.target.getAttribute('data-tam');if(!r)return;
+  st.v.tam=st.v.tam||{};st.v.tam[r]=Math.max(0.3,Math.min(3,(+e.target.value||100)/100));
+  var o=e.target.parentNode.querySelector('output');if(o)o.textContent=Math.round(st.v.tam[r]*100)+' %';
+  render();
+});
+document.addEventListener('change',function(e){var r=e.target&&e.target.getAttribute&&e.target.getAttribute('data-tam');if(r)save()});
+$('tam-reset').addEventListener('click',function(){snap();delete st.v.tam;commit(false);drawTam();render()});
 function fields(){
+  try{drawTam()}catch(e){}
   try{pisosUi()}catch(e){}
   try{drawCal()}catch(e){}
   try{actualizaBotonesPlantas()}catch(e){}
