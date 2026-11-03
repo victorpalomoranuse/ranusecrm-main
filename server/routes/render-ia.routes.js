@@ -71,8 +71,8 @@ router.post('/', async (req, res) => {
     // Cuánto puede inventar la IA: fiel (solo pule), equilibrado (ambiente y luz) o creativo (decora y amuebla con criterio)
     const nivel = ['fiel', 'equilibrado', 'creativo'].includes(libertad) ? libertad : 'equilibrado';
     const NIVELES = {
-      fiel: 'Respeta EXACTAMENTE la composición, la perspectiva, las proporciones y la posición de cada elemento. No añadas ni quites nada: solo mejora la luz, los materiales y las texturas.',
-      equilibrado: 'Respeta la distribución, la perspectiva y las proporciones del espacio, y los elementos principales (muros, puertas, ventanas y muebles). Sí puedes enriquecer la escena con luz natural, reflejos, sombras suaves, texturas realistas en suelos y paredes, el exterior visible por las ventanas y pequeños detalles de ambiente coherentes con la estancia, SIN cambiar el color base de ninguna superficie.',
+      fiel: 'Respeta EXACTAMENTE la composición, la perspectiva, las proporciones y la posición de cada elemento. NO añadas, quites ni muevas NADA: ni muebles, repisas, estantes, cuadros, plantas, alfombras, cortinas, cables, rótulos, tiradores ni decoración. Si una pared o una zona está vacía en la imagen, se queda vacía y lisa. Solo mejora la luz, los materiales y las texturas.',
+      equilibrado: 'Respeta la distribución, la perspectiva, las proporciones y TODOS los objetos de la imagen: ni uno más ni uno menos. NO añadas objetos nuevos (muebles, repisas, estantes, cuadros, plantas, alfombras, cortinas, decoración, aparatos ni luminarias); una pared vacía se queda vacía. Sí puedes mejorar la luz natural, los reflejos, las sombras suaves y las texturas realistas de suelos y paredes, sin cambiar el color base de ninguna superficie.',
       creativo: 'Mantén la arquitectura (muros, huecos, medidas y perspectiva) y la distribución general, pero decora con criterio de interiorista: textiles, plantas, iluminación ambiente, accesorios y detalles que hagan que el espacio parezca vivido y de revista. No cambies el encuadre.',
     };
     // Muestras reales de los materiales de la escena (imagen + descripción) para que la IA los reconozca y no invente otros

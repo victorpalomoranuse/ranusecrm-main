@@ -4071,7 +4071,7 @@ export default function Visor3D({ cliente = false }) {
   // Render fotorrealista con IA: se manda la vista actual y vuelve mejorada
   const [ia, setIa] = useState(null); // { estado: 'trabajando' | 'listo' | 'error', imagen, mensaje, estancia, estilo, extra }
   const [iaForm, setIaForm] = useState(false);
-  const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '', libertad: 'equilibrado', proveedor: 'openai', aspecto: 'realista' });
+  const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '', libertad: 'fiel', proveedor: 'openai', aspecto: 'realista' });
   const metaActual = (txt = iaTxt) => {
     const { cam, ctrl } = api3d.current;
     return { camara: { px: cam.position.x, py: cam.position.y, pz: cam.position.z, tx: ctrl.target.x, ty: ctrl.target.y, tz: ctrl.target.z, fov: cam.fov }, shift: api3d.current.shiftY || 0, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, estancia: txt.estancia, estilo: txt.estilo, extra: txt.extra, libertad: txt.libertad };
