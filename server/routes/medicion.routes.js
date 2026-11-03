@@ -10,6 +10,7 @@ import { catalogoEnCache, guardaCatalogo, vaciaCacheAlEscribir } from '../utils/
 import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
 import { firmaTour } from './tour-publico.routes.js';
+import { leerTexturasMias } from './biblioteca3d.routes.js';
 import { uploadProjectRender } from '../utils/storage.js';
 import { uploadReferenceImageFile, uploadHdriFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { indiceBiblioteca3d } from './biblioteca3d.routes.js';
@@ -746,7 +747,7 @@ router.post('/:id/textura-color', async (req, res) => {
 router.post('/:id/textura-biblioteca', async (req, res) => {
   try {
     const ind = await indiceBiblioteca3d();
-    const t = (ind?.texturas || []).find(x => x.id === req.body?.texId);
+    const t = (ind?.texturas || []).find(x => x.id === req.body?.texId) || (await leerTexturasMias()).find(x => x.id === req.body?.texId);
     if (!t) return res.status(404).json({ error: 'Esa textura no está en la biblioteca' });
     const { data: fila } = await supabase.from('mediciones').select('data').eq('id', req.params.id).maybeSingle();
     if (!fila) return res.status(404).json({ error: 'Plano no encontrado' });

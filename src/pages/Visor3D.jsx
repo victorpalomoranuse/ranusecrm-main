@@ -3348,7 +3348,7 @@ export default function Visor3D({ cliente = false }) {
 
   useEffect(() => {
     if (!b3dAbierta || b3d) return;
-    api.get('/biblioteca3d').then(r => setB3d(r.data || { modelos: [], texturas: [] })).catch(() => setB3d({ modelos: [], texturas: [], error: true }));
+    api.get('/biblioteca3d').then(r => { const d = r.data || { modelos: [], texturas: [] }; setB3d({ ...d, texturas: [...(d.texturasMias || []), ...(d.texturas || [])] }); }).catch(() => setB3d({ modelos: [], texturas: [], error: true }));
   }, [b3dAbierta, b3d]);
   // «Mis modelos»: sube un modelo suelto (planta, mueble…), mide su tamaño real y lo deja en la biblioteca
   const [subiendoMio, setSubiendoMio] = useState('');
@@ -3476,6 +3476,22 @@ export default function Visor3D({ cliente = false }) {
       setMatSel({ id: nueva.id }); setHerr('pincel');
       setGuardado('Material del catálogo listo: haz clic en un muro, suelo o techo');
     } catch (e) { setGuardado(e.response?.data?.error || 'No se pudo usar el material'); }
+  };
+  const [subiendoTex, setSubiendoTex] = useState('');
+  const [texTam, setTexTam] = useState(60);
+  const subirMisTexturas = async (archivos) => {
+    const lista = Array.from(archivos || []).filter(f => String(f.type).startsWith('image'));
+    if (!lista.length) { setSubiendoTex('Elige una imagen (jpg, png o webp)'); return; }
+    let ok = 0;
+    for (let i = 0; i < lista.length; i++) {
+      setSubiendoTex('Subiendo ' + (lista.length > 1 ? (i + 1) + '/' + lista.length + ' · ' : '') + '«' + lista[i].name + '»…');
+      try {
+        const fd = new FormData(); fd.append('file', lista[i]); fd.append('tam', String(texTam));
+        const r = await api.post('/biblioteca3d/mis-texturas', fd);
+        setB3d(b => ({ ...(b || {}), texturas: [r.data.textura, ...((b?.texturas) || [])] })); ok++;
+      } catch (e) { setSubiendoTex('«' + lista[i].name + '»: ' + (e.response?.data?.error || 'no se pudo subir')); return; }
+    }
+    setB3dCat('Mis texturas'); setSubiendoTex(ok + (ok === 1 ? ' textura añadida' : ' texturas añadidas') + ' a «Mis texturas» ✓. Pulsa una para usarla.');
   };
   const usarTexturaB3d = async (t) => {
     try {
@@ -5746,14 +5762,25 @@ export default function Visor3D({ cliente = false }) {
                 </div>
               ))}
               {b3dTab === 'texturas' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                  {lista.map(t => (
-                    <div key={t.id} onClick={() => usarTexturaB3d(t)} title={t.nombre + ' · ' + t.categoria} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
-                      <img src={t.url} alt={t.nombre} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
-                      <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.nombre}</div>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#6b6159', cursor: 'pointer' }}>⬆ Subir mis texturas (imágenes)
+                      <input type="file" multiple accept="image/*" style={{ display: 'none' }} onChange={e => { subirMisTexturas(e.target.files); e.target.value = ''; }} />
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 12 }}><span style={{ opacity: 0.7 }}>Lo que mide la imagen (cm)</span><input type="number" min="5" max="1000" value={texTam} onChange={e => setTexTam(parseFloat(e.target.value) || 60)} style={{ ...btn, width: 62, padding: '2px 5px' }} /></label>
+                    <div style={{ opacity: 0.55, fontSize: 11, marginTop: 3 }}>Pon el ancho real que cubre la foto (una baldosa de 60 cm = 60). Quedan guardadas en «Mis texturas» para todos tus planos.</div>
+                    {subiendoTex && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{subiendoTex}</div>}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                    {lista.map(t => (
+                      <div key={t.id} onClick={() => usarTexturaB3d(t)} title={t.nombre + ' · ' + t.categoria + (t.tam ? ' · ' + t.tam + ' cm' : '')} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+                        <img src={t.url} alt={t.nombre} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
+                        <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.nombre}</div>
+                        {t.mia && <span onClick={e => { e.stopPropagation(); if (window.confirm('¿Quitar «' + t.nombre + '» de Mis texturas? Los planos que ya la usan la conservan.')) api.delete('/biblioteca3d/mis-texturas/' + t.id).then(() => setB3d(b => ({ ...b, texturas: (b.texturas || []).filter(x => x.id !== t.id) }))).catch(() => setSubiendoTex('No se pudo quitar')); }} title="Quitar de Mis texturas" style={{ position: 'absolute', top: 1, right: 1, background: '#000b', borderRadius: 8, padding: '0 5px', fontSize: 10 }}>✕</span>}
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
             <div style={{ opacity: 0.45, fontSize: 10, marginTop: 6 }}>Modelos y texturas de Poly Haven (polyhaven.com), licencia CC0.</div>

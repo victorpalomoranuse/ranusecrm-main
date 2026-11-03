@@ -1,7 +1,8 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
-import { uploadModelo3dFile, uploadFotosProducto, handleMulterError } from '../middleware/upload.middleware.js';
+import { uploadModelo3dFile, uploadFotosProducto, uploadReferenceImageFile, handleMulterError } from '../middleware/upload.middleware.js';
+import sharp from 'sharp';
 import JSZip from 'jszip';
 
 // Biblioteca 3D gratuita (modelos y texturas de Poly Haven, licencia CC0). No forma parte del catálogo de productos:
@@ -207,11 +208,52 @@ router.get('/crear-ia/:id', (req, res) => {
   res.json({ estado: job.estado, modelo: job.modelo, error: job.error, segundos: Math.round((Date.now() - job.desde) / 1000) });
 });
 
+// «Mis texturas»: imágenes propias (suelos, paredes, tejidos…) que se suben una vez y sirven en todos los planos. Lista en modelos-3d/_texturas.json
+const RUTA_TEX_MIAS = 'modelos-3d/_texturas.json';
+export async function leerTexturasMias() {
+  try { const { data, error } = await supabase.storage.from(BUCKET).download(RUTA_TEX_MIAS); if (error || !data) return []; const j = JSON.parse(await data.text()); return Array.isArray(j) ? j : []; } catch { return []; }
+}
+const guardarTexturasMias = lista => supabase.storage.from(BUCKET).upload(RUTA_TEX_MIAS, Buffer.from(JSON.stringify(lista)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
+router.post('/mis-texturas', uploadReferenceImageFile, handleMulterError, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Falta la imagen' });
+    const id = 'mt-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ruta = 'biblioteca3d/mis-texturas/' + id + '.jpg';
+    const buf = await sharp(req.file.buffer).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+    const { error: eUp } = await supabase.storage.from(BUCKET).upload(ruta, buf, { contentType: 'image/jpeg', upsert: true });
+    if (eUp) throw eUp;
+    const tam = Math.max(5, Math.min(1000, parseFloat(req.body?.tam) || 60));
+    const nombre = String(req.body?.nombre || nombreOk(req.file.originalname).replace(/\.[^.]+$/, '')).replace(/[_-]+/g, ' ').trim().slice(0, 60) || 'Mi textura';
+    const t = { id, nombre, categoria: 'Mis texturas', url: supabase.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl, tam, mia: true };
+    const lista = await leerTexturasMias(); lista.push(t);
+    const { error } = await guardarTexturasMias(lista); if (error) throw error;
+    res.status(201).json({ textura: t });
+  } catch (e) { console.error('biblioteca3d mis-texturas:', e); res.status(500).json({ error: 'No se pudo guardar la textura' }); }
+});
+router.put('/mis-texturas/:id', async (req, res) => {
+  try {
+    const lista = await leerTexturasMias(), t = lista.find(x => x.id === req.params.id);
+    if (!t) return res.status(404).json({ error: 'No encontrada' });
+    if (typeof req.body?.nombre === 'string' && req.body.nombre.trim()) t.nombre = req.body.nombre.trim().slice(0, 60);
+    if (parseFloat(req.body?.tam) > 0) t.tam = Math.max(5, Math.min(1000, parseFloat(req.body.tam)));
+    const { error } = await guardarTexturasMias(lista); if (error) throw error;
+    res.json({ textura: t });
+  } catch (e) { res.status(500).json({ error: 'No se pudo cambiar' }); }
+});
+router.delete('/mis-texturas/:id', async (req, res) => {
+  try {
+    const lista = await leerTexturasMias(), t = lista.find(x => x.id === req.params.id);
+    if (!t) return res.json({ ok: true });
+    const { error } = await guardarTexturasMias(lista.filter(x => x.id !== t.id)); if (error) throw error;
+    await supabase.storage.from(BUCKET).remove(['biblioteca3d/mis-texturas/' + t.id + '.jpg']).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'No se pudo quitar' }); }
+});
+
 router.get('/', async (req, res) => {
   try {
-    const ind = await indiceBiblioteca3d(), mios = await leerLibres(), catsMios = await leerCats();
-    if (!ind) return res.json({ modelos: [], texturas: [], mios, catsMios, vacia: !mios.length });
-    res.json({ ...ind, mios, catsMios });
+    const ind = await indiceBiblioteca3d(), mios = await leerLibres(), catsMios = await leerCats(), texturasMias = await leerTexturasMias();
+    if (!ind) return res.json({ modelos: [], texturas: [], mios, catsMios, texturasMias, vacia: !mios.length && !texturasMias.length });
+    res.json({ ...ind, mios, catsMios, texturasMias });
   } catch (err) {
     console.error('biblioteca3d:', err);
     res.status(500).json({ error: 'No se pudo cargar la biblioteca 3D' });
