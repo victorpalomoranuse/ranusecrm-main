@@ -786,6 +786,13 @@ function construirLuminaria(kid, col, sel, variante, tilt, yaw) {
   else { const d = new THREE.Mesh(new THREE.CircleGeometry(0.06, 20), glow); d.rotation.x = -Math.PI / 2; d.position.y = 0.002; const aro = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.01, 20), cuerpo); aro.position.y = 0; g.add(aro, d); luzPos = new THREE.Vector3(0, 0.05, 0); }
   return { grupo: g, luzPos };
 }
+const cacheDimLuz = new Map();
+function dimNominalLuz(kid) {
+  if (cacheDimLuz.has(kid)) return cacheDimLuz.get(kid);
+  let d = [10, 20, 10];
+  try { const { grupo } = construirLuminaria(kid, 0xffffff, false); const sz = new THREE.Box3().setFromObject(grupo).getSize(new THREE.Vector3()); d = [sz.x * 100, sz.y * 100, sz.z * 100].map(v => Math.max(1, Math.round(v * 10) / 10)); } catch { /* medidas por defecto */ }
+  cacheDimLuz.set(kid, d); return d;
+}
 function cartel(texto) {
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
   const cx = cv.getContext('2d'); cx.fillStyle = 'rgba(0,0,0,0.78)'; cx.beginPath(); cx.roundRect ? cx.roundRect(4, 8, 248, 48, 12) : cx.rect(4, 8, 248, 48); cx.fill();
@@ -2684,6 +2691,8 @@ export default function Visor3D({ cliente = false }) {
       // en la pared: el aplique mira hacia fuera (el ángulo del plano apunta hacia el muro)
       const ang = ((l.a || 0) * Math.PI) / 180, fuera = new THREE.Vector3(-Math.cos(ang), 0, -Math.sin(ang));
       if (esPared) marca.rotation.y = Math.atan2(fuera.x, fuera.z);
+      // medidas propias (ancho, alto y fondo en cm) sobre el dibujo por defecto
+      if (aj.dim && !aj.mod?.url && !l.vs) { const nd = dimNominalLuz(l.kid); marca.scale.set((aj.dim.w || nd[0]) / nd[0], (aj.dim.h || nd[1]) / nd[1], (aj.dim.d || nd[2]) / nd[2]); }
       // color propio del cuerpo de la luminaria
       if (/^#[0-9a-f]{6}$/i.test(aj.color || '')) marca.traverse(x => { if (x.isMesh && x.material && x.material.isMeshStandardMaterial) { x.material = x.material.clone(); x.material.color.set(aj.color); } });
       // modelo 3D propio (sustituye al dibujo por defecto): se ajusta a la altura indicada y se ancla según el tipo
@@ -2702,15 +2711,17 @@ export default function Visor3D({ cliente = false }) {
       const luzMundo = marca.position.clone().add(luzPos);
       if (esPared) {
         const proy = aj.proy || 'arriba_abajo', base = marca.position.clone().add(fuera.clone().multiplyScalar(0.08));
-        const haz = (dir, k) => {
+        const haz = (dir, k, angulo, desde) => {
           if (!puede()) return;
-          const sl = new THREE.SpotLight(col, inten * 2.5 * k, 0, Math.max(0.1, (ap / 2) * Math.PI / 180), 0.6, 2);
-          sl.position.copy(base); sl.target.position.copy(base.clone().add(dir.clone().multiplyScalar(2.5))); g.add(sl); g.add(sl.target);
+          const sl = new THREE.SpotLight(col, inten * 2.5 * k, 0, Math.max(0.1, ((angulo ?? ap) / 2) * Math.PI / 180), 0.6, 2);
+          sl.position.copy(desde || base); sl.target.position.copy(base.clone().add(dir.clone().multiplyScalar(2.5))); g.add(sl); g.add(sl.target);
         };
         if (proy === 'difusa') { if (puede()) { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); } }
         else if (proy === 'arriba') haz(new THREE.Vector3(0, 1, 0), 1);
         else if (proy === 'abajo') haz(new THREE.Vector3(0, -1, 0), 1);
         else if (proy === 'frontal') haz(fuera, 1);
+        // hacia su propia pared: la luz rebota sobre el muro donde está colgado y deja un halo a su alrededor (efecto «luz trasera»)
+        else if (proy === 'pared') haz(fuera.clone().negate(), 1.3, Math.max(ap, 110), marca.position.clone().add(fuera.clone().multiplyScalar(0.22)));
         else { haz(new THREE.Vector3(0, 1, 0), 0.6); haz(new THREE.Vector3(0, -1, 0), 0.6); }
         return;
       }
@@ -4265,7 +4276,7 @@ export default function Visor3D({ cliente = false }) {
       g.n++; grupos.set(clave, g); lmTotal += lm; nTotal++;
     });
     const L = [];
-    const PROY = { arriba_abajo: 'luz hacia arriba y hacia abajo', arriba: 'luz hacia arriba', abajo: 'luz hacia abajo', difusa: 'luz difusa' };
+    const PROY = { pared: 'luz que rebota en su propia pared (halo alrededor del aplique)', arriba_abajo: 'luz hacia arriba y hacia abajo', arriba: 'luz hacia arriba', abajo: 'luz hacia abajo', difusa: 'luz difusa' };
     [...grupos.values()].forEach(g => {
       const nom = NOM[g.l.kid] || g.l.kid;
       if (g.lineal) L.push((g.l.kid === 'carril' ? 'Carril electrificado' : 'Tira o luminaria lineal (' + nom + ')') + ': ' + (Math.round(g.m * 10) / 10) + ' m en total' + (g.l.kid === 'carril' ? '' : ', ' + g.lm + ' lm por metro, ' + g.K + ' K') + ', a ' + Math.round(g.l.h ?? HT) + ' cm de altura.');
@@ -4840,7 +4851,7 @@ export default function Visor3D({ cliente = false }) {
             <div style={{ opacity: 0.75, marginBottom: 6 }}>{cat ? cat.n + ' · ' + (cat.lm || '?') + ' lm · ' + (cat.w || '?') + ' W · ' + (cat.k || '?') + ' K' : 'Sin luminaria del catálogo asignada (se usa una estándar de 800 lm)'}</div>
             {(l.kid === 'aplq' || l.kid === 'esp') && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }} title="Hacia dónde reparte la luz este aplique"><span style={{ width: 90, opacity: 0.7 }}>Proyección</span>
               <select value={lucesAj[l.id]?.proy || 'arriba_abajo'} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, proy: e.target.value } }))} style={{ ...btn, flex: 1 }}>
-                <option value="arriba_abajo">Arriba y abajo</option><option value="arriba">Solo hacia arriba</option><option value="abajo">Solo hacia abajo</option><option value="frontal">Frontal (hacia delante)</option><option value="difusa">Difusa en todas direcciones</option>
+                <option value="arriba_abajo">Arriba y abajo</option><option value="arriba">Solo hacia arriba</option><option value="abajo">Solo hacia abajo</option><option value="frontal">Frontal (hacia delante)</option><option value="pared">Hacia su pared (rebote, halo)</option><option value="difusa">Difusa en todas direcciones</option>
               </select></label>}
             {!esLin && l.kid !== 'spot' && l.kid !== 'spotl' && <div style={{ borderTop: '1px solid #333', margin: '4px 0 8px', paddingTop: 8 }}>
               {(() => {
@@ -4849,6 +4860,19 @@ export default function Visor3D({ cliente = false }) {
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }} title="Color del cuerpo de la luminaria (solo en el dibujo por defecto)"><span style={{ width: 90, opacity: 0.7 }}>Color</span>
                     <input type="color" value={aj0.color || '#f2f2f2'} onChange={e => pon({ color: e.target.value })} style={{ width: 40, height: 26, padding: 0, border: 'none', background: 'none' }} />
                     {aj0.color && <button style={{ ...btn, padding: '2px 8px' }} onClick={() => pon({ color: undefined })}>Quitar</button>}</label>
+                  {!aj0.mod && (() => {
+                    const nd = dimNominalLuz(l.kid), dm = aj0.dim || {}, ponDim = (k, v) => pon({ dim: { ...(aj0.dim || {}), [k]: v > 0 ? v : undefined } });
+                    return (
+                      <div style={{ marginBottom: 6 }}>
+                        <div style={{ opacity: 0.7, marginBottom: 3 }}>Medidas (cm) <span style={{ opacity: 0.55, fontSize: 11 }}>· dibujo por defecto</span></div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {[['w', 'Ancho'], ['h', 'Alto'], ['d', 'Fondo']].map(([k, n], i) => <label key={k} style={{ display: 'flex', flexDirection: 'column', fontSize: 11, opacity: 0.9 }}>{n}<input type="number" step="1" min="1" value={dm[k] ?? ''} placeholder={String(nd[i])} onChange={e => ponDim(k, parseFloat(e.target.value))} style={{ ...btn, width: 62, padding: '3px 5px' }} /></label>)}
+                          {aj0.dim && <button style={{ ...btn, padding: '2px 8px', alignSelf: 'flex-end' }} onClick={() => pon({ dim: undefined })} title="Vuelve a las medidas de partida">↺</button>}
+                        </div>
+                        <div style={{ opacity: 0.5, fontSize: 11, marginTop: 3 }}>Vacío = la medida de partida (en gris). Para un modelo 3D propio, usa su «Alto».</div>
+                      </div>
+                    );
+                  })()}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Modelo 3D</span>
                     <label style={{ ...btn, cursor: 'pointer', fontSize: 12 }}>{aj0.mod ? 'Cambiar…' : 'Subir…'}<input type="file" accept=".glb,.gltf,.obj,.dae,.zip,.skp" style={{ display: 'none' }} onChange={e => { subirModeloLuz(e.target.files?.[0], l.id); e.target.value = ''; }} /></label>
                     {aj0.mod && <button style={{ ...btn, padding: '2px 8px' }} onClick={() => pon({ mod: undefined, mh: undefined, mrot: undefined })}>Quitar</button>}</div>
@@ -4856,7 +4880,7 @@ export default function Visor3D({ cliente = false }) {
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Alto (cm)</span><input type="number" value={aj0.mh ?? ''} placeholder="auto" onChange={e => pon({ mh: parseFloat(e.target.value) || undefined })} style={{ ...btn, width: 70 }} /></label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Giro modelo</span><select value={aj0.mrot || 0} onChange={e => pon({ mrot: parseInt(e.target.value, 10) || undefined })} style={btn}><option value={0}>0°</option><option value={90}>90°</option><option value={180}>180°</option><option value={270}>270°</option></select></label>
                   </>}
-                  <button style={{ ...btn, width: '100%', fontSize: 12, marginTop: 2 }} title="Copia el color y el modelo de esta luminaria a todas las del mismo tipo" onClick={() => setLucesAj(a => { const n = { ...a }; lucesPl.filter(x => x.kid === l.kid).forEach(x => { n[x.id] = { ...(n[x.id] || {}), ap: n[x.id]?.ap ?? 60, color: aj0.color, mod: aj0.mod, mh: aj0.mh, mrot: aj0.mrot }; }); return n; })}>Igualar a todas las de este tipo</button>
+                  <button style={{ ...btn, width: '100%', fontSize: 12, marginTop: 2 }} title="Copia el color y el modelo de esta luminaria a todas las del mismo tipo" onClick={() => setLucesAj(a => { const n = { ...a }; lucesPl.filter(x => x.kid === l.kid).forEach(x => { n[x.id] = { ...(n[x.id] || {}), ap: n[x.id]?.ap ?? 60, color: aj0.color, mod: aj0.mod, mh: aj0.mh, mrot: aj0.mrot, dim: aj0.dim }; }); return n; })}>Igualar a todas las de este tipo</button>
                 </>;
               })()}
             </div>}
