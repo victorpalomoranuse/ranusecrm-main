@@ -4392,6 +4392,9 @@ export default function Visor3D({ cliente = false }) {
       else L.push(g.n + '× ' + nom + ': ' + g.lm + ' lm, ' + g.K + ' K, apertura del haz ' + g.ap + '°, a ' + g.h + ' cm de altura' + (g.proy ? ', ' + (PROY[g.proy] || g.proy) : '') + '.');
     });
     if (!L.length) L.push('No hay luminarias artificiales colocadas: la luz es solo natural.');
+    // lo que NO existe también se dice, si no la IA «completa» la escena con apliques, colgantes o tiras que no están
+    const hay = new Set(lucesPl.map(l0 => l0.kid)), ausentes = Object.entries(NOM).filter(([k]) => !hay.has(k)).map(([, n]) => n);
+    if (ausentes.length) L.push('NO existen en este proyecto (no los dibujes ni los inventes): ' + ausentes.join(', ') + '. Las únicas luminarias que hay son las de esta lista.');
     const mod = api3d.current.modelo, area = pts => Math.abs(pts.reduce((a, p, i) => { const q = pts[(i + 1) % pts.length]; return a + (p[0] * q[1] - q[0] * p[1]); }, 0)) / 2 / 1e4;
     const m2 = (mod?.plantas || (mod ? [mod] : [])).reduce((a, pl) => a + (pl.salas || []).reduce((b, sa) => b + (sa.pts?.length >= 3 ? area(sa.pts) : 0), 0), 0);
     if (lmTotal > 0 && m2 > 0) L.push('Flujo luminoso artificial total ≈ ' + Math.round(lmTotal) + ' lm sobre ≈ ' + Math.round(m2) + ' m² (unos ' + Math.round((lmTotal * 0.45) / m2) + ' lux de media con las luces encendidas): la estancia debe verse con esa cantidad de luz, ni más ni menos.');
