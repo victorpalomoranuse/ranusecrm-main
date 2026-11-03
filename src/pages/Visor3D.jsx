@@ -1133,12 +1133,12 @@ function geometriaBarrido(path, perfil, esc, cerrado, lado) {
 function puntoEnPoligono(pt, pts) { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) c = !c; } return c; }
 
 // ── Logos: SVG (contornos rellenos) o DXF (contornos cerrados) → formas con huecos, normalizadas a 100 cm de ancho
-function normalizarFormas(formas, anchoCm = 100) {
+function normalizarFormas(formas, anchoCm = 100, maxPts = 350) {
   const todos = formas.flatMap(f => [...f.pts, ...f.holes.flat()]); if (!todos.length) return null;
   const xs = todos.map(p => p[0]), ys = todos.map(p => p[1]), minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
   const k = anchoCm / ((maxx - minx) || 1), cx = (minx + maxx) / 2;
   const t = p => [Math.round((p[0] - cx) * k * 100) / 100, Math.round((p[1] - miny) * k * 100) / 100];
-  const dec = a => { const paso = Math.max(1, Math.ceil(a.length / 350)); return a.filter((_, i) => i % paso === 0).map(t); };
+  const dec = a => { const paso = Math.max(1, Math.ceil(a.length / maxPts)); return a.filter((_, i) => i % paso === 0).map(t); };
   return { formas: formas.map(f => ({ pts: dec(f.pts), holes: f.holes.map(dec) })), alto: (maxy - miny) * k };
 }
 function formasDeSVG(texto) {
@@ -1172,20 +1172,66 @@ function quitarFondoLiso(im, tol = 40) {
 }
 
 // ── Texto 3D: las letras de una fuente (archivo en /fonts) se convierten en formas con huecos, como un logo
-const FUENTES = [['Montserrat', 'Montserrat (moderna)'], ['Oswald', 'Oswald (condensada)'], ['BebasNeue-Regular', 'Bebas Neue (mayúsculas)'], ['Anton-Regular', 'Anton (gruesa)'], ['ArchivoBlack-Regular', 'Archivo Black'], ['Staatliches-Regular', 'Staatliches'], ['RussoOne-Regular', 'Russo One'], ['Righteous-Regular', 'Righteous'], ['Orbitron', 'Orbitron (tecnológica)'], ['Bungee-Regular', 'Bungee (rótulo)'], ['Bangers-Regular', 'Bangers (cómic)'], ['PlayfairDisplay', 'Playfair (elegante con serifa)'], ['Cinzel', 'Cinzel (clásica romana)'], ['AbrilFatface-Regular', 'Abril Fatface'], ['Pacifico-Regular', 'Pacifico (rotulada)'], ['Lobster-Regular', 'Lobster'], ['DancingScript', 'Dancing Script (cursiva)'], ['Caveat', 'Caveat (a mano)'], ['PinyonScript-Regular', 'Pinyon Script (caligrafía)']];
+const FUENTES = [['Montserrat-Regular', 'Montserrat (moderna)'], ['Montserrat-Bold', 'Montserrat Bold (negrita)'], ['Oswald', 'Oswald (condensada)'], ['BebasNeue-Regular', 'Bebas Neue (mayúsculas)'], ['Anton-Regular', 'Anton (gruesa)'], ['ArchivoBlack-Regular', 'Archivo Black'], ['Staatliches-Regular', 'Staatliches'], ['RussoOne-Regular', 'Russo One'], ['Righteous-Regular', 'Righteous'], ['Orbitron', 'Orbitron (tecnológica)'], ['Bungee-Regular', 'Bungee (rótulo)'], ['Bangers-Regular', 'Bangers (cómic)'], ['PlayfairDisplay', 'Playfair (elegante con serifa)'], ['Cinzel', 'Cinzel (clásica romana)'], ['AbrilFatface-Regular', 'Abril Fatface'], ['Pacifico-Regular', 'Pacifico (rotulada)'], ['Lobster-Regular', 'Lobster'], ['DancingScript', 'Dancing Script (cursiva)'], ['Caveat', 'Caveat (a mano)'], ['PinyonScript-Regular', 'Pinyon Script (caligrafía)']];
 const cacheFuentes = new Map();
+const ALIAS_FUENTES = { Montserrat: 'Montserrat-Regular' }; // la «Montserrat» variable empezaba en peso Thin (finísima)
 function cargarFuente(id) {
+  id = ALIAS_FUENTES[id] || id;
   if (!cacheFuentes.has(id)) cacheFuentes.set(id, fetch('/fonts/' + id + '.ttf').then(r => { if (!r.ok) throw new Error('No se pudo cargar la fuente'); return r.arrayBuffer(); }).then(b => opentype.parse(b)).catch(e => { cacheFuentes.delete(id); throw e; }));
   return cacheFuentes.get(id);
 }
+// Maquetación propia, letra a letra (avance + kerning): evita las sustituciones tipográficas del archivo de la fuente, que en algunas (Oswald, Bangers) hacían fallar el texto
+function maquetaLinea(font, linea, T) {
+  const esc = T / font.unitsPerEm, items = []; let x = 0, prev = null;
+  for (const ch of Array.from(linea)) {
+    const g = font.charToGlyph(ch);
+    if (prev) { try { x += (font.getKerningValue(prev, g) || 0) * esc; } catch { /* sin kerning */ } }
+    items.push({ g, x }); x += (g.advanceWidth || 0) * esc; prev = g;
+  }
+  return { items, ancho: x };
+}
+// Ramer–Douglas–Peucker sobre un contorno cerrado: quita puntos que no aportan, sin perder esquinas ni trazos finos (el recorte «uno de cada N» rompía las letras finas)
+function simplificaContorno(pts, tol) {
+  const n = pts.length; if (n < 8) return pts;
+  const P = i => pts[i % n], dist = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy; if (!l2) return Math.hypot(p[0] - a[0], p[1] - a[1]); const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2)); return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy)); };
+  let f = 0, fd = 0; for (let i = 1; i < n; i++) { const d = Math.hypot(pts[i][0] - pts[0][0], pts[i][1] - pts[0][1]); if (d > fd) { fd = d; f = i; } }
+  const keep = new Uint8Array(n); keep[0] = 1; keep[f] = 1;
+  const pila = [[0, f], [f, n]];
+  while (pila.length) {
+    const [a, b] = pila.pop(); let md = 0, mi = -1;
+    for (let i = a + 1; i < b; i++) { const d = dist(P(i), P(a), P(b)); if (d > md) { md = d; mi = i; } }
+    if (md > tol && mi >= 0) { keep[mi % n] = 1; pila.push([a, mi], [mi, b]); }
+  }
+  const out = pts.filter((_, i) => keep[i]); return out.length >= 3 ? out : pts;
+}
+// Contornos de la fuente directamente (sin pasar por un SVG, cuyo lector deformaba algunas letras como la «t»): las curvas se trocean en segmentos y cada contorno
+// se clasifica por contención (los de nivel par son el exterior de la letra y los de nivel impar son sus huecos), sin depender del sentido en que esté dibujado.
+function anillosDeComandos(cmds) {
+  const anillos = []; let cur = null, x = 0, y = 0;
+  const cierra = () => { if (cur) { if (cur.length > 1 && Math.hypot(cur[0][0] - cur[cur.length - 1][0], cur[0][1] - cur[cur.length - 1][1]) < 1e-6) cur.pop(); if (cur.length >= 3) anillos.push(cur); } cur = null; };
+  for (const c of cmds) {
+    if (c.type === 'M') { cierra(); cur = [[c.x, -c.y]]; x = c.x; y = c.y; }
+    else if (c.type === 'L') { cur?.push([c.x, -c.y]); x = c.x; y = c.y; }
+    else if (c.type === 'Q') { for (let i = 1; i <= 8; i++) { const t = i / 8, a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, k = t * t; cur?.push([a * x + b * c.x1 + k * c.x, -(a * y + b * c.y1 + k * c.y)]); } x = c.x; y = c.y; }
+    else if (c.type === 'C') { for (let i = 1; i <= 10; i++) { const t = i / 10, u = 1 - t, a = u * u * u, b = 3 * u * u * t, k = 3 * u * t * t, e = t * t * t; cur?.push([a * x + b * c.x1 + k * c.x2 + e * c.x, -(a * y + b * c.y1 + k * c.y2 + e * c.y)]); } x = c.x; y = c.y; }
+    else if (c.type === 'Z') cierra();
+  }
+  cierra(); return anillos;
+}
+function formasDeAnillos(anillos) {
+  const area = r => Math.abs(r.reduce((a, p, i) => { const q = r[(i + 1) % r.length]; return a + (p[0] * q[1] - q[0] * p[1]); }, 0)) / 2;
+  const info = anillos.map((pts, i) => ({ pts, i, area: area(pts) }));
+  info.forEach(a => { a.padres = info.filter(b => b !== a && b.area > a.area && puntoEnPoligono(a.pts[0], b.pts)).sort((p, q) => p.area - q.area); a.nivel = a.padres.length; });
+  const formas = info.filter(a => a.nivel % 2 === 0).map(a => ({ a, pts: a.pts, holes: [] }));
+  info.filter(a => a.nivel % 2 === 1).forEach(h => { const f = formas.find(f2 => f2.a === h.padres[0]); if (f) f.holes.push(h.pts); });
+  return formas.map(({ pts, holes }) => ({ pts, holes }));
+}
 async function formasDeTexto(texto, fuenteId) {
   const font = await cargarFuente(fuenteId), lineas = String(texto).split('\n').filter(l => l.trim() !== '').slice(0, 6); if (!lineas.length) return null;
-  const T = 100, anchos = lineas.map(l => font.getAdvanceWidth(l, T)), maxW = Math.max(...anchos); let d = '';
-  lineas.forEach((l, i) => { d += font.getPath(l, (maxW - anchos[i]) / 2, T * 1.15 * i + T, T).toPathData(2) + ' '; });
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg"><path d="' + d + '"/></svg>', formas = formasDeSVG(svg);
-  const norm = formas.length ? normalizarFormas(formas) : null; if (!norm) return null;
-  norm.formas = norm.formas.map(f => { const dec = a => { const p = Math.max(1, Math.ceil(a.length / 90)); return a.filter((_, i) => i % p === 0); }; return { pts: dec(f.pts), holes: f.holes.map(dec) }; });
-  return norm;
+  const T = 100, mq = lineas.map(l => maquetaLinea(font, l, T)), maxW = Math.max(...mq.map(m => m.ancho)), cmds = [];
+  mq.forEach((m, i) => { const off = (maxW - m.ancho) / 2, y = T * 1.15 * i + T; m.items.forEach(it => { cmds.push(...it.g.getPath(it.x + off, y, T).commands); }); });
+  const formas = formasDeAnillos(anillosDeComandos(cmds)).map(f => ({ pts: simplificaContorno(f.pts, 0.1), holes: f.holes.map(h => simplificaContorno(h, 0.1)) }));
+  return formas.length ? normalizarFormas(formas, 100, 650) : null;
 }
 function formasDeDXF(texto) {
   const lin = texto.split(/\r?\n/).map(s => s.trim()), pares = [];
@@ -3297,13 +3343,13 @@ export default function Visor3D({ cliente = false }) {
     try {
       const norm = await formasDeTexto(dlg.texto, dlg.fuente); if (!norm) { setAviso('No he podido dibujar ese texto con esa fuente.'); return; }
       const { ctrl } = api3d.current, ancho = Math.max(30, Math.min(400, dlg.texto.length * 12));
-      const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', nombre: 'Texto «' + dlg.texto.split('\n')[0].slice(0, 24) + '»', etiqueta: 'Textos', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: ancho, d: 2, alto: Math.round(norm.alto * ancho / 100), ratio: norm.alto / 100, z0: 100, plano: 'vertical', color: '#222222', formas: norm.formas, texto: dlg.texto, fuente: dlg.fuente };
+      const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', tv: 2, nombre: 'Texto «' + dlg.texto.split('\n')[0].slice(0, 24) + '»', etiqueta: 'Textos', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: ancho, d: 2, alto: Math.round(norm.alto * ancho / 100), ratio: norm.alto / 100, z0: 100, plano: 'vertical', color: '#222222', formas: norm.formas, texto: dlg.texto, fuente: dlg.fuente };
       setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setTextoDlg(null);
       setAviso('Texto creado. Ajusta tamaño, grosor, color y altura en su ficha; ahí también puedes cambiar el texto y la fuente.');
     } catch (e) { setAviso('No se ha podido crear el texto: ' + (e.message || 'error')); }
   };
   const cambiarTexto = async (obj, texto, fuente) => {
-    try { const norm = await formasDeTexto(texto, fuente); if (!norm) return; cambiar(obj.id, { texto, fuente, formas: norm.formas, ratio: norm.alto / 100, alto: Math.round(norm.alto * obj.w / 100), nombre: 'Texto «' + texto.split('\n')[0].slice(0, 24) + '»' }); } catch { /* fuente no disponible */ }
+    try { const norm = await formasDeTexto(texto, fuente); if (!norm) return; cambiar(obj.id, { texto, fuente, tv: 2, formas: norm.formas, ratio: norm.alto / 100, alto: Math.round(norm.alto * obj.w / 100), nombre: 'Texto «' + texto.split('\n')[0].slice(0, 24) + '»' }); } catch { /* fuente no disponible */ }
   };
   const importarLogo = async (archivo) => {
     if (!archivo) return;
@@ -3335,6 +3381,14 @@ export default function Visor3D({ cliente = false }) {
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel');
   };
   const cambiar = (idObj, campos) => setObjs(prev => prev.map(o => o.id === idObj ? { ...o, ...campos } : o));
+  const regenTextos = useRef(new Set());
+  useEffect(() => {
+    if (estado !== 'listo' || cliente) return;
+    objs.filter(o => o.tipo === 'logo' && o.texto && o.fuente && (o.tv || 0) < 2 && !regenTextos.current.has(o.id)).forEach(o => {
+      regenTextos.current.add(o.id);
+      formasDeTexto(o.texto, o.fuente).then(norm => { if (norm) cambiar(o.id, { formas: norm.formas, ratio: norm.alto / 100, alto: Math.round(norm.alto * o.w / 100), tv: 2 }); }).catch(() => {});
+    });
+  }, [objs, estado]); // eslint-disable-line react-hooks/exhaustive-deps
   const borrar = idObj => { setObjs(prev => prev.filter(o => o.id !== idObj)); setSelObj(null); };
   const duplicar = idObj => {
     const o = objs.find(x => x.id === idObj); if (!o) return;

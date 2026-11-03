@@ -616,10 +616,11 @@ router.put('/:id/escena3d', async (req, res) => {
       cerrado: o.tipo === 'barrido' ? !!o.cerrado : undefined,
       texto: o.tipo === 'logo' && typeof o.texto === 'string' ? o.texto.slice(0, 120) : undefined,
       fuente: o.tipo === 'logo' && typeof o.fuente === 'string' ? o.fuente.split('').filter(ch => /[A-Za-z0-9_-]/.test(ch)).join('').slice(0, 40) : undefined,
+      tv: o.tipo === 'logo' && Number.isFinite(parseFloat(o.tv)) ? Math.min(9, Math.max(0, Math.round(parseFloat(o.tv)))) : undefined,
       formas: o.tipo === 'logo' && Array.isArray(o.formas) ? (() => {
         let total = 0;
-        const lim = a => (Array.isArray(a) ? a : []).slice(0, 400).map(p => [Math.round(num(p?.[0]) * 100) / 100, Math.round(num(p?.[1]) * 100) / 100]);
-        return o.formas.slice(0, 80).map(f => ({ pts: lim(f?.pts), holes: (Array.isArray(f?.holes) ? f.holes : []).slice(0, 40).map(lim) })).filter(f => { total += f.pts.length + f.holes.reduce((s, h) => s + h.length, 0); return f.pts.length >= 3 && total <= 8000; });
+        const lim = a => (Array.isArray(a) ? a : []).slice(0, 700).map(p => [Math.round(num(p?.[0]) * 100) / 100, Math.round(num(p?.[1]) * 100) / 100]);
+        return o.formas.slice(0, 160).map(f => ({ pts: lim(f?.pts), holes: (Array.isArray(f?.holes) ? f.holes : []).slice(0, 40).map(lim) })).filter(f => { total += f.pts.length + f.holes.reduce((s, h) => s + h.length, 0); return f.pts.length >= 3 && total <= 24000; });
       })() : undefined,
       muroId: o.muroId ? String(o.muroId).slice(0, 40) : undefined,
       lado: o.lado === -1 ? -1 : 1,
