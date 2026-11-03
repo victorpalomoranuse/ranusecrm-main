@@ -2691,6 +2691,10 @@ export default function Visor3D({ cliente = false }) {
       // en la pared: el aplique mira hacia fuera (el ángulo del plano apunta hacia el muro)
       const ang = ((l.a || 0) * Math.PI) / 180, fuera = new THREE.Vector3(-Math.cos(ang), 0, -Math.sin(ang));
       if (esPared) marca.rotation.y = Math.atan2(fuera.x, fuera.z);
+      // orientación propia: giro sobre el eje vertical, inclinación hacia delante/atrás y rotación en su plano (voltear, ponerlo de lado…)
+      if (aj.ry) marca.rotateY((aj.ry * Math.PI) / 180);
+      if (aj.rx) marca.rotateX((aj.rx * Math.PI) / 180);
+      if (aj.rz) marca.rotateZ((aj.rz * Math.PI) / 180);
       // medidas propias (ancho, alto y fondo en cm) sobre el dibujo por defecto
       if (aj.dim && !aj.mod?.url && !l.vs) { const nd = dimNominalLuz(l.kid); marca.scale.set((aj.dim.w || nd[0]) / nd[0], (aj.dim.h || nd[1]) / nd[1], (aj.dim.d || nd[2]) / nd[2]); }
       // color propio del cuerpo de la luminaria
@@ -2710,19 +2714,20 @@ export default function Visor3D({ cliente = false }) {
       }
       const luzMundo = marca.position.clone().add(luzPos);
       if (esPared) {
-        const proy = aj.proy || 'arriba_abajo', base = marca.position.clone().add(fuera.clone().multiplyScalar(0.08));
+        const loc = (x, y, z) => new THREE.Vector3(x, y, z).applyQuaternion(marca.quaternion), frente = loc(0, 0, 1), arribaL = loc(0, 1, 0), abajoL = loc(0, -1, 0);
+        const proy = aj.proy || 'arriba_abajo', base = marca.position.clone().add(frente.clone().multiplyScalar(0.08));
         const haz = (dir, k, angulo, desde) => {
           if (!puede()) return;
           const sl = new THREE.SpotLight(col, inten * 2.5 * k, 0, Math.max(0.1, ((angulo ?? ap) / 2) * Math.PI / 180), 0.6, 2);
           sl.position.copy(desde || base); sl.target.position.copy(base.clone().add(dir.clone().multiplyScalar(2.5))); g.add(sl); g.add(sl.target);
         };
         if (proy === 'difusa') { if (puede()) { const p = new THREE.PointLight(col, inten, 0, 2); p.position.copy(luzMundo); g.add(p); } }
-        else if (proy === 'arriba') haz(new THREE.Vector3(0, 1, 0), 1);
-        else if (proy === 'abajo') haz(new THREE.Vector3(0, -1, 0), 1);
-        else if (proy === 'frontal') haz(fuera, 1);
+        else if (proy === 'arriba') haz(arribaL, 1);
+        else if (proy === 'abajo') haz(abajoL, 1);
+        else if (proy === 'frontal') haz(frente, 1);
         // hacia su propia pared: la luz rebota sobre el muro donde está colgado y deja un halo a su alrededor (efecto «luz trasera»)
-        else if (proy === 'pared') haz(fuera.clone().negate(), 1.3, Math.max(ap, 110), marca.position.clone().add(fuera.clone().multiplyScalar(0.22)));
-        else { haz(new THREE.Vector3(0, 1, 0), 0.6); haz(new THREE.Vector3(0, -1, 0), 0.6); }
+        else if (proy === 'pared') haz(frente.clone().negate(), 1.3, Math.max(ap, 110), marca.position.clone().add(frente.clone().multiplyScalar(0.22)));
+        else { haz(arribaL, 0.6); haz(abajoL, 0.6); }
         return;
       }
       if (!puede()) return;
@@ -4873,6 +4878,23 @@ export default function Visor3D({ cliente = false }) {
                       </div>
                     );
                   })()}
+                  {['aplq', 'esp', 'mue', 'pie', 'colg'].includes(l.kid) && (() => {
+                    const ponR = (k, v) => pon({ [k]: Number.isFinite(v) && v ? Math.max(-180, Math.min(180, v)) : undefined });
+                    return (
+                      <div style={{ marginBottom: 6 }}>
+                        <div style={{ opacity: 0.7, marginBottom: 3 }}>Orientación (°)</div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                          {[['rz', 'Rotar'], ['rx', 'Inclinar'], ['ry', 'Girar']].map(([k, n]) => <label key={k} style={{ display: 'flex', flexDirection: 'column', fontSize: 11 }} title={k === 'rz' ? 'Rotarlo en su plano: 180° lo pone del revés (si apuntaba hacia arriba, hacia abajo), 90° de lado' : k === 'rx' ? 'Inclinarlo hacia delante o hacia atrás' : 'Girarlo sobre el eje vertical, como una puerta'}>{n}<input type="number" step="15" value={aj0[k] ?? ''} placeholder="0" onChange={e => ponR(k, parseFloat(e.target.value))} style={{ ...btn, width: 56, padding: '3px 5px' }} /></label>)}
+                        </div>
+                        <div style={{ display: 'flex', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
+                          <button style={{ ...btn, padding: '2px 8px', fontSize: 12 }} onClick={() => pon({ rz: ((aj0.rz || 0) + 90) % 360 > 180 ? ((aj0.rz || 0) + 90) % 360 - 360 : ((aj0.rz || 0) + 90) % 360 || undefined })} title="Lo rota 90° en su plano">↻ 90°</button>
+                          <button style={{ ...btn, padding: '2px 8px', fontSize: 12 }} onClick={() => pon({ rz: aj0.rz === 180 ? undefined : 180 })} title="Lo da la vuelta: lo que apuntaba hacia arriba apunta hacia abajo">↕ Voltear</button>
+                          {(aj0.rx || aj0.ry || aj0.rz) && <button style={{ ...btn, padding: '2px 8px', fontSize: 12 }} onClick={() => pon({ rx: undefined, ry: undefined, rz: undefined })}>↺ Quitar</button>}
+                        </div>
+                        <div style={{ opacity: 0.5, fontSize: 11, marginTop: 3 }}>Los haces (arriba, abajo, delante) siguen la orientación del propio aplique.</div>
+                      </div>
+                    );
+                  })()}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Modelo 3D</span>
                     <label style={{ ...btn, cursor: 'pointer', fontSize: 12 }}>{aj0.mod ? 'Cambiar…' : 'Subir…'}<input type="file" accept=".glb,.gltf,.obj,.dae,.zip,.skp" style={{ display: 'none' }} onChange={e => { subirModeloLuz(e.target.files?.[0], l.id); e.target.value = ''; }} /></label>
                     {aj0.mod && <button style={{ ...btn, padding: '2px 8px' }} onClick={() => pon({ mod: undefined, mh: undefined, mrot: undefined })}>Quitar</button>}</div>
@@ -4880,7 +4902,7 @@ export default function Visor3D({ cliente = false }) {
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Alto (cm)</span><input type="number" value={aj0.mh ?? ''} placeholder="auto" onChange={e => pon({ mh: parseFloat(e.target.value) || undefined })} style={{ ...btn, width: 70 }} /></label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Giro modelo</span><select value={aj0.mrot || 0} onChange={e => pon({ mrot: parseInt(e.target.value, 10) || undefined })} style={btn}><option value={0}>0°</option><option value={90}>90°</option><option value={180}>180°</option><option value={270}>270°</option></select></label>
                   </>}
-                  <button style={{ ...btn, width: '100%', fontSize: 12, marginTop: 2 }} title="Copia el color y el modelo de esta luminaria a todas las del mismo tipo" onClick={() => setLucesAj(a => { const n = { ...a }; lucesPl.filter(x => x.kid === l.kid).forEach(x => { n[x.id] = { ...(n[x.id] || {}), ap: n[x.id]?.ap ?? 60, color: aj0.color, mod: aj0.mod, mh: aj0.mh, mrot: aj0.mrot, dim: aj0.dim }; }); return n; })}>Igualar a todas las de este tipo</button>
+                  <button style={{ ...btn, width: '100%', fontSize: 12, marginTop: 2 }} title="Copia el color y el modelo de esta luminaria a todas las del mismo tipo" onClick={() => setLucesAj(a => { const n = { ...a }; lucesPl.filter(x => x.kid === l.kid).forEach(x => { n[x.id] = { ...(n[x.id] || {}), ap: n[x.id]?.ap ?? 60, color: aj0.color, mod: aj0.mod, mh: aj0.mh, mrot: aj0.mrot, dim: aj0.dim, rx: aj0.rx, ry: aj0.ry, rz: aj0.rz }; }); return n; })}>Igualar a todas las de este tipo</button>
                 </>;
               })()}
             </div>}
