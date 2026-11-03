@@ -392,6 +392,22 @@ function fusionarModelo(raw) {
     return out.children.length ? out : raw;
   } catch (e) { console.warn('fusionarModelo', e); return raw; }
 }
+// Archivos de SketchUp (.skp): se leen y se convierten aquí mismo, en el navegador, a .glb (con sus texturas dentro), sin SketchUp ni su SDK, con la librería abierta openskp.
+// Cada componente repetido se guarda una sola vez (instancias), así el .glb pesa poco. Los archivos enormes (cientos de MB) no caben en el navegador.
+export async function skpAGlb(file, avisar) {
+  const MB = file.size / 1048576;
+  if (MB > 120) throw new Error('Este .skp pesa ' + Math.round(MB) + ' MB: es demasiado grande para convertirlo aquí. En SketchUp deja solo el objeto que necesitas (o purga lo que no uses: Ventana → Info del modelo → Estadísticas → Purgar) y vuelve a guardarlo, o expórtalo como .glb.');
+  avisar?.('Leyendo el archivo de SketchUp (' + Math.round(MB * 10) / 10 + ' MB)…');
+  const buf = await file.arrayBuffer();
+  await new Promise(r => setTimeout(r, 40)); // deja que se pinte el aviso antes de que el navegador se ocupe
+  avisar?.('Convirtiendo a 3D (puede tardar un poco)…');
+  const { buildInstancedScene, toInstancedGLB } = await import('openskp');
+  let escena; try { escena = buildInstancedScene(buf); } catch (e) { throw new Error('No se pudo leer ese archivo de SketchUp (' + String(e?.message || e).slice(0, 100) + '). Si es muy nuevo, expórtalo como .glb desde SketchUp.'); }
+  if (!escena.meshResources?.length) throw new Error('El .skp no tiene geometría visible (¿está vacío o solo tiene líneas y textos?).');
+  const glb = toInstancedGLB(escena, { textures: true });
+  if (glb.byteLength > 58 * 1048576) throw new Error('Convertido pesa ' + Math.round(glb.byteLength / 1048576) + ' MB y el máximo es 60 MB. En SketchUp deja solo el objeto que necesitas o baja la calidad de las texturas.');
+  return new File([glb], file.name.replace(/\.skp$/i, '') + '.glb', { type: 'model/gltf-binary' });
+}
 // Modelos importados que salían negros: caras con las normales al revés (piezas finas, plantas, mallas de SketchUp) y materiales sin brillo ni luz propia.
 // Se dibujan por las dos caras y, si un material es de color negro puro sin textura, se aclara a un gris oscuro para que se vea su forma.
 function repararMateriales(raiz) {
@@ -3198,6 +3214,7 @@ export default function Visor3D({ cliente = false }) {
     if (lista.length > 1) setSubiendoMio(ok + ' de ' + lista.length + ' modelos añadidos ✓' + (ok < lista.length ? ' (los demás fallaron)' : ''));
   };
   const subirMio1 = async (file, categoria, pref = '') => {
+    if (/\.skp$/i.test(file.name)) { try { file = await skpAGlb(file, t => setSubiendoMio(pref + t)); } catch (e) { setSubiendoMio(pref + '«' + file.name + '»: ' + (e.message || 'no se pudo convertir')); return false; } }
     setSubiendoMio(pref + 'Subiendo «' + file.name + '»…');
     try {
       const fd = new FormData(); fd.append('file', file); fd.append('categoria', categoria || 'Mis modelos');
@@ -3246,7 +3263,7 @@ export default function Visor3D({ cliente = false }) {
   // Modelo 3D propio para una luminaria del plano (aplique, foco…): se sube y se asigna solo a esa luminaria
   const subirModeloLuz = async (file, idL) => {
     if (!file) return;
-    if (file.name.toLowerCase().endsWith('.skp')) { alert('Los .skp no se pueden mostrar: expórtalo a .glb o .dae desde SketchUp.'); return; }
+    if (/\.skp$/i.test(file.name)) { try { setGuardado('Convirtiendo el archivo de SketchUp…'); file = await skpAGlb(file); } catch (e) { alert(e.message); setGuardado(''); return; } }
     setGuardado('Subiendo el modelo…');
     try {
       const fd = new FormData(); fd.append('file', file); fd.append('categoria', 'Mis modelos');
@@ -3644,7 +3661,7 @@ export default function Visor3D({ cliente = false }) {
   };
   const asignarModeloEq = async (archivo) => {
     if (!archivo || !seleccion?.cid) return;
-    if (/\.skp$/i.test(archivo.name)) { alert('Los archivos .skp de SketchUp no se pueden mostrar en el navegador, hay que exportarlos.\n\nEn SketchUp: selecciona el objeto → Archivo → Exportar → Modelo 3D. Elige glTF (.glb) si tu versión lo ofrece (lleva las texturas dentro), o COLLADA (.dae). En las opciones marca «Exportar solo la selección actual» y «Triangular todas las caras».\n\nSi eliges .dae, SketchUp crea además una carpeta con las texturas: comprime el .dae y esa carpeta en un único .zip y sube el .zip.'); return; }
+    if (/\.skp$/i.test(archivo.name)) { try { setSubiendo('Convirtiendo el archivo de SketchUp…'); archivo = await skpAGlb(archivo, setSubiendo); } catch (e) { alert(e.message); setSubiendo(''); return; } }
     setSubiendo('Subiendo el modelo…');
     try {
       const fd = new FormData(); fd.append('file', archivo);
@@ -3718,7 +3735,7 @@ export default function Visor3D({ cliente = false }) {
   const [subiendo, setSubiendo] = useState('');
   const asignarModelo = async (archivo) => {
     if (!archivo || !objSel?.cid) return;
-    if (/\.skp$/i.test(archivo.name)) { alert('Los archivos .skp de SketchUp no se pueden mostrar en el navegador, hay que exportarlos.\n\nEn SketchUp: selecciona el objeto → Archivo → Exportar → Modelo 3D. Elige glTF (.glb) si tu versión lo ofrece (lleva las texturas dentro), o COLLADA (.dae). En las opciones marca «Exportar solo la selección actual» y «Triangular todas las caras».\n\nSi eliges .dae, SketchUp crea además una carpeta con las texturas: comprime el .dae y esa carpeta en un único .zip y sube el .zip.'); return; }
+    if (/\.skp$/i.test(archivo.name)) { try { setSubiendo('Convirtiendo el archivo de SketchUp…'); archivo = await skpAGlb(archivo, setSubiendo); } catch (e) { alert(e.message); setSubiendo(''); return; } }
     setSubiendo('Subiendo el modelo…');
     try {
       const fd = new FormData(); fd.append('file', archivo);
@@ -4691,7 +4708,7 @@ export default function Visor3D({ cliente = false }) {
                     <input type="color" value={aj0.color || '#f2f2f2'} onChange={e => pon({ color: e.target.value })} style={{ width: 40, height: 26, padding: 0, border: 'none', background: 'none' }} />
                     {aj0.color && <button style={{ ...btn, padding: '2px 8px' }} onClick={() => pon({ color: undefined })}>Quitar</button>}</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Modelo 3D</span>
-                    <label style={{ ...btn, cursor: 'pointer', fontSize: 12 }}>{aj0.mod ? 'Cambiar…' : 'Subir…'}<input type="file" accept=".glb,.gltf,.obj,.dae,.zip" style={{ display: 'none' }} onChange={e => { subirModeloLuz(e.target.files?.[0], l.id); e.target.value = ''; }} /></label>
+                    <label style={{ ...btn, cursor: 'pointer', fontSize: 12 }}>{aj0.mod ? 'Cambiar…' : 'Subir…'}<input type="file" accept=".glb,.gltf,.obj,.dae,.zip,.skp" style={{ display: 'none' }} onChange={e => { subirModeloLuz(e.target.files?.[0], l.id); e.target.value = ''; }} /></label>
                     {aj0.mod && <button style={{ ...btn, padding: '2px 8px' }} onClick={() => pon({ mod: undefined, mh: undefined, mrot: undefined })}>Quitar</button>}</div>
                   {aj0.mod && <>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Alto (cm)</span><input type="number" value={aj0.mh ?? ''} placeholder="auto" onChange={e => pon({ mh: parseFloat(e.target.value) || undefined })} style={{ ...btn, width: 70 }} /></label>
@@ -5448,9 +5465,9 @@ export default function Visor3D({ cliente = false }) {
               {b3dTab === 'mios' && (
                 <div style={{ marginBottom: 8 }}>
                   <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#6b6159', cursor: 'pointer' }}>⬆ Subir modelos (planta, mueble…)
-                    <input type="file" multiple accept=".glb,.gltf,.obj,.dae,.zip" style={{ display: 'none' }} onChange={e => { subirMio(e.target.files, b3dCat || 'Mis modelos'); e.target.value = ''; }} />
+                    <input type="file" multiple accept=".glb,.gltf,.obj,.dae,.zip,.skp" style={{ display: 'none' }} onChange={e => { subirMio(e.target.files, b3dCat || 'Mis modelos'); e.target.value = ''; }} />
                   </label>
-                  <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>Puedes elegir varios a la vez. Vale .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda para todos tus planos y no hace falta ligarlo a ningún producto.</div>
+                  <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>Puedes elegir varios a la vez. Vale .skp de SketchUp (se convierte aquí mismo), .glb, .gltf, .obj, .dae, o un .zip con el modelo y sus texturas (desde SketchUp: Archivo → Exportar → Modelo 3D). Se guarda para todos tus planos y no hace falta ligarlo a ningún producto.</div>
                   {subiendoMio && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{subiendoMio}</div>}
                   <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
                     <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ Crear con ChatGPT desde una foto</div>
@@ -5910,7 +5927,7 @@ export default function Visor3D({ cliente = false }) {
           {seleccion.cid && (() => {
             const v3 = modosEq[seleccion.id]?.v3 || '', fijaV3 = patch => { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], ...patch } })); };
             const subirOtro = async (file) => {
-              if (!file) return; if (file.name.toLowerCase().endsWith('.skp')) { alert('Los .skp no se pueden mostrar: expórtalo a .glb o .dae desde SketchUp.'); return; }
+              if (!file) return; if (/\.skp$/i.test(file.name)) { try { setSubiendo('Convirtiendo el archivo de SketchUp…'); file = await skpAGlb(file, setSubiendo); } catch (e) { alert(e.message); setSubiendo(''); return; } }
               setSubiendo('Subiendo el modelo para esta copia…');
               try { const fd = new FormData(); fd.append('file', file); fd.append('categoria', 'Mis modelos'); const r = await api.post('/biblioteca3d/mios', fd), mm0 = r.data.modelo; fijaV3({ v3: 'otro', mod3: { url: mm0.url, tipo: mm0.tipo, rot: 0 } }); setSubiendo('Otro modelo asignado a esta copia ✓'); }
               catch (er) { setSubiendo(er.response?.data?.error || 'No se pudo subir el modelo'); }
