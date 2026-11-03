@@ -735,7 +735,8 @@ router.post('/:id/textura-color', async (req, res) => {
     if (Number(pb.emis) > 0 && /^#[0-9a-fA-F]{6}$/.test(pb.emisHex || '')) { pbr.emis = qr(pb.emis, 3); pbr.emisHex = pb.emisHex; }
     if (!Object.keys(pbr).length) pbr.rough = 0.6;
     const png = await sharp({ create: { width: 8, height: 8, channels: 3, background: hex } }).png().toBuffer();
-    const tex = { id: 'c' + Date.now().toString(36), nombre: 'Color ' + hex.toUpperCase(), url: 'data:image/png;base64,' + png.toString('base64'), tam: 100, color: hex, pbr };
+    const nom = String(req.body?.nombre || '').replace(/[^\p{L}\p{N} \-.,()/%·#+]/gu, '').trim().slice(0, 80);
+    const tex = { id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4), nombre: nom || 'Color ' + hex.toUpperCase(), url: 'data:image/png;base64,' + png.toString('base64'), tam: 100, color: hex, pbr };
     const data = { ...fila.data, escena3d: { ...esc, texturas: [...(esc.texturas || []), tex].slice(-80), updated: Date.now() } };
     const { error } = await supabase.from('mediciones').update({ data }).eq('id', req.params.id);
     if (error) throw error;

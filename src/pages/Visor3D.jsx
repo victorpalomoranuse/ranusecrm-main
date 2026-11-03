@@ -896,6 +896,19 @@ export function construirAlzadoPlanta(sala, yMundo, zonas, rejilla) {
 // Códigos NCS y RAL → color en pantalla. NCS: cálculo aproximado (el color exacto lo da el abanico NCS); RAL: tabla de los más usados. Es el mismo cálculo que usa Planos
 const RAL_HEX = { '9010': '#f1ede1', '9003': '#f4f4f4', '9016': '#f6f6f6', '9001': '#e9e0d2', '9002': '#d7d5cb', '9018': '#cfd3cd', '7035': '#cbd0cc', '7038': '#b4b8b0', '7040': '#9da3a6', '7044': '#cac4b0', '7047': '#d0d0d0', '7032': '#b8b799', '7016': '#383e42', '7021': '#2f3234', '9005': '#0e0e10', '1013': '#e3d9c6', '1015': '#e6d2b5', '6021': '#89ac76', '5024': '#5d9b9b', '3012': '#c1876b' };
 const NCS_PURO = { Y: [255, 211, 0], R: [196, 2, 51], B: [0, 135, 189], G: [0, 159, 107] };
+// Acabados con los que se aplica un color del Combinador: cada uno es un material propio (rugosidad, metal, barniz y reflejos) con el color liso exacto
+const ACABADOS_COMBI = {
+  lisa: ['Pintura lisa mate', { rough: 0.92 }, 'pintura, panel'],
+  satinada: ['Pintura satinada', { rough: 0.45 }, ''],
+  brillo: ['Esmalte / lacado brillo', { rough: 0.12, clearcoat: 0.6 }, 'lacado'],
+  microcemento: ['Microcemento', { rough: 0.78 }, 'microcemento, hormig'],
+  metal_lacado: ['Metal lacado', { rough: 0.35, metal: 0.65, env: 1.3 }, 'metal lacado'],
+  metal_cepillado: ['Metal cepillado', { rough: 0.42, metal: 1, env: 1.4 }, 'metal cepillado'],
+  anodizado: ['Aluminio anodizado', { rough: 0.5, metal: 0.9, env: 1.2 }, 'anodizado'],
+  bronce: ['Bronce / metal mate', { rough: 0.55, metal: 0.85, env: 1.1 }, 'bronce'],
+  tapizado: ['Tapizado / terciopelo', { rough: 1 }, 'tapiz, terciopelo, cuero'],
+  melamina: ['Panel lacado / melamina', { rough: 0.5, clearcoat: 0.2 }, 'panel'],
+};
 const NCS_PRE = ['S 0500-N', 'S 0502-Y', 'S 0502-B', 'S 0505-Y20R', 'S 1002-Y', 'S 1002-R', 'S 1500-N', 'S 2005-Y20R', 'S 2500-N', 'S 3005-Y50R', 'S 4500-N', 'S 7500-N', 'RAL 9010', 'RAL 9003', 'RAL 9016', 'RAL 7035', 'RAL 7044', 'RAL 7016', 'RAL 9005'];
 function codigoHex(cod) {
   const t = String(cod || '').trim().toUpperCase();
@@ -3387,6 +3400,31 @@ export default function Visor3D({ cliente = false }) {
   const [matsRanuse, setMatsRanuse] = useState(null);
   const [catRanuse, setCatRanuse] = useState('');
   useEffect(() => { if (matAbierto && matsRanuse === null) api.get('/medicion/materiales-ranuse').then(r => setMatsRanuse(r.data?.materiales || [])).catch(() => setMatsRanuse([])); }, [matAbierto, matsRanuse]);
+  // Colores NCS del Combinador de colores de Ranuse (los de public/combinador) y los propios del estudio; se aplican en el acabado elegido (pintura lisa, metal…)
+  const [combiColores, setCombiColores] = useState(null);
+  const [acabadoCombi, setAcabadoCombi] = useState('lisa');
+  useEffect(() => {
+    if (!matAbierto || combiColores !== null) return;
+    (async () => {
+      let lista = [];
+      try { lista = ((await (await fetch('/combinador/colores.json')).json()).colores || []).map(c => ({ ...c, propio: false })); } catch { /* sin lista base */ }
+      try { const cu = (await api.get('/combinador/custom')).data?.custom?.colores || []; cu.forEach(c => lista.push({ id: c.id, n: c.n, ncs: '', hex: c.hex, rol: c.role, usos: c.mats || '', propio: true })); } catch { /* sin colores propios */ }
+      setCombiColores(lista);
+    })();
+  }, [matAbierto, combiColores]);
+  const usarColorCombi = async (c) => {
+    const [nAc, pbr] = ACABADOS_COMBI[acabadoCombi] || ACABADOS_COMBI.lisa;
+    const nombre = c.n + (c.ncs ? ' · ' + c.ncs : '') + ' · ' + nAc;
+    let t = texturas.find(x => x.nombre === nombre);
+    try {
+      if (!t) {
+        if (texturas.length >= 70) { setGuardado('Tienes ' + texturas.length + ' materiales en este plano (el máximo es 80): quita alguno que no uses'); return; }
+        const r = await api.post('/medicion/' + id + '/textura-color', { hex: String(c.hex).toLowerCase(), pbr, nombre }); t = r.data.textura;
+        setTexturas(x => (x.some(y => y.id === t.id) ? x : [...x, t]));
+      }
+      setMatSel({ id: t.id }); setHerr('pincel'); setGuardado('«' + nombre + '» listo: haz clic en lo que quieras pintar');
+    } catch (e) { setGuardado(e.response?.data?.error || 'No se pudo crear el material'); }
+  };
   const usarMatRanuse = async (m) => {
     try {
       const r = await api.post('/medicion/' + id + '/textura-ranuse', { matId: m.id }), nueva = r.data.textura;
@@ -5443,6 +5481,25 @@ export default function Visor3D({ cliente = false }) {
               {NCS_PRE.map(cod => { const h = codigoHex(cod); return h && <span key={cod} onClick={() => { elegir({ hex: h }); setPaleta(x => (x.some(p => p.nombre === cod) ? x : [...x, { nombre: cod, hex: h }])); }} title={cod + ' · ' + h} style={{ width: 24, height: 24, background: h, borderRadius: 4, cursor: 'pointer', border: esSel({ hex: h }) ? '2px solid #baafa5' : '1px solid #555' }} />; })}
             </div>
             <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>Al pulsar uno se elige y se guarda en tu paleta con su código. Los colores NCS son <b>aproximados en pantalla</b>; el real lo da el abanico NCS. Escribe cualquier código abajo (NCS S 0502-Y, RAL 9010…) y el color se calcula solo.</div>
+            <div style={{ opacity: 0.85, marginBottom: 4, fontWeight: 700 }}>🎨 Colores NCS del Combinador</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+              {Object.entries(ACABADOS_COMBI).map(([k, [n]]) => <span key={k} onClick={() => setAcabadoCombi(k)} style={{ padding: '2px 8px', borderRadius: 10, cursor: 'pointer', fontSize: 11, border: '1px solid #4f4842', background: acabadoCombi === k ? '#6b6159' : 'transparent' }}>{n}</span>)}
+            </div>
+            {combiColores === null && <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>Cargando los colores del Combinador…</div>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
+              {(combiColores || []).map(c => {
+                const m = acabadoCombi.startsWith('metal') || acabadoCombi === 'anodizado' || acabadoCombi === 'bronce', br = acabadoCombi === 'brillo';
+                const fondo = m ? 'linear-gradient(135deg, ' + c.hex + ' 0%, #ffffffaa 38%, ' + c.hex + ' 55%, #00000055 100%)' : br ? 'radial-gradient(circle at 30% 28%, #ffffffcc 0%, ' + c.hex + ' 38%)' : c.hex;
+                const nombre = c.n + (c.ncs ? ' · ' + c.ncs : '') + ' · ' + ACABADOS_COMBI[acabadoCombi][0], sel = matSel?.id && texturas.find(x => x.id === matSel.id)?.nombre === nombre;
+                return (
+                  <div key={c.id} onClick={() => usarColorCombi(c)} title={c.n + ' · ' + (c.ncs || 'color propio') + ' · ' + c.hex + (c.usos ? ' · usos: ' + c.usos : '')} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 3px', cursor: 'pointer', borderRadius: 4, background: sel ? '#3a342f' : 'transparent' }}>
+                    <span style={{ width: 24, height: 24, background: fondo, borderRadius: 4, border: '1px solid #555', flex: 'none' }} />
+                    <span style={{ flex: 1, minWidth: 0, lineHeight: 1.15 }}>{c.n}<br /><span style={{ opacity: 0.55, fontSize: 11 }}>{c.ncs || 'color propio'} · {c.hex}</span></span>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>Elige primero el acabado y luego el color: se crea un material propio con ese color exacto y ese acabado (lo reutiliza si ya existe) y queda listo para pintar. Se ajusta después en el Inspector.</div>
             <div style={{ opacity: 0.7, marginBottom: 4 }}>Tu paleta (NCS, RAL, marcas…)</div>
             {paleta.map((p, i) => (
               <div key={i} onClick={() => elegir({ hex: p.hex })} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 2px', cursor: 'pointer', background: esSel({ hex: p.hex }) ? '#3a342f' : 'transparent', borderRadius: 4 }}>

@@ -1,0 +1,204 @@
+{
+ "colores": [
+  {
+   "id": "humo",
+   "n": "Blanco Humo",
+   "ncs": "S 0300-N",
+   "hex": "#FFFFFC",
+   "rol": "Dominante",
+   "usos": "pintura, microcemento",
+   "nota": ""
+  },
+  {
+   "id": "nieve",
+   "n": "Blanco Nieve",
+   "ncs": "S 0500-N",
+   "hex": "#FAF9F7",
+   "rol": "Dominante",
+   "usos": "pintura, panel lacado",
+   "nota": ""
+  },
+  {
+   "id": "perla",
+   "n": "Gris Perla",
+   "ncs": "S 2000-N",
+   "hex": "#CECECB",
+   "rol": "Dominante",
+   "usos": "pintura, hormigón pulido",
+   "nota": ""
+  },
+  {
+   "id": "cuarzo",
+   "n": "Gris Cuarzo",
+   "ncs": "S 0502-R50B",
+   "hex": "#E8E7E1",
+   "rol": "Dominante",
+   "usos": "pintura, piedra natural",
+   "nota": "Evitar con amarillos"
+  },
+  {
+   "id": "cemento",
+   "n": "Gris Cemento",
+   "ncs": "S 7500-N",
+   "hex": "#505051",
+   "rol": "Dominante",
+   "usos": "microcemento, hormigón",
+   "nota": ""
+  },
+  {
+   "id": "grafito",
+   "n": "Gris Grafito",
+   "ncs": "S 8500-N",
+   "hex": "#2D2C2C",
+   "rol": "Dominante",
+   "usos": "metal lacado, panel melamina",
+   "nota": ""
+  },
+  {
+   "id": "acero",
+   "n": "Gris Acero",
+   "ncs": "S 6502-B",
+   "hex": "#606568",
+   "rol": "Dominante",
+   "usos": "metal cepillado, panel lacado",
+   "nota": "Evitar con Y50R puros"
+  },
+  {
+   "id": "pedernal",
+   "n": "Gris Pedernal",
+   "ncs": "S 4000-N",
+   "hex": "#9A9B9C",
+   "rol": "Dominante",
+   "usos": "microcemento, piedra gris",
+   "nota": ""
+  },
+  {
+   "id": "pizarra",
+   "n": "Gris Pizarra",
+   "ncs": "S 5502-Y",
+   "hex": "#7E7C76",
+   "rol": "Dominante",
+   "usos": "madera oscura, panel tintado",
+   "nota": ""
+  },
+  {
+   "id": "carbono",
+   "n": "Negro Carbono",
+   "ncs": "S 9000-N",
+   "hex": "#0D0E0E",
+   "rol": "Cualquiera",
+   "usos": "metal lacado, madera tintada",
+   "nota": ""
+  },
+  {
+   "id": "lino",
+   "n": "Beige Lino",
+   "ncs": "S 1002-Y50R",
+   "hex": "#ECE7E1",
+   "rol": "Dominante",
+   "usos": "pintura, madera clara",
+   "nota": ""
+  },
+  {
+   "id": "arena",
+   "n": "Beige Arena",
+   "ncs": "S 1502-Y50R",
+   "hex": "#DDD8D1",
+   "rol": "Dominante",
+   "usos": "pintura, madera roble claro",
+   "nota": ""
+  },
+  {
+   "id": "duna",
+   "n": "Beige Duna",
+   "ncs": "S 2502-Y50R",
+   "hex": "#C4BFB9",
+   "rol": "Dominante",
+   "usos": "roble natural, piedra beige",
+   "nota": ""
+  },
+  {
+   "id": "ante",
+   "n": "Marrón Ante",
+   "ncs": "S 3005-Y50R",
+   "hex": "#B8AB9F",
+   "rol": "Secundario",
+   "usos": "madera nogal, cuero natural",
+   "nota": ""
+  },
+  {
+   "id": "roble",
+   "n": "Marrón Roble",
+   "ncs": "S 7005-Y20R",
+   "hex": "#5C5449",
+   "rol": "Secundario",
+   "usos": "madera roble oscuro, metal bronce mate",
+   "nota": "Superficie acotada"
+  },
+  {
+   "id": "titanio",
+   "n": "Azul Titanio",
+   "ncs": "S 7005-B80G",
+   "hex": "#4A5653",
+   "rol": "Dominante",
+   "usos": "metal anodizado, hormigón pigmentado",
+   "nota": "Evitar con Y50R"
+  },
+  {
+   "id": "indigo",
+   "n": "Azul Índigo",
+   "ncs": "S 7010-B10G",
+   "hex": "#3C5058",
+   "rol": "Dominante",
+   "usos": "metal lacado, panel lacado",
+   "nota": "Evitar con Y50R"
+  },
+  {
+   "id": "marino",
+   "n": "Azul Marino",
+   "ncs": "S 4020-R90B",
+   "hex": "#6B859E",
+   "rol": "Secundario",
+   "usos": "pintura, panel lacado",
+   "nota": "Solo nivel B/C"
+  },
+  {
+   "id": "musgo",
+   "n": "Verde Musgo",
+   "ncs": "S 4005-G",
+   "hex": "#919B96",
+   "rol": "Secundario",
+   "usos": "pintura, madera tintada verde",
+   "nota": "Solo con dominante cálido"
+  },
+  {
+   "id": "barro",
+   "n": "Tierra Barro",
+   "ncs": "S 6020-Y90R",
+   "hex": "#754843",
+   "rol": "Secundario",
+   "usos": "terracota, barro cocido",
+   "nota": "Superficie acotada"
+  },
+  {
+   "id": "oxido",
+   "n": "Tierra Óxido",
+   "ncs": "S 5020-R",
+   "hex": "#8A5E5F",
+   "rol": "Secundario",
+   "usos": "pintura, tapizado",
+   "nota": "Máx. 1 superficie"
+  },
+  {
+   "id": "burdeos",
+   "n": "Rojo Vino",
+   "ncs": "S 7020-R10B",
+   "hex": "#5A3238",
+   "rol": "Secundario",
+   "usos": "tapizado, terciopelo, panel lacado, pintura",
+   "nota": "Acento: máx. 1 superficie. No con Tierra Barro ni Óxido"
+  }
+ ],
+ "generado": "2026-11-03",
+ "origen": "public/combinador/index.html (const P)"
+}
