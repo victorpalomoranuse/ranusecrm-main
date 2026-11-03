@@ -408,6 +408,11 @@ export async function skpAGlb(file, avisar) {
   if (glb.byteLength > 58 * 1048576) throw new Error('Convertido pesa ' + Math.round(glb.byteLength / 1048576) + ' MB y el máximo es 60 MB. En SketchUp deja solo el objeto que necesitas o baja la calidad de las texturas.');
   return new File([glb], file.name.replace(/\.skp$/i, '') + '.glb', { type: 'model/gltf-binary' });
 }
+export async function medirModelo(m) {
+  const obj = await cargarModelo({ url: m.url, tipo: m.tipo || 'gltf' }), tam = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
+  const cm = v => { let c = v * 100; if (c > 1000) c = v <= 1000 ? v : v / 10; return Math.max(1, Math.round(c)); };
+  return { w: cm(tam.x), d: cm(tam.z), alto: cm(tam.y) };
+}
 // Modelos importados que salían negros: caras con las normales al revés (piezas finas, plantas, mallas de SketchUp) y materiales sin brillo ni luz propia.
 // Se dibujan por las dos caras y, si un material es de color negro puro sin textura, se aclara a un gris oscuro para que se vea su forma.
 function repararMateriales(raiz) {
@@ -3361,11 +3366,9 @@ export default function Visor3D({ cliente = false }) {
       const r = await api.post('/biblioteca3d/mios', fd); let m = r.data.modelo; const avisoTex = r.data.aviso || '';
       setSubiendoMio(pref + 'Midiendo el modelo…');
       try {
-        const obj = await cargarModelo({ url: m.url, tipo: m.tipo }), tam = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
-        const cm = v => { let c = v * 100; if (c > 1000) c = v <= 1000 ? v : v / 10; return Math.max(1, Math.round(c)); };
-        const dims = { w: cm(tam.x), d: cm(tam.z), alto: cm(tam.y) };
+        const dims = await medirModelo(m);
         const r2 = await api.put('/biblioteca3d/mios/' + m.id, dims); m = r2.data.modelo;
-      } catch { /* se queda con 100 cm; se puede estirar después en su ficha */ }
+      } catch { /* sin medir: se medirá al colocarlo */ }
       setB3d(b => ({ ...(b || {}), vacia: false, mios: [...(b?.mios || []), m] })); setB3dTab('mios'); setB3dCat('');
       setSubiendoMio(pref + '«' + m.nombre + '» añadido ✓ (' + m.w + '×' + m.d + '×' + m.alto + ' cm). Haz clic en él para colocarlo.' + (avisoTex ? ' ' + avisoTex : ''));
       if (avisoTex) setAviso(avisoTex);
@@ -3416,8 +3419,15 @@ export default function Visor3D({ cliente = false }) {
     if (!window.confirm('¿Quitar «' + m.nombre + '» de Mis modelos? Los que ya colocaste en un plano dejarán de verse.')) return;
     try { await api.delete('/biblioteca3d/mios/' + m.id); setB3d(b => ({ ...b, mios: (b.mios || []).filter(x => x.id !== m.id) })); } catch { setSubiendoMio('No se pudo quitar'); }
   };
-  const anadirModelo3d = m => {
+  const anadirModelo3d = async m => {
     const { ctrl } = api3d.current;
+    if (!(m.w > 0 && m.d > 0 && m.alto > 0) || (m.w === 100 && m.d === 100 && m.alto === 100)) {
+      try {
+        const dims = await medirModelo(m); m = { ...m, ...dims };
+        if (m.mio) { api.put('/biblioteca3d/mios/' + m.id, dims).catch(() => {}); setB3d(b => (b ? { ...b, mios: (b.mios || []).map(x => (x.id === m.id ? { ...x, ...dims } : x)) } : b)); }
+        setAviso('Medidas leídas del archivo: ' + dims.w + ' × ' + dims.d + ' × ' + dims.alto + ' cm');
+      } catch { /* se usan las que tiene */ }
+    }
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'bloque', cid: null, nombre: m.nombre, etiqueta: m.categoria, cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: m.w, d: m.d, alto: m.alto, z0: 0, color: null, mod: { url: m.url, tipo: m.tipo || 'gltf', rot: 0 } };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel');
   };
