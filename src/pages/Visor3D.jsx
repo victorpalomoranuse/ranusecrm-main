@@ -546,17 +546,24 @@ export function construirMueble(o, texturas) {
     b.position.set(px, py, pz); b.castShadow = b.receiveShadow = true; b.userData.zona = zona; (padre || g).add(b); return b;
   };
   let x = -total / 2;
+  // medidas de cada módulo: altura propia (columnas y semicolumnas), elevación (muebles altos) y fondo propio
+  const hBase = (M.hBase > 0 ? M.hBase : o.alto) * CM;
+  const dimMod = m => { const elev = Math.max(0, m.elev || 0) * CM, altoM = m.h > 0 ? m.h * CM : hBase, esBase = !elev && !(m.h > 0 && altoM > hBase + 0.02), Dm = m.d > 0 ? m.d * CM : D; return { elev, altoM, esBase, Dm, dz: -(D - Dm) / 2, hc: altoM - (elev ? 0 : zoc) - (esBase ? encH : 0), y0: elev || zoc }; };
+  const tramos = []; let tramo = null;
   mods.forEach(mod => {
-    const W = mod.w * CM, cx = x + W / 2, hc = H - zoc - encH, y0 = zoc, zf = D / 2 + ef / 2 + 0.001;
-    if (mod.t === 'regleta') { if (zoc > 0) caja(Math.max(W - 0.002, 0.005), zoc, D - 0.05, cx, zoc / 2, -0.02, zocMat, 'cuerpo'); caja(Math.max(W - 0.002, 0.005), hc, D + ef, cx, y0 + hc / 2, ef / 2, frente, 'frente'); x += W; return; }
-    if (zoc > 0) caja(W - 0.004, zoc, D - 0.05, cx, zoc / 2, -0.02, zocMat, 'cuerpo');
-    caja(esp, hc, D, x + esp / 2, y0 + hc / 2, 0, cuerpo, 'cuerpo');
-    caja(esp, hc, D, x + W - esp / 2, y0 + hc / 2, 0, cuerpo, 'cuerpo');
-    caja(W - 2 * esp, esp, D, cx, y0 + esp / 2, 0, cuerpo, 'cuerpo');
-    caja(W - 2 * esp, esp, D, cx, y0 + hc - esp / 2, 0, cuerpo, 'cuerpo');
-    caja(W - 2 * esp, hc - 2 * esp, 0.006, cx, y0 + hc / 2, -D / 2 + 0.003, cuerpo, 'cuerpo');
+    const W = mod.w * CM, cx = x + W / 2, { elev, esBase, Dm, dz, hc, y0 } = dimMod(mod), zf = Dm / 2 + ef / 2 + 0.001;
+    if (esBase) { if (tramo) tramo.x1 = x + W; else { tramo = { x0: x, x1: x + W }; tramos.push(tramo); } } else tramo = null;
+    const gM = new THREE.Group(); gM.position.z = dz; g.add(gM);
+    const cajaM = (w, h, d, px, py, pz, mat, zona, padre) => caja(w, h, d, px, py, pz, mat, zona, padre || gM);
+    if (mod.t === 'regleta') { if (zoc > 0) cajaM(Math.max(W - 0.002, 0.005), zoc, Dm - 0.05, cx, zoc / 2, -0.02, zocMat, 'cuerpo'); cajaM(Math.max(W - 0.002, 0.005), hc, Dm + ef, cx, y0 + hc / 2, ef / 2, frente, 'frente'); x += W; return; }
+    if (zoc > 0 && !elev) cajaM(W - 0.004, zoc, Dm - 0.05, cx, zoc / 2, -0.02, zocMat, 'cuerpo');
+    cajaM(esp, hc, Dm, x + esp / 2, y0 + hc / 2, 0, cuerpo, 'cuerpo');
+    cajaM(esp, hc, Dm, x + W - esp / 2, y0 + hc / 2, 0, cuerpo, 'cuerpo');
+    cajaM(W - 2 * esp, esp, Dm, cx, y0 + esp / 2, 0, cuerpo, 'cuerpo');
+    cajaM(W - 2 * esp, esp, Dm, cx, y0 + hc - esp / 2, 0, cuerpo, 'cuerpo');
+    cajaM(W - 2 * esp, hc - 2 * esp, 0.006, cx, y0 + hc / 2, -Dm / 2 + 0.003, cuerpo, 'cuerpo');
     const nb = mod.t === 'abierto' ? (mod.nb ?? 3) : mod.t === 'puertas' ? (mod.nb ?? 1) : 0;
-    for (let i = 1; i <= nb; i++) caja(W - 2 * esp, esp, D - 0.02, cx, y0 + esp + (hc - 2 * esp) * (i / (nb + 1)), -0.01, cuerpo, 'cuerpo');
+    for (let i = 1; i <= nb; i++) cajaM(W - 2 * esp, esp, Dm - 0.02, cx, y0 + esp + (hc - 2 * esp) * (i / (nb + 1)), -0.01, cuerpo, 'cuerpo');
     const TIP = M.tirador || 'barra';
     const tmat = M.tiradorColor ? new THREE.MeshStandardMaterial({ color: color(M.tiradorColor, '#b8b8b8'), roughness: 0.3, metalness: 0.8 }) : tiradorMat;
     const oscuro = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.75 });
@@ -564,10 +571,10 @@ export function construirMueble(o, texturas) {
     const tir = (padre, fcx, fcy, z0, fw, fh, vert, lado) => {
       if (TIP === 'ninguno' || TIP === 'push') return;
       const hx = vert ? fcx + lado * (fw / 2 - 0.04) : fcx, hy = vert ? fcy : fcy + fh * 0.3;
-      if (TIP === 'barra') { if (vert) caja(0.012, 0.14, 0.014, hx, hy, z0 + 0.007, tmat, 'frente', padre); else caja(Math.min(0.16, fw * 0.5), 0.012, 0.014, hx, hy, z0 + 0.007, tmat, 'frente', padre); }
+      if (TIP === 'barra') { if (vert) cajaM(0.012, 0.14, 0.014, hx, hy, z0 + 0.007, tmat, 'frente', padre); else cajaM(Math.min(0.16, fw * 0.5), 0.012, 0.014, hx, hy, z0 + 0.007, tmat, 'frente', padre); }
       else if (TIP === 'asa') {
-        if (vert) { const L = 0.14; caja(0.01, L, 0.01, hx, hy, z0 + 0.03, tmat, 'frente', padre); caja(0.01, 0.012, 0.03, hx, hy + L / 2 - 0.006, z0 + 0.015, tmat, 'frente', padre); caja(0.01, 0.012, 0.03, hx, hy - L / 2 + 0.006, z0 + 0.015, tmat, 'frente', padre); }
-        else { const L = Math.min(0.16, fw * 0.5); caja(L, 0.01, 0.01, hx, hy, z0 + 0.03, tmat, 'frente', padre); caja(0.012, 0.01, 0.03, hx - L / 2 + 0.006, hy, z0 + 0.015, tmat, 'frente', padre); caja(0.012, 0.01, 0.03, hx + L / 2 - 0.006, hy, z0 + 0.015, tmat, 'frente', padre); }
+        if (vert) { const L = 0.14; cajaM(0.01, L, 0.01, hx, hy, z0 + 0.03, tmat, 'frente', padre); cajaM(0.01, 0.012, 0.03, hx, hy + L / 2 - 0.006, z0 + 0.015, tmat, 'frente', padre); cajaM(0.01, 0.012, 0.03, hx, hy - L / 2 + 0.006, z0 + 0.015, tmat, 'frente', padre); }
+        else { const L = Math.min(0.16, fw * 0.5); cajaM(L, 0.01, 0.01, hx, hy, z0 + 0.03, tmat, 'frente', padre); cajaM(0.012, 0.01, 0.03, hx - L / 2 + 0.006, hy, z0 + 0.015, tmat, 'frente', padre); cajaM(0.012, 0.01, 0.03, hx + L / 2 - 0.006, hy, z0 + 0.015, tmat, 'frente', padre); }
       } else if (TIP === 'pomo' || TIP === 'pomoplano') {
         const r = TIP === 'pomo' ? 0.015 : 0.02, h = TIP === 'pomo' ? 0.03 : 0.015, c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20), tmat);
         c.rotation.x = Math.PI / 2; c.position.set(hx, vert ? hy + 0.12 * 0 : hy, z0 + h / 2); c.userData.zona = 'frente'; c.castShadow = true; padre.add(c);
@@ -579,8 +586,8 @@ export function construirMueble(o, texturas) {
         un.castShadow = un.receiveShadow = true; un.userData.zona = 'frente'; padre.add(un);
       } else if (TIP === 'gola') {
         // perfil de gola: canal continuo en el canto de arriba del frente
-        caja(fw - 0.004, 0.035, 0.005, fcx, fcy + fh / 2 - 0.0185, z0 + 0.0005, oscuro, 'frente', padre);
-        caja(fw - 0.004, 0.004, 0.012, fcx, fcy + fh / 2 - 0.037, z0 - 0.004, tmat, 'frente', padre);
+        cajaM(fw - 0.004, 0.035, 0.005, fcx, fcy + fh / 2 - 0.0185, z0 + 0.0005, oscuro, 'frente', padre);
+        cajaM(fw - 0.004, 0.004, 0.012, fcx, fcy + fh / 2 - 0.037, z0 - 0.004, tmat, 'frente', padre);
       }
     };
     if (mod.t === 'puertas') {
@@ -590,43 +597,80 @@ export function construirMueble(o, texturas) {
         const bis = izq ? x + 0.002 + wd * k : x + 0.002 + wd * (k + 1);
         const pivote = new THREE.Group(); pivote.position.set(bis, y0 + hc / 2, zf);
         if (mod.abierto) pivote.rotation.y = izq ? -ang : ang;
-        caja(wd - 0.003, hc - 0.004, ef, izq ? wd / 2 : -wd / 2, 0, 0, frente, 'frente', pivote);
+        cajaM(wd - 0.003, hc - 0.004, ef, izq ? wd / 2 : -wd / 2, 0, 0, frente, 'frente', pivote);
         tir(pivote, izq ? wd / 2 : -wd / 2, 0, ef / 2, wd - 0.003, hc - 0.004, true, izq ? 1 : -1);
-        g.add(pivote);
+        gM.add(pivote);
       }
     } else if (mod.t === 'cajones') {
       const nc = Math.max(1, mod.n || 3), hf = (hc - 0.004) / nc, saca = mod.abierto ? 0.28 : 0;
       for (let i = 0; i < nc; i++) {
         const yc = y0 + 0.002 + hf * i + hf / 2;
-        caja(W - 0.004, hf - 0.003, ef, cx, yc, zf + (i === 0 ? saca : 0), frente, 'frente');
-        tir(g, cx, yc, zf + ef / 2 + (i === 0 ? saca : 0), W - 0.004, hf - 0.003, false, 0);
-        if (i === 0 && saca) caja(W - 2 * esp - 0.03, hf * 0.6, D * 0.75, cx, yc - 0.02, D / 2 - D * 0.375 + saca, cuerpo, 'cuerpo');
+        cajaM(W - 0.004, hf - 0.003, ef, cx, yc, zf + (i === 0 ? saca : 0), frente, 'frente');
+        tir(gM, cx, yc, zf + ef / 2 + (i === 0 ? saca : 0), W - 0.004, hf - 0.003, false, 0);
+        if (i === 0 && saca) cajaM(W - 2 * esp - 0.03, hf * 0.6, Dm * 0.75, cx, yc - 0.02, Dm / 2 - Dm * 0.375 + saca, cuerpo, 'cuerpo');
       }
     }
     else if (mod.t === 'nevera') {
       // frigorífico bajo encimera: cuerpo del aparato dentro del hueco, puerta grande, puerta pequeña del congelador arriba y dos asas verticales en inox
       const inox = mod.color === 'inox', ap = new THREE.MeshStandardMaterial({ color: inox ? 0xb9bcc0 : mod.color === 'negro' ? 0x1c1c1e : 0xf3f3f1, roughness: inox ? 0.35 : 0.4, metalness: inox ? 0.8 : 0.1 });
-      caja(W - 2 * esp - 0.004, hc - 2 * esp - 0.006, D - 0.06, cx, y0 + hc / 2, -0.01, ap, 'cuerpo');
+      cajaM(W - 2 * esp - 0.004, hc - 2 * esp - 0.006, Dm - 0.06, cx, y0 + hc / 2, -0.01, ap, 'cuerpo');
       const fw = W - 0.004, fh = hc - 0.004, yb = y0 + 0.002, hCong = Math.min(0.28, fh * 0.28);
-      caja(fw, fh - hCong - 0.003, ef, cx, yb + (fh - hCong - 0.003) / 2, zf, ap, 'frente');
-      caja(fw, hCong, ef, cx, yb + fh - hCong / 2, zf, ap, 'frente');
-      caja(0.012, Math.min(0.5, fh * 0.45), 0.016, cx + fw / 2 - 0.035, yb + (fh - hCong) * 0.6, zf + ef / 2 + 0.008, tiradorMat, 'frente');
-      caja(0.012, Math.min(0.12, hCong * 0.6), 0.016, cx + fw / 2 - 0.035, yb + fh - hCong / 2, zf + ef / 2 + 0.008, tiradorMat, 'frente');
+      cajaM(fw, fh - hCong - 0.003, ef, cx, yb + (fh - hCong - 0.003) / 2, zf, ap, 'frente');
+      cajaM(fw, hCong, ef, cx, yb + fh - hCong / 2, zf, ap, 'frente');
+      cajaM(0.012, Math.min(0.5, fh * 0.45), 0.016, cx + fw / 2 - 0.035, yb + (fh - hCong) * 0.6, zf + ef / 2 + 0.008, tiradorMat, 'frente');
+      cajaM(0.012, Math.min(0.12, hCong * 0.6), 0.016, cx + fw / 2 - 0.035, yb + fh - hCong / 2, zf + ef / 2 + 0.008, tiradorMat, 'frente');
+    }
+    else if (mod.t === 'columna') {
+      // columna: cuerpo a toda su altura con secciones de abajo arriba (puertas, cajones, horno, microondas, abierto o hueco); cada una con su alto en cm (0 = reparte el resto)
+      const secs = (mod.secs && mod.secs.length ? mod.secs : [{ t: 'puertas', h: 0 }]).slice(0, 8);
+      const fijas = secs.reduce((acc, sc) => acc + (sc.h > 0 ? sc.h * CM : 0), 0), libres = secs.filter(sc => !(sc.h > 0)).length, hl = libres ? Math.max(0.12, (hc - fijas) / libres) : 0;
+      const cristal = new THREE.MeshStandardMaterial({ color: 0x0b0b0d, roughness: 0.1, metalness: 0.45 }), negroAp = new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.4, metalness: 0.5 }), panelM = new THREE.MeshStandardMaterial({ color: 0x2e2e31, roughness: 0.35, metalness: 0.5 });
+      let yy = y0;
+      secs.forEach((sc, i) => {
+        const hs = sc.h > 0 ? sc.h * CM : hl, yc = yy + hs / 2, fw = W - 0.004, fh = hs - 0.004;
+        if (i > 0) cajaM(W - 2 * esp, esp, Dm - 0.02, cx, yy, -0.01, cuerpo, 'cuerpo');
+        if (sc.t === 'puertas') {
+          const nd = W > 0.85 ? 2 : 1, wd = fw / nd;
+          for (let k = 0; k < nd; k++) { const px = x + 0.002 + wd * k + wd / 2; cajaM(wd - 0.003, fh, ef, px, yc, zf, frente, 'frente'); tir(gM, px, yc, zf + ef / 2, wd - 0.003, fh, true, nd === 1 ? 1 : (k === 0 ? 1 : -1)); }
+        } else if (sc.t === 'cajones') {
+          const nc = Math.max(1, sc.n || 1), hf = fh / nc;
+          for (let k = 0; k < nc; k++) { const yk = yy + 0.002 + hf * k + hf / 2; cajaM(fw, hf - 0.003, ef, cx, yk, zf, frente, 'frente'); tir(gM, cx, yk, zf + ef / 2, fw, hf - 0.003, false, 0); }
+        } else if (sc.t === 'horno') {
+          cajaM(W - 2 * esp - 0.004, hs - 0.006, Dm - 0.1, cx, yc, -0.03, negroAp, 'cuerpo');
+          cajaM(fw, fh, ef, cx, yc, zf, negroAp, 'frente');
+          cajaM(fw * 0.78, fh * 0.5, 0.004, cx, yc - fh * 0.06, zf + ef / 2 + 0.002, cristal, 'frente');
+          cajaM(fw * 0.86, 0.016, 0.022, cx, yc + fh / 2 - 0.05, zf + ef / 2 + 0.014, tiradorMat, 'frente');
+          [-1, 0, 1].forEach(j => { const bt = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.012, 16), panelM); bt.rotation.x = Math.PI / 2; bt.position.set(cx + j * fw * 0.22, yc + fh / 2 - 0.02, zf + ef / 2 + 0.006); bt.userData.zona = 'frente'; gM.add(bt); });
+        } else if (sc.t === 'micro') {
+          cajaM(W - 2 * esp - 0.004, hs - 0.006, Dm - 0.1, cx, yc, -0.03, negroAp, 'cuerpo');
+          cajaM(fw, fh, ef * 0.7, cx, yc, zf - ef * 0.15, negroAp, 'frente');
+          cajaM(fw * 0.62, fh * 0.74, 0.004, cx - fw * 0.15, yc, zf + ef * 0.2 + 0.002, cristal, 'frente');
+          cajaM(fw * 0.2, fh * 0.74, 0.004, cx + fw * 0.34, yc, zf + ef * 0.2 + 0.002, panelM, 'frente');
+          [0.2, -0.05, -0.25].forEach(f => cajaM(fw * 0.1, 0.014, 0.005, cx + fw * 0.34, yc + fh * f, zf + ef * 0.2 + 0.005, tiradorMat, 'frente'));
+        }
+        yy += hs;
+      });
     }
     x += W;
   });
+  // costados a la altura y el fondo de los módulos de los extremos; la encimera solo cubre los tramos de muebles bajos (las columnas la cortan)
   const CO = M.costados || {}, ceH = Math.max(1, CO.esp || 1.8) * CM, cI = CO.izq ? ceH : 0, cD = CO.der ? ceH : 0;
-  if (cI) caja(ceH, H - encH - zoc, D + ef, -(total / 2 + ceH / 2), zoc + (H - encH - zoc) / 2, ef / 2, frente, 'frente');
-  if (cD) caja(ceH, H - encH - zoc, D + ef, total / 2 + ceH / 2, zoc + (H - encH - zoc) / 2, ef / 2, frente, 'frente');
-  if (ENC) caja(total + cI + cD, encH, D + ef + encVuelo, (cD - cI) / 2, H - encH / 2, (ef + encVuelo) / 2, matEnc, 'encimera');
+  if (mods.length) {
+    const dL = dimMod(mods[0]), dR = dimMod(mods[mods.length - 1]);
+    if (cI) caja(ceH, dL.hc, dL.Dm + ef, -(total / 2 + ceH / 2), dL.y0 + dL.hc / 2, ef / 2 + dL.dz, frente, 'frente');
+    if (cD) caja(ceH, dR.hc, dR.Dm + ef, total / 2 + ceH / 2, dR.y0 + dR.hc / 2, ef / 2 + dR.dz, frente, 'frente');
+  }
+  if (ENC) tramos.forEach(t => { const x0 = t.x0 - (Math.abs(t.x0 + total / 2) < 1e-6 ? cI : 0), x1 = t.x1 + (Math.abs(t.x1 - total / 2) < 1e-6 ? cD : 0); caja(x1 - x0, encH, D + ef + encVuelo, (x0 + x1) / 2, hBase - encH / 2, (ef + encVuelo) / 2, matEnc, 'encimera'); });
   return g;
 }
 // Lista de piezas y metros cuadrados de tablero del mueble (para fabricar o presupuestar)
 function despieceMueble(o) {
-  const M = o.mueble || {}, e = M.esp || 1.8, hc = o.alto - (M.zocalo ?? 10) - (M.encimera?.on ? (M.encimera.esp || 3) : 0), D = o.d, filas = {};
+  const M = o.mueble || {}, e = M.esp || 1.8, zoc = M.zocalo ?? 10, encE = M.encimera?.on ? (M.encimera.esp || 3) : 0, hBase = M.hBase > 0 ? M.hBase : o.alto, filas = {};
   const suma = (n, a, b, cant = 1) => { const k = n + ' ' + Math.round(a * 10) / 10 + ' × ' + Math.round(b * 10) / 10; filas[k] = (filas[k] || 0) + cant; };
   let area = 0;
+  const dimM = m => { const elev = m.elev > 0 ? m.elev : 0, alto = m.h > 0 ? m.h : hBase, esBase = !elev && !(m.h > 0 && alto > hBase + 0.5); return { esBase, hc: alto - (elev ? 0 : zoc) - (esBase ? encE : 0), D: m.d > 0 ? m.d : o.d }; };
   (M.modulos || []).forEach(m => {
+    const { hc, D } = dimM(m);
     if (m.t === 'regleta') { suma('Regleta / relleno', hc, m.w); area += hc * m.w / 1e4; return; }
     const wi = m.w - 2 * e;
     suma('Lateral', hc, D, 2); suma('Base y tapa', wi, D, 2); suma('Trasera (fina)', wi, hc - 2 * e); area += (2 * hc * D + 2 * wi * D + wi * (hc - 2 * e)) / 1e4;
@@ -635,11 +679,22 @@ function despieceMueble(o) {
     if (m.t === 'puertas') { const nd = m.n === 2 ? 2 : 1; suma('Puerta', m.w / nd - 0.3, hc - 0.4, nd); area += nd * (m.w / nd - 0.3) * (hc - 0.4) / 1e4; }
     if (m.t === 'cajones') { const nc = Math.max(1, m.n || 3); suma('Frente de cajón', m.w - 0.4, hc / nc - 0.3, nc); area += nc * (m.w - 0.4) * (hc / nc - 0.3) / 1e4; }
     if (m.t === 'nevera') suma('Frigorífico bajo encimera (aparato)', m.w - 0.4, hc - 0.4);
+    if (m.t === 'columna') {
+      const secs = m.secs && m.secs.length ? m.secs : [{ t: 'puertas', h: 0 }], fijas = secs.reduce((a, q) => a + (q.h > 0 ? q.h : 0), 0), libres = secs.filter(q => !(q.h > 0)).length, hl = libres ? Math.max(12, (hc - fijas) / libres) : 0;
+      if (secs.length > 1) { suma('Balda de sección', wi, D - 2, secs.length - 1); area += (secs.length - 1) * wi * (D - 2) / 1e4; }
+      secs.forEach(q => {
+        const hs = q.h > 0 ? q.h : hl;
+        if (q.t === 'puertas') { const nd = m.w > 85 ? 2 : 1; suma('Puerta de columna', m.w / nd - 0.3, hs - 0.4, nd); area += nd * (m.w / nd - 0.3) * (hs - 0.4) / 1e4; }
+        else if (q.t === 'cajones') { const nc = Math.max(1, q.n || 1); suma('Frente de cajón (columna)', m.w - 0.4, hs / nc - 0.3, nc); area += nc * (m.w - 0.4) * (hs / nc - 0.3) / 1e4; }
+        else if (q.t === 'horno') suma('Horno empotrado (aparato)', m.w - 0.4, hs - 0.4);
+        else if (q.t === 'micro') suma('Microondas empotrado (aparato)', m.w - 0.4, hs - 0.4);
+      });
+    }
   });
-  if (M.costados?.izq || M.costados?.der) suma('Costado visto', o.alto - (M.zocalo ?? 10) - (M.encimera?.on ? (M.encimera.esp || 3) : 0), D + 1.9, (M.costados.izq ? 1 : 0) + (M.costados.der ? 1 : 0));
-  if (M.encimera?.on) { const L = (M.modulos || []).reduce((s2, m) => s2 + m.w, 0); suma('Encimera ' + (M.encimera.esp || 3) + ' cm', L, D + 1.9 + (M.encimera.vuelo ?? 2)); }
+  if (M.costados?.izq || M.costados?.der) { const ms = M.modulos || []; [[M.costados.izq, ms[0]], [M.costados.der, ms[ms.length - 1]]].forEach(([on, m]) => { if (on && m) { const d = dimM(m); suma('Costado visto', d.hc, d.D + 1.9); } }); }
+  if (M.encimera?.on) { let L = 0, run = 0; (M.modulos || []).forEach(m => { if (dimM(m).esBase) run += m.w; else { if (run) { suma('Encimera ' + (M.encimera.esp || 3) + ' cm', run, o.d + 1.9 + (M.encimera.vuelo ?? 2)); } run = 0; } L += m.w; }); if (run) suma('Encimera ' + (M.encimera.esp || 3) + ' cm', run, o.d + 1.9 + (M.encimera.vuelo ?? 2)); }
   let frentes = 0, ancho = 0;
-  (M.modulos || []).forEach(m => { if (m.t === 'puertas') { frentes += m.n === 2 ? 2 : 1; ancho += m.w; } if (m.t === 'cajones') { const nc = Math.max(1, m.n || 3); frentes += nc; ancho += m.w * nc; } });
+  (M.modulos || []).forEach(m => { if (m.t === 'puertas') { frentes += m.n === 2 ? 2 : 1; ancho += m.w; } if (m.t === 'cajones') { const nc = Math.max(1, m.n || 3); frentes += nc; ancho += m.w * nc; } if (m.t === 'columna') (m.secs && m.secs.length ? m.secs : [{ t: 'puertas' }]).forEach(q => { if (q.t === 'puertas') { frentes += m.w > 85 ? 2 : 1; ancho += m.w; } if (q.t === 'cajones') { frentes += Math.max(1, q.n || 1); ancho += m.w; } }); });
   const T = M.tirador || 'barra', NOM = { barra: 'Tirador de barra', asa: 'Tirador de asa', pomo: 'Pomo', pomoplano: 'Pomo plano' };
   const extra = NOM[T] ? [[NOM[T] + ' (herraje)', frentes]] : T === 'gola' ? [['Perfil de gola, ml', Math.round(ancho) / 100]] : T === 'unero' ? [['Fresado de uñero (frentes)', frentes]] : T === 'push' ? [['Mecanismo push open (frentes)', frentes]] : [];
   return { filas: [...Object.entries(filas), ...extra.map(([k, n]) => [k, n])], area: Math.round(area * 100) / 100 };
@@ -3530,8 +3585,11 @@ export default function Visor3D({ cliente = false }) {
   };
   const cambiarModulos = (idObj, fn, extra) => setObjs(prev => prev.map(o => {
     if (o.id !== idObj) return o;
-    const mods = fn((o.mueble?.modulos || []).map(m => ({ ...m })));
-    return { ...o, mueble: { ...o.mueble, modulos: mods, ...(extra || {}) }, w: mods.reduce((s, m) => s + (parseFloat(m.w) || 0), 0) };
+    const M0 = o.mueble || {}, hBase = M0.hBase > 0 ? M0.hBase : o.alto, mods = fn((M0.modulos || []).map(m => ({ ...m }))), w = mods.reduce((s, m) => s + (parseFloat(m.w) || 0), 0);
+    // si hay columnas o muebles altos, la altura del objeto es la del módulo más alto y la de los bajos se guarda aparte (hBase)
+    const altos = mods.some(m => m.h > 0 || m.elev > 0), top = Math.max(hBase, ...mods.map(m => (m.elev > 0 ? m.elev : 0) + (m.h > 0 ? m.h : hBase)));
+    const M1 = { ...M0, modulos: mods, ...(extra || {}) }; if (altos) M1.hBase = hBase; else delete M1.hBase;
+    return { ...o, alto: altos ? top : hBase, mueble: M1, w };
   }));
   const crearFalsoTecho = (salaKey) => {
     const modelo = api3d.current.modelo; if (!modelo) return;
@@ -5892,6 +5950,7 @@ export default function Visor3D({ cliente = false }) {
           {[['cx', 'Posición X'], ['cy', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Altura desde suelo'], ['rot', 'Giro °']].filter(([k]) => {
             const t = objSel.tipo;
             if (t === 'mueble' && k === 'w') return false;
+            if (t === 'mueble' && k === 'alto' && objSel.mueble?.hBase) return false;
             if (t === 'zona' && objSel.plano === 'pared') return false;
             if (['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(t)) return k === 'cx' || k === 'cy' || ((t === 'barrido' || t === 'carril' || t === 'led') && k === 'z0');
             if ((t === 'logo' || t === 'imagen') && ['w', 'd', 'alto'].includes(k)) return false;
@@ -6117,13 +6176,21 @@ export default function Visor3D({ cliente = false }) {
           {objSel.tipo === 'mueble' && (() => {
             const M = objSel.mueble || { modulos: [] }, desp = despieceMueble(objSel);
             const tipos = [['puertas', 'Puertas'], ['cajones', 'Cajones'], ['abierto', 'Abierto'], ['hueco', 'Hueco'], ['nevera', 'Nevera'], ['regleta', 'Regleta']];
+            const presetsMod = [
+              ['+ Columna', { t: 'columna', w: 60, h: 220, secs: [{ t: 'puertas', h: 0 }] }],
+              ['+ Semicolumna', { t: 'columna', w: 60, h: 140, secs: [{ t: 'puertas', h: 0 }] }],
+              ['+ Columna con micro', { t: 'columna', w: 60, h: 220, secs: [{ t: 'puertas', h: 70 }, { t: 'micro', h: 38 }, { t: 'puertas', h: 0 }] }],
+              ['+ Columna horno y micro', { t: 'columna', w: 60, h: 220, secs: [{ t: 'cajones', h: 30, n: 1 }, { t: 'horno', h: 60 }, { t: 'micro', h: 38 }, { t: 'puertas', h: 0 }] }],
+              ['+ Mueble alto', { t: 'puertas', w: 60, n: 2, nb: 1, h: 70, elev: 140, d: 35 }],
+            ];
+            const hBaseUI = M.hBase > 0 ? M.hBase : objSel.alto;
             return (
               <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Módulos · ancho total {Math.round(objSel.w)} cm</div>
                 {M.modulos.map((m, i) => (
                   <div key={i} style={{ background: '#2a2a2a', borderRadius: 6, padding: 6, marginBottom: 5 }}>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      <select value={m.t} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].t = e.target.value; return ms; })} style={{ ...btn, flex: 1, padding: '3px 4px' }}>{tipos.map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select>
+                      <select value={m.t} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].t = e.target.value; if (e.target.value === 'columna' && !ms[i].h) ms[i].h = 220; return ms; })} style={{ ...btn, flex: 1, padding: '3px 4px' }}>{[...tipos, ['columna', 'Columna (secciones)']].map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select>
                       <input type="number" value={m.w} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].w = parseFloat(e.target.value) || 0; return ms; })} style={{ ...btn, width: 56, padding: '3px 4px' }} title="Ancho (cm)" />
                       <span onClick={() => cambiarModulos(objSel.id, ms => { if (i > 0) [ms[i - 1], ms[i]] = [ms[i], ms[i - 1]]; return ms; })} style={{ cursor: 'pointer', padding: '0 3px' }} title="Mover a la izquierda">◀</span>
                       <span onClick={() => cambiarModulos(objSel.id, ms => { if (i < ms.length - 1) [ms[i + 1], ms[i]] = [ms[i], ms[i + 1]]; return ms; })} style={{ cursor: 'pointer', padding: '0 3px' }} title="Mover a la derecha">▶</span>
@@ -6134,12 +6201,27 @@ export default function Visor3D({ cliente = false }) {
                       {m.t === 'cajones' && <label>Cajones <input type="number" min="1" max="8" value={m.n || 3} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].n = parseInt(e.target.value, 10) || 1; return ms; })} style={{ ...btn, width: 44, padding: '2px 4px' }} /></label>}
                       {(m.t === 'puertas' || m.t === 'abierto') && <label>Baldas <input type="number" min="0" max="10" value={m.nb ?? (m.t === 'abierto' ? 3 : 1)} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].nb = parseInt(e.target.value, 10) || 0; return ms; })} style={{ ...btn, width: 44, padding: '2px 4px' }} /></label>}
                       {m.t === 'nevera' && <label>Acabado <select value={m.color || ''} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].color = e.target.value || undefined; return ms; })} style={{ ...btn, padding: '2px' }}><option value="">Blanca</option><option value="inox">Inox</option><option value="negro">Negra</option></select></label>}
+                      {m.t === 'columna' && <div style={{ width: '100%' }}>
+                        {(m.secs && m.secs.length ? m.secs : [{ t: 'puertas', h: 0 }]).map((sc, j) => (
+                          <div key={j} style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 3 }}>
+                            <select value={sc.t} onChange={e => cambiarModulos(objSel.id, ms => { const ss = (ms[i].secs || [{ t: 'puertas', h: 0 }]).map(q => ({ ...q })); ss[j].t = e.target.value; ms[i].secs = ss; return ms; })} style={{ ...btn, flex: 1, padding: '2px 4px', minWidth: 0 }}><option value="puertas">Puertas</option><option value="cajones">Cajones</option><option value="horno">Horno</option><option value="micro">Microondas</option><option value="abierto">Abierto</option><option value="hueco">Hueco</option></select>
+                            <input type="number" min="0" placeholder="resto" title="Alto de esta sección en cm; vacío = reparte lo que quede" value={sc.h || ''} onChange={e => cambiarModulos(objSel.id, ms => { const ss = (ms[i].secs || [{ t: 'puertas', h: 0 }]).map(q => ({ ...q })); ss[j].h = parseFloat(e.target.value) || 0; ms[i].secs = ss; return ms; })} style={{ ...btn, width: 50, padding: '2px 4px' }} />
+                            {sc.t === 'cajones' && <input type="number" min="1" max="8" title="Cajones" value={sc.n || 1} onChange={e => cambiarModulos(objSel.id, ms => { const ss = (ms[i].secs || [{ t: 'puertas', h: 0 }]).map(q => ({ ...q })); ss[j].n = parseInt(e.target.value, 10) || 1; ms[i].secs = ss; return ms; })} style={{ ...btn, width: 38, padding: '2px 4px' }} />}
+                            <span onClick={() => cambiarModulos(objSel.id, ms => { const ss = (ms[i].secs || [{ t: 'puertas', h: 0 }]).map(q => ({ ...q })).filter((_, k) => k !== j); ms[i].secs = ss.length ? ss : undefined; return ms; })} style={{ cursor: 'pointer', opacity: 0.7, padding: '0 3px' }} title="Quitar sección">✕</span>
+                          </div>
+                        ))}
+                        <button style={{ ...btn, padding: '2px 8px', fontSize: 11, marginTop: 4 }} onClick={() => cambiarModulos(objSel.id, ms => { ms[i].secs = [...(ms[i].secs || [{ t: 'puertas', h: 0 }]), { t: 'puertas', h: 0 }].slice(0, 8); return ms; })}>+ sección (de abajo arriba)</button>
+                      </div>}
                       {(m.t === 'puertas' || m.t === 'cajones') && <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!m.abierto} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].abierto = e.target.checked; return ms; })} /> Abierto</label>}
                     </div>
+                    {m.t !== 'regleta' && <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', marginTop: 4, fontSize: 11 }} title="Alto propio (una columna llega más arriba), elevado del suelo (muebles altos) y fondo propio">
+                      {[['h', 'Alto cm', hBaseUI], ['elev', 'Elevado cm', 0], ['d', 'Fondo cm', objSel.d]].map(([k, n, ph]) => <label key={k} style={{ display: 'flex', flexDirection: 'column', opacity: 0.85 }}>{n}<input type="number" min="0" placeholder={String(Math.round(ph))} value={m[k] || ''} onChange={e => cambiarModulos(objSel.id, ms => { ms[i][k] = parseFloat(e.target.value) > 0 ? parseFloat(e.target.value) : undefined; return ms; })} style={{ ...btn, width: 58, padding: '2px 4px' }} /></label>)}
+                    </div>}
                   </div>
                 ))}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
                   {tipos.map(([v, n]) => <button key={v} style={{ ...btn, padding: '3px 8px' }} onClick={() => cambiarModulos(objSel.id, ms => [...ms, { t: v, w: v === 'regleta' ? 5 : 60, n: v === 'cajones' ? 3 : 1, nb: v === 'abierto' ? 3 : 1 }])}>+ {n}</button>)}
+                  {presetsMod.map(([n, p]) => <button key={n} style={{ ...btn, padding: '3px 8px', background: '#6b6159' }} title="Módulo alto: se puede editar su altura, su elevación y sus secciones" onClick={() => cambiarModulos(objSel.id, ms => [...ms, JSON.parse(JSON.stringify(p))])}>{n}</button>)}
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Zócalo cm</span><input type="number" value={M.zocalo ?? 10} onChange={e => cambiar(objSel.id, { mueble: { ...M, zocalo: parseFloat(e.target.value) || 0 } })} style={{ ...btn, width: 70 }} /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Tablero cm</span><input type="number" step="0.1" value={M.esp ?? 1.8} onChange={e => cambiar(objSel.id, { mueble: { ...M, esp: parseFloat(e.target.value) || 1.8 } })} style={{ ...btn, width: 70 }} /></label>
