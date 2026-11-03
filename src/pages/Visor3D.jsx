@@ -1691,6 +1691,12 @@ export default function Visor3D({ cliente = false }) {
     return /NVIDIA|GeForce|RTX|GTX|Radeon (RX|Pro)|Apple M\d/i.test(n) && !!gl.getExtension('EXT_color_buffer_float') && r.capabilities.maxTextureSize >= 8192;
   };
   useEffect(() => { api3d.current.ptMax = ptMax; }, [ptMax]);
+  // Primera vez en un ordenador sin tarjeta gráfica potente (portátiles con gráfica Intel, etc.): se empieza en calidad baja y sin modo realista, para que no se cuelgue. Después cada uno lo cambia a su gusto.
+  useEffect(() => {
+    if (estado !== 'listo' || cliente) return;
+    try { if (localStorage.getItem('visor3dAuto') === '1') return; localStorage.setItem('visor3dAuto', '1'); } catch { return; }
+    if (!gpuApta()) { setCalidad('baja'); setRealista(false); setRefinar(false); setAviso('Tu ordenador no tiene tarjeta gráfica potente: he puesto la calidad baja y quitado el modo realista para que vaya fluido. Puedes subirlos en la barra de arriba.'); }
+  }, [estado]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const a = api3d.current; if (!a.scene || estado !== 'listo') return;
     try { localStorage.setItem('visor3dRefinar', refinar ? '1' : '0'); } catch { /* sin almacenamiento */ }
