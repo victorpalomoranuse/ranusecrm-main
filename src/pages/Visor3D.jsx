@@ -3351,7 +3351,7 @@ export default function Visor3D({ cliente = false }) {
 
   useEffect(() => {
     if (!b3dAbierta || b3d) return;
-    api.get('/biblioteca3d').then(r => { const d = r.data || { modelos: [], texturas: [] }; setB3d({ ...d, texturas: [...(d.texturasMias || []), ...(d.texturas || [])] }); }).catch(() => setB3d({ modelos: [], texturas: [], error: true }));
+    api.get('/biblioteca3d').then(r => { const d = r.data || { modelos: [], texturas: [] }; setB3d({ ...d, mistex: d.texturasMias || [] }); }).catch(() => setB3d({ modelos: [], texturas: [], error: true }));
   }, [b3dAbierta, b3d]);
   // «Mis modelos»: sube un modelo suelto (planta, mueble…), mide su tamaño real y lo deja en la biblioteca
   const [subiendoMio, setSubiendoMio] = useState('');
@@ -3491,10 +3491,10 @@ export default function Visor3D({ cliente = false }) {
       try {
         const fd = new FormData(); fd.append('file', lista[i]); fd.append('tam', String(texTam));
         const r = await api.post('/biblioteca3d/mis-texturas', fd);
-        setB3d(b => ({ ...(b || {}), texturas: [r.data.textura, ...((b?.texturas) || [])] })); ok++;
+        setB3d(b => ({ ...(b || {}), mistex: [r.data.textura, ...((b?.mistex) || [])] })); ok++;
       } catch (e) { setSubiendoTex('«' + lista[i].name + '»: ' + (e.response?.data?.error || 'no se pudo subir')); return; }
     }
-    setB3dCat('Mis texturas'); setSubiendoTex(ok + (ok === 1 ? ' textura añadida' : ' texturas añadidas') + ' a «Mis texturas» ✓. Pulsa una para usarla.');
+    setB3dTab('mistex'); setB3dCat(''); setSubiendoTex(ok + (ok === 1 ? ' textura añadida' : ' texturas añadidas') + ' ✓ Pulsa una para usarla.');
   };
   // Oscurecer o teñir una parte de un modelo sin perder su textura: se guarda como «tinte:#rrggbb» en esa parte (solo esa; las demás no cambian)
   const aplicarTinte = (hex) => {
@@ -5723,10 +5723,11 @@ export default function Visor3D({ cliente = false }) {
         return (
           <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
             <div style={{ fontWeight: 700 }}>🧰 Biblioteca 3D <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>gratis · CC0</span></div>
-            <div style={{ display: 'flex', gap: 6, margin: '6px 0' }}>
+            <div style={{ display: 'flex', gap: 6, margin: '6px 0', flexWrap: 'wrap' }}>
               <button style={{ ...btn, flex: 1, ...(b3dTab === 'modelos' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('modelos'); setB3dCat(''); }}>Muebles</button>
               <button style={{ ...btn, flex: 1, ...(b3dTab === 'mios' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('mios'); setB3dCat(''); }}>Mis modelos</button>
               <button style={{ ...btn, flex: 1, ...(b3dTab === 'texturas' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('texturas'); setB3dCat(''); }}>Texturas</button>
+              <button style={{ ...btn, flex: '1 1 100%', ...(b3dTab === 'mistex' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('mistex'); setB3dCat(''); }}>Mis texturas{(b3d?.mistex || []).length ? ' (' + b3d.mistex.length + ')' : ''}</button>
             </div>
             <input value={b3dFiltro} onChange={e => setB3dFiltro(e.target.value)} placeholder="Buscar…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 6 }} />
             <select value={b3dCat} onChange={e => setB3dCat(e.target.value)} style={{ ...btn, marginBottom: 8 }}>
@@ -5787,22 +5788,25 @@ export default function Visor3D({ cliente = false }) {
                   {m.mio && <span onClick={e => { e.stopPropagation(); quitarMio(m); }} title="Quitar de Mis modelos" style={{ padding: '0 5px', opacity: 0.6 }}>✕</span>}
                 </div>
               ))}
-              {b3dTab === 'texturas' && (
+              {(b3dTab === 'texturas' || b3dTab === 'mistex') && (
                 <>
-                  <div style={{ marginBottom: 8 }}>
+                  {b3dTab === 'texturas' && <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>Tus propias imágenes están en la pestaña <b>Mis texturas</b>.</div>}
+                  {b3dTab === 'mistex' && <div style={{ marginBottom: 8 }}>
                     <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#6b6159', cursor: 'pointer' }}>⬆ Subir mis texturas (imágenes)
                       <input type="file" multiple accept="image/*" style={{ display: 'none' }} onChange={e => { subirMisTexturas(e.target.files); e.target.value = ''; }} />
                     </label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 12 }}><span style={{ opacity: 0.7 }}>Lo que mide la imagen (cm)</span><input type="number" min="5" max="1000" value={texTam} onChange={e => setTexTam(parseFloat(e.target.value) || 60)} style={{ ...btn, width: 62, padding: '2px 5px' }} /></label>
                     <div style={{ opacity: 0.55, fontSize: 11, marginTop: 3 }}>Pon el ancho real que cubre la foto (una baldosa de 60 cm = 60). Quedan guardadas en «Mis texturas» para todos tus planos.</div>
                     {subiendoTex && <div style={{ fontSize: 11, marginTop: 4, color: '#d4c9bb' }}>{subiendoTex}</div>}
-                  </div>
+                  </div>}
+                  {b3dTab === 'mistex' && !lista.length && <p style={{ opacity: 0.6, fontSize: 12 }}>Todavía no has subido ninguna. Elige una o varias imágenes con el botón de arriba.</p>}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
                     {lista.map(t => (
                       <div key={t.id} onClick={() => usarTexturaB3d(t)} title={t.nombre + ' · ' + t.categoria + (t.tam ? ' · ' + t.tam + ' cm' : '')} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
                         <img src={t.url} alt={t.nombre} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
                         <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.nombre}</div>
-                        {t.mia && <span onClick={e => { e.stopPropagation(); if (window.confirm('¿Quitar «' + t.nombre + '» de Mis texturas? Los planos que ya la usan la conservan.')) api.delete('/biblioteca3d/mis-texturas/' + t.id).then(() => setB3d(b => ({ ...b, texturas: (b.texturas || []).filter(x => x.id !== t.id) }))).catch(() => setSubiendoTex('No se pudo quitar')); }} title="Quitar de Mis texturas" style={{ position: 'absolute', top: 1, right: 1, background: '#000b', borderRadius: 8, padding: '0 5px', fontSize: 10 }}>✕</span>}
+                        {t.mia && <span onClick={e => { e.stopPropagation(); if (window.confirm('¿Quitar «' + t.nombre + '» de Mis texturas? Los planos que ya la usan la conservan.')) api.delete('/biblioteca3d/mis-texturas/' + t.id).then(() => setB3d(b => ({ ...b, mistex: (b.mistex || []).filter(x => x.id !== t.id) }))).catch(() => setSubiendoTex('No se pudo quitar')); }} title="Quitar de Mis texturas" style={{ position: 'absolute', top: 1, right: 1, background: '#000b', borderRadius: 8, padding: '0 5px', fontSize: 10 }}>✕</span>}
+                        {t.mia && <span onClick={e => { e.stopPropagation(); const n = window.prompt('Nombre de la textura:', t.nombre); if (n === null) return; const tm = window.prompt('Lo que mide la imagen en la realidad (cm):', String(t.tam || 60)); api.put('/biblioteca3d/mis-texturas/' + t.id, { nombre: (n || '').trim() || t.nombre, tam: parseFloat(tm) || t.tam }).then(r => setB3d(b => ({ ...b, mistex: (b.mistex || []).map(x => (x.id === t.id ? r.data.textura : x)) }))).catch(() => setSubiendoTex('No se pudo cambiar')); }} title="Cambiar el nombre y el tamaño real" style={{ position: 'absolute', top: 1, left: 1, background: '#000b', borderRadius: 8, padding: '0 5px', fontSize: 10 }}>✎</span>}
                       </div>
                     ))}
                   </div>
