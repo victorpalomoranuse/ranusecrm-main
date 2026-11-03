@@ -4071,7 +4071,7 @@ export default function Visor3D({ cliente = false }) {
   // Render fotorrealista con IA: se manda la vista actual y vuelve mejorada
   const [ia, setIa] = useState(null); // { estado: 'trabajando' | 'listo' | 'error', imagen, mensaje, estancia, estilo, extra }
   const [iaForm, setIaForm] = useState(false);
-  const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '', libertad: 'equilibrado', proveedor: 'openai' });
+  const [iaTxt, setIaTxt] = useState({ estancia: '', estilo: '', extra: '', libertad: 'equilibrado', proveedor: 'openai', aspecto: 'realista' });
   const metaActual = (txt = iaTxt) => {
     const { cam, ctrl } = api3d.current;
     return { camara: { px: cam.position.x, py: cam.position.y, pz: cam.position.z, tx: ctrl.target.x, ty: ctrl.target.y, tz: ctrl.target.z, fov: cam.fov }, shift: api3d.current.shiftY || 0, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, estancia: txt.estancia, estilo: txt.estilo, extra: txt.extra, libertad: txt.libertad };
@@ -4476,7 +4476,7 @@ export default function Visor3D({ cliente = false }) {
     }
   };
   // ── Escenas: una vista guardada (cámara, hora, luces, capas visibles y textos de IA) a la que se vuelve y desde la que se renderiza
-  const txtDe = e => ({ estancia: e.meta?.estancia || '', estilo: e.meta?.estilo || '', extra: e.meta?.extra || '', libertad: e.meta?.libertad || 'equilibrado', proveedor: iaTxt.proveedor });
+  const txtDe = e => ({ estancia: e.meta?.estancia || '', estilo: e.meta?.estilo || '', extra: e.meta?.extra || '', libertad: e.meta?.libertad || 'equilibrado', proveedor: iaTxt.proveedor, aspecto: iaTxt.aspecto || 'realista' });
   const irAEscena = async (e) => { restaurarVista(e.meta); setOcultas(e.ocultas || []); setIaTxt(t => ({ ...t, ...txtDe(e) })); await esperar(450); };
   const guardarEscena = () => { const nombre = (escNombre || '').trim() || ('Escena ' + (escenas.length + 1)); setEscenas(x => [...x, { id: 'e' + Date.now().toString(36), nombre, meta: metaActual(), ocultas }]); setEscNombre(''); };
   const actualizarEscena = id2 => { setEscenas(x => x.map(e => (e.id === id2 ? { ...e, meta: metaActual(), ocultas } : e))); setGuardado('Escena actualizada con la vista de ahora'); };
@@ -4837,6 +4837,13 @@ export default function Visor3D({ cliente = false }) {
                 <option value="fiel">Fiel al modelo (solo pule)</option>
                 <option value="equilibrado">Equilibrado (añade ambiente y luz)</option>
                 <option value="creativo">Creativo (decora con criterio)</option>
+              </select>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }} title="Realista y neutro: foto de arquitectura, bien iluminada y sin dramatismo. Revista: más cálida y con más ambiente">
+              <span style={{ opacity: 0.7 }}>Aspecto</span>
+              <select value={iaTxt.aspecto || 'realista'} onChange={e => setIaTxt(t => ({ ...t, aspecto: e.target.value }))} style={btn}>
+                <option value="realista">Realista y neutro (sin dramatismo)</option>
+                <option value="revista">Estilo revista (cálido, con ambiente)</option>
               </select>
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>

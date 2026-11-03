@@ -64,7 +64,7 @@ router.post('/', async (req, res) => {
   const clave = prov === 'openai' ? process.env.OPENAI_API_KEY : process.env.GEMINI_API_KEY;
   if (!clave) return res.status(503).json({ error: 'Falta configurar ' + (prov === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY') + ' en el servidor' });
   try {
-    const { imagen, estancia, estilo, paleta, extra, libertad, materiales, inventario, modo, ajustes, iluminacion } = req.body || {};
+    const { imagen, estancia, estilo, paleta, extra, libertad, materiales, inventario, modo, ajustes, iluminacion, aspecto } = req.body || {};
     const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(String(imagen || ''));
     if (!m) return res.status(400).json({ error: 'Falta la imagen del visor (png, jpg o webp)' });
     const colores = Array.isArray(paleta) ? paleta.filter(p => p && p.nombre).slice(0, 12).map(p => `${String(p.nombre).slice(0, 40)}${p.hex ? ' (' + String(p.hex).slice(0, 9) + ')' : ''}`) : [];
@@ -95,7 +95,8 @@ router.post('/', async (req, res) => {
     const dom = (modo === 'mejora' || modo === 'panorama') ? [] : await coloresDominantes(Buffer.from(m[2], 'base64'));
     const txtDominantes = dom.length ? 'COLORES DOMINANTES DEL MODELO que debes respetar (color y % de la imagen): ' + dom.map(c => c.hex + ' (' + c.pct + '%)').join(', ') + '. Las paredes, el suelo y el techo deben seguir teniendo estos tonos.' : '';
     const instrucciones = modo === 'panorama' ? instPano : modo === 'mejora' ? instMejora : [
-      'Convierte esta imagen de un modelo 3D de interiorismo en una fotografía profesional de revista de interiorismo y arquitectura: realista, nítida, con luz natural cálida, sombras suaves, reflejos creíbles, materiales con textura real y profundidad de campo, como hecha con una cámara réflex y un objetivo gran angular. Debe parecer una foto real, no un render ni una ilustración.',
+      aspecto === 'revista' ? 'Convierte esta imagen de un modelo 3D de interiorismo en una fotografía profesional de revista de interiorismo y arquitectura: realista, nítida, con luz natural cálida, sombras suaves, reflejos creíbles, materiales con textura real y profundidad de campo, como hecha con una cámara réflex y un objetivo gran angular. Debe parecer una foto real, no un render ni una ilustración.'
+        : 'Convierte esta imagen de un modelo 3D de interiorismo en una fotografía arquitectónica REALISTA y NEUTRA, como la haría un fotógrafo de arquitectura para un catálogo o una inmobiliaria: exposición equilibrada y espacio bien iluminado (se distinguen los detalles en las zonas oscuras y no se queman las claras), luz difusa y natural, contraste moderado, colores fieles al modelo y sin filtros, materiales con textura real y reflejos discretos. NADA dramático: sin efecto cinematográfico, sin viñeta, sin niebla ni resplandores exagerados, sin contraluces teatrales ni ambiente de película, sin oscurecer la estancia ni acentuar los focos. Debe parecer una foto real hecha con una cámara de arquitectura y un objetivo de 24 mm, no un render ni una ilustración.',
       'REGLA DE COLOR (obligatoria): cada pared, suelo, techo, mueble y objeto debe conservar el MISMO color base que tiene en la imagen del modelo. Solo puedes variar su luminosidad por la luz y las sombras, nunca su tono: una pared clara sigue siendo clara y una oscura sigue siendo oscura. No cambies de color ninguna pared. Una superficie de color liso es PINTURA LISA y uniforme: no le añadas textura, desgaste, microcemento, manchas ni vetas.',
       txtDominantes,
       txtLuz,
