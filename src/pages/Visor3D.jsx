@@ -3454,7 +3454,7 @@ export default function Visor3D({ cliente = false }) {
       for (;;) {
         await new Promise(ok => setTimeout(ok, 5000));
         const e = (await api.get('/biblioteca3d/crear-ia/' + trabajo)).data;
-        if (e.estado === 'trabajando') { setFoto3dEstado('ChatGPT está modelando… ' + e.segundos + ' s (suele tardar 1–5 minutos; puedes seguir trabajando)'); continue; }
+        if (e.estado === 'trabajando') { setFoto3dEstado('ChatGPT está modelando… ' + e.segundos + ' s (analiza las fotos, lo construye y revisa su propio resultado: suele tardar entre 5 y 15 minutos; puedes seguir trabajando)'); continue; }
         if (e.estado === 'error') { setFoto3dEstado('No se pudo: ' + e.error); return; }
         let m = e.modelo;
         try {

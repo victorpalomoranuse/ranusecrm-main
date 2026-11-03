@@ -139,25 +139,36 @@ router.delete('/mios/:id', async (req, res) => {
 const trabajosIA = new Map();
 const OPENAI = 'https://api.openai.com/v1';
 const cabeceras = () => ({ Authorization: 'Bearer ' + process.env.OPENAI_API_KEY, 'Content-Type': 'application/json' });
-const instruccionesIA = (nombre, medidas) => `Eres un modelador 3D. Con la(s) foto(s) adjunta(s) (varias vistas del mismo producto si hay más de una), construye un modelo 3D del producto «${nombre}» y entrégalo como UN archivo binario glTF (.glb) guardado en el directorio de salida (por ejemplo /mnt/data/modelo.glb).
-Reglas:
+const instruccionesIA = (nombre, medidas) => `Eres un modelador 3D experto en producto industrial y equipamiento deportivo. Con la(s) foto(s) adjunta(s) (varias vistas del mismo producto si hay más de una), construye un modelo 3D MUY DETALLADO y fiel del producto «${nombre}» y entrégalo como UN archivo binario glTF (.glb) guardado en el directorio de salida (por ejemplo /mnt/data/modelo.glb).
+
+MÉTODO (síguelo en orden, sin saltarte pasos):
+1. ANALIZA las fotos antes de escribir código. Haz una lista numerada de TODAS las piezas que se ven: estructura (montantes, travesaños, bases, patas), barras, soportes, ganchos, pasadores, poleas, cables, pilas de pesas y sus guías, asientos y respaldos acolchados, empuñaduras, topes, pegatinas o placas, tornillería visible, patas niveladoras. Anota para cada una su forma, su posición relativa, su tamaño relativo y su color/material. Mira cada foto con atención: lo que se ve en una vista y no en otra también existe.
+2. FIJA las dimensiones totales (largo, fondo, alto) y las proporciones entre piezas a partir de las fotos y de las medidas reales; que cada pieza tenga el tamaño correcto respecto al conjunto (un perfil de acero de 5×5 cm, una barra de Ø28 a 50 mm, etc.).
+3. MODELA cada pieza de la lista con su forma real: perfiles rectangulares huecos o macizos con bordes, tubos, cilindros, discos, extrusiones, agujeros o ranuras repetidas cuando existan (por ejemplo la fila de agujeros de un montante). NO simplifiques el producto a cajas ni a un bloque. Un producto de este tipo debe tener decenas de piezas (normalmente entre 40 y 300).
+4. ENSAMBLA con coherencia: nada puede flotar en el aire ni atravesar otra pieza sin motivo. Cada pieza debe apoyarse, atornillarse o encajar en otra, y las simetrías del producto (izquierda/derecha) deben respetarse. Comprueba por código que ninguna pieza queda separada del conjunto.
+5. REVISA tu propio resultado: genera con matplotlib (o la herramienta que tengas) imágenes de tu modelo desde delante, de lado, desde arriba y en perspectiva, MÍRALAS y compáralas con las fotos. Si falta una pieza, está mal colocada, desproporcionada o flotando, corrígela y repite. Haz al menos dos vueltas de revisión antes de dar el modelo por bueno.
+
+REGLAS TÉCNICAS:
 - Usa el código Python de tu herramienta. Si trimesh no está disponible, escribe tú mismo el .glb válido (cabecera GLB, chunk JSON y chunk BIN) con numpy y struct.
-- Modela con formas reales y reconocibles (cajas con bordes, cilindros, extrusiones, esferas, perfiles), no un bloque único. Respeta las proporciones de la foto.
 - Unidades: metros. Eje Y hacia arriba. El origen en el centro de la base, apoyado en el suelo (y=0).
-- Materiales PBR con el color base que se ve en la foto (rugosidad y metálico razonables). Pon varios materiales si el producto tiene partes de distinto color o material.
-- ${medidas ? 'Medidas reales del producto: ' + medidas + '.' : 'Si no sabes las medidas reales, estima unas razonables para este tipo de producto.'}
-- Comprueba que el archivo se abre (carga el .glb con trimesh o revisa su cabecera) y que el tamaño total es el esperado.
+- Materiales PBR con el color base que se ve en la foto (negro mate, cromo, goma, tapicería, etc.; rugosidad y metálico razonables). Usa varios materiales cuando haya partes de distinto color o material, y no pintes todo del mismo color.
+- Normales correctas (caras hacia fuera) y sin mallas rotas. Mantén el archivo por debajo de unos 15 MB.
+- ${medidas ? 'Medidas reales del producto: ' + medidas + '. Respétalas exactamente.' : 'Si no sabes las medidas reales, estima unas razonables para este tipo de producto.'}
+- Al terminar, carga el .glb con trimesh o revisa su cabecera y confirma que el tamaño total es el esperado.
 - Responde solo con una frase breve cuando acabes.`;
 async function ejecutaIA(job, fotos, nombre, medidas, categoria) {
   try {
     const modelo = process.env.OPENAI_3D_MODEL || 'gpt-5';
-    const cuerpo = { model: modelo, background: true, tools: [{ type: 'code_interpreter', container: { type: 'auto' } }], input: [{ role: 'user', content: [{ type: 'input_text', text: instruccionesIA(nombre, medidas) }, ...fotos.map(f => ({ type: 'input_image', image_url: 'data:' + f.mimetype + ';base64,' + f.buffer.toString('base64') }))] }] };
+    // esfuerzo de razonamiento alto (como ChatGPT en modo «pensar»): es lo que hace que analice las fotos, revise su propio modelo y no se conforme con cajas. OPENAI_3D_EFFORT lo cambia (low|medium|high).
+    const esfuerzo = ['low', 'medium', 'high'].includes(process.env.OPENAI_3D_EFFORT) ? process.env.OPENAI_3D_EFFORT : 'high';
+    const cuerpo = { model: modelo, background: true, reasoning: { effort: esfuerzo }, tools: [{ type: 'code_interpreter', container: { type: 'auto' } }], input: [{ role: 'user', content: [{ type: 'input_text', text: instruccionesIA(nombre, medidas) }, ...fotos.map(f => ({ type: 'input_image', image_url: 'data:' + f.mimetype + ';base64,' + f.buffer.toString('base64') }))] }] };
     let r = await fetch(OPENAI + '/responses', { method: 'POST', headers: cabeceras(), body: JSON.stringify(cuerpo) });
     let j = await r.json();
+    if (!r.ok && /reasoning/i.test(j?.error?.message || '')) { delete cuerpo.reasoning; r = await fetch(OPENAI + '/responses', { method: 'POST', headers: cabeceras(), body: JSON.stringify(cuerpo) }); j = await r.json(); } // un modelo que no admite «reasoning»
     if (!r.ok) throw new Error(j?.error?.message || ('OpenAI respondió ' + r.status));
     const t0 = Date.now();
     while (['queued', 'in_progress'].includes(j.status)) {
-      if (Date.now() - t0 > 12 * 60 * 1000) throw new Error('Ha tardado demasiado (más de 12 minutos)');
+      if (Date.now() - t0 > 30 * 60 * 1000) throw new Error('Ha tardado demasiado (más de 30 minutos)');
       await new Promise(ok => setTimeout(ok, 4000));
       r = await fetch(OPENAI + '/responses/' + j.id, { headers: cabeceras() }); j = await r.json();
       if (!r.ok) throw new Error(j?.error?.message || ('OpenAI respondió ' + r.status));
