@@ -1,6 +1,41 @@
 import sharp from 'sharp';
 import { callClaude } from './anthropic.js';
 
+// Quién dibuja: por defecto GPT-6.1 Sol de OpenAI (el que mejor sale en ChatGPT) si hay OPENAI_API_KEY; si no existe o falla, Claude.
+// BLOQUES_PROVEEDOR=claude fuerza Claude; BLOQUES_OPENAI_MODELO y BLOQUES_OPENAI_ESFUERZO (low|medium|high) cambian el modelo y el razonamiento.
+const OPENAI = 'https://api.openai.com/v1';
+const aOpenAI = mensajes => mensajes.map(m => ({
+  role: m.role,
+  content: typeof m.content === 'string'
+    ? [{ type: m.role === 'assistant' ? 'output_text' : 'input_text', text: m.content }]
+    : m.content.map(b => (b.type === 'image' ? { type: 'input_image', image_url: 'data:' + b.source.media_type + ';base64,' + b.source.data } : { type: m.role === 'assistant' ? 'output_text' : 'input_text', text: b.text })),
+}));
+async function llamarOpenAI({ system, messages }) {
+  const cab = { Authorization: 'Bearer ' + process.env.OPENAI_API_KEY, 'Content-Type': 'application/json' };
+  const esfuerzo = ['low', 'medium', 'high'].includes(process.env.BLOQUES_OPENAI_ESFUERZO) ? process.env.BLOQUES_OPENAI_ESFUERZO : 'medium';
+  const cuerpo = { model: process.env.BLOQUES_OPENAI_MODELO || 'gpt-6.1-sol', background: true, reasoning: { effort: esfuerzo }, instructions: system, input: aOpenAI(messages), max_output_tokens: 40000 };
+  let r = await fetch(OPENAI + '/responses', { method: 'POST', headers: cab, body: JSON.stringify(cuerpo) });
+  let j = await r.json();
+  if (!r.ok) throw new Error(j?.error?.message || ('OpenAI respondió ' + r.status));
+  const t0 = Date.now();
+  while (['queued', 'in_progress'].includes(j.status)) {
+    if (Date.now() - t0 > 10 * 60 * 1000) throw new Error('OpenAI ha tardado demasiado');
+    await new Promise(ok => setTimeout(ok, 3000));
+    r = await fetch(OPENAI + '/responses/' + j.id, { headers: cab }); j = await r.json();
+    if (!r.ok) throw new Error(j?.error?.message || ('OpenAI respondió ' + r.status));
+  }
+  if (j.status !== 'completed') throw new Error('OpenAI no pudo terminar: ' + (j.error?.message || j.incomplete_details?.reason || j.status));
+  const texto = j.output_text || (j.output || []).flatMap(o => (o.content || []).filter(c => c.type === 'output_text').map(c => c.text)).join('');
+  return { content: [{ type: 'text', text: texto }] };
+}
+async function llamar({ system, model, maxTokens, messages }) {
+  if (process.env.OPENAI_API_KEY && process.env.BLOQUES_PROVEEDOR !== 'claude') {
+    try { return await llamarOpenAI({ system, messages }); }
+    catch (e) { console.error('bloques: OpenAI no disponible, se usa Claude:', e.message); }
+  }
+  return callClaude({ system, model, maxTokens, messages });
+}
+
 // Bloques 2D «al estilo delineante»: la IA mira una o varias fotos del producto (de frente, de lado, en perspectiva…)
 // y DIBUJA directamente cada vista con primitivas CAD (rectángulos con esquinas cortadas, círculos, líneas) en cm, por capas
 // (estructura, detalles, tapizado, elementos superiores). Es lo que hace un delineante: no reconstruye un volumen, dibuja lo que
@@ -117,7 +152,7 @@ export async function generarBloquesDirecto({ imagenes, largo, fondo, alto, nomb
   const pedido = { type: 'text', text: `Producto: ${nombre || 'sin nombre'}. ${fotos.length} foto(s). Medidas reales: LARGO ${largo} cm (ancho visto de frente), FONDO ${fondo} cm, ALTO ${alto} cm. Dibuja la planta, el alzado y el lateral.` };
   let j = null;
   for (let intento = 0; intento < 2 && !j; intento++) { // si la IA gasta todo en pensar y no entrega el dibujo, se repite una vez
-    const r1 = await callClaude({ system: SISTEMA, model, maxTokens: 24000, messages: [{ role: 'user', content: [...fotos, pedido] }] });
+    const r1 = await llamar({ system: SISTEMA, model, maxTokens: 24000, messages: [{ role: 'user', content: [...fotos, pedido] }] });
     try { j = jsonDe(r1); } catch (e) { if (intento) throw e; }
   }
   let svg = aSvg(j, largo, fondo, alto);
@@ -125,7 +160,7 @@ export async function generarBloquesDirecto({ imagenes, largo, fondo, alto, nomb
   if (refinar && svg.planta) {
     try {
       const previa = await vistaPrevia(svg, largo, fondo, alto);
-      const r2 = await callClaude({
+      const r2 = await llamar({
         system: SISTEMA, model, maxTokens: 24000,
         messages: [
           { role: 'user', content: [...fotos, pedido] },
