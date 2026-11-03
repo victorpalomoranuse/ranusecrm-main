@@ -26,7 +26,7 @@ async function llamarOpenAI({ system, messages }) {
   }
   if (j.status !== 'completed') throw new Error('OpenAI no pudo terminar: ' + (j.error?.message || j.incomplete_details?.reason || j.status));
   const texto = j.output_text || (j.output || []).flatMap(o => (o.content || []).filter(c => c.type === 'output_text').map(c => c.text)).join('');
-  return { content: [{ type: 'text', text: texto }] };
+  return { content: [{ type: 'text', text: texto }], proveedor: 'openai' };
 }
 async function llamar({ system, model, maxTokens, messages }) {
   if (process.env.OPENAI_API_KEY && process.env.BLOQUES_PROVEEDOR !== 'claude') {
@@ -150,12 +150,14 @@ export async function generarBloquesDirecto({ imagenes, largo, fondo, alto, nomb
   for (const b of (imagenes || []).slice(0, 5)) fotos.push(await preparar(b));
   if (!fotos.length) throw new Error('Falta la foto');
   const pedido = { type: 'text', text: `Producto: ${nombre || 'sin nombre'}. ${fotos.length} foto(s). Medidas reales: LARGO ${largo} cm (ancho visto de frente), FONDO ${fondo} cm, ALTO ${alto} cm. Dibuja la planta, el alzado y el lateral.` };
-  let j = null;
+  let j = null, r1ok = '';
   for (let intento = 0; intento < 2 && !j; intento++) { // si la IA gasta todo en pensar y no entrega el dibujo, se repite una vez
     const r1 = await llamar({ system: SISTEMA, model, maxTokens: 24000, messages: [{ role: 'user', content: [...fotos, pedido] }] });
-    try { j = jsonDe(r1); } catch (e) { if (intento) throw e; }
+    try { j = jsonDe(r1); r1ok = r1.proveedor || 'claude'; } catch (e) { if (intento) throw e; }
   }
   let svg = aSvg(j, largo, fondo, alto);
+  // con GPT-6.1 Sol un solo dibujo ya sale bien y tarda ~2 min (como en ChatGPT): la segunda pasada de revisión solo se hace con Claude, o si se pide con BLOQUES_REVISAR=1
+  if (r1ok === 'openai' && process.env.BLOQUES_REVISAR !== '1') refinar = false;
   // segunda pasada: la IA ve su dibujo junto a las fotos, corrige lo que no cuadra (proporciones, piezas que faltan o sobran, ejes) y entrega la versión final
   if (refinar && svg.planta) {
     try {
