@@ -147,9 +147,9 @@ function aplicaEspejos(scene) {
             m.userData.adjOn = true;
             m.onBeforeCompile = sh => {
               Object.assign(sh.uniforms, adj);
-              sh.fragmentShader = 'uniform float uBri; uniform float uCon; uniform float uSat; uniform float uHue;\n' + sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n  { vec3 c = diffuseColor.rgb + uBri; c = (c - 0.5) * uCon + 0.5; float l = dot(c, vec3(0.299, 0.587, 0.114)); c = mix(vec3(l), c, uSat); float cs = cos(uHue), sn = sin(uHue); mat3 hm = mat3(0.299 + 0.701 * cs + 0.168 * sn, 0.299 - 0.299 * cs - 0.328 * sn, 0.299 - 0.3 * cs + 1.25 * sn, 0.587 - 0.587 * cs + 0.33 * sn, 0.587 + 0.413 * cs + 0.035 * sn, 0.587 - 0.588 * cs - 1.05 * sn, 0.114 - 0.114 * cs - 0.497 * sn, 0.114 - 0.114 * cs + 0.292 * sn, 0.114 + 0.886 * cs - 0.203 * sn); c = hm * c; diffuseColor.rgb = clamp(c, 0.0, 1.0); }');
+              sh.fragmentShader = 'uniform float uBri; uniform float uCon; uniform float uSat; uniform float uHue;\n' + sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n  { vec3 c = diffuseColor.rgb; c = uBri < 0.0 ? c * (1.0 + uBri) : c + (1.0 - c) * uBri; c = (c - 0.5) * uCon + 0.5; float l = dot(c, vec3(0.299, 0.587, 0.114)); c = mix(vec3(l), c, uSat); float cs = cos(uHue), sn = sin(uHue); mat3 hm = mat3(0.299 + 0.701 * cs + 0.168 * sn, 0.299 - 0.299 * cs - 0.328 * sn, 0.299 - 0.3 * cs + 1.25 * sn, 0.587 - 0.587 * cs + 0.33 * sn, 0.587 + 0.413 * cs + 0.035 * sn, 0.587 - 0.588 * cs - 1.05 * sn, 0.114 - 0.114 * cs - 0.497 * sn, 0.114 - 0.114 * cs + 0.292 * sn, 0.114 + 0.886 * cs - 0.203 * sn); c = hm * c; diffuseColor.rgb = clamp(c, 0.0, 1.0); }');
             };
-            m.customProgramCacheKey = () => 'ajcolor';
+            m.customProgramCacheKey = () => 'ajcolor2';
           }
         }
         if (P.emis > 0 && P.emisHex) { m.emissive.set(P.emisHex); m.emissiveIntensity = P.emis; m.userData.emisPbr = true; }
