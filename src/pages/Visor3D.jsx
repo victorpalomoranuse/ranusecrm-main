@@ -2225,7 +2225,7 @@ export default function Visor3D({ cliente = false }) {
             let g3p = null; raiz.traverse(o => { if (o.userData.equipo && o.userData.equipo.id === eqp.id) g3p = o; });
             if (g3p) { ctrl.enabled = false; eje3 = { plan: true, eqId: eqp.id, g3: g3p, eje: hg.object.userData.eje, rot0: eqp.rot || 0, cx0: eqp.cx, cy0: eqp.cy, z00: eqp.z0 || 0, y0: e.clientY, p0: sueloRaw(e), nuevo: {} }; e.stopPropagation(); return; }
           }
-          if (hg && ob0) { ctrl.enabled = false; eje3 = { eje: hg.object.userData.eje, id: ob0.id, rot0: ob0.rot || 0, cx0: ob0.cx, cy0: ob0.cy, z00: ob0.z0 || 0, p0: sueloRaw(e), y0: e.clientY, nuevo: {} }; e.stopPropagation(); return; }
+          if (hg && ob0 && !ob0.bloqueado) { ctrl.enabled = false; eje3 = { eje: hg.object.userData.eje, id: ob0.id, rot0: ob0.rot || 0, cx0: ob0.cx, cy0: ob0.cy, z00: ob0.z0 || 0, p0: sueloRaw(e), y0: e.clientY, nuevo: {} }; e.stopPropagation(); return; }
         }
       }
       const o = objetoBajo(e);
@@ -2240,9 +2240,9 @@ export default function Visor3D({ cliente = false }) {
       }
       let sel = actuales;
       if (!actuales.includes(ob.id)) { sel = [ob.id, ...miembros(ob).filter(i => i !== ob.id)]; setSelObj(ob.id); setMulti({ base: ob.id, ids: sel.slice(1) }); }
-      if (o.userData.sinArrastre) return;
+      if (o.userData.sinArrastre || ob.bloqueado) return;
       const p = puntoSuelo(e); if (!p) return;
-      const otros = sel.filter(i => i !== ob.id).map(i => objsRef.current.find(x => x.id === i)).filter(q => q && !q.pts).map(q => ({ id: q.id, dx0: q.cx - ob.cx, dy0: q.cy - ob.cy }));
+      const otros = sel.filter(i => i !== ob.id).map(i => objsRef.current.find(x => x.id === i)).filter(q => q && !q.pts && !q.bloqueado).map(q => ({ id: q.id, dx0: q.cx - ob.cx, dy0: q.cy - ob.cy }));
       ctrl.enabled = false; arrastre = { id: ob.id, dx: ob.cx - p.x, dy: ob.cy - p.y, mov: false, otros };
       e.stopPropagation();
     };
@@ -3412,7 +3412,7 @@ export default function Visor3D({ cliente = false }) {
     const t = Date.now().toString(36), gmap = {}, nuevos = objs.filter(o => idsSel.includes(o.id)).map(o => ({ ...o, id: 'o' + t + Math.random().toString(36).slice(2, 5), cx: o.cx + 30, cy: o.cy + 30, ...(o.grupo ? { grupo: (gmap[o.grupo] = gmap[o.grupo] || 'g' + t + Math.random().toString(36).slice(2, 4)) } : {}) }));
     if (!nuevos.length) return; setObjs(prev => [...prev, ...nuevos]); setSelObj(nuevos[0].id); setMulti({ base: nuevos[0].id, ids: nuevos.slice(1).map(o => o.id) });
   };
-  const moverSel = c => setObjs(prev => prev.map(o => { if (!idsSel.includes(o.id)) return o; const r = {}; for (const k of Object.keys(c)) r[k] = k === 'z0' ? Math.max(0, (o.z0 || 0) + c[k]) : (o[k] || 0) + c[k]; return { ...o, ...r }; }));
+  const moverSel = c => setObjs(prev => prev.map(o => { if (!idsSel.includes(o.id) || o.bloqueado) return o; const r = {}; for (const k of Object.keys(c)) r[k] = k === 'z0' ? Math.max(0, (o.z0 || 0) + c[k]) : (o[k] || 0) + c[k]; return { ...o, ...r }; }));
   const objSel = objs.find(o => o.id === selObj) || null;
   const aplicarSnap = s => { saltoRef.current = true; setObjs(s.objs); setAcab(s.acab); setRodapie(s.rodapie); setGuias(s.guias); };
   const deshacer = () => {
@@ -3441,7 +3441,7 @@ export default function Visor3D({ cliente = false }) {
       if (['poli', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'carril', 'led', 'muro'].includes(herr) && (k === 'enter' || k === 'escape' || k === 'backspace' || /^[0-9.,]$/.test(k))) return; // lo gestiona la propia herramienta
       if (k === 'h' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); ocultarRef.current?.(); return; }
       if ((k === 'delete' || k === 'backspace') && !selObj && seleccion) { e.preventDefault(); eliminarEquipo(); return; }
-      if ((k === 'delete' || k === 'backspace') && selObj) { e.preventDefault(); if (selExtra.length) borrarSel(); else borrar(selObj); return; }
+      if ((k === 'delete' || k === 'backspace') && selObj) { e.preventDefault(); if ([selObj, ...selExtra].some(i => objs.find(x => x.id === i)?.bloqueado)) { setAviso('Hay objetos bloqueados 🔒: desbloquéalos en su ficha para borrarlos.'); return; } if (selExtra.length) borrarSel(); else borrar(selObj); return; }
       if (selExtra.length && !ctrl && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'pageup', 'pagedown'].includes(k)) {
         e.preventDefault(); const paso = e.shiftKey ? 50 : 5;
         moverSel({ arrowleft: { cx: -paso }, arrowright: { cx: paso }, arrowup: { cy: -paso }, arrowdown: { cy: paso }, pageup: { z0: paso }, pagedown: { z0: -paso } }[k]); return;
@@ -3451,11 +3451,11 @@ export default function Visor3D({ cliente = false }) {
         moverLuz(k === 'arrowleft' ? -paso : k === 'arrowright' ? paso : 0, k === 'arrowup' ? -paso : k === 'arrowdown' ? paso : 0, k === 'pageup' ? paso : k === 'pagedown' ? -paso : 0); return;
       }
       if (selObj && !ctrl && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'pageup', 'pagedown'].includes(k)) {
-        e.preventDefault(); const paso = e.shiftKey ? 50 : 5, o = objs.find(x => x.id === selObj); if (!o) return;
+        e.preventDefault(); const paso = e.shiftKey ? 50 : 5, o = objs.find(x => x.id === selObj); if (!o || o.bloqueado) return;
         const c = { arrowleft: { cx: o.cx - paso }, arrowright: { cx: o.cx + paso }, arrowup: { cy: o.cy - paso }, arrowdown: { cy: o.cy + paso }, pageup: { z0: (o.z0 || 0) + paso }, pagedown: { z0: Math.max(0, (o.z0 || 0) - paso) } }[k];
         cambiar(selObj, c); return;
       }
-      if (k === 'r' && selObj && !ctrl) { const o = objs.find(x => x.id === selObj); if (o) cambiar(selObj, { rot: ((o.rot || 0) + 90) % 360 }); return; }
+      if (k === 'r' && selObj && !ctrl) { const o = objs.find(x => x.id === selObj); if (o && !o.bloqueado) cambiar(selObj, { rot: ((o.rot || 0) + 90) % 360 }); return; }
       if (k === '/' || (ctrl && k === 'k')) { e.preventDefault(); setCmdPal({ q: '', i: 0 }); return; }
       if (ctrl) return;
       const cmdTecla = comandos().find(x => x.t === k);
@@ -5562,7 +5562,11 @@ export default function Visor3D({ cliente = false }) {
       )}
       {objSel && !selExtra.length && (
         <div style={{ position: 'absolute', right: 12, top: 56, width: 270, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
-          <input value={objSel.nombre} onChange={e => cambiar(objSel.id, { nombre: e.target.value })} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontWeight: 700, marginBottom: 8 }} />
+          <input value={objSel.nombre} onChange={e => cambiar(objSel.id, { nombre: e.target.value })} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontWeight: 700, marginBottom: 6 }} />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+            <button style={{ ...btn, flex: 1, padding: '4px 8px', background: objSel.bloqueado ? '#7a5a1f' : undefined }} onClick={() => cambiar(objSel.id, { bloqueado: !objSel.bloqueado })} title="Un objeto bloqueado se puede seleccionar y editar en su ficha, pero no se mueve, gira ni borra por accidente al arrastrar o con el teclado">{objSel.bloqueado ? '🔒 Bloqueado · desbloquear' : '🔓 Bloquear este objeto'}</button>
+            <button style={{ ...btn, padding: '4px 8px' }} onClick={() => { const hay = objs.some(o => !o.bloqueado); setObjs(prev => prev.map(o => ({ ...o, bloqueado: hay ? true : undefined }))); setAviso(hay ? 'Todos los objetos bloqueados 🔒: ya no se mueven por accidente.' : 'Todos los objetos desbloqueados.'); }} title="Bloquea o desbloquea todos los objetos del plano de una vez">{objs.some(o => !o.bloqueado) ? '🔒 Bloquear todos' : '🔓 Desbloquear todos'}</button>
+          </div>
           {!['zona', 'falsotecho', 'barrido', 'carril', 'led', 'logo', 'imagen'].includes(objSel.tipo) && botonProp()}
           {[['cx', 'Posición X'], ['cy', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Altura desde suelo'], ['rot', 'Giro °']].filter(([k]) => {
             const t = objSel.tipo;

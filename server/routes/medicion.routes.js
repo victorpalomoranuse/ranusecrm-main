@@ -599,6 +599,7 @@ router.put('/:id/escena3d', async (req, res) => {
       k: o.tipo === 'luz' ? Math.max(1500, Math.min(10000, num(o.k, 3000))) : undefined,
       caras: o.caras && typeof o.caras === 'object' ? Object.fromEntries(Object.entries(o.caras).slice(0, 12).map(([k, v]) => [String(k).slice(0, 2), acab(v)]).filter(([, v]) => v)) : undefined,
       colorFrente: acab(o.colorFrente),
+      bloqueado: o.bloqueado === true ? true : undefined,
       ocultosPartes: Array.isArray(o.ocultosPartes) && o.ocultosPartes.length ? o.ocultosPartes.slice(0, 60).map(x => String(x).slice(0, 80)) : undefined,
       partes: o.partes && typeof o.partes === 'object' ? Object.fromEntries(Object.entries(o.partes).slice(0, 40).map(([k, v]) => [String(k).slice(0, 60), acab(v)]).filter(([, v]) => v)) : undefined,
       mueble: o.tipo === 'mueble' && o.mueble ? {
