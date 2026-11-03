@@ -59,7 +59,9 @@ router.post('/chat', async (req, res) => {
     const instrucciones = INSTRUCCIONES + (contexto ? REGLAS_CONTEXTO + contexto + FIN_CONTEXTO : '');
     const solo = req.body?.soloDiseno === true || PIDE_SOLO.test(texto);
     const tam = FORMATOS[String(req.body?.formato || '')] || null;
-    const base = { type: 'image_generation', ...(process.env.OPENAI_IMAGE_MODEL ? { model: process.env.OPENAI_IMAGE_MODEL } : {}) };
+    // calidad alta por defecto (sin indicarla la API usa «auto» y suele salir más floja); si esta versión de la API no admite algún ajuste, se reintenta con la herramienta mínima
+    const minima = { type: 'image_generation', ...(process.env.OPENAI_IMAGE_MODEL ? { model: process.env.OPENAI_IMAGE_MODEL } : {}) };
+    const base = { ...minima, quality: process.env.OPENAI_IMAGE_QUALITY || 'high', ...(imagenes.length || previo ? { input_fidelity: 'high' } : {}) };
     const transp = solo && req.body?.transparente === true;
     const herramienta = solo ? { ...base, action: 'generate', ...(tam ? { size: tam } : {}), ...(transp ? { background: 'transparent', output_format: 'png' } : {}) } : base;
     if (solo) contenido[0].text += EXTRA_SOLO + (transp ? ' Sin fondo: el fondo debe ser totalmente transparente (solo el dibujo, recortado).' : '');
@@ -67,13 +69,13 @@ router.post('/chat', async (req, res) => {
     const llama = async (modelo, simple = false) => {
       const r = await fetch(OPENAI + '/responses', {
         method: 'POST', headers: { Authorization: 'Bearer ' + clave, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: modelo, instructions: instrucciones, tools: [simple ? base : herramienta], ...(solo && !simple ? { tool_choice: { type: 'image_generation' } } : {}), input: [{ role: 'user', content: contenido }], ...(previo ? { previous_response_id: previo } : {}) }),
+        body: JSON.stringify({ model: modelo, instructions: instrucciones, tools: [simple ? minima : herramienta], ...(solo && !simple ? { tool_choice: { type: 'image_generation' } } : {}), input: [{ role: 'user', content: contenido }], ...(previo ? { previous_response_id: previo } : {}) }),
       });
       return { r, j: await r.json().catch(() => ({})) };
     };
     let modelo = process.env.OPENAI_CHAT_MODEL || modeloElegido || 'gpt-5';
     let { r, j } = await llama(modelo);
-    if (!r.ok && solo && /action|size|tool_choice|background|output_format|image_generation/i.test(JSON.stringify(j?.error || {})) && !/does not exist|model_not_found/i.test(JSON.stringify(j?.error || {}))) ({ r, j } = await llama(modelo, true)); // si esta versión de la API no admite esos ajustes, se reintenta sin ellos
+    if (!r.ok && /action|size|tool_choice|background|output_format|quality|input_fidelity|image_generation/i.test(JSON.stringify(j?.error || {})) && !/does not exist|model_not_found/i.test(JSON.stringify(j?.error || {}))) ({ r, j } = await llama(modelo, true)); // si esta versión de la API no admite esos ajustes, se reintenta sin ellos
     if (!r.ok && !process.env.OPENAI_CHAT_MODEL && /does not exist|model_not_found|do not have access|not found/i.test(JSON.stringify(j?.error || {}))) {
       const otro = await elegirModelo(clave, modelo).catch(() => null);
       if (otro) { modelo = otro; modeloElegido = otro; console.log('estudio-ideas: modelo de chat →', otro); ({ r, j } = await llama(modelo)); }
