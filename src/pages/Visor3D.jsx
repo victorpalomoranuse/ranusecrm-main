@@ -258,6 +258,7 @@ function pintar(mesh, valor, texturas, uvEnCm, repBox) {
 
 function aplicarValorMat(m, val, texturas, o) {
   if (!val) return;
+  if (String(val).startsWith('tinte:')) { if (/^#[0-9a-f]{6}$/i.test(val.slice(6))) { m.color.set(val.slice(6)); m.needsUpdate = true; } return; } // tinte: se mantiene el mapa del modelo
   const t = String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
   if (t) { const mp = texturaDe(t, true).clone(); mp.needsUpdate = true; const r = Math.max(1, (o?.w || 100) / t.tam); mp.repeat.set(r, r); m.map = mp; m.color.setHex(0xffffff); }
   else if (/^#/.test(val)) { m.map = null; m.color.setHex(parseInt(val.slice(1), 16)); ledEm(m, val); }
@@ -2243,7 +2244,7 @@ export default function Visor3D({ cliente = false }) {
     window.addEventListener('keydown', onTecla);
     const aplicarPincel = (hit, todos) => {
       const mat = matSelRef.current; if (!mat) return;
-      const valor = mat.hex || ('tex:' + mat.id);
+      const valor = mat.conMapa ? 'tinte:' + (mat.tinte || '#ffffff') : (mat.hex || ('tex:' + mat.id));
       const u = hit.object.userData;
       {
         const clave = (modoPincelRef.current === 'cara' || modoPincelRef.current === 'pieza') && !todos ? claveRegion(hit) : null;
@@ -2296,10 +2297,12 @@ export default function Visor3D({ cliente = false }) {
           }
         }
       }
-      if (!valor) { const mt = Array.isArray(hit.object.material) ? hit.object.material[hit.face?.materialIndex || 0] : hit.object.material; valor = mt?.color ? '#' + mt.color.getHexString() : null; }
+      const mtG = Array.isArray(hit.object.material) ? hit.object.material[hit.face?.materialIndex || 0] : hit.object.material;
+      if (!valor && mtG?.map) { api3d.current.ultimoGoteo = { hit, aplicar: aplicarPincel }; setMatSel({ conMapa: true, tinte: '#' + mtG.color.getHexString() }); if (herrRef.current === 'gotero') { setRenderAbierto(true); setPestanaRender('inspector'); setSelObj(null); setGuardado('Material con textura propia del modelo: oscurécelo o tíñelo en el Inspector sin perder el dibujo'); } return; }
+      if (!valor) { valor = mtG?.color ? '#' + mtG.color.getHexString() : null; }
       if (!valor) return;
       api3d.current.ultimoGoteo = { hit, aplicar: aplicarPincel };
-      setMatSel(String(valor).startsWith('tex:') ? { id: String(valor).slice(4) } : { hex: valor });
+      setMatSel(String(valor).startsWith('tinte:') ? { conMapa: true, tinte: String(valor).slice(6) } : String(valor).startsWith('tex:') ? { id: String(valor).slice(4) } : { hex: valor });
       if (herrRef.current === 'gotero') { setRenderAbierto(true); setPestanaRender('inspector'); setSelObj(null); setGuardado('Material seleccionado: ajústalo en el Inspector. Para pintarlo en otro sitio usa Pintura (B)'); }
       else { setHerr('pincel'); setMatAbierto(true); setGuardado('Material copiado: haz clic en lo que quieras pintar'); }
     };
@@ -3492,6 +3495,14 @@ export default function Visor3D({ cliente = false }) {
       } catch (e) { setSubiendoTex('«' + lista[i].name + '»: ' + (e.response?.data?.error || 'no se pudo subir')); return; }
     }
     setB3dCat('Mis texturas'); setSubiendoTex(ok + (ok === 1 ? ' textura añadida' : ' texturas añadidas') + ' a «Mis texturas» ✓. Pulsa una para usarla.');
+  };
+  // Oscurecer o teñir una parte de un modelo sin perder su textura: se guarda como «tinte:#rrggbb» en esa parte (solo esa; las demás no cambian)
+  const aplicarTinte = (hex) => {
+    const g = api3d.current.ultimoGoteo; if (!g?.hit) return;
+    const h = g.hit, u = h.object.userData; let o = h.object; while (o && !o.userData.oid) o = o.parent;
+    if (!o || u.parte === undefined) { setAviso('Este material no es una parte de un modelo: no se puede teñir así'); return; }
+    const oid = o.userData.oid;
+    setObjs(prev => prev.map(x => (x.id === oid && x.tipo === 'bloque' ? { ...x, partes: { ...(x.partes || {}), [u.parte]: hex ? 'tinte:' + hex : undefined } } : x)));
   };
   const usarTexturaB3d = async (t) => {
     try {
@@ -5251,6 +5262,21 @@ export default function Visor3D({ cliente = false }) {
             </>}
 
             {pestanaRender === 'inspector' && <>
+              {matSel?.conMapa && (() => {
+                const base = /^#[0-9a-f]{6}$/i.test(matSel.tinte || '') ? matSel.tinte : '#ffffff', rgb = [1, 3, 5].map(i => parseInt(base.slice(i, i + 2), 16)), mx = Math.max(...rgb, 1);
+                const luz = Math.round((mx / 255) * 100) / 100, aHex = r => '#' + r.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+                const pon = hex => { matSelRef.current = { conMapa: true, tinte: hex }; setMatSel({ conMapa: true, tinte: hex }); aplicarTinte(hex); };
+                return (
+                  <div style={{ marginTop: 10, padding: '8px 10px', border: '1px solid #3a342f', borderRadius: 8 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>Textura del modelo</div>
+                    <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 8 }}>Esta parte tiene una imagen propia (tela, madera, piel…). Aquí la oscureces o la tiñes <b>sin perder el dibujo</b>.</div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 70, opacity: 0.75, fontSize: 12 }}>Oscurecer</span><input type="range" min="5" max="100" value={Math.round(luz * 100)} onChange={e => { const v = parseInt(e.target.value, 10) / 100; pon(aHex(rgb.map(c => (c / mx) * 255 * v))); }} style={{ flex: 1 }} /><span style={{ width: 34, textAlign: 'right', fontSize: 12 }}>{Math.round(luz * 100)}%</span></label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 70, opacity: 0.75, fontSize: 12 }}>Tinte</span><input type="color" value={aHex(rgb.map(c => (c / mx) * 255))} onChange={e => { const c2 = [1, 3, 5].map(i => parseInt(e.target.value.slice(i, i + 2), 16)); pon(aHex(c2.map(c => c * luz))); }} style={{ width: 40, height: 26, padding: 0, border: '1px solid #666', borderRadius: 6, background: 'none', cursor: 'pointer' }} /><span style={{ opacity: 0.55, fontSize: 11 }}>mezcla ese color con la textura</span></label>
+                    <button style={{ ...btn, width: '100%', fontSize: 12 }} onClick={() => { aplicarTinte(null); setMatSel({ conMapa: true, tinte: '#ffffff' }); matSelRef.current = { conMapa: true, tinte: '#ffffff' }; }}>↺ Volver a la textura original</button>
+                    <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>Solo afecta a esta parte del modelo. Para cambiarla por otra imagen, usa 🖼 Texturas en la barra de materiales.</div>
+                  </div>
+                );
+              })()}
               {matSel?.hex && !matSel?.id && (() => {
                 const hexL = matSel.hex.slice(0, 7);
                 const crear = async (extra, hexN, normal) => {

@@ -584,7 +584,7 @@ router.put('/:id/escena3d', async (req, res) => {
     if (!objs) return res.status(400).json({ error: 'Escena no válida' });
     const num = (v, d = 0) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : d);
     const hex = v => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : null);
-    const acab = v => (hex(v) || (/^#[0-9a-fA-F]{6}!$/.test(v || '') ? v : null) || (/^tex:[\w-]{1,40}$/.test(v || '') ? v : null));
+    const acab = v => (hex(v) || (/^#[0-9a-fA-F]{6}!$/.test(v || '') ? v : null) || (/^tex:[\w-]{1,40}$/.test(v || '') ? v : null) || (/^tinte:#[0-9a-fA-F]{6}$/.test(v || '') ? v : null));
     const limpios = objs.map(o => ({
       id: String(o.id || '').slice(0, 40),
       tipo: TIPOS_OBJ3D.includes(o.tipo) ? o.tipo : 'bloque',
