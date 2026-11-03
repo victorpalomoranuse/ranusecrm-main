@@ -1046,11 +1046,12 @@ export function construirHoja(o, mu, cfg, valHoja, texturas) {
   };
   if (esPuerta) {
     if (tip === 'hueco') return g;
-    if (tip.includes('corredera empotrada')) { const m1 = new THREE.Group(); m1.position.x = (izq ? 1 : -1) * pct * (iw + 0.04); if (vidrio) panelVidrio(m1, iw, cx, 0); else panelSolido(m1, iw, cx, 0); g.add(m1); return g; }
+    if (tip.includes('corredera empotrada')) { const m1 = new THREE.Group(); m1.position.x = (izq ? 1 : -1) * pct * (iw + 0.04); if (vidrio) panelVidrio(m1, iw, cx, 0); else panelSolido(m1, iw, cx, 0); manilla(m1, izq ? cx + iw / 2 - 0.08 : cx - iw / 2 + 0.08, hy, vidrio ? 0.0225 : 0.02, izq ? -1 : 1, 0); g.add(m1); return g; }
     if (tip.includes('corredera 2')) {
       const A = new THREE.Group(), B = new THREE.Group(); A.position.x = pct * (iw / 2); B.position.x = -pct * (iw / 2) * 0;
       const zA = sgn * (t / 2 + 0.03), zB = sgn * (t / 2 + 0.07);
       if (vidrio) { panelVidrio(A, iw / 2 + 0.03, ix0 + iw / 4, zA); panelVidrio(B, iw / 2 + 0.03, ix0 + (3 * iw) / 4, zB); } else { panelSolido(A, iw / 2 + 0.03, ix0 + iw / 4, zA); panelSolido(B, iw / 2 + 0.03, ix0 + (3 * iw) / 4, zB); }
+      manilla(A, ix0 + iw / 2 - 0.045, hy, vidrio ? 0.0225 : 0.02, -1, zA); manilla(B, ix0 + iw / 2 + 0.045, hy, vidrio ? 0.0225 : 0.02, 1, zB);
       pieza(g, iw * 1.1, 0.03, 0.1, cx, iy1 + 0.035, sgn * (t / 2 + 0.05), manM, 'hoja'); g.add(A, B); return g;
     }
     if (tip.includes('corredera')) {
@@ -5337,10 +5338,10 @@ export default function Visor3D({ cliente = false }) {
                   <select value={selHueco.nuevo.mat || ''} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, mat: e.target.value || undefined } }))} style={btn}><option value="">(la del plano)</option>{DOOR_MATS.map(n => <option key={n} value={n}>{n}</option>)}</select></label>}
                 {esP && !['Hueco', 'Seccional', 'Basculante', 'Enrollable', 'Plegable'].includes(tip) && <>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Estilo hoja</span>
-                    <select value={c.estilo || 'lisa'} onChange={e => set({ estilo: e.target.value })} style={btn}><option value="lisa">Lisa</option><option value="moldurada">Moldurada (cuarterones)</option><option value="ranurada">Ranurada (rayas verticales)</option><option value="vidrio_sup">Con vidrio superior</option><option value="vidrio_vert">Con vidrio vertical</option><option value="vidrio_central">Con vidrio central</option><option value="lamas">De lamas (rejilla)</option></select></label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Manilla</span>
-                    <select value={c.manilla || 'palanca'} onChange={e => set({ manilla: e.target.value })} style={btn}><option value="palanca">Palanca con roseta</option><option value="barra">Tirador de barra</option><option value="pomo">Pomo</option><option value="ninguna">Sin manilla</option></select>
-                    {(c.manilla || 'palanca') !== 'ninguna' && <select value={c.manillaColor || 'inox'} onChange={e => set({ manillaColor: e.target.value })} style={btn}><option value="inox">Inox</option><option value="negro">Negro</option><option value="laton">Latón</option><option value="blanco">Blanco</option><option value="cobre">Cobre</option></select>}</label>
+                    <select value={c.estilo || 'lisa'} onChange={e => set({ estilo: e.target.value })} style={{ ...btn, flex: 1, minWidth: 0 }}><option value="lisa">Lisa</option><option value="moldurada">Moldurada (cuarterones)</option><option value="ranurada">Ranurada (rayas verticales)</option><option value="vidrio_sup">Con vidrio superior</option><option value="vidrio_vert">Con vidrio vertical</option><option value="vidrio_central">Con vidrio central</option><option value="lamas">De lamas (rejilla)</option></select></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}><span style={{ width: 70, opacity: 0.7 }}>Manilla</span>
+                    <select value={c.manilla || 'palanca'} onChange={e => set({ manilla: e.target.value })} style={{ ...btn, flex: 1, minWidth: 0 }}><option value="palanca">Palanca con roseta</option><option value="barra">Tirador de barra</option><option value="pomo">Pomo</option><option value="ninguna">Sin manilla</option></select>
+                    {(c.manilla || 'palanca') !== 'ninguna' && <select value={c.manillaColor || 'inox'} onChange={e => set({ manillaColor: e.target.value })} style={{ ...btn, marginLeft: 76, flex: 1, minWidth: 0 }} title="Color de la manilla"><option value="inox">Inox</option><option value="negro">Negro</option><option value="laton">Latón</option><option value="blanco">Blanco</option><option value="cobre">Cobre</option></select>}</label>
                 </>}
                 {[['hoja', esP ? 'Color hoja' : 'Color marco hoja'], ['marco', 'Color marco']].map(([zona, et]) => {
                   const kA = key, val = acab.huecos?.[kA]?.[zona] || '', pone = v => setAcab(a => ({ ...a, huecos: { ...(a.huecos || {}), [kA]: { ...((a.huecos || {})[kA] || {}), [zona]: v || null } } }));
@@ -5357,9 +5358,9 @@ export default function Visor3D({ cliente = false }) {
                 })}
                 {tip !== 'Hueco' && tip !== 'Fija' && <>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>{corredera ? 'Abierta %' : 'Abierta °'}</span><input type="range" min="0" max={corredera ? 100 : 110} value={c.abierta || 0} onChange={e => set({ abierta: parseInt(e.target.value, 10) })} style={{ flex: 1 }} /><span style={{ width: 34, textAlign: 'right' }}>{c.abierta || 0}</span></label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Bisagra</span>
-                    <select value={c.bisagra || 'izq'} onChange={e => set({ bisagra: e.target.value })} style={btn}><option value="izq">Izquierda</option><option value="der">Derecha</option></select>
-                    <select value={c.sentido || 'A'} onChange={e => set({ sentido: e.target.value })} style={btn} title="Hacia qué lado del muro abre"><option value="A">Abre al lado A</option><option value="B">Abre al lado B</option></select></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}><span style={{ width: 70, opacity: 0.7 }}>Bisagra</span>
+                    <select value={c.bisagra || 'izq'} onChange={e => set({ bisagra: e.target.value })} style={{ ...btn, flex: 1, minWidth: 0 }}><option value="izq">Izquierda</option><option value="der">Derecha</option></select>
+                    <select value={c.sentido || 'A'} onChange={e => set({ sentido: e.target.value })} style={{ ...btn, marginLeft: 76, flex: 1, minWidth: 0 }} title="Hacia qué lado del muro abre"><option value="A">Abre al lado A</option><option value="B">Abre al lado B</option></select></label>
                 </>}
                 <div style={{ opacity: 0.5, fontSize: 11 }}>El tipo y la hoja se escriben en el plano al pulsar «Aplicar al plano». La apertura es solo para verla en el 3D.</div>
               </div>
