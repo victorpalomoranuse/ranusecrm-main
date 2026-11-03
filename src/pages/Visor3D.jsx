@@ -2725,8 +2725,12 @@ export default function Visor3D({ cliente = false }) {
         else if (proy === 'arriba') haz(arribaL, 1);
         else if (proy === 'abajo') haz(abajoL, 1);
         else if (proy === 'frontal') haz(frente, 1);
-        // hacia su propia pared: la luz rebota sobre el muro donde está colgado y deja un halo a su alrededor (efecto «luz trasera»)
-        else if (proy === 'pared') haz(frente.clone().negate(), 1.3, Math.max(ap, 110), marca.position.clone().add(frente.clone().multiplyScalar(0.22)));
+        // hacia su propia pared: luz lineal rasante a lo largo del aplique (como las barras con luz trasera): dos luces de área pegadas al muro, una estrecha e intensa
+        // y otra ancha y suave, del largo del aplique, que dejan un resplandor alargado junto a él. Siguen su orientación (si se voltea, el resplandor también)
+        else if (proy === 'pared') {
+          const Lb = Math.max(0.05, (aj.mod?.url ? (aj.mh > 0 ? aj.mh : 24) : (aj.dim?.h || dimNominalLuz(l.kid)[1])) * CM * 0.92), atras = frente.clone().negate(), pos = marca.position.clone().add(frente.clone().multiplyScalar(0.025)), fuerza = Math.max(1, Math.min(40, lm / 80)) * ambiente.luces;
+          [[0.035, 1], [0.18, 0.3]].forEach(([ancho, k]) => { if (!puede()) return; const rl = new THREE.RectAreaLight(col, fuerza * k, ancho, Lb); rl.position.copy(pos); rl.up.copy(arribaL); rl.lookAt(pos.clone().add(atras)); g.add(rl); });
+        }
         else { haz(arribaL, 0.6); haz(abajoL, 0.6); }
         return;
       }
@@ -4281,7 +4285,7 @@ export default function Visor3D({ cliente = false }) {
       g.n++; grupos.set(clave, g); lmTotal += lm; nTotal++;
     });
     const L = [];
-    const PROY = { pared: 'luz que rebota en su propia pared (halo alrededor del aplique)', arriba_abajo: 'luz hacia arriba y hacia abajo', arriba: 'luz hacia arriba', abajo: 'luz hacia abajo', difusa: 'luz difusa' };
+    const PROY = { pared: 'luz lineal rasante sobre su propia pared, a lo largo del aplique (resplandor alargado junto a la barra)', arriba_abajo: 'luz hacia arriba y hacia abajo', arriba: 'luz hacia arriba', abajo: 'luz hacia abajo', difusa: 'luz difusa' };
     [...grupos.values()].forEach(g => {
       const nom = NOM[g.l.kid] || g.l.kid;
       if (g.lineal) L.push((g.l.kid === 'carril' ? 'Carril electrificado' : 'Tira o luminaria lineal (' + nom + ')') + ': ' + (Math.round(g.m * 10) / 10) + ' m en total' + (g.l.kid === 'carril' ? '' : ', ' + g.lm + ' lm por metro, ' + g.K + ' K') + ', a ' + Math.round(g.l.h ?? HT) + ' cm de altura.');
@@ -4856,7 +4860,7 @@ export default function Visor3D({ cliente = false }) {
             <div style={{ opacity: 0.75, marginBottom: 6 }}>{cat ? cat.n + ' · ' + (cat.lm || '?') + ' lm · ' + (cat.w || '?') + ' W · ' + (cat.k || '?') + ' K' : 'Sin luminaria del catálogo asignada (se usa una estándar de 800 lm)'}</div>
             {(l.kid === 'aplq' || l.kid === 'esp') && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }} title="Hacia dónde reparte la luz este aplique"><span style={{ width: 90, opacity: 0.7 }}>Proyección</span>
               <select value={lucesAj[l.id]?.proy || 'arriba_abajo'} onChange={e => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, proy: e.target.value } }))} style={{ ...btn, flex: 1 }}>
-                <option value="arriba_abajo">Arriba y abajo</option><option value="arriba">Solo hacia arriba</option><option value="abajo">Solo hacia abajo</option><option value="frontal">Frontal (hacia delante)</option><option value="pared">Hacia su pared (rebote, halo)</option><option value="difusa">Difusa en todas direcciones</option>
+                <option value="arriba_abajo">Arriba y abajo</option><option value="arriba">Solo hacia arriba</option><option value="abajo">Solo hacia abajo</option><option value="frontal">Frontal (hacia delante)</option><option value="pared">Hacia su pared (luz lineal rasante)</option><option value="difusa">Difusa en todas direcciones</option>
               </select></label>}
             {!esLin && l.kid !== 'spot' && l.kid !== 'spotl' && <div style={{ borderTop: '1px solid #333', margin: '4px 0 8px', paddingTop: 8 }}>
               {(() => {
