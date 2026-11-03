@@ -158,12 +158,13 @@ REGLAS TÉCNICAS:
 - Responde solo con una frase breve cuando acabes.`;
 async function ejecutaIA(job, fotos, nombre, medidas, categoria) {
   try {
-    const modelo = process.env.OPENAI_3D_MODEL || 'gpt-5';
-    // esfuerzo de razonamiento alto (como ChatGPT en modo «pensar»): es lo que hace que analice las fotos, revise su propio modelo y no se conforme con cajas. OPENAI_3D_EFFORT lo cambia (low|medium|high).
-    const esfuerzo = ['low', 'medium', 'high'].includes(process.env.OPENAI_3D_EFFORT) ? process.env.OPENAI_3D_EFFORT : 'high';
+    // GPT-6.1 Sol es el modelo con el que ChatGPT sacó el rack bien (nivel «Medio»). OPENAI_3D_MODEL y OPENAI_3D_EFFORT (low|medium|high) lo cambian; si la cuenta no tiene acceso a Sol, se usa gpt-5.
+    const modelo = process.env.OPENAI_3D_MODEL || 'gpt-6.1-sol';
+    const esfuerzo = ['low', 'medium', 'high'].includes(process.env.OPENAI_3D_EFFORT) ? process.env.OPENAI_3D_EFFORT : 'medium';
     const cuerpo = { model: modelo, background: true, reasoning: { effort: esfuerzo }, tools: [{ type: 'code_interpreter', container: { type: 'auto' } }], input: [{ role: 'user', content: [{ type: 'input_text', text: instruccionesIA(nombre, medidas) }, ...fotos.map(f => ({ type: 'input_image', image_url: 'data:' + f.mimetype + ';base64,' + f.buffer.toString('base64') }))] }] };
     let r = await fetch(OPENAI + '/responses', { method: 'POST', headers: cabeceras(), body: JSON.stringify(cuerpo) });
     let j = await r.json();
+    if (!r.ok && !process.env.OPENAI_3D_MODEL && /model|access|exist|found/i.test(j?.error?.message || '') && !/reasoning/i.test(j?.error?.message || '')) { cuerpo.model = 'gpt-5'; r = await fetch(OPENAI + '/responses', { method: 'POST', headers: cabeceras(), body: JSON.stringify(cuerpo) }); j = await r.json(); } // sin acceso a Sol: el modelo anterior
     if (!r.ok && /reasoning/i.test(j?.error?.message || '')) { delete cuerpo.reasoning; r = await fetch(OPENAI + '/responses', { method: 'POST', headers: cabeceras(), body: JSON.stringify(cuerpo) }); j = await r.json(); } // un modelo que no admite «reasoning»
     if (!r.ok) throw new Error(j?.error?.message || ('OpenAI respondió ' + r.status));
     const t0 = Date.now();
