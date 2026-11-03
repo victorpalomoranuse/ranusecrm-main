@@ -2709,6 +2709,11 @@ export default function Visor3D({ cliente = false }) {
           const hh = mm.userData.mostrado[2] / 100, dd = mm.userData.mostrado[1] / 100, env = new THREE.Group();
           mm.rotation.y = ((aj.mrot || 0) * Math.PI) / 180; env.add(mm);
           if (esPared) env.position.set(0, -hh / 2, dd / 2); else if (['foco', 'plaf', 'colg'].includes(l.kid)) env.position.y = -hh;
+          if (/^#[0-9a-f]{6}$/i.test(aj.color || '')) env.traverse(x => {
+            if (!x.isMesh || !x.material) return;
+            const tono = ms => ms.map(m => { if (!(m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) || (m.emissive && m.emissive.getHex() > 0 && m.emissiveIntensity > 0)) return m; const c2 = m.clone(); c2.map = null; c2.color.set(aj.color); return c2; });
+            x.material = Array.isArray(x.material) ? tono(x.material) : tono([x.material])[0];
+          });
           env.traverse(x => { x.userData.luzId = l.id; }); marca.add(env);
         }).catch(() => {});
       }
@@ -4866,8 +4871,9 @@ export default function Visor3D({ cliente = false }) {
               {(() => {
                 const aj0 = lucesAj[l.id] || {}, pon = c => setLucesAj(a => ({ ...a, [l.id]: { ...(a[l.id] || {}), ap: a[l.id]?.ap ?? 60, ...c } }));
                 return <>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }} title="Color del cuerpo de la luminaria (solo en el dibujo por defecto)"><span style={{ width: 90, opacity: 0.7 }}>Color</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }} title="Color del cuerpo de la luminaria: el dibujo por defecto y también el modelo 3D propio (la parte que ilumina no cambia)"><span style={{ width: 90, opacity: 0.7 }}>Color</span>
                     <input type="color" value={aj0.color || '#f2f2f2'} onChange={e => pon({ color: e.target.value })} style={{ width: 40, height: 26, padding: 0, border: 'none', background: 'none' }} />
+                    {[['#141414', 'Negro'], ['#f2f2f2', 'Blanco'], ['#8a8d91', 'Gris'], ['#b08a5a', 'Bronce']].map(([h, n]) => <span key={h} onClick={() => pon({ color: h })} title={n} style={{ width: 18, height: 18, borderRadius: 4, background: h, cursor: 'pointer', border: aj0.color === h ? '2px solid #fff' : '1px solid #666', boxSizing: 'border-box' }} />)}
                     {aj0.color && <button style={{ ...btn, padding: '2px 8px' }} onClick={() => pon({ color: undefined })}>Quitar</button>}</label>
                   {!aj0.mod && (() => {
                     const nd = dimNominalLuz(l.kid), dm = aj0.dim || {}, ponDim = (k, v) => pon({ dim: { ...(aj0.dim || {}), [k]: v > 0 ? v : undefined } });
