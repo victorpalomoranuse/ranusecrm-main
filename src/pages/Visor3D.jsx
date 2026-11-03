@@ -1370,6 +1370,13 @@ function muro(m, h0) {
     parte(fr, h, tt * 1.02, x0 * CM + fr / 2, cy, marco); parte(fr, h, tt * 1.02, x1 * CM - fr / 2, cy, marco);
     // la hoja o el cristal se construyen aparte (según el tipo: abatible, corredera, plegable…)
   }
+  // Esquinas: dos muros que se juntan por sus extremos dejaban un hueco cuadrado en el rincón exterior (cada caja llega hasta el eje del otro muro, no hasta su cara).
+  // Se rellena con un trozo del mismo grosor que sigue el acabado del muro (muroId) y que no cuenta como parte pintable (overlay).
+  (m.rel || []).forEach(r => {
+    const f = new THREE.Mesh(new THREE.BoxGeometry(r.ext * CM, alto * CM, t * CM), new THREE.MeshStandardMaterial({ color: m.estado === 'new' ? 0xf1ece6 : 0xe4e0db, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+    f.position.set((r.fin === 'a' ? -r.ext / 2 : L + r.ext / 2) * CM, (alto / 2) * CM, 0);
+    f.castShadow = f.receiveShadow = true; f.userData = { capa: 'muros', muroId: m.id, overlay: true, relleno: true }; mesh.add(f);
+  });
   // El plano va en (x, y); en 3D, y del plano es z. El muro se dibuja a lo largo de X local y se gira hasta a→b.
   mesh.position.set(ax * CM, 0, ay * CM);
   mesh.rotation.y = -Math.atan2(by - ay, bx - ax);
@@ -1425,7 +1432,19 @@ export function planta(m, z0) {
   const g = new THREE.Group();
   g.position.y = (z0 || 0) * CM;
   (m.salas || []).forEach((s, i) => { const x = suelo(s, i); if (x) g.add(x); const t = techo(s, i, m.altura); if (t) g.add(t); });
-  (m.muros || []).forEach(w => { const x = muro(w, m.altura || 260); if (x) g.add(x); });
+  const ms = m.muros || [];
+  ms.forEach((w, i) => {
+    const rel = [];
+    [['a', w.a, w.b], ['b', w.b, w.a]].forEach(([fin, P, Q]) => {
+      const otros = ms.map((v, j) => ({ v, j })).filter(({ v, j }) => j !== i && (Math.hypot(v.a[0] - P[0], v.a[1] - P[1]) < 2.5 || Math.hypot(v.b[0] - P[0], v.b[1] - P[1]) < 2.5));
+      if (otros.length !== 1 || otros[0].j < i) return; // un solo muro en el rincón; lo rellena el de menor número
+      const v = otros[0].v, lejos = Math.hypot(v.a[0] - P[0], v.a[1] - P[1]) < 2.5 ? v.b : v.a;
+      const d1 = [Q[0] - P[0], Q[1] - P[1]], d2 = [lejos[0] - P[0], lejos[1] - P[1]], l1 = Math.hypot(d1[0], d1[1]) || 1, l2 = Math.hypot(d2[0], d2[1]) || 1;
+      const sen = Math.abs(d1[0] * d2[1] - d1[1] * d2[0]) / (l1 * l2); if (sen < 0.25) return; // casi en línea: no hay rincón
+      rel.push({ fin, ext: (v.t || 12) / 2 / Math.max(0.5, sen) });
+    });
+    const x = muro(rel.length ? { ...w, rel } : w, m.altura || 260); if (x) g.add(x);
+  });
   (m.pilares || []).forEach(p => {
     const h = (m.altura || 260) * CM;
     const x = new THREE.Mesh(new THREE.BoxGeometry(p.w * CM, h, p.d * CM), new THREE.MeshStandardMaterial({ color: 0xd8d4cf, roughness: 0.9 }));
