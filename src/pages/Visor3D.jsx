@@ -1302,11 +1302,33 @@ function formasDeAnillos(anillos) {
   info.filter(a => a.nivel % 2 === 1).forEach(h => { const f = formas.find(f2 => f2.a === h.padres[0]); if (f) f.holes.push(h.pts); });
   return formas.map(({ pts, holes }) => ({ pts, holes }));
 }
-async function formasDeTexto(texto, fuenteId) {
-  const font = await cargarFuente(fuenteId), lineas = String(texto).split('\n').filter(l => l.trim() !== '').slice(0, 6); if (!lineas.length) return null;
+// Disposiciones del texto: horizontal (normal), vertical (una letra debajo de otra), vertical girado (se lee de abajo arriba), arco hacia arriba (arcoíris) y arco hacia abajo (sonrisa)
+const DISPOSICIONES = [['horizontal', 'Horizontal'], ['vertical', 'Vertical (una letra debajo de otra)'], ['vertical_giro', 'Vertical girado (se lee de abajo arriba)'], ['arco_arriba', 'En arco hacia arriba'], ['arco_abajo', 'En arco hacia abajo']];
+function subdividirAnillo(pts, paso) {
+  const out = [];
+  for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / paso)); for (let k = 0; k < n; k++) out.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]); }
+  return out;
+}
+async function formasDeTexto(texto, fuenteId, disp = 'horizontal') {
+  const font = await cargarFuente(fuenteId);
+  let lineas = String(texto).split('\n').filter(l => l.trim() !== '').slice(0, 6);
+  if (disp === 'vertical') lineas = Array.from(String(texto).replace(/\s+/g, '')).slice(0, 16);
+  if (!lineas.length) return null;
   const T = 100, mq = lineas.map(l => maquetaLinea(font, l, T)), maxW = Math.max(...mq.map(m => m.ancho)), cmds = [];
   mq.forEach((m, i) => { const off = (maxW - m.ancho) / 2, y = T * 1.15 * i + T; m.items.forEach(it => { cmds.push(...it.g.getPath(it.x + off, y, T).commands); }); });
-  const formas = formasDeAnillos(anillosDeComandos(cmds)).map(f => ({ pts: simplificaContorno(f.pts, 0.1), holes: f.holes.map(h => simplificaContorno(h, 0.1)) }));
+  let formas = formasDeAnillos(anillosDeComandos(cmds));
+  if (disp === 'arco_arriba' || disp === 'arco_abajo') {
+    // la línea base sigue un arco de unos 140°; las letras se doblan con él (se trocean los lados largos para que la curva salga suave)
+    const R = Math.max(60, maxW / 2.4), y0 = -T, arriba = disp === 'arco_arriba';
+    const mapea = p => {
+      const th = (p[0] - maxW / 2) / R, h = p[1] - y0;
+      return arriba ? [(R + h) * Math.sin(th), -R + (R + h) * Math.cos(th) + y0] : [(R - h) * Math.sin(th), R - (R - h) * Math.cos(th) + y0];
+    };
+    formas = formas.map(f => ({ pts: subdividirAnillo(f.pts, 1.5).map(mapea), holes: f.holes.map(h => subdividirAnillo(h, 1.5).map(mapea)) }));
+  } else if (disp === 'vertical_giro') {
+    formas = formas.map(f => ({ pts: f.pts.map(p => [-p[1], p[0]]), holes: f.holes.map(h => h.map(p => [-p[1], p[0]])) }));
+  }
+  formas = formas.map(f => ({ pts: simplificaContorno(f.pts, 0.1), holes: f.holes.map(h => simplificaContorno(h, 0.1)) }));
   return formas.length ? normalizarFormas(formas, 100, 650) : null;
 }
 function formasDeDXF(texto) {
@@ -3437,15 +3459,16 @@ export default function Visor3D({ cliente = false }) {
   const crearTexto = async () => {
     const dlg = textoDlg; if (!dlg || !dlg.texto.trim()) return;
     try {
-      const norm = await formasDeTexto(dlg.texto, dlg.fuente); if (!norm) { setAviso('No he podido dibujar ese texto con esa fuente.'); return; }
-      const { ctrl } = api3d.current, ancho = Math.max(30, Math.min(400, dlg.texto.length * 12));
-      const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', tv: 2, nombre: 'Texto «' + dlg.texto.split('\n')[0].slice(0, 24) + '»', etiqueta: 'Textos', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: ancho, d: 2, alto: Math.round(norm.alto * ancho / 100), ratio: norm.alto / 100, z0: 100, plano: 'vertical', color: '#222222', formas: norm.formas, texto: dlg.texto, fuente: dlg.fuente };
+      const norm = await formasDeTexto(dlg.texto, dlg.fuente, dlg.disp); if (!norm) { setAviso('No he podido dibujar ese texto con esa fuente.'); return; }
+      const vert = dlg.disp === 'vertical' || dlg.disp === 'vertical_giro';
+      const { ctrl } = api3d.current, ancho = vert ? Math.max(8, Math.min(120, 120 / (norm.alto / 100))) : Math.max(30, Math.min(400, dlg.texto.length * 12));
+      const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', tv: 2, nombre: 'Texto «' + dlg.texto.split('\n')[0].slice(0, 24) + '»', etiqueta: 'Textos', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: ancho, d: 2, alto: Math.round(norm.alto * ancho / 100), ratio: norm.alto / 100, z0: 100, plano: 'vertical', color: '#222222', formas: norm.formas, texto: dlg.texto, fuente: dlg.fuente, ...(dlg.disp && dlg.disp !== 'horizontal' ? { disp: dlg.disp } : {}) };
       setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setTextoDlg(null);
       setAviso('Texto creado. Ajusta tamaño, grosor, color y altura en su ficha; ahí también puedes cambiar el texto y la fuente.');
     } catch (e) { setAviso('No se ha podido crear el texto: ' + (e.message || 'error')); }
   };
-  const cambiarTexto = async (obj, texto, fuente) => {
-    try { const norm = await formasDeTexto(texto, fuente); if (!norm) return; cambiar(obj.id, { texto, fuente, tv: 2, formas: norm.formas, ratio: norm.alto / 100, alto: Math.round(norm.alto * obj.w / 100), nombre: 'Texto «' + texto.split('\n')[0].slice(0, 24) + '»' }); } catch { /* fuente no disponible */ }
+  const cambiarTexto = async (obj, texto, fuente, disp = obj.disp || 'horizontal') => {
+    try { const norm = await formasDeTexto(texto, fuente, disp); if (!norm) return; cambiar(obj.id, { texto, fuente, disp: disp === 'horizontal' ? undefined : disp, tv: 2, formas: norm.formas, ratio: norm.alto / 100, alto: Math.round(norm.alto * obj.w / 100), nombre: 'Texto «' + texto.split('\n')[0].slice(0, 24) + '»' }); } catch { /* fuente no disponible */ }
   };
   const importarLogo = async (archivo) => {
     if (!archivo) return;
@@ -3482,7 +3505,7 @@ export default function Visor3D({ cliente = false }) {
     if (estado !== 'listo' || cliente) return;
     objs.filter(o => o.tipo === 'logo' && o.texto && o.fuente && (o.tv || 0) < 2 && !regenTextos.current.has(o.id)).forEach(o => {
       regenTextos.current.add(o.id);
-      formasDeTexto(o.texto, o.fuente).then(norm => { if (norm) cambiar(o.id, { formas: norm.formas, ratio: norm.alto / 100, alto: Math.round(norm.alto * o.w / 100), tv: 2 }); }).catch(() => {});
+      formasDeTexto(o.texto, o.fuente, o.disp || 'horizontal').then(norm => { if (norm) cambiar(o.id, { formas: norm.formas, ratio: norm.alto / 100, alto: Math.round(norm.alto * o.w / 100), tv: 2 }); }).catch(() => {});
     });
   }, [objs, estado]); // eslint-disable-line react-hooks/exhaustive-deps
   const borrar = idObj => { setObjs(prev => prev.filter(o => o.id !== idObj)); setSelObj(null); };
@@ -4599,7 +4622,7 @@ export default function Visor3D({ cliente = false }) {
           </>), 250),
           railBtn(ideasAbierto, 'ideas', 'Ideas', 'Chat con ChatGPT: comparte una imagen o la vista actual, pide una idea (un mural, un ambiente…) y descarga solo la imagen', () => setIdeasAbierto(v => !v)),
           railBtn(false, 'imagen', 'Imagen', 'Sube una imagen (PNG con transparencia, o con fondo liso que se quita) y se coloca en el 3D como en SketchUp; después la escalas', () => imagenInput.current?.click()),
-          railBtn(false, 'texto', 'Texto 3D', 'Escribe una palabra y elige la fuente: se convierte en letras 3D', () => setTextoDlg({ texto: '', fuente: 'Montserrat' })),
+          railBtn(false, 'texto', 'Texto 3D', 'Escribe una palabra y elige la fuente: se convierte en letras 3D', () => setTextoDlg({ texto: '', fuente: 'Montserrat-Regular', disp: 'horizontal' })),
           railBtn(false, 'logo', 'Logo', 'Sube un logo en SVG (o DXF con contornos cerrados) y se convierte en 3D', () => logoInput.current?.click()),
         ], false, 'Insertar')}
         {grupoRail([
@@ -4747,7 +4770,8 @@ export default function Visor3D({ cliente = false }) {
           <div style={{ width: 380, background: 'rgb(22,20,18)', color: '#fff', borderRadius: 10, padding: 16, fontSize: 13 }} onClick={e => e.stopPropagation()}>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Texto 3D</div>
             <textarea autoFocus rows={2} value={textoDlg.texto} placeholder="Escribe aquí (Intro = otra línea)" onChange={e => setTextoDlg(d => ({ ...d, texto: e.target.value }))} style={{ ...btn, width: '100%', boxSizing: 'border-box', fontSize: 18, marginBottom: 8 }} />
-            <select value={textoDlg.fuente} onChange={e => setTextoDlg(d => ({ ...d, fuente: e.target.value }))} style={{ ...btn, width: '100%', marginBottom: 10 }}>{FUENTES.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select>
+            <select value={textoDlg.fuente} onChange={e => setTextoDlg(d => ({ ...d, fuente: e.target.value }))} style={{ ...btn, width: '100%', marginBottom: 6 }}>{FUENTES.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select>
+            <select value={textoDlg.disp || 'horizontal'} onChange={e => setTextoDlg(d => ({ ...d, disp: e.target.value }))} style={{ ...btn, width: '100%', marginBottom: 10 }} title="Cómo se colocan las letras">{DISPOSICIONES.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select>
             <div style={{ display: 'flex', gap: 6 }}><button style={{ ...btn, background: '#8c8076' }} onClick={crearTexto}>Crear texto</button><button style={btn} onClick={() => setTextoDlg(null)}>Cancelar</button></div>
             <div style={{ opacity: 0.55, fontSize: 11, marginTop: 8 }}>Después lo mueves y lo ajustas como un logo: ancho, grosor, color, altura y cómo se coloca (de pie o tumbado).</div>
           </div>
@@ -5873,8 +5897,9 @@ export default function Visor3D({ cliente = false }) {
             <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>{objSel.texto != null ? 'Texto 3D' : 'Logo'}</div>
               {objSel.texto != null && <>
-                <textarea key={'tx' + objSel.id} defaultValue={objSel.texto} rows={2} onBlur={e => { if (e.target.value.trim() && e.target.value !== objSel.texto) cambiarTexto(objSel, e.target.value, objSel.fuente || 'Montserrat'); }} style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 4, fontFamily: 'inherit', resize: 'vertical' }} />
-                <select value={objSel.fuente || 'Montserrat'} onChange={e => cambiarTexto(objSel, objSel.texto, e.target.value)} style={{ ...btn, width: '100%', marginBottom: 6 }}>{FUENTES.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select>
+                <textarea key={'tx' + objSel.id} defaultValue={objSel.texto} rows={2} onBlur={e => { if (e.target.value.trim() && e.target.value !== objSel.texto) cambiarTexto(objSel, e.target.value, objSel.fuente || 'Montserrat-Regular'); }} style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 4, fontFamily: 'inherit', resize: 'vertical' }} />
+                <select value={objSel.fuente || 'Montserrat-Regular'} onChange={e => cambiarTexto(objSel, objSel.texto, e.target.value)} style={{ ...btn, width: '100%', marginBottom: 6 }}>{FUENTES.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select>
+                <select value={objSel.disp || 'horizontal'} onChange={e => cambiarTexto(objSel, objSel.texto, objSel.fuente || 'Montserrat-Regular', e.target.value)} style={{ ...btn, width: '100%', marginBottom: 6 }} title="Cómo se colocan las letras">{DISPOSICIONES.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</select>
               </>}
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Ancho (cm)</span><input type="number" value={Math.round(objSel.w)} onChange={e => { const w = parseFloat(e.target.value) || 10; cambiar(objSel.id, { w, alto: Math.round(w * (objSel.ratio || 1)) }); }} style={{ ...btn, width: 80 }} /></label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Grosor (cm)</span><input type="number" step="0.5" value={objSel.d} onChange={e => cambiar(objSel.id, { d: parseFloat(e.target.value) || 1 })} style={{ ...btn, width: 80 }} /></label>

@@ -617,6 +617,7 @@ router.put('/:id/escena3d', async (req, res) => {
       cerrado: o.tipo === 'barrido' ? !!o.cerrado : undefined,
       texto: o.tipo === 'logo' && typeof o.texto === 'string' ? o.texto.slice(0, 120) : undefined,
       fuente: o.tipo === 'logo' && typeof o.fuente === 'string' ? o.fuente.split('').filter(ch => /[A-Za-z0-9_-]/.test(ch)).join('').slice(0, 40) : undefined,
+      disp: o.tipo === 'logo' && ['vertical', 'vertical_giro', 'arco_arriba', 'arco_abajo'].includes(o.disp) ? o.disp : undefined,
       tv: o.tipo === 'logo' && Number.isFinite(parseFloat(o.tv)) ? Math.min(9, Math.max(0, Math.round(parseFloat(o.tv)))) : undefined,
       formas: o.tipo === 'logo' && Array.isArray(o.formas) ? (() => {
         let total = 0;
