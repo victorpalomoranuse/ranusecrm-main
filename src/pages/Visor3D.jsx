@@ -967,8 +967,36 @@ export function construirHoja(o, mu, cfg, valHoja, texturas) {
     : { color: 0xaed4ea, roughness: 0.04, opacity: 0.32, metalness: 0.1 };
   const vidM = new THREE.MeshPhysicalMaterial({ ...vp, transparent: true, side: THREE.DoubleSide, depthWrite: false, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.6, specularIntensity: 1 });
   const manM = new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.3, metalness: 0.8 });
+  // herraje de la manilla en el color elegido: inox, negro, latón, blanco o cobre (metal pulido o satinado: se ve bien también sin entorno)
+  const HERRAJES = { inox: [0xe0e2e4, 0.3, 0.45], negro: [0x1a1a1c, 0.45, 0.35], laton: [0xd6b25a, 0.32, 0.5], blanco: [0xf3f3f1, 0.45, 0.1], cobre: [0xcd8658, 0.34, 0.5] };
+  const hv = HERRAJES[cfg.manillaColor] || HERRAJES.inox, herrajeM = new THREE.MeshStandardMaterial({ color: hv[0], roughness: hv[1], metalness: hv[2] });
   const info = { muroId: mu.id, id: o.id || null, p: o.p, w: o.w, h: o.h, sill: o.sill || 0, tipo: o.tipo || o.t, tip: o.tip, mat: o.mat };
   const pieza = (padre, bw, bh, bd, px, py, pz, m, zona) => { const b = new THREE.Mesh(new THREE.BoxGeometry(Math.max(bw, 0.002), Math.max(bh, 0.002), Math.max(bd, 0.002)), m); b.position.set(px, py, pz); b.castShadow = true; b.userData = { capa: 'huecos', hueco: info, zona }; padre.add(b); return b; };
+  const cilindro = (padre, rad, largo, px, py, pz, m, eje) => { const c = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, Math.max(largo, 0.002), 20), m); c.position.set(px, py, pz); if (eje === 'z') c.rotation.x = Math.PI / 2; else if (eje === 'x') c.rotation.z = Math.PI / 2; c.castShadow = true; c.userData = { capa: 'huecos', hueco: info, zona: 'herraje' }; padre.add(c); return c; };
+  const esfera = (padre, rad, px, py, pz, m) => { const e = new THREE.Mesh(new THREE.SphereGeometry(rad, 18, 14), m); e.position.set(px, py, pz); e.castShadow = true; e.userData = { capa: 'huecos', hueco: info, zona: 'herraje' }; padre.add(e); return e; };
+  // Manilla por las dos caras de la hoja. hx, hy = centro; cara = distancia del plano medio a la cara; haciaBisagra = +1/-1 (la palanca apunta al lado de la bisagra)
+  const manilla = (padre, hx, hy, cara, haciaBisagra, pz = 0) => {
+    const tipoM = cfg.manilla || 'palanca'; if (tipoM === 'ninguna') return;
+    [1, -1].forEach(d => {
+      const z0 = pz + d * cara;
+      if (tipoM === 'barra') {
+        const L = Math.min(0.45, ih * 0.3);
+        cilindro(padre, 0.013, L, hx, hy, z0 + d * 0.045, herrajeM, 'y');
+        [-1, 1].forEach(e2 => cilindro(padre, 0.007, 0.045, hx, hy + e2 * (L / 2 - 0.03), z0 + d * 0.0225, herrajeM, 'z'));
+      } else if (tipoM === 'pomo') {
+        cilindro(padre, 0.027, 0.012, hx, hy, z0 + d * 0.006, herrajeM, 'z');
+        cilindro(padre, 0.009, 0.04, hx, hy, z0 + d * 0.03, herrajeM, 'z');
+        esfera(padre, 0.03, hx, hy, z0 + d * 0.065, herrajeM);
+      } else {
+        // palanca: roseta redonda, vástago y brazo con la punta redondeada, apuntando hacia la bisagra
+        cilindro(padre, 0.03, 0.013, hx, hy, z0 + d * 0.0065, herrajeM, 'z');
+        cilindro(padre, 0.012, 0.05, hx, hy, z0 + d * 0.038, herrajeM, 'z');
+        const brazo = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.022, 0.022), herrajeM); brazo.position.set(hx + haciaBisagra * 0.065, hy, z0 + d * 0.058); brazo.castShadow = true; brazo.userData = { capa: 'huecos', hueco: info, zona: 'herraje' }; padre.add(brazo);
+        esfera(padre, 0.0145, hx + haciaBisagra * 0.14, hy, z0 + d * 0.058, herrajeM);
+        esfera(padre, 0.0145, hx, hy, z0 + d * 0.058, herrajeM);
+      }
+    });
+  };
   const sgn = cfg.sentido === 'B' ? -1 : 1, abierta = Math.max(0, Math.min(110, cfg.abierta || 0)), ang = (abierta * Math.PI) / 180, pct = Math.min(1, abierta / 100), izq = cfg.bisagra !== 'der';
   const hy = esPuerta ? Math.min(iy1 - 0.1, y0 + 1.0) : cy;
   // hoja con cristal: marco fino + cristal (ventanas y puertas de vidrio)
@@ -977,12 +1005,43 @@ export function construirHoja(o, mu, cfg, valHoja, texturas) {
     pieza(padre, 0.04, ih, 0.045, px - w0 / 2 + 0.02, cy, pz, hojaM, 'hoja'); pieza(padre, 0.04, ih, 0.045, px + w0 / 2 - 0.02, cy, pz, hojaM, 'hoja');
     pieza(padre, w0 - 0.08, ih - 0.08, 0.01, px, cy, pz, vidM, 'cristal');
   };
-  const panelSolido = (padre, w0, px, pz, grosor = 0.04) => pieza(padre, w0 - 0.004, ih - 0.004, grosor, px, cy, pz, hojaM, 'hoja');
+  const estiloH = cfg.estilo || 'lisa';
+  // hoja maciza con un hueco acristalado (rect en coordenadas locales de la hoja: x0..x1, y0..y1)
+  const panelConHueco = (padre, w0, px, pz, grosor, gx0, gx1, gy0, gy1) => {
+    const L = px - w0 / 2, B = iy0 + 0.002, T = iy1 - 0.002, R = px + w0 / 2;
+    pieza(padre, w0 - 0.004, gy0 - B, grosor, px, (B + gy0) / 2, pz, hojaM, 'hoja');
+    pieza(padre, w0 - 0.004, T - gy1, grosor, px, (gy1 + T) / 2, pz, hojaM, 'hoja');
+    pieza(padre, gx0 - L, gy1 - gy0, grosor, (L + gx0) / 2, (gy0 + gy1) / 2, pz, hojaM, 'hoja');
+    pieza(padre, R - gx1, gy1 - gy0, grosor, (gx1 + R) / 2, (gy0 + gy1) / 2, pz, hojaM, 'hoja');
+    pieza(padre, gx1 - gx0, gy1 - gy0, 0.012, (gx0 + gx1) / 2, (gy0 + gy1) / 2, pz, vidM, 'cristal');
+    [[gx0, gy0, gx1, gy0], [gx0, gy1, gx1, gy1]].forEach(([a, b, c2, d2]) => pieza(padre, gx1 - gx0 + 0.02, 0.012, grosor + 0.008, (a + c2) / 2, b, pz, hojaM, 'hoja'));
+  };
+  const panelSolido = (padre, w0, px, pz, grosor = 0.04) => {
+    if (estiloH === 'vidrio_sup') { panelConHueco(padre, w0, px, pz, grosor, px - w0 / 2 + 0.09, px + w0 / 2 - 0.09, iy0 + ih * 0.52, iy1 - 0.1); return; }
+    if (estiloH === 'vidrio_vert') { panelConHueco(padre, w0, px, pz, grosor, px - 0.08, px + 0.08, iy0 + 0.25, iy1 - 0.2); return; }
+    if (estiloH === 'vidrio_central') { panelConHueco(padre, w0, px, pz, grosor, px - w0 * 0.28, px + w0 * 0.28, iy0 + ih * 0.34, iy0 + ih * 0.84); return; }
+    if (estiloH === 'lamas') {
+      const mr = 0.06; [[iy1 - mr / 2, w0 - 0.004, mr], [iy0 + mr / 2 + 0.002, w0 - 0.004, mr]].forEach(([yy, ww, hh]) => pieza(padre, ww, hh, grosor, px, yy, pz, hojaM, 'hoja'));
+      [-1, 1].forEach(sd => pieza(padre, mr, ih - 0.004, grosor, px + sd * (w0 / 2 - mr / 2 - 0.002), cy, pz, hojaM, 'hoja'));
+      const n = Math.max(6, Math.round((ih - 2 * mr) / 0.045)), sh = (ih - 2 * mr) / n;
+      for (let i = 0; i < n; i++) { const l = pieza(padre, w0 - 2 * mr - 0.004, sh * 0.8, 0.008, px, iy0 + mr + sh * (i + 0.5), pz, hojaM, 'hoja'); l.rotation.x = 0.7; }
+      return;
+    }
+    const base = pieza(padre, w0 - 0.004, ih - 0.004, grosor, px, cy, pz, hojaM, 'hoja');
+    if (estiloH === 'moldurada') {
+      const marg = 0.09, gx = 0.03, ww = (w0 - 2 * marg - gx) / 2, hs = ih * 0.36, hi = ih * 0.28;
+      [[-1, iy0 + marg + hi / 2 + 0.02, hi], [1, iy0 + marg + hi / 2 + 0.02, hi], [-1, iy1 - marg - hs / 2, hs], [1, iy1 - marg - hs / 2, hs]].forEach(([sd, yy, hh]) => [1, -1].forEach(d => pieza(padre, ww, hh, 0.012, px + sd * (ww / 2 + gx / 2), yy, pz + d * (grosor / 2 + 0.003), hojaM, 'hoja')));
+    } else if (estiloH === 'ranurada') {
+      const ranM = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1, transparent: true, opacity: 0.4 }), n = Math.max(3, Math.round(w0 / 0.14));
+      for (let i = 1; i < n; i++) [1, -1].forEach(d => pieza(padre, 0.006, ih * 0.96, 0.002, px - w0 / 2 + (w0 * i) / n, cy, pz + d * (grosor / 2 + 0.0008), ranM, 'hoja'));
+    }
+    return base;
+  };
   const giratoria = (w0, centro, bisIzq) => {
     const pivot = new THREE.Group(); pivot.position.set(bisIzq ? centro - w0 / 2 : centro + w0 / 2, 0, 0); pivot.rotation.y = (bisIzq ? -ang : ang) * sgn;
     const off = bisIzq ? w0 / 2 : -w0 / 2;
     if (vidrio) panelVidrio(pivot, w0, off, 0); else panelSolido(pivot, w0, off, 0);
-    if (!(tip === 'fija')) pieza(pivot, 0.012, 0.12, 0.03, bisIzq ? w0 - 0.06 : -w0 + 0.06, hy, 0.03, manM, 'hoja');
+    if (!(tip === 'fija')) manilla(pivot, bisIzq ? w0 - 0.07 : -w0 + 0.07, hy, vidrio ? 0.0225 : 0.02, bisIzq ? -1 : 1);
     g.add(pivot);
   };
   if (esPuerta) {
@@ -997,6 +1056,7 @@ export function construirHoja(o, mu, cfg, valHoja, texturas) {
     if (tip.includes('corredera')) {
       const m1 = new THREE.Group(), z = sgn * (t / 2 + 0.03); m1.position.x = (izq ? 1 : -1) * pct * (iw + 0.04);
       if (vidrio) panelVidrio(m1, iw + 0.04, cx, z); else panelSolido(m1, iw + 0.04, cx, z);
+      manilla(m1, izq ? cx + iw / 2 - 0.08 : cx - iw / 2 + 0.08, hy, 0.02, izq ? -1 : 1, z);
       pieza(g, iw * 2 + 0.2, 0.03, 0.05, izq ? cx + iw / 2 : cx - iw / 2, iy1 + 0.035, z, manM, 'hoja'); g.add(m1); return g;
     }
     if (tip.includes('plegable')) {
@@ -5251,6 +5311,26 @@ export default function Visor3D({ cliente = false }) {
                   <select value={selHueco.nuevo.mat || ''} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, mat: e.target.value || undefined } }))} style={btn}><option value="">(la del plano)</option>{['Vidrio transparente', ...VIDRIOS.slice(1)].map(n => <option key={n} value={n}>{n.replace('Vidrio ', '')}</option>)}</select></label>}
                 {esP && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Hoja</span>
                   <select value={selHueco.nuevo.mat || ''} onChange={e => setSelHueco(s => ({ ...s, nuevo: { ...s.nuevo, mat: e.target.value || undefined } }))} style={btn}><option value="">(la del plano)</option>{DOOR_MATS.map(n => <option key={n} value={n}>{n}</option>)}</select></label>}
+                {esP && !['Hueco', 'Seccional', 'Basculante', 'Enrollable', 'Plegable'].includes(tip) && <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Estilo hoja</span>
+                    <select value={c.estilo || 'lisa'} onChange={e => set({ estilo: e.target.value })} style={btn}><option value="lisa">Lisa</option><option value="moldurada">Moldurada (cuarterones)</option><option value="ranurada">Ranurada (rayas verticales)</option><option value="vidrio_sup">Con vidrio superior</option><option value="vidrio_vert">Con vidrio vertical</option><option value="vidrio_central">Con vidrio central</option><option value="lamas">De lamas (rejilla)</option></select></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Manilla</span>
+                    <select value={c.manilla || 'palanca'} onChange={e => set({ manilla: e.target.value })} style={btn}><option value="palanca">Palanca con roseta</option><option value="barra">Tirador de barra</option><option value="pomo">Pomo</option><option value="ninguna">Sin manilla</option></select>
+                    {(c.manilla || 'palanca') !== 'ninguna' && <select value={c.manillaColor || 'inox'} onChange={e => set({ manillaColor: e.target.value })} style={btn}><option value="inox">Inox</option><option value="negro">Negro</option><option value="laton">Latón</option><option value="blanco">Blanco</option><option value="cobre">Cobre</option></select>}</label>
+                </>}
+                {[['hoja', esP ? 'Color hoja' : 'Color marco hoja'], ['marco', 'Color marco']].map(([zona, et]) => {
+                  const kA = key, val = acab.huecos?.[kA]?.[zona] || '', pone = v => setAcab(a => ({ ...a, huecos: { ...(a.huecos || {}), [kA]: { ...((a.huecos || {})[kA] || {}), [zona]: v || null } } }));
+                  return (
+                    <div key={zona} style={{ marginBottom: 6 }}>
+                      <div style={{ opacity: 0.7, fontSize: 12, marginBottom: 3 }}>{et}</div>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                        {['#f4f2ee', '#d8d2c6', '#8e9094', '#3a3c40', '#111111', '#b08a5a', '#7a5a3a', '#4a3322', '#3f5a4a', '#2f4a6b', '#8a2f2f'].map(h => <span key={h} onClick={() => pone(h)} title={h} style={{ width: 20, height: 20, borderRadius: 4, background: h, cursor: 'pointer', border: val === h ? '2px solid #fff' : '1px solid #555', boxSizing: 'border-box' }} />)}
+                        <input type="color" value={/^#[0-9a-f]{6}/i.test(val) ? val.slice(0, 7) : '#cccccc'} onChange={e => pone(e.target.value)} title="Otro color" style={{ width: 26, height: 22, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
+                        {val && <span onClick={() => pone(null)} style={{ cursor: 'pointer', opacity: 0.7, fontSize: 11 }} title="Volver al color del plano">↺</span>}
+                      </div>
+                    </div>
+                  );
+                })}
                 {tip !== 'Hueco' && tip !== 'Fija' && <>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>{corredera ? 'Abierta %' : 'Abierta °'}</span><input type="range" min="0" max={corredera ? 100 : 110} value={c.abierta || 0} onChange={e => set({ abierta: parseInt(e.target.value, 10) })} style={{ flex: 1 }} /><span style={{ width: 34, textAlign: 'right' }}>{c.abierta || 0}</span></label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 70, opacity: 0.7 }}>Bisagra</span>
