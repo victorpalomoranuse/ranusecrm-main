@@ -13,12 +13,17 @@ const leeArchivo = f => new Promise((ok, ko) => { const r = new FileReader(); r.
 const AJ0 = { exp: 0, con: 1, sat: 1, temp: 0, tint: 0, luc: 0, som: 0, vig: 0 };
 const AJUSTES = [['exp', 'Brillo', -2, 2, 0.05], ['con', 'Contraste', 0.5, 1.8, 0.02], ['sat', 'Saturación', 0, 2, 0.02], ['temp', 'Temperatura (frío ↔ cálido)', -1, 1, 0.02], ['tint', 'Tinte (verde ↔ magenta)', -1, 1, 0.02], ['luc', 'Luces altas', -1, 1, 0.02], ['som', 'Sombras', -1, 1, 0.02], ['vig', 'Viñeta', 0, 1, 0.02]];
 const PRESETS_AJ = [['Cálido', { temp: 0.35, sat: 1.08 }], ['Frío', { temp: -0.35 }], ['Más contraste', { con: 1.2, sat: 1.05 }], ['Levantar sombras', { som: 0.5, luc: -0.2 }], ['Mate', { con: 0.88, sat: 0.92, som: 0.25 }]];
+// El brillo y los colores se aplican en luz lineal (como una cámara) y las luces altas se comprimen con un hombro suave en vez de cortarse: así subir el brillo no «quema» la imagen
+const A_LIN = new Float32Array(256); for (let i = 0; i < 256; i++) { const v = i / 255; A_LIN[i] = v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+const DE_LIN = new Float32Array(4097); for (let i = 0; i <= 4096; i++) { const v = i / 4096; DE_LIN[i] = v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055; }
+const hombro = v => (v <= 0.8 ? (v < 0 ? 0 : v) : 0.8 + 0.2 * (1 - Math.exp(-(v - 0.8) / 0.2)));
 function procesaAjustes(d, W, H, a) {
-  const ex = Math.pow(2, a.exp), cx = W / 2, cy = H / 2, rm = Math.hypot(cx, cy), cl = v => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const ex = Math.pow(2, a.exp), cx = W / 2, cy = H / 2, rm = Math.hypot(cx, cy), cl = v => (v < 0 ? 0 : v > 1 ? 1 : v), mezcla = Math.max(0, Math.min(1, (ex - 1) * 2)), gam = v => DE_LIN[Math.min(4096, ((mezcla ? hombro(v) * mezcla + cl(v) * (1 - mezcla) : cl(v)) * 4096) | 0)]; // el hombro suave solo entra al subir el brillo: sin ajustes la imagen queda idéntica
   for (let i = 0, p = 0; i < d.length; i += 4, p++) {
-    let r = (d[i] / 255) * ex, g = (d[i + 1] / 255) * ex, b = (d[i + 2] / 255) * ex;
+    let r = A_LIN[d[i]] * ex, g = A_LIN[d[i + 1]] * ex, b = A_LIN[d[i + 2]] * ex;
     if (a.temp) { r *= 1 + 0.3 * a.temp; b *= 1 - 0.3 * a.temp; }
     if (a.tint) g *= 1 - 0.2 * a.tint;
+    r = gam(r); g = gam(g); b = gam(b);
     if (a.som || a.luc) { const l0 = cl(0.299 * r + 0.587 * g + 0.114 * b), add = a.som * (1 - l0) * (1 - l0) * 0.35 + a.luc * l0 * l0 * 0.35; r += add; g += add; b += add; }
     if (a.con !== 1) { r = (r - 0.5) * a.con + 0.5; g = (g - 0.5) * a.con + 0.5; b = (b - 0.5) * a.con + 0.5; }
     if (a.sat !== 1) { const l = 0.299 * r + 0.587 * g + 0.114 * b; r = l + (r - l) * a.sat; g = l + (g - l) * a.sat; b = l + (b - l) * a.sat; }
