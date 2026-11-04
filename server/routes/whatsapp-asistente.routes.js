@@ -75,7 +75,7 @@ router.post('/webhook', async (req, res) => {
 
 // Al arrancar: si hay PIN (WA_ASIST_PIN, 6 cifras que inventas tú), registra el número en la API de WhatsApp y apunta el estado en el registro.
 // Registrar un número ya registrado es inofensivo. Cuando el número esté 'Conectado' puedes borrar la variable WA_ASIST_PIN.
-const PIN = String(process.env.WA_ASIST_PIN || '').replace(/D/g, '');
+const PIN = String(process.env.WA_ASIST_PIN || '').replace(/[^0-9]/g, '');
 async function registraNumero() {
   if (!TOKEN || !PHONE_ID) { console.log('WhatsApp asistente: faltan WA_ASIST_TOKEN o WA_ASIST_PHONE_ID.'); return; }
   const cab = { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };
