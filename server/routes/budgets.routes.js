@@ -443,7 +443,11 @@ router.post('/', async (req, res) => {
     const { data, error } = await insertaPresupuesto(req, insertData, '*, project:client_projects(id, client_name, project_name, phase)');
     if (error) { if (error.code === '23505') return res.status(400).json({ error: 'Este proyecto ya tiene presupuesto' }); throw error; }
     res.status(201).json({ budget: { ...data, items: [], ...computeTotals([], 'flat', 0, 0) } });
-  } catch (err) { res.status(500).json({ error: 'Error al crear presupuesto' }); }
+  } catch (err) {
+    console.error('Error al crear presupuesto:', err);
+    const falta = /created_by/.test(err?.message || '');
+    res.status(500).json({ error: falta ? 'Falta ejecutar la migración v93 en Supabase (columna "creado por").' : 'Error al crear presupuesto', detalle: err?.message });
+  }
 });
 
 router.put('/:id', async (req, res) => {
