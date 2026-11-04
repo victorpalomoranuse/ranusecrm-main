@@ -104,7 +104,7 @@ router.get('/estado', async (req, res) => {
     //   &accion=pedir_codigo            -> Meta manda un SMS con un código al número
     //   &accion=verificar&codigo=123456 -> confirma el código recibido
     //   &registrar=1&pin=654321         -> registra el número en la API con un PIN de 6 cifras que inventas
-    if (req.query.accion === 'pedir_codigo') out.pedir_codigo = await llama('/request_code', { code_method: 'SMS', language: 'es' });
+    if (req.query.accion === 'pedir_codigo') out.pedir_codigo = await llama('/request_code', { code_method: req.query.metodo === 'VOICE' ? 'VOICE' : 'SMS', language: 'es' }); // &metodo=VOICE = te lo dictan por llamada
     if (req.query.accion === 'verificar') out.verificar = await llama('/verify_code', { code: String(req.query.codigo || '').replace(/[^0-9]/g, '') });
     if (req.query.registrar === '1') {
       const pin = String(req.query.pin || PIN || '').replace(/[^0-9]/g, '');
