@@ -9706,9 +9706,9 @@ function sheetPage(doc,view,idx,total,o){
         var l2='';
         var lmU=g.lm||(cat&&cat.lm)||0;
         if(lmU){var tt=d.lin?lmU*g.len/100:lmU*g.n;totLm+=tt;l2=fmt(lmU)+' lm'+(d.lin?'/m':' c/u')+'  ·  total '+fmt(tt)+' lm'}
-        else l2=cat?'Lúmenes sin indicar':'Sin luminaria del catálogo';
-        if(g.ap)l2+='  ·  apertura '+fmt(g.ap)+'°';
-        p.text(tx0,y+10.8*f,fitTxt(l2,pw-(tx0-xL),false,(body-1)*25.4/72),body-1,{col:INK});
+        else l2=cat?'Lúmenes sin indicar':''; /* sin luminaria del catálogo no se escribe nada */
+        if(g.ap)l2+=(l2?'  ·  ':'')+'apertura '+fmt(g.ap)+'°';
+        if(l2)p.text(tx0,y+10.8*f,fitTxt(l2,pw-(tx0-xL),false,(body-1)*25.4/72),body-1,{col:INK});
         var l3=cat?[cat.hole?'Ø agujero '+fmt(cat.hole)+' mm':'',cat.w?cat.w+' W':'',cat.k?cat.k+' K':'',cat.gen?'producto a definir':(cat.ref||'')].filter(Boolean).join('  ·  '):'';
         if(l3)p.text(tx0,y+14.3*f,fitTxt(l3,pw-(tx0-xL),false,(body-1.4)*25.4/72),body-1.4,{col:MUTED});
         compL.forEach(function(t,ci){p.text(tx0,y+17.9*f+ci*3.5*f,fitTxt('+ '+t,pw-(tx0-xL),false,(body-1.6)*25.4/72),body-1.6,{col:MUTED})});
