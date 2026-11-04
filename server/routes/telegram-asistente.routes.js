@@ -62,6 +62,7 @@ router.post('/webhook', async (req, res) => {
         entrada = entrada || '(sin texto)';
       } catch (e) { console.error('Telegram asistente: adjunto:', e.message); await enviar(chatId, 'No he podido descargar ese archivo. ¿Me lo mandas otra vez?'); return; }
     }
+    if (!adjuntos.length && m.reply_to_message?.photo?.length) { try { const f = m.reply_to_message.photo[m.reply_to_message.photo.length - 1]; adjuntos.push({ id: 'a1', mime: 'image/jpeg', buffer: await bajar(f.file_id), nombre: '' }); entrada = '(Víctor responde citando una imagen del chat; la tienes adjunta como a1) ' + (entrada || ''); } catch { /* sigue sin imagen */ } }
     if (!entrada) { await enviar(chatId, 'Eso todavía no lo entiendo. Puedo con texto, audios, fotos y documentos.'); return; }
     const out = await responderAsistente({ chatId: 'tg:' + chatId, texto: entrada, adjuntos, avisar: (t) => enviar(chatId, t) });
     await enviar(chatId, out.texto);

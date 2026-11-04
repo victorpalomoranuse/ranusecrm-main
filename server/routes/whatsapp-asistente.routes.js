@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { responderAsistente } from '../utils/asistente-personal.js';
+import { responderAsistente, leerJson, guardarJson } from '../utils/asistente-personal.js';
 import { transcribir } from '../utils/transcribir.js';
 import { registraCanal, anotaEntrante } from '../utils/proactivo.js';
 
@@ -30,7 +30,11 @@ const SYSTEM = `Eres el asistente personal de Víctor Palomo, fundador de Ranuse
 
 const registro = []; // últimos eventos, para diagnosticar desde /estado sin mirar Railway
 const nota = (x) => { registro.unshift({ t: new Date().toISOString(), ...x }); if (registro.length > 15) registro.length = 15; };
-const vistos = new Set(); // ids de mensajes ya atendidos (Meta reintenta si tarda)
+const vistos = new Set();
+const recibidas = new Map(); // id de mensaje -> { mime, buffer } de las fotos que manda Víctor (para cuando las cita)
+const RUTA_IMG = 'crm/asistente/imagenes-enviadas.json';
+async function anotaImagen(id, url) { try { const j = await leerJson(RUTA_IMG, { m: {} }); j.m[id] = url; const ks = Object.keys(j.m); if (ks.length > 100) for (const k of ks.slice(0, ks.length - 100)) delete j.m[k]; await guardarJson(RUTA_IMG, j); } catch { /* no es crítico */ } }
+async function buscaImagen(id) { try { return (await leerJson(RUTA_IMG, { m: {} })).m[id] || null; } catch { return null; } } // ids de mensajes ya atendidos (Meta reintenta si tarda)
 
 router.get('/webhook', (req, res) => {
   if (req.query['hub.mode'] === 'subscribe' && VERIFY && req.query['hub.verify_token'] === VERIFY) return res.status(200).send(req.query['hub.challenge']);
@@ -61,6 +65,7 @@ async function descargaMedia(id) {
 }
 async function enviarArchivo(a, f) {
   const r = await fetch(GRAPH + '/' + PHONE_ID + '/messages', { method: 'POST', headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify(f.tipo === 'imagen' ? { messaging_product: 'whatsapp', to: a, type: 'image', image: { link: f.url } } : { messaging_product: 'whatsapp', to: a, type: 'document', document: { link: f.url, filename: f.nombre } }) });
+  if (r.ok && f.tipo === 'imagen') { const j = await r.clone().json().catch(() => ({})); if (j?.messages?.[0]?.id) await anotaImagen(j.messages[0].id, f.url); }
   if (!r.ok) { const cuerpo = await r.text().catch(() => ''); nota({ ev: 'error_envio_archivo', http: r.status, cuerpo: cuerpo.slice(0, 300) }); await enviar(a, 'No he podido adjuntar el archivo. Te dejo el enlace: ' + f.url); }
 }
 
@@ -87,9 +92,15 @@ router.post('/webhook', async (req, res) => {
           catch (e) { nota({ ev: 'audio_error', mensaje: e.message }); await enviar(de, 'No he podido escuchar ese audio. ¿Me lo escribes?'); continue; }
         } else if ((m.type === 'image' && m.image?.id) || (m.type === 'document' && m.document?.id)) {
           const med = m.type === 'image' ? m.image : m.document;
-          try { const { buffer, mime } = await descargaMedia(med.id); if (buffer.length > 15 * 1024 * 1024) { await enviar(de, 'Ese archivo pesa demasiado (más de 15 MB).'); continue; } adjuntos.push({ id: 'a1', mime: med.mime_type || mime || 'application/octet-stream', buffer, nombre: med.filename || '' }); entrada = med.caption || '(sin texto)'; nota({ ev: 'adjunto_ok', tipo: m.type, bytes: buffer.length }); }
+          try { const { buffer, mime } = await descargaMedia(med.id); if (buffer.length > 15 * 1024 * 1024) { await enviar(de, 'Ese archivo pesa demasiado (más de 15 MB).'); continue; } adjuntos.push({ id: 'a1', mime: med.mime_type || mime || 'application/octet-stream', buffer, nombre: med.filename || '' }); if (m.id && m.type === 'image') { recibidas.set(m.id, { mime: med.mime_type || mime || 'image/jpeg', buffer }); if (recibidas.size > 20) recibidas.delete(recibidas.keys().next().value); } entrada = med.caption || '(sin texto)'; nota({ ev: 'adjunto_ok', tipo: m.type, bytes: buffer.length }); }
           catch (e) { nota({ ev: 'adjunto_error', mensaje: e.message }); await enviar(de, 'No he podido descargar ese archivo. ¿Me lo mandas otra vez?'); continue; }
         } else { await enviar(de, 'Eso todavía no lo entiendo. Puedo con texto, audios, fotos y documentos.'); continue; }
+        if (m.context?.id && !adjuntos.length) {
+          const rec = recibidas.get(m.context.id);
+          if (rec) adjuntos.push({ id: 'a1', mime: rec.mime, buffer: rec.buffer, nombre: '' });
+          else { const url = await buscaImagen(m.context.id); if (url) { try { const f = await fetch(url); if (f.ok) adjuntos.push({ id: 'a1', mime: (f.headers.get('content-type') || 'image/png').split(';')[0], buffer: Buffer.from(await f.arrayBuffer()), nombre: '' }); } catch { /* sigue sin imagen */ } } }
+          if (adjuntos.length) entrada = '(Víctor responde citando una imagen del chat; la tienes adjunta como a1) ' + entrada;
+        }
         const out = await responderAsistente({ chatId: 'wa:' + OWNER_COMPLETO, texto: entrada, adjuntos, avisar: (t) => enviar(de, t) });
         await enviar(de, out.texto);
         for (const f of out.archivos || []) await enviarArchivo(de, f);
