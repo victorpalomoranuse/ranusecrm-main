@@ -14,18 +14,30 @@ const BUCKET = 'project-documents';
 const RUTA_MEM = 'crm/asistente/memoria.json';
 const RUTA_CHARLA = 'crm/asistente/charla.json';
 export const RUTA_RECORD = 'crm/asistente/recordatorios.json';
+export const RUTA_PRIV = 'crm/asistente/privado.json'; // recuerdos personales: NO se ven en el CRM
 const RUTA_AG = 'crm/asistente/agentes.json';
 const BASE_INTERNA = 'http://127.0.0.1:' + (process.env.PORT || 3001);
 const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
 const FASES = ['Diseño previo', 'Arquitectura', 'Instalaciones', 'Interiorismo y materialidad', 'Maquinaria y equipamiento', 'Documentación de apoyo'];
 
+// Todo lo del asistente (memoria, conversación, recordatorios, recuerdos privados) va a un bucket PRIVADO: no tiene enlace público.
+// (Los PDFs, fotos y notas de proyecto sí van a su sitio del CRM, que es lo que se quiere.)
+const BUCKET_PRIV = 'asistente-privado';
+let bucketListo = null;
+async function asegura() {
+  if (!bucketListo) bucketListo = (async () => { const { data } = await supabase.storage.getBucket(BUCKET_PRIV); if (!data) await supabase.storage.createBucket(BUCKET_PRIV, { public: false }); })().catch(e => { bucketListo = null; throw e; });
+  return bucketListo;
+}
 export async function leerJson(ruta, vacio) {
-  const { data, error } = await supabase.storage.from(BUCKET).download(ruta);
-  if (error || !data) return vacio;
+  await asegura().catch(() => {});
+  let { data, error } = await supabase.storage.from(BUCKET_PRIV).download(ruta);
+  if (error || !data) { const viejo = await supabase.storage.from(BUCKET).download(ruta); data = viejo.data; } // datos anteriores a pasarlo a privado
+  if (!data) return vacio;
   try { return JSON.parse(await data.text()); } catch { return vacio; }
 }
 export async function guardarJson(ruta, obj) {
-  const { error } = await supabase.storage.from(BUCKET).upload(ruta, Buffer.from(JSON.stringify(obj)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
+  await asegura();
+  const { error } = await supabase.storage.from(BUCKET_PRIV).upload(ruta, Buffer.from(JSON.stringify(obj)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
   if (error) throw new Error('No se pudo guardar: ' + error.message);
 }
 
@@ -73,7 +85,8 @@ const TOOLS = [
   { name: 'hablar_con_agente', description: 'Habla con uno de los asistentes especializados del CRM y te devuelve su respuesta. agente: "presupuestos" (crea y gestiona presupuestos con IA: pásale lo que Víctor pida, con todos los datos), "setter" (analiza conversaciones de leads y prepara respuestas y fichas), "finanzas" (consulta y crea movimientos de finanzas), "diseno" (alzados: necesita proyecto; la lámina queda guardada en el Asistente de diseño del proyecto). La conversación con cada agente continúa entre llamadas; si el agente pregunta algo, pásaselo a Víctor tal cual y espera su respuesta. nueva=true empieza de cero con ese agente.', input_schema: { type: 'object', properties: { agente: { type: 'string', enum: ['presupuestos', 'setter', 'finanzas', 'diseno'] }, mensaje: { type: 'string' }, proyecto: { type: 'string' }, nueva: { type: 'boolean' } }, required: ['agente', 'mensaje'] } },
   { name: 'ver_referencias', description: 'Busca en el tablero de Referencias del CRM (las imágenes de inspiración que Víctor ha ido guardando) y te las enseña: títulos, notas y hasta 4 imágenes para que las veas. Úsala antes de proponer ideas o de generar imágenes, para tirar de su gusto real, y cuando pregunte "qué referencias tengo de…". busqueda vacía = las más recientes.', input_schema: { type: 'object', properties: { busqueda: { type: 'string' }, cantidad: { type: 'number' } } } },
   { name: 'analizar_proyectos_vendidos', description: 'Reúne lo que hay de los proyectos VENDIDOS (cerrados): tipo, resumen del cliente, programa de necesidades, equipos y materiales elegidos. Úsala cuando Víctor te pida aprender de lo que ha vendido, o para dar consejo basado en lo que de verdad funciona con sus clientes. Después saca patrones (qué piden, qué materiales y marcas se repiten, tipologías) y guarda los más útiles con recordar.', input_schema: { type: 'object', properties: { limite: { type: 'number' } } } },
-  { name: 'recordar', description: 'Guarda en tu memoria permanente algo que Víctor te cuenta o te pide recordar (preferencias, datos de clientes, decisiones, ideas, ritmos de trabajo…). Úsala sin que te lo pida si es algo que conviene recordar. Un hecho por llamada, redactado de forma autosuficiente.', input_schema: { type: 'object', properties: { texto: { type: 'string' }, etiqueta: { type: 'string', description: 'tema corto, p. ej. cliente, proveedor, preferencia, idea' } }, required: ['texto'] } },
+  { name: 'recordar', description: 'Guarda en tu memoria permanente algo que Víctor te cuenta o te pide recordar (preferencias, datos de clientes, decisiones, ideas, ritmos de trabajo…). Úsala sin que te lo pida si es algo que conviene recordar. Un hecho por llamada, redactado de forma autosuficiente. privado=true para TODO lo personal (familia, salud, ánimo, dinero personal, relaciones, planes personales): se guarda aparte y NO se ve en el CRM.', input_schema: { type: 'object', properties: { texto: { type: 'string' }, etiqueta: { type: 'string', description: 'tema corto, p. ej. cliente, proveedor, preferencia, idea' }, privado: { type: 'boolean' } }, required: ['texto'] } },
+  { name: 'marcar_conversacion_privada', description: 'Llámala cuando Víctor te hable de algo personal: así esta parte de la conversación no aparece en el CRM. No crees tareas, eventos ni notas de proyecto sobre temas personales salvo que él lo pida expresamente.', input_schema: { type: 'object', properties: {} } },
   { name: 'olvidar', description: 'Borra un recuerdo de tu memoria por su id.', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
 ];
 
@@ -282,25 +295,29 @@ async function ejecutar(nombre, input, ctx = {}) {
   }
   if (nombre === 'recordar') {
     const texto = String(input.texto || '').trim().slice(0, 600); if (!texto) return { error: 'Nada que recordar.' };
-    const mem = await leerJson(RUTA_MEM, { hechos: [] });
+    const ruta = input.privado ? RUTA_PRIV : RUTA_MEM, mem = await leerJson(ruta, { hechos: [] });
     const hecho = { id: crypto.randomUUID().slice(0, 6), texto, etiqueta: String(input.etiqueta || '').slice(0, 30) || null, fecha };
     mem.hechos.push(hecho); if (mem.hechos.length > 400) mem.hechos = mem.hechos.slice(-400);
-    await guardarJson(RUTA_MEM, mem);
-    return { guardado: true, id: hecho.id };
+    await guardarJson(ruta, mem);
+    return { guardado: true, id: hecho.id, privado: !!input.privado };
   }
+  if (nombre === 'marcar_conversacion_privada') { ctx.privado = true; return { ok: true, nota: 'Esta conversación no se verá en el CRM.' }; }
   if (nombre === 'olvidar') {
-    const mem = await leerJson(RUTA_MEM, { hechos: [] }); const antes = mem.hechos.length;
-    mem.hechos = mem.hechos.filter(h => h.id !== String(input.id || '')); if (mem.hechos.length === antes) return { error: 'No encuentro ese recuerdo.' };
-    await guardarJson(RUTA_MEM, mem); return { olvidado: true };
+    for (const ruta of [RUTA_MEM, RUTA_PRIV]) {
+      const mem = await leerJson(ruta, { hechos: [] }); const antes = mem.hechos.length;
+      mem.hechos = mem.hechos.filter(h => h.id !== String(input.id || '')); if (mem.hechos.length < antes) { await guardarJson(ruta, mem); return { olvidado: true }; }
+    }
+    return { error: 'No encuentro ese recuerdo.' };
   }
   return { error: 'Herramienta desconocida.' };
 }
 
-function sistema(mem) {
+function sistema(mem, priv) {
   const { fecha, hora, dia } = madrid();
   const hechos = (mem.hechos || []).slice(-120).map(h => '- [' + h.id + '] ' + (h.etiqueta ? '(' + h.etiqueta + ') ' : '') + h.texto + ' (' + h.fecha + ')').join('\n') || '(todavía no hay recuerdos guardados)';
   return 'Eres el asistente personal de Víctor Palomo, fundador de Ranuse Design (diseño de espacios deportivos y gimnasios). Hablas con él por mensajería, desde el móvil. Ahora es ' + dia + ' ' + fecha + ', ' + hora + ' (hora de Madrid).\n' +
-    '- Español, tono cercano y directo, como un compañero de confianza. Mensajes cortos, sin markdown (solo *negrita* con un asterisco si hace falta). Víctor no es técnico: sin jerga.\n' +
+    '- Español, tono cercano y directo, como un compañero de confianza. Sin markdown (solo *negrita* con un asterisco si hace falta). Víctor no es técnico: sin jerga.\n' +
+    '- BREVEDAD, REGLA DURA: Víctor NO lee mensajes largos. Responde en 1 a 4 líneas (unas 50 palabras) por defecto. Primero la respuesta o la acción hecha, sin saludos ni rodeos ni resúmenes de lo que acabas de hacer. Listas de 5 elementos como máximo y cada uno en una línea. Si hay mucho que contar, da lo esencial y pregunta "¿quieres el detalle?", o ofrécelo en PDF con crear_pdf. Haz como máximo UNA pregunta por mensaje. Si pide explícitamente algo largo (informe, guion, análisis), entonces sí, pero en PDF o en trozos que se lean en 20 segundos.\n' +
     '- Tienes MEMORIA permanente: usa la herramienta recordar cuando te cuente algo que convenga tener presente, sin que te lo pida, y confírmalo en pocas palabras. Nunca digas que no puedes recordar.\n' +
     '- Tienes acceso al CRM: agenda, tareas, eventos y proyectos. No inventes datos: consúltalos con las herramientas. Si crear algo es ambiguo (qué proyecto, qué día), pregunta lo mínimo.\n' +
     '- Cuando Víctor salude por la mañana o pregunte por su día, llama a agenda_de_hoy y dáselo ordenado: primero lo atrasado y urgente, luego lo de hoy, y los eventos con hora. Termina con una sugerencia breve de por dónde empezar.\n' +
@@ -310,7 +327,10 @@ function sistema(mem) {
     '- APRENDE: cada vez que Víctor te corrija, te cuente una preferencia, una forma de trabajar, datos de un cliente o una decisión, guárdalo con recordar sin que te lo pida. Antes de dar consejo, tira de lo que recuerdas.\n' +
     '- Compañeros del CRM (hablar_con_agente): presupuestos (crear presupuestos), setter (leads), finanzas y diseno (alzados). Si Víctor pide un presupuesto, un alzado, mirar un lead o algo de finanzas, pásaselo al compañero adecuado con todos los datos que te dé. Con una foto adjunta: generar_render (convertirla en render) o editar_foto (cambiarle algo concreto); ninguna exige proyecto. Cuando pida inspiración o ideas sin foto ni proyecto, usa generar_imagen (1 a 3 variantes) y acompáñalas de una explicación breve: piensa como un diseñador top pero viable, evita lo típico y sorpréndele.\n' +
     '- También puedes crear proveedores, buscarlos y programar recordatorios que te llegan a esta misma conversación. Puedes ser su consultor: cuando solo quiera pensar en voz alta o comparar opciones, da tu opinión con criterio y sin rodeos.\n\n' +
-    'Lo que recuerdas:\n' + hechos;
+    '- BREVEDAD: Víctor no lee mensajes largos. Por defecto, máximo 300 caracteres (3-4 líneas). Nada de introducciones ni cierres de cortesía. Ideas o listas: máximo 3 puntos de una línea cada uno, y pregunta si quiere más.\n' +
+    '- LO PERSONAL ES PRIVADO: si Víctor te habla de cosas personales (familia, salud, ánimo, dinero, relaciones, dudas vitales), ayúdale como un amigo con criterio y cercanía, llama a marcar_conversacion_privada, guarda lo importante con recordar y privado=true, y NUNCA lo conviertas en tareas, eventos, notas de proyecto ni nada que se vea en el CRM salvo que él te lo pida expresamente. Nunca menciones lo personal en resúmenes del día ni en informes.\n\n' +
+    'Lo que recuerdas del trabajo:\n' + hechos +
+    '\n\nRecuerdos PERSONALES de Víctor (privados; úsalos para ayudarle pero no los muestres ni los saques si no viene a cuento):\n' + ((priv.hechos || []).slice(-60).map(h => '- [' + h.id + '] ' + h.texto).join('\n') || '(ninguno)');
 }
 
 // Un resultado de herramienta puede traer imágenes (__imagenes: urls): se descargan y se le enseñan a Claude.
@@ -326,8 +346,8 @@ async function aContenido(r) {
 
 // Devuelve el texto de respuesta. chatId separa conversaciones (WhatsApp / Telegram).
 export async function responderAsistente({ chatId, texto, adjuntos = [], avisar = null }) {
-  const [mem, charla] = await Promise.all([leerJson(RUTA_MEM, { hechos: [] }), leerJson(RUTA_CHARLA, {})]);
-  const previo = (charla[chatId] || []).slice(-20);
+  const [mem, charla, priv] = await Promise.all([leerJson(RUTA_MEM, { hechos: [] }), leerJson(RUTA_CHARLA, {}), leerJson(RUTA_PRIV, { hechos: [] })]);
+  const previoCrudo = (charla[chatId] || []).slice(-20), previo = previoCrudo.map(m => ({ role: m.role, content: m.content }));
   const ctx = { adjuntos, textoUsuario: texto, salida: [], avisar };
   const bloquesUsuario = adjuntos.length ? [
     ...adjuntos.filter(a => /^image\/(jpeg|png|webp|gif)$/.test(a.mime)).map(a => ({ type: 'image', source: { type: 'base64', media_type: a.mime, data: a.buffer.toString('base64') } })),
@@ -337,7 +357,7 @@ export async function responderAsistente({ chatId, texto, adjuntos = [], avisar 
   const mensajes = [...previo, { role: 'user', content: bloquesUsuario }];
   let respuesta = '';
   for (let vuelta = 0; vuelta < 7; vuelta++) {
-    const out = await callClaude({ system: sistema(mem), messages: mensajes, tools: TOOLS, maxTokens: 2500 });
+    const out = await callClaude({ system: sistema(mem, priv), messages: mensajes, tools: TOOLS, maxTokens: 2500 });
     const bloques = out.content || [];
     const usos = bloques.filter(b => b.type === 'tool_use');
     if (out.stop_reason !== 'tool_use' || !usos.length) { respuesta = bloques.filter(b => b.type === 'text').map(b => b.text).join('\n').trim(); break; }
@@ -347,7 +367,7 @@ export async function responderAsistente({ chatId, texto, adjuntos = [], avisar 
     mensajes.push({ role: 'user', content: resultados });
   }
   if (!respuesta) respuesta = 'Me he liado un poco con eso. ¿Me lo repites con otras palabras?';
-  charla[chatId] = [...previo, { role: 'user', content: texto + (adjuntos.length ? ' [adjuntó ' + adjuntos.length + ' archivo(s)]' : '') }, { role: 'assistant', content: respuesta }].slice(-30);
+  charla[chatId] = [...previoCrudo, { role: 'user', content: texto + (adjuntos.length ? ' [adjuntó ' + adjuntos.length + ' archivo(s)]' : ''), ...(ctx.privado ? { privado: true } : {}) }, { role: 'assistant', content: respuesta, ...(ctx.privado ? { privado: true } : {}) }].slice(-30);
   try { await guardarJson(RUTA_CHARLA, charla); } catch (e) { console.error('Asistente: no se pudo guardar la conversación:', e.message); }
   return { texto: respuesta, archivos: ctx.salida };
 }

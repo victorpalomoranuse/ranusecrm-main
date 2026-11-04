@@ -63,7 +63,7 @@ router.get('/informes', async (req, res) => {
 router.get('/conversacion', async (req, res) => {
   try {
     const c = await leerJson(RUTA_CHARLA, {}); const salida = [];
-    for (const [k, v] of Object.entries(c)) if (/^(wa|tg):/.test(k)) for (const m of (v || [])) salida.push({ canal: k.startsWith('wa') ? 'WhatsApp' : 'Telegram', rol: m.role, texto: typeof m.content === 'string' ? m.content : '' });
+    for (const [k, v] of Object.entries(c)) if (/^(wa|tg):/.test(k)) for (const m of (v || []).filter(x => !x.privado)) salida.push({ canal: k.startsWith('wa') ? 'WhatsApp' : 'Telegram', rol: m.role, texto: typeof m.content === 'string' ? m.content : '' });
     res.json({ mensajes: salida.slice(-60) });
   } catch { res.status(500).json({ error: 'No se pudo leer la conversación' }); }
 });
