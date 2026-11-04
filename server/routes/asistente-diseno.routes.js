@@ -1,4 +1,6 @@
 import express from 'express';
+import crypto from 'crypto';
+import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { callClaude } from '../utils/anthropic.js';
 
@@ -6,6 +8,56 @@ import { callClaude } from '../utils/anthropic.js';
 // La IA solo decide/propone las medidas; el dibujo lo hace el código del navegador a partir de la ficha (spec), así no se inventa nada.
 
 const router = express.Router();
+
+// ── guardado por proyecto ──
+// Todo se guarda en un JSON propio por proyecto (crm/diseno/<proyecto>.json), aparte de Planos, presupuestos y demás: este asistente nunca toca nada ya hecho.
+// Cada cambio es una VERSIÓN NUEVA (las anteriores se conservan y se pueden recuperar) y antes de escribir se guarda una copia de seguridad diaria.
+const BUCKET = 'project-documents';
+const idProy = p => String(p || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 60);
+const ruta = pid => 'crm/diseno/' + idProy(pid) + '.json';
+export async function leerProy(pid) {
+  const { data, error } = await supabase.storage.from(BUCKET).download(ruta(pid));
+  if (error || !data) {
+    if (/not.?found|does not exist|404/i.test(JSON.stringify(error || {}) + (error?.message || ''))) return { laminas: [] };
+    throw new Error('No he podido leer lo guardado de este proyecto; no se ha tocado nada.');
+  }
+  const j = JSON.parse(await data.text());
+  return { laminas: Array.isArray(j.laminas) ? j.laminas : [] };
+}
+export async function guardarProy(pid, d, existia) {
+  if (existia) { const dia = new Date().toISOString().slice(0, 10).replace(/-/g, ''); await supabase.storage.from(BUCKET).copy(ruta(pid), 'crm/diseno/_copias/' + idProy(pid) + '-' + dia + '.json').catch(() => {}); }
+  const { error } = await supabase.storage.from(BUCKET).upload(ruta(pid), Buffer.from(JSON.stringify(d)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
+  if (error) throw new Error('No se ha podido guardar: ' + error.message);
+}
+const nuevoId = () => crypto.randomUUID().slice(0, 8);
+const resumenLam = l => ({ id: l.id, titulo: l.titulo, actualizada: l.actualizada, versiones: (l.versiones || []).length });
+export const ponVersion = (l, spec, resumen) => { l.versiones = l.versiones || []; l.versiones.push({ v: (l.versiones[l.versiones.length - 1]?.v || 0) + 1, ts: new Date().toISOString(), spec, resumen: String(resumen || '').slice(0, 140) }); if (l.versiones.length > 100) l.versiones.shift(); l.titulo = spec.titulo || l.titulo; l.actualizada = new Date().toISOString(); };
+
+router.get('/proyecto/:pid', async (req, res) => {
+  try { const d = await leerProy(req.params.pid); res.json({ laminas: d.laminas.map(resumenLam).sort((a, b) => String(b.actualizada).localeCompare(String(a.actualizada))) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.get('/proyecto/:pid/lamina/:lid', async (req, res) => {
+  try { const l = (await leerProy(req.params.pid)).laminas.find(x => x.id === req.params.lid); if (!l) return res.status(404).json({ error: 'No existe esa lámina' }); res.json({ lamina: l }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Recuperar una versión antigua: NO borra nada, la copia como versión nueva.
+router.post('/proyecto/:pid/lamina/:lid/restaurar', async (req, res) => {
+  try {
+    const d = await leerProy(req.params.pid), l = d.laminas.find(x => x.id === req.params.lid); if (!l) return res.status(404).json({ error: 'No existe esa lámina' });
+    const v = (l.versiones || []).find(x => x.v === Number(req.body?.v)); if (!v) return res.status(404).json({ error: 'No existe esa versión' });
+    ponVersion(l, v.spec, 'Recuperada la versión ' + v.v); await guardarProy(req.params.pid, d, true); res.json({ lamina: l });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Duplicar para probar cosas sin arriesgar la lámina buena.
+router.post('/proyecto/:pid/lamina/:lid/duplicar', async (req, res) => {
+  try {
+    const d = await leerProy(req.params.pid), l = d.laminas.find(x => x.id === req.params.lid); if (!l) return res.status(404).json({ error: 'No existe esa lámina' });
+    const ult = l.versiones?.[l.versiones.length - 1]; const c = { id: nuevoId(), titulo: (l.titulo || 'Alzado') + ' (copia)', creada: new Date().toISOString(), actualizada: new Date().toISOString(), mensajes: l.mensajes || [], versiones: [] };
+    if (ult) ponVersion(c, { ...ult.spec, titulo: c.titulo }, 'Copia de «' + (l.titulo || 'lámina') + '»');
+    d.laminas.push(c); await guardarProy(req.params.pid, d, true); res.json({ lamina: c });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 router.use(authenticateToken, requirePermission('proyectos'));
 
 const num = (v, d = null) => { const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : Number(v); return Number.isFinite(n) ? n : d; };
@@ -131,7 +183,24 @@ router.post('/chat', async (req, res) => {
       conv.push({ role: 'user', content: resultados });
       if (r.stop_reason !== 'tool_use') break;
     }
-    res.json({ reply: texto || (cambio ? 'Lámina actualizada.' : 'No he entendido, ¿me lo cuentas de otra forma?'), spec, avisos: avisosFinal });
+    let guardado = null, guardadoError = null;
+    const pid = idProy(req.body?.proyectoId);
+    if (pid && (cambio || msgs.length)) {
+      try {
+        const ex = await leerProy(pid).then(d => ({ d, ok: true }));
+        const d = ex.d; let l = req.body?.laminaId && d.laminas.find(x => x.id === req.body.laminaId);
+        if (!l) { l = { id: nuevoId(), titulo: spec?.titulo || 'Alzado', creada: new Date().toISOString(), mensajes: [], versiones: [] }; d.laminas.push(l); }
+        const respuesta = texto || (cambio ? 'Lámina actualizada.' : '');
+        const previos = (Array.isArray(req.body?.messages) ? req.body.messages : msgs).filter(m => m && typeof m.content === 'string').slice(-200).map(m => ({ role: m.role, content: String(m.content).slice(0, 4000) }));
+        l.mensajes = [...previos, { role: 'assistant', content: respuesta.slice(0, 4000) }];
+        const ult = l.versiones[l.versiones.length - 1];
+        if (spec && (!ult || JSON.stringify(ult.spec) !== JSON.stringify(spec))) ponVersion(l, spec, msgs[msgs.length - 1].content);
+        l.actualizada = new Date().toISOString();
+        await guardarProy(pid, d, true);
+        guardado = { laminaId: l.id, versiones: l.versiones.length };
+      } catch (e) { guardadoError = e.message; }
+    }
+    res.json({ guardado, guardadoError, reply: texto || (cambio ? 'Lámina actualizada.' : 'No he entendido, ¿me lo cuentas de otra forma?'), spec, avisos: avisosFinal });
   } catch (e) {
     console.error('asistente-diseno:', e.message);
     res.status(500).json({ error: e.message?.includes('ANTHROPIC') || e.message?.includes('clave') ? e.message : 'No he podido consultar a la IA. Inténtalo de nuevo.' });
