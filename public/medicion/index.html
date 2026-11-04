@@ -8458,7 +8458,7 @@ function preciosFilas(){
     var d=ptDef(g.k),c=g.cat||{},nm=g.nm||(c.n?c.n+(c.gen?' (genérico)':''):(d?d.n:g.k));
     var det=[c.hole?'Ø agujero '+c.hole+' mm':'',c.lm?c.lm+' lm':'',c.w?c.w+' W':'',c.k?c.k+' K':''].filter(Boolean).join(' · ');
     var mo=g.mo?'montaje: '+g.mo:'';
-    var fl=g.lid?{t:'lum',id:g.lid}:null;
+    var fl=g.ft?{t:'lum',id:g.ft.id,uri:g.ft.uri,pw:g.ft.pw,ph:g.ft.ph}:(g.lid?{t:'lum',id:g.lid}:null); /* la foto pegada en la luminaria manda sobre la del catálogo */
     if(g.len>0)add('Iluminación',g.tag,nm,c.ref||'',det,r2(g.len/100),'ml',[mo,g.pf?'perfil: '+g.pf:'',g.n+' tramo'+(g.n===1?'':'s'),c.comp?String(c.comp).replace(/\s*\n\s*/g,' / '):''].filter(Boolean).join(' · '),fl);
     else add('Iluminación',g.tag,nm,c.ref||'',det,g.n,'ud',[mo,c.comp?String(c.comp).replace(/\s*\n\s*/g,' / '):''].filter(Boolean).join(' · '),fl);
   });
@@ -8497,7 +8497,7 @@ function preciosTexto(sel){
 function preciosFoto(f){
   if(!f||!f.foto)return null;
   if(f.foto.t==='min'){var m=calMin[f.foto.id];return m&&m.uri?{uri:m.uri,w:m.w,h:m.h,rgb:m.rgb}:null}
-  if(f.foto.t==='lum'){var l=LUMRGB[f.foto.id],ent=lumById(f.foto.id);return ent&&ent.uri?{uri:ent.uri,w:l&&l.w,h:l&&l.h,rgb:l&&l.rgb}:null}
+  if(f.foto.t==='lum'){var l=LUMRGB[f.foto.id],ent=f.foto.uri?f.foto:lumById(f.foto.id);return ent&&ent.uri?{uri:ent.uri,w:l&&l.w,h:l&&l.h,rgb:l&&l.rgb}:null}
   return null;
 }
 /* PDF A4 vertical para mandar a proveedores: foto, descripción, cantidad y hueco para el precio (sin datos del cliente) */
