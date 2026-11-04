@@ -89,6 +89,7 @@ const TOOLS = [
   { name: 'recordar', description: 'Guarda en tu memoria permanente algo que Víctor te cuenta o te pide recordar (preferencias, datos de clientes, decisiones, ideas, ritmos de trabajo…). Úsala sin que te lo pida si es algo que conviene recordar. Un hecho por llamada, redactado de forma autosuficiente. privado=true para TODO lo personal (familia, salud, ánimo, dinero personal, relaciones, planes personales): se guarda aparte y NO se ve en el CRM.', input_schema: { type: 'object', properties: { texto: { type: 'string' }, etiqueta: { type: 'string', description: 'tema corto, p. ej. cliente, proveedor, preferencia, idea' }, privado: { type: 'boolean' } }, required: ['texto'] } },
   { name: 'borrar_conversacion', description: 'Borra el historial reciente de esta conversación (lo que te acabas de decir y lo anterior). NO borra tu memoria. Úsala cuando Víctor pida empezar de cero o borrar la conversación.', input_schema: { type: 'object', properties: {} } },
   { name: 'vaciar_memoria', description: 'Borra tu memoria de forma masiva. ambito: "trabajo" (recuerdos de trabajo), "privada" (recuerdos personales) o "todo". IRREVERSIBLE: antes de llamarla, pregunta a Víctor si está seguro y espera su "sí" explícito en un mensaje posterior.', input_schema: { type: 'object', properties: { ambito: { type: 'string', enum: ['trabajo', 'privada', 'todo'] } }, required: ['ambito'] } },
+  { name: 'restaurar_memoria', description: 'Recupera la memoria tal como estaba justo antes del último vaciado (vaciar_memoria deja siempre una copia). Úsala si Víctor dice que se ha equivocado al borrar todo.', input_schema: { type: 'object', properties: {} } },
   { name: 'marcar_conversacion_privada', description: 'Llámala cuando Víctor te hable de algo personal: así esta parte de la conversación no aparece en el CRM. No crees tareas, eventos ni notas de proyecto sobre temas personales salvo que él lo pida expresamente.', input_schema: { type: 'object', properties: {} } },
   { name: 'olvidar', description: 'Borra un recuerdo de tu memoria por su id.', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
 ];
@@ -323,9 +324,15 @@ async function ejecutar(nombre, input, ctx = {}) {
   if (nombre === 'borrar_conversacion') { ctx.borrarCharla = true; return { ok: true, nota: 'Historial borrado. La memoria se mantiene.' }; }
   if (nombre === 'vaciar_memoria') {
     const a = input.ambito; if (!['trabajo', 'privada', 'todo'].includes(a)) return { error: 'Ámbito no válido.' };
+    await guardarJson('crm/asistente/memoria-respaldo.json', { fecha: new Date().toISOString(), trabajo: await leerJson(RUTA_MEM, { hechos: [] }), privada: await leerJson(RUTA_PRIV, { hechos: [] }) }); // copia de seguridad antes de borrar
     if (a !== 'privada') await guardarJson(RUTA_MEM, { hechos: [] });
     if (a !== 'trabajo') await guardarJson(RUTA_PRIV, { hechos: [] });
-    return { vaciada: a };
+    return { vaciada: a, nota: 'Queda una copia de seguridad: si Víctor se arrepiente, usa restaurar_memoria.' };
+  }
+  if (nombre === 'restaurar_memoria') {
+    const r = await leerJson('crm/asistente/memoria-respaldo.json', null); if (!r) return { error: 'No hay ninguna copia de seguridad.' };
+    await guardarJson(RUTA_MEM, r.trabajo || { hechos: [] }); await guardarJson(RUTA_PRIV, r.privada || { hechos: [] });
+    return { restaurada: true, copia_del: r.fecha, recuerdos_de_trabajo: (r.trabajo?.hechos || []).length, recuerdos_personales: (r.privada?.hechos || []).length };
   }
   if (nombre === 'marcar_conversacion_privada') { ctx.privado = true; return { ok: true, nota: 'Esta conversación no se verá en el CRM.' }; }
   if (nombre === 'olvidar') {
@@ -358,7 +365,7 @@ function sistema(mem, priv) {
     '- ENTIENDE LO QUE PIDE: no sigas fórmulas. Lee su petición, su contexto y lo que recuerdas de él, y decide tú qué proponer. Cuando diga que algo no le convence, guárdalo con recordar y cámbialo de verdad; a veces lo repetido está bien y otras quiere cambiar, y eso lo deduces de lo que dice. Si pide varias ideas, que sean distintas entre sí por tu criterio, no por un turno de materiales.\n' +
     '- Por lo general a Víctor le gusta el diseño atrevido pero ejecutable (le parecen mal las superficies curvas o las piezas a medida complejas que encarecen la obra). Tenlo presente como criterio, no como regla: si pide algo conceptual o de otro tipo, hazle caso. Al presentar ideas, di en una línea cómo se ejecuta y si el coste es bajo, medio o alto.\n' +
     '- BREVEDAD: Víctor no lee mensajes largos. Por defecto, máximo 300 caracteres (3-4 líneas). Nada de introducciones ni cierres de cortesía. Ideas o listas: máximo 3 puntos de una línea cada uno, y pregunta si quiere más.\n' +
-    '- OLVIDAR: tu memoria vive en el servidor, no en el chat de WhatsApp: si Víctor borra la conversación en su móvil, sigues recordando. Si quiere que olvides algo concreto, usa olvidar (tienes los ids); si quiere empezar de cero la conversación, borrar_conversacion; si quiere borrar toda la memoria, pregúntale si está seguro y solo con su sí explícito usa vaciar_memoria. Si te pregunta qué sabes de él, díselo con franqueza, incluido lo privado (solo habla contigo él).\n' +
+    '- OLVIDAR: tu memoria vive en el servidor, no en el chat de WhatsApp: si Víctor borra la conversación en su móvil, sigues recordando. Si quiere que olvides algo concreto, usa olvidar (tienes los ids); si quiere empezar de cero la conversación, borrar_conversacion; si quiere borrar toda la memoria, pregúntale si está seguro y solo con su sí explícito usa vaciar_memoria (deja una copia: si se arrepiente, restaurar_memoria). Para borrar varias cosas concretas, usa olvidar una vez por cada una. Si te pregunta qué sabes de él, díselo con franqueza, incluido lo privado (solo habla contigo él).\n' +
     '- LO PERSONAL ES PRIVADO: si Víctor te habla de cosas personales (familia, salud, ánimo, dinero, relaciones, dudas vitales), ayúdale como un amigo con criterio y cercanía, llama a marcar_conversacion_privada, guarda lo importante con recordar y privado=true, y NUNCA lo conviertas en tareas, eventos, notas de proyecto ni nada que se vea en el CRM salvo que él te lo pida expresamente. Nunca menciones lo personal en resúmenes del día ni en informes.\n\n' +
     'Lo que recuerdas del trabajo:\n' + hechos +
     '\n\nRecuerdos PERSONALES de Víctor (privados; úsalos para ayudarle pero no los muestres ni los saques si no viene a cuento):\n' + ((priv.hechos || []).slice(-60).map(h => '- [' + h.id + '] ' + h.texto).join('\n') || '(ninguno)');
