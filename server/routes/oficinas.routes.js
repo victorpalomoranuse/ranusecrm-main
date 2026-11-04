@@ -54,6 +54,22 @@ router.get('/', async (req, res) => {
     const orden = { rojo: 0, ambar: 1, gris: 2, verde: 3 };
     proyectos.sort((a, b) => orden[a.semaforo] - orden[b.semaforo] || String(a.entrega || '9999').localeCompare(String(b.entrega || '9999')));
 
+    // láminas que el asistente de diseño ha ido guardando en cada proyecto (solo se leen los proyectos que tienen archivo)
+    const lamPor = {};
+    try {
+      const { data: fl } = await supabase.storage.from('project-documents').list('crm/diseno', { limit: 500 });
+      const tiene = new Set((fl || []).map(f => f.name));
+      await Promise.all(proyectos.filter(p => tiene.has(p.id + '.json')).slice(0, 40).map(async p => {
+        try {
+          const { data } = await supabase.storage.from('project-documents').download('crm/diseno/' + p.id + '.json');
+          const j = JSON.parse(await data.text());
+          lamPor[p.id] = (j.laminas || []).map(l => ({ titulo: l.titulo || 'Alzado', versiones: (l.versiones || []).length, actualizada: l.actualizada || null })).sort((a, b) => String(b.actualizada).localeCompare(String(a.actualizada)));
+        } catch { /* sin láminas */ }
+      }));
+    } catch { /* el almacenamiento no responde: se ve sin láminas */ }
+    proyectos.forEach(p => { p.laminas = lamPor[p.id] || []; });
+    const recientesDiseno = proyectos.flatMap(p => p.laminas.map(l => ({ ...l, proyecto: p.nombre }))).sort((a, b) => String(b.actualizada).localeCompare(String(a.actualizada))).slice(0, 6);
+
     const estados = (le.data || []).map(l => l.estado);
     const cuenta = (...xs) => estados.filter(e => xs.includes(e)).length;
     const budg = (bu.data || []).map(b => b.status);
@@ -87,7 +103,7 @@ router.get('/', async (req, res) => {
       { id: 'setter', nombre: 'Asistente Setter', sala: 'ventas', ir: 'asistente-setter', hace: 'Mete leads y agenda llamadas' },
       { id: 'presupuestos', nombre: 'Asistente de presupuestos', sala: 'presupuestos', ir: 'asistente', hace: 'Prepara presupuestos con IA' },
       { id: 'finanzas', nombre: 'Asistente de finanzas', sala: 'finanzas', ir: 'asistente-finanzas', hace: 'Responde sobre las cuentas' },
-      { id: 'diseno', nombre: 'Asistente de diseño', sala: 'diseno', ir: 'asistente-diseno', hace: 'Dibuja alzados con tus medidas' },
+      { id: 'diseno', nombre: 'Asistente de diseño', sala: 'diseno', ir: 'asistente-diseno', hace: 'Dibuja alzados con tus medidas', recientes: recientesDiseno },
       { id: 'ideas', nombre: 'Estudio de ideas', sala: 'diseno', ir: 'estudio-ideas', hace: 'Genera ideas y renders con IA' },
     ];
     // anexos: un edificio por sector de proveedores y colaboradores, con sus empresas dentro

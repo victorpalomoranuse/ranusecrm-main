@@ -198,7 +198,8 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
     const lounge = [[16.5, 6.5, 0.6], [20.5, 8.5, -0.5], [22, 5.5, 2.2], [17.5, 10, 0.2], [21, 10.5, 3], [19, 5, 1]];
     [...resto, ...sobran].slice(0, lounge.length).forEach((p, k) => { const [x, z, r] = lounge[k]; punto({ tipo: 'persona', ...p }, x, z, luzPersona(p), { sentado: false, rot: r }); nombre(p, x, z, 3.1, luzPersona(p)); });
     const puestoAg = { diseno: [-3, 4.8], ventas: [8.2, -5.6], presupuestos: [22, -5], finanzas: [5, 7.5] };
-    (data.agentes || []).forEach(a => { const pt = puestoAg[a.sala]; if (!pt) return; mesaOf(pt[0], pt[1] - 1.0, 0); sillaOf(pt[0], pt[1], Math.PI); punto({ tipo: 'agente', ...a }, pt[0], pt[1], '#6fd0ff', { sentado: true, robot: true, rot: Math.PI }); rotulo(a.nombre.replace('Asistente de ', '').replace('Asistente ', ''), pt[0], 3.1, pt[1], { fs: 22, color: '#1f5d7a' }, 80); });
+    const nAg = {};
+    (data.agentes || []).forEach(a => { const b = puestoAg[a.sala]; if (!b) return; const k = nAg[a.sala] || 0, pt = [b[0] + k * 3.4, b[1]]; nAg[a.sala] = k + 1;mesaOf(pt[0], pt[1] - 1.0, 0); sillaOf(pt[0], pt[1], Math.PI); punto({ tipo: 'agente', ...a }, pt[0], pt[1], '#6fd0ff', { sentado: true, robot: true, rot: Math.PI }); rotulo(a.id === 'diseno' ? 'Alzados' : a.nombre.replace('Asistente de ', '').replace('Asistente ', ''), pt[0], 3.1, pt[1], { fs: 22, color: '#1f5d7a' }, 80); });
     // mobiliario de cada sala
     estante(-12, -7.55, 0, 4.6); estante(-7, -7.55, 0, 3.2); pantalla(-17.5, 2.2, -7.8, 0, 3.4, 1.6, '#1f3a66'); planta(-4.8, 6.5, 1.2); planta(-19, 6.8, 1.1); sofa(-18, 6.4, 0, '#2a2f3a'); alfombra(-11, 0, 10, 8, '#cfc6b8'); lampara(-19.4, -7.2);
     pantalla(5, 2.2, -11.85, 0, 4, 1.6, '#1d4a66'); alfombra(5, -6.5, 8, 6, '#d7cfc3'); planta(0.8, -11.2); planta(9.2, -3.8);
