@@ -2,6 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { responderAsistente } from '../utils/asistente-personal.js';
 import { transcribir } from '../utils/transcribir.js';
+import { registraCanal, anotaEntrante } from '../utils/proactivo.js';
 
 const router = express.Router();
 
@@ -19,6 +20,7 @@ const TOKEN = (process.env.WA_ASIST_TOKEN || '').trim();
 const PHONE_ID = (process.env.WA_ASIST_PHONE_ID || '').replace(/[^0-9]/g, ''); // por si al pegarlo se coló un espacio
 const WABA_ID = String(process.env.WA_ASIST_WABA_ID || '').replace(/[^0-9]/g, '');
 const OWNER = String(process.env.WA_ASIST_OWNER || '').replace(/\D/g, '').slice(-9);
+const OWNER_COMPLETO = (() => { const d = String(process.env.WA_ASIST_OWNER || '').replace(/\D/g, ''); return d.length === 9 ? '34' + d : d; })();
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const SYSTEM = `Eres el asistente personal de Víctor Palomo, fundador de Ranuse Design (diseño de espacios deportivos y gimnasios). Hablas con él por WhatsApp desde el móvil.
@@ -53,9 +55,13 @@ async function enviar(a, texto) {
 
 async function descargaMedia(id) {
   const r = await fetch(GRAPH + '/' + id, { headers: { Authorization: 'Bearer ' + TOKEN } }); const j = await r.json();
-  if (!j.url) throw new Error('Meta no dio la dirección del audio: ' + JSON.stringify(j).slice(0, 200));
-  const f = await fetch(j.url, { headers: { Authorization: 'Bearer ' + TOKEN } }); if (!f.ok) throw new Error('No se pudo bajar el audio (' + f.status + ')');
-  return Buffer.from(await f.arrayBuffer());
+  if (!j.url) throw new Error('Meta no dio la dirección del archivo: ' + JSON.stringify(j).slice(0, 200));
+  const f = await fetch(j.url, { headers: { Authorization: 'Bearer ' + TOKEN } }); if (!f.ok) throw new Error('No se pudo bajar el archivo (' + f.status + ')');
+  return { buffer: Buffer.from(await f.arrayBuffer()), mime: j.mime_type || '' };
+}
+async function enviarArchivo(a, f) {
+  const r = await fetch(GRAPH + '/' + PHONE_ID + '/messages', { method: 'POST', headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ messaging_product: 'whatsapp', to: a, type: 'document', document: { link: f.url, filename: f.nombre } }) });
+  if (!r.ok) { const cuerpo = await r.text().catch(() => ''); nota({ ev: 'error_envio_archivo', http: r.status, cuerpo: cuerpo.slice(0, 300) }); await enviar(a, 'No he podido adjuntar el archivo. Te dejo el enlace: ' + f.url); }
 }
 
 router.post('/webhook', async (req, res) => {
@@ -72,15 +78,21 @@ router.post('/webhook', async (req, res) => {
         const de = String(m.from || '').replace(/\D/g, '');
         if (!OWNER || de.slice(-9) !== OWNER) { nota({ ev: 'no_autorizado', desde_ultimos4: de.slice(-4), esperado_ultimos4: OWNER.slice(-4) }); console.warn('WhatsApp asistente: mensaje de un número no autorizado, ignorado.'); continue; }
         if (m.id) { if (vistos.has(m.id)) continue; vistos.add(m.id); if (vistos.size > 500) vistos.delete(vistos.values().next().value); }
-        let entrada = null;
+        let entrada = null; const adjuntos = [];
+        anotaEntrante('wa');
         if (m.type === 'text') entrada = m.text.body;
         else if (m.type === 'audio' && m.audio?.id) {
           if (!(process.env.GROQ_API_KEY || '').trim()) { await enviar(de, 'Todavía no puedo oír audios: falta activar la transcripción gratuita. Mientras tanto, escríbeme.'); continue; }
-          try { const t = await transcribir(await descargaMedia(m.audio.id)); if (!t) { await enviar(de, 'No he conseguido entender el audio, ¿me lo repites?'); continue; } entrada = '[Audio de Víctor, transcrito] ' + t; nota({ ev: 'audio_ok', letras: t.length }); }
+          try { const t = await transcribir((await descargaMedia(m.audio.id)).buffer); if (!t) { await enviar(de, 'No he conseguido entender el audio, ¿me lo repites?'); continue; } entrada = '[Audio de Víctor, transcrito] ' + t; nota({ ev: 'audio_ok', letras: t.length }); }
           catch (e) { nota({ ev: 'audio_error', mensaje: e.message }); await enviar(de, 'No he podido escuchar ese audio. ¿Me lo escribes?'); continue; }
-        } else { await enviar(de, 'Por ahora entiendo texto y audios. Las fotos y documentos los añadimos pronto.'); continue; }
-        const texto = await responderAsistente({ chatId: 'wa:' + de, texto: entrada });
-        await enviar(de, texto);
+        } else if ((m.type === 'image' && m.image?.id) || (m.type === 'document' && m.document?.id)) {
+          const med = m.type === 'image' ? m.image : m.document;
+          try { const { buffer, mime } = await descargaMedia(med.id); if (buffer.length > 15 * 1024 * 1024) { await enviar(de, 'Ese archivo pesa demasiado (más de 15 MB).'); continue; } adjuntos.push({ id: 'a1', mime: med.mime_type || mime || 'application/octet-stream', buffer, nombre: med.filename || '' }); entrada = med.caption || '(sin texto)'; nota({ ev: 'adjunto_ok', tipo: m.type, bytes: buffer.length }); }
+          catch (e) { nota({ ev: 'adjunto_error', mensaje: e.message }); await enviar(de, 'No he podido descargar ese archivo. ¿Me lo mandas otra vez?'); continue; }
+        } else { await enviar(de, 'Eso todavía no lo entiendo. Puedo con texto, audios, fotos y documentos.'); continue; }
+        const out = await responderAsistente({ chatId: 'wa:' + OWNER_COMPLETO, texto: entrada, adjuntos });
+        await enviar(de, out.texto);
+        for (const f of out.archivos || []) await enviarArchivo(de, f);
       }
     }
   } catch (e) { console.error('WhatsApp asistente:', e.message); nota({ ev: 'error', mensaje: e.message }); }
@@ -102,6 +114,7 @@ async function registraNumero() {
   } catch (err) { console.error('WhatsApp asistente: no se pudo consultar/registrar el número:', err.message); }
 }
 setTimeout(registraNumero, 4000);
+if (OWNER_COMPLETO) registraCanal('wa', { chatId: 'wa:' + OWNER_COMPLETO, enviar: (t) => enviar(OWNER_COMPLETO, t), enviarArchivo: (f) => enviarArchivo(OWNER_COMPLETO, f) });
 
 // Para ver el estado desde el navegador sin mirar los registros de Railway:
 //   /api/whatsapp-asistente/estado?clave=TU_WA_ASIST_VERIFY_TOKEN            -> estado del número y de la conexión

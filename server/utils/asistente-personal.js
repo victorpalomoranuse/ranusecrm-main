@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { callClaude } from './anthropic.js';
+import { uploadDiagnosisImage, uploadProjectDocument, uploadReferenceImage } from './storage.js';
+import { crearInformePdf } from './pdf-informe.js';
 
 // Cerebro del asistente personal de Víctor (lo usan WhatsApp y Telegram).
 // - Memoria que persiste (hechos que le pides recordar) y conversación reciente, guardadas en Storage (sin tocar la base de datos).
@@ -9,14 +11,16 @@ import { callClaude } from './anthropic.js';
 const BUCKET = 'project-documents';
 const RUTA_MEM = 'crm/asistente/memoria.json';
 const RUTA_CHARLA = 'crm/asistente/charla.json';
+export const RUTA_RECORD = 'crm/asistente/recordatorios.json';
+const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
 const FASES = ['Diseño previo', 'Arquitectura', 'Instalaciones', 'Interiorismo y materialidad', 'Maquinaria y equipamiento', 'Documentación de apoyo'];
 
-async function leerJson(ruta, vacio) {
+export async function leerJson(ruta, vacio) {
   const { data, error } = await supabase.storage.from(BUCKET).download(ruta);
   if (error || !data) return vacio;
   try { return JSON.parse(await data.text()); } catch { return vacio; }
 }
-async function guardarJson(ruta, obj) {
+export async function guardarJson(ruta, obj) {
   const { error } = await supabase.storage.from(BUCKET).upload(ruta, Buffer.from(JSON.stringify(obj)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
   if (error) throw new Error('No se pudo guardar: ' + error.message);
 }
@@ -52,11 +56,22 @@ const TOOLS = [
   { name: 'crear_tarea', description: 'Crea una tarea en el CRM. fecha en formato AAAA-MM-DD (resuelve "mañana", "el viernes"… con la fecha de hoy). proyecto y asignada_a son opcionales (nombre parcial).', input_schema: { type: 'object', properties: { titulo: { type: 'string' }, fecha: { type: 'string' }, proyecto: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, asignada_a: { type: 'string' }, descripcion: { type: 'string' } }, required: ['titulo'] } },
   { name: 'completar_tarea', description: 'Marca una tarea como hecha (usa el id que devolvió agenda_de_hoy o ver_proyecto).', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
   { name: 'crear_evento', description: 'Crea un evento en el calendario del CRM.', input_schema: { type: 'object', properties: { titulo: { type: 'string' }, fecha: { type: 'string', description: 'AAAA-MM-DD' }, hora: { type: 'string', description: 'HH:MM, opcional' }, descripcion: { type: 'string' } }, required: ['titulo', 'fecha'] } },
+  { name: 'guardar_adjunto', description: 'Guarda una foto o documento que Víctor te acaba de mandar (adjunto con su id, p. ej. "a1"). destino: "necesidades" = fotos del programa de necesidades del proyecto; "obra" = fotos de una visita a obra; "documento" = archivo en los Documentos del proyecto; "referencia" = imagen de inspiración (sin proyecto, tablero general de referencias). Para todo menos "referencia" hace falta el proyecto. Si no está claro el proyecto o el destino, pregunta antes de guardar.', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, destino: { type: 'string', enum: ['necesidades', 'obra', 'documento', 'referencia'] }, proyecto: { type: 'string' }, titulo: { type: 'string', description: 'título o pie de foto breve' }, nota: { type: 'string', description: 'detalle: qué se ve, qué te gusta, qué hay que tener en cuenta' }, categoria: { type: 'string', description: 'solo referencias: tipo de espacio o estilo' } }, required: ['adjunto', 'destino'] } },
+  { name: 'guardar_nota_proyecto', description: 'Guarda una nota en los Documentos de un proyecto: acta de reunión, resumen de visita a obra, transcripción, decisiones. Escribe un resumen ordenado (acuerdos, medidas, decisiones, pendientes). Con incluir_original=true se adjunta además, tal cual, el mensaje completo de Víctor (útil para transcripciones largas: no las copies tú).', input_schema: { type: 'object', properties: { proyecto: { type: 'string' }, titulo: { type: 'string' }, tipo: { type: 'string', enum: ['reunion', 'obra', 'nota'] }, resumen: { type: 'string' }, incluir_original: { type: 'boolean' } }, required: ['proyecto', 'titulo', 'resumen'] } },
+  { name: 'crear_proveedor', description: 'Crea un proveedor/contacto nuevo en el CRM (Contactos). sector = su oficio o a qué se dedica.', input_schema: { type: 'object', properties: { nombre: { type: 'string' }, sector: { type: 'string' }, telefono: { type: 'string' }, email: { type: 'string' }, web: { type: 'string' }, descripcion: { type: 'string' } }, required: ['nombre'] } },
+  { name: 'buscar_proveedores', description: 'Busca proveedores/contactos por nombre u oficio.', input_schema: { type: 'object', properties: { texto: { type: 'string' } }, required: ['texto'] } },
+  { name: 'recordatorio', description: 'Programa un aviso: a esa hora le escribirás tú a Víctor el texto. fecha AAAA-MM-DD y hora HH:MM en hora de Madrid.', input_schema: { type: 'object', properties: { texto: { type: 'string' }, fecha: { type: 'string' }, hora: { type: 'string' } }, required: ['texto', 'fecha', 'hora'] } },
+  { name: 'consultar_crm', description: 'Datos del negocio para informes y consejos. que: "resumen" (proyectos por fase, tareas atrasadas, carga por persona), "ventas" (ventas abiertas y cerradas), "leads" (últimos leads y su estado), "presupuestos" (últimos presupuestos y estado).', input_schema: { type: 'object', properties: { que: { type: 'string', enum: ['resumen', 'ventas', 'leads', 'presupuestos'] } }, required: ['que'] } },
+  { name: 'crear_pdf', description: 'Genera un PDF con la imagen de Ranuse (informe, resumen, listado, propuesta de contenido…) y se lo envías a Víctor como archivo. contenido en texto sencillo: líneas que empiezan por "# " son títulos, "## " subtítulos, "- " viñetas, el resto párrafos. Si pasas proyecto, se guarda también en sus Documentos.', input_schema: { type: 'object', properties: { titulo: { type: 'string' }, contenido: { type: 'string' }, proyecto: { type: 'string' } }, required: ['titulo', 'contenido'] } },
   { name: 'recordar', description: 'Guarda en tu memoria permanente algo que Víctor te cuenta o te pide recordar (preferencias, datos de clientes, decisiones, ideas, ritmos de trabajo…). Úsala sin que te lo pida si es algo que conviene recordar. Un hecho por llamada, redactado de forma autosuficiente.', input_schema: { type: 'object', properties: { texto: { type: 'string' }, etiqueta: { type: 'string', description: 'tema corto, p. ej. cliente, proveedor, preferencia, idea' } }, required: ['texto'] } },
   { name: 'olvidar', description: 'Borra un recuerdo de tu memoria por su id.', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
 ];
 
-async function ejecutar(nombre, input) {
+async function formPor(pid) {
+  const { data: ex } = await supabase.from('project_needs_forms').select('id').eq('project_id', pid).maybeSingle(); if (ex) return ex;
+  const { data, error } = await supabase.from('project_needs_forms').insert({ project_id: pid }).select('id').single(); if (error) throw error; return data;
+}
+async function ejecutar(nombre, input, ctx = {}) {
   const { fecha } = madrid();
   if (nombre === 'agenda_de_hoy') {
     const [{ data: tareas }, { data: eventos }, { data: emp }] = await Promise.all([
@@ -101,6 +116,89 @@ async function ejecutar(nombre, input) {
     if (error) return { error: 'No se pudo crear: ' + error.message };
     return { creado: true, titulo: data.title, fecha: data.date, hora: data.time };
   }
+  if (nombre === 'guardar_adjunto') {
+    const a = (ctx.adjuntos || []).find(x => x.id === input.adjunto); if (!a) return { error: 'No encuentro ese adjunto.' };
+    const ext = EXT[a.mime] || ((a.nombre || '').split('.').pop() || 'bin'), nom = (a.nombre && /\./.test(a.nombre)) ? a.nombre : 'archivo.' + ext;
+    if (input.destino === 'referencia') {
+      if (!a.mime.startsWith('image/')) return { error: 'Las referencias tienen que ser imágenes.' };
+      const url = await uploadReferenceImage(a.buffer, nom, a.mime);
+      const { error } = await supabase.from('inspiration_references').insert({ title: String(input.titulo || 'Referencia desde el móvil').slice(0, 120), description: input.nota ? String(input.nota).slice(0, 800) : null, category: input.categoria ? String(input.categoria).slice(0, 60) : null, image_url: url });
+      if (error) return { error: 'No se pudo guardar: ' + error.message };
+      return { guardada: true, donde: 'Referencias (tablero general)' };
+    }
+    const p = await proyectoPor(input.proyecto); if (!p) return { error: 'No encuentro ese proyecto. No he guardado nada.' };
+    const nombreP = p.project_name || p.client_name;
+    if (input.destino === 'documento') {
+      const url = await uploadProjectDocument(a.buffer, nom, a.mime, p.id);
+      const { error } = await supabase.from('project_documents').insert({ project_id: p.id, url, name: String(input.titulo || nom).slice(0, 150), doc_type: 'otro' });
+      if (error) return { error: 'No se pudo guardar: ' + error.message };
+      return { guardado: true, donde: 'Documentos de ' + nombreP };
+    }
+    if (!a.mime.startsWith('image/')) return { error: 'En necesidades/obra solo caben fotos. Para un PDF usa destino "documento".' };
+    const f = await formPor(p.id), url = await uploadDiagnosisImage(a.buffer, nom, a.mime, p.id);
+    const { data: mx } = await supabase.from('project_needs_form_photos').select('display_order').eq('form_id', f.id).order('display_order', { ascending: false }).limit(1).maybeSingle();
+    const pie = [input.destino === 'obra' ? 'Visita a obra ' + fecha.split('-').reverse().join('/') : null, input.titulo, input.nota].filter(Boolean).join(' · ').slice(0, 400) || null;
+    const { error } = await supabase.from('project_needs_form_photos').insert({ form_id: f.id, url, caption: pie, display_order: (mx?.display_order ?? -1) + 1 });
+    if (error) return { error: 'No se pudo guardar: ' + error.message };
+    return { guardada: true, donde: (input.destino === 'obra' ? 'Programa de necesidades (fotos de obra) de ' : 'Programa de necesidades de ') + nombreP };
+  }
+  if (nombre === 'guardar_nota_proyecto') {
+    const p = await proyectoPor(input.proyecto); if (!p) return { error: 'No encuentro ese proyecto. No he guardado nada.' };
+    const cuerpo = '# ' + String(input.titulo).slice(0, 150) + '\nFecha: ' + fecha + '\nProyecto: ' + (p.project_name || p.client_name) + '\n\n' + String(input.resumen || '') + (input.incluir_original && ctx.textoUsuario ? '\n\n---\nTexto original:\n' + ctx.textoUsuario : '') + '\n';
+    const slug = String(input.titulo).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40);
+    const url = await uploadProjectDocument(Buffer.from(cuerpo, 'utf8'), (input.tipo || 'nota') + '_' + fecha + '_' + slug + '.txt', 'text/plain', p.id);
+    const nom = ({ reunion: 'Reunión', obra: 'Visita a obra', nota: 'Nota' })[input.tipo] || 'Nota';
+    const fila = { project_id: p.id, url, name: nom + ' ' + fecha.split('-').reverse().join('/') + ' · ' + String(input.titulo).slice(0, 100) };
+    let { error } = await supabase.from('project_documents').insert({ ...fila, doc_type: 'nota' });
+    if (error) ({ error } = await supabase.from('project_documents').insert({ ...fila, doc_type: 'otro' }));
+    if (error) return { error: 'No se pudo guardar: ' + error.message };
+    return { guardada: true, donde: 'Documentos de ' + (p.project_name || p.client_name) };
+  }
+  if (nombre === 'crear_proveedor') {
+    const nomb = String(input.nombre || '').trim(); if (!nomb) return { error: 'Falta el nombre.' };
+    const { data: ya } = await supabase.from('contacts').select('id, name').ilike('name', limpia(nomb)).limit(1); if (ya?.length) return { error: 'Ya existe un contacto llamado "' + ya[0].name + '". No he creado otro.' };
+    const { data, error } = await supabase.from('contacts').insert({ name: nomb.slice(0, 120), sector: input.sector ? String(input.sector).slice(0, 80) : null, phone: input.telefono ? String(input.telefono).slice(0, 40) : null, email: input.email ? String(input.email).slice(0, 120) : null, company_url: input.web ? String(input.web).slice(0, 200) : null, description: input.descripcion ? String(input.descripcion).slice(0, 800) : null }).select('id, name, sector').single();
+    if (error) return { error: 'No se pudo crear: ' + error.message };
+    return { creado: true, nombre: data.name, sector: data.sector };
+  }
+  if (nombre === 'buscar_proveedores') {
+    const t = limpia(input.texto); const { data } = await supabase.from('contacts').select('name, sector, phone, email, company_url').or('name.ilike.%' + t + '%,sector.ilike.%' + t + '%,description.ilike.%' + t + '%').limit(15);
+    return { proveedores: data || [] };
+  }
+  if (nombre === 'recordatorio') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fecha || '') || !/^\d{1,2}:\d{2}$/.test(input.hora || '') || !String(input.texto || '').trim()) return { error: 'Faltan texto, fecha (AAAA-MM-DD) u hora (HH:MM).' };
+    const lista = await leerJson(RUTA_RECORD, []); const hh = input.hora.padStart(5, '0');
+    const r = { id: crypto.randomUUID().slice(0, 6), cuando: input.fecha + 'T' + hh, texto: String(input.texto).trim().slice(0, 300), enviado: false };
+    lista.push(r); await guardarJson(RUTA_RECORD, lista.slice(-200));
+    return { programado: true, para: r.cuando };
+  }
+  if (nombre === 'consultar_crm') {
+    if (input.que === 'resumen') {
+      const [{ data: pr }, { data: ta }, { data: em }] = await Promise.all([
+        supabase.from('client_projects').select('project_name, client_name, phase, urgency').eq('status', 'en_marcha').eq('active', true),
+        supabase.from('tasks').select('title, due_date, assigned_to, done').eq('done', false).limit(2000),
+        supabase.from('employees').select('id, name').eq('active', true),
+      ]);
+      const porFase = {}; (pr || []).forEach(p => { const k = (p.phase ?? 0) + ' · ' + (FASES[p.phase ?? 0] || ''); (porFase[k] = porFase[k] || []).push(p.project_name || p.client_name); });
+      const nom = Object.fromEntries((em || []).map(e => [e.id, e.name])); const carga = {};
+      (ta || []).forEach(t => { const n = nom[t.assigned_to] || 'Sin asignar'; carga[n] = carga[n] || { pendientes: 0, atrasadas: 0 }; carga[n].pendientes++; if (t.due_date && t.due_date < fecha) carga[n].atrasadas++; });
+      return { hoy: fecha, proyectos_por_fase: porFase, total_proyectos: (pr || []).length, tareas_pendientes: (ta || []).length, tareas_atrasadas: (ta || []).filter(t => t.due_date && t.due_date < fecha).length, carga_por_persona: carga };
+    }
+    if (input.que === 'ventas') { const { data } = await supabase.from('ventas').select('nombre, valor, cerrada').limit(200); const v = data || []; return { abiertas: v.filter(x => !x.cerrada).map(x => ({ nombre: x.nombre, valor: x.valor })), cerradas: v.filter(x => x.cerrada).length, importe_abierto: v.filter(x => !x.cerrada).reduce((a, x) => a + (Number(x.valor) || 0), 0) }; }
+    if (input.que === 'leads') { const { data } = await supabase.from('setting_leads').select('nombre, estado, canal, created_at').order('created_at', { ascending: false }).limit(30); return { ultimos_leads: (data || []).map(l => ({ nombre: l.nombre, estado: l.estado, canal: l.canal, fecha: (l.created_at || '').slice(0, 10) })) }; }
+    if (input.que === 'presupuestos') { const { data } = await supabase.from('budgets').select('budget_name, status, created_at').order('created_at', { ascending: false }).limit(30); return { ultimos_presupuestos: (data || []).map(b => ({ nombre: b.budget_name, estado: b.status, fecha: (b.created_at || '').slice(0, 10) })) }; }
+    return { error: 'Consulta desconocida.' };
+  }
+  if (nombre === 'crear_pdf') {
+    const buf = await crearInformePdf({ titulo: String(input.titulo).slice(0, 150), contenido: String(input.contenido || '') });
+    const slug = String(input.titulo).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40) || 'informe';
+    const archivo = slug + '_' + fecha + '.pdf';
+    let proy = null; if (input.proyecto) { proy = await proyectoPor(input.proyecto); if (!proy) return { error: 'No encuentro el proyecto "' + input.proyecto + '". No he creado el PDF.' }; }
+    const url = await uploadProjectDocument(buf, archivo, 'application/pdf', proy ? proy.id : '_asistente');
+    if (proy) { const fila = { project_id: proy.id, url, name: String(input.titulo).slice(0, 150) }; let { error } = await supabase.from('project_documents').insert({ ...fila, doc_type: 'informe' }); if (error) await supabase.from('project_documents').insert({ ...fila, doc_type: 'otro' }); }
+    (ctx.salida = ctx.salida || []).push({ url, nombre: archivo });
+    return { creado: true, nota: 'El PDF se envía a Víctor como archivo adjunto en tu respuesta; no pegues el enlace.' };
+  }
   if (nombre === 'recordar') {
     const texto = String(input.texto || '').trim().slice(0, 600); if (!texto) return { error: 'Nada que recordar.' };
     const mem = await leerJson(RUTA_MEM, { hechos: [] });
@@ -125,28 +223,37 @@ function sistema(mem) {
     '- Tienes MEMORIA permanente: usa la herramienta recordar cuando te cuente algo que convenga tener presente, sin que te lo pida, y confírmalo en pocas palabras. Nunca digas que no puedes recordar.\n' +
     '- Tienes acceso al CRM: agenda, tareas, eventos y proyectos. No inventes datos: consúltalos con las herramientas. Si crear algo es ambiguo (qué proyecto, qué día), pregunta lo mínimo.\n' +
     '- Cuando Víctor salude por la mañana o pregunte por su día, llama a agenda_de_hoy y dáselo ordenado: primero lo atrasado y urgente, luego lo de hoy, y los eventos con hora. Termina con una sugerencia breve de por dónde empezar.\n' +
-    '- Todavía NO sabes procesar fotos ni documentos, ni lanzar renders, alzados o el setter: se están montando. Si te lo pide, dilo claro y ofrécete a apuntar la petición como tarea.\n\n' +
+    '- Fotos y documentos: cuando Víctor te mande uno, míralo y descríbelo en una frase. Si dice o se deduce dónde va (proyecto y si es del programa de necesidades, de una obra, un documento o una referencia de inspiración), guárdalo con guardar_adjunto y dile dónde lo has dejado. Si no está claro, pregunta una sola cosa. Reuniones, transcripciones y visitas a obra: guárdalas con guardar_nota_proyecto y crea las tareas que se desprendan.\n' +
+    '- Informes y PDFs: cuando te pida un reporte, resumen o documento, reúne los datos con las herramientas (consultar_crm, ver_proyecto…) y genera el PDF con crear_pdf. Redes y contenido: ayúdale con ideas, guiones y textos con la voz de Ranuse (cercana, profesional, de diseñador de espacios deportivos), usando lo que recuerdas de sus proyectos y gustos.\n' +
+    '- APRENDE: cada vez que Víctor te corrija, te cuente una preferencia, una forma de trabajar, datos de un cliente o una decisión, guárdalo con recordar sin que te lo pida. Antes de dar consejo, tira de lo que recuerdas.\n' +
+    '- También puedes crear proveedores, buscarlos y programar recordatorios que te llegan a esta misma conversación. Puedes ser su consultor: cuando solo quiera pensar en voz alta o comparar opciones, da tu opinión con criterio y sin rodeos.\n\n' +
     'Lo que recuerdas:\n' + hechos;
 }
 
 // Devuelve el texto de respuesta. chatId separa conversaciones (WhatsApp / Telegram).
-export async function responderAsistente({ chatId, texto }) {
+export async function responderAsistente({ chatId, texto, adjuntos = [] }) {
   const [mem, charla] = await Promise.all([leerJson(RUTA_MEM, { hechos: [] }), leerJson(RUTA_CHARLA, {})]);
   const previo = (charla[chatId] || []).slice(-20);
-  const mensajes = [...previo, { role: 'user', content: texto }];
+  const ctx = { adjuntos, textoUsuario: texto, salida: [] };
+  const bloquesUsuario = adjuntos.length ? [
+    ...adjuntos.filter(a => /^image\/(jpeg|png|webp|gif)$/.test(a.mime)).map(a => ({ type: 'image', source: { type: 'base64', media_type: a.mime, data: a.buffer.toString('base64') } })),
+    ...adjuntos.filter(a => a.mime === 'application/pdf').map(a => ({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: a.buffer.toString('base64') } })),
+    { type: 'text', text: texto + '\n\n[Adjuntos recibidos: ' + adjuntos.map(a => a.id + ' (' + a.mime + (a.nombre ? ', ' + a.nombre : '') + ')').join('; ') + ']' },
+  ] : texto;
+  const mensajes = [...previo, { role: 'user', content: bloquesUsuario }];
   let respuesta = '';
   for (let vuelta = 0; vuelta < 7; vuelta++) {
-    const out = await callClaude({ system: sistema(mem), messages: mensajes, tools: TOOLS, maxTokens: 900 });
+    const out = await callClaude({ system: sistema(mem), messages: mensajes, tools: TOOLS, maxTokens: 2500 });
     const bloques = out.content || [];
     const usos = bloques.filter(b => b.type === 'tool_use');
     if (out.stop_reason !== 'tool_use' || !usos.length) { respuesta = bloques.filter(b => b.type === 'text').map(b => b.text).join('\n').trim(); break; }
     mensajes.push({ role: 'assistant', content: bloques });
     const resultados = [];
-    for (const u of usos) { let r; try { r = await ejecutar(u.name, u.input || {}); } catch (e) { r = { error: e.message }; } resultados.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(r).slice(0, 6000) }); }
+    for (const u of usos) { let r; try { r = await ejecutar(u.name, u.input || {}, ctx); } catch (e) { r = { error: e.message }; } resultados.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(r).slice(0, 6000) }); }
     mensajes.push({ role: 'user', content: resultados });
   }
   if (!respuesta) respuesta = 'Me he liado un poco con eso. ¿Me lo repites con otras palabras?';
-  charla[chatId] = [...previo, { role: 'user', content: texto }, { role: 'assistant', content: respuesta }].slice(-30);
+  charla[chatId] = [...previo, { role: 'user', content: texto + (adjuntos.length ? ' [adjuntó ' + adjuntos.length + ' archivo(s)]' : '') }, { role: 'assistant', content: respuesta }].slice(-30);
   try { await guardarJson(RUTA_CHARLA, charla); } catch (e) { console.error('Asistente: no se pudo guardar la conversación:', e.message); }
-  return respuesta;
+  return { texto: respuesta, archivos: ctx.salida };
 }
