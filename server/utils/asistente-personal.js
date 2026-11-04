@@ -17,6 +17,7 @@ export const RUTA_RECORD = 'crm/asistente/recordatorios.json';
 export const RUTA_DIARIO = 'crm/asistente/diario.json';
 export const RUTA_PRIV = 'crm/asistente/privado.json'; // recuerdos personales: NO se ven en el CRM
 const RUTA_AG = 'crm/asistente/agentes.json';
+const RUTA_ACC = 'crm/asistente/acciones.json';
 const BASE_INTERNA = 'http://127.0.0.1:' + (process.env.PORT || 3001);
 const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
 const FASES = ['Diseño previo', 'Arquitectura', 'Instalaciones', 'Interiorismo y materialidad', 'Maquinaria y equipamiento', 'Documentación de apoyo'];
@@ -45,7 +46,11 @@ export async function guardarJson(ruta, obj) {
 function madrid() {
   const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', weekday: 'long' }).formatToParts(new Date());
   const g = (t) => p.find(x => x.type === t)?.value;
-  return { fecha: g('year') + '-' + g('month') + '-' + g('day'), hora: g('hour') + ':' + g('minute'), dia: g('weekday') };
+  return { fecha: g('year') + '-' + g('month') + '-' + g('day'), hora: g('hour') + ':' + g('minute'), dia: new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long' }).format(new Date()) };
+}
+function calendario() {
+  const fmt = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long' }), iso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' });
+  return Array.from({ length: 21 }, (_, i) => { const d = new Date(Date.now() + i * 86400000); return (i === 0 ? 'HOY ' : i === 1 ? 'MAÑANA ' : '') + fmt.format(d) + ' = ' + iso.format(d); }).join('\n');
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const limpia = (s) => String(s || '').replace(/[%,()]/g, ' ').trim();
@@ -73,6 +78,7 @@ const TOOLS = [
   { name: 'contexto_proyecto', description: 'Todo lo que hay de un proyecto para poder asesorar y desglosar trabajo: ficha, fase, urgencia, resumen del cliente y programa de necesidades, equipos y materiales elegidos, documentos y renders que ya existen, y tareas pendientes. Úsala antes de desglosar una tarea o dar consejo de un proyecto concreto.', input_schema: { type: 'object', properties: { proyecto: { type: 'string' } }, required: ['proyecto'] } },
   { name: 'plantillas_fase', description: 'Las plantillas de tareas que Ranuse tiene definidas para cada fase del proyecto (0-5). Úsalas como base al desglosar el trabajo de una fase y complétalas con tu criterio. fase vacía = todas.', input_schema: { type: 'object', properties: { fase: { type: 'number' } } } },
   { name: 'crear_subtareas', description: 'Crea de una vez los pasos de un desglose como tareas del proyecto (hasta 12). Cada paso: titulo (concreto y empezando por un verbo), fecha opcional AAAA-MM-DD, prioridad opcional, asignada_a opcional. Úsala SOLO cuando Víctor haya aceptado el desglose. Salta las que ya existen.', input_schema: { type: 'object', properties: { proyecto: { type: 'string' }, fase: { type: 'number' }, pasos: { type: 'array', items: { type: 'object', properties: { titulo: { type: 'string' }, fecha: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, asignada_a: { type: 'string' } }, required: ['titulo'] } } }, required: ['proyecto', 'pasos'] } },
+  { name: 'listar_eventos', description: 'Eventos y citas del calendario de los próximos días (por defecto 14), con fecha y hora. busqueda filtra por texto. Úsala para saber qué tiene Víctor apuntado en la agenda y ANTES de decir que no tienes algo.', input_schema: { type: 'object', properties: { dias: { type: 'number' }, busqueda: { type: 'string' } } } },
   { name: 'listar_tareas', description: 'Lista TODAS las tareas pendientes (con fecha y sin fecha), ordenadas: atrasadas, de hoy, próximas y sin fecha. Cada una con id, título, fecha, prioridad, a quién está asignada y de qué proyecto (con su urgencia). de = nombre de una persona para filtrar; proyecto = para filtrar por proyecto. Úsala siempre que Víctor pida sus tareas, lo que tiene pendiente o ayuda para organizarse.', input_schema: { type: 'object', properties: { de: { type: 'string' }, proyecto: { type: 'string' } } } },
   { name: 'actualizar_tarea', description: 'Cambia una tarea existente: fecha (AAAA-MM-DD), prioridad, título o a quién se asigna. Úsala para organizar el día de Víctor cuando él te lo pida o acepte tu plan (por ejemplo, ponerle fecha de hoy a las tareas que acordéis).', input_schema: { type: 'object', properties: { id: { type: 'string' }, fecha: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, titulo: { type: 'string' }, asignada_a: { type: 'string' } }, required: ['id'] } },
   { name: 'listar_proyectos', description: 'Proyectos en marcha (nombre, cliente, fase). Con "busqueda" filtra por nombre o cliente.', input_schema: { type: 'object', properties: { busqueda: { type: 'string' } } } },
@@ -105,10 +111,10 @@ const TOOLS = [
 // Palabras clave de un texto (sin tildes, sin palabras cortas ni de relleno) para detectar cosas ya apuntadas que se parecen
 const RELLENO = new Set(['para', 'hacer', 'tengo', 'tiene', 'esto', 'este', 'esta', 'sobre', 'cosa', 'tarea', 'revisar', 'hablar', 'llamar', 'enviar', 'mandar', 'preparar', 'terminar']);
 const palabras = (t) => new Set(String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3 && !RELLENO.has(w)));
-const seParecen = (a, b) => { const A = palabras(a), B = palabras(b); if (!A.size || !B.size) return false; let c = 0; A.forEach(w => { if (B.has(w)) c++; }); return c / Math.min(A.size, B.size) >= 0.6 || c >= 2; };
+const seParecen = (a, b) => { const A = palabras(a), B = palabras(b); if (!A.size || !B.size) return false; let c = 0; A.forEach(w => { if (B.has(w)) c++; }); return (c >= 2 && c / Math.min(A.size, B.size) >= 0.67) || c >= 3; };
 async function tareasParecidas(titulo, projectId) {
   const { data } = await supabase.from('tasks').select('id, title, due_date, priority, project:client_projects(client_name, project_name)').eq('done', false).limit(500);
-  return (data || []).filter(t => seParecen(titulo, t.title + ' ' + (t.project?.project_name || t.project?.client_name || ''))).slice(0, 5).map(t => ({ id: t.id, titulo: t.title, fecha: t.due_date, proyecto: t.project ? (t.project.project_name || t.project.client_name) : null }));
+  return (data || []).filter(t => seParecen(titulo, t.title)).slice(0, 5).map(t => ({ id: t.id, titulo: t.title, fecha: t.due_date, proyecto: t.project ? (t.project.project_name || t.project.client_name) : null }));
 }
 async function formPor(pid) {
   const { data: ex } = await supabase.from('project_needs_forms').select('id').eq('project_id', pid).maybeSingle(); if (ex) return ex;
@@ -170,6 +176,13 @@ async function ejecutar(nombre, input, ctx = {}) {
       const { error } = await supabase.from('tasks').insert(fila); if (error) { saltadas.push(titulo + ' (error)'); continue; } creadas.push(titulo);
     }
     return { proyecto: p.project_name || p.client_name, creadas, ya_existian_o_fallaron: saltadas };
+  }
+  if (nombre === 'listar_eventos') {
+    const n = Math.min(60, Math.max(1, Math.round(Number(input.dias)) || 14)), hasta = new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    const { data, error } = await supabase.from('events').select('title, date, time, description').gte('date', fecha).lte('date', hasta).neq('done', true).order('date', { ascending: true }).order('time', { ascending: true, nullsFirst: true }).limit(120);
+    if (error) return { error: 'No se pudo leer el calendario.' };
+    const b = limpia(input.busqueda).toLowerCase();
+    return { eventos: (data || []).filter(e => !b || (e.title + ' ' + (e.description || '')).toLowerCase().includes(b)).map(e => ({ fecha: e.date, hora: e.time ? e.time.slice(0, 5) : null, titulo: e.title, nota: e.description })) };
   }
   if (nombre === 'listar_tareas') {
     let q = supabase.from('tasks').select('id, title, due_date, priority, assigned_to, project_id, project:client_projects(client_name, project_name, urgency)').eq('done', false).limit(400);
@@ -405,6 +418,8 @@ async function ejecutar(nombre, input, ctx = {}) {
   if (nombre === 'recordar') {
     const texto = String(input.texto || '').trim().slice(0, 600); if (!texto) return { error: 'Nada que recordar.' };
     const ruta = input.privado ? RUTA_PRIV : RUTA_MEM, mem = await leerJson(ruta, { hechos: [] });
+    const yaEsta = mem.hechos.find(h => seParecen(texto, h.texto) && palabras(texto).size >= 4 && (() => { const A = palabras(texto), B = palabras(h.texto); let c = 0; A.forEach(w => { if (B.has(w)) c++; }); return c / Math.max(A.size, B.size) >= 0.7; })());
+    if (yaEsta) return { guardado: false, ya_estaba: true, id: yaEsta.id, nota: 'Ya tenías recordado algo casi igual; no lo he duplicado.' };
     const hecho = { id: crypto.randomUUID().slice(0, 6), texto, etiqueta: String(input.etiqueta || '').slice(0, 30) || null, fecha };
     mem.hechos.push(hecho); if (mem.hechos.length > 400) mem.hechos = mem.hechos.slice(-400);
     await guardarJson(ruta, mem);
@@ -434,10 +449,11 @@ async function ejecutar(nombre, input, ctx = {}) {
   return { error: 'Herramienta desconocida.' };
 }
 
-function sistema(mem, priv) {
+function sistema(mem, priv, acc) {
   const { fecha, hora, dia } = madrid();
   const hechos = (mem.hechos || []).slice(-120).map(h => '- [' + h.id + '] ' + (h.etiqueta ? '(' + h.etiqueta + ') ' : '') + h.texto + ' (' + h.fecha + ')').join('\n') || '(todavía no hay recuerdos guardados)';
   return 'Eres el asistente personal de Víctor Palomo, fundador de Ranuse Design (diseño de espacios deportivos y gimnasios). Hablas con él por mensajería, desde el móvil. Ahora es ' + dia + ' ' + fecha + ', ' + hora + ' (hora de Madrid).\n' +
+    'CALENDARIO (úsalo tal cual para resolver "mañana", "el viernes", "el lunes que viene"; NUNCA calcules de cabeza el día de la semana):\n' + calendario() + '\n' +
     '- Español, tono cercano y directo, como un compañero de confianza. Sin markdown (solo *negrita* con un asterisco si hace falta). Víctor no es técnico: sin jerga.\n' +
     '- BREVEDAD, REGLA DURA: Víctor NO lee mensajes largos. Responde en 1 a 4 líneas (unas 50 palabras) por defecto. Primero la respuesta o la acción hecha, sin saludos ni rodeos ni resúmenes de lo que acabas de hacer. Listas de 5 elementos como máximo y cada uno en una línea. Si hay mucho que contar, da lo esencial y pregunta "¿quieres el detalle?", o ofrécelo en PDF con crear_pdf. Haz como máximo UNA pregunta por mensaje. Si pide explícitamente algo largo (informe, guion, análisis), entonces sí, pero en PDF o en trozos que se lean en 20 segundos.\n' +
     '- Tienes MEMORIA permanente: usa la herramienta recordar cuando te cuente algo que convenga tener presente, sin que te lo pida, y confírmalo en pocas palabras. Nunca digas que no puedes recordar.\n' +
@@ -445,6 +461,7 @@ function sistema(mem, priv) {
     '- DIARIO Y APRENDIZAJE: cuando Víctor te cuente lo que ha hecho (o contestes a tu pregunta de "¿qué has hecho hoy?"), apúntalo con apuntar_diario, marca como hechas las tareas que correspondan (listar_tareas + completar_tarea; si dudas de cuál es, pregunta), crea las tareas que falten y aprende: guarda con recordar los patrones útiles de cómo trabaja (cuánto tarda de verdad en cada cosa, qué se le atasca, procesos que repite, decisiones de diseño y su porqué). Responde con 1-2 líneas y, si ves algo útil (un retraso, algo que se repite), dilo.\n' +
     '- ERES UN EXPERTO, NO UN SECRETARIO. Víctor apunta tareas grandes ("diseño de Josema") y a veces no sabe desglosarlas: ayúdale a partir el trabajo en pasos concretos y ordenados. Primero reúne el contexto (contexto_proyecto y plantillas_fase), luego propón un desglose de hasta 8 pasos, una línea cada uno, con verbo, orden lógico, qué depende de qué y una estimación de horas; señala qué información falta pedirle al cliente. Termina preguntando si lo creas como tareas (crear_subtareas, solo con su sí). Piensa como un diseñador senior de espacios deportivos: circulaciones y distancias de seguridad entre máquinas, cargas y puntos eléctricos, suelos y acústica, ventilación y climatización, normativa, plazos de proveedores y obra, presupuesto. Da tu criterio y opinión con franqueza.\n' +
     '- Así trabaja Ranuse por fases: 0 Diseño previo (servicio de pago: renders y tour 3D; si el cliente sigue, continúa en la fase 1), 1 Arquitectura (planos: estado actual, cotas, demoliciones, distribución, implantación; docs A.01-A.04), 2 Instalaciones (IE.01 eléctrica, IE.02 climatización y fontanería si hace falta; C.01/F.01 de terceros), 3 Interiorismo y materialidad (I.01-I.03, renders R.01, tour virtual TV.01), 4 Maquinaria y equipamiento (M.02-M.03), 5 Documentación de apoyo (D.02, D.04).\n' +
+    '- NO TE OLVIDES DE LO QUE TE DICE: antes de contestar que algo no lo tienes apuntado o que no te lo ha dicho, repasa la conversación, lo que has hecho tú últimamente (más abajo), las tareas (listar_tareas) y el calendario (listar_eventos). Si Víctor dice que ya te lo dijo, créele: normalmente es verdad. Nunca le hagas repetir algo que ya está apuntado. Una cita o quedada con hora va al calendario (crear_evento); una cosa por hacer, a tareas.\n' +
     '- AVÍSALE DE LO YA APUNTADO: cuando Víctor te diga que tiene que hacer algo, antes de crear nada mira si ya hay algo relacionado (listar_tareas) y, si lo hay, recuérdaselo: "ya tenías apuntado X para el día Y, ¿lo cambio o lo sumo?". Si una herramienta te devuelve posible_duplicado, no insistas en crearlo: cuéntale lo que ya había y pregúntale.\n' +
     '- TAREAS Y ORGANIZACIÓN: cuando pida sus tareas, lo pendiente o ayuda para organizarse, usa listar_tareas y dale TODAS, no un resumen: agrupadas (atrasadas, hoy, próximas, sin fecha), una línea por tarea con su proyecto; si son más de 15, agrúpalas por proyecto con el número y ofrécele el listado completo en PDF. Después, SIEMPRE, propón su plan: las 3 prioridades de hoy en orden ("1. … 2. … 3. …") justificadas en una frase cada una (plazos, urgencia del proyecto, lo que desbloquea a otros) y pregunta si le pones fecha de hoy a esas tareas; si dice que sí, usa actualizar_tarea. Ve guiándole: cuando termine algo, ofrécele lo siguiente.\n' +
     '- Cuando Víctor salude por la mañana o pregunte por su día, llama a agenda_de_hoy y dáselo ordenado: primero lo atrasado y urgente, luego lo de hoy, y los eventos con hora. Termina con una sugerencia breve de por dónde empezar.\n' +
@@ -462,7 +479,27 @@ function sistema(mem, priv) {
     '- OLVIDAR: tu memoria vive en el servidor, no en el chat de WhatsApp: si Víctor borra la conversación en su móvil, sigues recordando. Si quiere que olvides algo concreto, usa olvidar (tienes los ids); si quiere empezar de cero la conversación, borrar_conversacion; si quiere borrar toda la memoria, pregúntale si está seguro y solo con su sí explícito usa vaciar_memoria (deja una copia: si se arrepiente, restaurar_memoria). Para borrar varias cosas concretas, usa olvidar una vez por cada una. Si te pregunta qué sabes de él, díselo con franqueza, incluido lo privado (solo habla contigo él).\n' +
     '- LO PERSONAL ES PRIVADO: si Víctor te habla de cosas personales (familia, salud, ánimo, dinero, relaciones, dudas vitales), ayúdale como un amigo con criterio y cercanía, llama a marcar_conversacion_privada, guarda lo importante con recordar y privado=true, y NUNCA lo conviertas en tareas, eventos, notas de proyecto ni nada que se vea en el CRM salvo que él te lo pida expresamente. Nunca menciones lo personal en resúmenes del día ni en informes.\n\n' +
     'Lo que recuerdas del trabajo:\n' + hechos +
-    '\n\nRecuerdos PERSONALES de Víctor (privados; úsalos para ayudarle pero no los muestres ni los saques si no viene a cuento):\n' + ((priv.hechos || []).slice(-60).map(h => '- [' + h.id + '] ' + h.texto).join('\n') || '(ninguno)');
+    '\n\nRecuerdos PERSONALES de Víctor (privados; úsalos para ayudarle pero no los muestres ni los saques si no viene a cuento):\n' + ((priv.hechos || []).slice(-60).map(h => '- [' + h.id + '] ' + h.texto).join('\n') || '(ninguno)') +
+    '\n\nLO QUE HAS HECHO TÚ en el CRM últimamente (no lo olvides ni lo repitas; si Víctor dice que ya te lo dijo, créele y compruébalo aquí y en la conversación):\n' + (((acc && acc.l) || []).slice(-25).map(a => '- ' + a.t + ' · ' + a.x).join('\n') || '(nada todavía)');
+}
+
+// Frase corta de lo que se ha hecho de verdad en el CRM (para que no se pierda aunque la conversación se corte)
+function resumenAccion(n, i, r) {
+  if (!r || r.error || r.posible_duplicado) return null;
+  const f = {
+    crear_tarea: () => 'creada tarea "' + (r.titulo || i.titulo) + '"' + (r.fecha ? ' para el ' + r.fecha : '') + (r.proyecto ? ' (' + r.proyecto + ')' : ''),
+    crear_evento: () => 'creado evento "' + (r.titulo || i.titulo) + '" el ' + (r.fecha || i.fecha) + (r.hora ? ' a las ' + String(r.hora).slice(0, 5) : ''),
+    actualizar_tarea: () => 'actualizada tarea "' + (r.titulo || '') + '"' + (r.fecha ? ' → ' + r.fecha : ''),
+    completar_tarea: () => 'marcada como hecha "' + (r.titulo || '') + '"',
+    crear_subtareas: () => 'creadas ' + (r.creadas || []).length + ' tareas en ' + r.proyecto,
+    recordatorio: () => 'programado aviso para ' + r.para + ': ' + String(i.texto || '').slice(0, 80),
+    recordar: () => 'recordado' + (r.privado ? ' (privado)' : '') + ': ' + String(i.texto || '').slice(0, 90),
+    apuntar_diario: () => 'apuntado en el diario: ' + String(i.resumen || '').slice(0, 90),
+    guardar_nota_proyecto: () => 'guardada nota "' + String(i.titulo || '').slice(0, 60) + '" en ' + (r.donde || ''),
+    guardar_adjunto: () => 'guardado un archivo en ' + (r.donde || ''),
+    crear_proveedor: () => 'creado proveedor ' + (r.nombre || ''),
+  }[n];
+  return f ? f() : null;
 }
 
 // Un resultado de herramienta puede traer imágenes (__imagenes: urls): se descargan y se le enseñan a Claude.
@@ -478,8 +515,9 @@ async function aContenido(r) {
 
 // Devuelve el texto de respuesta. chatId separa conversaciones (WhatsApp / Telegram).
 export async function responderAsistente({ chatId, texto, adjuntos = [], avisar = null }) {
-  const [mem, charla, priv] = await Promise.all([leerJson(RUTA_MEM, { hechos: [] }), leerJson(RUTA_CHARLA, {}), leerJson(RUTA_PRIV, { hechos: [] })]);
-  const previoCrudo = (charla[chatId] || []).slice(-20), previo = previoCrudo.map(m => ({ role: m.role, content: m.content }));
+  const [mem, charla, priv, acc] = await Promise.all([leerJson(RUTA_MEM, { hechos: [] }), leerJson(RUTA_CHARLA, {}), leerJson(RUTA_PRIV, { hechos: [] }), leerJson(RUTA_ACC, { l: [] })]);
+  if (!Array.isArray(acc.l)) acc.l = [];
+  const previoCrudo = (charla[chatId] || []).slice(-40), previo = previoCrudo.map(m => ({ role: m.role, content: m.content }));
   const ctx = { adjuntos, textoUsuario: texto, salida: [], avisar };
   const bloquesUsuario = adjuntos.length ? [
     ...adjuntos.filter(a => /^image\/(jpeg|png|webp|gif)$/.test(a.mime)).map(a => ({ type: 'image', source: { type: 'base64', media_type: a.mime, data: a.buffer.toString('base64') } })),
@@ -489,17 +527,18 @@ export async function responderAsistente({ chatId, texto, adjuntos = [], avisar 
   const mensajes = [...previo, { role: 'user', content: bloquesUsuario }];
   let respuesta = '';
   for (let vuelta = 0; vuelta < 7; vuelta++) {
-    const out = await callClaude({ system: sistema(mem, priv), messages: mensajes, tools: TOOLS, maxTokens: 2500 });
+    const out = await callClaude({ system: sistema(mem, priv, acc), messages: mensajes, tools: TOOLS, maxTokens: 2500 });
     const bloques = out.content || [];
     const usos = bloques.filter(b => b.type === 'tool_use');
     if (out.stop_reason !== 'tool_use' || !usos.length) { respuesta = bloques.filter(b => b.type === 'text').map(b => b.text).join('\n').trim(); break; }
     mensajes.push({ role: 'assistant', content: bloques });
     const resultados = [];
-    for (const u of usos) { let r; try { r = await ejecutar(u.name, u.input || {}, ctx); } catch (e) { r = { error: e.message }; } resultados.push({ type: 'tool_result', tool_use_id: u.id, content: await aContenido(r) }); }
+    for (const u of usos) { let r; try { r = await ejecutar(u.name, u.input || {}, ctx); } catch (e) { r = { error: e.message }; } { const ac = resumenAccion(u.name, u.input || {}, r); if (ac) { const m = madrid(); acc.l.push({ t: m.fecha + ' ' + m.hora, x: ac }); } } resultados.push({ type: 'tool_result', tool_use_id: u.id, content: await aContenido(r) }); }
     mensajes.push({ role: 'user', content: resultados });
   }
   if (!respuesta) respuesta = 'Me he liado un poco con eso. ¿Me lo repites con otras palabras?';
-  charla[chatId] = ctx.borrarCharla ? [] : [...previoCrudo, { role: 'user', content: texto + (adjuntos.length ? ' [adjuntó ' + adjuntos.length + ' archivo(s)]' : ''), ...(ctx.privado ? { privado: true } : {}) }, { role: 'assistant', content: respuesta, ...(ctx.privado ? { privado: true } : {}) }].slice(-30);
+  charla[chatId] = ctx.borrarCharla ? [] : [...previoCrudo, { role: 'user', content: texto + (adjuntos.length ? ' [adjuntó ' + adjuntos.length + ' archivo(s)]' : ''), ...(ctx.privado ? { privado: true } : {}) }, { role: 'assistant', content: respuesta, ...(ctx.privado ? { privado: true } : {}) }].slice(-80);
+  try { acc.l = acc.l.slice(-60); await guardarJson(RUTA_ACC, acc); } catch { /* no crítico */ }
   try { await guardarJson(RUTA_CHARLA, charla); } catch (e) { console.error('Asistente: no se pudo guardar la conversación:', e.message); }
   return { texto: respuesta, archivos: ctx.salida };
 }
