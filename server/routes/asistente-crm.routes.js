@@ -68,4 +68,11 @@ router.get('/conversacion', async (req, res) => {
   } catch { res.status(500).json({ error: 'No se pudo leer la conversación' }); }
 });
 
+router.delete('/conversacion', async (req, res) => {
+  try {
+    const c = await leerJson(RUTA_CHARLA, {}); for (const k of Object.keys(c)) if (/^(wa|tg):/.test(k)) delete c[k];
+    await guardarJson(RUTA_CHARLA, c); res.json({ ok: true });
+  } catch { res.status(500).json({ error: 'No se pudo borrar la conversación' }); }
+});
+
 export default router;

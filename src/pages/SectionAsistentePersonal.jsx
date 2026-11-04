@@ -90,7 +90,10 @@ function Conversacion() {
   useEffect(() => { api.get('/asistente-personal/conversacion').then(r => setM(r.data.mensajes || [])).catch(() => setM([])); }, []);
   return (
     <div>
-      <p style={{ ...mut, marginBottom: 12 }}>Lo último que habéis hablado (solo lectura).</p>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <p style={{ ...mut, flex: 1, minWidth: 200, margin: 0 }}>Lo último que habéis hablado. Los temas personales no salen aquí. Borrar la conversación no borra su memoria (eso se hace en la pestaña Memoria).</p>
+        <button className="ap-btn ap-btn-sm" disabled={!m?.length} onClick={async () => { if (!window.confirm('¿Borrar la conversación? La memoria se mantiene.')) return; try { await api.delete('/asistente-personal/conversacion'); setM([]); } catch { /* sin cambios */ } }}><Trash2 size={13} /> Borrar conversación</button>
+      </div>
       {m === null ? <div className="ap-loading">Cargando…</div> : m.length === 0 ? <div style={mut}>Todavía no habéis hablado.</div> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {m.map((x, i) => <div key={i} style={{ ...card, alignSelf: x.rol === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', background: x.rol === 'user' ? 'rgba(190,176,162,0.12)' : card.background }}><div style={{ ...mut, marginBottom: 3 }}>{x.rol === 'user' ? 'Tú' : 'Asistente'} · {x.canal}</div><div style={{ fontSize: '0.88rem', whiteSpace: 'pre-wrap' }}>{x.texto}</div></div>)}
