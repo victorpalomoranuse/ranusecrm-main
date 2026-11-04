@@ -67,11 +67,13 @@ async function empleadoPor(nombre) {
 
 const TOOLS = [
   { name: 'agenda_de_hoy', description: 'Tareas pendientes que vencen hoy o están atrasadas, tareas sin fecha y eventos de hoy. Úsala cuando Víctor salude por la mañana, pregunte qué tiene que hacer o cómo va el día.', input_schema: { type: 'object', properties: {} } },
+  { name: 'listar_tareas', description: 'Lista TODAS las tareas pendientes (con fecha y sin fecha), ordenadas: atrasadas, de hoy, próximas y sin fecha. Cada una con id, título, fecha, prioridad, a quién está asignada y de qué proyecto (con su urgencia). de = nombre de una persona para filtrar; proyecto = para filtrar por proyecto. Úsala siempre que Víctor pida sus tareas, lo que tiene pendiente o ayuda para organizarse.', input_schema: { type: 'object', properties: { de: { type: 'string' }, proyecto: { type: 'string' } } } },
+  { name: 'actualizar_tarea', description: 'Cambia una tarea existente: fecha (AAAA-MM-DD), prioridad, título o a quién se asigna. Úsala para organizar el día de Víctor cuando él te lo pida o acepte tu plan (por ejemplo, ponerle fecha de hoy a las tareas que acordéis).', input_schema: { type: 'object', properties: { id: { type: 'string' }, fecha: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, titulo: { type: 'string' }, asignada_a: { type: 'string' } }, required: ['id'] } },
   { name: 'listar_proyectos', description: 'Proyectos en marcha (nombre, cliente, fase). Con "busqueda" filtra por nombre o cliente.', input_schema: { type: 'object', properties: { busqueda: { type: 'string' } } } },
   { name: 'ver_proyecto', description: 'Ficha de un proyecto: fase, urgencia y tareas pendientes. "proyecto" puede ser parte del nombre, del cliente o el id.', input_schema: { type: 'object', properties: { proyecto: { type: 'string' } }, required: ['proyecto'] } },
-  { name: 'crear_tarea', description: 'Crea una tarea en el CRM. fecha en formato AAAA-MM-DD (resuelve "mañana", "el viernes"… con la fecha de hoy). proyecto y asignada_a son opcionales (nombre parcial).', input_schema: { type: 'object', properties: { titulo: { type: 'string' }, fecha: { type: 'string' }, proyecto: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, asignada_a: { type: 'string' }, descripcion: { type: 'string' } }, required: ['titulo'] } },
+  { name: 'crear_tarea', description: 'Crea una tarea en el CRM. fecha en formato AAAA-MM-DD (resuelve "mañana", "el viernes"… con la fecha de hoy). proyecto y asignada_a son opcionales (nombre parcial).', input_schema: { type: 'object', properties: { titulo: { type: 'string' }, fecha: { type: 'string' }, proyecto: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, asignada_a: { type: 'string' }, descripcion: { type: 'string' }, forzar: { type: 'boolean', description: 'true solo si Víctor ya ha confirmado que quiere crearla aunque exista algo parecido' } }, required: ['titulo'] } },
   { name: 'completar_tarea', description: 'Marca una tarea como hecha (usa el id que devolvió agenda_de_hoy o ver_proyecto).', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
-  { name: 'crear_evento', description: 'Crea un evento en el calendario del CRM.', input_schema: { type: 'object', properties: { titulo: { type: 'string' }, fecha: { type: 'string', description: 'AAAA-MM-DD' }, hora: { type: 'string', description: 'HH:MM, opcional' }, descripcion: { type: 'string' } }, required: ['titulo', 'fecha'] } },
+  { name: 'crear_evento', description: 'Crea un evento en el calendario del CRM.', input_schema: { type: 'object', properties: { titulo: { type: 'string' }, fecha: { type: 'string', description: 'AAAA-MM-DD' }, hora: { type: 'string', description: 'HH:MM, opcional' }, descripcion: { type: 'string' }, forzar: { type: 'boolean', description: 'true solo si Víctor ya ha confirmado que quiere crearlo aunque haya algo parecido ese día' } }, required: ['titulo', 'fecha'] } },
   { name: 'guardar_adjunto', description: 'Guarda una foto o documento que Víctor te acaba de mandar (adjunto con su id, p. ej. "a1"). destino: "necesidades" = fotos del programa de necesidades del proyecto; "obra" = fotos de una visita a obra; "documento" = archivo en los Documentos del proyecto; "referencia" = imagen de inspiración (sin proyecto, tablero general de referencias). Para todo menos "referencia" hace falta el proyecto. Si no está claro el proyecto o el destino, pregunta antes de guardar.', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, destino: { type: 'string', enum: ['necesidades', 'obra', 'documento', 'referencia'] }, proyecto: { type: 'string' }, titulo: { type: 'string', description: 'título o pie de foto breve' }, nota: { type: 'string', description: 'detalle: qué se ve, qué te gusta, qué hay que tener en cuenta' }, categoria: { type: 'string', description: 'solo referencias: tipo de espacio o estilo' } }, required: ['adjunto', 'destino'] } },
   { name: 'guardar_nota_proyecto', description: 'Guarda una nota en los Documentos de un proyecto: acta de reunión, resumen de visita a obra, transcripción, decisiones. Escribe un resumen ordenado (acuerdos, medidas, decisiones, pendientes). Con incluir_original=true se adjunta además, tal cual, el mensaje completo de Víctor (útil para transcripciones largas: no las copies tú).', input_schema: { type: 'object', properties: { proyecto: { type: 'string' }, titulo: { type: 'string' }, tipo: { type: 'string', enum: ['reunion', 'obra', 'nota'] }, resumen: { type: 'string' }, incluir_original: { type: 'boolean' } }, required: ['proyecto', 'titulo', 'resumen'] } },
   { name: 'crear_proveedor', description: 'Crea un proveedor/contacto nuevo en el CRM (Contactos). sector = su oficio o a qué se dedica.', input_schema: { type: 'object', properties: { nombre: { type: 'string' }, sector: { type: 'string' }, telefono: { type: 'string' }, email: { type: 'string' }, web: { type: 'string' }, descripcion: { type: 'string' } }, required: ['nombre'] } },
@@ -94,6 +96,14 @@ const TOOLS = [
   { name: 'olvidar', description: 'Borra un recuerdo de tu memoria por su id.', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
 ];
 
+// Palabras clave de un texto (sin tildes, sin palabras cortas ni de relleno) para detectar cosas ya apuntadas que se parecen
+const RELLENO = new Set(['para', 'hacer', 'tengo', 'tiene', 'esto', 'este', 'esta', 'sobre', 'cosa', 'tarea', 'revisar', 'hablar', 'llamar', 'enviar', 'mandar', 'preparar', 'terminar']);
+const palabras = (t) => new Set(String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3 && !RELLENO.has(w)));
+const seParecen = (a, b) => { const A = palabras(a), B = palabras(b); if (!A.size || !B.size) return false; let c = 0; A.forEach(w => { if (B.has(w)) c++; }); return c / Math.min(A.size, B.size) >= 0.6 || c >= 2; };
+async function tareasParecidas(titulo, projectId) {
+  const { data } = await supabase.from('tasks').select('id, title, due_date, priority, project:client_projects(client_name, project_name)').eq('done', false).limit(500);
+  return (data || []).filter(t => seParecen(titulo, t.title + ' ' + (t.project?.project_name || t.project?.client_name || ''))).slice(0, 5).map(t => ({ id: t.id, titulo: t.title, fecha: t.due_date, proyecto: t.project ? (t.project.project_name || t.project.client_name) : null }));
+}
 async function formPor(pid) {
   const { data: ex } = await supabase.from('project_needs_forms').select('id').eq('project_id', pid).maybeSingle(); if (ex) return ex;
   const { data, error } = await supabase.from('project_needs_forms').insert({ project_id: pid }).select('id').single(); if (error) throw error; return data;
@@ -110,6 +120,28 @@ async function ejecutar(nombre, input, ctx = {}) {
     const t = (tareas || []).map(x => ({ id: x.id, titulo: x.title, fecha: x.due_date, atrasada: !!x.due_date && x.due_date < fecha, prioridad: x.priority, de: nom[x.assigned_to] || null, proyecto: x.project ? (x.project.project_name || x.project.client_name) : null }));
     return { hoy: fecha, tareas_hoy_y_atrasadas: t.filter(x => x.fecha && x.fecha <= fecha).slice(0, 25), tareas_sin_fecha: t.filter(x => !x.fecha).length, eventos_hoy: (eventos || []).map(e => ({ hora: e.time ? e.time.slice(0, 5) : null, titulo: e.title, nota: e.description })) };
   }
+  if (nombre === 'listar_tareas') {
+    let q = supabase.from('tasks').select('id, title, due_date, priority, assigned_to, project_id, project:client_projects(client_name, project_name, urgency)').eq('done', false).limit(400);
+    if (input.proyecto) { const p = await proyectoPor(input.proyecto); if (!p) return { error: 'No encuentro ese proyecto.' }; q = q.eq('project_id', p.id); }
+    if (input.de) { const e = await empleadoPor(input.de); if (!e) return { error: 'No encuentro a "' + input.de + '" en el equipo.' }; q = q.eq('assigned_to', e.id); }
+    const [{ data: ts, error }, { data: emp }] = await Promise.all([q, supabase.from('employees').select('id, name')]);
+    if (error) return { error: 'No se pudieron leer las tareas.' };
+    const nom = Object.fromEntries((emp || []).map(e => [e.id, e.name.split(' ')[0]]));
+    const orden = (a, b) => (a.due_date && b.due_date ? a.due_date.localeCompare(b.due_date) : a.due_date ? -1 : b.due_date ? 1 : 0);
+    const f = x => ({ id: x.id, titulo: x.title, fecha: x.due_date || null, prioridad: x.priority, de: nom[x.assigned_to] || 'sin asignar', proyecto: x.project ? (x.project.project_name || x.project.client_name) : null, urgencia_proyecto: x.project?.urgency || null });
+    const todas = (ts || []).slice().sort(orden);
+    return { hoy: fecha, total_pendientes: todas.length, atrasadas: todas.filter(x => x.due_date && x.due_date < fecha).map(f), de_hoy: todas.filter(x => x.due_date === fecha).map(f), proximas: todas.filter(x => x.due_date && x.due_date > fecha).slice(0, 30).map(f), sin_fecha: todas.filter(x => !x.due_date).slice(0, 60).map(f) };
+  }
+  if (nombre === 'actualizar_tarea') {
+    if (!UUID.test(String(input.id || ''))) return { error: 'Id de tarea no válido.' };
+    const cambios = {}; if (input.fecha !== undefined) { if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fecha)) return { error: 'La fecha debe ser AAAA-MM-DD.' }; cambios.due_date = input.fecha; }
+    if (input.prioridad) cambios.priority = input.prioridad; if (input.titulo) cambios.title = String(input.titulo).trim().slice(0, 200);
+    if (input.asignada_a) { const e = await empleadoPor(input.asignada_a); if (!e) return { error: 'No encuentro a "' + input.asignada_a + '".' }; cambios.assigned_to = e.id; }
+    if (!Object.keys(cambios).length) return { error: 'No hay nada que cambiar.' };
+    const { data, error } = await supabase.from('tasks').update(cambios).eq('id', input.id).select('id, title, due_date, priority').maybeSingle();
+    if (error || !data) return { error: 'No he podido actualizar la tarea.' };
+    return { actualizada: true, titulo: data.title, fecha: data.due_date, prioridad: data.priority };
+  }
   if (nombre === 'listar_proyectos') {
     let q = supabase.from('client_projects').select('id, client_name, project_name, phase, urgency').eq('status', 'en_marcha').eq('active', true).order('created_at', { ascending: false }).limit(40);
     const b = limpia(input.busqueda); if (b) q = q.or('client_name.ilike.%' + b + '%,project_name.ilike.%' + b + '%');
@@ -124,6 +156,7 @@ async function ejecutar(nombre, input, ctx = {}) {
   if (nombre === 'crear_tarea') {
     if (!String(input.titulo || '').trim()) return { error: 'Falta el título.' };
     const fila = { title: String(input.titulo).trim().slice(0, 200), description: input.descripcion ? String(input.descripcion).slice(0, 1000) : null, priority: input.prioridad || 'normal', due_date: /^\d{4}-\d{2}-\d{2}$/.test(input.fecha || '') ? input.fecha : null };
+    if (!input.forzar) { const par = await tareasParecidas(input.titulo, null); if (par.length) return { posible_duplicado: true, ya_apuntado: par, nota: 'NO he creado nada. Ya hay tareas pendientes parecidas. Díselo a Víctor ("ya tenías apuntado…") y pregúntale si la cambias (actualizar_tarea), la sumas como otra (crear_tarea con forzar=true) o es la misma.' }; }
     let proyecto = null; if (input.proyecto) { proyecto = await proyectoPor(input.proyecto); if (!proyecto) return { error: 'No encuentro el proyecto "' + input.proyecto + '". No he creado la tarea.' }; fila.project_id = proyecto.id; }
     if (input.asignada_a) { const e = await empleadoPor(input.asignada_a); if (!e) return { error: 'No encuentro a "' + input.asignada_a + '" en el equipo. No he creado la tarea.' }; fila.assigned_to = e.id; }
     const { data, error } = await supabase.from('tasks').insert(fila).select('id, title, due_date').single();
@@ -138,6 +171,11 @@ async function ejecutar(nombre, input, ctx = {}) {
   }
   if (nombre === 'crear_evento') {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fecha || '') || !String(input.titulo || '').trim()) return { error: 'Faltan título o fecha (AAAA-MM-DD).' };
+    if (!input.forzar) {
+      const { data: ev } = await supabase.from('events').select('id, title, time').eq('date', input.fecha).neq('done', true).limit(50);
+      const par = (ev || []).filter(e => seParecen(input.titulo, e.title) || (input.hora && e.time && e.time.slice(0, 5) === String(input.hora).padStart(5, '0'))).map(e => ({ titulo: e.title, hora: e.time ? e.time.slice(0, 5) : null }));
+      if (par.length) return { posible_duplicado: true, ya_apuntado: par, nota: 'NO he creado nada. Ese día ya hay algo parecido o a la misma hora. Díselo a Víctor y pregúntale si lo sumas igualmente (crear_evento con forzar=true) o cambias el que había.' };
+    }
     const fila = { title: String(input.titulo).trim().slice(0, 200), description: input.descripcion ? String(input.descripcion).slice(0, 1000) : null, date: input.fecha, time: /^\d{1,2}:\d{2}$/.test(input.hora || '') ? input.hora : null, color: '#beb0a2' };
     const { data, error } = await supabase.from('events').insert(fila).select('id, title, date, time').single();
     if (error) return { error: 'No se pudo crear: ' + error.message };
@@ -353,6 +391,8 @@ function sistema(mem, priv) {
     '- BREVEDAD, REGLA DURA: Víctor NO lee mensajes largos. Responde en 1 a 4 líneas (unas 50 palabras) por defecto. Primero la respuesta o la acción hecha, sin saludos ni rodeos ni resúmenes de lo que acabas de hacer. Listas de 5 elementos como máximo y cada uno en una línea. Si hay mucho que contar, da lo esencial y pregunta "¿quieres el detalle?", o ofrécelo en PDF con crear_pdf. Haz como máximo UNA pregunta por mensaje. Si pide explícitamente algo largo (informe, guion, análisis), entonces sí, pero en PDF o en trozos que se lean en 20 segundos.\n' +
     '- Tienes MEMORIA permanente: usa la herramienta recordar cuando te cuente algo que convenga tener presente, sin que te lo pida, y confírmalo en pocas palabras. Nunca digas que no puedes recordar.\n' +
     '- Tienes acceso al CRM: agenda, tareas, eventos y proyectos. No inventes datos: consúltalos con las herramientas. Si crear algo es ambiguo (qué proyecto, qué día), pregunta lo mínimo.\n' +
+    '- AVÍSALE DE LO YA APUNTADO: cuando Víctor te diga que tiene que hacer algo, antes de crear nada mira si ya hay algo relacionado (listar_tareas) y, si lo hay, recuérdaselo: "ya tenías apuntado X para el día Y, ¿lo cambio o lo sumo?". Si una herramienta te devuelve posible_duplicado, no insistas en crearlo: cuéntale lo que ya había y pregúntale.\n' +
+    '- TAREAS Y ORGANIZACIÓN: cuando pida sus tareas, lo pendiente o ayuda para organizarse, usa listar_tareas y dale TODAS, no un resumen: agrupadas (atrasadas, hoy, próximas, sin fecha), una línea por tarea con su proyecto; si son más de 15, agrúpalas por proyecto con el número y ofrécele el listado completo en PDF. Después, SIEMPRE, propón su plan: las 3 prioridades de hoy en orden ("1. … 2. … 3. …") justificadas en una frase cada una (plazos, urgencia del proyecto, lo que desbloquea a otros) y pregunta si le pones fecha de hoy a esas tareas; si dice que sí, usa actualizar_tarea. Ve guiándole: cuando termine algo, ofrécele lo siguiente.\n' +
     '- Cuando Víctor salude por la mañana o pregunte por su día, llama a agenda_de_hoy y dáselo ordenado: primero lo atrasado y urgente, luego lo de hoy, y los eventos con hora. Termina con una sugerencia breve de por dónde empezar.\n' +
     '- Fotos y documentos: cuando Víctor te mande uno, míralo y descríbelo en una frase. Si dice o se deduce dónde va (proyecto y si es del programa de necesidades, de una obra, un documento o una referencia de inspiración), guárdalo con guardar_adjunto y dile dónde lo has dejado. Si no está claro, pregunta una sola cosa. Reuniones, transcripciones y visitas a obra: guárdalas con guardar_nota_proyecto y crea las tareas que se desprendan.\n' +
     '- Llamadas y reuniones grabadas con Fathom (llamadas_fathom): cuando Víctor mencione una reunión, dale lo esencial (acuerdos, medidas, próximos pasos). Si dice dónde va o se deduce el proyecto, guárdala con guardar_nota_proyecto y crea las tareas que salgan; si no, pregunta el proyecto.\n' +

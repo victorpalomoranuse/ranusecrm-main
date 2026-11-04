@@ -49,7 +49,7 @@ async function tick() {
       const c = elegir(estado);
       if (c) {
         estado.briefing = ahora.fecha; await guardarJson(RUTA_ESTADO, estado); // marcamos antes para no repetir
-        const out = await responderAsistente({ chatId: c.chatId, texto: '[Aviso automático de las ' + ahora.local.slice(11) + '] Escríbele tú primero a Víctor con el resumen de su día (agenda_de_hoy): lo atrasado y urgente, lo de hoy, eventos con hora y por dónde empezar. Empieza con un saludo breve.' });
+        const out = await responderAsistente({ chatId: c.chatId, texto: '[Aviso automático de las ' + ahora.local.slice(11) + '] Escríbele tú primero a Víctor con su día: usa agenda_de_hoy y listar_tareas, dile lo atrasado y urgente, lo de hoy y los eventos con hora, y propón su plan con las 3 prioridades en orden. Saludo breve y mensaje corto.' });
         await entrega(c, out);
       }
     }
