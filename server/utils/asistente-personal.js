@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { callClaude } from './anthropic.js';
 import { uploadDiagnosisImage, uploadProjectDocument, uploadReferenceImage, uploadProjectRender } from './storage.js';
-import { renderDesdeFoto } from './render-asistente.js';
+import { renderDesdeFoto, imagenDesdeTexto, editarFoto } from './render-asistente.js';
 import { internalAdminToken } from './internal-auth.js';
 import { crearInformePdf } from './pdf-informe.js';
 
@@ -67,7 +67,9 @@ const TOOLS = [
   { name: 'recordatorio', description: 'Programa un aviso: a esa hora le escribirás tú a Víctor el texto. fecha AAAA-MM-DD y hora HH:MM en hora de Madrid.', input_schema: { type: 'object', properties: { texto: { type: 'string' }, fecha: { type: 'string' }, hora: { type: 'string' } }, required: ['texto', 'fecha', 'hora'] } },
   { name: 'consultar_crm', description: 'Datos del negocio para informes y consejos. que: "resumen" (proyectos por fase, tareas atrasadas, carga por persona), "ventas" (ventas abiertas y cerradas), "leads" (últimos leads y su estado), "presupuestos" (últimos presupuestos y estado).', input_schema: { type: 'object', properties: { que: { type: 'string', enum: ['resumen', 'ventas', 'leads', 'presupuestos'] } }, required: ['que'] } },
   { name: 'crear_pdf', description: 'Genera un PDF con la imagen de Ranuse (informe, resumen, listado, propuesta de contenido…) y se lo envías a Víctor como archivo. contenido en texto sencillo: líneas que empiezan por "# " son títulos, "## " subtítulos, "- " viñetas, el resto párrafos. Si pasas proyecto, se guarda también en sus Documentos.', input_schema: { type: 'object', properties: { titulo: { type: 'string' }, contenido: { type: 'string' }, proyecto: { type: 'string' } }, required: ['titulo', 'contenido'] } },
-  { name: 'generar_render', description: 'Genera un render fotorrealista a partir de una foto, boceto o captura que Víctor te ha mandado (adjunto) y lo guarda en los Renders del proyecto en el CRM; se lo envías como imagen. Hace falta el proyecto. instrucciones = qué quiere ver (materiales, colores, ambiente); estilo opcional.', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, proyecto: { type: 'string' }, instrucciones: { type: 'string' }, estilo: { type: 'string' } }, required: ['adjunto', 'proyecto'] } },
+  { name: 'generar_render', description: 'Convierte en render fotorrealista una foto, boceto o captura que Víctor te ha mandado (adjunto). Si dice el proyecto, se guarda en los Renders de ese proyecto en el CRM; si no, en Referencias del CRM. Se lo envías como imagen. instrucciones = qué quiere ver (materiales, colores, ambiente); estilo opcional.', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, proyecto: { type: 'string' }, instrucciones: { type: 'string' }, estilo: { type: 'string' } }, required: ['adjunto'] } },
+  { name: 'editar_foto', description: 'Edita una foto que Víctor te ha mandado (adjunto) aplicando el cambio que pida ("cámbiale el suelo a madera", "quita la columna", "ponle un espejo grande"). Mantiene todo lo demás. No hace falta proyecto: si lo menciona se guarda en los Renders de ese proyecto, si no en Referencias del CRM. Se la envías como imagen.', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, instruccion: { type: 'string' }, proyecto: { type: 'string' } }, required: ['adjunto', 'instruccion'] } },
+  { name: 'generar_imagen', description: 'Genera imágenes de inspiración desde cero, SIN foto de partida y sin proyecto concreto: ideas de diseño para gimnasios, zonas de entrenamiento, recepciones, materiales, mobiliario a medida, etc. Piensa como un diseñador top pero viable de construir: propón algo que sorprenda, no el cliché de siempre. prompt = descripción detallada de lo que se ve. variantes 1 a 3 (con varias, cada una con un enfoque distinto). Se guardan en Referencias del CRM (o en el proyecto si lo dice) y se las envías como imágenes.', input_schema: { type: 'object', properties: { prompt: { type: 'string' }, estilo: { type: 'string' }, variantes: { type: 'number' }, proyecto: { type: 'string' } }, required: ['prompt'] } },
   { name: 'hablar_con_agente', description: 'Habla con uno de los asistentes especializados del CRM y te devuelve su respuesta. agente: "presupuestos" (crea y gestiona presupuestos con IA: pásale lo que Víctor pida, con todos los datos), "setter" (analiza conversaciones de leads y prepara respuestas y fichas), "finanzas" (consulta y crea movimientos de finanzas), "diseno" (alzados: necesita proyecto; la lámina queda guardada en el Asistente de diseño del proyecto). La conversación con cada agente continúa entre llamadas; si el agente pregunta algo, pásaselo a Víctor tal cual y espera su respuesta. nueva=true empieza de cero con ese agente.', input_schema: { type: 'object', properties: { agente: { type: 'string', enum: ['presupuestos', 'setter', 'finanzas', 'diseno'] }, mensaje: { type: 'string' }, proyecto: { type: 'string' }, nueva: { type: 'boolean' } }, required: ['agente', 'mensaje'] } },
   { name: 'recordar', description: 'Guarda en tu memoria permanente algo que Víctor te cuenta o te pide recordar (preferencias, datos de clientes, decisiones, ideas, ritmos de trabajo…). Úsala sin que te lo pida si es algo que conviene recordar. Un hecho por llamada, redactado de forma autosuficiente.', input_schema: { type: 'object', properties: { texto: { type: 'string' }, etiqueta: { type: 'string', description: 'tema corto, p. ej. cliente, proveedor, preferencia, idea' } }, required: ['texto'] } },
   { name: 'olvidar', description: 'Borra un recuerdo de tu memoria por su id.', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
@@ -205,18 +207,36 @@ async function ejecutar(nombre, input, ctx = {}) {
     (ctx.salida = ctx.salida || []).push({ url, nombre: archivo });
     return { creado: true, nota: 'El PDF se envía a Víctor como archivo adjunto en tu respuesta; no pegues el enlace.' };
   }
-  if (nombre === 'generar_render') {
-    const a = (ctx.adjuntos || []).find(x => x.id === input.adjunto); if (!a || !/^image\/(jpeg|png|webp)$/.test(a.mime)) return { error: 'Necesito una foto (jpg, png o webp) adjunta para hacer el render.' };
-    const p = await proyectoPor(input.proyecto); if (!p) return { error: 'No encuentro ese proyecto. Dime a cuál va el render.' };
-    if (ctx.avisar) await ctx.avisar('Voy con el render, tarda un minuto…');
-    let png; try { png = await renderDesdeFoto({ buffer: a.buffer, mime: a.mime, instrucciones: input.instrucciones, estilo: input.estilo }); } catch (e) { return { error: 'No he podido generar el render: ' + e.message }; }
-    const nom = 'Render desde móvil ' + fecha.split('-').reverse().join('/');
-    const url = await uploadProjectRender(png, 'render.png', 'image/png', p.id);
-    const { data: mx } = await supabase.from('project_renders').select('display_order').eq('project_id', p.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
-    const { error } = await supabase.from('project_renders').insert({ project_id: p.id, url, name: nom, version: null, display_order: (mx?.display_order ?? -1) + 1 });
-    if (error) return { error: 'El render está hecho pero no se pudo guardar en el proyecto: ' + error.message };
-    (ctx.salida = ctx.salida || []).push({ url, nombre: 'render.png', tipo: 'imagen' });
-    return { creado: true, guardado_en: 'Renders de ' + (p.project_name || p.client_name) + ' (CRM)', nota: 'La imagen se envía a Víctor junto a tu respuesta.' };
+  if (nombre === 'generar_render' || nombre === 'editar_foto' || nombre === 'generar_imagen') {
+    const esTexto = nombre === 'generar_imagen';
+    let a = null;
+    if (!esTexto) { a = (ctx.adjuntos || []).find(x => x.id === input.adjunto); if (!a || !/^image\/(jpeg|png|webp)$/.test(a.mime)) return { error: 'Necesito una foto (jpg, png o webp) adjunta.' }; }
+    let proy = null; if (input.proyecto) { proy = await proyectoPor(input.proyecto); if (!proy) return { error: 'No encuentro el proyecto "' + input.proyecto + '". Dime cuál es o lo guardo sin proyecto.' }; }
+    const n = esTexto ? Math.min(3, Math.max(1, Math.round(Number(input.variantes)) || 1)) : 1;
+    if (ctx.avisar) await ctx.avisar(esTexto ? 'Voy con ' + (n > 1 ? 'las ' + n + ' ideas' : 'la idea') + ', tarda un minuto…' : nombre === 'editar_foto' ? 'Editando la foto, un momento…' : 'Voy con el render, tarda un minuto…');
+    const enfoques = ['', ' Enfoque alternativo: cambia por completo los materiales y la composición respecto a lo más habitual.', ' Enfoque atrevido pero construible: una solución de diseño inesperada que un buen estudio sí propondría.'];
+    const hechas = await Promise.allSettled(Array.from({ length: n }, (_, i) => esTexto ? imagenDesdeTexto({ prompt: String(input.prompt) + enfoques[i], estilo: input.estilo }) : nombre === 'editar_foto' ? editarFoto({ buffer: a.buffer, mime: a.mime, instruccion: input.instruccion }) : renderDesdeFoto({ buffer: a.buffer, mime: a.mime, instrucciones: input.instrucciones, estilo: input.estilo })));
+    const pngs = hechas.filter(h => h.status === 'fulfilled').map(h => h.value);
+    if (!pngs.length) return { error: 'No he podido generar la imagen: ' + (hechas[0].reason?.message || 'error desconocido') };
+    const titulo = esTexto ? String(input.prompt).slice(0, 90) : nombre === 'editar_foto' ? String(input.instruccion).slice(0, 90) : 'Render desde móvil';
+    let donde = '';
+    for (let i = 0; i < pngs.length; i++) {
+      const png = pngs[i]; let url;
+      if (proy) {
+        url = await uploadProjectRender(png, 'imagen.png', 'image/png', proy.id);
+        const { data: mx } = await supabase.from('project_renders').select('display_order').eq('project_id', proy.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+        const { error } = await supabase.from('project_renders').insert({ project_id: proy.id, url, name: (esTexto ? 'Idea IA ' : nombre === 'editar_foto' ? 'Foto editada ' : 'Render desde móvil ') + fecha.split('-').reverse().join('/') + (pngs.length > 1 ? ' · ' + (i + 1) : ''), version: null, display_order: (mx?.display_order ?? -1) + 1 });
+        if (error) return { error: 'La imagen está hecha pero no se pudo guardar en el proyecto: ' + error.message };
+        donde = 'Renders de ' + (proy.project_name || proy.client_name) + ' (CRM)';
+      } else {
+        url = await uploadReferenceImage(png, 'ia.png', 'image/png');
+        const { error } = await supabase.from('inspiration_references').insert({ title: titulo, description: (esTexto ? input.prompt : nombre === 'editar_foto' ? 'Edición: ' + input.instruccion : input.instrucciones || 'Render de una foto') + (pngs.length > 1 ? ' (variante ' + (i + 1) + ')' : ''), category: esTexto ? 'IA · inspiración' : 'IA · ' + (nombre === 'editar_foto' ? 'edición' : 'render'), image_url: url });
+        if (error) return { error: 'La imagen está hecha pero no se pudo guardar en Referencias: ' + error.message };
+        donde = 'Referencias (CRM), categoría IA';
+      }
+      (ctx.salida = ctx.salida || []).push({ url, nombre: 'imagen.png', tipo: 'imagen' });
+    }
+    return { creadas: pngs.length, de_las_pedidas: n, guardado_en: donde, nota: 'Las imágenes se envían a Víctor junto a tu respuesta; no pegues enlaces. Cuéntale en una o dos frases qué propones y por qué.' };
   }
   if (nombre === 'hablar_con_agente') {
     const ag = input.agente, mensaje = String(input.mensaje || '').trim(); if (!mensaje) return { error: 'Falta el mensaje.' };
@@ -266,7 +286,7 @@ function sistema(mem) {
     '- Fotos y documentos: cuando Víctor te mande uno, míralo y descríbelo en una frase. Si dice o se deduce dónde va (proyecto y si es del programa de necesidades, de una obra, un documento o una referencia de inspiración), guárdalo con guardar_adjunto y dile dónde lo has dejado. Si no está claro, pregunta una sola cosa. Reuniones, transcripciones y visitas a obra: guárdalas con guardar_nota_proyecto y crea las tareas que se desprendan.\n' +
     '- Informes y PDFs: cuando te pida un reporte, resumen o documento, reúne los datos con las herramientas (consultar_crm, ver_proyecto…) y genera el PDF con crear_pdf. Redes y contenido: ayúdale con ideas, guiones y textos con la voz de Ranuse (cercana, profesional, de diseñador de espacios deportivos), usando lo que recuerdas de sus proyectos y gustos.\n' +
     '- APRENDE: cada vez que Víctor te corrija, te cuente una preferencia, una forma de trabajar, datos de un cliente o una decisión, guárdalo con recordar sin que te lo pida. Antes de dar consejo, tira de lo que recuerdas.\n' +
-    '- Compañeros del CRM (hablar_con_agente): presupuestos (crear presupuestos), setter (leads), finanzas y diseno (alzados). Si Víctor pide un presupuesto, un alzado, mirar un lead o algo de finanzas, pásaselo al compañero adecuado con todos los datos que te dé. Con una foto adjunta y la petición de un render, usa generar_render.\n' +
+    '- Compañeros del CRM (hablar_con_agente): presupuestos (crear presupuestos), setter (leads), finanzas y diseno (alzados). Si Víctor pide un presupuesto, un alzado, mirar un lead o algo de finanzas, pásaselo al compañero adecuado con todos los datos que te dé. Con una foto adjunta: generar_render (convertirla en render) o editar_foto (cambiarle algo concreto); ninguna exige proyecto. Cuando pida inspiración o ideas sin foto ni proyecto, usa generar_imagen (1 a 3 variantes) y acompáñalas de una explicación breve: piensa como un diseñador top pero viable, evita lo típico y sorpréndele.\n' +
     '- También puedes crear proveedores, buscarlos y programar recordatorios que te llegan a esta misma conversación. Puedes ser su consultor: cuando solo quiera pensar en voz alta o comparar opciones, da tu opinión con criterio y sin rodeos.\n\n' +
     'Lo que recuerdas:\n' + hechos;
 }
