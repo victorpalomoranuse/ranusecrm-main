@@ -14,15 +14,16 @@ const sumarDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate
 router.get('/', async (req, res) => {
   try {
     const hoy = hoyMadrid();
-    const [pr, ta, em, le, sl, bu, ve, pl] = await Promise.all([
+    const [pr, ta, em, le, sl, bu, ve, pl, co] = await Promise.all([
       supabase.from('client_projects').select('id, client_name, project_name, phase, urgency, responsible_id').eq('status', 'en_marcha').eq('active', true),
       supabase.from('tasks').select('id, title, done, due_date, project_id, assigned_to, priority').limit(5000),
-      supabase.from('employees').select('id, name').eq('active', true),
+      supabase.from('employees').select('id, name, is_admin_profile, employee_roles(name)').eq('active', true),
       supabase.from('setting_leads').select('estado').limit(5000),
       supabase.from('call_slots').select('id').eq('fecha', hoy).eq('ocupado', true),
       supabase.from('budgets').select('status').limit(5000),
       supabase.from('ventas').select('valor, cerrada').limit(5000),
       leerPlanificacion(),
+      supabase.from('contacts').select('id, name, sector, company_url').order('name'),
     ]);
     const tareas = ta.data || [], pend = tareas.filter(t => !t.done);
     const atrasada = t => !!t.due_date && t.due_date < hoy;
@@ -56,7 +57,25 @@ router.get('/', async (req, res) => {
       { id: 'finanzas', nombre: 'Finanzas', ir: 'ventas', datos: [['Ventas abiertas', abiertas.length], ['Importe abierto', Math.round(abiertas.reduce((s, v) => s + (Number(v.valor) || 0), 0)) + ' €']], alerta: 'verde' },
       { id: 'equipo', nombre: 'Equipo', ir: 'tareas', datos: (em.data || []).map(e => { const mias = pend.filter(t => t.assigned_to === e.id); return [e.name.split(' ')[0] + (mias.filter(atrasada).length ? ' ⚠' : ''), mias.length]; }).filter(([, n]) => n > 0).slice(0, 6).concat([['Sin asignar', pend.filter(t => !t.assigned_to).length]]), alerta: pend.filter(t => !t.assigned_to && atrasada(t)).length ? 'rojo' : 'verde' },
     ];
-    res.json({ hoy, departamentos, proyectos, tareasSinFecha: pend.filter(t => !t.due_date).length });
+    // personas del equipo: qué tienen en la mesa (para verlas trabajando en la oficina 3D)
+    const nombreProy = Object.fromEntries((pr.data || []).map(p => [p.id, p.project_name]));
+    const personas = (em.data || []).map(e => {
+      const mias = pend.filter(t => t.assigned_to === e.id).sort((a, b) => String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')));
+      const s0 = mias[0];
+      return { id: e.id, nombre: e.name, rol: e.employee_roles?.name || (e.is_admin_profile ? 'Administrador' : 'Sin categoría'), pendientes: mias.length, atrasadas: mias.filter(atrasada).length, hoy: mias.filter(t => t.due_date === hoy).length, siguiente: s0 ? { titulo: s0.title, proyecto: nombreProy[s0.project_id] || null, fecha: s0.due_date || null } : null };
+    });
+    // agentes de IA del CRM, cada uno en su sala
+    const agentes = [
+      { id: 'setter', nombre: 'Asistente Setter', sala: 'ventas', ir: 'asistente-setter', hace: 'Mete leads y agenda llamadas' },
+      { id: 'presupuestos', nombre: 'Asistente de presupuestos', sala: 'presupuestos', ir: 'asistente', hace: 'Prepara presupuestos con IA' },
+      { id: 'finanzas', nombre: 'Asistente de finanzas', sala: 'finanzas', ir: 'asistente-finanzas', hace: 'Responde sobre las cuentas' },
+      { id: 'ideas', nombre: 'Estudio de ideas', sala: 'diseno', ir: 'estudio-ideas', hace: 'Genera ideas y renders con IA' },
+    ];
+    // anexos: un edificio por sector de proveedores y colaboradores, con sus empresas dentro
+    const porSector = {};
+    (co.data || []).forEach(c => { const k = (c.sector || 'Otros').trim() || 'Otros'; (porSector[k] = porSector[k] || []).push({ id: c.id, nombre: c.name, url: c.company_url || null }); });
+    const anexos = Object.entries(porSector).map(([sector, proveedores]) => ({ sector, n: proveedores.length, proveedores })).sort((a, b) => b.n - a.n || a.sector.localeCompare(b.sector)).slice(0, 10);
+    res.json({ hoy, departamentos, proyectos, personas, agentes, anexos, tareasSinFecha: pend.filter(t => !t.due_date).length });
   } catch (err) { console.error('oficinas:', err); res.status(500).json({ error: 'No se pudieron cargar las oficinas' }); }
 });
 
