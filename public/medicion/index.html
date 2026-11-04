@@ -9702,17 +9702,19 @@ function sheetPage(doc,view,idx,total,o){
   if(view==='ilum'){
     var gsL=lumGroups(),totLm=0;
     if(gsL.length&&sect('Luminarias')){
+      var hayFoto=gsL.some(function(g){var pc=lumPic(g);return !!(pc&&pc.pw>0&&o.lumIdx&&o.lumIdx[pc.id])});
       gsL.forEach(function(g){
-        var cat=g.cat,d=ptDef(g.k),bx=10.4*f;
+        var cat=g.cat,d=ptDef(g.k),bx=9.6*f;
         var pic=lumPic(g),im=pic&&o.lumIdx&&o.lumIdx[pic.id];if(!(im&&pic.pw>0))im=null;
         /* a la izquierda la foto (la pegada en la luminaria o la del catálogo) y a la derecha el símbolo del plano; sin foto, solo el símbolo */
-        var xS=xL+bx+1.5,tx0=xL+2*bx+1.5+3, /* columnas fijas: hueco de la foto, símbolo y texto siempre en el mismo sitio */ qty=d.lin?m2(g.len/100)+' ml · '+g.n+(g.n===1?' tramo':' tramos'):'× '+g.n+' ud';
+        var xS=hayFoto?xL+bx+1.5:xL,tx0=xL+(hayFoto?2*bx+1.5:bx)+3, /* si alguna luminaria lleva foto hay columna de foto para todas (las demás, con el marco vacío); si ninguna, solo el símbolo */ qty=d.lin?m2(g.len/100)+' ml · '+g.n+(g.n===1?' tramo':' tramos'):'× '+g.n+' ud';
         var szN=body*25.4/72,nomL=g.nm||(cat?cat.n+(cat.gen?' (genérico)':''):d.n),anchoN=Math.max(20,pw-(tx0-xL)-8*f-(txtW(qty,true,szN)+4));
-        var nomLin=wrapTxt(nomL,anchoN,szN,3),ex=(nomLin.length-1)*3.6*f; /* el nombre se lee entero: si no cabe en una línea, pasa a dos o tres */
+        var nom1=wrapTxt(nomL,anchoN,szN,9)[0]||nomL,nomRes=String(nomL).replace(/\s+/g,' ').trim().slice(nom1.length).trim(),nomLin=[nom1].concat(nomRes?wrapTxt(nomRes,Math.max(20,pw-(tx0-xL)-8*f),szN,2):[]),ex=(nomLin.length-1)*3.6*f; /* el nombre se lee entero: la primera línea deja sitio a la cantidad y las demás usan todo el ancho */
         var compL=cat&&cat.comp?String(cat.comp).split(/\n/).map(function(t){return t.trim()}).filter(Boolean).slice(0,5):[];
-        var mgL=lumMarg(),trL=d.lin&&g.tr.length?wrapTxt((g.tr.length>1?'Tramos':'Tramo')+(mgL>0?' (con +'+fmt(mgL)+' cm de sobrante cada uno)':'')+': '+g.tr.map(function(v){return m2(v/100)}).join(' · ')+' m',pw-(tx0-xL),(body-0.6)*25.4/72,3):[],ex2=trL.length*3.4*f;
+        var mgL=lumMarg(),trL=d.lin&&g.tr.length>1?wrapTxt('Tramos: '+g.tr.map(function(v){return m2(v/100)}).join(' · ')+' m',pw-(tx0-xL),(body-0.6)*25.4/72,3):[],ex2=trL.length*3.4*f;
         var rh2=15.9*f+ex+ex2+compL.length*3.5*f;
         if(!room(rh2)){return}
+        if(hayFoto&&!im)p.rect(xL,y+0.5*f,bx,bx,'#ffffff',LINEC,0.2);
         if(im){p.rect(xL,y+0.5*f,bx,bx,'#ffffff',LINEC,0.2);var sc=Math.min((bx-0.8)/pic.pw,(bx-0.8)/pic.ph);p.img(im,xL+(bx-pic.pw*sc)/2,y+0.5*f+(bx-pic.ph*sc)/2,pic.pw*sc,pic.ph*sc)}
         p.rect(xS,y+0.5*f,bx,bx,'#ffffff',LINEC,0.2);
         if(d.lin){
@@ -9737,6 +9739,7 @@ function sheetPage(doc,view,idx,total,o){
         compL.forEach(function(t,ci){p.text(tx0,y+17.9*f+ex+ex2+ci*3.5*f,fitTxt('+ '+t,pw-(tx0-xL),false,(body-1.6)*25.4/72),body-1.6,{col:MUTED})});
         y+=rh2;
       });
+      if(gsL.some(function(g){var dd=ptDef(g.k);return dd&&dd.lin})&&lumMarg()>0&&room(5*f)){p.text(xL,y+2.6*f,'Cada tramo lineal incluye +'+fmt(lumMarg())+' cm de sobrante.',body-1.4,{col:MUTED});y+=5*f}
       if(totLm>0&&room(rh*2)){
         var arA=0;roomFaces(view).forEach(function(fc){arA+=fc.area});
         p.line(xL,y+0.5,xR,y+0.5,LINEC,0.2);
