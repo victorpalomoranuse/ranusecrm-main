@@ -90,4 +90,22 @@ async function registraNumero() {
 }
 setTimeout(registraNumero, 4000);
 
+// Para ver el estado desde el navegador sin mirar los registros de Railway:
+//   /api/whatsapp-asistente/estado?clave=TU_WA_ASIST_VERIFY_TOKEN            -> estado del número y de la conexión
+//   /api/whatsapp-asistente/estado?clave=TU_WA_ASIST_VERIFY_TOKEN&registrar=1 -> además intenta registrar el número con WA_ASIST_PIN
+router.get('/estado', async (req, res) => {
+  if (!VERIFY || req.query.clave !== VERIFY) return res.sendStatus(403);
+  const cab = { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };
+  const out = { variables: { token: !!TOKEN, phoneId: !!PHONE_ID, pin6cifras: PIN.length === 6, appSecret: !!SECRET, owner: !!OWNER } };
+  try {
+    if (req.query.registrar === '1' && PIN.length === 6) {
+      const r = await fetch(GRAPH + '/' + PHONE_ID + '/register', { method: 'POST', headers: cab, body: JSON.stringify({ messaging_product: 'whatsapp', pin: PIN }) });
+      out.registro = { http: r.status, respuesta: await r.text().catch(() => '') };
+    }
+    const e = await fetch(GRAPH + '/' + PHONE_ID + '?fields=status,name_status,platform_type,verified_name,code_verification_status,quality_rating', { headers: cab });
+    out.numero = { http: e.status, respuesta: await e.text().catch(() => '') };
+  } catch (err) { out.error = err.message; }
+  res.json(out);
+});
+
 export default router;
