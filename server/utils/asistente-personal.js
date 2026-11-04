@@ -71,6 +71,8 @@ const TOOLS = [
   { name: 'editar_foto', description: 'Edita una foto que Víctor te ha mandado (adjunto) aplicando el cambio que pida ("cámbiale el suelo a madera", "quita la columna", "ponle un espejo grande"). Mantiene todo lo demás. No hace falta proyecto: si lo menciona se guarda en los Renders de ese proyecto, si no en Referencias del CRM. Se la envías como imagen.', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, instruccion: { type: 'string' }, proyecto: { type: 'string' } }, required: ['adjunto', 'instruccion'] } },
   { name: 'generar_imagen', description: 'Genera imágenes de inspiración desde cero, SIN foto de partida y sin proyecto concreto: ideas de diseño para gimnasios, zonas de entrenamiento, recepciones, materiales, mobiliario a medida, etc. Piensa como un diseñador top pero viable de construir: propón algo que sorprenda, no el cliché de siempre. prompt = descripción detallada de lo que se ve. variantes 1 a 3 (con varias, cada una con un enfoque distinto). Se guardan en Referencias del CRM (o en el proyecto si lo dice) y se las envías como imágenes.', input_schema: { type: 'object', properties: { prompt: { type: 'string' }, estilo: { type: 'string' }, variantes: { type: 'number' }, proyecto: { type: 'string' } }, required: ['prompt'] } },
   { name: 'hablar_con_agente', description: 'Habla con uno de los asistentes especializados del CRM y te devuelve su respuesta. agente: "presupuestos" (crea y gestiona presupuestos con IA: pásale lo que Víctor pida, con todos los datos), "setter" (analiza conversaciones de leads y prepara respuestas y fichas), "finanzas" (consulta y crea movimientos de finanzas), "diseno" (alzados: necesita proyecto; la lámina queda guardada en el Asistente de diseño del proyecto). La conversación con cada agente continúa entre llamadas; si el agente pregunta algo, pásaselo a Víctor tal cual y espera su respuesta. nueva=true empieza de cero con ese agente.', input_schema: { type: 'object', properties: { agente: { type: 'string', enum: ['presupuestos', 'setter', 'finanzas', 'diseno'] }, mensaje: { type: 'string' }, proyecto: { type: 'string' }, nueva: { type: 'boolean' } }, required: ['agente', 'mensaje'] } },
+  { name: 'ver_referencias', description: 'Busca en el tablero de Referencias del CRM (las imágenes de inspiración que Víctor ha ido guardando) y te las enseña: títulos, notas y hasta 4 imágenes para que las veas. Úsala antes de proponer ideas o de generar imágenes, para tirar de su gusto real, y cuando pregunte "qué referencias tengo de…". busqueda vacía = las más recientes.', input_schema: { type: 'object', properties: { busqueda: { type: 'string' }, cantidad: { type: 'number' } } } },
+  { name: 'analizar_proyectos_vendidos', description: 'Reúne lo que hay de los proyectos VENDIDOS (cerrados): tipo, resumen del cliente, programa de necesidades, equipos y materiales elegidos. Úsala cuando Víctor te pida aprender de lo que ha vendido, o para dar consejo basado en lo que de verdad funciona con sus clientes. Después saca patrones (qué piden, qué materiales y marcas se repiten, tipologías) y guarda los más útiles con recordar.', input_schema: { type: 'object', properties: { limite: { type: 'number' } } } },
   { name: 'recordar', description: 'Guarda en tu memoria permanente algo que Víctor te cuenta o te pide recordar (preferencias, datos de clientes, decisiones, ideas, ritmos de trabajo…). Úsala sin que te lo pida si es algo que conviene recordar. Un hecho por llamada, redactado de forma autosuficiente.', input_schema: { type: 'object', properties: { texto: { type: 'string' }, etiqueta: { type: 'string', description: 'tema corto, p. ej. cliente, proveedor, preferencia, idea' } }, required: ['texto'] } },
   { name: 'olvidar', description: 'Borra un recuerdo de tu memoria por su id.', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
 ];
@@ -259,6 +261,25 @@ async function ejecutar(nombre, input, ctx = {}) {
     conv.messages.push({ role: 'assistant', content: String(reply || '').slice(0, 4000) }); conv.messages = conv.messages.slice(-30); est[clave] = conv; await guardarJson(RUTA_AG, est);
     return { respuesta_del_agente: reply, ...extra };
   }
+  if (nombre === 'ver_referencias') {
+    let q = supabase.from('inspiration_references').select('title, description, category, image_url, created_at').order('created_at', { ascending: false }).limit(Math.min(8, Math.max(1, Math.round(Number(input.cantidad)) || 6)));
+    const b = limpia(input.busqueda); if (b) q = q.or('title.ilike.%' + b + '%,description.ilike.%' + b + '%,category.ilike.%' + b + '%');
+    const { data, error } = await q; if (error) return { error: 'No se pudieron leer las referencias.' };
+    return { total: (data || []).length, referencias: (data || []).map(r => ({ titulo: r.title, nota: r.description, categoria: r.category, fecha: (r.created_at || '').slice(0, 10) })), __imagenes: (data || []).filter(r => r.image_url).slice(0, 4).map(r => r.image_url) };
+  }
+  if (nombre === 'analizar_proyectos_vendidos') {
+    const { data: vs } = await supabase.from('ventas').select('nombre, valor, client_project_id').eq('cerrada', true).not('client_project_id', 'is', null).limit(Math.min(40, Math.max(3, Math.round(Number(input.limite)) || 25)));
+    const ids = [...new Set((vs || []).map(v => v.client_project_id))]; if (!ids.length) return { vendidos: 0, nota: 'No hay ventas cerradas ligadas a un proyecto.' };
+    const [{ data: ps }, { data: fs }, { data: eq }, { data: ma }] = await Promise.all([
+      supabase.from('client_projects').select('id, project_name, client_name, tipo_proyecto, phase').in('id', ids),
+      supabase.from('project_needs_forms').select('project_id, brief, client_summary').in('project_id', ids),
+      supabase.from('project_equipment_selections').select('project_id, name, brand, quantity').in('project_id', ids).limit(600),
+      supabase.from('project_material_selections').select('project_id, name, location').in('project_id', ids).limit(600),
+    ]);
+    const por = (arr, k) => { const m = {}; (arr || []).forEach(x => { (m[x[k]] = m[x[k]] || []).push(x); }); return m; };
+    const F = por(fs, 'project_id'), E = por(eq, 'project_id'), M = por(ma, 'project_id'), V = por(vs, 'client_project_id');
+    return { vendidos: (ps || []).length, proyectos: (ps || []).map(p => ({ proyecto: p.project_name, cliente: p.client_name, tipo: p.tipo_proyecto, importe: (V[p.id] || []).reduce((a, v) => a + (Number(v.valor) || 0), 0), resumen_cliente: String(F[p.id]?.[0]?.client_summary || F[p.id]?.[0]?.brief || '').slice(0, 500), equipos: (E[p.id] || []).slice(0, 12).map(x => (x.brand ? x.brand + ' ' : '') + x.name + (x.quantity > 1 ? ' x' + x.quantity : '')), materiales: (M[p.id] || []).slice(0, 12).map(x => x.name + (x.location ? ' (' + x.location + ')' : '')) })) };
+  }
   if (nombre === 'recordar') {
     const texto = String(input.texto || '').trim().slice(0, 600); if (!texto) return { error: 'Nada que recordar.' };
     const mem = await leerJson(RUTA_MEM, { hechos: [] });
@@ -285,10 +306,22 @@ function sistema(mem) {
     '- Cuando Víctor salude por la mañana o pregunte por su día, llama a agenda_de_hoy y dáselo ordenado: primero lo atrasado y urgente, luego lo de hoy, y los eventos con hora. Termina con una sugerencia breve de por dónde empezar.\n' +
     '- Fotos y documentos: cuando Víctor te mande uno, míralo y descríbelo en una frase. Si dice o se deduce dónde va (proyecto y si es del programa de necesidades, de una obra, un documento o una referencia de inspiración), guárdalo con guardar_adjunto y dile dónde lo has dejado. Si no está claro, pregunta una sola cosa. Reuniones, transcripciones y visitas a obra: guárdalas con guardar_nota_proyecto y crea las tareas que se desprendan.\n' +
     '- Informes y PDFs: cuando te pida un reporte, resumen o documento, reúne los datos con las herramientas (consultar_crm, ver_proyecto…) y genera el PDF con crear_pdf. Redes y contenido: ayúdale con ideas, guiones y textos con la voz de Ranuse (cercana, profesional, de diseñador de espacios deportivos), usando lo que recuerdas de sus proyectos y gustos.\n' +
+    '- Aprender de su gusto y de lo que vende: antes de proponer ideas, mira sus referencias (ver_referencias) y lo que recuerdas; cuando te mande una foto que claramente le gusta o es una referencia, además de guardarla apunta con recordar el rasgo de gusto (material, paleta, tipología, qué le atrae) en una frase. Si te pide aprender de los proyectos vendidos, usa analizar_proyectos_vendidos, saca los patrones útiles y guárdalos con recordar (uno por patrón, concretos y con datos).\n' +
     '- APRENDE: cada vez que Víctor te corrija, te cuente una preferencia, una forma de trabajar, datos de un cliente o una decisión, guárdalo con recordar sin que te lo pida. Antes de dar consejo, tira de lo que recuerdas.\n' +
     '- Compañeros del CRM (hablar_con_agente): presupuestos (crear presupuestos), setter (leads), finanzas y diseno (alzados). Si Víctor pide un presupuesto, un alzado, mirar un lead o algo de finanzas, pásaselo al compañero adecuado con todos los datos que te dé. Con una foto adjunta: generar_render (convertirla en render) o editar_foto (cambiarle algo concreto); ninguna exige proyecto. Cuando pida inspiración o ideas sin foto ni proyecto, usa generar_imagen (1 a 3 variantes) y acompáñalas de una explicación breve: piensa como un diseñador top pero viable, evita lo típico y sorpréndele.\n' +
     '- También puedes crear proveedores, buscarlos y programar recordatorios que te llegan a esta misma conversación. Puedes ser su consultor: cuando solo quiera pensar en voz alta o comparar opciones, da tu opinión con criterio y sin rodeos.\n\n' +
     'Lo que recuerdas:\n' + hechos;
+}
+
+// Un resultado de herramienta puede traer imágenes (__imagenes: urls): se descargan y se le enseñan a Claude.
+async function aContenido(r) {
+  const { __imagenes, ...resto } = r || {}; const texto = JSON.stringify(resto).slice(0, 6000);
+  if (!Array.isArray(__imagenes) || !__imagenes.length) return texto;
+  const bloques = [{ type: 'text', text: texto }];
+  for (const url of __imagenes.slice(0, 4)) {
+    try { const res = await fetch(url); if (!res.ok) continue; const mime = (res.headers.get('content-type') || '').split(';')[0]; if (!/^image\/(jpeg|png|webp|gif)$/.test(mime)) continue; const buf = Buffer.from(await res.arrayBuffer()); if (buf.length > 4 * 1024 * 1024) continue; bloques.push({ type: 'image', source: { type: 'base64', media_type: mime, data: buf.toString('base64') } }); } catch { /* una imagen menos */ }
+  }
+  return bloques;
 }
 
 // Devuelve el texto de respuesta. chatId separa conversaciones (WhatsApp / Telegram).
@@ -310,7 +343,7 @@ export async function responderAsistente({ chatId, texto, adjuntos = [], avisar 
     if (out.stop_reason !== 'tool_use' || !usos.length) { respuesta = bloques.filter(b => b.type === 'text').map(b => b.text).join('\n').trim(); break; }
     mensajes.push({ role: 'assistant', content: bloques });
     const resultados = [];
-    for (const u of usos) { let r; try { r = await ejecutar(u.name, u.input || {}, ctx); } catch (e) { r = { error: e.message }; } resultados.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(r).slice(0, 6000) }); }
+    for (const u of usos) { let r; try { r = await ejecutar(u.name, u.input || {}, ctx); } catch (e) { r = { error: e.message }; } resultados.push({ type: 'tool_result', tool_use_id: u.id, content: await aContenido(r) }); }
     mensajes.push({ role: 'user', content: resultados });
   }
   if (!respuesta) respuesta = 'Me he liado un poco con eso. ¿Me lo repites con otras palabras?';
