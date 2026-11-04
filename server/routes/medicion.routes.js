@@ -427,7 +427,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
 // Miniaturas (data URI) de productos para la memoria de calidades
 router.post('/miniaturas', async (req, res) => {
   try {
-    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).filter(x => typeof x === 'string').slice(0, 40);
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).filter(x => typeof x === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(x)).slice(0, 40); // solo ids de catálogo (UUID); los de la biblioteca interna del programa (lib-armario-…) no tienen foto y reventaban la consulta
     if (!ids.length) return res.json({ items: {} });
     const { data, error } = await supabase.from('catalog_products').select('id, photo_url').in('id', ids);
     if (error) throw error;
