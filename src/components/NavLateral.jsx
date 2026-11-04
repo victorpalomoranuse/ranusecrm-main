@@ -13,7 +13,7 @@ export const GRUPOS = [
   { id: 'biblioteca', label: 'Biblioteca', ids: ['catalogo', 'referencias', 'recursos', 'contactos'] },
   { id: 'gestion', label: 'Equipo y ajustes', ids: ['empleados', 'roles', 'ajustes'] },
 ];
-export const SUELTOS = ['inicio', 'mi-dia', 'dashboard']; // siempre a la vista, arriba
+export const SUELTOS = ['inicio', 'mi-dia', 'oficinas', 'dashboard']; // siempre a la vista, arriba
 
 function leer(clave, def) {
   try { const v = JSON.parse(localStorage.getItem(clave)); return v ?? def; } catch { return def; }

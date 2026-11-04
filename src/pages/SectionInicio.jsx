@@ -9,6 +9,7 @@ import { PanelTareasEventos } from '../components/PanelTareasEventos';
 
 const DESCRIPCION = {
   'mi-dia': 'Tus llamadas, leads y comisiones de hoy',
+  oficinas: 'El negocio por departamentos, con semáforos y planificador de entregables',
   dashboard: 'Visión global del negocio',
   trabajos: 'Trabajos que se enseñan en la web',
   leads: 'Listado anterior de leads y su seguimiento',

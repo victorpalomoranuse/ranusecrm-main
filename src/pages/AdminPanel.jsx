@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { Sparkles, Table2, Home, Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays, Search } from 'lucide-react';
+import { Sparkles, Table2, Home, Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays, Search, Building2 } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import EstudioIdeas from '../components/EstudioIdeas';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
@@ -20,6 +20,7 @@ import { SectionFinanzas } from './SectionFinanzas';
 import { SectionRelacionObra } from './SectionRelacionObra';
 import { SectionMisComisiones } from './SectionMisComisiones';
 import { SectionMiDashboard } from './SectionMiDashboard';
+import { SectionOficinas } from './SectionOficinas';
 import { SectionPlanos } from './SectionPlanos';
 import { SectionHojas } from './SectionHojas';
 import { NavLateral, useNavPrefs } from '../components/NavLateral';
@@ -2855,6 +2856,7 @@ function SectionRecursos() {
 const NAV_ITEMS = [
   { id:'inicio', label:'Inicio', Icon:Home },
   { id:'mi-dia', label:'Mi día', Icon:CalendarDays, hideForAdmin:true },
+  { id:'oficinas', label:'Oficinas', Icon:Building2, adminOnly:true },
   { id:'dashboard', label:'Dashboard', Icon:BarChart2, adminOnly:true },
   { id:'trabajos', label:'Trabajos', Icon:LayoutGrid, permission:'trabajos' },
   { id:'leads', label:'Leads antiguo', Icon:Target, permission:'leads' },
@@ -2918,6 +2920,7 @@ export function AdminPanel() {
         {!section&&(<div className="ap-empty-access"><Shield size={32} style={{opacity:0.25,marginBottom:'0.75rem'}}/><h2>Sin acceso asignado</h2><p>Todavía no tienes ninguna sección disponible. Pide al administrador que te asigne una categoría en "Empleados".</p></div>)}
         {section==='inicio'&&<SectionInicio items={accessibleItems} ir={pickSection} prefs={navPrefs} user={user}/>}
         {section==='mi-dia'&&<SectionMiDashboard ir={pickSection}/>}
+        {section==='oficinas'&&<SectionOficinas ir={pickSection}/>}
         {section==='dashboard'&&<SectionDashboard/>}
         {section==='trabajos'&&<SectionTrabajos/>}
         {section==='leads'&&<SectionLeads/>}

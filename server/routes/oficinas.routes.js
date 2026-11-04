@@ -1,0 +1,121 @@
+import express from 'express';
+import { supabase } from '../config/supabase.js';
+import { authenticateToken, requireAdminSuperior } from '../middleware/auth.middleware.js';
+import { leerPlanificacion, guardarPlanificacion, repartir, hoyMadrid } from '../utils/planificacion.js';
+
+// Oficinas virtuales: una vista general del negocio por departamentos (diseño, ventas, presupuestos, finanzas, equipo) con lo que
+// está atrasado o sin planificar, y el planificador de entregables de cada proyecto (reparte fechas y crea las tareas).
+const router = express.Router();
+router.use(authenticateToken, requireAdminSuperior);
+
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+const sumarDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('sv'); };
+
+router.get('/', async (req, res) => {
+  try {
+    const hoy = hoyMadrid();
+    const [pr, ta, em, le, sl, bu, ve, pl] = await Promise.all([
+      supabase.from('client_projects').select('id, client_name, project_name, phase, urgency, responsible_id').eq('status', 'en_marcha').eq('active', true),
+      supabase.from('tasks').select('id, title, done, due_date, project_id, assigned_to, priority').limit(5000),
+      supabase.from('employees').select('id, name').eq('active', true),
+      supabase.from('setting_leads').select('estado').limit(5000),
+      supabase.from('call_slots').select('id').eq('fecha', hoy).eq('ocupado', true),
+      supabase.from('budgets').select('status').limit(5000),
+      supabase.from('ventas').select('valor, cerrada').limit(5000),
+      leerPlanificacion(),
+    ]);
+    const tareas = ta.data || [], pend = tareas.filter(t => !t.done);
+    const atrasada = t => !!t.due_date && t.due_date < hoy;
+
+    const proyectos = (pr.data || []).map(p => {
+      const mias = tareas.filter(t => t.project_id === p.id), pe = mias.filter(t => !t.done);
+      const plan = pl.proyectos[p.id] || null, entrega = plan?.entrega || null;
+      const atras = pe.filter(atrasada).length, hoyN = pe.filter(t => t.due_date === hoy).length, sinFecha = pe.filter(t => !t.due_date).length;
+      const prox = pe.map(t => t.due_date).filter(d => d && d >= hoy).sort()[0] || null;
+      let semaforo = 'verde', motivo = 'Al día';
+      if (atras > 0) { semaforo = 'rojo'; motivo = atras + (atras === 1 ? ' tarea atrasada' : ' tareas atrasadas'); }
+      else if (entrega && entrega < hoy && pe.length) { semaforo = 'rojo'; motivo = 'Entrega pasada con tareas pendientes'; }
+      else if (plan && plan.cabe === false) { semaforo = 'rojo'; motivo = 'El plazo no da para todo (faltan ' + (plan.faltanHoras || '?') + ' h)'; }
+      else if (entrega && entrega <= sumarDias(hoy, 3) && pe.length) { semaforo = 'ambar'; motivo = 'Entrega en pocos días'; }
+      else if (!entrega) { semaforo = 'gris'; motivo = 'Sin fecha de entrega ni plan'; }
+      else if (sinFecha > 0) { semaforo = 'ambar'; motivo = sinFecha + (sinFecha === 1 ? ' tarea sin fecha' : ' tareas sin fecha'); }
+      return { id: p.id, cliente: p.client_name, nombre: p.project_name, fase: p.phase, urgencia: p.urgency, entrega, semaforo, motivo, tareas: { total: mias.length, hechas: mias.length - pe.length, atrasadas: atras, hoy: hoyN, sinFecha, proxima: prox }, planificado: !!plan?.items?.length };
+    });
+    const orden = { rojo: 0, ambar: 1, gris: 2, verde: 3 };
+    proyectos.sort((a, b) => orden[a.semaforo] - orden[b.semaforo] || String(a.entrega || '9999').localeCompare(String(b.entrega || '9999')));
+
+    const estados = (le.data || []).map(l => l.estado);
+    const cuenta = (...xs) => estados.filter(e => xs.includes(e)).length;
+    const budg = (bu.data || []).map(b => b.status);
+    const abiertas = (ve.data || []).filter(v => !v.cerrada);
+
+    const departamentos = [
+      { id: 'diseno', nombre: 'Diseño y proyectos', ir: 'proyectos', datos: [['En marcha', proyectos.length], ['Tareas atrasadas', pend.filter(atrasada).length], ['Sin planificar', proyectos.filter(p => p.semaforo === 'gris').length]], alerta: pend.filter(atrasada).length ? 'rojo' : proyectos.some(p => p.semaforo === 'gris') ? 'ambar' : 'verde' },
+      { id: 'ventas', nombre: 'Ventas y leads', ir: 'setting', datos: [['Leads nuevos', cuenta('nuevo', 'contacto_nuevo')], ['Llamadas hoy', (sl.data || []).length], ['En seguimiento', cuenta('seguimiento_futuro', 'seguimiento_pago')]], alerta: (sl.data || []).length ? 'ambar' : 'verde' },
+      { id: 'presupuestos', nombre: 'Presupuestos', ir: 'presupuestos', datos: [['Borradores', budg.filter(s => s === 'borrador').length], ['Aprobados', budg.filter(s => s === 'aprobado').length]], alerta: 'verde' },
+      { id: 'finanzas', nombre: 'Finanzas', ir: 'ventas', datos: [['Ventas abiertas', abiertas.length], ['Importe abierto', Math.round(abiertas.reduce((s, v) => s + (Number(v.valor) || 0), 0)) + ' €']], alerta: 'verde' },
+      { id: 'equipo', nombre: 'Equipo', ir: 'tareas', datos: (em.data || []).map(e => { const mias = pend.filter(t => t.assigned_to === e.id); return [e.name.split(' ')[0] + (mias.filter(atrasada).length ? ' ⚠' : ''), mias.length]; }).filter(([, n]) => n > 0).slice(0, 6).concat([['Sin asignar', pend.filter(t => !t.assigned_to).length]]), alerta: pend.filter(t => !t.assigned_to && atrasada(t)).length ? 'rojo' : 'verde' },
+    ];
+    res.json({ hoy, departamentos, proyectos, tareasSinFecha: pend.filter(t => !t.due_date).length });
+  } catch (err) { console.error('oficinas:', err); res.status(500).json({ error: 'No se pudieron cargar las oficinas' }); }
+});
+
+// ── catálogo de entregables (nombre + horas medias) ──
+router.get('/catalogo', async (req, res) => { const p = await leerPlanificacion(); res.json({ catalogo: p.catalogo }); });
+router.put('/catalogo', async (req, res) => {
+  try {
+    const lista = (Array.isArray(req.body?.catalogo) ? req.body.catalogo : []).slice(0, 40).map((c, i) => ({ id: String(c?.id || 'e' + i).replace(/[^\w-]/g, '').slice(0, 40) || 'e' + i, nombre: String(c?.nombre || '').trim().slice(0, 80), horas: Math.min(80, Math.max(0.5, Number(c?.horas) || 1)) })).filter(c => c.nombre);
+    if (!lista.length) return res.status(400).json({ error: 'El catálogo no puede quedar vacío' });
+    const p = await leerPlanificacion(); p.catalogo = lista;
+    const { error } = await guardarPlanificacion(p); if (error) throw error;
+    res.json({ catalogo: lista });
+  } catch (err) { res.status(500).json({ error: 'No se pudo guardar el catálogo' }); }
+});
+
+// ── plan de un proyecto ──
+router.get('/proyectos/:id/plan', async (req, res) => {
+  const p = await leerPlanificacion();
+  res.json({ plan: p.proyectos[req.params.id] || null, catalogo: p.catalogo, hoy: hoyMadrid() });
+});
+router.put('/proyectos/:id/entrega', async (req, res) => {
+  try {
+    const entrega = req.body?.entrega || null;
+    if (entrega && !FECHA.test(entrega)) return res.status(400).json({ error: 'Fecha no válida' });
+    const p = await leerPlanificacion();
+    const actual = p.proyectos[req.params.id] || {};
+    p.proyectos[req.params.id] = { ...actual, entrega, actualizado: new Date().toISOString() };
+    if (!entrega && !actual.items) delete p.proyectos[req.params.id];
+    const { error } = await guardarPlanificacion(p); if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: 'No se pudo guardar la fecha' }); }
+});
+router.post('/proyectos/:id/propuesta', (req, res) => {
+  const b = req.body || {};
+  if (!FECHA.test(b.entrega || '')) return res.status(400).json({ error: 'Pon la fecha de entrega al cliente' });
+  const items = (Array.isArray(b.entregables) ? b.entregables : []).slice(0, 40).filter(i => i && String(i.nombre || '').trim());
+  if (!items.length) return res.status(400).json({ error: 'Elige al menos un entregable' });
+  const inicio = FECHA.test(b.inicio || '') ? b.inicio : hoyMadrid();
+  res.json(repartir({ items: items.map(i => ({ id: String(i.id || ''), nombre: String(i.nombre).trim().slice(0, 80), horas: i.horas })), inicio, entrega: b.entrega, margenDias: b.margenDias, horasDia: b.horasDia }));
+});
+router.post('/proyectos/:id/aplicar', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!FECHA.test(b.entrega || '')) return res.status(400).json({ error: 'Falta la fecha de entrega' });
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 40).filter(i => i && String(i.nombre || '').trim() && FECHA.test(i.fecha || ''));
+    if (!items.length) return res.status(400).json({ error: 'No hay entregables que crear' });
+    const { data: proy } = await supabase.from('client_projects').select('id, responsible_id').eq('id', req.params.id).maybeSingle();
+    if (!proy) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    const p = await leerPlanificacion(), previo = p.proyectos[req.params.id];
+    // volver a planificar sustituye solo las tareas pendientes que creó el planificador antes (las hechas y las tuyas no se tocan)
+    if (b.reemplazar && previo?.tareas?.length) await supabase.from('tasks').delete().in('id', previo.tareas).eq('done', false);
+    const filas = items.map(i => ({ title: String(i.nombre).trim().slice(0, 200), description: 'Planificado automáticamente · ' + (Number(i.horas) || 1) + ' h', priority: 'normal', due_date: i.fecha, project_id: proy.id, assigned_to: proy.responsible_id || null }));
+    let r = await supabase.from('tasks').insert(filas).select('id');
+    if (r.error) r = await supabase.from('tasks').insert(filas.map(f => ({ ...f, assigned_to: null }))).select('id');
+    if (r.error) throw r.error;
+    p.proyectos[req.params.id] = { entrega: b.entrega, margenDias: b.margenDias, horasDia: b.horasDia, cabe: b.cabe !== false, faltanHoras: Number(b.faltanHoras) || 0, items: items.map(i => ({ id: i.id || '', nombre: i.nombre, horas: i.horas, fecha: i.fecha })), tareas: [...(b.reemplazar ? [] : previo?.tareas || []), ...r.data.map(t => t.id)], actualizado: new Date().toISOString() };
+    const { error } = await guardarPlanificacion(p); if (error) throw error;
+    res.status(201).json({ creadas: r.data.length });
+  } catch (err) { console.error('oficinas aplicar:', err); res.status(500).json({ error: 'No se pudieron crear las tareas' }); }
+});
+
+export default router;
