@@ -4,6 +4,7 @@ import { AdminAuthProvider, useAdminAuth } from './auth/AdminAuthContext';
 import { EquipoAuthProvider, useEquipoAuth } from './auth/EquipoAuthContext';
 import { ClienteAuthProvider, useClienteAuth } from './auth/ClienteAuthContext';
 import { Home } from './pages/Home';
+import { Privacidad } from './pages/Privacidad';
 import { Proyectos } from './pages/Proyectos';
 import { ProjectGallery } from './pages/ProjectGallery';
 import { AdminLogin } from './pages/AdminLogin';
@@ -69,6 +70,7 @@ function App() {
               {/* Web pública */}
               <Route path="/" element={<Home />} />
               <Route path="/proyectos" element={<Proyectos />} />
+              <Route path="/privacidad" element={<Privacidad />} />
               <Route path="/proyecto/:projectId" element={<ProjectGallery />} />
 
               {/* Subir fotos del estado actual desde el móvil (sin entrar al CRM) */}
