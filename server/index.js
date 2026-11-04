@@ -70,13 +70,15 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
-app.use(cors({
+const corsMw = cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) callback(null, true);
     else callback(new Error('Not allowed by CORS'));
   },
   credentials: true
-}));
+});
+// Los webhooks de WhatsApp los llama Meta (servidor a servidor): no pasan por CORS; ya se protegen con su firma HMAC y su token.
+app.use((req, res, next) => (req.path.startsWith('/api/whatsapp') ? next() : corsMw(req, res, next)));
 
 // verify: guarda el cuerpo crudo de cada petición en req.rawBody — lo
 // necesita el webhook de WhatsApp (server/routes/whatsapp.routes.js) para
