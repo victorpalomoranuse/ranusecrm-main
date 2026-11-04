@@ -110,6 +110,7 @@ router.get('/estado', async (req, res) => {
       const pin = String(req.query.pin || PIN || '').replace(/[^0-9]/g, '');
       out.registro = pin.length === 6 ? await llama('/register', { messaging_product: 'whatsapp', pin }) : { error: 'Falta un PIN de 6 cifras (&pin=123456)' };
     }
+    if (req.query.accion === 'suscribir' && WABA_ID) { const r = await fetch(GRAPH + '/' + WABA_ID + '/subscribed_apps', { method: 'POST', headers: cab }); out.suscribir = { http: r.status, respuesta: (await r.text().catch(() => '')).slice(0, 600) }; } // &accion=suscribir -> engancha esta app a la cuenta de WhatsApp
     if (WABA_ID) { const su = await fetch(GRAPH + '/' + WABA_ID + '/subscribed_apps', { headers: cab }); out.apps_suscritas = { http: su.status, respuesta: (await su.text().catch(() => '')).slice(0, 600) }; }
     const e = await fetch(GRAPH + '/' + PHONE_ID + '?fields=status,name_status,platform_type,verified_name,code_verification_status,quality_rating', { headers: cab });
     out.numero = { http: e.status, respuesta: await e.text().catch(() => '') };
