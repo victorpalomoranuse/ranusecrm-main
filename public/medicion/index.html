@@ -2256,8 +2256,8 @@ function techoSvg(C,px,view,sel){
     (z.tl||[]).forEach(function(t,i){
       if(ref&&ESTR==='vigas')return;
       var x0=t.x-t.w/2,y0=t.y-t.d/2,x1=t.x+t.w/2,y1=t.y+t.d/2,esT=!!(selE&&selE.k==='tl'&&selE.i===i);
-      var cTl=esT?colSel:'#3d8fb5'; /* azul cristal: así el tragaluz no se confunde con la estructura marrón */
-      h+='<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(t.w)+'" height="'+f2(t.d)+'" style="fill:'+cTl+';fill-opacity:'+(esT?.3:.2)+';stroke:'+cTl+';stroke-width:'+f2((esT?2.6:1.4)*px)+'"/>';
+      var cTl=esT?colSel:(ref?C.dim:'#3d8fb5'); /* azul cristal en la lámina de techos, para no confundirlo con la estructura marrón; en iluminación y electricidad es solo una referencia: gris, sin relleno */
+      h+='<rect x="'+f2(x0)+'" y="'+f2(y0)+'" width="'+f2(t.w)+'" height="'+f2(t.d)+'" style="fill:'+(ref&&!esT?'none':cTl)+';fill-opacity:'+(esT?.3:.2)+';stroke:'+cTl+';stroke-width:'+f2((esT?2.6:ref?0.9:1.4)*px)+'"/>';
       h+=seg(x0,y0,x1,y1,1*px,'',0.7,cTl)+seg(x1,y0,x0,y1,1*px,'',0.7,cTl);
       if(!ref)h+=txt(C,px,t.x,y1+13*px,'T'+(i+1)+' · '+fmtU(t.w)+' × '+fmtU(t.d),cTl,10,700);
     });
