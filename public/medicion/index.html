@@ -2599,6 +2599,16 @@ function lumTagsGlobal(){
   })});
   return vistos;
 }
+/* la foto pegada en una luminaria vale para todas las que llevan su mismo código (L1…), en esta y en las demás plantas: se guarda en un solo punto y las demás la buscan por su clave */
+function todosPtsPlano(){
+  var raiz=st.v._raiz||st.v,pl=[];
+  if(raiz.pisos&&raiz.pisos.length>1)raiz.pisos.forEach(function(p){var dt=p.id===raiz.piso?raiz:(p.b||null);if(dt&&dt.pts)pl.push(dt.pts)});
+  else pl.push(raiz.pts||[]);
+  return pl;
+}
+function mismaClave(q,key){if(q.v!=='ilum'||q.s==='dem')return false;var d=ptDef(q.k);return !!d&&lumKey(q,d,ptMontAny(q))===key}
+function ftDeClave(key){var r=null;todosPtsPlano().some(function(pts){return pts.some(function(q){if(q.ft&&q.ft.uri&&mismaClave(q,key)){r={id:'pt:'+q.id,uri:q.ft.uri,pw:q.ft.pw,ph:q.ft.ph};return true}return false})});return r}
+function quitaFtClave(key){todosPtsPlano().forEach(function(pts){pts.forEach(function(q){if(q.ft&&mismaClave(q,key))delete q.ft})})}
 function lumGroups(){
   var gs=[],ix={},glob=lumTagsGlobal();
   st.v.pts.forEach(function(q){
@@ -2610,6 +2620,7 @@ function lumGroups(){
     if(q.ft&&q.ft.uri&&!g.ft)g.ft={id:'pt:'+q.id,uri:q.ft.uri,pw:q.ft.pw,ph:q.ft.ph}; /* foto propia pegada en la luminaria: manda sobre la del catálogo */
     if(d.lin)g.len+=ptLen(q);
   });
+  gs.forEach(function(g){if(!g.ft)g.ft=ftDeClave(g.key)});
   gs.forEach(function(g,i){var gi=glob[g.key];g.gi=gi!=null?gi:1000+i;g.tag='L'+((gi!=null?gi:i)+1);g.cat=g.lid?lumById(g.lid):null});
   gs.sort(function(a,b){return a.gi-b.gi});
   return gs;
@@ -2715,7 +2726,7 @@ function ensureLums(){
   ((st&&st.v&&st.v.lm)||[]).forEach(function(l){if(l&&l.id&&l.n&&l.sym&&!lumById(l.id)){LUMS.push(l);add=true}});
   if(add){try{localStorage.setItem(LSLUM,JSON.stringify(LUMS))}catch(e){}}
   lumList().forEach(function(l){prepLumRgb(l);prepLumEsq(l)});
-  ((st&&st.v&&st.v.pts)||[]).forEach(function(q){if(q.ft&&q.ft.uri)prepLumRgb({id:'pt:'+q.id,uri:q.ft.uri,pw:q.ft.pw,ph:q.ft.ph})});
+  try{todosPtsPlano().forEach(function(pts){pts.forEach(function(q){if(q.ft&&q.ft.uri)prepLumRgb({id:'pt:'+q.id,uri:q.ft.uri,pw:q.ft.pw,ph:q.ft.ph})})})}catch(e){}
 }
 
 /* ---------- alzados ---------- */
@@ -6267,7 +6278,8 @@ $('lum-bg').addEventListener('click',function(){snap();st.v.lsz=Math.min(4,Math.
 function ponFotoLum(id,file){
   var r=new FileReader();r.onload=function(){lumPhotoUri(String(r.result),function(p){
     var q=by(st.v.pts,id);if(!p||!q){toast('No se pudo leer la imagen');return}
-    snap();q.ft={uri:p.uri,pw:p.pw,ph:p.ph};commit();ensureLums();panelSel();toast('Foto puesta: saldrá en la leyenda');
+    var d0=ptDef(q.k),k0=d0?lumKey(q,d0,ptMontAny(q)):null;
+    snap();if(k0)quitaFtClave(k0);q.ft={uri:p.uri,pw:p.pw,ph:p.ph};commit();ensureLums();panelSel();toast('Foto puesta: saldrá en todas las luminarias con este código');
   })};r.readAsDataURL(file);
 }
 function lumPhotoUri(uri,cb){
@@ -6908,7 +6920,8 @@ function panelSel(focus){
       var lo=lumList().filter(function(l){var dd=ptDef(l.sym);return dd&&!!dd.lin===!!pd.lin});
       h+='<label class="fld"><span>Luminaria del catálogo</span><select data-t="pt_lid"><option value="">Genérica (solo símbolo)</option>'+lo.map(function(l){return '<option value="'+esc(l.id)+'"'+(l.id===q.lid?' selected':'')+'>'+esc(l.n)+'</option>'}).join('')+'</select></label>';
       h+='<label class="fld"><span>Nombre propio (opcional)</span><input data-t="pt_nm" value="'+esc(q.nm||'')+'" placeholder="'+esc(q.lid&&lumById(q.lid)?lumById(q.lid).n:'Ej. Foco de pared zona máquinas')+'" autocomplete="off"></label><p class="note" style="margin:0 0 6px">Si escribes uno, sale con ese nombre en la leyenda, el listado y las mediciones. Las luces con el mismo nombre se agrupan.</p>';
-      h+='<div class="fld"><span>Foto para la leyenda</span><div id="ft-drop" tabindex="0" data-a="ptft" style="border:1.5px dashed var(--line);border-radius:8px;min-height:64px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px;cursor:pointer;outline-offset:2px">'+(q.ft&&q.ft.uri?'<img src="'+q.ft.uri+'" alt="" style="max-height:90px;max-width:100%;object-fit:contain;background:#fff;border-radius:4px">':'<span class="note" style="margin:0">Pulsa aquí y pega la foto con Ctrl+V<br>(o toca para elegir un archivo)</span>')+'</div>'+(q.ft&&q.ft.uri?'<div class="btns"><button data-a="ptftx">Quitar la foto</button></div>':'')+'<p class="note" style="margin:4px 0 0">Sale junto a esta luminaria en la leyenda del PDF. Manda sobre la foto del catálogo.</p></div>';
+      var ftq=q.ft&&q.ft.uri?q.ft:ftDeClave(lumKey(q,pd,ptMontAny(q)));
+      h+='<div class="fld"><span>Foto para la leyenda</span><div id="ft-drop" tabindex="0" data-a="ptft" style="border:1.5px dashed var(--line);border-radius:8px;min-height:64px;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px;cursor:pointer;outline-offset:2px">'+(ftq&&ftq.uri?'<img src="'+ftq.uri+'" alt="" style="max-height:90px;max-width:100%;object-fit:contain;background:#fff;border-radius:4px">':'<span class="note" style="margin:0">Pulsa aquí y pega la foto con Ctrl+V<br>(o toca para elegir un archivo)</span>')+'</div>'+(ftq&&ftq.uri?'<div class="btns"><button data-a="ptftx">Quitar la foto</button></div>':'')+'<p class="note" style="margin:4px 0 0">Vale para todas las luminarias con el mismo código (L1, L2…) y sale en la leyenda del PDF. Manda sobre la foto del catálogo.</p></div>';
       var cl=q.lid&&lumById(q.lid);
       if(cl)h+='<p class="note">'+(cl.lm?cl.lm+' lm':'')+(cl.w?' · '+cl.w+' W':'')+(cl.k?' · '+cl.k+' K':'')+(cl.ref?' · ref. '+esc(cl.ref):'')+'</p>';
     }
@@ -7446,7 +7459,7 @@ function doAction(a,el){
     commit();panelSel();toast(cambios?'Contorno enderezado':'Ya estaba recto, o los lados van muy torcidos para enderezarlos');return;
   }
   if(a==='ptsm'||a==='ptbg'){var qz=by(st.v.pts,s.id);snap();qz.sz=Math.max(0.4,Math.min(4,Math.round((qz.sz||1)*(a==='ptbg'?1.25:0.8)*100)/100));commit();return}
-  if(a==='ptftx'&&s.t==='pt'){var qfx=by(st.v.pts,s.id);if(qfx){snap();delete qfx.ft;commit();panelSel();toast('Foto quitada')}return}
+  if(a==='ptftx'&&s.t==='pt'){var qfx=by(st.v.pts,s.id);if(qfx){var dfx=ptDef(qfx.k);snap();if(dfx)quitaFtClave(lumKey(qfx,dfx,ptMontAny(qfx)));delete qfx.ft;commit();panelSel();toast('Foto quitada de todas las luminarias con este código')}return}
   if(a==='ptft'&&s.t==='pt'){var fi=document.createElement('input');fi.type='file';fi.accept='image/*';fi.onchange=function(){if(fi.files&&fi.files[0])ponFotoLum(s.id,fi.files[0])};fi.click();return}
   if(a==='ptdcall'&&s.t==='pt'){var qd0=by(st.v.pts,s.id);if(qd0){snap();st.v.pts.forEach(function(q){if(q.v===qd0.v&&q.k===qd0.k){if(qd0.dc>0)q.dc=qd0.dc;else delete q.dc}});commit();toast('Igualados');return}}
   if(a==='ptsall'){var q0=by(st.v.pts,s.id);snap();st.v.pts.forEach(function(q){if(q.v==='ilum'&&(q.lid||('k:'+q.k))===(q0.lid||('k:'+q0.k))){q.sz=q0.sz||1;if(q0.dc>0)q.dc=q0.dc;else delete q.dc}});commit();return}
