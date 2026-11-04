@@ -14,33 +14,41 @@ export function MicButton({ onResult, disabled, lang = 'es-ES' }) {
   const supported = Boolean(SpeechRecognitionCtor);
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);
+  const quiereRef = useRef(false); // true mientras el usuario no haya pulsado parar
 
-  useEffect(() => () => { recognitionRef.current?.stop(); }, []);
+  useEffect(() => () => { quiereRef.current = false; recognitionRef.current?.stop(); }, []);
 
   if (!supported) return null;
 
-  const toggle = () => {
-    if (listening) {
-      recognitionRef.current?.stop();
-      return;
-    }
+  // Escucha continua: no se corta en las pausas al pensar; solo para cuando pulsas el cuadrado.
+  // Si el navegador cierra la sesión por silencio, se reabre sola mientras sigas "grabando".
+  const arranca = () => {
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = lang;
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     recognition.onresult = (e) => {
-      const text = Array.from(e.results).map(r => r[0].transcript).join(' ').trim();
-      if (text) onResult(text);
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (!e.results[i].isFinal) continue;
+        const text = e.results[i][0].transcript.trim();
+        if (text) onResult(text);
+      }
     };
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
-    recognitionRef.current = recognition;
-    try {
-      recognition.start();
-      setListening(true);
-    } catch {
+    recognition.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'audio-capture') quiereRef.current = false; // sin permiso o sin micro: no reintentar
+    };
+    recognition.onend = () => {
+      if (quiereRef.current) { setTimeout(() => { if (!quiereRef.current) return; try { arranca(); } catch { quiereRef.current = false; setListening(false); } }, 250); return; }
       setListening(false);
-    }
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+  const toggle = () => {
+    if (listening) { quiereRef.current = false; recognitionRef.current?.stop(); setListening(false); return; }
+    quiereRef.current = true;
+    try { arranca(); setListening(true); } catch { quiereRef.current = false; setListening(false); }
   };
 
   return (

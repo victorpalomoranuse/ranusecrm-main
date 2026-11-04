@@ -11,7 +11,7 @@ const EJEMPLOS = [
 ];
 const KEY = 'asistente-diseno-v2';
 const leer = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
-const selStyle = { background: 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '0.35rem 0.5rem', fontSize: '0.8rem', maxWidth: 260 };
+const selStyle = { background: '#1b1b1f', color: '#fff', colorScheme: 'dark', border: '1px solid rgba(255,255,255,0.22)', borderRadius: 8, padding: '0.4rem 0.5rem', fontSize: '0.8rem', maxWidth: 280 };
 
 export function SectionAsistenteDiseno() {
   const ini = useMemo(leer, []);
@@ -28,6 +28,7 @@ export function SectionAsistenteDiseno() {
   const [versiones, setVersiones] = useState([]);
   const [verV, setVerV] = useState(null); // versión que se está mirando (null = la actual)
   const [aviso, setAviso] = useState('');
+  const [todos, setTodos] = useState(false); // false = solo los proyectos en marcha
   const bottomRef = useRef(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
@@ -111,9 +112,10 @@ export function SectionAsistenteDiseno() {
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 12px' }}>
         <select style={selStyle} value={pid} onChange={e => cambiaProyecto(e.target.value)}>
-          <option value="">Sin proyecto (no se guarda)</option>
-          {proyectos.map(p => <option key={p.id} value={p.id}>{p.project_name || p.client_name || p.id}</option>)}
+          <option value="" style={{ background: '#1b1b1f', color: '#fff' }}>Sin proyecto (no se guarda)</option>
+          {proyectos.filter(p => todos || p.id === pid || (p.status === 'en_marcha' && p.active !== false)).map(p => <option key={p.id} value={p.id} style={{ background: '#1b1b1f', color: '#fff' }}>{[p.client_name, p.project_name].filter(Boolean).join(' · ') || p.id}</option>)}
         </select>
+        <label style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.6)', display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}><input type="checkbox" checked={todos} onChange={e => setTodos(e.target.checked)} /> Ver también terminados</label>
         {pid && laminas.length > 0 && (
           <select style={selStyle} value={lid} onChange={e => abreLamina(e.target.value)}>
             {!lid && <option value="">Lámina nueva (sin guardar aún)</option>}
