@@ -60,7 +60,7 @@ function Ficha({ info, hoy, ir, onPlanificar, onCerrar, onAvatar }) {
   return cuerpo ? <div style={{ ...vidrio, padding: '0.85rem 1rem', boxShadow: '0 10px 40px rgba(0,0,0,0.6)', maxHeight: '58vh', overflowY: 'auto' }}>{cuerpo}</div> : null;
 }
 
-export function SectionOficinas({ ir }) {
+export function SectionOficinas({ ir: irFuera, renderSeccion, etiquetas }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [sel, setSel] = useState(null);
@@ -71,7 +71,16 @@ export function SectionOficinas({ ir }) {
   const [verHoy, setVerHoy] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth > 900));
   const [verProy, setVerProy] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth > 900));
   const [zona, setZona] = useState('todo');
+  const [tabs, setTabs] = useState([]);
+  const [activa, setActiva] = useState(null);
+  const [verPanel, setVerPanel] = useState(true);
   const apiRef = useRef(null), raiz = useRef(null);
+  // abrir una sección = una pestaña dentro de la oficina (sin salir); si no hay panel, se navega como antes
+  const ir = (id) => {
+    if (!renderSeccion || !etiquetas?.[id]) { irFuera?.(id); return; }
+    setTabs(t => (t.includes(id) ? t : [...t, id])); setActiva(id); setVerPanel(true);
+  };
+  const cerrarTab = (id) => setTabs(t => { const n = t.filter(x => x !== id); if (activa === id) setActiva(n[n.length - 1] || null); return n; });
 
   const cargar = useCallback(() => { api.get('/oficinas').then(r => { setData(r.data); setError(''); }).catch(e => setError(e.response?.data?.error || 'No se pudieron cargar las oficinas')); }, []);
   useEffect(() => { cargar(); }, [cargar]);
@@ -158,6 +167,25 @@ export function SectionOficinas({ ir }) {
         {Object.keys(LUZ).map(k => <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Luz c={k} /> {TEXTO_LUZ[k]}</span>)}
         {aviso && <span style={{ color: LUZ.rojo }}>{aviso}</span>}
       </div>
+
+      {/* pestañas: las secciones se abren aquí mismo, encima de la oficina */}
+      {tabs.length > 0 && (
+        <div style={{ position: 'absolute', zIndex: 20, left: 12, right: 12, bottom: 12, top: verPanel ? 56 : 'auto', display: 'flex', flexDirection: 'column', background: '#0a0a0a', border: '1px solid rgba(186,175,165,0.32)', borderRadius: 14, boxShadow: '0 12px 50px rgba(0,0,0,0.7)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 8px', background: 'rgba(255,255,255,0.05)', flexWrap: 'wrap' }}>
+            {tabs.map(id => (
+              <div key={id} onClick={() => { setActiva(id); setVerPanel(true); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem', background: id === activa && verPanel ? 'rgba(232,201,143,0.2)' : 'transparent', border: '1px solid ' + (id === activa && verPanel ? 'rgba(232,201,143,0.5)' : 'rgba(255,255,255,0.12)') }}>
+                {etiquetas[id] || id}
+                <X size={12} onClick={(e) => { e.stopPropagation(); cerrarTab(id); }} aria-label="Cerrar pestaña" style={{ opacity: 0.7 }} />
+              </div>
+            ))}
+            <span style={{ flex: 1 }} />
+            <Boton onClick={() => setVerPanel(v => !v)}>{verPanel ? <><Minimize2 size={13} /> Ver oficina</> : <><Maximize2 size={13} /> Ampliar</>}</Boton>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: verPanel ? 'block' : 'none', overflow: 'hidden' }}>
+            {tabs.map(id => <div key={id} className="ap-main" style={{ display: id === activa ? 'block' : 'none', height: '100%' }}>{renderSeccion(id)}</div>)}
+          </div>
+        </div>
+      )}
 
       {plan && <PlanificarProyecto proyecto={plan} onClose={() => setPlan(null)} onHecho={() => { setAviso(''); cargar(); }} />}
     </div>

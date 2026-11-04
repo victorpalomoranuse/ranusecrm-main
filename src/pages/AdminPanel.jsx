@@ -2908,6 +2908,42 @@ export function AdminPanel() {
   const handleLogout=()=>{logout();navigate('/admin');};
   const currentLabel=accessibleItems.find(i=>i.id===section)?.label||'';
   const pickSection=(id)=>{setSection(id);setMobileNavOpen(false);};
+  const seccion=(id)=>{
+    switch(id){
+      case 'inicio': return <SectionInicio items={accessibleItems} ir={pickSection} prefs={navPrefs} user={user}/>;
+      case 'mi-dia': return <SectionMiDashboard ir={pickSection}/>;
+      case 'dashboard': return <SectionDashboard/>;
+      case 'trabajos': return <SectionTrabajos/>;
+      case 'leads': return <SectionLeads/>;
+      case 'setting': return <SectionSetting/>;
+      case 'ventas': return <SectionVentas/>;
+      case 'mis-comisiones': return <SectionMisComisiones/>;
+      case 'proyectos': return <SectionProyectos/>;
+      case 'planos': return <SectionPlanos/>;
+      case 'estudio-ideas': return <div style={{height:'calc(100vh - 140px)',minHeight:480}}><EstudioIdeas/></div>;
+      case 'hojas': return <SectionHojas/>;
+      case 'clientes': return <SectionClientes/>;
+      case 'empleados': return <SectionEmpleados/>;
+      case 'roles': return <SectionRoles/>;
+      case 'presupuestos': return <SectionPresupuestos/>;
+      case 'asistente': return <SectionAsistenteIA/>;
+      case 'asistente-finanzas': return <SectionAsistenteFinanzas/>;
+      case 'asistente-diseno': return <SectionAsistenteDiseno/>;
+      case 'asistente-setter': return <SectionAsistenteSetter/>;
+      case 'mi-agenda': return <SectionAgenda/>;
+      case 'pedidos': return <SectionPedidos/>;
+      case 'finanzas': return <SectionFinanzas/>;
+      case 'obra': return <SectionRelacionObra/>;
+      case 'tareas': return <SectionTareas/>;
+      case 'ajustes': return <SectionAjustes/>;
+      case 'catalogo': return <SectionCatalogo/>;
+      case 'referencias': return <SectionReferencias/>;
+      case 'recursos': return <SectionRecursos/>;
+      case 'contactos': return <SectionContactos/>;
+      default: return null;
+    }
+  };
+  const etiquetas=Object.fromEntries(accessibleItems.map(i=>[i.id,i.label]));
   return (
     <div className="ap">
       <button className="ap-mobile-topbar-menu" onClick={()=>setMobileNavOpen(true)} aria-label="Abrir menú"><Menu size={20}/></button>
@@ -2920,37 +2956,7 @@ export function AdminPanel() {
       </aside>
       <main className="ap-main">
         {!section&&(<div className="ap-empty-access"><Shield size={32} style={{opacity:0.25,marginBottom:'0.75rem'}}/><h2>Sin acceso asignado</h2><p>Todavía no tienes ninguna sección disponible. Pide al administrador que te asigne una categoría en "Empleados".</p></div>)}
-        {section==='inicio'&&<SectionInicio items={accessibleItems} ir={pickSection} prefs={navPrefs} user={user}/>}
-        {section==='mi-dia'&&<SectionMiDashboard ir={pickSection}/>}
-        {section==='oficinas'&&<SectionOficinas ir={pickSection}/>}
-        {section==='dashboard'&&<SectionDashboard/>}
-        {section==='trabajos'&&<SectionTrabajos/>}
-        {section==='leads'&&<SectionLeads/>}
-        {section==='setting'&&<SectionSetting/>}
-        {section==='ventas'&&<SectionVentas/>}
-        {section==='mis-comisiones'&&<SectionMisComisiones/>}
-        {section==='proyectos'&&<SectionProyectos/>}
-        {section==='planos'&&<SectionPlanos/>}
-        {section==='estudio-ideas'&&<div style={{height:'calc(100vh - 140px)',minHeight:480}}><EstudioIdeas/></div>}
-        {section==='hojas'&&<SectionHojas/>}
-        {section==='clientes'&&<SectionClientes/>}
-        {section==='empleados'&&<SectionEmpleados/>}
-        {section==='roles'&&<SectionRoles/>}
-        {section==='presupuestos'&&<SectionPresupuestos/>}
-        {section==='asistente'&&<SectionAsistenteIA/>}
-        {section==='asistente-finanzas'&&<SectionAsistenteFinanzas/>}
-        {section==='asistente-diseno'&&<SectionAsistenteDiseno/>}
-        {section==='asistente-setter'&&<SectionAsistenteSetter/>}
-        {section==='mi-agenda'&&<SectionAgenda/>}
-        {section==='pedidos'&&<SectionPedidos/>}
-        {section==='finanzas'&&<SectionFinanzas/>}
-        {section==='obra'&&<SectionRelacionObra/>}
-        {section==='tareas'&&<SectionTareas/>}
-        {section==='ajustes'&&<SectionAjustes/>}
-        {section==='catalogo'&&<SectionCatalogo/>}
-        {section==='referencias'&&<SectionReferencias/>}
-        {section==='recursos'&&<SectionRecursos/>}
-        {section==='contactos'&&<SectionContactos/>}
+        {section==='oficinas'?<SectionOficinas ir={pickSection} renderSeccion={seccion} etiquetas={etiquetas}/>:seccion(section)}
       </main>
     </div>
   );
