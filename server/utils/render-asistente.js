@@ -34,6 +34,7 @@ export async function renderDesdeFoto({ buffer, mime, instrucciones, estilo }) {
 }
 
 // ── Imagen desde texto (inspiración sin foto de partida) y edición de una foto con una instrucción ──
+const VIABLE = "REGLAS DE VIABILIDAD (obligatorias, el diseño tiene que poder construirse de verdad con presupuesto razonable de reforma de gimnasio o home gym): geometría ORTOGONAL, con paredes, techos y mobiliario rectos y planos; NADA de superficies curvas, onduladas, orgánicas ni de formas que requieran CNC o piezas a medida complejas; techo plano a altura normal (2,5-3 m) con, como mucho, falso techo recto o foseado sencillo; revestimientos en materiales y formatos estándar (tablero chapado o melamina en piezas de 244x122, lamas rectas, pintura, microcemento, porcelánico, espejo, panel acústico) y suelos de caucho, vinilo o SPC en un solo tono o con juntas rectas, sin dibujos ni remolinos; mobiliario modular recto con medidas de catálogo; iluminación con perfiles LED lineales rectos y focos empotrables estándar; maquinaria y racks reales de catálogo comercial. UN SOLO gesto de diseño llamativo por imagen (un color, un material o una iluminación), el resto sobrio y barato de ejecutar.";
 async function textoOpenAI(prompt) {
   const clave = (process.env.OPENAI_API_KEY || '').trim(); if (!clave) throw new Error('sin clave de OpenAI');
   const r = await fetch('https://api.openai.com/v1/images/generations', { method: 'POST', headers: { Authorization: 'Bearer ' + clave, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', prompt, size: 'auto', quality: process.env.OPENAI_IMAGE_QUALITY || 'high', n: 1 }) });
@@ -50,13 +51,13 @@ async function textoGemini(prompt) {
   return Buffer.from((img.inlineData || img.inline_data).data, 'base64');
 }
 export async function imagenDesdeTexto({ prompt, estilo }) {
-  const p = ['Imagen de inspiración para un estudio de diseño de espacios deportivos y gimnasios: ' + String(prompt).slice(0, 1200) + '.', estilo ? 'Estilo: ' + String(estilo).slice(0, 150) + '.' : '', 'Fotografía de arquitectura e interiorismo de revista, realista, con criterio de diseñador, materiales y luz creíbles, nada genérico ni de catálogo. Sin texto ni logotipos.'].filter(Boolean).join(' ');
+  const p = ['Imagen de inspiración para un estudio de diseño de espacios deportivos y gimnasios: ' + String(prompt).slice(0, 1200) + '.', estilo ? 'Estilo: ' + String(estilo).slice(0, 150) + '.' : '', 'Fotografía de arquitectura e interiorismo realista, con criterio de diseñador, materiales y luz creíbles, pero que se pueda ejecutar: ' + VIABLE + ' Sin texto ni logotipos.'].filter(Boolean).join(' ');
   const motores = process.env.OPENAI_API_KEY ? [textoOpenAI, textoGemini] : [textoGemini, textoOpenAI];
   let ultimo = null; for (const m of motores) { try { return await m(p); } catch (e) { ultimo = e; } }
   throw new Error('No hay ningún motor de imágenes disponible o han fallado (' + (ultimo?.message || '') + ')');
 }
 export async function editarFoto({ buffer, mime, instruccion }) {
-  const prompt = 'Edita esta fotografía aplicando SOLO este cambio: «' + String(instruccion).slice(0, 800) + '». Mantén exactamente la composición, la perspectiva, la luz y todo lo que no se menciona; integra el cambio con la escala, las sombras y los reflejos de la escena. El resultado debe parecer una fotografía real.';
+  const prompt = 'Edita esta fotografía aplicando SOLO este cambio: «' + String(instruccion).slice(0, 800) + '». Mantén exactamente la composición, la perspectiva, la luz y todo lo que no se menciona; integra el cambio con la escala, las sombras y los reflejos de la escena. El resultado debe parecer una fotografía real y el cambio tiene que ser construible con materiales y medidas estándar (sin superficies curvas ni piezas imposibles).';
   const motores = process.env.OPENAI_API_KEY ? [conOpenAI, conGemini] : [conGemini, conOpenAI];
   let ultimo = null; for (const m of motores) { try { return await m(buffer, mime, prompt); } catch (e) { ultimo = e; } }
   throw new Error('No hay ningún motor de imágenes disponible o han fallado (' + (ultimo?.message || '') + ')');
