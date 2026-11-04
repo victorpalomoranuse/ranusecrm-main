@@ -2649,7 +2649,7 @@ const ETIQUETAS_PERMISOS = {
   dashboard: 'Dashboard', trabajos: 'Trabajos', leads: 'Leads',
   proyectos: 'Proyectos', clientes: 'Clientes',
   catalogo: 'Catálogo', referencias: 'Referencias', recursos: 'Recursos', contactos: 'Proveedores',
-  ventas: 'Ventas', finanzas: 'Finanzas', asistente: 'Asistente IA',
+  ventas: 'Ventas', finanzas: 'Finanzas', asistente: 'Asistente IA', presupuestos: 'Presupuestos (solo los suyos)',
 };
 const PERMISOS_CONFIGURABLES = Object.keys(ETIQUETAS_PERMISOS);
 // Qué secciones del menú abre cada casilla (se muestra en el editor de roles)
@@ -2666,8 +2666,9 @@ const PERMISOS_ABRE = {
   ventas: 'Ventas, Asistente IA, Relación de obra',
   finanzas: 'Finanzas, Asistente Finanzas, Relación de obra',
   asistente: 'Solo el Asistente IA (presupuestos y crear productos del catálogo), sin abrir Ventas',
+  presupuestos: 'Presupuestos: solo ve y edita los que crea esa persona (la numeración es la misma). Para trabajar bien también necesita Proyectos y Catálogo',
 };
-const SIEMPRE_ABIERTAS = 'Todos los roles ven siempre: Inicio, Mi día y Mis Comisiones. Solo el administrador superior ve: Presupuestos, Pedidos, Tareas, Empleados, Roles y Ajustes (no se pueden dar a un rol).';
+const SIEMPRE_ABIERTAS = 'Todos los roles ven siempre: Inicio, Mi día y Mis Comisiones. Solo el administrador superior ve: Pedidos, Tareas, Empleados, Roles y Ajustes (no se pueden dar a un rol).';
 
 function useRoles() {
   const [roles,setRoles]=useState([]); const [loadingRoles,setLoadingRoles]=useState(true);
@@ -2874,7 +2875,7 @@ const NAV_ITEMS = [
   { id:'clientes', label:'Clientes', Icon:UserCheck, permission:'clientes' },
   { id:'empleados', label:'Empleados', Icon:Users, adminOnly:true },
   { id:'roles', label:'Roles', Icon:Shield, adminOnly:true },
-  { id:'presupuestos', label:'Presupuestos', Icon:Calculator, adminOnly:true },
+  { id:'presupuestos', label:'Presupuestos', Icon:Calculator, permission:'presupuestos' },
   { id:'asistente', label:'Asistente IA', Icon:MessageSquare, permissions:['ventas','asistente'] },
   { id:'pedidos', label:'Pedidos', Icon:Package, adminOnly:true },
   { id:'finanzas', label:'Finanzas', Icon:Wallet, permission:'finanzas' },

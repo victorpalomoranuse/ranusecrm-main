@@ -17,7 +17,36 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
-router.use(authenticateToken, requireAdminSuperior);
+// Acceso: el admin ve todo. Un trabajador con el permiso "presupuestos" (p. ej. Alejandra) solo ve y toca los presupuestos que ha creado ella;
+// la numeración (RAN-001…) es la misma para todos. Dashboard, pedidos y ajustes de formas de pago/capítulos siguen siendo solo del admin.
+const accesoPresupuestos = (req, res, next) => {
+  if (req.user?.role === 'admin_superior') return next();
+  if (req.user?.role === 'trabajador' && req.user.permissions?.presupuestos === true) {
+    req.soloPropios = true;
+    const p = req.path;
+    if (p === '/dashboard' || p.startsWith('/pedidos')) return res.status(403).json({ error: 'No tienes acceso a esta parte.' });
+    if ((p.startsWith('/payment-options') || p === '/capitulos') && req.method !== 'GET') return res.status(403).json({ error: 'Solo el administrador puede cambiar esto.' });
+    return next();
+  }
+  return res.status(403).json({ error: 'Acceso denegado. No tienes permiso para los presupuestos.' });
+};
+router.use(authenticateToken, accesoPresupuestos);
+// Cualquier ruta con :id comprueba que el presupuesto sea suyo (si no lo es, "no existe" para ella)
+router.param('id', async (req, res, next, id) => {
+  if (!req.soloPropios) return next();
+  try {
+    const { data, error } = await supabase.from('budgets').select('created_by').eq('id', id).maybeSingle();
+    if (error) return res.status(500).json({ error: 'No se pudo comprobar el presupuesto. Falta ejecutar la migración "creado por" en Supabase.' });
+    if (!data || data.created_by !== req.user.id) return res.status(404).json({ error: 'Presupuesto no encontrado' });
+    next();
+  } catch { res.status(500).json({ error: 'No se pudo comprobar el presupuesto' }); }
+});
+// Inserta un presupuesto anotando quién lo crea; si aún no está la columna y es el admin, lo crea igualmente (sin el dato)
+async function insertaPresupuesto(req, row, select) {
+  let r = await supabase.from('budgets').insert({ ...row, created_by: req.user.id }).select(select).single();
+  if (r.error && !req.soloPropios && (r.error.code === '42703' || /created_by/.test(r.error.message || ''))) r = await supabase.from('budgets').insert(row).select(select).single();
+  return r;
+}
 
 const PHASE_LABELS = { 0: 'Diseño previo', 1: 'Planos generales', 2: 'Instalaciones', 3: 'Interiorismo y materialidad', 4: 'Renders', 5: 'Maquinaria y equipamiento', 6: 'Documentación de apoyo' };
 
@@ -245,9 +274,14 @@ router.get('/', async (req, res) => {
     // computeTotals() trataba las partidas en modo PVP+Dto como si fueran modo
     // margen, y las tarjetas del listado podían no coincidir con el presupuesto
     // individual para el mismo dato.
-    const { data, error } = await supabase.from('budgets').select('*, project:client_projects(id, client_name, project_name, phase), items:budget_items(unit_cost, unit_price, quantity, pricing_mode, pvp_ref, discount_pct, purchase_dto)').order('created_at', { ascending: false });
+    let q = supabase.from('budgets').select('*, project:client_projects(id, client_name, project_name, phase), items:budget_items(unit_cost, unit_price, quantity, pricing_mode, pvp_ref, discount_pct, purchase_dto)').order('created_at', { ascending: false });
+    if (req.soloPropios) q = q.eq('created_by', req.user.id);
+    const { data, error } = await q;
     if (error) throw error;
-    const budgets = (data || []).map(({ items, ...b }) => ({ ...b, ...computeTotals(items || [], b.design_fee_type, b.design_fee_value, b.design_hours, b.global_discount_pct) }));
+    const ids = [...new Set((data || []).map(b => b.created_by).filter(Boolean))];
+    const nombres = {};
+    if (ids.length) { const { data: us } = await supabase.from('users').select('id, name').in('id', ids); (us || []).forEach(u => { nombres[u.id] = u.name; }); }
+    const budgets = (data || []).map(({ items, ...b }) => ({ ...b, creador_nombre: b.created_by ? (nombres[b.created_by] || 'Otro usuario') : 'Víctor', ...computeTotals(items || [], b.design_fee_type, b.design_fee_value, b.design_hours, b.global_discount_pct) }));
     res.json({ budgets });
   } catch (err) { res.status(500).json({ error: 'Error al listar presupuestos' }); }
 });
@@ -406,7 +440,7 @@ router.post('/', async (req, res) => {
     const insertData = { budget_number, status: 'borrador', design_fee_type: 'flat', design_fee_value: 0, design_hours: 0 };
     if (project_id) insertData.project_id = project_id;
     if (budget_name) insertData.budget_name = budget_name.trim();
-    const { data, error } = await supabase.from('budgets').insert(insertData).select('*, project:client_projects(id, client_name, project_name, phase)').single();
+    const { data, error } = await insertaPresupuesto(req, insertData, '*, project:client_projects(id, client_name, project_name, phase)');
     if (error) { if (error.code === '23505') return res.status(400).json({ error: 'Este proyecto ya tiene presupuesto' }); throw error; }
     res.status(201).json({ budget: { ...data, items: [], ...computeTotals([], 'flat', 0, 0) } });
   } catch (err) { res.status(500).json({ error: 'Error al crear presupuesto' }); }
@@ -469,9 +503,7 @@ router.post('/:id/duplicate', async (req, res) => {
     const budget_number = await generateBudgetNumber();
     // No se enlaza al mismo proyecto (un proyecto solo puede tener un
     // presupuesto) — se crea suelto, y desde ahí se puede reenlazar si hace falta.
-    const { data: nuevo, error: errNuevo } = await supabase
-      .from('budgets')
-      .insert({
+    const { data: nuevo, error: errNuevo } = await insertaPresupuesto(req, {
         budget_number,
         budget_name: original.budget_name ? `${original.budget_name} (copia)` : 'Copia de presupuesto',
         status: 'borrador',
@@ -480,9 +512,7 @@ router.post('/:id/duplicate', async (req, res) => {
         design_hours: original.design_hours,
         global_discount_pct: original.global_discount_pct,
         notes: original.notes,
-      })
-      .select('*, project:client_projects(id, client_name, project_name, phase)')
-      .single();
+      }, '*, project:client_projects(id, client_name, project_name, phase)');
     if (errNuevo) throw errNuevo;
 
     const items = original.items || [];

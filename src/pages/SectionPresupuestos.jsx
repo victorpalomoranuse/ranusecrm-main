@@ -406,7 +406,7 @@ function BudgetList({ onOpen }) {
           return (
             <div key={b.id} className="pres-card pres-card--has-budget" onClick={() => onOpen(b.id)}>
               <div className="pres-card-head">
-                <div className="pres-card-names"><p className="pres-card-client" style={{ color: '#baafa5' }}>{b.budget_number}</p><p className="pres-card-project">{b.budget_name || 'Sin nombre'}</p></div>
+                <div className="pres-card-names"><p className="pres-card-client" style={{ color: '#baafa5' }}>{b.budget_number}{b.creador_nombre && b.creador_nombre !== 'Víctor' ? ' · de ' + b.creador_nombre : ''}</p><p className="pres-card-project">{b.budget_name || 'Sin nombre'}</p></div>
                 {st && <span className="pres-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>}
               </div>
               <div className="pres-card-stats">
@@ -430,7 +430,7 @@ function BudgetList({ onOpen }) {
           return (
             <div key={p.id} className="pres-card pres-card--has-budget" onClick={() => onOpen(b.id)}>
               <div className="pres-card-head">
-                <div className="pres-card-names"><p className="pres-card-client">{p.client_name}</p><p className="pres-card-project">{p.project_name}</p></div>
+                <div className="pres-card-names"><p className="pres-card-client">{p.client_name}{b.creador_nombre && b.creador_nombre !== 'Víctor' ? ' · de ' + b.creador_nombre : ''}</p><p className="pres-card-project">{p.project_name}</p></div>
                 {st && <span className="pres-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>}
               </div>
               <div className="pres-card-stats">
