@@ -1,188 +1,159 @@
-import { useState, useEffect, useCallback } from 'react';
-import { PencilRuler, Phone, Calculator, Wallet, Users, ArrowRight, CalendarDays, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { CalendarDays, ArrowRight, Maximize2, Minimize2, ListChecks, FolderKanban, X, AlertCircle } from 'lucide-react';
 import api from '../services/api';
 import { PlanificarProyecto } from '../components/PlanificarProyecto';
 import { OficinaVirtual3D } from '../components/OficinaVirtual3D';
 
-// Oficinas virtuales: el negocio como un plano de oficinas. Cada departamento es una sala con su semáforo y sus cifras;
-// la sala de diseño tiene una mesa por proyecto en marcha (semáforo, entrega, avance) y desde ahí se planifican los entregables.
+// Oficinas: el gemelo digital de Ranuse a pantalla completa. Todo lo que hacía falta del panel está dentro: las tareas de hoy,
+// la lista de proyectos con su semáforo (al pulsar uno la cámara vuela a su gym), la ficha de lo que se toca y el planificador.
 
-const ICONO = { diseno: PencilRuler, ventas: Phone, presupuestos: Calculator, finanzas: Wallet, equipo: Users };
-const LUZ = { rojo: '#e0705a', ambar: '#e0a24a', gris: '#8a8580', verde: '#6cc08d' };
+const LUZ = { rojo: '#ff6b57', ambar: '#ffb347', gris: '#8f8a85', verde: '#4be3a0' };
 const TEXTO_LUZ = { rojo: 'Atención', ambar: 'Ojo', gris: 'Sin planificar', verde: 'Al día' };
-const pared = '3px solid rgba(186,175,165,0.28)';
-const suelo = { backgroundImage: 'linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)', backgroundSize: '24px 24px' };
+const vidrio = { background: 'rgba(12,12,16,0.78)', border: '1px solid rgba(186,175,165,0.28)', borderRadius: 14, backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', color: '#fff' };
+const mut = { fontSize: '0.72rem', color: 'rgba(255,255,255,0.55)' };
 const fmt = (iso, hoy) => {
   if (!iso) return 'Sin fecha';
   const d = Math.round((new Date(`${iso}T12:00:00`) - new Date(`${hoy}T12:00:00`)) / 86400000);
   const base = new Date(`${iso}T12:00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
   return d === 0 ? 'Hoy' : d === 1 ? 'Mañana' : d < 0 ? `${base} (pasada)` : `${base} (${d} d)`;
 };
+const Luz = ({ c, t }) => <span title={t} style={{ width: 9, height: 9, borderRadius: '50%', background: LUZ[c], boxShadow: `0 0 8px ${LUZ[c]}`, flexShrink: 0, display: 'inline-block' }} />;
+const Boton = ({ children, on, ...r }) => <button {...r} style={{ background: on ? '#fff' : 'rgba(255,255,255,0.08)', color: on ? '#000' : '#fff', border: '1px solid rgba(186,175,165,0.3)', borderRadius: 999, padding: '5px 12px', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>{children}</button>;
 
-function Puerta() { return <span aria-hidden style={{ position: 'absolute', bottom: -3, left: '50%', transform: 'translateX(-50%)', width: 34, height: 3, background: '#0a0a0a', borderRadius: 2 }} />; }
-function Luz({ c, titulo }) { return <span title={titulo} style={{ width: 10, height: 10, borderRadius: '50%', background: LUZ[c], boxShadow: `0 0 8px ${LUZ[c]}88`, flexShrink: 0 }} />; }
-
-function Sala({ d, ir }) {
-  const Icono = ICONO[d.id] || Users;
+// Editor del muñeco de una persona: peinado, color de pelo, barba, gafas, piel y ropa (para que se parezca a su dueño)
+const PIELES = ['#f3d2b3', '#e8b98f', '#c98f63', '#a86d45', '#7a4b2f'];
+const PELOS = ['#1c1c20', '#3b2a20', '#6b4a2f', '#b5651d', '#e1b866', '#8d8d92', '#7a3b2e'];
+const ROPAS = ['#1d1d22', '#3a3f4b', '#baafa5', '#f1eee8', '#33425b', '#46695e', '#8c3b36', '#6b6259'];
+function EditorMuneco({ info, onGuardar }) {
+  const [av, setAv] = useState({ pelo: 'corto', barba: 'no', gafas: false, piel: PIELES[0], peloColor: PELOS[0], ropa: ROPAS[0], ...(info.avatar || {}) });
+  const fila = (t, c) => <div style={{ margin: '8px 0' }}><div style={mut}>{t}</div><div style={{ marginTop: 4 }}>{c}</div></div>;
+  const muestras = (lista, clave) => <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{lista.map(c => <button key={c} type="button" aria-label={c} onClick={() => setAv(a => ({ ...a, [clave]: c }))} style={{ width: 24, height: 24, borderRadius: '50%', background: c, cursor: 'pointer', border: av[clave] === c ? '2px solid #fff' : '1px solid rgba(255,255,255,0.3)' }} />)}</div>;
+  const opciones = (lista, clave) => <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{lista.map(([v, t]) => <button key={v} type="button" onClick={() => setAv(a => ({ ...a, [clave]: v }))} style={{ background: av[clave] === v ? '#fff' : 'rgba(255,255,255,0.08)', color: av[clave] === v ? '#000' : '#fff', border: '1px solid rgba(186,175,165,0.3)', borderRadius: 999, padding: '3px 10px', fontSize: '0.74rem', cursor: 'pointer' }}>{t}</button>)}</div>;
   return (
-    <div onClick={() => ir(d.ir)} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') ir(d.ir); }}
-      style={{ position: 'relative', cursor: 'pointer', border: pared, borderRadius: 10, padding: '0.9rem 1rem 1rem', background: 'rgba(20,18,16,0.55)', display: 'flex', flexDirection: 'column', gap: 10, minHeight: 150 }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(186,175,165,0.6)'; }} onMouseLeave={e => { e.currentTarget.style.borderColor = ''; }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Icono size={17} style={{ color: '#baafa5' }} />
-        <b style={{ fontSize: '0.92rem', flex: 1 }}>{d.nombre}</b>
-        <Luz c={d.alerta} titulo={TEXTO_LUZ[d.alerta]} />
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 18px' }}>
-        {d.datos.map(([k, v]) => (
-          <div key={k} style={{ minWidth: 70 }}>
-            <div style={{ fontSize: '1.35rem', fontWeight: 700, lineHeight: 1.1 }}>{v}</div>
-            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)' }}>{k}</div>
-          </div>
-        ))}
-      </div>
-      <span style={{ marginTop: 'auto', fontSize: '0.74rem', color: '#baafa5', display: 'flex', alignItems: 'center', gap: 4 }}>Entrar <ArrowRight size={12} /></span>
-      <Puerta />
+    <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 6 }}>
+      {fila('Peinado', opciones([['corto', 'Corto'], ['largo', 'Largo'], ['rizado', 'Rizado'], ['calvo', 'Sin pelo']], 'pelo'))}
+      {av.pelo !== 'calvo' && fila('Color de pelo', muestras(PELOS, 'peloColor'))}
+      {fila('Barba', opciones([['no', 'Sin barba'], ['corta', 'Corta'], ['larga', 'Larga']], 'barba'))}
+      {fila('Gafas', opciones([[false, 'No'], [true, 'Sí']], 'gafas'))}
+      {fila('Piel', muestras(PIELES, 'piel'))}
+      {fila('Ropa', muestras(ROPAS, 'ropa'))}
+      <button className="ap-btn ap-btn-primary ap-btn-sm" style={{ marginTop: 6 }} onClick={() => onGuardar(info.id, av)}>Guardar muñeco</button>
     </div>
   );
 }
 
-function Mesa({ p, hoy, ir, onPlanificar, onEntrega }) {
-  const t = p.tareas, pct = t.total ? Math.round((t.hechas / t.total) * 100) : 0;
-  return (
-    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderLeft: `4px solid ${LUZ[p.semaforo]}`, borderRadius: 10, padding: '0.7rem 0.8rem', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '0.86rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.nombre}>{p.nombre}</div>
-          <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.cliente} · Fase {p.fase}</div>
-        </div>
-        <Luz c={p.semaforo} titulo={TEXTO_LUZ[p.semaforo]} />
-      </div>
-      <div style={{ fontSize: '0.74rem', color: LUZ[p.semaforo] }}>{p.motivo}</div>
-      {t.total > 0 && (
-        <div>
-          <div style={{ height: 5, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden' }}><div style={{ width: `${pct}%`, height: '100%', background: LUZ.verde }} /></div>
-          <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>{t.hechas}/{t.total} tareas{t.hoy ? ` · ${t.hoy} para hoy` : ''}{t.proxima ? ` · próxima ${fmt(t.proxima, hoy)}` : ''}</div>
-        </div>
-      )}
-      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)' }}>
-        Entrega
-        <input type="date" value={p.entrega || ''} onChange={e => onEntrega(p, e.target.value)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, color: '#fff', padding: '2px 6px', fontSize: '0.74rem', minWidth: 0, flex: 1 }} />
-      </label>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button className="ap-btn ap-btn-primary ap-btn-sm" style={{ flex: 1 }} onClick={() => onPlanificar(p)}><CalendarDays size={12} /> {p.planificado ? 'Re-planificar' : 'Planificar'}</button>
-        <button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => ir('proyectos')}>Abrir</button>
-      </div>
-    </div>
-  );
-}
-
-// Ficha de lo que se toca en la oficina 3D: una persona, un agente de IA, un proyecto (su casita) o una sala
-function Ficha({ info, hoy, ir, onPlanificar, onCerrar }) {
-  const caja = { position: 'absolute', left: 12, right: 12, bottom: 12, maxWidth: 380, background: 'rgba(26,24,22,0.96)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 14, padding: '0.8rem 0.95rem', boxShadow: '0 8px 30px rgba(0,0,0,0.5)', zIndex: 5 };
-  const mut = { fontSize: '0.74rem', color: 'rgba(255,255,255,0.55)' };
-  const cab = (t, sub) => <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}><div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: '0.95rem' }}>{t}</b>{sub && <div style={mut}>{sub}</div>}</div><button className="ap-btn-icon" onClick={onCerrar} aria-label="Cerrar">✕</button></div>;
-  if (info.tipo === 'persona') return (
-    <div style={caja}>{cab(info.nombre, info.rol)}
-      <div style={{ fontSize: '0.84rem', lineHeight: 1.5 }}>{info.pendientes ? <><b>{info.pendientes}</b> tarea{info.pendientes === 1 ? '' : 's'} pendiente{info.pendientes === 1 ? '' : 's'}{info.atrasadas ? <span style={{ color: LUZ.rojo }}> · {info.atrasadas} atrasada{info.atrasadas === 1 ? '' : 's'}</span> : ''}{info.hoy ? <span style={{ color: LUZ.ambar }}> · {info.hoy} para hoy</span> : ''}</> : 'Sin tareas pendientes: descansando en la sala del equipo.'}</div>
-      {info.siguiente && <div style={{ ...mut, marginTop: 4 }}>Siguiente: <b style={{ color: '#fff' }}>{info.siguiente.titulo}</b>{info.siguiente.proyecto ? ` · ${info.siguiente.proyecto}` : ''}{info.siguiente.fecha ? ` · ${info.siguiente.fecha}` : ' · sin fecha'}</div>}
-      <button className="ap-btn ap-btn-primary ap-btn-sm" style={{ marginTop: 8 }} onClick={() => ir('tareas')}>Ver tareas</button></div>);
-  if (info.tipo === 'agente') return (
-    <div style={caja}>{cab(info.nombre, 'Agente de IA')}<div style={{ fontSize: '0.84rem' }}>{info.hace}</div><button className="ap-btn ap-btn-primary ap-btn-sm" style={{ marginTop: 8 }} onClick={() => ir(info.ir)}>Hablar con él</button></div>);
-  if (info.tipo === 'proyecto') return (
-    <div style={caja}>{cab(info.nombre, `${info.cliente} · Fase ${info.fase}`)}
-      <div style={{ fontSize: '0.82rem', color: LUZ[info.semaforo] }}>{info.motivo}</div>
-      <div style={{ ...mut, marginTop: 3 }}>Entrega: {fmt(info.entrega, hoy)}{info.tareas.total ? ` · ${info.tareas.hechas}/${info.tareas.total} tareas` : ''}</div>
-      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => onPlanificar(info)}><CalendarDays size={12} /> {info.planificado ? 'Re-planificar' : 'Planificar'}</button><button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => ir('proyectos')}>Abrir</button></div></div>);
-  if (info.tipo === 'proveedor') return (
-    <div style={caja}>{cab(info.nombre, `Proveedor · ${info.sector}`)}<div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>{info.url && <a className="ap-btn ap-btn-primary ap-btn-sm" href={info.url} target="_blank" rel="noreferrer">Ver su web</a>}<button className="ap-btn ap-btn-ghost ap-btn-sm" onClick={() => ir('contactos')}>Abrir proveedores</button></div></div>);
-  if (info.tipo === 'anexo') return (
-    <div style={caja}>{cab(`Anexo · ${info.sector}`, `${info.n} proveedor${info.n === 1 ? '' : 'es'} que colaboran`)}<div style={{ fontSize: '0.82rem', lineHeight: 1.5 }}>{info.proveedores.map(p => p.nombre).join(' · ')}</div><button className="ap-btn ap-btn-primary ap-btn-sm" style={{ marginTop: 8 }} onClick={() => ir('contactos')}>Abrir proveedores <ArrowRight size={12} /></button></div>);
-  if (info.tipo === 'sala') return (
-    <div style={caja}>{cab(info.nombre, TEXTO_LUZ[info.alerta])}<div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>{(info.datos || []).map(([k, v]) => <div key={k}><b style={{ fontSize: '1.05rem' }}>{v}</b><div style={mut}>{k}</div></div>)}</div>{info.ir && <button className="ap-btn ap-btn-primary ap-btn-sm" style={{ marginTop: 8 }} onClick={() => ir(info.ir)}>Entrar <ArrowRight size={12} /></button>}</div>);
-  return null;
+// Ficha de lo que se toca en la oficina: una persona, un agente de IA, un proyecto, una sala, un anexo o un proveedor
+function Ficha({ info, hoy, ir, onPlanificar, onCerrar, onAvatar }) {
+  const [editando, setEditando] = useState(false);
+  const cab = (t, sub) => <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}><div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: '0.98rem' }}>{t}</b>{sub && <div style={mut}>{sub}</div>}</div><button className="ap-btn-icon" onClick={onCerrar} aria-label="Cerrar"><X size={14} /></button></div>;
+  const btn = (txt, fn, primario = true) => <button className={`ap-btn ${primario ? 'ap-btn-primary' : 'ap-btn-ghost'} ap-btn-sm`} onClick={fn}>{txt}</button>;
+  let cuerpo = null;
+  if (info.tipo === 'persona') cuerpo = (<>{cab(info.nombre, info.rol)}<div style={{ fontSize: '0.84rem', lineHeight: 1.5 }}>{info.pendientes ? <><b>{info.pendientes}</b> tarea{info.pendientes === 1 ? '' : 's'} pendiente{info.pendientes === 1 ? '' : 's'}{info.atrasadas ? <span style={{ color: LUZ.rojo }}> · {info.atrasadas} atrasada{info.atrasadas === 1 ? '' : 's'}</span> : ''}{info.hoy ? <span style={{ color: LUZ.ambar }}> · {info.hoy} para hoy</span> : ''}</> : 'Sin tareas pendientes.'}</div>{info.siguiente && <div style={{ ...mut, marginTop: 4 }}>Siguiente: <b style={{ color: '#fff' }}>{info.siguiente.titulo}</b>{info.siguiente.proyecto ? ` · ${info.siguiente.proyecto}` : ''}{info.siguiente.fecha ? ` · ${info.siguiente.fecha}` : ' · sin fecha'}</div>}<div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>{btn('Ver tareas', () => ir('tareas'))}{btn(editando ? 'Cerrar editor' : 'Personalizar muñeco', () => setEditando(v => !v), false)}</div>{editando && <EditorMuneco key={info.id} info={info} onGuardar={onAvatar} />}</>);
+  else if (info.tipo === 'agente') cuerpo = (<>{cab(info.nombre, 'Agente de IA')}<div style={{ fontSize: '0.84rem' }}>{info.hace}</div><div style={{ marginTop: 8 }}>{btn('Hablar con él', () => ir(info.ir))}</div></>);
+  else if (info.tipo === 'proyecto') cuerpo = (<>{cab(info.nombre, `${info.cliente} · Fase ${info.fase}`)}<div style={{ fontSize: '0.82rem', color: LUZ[info.semaforo] }}>{info.motivo}</div><div style={{ ...mut, marginTop: 3 }}>Entrega: {fmt(info.entrega, hoy)}{info.tareas.total ? ` · ${info.tareas.hechas}/${info.tareas.total} tareas` : ''}</div><div style={{ ...mut, marginTop: 3 }}>Conectado con: {(info.deps || []).map(d => ({ diseno: 'Diseño', ventas: 'Ventas', presupuestos: 'Presupuestos', finanzas: 'Finanzas' }[d] || d)).join(', ')}</div><div style={{ display: 'flex', gap: 6, marginTop: 8 }}><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => onPlanificar(info)}><CalendarDays size={12} /> {info.planificado ? 'Re-planificar' : 'Planificar'}</button>{btn('Abrir proyecto', () => ir('proyectos'), false)}</div></>);
+  else if (info.tipo === 'sala') cuerpo = (<>{cab(info.nombre, TEXTO_LUZ[info.alerta])}<div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>{(info.datos || []).map(([k, v]) => <div key={k}><b style={{ fontSize: '1.05rem' }}>{v}</b><div style={mut}>{k}</div></div>)}</div>{info.ir && <div style={{ marginTop: 8 }}>{btn(<>Entrar <ArrowRight size={12} /></>, () => ir(info.ir))}</div>}</>);
+  else if (info.tipo === 'anexo') cuerpo = (<>{cab(`Anexo · ${info.sector}`, `${info.n} proveedor${info.n === 1 ? '' : 'es'} que colaboran`)}<div style={{ fontSize: '0.82rem', lineHeight: 1.5 }}>{info.proveedores.map(p => p.nombre).join(' · ')}</div><div style={{ marginTop: 8 }}>{btn('Abrir proveedores', () => ir('contactos'))}</div></>);
+  else if (info.tipo === 'proveedor') cuerpo = (<>{cab(info.nombre, `Proveedor · ${info.sector}`)}<div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>{info.url && <a className="ap-btn ap-btn-primary ap-btn-sm" href={info.url} target="_blank" rel="noreferrer">Ver su web</a>}{btn('Abrir proveedores', () => ir('contactos'), false)}</div></>);
+  return cuerpo ? <div style={{ ...vidrio, padding: '0.85rem 1rem', boxShadow: '0 10px 40px rgba(0,0,0,0.6)' }}>{cuerpo}</div> : null;
 }
 
 export function SectionOficinas({ ir }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [filtro, setFiltro] = useState('todos');
+  const [sel, setSel] = useState(null);
   const [plan, setPlan] = useState(null);
   const [aviso, setAviso] = useState('');
-  const [vista, setVista] = useState(() => { try { return localStorage.getItem('oficinaVista') || '3d'; } catch { return '3d'; } });
-  const [sel, setSel] = useState(null);
-  const cambiarVista = (v) => { setVista(v); setSel(null); try { localStorage.setItem('oficinaVista', v); } catch { /* sin almacenamiento */ } };
+  const [sinWebgl, setSinWebgl] = useState(false);
+  const [pantalla, setPantalla] = useState(false);
+  const [verHoy, setVerHoy] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth > 900));
+  const [verProy, setVerProy] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth > 900));
+  const [zona, setZona] = useState('todo');
+  const apiRef = useRef(null), raiz = useRef(null);
 
-  const cargar = useCallback(() => {
-    api.get('/oficinas').then(r => { setData(r.data); setError(''); }).catch(e => setError(e.response?.data?.error || 'No se pudieron cargar las oficinas'));
-  }, []);
+  const cargar = useCallback(() => { api.get('/oficinas').then(r => { setData(r.data); setError(''); }).catch(e => setError(e.response?.data?.error || 'No se pudieron cargar las oficinas')); }, []);
   useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => { const f = () => setPantalla(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f); }, []);
 
-  const cambiarEntrega = async (p, entrega) => {
-    try { await api.put(`/oficinas/proyectos/${p.id}/entrega`, { entrega: entrega || null }); cargar(); } catch { setAviso('No se pudo guardar la fecha'); }
-  };
+  const completa = () => { try { if (document.fullscreenElement) document.exitFullscreen(); else raiz.current?.requestFullscreen?.(); } catch { /* el navegador no lo permite */ } };
+  const hecha = async (t) => { try { await api.put(`/tasks/${t.id}`, { done: true }); setData(d => ({ ...d, tareasHoy: d.tareasHoy.filter(x => x.id !== t.id) })); } catch { setAviso('No se pudo marcar la tarea'); } };
+  const ver = (z) => { setZona(z); apiRef.current?.zona(z); };
+  const guardarAvatar = async (id, av) => { try { await api.put(`/oficinas/avatar/${id}`, av); setSel(null); cargar(); } catch { setAviso('No se pudo guardar el muñeco'); } };
 
   if (error) return <div className="ap-section"><div className="ap-empty"><p>{error}</p></div></div>;
   if (!data) return <div className="ap-loading">Cargando…</div>;
 
-  const diseno = data.departamentos.find(d => d.id === 'diseno');
-  const otras = data.departamentos.filter(d => d.id !== 'diseno');
   const cuenta = (...xs) => data.proyectos.filter(p => xs.includes(p.semaforo)).length;
-  const visibles = data.proyectos.filter(p => filtro === 'todos' || (filtro === 'atencion' && (p.semaforo === 'rojo' || p.semaforo === 'ambar')) || (filtro === 'sinplan' && p.semaforo === 'gris'));
-  const chip = (id, txt, n) => (
-    <button key={id} onClick={() => setFiltro(id)} className="ap-btn ap-btn-sm" style={{ background: filtro === id ? '#fff' : 'rgba(255,255,255,0.07)', color: filtro === id ? '#000' : '#fff', border: '1px solid rgba(255,255,255,0.12)' }}>{txt} ({n})</button>
-  );
-
+  const atrasadas = (data.tareasHoy || []).filter(t => t.atrasada).length;
   return (
-    <div className="ap-section">
-      <div style={{ marginBottom: 14 }}>
-        <h1 style={{ margin: 0 }}>Oficinas</h1>
-        <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'rgba(255,255,255,0.5)' }}>{data.proyectos.length} proyectos en marcha · {cuenta('rojo')} con atención · {cuenta('gris')} sin planificar</p>
+    <div ref={raiz} className="of-root" style={{ position: 'relative', height: '100vh', background: '#08080a', overflow: 'hidden' }}>
+      <style>{'@media (max-width: 900px) { .of-root { height: calc(100dvh - 56px) !important; } }'}</style>
+      {!sinWebgl && <OficinaVirtual3D data={data} apiRef={apiRef}
+        cargarLogo={(url) => api.get('/oficinas/logo', { params: { url }, responseType: 'blob' }).then(r => r.data)}
+        onSeleccion={(i) => { if (i?.tipo === 'error') setSinWebgl(true); else setSel(i); }} />}
+      {sinWebgl && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', padding: 20, textAlign: 'center' }}>Tu navegador no puede mostrar la oficina en 3D. Aquí tienes igualmente tus tareas y tus proyectos.</div>}
+
+      {/* barra superior */}
+      <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', pointerEvents: 'none', zIndex: 5 }}>
+        <div style={{ ...vidrio, padding: '7px 14px', display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto', flexWrap: 'wrap' }}>
+          <b style={{ letterSpacing: '0.18em', fontSize: '0.8rem' }}>OFICINAS</b>
+          <span style={mut}>{data.proyectos.length} proyectos · <span style={{ color: LUZ.rojo }}>{cuenta('rojo')} atención</span> · {cuenta('gris')} sin planificar</span>
+        </div>
+        <div style={{ display: 'flex', gap: 6, pointerEvents: 'auto', flexWrap: 'wrap' }}>
+          {[['todo', 'Todo'], ['sede', 'Sede'], ['proyectos', 'Proyectos'], ['proveedores', 'Proveedores']].map(([id, t]) => <Boton key={id} on={zona === id} onClick={() => ver(id)}>{t}</Boton>)}
+        </div>
+        <span style={{ flex: 1 }} />
+        <div style={{ display: 'flex', gap: 6, pointerEvents: 'auto' }}>
+          <Boton on={verHoy} onClick={() => setVerHoy(v => !v)}><ListChecks size={13} /> Hoy{(data.tareasHoy || []).length ? ` (${data.tareasHoy.length})` : ''}</Boton>
+          <Boton on={verProy} onClick={() => setVerProy(v => !v)}><FolderKanban size={13} /> Proyectos</Boton>
+          <Boton onClick={completa} aria-label="Pantalla completa">{pantalla ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</Boton>
+        </div>
       </div>
 
-      {data.tareasSinFecha > 0 && (
-        <div onClick={() => ir('tareas')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(224,162,74,0.12)', border: '1px solid rgba(224,162,74,0.35)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: '0.82rem' }}>
-          <AlertCircle size={16} style={{ color: LUZ.ambar }} /> Tienes <b>{data.tareasSinFecha}</b> tareas pendientes sin fecha. Sin fecha no se pueden repartir en el tiempo: planifica el proyecto o ponles día. <ArrowRight size={13} style={{ marginLeft: 'auto' }} />
-        </div>
-      )}
-      {aviso && <div style={{ fontSize: '0.8rem', color: '#ae8b8b', marginBottom: 8 }}>{aviso}</div>}
-
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        {[['3d', 'Oficina 3D'], ['panel', 'Panel']].map(([id, txt]) => <button key={id} onClick={() => cambiarVista(id)} className="ap-btn ap-btn-sm" style={{ background: vista === id ? '#fff' : 'rgba(255,255,255,0.07)', color: vista === id ? '#000' : '#fff', border: '1px solid rgba(255,255,255,0.12)' }}>{txt}</button>)}
-      </div>
-
-      {vista === '3d' && (
-        <div style={{ position: 'relative' }}>
-          <OficinaVirtual3D data={data} cargarLogo={(url) => api.get('/oficinas/logo', { params: { url }, responseType: 'blob' }).then(r => r.data)} onSeleccion={(i) => { if (i?.tipo === 'error') { cambiarVista('panel'); setAviso('Tu navegador no puede mostrar la oficina 3D: te enseño el panel.'); } else setSel(i); }} />
-          {sel && <Ficha info={sel} hoy={data.hoy} ir={ir} onPlanificar={setPlan} onCerrar={() => setSel(null)} />}
-          <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', marginTop: 8 }}>Arrastra para girar la vista · rueda o pellizco para acercar · toca una persona, un agente, una sala, un anexo de proveedores o una casita de la mesa de maquetas. El rombo de cada persona es su semáforo: verde al día, ámbar con tareas para hoy, rojo con atrasadas.</div>
-        </div>
-      )}
-
-      {vista === 'panel' && <div style={{ ...suelo, border: '1px dashed rgba(255,255,255,0.12)', borderRadius: 16, padding: 14, display: 'grid', gap: 14 }}>
-        <div style={{ position: 'relative', border: pared, borderRadius: 10, padding: '0.9rem 0.9rem 1.1rem', background: 'rgba(20,18,16,0.55)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-            <PencilRuler size={18} style={{ color: '#baafa5' }} />
-            <b style={{ fontSize: '1rem' }}>{diseno?.nombre || 'Diseño y proyectos'}</b>
-            <Luz c={diseno?.alerta || 'verde'} titulo={TEXTO_LUZ[diseno?.alerta || 'verde']} />
-            <span style={{ flex: 1 }} />
-            {chip('todos', 'Todos', data.proyectos.length)}{chip('atencion', 'Atención', cuenta('rojo', 'ambar'))}{chip('sinplan', 'Sin planificar', cuenta('gris'))}
+      {/* tareas de hoy */}
+      {verHoy && (
+        <div style={{ ...vidrio, position: 'absolute', top: 62, left: 12, width: 'min(320px, calc(100% - 24px))', maxHeight: '46vh', display: 'flex', flexDirection: 'column', zIndex: 4 }}>
+          <div style={{ padding: '0.7rem 0.9rem 0.4rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <b style={{ fontSize: '0.88rem' }}>Hoy y esta semana</b><span style={{ flex: 1 }} />{atrasadas > 0 && <span style={{ color: LUZ.rojo, fontSize: '0.72rem' }}>{atrasadas} atrasada{atrasadas === 1 ? '' : 's'}</span>}
           </div>
-          {visibles.length === 0
-            ? <p style={{ fontSize: '0.84rem', color: 'rgba(255,255,255,0.5)', margin: 0 }}>No hay proyectos en esta vista.</p>
-            : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
-              {visibles.map(p => <Mesa key={p.id} p={p} hoy={data.hoy} ir={ir} onPlanificar={setPlan} onEntrega={cambiarEntrega} />)}
-            </div>}
-          <Puerta />
+          {data.tareasSinFecha > 0 && <div onClick={() => ir('tareas')} style={{ margin: '0 0.7rem 6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,179,71,0.12)', border: '1px solid rgba(255,179,71,0.35)', borderRadius: 8, padding: '5px 8px', fontSize: '0.72rem' }}><AlertCircle size={13} style={{ color: LUZ.ambar }} /> {data.tareasSinFecha} tareas sin fecha <ArrowRight size={12} style={{ marginLeft: 'auto' }} /></div>}
+          <div style={{ overflowY: 'auto', padding: '0 0.5rem 0.6rem' }}>
+            {(data.tareasHoy || []).length === 0 && <p style={{ ...mut, padding: '4px 0.4rem 8px', margin: 0 }}>Nada para esta semana. Planifica un proyecto para repartir sus tareas.</p>}
+            {(data.tareasHoy || []).map(t => (
+              <label key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0.4rem', borderTop: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}>
+                <input type="checkbox" onChange={() => hecha(t)} style={{ marginTop: 3 }} aria-label={`Hecha: ${t.titulo}`} />
+                <span style={{ flex: 1, minWidth: 0 }}><span style={{ fontSize: '0.82rem', display: 'block' }}>{t.titulo}</span><span style={{ ...mut, color: t.atrasada ? LUZ.rojo : t.fecha === data.hoy ? LUZ.ambar : mut.color }}>{fmt(t.fecha, data.hoy)}{t.proyecto ? ` · ${t.proyecto}` : ''}</span></span>
+              </label>
+            ))}
+          </div>
         </div>
+      )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
-          {otras.map(d => <Sala key={d.id} d={d} ir={ir} />)}
+      {/* proyectos */}
+      {verProy && (
+        <div style={{ ...vidrio, position: 'absolute', top: 62, right: 12, width: 'min(300px, calc(100% - 24px))', maxHeight: '46vh', display: 'flex', flexDirection: 'column', zIndex: 4 }}>
+          <div style={{ padding: '0.7rem 0.9rem 0.4rem' }}><b style={{ fontSize: '0.88rem' }}>Proyectos en marcha</b></div>
+          <div style={{ overflowY: 'auto', padding: '0 0.5rem 0.6rem' }}>
+            {data.proyectos.map(p => (
+              <div key={p.id} onClick={() => { setZona('proyectos'); apiRef.current?.proyecto(p.id); if (window.innerWidth <= 900) setVerProy(false); }} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0.4rem', borderTop: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}>
+                <Luz c={p.semaforo} t={TEXTO_LUZ[p.semaforo]} />
+                <span style={{ flex: 1, minWidth: 0 }}><span style={{ fontSize: '0.8rem', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</span><span style={{ ...mut, color: LUZ[p.semaforo] }}>{p.motivo}</span></span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>}
+      )}
 
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 12, fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)' }}>
-        {Object.keys(LUZ).map(k => <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Luz c={k} /> {TEXTO_LUZ[k]}</span>)}
+      {/* ficha de lo seleccionado */}
+      {sel && sel.tipo !== 'error' && (
+        <div style={{ position: 'absolute', left: 12, bottom: 38, width: 'min(380px, calc(100% - 24px))', zIndex: 6 }}>
+          <Ficha info={sel} hoy={data.hoy} ir={ir} onPlanificar={setPlan} onAvatar={guardarAvatar} onCerrar={() => { setSel(null); apiRef.current?.limpiar(); }} />
+        </div>
+      )}
+
+      <div style={{ position: 'absolute', left: 14, bottom: 10, right: 14, fontSize: '0.68rem', color: 'rgba(255,255,255,0.38)', pointerEvents: 'none', zIndex: 3, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <span>Arrastra para girar · rueda o pellizco para acercar · toca un gym para ver cómo se conecta</span>
+        {Object.keys(LUZ).map(k => <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Luz c={k} /> {TEXTO_LUZ[k]}</span>)}
+        {aviso && <span style={{ color: LUZ.rojo }}>{aviso}</span>}
       </div>
 
       {plan && <PlanificarProyecto proyecto={plan} onClose={() => setPlan(null)} onHecho={() => { setAviso(''); cargar(); }} />}

@@ -16,13 +16,13 @@ router.get('/', async (req, res) => {
   try {
     const hoy = hoyMadrid();
     const [pr, ta, em, le, sl, bu, ve, pl, co] = await Promise.all([
-      supabase.from('client_projects').select('id, client_name, project_name, phase, urgency, responsible_id').eq('status', 'en_marcha').eq('active', true),
+      supabase.from('client_projects').select('id, client_name, project_name, phase, urgency, responsible_id, lead_id, venta_id, tipo_proyecto').eq('status', 'en_marcha').eq('active', true),
       supabase.from('tasks').select('id, title, done, due_date, project_id, assigned_to, priority').limit(5000),
       supabase.from('employees').select('id, name, is_admin_profile, employee_roles(name)').eq('active', true),
       supabase.from('setting_leads').select('estado').limit(5000),
       supabase.from('call_slots').select('id').eq('fecha', hoy).eq('ocupado', true),
-      supabase.from('budgets').select('status').limit(5000),
-      supabase.from('ventas').select('valor, cerrada').limit(5000),
+      supabase.from('budgets').select('status, project_id').limit(5000),
+      supabase.from('ventas').select('valor, cerrada, client_project_id').limit(5000),
       leerPlanificacion(),
       supabase.from('contacts').select('id, name, sector, company_url').order('name'),
     ]);
@@ -41,7 +41,12 @@ router.get('/', async (req, res) => {
       else if (entrega && entrega <= sumarDias(hoy, 3) && pe.length) { semaforo = 'ambar'; motivo = 'Entrega en pocos días'; }
       else if (!entrega) { semaforo = 'gris'; motivo = 'Sin fecha de entrega ni plan'; }
       else if (sinFecha > 0) { semaforo = 'ambar'; motivo = sinFecha + (sinFecha === 1 ? ' tarea sin fecha' : ' tareas sin fecha'); }
-      return { id: p.id, cliente: p.client_name, nombre: p.project_name, fase: p.phase, urgencia: p.urgency, entrega, semaforo, motivo, tareas: { total: mias.length, hechas: mias.length - pe.length, atrasadas: atras, hoy: hoyN, sinFecha, proxima: prox }, planificado: !!plan?.items?.length };
+      // departamentos que intervienen: diseño siempre; ventas si viene de un lead; presupuestos si tiene presupuesto; finanzas si tiene una venta
+      const deps = ['diseno'];
+      if (p.lead_id || p.venta_id) deps.push('ventas');
+      if ((bu.data || []).some(b => b.project_id === p.id)) deps.push('presupuestos');
+      if (p.venta_id || (ve.data || []).some(v => v.client_project_id === p.id)) deps.push('finanzas');
+      return { id: p.id, tipo: p.tipo_proyecto || null, deps, cliente: p.client_name, nombre: p.project_name, fase: p.phase, urgencia: p.urgency, entrega, semaforo, motivo, tareas: { total: mias.length, hechas: mias.length - pe.length, atrasadas: atras, hoy: hoyN, sinFecha, proxima: prox }, planificado: !!plan?.items?.length };
     });
     const orden = { rojo: 0, ambar: 1, gris: 2, verde: 3 };
     proyectos.sort((a, b) => orden[a.semaforo] - orden[b.semaforo] || String(a.entrega || '9999').localeCompare(String(b.entrega || '9999')));
@@ -63,7 +68,7 @@ router.get('/', async (req, res) => {
     const personas = (em.data || []).map(e => {
       const mias = pend.filter(t => t.assigned_to === e.id).sort((a, b) => String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')));
       const s0 = mias[0];
-      return { id: e.id, nombre: e.name, rol: e.employee_roles?.name || (e.is_admin_profile ? 'Administrador' : 'Sin categoría'), pendientes: mias.length, atrasadas: mias.filter(atrasada).length, hoy: mias.filter(t => t.due_date === hoy).length, siguiente: s0 ? { titulo: s0.title, proyecto: nombreProy[s0.project_id] || null, fecha: s0.due_date || null } : null };
+      return { id: e.id, avatar: pl.avatares?.[e.id] || null, nombre: e.name, rol: e.employee_roles?.name || (e.is_admin_profile ? 'Administrador' : 'Sin categoría'), pendientes: mias.length, atrasadas: mias.filter(atrasada).length, hoy: mias.filter(t => t.due_date === hoy).length, siguiente: s0 ? { titulo: s0.title, proyecto: nombreProy[s0.project_id] || null, fecha: s0.due_date || null } : null };
     });
     // agentes de IA del CRM, cada uno en su sala
     const agentes = [
@@ -76,7 +81,10 @@ router.get('/', async (req, res) => {
     const porSector = {};
     (co.data || []).forEach(c => { const k = (c.sector || 'Otros').trim() || 'Otros'; (porSector[k] = porSector[k] || []).push({ id: c.id, nombre: c.name, url: c.company_url || null }); });
     const anexos = Object.entries(porSector).map(([sector, proveedores]) => ({ sector, n: proveedores.length, proveedores })).sort((a, b) => b.n - a.n || a.sector.localeCompare(b.sector)).slice(0, 10);
-    res.json({ hoy, departamentos, proyectos, personas, agentes, anexos, tareasSinFecha: pend.filter(t => !t.due_date).length });
+    // tareas que hay que mirar ya: atrasadas, de hoy y de la próxima semana (para el panel «Hoy» de la oficina)
+    const finSemana = sumarDias(hoy, 7);
+    const tareasHoy = pend.filter(t => t.due_date && t.due_date <= finSemana).sort((a, b) => String(a.due_date).localeCompare(String(b.due_date))).slice(0, 25).map(t => ({ id: t.id, titulo: t.title, proyecto: nombreProy[t.project_id] || null, fecha: t.due_date, atrasada: t.due_date < hoy, prioridad: t.priority }));
+    res.json({ hoy, departamentos, proyectos, personas, agentes, anexos, tareasHoy, tareasSinFecha: pend.filter(t => !t.due_date).length });
   } catch (err) { console.error('oficinas:', err); res.status(500).json({ error: 'No se pudieron cargar las oficinas' }); }
 });
 
@@ -87,6 +95,23 @@ router.get('/logo', async (req, res) => {
     if (!png) return res.status(404).json({ error: 'Sin logo' });
     res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=43200' }).send(png);
   } catch { res.status(404).json({ error: 'Sin logo' }); }
+});
+
+// ── muñeco de cada persona de la oficina 3D (peinado, barba, gafas, piel y ropa), para que se parezca a su dueño ──
+const HEX = /^#[0-9a-fA-F]{6}$/;
+router.put('/avatar/:id', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const av = {};
+    if (['corto', 'largo', 'rizado', 'calvo'].includes(b.pelo)) av.pelo = b.pelo;
+    if (['no', 'corta', 'larga'].includes(b.barba)) av.barba = b.barba;
+    av.gafas = b.gafas === true;
+    ['piel', 'peloColor', 'ropa'].forEach(k => { if (HEX.test(b[k] || '')) av[k] = b[k]; });
+    const p = await leerPlanificacion();
+    p.avatares = { ...(p.avatares || {}), [String(req.params.id).slice(0, 60)]: av };
+    const { error } = await guardarPlanificacion(p); if (error) throw error;
+    res.json({ avatar: av });
+  } catch (err) { res.status(500).json({ error: 'No se pudo guardar el muñeco' }); }
 });
 
 // ── catálogo de entregables (nombre + horas medias) ──

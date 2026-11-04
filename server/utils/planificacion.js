@@ -23,10 +23,10 @@ export const CATALOGO_BASE = [
 export async function leerPlanificacion() {
   try {
     const { data, error } = await supabase.storage.from(BUCKET).download(RUTA);
-    if (error || !data) return { catalogo: CATALOGO_BASE, proyectos: {} };
+    if (error || !data) return { catalogo: CATALOGO_BASE, proyectos: {}, avatares: {} };
     const j = JSON.parse(await data.text());
-    return { catalogo: Array.isArray(j.catalogo) && j.catalogo.length ? j.catalogo : CATALOGO_BASE, proyectos: j.proyectos && typeof j.proyectos === 'object' ? j.proyectos : {} };
-  } catch { return { catalogo: CATALOGO_BASE, proyectos: {} }; }
+    return { catalogo: Array.isArray(j.catalogo) && j.catalogo.length ? j.catalogo : CATALOGO_BASE, proyectos: j.proyectos && typeof j.proyectos === 'object' ? j.proyectos : {}, avatares: j.avatares && typeof j.avatares === 'object' ? j.avatares : {} };
+  } catch { return { catalogo: CATALOGO_BASE, proyectos: {}, avatares: {} }; }
 }
 export const guardarPlanificacion = (p) => supabase.storage.from(BUCKET).upload(RUTA, Buffer.from(JSON.stringify(p)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
 
