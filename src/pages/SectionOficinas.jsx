@@ -153,7 +153,7 @@ export function SectionOficinas({ ir }) {
 
       {vista === '3d' && (
         <div style={{ position: 'relative' }}>
-          <OficinaVirtual3D data={data} onSeleccion={(i) => { if (i?.tipo === 'error') { cambiarVista('panel'); setAviso('Tu navegador no puede mostrar la oficina 3D: te enseño el panel.'); } else setSel(i); }} />
+          <OficinaVirtual3D data={data} cargarLogo={(url) => api.get('/oficinas/logo', { params: { url }, responseType: 'blob' }).then(r => r.data)} onSeleccion={(i) => { if (i?.tipo === 'error') { cambiarVista('panel'); setAviso('Tu navegador no puede mostrar la oficina 3D: te enseño el panel.'); } else setSel(i); }} />
           {sel && <Ficha info={sel} hoy={data.hoy} ir={ir} onPlanificar={setPlan} onCerrar={() => setSel(null)} />}
           <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', marginTop: 8 }}>Arrastra para girar la vista · rueda o pellizco para acercar · toca una persona, un agente, una sala, un anexo de proveedores o una casita de la mesa de maquetas. El rombo de cada persona es su semáforo: verde al día, ámbar con tareas para hoy, rojo con atrasadas.</div>
         </div>

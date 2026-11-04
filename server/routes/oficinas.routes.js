@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requireAdminSuperior } from '../middleware/auth.middleware.js';
+import { logoDeSitio } from '../utils/logos.js';
 import { leerPlanificacion, guardarPlanificacion, repartir, hoyMadrid } from '../utils/planificacion.js';
 
 // Oficinas virtuales: una vista general del negocio por departamentos (diseño, ventas, presupuestos, finanzas, equipo) con lo que
@@ -77,6 +78,15 @@ router.get('/', async (req, res) => {
     const anexos = Object.entries(porSector).map(([sector, proveedores]) => ({ sector, n: proveedores.length, proveedores })).sort((a, b) => b.n - a.n || a.sector.localeCompare(b.sector)).slice(0, 10);
     res.json({ hoy, departamentos, proyectos, personas, agentes, anexos, tareasSinFecha: pend.filter(t => !t.due_date).length });
   } catch (err) { console.error('oficinas:', err); res.status(500).json({ error: 'No se pudieron cargar las oficinas' }); }
+});
+
+// logo de la web de un proveedor (PNG), para su stand en la oficina 3D; se pide con la sesión y se guarda 12 horas
+router.get('/logo', async (req, res) => {
+  try {
+    const png = await logoDeSitio(req.query.url);
+    if (!png) return res.status(404).json({ error: 'Sin logo' });
+    res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=43200' }).send(png);
+  } catch { res.status(404).json({ error: 'Sin logo' }); }
 });
 
 // ── catálogo de entregables (nombre + horas medias) ──

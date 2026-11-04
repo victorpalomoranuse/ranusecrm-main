@@ -63,7 +63,7 @@ function rotuloRanuse() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
 
-export function OficinaVirtual3D({ data, onSeleccion }) {
+export function OficinaVirtual3D({ data, onSeleccion, cargarLogo }) {
   const caja = useRef(null);
 
   useEffect(() => {
@@ -95,7 +95,7 @@ export function OficinaVirtual3D({ data, onSeleccion }) {
     const esfera = (r, c, x, y, z, parent, o) => sombrear(poner(new THREE.Mesh(G(`s${r}`, () => new THREE.SphereGeometry(r, 20, 16)), M(c, o)), x, y, z, parent));
     const sombraBlob = (r, x, z, parent) => { const m = new THREE.Mesh(G(`sh${r}`, () => new THREE.CircleGeometry(r, 20)), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.14, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.12, z); parent.add(m); };
 
-    const interactivos = [], animados = [], lodEtiquetas = [], mundo = new THREE.Group(); scene.add(mundo);
+    const interactivos = [], animados = [], lodEtiquetas = [], stands = [], mundo = new THREE.Group(); scene.add(mundo);
     const marcar = (obj, info) => { obj.userData.info = info; interactivos.push(obj); obj.traverse(o => { if (o !== obj) o.userData.root = obj; }); };
 
     // ── terreno: suelo oscuro con halo, plano de líneas y losa de la sede ──
@@ -244,17 +244,42 @@ export function OficinaVirtual3D({ data, onSeleccion }) {
       caja3(WA, 0.4, 0.15, PAL.pared, ax + WA / 2, 0.3, az + DA, mundo, null, false); caja3(0.15, 0.4, DA, PAL.pared, ax + WA, 0.3, az + DA / 2, mundo, null, false);
       ventana(ax + WA / 2 + 1.6, 1.55, az + 0.12, 0); propsSector(cfg.prop, ax + 0.3, az + 0.4);
       const sg = etiqueta(`${a.sector.toUpperCase()} · ${a.n}`, { fs: 22, color: '#ffffff', bg: 'rgba(30,26,22,0.94)', borde: PAL.taupe, espaciado: 2 }); sg.position.set(ax + WA / 2, 3.2, az + 0.3); mundo.add(sg);
-      const slots = [[1.8, 3.6], [3.7, 3.4], [5.6, 3.6], [2.7, 5.4], [4.7, 5.4]];
+      // un stand tipo pop-up por proveedor: tarima, panel con su logo (o su nombre) y mostrador con la persona detrás
+      const slots = [[1.3, 2.5], [3.7, 2.5], [6.1, 2.5], [2.5, 5.0], [4.9, 5.0]];
       a.proveedores.slice(0, slots.length).forEach((pr, j) => {
-        const i = hash(pr.nombre), [sx, sz] = slots[j], av = persona({ color: ROPA[(i + 2) % ROPA.length], piel: PIEL[(i >> 3) % PIEL.length], pelo: PELO[(i >> 5) % PELO.length], sentado: false, casco: cfg.casco });
-        av.position.set(ax + sx, 0.1, az + sz); av.rotation.y = 0.35 * (j % 3 - 1); mundo.add(av);
-        const et = etiqueta(corto(pr.nombre, 20), { fs: 22, bg: 'rgba(241,238,232,0.96)' }); et.position.set(ax + sx, 3.0, az + sz); mundo.add(et); et.userData.lod = 40; lodEtiquetas.push(et); marcar(av, { tipo: 'proveedor', nombre: pr.nombre, url: pr.url, sector: a.sector });
+        const [sx, sz] = slots[j], i = hash(pr.nombre), gs = new THREE.Group(); gs.position.set(ax + sx, 0.1, az + sz); gs.rotation.y = 0.55; mundo.add(gs); /* girado hacia la cámara */
+        caja3(1.95, 0.06, 1.75, '#f4f1ec', 0, 0.03, 0.5, gs, { roughness: 0.4 }, false);
+        const cv = document.createElement('canvas'); cv.width = 512; cv.height = 640; const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+        const dibujar = (img) => {
+          const g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, 512, 640); g.fillStyle = cfg.color === '#f1eee8' ? PAL.taupe : cfg.color; g.fillRect(0, 0, 512, 26); g.strokeStyle = PAL.taupe; g.lineWidth = 6; g.strokeRect(10, 10, 492, 620);
+          if (img) { const r = Math.min(320 / img.width, 320 / img.height); g.drawImage(img, 256 - (img.width * r) / 2, 70 + (320 - img.height * r) / 2, img.width * r, img.height * r); }
+          else { g.fillStyle = '#efe9e0'; g.beginPath(); g.arc(256, 230, 130, 0, Math.PI * 2); g.fill(); g.fillStyle = PAL.taupe; g.font = '700 120px Montserrat, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(pr.nombre.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase(), 256, 236); }
+          g.fillStyle = '#26221e'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '700 46px Montserrat, system-ui, sans-serif';
+          const pal = pr.nombre.split(' '), lin = ['']; pal.forEach(w => { const t = (lin[lin.length - 1] + ' ' + w).trim(); if (g.measureText(t).width < 440 || !lin[lin.length - 1]) lin[lin.length - 1] = t; else lin.push(w); });
+          lin.slice(0, 3).forEach((t, k) => g.fillText(t, 256, 470 + k * 54 - (Math.min(lin.length, 3) - 1) * 20));
+          g.fillStyle = PAL.taupe; g.font = '500 26px Montserrat, system-ui, sans-serif'; g.fillText(a.sector.toUpperCase(), 256, 600);
+        };
+        dibujar(null);
+        const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.9), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 })); panel.position.set(0, 1.15, 0.02); sombrear(panel); gs.add(panel);
+        caja3(1.62, 0.06, 0.1, '#26221e', 0, 0.2, 0, gs); caja3(1.62, 0.06, 0.1, '#26221e', 0, 2.1, 0, gs); [-0.78, 0.78].forEach(x => caja3(0.06, 1.95, 0.1, '#26221e', x, 1.15, 0, gs));
+        [-0.5, 0.5].forEach(x => { cilindro(0.015, 0.3, '#222', x, 2.28, 0.1, gs); esfera(0.07, '#fff3d6', x, 2.45, 0.12, gs, { emissive: '#ffd9a0', emissiveIntensity: 1.2 }).castShadow = false; });
+        caja3(1.15, 0.85, 0.5, '#ffffff', 0, 0.55, 1.0, gs, { roughness: 0.35 }); caja3(1.15, 0.05, 0.5, PAL.taupe, 0, 0.99, 1.0, gs, { roughness: 0.3 }); caja3(0.9, 0.04, 0.02, '#26221e', 0, 0.6, 1.26, gs, null, false);
+        [-0.3, 0, 0.3].forEach((x, k) => caja3(0.2, 0.03 + k * 0.012, 0.28, ['#f1eee8', '#baafa5', '#d8cfc3'][k], x, 1.03 + k * 0.006, 0.98, gs, null, false));
+        const av = persona({ color: ROPA[(i + 2) % ROPA.length], piel: PIEL[(i >> 3) % PIEL.length], pelo: PELO[(i >> 5) % PELO.length], sentado: false, casco: cfg.casco });
+        av.position.set(ax + sx + 0.82, 0.1, az + sz + 0.15); av.rotation.y = 0.3; mundo.add(av);
+        const et = etiqueta(corto(pr.nombre, 22), { fs: 22, bg: 'rgba(241,238,232,0.96)' }); et.position.set(ax + sx, 3.0, az + sz); mundo.add(et); et.userData.lod = 40; lodEtiquetas.push(et);
+        const info = { tipo: 'proveedor', nombre: pr.nombre, url: pr.url, sector: a.sector }; marcar(av, info); marcar(gs, info);
+        if (pr.url) stands.push({ url: pr.url, dibujar, tex });
       });
       if (a.n > slots.length) { const mas = etiqueta(`+${a.n - slots.length} más`, { fs: 22, color: '#6b5a44' }); mas.position.set(ax + WA - 0.9, 1.3, az + DA - 0.8); mundo.add(mas); mas.userData.lod = 40; lodEtiquetas.push(mas); }
       planta(ax + WA - 0.5, az + 0.7, 0.9);
     });
     const arbol = (x, z, s = 1) => { const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(s); mundo.add(g); cilindro(0.12, 1, '#4a3c30', 0, 0.5, 0, g); const c1 = new THREE.Mesh(G('abeto', () => new THREE.ConeGeometry(0.9, 2.4, 14)), M('#3d5a48')); c1.position.y = 2.1; sombrear(c1); g.add(c1); const c2 = new THREE.Mesh(G('abeto2', () => new THREE.ConeGeometry(0.65, 1.8, 14)), M('#4a6b56')); c2.position.y = 3.2; sombrear(c2); g.add(c2); };
     [[-22, -6], [-23, 4], [-21, 14], [24, -6], [25, 5], [27, 16], [-22, 26], [20, 20], [30, 26], [-5, -14], [8, -14], [20, -13]].forEach(([x, z], k) => arbol(x, z, 0.9 + (k % 3) * 0.15));
+
+    // logos de los proveedores: se piden al servidor y se pintan en el panel de su stand cuando llegan
+    let vivo = true;
+    if (cargarLogo) stands.forEach(st => { cargarLogo(st.url).then(b => createImageBitmap(b)).then(img => { if (vivo) { st.dibujar(img); st.tex.needsUpdate = true; } }).catch(() => {}); });
 
     // ── selección, hover y bucle ──
     const rayo = new THREE.Raycaster(), ptr = new THREE.Vector2(), anillo = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.9, 40), new THREE.MeshBasicMaterial({ color: PAL.taupe, side: THREE.DoubleSide, depthWrite: false, transparent: true, opacity: 0.95 }));
@@ -292,7 +317,7 @@ export function OficinaVirtual3D({ data, onSeleccion }) {
     });
 
     return () => {
-      renderer.setAnimationLoop(null); ro.disconnect(); el.removeEventListener('pointermove', onMove); el.removeEventListener('pointerdown', onDown); el.removeEventListener('pointerup', onUp);
+      vivo = false; renderer.setAnimationLoop(null); ro.disconnect(); el.removeEventListener('pointermove', onMove); el.removeEventListener('pointerdown', onDown); el.removeEventListener('pointerup', onUp);
       ctrl.dispose(); scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.map?.dispose?.(); m.emissiveMap?.dispose?.(); m.dispose?.(); }); if (o.geometry) o.geometry.dispose?.(); });
       renderer.dispose(); renderer.forceContextLoss?.(); if (el.parentNode) el.parentNode.removeChild(el);
     };
