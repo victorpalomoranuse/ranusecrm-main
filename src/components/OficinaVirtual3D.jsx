@@ -10,13 +10,14 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 
 const LUZ = { rojo: '#ff6b57', ambar: '#ffb347', gris: '#8f8a85', verde: '#4be3a0' };
 const TAUPE = '#baafa5';
+const LED = '#ffc978'; // luz cálida indirecta de los renders de Ranuse
 const DEP = {
-  diseno: { c: '#e8c98f', nombre: 'Diseño y proyectos' }, ventas: { c: '#6fd0ff', nombre: 'Ventas y leads' }, presupuestos: { c: '#a78bfa', nombre: 'Presupuestos' },
-  finanzas: { c: '#4be3a0', nombre: 'Finanzas' }, equipo: { c: '#baafa5', nombre: 'Sala del equipo' },
+  diseno: { c: '#e8c98f', nombre: 'Diseño y proyectos' }, ventas: { c: '#8db4c4', nombre: 'Ventas y leads' }, presupuestos: { c: '#b4a3c4', nombre: 'Presupuestos' },
+  finanzas: { c: '#93bd9f', nombre: 'Finanzas' }, equipo: { c: '#baafa5', nombre: 'Sala del equipo' },
 };
 const SALAS = {
-  diseno: { x: -20, z: -8, w: 16, d: 16, suelo: 'madera' }, ventas: { x: 0, z: -12, w: 10, d: 9, suelo: 'moqueta' }, presupuestos: { x: 14, z: -12, w: 10, d: 9, suelo: 'marmol' },
-  finanzas: { x: 0, z: 3, w: 10, d: 9, suelo: 'moqueta' }, equipo: { x: 14, z: 3, w: 10, d: 9, suelo: 'madera' },
+  diseno: { x: -20, z: -8, w: 16, d: 16, suelo: 'madera' }, ventas: { x: 0, z: -12, w: 10, d: 9, suelo: 'gres' }, presupuestos: { x: 14, z: -12, w: 10, d: 9, suelo: 'marmol' },
+  finanzas: { x: 0, z: 3, w: 10, d: 9, suelo: 'gres' }, equipo: { x: 14, z: 3, w: 10, d: 9, suelo: 'madera' },
 };
 const PIELES = ['#f3d2b3', '#e8b98f', '#c98f63', '#a86d45', '#7a4b2f'];
 const PELOS = ['#1c1c20', '#3b2a20', '#6b4a2f', '#b5651d', '#e1b866', '#8d8d92', '#7a3b2e'];
@@ -43,17 +44,31 @@ function texturaBrillo() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 function texturaSuelo(tipo) {
-  const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
-  if (tipo === 'madera') {
-    g.fillStyle = '#b48e66'; g.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 8; i++) { g.fillStyle = `rgba(${i % 2 ? '0,0,0' : '255,255,255'},${0.04 + (i % 3) * 0.02})`; g.fillRect(0, i * 32, 256, 32); g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, i * 32, 256, 1.5); g.fillRect(((i * 97) % 200) + 20, i * 32, 1.5, 32); }
-  } else if (tipo === 'marmol') {
-    g.fillStyle = '#e4dfd6'; g.fillRect(0, 0, 256, 256); g.strokeStyle = 'rgba(80,70,60,0.18)'; g.lineWidth = 1.5;
-    for (let i = 0; i < 9; i++) { g.beginPath(); g.moveTo(Math.random() * 256, 0); g.bezierCurveTo(Math.random() * 256, 80, Math.random() * 256, 170, Math.random() * 256, 256); g.stroke(); }
-    g.strokeStyle = 'rgba(186,175,165,0.25)'; g.lineWidth = 2; g.strokeRect(1, 1, 254, 254);
-  } else {
-    g.fillStyle = '#8d857b'; g.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 1600; i++) { g.fillStyle = `rgba(${Math.random() > 0.5 ? '255,255,255' : '0,0,0'},0.05)`; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+  const N = 512, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d');
+  const ruido = (n, al) => { for (let i = 0; i < n; i++) { g.fillStyle = 'rgba(' + (Math.random() > 0.5 ? '255,255,255' : '0,0,0') + ',' + Math.random() * al + ')'; g.fillRect(Math.random() * N, Math.random() * N, 1 + Math.random() * 2, 1 + Math.random() * 2); } };
+  if (tipo === 'madera') { // roble natural en tablas largas
+    g.fillStyle = '#b98f62'; g.fillRect(0, 0, N, N);
+    const tablas = 16, h = N / tablas;
+    for (let i = 0; i < tablas; i++) {
+      const tono = (((i * 37) % 5) - 2) * 0.035; g.fillStyle = 'rgba(' + (tono > 0 ? '255,235,200' : '60,35,15') + ',' + (Math.abs(tono) + 0.02) + ')'; g.fillRect(0, i * h, N, h);
+      g.strokeStyle = 'rgba(70,40,15,0.14)'; g.lineWidth = 1; for (let k = 0; k < 4; k++) { const y = i * h + 3 + k * (h - 6) / 4 + Math.random() * 2; g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(N * 0.3, y + Math.random() * 3 - 1.5, N * 0.6, y + Math.random() * 3 - 1.5, N, y); g.stroke(); }
+      g.fillStyle = 'rgba(40,22,8,0.5)'; g.fillRect(0, i * h, N, 1.2); g.fillRect(((i * 173) % (N - 80)) + 40, i * h, 1.2, h);
+    }
+  } else if (tipo === 'gres') { // porcelánico beige de gran formato
+    g.fillStyle = '#c4b8a5'; g.fillRect(0, 0, N, N); ruido(2500, 0.05);
+    g.strokeStyle = 'rgba(95,82,68,0.5)'; g.lineWidth = 2; for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(i * N / 4, 0); g.lineTo(i * N / 4, N); g.moveTo(0, i * N / 4); g.lineTo(N, i * N / 4); g.stroke(); }
+  } else if (tipo === 'caucho') { // suelo de caucho negro de gimnasio
+    g.fillStyle = '#463f39'; g.fillRect(0, 0, N, N);
+    for (let i = 0; i < 6000; i++) { g.fillStyle = 'rgba(' + (Math.random() > 0.8 ? '150,120,95' : '0,0,0') + ',' + (0.15 + Math.random() * 0.3) + ')'; g.fillRect(Math.random() * N, Math.random() * N, 1 + Math.random() * 2.5, 1 + Math.random() * 2.5); }
+    g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 2; for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(i * N / 4, 0); g.lineTo(i * N / 4, N); g.moveTo(0, i * N / 4); g.lineTo(N, i * N / 4); g.stroke(); }
+  } else if (tipo === 'marmol') { // travertino
+    g.fillStyle = '#e3d8c6'; g.fillRect(0, 0, N, N); g.strokeStyle = 'rgba(150,125,95,0.22)'; g.lineWidth = 2;
+    for (let i = 0; i < 26; i++) { const y = Math.random() * N; g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(N * 0.3, y + Math.random() * 14 - 7, N * 0.6, y + Math.random() * 14 - 7, N, y + Math.random() * 10 - 5); g.stroke(); }
+    ruido(1500, 0.05); g.strokeStyle = 'rgba(120,100,78,0.45)'; g.lineWidth = 2; for (let i = 0; i < 2; i++) { g.beginPath(); g.moveTo(i * N / 2, 0); g.lineTo(i * N / 2, N); g.moveTo(0, i * N / 2); g.lineTo(N, i * N / 2); g.stroke(); }
+  } else { // microcemento
+    g.fillStyle = '#9b9187'; g.fillRect(0, 0, N, N);
+    for (let i = 0; i < 40; i++) { g.fillStyle = 'rgba(' + (Math.random() > 0.5 ? '255,255,255' : '0,0,0') + ',0.03)'; g.beginPath(); g.arc(Math.random() * N, Math.random() * N, 30 + Math.random() * 80, 0, 7); g.fill(); }
+    ruido(2500, 0.05);
   }
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
@@ -67,18 +82,18 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
     const cont = caja.current; if (!cont || !data) return undefined;
     let renderer;
     try { renderer = new THREE.WebGLRenderer({ antialias: true }); } catch { cbSel.current?.({ tipo: 'error' }); return undefined; }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.5;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     cont.appendChild(renderer.domElement); renderer.domElement.style.display = 'block'; renderer.domElement.style.touchAction = 'none';
-    const scene = new THREE.Scene(); scene.background = new THREE.Color('#08080a'); scene.fog = new THREE.Fog('#08080a', 110, 260);
+    const scene = new THREE.Scene(); scene.background = new THREE.Color('#1a140f'); scene.fog = new THREE.Fog('#1a140f', 120, 300);
     const cam = new THREE.PerspectiveCamera(36, 1, 0.5, 500);
     const ctrl = new OrbitControls(cam, renderer.domElement);
     const OBJ = new THREE.Vector3(22, 0, 4);
     ctrl.target.copy(OBJ); cam.position.set(OBJ.x + 48, 46, OBJ.z + 62);
     ctrl.enableDamping = true; ctrl.minDistance = 8; ctrl.maxDistance = 190; ctrl.minPolarAngle = 0.35; ctrl.maxPolarAngle = 1.25; ctrl.screenSpacePanning = false; ctrl.update();
 
-    scene.add(new THREE.HemisphereLight('#fff4e6', '#7a6e63', 1.8));
-    const sol = new THREE.DirectionalLight('#fff1dd', 2.3); sol.position.set(34, 58, 44); sol.target.position.set(22, 0, 12); scene.add(sol, sol.target);
+    scene.add(new THREE.HemisphereLight('#ffe8cc', '#6b5a4a', 1.0));
+    const sol = new THREE.DirectionalLight('#ffd9a8', 1.75); sol.position.set(34, 58, 44); sol.target.position.set(22, 0, 12); scene.add(sol, sol.target);
     sol.castShadow = true; sol.shadow.mapSize.set(2048, 2048); Object.assign(sol.shadow.camera, { left: -72, right: 72, top: 72, bottom: -72, near: 5, far: 190 }); sol.shadow.bias = -0.0005;
     const relleno = new THREE.DirectionalLight('#ffd9b0', 0.35); relleno.position.set(-40, 24, -30); scene.add(relleno);
 
@@ -99,19 +114,19 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
     const aro3 = (r, color, x, y, z, parent, o = 0.9) => { const m = new THREE.Mesh(G(`ring${r}`, () => new THREE.RingGeometry(r * 0.84, r, 48)), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: o, side: THREE.DoubleSide, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); parent.add(m); return m; };
     const rotulo = (texto, x, y, z, opts, lim) => { const e = etiqueta(texto, opts); e.position.set(x, y, z); mundo.add(e); if (lim) { e.userData.lod = lim; lod.push(e); } return e; };
     // vetas de luz: línea fina emisiva alrededor de un rectángulo
-    const contorno = (x, z, w, d, color, y = 0.12, parent = mundo) => { [[w, 0.06, x, z - d / 2], [w, 0.06, x, z + d / 2]].forEach(([ww, hh, xx, zz]) => caja3(ww, 0.04, 0.06, M(TAUPE, { metalness: 0.5, roughness: 0.4 }), xx, y, zz, parent, null, false)); [[x - w / 2], [x + w / 2]].forEach(([xx]) => caja3(0.06, 0.04, d, M(TAUPE, { metalness: 0.5, roughness: 0.4 }), xx, y, z, parent, null, false)); };
+    const contorno = (x, z, w, d, color, y = 0.12, parent = mundo) => { [[w, 0.06, x, z - d / 2], [w, 0.06, x, z + d / 2]].forEach(([ww, hh, xx, zz]) => caja3(ww, 0.04, 0.06, ME(LED, 0.9), xx, y, zz, parent, null, false)); [[x - w / 2], [x + w / 2]].forEach(([xx]) => caja3(0.06, 0.04, d, ME(LED, 0.9), xx, y, z, parent, null, false)); };
     // paredes sólidas de grafito; con hueco de puerta opcional
-    const GRAFITO = '#d9d2c7';
-    const paredH = (x0, z, w, h, color, gap = 0) => { const seg = (xa, wa) => { if (wa <= 0.1) return; caja3(wa, h, 0.26, GRAFITO, xa + wa / 2, h / 2 + 0.1, z, mundo, { roughness: 0.55 }); caja3(wa, 0.06, 0.3, M(color, { roughness: 0.5 }), xa + wa / 2, h + 0.12, z, mundo, null, false); caja3(wa, 0.14, 0.3, TAUPE, xa + wa / 2, 0.17, z, mundo, { metalness: 0.4 }, false); }; if (gap > 0) { const l = (w - gap) / 2; seg(x0, l); seg(x0 + l + gap, l); } else seg(x0, w); };
-    const paredV = (x, z0, d, h, color, gap = 0) => { const seg = (za, da) => { if (da <= 0.1) return; caja3(0.26, h, da, GRAFITO, x, h / 2 + 0.1, za + da / 2, mundo, { roughness: 0.55 }); caja3(0.3, 0.06, da, M(color, { roughness: 0.5 }), x, h + 0.12, za + da / 2, mundo, null, false); caja3(0.3, 0.14, da, TAUPE, x, 0.17, za + da / 2, mundo, { metalness: 0.4 }, false); }; if (gap > 0) { const l = (d - gap) / 2; seg(z0, l); seg(z0 + l + gap, l); } else seg(z0, d); };
-    const ventana = (x, y, z, rot, w = 1.8, h = 1.1) => { const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = rot; mundo.add(g); caja3(w + 0.14, h + 0.14, 0.1, TAUPE, 0, 0, 0, g, { metalness: 0.5 }, false); const cr = new THREE.Mesh(new THREE.PlaneGeometry(w, h), M('#bfd6ee', { emissive: '#9fc3e6', emissiveIntensity: 0.55 })); cr.position.z = 0.06; g.add(cr); };
+    const tm = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); g.fillStyle = '#d6c8b0'; g.fillRect(0, 0, 256, 256); for (let i = 0; i < 46; i++) { g.fillStyle = 'rgba(' + (Math.random() > 0.5 ? '255,250,240' : '90,70,50') + ',0.04)'; g.beginPath(); g.arc(Math.random() * 256, Math.random() * 256, 18 + Math.random() * 60, 0, 7); g.fill(); } for (let i = 0; i < 1800; i++) { g.fillStyle = 'rgba(' + (Math.random() > 0.5 ? '255,255,255' : '0,0,0') + ',0.03)'; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+    const GRAFITO = new THREE.MeshStandardMaterial({ map: tm, roughness: 0.88, metalness: 0 });
+    const paredH = (x0, z, w, h, color, gap = 0) => { const seg = (xa, wa) => { if (wa <= 0.1) return; caja3(wa, h, 0.26, GRAFITO, xa + wa / 2, h / 2 + 0.1, z, mundo, { roughness: 0.55 }); caja3(wa, 0.07, 0.3, ME(LED, 2.6), xa + wa / 2, h + 0.12, z, mundo, null, false); caja3(wa, 0.14, 0.3, '#1d1713', xa + wa / 2, 0.17, z, mundo, { roughness: 0.6 }, false); }; if (gap > 0) { const l = (w - gap) / 2; seg(x0, l); seg(x0 + l + gap, l); } else seg(x0, w); };
+    const paredV = (x, z0, d, h, color, gap = 0) => { const seg = (za, da) => { if (da <= 0.1) return; caja3(0.26, h, da, GRAFITO, x, h / 2 + 0.1, za + da / 2, mundo, { roughness: 0.55 }); caja3(0.3, 0.07, da, ME(LED, 2.6), x, h + 0.12, za + da / 2, mundo, null, false); caja3(0.3, 0.14, da, '#1d1713', x, 0.17, za + da / 2, mundo, { roughness: 0.6 }, false); }; if (gap > 0) { const l = (d - gap) / 2; seg(z0, l); seg(z0 + l + gap, l); } else seg(z0, d); };
+    const ventana = (x, y, z, rot, w = 1.8, h = 1.1) => { const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = rot; mundo.add(g); caja3(w + 0.14, h + 0.14, 0.1, '#2b2520', 0, 0, 0, g, { metalness: 0.4 }, false); const cr = new THREE.Mesh(new THREE.PlaneGeometry(w, h), M('#bfd6ee', { emissive: '#9fc3e6', emissiveIntensity: 0.55 })); cr.position.z = 0.06; g.add(cr); };
     const pantalla = (x, y, z, rot, w, h, color = '#3b6fd4') => { const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = rot; mundo.add(g); caja3(w + 0.1, h + 0.1, 0.06, '#101013', 0, 0, 0, g, null, false); const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), M('#2b2f36', { emissive: '#3a4250', emissiveIntensity: 0.35 })); p.position.z = 0.04; g.add(p); };
 
     // ── terreno y losas ──
-    const fondo = document.createElement('canvas'); fondo.width = fondo.height = 256; { const g = fondo.getContext('2d'), gr = g.createRadialGradient(128, 128, 5, 128, 128, 128); gr.addColorStop(0, '#1d1b1a'); gr.addColorStop(0.6, '#0e0d0d'); gr.addColorStop(1, '#08080a'); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); }
+    const fondo = document.createElement('canvas'); fondo.width = fondo.height = 256; { const g = fondo.getContext('2d'), gr = g.createRadialGradient(128, 128, 5, 128, 128, 128); gr.addColorStop(0, '#4a3b2e'); gr.addColorStop(0.55, '#2a2018'); gr.addColorStop(1, '#1a140f'); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); }
     const ft = new THREE.CanvasTexture(fondo); ft.colorSpace = THREE.SRGBColorSpace;
     const terreno = new THREE.Mesh(new THREE.PlaneGeometry(340, 280), new THREE.MeshBasicMaterial({ map: ft })); terreno.rotation.x = -Math.PI / 2; terreno.position.set(22, -0.3, 16); mundo.add(terreno);
-    const rej = new THREE.GridHelper(220, 110, '#26221f', '#17151a'); rej.position.set(22, -0.28, 16); rej.material.transparent = true; rej.material.opacity = 0.25; mundo.add(rej);
     const losa = (x, z, w, d, h = 0.4, color = '#2a2622') => { caja3(w, h, d, color, x, -h / 2 + 0.05, z, mundo, { roughness: 0.6 }, false).receiveShadow = true; contorno(x, z, w, d, TAUPE, 0.08); };
     const pavimento = (x, z, w, d, color = '#3a3632') => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), M(color, { roughness: 0.35, metalness: 0.2 })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.06, z); m.receiveShadow = true; mundo.add(m); };
     losa(2, 0, 52, 32); pavimento(2, 0, 50, 30);
@@ -147,7 +162,17 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
     const nombre = (p, x, z, y, color) => rotulo(p.nombre.split(' ')[0], x, y, z, { fs: 24, borde: 'rgba(60,50,40,0.14)' }, 80);
     const mesaOf = (x, z, rot = 0, ancho = 1.9) => { const g = new THREE.Group(); g.position.set(x, 0.1, z); g.rotation.y = rot; mundo.add(g); caja3(ancho, 0.07, 0.95, '#ece8e1', 0, 0.76, 0, g, { roughness: 0.35 }); [-1, 1].forEach(s => { caja3(0.06, 0.74, 0.8, '#16161a', s * (ancho / 2 - 0.1), 0.37, 0, g); }); caja3(0.72, 0.44, 0.04, '#0e0e11', 0, 1.15, -0.2, g, null, false); const pa = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 0.38), M('#79b7ff', { emissive: '#3a78d0', emissiveIntensity: 0.8 })); pa.position.set(0, 1.15, -0.175); g.add(pa); cil(0.03, 0.2, '#222', 0, 0.9, -0.2, g); caja3(0.5, 0.02, 0.18, '#2a2a30', 0, 0.8, 0.22, g, null, false); return g; };
     const sillaOf = (x, z, rot) => { const g = new THREE.Group(); g.position.set(x, 0.1, z); g.rotation.y = rot; mundo.add(g); caja3(0.58, 0.09, 0.58, '#18181c', 0, 0.5, 0, g); caja3(0.56, 0.62, 0.08, '#18181c', 0, 0.86, 0.28, g); cil(0.04, 0.38, '#777', 0, 0.28, 0, g, { metalness: 0.8 }); caja3(0.5, 0.04, 0.5, '#555', 0, 0.1, 0, g, { metalness: 0.7 }, false); };
-    const planta = (x, z, s = 1) => { const g = new THREE.Group(); g.position.set(x, 0.1, z); g.scale.setScalar(s); mundo.add(g); cil(0.3, 0.5, '#2b2b30', 0, 0.25, 0, g); [[0, 1.0, 0, 0.4], [0.18, 1.35, 0.08, 0.28], [-0.16, 1.25, -0.06, 0.3]].forEach(([a, b, c, r]) => esf(r, '#3f7d5a', a, b, c, g)); };
+    const planta = (x, z, s = 1) => {
+      const g = new THREE.Group(); g.position.set(x, 0.1, z); g.scale.setScalar(s); mundo.add(g);
+      cil(0.3, 0.55, '#1d1a17', 0, 0.27, 0, g, { roughness: 0.5 }); cil(0.27, 0.04, '#3b2d22', 0, 0.55, 0, g);
+      const h0 = hash(x + ',' + z);
+      for (let k = 0; k < 9; k++) {
+        const piv = new THREE.Group(); piv.position.set(0, 0.55, 0); piv.rotation.y = k * 2.4 + (h0 % 7); piv.rotation.z = 0.14 + ((k * 37 + h0) % 10) * 0.045; g.add(piv);
+        const alto = 0.9 + ((k * 53 + h0) % 6) * 0.12;
+        const tallo = new THREE.Mesh(G('tallo', () => new THREE.CylinderGeometry(0.012, 0.016, 1, 5)), M('#4a6b3a')); tallo.scale.y = alto; tallo.position.y = alto / 2; piv.add(tallo);
+        const hoja = new THREE.Mesh(G('hojaE', () => new THREE.SphereGeometry(1, 10, 8)), M(k % 2 ? '#2f5a3e' : '#3b6e48', { roughness: 0.55 })); hoja.scale.set(0.2, 0.46, 0.03); hoja.position.set(0, alto + 0.34, 0); hoja.rotation.x = 0.35; hoja.castShadow = true; piv.add(hoja);
+      }
+    };
     const lampara = (x, z, h = 2) => { const g = new THREE.Group(); g.position.set(x, 0.1, z); mundo.add(g); cil(0.16, 0.06, '#222', 0, 0.03, 0, g); cil(0.022, h, '#222', 0, h / 2, 0, g); esf(0.18, ME('#fff1d6', 1.4), 0, h + 0.12, 0, g).castShadow = false; halo('#ffd9a0', 0, h + 0.12, 0, 1.8, g, 0.5); };
     const sofa = (x, z, rot, color = '#4a4540') => { const g = new THREE.Group(); g.position.set(x, 0.1, z); g.rotation.y = rot; mundo.add(g); caja3(2.6, 0.42, 1, color, 0, 0.32, 0, g); caja3(2.6, 0.7, 0.26, color, 0, 0.78, -0.38, g); [-1.2, 1.2].forEach(s => caja3(0.28, 0.68, 1, color, s, 0.52, 0, g)); };
     const estante = (x, z, rot, w = 2.4) => { const g = new THREE.Group(); g.position.set(x, 0.1, z); g.rotation.y = rot; mundo.add(g); caja3(w, 2.2, 0.4, '#1a1a1e', 0, 1.1, 0, g); [0.4, 0.95, 1.5, 2.0].forEach(y => caja3(w - 0.1, 0.04, 0.38, '#34343c', 0, y, 0.01, g, null, false)); ['#ece8e1', TAUPE, '#a9895d', '#6b6259', '#2e3a52'].forEach((c, i) => [0.62, 1.17, 1.72].forEach(y => caja3(0.34, 0.42, 0.3, c, -w / 2 + 0.4 + i * (w - 0.7) / 5, y, 0.03, g, null, false))); };
@@ -172,9 +197,45 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
     // recepción y showroom (planta baja, zona sur-oeste)
     const rec = { x: -20, z: 9.5 }; alfombra(-14, 11.5, 9, 4, '#cfc6b8');
     caja3(4.2, 1.05, 1.1, '#1a1a1e', -14, 0.62, 12.5, mundo, { roughness: 0.4 }); caja3(4.4, 0.08, 1.3, TAUPE, -14, 1.17, 12.5, mundo, { metalness: 0.6, roughness: 0.3 }); caja3(0.06, 0.02, 3.6, ME(TAUPE, 1.2), -14, 0.18, 12.0, mundo, null, false);
-    pantalla(-14, 2.6, 14.8, Math.PI, 3.4, 1.5, '#1a1a1f'); rotulo('Recepción de Ranuse', -14, 4.1, 13.9, { fs: 24 }, 60);
+    rotulo('Recepción de Ranuse', -14, 4.1, 13.9, { fs: 24 }, 60);
     sofa(-20, 10.5, Math.PI / 2, '#3a3f4b'); sofa(-8.5, 10.5, -Math.PI / 2, '#3a3f4b'); caja3(1.3, 0.1, 0.8, '#222', -19.2, 0.5, 11.5, mundo); planta(-21.5, 14, 1.2); planta(-6.5, 14, 1.2); lampara(-22, 7.5);
     estante(-12, 8.55, Math.PI, 3.2); estante(-17, 8.55, Math.PI, 3.2);
+    // ── detalles de marca: letrero, cuadros con proyectos reales y charcos de luz cálida ──
+    const OBRAS = ['/img/homegyms/contGym1.png', '/img/xthor/xthorPrincipal.png', '/img/homegyms/contGym2.png', '/img/f11/proyectoF11.jpg', '/img/golfpark/golfPark.jpg', '/img/homegyms/contGym3.png', '/img/nextera/Aula.png'];
+    const cuadro = (x, y, z, rot, w, h, k) => {
+      const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = rot; mundo.add(g);
+      caja3(w + 0.16, h + 0.16, 0.06, '#141110', 0, 0, 0, g, { roughness: 0.5 }, false);
+      const cv = document.createElement('canvas'); cv.width = 320; cv.height = Math.round(320 * h / w); const gx = cv.getContext('2d'); gx.fillStyle = '#8a7d6c'; gx.fillRect(0, 0, cv.width, cv.height);
+      const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace;
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tx, roughness: 0.6, emissive: '#ffffff', emissiveMap: tx, emissiveIntensity: 0.2 })); p.position.z = 0.04; g.add(p);
+      halo(LED, 0, 0.05, 0.4, w * 2, g, 0.18);
+      const im = new Image(); im.decoding = 'async';
+      im.onload = () => { if (!vivo) return; const r = Math.max(cv.width / im.width, cv.height / im.height); gx.drawImage(im, (cv.width - im.width * r) / 2, (cv.height - im.height * r) / 2, im.width * r, im.height * r); tx.needsUpdate = true; };
+      im.src = OBRAS[k % OBRAS.length];
+    };
+    const letrero = (x, y, z, rot, w, h) => {
+      const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = rot; mundo.add(g);
+      const cv = document.createElement('canvas'); cv.width = 1024; cv.height = Math.round(1024 * h / w); const c2 = cv.getContext('2d');
+      const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace;
+      const dibuja = () => {
+        c2.fillStyle = '#ece3d4'; c2.fillRect(0, 0, cv.width, cv.height); c2.fillStyle = '#17120f'; c2.textAlign = 'center'; c2.textBaseline = 'middle';
+        c2.font = '800 ' + Math.round(cv.height * 0.5) + 'px Montserrat, system-ui, sans-serif'; if ('letterSpacing' in c2) c2.letterSpacing = '8px'; c2.fillText('RANUSE', cv.width / 2, cv.height * 0.42);
+        c2.font = '600 ' + Math.round(cv.height * 0.12) + 'px Montserrat, system-ui, sans-serif'; if ('letterSpacing' in c2) c2.letterSpacing = '6px'; c2.fillStyle = '#6b5e50'; c2.fillText('DESIGN', cv.width / 2, cv.height * 0.82); tx.needsUpdate = true;
+      };
+      dibuja(); if (document.fonts?.ready) document.fonts.ready.then(() => { if (vivo) dibuja(); });
+      caja3(w + 0.6, h + 0.6, 0.05, ME(LED, 1.1), 0, 0, -0.05, g, null, false); caja3(w + 0.14, h + 0.14, 0.06, '#17120f', 0, 0, -0.01, g, null, false);
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tx, roughness: 0.7 })); p.position.z = 0.03; g.add(p);
+      halo(LED, 0, 0, 0.5, w * 1.8, g, 0.16);
+    };
+    const charco = (x, z, w, d, o = 0.3) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: brillo, color: LED, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.135, z); mundo.add(m); return m; };
+    const texC = {}; const sueloTex = (tipo, w, d) => { const k = tipo + w + 'x' + d; if (!texC[k]) { const t = texturaSuelo(tipo); t.repeat.set(w / 4, d / 4); texC[k] = t; } return texC[k]; };
+    letrero(-22.8, 2.4, 11.5, Math.PI / 2, 6.4, 1.7);
+    [-4.2, 0, 4.2].forEach((z, i) => cuadro(-19.86, 2.05, z, Math.PI / 2, 1.7, 1.15, i));
+    [1.7, 8.3].forEach((x, i) => cuadro(x, 2.1, -11.86, 0, 1.3, 0.9, i + 3));
+    [1.6, 8.4].forEach((x, i) => cuadro(x, 2.1, 3.14, 0, 1.3, 0.9, i + 5));
+    [16.2, 19.4, 22.6].forEach((x, i) => cuadro(x, 2.25, 3.14, 0, 1.6, 1.1, i + 1));
+    Object.values(SALAS).forEach(sa => charco(sa.x + sa.w / 2, sa.z + sa.d / 2, sa.w * 1.15, sa.d * 1.15, 0.18));
+    charco(-14, 11.5, 14, 8, 0.28);
     // paseo central y pasillos con vetas de luz
     [[-2, -9, 0.1, 18], [12, -9, 0.1, 18]].forEach(([x, z, w, d]) => caja3(w, 0.03, d, ME(TAUPE, 0.8), x, 0.1, z, mundo, null, false));
 
@@ -220,8 +281,9 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
       const gx = X0 + (i % NC) * PX, gz = Z0 + Math.floor(i / NC) * PZ, comercial = p.tipo === 'comercial', W = comercial ? 7.4 : 6, D = comercial ? 6.2 : 5, col = LUZ[p.semaforo];
       posProy[p.id] = new THREE.Vector3(gx, 0, gz);
       const gg = new THREE.Group(); gg.position.set(gx, 0, gz); mundo.add(gg);
+      { const lz = charco(0, 0, W + 1.5, D + 1.5, 0.28); gg.add(lz); lz.position.set(0, 0.135, 0); }
       caja3(W + 0.8, 0.3, D + 0.8, '#2a2622', 0, -0.05, 0, gg, { roughness: 0.6 }, false).receiveShadow = true;
-      const piso = new THREE.Mesh(new THREE.PlaneGeometry(W, D), M('#6a645b', { roughness: 0.85 })); piso.rotation.x = -Math.PI / 2; piso.position.y = 0.11; piso.receiveShadow = true; gg.add(piso);
+      const piso = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: sueloTex('caucho', W, D), roughness: 0.9 })); piso.rotation.x = -Math.PI / 2; piso.position.y = 0.11; piso.receiveShadow = true; gg.add(piso);
       caja3(W, 3.2, 0.26, GRAFITO, 0, 1.7, -D / 2, gg); caja3(0.26, 3.2, D, GRAFITO, -W / 2, 1.7, 0, gg); caja3(W, 0.6, 0.26, GRAFITO, 0, 0.4, D / 2, gg); caja3(0.26, 0.6, D, GRAFITO, W / 2, 0.4, 0, gg);
       const tira = caja3(W + 0.3, 0.1, 0.34, ME(col, 1.4), 0, 3.35, -D / 2, gg, null, false); caja3(0.34, 0.1, D + 0.3, ME(col, 1.4), -W / 2, 3.35, 0, gg, null, false); [[0, D / 2, W + 0.3, 0.34], [W / 2, 0, 0.34, D + 0.3]].forEach(([x, z, w, d]) => caja3(w, 0.08, d, ME(col, 1.2), x, 0.72, z, gg, null, false)); if (p.semaforo === 'rojo' || p.semaforo === 'ambar') pulsosAtencion.push(tira.material);
       const esp = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.62, 1.9), M('#b9c5cd', { metalness: 0.5, roughness: 0.22 })); esp.position.set(0, 1.5, -D / 2 + 0.15); gg.add(esp);
@@ -255,7 +317,7 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
       const fila = k < 5 ? 0 : 1, col = fila ? k - 5 : k, ax = -20 + col * PAA + WA / 2, az = ZA[fila] + DA / 2, esAlmacen = ALMACEN.test(a.sector);
       const gA = new THREE.Group(); gA.position.set(ax, 0, az); mundo.add(gA);
       caja3(WA + 1, 0.3, DA + 1, '#17171b', 0, -0.05, 0, gA, { roughness: 0.6 }, false).receiveShadow = true; contorno(ax, az, WA + 0.8, DA + 0.8, TAUPE, 0.1);
-      const t = texturaSuelo('hormigon'); t.repeat.set(WA / 4, DA / 4); const piso = new THREE.Mesh(new THREE.PlaneGeometry(WA, DA), new THREE.MeshStandardMaterial({ map: t, roughness: 0.5, metalness: 0.15 })); piso.rotation.x = -Math.PI / 2; piso.position.y = 0.11; piso.receiveShadow = true; gA.add(piso);
+      charco(ax, az, WA * 1.1, DA * 1.1, 0.22); const piso = new THREE.Mesh(new THREE.PlaneGeometry(WA, DA), new THREE.MeshStandardMaterial({ map: sueloTex(esAlmacen ? 'caucho' : 'madera', WA, DA), roughness: 0.6, metalness: 0.05 })); piso.rotation.x = -Math.PI / 2; piso.position.y = 0.11; piso.receiveShadow = true; gA.add(piso);
       marcar(piso, { tipo: 'anexo', sector: a.sector, n: a.n, proveedores: a.proveedores, ir: 'contactos' });
       const alto = esAlmacen ? 4.2 : 3.4;
       caja3(WA, alto, 0.28, GRAFITO, 0, alto / 2 + 0.1, -DA / 2, gA); caja3(0.28, alto, DA, GRAFITO, -WA / 2, alto / 2 + 0.1, 0, gA); caja3(WA, 0.55, 0.28, GRAFITO, 0, 0.38, DA / 2, gA); caja3(0.28, 0.55, DA, GRAFITO, WA / 2, 0.38, 0, gA);
@@ -273,7 +335,7 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
       a.proveedores.slice(0, slots.length).forEach((pr, j) => {
         const sx = ax + slots[j][0], sz = az + slots[j][1], cv = document.createElement('canvas'); cv.width = 384; cv.height = 480; const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
         const dibujar = (img) => {
-          const g = cv.getContext('2d'); g.fillStyle = '#101015'; g.fillRect(0, 0, 384, 480); g.strokeStyle = TAUPE; g.lineWidth = 5; g.strokeRect(8, 8, 368, 464);
+          const g = cv.getContext('2d'); g.fillStyle = '#1a1511'; g.fillRect(0, 0, 384, 480); g.strokeStyle = TAUPE; g.lineWidth = 5; g.strokeRect(8, 8, 368, 464);
           g.fillStyle = '#f4f1ec'; g.beginPath(); g.roundRect(72, 50, 240, 240, 22); g.fill();
           if (img) { const r = Math.min(190 / img.width, 190 / img.height); g.drawImage(img, 192 - (img.width * r) / 2, 170 - (img.height * r) / 2, img.width * r, img.height * r); }
           else { g.fillStyle = TAUPE; g.font = '700 96px Montserrat, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(pr.nombre.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase(), 192, 176); }
@@ -368,5 +430,5 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
     };
   }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div ref={caja} style={{ position: 'absolute', inset: 0, background: '#08080a', touchAction: 'none' }} />;
+  return <div ref={caja} style={{ position: 'absolute', inset: 0, background: '#1a140f', touchAction: 'none' }} />;
 }
