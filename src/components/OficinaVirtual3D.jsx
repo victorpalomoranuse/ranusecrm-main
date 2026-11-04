@@ -13,12 +13,18 @@ const TAUPE = '#baafa5';
 const LED = '#ffc978'; // luz cálida indirecta de los renders de Ranuse
 const DEP = {
   diseno: { c: '#e8c98f', nombre: 'Diseño y proyectos' }, ventas: { c: '#8db4c4', nombre: 'Ventas y leads' }, presupuestos: { c: '#b4a3c4', nombre: 'Presupuestos' },
-  finanzas: { c: '#93bd9f', nombre: 'Finanzas' }, equipo: { c: '#baafa5', nombre: 'Sala del equipo' },
+  finanzas: { c: '#93bd9f', nombre: 'Finanzas' }, equipo: { c: '#baafa5', nombre: 'Sala del equipo' }, direccion: { c: '#d9b36a', nombre: 'Dirección' },
 };
+// Flujo de un proyecto, de oeste a este: 1 Ventas > 2 Presupuestos > 3 Estudio de diseño (con sus 6 fases dentro) > 4 Proyectos en marcha.
+// Fila de abajo: apoyo (dirección, finanzas, equipo, recepción). Al norte el almacén del catálogo; al sur los colaboradores.
 const SALAS = {
-  diseno: { x: -20, z: -8, w: 16, d: 16, suelo: 'madera' }, ventas: { x: 0, z: -12, w: 10, d: 9, suelo: 'gres' }, presupuestos: { x: 14, z: -12, w: 10, d: 9, suelo: 'marmol' },
-  finanzas: { x: 0, z: 3, w: 10, d: 9, suelo: 'gres' }, equipo: { x: 14, z: 3, w: 10, d: 9, suelo: 'madera' },
+  ventas: { x: -22, z: -14, w: 10, d: 9, suelo: 'gres' }, presupuestos: { x: -11, z: -14, w: 10, d: 9, suelo: 'marmol' }, diseno: { x: 0, z: -14, w: 27, d: 16, suelo: 'madera' },
+  direccion: { x: -22, z: 5, w: 10, d: 9, suelo: 'marmol' }, finanzas: { x: -11, z: 5, w: 10, d: 9, suelo: 'gres' }, equipo: { x: 0, z: 5, w: 10, d: 9, suelo: 'madera' },
 };
+// desplazamiento del mobiliario de cada sala respecto a donde estaba dibujado originalmente
+const DESPL = { diseno: [20, -6], ventas: [-22, -2], presupuestos: [-25, -2], finanzas: [-11, 2], equipo: [-14, 2], recepcion: [33, -0.5] };
+const FLUJO = { ventas: '1 · ', presupuestos: '2 · ', diseno: '3 · ' };
+const FASES = ['Diseño previo', 'Arquitectura', 'Instalaciones', 'Interiorismo', 'Maquinaria', 'Documentación'];
 const PIELES = ['#f3d2b3', '#e8b98f', '#c98f63', '#a86d45', '#7a4b2f'];
 const PELOS = ['#1c1c20', '#3b2a20', '#6b4a2f', '#b5651d', '#e1b866', '#8d8d92', '#7a3b2e'];
 const ROPAS = ['#1d1d22', '#3a3f4b', '#baafa5', '#f1eee8', '#33425b', '#46695e', '#8c3b36', '#6b6259'];
@@ -104,7 +110,8 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
     const ME = (c, i = 1) => M(c, { emissive: c, emissiveIntensity: i, roughness: 0.4 });
     const sombrear = (m, c = true) => { m.castShadow = c; m.receiveShadow = true; return m; };
     const poner = (m, x, y, z, parent) => { m.position.set(x, y, z); parent.add(m); return m; };
-    const mundo = new THREE.Group(); scene.add(mundo);
+    const raiz = new THREE.Group(); scene.add(raiz); let mundo = raiz;
+    const enSala = (k, fn) => { const g = new THREE.Group(); g.position.set(DESPL[k][0], 0, DESPL[k][1]); raiz.add(g); mundo = g; try { fn(); } finally { mundo = raiz; } return g; };
     const caja3 = (w, h, d, c, x, y, z, parent = mundo, o, sh = true) => sombrear(poner(new THREE.Mesh(G(`b${w},${h},${d}`, () => new RoundedBoxGeometry(w, h, d, 2, Math.min(0.05, Math.min(w, h, d) * 0.4))), typeof c === 'string' ? M(c, o) : c), x, y, z, parent), sh);
     const cil = (r, h, c, x, y, z, parent = mundo, o) => sombrear(poner(new THREE.Mesh(G(`c${r},${h}`, () => new THREE.CylinderGeometry(r, r, h, 20)), M(c, o)), x, y, z, parent));
     const esf = (r, c, x, y, z, parent = mundo, o) => sombrear(poner(new THREE.Mesh(G(`s${r}`, () => new THREE.SphereGeometry(r, 20, 16)), typeof c === 'string' ? M(c, o) : c), x, y, z, parent));
@@ -186,20 +193,23 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
       const piso = new THREE.Mesh(new THREE.PlaneGeometry(s.w, s.d), new THREE.MeshStandardMaterial({ map: t, roughness: 0.5, metalness: 0.1 })); piso.rotation.x = -Math.PI / 2; piso.position.set(cx, 0.1, cz); piso.receiveShadow = true; mundo.add(piso);
       marcar(piso, { tipo: 'sala', id, nombre: DEP[id].nombre, ir: dep?.ir, datos: dep?.datos || [], detalle: dep?.detalle || [], alerta: dep?.alerta || 'verde' });
       contorno(cx, cz, s.w - 0.4, s.d - 0.4, col, 0.14);
-      paredH(s.x, s.z, s.w, 3.4, col); paredV(s.x, s.z, s.d, 3.4, col);
+      paredH(s.x, s.z, s.w, 3.4, col); if (id === 'diseno') { paredV(s.x, s.z, 10.5, 3.4, col); paredV(s.x, s.z + 12.5, 3.5, 3.4, col); } else paredV(s.x, s.z, s.d, 3.4, col); // el estudio tiene puerta por donde entra el flujo
       paredH(s.x, s.z + s.d, s.w, 0.55, col, 3); paredV(s.x + s.w, s.z, s.d, 0.55, col, 3);
-      anclas[id] = new THREE.Vector3(cx, 5.2, cz);
-      const cartel = etiqueta(DEP[id].nombre, { fs: 28, punto: LUZ[dep?.alerta || 'verde'], borde: 'rgba(60,50,40,0.14)' }); cartel.position.copy(anclas[id]); mundo.add(cartel);
+      anclas[id] = new THREE.Vector3(id === 'diseno' ? s.x + 8 : cx, 5.2, cz);
+      const cartel = etiqueta((FLUJO[id] || '') + (id === 'diseno' ? 'Estudio de diseño' : DEP[id].nombre), { fs: 28, punto: LUZ[dep?.alerta || 'verde'], borde: 'rgba(60,50,40,0.14)' }); cartel.position.copy(anclas[id]); mundo.add(cartel);
     });
     // exterior del edificio: muros del fondo, fachada baja y cartel
     paredH(-23, -15, 50, 3.8, TAUPE); paredV(-23, -15, 30, 3.8, TAUPE); paredH(-23, 15, 50, 0.6, TAUPE, 6); paredV(27, -15, 30, 0.6, TAUPE, 6);
     [-17, -9, 3, 12, 21].forEach(x => ventana(x, 2.2, -14.85, 0, 2.4, 1.3)); [-9, 0, 9].forEach(z => ventana(-22.85, 2.2, z, Math.PI / 2, 2.4, 1.3));
     // recepción y showroom (planta baja, zona sur-oeste)
-    const rec = { x: -20, z: 9.5 }; alfombra(-14, 11.5, 9, 4, '#cfc6b8');
+    const construyeRecepcion = () => {
+    alfombra(-14, 11.5, 9, 4, '#cfc6b8');
     caja3(4.2, 1.05, 1.1, '#1a1a1e', -14, 0.62, 12.5, mundo, { roughness: 0.4 }); caja3(4.4, 0.08, 1.3, TAUPE, -14, 1.17, 12.5, mundo, { metalness: 0.6, roughness: 0.3 }); caja3(0.06, 0.02, 3.6, ME(TAUPE, 1.2), -14, 0.18, 12.0, mundo, null, false);
     rotulo('Recepción de Ranuse', -14, 4.1, 13.9, { fs: 24 }, 60);
     sofa(-20, 10.5, Math.PI / 2, '#3a3f4b'); sofa(-8.5, 10.5, -Math.PI / 2, '#3a3f4b'); caja3(1.3, 0.1, 0.8, '#222', -19.2, 0.5, 11.5, mundo); planta(-21.5, 14, 1.2); planta(-6.5, 14, 1.2); lampara(-22, 7.5);
     estante(-12, 8.55, Math.PI, 3.2); estante(-17, 8.55, Math.PI, 3.2);
+    charco(-14, 11.5, 14, 8, 0.28);
+    };
     // ── detalles de marca: letrero, cuadros con proyectos reales y charcos de luz cálida ──
     const OBRAS = ['/img/homegyms/contGym1.png', '/img/xthor/xthorPrincipal.png', '/img/homegyms/contGym2.png', '/img/f11/proyectoF11.jpg', '/img/golfpark/golfPark.jpg', '/img/homegyms/contGym3.png', '/img/nextera/Aula.png'];
     const cuadro = (x, y, z, rot, w, h, k) => {
@@ -229,15 +239,13 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
     };
     const charco = (x, z, w, d, o = 0.3) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: brillo, color: LED, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.135, z); mundo.add(m); return m; };
     const texC = {}; const sueloTex = (tipo, w, d) => { const k = tipo + w + 'x' + d; if (!texC[k]) { const t = texturaSuelo(tipo); t.repeat.set(w / 4, d / 4); texC[k] = t; } return texC[k]; };
-    letrero(-22.8, 2.4, 11.5, Math.PI / 2, 6.4, 1.7);
-    [-4.2, 0, 4.2].forEach((z, i) => cuadro(-19.86, 2.05, z, Math.PI / 2, 1.7, 1.15, i));
-    [1.7, 8.3].forEach((x, i) => cuadro(x, 2.1, -11.86, 0, 1.3, 0.9, i + 3));
-    [1.6, 8.4].forEach((x, i) => cuadro(x, 2.1, 3.14, 0, 1.3, 0.9, i + 5));
-    [16.2, 19.4, 22.6].forEach((x, i) => cuadro(x, 2.25, 3.14, 0, 1.6, 1.1, i + 1));
+    letrero(-21.7, 2.4, 9.5, Math.PI / 2, 6.4, 1.7);
+    enSala('diseno', () => [-4.2, 0, 4.2].forEach((z, i) => cuadro(-19.86, 2.05, z, Math.PI / 2, 1.7, 1.15, i)));
+    enSala('ventas', () => [1.7, 8.3].forEach((x, i) => cuadro(x, 2.1, -11.86, 0, 1.3, 0.9, i + 3)));
+    enSala('finanzas', () => [1.6, 8.4].forEach((x, i) => cuadro(x, 2.1, 3.14, 0, 1.3, 0.9, i + 5)));
+    enSala('equipo', () => [16.2, 19.4, 22.6].forEach((x, i) => cuadro(x, 2.25, 3.14, 0, 1.6, 1.1, i + 1)));
     Object.values(SALAS).forEach(sa => charco(sa.x + sa.w / 2, sa.z + sa.d / 2, sa.w * 1.15, sa.d * 1.15, 0.18));
-    charco(-14, 11.5, 14, 8, 0.28);
-    // paseo central y pasillos con vetas de luz
-    [[-2, -9, 0.1, 18], [12, -9, 0.1, 18]].forEach(([x, z, w, d]) => caja3(w, 0.03, d, ME(TAUPE, 0.8), x, 0.1, z, mundo, null, false));
+    enSala('recepcion', construyeRecepcion);
 
     // ── la gente y los agentes ──
     const avDe = (p) => p.avatar || {};
@@ -253,23 +261,48 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
     const pDis = [[-16, -4.5], [-11, -4.5], [-6, -4.5], [-16, 0.5], [-11, 0.5], [-6, 0.5]], pVen = [[2.6, -9], [5.4, -9], [8.1, -9], [2.6, -5.6], [5.4, -5.6]];
     const sobran = [];
     const sentar = (p, x, z) => { mesaOf(x, z - 1.0, 0); sillaOf(x, z, Math.PI); punto({ tipo: 'persona', ...p }, x, z, luzPersona(p), { sentado: true, rot: Math.PI }); nombre(p, x, z, 3.1, luzPersona(p)); };
-    disen.forEach((p, k) => (k < pDis.length ? sentar(p, pDis[k][0], pDis[k][1]) : sobran.push(p)));
-    comer.forEach((p, k) => (k < pVen.length ? sentar(p, pVen[k][0], pVen[k][1]) : sobran.push(p)));
-    direc.forEach((p, k) => { const x = -17 + k * 4.4, z = 5.4; mesaOf(x, z - 1.0, 0, 2.6); sillaOf(x, z, Math.PI); punto({ tipo: 'persona', ...p }, x, z, luzPersona(p), { sentado: true, rot: Math.PI }); nombre(p, x, z, 3.1, luzPersona(p)); });
-    const lounge = [[16.5, 6.5, 0.6], [20.5, 8.5, -0.5], [22, 5.5, 2.2], [17.5, 10, 0.2], [21, 10.5, 3], [19, 5, 1]];
-    [...resto, ...sobran].slice(0, lounge.length).forEach((p, k) => { const [x, z, r] = lounge[k]; punto({ tipo: 'persona', ...p }, x, z, luzPersona(p), { sentado: false, rot: r }); nombre(p, x, z, 3.1, luzPersona(p)); });
-    const puestoAg = { diseno: [-3, 4.8], ventas: [8.2, -5.6], presupuestos: [22, -5], finanzas: [5, 7.5] };
+    enSala('diseno', () => { disen.forEach((p, k) => (k < pDis.length ? sentar(p, pDis[k][0], pDis[k][1]) : sobran.push(p))); estante(-12, -7.55, 0, 4.6); estante(-7, -7.55, 0, 3.2); pantalla(-17.5, 2.2, -7.8, 0, 3.4, 1.6, '#1f3a66'); planta(-4.8, 6.5, 1.2); planta(-19, 6.8, 1.1); sofa(-18, 6.4, 0, '#2a2f3a'); alfombra(-11, 0, 10, 8, '#cfc6b8'); lampara(-19.4, -7.2); });
+    enSala('ventas', () => { comer.forEach((p, k) => (k < pVen.length ? sentar(p, pVen[k][0], pVen[k][1]) : sobran.push(p))); pantalla(5, 2.2, -11.85, 0, 4, 1.6, '#1d4a66'); alfombra(5, -6.5, 8, 6, '#d7cfc3'); planta(0.8, -11.2); planta(9.2, -3.8); });
+    enSala('presupuestos', () => { caja3(4.2, 0.1, 2.2, '#1a1a1e', 19, 0.82, -7.5, mundo, { roughness: 0.3 }); cil(0.12, 0.75, '#222', 19, 0.45, -7.5); for (let i = 0; i < 6; i++) { const an = (i / 6) * Math.PI * 2; sillaOf(19 + Math.cos(an) * 2.6, -7.5 + Math.sin(an) * 1.7, -an + Math.PI / 2); } pantalla(19, 2.2, -11.85, 0, 4.4, 1.7, '#3a2a66'); planta(14.8, -11); });
+    enSala('finanzas', () => { mesaOf(3, 6.2, 0); sillaOf(3, 7.2, Math.PI); mesaOf(7, 6.2, 0); sillaOf(7, 7.2, Math.PI); [1.2, 2.4, 3.6].forEach(x => caja3(1, 1.5, 0.6, '#34343c', x, 0.85, 11.5, mundo)); planta(9.2, 4); pantalla(5, 2.2, 3.15, 0, 3.4, 1.5, '#1f5a3c'); });
+    // dirección: despacho con sus personas, sofá y pantalla
+    direc.forEach((p, k) => { const x = -18 + k * 3.6, z = 10.2; mesaOf(x, z - 1.0, 0, 2.6); sillaOf(x, z, Math.PI); punto({ tipo: 'persona', ...p }, x, z, luzPersona(p), { sentado: true, rot: Math.PI }); nombre(p, x, z, 3.1, luzPersona(p)); });
+    alfombra(-17, 9.5, 8, 5, '#cfc6b8'); estante(-19.6, 5.6, 0, 3); pantalla(-14.4, 2.2, 5.17, 0, 3.4, 1.5, '#3a2a66'); sofa(-14.5, 12.7, Math.PI, '#3a3f4b'); caja3(1.4, 0.1, 0.8, '#222', -14.5, 0.5, 11.5, mundo); planta(-12.7, 6.4, 1.2); planta(-20.8, 13.2, 1.2); lampara(-20.8, 6.4);
+    enSala('equipo', () => { const lounge = [[16.5, 6.5, 0.6], [20.5, 8.5, -0.5], [22, 5.5, 2.2], [17.5, 10, 0.2], [21, 10.5, 3], [19, 5, 1]]; [...resto, ...sobran].slice(0, lounge.length).forEach((p, k) => { const [x, z, r] = lounge[k]; punto({ tipo: 'persona', ...p }, x, z, luzPersona(p), { sentado: false, rot: r }); nombre(p, x, z, 3.1, luzPersona(p)); }); sofa(18, 3.8, 0, '#4a4540'); sofa(14.8, 7, Math.PI / 2, '#4a4540'); caja3(1.4, 0.1, 0.9, '#222', 18, 0.5, 6, mundo); alfombra(18, 6.4, 5.5, 4, '#d9c8b2'); caja3(3.6, 1.0, 0.9, '#1a1a1e', 21, 0.62, 11.3, mundo); caja3(3.6, 0.08, 1.1, TAUPE, 21, 1.15, 11.3, mundo, { metalness: 0.6 }); planta(23.2, 4.5, 1.2); planta(14.8, 11.2); lampara(23.4, 11.4); });
+    const puestoAg = { diseno: [-9, 5.2], ventas: [8.2, -5.6], presupuestos: [22, -5], finanzas: [5, 7.5] };
     const nAg = {};
-    (data.agentes || []).forEach(a => { const b = puestoAg[a.sala]; if (!b) return; const k = nAg[a.sala] || 0, pt = [b[0] + k * 3.4, b[1]]; nAg[a.sala] = k + 1;mesaOf(pt[0], pt[1] - 1.0, 0); sillaOf(pt[0], pt[1], Math.PI); punto({ tipo: 'agente', ...a }, pt[0], pt[1], '#6fd0ff', { sentado: true, robot: true, rot: Math.PI }); rotulo(a.id === 'diseno' ? 'Alzados' : a.nombre.replace('Asistente de ', '').replace('Asistente ', ''), pt[0], 3.1, pt[1], { fs: 22, color: '#1f5d7a' }, 80); });
-    // mobiliario de cada sala
-    estante(-12, -7.55, 0, 4.6); estante(-7, -7.55, 0, 3.2); pantalla(-17.5, 2.2, -7.8, 0, 3.4, 1.6, '#1f3a66'); planta(-4.8, 6.5, 1.2); planta(-19, 6.8, 1.1); sofa(-18, 6.4, 0, '#2a2f3a'); alfombra(-11, 0, 10, 8, '#cfc6b8'); lampara(-19.4, -7.2);
-    pantalla(5, 2.2, -11.85, 0, 4, 1.6, '#1d4a66'); alfombra(5, -6.5, 8, 6, '#d7cfc3'); planta(0.8, -11.2); planta(9.2, -3.8);
-    caja3(4.2, 0.1, 2.2, '#1a1a1e', 19, 0.82, -7.5, mundo, { roughness: 0.3 }); cil(0.12, 0.75, '#222', 19, 0.45, -7.5); for (let i = 0; i < 6; i++) { const an = (i / 6) * Math.PI * 2; sillaOf(19 + Math.cos(an) * 2.6, -7.5 + Math.sin(an) * 1.7, -an + Math.PI / 2); } pantalla(19, 2.2, -11.85, 0, 4.4, 1.7, '#3a2a66'); planta(14.8, -11);
-    mesaOf(3, 6.2, 0); sillaOf(3, 7.2, Math.PI); mesaOf(7, 6.2, 0); sillaOf(7, 7.2, Math.PI); [1.2, 2.4, 3.6].forEach(x => caja3(1, 1.5, 0.6, '#34343c', x, 0.85, 11.5, mundo)); planta(9.2, 4); pantalla(5, 2.2, 3.15, 0, 3.4, 1.5, '#1f5a3c');
-    sofa(18, 3.8, 0, '#4a4540'); sofa(14.8, 7, Math.PI / 2, '#4a4540'); caja3(1.4, 0.1, 0.9, '#222', 18, 0.5, 6, mundo); alfombra(18, 6.4, 5.5, 4, '#d9c8b2'); caja3(3.6, 1.0, 0.9, '#1a1a1e', 21, 0.62, 11.3, mundo); caja3(3.6, 0.08, 1.1, TAUPE, 21, 1.15, 11.3, mundo, { metalness: 0.6 }); planta(23.2, 4.5, 1.2); planta(14.8, 11.2); lampara(23.4, 11.4);
+    (data.agentes || []).forEach(a => { const b = puestoAg[a.sala]; if (!b) return; const k = nAg[a.sala] || 0, pt = [b[0] + k * 3.4, b[1]]; nAg[a.sala] = k + 1; enSala(a.sala, () => { mesaOf(pt[0], pt[1] - 1.0, 0); sillaOf(pt[0], pt[1], Math.PI); punto({ tipo: 'agente', ...a }, pt[0], pt[1], '#6fd0ff', { sentado: true, robot: true, rot: Math.PI }); rotulo(a.id === 'diseno' ? 'Alzados' : a.nombre.replace('Asistente de ', '').replace('Asistente ', ''), pt[0], 3.1, pt[1], { fs: 22, color: '#1f5d7a' }, 80); }); });
+
+    // ── fases del proyecto dentro del estudio (en serpentina) + camino de luz del flujo ──
+    const porFase = {}; data.proyectos.forEach(p => { const f = Math.min(5, Math.max(0, Number(p.fase) || 0)); (porFase[f] = porFase[f] || []).push(p); });
+    const ESTAC = [[19.5, -2.5], [19.5, -7], [19.5, -11.5], [24.5, -11.5], [24.5, -7], [24.5, -2.5]];
+    const camino = (pts) => {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [ax, az] = pts[i], [bx, bz] = pts[i + 1], L = Math.hypot(bx - ax, bz - az), g = new THREE.Group();
+        g.position.set((ax + bx) / 2, 0.19, (az + bz) / 2); g.rotation.y = Math.atan2(bx - ax, bz - az); raiz.add(g);
+        caja3(0.14, 0.03, L, ME(LED, 1.5), 0, 0, 0, g, null, false);
+        const n = Math.max(1, Math.floor(L / 3.2));
+        for (let k = 0; k < n; k++) { const co = new THREE.Mesh(G('flechaC', () => new THREE.ConeGeometry(0.42, 0.85, 4)), ME(LED, 1.9)); co.rotation.x = Math.PI / 2; co.scale.z = 0.3; co.position.set(0, 0.02, -L / 2 + (k + 0.5) * L / n); g.add(co); }
+      }
+    };
+    ESTAC.forEach(([x, z], n) => {
+      const lista = porFase[n] || [];
+      const tile = new THREE.Mesh(new THREE.PlaneGeometry(4, 3.4), M('#2a2622', { roughness: 0.5, metalness: 0.15 })); tile.rotation.x = -Math.PI / 2; tile.position.set(x, 0.125, z); tile.receiveShadow = true; raiz.add(tile);
+      contorno(x, z, 3.9, 3.3, TAUPE, 0.14);
+      rotulo(n + ' · ' + FASES[n] + (lista.length ? ' · ' + lista.length : ''), x, 2.3, z - 0.9, { fs: 20, punto: lista.length ? LED : null }, 48);
+      lista.slice(0, 6).forEach((p, k) => {
+        const px = x - 1.4 + (k % 3) * 1.4, pz = z + (k < 3 ? -0.55 : 0.75), g = new THREE.Group(); g.position.set(px, 0.15, pz); raiz.add(g);
+        cil(0.3, 0.12, '#18181c', 0, 0.06, 0, g); cil(0.17, 0.5, LUZ[p.semaforo] || LUZ.gris, 0, 0.4, 0, g, { roughness: 0.4 }); esf(0.2, LUZ[p.semaforo] || LUZ.gris, 0, 0.82, 0, g, { roughness: 0.4 });
+        const diana = new THREE.Mesh(G('dianaF', () => new THREE.CylinderGeometry(0.55, 0.55, 1.3, 8)), new THREE.MeshBasicMaterial({ visible: false })); diana.position.y = 0.6; g.add(diana);
+        marcar(g, { tipo: 'proyecto', ...p });
+      });
+    });
+    camino([[-21, -2.5], [19.5, -2.5], [19.5, -7], [19.5, -11.5], [24.5, -11.5], [24.5, -7], [24.5, -2.5], [32, -2.5]]);
+    rotulo('Entrada · leads y clientes', -20, 1.6, -2.5, { fs: 20, color: '#7a5a1f' }, 70);
+    rotulo('Sale a obra', 30, 1.6, -3.6, { fs: 20, color: '#7a5a1f' }, 70);
 
     // ── proyectos: un gym por proyecto (sólido), que sale del suelo y se conecta con los departamentos ──
-    rotulo('Proyectos en marcha', 50, 5.6, -15.5, { fs: 30, borde: 'rgba(60,50,40,0.14)' });
+    rotulo('4 · Proyectos en marcha (ordenados por fase)', 50, 5.6, -15.5, { fs: 30, borde: 'rgba(60,50,40,0.14)' });
     const equipo = (tipo, g, ox, oz) => {
       if (tipo === 0) { [-0.8, 0.8].forEach(s => caja3(0.12, 2.3, 0.12, '#3a3a42', ox + s, 1.25, oz, g, { metalness: 0.7, roughness: 0.4 })); caja3(1.8, 0.12, 0.14, '#3a3a42', ox, 2.4, oz, g, { metalness: 0.7 }); caja3(2.4, 0.08, 1.8, '#6b4a2f', ox, 0.14, oz + 0.2, g); cil(0.03, 2.2, '#c7c7cf', ox, 1.35, oz + 0.2, g, { metalness: 0.9 }).rotation.z = Math.PI / 2; [-1, 1].forEach(s => cil(0.28, 0.06, '#18181c', ox + s * 1.0, 1.35, oz + 0.2, g).rotation.z = Math.PI / 2); }
       else if (tipo === 1) { caja3(0.9, 0.16, 2.1, '#18181c', ox, 0.32, oz, g); caja3(0.9, 0.06, 1.9, GRAFITO, ox, 0.44, oz, g); caja3(0.1, 1.1, 0.1, '#3a3a42', ox - 0.4, 0.95, oz - 0.95, g); caja3(0.1, 1.1, 0.1, '#3a3a42', ox + 0.4, 0.95, oz - 0.95, g); caja3(0.7, 0.34, 0.06, '#0e0e11', ox, 1.45, oz - 0.95, g, { emissive: '#4be3a0', emissiveIntensity: 0.5 }, false); }
@@ -277,7 +310,7 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
       else { caja3(1.2, 2.3, 0.8, '#3a3a42', ox, 1.3, oz, g, { metalness: 0.6 }); for (let i = 0; i < 8; i++) caja3(0.8, 0.1, 0.5, '#18181c', ox, 0.5 + i * 0.2, oz, g); cil(0.03, 1.2, '#c7c7cf', ox + 0.9, 1.4, oz + 0.2, g, { metalness: 0.9 }); }
     };
     const NC = 4, PX = 9.8, PZ = 8.8, X0 = 36, Z0 = -12;
-    data.proyectos.slice(0, 16).forEach((p, i) => {
+    [...data.proyectos].sort((a, b) => (Number(a.fase) || 0) - (Number(b.fase) || 0)).slice(0, 16).forEach((p, i) => {
       const gx = X0 + (i % NC) * PX, gz = Z0 + Math.floor(i / NC) * PZ, comercial = p.tipo === 'comercial', W = comercial ? 7.4 : 6, D = comercial ? 6.2 : 5, col = LUZ[p.semaforo];
       posProy[p.id] = new THREE.Vector3(gx, 0, gz);
       const gg = new THREE.Group(); gg.position.set(gx, 0, gz); mundo.add(gg);
@@ -288,7 +321,7 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
       const tira = caja3(W + 0.3, 0.1, 0.34, ME(col, 1.4), 0, 3.35, -D / 2, gg, null, false); caja3(0.34, 0.1, D + 0.3, ME(col, 1.4), -W / 2, 3.35, 0, gg, null, false); [[0, D / 2, W + 0.3, 0.34], [W / 2, 0, 0.34, D + 0.3]].forEach(([x, z, w, d]) => caja3(w, 0.08, d, ME(col, 1.2), x, 0.72, z, gg, null, false)); if (p.semaforo === 'rojo' || p.semaforo === 'ambar') pulsosAtencion.push(tira.material);
       const esp = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.62, 1.9), M('#b9c5cd', { metalness: 0.5, roughness: 0.22 })); esp.position.set(0, 1.5, -D / 2 + 0.15); gg.add(esp);
       const h0 = hash(p.id), n = comercial ? 4 : 2; for (let k = 0; k < n; k++) equipo((h0 + k) % 4, gg, -W / 2 + 1.5 + (k % 2) * 2.6, -D / 2 + 1.5 + Math.floor(k / 2) * 2.2);
-      const etq = rotulo(corto(p.nombre, 26), gx, 5.0, gz, { fs: 24, borde: 'rgba(60,50,40,0.14)', punto: col }, 80);
+      const etq = rotulo(corto(p.nombre, 22) + ' · F' + (Number(p.fase) || 0), gx, 5.0, gz, { fs: 24, borde: 'rgba(60,50,40,0.14)', punto: col }, 80);
       marcar(gg, { tipo: 'proyecto', ...p }); gg.userData.proy = p.id; gg.scale.y = 0.001; subidas.push({ g: gg, retardo: 0.4 + i * 0.12 });
       (p.deps || ['diseno']).forEach(dp => {
         const A = anclas[dp]; if (!A) return; const B = new THREE.Vector3(gx, 4.6, gz), dx = B.x - A.x, dz = B.z - A.z;
@@ -299,7 +332,7 @@ export function OficinaVirtual3D({ data, onSeleccion, cargarLogo, apiRef }) {
     });
 
     // ── proveedores: un almacén o una oficina por sector ──
-    rotulo('Red de colaboradores', 10, 5.6, 21.5, { fs: 30, borde: 'rgba(60,50,40,0.14)' });
+    rotulo('Apoyo · Red de colaboradores', 10, 5.6, 21.5, { fs: 30, borde: 'rgba(60,50,40,0.14)' });
     const ALMACEN = /madera|lamin|gym|sauna|rocod|constru|electric|reform/i;
     const propsAlmacen = (tipo, g, W, D) => {
       const caj = (c, x, y, z, w = 0.7, h = 0.5, d = 0.7) => caja3(w, h, d, c, x, y, z, g);
