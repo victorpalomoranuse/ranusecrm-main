@@ -7,6 +7,7 @@ import { SectionPresupuestos } from './SectionPresupuestos';
 import EstudioIdeas from '../components/EstudioIdeas';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
+import { SectionAsistenteDiseno } from './SectionAsistenteDiseno';
 import { SectionAsistenteSetter } from './SectionAsistenteSetter';
 import { SectionAgenda } from './SectionAgenda';
 import { SectionSetting } from './SectionSetting';
@@ -2867,6 +2868,7 @@ const NAV_ITEMS = [
   { id:'mis-comisiones', label:'Mis Comisiones', Icon:Wallet },
   { id:'proyectos', label:'Proyectos', Icon:FolderOpen, permission:'proyectos' },
   { id:'planos', label:'Planos', Icon:Ruler, permission:'proyectos' },
+  { id:'asistente-diseno', label:'Asistente de diseño', Icon:Ruler, permission:'proyectos' },
   { id:'estudio-ideas', label:'Estudio de ideas', Icon:Sparkles, permission:'proyectos' },
   { id:'hojas', label:'Hojas', Icon:Table2 },
   { id:'clientes', label:'Clientes', Icon:UserCheck, permission:'clientes' },
@@ -2937,6 +2939,7 @@ export function AdminPanel() {
         {section==='presupuestos'&&<SectionPresupuestos/>}
         {section==='asistente'&&<SectionAsistenteIA/>}
         {section==='asistente-finanzas'&&<SectionAsistenteFinanzas/>}
+        {section==='asistente-diseno'&&<SectionAsistenteDiseno/>}
         {section==='asistente-setter'&&<SectionAsistenteSetter/>}
         {section==='mi-agenda'&&<SectionAgenda/>}
         {section==='pedidos'&&<SectionPedidos/>}

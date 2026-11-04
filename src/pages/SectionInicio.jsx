@@ -28,6 +28,7 @@ const DESCRIPCION = {
   pedidos: 'Pedidos a proveedor y su estado',
   finanzas: 'Ingresos, gastos y resultados',
   'asistente-finanzas': 'Pregunta a la IA por las cuentas',
+  'asistente-diseno': 'Pide un alzado con medidas y te lo dibuja',
   obra: 'Seguimiento económico de obra',
   tareas: 'Tareas del equipo',
   catalogo: 'Productos, materiales y precios',

@@ -87,6 +87,7 @@ router.get('/', async (req, res) => {
       { id: 'setter', nombre: 'Asistente Setter', sala: 'ventas', ir: 'asistente-setter', hace: 'Mete leads y agenda llamadas' },
       { id: 'presupuestos', nombre: 'Asistente de presupuestos', sala: 'presupuestos', ir: 'asistente', hace: 'Prepara presupuestos con IA' },
       { id: 'finanzas', nombre: 'Asistente de finanzas', sala: 'finanzas', ir: 'asistente-finanzas', hace: 'Responde sobre las cuentas' },
+      { id: 'diseno', nombre: 'Asistente de diseño', sala: 'diseno', ir: 'asistente-diseno', hace: 'Dibuja alzados con tus medidas' },
       { id: 'ideas', nombre: 'Estudio de ideas', sala: 'diseno', ir: 'estudio-ideas', hace: 'Genera ideas y renders con IA' },
     ];
     // anexos: un edificio por sector de proveedores y colaboradores, con sus empresas dentro
