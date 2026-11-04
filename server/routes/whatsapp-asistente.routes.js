@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { callClaude } from '../utils/anthropic.js';
+import { responderAsistente } from '../utils/asistente-personal.js';
 
 const router = express.Router();
 
@@ -27,7 +27,7 @@ const SYSTEM = `Eres el asistente personal de Víctor Palomo, fundador de Ranuse
 
 const registro = []; // últimos eventos, para diagnosticar desde /estado sin mirar Railway
 const nota = (x) => { registro.unshift({ t: new Date().toISOString(), ...x }); if (registro.length > 15) registro.length = 15; };
-const memoria = new Map(); // últimos mensajes por conversación (se reinicia al reiniciar el servidor)
+const vistos = new Set(); // ids de mensajes ya atendidos (Meta reintenta si tarda)
 
 router.get('/webhook', (req, res) => {
   if (req.query['hub.mode'] === 'subscribe' && VERIFY && req.query['hub.verify_token'] === VERIFY) return res.status(200).send(req.query['hub.challenge']);
@@ -64,14 +64,8 @@ router.post('/webhook', async (req, res) => {
         const de = String(m.from || '').replace(/\D/g, '');
         if (!OWNER || de.slice(-9) !== OWNER) { nota({ ev: 'no_autorizado', desde_ultimos4: de.slice(-4), esperado_ultimos4: OWNER.slice(-4) }); console.warn('WhatsApp asistente: mensaje de un número no autorizado, ignorado.'); continue; }
         if (m.type !== 'text') { await enviar(de, 'Por ahora solo entiendo texto. Los audios y fotos los añadimos después.'); continue; }
-        const hist = memoria.get(de) || [];
-        hist.push({ role: 'user', content: m.text.body });
-        while (hist.length > 12) hist.shift();
-        while (hist.length && hist[0].role !== 'user') hist.shift();
-        const out = await callClaude({ system: SYSTEM, messages: hist, maxTokens: 700 });
-        const texto = (out.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim() || 'No he sabido qué contestar, ¿me lo repites?';
-        hist.push({ role: 'assistant', content: texto });
-        memoria.set(de, hist);
+        if (m.id) { if (vistos.has(m.id)) continue; vistos.add(m.id); if (vistos.size > 500) vistos.delete(vistos.values().next().value); }
+        const texto = await responderAsistente({ chatId: 'wa:' + de, texto: m.text.body });
         await enviar(de, texto);
       }
     }

@@ -1,5 +1,5 @@
 import express from 'express';
-import { callClaude } from '../utils/anthropic.js';
+import { responderAsistente } from '../utils/asistente-personal.js';
 
 const router = express.Router();
 
@@ -19,7 +19,7 @@ const SYSTEM = `Eres el asistente personal de Víctor Palomo, fundador de Ranuse
 - Víctor no es técnico: sin jerga.
 - De momento solo conversas y ayudas a pensar. Si te pide algo que aún no puedes hacer (crear tareas, mirar el CRM), dilo claro y no te lo inventes.`;
 
-const memoria = new Map(); // últimos mensajes por conversación (se reinicia al reiniciar el servidor)
+const vistos = new Set();
 
 async function enviar(chatId, texto) {
   const r = await fetch(API + '/sendMessage', {
@@ -38,14 +38,8 @@ router.post('/webhook', async (req, res) => {
     if (!OWNER) { await enviar(chatId, 'Hola. Tu id de Telegram es ' + chatId + '. Pégalo en Railway como TG_OWNER_ID y ya podré hablar contigo.'); return; }
     if (String(m.from?.id) !== OWNER || chatId !== OWNER) { console.warn('Telegram asistente: mensaje de alguien no autorizado, ignorado.'); return; }
     if (!m.text) { await enviar(chatId, 'Por ahora solo entiendo texto. Los audios y fotos los añadimos después.'); return; }
-    const hist = memoria.get(chatId) || [];
-    hist.push({ role: 'user', content: m.text });
-    while (hist.length > 12) hist.shift();
-    while (hist.length && hist[0].role !== 'user') hist.shift();
-    const out = await callClaude({ system: SYSTEM, messages: hist, maxTokens: 700 });
-    const texto = (out.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim() || 'No he sabido qué contestar, ¿me lo repites?';
-    hist.push({ role: 'assistant', content: texto });
-    memoria.set(chatId, hist);
+    if (m.message_id) { const k = chatId + ':' + m.message_id; if (vistos.has(k)) return; vistos.add(k); if (vistos.size > 500) vistos.delete(vistos.values().next().value); }
+    const texto = await responderAsistente({ chatId: 'tg:' + chatId, texto: m.text });
     await enviar(chatId, texto);
   } catch (e) { console.error('Telegram asistente:', e.message); }
 });
