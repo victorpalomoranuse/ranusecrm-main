@@ -16,6 +16,7 @@ const VERIFY = process.env.WA_ASIST_VERIFY_TOKEN;
 const SECRET = process.env.WA_ASIST_APP_SECRET;
 const TOKEN = process.env.WA_ASIST_TOKEN;
 const PHONE_ID = process.env.WA_ASIST_PHONE_ID;
+const WABA_ID = String(process.env.WA_ASIST_WABA_ID || '').replace(/[^0-9]/g, '');
 const OWNER = String(process.env.WA_ASIST_OWNER || '').replace(/\D/g, '').slice(-9);
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
@@ -73,16 +74,16 @@ router.post('/webhook', async (req, res) => {
   } catch (e) { console.error('WhatsApp asistente:', e.message); }
 });
 
-// Al arrancar: si hay PIN (WA_ASIST_PIN, 6 cifras que inventas tú), registra el número en la API de WhatsApp y apunta el estado en el registro.
-// Registrar un número ya registrado es inofensivo. Cuando el número esté 'Conectado' puedes borrar la variable WA_ASIST_PIN.
+// Al arrancar: suscribe la cuenta de WhatsApp (WA_ASIST_WABA_ID) a esta app para que lleguen los mensajes, y apunta el estado en el registro.
+// El registro con PIN ya NO se hace solo: en un número enlazado a la app del móvil podría romper el enlace (solo con ?registrar=1 a mano).
 const PIN = String(process.env.WA_ASIST_PIN || '').replace(/[^0-9]/g, '');
 async function registraNumero() {
   if (!TOKEN || !PHONE_ID) { console.log('WhatsApp asistente: faltan WA_ASIST_TOKEN o WA_ASIST_PHONE_ID.'); return; }
   const cab = { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };
   try {
-    if (PIN.length === 6) {
-      const r = await fetch(GRAPH + '/' + PHONE_ID + '/register', { method: 'POST', headers: cab, body: JSON.stringify({ messaging_product: 'whatsapp', pin: PIN }) });
-      console.log('WhatsApp asistente: registro del número ->', r.status, (await r.text()).slice(0, 400));
+    if (WABA_ID) {
+      const r = await fetch(GRAPH + '/' + WABA_ID + '/subscribed_apps', { method: 'POST', headers: cab });
+      console.log('WhatsApp asistente: suscripción de la cuenta a la app ->', r.status, (await r.text()).slice(0, 300));
     }
     const e = await fetch(GRAPH + '/' + PHONE_ID + '?fields=status,name_status,platform_type,verified_name,code_verification_status', { headers: cab });
     console.log('WhatsApp asistente: estado del número ->', e.status, (await e.text()).slice(0, 400));
@@ -96,12 +97,13 @@ setTimeout(registraNumero, 4000);
 router.get('/estado', async (req, res) => {
   if (!VERIFY || req.query.clave !== VERIFY) return res.sendStatus(403);
   const cab = { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };
-  const out = { variables: { token: !!TOKEN, phoneId: !!PHONE_ID, pin6cifras: PIN.length === 6, appSecret: !!SECRET, owner: !!OWNER } };
+  const out = { variables: { wabaId: !!WABA_ID, token: !!TOKEN, phoneId: !!PHONE_ID, pin6cifras: PIN.length === 6, appSecret: !!SECRET, owner: !!OWNER } };
   try {
     if (req.query.registrar === '1' && PIN.length === 6) {
       const r = await fetch(GRAPH + '/' + PHONE_ID + '/register', { method: 'POST', headers: cab, body: JSON.stringify({ messaging_product: 'whatsapp', pin: PIN }) });
       out.registro = { http: r.status, respuesta: await r.text().catch(() => '') };
     }
+    if (WABA_ID) { const su = await fetch(GRAPH + '/' + WABA_ID + '/subscribed_apps', { headers: cab }); out.apps_suscritas = { http: su.status, respuesta: (await su.text().catch(() => '')).slice(0, 600) }; }
     const e = await fetch(GRAPH + '/' + PHONE_ID + '?fields=status,name_status,platform_type,verified_name,code_verification_status,quality_rating', { headers: cab });
     out.numero = { http: e.status, respuesta: await e.text().catch(() => '') };
   } catch (err) { out.error = err.message; }
