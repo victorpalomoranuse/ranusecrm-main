@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { responderAsistente } from '../utils/asistente-personal.js';
+import { transcribir } from '../utils/transcribir.js';
 
 const router = express.Router();
 
@@ -50,6 +51,13 @@ async function enviar(a, texto) {
   if (!r.ok) { const cuerpo = await r.text().catch(() => ''); console.error('WhatsApp asistente: no se pudo enviar', r.status, cuerpo); nota({ ev: 'error_envio', http: r.status, cuerpo: cuerpo.slice(0, 400) }); } else nota({ ev: 'enviado' });
 }
 
+async function descargaMedia(id) {
+  const r = await fetch(GRAPH + '/' + id, { headers: { Authorization: 'Bearer ' + TOKEN } }); const j = await r.json();
+  if (!j.url) throw new Error('Meta no dio la dirección del audio: ' + JSON.stringify(j).slice(0, 200));
+  const f = await fetch(j.url, { headers: { Authorization: 'Bearer ' + TOKEN } }); if (!f.ok) throw new Error('No se pudo bajar el audio (' + f.status + ')');
+  return Buffer.from(await f.arrayBuffer());
+}
+
 router.post('/webhook', async (req, res) => {
   res.sendStatus(200); // Meta reintenta si tardamos: se responde ya y se trabaja después
   const firmado = firmaOk(req); nota({ ev: 'peticion', firmaOk: firmado, secretoPuesto: !!SECRET, trae_firma: !!req.headers['x-hub-signature-256'], conRawBody: !!req.rawBody });
@@ -63,9 +71,15 @@ router.post('/webhook', async (req, res) => {
       for (const m of v.messages || []) {
         const de = String(m.from || '').replace(/\D/g, '');
         if (!OWNER || de.slice(-9) !== OWNER) { nota({ ev: 'no_autorizado', desde_ultimos4: de.slice(-4), esperado_ultimos4: OWNER.slice(-4) }); console.warn('WhatsApp asistente: mensaje de un número no autorizado, ignorado.'); continue; }
-        if (m.type !== 'text') { await enviar(de, 'Por ahora solo entiendo texto. Los audios y fotos los añadimos después.'); continue; }
         if (m.id) { if (vistos.has(m.id)) continue; vistos.add(m.id); if (vistos.size > 500) vistos.delete(vistos.values().next().value); }
-        const texto = await responderAsistente({ chatId: 'wa:' + de, texto: m.text.body });
+        let entrada = null;
+        if (m.type === 'text') entrada = m.text.body;
+        else if (m.type === 'audio' && m.audio?.id) {
+          if (!(process.env.GROQ_API_KEY || '').trim()) { await enviar(de, 'Todavía no puedo oír audios: falta activar la transcripción gratuita. Mientras tanto, escríbeme.'); continue; }
+          try { const t = await transcribir(await descargaMedia(m.audio.id)); if (!t) { await enviar(de, 'No he conseguido entender el audio, ¿me lo repites?'); continue; } entrada = '[Audio de Víctor, transcrito] ' + t; nota({ ev: 'audio_ok', letras: t.length }); }
+          catch (e) { nota({ ev: 'audio_error', mensaje: e.message }); await enviar(de, 'No he podido escuchar ese audio. ¿Me lo escribes?'); continue; }
+        } else { await enviar(de, 'Por ahora entiendo texto y audios. Las fotos y documentos los añadimos pronto.'); continue; }
+        const texto = await responderAsistente({ chatId: 'wa:' + de, texto: entrada });
         await enviar(de, texto);
       }
     }

@@ -1,5 +1,6 @@
 import express from 'express';
 import { responderAsistente } from '../utils/asistente-personal.js';
+import { transcribir } from '../utils/transcribir.js';
 
 const router = express.Router();
 
@@ -37,9 +38,19 @@ router.post('/webhook', async (req, res) => {
     const chatId = String(m.chat.id);
     if (!OWNER) { await enviar(chatId, 'Hola. Tu id de Telegram es ' + chatId + '. Pégalo en Railway como TG_OWNER_ID y ya podré hablar contigo.'); return; }
     if (String(m.from?.id) !== OWNER || chatId !== OWNER) { console.warn('Telegram asistente: mensaje de alguien no autorizado, ignorado.'); return; }
-    if (!m.text) { await enviar(chatId, 'Por ahora solo entiendo texto. Los audios y fotos los añadimos después.'); return; }
     if (m.message_id) { const k = chatId + ':' + m.message_id; if (vistos.has(k)) return; vistos.add(k); if (vistos.size > 500) vistos.delete(vistos.values().next().value); }
-    const texto = await responderAsistente({ chatId: 'tg:' + chatId, texto: m.text });
+    let entrada = m.text || null;
+    const voz = m.voice || m.audio;
+    if (!entrada && voz) {
+      if (!(process.env.GROQ_API_KEY || '').trim()) { await enviar(chatId, 'Todavía no puedo oír audios: falta activar la transcripción gratuita. Mientras tanto, escríbeme.'); return; }
+      try {
+        const inf = await (await fetch(API + '/getFile?file_id=' + voz.file_id)).json();
+        const arch = await fetch('https://api.telegram.org/file/bot' + TOKEN + '/' + inf.result.file_path); const t = await transcribir(Buffer.from(await arch.arrayBuffer()));
+        if (!t) { await enviar(chatId, 'No he conseguido entender el audio, ¿me lo repites?'); return; } entrada = '[Audio de Víctor, transcrito] ' + t;
+      } catch (e) { console.error('Telegram asistente: audio:', e.message); await enviar(chatId, 'No he podido escuchar ese audio. ¿Me lo escribes?'); return; }
+    }
+    if (!entrada) { await enviar(chatId, 'Por ahora entiendo texto y audios. Las fotos y documentos los añadimos pronto.'); return; }
+    const texto = await responderAsistente({ chatId: 'tg:' + chatId, texto: entrada });
     await enviar(chatId, texto);
   } catch (e) { console.error('Telegram asistente:', e.message); }
 });
