@@ -60,7 +60,7 @@ async function descargaMedia(id) {
   return { buffer: Buffer.from(await f.arrayBuffer()), mime: j.mime_type || '' };
 }
 async function enviarArchivo(a, f) {
-  const r = await fetch(GRAPH + '/' + PHONE_ID + '/messages', { method: 'POST', headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ messaging_product: 'whatsapp', to: a, type: 'document', document: { link: f.url, filename: f.nombre } }) });
+  const r = await fetch(GRAPH + '/' + PHONE_ID + '/messages', { method: 'POST', headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify(f.tipo === 'imagen' ? { messaging_product: 'whatsapp', to: a, type: 'image', image: { link: f.url } } : { messaging_product: 'whatsapp', to: a, type: 'document', document: { link: f.url, filename: f.nombre } }) });
   if (!r.ok) { const cuerpo = await r.text().catch(() => ''); nota({ ev: 'error_envio_archivo', http: r.status, cuerpo: cuerpo.slice(0, 300) }); await enviar(a, 'No he podido adjuntar el archivo. Te dejo el enlace: ' + f.url); }
 }
 
@@ -90,7 +90,7 @@ router.post('/webhook', async (req, res) => {
           try { const { buffer, mime } = await descargaMedia(med.id); if (buffer.length > 15 * 1024 * 1024) { await enviar(de, 'Ese archivo pesa demasiado (más de 15 MB).'); continue; } adjuntos.push({ id: 'a1', mime: med.mime_type || mime || 'application/octet-stream', buffer, nombre: med.filename || '' }); entrada = med.caption || '(sin texto)'; nota({ ev: 'adjunto_ok', tipo: m.type, bytes: buffer.length }); }
           catch (e) { nota({ ev: 'adjunto_error', mensaje: e.message }); await enviar(de, 'No he podido descargar ese archivo. ¿Me lo mandas otra vez?'); continue; }
         } else { await enviar(de, 'Eso todavía no lo entiendo. Puedo con texto, audios, fotos y documentos.'); continue; }
-        const out = await responderAsistente({ chatId: 'wa:' + OWNER_COMPLETO, texto: entrada, adjuntos });
+        const out = await responderAsistente({ chatId: 'wa:' + OWNER_COMPLETO, texto: entrada, adjuntos, avisar: (t) => enviar(de, t) });
         await enviar(de, out.texto);
         for (const f of out.archivos || []) await enviarArchivo(de, f);
       }

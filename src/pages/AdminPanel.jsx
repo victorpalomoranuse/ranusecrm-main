@@ -7,6 +7,7 @@ import { SectionPresupuestos } from './SectionPresupuestos';
 import EstudioIdeas from '../components/EstudioIdeas';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
+import { SectionAsistentePersonal } from './SectionAsistentePersonal';
 import { SectionAsistenteDiseno } from './SectionAsistenteDiseno';
 import { SectionAsistenteSetter } from './SectionAsistenteSetter';
 import { SectionAgenda } from './SectionAgenda';
@@ -2880,6 +2881,7 @@ const NAV_ITEMS = [
   { id:'pedidos', label:'Pedidos', Icon:Package, adminOnly:true },
   { id:'finanzas', label:'Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'asistente-finanzas', label:'Asistente Finanzas', Icon:Wallet, permission:'finanzas' },
+  { id:'asistente-personal', label:'Asistente personal', Icon:MessageSquare, adminOnly:true },
   { id:'obra', label:'Relación de obra', Icon:Hammer, permissions:['ventas','finanzas'] },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
   { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },
@@ -2929,6 +2931,7 @@ export function AdminPanel() {
       case 'presupuestos': return <SectionPresupuestos/>;
       case 'asistente': return <SectionAsistenteIA/>;
       case 'asistente-finanzas': return <SectionAsistenteFinanzas/>;
+      case 'asistente-personal': return <SectionAsistentePersonal/>;
       case 'asistente-diseno': return <SectionAsistenteDiseno/>;
       case 'asistente-setter': return <SectionAsistenteSetter/>;
       case 'mi-agenda': return <SectionAgenda/>;

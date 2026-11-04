@@ -32,7 +32,7 @@ async function enviar(chatId, texto) {
 }
 
 async function enviarArchivoTg(chatId, f) {
-  const r = await fetch(API + '/sendDocument', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, document: f.url, caption: f.nombre }) });
+  const r = await fetch(API + (f.tipo === 'imagen' ? '/sendPhoto' : '/sendDocument'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f.tipo === 'imagen' ? { chat_id: chatId, photo: f.url } : { chat_id: chatId, document: f.url, caption: f.nombre }) });
   if (!r.ok) await enviar(chatId, 'No he podido adjuntar el archivo. Te dejo el enlace: ' + f.url);
 }
 if (TOKEN && SECRETO && OWNER) registraCanal('tg', { chatId: 'tg:' + OWNER, siempreAbierto: true, enviar: (t) => enviar(OWNER, t), enviarArchivo: (f) => enviarArchivoTg(OWNER, f) });
@@ -63,7 +63,7 @@ router.post('/webhook', async (req, res) => {
       } catch (e) { console.error('Telegram asistente: adjunto:', e.message); await enviar(chatId, 'No he podido descargar ese archivo. ¿Me lo mandas otra vez?'); return; }
     }
     if (!entrada) { await enviar(chatId, 'Eso todavía no lo entiendo. Puedo con texto, audios, fotos y documentos.'); return; }
-    const out = await responderAsistente({ chatId: 'tg:' + chatId, texto: entrada, adjuntos });
+    const out = await responderAsistente({ chatId: 'tg:' + chatId, texto: entrada, adjuntos, avisar: (t) => enviar(chatId, t) });
     await enviar(chatId, out.texto);
     for (const f of out.archivos || []) await enviarArchivoTg(chatId, f);
   } catch (e) { console.error('Telegram asistente:', e.message); }

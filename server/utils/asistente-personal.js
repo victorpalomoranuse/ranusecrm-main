@@ -1,7 +1,9 @@
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { callClaude } from './anthropic.js';
-import { uploadDiagnosisImage, uploadProjectDocument, uploadReferenceImage } from './storage.js';
+import { uploadDiagnosisImage, uploadProjectDocument, uploadReferenceImage, uploadProjectRender } from './storage.js';
+import { renderDesdeFoto } from './render-asistente.js';
+import { internalAdminToken } from './internal-auth.js';
 import { crearInformePdf } from './pdf-informe.js';
 
 // Cerebro del asistente personal de Víctor (lo usan WhatsApp y Telegram).
@@ -12,6 +14,8 @@ const BUCKET = 'project-documents';
 const RUTA_MEM = 'crm/asistente/memoria.json';
 const RUTA_CHARLA = 'crm/asistente/charla.json';
 export const RUTA_RECORD = 'crm/asistente/recordatorios.json';
+const RUTA_AG = 'crm/asistente/agentes.json';
+const BASE_INTERNA = 'http://127.0.0.1:' + (process.env.PORT || 3001);
 const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
 const FASES = ['Diseño previo', 'Arquitectura', 'Instalaciones', 'Interiorismo y materialidad', 'Maquinaria y equipamiento', 'Documentación de apoyo'];
 
@@ -63,6 +67,8 @@ const TOOLS = [
   { name: 'recordatorio', description: 'Programa un aviso: a esa hora le escribirás tú a Víctor el texto. fecha AAAA-MM-DD y hora HH:MM en hora de Madrid.', input_schema: { type: 'object', properties: { texto: { type: 'string' }, fecha: { type: 'string' }, hora: { type: 'string' } }, required: ['texto', 'fecha', 'hora'] } },
   { name: 'consultar_crm', description: 'Datos del negocio para informes y consejos. que: "resumen" (proyectos por fase, tareas atrasadas, carga por persona), "ventas" (ventas abiertas y cerradas), "leads" (últimos leads y su estado), "presupuestos" (últimos presupuestos y estado).', input_schema: { type: 'object', properties: { que: { type: 'string', enum: ['resumen', 'ventas', 'leads', 'presupuestos'] } }, required: ['que'] } },
   { name: 'crear_pdf', description: 'Genera un PDF con la imagen de Ranuse (informe, resumen, listado, propuesta de contenido…) y se lo envías a Víctor como archivo. contenido en texto sencillo: líneas que empiezan por "# " son títulos, "## " subtítulos, "- " viñetas, el resto párrafos. Si pasas proyecto, se guarda también en sus Documentos.', input_schema: { type: 'object', properties: { titulo: { type: 'string' }, contenido: { type: 'string' }, proyecto: { type: 'string' } }, required: ['titulo', 'contenido'] } },
+  { name: 'generar_render', description: 'Genera un render fotorrealista a partir de una foto, boceto o captura que Víctor te ha mandado (adjunto) y lo guarda en los Renders del proyecto en el CRM; se lo envías como imagen. Hace falta el proyecto. instrucciones = qué quiere ver (materiales, colores, ambiente); estilo opcional.', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, proyecto: { type: 'string' }, instrucciones: { type: 'string' }, estilo: { type: 'string' } }, required: ['adjunto', 'proyecto'] } },
+  { name: 'hablar_con_agente', description: 'Habla con uno de los asistentes especializados del CRM y te devuelve su respuesta. agente: "presupuestos" (crea y gestiona presupuestos con IA: pásale lo que Víctor pida, con todos los datos), "setter" (analiza conversaciones de leads y prepara respuestas y fichas), "finanzas" (consulta y crea movimientos de finanzas), "diseno" (alzados: necesita proyecto; la lámina queda guardada en el Asistente de diseño del proyecto). La conversación con cada agente continúa entre llamadas; si el agente pregunta algo, pásaselo a Víctor tal cual y espera su respuesta. nueva=true empieza de cero con ese agente.', input_schema: { type: 'object', properties: { agente: { type: 'string', enum: ['presupuestos', 'setter', 'finanzas', 'diseno'] }, mensaje: { type: 'string' }, proyecto: { type: 'string' }, nueva: { type: 'boolean' } }, required: ['agente', 'mensaje'] } },
   { name: 'recordar', description: 'Guarda en tu memoria permanente algo que Víctor te cuenta o te pide recordar (preferencias, datos de clientes, decisiones, ideas, ritmos de trabajo…). Úsala sin que te lo pida si es algo que conviene recordar. Un hecho por llamada, redactado de forma autosuficiente.', input_schema: { type: 'object', properties: { texto: { type: 'string' }, etiqueta: { type: 'string', description: 'tema corto, p. ej. cliente, proveedor, preferencia, idea' } }, required: ['texto'] } },
   { name: 'olvidar', description: 'Borra un recuerdo de tu memoria por su id.', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
 ];
@@ -199,6 +205,40 @@ async function ejecutar(nombre, input, ctx = {}) {
     (ctx.salida = ctx.salida || []).push({ url, nombre: archivo });
     return { creado: true, nota: 'El PDF se envía a Víctor como archivo adjunto en tu respuesta; no pegues el enlace.' };
   }
+  if (nombre === 'generar_render') {
+    const a = (ctx.adjuntos || []).find(x => x.id === input.adjunto); if (!a || !/^image\/(jpeg|png|webp)$/.test(a.mime)) return { error: 'Necesito una foto (jpg, png o webp) adjunta para hacer el render.' };
+    const p = await proyectoPor(input.proyecto); if (!p) return { error: 'No encuentro ese proyecto. Dime a cuál va el render.' };
+    if (ctx.avisar) await ctx.avisar('Voy con el render, tarda un minuto…');
+    let png; try { png = await renderDesdeFoto({ buffer: a.buffer, mime: a.mime, instrucciones: input.instrucciones, estilo: input.estilo }); } catch (e) { return { error: 'No he podido generar el render: ' + e.message }; }
+    const nom = 'Render desde móvil ' + fecha.split('-').reverse().join('/');
+    const url = await uploadProjectRender(png, 'render.png', 'image/png', p.id);
+    const { data: mx } = await supabase.from('project_renders').select('display_order').eq('project_id', p.id).order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+    const { error } = await supabase.from('project_renders').insert({ project_id: p.id, url, name: nom, version: null, display_order: (mx?.display_order ?? -1) + 1 });
+    if (error) return { error: 'El render está hecho pero no se pudo guardar en el proyecto: ' + error.message };
+    (ctx.salida = ctx.salida || []).push({ url, nombre: 'render.png', tipo: 'imagen' });
+    return { creado: true, guardado_en: 'Renders de ' + (p.project_name || p.client_name) + ' (CRM)', nota: 'La imagen se envía a Víctor junto a tu respuesta.' };
+  }
+  if (nombre === 'hablar_con_agente') {
+    const ag = input.agente, mensaje = String(input.mensaje || '').trim(); if (!mensaje) return { error: 'Falta el mensaje.' };
+    let proy = null; if (ag === 'diseno') { proy = await proyectoPor(input.proyecto); if (!proy) return { error: 'Para los alzados necesito el proyecto. ¿De cuál es?' }; }
+    const est = await leerJson(RUTA_AG, {}), clave = ag === 'diseno' ? 'diseno:' + proy.id : ag;
+    const conv = input.nueva || !est[clave] ? { messages: [] } : est[clave];
+    conv.messages.push({ role: 'user', content: mensaje });
+    if (ctx.avisar) await ctx.avisar('Un momento, se lo paso al asistente de ' + ag + '…');
+    const cab = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + internalAdminToken() };
+    const llama = async (ruta, cuerpo) => { const r = await fetch(BASE_INTERNA + ruta, { method: 'POST', headers: cab, body: JSON.stringify(cuerpo) }); const j = await r.json().catch(() => ({})); if (!r.ok && r.status !== 202) throw new Error(j.error || ('error ' + r.status)); return { j, status: r.status }; };
+    let reply = '', extra = {};
+    if (ag === 'presupuestos') { const { j } = await llama('/api/ai-budget/chat', { messages: conv.messages.slice(-24) }); reply = j.reply; if (j.budget_created) { extra.presupuesto_creado = { numero: j.budget_created.budget_number }; if (j.budget_created.pdf_url) (ctx.salida = ctx.salida || []).push({ url: j.budget_created.pdf_url, nombre: 'Presupuesto_' + (j.budget_created.budget_number || '') + '.pdf' }); } }
+    else if (ag === 'setter') { const { j } = await llama('/api/ai-setter/chat', { messages: conv.messages.slice(-24) }); reply = j.reply; if (j.lead) extra.lead = j.lead?.nombre || true; }
+    else if (ag === 'diseno') { const { j } = await llama('/api/asistente-diseno/chat', { messages: conv.messages.slice(-24), proyectoId: proy.id, laminaId: conv.laminaId, spec: conv.spec }); reply = j.reply; conv.spec = j.spec || conv.spec; if (j.guardado) { conv.laminaId = j.guardado.laminaId; extra.guardado_en = 'Asistente de diseño del proyecto ' + (proy.project_name || proy.client_name) + ' (CRM)'; } if (j.avisos?.length) extra.avisos = j.avisos; }
+    else if (ag === 'finanzas') {
+      const { j } = await llama('/api/ai-finanzas/chat', { messages: conv.messages.slice(-24) }); const t0 = Date.now(); let r = { estado: 'trabajando' };
+      while (r.estado === 'trabajando' && Date.now() - t0 < 150000) { await new Promise(ok => setTimeout(ok, 3000)); const rr = await fetch(BASE_INTERNA + '/api/ai-finanzas/chat/' + j.jobId, { headers: cab }); r = await rr.json().catch(() => ({ estado: 'error', error: 'sin respuesta' })); }
+      if (r.estado !== 'listo') return { error: r.error || 'El asistente de finanzas tarda demasiado; revisa Finanzas en el CRM.' }; reply = r.reply; if (r.creados?.length) extra.creados = r.creados;
+    }
+    conv.messages.push({ role: 'assistant', content: String(reply || '').slice(0, 4000) }); conv.messages = conv.messages.slice(-30); est[clave] = conv; await guardarJson(RUTA_AG, est);
+    return { respuesta_del_agente: reply, ...extra };
+  }
   if (nombre === 'recordar') {
     const texto = String(input.texto || '').trim().slice(0, 600); if (!texto) return { error: 'Nada que recordar.' };
     const mem = await leerJson(RUTA_MEM, { hechos: [] });
@@ -226,15 +266,16 @@ function sistema(mem) {
     '- Fotos y documentos: cuando Víctor te mande uno, míralo y descríbelo en una frase. Si dice o se deduce dónde va (proyecto y si es del programa de necesidades, de una obra, un documento o una referencia de inspiración), guárdalo con guardar_adjunto y dile dónde lo has dejado. Si no está claro, pregunta una sola cosa. Reuniones, transcripciones y visitas a obra: guárdalas con guardar_nota_proyecto y crea las tareas que se desprendan.\n' +
     '- Informes y PDFs: cuando te pida un reporte, resumen o documento, reúne los datos con las herramientas (consultar_crm, ver_proyecto…) y genera el PDF con crear_pdf. Redes y contenido: ayúdale con ideas, guiones y textos con la voz de Ranuse (cercana, profesional, de diseñador de espacios deportivos), usando lo que recuerdas de sus proyectos y gustos.\n' +
     '- APRENDE: cada vez que Víctor te corrija, te cuente una preferencia, una forma de trabajar, datos de un cliente o una decisión, guárdalo con recordar sin que te lo pida. Antes de dar consejo, tira de lo que recuerdas.\n' +
+    '- Compañeros del CRM (hablar_con_agente): presupuestos (crear presupuestos), setter (leads), finanzas y diseno (alzados). Si Víctor pide un presupuesto, un alzado, mirar un lead o algo de finanzas, pásaselo al compañero adecuado con todos los datos que te dé. Con una foto adjunta y la petición de un render, usa generar_render.\n' +
     '- También puedes crear proveedores, buscarlos y programar recordatorios que te llegan a esta misma conversación. Puedes ser su consultor: cuando solo quiera pensar en voz alta o comparar opciones, da tu opinión con criterio y sin rodeos.\n\n' +
     'Lo que recuerdas:\n' + hechos;
 }
 
 // Devuelve el texto de respuesta. chatId separa conversaciones (WhatsApp / Telegram).
-export async function responderAsistente({ chatId, texto, adjuntos = [] }) {
+export async function responderAsistente({ chatId, texto, adjuntos = [], avisar = null }) {
   const [mem, charla] = await Promise.all([leerJson(RUTA_MEM, { hechos: [] }), leerJson(RUTA_CHARLA, {})]);
   const previo = (charla[chatId] || []).slice(-20);
-  const ctx = { adjuntos, textoUsuario: texto, salida: [] };
+  const ctx = { adjuntos, textoUsuario: texto, salida: [], avisar };
   const bloquesUsuario = adjuntos.length ? [
     ...adjuntos.filter(a => /^image\/(jpeg|png|webp|gif)$/.test(a.mime)).map(a => ({ type: 'image', source: { type: 'base64', media_type: a.mime, data: a.buffer.toString('base64') } })),
     ...adjuntos.filter(a => a.mime === 'application/pdf').map(a => ({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: a.buffer.toString('base64') } })),
