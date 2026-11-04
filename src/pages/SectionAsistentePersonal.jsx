@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
-import { Trash2, Plus, Pencil, Check, X, FileText, Brain, Bell, MessageSquare } from 'lucide-react';
+import { Trash2, Plus, Pencil, Check, X, FileText, Brain, Bell, MessageSquare, BookOpen } from 'lucide-react';
 
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '0.85rem 1rem' };
 const mut = { color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem' };
@@ -70,6 +70,32 @@ function Recordatorios() {
   );
 }
 
+function Diario() {
+  const [lista, setLista] = useState(null);
+  const cargar = useCallback(() => api.get('/asistente-personal/diario').then(r => setLista(r.data.entradas || [])).catch(() => setLista([])), []);
+  useEffect(() => { cargar(); }, [cargar]);
+  const borrar = async (id) => { if (!window.confirm('¿Borrar esta entrada del diario?')) return; try { await api.delete('/asistente-personal/diario/' + id); cargar(); } catch { /* sin cambios */ } };
+  return (
+    <div>
+      <p style={{ ...mut, marginBottom: 12 }}>Lo que le cuentas al asistente que has hecho (por la noche te lo pregunta él). Con esto aprende cómo trabajas.</p>
+      {lista === null ? <div className="ap-loading">Cargando…</div> : lista.length === 0 ? <div style={mut}>Todavía no hay entradas. Cuéntale por WhatsApp qué has hecho hoy.</div> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {lista.map(e => (
+            <div key={e.id} style={{ ...card, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ ...mut, marginBottom: 4 }}>{(e.fecha || '').split('-').reverse().join('/')}{e.proyectos?.length ? ' · ' + e.proyectos.join(', ') : ''}</div>
+                <div style={{ fontSize: '0.9rem', lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>{e.resumen}</div>
+                {e.logros?.length > 0 && <ul style={{ margin: '6px 0 0 16px', padding: 0, fontSize: '0.85rem' }}>{e.logros.map((l, i) => <li key={i}>{l}</li>)}</ul>}
+              </div>
+              <button className="ap-btn ap-btn-sm" title="Borrar" onClick={() => borrar(e.id)}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Informes() {
   const [lista, setLista] = useState(null);
   useEffect(() => { api.get('/asistente-personal/informes').then(r => setLista(r.data.informes || [])).catch(() => setLista([])); }, []);
@@ -103,7 +129,7 @@ function Conversacion() {
   );
 }
 
-const PESTANAS = [['memoria', 'Memoria', Brain], ['recordatorios', 'Recordatorios', Bell], ['informes', 'Informes', FileText], ['conversacion', 'Conversación', MessageSquare]];
+const PESTANAS = [['memoria', 'Memoria', Brain], ['recordatorios', 'Recordatorios', Bell], ['diario', 'Diario', BookOpen], ['informes', 'Informes', FileText], ['conversacion', 'Conversación', MessageSquare]];
 export function SectionAsistentePersonal() {
   const [tab, setTab] = useState('memoria');
   return (
@@ -113,7 +139,7 @@ export function SectionAsistentePersonal() {
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
         {PESTANAS.map(([id, nombre, Icono]) => <button key={id} className={'ap-btn ap-btn-sm' + (tab === id ? ' ap-btn-primary' : '')} onClick={() => setTab(id)}><Icono size={13} /> {nombre}</button>)}
       </div>
-      {tab === 'memoria' && <Memoria />}{tab === 'recordatorios' && <Recordatorios />}{tab === 'informes' && <Informes />}{tab === 'conversacion' && <Conversacion />}
+      {tab === 'memoria' && <Memoria />}{tab === 'recordatorios' && <Recordatorios />}{tab === 'diario' && <Diario />}{tab === 'informes' && <Informes />}{tab === 'conversacion' && <Conversacion />}
     </div>
   );
 }

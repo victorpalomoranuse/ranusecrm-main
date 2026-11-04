@@ -14,6 +14,7 @@ const BUCKET = 'project-documents';
 const RUTA_MEM = 'crm/asistente/memoria.json';
 const RUTA_CHARLA = 'crm/asistente/charla.json';
 export const RUTA_RECORD = 'crm/asistente/recordatorios.json';
+export const RUTA_DIARIO = 'crm/asistente/diario.json';
 export const RUTA_PRIV = 'crm/asistente/privado.json'; // recuerdos personales: NO se ven en el CRM
 const RUTA_AG = 'crm/asistente/agentes.json';
 const BASE_INTERNA = 'http://127.0.0.1:' + (process.env.PORT || 3001);
@@ -67,6 +68,11 @@ async function empleadoPor(nombre) {
 
 const TOOLS = [
   { name: 'agenda_de_hoy', description: 'Tareas pendientes que vencen hoy o están atrasadas, tareas sin fecha y eventos de hoy. Úsala cuando Víctor salude por la mañana, pregunte qué tiene que hacer o cómo va el día.', input_schema: { type: 'object', properties: {} } },
+  { name: 'apuntar_diario', description: 'Apunta en el diario de trabajo de Víctor lo que ha hecho (hoy o el día que diga): resumen breve, proyectos tocados y logros. Úsala siempre que él te cuente lo que ha estado haciendo. Es parte de tu aprendizaje: con el diario conoces su ritmo y sus procesos reales.', input_schema: { type: 'object', properties: { resumen: { type: 'string' }, proyectos: { type: 'array', items: { type: 'string' } }, logros: { type: 'array', items: { type: 'string' } }, fecha: { type: 'string', description: 'AAAA-MM-DD, por defecto hoy' } }, required: ['resumen'] } },
+  { name: 'ver_diario', description: 'Lee el diario de trabajo de Víctor de los últimos días (por defecto 7). Úsala cuando pregunte qué hizo, cómo fue la semana, o para dar consejo basado en cómo trabaja.', input_schema: { type: 'object', properties: { dias: { type: 'number' } } } },
+  { name: 'contexto_proyecto', description: 'Todo lo que hay de un proyecto para poder asesorar y desglosar trabajo: ficha, fase, urgencia, resumen del cliente y programa de necesidades, equipos y materiales elegidos, documentos y renders que ya existen, y tareas pendientes. Úsala antes de desglosar una tarea o dar consejo de un proyecto concreto.', input_schema: { type: 'object', properties: { proyecto: { type: 'string' } }, required: ['proyecto'] } },
+  { name: 'plantillas_fase', description: 'Las plantillas de tareas que Ranuse tiene definidas para cada fase del proyecto (0-5). Úsalas como base al desglosar el trabajo de una fase y complétalas con tu criterio. fase vacía = todas.', input_schema: { type: 'object', properties: { fase: { type: 'number' } } } },
+  { name: 'crear_subtareas', description: 'Crea de una vez los pasos de un desglose como tareas del proyecto (hasta 12). Cada paso: titulo (concreto y empezando por un verbo), fecha opcional AAAA-MM-DD, prioridad opcional, asignada_a opcional. Úsala SOLO cuando Víctor haya aceptado el desglose. Salta las que ya existen.', input_schema: { type: 'object', properties: { proyecto: { type: 'string' }, fase: { type: 'number' }, pasos: { type: 'array', items: { type: 'object', properties: { titulo: { type: 'string' }, fecha: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, asignada_a: { type: 'string' } }, required: ['titulo'] } } }, required: ['proyecto', 'pasos'] } },
   { name: 'listar_tareas', description: 'Lista TODAS las tareas pendientes (con fecha y sin fecha), ordenadas: atrasadas, de hoy, próximas y sin fecha. Cada una con id, título, fecha, prioridad, a quién está asignada y de qué proyecto (con su urgencia). de = nombre de una persona para filtrar; proyecto = para filtrar por proyecto. Úsala siempre que Víctor pida sus tareas, lo que tiene pendiente o ayuda para organizarse.', input_schema: { type: 'object', properties: { de: { type: 'string' }, proyecto: { type: 'string' } } } },
   { name: 'actualizar_tarea', description: 'Cambia una tarea existente: fecha (AAAA-MM-DD), prioridad, título o a quién se asigna. Úsala para organizar el día de Víctor cuando él te lo pida o acepte tu plan (por ejemplo, ponerle fecha de hoy a las tareas que acordéis).', input_schema: { type: 'object', properties: { id: { type: 'string' }, fecha: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, titulo: { type: 'string' }, asignada_a: { type: 'string' } }, required: ['id'] } },
   { name: 'listar_proyectos', description: 'Proyectos en marcha (nombre, cliente, fase). Con "busqueda" filtra por nombre o cliente.', input_schema: { type: 'object', properties: { busqueda: { type: 'string' } } } },
@@ -119,6 +125,51 @@ async function ejecutar(nombre, input, ctx = {}) {
     const nom = Object.fromEntries((emp || []).map(e => [e.id, e.name.split(' ')[0]]));
     const t = (tareas || []).map(x => ({ id: x.id, titulo: x.title, fecha: x.due_date, atrasada: !!x.due_date && x.due_date < fecha, prioridad: x.priority, de: nom[x.assigned_to] || null, proyecto: x.project ? (x.project.project_name || x.project.client_name) : null }));
     return { hoy: fecha, tareas_hoy_y_atrasadas: t.filter(x => x.fecha && x.fecha <= fecha).slice(0, 25), tareas_sin_fecha: t.filter(x => !x.fecha).length, eventos_hoy: (eventos || []).map(e => ({ hora: e.time ? e.time.slice(0, 5) : null, titulo: e.title, nota: e.description })) };
+  }
+  if (nombre === 'apuntar_diario') {
+    const resumen = String(input.resumen || '').trim().slice(0, 1200); if (!resumen) return { error: 'Nada que apuntar.' };
+    const d = await leerJson(RUTA_DIARIO, { entradas: [] });
+    d.entradas.push({ id: crypto.randomUUID().slice(0, 6), fecha: /^\d{4}-\d{2}-\d{2}$/.test(input.fecha || '') ? input.fecha : fecha, resumen, proyectos: (Array.isArray(input.proyectos) ? input.proyectos : []).map(x => String(x).slice(0, 80)).slice(0, 10), logros: (Array.isArray(input.logros) ? input.logros : []).map(x => String(x).slice(0, 200)).slice(0, 10) });
+    d.entradas = d.entradas.slice(-500); await guardarJson(RUTA_DIARIO, d);
+    return { apuntado: true, nota: 'Ahora marca como hechas las tareas que correspondan (completar_tarea), crea las que falten y, si ves un patrón útil de cómo trabaja, guárdalo con recordar.' };
+  }
+  if (nombre === 'ver_diario') {
+    const d = await leerJson(RUTA_DIARIO, { entradas: [] }), n = Math.min(60, Math.max(1, Math.round(Number(input.dias)) || 7)), desde = new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+    return { entradas: d.entradas.filter(e => e.fecha >= desde).slice(-40) };
+  }
+  if (nombre === 'contexto_proyecto') {
+    const p = await proyectoPor(input.proyecto); if (!p) return { error: 'No encuentro ese proyecto.' };
+    const [{ data: full }, { data: f }, { data: eq }, { data: ma }, { data: dc }, { data: rn }, { data: ts }] = await Promise.all([
+      supabase.from('client_projects').select('*').eq('id', p.id).maybeSingle(),
+      supabase.from('project_needs_forms').select('id, brief, client_summary').eq('project_id', p.id).maybeSingle(),
+      supabase.from('project_equipment_selections').select('name, brand, quantity').eq('project_id', p.id).limit(40),
+      supabase.from('project_material_selections').select('name, location').eq('project_id', p.id).limit(40),
+      supabase.from('project_documents').select('name, doc_type').eq('project_id', p.id).limit(40),
+      supabase.from('project_renders').select('id', { count: 'exact', head: false }).eq('project_id', p.id).limit(200),
+      supabase.from('tasks').select('id, title, due_date, done, phase_number').eq('project_id', p.id).limit(100),
+    ]);
+    let respuestas = []; if (f?.id) { const { data: a } = await supabase.from('project_needs_form_answers').select('question_id, answer_value').eq('form_id', f.id).limit(80); const { data: q } = await supabase.from('needs_form_questions').select('id, question_text'); const qn = Object.fromEntries((q || []).map(x => [x.id, x.question_text])); respuestas = (a || []).filter(x => x.answer_value != null && x.answer_value !== '').slice(0, 40).map(x => (qn[x.question_id] || 'pregunta') + ': ' + (Array.isArray(x.answer_value) ? x.answer_value.join(', ') : String(x.answer_value)).slice(0, 160)); }
+    return { proyecto: p.project_name, cliente: p.client_name, tipo: full?.tipo_proyecto || null, fase: p.phase != null ? p.phase + ' · ' + (FASES[p.phase] || '') : null, urgencia: p.urgency, condicionantes: String(full?.condicionantes || '').slice(0, 600) || null, resumen_cliente: String(f?.client_summary || f?.brief || '').slice(0, 900) || null, programa_de_necesidades: respuestas, equipos: (eq || []).map(x => (x.brand ? x.brand + ' ' : '') + x.name + (x.quantity > 1 ? ' x' + x.quantity : '')), materiales: (ma || []).map(x => x.name + (x.location ? ' (' + x.location + ')' : '')), documentos: (dc || []).map(x => x.name), renders: (rn || []).length, tareas_pendientes: (ts || []).filter(t => !t.done).map(t => ({ id: t.id, titulo: t.title, fecha: t.due_date, fase: t.phase_number })), tareas_hechas: (ts || []).filter(t => t.done).length };
+  }
+  if (nombre === 'plantillas_fase') {
+    let q = supabase.from('phase_task_templates').select('phase_number, title').order('phase_number', { ascending: true }); if (input.fase != null && input.fase !== '') q = q.eq('phase_number', Number(input.fase));
+    const { data, error } = await q; if (error) return { error: 'No se pudieron leer las plantillas.' };
+    const porFase = {}; (data || []).forEach(t => { const k = t.phase_number + ' · ' + (FASES[t.phase_number] || ''); (porFase[k] = porFase[k] || []).push(t.title); });
+    return { plantillas: porFase };
+  }
+  if (nombre === 'crear_subtareas') {
+    const p = await proyectoPor(input.proyecto); if (!p) return { error: 'No encuentro ese proyecto. No he creado nada.' };
+    const pasos = (Array.isArray(input.pasos) ? input.pasos : []).filter(x => String(x?.titulo || '').trim()).slice(0, 12); if (!pasos.length) return { error: 'No hay pasos que crear.' };
+    const { data: ex } = await supabase.from('tasks').select('title').eq('project_id', p.id).eq('done', false).limit(200);
+    const creadas = [], saltadas = [];
+    for (const x of pasos) {
+      const titulo = String(x.titulo).trim().slice(0, 200);
+      if ((ex || []).some(t => seParecen(titulo, t.title)) || creadas.some(c => seParecen(titulo, c))) { saltadas.push(titulo); continue; }
+      const fila = { title: titulo, project_id: p.id, priority: x.prioridad || 'normal', due_date: /^\d{4}-\d{2}-\d{2}$/.test(x.fecha || '') ? x.fecha : null, phase_number: input.fase != null && input.fase !== '' ? Math.round(Number(input.fase)) : (p.phase ?? null) };
+      if (x.asignada_a) { const e = await empleadoPor(x.asignada_a); if (e) fila.assigned_to = e.id; }
+      const { error } = await supabase.from('tasks').insert(fila); if (error) { saltadas.push(titulo + ' (error)'); continue; } creadas.push(titulo);
+    }
+    return { proyecto: p.project_name || p.client_name, creadas, ya_existian_o_fallaron: saltadas };
   }
   if (nombre === 'listar_tareas') {
     let q = supabase.from('tasks').select('id, title, due_date, priority, assigned_to, project_id, project:client_projects(client_name, project_name, urgency)').eq('done', false).limit(400);
@@ -391,6 +442,9 @@ function sistema(mem, priv) {
     '- BREVEDAD, REGLA DURA: Víctor NO lee mensajes largos. Responde en 1 a 4 líneas (unas 50 palabras) por defecto. Primero la respuesta o la acción hecha, sin saludos ni rodeos ni resúmenes de lo que acabas de hacer. Listas de 5 elementos como máximo y cada uno en una línea. Si hay mucho que contar, da lo esencial y pregunta "¿quieres el detalle?", o ofrécelo en PDF con crear_pdf. Haz como máximo UNA pregunta por mensaje. Si pide explícitamente algo largo (informe, guion, análisis), entonces sí, pero en PDF o en trozos que se lean en 20 segundos.\n' +
     '- Tienes MEMORIA permanente: usa la herramienta recordar cuando te cuente algo que convenga tener presente, sin que te lo pida, y confírmalo en pocas palabras. Nunca digas que no puedes recordar.\n' +
     '- Tienes acceso al CRM: agenda, tareas, eventos y proyectos. No inventes datos: consúltalos con las herramientas. Si crear algo es ambiguo (qué proyecto, qué día), pregunta lo mínimo.\n' +
+    '- DIARIO Y APRENDIZAJE: cuando Víctor te cuente lo que ha hecho (o contestes a tu pregunta de "¿qué has hecho hoy?"), apúntalo con apuntar_diario, marca como hechas las tareas que correspondan (listar_tareas + completar_tarea; si dudas de cuál es, pregunta), crea las tareas que falten y aprende: guarda con recordar los patrones útiles de cómo trabaja (cuánto tarda de verdad en cada cosa, qué se le atasca, procesos que repite, decisiones de diseño y su porqué). Responde con 1-2 líneas y, si ves algo útil (un retraso, algo que se repite), dilo.\n' +
+    '- ERES UN EXPERTO, NO UN SECRETARIO. Víctor apunta tareas grandes ("diseño de Josema") y a veces no sabe desglosarlas: ayúdale a partir el trabajo en pasos concretos y ordenados. Primero reúne el contexto (contexto_proyecto y plantillas_fase), luego propón un desglose de hasta 8 pasos, una línea cada uno, con verbo, orden lógico, qué depende de qué y una estimación de horas; señala qué información falta pedirle al cliente. Termina preguntando si lo creas como tareas (crear_subtareas, solo con su sí). Piensa como un diseñador senior de espacios deportivos: circulaciones y distancias de seguridad entre máquinas, cargas y puntos eléctricos, suelos y acústica, ventilación y climatización, normativa, plazos de proveedores y obra, presupuesto. Da tu criterio y opinión con franqueza.\n' +
+    '- Así trabaja Ranuse por fases: 0 Diseño previo (servicio de pago: renders y tour 3D; si el cliente sigue, continúa en la fase 1), 1 Arquitectura (planos: estado actual, cotas, demoliciones, distribución, implantación; docs A.01-A.04), 2 Instalaciones (IE.01 eléctrica, IE.02 climatización y fontanería si hace falta; C.01/F.01 de terceros), 3 Interiorismo y materialidad (I.01-I.03, renders R.01, tour virtual TV.01), 4 Maquinaria y equipamiento (M.02-M.03), 5 Documentación de apoyo (D.02, D.04).\n' +
     '- AVÍSALE DE LO YA APUNTADO: cuando Víctor te diga que tiene que hacer algo, antes de crear nada mira si ya hay algo relacionado (listar_tareas) y, si lo hay, recuérdaselo: "ya tenías apuntado X para el día Y, ¿lo cambio o lo sumo?". Si una herramienta te devuelve posible_duplicado, no insistas en crearlo: cuéntale lo que ya había y pregúntale.\n' +
     '- TAREAS Y ORGANIZACIÓN: cuando pida sus tareas, lo pendiente o ayuda para organizarse, usa listar_tareas y dale TODAS, no un resumen: agrupadas (atrasadas, hoy, próximas, sin fecha), una línea por tarea con su proyecto; si son más de 15, agrúpalas por proyecto con el número y ofrécele el listado completo en PDF. Después, SIEMPRE, propón su plan: las 3 prioridades de hoy en orden ("1. … 2. … 3. …") justificadas en una frase cada una (plazos, urgencia del proyecto, lo que desbloquea a otros) y pregunta si le pones fecha de hoy a esas tareas; si dice que sí, usa actualizar_tarea. Ve guiándole: cuando termine algo, ofrécele lo siguiente.\n' +
     '- Cuando Víctor salude por la mañana o pregunte por su día, llama a agenda_de_hoy y dáselo ordenado: primero lo atrasado y urgente, luego lo de hoy, y los eventos con hora. Termina con una sugerencia breve de por dónde empezar.\n' +

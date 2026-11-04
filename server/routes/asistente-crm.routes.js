@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requireAdminSuperior } from '../middleware/auth.middleware.js';
-import { leerJson, guardarJson, RUTA_RECORD } from '../utils/asistente-personal.js';
+import { leerJson, guardarJson, RUTA_RECORD, RUTA_DIARIO } from '../utils/asistente-personal.js';
 
 // Lo que el asistente personal sabe y hace, visible y editable desde el CRM (sección "Asistente personal").
 const router = express.Router();
@@ -73,6 +73,15 @@ router.delete('/conversacion', async (req, res) => {
     const c = await leerJson(RUTA_CHARLA, {}); for (const k of Object.keys(c)) if (/^(wa|tg):/.test(k)) delete c[k];
     await guardarJson(RUTA_CHARLA, c); res.json({ ok: true });
   } catch { res.status(500).json({ error: 'No se pudo borrar la conversación' }); }
+});
+
+router.get('/diario', async (req, res) => {
+  try { const d = await leerJson(RUTA_DIARIO, { entradas: [] }); res.json({ entradas: (d.entradas || []).slice().reverse() }); }
+  catch { res.status(500).json({ error: 'No se pudo leer el diario' }); }
+});
+router.delete('/diario/:id', async (req, res) => {
+  try { const d = await leerJson(RUTA_DIARIO, { entradas: [] }); d.entradas = (d.entradas || []).filter(e => e.id !== req.params.id); await guardarJson(RUTA_DIARIO, d); res.json({ ok: true }); }
+  catch { res.status(500).json({ error: 'No se pudo borrar' }); }
 });
 
 export default router;

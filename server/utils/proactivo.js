@@ -5,6 +5,7 @@ import { leerJson, guardarJson, responderAsistente, RUTA_RECORD } from './asiste
 // si la ventana está cerrada, el aviso espera a que él escriba o se manda por Telegram si está configurado.
 const RUTA_ESTADO = 'crm/asistente/estado.json';
 const HORA_BRIEFING = parseInt(process.env.ASIST_HORA_BRIEFING || '8', 10);
+const HORA_REPASO = parseInt(process.env.ASIST_HORA_REPASO || '20', 10); // repaso del día: "¿qué has hecho hoy?"
 const canales = {}; // { wa: { chatId, enviar(texto), enviarArchivo(f), siempreAbierto } }
 let ocupado = false, arrancado = false;
 
@@ -50,6 +51,15 @@ async function tick() {
       if (c) {
         estado.briefing = ahora.fecha; await guardarJson(RUTA_ESTADO, estado); // marcamos antes para no repetir
         const out = await responderAsistente({ chatId: c.chatId, texto: '[Aviso automático de las ' + ahora.local.slice(11) + '] Escríbele tú primero a Víctor con su día: usa agenda_de_hoy y listar_tareas, dile lo atrasado y urgente, lo de hoy y los eventos con hora, y propón su plan con las 3 prioridades en orden. Saludo breve y mensaje corto.' });
+        await entrega(c, out);
+      }
+    }
+    // repaso por la noche: ¿qué has hecho hoy?
+    if (ahora.hora >= HORA_REPASO && ahora.hora < 23 && estado.repaso !== ahora.fecha) {
+      const c = elegir(estado);
+      if (c) {
+        estado.repaso = ahora.fecha; await guardarJson(RUTA_ESTADO, estado);
+        const out = await responderAsistente({ chatId: c.chatId, texto: '[Aviso automático de las ' + ahora.local.slice(11) + '] Escríbele tú primero a Víctor para el repaso del día: pregúntale qué ha hecho hoy (una sola pregunta, corta y cercana). Si lo tenía previsto, menciona en una línea lo que había para hoy (listar_tareas) para refrescarle la memoria. Dile que te lo cuente como quiera, por audio o texto, y tú lo apuntas.' });
         await entrega(c, out);
       }
     }
