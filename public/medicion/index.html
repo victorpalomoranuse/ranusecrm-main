@@ -503,7 +503,8 @@ body.crm .top .brand{display:none}
         <h2>Luminarias del catálogo</h2>
         <p class="note">Elige una luminaria y toca el plano. Cada tipo lleva su etiqueta (L1, L2…); su foto, cantidad y lúmenes salen en la leyenda del PDF.</p>
         <div class="catgrid" id="lumpal"></div>
-        <div class="btns"><button id="lum-cn">Unir encendidos</button><button id="lum-dim">Cotas a paredes: sí</button></div>
+        <div class="btns"><button id="lum-cn">Unir encendidos</button><button id="lum-dim">Cotas de luces: sí</button></div>
+        <label class="fld"><span>Máquinas atenuadas: <b id="lum-fv">50</b> %</span><input type="range" id="lum-fade" min="0" max="90" step="5" value="50" title="0 = máquinas con su trazo normal · más = más blancas, para que se vean mejor las luces y las cotas"></label>
         <div class="btns"><button id="lum-sm">Símbolos −</button><button id="lum-bg">Símbolos +</button></div>
         <details class="addcat">
           <summary>Catálogo de luminarias</summary>
@@ -2560,6 +2561,12 @@ function dimLine(C,px,x1,y1,x2,y2,t,col,tcol){
   return ln(x1,y1,x2,y2,col,px*0.9)+ln(x1-nx,y1-ny,x1+nx,y1+ny,col,px*0.9)+ln(x2-nx,y2-ny,x2+nx,y2+ny,col,px*0.9)+(vert?txtC(C,px,(x1+x2)/2+5*px,(y1+y2)/2+3.5*px,t,tcol,cotaFs(C),600).replace('text-anchor="middle"','text-anchor="start"'):txtC(C,px,(x1+x2)/2,(y1+y2)/2-4*px,t,tcol,cotaFs(C),600)); /* en las cotas verticales el número va en horizontal, a un lado de la línea, sin que ella lo cruce */
 }
 /* distancia a la pared más cercana en horizontal y en vertical (cara interior del muro) */
+/* en Iluminación las máquinas se dibujan como bajo una capa blanca translúcida (por defecto 50 %), para que destaquen las luces y las cotas; se mezcla el color con el fondo, así también sale en el PDF */
+function maqAtenuada(c,C,view){
+  var k=st.v.maqF;k=(k==null)?0.5:+k;
+  if(view!=='ilum'||!(k>0))return c;
+  return /^#[0-9a-f]{6}$/i.test(c)?hexMix(c,/^#[0-9a-f]{6}$/i.test(C.bg)?C.bg:'#ffffff',k):'color-mix(in srgb,'+c+' '+Math.round((1-k)*100)+'%,'+C.bg+')';
+}
 function lumDims(q){
   var d=ptDef(q.k);if(!d||d.lin)return [];
   var c=ptPos(q),ar=(q.a||0)*Math.PI/180,res={x:null,y:null};
@@ -4010,7 +4017,7 @@ function scene0(C,k,view,o){
   if((view==='ilum'||view==='elec')&&!o.ante){ /* mobiliario y máquinas: su bloque tal como se ve en Distribución, sin nombre ni recuadro, para ver qué se ilumina */
     (v.eq||[]).forEach(function(e){
       if(e.s==='dem'||(e.bl&&e.bl.esc))return;
-      var r=eqRect(e),cs=C.blk||C.ink;
+      var r=eqRect(e),cs=maqAtenuada(C.blk||C.ink,C,view);
       h+='<g transform="translate('+f2(r.cx)+' '+f2(r.cy)+') rotate('+(e.rot||0)+') scale('+(e.fx?-1:1)+' '+(e.fy?-1:1)+') translate('+f2(-e.w/2)+' '+f2(-e.d/2)+')">'+eqSym(e.ty,e.w,e.d,cs,px,e.cid)+'</g>';
     });
   }
@@ -6241,7 +6248,8 @@ function drawLum(){
     return '<button data-lum="'+esc(l.id)+'" aria-pressed="'+(st.pal.ilum==='lum:'+l.id&&st.tool==='pt')+'">'+th+'<span>'+esc(l.n)+'</span><small>'+(l.lm?l.lm+' lm':'')+(l.w?' · '+l.w+' W':'')+'</small></button>';
   }).join('')||'<p class="note">Aún no hay luminarias en el catálogo del CRM (categoría Iluminación).</p>';
   $('lum-cn').setAttribute('aria-pressed',String(st.tool==='cn'));
-  $('lum-dim').textContent='Cotas a paredes: '+(st.v.ld==='0'?'no':'sí');
+  $('lum-dim').textContent='Cotas de luces: '+(st.v.ld==='0'?'no':'sí');
+  var fadeV=Math.round((st.v.maqF==null?0.5:+st.v.maqF)*100);$('lum-fade').value=fadeV;$('lum-fv').textContent=fadeV;
   var cur=$('lc-sel').value;
   $('lc-sel').innerHTML='<option value="">Nueva luminaria</option>'+lumList().map(function(l){return '<option value="'+esc(l.id)+'">'+esc(l.n)+'</option>'}).join('');
   $('lc-sel').value=cur;
@@ -6251,6 +6259,8 @@ $('lumpal').addEventListener('click',function(e){
   st.pal.ilum='lum:'+b.getAttribute('data-lum');st.tool='pt';st.led=null;st.ledPts=null;st.cnFrom=null;toolbar();hint();
 });
 $('lum-cn').addEventListener('click',function(){st.tool=st.tool==='cn'?'pt':'cn';st.cnFrom=null;toolbar();hint();render()});
+$('lum-fade').addEventListener('input',function(){st.v.maqF=(parseInt(this.value,10)||0)/100;$('lum-fv').textContent=this.value;render()});
+$('lum-fade').addEventListener('change',function(){commit(false)});
 $('lum-dim').addEventListener('click',function(){snap();st.v.ld=st.v.ld==='0'?'1':'0';commit(false);drawLum()});
 $('lum-sm').addEventListener('click',function(){snap();st.v.lsz=Math.max(0.4,Math.round((st.v.lsz||1)*0.8*100)/100);commit(false);toast('Símbolos ×'+st.v.lsz)});
 $('lum-bg').addEventListener('click',function(){snap();st.v.lsz=Math.min(4,Math.round((st.v.lsz||1)*1.25*100)/100);commit(false);toast('Símbolos ×'+st.v.lsz)});
