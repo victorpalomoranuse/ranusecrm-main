@@ -99,9 +99,16 @@ router.get('/estado', async (req, res) => {
   const cab = { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };
   const out = { variables: { wabaId: !!WABA_ID, token: !!TOKEN, phoneId: !!PHONE_ID, pin6cifras: PIN.length === 6, appSecret: !!SECRET, owner: !!OWNER } };
   try {
-    if (req.query.registrar === '1' && PIN.length === 6) {
-      const r = await fetch(GRAPH + '/' + PHONE_ID + '/register', { method: 'POST', headers: cab, body: JSON.stringify({ messaging_product: 'whatsapp', pin: PIN }) });
-      out.registro = { http: r.status, respuesta: await r.text().catch(() => '') };
+    const llama = async (ruta, cuerpo) => { const r = await fetch(GRAPH + '/' + PHONE_ID + ruta, { method: 'POST', headers: cab, body: JSON.stringify(cuerpo) }); return { http: r.status, respuesta: await r.text().catch(() => '') }; };
+    // Pasos para pasar el número de la app del móvil a la API (el móvil dejará de usar ese número):
+    //   &accion=pedir_codigo            -> Meta manda un SMS con un código al número
+    //   &accion=verificar&codigo=123456 -> confirma el código recibido
+    //   &registrar=1&pin=654321         -> registra el número en la API con un PIN de 6 cifras que inventas
+    if (req.query.accion === 'pedir_codigo') out.pedir_codigo = await llama('/request_code', { code_method: 'SMS', language: 'es' });
+    if (req.query.accion === 'verificar') out.verificar = await llama('/verify_code', { code: String(req.query.codigo || '').replace(/[^0-9]/g, '') });
+    if (req.query.registrar === '1') {
+      const pin = String(req.query.pin || PIN || '').replace(/[^0-9]/g, '');
+      out.registro = pin.length === 6 ? await llama('/register', { messaging_product: 'whatsapp', pin }) : { error: 'Falta un PIN de 6 cifras (&pin=123456)' };
     }
     if (WABA_ID) { const su = await fetch(GRAPH + '/' + WABA_ID + '/subscribed_apps', { headers: cab }); out.apps_suscritas = { http: su.status, respuesta: (await su.text().catch(() => '')).slice(0, 600) }; }
     const e = await fetch(GRAPH + '/' + PHONE_ID + '?fields=status,name_status,platform_type,verified_name,code_verification_status,quality_rating', { headers: cab });
