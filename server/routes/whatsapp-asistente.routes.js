@@ -12,10 +12,10 @@ const router = express.Router();
 //   WA_ASIST_TOKEN         token permanente del usuario del sistema
 //   WA_ASIST_PHONE_ID      identificador del número del asistente
 //   WA_ASIST_OWNER         tu móvil personal (solo contesta a este número)
-const VERIFY = process.env.WA_ASIST_VERIFY_TOKEN;
-const SECRET = process.env.WA_ASIST_APP_SECRET;
-const TOKEN = process.env.WA_ASIST_TOKEN;
-const PHONE_ID = process.env.WA_ASIST_PHONE_ID;
+const VERIFY = (process.env.WA_ASIST_VERIFY_TOKEN || '').trim();
+const SECRET = (process.env.WA_ASIST_APP_SECRET || '').trim();
+const TOKEN = (process.env.WA_ASIST_TOKEN || '').trim();
+const PHONE_ID = (process.env.WA_ASIST_PHONE_ID || '').replace(/[^0-9]/g, ''); // por si al pegarlo se coló un espacio
 const WABA_ID = String(process.env.WA_ASIST_WABA_ID || '').replace(/[^0-9]/g, '');
 const OWNER = String(process.env.WA_ASIST_OWNER || '').replace(/\D/g, '').slice(-9);
 
