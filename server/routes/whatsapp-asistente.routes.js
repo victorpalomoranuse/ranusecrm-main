@@ -25,6 +25,8 @@ const SYSTEM = `Eres el asistente personal de Víctor Palomo, fundador de Ranuse
 - Víctor no es técnico: sin jerga.
 - De momento solo conversas y ayudas a pensar. Si te pide algo que aún no puedes hacer (crear tareas, mirar el CRM), dilo claro y no te lo inventes.`;
 
+const registro = []; // últimos eventos, para diagnosticar desde /estado sin mirar Railway
+const nota = (x) => { registro.unshift({ t: new Date().toISOString(), ...x }); if (registro.length > 15) registro.length = 15; };
 const memoria = new Map(); // últimos mensajes por conversación (se reinicia al reiniciar el servidor)
 
 router.get('/webhook', (req, res) => {
@@ -45,20 +47,22 @@ async function enviar(a, texto) {
     method: 'POST', headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', to: a, type: 'text', text: { body: String(texto).slice(0, 4000) } }),
   });
-  if (!r.ok) console.error('WhatsApp asistente: no se pudo enviar', r.status, await r.text().catch(() => ''));
+  if (!r.ok) { const cuerpo = await r.text().catch(() => ''); console.error('WhatsApp asistente: no se pudo enviar', r.status, cuerpo); nota({ ev: 'error_envio', http: r.status, cuerpo: cuerpo.slice(0, 400) }); } else nota({ ev: 'enviado' });
 }
 
 router.post('/webhook', async (req, res) => {
   res.sendStatus(200); // Meta reintenta si tardamos: se responde ya y se trabaja después
-  if (!firmaOk(req)) { console.error('WhatsApp asistente: firma inválida o ausente — ignorado.'); return; }
+  const firmado = firmaOk(req); nota({ ev: 'peticion', firmaOk: firmado, secretoPuesto: !!SECRET, trae_firma: !!req.headers['x-hub-signature-256'], conRawBody: !!req.rawBody });
+  if (!firmado) { console.error('WhatsApp asistente: firma inválida o ausente — ignorado.'); return; }
   try {
     for (const entry of req.body?.entry || []) for (const ch of entry.changes || []) {
       if (ch.field !== 'messages') continue;
       const v = ch.value || {};
-      if (PHONE_ID && v.metadata?.phone_number_id !== PHONE_ID) continue; // mensajes de otro número: no es para este asistente
+      nota({ ev: 'cambio', campo: ch.field, numero: v.metadata?.phone_number_id, mensajes: (v.messages || []).length, estados: (v.statuses || []).length });
+      if (PHONE_ID && v.metadata?.phone_number_id !== PHONE_ID) { nota({ ev: 'otro_numero', recibido: v.metadata?.phone_number_id, esperado: PHONE_ID }); continue; } // mensajes de otro número: no es para este asistente
       for (const m of v.messages || []) {
         const de = String(m.from || '').replace(/\D/g, '');
-        if (!OWNER || de.slice(-9) !== OWNER) { console.warn('WhatsApp asistente: mensaje de un número no autorizado, ignorado.'); continue; }
+        if (!OWNER || de.slice(-9) !== OWNER) { nota({ ev: 'no_autorizado', desde_ultimos4: de.slice(-4), esperado_ultimos4: OWNER.slice(-4) }); console.warn('WhatsApp asistente: mensaje de un número no autorizado, ignorado.'); continue; }
         if (m.type !== 'text') { await enviar(de, 'Por ahora solo entiendo texto. Los audios y fotos los añadimos después.'); continue; }
         const hist = memoria.get(de) || [];
         hist.push({ role: 'user', content: m.text.body });
@@ -71,7 +75,7 @@ router.post('/webhook', async (req, res) => {
         await enviar(de, texto);
       }
     }
-  } catch (e) { console.error('WhatsApp asistente:', e.message); }
+  } catch (e) { console.error('WhatsApp asistente:', e.message); nota({ ev: 'error', mensaje: e.message }); }
 });
 
 // Al arrancar: suscribe la cuenta de WhatsApp (WA_ASIST_WABA_ID) a esta app para que lleguen los mensajes, y apunta el estado en el registro.
@@ -97,7 +101,7 @@ setTimeout(registraNumero, 4000);
 router.get('/estado', async (req, res) => {
   if (!VERIFY || req.query.clave !== VERIFY) return res.sendStatus(403);
   const cab = { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };
-  const out = { variables: { wabaId: !!WABA_ID, token: !!TOKEN, phoneId: !!PHONE_ID, pin6cifras: PIN.length === 6, appSecret: !!SECRET, owner: !!OWNER } };
+  const out = { registro, variables: { wabaId: !!WABA_ID, token: !!TOKEN, phoneId: !!PHONE_ID, pin6cifras: PIN.length === 6, appSecret: !!SECRET, owner: !!OWNER } };
   try {
     const llama = async (ruta, cuerpo) => { const r = await fetch(GRAPH + '/' + PHONE_ID + ruta, { method: 'POST', headers: cab, body: JSON.stringify(cuerpo) }); return { http: r.status, respuesta: await r.text().catch(() => '') }; };
     // Pasos para pasar el número de la app del móvil a la API (el móvil dejará de usar ese número):
