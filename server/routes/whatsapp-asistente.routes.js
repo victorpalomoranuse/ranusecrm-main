@@ -69,6 +69,19 @@ async function enviarArchivo(a, f) {
   if (!r.ok) { const cuerpo = await r.text().catch(() => ''); nota({ ev: 'error_envio_archivo', http: r.status, cuerpo: cuerpo.slice(0, 300) }); await enviar(a, 'No he podido adjuntar el archivo. Te dejo el enlace: ' + f.url); }
 }
 
+let lote = null; // { de, adj: [], textos: [], timer }
+async function procesaLote() {
+  const l = lote; lote = null; if (!l || !l.adj.length) return;
+  try {
+    const adjuntos = l.adj.map((a, i) => ({ ...a, id: 'a' + (i + 1) }));
+    const textos = l.textos.filter(Boolean);
+    const entrada = (adjuntos.length > 1 ? '(Víctor ha mandado ' + adjuntos.length + ' imágenes o archivos seguidos, adjuntos como ' + adjuntos.map(a => a.id).join(', ') + ') ' : '') + (textos.join(' · ') || '(sin texto)');
+    const out = await responderAsistente({ chatId: 'wa:' + OWNER_COMPLETO, texto: entrada, adjuntos, avisar: (t) => enviar(l.de, t) });
+    await enviar(l.de, out.texto);
+    for (const f of out.archivos || []) await enviarArchivo(l.de, f);
+  } catch (e) { console.error('WhatsApp asistente (lote):', e.message); nota({ ev: 'error', mensaje: e.message }); }
+}
+
 router.post('/webhook', async (req, res) => {
   res.sendStatus(200); // Meta reintenta si tardamos: se responde ya y se trabaja después
   const firmado = firmaOk(req); nota({ ev: 'peticion', firmaOk: firmado, secretoPuesto: !!SECRET, trae_firma: !!req.headers['x-hub-signature-256'], conRawBody: !!req.rawBody });
@@ -95,6 +108,10 @@ router.post('/webhook', async (req, res) => {
           try { const { buffer, mime } = await descargaMedia(med.id); if (buffer.length > 15 * 1024 * 1024) { await enviar(de, 'Ese archivo pesa demasiado (más de 15 MB).'); continue; } adjuntos.push({ id: 'a1', mime: med.mime_type || mime || 'application/octet-stream', buffer, nombre: med.filename || '' }); if (m.id && m.type === 'image') { recibidas.set(m.id, { mime: med.mime_type || mime || 'image/jpeg', buffer }); if (recibidas.size > 20) recibidas.delete(recibidas.keys().next().value); } entrada = med.caption || '(sin texto)'; nota({ ev: 'adjunto_ok', tipo: m.type, bytes: buffer.length }); }
           catch (e) { nota({ ev: 'adjunto_error', mensaje: e.message }); await enviar(de, 'No he podido descargar ese archivo. ¿Me lo mandas otra vez?'); continue; }
         } else { await enviar(de, 'Eso todavía no lo entiendo. Puedo con texto, audios, fotos y documentos.'); continue; }
+        if (adjuntos.length && !m.context?.id) { // fotos, capturas o documentos: se esperan 4 s por si vienen más y se contestan juntos
+          if (!lote) lote = { de, adj: [], textos: [], timer: null }; else clearTimeout(lote.timer);
+          lote.adj.push(adjuntos[0]); lote.textos.push(entrada === '(sin texto)' ? '' : entrada); lote.timer = setTimeout(procesaLote, 4000); continue;
+        }
         if (m.context?.id && !adjuntos.length) {
           const rec = recibidas.get(m.context.id);
           if (rec) adjuntos.push({ id: 'a1', mime: rec.mime, buffer: rec.buffer, nombre: '' });
