@@ -504,7 +504,7 @@ body.crm .top .brand{display:none}
         <p class="note">Elige una luminaria y toca el plano. Cada tipo lleva su etiqueta (L1, L2…); su foto, cantidad y lúmenes salen en la leyenda del PDF.</p>
         <div class="catgrid" id="lumpal"></div>
         <div class="btns"><button id="lum-cn">Unir encendidos</button><button id="lum-dim">Cotas de luces: sí</button></div>
-        <label class="fld"><span>Sobrante por tramo lineal (cm)</span><input type="number" id="lum-marg" min="0" max="100" step="1" value="10" title="Se suma a cada tramo de tira o perfil para no quedarse corto: cortes, empalmes, esquinas"></label>
+        <label class="fld"><span>Sobrante por tramo de tira o perfil (cm)</span><input type="number" id="lum-marg" min="0" max="100" step="1" value="10" title="Se suma a cada tramo de tira o perfil para no quedarse corto: cortes, empalmes, esquinas"></label>
         <label class="fld"><span>Máquinas atenuadas: <b id="lum-fv">50</b> %</span><input type="range" id="lum-fade" min="0" max="90" step="5" value="50" title="0 = máquinas con su trazo normal · más = más blancas, para que se vean mejor las luces y las cotas"></label>
         <div class="btns"><button id="lum-sm">Símbolos −</button><button id="lum-bg">Símbolos +</button></div>
         <details class="addcat">
@@ -2621,7 +2621,7 @@ function lumGroups(){
     if(ix[key]==null){ix[key]=gs.length;gs.push({key:key,nm:q.nm||'',lid:q.lid||null,k:q.k,mo:mq,pf:d.lin?ptPerfil(q):'',lm:q.lm>0?q.lm:0,ap:q.ap>0?q.ap:0,n:0,len:0,lenR:0,tr:[],ids:[]})}
     var g=gs[ix[key]];g.n++;g.ids.push(q.id);
     if(q.ft&&q.ft.uri&&!g.ft)g.ft={id:'pt:'+q.id,uri:q.ft.uri,pw:q.ft.pw,ph:q.ft.ph}; /* foto propia pegada en la luminaria: manda sobre la del catálogo */
-    if(d.lin){var Lq=ptLen(q),mg=lumMarg();g.lenR+=Lq;g.len+=Lq+mg;g.tr.push(Lq+mg)} /* cada tramo suma un pequeño sobrante (cortes, empalmes…) */
+    if(d.lin){var Lq=ptLen(q),mg=q.k==='carril'?0:lumMarg(); /* los carriles se miden tal cual, sin sobrante; las tiras LED y perfiles sí */g.lenR+=Lq;g.len+=Lq+mg;g.tr.push(Lq+mg)} /* cada tramo suma un pequeño sobrante (cortes, empalmes…) */
   });
   gs.forEach(function(g){if(!g.ft)g.ft=ftDeClave(g.key)});
   gs.forEach(function(g,i){var gi=glob[g.key];g.gi=gi!=null?gi:1000+i;g.tag='L'+((gi!=null?gi:i)+1);g.cat=g.lid?lumById(g.lid):null});
@@ -9739,7 +9739,7 @@ function sheetPage(doc,view,idx,total,o){
         compL.forEach(function(t,ci){p.text(tx0,y+17.9*f+ex+ex2+ci*3.5*f,fitTxt('+ '+t,pw-(tx0-xL),false,(body-1.6)*25.4/72),body-1.6,{col:MUTED})});
         y+=rh2;
       });
-      if(gsL.some(function(g){var dd=ptDef(g.k);return dd&&dd.lin})&&lumMarg()>0&&room(5*f)){p.text(xL,y+2.6*f,'Cada tramo lineal incluye +'+fmt(lumMarg())+' cm de sobrante.',body-1.4,{col:MUTED});y+=5*f}
+      if(gsL.some(function(g){var dd=ptDef(g.k);return dd&&dd.lin&&g.k!=='carril'})&&lumMarg()>0&&room(5*f)){p.text(xL,y+2.6*f,'Cada tramo lineal incluye +'+fmt(lumMarg())+' cm de sobrante.',body-1.4,{col:MUTED});y+=5*f}
       if(totLm>0&&room(rh*2)){
         var arA=0;roomFaces(view).forEach(function(fc){arA+=fc.area});
         p.line(xL,y+0.5,xR,y+0.5,LINEC,0.2);
