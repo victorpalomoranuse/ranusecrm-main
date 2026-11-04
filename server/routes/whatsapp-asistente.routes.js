@@ -73,4 +73,21 @@ router.post('/webhook', async (req, res) => {
   } catch (e) { console.error('WhatsApp asistente:', e.message); }
 });
 
+// Al arrancar: si hay PIN (WA_ASIST_PIN, 6 cifras que inventas tú), registra el número en la API de WhatsApp y apunta el estado en el registro.
+// Registrar un número ya registrado es inofensivo. Cuando el número esté 'Conectado' puedes borrar la variable WA_ASIST_PIN.
+const PIN = String(process.env.WA_ASIST_PIN || '').replace(/D/g, '');
+async function registraNumero() {
+  if (!TOKEN || !PHONE_ID) { console.log('WhatsApp asistente: faltan WA_ASIST_TOKEN o WA_ASIST_PHONE_ID.'); return; }
+  const cab = { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };
+  try {
+    if (PIN.length === 6) {
+      const r = await fetch(GRAPH + '/' + PHONE_ID + '/register', { method: 'POST', headers: cab, body: JSON.stringify({ messaging_product: 'whatsapp', pin: PIN }) });
+      console.log('WhatsApp asistente: registro del número ->', r.status, (await r.text()).slice(0, 400));
+    }
+    const e = await fetch(GRAPH + '/' + PHONE_ID + '?fields=status,name_status,platform_type,verified_name,code_verification_status', { headers: cab });
+    console.log('WhatsApp asistente: estado del número ->', e.status, (await e.text()).slice(0, 400));
+  } catch (err) { console.error('WhatsApp asistente: no se pudo consultar/registrar el número:', err.message); }
+}
+setTimeout(registraNumero, 4000);
+
 export default router;
