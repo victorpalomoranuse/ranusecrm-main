@@ -30,17 +30,23 @@ async function asegura() {
   if (!bucketListo) bucketListo = (async () => { const { data } = await supabase.storage.getBucket(BUCKET_PRIV); if (!data) await supabase.storage.createBucket(BUCKET_PRIV, { public: false }); })().catch(e => { bucketListo = null; throw e; });
   return bucketListo;
 }
+// Lectura/escritura con caché en memoria (lectura inmediata tras escribir: el almacenamiento puede servir una versión antigua hasta ~1 min por su CDN)
+// y, si hay que ir a Storage, con dirección firmada y parámetro único para saltarse esa caché.
+const cacheJson = new Map(), TTL_CACHE = 5 * 60 * 1000;
 export async function leerJson(ruta, vacio) {
+  const c = cacheJson.get(ruta); if (c && Date.now() - c.t < TTL_CACHE) return structuredClone(c.v);
   await asegura().catch(() => {});
-  let { data, error } = await supabase.storage.from(BUCKET_PRIV).download(ruta);
-  if (error || !data) { const viejo = await supabase.storage.from(BUCKET).download(ruta); data = viejo.data; } // datos anteriores a pasarlo a privado
-  if (!data) return vacio;
-  try { return JSON.parse(await data.text()); } catch { return vacio; }
+  let valor;
+  try { const f = await supabase.storage.from(BUCKET_PRIV).createSignedUrl(ruta, 60); if (f.data?.signedUrl) { const r = await fetch(f.data.signedUrl + '&cb=' + Date.now(), { cache: 'no-store' }); if (r.ok) valor = await r.json(); } } catch { /* se prueba el bucket antiguo */ }
+  if (valor === undefined) { try { const viejo = await supabase.storage.from(BUCKET).download(ruta); if (viejo.data) valor = JSON.parse(await viejo.data.text()); } catch { /* sin datos */ } } // datos anteriores a pasarlo a privado
+  if (valor === undefined) return vacio;
+  cacheJson.set(ruta, { v: valor, t: Date.now() }); return structuredClone(valor);
 }
 export async function guardarJson(ruta, obj) {
   await asegura();
   const { error } = await supabase.storage.from(BUCKET_PRIV).upload(ruta, Buffer.from(JSON.stringify(obj)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
   if (error) throw new Error('No se pudo guardar: ' + error.message);
+  cacheJson.set(ruta, { v: structuredClone(obj), t: Date.now() });
 }
 
 function madrid() {
@@ -449,7 +455,7 @@ async function ejecutar(nombre, input, ctx = {}) {
   return { error: 'Herramienta desconocida.' };
 }
 
-function sistema(mem, priv, acc) {
+function sistema(mem, priv, acc, resumenCharla) {
   const { fecha, hora, dia } = madrid();
   const hechos = (mem.hechos || []).slice(-120).map(h => '- [' + h.id + '] ' + (h.etiqueta ? '(' + h.etiqueta + ') ' : '') + h.texto + ' (' + h.fecha + ')').join('\n') || '(todavía no hay recuerdos guardados)';
   return 'Eres el asistente personal de Víctor Palomo, fundador de Ranuse Design (diseño de espacios deportivos y gimnasios). Hablas con él por mensajería, desde el móvil. Ahora es ' + dia + ' ' + fecha + ', ' + hora + ' (hora de Madrid).\n' +
@@ -480,7 +486,18 @@ function sistema(mem, priv, acc) {
     '- LO PERSONAL ES PRIVADO: si Víctor te habla de cosas personales (familia, salud, ánimo, dinero, relaciones, dudas vitales), ayúdale como un amigo con criterio y cercanía, llama a marcar_conversacion_privada, guarda lo importante con recordar y privado=true, y NUNCA lo conviertas en tareas, eventos, notas de proyecto ni nada que se vea en el CRM salvo que él te lo pida expresamente. Nunca menciones lo personal en resúmenes del día ni en informes.\n\n' +
     'Lo que recuerdas del trabajo:\n' + hechos +
     '\n\nRecuerdos PERSONALES de Víctor (privados; úsalos para ayudarle pero no los muestres ni los saques si no viene a cuento):\n' + ((priv.hechos || []).slice(-60).map(h => '- [' + h.id + '] ' + h.texto).join('\n') || '(ninguno)') +
+    (resumenCharla ? '\n\nRESUMEN de lo que habéis hablado antes (más antiguo que los mensajes que ves; úsalo como memoria de la conversación):\n' + resumenCharla : '') +
     '\n\nLO QUE HAS HECHO TÚ en el CRM últimamente (no lo olvides ni lo repitas; si Víctor dice que ya te lo dijo, créele y compruébalo aquí y en la conversación):\n' + (((acc && acc.l) || []).slice(-25).map(a => '- ' + a.t + ' · ' + a.x).join('\n') || '(nada todavía)');
+}
+
+async function resumir(previo, mensajes) {
+  const texto = mensajes.filter(m => !m.privado && typeof m.content === 'string').map(m => (m.role === 'user' ? 'Víctor: ' : 'Asistente: ') + m.content.slice(0, 1200)).join('\n');
+  if (!texto.trim()) return previo || '';
+  try {
+    const out = await callClaude({ system: 'Mantienes un resumen breve y fiel de una conversación entre Víctor (fundador de un estudio de diseño de espacios deportivos) y su asistente. Fusiona el resumen anterior con los mensajes nuevos. Conserva SIEMPRE nombres propios, proyectos, fechas, citas, cifras, decisiones, compromisos y cosas pendientes; descarta saludos y charla sin contenido. Máximo 1800 caracteres, en español, en viñetas cortas. Devuelve solo el resumen.', messages: [{ role: 'user', content: 'RESUMEN ANTERIOR:\n' + (previo || '(vacío)') + '\n\nMENSAJES NUEVOS:\n' + texto }], maxTokens: 900 });
+    const t = (out.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    return t ? t.slice(0, 2200) : previo || '';
+  } catch { return previo || ''; }
 }
 
 // Frase corta de lo que se ha hecho de verdad en el CRM (para que no se pierda aunque la conversación se corte)
@@ -527,7 +544,7 @@ export async function responderAsistente({ chatId, texto, adjuntos = [], avisar 
   const mensajes = [...previo, { role: 'user', content: bloquesUsuario }];
   let respuesta = '';
   for (let vuelta = 0; vuelta < 7; vuelta++) {
-    const out = await callClaude({ system: sistema(mem, priv, acc), messages: mensajes, tools: TOOLS, maxTokens: 2500 });
+    const out = await callClaude({ system: sistema(mem, priv, acc, charla['_resumen:' + chatId]), messages: mensajes, tools: TOOLS, maxTokens: 2500 });
     const bloques = out.content || [];
     const usos = bloques.filter(b => b.type === 'tool_use');
     if (out.stop_reason !== 'tool_use' || !usos.length) { respuesta = bloques.filter(b => b.type === 'text').map(b => b.text).join('\n').trim(); break; }
@@ -537,7 +554,10 @@ export async function responderAsistente({ chatId, texto, adjuntos = [], avisar 
     mensajes.push({ role: 'user', content: resultados });
   }
   if (!respuesta) respuesta = 'Me he liado un poco con eso. ¿Me lo repites con otras palabras?';
-  charla[chatId] = ctx.borrarCharla ? [] : [...previoCrudo, { role: 'user', content: texto + (adjuntos.length ? ' [adjuntó ' + adjuntos.length + ' archivo(s)]' : ''), ...(ctx.privado ? { privado: true } : {}) }, { role: 'assistant', content: respuesta, ...(ctx.privado ? { privado: true } : {}) }].slice(-80);
+  let nuevaCharla = ctx.borrarCharla ? [] : [...(charla[chatId] || []), { role: 'user', content: texto + (adjuntos.length ? ' [adjuntó ' + adjuntos.length + ' archivo(s)]' : ''), ...(ctx.privado ? { privado: true } : {}) }, { role: 'assistant', content: respuesta, ...(ctx.privado ? { privado: true } : {}) }];
+  if (ctx.borrarCharla) delete charla['_resumen:' + chatId];
+  else if (nuevaCharla.length > 60) { const viejos = nuevaCharla.slice(0, nuevaCharla.length - 40); nuevaCharla = nuevaCharla.slice(-40); charla['_resumen:' + chatId] = await resumir(charla['_resumen:' + chatId], viejos); }
+  charla[chatId] = nuevaCharla;
   try { acc.l = acc.l.slice(-60); await guardarJson(RUTA_ACC, acc); } catch { /* no crítico */ }
   try { await guardarJson(RUTA_CHARLA, charla); } catch (e) { console.error('Asistente: no se pudo guardar la conversación:', e.message); }
   return { texto: respuesta, archivos: ctx.salida };
