@@ -15,20 +15,23 @@ const sumarDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate
 router.get('/', async (req, res) => {
   try {
     const hoy = hoyMadrid();
-    const [pr, ta, em, le, sl, bu, ve, pl, co] = await Promise.all([
+    const [pr, ta, em, le, sl, bu, ve, pl, co, ccat, cprod] = await Promise.all([
       supabase.from('client_projects').select('id, client_name, project_name, phase, urgency, responsible_id, lead_id, venta_id, tipo_proyecto').eq('status', 'en_marcha').eq('active', true),
       supabase.from('tasks').select('id, title, done, due_date, project_id, assigned_to, priority').limit(5000),
       supabase.from('employees').select('id, name, is_admin_profile, employee_roles(name)').eq('active', true),
-      supabase.from('setting_leads').select('estado').limit(5000),
-      supabase.from('call_slots').select('id').eq('fecha', hoy).eq('ocupado', true),
-      supabase.from('budgets').select('status, project_id').limit(5000),
-      supabase.from('ventas').select('valor, cerrada, client_project_id').limit(5000),
+      supabase.from('setting_leads').select('id, nombre, estado, created_at').order('created_at', { ascending: false }).limit(5000),
+      supabase.from('call_slots').select('id, hora_inicio, setting_lead_id').eq('fecha', hoy).eq('ocupado', true),
+      supabase.from('budgets').select('status, project_id, budget_name, created_at').order('created_at', { ascending: false }).limit(5000),
+      supabase.from('ventas').select('nombre, valor, cerrada, client_project_id').limit(5000),
       leerPlanificacion(),
       supabase.from('contacts').select('id, name, sector, company_url').order('name'),
+      supabase.from('catalog_categories').select('id, name, type, display_order').order('display_order', { ascending: true, nullsFirst: false }),
+      supabase.from('catalog_products').select('id, name, category_id, brand').limit(3000),
     ]);
     const tareas = ta.data || [], pend = tareas.filter(t => !t.done);
     const atrasada = t => !!t.due_date && t.due_date < hoy;
 
+    const pendDe = (id) => pend.filter(t => t.project_id === id).sort((a, b) => String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')));
     const proyectos = (pr.data || []).map(p => {
       const mias = tareas.filter(t => t.project_id === p.id), pe = mias.filter(t => !t.done);
       const plan = pl.proyectos[p.id] || null, entrega = plan?.entrega || null;
@@ -46,7 +49,7 @@ router.get('/', async (req, res) => {
       if (p.lead_id || p.venta_id) deps.push('ventas');
       if ((bu.data || []).some(b => b.project_id === p.id)) deps.push('presupuestos');
       if (p.venta_id || (ve.data || []).some(v => v.client_project_id === p.id)) deps.push('finanzas');
-      return { id: p.id, tipo: p.tipo_proyecto || null, deps, cliente: p.client_name, nombre: p.project_name, fase: p.phase, urgencia: p.urgency, entrega, semaforo, motivo, tareas: { total: mias.length, hechas: mias.length - pe.length, atrasadas: atras, hoy: hoyN, sinFecha, proxima: prox }, planificado: !!plan?.items?.length };
+      return { id: p.id, tipo: p.tipo_proyecto || null, deps, cliente: p.client_name, nombre: p.project_name, fase: p.phase, urgencia: p.urgency, entrega, semaforo, motivo, tareas: { total: mias.length, hechas: mias.length - pe.length, atrasadas: atras, hoy: hoyN, sinFecha, proxima: prox }, planificado: !!plan?.items?.length, lista: pendDe(p.id).slice(0, 8).map(t => ({ titulo: t.title, fecha: t.due_date || null, atrasada: !!t.due_date && t.due_date < hoy })), hechas: mias.length - pe.length };
     });
     const orden = { rojo: 0, ambar: 1, gris: 2, verde: 3 };
     proyectos.sort((a, b) => orden[a.semaforo] - orden[b.semaforo] || String(a.entrega || '9999').localeCompare(String(b.entrega || '9999')));
@@ -56,19 +59,28 @@ router.get('/', async (req, res) => {
     const budg = (bu.data || []).map(b => b.status);
     const abiertas = (ve.data || []).filter(v => !v.cerrada);
 
+    const nProy = Object.fromEntries((pr.data || []).map(p => [p.id, p.project_name]));
+    const leadPorId = Object.fromEntries((le.data || []).map(l => [l.id, l.nombre]));
+    const detalle = {
+      diseno: proyectos.filter(p => p.tareas.total - p.tareas.hechas > 0).sort((a, b) => (b.tareas.total - b.tareas.hechas) - (a.tareas.total - a.tareas.hechas)).slice(0, 6).map(p => [p.nombre, `${p.tareas.total - p.tareas.hechas} tareas pendientes`]).concat(proyectos.filter(p => p.semaforo === 'gris').slice(0, 3).map(p => [p.nombre, 'Sin fecha de entrega ni plan'])),
+      ventas: (sl.data || []).slice(0, 4).map(c => [leadPorId[c.setting_lead_id] || 'Llamada', `Llamada hoy · ${String(c.hora_inicio || '').slice(0, 5)}`]).concat((le.data || []).filter(l => ['nuevo', 'contacto_nuevo'].includes(l.estado)).slice(0, 5).map(l => [l.nombre || 'Lead', 'Lead nuevo'])),
+      presupuestos: (bu.data || []).filter(b => b.status === 'borrador').slice(0, 6).map(b => [b.budget_name || nProy[b.project_id] || 'Presupuesto', 'Borrador']),
+      finanzas: abiertas.slice(0, 6).map(v => [v.nombre || 'Venta', `${Math.round(Number(v.valor) || 0)} € abiertos`]),
+      equipo: pend.filter(t => !t.assigned_to).slice(0, 6).map(t => [t.title, 'Sin asignar' + (t.due_date ? ` · ${t.due_date}` : '')]),
+    };
     const departamentos = [
-      { id: 'diseno', nombre: 'Diseño y proyectos', ir: 'proyectos', datos: [['En marcha', proyectos.length], ['Tareas atrasadas', pend.filter(atrasada).length], ['Sin planificar', proyectos.filter(p => p.semaforo === 'gris').length]], alerta: pend.filter(atrasada).length ? 'rojo' : proyectos.some(p => p.semaforo === 'gris') ? 'ambar' : 'verde' },
-      { id: 'ventas', nombre: 'Ventas y leads', ir: 'setting', datos: [['Leads nuevos', cuenta('nuevo', 'contacto_nuevo')], ['Llamadas hoy', (sl.data || []).length], ['En seguimiento', cuenta('seguimiento_futuro', 'seguimiento_pago')]], alerta: (sl.data || []).length ? 'ambar' : 'verde' },
-      { id: 'presupuestos', nombre: 'Presupuestos', ir: 'presupuestos', datos: [['Borradores', budg.filter(s => s === 'borrador').length], ['Aprobados', budg.filter(s => s === 'aprobado').length]], alerta: 'verde' },
-      { id: 'finanzas', nombre: 'Finanzas', ir: 'ventas', datos: [['Ventas abiertas', abiertas.length], ['Importe abierto', Math.round(abiertas.reduce((s, v) => s + (Number(v.valor) || 0), 0)) + ' €']], alerta: 'verde' },
-      { id: 'equipo', nombre: 'Equipo', ir: 'tareas', datos: (em.data || []).map(e => { const mias = pend.filter(t => t.assigned_to === e.id); return [e.name.split(' ')[0] + (mias.filter(atrasada).length ? ' ⚠' : ''), mias.length]; }).filter(([, n]) => n > 0).slice(0, 6).concat([['Sin asignar', pend.filter(t => !t.assigned_to).length]]), alerta: pend.filter(t => !t.assigned_to && atrasada(t)).length ? 'rojo' : 'verde' },
+      { id: 'diseno', detalle: detalle.diseno, nombre: 'Diseño y proyectos', ir: 'proyectos', datos: [['En marcha', proyectos.length], ['Tareas atrasadas', pend.filter(atrasada).length], ['Sin planificar', proyectos.filter(p => p.semaforo === 'gris').length]], alerta: pend.filter(atrasada).length ? 'rojo' : proyectos.some(p => p.semaforo === 'gris') ? 'ambar' : 'verde' },
+      { id: 'ventas', detalle: detalle.ventas, nombre: 'Ventas y leads', ir: 'setting', datos: [['Leads nuevos', cuenta('nuevo', 'contacto_nuevo')], ['Llamadas hoy', (sl.data || []).length], ['En seguimiento', cuenta('seguimiento_futuro', 'seguimiento_pago')]], alerta: (sl.data || []).length ? 'ambar' : 'verde' },
+      { id: 'presupuestos', detalle: detalle.presupuestos, nombre: 'Presupuestos', ir: 'presupuestos', datos: [['Borradores', budg.filter(s => s === 'borrador').length], ['Aprobados', budg.filter(s => s === 'aprobado').length]], alerta: 'verde' },
+      { id: 'finanzas', detalle: detalle.finanzas, nombre: 'Finanzas', ir: 'ventas', datos: [['Ventas abiertas', abiertas.length], ['Importe abierto', Math.round(abiertas.reduce((s, v) => s + (Number(v.valor) || 0), 0)) + ' €']], alerta: 'verde' },
+      { id: 'equipo', detalle: detalle.equipo, nombre: 'Equipo', ir: 'tareas', datos: (em.data || []).map(e => { const mias = pend.filter(t => t.assigned_to === e.id); return [e.name.split(' ')[0] + (mias.filter(atrasada).length ? ' ⚠' : ''), mias.length]; }).filter(([, n]) => n > 0).slice(0, 6).concat([['Sin asignar', pend.filter(t => !t.assigned_to).length]]), alerta: pend.filter(t => !t.assigned_to && atrasada(t)).length ? 'rojo' : 'verde' },
     ];
     // personas del equipo: qué tienen en la mesa (para verlas trabajando en la oficina 3D)
     const nombreProy = Object.fromEntries((pr.data || []).map(p => [p.id, p.project_name]));
     const personas = (em.data || []).map(e => {
       const mias = pend.filter(t => t.assigned_to === e.id).sort((a, b) => String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')));
-      const s0 = mias[0];
-      return { id: e.id, avatar: pl.avatares?.[e.id] || null, nombre: e.name, rol: e.employee_roles?.name || (e.is_admin_profile ? 'Administrador' : 'Sin categoría'), pendientes: mias.length, atrasadas: mias.filter(atrasada).length, hoy: mias.filter(t => t.due_date === hoy).length, siguiente: s0 ? { titulo: s0.title, proyecto: nombreProy[s0.project_id] || null, fecha: s0.due_date || null } : null };
+      const s0 = mias[0], lista = mias.slice(0, 8).map(t => ({ titulo: t.title, proyecto: nombreProy[t.project_id] || null, fecha: t.due_date || null, atrasada: !!t.due_date && t.due_date < hoy }));
+      return { id: e.id, avatar: pl.avatares?.[e.id] || null, nombre: e.name, rol: e.employee_roles?.name || (e.is_admin_profile ? 'Administrador' : 'Sin categoría'), pendientes: mias.length, atrasadas: mias.filter(atrasada).length, hoy: mias.filter(t => t.due_date === hoy).length, lista, siguiente: s0 ? { titulo: s0.title, proyecto: nombreProy[s0.project_id] || null, fecha: s0.due_date || null } : null };
     });
     // agentes de IA del CRM, cada uno en su sala
     const agentes = [
@@ -84,7 +96,11 @@ router.get('/', async (req, res) => {
     // tareas que hay que mirar ya: atrasadas, de hoy y de la próxima semana (para el panel «Hoy» de la oficina)
     const finSemana = sumarDias(hoy, 7);
     const tareasHoy = pend.filter(t => t.due_date && t.due_date <= finSemana).sort((a, b) => String(a.due_date).localeCompare(String(b.due_date))).slice(0, 25).map(t => ({ id: t.id, titulo: t.title, proyecto: nombreProy[t.project_id] || null, fecha: t.due_date, atrasada: t.due_date < hoy, prioridad: t.priority }));
-    res.json({ hoy, departamentos, proyectos, personas, agentes, anexos, tareasHoy, tareasSinFecha: pend.filter(t => !t.due_date).length });
+    // almacén del catálogo: una estantería por categoría con sus productos
+    const prodPorCat = {};
+    (cprod.data || []).forEach(p => { (prodPorCat[p.category_id] = prodPorCat[p.category_id] || []).push({ nombre: p.name, marca: p.brand || null }); });
+    const catalogo = (ccat.data || []).slice(0, 60).map(c => ({ id: c.id, nombre: String(c.name || '').replace(/^[A-Za-z]{1,2}[.]{0,2} ?[0-9]+[.]* */, '').trim() || c.name, familia: (String(c.name || '').match(/^([A-Za-z])/) || [])[1]?.toUpperCase() || 'S', n: (prodPorCat[c.id] || []).length, productos: (prodPorCat[c.id] || []).slice(0, 14) }));
+    res.json({ hoy, departamentos, proyectos, personas, agentes, anexos, catalogo, totalProductos: (cprod.data || []).length, tareasHoy, tareasSinFecha: pend.filter(t => !t.due_date).length });
   } catch (err) { console.error('oficinas:', err); res.status(500).json({ error: 'No se pudieron cargar las oficinas' }); }
 });
 
