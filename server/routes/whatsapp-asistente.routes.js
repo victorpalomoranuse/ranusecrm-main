@@ -164,6 +164,13 @@ router.get('/estado', async (req, res) => {
       out.registro = pin.length === 6 ? await llama('/register', { messaging_product: 'whatsapp', pin }) : { error: 'Falta un PIN de 6 cifras (&pin=123456)' };
     }
     if (req.query.accion === 'suscribir' && WABA_ID) { const r = await fetch(GRAPH + '/' + WABA_ID + '/subscribed_apps', { method: 'POST', headers: cab }); out.suscribir = { http: r.status, respuesta: (await r.text().catch(() => '')).slice(0, 600) }; } // &accion=suscribir -> engancha esta app a la cuenta de WhatsApp
+    if (req.query.accion === 'probar_claves') { // comprueba que las claves de Groq y Fathom funcionan, sin mostrarlas
+      const probar = async (nombre, f) => { try { const r = await f(); return { http: r.status, ok: r.ok, detalle: r.ok ? 'funciona' : (await r.text().catch(() => '')).slice(0, 160) }; } catch (e) { return { ok: false, detalle: e.message }; } };
+      out.probar_claves = {
+        groq: await probar('groq', () => fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: 'Bearer ' + (process.env.GROQ_API_KEY || '').trim() } })),
+        fathom: await probar('fathom', () => fetch('https://api.fathom.ai/external/v1/meetings?include_summary=false', { headers: { 'X-Api-Key': (process.env.FATHOM_API_KEY || '').trim() } })),
+      };
+    }
     if (WABA_ID) { const su = await fetch(GRAPH + '/' + WABA_ID + '/subscribed_apps', { headers: cab }); out.apps_suscritas = { http: su.status, respuesta: (await su.text().catch(() => '')).slice(0, 600) }; }
     const e = await fetch(GRAPH + '/' + PHONE_ID + '?fields=status,name_status,platform_type,verified_name,code_verification_status,quality_rating', { headers: cab });
     out.numero = { http: e.status, respuesta: await e.text().catch(() => '') };
