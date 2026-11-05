@@ -37,7 +37,7 @@ router.get('/llamadas/:empId/:token.ics', async (req, res) => {
     const { data: slots } = await supabase.from('call_slots')
       .select('id, fecha, hora_inicio, hora_fin, lead:setting_leads(nombre, telefono, instagram)')
       .eq('employee_id', req.params.empId).eq('ocupado', true).gte('fecha', desde);
-    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Ranuse Design//CRM//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Llamadas Ranuse'];
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Ranuse Design//CRM//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Llamadas Ranuse', ...VTIMEZONE_MADRID];
     (slots || []).forEach(s => {
       const f = s.fecha.replace(/-/g, '');
       const t = (h) => h.slice(0, 5).replace(':', '') + '00';
@@ -68,6 +68,13 @@ function icsEscape(str) {
     .replace(/\n/g, '\\n');
 }
 
+// Zona horaria de Madrid con su cambio de hora (marzo y octubre). Sin esta definición, muchos calendarios (Google, iPhone) no saben qué hora es "las 12:00".
+const VTIMEZONE_MADRID = ['X-WR-TIMEZONE:Europe/Madrid', 'BEGIN:VTIMEZONE', 'TZID:Europe/Madrid', 'X-LIC-LOCATION:Europe/Madrid', 'BEGIN:DAYLIGHT', 'TZOFFSETFROM:+0100', 'TZOFFSETTO:+0200', 'TZNAME:CEST', 'DTSTART:19700329T020000', 'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU', 'END:DAYLIGHT', 'BEGIN:STANDARD', 'TZOFFSETFROM:+0200', 'TZOFFSETTO:+0100', 'TZNAME:CET', 'DTSTART:19701025T030000', 'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU', 'END:STANDARD', 'END:VTIMEZONE'];
+// suma minutos a una fecha y hora "locales" (sin convertir zonas) → AAAAMMDDTHHMMSS
+function sumaMinutosLocal(fecha, hora, min) {
+  const [y, m, d] = fecha.split('-').map(Number), [hh, mm] = hora.split(':').map(Number), t = new Date(Date.UTC(y, m - 1, d, hh, mm + min));
+  const p = (n) => String(n).padStart(2, '0'); return t.getUTCFullYear() + p(t.getUTCMonth() + 1) + p(t.getUTCDate()) + 'T' + p(t.getUTCHours()) + p(t.getUTCMinutes()) + '00';
+}
 function foldLine(line) {
   // RFC 5545: las líneas no deberían superar 75 octetos; se pliegan con \r\n + espacio.
   if (line.length <= 75) return line;
@@ -99,10 +106,10 @@ router.get('/feed/:token.ics', async (req, res) => {
   try {
     const [{ data: tasks }, { data: events }] = await Promise.all([
       supabase.from('tasks').select('id, title, description, due_date, done, project:client_projects(client_name, project_name)').not('due_date', 'is', null),
-      supabase.from('events').select('id, title, description, date, time'),
+      supabase.from('events').select('*'),
     ]);
 
-    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Ranuse Design//CRM//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Ranuse CRM'];
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Ranuse Design//CRM//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Ranuse CRM', ...VTIMEZONE_MADRID];
 
     (tasks || []).forEach(t => {
       const dateOnly = t.due_date.slice(0, 10).replace(/-/g, '');
@@ -125,8 +132,9 @@ router.get('/feed/:token.ics', async (req, res) => {
       lines.push(foldLine(`UID:event-${e.id}@ranusedesign.com`));
       lines.push(`DTSTAMP:${dateStamp(new Date())}`);
       if (e.time) {
-        const dt = `${e.date.replace(/-/g, '')}T${e.time.replace(/:/g, '').padEnd(6, '0')}`;
-        lines.push(`DTSTART:${dt}`);
+        const hora = e.time.slice(0, 5), dur = Number(e.duration_min) > 0 ? Number(e.duration_min) : 60;
+        lines.push(`DTSTART;TZID=Europe/Madrid:${e.date.replace(/-/g, '')}T${hora.replace(':', '')}00`);
+        lines.push(`DTEND;TZID=Europe/Madrid:${sumaMinutosLocal(e.date, hora, dur)}`);
       } else {
         lines.push(`DTSTART;VALUE=DATE:${e.date.replace(/-/g, '')}`);
       }

@@ -108,7 +108,7 @@ export function construirPlano(p, cm) {
 // registro de plano con los valores por defecto del editor (los mismos campos que los planos ya existentes)
 export function registroPlano({ id, B, nombre, cliente, direccion = '', altura = 300, planta = 'Planta baja' }) {
   return {
-    id, nombre, cliente, direccion, planta, fecha: new Date().toISOString().slice(0, 10), notas: '', altura, paso: 80, seq: B.seq + 1, cb: 'int', cbv: 2,
+    id, nombre, cliente, direccion, planta, fecha: new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()), notas: '', altura, paso: 80, seq: B.seq + 1, cb: 'int', cbv: 2,
     nodes: B.nodes, walls: B.walls, ops: B.ops, pil: B.pil,
     cn: [], dr: [], eq: [], fz: [], lm: [], mm: [], rc: [], rz: [], sp: [], tx: [], zn: [], cal: [], ctl: [], eqa: [], pts: [],
     det: { off: {}, over: {}, extra: [] }, updated: Date.now(),

@@ -64,6 +64,8 @@ function madrid() {
   const g = (t) => p.find(x => x.type === t)?.value;
   return { fecha: g('year') + '-' + g('month') + '-' + g('day'), hora: g('hour') + ':' + g('minute'), dia: new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long' }).format(new Date()) };
 }
+// fecha de Madrid (AAAA-MM-DD) dentro de n días
+function fechaMadridMas(n) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + n * 86400000)); }
 function calendario() {
   const fmt = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long' }), iso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' });
   return Array.from({ length: 21 }, (_, i) => { const d = new Date(Date.now() + i * 86400000); return (i === 0 ? 'HOY ' : i === 1 ? 'MAÑANA ' : '') + fmt.format(d) + ' = ' + iso.format(d); }).join('\n');
@@ -159,7 +161,7 @@ async function ejecutar(nombre, input, ctx = {}) {
     return { apuntado: true, nota: 'Ahora marca como hechas las tareas que correspondan (completar_tarea), crea las que falten y, si ves un patrón útil de cómo trabaja, guárdalo con recordar.' };
   }
   if (nombre === 'ver_diario') {
-    const d = await leerJson(RUTA_DIARIO, { entradas: [] }), n = Math.min(60, Math.max(1, Math.round(Number(input.dias)) || 7)), desde = new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+    const d = await leerJson(RUTA_DIARIO, { entradas: [] }), n = Math.min(60, Math.max(1, Math.round(Number(input.dias)) || 7)), desde = fechaMadridMas(-n);
     return { entradas: d.entradas.filter(e => e.fecha >= desde).slice(-40) };
   }
   if (nombre === 'enviar_alzado') {
@@ -249,7 +251,7 @@ async function ejecutar(nombre, input, ctx = {}) {
     return { proyecto: p.project_name || p.client_name, creadas, ya_existian_o_fallaron: saltadas };
   }
   if (nombre === 'listar_eventos') {
-    const n = Math.min(60, Math.max(1, Math.round(Number(input.dias)) || 14)), hasta = new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    const n = Math.min(60, Math.max(1, Math.round(Number(input.dias)) || 14)), hasta = fechaMadridMas(n);
     const { data, error } = await supabase.from('events').select('title, date, time, description').gte('date', fecha).lte('date', hasta).neq('done', true).order('date', { ascending: true }).order('time', { ascending: true, nullsFirst: true }).limit(120);
     if (error) return { error: 'No se pudo leer el calendario.' };
     const b = limpia(input.busqueda).toLowerCase();
