@@ -22,19 +22,25 @@ const limpia = (t, n = 200) => String(t ?? '').trim().slice(0, n);
 // Formato por defecto = el estilo "Dopamínico serio" que se ha ido afinando. Cada formato es una receta editable.
 export const FORMATO_BASE = {
   id: 'dopaminico-serio', nombre: 'Dopamínico serio', descripcion: 'Cortes rápidos, zoom lento en cada plano, subtítulos pop de 1-2 palabras con las claves en dorado, barra de progreso. Serio y premium.',
-  receta: { corte: { min: 0.9, max: 2.3 }, acento: '#F2C46D', zoomFinal: 1.14, whoosh: 0.16, flash: true, subs: { palabrasPorBloque: 2, tam: 104, margenV: 600 }, titulo: true, musica: false },
+  receta: { corte: { min: 0.9, max: 2.3 }, acento: '#E3D2B8', zoomFinal: 1.14, whoosh: 0.16, flash: true, subs: { palabrasPorBloque: 2, tam: 84, margenV: 600 }, titulo: true, mayusculas: false, fuente: 'Montserrat', musica: { volumen: -19 } },
   notas: 'Vídeo serio y profesional, sin humor. Prioriza planos de calidad alta.',
 };
 // Sacado del vídeo de referencia "Suelos" (Dani): una toma limpia, subtítulos pequeños y blancos, sin efectos.
 export const FORMATO_LIMPIO = {
   id: 'limpio-suelos', nombre: 'Limpio (estilo Suelos)', descripcion: 'Una toma a cámara sin efectos: subtítulos pequeños y blancos en minúscula, sin título, sin zooms ni destellos. Se centra en el contenido.',
-  receta: { corte: { min: 1.5, max: 4 }, acento: '#FFFFFF', zoomFinal: 1, whoosh: 0, flash: false, subs: { palabrasPorBloque: 3, tam: 46, margenV: 620 }, titulo: false, barra: false, mayusculas: false, resaltar: false, musica: false },
+  receta: { corte: { min: 1.5, max: 4 }, acento: '#FFFFFF', zoomFinal: 1, whoosh: 0, flash: false, subs: { palabrasPorBloque: 3, tam: 54, margenV: 620 }, titulo: false, barra: false, mayusculas: false, resaltar: false, fuente: 'Montserrat', musica: { volumen: -21 } },
   notas: 'Estilo limpio y serio: sin efectos ni adornos. El contenido manda.',
 };
-const SEMBRADOS = [FORMATO_BASE, FORMATO_LIMPIO];
+export const FORMATO_DINAMICO = {
+  id: 'entrevista-dinamica', nombre: 'Entrevista dinámica', descripcion: 'Para vídeos hablando a cámara: sin pausas, plano centrado en la cara con zoom, subtítulos grandes bajo la cara y gráficos animados (cifra + icono) cuando se dice un dato.',
+  receta: { corte: { min: 1.5, max: 4 }, acento: '#E3D2B8', zoomFinal: 1.12, whoosh: 0, flash: false, subs: { palabrasPorBloque: 2, tam: 76, margenV: 600 }, titulo: false, barra: false, mayusculas: false, resaltar: true, encuadre: true, encuadreZoom: 1.3, subsBajoCara: true, graficos: true, pausa: 0.28, fuente: 'Rubik', limpiar: true, musica: { volumen: -19 } },
+  notas: 'Dinámico y fluido, serio y profesional. Quita repeticiones y errores. Los gráficos solo cuando aparece una cifra o medida importante.',
+};
+const SEMBRADOS = [FORMATO_BASE, FORMATO_LIMPIO, FORMATO_DINAMICO];
 async function formatos() {
   const f = await leerJson(RUTA_FORMATOS, null);
   if (!f?.lista?.length) { const lista = SEMBRADOS.map(x => JSON.parse(JSON.stringify(x))); await guardarJson(RUTA_FORMATOS, { lista, sembrados: lista.map(x => x.id) }); return lista; }
+  if (!f.migracion) { for (const x of f.lista) { const r = x.receta || (x.receta = {}); if (r.acento === '#F2C46D') r.acento = '#E3D2B8'; if (r.mayusculas === undefined || r.mayusculas === true) r.mayusculas = false; if (!r.fuente) r.fuente = 'Montserrat'; if (!r.musica) r.musica = { volumen: -19 }; } f.migracion = 2; await guardarJson(RUTA_FORMATOS, f); }
   // formatos nuevos de fábrica se añaden una sola vez (si luego los borras, no vuelven)
   const ya = new Set(f.sembrados || [FORMATO_BASE.id]); const nuevos = SEMBRADOS.filter(x => !ya.has(x.id));
   if (nuevos.length) { f.lista.push(...nuevos.map(x => JSON.parse(JSON.stringify(x)))); f.sembrados = [...ya, ...nuevos.map(x => x.id)]; await guardarJson(RUTA_FORMATOS, f); }
@@ -65,7 +71,11 @@ router.put('/formatos/:id', async (req, res) => {
     if (r.zoomFinal !== undefined) f.receta.zoomFinal = num(r.zoomFinal, 1, 1.4, 1.14);
     if (r.whoosh !== undefined) f.receta.whoosh = num(r.whoosh, 0, 0.5, 0.16);
     if (r.flash !== undefined) f.receta.flash = !!r.flash;
-    for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar']) if (r[k] !== undefined) f.receta[k] = !!r[k];
+    for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'subsBajoCara', 'graficos']) if (r[k] !== undefined) f.receta[k] = !!r[k];
+    if (['Montserrat', 'Rubik'].includes(r.fuente)) f.receta.fuente = r.fuente;
+    if (r.musica === false) f.receta.musica = false; else if (r.musica && Number.isFinite(Number(r.musica.volumen))) f.receta.musica = { volumen: num(r.musica.volumen, -40, -6, -19) };
+    if (r.encuadreZoom !== undefined) f.receta.encuadreZoom = num(r.encuadreZoom, 1, 2, 1.3);
+    if (r.pausa !== undefined) f.receta.pausa = num(r.pausa, 0.1, 1.2, 0.4);
     if (r.subs) f.receta.subs = { palabrasPorBloque: Math.round(num(r.subs.palabrasPorBloque, 1, 5, 2)), tam: Math.round(num(r.subs.tam, 50, 160, 104)), margenV: Math.round(num(r.subs.margenV, 200, 900, 600)) };
     await guardarFormatos(lista); res.json({ formato: f });
   } catch { res.status(500).json({ error: 'No se pudo guardar' }); }
@@ -80,7 +90,7 @@ router.post('/subida', async (req, res) => {
   try {
     await bucket();
     const nombre = limpia(req.body?.nombre, 120).replace(/[^\w.\-]+/g, '_') || 'archivo';
-    const ruta = 'entradas/' + Date.now() + '_' + nombre;
+    const ruta = (req.body?.tipo === 'musica' ? 'musica/' + nombre : 'entradas/' + Date.now() + '_' + nombre);
     const { data, error } = await st().createSignedUploadUrl(ruta); if (error) throw error;
     res.json({ ruta, url: data.signedUrl, token: data.token });
   } catch (e) { res.status(500).json({ error: 'No se pudo preparar la subida: ' + (e.message || '') }); }
@@ -93,6 +103,19 @@ async function leerTrabajo(id) {
 }
 const guardarTrabajo = (t) => st().upload(rutaTrabajo(t.id), Buffer.from(JSON.stringify(t)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
 
+// Biblioteca de música de fondo (instrumentales): se sube aquí y el trabajador analiza el tempo
+router.get('/musica', async (req, res) => {
+  try {
+    await bucket(); const { data } = await st().list('musica', { limit: 200 });
+    let idx = {}; try { const u = await st().createSignedUrl('crm-indice-musica.json', 30); if (u.data?.signedUrl) { const r = await fetch(u.data.signedUrl + '&cb=' + Date.now(), { cache: 'no-store' }); if (r.ok) idx = await r.json(); } } catch { /* sin análisis todavía */ }
+    res.json({ pistas: (data || []).filter(f => /\.(mp3|mp4|m4a|wav|aac)$/i.test(f.name)).map(f => ({ nombre: f.name, tam: f.metadata?.size || null, ...(idx[f.name] || {}) })) });
+  } catch { res.status(500).json({ error: 'No se pudo leer la música' }); }
+});
+router.delete('/musica/:nombre', async (req, res) => {
+  try { await st().remove(['musica/' + req.params.nombre]); res.json({ ok: true }); }
+  catch { res.status(500).json({ error: 'No se pudo borrar' }); }
+});
+
 router.post('/trabajos', async (req, res) => {
   try {
     await bucket();
@@ -100,7 +123,7 @@ router.post('/trabajos', async (req, res) => {
     if (!fmt) return res.status(400).json({ error: 'Elige un formato' });
     if (!['voz', 'bruto'].includes(b.tipo)) return res.status(400).json({ error: 'Indica si subes una voz en off o un vídeo en bruto' });
     if (!/^entradas\//.test(b.archivo || '')) return res.status(400).json({ error: 'Falta el archivo subido' });
-    const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, tipo: b.tipo, archivo: b.archivo, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: fmt.receta, notas_formato: fmt.notas || '', indicaciones: limpia(b.indicaciones, 800), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
+    const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, tipo: b.tipo, archivo: b.archivo, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: fmt.receta, notas_formato: fmt.notas || '', indicaciones: limpia(b.indicaciones, 800), musica: limpia(b.musica, 150) || 'auto', estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
     await guardarTrabajo(t); res.status(201).json({ trabajo: t });
   } catch (e) { res.status(500).json({ error: 'No se pudo crear el trabajo: ' + (e.message || '') }); }
 });

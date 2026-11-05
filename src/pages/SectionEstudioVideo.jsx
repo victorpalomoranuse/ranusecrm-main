@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
-import { Film, Upload, Mic, Video, Trash2, RefreshCw, Download, Plus, Check, Wand2, Settings2, Loader2 } from 'lucide-react';
+import { Film, Upload, Mic, Video, Trash2, RefreshCw, Download, Plus, Check, Wand2, Settings2, Loader2, Music } from 'lucide-react';
 
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '0.85rem 1rem' };
 const mut = { color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem' };
 const ESTADOS = { pendiente: ['En cola', '#bba'], procesando: ['Montando…', '#f2c46d'], listo: ['Listo', '#7ccf8f'], error: ['Error', '#ef7b7b'] };
 const fmtFecha = (iso) => { try { return new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' }); } catch { return ''; } };
 
-async function subirArchivo(file, onProgreso) {
-  const { data } = await api.post('/estudio-video/subida', { nombre: file.name });
+async function subirArchivo(file, onProgreso, tipo) {
+  const { data } = await api.post('/estudio-video/subida', { nombre: file.name, tipo });
   const cuerpo = new FormData(); cuerpo.append('cacheControl', '3600'); cuerpo.append('', file);
   await new Promise((ok, ko) => {
     const x = new XMLHttpRequest(); x.open('PUT', data.url);
@@ -20,15 +20,15 @@ async function subirArchivo(file, onProgreso) {
   return data.ruta;
 }
 
-function Nuevo({ formatos, onCreado }) {
-  const [tipo, setTipo] = useState('voz'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [prog, setProg] = useState(null), [error, setError] = useState('');
+function Nuevo({ formatos, musica, onCreado }) {
+  const [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
   const enviar = async () => {
     if (!file || !fmt) return; setError(''); setProg(0);
     try {
       const ruta = await subirArchivo(file, setProg);
-      await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: file.name, indicaciones: notas });
+      await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: file.name, indicaciones: notas, musica: mus });
       setFile(null); setNotas(''); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
     } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo enviar'); setProg(null); }
   };
@@ -51,6 +51,8 @@ function Nuevo({ formatos, onCreado }) {
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Formato</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
       {formatos.find(f => f.id === fmt)?.descripcion && <div style={{ ...mut, marginTop: -4, marginBottom: 10 }}>{formatos.find(f => f.id === fmt).descripcion}</div>}
+      <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Música de fondo</label>
+      <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={mus} onChange={e => setMus(e.target.value)}><option value="auto">Automática (la IA elige la que mejor encaje)</option><option value="ninguna">Sin música</option>{musica.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.bpm ? ' · ' + Math.round(p.bpm) + ' bpm' : ''}</option>)}</select>
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Indicaciones (opcional)</label>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 60, marginBottom: 10 }} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Ej.: enseña el proyecto de Rivas, tono directo, que empiece con un plano de obra…" />
       {error && <div className="ap-error" style={{ marginBottom: 8 }}>{error}</div>}
@@ -96,6 +98,25 @@ function Trabajo({ t, formatos, onCambio }) {
   );
 }
 
+function PestanaMusica({ pistas, onCambio }) {
+  const [prog, setProg] = useState(null), [error, setError] = useState('');
+  const subir = async (files) => { setError(''); try { for (const f of Array.from(files)) { setProg(f.name + ' 0%'); await subirArchivo(f, p => setProg(f.name + ' ' + p + '%'), 'musica'); } setProg(null); onCambio(); } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo subir'); setProg(null); } };
+  const borrar = async (n) => { if (!window.confirm('¿Quitar "' + n + '" de la biblioteca?')) return; try { await api.delete('/estudio-video/musica/' + encodeURIComponent(n)); onCambio(); } catch { setError('No se pudo borrar'); } };
+  return (
+    <div style={card}>
+      <div style={{ ...mut, marginBottom: 10 }}>Canciones instrumentales para el fondo de los vídeos. Suenan siempre por debajo de la voz y los cambios de escena se sincronizan con sus pulsos. Sube mp3, mp4, m4a o wav. El tempo (bpm) se calcula al montar el primer vídeo.</div>
+      <input type="file" multiple accept="audio/*,video/mp4" disabled={prog !== null} onChange={e => e.target.files?.length && subir(e.target.files)} className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} />
+      {prog && <div style={mut}><Loader2 size={12} /> Subiendo {prog}</div>}{error && <div className="ap-error">{error}</div>}
+      {pistas.length === 0 ? <div style={mut}>Todavía no hay música. Sube las canciones.</div> : pistas.map(p => (
+        <div key={p.nombre} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <Music size={14} /><div style={{ flex: 1, minWidth: 0, wordBreak: 'break-word' }}>{p.nombre}<div style={mut}>{p.bpm ? Math.round(p.bpm) + ' bpm · ' + Math.round(p.dur || 0) + ' s' : 'pendiente de analizar'}</div></div>
+          <button className="ap-btn ap-btn-sm" onClick={() => borrar(p.nombre)}><Trash2 size={13} /></button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Campo({ etiqueta, children }) { return <label style={{ display: 'block', marginBottom: 8 }}><div style={{ ...mut, marginBottom: 3 }}>{etiqueta}</div>{children}</label>; }
 
 function Formatos({ formatos, onCambio }) {
@@ -124,6 +145,10 @@ function Formatos({ formatos, onCambio }) {
         <Campo etiqueta="Palabras por subtítulo">{num(r.subs?.palabrasPorBloque, v => setS('palabrasPorBloque', v))}</Campo>
         <Campo etiqueta="Tamaño subtítulo">{num(r.subs?.tam, v => setS('tam', v))}</Campo>
         <Campo etiqueta="Altura subtítulo">{num(r.subs?.margenV, v => setS('margenV', v))}</Campo>
+        <Campo etiqueta="Tipografía de subtítulos"><select className="ap-field-input" style={{ width: '100%' }} value={r.fuente || 'Montserrat'} onChange={e => setR('fuente', e.target.value)}><option>Montserrat</option><option>Rubik</option></select></Campo>
+        <Campo etiqueta="Volumen música (dB, -19 típico)">{num(r.musica?.volumen ?? -19, v => setR('musica', { volumen: v }))}</Campo>
+        <Campo etiqueta="Zoom de encuadre (1 = sin)">{num(r.encuadreZoom, v => setR('encuadreZoom', v))}</Campo>
+        <Campo etiqueta="Pausa que se corta (s)">{num(r.pausa, v => setR('pausa', v))}</Campo>
         <Campo etiqueta="Color de acento"><input type="color" value={r.acento || '#F2C46D'} onChange={e => setR('acento', e.target.value)} style={{ width: '100%', height: 34, background: 'none', border: 'none' }} /></Campo>
       </div>
       <div style={{ display: 'flex', gap: 16, margin: '4px 0 12px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
@@ -132,6 +157,9 @@ function Formatos({ formatos, onCambio }) {
         <label><input type="checkbox" checked={r.barra !== false} onChange={e => setR('barra', e.target.checked)} /> Barra de progreso</label>
         <label><input type="checkbox" checked={r.mayusculas !== false} onChange={e => setR('mayusculas', e.target.checked)} /> Subtítulos en mayúsculas</label>
         <label><input type="checkbox" checked={r.resaltar !== false} onChange={e => setR('resaltar', e.target.checked)} /> Resaltar palabras clave</label>
+        <label><input type="checkbox" checked={!!r.encuadre} onChange={e => setR('encuadre', e.target.checked)} /> Centrar en la cara</label>
+        <label><input type="checkbox" checked={!!r.subsBajoCara} onChange={e => setR('subsBajoCara', e.target.checked)} /> Subtítulos bajo la cara</label>
+        <label><input type="checkbox" checked={!!r.graficos} onChange={e => setR('graficos', e.target.checked)} /> Gráficos animados (cifras)</label>
       </div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={guardar}><Check size={13} /> Guardar formato</button><span style={mut}>{msg}</span></div>
     </div>
@@ -139,10 +167,11 @@ function Formatos({ formatos, onCambio }) {
 }
 
 export function SectionEstudioVideo() {
-  const [tab, setTab] = useState('videos'), [formatos, setFormatos] = useState([]), [trabajos, setTrabajos] = useState(null), [error, setError] = useState('');
+  const [tab, setTab] = useState('videos'), [pistas, setPistas] = useState([]), [formatos, setFormatos] = useState([]), [trabajos, setTrabajos] = useState(null), [error, setError] = useState('');
   const cargarF = useCallback(() => api.get('/estudio-video/formatos').then(r => setFormatos(r.data.formatos || [])).catch(() => setError('No se han podido cargar los formatos')), []);
   const cargarT = useCallback(() => api.get('/estudio-video/trabajos').then(r => setTrabajos(r.data.trabajos || [])).catch(() => setTrabajos(t => t || [])), []);
-  useEffect(() => { cargarF(); cargarT(); }, [cargarF, cargarT]);
+  const cargarM = useCallback(() => api.get('/estudio-video/musica').then(r => setPistas(r.data.pistas || [])).catch(() => {}), []);
+  useEffect(() => { cargarF(); cargarT(); cargarM(); }, [cargarF, cargarT, cargarM]);
   const hayActivos = (trabajos || []).some(t => t.estado === 'pendiente' || t.estado === 'procesando');
   useEffect(() => { if (!hayActivos) return; const i = setInterval(cargarT, 6000); return () => clearInterval(i); }, [hayActivos, cargarT]);
   return (
@@ -152,11 +181,12 @@ export function SectionEstudioVideo() {
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
         <button className={'ap-btn ap-btn-sm' + (tab === 'videos' ? ' ap-btn-primary' : '')} onClick={() => setTab('videos')}><Film size={13} /> Vídeos</button>
         <button className={'ap-btn ap-btn-sm' + (tab === 'formatos' ? ' ap-btn-primary' : '')} onClick={() => setTab('formatos')}><Settings2 size={13} /> Formatos</button>
+        <button className={'ap-btn ap-btn-sm' + (tab === 'musica' ? ' ap-btn-primary' : '')} onClick={() => setTab('musica')}><Music size={13} /> Música</button>
       </div>
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
-      {tab === 'formatos' ? <Formatos formatos={formatos} onCambio={cargarF} /> : (
+      {tab === 'formatos' ? <Formatos formatos={formatos} onCambio={cargarF} /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Nuevo formatos={formatos} onCreado={cargarT} />
+          <Nuevo formatos={formatos} musica={pistas} onCreado={cargarT} />
           {trabajos === null ? <div className="ap-loading">Cargando…</div> : trabajos.length === 0 ? <div style={mut}>Todavía no hay vídeos. Sube el primero arriba.</div> : trabajos.map(t => <Trabajo key={t.id} t={t} formatos={formatos} onCambio={cargarT} />)}
         </div>
       )}

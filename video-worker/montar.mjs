@@ -4,6 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
+import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
 
 const [VOZ, INDICE, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!VOZ || !INDICE || !SALIDA) { console.log('Uso: node montar.mjs "<voz>" "<indice.json>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -16,7 +17,8 @@ const FONT = new URL('../public/fonts/Montserrat-Bold.ttf', import.meta.url).pat
 const RECETA = {
   nombre: 'dopaminico-serio-v1',
   corte: { min: 0.9, max: 2.3 },        // cortes rápidos, siempre con cambio de plano
-  acento: '&H6DC4F2&',                  // dorado cálido (BGR)
+  acento: '&HB8D2E3&',                  // arena cálida (BGR), paleta oscura Ranuse
+  mayusculas: false, fuente: 'Montserrat', musica: { volumen: -19 },
   zoomFinal: 1.14,                      // cada plano hace un empujón lento hacia dentro
   whoosh: 0.16,                         // volumen de los whoosh en cada corte (0 = sin)
   flash: true,                          // destello blanco muy breve en cada corte
@@ -29,7 +31,9 @@ if (process.env.RECETA_JSON) { // receta elegida en el CRM
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
   if (o.corte) RECETA.corte = { ...RECETA.corte, ...o.corte };
   if (/^#[0-9a-f]{6}$/i.test(o.acento || '')) RECETA.acento = '&H' + o.acento.slice(5, 7) + o.acento.slice(3, 5) + o.acento.slice(1, 3) + '&';
-  for (const k of ['zoomFinal', 'whoosh', 'flash', 'titulo']) if (o[k] !== undefined) RECETA[k] = o[k];
+  for (const k of ['zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente']) if (o[k] !== undefined) RECETA[k] = o[k];
+  if (o.musica && typeof o.musica === 'object') RECETA.musica = { ...RECETA.musica, ...o.musica };
+  if (!['Montserrat', 'Rubik'].includes(RECETA.fuente)) RECETA.fuente = 'Montserrat';
   if (o.subs) RECETA.subs = { ...RECETA.subs, ...o.subs };
 }
 const work = path.resolve(path.dirname(SALIDA), '_trabajo_' + path.basename(SALIDA, '.mp4')); fs.mkdirSync(work, { recursive: true });
@@ -69,9 +73,19 @@ else {
 }
 console.log('Plan:', plan.kicker, '|', plan.titulo, '|', plan.cortes.length, 'cortes');
 
+// música de fondo (la IA elige entre las pistas del CRM) y pulsos
+let pista = null; const elegida = process.env.MUSICA_ELEGIDA || 'auto';
+if (process.env.MUSICA_DIR && elegida !== 'ninguna') {
+  const lib = bibliotecaLocal(process.env.MUSICA_DIR);
+  if (lib.length) {
+    pista = lib.find(p => p.nombre === elegida) || null;
+    if (!pista) { if (lib.length === 1) pista = lib[0]; else try { const rr = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 200, messages: [{ role: 'user', content: 'Elige la pista de música instrumental para un vídeo de Ranuse Design (gimnasios, serio y elegante) titulado "' + plan.titulo + '", montado con cortes rápidos de escenas. Indicaciones: ' + (NOTAS || 'ninguna') + '. Pistas: ' + JSON.stringify(lib.map(p => ({ nombre: p.nombre, bpm: p.bpm, energia: p.energia, dur: p.dur }))) + '. Responde SOLO JSON {"nombre":"..."}' }] }) }); const jj = await rr.json(); const nm = JSON.parse(/{[sS]*}/.exec(jj.content.map(b => b.text || '').join(''))[0]).nombre; pista = lib.find(p => p.nombre === nm) || lib[0]; } catch { pista = lib[0]; } }
+  }
+  console.log('Música:', pista ? pista.nombre + ' (' + pista.bpm + ' bpm)' : 'ninguna');
+}
 // 4) tiempos de cada corte
 const cortes = plan.cortes.filter(c => idx.find(v => v.id === c.video)).sort((a, b) => a.de - b.de);
-cortes.forEach((c, i) => { c.ini = i === 0 ? 0 : palabras[c.de]?.de ?? 0; });
+cortes.forEach((c, i) => { c.ini = i === 0 ? 0 : (pista ? alPulso(palabras[c.de]?.de ?? 0, pista.beats, 0.18) : palabras[c.de]?.de ?? 0); }); // cada cambio de escena cae en un pulso de la música
 cortes.forEach((c, i) => { c.fin = i < cortes.length - 1 ? cortes[i + 1].ini : durVoz; c.dur = c.fin - c.ini; });
 const valido = cortes.filter(c => c.dur > 0.15);
 
@@ -95,24 +109,25 @@ const enf = new Set(plan.enfasis || []);
 palabras.forEach((w, i) => { w.i = i; b.push(w); if (b.length >= RECETA.subs.palabrasPorBloque || /[.?!,]$/.test(w.t)) { bloques.push(b); b = []; } }); if (b.length) bloques.push(b);
 bloques.forEach((bl, k) => {
   const ini = bl[0].de, fin = k < bloques.length - 1 ? Math.max(bloques[k + 1][0].de, ini + 0.25) : Math.max(bl[bl.length - 1].a, ini + 0.4);
-  const txt = bl.map(w => { const fuerte = enf.has(w.i) || /\d/.test(w.t); const s = limpiaT(w.t).toUpperCase().replace(/[.,;:]+$/, ''); return fuerte ? '{\\c' + RECETA.acento + '}' + s + '{\\c&HFFFFFF&}' : s; }).join(' ');
+  const txt = bl.map(w => { const fuerte = enf.has(w.i) || /\d/.test(w.t); const s = (RECETA.mayusculas === true ? limpiaT(w.t).toUpperCase() : limpiaT(w.t).toLowerCase()).replace(/[.,;:¿¡]+$/, ''); return fuerte ? '{\\c' + RECETA.acento + '}' + s + '{\\c&HFFFFFF&}' : s; }).join(' ');
   ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(fin) + ',Sub,,0,0,0,,{\\fscx82\\fscy82\\t(0,110,\\fscx100\\fscy100)\\fad(40,0)}' + txt);
 });
 const tf = Math.min(durVoz, 3.2);
 if (RECETA.titulo !== false) {
-ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\fad(200,300)}' + limpiaT(plan.kicker || '').toUpperCase().split('').join('\u200A'));
-ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Titulo,,0,0,0,,{\\fad(250,350)}' + limpiaT(plan.titulo || '').toUpperCase());
+ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\fad(200,300)}' + limpiaT(plan.kicker || '').toLowerCase().split('').join('\u200A'));
+ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Titulo,,0,0,0,,{\\fad(250,350)}' + limpiaT(plan.titulo || '').toLowerCase());
 ev.push('Dialogue: 3,' + tAss(0.1) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\an8\\pos(540,360)\\p1\\c' + RECETA.acento + '\\fad(200,300)\\t(0,500,\\fscx100)\\fscx0}m -45 0 l 45 0 45 4 -45 4{\\p0}');
 }
 if (RECETA.flash) marcas.slice(1).forEach(m => ev.push('Dialogue: 4,' + tAss(m) + ',' + tAss(m + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c&HFFFFFF&\\alpha&H9C&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
 ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durVoz) + ',Kicker,,0,0,0,,{\\an7\\pos(0,1896)\\p1\\c' + RECETA.acento + '\\fscx0\\t(0,' + Math.round(durVoz * 1000) + ',\\fscx100)}m 0 0 l 1080 0 1080 7 0 7{\\p0}');
 const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920', 'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '', '[V4+ Styles]',
   'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',
-  'Style: Sub,Montserrat,' + RECETA.subs.tam + ',&H00FFFFFF,&H000000FF,&H00000000,&H96000000,-1,0,0,0,100,100,1,0,1,9,4,2,50,50,' + RECETA.subs.margenV + ',1',
+  'Style: Sub,' + RECETA.fuente + ',' + RECETA.subs.tam + ',&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,' + (RECETA.mayusculas === true && RECETA.subs.tam > 70 ? '9,4' : '1,2') + ',2,50,50,' + RECETA.subs.margenV + ',1',
   'Style: Kicker,Montserrat,34,' + RECETA.acento.replace('&H', '&H00').replace(/&$/, '') + ',&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,80,80,300,1',
   'Style: Titulo,Montserrat,60,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3,5,8,90,90,385,1', '', '[Events]', 'Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text'].concat(ev).join('\n');
 fs.writeFileSync(path.join(work, 'subs.ass'), '\uFEFF' + ass, 'utf8');
 fs.mkdirSync(path.join(work, 'fonts'), { recursive: true }); fs.copyFileSync(FONT, path.join(work, 'fonts', 'Montserrat-Bold.ttf'));
+for (const f of ['Rubik-Bold.ttf', 'Rubik-Regular.ttf']) { const o = new URL('./fonts/' + f, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'); if (fs.existsSync(o)) fs.copyFileSync(o, path.join(work, 'fonts', f)); }
 
 // 7) audio: voz limpia + whoosh sutil en cada corte
 const args = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', 'lista.txt', '-i', 'voz48.wav'];
@@ -120,8 +135,9 @@ let fa = '[1:a]' + RECETA.voz + '[voz]';
 if (RECETA.whoosh > 0 && marcas.length > 1) {
   run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'anoisesrc=d=0.4:c=pink:a=0.6:r=48000', '-af', 'highpass=f=500,lowpass=f=6000,afade=t=in:st=0:d=0.22,afade=t=out:st=0.2:d=0.2,volume=' + RECETA.whoosh, path.join(work, 'whoosh.wav')]);
   const n = marcas.length - 1; args.push('-i', 'whoosh.wav');
-  fa += ';[2:a]asplit=' + n + marcas.slice(1).map((_, k) => '[w' + k + ']').join('') + ';' + marcas.slice(1).map((m, k) => '[w' + k + ']adelay=' + Math.max(0, Math.round((m - 0.2) * 1000)) + ':all=1[d' + k + ']').join(';') + ';[voz]' + marcas.slice(1).map((_, k) => '[d' + k + ']').join('') + 'amix=inputs=' + (n + 1) + ':normalize=0:duration=first,alimiter=limit=0.95[a]';
-} else fa += ';[voz]anull[a]';
+  fa += ';[2:a]asplit=' + n + marcas.slice(1).map((_, k) => '[w' + k + ']').join('') + ';' + marcas.slice(1).map((m, k) => '[w' + k + ']adelay=' + Math.max(0, Math.round((m - 0.2) * 1000)) + ':all=1[d' + k + ']').join(';') + ';[voz]' + marcas.slice(1).map((_, k) => '[d' + k + ']').join('') + 'amix=inputs=' + (n + 1) + ':normalize=0:duration=first,alimiter=limit=0.95[va]';
+} else fa += ';[voz]anull[va]';
+if (pista) { args.push('-stream_loop', '-1', '-i', pista.ruta); fa += ';' + mezcla({ entradaIdx: args.filter(x => x === '-i').length - 1, voz: 'va', durTotal: durVoz, db: Number(RECETA.musica.volumen) || -19, salida: 'a' }); } else fa += ';[va]anull[a]';
 args.push('-filter_complex', '[0:v]ass=subs.ass:fontsdir=fonts[v];' + fa, '-map', '[v]', '-map', '[a]', '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-shortest', '-movflags', '+faststart', path.resolve(SALIDA));
 const fin = run('ffmpeg', args, { cwd: work });
 console.log(fs.existsSync(SALIDA) ? 'OK ' + SALIDA + ' · ' + (fs.statSync(SALIDA).size / 1048576).toFixed(1) + ' MB' : 'FALLO ' + (fin.stderr || '').slice(0, 800));

@@ -22,6 +22,17 @@ async function leer(id) {
 const guardar = (t) => st.upload('trabajos/' + t.id + '.json', Buffer.from(JSON.stringify(t)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
 async function paso(t, texto, extra = {}) { Object.assign(t, { progreso: texto }, extra); console.log('[' + t.id + '] ' + texto); await guardar(t); }
 
+const MUSICA_LOCAL = new URL('./datos/musica-crm/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+async function sincronizaMusica() {
+  fs.mkdirSync(MUSICA_LOCAL, { recursive: true });
+  const { data } = await st.list('musica', { limit: 200 }); const remotas = (data || []).filter(f => /\.(mp3|mp4|m4a|wav|aac)$/i.test(f.name));
+  for (const f of remotas) { const dst = path.join(MUSICA_LOCAL, f.name); if (fs.existsSync(dst) && fs.statSync(dst).size === (f.metadata?.size || fs.statSync(dst).size)) continue; const u = await st.createSignedUrl('musica/' + f.name, 600); if (!u.data?.signedUrl) continue; const r = await fetch(u.data.signedUrl); if (r.ok) { fs.writeFileSync(dst, Buffer.from(await r.arrayBuffer())); try { fs.unlinkSync(dst + '.json'); } catch { /* sin análisis previo */ } } }
+  for (const f of fs.readdirSync(MUSICA_LOCAL)) if (!f.endsWith('.json') && !remotas.some(r => r.name === f)) { try { fs.unlinkSync(path.join(MUSICA_LOCAL, f)); fs.unlinkSync(path.join(MUSICA_LOCAL, f + '.json')); } catch { /* ya no está */ } }
+}
+async function publicaIndiceMusica() {
+  const idx = {}; for (const f of fs.readdirSync(MUSICA_LOCAL)) if (f.endsWith('.json')) { try { const a = JSON.parse(fs.readFileSync(path.join(MUSICA_LOCAL, f), 'utf8')); idx[f.slice(0, -5)] = { bpm: a.bpm, dur: a.dur, energia: a.energia }; } catch { /* ignorar */ } }
+  await st.upload('crm-indice-musica.json', Buffer.from(JSON.stringify(idx)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
+}
 async function procesa(t) {
   const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
   await paso(t, 'Descargando el archivo…', { estado: 'procesando', empezado: new Date().toISOString() });
@@ -33,10 +44,12 @@ async function procesa(t) {
   const notas = [t.notas_formato, t.indicaciones].filter(Boolean).join('\n');
   const salida = path.join(dir, 'salida.mp4');
   await paso(t, t.tipo === 'voz' ? 'La IA está eligiendo escenas y montando…' : 'Quitando pausas y poniendo subtítulos…');
+  try { await sincronizaMusica(); } catch (e) { console.log('Música sin sincronizar:', e.message); }
   const script = t.tipo === 'voz' ? ['montar.mjs', entrada, INDICE, salida, notas] : ['bruto.mjs', entrada, salida, notas];
-  const r = run('node', script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
+  const r = run('node', script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
   console.log((r.stdout || '').split('\n').slice(-6).join('\n'));
   if (!fs.existsSync(salida)) throw new Error('El montaje no ha producido vídeo. ' + ((r.stdout || '') + (r.stderr || '')).slice(-300));
+  try { await publicaIndiceMusica(); } catch { /* el índice se publica la próxima vez */ }
   await paso(t, 'Preparando el archivo final…');
   const final = path.join(dir, 'final.mp4'), movil = path.join(dir, 'movil.mp4');
   run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-c:v', 'libx264', '-crf', '24', '-preset', 'fast', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', final]);
