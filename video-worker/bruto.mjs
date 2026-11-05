@@ -6,6 +6,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { tarjetaPNG, NOMBRES_ICONOS } from './iconos.mjs';
 import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
+import * as drive from './drive.mjs';
 import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas } from './voz.mjs';
 
 const [ENTRADA, SALIDA, NOTAS = ''] = process.argv.slice(2);
@@ -16,7 +17,8 @@ const MODELO_W = process.env.WHISPER_MODEL || 'C:/Users/cashc/AppData/Local/Ranu
 const FONT = new URL('../public/fonts/Montserrat-Bold.ttf', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 
 // Paleta Ranuse: oscura y elegante (negros, grises, marrones cálidos)
-const R = { acento: '#CDBBA7', titulo: true, pausa: 0.4, subs: { palabrasPorBloque: 2, tam: 76, margenV: 600 }, zoomFinal: 1.2, barra: false, mayusculas: false, resaltar: true, encuadre: false, encuadreZoom: 1.3, subsBajoCara: false, graficos: false, fuente: 'Montserrat', limpiar: true, musica: { volumen: -19 } };
+const R = { acento: '#CDBBA7', titulo: true, pausa: 0.4, subs: { palabrasPorBloque: 2, tam: 76, margenV: 600 }, zoomFinal: 1.2, barra: false, mayusculas: false, resaltar: true, encuadre: false, encuadreZoom: 1.3, subsBajoCara: false, graficos: false, fuente: 'Montserrat', limpiar: true, inserciones: false, musica: { volumen: -19 } };
+if (process.env.INSERCIONES === '1') R.inserciones = true;
 if (process.env.RECETA_JSON) {
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
   for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente']) if (o[k] !== undefined) R[k] = o[k];
@@ -52,6 +54,19 @@ if (!palabras.length) { console.log('FALLO: no se oye voz en el vídeo'); proces
 palabras.forEach((w, i) => { w.i = i; });
 const trabones = corrigeTrabones(palabras, wav); if (trabones) console.log('Tropiezos recortados:', trabones);
 
+// ---- catálogo de escenas para superponer (B-roll del índice, filtrado por lo que se eligió en el CRM) ----
+let catalogo = [];
+if (R.inserciones && process.env.INDICE_JSON) {
+  try {
+    let sel = {}; try { sel = JSON.parse(process.env.RECURSOS_SEL || '{}'); } catch { /* todo */ }
+    const carps = sel.carpetas || [], vids = sel.videos || [];
+    let todos = JSON.parse(fs.readFileSync(process.env.INDICE_JSON, 'utf8')).videos.filter(v => v.duracion >= 2 && (!process.env.BASE_DRIVE_ID || v.drive_id !== process.env.BASE_DRIVE_ID));
+    if (carps.length || vids.length) { const f = todos.filter(v => { const abs = v.ruta_abs ?? v.carpeta ?? ''; return carps.some(c => abs === c || abs.startsWith(c + '/')) || vids.some(z => z.id === v.drive_id || (z.ruta ? z.ruta + '/' : '') + z.nombre === (abs ? abs + '/' : '') + v.nombre); }); if (f.length) todos = f; }
+    else todos = todos.filter(v => !v.hablando_a_camara && v.tipo !== 'bruto_hablando');
+    todos.sort((a, b) => (b.calidad === 'alta') - (a.calidad === 'alta')); catalogo = todos.slice(0, 150);
+    console.log('Catálogo para superponer:', catalogo.length, 'vídeos');
+  } catch (e) { console.log('Sin catálogo para superponer:', e.message); }
+}
 // ---- IA: qué se quita (repeticiones, errores), título, palabras clave y gráficos ----
 let plan = { kicker: 'RANUSE DESIGN', titulo: '', enfasis: [], quitar: [], graficos: [] };
 try {
@@ -59,7 +74,7 @@ try {
   plan = { ...plan, ...(await claude('Vídeo vertical de Ranuse Design (diseño de gimnasios y espacios deportivos), alguien hablando a cámara. Transcripción (índice:palabra): ' + guion.slice(0, 12000) + '\n' + (NOTAS ? 'Indicaciones del equipo: ' + NOTAS + '\n' : '') +
     'Responde SOLO JSON con: "kicker" (categoría de 2-4 palabras), "titulo" (gancho serio, máx. 8 palabras, sin exclamaciones), "enfasis" (ÍNDICES de palabras clave: cifras, términos técnicos, la idea fuerte; ~1 de cada 6 palabras)' +
     (R.limpiar !== false ? ', "quitar": lista de rangos [desde, hasta] de ÍNDICES (inclusivos) que hay que ELIMINAR para que la comunicación sea fluida y ágil: frases o preguntas dichas dos veces (quédate con la mejor toma, normalmente la última y completa), empezar una frase y rehacerla, errores, muletillas largas (eh, mmm, o sea repetido), comentarios al aire que no son parte del vídeo (órdenes al que graba, "vale", "otra vez"). No quites contenido útil; sé conservador ante la duda' : '') +
-    (R.graficos ? ', "graficos": lista de 3 a 6 momentos donde aparece una cifra, medida o concepto que merece una animación en pantalla. Cada uno: {"de": índice de la palabra donde entra (que NO esté en "quitar"), "valor": "140" (solo la cifra, o ""), "unidad": "kg" (o ""), "texto": "texto corto si no hay cifra (máx. 3 palabras)", "icono": uno de [' + NOMBRES_ICONOS.join(', ') + '] o "", "dur": segundos visible (1.6-2.6)}. No satures, separados al menos 4 segundos' : '') + '.', 2200)) };
+    (catalogo.length ? ', "inserciones": lista de 3 a 8 momentos en los que conviene SUPERPONER una escena del catálogo sobre la persona (su voz sigue sonando) porque dice algo que se puede ilustrar: un proyecto, máquinas, materiales, medidas, un lugar. Cada una: {"de": índice de la palabra donde entra (que NO esté en "quitar"), "video": id del catálogo, "desde": segundo del vídeo (usa los de sus planos), "dur": segundos 1.6-3.5}. Separadas al menos 5 s, ni en los primeros 2 s ni en la idea emocional o la llamada a la acción final. CATÁLOGO: ' + JSON.stringify(catalogo.map(v => ({ id: v.id, dur: v.duracion, resumen: v.resumen, planos: (v.planos || []).slice(0, 6).map(p => p.t + 's: ' + String(p.descripcion).slice(0, 90)) }))) : '') + (R.graficos ? ', "graficos": lista de 3 a 6 momentos donde aparece una cifra, medida o concepto que merece una animación en pantalla. Cada uno: {"de": índice de la palabra donde entra (que NO esté en "quitar"), "valor": "140" (solo la cifra, o ""), "unidad": "kg" (o ""), "texto": "texto corto si no hay cifra (máx. 3 palabras)", "icono": uno de [' + NOMBRES_ICONOS.join(', ') + '] o "", "dur": segundos visible (1.6-2.6)}. No satures, separados al menos 4 segundos' : '') + '.', 2200)) };
 } catch (e) { console.log('Sin IA para limpieza/título/gráficos:', e.message); }
 fs.writeFileSync(path.join(work, 'plan.json'), JSON.stringify(plan, null, 1));
 const fuera = new Set(); for (const r of (plan.quitar || [])) if (Array.isArray(r) && Number.isInteger(r[0])) for (let i = r[0]; i <= (Number.isInteger(r[1]) ? r[1] : r[0]); i++) fuera.add(i);
@@ -157,6 +172,18 @@ copiaModelo(work);
 fs.mkdirSync(path.join(work, 'fonts'), { recursive: true }); fs.copyFileSync(FONT, path.join(work, 'fonts', 'Montserrat-Bold.ttf'));
 for (const f of ['Rubik-Bold.ttf', 'Rubik-Regular.ttf']) { const o = new URL('./fonts/' + f, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'); if (fs.existsSync(o)) fs.copyFileSync(o, path.join(work, 'fonts', f)); }
 
+// ---- escenas superpuestas en momentos clave ----
+const ins = [], dr = {};
+if (catalogo.length) {
+  let ult = -9;
+  for (const g of (plan.inserciones || []).slice(0, 10)) {
+    const w = palabras[g.de]; if (!w || fuera.has(g.de)) continue; const a = mapea(w.de); if (a === null || a < 2 || a < ult + 4 || a > durFinal - 2) continue;
+    const v = catalogo.find(x => x.id === g.video); if (!v) continue;
+    const d = Math.min(clamp(Number(g.dur) || 2.2, 1.4, 4), durFinal - a - 0.5), desde = Math.max(0, Math.min(Number(g.desde) || 0, v.duracion - d - 0.1)); ins.push({ v, a, d, desde }); ult = a + d;
+  }
+  for (const x of ins) if (x.v.drive_id && !dr[x.v.id]) { try { dr[x.v.id] = await drive.urlDescarga(x.v.drive_id); } catch (e) { console.log('Sin acceso a Drive:', e.message); } }
+  console.log('Superpuestas:', ins.map(i => i.a.toFixed(1) + 's ' + String(i.v.nombre).slice(0, 24)).join(' | ') || 'ninguna');
+}
 // ---- gráficos animados ----
 const graf = [];
 if (R.graficos) {
@@ -182,17 +209,23 @@ piezas.forEach((p, i) => {
 const cat = piezas.map((_, i) => '[v' + i + '][a' + i + ']').join('') + 'concat=n=' + piezas.length + ':v=1:a=1[vc][ac]';
 const filtros = [...partes, ...pa, cat, '[vc]eq=contrast=1.07:saturation=0.95:gamma=0.97[vb0]'];
 const entradas = ['-i', path.resolve(ENTRADA)]; let prev = 'vb0';
+ins.forEach((x, k) => {
+  const src = dr[x.v.id], ix = k + 1;
+  entradas.push(...(src ? ['-headers', 'Authorization: ' + src.cabeceras.Authorization + '\r\n'] : []), '-ss', x.desde.toFixed(2), '-t', (x.d + 0.1).toFixed(2), '-i', src ? src.url : x.v.ruta);
+  filtros.push('[' + ix + ':v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,setsar=1,format=yuva420p,fade=t=in:st=0:d=0.18:alpha=1,fade=t=out:st=' + (x.d - 0.18).toFixed(2) + ':d=0.18:alpha=1,setpts=PTS+' + x.a.toFixed(3) + '/TB[i' + k + ']');
+  filtros.push('[' + prev + '][i' + k + ']overlay=x=0:y=0:enable=\'between(t\\,' + x.a.toFixed(3) + '\\,' + (x.a + x.d).toFixed(3) + ')\':eof_action=pass[oi' + k + ']'); prev = 'oi' + k;
+});
 graf.forEach((g, k) => {
   entradas.push('-loop', '1', '-framerate', '30', '-t', (g.d + 0.1).toFixed(2), '-i', g.f);
   const yFin = 150, a = g.a.toFixed(3), b2 = (g.a + g.d).toFixed(3);
-  filtros.push('[' + (k + 1) + ':v]format=rgba,fade=t=in:st=0:d=0.22:alpha=1,fade=t=out:st=' + (g.d - 0.25).toFixed(2) + ':d=0.25:alpha=1,setpts=PTS+' + a + '/TB[g' + k + ']');
+  filtros.push('[' + (ins.length + k + 1) + ':v]format=rgba,fade=t=in:st=0:d=0.22:alpha=1,fade=t=out:st=' + (g.d - 0.25).toFixed(2) + ':d=0.25:alpha=1,setpts=PTS+' + a + '/TB[g' + k + ']');
   filtros.push('[' + prev + '][g' + k + ']overlay=x=\'(W-w)/2\':y=\'' + yFin + '-70*pow(max(0\\,1-(t-' + a + ')/0.32)\\,3)\':enable=\'between(t\\,' + a + '\\,' + b2 + ')\':eof_action=pass[o' + k + ']');
   prev = 'o' + k;
 });
 filtros.push('[' + prev + ']ass=subs.ass:fontsdir=fonts[v]');
 if (pista) {
   entradas.push('-stream_loop', '-1', '-i', pista.ruta);
-  filtros.push('[ac]' + AUDIO + '[voz]', mezcla({ entradaIdx: 1 + graf.length, voz: 'voz', durTotal: durFinal, db: Number(R.musica.volumen) || -19, salida: 'a' }));
+  filtros.push('[ac]' + AUDIO + '[voz]', mezcla({ entradaIdx: 1 + ins.length + graf.length, voz: 'voz', durTotal: durFinal, db: Number(R.musica.volumen) || -19, salida: 'a' }));
 } else filtros.push('[ac]' + AUDIO + '[a]');
 fs.writeFileSync(path.join(work, 'grafo.txt'), filtros.join(';\n'));
 const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...entradas, '-/filter_complex', 'grafo.txt', '-map', '[v]', '-map', '[a]', '-t', durFinal.toFixed(2), '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '24', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', path.resolve(SALIDA)], { cwd: work });

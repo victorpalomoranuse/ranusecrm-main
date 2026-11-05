@@ -24,19 +24,19 @@ async function subirArchivo(file, onProgreso, tipo) {
 const fmtDur = (s) => (s == null ? '' : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'));
 const urlMiniatura = (id) => { let t = ''; try { t = localStorage.getItem('admin_token') || ''; } catch { /* sin token */ } return (api.defaults.baseURL || '/api') + '/estudio-video/drive/miniatura/' + id + '?t=' + encodeURIComponent(t); };
 
-function Explorador({ seleccion, onCambio }) {
+function Explorador({ seleccion, onCambio, titulo = 'Recursos (de dónde salen las escenas)', max = 0, vacio = 'Todo Drive indexado' }) {
   const [abierto, setAbierto] = useState(false), [ruta, setRuta] = useState([]), [items, setItems] = useState(null), [error, setError] = useState(''), [ver, setVer] = useState(null);
   const rutaTexto = (extra) => [...ruta.slice(1).map(r => r.nombre), ...(extra ? [extra] : [])].join('/');
   useEffect(() => { if (!abierto || ruta.length) return; api.get('/estudio-video/drive/raiz').then(r => { const x = (r.data.carpetas || [])[0]; if (x) setRuta([{ id: x.id, nombre: x.nombre }]); else setError('No hay carpetas compartidas con Drive todavía.'); }).catch(e => setError(e?.response?.data?.error || 'Drive no está disponible')); }, [abierto, ruta.length]);
   useEffect(() => { if (!ruta.length) return; let vivo = true; setItems(null); setError(''); api.get('/estudio-video/drive/carpeta/' + ruta[ruta.length - 1].id).then(r => vivo && setItems(r.data.elementos || [])).catch(e => vivo && setError(e?.response?.data?.error || 'No se pudo abrir la carpeta')); return () => { vivo = false; }; }, [ruta]);
   const esta = (id) => seleccion.some(s => s.id === id);
-  const alterna = (it) => onCambio(esta(it.id) ? seleccion.filter(s => s.id !== it.id) : [...seleccion, { id: it.id, nombre: it.nombre, tipo: it.tipo, ruta: it.tipo === 'carpeta' ? rutaTexto(it.nombre) : rutaTexto() }]);
+  const alterna = (it) => { const nuevo = { id: it.id, nombre: it.nombre, tipo: it.tipo, ruta: it.tipo === 'carpeta' ? rutaTexto(it.nombre) : rutaTexto() }; onCambio(esta(it.id) ? seleccion.filter(s => s.id !== it.id) : max === 1 ? [nuevo] : [...seleccion, nuevo]); };
   const nSel = seleccion.length;
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ ...mut, marginBottom: 4 }}>Recursos (de dónde salen las escenas)</div>
-      <button type="button" className="ap-btn ap-btn-sm" onClick={() => setAbierto(!abierto)}>{nSel ? nSel + ' elegido(s)' : 'Todo Drive indexado'} {abierto ? '▲' : '▼'}</button>
-      {nSel > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>{seleccion.map(s => <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid rgba(255,255,255,0.15)', borderRadius: 20, padding: '2px 4px 2px 10px', fontSize: '0.78rem' }}>{s.tipo === 'carpeta' ? <Folder size={11} /> : s.tipo === 'imagen' ? <ImagenIcono size={11} /> : <Film size={11} />}{s.nombre.length > 28 ? s.nombre.slice(0, 26) + '…' : s.nombre}<button type="button" onClick={() => onCambio(seleccion.filter(x => x.id !== s.id))} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', display: 'flex', padding: 2 }}><X size={11} /></button></span>)}<button type="button" className="ap-btn ap-btn-sm" onClick={() => onCambio([])}>Quitar todo</button></div>}
+      <div style={{ ...mut, marginBottom: 4 }}>{titulo}</div>
+      <button type="button" className="ap-btn ap-btn-sm" onClick={() => setAbierto(!abierto)}>{nSel ? nSel + ' elegido(s)' : vacio} {abierto ? '▲' : '▼'}</button>
+      {nSel > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>{seleccion.map(s => <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid rgba(255,255,255,0.15)', borderRadius: 20, padding: '2px 4px 2px 10px', fontSize: '0.78rem' }}>{s.tipo === 'carpeta' ? <Folder size={11} /> : s.tipo === 'audio' ? <Music size={11} /> : s.tipo === 'imagen' ? <ImagenIcono size={11} /> : <Film size={11} />}{s.nombre.length > 28 ? s.nombre.slice(0, 26) + '…' : s.nombre}<button type="button" onClick={() => onCambio(seleccion.filter(x => x.id !== s.id))} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', display: 'flex', padding: 2 }}><X size={11} /></button></span>)}<button type="button" className="ap-btn ap-btn-sm" onClick={() => onCambio([])}>Quitar todo</button></div>}
       {abierto && (
         <div style={{ marginTop: 8, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8, fontSize: '0.8rem' }}>
@@ -51,22 +51,23 @@ function Explorador({ seleccion, onCambio }) {
               <div key={it.id} style={{ position: 'relative', border: '1px solid ' + (esta(it.id) ? 'rgba(205,187,167,0.9)' : 'rgba(255,255,255,0.1)'), background: esta(it.id) ? 'rgba(205,187,167,0.1)' : 'rgba(255,255,255,0.03)', borderRadius: 8, overflow: 'hidden' }}>
                 {it.tipo === 'carpeta'
                   ? <div role="button" tabIndex={0} onClick={() => setRuta([...ruta, { id: it.id, nombre: it.nombre }])} style={{ aspectRatio: '9 / 12', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Folder size={34} style={{ opacity: 0.55 }} /></div>
+                  : it.tipo === 'audio' ? <div role="button" tabIndex={0} onClick={() => setVer(it)} style={{ aspectRatio: '9 / 12', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Music size={30} style={{ opacity: 0.55 }} /></div>
                   : <div role="button" tabIndex={0} onClick={() => setVer(it)} style={{ aspectRatio: '9 / 12', cursor: 'pointer', background: '#000', position: 'relative' }}><img src={urlMiniatura(it.id)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={e => { e.currentTarget.style.opacity = 0; }} />{it.tipo === 'video' && <span style={{ position: 'absolute', right: 4, bottom: 4, background: 'rgba(0,0,0,0.7)', borderRadius: 4, padding: '0 5px', fontSize: '0.68rem' }}><Play size={9} /> {fmtDur(it.duracion)}</span>}</div>}
-                <label style={{ position: 'absolute', left: 4, top: 4, background: 'rgba(0,0,0,0.65)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer', display: 'flex' }}><input type="checkbox" checked={esta(it.id)} onChange={() => alterna(it)} /></label>
+                {!(max === 1 && !['video', 'audio'].includes(it.tipo)) && <label style={{ position: 'absolute', left: 4, top: 4, background: 'rgba(0,0,0,0.65)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer', display: 'flex' }}><input type="checkbox" checked={esta(it.id)} onChange={() => alterna(it)} /></label>}
                 <div style={{ padding: '4px 6px', fontSize: '0.72rem', lineHeight: 1.25, wordBreak: 'break-word', maxHeight: 34, overflow: 'hidden' }}>{it.nombre}</div>
               </div>
             ))}
           </div>}
-          <div style={{ ...mut, marginTop: 8 }}>Marca una carpeta para usar todo lo que contiene, o vídeos e imágenes sueltos. Pulsa una miniatura para verla.</div>
+          <div style={{ ...mut, marginTop: 8 }}>{max === 1 ? 'Marca el vídeo que quieres usar como base. Pulsa una miniatura para verlo.' : 'Marca una carpeta para usar todo lo que contiene, o vídeos e imágenes sueltos. Pulsa una miniatura para verla.'}</div>
         </div>
       )}
       {ver && (
         <div onClick={() => setVer(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
           <div onClick={e => e.stopPropagation()} style={{ width: 'min(460px, 100%)', background: '#0f0f0f', borderRadius: 12, padding: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}><div style={{ flex: 1, fontSize: '0.85rem', wordBreak: 'break-word' }}>{ver.nombre}</div><button type="button" className="ap-btn ap-btn-sm" onClick={() => setVer(null)}><X size={13} /></button></div>
-            {ver.tipo === 'video' ? <iframe title="vista previa" src={'https://drive.google.com/file/d/' + ver.id + '/preview'} allow="autoplay" style={{ width: '100%', aspectRatio: '9 / 14', border: 0, borderRadius: 8, background: '#000' }} /> : <img src={urlMiniatura(ver.id)} alt="" style={{ width: '100%', borderRadius: 8 }} />}
+            {ver.tipo === 'video' || ver.tipo === 'audio' ? <iframe title="vista previa" src={'https://drive.google.com/file/d/' + ver.id + '/preview'} allow="autoplay" style={{ width: '100%', aspectRatio: '9 / 14', border: 0, borderRadius: 8, background: '#000' }} /> : <img src={urlMiniatura(ver.id)} alt="" style={{ width: '100%', borderRadius: 8 }} />}
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}><button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => { alterna(ver); setVer(null); }}>{esta(ver.id) ? 'Quitar de la selección' : 'Usar en el vídeo'}</button></div>
-            {ver.tipo === 'video' && <div style={{ ...mut, marginTop: 6 }}>La vista previa usa tu sesión de Google: si no carga, inicia sesión en Drive con tu cuenta de Ranuse.</div>}
+            {(ver.tipo === 'video' || ver.tipo === 'audio') && <div style={{ ...mut, marginTop: 6 }}>La vista previa usa tu sesión de Google: si no carga, inicia sesión en Drive con tu cuenta de Ranuse.</div>}
           </div>
         </div>
       )}
@@ -75,15 +76,16 @@ function Explorador({ seleccion, onCambio }) {
 }
 
 function Nuevo({ formatos, musica, carpetas, onCreado }) {
-  const [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [prog, setProg] = useState(null), [error, setError] = useState('');
+  const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
   const enviar = async () => {
-    if (!file || !fmt) return; setError(''); setProg(0);
+    const dDrive = tipo === 'base' || origen === 'drive';
+    if ((dDrive ? !base.length : !file) || !fmt) return; setError(''); setProg(0);
     try {
-      const ruta = await subirArchivo(file, setProg);
-      await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: file.name, indicaciones: notas, musica: mus, recursos: tipo === 'voz' ? recursos : [] });
-      setFile(null); setNotas(''); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
+      if (dDrive) await api.post('/estudio-video/trabajos', { tipo, formato: fmt, base: base[0], nombre_archivo: base[0].nombre, indicaciones: notas, musica: mus, recursos });
+      else { const ruta = await subirArchivo(file, setProg); await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: file.name, indicaciones: notas, musica: mus, recursos }); }
+      setFile(null); setBase([]); setNotas(''); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
     } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo enviar'); setProg(null); }
   };
   const opcion = (id, Icono, titulo, sub) => (
@@ -99,19 +101,30 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         {opcion('voz', Mic, 'Tengo la voz en off', 'Audio o vídeo hablando. La IA monta las escenas encima.')}
         {opcion('bruto', Video, 'Subo el bruto', 'Vídeo grabado hablando a cámara: corta pausas y pone subtítulos.')}
+        {opcion('base', Film, 'Vídeo de Drive como base', 'Eliges un vídeo de Drive y la IA superpone clips e imágenes del resto en los momentos clave.')}
       </div>
+      {tipo !== 'base' && (<>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        <button type="button" className={'ap-btn ap-btn-sm' + (origen === 'dispositivo' ? ' ap-btn-primary' : '')} onClick={() => setOrigen('dispositivo')}><Upload size={12} /> Desde el dispositivo</button>
+        <button type="button" className={'ap-btn ap-btn-sm' + (origen === 'drive' ? ' ap-btn-primary' : '')} onClick={() => setOrigen('drive')}><Folder size={12} /> Desde Drive</button>
+      </div>
+      {origen === 'drive' && <Explorador seleccion={base} onCambio={setBase} max={1} titulo={tipo === 'voz' ? 'Audio o vídeo con la voz (de Drive)' : 'Vídeo en bruto (de Drive)'} vacio="Elegir archivo de Drive" />}
+      {origen !== 'drive' && (<>
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>{tipo === 'voz' ? 'Audio o vídeo con la voz' : 'Vídeo en bruto'}</label>
       <input ref={inp} type="file" accept={tipo === 'voz' ? 'audio/*,video/*' : 'video/*'} onChange={e => setFile(e.target.files?.[0] || null)} className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} />
+      </>)}
+      </>)}
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Formato</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
       {formatos.find(f => f.id === fmt)?.descripcion && <div style={{ ...mut, marginTop: -4, marginBottom: 10 }}>{formatos.find(f => f.id === fmt).descripcion}</div>}
-      {tipo === 'voz' && <Explorador seleccion={recursos} onCambio={setRecursos} />}
+      {tipo === 'base' && <Explorador seleccion={base} onCambio={setBase} max={1} titulo="Vídeo base (el que se ve de fondo, con su voz)" vacio="Elegir el vídeo base" />}
+      <Explorador seleccion={recursos} onCambio={setRecursos} titulo={tipo === 'voz' ? 'Recursos (de dónde salen las escenas)' : 'Recursos para superponer en momentos clave (opcional)'} vacio={tipo === 'voz' ? 'Todo Drive indexado' : 'Todo Drive indexado / elegir recursos'} />
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Música de fondo</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={mus} onChange={e => setMus(e.target.value)}><option value="auto">Automática (la IA elige la que mejor encaje)</option><option value="ninguna">Sin música</option>{musica.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.bpm ? ' · ' + Math.round(p.bpm) + ' bpm' : ''}</option>)}</select>
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Indicaciones (opcional)</label>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 60, marginBottom: 10 }} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Ej.: enseña el proyecto de Rivas, tono directo, que empiece con un plano de obra…" />
       {error && <div className="ap-error" style={{ marginBottom: 8 }}>{error}</div>}
-      <button className="ap-btn ap-btn-primary" disabled={!file || !fmt || prog !== null} onClick={enviar}>{prog !== null ? <><Loader2 size={14} /> Subiendo {prog}%</> : <><Wand2 size={14} /> Editar vídeo</>}</button>
+      <button className="ap-btn ap-btn-primary" disabled={((tipo === 'base' || origen === 'drive') ? !base.length : !file) || !fmt || prog !== null} onClick={enviar}>{prog !== null ? <><Loader2 size={14} /> Subiendo {prog}%</> : <><Wand2 size={14} /> Editar vídeo</>}</button>
     </div>
   );
 }
@@ -127,7 +140,7 @@ function Trabajo({ t, formatos, onCambio }) {
         <Film size={15} /><div style={{ fontWeight: 600, flex: 1, minWidth: 140, wordBreak: 'break-word' }}>{t.plan?.titulo || t.nombre_archivo || 'Vídeo'}{t.version > 1 ? ' · v' + t.version : ''}</div>
         <span style={{ fontSize: '0.72rem', color, border: '1px solid ' + color, borderRadius: 20, padding: '1px 9px' }}>{txt}</span>
       </div>
-      <div style={{ ...mut, marginTop: 4 }}>{t.formato_nombre} · {t.tipo === 'voz' ? 'voz en off' : 'bruto'} · {fmtFecha(t.creado)}{t.por ? ' · ' + t.por : ''}</div>
+      <div style={{ ...mut, marginTop: 4 }}>{t.formato_nombre} · {t.tipo === 'voz' ? 'voz en off' : t.tipo === 'base' ? 'base de Drive' : 'bruto'} · {fmtFecha(t.creado)}{t.por ? ' · ' + t.por : ''}</div>
       {t.estado !== 'listo' && t.estado !== 'error' && <div style={{ ...mut, marginTop: 6 }}>{t.progreso}</div>}
       {t.estado === 'error' && <div className="ap-error" style={{ marginTop: 8 }}>{t.error || 'Ha fallado el montaje.'}</div>}
       {t.indicaciones && <div style={{ ...mut, marginTop: 6, whiteSpace: 'pre-wrap' }}>“{t.indicaciones}”</div>}

@@ -34,7 +34,7 @@ export async function hijos(id) {
   const c = cache.get(id); if (c && Date.now() - c.t < 60000) return c.d;
   const out = []; let pageToken;
   do { const j = await api('files', { q: "'" + id + "' in parents and trashed=false", pageSize: '200', orderBy: 'folder,name_natural', fields: 'nextPageToken,files(' + CAMPOS + ')', ...(pageToken ? { pageToken } : {}) }); out.push(...(j.files || [])); pageToken = j.nextPageToken; } while (pageToken);
-  const d = out.map(f => ({ id: f.id, nombre: f.name, tipo: f.mimeType === 'application/vnd.google-apps.folder' ? 'carpeta' : /^video\//.test(f.mimeType) ? 'video' : /^image\//.test(f.mimeType) ? 'imagen' : 'otro', tam: Number(f.size || 0), duracion: f.videoMediaMetadata ? Math.round(Number(f.videoMediaMetadata.durationMillis || 0) / 1000) : null, ancho: f.videoMediaMetadata?.width || f.imageMediaMetadata?.width || null, alto: f.videoMediaMetadata?.height || f.imageMediaMetadata?.height || null, fecha: f.modifiedTime }))
+  const d = out.map(f => ({ id: f.id, nombre: f.name, tipo: f.mimeType === 'application/vnd.google-apps.folder' ? 'carpeta' : /^video\//.test(f.mimeType) ? 'video' : /^image\//.test(f.mimeType) ? 'imagen' : /^audio\//.test(f.mimeType) ? 'audio' : 'otro', tam: Number(f.size || 0), duracion: f.videoMediaMetadata ? Math.round(Number(f.videoMediaMetadata.durationMillis || 0) / 1000) : null, ancho: f.videoMediaMetadata?.width || f.imageMediaMetadata?.width || null, alto: f.videoMediaMetadata?.height || f.imageMediaMetadata?.height || null, fecha: f.modifiedTime }))
     .filter(f => f.tipo !== 'otro'); cache.set(id, { t: Date.now(), d }); return d;
 }
 export async function miniatura(id) {

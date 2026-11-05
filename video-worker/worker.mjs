@@ -4,6 +4,9 @@ import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { spawnSync, spawn } from 'child_process';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
+import * as drive from './drive.mjs';
 
 const require = createRequire(new URL('../server/package.json', import.meta.url));
 const { createClient } = require('@supabase/supabase-js');
@@ -56,19 +59,29 @@ function indiceTotal(dir, sel) {
 async function procesa(t) {
   const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
   await paso(t, 'Descargando el archivo…', { estado: 'procesando', empezado: new Date().toISOString() });
-  const u = await st.createSignedUrl(t.archivo, 600); if (!u.data?.signedUrl) throw new Error('No encuentro el archivo subido');
-  const ext = path.extname(t.archivo) || '.mp4', entrada = path.join(dir, 'entrada' + ext);
-  const rs = await fetch(u.data.signedUrl); if (!rs.ok) throw new Error('No se pudo descargar el archivo (' + rs.status + ')');
-  fs.writeFileSync(entrada, Buffer.from(await rs.arrayBuffer()));
+  let entrada;
+  if (t.base) {
+    const meta = await drive.meta(t.base.id); if (Number(meta.size) > 6e9) throw new Error('El archivo de Drive pesa ' + (Number(meta.size) / 1e9).toFixed(1) + ' GB; usa uno de menos de 6 GB (o un trozo)');
+    entrada = path.join(dir, 'base' + (path.extname(meta.name) || '.mp4')); await paso(t, 'Bajando el archivo de Drive (' + Math.round(Number(meta.size) / 1e6) + ' MB)…');
+    const { url, cabeceras } = await drive.urlDescarga(t.base.id); const rs = await fetch(url, { headers: cabeceras }); if (!rs.ok) throw new Error('No se pudo bajar el vídeo base de Drive (' + rs.status + ')');
+    await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(entrada));
+  } else {
+    const u = await st.createSignedUrl(t.archivo, 600); if (!u.data?.signedUrl) throw new Error('No encuentro el archivo subido');
+    const ext = path.extname(t.archivo) || '.mp4'; entrada = path.join(dir, 'entrada' + ext);
+    const rs = await fetch(u.data.signedUrl); if (!rs.ok) throw new Error('No se pudo descargar el archivo (' + rs.status + ')');
+    fs.writeFileSync(entrada, Buffer.from(await rs.arrayBuffer()));
+  }
   fs.writeFileSync(path.join(dir, 'receta.json'), JSON.stringify(t.receta || {}));
   const notas = [t.notas_formato, t.indicaciones].filter(Boolean).join('\n');
   const salida = path.join(dir, 'salida.mp4');
-  await paso(t, t.tipo === 'voz' ? 'La IA está eligiendo escenas y montando…' : 'Quitando pausas y poniendo subtítulos…');
+  await paso(t, t.tipo === 'voz' ? 'La IA está eligiendo escenas y montando…' : t.tipo === 'base' ? 'Montando sobre el vídeo base y superponiendo escenas…' : 'Quitando pausas y poniendo subtítulos…');
   try { await sincronizaMusica(); } catch (e) { console.log('Música sin sincronizar:', e.message); }
   let indiceUsar = INDICE, seleccion = {};
-  if (t.tipo === 'voz') { const rec = Array.isArray(t.recursos) ? t.recursos : []; seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
+  const rec0 = Array.isArray(t.recursos) ? t.recursos : [];
+  if (t.tipo === 'voz' || t.tipo === 'base' || rec0.length) { const rec = rec0; seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
+  const conInserciones = t.tipo === 'base' || rec0.length > 0;
   const script = t.tipo === 'voz' ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
-  const r = run('node', script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
+  const r = run('node', script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
   console.log((r.stdout || '').split('\n').slice(-6).join('\n'));
   if (!fs.existsSync(salida)) throw new Error('El montaje no ha producido vídeo. ' + ((r.stdout || '') + (r.stderr || '')).slice(-300));
   try { await publicaIndiceMusica(); } catch { /* el índice se publica la próxima vez */ }
