@@ -22,7 +22,7 @@ async function subirArchivo(file, onProgreso, tipo) {
 }
 
 const fmtDur = (s) => (s == null ? '' : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'));
-const urlMiniatura = (id) => { let t = ''; try { t = localStorage.getItem('token') || ''; } catch { /* sin token */ } return (api.defaults.baseURL || '/api') + '/estudio-video/drive/miniatura/' + id + '?t=' + encodeURIComponent(t); };
+const urlMiniatura = (id) => { let t = ''; try { t = localStorage.getItem('admin_token') || ''; } catch { /* sin token */ } return (api.defaults.baseURL || '/api') + '/estudio-video/drive/miniatura/' + id + '?t=' + encodeURIComponent(t); };
 
 function Explorador({ seleccion, onCambio }) {
   const [abierto, setAbierto] = useState(false), [ruta, setRuta] = useState([]), [items, setItems] = useState(null), [error, setError] = useState(''), [ver, setVer] = useState(null);
