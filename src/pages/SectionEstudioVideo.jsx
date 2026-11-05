@@ -32,17 +32,19 @@ function Nuevo({ formatos, onCreado }) {
       setFile(null); setNotas(''); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
     } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo enviar'); setProg(null); }
   };
-  const Opcion = ({ id, Icono, titulo, sub }) => (
-    <button onClick={() => setTipo(id)} className="ap-btn" style={{ flex: 1, minWidth: 150, textAlign: 'left', padding: '0.7rem', borderColor: tipo === id ? 'rgba(242,196,109,0.7)' : undefined, background: tipo === id ? 'rgba(242,196,109,0.08)' : undefined }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}><Icono size={15} /> {titulo}</div><div style={{ ...mut, marginTop: 3 }}>{sub}</div>
-    </button>
+  const opcion = (id, Icono, titulo, sub) => (
+    <div key={id} role="button" tabIndex={0} onClick={() => setTipo(id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setTipo(id); }}
+      style={{ flex: '1 1 220px', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'left', padding: '0.75rem 0.9rem', borderRadius: 10, color: '#fff', whiteSpace: 'normal', lineHeight: 1.35, border: '1px solid ' + (tipo === id ? 'rgba(242,196,109,0.8)' : 'rgba(255,255,255,0.12)'), background: tipo === id ? 'rgba(242,196,109,0.09)' : 'rgba(255,255,255,0.03)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: '0.9rem' }}><Icono size={15} /> {titulo}</div>
+      <div style={{ ...mut, marginTop: 4, fontWeight: 400 }}>{sub}</div>
+    </div>
   );
   return (
     <div style={card}>
       <div style={{ fontWeight: 600, marginBottom: 10 }}>Nuevo vídeo</div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        <Opcion id="voz" Icono={Mic} titulo="Tengo la voz en off" sub="Audio o vídeo hablando. La IA monta las escenas encima." />
-        <Opcion id="bruto" Icono={Video} titulo="Subo el bruto" sub="Vídeo grabado hablando a cámara: corta pausas y pone subtítulos." />
+        {opcion('voz', Mic, 'Tengo la voz en off', 'Audio o vídeo hablando. La IA monta las escenas encima.')}
+        {opcion('bruto', Video, 'Subo el bruto', 'Vídeo grabado hablando a cámara: corta pausas y pone subtítulos.')}
       </div>
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>{tipo === 'voz' ? 'Audio o vídeo con la voz' : 'Vídeo en bruto'}</label>
       <input ref={inp} type="file" accept={tipo === 'voz' ? 'audio/*,video/*' : 'video/*'} onChange={e => setFile(e.target.files?.[0] || null)} className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} />
