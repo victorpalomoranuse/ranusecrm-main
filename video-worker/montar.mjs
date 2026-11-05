@@ -50,6 +50,7 @@ run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', VOZ, '-vn', '-a
 run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', VOZ, '-vn', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', path.join(work, 'voz48_orig.wav')]);
 let durVoz = Number(run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', wav]).stdout) || 0;
 console.log('Voz:', durVoz.toFixed(1), 's');
+if (!durVoz) { console.log('FALLO: no he podido leer el audio del archivo (¿falta ffmpeg o el archivo no tiene sonido?)'); process.exit(1); }
 
 // 2) transcripción por palabras (en la nube se cambia por Groq)
 const wj = path.join(work, 'palabras');

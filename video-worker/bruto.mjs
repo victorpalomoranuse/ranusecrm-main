@@ -44,6 +44,7 @@ const claude = async (content, max = 1500) => {
 const pr = JSON.parse(run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:stream_side_data=rotation:format=duration', '-of', 'json', ENTRADA]).stdout);
 let W = pr.streams[0].width, H = pr.streams[0].height; const rot = Math.abs(Number(pr.streams[0].side_data_list?.[0]?.rotation || 0)); if (rot === 90 || rot === 270) [W, H] = [H, W];
 const dur = Number(pr.format.duration) || 0; console.log('Bruto:', W + 'x' + H, dur.toFixed(1), 's');
+if (!dur) { console.log('FALLO: no he podido leer el vídeo (¿falta ffmpeg o el archivo está dañado?)'); process.exit(1); }
 
 // ---- voz -> palabras ----
 const wav = path.join(work, 'voz.wav'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', ENTRADA, '-vn', '-ac', '1', '-ar', '16000', wav]);

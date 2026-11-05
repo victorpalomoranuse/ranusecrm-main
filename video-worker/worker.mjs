@@ -8,6 +8,9 @@ import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import * as drive from './drive.mjs';
 
+// ffmpeg siempre disponible, arranque el trabajador desde donde arranque
+const FFMPEG_DIR = process.env.FFMPEG_BIN || 'C:/Users/cashc/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-9.0.2-full_build/bin';
+if (fs.existsSync(FFMPEG_DIR)) process.env.PATH = FFMPEG_DIR + ';' + (process.env.PATH || '');
 const require = createRequire(new URL('../server/package.json', import.meta.url));
 const { createClient } = require('@supabase/supabase-js');
 const INDICE = path.resolve(process.argv[2] || new URL('./datos/piloto/indice.json', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
@@ -83,7 +86,7 @@ async function procesa(t) {
   const script = t.tipo === 'voz' ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
   const r = run('node', script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
   console.log((r.stdout || '').split('\n').slice(-6).join('\n'));
-  if (!fs.existsSync(salida)) throw new Error('El montaje no ha producido vídeo. ' + ((r.stdout || '') + (r.stderr || '')).slice(-300));
+  if (!fs.existsSync(salida)) { const txt = ((r.stdout || '') + (r.stderr || '')); const fallo = /FALLO:[^\r\n]*/.exec(txt)?.[0]; throw new Error(fallo ? 'El montaje se ha parado. ' + fallo : 'El montaje no ha producido vídeo. ' + txt.slice(-300)); }
   try { await publicaIndiceMusica(); } catch { /* el índice se publica la próxima vez */ }
   await paso(t, 'Preparando el archivo final…');
   const final = path.join(dir, 'final.mp4'), movil = path.join(dir, 'movil.mp4');
