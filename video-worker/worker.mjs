@@ -3,7 +3,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
-import { spawnSync } from 'child_process';
+import { spawnSync, spawn } from 'child_process';
 
 const require = createRequire(new URL('../server/package.json', import.meta.url));
 const { createClient } = require('@supabase/supabase-js');
@@ -85,6 +85,17 @@ async function procesa(t) {
 
 console.log('Trabajador de vídeo en marcha. Índice:', INDICE);
 try { await publicaCarpetas(); } catch (e) { console.log('Carpetas sin publicar:', e.message); }
+// Cada hora indexa los vídeos nuevos que se hayan subido a Drive (solo procesa los que faltan; si ya hay un indexado en marcha, espera)
+const ID_REDES = '1pujuBkWSoeFTDg9vc_jwD--9v0IWB8vE';
+let sync = null;
+function sincronizaDrive() {
+  const dirRedes = new URL('./datos/drive-redes/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  try { if (sync || Date.now() - fs.statSync(path.join(dirRedes, 'indice.json')).mtimeMs < 5 * 60000) return; } catch { /* sin índice aún */ }
+  console.log('Buscando vídeos nuevos en Drive…');
+  sync = spawn('node', ['indexar-drive.mjs', ID_REDES, dirRedes, '8', '3'], { cwd: AQUI, stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
+  sync.on('close', () => { sync = null; });
+}
+setInterval(sincronizaDrive, 60 * 60 * 1000);
 for (;;) {
   try {
     const { data } = await st.list('trabajos', { limit: 60, sortBy: { column: 'created_at', order: 'asc' } });
