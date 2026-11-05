@@ -4,6 +4,7 @@ import { callClaude } from './anthropic.js';
 import { uploadDiagnosisImage, uploadProjectDocument, uploadReferenceImage, uploadProjectRender } from './storage.js';
 import { renderDesdeFoto, imagenDesdeTexto, editarFoto } from './render-asistente.js';
 import { internalAdminToken } from './internal-auth.js';
+import { infoPdf, paginaAImagen, escalaDe, construirPlano, registroPlano } from './plano-asistente.js';
 import { crearInformePdf } from './pdf-informe.js';
 
 // Cerebro del asistente personal de Víctor (lo usan WhatsApp y Telegram).
@@ -17,6 +18,14 @@ export const RUTA_RECORD = 'crm/asistente/recordatorios.json';
 export const RUTA_DIARIO = 'crm/asistente/diario.json';
 export const RUTA_PRIV = 'crm/asistente/privado.json'; // recuerdos personales: NO se ven en el CRM
 const RUTA_AG = 'crm/asistente/agentes.json';
+const recientes = new Map(); // archivos que Víctor mandó hace poco (por conversación), para poder usarlos en mensajes posteriores
+let lectorPlano = async (im, nota) => {
+  const r = await fetch(BASE_INTERNA + '/api/medicion/plano-ia', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + internalAdminToken() }, body: JSON.stringify({ imagen: im.data, w: im.w, h: im.h, nota }) });
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || ('error ' + r.status)); return j;
+};
+export function ponLectorPlano(f) { lectorPlano = f; }
+let adminIdCache = null;
+async function adminId() { if (adminIdCache) return adminIdCache; const { data } = await supabase.from('users').select('id').eq('role', 'admin_superior').order('created_at', { ascending: true }).limit(1).maybeSingle(); adminIdCache = data?.id || null; return adminIdCache; }
 const RUTA_ACC = 'crm/asistente/acciones.json';
 const BASE_INTERNA = process.env.ASIST_BASE_URL || ('http://127.0.0.1:' + (process.env.PORT || 3001));
 const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
@@ -81,6 +90,7 @@ const TOOLS = [
   { name: 'agenda_de_hoy', description: 'Tareas pendientes que vencen hoy o están atrasadas, tareas sin fecha y eventos de hoy. Úsala cuando Víctor salude por la mañana, pregunte qué tiene que hacer o cómo va el día.', input_schema: { type: 'object', properties: {} } },
   { name: 'apuntar_diario', description: 'Apunta en el diario de trabajo de Víctor lo que ha hecho (hoy o el día que diga): resumen breve, proyectos tocados y logros. Úsala siempre que él te cuente lo que ha estado haciendo. Es parte de tu aprendizaje: con el diario conoces su ritmo y sus procesos reales.', input_schema: { type: 'object', properties: { resumen: { type: 'string' }, proyectos: { type: 'array', items: { type: 'string' } }, logros: { type: 'array', items: { type: 'string' } }, fecha: { type: 'string', description: 'AAAA-MM-DD, por defecto hoy' } }, required: ['resumen'] } },
   { name: 'ver_diario', description: 'Lee el diario de trabajo de Víctor de los últimos días (por defecto 7). Úsala cuando pregunte qué hizo, cómo fue la semana, o para dar consejo basado en cómo trabaja.', input_schema: { type: 'object', properties: { dias: { type: 'number' } } } },
+  { name: 'crear_plano', description: 'Crea en la herramienta Planos del CRM un plano nuevo del ESTADO ACTUAL de un proyecto (muros, puertas, ventanas y pilares) a partir de un PDF o imagen de plano que Víctor te ha mandado (adjunto). Usa la misma lectura con IA que el botón de importar de Planos. Es un BORRADOR: dile siempre que revise medidas, puertas y pilares sobre el plano del cliente. Si el PDF tiene varias páginas, indica pagina (el número de la lámina que es la planta); si no lo sabes, la herramienta te devuelve la lista de páginas para que se lo preguntes. Si el plano no trae cotas legibles, pasa medida_muro_mas_largo_cm (lo que mide en la realidad el muro más largo). Hace falta el proyecto.', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, proyecto: { type: 'string' }, pagina: { type: 'number' }, nombre: { type: 'string', description: 'nombre del plano; por defecto el del proyecto' }, medida_muro_mas_largo_cm: { type: 'number' } }, required: ['adjunto', 'proyecto'] } },
   { name: 'crear_proyecto', description: 'Crea un proyecto nuevo en el CRM (igual que desde Proyectos: con su fase 0, las tareas de la plantilla de esa fase y su código de acceso). Hace falta nombre del proyecto y del cliente; tipo "comercial" (gimnasio o local) o "home_gym" (gimnasio en casa), deduce el tipo del contexto si puedes. Crea sin pedir más datos de los imprescindibles. Después, si había una tarea tipo "crear proyecto X", ofrécele marcarla como hecha.', input_schema: { type: 'object', properties: { proyecto: { type: 'string', description: 'nombre del proyecto, p. ej. "Adil Gym Marruecos"' }, cliente: { type: 'string' }, tipo: { type: 'string', enum: ['comercial', 'home_gym'] }, email: { type: 'string' }, urgencia: { type: 'string', enum: ['baja', 'normal', 'alta'] }, responsable: { type: 'string', description: 'nombre de quien lo lleva, opcional' }, notas: { type: 'string' }, forzar: { type: 'boolean', description: 'true solo si ya existe uno parecido y Víctor confirma que quiere otro' } }, required: ['proyecto', 'cliente'] } },
   { name: 'contexto_proyecto', description: 'Todo lo que hay de un proyecto para poder asesorar y desglosar trabajo: ficha, fase, urgencia, resumen del cliente y programa de necesidades, equipos y materiales elegidos, documentos y renders que ya existen, y tareas pendientes. Úsala antes de desglosar una tarea o dar consejo de un proyecto concreto.', input_schema: { type: 'object', properties: { proyecto: { type: 'string' } }, required: ['proyecto'] } },
   { name: 'plantillas_fase', description: 'Las plantillas de tareas que Ranuse tiene definidas para cada fase del proyecto (0-5). Úsalas como base al desglosar el trabajo de una fase y complétalas con tu criterio. fase vacía = todas.', input_schema: { type: 'object', properties: { fase: { type: 'number' } } } },
@@ -149,6 +159,34 @@ async function ejecutar(nombre, input, ctx = {}) {
   if (nombre === 'ver_diario') {
     const d = await leerJson(RUTA_DIARIO, { entradas: [] }), n = Math.min(60, Math.max(1, Math.round(Number(input.dias)) || 7)), desde = new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
     return { entradas: d.entradas.filter(e => e.fecha >= desde).slice(-40) };
+  }
+  if (nombre === 'crear_plano') {
+    const a = (ctx.adjuntos || []).find(x => x.id === input.adjunto); if (!a) return { error: 'No encuentro ese adjunto.' };
+    const p = await proyectoPor(input.proyecto); if (!p) return { error: 'No encuentro ese proyecto. Dime a cuál va el plano.' };
+    const esPdf = a.mime === 'application/pdf', esImg = /^image\/(jpeg|png|webp)$/.test(a.mime); if (!esPdf && !esImg) return { error: 'Necesito un PDF o una imagen (jpg, png, webp) del plano.' };
+    let im;
+    try {
+      if (esPdf) {
+        const info = infoPdf(a.buffer); let pag = Math.round(Number(input.pagina)) || 0;
+        if (!pag && info.paginas === 1) pag = 1;
+        if (!pag) return { error: 'El PDF tiene ' + info.paginas + ' páginas. Pregúntale a Víctor cuál es la planta (estado actual) que quiere llevar a Planos.', paginas: info.lista.map(x => 'p' + x.n + ': ' + x.texto) };
+        im = paginaAImagen(a.buffer, pag);
+      } else { return { error: 'De momento solo sé montar el plano desde un PDF. Si es una foto o imagen, impórtala desde Planos con el botón de importar con IA.' }; }
+    } catch (e) { return { error: 'No he podido abrir el archivo: ' + e.message }; }
+    if (ctx.avisar) await ctx.avisar('Leyendo el plano, tarda un minuto…');
+    let lectura; try { lectura = await lectorPlano(im, null); } catch (e) { return { error: 'No he podido leer el plano: ' + e.message }; }
+    if (!lectura?.muros?.length) return { error: 'La IA no ha encontrado muros. Prueba con una página donde se vea la planta completa y nítida.' };
+    const es = escalaDe(lectura); let cm = es?.cm, escalaDe_ = es ? 'cotas del plano (' + es.n + ' de ' + es.de + ' coinciden)' : null;
+    if (!cm && input.medida_muro_mas_largo_cm > 20) { let Lmax = 0; lectura.muros.forEach(m => { Lmax = Math.max(Lmax, Math.hypot(m.x2 - m.x1, m.y2 - m.y1)); }); cm = Number(input.medida_muro_mas_largo_cm) / Lmax; escalaDe_ = 'la medida que Víctor ha dado del muro más largo'; }
+    if (!cm) return { error: 'El plano no trae cotas legibles. Pregúntale a Víctor cuánto mide en la realidad el muro más largo (en cm) y vuelve a llamar con medida_muro_mas_largo_cm.' };
+    let B; try { B = construirPlano({ muros: lectura.muros, puertas: lectura.puertas, ventanas: lectura.ventanas, pilares: lectura.pilares, w: lectura.w || im.w, h: lectura.h || im.h }, cm); } catch (e) { return { error: 'No he podido montar el plano: ' + e.message }; }
+    if (!B.walls.length) return { error: 'No se ha podido montar ningún muro.' };
+    const id = 'vm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), nombrePlano = String(input.nombre || p.project_name || 'Plano').slice(0, 200);
+    const reg = registroPlano({ id, B, nombre: nombrePlano, cliente: p.client_name || '', altura: 300 });
+    const uid = await adminId();
+    const { error } = await supabase.from('mediciones').insert({ id, data: reg, resumen: null, nombre: nombrePlano, cliente: String(p.client_name || '').slice(0, 200) || null, project_id: p.id, created_by: uid, updated_by: uid, updated_at: new Date().toISOString() });
+    if (error) return { error: 'El plano está leído pero no se ha podido guardar en el CRM: ' + error.message };
+    return { creado: true, donde: 'Planos de ' + (p.project_name || p.client_name) + ' (CRM), plano "' + nombrePlano + '"', muros: B.walls.length, puertas_y_ventanas: B.ops.length, pilares: B.pil.length, tamano_aprox_m: (B.extension_cm.ancho / 100).toFixed(1) + ' x ' + (B.extension_cm.alto / 100).toFixed(1), escala_sacada_de: escalaDe_, aviso_ia: lectura.aviso || null, nota: 'ES UN BORRADOR del estado actual. Dile a Víctor que lo revise sobre el plano del cliente: la escala puede desviarse unos puntos y la IA puede dejarse puertas y pilares.' };
   }
   if (nombre === 'crear_proyecto') {
     const nombreP = String(input.proyecto || '').trim(), cliente = String(input.cliente || '').trim(); if (!nombreP || !cliente) return { error: 'Faltan el nombre del proyecto o del cliente.' };
@@ -481,6 +519,7 @@ function sistema(mem, priv, acc, resumenCharla) {
     '- ERES UN EXPERTO, NO UN SECRETARIO. Víctor apunta tareas grandes ("diseño de Josema") y a veces no sabe desglosarlas: ayúdale a partir el trabajo en pasos concretos y ordenados. Primero reúne el contexto (contexto_proyecto y plantillas_fase), luego propón un desglose de hasta 8 pasos, una línea cada uno, con verbo, orden lógico, qué depende de qué y una estimación de horas; señala qué información falta pedirle al cliente. Termina preguntando si lo creas como tareas (crear_subtareas, solo con su sí). Piensa como un diseñador senior de espacios deportivos: circulaciones y distancias de seguridad entre máquinas, cargas y puntos eléctricos, suelos y acústica, ventilación y climatización, normativa, plazos de proveedores y obra, presupuesto. Da tu criterio y opinión con franqueza.\n' +
     '- Así trabaja Ranuse por fases: 0 Diseño previo (servicio de pago: renders y tour 3D; si el cliente sigue, continúa en la fase 1), 1 Arquitectura (planos: estado actual, cotas, demoliciones, distribución, implantación; docs A.01-A.04), 2 Instalaciones (IE.01 eléctrica, IE.02 climatización y fontanería si hace falta; C.01/F.01 de terceros), 3 Interiorismo y materialidad (I.01-I.03, renders R.01, tour virtual TV.01), 4 Maquinaria y equipamiento (M.02-M.03), 5 Documentación de apoyo (D.02, D.04).\n' +
     '- NO TE OLVIDES DE LO QUE TE DICE: antes de contestar que algo no lo tienes apuntado o que no te lo ha dicho, repasa la conversación, lo que has hecho tú últimamente (más abajo), las tareas (listar_tareas) y el calendario (listar_eventos). Si Víctor dice que ya te lo dijo, créele: normalmente es verdad. Nunca le hagas repetir algo que ya está apuntado. Una cita o quedada con hora va al calendario (crear_evento); una cosa por hacer, a tareas.\n' +
+    '- PLANOS: si Víctor te manda el PDF o plano de un cliente y quiere empezarlo, usa crear_plano (estado actual en la herramienta Planos, como borrador). Si el PDF tiene varias láminas, pregúntale cuál es la planta; si no hay cotas, pídele lo que mide el muro más largo. Avísale siempre de que es un borrador que debe revisar (escala, puertas, pilares) y de que el modelo 3D se genera al abrirlo en Planos.\n' +
     '- Puedes crear proyectos nuevos con crear_proyecto (nombre, cliente y tipo comercial u home_gym; deduce lo que puedas y no preguntes más de lo imprescindible). Nunca digas que no puedes crear proyectos.\n' +
     '- AVÍSALE DE LO YA APUNTADO: cuando Víctor te diga que tiene que hacer algo, antes de crear nada mira si ya hay algo relacionado (listar_tareas) y, si lo hay, recuérdaselo: "ya tenías apuntado X para el día Y, ¿lo cambio o lo sumo?". Si una herramienta te devuelve posible_duplicado, no insistas en crearlo: cuéntale lo que ya había y pregúntale.\n' +
     '- TAREAS Y ORGANIZACIÓN: cuando pida sus tareas, lo pendiente o ayuda para organizarse, usa listar_tareas y dale TODAS, no un resumen: agrupadas (atrasadas, hoy, próximas, sin fecha), una línea por tarea con su proyecto; si son más de 15, agrúpalas por proyecto con el número y ofrécele el listado completo en PDF. Después, SIEMPRE, propón su plan: las 3 prioridades de hoy en orden ("1. … 2. … 3. …") justificadas en una frase cada una (plazos, urgencia del proyecto, lo que desbloquea a otros) y pregunta si le pones fecha de hoy a esas tareas; si dice que sí, usa actualizar_tarea. Ve guiándole: cuando termine algo, ofrécele lo siguiente.\n' +
@@ -529,6 +568,7 @@ function resumenAccion(n, i, r) {
     guardar_nota_proyecto: () => 'guardada nota "' + String(i.titulo || '').slice(0, 60) + '" en ' + (r.donde || ''),
     guardar_adjunto: () => 'guardado un archivo en ' + (r.donde || ''),
     crear_proveedor: () => 'creado proveedor ' + (r.nombre || ''),
+    crear_plano: () => 'creado plano "' + (r.donde || '') + '" (' + (r.muros || 0) + ' muros)',
     crear_proyecto: () => 'creado proyecto "' + (r.proyecto || '') + '" (cliente ' + (r.cliente || '') + ')',
   }[n];
   return f ? f() : null;
@@ -550,16 +590,18 @@ export async function responderAsistente({ chatId, texto, adjuntos = [], avisar 
   const [mem, charla, priv, acc] = await Promise.all([leerJson(RUTA_MEM, { hechos: [] }), leerJson(RUTA_CHARLA, {}), leerJson(RUTA_PRIV, { hechos: [] }), leerJson(RUTA_ACC, { l: [] })]);
   if (!Array.isArray(acc.l)) acc.l = [];
   const previoCrudo = (charla[chatId] || []).slice(-40), previo = previoCrudo.map(m => ({ role: m.role, content: m.content }));
-  const ctx = { adjuntos, textoUsuario: texto, salida: [], avisar };
+  const ahoraMs = Date.now(), previos = (recientes.get(chatId) || []).filter(r => ahoraMs - r.t < 60 * 60 * 1000 && !adjuntos.find(a => a.id === r.id));
+  const ctx = { adjuntos: [...adjuntos, ...previos], textoUsuario: texto, salida: [], avisar };
+  const txtRecientes = previos.length ? '\n\nARCHIVOS que Víctor te mandó hace poco y SIGUES teniendo disponibles (puedes usarlos con sus herramientas, p. ej. guardar_adjunto, crear_plano, editar_foto): ' + previos.map(r => { let det = r.mime; if (r.mime === 'application/pdf') { try { det = 'PDF de ' + infoPdf(r.buffer).paginas + ' páginas'; } catch { det = 'PDF'; } } return r.id + ' (' + det + (r.nombre ? ', "' + r.nombre + '"' : '') + ', hace ' + Math.round((ahoraMs - r.t) / 60000) + ' min)'; }).join('; ') : '';
   const bloquesUsuario = adjuntos.length ? [
     ...adjuntos.filter(a => /^image\/(jpeg|png|webp|gif)$/.test(a.mime)).map(a => ({ type: 'image', source: { type: 'base64', media_type: a.mime, data: a.buffer.toString('base64') } })),
-    ...adjuntos.filter(a => a.mime === 'application/pdf').map(a => ({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: a.buffer.toString('base64') } })),
+    ...adjuntos.filter(a => a.mime === 'application/pdf').map(a => { try { const inf = infoPdf(a.buffer); if (inf.paginas > 6) return { type: 'text', text: '[PDF largo de ' + inf.paginas + ' páginas (' + a.id + '). Páginas: ' + inf.lista.map(x => 'p' + x.n + ': ' + x.texto.slice(0, 70)).join(' | ') + ']' }; } catch { /* se manda tal cual */ } return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: a.buffer.toString('base64') } }; }),
     { type: 'text', text: texto + '\n\n[Adjuntos recibidos: ' + adjuntos.map(a => a.id + ' (' + a.mime + (a.nombre ? ', ' + a.nombre : '') + ')').join('; ') + ']' },
   ] : texto;
   const mensajes = [...previo, { role: 'user', content: bloquesUsuario }];
   let respuesta = '';
   for (let vuelta = 0; vuelta < 7; vuelta++) {
-    const out = await callClaude({ system: sistema(mem, priv, acc, charla['_resumen:' + chatId]), messages: mensajes, tools: TOOLS, maxTokens: 2500 });
+    const out = await callClaude({ system: sistema(mem, priv, acc, charla['_resumen:' + chatId]) + txtRecientes, messages: mensajes, tools: TOOLS, maxTokens: 2500 });
     const bloques = out.content || [];
     const usos = bloques.filter(b => b.type === 'tool_use');
     if (out.stop_reason !== 'tool_use' || !usos.length) { respuesta = bloques.filter(b => b.type === 'text').map(b => b.text).join('\n').trim(); break; }
@@ -575,5 +617,6 @@ export async function responderAsistente({ chatId, texto, adjuntos = [], avisar 
   charla[chatId] = nuevaCharla;
   try { acc.l = acc.l.slice(-60); await guardarJson(RUTA_ACC, acc); } catch { /* no crítico */ }
   try { await guardarJson(RUTA_CHARLA, charla); } catch (e) { console.error('Asistente: no se pudo guardar la conversación:', e.message); }
+  recientes.set(chatId, [...previos, ...adjuntos.map(a => ({ ...a, t: ahoraMs }))].slice(-6));
   return { texto: respuesta, archivos: ctx.salida };
 }
