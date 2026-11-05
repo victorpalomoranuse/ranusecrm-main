@@ -88,19 +88,37 @@ let idx = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos.filter(v => v.durac
     if (f.length) idx = f; else { console.log('Nada de lo elegido está indexado; se usan todos'); idx = idx.filter(v => !v.hablando_a_camara); }
   } else idx = idx.filter(v => !v.hablando_a_camara && v.duracion >= 2);
 }
-const cat = idx.map(v => ({ id: v.id, dur: v.duracion, calidad: v.calidad, mov: v.movimiento, resumen: v.resumen, planos: v.planos.map(p => p.t + 's: ' + p.descripcion) }));
+const llamaClaude = async (content, max = 3000) => { const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: max, messages: [{ role: 'user', content }] }) }); const j = await r.json(); if (!r.ok) throw new Error('Claude ' + r.status); return JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]); };
+// Si hay mucho material (una carpeta entera), la IA primero se queda con los ~110 vídeos que tienen que ver con lo que se dice
+if (idx.length > 120) {
+  try {
+    const lineas = idx.map(v => v.id + ' | ' + String(v.resumen || '').slice(0, 110) + ' | ' + (v.etiquetas || []).slice(0, 6).join(', ')).join('\n');
+    const r = await llamaClaude('Vas a montar un vídeo de Ranuse Design (gimnasios y espacios deportivos) sobre esta voz: "' + palabras.map(w => w.t).join(' ').slice(0, 3500) + '"\n\nCATÁLOGO (id | resumen | etiquetas), ' + idx.length + ' vídeos:\n' + lineas.slice(0, 60000) + '\n\nElige los 110 vídeos con MÁS relación con los temas de la voz (espacios, máquinas, materiales, procesos que se mencionan) y con variedad entre ellos. Responde SOLO JSON {"ids":["id"]}.', 3000);
+    const sel = new Set(r.ids || []); const f = idx.filter(v => sel.has(v.id)); if (f.length >= 20) { console.log('Preselección por tema:', f.length, 'de', idx.length, 'vídeos'); idx = f; }
+  } catch (e) { console.log('Sin preselección por tema:', e.message); idx = idx.slice(0, 110); }
+}
+const compacto = v => ({ id: v.id, dur: v.duracion, calidad: v.calidad, resumen: v.resumen, etiquetas: (v.etiquetas || []).slice(0, 8), planos: (v.planos || []).slice(0, 6).map(p => p.t + 's: ' + String(p.descripcion).slice(0, 100)) });
+const cat = idx.map(compacto);
 const guion = palabras.map((w, i) => i + ':' + w.t + '@' + w.de.toFixed(1)).join(' ');
 const planF = path.join(work, 'plan.json'); let plan;
 if (process.env.REUSE && fs.existsSync(planF)) plan = JSON.parse(fs.readFileSync(planF, 'utf8'));
 else {
   const prompt = 'Eres montador de vídeo de Ranuse Design (diseño de gimnasios y espacios deportivos). Tienes la voz en off de un vídeo vertical para Instagram/TikTok y un catálogo de escenas en bruto. Monta un vídeo PROFESIONAL, DINÁMICO y SERIO (sin humor, sin emojis; sensación de marca premium).\n\nVOZ EN OFF (índice:palabra@segundo): ' + guion + '\n\nDuración total: ' + durVoz.toFixed(1) + ' s.\n\nCATÁLOGO (id, duración en s, planos con su segundo):\n' + JSON.stringify(cat) + '\n\n' + (NOTAS ? 'INDICACIONES DEL EQUIPO: ' + NOTAS + '\n\n' : '') +
-    'Reglas: 1) Ritmo rápido: cortes de ' + RECETA.corte.min + ' a ' + RECETA.corte.max + ' s siguiendo el sentido de las frases; cambia de plano al cambiar de idea o cada pocas palabras. La primera palabra de cada corte es el índice "de"; cada corte llega hasta justo antes del siguiente; el primero empieza en la palabra 0. 2) Para cada corte elige la escena del catálogo que ilustre lo que se dice; si no hay nada literal, el plano de mejor ambiente/calidad (prefiere calidad alta; evita planos oscuros o borrosos). ' + (idx.length < 6 ? 'Hay pocos vídeos disponibles: reutilízalos con tramos DISTINTOS ("desde" puede ser cualquier segundo del vídeo, no solo los listados), sin repetir el mismo tramo ni el mismo vídeo en cortes seguidos.' : 'No repitas el mismo vídeo en cortes seguidos; puedes reutilizar un vídeo con otro tramo ("desde" distinto).') + ' 3) "desde" = segundo del vídeo donde empieza el plano (usa los segundos de los planos listados; debe cumplirse desde + duración del corte <= duración del vídeo). 4) "kicker": categoría de 2-4 palabras. "titulo": gancho serio en mayúsculas, máx. 7 palabras, sin signos de exclamación. 5) "enfasis": índices de las palabras clave de la voz (cifras, términos técnicos, la idea fuerte), unas 1 de cada 5-6 palabras. 6) Responde SOLO con JSON: {"kicker":"","titulo":"","enfasis":[0],"cortes":[{"de":0,"video":"id","desde":0.0}]}';
+    'Reglas: 1) Ritmo rápido: cortes de ' + RECETA.corte.min + ' a ' + RECETA.corte.max + ' s siguiendo el sentido de las frases; cambia de plano al cambiar de idea o cada pocas palabras. La primera palabra de cada corte es el índice "de"; cada corte llega hasta justo antes del siguiente; el primero empieza en la palabra 0. 2) COHERENCIA OBLIGATORIA: la escena de cada corte debe tener relación DIRECTA con lo que se dice en ese corte (el mismo espacio, equipamiento, material o proceso). Está PROHIBIDO usar una escena que no tenga nada que ver (comida, personas ajenas al tema, objetos sin relación). Si no hay nada literal, usa un plano genérico del espacio o del equipamiento del mismo tema, nunca algo de otro asunto. Prefiere calidad alta y evita planos oscuros o borrosos. ' + (idx.length < 6 ? 'Hay pocos vídeos disponibles: reutilízalos con tramos DISTINTOS ("desde" puede ser cualquier segundo del vídeo, no solo los listados), sin repetir el mismo tramo ni el mismo vídeo en cortes seguidos.' : 'No repitas el mismo vídeo en cortes seguidos; puedes reutilizar un vídeo con otro tramo ("desde" distinto).') + ' 3) "desde" = segundo del vídeo donde empieza el plano (usa los segundos de los planos listados; debe cumplirse desde + duración del corte <= duración del vídeo). 4) "kicker": categoría de 2-4 palabras. "titulo": gancho serio en mayúsculas, máx. 7 palabras, sin signos de exclamación. 5) "enfasis": índices de las palabras clave de la voz (cifras, términos técnicos, la idea fuerte), unas 1 de cada 5-6 palabras. 6) Responde SOLO con JSON: {"kicker":"","titulo":"","enfasis":[0],"cortes":[{"de":0,"video":"id","desde":0.0}]}';
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 8000, messages: [{ role: 'user', content: prompt }] }) });
   const j = await r.json(); if (!r.ok) { console.log('Claude error', JSON.stringify(j).slice(0, 300)); process.exit(1); }
   plan = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]);
   fs.writeFileSync(planF, JSON.stringify(plan, null, 1));
   console.log('Tokens', j.usage.input_tokens, '/', j.usage.output_tokens);
 }
+// Revisión de coherencia: una segunda pasada puntúa cada escena frente a lo que se dice y sustituye las que no encajan
+try {
+  const cs = plan.cortes.slice().sort((a, b) => a.de - b.de);
+  const items = cs.map((c, k) => { const sig = cs[k + 1]?.de ?? palabras.length, v = idx.find(x => x.id === c.video); const pl = (v?.planos || []).reduce((mm, p) => (!mm || Math.abs(p.t - (c.desde || 0)) < Math.abs(mm.t - (c.desde || 0)) ? p : mm), null); return { k, dice: palabras.slice(c.de, sig).map(w => w.t).join(' '), escena: String(v?.resumen || '').slice(0, 140) + ' | ' + String(pl?.descripcion || '').slice(0, 120) }; });
+  const r2 = await llamaClaude('Revisa la COHERENCIA entre lo que se dice y la escena que se muestra en cada corte de un vídeo de gimnasios/espacios deportivos. Puntúa de 0 a 10 la relación directa (0 = nada que ver, p. ej. comida cuando se habla de gimnasios). Devuelve SOLO los cortes con nota menor de 6, cada uno con una escena SUSTITUTA del catálogo que sí guarde relación con lo que se dice (si no hay ninguna literal, el plano más genérico del mismo tema), sin repetir la misma escena en cortes seguidos.\n\nCORTES: ' + JSON.stringify(items) + '\n\nCATÁLOGO: ' + JSON.stringify(cat) + '\n\nResponde SOLO JSON {"cambios":[{"k":0,"video":"id","desde":0.0,"motivo":"breve"}]}', 2500);
+  let n = 0; for (const ch of (r2.cambios || [])) { const c = cs[ch.k]; if (c && idx.find(x => x.id === ch.video)) { c.video = ch.video; c.desde = Number(ch.desde) || 0; n++; } }
+  if (n) { console.log('Revisión de coherencia: ' + n + ' escena(s) sustituida(s) de ' + cs.length); fs.writeFileSync(planF, JSON.stringify(plan, null, 1)); }
+} catch (e) { console.log('Sin revisión de coherencia:', e.message); }
 marca(48, 'Escenas elegidas · cortando');
 console.log('Plan:', plan.kicker, '|', plan.titulo, '|', plan.cortes.length, 'cortes');
 
@@ -125,9 +143,9 @@ const partes = []; let t0c = 0; const marcas = [];
 const dr = {}; for (const c of valido) { const v = idx.find(z => z.id === c.video); if (v?.drive_id && !dr[v.id]) { try { dr[v.id] = await drive.urlDescarga(v.drive_id); } catch (e) { console.log('Sin acceso a Drive:', e.message); } } }
 // Los vídeos de Drive que se usan muchas veces se bajan una sola vez (leerlos por red en cada corte es lentísimo con 4K)
 { const usos = {}; for (const c of valido) usos[c.video] = (usos[c.video] || 0) + 1;
-  for (const [id, r] of Object.entries(dr)) { const v = idx.find(z => z.id === id); if (!r.url || !v || usos[id] < 4 || !v.bytes || v.bytes > 4e9) continue;
+  for (const [id, r] of Object.entries(dr)) { const v = idx.find(z => z.id === id); if (!r.url || !v || usos[id] < 2 || !v.bytes || v.bytes > 3e9) continue;
     const f = path.join(work, 'fuente_' + id + (path.extname(v.nombre || '') || '.mp4'));
-    try { console.log('Bajando a local (' + Math.round(v.bytes / 1e6) + ' MB) porque se usa ' + usos[id] + ' veces…'); const rs = await fetch(r.url, { headers: r.cabeceras }); if (!rs.ok) throw new Error('HTTP ' + rs.status); await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(f)); dr[id] = { local: f }; }
+    try { console.log('Bajando a local (' + Math.round(v.bytes / 1e6) + ' MB) porque se usa ' + usos[id] + ' veces…'); let rs; for (let k = 0; k < 4; k++) { rs = await fetch(r.url, { headers: r.cabeceras }); if (rs.ok) break; await new Promise(z => setTimeout(z, 3000 * (k + 1))); } if (!rs.ok) throw new Error('HTTP ' + rs.status); await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(f)); dr[id] = { local: f }; }
     catch (e) { console.log('No se pudo bajar, se lee por red:', e.message); } } }
 const hechos = new Array(valido.length).fill(null);
 const ejecuta = (args) => new Promise(res => { const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] }); let err = ''; p.stderr.on('data', d => { err += d; }); p.on('close', () => res(err)); });
@@ -137,7 +155,13 @@ async function cortar(c, i) {
   const nf = Math.max(2, Math.round(c.dur * 30)), z1 = RECETA.zoomFinal, dir = i % 2 ? 1 : -1;
   const vf = 'scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,zoompan=z=\'' + (dir > 0 ? '1+' + (z1 - 1) + '*on/' + nf : z1 + '-' + (z1 - 1) + '*on/' + nf) + '\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=1080x1920:fps=30,' + RECETA.color + ',setsar=1,format=yuv420p';
   const loop = v.duracion < c.dur + 0.2 ? ['-stream_loop', '-1'] : [];
-  const rr = { stderr: await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', out]) };
+  let rr = { stderr: '' };
+  for (let intento = 0; intento < 4; intento++) {
+    rr = { stderr: await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', out]) };
+    if (fs.existsSync(out) && fs.statSync(out).size > 1000) break;
+    if (!/403|429|5\d\d|timed out|Connection/i.test(rr.stderr || '')) break;
+    await new Promise(r => setTimeout(r, 2500 * (intento + 1)));
+  }
   if (!fs.existsSync(out)) { console.log('corte', i, 'falló', (rr.stderr || '').slice(0, 200)); return; }
   hechos[i] = { out, ini: c.ini }; hechosN++; marca(48 + Math.round(38 * hechosN / valido.length), 'Cortando escenas ' + hechosN + ' de ' + valido.length);
 }

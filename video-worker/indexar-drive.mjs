@@ -5,15 +5,16 @@ import path from 'path';
 import { spawn } from 'child_process';
 import * as drive from './drive.mjs';
 import os from 'os';
-try { os.setPriority(0, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* sin permiso: sigue con prioridad normal */ } // el indexado de fondo no debe frenar los vídeos que se piden
+if (process.env.PRIORIDAD_NORMAL !== '1') { try { os.setPriority(0, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* sin permiso: sigue con prioridad normal */ } } // el indexado de fondo no debe frenar los vídeos que se piden
 
-const [CARPETA_ID, SALIDA, MAXF = '8', PARALELO = '3'] = process.argv.slice(2);
+const [CARPETA_ID, SALIDA, MAXF = '8', PARALELO = '3', RAIZ_ABS = ''] = process.argv.slice(2);
 if (!CARPETA_ID || !SALIDA) { console.log('Uso: node indexar-drive.mjs "<id carpeta>" "<salida>" [fotogramas] [paralelo]'); process.exit(1); }
 const ENV = Object.fromEntries(fs.readFileSync(new URL('../server/.env', import.meta.url), 'utf8').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '')]));
 fs.mkdirSync(path.join(SALIDA, 'miniaturas'), { recursive: true });
 const IDX = path.join(SALIDA, 'indice.json');
 const indice = fs.existsSync(IDX) ? JSON.parse(fs.readFileSync(IDX, 'utf8')) : { creado: new Date().toISOString(), origen: 'drive:' + CARPETA_ID, videos: [] };
 const hechos = new Set(indice.videos.map(v => v.drive_id));
+try { const om = path.join(SALIDA, 'omitir.json'); if (fs.existsSync(om)) for (const id of JSON.parse(fs.readFileSync(om, 'utf8'))) hechos.add(id); } catch { /* sin lista de omitidos */ }
 const fallos = fs.existsSync(path.join(SALIDA, 'fallos.json')) ? JSON.parse(fs.readFileSync(path.join(SALIDA, 'fallos.json'), 'utf8')) : {};
 const guarda = () => { fs.writeFileSync(IDX + '.tmp', JSON.stringify(indice)); fs.renameSync(IDX + '.tmp', IDX); fs.writeFileSync(path.join(SALIDA, 'fallos.json'), JSON.stringify(fallos)); };
 let costeTok = { e: 0, s: 0 };
@@ -41,7 +42,7 @@ async function procesa(f, ruta) {
   const d = await describe(frames, f.name, dur);
   const w = f.videoMediaMetadata?.width, h = f.videoMediaMetadata?.height;
   indice.videos.push({
-    id: f.id.slice(0, 12), drive_id: f.id, ruta: 'drive:' + f.id, nombre: f.name, carpeta: path.dirname(ruta).replace(/\\/g, '/').replace(/^\.$/, ''), bytes: Number(f.size || 0), duracion: Math.round(dur * 10) / 10, ancho: w, alto: h, vertical: h > w, fecha: f.modifiedTime?.slice(0, 10),
+    id: f.id.slice(0, 12), drive_id: f.id, ruta: 'drive:' + f.id, nombre: f.name, carpeta: path.dirname(ruta).replace(/\\/g, '/').replace(/^\.$/, ''), ruta_abs: RAIZ_ABS ? RAIZ_ABS + (path.dirname(ruta).replace(/\\/g, '/').replace(/^\.$/, '') ? '/' + path.dirname(ruta).replace(/\\/g, '/') : '') : undefined, bytes: Number(f.size || 0), duracion: Math.round(dur * 10) / 10, ancho: w, alto: h, vertical: h > w, fecha: f.modifiedTime?.slice(0, 10),
     resumen: d.resumen, tipo: d.tipo, etiquetas: d.etiquetas || [], personas: d.personas, hablando_a_camara: !!d.hablando_a_camara, calidad: d.calidad, movimiento: d.movimiento,
     planos: (d.planos || []).map(p => ({ t: Math.round((frames[(p.fotograma || 1) - 1]?.t ?? 0) * 10) / 10, miniatura: path.basename(frames[(p.fotograma || 1) - 1]?.fichero || ''), descripcion: p.descripcion, tipo_plano: p.tipo_plano, uso: p.uso })),
   });
@@ -53,6 +54,7 @@ const videos = []; const pila = CARPETA_ID.startsWith('ids:') ? [] : [{ id: CARP
 if (CARPETA_ID.startsWith('ids:')) for (const id of CARPETA_ID.slice(4).split(',').filter(Boolean)) { try { const f = await drive.meta(id); if (drive.esVideo(f)) videos.push({ f, ruta: f.name }); } catch (e) { console.log('Sin acceso a', id, e.message.slice(0, 80)); } }
 while (pila.length) { const c = pila.pop(); for (const f of await drive.hijos(c.id)) { if (drive.esCarpeta(f)) pila.push({ id: f.id, ruta: (c.ruta ? c.ruta + '/' : '') + f.name }); else if (drive.esVideo(f)) videos.push({ f, ruta: (c.ruta ? c.ruta + '/' : '') + f.name }); } }
 const pendientes = videos.filter(x => !hechos.has(x.f.id) && !fallos[x.f.id]);
+if (process.env.MAX_NUEVOS && pendientes.length > Number(process.env.MAX_NUEVOS)) { console.log('Hay', pendientes.length, 'vídeos sin indexar; se indexan los', process.env.MAX_NUEVOS, 'primeros para no tardar demasiado'); pendientes.length = Number(process.env.MAX_NUEVOS); }
 console.log('Vídeos:', videos.length, '| ya indexados:', hechos.size, '| pendientes:', pendientes.length);
 
 // 2) indexar con varios en paralelo

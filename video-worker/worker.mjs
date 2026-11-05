@@ -30,7 +30,7 @@ let ultPct = 0;
 async function pct(t, n, texto) { const ahora = Date.now(); if (ahora - ultPct < 2500 && n < 99) return; ultPct = ahora; Object.assign(t, { pct: Math.round(n), progreso: texto }); try { await guardar(t); } catch { /* se reintenta en el siguiente */ } }
 function lanzaMotor(t, script, opciones) {
   return new Promise(res => { let out = '', err = '', buf = ''; const p = spawn('node', script, { ...opciones, stdio: ['ignore', 'pipe', 'pipe'] });
-    p.stdout.on('data', d => { const x = d.toString(); out += x; buf += x; let i; while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1); const m = /^##PCT (\d+) (.*)$/.exec(l); if (m) pct(t, Number(m[1]), m[2]); } });
+    p.stdout.on('data', d => { const x = d.toString(); out += x; buf += x; let i; while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1); const m = /^##PCT (\d+) (.*)$/.exec(l); if (m) pct(t, Number(m[1]), m[2]); const k = /^OK (\d+)\/(\d+)/.exec(l); if (k && opciones.fase === 'indexado') pct(t, 6 + Math.round(18 * Number(k[1]) / Math.max(1, Number(k[2]))), 'Indexando los vídeos de la carpeta elegida (' + k[1] + ' de ' + k[2] + ')'); } });
     p.stderr.on('data', d => { err += d.toString(); }); p.on('close', () => res({ stdout: out, stderr: err })); });
 }
 async function paso(t, texto, extra = {}) { Object.assign(t, { progreso: texto }, extra); console.log('[' + t.id + '] ' + texto); await guardar(t); }
@@ -54,7 +54,12 @@ async function publicaCarpetas() {
 }
 // Junta todos los índices (piloto local, Drive redes, vídeos sueltos) y asegura que lo elegido esté indexado.
 const RAIZ_PILOTO = '5. Material audiovisual Victor', RAIZ_REDES = '4. Instagram - Tiktok - Shorts';
-function cargaIndice(f, raiz, tipo) { try { const j = JSON.parse(fs.readFileSync(f, 'utf8')); return (j.videos || []).map(v => ({ ...v, ruta_abs: raiz + (v.carpeta ? '/' + v.carpeta : '') })); } catch { return []; } }
+function cargaIndice(f, raiz, tipo) { try { const j = JSON.parse(fs.readFileSync(f, 'utf8')); return (j.videos || []).map(v => ({ ...v, ruta_abs: v.ruta_abs || (raiz + (v.carpeta ? '/' + v.carpeta : '')) })); } catch { return []; } }
+async function indexaCarpetas(t, sel, existentes) {
+  const base = new URL('./datos/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'), dirSel = path.join(base, 'drive-seleccion'); fs.mkdirSync(dirSel, { recursive: true });
+  fs.writeFileSync(path.join(dirSel, 'omitir.json'), JSON.stringify([...existentes]));
+  for (const c of (sel.carpetasId || [])) { await paso(t, 'Mirando qué vídeos hay en "' + c.nombre + '"…', { pct: 5 }); await lanzaMotor(t, ['indexar-drive.mjs', c.id, dirSel, '8', '3', c.ruta], { cwd: AQUI, env: { ...process.env, MAX_NUEVOS: '150', PRIORIDAD_NORMAL: '1' }, fase: 'indexado' }); }
+}
 function indiceTotal(dir, sel) {
   const base = new URL('./datos/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
   let todos = [...cargaIndice(INDICE, RAIZ_PILOTO), ...cargaIndice(path.join(base, 'drive-redes/indice.json'), RAIZ_REDES)];
@@ -62,7 +67,7 @@ function indiceTotal(dir, sel) {
   const faltan = (sel.videos || []).filter(z => !ids.has(z.id) && !nom.has((z.ruta ? z.ruta + '/' : '') + z.nombre));
   const fSel = path.join(base, 'drive-seleccion/indice.json');
   if (faltan.length) { console.log('Indexando', faltan.length, 'vídeo(s) elegido(s) que aún no estaban…'); spawnSync('node', ['indexar-drive.mjs', 'ids:' + faltan.map(z => z.id).join(','), path.join(base, 'drive-seleccion'), '8', '2'], { cwd: AQUI, encoding: 'utf8', env: { ...process.env, PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } }); }
-  const sueltos = cargaIndice(fSel, '').map(v => { const z = (sel.videos || []).find(q => q.id === v.drive_id); return { ...v, ruta_abs: z ? z.ruta : '' }; });
+  const sueltos = cargaIndice(fSel, '').map(v => { const z = (sel.videos || []).find(q => q.id === v.drive_id); return { ...v, ruta_abs: v.ruta_abs || (z ? z.ruta : '') }; });
   for (const v of sueltos) if (!ids.has(v.drive_id)) todos.push(v);
   const salida = path.join(dir, 'indice-total.json'); fs.writeFileSync(salida, JSON.stringify({ videos: todos })); return salida;
 }
@@ -88,7 +93,9 @@ async function procesa(t) {
   try { await sincronizaMusica(); } catch (e) { console.log('Música sin sincronizar:', e.message); }
   let indiceUsar = INDICE, seleccion = {};
   const rec0 = Array.isArray(t.recursos) ? t.recursos : [];
-  if (t.tipo === 'voz' || t.tipo === 'base' || rec0.length) { const rec = rec0; seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
+  if (t.tipo === 'voz' || t.tipo === 'base' || rec0.length) { const rec = rec0;
+    const idsExist = new Set(); for (const f of ['drive-redes/indice.json', 'drive-seleccion/indice.json']) { try { for (const v of JSON.parse(fs.readFileSync(new URL('./datos/' + f, import.meta.url), 'utf8')).videos) if (v.drive_id) idsExist.add(v.drive_id); } catch { /* sin índice */ } }
+    try { await indexaCarpetas(t, { carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }, idsExist); } catch (e) { console.log('Carpetas sin indexar del todo:', e.message); } seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
   const conInserciones = t.tipo === 'base' || rec0.length > 0;
   const script = t.tipo === 'voz' ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
   const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
