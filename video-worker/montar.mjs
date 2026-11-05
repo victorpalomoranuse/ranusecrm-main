@@ -3,7 +3,7 @@
 // El estilo vive en RECETA (después saldrá de la biblioteca de formatos del CRM).
 import fs from 'fs';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { spawnSync, spawn } from 'child_process';
 import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
 import * as drive from './drive.mjs';
 import { pipeline } from 'stream/promises';
@@ -122,16 +122,22 @@ const dr = {}; for (const c of valido) { const v = idx.find(z => z.id === c.vide
     const f = path.join(work, 'fuente_' + id + (path.extname(v.nombre || '') || '.mp4'));
     try { console.log('Bajando a local (' + Math.round(v.bytes / 1e6) + ' MB) porque se usa ' + usos[id] + ' veces…'); const rs = await fetch(r.url, { headers: r.cabeceras }); if (!rs.ok) throw new Error('HTTP ' + rs.status); await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(f)); dr[id] = { local: f }; }
     catch (e) { console.log('No se pudo bajar, se lee por red:', e.message); } } }
-valido.forEach((c, i) => {
+const hechos = new Array(valido.length).fill(null);
+const ejecuta = (args) => new Promise(res => { const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] }); let err = ''; p.stderr.on('data', d => { err += d; }); p.on('close', () => res(err)); });
+async function cortar(c, i) {
   const v = idx.find(x => x.id === c.video), out = path.join(work, 'c' + pad2(i) + '.mp4');
   const desde = Math.max(0, Math.min(Number(c.desde) || 0, Math.max(0, v.duracion - c.dur - 0.1)));
   const nf = Math.max(2, Math.round(c.dur * 30)), z1 = RECETA.zoomFinal, dir = i % 2 ? 1 : -1;
   const vf = 'scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,zoompan=z=\'' + (dir > 0 ? '1+' + (z1 - 1) + '*on/' + nf : z1 + '-' + (z1 - 1) + '*on/' + nf) + '\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=1080x1920:fps=30,' + RECETA.color + ',setsar=1,format=yuv420p';
   const loop = v.duracion < c.dur + 0.2 ? ['-stream_loop', '-1'] : [];
-  const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', out]);
+  const rr = { stderr: await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', out]) };
   if (!fs.existsSync(out)) { console.log('corte', i, 'falló', (rr.stderr || '').slice(0, 200)); return; }
-  partes.push(out); marcas.push(c.ini);
-});
+  hechos[i] = { out, ini: c.ini };
+}
+// varios cortes a la vez: el ordenador tiene de sobra para 3 procesos de ffmpeg
+{ const cola = valido.map((_, i) => i), POOL = Number(process.env.CORTES_EN_PARALELO || 3);
+  await Promise.all(Array.from({ length: POOL }, async () => { while (cola.length) { const i = cola.shift(); await cortar(valido[i], i); } })); }
+for (const h of hechos) if (h) { partes.push(h.out); marcas.push(h.ini); }
 fs.writeFileSync(path.join(work, 'lista.txt'), partes.map(p => "file '" + p.replace(/\\/g, '/') + "'").join('\n'));
 
 // 6) subtítulos "pop" de 1-2 palabras (estilo dopamínico serio) + título + flashes + barra de progreso

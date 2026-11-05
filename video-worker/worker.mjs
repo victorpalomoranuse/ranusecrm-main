@@ -90,7 +90,13 @@ async function procesa(t) {
   try { await publicaIndiceMusica(); } catch { /* el índice se publica la próxima vez */ }
   await paso(t, 'Preparando el archivo final…');
   const final = path.join(dir, 'final.mp4'), movil = path.join(dir, 'movil.mp4');
-  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', '-metadata:s:v:0', 'encoder=', '-metadata:s:a:0', 'encoder=', '-c:v', 'libx264', '-bsf:v', 'filter_units=remove_types=6', '-crf', '24', '-preset', 'fast', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', final]);
+  // El archivo final debe caber en el límite de Supabase (~50 MB por archivo): se ajusta la tasa de bits a la duración
+  const durF = Number(run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', salida]).stdout) || 60;
+  let kbps = Math.max(600, Math.min(9000, Math.floor((46 * 8 * 1024 * 1024 / durF - 160000) / 1000)));
+  for (let intento = 0; intento < 3; intento++) {
+    run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', '-metadata:s:v:0', 'encoder=', '-metadata:s:a:0', 'encoder=', '-c:v', 'libx264', '-bsf:v', 'filter_units=remove_types=6', '-crf', '22', '-maxrate', kbps + 'k', '-bufsize', (2 * kbps) + 'k', '-preset', 'fast', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', final]);
+    if (fs.existsSync(final) && fs.statSync(final).size <= 49 * 1024 * 1024) break; kbps = Math.floor(kbps * 0.8);
+  }
   run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-vf', 'scale=540:960', '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', '-metadata:s:v:0', 'encoder=', '-metadata:s:a:0', 'encoder=', '-c:v', 'libx264', '-bsf:v', 'filter_units=remove_types=6', '-crf', '28', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-movflags', '+faststart', movil]);
   await paso(t, 'Subiendo el resultado…');
   const sube = async (ruta, f) => { const { error } = await st.upload(ruta, fs.readFileSync(f), { contentType: 'video/mp4', upsert: true }); if (error) throw new Error('No se pudo subir ' + ruta + ': ' + error.message); };
