@@ -58,8 +58,8 @@ async function procesa(t) {
   try { await publicaIndiceMusica(); } catch { /* el índice se publica la próxima vez */ }
   await paso(t, 'Preparando el archivo final…');
   const final = path.join(dir, 'final.mp4'), movil = path.join(dir, 'movil.mp4');
-  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-c:v', 'libx264', '-crf', '24', '-preset', 'fast', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', final]);
-  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-vf', 'scale=540:960', '-c:v', 'libx264', '-crf', '28', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-movflags', '+faststart', movil]);
+  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', '-metadata:s:v:0', 'encoder=', '-metadata:s:a:0', 'encoder=', '-c:v', 'libx264', '-bsf:v', 'filter_units=remove_types=6', '-crf', '24', '-preset', 'fast', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', final]);
+  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-vf', 'scale=540:960', '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', '-metadata:s:v:0', 'encoder=', '-metadata:s:a:0', 'encoder=', '-c:v', 'libx264', '-bsf:v', 'filter_units=remove_types=6', '-crf', '28', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-movflags', '+faststart', movil]);
   await paso(t, 'Subiendo el resultado…');
   const sube = async (ruta, f) => { const { error } = await st.upload(ruta, fs.readFileSync(f), { contentType: 'video/mp4', upsert: true }); if (error) throw new Error('No se pudo subir ' + ruta + ': ' + error.message); };
   await sube('salidas/' + t.id + '.mp4', final); await sube('salidas/' + t.id + '_movil.mp4', movil);
