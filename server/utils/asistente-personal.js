@@ -74,6 +74,27 @@ function calendario() {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const limpia = (s) => String(s || '').replace(/[%,()]/g, ' ').trim();
 
+const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9ñ ]/g, ' ').replace(/\s+/g, ' ').trim();
+const RUTA_ALIAS = 'crm/asistente/alias.json';
+// Devuelve { proyecto } si hay uno claro, { ambiguo: [...] } si hay varios parecidos, o {} si no encuentra nada.
+async function resolverProyecto(txt) {
+  const t = limpia(txt); if (!t || UUID.test(t)) return {};
+  const campos = 'id, client_name, project_name, phase, status, urgency, client_city, active';
+  const alias = await leerJson(RUTA_ALIAS, {}); const a = alias[norm(t)];
+  if (a?.id) { const { data } = await supabase.from('client_projects').select(campos).eq('id', a.id).maybeSingle(); if (data) return { proyecto: data, por_alias: true }; }
+  const { data } = await supabase.from('client_projects').select(campos).limit(600);
+  const toks = norm(t).split(' ').filter(w => w.length > 1 && !STOP.has(w)); if (!toks.length) return {};
+  const pt = (data || []).map(p => {
+    const cli = norm(p.client_name), pro = norm(p.project_name), ciu = norm(p.client_city), todo = [cli, pro, ciu].join(' ');
+    const pal = new Set(todo.split(' ')); let sc = 0; for (const w of toks) { if ((cli + ' ' + pro).split(' ').includes(w)) sc += 2; else if (pal.has(w)) sc += 1; }
+    if (sc > 0 && (cli === norm(t) || pro === norm(t))) sc += 10; if (sc > 0 && p.status === 'en_marcha' && p.active) sc += 0.5;
+    return { p, sc, completo: toks.every(w => pal.has(w)) };
+  }).filter(x => x.sc > 0).sort((x, y) => y.sc - x.sc);
+  if (!pt.length) return {};
+  const [m1, m2] = pt; if (!m2 || m1.sc >= m2.sc * 1.6 || m1.sc >= 10) return { proyecto: m1.p };
+  const comp = pt.filter(x => x.completo); if (comp.length === 1) return { proyecto: comp[0].p };
+  return { ambiguo: pt.filter(x => x.sc >= m1.sc * 0.5).slice(0, 4).map(x => ({ id: x.p.id, cliente: x.p.client_name, proyecto: x.p.project_name, ciudad: x.p.client_city || null, estado: x.p.status })) };
+}
 async function proyectoPor(txt) {
   const t = limpia(txt); if (!t) return null;
   if (UUID.test(t)) { const { data } = await supabase.from('client_projects').select('id, client_name, project_name, phase, status, urgency').eq('id', t).maybeSingle(); return data; }
@@ -94,10 +115,12 @@ const TOOLS = [
   { name: 'agenda_de_hoy', description: 'Tareas pendientes que vencen hoy o están atrasadas, tareas sin fecha y eventos de hoy. Úsala cuando Víctor salude por la mañana, pregunte qué tiene que hacer o cómo va el día.', input_schema: { type: 'object', properties: {} } },
   { name: 'apuntar_diario', description: 'Apunta en el diario de trabajo de Víctor lo que ha hecho (hoy o el día que diga): resumen breve, proyectos tocados y logros. Úsala siempre que él te cuente lo que ha estado haciendo. Es parte de tu aprendizaje: con el diario conoces su ritmo y sus procesos reales.', input_schema: { type: 'object', properties: { resumen: { type: 'string' }, proyectos: { type: 'array', items: { type: 'string' } }, logros: { type: 'array', items: { type: 'string' } }, fecha: { type: 'string', description: 'AAAA-MM-DD, por defecto hoy' } }, required: ['resumen'] } },
   { name: 'ver_diario', description: 'Lee el diario de trabajo de Víctor de los últimos días (por defecto 7). Úsala cuando pregunte qué hizo, cómo fue la semana, o para dar consejo basado en cómo trabaja.', input_schema: { type: 'object', properties: { dias: { type: 'number' } } } },
-  { name: 'ver_presupuesto', description: 'Muestra un presupuesto ya existente: número, nombre, estado, proyecto, todas sus líneas (nombre, cantidad, precio) y el total sin IVA. Búscalo por número (p. ej. RAN-034) o por proyecto.', input_schema: { type: 'object', properties: { presupuesto: { type: 'string' }, proyecto: { type: 'string' } } } },
-  { name: 'anadir_lineas_presupuesto', description: 'Añade líneas a un presupuesto: uno que YA tiene empezado Víctor (por número o por proyecto) o uno nuevo si el proyecto aún no tiene (con nombre_si_nuevo). Cada línea puede ser un producto del catálogo (producto = nombre, coge su precio del catálogo salvo que des precio), o una línea LIBRE que no está en el catálogo (descripcion o producto sin coincidencia; precio puede ser 0 o vacío = pendiente). Mezcla las dos sin problema. Después genera y te manda el PDF actualizado (generar_pdf, por defecto sí). Úsala para "añade esto al presupuesto de X", "hazme un presupuesto con estos equipos", listados con precio 0, etc. Si una línea ya está en el presupuesto no la duplica.', input_schema: { type: 'object', properties: { presupuesto: { type: 'string', description: 'número, p. ej. RAN-034' }, proyecto: { type: 'string' }, nombre_si_nuevo: { type: 'string', description: 'nombre del presupuesto si hay que crearlo' }, lineas: { type: 'array', items: { type: 'object', properties: { producto: { type: 'string', description: 'nombre del producto del catálogo (o texto libre si no está)' }, descripcion: { type: 'string', description: 'línea libre con su texto' }, cantidad: { type: 'number' }, precio: { type: 'number', description: 'precio unitario sin IVA; 0 o vacío = sin precio todavía' }, coste: { type: 'number' }, marca: { type: 'string' }, notas: { type: 'string', description: 'texto para el cliente en esa línea' } } } }, generar_pdf: { type: 'boolean' } }, required: ['lineas'] } },
+  { name: 'ver_presupuesto', description: 'Muestra un presupuesto ya existente: número, nombre, estado, proyecto, todas sus líneas (nombre, cantidad, precio) y el total sin IVA. Búscalo por número (p. ej. RAN-0XX) o por proyecto.', input_schema: { type: 'object', properties: { presupuesto: { type: 'string' }, proyecto: { type: 'string' } } } },
+  { name: 'anadir_lineas_presupuesto', description: 'Añade líneas a un presupuesto: uno que YA tiene empezado Víctor (por número o por proyecto) o uno nuevo si el proyecto aún no tiene (con nombre_si_nuevo). Cada línea puede ser un producto del catálogo (producto = nombre, coge su precio del catálogo salvo que des precio), o una línea LIBRE que no está en el catálogo (descripcion o producto sin coincidencia; precio puede ser 0 o vacío = pendiente). Mezcla las dos sin problema. Después genera y te manda el PDF actualizado (generar_pdf, por defecto sí). Úsala para "añade esto al presupuesto de X", "hazme un presupuesto con estos equipos", listados con precio 0, etc. Si una línea ya está en el presupuesto no la duplica.', input_schema: { type: 'object', properties: { presupuesto: { type: 'string', description: 'número, p. ej. RAN-0XX' }, proyecto: { type: 'string' }, nombre_si_nuevo: { type: 'string', description: 'nombre del presupuesto si hay que crearlo' }, lineas: { type: 'array', items: { type: 'object', properties: { producto: { type: 'string', description: 'nombre del producto del catálogo (o texto libre si no está)' }, descripcion: { type: 'string', description: 'línea libre con su texto' }, cantidad: { type: 'number' }, precio: { type: 'number', description: 'precio unitario sin IVA; 0 o vacío = sin precio todavía' }, coste: { type: 'number' }, marca: { type: 'string' }, notas: { type: 'string', description: 'texto para el cliente en esa línea' } } } }, generar_pdf: { type: 'boolean' }, crear_nuevo: { type: 'boolean', description: 'true SOLO si Víctor ha pedido expresamente un presupuesto NUEVO' } }, required: ['lineas'] } },
   { name: 'modificar_linea_presupuesto', description: 'Cambia una línea de un presupuesto existente (cantidad, precio, nombre o nota para el cliente). Localízala por parte de su nombre. Después regenera el PDF si regenerar_pdf=true. No borra líneas.', input_schema: { type: 'object', properties: { presupuesto: { type: 'string' }, proyecto: { type: 'string' }, linea: { type: 'string', description: 'parte del nombre de la línea' }, cantidad: { type: 'number' }, precio: { type: 'number' }, nombre: { type: 'string' }, notas: { type: 'string' }, regenerar_pdf: { type: 'boolean' } }, required: ['linea'] } },
-  { name: 'presupuesto_pdf', description: 'Te manda a Víctor el PDF de un presupuesto que YA existe en el CRM (por su número, p. ej. "RAN-034", o por el proyecto; si hay varios del proyecto, el más reciente). Si el presupuesto no tiene PDF o dice regenerar=true, lo genera de nuevo con sus datos actuales. Úsala cuando pida "pásame el PDF del presupuesto…", "mándame el presupuesto de…" o cuando el compañero de presupuestos no devuelva el PDF. Para crear uno NUEVO usa hablar_con_agente (presupuestos).', input_schema: { type: 'object', properties: { presupuesto: { type: 'string', description: 'número, p. ej. RAN-034' }, proyecto: { type: 'string' }, regenerar: { type: 'boolean' } } } },
+  { name: 'presupuesto_pdf', description: 'Te manda a Víctor el PDF de un presupuesto que YA existe en el CRM (por su número, p. ej. "RAN-0XX", o por el proyecto; si hay varios del proyecto, el más reciente). Si el presupuesto no tiene PDF o dice regenerar=true, lo genera de nuevo con sus datos actuales. Úsala cuando pida "pásame el PDF del presupuesto…", "mándame el presupuesto de…" o cuando el compañero de presupuestos no devuelva el PDF. Para crear uno NUEVO usa hablar_con_agente (presupuestos).', input_schema: { type: 'object', properties: { presupuesto: { type: 'string', description: 'número, p. ej. RAN-0XX' }, proyecto: { type: 'string' }, regenerar: { type: 'boolean' } } } },
+  { name: 'buscar_presupuestos', description: 'Busca presupuestos por el nombre del cliente o del presupuesto (sin tildes, por palabras). Devuelve número, nombre, cliente, estado y fechas. Úsala SIEMPRE que no tengas claro el número: nunca inventes ni copies un número.', input_schema: { type: 'object', properties: { texto: { type: 'string' } }, required: ['texto'] } },
+  { name: 'guardar_alias', description: 'Guarda un apodo para un proyecto/cliente (p. ej. "Ángel de Valencia" = el proyecto de Ángel Juan) para entenderlo siempre. Úsala cuando Víctor te confirme a qué proyecto se refiere con un nombre distinto al oficial.', input_schema: { type: 'object', properties: { alias: { type: 'string' }, proyecto: { type: 'string', description: 'nombre oficial del proyecto o cliente' } }, required: ['alias', 'proyecto'] } },
   { name: 'enviar_alzado', description: 'Te manda a Víctor como imagen (PNG con cotas, escala y cajetín de Ranuse) una lámina de alzado ya guardada en el Asistente de diseño de un proyecto. Si no dices cuál, envía la más reciente y te cuenta las demás. Úsala cuando pida ver, pasar o mandar un alzado.', input_schema: { type: 'object', properties: { proyecto: { type: 'string' }, lamina: { type: 'string', description: 'parte del título de la lámina, opcional' } }, required: ['proyecto'] } },
   { name: 'crear_plano', description: 'Crea en la herramienta Planos del CRM un plano nuevo del ESTADO ACTUAL de un proyecto (muros, puertas, ventanas y pilares) a partir de un PDF o imagen de plano que Víctor te ha mandado (adjunto). Usa la misma lectura con IA que el botón de importar de Planos. Es un BORRADOR: dile siempre que revise medidas, puertas y pilares sobre el plano del cliente. Si el PDF tiene varias páginas, indica pagina (el número de la lámina que es la planta); si no lo sabes, la herramienta te devuelve la lista de páginas para que se lo preguntes. Si el plano no trae cotas legibles, pasa medida_muro_mas_largo_cm (lo que mide en la realidad el muro más largo). Hace falta el proyecto.', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, proyecto: { type: 'string' }, pagina: { type: 'number' }, nombre: { type: 'string', description: 'nombre del plano; por defecto el del proyecto' }, medida_muro_mas_largo_cm: { type: 'number' } }, required: ['adjunto', 'proyecto'] } },
   { name: 'crear_proyecto', description: 'Crea un proyecto nuevo en el CRM (igual que desde Proyectos: con su fase 0, las tareas de la plantilla de esa fase y su código de acceso). Hace falta nombre del proyecto y del cliente; tipo "comercial" (gimnasio o local) o "home_gym" (gimnasio en casa), deduce el tipo del contexto si puedes. Crea sin pedir más datos de los imprescindibles. Después, si había una tarea tipo "crear proyecto X", ofrécele marcarla como hecha.', input_schema: { type: 'object', properties: { proyecto: { type: 'string', description: 'nombre del proyecto, p. ej. "Adil Gym Marruecos"' }, cliente: { type: 'string' }, tipo: { type: 'string', enum: ['comercial', 'home_gym'] }, email: { type: 'string' }, urgencia: { type: 'string', enum: ['baja', 'normal', 'alta'] }, responsable: { type: 'string', description: 'nombre de quien lo lleva, opcional' }, notas: { type: 'string' }, forzar: { type: 'boolean', description: 'true solo si ya existe uno parecido y Víctor confirma que quiere otro' } }, required: ['proyecto', 'cliente'] } },
@@ -154,11 +177,37 @@ async function productoCatalogo(nombre) {
   const { data } = await q.limit(1); return data?.[0] || null;
 }
 async function presupuestoPor(input) {
-  const cols = 'id, budget_number, budget_name, status, pdf_url, project_id, global_discount_pct, created_at';
-  const num = limpia(input.presupuesto);
-  if (num) { const { data } = await supabase.from('budgets').select(cols).ilike('budget_number', '%' + num + '%').order('created_at', { ascending: false }).limit(1); if (data?.[0]) return data[0]; }
-  if (input.proyecto) { const p = await proyectoPor(input.proyecto); if (p) { const { data } = await supabase.from('budgets').select(cols).eq('project_id', p.id).order('created_at', { ascending: false }).limit(1); if (data?.[0]) return { ...data[0], _proyecto: p }; return { _sinPresupuesto: true, _proyecto: p }; } }
-  return null;
+  const cols = 'id, budget_number, budget_name, status, pdf_url, project_id, global_discount_pct, created_at, updated_at';
+  const num = limpia(input.presupuesto).toUpperCase().replace(/\s+/g, '');
+  if (/^RAN-?\d{1,4}$/.test(num)) { const n = 'RAN-' + num.replace(/^RAN-?/, '').padStart(3, '0'); const { data } = await supabase.from('budgets').select(cols).eq('budget_number', n).limit(1); return data?.[0] || { _noExiste: true, _numero: n }; }
+  const texto = limpia(input.presupuesto || input.proyecto || ''); if (!texto) return null;
+  let proyecto = null; if (input.proyecto) proyecto = await proyectoPor(input.proyecto);
+  const { data: todos } = await supabase.from('budgets').select(cols).order('updated_at', { ascending: false }).limit(400);
+  const tk = (t) => norm(t).split(' ').filter(w => w.length > 1 && !STOP.has(w));
+  const conjuntos = [tk(texto), proyecto ? tk(proyecto.client_name) : []].filter(x => x.length);
+  const cand = (todos || []).filter(b => (proyecto && b.project_id === proyecto.id) || conjuntos.some(c => { const nom = new Set(norm(b.budget_name).split(' ')); return c.every(w => nom.has(w)); }));
+  if (!cand.length) return proyecto ? { _sinPresupuesto: true, _proyecto: proyecto } : null;
+  if (cand.length === 1) return cand[0];
+  // si uno se tocó hace poco y los demás son claramente antiguos, ese es el vigente (la ficha se lo dirá a Víctor)
+  const dias = (b) => (Date.now() - new Date(b.updated_at || b.created_at)) / 86400000;
+  if (dias(cand[0]) < 14 && dias(cand[1]) - dias(cand[0]) > 30) return cand[0];
+  return { _ambiguos: cand.slice(0, 5).map(b => ({ numero: b.budget_number, nombre: b.budget_name || '(sin nombre)', estado: b.status, creado: String(b.created_at).slice(0, 10), modificado: String(b.updated_at || b.created_at).slice(0, 10) })) };
+}
+function errPresup(b) {
+  if (!b) return { error: 'No encuentro ese presupuesto. Búscalo con buscar_presupuestos por el nombre del cliente, o pregúntale a Víctor cuál es. No adivines.' };
+  if (b._noExiste) return { error: 'No existe el presupuesto ' + b._numero + '. NO uses ese número: búscalo con buscar_presupuestos por cliente o nombre.' };
+  if (b._ambiguos) return { error: 'Hay varios presupuestos que encajan. Pregunta a Víctor cuál (dile número, nombre y fecha) antes de seguir.', candidatos: b._ambiguos };
+  if (b._sinPresupuesto) return { error: 'Ese proyecto no tiene presupuesto. Pregunta a Víctor si quiere crear uno NUEVO.', sin_presupuesto: true };
+  return { error: 'Presupuesto no disponible.' };
+}
+const problemaPresup = (b) => !b || b._noExiste || b._ambiguos || b._sinPresupuesto;
+// Ficha con la que se identifica un presupuesto ante Víctor y avisos de cosas raras (precio 0, descuento global alto…)
+async function fichaPresup(b) {
+  const ls = await lineasDe(b.id), reales = ls.filter(l => !l.is_chapter_header), avisos = [];
+  const cero = reales.filter(l => !(Number(l.unit_price) > 0)); if (cero.length) avisos.push(cero.length + ' línea(s) SIN PRECIO (0 €): ' + cero.slice(0, 6).map(l => l.name).join('; '));
+  if (Number(b.global_discount_pct) > 0) avisos.push('Tiene un descuento global del ' + b.global_discount_pct + '%' + (Number(b.global_discount_pct) >= 50 ? ' (MUY ALTO, revísalo: puede dejar el total en 0)' : ''));
+  if (!reales.length) avisos.push('No tiene ninguna línea');
+  return { numero: b.budget_number, nombre: b.budget_name || '(sin nombre)', estado: b.status, creado: String(b.created_at).slice(0, 10), modificado: String(b.updated_at || b.created_at).slice(0, 10), lineas: reales.length, total_sin_iva: totalDe(ls, b.global_discount_pct), avisos };
 }
 async function pdfDePresupuesto(b, ctx, regenerar) {
   let url = regenerar ? null : b.pdf_url;
@@ -167,7 +216,7 @@ async function pdfDePresupuesto(b, ctx, regenerar) {
     catch (e) { return { error: e.message }; }
   }
   if (!url) return { error: 'el PDF no se ha generado' };
-  (ctx.salida = ctx.salida || []).push({ url, nombre: 'Presupuesto_' + String(b.budget_number).replace(/[^A-Za-z0-9-]/g, '') + '.pdf' });
+  const nomPdf = 'Presupuesto_' + String(b.budget_number).replace(/[^A-Za-z0-9-]/g, '') + '.pdf'; ctx.salida = (ctx.salida || []).filter(x => x.nombre !== nomPdf); ctx.salida.push({ url, nombre: nomPdf });
   return { ok: true };
 }
 async function lineasDe(budgetId) { const { data } = await supabase.from('budget_items').select('id, name, quantity, unit, unit_price, discount_pct, brand, catalog_product_id, is_chapter_header, display_order').eq('budget_id', budgetId).order('display_order', { ascending: true, nullsFirst: false }); return data || []; }
@@ -178,6 +227,11 @@ async function formPor(pid) {
 }
 async function ejecutar(nombre, input, ctx = {}) {
   const { fecha } = madrid();
+  if (input && typeof input.proyecto === 'string' && input.proyecto.trim() && !UUID.test(input.proyecto.trim()) && nombre !== 'guardar_alias') {
+    const r = await resolverProyecto(input.proyecto);
+    if (r.ambiguo) return { error: 'Hay varios proyectos que encajan con "' + input.proyecto + '". Pregunta a Víctor cuál es (nombra las opciones) y, cuando lo confirme, guarda el apodo con guardar_alias para no volver a preguntar.', candidatos: r.ambiguo };
+    if (r.proyecto) input = { ...input, proyecto: r.proyecto.id };
+  }
   if (nombre === 'agenda_de_hoy') {
     const [{ data: tareas }, { data: eventos }, { data: emp }] = await Promise.all([
       supabase.from('tasks').select('id, title, due_date, priority, assigned_to, project:client_projects(client_name, project_name)').eq('done', false).order('due_date', { ascending: true, nullsFirst: false }).limit(300),
@@ -200,15 +254,17 @@ async function ejecutar(nombre, input, ctx = {}) {
     return { entradas: d.entradas.filter(e => e.fecha >= desde).slice(-40) };
   }
   if (nombre === 'ver_presupuesto') {
-    const b = await presupuestoPor(input); if (!b || b._sinPresupuesto) return { error: b?._sinPresupuesto ? 'Ese proyecto todavía no tiene presupuesto.' : 'No encuentro ese presupuesto.' };
+    const b = await presupuestoPor(input); if (problemaPresup(b)) return errPresup(b);
     const ls = await lineasDe(b.id);
-    return { presupuesto: b.budget_number, nombre: b.budget_name, estado: b.status, descuento_global_pct: b.global_discount_pct || 0, lineas: ls.map(l => ({ nombre: l.name, cantidad: l.quantity, unidad: l.unit, precio_unitario: l.unit_price, marca: l.brand, del_catalogo: !!l.catalog_product_id, capitulo: !!l.is_chapter_header })), total_sin_iva: totalDe(ls, b.global_discount_pct), tiene_pdf: !!b.pdf_url };
+    return { presupuesto: b.budget_number, nombre: b.budget_name, estado: b.status, descuento_global_pct: b.global_discount_pct || 0, lineas: ls.map(l => ({ nombre: l.name, cantidad: l.quantity, unidad: l.unit, precio_unitario: l.unit_price, marca: l.brand, del_catalogo: !!l.catalog_product_id, capitulo: !!l.is_chapter_header })), total_sin_iva: totalDe(ls, b.global_discount_pct), tiene_pdf: !!b.pdf_url, ficha: await fichaPresup(b) };
   }
   if (nombre === 'anadir_lineas_presupuesto') {
     let b = await presupuestoPor(input), creado = false;
+    if (b && (b._noExiste || b._ambiguos)) return errPresup(b);
     if (!b || b._sinPresupuesto) {
+      if (input.crear_nuevo !== true) return { error: 'No encuentro un presupuesto de ese cliente/proyecto. NO crees uno por tu cuenta: dile a Víctor que no lo encuentras y pregúntale si quiere uno NUEVO (entonces repite con crear_nuevo=true y nombre_si_nuevo).' };
       const proyectoNuevo = b?._proyecto || null, nom = String(input.nombre_si_nuevo || (proyectoNuevo ? (proyectoNuevo.project_name || proyectoNuevo.client_name) : '') || '').trim();
-      if (!proyectoNuevo && !nom) return { error: 'No encuentro ese presupuesto. Dime el número (p. ej. RAN-034) o el proyecto, o un nombre para crear uno nuevo.' };
+      if (!proyectoNuevo && !nom) return { error: 'No encuentro ese presupuesto. Dime el número (p. ej. RAN-0XX) o el proyecto, o un nombre para crear uno nuevo.' };
       try {
         const r = await fetch(BASE_INTERNA + '/api/budgets', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + internalAdminToken() }, body: JSON.stringify({ project_id: proyectoNuevo?.id || undefined, budget_name: nom || undefined }) });
         const j = await r.json().catch(() => ({})); if (!r.ok || !j.budget) throw new Error(j.error || ('error ' + r.status));
@@ -237,11 +293,12 @@ async function ejecutar(nombre, input, ctx = {}) {
       hechas.push({ nombre: fila.name, cantidad, precio: fila.unit_price, tipo });
     }
     const ls = await lineasDe(b.id); const res = { presupuesto: b.budget_number, nombre: b.budget_name, creado_nuevo: creado, lineas_anadidas: hechas, no_anadidas: saltadas, lineas_totales: ls.length, total_sin_iva: totalDe(ls, b.global_discount_pct) };
+    res.ficha = await fichaPresup(b);
     if (hechas.length && input.generar_pdf !== false) { if (ctx.avisar) await ctx.avisar('Generando el PDF del presupuesto, un momento…'); const p = await pdfDePresupuesto(b, ctx, true); if (p.error) res.pdf_error = 'No he podido generar el PDF: ' + p.error + '. Se puede exportar a mano desde Presupuestos.'; else res.pdf = 'El PDF actualizado se envía a Víctor junto a tu respuesta.'; }
     return res;
   }
   if (nombre === 'modificar_linea_presupuesto') {
-    const b = await presupuestoPor(input); if (!b || b._sinPresupuesto) return { error: 'No encuentro ese presupuesto.' };
+    const b = await presupuestoPor(input); if (problemaPresup(b)) return errPresup(b);
     const q = limpia(input.linea).toLowerCase(); const ls = await lineasDe(b.id); const cand = ls.filter(l => String(l.name || '').toLowerCase().includes(q));
     if (!cand.length) return { error: 'No encuentro una línea que contenga "' + input.linea + '".', lineas: ls.map(l => l.name).slice(0, 30) };
     if (cand.length > 1) return { error: 'Hay varias líneas que encajan; dime cuál.', candidatas: cand.map(l => l.name).slice(0, 10) };
@@ -249,23 +306,27 @@ async function ejecutar(nombre, input, ctx = {}) {
     if (!Object.keys(cambios).length) return { error: 'No hay nada que cambiar.' };
     const { error } = await supabase.from('budget_items').update(cambios).eq('id', cand[0].id).eq('budget_id', b.id); if (error) return { error: 'No se pudo cambiar: ' + error.message };
     const res = { modificada: cand[0].name, cambios: Object.keys(cambios), total_sin_iva: totalDe(await lineasDe(b.id), b.global_discount_pct) };
-    if (input.regenerar_pdf) { const p = await pdfDePresupuesto(b, ctx, true); if (p.error) res.pdf_error = p.error; else res.pdf = 'El PDF actualizado se envía a Víctor.'; }
+    res.ficha = await fichaPresup(b);
+    if (input.regenerar_pdf !== false) { if (ctx.avisar) await ctx.avisar('Generando el PDF actualizado…'); const p = await pdfDePresupuesto(b, ctx, true); if (p.error) res.pdf_error = p.error; else res.pdf = 'Se envía a Víctor un PDF NUEVO con el cambio ya aplicado. Dile número, nombre, líneas y total, y repite los avisos.'; }
     return res;
   }
   if (nombre === 'presupuesto_pdf') {
-    let b = null; const num = limpia(input.presupuesto);
-    if (num) { const { data } = await supabase.from('budgets').select('id, budget_number, budget_name, status, pdf_url, project_id, created_at').ilike('budget_number', '%' + num + '%').order('created_at', { ascending: false }).limit(1); b = data?.[0] || null; }
-    if (!b && input.proyecto) { const p = await proyectoPor(input.proyecto); if (p) { const { data } = await supabase.from('budgets').select('id, budget_number, budget_name, status, pdf_url, project_id, created_at').eq('project_id', p.id).order('created_at', { ascending: false }).limit(1); b = data?.[0] || null; } }
-    if (!b) { const { data: ult } = await supabase.from('budgets').select('budget_number, budget_name, status').order('created_at', { ascending: false }).limit(8); return { error: 'No encuentro ese presupuesto.', ultimos_presupuestos: (ult || []).map(x => x.budget_number + ' · ' + (x.budget_name || '') + ' (' + x.status + ')') }; }
-    let url = input.regenerar ? null : b.pdf_url;
-    if (!url) {
-      if (ctx.avisar) await ctx.avisar('Generando el PDF del presupuesto, un momento…');
-      try { const r = await fetch(BASE_INTERNA + '/api/budgets/' + b.id + '/export-pdf', { method: 'POST', headers: { Authorization: 'Bearer ' + internalAdminToken() } }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || ('error ' + r.status)); url = j.pdf_url || j.budget?.pdf_url || null; }
-      catch (e) { return { error: 'No he podido generar el PDF de ' + b.budget_number + ': ' + e.message + '. Se puede exportar a mano desde Presupuestos.' }; }
-    }
-    if (!url) return { error: 'El PDF de ' + b.budget_number + ' no se ha generado.' };
-    (ctx.salida = ctx.salida || []).push({ url, nombre: 'Presupuesto_' + String(b.budget_number).replace(/[^A-Za-z0-9-]/g, '') + '.pdf' });
-    return { enviado: true, presupuesto: b.budget_number, nombre: b.budget_name, estado: b.status, nota: 'El PDF se envía a Víctor como archivo junto a tu respuesta.' };
+    const b = await presupuestoPor(input); if (problemaPresup(b)) return errPresup(b);
+    if (ctx.avisar) await ctx.avisar('Generando el PDF actualizado de ' + b.budget_number + '…');
+    const p = await pdfDePresupuesto(b, ctx, true); if (p.error) return { error: 'No he podido generar el PDF de ' + b.budget_number + ': ' + p.error + '. Se puede exportar a mano desde Presupuestos.' };
+    return { enviado: true, ficha: await fichaPresup(b), nota: 'Se manda un PDF NUEVO generado ahora con los datos actuales. Dile a Víctor número, nombre, nº de líneas y total, y repite los avisos si los hay.' };
+  }
+  if (nombre === 'buscar_presupuestos') {
+    const tk = norm(input.texto).split(' ').filter(w => w.length > 1 && !STOP.has(w)); if (!tk.length) return { error: 'Dime qué buscar (cliente o nombre).' };
+    const { data } = await supabase.from('budgets').select('id, budget_number, budget_name, status, project_id, created_at, updated_at, global_discount_pct').order('updated_at', { ascending: false }).limit(400);
+    const pids = [...new Set((data || []).map(b => b.project_id).filter(Boolean))]; const { data: ps } = pids.length ? await supabase.from('client_projects').select('id, client_name, project_name').in('id', pids) : { data: [] }; const pm = Object.fromEntries((ps || []).map(p => [p.id, p]));
+    const coinc = (data || []).filter(b => { const t = new Set(norm(b.budget_name + ' ' + (pm[b.project_id]?.client_name || '') + ' ' + (pm[b.project_id]?.project_name || '')).split(' ')); return tk.every(w => t.has(w)); });
+    return { resultados: coinc.slice(0, 8).map(b => ({ numero: b.budget_number, nombre: b.budget_name || '(sin nombre)', cliente: pm[b.project_id]?.client_name || null, estado: b.status, creado: String(b.created_at).slice(0, 10), modificado: String(b.updated_at || b.created_at).slice(0, 10) })), total: coinc.length };
+  }
+  if (nombre === 'guardar_alias') {
+    const al = norm(input.alias); if (!al) return { error: 'Falta el apodo.' }; const p = await proyectoPor(input.proyecto); if (!p) return { error: 'No encuentro ese proyecto.' };
+    const m = await leerJson(RUTA_ALIAS, {}); m[al] = { id: p.id, nombre: (p.client_name || '') + ' · ' + (p.project_name || '') }; await guardarJson(RUTA_ALIAS, m);
+    return { guardado: true, nota: 'Desde ahora "' + input.alias + '" significa ' + m[al].nombre + '.' };
   }
   if (nombre === 'enviar_alzado') {
     const p = await proyectoPor(input.proyecto); if (!p) return { error: 'No encuentro ese proyecto.' };
@@ -641,6 +702,8 @@ function sistema(mem, priv, acc, resumenCharla) {
     '- PLANOS: si Víctor te manda el PDF o plano de un cliente y quiere empezarlo, usa crear_plano (estado actual en la herramienta Planos, como borrador). Si el PDF tiene varias láminas, pregúntale cuál es la planta; si no hay cotas, pídele lo que mide el muro más largo. Avísale siempre de que es un borrador que debe revisar (escala, puertas, pilares) y de que el modelo 3D se genera al abrirlo en Planos.\n' +
     '- ALZADOS: cuando el compañero de diseño crea o cambia un alzado, la imagen se le manda sola a Víctor; para ver uno ya guardado usa enviar_alzado. Nunca digas que no puedes mandar alzados.\n' +
     '- PRESUPUESTOS (preferente): para ver, completar o crear un presupuesto usa TÚ las herramientas ver_presupuesto y anadir_lineas_presupuesto (valen para uno ya empezado, por número o proyecto, o para uno nuevo; mezclan productos del catálogo y líneas libres que no están en el catálogo, con precio 0 si no hay) y manda siempre el PDF. Si Víctor te pasa una lista de equipos, conviértela en líneas con cantidades; lo que no esté en el catálogo va como línea libre, no lo descartes. El compañero de presupuestos solo sirve para recomendaciones por niveles y ese tipo de análisis. Para crear uno NUEVO con el compañero, pásale al compañero de presupuestos instrucciones explícitas ("crea un presupuesto nuevo para el proyecto X con estos productos, cantidades y precios, y genera el PDF"); él solo crea presupuestos nuevos, no edita los que ya existen. Para mandar el PDF de uno existente usa presupuesto_pdf. Nunca digas que el presupuesto está listo si no te ha devuelto un PDF o un número de presupuesto: cuenta con franqueza qué se hizo y qué falta.\n' +
+    '- PRESUPUESTOS (seguridad): nunca inventes ni copies un número de presupuesto; si Víctor no lo dice, búscalo con buscar_presupuestos por cliente o nombre. Cada vez que mandes un PDF di en una frase: número, nombre, nº de líneas, total y los avisos de la ficha (líneas a 0 €, descuento global…). Si Víctor pide cambios, aplícalos y manda un PDF NUEVO; nunca reenvíes uno anterior. Si no lo encuentras o hay varios, pregunta cuál en vez de adivinar. Un presupuesto NUEVO solo si Víctor lo pide expresamente (crear_nuevo=true).\n' +
+    '- NOMBRES: Víctor llama a clientes y proyectos de formas distintas (apodo, ciudad, apellido). Si una herramienta devuelve candidatos o dice que hay varios, pregúntale cuál (nombra las opciones) y cuando lo confirme guarda el apodo con guardar_alias. No asumas.\n' +
     '- Puedes crear proyectos nuevos con crear_proyecto (nombre, cliente y tipo comercial u home_gym; deduce lo que puedas y no preguntes más de lo imprescindible). Nunca digas que no puedes crear proyectos.\n' +
     '- AVÍSALE DE LO YA APUNTADO: cuando Víctor te diga que tiene que hacer algo, antes de crear nada mira si ya hay algo relacionado (listar_tareas) y, si lo hay, recuérdaselo: "ya tenías apuntado X para el día Y, ¿lo cambio o lo sumo?". Si una herramienta te devuelve posible_duplicado, no insistas en crearlo: cuéntale lo que ya había y pregúntale.\n' +
     '- TAREAS Y ORGANIZACIÓN: cuando pida sus tareas, lo pendiente o ayuda para organizarse, usa listar_tareas y dale TODAS, no un resumen: agrupadas (atrasadas, hoy, próximas, sin fecha), una línea por tarea con su proyecto; si son más de 15, agrúpalas por proyecto con el número y ofrécele el listado completo en PDF. Después, SIEMPRE, propón su plan: las 3 prioridades de hoy en orden ("1. … 2. … 3. …") justificadas en una frase cada una (plazos, urgencia del proyecto, lo que desbloquea a otros) y pregunta si le pones fecha de hoy a esas tareas; si dice que sí, usa actualizar_tarea. Ve guiándole: cuando termine algo, ofrécele lo siguiente.\n' +
