@@ -2696,7 +2696,8 @@ export default function Visor3D({ cliente = false }) {
     };
     a.raiz.traverse(aplica);
     a.esc.children.forEach(g => { g.visible = !ocultas.includes('obj:' + (objsRef.current.find(x => x.id === g.userData.oid)?.etiqueta || '')) && !ocultas.includes('id:' + g.userData.oid); });
-    try { localStorage.setItem('visor3dOcultas', JSON.stringify(ocultas)); } catch {}
+    // Los techos que se ocultan solo mientras estás en Planta 2D o Axonométrica no se recuerdan: si cierras la pestaña en ese modo, el siguiente proyecto no se abre sin techo
+    try { localStorage.setItem('visor3dOcultas', JSON.stringify(planta2d?.ocultasAntes ?? axo?.ocultasAntes ?? ocultas)); } catch {}
   }, [ocultas, rev, objs, estado, modosEq]);
 
   // Luminarias del plano: punto de luz visible y luz real (foco = cono con su ángulo de apertura)
