@@ -150,7 +150,7 @@ if (OWNER_COMPLETO) registraCanal('wa', { chatId: 'wa:' + OWNER_COMPLETO, enviar
 router.get('/estado', async (req, res) => {
   if (!VERIFY || req.query.clave !== VERIFY) return res.sendStatus(403);
   const cab = { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };
-  const out = { registro, variables: { wabaId: !!WABA_ID, token: !!TOKEN, phoneId: !!PHONE_ID, pin6cifras: PIN.length === 6, appSecret: !!SECRET, owner: !!OWNER } };
+  const out = { registro, variables: { wabaId: !!WABA_ID, token: !!TOKEN, phoneId: !!PHONE_ID, pin6cifras: PIN.length === 6, appSecret: !!SECRET, owner: !!OWNER, groq_audios: !!(process.env.GROQ_API_KEY || '').trim(), fathom: !!(process.env.FATHOM_API_KEY || '').trim(), openai_imagenes: !!(process.env.OPENAI_API_KEY || '').trim(), gemini_imagenes: !!(process.env.GEMINI_API_KEY || '').trim(), anthropic: !!(process.env.ANTHROPIC_API_KEY || '').trim() } };
   try {
     const llama = async (ruta, cuerpo) => { const r = await fetch(GRAPH + '/' + PHONE_ID + ruta, { method: 'POST', headers: cab, body: JSON.stringify(cuerpo) }); return { http: r.status, respuesta: await r.text().catch(() => '') }; };
     // Pasos para pasar el número de la app del móvil a la API (el móvil dejará de usar ese número):
