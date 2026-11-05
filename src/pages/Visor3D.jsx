@@ -4170,9 +4170,16 @@ export default function Visor3D({ cliente = false }) {
   const camPitch = g => { const { cam, ctrl } = api3d.current, h = Math.hypot(ctrl.target.x - cam.position.x, ctrl.target.z - cam.position.z) || 1; ctrl.target.y = cam.position.y + Math.tan(g * Math.PI / 180) * h; ctrl.update(); setCamInfo(camLee()); };
   const camFocal = f => { const { cam } = api3d.current; cam.fov = 2 * Math.atan(12 / f) * 180 / Math.PI; cam.updateProjectionMatrix(); setCamInfo(camLee()); };
   const camShift = v => { api3d.current.shiftY = v; setShiftY(v); api3d.current.cam.updateProjectionMatrix(); };
+  // Las vistas desde arriba (alzado, planta, axonométrica) necesitan la cámara libre: si venías del recorrido a pie, ese modo la deja a 5 cm del punto que mira y sin poder mirar hacia abajo
+  const liberarCamara = () => {
+    const a = api3d.current, ctrl = a.ctrl; if (!ctrl) return;
+    a.persona = false; ctrl.minDistance = 0; ctrl.maxDistance = Infinity; ctrl.minPolarAngle = 0; ctrl.maxPolarAngle = Math.PI; ctrl.enablePan = true; ctrl.enableZoom = true; ctrl.rotateSpeed = 1; ctrl.dampingFactor = 0.05;
+    if (a.fov0) { a.cam.fov = a.fov0; a.cam.updateProjectionMatrix(); }
+    setPersona(false);
+  };
   // Entrar en un alzado (muro) o en una planta de detalle (suelo / techo): cámara casi ortogonal fija, fondo blanco, corte para ver solo esa parte y cotas
   const entrarAlzado = (tipo, idObj) => {
-    const a = api3d.current, m = a.modelo; if (!m) return;
+    const a = api3d.current, m = a.modelo; if (!m) return; liberarCamara();
     const pl0 = (m.plantas || [m])[0], asp = a.cam.aspect || 1.6, VIS = 0.0873;
     let target, pos, lado = 1;
     if (tipo === 'muro') {
@@ -4204,7 +4211,7 @@ export default function Visor3D({ cliente = false }) {
   // Planta 2D: vista cenital de todo el plano (sin techos) para dibujar zonas de suelo y pintar salas como en un editor 2D
   const [planta2d, setPlanta2d] = useState(null); // { ocultasAntes }
   const entrarPlanta2d = () => {
-    const a = api3d.current, m = a.modelo; if (!m || planta2d) return;
+    const a = api3d.current, m = a.modelo; if (!m || planta2d) return; liberarCamara();
     const pl0 = (m.plantas || [m])[0], pts = [...(pl0.salas || []).flatMap(s => s.pts), ...(pl0.muros || []).flatMap(mu => [mu.a, mu.b])];
     if (!pts.length) { setAviso('Este plano no tiene salas ni muros que ver desde arriba'); return; }
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), W = Math.max(...xs) - Math.min(...xs), D = Math.max(...ys) - Math.min(...ys), asp = a.cam.aspect || 1.6, VIS = 0.0873;
@@ -4240,7 +4247,7 @@ export default function Visor3D({ cliente = false }) {
     return true;
   };
   const entrarAxo = () => {
-    if (axo) return;
+    if (axo) return; liberarCamara();
     if (!colocarAxo(45, true)) { setAviso('Este plano no tiene salas ni muros que ver'); return; }
     const a = api3d.current; a.scene.background = new THREE.Color(0xffffff); if (a.base) a.base.visible = false;
     setAxo({ az: 45, ocultasAntes: ocultas, sinTecho: true }); setOcultas(o => (o.includes('techos') ? o : [...o, 'techos'])); setSelObj(null); setSelAcab(null);
