@@ -4,7 +4,9 @@ import { spawnSync } from 'child_process';
 
 // Cadena de limpieza: filtro de graves, quita ruido de sala (con seguimiento), puerta suave entre palabras, menos "boxiness",
 // presencia en la voz, compresión suave y volumen final. Sin subir el ruido.
-export const CADENA_VOZ = 'highpass=f=90,afftdn=nr=12:nf=-42,agate=threshold=0.02:ratio=2:attack=8:release=250:range=0.35,equalizer=f=250:t=q:w=1:g=-2,equalizer=f=3200:t=q:w=1.2:g=2,loudnorm=I=-15:TP=-1.5:LRA=11,aresample=48000';
+// Reductor de ruido con IA (RNNoise, modelo bd.rnnn: se copia a la carpeta de trabajo, donde corre ffmpeg) + un toque de voz + volumen.
+export const CADENA_VOZ = 'highpass=f=80,arnndn=m=bd.rnnn,equalizer=f=250:t=q:w=1:g=-1.5,equalizer=f=3000:t=q:w=1.2:g=1.5,loudnorm=I=-15:TP=-1.5:LRA=11,aresample=48000';
+export function copiaModelo(dirTrabajo) { const o = new URL('./modelos/bd.rnnn', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'); if (fs.existsSync(o)) fs.copyFileSync(o, dirTrabajo + '/bd.rnnn'); }
 
 const norm = t => String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zñ0-9]/g, '');
 const silabas = t => Math.max(1, (norm(t).match(/[aeiou]+/g) || ['a']).length);

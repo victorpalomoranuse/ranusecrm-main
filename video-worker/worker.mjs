@@ -39,6 +39,20 @@ async function publicaCarpetas() {
   const lista = Object.entries(cuenta).filter(([k]) => k).map(([ruta, n]) => ({ ruta, videos: n })).sort((a, b) => a.ruta.localeCompare(b.ruta));
   await st.upload('crm-indice-carpetas.json', Buffer.from(JSON.stringify(lista)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
 }
+// Junta todos los índices (piloto local, Drive redes, vídeos sueltos) y asegura que lo elegido esté indexado.
+const RAIZ_PILOTO = '5. Material audiovisual Victor', RAIZ_REDES = '4. Instagram - Tiktok - Shorts';
+function cargaIndice(f, raiz, tipo) { try { const j = JSON.parse(fs.readFileSync(f, 'utf8')); return (j.videos || []).map(v => ({ ...v, ruta_abs: raiz + (v.carpeta ? '/' + v.carpeta : '') })); } catch { return []; } }
+function indiceTotal(dir, sel) {
+  const base = new URL('./datos/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  let todos = [...cargaIndice(INDICE, RAIZ_PILOTO), ...cargaIndice(path.join(base, 'drive-redes/indice.json'), RAIZ_REDES)];
+  const ids = new Set(todos.map(v => v.drive_id).filter(Boolean)), nom = new Set(todos.map(v => v.ruta_abs + '/' + v.nombre));
+  const faltan = (sel.videos || []).filter(z => !ids.has(z.id) && !nom.has((z.ruta ? z.ruta + '/' : '') + z.nombre));
+  const fSel = path.join(base, 'drive-seleccion/indice.json');
+  if (faltan.length) { console.log('Indexando', faltan.length, 'vídeo(s) elegido(s) que aún no estaban…'); spawnSync('node', ['indexar-drive.mjs', 'ids:' + faltan.map(z => z.id).join(','), path.join(base, 'drive-seleccion'), '8', '2'], { cwd: AQUI, encoding: 'utf8', env: { ...process.env, PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } }); }
+  const sueltos = cargaIndice(fSel, '').map(v => { const z = (sel.videos || []).find(q => q.id === v.drive_id); return { ...v, ruta_abs: z ? z.ruta : '' }; });
+  for (const v of sueltos) if (!ids.has(v.drive_id)) todos.push(v);
+  const salida = path.join(dir, 'indice-total.json'); fs.writeFileSync(salida, JSON.stringify({ videos: todos })); return salida;
+}
 async function procesa(t) {
   const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
   await paso(t, 'Descargando el archivo…', { estado: 'procesando', empezado: new Date().toISOString() });
@@ -51,8 +65,10 @@ async function procesa(t) {
   const salida = path.join(dir, 'salida.mp4');
   await paso(t, t.tipo === 'voz' ? 'La IA está eligiendo escenas y montando…' : 'Quitando pausas y poniendo subtítulos…');
   try { await sincronizaMusica(); } catch (e) { console.log('Música sin sincronizar:', e.message); }
-  const script = t.tipo === 'voz' ? ['montar.mjs', entrada, INDICE, salida, notas] : ['bruto.mjs', entrada, salida, notas];
-  const r = run('node', script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS: JSON.stringify(Array.isArray(t.carpetas) ? t.carpetas : []), MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
+  let indiceUsar = INDICE, seleccion = {};
+  if (t.tipo === 'voz') { const rec = Array.isArray(t.recursos) ? t.recursos : []; seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
+  const script = t.tipo === 'voz' ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
+  const r = run('node', script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
   console.log((r.stdout || '').split('\n').slice(-6).join('\n'));
   if (!fs.existsSync(salida)) throw new Error('El montaje no ha producido vídeo. ' + ((r.stdout || '') + (r.stderr || '')).slice(-300));
   try { await publicaIndiceMusica(); } catch { /* el índice se publica la próxima vez */ }

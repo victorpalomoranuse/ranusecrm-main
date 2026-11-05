@@ -3,10 +3,13 @@ import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
 import { leerJson, guardarJson } from '../utils/asistente-personal.js';
+import * as drive from '../utils/drive-lectura.js';
 
 // Estudio de vídeo: subes una voz en off (o un bruto), eliges un formato y un trabajador de vídeo lo monta.
 // Cola de trabajos = un JSON por trabajo en el bucket privado "estudio-video" (sin migraciones de base de datos).
 const router = express.Router();
+// las miniaturas se cargan desde etiquetas <img>, que no pueden enviar cabeceras: se admite el token en la URL solo ahí
+router.use((req, res, next) => { if (!req.headers.authorization && req.query.t && /^\/drive\/miniatura\//.test(req.path)) req.headers.authorization = 'Bearer ' + req.query.t; next(); });
 router.use(authenticateToken, requirePermission('recursos'));
 const BUCKET = 'estudio-video';
 const RUTA_FORMATOS = 'crm/estudio-video/formatos.json';
@@ -116,6 +119,11 @@ router.delete('/musica/:nombre', async (req, res) => {
   catch { res.status(500).json({ error: 'No se pudo borrar' }); }
 });
 
+// Explorador de Drive (solo lectura): carpetas, vídeos e imágenes con miniatura
+router.get('/drive/raiz', async (req, res) => { try { res.json({ carpetas: (await drive.raiz()).map(f => ({ id: f.id, nombre: f.name })) }); } catch (e) { res.status(503).json({ error: e.message }); } });
+router.get('/drive/carpeta/:id', async (req, res) => { try { if (!/^[\w-]{10,60}$/.test(req.params.id)) return res.status(400).json({ error: 'Carpeta no válida' }); res.json({ elementos: await drive.hijos(req.params.id) }); } catch (e) { res.status(503).json({ error: e.message }); } });
+router.get('/drive/miniatura/:id', async (req, res) => { try { if (!/^[\w-]{10,60}$/.test(req.params.id)) return res.status(400).end(); const m = await drive.miniatura(req.params.id); if (!m) return res.status(404).end(); res.set('Content-Type', m.tipo); res.set('Cache-Control', 'private, max-age=3600'); res.send(m.datos); } catch { res.status(404).end(); } });
+
 // Carpetas de recursos disponibles (las publica el trabajador a partir del índice de la biblioteca)
 router.get('/carpetas', async (req, res) => {
   try { await bucket(); const u = await st().createSignedUrl('crm-indice-carpetas.json', 30); let lista = []; if (u.data?.signedUrl) { const r = await fetch(u.data.signedUrl + '&cb=' + Date.now(), { cache: 'no-store' }); if (r.ok) lista = await r.json(); } res.json({ carpetas: lista }); }
@@ -129,7 +137,7 @@ router.post('/trabajos', async (req, res) => {
     if (!fmt) return res.status(400).json({ error: 'Elige un formato' });
     if (!['voz', 'bruto'].includes(b.tipo)) return res.status(400).json({ error: 'Indica si subes una voz en off o un vídeo en bruto' });
     if (!/^entradas\//.test(b.archivo || '')) return res.status(400).json({ error: 'Falta el archivo subido' });
-    const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, tipo: b.tipo, archivo: b.archivo, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: fmt.receta, notas_formato: fmt.notas || '', indicaciones: limpia(b.indicaciones, 800), musica: limpia(b.musica, 150) || 'auto', carpetas: (Array.isArray(b.carpetas) ? b.carpetas : []).slice(0, 30).map(c => limpia(c, 200)).filter(Boolean), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
+    const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, tipo: b.tipo, archivo: b.archivo, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: fmt.receta, notas_formato: fmt.notas || '', indicaciones: limpia(b.indicaciones, 800), musica: limpia(b.musica, 150) || 'auto', carpetas: (Array.isArray(b.carpetas) ? b.carpetas : []).slice(0, 30).map(c => limpia(c, 200)).filter(Boolean), recursos: (Array.isArray(b.recursos) ? b.recursos : []).slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
     await guardarTrabajo(t); res.status(201).json({ trabajo: t });
   } catch (e) { res.status(500).json({ error: 'No se pudo crear el trabajo: ' + (e.message || '') }); }
 });

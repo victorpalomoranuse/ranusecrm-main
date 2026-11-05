@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
-import { Film, Upload, Mic, Video, Trash2, RefreshCw, Download, Plus, Check, Wand2, Settings2, Loader2, Music } from 'lucide-react';
+import { Film, Upload, Mic, Video, Trash2, RefreshCw, Download, Plus, Check, Wand2, Settings2, Loader2, Music, Folder, ArrowLeft, Image as ImagenIcono, Play, X } from 'lucide-react';
 
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '0.85rem 1rem' };
 const mut = { color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem' };
@@ -21,15 +21,68 @@ async function subirArchivo(file, onProgreso, tipo) {
   return data.ruta;
 }
 
+const fmtDur = (s) => (s == null ? '' : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'));
+const urlMiniatura = (id) => { let t = ''; try { t = localStorage.getItem('token') || ''; } catch { /* sin token */ } return (api.defaults.baseURL || '/api') + '/estudio-video/drive/miniatura/' + id + '?t=' + encodeURIComponent(t); };
+
+function Explorador({ seleccion, onCambio }) {
+  const [abierto, setAbierto] = useState(false), [ruta, setRuta] = useState([]), [items, setItems] = useState(null), [error, setError] = useState(''), [ver, setVer] = useState(null);
+  const rutaTexto = (extra) => [...ruta.slice(1).map(r => r.nombre), ...(extra ? [extra] : [])].join('/');
+  useEffect(() => { if (!abierto || ruta.length) return; api.get('/estudio-video/drive/raiz').then(r => { const x = (r.data.carpetas || [])[0]; if (x) setRuta([{ id: x.id, nombre: x.nombre }]); else setError('No hay carpetas compartidas con Drive todavía.'); }).catch(e => setError(e?.response?.data?.error || 'Drive no está disponible')); }, [abierto, ruta.length]);
+  useEffect(() => { if (!ruta.length) return; let vivo = true; setItems(null); setError(''); api.get('/estudio-video/drive/carpeta/' + ruta[ruta.length - 1].id).then(r => vivo && setItems(r.data.elementos || [])).catch(e => vivo && setError(e?.response?.data?.error || 'No se pudo abrir la carpeta')); return () => { vivo = false; }; }, [ruta]);
+  const esta = (id) => seleccion.some(s => s.id === id);
+  const alterna = (it) => onCambio(esta(it.id) ? seleccion.filter(s => s.id !== it.id) : [...seleccion, { id: it.id, nombre: it.nombre, tipo: it.tipo, ruta: it.tipo === 'carpeta' ? rutaTexto(it.nombre) : rutaTexto() }]);
+  const nSel = seleccion.length;
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ ...mut, marginBottom: 4 }}>Recursos (de dónde salen las escenas)</div>
+      <button type="button" className="ap-btn ap-btn-sm" onClick={() => setAbierto(!abierto)}>{nSel ? nSel + ' elegido(s)' : 'Todo Drive indexado'} {abierto ? '▲' : '▼'}</button>
+      {nSel > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>{seleccion.map(s => <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid rgba(255,255,255,0.15)', borderRadius: 20, padding: '2px 4px 2px 10px', fontSize: '0.78rem' }}>{s.tipo === 'carpeta' ? <Folder size={11} /> : s.tipo === 'imagen' ? <ImagenIcono size={11} /> : <Film size={11} />}{s.nombre.length > 28 ? s.nombre.slice(0, 26) + '…' : s.nombre}<button type="button" onClick={() => onCambio(seleccion.filter(x => x.id !== s.id))} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', display: 'flex', padding: 2 }}><X size={11} /></button></span>)}<button type="button" className="ap-btn ap-btn-sm" onClick={() => onCambio([])}>Quitar todo</button></div>}
+      {abierto && (
+        <div style={{ marginTop: 8, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8, fontSize: '0.8rem' }}>
+            {ruta.length > 1 && <button type="button" className="ap-btn ap-btn-sm" onClick={() => setRuta(ruta.slice(0, -1))}><ArrowLeft size={12} /></button>}
+            {ruta.map((r, i) => <span key={r.id}>{i > 0 && ' / '}<a href="#" onClick={e => { e.preventDefault(); setRuta(ruta.slice(0, i + 1)); }} style={{ color: i === ruta.length - 1 ? '#fff' : 'rgba(255,255,255,0.55)' }}>{r.nombre}</a></span>)}
+          </div>
+          {error && <div className="ap-error">{error}</div>}
+          {!error && items === null && <div style={mut}><Loader2 size={12} /> Cargando…</div>}
+          {items && items.length === 0 && <div style={mut}>Carpeta vacía.</div>}
+          {items && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 8, maxHeight: 420, overflow: 'auto' }}>
+            {items.map(it => (
+              <div key={it.id} style={{ position: 'relative', border: '1px solid ' + (esta(it.id) ? 'rgba(205,187,167,0.9)' : 'rgba(255,255,255,0.1)'), background: esta(it.id) ? 'rgba(205,187,167,0.1)' : 'rgba(255,255,255,0.03)', borderRadius: 8, overflow: 'hidden' }}>
+                {it.tipo === 'carpeta'
+                  ? <div role="button" tabIndex={0} onClick={() => setRuta([...ruta, { id: it.id, nombre: it.nombre }])} style={{ aspectRatio: '9 / 12', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Folder size={34} style={{ opacity: 0.55 }} /></div>
+                  : <div role="button" tabIndex={0} onClick={() => setVer(it)} style={{ aspectRatio: '9 / 12', cursor: 'pointer', background: '#000', position: 'relative' }}><img src={urlMiniatura(it.id)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={e => { e.currentTarget.style.opacity = 0; }} />{it.tipo === 'video' && <span style={{ position: 'absolute', right: 4, bottom: 4, background: 'rgba(0,0,0,0.7)', borderRadius: 4, padding: '0 5px', fontSize: '0.68rem' }}><Play size={9} /> {fmtDur(it.duracion)}</span>}</div>}
+                <label style={{ position: 'absolute', left: 4, top: 4, background: 'rgba(0,0,0,0.65)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer', display: 'flex' }}><input type="checkbox" checked={esta(it.id)} onChange={() => alterna(it)} /></label>
+                <div style={{ padding: '4px 6px', fontSize: '0.72rem', lineHeight: 1.25, wordBreak: 'break-word', maxHeight: 34, overflow: 'hidden' }}>{it.nombre}</div>
+              </div>
+            ))}
+          </div>}
+          <div style={{ ...mut, marginTop: 8 }}>Marca una carpeta para usar todo lo que contiene, o vídeos e imágenes sueltos. Pulsa una miniatura para verla.</div>
+        </div>
+      )}
+      {ver && (
+        <div onClick={() => setVer(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 'min(460px, 100%)', background: '#0f0f0f', borderRadius: 12, padding: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}><div style={{ flex: 1, fontSize: '0.85rem', wordBreak: 'break-word' }}>{ver.nombre}</div><button type="button" className="ap-btn ap-btn-sm" onClick={() => setVer(null)}><X size={13} /></button></div>
+            {ver.tipo === 'video' ? <iframe title="vista previa" src={'https://drive.google.com/file/d/' + ver.id + '/preview'} allow="autoplay" style={{ width: '100%', aspectRatio: '9 / 14', border: 0, borderRadius: 8, background: '#000' }} /> : <img src={urlMiniatura(ver.id)} alt="" style={{ width: '100%', borderRadius: 8 }} />}
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}><button type="button" className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => { alterna(ver); setVer(null); }}>{esta(ver.id) ? 'Quitar de la selección' : 'Usar en el vídeo'}</button></div>
+            {ver.tipo === 'video' && <div style={{ ...mut, marginTop: 6 }}>La vista previa usa tu sesión de Google: si no carga, inicia sesión en Drive con tu cuenta de Ranuse.</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Nuevo({ formatos, musica, carpetas, onCreado }) {
-  const [carp, setCarp] = useState([]), [verCarp, setVerCarp] = useState(false), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [prog, setProg] = useState(null), [error, setError] = useState('');
+  const [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
   const enviar = async () => {
     if (!file || !fmt) return; setError(''); setProg(0);
     try {
       const ruta = await subirArchivo(file, setProg);
-      await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: file.name, indicaciones: notas, musica: mus, carpetas: tipo === 'voz' ? carp : [] });
+      await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: file.name, indicaciones: notas, musica: mus, recursos: tipo === 'voz' ? recursos : [] });
       setFile(null); setNotas(''); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
     } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo enviar'); setProg(null); }
   };
@@ -52,22 +105,7 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Formato</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
       {formatos.find(f => f.id === fmt)?.descripcion && <div style={{ ...mut, marginTop: -4, marginBottom: 10 }}>{formatos.find(f => f.id === fmt).descripcion}</div>}
-      {tipo === 'voz' && (
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ ...mut, marginBottom: 4 }}>Recursos (de dónde salen las escenas)</div>
-          <button type="button" className="ap-btn ap-btn-sm" onClick={() => setVerCarp(!verCarp)}>{carp.length ? carp.length + ' carpeta(s) elegida(s)' : 'Todas las carpetas'} {verCarp ? '▲' : '▼'}</button>
-          {verCarp && (
-            <div style={{ marginTop: 8, maxHeight: 220, overflow: 'auto', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '6px 10px' }}>
-              {carpetas.length === 0 ? <div style={mut}>Aún no hay carpetas indexadas.</div> : carpetas.map(c => (
-                <label key={c.ruta} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0', paddingLeft: (c.ruta.split('/').length - 1) * 16, fontSize: '0.85rem' }}>
-                  <input type="checkbox" checked={carp.includes(c.ruta)} onChange={e => setCarp(e.target.checked ? [...carp, c.ruta] : carp.filter(x => x !== c.ruta))} /> {c.ruta.split('/').pop()} <span style={mut}>{c.videos}</span>
-                </label>
-              ))}
-              {carp.length > 0 && <button type="button" className="ap-btn ap-btn-sm" style={{ marginTop: 6 }} onClick={() => setCarp([])}>Usar todas</button>}
-            </div>
-          )}
-        </div>
-      )}
+      {tipo === 'voz' && <Explorador seleccion={recursos} onCambio={setRecursos} />}
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Música de fondo</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={mus} onChange={e => setMus(e.target.value)}><option value="auto">Automática (la IA elige la que mejor encaje)</option><option value="ninguna">Sin música</option>{musica.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.bpm ? ' · ' + Math.round(p.bpm) + ' bpm' : ''}</option>)}</select>
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Indicaciones (opcional)</label>

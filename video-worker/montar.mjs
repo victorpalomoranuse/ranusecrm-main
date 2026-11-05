@@ -5,7 +5,8 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
-import { CADENA_VOZ, corrigeTrabones, repetidasInmediatas, rangosAQuitar, recomponeVoz } from './voz.mjs';
+import * as drive from './drive.mjs';
+import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, rangosAQuitar, recomponeVoz } from './voz.mjs';
 
 const [VOZ, INDICE, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!VOZ || !INDICE || !SALIDA) { console.log('Uso: node montar.mjs "<voz>" "<indice.json>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -68,17 +69,23 @@ console.log('Palabras:', palabras.length);
 }
 
 // 3) la IA monta
-let idx = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos.filter(v => !v.hablando_a_camara && v.duracion >= 2);
-// recursos: solo de las carpetas que se hayan elegido en el CRM (vacío = todas)
-{ let carp = []; try { carp = JSON.parse(process.env.RECURSOS || '[]'); } catch { /* todas */ }
-  if (carp.length) { const f = idx.filter(v => carp.some(c => (v.carpeta || '') === c || (v.carpeta || '').startsWith(c + '/'))); console.log('Recursos de', carp.length, 'carpeta(s):', f.length, 'de', idx.length, 'vídeos'); if (f.length >= 3) idx = f; else console.log('Muy pocos vídeos en esas carpetas, se usan todas'); } }
+let idx = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos.filter(v => v.duracion >= 1.5);
+// recursos elegidos en el CRM: carpetas enteras o vídeos sueltos (vacío = todo lo indexado, sin los brutos hablando)
+{ let sel = {}; try { sel = JSON.parse(process.env.RECURSOS_SEL || '{}'); } catch { /* todo */ }
+  const carps = sel.carpetas || [], vids = sel.videos || [];
+  if (carps.length || vids.length) {
+    const f = idx.filter(v => { const abs = v.ruta_abs ?? v.carpeta ?? ''; return carps.some(c => abs === c || abs.startsWith(c + '/')) || vids.some(z => z.id === v.drive_id || (z.ruta ? z.ruta + '/' : '') + z.nombre === (abs ? abs + '/' : '') + v.nombre); });
+    console.log('Recursos elegidos:', carps.length, 'carpeta(s),', vids.length, 'vídeo(s) →', f.length, 'de', idx.length, 'vídeos indexados');
+    if (f.length) idx = f; else { console.log('Nada de lo elegido está indexado; se usan todos'); idx = idx.filter(v => !v.hablando_a_camara); }
+  } else idx = idx.filter(v => !v.hablando_a_camara && v.duracion >= 2);
+}
 const cat = idx.map(v => ({ id: v.id, dur: v.duracion, calidad: v.calidad, mov: v.movimiento, resumen: v.resumen, planos: v.planos.map(p => p.t + 's: ' + p.descripcion) }));
 const guion = palabras.map((w, i) => i + ':' + w.t + '@' + w.de.toFixed(1)).join(' ');
 const planF = path.join(work, 'plan.json'); let plan;
 if (process.env.REUSE && fs.existsSync(planF)) plan = JSON.parse(fs.readFileSync(planF, 'utf8'));
 else {
   const prompt = 'Eres montador de vídeo de Ranuse Design (diseño de gimnasios y espacios deportivos). Tienes la voz en off de un vídeo vertical para Instagram/TikTok y un catálogo de escenas en bruto. Monta un vídeo PROFESIONAL, DINÁMICO y SERIO (sin humor, sin emojis; sensación de marca premium).\n\nVOZ EN OFF (índice:palabra@segundo): ' + guion + '\n\nDuración total: ' + durVoz.toFixed(1) + ' s.\n\nCATÁLOGO (id, duración en s, planos con su segundo):\n' + JSON.stringify(cat) + '\n\n' + (NOTAS ? 'INDICACIONES DEL EQUIPO: ' + NOTAS + '\n\n' : '') +
-    'Reglas: 1) Ritmo rápido: cortes de ' + RECETA.corte.min + ' a ' + RECETA.corte.max + ' s siguiendo el sentido de las frases; cambia de plano al cambiar de idea o cada pocas palabras. La primera palabra de cada corte es el índice "de"; cada corte llega hasta justo antes del siguiente; el primero empieza en la palabra 0. 2) Para cada corte elige la escena del catálogo que ilustre lo que se dice; si no hay nada literal, el plano de mejor ambiente/calidad (prefiere calidad alta; evita planos oscuros o borrosos). No repitas el mismo vídeo en cortes seguidos; puedes reutilizar un vídeo con otro tramo ("desde" distinto). 3) "desde" = segundo del vídeo donde empieza el plano (usa los segundos de los planos listados; debe cumplirse desde + duración del corte <= duración del vídeo). 4) "kicker": categoría de 2-4 palabras. "titulo": gancho serio en mayúsculas, máx. 7 palabras, sin signos de exclamación. 5) "enfasis": índices de las palabras clave de la voz (cifras, términos técnicos, la idea fuerte), unas 1 de cada 5-6 palabras. 6) Responde SOLO con JSON: {"kicker":"","titulo":"","enfasis":[0],"cortes":[{"de":0,"video":"id","desde":0.0}]}';
+    'Reglas: 1) Ritmo rápido: cortes de ' + RECETA.corte.min + ' a ' + RECETA.corte.max + ' s siguiendo el sentido de las frases; cambia de plano al cambiar de idea o cada pocas palabras. La primera palabra de cada corte es el índice "de"; cada corte llega hasta justo antes del siguiente; el primero empieza en la palabra 0. 2) Para cada corte elige la escena del catálogo que ilustre lo que se dice; si no hay nada literal, el plano de mejor ambiente/calidad (prefiere calidad alta; evita planos oscuros o borrosos). ' + (idx.length < 6 ? 'Hay pocos vídeos disponibles: reutilízalos con tramos DISTINTOS ("desde" puede ser cualquier segundo del vídeo, no solo los listados), sin repetir el mismo tramo ni el mismo vídeo en cortes seguidos.' : 'No repitas el mismo vídeo en cortes seguidos; puedes reutilizar un vídeo con otro tramo ("desde" distinto).') + ' 3) "desde" = segundo del vídeo donde empieza el plano (usa los segundos de los planos listados; debe cumplirse desde + duración del corte <= duración del vídeo). 4) "kicker": categoría de 2-4 palabras. "titulo": gancho serio en mayúsculas, máx. 7 palabras, sin signos de exclamación. 5) "enfasis": índices de las palabras clave de la voz (cifras, términos técnicos, la idea fuerte), unas 1 de cada 5-6 palabras. 6) Responde SOLO con JSON: {"kicker":"","titulo":"","enfasis":[0],"cortes":[{"de":0,"video":"id","desde":0.0}]}';
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 8000, messages: [{ role: 'user', content: prompt }] }) });
   const j = await r.json(); if (!r.ok) { console.log('Claude error', JSON.stringify(j).slice(0, 300)); process.exit(1); }
   plan = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]);
@@ -105,13 +112,14 @@ const valido = cortes.filter(c => c.dur > 0.15);
 
 // 5) render de cada corte: vertical, empujón de zoom suave, color
 const partes = []; let t0c = 0; const marcas = [];
+const dr = {}; for (const c of valido) { const v = idx.find(z => z.id === c.video); if (v?.drive_id && !dr[v.id]) { try { dr[v.id] = await drive.urlDescarga(v.drive_id); } catch (e) { console.log('Sin acceso a Drive:', e.message); } } }
 valido.forEach((c, i) => {
   const v = idx.find(x => x.id === c.video), out = path.join(work, 'c' + pad2(i) + '.mp4');
   const desde = Math.max(0, Math.min(Number(c.desde) || 0, Math.max(0, v.duracion - c.dur - 0.1)));
   const nf = Math.max(2, Math.round(c.dur * 30)), z1 = RECETA.zoomFinal, dir = i % 2 ? 1 : -1;
   const vf = 'scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,zoompan=z=\'' + (dir > 0 ? '1+' + (z1 - 1) + '*on/' + nf : z1 + '-' + (z1 - 1) + '*on/' + nf) + '\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=1080x1920:fps=30,' + RECETA.color + ',setsar=1,format=yuv420p';
   const loop = v.duracion < c.dur + 0.2 ? ['-stream_loop', '-1'] : [];
-  const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...loop, '-ss', desde.toFixed(2), '-i', v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', out]);
+  const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id] ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? dr[v.id].url : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', out]);
   if (!fs.existsSync(out)) { console.log('corte', i, 'falló', (rr.stderr || '').slice(0, 200)); return; }
   partes.push(out); marcas.push(c.ini);
 });
@@ -140,6 +148,7 @@ const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY:
   'Style: Kicker,Montserrat,34,' + RECETA.acento.replace('&H', '&H00').replace(/&$/, '') + ',&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,80,80,300,1',
   'Style: Titulo,Montserrat,60,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3,5,8,90,90,385,1', '', '[Events]', 'Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text'].concat(ev).join('\n');
 fs.writeFileSync(path.join(work, 'subs.ass'), '\uFEFF' + ass, 'utf8');
+copiaModelo(work);
 fs.mkdirSync(path.join(work, 'fonts'), { recursive: true }); fs.copyFileSync(FONT, path.join(work, 'fonts', 'Montserrat-Bold.ttf'));
 for (const f of ['Rubik-Bold.ttf', 'Rubik-Regular.ttf']) { const o = new URL('./fonts/' + f, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'); if (fs.existsSync(o)) fs.copyFileSync(o, path.join(work, 'fonts', f)); }
 
