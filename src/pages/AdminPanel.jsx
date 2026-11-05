@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../auth/AdminAuthContext';
 import api from '../services/api';
-import { Sparkles, Table2, Home, Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays, Search, Building2 } from 'lucide-react';
+import { Sparkles, Table2, Home, Ruler, LayoutGrid, Users, UserCheck, LogOut, ChevronUp, ChevronDown, Pencil, Trash2, Plus, Star, X, CheckCircle, Circle, AlertCircle, FolderOpen, Copy, RefreshCw, Settings, BookOpen, ShoppingCart, Eye, EyeOff, Bookmark, Phone, Download, ExternalLink, Image, GripVertical, BarChart2, Calculator, Save, Target, Shield, TrendingUp, Wallet, Package, Hammer, MessageSquare, MessageCircle, Send, PhoneCall, Menu, CalendarDays, Search, Building2, Film } from 'lucide-react';
 import { SectionPresupuestos } from './SectionPresupuestos';
 import EstudioIdeas from '../components/EstudioIdeas';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
 import { SectionAsistentePersonal } from './SectionAsistentePersonal';
+import { SectionEstudioVideo } from './SectionEstudioVideo';
 import { SectionAsistenteDiseno } from './SectionAsistenteDiseno';
 import { SectionAsistenteSetter } from './SectionAsistenteSetter';
 import { SectionAgenda } from './SectionAgenda';
@@ -2882,6 +2883,7 @@ const NAV_ITEMS = [
   { id:'finanzas', label:'Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'asistente-finanzas', label:'Asistente Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'asistente-personal', label:'Asistente personal', Icon:MessageSquare, adminOnly:true },
+  { id:'estudio-video', label:'Estudio de vídeo', Icon:Film, permission:'recursos' },
   { id:'obra', label:'Relación de obra', Icon:Hammer, permissions:['ventas','finanzas'] },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
   { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },
@@ -2932,6 +2934,7 @@ export function AdminPanel() {
       case 'asistente': return <SectionAsistenteIA/>;
       case 'asistente-finanzas': return <SectionAsistenteFinanzas/>;
       case 'asistente-personal': return <SectionAsistentePersonal/>;
+      case 'estudio-video': return <SectionEstudioVideo/>;
       case 'asistente-diseno': return <SectionAsistenteDiseno/>;
       case 'asistente-setter': return <SectionAsistenteSetter/>;
       case 'mi-agenda': return <SectionAgenda/>;
