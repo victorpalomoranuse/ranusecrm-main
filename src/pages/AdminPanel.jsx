@@ -2652,6 +2652,7 @@ const ETIQUETAS_PERMISOS = {
   proyectos: 'Proyectos', clientes: 'Clientes',
   catalogo: 'Catálogo', referencias: 'Referencias', recursos: 'Recursos', contactos: 'Proveedores',
   ventas: 'Ventas', finanzas: 'Finanzas', asistente: 'Asistente IA', presupuestos: 'Presupuestos (solo los suyos)',
+  estudio_video: 'Estudio de vídeo',
 };
 const PERMISOS_CONFIGURABLES = Object.keys(ETIQUETAS_PERMISOS);
 // Qué secciones del menú abre cada casilla (se muestra en el editor de roles)
@@ -2668,6 +2669,7 @@ const PERMISOS_ABRE = {
   ventas: 'Ventas, Asistente IA, Relación de obra',
   finanzas: 'Finanzas, Asistente Finanzas, Relación de obra',
   asistente: 'Solo el Asistente IA (presupuestos y crear productos del catálogo), sin abrir Ventas',
+  estudio_video: 'Estudio de vídeo: subir voces o brutos, elegir recursos de Drive y música, y editar vídeos con IA',
   presupuestos: 'Presupuestos: solo ve y edita los que crea esa persona (la numeración es la misma). Para trabajar bien también necesita Proyectos y Catálogo',
 };
 const SIEMPRE_ABIERTAS = 'Todos los roles ven siempre: Inicio, Mi día y Mis Comisiones. Solo el administrador superior ve: Pedidos, Tareas, Empleados, Roles y Ajustes (no se pueden dar a un rol).';
@@ -2883,7 +2885,7 @@ const NAV_ITEMS = [
   { id:'finanzas', label:'Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'asistente-finanzas', label:'Asistente Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'asistente-personal', label:'Asistente personal', Icon:MessageSquare, adminOnly:true },
-  { id:'estudio-video', label:'Estudio de vídeo', Icon:Film, permission:'recursos' },
+  { id:'estudio-video', label:'Estudio de vídeo', Icon:Film, permission:'estudio_video' },
   { id:'obra', label:'Relación de obra', Icon:Hammer, permissions:['ventas','finanzas'] },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
   { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },

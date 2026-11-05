@@ -6,6 +6,8 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
 import * as drive from './drive.mjs';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
 import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, rangosAQuitar, recomponeVoz } from './voz.mjs';
 
 const [VOZ, INDICE, SALIDA, NOTAS = ''] = process.argv.slice(2);
@@ -114,13 +116,19 @@ const valido = cortes.filter(c => c.dur > 0.15);
 // 5) render de cada corte: vertical, empujón de zoom suave, color
 const partes = []; let t0c = 0; const marcas = [];
 const dr = {}; for (const c of valido) { const v = idx.find(z => z.id === c.video); if (v?.drive_id && !dr[v.id]) { try { dr[v.id] = await drive.urlDescarga(v.drive_id); } catch (e) { console.log('Sin acceso a Drive:', e.message); } } }
+// Los vídeos de Drive que se usan muchas veces se bajan una sola vez (leerlos por red en cada corte es lentísimo con 4K)
+{ const usos = {}; for (const c of valido) usos[c.video] = (usos[c.video] || 0) + 1;
+  for (const [id, r] of Object.entries(dr)) { const v = idx.find(z => z.id === id); if (!r.url || !v || usos[id] < 4 || !v.bytes || v.bytes > 4e9) continue;
+    const f = path.join(work, 'fuente_' + id + (path.extname(v.nombre || '') || '.mp4'));
+    try { console.log('Bajando a local (' + Math.round(v.bytes / 1e6) + ' MB) porque se usa ' + usos[id] + ' veces…'); const rs = await fetch(r.url, { headers: r.cabeceras }); if (!rs.ok) throw new Error('HTTP ' + rs.status); await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(f)); dr[id] = { local: f }; }
+    catch (e) { console.log('No se pudo bajar, se lee por red:', e.message); } } }
 valido.forEach((c, i) => {
   const v = idx.find(x => x.id === c.video), out = path.join(work, 'c' + pad2(i) + '.mp4');
   const desde = Math.max(0, Math.min(Number(c.desde) || 0, Math.max(0, v.duracion - c.dur - 0.1)));
   const nf = Math.max(2, Math.round(c.dur * 30)), z1 = RECETA.zoomFinal, dir = i % 2 ? 1 : -1;
   const vf = 'scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,zoompan=z=\'' + (dir > 0 ? '1+' + (z1 - 1) + '*on/' + nf : z1 + '-' + (z1 - 1) + '*on/' + nf) + '\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=1080x1920:fps=30,' + RECETA.color + ',setsar=1,format=yuv420p';
   const loop = v.duracion < c.dur + 0.2 ? ['-stream_loop', '-1'] : [];
-  const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id] ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? dr[v.id].url : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', out]);
+  const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', out]);
   if (!fs.existsSync(out)) { console.log('corte', i, 'falló', (rr.stderr || '').slice(0, 200)); return; }
   partes.push(out); marcas.push(c.ini);
 });

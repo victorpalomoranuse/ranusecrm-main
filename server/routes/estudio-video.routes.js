@@ -10,7 +10,7 @@ import * as drive from '../utils/drive-lectura.js';
 const router = express.Router();
 // las miniaturas se cargan desde etiquetas <img>, que no pueden enviar cabeceras: se admite el token en la URL solo ahí
 router.use((req, res, next) => { if (!req.headers.authorization && req.query.t && /^\/drive\/miniatura\//.test(req.path)) req.headers.authorization = 'Bearer ' + req.query.t; next(); });
-router.use(authenticateToken, requirePermission('recursos'));
+router.use(authenticateToken, requirePermission('estudio_video'));
 const BUCKET = 'estudio-video';
 const RUTA_FORMATOS = 'crm/estudio-video/formatos.json';
 
