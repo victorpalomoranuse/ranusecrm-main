@@ -32,19 +32,21 @@ async function describe(frames, nombre, dur) {
 
 async function procesa(f, ruta) {
   const dur = Number(f.videoMediaMetadata?.durationMillis || 0) / 1000; if (dur < 0.8) throw new Error('sin duración');
-  const N = Math.min(Number(MAXF), Math.max(2, Math.ceil(dur / 10))), frames = [], { url, cabeceras } = await drive.urlDescarga(f.id);
+  const N = (process.env.DENSO === '1' && dur > 90) ? Math.min(36, Math.ceil(dur / 20)) : Math.min(Number(MAXF), Math.max(2, Math.ceil(dur / 10))), frames = [], { url, cabeceras } = await drive.urlDescarga(f.id);
   for (let i = 0; i < N; i++) {
     const t = Math.min(dur - 0.3, (i + 0.5) / N * dur), fich = path.join(SALIDA, 'miniaturas', f.id.slice(0, 12) + '_' + i + '.jpg');
     await ffmpeg(['-hide_banner', '-loglevel', 'error', '-y', '-headers', 'Authorization: ' + cabeceras.Authorization + '\r\n', '-ss', t.toFixed(2), '-i', url, '-map', '0:v:0', '-frames:v', '1', '-vf', 'scale=w=448:h=448:force_original_aspect_ratio=decrease,format=yuvj420p', '-strict', 'unofficial', fich]);
     if (fs.existsSync(fich) && fs.statSync(fich).size > 1000) frames.push({ t, fichero: fich });
   }
   if (frames.length < 1) throw new Error('sin fotogramas');
-  const d = await describe(frames, f.name, dur);
+  // se describe por tandas de 12 fotogramas y se juntan los planos (cada plano conserva su segundo)
+  let d = null, planosTodos = [], etiquetasTodas = new Set();
+  for (let i = 0; i < frames.length; i += 12) { const tanda = frames.slice(i, i + 12), dd = await describe(tanda, f.name, dur); if (!d) d = dd; (dd.etiquetas || []).forEach(e => etiquetasTodas.add(e)); for (const p of (dd.planos || [])) { const fr = tanda[(p.fotograma || 1) - 1]; if (fr) planosTodos.push({ t: Math.round(fr.t * 10) / 10, miniatura: path.basename(fr.fichero || ''), descripcion: p.descripcion, tipo_plano: p.tipo_plano, uso: p.uso }); } }
   const w = f.videoMediaMetadata?.width, h = f.videoMediaMetadata?.height;
   indice.videos.push({
     id: f.id.slice(0, 12), drive_id: f.id, ruta: 'drive:' + f.id, nombre: f.name, carpeta: path.dirname(ruta).replace(/\\/g, '/').replace(/^\.$/, ''), ruta_abs: RAIZ_ABS ? RAIZ_ABS + (path.dirname(ruta).replace(/\\/g, '/').replace(/^\.$/, '') ? '/' + path.dirname(ruta).replace(/\\/g, '/') : '') : undefined, bytes: Number(f.size || 0), duracion: Math.round(dur * 10) / 10, ancho: w, alto: h, vertical: h > w, fecha: f.modifiedTime?.slice(0, 10),
-    resumen: d.resumen, tipo: d.tipo, etiquetas: d.etiquetas || [], personas: d.personas, hablando_a_camara: !!d.hablando_a_camara, calidad: d.calidad, movimiento: d.movimiento,
-    planos: (d.planos || []).map(p => ({ t: Math.round((frames[(p.fotograma || 1) - 1]?.t ?? 0) * 10) / 10, miniatura: path.basename(frames[(p.fotograma || 1) - 1]?.fichero || ''), descripcion: p.descripcion, tipo_plano: p.tipo_plano, uso: p.uso })),
+    resumen: d.resumen, tipo: d.tipo, etiquetas: [...etiquetasTodas].slice(0, 30), personas: d.personas, hablando_a_camara: !!d.hablando_a_camara, calidad: d.calidad, movimiento: d.movimiento,
+    planos: planosTodos,
   });
 }
 

@@ -11,7 +11,7 @@ import { ARGS_VIDEO } from './codec.mjs';
 import { transcribe } from './transcribir.mjs';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
-import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, rangosAQuitar, recomponeVoz, muletillasSueltas, huecosConSonido } from './voz.mjs';
+import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, rangosAQuitar, recomponeVoz, muletillasSueltas, huecosConSonido, tomasRepetidas, elegirMejoresTomas } from './voz.mjs';
 
 const [VOZ, INDICE, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!VOZ || !INDICE || !SALIDA) { console.log('Uso: node montar.mjs "<voz>" "<indice.json>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -37,7 +37,7 @@ if (process.env.RECETA_JSON) { // receta elegida en el CRM
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
   if (o.corte) RECETA.corte = { ...RECETA.corte, ...o.corte };
   if (/^#[0-9a-f]{6}$/i.test(o.acento || '')) RECETA.acento = '&H' + o.acento.slice(5, 7) + o.acento.slice(3, 5) + o.acento.slice(1, 3) + '&';
-  for (const k of ['zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente']) if (o[k] !== undefined) RECETA[k] = o[k];
+  for (const k of ['zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente', 'horas']) if (o[k] !== undefined) RECETA[k] = o[k];
   if (o.musica && typeof o.musica === 'object') RECETA.musica = { ...RECETA.musica, ...o.musica };
   if (!['Montserrat', 'Rubik'].includes(RECETA.fuente)) RECETA.fuente = 'Montserrat';
   if (o.subs) RECETA.subs = { ...RECETA.subs, ...o.subs };
@@ -74,7 +74,10 @@ marca(30, 'Quitando muletillas, tropiezos y repeticiones');
   const trab = corrigeTrabones(palabras, wav); const quitar = repetidasInmediatas(palabras);
   const conservar = /conservw* (las )?muletillas|mantw* (las )?muletillas/i.test(NOTAS); const huecos = conservar ? 0 : huecosConSonido(palabras, wav); if (!conservar) for (const i of muletillasSueltas(palabras)) quitar.add(i);
   if (huecos) console.log('Muletillas sin transcribir cortadas:', huecos);
-  for (const i of await rangosAQuitar(palabras, ENV.ANTHROPIC_API_KEY, NOTAS)) quitar.add(i);
+  const [aQuitar, tomas] = await Promise.all([rangosAQuitar(palabras, ENV.ANTHROPIC_API_KEY, NOTAS), tomasRepetidas(palabras, ENV.ANTHROPIC_API_KEY, NOTAS)]);
+  for (const i of aQuitar) quitar.add(i);
+  // lo que dijiste varias veces: se queda la mejor toma (la que mejor entonación y ritmo tiene, sin tropiezos ni muletillas)
+  if (tomas.length) { console.log('Frases dichas varias veces:', tomas.length, 'grupo(s)'); for (const i of elegirMejoresTomas(palabras, tomas, wav, true)) quitar.add(i); }
   console.log('Tropiezos recortados:', trab, '| palabras quitadas:', quitar.size, [...quitar].slice(0, 30).map(i => palabras[i]?.t).join(' '));
   const r = recomponeVoz({ palabras, quitar, wav48: path.join(work, 'voz48_orig.wav'), salida: path.join(work, 'voz48.wav') });
   palabras = r.palabras; console.log('Voz limpia:', durVoz.toFixed(1), 's ->', r.durVoz.toFixed(1), 's'); durVoz = r.durVoz;
@@ -133,27 +136,50 @@ if (idx.length > 120) {
 }
 const compacto = v => ({ id: v.id, dur: v.duracion, calidad: v.calidad, resumen: v.resumen, etiquetas: (v.etiquetas || []).slice(0, 8), planos: (v.planos || []).slice(0, 6).map(p => p.t + 's: ' + String(p.descripcion).slice(0, 100)) });
 const cat = idx.map(compacto);
-const guion = palabras.map((w, i) => i + ':' + w.t + '@' + w.de.toFixed(1)).join(' ');
-const planF = path.join(work, 'plan.json'); let plan;
+const guionDe = (a, b) => palabras.slice(a, b).map((w, i) => (a + i) + ':' + w.t + '@' + w.de.toFixed(1)).join(' ');
+const planF = path.join(work, 'plan.json'); let plan, esquema = null;
 if (process.env.REUSE && fs.existsSync(planF)) plan = JSON.parse(fs.readFileSync(planF, 'utf8'));
 else {
-  const prompt = 'Eres montador de vídeo de Ranuse Design (diseño de gimnasios y espacios deportivos). Tienes la voz en off de un vídeo vertical para Instagram/TikTok y un catálogo de escenas en bruto. Monta un vídeo PROFESIONAL, DINÁMICO y SERIO (sin humor, sin emojis; sensación de marca premium).\n\nVOZ EN OFF (índice:palabra@segundo): ' + guion + '\n\nDuración total: ' + durVoz.toFixed(1) + ' s.\n\nCATÁLOGO (id, duración en s, planos con su segundo):\n' + JSON.stringify(cat) + '\n\n' + (NOTAS ? 'INDICACIONES DEL EQUIPO: ' + NOTAS + '\n\n' : '') +
-    'Reglas: 1) Ritmo rápido: cortes de ' + RECETA.corte.min + ' a ' + RECETA.corte.max + ' s siguiendo el sentido de las frases; cambia de plano al cambiar de idea o cada pocas palabras. La primera palabra de cada corte es el índice "de"; cada corte llega hasta justo antes del siguiente; el primero empieza en la palabra 0. 2) COHERENCIA OBLIGATORIA: la escena de cada corte debe tener relación DIRECTA con lo que se dice en ese corte (el mismo espacio, equipamiento, material o proceso). Está PROHIBIDO usar una escena que no tenga nada que ver (comida, personas ajenas al tema, objetos sin relación). Si no hay nada literal, usa un plano genérico del espacio o del equipamiento del mismo tema, nunca algo de otro asunto. Prefiere calidad alta y evita planos oscuros o borrosos. Algunas entradas del catálogo son IMÁGENES FIJAS (empiezan por "IMAGEN FIJA"): úsalas como cortes cortos de 1,5 a 3 s cuando ilustren lo que se dice (renders, proyectos), sin encadenar más de dos seguidas. ' + (idx.length < 6 ? 'Hay pocos vídeos disponibles: reutilízalos con tramos DISTINTOS ("desde" puede ser cualquier segundo del vídeo, no solo los listados), sin repetir el mismo tramo ni el mismo vídeo en cortes seguidos.' : 'No repitas el mismo vídeo en cortes seguidos; puedes reutilizar un vídeo con otro tramo ("desde" distinto).') + ' 3) "desde" = segundo del vídeo donde empieza el plano (usa los segundos de los planos listados; debe cumplirse desde + duración del corte <= duración del vídeo). 4) "kicker": categoría de 2-4 palabras. "titulo": gancho serio en mayúsculas, máx. 7 palabras, sin signos de exclamación. 5) "enfasis": índices de las palabras clave de la voz (cifras, términos técnicos, la idea fuerte), unas 1 de cada 5-6 palabras. 6) Responde SOLO con JSON: {"kicker":"","titulo":"","enfasis":[0],"cortes":[{"de":0,"video":"id","desde":0.0}]}';
+  const pidePlan = async (A, B) => {
+  const guion = guionDe(A, B), durBloque = palabras[B - 1].a - palabras[A].de;
+  const prompt = 'Eres montador de vídeo de Ranuse Design (diseño de gimnasios y espacios deportivos). Tienes la voz en off de un vídeo vertical para Instagram/TikTok y un catálogo de escenas en bruto. Monta un vídeo PROFESIONAL, DINÁMICO y SERIO (sin humor, sin emojis; sensación de marca premium).\n\nVOZ EN OFF (índice:palabra@segundo): ' + guion + '\n\nDuración de este fragmento: ' + durBloque.toFixed(1) + ' s (el vídeo completo dura ' + durVoz.toFixed(0) + ' s).\n\nHISTORIA DEL VÍDEO (síguela de principio a fin): ' + JSON.stringify(esquema) + '\n\nCATÁLOGO (id, duración en s, planos con su segundo; los planos de cada vídeo están en orden cronológico):\n' + JSON.stringify(cat) + '\n\n' + (NOTAS ? 'INDICACIONES DEL EQUIPO: ' + NOTAS + '\n\n' : '') +
+    'Reglas: 1) Ritmo rápido: cortes de ' + RECETA.corte.min + ' a ' + RECETA.corte.max + ' s siguiendo el sentido de las frases; cambia de plano al cambiar de idea o cada pocas palabras. La primera palabra de cada corte es el índice "de"; cada corte llega hasta justo antes del siguiente; el primero empieza en la palabra ' + A + '. 2) COHERENCIA OBLIGATORIA: la escena de cada corte debe tener relación DIRECTA con lo que se dice en ese corte (el mismo espacio, equipamiento, material o proceso). Está PROHIBIDO usar una escena que no tenga nada que ver (comida, personas ajenas al tema, objetos sin relación). Si no hay nada literal, usa un plano genérico del espacio o del equipamiento del mismo tema, nunca algo de otro asunto. NO tienes que usar todo el catálogo: lo elegido es una reserva y solo debes poner lo que SIRVE para lo que se dice; un clip que no encaja con nada del guion simplemente no se usa. Si para un tramo no hay NINGUNA escena coherente, no metas algo ajeno: continúa con otro fragmento distinto de la escena anterior (mismo espacio o tema) o con el plano más neutro de ese mismo tema. Prefiere calidad alta y evita planos oscuros o borrosos. Algunas entradas del catálogo son IMÁGENES FIJAS (empiezan por "IMAGEN FIJA"): úsalas como cortes cortos de 1,5 a 3 s cuando ilustren lo que se dice (renders, proyectos), sin encadenar más de dos seguidas. ' + (idx.length < 6 ? 'Hay pocos vídeos disponibles: reutilízalos con tramos DISTINTOS ("desde" puede ser cualquier segundo del vídeo, no solo los listados), sin repetir el mismo tramo ni el mismo vídeo en cortes seguidos.' : 'No repitas el mismo vídeo en cortes seguidos; puedes reutilizar un vídeo con otro tramo ("desde" distinto).') + ' 3a) SECUENCIA Y HISTORIA: las escenas deben contar la historia del guion en orden (de un espacio a otro, de la obra al resultado, del problema a la solución), con hilo conductor. Los planos de un mismo vídeo van en orden cronológico, así que usar fragmentos consecutivos de un recorrido cuenta la secuencia. Nunca escenas sueltas sin relación con la anterior ni con lo que se dice; el primer corte debe ser el gancho de la historia. 3b) VÍDEOS LARGOS: de un mismo vídeo largo puedes usar VARIOS fragmentos DISTINTOS en cortes no seguidos (cada plano listado tiene su segundo; separa los tramos al menos 10 s entre sí) para tener más recursos y variedad; no uses nunca el mismo tramo dos veces. 3) "desde" = segundo del vídeo donde empieza el plano (usa los segundos de los planos listados; debe cumplirse desde + duración del corte <= duración del vídeo). 4) "kicker": categoría de 2-4 palabras. "titulo": gancho serio en mayúsculas, máx. 7 palabras, sin signos de exclamación. 5) "enfasis": índices de las palabras clave de la voz (cifras, términos técnicos, la idea fuerte), unas 1 de cada 5-6 palabras. 5b) "horas": si la voz menciona una hora del día ("a las 9", "9:00", "plego a las 18h", "a las tres y media"), apunta {"de": índice de la palabra donde se dice, "texto": "9:00"} (formato 24 h, h:mm); si no menciona ninguna, déjalo vacío. 6) Responde SOLO con JSON: {"kicker":"","titulo":"","enfasis":[0],"horas":[{"de":0,"texto":"9:00"}],"cortes":[{"de":0,"video":"id","desde":0.0}]}';
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 8000, messages: [{ role: 'user', content: prompt }] }) });
   const j = await r.json(); if (!r.ok) { console.log('Claude error', JSON.stringify(j).slice(0, 300)); process.exit(1); }
-  plan = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]);
+  console.log('Plan del fragmento ' + A + '-' + B + ': tokens', j.usage.input_tokens, '/', j.usage.output_tokens);
+  return JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]);
+  };
+  // primero se ENTIENDE el guion entero: de qué trata, cómo se estructura y qué debería verse en cada parte
+  try { const texto = palabras.map((w, i) => (i % 25 === 0 ? '[' + i + '] ' : '') + w.t).join(' ').slice(0, 150000);
+    esquema = await llamaClaude('Eres el editor jefe de Ranuse Design (diseño de gimnasios y espacios deportivos). Lee el guion completo de un vídeo (con marcas [n] de la palabra cada 25) y define su HISTORIA para que luego se monte con imágenes que la cuenten en secuencia.\n\nGUION:\n' + texto + '\n\n' + (NOTAS ? 'INDICACIONES: ' + NOTAS + '\n\n' : '') + 'Responde SOLO JSON: {"historia":"de qué trata y a dónde quiere llevar al espectador, en 2-3 frases","gancho":"qué debe verse al empezar","secciones":[{"de":0,"hasta":120,"idea":"qué se explica","visual":"qué espacios, equipos o procesos deben verse y en qué orden (p. ej. entrada, luego zona de fuerza, luego cardio)"}],"cierre":"cómo debe terminar"}', 3000); console.log('Historia del vídeo:', String(esquema.historia || '').slice(0, 140)); } catch (e) { console.log('Sin esquema de la historia:', e.message); }
+  // el guion se trocea en bloques de ~330 palabras (cortados al final de una frase) que se planifican a la vez: así un audio de 20 minutos entra entero
+  const BLOQUE = 330, bloques = [];
+  for (let a = 0; a < palabras.length;) { let b = Math.min(palabras.length, a + BLOQUE); if (b < palabras.length) { let k = b; while (k > a + BLOQUE * 0.6 && !/[.?!]$/.test(palabras[k - 1].t)) k--; if (k > a + BLOQUE * 0.6) b = k; } bloques.push([a, b]); a = b; }
+  const partes = new Array(bloques.length), cola = bloques.map((_, i) => i);
+  await Promise.all(Array.from({ length: Math.min(3, bloques.length) }, async () => { while (cola.length) { const i = cola.shift(); partes[i] = await pidePlan(bloques[i][0], bloques[i][1]); } }));
+  plan = { kicker: partes[0].kicker, titulo: partes[0].titulo, enfasis: [...new Set(partes.flatMap(p => p.enfasis || []))], cortes: partes.flatMap(p => p.cortes || []), horas: partes.flatMap(p => p.horas || []) };
+  if (bloques.length > 1) console.log('Guion largo planificado en', bloques.length, 'bloques →', plan.cortes.length, 'cortes');
   fs.writeFileSync(planF, JSON.stringify(plan, null, 1));
-  console.log('Tokens', j.usage.input_tokens, '/', j.usage.output_tokens);
 }
 // Revisión de coherencia: una segunda pasada puntúa cada escena frente a lo que se dice y sustituye las que no encajan
 try {
   const cs = plan.cortes.slice().sort((a, b) => a.de - b.de);
   const items = cs.map((c, k) => { const sig = cs[k + 1]?.de ?? palabras.length, v = idx.find(x => x.id === c.video); const pl = (v?.planos || []).reduce((mm, p) => (!mm || Math.abs(p.t - (c.desde || 0)) < Math.abs(mm.t - (c.desde || 0)) ? p : mm), null); return { k, dice: palabras.slice(c.de, sig).map(w => w.t).join(' '), escena: String(v?.resumen || '').slice(0, 140) + ' | ' + String(pl?.descripcion || '').slice(0, 120) }; });
-  const r2 = await llamaClaude('Revisa la COHERENCIA entre lo que se dice y la escena que se muestra en cada corte de un vídeo de gimnasios/espacios deportivos. Puntúa de 0 a 10 la relación directa (0 = nada que ver, p. ej. comida cuando se habla de gimnasios). Devuelve SOLO los cortes con nota menor de 6, cada uno con una escena SUSTITUTA del catálogo que sí guarde relación con lo que se dice (si no hay ninguna literal, el plano más genérico del mismo tema), sin repetir la misma escena en cortes seguidos.\n\nCORTES: ' + JSON.stringify(items) + '\n\nCATÁLOGO: ' + JSON.stringify(cat) + '\n\nResponde SOLO JSON {"cambios":[{"k":0,"video":"id","desde":0.0,"motivo":"breve"}]}', 2500, true);
+  const r2 = await llamaClaude('Revisa la COHERENCIA entre lo que se dice y la escena que se muestra en cada corte de un vídeo de gimnasios/espacios deportivos, Y TAMBIÉN la SECUENCIA: la historia del vídeo (' + JSON.stringify(esquema || {}) + ') debe poder seguirse, sin saltos absurdos entre espacios ni escenas que rompan el hilo (p. ej. alternar sin motivo entre una vivienda y un gimnasio); si una escena rompe la secuencia, cámbiala aunque encaje con la frase. Puntúa de 0 a 10 la relación directa (0 = nada que ver, p. ej. comida cuando se habla de gimnasios). Devuelve SOLO los cortes con nota menor de 6, cada uno con una escena SUSTITUTA del catálogo que sí guarde relación con lo que se dice (si no hay ninguna literal, el plano más genérico del mismo tema), sin repetir la misma escena en cortes seguidos.\n\nCORTES: ' + JSON.stringify(items) + '\n\nCATÁLOGO: ' + JSON.stringify(cat) + '\n\nResponde SOLO JSON {"cambios":[{"k":0,"video":"id","desde":0.0,"motivo":"breve"}]}', 2500, true);
   let n = 0; for (const ch of (r2.cambios || [])) { const c = cs[ch.k]; if (c && idx.find(x => x.id === ch.video)) { c.video = ch.video; c.desde = Number(ch.desde) || 0; n++; } }
   if (n) { console.log('Revisión de coherencia: ' + n + ' escena(s) sustituida(s) de ' + cs.length); fs.writeFileSync(planF, JSON.stringify(plan, null, 1)); }
 } catch (e) { console.log('Sin revisión de coherencia:', e.message); }
+// Un mismo vídeo largo puede aparecer varias veces, pero nunca con el mismo tramo: si dos cortes se pisan, el segundo pasa a otro plano de ese vídeo
+try {
+  const cs2 = plan.cortes.slice().sort((a, b) => a.de - b.de), usados = {}; let movidos = 0;
+  cs2.forEach((c, k) => { const v = idx.find(x => x.id === c.video); if (!v || v.es_imagen) return; const sig = cs2[k + 1]?.de ?? palabras.length, dur = Math.max(1.2, (palabras[Math.min(sig, palabras.length - 1)]?.de ?? durVoz) - (palabras[c.de]?.de ?? 0)); const lista = usados[v.id] || (usados[v.id] = []);
+    const choca = (t) => lista.some(u => t < u[1] + 3 && t + dur + 3 > u[0]);
+    let t = Number(c.desde) || 0; if (choca(t)) { const alt = (v.planos || []).map(p => p.t).filter(tp => tp + dur <= v.duracion - 0.2 && !choca(tp)); if (alt.length) { t = alt[Math.floor(Math.random() * alt.length)]; c.desde = t; movidos++; } }
+    lista.push([t, t + dur]); });
+  if (movidos) { console.log('Tramos repetidos movidos a otro momento del mismo vídeo:', movidos); fs.writeFileSync(planF, JSON.stringify(plan, null, 1)); }
+} catch (e) { console.log('Sin comprobar tramos repetidos:', e.message); }
 marca(48, 'Escenas elegidas · cortando');
+{ const usados = new Set(plan.cortes.map(c => c.video)); console.log('Clips usados:', usados.size, 'de', idx.length, 'disponibles (los que no sirven para este guion no se ponen)'); }
 console.log('Plan:', plan.kicker, '|', plan.titulo, '|', plan.cortes.length, 'cortes');
 
 // música de fondo (la IA elige entre las pistas del CRM) y pulsos
@@ -223,10 +249,13 @@ ev.push('Dialogue: 3,' + tAss(0.1) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\an8\\p
 }
 if (RECETA.flash) marcas.slice(1).forEach(m => ev.push('Dialogue: 4,' + tAss(m) + ',' + tAss(m + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c&HFFFFFF&\\alpha&H9C&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
 ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durVoz) + ',Kicker,,0,0,0,,{\\an7\\pos(0,1896)\\p1\\c' + RECETA.acento + '\\fscx0\\t(0,' + Math.round(durVoz * 1000) + ',\\fscx100)}m 0 0 l 1080 0 1080 7 0 7{\\p0}');
+// etiquetas de hora grandes ("9:00") justo sobre los subtítulos, como en los vídeos de "mi día"
+if (RECETA.horas) for (const h of (plan.horas || [])) { const w = palabras[h.de]; if (!w || !h.texto) continue; ev.push('Dialogue: 2,' + tAss(w.de) + ',' + tAss(Math.min(durVoz, w.de + 1.8)) + ',Hora,,0,0,0,,{\\fad(80,150)\\fscx80\\fscy80\\t(0,130,\\fscx100\\fscy100)}' + limpiaT(h.texto)); }
 const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920', 'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '', '[V4+ Styles]',
   'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',
   'Style: Sub,' + RECETA.fuente + ',' + RECETA.subs.tam + ',&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,' + (RECETA.mayusculas === true && RECETA.subs.tam > 70 ? '9,4' : '1,2') + ',2,50,50,' + RECETA.subs.margenV + ',1',
   'Style: Kicker,Montserrat,34,' + RECETA.acento.replace('&H', '&H00').replace(/&$/, '') + ',&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,80,80,300,1',
+  'Style: Hora,' + RECETA.fuente + ',118,&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,2,3,8,60,60,500,1',
   'Style: Titulo,Montserrat,60,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3,5,8,90,90,385,1', '', '[Events]', 'Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text'].concat(ev).join('\n');
 fs.writeFileSync(path.join(work, 'subs.ass'), '\uFEFF' + ass, 'utf8');
 copiaModelo(work);

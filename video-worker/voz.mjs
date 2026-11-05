@@ -69,12 +69,57 @@ export function huecosConSonido(palabras, wav16) {
 export async function rangosAQuitar(palabras, apiKey, notas = '') {
   try {
     const guion = palabras.map((w, i) => i + ':' + w.t).join(' ');
-    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 1500, messages: [{ role: 'user', content:
-      'Transcripción de una voz en off o de alguien hablando a cámara (índice:palabra): ' + guion.slice(0, 12000) + '\n' + (notas ? 'Indicaciones: ' + notas + '\n' : '') +
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 4000, messages: [{ role: 'user', content:
+      'Transcripción de una voz en off o de alguien hablando a cámara (índice:palabra): ' + guion.slice(0, 150000) + '\n' + (notas ? 'Indicaciones: ' + notas + '\n' : '') +
       'Indica qué hay que ELIMINAR para que la comunicación sea fluida y ágil: frases o preguntas dichas dos veces (quédate con la mejor toma, normalmente la última y completa), empezar una frase y rehacerla, tropiezos ("cu cu cuántos"), errores, y SIEMPRE las muletillas y palabras de relleno: "eh", "mmm", "o sea", "bueno" al empezar, "pues", "vale", "a ver", "digamos", "¿sabes?", "¿no?", "entonces" de arranque, "básicamente", "la verdad" repetido, y comentarios al aire que no son parte del vídeo (órdenes al que graba, "otra vez", "¿lo repito?", "¿se escucha?"). Una muletilla solo se conserva si cambia el sentido o el vídeo pide ese tono (mira las indicaciones). Si Víctor se traba y repite una frase, quédate con la toma completa y limpia. No quites contenido útil. Responde SOLO JSON {"quitar":[[desde,hasta]]} con índices inclusivos.' }] }) });
     const j = await r.json(); const q = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]).quitar || [];
     const s = new Set(); for (const x of q) if (Array.isArray(x) && Number.isInteger(x[0])) for (let i = x[0]; i <= (Number.isInteger(x[1]) ? x[1] : x[0]); i++) s.add(i); return s;
   } catch { return new Set(); }
+}
+
+// Ideas, frases o párrafos que el hablante dijo VARIAS VECES (repite la toma para decirlo mejor). Devuelve grupos de versiones: [[ [a,b], [c,d] ], ...]
+export async function tomasRepetidas(palabras, apiKey, notas = '') {
+  try {
+    const guion = palabras.map((w, i) => i + ':' + w.t).join(' ');
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 4000, messages: [{ role: 'user', content:
+      'Transcripción de una grabación larga de voz (índice:palabra): ' + guion.slice(0, 150000) + '\n' + (notas ? 'Indicaciones: ' + notas + '\n' : '') +
+      'Localiza las IDEAS, frases o párrafos que el hablante dijo VARIAS VECES para decirlo mejor (repite una toma). Cada versión debe ser la frase o el párrafo COMPLETO. No incluyas repeticiones retóricas deliberadas ni cosas parecidas pero distintas: solo cuando es claramente la misma idea dicha de nuevo. Responde SOLO JSON {"tomas":[{"tema":"breve","versiones":[[desde,hasta],[desde,hasta]]}]} con índices inclusivos y versiones sin solaparse.' }] }) });
+    const j = await r.json(); const t = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]).tomas || [];
+    return t.map(x => (x.versiones || []).filter(p => Array.isArray(p) && Number.isInteger(p[0]) && Number.isInteger(p[1]) && p[1] >= p[0] && p[1] < palabras.length)).filter(g => g.length > 1);
+  } catch { return []; }
+}
+
+// Entonación (variación del tono en semitonos) de un tramo de muestras a 16 kHz, por autocorrelación en tramos con voz
+function variacionTono(x, i0, i1) {
+  const vals = [], frame = 640;
+  for (let s = i0; s + frame + 230 < i1 && s + frame + 230 < x.length; s += 640) {
+    let e = 0; for (let k = 0; k < frame; k++) e += x[s + k] * x[s + k]; e /= frame; if (e < 2e-5) continue;
+    let mejor = 0, lag0 = 0; for (let lag = 53; lag <= 228; lag++) { let c = 0, n1 = 0, n2 = 0; for (let k = 0; k < frame; k += 2) { const a = x[s + k], b = x[s + k + lag]; c += a * b; n1 += a * a; n2 += b * b; } const r = c / Math.sqrt(n1 * n2 + 1e-9); if (r > mejor) { mejor = r; lag0 = lag; } }
+    if (mejor > 0.5) vals.push(12 * Math.log2(16000 / lag0 / 100));
+  }
+  if (vals.length < 8) return 0; const m = vals.reduce((a, b) => a + b, 0) / vals.length; return Math.sqrt(vals.reduce((a, b) => a + (b - m) * (b - m), 0) / vals.length);
+}
+// De cada grupo de tomas se queda la MEJOR: sin tropiezos ni muletillas, con ritmo natural, energía y entonación expresivas (y, si hay duda, la última). Devuelve los índices a quitar.
+export function elegirMejoresTomas(palabras, grupos, wav16, mostrar = false) {
+  if (!grupos.length) return new Set();
+  let x; try { const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', wav16, '-ac', '1', '-ar', '16000', '-f', 'f32le', '-'], { maxBuffer: 1 << 29 }); x = new Float32Array(r.stdout.buffer, r.stdout.byteOffset, Math.floor(r.stdout.length / 4)); } catch { return new Set(); }
+  const quitar = new Set();
+  for (const g of grupos) {
+    const filas = g.map(([a, b], k) => {
+      const ws = palabras.slice(a, b + 1), dur = Math.max(0.5, palabras[b].a - palabras[a].de), i0 = Math.round(palabras[a].de * 16000), i1 = Math.round(palabras[b].a * 16000);
+      let pausas = 0, tropiezos = 0, rellenos = 0, suma = 0, suma2 = 0, n = 0;
+      for (let i = 1; i < ws.length; i++) if (ws[i].de - ws[i - 1].a > 0.5) pausas++;
+      for (const w of ws) { if (w.corregida || w.corte) tropiezos++; if (/^(e+h+|e+m+|m{2,}|o ?sea|bueno|pues|vale)$/i.test(norm(w.t))) rellenos++; }
+      for (let s = i0; s < i1; s += 800) { let e = 0; const f = Math.min(800, i1 - s); if (f < 400) break; for (let k = 0; k < f; k++) e += x[s + k] * x[s + k]; e = 10 * Math.log10(e / f + 1e-9); suma += e; suma2 += e * e; n++; }
+      const media = n ? suma / n : -60, varE = n ? Math.sqrt(Math.max(0, suma2 / n - media * media)) : 0, ritmo = ws.length / dur, tono = variacionTono(x, i0, i1);
+      const puntos = -3 * tropiezos - 2 * rellenos - 1.5 * pausas - Math.abs(ritmo - 2.8) * 1.2 + Math.min(1.5, tono / 3) + Math.min(1, varE / 6) + Math.min(0.5, Math.max(0, (media + 45) / 40)) + (k === g.length - 1 ? 0.8 : 0);
+      return { a, b, puntos, ritmo, tono, varE, pausas, tropiezos, rellenos };
+    });
+    filas.sort((p, q) => q.puntos - p.puntos); const ganadora = filas[0];
+    if (mostrar) console.log('Toma elegida', palabras[ganadora.a].t, '…', '| ritmo', ganadora.ritmo.toFixed(1), 'pal/s | entonación', ganadora.tono.toFixed(1), 'st | tropiezos', ganadora.tropiezos, 'rellenos', ganadora.rellenos, '| frente a', filas.length - 1, 'versión(es)');
+    for (const f of filas.slice(1)) for (let i = f.a; i <= f.b; i++) quitar.add(palabras[i].i);
+  }
+  return quitar;
 }
 
 // Recompone la voz sin lo eliminado ni las pausas largas, y devuelve las palabras con sus tiempos nuevos.

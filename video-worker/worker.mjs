@@ -53,7 +53,7 @@ async function publicaCarpetas() {
   await st.upload('crm-indice-carpetas.json', Buffer.from(JSON.stringify(lista)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
 }
 const DIR_DATOS = new URL('./datos/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
-const INDICES_NUBE = { 'drive-redes/indice.json': 'indices/redes.json', 'drive-piloto/indice.json': 'indices/piloto.json', 'drive-seleccion/indice.json': 'indices/seleccion.json', 'drive-imagenes/indice.json': 'indices/imagenes.json' };
+const INDICES_NUBE = { 'drive-redes/indice.json': 'indices/redes.json', 'drive-piloto/indice.json': 'indices/piloto.json', 'drive-seleccion/indice.json': 'indices/seleccion.json', 'drive-imagenes/indice.json': 'indices/imagenes.json', 'drive-largos/indice.json': 'indices/largos.json' };
 async function subeIndices(solo) {
   for (const [loc, rem] of Object.entries(INDICES_NUBE)) { if (solo && !solo.includes(loc)) continue; const f = path.join(DIR_DATOS, loc); if (!fs.existsSync(f)) continue; const { error } = await st.upload(rem, fs.readFileSync(f), { contentType: 'application/json', upsert: true, cacheControl: '0' }); console.log(error ? 'Índice sin subir ' + rem + ': ' + error.message : 'Índice subido: ' + rem + ' (' + (fs.statSync(f).size / 1e6).toFixed(1) + ' MB)'); }
 }
@@ -72,6 +72,8 @@ function indiceTotal(dir, sel) {
   const base = new URL('./datos/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
   const fPiloto = path.join(base, 'drive-piloto/indice.json');
   let todos = [...(fs.existsSync(fPiloto) ? cargaIndice(fPiloto, RAIZ_PILOTO) : cargaIndice(INDICE, RAIZ_PILOTO)), ...cargaIndice(path.join(base, 'drive-redes/indice.json'), RAIZ_REDES)];
+  // los vídeos largos reindexados en denso (muchos fotogramas) sustituyen a su entrada antigua, conservando su carpeta
+  { const dens = cargaIndice(path.join(base, 'drive-largos/indice.json'), ''); if (dens.length) { const por = new Map(dens.map(v => [v.drive_id, v])); todos = todos.map(v => { const d = por.get(v.drive_id); return d ? { ...d, ruta_abs: v.ruta_abs, carpeta: v.carpeta } : v; }); } }
   const ids = new Set(todos.map(v => v.drive_id).filter(Boolean)), nom = new Set(todos.map(v => v.ruta_abs + '/' + v.nombre));
   const faltan = (sel.videos || []).filter(z => !ids.has(z.id) && !nom.has((z.ruta ? z.ruta + '/' : '') + z.nombre));
   const fSel = path.join(base, 'drive-seleccion/indice.json');
@@ -107,7 +109,7 @@ async function procesa(t) {
     try { await indexaCarpetas(t, { carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }, idsExist); } catch (e) { console.log('Carpetas sin indexar del todo:', e.message); } seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), imagenes: rec.filter(r => r.tipo === 'imagen').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
   const conInserciones = t.tipo === 'base' || rec0.length > 0;
   const script = t.tipo === 'voz' ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
-  const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
+  const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: t.musica === 'ninguna' ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
   console.log((r.stdout || '').split('\n').slice(-6).join('\n'));
   if (!fs.existsSync(salida)) { const txt = ((r.stdout || '') + (r.stderr || '')); const fallo = /FALLO:[^\r\n]*/.exec(txt)?.[0]; throw new Error(fallo ? 'El montaje se ha parado. ' + fallo : 'El montaje no ha producido vídeo. ' + txt.slice(-300)); }
   try { await publicaIndiceMusica(); } catch { /* el índice se publica la próxima vez */ }
