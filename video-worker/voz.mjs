@@ -45,13 +45,33 @@ export function repetidasInmediatas(palabras) {
   return quitar;
 }
 
+// Muletillas que casi nunca aportan nada: se quitan siempre (salvo que se pida conservarlas)
+const MULETILLA = /^(e+h+|e+m+|eh?m+|m{2,}|h+m+|u+h+m*|a+h+m*|ee+|aa+)$/;
+export function muletillasSueltas(palabras) {
+  const q = new Set(); for (const w of palabras) if (MULETILLA.test(norm(w.t))) q.add(w.i); return q;
+}
+// Huecos entre palabras donde hay SONIDO de voz (un "eeeh", un "mmm", media sílaba): la palabra siguiente marca un corte y se salta ese tramo.
+export function huecosConSonido(palabras, wav16) {
+  let env; try { env = envolvente(wav16); } catch { return 0; }
+  const medias = []; for (const w of palabras) { const i0 = Math.round(w.de * 100), i1 = Math.round(w.a * 100); let a = 0, c = 0; for (let i = i0; i < i1; i++) if (env[i] !== undefined) { a += env[i]; c++; } if (c) medias.push(a / c); }
+  medias.sort((x, y) => x - y); const ref = medias[Math.floor(medias.length * 0.6)] || 0; if (!ref) return 0;
+  let n = 0;
+  for (let k = 0; k < palabras.length - 1; k++) {
+    const a = palabras[k].a, b = palabras[k + 1].de, gap = b - a; if (gap < 0.22 || gap > 1.6) continue;
+    const i0 = Math.round((a + 0.05) * 100), i1 = Math.round((b - 0.05) * 100); if (i1 <= i0) continue;
+    let suma = 0, pico = 0, c = 0; for (let i = i0; i < i1; i++) { const v = env[i] || 0; suma += v; pico = Math.max(pico, v); c++; }
+    if (c && suma / c > ref * 0.28 && pico > ref * 0.45) { palabras[k + 1].corte = true; n++; }
+  }
+  return n;
+}
+
 // La IA marca rangos de índices a eliminar: frases dichas dos veces, empezar y rehacer, errores, muletillas, comentarios al aire.
 export async function rangosAQuitar(palabras, apiKey, notas = '') {
   try {
     const guion = palabras.map((w, i) => i + ':' + w.t).join(' ');
-    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 800, messages: [{ role: 'user', content:
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 1500, messages: [{ role: 'user', content:
       'Transcripción de una voz en off o de alguien hablando a cámara (índice:palabra): ' + guion.slice(0, 12000) + '\n' + (notas ? 'Indicaciones: ' + notas + '\n' : '') +
-      'Indica qué hay que ELIMINAR para que la comunicación sea fluida y ágil: frases o preguntas dichas dos veces (quédate con la mejor toma, normalmente la última y completa), empezar una frase y rehacerla, tropiezos ("cu cu cuántos"), errores, muletillas largas, comentarios al aire que no son parte del vídeo (órdenes al que graba, "vale", "otra vez", "¿lo repito?"). No quites contenido útil; sé conservador ante la duda. Responde SOLO JSON {"quitar":[[desde,hasta]]} con índices inclusivos.' }] }) });
+      'Indica qué hay que ELIMINAR para que la comunicación sea fluida y ágil: frases o preguntas dichas dos veces (quédate con la mejor toma, normalmente la última y completa), empezar una frase y rehacerla, tropiezos ("cu cu cuántos"), errores, y SIEMPRE las muletillas y palabras de relleno: "eh", "mmm", "o sea", "bueno" al empezar, "pues", "vale", "a ver", "digamos", "¿sabes?", "¿no?", "entonces" de arranque, "básicamente", "la verdad" repetido, y comentarios al aire que no son parte del vídeo (órdenes al que graba, "otra vez", "¿lo repito?", "¿se escucha?"). Una muletilla solo se conserva si cambia el sentido o el vídeo pide ese tono (mira las indicaciones). Si Víctor se traba y repite una frase, quédate con la toma completa y limpia. No quites contenido útil. Responde SOLO JSON {"quitar":[[desde,hasta]]} con índices inclusivos.' }] }) });
     const j = await r.json(); const q = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]).quitar || [];
     const s = new Set(); for (const x of q) if (Array.isArray(x) && Number.isInteger(x[0])) for (let i = x[0]; i <= (Number.isInteger(x[1]) ? x[1] : x[0]); i++) s.add(i); return s;
   } catch { return new Set(); }
@@ -61,7 +81,7 @@ export async function rangosAQuitar(palabras, apiKey, notas = '') {
 export function recomponeVoz({ palabras, quitar, wav48, salida, pausa = 0.45 }) {
   const dur = Number(spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', wav48], { encoding: 'utf8' }).stdout) || 0;
   const kept = palabras.filter(w => !quitar.has(w.i)); const trozos = [];
-  for (const w of kept) { const u = trozos[trozos.length - 1]; const contiguo = u && w.i === u.ult + 1; if (u && (contiguo || w.de - u.fin < 0.12) && w.de - u.fin < pausa) { u.fin = w.a; u.ult = w.i; u.ws.push(w); } else trozos.push({ ini: w.de, fin: w.a, ult: w.i, ws: [w] }); }
+  for (const w of kept) { const u = trozos[trozos.length - 1]; const contiguo = u && w.i === u.ult + 1; if (u && !w.corte && (contiguo || w.de - u.fin < 0.12) && w.de - u.fin < pausa) { u.fin = w.a; u.ult = w.i; u.ws.push(w); } else trozos.push({ ini: w.de, fin: w.a, ult: w.i, ws: [w] }); }
   let t0 = 0; const partes = []; const fx = [];
   trozos.forEach((t, k) => {
     const a = Math.max(0, t.ini - 0.06), b = Math.min(dur, t.fin + 0.1);

@@ -141,7 +141,12 @@ function Trabajo({ t, formatos, onCambio }) {
         <span style={{ fontSize: '0.72rem', color, border: '1px solid ' + color, borderRadius: 20, padding: '1px 9px' }}>{txt}</span>
       </div>
       <div style={{ ...mut, marginTop: 4 }}>{t.formato_nombre} · {t.tipo === 'voz' ? 'voz en off' : t.tipo === 'base' ? 'base de Drive' : 'bruto'} · {fmtFecha(t.creado)}{t.por ? ' · ' + t.por : ''}</div>
-      {t.estado !== 'listo' && t.estado !== 'error' && <div style={{ ...mut, marginTop: 6 }}>{t.progreso}</div>}
+      {t.estado !== 'listo' && t.estado !== 'error' && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}><div style={{ height: '100%', width: Math.max(t.estado === 'procesando' ? 3 : 0, Math.min(100, t.pct || 0)) + '%', background: '#CDBBA7', borderRadius: 4, transition: 'width 0.8s ease' }} /></div>
+          <div style={{ ...mut, marginTop: 5, display: 'flex', justifyContent: 'space-between', gap: 8 }}><span>{t.progreso || 'En cola'}</span><span>{t.estado === 'procesando' ? Math.round(t.pct || 0) + ' %' : 'esperando turno'}</span></div>
+        </div>
+      )}
       {t.estado === 'error' && <div className="ap-error" style={{ marginTop: 8 }}>{t.error || 'Ha fallado el montaje.'}</div>}
       {t.indicaciones && <div style={{ ...mut, marginTop: 6, whiteSpace: 'pre-wrap' }}>“{t.indicaciones}”</div>}
       {t.estado === 'listo' && t.url && (
@@ -241,7 +246,7 @@ export function SectionEstudioVideo() {
   const cargarM = useCallback(() => api.get('/estudio-video/musica').then(r => setPistas(r.data.pistas || [])).catch(() => {}), []);
   useEffect(() => { cargarF(); cargarT(); cargarM(); api.get('/estudio-video/carpetas').then(r => setCarpetas(r.data.carpetas || [])).catch(() => {}); }, [cargarF, cargarT, cargarM]);
   const hayActivos = (trabajos || []).some(t => t.estado === 'pendiente' || t.estado === 'procesando');
-  useEffect(() => { if (!hayActivos) return; const i = setInterval(cargarT, 6000); return () => clearInterval(i); }, [hayActivos, cargarT]);
+  useEffect(() => { if (!hayActivos) return; const i = setInterval(cargarT, 3000); return () => clearInterval(i); }, [hayActivos, cargarT]);
   return (
     <div className="ev-root" style={{ maxWidth: 820 }}>
       <style>{ESTILO_SELECT}</style>

@@ -43,11 +43,14 @@ const claude = async (content, max = 1500) => {
 // ---- datos del vídeo ----
 const pr = JSON.parse(run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:stream_side_data=rotation:format=duration', '-of', 'json', ENTRADA]).stdout);
 let W = pr.streams[0].width, H = pr.streams[0].height; const rot = Math.abs(Number(pr.streams[0].side_data_list?.[0]?.rotation || 0)); if (rot === 90 || rot === 270) [W, H] = [H, W];
-const dur = Number(pr.format.duration) || 0; console.log('Bruto:', W + 'x' + H, dur.toFixed(1), 's');
+const dur = Number(pr.format.duration) || 0; const marca = (n, t) => console.log('##PCT ' + n + ' ' + t);
+marca(8, 'Leyendo el vídeo');
+console.log('Bruto:', W + 'x' + H, dur.toFixed(1), 's');
 if (!dur) { console.log('FALLO: no he podido leer el vídeo (¿falta ffmpeg o el archivo está dañado?)'); process.exit(1); }
 
 // ---- voz -> palabras ----
 const wav = path.join(work, 'voz.wav'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', ENTRADA, '-vn', '-ac', '1', '-ar', '16000', wav]);
+marca(12, 'Transcribiendo la voz');
 const wj = path.join(work, 'palabras');
 if (!fs.existsSync(wj + '.json')) run(WHISPER, ['-m', MODELO_W, '-f', wav, '-l', 'es', '-t', '8', '-bs', '1', '-bo', '1', '-ml', '1', '-sow', '-oj', '-of', wj]);
 const palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription.map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000 })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
@@ -68,6 +71,7 @@ if (R.inserciones && process.env.INDICE_JSON) {
     console.log('Catálogo para superponer:', catalogo.length, 'vídeos');
   } catch (e) { console.log('Sin catálogo para superponer:', e.message); }
 }
+marca(40, 'La IA decide qué quitar y qué superponer');
 // ---- IA: qué se quita (repeticiones, errores), título, palabras clave y gráficos ----
 let plan = { kicker: 'RANUSE DESIGN', titulo: '', enfasis: [], quitar: [], graficos: [] };
 try {
@@ -199,6 +203,7 @@ if (R.graficos) {
   console.log('Gráficos:', graf.map(g => g.a.toFixed(1) + 's').join(', ') || 'ninguno');
 }
 
+marca(60, 'Montando el vídeo: cortes, subtítulos y gráficos');
 // ---- un solo ffmpeg ----
 const zf = Math.max(1.05, R.zoomFinal), ZOOMS = R.zoomFinal <= 1 ? [1.0] : [1.0, zf, 0.92, zf + 0.1]; // acercar y alejar
 const partes = [], pa = [];

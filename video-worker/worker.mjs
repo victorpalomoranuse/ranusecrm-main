@@ -26,6 +26,13 @@ async function leer(id) {
   const r = await fetch(f.data.signedUrl + '&cb=' + Date.now(), { cache: 'no-store' }); return r.ok ? r.json() : null;
 }
 const guardar = (t) => st.upload('trabajos/' + t.id + '.json', Buffer.from(JSON.stringify(t)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
+let ultPct = 0;
+async function pct(t, n, texto) { const ahora = Date.now(); if (ahora - ultPct < 2500 && n < 99) return; ultPct = ahora; Object.assign(t, { pct: Math.round(n), progreso: texto }); try { await guardar(t); } catch { /* se reintenta en el siguiente */ } }
+function lanzaMotor(t, script, opciones) {
+  return new Promise(res => { let out = '', err = '', buf = ''; const p = spawn('node', script, { ...opciones, stdio: ['ignore', 'pipe', 'pipe'] });
+    p.stdout.on('data', d => { const x = d.toString(); out += x; buf += x; let i; while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1); const m = /^##PCT (\d+) (.*)$/.exec(l); if (m) pct(t, Number(m[1]), m[2]); } });
+    p.stderr.on('data', d => { err += d.toString(); }); p.on('close', () => res({ stdout: out, stderr: err })); });
+}
 async function paso(t, texto, extra = {}) { Object.assign(t, { progreso: texto }, extra); console.log('[' + t.id + '] ' + texto); await guardar(t); }
 
 const MUSICA_LOCAL = new URL('./datos/musica-crm/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -61,7 +68,7 @@ function indiceTotal(dir, sel) {
 }
 async function procesa(t) {
   const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
-  await paso(t, 'Descargando el archivo…', { estado: 'procesando', empezado: new Date().toISOString() });
+  await paso(t, 'Descargando el archivo…', { estado: 'procesando', empezado: new Date().toISOString(), pct: 2 });
   let entrada;
   if (t.base) {
     const meta = await drive.meta(t.base.id); if (Number(meta.size) > 6e9) throw new Error('El archivo de Drive pesa ' + (Number(meta.size) / 1e9).toFixed(1) + ' GB; usa uno de menos de 6 GB (o un trozo)');
@@ -84,11 +91,11 @@ async function procesa(t) {
   if (t.tipo === 'voz' || t.tipo === 'base' || rec0.length) { const rec = rec0; seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
   const conInserciones = t.tipo === 'base' || rec0.length > 0;
   const script = t.tipo === 'voz' ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
-  const r = run('node', script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
+  const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
   console.log((r.stdout || '').split('\n').slice(-6).join('\n'));
   if (!fs.existsSync(salida)) { const txt = ((r.stdout || '') + (r.stderr || '')); const fallo = /FALLO:[^\r\n]*/.exec(txt)?.[0]; throw new Error(fallo ? 'El montaje se ha parado. ' + fallo : 'El montaje no ha producido vídeo. ' + txt.slice(-300)); }
   try { await publicaIndiceMusica(); } catch { /* el índice se publica la próxima vez */ }
-  await paso(t, 'Preparando el archivo final…');
+  await paso(t, 'Ajustando el tamaño del archivo final…', { pct: 93 });
   const final = path.join(dir, 'final.mp4'), movil = path.join(dir, 'movil.mp4');
   // El archivo final debe caber en el límite de Supabase (~50 MB por archivo): se ajusta la tasa de bits a la duración
   const durF = Number(run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', salida]).stdout) || 60;
@@ -98,11 +105,11 @@ async function procesa(t) {
     if (fs.existsSync(final) && fs.statSync(final).size <= 49 * 1024 * 1024) break; kbps = Math.floor(kbps * 0.8);
   }
   run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-vf', 'scale=540:960', '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', '-metadata:s:v:0', 'encoder=', '-metadata:s:a:0', 'encoder=', '-c:v', 'libx264', '-bsf:v', 'filter_units=remove_types=6', '-crf', '28', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-movflags', '+faststart', movil]);
-  await paso(t, 'Subiendo el resultado…');
+  await paso(t, 'Subiendo el resultado…', { pct: 97 });
   const sube = async (ruta, f) => { const { error } = await st.upload(ruta, fs.readFileSync(f), { contentType: 'video/mp4', upsert: true }); if (error) throw new Error('No se pudo subir ' + ruta + ': ' + error.message); };
   await sube('salidas/' + t.id + '.mp4', final); await sube('salidas/' + t.id + '_movil.mp4', movil);
   let plan = null; const pf = path.join(dir, '_trabajo_salida', 'plan.json'); if (fs.existsSync(pf)) { try { const p = JSON.parse(fs.readFileSync(pf, 'utf8')); plan = { kicker: p.kicker, titulo: p.titulo, cortes: p.cortes?.length }; } catch { /* sin plan */ } }
-  await paso(t, 'Listo', { estado: 'listo', resultado: 'salidas/' + t.id + '.mp4', resultado_movil: 'salidas/' + t.id + '_movil.mp4', plan, terminado: new Date().toISOString(), error: null });
+  await paso(t, 'Listo', { pct: 100, estado: 'listo', resultado: 'salidas/' + t.id + '.mp4', resultado_movil: 'salidas/' + t.id + '_movil.mp4', plan, terminado: new Date().toISOString(), error: null });
 }
 
 console.log('Trabajador de vídeo en marcha. Índice:', INDICE);

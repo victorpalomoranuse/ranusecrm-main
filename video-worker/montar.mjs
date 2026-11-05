@@ -8,7 +8,7 @@ import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
 import * as drive from './drive.mjs';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
-import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, rangosAQuitar, recomponeVoz } from './voz.mjs';
+import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, rangosAQuitar, recomponeVoz, muletillasSueltas, huecosConSonido } from './voz.mjs';
 
 const [VOZ, INDICE, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!VOZ || !INDICE || !SALIDA) { console.log('Uso: node montar.mjs "<voz>" "<indice.json>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -51,10 +51,13 @@ const wav = path.join(work, 'voz.wav'), m4a = path.join(work, 'voz.m4a');
 run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', VOZ, '-vn', '-ac', '1', '-ar', '16000', wav]);
 run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', VOZ, '-vn', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', path.join(work, 'voz48_orig.wav')]);
 let durVoz = Number(run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', wav]).stdout) || 0;
+const marca = (n, t) => console.log('##PCT ' + n + ' ' + t);
+marca(8, 'Leyendo el audio');
 console.log('Voz:', durVoz.toFixed(1), 's');
 if (!durVoz) { console.log('FALLO: no he podido leer el audio del archivo (¿falta ffmpeg o el archivo no tiene sonido?)'); process.exit(1); }
 
 // 2) transcripción por palabras (en la nube se cambia por Groq)
+marca(12, 'Transcribiendo la voz');
 const wj = path.join(work, 'palabras');
 if (!fs.existsSync(wj + '.json')) run(WHISPER, ['-m', MODELO_W, '-f', wav, '-l', 'es', '-t', '8', '-bs', '1', '-bo', '1', '-ml', '1', '-sow', '-oj', '-of', wj]);
 let palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription
@@ -62,9 +65,12 @@ let palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF
 palabras.forEach((w, i) => { w.i = i; });
 console.log('Palabras:', palabras.length);
 
+marca(30, 'Quitando muletillas, tropiezos y repeticiones');
 // 2b) corregir cuando te trabas: tropiezos, palabras repetidas, frases dichas dos veces, errores y pausas largas
 {
   const trab = corrigeTrabones(palabras, wav); const quitar = repetidasInmediatas(palabras);
+  const conservar = /conservw* (las )?muletillas|mantw* (las )?muletillas/i.test(NOTAS); const huecos = conservar ? 0 : huecosConSonido(palabras, wav); if (!conservar) for (const i of muletillasSueltas(palabras)) quitar.add(i);
+  if (huecos) console.log('Muletillas sin transcribir cortadas:', huecos);
   for (const i of await rangosAQuitar(palabras, ENV.ANTHROPIC_API_KEY, NOTAS)) quitar.add(i);
   console.log('Tropiezos recortados:', trab, '| palabras quitadas:', quitar.size, [...quitar].slice(0, 30).map(i => palabras[i]?.t).join(' '));
   const r = recomponeVoz({ palabras, quitar, wav48: path.join(work, 'voz48_orig.wav'), salida: path.join(work, 'voz48.wav') });
@@ -95,6 +101,7 @@ else {
   fs.writeFileSync(planF, JSON.stringify(plan, null, 1));
   console.log('Tokens', j.usage.input_tokens, '/', j.usage.output_tokens);
 }
+marca(48, 'Escenas elegidas · cortando');
 console.log('Plan:', plan.kicker, '|', plan.titulo, '|', plan.cortes.length, 'cortes');
 
 // música de fondo (la IA elige entre las pistas del CRM) y pulsos
@@ -132,8 +139,9 @@ async function cortar(c, i) {
   const loop = v.duracion < c.dur + 0.2 ? ['-stream_loop', '-1'] : [];
   const rr = { stderr: await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', out]) };
   if (!fs.existsSync(out)) { console.log('corte', i, 'falló', (rr.stderr || '').slice(0, 200)); return; }
-  hechos[i] = { out, ini: c.ini };
+  hechos[i] = { out, ini: c.ini }; hechosN++; marca(48 + Math.round(38 * hechosN / valido.length), 'Cortando escenas ' + hechosN + ' de ' + valido.length);
 }
+let hechosN = 0;
 // varios cortes a la vez: el ordenador tiene de sobra para 3 procesos de ffmpeg
 { const cola = valido.map((_, i) => i), POOL = Number(process.env.CORTES_EN_PARALELO || 3);
   await Promise.all(Array.from({ length: POOL }, async () => { while (cola.length) { const i = cola.shift(); await cortar(valido[i], i); } })); }
@@ -167,6 +175,7 @@ copiaModelo(work);
 fs.mkdirSync(path.join(work, 'fonts'), { recursive: true }); fs.copyFileSync(FONT, path.join(work, 'fonts', 'Montserrat-Bold.ttf'));
 for (const f of ['Rubik-Bold.ttf', 'Rubik-Regular.ttf']) { const o = new URL('./fonts/' + f, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'); if (fs.existsSync(o)) fs.copyFileSync(o, path.join(work, 'fonts', f)); }
 
+marca(88, 'Montando el vídeo final con música y subtítulos');
 // 7) audio: voz limpia + whoosh sutil en cada corte
 const args = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', 'lista.txt', '-i', 'voz48.wav'];
 let fa = '[1:a]' + RECETA.voz + '[voz]';
