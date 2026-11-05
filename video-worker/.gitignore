@@ -1,4 +1,5 @@
+*.err
+*.log
 datos/
 node_modules/
-*.log
-*.err
+secretos/
