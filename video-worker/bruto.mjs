@@ -6,6 +6,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { tarjetaPNG, NOMBRES_ICONOS } from './iconos.mjs';
 import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
+import { CADENA_VOZ, corrigeTrabones, repetidasInmediatas } from './voz.mjs';
 
 const [ENTRADA, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!ENTRADA || !SALIDA) { console.log('Uso: node bruto.mjs "<bruto>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -25,7 +26,7 @@ if (!/^#[0-9a-f]{6}$/i.test(R.acento)) R.acento = '#CDBBA7';
 const ACENTO = '&H' + R.acento.slice(5, 7) + R.acento.slice(3, 5) + R.acento.slice(1, 3) + '&';
 if (!['Montserrat', 'Rubik'].includes(R.fuente)) R.fuente = 'Montserrat';
 const GROSOR = R.mayusculas === true && R.subs.tam > 70 ? '9,4' : '1,2'; // sombra muy leve y limpia
-const AUDIO = 'highpass=f=90,afftdn=nr=14:nf=-45,acompressor=threshold=-21dB:ratio=3:attack=8:release=120:makeup=3,equalizer=f=3200:t=q:w=1:g=2,loudnorm=I=-15:TP=-1.5:LRA=9,aresample=48000';
+const AUDIO = CADENA_VOZ;
 const work = path.resolve(path.dirname(SALIDA), '_trabajo_' + path.basename(SALIDA, '.mp4')); fs.mkdirSync(work, { recursive: true });
 const run = (c, a, o = {}) => spawnSync(c, a, { encoding: 'utf8', maxBuffer: 1 << 28, ...o });
 const pad2 = n => String(n).padStart(2, '0');
@@ -49,6 +50,7 @@ if (!fs.existsSync(wj + '.json')) run(WHISPER, ['-m', MODELO_W, '-f', wav, '-l',
 const palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription.map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000 })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
 if (!palabras.length) { console.log('FALLO: no se oye voz en el vídeo'); process.exit(1); }
 palabras.forEach((w, i) => { w.i = i; });
+const trabones = corrigeTrabones(palabras, wav); if (trabones) console.log('Tropiezos recortados:', trabones);
 
 // ---- IA: qué se quita (repeticiones, errores), título, palabras clave y gráficos ----
 let plan = { kicker: 'RANUSE DESIGN', titulo: '', enfasis: [], quitar: [], graficos: [] };
@@ -62,6 +64,7 @@ try {
 fs.writeFileSync(path.join(work, 'plan.json'), JSON.stringify(plan, null, 1));
 const fuera = new Set(); for (const r of (plan.quitar || [])) if (Array.isArray(r) && Number.isInteger(r[0])) for (let i = r[0]; i <= (Number.isInteger(r[1]) ? r[1] : r[0]); i++) fuera.add(i);
 if (fuera.size) console.log('Se quitan', fuera.size, 'palabras (repeticiones/errores):', [...fuera].slice(0, 40).map(i => palabras[i]?.t).join(' '));
+for (const i of repetidasInmediatas(palabras)) fuera.add(i);
 const enfasis = new Set((plan.enfasis || []).filter(n => Number.isInteger(n)));
 
 // ---- música (elegida por la IA entre las pistas del CRM) ----

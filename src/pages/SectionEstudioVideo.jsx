@@ -4,6 +4,7 @@ import { Film, Upload, Mic, Video, Trash2, RefreshCw, Download, Plus, Check, Wan
 
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '0.85rem 1rem' };
 const mut = { color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem' };
+const ESTILO_SELECT = '.ev-root select option { background:#1a1a1a; color:#fff; } .ev-root select { color-scheme: dark; }';
 const ESTADOS = { pendiente: ['En cola', '#bba'], procesando: ['Montando…', '#f2c46d'], listo: ['Listo', '#7ccf8f'], error: ['Error', '#ef7b7b'] };
 const fmtFecha = (iso) => { try { return new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' }); } catch { return ''; } };
 
@@ -175,7 +176,8 @@ export function SectionEstudioVideo() {
   const hayActivos = (trabajos || []).some(t => t.estado === 'pendiente' || t.estado === 'procesando');
   useEffect(() => { if (!hayActivos) return; const i = setInterval(cargarT, 6000); return () => clearInterval(i); }, [hayActivos, cargarT]);
   return (
-    <div style={{ maxWidth: 820 }}>
+    <div className="ev-root" style={{ maxWidth: 820 }}>
+      <style>{ESTILO_SELECT}</style>
       <h1 className="ap-page-title" style={{ marginBottom: 6 }}>Estudio de vídeo</h1>
       <p style={{ ...mut, marginBottom: 16 }}>Sube una voz en off (audio o vídeo) o un vídeo en bruto, elige un formato y la IA lo edita con las escenas de la biblioteca. Cada formato guarda el estilo para que todos los vídeos salgan igual. Si no te gusta algo, pide cambios sobre el propio vídeo.</p>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>

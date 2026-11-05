@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
+import { CADENA_VOZ, corrigeTrabones, repetidasInmediatas, rangosAQuitar, recomponeVoz } from './voz.mjs';
 
 const [VOZ, INDICE, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!VOZ || !INDICE || !SALIDA) { console.log('Uso: node montar.mjs "<voz>" "<indice.json>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -23,7 +24,7 @@ const RECETA = {
   whoosh: 0.16,                         // volumen de los whoosh en cada corte (0 = sin)
   flash: true,                          // destello blanco muy breve en cada corte
   subs: { palabrasPorBloque: 2, tam: 104, margenV: 600 },
-  voz: 'highpass=f=90,afftdn=nr=14:nf=-45,acompressor=threshold=-21dB:ratio=3:attack=8:release=120:makeup=3,equalizer=f=3200:t=q:w=1:g=2,loudnorm=I=-15:TP=-1.5:LRA=9,aresample=48000',
+  voz: CADENA_VOZ,
   color: 'eq=contrast=1.08:saturation=1.12:gamma=0.97,vignette=PI/6',
 };
 
@@ -45,16 +46,26 @@ const limpiaT = t => String(t).replace(/[{}\\]/g, '');
 // 1) audio de la voz (si es vídeo se extrae el audio)
 const wav = path.join(work, 'voz.wav'), m4a = path.join(work, 'voz.m4a');
 run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', VOZ, '-vn', '-ac', '1', '-ar', '16000', wav]);
-run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', VOZ, '-vn', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', path.join(work, 'voz48.wav')]);
-const durVoz = Number(run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', wav]).stdout) || 0;
+run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', VOZ, '-vn', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', path.join(work, 'voz48_orig.wav')]);
+let durVoz = Number(run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', wav]).stdout) || 0;
 console.log('Voz:', durVoz.toFixed(1), 's');
 
 // 2) transcripción por palabras (en la nube se cambia por Groq)
 const wj = path.join(work, 'palabras');
 if (!fs.existsSync(wj + '.json')) run(WHISPER, ['-m', MODELO_W, '-f', wav, '-l', 'es', '-t', '8', '-bs', '1', '-bo', '1', '-ml', '1', '-sow', '-oj', '-of', wj]);
-const palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription
+let palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription
   .map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000 })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
+palabras.forEach((w, i) => { w.i = i; });
 console.log('Palabras:', palabras.length);
+
+// 2b) corregir cuando te trabas: tropiezos, palabras repetidas, frases dichas dos veces, errores y pausas largas
+{
+  const trab = corrigeTrabones(palabras, wav); const quitar = repetidasInmediatas(palabras);
+  for (const i of await rangosAQuitar(palabras, ENV.ANTHROPIC_API_KEY, NOTAS)) quitar.add(i);
+  console.log('Tropiezos recortados:', trab, '| palabras quitadas:', quitar.size, [...quitar].slice(0, 30).map(i => palabras[i]?.t).join(' '));
+  const r = recomponeVoz({ palabras, quitar, wav48: path.join(work, 'voz48_orig.wav'), salida: path.join(work, 'voz48.wav') });
+  palabras = r.palabras; console.log('Voz limpia:', durVoz.toFixed(1), 's ->', r.durVoz.toFixed(1), 's'); durVoz = r.durVoz;
+}
 
 // 3) la IA monta
 const idx = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos.filter(v => !v.hablando_a_camara && v.duracion >= 2);
