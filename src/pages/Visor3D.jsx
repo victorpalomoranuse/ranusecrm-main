@@ -4214,7 +4214,7 @@ export default function Visor3D({ cliente = false }) {
     a.shiftY = 0; a.cam.fov = 5; a.cam.updateProjectionMatrix(); a.cam.position.copy(target).add(new THREE.Vector3(0, dist, 0.0001)); a.ctrl.target.copy(target);
     a.ctrl.enableRotate = false; a.ctrl.mouseButtons.MIDDLE = THREE.MOUSE.PAN; a.ctrl.update();
     a.scene.background = new THREE.Color(0xf4f2ee); if (a.base) a.base.visible = false;
-    setPlanta2d({ ocultasAntes: ocultas }); setOcultas(o => (o.includes('techos') ? o : [...o, 'techos'])); setSelObj(null); setSelAcab(null); setHerr('zonaS'); setFormaDib('poli');
+    setPlanta2d({ ocultasAntes: ocultas }); setOcultas(o => { const sin = o.filter(k => k !== 'suelos' && k !== 'muros'); return sin.includes('techos') ? sin : [...sin, 'techos']; }); // en planta siempre se ven suelos y muros (si estaban ocultos, la vista salía en blanco) setSelObj(null); setSelAcab(null); setHerr('zonaS'); setFormaDib('poli');
   };
   const salirPlanta2d = () => {
     const a = api3d.current, p = a.alzPrev;
