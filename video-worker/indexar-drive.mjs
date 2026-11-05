@@ -55,7 +55,7 @@ console.log('Recorriendo Drive…');
 const videos = []; const pila = CARPETA_ID.startsWith('ids:') ? [] : [{ id: CARPETA_ID, ruta: '' }];
 if (CARPETA_ID.startsWith('ids:')) for (const id of CARPETA_ID.slice(4).split(',').filter(Boolean)) { try { const f = await drive.meta(id); if (drive.esVideo(f)) videos.push({ f, ruta: f.name }); } catch (e) { console.log('Sin acceso a', id, e.message.slice(0, 80)); } }
 while (pila.length) { const c = pila.pop(); for (const f of await drive.hijos(c.id)) { if (drive.esCarpeta(f)) pila.push({ id: f.id, ruta: (c.ruta ? c.ruta + '/' : '') + f.name }); else if (drive.esVideo(f)) videos.push({ f, ruta: (c.ruta ? c.ruta + '/' : '') + f.name }); } }
-const pendientes = videos.filter(x => !hechos.has(x.f.id) && !fallos[x.f.id]);
+const pendientes = videos.filter(x => !hechos.has(x.f.id) && !(fallos[x.f.id] && Date.now() - (fallos[x.f.id].cuando || 0) < 6 * 3600000));
 if (process.env.MAX_NUEVOS && pendientes.length > Number(process.env.MAX_NUEVOS)) { console.log('Hay', pendientes.length, 'vídeos sin indexar; se indexan los', process.env.MAX_NUEVOS, 'primeros para no tardar demasiado'); pendientes.length = Number(process.env.MAX_NUEVOS); }
 console.log('Vídeos:', videos.length, '| ya indexados:', hechos.size, '| pendientes:', pendientes.length);
 
@@ -65,7 +65,7 @@ async function trabajador() {
   while (pendientes.length) {
     const x = pendientes.shift();
     try { await procesa(x.f, x.ruta); hechosAhora++; if (hechosAhora % 5 === 0) guarda(); if (hechosAhora % 10 === 0) { const seg = (Date.now() - t0) / 1000, coste = costeTok.e / 1e6 * 3 + costeTok.s / 1e6 * 15; console.log('OK ' + indice.videos.length + '/' + videos.length + ' · ' + (seg / hechosAhora).toFixed(1) + ' s/vídeo · quedan ' + pendientes.length + ' · ~' + coste.toFixed(2) + ' $'); } }
-    catch (e) { fallos[x.f.id] = { nombre: x.f.name, error: e.message.slice(0, 120) }; console.log('FALLO', x.f.name, e.message.slice(0, 100)); }
+    catch (e) { fallos[x.f.id] = { nombre: x.f.name, error: e.message.slice(0, 120), cuando: Date.now() }; console.log('FALLO', x.f.name, e.message.slice(0, 100)); }
   }
 }
 await Promise.all(Array.from({ length: Number(PARALELO) }, trabajador)); guarda();

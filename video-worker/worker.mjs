@@ -146,13 +146,18 @@ try { await subeIndices(); } catch (e) { console.log('Índices sin subir:', e.me
 try { await publicaCarpetas(); } catch (e) { console.log('Carpetas sin publicar:', e.message); }
 // Cada hora indexa los vídeos nuevos que se hayan subido a Drive (solo procesa los que faltan; si ya hay un indexado en marcha, espera)
 const ID_REDES = '1pujuBkWSoeFTDg9vc_jwD--9v0IWB8vE';
-let sync = null;
+let sync = null, denso = null;
+function lanzaDenso() {
+  const f = path.join(DIR_DATOS, 'ids_largos.txt'); if (denso || !fs.existsSync(f)) return;
+  denso = spawn('node', ['indexar-drive.mjs', 'ids:' + fs.readFileSync(f, 'utf8').trim(), path.join(DIR_DATOS, 'drive-largos'), '36', '2'], { cwd: AQUI, stdio: 'ignore', env: { ...process.env, DENSO: '1' } });
+  denso.on('close', () => { denso = null; subeIndices(['drive-largos/indice.json']).catch(() => {}); });
+}
 function sincronizaDrive() {
   const dirRedes = new URL('./datos/drive-redes/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
   try { if (sync || Date.now() - fs.statSync(path.join(dirRedes, 'indice.json')).mtimeMs < 5 * 60000) return; } catch { /* sin índice aún */ }
   console.log('Buscando vídeos nuevos en Drive…');
   sync = spawn('node', ['indexar-drive.mjs', ID_REDES, dirRedes, '8', '3'], { cwd: AQUI, stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
-  sync.on('close', () => { sync = null; subeIndices(['drive-redes/indice.json']).catch(() => {}); });
+  sync.on('close', () => { sync = null; subeIndices(['drive-redes/indice.json']).catch(() => {}); lanzaDenso(); });
 }
 setInterval(sincronizaDrive, 60 * 60 * 1000);
 for (;;) {

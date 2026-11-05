@@ -229,6 +229,14 @@ let hechosN = 0;
 // varios cortes a la vez: el ordenador tiene de sobra para 3 procesos de ffmpeg
 { const cola = valido.map((_, i) => i), POOL = Number(process.env.CORTES_EN_PARALELO || 3);
   await Promise.all(Array.from({ length: POOL }, async () => { while (cola.length) { const i = cola.shift(); await cortar(valido[i], i); } })); }
+// Si algún corte no se pudo sacar (p. ej. Drive limitó la lectura de un archivo), se rellena con el de un vecino para no descuadrar el vídeo con la voz
+for (let i = 0; i < valido.length; i++) {
+  if (hechos[i]) continue;
+  const orden = hechos.map((h, j) => [Math.abs(j - i), j]).filter(([, j]) => hechos[j]).sort((a, b) => a[0] - b[0]); if (!orden.length) continue;
+  const k = orden[0][1], out = path.join(work, 'r' + pad2(i) + '.mp4');
+  await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', '-stream_loop', '-1', '-i', hechos[k].out, '-t', valido[i].dur.toFixed(3), '-an', ...ARGS_VIDEO(23), out]);
+  if (fs.existsSync(out) && fs.statSync(out).size > 1000) { hechos[i] = { out, ini: valido[i].ini }; console.log('Corte', i, 'rellenado con el vecino', k, '(no se pudo leer su escena original)'); }
+}
 for (const h of hechos) if (h) { partes.push(h.out); marcas.push(h.ini); }
 fs.writeFileSync(path.join(work, 'lista.txt'), partes.map(p => "file '" + p.replace(/\\/g, '/') + "'").join('\n'));
 
