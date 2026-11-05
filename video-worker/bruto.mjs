@@ -7,11 +7,13 @@ import { spawnSync } from 'child_process';
 import { tarjetaPNG, NOMBRES_ICONOS } from './iconos.mjs';
 import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
 import * as drive from './drive.mjs';
+import { ENV } from './entorno.mjs';
+import { ARGS_VIDEO } from './codec.mjs';
+import { transcribe } from './transcribir.mjs';
 import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas } from './voz.mjs';
 
 const [ENTRADA, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!ENTRADA || !SALIDA) { console.log('Uso: node bruto.mjs "<bruto>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
-const ENV = Object.fromEntries(fs.readFileSync(new URL('../server/.env', import.meta.url), 'utf8').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '')]));
 const WHISPER = process.env.WHISPER_CLI || 'C:/Users/cashc/AppData/Local/RanuseVideo/whisper/Release/whisper-cli.exe';
 const MODELO_W = process.env.WHISPER_MODEL || 'C:/Users/cashc/AppData/Local/RanuseVideo/whisper/ggml-large-v3-turbo-q5_0.bin';
 const FONT = new URL('../public/fonts/Montserrat-Bold.ttf', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -52,7 +54,7 @@ if (!dur) { console.log('FALLO: no he podido leer el vídeo (¿falta ffmpeg o el
 const wav = path.join(work, 'voz.wav'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', ENTRADA, '-vn', '-ac', '1', '-ar', '16000', wav]);
 marca(12, 'Transcribiendo la voz');
 const wj = path.join(work, 'palabras');
-if (!fs.existsSync(wj + '.json')) run(WHISPER, ['-m', MODELO_W, '-f', wav, '-l', 'es', '-t', '8', '-bs', '1', '-bo', '1', '-ml', '1', '-sow', '-oj', '-of', wj]);
+await transcribe(wav, wj);
 const palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription.map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000 })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
 if (!palabras.length) { console.log('FALLO: no se oye voz en el vídeo'); process.exit(1); }
 palabras.forEach((w, i) => { w.i = i; });
@@ -234,5 +236,5 @@ if (pista) {
   filtros.push('[ac]' + AUDIO + '[voz]', mezcla({ entradaIdx: 1 + ins.length + graf.length, voz: 'voz', durTotal: durFinal, db: Number(R.musica.volumen) || -19, salida: 'a' }));
 } else filtros.push('[ac]' + AUDIO + '[a]');
 fs.writeFileSync(path.join(work, 'grafo.txt'), filtros.join(';\n'));
-const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...entradas, '-/filter_complex', 'grafo.txt', '-map', '[v]', '-map', '[a]', '-t', durFinal.toFixed(2), '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '24', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', path.resolve(SALIDA)], { cwd: work });
+const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...entradas, '-/filter_complex', 'grafo.txt', '-map', '[v]', '-map', '[a]', '-t', durFinal.toFixed(2), ...ARGS_VIDEO(24), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', path.resolve(SALIDA)], { cwd: work });
 console.log(fs.existsSync(SALIDA) ? 'OK ' + SALIDA + ' · ' + (fs.statSync(SALIDA).size / 1048576).toFixed(1) + ' MB' : 'FALLO ' + (rr.stderr || '').slice(0, 900));

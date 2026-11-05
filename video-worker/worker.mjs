@@ -7,6 +7,7 @@ import { spawnSync, spawn } from 'child_process';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import * as drive from './drive.mjs';
+import { ENV } from './entorno.mjs';
 
 // ffmpeg siempre disponible, arranque el trabajador desde donde arranque
 const FFMPEG_DIR = process.env.FFMPEG_BIN || 'C:/Users/cashc/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-9.0.2-full_build/bin';
@@ -14,7 +15,6 @@ if (fs.existsSync(FFMPEG_DIR)) process.env.PATH = FFMPEG_DIR + ';' + (process.en
 const require = createRequire(new URL('../server/package.json', import.meta.url));
 const { createClient } = require('@supabase/supabase-js');
 const INDICE = path.resolve(process.argv[2] || new URL('./datos/piloto/indice.json', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
-const ENV = Object.fromEntries(fs.readFileSync(new URL('../server/.env', import.meta.url), 'utf8').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '')]));
 const sb = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
 const st = sb.storage.from('estudio-video');
 const BASE = new URL('./datos/trabajos/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -52,6 +52,14 @@ async function publicaCarpetas() {
   const lista = Object.entries(cuenta).filter(([k]) => k).map(([ruta, n]) => ({ ruta, videos: n })).sort((a, b) => a.ruta.localeCompare(b.ruta));
   await st.upload('crm-indice-carpetas.json', Buffer.from(JSON.stringify(lista)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
 }
+const DIR_DATOS = new URL('./datos/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const INDICES_NUBE = { 'drive-redes/indice.json': 'indices/redes.json', 'drive-piloto/indice.json': 'indices/piloto.json', 'drive-seleccion/indice.json': 'indices/seleccion.json' };
+async function subeIndices(solo) {
+  for (const [loc, rem] of Object.entries(INDICES_NUBE)) { if (solo && !solo.includes(loc)) continue; const f = path.join(DIR_DATOS, loc); if (!fs.existsSync(f)) continue; const { error } = await st.upload(rem, fs.readFileSync(f), { contentType: 'application/json', upsert: true, cacheControl: '0' }); console.log(error ? 'Índice sin subir ' + rem + ': ' + error.message : 'Índice subido: ' + rem + ' (' + (fs.statSync(f).size / 1e6).toFixed(1) + ' MB)'); }
+}
+async function bajaIndices() {
+  for (const [loc, rem] of Object.entries(INDICES_NUBE)) { try { const u = await st.createSignedUrl(rem, 120); if (!u.data?.signedUrl) continue; const r = await fetch(u.data.signedUrl); if (!r.ok) continue; const f = path.join(DIR_DATOS, loc); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, Buffer.from(await r.arrayBuffer())); console.log('Índice bajado:', rem); } catch (e) { console.log('Índice no disponible', rem, e.message); } }
+}
 // Junta todos los índices (piloto local, Drive redes, vídeos sueltos) y asegura que lo elegido esté indexado.
 const RAIZ_PILOTO = '5. Material audiovisual Victor', RAIZ_REDES = '4. Instagram - Tiktok - Shorts';
 function cargaIndice(f, raiz, tipo) { try { const j = JSON.parse(fs.readFileSync(f, 'utf8')); return (j.videos || []).map(v => ({ ...v, ruta_abs: v.ruta_abs || (raiz + (v.carpeta ? '/' + v.carpeta : '')) })); } catch { return []; } }
@@ -62,7 +70,8 @@ async function indexaCarpetas(t, sel, existentes) {
 }
 function indiceTotal(dir, sel) {
   const base = new URL('./datos/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
-  let todos = [...cargaIndice(INDICE, RAIZ_PILOTO), ...cargaIndice(path.join(base, 'drive-redes/indice.json'), RAIZ_REDES)];
+  const fPiloto = path.join(base, 'drive-piloto/indice.json');
+  let todos = [...(fs.existsSync(fPiloto) ? cargaIndice(fPiloto, RAIZ_PILOTO) : cargaIndice(INDICE, RAIZ_PILOTO)), ...cargaIndice(path.join(base, 'drive-redes/indice.json'), RAIZ_REDES)];
   const ids = new Set(todos.map(v => v.drive_id).filter(Boolean)), nom = new Set(todos.map(v => v.ruta_abs + '/' + v.nombre));
   const faltan = (sel.videos || []).filter(z => !ids.has(z.id) && !nom.has((z.ruta ? z.ruta + '/' : '') + z.nombre));
   const fSel = path.join(base, 'drive-seleccion/indice.json');
@@ -119,7 +128,19 @@ async function procesa(t) {
   await paso(t, 'Listo', { pct: 100, estado: 'listo', resultado: 'salidas/' + t.id + '.mp4', resultado_movil: 'salidas/' + t.id + '_movil.mp4', plan, terminado: new Date().toISOString(), error: null });
 }
 
+// Modo servidor en la nube: se ejecuta UN trabajo (JOB_ID) y se apaga
+if (process.env.JOB_ID) {
+  const id = process.env.JOB_ID; console.log('Servidor de vídeo: trabajo', id);
+  await bajaIndices(); const t = await leer(id);
+  if (!t) { console.log('No existe el trabajo', id); process.exit(1); }
+  if (t.estado === 'listo' || t.estado === 'procesando' && Date.now() - new Date(t.empezado || 0) < 3 * 3600000) { console.log('Trabajo ya hecho o en marcha por otro ejecutor'); process.exit(0); }
+  t.ejecutor = 'nube';
+  try { await procesa(t); } catch (e) { console.log('[' + id + '] ERROR', e.message); await paso(t, 'Error', { estado: 'error', error: String(e.message).slice(0, 400) }); }
+  try { await subeIndices(['drive-seleccion/indice.json']); } catch { /* el índice de sueltos se rehará la próxima vez */ }
+  process.exit(0);
+}
 console.log('Trabajador de vídeo en marcha. Índice:', INDICE);
+try { await subeIndices(); } catch (e) { console.log('Índices sin subir:', e.message); }
 try { await publicaCarpetas(); } catch (e) { console.log('Carpetas sin publicar:', e.message); }
 // Cada hora indexa los vídeos nuevos que se hayan subido a Drive (solo procesa los que faltan; si ya hay un indexado en marcha, espera)
 const ID_REDES = '1pujuBkWSoeFTDg9vc_jwD--9v0IWB8vE';
@@ -129,7 +150,7 @@ function sincronizaDrive() {
   try { if (sync || Date.now() - fs.statSync(path.join(dirRedes, 'indice.json')).mtimeMs < 5 * 60000) return; } catch { /* sin índice aún */ }
   console.log('Buscando vídeos nuevos en Drive…');
   sync = spawn('node', ['indexar-drive.mjs', ID_REDES, dirRedes, '8', '3'], { cwd: AQUI, stdio: 'ignore', env: { ...process.env, PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
-  sync.on('close', () => { sync = null; });
+  sync.on('close', () => { sync = null; subeIndices(['drive-redes/indice.json']).catch(() => {}); });
 }
 setInterval(sincronizaDrive, 60 * 60 * 1000);
 for (;;) {
@@ -140,6 +161,7 @@ for (;;) {
       // los que se quedaron "procesando" por un corte se reintentan pasados 20 min
       if (t.estado === 'procesando' && Date.now() - new Date(t.empezado || 0) > 20 * 60000) t.estado = 'pendiente';
       if (t.estado !== 'pendiente') continue;
+      if (t.ejecutor === 'nube' && Date.now() - new Date(t.creado || 0) < 45 * 60000) continue; // lo está haciendo el servidor de la nube
       try { await procesa(t); } catch (e) { console.log('[' + t.id + '] ERROR', e.message); await paso(t, 'Error', { estado: 'error', error: String(e.message).slice(0, 400) }); }
     }
   } catch (e) { console.log('Vigilando… (', e.message, ')'); }

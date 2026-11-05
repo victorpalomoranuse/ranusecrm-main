@@ -4,12 +4,12 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import * as drive from './drive.mjs';
+import { ENV } from './entorno.mjs';
 import os from 'os';
 if (process.env.PRIORIDAD_NORMAL !== '1') { try { os.setPriority(0, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* sin permiso: sigue con prioridad normal */ } } // el indexado de fondo no debe frenar los vídeos que se piden
 
 const [CARPETA_ID, SALIDA, MAXF = '8', PARALELO = '3', RAIZ_ABS = ''] = process.argv.slice(2);
 if (!CARPETA_ID || !SALIDA) { console.log('Uso: node indexar-drive.mjs "<id carpeta>" "<salida>" [fotogramas] [paralelo]'); process.exit(1); }
-const ENV = Object.fromEntries(fs.readFileSync(new URL('../server/.env', import.meta.url), 'utf8').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '')]));
 fs.mkdirSync(path.join(SALIDA, 'miniaturas'), { recursive: true });
 const IDX = path.join(SALIDA, 'indice.json');
 const indice = fs.existsSync(IDX) ? JSON.parse(fs.readFileSync(IDX, 'utf8')) : { creado: new Date().toISOString(), origen: 'drive:' + CARPETA_ID, videos: [] };

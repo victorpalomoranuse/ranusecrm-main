@@ -6,13 +6,15 @@ import path from 'path';
 import { spawnSync, spawn } from 'child_process';
 import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
 import * as drive from './drive.mjs';
+import { ENV } from './entorno.mjs';
+import { ARGS_VIDEO } from './codec.mjs';
+import { transcribe } from './transcribir.mjs';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, rangosAQuitar, recomponeVoz, muletillasSueltas, huecosConSonido } from './voz.mjs';
 
 const [VOZ, INDICE, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!VOZ || !INDICE || !SALIDA) { console.log('Uso: node montar.mjs "<voz>" "<indice.json>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
-const ENV = Object.fromEntries(fs.readFileSync(new URL('../server/.env', import.meta.url), 'utf8').split(/\r?\n/).filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '')]));
 const WHISPER = process.env.WHISPER_CLI || 'C:/Users/cashc/AppData/Local/RanuseVideo/whisper/Release/whisper-cli.exe';
 const MODELO_W = process.env.WHISPER_MODEL || 'C:/Users/cashc/AppData/Local/RanuseVideo/whisper/ggml-large-v3-turbo-q5_0.bin';
 const FONT = new URL('../public/fonts/Montserrat-Bold.ttf', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -59,7 +61,7 @@ if (!durVoz) { console.log('FALLO: no he podido leer el audio del archivo (¿fal
 // 2) transcripción por palabras (en la nube se cambia por Groq)
 marca(12, 'Transcribiendo la voz');
 const wj = path.join(work, 'palabras');
-if (!fs.existsSync(wj + '.json')) run(WHISPER, ['-m', MODELO_W, '-f', wav, '-l', 'es', '-t', '8', '-bs', '1', '-bo', '1', '-ml', '1', '-sow', '-oj', '-of', wj]);
+await transcribe(wav, wj);
 let palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription
   .map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000 })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
 palabras.forEach((w, i) => { w.i = i; });
@@ -157,7 +159,7 @@ async function cortar(c, i) {
   const loop = v.duracion < c.dur + 0.2 ? ['-stream_loop', '-1'] : [];
   let rr = { stderr: '' };
   for (let intento = 0; intento < 4; intento++) {
-    rr = { stderr: await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', out]) };
+    rr = { stderr: await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, ...ARGS_VIDEO(23), out]) };
     if (fs.existsSync(out) && fs.statSync(out).size > 1000) break;
     if (!/403|429|5\d\d|timed out|Connection/i.test(rr.stderr || '')) break;
     await new Promise(r => setTimeout(r, 2500 * (intento + 1)));
@@ -209,6 +211,6 @@ if (RECETA.whoosh > 0 && marcas.length > 1) {
   fa += ';[2:a]asplit=' + n + marcas.slice(1).map((_, k) => '[w' + k + ']').join('') + ';' + marcas.slice(1).map((m, k) => '[w' + k + ']adelay=' + Math.max(0, Math.round((m - 0.2) * 1000)) + ':all=1[d' + k + ']').join(';') + ';[voz]' + marcas.slice(1).map((_, k) => '[d' + k + ']').join('') + 'amix=inputs=' + (n + 1) + ':normalize=0:duration=first,alimiter=limit=0.95[va]';
 } else fa += ';[voz]anull[va]';
 if (pista) { args.push('-stream_loop', '-1', '-i', pista.ruta); fa += ';' + mezcla({ entradaIdx: args.filter(x => x === '-i').length - 1, voz: 'va', durTotal: durVoz, db: Number(RECETA.musica.volumen) || -19, salida: 'a' }); } else fa += ';[va]anull[a]';
-args.push('-filter_complex', '[0:v]ass=subs.ass:fontsdir=fonts[v];' + fa, '-map', '[v]', '-map', '[a]', '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-shortest', '-movflags', '+faststart', path.resolve(SALIDA));
+args.push('-filter_complex', '[0:v]ass=subs.ass:fontsdir=fonts[v];' + fa, '-map', '[v]', '-map', '[a]', ...ARGS_VIDEO(23), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-shortest', '-movflags', '+faststart', path.resolve(SALIDA));
 const fin = run('ffmpeg', args, { cwd: work });
 console.log(fs.existsSync(SALIDA) ? 'OK ' + SALIDA + ' · ' + (fs.statSync(SALIDA).size / 1048576).toFixed(1) + ' MB' : 'FALLO ' + (fin.stderr || '').slice(0, 800));
