@@ -1845,7 +1845,7 @@ export default function Visor3D({ cliente = false }) {
   const [selAcab, setSelAcab] = useState(null);  // { tipo: 'muro' | 'suelo', id }
   const [rev, setRev] = useState(0);             // sube cada vez que se rehace el plano 3D
   const [capasAbierto, setCapasAbierto] = useState(false);
-  const [ocultas, setOcultas] = useState(() => { try { return JSON.parse(localStorage.getItem('visor3dOcultas') || '[]'); } catch { return []; } });
+  const [ocultas, setOcultas] = useState(() => { try { return JSON.parse(localStorage.getItem('visor3dOcultas:' + id) || '[]'); } catch { return []; } });
   const selAcabRef = useRef(null);
   useEffect(() => { selAcabRef.current = selAcab; }, [selAcab]);
   useEffect(() => { objsRef.current = objs; }, [objs]);
@@ -2697,7 +2697,7 @@ export default function Visor3D({ cliente = false }) {
     a.raiz.traverse(aplica);
     a.esc.children.forEach(g => { g.visible = !ocultas.includes('obj:' + (objsRef.current.find(x => x.id === g.userData.oid)?.etiqueta || '')) && !ocultas.includes('id:' + g.userData.oid); });
     // Los techos que se ocultan solo mientras estás en Planta 2D o Axonométrica no se recuerdan: si cierras la pestaña en ese modo, el siguiente proyecto no se abre sin techo
-    try { localStorage.setItem('visor3dOcultas', JSON.stringify(planta2d?.ocultasAntes ?? axo?.ocultasAntes ?? ocultas)); } catch {}
+    try { localStorage.setItem('visor3dOcultas:' + id, JSON.stringify(planta2d?.ocultasAntes ?? axo?.ocultasAntes ?? ocultas)); } catch {}
   }, [ocultas, rev, objs, estado, modosEq]);
 
   // Luminarias del plano: punto de luz visible y luz real (foco = cono con su ángulo de apertura)
@@ -5526,6 +5526,12 @@ export default function Visor3D({ cliente = false }) {
             </div>
           </div>
         );
+      })()}
+      {(() => {
+        if (planta2d || axo) return null;
+        const nombres = { muros: 'Muros', suelos: 'Suelos', techos: 'Techos', huecos: 'Puertas y ventanas', pilares: 'Pilares' }, base = Object.keys(nombres).filter(k => ocultas.includes(k));
+        if (!base.length) return null;
+        return (<div style={{ position: 'absolute', bottom: 44, left: '50%', transform: 'translateX(-50%)', maxWidth: 520, background: 'rgba(22,20,18,0.95)', color: '#fff', borderRadius: 8, padding: '8px 12px', fontSize: 13, zIndex: 7, display: 'flex', gap: 10, alignItems: 'center' }}><span>Capas ocultas: {base.map(k => nombres[k]).join(', ')}</span><button style={btn} onClick={() => setOcultas(o => o.filter(k => !base.includes(k)))}>Mostrar</button></div>);
       })()}
       {aviso && (
         <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', maxWidth: 560, background: 'rgba(22,20,18,0.95)', color: '#fff', borderRadius: 8, padding: '8px 12px', fontSize: 13, zIndex: 7, display: 'flex', gap: 10, alignItems: 'center' }}>
