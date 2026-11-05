@@ -21,15 +21,15 @@ async function subirArchivo(file, onProgreso, tipo) {
   return data.ruta;
 }
 
-function Nuevo({ formatos, musica, onCreado }) {
-  const [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [prog, setProg] = useState(null), [error, setError] = useState('');
+function Nuevo({ formatos, musica, carpetas, onCreado }) {
+  const [carp, setCarp] = useState([]), [verCarp, setVerCarp] = useState(false), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
   const enviar = async () => {
     if (!file || !fmt) return; setError(''); setProg(0);
     try {
       const ruta = await subirArchivo(file, setProg);
-      await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: file.name, indicaciones: notas, musica: mus });
+      await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: file.name, indicaciones: notas, musica: mus, carpetas: tipo === 'voz' ? carp : [] });
       setFile(null); setNotas(''); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
     } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo enviar'); setProg(null); }
   };
@@ -52,6 +52,22 @@ function Nuevo({ formatos, musica, onCreado }) {
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Formato</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
       {formatos.find(f => f.id === fmt)?.descripcion && <div style={{ ...mut, marginTop: -4, marginBottom: 10 }}>{formatos.find(f => f.id === fmt).descripcion}</div>}
+      {tipo === 'voz' && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ ...mut, marginBottom: 4 }}>Recursos (de dónde salen las escenas)</div>
+          <button type="button" className="ap-btn ap-btn-sm" onClick={() => setVerCarp(!verCarp)}>{carp.length ? carp.length + ' carpeta(s) elegida(s)' : 'Todas las carpetas'} {verCarp ? '▲' : '▼'}</button>
+          {verCarp && (
+            <div style={{ marginTop: 8, maxHeight: 220, overflow: 'auto', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '6px 10px' }}>
+              {carpetas.length === 0 ? <div style={mut}>Aún no hay carpetas indexadas.</div> : carpetas.map(c => (
+                <label key={c.ruta} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0', paddingLeft: (c.ruta.split('/').length - 1) * 16, fontSize: '0.85rem' }}>
+                  <input type="checkbox" checked={carp.includes(c.ruta)} onChange={e => setCarp(e.target.checked ? [...carp, c.ruta] : carp.filter(x => x !== c.ruta))} /> {c.ruta.split('/').pop()} <span style={mut}>{c.videos}</span>
+                </label>
+              ))}
+              {carp.length > 0 && <button type="button" className="ap-btn ap-btn-sm" style={{ marginTop: 6 }} onClick={() => setCarp([])}>Usar todas</button>}
+            </div>
+          )}
+        </div>
+      )}
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Música de fondo</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={mus} onChange={e => setMus(e.target.value)}><option value="auto">Automática (la IA elige la que mejor encaje)</option><option value="ninguna">Sin música</option>{musica.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.bpm ? ' · ' + Math.round(p.bpm) + ' bpm' : ''}</option>)}</select>
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Indicaciones (opcional)</label>
@@ -168,11 +184,11 @@ function Formatos({ formatos, onCambio }) {
 }
 
 export function SectionEstudioVideo() {
-  const [tab, setTab] = useState('videos'), [pistas, setPistas] = useState([]), [formatos, setFormatos] = useState([]), [trabajos, setTrabajos] = useState(null), [error, setError] = useState('');
+  const [tab, setTab] = useState('videos'), [carpetas, setCarpetas] = useState([]), [pistas, setPistas] = useState([]), [formatos, setFormatos] = useState([]), [trabajos, setTrabajos] = useState(null), [error, setError] = useState('');
   const cargarF = useCallback(() => api.get('/estudio-video/formatos').then(r => setFormatos(r.data.formatos || [])).catch(() => setError('No se han podido cargar los formatos')), []);
   const cargarT = useCallback(() => api.get('/estudio-video/trabajos').then(r => setTrabajos(r.data.trabajos || [])).catch(() => setTrabajos(t => t || [])), []);
   const cargarM = useCallback(() => api.get('/estudio-video/musica').then(r => setPistas(r.data.pistas || [])).catch(() => {}), []);
-  useEffect(() => { cargarF(); cargarT(); cargarM(); }, [cargarF, cargarT, cargarM]);
+  useEffect(() => { cargarF(); cargarT(); cargarM(); api.get('/estudio-video/carpetas').then(r => setCarpetas(r.data.carpetas || [])).catch(() => {}); }, [cargarF, cargarT, cargarM]);
   const hayActivos = (trabajos || []).some(t => t.estado === 'pendiente' || t.estado === 'procesando');
   useEffect(() => { if (!hayActivos) return; const i = setInterval(cargarT, 6000); return () => clearInterval(i); }, [hayActivos, cargarT]);
   return (
@@ -188,7 +204,7 @@ export function SectionEstudioVideo() {
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
       {tab === 'formatos' ? <Formatos formatos={formatos} onCambio={cargarF} /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Nuevo formatos={formatos} musica={pistas} onCreado={cargarT} />
+          <Nuevo formatos={formatos} musica={pistas} carpetas={carpetas} onCreado={cargarT} />
           {trabajos === null ? <div className="ap-loading">Cargando…</div> : trabajos.length === 0 ? <div style={mut}>Todavía no hay vídeos. Sube el primero arriba.</div> : trabajos.map(t => <Trabajo key={t.id} t={t} formatos={formatos} onCambio={cargarT} />)}
         </div>
       )}

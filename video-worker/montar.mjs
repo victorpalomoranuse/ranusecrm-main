@@ -68,7 +68,10 @@ console.log('Palabras:', palabras.length);
 }
 
 // 3) la IA monta
-const idx = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos.filter(v => !v.hablando_a_camara && v.duracion >= 2);
+let idx = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos.filter(v => !v.hablando_a_camara && v.duracion >= 2);
+// recursos: solo de las carpetas que se hayan elegido en el CRM (vacío = todas)
+{ let carp = []; try { carp = JSON.parse(process.env.RECURSOS || '[]'); } catch { /* todas */ }
+  if (carp.length) { const f = idx.filter(v => carp.some(c => (v.carpeta || '') === c || (v.carpeta || '').startsWith(c + '/'))); console.log('Recursos de', carp.length, 'carpeta(s):', f.length, 'de', idx.length, 'vídeos'); if (f.length >= 3) idx = f; else console.log('Muy pocos vídeos en esas carpetas, se usan todas'); } }
 const cat = idx.map(v => ({ id: v.id, dur: v.duracion, calidad: v.calidad, mov: v.movimiento, resumen: v.resumen, planos: v.planos.map(p => p.t + 's: ' + p.descripcion) }));
 const guion = palabras.map((w, i) => i + ':' + w.t + '@' + w.de.toFixed(1)).join(' ');
 const planF = path.join(work, 'plan.json'); let plan;

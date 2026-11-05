@@ -33,6 +33,12 @@ async function publicaIndiceMusica() {
   const idx = {}; for (const f of fs.readdirSync(MUSICA_LOCAL)) if (f.endsWith('.json')) { try { const a = JSON.parse(fs.readFileSync(path.join(MUSICA_LOCAL, f), 'utf8')); idx[f.slice(0, -5)] = { bpm: a.bpm, dur: a.dur, energia: a.energia }; } catch { /* ignorar */ } }
   await st.upload('crm-indice-musica.json', Buffer.from(JSON.stringify(idx)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
 }
+async function publicaCarpetas() {
+  const v = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos || []; const cuenta = {};
+  for (const x of v) { if (x.hablando_a_camara) continue; const partes = String(x.carpeta || '').split('/').filter(Boolean); for (let i = 1; i <= partes.length; i++) { const k = partes.slice(0, i).join('/'); cuenta[k] = (cuenta[k] || 0) + 1; } if (!partes.length) cuenta[''] = (cuenta[''] || 0) + 1; }
+  const lista = Object.entries(cuenta).filter(([k]) => k).map(([ruta, n]) => ({ ruta, videos: n })).sort((a, b) => a.ruta.localeCompare(b.ruta));
+  await st.upload('crm-indice-carpetas.json', Buffer.from(JSON.stringify(lista)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
+}
 async function procesa(t) {
   const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
   await paso(t, 'Descargando el archivo…', { estado: 'procesando', empezado: new Date().toISOString() });
@@ -46,7 +52,7 @@ async function procesa(t) {
   await paso(t, t.tipo === 'voz' ? 'La IA está eligiendo escenas y montando…' : 'Quitando pausas y poniendo subtítulos…');
   try { await sincronizaMusica(); } catch (e) { console.log('Música sin sincronizar:', e.message); }
   const script = t.tipo === 'voz' ? ['montar.mjs', entrada, INDICE, salida, notas] : ['bruto.mjs', entrada, salida, notas];
-  const r = run('node', script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
+  const r = run('node', script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS: JSON.stringify(Array.isArray(t.carpetas) ? t.carpetas : []), MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
   console.log((r.stdout || '').split('\n').slice(-6).join('\n'));
   if (!fs.existsSync(salida)) throw new Error('El montaje no ha producido vídeo. ' + ((r.stdout || '') + (r.stderr || '')).slice(-300));
   try { await publicaIndiceMusica(); } catch { /* el índice se publica la próxima vez */ }
@@ -62,6 +68,7 @@ async function procesa(t) {
 }
 
 console.log('Trabajador de vídeo en marcha. Índice:', INDICE);
+try { await publicaCarpetas(); } catch (e) { console.log('Carpetas sin publicar:', e.message); }
 for (;;) {
   try {
     const { data } = await st.list('trabajos', { limit: 60, sortBy: { column: 'created_at', order: 'asc' } });
