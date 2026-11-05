@@ -53,7 +53,7 @@ async function publicaCarpetas() {
   await st.upload('crm-indice-carpetas.json', Buffer.from(JSON.stringify(lista)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
 }
 const DIR_DATOS = new URL('./datos/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
-const INDICES_NUBE = { 'drive-redes/indice.json': 'indices/redes.json', 'drive-piloto/indice.json': 'indices/piloto.json', 'drive-seleccion/indice.json': 'indices/seleccion.json' };
+const INDICES_NUBE = { 'drive-redes/indice.json': 'indices/redes.json', 'drive-piloto/indice.json': 'indices/piloto.json', 'drive-seleccion/indice.json': 'indices/seleccion.json', 'drive-imagenes/indice.json': 'indices/imagenes.json' };
 async function subeIndices(solo) {
   for (const [loc, rem] of Object.entries(INDICES_NUBE)) { if (solo && !solo.includes(loc)) continue; const f = path.join(DIR_DATOS, loc); if (!fs.existsSync(f)) continue; const { error } = await st.upload(rem, fs.readFileSync(f), { contentType: 'application/json', upsert: true, cacheControl: '0' }); console.log(error ? 'Índice sin subir ' + rem + ': ' + error.message : 'Índice subido: ' + rem + ' (' + (fs.statSync(f).size / 1e6).toFixed(1) + ' MB)'); }
 }
@@ -104,7 +104,7 @@ async function procesa(t) {
   const rec0 = Array.isArray(t.recursos) ? t.recursos : [];
   if (t.tipo === 'voz' || t.tipo === 'base' || rec0.length) { const rec = rec0;
     const idsExist = new Set(); for (const f of ['drive-redes/indice.json', 'drive-seleccion/indice.json']) { try { for (const v of JSON.parse(fs.readFileSync(new URL('./datos/' + f, import.meta.url), 'utf8')).videos) if (v.drive_id) idsExist.add(v.drive_id); } catch { /* sin índice */ } }
-    try { await indexaCarpetas(t, { carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }, idsExist); } catch (e) { console.log('Carpetas sin indexar del todo:', e.message); } seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
+    try { await indexaCarpetas(t, { carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }, idsExist); } catch (e) { console.log('Carpetas sin indexar del todo:', e.message); } seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), imagenes: rec.filter(r => r.tipo === 'imagen').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
   const conInserciones = t.tipo === 'base' || rec0.length > 0;
   const script = t.tipo === 'voz' ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
   const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: t.receta?.musica === false ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
@@ -136,7 +136,7 @@ if (process.env.JOB_ID) {
   if (t.estado === 'listo' || t.estado === 'procesando' && Date.now() - new Date(t.empezado || 0) < 3 * 3600000) { console.log('Trabajo ya hecho o en marcha por otro ejecutor'); process.exit(0); }
   t.ejecutor = 'nube';
   try { await procesa(t); } catch (e) { console.log('[' + id + '] ERROR', e.message); await paso(t, 'Error', { estado: 'error', error: String(e.message).slice(0, 400) }); }
-  try { await subeIndices(['drive-seleccion/indice.json']); } catch { /* el índice de sueltos se rehará la próxima vez */ }
+  try { await subeIndices(['drive-seleccion/indice.json', 'drive-imagenes/indice.json']); } catch { /* el índice de sueltos se rehará la próxima vez */ }
   process.exit(0);
 }
 console.log('Trabajador de vídeo en marcha. Índice:', INDICE);
