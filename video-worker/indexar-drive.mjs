@@ -4,6 +4,8 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import * as drive from './drive.mjs';
+import os from 'os';
+try { os.setPriority(0, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* sin permiso: sigue con prioridad normal */ } // el indexado de fondo no debe frenar los vídeos que se piden
 
 const [CARPETA_ID, SALIDA, MAXF = '8', PARALELO = '3'] = process.argv.slice(2);
 if (!CARPETA_ID || !SALIDA) { console.log('Uso: node indexar-drive.mjs "<id carpeta>" "<salida>" [fotogramas] [paralelo]'); process.exit(1); }
