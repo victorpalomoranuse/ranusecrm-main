@@ -25,11 +25,22 @@ export const FORMATO_BASE = {
   receta: { corte: { min: 0.9, max: 2.3 }, acento: '#F2C46D', zoomFinal: 1.14, whoosh: 0.16, flash: true, subs: { palabrasPorBloque: 2, tam: 104, margenV: 600 }, titulo: true, musica: false },
   notas: 'Vídeo serio y profesional, sin humor. Prioriza planos de calidad alta.',
 };
+// Sacado del vídeo de referencia "Suelos" (Dani): una toma limpia, subtítulos pequeños y blancos, sin efectos.
+export const FORMATO_LIMPIO = {
+  id: 'limpio-suelos', nombre: 'Limpio (estilo Suelos)', descripcion: 'Una toma a cámara sin efectos: subtítulos pequeños y blancos en minúscula, sin título, sin zooms ni destellos. Se centra en el contenido.',
+  receta: { corte: { min: 1.5, max: 4 }, acento: '#FFFFFF', zoomFinal: 1, whoosh: 0, flash: false, subs: { palabrasPorBloque: 3, tam: 46, margenV: 620 }, titulo: false, barra: false, mayusculas: false, resaltar: false, musica: false },
+  notas: 'Estilo limpio y serio: sin efectos ni adornos. El contenido manda.',
+};
+const SEMBRADOS = [FORMATO_BASE, FORMATO_LIMPIO];
 async function formatos() {
   const f = await leerJson(RUTA_FORMATOS, null);
-  if (f?.lista?.length) return f.lista;
-  const lista = [FORMATO_BASE]; await guardarJson(RUTA_FORMATOS, { lista }); return lista;
+  if (!f?.lista?.length) { const lista = SEMBRADOS.map(x => JSON.parse(JSON.stringify(x))); await guardarJson(RUTA_FORMATOS, { lista, sembrados: lista.map(x => x.id) }); return lista; }
+  // formatos nuevos de fábrica se añaden una sola vez (si luego los borras, no vuelven)
+  const ya = new Set(f.sembrados || [FORMATO_BASE.id]); const nuevos = SEMBRADOS.filter(x => !ya.has(x.id));
+  if (nuevos.length) { f.lista.push(...nuevos.map(x => JSON.parse(JSON.stringify(x)))); f.sembrados = [...ya, ...nuevos.map(x => x.id)]; await guardarJson(RUTA_FORMATOS, f); }
+  return f.lista;
 }
+const guardarFormatos = async (lista) => { const f = await leerJson(RUTA_FORMATOS, {}); await guardarJson(RUTA_FORMATOS, { ...f, lista }); };
 
 router.get('/formatos', async (req, res) => { try { res.json({ formatos: await formatos() }); } catch { res.status(500).json({ error: 'No se pudieron leer los formatos' }); } });
 router.post('/formatos', async (req, res) => {
@@ -37,7 +48,7 @@ router.post('/formatos', async (req, res) => {
     const lista = await formatos(); const base = lista.find(x => x.id === req.body?.copiar_de) || FORMATO_BASE;
     const nombre = limpia(req.body?.nombre, 60); if (!nombre) return res.status(400).json({ error: 'Ponle un nombre al formato' });
     const nuevo = { ...JSON.parse(JSON.stringify(base)), id: crypto.randomUUID().slice(0, 8), nombre };
-    lista.push(nuevo); await guardarJson(RUTA_FORMATOS, { lista }); res.status(201).json({ formato: nuevo });
+    lista.push(nuevo); await guardarFormatos(lista); res.status(201).json({ formato: nuevo });
   } catch { res.status(500).json({ error: 'No se pudo crear' }); }
 });
 router.put('/formatos/:id', async (req, res) => {
@@ -54,13 +65,13 @@ router.put('/formatos/:id', async (req, res) => {
     if (r.zoomFinal !== undefined) f.receta.zoomFinal = num(r.zoomFinal, 1, 1.4, 1.14);
     if (r.whoosh !== undefined) f.receta.whoosh = num(r.whoosh, 0, 0.5, 0.16);
     if (r.flash !== undefined) f.receta.flash = !!r.flash;
-    if (r.titulo !== undefined) f.receta.titulo = !!r.titulo;
+    for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar']) if (r[k] !== undefined) f.receta[k] = !!r[k];
     if (r.subs) f.receta.subs = { palabrasPorBloque: Math.round(num(r.subs.palabrasPorBloque, 1, 5, 2)), tam: Math.round(num(r.subs.tam, 50, 160, 104)), margenV: Math.round(num(r.subs.margenV, 200, 900, 600)) };
-    await guardarJson(RUTA_FORMATOS, { lista }); res.json({ formato: f });
+    await guardarFormatos(lista); res.json({ formato: f });
   } catch { res.status(500).json({ error: 'No se pudo guardar' }); }
 });
 router.delete('/formatos/:id', async (req, res) => {
-  try { const lista = await formatos(); if (lista.length <= 1) return res.status(400).json({ error: 'Debe quedar al menos un formato' }); await guardarJson(RUTA_FORMATOS, { lista: lista.filter(x => x.id !== req.params.id) }); res.json({ ok: true }); }
+  try { const lista = await formatos(); if (lista.length <= 1) return res.status(400).json({ error: 'Debe quedar al menos un formato' }); await guardarFormatos(lista.filter(x => x.id !== req.params.id)); res.json({ ok: true }); }
   catch { res.status(500).json({ error: 'No se pudo borrar' }); }
 });
 

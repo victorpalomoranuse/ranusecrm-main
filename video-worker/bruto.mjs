@@ -10,12 +10,13 @@ const ENV = Object.fromEntries(fs.readFileSync(new URL('../server/.env', import.
 const WHISPER = process.env.WHISPER_CLI || 'C:/Users/cashc/AppData/Local/RanuseVideo/whisper/Release/whisper-cli.exe';
 const MODELO_W = process.env.WHISPER_MODEL || 'C:/Users/cashc/AppData/Local/RanuseVideo/whisper/ggml-large-v3-turbo-q5_0.bin';
 const FONT = new URL('../public/fonts/Montserrat-Bold.ttf', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
-const R = { acento: '&H6DC4F2&', titulo: true, pausa: 0.4, subs: { palabrasPorBloque: 2, tam: 104, margenV: 600 }, zoomFinal: 1.14 };
+const R = { acento: '&H6DC4F2&', titulo: true, pausa: 0.4, subs: { palabrasPorBloque: 2, tam: 104, margenV: 600 }, zoomFinal: 1.14, barra: true, mayusculas: true, resaltar: true };
 if (process.env.RECETA_JSON) {
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
   if (/^#[0-9a-f]{6}$/i.test(o.acento || '')) R.acento = '&H' + o.acento.slice(5, 7) + o.acento.slice(3, 5) + o.acento.slice(1, 3) + '&';
-  if (o.titulo !== undefined) R.titulo = o.titulo; if (o.subs) R.subs = { ...R.subs, ...o.subs };
+  for (const k of ['titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar']) if (o[k] !== undefined) R[k] = o[k]; if (o.subs) R.subs = { ...R.subs, ...o.subs };
 }
+const GROSOR = R.subs.tam > 70 ? '9,4' : '3,0';
 const AUDIO = 'highpass=f=90,afftdn=nr=14:nf=-45,acompressor=threshold=-21dB:ratio=3:attack=8:release=120:makeup=3,equalizer=f=3200:t=q:w=1:g=2,loudnorm=I=-15:TP=-1.5:LRA=9,aresample=48000';
 const work = path.resolve(path.dirname(SALIDA), '_trabajo_' + path.basename(SALIDA, '.mp4')); fs.mkdirSync(work, { recursive: true });
 const run = (c, a, o = {}) => spawnSync(c, a, { encoding: 'utf8', maxBuffer: 1 << 28, ...o });
@@ -53,7 +54,7 @@ const ev = []; const bl = []; let b = [];
 for (const w of palabras) { const d = mapea((w.de + w.a) / 2); if (d === null) continue; b.push({ ...w, d }); if (b.length >= R.subs.palabrasPorBloque || /[.?!,]$/.test(w.t)) { bl.push(b); b = []; } } if (b.length) bl.push(b);
 bl.forEach((g, k) => {
   const ini = mapea(g[0].de) ?? g[0].d, fin = k < bl.length - 1 ? Math.max(mapea(bl[k + 1][0].de) ?? bl[k + 1][0].d, ini + 0.25) : ini + 0.6;
-  const txt = g.map(w => { const s = limpiaT(w.t).toUpperCase().replace(/[.,;:]+$/, ''); const fuerte = /\d/.test(w.t) || enfasis.has(w.t.toLowerCase().replace(/[.,;:¿?¡!]/g, '')); return fuerte ? '{\\c' + R.acento + '}' + s + '{\\c&HFFFFFF&}' : s; }).join(' ');
+  const txt = g.map(w => { const s0 = limpiaT(w.t).replace(/[.,;:]+$/, ''), s = R.mayusculas === false ? s0.toLowerCase() : s0.toUpperCase(); const fuerte = R.resaltar !== false && (/\d/.test(w.t) || enfasis.has(w.t.toLowerCase().replace(/[.,;:¿?¡!]/g, ''))); return fuerte ? '{\\c' + R.acento + '}' + s + '{\\c&HFFFFFF&}' : s; }).join(' ');
   ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(fin) + ',Sub,,0,0,0,,{\\fscx82\\fscy82\\t(0,110,\\fscx100\\fscy100)\\fad(40,0)}' + txt);
 });
 const tf = Math.min(durFinal, 3.2);
@@ -61,17 +62,17 @@ if (R.titulo !== false && plan.titulo) {
   ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\fad(200,300)}' + limpiaT(plan.kicker || '').toUpperCase().split('').join('\u200A'));
   ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Titulo,,0,0,0,,{\\fad(250,350)}' + limpiaT(plan.titulo).toUpperCase());
 }
-ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durFinal) + ',Kicker,,0,0,0,,{\\an7\\pos(0,1896)\\p1\\c' + R.acento + '\\fscx0\\t(0,' + Math.round(durFinal * 1000) + ',\\fscx100)}m 0 0 l 1080 0 1080 7 0 7{\\p0}');
+if (R.barra !== false) ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durFinal) + ',Kicker,,0,0,0,,{\\an7\\pos(0,1896)\\p1\\c' + R.acento + '\\fscx0\\t(0,' + Math.round(durFinal * 1000) + ',\\fscx100)}m 0 0 l 1080 0 1080 7 0 7{\\p0}');
 const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920', 'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '', '[V4+ Styles]',
   'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',
-  'Style: Sub,Montserrat,' + R.subs.tam + ',&H00FFFFFF,&H000000FF,&H00000000,&H96000000,-1,0,0,0,100,100,1,0,1,9,4,2,50,50,' + R.subs.margenV + ',1',
+  'Style: Sub,Montserrat,' + R.subs.tam + ',&H00FFFFFF,&H000000FF,&H00000000,&H96000000,-1,0,0,0,100,100,1,0,1,' + GROSOR + ',2,50,50,' + R.subs.margenV + ',1',
   'Style: Kicker,Montserrat,34,' + R.acento.replace('&H', '&H00').replace(/&$/, '') + ',&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,80,80,300,1',
   'Style: Titulo,Montserrat,60,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3,5,8,90,90,385,1', '', '[Events]', 'Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Encoding'.replace(',Encoding', ',Effect,Text')].concat(ev).join('\n');
 fs.writeFileSync(path.join(work, 'subs.ass'), '\uFEFF' + ass, 'utf8');
 fs.mkdirSync(path.join(work, 'fonts'), { recursive: true }); fs.copyFileSync(FONT, path.join(work, 'fonts', 'Montserrat-Bold.ttf'));
 
 // un solo ffmpeg: trozos + zoom alterno + concat + subtítulos + voz limpia
-const ZOOMS = [1.0, R.zoomFinal, 1.0, Math.min(1.3, R.zoomFinal + 0.1)];
+const ZOOMS = R.zoomFinal <= 1 ? [1.0] : [1.0, R.zoomFinal, 1.0, Math.min(1.3, R.zoomFinal + 0.1)];
 const partes = [], pa = [];
 piezas.forEach((p, i) => {
   const z = ZOOMS[i % ZOOMS.length], cw = W / H > 9 / 16 ? 'ih*9/16' : 'iw', ch = W / H > 9 / 16 ? 'ih' : 'iw*16/9';
