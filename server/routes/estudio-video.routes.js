@@ -49,7 +49,7 @@ export const FORMATO_DINAMICO = {
 // Sacado del vídeo de referencia "mi día" (TikTok): un clip nuevo cada 2-3 s, literal a lo que dice la voz, en orden cronológico, con etiquetas de hora y subtítulos de 2-3 palabras en el centro.
 export const FORMATO_DIA = {
   id: 'mi-dia-voz', nombre: 'Mi día / contar una historia (voz en off)', descripcion: 'Para documentar tu día o juntar clips y contar una historia con tu voz en off: un clip nuevo cada 2-3 s que ilustra literalmente lo que dices, en orden cronológico, con etiquetas de hora (9:00, 15:30…) y subtítulos de 2-3 palabras en el centro. Cortes secos, sin efectos.',
-  receta: { introLetras: true, corte: { min: 1.2, max: 3 }, acento: '#FFFFFF', zoomFinal: 1, whoosh: 0, flash: false, subs: { palabrasPorBloque: 2, tam: 68, margenV: 880 }, titulo: false, barra: false, mayusculas: false, resaltar: false, horas: true, fuente: 'Montserrat', musica: { volumen: -15 } },
+  receta: { introLetras: true, corte: { min: 1.8, max: 3.5 }, acento: '#FFFFFF', zoomFinal: 1, whoosh: 0, flash: false, subs: { palabrasPorBloque: 2, tam: 86, margenV: 820 }, titulo: false, barra: false, mayusculas: false, resaltar: false, horas: true, fuente: 'Montserrat', musica: { volumen: -15 } },
   notas: 'Cuenta la historia en ORDEN CRONOLÓGICO, como un día en la vida. Cada clip debe ser literal a lo que se dice en ese momento (si habla del desayuno, un clip del desayuno; de la oficina, la oficina; del gimnasio, el gimnasio). Ritmo ágil de clips cortos, cortes secos, sin zooms ni efectos: manda el contenido y la secuencia. Cuando la voz diga una hora, la etiqueta de hora entra en pantalla.',
 };
 const SEMBRADOS = [FORMATO_BASE, FORMATO_LIMPIO, FORMATO_DINAMICO, FORMATO_DIA, FORMATO_CLIPS];
@@ -58,6 +58,7 @@ async function formatos() {
   if (!f?.lista?.length) { const lista = SEMBRADOS.map(x => JSON.parse(JSON.stringify(x))); await guardarJson(RUTA_FORMATOS, { lista, sembrados: lista.map(x => x.id) }); return lista; }
   if (!f.migracion) { for (const x of f.lista) { const r = x.receta || (x.receta = {}); if (r.acento === '#F2C46D') r.acento = '#E3D2B8'; if (r.mayusculas === undefined || r.mayusculas === true) r.mayusculas = false; if (!r.fuente) r.fuente = 'Montserrat'; if (!r.musica) r.musica = { volumen: -12 }; } f.migracion = 2; await guardarJson(RUTA_FORMATOS, f); }
   if (!f.musicaV2) { for (const x of f.lista) { const m = x.receta?.musica; if (m && typeof m === 'object' && Number.isFinite(Number(m.volumen))) m.volumen = Math.min(-12, Number(m.volumen) + 7); if (x.id === 'mi-dia-voz' && x.receta) x.receta.introLetras = true; } f.musicaV2 = true; await guardarJson(RUTA_FORMATOS, f); }
+  if (!f.diaV3) { const x = f.lista.find(z => z.id === 'mi-dia-voz'); if (x?.receta) { x.receta.corte = { min: 1.8, max: 3.5 }; x.receta.subs = { ...(x.receta.subs || {}), tam: 86, margenV: 820 }; } f.diaV3 = true; await guardarJson(RUTA_FORMATOS, f); }
   if (!f.clipsV2) { const x = f.lista.find(z => z.id === FORMATO_CLIPS.id); if (x) x.receta = JSON.parse(JSON.stringify(FORMATO_CLIPS.receta)); f.clipsV2 = true; await guardarJson(RUTA_FORMATOS, f); }
   // formatos nuevos de fábrica se añaden una sola vez (si luego los borras, no vuelven)
   const ya = new Set(f.sembrados || [FORMATO_BASE.id]); const nuevos = SEMBRADOS.filter(x => !ya.has(x.id));
