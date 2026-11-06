@@ -67,6 +67,7 @@ let palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF
   .map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000 })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
 palabras.forEach((w, i) => { w.i = i; });
 console.log('Palabras:', palabras.length);
+if (palabras.length < 3) { console.error('FALLO: No se oye ninguna voz en ese archivo. En "Voz en off" tienes que elegir el audio o vídeo donde hablas (no un clip del dron o sin voz).'); process.exit(1); }
 
 marca(30, 'Quitando muletillas, tropiezos y repeticiones');
 // 2b) corregir cuando te trabas: tropiezos, palabras repetidas, frases dichas dos veces, errores y pausas largas
@@ -157,6 +158,7 @@ else {
   for (let a = 0; a < palabras.length;) { let b = Math.min(palabras.length, a + BLOQUE); if (b < palabras.length) { let k = b; while (k > a + BLOQUE * 0.6 && !/[.?!]$/.test(palabras[k - 1].t)) k--; if (k > a + BLOQUE * 0.6) b = k; } bloques.push([a, b]); a = b; }
   const partes = new Array(bloques.length), cola = bloques.map((_, i) => i);
   await Promise.all(Array.from({ length: Math.min(3, bloques.length) }, async () => { while (cola.length) { const i = cola.shift(); partes[i] = await pidePlan(bloques[i][0], bloques[i][1]); } }));
+  if (partes.some(p => !p)) { console.error('FALLO: la IA no ha podido planificar las escenas (intenta regenerar en un minuto).'); process.exit(1); }
   plan = { kicker: partes[0].kicker, titulo: partes[0].titulo, enfasis: [...new Set(partes.flatMap(p => p.enfasis || []))], cortes: partes.flatMap(p => p.cortes || []), horas: partes.flatMap(p => p.horas || []) };
   if (bloques.length > 1) console.log('Guion largo planificado en', bloques.length, 'bloques →', plan.cortes.length, 'cortes');
   fs.writeFileSync(planF, JSON.stringify(plan, null, 1));
