@@ -7,14 +7,16 @@ import { ENV } from './entorno.mjs';
 
 // Lo que hace que un vídeo corto funcione en redes (se usa al elegir los momentos y al montar)
 export const PLAYBOOK_REDES = `CONOCIMIENTO DE REDES SOCIALES (aplícalo siempre):
-- Los 1-3 primeros segundos deciden todo: abre con la idea más fuerte (dato, afirmación contundente, pregunta que engancha, contraste, promesa). Nada de saludos ni presentaciones.
-- Un clip = una sola idea. Gancho -> desarrollo corto -> remate. Termina cuando la idea está dicha; no alargues.
-- Duración que mejor retiene: 20-45 s para explicar algo; 8-20 s para una frase potente; solo pasar de 60 s si cada segundo aporta.
-- Retención: ritmo rápido, sin silencios ni muletillas, cambio visual (zoom, plano, gráfico) cada 1,5-3 s, ninguna parte plana.
-- El texto en pantalla ayuda: un título gancho al principio y subtítulos siempre (la mayoría ve sin sonido); palabras clave resaltadas; fuera de las zonas que tapan los botones de la app (borde inferior y lateral derecho).
-- Lo que más comparte la gente: datos concretos y cifras, errores comunes, secretos del oficio, comparaciones antes/después, opiniones con carácter, historias reales con resultado.
-- Ranuse es autoridad en diseño y montaje de gimnasios: prueba y credibilidad (proyectos reales, números, experiencia) antes que promesas vacías. Cierre natural: invitar a seguir, comentar o escribir.
-- Formato pregunta-respuesta: se muestra primero la pregunta (como título en pantalla o dicha) y enseguida la respuesta; la respuesta empieza directa, sin rodeos.`;
+- GANCHO (primeros 1-3 s): decide todo. Debe funcionar a la vez por TRES canales: lo que se ve, las primeras palabras y el texto en pantalla (y entenderse sin sonido). Se abre una pregunta que el espectador necesita cerrar; el contenido la responde. Empieza ya en plena energía: sin saludos, sin "hola", sin presentarte, sin logos. Nunca prometas algo que el vídeo no cumple (el remate debe corresponder al gancho).
+- ESTRUCTURA: Gancho -> desarrollo con bucles abiertos -> remate (payoff) -> cierre. Una sola idea por clip. El valor va por delante; cambio visual (zoom, plano, gráfico) cada 2-4 s; cero silencios, muletillas ni partes planas.
+- DURACIÓN: lo que más alcance da es 15-35 s (unas 75 palabras cada 30 s). Para explicar un tutorial se puede llegar a ~90 s; más de eso solo si cada segundo aporta.
+- SIN SONIDO: el vídeo debe entenderse mudo: subtítulos grabados en el vídeo desde la primera palabra, palabra a palabra, de unas 2 líneas, con la palabra clave resaltada y revisados.
+- ZONA SEGURA: no pongas texto ni caras importantes en los ~250 px de arriba ni en los ~350 px de abajo (los tapan los botones de la app); el gancho, la cara y la llamada a la acción, en el centro.
+- PALABRAS CLAVE: deben aparecer en las primeras palabras habladas y en el texto en pantalla (ayuda a que la red entienda de qué va).
+- CIERRE: terminar de forma que enlace con el principio (el espectador lo vuelve a ver) y con UNA sola llamada a la acción ligada al valor del vídeo (~2 s), nunca "dale like y suscríbete".
+- LO QUE MÁS SE COMPARTE: datos y cifras concretas, errores comunes, secretos del oficio, antes/después, opiniones con carácter, historias reales con resultado. Pregúntate: ¿quién se lo mandaría a quién, y por qué?
+- PROFESIONALIDAD: contenido original, sin marcas de agua de otras apps, con audio. Un clip debe sostenerse solo, representar con justicia a quien habla y servir a la audiencia. Si pasa de entrevista a clip, descarta intros, saludos, patrocinios y charla (se espera descartar ~40% de lo que la IA propone).
+- Formato pregunta-respuesta: se ve primero la pregunta (en pantalla) y enseguida la respuesta, que empieza directa y sin rodeos.`;
 
 const run = (c, a) => spawnSync(c, a, { encoding: 'utf8', maxBuffer: 1 << 26 });
 const mmss = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
@@ -42,7 +44,7 @@ export async function transcribeLargo(entrada, dir, avisa = () => {}) {
 }
 
 // La IA lee la entrevista y ARMA clips: cada clip es una secuencia de tramos [ini,fin] que pueden venir de partes distintas (gancho, pregunta, mejor toma de la respuesta)
-export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, notas = '' } = {}) {
+export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, notas = '', reglas = '' } = {}) {
   const lineas = []; let cur = [], ini = 0;
   palabras.forEach((w, i) => { if (!cur.length) ini = w.de; cur.push(w.t); if (cur.length >= 16 || /[.?!]$/.test(w.t) && cur.length >= 4 || i === palabras.length - 1) { lineas.push('[' + ini.toFixed(1) + ' s] ' + cur.join(' ')); cur = []; } });
   const cuantos = n > 0 ? 'Arma EXACTAMENTE ' + n + ' clips' : 'Arma entre 3 y ' + Math.max(3, Math.min(10, Math.round(dur / 300))) + ' clips (solo los que de verdad merezcan ser un vídeo; mejor pocos y buenos)';
@@ -53,8 +55,9 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
     '3) De la respuesta usa SOLO la mejor toma: si la persona se equivoca, se corrige, se traba, repite o empieza de nuevo, SALTA esos tramos y quédate con la versión bien dicha, completa y fluida. Quita divagaciones, muletillas y charla fuera de tema (risas, comentarios a otras personas, "vale", "ya").\n' +
     '4) Cada tramo empieza al principio de una frase y acaba al final de otra, y los tramos de un mismo clip no se solapan entre sí.\n' +
     '5) El resultado total (suma de tramos) debe sonar fluido y natural, sin cortes bruscos de idea, y durar entre ' + min + ' y ' + max + ' segundos (si es pregunta con respuesta y hace falta, puede pasarse un poco).\n' +
-    '6) Cada clip trata una idea distinta; reparte por TODA la entrevista; los clips no deben repetir los mismos tramos.\n\n' +
+    '6) Prefiere clips de 20-45 s y empieza cada uno con la frase más potente (gancho en los 3 primeros segundos, entendible sin sonido); excluye intros, saludos, patrocinios y charla fuera de tema. Cada clip trata una idea distinta; reparte por TODA la entrevista; los clips no deben repetir los mismos tramos.\n\n' +
     'Lee la transcripción (con el segundo de inicio de cada línea) y ' + cuantos + '. Ordénalos del mejor al peor.' + (notas ? ' INDICACIONES DE LA PERSONA (obligatorias): ' + notas : '') +
+    (reglas ? '\n\nVOZ Y REGLAS DE MARCA DE RANUSE (obligatorias):\n' + reglas : '') +
     '\n\nResponde SOLO con JSON: {"clips":[{"tramos":[[ini,fin],[ini,fin]], "titulo": "título gancho en pantalla, que provoque curiosidad o prometa algo (máx 9 palabras, en español, sin comillas)", "pregunta": "si es de pregunta y respuesta, la pregunta resumida; si no, vacío", "gancho": "la frase de apertura", "score": 0-100 potencial viral (sé exigente y honesto: 90+ excepcional, la mayoría entre 55 y 85), "sub": {"gancho": 0-100, "flujo": 0-100, "valor": 0-100, "tendencia": 0-100}, "motivo": "en una frase, por qué funciona o qué le falta"}]}\n\nTRANSCRIPCIÓN:\n' + lineas.join('\n');
   let d = null;
   for (let intento = 0; intento < 2 && !d; intento++) {

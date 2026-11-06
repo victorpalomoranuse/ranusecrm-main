@@ -420,6 +420,31 @@ function PestanaMusica({ pistas, onCambio }) {
 
 function Campo({ etiqueta, children }) { return <label style={{ display: 'block', marginBottom: 8 }}><div style={{ ...mut, marginBottom: 3 }}>{etiqueta}</div>{children}</label>; }
 
+// Voz y reglas de marca: la IA las aplica a todos los vídeos (qué decir, cómo, qué evitar)
+function CajaReglas() {
+  const [texto, setTexto] = useState(null), [base, setBase] = useState(''), [msg, setMsg] = useState(''), [abierto, setAbierto] = useState(false);
+  useEffect(() => { api.get('/estudio-video/reglas').then(r => { setTexto(r.data.texto); setBase(r.data.base); }).catch(() => setTexto('')); }, []);
+  if (texto === null) return null;
+  const guardar = async () => { try { await api.put('/estudio-video/reglas', { texto }); setMsg('Guardado: se aplicará a los vídeos nuevos'); setTimeout(() => setMsg(''), 2500); } catch { setMsg('No se pudo guardar'); } };
+  return (
+    <div style={{ marginBottom: 14, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontWeight: 600, flex: 1 }}>Voz y reglas de marca (para todos los vídeos)</div>
+        <button className="ap-btn ap-btn-sm" onClick={() => setAbierto(!abierto)}>{abierto ? 'Cerrar' : 'Ver y editar'}</button>
+      </div>
+      <div style={{ ...mut, marginTop: 4 }}>Cómo habla Ranuse, qué quiere transmitir y qué evitar. La IA lo tiene en cuenta al elegir y titular. Añade tus propias normas.</div>
+      {abierto && (<>
+        <textarea className="ap-field-input" style={{ width: '100%', minHeight: 190, marginTop: 8 }} value={texto} onChange={e => setTexto(e.target.value)} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={guardar}>Guardar reglas</button>
+          <button className="ap-btn ap-btn-sm" onClick={() => setTexto(base)}>Volver a las reglas por defecto</button>
+          {msg && <span style={mut}>{msg}</span>}
+        </div>
+      </>)}
+    </div>
+  );
+}
+
 function Formatos({ formatos, onCambio }) {
   const [sel, setSel] = useState(null), [f, setF] = useState(null), [msg, setMsg] = useState('');
   useEffect(() => { const x = formatos.find(y => y.id === (sel || formatos[0]?.id)); if (x) { setF(JSON.parse(JSON.stringify(x))); setSel(x.id); } }, [formatos, sel]);
@@ -431,6 +456,7 @@ function Formatos({ formatos, onCambio }) {
   const num = (v, fn) => <input className="ap-field-input" type="number" step="any" style={{ width: '100%' }} value={v ?? ''} onChange={e => fn(e.target.value === '' ? '' : Number(e.target.value))} />;
   return (
     <div style={card}>
+      <CajaReglas />
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <select className="ap-field-input" style={{ flex: 1, minWidth: 160 }} value={f.id} onChange={e => setSel(e.target.value)}>{formatos.map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>
         <button className="ap-btn ap-btn-sm" onClick={duplicar}><Plus size={13} /> Duplicar como nuevo</button><button className="ap-btn ap-btn-sm" onClick={borrar}><Trash2 size={13} /></button>
