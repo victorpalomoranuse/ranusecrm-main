@@ -26,7 +26,8 @@ async function leer(id) {
   const f = await st.createSignedUrl('trabajos/' + id + '.json', 30); if (!f.data?.signedUrl) return null;
   const r = await fetch(f.data.signedUrl + '&cb=' + Date.now(), { cache: 'no-store' }); return r.ok ? r.json() : null;
 }
-const guardar = (t) => st.upload('trabajos/' + t.id + '.json', Buffer.from(JSON.stringify(t)), { contentType: 'application/json', upsert: true, cacheControl: '0' });
+const reintenta = async (fn, intentos = 5) => { let ult; for (let i = 0; i < intentos; i++) { try { const r = await fn(); if (r?.error) throw new Error(r.error.message || String(r.error)); return r; } catch (e) { ult = e; await new Promise(z => setTimeout(z, 1500 * (i + 1))); } } throw ult; };
+const guardar = (t) => reintenta(() => st.upload('trabajos/' + t.id + '.json', Buffer.from(JSON.stringify(t)), { contentType: 'application/json', upsert: true, cacheControl: '0' }));
 let ultPct = 0;
 async function pct(t, n, texto) { const ahora = Date.now(); if (ahora - ultPct < 2500 && n < 99) return; ultPct = ahora; Object.assign(t, { pct: Math.round(n), progreso: texto }); try { await guardar(t); } catch { /* se reintenta en el siguiente */ } }
 function lanzaMotor(t, script, opciones) {
@@ -215,7 +216,7 @@ async function procesa(t) {
   }
   run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-vf', 'scale=540:960', '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', '-metadata:s:v:0', 'encoder=', '-metadata:s:a:0', 'encoder=', '-c:v', 'libx264', '-bsf:v', 'filter_units=remove_types=6', '-crf', '28', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-movflags', '+faststart', movil]);
   await paso(t, 'Subiendo el resultado…', { pct: 97 });
-  const sube = async (ruta, f) => { const { error } = await st.upload(ruta, fs.readFileSync(f), { contentType: 'video/mp4', upsert: true }); if (error) throw new Error('No se pudo subir ' + ruta + ': ' + error.message); };
+  const sube = async (ruta, f) => { try { await reintenta(() => st.upload(ruta, fs.readFileSync(f), { contentType: 'video/mp4', upsert: true }), 6); } catch (e) { throw new Error('No se pudo subir ' + ruta + ' tras varios intentos: ' + e.message); } };
   await sube('salidas/' + t.id + '.mp4', final); await sube('salidas/' + t.id + '_movil.mp4', movil);
   let plan = null; const pf = path.join(dir, '_trabajo_salida', 'plan.json'); if (fs.existsSync(pf)) { try { const p = JSON.parse(fs.readFileSync(pf, 'utf8')); plan = { kicker: p.kicker, titulo: p.titulo, cortes: p.cortes?.length }; } catch { /* sin plan */ } }
   if (t.tipo === 'voz' || t.tipo === 'edicion') { try { await subeArtefactos(t, dir); } catch (e) { console.log('Sin guardar los datos para editar cortes:', e.message); } }
