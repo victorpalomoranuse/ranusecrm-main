@@ -453,6 +453,72 @@ function PestanaMusica({ pistas, onCambio }) {
 
 function Campo({ etiqueta, children }) { return <label style={{ display: 'block', marginBottom: 8 }}><div style={{ ...mut, marginBottom: 3 }}>{etiqueta}</div>{children}</label>; }
 
+// ---------- Ideas de contenido y calendario (departamento de redes) ----------
+const ESTADOS_IDEA = { idea: 'Idea', grabar: 'A grabar', editando: 'Editando', publicado: 'Publicado', descartada: 'Descartada' };
+function PestanaIdeas() {
+  const [ideas, setIdeas] = useState(null), [tema, setTema] = useState(''), [cant, setCant] = useState(6), [gen, setGen] = useState(false), [err, setErr] = useState(''), [abierta, setAbierta] = useState(null), [filtro, setFiltro] = useState('activas');
+  const cargar = useCallback(() => api.get('/estudio-video/ideas').then(r => setIdeas(r.data.ideas || [])).catch(() => setIdeas([])), []);
+  useEffect(() => { cargar(); }, [cargar]);
+  const generar = async () => { setErr(''); setGen(true); try { const r = await api.post('/estudio-video/ideas/generar', { tema, cantidad: cant }); setIdeas(r.data.ideas || []); } catch (e) { setErr(e?.response?.data?.error || 'No se pudieron generar'); } setGen(false); };
+  const cambia = async (x, parche) => { setIdeas(l => l.map(i => (i.id === x.id ? { ...i, ...parche } : i))); try { await api.put('/estudio-video/ideas/' + x.id, parche); } catch { cargar(); } };
+  const borra = async (x) => { if (!window.confirm('¿Borrar esta idea?')) return; setIdeas(l => l.filter(i => i.id !== x.id)); try { await api.delete('/estudio-video/ideas/' + x.id); } catch { cargar(); } };
+  const copia = (txt) => { try { navigator.clipboard.writeText(txt); } catch { /* sin portapapeles */ } };
+  if (ideas === null) return <div style={mut}>Cargando…</div>;
+  const hoy = new Date().toISOString().slice(0, 10);
+  const agenda = ideas.filter(i => i.fecha && i.estado !== 'descartada' && i.estado !== 'publicado').sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const lista = ideas.filter(i => (filtro === 'activas' ? !['descartada', 'publicado'].includes(i.estado) : filtro === 'todas' ? true : i.estado === filtro)).slice().reverse();
+  return (
+    <div>
+      <div style={card}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Ideas de contenido</div>
+        <div style={{ ...mut, marginBottom: 8 }}>La IA propone vídeos con gancho, guion y qué grabar, siguiendo el manual de redes y las reglas de marca de Ranuse. Ponles fecha para verlas en el calendario.</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input className="ap-field-input" style={{ flex: 1, minWidth: 200 }} placeholder="Tema o proyecto (opcional): ej. home gym en Rivas, suelos…" value={tema} onChange={e => setTema(e.target.value)} />
+          <select className="ap-field-input" value={cant} onChange={e => setCant(Number(e.target.value))}>{[3, 6, 10].map(n => <option key={n} value={n}>{n} ideas</option>)}</select>
+          <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={gen} onClick={generar}><Wand2 size={13} /> {gen ? 'Pensando…' : 'Generar ideas'}</button>
+        </div>
+        {err && <div className="ap-error" style={{ marginTop: 8 }}>{err}</div>}
+      </div>
+      {agenda.length > 0 && (
+        <div style={card}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Calendario</div>
+          {agenda.map(i => <div key={i.id} style={{ display: 'flex', gap: 10, fontSize: '0.85rem', padding: '3px 0', color: i.fecha < hoy ? '#ef7b7b' : 'inherit' }}><span style={{ width: 84, flex: 'none' }}>{i.fecha.slice(8, 10)}/{i.fecha.slice(5, 7)}{i.fecha === hoy ? ' · hoy' : ''}</span><span style={{ flex: 1 }}>{i.titulo}</span><span style={mut}>{ESTADOS_IDEA[i.estado]}</span></div>)}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 6, margin: '4px 0 10px', flexWrap: 'wrap' }}>
+        {['activas', 'grabar', 'editando', 'publicado', 'descartada', 'todas'].map(f => <button key={f} className={'ap-btn ap-btn-sm' + (filtro === f ? ' ap-btn-primary' : '')} onClick={() => setFiltro(f)}>{f === 'activas' ? 'Activas' : f === 'todas' ? 'Todas' : ESTADOS_IDEA[f]}</button>)}
+      </div>
+      {lista.length === 0 && <div style={mut}>No hay ideas en esta vista. Pulsa "Generar ideas".</div>}
+      {lista.map(i => (
+        <div key={i.id} style={card}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontWeight: 600 }}>{i.titulo}</div>
+              <div style={{ ...mut, marginTop: 2 }}>{i.formato}{i.plataforma ? ' · ' + i.plataforma : ''}</div>
+            </div>
+            <select className="ap-field-input" value={i.estado} onChange={e => cambia(i, { estado: e.target.value })}>{Object.entries(ESTADOS_IDEA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+            <input className="ap-field-input" type="date" value={i.fecha || ''} onChange={e => cambia(i, { fecha: e.target.value || null })} />
+          </div>
+          <div style={{ marginTop: 8, fontSize: '0.9rem' }}><strong>Gancho:</strong> “{i.gancho}”</div>
+          {i.razon && <div style={{ ...mut, marginTop: 4 }}>{i.razon}</div>}
+          {abierta === i.id && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', padding: 8, borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>{i.guion}</div>
+              {i.que_grabar && <div style={{ ...mut, marginTop: 6 }}><strong>Qué grabar:</strong> {i.que_grabar}</div>}
+              <textarea className="ap-field-input" style={{ width: '100%', minHeight: 50, marginTop: 8 }} placeholder="Notas" defaultValue={i.notas || ''} onBlur={e => { if (e.target.value !== (i.notas || '')) cambia(i, { notas: e.target.value }); }} />
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <button className="ap-btn ap-btn-sm" onClick={() => setAbierta(abierta === i.id ? null : i.id)}>{abierta === i.id ? 'Ocultar guion' : 'Ver guion'}</button>
+            <button className="ap-btn ap-btn-sm" onClick={() => copia(i.titulo + '\n\n' + i.gancho + '\n\n' + i.guion)}>Copiar guion</button>
+            <button className="ap-btn ap-btn-sm" onClick={() => borra(i)}><Trash2 size={13} /></button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Voz y reglas de marca: la IA las aplica a todos los vídeos (qué decir, cómo, qué evitar)
 function CajaReglas() {
   const [texto, setTexto] = useState(null), [base, setBase] = useState(''), [msg, setMsg] = useState(''), [abierto, setAbierto] = useState(false);
@@ -546,9 +612,10 @@ export function SectionEstudioVideo() {
         <button className={'ap-btn ap-btn-sm' + (tab === 'videos' ? ' ap-btn-primary' : '')} onClick={() => setTab('videos')}><Film size={13} /> Vídeos</button>
         <button className={'ap-btn ap-btn-sm' + (tab === 'formatos' ? ' ap-btn-primary' : '')} onClick={() => setTab('formatos')}><Settings2 size={13} /> Formatos</button>
         <button className={'ap-btn ap-btn-sm' + (tab === 'musica' ? ' ap-btn-primary' : '')} onClick={() => setTab('musica')}><Music size={13} /> Música</button>
+        <button className={'ap-btn ap-btn-sm' + (tab === 'ideas' ? ' ap-btn-primary' : '')} onClick={() => setTab('ideas')}><Wand2 size={13} /> Ideas</button>
       </div>
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
-      {tab === 'formatos' ? <Formatos formatos={formatos} onCambio={cargarF} /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
+      {tab === 'formatos' ? <Formatos formatos={formatos} onCambio={cargarF} /> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Nuevo formatos={formatos} musica={pistas} carpetas={carpetas} onCreado={cargarT} />
           {trabajos === null ? <div className="ap-loading">Cargando…</div> : trabajos.length === 0 ? <div style={mut}>Todavía no hay vídeos. Sube el primero arriba.</div> : trabajos.map(t => <Trabajo key={t.id} t={t} formatos={formatos} onCambio={cargarT} />)}

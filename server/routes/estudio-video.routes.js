@@ -5,6 +5,7 @@ import { authenticateToken, requirePermission } from '../middleware/auth.middlew
 import { leerJson, guardarJson } from '../utils/asistente-personal.js';
 import * as drive from '../utils/drive-lectura.js';
 import { nubeActiva, lanzarNube } from '../utils/nube.js';
+import { callClaude } from '../utils/anthropic.js';
 
 // Estudio de vídeo: subes una voz en off (o un bruto), eliges un formato y un trabajador de vídeo lo monta.
 // Cola de trabajos = un JSON por trabajo en el bucket privado "estudio-video" (sin migraciones de base de datos).
@@ -74,6 +75,36 @@ const REGLAS_BASE = 'Ranuse Design diseña y monta gimnasios y espacios deportiv
 const textoReglas = async () => { try { const r = await leerJson(RUTA_REGLAS, null); return typeof r?.texto === 'string' ? r.texto : REGLAS_BASE; } catch { return REGLAS_BASE; } };
 router.get('/reglas', async (req, res) => { try { res.json({ texto: await textoReglas(), base: REGLAS_BASE }); } catch { res.status(500).json({ error: 'No se pudieron leer las reglas' }); } });
 router.put('/reglas', async (req, res) => { try { await guardarJson(RUTA_REGLAS, { texto: limpia(req.body?.texto, 3500), actualizado: new Date().toISOString() }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudieron guardar las reglas' }); } });
+// ---------- Ideas de contenido y calendario (departamento de redes) ----------
+const RUTA_IDEAS = 'crm/estudio-video/ideas.json';
+const MANUAL_REDES = 'MANUAL DE REDES (aplícalo): gancho en los 1-3 primeros segundos que funcione por tres canales (lo que se ve, las primeras palabras y el texto en pantalla) y se entienda sin sonido; una sola idea por vídeo; gancho -> desarrollo con bucles abiertos -> remate que cumple lo prometido -> una sola llamada a la acción ligada al valor; duración ideal 20-35 s (unas 75 palabras cada 30 s); cambio visual cada 2-4 s; palabras clave en las primeras palabras y en el texto; lo que más se comparte: datos y cifras, errores comunes, secretos del oficio, antes/después, opiniones con carácter e historias reales con resultado; nunca prometer algo que el vídeo no cumple.';
+const leerIdeas = async () => { const j = await leerJson(RUTA_IDEAS, null); return Array.isArray(j?.lista) ? j.lista : []; };
+router.get('/ideas', async (req, res) => { try { res.json({ ideas: await leerIdeas() }); } catch { res.status(500).json({ error: 'No se pudieron leer las ideas' }); } });
+router.post('/ideas/generar', async (req, res) => {
+  try {
+    const tema = limpia(req.body?.tema, 400), cantidad = Math.max(1, Math.min(10, parseInt(req.body?.cantidad) || 6));
+    const previas = await leerIdeas(); const reglas = await textoReglas();
+    const sistema = 'Eres el estratega de contenido de Ranuse Design (diseño y montaje de gimnasios y espacios deportivos). Piensas como un equipo de redes de primer nivel: ideas que se pueden grabar con un móvil o con material que Ranuse ya tiene (obras, proyectos, entrevistas entre Víctor y Dani, el día a día del equipo). Respondes SIEMPRE en español y SOLO con JSON.\n\n' + MANUAL_REDES + '\n\nVOZ Y REGLAS DE MARCA DE RANUSE (obligatorias):\n' + reglas;
+    const usuario = 'Dame ' + cantidad + ' ideas de vídeos cortos (Reels, TikTok y Shorts)' + (tema ? ' sobre: ' + tema : ' variadas para esta semana') + '. Mezcla formatos (entrevista pregunta-respuesta, hablando a cámara, "un día conmigo", antes y después, error común, dato con cifra). No repitas estas ideas ya hechas: ' + (previas.slice(-25).map(x => x.titulo).join(' | ') || 'ninguna') + '.\n\nResponde SOLO con JSON: {"ideas":[{"titulo":"título gancho en pantalla (máx 9 palabras)","gancho":"frase exacta de apertura (primeros 3 s)","guion":"guion completo para decir en voz alta, 60-90 palabras, con gancho, desarrollo, remate y una llamada a la acción","formato":"entrevista | a cámara | acompáñame (día) | antes y después | tutorial | otro","plataforma":"Reels | TikTok | Shorts | todas","razon":"una frase: por qué funcionaría","que_grabar":"qué hay que grabar o qué material de Drive usar"}]}';
+    const r = await callClaude({ system: sistema, messages: [{ role: 'user', content: usuario }], maxTokens: 6000 });
+    const txt = (r.content || []).map(b => b.text || '').join(''); const j = JSON.parse(/\{[\s\S]*\}/.exec(txt)[0]);
+    const nuevas = (j.ideas || []).slice(0, cantidad).map(x => ({ id: crypto.randomUUID().slice(0, 8), titulo: limpia(x.titulo, 120), gancho: limpia(x.gancho, 300), guion: limpia(x.guion, 1800), formato: limpia(x.formato, 40), plataforma: limpia(x.plataforma, 30), razon: limpia(x.razon, 300), que_grabar: limpia(x.que_grabar, 400), estado: 'idea', fecha: null, notas: '', creada: new Date().toISOString() })).filter(x => x.titulo);
+    await guardarJson(RUTA_IDEAS, { lista: [...previas, ...nuevas] }); res.json({ ideas: await leerIdeas(), nuevas: nuevas.length });
+  } catch (e) { res.status(500).json({ error: 'No se pudieron generar las ideas: ' + String(e.message || '').slice(0, 160) }); }
+});
+router.put('/ideas/:id', async (req, res) => {
+  try {
+    const lista = await leerIdeas(); const x = lista.find(i => i.id === req.params.id); if (!x) return res.status(404).json({ error: 'No existe esa idea' });
+    const b = req.body || {};
+    if (['idea', 'grabar', 'editando', 'publicado', 'descartada'].includes(b.estado)) x.estado = b.estado;
+    if (b.fecha === null || /^\d{4}-\d{2}-\d{2}$/.test(b.fecha || '')) x.fecha = b.fecha;
+    if (b.notas !== undefined) x.notas = limpia(b.notas, 1000);
+    if (b.guion !== undefined) x.guion = limpia(b.guion, 1800);
+    if (b.titulo !== undefined) x.titulo = limpia(b.titulo, 120) || x.titulo;
+    await guardarJson(RUTA_IDEAS, { lista }); res.json({ idea: x });
+  } catch { res.status(500).json({ error: 'No se pudo guardar' }); }
+});
+router.delete('/ideas/:id', async (req, res) => { try { const lista = (await leerIdeas()).filter(i => i.id !== req.params.id); await guardarJson(RUTA_IDEAS, { lista }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo borrar' }); } });
 router.get('/formatos', async (req, res) => { try { res.json({ formatos: await formatos() }); } catch { res.status(500).json({ error: 'No se pudieron leer los formatos' }); } });
 router.post('/formatos', async (req, res) => {
   try {
