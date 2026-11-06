@@ -168,7 +168,7 @@ function Trabajo({ t, formatos, onCambio }) {
         </div>
       )}
       {err && <div className="ap-error" style={{ marginTop: 8 }}>{err}</div>}
-      <div style={{ marginTop: 8 }}><button className="ap-btn ap-btn-sm" onClick={borrar}><Trash2 size={13} /></button></div>
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>{t.estado === 'error' && <button className="ap-btn ap-btn-sm" title="Vuelve a intentarlo con los mismos recursos y la misma configuración" onClick={regenerar}><Wand2 size={13} /> Regenerar</button>}<button className="ap-btn ap-btn-sm" onClick={borrar}><Trash2 size={13} /></button></div>
     </div>
   );
 }
