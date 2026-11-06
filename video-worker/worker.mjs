@@ -155,6 +155,22 @@ async function procesa(t) {
         else { const meta = await drive.meta(ch.video.id); const dur = Number(meta.videoMediaMetadata?.durationMillis || 0) / 1000; const e = { id: 'm' + ch.video.id.slice(0, 11), drive_id: ch.video.id, ruta: 'drive:' + ch.video.id, nombre: meta.name, carpeta: '', bytes: Number(meta.size || 0), duracion: dur || 60, ancho: meta.videoMediaMetadata?.width, alto: meta.videoMediaMetadata?.height, calidad: 'media', tipo: 'b_roll', resumen: 'Elegido a mano', etiquetas: [], planos: [] }; if (!extras.some(x => x.id === e.id)) extras.push(e); c.video = e.id; c.desde = Math.max(0, Math.min(Number(ch.desde) || 0, Math.max(0, dur - 1))); }
       } else if (ch.desde !== undefined) c.desde = Math.max(0, Number(ch.desde) || 0);
     }
+    if (Array.isArray(t.cortes_nuevos) && t.cortes_nuevos.length) {
+      const pal = JSON.parse(fs.readFileSync(path.join(wk, 'palabras.json'), 'utf8')).transcription, tiempos = pal.map(x => x.offsets.from / 1000);
+      const idxDe = (t0) => { const k = tiempos.findIndex(v => v >= t0 - 0.05); return k < 0 ? tiempos.length - 1 : k; };
+      const nuevos = []; let ultDe = -1;
+      for (const c of t.cortes_nuevos.slice().sort((a, b) => a.t0 - b.t0)) {
+        let video = c.video_int, desde = Math.max(0, Number(c.desde) || 0);
+        if (c.video?.id) {
+          if (c.video.tipo === 'imagen') { imagenes.push({ id: c.video.id, nombre: c.video.nombre || 'imagen', ruta: '' }); video = 'img' + c.video.id.slice(0, 9); desde = 0; }
+          else { const meta = await drive.meta(c.video.id); const dur = Number(meta.videoMediaMetadata?.durationMillis || 0) / 1000; const e = { id: 'm' + c.video.id.slice(0, 11), drive_id: c.video.id, ruta: 'drive:' + c.video.id, nombre: meta.name, carpeta: '', bytes: Number(meta.size || 0), duracion: dur || 60, ancho: meta.videoMediaMetadata?.width, alto: meta.videoMediaMetadata?.height, calidad: 'media', tipo: 'b_roll', resumen: 'Elegido a mano', etiquetas: [], planos: [] }; if (!extras.some(x => x.id === e.id)) extras.push(e); video = e.id; desde = Math.max(0, Math.min(desde, Math.max(0, dur - 1))); }
+        }
+        if (!video) continue;
+        let de = idxDe(c.t0); if (de <= ultDe) de = ultDe + 1; ultDe = de;
+        nuevos.push({ de, video, desde, t0: nuevos.length === 0 ? 0 : Number(c.t0) });
+      }
+      if (nuevos.length) plan.cortes = nuevos;
+    }
     for (const v of usados) if (v.es_imagen && v.drive_id_img && !imagenes.some(i => i.id === v.drive_id_img)) imagenes.push({ id: v.drive_id_img, nombre: v.nombre, ruta: '' });
     usados = usados.filter(v => !v.es_imagen);
     fs.writeFileSync(path.join(wk, 'plan.json'), JSON.stringify(plan)); indiceEdicion = path.join(dir, 'indice-total.json'); fs.writeFileSync(indiceEdicion, JSON.stringify({ videos: [...usados, ...extras] }));
@@ -192,6 +208,11 @@ async function procesa(t) {
   await paso(t, t.tipo === 'voz' ? 'La IA está eligiendo escenas y montando…' : t.tipo === 'base' ? 'Montando sobre el vídeo base y superponiendo escenas…' : 'Quitando pausas y poniendo subtítulos…');
   try { await sincronizaMusica(); } catch (e) { console.log('Música sin sincronizar:', e.message); }
   if (t.tipo === 'clips') { await procesaClips(t, entrada, dir); return; }
+  if (t.edicion_texto && t.tipo !== 'edicion') {
+    const wk = path.join(dir, '_trabajo_salida'); fs.mkdirSync(wk, { recursive: true });
+    try { const u = await st.createSignedUrl('artefactos/' + t.origen + '/palabras_bruto.json', 300); if (u.data?.signedUrl) fs.writeFileSync(path.join(wk, 'palabras.json'), Buffer.from(await (await fetch(u.data.signedUrl)).arrayBuffer())); } catch (e) { console.log('Sin la transcripción anterior (se volverá a transcribir):', e.message); }
+    fs.writeFileSync(path.join(dir, 'fuera.json'), JSON.stringify(t.edicion_texto.fuera || []));
+  }
   let indiceUsar = INDICE, seleccion = {};
   const rec0 = Array.isArray(t.recursos) ? t.recursos : [];
   if (t.tipo === 'edicion') { indiceUsar = indiceEdicion; seleccion = seleccionEdicion; }
@@ -200,7 +221,7 @@ async function procesa(t) {
     try { await indexaCarpetas(t, { carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }, idsExist); } catch (e) { console.log('Carpetas sin indexar del todo:', e.message); } seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), imagenes: rec.filter(r => r.tipo === 'imagen').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
   const conInserciones = t.tipo === 'base' || rec0.length > 0;
   const script = (t.tipo === 'voz' || t.tipo === 'edicion') ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
-  const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, ...(t.tipo === 'edicion' ? { REUSE: '1', SIN_LIMPIEZA: '1', SIN_REVISION: '1', EDICION: '1' } : {}), TITULO_PANTALLA: t.clip?.titulo || '', PREGUNTA_PANTALLA: t.clip?.pregunta || '', RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: (t.tipo === 'edicion' && t.musica_usada) ? t.musica_usada : (t.musica === 'ninguna' ? 'ninguna' : (t.musica || 'auto')), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
+  const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, ...(t.tipo === 'edicion' ? { REUSE: '1', SIN_LIMPIEZA: '1', SIN_REVISION: '1', EDICION: '1' } : {}), ...(t.edicion_texto && t.tipo !== 'edicion' ? { FUERA_JSON: path.join(dir, 'fuera.json') } : {}), TITULO_PANTALLA: t.clip?.titulo || '', PREGUNTA_PANTALLA: t.clip?.pregunta || '', RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: (t.tipo === 'edicion' && t.musica_usada) ? t.musica_usada : (t.musica === 'ninguna' ? 'ninguna' : (t.musica || 'auto')), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
   console.log((r.stdout || '').split('\n').slice(-6).join('\n'));
   { const mm = /Música: (.+?) \(\d/.exec(r.stdout || ''); if (mm) t.musica_usada = mm[1]; }
   if (!fs.existsSync(salida)) { const txt = ((r.stdout || '') + (r.stderr || '')); const fallo = /FALLO:[^\r\n]*/.exec(txt)?.[0]; throw new Error(fallo ? 'El montaje se ha parado. ' + fallo : 'El montaje no ha producido vídeo. ' + txt.slice(-300)); }
@@ -220,6 +241,11 @@ async function procesa(t) {
   await sube('salidas/' + t.id + '.mp4', final); await sube('salidas/' + t.id + '_movil.mp4', movil);
   let plan = null; const pf = path.join(dir, '_trabajo_salida', 'plan.json'); if (fs.existsSync(pf)) { try { const p = JSON.parse(fs.readFileSync(pf, 'utf8')); plan = { kicker: p.kicker, titulo: p.titulo, cortes: p.cortes?.length }; } catch { /* sin plan */ } }
   if (t.tipo === 'voz' || t.tipo === 'edicion') { try { await subeArtefactos(t, dir); } catch (e) { console.log('Sin guardar los datos para editar cortes:', e.message); } }
+  if (t.tipo === 'bruto') { try {
+    const wk = path.join(dir, '_trabajo_salida'), et = JSON.parse(fs.readFileSync(path.join(wk, 'edicion_texto.json'), 'utf8')), fu = new Set(et.fuera);
+    if (et.palabras.length <= 1200) t.transcripcion = et.palabras.map((w, i) => [w[0], w[1], w[2], fu.has(i) ? 1 : 0]);
+    const { error } = await st.upload('artefactos/' + t.id + '/palabras_bruto.json', fs.readFileSync(path.join(wk, 'palabras.json')), { contentType: 'application/json', upsert: true, cacheControl: '0' }); if (error) throw new Error(error.message);
+  } catch (e) { console.log('Sin guardar el texto editable:', e.message); delete t.transcripcion; } }
   let faltan = []; try { faltan = JSON.parse(fs.readFileSync(path.join(dir, '_trabajo_salida', 'edicion', 'faltan.json'), 'utf8')); } catch { /* sin aviso */ }
   await paso(t, 'Listo', { faltan, pct: 100, estado: 'listo', resultado: 'salidas/' + t.id + '.mp4', resultado_movil: 'salidas/' + t.id + '_movil.mp4', plan, terminado: new Date().toISOString(), error: null });
 }

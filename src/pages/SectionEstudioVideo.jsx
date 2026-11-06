@@ -147,7 +147,7 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
 }
 
 function Trabajo({ t, formatos, onCambio }) {
-  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [editando, setEditando] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
+  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [editando, setEditando] = useState(false), [editTexto, setEditTexto] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
   const [txt, color] = ESTADOS[t.estado] || ESTADOS.pendiente;
   const vref = useRef(null);
   const regenerar = async () => { try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { formato: t.formato, recursos: recs, ...(baseSel[0] ? { base: baseSel[0] } : {}) }); setPanelReg(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
@@ -176,6 +176,7 @@ function Trabajo({ t, formatos, onCambio }) {
             <button className="ap-btn ap-btn-sm" title="Elige qué recursos usar y vuelve a montarlo" onClick={() => setPanelReg(!panelReg)}><Wand2 size={13} /> Regenerar</button>
             <button className="ap-btn ap-btn-sm" onClick={() => setAbierto(!abierto)}><RefreshCw size={13} /> Pedir cambios</button>
             {(t.cortes || []).length > 0 && <button className="ap-btn ap-btn-sm" title="Cambiar clips o moverlos a mano" onClick={() => setEditando(!editando)}><Scissors size={13} /> Editar cortes</button>}
+            {(t.transcripcion || []).length > 0 && <button className="ap-btn ap-btn-sm" title="Quitar palabras o frases leyendo el texto" onClick={() => setEditTexto(!editTexto)}><Scissors size={13} /> Editar texto</button>}
           </div>
         </div>
       )}
@@ -196,7 +197,8 @@ function Trabajo({ t, formatos, onCambio }) {
           {t.faltan.map((x, i) => <div key={i} style={{ fontSize: '0.82rem', marginBottom: 4 }}>• <strong>“{x.parte}”</strong> → {x.necesitas}</div>)}
         </div>
       )}
-      {editando && <EditorCortes t={t} vref={vref} onCambio={() => { setEditando(false); onCambio(); }} />}
+      {editando && <LineaTiempo t={t} vref={vref} onCambio={() => { setEditando(false); onCambio(); }} />}
+      {editTexto && <EditorTexto t={t} onCambio={() => { setEditTexto(false); onCambio(); }} />}
       {panelReg && (
         <div style={{ marginTop: 10, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10 }}>
           <div style={{ ...mut, marginBottom: 6 }}>{(t.recursos || []).length ? 'Esta es la selección que elegiste para este vídeo.' : recs.length ? 'No elegiste recursos concretos: estos son los clips que la IA usó en este montaje.' : 'Este montaje usó todo Drive indexado (no hay clips guardados de esta versión).'} Quita o añade carpetas, vídeos o imágenes y regenera. Sin nada elegido se usa todo Drive indexado.</div>
@@ -267,6 +269,131 @@ function EditorCortes({ t, vref, onCambio }) {
       {err && <div className="ap-error" style={{ marginTop: 8 }}>{err}</div>}
       <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={!nMod || enviando} onClick={aplicar}><Wand2 size={13} /> {enviando ? 'Enviando…' : 'Montar versión nueva con ' + nMod + ' cambio(s)'}</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Editor de texto: se ve lo que dices, se quitan palabras o frases con un clic y el vídeo se monta de nuevo sin ellas ----------
+function EditorTexto({ t, onCambio }) {
+  const pal = t.transcripcion || [];
+  const propuesta = () => new Set(pal.map((w, i) => (w[3] ? i : -1)).filter(i => i >= 0));
+  const [fuera, setFuera] = useState(propuesta), [ult, setUlt] = useState(null), [err, setErr] = useState(''), [enviando, setEnviando] = useState(false);
+  const alterna = (i, e) => {
+    setFuera(prev => {
+      const s2 = new Set(prev);
+      if (e.shiftKey && ult !== null) { const a = Math.min(ult, i), b = Math.max(ult, i), quitar = !prev.has(i); for (let k = a; k <= b; k++) { if (quitar) s2.add(k); else s2.delete(k); } }
+      else if (s2.has(i)) s2.delete(i); else s2.add(i);
+      return s2;
+    });
+    setUlt(i);
+  };
+  const quedan = pal.reduce((n, w, i) => n + (fuera.has(i) ? 0 : Math.max(0.15, w[2] - w[1])), 0);
+  const cambiado = (() => { const p = propuesta(); if (p.size !== fuera.size) return true; for (const i of p) if (!fuera.has(i)) return true; return false; })();
+  const muletillas = () => setFuera(prev => { const s2 = new Set(prev); pal.forEach((w, i) => { if (/^(e+h+|e+m+|m{2,}|o ?sea|bueno|pues|vale|a ver|digamos)[.,]?$/i.test(String(w[0]).trim())) s2.add(i); }); return s2; });
+  const aplicar = async () => {
+    setErr(''); setEnviando(true);
+    try { await api.post('/estudio-video/trabajos/' + t.id + '/editar-texto', { fuera: [...fuera] }); onCambio(); }
+    catch (e) { setErr(e?.response?.data?.error || 'No se pudo crear la versión'); setEnviando(false); }
+  };
+  return (
+    <div style={{ marginTop: 10, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>Editar texto</div>
+      <div style={{ ...mut, marginBottom: 8 }}>Esto es lo que se dice. Pulsa una palabra para quitarla o ponerla (con Mayús pulsada, un tramo entero). Lo tachado en rojo no se oirá ni se verá. La IA ha propuesto lo que ves tachado; tú decides.</div>
+      <div style={{ maxHeight: 340, overflowY: 'auto', lineHeight: 2, padding: '6px 4px', borderRadius: 8, background: 'rgba(255,255,255,0.03)' }}>
+        {pal.map((w, i) => {
+          const q = fuera.has(i), pausa = i > 0 && w[1] - pal[i - 1][2] > 0.7;
+          return (<span key={i}>{pausa && <span style={{ ...mut, margin: '0 3px' }}>·</span>}
+            <span onClick={e => alterna(i, e)} title={w[1].toFixed(1) + ' s'} style={{ cursor: 'pointer', padding: '1px 3px', margin: '0 1px', borderRadius: 4, userSelect: 'none', textDecoration: q ? 'line-through' : 'none', color: q ? '#ef7b7b' : 'inherit', background: q ? 'rgba(239,123,123,0.12)' : 'transparent', opacity: q ? 0.8 : 1 }}>{w[0]}</span> </span>);
+        })}
+      </div>
+      <div style={{ ...mut, marginTop: 6 }}>Quedan unos {Math.round(quedan)} s de voz · {fuera.size} palabra(s) quitada(s) de {pal.length}</div>
+      {err && <div className="ap-error" style={{ marginTop: 8 }}>{err}</div>}
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={!cambiado || enviando} onClick={aplicar}><Wand2 size={13} /> {enviando ? 'Enviando…' : 'Montar de nuevo con este texto'}</button>
+        <button className="ap-btn ap-btn-sm" onClick={muletillas}>Quitar muletillas (eh, mmm, o sea…)</button>
+        <button className="ap-btn ap-btn-sm" onClick={() => setFuera(propuesta())}>Volver a la propuesta de la IA</button>
+        <button className="ap-btn ap-btn-sm" onClick={() => setFuera(new Set())}>Dejarlo todo</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Línea de tiempo tipo CapCut: los cortes como bloques; se alargan/acortan arrastrando el borde, se cambian, se dividen, se eliminan o se intercambian ----------
+function LineaTiempo({ t, vref, onCambio }) {
+  const cs = t.cortes || [];
+  const total = Math.max(1, Number(cs[cs.length - 1]?.fin) || 1);
+  const [bloques, setBloques] = useState(() => cs.map((c, k) => ({ id: k, t0: Number(c.ini) || 0, videoInt: c.video, driveId: c.drive_id, nombre: c.nombre, esImagen: !!c.es_imagen, durClip: c.dur_clip, desde: Number(c.desde) || 0, texto: c.texto || '', nuevo: null })));
+  const [sel, setSel] = useState(0), [pos, setPos] = useState(0), [pps, setPps] = useState(46), [hist, setHist] = useState([]), [err, setErr] = useState(''), [enviando, setEnviando] = useState(false), [eligiendo, setEligiendo] = useState(false), [intercambio, setIntercambio] = useState(null);
+  const n = bloques.length, fin = (k) => (k < n - 1 ? bloques[k + 1].t0 : total);
+  const guarda = () => setHist(h => [...h.slice(-30), bloques]);
+  const deshacer = () => setHist(h => { if (!h.length) return h; setBloques(h[h.length - 1]); return h.slice(0, -1); });
+  useEffect(() => { const v = vref?.current; if (!v) return undefined; const f = () => setPos(v.currentTime || 0); v.addEventListener('timeupdate', f); v.addEventListener('seeked', f); return () => { v.removeEventListener('timeupdate', f); v.removeEventListener('seeked', f); }; }, [vref]);
+  const ir = (seg) => { const v = vref?.current; if (v) { try { v.currentTime = seg; setPos(seg); } catch { /* sin vídeo */ } } };
+  const arrastra = useRef(null);
+  const iniciaBorde = (k, e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); guarda(); arrastra.current = { k, x0: e.clientX, b0: bloques[k + 1].t0 }; };
+  const muevelBorde = (e) => { const a = arrastra.current; if (!a) return; const k = a.k, minB = bloques[k].t0 + 0.6, maxB = (k + 2 < n ? bloques[k + 2].t0 : total) - 0.6; const nb = Math.max(minB, Math.min(maxB, a.b0 + (e.clientX - a.x0) / pps)); setBloques(bs => bs.map((b, i) => (i === k + 1 ? { ...b, t0: Math.round(nb * 20) / 20 } : b))); };
+  const sueltaBorde = () => { arrastra.current = null; };
+  const clicBloque = (k) => {
+    if (intercambio !== null && intercambio !== k) { guarda(); const A = intercambio, B = k; setBloques(bs => bs.map((b, i) => { const o = i === A ? bs[B] : i === B ? bs[A] : null; return o ? { ...b, videoInt: o.videoInt, driveId: o.driveId, nombre: o.nombre, esImagen: o.esImagen, durClip: o.durClip, desde: o.desde, nuevo: o.nuevo } : b; })); setIntercambio(null); setSel(k); return; }
+    setSel(k); ir(bloques[k].t0);
+  };
+  const b = bloques[sel];
+  const divide = () => { if (!b) return; const p = pos; if (p - b.t0 < 0.6 || fin(sel) - p < 0.6) { setErr('Pon el cursor dentro del bloque, a más de 0,6 s de los bordes (pulsa en la regla o mueve el vídeo).'); return; } setErr(''); guarda(); setBloques(bs => { const nuevo = { ...b, id: Date.now(), t0: Math.round(p * 20) / 20, desde: Math.round(((b.esImagen ? 0 : b.desde + (p - b.t0))) * 10) / 10 }; return [...bs.slice(0, sel + 1), nuevo, ...bs.slice(sel + 1)]; }); };
+  const elimina = () => { if (n <= 1) return; guarda(); setBloques(bs => { const r = bs.filter((_, i) => i !== sel); if (sel === 0 && r.length) r[0] = { ...r[0], t0: 0 }; return r; }); setSel(Math.max(0, sel - 1)); };
+  const cambiaDesde = (v) => setBloques(bs => bs.map((x, i) => (i === sel ? { ...x, desde: Math.max(0, Number(v) || 0) } : x)));
+  const aplicar = async () => {
+    setErr(''); setEnviando(true);
+    try {
+      const cortes = bloques.map(x => ({ t0: x.t0, desde: x.desde, ...(x.nuevo ? { video: { id: x.nuevo.id, nombre: x.nuevo.nombre, tipo: x.nuevo.tipo } } : { video_int: x.videoInt }) }));
+      await api.post('/estudio-video/trabajos/' + t.id + '/editar', { cortes }); onCambio();
+    } catch (e) { setErr(e?.response?.data?.error || 'No se pudo crear la versión editada'); setEnviando(false); }
+  };
+  const W = Math.ceil(total * pps) + 40, marcas = []; const paso = pps >= 60 ? 1 : pps >= 30 ? 2 : 5; for (let s2 = 0; s2 <= total; s2 += paso) marcas.push(s2);
+  const hayCambios = hist.length > 0;
+  return (
+    <div style={{ marginTop: 10, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+        <div style={{ fontWeight: 600, flex: 1 }}>Línea de tiempo</div>
+        <label style={{ ...mut, display: 'flex', alignItems: 'center', gap: 6 }}>Zoom<input type="range" min="20" max="140" value={pps} onChange={e => setPps(Number(e.target.value))} /></label>
+        <button className="ap-btn ap-btn-sm" disabled={!hist.length} onClick={deshacer}>Deshacer</button>
+      </div>
+      <div style={{ ...mut, marginBottom: 8 }}>Pulsa un bloque para elegirlo. Arrastra el borde derecho de un bloque para alargarlo o acortarlo. La línea roja es el vídeo: pulsa en la regla o reproduce para moverla, y "Dividir" corta el bloque en ese punto.</div>
+      <div style={{ overflowX: 'auto', paddingBottom: 6 }}>
+        <div style={{ position: 'relative', width: W, height: 130, userSelect: 'none' }}>
+          <div onClick={e => { const r = e.currentTarget.getBoundingClientRect(); ir(Math.max(0, Math.min(total, (e.clientX - r.left) / pps))); }} style={{ position: 'absolute', left: 0, top: 0, width: W, height: 22, cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
+            {marcas.map(m => <div key={m} style={{ position: 'absolute', left: m * pps, top: 0, height: 22, borderLeft: '1px solid rgba(255,255,255,0.25)', paddingLeft: 3, fontSize: 10, color: 'rgba(255,255,255,0.55)' }}>{fmtDur(Math.round(m))}</div>)}
+          </div>
+          {bloques.map((x, k) => {
+            const w = Math.max(10, (fin(k) - x.t0) * pps - 2), activo = k === sel, id = x.nuevo?.id || x.driveId;
+            return (
+              <div key={x.id} onClick={() => clicBloque(k)} style={{ position: 'absolute', left: x.t0 * pps, top: 28, width: w, height: 92, borderRadius: 8, overflow: 'hidden', cursor: 'pointer', background: '#1d1b19', border: '2px solid ' + (activo ? '#f2c46d' : intercambio === k ? '#7ccf8f' : 'rgba(255,255,255,0.18)'), boxSizing: 'border-box' }}>
+                {id && <img src={urlMiniatura(id)} alt="" loading="lazy" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.55 }} onError={e => { e.currentTarget.style.visibility = 'hidden'; }} />}
+                <div style={{ position: 'relative', padding: '3px 5px', fontSize: 10, lineHeight: 1.25, textShadow: '0 1px 2px #000' }}><strong>{k + 1}</strong>{w > 70 ? ' · ' + (x.nuevo ? x.nuevo.nombre : x.nombre || 'clip') : ''}{w > 110 && <div style={{ opacity: 0.85 }}>{(fin(k) - x.t0).toFixed(1)} s</div>}</div>
+                {k < n - 1 && <div onPointerDown={e => iniciaBorde(k, e)} onPointerMove={muevelBorde} onPointerUp={sueltaBorde} onClick={e => e.stopPropagation()} title="Arrastra para alargar o acortar" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 9, cursor: 'col-resize', background: 'rgba(242,196,109,0.7)' }} />}
+              </div>
+            );
+          })}
+          <div style={{ position: 'absolute', left: pos * pps, top: 0, bottom: 0, width: 2, background: '#ef4444', pointerEvents: 'none' }} />
+        </div>
+      </div>
+      {b && (
+        <div style={{ marginTop: 8, padding: 8, borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>
+          <div style={{ fontSize: '0.8rem' }}><strong>Corte {sel + 1}</strong> · {fmtDur(Math.round(b.t0))}–{fmtDur(Math.round(fin(sel)))} · “{b.texto}”</div>
+          <div style={{ ...mut, marginTop: 2 }}>{b.nuevo ? 'Clip nuevo: ' + b.nuevo.nombre : (b.nombre || 'clip')}{b.durClip ? ' (' + Math.round(b.durClip) + ' s)' : ''}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 6 }}>
+            {!b.esImagen && <label style={{ ...mut, display: 'flex', alignItems: 'center', gap: 4 }}>Empieza en el s<input type="number" min="0" step="0.5" value={b.desde} onChange={e => cambiaDesde(e.target.value)} className="ap-field-input" style={{ width: 70, padding: '2px 6px' }} /></label>}
+            <button className="ap-btn ap-btn-sm" onClick={() => setEligiendo(!eligiendo)}><RefreshCw size={12} /> Cambiar clip</button>
+            <button className="ap-btn ap-btn-sm" onClick={divide}><Scissors size={12} /> Dividir en la línea roja</button>
+            <button className="ap-btn ap-btn-sm" onClick={() => setIntercambio(intercambio === sel ? null : sel)}>{intercambio === sel ? 'Elige el otro bloque…' : 'Intercambiar con otro'}</button>
+            <button className="ap-btn ap-btn-sm" disabled={n <= 1} onClick={elimina}><X size={12} /> Eliminar corte</button>
+          </div>
+          {eligiendo && <div style={{ marginTop: 8 }}><Explorador key={sel} seleccion={[]} max={1} titulo={'Clip nuevo para el corte ' + (sel + 1)} vacio="Elegir clip o imagen de Drive" onCambio={(s3) => { if (s3[0]) { guarda(); setBloques(bs => bs.map((x, i) => (i === sel ? { ...x, nuevo: s3[0], desde: 0, esImagen: s3[0].tipo === 'imagen' } : x))); setEligiendo(false); } }} /></div>}
+        </div>
+      )}
+      {err && <div className="ap-error" style={{ marginTop: 8 }}>{err}</div>}
+      <div style={{ marginTop: 10 }}>
+        <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={!hayCambios || enviando} onClick={aplicar}><Wand2 size={13} /> {enviando ? 'Enviando…' : 'Montar versión nueva'}</button>
       </div>
     </div>
   );

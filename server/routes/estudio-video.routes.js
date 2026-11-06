@@ -197,12 +197,30 @@ router.post('/trabajos/:id/editar', async (req, res) => {
       const desde = Number.isFinite(Number(c?.desde)) && c?.desde !== '' && c?.desde !== null ? Math.max(0, Math.min(36000, Number(c.desde))) : undefined;
       return { de: Number(c?.de), ...(vid ? { video: vid } : {}), ...(desde !== undefined ? { desde } : {}) };
     }).filter(c => Number.isInteger(c.de) && (c.video || c.desde !== undefined));
-    if (!cambios.length) return res.status(400).json({ error: 'No has cambiado ningún corte' });
-    const t = { ...o, id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), tipo: 'edicion', origen: o.id, cambios, version: (o.version || 1) + 1, estado: 'pendiente', progreso: 'En cola', pct: 0, resultado: null, resultado_movil: null, error: null, plan: null, cortes: undefined, artefactos: undefined, faltan: undefined, empezado: undefined, terminado: undefined };
+    const lista = (Array.isArray(req.body?.cortes) ? req.body.cortes : []).slice(0, 400).map(c => {
+      const vid = c?.video && /^[\w-]{10,60}$/.test(String(c.video.id || '')) ? { id: String(c.video.id), nombre: limpia(c.video.nombre, 160), tipo: c.video.tipo === 'imagen' ? 'imagen' : 'video' } : null;
+      const t0 = Number(c?.t0), desde = Number(c?.desde);
+      return { t0, ...(vid ? { video: vid } : {}), ...(c?.video_int ? { video_int: limpia(String(c.video_int), 80) } : {}), desde: Number.isFinite(desde) ? Math.max(0, Math.min(36000, desde)) : 0 };
+    }).filter(c => Number.isFinite(c.t0) && c.t0 >= 0 && (c.video || c.video_int));
+    if (!cambios.length && lista.length < 2) return res.status(400).json({ error: 'No has cambiado ningún corte' });
+    const t = { ...o, id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), tipo: 'edicion', origen: o.id, cambios, ...(lista.length >= 2 ? { cortes_nuevos: lista } : {}), version: (o.version || 1) + 1, estado: 'pendiente', progreso: 'En cola', pct: 0, resultado: null, resultado_movil: null, error: null, plan: null, cortes: undefined, artefactos: undefined, faltan: undefined, empezado: undefined, terminado: undefined };
     t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
     if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); }
     res.status(201).json({ trabajo: t });
   } catch { res.status(500).json({ error: 'No se pudo crear la nueva versión editada' }); }
+});
+// Edición por texto: la persona elige qué palabras se quitan (la IA solo propone) y se vuelve a montar el clip con ese texto
+router.post('/trabajos/:id/editar-texto', async (req, res) => {
+  try {
+    const o = await leerTrabajo(req.params.id); if (!o) return res.status(404).json({ error: 'No existe ese trabajo' });
+    const n = (o.transcripcion || []).length; if (!n) return res.status(400).json({ error: 'Este vídeo no tiene texto editable. Pulsa Regenerar y podrás editarlo en la versión nueva.' });
+    const fuera = [...new Set((Array.isArray(req.body?.fuera) ? req.body.fuera : []).map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < n))].sort((a, b) => a - b);
+    if (fuera.length >= n) return res.status(400).json({ error: 'No puedes quitar todo el texto' });
+    const t = { ...o, id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), origen: o.id, edicion_texto: { fuera }, version: (o.version || 1) + 1, estado: 'pendiente', progreso: 'En cola', pct: 0, resultado: null, resultado_movil: null, error: null, plan: null, transcripcion: undefined, faltan: undefined, empezado: undefined, terminado: undefined };
+    t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
+    if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); }
+    res.status(201).json({ trabajo: t });
+  } catch { res.status(500).json({ error: 'No se pudo crear la versión con el texto editado' }); }
 });
 router.delete('/trabajos/:id', async (req, res) => {
   try {

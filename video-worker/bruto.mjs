@@ -89,6 +89,10 @@ if (fuera.size) console.log('Se quitan', fuera.size, 'palabras (repeticiones/err
 { const limpio = R.limpiar !== false ? await guionLimpio(palabras, ENV.ANTHROPIC_API_KEY, NOTAS, !!process.env.TITULO_PANTALLA) : null;
   if (limpio) { fuera.clear(); for (const i of limpio) fuera.add(i); console.log('Discurso final elegido por la IA:', palabras.length - limpio.size, 'de', palabras.length, 'palabras'); } }
 for (const i of repetidasInmediatas(palabras.filter(w => !fuera.has(w.i)))) fuera.add(i);
+// Edición por texto: si la persona ha elegido a mano qué palabras quitar, manda ella (se ignora la propuesta de la IA)
+if (process.env.FUERA_JSON) { try { const man = JSON.parse(fs.readFileSync(process.env.FUERA_JSON, 'utf8')); fuera.clear(); for (const i of man) if (Number.isInteger(i)) fuera.add(i); console.log('Texto editado a mano:', fuera.size, 'palabras quitadas'); } catch (e) { console.log('No se pudo leer la edición de texto:', e.message); } }
+// se guarda la transcripción y lo que se quita para que la persona pueda revisarlo y corregirlo
+try { fs.writeFileSync(path.join(work, 'edicion_texto.json'), JSON.stringify({ palabras: palabras.map(w => [w.t, Math.round(w.de * 100) / 100, Math.round(w.a * 100) / 100]), fuera: [...fuera] })); } catch { /* sin edición de texto */ }
 const enfasis = new Set((plan.enfasis || []).filter(n => Number.isInteger(n)));
 
 // ---- música (elegida por la IA entre las pistas del CRM) ----
