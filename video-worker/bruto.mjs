@@ -10,7 +10,7 @@ import * as drive from './drive.mjs';
 import { ENV } from './entorno.mjs';
 import { ARGS_VIDEO } from './codec.mjs';
 import { transcribe } from './transcribir.mjs';
-import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas } from './voz.mjs';
+import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, guionLimpio } from './voz.mjs';
 
 const [ENTRADA, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!ENTRADA || !SALIDA) { console.log('Uso: node bruto.mjs "<bruto>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -86,7 +86,9 @@ try {
 fs.writeFileSync(path.join(work, 'plan.json'), JSON.stringify(plan, null, 1));
 const fuera = new Set(); for (const r of (plan.quitar || [])) if (Array.isArray(r) && Number.isInteger(r[0])) for (let i = r[0]; i <= (Number.isInteger(r[1]) ? r[1] : r[0]); i++) fuera.add(i);
 if (fuera.size) console.log('Se quitan', fuera.size, 'palabras (repeticiones/errores):', [...fuera].slice(0, 40).map(i => palabras[i]?.t).join(' '));
-for (const i of repetidasInmediatas(palabras)) fuera.add(i);
+{ const limpio = R.limpiar !== false ? await guionLimpio(palabras, ENV.ANTHROPIC_API_KEY, NOTAS, !!process.env.TITULO_PANTALLA) : null;
+  if (limpio) { fuera.clear(); for (const i of limpio) fuera.add(i); console.log('Discurso final elegido por la IA:', palabras.length - limpio.size, 'de', palabras.length, 'palabras'); } }
+for (const i of repetidasInmediatas(palabras.filter(w => !fuera.has(w.i)))) fuera.add(i);
 const enfasis = new Set((plan.enfasis || []).filter(n => Number.isInteger(n)));
 
 // ---- música (elegida por la IA entre las pistas del CRM) ----
@@ -113,10 +115,10 @@ if (R.encuadre || R.subsBajoCara) {
     try {
       const imgs = []; for (let i = 0; i < 4; i++) { const f = path.join(work, 'cara' + i + '.jpg'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', (dur * (0.15 + 0.2 * i)).toFixed(2), '-i', ENTRADA, '-frames:v', '1', '-vf', 'scale=640:-2', f]); if (fs.existsSync(f)) imgs.push(f); }
       const cont = []; imgs.forEach((f, i) => { cont.push({ type: 'text', text: 'Fotograma ' + (i + 1) }); cont.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: fs.readFileSync(f).toString('base64') } }); });
-      cont.push({ type: 'text', text: 'Localiza la cara de la persona que habla en cada fotograma. Coordenadas NORMALIZADAS (0-1). "cx" = centro horizontal de la cara, "cy" = centro vertical, "alto" = altura de la cara (frente a barbilla) como fracción del alto de la imagen. Responde SOLO JSON: {"fotogramas":[{"cx":0.5,"cy":0.3,"alto":0.2}]}' });
+      cont.push({ type: 'text', text: 'Localiza la cara de la persona que habla en cada fotograma. Coordenadas NORMALIZADAS (0-1). "cx" = centro horizontal de la cara, "cy" = centro vertical, "alto" = altura de la cara (frente a barbilla) como fracción del alto de la imagen, "personas" = cuántas personas distintas se ven con la cara visible. Responde SOLO JSON: {"fotogramas":[{"cx":0.5,"cy":0.3,"alto":0.2,"personas":1}]}' });
       const r = await claude(cont, 400); const l = (r.fotogramas || []).filter(x => x.cx >= 0 && x.cx <= 1 && x.cy >= 0 && x.cy <= 1 && x.alto > 0.03 && x.alto < 0.8);
       const med = k => { const v = l.map(x => x[k]).sort((a, b) => a - b); return v[Math.floor(v.length / 2)]; };
-      if (l.length) cara = { cx: med('cx'), cy: med('cy'), alto: med('alto') };
+      if (l.length) cara = { cx: med('cx'), cy: med('cy'), alto: med('alto'), personas: (() => { const v = l.map(x => Number(x.personas) || 1).sort((p, q) => p - q); return v[Math.floor(v.length / 2)]; })() };
     } catch (e) { console.log('Sin detección de cara:', e.message); }
     if (cara) fs.writeFileSync(cf, JSON.stringify(cara));
   }
@@ -132,8 +134,11 @@ function ventana(z) {
   const x0 = clamp(cx - wc / 2, 0, W - wc), y0 = cara && R.encuadre ? clamp(cy - 0.33 * hc, 0, H - hc) : clamp((H - hc) / 2, 0, H - hc);
   return { hc: Math.round(hc / 2) * 2, wc: Math.round(wc / 2) * 2, x0: Math.round(x0), y0: Math.round(y0) };
 }
+const ANCHO = !!(cara && cara.personas >= 2 && R.layout !== 'cerca' && W > H);
+if (ANCHO) console.log('Hay', cara.personas, 'personas en el plano: se usa el plano ancho (se ven todos) en vez de recortar a una cara');
 let subTop = null;
-if (R.subsBajoCara && cara) { const v = ventana(1.05), chin = (cara.cy + cara.alto * 0.4) * H; subTop = clamp(Math.round((chin - v.y0) / v.hc * 1920 + 70), 520, 1500); console.log('Subtítulos a y =', subTop); }
+if (ANCHO) subTop = 1290;
+else if (R.subsBajoCara && cara) { const v = ventana(1.05), chin = (cara.cy + cara.alto * 0.4) * H; subTop = clamp(Math.round((chin - v.y0) / v.hc * 1920 + 70), 520, 1500); console.log('Subtítulos a y =', subTop); }
 
 // ---- trozos de voz continuos: se quitan pausas, repeticiones y errores ----
 const trozos = []; let ult = -2;
@@ -174,12 +179,11 @@ if (R.titulo !== false && plan.titulo) {
   ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\fad(200,300)}' + limpiaT(plan.kicker || '').toLowerCase().split('').join('\u200A'));
   ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Titulo,,0,0,0,,{\\fad(250,350)}' + limpiaT(plan.titulo).toLowerCase());
 }
-// título gancho en pantalla al principio (y la pregunta justo debajo en los vídeos de pregunta-respuesta), en la zona alta libre de botones de la app
-if (process.env.TITULO_PANTALLA) {
+// Texto de apertura: en vídeos de pregunta-respuesta, la pregunta en una caja limpia arriba; si no, el título gancho. Los primeros segundos, en la zona alta libre de botones.
+if (process.env.TITULO_PANTALLA || process.env.PREGUNTA_PANTALLA) {
   const parte = (txt, max) => { const pal = String(txt).replace(/[{}\\]/g, '').trim().split(/\s+/); const lin = []; let cur = ''; for (const w of pal) { if ((cur + ' ' + w).trim().length > max && cur) { lin.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); } if (cur) lin.push(cur); return lin.join('\\N'); };
-  const tf = Math.min(durFinal, 4.2);
-  ev.push('Dialogue: 6,' + tAss(0) + ',' + tAss(tf) + ',Titulo,,0,0,0,,{\\an8\\pos(540,230)\\bord0\\shad4\\fs64\\fad(150,300)\\t(0,160,\\fscx100\\fscy100)\\fscx88\\fscy88}' + parte(process.env.TITULO_PANTALLA, 22));
-  if (process.env.PREGUNTA_PANTALLA) ev.push('Dialogue: 6,' + tAss(0.2) + ',' + tAss(Math.min(durFinal, 5.2)) + ',Titulo,,0,0,0,,{\\an8\\pos(540,500)\\bord0\\shad3\\fs44\\c&H00B8D2E3&\\fad(200,300)}' + parte('«' + process.env.PREGUNTA_PANTALLA + '»', 30));
+  if (process.env.PREGUNTA_PANTALLA) ev.push('Dialogue: 6,' + tAss(0) + ',' + tAss(Math.min(durFinal, 5.5)) + ',Pregunta,,0,0,0,,{\\an8\\fad(150,300)}' + parte(process.env.PREGUNTA_PANTALLA.replace(/^[¿?]+|[?]+$/g, '').trim() + '?', 26));
+  else ev.push('Dialogue: 6,' + tAss(0) + ',' + tAss(Math.min(durFinal, 4.2)) + ',Titulo,,0,0,0,,{\\an8\\pos(540,230)\\bord0\\shad4\\fs64\\fad(150,300)}' + parte(process.env.TITULO_PANTALLA, 22));
 }
 // destello blanco muy breve en cada cambio de plano
 if (R.flash === true) piezas.slice(1).forEach(p => ev.push('Dialogue: 4,' + tAss(p.t0) + ',' + tAss(p.t0 + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c&HFFFFFF&\\alpha&H9C&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
@@ -188,7 +192,7 @@ const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY:
   'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',
   'Style: Sub,' + R.fuente + ',' + R.subs.tam + ',&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,' + GROSOR + ',2,50,50,' + R.subs.margenV + ',1',
   'Style: Kicker,Montserrat,34,' + ACENTO.replace('&H', '&H00').replace(/&$/, '') + ',&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,80,80,300,1',
-  'Style: Titulo,Montserrat,60,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,2,4,8,90,90,385,1', '', '[Events]', 'Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text'].concat(ev).join('\n');
+  'Style: Titulo,Montserrat,60,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,2,4,8,90,90,385,1', 'Style: Pregunta,Montserrat,50,&H00FFFFFF,&H000000FF,&HC0141414,&HC0141414,-1,0,0,0,100,100,0,0,3,18,0,8,80,80,190,1', '', '[Events]', 'Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text'].concat(ev).join('\n');
 fs.writeFileSync(path.join(work, 'subs.ass'), '\uFEFF' + ass, 'utf8');
 copiaModelo(work);
 fs.mkdirSync(path.join(work, 'fonts'), { recursive: true }); fs.copyFileSync(FONT, path.join(work, 'fonts', 'Montserrat-Bold.ttf'));
@@ -239,7 +243,8 @@ function whooshFiltro(entrada, salida, idx) {
 const partes = [], pa = [];
 piezas.forEach((p, i) => {
   const v = ventana(ZOOMS[i % ZOOMS.length]);
-  partes.push('[0:v]trim=' + p.ini.toFixed(3) + ':' + p.fin.toFixed(3) + ',setpts=PTS-STARTPTS,crop=' + v.wc + ':' + v.hc + ':' + v.x0 + ':' + v.y0 + ',scale=1080:1920,fps=30,setsar=1[v' + i + ']');
+  if (ANCHO) partes.push('[0:v]trim=' + p.ini.toFixed(3) + ':' + p.fin.toFixed(3) + ',setpts=PTS-STARTPTS,split=2[bg' + i + '][fg' + i + '];[bg' + i + ']scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=36:6,eq=brightness=-0.15[bgb' + i + '];[fg' + i + ']scale=1080:-2[fgs' + i + '];[bgb' + i + '][fgs' + i + ']overlay=0:(H-h)/2-90,fps=30,setsar=1[v' + i + ']');
+  else partes.push('[0:v]trim=' + p.ini.toFixed(3) + ':' + p.fin.toFixed(3) + ',setpts=PTS-STARTPTS,crop=' + v.wc + ':' + v.hc + ':' + v.x0 + ':' + v.y0 + ',scale=1080:1920,fps=30,setsar=1[v' + i + ']');
   pa.push('[0:a]atrim=' + p.ini.toFixed(3) + ':' + p.fin.toFixed(3) + ',asetpts=PTS-STARTPTS[a' + i + ']');
 });
 const cat = piezas.map((_, i) => '[v' + i + '][a' + i + ']').join('') + 'concat=n=' + piezas.length + ':v=1:a=1[vc][ac]';
@@ -266,5 +271,5 @@ if (pista) {
 } else { filtros.push('[ac]' + AUDIO + '[voz0]'); filtros.push(...whooshFiltro('voz0', 'a', 1 + ins.length + graf.length)); }
 if (WHOOSH_WAV) entradas.push('-i', WHOOSH_WAV);
 fs.writeFileSync(path.join(work, 'grafo.txt'), filtros.join(';\n'));
-const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...entradas, '-/filter_complex', 'grafo.txt', '-map', '[v]', '-map', '[a]', '-t', durFinal.toFixed(2), ...ARGS_VIDEO(24), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', path.resolve(SALIDA)], { cwd: work });
+const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...entradas, '-/filter_complex', 'grafo.txt', '-map', '[v]', '-map', '[a]', '-t', durFinal.toFixed(2), ...ARGS_VIDEO(21), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', path.resolve(SALIDA)], { cwd: work });
 console.log(fs.existsSync(SALIDA) ? 'OK ' + SALIDA + ' · ' + (fs.statSync(SALIDA).size / 1048576).toFixed(1) + ' MB' : 'FALLO ' + (rr.stderr || '').slice(0, 900));

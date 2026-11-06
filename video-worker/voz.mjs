@@ -188,7 +188,8 @@ export function recomponeVoz({ palabras, quitar, wav48, salida, pausa = 0.45 }) 
 
 // Versión final del discurso: la IA decide qué tramos CONSERVAR (en vez de qué borrar). Así cada idea queda una sola vez, con su mejor toma, y nada se pisa.
 // Devuelve el conjunto de índices a QUITAR (todo lo que no está en los tramos conservados) o null si no se ha podido.
-export async function guionLimpio(palabras, apiKey, notas = '') {
+export async function guionLimpio(palabras, apiKey, notas = '', entrevista = false) {
+  if (entrevista) notas = (notas ? notas + '. ' : '') + 'ES UNA ENTREVISTA con varias personas: la PREGUNTA del entrevistador forma parte del mensaje, CONSÉRVALA entera y bien dicha; elimina solo sus interrupciones o comentarios sueltos. Quita los tropiezos, repeticiones y correcciones de quien responde y deja solo la mejor toma.';
   const guion = palabras.map((w, i) => i + ':' + w.t).join(' ');
   const prompt = 'Eres editor de audio. Esta es la transcripción (índice:palabra) de una grabación en la que la persona se equivoca, se corrige y REPITE tomas de la misma frase varias veces. Tu trabajo es decidir qué tramos CONSERVAR para que la versión final sea el discurso completo y limpio, como si lo hubiera dicho perfecto a la primera.\n\n' +
     'REGLAS:\n1) Cada idea o frase aparece UNA sola vez en la versión final. Si la dijo varias veces, conserva SOLO la toma mejor: la bien dicha, completa, fluida, sin tropiezos, sin cortarse y sin acabar en puntos suspensivos. Si una toma está completa y las demás a medias, la completa. Si dos tomas son casi iguales, elige la que conserva más palabras del mensaje (la más completa, por ejemplo la que incluye el "un día" o el complemento que la otra omite).\n' +

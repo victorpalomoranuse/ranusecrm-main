@@ -120,7 +120,7 @@ async function procesaClips(t, entrada, dir) {
   for (let i = 0; i < sel.length; i++) {
     const c = sel[i], id = crypto.randomUUID().slice(0, 8), f = path.join(dir, 'clip_' + id + '.mp4');
     await paso(t, 'Recortando el clip ' + (i + 1) + ' de ' + sel.length + '…', { pct: 34 + Math.round(10 * i / sel.length) });
-    if (!clips.recorta(entrada, c.ini, c.fin, f)) { console.log('Clip', i + 1, 'sin recortar'); continue; }
+    if (!clips.recorta(entrada, c.tramos, f)) { console.log('Clip', i + 1, 'sin recortar'); continue; }
     await drive.cacheSube('entradas/' + id + '.mp4', f); fs.rmSync(f, { force: true });
     const h = { ...t, id, tipo: 'bruto', archivo: 'entradas/' + id + '.mp4', base: null, nombre_archivo: c.titulo, padre: t.id, clip: { ini: Math.round(c.ini), fin: Math.round(c.fin), titulo: c.titulo, pregunta: c.pregunta || '', gancho: c.gancho, score: c.score ?? null, sub: c.sub || null, motivo: c.motivo || '' }, estado: 'pendiente', progreso: 'En cola', pct: 0, creado: new Date().toISOString(), version: 1, origen: null, resultado: null, resultado_movil: null, error: null, plan: null, clips: undefined, num_clips: undefined, dur_min: undefined, dur_max: undefined, terminado: undefined, empezado: undefined };
     await guardar(h); hijos.push(h);
@@ -214,7 +214,7 @@ async function procesa(t) {
     run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', '-metadata:s:v:0', 'encoder=', '-metadata:s:a:0', 'encoder=', '-c:v', 'libx264', '-bsf:v', 'filter_units=remove_types=6', '-crf', '22', '-maxrate', kbps + 'k', '-bufsize', (2 * kbps) + 'k', '-preset', 'fast', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', final]);
     if (fs.existsSync(final) && fs.statSync(final).size <= 49 * 1024 * 1024) break; kbps = Math.floor(kbps * 0.8);
   }
-  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-vf', 'scale=540:960', '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', '-metadata:s:v:0', 'encoder=', '-metadata:s:a:0', 'encoder=', '-c:v', 'libx264', '-bsf:v', 'filter_units=remove_types=6', '-crf', '28', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-movflags', '+faststart', movil]);
+  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-vf', 'scale=720:1280', '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', '-metadata:s:v:0', 'encoder=', '-metadata:s:a:0', 'encoder=', '-c:v', 'libx264', '-bsf:v', 'filter_units=remove_types=6', '-crf', '23', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', movil]);
   await paso(t, 'Subiendo el resultado…', { pct: 97 });
   const sube = async (ruta, f) => { try { await reintenta(() => st.upload(ruta, fs.readFileSync(f), { contentType: 'video/mp4', upsert: true }), 6); } catch (e) { throw new Error('No se pudo subir ' + ruta + ' tras varios intentos: ' + e.message); } };
   await sube('salidas/' + t.id + '.mp4', final); await sube('salidas/' + t.id + '_movil.mp4', movil);

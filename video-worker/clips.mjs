@@ -41,44 +41,54 @@ export async function transcribeLargo(entrada, dir, avisa = () => {}) {
   return { palabras, dur };
 }
 
-// La IA lee la entrevista con marcas de tiempo y elige los momentos que funcionan solos como vídeo corto
+// La IA lee la entrevista y ARMA clips: cada clip es una secuencia de tramos [ini,fin] que pueden venir de partes distintas (gancho, pregunta, mejor toma de la respuesta)
 export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, notas = '' } = {}) {
   const lineas = []; let cur = [], ini = 0;
-  palabras.forEach((w, i) => { if (!cur.length) ini = w.de; cur.push(w.t); if (cur.length >= 18 || /[.?!]$/.test(w.t) && cur.length >= 8 || i === palabras.length - 1) { lineas.push('[' + Math.round(ini) + ' s · ' + mmss(ini) + '] ' + cur.join(' ')); cur = []; } });
-  const cuantos = n > 0 ? 'Elige EXACTAMENTE ' + n + ' momentos' : 'Elige entre 3 y ' + Math.max(3, Math.min(10, Math.round(dur / 300))) + ' momentos (solo los que de verdad merezcan ser un vídeo; mejor pocos y buenos)';
-  const prompt = 'Eres el editor jefe de Ranuse Design (diseño de espacios deportivos y gimnasios) y preparas clips virales para Instagram Reels, TikTok y Shorts a partir de una entrevista larga.\n\n' + PLAYBOOK_REDES + '\n\nLee la transcripción (con marcas de tiempo en segundos) y ' + cuantos + ' que funcionen COMO VÍDEO CORTO independiente. Cada clip debe durar entre ' + min + ' y ' + max + ' segundos (si es una pregunta con su respuesta y hace falta algo más, puede pasarse un poco), empezar al principio de una frase y acabar al final de otra, y NO solaparse con los demás: reparte los clips por TODA la entrevista, cada uno sobre una idea distinta. Si la entrevista es de preguntas y respuestas, cada clip debe EMPEZAR en la pregunta (para que se vea la pregunta y luego la respuesta) y acabar con la respuesta completa. Evita saludos, rodeos, partes confusas o que dependan de algo dicho antes. Ordénalos del mejor al peor.' + (notas ? ' INDICACIONES DE LA PERSONA (obligatorias): ' + notas : '') +
-    '\n\nResponde SOLO con JSON: {"clips":[{"ini": segundos de inicio, "fin": segundos de fin, "titulo": "título gancho en pantalla, que provoque curiosidad o prometa algo (máx 9 palabras, en español, sin comillas)", "pregunta": "si es de pregunta y respuesta, la pregunta resumida; si no, vacío", "gancho": "la frase de apertura", "score": número de 0 a 100 con el potencial viral del clip (sé exigente y honesto: 90+ es excepcional, la mayoría entre 55 y 85), "sub": {"gancho": 0-100 (¿engancha en los 3 primeros segundos?), "flujo": 0-100 (¿ritmo y claridad, sin rodeos?), "valor": 0-100 (¿aporta algo útil, sorprendente o emocionante?), "tendencia": 0-100 (¿encaja con lo que funciona hoy en redes: datos, opiniones fuertes, errores comunes, historias?)}, "motivo": "en una frase, por qué funciona o qué le falta"}]}\n\nTRANSCRIPCIÓN:\n' + lineas.join('\n');
+  palabras.forEach((w, i) => { if (!cur.length) ini = w.de; cur.push(w.t); if (cur.length >= 16 || /[.?!]$/.test(w.t) && cur.length >= 4 || i === palabras.length - 1) { lineas.push('[' + ini.toFixed(1) + ' s] ' + cur.join(' ')); cur = []; } });
+  const cuantos = n > 0 ? 'Arma EXACTAMENTE ' + n + ' clips' : 'Arma entre 3 y ' + Math.max(3, Math.min(10, Math.round(dur / 300))) + ' clips (solo los que de verdad merezcan ser un vídeo; mejor pocos y buenos)';
+  const prompt = 'Eres el editor jefe de Ranuse Design (diseño de espacios deportivos y gimnasios) y preparas clips virales para Instagram Reels, TikTok y Shorts a partir de una entrevista larga.\n\n' + PLAYBOOK_REDES +
+    '\n\nCÓMO ARMAR CADA CLIP (como un editor profesional de Opus Clip): un clip NO es un trozo seguido de la entrevista: se compone de TRAMOS [ini,fin] que se reproducen EN ESTE ORDEN y que pueden ser de partes distintas.\n' +
+    '1) Estructura: gancho -> contexto o pregunta breve -> respuesta con valor -> remate. Puedes colocar al principio la frase más potente aunque venga después en la entrevista, si así engancha más, siempre que luego el relato se entienda.\n' +
+    '2) Si la entrevista es de preguntas y respuestas, incluye SIEMPRE la pregunta del entrevistador (su propio tramo) justo antes de la respuesta.\n' +
+    '3) De la respuesta usa SOLO la mejor toma: si la persona se equivoca, se corrige, se traba, repite o empieza de nuevo, SALTA esos tramos y quédate con la versión bien dicha, completa y fluida. Quita divagaciones, muletillas y charla fuera de tema (risas, comentarios a otras personas, "vale", "ya").\n' +
+    '4) Cada tramo empieza al principio de una frase y acaba al final de otra, y los tramos de un mismo clip no se solapan entre sí.\n' +
+    '5) El resultado total (suma de tramos) debe sonar fluido y natural, sin cortes bruscos de idea, y durar entre ' + min + ' y ' + max + ' segundos (si es pregunta con respuesta y hace falta, puede pasarse un poco).\n' +
+    '6) Cada clip trata una idea distinta; reparte por TODA la entrevista; los clips no deben repetir los mismos tramos.\n\n' +
+    'Lee la transcripción (con el segundo de inicio de cada línea) y ' + cuantos + '. Ordénalos del mejor al peor.' + (notas ? ' INDICACIONES DE LA PERSONA (obligatorias): ' + notas : '') +
+    '\n\nResponde SOLO con JSON: {"clips":[{"tramos":[[ini,fin],[ini,fin]], "titulo": "título gancho en pantalla, que provoque curiosidad o prometa algo (máx 9 palabras, en español, sin comillas)", "pregunta": "si es de pregunta y respuesta, la pregunta resumida; si no, vacío", "gancho": "la frase de apertura", "score": 0-100 potencial viral (sé exigente y honesto: 90+ excepcional, la mayoría entre 55 y 85), "sub": {"gancho": 0-100, "flujo": 0-100, "valor": 0-100, "tendencia": 0-100}, "motivo": "en una frase, por qué funciona o qué le falta"}]}\n\nTRANSCRIPCIÓN:\n' + lineas.join('\n');
   let d = null;
-  for (const modelo of ['claude-sonnet-4-5-20250929']) {
-    for (let intento = 0; intento < 2 && !d; intento++) {
-      try {
-        const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: modelo, max_tokens: 8000, messages: [{ role: 'user', content: prompt }] }) });
-        const j = await r.json(); if (!r.ok) throw new Error('Claude ' + r.status);
-        d = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]);
-      } catch (e) { console.log('Elección de clips, reintento:', e.message); }
-    }
+  for (let intento = 0; intento < 2 && !d; intento++) {
+    try {
+      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 8000, messages: [{ role: 'user', content: prompt }] }) });
+      const j = await r.json(); if (!r.ok) throw new Error('Claude ' + r.status);
+      d = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]);
+    } catch (e) { console.log('Elección de clips, reintento:', e.message); }
   }
   if (!d?.clips?.length) throw new Error('La IA no ha podido elegir los momentos de la entrevista');
-  console.log('Momentos propuestos por la IA:', JSON.stringify(d.clips.map(c => [Math.round(c.ini), Math.round(c.fin), c.titulo])));
-  // Se ajusta cada corte a los límites de las palabras (sin cortar a mitad de una palabra) y se descartan los que se solapan
-  const out = [];
-  for (const c of d.clips) {
-    let a = Number(c.ini), b = Number(c.fin); if (!(b > a)) continue;
-    const wi = palabras.find(w => w.a > a - 0.05) || palabras[0], wf = [...palabras].reverse().find(w => w.de < b + 0.05) || palabras[palabras.length - 1];
-    a = Math.max(0, wi.de - 0.12); b = Math.min(dur, wf.a + 0.25);
-    if (b - a < Math.min(10, min)) { console.log('Descartado por corto:', Math.round(a), Math.round(b)); continue; }
-    if (b - a > Math.max(max * 2.2, 90)) { console.log('Recortado por largo:', Math.round(a), Math.round(b)); b = a + Math.max(max * 2.2, 90); }
-    // un solape pequeño se permite; si se pisa más de la mitad con otro clip ya elegido, se descarta
-    if (out.some(o => Math.min(b, o.fin) - Math.max(a, o.ini) > 0.5 * Math.min(b - a, o.fin - o.ini))) { console.log('Descartado por solaparse:', Math.round(a), Math.round(b)); continue; }
-    out.push({ ini: a, fin: b, titulo: String(c.titulo || 'Clip').slice(0, 90), pregunta: String(c.pregunta || '').slice(0, 200), gancho: String(c.gancho || '').slice(0, 200), ...puntua(c) });
-    if (n > 0 && out.length >= n) break;
-  }
-  // si aun así no ha quedado ninguno, se usan los propuestos tal cual (mejor un clip imperfecto que ninguno)
-  if (!out.length) for (const c of d.clips.slice(0, n > 0 ? n : 3)) { const a = Math.max(0, Number(c.ini)), b = Math.min(dur, Number(c.fin)); if (b - a >= 8) out.push({ ini: a, fin: Math.min(b, a + Math.max(max * 2.2, 90)), titulo: String(c.titulo || 'Clip').slice(0, 90), pregunta: String(c.pregunta || '').slice(0, 200), gancho: String(c.gancho || '').slice(0, 200) }); }
-  return out;
+  console.log('Clips armados por la IA:', JSON.stringify(d.clips.map(c => [(c.tramos || []).map(t => Math.round(t[0]) + '-' + Math.round(t[1])).join(' + '), c.titulo, c.score])));
+  // cada tramo se ajusta a los límites de las palabras (sin cortar una palabra por la mitad)
+  const alinea = (a, b) => {
+    const wi = palabras.find(w => w.a > a - 0.05), wf = [...palabras].reverse().find(w => w.de < b + 0.05); if (!wi || !wf || wf.a <= wi.de) return null;
+    return [Math.max(0, wi.de - 0.08), Math.min(dur, wf.a + 0.18)];
+  };
+  const hechos = [];
+  const arma = (c, estricto) => {
+    const crudos = (Array.isArray(c.tramos) && c.tramos.length ? c.tramos : (Number.isFinite(c.ini) ? [[c.ini, c.fin]] : [])).filter(t => Array.isArray(t) && Number(t[1]) > Number(t[0]));
+    let tr = crudos.map(t => alinea(Number(t[0]), Number(t[1]))).filter(t => t && t[1] - t[0] >= 0.8);
+    if (!tr.length) return null;
+    let total = tr.reduce((x, t) => x + (t[1] - t[0]), 0); const tope = Math.max(max * 2.2, 90);
+    while (total > tope && tr.length > 1) { const u = tr.pop(); total -= u[1] - u[0]; }
+    if (total > tope) { tr[0][1] = tr[0][0] + tope; total = tope; }
+    if (estricto && total < Math.min(10, min)) return null;
+    return { ini: tr[0][0], fin: tr[tr.length - 1][1], tramos: tr, total, titulo: String(c.titulo || 'Clip').slice(0, 90), pregunta: String(c.pregunta || '').slice(0, 200), gancho: String(c.gancho || '').slice(0, 200), ...puntua(c) };
+  };
+  // un clip que reutiliza más de la mitad de los tramos de otro ya elegido se descarta
+  const solapa = (x, y) => { let comun = 0; for (const a of x.tramos) for (const b of y.tramos) comun += Math.max(0, Math.min(a[1], b[1]) - Math.max(a[0], b[0])); return comun > 0.5 * Math.min(x.total, y.total); };
+  for (const c of d.clips) { const x = arma(c, true); if (!x) { console.log('Clip descartado (sin tramos válidos o demasiado corto)'); continue; } if (hechos.some(o => solapa(x, o))) { console.log('Clip descartado por repetir tramos de otro'); continue; } hechos.push(x); if (n > 0 && hechos.length >= n) break; }
+  if (!hechos.length) for (const c of d.clips.slice(0, n > 0 ? n : 3)) { const x = arma(c, false); if (x) hechos.push(x); }
+  return hechos;
 }
 
-// Recorta un momento (con su audio) para montarlo después como un vídeo normal
 // Puntuación de viralidad (0-100) con sus 4 componentes y el motivo
 function puntua(c) {
   const n = (x) => (Number.isFinite(Number(x)) ? Math.max(0, Math.min(100, Math.round(Number(x)))) : null);
@@ -86,7 +96,18 @@ function puntua(c) {
   let score = n(c.score); if (score === null) { const v = Object.values(sub).filter(x => x !== null); score = v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; }
   return { score, sub, motivo: String(c.motivo || '').slice(0, 220) };
 }
-export function recorta(entrada, ini, fin, salida) {
-  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', ini.toFixed(2), '-i', entrada, '-t', (fin - ini).toFixed(2), '-vf', "scale='min(1080,iw)':-2", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', salida]);
+
+// Recorta cada tramo a calidad completa (sin reducir la resolución) y los une en un solo vídeo
+export function recorta(entrada, tramos, salida) {
+  const tmp = salida + '_t'; fs.mkdirSync(tmp, { recursive: true }); const lista = [];
+  tramos.forEach(([a, b], k) => {
+    const f = path.join(tmp, 't' + k + '.mp4');
+    run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', a.toFixed(2), '-i', entrada, '-t', (b - a).toFixed(2), '-vf', "scale='min(2560,iw)':-2", '-c:v', 'libx264', '-preset', 'fast', '-crf', '17', '-pix_fmt', 'yuv420p', '-r', '30', '-af', 'afade=t=in:d=0.015,afade=t=out:st=' + Math.max(0, b - a - 0.02).toFixed(2) + ':d=0.02', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', f]);
+    if (fs.existsSync(f) && fs.statSync(f).size > 2000) lista.push(f);
+  });
+  if (!lista.length) return false;
+  fs.writeFileSync(path.join(tmp, 'l.txt'), lista.map(f => "file '" + f.replace(/\\/g, '/') + "'").join('\n'));
+  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', path.join(tmp, 'l.txt'), '-c', 'copy', '-movflags', '+faststart', salida]);
+  fs.rmSync(tmp, { recursive: true, force: true });
   return fs.existsSync(salida) && fs.statSync(salida).size > 5000;
 }
