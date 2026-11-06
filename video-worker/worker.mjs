@@ -82,15 +82,61 @@ function indiceTotal(dir, sel) {
   for (const v of sueltos) if (!ids.has(v.drive_id)) todos.push(v);
   const salida = path.join(dir, 'indice-total.json'); fs.writeFileSync(salida, JSON.stringify({ videos: todos })); return salida;
 }
+// Guarda lo necesario para volver a montar con cambios manuales: plan, palabras limpias, vídeos usados, voz limpia y un resumen de cada corte
+async function subeArtefactos(t, dir) {
+  const ed = path.join(dir, '_trabajo_salida', 'edicion'), A = 'artefactos/' + t.id + '/'; if (!fs.existsSync(path.join(ed, 'cortes.json'))) return;
+  const mp3 = path.join(dir, 'voz_limpia.mp3'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', path.join(dir, '_trabajo_salida', 'voz48.wav'), '-ac', '1', '-ar', '44100', '-c:a', 'libmp3lame', '-b:a', '128k', mp3]);
+  const up = async (rem, f, tipo) => { const { error } = await st.upload(A + rem, fs.readFileSync(f), { contentType: tipo, upsert: true, cacheControl: '0' }); if (error) throw new Error(rem + ': ' + error.message); };
+  for (const n of ['plan', 'palabras', 'usados']) await up(n + '.json', path.join(ed, n + '.json'), 'application/json');
+  if (fs.existsSync(mp3)) await up('voz.mp3', mp3, 'audio/mpeg');
+  t.cortes = JSON.parse(fs.readFileSync(path.join(ed, 'cortes.json'), 'utf8')).slice(0, 400); t.artefactos = true;
+}
+// Busca el archivo en el Drive de escritorio del PC (no gasta la cuota de descargas de Google)
+function buscaEnDriveLocal(nombre, bytes) {
+  const raices = ['G:/Mi unidad', 'G:/Unidades compartidas']; const cola = raices.filter(r => fs.existsSync(r));
+  while (cola.length) { const d = cola.shift(); let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
+    for (const e of ents) { const p = d + '/' + e.name; if (e.isDirectory()) cola.push(p); else if (e.name === nombre) { try { if (!bytes || fs.statSync(p).size === bytes) return p; } catch { /* sigue */ } } } }
+  return null;
+}
 async function procesa(t) {
   const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
   await paso(t, 'Descargando el archivo…', { estado: 'procesando', empezado: new Date().toISOString(), pct: 2 });
-  let entrada;
-  if (t.base) {
+  let entrada, indiceEdicion = null, seleccionEdicion = null;
+  if (t.tipo === 'edicion') {
+    const wk = path.join(dir, '_trabajo_salida'); fs.mkdirSync(wk, { recursive: true }); await paso(t, 'Recuperando el montaje anterior…', { pct: 4 });
+    const baja = async (rem, dst) => { const u = await st.createSignedUrl(rem, 300); if (!u.data?.signedUrl) throw new Error('Falta ' + rem + ' del montaje anterior (hay que volver a montar el vídeo original)'); const rr = await fetch(u.data.signedUrl); if (!rr.ok) throw new Error('No se pudo bajar ' + rem); fs.writeFileSync(dst, Buffer.from(await rr.arrayBuffer())); };
+    const A = 'artefactos/' + t.origen + '/'; entrada = path.join(dir, 'voz.mp3');
+    await baja(A + 'plan.json', path.join(wk, 'plan.json')); await baja(A + 'palabras.json', path.join(wk, 'palabras.json')); await baja(A + 'usados.json', path.join(dir, 'usados.json')); await baja(A + 'voz.mp3', entrada);
+    const plan = JSON.parse(fs.readFileSync(path.join(wk, 'plan.json'), 'utf8')); let usados = JSON.parse(fs.readFileSync(path.join(dir, 'usados.json'), 'utf8')).videos || []; const extras = [], imagenes = [];
+    for (const ch of (t.cambios || [])) {
+      const c = plan.cortes.find(x => x.de === ch.de); if (!c) continue;
+      if (ch.video?.id) {
+        if (ch.video.tipo === 'imagen') { imagenes.push({ id: ch.video.id, nombre: ch.video.nombre || 'imagen', ruta: '' }); c.video = 'img' + ch.video.id.slice(0, 9); c.desde = 0; }
+        else { const meta = await drive.meta(ch.video.id); const dur = Number(meta.videoMediaMetadata?.durationMillis || 0) / 1000; const e = { id: 'm' + ch.video.id.slice(0, 11), drive_id: ch.video.id, ruta: 'drive:' + ch.video.id, nombre: meta.name, carpeta: '', bytes: Number(meta.size || 0), duracion: dur || 60, ancho: meta.videoMediaMetadata?.width, alto: meta.videoMediaMetadata?.height, calidad: 'media', tipo: 'b_roll', resumen: 'Elegido a mano', etiquetas: [], planos: [] }; if (!extras.some(x => x.id === e.id)) extras.push(e); c.video = e.id; c.desde = Math.max(0, Math.min(Number(ch.desde) || 0, Math.max(0, dur - 1))); }
+      } else if (ch.desde !== undefined) c.desde = Math.max(0, Number(ch.desde) || 0);
+    }
+    for (const v of usados) if (v.es_imagen && v.drive_id_img && !imagenes.some(i => i.id === v.drive_id_img)) imagenes.push({ id: v.drive_id_img, nombre: v.nombre, ruta: '' });
+    usados = usados.filter(v => !v.es_imagen);
+    fs.writeFileSync(path.join(wk, 'plan.json'), JSON.stringify(plan)); indiceEdicion = path.join(dir, 'indice-total.json'); fs.writeFileSync(indiceEdicion, JSON.stringify({ videos: [...usados, ...extras] }));
+    seleccionEdicion = { carpetas: [], videos: [], imagenes, carpetasId: [] };
+  } else if (t.base) {
     const meta = await drive.meta(t.base.id); if (Number(meta.size) > 6e9) throw new Error('El archivo de Drive pesa ' + (Number(meta.size) / 1e9).toFixed(1) + ' GB; usa uno de menos de 6 GB (o un trozo)');
     entrada = path.join(dir, 'base' + (path.extname(meta.name) || '.mp4')); await paso(t, 'Bajando el archivo de Drive (' + Math.round(Number(meta.size) / 1e6) + ' MB)…');
-    const { url, cabeceras } = await drive.urlDescarga(t.base.id); const rs = await fetch(url, { headers: cabeceras }); if (!rs.ok) throw new Error('No se pudo bajar el vídeo base de Drive (' + rs.status + ')');
-    await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(entrada));
+    const claveCache = 'base/' + t.base.id + '_' + meta.size + (path.extname(meta.name) || '.mp4'); let desdeCache = false;
+    try { desdeCache = await drive.cacheBaja(claveCache, entrada); } catch { desdeCache = false; }
+    const { url, cabeceras } = await drive.urlDescarga(t.base.id); const rs = desdeCache ? { ok: true, cache: true } : await fetch(url, { headers: cabeceras });
+    if (desdeCache) await paso(t, 'Vídeo base recuperado de la copia guardada');
+    else if (rs.ok) await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(entrada));
+    else {
+      try { await drive.bajaEnTrozos(t.base.id, entrada); }
+      catch (e) {
+        const loc = buscaEnDriveLocal(meta.name, Number(meta.size)); if (loc) { await paso(t, 'Copiando el vídeo desde Drive de escritorio…'); fs.copyFileSync(loc, entrada); } else {
+        if (process.env.JOB_ID && rs.status === 403) { const er = new Error('DRIVE_BLOQUEADO'); er.bloqueado = true; throw er; }
+        if (rs.status === 403) throw new Error('Google Drive ha bloqueado temporalmente la descarga de "' + meta.name + '" (límite de descargas de ese archivo, se libera en unas 24 h). Prueba con otro vídeo, o súbelo desde el dispositivo en lugar de elegirlo de Drive.');
+        throw new Error('No se pudo bajar el vídeo base de Drive (' + rs.status + ')'); }
+      }
+    }
+    if (!desdeCache) { try { await drive.cacheSube(claveCache, entrada); console.log('Copia del vídeo base guardada'); } catch (e) { console.log('Sin guardar copia del vídeo base:', e.message); } }
   } else {
     const u = await st.createSignedUrl(t.archivo, 600); if (!u.data?.signedUrl) throw new Error('No encuentro el archivo subido');
     const ext = path.extname(t.archivo) || '.mp4'; entrada = path.join(dir, 'entrada' + ext);
@@ -104,13 +150,15 @@ async function procesa(t) {
   try { await sincronizaMusica(); } catch (e) { console.log('Música sin sincronizar:', e.message); }
   let indiceUsar = INDICE, seleccion = {};
   const rec0 = Array.isArray(t.recursos) ? t.recursos : [];
-  if (t.tipo === 'voz' || t.tipo === 'base' || rec0.length) { const rec = rec0;
+  if (t.tipo === 'edicion') { indiceUsar = indiceEdicion; seleccion = seleccionEdicion; }
+  else if (t.tipo === 'voz' || t.tipo === 'base' || rec0.length) { const rec = rec0;
     const idsExist = new Set(); for (const f of ['drive-redes/indice.json', 'drive-seleccion/indice.json']) { try { for (const v of JSON.parse(fs.readFileSync(new URL('./datos/' + f, import.meta.url), 'utf8')).videos) if (v.drive_id) idsExist.add(v.drive_id); } catch { /* sin índice */ } }
     try { await indexaCarpetas(t, { carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }, idsExist); } catch (e) { console.log('Carpetas sin indexar del todo:', e.message); } seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), imagenes: rec.filter(r => r.tipo === 'imagen').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
   const conInserciones = t.tipo === 'base' || rec0.length > 0;
-  const script = t.tipo === 'voz' ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
-  const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: t.musica === 'ninguna' ? 'ninguna' : (t.musica || 'auto'), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
+  const script = (t.tipo === 'voz' || t.tipo === 'edicion') ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
+  const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, ...(t.tipo === 'edicion' ? { REUSE: '1', SIN_LIMPIEZA: '1', SIN_REVISION: '1', EDICION: '1' } : {}), RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: (t.tipo === 'edicion' && t.musica_usada) ? t.musica_usada : (t.musica === 'ninguna' ? 'ninguna' : (t.musica || 'auto')), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
   console.log((r.stdout || '').split('\n').slice(-6).join('\n'));
+  { const mm = /Música: (.+?) \(\d/.exec(r.stdout || ''); if (mm) t.musica_usada = mm[1]; }
   if (!fs.existsSync(salida)) { const txt = ((r.stdout || '') + (r.stderr || '')); const fallo = /FALLO:[^\r\n]*/.exec(txt)?.[0]; throw new Error(fallo ? 'El montaje se ha parado. ' + fallo : 'El montaje no ha producido vídeo. ' + txt.slice(-300)); }
   try { await publicaIndiceMusica(); } catch { /* el índice se publica la próxima vez */ }
   await paso(t, 'Ajustando el tamaño del archivo final…', { pct: 93 });
@@ -127,6 +175,7 @@ async function procesa(t) {
   const sube = async (ruta, f) => { const { error } = await st.upload(ruta, fs.readFileSync(f), { contentType: 'video/mp4', upsert: true }); if (error) throw new Error('No se pudo subir ' + ruta + ': ' + error.message); };
   await sube('salidas/' + t.id + '.mp4', final); await sube('salidas/' + t.id + '_movil.mp4', movil);
   let plan = null; const pf = path.join(dir, '_trabajo_salida', 'plan.json'); if (fs.existsSync(pf)) { try { const p = JSON.parse(fs.readFileSync(pf, 'utf8')); plan = { kicker: p.kicker, titulo: p.titulo, cortes: p.cortes?.length }; } catch { /* sin plan */ } }
+  if (t.tipo === 'voz' || t.tipo === 'edicion') { try { await subeArtefactos(t, dir); } catch (e) { console.log('Sin guardar los datos para editar cortes:', e.message); } }
   await paso(t, 'Listo', { pct: 100, estado: 'listo', resultado: 'salidas/' + t.id + '.mp4', resultado_movil: 'salidas/' + t.id + '_movil.mp4', plan, terminado: new Date().toISOString(), error: null });
 }
 
@@ -137,7 +186,7 @@ if (process.env.JOB_ID) {
   if (!t) { console.log('No existe el trabajo', id); process.exit(1); }
   if (t.estado === 'listo' || t.estado === 'procesando' && Date.now() - new Date(t.empezado || 0) < 3 * 3600000) { console.log('Trabajo ya hecho o en marcha por otro ejecutor'); process.exit(0); }
   t.ejecutor = 'nube';
-  try { await procesa(t); } catch (e) { console.log('[' + id + '] ERROR', e.message); await paso(t, 'Error', { estado: 'error', error: String(e.message).slice(0, 400) }); }
+  try { await procesa(t); } catch (e) { console.log('[' + id + '] ERROR', e.message); if (e.bloqueado) { t.ejecutor = 'pc'; await paso(t, 'Drive limita ese archivo: lo hará el ordenador de la oficina', { estado: 'pendiente', pct: 2 }); process.exit(0); } await paso(t, 'Error', { estado: 'error', error: String(e.message).slice(0, 400) }); }
   try { await subeIndices(['drive-seleccion/indice.json', 'drive-imagenes/indice.json']); } catch { /* el índice de sueltos se rehará la próxima vez */ }
   process.exit(0);
 }

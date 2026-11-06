@@ -165,9 +165,9 @@ router.get('/trabajos', async (req, res) => {
 router.post('/trabajos/:id/rehacer', async (req, res) => {
   try {
     const o = await leerTrabajo(req.params.id); if (!o) return res.status(404).json({ error: 'No existe ese trabajo' });
-    const cambios = limpia(req.body?.indicaciones, 800); if (!cambios) return res.status(400).json({ error: 'Cuéntame qué quieres cambiar' });
+    const cambios = limpia(req.body?.indicaciones, 800);
     const lista = await formatos(); const fmt = lista.find(x => x.id === (req.body?.formato || o.formato)) || { id: o.formato, nombre: o.formato_nombre, receta: o.receta, notas: o.notas_formato };
-    const t = { ...o, id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), formato: fmt.id, formato_nombre: fmt.nombre, receta: fmt.receta, notas_formato: fmt.notas || '', indicaciones: (o.indicaciones ? o.indicaciones + '\nCAMBIOS PEDIDOS: ' : 'CAMBIOS PEDIDOS: ') + cambios, estado: 'pendiente', progreso: 'En cola', version: (o.version || 1) + 1, origen: o.id, resultado: null, resultado_movil: null, error: null, plan: null };
+    const t = { ...o, id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), formato: fmt.id, formato_nombre: fmt.nombre, receta: fmt.receta, notas_formato: fmt.notas || '', indicaciones: cambios ? (o.indicaciones ? o.indicaciones + '\nCAMBIOS PEDIDOS: ' : 'CAMBIOS PEDIDOS: ') + cambios : ((o.indicaciones ? o.indicaciones + '\n' : '') + 'REGENERAR: monta una versión distinta con los mismos recursos (otra elección y orden de planos, otro ritmo).'), estado: 'pendiente', progreso: 'En cola', version: (o.version || 1) + 1, origen: o.id, resultado: null, resultado_movil: null, error: null, plan: null };
     t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
     if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); } // si Google no arranca, lo hace el PC
     res.status(201).json({ trabajo: t });

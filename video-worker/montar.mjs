@@ -70,7 +70,7 @@ console.log('Palabras:', palabras.length);
 
 marca(30, 'Quitando muletillas, tropiezos y repeticiones');
 // 2b) corregir cuando te trabas: tropiezos, palabras repetidas, frases dichas dos veces, errores y pausas largas
-{
+if (process.env.SIN_LIMPIEZA !== '1') {
   const trab = corrigeTrabones(palabras, wav); const quitar = repetidasInmediatas(palabras);
   const conservar = /conservw* (las )?muletillas|mantw* (las )?muletillas/i.test(NOTAS); const huecos = conservar ? 0 : huecosConSonido(palabras, wav); if (!conservar) for (const i of muletillasSueltas(palabras)) quitar.add(i);
   if (huecos) console.log('Muletillas sin transcribir cortadas:', huecos);
@@ -81,7 +81,7 @@ marca(30, 'Quitando muletillas, tropiezos y repeticiones');
   console.log('Tropiezos recortados:', trab, '| palabras quitadas:', quitar.size, [...quitar].slice(0, 30).map(i => palabras[i]?.t).join(' '));
   const r = recomponeVoz({ palabras, quitar, wav48: path.join(work, 'voz48_orig.wav'), salida: path.join(work, 'voz48.wav') });
   palabras = r.palabras; console.log('Voz limpia:', durVoz.toFixed(1), 's ->', r.durVoz.toFixed(1), 's'); durVoz = r.durVoz;
-}
+} else { fs.copyFileSync(path.join(work, 'voz48_orig.wav'), path.join(work, 'voz48.wav')); }
 
 // 3) la IA monta
 let idx = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos.filter(v => v.duracion >= 1.5);
@@ -92,7 +92,7 @@ let idx = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos.filter(v => v.durac
     const f = idx.filter(v => { const abs = v.ruta_abs ?? v.carpeta ?? ''; return carps.some(c => abs === c || abs.startsWith(c + '/')) || vids.some(z => z.id === v.drive_id || (z.ruta ? z.ruta + '/' : '') + z.nombre === (abs ? abs + '/' : '') + v.nombre); });
     console.log('Recursos elegidos:', carps.length, 'carpeta(s),', vids.length, 'vídeo(s) →', f.length, 'de', idx.length, 'vídeos indexados');
     if (f.length) idx = f; else if ((sel.imagenes || []).length || (sel.carpetasId || []).length) { console.log('En lo elegido no hay vídeos indexados: se montará con imágenes'); idx = []; } else { console.log('Nada de lo elegido está indexado; se usan todos'); idx = idx.filter(v => !v.hablando_a_camara); }
-  } else idx = idx.filter(v => !v.hablando_a_camara && v.duracion >= 2);
+  } else if (process.env.EDICION !== '1') idx = idx.filter(v => !v.hablando_a_camara && v.duracion >= 2);
 }
 // Imágenes elegidas (sueltas o dentro de carpetas): se bajan, se describen con visión (con caché) y entran al catálogo como escenas fijas
 const enParalelo = async (items, n, fn) => { const cola = items.slice(); await Promise.all(Array.from({ length: Math.min(n, cola.length) }, async () => { while (cola.length) await fn(cola.shift()); })); };
@@ -116,7 +116,7 @@ async function imagenesParaCatalogo(sel) {
     try { const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 1800, messages: [{ role: 'user', content: cont }] }) }); const j = await r.json(); const d = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]); for (const it of (d.imagenes || [])) { const x = lote[(it.n || 1) - 1]; if (x) cache[x.id] = { resumen: it.resumen, etiquetas: it.etiquetas || [] }; } } catch (e) { console.log('Sin describir un lote de imágenes:', e.message); }
   });
   try { fs.mkdirSync(path.dirname(fCache), { recursive: true }); fs.writeFileSync(fCache, JSON.stringify(cache)); } catch { /* sin caché */ }
-  return listas.filter(x => cache[x.id]).map(x => ({ id: 'img' + x.id.slice(0, 9), nombre: x.nombre, es_imagen: true, ruta: x.jpg, duracion: 600, calidad: 'media', tipo: 'imagen', resumen: 'IMAGEN FIJA: ' + cache[x.id].resumen, etiquetas: cache[x.id].etiquetas || [], planos: [{ t: 0, descripcion: cache[x.id].resumen }], ruta_abs: x.ruta }));
+  return listas.filter(x => cache[x.id]).map(x => ({ id: 'img' + x.id.slice(0, 9), nombre: x.nombre, es_imagen: true, drive_id_img: x.id, ruta: x.jpg, duracion: 600, calidad: 'media', tipo: 'imagen', resumen: 'IMAGEN FIJA: ' + cache[x.id].resumen, etiquetas: cache[x.id].etiquetas || [], planos: [{ t: 0, descripcion: cache[x.id].resumen }], ruta_abs: x.ruta }));
 }
 const llamaClaude = async (content, max = 3000, rapido = false) => {
   for (const modelo of (rapido ? ['claude-haiku-4-5-20251001', 'claude-sonnet-4-5-20250929'] : ['claude-sonnet-4-5-20250929'])) {
@@ -162,7 +162,7 @@ else {
   fs.writeFileSync(planF, JSON.stringify(plan, null, 1));
 }
 // Revisión de coherencia: una segunda pasada puntúa cada escena frente a lo que se dice y sustituye las que no encajan
-try {
+if (process.env.SIN_REVISION !== '1') try {
   const cs = plan.cortes.slice().sort((a, b) => a.de - b.de);
   const items = cs.map((c, k) => { const sig = cs[k + 1]?.de ?? palabras.length, v = idx.find(x => x.id === c.video); const pl = (v?.planos || []).reduce((mm, p) => (!mm || Math.abs(p.t - (c.desde || 0)) < Math.abs(mm.t - (c.desde || 0)) ? p : mm), null); return { k, dice: palabras.slice(c.de, sig).map(w => w.t).join(' '), escena: String(v?.resumen || '').slice(0, 140) + ' | ' + String(pl?.descripcion || '').slice(0, 120) }; });
   const r2 = await llamaClaude('Revisa la COHERENCIA entre lo que se dice y la escena que se muestra en cada corte de un vídeo de gimnasios/espacios deportivos, Y TAMBIÉN la SECUENCIA: la historia del vídeo (' + JSON.stringify(esquema || {}) + ') debe poder seguirse, sin saltos absurdos entre espacios ni escenas que rompan el hilo (p. ej. alternar sin motivo entre una vivienda y un gimnasio); si una escena rompe la secuencia, cámbiala aunque encaje con la frase. Puntúa de 0 a 10 la relación directa (0 = nada que ver, p. ej. comida cuando se habla de gimnasios). Devuelve SOLO los cortes con nota menor de 6, cada uno con una escena SUSTITUTA del catálogo que sí guarde relación con lo que se dice (si no hay ninguna literal, el plano más genérico del mismo tema), sin repetir la misma escena en cortes seguidos.\n\nCORTES: ' + JSON.stringify(items) + '\n\nCATÁLOGO: ' + JSON.stringify(cat) + '\n\nResponde SOLO JSON {"cambios":[{"k":0,"video":"id","desde":0.0,"motivo":"breve"}]}', 2500, true);
@@ -170,7 +170,7 @@ try {
   if (n) { console.log('Revisión de coherencia: ' + n + ' escena(s) sustituida(s) de ' + cs.length); fs.writeFileSync(planF, JSON.stringify(plan, null, 1)); }
 } catch (e) { console.log('Sin revisión de coherencia:', e.message); }
 // Un mismo vídeo largo puede aparecer varias veces, pero nunca con el mismo tramo: si dos cortes se pisan, el segundo pasa a otro plano de ese vídeo
-try {
+if (process.env.SIN_REVISION !== '1') try {
   const cs2 = plan.cortes.slice().sort((a, b) => a.de - b.de), usados = {}; let movidos = 0;
   cs2.forEach((c, k) => { const v = idx.find(x => x.id === c.video); if (!v || v.es_imagen) return; const sig = cs2[k + 1]?.de ?? palabras.length, dur = Math.max(1.2, (palabras[Math.min(sig, palabras.length - 1)]?.de ?? durVoz) - (palabras[c.de]?.de ?? 0)); const lista = usados[v.id] || (usados[v.id] = []);
     const choca = (t) => lista.some(u => t < u[1] + 3 && t + dur + 3 > u[0]);
@@ -178,6 +178,16 @@ try {
     lista.push([t, t + dur]); });
   if (movidos) { console.log('Tramos repetidos movidos a otro momento del mismo vídeo:', movidos); fs.writeFileSync(planF, JSON.stringify(plan, null, 1)); }
 } catch (e) { console.log('Sin comprobar tramos repetidos:', e.message); }
+// Para poder editar los cortes a mano después: se guardan el plan final, las palabras limpias y los datos de cada corte
+try {
+  const ed = path.join(work, 'edicion'); fs.mkdirSync(ed, { recursive: true });
+  const cs3 = plan.cortes.slice().sort((a, b) => a.de - b.de);
+  const info = cs3.map((c, k) => { const sig = cs3[k + 1]?.de ?? palabras.length, v = idx.find(x => x.id === c.video); return { k, de: c.de, ini: Math.round((palabras[c.de]?.de ?? 0) * 100) / 100, fin: Math.round((palabras[Math.min(sig, palabras.length) - 1]?.a ?? durVoz) * 100) / 100, texto: palabras.slice(c.de, sig).map(w => w.t).join(' ').slice(0, 160), video: c.video, nombre: v?.nombre || '', drive_id: v?.drive_id || v?.drive_id_img || null, es_imagen: !!v?.es_imagen, dur_clip: v?.es_imagen ? null : (v?.duracion || null), desde: Number(c.desde) || 0 }; });
+  fs.writeFileSync(path.join(ed, 'cortes.json'), JSON.stringify(info));
+  fs.writeFileSync(path.join(ed, 'plan.json'), JSON.stringify(plan));
+  fs.writeFileSync(path.join(ed, 'palabras.json'), JSON.stringify({ transcription: palabras.map(w => ({ text: ' ' + w.t, offsets: { from: Math.round(w.de * 1000), to: Math.round(w.a * 1000) } })) }));
+  fs.writeFileSync(path.join(ed, 'usados.json'), JSON.stringify({ videos: [...new Set(plan.cortes.map(c => c.video))].map(id => idx.find(x => x.id === id)).filter(Boolean) }));
+} catch (e) { console.log('Sin guardar datos para editar cortes:', e.message); }
 marca(48, 'Escenas elegidas · cortando');
 { const usados = new Set(plan.cortes.map(c => c.video)); console.log('Clips usados:', usados.size, 'de', idx.length, 'disponibles (los que no sirven para este guion no se ponen)'); }
 console.log('Plan:', plan.kicker, '|', plan.titulo, '|', plan.cortes.length, 'cortes');
@@ -209,11 +219,31 @@ const dr = {}; for (const c of valido) { const v = idx.find(z => z.id === c.vide
     catch (e) { console.log('No se pudo bajar, se lee por red:', e.message); } } }
 const hechos = new Array(valido.length).fill(null);
 const ejecuta = (args) => new Promise(res => { const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] }); let err = ''; p.stderr.on('data', d => { err += d; }); p.on('close', () => res(err)); });
+// Vídeos grabados en vertical que están guardados "de lado" (sin marca de giro): Claude mira un fotograma y dice cuánto hay que girarlos
+const giroDe = {};
+async function detectaGiros() {
+  const cand = [...new Set(valido.map(c => c.video))].map(id => idx.find(z => z.id === id)).filter(v => v && !v.es_imagen && v.ancho > v.alto && v.id !== 'x');
+  const cola = cand.slice();
+  const uno = async (v) => {
+    try {
+      const jpg = path.join(work, 'giro_' + v.id.replace(/\W/g, '') + '.jpg'), t = Math.min(Math.max(1, (v.duracion || 4) / 2), Math.max(0, (v.duracion || 4) - 0.5));
+      const fuente = dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta;
+      await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', t.toFixed(2), '-i', fuente, '-frames:v', '1', '-vf', 'scale=512:-2', jpg]);
+      if (!fs.existsSync(jpg)) return;
+      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 60, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: fs.readFileSync(jpg).toString('base64') } }, { type: 'text', text: 'Fotograma de un vídeo. ¿Se ve derecho o está girado de lado (la gravedad/suelo/mesa/personas/objetos apuntan hacia un lado)? Responde SOLO JSON: {"giro":"ninguno"} si se ve bien, {"giro":"horario"} si hay que girarlo 90° en sentido horario para que se vea derecho, {"giro":"antihorario"} si hay que girarlo 90° en sentido antihorario, {"giro":"180"} si está boca abajo.' }] }] }) });
+      const j = await r.json(); const g = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]).giro;
+      giroDe[v.id] = g === 'horario' ? 'transpose=1,' : g === 'antihorario' ? 'transpose=2,' : g === '180' ? 'hflip,vflip,' : '';
+      if (giroDe[v.id]) console.log('Girado:', v.nombre, g);
+    } catch (e) { console.log('Sin comprobar giro de', v.nombre, e.message); }
+  };
+  await Promise.all(Array.from({ length: 4 }, async () => { while (cola.length) await uno(cola.shift()); }));
+}
+await detectaGiros();
 async function cortar(c, i) {
   const v = idx.find(x => x.id === c.video), out = path.join(work, 'c' + pad2(i) + '.mp4');
   const desde = v.es_imagen ? 0 : Math.max(0, Math.min(Number(c.desde) || 0, Math.max(0, v.duracion - c.dur - 0.1)));
   const nf = Math.max(2, Math.round(c.dur * 30)), z1 = RECETA.zoomFinal, dir = i % 2 ? 1 : -1;
-  const vf = 'scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,zoompan=z=\'' + (dir > 0 ? '1+' + (z1 - 1) + '*on/' + nf : z1 + '-' + (z1 - 1) + '*on/' + nf) + '\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=1080x1920:fps=30,' + RECETA.color + ',setsar=1,format=yuv420p';
+  const vf = (giroDe[v.id] || '') + 'scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,zoompan=z=\'' + (dir > 0 ? '1+' + (z1 - 1) + '*on/' + nf : z1 + '-' + (z1 - 1) + '*on/' + nf) + '\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=1080x1920:fps=30,' + RECETA.color + ',setsar=1,format=yuv420p';
   const loop = v.es_imagen ? ['-loop', '1', '-framerate', '30'] : (v.duracion < c.dur + 0.2 ? ['-stream_loop', '-1'] : []);
   let rr = { stderr: '' };
   for (let intento = 0; intento < 4; intento++) {
