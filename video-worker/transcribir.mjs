@@ -20,10 +20,10 @@ export async function transcribe(wav16, base) {
   if (kd) {
     try {
       const mp3 = base + '.mp3'; spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', wav16, '-ac', '1', '-ar', '16000', '-b:a', '64k', mp3]);
-      const r = await fetch('https://api.deepgram.com/v1/listen?model=nova-3&language=es&punctuate=true&smart_format=false&filler_words=true', { method: 'POST', headers: { Authorization: 'Token ' + kd, 'Content-Type': 'audio/mpeg' }, body: fs.readFileSync(mp3) });
+      const r = await fetch('https://api.deepgram.com/v1/listen?model=nova-3&language=es&punctuate=true&smart_format=false&filler_words=true&diarize=true', { method: 'POST', headers: { Authorization: 'Token ' + kd, 'Content-Type': 'audio/mpeg' }, body: fs.readFileSync(mp3) });
       const j = await r.json(); if (!r.ok) throw new Error('Deepgram ' + r.status + ' ' + JSON.stringify(j).slice(0, 160));
       const ws = (j.results?.channels?.[0]?.alternatives?.[0]?.words || []).filter(w => String(w.punctuated_word || w.word || '').trim()); if (!ws.length) throw new Error('Deepgram no devolvió palabras');
-      fs.writeFileSync(base + '.json', JSON.stringify({ transcription: ws.map(w => ({ text: ' ' + String(w.punctuated_word || w.word).trim(), offsets: { from: Math.round(w.start * 1000), to: Math.round(w.end * 1000) } })) }));
+      fs.writeFileSync(base + '.json', JSON.stringify({ transcription: ws.map(w => ({ text: ' ' + String(w.punctuated_word || w.word).trim(), offsets: { from: Math.round(w.start * 1000), to: Math.round(w.end * 1000) }, ...(w.speaker !== undefined ? { spk: w.speaker } : {}) })) }));
       return 'deepgram';
     } catch (e) { console.log('Deepgram falló (' + e.message + '), se prueba Groq'); }
   }

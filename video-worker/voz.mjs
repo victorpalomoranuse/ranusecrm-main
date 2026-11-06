@@ -189,8 +189,8 @@ export function recomponeVoz({ palabras, quitar, wav48, salida, pausa = 0.45 }) 
 // Versión final del discurso: la IA decide qué tramos CONSERVAR (en vez de qué borrar). Así cada idea queda una sola vez, con su mejor toma, y nada se pisa.
 // Devuelve el conjunto de índices a QUITAR (todo lo que no está en los tramos conservados) o null si no se ha podido.
 export async function guionLimpio(palabras, apiKey, notas = '', entrevista = false) {
-  if (entrevista) notas = (notas ? notas + '. ' : '') + 'ES UNA ENTREVISTA con varias personas: la PREGUNTA del entrevistador forma parte del mensaje, CONSÉRVALA entera y bien dicha; elimina solo sus interrupciones o comentarios sueltos. Quita los tropiezos, repeticiones y correcciones de quien responde y deja solo la mejor toma.';
-  const guion = palabras.map((w, i) => i + ':' + w.t).join(' ');
+  if (entrevista) notas = (notas ? notas + '. ' : '') + 'ES UNA ENTREVISTA con varias personas. Los marcadores <<P>> indican que habla quien PREGUNTA (el entrevistador) y <<R>> quien RESPONDE. La PREGUNTA forma parte del mensaje: CONSÉRVALA entera, con su mejor formulación (si el entrevistador la corrige o repite, quédate con la versión bien dicha) y SIEMPRE antes de la respuesta; quita sus muletillas (vale), los ¿me repites? y los comentarios sueltos; elimina solo sus interrupciones o comentarios sueltos. Quita los tropiezos, repeticiones y correcciones de quien responde y deja solo la mejor toma.';
+  const et = etiquetasHablantes(palabras); const guion = palabras.map((w, i) => (et[i] && et[i] !== (et[i - 1] || '') ? '<<' + et[i] + '>> ' : '') + i + ':' + w.t).join(' ');
   const prompt = 'Eres editor de audio. Esta es la transcripción (índice:palabra) de una grabación en la que la persona se equivoca, se corrige y REPITE tomas de la misma frase varias veces. Tu trabajo es decidir qué tramos CONSERVAR para que la versión final sea el discurso completo y limpio, como si lo hubiera dicho perfecto a la primera.\n\n' +
     'REGLAS:\n1) Cada idea o frase aparece UNA sola vez en la versión final. Si la dijo varias veces, conserva SOLO la toma mejor: la bien dicha, completa, fluida, sin tropiezos, sin cortarse y sin acabar en puntos suspensivos. Si una toma está completa y las demás a medias, la completa. Si dos tomas son casi iguales, elige la que conserva más palabras del mensaje (la más completa, por ejemplo la que incluye el "un día" o el complemento que la otra omite).\n' +
     '2) Elimina falsos comienzos, palabras a medias, correcciones, comentarios a sí mismo o a otras personas ("¿cómo era?", "es que queda mal", "vale", "ya", "¿el sector ha dicho? sí", exclamaciones y charla fuera del guion) y muletillas.\n' +
@@ -211,4 +211,13 @@ export async function guionLimpio(palabras, apiKey, notas = '', entrevista = fal
     } catch (e) { console.log('Guion limpio, reintento:', e.message); }
   }
   return null;
+}
+
+
+// Quién habla en cada palabra: 'R' = quien responde (el que más habla) y 'P' = quien pregunta. Devuelve un array paralelo a palabras ('' si no hay separación de voces).
+export function etiquetasHablantes(palabras) {
+  const cuenta = {}; for (const w of palabras) if (w.spk !== undefined && w.spk !== null) cuenta[w.spk] = (cuenta[w.spk] || 0) + 1;
+  const ks = Object.keys(cuenta); if (ks.length < 2) return palabras.map(() => '');
+  const resp = ks.sort((a, b) => cuenta[b] - cuenta[a])[0];
+  return palabras.map(w => (w.spk === undefined || w.spk === null ? '' : String(w.spk) === String(resp) ? 'R' : 'P'));
 }

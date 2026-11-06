@@ -4,6 +4,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { transcribe } from './transcribir.mjs';
 import { ENV } from './entorno.mjs';
+import { etiquetasHablantes } from './voz.mjs';
 
 // Lo que hace que un vídeo corto funcione en redes (se usa al elegir los momentos y al montar)
 export const PLAYBOOK_REDES = `CONOCIMIENTO DE REDES SOCIALES (aplícalo siempre):
@@ -36,7 +37,7 @@ export async function transcribeLargo(entrada, dir, avisa = () => {}) {
     if (!fs.existsSync(base + '.json')) continue;
     for (const s of JSON.parse(fs.readFileSync(base + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription) {
       const t = s.text.trim(); if (!t || /^\[.*\]$/.test(t)) continue;
-      palabras.push({ t, de: o + s.offsets.from / 1000, a: o + s.offsets.to / 1000 });
+      palabras.push({ t, de: o + s.offsets.from / 1000, a: o + s.offsets.to / 1000, ...(s.spk !== undefined ? { spk: s.spk } : {}) });
     }
     fs.rmSync(wav, { force: true });
   }
@@ -45,8 +46,11 @@ export async function transcribeLargo(entrada, dir, avisa = () => {}) {
 
 // La IA lee la entrevista y ARMA clips: cada clip es una secuencia de tramos [ini,fin] que pueden venir de partes distintas (gancho, pregunta, mejor toma de la respuesta)
 export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, notas = '', reglas = '' } = {}) {
-  const lineas = []; let cur = [], ini = 0;
-  palabras.forEach((w, i) => { if (!cur.length) ini = w.de; cur.push(w.t); if (cur.length >= 16 || /[.?!]$/.test(w.t) && cur.length >= 4 || i === palabras.length - 1) { lineas.push('[' + ini.toFixed(1) + ' s] ' + cur.join(' ')); cur = []; } });
+  const et = etiquetasHablantes(palabras), conVoces = et.some(e => e);
+  const lineas = []; let cur = [], ini = 0, act = '';
+  const cierra = () => { if (cur.length) { lineas.push('[' + ini.toFixed(1) + ' s]' + (conVoces && act ? ' ' + act + ':' : '') + ' ' + cur.join(' ')); cur = []; } };
+  palabras.forEach((w, i) => { if (cur.length && et[i] !== act) cierra(); if (!cur.length) { ini = w.de; act = et[i]; } cur.push(w.t); if (cur.length >= 16 || /[.?!]$/.test(w.t) && cur.length >= 4) cierra(); });
+  cierra();
   const cuantos = n > 0 ? 'Arma EXACTAMENTE ' + n + ' clips' : 'Arma entre 3 y ' + Math.max(3, Math.min(10, Math.round(dur / 300))) + ' clips (solo los que de verdad merezcan ser un vídeo; mejor pocos y buenos)';
   const prompt = 'Eres el editor jefe de Ranuse Design (diseño de espacios deportivos y gimnasios) y preparas clips virales para Instagram Reels, TikTok y Shorts a partir de una entrevista larga.\n\n' + PLAYBOOK_REDES +
     '\n\nCÓMO ARMAR CADA CLIP (como un editor profesional de Opus Clip): un clip NO es un trozo seguido de la entrevista: se compone de TRAMOS [ini,fin] que se reproducen EN ESTE ORDEN y que pueden ser de partes distintas.\n' +
@@ -56,7 +60,7 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
     '4) Cada tramo empieza al principio de una frase y acaba al final de otra, y los tramos de un mismo clip no se solapan entre sí.\n' +
     '5) El resultado total (suma de tramos) debe sonar fluido y natural, sin cortes bruscos de idea, y durar entre ' + min + ' y ' + max + ' segundos (si es pregunta con respuesta y hace falta, puede pasarse un poco).\n' +
     '6) Prefiere clips de 20-45 s y empieza cada uno con la frase más potente (gancho en los 3 primeros segundos, entendible sin sonido); excluye intros, saludos, patrocinios y charla fuera de tema. Cada clip trata una idea distinta; reparte por TODA la entrevista; los clips no deben repetir los mismos tramos.\n\n' +
-    'Lee la transcripción (con el segundo de inicio de cada línea) y ' + cuantos + '. Ordénalos del mejor al peor.' + (notas ? ' INDICACIONES DE LA PERSONA (obligatorias): ' + notas : '') +
+    (conVoces ? 'Cada línea empieza con P: (el entrevistador, que PREGUNTA) o R: (quien RESPONDE). Un clip de pregunta-respuesta incluye la pregunta P (su mejor formulación; si la repite o la corrige, la versión bien dicha) justo antes de la mejor toma de la respuesta R; descarta los "vale", "¿me repites?" y comentarios sueltos de P. ' : '') + 'Lee la transcripción (con el segundo de inicio de cada línea) y ' + cuantos + '. Ordénalos del mejor al peor.' + (notas ? ' INDICACIONES DE LA PERSONA (obligatorias): ' + notas : '') +
     (reglas ? '\n\nVOZ Y REGLAS DE MARCA DE RANUSE (obligatorias):\n' + reglas : '') +
     '\n\nResponde SOLO con JSON: {"clips":[{"tramos":[[ini,fin],[ini,fin]], "titulo": "título gancho en pantalla, que provoque curiosidad o prometa algo (máx 9 palabras, en español, sin comillas)", "pregunta": "si es de pregunta y respuesta, la pregunta resumida; si no, vacío", "gancho": "la frase de apertura", "score": 0-100 potencial viral (sé exigente y honesto: 90+ excepcional, la mayoría entre 55 y 85), "sub": {"gancho": 0-100, "flujo": 0-100, "valor": 0-100, "tendencia": 0-100}, "motivo": "en una frase, por qué funciona o qué le falta"}]}\n\nTRANSCRIPCIÓN:\n' + lineas.join('\n');
   let d = null;

@@ -10,7 +10,7 @@ import * as drive from './drive.mjs';
 import { ENV } from './entorno.mjs';
 import { ARGS_VIDEO } from './codec.mjs';
 import { transcribe } from './transcribir.mjs';
-import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, guionLimpio, envolvente } from './voz.mjs';
+import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, guionLimpio, envolvente, etiquetasHablantes } from './voz.mjs';
 
 const [ENTRADA, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!ENTRADA || !SALIDA) { console.log('Uso: node bruto.mjs "<bruto>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -23,7 +23,7 @@ const R = { acento: '#CDBBA7', titulo: true, pausa: 0.4, subs: { palabrasPorBloq
 if (process.env.INSERCIONES === '1') R.inserciones = true;
 if (process.env.RECETA_JSON) {
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
-  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente', 'whoosh', 'flash', 'cambioCada', 'estiloSubs']) if (o[k] !== undefined) R[k] = o[k];
+  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente', 'whoosh', 'flash', 'cambioCada', 'estiloSubs', 'preguntaSoloEscrita']) if (o[k] !== undefined) R[k] = o[k];
   if (o.subs) R.subs = { ...R.subs, ...o.subs }; if (o.musica && typeof o.musica === 'object') R.musica = { ...R.musica, ...o.musica };
 }
 if (!/^#[0-9a-f]{6}$/i.test(R.acento)) R.acento = '#CDBBA7';
@@ -55,7 +55,7 @@ const wav = path.join(work, 'voz.wav'); run('ffmpeg', ['-hide_banner', '-logleve
 marca(12, 'Transcribiendo la voz');
 const wj = path.join(work, 'palabras');
 await transcribe(wav, wj);
-const palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription.map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000 })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
+const palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription.map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000, ...(s.spk !== undefined ? { spk: s.spk } : {}) })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
 if (!palabras.length) { console.log('FALLO: no se oye voz en el vídeo'); process.exit(1); }
 palabras.forEach((w, i) => { w.i = i; });
 const trabones = corrigeTrabones(palabras, wav); if (trabones) console.log('Tropiezos recortados:', trabones);
@@ -91,6 +91,8 @@ if (fuera.size) console.log('Se quitan', fuera.size, 'palabras (repeticiones/err
 for (const i of repetidasInmediatas(palabras.filter(w => !fuera.has(w.i)))) fuera.add(i);
 // Edición por texto: si la persona ha elegido a mano qué palabras quitar, manda ella (se ignora la propuesta de la IA)
 if (process.env.FUERA_JSON) { try { const man = JSON.parse(fs.readFileSync(process.env.FUERA_JSON, 'utf8')); fuera.clear(); for (const i of man) if (Number.isInteger(i)) fuera.add(i); console.log('Texto editado a mano:', fuera.size, 'palabras quitadas'); } catch (e) { console.log('No se pudo leer la edición de texto:', e.message); } }
+// Si el formato lo pide, la pregunta solo aparece escrita (no se oye al entrevistador): se quitan sus palabras
+if (R.preguntaSoloEscrita) { const et = etiquetasHablantes(palabras); let n = 0; palabras.forEach((w, i) => { if (et[i] === 'P' && !fuera.has(w.i)) { fuera.add(w.i); n++; } }); if (n) console.log('La pregunta solo sale escrita: se quitan', n, 'palabras del entrevistador'); }
 // se guarda la transcripción y lo que se quita para que la persona pueda revisarlo y corregirlo
 try { fs.writeFileSync(path.join(work, 'edicion_texto.json'), JSON.stringify({ palabras: palabras.map(w => [w.t, Math.round(w.de * 100) / 100, Math.round(w.a * 100) / 100]), fuera: [...fuera] })); } catch { /* sin edición de texto */ }
 const enfasis = new Set((plan.enfasis || []).filter(n => Number.isInteger(n)));
