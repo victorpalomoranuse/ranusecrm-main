@@ -218,7 +218,7 @@ if (process.env.EDICION !== '1') try {
 if (process.env.EDICION !== '1') try {
   const cs = plan.cortes.slice().sort((x, y) => x.de - y.de);
   const durCorte = (c, k) => { const sig = cs[k + 1]?.de ?? palabras.length; return Math.max(1, (palabras[Math.min(sig, palabras.length) - 1]?.a ?? 0) - (palabras[c.de]?.de ?? 0)); };
-  const capac = v => v.es_imagen ? 2 : Math.max(1, Math.floor((v.duracion || 4) / 4));
+  const capac = v => v.es_imagen ? 2 : v.hablando_a_camara ? 3 : Math.max(1, Math.floor((v.duracion || 4) / 4));
   const porVideo = new Map(); cs.forEach((c, k) => { c._k = k; if (!porVideo.has(c.video)) porVideo.set(c.video, []); porVideo.get(c.video).push(c); });
   const exceso = []; for (const [id, arr] of porVideo) { const v = idx.find(z => z.id === id); if (v && arr.length > capac(v)) exceso.push(...arr.slice(capac(v))); }
   const libre = new Map(); for (const v of idx) { if (v.hablando_a_camara && !v._elegido) continue; const u = (porVideo.get(v.id) || []).length; if (u < capac(v)) libre.set(v.id, capac(v) - u); }
