@@ -158,7 +158,7 @@ async function procesa(t) {
     fs.writeFileSync(path.join(wk, 'plan.json'), JSON.stringify(plan)); indiceEdicion = path.join(dir, 'indice-total.json'); fs.writeFileSync(indiceEdicion, JSON.stringify({ videos: [...usados, ...extras] }));
     seleccionEdicion = { carpetas: [], videos: [], imagenes, carpetasId: [] };
   } else if (t.base) {
-    const meta = await drive.meta(t.base.id); if (Number(meta.size) > 6e9) throw new Error('El archivo de Drive pesa ' + (Number(meta.size) / 1e9).toFixed(1) + ' GB; usa uno de menos de 6 GB (o un trozo)');
+    const meta = await drive.meta(t.base.id); const limiteGB = t.tipo === 'clips' ? (process.env.JOB_ID ? 14e9 : 40e9) : 6e9; if (Number(meta.size) > limiteGB) throw new Error('El archivo de Drive pesa ' + (Number(meta.size) / 1e9).toFixed(1) + ' GB; usa uno de menos de 6 GB (o un trozo)');
     entrada = path.join(dir, 'base' + (path.extname(meta.name) || '.mp4')); await paso(t, 'Bajando el archivo de Drive (' + Math.round(Number(meta.size) / 1e6) + ' MB)…');
     const claveCache = 'base/' + t.base.id + '_' + meta.size + (path.extname(meta.name) || '.mp4'); let desdeCache = false;
     try { desdeCache = await drive.cacheBaja(claveCache, entrada); } catch { desdeCache = false; }
@@ -174,7 +174,7 @@ async function procesa(t) {
         throw new Error('No se pudo bajar el vídeo base de Drive (' + rs.status + ')'); }
       }
     }
-    if (!desdeCache) { try { await drive.cacheSube(claveCache, entrada); console.log('Copia del vídeo base guardada'); } catch (e) { console.log('Sin guardar copia del vídeo base:', e.message); } }
+    if (!desdeCache && Number(meta.size) < 3e9) { try { await drive.cacheSube(claveCache, entrada); console.log('Copia del vídeo base guardada'); } catch (e) { console.log('Sin guardar copia del vídeo base:', e.message); } }
   } else {
     const ext = path.extname(t.archivo) || '.mp4'; entrada = path.join(dir, 'entrada' + ext);
     // los archivos grandes se suben a Google Cloud Storage; los pequeños (música, etc.) a Supabase
