@@ -8,11 +8,12 @@ import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
 import * as drive from './drive.mjs';
 import { ENV } from './entorno.mjs';
 import { introLetras, ESTILO_INTRO } from './intro.mjs';
+import { acotaPorEnergia } from './voz.mjs';
 import { ARGS_VIDEO } from './codec.mjs';
 import { transcribe } from './transcribir.mjs';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
-import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, rangosAQuitar, recomponeVoz, muletillasSueltas, huecosConSonido, tomasRepetidas, elegirMejoresTomas } from './voz.mjs';
+import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, rangosAQuitar, guionLimpio, recomponeVoz, muletillasSueltas, huecosConSonido, tomasRepetidas, elegirMejoresTomas } from './voz.mjs';
 
 const [VOZ, INDICE, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!VOZ || !INDICE || !SALIDA) { console.log('Uso: node montar.mjs "<voz>" "<indice.json>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -67,8 +68,7 @@ await transcribe(wav, wj);
 let palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription
   .map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000 })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
 palabras.forEach((w, i) => { w.i = i; });
-// una palabra no puede durar muchísimo más de lo normal: el exceso suele ser un silencio, un tropiezo o un ruido pegado a ella
-for (const w of palabras) { const tope = Math.min(1.1, 0.2 + 0.09 * w.t.replace(/[^\p{L}\d]/gu, '').length); if (w.a - w.de > tope) w.a = w.de + tope; }
+{ const nA = acotaPorEnergia(palabras, wav); if (nA) console.log('Palabras estiradas sobre un silencio, acortadas:', nA); }
 console.log('Palabras:', palabras.length);
 if (palabras.length < 3) { console.error('FALLO: No se oye ninguna voz en ese archivo. En "Voz en off" tienes que elegir el audio o vídeo donde hablas (no un clip del dron o sin voz).'); process.exit(1); }
 
@@ -78,10 +78,20 @@ if (process.env.SIN_LIMPIEZA !== '1') {
   const trab = corrigeTrabones(palabras, wav); const quitar = repetidasInmediatas(palabras);
   const conservar = /conservw* (las )?muletillas|mantw* (las )?muletillas/i.test(NOTAS); const huecos = conservar ? 0 : huecosConSonido(palabras, wav); if (!conservar) for (const i of muletillasSueltas(palabras)) quitar.add(i);
   if (huecos) console.log('Muletillas sin transcribir cortadas:', huecos);
-  const [aQuitar, tomas] = await Promise.all([rangosAQuitar(palabras, ENV.ANTHROPIC_API_KEY, NOTAS), tomasRepetidas(palabras, ENV.ANTHROPIC_API_KEY, NOTAS)]);
-  for (const i of aQuitar) quitar.add(i);
-  // lo que dijiste varias veces: se queda la mejor toma (la que mejor entonación y ritmo tiene, sin tropiezos ni muletillas)
-  if (tomas.length) { console.log('Frases dichas varias veces:', tomas.length, 'grupo(s)'); for (const i of elegirMejoresTomas(palabras, tomas, wav, true)) quitar.add(i); }
+  // la IA construye el discurso final eligiendo qué tramos CONSERVAR (cada idea una vez, con su mejor toma); si falla, se usa el método de rangos a quitar
+  const limpio = await guionLimpio(palabras, ENV.ANTHROPIC_API_KEY, NOTAS);
+  if (limpio) { console.log('Discurso final elegido por la IA:', palabras.length - limpio.size, 'de', palabras.length, 'palabras'); for (const i of limpio) quitar.add(i); }
+  const [aQuitar, tomas] = limpio ? [new Set(), []] : await Promise.all([rangosAQuitar(palabras, ENV.ANTHROPIC_API_KEY, NOTAS), tomasRepetidas(palabras, ENV.ANTHROPIC_API_KEY, NOTAS)]);
+  // lo que dijiste varias veces: se queda la mejor toma (la que mejor entonación y ritmo tiene, sin tropiezos ni muletillas).
+  // La toma elegida queda PROTEGIDA: lo que la IA haya marcado dentro de ella no se quita, para que nunca desaparezcan todas las versiones de una frase.
+  const protegidas = new Set(); let porTomas = new Set();
+  if (tomas.length) {
+    console.log('Frases dichas varias veces:', tomas.length, 'grupo(s)');
+    porTomas = new Set(elegirMejoresTomas(palabras, tomas, wav, true));
+    for (const g of tomas) for (const [x, y] of g) { let tocada = false; for (let i = x; i <= y; i++) if (porTomas.has(i)) { tocada = true; break; } if (!tocada) for (let i = x; i <= y; i++) protegidas.add(i); }
+  }
+  for (const i of aQuitar) if (!protegidas.has(i)) quitar.add(i);
+  for (const i of porTomas) quitar.add(i);
   console.log('Tropiezos recortados:', trab, '| palabras quitadas:', quitar.size, [...quitar].slice(0, 30).map(i => palabras[i]?.t).join(' '));
   const r = recomponeVoz({ palabras, quitar, wav48: path.join(work, 'voz48_orig.wav'), salida: path.join(work, 'voz48.wav') });
   palabras = r.palabras; console.log('Voz limpia:', durVoz.toFixed(1), 's ->', r.durVoz.toFixed(1), 's'); durVoz = r.durVoz;
@@ -98,7 +108,7 @@ let idx = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos.filter(v => v.durac
     f.forEach(v => { v._elegido = true; });
     if (f.length) {
       const utiles = f.filter(v => !v.hablando_a_camara && v.duracion >= 2).length;
-      if (utiles < 25 && process.env.EDICION !== '1') { const ids = new Set(f.map(v => v.id)); const extra = idx.filter(v => !ids.has(v.id) && !v.hablando_a_camara && v.duracion >= 2); console.log('Pocos vídeos útiles en lo elegido (' + utiles + '): se amplía con la biblioteca (+' + extra.length + ')'); idx = [...f, ...extra]; } else idx = f;
+      if (utiles < 3 && process.env.EDICION !== '1') { const ids = new Set(f.map(v => v.id)); const extra = idx.filter(v => !ids.has(v.id) && !v.hablando_a_camara && v.duracion >= 2); console.log('Pocos vídeos útiles en lo elegido (' + utiles + '): se amplía con la biblioteca (+' + extra.length + ')'); idx = [...f, ...extra]; } else idx = f;
     } else if ((sel.imagenes || []).length || (sel.carpetasId || []).length) { console.log('En lo elegido no hay vídeos indexados: se montará con imágenes'); idx = []; } else { console.log('Nada de lo elegido está indexado; se usan todos'); idx = idx.filter(v => !v.hablando_a_camara); }
   } else if (process.env.EDICION !== '1') idx = idx.filter(v => !v.hablando_a_camara && v.duracion >= 2);
 }
@@ -142,7 +152,7 @@ if (idx.length > 120) {
   const orden = idx.map((v, i) => [v, puntos[i]]).sort((a, b) => b[1] - a[1]); const f = orden.slice(0, 110).map(x => x[0]);
   console.log('Preselección por tema (palabras):', f.length, 'de', idx.length, 'vídeos'); idx = f;
 }
-const compacto = v => ({ id: v.id, dur: v.duracion, calidad: v.calidad, resumen: v.resumen, etiquetas: (v.etiquetas || []).slice(0, 8), planos: (v.planos || []).slice(0, 6).map(p => p.t + 's: ' + String(p.descripcion).slice(0, 100)) });
+const compacto = v => ({ ...(v._elegido ? { elegido_por_la_persona: true } : {}), id: v.id, dur: v.duracion, calidad: v.calidad, resumen: v.resumen, etiquetas: (v.etiquetas || []).slice(0, 8), planos: (v.planos || []).slice(0, 6).map(p => p.t + 's: ' + String(p.descripcion).slice(0, 100)) });
 const cat = idx.map(compacto);
 const guionDe = (a, b) => palabras.slice(a, b).map((w, i) => (a + i) + ':' + w.t + '@' + w.de.toFixed(1)).join(' ');
 const planF = path.join(work, 'plan.json'); let plan, esquema = null;
@@ -151,7 +161,7 @@ else {
   const pidePlan = async (A, B) => {
   const guion = guionDe(A, B), durBloque = palabras[B - 1].a - palabras[A].de;
   const prompt = 'Eres montador de vídeo de Ranuse Design (diseño de gimnasios y espacios deportivos). Tienes la voz en off de un vídeo vertical para Instagram/TikTok y un catálogo de escenas en bruto. Monta un vídeo PROFESIONAL, DINÁMICO y SERIO (sin humor, sin emojis; sensación de marca premium).\n\nVOZ EN OFF (índice:palabra@segundo): ' + guion + '\n\nDuración de este fragmento: ' + durBloque.toFixed(1) + ' s (el vídeo completo dura ' + durVoz.toFixed(0) + ' s).\n\nHISTORIA DEL VÍDEO (síguela de principio a fin): ' + JSON.stringify(esquema) + '\n\nCATÁLOGO (id, duración en s, planos con su segundo; los planos de cada vídeo están en orden cronológico):\n' + JSON.stringify(cat) + '\n\n' + (NOTAS ? 'INDICACIONES DEL EQUIPO: ' + NOTAS + '\n\n' : '') +
-    'REGLA DE VARIEDAD (obligatoria): no uses el mismo vídeo en más de 2 cortes de todo el montaje (y nunca en cortes seguidos); un vídeo corto no puede cubrir muchos cortes. Si no hay escenas suficientes que encajen con lo que se dice, es MEJOR usar otras escenas relevantes distintas del catálogo, aunque encajen solo en parte, que repetir la misma. Los vídeos marcados como elegidos por la persona tienen prioridad cuando encajan. Reglas: 1) Ritmo rápido: cortes de ' + RECETA.corte.min + ' a ' + RECETA.corte.max + ' s siguiendo el sentido de las frases; cambia de plano al cambiar de idea o cada pocas palabras. La primera palabra de cada corte es el índice "de"; cada corte llega hasta justo antes del siguiente; el primero empieza en la palabra ' + A + '. 2) COHERENCIA OBLIGATORIA: la escena de cada corte debe tener relación DIRECTA con lo que se dice en ese corte (el mismo espacio, equipamiento, material o proceso). Está PROHIBIDO usar una escena que no tenga nada que ver (comida, personas ajenas al tema, objetos sin relación). Si no hay nada literal, usa un plano genérico del espacio o del equipamiento del mismo tema, nunca algo de otro asunto. NO tienes que usar todo el catálogo: lo elegido es una reserva y solo debes poner lo que SIRVE para lo que se dice; un clip que no encaja con nada del guion simplemente no se usa. Si para un tramo no hay NINGUNA escena coherente, no metas algo ajeno: continúa con otro fragmento distinto de la escena anterior (mismo espacio o tema) o con el plano más neutro de ese mismo tema. Prefiere calidad alta y evita planos oscuros o borrosos. Algunas entradas del catálogo son IMÁGENES FIJAS (empiezan por "IMAGEN FIJA"): úsalas como cortes cortos de 1,5 a 3 s cuando ilustren lo que se dice (renders, proyectos), sin encadenar más de dos seguidas. ' + (idx.length < 6 ? 'Hay pocos vídeos disponibles: reutilízalos con tramos DISTINTOS ("desde" puede ser cualquier segundo del vídeo, no solo los listados), sin repetir el mismo tramo ni el mismo vídeo en cortes seguidos.' : 'No repitas el mismo vídeo en cortes seguidos; puedes reutilizar un vídeo con otro tramo ("desde" distinto).') + ' 3a) SECUENCIA Y HISTORIA: las escenas deben contar la historia del guion en orden (de un espacio a otro, de la obra al resultado, del problema a la solución), con hilo conductor. Los planos de un mismo vídeo van en orden cronológico, así que usar fragmentos consecutivos de un recorrido cuenta la secuencia. Nunca escenas sueltas sin relación con la anterior ni con lo que se dice; el primer corte debe ser el gancho de la historia. 3b) VÍDEOS LARGOS: de un mismo vídeo largo puedes usar VARIOS fragmentos DISTINTOS en cortes no seguidos (cada plano listado tiene su segundo; separa los tramos al menos 10 s entre sí) para tener más recursos y variedad; no uses nunca el mismo tramo dos veces. 3) "desde" = segundo del vídeo donde empieza el plano (usa los segundos de los planos listados; debe cumplirse desde + duración del corte <= duración del vídeo). 4) "kicker": categoría de 2-4 palabras. "titulo": gancho serio en mayúsculas, máx. 7 palabras, sin signos de exclamación. 5) "enfasis": índices de las palabras clave de la voz (cifras, términos técnicos, la idea fuerte), unas 1 de cada 5-6 palabras. 5b) "horas": si la voz menciona una hora del día ("a las 9", "9:00", "plego a las 18h", "a las tres y media"), apunta {"de": índice de la palabra donde se dice, "texto": "9:00"} (formato 24 h, h:mm); si no menciona ninguna, déjalo vacío. 6) Responde SOLO con JSON: {"kicker":"","titulo":"","enfasis":[0],"horas":[{"de":0,"texto":"9:00"}],"cortes":[{"de":0,"video":"id","desde":0.0}]}';
+    'REGLA DE VARIEDAD (obligatoria): reparte el uso de los vídeos de forma pareja: nunca el mismo vídeo en cortes seguidos ni el mismo tramo dos veces; si hay catálogo de sobra, ninguno más de 2 veces; un vídeo corto no puede cubrir muchos cortes. Si no hay escenas suficientes que encajen con lo que se dice, es MEJOR usar otras escenas relevantes distintas del catálogo, aunque encajen solo en parte, que repetir la misma. Si en el catálogo hay vídeos con "elegido_por_la_persona": la persona los ha escogido A MANO para contar ESTA historia. Entiende lo que muestra cada uno (resumen y planos) y DEBES usar TODOS ellos al menos una vez, colocando cada uno justo donde lo que se dice encaja con lo que muestra (sigue el orden del relato: viaje, llegada, trabajo, obra, contenido, comida, hotel…). Un vídeo elegido largo puede aportar varios tramos distintos, pero ninguno más de 3 veces. Reglas: 1) Ritmo rápido: cortes de ' + RECETA.corte.min + ' a ' + RECETA.corte.max + ' s siguiendo el sentido de las frases; cambia de plano al cambiar de idea o cada pocas palabras. La primera palabra de cada corte es el índice "de"; cada corte llega hasta justo antes del siguiente; el primero empieza en la palabra ' + A + '. 2) COHERENCIA OBLIGATORIA: la escena de cada corte debe tener relación DIRECTA con lo que se dice en ese corte (el mismo espacio, equipamiento, material o proceso). Está PROHIBIDO usar una escena que no tenga nada que ver (comida, personas ajenas al tema, objetos sin relación). Si no hay nada literal, usa un plano genérico del espacio o del equipamiento del mismo tema, nunca algo de otro asunto. NO tienes que usar todo el catálogo: lo elegido es una reserva y solo debes poner lo que SIRVE para lo que se dice; un clip que no encaja con nada del guion simplemente no se usa. Si para un tramo no hay NINGUNA escena coherente, no metas algo ajeno: continúa con otro fragmento distinto de la escena anterior (mismo espacio o tema) o con el plano más neutro de ese mismo tema. Prefiere calidad alta y evita planos oscuros o borrosos. Algunas entradas del catálogo son IMÁGENES FIJAS (empiezan por "IMAGEN FIJA"): úsalas como cortes cortos de 1,5 a 3 s cuando ilustren lo que se dice (renders, proyectos), sin encadenar más de dos seguidas. ' + (idx.length < 6 ? 'Hay pocos vídeos disponibles: reutilízalos con tramos DISTINTOS ("desde" puede ser cualquier segundo del vídeo, no solo los listados), sin repetir el mismo tramo ni el mismo vídeo en cortes seguidos.' : 'No repitas el mismo vídeo en cortes seguidos; puedes reutilizar un vídeo con otro tramo ("desde" distinto).') + ' 3a) SECUENCIA Y HISTORIA: las escenas deben contar la historia del guion en orden (de un espacio a otro, de la obra al resultado, del problema a la solución), con hilo conductor. Los planos de un mismo vídeo van en orden cronológico, así que usar fragmentos consecutivos de un recorrido cuenta la secuencia. Nunca escenas sueltas sin relación con la anterior ni con lo que se dice; el primer corte debe ser el gancho de la historia. 3b) VÍDEOS LARGOS: de un mismo vídeo largo puedes usar VARIOS fragmentos DISTINTOS en cortes no seguidos (cada plano listado tiene su segundo; separa los tramos al menos 10 s entre sí) para tener más recursos y variedad; no uses nunca el mismo tramo dos veces. 3) "desde" = segundo del vídeo donde empieza el plano (usa los segundos de los planos listados; debe cumplirse desde + duración del corte <= duración del vídeo). 4) "kicker": categoría de 2-4 palabras. "titulo": gancho serio en mayúsculas, máx. 7 palabras, sin signos de exclamación. 5) "enfasis": índices de las palabras clave de la voz (cifras, términos técnicos, la idea fuerte), unas 1 de cada 5-6 palabras. 5b) "horas": si la voz menciona una hora del día ("a las 9", "9:00", "plego a las 18h", "a las tres y media"), apunta {"de": índice de la palabra donde se dice, "texto": "9:00"} (formato 24 h, h:mm); si no menciona ninguna, déjalo vacío. 6) Responde SOLO con JSON: {"kicker":"","titulo":"","enfasis":[0],"horas":[{"de":0,"texto":"9:00"}],"cortes":[{"de":0,"video":"id","desde":0.0}]}';
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 8000, messages: [{ role: 'user', content: prompt }] }) });
   const j = await r.json(); if (!r.ok) { console.log('Claude error', JSON.stringify(j).slice(0, 300)); process.exit(1); }
   console.log('Plan del fragmento ' + A + '-' + B + ': tokens', j.usage.input_tokens, '/', j.usage.output_tokens);
@@ -187,6 +197,20 @@ if (process.env.SIN_REVISION !== '1') try {
     lista.push([t, t + dur]); });
   if (movidos) { console.log('Tramos repetidos movidos a otro momento del mismo vídeo:', movidos); fs.writeFileSync(planF, JSON.stringify(plan, null, 1)); }
 } catch (e) { console.log('Sin comprobar tramos repetidos:', e.message); }
+// Todos los vídeos que la persona eligió a mano deben aparecer: si falta alguno, se coloca donde mejor encaje, sustituyendo un corte de un vídeo repetido
+if (process.env.EDICION !== '1') try {
+  const elegidos = idx.filter(v => v._elegido && !v.es_imagen && !v.hablando_a_camara);
+  const usos = new Map(); for (const c of plan.cortes) usos.set(c.video, (usos.get(c.video) || 0) + 1);
+  const faltan = elegidos.filter(v => !usos.get(v.id));
+  if (faltan.length) {
+    const cs = plan.cortes.slice().sort((x, y) => x.de - y.de);
+    const lineas = cs.map((c, k) => { const sig = cs[k + 1]?.de ?? palabras.length; return k + ': "' + palabras.slice(c.de, sig).map(w => w.t).join(' ').slice(0, 90) + '" → ' + (idx.find(z => z.id === c.video)?.nombre || c.video) + ' (usado ' + usos.get(c.video) + ' veces)'; });
+    const rr = await llamaClaude('La persona eligió a mano estos vídeos para contar su historia y todavía no aparecen en el montaje:\n' + faltan.map(v => '- id ' + v.id + ': ' + (v.resumen || '') + ' [' + (v.etiquetas || []).slice(0, 6).join(', ') + ']').join('\n') + '\n\nCortes actuales (número: texto que se dice → vídeo que se muestra):\n' + lineas.join('\n') + '\n\nPara cada vídeo que falta, elige el corte donde MEJOR encaje con lo que se dice, prefiriendo cortes que ahora muestran un vídeo usado 3 veces o más. Cada corte se puede asignar a un solo vídeo. Si ningún corte encaja de forma razonable, pon null. Responde SOLO JSON {"asignaciones":[{"video":"id","corte":número o null}]}', 1500, true);
+    let n = 0, tomados = new Set();
+    for (const x of (rr?.asignaciones || [])) { const v = faltan.find(z => z.id === x.video), c = Number.isInteger(x.corte) ? cs[x.corte] : null; if (!v || !c || tomados.has(x.corte)) continue; tomados.add(x.corte); c.video = v.id; c.desde = 0; n++; }
+    console.log('Vídeos elegidos que faltaban:', faltan.length, '→ colocados:', n);
+  }
+} catch (e) { console.log('Sin completar los vídeos elegidos:', e.message); }
 // Para poder editar los cortes a mano después: se guardan el plan final, las palabras limpias y los datos de cada corte
 try {
   const ed = path.join(work, 'edicion'); fs.mkdirSync(ed, { recursive: true });

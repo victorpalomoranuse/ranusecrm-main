@@ -78,7 +78,13 @@ function indiceTotal(dir, sel) {
   const ids = new Set(todos.map(v => v.drive_id).filter(Boolean)), nom = new Set(todos.map(v => v.ruta_abs + '/' + v.nombre));
   const faltan = (sel.videos || []).filter(z => !ids.has(z.id) && !nom.has((z.ruta ? z.ruta + '/' : '') + z.nombre));
   const fSel = path.join(base, 'drive-seleccion/indice.json');
-  if (faltan.length) { console.log('Indexando', faltan.length, 'vídeo(s) elegido(s) que aún no estaban…'); spawnSync('node', ['indexar-drive.mjs', 'ids:' + faltan.map(z => z.id).join(','), path.join(base, 'drive-seleccion'), '8', '2'], { cwd: AQUI, encoding: 'utf8', env: { ...process.env, PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } }); }
+  if (faltan.length) { console.log('Indexando', faltan.length, 'vídeo(s) elegido(s) que aún no estaban…'); const lanza = (ids) => { const rr = spawnSync('node', ['indexar-drive.mjs', 'ids:' + ids.join(','), path.join(base, 'drive-seleccion'), '8', '2'], { cwd: AQUI, encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } }); console.log('Indexado de elegidos:', ((rr.stdout || '') + (rr.stderr || '')).split('\n').filter(l => /FIN\.|FALLO|Error/.test(l)).slice(-4).join(' | ') || ('sin salida (código ' + rr.status + ')')); };
+    lanza(faltan.map(z => z.id));
+    // los que no se hayan podido indexar a la primera se reintentan de uno en uno
+    const hechos = () => new Set(cargaIndice(path.join(base, 'drive-seleccion/indice.json'), '').map(v => v.drive_id));
+    for (const z of faltan.filter(z => !hechos().has(z.id))) { console.log('Reintentando', z.nombre); lanza([z.id]); }
+    const aunFaltan = faltan.filter(z => !hechos().has(z.id)); if (aunFaltan.length) console.log('SIN INDEXAR:', aunFaltan.map(z => z.nombre).join(', '));
+  }
   const sueltos = cargaIndice(fSel, '').map(v => { const z = (sel.videos || []).find(q => q.id === v.drive_id); return { ...v, ruta_abs: v.ruta_abs || (z ? z.ruta : '') }; });
   for (const v of sueltos) if (!ids.has(v.drive_id)) todos.push(v);
   const salida = path.join(dir, 'indice-total.json'); fs.writeFileSync(salida, JSON.stringify({ videos: todos })); return salida;

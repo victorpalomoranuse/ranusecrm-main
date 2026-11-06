@@ -1,7 +1,7 @@
 // Intro con las palabras grandes apilándose por la pantalla (como en los vídeos de "mi día" de referencia):
 // las primeras palabras de la voz aparecen una a una, enormes, en posiciones y tamaños distintos, y se quedan hasta acabar la frase de apertura.
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-const POS = [[340, 560, 150], [660, 700, 200], [390, 850, 140], [620, 1010, 210]];
+const POS = [[360, 540, 230], [650, 720, 300], [400, 900, 215], [640, 1070, 310]];
 
 // palabras: [{ t, de, a }] en el tiempo del vídeo final. Devuelve { eventos, ultima (índice de la última palabra de la intro), fin (segundos) }
 export function introLetras(palabras, tAss, limpia, { maxPalabras = 9, maxSeg = 4.8 } = {}) {
@@ -21,11 +21,11 @@ export function introLetras(palabras, tAss, limpia, { maxPalabras = 9, maxSeg = 
     gr.forEach((j, k) => {
       const w = palabras[j], txt = limpia(w.t).toLowerCase().replace(/[.,;:¿¡?!]+$/, ''); if (!txt) return;
       const [x0, y, fs0] = POS[k % POS.length];
-      const fs = Math.round(Math.min(fs0, 900 / (txt.length * 0.66))), ancho = txt.length * fs * 0.66;
+      const fs = Math.round(Math.min(fs0, 960 / (txt.length * 0.62))), ancho = txt.length * fs * 0.66;
       const x = Math.round(clamp(x0, ancho / 2 + 40, 1040 - ancho / 2));
       ev.push('Dialogue: 5,' + tAss(w.de) + ',' + tAss(finG) + ',Intro,,0,0,0,,{\\an5\\pos(' + x + ',' + y + ')\\fs' + fs + '\\fscx55\\fscy55\\t(0,140,\\fscx100\\fscy100)\\fad(0,' + (gi < grupos.length - 1 ? 60 : 160) + ')}' + txt);
     });
   });
   return { eventos: ev, ultima: n - 1, fin };
 }
-export const ESTILO_INTRO = 'Style: Intro,Montserrat,150,&H00FFFFFF,&H000000FF,&H00101010,&H99000000,-1,0,0,0,100,100,0,0,1,3,5,5,40,40,40,1';
+export const ESTILO_INTRO = 'Style: Intro,Montserrat,150,&H00FFFFFF,&H000000FF,&H00000000,&H70000000,-1,0,0,0,100,100,0,0,1,0,4,5,40,40,40,1';

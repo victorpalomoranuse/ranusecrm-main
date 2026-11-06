@@ -42,6 +42,19 @@ export function repetidasInmediatas(palabras) {
     const hueco = palabras[i + 1].de - palabras[i].a;
     if (hueco < 0.7 && (a === b || (a.length <= 3 && b.length > a.length && b.startsWith(a)))) quitar.add(palabras[i].i ?? i);
   }
+  const CONECTOR = new Set(['y', 'o', 'que', 'pues', 'e', 'es', 'bueno', 'osea', 'entonces']);
+  for (let i = 0; i < palabras.length - 3; i++) {
+    for (let L = 6; L >= 2; L--) {
+      for (const c of [0, 1]) {
+        const j = i + L + c; if (j + L > palabras.length) continue;
+        if (c && !CONECTOR.has(norm(palabras[i + L].t))) continue;
+        let igual = true; for (let k = 0; k < L; k++) { const x = norm(palabras[i + k].t), y = norm(palabras[j + k].t); if (!x || x !== y) { igual = false; break; } }
+        if (!igual || palabras[j].de - palabras[i + L - 1].a > 1.6) continue;
+        for (let k = 0; k < L + c; k++) quitar.add(palabras[i + k].i ?? (i + k));
+        i += L + c - 1; L = 0; break;
+      }
+    }
+  }
   return quitar;
 }
 
@@ -51,6 +64,19 @@ export function muletillasSueltas(palabras) {
   const q = new Set(); for (const w of palabras) if (MULETILLA.test(norm(w.t))) q.add(w.i); return q;
 }
 // Huecos entre palabras donde hay SONIDO de voz (un "eeeh", un "mmm", media sílaba): la palabra siguiente marca un corte y se salta ese tramo.
+// Una palabra que dura muchísimo suele llevar pegado un silencio o un tropiezo: se acorta hasta donde la voz deja de sonar de verdad
+export function acotaPorEnergia(palabras, wav16) {
+  let env; try { env = envolvente(wav16); } catch { return 0; }
+  const medias = []; for (const w of palabras) { const i0 = Math.round(w.de * 100), i1 = Math.round(w.a * 100); let a = 0, c = 0; for (let i = i0; i < i1; i++) if (env[i] !== undefined) { a += env[i]; c++; } if (c) medias.push(a / c); }
+  medias.sort((x, y) => x - y); const ref = medias[Math.floor(medias.length * 0.6)] || 0; if (!ref) return 0;
+  let n = 0;
+  for (const w of palabras) {
+    if (w.a - w.de < 0.85) continue;
+    const i0 = Math.round((w.de + 0.2) * 100), i1 = Math.round(w.a * 100); let bajo = 0;
+    for (let i = i0; i < i1; i++) { if ((env[i] || 0) < ref * 0.14) { bajo++; if (bajo >= 22) { w.a = Math.max(w.de + 0.25, (i - bajo + 1) / 100 + 0.06); n++; break; } } else bajo = 0; }
+  }
+  return n;
+}
 export function huecosConSonido(palabras, wav16) {
   let env; try { env = envolvente(wav16); } catch { return 0; }
   const medias = []; for (const w of palabras) { const i0 = Math.round(w.de * 100), i1 = Math.round(w.a * 100); let a = 0, c = 0; for (let i = i0; i < i1; i++) if (env[i] !== undefined) { a += env[i]; c++; } if (c) medias.push(a / c); }
@@ -83,9 +109,9 @@ export async function tomasRepetidas(palabras, apiKey, notas = '') {
     const guion = palabras.map((w, i) => i + ':' + w.t).join(' ');
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 4000, messages: [{ role: 'user', content:
       'Transcripción de una grabación larga de voz (índice:palabra): ' + guion.slice(0, 150000) + '\n' + (notas ? 'Indicaciones: ' + notas + '\n' : '') +
-      'Localiza las IDEAS, frases o párrafos que el hablante dijo VARIAS VECES para decirlo mejor (repite una toma). Cada versión debe ser la frase o el párrafo COMPLETO. No incluyas repeticiones retóricas deliberadas ni cosas parecidas pero distintas: solo cuando es claramente la misma idea dicha de nuevo. Responde SOLO JSON {"tomas":[{"tema":"breve","versiones":[[desde,hasta],[desde,hasta]]}]} con índices inclusivos y versiones sin solaparse.' }] }) });
+      'Localiza las IDEAS, frases o párrafos que el hablante dijo VARIAS VECES para decirlo mejor (repite una toma). Cada versión debe ser la frase o el párrafo COMPLETO. No incluyas repeticiones retóricas deliberadas ni cosas parecidas pero distintas: solo cuando es claramente la misma idea dicha de nuevo. Para cada grupo indica también "mejor": la posición (empezando en 0) de la versión MEJOR, que es la que está bien dicha: completa (con todo el mensaje hasta el final, incluida la llamada a la acción o el remate si lo hay), fluida, sin tropiezos, sin quedarse a medias ni con puntos suspensivos, sin comentarios a sí mismo y con el sentido más claro; si hay dudas entre varias, la última completa. Responde SOLO JSON {"tomas":[{"tema":"breve","versiones":[[desde,hasta],[desde,hasta]],"mejor":0}]} con índices inclusivos y versiones sin solaparse.' }] }) });
     const j = await r.json(); const t = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]).tomas || [];
-    return t.map(x => (x.versiones || []).filter(p => Array.isArray(p) && Number.isInteger(p[0]) && Number.isInteger(p[1]) && p[1] >= p[0] && p[1] < palabras.length)).filter(g => g.length > 1);
+    return t.map(x => { const v = (x.versiones || []).filter(p => Array.isArray(p) && Number.isInteger(p[0]) && Number.isInteger(p[1]) && p[1] >= p[0] && p[1] < palabras.length); v.mejor = (Array.isArray(x.versiones) && v.length === x.versiones.length && Number.isInteger(x.mejor)) ? x.mejor : -1; return v; }).filter(g => g.length > 1);
   } catch { return []; }
 }
 
@@ -115,7 +141,10 @@ export function elegirMejoresTomas(palabras, grupos, wav16, mostrar = false) {
       const puntos = -3 * tropiezos - 2 * rellenos - 1.5 * pausas - Math.abs(ritmo - 2.8) * 1.2 + Math.min(1.5, tono / 3) + Math.min(1, varE / 6) + Math.min(0.5, Math.max(0, (media + 45) / 40)) + (k === g.length - 1 ? 0.8 : 0);
       return { a, b, puntos, ritmo, tono, varE, pausas, tropiezos, rellenos };
     });
-    filas.sort((p, q) => q.puntos - p.puntos); const ganadora = filas[0];
+    filas.sort((p, q) => q.puntos - p.puntos);
+    // si la IA ha leído las versiones y dice cuál es la buena (completa y sin tropiezos), manda ella; el audio decide solo si no hay veredicto
+    if (Number.isInteger(g.mejor) && g.mejor >= 0 && g.mejor < g.length) { const [ma, mb] = g[g.mejor]; const ix = filas.findIndex(f => f.a === ma && f.b === mb); if (ix > 0) filas.unshift(filas.splice(ix, 1)[0]); }
+    const ganadora = filas[0];
     if (mostrar) console.log('Toma elegida', palabras[ganadora.a].t, '…', '| ritmo', ganadora.ritmo.toFixed(1), 'pal/s | entonación', ganadora.tono.toFixed(1), 'st | tropiezos', ganadora.tropiezos, 'rellenos', ganadora.rellenos, '| frente a', filas.length - 1, 'versión(es)');
     for (const f of filas.slice(1)) for (let i = f.a; i <= f.b; i++) quitar.add(palabras[i].i);
   }
@@ -137,4 +166,30 @@ export function recomponeVoz({ palabras, quitar, wav48, salida, pausa = 0.45 }) 
   const nuevas = []; for (const p of partes) for (const w of p.ws) nuevas.push({ ...w, de: p.t0 + (w.de - p.a), a: p.t0 + (Math.min(w.a, p.b) - p.a) });
   nuevas.forEach((w, i) => { w.i0 = w.i; w.i = i; });
   return { palabras: nuevas, durVoz: t0 };
+}
+
+// Versión final del discurso: la IA decide qué tramos CONSERVAR (en vez de qué borrar). Así cada idea queda una sola vez, con su mejor toma, y nada se pisa.
+// Devuelve el conjunto de índices a QUITAR (todo lo que no está en los tramos conservados) o null si no se ha podido.
+export async function guionLimpio(palabras, apiKey, notas = '') {
+  const guion = palabras.map((w, i) => i + ':' + w.t).join(' ');
+  const prompt = 'Eres editor de audio. Esta es la transcripción (índice:palabra) de una grabación en la que la persona se equivoca, se corrige y REPITE tomas de la misma frase varias veces. Tu trabajo es decidir qué tramos CONSERVAR para que la versión final sea el discurso completo y limpio, como si lo hubiera dicho perfecto a la primera.\n\n' +
+    'REGLAS:\n1) Cada idea o frase aparece UNA sola vez en la versión final. Si la dijo varias veces, conserva SOLO la toma mejor: la bien dicha, completa, fluida, sin tropiezos, sin cortarse y sin acabar en puntos suspensivos. Si una toma está completa y las demás a medias, la completa.\n' +
+    '2) Elimina falsos comienzos, palabras a medias, correcciones, comentarios a sí mismo o a otras personas ("¿cómo era?", "es que queda mal", "vale", "ya", "¿el sector ha dicho? sí", exclamaciones y charla fuera del guion) y muletillas.\n' +
+    '3) NO pierdas ninguna idea del mensaje: la apertura, todo el desarrollo, cada parte de la historia que cuenta y el cierre o llamada a la acción final. Si una idea solo aparece en una toma imperfecta, conserva lo mejor de ella.\n' +
+    '4) Mantén el orden original: los tramos conservados van en orden creciente de índice y sin solaparse. Cada tramo empieza al principio de una frase o idea y acaba al final de otra; puedes saltarte palabras sueltas dentro quitando un tramo y abriendo otro.\n' +
+    (notas ? 'Indicaciones de la persona: ' + notas + '\n' : '') +
+    '\nResponde SOLO con JSON: {"conservar":[[desde,hasta],[desde,hasta]]} con índices inclusivos.\n\nTRANSCRIPCIÓN:\n' + guion.slice(0, 150000);
+  for (let intento = 0; intento < 2; intento++) {
+    try {
+      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 6000, temperature: 0, messages: [{ role: 'user', content: prompt }] }) });
+      const j = await r.json(); if (!r.ok) throw new Error('Claude ' + r.status);
+      const rangos = (JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]).conservar || []).filter(p => Array.isArray(p) && Number.isInteger(p[0]) && Number.isInteger(p[1]) && p[1] >= p[0] && p[0] >= 0 && p[1] < palabras.length);
+      const quedan = new Set(); for (const [a, b] of rangos) for (let i = a; i <= b; i++) quedan.add(i);
+      // seguridad: si la respuesta deja muy poco o casi todo igual, no es fiable
+      if (quedan.size < Math.min(15, palabras.length * 0.3)) throw new Error('respuesta con muy poco texto');
+      const quitar = new Set(); for (let i = 0; i < palabras.length; i++) if (!quedan.has(i)) quitar.add(palabras[i].i ?? i);
+      return quitar;
+    } catch (e) { console.log('Guion limpio, reintento:', e.message); }
+  }
+  return null;
 }
