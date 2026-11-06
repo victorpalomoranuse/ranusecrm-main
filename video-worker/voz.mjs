@@ -42,16 +42,20 @@ export function repetidasInmediatas(palabras) {
     const hueco = palabras[i + 1].de - palabras[i].a;
     if (hueco < 0.7 && (a === b || (a.length <= 3 && b.length > a.length && b.startsWith(a)))) quitar.add(palabras[i].i ?? i);
   }
-  const CONECTOR = new Set(['y', 'o', 'que', 'pues', 'e', 'es', 'bueno', 'osea', 'entonces']);
+  // Arranques fallidos: se dice algo, se interrumpe y se vuelve a empezar con las mismas palabras ("hoy me toca viajar a / hoy me toca viajar a Barcelona",
+  // "durante el trayecto, aprovecho, durante el trayecto me gusta…"). Se quita el primer intento entero (y lo que haya en medio).
+  const CONECTOR = new Set(['y', 'o', 'e', 'pues', 'bueno', 'osea', 'entonces']);
   for (let i = 0; i < palabras.length - 3; i++) {
-    for (let L = 6; L >= 2; L--) {
-      for (const c of [0, 1]) {
-        const j = i + L + c; if (j + L > palabras.length) continue;
-        if (c && !CONECTOR.has(norm(palabras[i + L].t))) continue;
+    let hecho = false;
+    for (let L = 8; L >= 2 && !hecho; L--) {
+      for (let entre = 0; entre <= (L >= 3 ? 4 : 1) && !hecho; entre++) {
+        const j = i + L + entre; if (j + L > palabras.length) continue;
+        if (L === 2 && entre === 1 && !CONECTOR.has(norm(palabras[i + L].t))) continue;
         let igual = true; for (let k = 0; k < L; k++) { const x = norm(palabras[i + k].t), y = norm(palabras[j + k].t); if (!x || x !== y) { igual = false; break; } }
-        if (!igual || palabras[j].de - palabras[i + L - 1].a > 1.6) continue;
-        for (let k = 0; k < L + c; k++) quitar.add(palabras[i + k].i ?? (i + k));
-        i += L + c - 1; L = 0; break;
+        if (!igual) continue;
+        const hueco = palabras[j].de - palabras[i + L - 1].a; if (hueco > (L >= 3 ? 6 : 1.6)) continue;
+        for (let k = 0; k < L + entre; k++) quitar.add(palabras[i + k].i ?? (i + k));
+        i += L + entre - 1; hecho = true;
       }
     }
   }
@@ -187,7 +191,7 @@ export function recomponeVoz({ palabras, quitar, wav48, salida, pausa = 0.45 }) 
 export async function guionLimpio(palabras, apiKey, notas = '') {
   const guion = palabras.map((w, i) => i + ':' + w.t).join(' ');
   const prompt = 'Eres editor de audio. Esta es la transcripción (índice:palabra) de una grabación en la que la persona se equivoca, se corrige y REPITE tomas de la misma frase varias veces. Tu trabajo es decidir qué tramos CONSERVAR para que la versión final sea el discurso completo y limpio, como si lo hubiera dicho perfecto a la primera.\n\n' +
-    'REGLAS:\n1) Cada idea o frase aparece UNA sola vez en la versión final. Si la dijo varias veces, conserva SOLO la toma mejor: la bien dicha, completa, fluida, sin tropiezos, sin cortarse y sin acabar en puntos suspensivos. Si una toma está completa y las demás a medias, la completa.\n' +
+    'REGLAS:\n1) Cada idea o frase aparece UNA sola vez en la versión final. Si la dijo varias veces, conserva SOLO la toma mejor: la bien dicha, completa, fluida, sin tropiezos, sin cortarse y sin acabar en puntos suspensivos. Si una toma está completa y las demás a medias, la completa. Si dos tomas son casi iguales, elige la que conserva más palabras del mensaje (la más completa, por ejemplo la que incluye el "un día" o el complemento que la otra omite).\n' +
     '2) Elimina falsos comienzos, palabras a medias, correcciones, comentarios a sí mismo o a otras personas ("¿cómo era?", "es que queda mal", "vale", "ya", "¿el sector ha dicho? sí", exclamaciones y charla fuera del guion) y muletillas.\n' +
     '3) NO pierdas ninguna idea del mensaje: la apertura, todo el desarrollo, cada parte de la historia que cuenta y el cierre o llamada a la acción final. Si una idea solo aparece en una toma imperfecta, conserva lo mejor de ella.\n' +
     '4) Mantén el orden original: los tramos conservados van en orden creciente de índice y sin solaparse. Cada tramo empieza al principio de una frase o idea y acaba al final de otra; puedes saltarte palabras sueltas dentro quitando un tramo y abriendo otro.\n' +

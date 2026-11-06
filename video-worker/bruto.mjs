@@ -168,6 +168,13 @@ if (R.titulo !== false && plan.titulo) {
   ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\fad(200,300)}' + limpiaT(plan.kicker || '').toLowerCase().split('').join('\u200A'));
   ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Titulo,,0,0,0,,{\\fad(250,350)}' + limpiaT(plan.titulo).toLowerCase());
 }
+// título gancho en pantalla al principio (y la pregunta justo debajo en los vídeos de pregunta-respuesta), en la zona alta libre de botones de la app
+if (process.env.TITULO_PANTALLA) {
+  const parte = (txt, max) => { const pal = String(txt).replace(/[{}\\]/g, '').trim().split(/\s+/); const lin = []; let cur = ''; for (const w of pal) { if ((cur + ' ' + w).trim().length > max && cur) { lin.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); } if (cur) lin.push(cur); return lin.join('\\N'); };
+  const tf = Math.min(durFinal, 4.2);
+  ev.push('Dialogue: 6,' + tAss(0) + ',' + tAss(tf) + ',Titulo,,0,0,0,,{\\an8\\pos(540,230)\\bord0\\shad4\\fs64\\fad(150,300)\\t(0,160,\\fscx100\\fscy100)\\fscx88\\fscy88}' + parte(process.env.TITULO_PANTALLA, 22));
+  if (process.env.PREGUNTA_PANTALLA) ev.push('Dialogue: 6,' + tAss(0.2) + ',' + tAss(Math.min(durFinal, 5.2)) + ',Titulo,,0,0,0,,{\\an8\\pos(540,500)\\bord0\\shad3\\fs44\\c&H00B8D2E3&\\fad(200,300)}' + parte('«' + process.env.PREGUNTA_PANTALLA + '»', 30));
+}
 // destello blanco muy breve en cada cambio de plano
 if (R.flash === true) piezas.slice(1).forEach(p => ev.push('Dialogue: 4,' + tAss(p.t0) + ',' + tAss(p.t0 + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c&HFFFFFF&\\alpha&H9C&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
 if (R.barra === true) ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durFinal) + ',Kicker,,0,0,0,,{\\an7\\pos(0,1896)\\p1\\c' + ACENTO + '\\fscx0\\t(0,' + Math.round(durFinal * 1000) + ',\\fscx100)}m 0 0 l 1080 0 1080 7 0 7{\\p0}');
