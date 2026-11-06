@@ -261,7 +261,11 @@ if (process.env.EDICION !== '1') try {
     c.desde = Math.round(d * 10) / 10; lista.push([d, d + L]); ocupado.set(v.id, lista);
   });
   if (movidos) console.log('Tramos de un mismo vídeo que se solapaban, movidos:', movidos);
-  { const n1 = plan.cortes.length; plan.cortes = plan.cortes.filter(c => !c._cont); if (plan.cortes.length !== n1) console.log('Cortes enlazados fundidos en un solo plano:', n1 - plan.cortes.length); }
+  { // un plano enlazado se funde con el anterior solo mientras el plano resultante no pase de ~3 s; si no, se queda como corte (continúa la misma toma, sin saltos)
+    let run = 0; const borrar = new Set();
+    cs.forEach((c, k) => { const d = durCorte(c, k); if (c._cont) { if (run + d <= 3.0) { borrar.add(c); run += d; } else run = d; } else run = d; });
+    const n1 = plan.cortes.length; plan.cortes = plan.cortes.filter(c => !borrar.has(c)); if (plan.cortes.length !== n1) console.log('Cortes enlazados fundidos en un solo plano:', n1 - plan.cortes.length);
+  }
 } catch (e) { console.log('Sin repartir los usos de los clips:', e.message); }
 // ¿Qué partes de la historia se quedan sin imágenes adecuadas? Se avisa a la persona para que pueda subir más clips
 if (process.env.EDICION !== '1') try {
@@ -320,20 +324,28 @@ const giroDe = {};
 const fuenteDe = (v) => ({ src: dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, hdr: dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : [] });
 const VARIANTES = [['A', ''], ['B', 'transpose=1,'], ['C', 'hflip,vflip,'], ['D', 'transpose=2,']];
 async function detectaGiros() {
-  const cand = [...new Set(valido.map(c => c.video))].map(id => idx.find(z => z.id === id)).filter(v => v && !v.es_imagen);
+  // Solo los vídeos en horizontal (los grabados en vertical y guardados de lado). Se miran DOS fotogramas y solo se gira si los dos coinciden en la misma rotación:
+  // girar un plano que estaba bien es peor que dejar uno ambiguo.
+  const cand = [...new Set(valido.map(c => c.video))].map(id => idx.find(z => z.id === id)).filter(v => v && !v.es_imagen && v.ancho > v.alto);
   const cola = cand.slice();
+  const pregunta = async (jpg, base) => {
+    const cont = [];
+    for (const [k, f] of VARIANTES) { const o = base + k + '.jpg'; await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', '-i', jpg, '-vf', f + 'scale=256:256:force_original_aspect_ratio=decrease', o]); if (fs.existsSync(o)) { cont.push({ type: 'text', text: 'Versión ' + k + ':' }); cont.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: fs.readFileSync(o).toString('base64') } }); } }
+    cont.push({ type: 'text', text: 'Son 4 rotaciones de la MISMA imagen (A es la original). ¿En cuál se ve la escena derecha: el suelo o la mesa abajo, el cielo o el techo arriba, las personas de pie y el texto legible? Si no se puede saber con seguridad (por ejemplo un primer plano de comida u objetos), responde "A". Responde SOLO JSON {"correcta":"A"|"B"|"C"|"D"}.' });
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 40, messages: [{ role: 'user', content: cont }] }) });
+    const j = await r.json(); return JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]).correcta;
+  };
   const uno = async (v) => {
     try {
-      const base = path.join(work, 'giro_' + v.id.replace(/\W/g, '')), t = Math.min(Math.max(1, (v.duracion || 4) / 2), Math.max(0, (v.duracion || 4) - 0.5)), { src, hdr } = fuenteDe(v);
-      await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...hdr, '-ss', t.toFixed(2), '-i', src, '-frames:v', '1', '-vf', 'scale=640:-2', base + '.jpg']);
-      if (!fs.existsSync(base + '.jpg')) return;
-      const cont = [];
-      for (const [k, f] of VARIANTES) { const o = base + k + '.jpg'; await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', '-i', base + '.jpg', '-vf', f + 'scale=256:256:force_original_aspect_ratio=decrease', o]); if (fs.existsSync(o)) { cont.push({ type: 'text', text: 'Versión ' + k + ':' }); cont.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: fs.readFileSync(o).toString('base64') } }); } }
-      cont.push({ type: 'text', text: 'Son 4 rotaciones de la MISMA imagen. ¿En cuál se ve la escena derecha: el suelo o la mesa abajo, el cielo o el techo arriba, las personas de pie y el texto legible? Responde SOLO JSON {"correcta":"A"|"B"|"C"|"D"}.' });
-      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 40, messages: [{ role: 'user', content: cont }] }) });
-      const j = await r.json(); const k = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]).correcta;
+      const D = v.duracion || 4, { src, hdr } = fuenteDe(v), res = [];
+      for (const [n, fr] of [[1, 0.3], [2, 0.7]]) {
+        const base = path.join(work, 'giro_' + v.id.replace(/\W/g, '') + n), t = Math.min(Math.max(0.5, D * fr), Math.max(0, D - 0.3));
+        await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...hdr, '-ss', t.toFixed(2), '-i', src, '-frames:v', '1', '-vf', 'scale=640:-2', base + '.jpg']);
+        if (fs.existsSync(base + '.jpg')) res.push(await pregunta(base + '.jpg', base));
+      }
+      const k = res.length === 2 && res[0] === res[1] ? res[0] : 'A';
       giroDe[v.id] = (VARIANTES.find(x => x[0] === k) || ['A', ''])[1];
-      if (giroDe[v.id]) console.log('Girado:', v.nombre, '→', k);
+      if (giroDe[v.id]) console.log('Girado:', v.nombre, '→', k, '(' + res.join(',') + ')');
     } catch (e) { console.log('Sin comprobar giro de', v.nombre, e.message); }
   };
   await Promise.all(Array.from({ length: 4 }, async () => { while (cola.length) await uno(cola.shift()); }));
