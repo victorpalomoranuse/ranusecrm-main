@@ -4501,7 +4501,11 @@ var dimFrac=0.5; /* dónde va el número total a lo largo de la línea de cota (
 function dimChain(C,px,w,mode,cent,view,tags){
   var c=dimCfg(w,mode,cent,view,px),g=c.g,L=g.l,h='',col=C.dim;
   function P(s,d){return {x:g.a.x+g.ux*s+c.nx*d,y:g.a.y+g.uy*s+c.ny*d}}
-  var sp=spanInterior(w,view,cent,{nx:c.nx,ny:c.ny}),S0=sp?Math.max(-w.t,sp.s0):0,S1=sp?Math.min(L+80,sp.s1):L,esInt=!!sp;
+  var sp=spanInterior(w,view,cent,{nx:c.nx,ny:c.ny});
+  /* con las cotas "de cara interior" nunca se acota por el eje/exterior: si no hay sala cerrada que dé la cara interior del muro (o de los extremos de una cadena),
+     se descuenta medio espesor en cada extremo, que es la medida interior de un muro que acaba en esquina o en T */
+  if(!sp&&st.v&&st.v.cb==='int'&&!w.arc){var tA=((w._chain?w._seq[0].w.t:w.t)||0)/2,tB=((w._chain?w._seq[w._seq.length-1].w.t:w.t)||0)/2;if(L>tA+tB+20)sp={s0:tA,s1:L-tB,lado:1}}
+  var S0=sp?Math.max(-w.t,sp.s0):0,S1=sp?Math.min(L+80,sp.s1):L,esInt=!!sp;
   function ext(s,d){var a=P(s,esInt?-w.t/2:w.t/2+3*px),b=P(s,d+4*px);return ln(a.x,a.y,b.x,b.y,col,0.7*px)}
   function tick(s,d){var p=P(s,d),tx=(g.ux+c.nx)/Math.SQRT2*3*px,ty=(g.uy+c.ny)/Math.SQRT2*3*px;return ln(p.x-tx,p.y-ty,p.x+tx,p.y+ty,col,1*px)}
   function line(s0,s1,d){var a=P(s0,d),b=P(s1,d);return ln(a.x,a.y,b.x,b.y,col,0.75*px)}

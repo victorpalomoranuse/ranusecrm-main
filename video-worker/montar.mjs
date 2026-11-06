@@ -199,6 +199,17 @@ if (process.env.SIN_REVISION !== '1') try {
     lista.push([t, t + dur]); });
   if (movidos) { console.log('Tramos repetidos movidos a otro momento del mismo vídeo:', movidos); fs.writeFileSync(planF, JSON.stringify(plan, null, 1)); }
 } catch (e) { console.log('Sin comprobar tramos repetidos:', e.message); }
+// Ningún plano dura menos del mínimo del formato: los cortes demasiado cortos se funden con el anterior (un plano más largo en vez de un parpadeo)
+if (process.env.EDICION !== '1') try {
+  const cs0 = plan.cortes.slice().sort((x, y) => x.de - y.de);
+  const dur0 = (c, k) => { const sig = cs0[k + 1]?.de ?? palabras.length; return Math.max(0.2, (palabras[Math.min(sig, palabras.length) - 1]?.a ?? 0) - (palabras[c.de]?.de ?? 0)); };
+  const minCorte = Math.max(1.4, Number(RECETA.corte?.min) || 1.4);
+  const mantener = []; let acc = 0;
+  cs0.forEach((c, k) => { const d = dur0(c, k); if (!mantener.length || acc >= minCorte) { mantener.push(c); acc = d; } else { acc += d; c._borrar = true; } });
+  if (mantener.length > 1 && acc < minCorte * 0.8) mantener.pop()._borrar = true;
+  const n0 = plan.cortes.length; plan.cortes = plan.cortes.filter(c => !c._borrar);
+  console.log('Cortes demasiado cortos fundidos (mínimo ' + minCorte.toFixed(1) + ' s):', n0, '→', plan.cortes.length);
+} catch (e) { console.log('Sin fundir cortes cortos:', e.message); }
 // Todos los vídeos que la persona eligió a mano deben aparecer: si falta alguno, se coloca donde mejor encaje, sustituyendo un corte de un vídeo repetido
 if (process.env.EDICION !== '1') try {
   const elegidos = idx.filter(v => v._elegido && !v.es_imagen && !v.hablando_a_camara);
@@ -250,6 +261,7 @@ if (process.env.EDICION !== '1') try {
     c.desde = Math.round(d * 10) / 10; lista.push([d, d + L]); ocupado.set(v.id, lista);
   });
   if (movidos) console.log('Tramos de un mismo vídeo que se solapaban, movidos:', movidos);
+  { const n1 = plan.cortes.length; plan.cortes = plan.cortes.filter(c => !c._cont); if (plan.cortes.length !== n1) console.log('Cortes enlazados fundidos en un solo plano:', n1 - plan.cortes.length); }
 } catch (e) { console.log('Sin repartir los usos de los clips:', e.message); }
 // ¿Qué partes de la historia se quedan sin imágenes adecuadas? Se avisa a la persona para que pueda subir más clips
 if (process.env.EDICION !== '1') try {
