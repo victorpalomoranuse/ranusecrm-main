@@ -156,16 +156,30 @@ export function recomponeVoz({ palabras, quitar, wav48, salida, pausa = 0.45 }) 
   const dur = Number(spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', wav48], { encoding: 'utf8' }).stdout) || 0;
   const kept = palabras.filter(w => !quitar.has(w.i)); const trozos = [];
   for (const w of kept) { const u = trozos[trozos.length - 1]; const contiguo = u && w.i === u.ult + 1; if (u && !w.corte && (contiguo || w.de - u.fin < 0.12) && w.de - u.fin < pausa) { u.fin = w.a; u.ult = w.i; u.ws.push(w); } else trozos.push({ ini: w.de, fin: w.a, ult: w.i, ws: [w] }); }
-  let t0 = 0; const partes = []; const fx = [];
+  // Los tiempos de palabra de la transcripción son imprecisos (a veces empiezan tarde o acaban pronto): cada corte se lleva al punto de MENOR energía
+  // cercano (un silencio real) antes del inicio y después del final de cada trozo, para no recortar el principio ni el final de una palabra.
+  let env = null; try { env = envolvente(wav48); } catch { env = null; }
+  let ref = 0; if (env) { const v = Array.from(env).filter(x => x > 0).sort((p, q) => p - q); ref = v[Math.floor(v.length * 0.7)] || 0; }
+  const valle = (desde, hasta) => {
+    if (!env || !ref || hasta <= desde) return null;
+    const i0 = Math.max(0, Math.round(desde * 100)), i1 = Math.min(env.length - 1, Math.round(hasta * 100)); let mejor = -1, mv = 1e9;
+    for (let i = i0; i <= i1; i++) if (env[i] < mv) { mv = env[i]; mejor = i; }
+    return mejor >= 0 && mv < ref * 0.3 ? mejor / 100 : null;
+  };
+  let t0 = 0; const partes = []; const fx = []; let ultB = 0;
   trozos.forEach((t, k) => {
-    const a = Math.max(0, t.ini - 0.06), b = Math.min(dur, t.fin + 0.1);
-    partes.push({ a, b, t0, ws: t.ws }); fx.push('[0:a]atrim=' + a.toFixed(3) + ':' + b.toFixed(3) + ',asetpts=PTS-STARTPTS,afade=t=in:d=0.008,afade=t=out:st=' + Math.max(0, b - a - 0.012).toFixed(3) + ':d=0.012[p' + k + ']'); t0 += b - a;
+    const prevFin = k > 0 ? trozos[k - 1].fin : 0, sigIni = k < trozos.length - 1 ? trozos[k + 1].ini : dur;
+    let a = valle(Math.max(prevFin + 0.02, t.ini - 0.3), t.ini + 0.01); if (a === null) a = Math.max(0, t.ini - 0.12);
+    let b = valle(t.fin - 0.01, Math.min(sigIni - 0.02, t.fin + 0.3)); if (b === null) b = Math.min(dur, t.fin + 0.15);
+    a = Math.max(a, ultB); b = Math.min(dur, Math.max(b, t.fin)); if (b <= a) { a = Math.max(0, t.ini - 0.06); b = Math.min(dur, t.fin + 0.1); }
+    ultB = b;
+    partes.push({ a, b, t0, ws: t.ws }); fx.push('[0:a]atrim=' + a.toFixed(3) + ':' + b.toFixed(3) + ',asetpts=PTS-STARTPTS,afade=t=in:d=0.012,afade=t=out:st=' + Math.max(0, b - a - 0.02).toFixed(3) + ':d=0.02[p' + k + ']'); t0 += b - a;
   });
   fs.writeFileSync(salida + '.txt', fx.join(';\n') + ';\n' + partes.map((_, k) => '[p' + k + ']').join('') + 'concat=n=' + partes.length + ':v=0:a=1[o]');
   spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', wav48, '-/filter_complex', salida + '.txt', '-map', '[o]', '-c:a', 'pcm_s16le', salida]);
   const nuevas = []; for (const p of partes) for (const w of p.ws) nuevas.push({ ...w, de: p.t0 + (w.de - p.a), a: p.t0 + (Math.min(w.a, p.b) - p.a) });
   nuevas.forEach((w, i) => { w.i0 = w.i; w.i = i; });
-  return { palabras: nuevas, durVoz: t0 };
+  return { palabras: nuevas, durVoz: t0, cortes: partes.map(p => p.t0) };
 }
 
 // Versión final del discurso: la IA decide qué tramos CONSERVAR (en vez de qué borrar). Así cada idea queda una sola vez, con su mejor toma, y nada se pisa.
