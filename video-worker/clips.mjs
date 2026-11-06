@@ -52,7 +52,7 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
   for (const modelo of ['claude-sonnet-4-5-20250929']) {
     for (let intento = 0; intento < 2 && !d; intento++) {
       try {
-        const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: modelo, max_tokens: 3000, messages: [{ role: 'user', content: prompt }] }) });
+        const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: modelo, max_tokens: 8000, messages: [{ role: 'user', content: prompt }] }) });
         const j = await r.json(); if (!r.ok) throw new Error('Claude ' + r.status);
         d = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]);
       } catch (e) { console.log('Elección de clips, reintento:', e.message); }
