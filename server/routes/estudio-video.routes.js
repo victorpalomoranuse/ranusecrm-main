@@ -53,7 +53,19 @@ export const FORMATO_DIA = {
   receta: { introLetras: true, corte: { min: 1.8, max: 3.5 }, acento: '#FFFFFF', zoomFinal: 1, whoosh: 0, flash: false, subs: { palabrasPorBloque: 2, tam: 86, margenV: 820 }, titulo: false, barra: false, mayusculas: false, resaltar: false, horas: true, fuente: 'Montserrat', musica: { volumen: -15 } },
   notas: 'Cuenta la historia en ORDEN CRONOLÓGICO, como un día en la vida. Cada clip debe ser literal a lo que se dice en ese momento (si habla del desayuno, un clip del desayuno; de la oficina, la oficina; del gimnasio, el gimnasio). Ritmo ágil de clips cortos, cortes secos, sin zooms ni efectos: manda el contenido y la secuencia. Cuando la voz diga una hora, la etiqueta de hora entra en pantalla.',
 };
-const SEMBRADOS = [FORMATO_BASE, FORMATO_LIMPIO, FORMATO_DINAMICO, FORMATO_DIA, FORMATO_CLIPS];
+// One take: un solo plano seguido, solo limpiado (sin b-roll, sin zooms ni cortes visibles), con subtítulos y música suave.
+export const FORMATO_ONETAKE = {
+  id: 'one-take', nombre: 'One take (un solo plano, limpio)', descripcion: 'Para alguien hablando a cámara de una sola toma: se quitan pausas, muletillas y tomas falladas, sin b-roll ni zooms. Subtítulos karaoke y música suave.',
+  receta: { corte: { min: 4, max: 10 }, acento: '#E3D2B8', zoomFinal: 1, whoosh: 0, flash: false, cambioCada: 9999, subs: { palabrasPorBloque: 3, tam: 80, margenV: 640 }, estiloSubs: 'karaoke', titulo: false, barra: false, mayusculas: false, resaltar: true, encuadre: false, subsBajoCara: true, graficos: false, pausa: 0.45, fuente: 'Montserrat', limpiar: true, musica: { volumen: -18 } },
+  notas: 'Un solo plano continuo: no añadir b-roll ni efectos. Quitar pausas largas, muletillas, tropiezos y tomas repetidas (quedarse con la mejor toma de cada frase). Subtítulos grandes, música suave por debajo.',
+};
+// Collage b-roll: voz en off con clips de la biblioteca; en algunos cortes se ven dos clips a la vez (uno arriba y otro abajo).
+export const FORMATO_COLLAGE = {
+  id: 'collage-broll', nombre: 'Collage b-roll (dos clips a la vez)', descripcion: 'Voz en off con tus clips: en cortes alternos se ven dos clips a la vez, uno sobre otro, mientras habla la voz. Más dinámico y con más material en pantalla.',
+  receta: { collage: true, introLetras: true, corte: { min: 1.8, max: 3.5 }, acento: '#FFFFFF', zoomFinal: 1, whoosh: 0, flash: false, subs: { palabrasPorBloque: 2, tam: 86, margenV: 820 }, titulo: false, barra: false, mayusculas: false, resaltar: false, horas: false, fuente: 'Montserrat', musica: { volumen: -15 } },
+  notas: 'Cuenta la historia en orden con los clips elegidos. Cada clip literal a lo que se dice. Ritmo ágil, cortes secos, sin efectos.',
+};
+const SEMBRADOS = [FORMATO_BASE, FORMATO_LIMPIO, FORMATO_DINAMICO, FORMATO_DIA, FORMATO_CLIPS, FORMATO_ONETAKE, FORMATO_COLLAGE];
 async function formatos() {
   const f = await leerJson(RUTA_FORMATOS, null);
   if (!f?.lista?.length) { const lista = SEMBRADOS.map(x => JSON.parse(JSON.stringify(x))); await guardarJson(RUTA_FORMATOS, { lista, sembrados: lista.map(x => x.id) }); return lista; }
@@ -128,7 +140,7 @@ router.put('/formatos/:id', async (req, res) => {
     if (r.zoomFinal !== undefined) f.receta.zoomFinal = num(r.zoomFinal, 1, 1.4, 1.14);
     if (r.whoosh !== undefined) f.receta.whoosh = num(r.whoosh, 0, 0.5, 0.16);
     if (r.flash !== undefined) f.receta.flash = !!r.flash;
-    for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'subsBajoCara', 'graficos', 'horas', 'preguntaSoloEscrita']) if (r[k] !== undefined) f.receta[k] = !!r[k];
+    for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'subsBajoCara', 'graficos', 'horas', 'preguntaSoloEscrita', 'collage']) if (r[k] !== undefined) f.receta[k] = !!r[k];
     if (['Montserrat', 'Rubik'].includes(r.fuente)) f.receta.fuente = r.fuente;
     if (['normal', 'karaoke'].includes(r.estiloSubs)) f.receta.estiloSubs = r.estiloSubs;
     if (r.musica === false) f.receta.musica = false; else if (r.musica && Number.isFinite(Number(r.musica.volumen))) f.receta.musica = { volumen: num(r.musica.volumen, -40, -6, -19) };

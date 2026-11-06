@@ -40,7 +40,7 @@ if (process.env.RECETA_JSON) { // receta elegida en el CRM
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
   if (o.corte) RECETA.corte = { ...RECETA.corte, ...o.corte };
   if (/^#[0-9a-f]{6}$/i.test(o.acento || '')) RECETA.acento = '&H' + o.acento.slice(5, 7) + o.acento.slice(3, 5) + o.acento.slice(1, 3) + '&';
-  for (const k of ['zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente', 'horas', 'introLetras', 'estiloSubs']) if (o[k] !== undefined) RECETA[k] = o[k];
+  for (const k of ['zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente', 'horas', 'introLetras', 'estiloSubs', 'collage']) if (o[k] !== undefined) RECETA[k] = o[k];
   if (o.musica && typeof o.musica === 'object') RECETA.musica = { ...RECETA.musica, ...o.musica };
   if (!['Montserrat', 'Rubik'].includes(RECETA.fuente)) RECETA.fuente = 'Montserrat';
   if (o.subs) RECETA.subs = { ...RECETA.subs, ...o.subs };
@@ -365,9 +365,19 @@ async function cortar(c, i) {
   const luz = gamma !== 1 ? 'eq=gamma=' + gamma.toFixed(2) + ',' : '';
   const vf = (giroDe[v.id] || '') + 'scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,' + luz + 'zoompan=z=\'' + (dir > 0 ? '1+' + (z1 - 1) + '*on/' + nf : z1 + '-' + (z1 - 1) + '*on/' + nf) + '\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=1080x1920:fps=30,' + RECETA.color + ',setsar=1,format=yuv420p';
   const loop = v.es_imagen ? ['-loop', '1', '-framerate', '30'] : (v.duracion < c.dur + 0.2 ? ['-stream_loop', '-1'] : []);
+  // Collage: en los cortes pares se ven DOS clips a la vez (uno arriba y otro abajo) mientras habla la voz
+  let args2 = null;
+  if (RECETA.collage && !v.es_imagen && i % 2 === 0) {
+    const w2 = valido[(i + 1) % valido.length], v2 = w2 && idx.find(x => x.id === w2.video);
+    if (v2 && !v2.es_imagen && v2.id !== v.id) {
+      const d2 = Math.max(0, Math.min(Number(w2.desde) || 0, Math.max(0, v2.duracion - c.dur - 0.1))), s1 = fuenteDe(v), s2 = fuenteDe(v2);
+      const fc = '[0:v]' + (giroDe[v.id] || '') + 'scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,' + luz + 'fps=30,setsar=1[a];[1:v]' + (giroDe[v2.id] || '') + 'scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,fps=30,setsar=1[b];[a][b]vstack=inputs=2,' + RECETA.color + ',setsar=1,format=yuv420p[o]';
+      args2 = ['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...s1.hdr, '-ss', desde.toFixed(2), '-i', s1.src, ...(v2.duracion < c.dur + 0.2 ? ['-stream_loop', '-1'] : []), ...s2.hdr, '-ss', d2.toFixed(2), '-i', s2.src, '-t', c.dur.toFixed(3), '-an', '-filter_complex', fc, '-map', '[o]', ...ARGS_VIDEO(23), out];
+    }
+  }
   let rr = { stderr: '' };
   for (let intento = 0; intento < 4; intento++) {
-    rr = { stderr: await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, ...ARGS_VIDEO(23), out]) };
+    rr = { stderr: await ejecuta(args2 || ['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, ...ARGS_VIDEO(23), out]) };
     if (fs.existsSync(out) && fs.statSync(out).size > 1000) break;
     if (!/403|429|5\d\d|timed out|Connection/i.test(rr.stderr || '')) break;
     await new Promise(r => setTimeout(r, 2500 * (intento + 1)));
