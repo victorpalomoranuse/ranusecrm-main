@@ -1,6 +1,7 @@
 // Trabajador de vídeo: vigila la cola del CRM ("Estudio de vídeo") y edita lo que llegue.
 // Uso: node worker.mjs "<indice.json>"      (se deja abierto; Ctrl+C para parar)
 import fs from 'fs';
+import crypto from 'crypto';
 import path from 'path';
 import { createRequire } from 'module';
 import { spawnSync, spawn } from 'child_process';
@@ -98,6 +99,32 @@ function buscaEnDriveLocal(nombre, bytes) {
     for (const e of ents) { const p = d + '/' + e.name; if (e.isDirectory()) cola.push(p); else if (e.name === nombre) { try { if (!bytes || fs.statSync(p).size === bytes) return p; } catch { /* sigue */ } } } }
   return null;
 }
+// Entrevista larga -> varios clips: cada momento elegido por la IA se convierte en un trabajo normal de "bruto" y se monta con el formato elegido
+async function procesaClips(t, entrada, dir) {
+  const clips = await import('./clips.mjs');
+  await paso(t, 'Transcribiendo la entrevista…', { pct: 8 });
+  const { palabras, dur } = await clips.transcribeLargo(entrada, path.join(dir, '_clips'), (f) => { t.pct = 8 + Math.round(f * 20); });
+  if (palabras.length < 30) throw new Error('No se oye suficiente voz en ese vídeo para sacar clips. Elige la entrevista donde se os oye hablar.');
+  await paso(t, 'Buscando los mejores momentos…', { pct: 30 });
+  const sel = await clips.eligeClips(palabras, dur, { n: t.num_clips || 0, min: t.dur_min || 25, max: t.dur_max || 70, notas: t.indicaciones || '' });
+  if (!sel.length) throw new Error('No he encontrado momentos que funcionen solos como clip. Prueba con indicaciones más concretas.');
+  const hijos = [];
+  for (let i = 0; i < sel.length; i++) {
+    const c = sel[i], id = crypto.randomUUID().slice(0, 8), f = path.join(dir, 'clip_' + id + '.mp4');
+    await paso(t, 'Recortando el clip ' + (i + 1) + ' de ' + sel.length + '…', { pct: 34 + Math.round(10 * i / sel.length) });
+    if (!clips.recorta(entrada, c.ini, c.fin, f)) { console.log('Clip', i + 1, 'sin recortar'); continue; }
+    await drive.cacheSube('entradas/' + id + '.mp4', f); fs.rmSync(f, { force: true });
+    const h = { ...t, id, tipo: 'bruto', archivo: 'entradas/' + id + '.mp4', base: null, nombre_archivo: c.titulo, padre: t.id, clip: { ini: Math.round(c.ini), fin: Math.round(c.fin), titulo: c.titulo, gancho: c.gancho }, estado: 'pendiente', progreso: 'En cola', pct: 0, creado: new Date().toISOString(), version: 1, origen: null, resultado: null, resultado_movil: null, error: null, plan: null, clips: undefined, num_clips: undefined, dur_min: undefined, dur_max: undefined, terminado: undefined, empezado: undefined };
+    await guardar(h); hijos.push(h);
+  }
+  if (!hijos.length) throw new Error('No he podido recortar ningún clip de la entrevista');
+  t.clips = hijos.map(h => h.id);
+  for (let i = 0; i < hijos.length; i++) {
+    await paso(t, 'Montando el clip ' + (i + 1) + ' de ' + hijos.length + '…', { pct: 46 + Math.round(52 * i / hijos.length) });
+    try { await procesa(hijos[i]); } catch (e) { console.log('[' + hijos[i].id + '] ERROR', e.message); await paso(hijos[i], 'Error', { estado: 'error', error: String(e.message).slice(0, 400) }); }
+  }
+  await paso(t, hijos.length + ' clips creados (aparecen abajo, cada uno con su vídeo)', { pct: 100, estado: 'listo', terminado: new Date().toISOString(), error: null });
+}
 async function procesa(t) {
   const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
   await paso(t, 'Descargando el archivo…', { estado: 'procesando', empezado: new Date().toISOString(), pct: 2 });
@@ -151,6 +178,7 @@ async function procesa(t) {
   const salida = path.join(dir, 'salida.mp4');
   await paso(t, t.tipo === 'voz' ? 'La IA está eligiendo escenas y montando…' : t.tipo === 'base' ? 'Montando sobre el vídeo base y superponiendo escenas…' : 'Quitando pausas y poniendo subtítulos…');
   try { await sincronizaMusica(); } catch (e) { console.log('Música sin sincronizar:', e.message); }
+  if (t.tipo === 'clips') { await procesaClips(t, entrada, dir); return; }
   let indiceUsar = INDICE, seleccion = {};
   const rec0 = Array.isArray(t.recursos) ? t.recursos : [];
   if (t.tipo === 'edicion') { indiceUsar = indiceEdicion; seleccion = seleccionEdicion; }

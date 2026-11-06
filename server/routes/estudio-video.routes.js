@@ -35,6 +35,12 @@ export const FORMATO_LIMPIO = {
   receta: { corte: { min: 1.5, max: 4 }, acento: '#FFFFFF', zoomFinal: 1, whoosh: 0, flash: false, subs: { palabrasPorBloque: 3, tam: 54, margenV: 620 }, titulo: false, barra: false, mayusculas: false, resaltar: false, fuente: 'Montserrat', musica: { volumen: -21 } },
   notas: 'Estilo limpio y serio: sin efectos ni adornos. El contenido manda.',
 };
+// Clips cortos con edición muy dinámica (para sacar varios vídeos de una entrevista larga): cortes y zooms rápidos, subtítulos grandes, gráficos y escenas superpuestas
+export const FORMATO_CLIPS = {
+  id: 'clips-dopaminicos', nombre: 'Clips dopamínicos (entrevista → varios clips)', descripcion: 'Edición rápida y llamativa para clips cortos: sin pausas, zooms in/out constantes que esconden los cortes, subtítulos grandes con la palabra clave resaltada, gráficos animados con cifras y escenas superpuestas si eliges recursos.',
+  receta: { corte: { min: 1.2, max: 3 }, acento: '#E3D2B8', zoomFinal: 1.18, whoosh: 0, flash: false, subs: { palabrasPorBloque: 2, tam: 84, margenV: 600 }, titulo: false, barra: false, mayusculas: false, resaltar: true, encuadre: true, encuadreZoom: 1.4, subsBajoCara: true, graficos: true, pausa: 0.18, fuente: 'Rubik', limpiar: true, musica: { volumen: -17 } },
+  notas: 'Ritmo muy alto y dinámico: cortes y zooms rápidos, sin pausas. Quita muletillas, repeticiones y errores. Gráficos cuando haya cifras o medidas. Si hay recursos, superpón escenas en los momentos clave.',
+};
 export const FORMATO_DINAMICO = {
   id: 'entrevista-dinamica', nombre: 'Entrevista dinámica', descripcion: 'Para vídeos hablando a cámara: sin pausas, plano centrado en la cara con zoom, subtítulos grandes bajo la cara y gráficos animados (cifra + icono) cuando se dice un dato.',
   receta: { corte: { min: 1.5, max: 4 }, acento: '#E3D2B8', zoomFinal: 1.12, whoosh: 0, flash: false, subs: { palabrasPorBloque: 2, tam: 76, margenV: 600 }, titulo: false, barra: false, mayusculas: false, resaltar: true, encuadre: true, encuadreZoom: 1.3, subsBajoCara: true, graficos: true, pausa: 0.28, fuente: 'Rubik', limpiar: true, musica: { volumen: -19 } },
@@ -46,7 +52,7 @@ export const FORMATO_DIA = {
   receta: { corte: { min: 1.2, max: 3 }, acento: '#FFFFFF', zoomFinal: 1, whoosh: 0, flash: false, subs: { palabrasPorBloque: 2, tam: 68, margenV: 880 }, titulo: false, barra: false, mayusculas: false, resaltar: false, horas: true, fuente: 'Montserrat', musica: { volumen: -22 } },
   notas: 'Cuenta la historia en ORDEN CRONOLÓGICO, como un día en la vida. Cada clip debe ser literal a lo que se dice en ese momento (si habla del desayuno, un clip del desayuno; de la oficina, la oficina; del gimnasio, el gimnasio). Ritmo ágil de clips cortos, cortes secos, sin zooms ni efectos: manda el contenido y la secuencia. Cuando la voz diga una hora, la etiqueta de hora entra en pantalla.',
 };
-const SEMBRADOS = [FORMATO_BASE, FORMATO_LIMPIO, FORMATO_DINAMICO, FORMATO_DIA];
+const SEMBRADOS = [FORMATO_BASE, FORMATO_LIMPIO, FORMATO_DINAMICO, FORMATO_DIA, FORMATO_CLIPS];
 async function formatos() {
   const f = await leerJson(RUTA_FORMATOS, null);
   if (!f?.lista?.length) { const lista = SEMBRADOS.map(x => JSON.parse(JSON.stringify(x))); await guardarJson(RUTA_FORMATOS, { lista, sembrados: lista.map(x => x.id) }); return lista; }
@@ -143,10 +149,10 @@ router.post('/trabajos', async (req, res) => {
     await bucket();
     const b = req.body || {}; const lista = await formatos(); const fmt = lista.find(x => x.id === b.formato);
     if (!fmt) return res.status(400).json({ error: 'Elige un formato' });
-    if (!['voz', 'bruto', 'base'].includes(b.tipo)) return res.status(400).json({ error: 'Indica si subes una voz en off, un bruto o eliges un vídeo base' });
+    if (!['voz', 'bruto', 'base', 'clips'].includes(b.tipo)) return res.status(400).json({ error: 'Indica si subes una voz en off, un bruto o eliges un vídeo base' });
     if (b.tipo === 'base' || b.base?.id) { if (!/^[\w-]{10,60}$/.test(b.base?.id || '')) return res.status(400).json({ error: 'Elige el archivo de Drive' }); }
     else if (!/^entradas\//.test(b.archivo || '')) return res.status(400).json({ error: 'Falta el archivo subido' });
-    const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, tipo: b.tipo, archivo: b.base?.id ? null : b.archivo, base: b.base?.id ? { id: limpia(b.base.id, 80), nombre: limpia(b.base.nombre, 160), ruta: limpia(b.base.ruta, 400) } : null, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: fmt.receta, notas_formato: fmt.notas || '', indicaciones: limpia(b.indicaciones, 800), musica: limpia(b.musica, 150) || 'auto', carpetas: (Array.isArray(b.carpetas) ? b.carpetas : []).slice(0, 30).map(c => limpia(c, 200)).filter(Boolean), recursos: (Array.isArray(b.recursos) ? b.recursos : []).slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
+    const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, tipo: b.tipo, ...(b.tipo === 'clips' ? { num_clips: Math.max(0, Math.min(12, parseInt(b.num_clips) || 0)), dur_min: Math.max(10, Math.min(120, parseInt(b.dur_min) || 25)), dur_max: Math.max(15, Math.min(180, parseInt(b.dur_max) || 70)) } : {}), archivo: b.base?.id ? null : b.archivo, base: b.base?.id ? { id: limpia(b.base.id, 80), nombre: limpia(b.base.nombre, 160), ruta: limpia(b.base.ruta, 400) } : null, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: fmt.receta, notas_formato: fmt.notas || '', indicaciones: limpia(b.indicaciones, 800), musica: limpia(b.musica, 150) || 'auto', carpetas: (Array.isArray(b.carpetas) ? b.carpetas : []).slice(0, 30).map(c => limpia(c, 200)).filter(Boolean), recursos: (Array.isArray(b.recursos) ? b.recursos : []).slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
     t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
     if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); } // si Google no arranca, lo hace el PC
     res.status(201).json({ trabajo: t });
