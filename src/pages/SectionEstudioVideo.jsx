@@ -197,8 +197,8 @@ function Trabajo({ t, formatos, onCambio }) {
           {t.faltan.map((x, i) => <div key={i} style={{ fontSize: '0.82rem', marginBottom: 4 }}>• <strong>“{x.parte}”</strong> → {x.necesitas}</div>)}
         </div>
       )}
-      {editando && <LineaTiempo t={t} vref={vref} onCambio={() => { setEditando(false); onCambio(); }} />}
-      {editTexto && <EditorTexto t={t} onCambio={() => { setEditTexto(false); onCambio(); }} />}
+      {editando && <EditorCortesPantalla t={t} onCerrar={() => setEditando(false)} onCambio={() => { setEditando(false); onCambio(); }} />}
+      {editTexto && <EditorTextoPantalla t={t} onCerrar={() => setEditTexto(false)} onCambio={() => { setEditTexto(false); onCambio(); }} />}
       {panelReg && (
         <div style={{ marginTop: 10, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10 }}>
           <div style={{ ...mut, marginBottom: 6 }}>{(t.recursos || []).length ? 'Esta es la selección que elegiste para este vídeo.' : recs.length ? 'No elegiste recursos concretos: estos son los clips que la IA usó en este montaje.' : 'Este montaje usó todo Drive indexado (no hay clips guardados de esta versión).'} Quita o añade carpetas, vídeos o imágenes y regenera. Sin nada elegido se usa todo Drive indexado.</div>
@@ -274,8 +274,41 @@ function EditorCortes({ t, vref, onCambio }) {
   );
 }
 
+// Pantalla completa: se abre encima de todo, con su propio vídeo para ver el resultado mientras se edita (Esc o "Cerrar" para salir)
+function PantallaCompleta({ titulo, onCerrar, children }) {
+  useEffect(() => { const f = (e) => { if (e.key === 'Escape') onCerrar(); }; window.addEventListener('keydown', f); const ov = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => { window.removeEventListener('keydown', f); document.body.style.overflow = ov; }; }, [onCerrar]);
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100000, background: '#0d0c0b', color: '#f3efe9', overflow: 'auto', padding: '14px 18px 40px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, position: 'sticky', top: 0, background: '#0d0c0b', paddingBottom: 8, zIndex: 2 }}>
+        <div style={{ fontSize: '1.15rem', fontWeight: 700, flex: 1 }}>{titulo}</div>
+        <button className="ap-btn ap-btn-sm" onClick={onCerrar}><X size={14} /> Cerrar (Esc)</button>
+      </div>
+      {children}
+    </div>
+  );
+}
+function EditorCortesPantalla({ t, onCambio, onCerrar }) {
+  const vref2 = useRef(null);
+  return (
+    <PantallaCompleta titulo={'Editar cortes · ' + (t.plan?.titulo || t.nombre_archivo || 'Vídeo')} onCerrar={onCerrar}>
+      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <video ref={vref2} src={t.url_movil || t.url} controls playsInline style={{ height: '46vh', maxHeight: 520, aspectRatio: '9 / 16', borderRadius: 12, background: '#000' }} />
+        <div style={{ flex: 1, minWidth: 260, ...mut }}>
+          <div style={{ fontWeight: 600, color: '#f3efe9', marginBottom: 6 }}>Cómo se usa</div>
+          <div>· Pulsa un bloque de la línea de tiempo para elegirlo. · Arrastra su borde derecho (amarillo) para alargarlo o acortarlo. · Mueve el vídeo o pulsa en la regla y usa <strong>Dividir</strong> para cortar un bloque. · <strong>Cambiar clip</strong> te deja elegir otro de Drive. · <strong>Intercambiar</strong> cambia dos clips de sitio. · Al acabar, <strong>Montar versión nueva</strong>.</div>
+          {(t.faltan || []).length > 0 && <div style={{ marginTop: 10 }}><div style={{ fontWeight: 600, color: '#f2c46d' }}>La IA echa en falta:</div>{t.faltan.map((x, i) => <div key={i} style={{ fontSize: '0.82rem', marginTop: 3 }}>• {x.necesitas}</div>)}</div>}
+        </div>
+      </div>
+      <LineaTiempo t={t} vref={vref2} onCambio={onCambio} grande />
+    </PantallaCompleta>
+  );
+}
+function EditorTextoPantalla({ t, onCambio, onCerrar }) {
+  return (<PantallaCompleta titulo={'Editar texto · ' + (t.plan?.titulo || t.nombre_archivo || 'Vídeo')} onCerrar={onCerrar}><EditorTexto t={t} onCambio={onCambio} grande /></PantallaCompleta>);
+}
+
 // ---------- Editor de texto: se ve lo que dices, se quitan palabras o frases con un clic y el vídeo se monta de nuevo sin ellas ----------
-function EditorTexto({ t, onCambio }) {
+function EditorTexto({ t, onCambio, grande = false }) {
   const pal = t.transcripcion || [];
   const propuesta = () => new Set(pal.map((w, i) => (w[3] ? i : -1)).filter(i => i >= 0));
   const [fuera, setFuera] = useState(propuesta), [ult, setUlt] = useState(null), [err, setErr] = useState(''), [enviando, setEnviando] = useState(false);
@@ -300,7 +333,7 @@ function EditorTexto({ t, onCambio }) {
     <div style={{ marginTop: 10, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10 }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>Editar texto</div>
       <div style={{ ...mut, marginBottom: 8 }}>Esto es lo que se dice. Pulsa una palabra para quitarla o ponerla (con Mayús pulsada, un tramo entero). Lo tachado en rojo no se oirá ni se verá. La IA ha propuesto lo que ves tachado; tú decides.</div>
-      <div style={{ maxHeight: 340, overflowY: 'auto', lineHeight: 2, padding: '6px 4px', borderRadius: 8, background: 'rgba(255,255,255,0.03)' }}>
+      <div style={{ maxHeight: grande ? '58vh' : 340, overflowY: 'auto', lineHeight: grande ? 2.3 : 2, fontSize: grande ? '1.1rem' : 'inherit', padding: '6px 4px', borderRadius: 8, background: 'rgba(255,255,255,0.03)' }}>
         {pal.map((w, i) => {
           const q = fuera.has(i), pausa = i > 0 && w[1] - pal[i - 1][2] > 0.7;
           return (<span key={i}>{pausa && <span style={{ ...mut, margin: '0 3px' }}>·</span>}
@@ -320,11 +353,11 @@ function EditorTexto({ t, onCambio }) {
 }
 
 // ---------- Línea de tiempo tipo CapCut: los cortes como bloques; se alargan/acortan arrastrando el borde, se cambian, se dividen, se eliminan o se intercambian ----------
-function LineaTiempo({ t, vref, onCambio }) {
+function LineaTiempo({ t, vref, onCambio, grande = false }) {
   const cs = t.cortes || [];
   const total = Math.max(1, Number(cs[cs.length - 1]?.fin) || 1);
   const [bloques, setBloques] = useState(() => cs.map((c, k) => ({ id: k, t0: Number(c.ini) || 0, videoInt: c.video, driveId: c.drive_id, nombre: c.nombre, esImagen: !!c.es_imagen, durClip: c.dur_clip, desde: Number(c.desde) || 0, texto: c.texto || '', nuevo: null })));
-  const [sel, setSel] = useState(0), [pos, setPos] = useState(0), [pps, setPps] = useState(46), [hist, setHist] = useState([]), [err, setErr] = useState(''), [enviando, setEnviando] = useState(false), [eligiendo, setEligiendo] = useState(false), [intercambio, setIntercambio] = useState(null);
+  const [sel, setSel] = useState(0), [pos, setPos] = useState(0), [pps, setPps] = useState(grande ? 84 : 46), [hist, setHist] = useState([]), [err, setErr] = useState(''), [enviando, setEnviando] = useState(false), [eligiendo, setEligiendo] = useState(false), [intercambio, setIntercambio] = useState(null);
   const n = bloques.length, fin = (k) => (k < n - 1 ? bloques[k + 1].t0 : total);
   const guarda = () => setHist(h => [...h.slice(-30), bloques]);
   const deshacer = () => setHist(h => { if (!h.length) return h; setBloques(h[h.length - 1]); return h.slice(0, -1); });
@@ -355,19 +388,19 @@ function LineaTiempo({ t, vref, onCambio }) {
     <div style={{ marginTop: 10, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
         <div style={{ fontWeight: 600, flex: 1 }}>Línea de tiempo</div>
-        <label style={{ ...mut, display: 'flex', alignItems: 'center', gap: 6 }}>Zoom<input type="range" min="20" max="140" value={pps} onChange={e => setPps(Number(e.target.value))} /></label>
+        <label style={{ ...mut, display: 'flex', alignItems: 'center', gap: 6 }}>Zoom<input type="range" min="20" max="220" value={pps} onChange={e => setPps(Number(e.target.value))} /></label>
         <button className="ap-btn ap-btn-sm" disabled={!hist.length} onClick={deshacer}>Deshacer</button>
       </div>
       <div style={{ ...mut, marginBottom: 8 }}>Pulsa un bloque para elegirlo. Arrastra el borde derecho de un bloque para alargarlo o acortarlo. La línea roja es el vídeo: pulsa en la regla o reproduce para moverla, y "Dividir" corta el bloque en ese punto.</div>
       <div style={{ overflowX: 'auto', paddingBottom: 6 }}>
-        <div style={{ position: 'relative', width: W, height: 130, userSelect: 'none' }}>
+        <div style={{ position: 'relative', width: W, height: grande ? 190 : 130, userSelect: 'none' }}>
           <div onClick={e => { const r = e.currentTarget.getBoundingClientRect(); ir(Math.max(0, Math.min(total, (e.clientX - r.left) / pps))); }} style={{ position: 'absolute', left: 0, top: 0, width: W, height: 22, cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
             {marcas.map(m => <div key={m} style={{ position: 'absolute', left: m * pps, top: 0, height: 22, borderLeft: '1px solid rgba(255,255,255,0.25)', paddingLeft: 3, fontSize: 10, color: 'rgba(255,255,255,0.55)' }}>{fmtDur(Math.round(m))}</div>)}
           </div>
           {bloques.map((x, k) => {
             const w = Math.max(10, (fin(k) - x.t0) * pps - 2), activo = k === sel, id = x.nuevo?.id || x.driveId;
             return (
-              <div key={x.id} onClick={() => clicBloque(k)} style={{ position: 'absolute', left: x.t0 * pps, top: 28, width: w, height: 92, borderRadius: 8, overflow: 'hidden', cursor: 'pointer', background: '#1d1b19', border: '2px solid ' + (activo ? '#f2c46d' : intercambio === k ? '#7ccf8f' : 'rgba(255,255,255,0.18)'), boxSizing: 'border-box' }}>
+              <div key={x.id} onClick={() => clicBloque(k)} style={{ position: 'absolute', left: x.t0 * pps, top: 28, width: w, height: grande ? 150 : 92, borderRadius: 8, overflow: 'hidden', cursor: 'pointer', background: '#1d1b19', border: '2px solid ' + (activo ? '#f2c46d' : intercambio === k ? '#7ccf8f' : 'rgba(255,255,255,0.18)'), boxSizing: 'border-box' }}>
                 {id && <img src={urlMiniatura(id)} alt="" loading="lazy" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.55 }} onError={e => { e.currentTarget.style.visibility = 'hidden'; }} />}
                 <div style={{ position: 'relative', padding: '3px 5px', fontSize: 10, lineHeight: 1.25, textShadow: '0 1px 2px #000' }}><strong>{k + 1}</strong>{w > 70 ? ' · ' + (x.nuevo ? x.nuevo.nombre : x.nombre || 'clip') : ''}{w > 110 && <div style={{ opacity: 0.85 }}>{(fin(k) - x.t0).toFixed(1)} s</div>}</div>
                 {k < n - 1 && <div onPointerDown={e => iniciaBorde(k, e)} onPointerMove={muevelBorde} onPointerUp={sueltaBorde} onClick={e => e.stopPropagation()} title="Arrastra para alargar o acortar" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 9, cursor: 'col-resize', background: 'rgba(242,196,109,0.7)' }} />}
