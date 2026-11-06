@@ -184,6 +184,23 @@ router.post('/trabajos/:id/rehacer', async (req, res) => {
     res.status(201).json({ trabajo: t });
   } catch { res.status(500).json({ error: 'No se pudo crear la nueva versión' }); }
 });
+// Postproducción a mano: cambiar el clip de un corte o mover el punto de inicio dentro del clip. Crea una versión nueva reutilizando el montaje anterior (misma voz, mismo plan).
+router.post('/trabajos/:id/editar', async (req, res) => {
+  try {
+    const o = await leerTrabajo(req.params.id); if (!o) return res.status(404).json({ error: 'No existe ese trabajo' });
+    if (!o.artefactos) return res.status(400).json({ error: 'Este vídeo se hizo antes de que existiera la edición de cortes. Pulsa Regenerar y podrás editar la versión nueva.' });
+    const cambios = (Array.isArray(req.body?.cambios) ? req.body.cambios : []).slice(0, 300).map(c => {
+      const vid = c?.video && /^[\w-]{10,60}$/.test(String(c.video.id || '')) ? { id: String(c.video.id), nombre: limpia(c.video.nombre, 160), tipo: c.video.tipo === 'imagen' ? 'imagen' : 'video' } : null;
+      const desde = Number.isFinite(Number(c?.desde)) && c?.desde !== '' && c?.desde !== null ? Math.max(0, Math.min(36000, Number(c.desde))) : undefined;
+      return { de: Number(c?.de), ...(vid ? { video: vid } : {}), ...(desde !== undefined ? { desde } : {}) };
+    }).filter(c => Number.isInteger(c.de) && (c.video || c.desde !== undefined));
+    if (!cambios.length) return res.status(400).json({ error: 'No has cambiado ningún corte' });
+    const t = { ...o, id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), tipo: 'edicion', origen: o.id, cambios, version: (o.version || 1) + 1, estado: 'pendiente', progreso: 'En cola', pct: 0, resultado: null, resultado_movil: null, error: null, plan: null, cortes: undefined, artefactos: undefined, faltan: undefined, empezado: undefined, terminado: undefined };
+    t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
+    if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); }
+    res.status(201).json({ trabajo: t });
+  } catch { res.status(500).json({ error: 'No se pudo crear la nueva versión editada' }); }
+});
 router.delete('/trabajos/:id', async (req, res) => {
   try {
     const o = await leerTrabajo(req.params.id); const rutas = [rutaTrabajo(req.params.id)];

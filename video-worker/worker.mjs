@@ -218,7 +218,8 @@ async function procesa(t) {
   await sube('salidas/' + t.id + '.mp4', final); await sube('salidas/' + t.id + '_movil.mp4', movil);
   let plan = null; const pf = path.join(dir, '_trabajo_salida', 'plan.json'); if (fs.existsSync(pf)) { try { const p = JSON.parse(fs.readFileSync(pf, 'utf8')); plan = { kicker: p.kicker, titulo: p.titulo, cortes: p.cortes?.length }; } catch { /* sin plan */ } }
   if (t.tipo === 'voz' || t.tipo === 'edicion') { try { await subeArtefactos(t, dir); } catch (e) { console.log('Sin guardar los datos para editar cortes:', e.message); } }
-  await paso(t, 'Listo', { pct: 100, estado: 'listo', resultado: 'salidas/' + t.id + '.mp4', resultado_movil: 'salidas/' + t.id + '_movil.mp4', plan, terminado: new Date().toISOString(), error: null });
+  let faltan = []; try { faltan = JSON.parse(fs.readFileSync(path.join(dir, '_trabajo_salida', 'edicion', 'faltan.json'), 'utf8')); } catch { /* sin aviso */ }
+  await paso(t, 'Listo', { faltan, pct: 100, estado: 'listo', resultado: 'salidas/' + t.id + '.mp4', resultado_movil: 'salidas/' + t.id + '_movil.mp4', plan, terminado: new Date().toISOString(), error: null });
 }
 
 // Modo servidor en la nube: se ejecuta UN trabajo (JOB_ID) y se apaga

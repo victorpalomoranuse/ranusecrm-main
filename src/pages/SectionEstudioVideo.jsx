@@ -147,8 +147,9 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
 }
 
 function Trabajo({ t, formatos, onCambio }) {
-  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
+  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [editando, setEditando] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
   const [txt, color] = ESTADOS[t.estado] || ESTADOS.pendiente;
+  const vref = useRef(null);
   const regenerar = async () => { try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { formato: t.formato, recursos: recs, ...(baseSel[0] ? { base: baseSel[0] } : {}) }); setPanelReg(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
   const rehacer = async () => { if (!cambios.trim()) return; try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { indicaciones: cambios, formato: fmt }); setCambios(''); setAbierto(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
   const borrar = async () => { if (!window.confirm('¿Borrar este vídeo?')) return; try { await api.delete('/estudio-video/trabajos/' + t.id); onCambio(); } catch { setErr('No se pudo borrar'); } };
@@ -169,14 +170,23 @@ function Trabajo({ t, formatos, onCambio }) {
       {t.indicaciones && <div style={{ ...mut, marginTop: 6, whiteSpace: 'pre-wrap' }}>“{t.indicaciones}”</div>}
       {t.estado === 'listo' && t.url && (
         <div style={{ marginTop: 10 }}>
-          <video src={t.url_movil || t.url} controls playsInline style={{ width: '100%', maxWidth: 300, borderRadius: 10, background: '#000', display: 'block' }} />
+          <video ref={vref} src={t.url_movil || t.url} controls playsInline style={{ width: '100%', maxWidth: 300, borderRadius: 10, background: '#000', display: 'block' }} />
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <a className="ap-btn ap-btn-sm" href={t.url} download target="_blank" rel="noreferrer"><Download size={13} /> Descargar</a>
             <button className="ap-btn ap-btn-sm" title="Elige qué recursos usar y vuelve a montarlo" onClick={() => setPanelReg(!panelReg)}><Wand2 size={13} /> Regenerar</button>
             <button className="ap-btn ap-btn-sm" onClick={() => setAbierto(!abierto)}><RefreshCw size={13} /> Pedir cambios</button>
+            {(t.cortes || []).length > 0 && <button className="ap-btn ap-btn-sm" title="Cambiar clips o moverlos a mano" onClick={() => setEditando(!editando)}><Scissors size={13} /> Editar cortes</button>}
           </div>
         </div>
       )}
+      {t.estado === 'listo' && (t.faltan || []).length > 0 && (
+        <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(242,196,109,0.5)', background: 'rgba(242,196,109,0.08)' }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>La IA echa en falta clips</div>
+          <div style={{ ...mut, marginBottom: 6 }}>En estas partes lo que se ve no encaja del todo con lo que dices o se repite por falta de material. Si subes o eliges estos clips, quedará mejor:</div>
+          {t.faltan.map((x, i) => <div key={i} style={{ fontSize: '0.82rem', marginBottom: 4 }}>• <strong>“{x.parte}”</strong> → {x.necesitas}</div>)}
+        </div>
+      )}
+      {editando && <EditorCortes t={t} vref={vref} onCambio={() => { setEditando(false); onCambio(); }} />}
       {panelReg && (
         <div style={{ marginTop: 10, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10 }}>
           <div style={{ ...mut, marginBottom: 6 }}>{(t.recursos || []).length ? 'Esta es la selección que elegiste para este vídeo.' : recs.length ? 'No elegiste recursos concretos: estos son los clips que la IA usó en este montaje.' : 'Este montaje usó todo Drive indexado (no hay clips guardados de esta versión).'} Quita o añade carpetas, vídeos o imágenes y regenera. Sin nada elegido se usa todo Drive indexado.</div>
@@ -198,6 +208,56 @@ function Trabajo({ t, formatos, onCambio }) {
       )}
       {err && <div className="ap-error" style={{ marginTop: 8 }}>{err}</div>}
       <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>{t.estado === 'error' && <button className="ap-btn ap-btn-sm" title="Elige qué recursos usar y vuelve a intentarlo" onClick={() => setPanelReg(!panelReg)}><Wand2 size={13} /> Regenerar</button>}<button className="ap-btn ap-btn-sm" onClick={borrar}><Trash2 size={13} /></button></div>
+    </div>
+  );
+}
+
+// Postproducción a mano: ver cada corte del vídeo, cambiar el clip o mover el punto de inicio dentro del clip, y montar una versión nueva
+function EditorCortes({ t, vref, onCambio }) {
+  const [filas, setFilas] = useState(() => (t.cortes || []).map(c => ({ ...c, desdeNuevo: c.desde, nuevo: null })));
+  const [fila, setFila] = useState(null), [err, setErr] = useState(''), [enviando, setEnviando] = useState(false);
+  const cambia = (k, parche) => setFilas(fs2 => fs2.map((f, i) => (i === k ? { ...f, ...parche } : f)));
+  const mod = (f) => !!f.nuevo || Number(f.desdeNuevo) !== Number(f.desde);
+  const nMod = filas.filter(mod).length;
+  const ir = (f) => { const v = vref?.current; if (v) { try { v.currentTime = f.ini; v.play().catch(() => {}); v.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* sin vídeo */ } } };
+  const aplicar = async () => {
+    setErr(''); setEnviando(true);
+    try {
+      const cambios = filas.filter(mod).map(f => ({ de: f.de, ...(f.nuevo ? { video: { id: f.nuevo.id, nombre: f.nuevo.nombre, tipo: f.nuevo.tipo } } : {}), desde: Number(f.desdeNuevo) || 0 }));
+      await api.post('/estudio-video/trabajos/' + t.id + '/editar', { cambios }); onCambio();
+    } catch (e) { setErr(e?.response?.data?.error || 'No se pudo crear la versión editada'); setEnviando(false); }
+  };
+  return (
+    <div style={{ marginTop: 10, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>Editar cortes</div>
+      <div style={{ ...mut, marginBottom: 8 }}>Pulsa "Ver" para ir a ese momento del vídeo. Cambia el clip de un corte o mueve el segundo de inicio dentro del clip, y monta la versión nueva. La voz, la música y los subtítulos se quedan como están.</div>
+      <div style={{ maxHeight: 460, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {filas.map((f, k) => (
+          <div key={f.de + '-' + k} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 6, borderRadius: 8, background: mod(f) ? 'rgba(242,196,109,0.10)' : 'rgba(255,255,255,0.03)', border: '1px solid ' + (mod(f) ? 'rgba(242,196,109,0.5)' : 'transparent') }}>
+            {(f.nuevo?.id || f.drive_id) ? <img src={urlMiniatura(f.nuevo?.id || f.drive_id)} alt="" loading="lazy" style={{ width: 40, height: 70, objectFit: 'cover', borderRadius: 6, background: '#000', flex: 'none' }} onError={e => { e.currentTarget.style.visibility = 'hidden'; }} /> : <div style={{ width: 40, height: 70, flex: 'none' }} />}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.78rem' }}><strong>{k + 1}</strong> · {fmtDur(Math.round(f.ini))}–{fmtDur(Math.round(f.fin))} · “{f.texto}”</div>
+              <div style={{ ...mut, wordBreak: 'break-word' }}>{f.nuevo ? 'Nuevo: ' + f.nuevo.nombre : (f.nombre || 'clip')}{f.dur_clip ? ' (' + Math.round(f.dur_clip) + ' s)' : ''}</div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+                {!f.es_imagen && (<label style={{ ...mut, display: 'flex', alignItems: 'center', gap: 4 }}>Empieza en el s
+                  <input type="number" min="0" step="0.5" value={f.desdeNuevo} onChange={e => cambia(k, { desdeNuevo: e.target.value })} className="ap-field-input" style={{ width: 70, padding: '2px 6px' }} /></label>)}
+                <button type="button" className="ap-btn ap-btn-sm" onClick={() => ir(f)}><Play size={12} /> Ver</button>
+                <button type="button" className="ap-btn ap-btn-sm" onClick={() => setFila(fila === k ? null : k)}><RefreshCw size={12} /> Cambiar clip</button>
+                {mod(f) && <button type="button" className="ap-btn ap-btn-sm" onClick={() => cambia(k, { nuevo: null, desdeNuevo: f.desde })}><X size={12} /> Deshacer</button>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {fila !== null && (
+        <div style={{ marginTop: 10 }}>
+          <Explorador key={fila} seleccion={[]} max={1} titulo={'Clip nuevo para el corte ' + (fila + 1)} vacio="Elegir clip o imagen de Drive" onCambio={(sel) => { if (sel[0]) { cambia(fila, { nuevo: sel[0], desdeNuevo: 0 }); setFila(null); } }} />
+        </div>
+      )}
+      {err && <div className="ap-error" style={{ marginTop: 8 }}>{err}</div>}
+      <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={!nMod || enviando} onClick={aplicar}><Wand2 size={13} /> {enviando ? 'Enviando…' : 'Montar versión nueva con ' + nMod + ' cambio(s)'}</button>
+      </div>
     </div>
   );
 }
