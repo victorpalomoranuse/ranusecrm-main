@@ -130,9 +130,9 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
 }
 
 function Trabajo({ t, formatos, onCambio }) {
-  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState('');
+  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [recs, setRecs] = useState(t.recursos || []);
   const [txt, color] = ESTADOS[t.estado] || ESTADOS.pendiente;
-  const regenerar = async () => { try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { formato: t.formato }); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
+  const regenerar = async () => { try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { formato: t.formato, recursos: recs }); setPanelReg(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
   const rehacer = async () => { if (!cambios.trim()) return; try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { indicaciones: cambios, formato: fmt }); setCambios(''); setAbierto(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
   const borrar = async () => { if (!window.confirm('¿Borrar este vídeo?')) return; try { await api.delete('/estudio-video/trabajos/' + t.id); onCambio(); } catch { setErr('No se pudo borrar'); } };
   return (
@@ -155,8 +155,18 @@ function Trabajo({ t, formatos, onCambio }) {
           <video src={t.url_movil || t.url} controls playsInline style={{ width: '100%', maxWidth: 300, borderRadius: 10, background: '#000', display: 'block' }} />
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <a className="ap-btn ap-btn-sm" href={t.url} download target="_blank" rel="noreferrer"><Download size={13} /> Descargar</a>
-            <button className="ap-btn ap-btn-sm" title="Vuelve a montarlo con los mismos recursos y la misma configuración" onClick={regenerar}><Wand2 size={13} /> Regenerar</button>
+            <button className="ap-btn ap-btn-sm" title="Elige qué recursos usar y vuelve a montarlo" onClick={() => setPanelReg(!panelReg)}><Wand2 size={13} /> Regenerar</button>
             <button className="ap-btn ap-btn-sm" onClick={() => setAbierto(!abierto)}><RefreshCw size={13} /> Pedir cambios</button>
+          </div>
+        </div>
+      )}
+      {panelReg && (
+        <div style={{ marginTop: 10, padding: 10, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10 }}>
+          <div style={{ ...mut, marginBottom: 6 }}>Esta es la selección con la que se hizo. Quita o añade carpetas, vídeos o imágenes y regenera (sin nada elegido usa todo Drive indexado).</div>
+          <Explorador seleccion={recs} onCambio={setRecs} titulo="Recursos (de dónde salen las escenas)" vacio="Todo Drive indexado" />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={regenerar}><Wand2 size={13} /> Regenerar con esta selección</button>
+            <button className="ap-btn ap-btn-sm" onClick={() => { setRecs(t.recursos || []); setPanelReg(false); }}>Cancelar</button>
           </div>
         </div>
       )}
@@ -168,7 +178,7 @@ function Trabajo({ t, formatos, onCambio }) {
         </div>
       )}
       {err && <div className="ap-error" style={{ marginTop: 8 }}>{err}</div>}
-      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>{t.estado === 'error' && <button className="ap-btn ap-btn-sm" title="Vuelve a intentarlo con los mismos recursos y la misma configuración" onClick={regenerar}><Wand2 size={13} /> Regenerar</button>}<button className="ap-btn ap-btn-sm" onClick={borrar}><Trash2 size={13} /></button></div>
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>{t.estado === 'error' && <button className="ap-btn ap-btn-sm" title="Elige qué recursos usar y vuelve a intentarlo" onClick={() => setPanelReg(!panelReg)}><Wand2 size={13} /> Regenerar</button>}<button className="ap-btn ap-btn-sm" onClick={borrar}><Trash2 size={13} /></button></div>
     </div>
   );
 }
