@@ -39,7 +39,7 @@ export function mezcla({ entradaIdx, voz, durTotal, db = -19, salida = 'am', ini
   return [
     `[${voz}]asplit=2[${voz}_a][${voz}_s]`,
     `[${entradaIdx}:a]aformat=sample_rates=48000:channel_layouts=stereo,atrim=${inicio.toFixed(2)}:${(inicio + durTotal + 1).toFixed(2)},asetpts=PTS-STARTPTS,volume=${db}dB,afade=t=in:d=1.2,afade=t=out:st=${Math.max(0, durTotal - 2.2).toFixed(2)}:d=2.2[${voz}_m]`,
-    `[${voz}_m][${voz}_s]sidechaincompress=threshold=0.015:ratio=12:attack=15:release=450:makeup=1[${voz}_d]`,
+    `[${voz}_m][${voz}_s]sidechaincompress=threshold=0.03:ratio=4:attack=20:release=500:makeup=1[${voz}_d]`,
     `[${voz}_a][${voz}_d]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.95[${salida}]`,
   ].join(';');
 }
