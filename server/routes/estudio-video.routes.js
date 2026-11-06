@@ -101,6 +101,7 @@ router.post('/subida', async (req, res) => {
     await bucket();
     const nombre = limpia(req.body?.nombre, 120).replace(/[^\w.\-]+/g, '_') || 'archivo';
     const ruta = (req.body?.tipo === 'musica' ? 'musica/' + nombre : 'entradas/' + Date.now() + '_' + nombre);
+    if (req.body?.tipo !== 'musica') { try { const url = await drive.iniciaSubidaGcs(ruta, req.headers.origin); return res.json({ ruta, url, gcs: true }); } catch (e) { console.log('Subida GCS no disponible, uso Storage:', e.message); } }
     const { data, error } = await st().createSignedUploadUrl(ruta); if (error) throw error;
     res.json({ ruta, url: data.signedUrl, token: data.token });
   } catch (e) { res.status(500).json({ error: 'No se pudo preparar la subida: ' + (e.message || '') }); }

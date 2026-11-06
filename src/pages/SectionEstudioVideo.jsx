@@ -12,11 +12,11 @@ async function subirArchivo(file, onProgreso, tipo) {
   const { data } = await api.post('/estudio-video/subida', { nombre: file.name, tipo });
   const cuerpo = new FormData(); cuerpo.append('cacheControl', '3600'); cuerpo.append('', file);
   await new Promise((ok, ko) => {
-    const x = new XMLHttpRequest(); x.open('PUT', data.url);
+    const x = new XMLHttpRequest(); x.open('PUT', data.url); if (data.gcs) x.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
     x.upload.onprogress = (e) => { if (e.lengthComputable) onProgreso(Math.round(e.loaded / e.total * 100)); };
     x.onload = () => (x.status < 300 ? ok() : ko(new Error('La subida falló (' + x.status + ')')));
     x.onerror = () => ko(new Error('Sin conexión durante la subida'));
-    x.send(cuerpo);
+    x.send(data.gcs ? file : cuerpo);
   });
   return data.ruta;
 }

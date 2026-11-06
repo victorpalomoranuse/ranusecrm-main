@@ -138,10 +138,13 @@ async function procesa(t) {
     }
     if (!desdeCache) { try { await drive.cacheSube(claveCache, entrada); console.log('Copia del vídeo base guardada'); } catch (e) { console.log('Sin guardar copia del vídeo base:', e.message); } }
   } else {
-    const u = await st.createSignedUrl(t.archivo, 600); if (!u.data?.signedUrl) throw new Error('No encuentro el archivo subido');
     const ext = path.extname(t.archivo) || '.mp4'; entrada = path.join(dir, 'entrada' + ext);
-    const rs = await fetch(u.data.signedUrl); if (!rs.ok) throw new Error('No se pudo descargar el archivo (' + rs.status + ')');
-    fs.writeFileSync(entrada, Buffer.from(await rs.arrayBuffer()));
+    // los archivos grandes se suben a Google Cloud Storage; los pequeños (música, etc.) a Supabase
+    if (!(await drive.cacheBaja(t.archivo, entrada).catch(() => false))) {
+      const u = await st.createSignedUrl(t.archivo, 600); if (!u.data?.signedUrl) throw new Error('No encuentro el archivo subido');
+      const rs = await fetch(u.data.signedUrl); if (!rs.ok) throw new Error('No se pudo descargar el archivo (' + rs.status + ')');
+      await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(entrada));
+    }
   }
   fs.writeFileSync(path.join(dir, 'receta.json'), JSON.stringify(t.receta || {}));
   const notas = [t.notas_formato, t.indicaciones].filter(Boolean).join('\n');

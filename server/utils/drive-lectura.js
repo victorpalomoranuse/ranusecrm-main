@@ -15,7 +15,7 @@ async function clave() {
 async function accesoToken() {
   if (token && Date.now() < caduca - 60000) return token;
   const c = await clave(), ahora = Math.floor(Date.now() / 1000);
-  const cab = b64(JSON.stringify({ alg: 'RS256', typ: 'JWT' })), cuerpo = b64(JSON.stringify({ iss: c.client_email, scope: 'https://www.googleapis.com/auth/drive.readonly', aud: 'https://oauth2.googleapis.com/token', iat: ahora, exp: ahora + 3600 }));
+  const cab = b64(JSON.stringify({ alg: 'RS256', typ: 'JWT' })), cuerpo = b64(JSON.stringify({ iss: c.client_email, scope: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/devstorage.read_write', aud: 'https://oauth2.googleapis.com/token', iat: ahora, exp: ahora + 3600 }));
   const firma = crypto.createSign('RSA-SHA256').update(cab + '.' + cuerpo).sign(c.private_key, 'base64url');
   const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') + '&assertion=' + cab + '.' + cuerpo + '.' + firma });
   const j = await r.json(); if (!r.ok) throw new Error('Drive: ' + (j.error_description || j.error));
@@ -29,6 +29,11 @@ async function api(ruta, params = {}) {
 }
 const CAMPOS = 'id,name,mimeType,size,modifiedTime,thumbnailLink,videoMediaMetadata(durationMillis,width,height),imageMediaMetadata(width,height)';
 
+// Subida directa del navegador a Google Cloud Storage (sin límite de 50 MB): se abre una sesión reanudable y el navegador sube el archivo a esa dirección
+export async function iniciaSubidaGcs(nombre, origen) {
+  const r = await fetch('https://storage.googleapis.com/upload/storage/v1/b/ranuse-video-cache/o?uploadType=resumable&name=' + encodeURIComponent(nombre), { method: 'POST', headers: { Authorization: 'Bearer ' + await accesoToken(), 'Content-Type': 'application/json', Origin: origen || 'https://ranusecrm.vercel.app' }, body: JSON.stringify({ name: nombre }) });
+  const url = r.headers.get('location'); if (!r.ok || !url) throw new Error('GCS ' + r.status + ' ' + (await r.text()).slice(0, 100)); return url;
+}
 export async function raiz() { const j = await api('files', { q: 'sharedWithMe=true and trashed=false', fields: 'files(id,name,mimeType)', pageSize: '50' }); return (j.files || []).filter(f => f.mimeType === 'application/vnd.google-apps.folder'); }
 export async function hijos(id) {
   const c = cache.get(id); if (c && Date.now() - c.t < 60000) return c.d;
