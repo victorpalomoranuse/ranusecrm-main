@@ -2,6 +2,7 @@
 // Uso: node worker.mjs "<indice.json>"      (se deja abierto; Ctrl+C para parar)
 import fs from 'fs';
 import crypto from 'crypto';
+import { hfDisponible, componeHF } from './hf.mjs';
 import path from 'path';
 import { createRequire } from 'module';
 import { spawnSync, spawn } from 'child_process';
@@ -221,10 +222,24 @@ async function procesa(t) {
     try { await indexaCarpetas(t, { carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }, idsExist); } catch (e) { console.log('Carpetas sin indexar del todo:', e.message); } seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), imagenes: rec.filter(r => r.tipo === 'imagen').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
   const conInserciones = t.tipo === 'base' || rec0.length > 0;
   const script = (t.tipo === 'voz' || t.tipo === 'edicion') ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
-  const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, ...(t.tipo === 'edicion' ? { REUSE: '1', SIN_LIMPIEZA: '1', SIN_REVISION: '1', EDICION: '1' } : {}), ...(t.edicion_texto && t.tipo !== 'edicion' ? { FUERA_JSON: path.join(dir, 'fuera.json') } : {}), TITULO_PANTALLA: t.clip?.titulo || '', PREGUNTA_PANTALLA: t.clip?.pregunta || '', RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: (t.tipo === 'edicion' && t.musica_usada) ? t.musica_usada : (t.musica === 'ninguna' ? 'ninguna' : (t.musica || 'auto')), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
+  const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, ...(t.tipo === 'edicion' ? { REUSE: '1', SIN_LIMPIEZA: '1', SIN_REVISION: '1', EDICION: '1' } : {}), ...(t.edicion_texto && t.tipo !== 'edicion' ? { FUERA_JSON: path.join(dir, 'fuera.json') } : {}), ...(hfDisponible() ? { SIN_ASS: '1' } : {}), TITULO_PANTALLA: t.clip?.titulo || '', PREGUNTA_PANTALLA: t.clip?.pregunta || '', RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: (t.tipo === 'edicion' && t.musica_usada) ? t.musica_usada : (t.musica === 'ninguna' ? 'ninguna' : (t.musica || 'auto')), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
   console.log((r.stdout || '').split('\n').slice(-6).join('\n'));
   { const mm = /Música: (.+?) \(\d/.exec(r.stdout || ''); if (mm) t.musica_usada = mm[1]; }
   if (!fs.existsSync(salida)) { const txt = ((r.stdout || '') + (r.stderr || '')); const fallo = /FALLO:[^\r\n]*/.exec(txt)?.[0]; throw new Error(fallo ? 'El montaje se ha parado. ' + fallo : 'El montaje no ha producido vídeo. ' + txt.slice(-300)); }
+  // capa visual: HyperFrames dibuja los textos sobre el vídeo; si falla, se queman con ffmpeg (el método de siempre)
+  if (hfDisponible() && fs.existsSync(salida)) {
+    const subs = [path.join(dir, '_trabajo_salida', 'subs.ass')].find(f => fs.existsSync(f));
+    if (subs) {
+      await paso(t, 'Dibujando subtítulos y gráficos (capa visual)…', { pct: 90 });
+      const base = salida, conTextos = path.join(dir, 'con_textos.mp4'), wk = path.dirname(subs);
+      try { componeHF({ base, subsAss: subs, fuentes: [path.join(wk, 'fonts', 'Montserrat-Bold.ttf'), path.join(wk, 'fonts', 'Rubik-Bold.ttf')], salida: conTextos, dir }); fs.copyFileSync(conTextos, salida); console.log('Capa visual HyperFrames aplicada'); }
+      catch (e) {
+        console.log('HyperFrames falló, se queman los textos con ffmpeg:', e.message.slice(0, 300));
+        const r2 = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', base, '-vf', 'ass=subs.ass:fontsdir=fonts', ...['-c:v', 'libx264', '-crf', '17', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-c:a', 'copy'], conTextos], { cwd: wk });
+        if (fs.existsSync(conTextos) && fs.statSync(conTextos).size > 5000) fs.copyFileSync(conTextos, salida); else console.log('Tampoco se pudieron quemar los textos:', (r2.stderr || '').slice(0, 200));
+      }
+    }
+  }
   try { await publicaIndiceMusica(); } catch { /* el índice se publica la próxima vez */ }
   await paso(t, 'Ajustando el tamaño del archivo final…', { pct: 93 });
   const final = path.join(dir, 'final.mp4'), movil = path.join(dir, 'movil.mp4');

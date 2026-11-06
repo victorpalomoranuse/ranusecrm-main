@@ -461,6 +461,6 @@ if (RECETA.whoosh > 0 && marcas.length > 1) {
   fa += ';[2:a]asplit=' + n + marcas.slice(1).map((_, k) => '[w' + k + ']').join('') + ';' + marcas.slice(1).map((m, k) => '[w' + k + ']adelay=' + Math.max(0, Math.round((m - 0.2) * 1000)) + ':all=1[d' + k + ']').join(';') + ';[voz]' + marcas.slice(1).map((_, k) => '[d' + k + ']').join('') + 'amix=inputs=' + (n + 1) + ':normalize=0:duration=first,alimiter=limit=0.95[va]';
 } else fa += ';[voz]anull[va]';
 if (pista) { args.push('-stream_loop', '-1', '-i', pista.ruta); fa += ';' + mezcla({ entradaIdx: args.filter(x => x === '-i').length - 1, voz: 'va', durTotal: durVoz, db: Number(RECETA.musica.volumen) || -19, salida: 'a' }); } else fa += ';[va]anull[a]';
-args.push('-filter_complex', '[0:v]ass=subs.ass:fontsdir=fonts[v];' + fa, '-map', '[v]', '-map', '[a]', ...ARGS_VIDEO(23), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-shortest', '-movflags', '+faststart', path.resolve(SALIDA));
+args.push('-filter_complex', '[0:v]' + (process.env.SIN_ASS === '1' ? 'null' : 'ass=subs.ass:fontsdir=fonts') + '[v];' + fa, '-map', '[v]', '-map', '[a]', ...ARGS_VIDEO(23), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-shortest', '-movflags', '+faststart', path.resolve(SALIDA));
 const fin = run('ffmpeg', args, { cwd: work });
 console.log(fs.existsSync(SALIDA) ? 'OK ' + SALIDA + ' · ' + (fs.statSync(SALIDA).size / 1048576).toFixed(1) + ' MB' : 'FALLO ' + (fin.stderr || '').slice(0, 800));

@@ -281,7 +281,7 @@ graf.forEach((g, k) => {
   filtros.push('[' + prev + '][g' + k + ']overlay=x=\'(W-w)/2\':y=\'' + yFin + '-70*pow(max(0\\,1-(t-' + a + ')/0.32)\\,3)\':enable=\'between(t\\,' + a + '\\,' + b2 + ')\':eof_action=pass[o' + k + ']');
   prev = 'o' + k;
 });
-filtros.push('[' + prev + ']ass=subs.ass:fontsdir=fonts[v]');
+filtros.push('[' + prev + ']' + (process.env.SIN_ASS === '1' ? 'null' : 'ass=subs.ass:fontsdir=fonts') + '[v]');
 if (pista) {
   entradas.push('-stream_loop', '-1', '-i', pista.ruta);
   filtros.push('[ac]' + AUDIO + '[voz0]'); filtros.push(...whooshFiltro('voz0', 'voz', 2 + ins.length + graf.length));
