@@ -47,7 +47,7 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
   palabras.forEach((w, i) => { if (!cur.length) ini = w.de; cur.push(w.t); if (cur.length >= 18 || /[.?!]$/.test(w.t) && cur.length >= 8 || i === palabras.length - 1) { lineas.push('[' + Math.round(ini) + ' s · ' + mmss(ini) + '] ' + cur.join(' ')); cur = []; } });
   const cuantos = n > 0 ? 'Elige EXACTAMENTE ' + n + ' momentos' : 'Elige entre 3 y ' + Math.max(3, Math.min(10, Math.round(dur / 300))) + ' momentos (solo los que de verdad merezcan ser un vídeo; mejor pocos y buenos)';
   const prompt = 'Eres el editor jefe de Ranuse Design (diseño de espacios deportivos y gimnasios) y preparas clips virales para Instagram Reels, TikTok y Shorts a partir de una entrevista larga.\n\n' + PLAYBOOK_REDES + '\n\nLee la transcripción (con marcas de tiempo en segundos) y ' + cuantos + ' que funcionen COMO VÍDEO CORTO independiente. Cada clip debe durar entre ' + min + ' y ' + max + ' segundos (si es una pregunta con su respuesta y hace falta algo más, puede pasarse un poco), empezar al principio de una frase y acabar al final de otra, y NO solaparse con los demás: reparte los clips por TODA la entrevista, cada uno sobre una idea distinta. Si la entrevista es de preguntas y respuestas, cada clip debe EMPEZAR en la pregunta (para que se vea la pregunta y luego la respuesta) y acabar con la respuesta completa. Evita saludos, rodeos, partes confusas o que dependan de algo dicho antes. Ordénalos del mejor al peor.' + (notas ? ' INDICACIONES DE LA PERSONA (obligatorias): ' + notas : '') +
-    '\n\nResponde SOLO con JSON: {"clips":[{"ini": segundos de inicio, "fin": segundos de fin, "titulo": "título gancho en pantalla, que provoque curiosidad o prometa algo (máx 9 palabras, en español, sin comillas)", "pregunta": "si es de pregunta y respuesta, la pregunta resumida; si no, vacío", "gancho": "la frase de apertura"}]}\n\nTRANSCRIPCIÓN:\n' + lineas.join('\n');
+    '\n\nResponde SOLO con JSON: {"clips":[{"ini": segundos de inicio, "fin": segundos de fin, "titulo": "título gancho en pantalla, que provoque curiosidad o prometa algo (máx 9 palabras, en español, sin comillas)", "pregunta": "si es de pregunta y respuesta, la pregunta resumida; si no, vacío", "gancho": "la frase de apertura", "score": número de 0 a 100 con el potencial viral del clip (sé exigente y honesto: 90+ es excepcional, la mayoría entre 55 y 85), "sub": {"gancho": 0-100 (¿engancha en los 3 primeros segundos?), "flujo": 0-100 (¿ritmo y claridad, sin rodeos?), "valor": 0-100 (¿aporta algo útil, sorprendente o emocionante?), "tendencia": 0-100 (¿encaja con lo que funciona hoy en redes: datos, opiniones fuertes, errores comunes, historias?)}, "motivo": "en una frase, por qué funciona o qué le falta"}]}\n\nTRANSCRIPCIÓN:\n' + lineas.join('\n');
   let d = null;
   for (const modelo of ['claude-sonnet-4-5-20250929']) {
     for (let intento = 0; intento < 2 && !d; intento++) {
@@ -70,7 +70,7 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
     if (b - a > Math.max(max * 2.2, 90)) { console.log('Recortado por largo:', Math.round(a), Math.round(b)); b = a + Math.max(max * 2.2, 90); }
     // un solape pequeño se permite; si se pisa más de la mitad con otro clip ya elegido, se descarta
     if (out.some(o => Math.min(b, o.fin) - Math.max(a, o.ini) > 0.5 * Math.min(b - a, o.fin - o.ini))) { console.log('Descartado por solaparse:', Math.round(a), Math.round(b)); continue; }
-    out.push({ ini: a, fin: b, titulo: String(c.titulo || 'Clip').slice(0, 90), pregunta: String(c.pregunta || '').slice(0, 200), gancho: String(c.gancho || '').slice(0, 200) });
+    out.push({ ini: a, fin: b, titulo: String(c.titulo || 'Clip').slice(0, 90), pregunta: String(c.pregunta || '').slice(0, 200), gancho: String(c.gancho || '').slice(0, 200), ...puntua(c) });
     if (n > 0 && out.length >= n) break;
   }
   // si aun así no ha quedado ninguno, se usan los propuestos tal cual (mejor un clip imperfecto que ninguno)
@@ -79,6 +79,13 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
 }
 
 // Recorta un momento (con su audio) para montarlo después como un vídeo normal
+// Puntuación de viralidad (0-100) con sus 4 componentes y el motivo
+function puntua(c) {
+  const n = (x) => (Number.isFinite(Number(x)) ? Math.max(0, Math.min(100, Math.round(Number(x)))) : null);
+  const sub = { gancho: n(c.sub?.gancho), flujo: n(c.sub?.flujo), valor: n(c.sub?.valor), tendencia: n(c.sub?.tendencia) };
+  let score = n(c.score); if (score === null) { const v = Object.values(sub).filter(x => x !== null); score = v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; }
+  return { score, sub, motivo: String(c.motivo || '').slice(0, 220) };
+}
 export function recorta(entrada, ini, fin, salida) {
   run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', ini.toFixed(2), '-i', entrada, '-t', (fin - ini).toFixed(2), '-vf', "scale='min(1080,iw)':-2", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', salida]);
   return fs.existsSync(salida) && fs.statSync(salida).size > 5000;

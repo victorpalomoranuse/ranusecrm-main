@@ -40,7 +40,7 @@ if (process.env.RECETA_JSON) { // receta elegida en el CRM
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
   if (o.corte) RECETA.corte = { ...RECETA.corte, ...o.corte };
   if (/^#[0-9a-f]{6}$/i.test(o.acento || '')) RECETA.acento = '&H' + o.acento.slice(5, 7) + o.acento.slice(3, 5) + o.acento.slice(1, 3) + '&';
-  for (const k of ['zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente', 'horas', 'introLetras']) if (o[k] !== undefined) RECETA[k] = o[k];
+  for (const k of ['zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente', 'horas', 'introLetras', 'estiloSubs']) if (o[k] !== undefined) RECETA[k] = o[k];
   if (o.musica && typeof o.musica === 'object') RECETA.musica = { ...RECETA.musica, ...o.musica };
   if (!['Montserrat', 'Rubik'].includes(RECETA.fuente)) RECETA.fuente = 'Montserrat';
   if (o.subs) RECETA.subs = { ...RECETA.subs, ...o.subs };
@@ -421,7 +421,13 @@ bloques.forEach((bl, k) => {
   let pos = ''; { const mid = (ini + fin) / 2, bd = bandas.find(z => mid >= z.ini && mid < z.fin);
     if (bd) { const alto = RECETA.subs.tam * 1.35, tapa = (yBase) => !(yBase < bd.t - 50 || yBase - alto > bd.b + 50);
       const ybase0 = 1920 - RECETA.subs.margenV; if (tapa(ybase0)) { const alt = [1640, 1420, 470, 340].find(y => !tapa(y)); if (alt) pos = '\\an2\\pos(540,' + alt + ')'; } } }
-  ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(fin) + ',Sub,,0,0,0,,{' + pos + '\\fscx82\\fscy82\\t(0,110,\\fscx100\\fscy100)\\fad(40,0)}' + txt);
+  if (RECETA.estiloSubs === 'karaoke') {
+    bl.forEach((w, j) => {
+      const t0 = j === 0 ? ini : w.de, t1 = j < bl.length - 1 ? Math.max(bl[j + 1].de, t0 + 0.12) : fin;
+      const tx = bl.map((x, q) => { const sx = (RECETA.mayusculas === true ? limpiaT(x.t).toUpperCase() : limpiaT(x.t).toLowerCase()).replace(/[.,;:¿¡]+$/, ''); return q === j ? '{\\c' + RECETA.acento + '\\fscx112\\fscy112}' + sx + '{\\c&HFFFFFF&\\fscx100\\fscy100}' : sx; }).join(' ');
+      ev.push('Dialogue: 1,' + tAss(t0) + ',' + tAss(t1) + ',Sub,,0,0,0,,{' + pos + '\\fad(' + (j === 0 ? 40 : 0) + ',0)}' + tx);
+    });
+  } else ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(fin) + ',Sub,,0,0,0,,{' + pos + '\\fscx82\\fscy82\\t(0,110,\\fscx100\\fscy100)\\fad(40,0)}' + txt);
 });
 const tf = Math.min(durVoz, 3.2);
 if (RECETA.titulo !== false) {

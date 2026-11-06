@@ -179,6 +179,16 @@ function Trabajo({ t, formatos, onCambio }) {
           </div>
         </div>
       )}
+      {t.clip?.score != null && (
+        <div style={{ marginTop: 8, padding: 10, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: t.clip.score >= 80 ? '#7ccf8f' : t.clip.score >= 60 ? '#f2c46d' : '#ef7b7b' }}>{t.clip.score}<span style={{ fontSize: '0.8rem', fontWeight: 400 }}>/100</span></div>
+            <div style={{ ...mut }}>Potencial viral</div>
+            {t.clip.sub && Object.entries(t.clip.sub).filter(([, v]) => v != null).map(([k, v]) => <span key={k} style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.15)' }}>{k} {v}</span>)}
+          </div>
+          {t.clip.motivo && <div style={{ ...mut, marginTop: 6 }}>{t.clip.motivo}</div>}
+        </div>
+      )}
       {t.estado === 'listo' && (t.faltan || []).length > 0 && (
         <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(242,196,109,0.5)', background: 'rgba(242,196,109,0.08)' }}>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>La IA echa en falta clips</div>
@@ -309,6 +319,7 @@ function Formatos({ formatos, onCambio }) {
         <Campo etiqueta="Palabras por subtítulo">{num(r.subs?.palabrasPorBloque, v => setS('palabrasPorBloque', v))}</Campo>
         <Campo etiqueta="Tamaño subtítulo">{num(r.subs?.tam, v => setS('tam', v))}</Campo>
         <Campo etiqueta="Altura subtítulo">{num(r.subs?.margenV, v => setS('margenV', v))}</Campo>
+        <Campo etiqueta="Estilo de subtítulos"><select className="ap-field-input" style={{ width: '100%' }} value={r.estiloSubs || 'normal'} onChange={e => setR('estiloSubs', e.target.value)}><option value="normal">Normal (aparecen por frases)</option><option value="karaoke">Karaoke (se resalta la palabra que suena)</option></select></Campo>
         <Campo etiqueta="Tipografía de subtítulos"><select className="ap-field-input" style={{ width: '100%' }} value={r.fuente || 'Montserrat'} onChange={e => setR('fuente', e.target.value)}><option>Montserrat</option><option>Rubik</option></select></Campo>
         <Campo etiqueta="Volumen música (dB, -19 típico)">{num(r.musica?.volumen ?? -19, v => setR('musica', { volumen: v }))}</Campo>
         <Campo etiqueta="Zoom de encuadre (1 = sin)">{num(r.encuadreZoom, v => setR('encuadreZoom', v))}</Campo>

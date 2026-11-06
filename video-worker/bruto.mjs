@@ -23,7 +23,7 @@ const R = { acento: '#CDBBA7', titulo: true, pausa: 0.4, subs: { palabrasPorBloq
 if (process.env.INSERCIONES === '1') R.inserciones = true;
 if (process.env.RECETA_JSON) {
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
-  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente', 'whoosh', 'flash', 'cambioCada']) if (o[k] !== undefined) R[k] = o[k];
+  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente', 'whoosh', 'flash', 'cambioCada', 'estiloSubs']) if (o[k] !== undefined) R[k] = o[k];
   if (o.subs) R.subs = { ...R.subs, ...o.subs }; if (o.musica && typeof o.musica === 'object') R.musica = { ...R.musica, ...o.musica };
 }
 if (!/^#[0-9a-f]{6}$/i.test(R.acento)) R.acento = '#CDBBA7';
@@ -161,7 +161,13 @@ const posSub = subTop ? '\\an8\\pos(540,' + subTop + ')' : '';
 bl.forEach((g, k) => {
   const ini = mapea(g[0].de) ?? g[0].d, fin = k < bl.length - 1 ? Math.max(mapea(bl[k + 1][0].de) ?? bl[k + 1][0].d, ini + 0.25) : ini + 0.6;
   const txt = g.map(w => { const s0 = limpiaT(w.t).replace(/[.,;:]+$/, '').replace(/[¿¡]/g, ''), s = R.mayusculas === true ? s0.toUpperCase() : s0.toLowerCase(); const fuerte = R.resaltar !== false && (/\d/.test(w.t) || enfasis.has(w.i)); return fuerte ? '{\\c' + ACENTO + '}' + s + '{\\c&HFFFFFF&}' : s; }).join(' ');
-  ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(Math.min(fin, durFinal)) + ',Sub,,0,0,0,,{' + posSub + '\\fscx90\\fscy90\\t(0,100,\\fscx100\\fscy100)\\fad(30,0)}' + txt);
+  if (R.estiloSubs === 'karaoke') {
+    g.forEach((w, j) => {
+      const t0 = j === 0 ? ini : (mapea(w.de) ?? w.d), t1 = j < g.length - 1 ? Math.max(mapea(g[j + 1].de) ?? g[j + 1].d, t0 + 0.12) : Math.min(fin, durFinal);
+      const tx = g.map((x, q) => { const s0 = limpiaT(x.t).replace(/[.,;:]+$/, '').replace(/[¿¡]/g, ''), sx = R.mayusculas === true ? s0.toUpperCase() : s0.toLowerCase(); return q === j ? '{\\c' + ACENTO + '\\fscx112\\fscy112}' + sx + '{\\c&HFFFFFF&\\fscx100\\fscy100}' : sx; }).join(' ');
+      if (t1 > t0) ev.push('Dialogue: 1,' + tAss(t0) + ',' + tAss(Math.min(t1, durFinal)) + ',Sub,,0,0,0,,{' + posSub + '\\fad(' + (j === 0 ? 30 : 0) + ',0)}' + tx);
+    });
+  } else ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(Math.min(fin, durFinal)) + ',Sub,,0,0,0,,{' + posSub + '\\fscx90\\fscy90\\t(0,100,\\fscx100\\fscy100)\\fad(30,0)}' + txt);
 });
 const tf = Math.min(durFinal, 3.2);
 if (R.titulo !== false && plan.titulo) {

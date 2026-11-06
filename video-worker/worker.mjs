@@ -114,13 +114,14 @@ async function procesaClips(t, entrada, dir) {
   await paso(t, 'Buscando los mejores momentos…', { pct: 30 });
   const sel = await clips.eligeClips(palabras, dur, { n: t.num_clips || 0, min: t.dur_min || 25, max: t.dur_max || 70, notas: t.indicaciones || '' });
   if (!sel.length) throw new Error('No he encontrado momentos que funcionen solos como clip. Prueba con indicaciones más concretas.');
+  sel.sort((x, y) => (y.score ?? 0) - (x.score ?? 0)); // los de mayor puntuación primero
   const hijos = [];
   for (let i = 0; i < sel.length; i++) {
     const c = sel[i], id = crypto.randomUUID().slice(0, 8), f = path.join(dir, 'clip_' + id + '.mp4');
     await paso(t, 'Recortando el clip ' + (i + 1) + ' de ' + sel.length + '…', { pct: 34 + Math.round(10 * i / sel.length) });
     if (!clips.recorta(entrada, c.ini, c.fin, f)) { console.log('Clip', i + 1, 'sin recortar'); continue; }
     await drive.cacheSube('entradas/' + id + '.mp4', f); fs.rmSync(f, { force: true });
-    const h = { ...t, id, tipo: 'bruto', archivo: 'entradas/' + id + '.mp4', base: null, nombre_archivo: c.titulo, padre: t.id, clip: { ini: Math.round(c.ini), fin: Math.round(c.fin), titulo: c.titulo, pregunta: c.pregunta || '', gancho: c.gancho }, estado: 'pendiente', progreso: 'En cola', pct: 0, creado: new Date().toISOString(), version: 1, origen: null, resultado: null, resultado_movil: null, error: null, plan: null, clips: undefined, num_clips: undefined, dur_min: undefined, dur_max: undefined, terminado: undefined, empezado: undefined };
+    const h = { ...t, id, tipo: 'bruto', archivo: 'entradas/' + id + '.mp4', base: null, nombre_archivo: c.titulo, padre: t.id, clip: { ini: Math.round(c.ini), fin: Math.round(c.fin), titulo: c.titulo, pregunta: c.pregunta || '', gancho: c.gancho, score: c.score ?? null, sub: c.sub || null, motivo: c.motivo || '' }, estado: 'pendiente', progreso: 'En cola', pct: 0, creado: new Date().toISOString(), version: 1, origen: null, resultado: null, resultado_movil: null, error: null, plan: null, clips: undefined, num_clips: undefined, dur_min: undefined, dur_max: undefined, terminado: undefined, empezado: undefined };
     await guardar(h); hijos.push(h);
   }
   if (!hijos.length) throw new Error('No he podido recortar ningún clip de la entrevista');
