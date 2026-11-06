@@ -38,7 +38,7 @@ export const FORMATO_LIMPIO = {
 // Clips cortos con edición muy dinámica (para sacar varios vídeos de una entrevista larga): cortes y zooms rápidos, subtítulos grandes, gráficos y escenas superpuestas
 export const FORMATO_CLIPS = {
   id: 'clips-dopaminicos', nombre: 'Clips dopamínicos (entrevista → varios clips)', descripcion: 'Edición rápida y llamativa para clips cortos: sin pausas, zooms in/out constantes que esconden los cortes, subtítulos grandes con la palabra clave resaltada, gráficos animados con cifras y escenas superpuestas si eliges recursos.',
-  receta: { corte: { min: 1.2, max: 3 }, acento: '#E3D2B8', zoomFinal: 1.18, whoosh: 0, flash: false, subs: { palabrasPorBloque: 2, tam: 84, margenV: 600 }, titulo: false, barra: false, mayusculas: false, resaltar: true, encuadre: true, encuadreZoom: 1.4, subsBajoCara: true, graficos: true, pausa: 0.18, fuente: 'Rubik', limpiar: true, musica: { volumen: -17 } },
+  receta: { corte: { min: 1.2, max: 3 }, acento: '#E3D2B8', zoomFinal: 1.18, whoosh: 0, flash: false, subs: { palabrasPorBloque: 2, tam: 84, margenV: 600 }, titulo: false, barra: false, mayusculas: false, resaltar: true, whoosh: 0.14, flash: true, cambioCada: 2.6, encuadre: true, encuadreZoom: 1.4, subsBajoCara: true, graficos: true, pausa: 0.18, fuente: 'Rubik', limpiar: true, musica: { volumen: -17 } },
   notas: 'Ritmo muy alto y dinámico: cortes y zooms rápidos, sin pausas. Quita muletillas, repeticiones y errores. Gráficos cuando haya cifras o medidas. Si hay recursos, superpón escenas en los momentos clave.',
 };
 export const FORMATO_DINAMICO = {
@@ -57,6 +57,7 @@ async function formatos() {
   const f = await leerJson(RUTA_FORMATOS, null);
   if (!f?.lista?.length) { const lista = SEMBRADOS.map(x => JSON.parse(JSON.stringify(x))); await guardarJson(RUTA_FORMATOS, { lista, sembrados: lista.map(x => x.id) }); return lista; }
   if (!f.migracion) { for (const x of f.lista) { const r = x.receta || (x.receta = {}); if (r.acento === '#F2C46D') r.acento = '#E3D2B8'; if (r.mayusculas === undefined || r.mayusculas === true) r.mayusculas = false; if (!r.fuente) r.fuente = 'Montserrat'; if (!r.musica) r.musica = { volumen: -19 }; } f.migracion = 2; await guardarJson(RUTA_FORMATOS, f); }
+  if (!f.clipsV2) { const x = f.lista.find(z => z.id === FORMATO_CLIPS.id); if (x) x.receta = JSON.parse(JSON.stringify(FORMATO_CLIPS.receta)); f.clipsV2 = true; await guardarJson(RUTA_FORMATOS, f); }
   // formatos nuevos de fábrica se añaden una sola vez (si luego los borras, no vuelven)
   const ya = new Set(f.sembrados || [FORMATO_BASE.id]); const nuevos = SEMBRADOS.filter(x => !ya.has(x.id));
   if (nuevos.length) { f.lista.push(...nuevos.map(x => JSON.parse(JSON.stringify(x)))); f.sembrados = [...ya, ...nuevos.map(x => x.id)]; await guardarJson(RUTA_FORMATOS, f); }

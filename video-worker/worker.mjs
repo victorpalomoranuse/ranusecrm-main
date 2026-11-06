@@ -119,10 +119,15 @@ async function procesaClips(t, entrada, dir) {
   }
   if (!hijos.length) throw new Error('No he podido recortar ningún clip de la entrevista');
   t.clips = hijos.map(h => h.id);
-  for (let i = 0; i < hijos.length; i++) {
-    await paso(t, 'Montando el clip ' + (i + 1) + ' de ' + hijos.length + '…', { pct: 46 + Math.round(52 * i / hijos.length) });
-    try { await procesa(hijos[i]); } catch (e) { console.log('[' + hijos[i].id + '] ERROR', e.message); await paso(hijos[i], 'Error', { estado: 'error', error: String(e.message).slice(0, 400) }); }
-  }
+  // en el servidor de la nube se montan 2 clips a la vez (tiene 8 procesadores); en el PC, de uno en uno
+  const cola = hijos.map((_, i) => i); let hechos = 0;
+  await Promise.all(Array.from({ length: process.env.JOB_ID ? Math.min(2, hijos.length) : 1 }, async () => {
+    while (cola.length) {
+      const i = cola.shift();
+      try { await procesa(hijos[i]); } catch (e) { console.log('[' + hijos[i].id + '] ERROR', e.message); await paso(hijos[i], 'Error', { estado: 'error', error: String(e.message).slice(0, 400) }); }
+      hechos++; await paso(t, 'Montados ' + hechos + ' de ' + hijos.length + ' clips…', { pct: 46 + Math.round(52 * hechos / hijos.length) });
+    }
+  }));
   await paso(t, hijos.length + ' clips creados (aparecen abajo, cada uno con su vídeo)', { pct: 100, estado: 'listo', terminado: new Date().toISOString(), error: null });
 }
 async function procesa(t) {

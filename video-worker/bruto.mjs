@@ -23,7 +23,7 @@ const R = { acento: '#CDBBA7', titulo: true, pausa: 0.4, subs: { palabrasPorBloq
 if (process.env.INSERCIONES === '1') R.inserciones = true;
 if (process.env.RECETA_JSON) {
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
-  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente']) if (o[k] !== undefined) R[k] = o[k];
+  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente', 'whoosh', 'flash', 'cambioCada']) if (o[k] !== undefined) R[k] = o[k];
   if (o.subs) R.subs = { ...R.subs, ...o.subs }; if (o.musica && typeof o.musica === 'object') R.musica = { ...R.musica, ...o.musica };
 }
 if (!/^#[0-9a-f]{6}$/i.test(R.acento)) R.acento = '#CDBBA7';
@@ -141,7 +141,7 @@ for (const w of palabras) { if (fuera.has(w.i)) continue; const u = trozos[trozo
 // los cambios de plano dentro de un trozo largo caen a pulso de la música
 const piezas = []; let acum = 0;
 for (const t of trozos) {
-  const ini = Math.max(0, t.ini - 0.07), fin = Math.min(dur, t.fin + 0.12), largo = fin - ini, n = Math.max(1, Math.round(largo / 3.6));
+  const ini = Math.max(0, t.ini - 0.07), fin = Math.min(dur, t.fin + 0.12), largo = fin - ini, n = Math.max(1, Math.round(largo / (Number(R.cambioCada) > 0.8 ? Number(R.cambioCada) : 3.6)));
   let corte = ini;
   for (let k = 1; k <= n; k++) {
     let fk = k === n ? fin : ini + largo * k / n;
@@ -168,6 +168,8 @@ if (R.titulo !== false && plan.titulo) {
   ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\fad(200,300)}' + limpiaT(plan.kicker || '').toLowerCase().split('').join('\u200A'));
   ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Titulo,,0,0,0,,{\\fad(250,350)}' + limpiaT(plan.titulo).toLowerCase());
 }
+// destello blanco muy breve en cada cambio de plano
+if (R.flash === true) piezas.slice(1).forEach(p => ev.push('Dialogue: 4,' + tAss(p.t0) + ',' + tAss(p.t0 + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c&HFFFFFF&\\alpha&H9C&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
 if (R.barra === true) ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durFinal) + ',Kicker,,0,0,0,,{\\an7\\pos(0,1896)\\p1\\c' + ACENTO + '\\fscx0\\t(0,' + Math.round(durFinal * 1000) + ',\\fscx100)}m 0 0 l 1080 0 1080 7 0 7{\\p0}');
 const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920', 'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '', '[V4+ Styles]',
   'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',
@@ -208,6 +210,19 @@ if (R.graficos) {
 marca(60, 'Montando el vídeo: cortes, subtítulos y gráficos');
 // ---- un solo ffmpeg ----
 const zf = Math.max(1.05, R.zoomFinal), ZOOMS = R.zoomFinal <= 1 ? [1.0] : [1.0, zf, 0.92, zf + 0.1]; // acercar y alejar
+// whoosh sutil en cada cambio de plano (se mezcla por debajo de la voz)
+let WHOOSH_WAV = null;
+const marcasCorte = piezas.slice(1).map(p => p.t0);
+if (Number(R.whoosh) > 0 && marcasCorte.length) {
+  WHOOSH_WAV = path.join(work, 'whoosh.wav');
+  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'anoisesrc=d=0.4:c=pink:a=0.6:r=48000', '-af', 'highpass=f=500,lowpass=f=6000,afade=t=in:st=0:d=0.22,afade=t=out:st=0.2:d=0.2,volume=' + Number(R.whoosh), WHOOSH_WAV]);
+  if (!fs.existsSync(WHOOSH_WAV)) WHOOSH_WAV = null;
+}
+function whooshFiltro(entrada, salida, idx) {
+  if (!WHOOSH_WAV) return ['[' + entrada + ']anull[' + salida + ']'];
+  const n = marcasCorte.length;
+  return ['[' + idx + ':a]asplit=' + n + marcasCorte.map((_, k) => '[w' + k + ']').join(''), ...marcasCorte.map((m, k) => '[w' + k + ']adelay=' + Math.max(0, Math.round((m - 0.2) * 1000)) + ':all=1[d' + k + ']'), '[' + entrada + ']' + marcasCorte.map((_, k) => '[d' + k + ']').join('') + 'amix=inputs=' + (n + 1) + ':normalize=0:duration=first,alimiter=limit=0.95[' + salida + ']'];
+}
 const partes = [], pa = [];
 piezas.forEach((p, i) => {
   const v = ventana(ZOOMS[i % ZOOMS.length]);
@@ -233,8 +248,10 @@ graf.forEach((g, k) => {
 filtros.push('[' + prev + ']ass=subs.ass:fontsdir=fonts[v]');
 if (pista) {
   entradas.push('-stream_loop', '-1', '-i', pista.ruta);
-  filtros.push('[ac]' + AUDIO + '[voz]', mezcla({ entradaIdx: 1 + ins.length + graf.length, voz: 'voz', durTotal: durFinal, db: Number(R.musica.volumen) || -19, salida: 'a' }));
-} else filtros.push('[ac]' + AUDIO + '[a]');
+  filtros.push('[ac]' + AUDIO + '[voz0]'); filtros.push(...whooshFiltro('voz0', 'voz', 2 + ins.length + graf.length));
+  filtros.push(mezcla({ entradaIdx: 1 + ins.length + graf.length, voz: 'voz', durTotal: durFinal, db: Number(R.musica.volumen) || -19, salida: 'a' }));
+} else { filtros.push('[ac]' + AUDIO + '[voz0]'); filtros.push(...whooshFiltro('voz0', 'a', 1 + ins.length + graf.length)); }
+if (WHOOSH_WAV) entradas.push('-i', WHOOSH_WAV);
 fs.writeFileSync(path.join(work, 'grafo.txt'), filtros.join(';\n'));
 const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...entradas, '-/filter_complex', 'grafo.txt', '-map', '[v]', '-map', '[a]', '-t', durFinal.toFixed(2), ...ARGS_VIDEO(24), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', path.resolve(SALIDA)], { cwd: work });
 console.log(fs.existsSync(SALIDA) ? 'OK ' + SALIDA + ' · ' + (fs.statSync(SALIDA).size / 1048576).toFixed(1) + ' MB' : 'FALLO ' + (rr.stderr || '').slice(0, 900));
