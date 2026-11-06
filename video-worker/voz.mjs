@@ -11,7 +11,7 @@ export function copiaModelo(dirTrabajo) { const o = new URL('./modelos/bd.rnnn',
 const norm = t => String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zñ0-9]/g, '');
 const silabas = t => Math.max(1, (norm(t).match(/[aeiou]+/g) || ['a']).length);
 
-function envolvente(wav16) {
+export function envolvente(wav16) {
   const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', wav16, '-ac', '1', '-ar', '16000', '-f', 'f32le', '-'], { maxBuffer: 1 << 28 });
   const f = new Float32Array(r.stdout.buffer, r.stdout.byteOffset, Math.floor(r.stdout.length / 4)), HOP = 160, n = Math.floor(f.length / HOP), e = new Float32Array(n);
   for (let i = 0; i < n; i++) { let s = 0; for (let k = 0; k < HOP; k++) { const v = f[i * HOP + k]; s += v * v; } e[i] = Math.sqrt(s / HOP); }

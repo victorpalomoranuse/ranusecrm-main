@@ -10,7 +10,7 @@ import * as drive from './drive.mjs';
 import { ENV } from './entorno.mjs';
 import { ARGS_VIDEO } from './codec.mjs';
 import { transcribe } from './transcribir.mjs';
-import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, guionLimpio } from './voz.mjs';
+import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, guionLimpio, envolvente } from './voz.mjs';
 
 const [ENTRADA, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!ENTRADA || !SALIDA) { console.log('Uso: node bruto.mjs "<bruto>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -148,9 +148,23 @@ else if (R.subsBajoCara && cara) { const v = ventana(1.05), chin = (cara.cy + ca
 const trozos = []; let ult = -2;
 for (const w of palabras) { if (fuera.has(w.i)) continue; const u = trozos[trozos.length - 1]; if (u && w.i === ult + 1 && w.de - u.fin < R.pausa) { u.fin = w.a; } else trozos.push({ ini: w.de, fin: w.a }); ult = w.i; }
 // los cambios de plano dentro de un trozo largo caen a pulso de la música
+// Los tiempos de palabra de la transcripción pueden ir desplazados (en algunos audios ~0,3 s) y dejar restos de palabras que se querían quitar:
+// cada corte se lleva al SILENCIO real más cercano (hacia atrás desde el punto nominal, hasta 0,45 s), para no dejar ni comerse palabras.
+try {
+  const env = envolvente(wav); const v70 = Array.from(env).filter(x => x > 0).sort((p, q) => p - q), ref = v70[Math.floor(v70.length * 0.7)] || 0, sil = ref * 0.22;
+  const atras = (desde, limite) => { const i0 = Math.min(env.length - 1, Math.round(desde * 100)), i1 = Math.max(0, Math.round(limite * 100)); for (let i = i0; i >= i1; i--) if (env[i] < sil) return i / 100; return null; };
+  let movidos = 0;
+  trozos.forEach((tr, k) => {
+    const prevFin = k > 0 ? trozos[k - 1].fin : 0, sigIni = k < trozos.length - 1 ? trozos[k + 1].ini : dur;
+    const a = atras(tr.ini + 0.05, Math.max(prevFin + 0.02, tr.ini - 0.45)); if (a !== null && Math.abs(a - tr.ini) > 0.04) { tr.ini = a; tr.sa = true; movidos++; }
+    const b = atras(tr.fin + 0.06, Math.max(tr.ini + 0.3, tr.fin - 0.45)); if (b !== null && b > tr.ini + 0.2 && b < sigIni && Math.abs(b - tr.fin) > 0.04) { tr.fin = b; tr.sb = true; movidos++; }
+  });
+  if (movidos) console.log('Cortes ajustados al silencio más cercano:', movidos);
+} catch (e) { console.log('Sin ajustar los cortes a los silencios:', e.message); }
+console.log('Trozos de voz que se conservan:', trozos.map(t => t.ini.toFixed(1) + '-' + t.fin.toFixed(1)).join(' '));
 const piezas = []; let acum = 0;
 for (const t of trozos) {
-  const ini = Math.max(0, t.ini - 0.07), fin = Math.min(dur, t.fin + 0.12), largo = fin - ini, n = Math.max(1, Math.round(largo / (Number(R.cambioCada) > 0.8 ? Number(R.cambioCada) : 3.6)));
+  const ini = Math.max(0, t.ini - (t.sa ? 0.02 : 0.07)), fin = Math.min(dur, t.fin + (t.sb ? 0.03 : 0.12)), largo = fin - ini, n = Math.max(1, Math.round(largo / (Number(R.cambioCada) > 0.8 ? Number(R.cambioCada) : 3.6)));
   let corte = ini;
   for (let k = 1; k <= n; k++) {
     let fk = k === n ? fin : ini + largo * k / n;
