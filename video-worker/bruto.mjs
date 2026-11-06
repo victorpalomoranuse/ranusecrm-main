@@ -134,7 +134,7 @@ function ventana(z) {
   const x0 = clamp(cx - wc / 2, 0, W - wc), y0 = cara && R.encuadre ? clamp(cy - 0.33 * hc, 0, H - hc) : clamp((H - hc) / 2, 0, H - hc);
   return { hc: Math.round(hc / 2) * 2, wc: Math.round(wc / 2) * 2, x0: Math.round(x0), y0: Math.round(y0) };
 }
-const ANCHO = !!(cara && cara.personas >= 2 && R.layout !== 'cerca' && W > H);
+const ANCHO = !!(cara && cara.personas >= 2 && R.layout === 'ancho' && W > H); /* solo si el formato lo pide: en pruebas el plano ancho dejaba a la persona diminuta */
 if (ANCHO) console.log('Hay', cara.personas, 'personas en el plano: se usa el plano ancho (se ven todos) en vez de recortar a una cara');
 let subTop = null;
 if (ANCHO) subTop = 1290;
