@@ -147,7 +147,7 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={mus} onChange={e => setMus(e.target.value)}><option value="auto">Automática (la IA elige la que mejor encaje)</option><option value="ninguna">Sin música</option>{musica.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.bpm ? ' · ' + Math.round(p.bpm) + ' bpm' : ''}</option>)}</select>
       <div style={{ ...mut, marginBottom: 4 }}>Guion del vídeo (opcional): pégalo aquí. En una entrevista, pon las preguntas o temas que quieres sacar; en una voz en off o un bruto, el texto que quieres que se diga.</div>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 90, marginBottom: 10 }} value={guion} onChange={e => setGuion(e.target.value)} placeholder="Pega aquí el guion (da igual si al grabar cambiaste alguna palabra: la IA lo encuentra igualmente)…" />
-      {tipo !== 'clips' && <Desglose guion={guion} asig={asig} setAsig={setAsig} />}
+      {tipo !== 'clips' && !(tipo === 'voz' && soloAudio) && <Desglose guion={guion} asig={asig} setAsig={setAsig} />}
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Indicaciones (opcional)</label>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 60, marginBottom: 10 }} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Ej.: enseña el proyecto de Rivas, tono directo, que empiece con un plano de obra…" />
       {error && <div className="ap-error" style={{ marginBottom: 8 }}>{error}</div>}
@@ -166,9 +166,20 @@ function partesDeGuion(g) {
 function medirPartes(partes, trans) {
   if (!Array.isArray(trans) || !trans.length) return null;
   const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
-  const kept = []; trans.forEach((w, i) => { if (!w[3]) kept.push({ n: norm(w[0]), de: w[1], a: w[2] }); });
+  const VACIAS = new Set(['para', 'pero', 'porque', 'como', 'esta', 'este', 'esto', 'estos', 'tiene', 'tenemos', 'desde', 'entre', 'sobre', 'cuando', 'donde', 'todo', 'toda', 'todos', 'muy', 'mas', 'nada', 'esta']);
+  const kept = []; trans.forEach((w) => { if (!w[3]) kept.push({ n: norm(w[0]), de: w[1], a: w[2] }); });
   const N = kept.map(w => w.n); let desde = 0; const ini = [];
-  partes.forEach((p) => { const pw = p.split(/\s+/).map(norm).filter(Boolean); let mejor = -1, mp = 0; for (let i = desde; i < N.length; i++) { let ok = 0; for (let j = 0; j < Math.min(4, pw.length); j++) if (N[i + j] === pw[j]) ok++; if (ok > mp) { mp = ok; mejor = i; if (ok === Math.min(4, pw.length)) break; } } if (mp >= Math.min(3, pw.length) && mejor >= 0) { ini.push(mejor); desde = mejor + 1; } else ini.push(null); });
+  // cada parte se localiza por las palabras con contenido que comparte con el audio (aunque la frase esté dicha con otras palabras)
+  partes.forEach((p) => {
+    const pw = [...new Set(p.split(/\s+/).map(norm).filter(x => x.length >= 4 && !VACIAS.has(x)))]; const total = p.split(/\s+/).filter(Boolean).length;
+    if (!pw.length) { ini.push(null); return; }
+    const W = Math.max(8, Math.ceil(total * 1.6)); let mejor = -1, ms = 0;
+    for (let i = desde; i < N.length; i++) { const ven = new Set(); for (let j = i; j < Math.min(N.length, i + W); j++) if (pw.includes(N[j])) ven.add(N[j]); if (ven.size > ms) { ms = ven.size; mejor = i; } }
+    if (mejor < 0 || ms < Math.max(2, Math.ceil(pw.length * 0.4))) { ini.push(null); return; }
+    let s = mejor; while (s < N.length && !pw.includes(N[s])) s++; // primer token que coincide
+    // si la ventana empieza justo antes (palabras de enlace como "y" o "ahora"), no importa: se toma desde la primera coincidencia
+    ini.push(s); desde = s + 1;
+  });
   return partes.map((_, k) => { if (ini[k] === null) return null; let fin = kept.length; for (let j = k + 1; j < partes.length; j++) if (ini[j] !== null) { fin = ini[j]; break; } let s = 0; for (let i = ini[k]; i < fin; i++) { s += kept[i].a - kept[i].de + (i > ini[k] ? Math.min(0.45, Math.max(0, kept[i].de - kept[i - 1].a)) : 0); } return s; });
 }
 function Desglose({ guion, asig, setAsig, trans }) {
