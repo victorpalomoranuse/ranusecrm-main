@@ -188,6 +188,14 @@ export function recomponeVoz({ palabras, quitar, wav48, salida, pausa = 0.45 }) 
 
 // Versión final del discurso: la IA decide qué tramos CONSERVAR (en vez de qué borrar). Así cada idea queda una sola vez, con su mejor toma, y nada se pisa.
 // Devuelve el conjunto de índices a QUITAR (todo lo que no está en los tramos conservados) o null si no se ha podido.
+// Los números dichos en una sola palabra se escriben con cifras en los subtítulos (veintitrés → 23, treinta → 30…)
+const NUMEROS = { veinte: 20, veintiuno: 21, veintiuna: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25, veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90, cien: 100, doscientos: 200, trescientos: 300, quinientos: 500 };
+export function numerosEnCifras(palabras) {
+  let n = 0; const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  for (const w of palabras) { const m = /^([^A-Za-zÀ-ÿ0-9]*)([A-Za-zÀ-ÿ]+)(.*)$/.exec(String(w.t)); if (!m) continue; const v = NUMEROS[norm(m[2])]; if (v !== undefined) { w.t = m[1] + v + m[3]; n++; } }
+  return n;
+}
+
 // Corrige en la transcripción las palabras mal oídas usando el guion: alinea ambos textos y, donde la palabra oída y la del guion se parecen
 // (pero no son iguales), pone la del guion (ortografía, nombres, tildes). Si el hablante cambió una palabra por otra distinta, se deja la que dijo.
 export function ajustaAlGuion(palabras, guion) {
@@ -201,7 +209,7 @@ export function ajustaAlGuion(palabras, guion) {
   const S = Array.from({ length: m + 1 }, () => new Int16Array(n + 1)); for (let i = 1; i <= m; i++) S[i][0] = -i; for (let j = 1; j <= n; j++) S[0][j] = -j;
   for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) S[i][j] = Math.max(S[i - 1][j - 1] + pts(parecidas(A[i - 1], G[j - 1].n)), S[i - 1][j] - 1, S[i][j - 1] - 1);
   let i = m, j = n, cambios = 0;
-  while (i > 0 && j > 0) { const p = parecidas(A[i - 1], G[j - 1].n); if (S[i][j] === S[i - 1][j - 1] + pts(p)) { if (p === 1) { palabras[i - 1].t = G[j - 1].w.replace(/^[^A-Za-zÀ-ÿ0-9]+/, ''); cambios++; } i--; j--; } else if (S[i][j] === S[i - 1][j] - 1) i--; else j--; }
+  while (i > 0 && j > 0) { const p = parecidas(A[i - 1], G[j - 1].n); if (S[i][j] === S[i - 1][j - 1] + pts(p)) { if (p === 0 && /^[0-9]+$/.test(G[j - 1].n) && /^[A-Za-zÀ-ÿ]+$/.test(String(palabras[i - 1].t).replace(/[^A-Za-zÀ-ÿ]/g, '')) && NUMEROS[A[i - 1]] !== undefined) { palabras[i - 1].t = G[j - 1].w.replace(/[^0-9]/g, '') + (String(palabras[i - 1].t).match(/[.,;:?!]+$/) || [''])[0]; cambios++; } if (p === 1) { palabras[i - 1].t = G[j - 1].w.replace(/^[^A-Za-zÀ-ÿ0-9]+/, ''); cambios++; } i--; j--; } else if (S[i][j] === S[i - 1][j] - 1) i--; else j--; }
   return cambios;
 }
 
