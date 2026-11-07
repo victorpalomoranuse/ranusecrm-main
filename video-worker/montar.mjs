@@ -164,22 +164,30 @@ if (idx.length > 120) {
 const compacto = v => ({ ...(v._elegido ? { elegido_por_la_persona: true } : {}), id: v.id, dur: v.duracion, calidad: v.calidad, resumen: v.resumen, etiquetas: (v.etiquetas || []).slice(0, 8), planos: (v.planos || []).slice(0, v.duracion > 60 ? 30 : 6).map(p => p.t + 's: ' + String(p.descripcion).slice(0, 100)), ...(v.duracion > 40 ? { vídeo_largo: 'dura ' + Math.round(v.duracion) + ' s: tiene material de sobra. Cada vez que lo uses elige un "desde" DISTINTO, repartido por toda su duración (no solo el principio), y nunca repitas el mismo trozo.' } : {}) });
 const cat = idx.map(compacto);
 const guionDe = (a, b) => palabras.slice(a, b).map((w, i) => (a + i) + ':' + w.t + '@' + w.de.toFixed(1)).join(' ');
+// REPARTO: el usuario asigna vídeos a cada parte del guion. Cada parte se localiza en la voz por sus palabras con contenido
+// (aunque en el audio se diga con otras palabras) y después se OBLIGA a que en ese tramo salgan sus vídeos, y solo ahí.
+let repartoIdx = [];
+try {
+  const rep = JSON.parse(process.env.REPARTO || '[]');
+  if (rep.length) {
+    const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+    const VACIAS = new Set(['para', 'pero', 'porque', 'como', 'esta', 'este', 'esto', 'estos', 'tiene', 'tenemos', 'desde', 'entre', 'sobre', 'cuando', 'donde', 'todo', 'toda', 'todos', 'muy', 'mas', 'nada']);
+    const N = palabras.map(w => norm(w.t)); let desde = 0; const hallados = [];
+    rep.forEach((p) => {
+      const pw = [...new Set(p.texto.split(/\s+/).map(norm).filter(x => x.length >= 4 && !VACIAS.has(x)))]; const total = p.texto.split(/\s+/).filter(Boolean).length;
+      if (!pw.length) return; const W = Math.max(8, Math.ceil(total * 1.6)); let mejor = -1, ms = 0;
+      for (let i = desde; i < N.length; i++) { const ven = new Set(); for (let j = i; j < Math.min(N.length, i + W); j++) if (pw.includes(N[j])) ven.add(N[j]); if (ven.size > ms) { ms = ven.size; mejor = i; } }
+      if (mejor < 0 || ms < Math.max(2, Math.ceil(pw.length * 0.4))) { console.log('Parte del guion no encontrada en el audio:', p.texto.slice(0, 50)); return; }
+      let s = mejor; while (s < N.length && !pw.includes(N[s])) s++; hallados.push({ ini: s, texto: p.texto, clips: p.clips }); desde = s + 1;
+    });
+    hallados.forEach((r, k) => { r.fin = k + 1 < hallados.length ? hallados[k + 1].ini : palabras.length; r.vids = [...new Set(r.clips.map(c => idx.find(x => x.drive_id === c.id)?.id).filter(Boolean))]; });
+    repartoIdx = hallados.filter(r => r.vids.length);
+    console.log('Reparto del usuario:', repartoIdx.map(r => r.ini + '-' + r.fin + ' → ' + r.vids.length + ' vídeo(s)').join(', ') || 'ninguno (sus vídeos no están indexados)');
+  }
+} catch (e) { console.log('Reparto no válido:', e.message); repartoIdx = []; }
 const planF = path.join(work, 'plan.json'); let plan, esquema = null;
 if (process.env.REUSE && fs.existsSync(planF)) plan = JSON.parse(fs.readFileSync(planF, 'utf8'));
 else {
-  // REPARTO: el usuario asigna vídeos a cada parte del guion. Se localiza dónde empieza cada parte en la voz y se le obliga al planificador a usar solo esos vídeos ahí.
-  let repartoIdx = [];
-  try {
-    const rep = JSON.parse(process.env.REPARTO || '[]'); const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
-    const N = palabras.map(w => norm(w.t)); const totalG = rep.reduce((s, p) => s + p.texto.split(/\s+/).length, 0) || 1; let desde = 0, acum = 0;
-    rep.forEach((p, k) => {
-      const pw = p.texto.split(/\s+/).map(norm).filter(Boolean); let mejor = -1, mejorP = 0;
-      for (let i = desde; i < Math.min(N.length, desde + 400); i++) { let ok = 0; for (let j = 0; j < Math.min(5, pw.length); j++) if (N[i + j] === pw[j]) ok++; if (ok > mejorP) { mejorP = ok; mejor = i; } }
-      const prop = Math.round(acum / totalG * N.length); const ini = mejorP >= 3 ? mejor : Math.max(desde, prop); repartoIdx.push({ ini, texto: p.texto, clips: p.clips }); desde = ini + 1; acum += pw.length;
-    });
-    repartoIdx.forEach((r, k) => { r.fin = k + 1 < repartoIdx.length ? repartoIdx[k + 1].ini : palabras.length; });
-    console.log('Reparto del usuario:', repartoIdx.map(r => r.ini + '-' + r.fin + ' (' + r.clips.length + ' vídeos)').join(', ') || 'ninguno');
-  } catch (e) { console.log('Reparto no válido:', e.message); repartoIdx = []; }
   const asignacion = (A, B) => {
     const partes = repartoIdx.filter(r => r.ini < B && r.fin > A); if (!partes.length) return '';
     const lineas = partes.map(r => { const vs = r.clips.map(c => { const v = idx.find(x => x.drive_id === c.id); return v ? v.id + ' (' + (c.nombre || v.nombre) + ')' : null; }).filter(Boolean); return vs.length ? '- palabras ' + Math.max(A, r.ini) + ' a ' + Math.min(B, r.fin) + ' ("' + r.texto.slice(0, 90) + '…"): usa ÚNICAMENTE estos vídeos del catálogo: ' + vs.join(', ') : null; }).filter(Boolean);
@@ -265,6 +273,19 @@ if (process.env.EDICION !== '1') try {
     const rr = await llamaClaude('Hay cortes de un montaje que repiten demasiado el mismo vídeo (uno corto no puede cubrir tantos cortes). Para cada corte de la lista, elige UN vídeo de los candidatos que muestre algo que encaje con lo que se dice en ese momento (misma historia, no algo al azar). Cada candidato solo puede usarse tantas veces como indica "hueco". El vídeo que elijas NO puede ser el mismo que el del corte anterior ni el del siguiente (los cortes seguidos deben mostrar vídeos distintos). Si ninguno encaja de forma razonable, pon null y el corte se queda como está.\n\nCORTES A REASIGNAR:\n' + exceso.map(c => c._k + ': "' + palabras.slice(c.de, (cs[c._k + 1]?.de ?? palabras.length)).map(w => w.t).join(' ').slice(0, 100) + '" (ahora: ' + (idx.find(z => z.id === c.video)?.nombre || c.video) + ')').join('\n') + '\n\nCANDIDATOS:\n' + cands.map(v => '- id ' + v.id + ' (hueco ' + libre.get(v.id) + ')' + (v._elegido ? ' [elegido por la persona]' : '') + ': ' + (v.resumen || '').slice(0, 140)).join('\n') + '\n\nResponde SOLO JSON {"asignaciones":[{"corte":número,"video":"id" o null}]}', 2500, true);
     let n = 0; for (const x of (rr?.asignaciones || [])) { const c = cs[x.corte]; if (!c || !x.video || !libre.get(x.video)) continue; if (!exceso.includes(c)) continue; if (x.video === cs[x.corte - 1]?.video || x.video === cs[x.corte + 1]?.video) continue; c.video = x.video; c.desde = 0; libre.set(x.video, libre.get(x.video) - 1); n++; }
     console.log('Reparto de clips: ' + exceso.length + ' cortes repetían demasiado el mismo vídeo →', n, 'reasignados');
+  }
+  // REPARTO DEL USUARIO (manda sobre todo lo anterior): en cada parte del guion solo salen sus vídeos, y esos vídeos no salen en ninguna otra parte
+  if (repartoIdx.length) {
+    let forz = 0; const turno = new Map(), asignados = new Set(); repartoIdx.forEach(r => r.vids.forEach(v => asignados.add(v)));
+    cs.forEach((c) => {
+      const r = repartoIdx.find(x => c.de >= x.ini && c.de < x.fin);
+      if (r) { if (r.vids.includes(c.video)) return; const k = turno.get(r) || 0; turno.set(r, k + 1); c.video = r.vids[k % r.vids.length]; c.desde = 0; c._cont = false; forz++; return; }
+      // fuera de las partes con vídeos asignados: no se usan los vídeos que el usuario reservó para otra parte
+      if (asignados.has(c.video)) { const alt = idx.find(v => !asignados.has(v.id) && !v.es_imagen && !v.hablando_a_camara && v.duracion >= 2); if (alt) { c.video = alt.id; c.desde = 0; c._cont = false; forz++; } }
+    });
+    // dentro de una parte con un solo vídeo y varios cortes, se sigue el mismo vídeo sin repetir segundos
+    repartoIdx.forEach(r => { let pos = 0; cs.forEach((c, k) => { if (c.de >= r.ini && c.de < r.fin && r.vids.includes(c.video)) { const v = idx.find(x => x.id === c.video); const L = durCorte(c, k); if (v && !v.es_imagen) { c.desde = Math.max(0, Math.min(pos, Math.max(0, (v.duracion || 0) - L - 0.1))); pos = c.desde + L; } } }); });
+    console.log('Cortes colocados según el reparto del usuario:', forz);
   }
   // cortes seguidos del mismo vídeo que no se han podido cambiar: continúan donde acabó el corte anterior (un solo plano seguido)
   let enlazados = 0;
