@@ -40,7 +40,7 @@ if (process.env.RECETA_JSON) { // receta elegida en el CRM
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
   if (o.corte) RECETA.corte = { ...RECETA.corte, ...o.corte };
   if (/^#[0-9a-f]{6}$/i.test(o.acento || '')) RECETA.acento = '&H' + o.acento.slice(5, 7) + o.acento.slice(3, 5) + o.acento.slice(1, 3) + '&';
-  for (const k of ['zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente', 'horas', 'introLetras', 'estiloSubs', 'collage']) if (o[k] !== undefined) RECETA[k] = o[k];
+  for (const k of ['motion', 'zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente', 'horas', 'introLetras', 'estiloSubs', 'collage']) if (o[k] !== undefined) RECETA[k] = o[k];
   if (o.musica && typeof o.musica === 'object') RECETA.musica = { ...RECETA.musica, ...o.musica };
   if (!['Montserrat', 'Rubik'].includes(RECETA.fuente)) RECETA.fuente = 'Montserrat';
   if (o.subs) RECETA.subs = { ...RECETA.subs, ...o.subs };
@@ -425,9 +425,15 @@ async function cortar(c, i) {
   const v = idx.find(x => x.id === c.video), out = path.join(work, 'c' + pad2(i) + '.mp4');
   const desde = v.es_imagen ? 0 : Math.max(0, Math.min(Number(c.desde) || 0, Math.max(0, v.duracion - c.dur - 0.1)));
   const nf = Math.max(2, Math.round(c.dur * 30)), z1 = RECETA.zoomFinal, dir = i % 2 ? 1 : -1;
+  let zExpr = dir > 0 ? '1+' + (z1 - 1) + '*on/' + nf : z1 + '-' + (z1 - 1) + '*on/' + nf, xExpr = 'iw/2-(iw/zoom/2)';
+  if (RECETA.motion) { // variedad de movimiento: entrada rápida, salida, barrido a la derecha, barrido a la izquierda
+    const zm = Math.max(z1, 1.16), mv = i % 4;
+    if (mv === 0) zExpr = '1+' + (zm - 1) + '*on/' + nf; else if (mv === 1) zExpr = zm + '-' + (zm - 1) + '*on/' + nf;
+    else { zExpr = String(Math.max(zm, 1.14)); xExpr = mv === 2 ? '(iw-iw/zoom)*on/' + nf : '(iw-iw/zoom)*(1-on/' + nf + ')'; }
+  }
   let gamma = 1; if (!v.es_imagen && RECETA.autoLuz !== false) { const { src, hdr } = fuenteDe(v); const m = await lumaMedia(src, hdr, desde + c.dur / 2); if (m && m > 8 && m < 245) { const g = Math.log(m / 255) / Math.log(105 / 255); gamma = Math.max(0.88, Math.min(1.7, g)); if (Math.abs(gamma - 1) < 0.08) gamma = 1; } }
   const luz = gamma !== 1 ? 'eq=gamma=' + gamma.toFixed(2) + ',' : '';
-  const vf = (giroDe[v.id] || '') + 'scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,' + luz + 'zoompan=z=\'' + (dir > 0 ? '1+' + (z1 - 1) + '*on/' + nf : z1 + '-' + (z1 - 1) + '*on/' + nf) + '\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=1080x1920:fps=30,' + RECETA.color + ',setsar=1,format=yuv420p,tpad=stop_mode=clone:stop_duration=3';
+  const vf = (giroDe[v.id] || '') + 'scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,' + luz + 'zoompan=z=\'' + zExpr + '\':d=1:x=\'' + xExpr + '\':y=\'ih/2-(ih/zoom/2)\':s=1080x1920:fps=30,' + RECETA.color + ',setsar=1,format=yuv420p,tpad=stop_mode=clone:stop_duration=3';
   const loop = v.es_imagen ? ['-loop', '1', '-framerate', '30'] : (v.duracion < c.dur + 0.2 ? ['-stream_loop', '-1'] : []);
   // Collage: en los cortes pares se ven DOS clips a la vez (uno arriba y otro abajo) mientras habla la voz
   let args2 = null;
@@ -484,7 +490,7 @@ if (RECETA.subsBajoCara !== false) try {
 } catch (e) { console.log('Sin localizar caras:', e.message); }
 const ev = []; const bloques = []; let b = [];
 // intro con palabras enormes apiladas (estilo "mi día"): sustituye a los subtítulos normales durante la frase de apertura
-const intro = RECETA.introLetras ? introLetras(palabras, tAss, limpiaT) : { eventos: [], ultima: -1, fin: 0 };
+const intro = { eventos: [], ultima: -1, fin: 0 }; // el título de apertura va como un subtítulo más, igual que todos
 ev.push(...intro.eventos);
 const enf = new Set(plan.enfasis || []);
 palabras.forEach((w, i) => { w.i = i; if (i <= intro.ultima) return; b.push(w); if (b.length >= RECETA.subs.palabrasPorBloque || /[.?!,]$/.test(w.t)) { bloques.push(b); b = []; } }); if (b.length) bloques.push(b);
@@ -503,6 +509,13 @@ bloques.forEach((bl, k) => {
     });
   } else ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(fin) + ',Sub,,0,0,0,,{' + pos + '\\fscx82\\fscy82\\t(0,110,\\fscx100\\fscy100)\\fad(40,0)}' + txt);
 });
+if (RECETA.motion) { try {
+  const lista = palabras.map((w, i) => i + ':' + w.t + '@' + w.de.toFixed(1)).join(' ').slice(0, 20000);
+  const rr = await llamaClaude('Este es el guion hablado de un vídeo de Instagram/TikTok de Ranuse Design (diseño de gimnasios), con el índice de cada palabra y su segundo. Elige entre 5 y 9 momentos en los que conviene que aparezca una ETIQUETA animada en pantalla con la palabra o idea clave que se está diciendo (un lugar, una acción, un objeto, una cifra): de 1 a 3 palabras, en minúscula, sin signos. Deja al menos 4 segundos entre etiquetas, ninguna en los 3 primeros segundos ni en los 2 últimos. Responde SOLO JSON {"etiquetas":[{"i":índice de la palabra,"texto":"..."}]}.\n\n' + lista, 1500, true);
+  let ult = -9, n = 0; for (const e of (rr?.etiquetas || []).slice(0, 12)) { const w = palabras[e.i]; if (!w || w.de < 3 || w.de > durVoz - 2 || w.de < ult + 4) continue; const tx = limpiaT(String(e.texto || '')).toLowerCase().replace(/[.,;:¿¡?!]+/g, '').slice(0, 28); if (!tx) continue;
+    ev.push('Dialogue: 6,' + tAss(w.de) + ',' + tAss(Math.min(w.de + 1.9, durVoz - 0.2)) + ',Etiqueta,,0,0,0,,{\\an8\\pos(540,340)\\fscx68\\fscy68\\t(0,170,\\fscx100\\fscy100)\\fad(0,240)}' + tx); ult = w.de; n++; }
+  console.log('Etiquetas animadas:', n);
+} catch (e) { console.log('Sin etiquetas animadas:', e.message); } }
 const tf = Math.min(durVoz, 3.2);
 if (RECETA.titulo !== false) {
 ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\fad(200,300)}' + limpiaT(plan.kicker || '').toLowerCase().split('').join('\u200A'));
@@ -518,6 +531,7 @@ const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY:
   'Style: Sub,' + RECETA.fuente + ',' + (RECETA.subs.tam >= 70 ? Math.round(RECETA.subs.tam * 0.64) : RECETA.subs.tam) + ',&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,' + (RECETA.mayusculas === true && RECETA.subs.tam > 70 ? '9,4' : '1,2') + ',2,50,50,' + RECETA.subs.margenV + ',1',
   ESTILO_INTRO,
   'Style: Kicker,Montserrat,34,' + RECETA.acento.replace('&H', '&H00').replace(/&$/, '') + ',&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,80,80,300,1',
+  'Style: Etiqueta,Montserrat,48,&H00FFFFFF,&H000000FF,&HC0141414,&HC0141414,-1,0,0,0,100,100,0,0,3,16,0,8,80,80,300,1',
   'Style: Hora,' + RECETA.fuente + ',118,&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,2,3,8,60,60,500,1',
   'Style: Titulo,Montserrat,60,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3,5,8,90,90,385,1', '', '[Events]', 'Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text'].concat(ev).join('\n');
 fs.writeFileSync(path.join(work, 'subs.ass'), '\uFEFF' + ass, 'utf8');
