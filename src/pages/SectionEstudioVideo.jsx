@@ -84,7 +84,7 @@ function Explorador({ seleccion, onCambio, titulo = 'Recursos (de dónde salen l
 }
 
 function Nuevo({ formatos, musica, carpetas, onCreado }) {
-  const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [prog, setProg] = useState(null), [error, setError] = useState('');
+  const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [asig, setAsig] = useState({}), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
   useEffect(() => { if (tipo === 'clips' && formatos.some(f => f.id === 'clips-dopaminicos')) setFmt('clips-dopaminicos'); }, [tipo, formatos]);
@@ -93,10 +93,12 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
     const dDrive = tipo === 'base' || origen === 'drive';
     if ((dDrive ? !base.length : !(files.length || file)) || !fmt) return; setError(''); setProg(0);
     try {
+      const partesG = partesDeGuion(guion); const reparto = tipo !== 'clips' ? partesG.map((texto, i) => ({ texto, clips: (asig[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, ruta: x.ruta })) })).filter(p => p.clips.length) : [];
+      if (reparto.length) { const ya = new Set(recursos.map(r => r.id)); for (const p of reparto) for (const c of p.clips) if (!ya.has(c.id)) { ya.add(c.id); recursos.push(c); } extra.reparto = reparto; }
       // varias entrevistas a la vez: un trabajo por cada una, todos con el mismo guion (cada uno saca los clips que aparecen en su vídeo)
       if (dDrive) { for (const b of (tipo === 'clips' ? base : base.slice(0, 1))) await api.post('/estudio-video/trabajos', { tipo, formato: fmt, base: b, nombre_archivo: b.nombre, indicaciones: notas, guion, musica: mus, recursos, ...extra }); }
       else { for (const fl of (tipo === 'clips' && files.length ? files : [file])) { const ruta = await subirArchivo(fl, setProg); await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: fl.name, indicaciones: notas, guion, musica: mus, recursos, ...extra }); } }
-      setFile(null); setFiles([]); setBase([]); setNotas(''); setGuion(''); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
+      setFile(null); setFiles([]); setBase([]); setNotas(''); setGuion(''); setAsig({}); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
     } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo enviar'); setProg(null); }
   };
   const opcion = (id, Icono, titulo, sub) => (
@@ -142,10 +144,39 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={mus} onChange={e => setMus(e.target.value)}><option value="auto">Automática (la IA elige la que mejor encaje)</option><option value="ninguna">Sin música</option>{musica.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.bpm ? ' · ' + Math.round(p.bpm) + ' bpm' : ''}</option>)}</select>
       <div style={{ ...mut, marginBottom: 4 }}>Guion del vídeo (opcional): pégalo aquí. En una entrevista, pon las preguntas o temas que quieres sacar; en una voz en off o un bruto, el texto que quieres que se diga.</div>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 90, marginBottom: 10 }} value={guion} onChange={e => setGuion(e.target.value)} placeholder="Pega aquí el guion (da igual si al grabar cambiaste alguna palabra: la IA lo encuentra igualmente)…" />
+      {tipo !== 'clips' && <Desglose guion={guion} asig={asig} setAsig={setAsig} />}
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Indicaciones (opcional)</label>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 60, marginBottom: 10 }} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Ej.: enseña el proyecto de Rivas, tono directo, que empiece con un plano de obra…" />
       {error && <div className="ap-error" style={{ marginBottom: 8 }}>{error}</div>}
       <button className="ap-btn ap-btn-primary" disabled={((tipo === 'base' || origen === 'drive') ? !base.length : !file) || !fmt || prog !== null} onClick={enviar}>{prog !== null ? <><Loader2 size={14} /> Subiendo {prog}%</> : <><Wand2 size={14} /> Editar vídeo</>}</button>
+    </div>
+  );
+}
+
+// Desglose del guion: el usuario indica qué vídeos van en cada parte y el montaje lo respeta
+function partesDeGuion(g) {
+  const bloques = String(g || '').split(/\n\s*\n/).map(x => x.trim()).filter(Boolean);
+  if (bloques.length > 1) return bloques.slice(0, 40);
+  return String(g || '').split(/(?<=[.!?])\s+/).map(x => x.trim()).filter(Boolean).slice(0, 40);
+}
+function Desglose({ guion, asig, setAsig }) {
+  const [abierto, setAbierto] = useState(false);
+  const partes = partesDeGuion(guion); if (!partes.length) return null;
+  const n = partes.filter((_, i) => (asig[i] || []).length).length;
+  return (
+    <div style={{ ...card, marginBottom: 10 }}>
+      <button type="button" className="ap-btn ap-btn-sm" onClick={() => setAbierto(!abierto)}><Scissors size={13} /> {abierto ? 'Ocultar el desglose' : 'Asignar vídeos a cada parte del guion'}{n ? ' (' + n + ' de ' + partes.length + ' con vídeos)' : ''}</button>
+      {abierto && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ ...mut, marginBottom: 8 }}>Tu guion está dividido en partes (una por párrafo). En cada una elige los vídeos de Drive que quieres que se vean mientras se dice esa parte. Las que dejes sin vídeos las monta la IA como siempre.</div>
+          {partes.map((p, i) => (
+            <div key={i} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ fontSize: '0.85rem', marginBottom: 6 }}><strong>Parte {i + 1}:</strong> {p}</div>
+              <Explorador seleccion={asig[i] || []} onCambio={(s) => setAsig({ ...asig, [i]: s })} max={8} titulo="Vídeos para esta parte" vacio="Elegir vídeos de Drive" />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
