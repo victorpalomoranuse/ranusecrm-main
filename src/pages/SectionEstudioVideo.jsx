@@ -961,7 +961,8 @@ function Formatos({ formatos, onCambio }) {
         <label><input type="checkbox" checked={!!r.horas} onChange={e => setR('horas', e.target.checked)} /> Etiquetas de hora (9:00…)</label>
         <label><input type="checkbox" checked={!!r.preguntaSoloEscrita} onChange={e => setR('preguntaSoloEscrita', e.target.checked)} /> Entrevistas: la pregunta solo sale escrita (no se oye al entrevistador)</label>
         <label><input type="checkbox" checked={!!r.collage} onChange={e => setR('collage', e.target.checked)} /> Collage: en cortes alternos, dos clips a la vez (uno arriba y otro abajo)</label>
-        <label><input type="checkbox" checked={!!r.motion} onChange={e => setR('motion', e.target.checked)} /> Movimiento variado y etiquetas animadas</label>
+        <label><input type="checkbox" checked={!!r.motion} onChange={e => setR('motion', e.target.checked)} /> Movimiento variado en los planos (acercar, alejar y barridos)</label>
+        <label><input type="checkbox" checked={!!r.etiquetas} onChange={e => setR('etiquetas', e.target.checked)} /> Etiquetas animadas con palabras clave (desactivado por defecto)</label>
       </div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={guardar}><Check size={13} /> Guardar formato</button><span style={mut}>{msg}</span></div>
     </div>

@@ -41,7 +41,7 @@ if (process.env.RECETA_JSON) { // receta elegida en el CRM
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
   if (o.corte) RECETA.corte = { ...RECETA.corte, ...o.corte };
   if (/^#[0-9a-f]{6}$/i.test(o.acento || '')) RECETA.acento = '&H' + o.acento.slice(5, 7) + o.acento.slice(3, 5) + o.acento.slice(1, 3) + '&';
-  for (const k of ['aperturaPremium', 'motion', 'zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente', 'horas', 'introLetras', 'estiloSubs', 'collage']) if (o[k] !== undefined) RECETA[k] = o[k];
+  for (const k of ['aperturaPremium', 'motion', 'etiquetas', 'zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente', 'horas', 'introLetras', 'estiloSubs', 'collage']) if (o[k] !== undefined) RECETA[k] = o[k];
   if (o.musica && typeof o.musica === 'object') RECETA.musica = { ...RECETA.musica, ...o.musica };
   if (!['Montserrat', 'Rubik'].includes(RECETA.fuente)) RECETA.fuente = 'Montserrat';
   if (o.subs) RECETA.subs = { ...RECETA.subs, ...o.subs };
@@ -531,7 +531,7 @@ bloques.forEach((bl, k) => {
     });
   } else ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(fin) + ',' + (RECETA.estiloSubs === 'caja' ? 'SubCaja' : 'Sub') + ',,0,0,0,,{' + pos + (RECETA.estiloSubs === 'palabra' ? '\\fscx55\\fscy55\\t(0,150,\\fscx100\\fscy100)\\fad(30,0)' : '\\fscx82\\fscy82\\t(0,110,\\fscx100\\fscy100)\\fad(40,0)') + '}' + txt);
 });
-if (RECETA.motion) { try {
+if (RECETA.etiquetas) { try {
   const lista = palabras.map((w, i) => i + ':' + w.t + '@' + w.de.toFixed(1)).join(' ').slice(0, 20000);
   const rr = await llamaClaude('Este es el guion hablado de un vídeo de Instagram/TikTok de Ranuse Design (diseño de gimnasios), con el índice de cada palabra y su segundo. Elige entre 5 y 9 momentos en los que conviene que aparezca una ETIQUETA animada en pantalla con la palabra o idea clave que se está diciendo (un lugar, una acción, un objeto, una cifra): de 1 a 3 palabras, en minúscula, sin signos. Deja al menos 4 segundos entre etiquetas, ninguna en los 3 primeros segundos ni en los 2 últimos. Responde SOLO JSON {"etiquetas":[{"i":índice de la palabra,"texto":"..."}]}.\n\n' + lista, 1500, true);
   let ult = -9, n = 0; for (const e of (rr?.etiquetas || []).slice(0, 12)) { const w = palabras[e.i]; if (!w || w.de < 3 || w.de > durVoz - 2 || w.de < ult + 4) continue; const tx = limpiaT(String(e.texto || '')).toLowerCase().replace(/[.,;:¿¡?!]+/g, '').slice(0, 28); if (!tx) continue;
