@@ -285,6 +285,18 @@ if (process.env.EDICION !== '1') try {
       // fuera de las partes con vídeos asignados: no se usan los vídeos que el usuario reservó para otra parte
       if (asignados.has(c.video)) { const alt = idx.find(v => !asignados.has(v.id) && !v.es_imagen && !v.hablando_a_camara && v.duracion >= 2); if (alt) { c.video = alt.id; c.desde = 0; c._cont = false; forz++; } }
     });
+    // clips demasiado cortos: si un vídeo no da para todos sus cortes, los que sobran pasan al clip de la parte siguiente (o de la anterior) en vez de repetirse
+    let pasados = 0;
+    repartoIdx.forEach((r, ri) => {
+      const sig = repartoIdx[ri + 1] || null, ant = repartoIdx[ri - 1] || null;
+      r.vids.forEach(vid => {
+        const v = idx.find(x => x.id === vid); if (!v || v.es_imagen) return;
+        let usado = 0;
+        cs.forEach((c, k) => { if (!(c.de >= r.ini && c.de < r.fin && c.video === vid)) return; const L = durCorte(c, k);
+          if (usado + L > (v.duracion || 0) - 0.3) { const dest = (sig && sig.vids.find(x => x !== vid)) || (ant && ant.vids.find(x => x !== vid)); if (dest) { c.video = dest; c.desde = 0; c._cont = false; pasados++; } } else usado += L + 0.1; });
+      });
+    });
+    if (pasados) console.log('Cortes que no cabían en un clip corto y pasan al clip vecino:', pasados);
     // dentro de una parte con un solo vídeo y varios cortes, se sigue el mismo vídeo sin repetir segundos
     repartoIdx.forEach(r => { let pos = 0; cs.forEach((c, k) => { if (c.de >= r.ini && c.de < r.fin && r.vids.includes(c.video)) { const v = idx.find(x => x.id === c.video); const L = durCorte(c, k); if (v && !v.es_imagen) { c.desde = Math.max(0, Math.min(pos, Math.max(0, (v.duracion || 0) - L - 0.1))); pos = c.desde + L; } } }); });
     console.log('Cortes colocados según el reparto del usuario:', forz);
@@ -589,6 +601,22 @@ if (RECETA.whoosh > 0 && marcas.length > 1) {
   fa += ';[2:a]asplit=' + n + marcas.slice(1).map((_, k) => '[w' + k + ']').join('') + ';' + marcas.slice(1).map((m, k) => '[w' + k + ']adelay=' + Math.max(0, Math.round((m - 0.2) * 1000)) + ':all=1[d' + k + ']').join(';') + ';[voz]' + marcas.slice(1).map((_, k) => '[d' + k + ']').join('') + 'amix=inputs=' + (n + 1) + ':normalize=0:duration=first,alimiter=limit=0.95[va]';
 } else fa += ';[voz]anull[va]';
 if (pista) { args.push('-stream_loop', '-1', '-i', pista.ruta); fa += ';' + mezcla({ entradaIdx: args.filter(x => x === '-i').length - 1, voz: 'va', durTotal: durVoz, db: Number(RECETA.musica.volumen) || -19, salida: 'a' }); } else fa += ';[va]anull[a]';
+// AUDIO APARTE: la voz y la música se mezclan primero solas (sin el vídeo), se comprueba que no haya huecos de silencio que la voz no tenga
+// (se perdían trozos de voz en algunos montajes) y después se une al vídeo sin recodificar. Si la mezcla falla se prueba otra más simple.
+const audioF = path.join(work, 'audio_final.m4a'), cadAudio = (fg) => { const aa = args.slice(); aa.splice(4, 6, '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'); aa.push('-filter_complex', fg, '-map', '[a]', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-t', durVoz.toFixed(3), audioF); fs.rmSync(audioF, { force: true }); run('ffmpeg', aa, { cwd: work }); return fs.existsSync(audioF) && fs.statSync(audioF).size > 2000; };
+const huecos = (arch) => { const r = run('ffmpeg', ['-hide_banner', '-nostats', '-i', arch, '-af', 'silencedetect=n=-50dB:d=0.7', '-f', 'null', '-'], { cwd: work }); const txt = String(r.stderr || ''); const s = [...txt.matchAll(/silence_start: (-?[\d.]+)/g)].map(m => Math.max(0, Number(m[1]))), e = [...txt.matchAll(/silence_end: ([\d.]+)/g)].map(m => Number(m[1])); return s.map((a, i) => [a, e[i] ?? durVoz + 1]); };
+const audioMalo = () => { try { const vozH = huecos(path.join(work, 'voz48.wav')), fH = huecos(audioF); return fH.filter(([a, b]) => b - a >= 0.7 && !vozH.some(([c, d]) => Math.min(b, d) - Math.max(a, c) >= (b - a) * 0.5)); } catch { return []; } };
+let audioListo = false;
+try {
+  audioListo = cadAudio(fa); let malos = audioListo ? audioMalo() : [];
+  if (audioListo && malos.length) { console.log('Audio con huecos que la voz no tiene:', malos.map(([a, b]) => a.toFixed(1) + '-' + b.toFixed(1)).join(', '), '→ se rehace la mezcla sin compresión de música'); const simple = fa.replace(/\[va_m\]\[va_s\]sidechaincompress=[^\[]*\[va_d\]/, '[va_m]anull[va_d]'); audioListo = cadAudio(simple); malos = audioListo ? audioMalo() : []; }
+  if (audioListo && malos.length) { console.log('Sigue habiendo huecos: se usa solo la voz'); audioListo = cadAudio(fa.split(';')[0] + ';[voz]anull[va];[va]anull[a]'); }
+} catch (e) { console.log('Audio aparte no disponible:', e.message); audioListo = false; }
+if (audioListo) {
+  const vArgs = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', 'lista.txt', '-i', audioF, '-filter_complex', '[0:v]tpad=stop_mode=clone:stop_duration=8,' + (process.env.SIN_ASS === '1' ? 'null' : 'ass=subs.ass:fontsdir=fonts') + '[v]', '-map', '[v]', '-map', '1:a', ...ARGS_VIDEO(23), '-pix_fmt', 'yuv420p', '-c:a', 'copy', '-t', durVoz.toFixed(3), '-movflags', '+faststart', path.resolve(SALIDA)];
+  args.length = 0; args.push(...vArgs);
+} else {
 args.push('-filter_complex', '[0:v]tpad=stop_mode=clone:stop_duration=8,' + (process.env.SIN_ASS === '1' ? 'null' : 'ass=subs.ass:fontsdir=fonts') + '[v];' + fa, '-map', '[v]', '-map', '[a]', ...ARGS_VIDEO(23), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-t', durVoz.toFixed(3), '-movflags', '+faststart', path.resolve(SALIDA));
+}
 const fin = run('ffmpeg', args, { cwd: work });
 console.log(fs.existsSync(SALIDA) ? 'OK ' + SALIDA + ' · ' + (fs.statSync(SALIDA).size / 1048576).toFixed(1) + ' MB' : 'FALLO ' + (fin.stderr || '').slice(0, 800));
