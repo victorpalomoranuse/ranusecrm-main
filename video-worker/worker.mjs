@@ -4,6 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { hfDisponible, componeHF } from './hf.mjs';
 import { analizaReferencia } from './referencia.mjs';
+import { indexaSubidos } from './subidos.mjs';
 import path from 'path';
 import { createRequire } from 'module';
 import { spawnSync, spawn } from 'child_process';
@@ -265,9 +266,18 @@ async function procesa(t) {
   else if (t.tipo === 'voz' || t.tipo === 'base' || rec0.length) { const rec = rec0;
     const idsExist = new Set(); for (const f of ['drive-redes/indice.json', 'drive-seleccion/indice.json']) { try { for (const v of JSON.parse(fs.readFileSync(new URL('./datos/' + f, import.meta.url), 'utf8')).videos) if (v.drive_id) idsExist.add(v.drive_id); } catch { /* sin índice */ } }
     try { await indexaCarpetas(t, { carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }, idsExist); } catch (e) { console.log('Carpetas sin indexar del todo:', e.message); } seleccion = { carpetas: rec.filter(r => r.tipo === 'carpeta').map(r => r.ruta).filter(Boolean), videos: rec.filter(r => r.tipo === 'video').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), imagenes: rec.filter(r => r.tipo === 'imagen').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })), carpetasId: rec.filter(r => r.tipo === 'carpeta').map(r => ({ id: r.id, nombre: r.nombre, ruta: r.ruta })) }; try { indiceUsar = indiceTotal(dir, seleccion); } catch (e) { console.log('Índice total no disponible:', e.message); } }
+  // recursos subidos desde el dispositivo: se bajan, la IA los mira y entran al catálogo
+  let indiceExtra = '';
+  { const subs = rec0.filter(r => r.tipo === 'subido' && /^entradas\//.test(r.ruta || ''));
+    if (subs.length) {
+      await paso(t, 'Mirando los clips y fotos que has subido…', { pct: 12 });
+      const dsub = path.join(dir, 'subidos'); fs.mkdirSync(dsub, { recursive: true }); const lista = [];
+      for (const [k, r] of subs.entries()) { try { const u = await st.createSignedUrl(r.ruta, 900); if (!u.data?.signedUrl) continue; const f = path.join(dsub, 'r' + k + path.extname(r.nombre || r.ruta || '.mp4')); fs.writeFileSync(f, Buffer.from(await (await fetch(u.data.signedUrl)).arrayBuffer())); lista.push({ ruta: f, nombre: r.nombre || r.ruta, tipo: 'video' }); } catch (e) { console.log('Recurso subido sin bajar:', r.nombre, e.message); } }
+      const ent = await indexaSubidos(lista, path.join(dsub, 'idx')); if (ent.length) { indiceExtra = path.join(dir, 'indice_subidos.json'); fs.writeFileSync(indiceExtra, JSON.stringify(ent)); }
+    } }
   const conInserciones = t.tipo === 'base' || rec0.length > 0;
   const script = (t.tipo === 'voz' || t.tipo === 'edicion') ? ['montar.mjs', entrada, indiceUsar, salida, notas] : ['bruto.mjs', entrada, salida, notas];
-  const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, ...(t.tipo === 'edicion' ? { REUSE: '1', SIN_LIMPIEZA: '1', SIN_REVISION: '1', EDICION: '1' } : {}), ...(t.sin_limpieza ? { SIN_LIMPIEZA: '1' } : {}), ...(t.fase === 'audio' && t.tipo === 'voz' ? { SOLO_VOZ: '1' } : {}), ...(t.edicion_texto && t.tipo !== 'edicion' ? { FUERA_JSON: path.join(dir, 'fuera.json') } : {}), ...(hfDisponible() ? { SIN_ASS: '1' } : {}), REGLAS_MARCA: t.reglas || '', GUION: t.guion || '', REPARTO: JSON.stringify(t.reparto || []), TITULO_PANTALLA: t.clip?.titulo || '', PREGUNTA_PANTALLA: t.clip?.pregunta || '', RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: (t.tipo === 'edicion' && t.musica_usada) ? t.musica_usada : (t.musica === 'ninguna' ? 'ninguna' : (t.musica || 'auto')), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
+  const r = await lanzaMotor(t, script, { cwd: AQUI, env: { ...process.env, ...(t.tipo === 'edicion' ? { REUSE: '1', SIN_LIMPIEZA: '1', SIN_REVISION: '1', EDICION: '1' } : {}), ...(t.sin_limpieza ? { SIN_LIMPIEZA: '1' } : {}), ...(t.fase === 'audio' && t.tipo === 'voz' ? { SOLO_VOZ: '1' } : {}), ...(t.edicion_texto && t.tipo !== 'edicion' ? { FUERA_JSON: path.join(dir, 'fuera.json') } : {}), ...(hfDisponible() ? { SIN_ASS: '1' } : {}), REGLAS_MARCA: t.reglas || '', GUION: t.guion || '', ...(indiceExtra ? { INDICE_EXTRA: indiceExtra } : {}), REPARTO: JSON.stringify(t.reparto || []), TITULO_PANTALLA: t.clip?.titulo || '', PREGUNTA_PANTALLA: t.clip?.pregunta || '', RECETA_JSON: path.join(dir, 'receta.json'), MUSICA_DIR: MUSICA_LOCAL, RECURSOS_SEL: JSON.stringify(seleccion), INDICE_JSON: indiceUsar, INSERCIONES: conInserciones ? '1' : '0', BASE_DRIVE_ID: t.base?.id || '', MUSICA_ELEGIDA: (t.tipo === 'edicion' && t.musica_usada) ? t.musica_usada : (t.musica === 'ninguna' ? 'ninguna' : (t.musica || 'auto')), PATH: process.env.PATH + ';' + (process.env.FFMPEG_BIN || '') } });
   console.log((r.stdout || '').split('\n').slice(-6).join('\n'));
   { const mm = /Música: (.+?) \(\d/.exec(r.stdout || ''); if (mm) t.musica_usada = mm[1]; }
   if (t.fase === 'audio' && t.tipo === 'voz') {

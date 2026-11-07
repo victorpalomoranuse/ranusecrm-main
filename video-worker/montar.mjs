@@ -119,6 +119,8 @@ let idx = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos.filter(v => v.durac
     } else if ((sel.imagenes || []).length || (sel.carpetasId || []).length) { console.log('En lo elegido no hay vídeos indexados: se montará con imágenes'); idx = []; } else { console.log('Nada de lo elegido está indexado; se usan todos'); idx = idx.filter(v => !v.hablando_a_camara); }
   } else if (process.env.EDICION !== '1') idx = idx.filter(v => !v.hablando_a_camara && v.duracion >= 2);
 }
+// Recursos subidos desde el dispositivo (ya indexados por el trabajador): entran al catálogo como elegidos por la persona
+if (process.env.INDICE_EXTRA) { try { const ex = JSON.parse(fs.readFileSync(process.env.INDICE_EXTRA, 'utf8')); if (ex.length) { ex.forEach(v => { v._elegido = true; }); let s2 = {}; try { s2 = JSON.parse(process.env.RECURSOS_SEL || '{}'); } catch { /* sin selección */ } const hayDrive = (s2.carpetas || []).length || (s2.videos || []).length || (s2.imagenes || []).length || (s2.carpetasId || []).length; idx = hayDrive ? [...idx, ...ex] : ex; console.log('Recursos subidos desde el dispositivo:', ex.length); } } catch (e) { console.log('Recursos subidos no válidos:', e.message); } }
 // Imágenes elegidas (sueltas o dentro de carpetas): se bajan, se describen con visión (con caché) y entran al catálogo como escenas fijas
 const enParalelo = async (items, n, fn) => { const cola = items.slice(); await Promise.all(Array.from({ length: Math.min(n, cola.length) }, async () => { while (cola.length) await fn(cola.shift()); })); };
 async function imagenesParaCatalogo(sel) {

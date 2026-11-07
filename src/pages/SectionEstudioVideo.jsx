@@ -142,6 +142,7 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       )}
       {tipo === 'base' && <Explorador seleccion={base} onCambio={setBase} max={1} titulo="Vídeo base (el que se ve de fondo, con su voz)" vacio="Elegir el vídeo base" />}
       <Explorador seleccion={recursos} onCambio={setRecursos} titulo={tipo === 'voz' ? 'Recursos (de dónde salen las escenas)' : 'Recursos para superponer en momentos clave (opcional)'} vacio={tipo === 'voz' ? 'Todo Drive indexado' : 'Todo Drive indexado / elegir recursos'} />
+      <SubirRecursos onSubidos={(n) => setRecursos(r => [...r, ...n])} />
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Música de fondo</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={mus} onChange={e => setMus(e.target.value)}><option value="auto">Automática (la IA elige la que mejor encaje)</option><option value="ninguna">Sin música</option>{musica.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.bpm ? ' · ' + Math.round(p.bpm) + ' bpm' : ''}</option>)}</select>
       <div style={{ ...mut, marginBottom: 4 }}>Guion del vídeo (opcional): pégalo aquí. En una entrevista, pon las preguntas o temas que quieres sacar; en una voz en off o un bruto, el texto que quieres que se diga.</div>
@@ -230,6 +231,20 @@ function ConstructorClips({ t, onCambio }) {
         <div style={{ marginTop: 12 }}><button className="ap-btn ap-btn-primary" disabled={!nListos || env} onClick={montar}>{env ? <Loader2 size={14} /> : <Wand2 size={14} />} Montar {nListos || ''} clip{nListos === 1 ? '' : 's'}</button></div>
         {err && <div style={{ color: '#ff8a80', marginTop: 8 }}>{err}</div>}
       </div>
+    </div>
+  );
+}
+
+// Subir clips o fotos desde el dispositivo para usarlos como escenas
+function SubirRecursos({ onSubidos }) {
+  const [prog, setProg] = useState(null), [err, setErr] = useState(''), inp = useRef(null);
+  const subir = async (lista) => { if (!lista.length) return; setErr(''); try { const nuevos = []; for (let i = 0; i < lista.length; i++) { const f = lista[i]; const ruta = await subirArchivo(f, (p) => setProg(Math.round(((i + p / 100) / lista.length) * 100))); nuevos.push({ id: ruta, nombre: f.name, tipo: 'subido', ruta }); } onSubidos(nuevos); } catch (e) { setErr(e?.response?.data?.error || e.message || 'No se pudo subir'); } setProg(null); if (inp.current) inp.current.value = ''; };
+  return (
+    <div style={{ margin: '8px 0 12px' }}>
+      <div style={{ ...mut, marginBottom: 4 }}>O sube clips y fotos desde tu dispositivo para usarlos como escenas:</div>
+      <input ref={inp} type="file" multiple accept="video/*,image/*" disabled={prog !== null} onChange={e => subir(Array.from(e.target.files || []))} />
+      {prog !== null && <span style={{ ...mut, marginLeft: 8 }}><Loader2 size={13} /> Subiendo {prog}%</span>}
+      {err && <div style={{ color: '#ff8a80', marginTop: 4 }}>{err}</div>}
     </div>
   );
 }
@@ -415,6 +430,7 @@ function TrabajoNormal({ t, formatos, onCambio }) {
           <div style={{ ...mut, marginBottom: 4 }}>{t.base?.id ? 'Audio o vídeo base (de Drive): ' + (t.base.nombre || '') : 'Audio o vídeo base: archivo subido desde el dispositivo' + (t.nombre_archivo ? ' (' + t.nombre_archivo + ')' : '') + '. Si eliges uno de Drive, sustituye a ese.'}</div>
           <Explorador seleccion={baseSel} onCambio={setBaseSel} max={1} titulo="Audio o vídeo base" vacio={t.base?.id ? 'Elegir otro archivo base' : 'Cambiar por un archivo de Drive'} />
           <Explorador seleccion={recs} onCambio={setRecs} titulo="Recursos (de dónde salen las escenas)" vacio="Todo Drive indexado" />
+          <SubirRecursos onSubidos={(n) => setRecs(r => [...r, ...n])} />
           <div style={{ ...mut, marginBottom: 4 }}>Guion (opcional): pégalo o cámbialo aquí.</div>
           <textarea className="ap-field-input" style={{ width: '100%', minHeight: 80, marginBottom: 8 }} value={guionReg} onChange={e => setGuionReg(e.target.value)} placeholder="Guion del vídeo o preguntas de la entrevista" />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
