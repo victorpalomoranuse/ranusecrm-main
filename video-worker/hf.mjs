@@ -57,7 +57,7 @@ function eventoAHtml(ev, est, id) {
   inner = trozos.map(([t, c]) => { const t2 = esc(t).replace(/\\N/g, '<br>'); return c.toLowerCase() === colorBase.toLowerCase() ? t2 : `<span style="color:${c}">${t2}</span>`; }).join('');
   if (!inner.replace(/<[^>]+>/g, '').trim()) return null;
   const fuente = est?.Fontname === 'Rubik' ? 'Rubik' : 'Montserrat'; const negrita = est?.Bold === '-1' || est?.Bold === '1' ? 800 : 500;
-  let fsUso = fs0; if (ev.estilo === 'Intro' && pos) { const nCar = inner.replace(/<[^>]+>/g, '').length || 1; fsUso = Math.min(fs0, 940 / (nCar * 0.72)); const ancho = nCar * fsUso * 0.72; pos[1] = String(Math.max(ancho / 2 + 30, Math.min(1050 - ancho / 2, Number(pos[1])))); }
+  let fsUso = fs0; if (ev.estilo === 'Intro' && pos) { const nCar = inner.replace(/<[^>]+>/g, '').length || 1; fsUso = Math.min(fs0, 980 / (nCar * 0.66)); const ancho = nCar * fsUso * 0.66; pos[1] = String(Math.max(ancho / 2 + 30, Math.min(1050 - ancho / 2, Number(pos[1])))); }
   // el texto nunca se sale del encuadre: si la línea más larga no cabe en 920 px se reduce el tamaño; HF_ESCALA lo reduce más si la revisión lo pide
   if (ev.estilo !== 'Intro' && !caja0(est)) { const lineas = inner.replace(/<br>/g, '\n').replace(/<[^>]+>/g, '').split('\n'); const mx = Math.max(...lineas.map(s => s.length), 1); fsUso = Math.min(fsUso, 900 / (mx * 0.66)); }
   if (ev.estilo !== 'Intro') fsUso = Math.round(fsUso * Number(process.env.HF_ESCALA || 1));
