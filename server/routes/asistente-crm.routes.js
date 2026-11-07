@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requireAdminSuperior } from '../middleware/auth.middleware.js';
 import { leerJson, guardarJson, RUTA_RECORD, RUTA_DIARIO } from '../utils/asistente-personal.js';
+import { RUTA_PERFIL, RUTA_PLAN, RUTA_REGISTRO, RUTA_MARCAS, ejecutarSalud } from '../utils/salud-asistente.js';
 
 // Lo que el asistente personal sabe y hace, visible y editable desde el CRM (sección "Asistente personal").
 const router = express.Router();
@@ -82,6 +83,21 @@ router.get('/diario', async (req, res) => {
 router.delete('/diario/:id', async (req, res) => {
   try { const d = await leerJson(RUTA_DIARIO, { entradas: [] }); d.entradas = (d.entradas || []).filter(e => e.id !== req.params.id); await guardarJson(RUTA_DIARIO, d); res.json({ ok: true }); }
   catch { res.status(500).json({ error: 'No se pudo borrar' }); }
+});
+
+// Salud, entrenamiento y hábitos: perfil, plan a largo plazo, registro de los últimos 30 días y marcas
+router.get('/salud', async (req, res) => {
+  try {
+    const [perfil, plan, registro, marcas, hoy] = await Promise.all([leerJson(RUTA_PERFIL, {}), leerJson(RUTA_PLAN, {}), leerJson(RUTA_REGISTRO, { dias: {} }), leerJson(RUTA_MARCAS, {}), ejecutarSalud('salud_hoy', {})]);
+    const desde = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const dias = Object.keys(registro.dias || {}).filter(d => d >= desde).sort().reverse().map(d => ({ fecha: d, ...registro.dias[d] }));
+    res.json({ perfil, plan: Object.keys(plan).length ? plan : null, dias, marcas: Object.values(marcas), calculos: hoy.calculos || {}, hoy: { recomendacion: hoy.recomendacion_del_sistema, esta_semana: hoy.esta_semana } });
+  } catch { res.status(500).json({ error: 'No se pudo leer la salud' }); }
+});
+router.put('/salud/perfil', async (req, res) => {
+  try {
+    const c = req.body?.campos && typeof req.body.campos === 'object' ? req.body.campos : {}; const r = await ejecutarSalud('salud_perfil', { accion: 'guardar', campos: c }); res.json(r);
+  } catch { res.status(500).json({ error: 'No se pudo guardar el perfil' }); }
 });
 
 export default router;

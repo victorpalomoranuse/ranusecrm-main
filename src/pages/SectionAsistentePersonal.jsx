@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
-import { Trash2, Plus, Pencil, Check, X, FileText, Brain, Bell, MessageSquare, BookOpen } from 'lucide-react';
+import { Trash2, Plus, Pencil, Check, X, FileText, Brain, Bell, MessageSquare, BookOpen, Dumbbell } from 'lucide-react';
 
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '0.85rem 1rem' };
 const mut = { color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem' };
@@ -129,7 +129,66 @@ function Conversacion() {
   );
 }
 
-const PESTANAS = [['memoria', 'Memoria', Brain], ['recordatorios', 'Recordatorios', Bell], ['diario', 'Diario', BookOpen], ['informes', 'Informes', FileText], ['conversacion', 'Conversación', MessageSquare]];
+// Salud, entrenamiento y hábitos: perfil, plan a largo plazo, lo que ha apuntado cada día y sus marcas
+const CAMPOS_PERFIL = [['objetivo', 'Objetivo'], ['sexo', 'Sexo'], ['edad', 'Edad'], ['altura_cm', 'Altura (cm)'], ['peso_kg', 'Peso (kg)'], ['nivel', 'Nivel'], ['dias_entreno_semana', 'Días de entreno por semana'], ['material', 'Material / dónde entrena'], ['lesiones', 'Lesiones'], ['dieta', 'Dieta (omnívora, vegetariana…)'], ['alergias', 'Alergias o intolerancias'], ['no_le_gusta', 'No le gusta'], ['actividad', 'Actividad diaria (baja, media, alta)'], ['fecha_objetivo', 'Fecha objetivo']];
+function Salud() {
+  const [d, setD] = useState(null), [edit, setEdit] = useState(false), [form, setForm] = useState({}), [msg, setMsg] = useState('');
+  const cargar = useCallback(() => api.get('/asistente-crm/salud').then(r => { setD(r.data); setForm(r.data.perfil || {}); }).catch(() => setD({ perfil: {}, dias: [], marcas: [] })), []);
+  useEffect(() => { cargar(); }, [cargar]);
+  const guardar = async () => { try { await api.put('/asistente-crm/salud/perfil', { campos: form }); setEdit(false); setMsg('Guardado'); setTimeout(() => setMsg(''), 1500); cargar(); } catch { setMsg('No se pudo guardar'); } };
+  if (!d) return <div className="ap-loading">Cargando…</div>;
+  const p = d.perfil || {}, e = d.calculos?.energia, rc = d.calculos?.raciones, pl = d.plan;
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}><strong>Perfil</strong><button className="ap-btn ap-btn-sm" onClick={() => setEdit(!edit)}>{edit ? 'Cancelar' : 'Editar'}</button></div>
+        {!Object.keys(p).length && !edit && <div style={mut}>Todavía no hay perfil. Escríbele al asistente por WhatsApp «quiero que me prepares rutinas y dieta» y te hará las preguntas.</div>}
+        {edit ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+            {CAMPOS_PERFIL.map(([k, n]) => <label key={k} style={{ fontSize: '0.8rem' }}><span style={mut}>{n}</span><input className="ap-field-input" style={{ width: '100%' }} value={form[k] ?? ''} onChange={ev => setForm({ ...form, [k]: ev.target.value })} /></label>)}
+            <div><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={guardar}><Check size={13} /> Guardar</button> <span style={mut}>{msg}</span></div>
+          </div>
+        ) : <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', fontSize: '0.85rem' }}>{CAMPOS_PERFIL.filter(([k]) => p[k]).map(([k, n]) => <span key={k}><span style={mut}>{n}: </span>{String(p[k])}</span>)}</div>}
+        {msg && !edit && <div style={mut}>{msg}</div>}
+      </div>
+      {e && (
+        <div style={card}>
+          <strong>Objetivo diario</strong>
+          <div style={{ fontSize: '0.88rem', marginTop: 6 }}>{e.objetivo_kcal} kcal ({e.nota}) · proteína {e.proteina_g} g · grasas {e.grasas_g} g · hidratos {e.carbohidratos_g} g · mantenimiento ~{e.mantenimiento_kcal} kcal</div>
+          {rc && <div style={{ ...mut, marginTop: 6 }}>Raciones de la guía: nivel {rc.nivel} de 5 → {Object.entries(rc.raciones).slice(0, 6).map(([k, v]) => k + ' ' + v).join(' · ')}</div>}
+        </div>
+      )}
+      <div style={card}>
+        <strong>Plan a largo plazo</strong>
+        {!pl ? <div style={{ ...mut, marginTop: 6 }}>Todavía no hay plan. Cuando el perfil esté completo, el asistente lo diseña y lo ves aquí.</div> : (
+          <div style={{ marginTop: 6, fontSize: '0.88rem' }}>
+            <div>{pl.objetivo}{pl.semanas_total ? ' · ' + pl.semanas_total + ' semanas' : ''}{pl.fecha_inicio ? ' · desde ' + pl.fecha_inicio : ''}{pl.dias_por_semana ? ' · ' + pl.dias_por_semana + ' días/semana' : ''}</div>
+            {(pl.fases || []).length > 0 && <div style={mut}>Fases: {pl.fases.map(f => f.nombre + ' (' + f.semanas + ' sem)').join(' → ')}</div>}
+            {pl.progresion && <div style={mut}>Progresión: {pl.progresion}</div>}
+            {(pl.sesiones || []).map((s, i) => <div key={i} style={{ marginTop: 8 }}><strong>{s.nombre}</strong>{s.foco ? ' · ' + s.foco : ''}<div style={mut}>{(s.ejercicios || []).map(x => x.nombre + ' ' + (x.series || '') + '×' + (x.reps || '')).join(' · ')}</div></div>)}
+          </div>
+        )}
+        {d.hoy?.recomendacion && <div style={{ marginTop: 10, padding: 8, borderRadius: 8, background: 'rgba(255,255,255,0.05)', fontSize: '0.85rem' }}><strong>Hoy:</strong> {d.hoy.recomendacion.motivo}{d.hoy.recomendacion.sesion_que_toca ? ' Sesión que toca: ' + d.hoy.recomendacion.sesion_que_toca.nombre + '.' : ''}</div>}
+      </div>
+      <div style={card}>
+        <strong>Marcas personales</strong>
+        {!d.marcas?.length ? <div style={{ ...mut, marginTop: 6 }}>Aún no hay marcas apuntadas.</div> : <div style={{ marginTop: 6, fontSize: '0.85rem' }}>{d.marcas.map((m, i) => <div key={i}>{m.nombre}: mejor serie {m.mejor_peso ? m.mejor_peso.kg + ' kg × ' + m.mejor_peso.reps : '—'} · 1RM estimado {m.mejor_1rm ? m.mejor_1rm.valor + ' kg' : '—'}</div>)}</div>}
+      </div>
+      <div style={card}>
+        <strong>Últimos días</strong>
+        {!d.dias?.length ? <div style={{ ...mut, marginTop: 6 }}>Todavía no hay registros. Cuéntale al asistente lo que entrenas, tus pesos y lo que comes.</div> : d.dias.map(x => (
+          <div key={x.fecha} style={{ marginTop: 8, fontSize: '0.85rem' }}>
+            <strong>{x.fecha.split('-').reverse().join('/')}</strong>{x.peso_kg ? ' · ' + x.peso_kg + ' kg' : ''}{x.pasos ? ' · ' + x.pasos + ' pasos' : ''}{x.sueno_horas ? ' · sueño ' + x.sueno_horas + ' h' : ''}{x.energia ? ' · energía ' + x.energia + '/5' : ''}
+            {(x.entrenos || []).map((en, i) => <div key={i} style={mut}>🏋 {en.nombre}{en.minutos ? ' (' + en.minutos + ' min)' : ''}: {(en.ejercicios || []).map(ej => ej.nombre + ' ' + (ej.series || []).map(s => (s.kg ?? '') + '×' + (s.reps ?? '')).join(', ')).join(' · ')}</div>)}
+            {x.comidas && <div style={mut}>🍽 {x.comidas}</div>}{x.notas && <div style={mut}>📝 {x.notas}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const PESTANAS = [['salud', 'Salud', Dumbbell], ['memoria', 'Memoria', Brain], ['recordatorios', 'Recordatorios', Bell], ['diario', 'Diario', BookOpen], ['informes', 'Informes', FileText], ['conversacion', 'Conversación', MessageSquare]];
 export function SectionAsistentePersonal() {
   const [tab, setTab] = useState('memoria');
   return (
@@ -139,7 +198,7 @@ export function SectionAsistentePersonal() {
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
         {PESTANAS.map(([id, nombre, Icono]) => <button key={id} className={'ap-btn ap-btn-sm' + (tab === id ? ' ap-btn-primary' : '')} onClick={() => setTab(id)}><Icono size={13} /> {nombre}</button>)}
       </div>
-      {tab === 'memoria' && <Memoria />}{tab === 'recordatorios' && <Recordatorios />}{tab === 'diario' && <Diario />}{tab === 'informes' && <Informes />}{tab === 'conversacion' && <Conversacion />}
+      {tab === 'salud' && <Salud />}{tab === 'memoria' && <Memoria />}{tab === 'recordatorios' && <Recordatorios />}{tab === 'diario' && <Diario />}{tab === 'informes' && <Informes />}{tab === 'conversacion' && <Conversacion />}
     </div>
   );
 }

@@ -50,7 +50,7 @@ async function tick() {
       const c = elegir(estado);
       if (c) {
         estado.briefing = ahora.fecha; await guardarJson(RUTA_ESTADO, estado); // marcamos antes para no repetir
-        const out = await responderAsistente({ chatId: c.chatId, texto: '[Aviso automático de las ' + ahora.local.slice(11) + '] Escríbele tú primero a Víctor con su día: usa agenda_de_hoy y listar_tareas, dile lo atrasado y urgente, lo de hoy y los eventos con hora, y propón su plan con las 3 prioridades en orden. Saludo breve y mensaje corto.' });
+        const out = await responderAsistente({ chatId: c.chatId, texto: '[Aviso automático de las ' + ahora.local.slice(11) + '] Escríbele tú primero a Víctor con su día: usa agenda_de_hoy y listar_tareas, dile lo atrasado y urgente, lo de hoy y los eventos con hora, y propón su plan con las 3 prioridades en orden. Saludo breve y mensaje corto. Si Víctor tiene perfil de salud guardado (salud_hoy), añade al final, en 2-3 líneas, lo que le toca hoy de entreno y de comida (si el sistema recomienda descanso, díselo).' });
         await entrega(c, out);
       }
     }
@@ -59,7 +59,7 @@ async function tick() {
       const c = elegir(estado);
       if (c) {
         estado.repaso = ahora.fecha; await guardarJson(RUTA_ESTADO, estado);
-        const out = await responderAsistente({ chatId: c.chatId, texto: '[Aviso automático de las ' + ahora.local.slice(11) + '] Escríbele tú primero a Víctor para el repaso del día: pregúntale qué ha hecho hoy (una sola pregunta, corta y cercana). Si lo tenía previsto, menciona en una línea lo que había para hoy (listar_tareas) para refrescarle la memoria. Dile que te lo cuente como quiera, por audio o texto, y tú lo apuntas.' });
+        const out = await responderAsistente({ chatId: c.chatId, texto: '[Aviso automático de las ' + ahora.local.slice(11) + '] Escríbele tú primero a Víctor para el repaso del día: pregúntale qué ha hecho hoy (una sola pregunta, corta y cercana). Si lo tenía previsto, menciona en una línea lo que había para hoy (listar_tareas) para refrescarle la memoria. Dile que te lo cuente como quiera, por audio o texto, y tú lo apuntas. Si tiene perfil de salud (salud_hoy), pregúntale también en la misma frase si ha entrenado y qué ha comido, para apuntarlo (salud_registrar).' });
         await entrega(c, out);
       }
     }

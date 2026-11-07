@@ -8,6 +8,7 @@ import { infoPdf, paginaAImagen, escalaDe, construirPlano, registroPlano } from 
 import { alzadoPNG } from './alzado-imagen.js';
 import { computeCatalogPricing } from './pricing.js';
 import { crearInformePdf } from './pdf-informe.js';
+import { TOOLS_SALUD, SALUD_NOMBRES, ejecutarSalud, bloqueSaludSistema, ponAlmacen } from './salud-asistente.js';
 
 // Cerebro del asistente personal de Víctor (lo usan WhatsApp y Telegram).
 // - Memoria que persiste (hechos que le pides recordar) y conversación reciente, guardadas en Storage (sin tocar la base de datos).
@@ -156,6 +157,8 @@ const TOOLS = [
   { name: 'marcar_conversacion_privada', description: 'Llámala cuando Víctor te hable de algo personal: así esta parte de la conversación no aparece en el CRM. No crees tareas, eventos ni notas de proyecto sobre temas personales salvo que él lo pida expresamente.', input_schema: { type: 'object', properties: {} } },
   { name: 'olvidar', description: 'Borra un recuerdo de tu memoria por su id.', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
 ];
+TOOLS.push(...TOOLS_SALUD);
+ponAlmacen(leerJson, guardarJson);
 
 // Palabras clave de un texto (sin tildes, sin palabras cortas ni de relleno) para detectar cosas ya apuntadas que se parecen
 const RELLENO = new Set(['para', 'hacer', 'tengo', 'tiene', 'esto', 'este', 'esta', 'sobre', 'cosa', 'tarea', 'revisar', 'hablar', 'llamar', 'enviar', 'mandar', 'preparar', 'terminar']);
@@ -227,6 +230,7 @@ async function formPor(pid) {
 }
 async function ejecutar(nombre, input, ctx = {}) {
   const { fecha } = madrid();
+  if (SALUD_NOMBRES.has(nombre)) { try { return await ejecutarSalud(nombre, input || {}); } catch (e) { return { error: 'No se pudo hacer: ' + String(e.message || '').slice(0, 160) }; } }
   if (input && typeof input.proyecto === 'string' && input.proyecto.trim() && !UUID.test(input.proyecto.trim()) && nombre !== 'guardar_alias') {
     const r = await resolverProyecto(input.proyecto);
     if (r.ambiguo) return { error: 'Hay varios proyectos que encajan con "' + input.proyecto + '". Pregunta a Víctor cuál es (nombra las opciones) y, cuando lo confirme, guarda el apodo con guardar_alias para no volver a preguntar.', candidatos: r.ambiguo };
@@ -784,9 +788,10 @@ export async function responderAsistente({ chatId, texto, adjuntos = [], avisar 
     { type: 'text', text: texto + '\n\n[Adjuntos recibidos: ' + adjuntos.map(a => a.id + ' (' + a.mime + (a.nombre ? ', ' + a.nombre : '') + ')').join('; ') + ']' },
   ] : texto;
   const mensajes = [...previo, { role: 'user', content: bloquesUsuario }];
+  const salud = await bloqueSaludSistema().catch(() => '');
   let respuesta = '';
   for (let vuelta = 0; vuelta < 7; vuelta++) {
-    const out = await callClaude({ system: sistema(mem, priv, acc, charla['_resumen:' + chatId]) + txtRecientes, messages: mensajes, tools: TOOLS, maxTokens: 2500 });
+    const out = await callClaude({ system: sistema(mem, priv, acc, charla['_resumen:' + chatId]) + salud + txtRecientes, messages: mensajes, tools: TOOLS, maxTokens: 2500 });
     const bloques = out.content || [];
     const usos = bloques.filter(b => b.type === 'tool_use');
     if (out.stop_reason !== 'tool_use' || !usos.length) { respuesta = bloques.filter(b => b.type === 'text').map(b => b.text).join('\n').trim(); break; }
