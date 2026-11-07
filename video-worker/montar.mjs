@@ -514,7 +514,7 @@ ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durVoz) + ',Kicker,,0,0,0,,{\\an7\
 if (RECETA.horas) for (const h of (plan.horas || [])) { const w = palabras[h.de]; if (!w || !h.texto) continue; ev.push('Dialogue: 2,' + tAss(w.de) + ',' + tAss(Math.min(durVoz, w.de + 1.8)) + ',Hora,,0,0,0,,{\\fad(80,150)\\fscx80\\fscy80\\t(0,130,\\fscx100\\fscy100)}' + limpiaT(h.texto)); }
 const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920', 'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '', '[V4+ Styles]',
   'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',
-  'Style: Sub,' + RECETA.fuente + ',' + (RECETA.subs.tam >= 70 ? Math.round(RECETA.subs.tam * 0.75) : RECETA.subs.tam) + ',&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,' + (RECETA.mayusculas === true && RECETA.subs.tam > 70 ? '9,4' : '1,2') + ',2,50,50,' + RECETA.subs.margenV + ',1',
+  'Style: Sub,' + RECETA.fuente + ',' + (RECETA.subs.tam >= 70 ? Math.round(RECETA.subs.tam * 0.64) : RECETA.subs.tam) + ',&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,' + (RECETA.mayusculas === true && RECETA.subs.tam > 70 ? '9,4' : '1,2') + ',2,50,50,' + RECETA.subs.margenV + ',1',
   ESTILO_INTRO,
   'Style: Kicker,Montserrat,34,' + RECETA.acento.replace('&H', '&H00').replace(/&$/, '') + ',&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,80,80,300,1',
   'Style: Hora,' + RECETA.fuente + ',118,&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,2,3,8,60,60,500,1',
