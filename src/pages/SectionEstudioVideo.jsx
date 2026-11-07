@@ -846,7 +846,7 @@ function Formatos({ formatos, onCambio }) {
 export function SectionRedes() {
   const [seccion, setSeccion] = useState('ideas');
   return (
-    <div className="ev-root" style={{ maxWidth: 1100, margin: '0 auto' }}>
+    <div className="ev-root" style={{ width: '100%', maxWidth: '100%' }}>
       <style>{ESTILO_SELECT}</style>
       <h1 className="ap-page-title" style={{ marginBottom: 6 }}>Departamento de redes</h1>
       <p style={{ ...mut, marginBottom: 16 }}>Ideas de contenido con gancho y guion, calendario de publicaciones y las reglas de marca de Ranuse. Para producir los vídeos usa el Estudio de vídeo.</p>
@@ -887,7 +887,7 @@ export function SectionEstudioVideo() {
   const hayActivos = (trabajos || []).some(t => t.estado === 'pendiente' || t.estado === 'procesando');
   useEffect(() => { if (!hayActivos) return; const i = setInterval(cargarT, 5000); return () => clearInterval(i); }, [hayActivos, cargarT]);
   return (
-    <div className="ev-root" style={{ maxWidth: 1100, margin: '0 auto' }}>
+    <div className="ev-root" style={{ width: '100%', maxWidth: '100%' }}>
       <style>{ESTILO_SELECT}</style>
       <h1 className="ap-page-title" style={{ marginBottom: 6 }}>Estudio de vídeo</h1>
       <p style={{ ...mut, marginBottom: 16 }}>Sube una voz en off (audio o vídeo) o un vídeo en bruto, elige un formato y la IA lo edita con las escenas de la biblioteca. Cada formato guarda el estilo para que todos los vídeos salgan igual. Si no te gusta algo, pide cambios sobre el propio vídeo.</p>
