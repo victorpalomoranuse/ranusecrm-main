@@ -8,7 +8,7 @@ import EstudioIdeas from '../components/EstudioIdeas';
 import { SectionAsistenteIA } from './SectionAsistenteIA';
 import { SectionAsistenteFinanzas } from './SectionAsistenteFinanzas';
 import { SectionAsistentePersonal } from './SectionAsistentePersonal';
-import { SectionEstudioVideo } from './SectionEstudioVideo';
+import { SectionEstudioVideo, SectionRedes } from './SectionEstudioVideo';
 import { SectionAsistenteDiseno } from './SectionAsistenteDiseno';
 import { SectionAsistenteSetter } from './SectionAsistenteSetter';
 import { SectionAgenda } from './SectionAgenda';
@@ -2886,6 +2886,7 @@ const NAV_ITEMS = [
   { id:'asistente-finanzas', label:'Asistente Finanzas', Icon:Wallet, permission:'finanzas' },
   { id:'asistente-personal', label:'Asistente personal', Icon:MessageSquare, adminOnly:true },
   { id:'estudio-video', label:'Estudio de vídeo', Icon:Film, permission:'estudio_video' },
+  { id:'redes', label:'Departamento de redes', Icon:TrendingUp, permission:'estudio_video' },
   { id:'obra', label:'Relación de obra', Icon:Hammer, permissions:['ventas','finanzas'] },
   { id:'tareas', label:'Tareas', Icon:CheckCircle, adminOnly:true },
   { id:'catalogo', label:'Catálogo', Icon:BookOpen, permission:'catalogo' },
@@ -2937,6 +2938,7 @@ export function AdminPanel() {
       case 'asistente-finanzas': return <SectionAsistenteFinanzas/>;
       case 'asistente-personal': return <SectionAsistentePersonal/>;
       case 'estudio-video': return <SectionEstudioVideo/>;
+      case 'redes': return <SectionRedes/>;
       case 'asistente-diseno': return <SectionAsistenteDiseno/>;
       case 'asistente-setter': return <SectionAsistenteSetter/>;
       case 'mi-agenda': return <SectionAgenda/>;

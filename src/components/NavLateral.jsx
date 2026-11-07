@@ -10,7 +10,8 @@ export const GRUPOS = [
   { id: 'comercial', label: 'Comercial', ids: ['leads', 'setting', 'asistente-setter', 'mi-agenda', 'ventas', 'mis-comisiones'] },
   { id: 'proyectos', label: 'Proyectos', ids: ['proyectos', 'planos', 'asistente-diseno', 'estudio-ideas', 'clientes', 'trabajos', 'presupuestos', 'asistente', 'pedidos', 'obra', 'tareas'] },
   { id: 'finanzas', label: 'Finanzas', ids: ['finanzas', 'asistente-finanzas'] },
-  { id: 'biblioteca', label: 'Biblioteca', ids: ['catalogo', 'referencias', 'recursos', 'contactos', 'estudio-video'] },
+  { id: 'redes', label: 'Redes sociales', ids: ['redes', 'estudio-video'] },
+  { id: 'biblioteca', label: 'Biblioteca', ids: ['catalogo', 'referencias', 'recursos', 'contactos'] },
   { id: 'gestion', label: 'Equipo y ajustes', ids: ['empleados', 'roles', 'ajustes'] },
 ];
 export const SUELTOS = ['inicio', 'mi-dia', 'oficinas', 'dashboard']; // siempre a la vista, arriba

@@ -596,6 +596,31 @@ function Formatos({ formatos, onCambio }) {
   );
 }
 
+// Departamento de redes: ideas, calendario y las reglas de marca (se irá ampliando con publicar y medir)
+export function SectionRedes() {
+  const [seccion, setSeccion] = useState('ideas');
+  return (
+    <div className="ev-root" style={{ maxWidth: 820 }}>
+      <style>{ESTILO_SELECT}</style>
+      <h1 className="ap-page-title" style={{ marginBottom: 6 }}>Departamento de redes</h1>
+      <p style={{ ...mut, marginBottom: 16 }}>Ideas de contenido con gancho y guion, calendario de publicaciones y las reglas de marca de Ranuse. Para producir los vídeos usa el Estudio de vídeo.</p>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+        <button className={'ap-btn ap-btn-sm' + (seccion === 'ideas' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('ideas')}><Wand2 size={13} /> Ideas y calendario</button>
+        <button className={'ap-btn ap-btn-sm' + (seccion === 'marca' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('marca')}><Settings2 size={13} /> Voz y reglas de marca</button>
+        <button className={'ap-btn ap-btn-sm' + (seccion === 'medir' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('medir')}><Film size={13} /> Publicar y medir</button>
+      </div>
+      {seccion === 'ideas' && <PestanaIdeas />}
+      {seccion === 'marca' && <div style={card}><CajaReglas /><div style={mut}>Estas reglas las usa la IA al proponer ideas y al editar los vídeos del Estudio.</div></div>}
+      {seccion === 'medir' && (
+        <div style={card}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Publicar y medir (próximamente)</div>
+          <div style={mut}>Aquí irá programar las publicaciones y leer las estadísticas de cada vídeo (Instagram y TikTok) para decir qué funciona y por qué. Necesita conectar las cuentas; lo montamos en la siguiente fase.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SectionEstudioVideo() {
   const [tab, setTab] = useState('videos'), [carpetas, setCarpetas] = useState([]), [pistas, setPistas] = useState([]), [formatos, setFormatos] = useState([]), [trabajos, setTrabajos] = useState(null), [error, setError] = useState('');
   const cargarF = useCallback(() => api.get('/estudio-video/formatos').then(r => setFormatos(r.data.formatos || [])).catch(() => setError('No se han podido cargar los formatos')), []);
@@ -613,7 +638,6 @@ export function SectionEstudioVideo() {
         <button className={'ap-btn ap-btn-sm' + (tab === 'videos' ? ' ap-btn-primary' : '')} onClick={() => setTab('videos')}><Film size={13} /> Vídeos</button>
         <button className={'ap-btn ap-btn-sm' + (tab === 'formatos' ? ' ap-btn-primary' : '')} onClick={() => setTab('formatos')}><Settings2 size={13} /> Formatos</button>
         <button className={'ap-btn ap-btn-sm' + (tab === 'musica' ? ' ap-btn-primary' : '')} onClick={() => setTab('musica')}><Music size={13} /> Música</button>
-        <button className={'ap-btn ap-btn-sm' + (tab === 'ideas' ? ' ap-btn-primary' : '')} onClick={() => setTab('ideas')}><Wand2 size={13} /> Ideas</button>
       </div>
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
       {tab === 'formatos' ? <Formatos formatos={formatos} onCambio={cargarF} /> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
