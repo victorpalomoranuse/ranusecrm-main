@@ -260,7 +260,7 @@ router.get('/trabajos', async (req, res) => {
     for (const t of out) if (t.resultado_audio) { const u = await st().createSignedUrl(t.resultado_audio, 3600); t.url_audio = u.data?.signedUrl || null; }
     for (const t of out) if (t.resultado) { const u = await st().createSignedUrl(t.resultado, 3600); t.url = u.data?.signedUrl || null; const m = t.resultado_movil && await st().createSignedUrl(t.resultado_movil, 3600); t.url_movil = m?.data?.signedUrl || null; }
     out.sort((a, b) => String(b.creado).localeCompare(String(a.creado)));
-    res.json({ trabajos: out });
+    res.json({ trabajos: out.filter(x => x.estado !== 'borrado') });
   } catch { res.status(500).json({ error: 'No se pudo leer la lista' }); }
 });
 // Paso 2 del método en dos pasos: con el audio ya ajustado (paso 1), se eligen los clips y se monta el vídeo SIN volver a tocar el audio
@@ -352,12 +352,22 @@ router.post('/trabajos/:id/editar-texto', async (req, res) => {
     res.status(201).json({ trabajo: t });
   } catch { res.status(500).json({ error: 'No se pudo crear la versión con el texto editado' }); }
 });
+// Borra un trabajo con todo lo suyo (vídeo, móvil, audio, datos del editor y los clips que salieron de él).
+// Si todavía se está montando, deja una marca "borrado" para que el servidor de vídeo se pare y no lo vuelva a crear.
+async function borraTrabajo(id, hijos = true) {
+  if (!/^[\w-]{4,20}$/.test(id)) return;
+  const o = await leerTrabajo(id); if (!o) { await st().remove([rutaTrabajo(id)]); return; }
+  const rutas = [];
+  for (const k of ['resultado', 'resultado_movil', 'resultado_audio']) if (o[k]) rutas.push(o[k]);
+  rutas.push('salidas/' + id + '.mp4', 'salidas/' + id + '_movil.mp4', 'salidas/' + id + '_voz.mp3');
+  try { const l = await st().list('artefactos/' + id); for (const f of (l.data || [])) rutas.push('artefactos/' + id + '/' + f.name); } catch { /* sin datos del editor */ }
+  if (['pendiente', 'procesando'].includes(o.estado)) await guardarTrabajo({ id, creado: o.creado, estado: 'borrado', borrado: true }); else rutas.push(rutaTrabajo(id));
+  const r = await st().remove(rutas); if (r.error) throw new Error(r.error.message);
+  if (hijos) for (const h of (Array.isArray(o.clips) ? o.clips : []).slice(0, 40)) { try { await borraTrabajo(String(h), false); } catch { /* un clip sin borrar no impide borrar el resto */ } }
+}
 router.delete('/trabajos/:id', async (req, res) => {
-  try {
-    const o = await leerTrabajo(req.params.id); const rutas = [rutaTrabajo(req.params.id)];
-    if (o?.resultado) rutas.push(o.resultado); if (o?.resultado_movil) rutas.push(o.resultado_movil);
-    await st().remove(rutas); res.json({ ok: true });
-  } catch { res.status(500).json({ error: 'No se pudo borrar' }); }
+  try { await borraTrabajo(limpia(req.params.id, 20)); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: 'No se pudo borrar: ' + String(e.message || '').slice(0, 140) }); }
 });
 
 export default router;

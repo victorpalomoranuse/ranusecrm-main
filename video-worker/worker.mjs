@@ -30,7 +30,9 @@ async function leer(id) {
   const r = await fetch(f.data.signedUrl + '&cb=' + Date.now(), { cache: 'no-store' }); return r.ok ? r.json() : null;
 }
 const reintenta = async (fn, intentos = 5) => { let ult; for (let i = 0; i < intentos; i++) { try { const r = await fn(); if (r?.error) throw new Error(r.error.message || String(r.error)); return r; } catch (e) { ult = e; await new Promise(z => setTimeout(z, 1500 * (i + 1))); } } throw ult; };
-const guardar = (t) => reintenta(() => st.upload('trabajos/' + t.id + '.json', Buffer.from(JSON.stringify(t)), { contentType: 'application/json', upsert: true, cacheControl: '0' }));
+// Si el usuario ha borrado el trabajo mientras se montaba, se para (y no se vuelve a crear)
+const guardar = async (t) => { const act = await leer(t.id).catch(() => null); if (act?.borrado) { console.log('Trabajo borrado por el usuario: se para.'); if (process.env.JOB_ID) process.exit(0); throw new Error('Trabajo borrado por el usuario'); } return guardarSeguro(t); };
+const guardarSeguro = (t) => reintenta(() => st.upload('trabajos/' + t.id + '.json', Buffer.from(JSON.stringify(t)), { contentType: 'application/json', upsert: true, cacheControl: '0' }));
 let ultPct = 0;
 async function pct(t, n, texto) { const ahora = Date.now(); if (ahora - ultPct < 2500 && n < 99) return; ultPct = ahora; Object.assign(t, { pct: Math.round(n), progreso: texto }); try { await guardar(t); } catch { /* se reintenta en el siguiente */ } }
 function lanzaMotor(t, script, opciones) {
