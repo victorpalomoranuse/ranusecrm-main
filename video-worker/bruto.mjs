@@ -54,7 +54,7 @@ if (!dur) { console.log('FALLO: no he podido leer el vídeo (¿falta ffmpeg o el
 const wav = path.join(work, 'voz.wav'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', ENTRADA, '-vn', '-ac', '1', '-ar', '16000', wav]);
 marca(12, 'Transcribiendo la voz');
 const wj = path.join(work, 'palabras');
-await transcribe(wav, wj);
+await transcribe(wav, wj, { alinear: true });
 const palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription.map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000, ...(s.spk !== undefined ? { spk: s.spk } : {}) })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
 if (!palabras.length) { console.log('FALLO: no se oye voz en el vídeo'); process.exit(1); }
 palabras.forEach((w, i) => { w.i = i; });

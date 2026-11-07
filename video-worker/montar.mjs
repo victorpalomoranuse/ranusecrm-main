@@ -65,7 +65,7 @@ if (!durVoz) { console.log('FALLO: no he podido leer el audio del archivo (¿fal
 // 2) transcripción por palabras (en la nube se cambia por Groq)
 marca(12, 'Transcribiendo la voz');
 const wj = path.join(work, 'palabras');
-console.log('Transcripcion con:', await transcribe(wav, wj));
+console.log('Transcripcion con:', await transcribe(wav, wj, { alinear: true }));
 let palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription
   .map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000 })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
 palabras.forEach((w, i) => { w.i = i; });
