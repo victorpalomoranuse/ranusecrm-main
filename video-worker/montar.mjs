@@ -41,7 +41,7 @@ if (process.env.RECETA_JSON) { // receta elegida en el CRM
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
   if (o.corte) RECETA.corte = { ...RECETA.corte, ...o.corte };
   if (/^#[0-9a-f]{6}$/i.test(o.acento || '')) RECETA.acento = '&H' + o.acento.slice(5, 7) + o.acento.slice(3, 5) + o.acento.slice(1, 3) + '&';
-  for (const k of ['motion', 'zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente', 'horas', 'introLetras', 'estiloSubs', 'collage']) if (o[k] !== undefined) RECETA[k] = o[k];
+  for (const k of ['aperturaPremium', 'motion', 'zoomFinal', 'whoosh', 'flash', 'titulo', 'mayusculas', 'fuente', 'horas', 'introLetras', 'estiloSubs', 'collage']) if (o[k] !== undefined) RECETA[k] = o[k];
   if (o.musica && typeof o.musica === 'object') RECETA.musica = { ...RECETA.musica, ...o.musica };
   if (!['Montserrat', 'Rubik'].includes(RECETA.fuente)) RECETA.fuente = 'Montserrat';
   if (o.subs) RECETA.subs = { ...RECETA.subs, ...o.subs };
@@ -490,6 +490,25 @@ if (RECETA.subsBajoCara !== false) try {
   });
   console.log('Caras localizadas en', bandas.length, 'de', fr.length, 'escenas');
 } catch (e) { console.log('Sin localizar caras:', e.message); }
+// APERTURA PREMIUM: tarjeta de título con dos tarjetas de fotos (de los clips usados) y el vídeo en una ventana abajo
+let APERT = null;
+if (RECETA.aperturaPremium) { try {
+  const hablado = palabras.map(w => w.t).join(' ').slice(0, 900);
+  const rr = await llamaClaude('Eres el editor de redes de Ranuse Design (diseño de gimnasios). Del guion de un vídeo vertical escribe la tarjeta de apertura, en español de España y en minúscula salvo nombres propios: {"kicker":"2-3 palabras en cursiva (ej. el motivo, hoy, en obra)","titulo":"título de unas 5-8 palabras (máx. 38 letras), sin punto final","frase":"remate corto de 2-4 palabras (máx. 26 letras) que complete el título","palabras":["4 palabras sueltas relacionadas con el vídeo (lugares, objetos, acciones)"]}. Sin emojis ni clickbait.' + (process.env.REGLAS_MARCA ? '\nReglas de marca: ' + process.env.REGLAS_MARCA.slice(0, 1200) : '') + '\n\nGUION: ' + hablado + '\n\nResponde SOLO con ese JSON.', 600, true);
+  const dirAp = path.join(work, 'apertura'); fs.mkdirSync(dirAp, { recursive: true });
+  const usados = []; for (const c of valido) { const v = idx.find(z => z.id === c.video); if (v && !v.es_imagen && !usados.find(u => u.v.id === v.id)) usados.push({ v, c }); if (usados.length >= 2) break; }
+  const fotos = { a: [], b: [] }, ficheros = [];
+  for (const [k, u] of usados.entries()) {
+    const { src, hdr } = fuenteDe(u.v), D = u.v.duracion || 4;
+    for (let q = 0; q < 3; q++) {
+      const t = Math.min(Math.max(0.3, (Number(u.c.desde) || 0) + q * Math.max(1.5, Math.min(6, (D - (Number(u.c.desde) || 0)) / 3))), Math.max(0.3, D - 0.4)), nombre = 'ap' + (k ? 'b' : 'a') + q + '.jpg', f = path.join(dirAp, nombre);
+      await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...hdr, '-ss', t.toFixed(2), '-i', src, '-frames:v', '1', '-vf', (giroDe[u.v.id] || '') + 'scale=540:860:force_original_aspect_ratio=increase,crop=540:860', '-q:v', '3', f]);
+      if (fs.existsSync(f)) { (k ? fotos.b : fotos.a).push(nombre); ficheros.push(f); }
+    }
+  }
+  if (rr?.titulo && fotos.a.length) { APERT = { kicker: String(rr.kicker || 'el motivo').slice(0, 24), titulo: String(rr.titulo).slice(0, 42), frase: String(rr.frase || '').slice(0, 30), palabras: (rr.palabras || []).slice(0, 4).map(x => String(x).slice(0, 18)), fotos, t1: 4.4 };
+    fs.writeFileSync(path.join(work, 'apertura.json'), JSON.stringify({ datos: APERT, ficheros: ficheros.map(f => path.basename(f)) })); console.log('Apertura premium:', APERT.titulo, '|', APERT.frase); }
+} catch (e) { console.log('Sin apertura premium:', e.message); } }
 const ev = []; const bloques = []; let b = [];
 // intro con palabras enormes apiladas (estilo "mi día"): sustituye a los subtítulos normales durante la frase de apertura
 const intro = { eventos: [], ultima: -1, fin: 0 }; // el título de apertura va como un subtítulo más, igual que todos
@@ -501,7 +520,7 @@ bloques.forEach((bl, k) => {
   const ini = bl[0].de, fin = k < bloques.length - 1 ? Math.max(bloques[k + 1][0].de, ini + 0.25) : Math.max(bl[bl.length - 1].a, ini + 0.4);
   const txt = bl.map(w => { const fuerte = enf.has(w.i) || /\d/.test(w.t); const s = (RECETA.mayusculas === true ? limpiaT(w.t).toUpperCase() : limpiaT(w.t).toLowerCase()).replace(/[.,;:¿¡]+$/, ''); return fuerte ? '{\\c' + RECETA.acento + '}' + s + '{\\c&HFFFFFF&}' : s; }).join(' ');
   // si el subtítulo caería sobre una cara, se mueve a otra zona libre (abajo o arriba)
-  let pos = ''; { const mid = (ini + fin) / 2, bd = bandas.find(z => mid >= z.ini && mid < z.fin);
+  let pos = ''; if (APERT && ini < APERT.t1 - 0.2) pos = '\\an2\\pos(540,1840)'; else { const mid = (ini + fin) / 2, bd = bandas.find(z => mid >= z.ini && mid < z.fin);
     if (bd) { const alto = RECETA.subs.tam * 1.35, tapa = (yBase) => !(yBase < bd.t - 50 || yBase - alto > bd.b + 50);
       const ybase0 = 1920 - RECETA.subs.margenV; if (tapa(ybase0)) { const alt = [1640, 1420, 470, 340].find(y => !tapa(y)); if (alt) pos = '\\an2\\pos(540,' + alt + ')'; } } }
   if (RECETA.estiloSubs === 'karaoke') {

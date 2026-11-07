@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { FUENTES } from './fuentes.mjs';
+import { aperturaAHtml } from './apertura.mjs';
 
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const tseg = (s) => { const m = /^(\d+):(\d+):(\d+(?:\.\d+)?)$/.exec(String(s).trim()); return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : 0; };
@@ -80,7 +81,8 @@ function eventoAHtml(ev, est, id) {
   return { html: `<div id="${id}" class="clip tx" data-start="${ini}" data-duration="${dur.toFixed(2)}" data-track-index="${ev.capa + 2}" style="${css}"><span style="display:${caja ? 'block' : 'inline'}">${inner}</span></div>\n`, anim };
 }
 
-export function construyeComposicion(ass, duracion, nombreVideo) {
+export function construyeComposicion(ass, duracion, nombreVideo, apertura = null) {
+  const AP = aperturaAHtml(apertura, duracion);
   const { estilos, eventos } = parseAss(ass); let html = '', anim = '', n = 0;
   for (const ev of eventos) { if (ev.fin <= ev.ini) continue; const r = eventoAHtml(ev, estilos[ev.estilo], 'e' + (n++)); if (r) { html += r.html; anim += r.anim; } }
   return `<!doctype html>
@@ -93,14 +95,15 @@ ${Object.entries(FUENTES).map(([fam, arch]) => "@font-face { font-family: '" + f
   #root { position: relative; width: 1080px; height: 1920px; overflow: hidden; }
   #fondo { position: absolute; inset: 0; width: 1080px; height: 1920px; object-fit: cover; z-index: 0; }
   .tx, .dib { position: absolute; }
+  ${AP.css}
 </style></head>
 <body>
 <div id="root" data-composition-id="main" data-start="0" data-duration="${duracion.toFixed(2)}" data-width="1080" data-height="1920">
 <video id="fondo" class="clip" data-start="0" data-duration="${duracion.toFixed(2)}" data-track-index="0" src="${nombreVideo}" playsinline></video>
-${html}</div>
+${AP.html}${html}</div>
 <script>
 const tl = gsap.timeline({ paused: true });
-${anim}window.__timelines["main"] = tl;
+${AP.js}${anim}window.__timelines["main"] = tl;
 tl.seek(0);
 </script></body></html>`;
 }
@@ -109,12 +112,13 @@ const HF_VERSION = '0.9.19';
 export function hfDisponible() { return process.env.HF_ACTIVO === '1'; }
 
 // Renderiza la capa visual sobre el vídeo base. Devuelve la ruta del vídeo final o lanza un error (el llamador usa el respaldo).
-export function componeHF({ base, subsAss, fuentes = [], salida, dir, fps = 30 }) {
+export function componeHF({ base, subsAss, fuentes = [], salida, dir, fps = 30, apertura = null }) {
   const p = path.join(dir, '_hf'); fs.rmSync(p, { recursive: true, force: true }); fs.mkdirSync(path.join(p, 'assets'), { recursive: true });
   const dur = Number(spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', base], { encoding: 'utf8' }).stdout) || 0; if (!dur) throw new Error('no se pudo leer la duración del vídeo base');
   fs.copyFileSync(base, path.join(p, 'assets', 'base.mp4'));
   for (const f of fuentes) if (fs.existsSync(f)) fs.copyFileSync(f, path.join(p, 'assets', path.basename(f)));
-  fs.writeFileSync(path.join(p, 'index.html'), construyeComposicion(fs.readFileSync(subsAss, 'utf8'), dur, 'assets/base.mp4'));
+  let ap = null; if (apertura && apertura.datos) { ap = { ...apertura.datos }; for (const f of (apertura.ficheros || [])) if (fs.existsSync(f)) fs.copyFileSync(f, path.join(p, 'assets', path.basename(f))); }
+  fs.writeFileSync(path.join(p, 'index.html'), construyeComposicion(fs.readFileSync(subsAss, 'utf8'), dur, 'assets/base.mp4', ap));
   fs.writeFileSync(path.join(p, 'hyperframes.json'), JSON.stringify({ name: 'estudio', version: 1 })); fs.writeFileSync(path.join(p, 'package.json'), JSON.stringify({ name: 'estudio', private: true, type: 'module' }));
   const global = process.env.HF_GLOBAL === '1';
   const cmd = global ? 'hyperframes' : (process.platform === 'win32' ? 'npx.cmd' : 'npx'), args = global ? [] : ['--yes', 'hyperframes@' + HF_VERSION];

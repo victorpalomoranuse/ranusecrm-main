@@ -182,7 +182,7 @@ router.put('/formatos/:id', async (req, res) => {
     if (r.zoomFinal !== undefined) f.receta.zoomFinal = num(r.zoomFinal, 1, 1.4, 1.14);
     if (r.whoosh !== undefined) f.receta.whoosh = num(r.whoosh, 0, 0.5, 0.16);
     if (r.flash !== undefined) f.receta.flash = !!r.flash;
-    for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'subsBajoCara', 'graficos', 'horas', 'preguntaSoloEscrita', 'collage', 'motion']) if (r[k] !== undefined) f.receta[k] = !!r[k];
+    for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'subsBajoCara', 'graficos', 'horas', 'preguntaSoloEscrita', 'collage', 'motion', 'aperturaPremium']) if (r[k] !== undefined) f.receta[k] = !!r[k];
     if (['Montserrat', 'Rubik'].includes(r.fuente)) f.receta.fuente = r.fuente;
     if (['normal', 'karaoke', 'caja', 'palabra'].includes(r.estiloSubs)) f.receta.estiloSubs = r.estiloSubs;
     if (r.musica === false) f.receta.musica = false; else if (r.musica && Number.isFinite(Number(r.musica.volumen))) f.receta.musica = { volumen: num(r.musica.volumen, -40, -6, -19) };
