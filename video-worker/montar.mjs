@@ -97,7 +97,7 @@ if (process.env.SIN_LIMPIEZA !== '1') {
   console.log('Tropiezos recortados:', trab, '| palabras quitadas:', quitar.size, [...quitar].slice(0, 30).map(i => palabras[i]?.t).join(' '));
   if (process.env.FUERA_JSON) { try { const man = JSON.parse(fs.readFileSync(process.env.FUERA_JSON, 'utf8')); quitar.clear(); for (const i of man) if (Number.isInteger(i)) quitar.add(i); console.log('Texto editado a mano: se quitan', quitar.size, 'palabras'); } catch (e) { console.log('Edición de texto no válida:', e.message); } }
   if (process.env.SOLO_VOZ === '1') fs.writeFileSync(path.join(work, 'audio_palabras.json'), JSON.stringify({ palabras: palabras.map(w => [w.t, Math.round(w.de * 100) / 100, Math.round(w.a * 100) / 100]), fuera: [...quitar] }));
-  const r = recomponeVoz({ palabras, quitar, wav48: path.join(work, 'voz48_orig.wav'), salida: path.join(work, 'voz48.wav') });
+  const r = recomponeVoz({ palabras, quitar, wav48: path.join(work, 'voz48_orig.wav'), salida: path.join(work, 'voz48.wav'), ...(Number(process.env.PAUSA_VOZ) > 0 ? { pausa: Number(process.env.PAUSA_VOZ) } : {}) });
   palabras = r.palabras; console.log('Voz limpia:', durVoz.toFixed(1), 's ->', r.durVoz.toFixed(1), 's'); durVoz = r.durVoz;
 } else { fs.copyFileSync(path.join(work, 'voz48_orig.wav'), path.join(work, 'voz48.wav')); }
 

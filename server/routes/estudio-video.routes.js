@@ -354,9 +354,9 @@ router.post('/trabajos/:id/editar-texto', async (req, res) => {
   try {
     const o = await leerTrabajo(req.params.id); if (!o) return res.status(404).json({ error: 'No existe ese trabajo' });
     const n = (o.transcripcion || []).length; if (!n) return res.status(400).json({ error: 'Este vídeo no tiene texto editable. Pulsa Regenerar y podrás editarlo en la versión nueva.' });
-    const fuera = [...new Set((Array.isArray(req.body?.fuera) ? req.body.fuera : []).map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < n))].sort((a, b) => a - b);
+    const fuera = [...new Set((Array.isArray(req.body?.fuera) ? req.body.fuera : (o.transcripcion || []).map((w, i) => (w[3] ? i : -1)).filter(i => i >= 0)).map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < n))].sort((a, b) => a - b);
     if (fuera.length >= n) return res.status(400).json({ error: 'No puedes quitar todo el texto' });
-    const t = { ...o, id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), origen: o.id, edicion_texto: { fuera }, version: (o.version || 1) + 1, estado: 'pendiente', progreso: 'En cola', pct: 0, resultado: null, resultado_movil: null, error: null, plan: null, transcripcion: undefined, faltan: undefined, empezado: undefined, terminado: undefined };
+    const t = { ...o, id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), origen: o.id, edicion_texto: { fuera }, audio_ritmo: Math.max(0, Math.min(2, parseInt(req.body?.ritmo) || 0)), version: (o.version || 1) + 1, estado: 'pendiente', progreso: 'En cola', pct: 0, resultado: null, resultado_movil: null, error: null, plan: null, transcripcion: undefined, faltan: undefined, empezado: undefined, terminado: undefined };
     t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
     if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); }
     res.status(201).json({ trabajo: t });
