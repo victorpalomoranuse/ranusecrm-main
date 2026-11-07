@@ -145,6 +145,18 @@ router.post('/formatos/desde-referencia', async (req, res) => {
     await guardarJson(RUTA_FORMATOS, { ...(await leerJson(RUTA_FORMATOS, {})), lista: [...lista, nuevo] }); res.status(201).json({ formato: nuevo });
   } catch (e) { res.status(500).json({ error: 'No se pudo crear el formato: ' + String(e.message || '').slice(0, 160) }); }
 });
+// Ejemplo real de cada formato: el último vídeo terminado hecho con él (y un candidato para crear el ejemplo si no hay ninguno)
+router.get('/formatos/ejemplos', async (req, res) => {
+  try {
+    const { data } = await st().list('trabajos', { limit: 80, sortBy: { column: 'created_at', order: 'desc' } });
+    const out = (await Promise.all((data || []).filter(f => /\.json$/.test(f.name)).map(f => leerTrabajo(f.name.replace(/\.json$/, ''))))).filter(Boolean).filter(t => t.estado === 'listo' && t.resultado_movil && t.tipo !== 'referencia');
+    out.sort((a, b) => String(b.creado).localeCompare(String(a.creado)));
+    const ejemplos = {};
+    for (const t of out) { if (ejemplos[t.formato]) continue; const u = await st().createSignedUrl(t.resultado_movil, 3600); if (u.data?.signedUrl) ejemplos[t.formato] = { id: t.id, nombre: t.nombre_archivo || '', url: u.data.signedUrl, creado: t.creado }; }
+    const base = out.find(t => ['voz', 'bruto'].includes(t.tipo));
+    res.json({ ejemplos, candidato: base ? { id: base.id, nombre: base.nombre_archivo || '' } : null });
+  } catch { res.status(500).json({ error: 'No se pudieron leer los ejemplos' }); }
+});
 router.get('/formatos', async (req, res) => { try { res.json({ formatos: await formatos() }); } catch { res.status(500).json({ error: 'No se pudieron leer los formatos' }); } });
 router.post('/formatos', async (req, res) => {
   try {

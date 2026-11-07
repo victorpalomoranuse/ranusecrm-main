@@ -128,6 +128,7 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Formato</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
       {formatos.find(f => f.id === fmt)?.descripcion && <div style={{ ...mut, marginTop: -4, marginBottom: 10 }}>{formatos.find(f => f.id === fmt).descripcion}</div>}
+      <EjemploFormato fmt={fmt} onCambio={onCreado} />
       {tipo === 'clips' && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
           <label style={{ ...mut, flex: '1 1 160px' }}>Cuántos clips<select className="ap-field-input" style={{ width: '100%', marginTop: 4 }} value={numClips} onChange={e => setNumClips(Number(e.target.value))}><option value={0}>Los que merezcan la pena</option>{[1, 2, 3, 4, 5, 6, 8, 10].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
@@ -144,6 +145,31 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 60, marginBottom: 10 }} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Ej.: enseña el proyecto de Rivas, tono directo, que empiece con un plano de obra…" />
       {error && <div className="ap-error" style={{ marginBottom: 8 }}>{error}</div>}
       <button className="ap-btn ap-btn-primary" disabled={((tipo === 'base' || origen === 'drive') ? !base.length : !file) || !fmt || prog !== null} onClick={enviar}>{prog !== null ? <><Loader2 size={14} /> Subiendo {prog}%</> : <><Wand2 size={14} /> Editar vídeo</>}</button>
+    </div>
+  );
+}
+
+// Vídeo de ejemplo real del formato elegido (el último que se hizo con él); si no hay, permite crearlo con uno de tus vídeos
+function EjemploFormato({ fmt, onCambio }) {
+  const [d, setD] = useState(null), [msg, setMsg] = useState(''), [ocupado, setOcupado] = useState(false);
+  useEffect(() => { let vivo = true; api.get('/estudio-video/formatos/ejemplos').then(r => { if (vivo) setD(r.data); }).catch(() => { if (vivo) setD({ ejemplos: {}, candidato: null }); }); return () => { vivo = false; }; }, []);
+  if (!d || !fmt) return null;
+  const ej = d.ejemplos[fmt];
+  const crear = async () => { setOcupado(true); setMsg(''); try { await api.post('/estudio-video/trabajos/' + d.candidato.id + '/rehacer', { formato: fmt }); setMsg('Montando el ejemplo con «' + (d.candidato.nombre || 'tu último vídeo') + '»: aparecerá abajo en Vídeos en unos minutos.'); if (onCambio) onCambio(); } catch (e) { setMsg(e?.response?.data?.error || 'No se pudo crear el ejemplo'); } setOcupado(false); };
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {ej ? (
+        <div>
+          <div style={{ ...mut, marginBottom: 4 }}>Así queda este formato (ejemplo real: {ej.nombre || 'un vídeo tuyo'})</div>
+          <video key={ej.url} src={ej.url} controls playsInline preload="metadata" style={{ width: '100%', maxWidth: 240, borderRadius: 10, background: '#000', display: 'block' }} />
+        </div>
+      ) : (
+        <div style={mut}>
+          Todavía no hay ningún vídeo hecho con este formato.{' '}
+          {d.candidato ? <button className="ap-btn ap-btn-sm" disabled={ocupado} onClick={crear}>{ocupado ? <Loader2 size={13} /> : <Play size={13} />} Crear un ejemplo con «{d.candidato.nombre || 'mi último vídeo'}»</button> : 'Haz uno y aparecerá aquí.'}
+        </div>
+      )}
+      {msg && <div style={{ ...mut, marginTop: 6 }}>{msg}</div>}
     </div>
   );
 }
