@@ -190,7 +190,7 @@ function Desglose({ guion, asig, setAsig, trans }) {
           ) : (
             <div key={i} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
               <div style={{ fontSize: '0.85rem', marginBottom: 6 }}><strong>Parte {i + 1}:</strong> {p}</div>
-              {(() => { const pal = p.split(/\s+/).filter(Boolean).length, real = medidas && medidas[i] != null, seg = real ? Math.max(1, Math.round(medidas[i])) : Math.max(1, Math.round(pal / 2.9)), clips = Math.max(1, Math.round(seg / 2.5)); return <div style={{ ...mut, marginBottom: 6 }}>{real ? 'En tu audio dura' : 'Dura unos'} <strong>{seg} s</strong> {real ? '(medido)' : 'hablada'}: necesita unos <strong>{clips} clip{clips > 1 ? 's' : ''}</strong> de ~2,5 s (o menos clips, más largos).{(asig[i] || []).length ? ' Has elegido ' + (asig[i] || []).length + '.' : ''}</div>; })()}
+              {medidas && medidas[i] != null ? (() => { const seg = Math.max(1, Math.round(medidas[i])), clips = Math.max(1, Math.round(seg / 2.5)); return <div style={{ ...mut, marginBottom: 6 }}>En tu audio dura <strong>{seg} s</strong>: necesita unos <strong>{clips} clip{clips > 1 ? 's' : ''}</strong> de ~2,5 s (o menos clips, más largos).{(asig[i] || []).length ? ' Has elegido ' + (asig[i] || []).length + '.' : ''}</div>; })() : <div style={{ ...mut, marginBottom: 6 }}>La duración se mide en tu audio cuando está preparado (paso 1), no con el guion.{(asig[i] || []).length ? ' Has elegido ' + (asig[i] || []).length + '.' : ''}</div>}
               <Explorador seleccion={asig[i] || []} onCambio={(s) => setAsig({ ...asig, [i]: s })} max={8} titulo="Vídeos para esta parte" vacio="Elegir vídeos de Drive" />
             </div>
           ))}
