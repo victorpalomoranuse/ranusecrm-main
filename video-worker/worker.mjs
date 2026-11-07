@@ -320,6 +320,17 @@ async function procesa(t) {
   await paso(t, 'Listo', { faltan, pct: 100, estado: 'listo', resultado: 'salidas/' + t.id + '.mp4', resultado_movil: 'salidas/' + t.id + '_movil.mp4', plan, terminado: new Date().toISOString(), error: null });
 }
 
+// Puntúa un vídeo que ya estaba hecho (sin volver a montarlo): baja su versión móvil, la IA la revisa y se guarda la puntuación en el trabajo
+async function puntuaExistente(t) {
+  const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
+  try {
+    const u = await st.createSignedUrl(t.resultado_movil || t.resultado, 600); if (!u.data?.signedUrl) throw new Error('no se encuentra el vídeo');
+    const f = path.join(dir, 'puntuar.mp4'); fs.writeFileSync(f, Buffer.from(await (await fetch(u.data.signedUrl)).arrayBuffer()));
+    const c = await criticaVideo(t, f); t.autorevision = { ...c, sinCorregir: true }; console.log('Puntuación:', c.puntuacion, c.resumen);
+  } catch (e) { console.log('No se pudo puntuar:', e.message); t.autorevision = { puntuacion: null, error: String(e.message).slice(0, 120) }; delete t.autorevision.puntuacion; }
+  delete t.pedir_puntuacion; await guardar(t);
+}
+
 // Si la autocrítica da menos de 75 y trae instrucciones, la IA rehace el vídeo UNA vez con esos cambios, vuelve a puntuarlo y se queda con la mejor versión
 async function autoCorrige(t) {
   const a = t.autorevision; if (!a || t.autocorregido || t.estado !== 'listo' || !['voz', 'bruto'].includes(t.tipo) || a.puntuacion >= 75 || !a.instrucciones || process.env.SIN_AUTOCORRECCION === '1') return;
@@ -339,6 +350,7 @@ if (process.env.JOB_ID) {
   const id = process.env.JOB_ID; console.log('Servidor de vídeo: trabajo', id);
   await bajaIndices(); const t = await leer(id);
   if (!t) { console.log('No existe el trabajo', id); process.exit(1); }
+  if (t.estado === 'listo' && t.pedir_puntuacion) { await puntuaExistente(t); process.exit(0); }
   if (t.estado === 'listo' || t.estado === 'procesando' && Date.now() - new Date(t.empezado || 0) < 3 * 3600000) { console.log('Trabajo ya hecho o en marcha por otro ejecutor'); process.exit(0); }
   t.ejecutor = 'nube';
   try { await procesa(t); await autoCorrige(t); } catch (e) { console.log('[' + id + '] ERROR', e.message); if (e.bloqueado) { t.ejecutor = 'pc'; await paso(t, 'Drive limita ese archivo: lo hará el ordenador de la oficina', { estado: 'pendiente', pct: 2 }); process.exit(0); } await paso(t, 'Error', { estado: 'error', error: String(e.message).slice(0, 400) }); }

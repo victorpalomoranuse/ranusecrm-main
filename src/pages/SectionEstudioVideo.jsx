@@ -365,6 +365,11 @@ function TrabajoNormal({ t, formatos, onCambio }) {
           {t.clip.motivo && <div style={{ ...mut, marginTop: 6 }}>{t.clip.motivo}</div>}
         </div>
       )}
+      {t.estado === 'listo' && ['voz', 'bruto'].includes(t.tipo) && t.resultado && !(t.autorevision && t.autorevision.puntuacion != null) && (
+        <div style={{ marginTop: 10 }}>
+          {t.pedir_puntuacion ? <div style={mut}><Loader2 size={13} /> La IA está revisando este vídeo (1-2 minutos)…</div> : <button className="ap-btn ap-btn-sm" title="La IA ve el vídeo y le pone nota, con lo que falla" onClick={async () => { try { await api.post('/estudio-video/trabajos/' + t.id + '/puntuar'); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo pedir la puntuación'); } }}><Wand2 size={13} /> Puntuar este vídeo con la IA</button>}
+        </div>
+      )}
       {t.estado === 'listo' && t.autorevision && typeof t.autorevision === 'object' && t.autorevision.puntuacion != null && (
         <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>

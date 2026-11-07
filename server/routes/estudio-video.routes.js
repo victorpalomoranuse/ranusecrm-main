@@ -262,6 +262,15 @@ router.get('/trabajos', async (req, res) => {
     res.json({ trabajos: out });
   } catch { res.status(500).json({ error: 'No se pudo leer la lista' }); }
 });
+// Pide a la IA que puntúe un vídeo que ya estaba hecho (revisión sin volver a montarlo)
+router.post('/trabajos/:id/puntuar', async (req, res) => {
+  try {
+    const o = await leerTrabajo(limpia(req.params.id, 20)); if (!o || o.estado !== 'listo' || !(o.resultado_movil || o.resultado)) return res.status(400).json({ error: 'Solo se puede puntuar un vídeo ya terminado' });
+    o.pedir_puntuacion = true; await guardarTrabajo(o);
+    if (!(await nubeActiva()) || !(await lanzarNube(o.id))) { o.pedir_puntuacion = false; await guardarTrabajo(o); return res.status(503).json({ error: 'El servidor de vídeo no está disponible ahora mismo' }); }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'No se pudo pedir la puntuación' }); }
+});
 // Método manual para entrevistas largas: la transcripción completa (con tiempos) para que el usuario elija los tramos de cada clip
 router.get('/trabajos/:id/palabras', async (req, res) => {
   try { const id = limpia(req.params.id, 20); if (!/^[\w-]{4,20}$/.test(id)) return res.status(400).json({ error: 'Id no válido' }); const u = await st().createSignedUrl('artefactos/' + id + '/palabras_largo.json', 600); if (!u.data?.signedUrl) return res.status(404).json({ error: 'Todavía no hay transcripción' }); res.json({ url: u.data.signedUrl }); }
