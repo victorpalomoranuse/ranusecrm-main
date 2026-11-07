@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import api from '../services/api';
 import { Film, Upload, Mic, Video, Trash2, RefreshCw, Download, Plus, Check, Wand2, Settings2, Loader2, Music, Folder, ArrowLeft, Image as ImagenIcono, Play, X, Scissors } from 'lucide-react';
 
@@ -313,7 +313,7 @@ function AprenderReferencia({ formatos, onCambio }) {
   );
 }
 
-function Trabajo(props) { return props.t.tipo === 'referencia' ? <TarjetaReferencia t={props.t} onCambio={props.onCambio} /> : <TrabajoNormal {...props} />; }
+const Trabajo = memo(function Trabajo(props) { return props.t.tipo === 'referencia' ? <TarjetaReferencia t={props.t} onCambio={props.onCambio} /> : <TrabajoNormal {...props} />; });
 function TrabajoNormal({ t, formatos, onCambio }) {
   const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [guionReg, setGuionReg] = useState(t.guion || ''), [constructor, setConstructor] = useState(false), [editando, setEditando] = useState(false), [editTexto, setEditTexto] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
   const [txt, color] = ESTADOS[t.estado] || ESTADOS.pendiente;
@@ -853,11 +853,20 @@ export function SectionRedes() {
 export function SectionEstudioVideo() {
   const [tab, setTab] = useState('videos'), [carpetas, setCarpetas] = useState([]), [pistas, setPistas] = useState([]), [formatos, setFormatos] = useState([]), [trabajos, setTrabajos] = useState(null), [error, setError] = useState('');
   const cargarF = useCallback(() => api.get('/estudio-video/formatos').then(r => setFormatos(r.data.formatos || [])).catch(() => setError('No se han podido cargar los formatos')), []);
-  const cargarT = useCallback(() => api.get('/estudio-video/trabajos').then(r => setTrabajos(r.data.trabajos || [])).catch(() => setTrabajos(t => t || [])), []);
+  // Al refrescar la lista NO se cambian los enlaces de los vídeos ni los trabajos que no han cambiado: así los reproductores y los paneles abiertos no se reinician
+  const cargarT = useCallback(() => api.get('/estudio-video/trabajos').then(r => {
+    const nuevos = r.data.trabajos || [];
+    setTrabajos(prev => {
+      if (!prev) return nuevos;
+      const viejos = new Map(prev.map(x => [x.id, x])); const sinUrl = (x) => JSON.stringify({ ...x, url: null, url_movil: null });
+      const out = nuevos.map(n => { const v = viejos.get(n.id); if (!v) return n; if (v.resultado && v.resultado === n.resultado) { n.url = v.url; n.url_movil = v.url_movil; } return sinUrl(v) === sinUrl(n) ? v : n; });
+      return out.length === prev.length && out.every((x, i) => x === prev[i]) ? prev : out;
+    });
+  }).catch(() => setTrabajos(t => t || [])), []);
   const cargarM = useCallback(() => api.get('/estudio-video/musica').then(r => setPistas(r.data.pistas || [])).catch(() => {}), []);
   useEffect(() => { cargarF(); cargarT(); cargarM(); api.get('/estudio-video/carpetas').then(r => setCarpetas(r.data.carpetas || [])).catch(() => {}); }, [cargarF, cargarT, cargarM]);
   const hayActivos = (trabajos || []).some(t => t.estado === 'pendiente' || t.estado === 'procesando');
-  useEffect(() => { if (!hayActivos) return; const i = setInterval(cargarT, 3000); return () => clearInterval(i); }, [hayActivos, cargarT]);
+  useEffect(() => { if (!hayActivos) return; const i = setInterval(cargarT, 5000); return () => clearInterval(i); }, [hayActivos, cargarT]);
   return (
     <div className="ev-root" style={{ maxWidth: 1100, margin: '0 auto' }}>
       <style>{ESTILO_SELECT}</style>
