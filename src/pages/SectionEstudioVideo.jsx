@@ -84,18 +84,19 @@ function Explorador({ seleccion, onCambio, titulo = 'Recursos (de dónde salen l
 }
 
 function Nuevo({ formatos, musica, carpetas, onCreado }) {
-  const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [prog, setProg] = useState(null), [error, setError] = useState('');
+  const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
   useEffect(() => { if (tipo === 'clips' && formatos.some(f => f.id === 'clips-dopaminicos')) setFmt('clips-dopaminicos'); }, [tipo, formatos]);
   const enviar = async () => {
     const extra = tipo === 'clips' ? { num_clips: numClips, dur_min: Number(durClip.split('-')[0]), dur_max: Number(durClip.split('-')[1]) } : {};
     const dDrive = tipo === 'base' || origen === 'drive';
-    if ((dDrive ? !base.length : !file) || !fmt) return; setError(''); setProg(0);
+    if ((dDrive ? !base.length : !(files.length || file)) || !fmt) return; setError(''); setProg(0);
     try {
-      if (dDrive) await api.post('/estudio-video/trabajos', { tipo, formato: fmt, base: base[0], nombre_archivo: base[0].nombre, indicaciones: notas, guion, musica: mus, recursos, ...extra });
-      else { const ruta = await subirArchivo(file, setProg); await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: file.name, indicaciones: notas, guion, musica: mus, recursos, ...extra }); }
-      setFile(null); setBase([]); setNotas(''); setGuion(''); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
+      // varias entrevistas a la vez: un trabajo por cada una, todos con el mismo guion (cada uno saca los clips que aparecen en su vídeo)
+      if (dDrive) { for (const b of (tipo === 'clips' ? base : base.slice(0, 1))) await api.post('/estudio-video/trabajos', { tipo, formato: fmt, base: b, nombre_archivo: b.nombre, indicaciones: notas, guion, musica: mus, recursos, ...extra }); }
+      else { for (const fl of (tipo === 'clips' && files.length ? files : [file])) { const ruta = await subirArchivo(fl, setProg); await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: fl.name, indicaciones: notas, guion, musica: mus, recursos, ...extra }); } }
+      setFile(null); setFiles([]); setBase([]); setNotas(''); setGuion(''); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
     } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo enviar'); setProg(null); }
   };
   const opcion = (id, Icono, titulo, sub) => (
@@ -119,10 +120,10 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
         <button type="button" className={'ap-btn ap-btn-sm' + (origen === 'dispositivo' ? ' ap-btn-primary' : '')} onClick={() => setOrigen('dispositivo')}><Upload size={12} /> Desde el dispositivo</button>
         <button type="button" className={'ap-btn ap-btn-sm' + (origen === 'drive' ? ' ap-btn-primary' : '')} onClick={() => setOrigen('drive')}><Folder size={12} /> Desde Drive</button>
       </div>
-      {origen === 'drive' && <Explorador seleccion={base} onCambio={setBase} max={1} titulo={tipo === 'voz' ? 'Audio o vídeo con la voz (de Drive)' : tipo === 'clips' ? 'Entrevista (de Drive)' : 'Vídeo en bruto (de Drive)'} vacio="Elegir archivo de Drive" />}
+      {origen === 'drive' && <Explorador seleccion={base} onCambio={setBase} max={tipo === 'clips' ? 6 : 1} titulo={tipo === 'voz' ? 'Audio o vídeo con la voz (de Drive)' : tipo === 'clips' ? 'Entrevistas (de Drive; puedes elegir varias)' : 'Vídeo en bruto (de Drive)'} vacio="Elegir archivo de Drive" />}
       {origen !== 'drive' && (<>
-      <label style={{ ...mut, display: 'block', marginBottom: 4 }}>{tipo === 'voz' ? 'Audio o vídeo con la voz' : tipo === 'clips' ? 'Entrevista o charla larga' : 'Vídeo en bruto'}</label>
-      <input ref={inp} type="file" accept={tipo === 'voz' ? 'audio/*,video/*' : 'video/*'} onChange={e => setFile(e.target.files?.[0] || null)} className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} />
+      <label style={{ ...mut, display: 'block', marginBottom: 4 }}>{tipo === 'voz' ? 'Audio o vídeo con la voz' : tipo === 'clips' ? 'Entrevistas o charlas largas (puedes elegir varias)' : 'Vídeo en bruto'}</label>
+      <input ref={inp} type="file" accept={tipo === 'voz' ? 'audio/*,video/*' : 'video/*'} multiple={tipo === 'clips'} onChange={e => { setFile(e.target.files?.[0] || null); setFiles(Array.from(e.target.files || [])); }} className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} />
       </>)}
       </>)}
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Formato</label>
