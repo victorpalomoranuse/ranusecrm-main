@@ -40,6 +40,15 @@ function lanzaMotor(t, script, opciones) {
     p.stdout.on('data', d => { const x = d.toString(); out += x; buf += x; let i; while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1); const m = /^##PCT (\d+) (.*)$/.exec(l); if (m) pct(t, Number(m[1]), m[2]); const k = /^OK (\d+)\/(\d+)/.exec(l); if (k && opciones.fase === 'indexado') pct(t, 6 + Math.round(18 * Number(k[1]) / Math.max(1, Number(k[2]))), 'Indexando los vídeos de la carpeta elegida (' + k[1] + ' de ' + k[2] + ')'); } });
     p.stderr.on('data', d => { err += d.toString(); }); p.on('close', () => res({ stdout: out, stderr: err })); });
 }
+// HyperFrames re-renderiza el vídeo y a veces deja el audio cortado antes del final: se vuelve a poner el audio ORIGINAL del montaje (sin recodificar)
+function restauraAudio(conTextos, base, dir) {
+  try {
+    const remux = path.join(dir, 'hf_audio.mp4');
+    run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', conTextos, '-i', base, '-map', '0:v:0', '-map', '1:a:0', '-c', 'copy', '-movflags', '+faststart', remux]);
+    if (fs.existsSync(remux) && fs.statSync(remux).size > 5000) { fs.copyFileSync(remux, conTextos); fs.rmSync(remux, { force: true }); console.log('Audio original del montaje restaurado tras la capa visual'); }
+  } catch (e) { console.log('Audio sin restaurar:', e.message); }
+}
+
 // AUTOCRÍTICA: la IA ve el vídeo terminado (12 fotogramas) y lo evalúa como un editor jefe: puntuación, fallos concretos e instrucciones para rehacerlo
 async function criticaVideo(t, video) {
   const key = ENV.ANTHROPIC_API_KEY; if (!key) throw new Error('sin clave');
@@ -301,11 +310,11 @@ async function procesa(t) {
       const base = salida, conTextos = path.join(dir, 'con_textos.mp4'), wk = path.dirname(subs);
       try {
         const fuentesHF = [path.join(wk, 'fonts', 'Montserrat-Bold.ttf'), path.join(wk, 'fonts', 'Rubik-Bold.ttf')];
-        componeHF({ base, subsAss: subs, fuentes: fuentesHF, salida: conTextos, dir }); console.log('Capa visual HyperFrames aplicada');
+        componeHF({ base, subsAss: subs, fuentes: fuentesHF, salida: conTextos, dir }); restauraAudio(conTextos, base, dir); console.log('Capa visual HyperFrames aplicada');
         // autorevisión: la IA mira fotogramas del resultado; si ve letras cortadas o solapadas, se vuelve a dibujar con letra más pequeña
         try {
           const prob = await revisaTextos(conTextos, dir);
-          if (prob.length) { console.log('Autorevisión: problemas →', prob.join('; ')); await paso(t, 'Corrigiendo letras (autorevisión)…', { pct: 91 }); process.env.HF_ESCALA = '0.8'; try { componeHF({ base, subsAss: subs, fuentes: fuentesHF, salida: conTextos, dir }); const prob2 = await revisaTextos(conTextos, dir); console.log('Autorevisión tras corregir:', prob2.length ? prob2.join('; ') : 'sin problemas'); t.nota_letras = prob2.length ? 'Quedan detalles: ' + prob2.join('; ') : 'Corregido: ' + prob.join('; '); } finally { delete process.env.HF_ESCALA; } }
+          if (prob.length) { console.log('Autorevisión: problemas →', prob.join('; ')); await paso(t, 'Corrigiendo letras (autorevisión)…', { pct: 91 }); process.env.HF_ESCALA = '0.8'; try { componeHF({ base, subsAss: subs, fuentes: fuentesHF, salida: conTextos, dir }); restauraAudio(conTextos, base, dir); const prob2 = await revisaTextos(conTextos, dir); console.log('Autorevisión tras corregir:', prob2.length ? prob2.join('; ') : 'sin problemas'); t.nota_letras = prob2.length ? 'Quedan detalles: ' + prob2.join('; ') : 'Corregido: ' + prob.join('; '); } finally { delete process.env.HF_ESCALA; } }
           else { console.log('Autorevisión: sin problemas'); t.nota_letras = 'Sin problemas de texto'; }
         } catch (e) { console.log('Autorevisión no disponible:', e.message); }
         fs.copyFileSync(conTextos, salida); }
