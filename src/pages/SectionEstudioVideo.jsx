@@ -138,9 +138,9 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       <Explorador seleccion={recursos} onCambio={setRecursos} titulo={tipo === 'voz' ? 'Recursos (de dónde salen las escenas)' : 'Recursos para superponer en momentos clave (opcional)'} vacio={tipo === 'voz' ? 'Todo Drive indexado' : 'Todo Drive indexado / elegir recursos'} />
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Música de fondo</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={mus} onChange={e => setMus(e.target.value)}><option value="auto">Automática (la IA elige la que mejor encaje)</option><option value="ninguna">Sin música</option>{musica.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.bpm ? ' · ' + Math.round(p.bpm) + ' bpm' : ''}</option>)}</select>
-      <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Indicaciones (opcional)</label>
       <div style={{ ...mut, marginBottom: 4 }}>Guion del vídeo (opcional): pégalo aquí. En una entrevista, pon las preguntas o temas que quieres sacar; en una voz en off o un bruto, el texto que quieres que se diga.</div>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 90, marginBottom: 10 }} value={guion} onChange={e => setGuion(e.target.value)} placeholder="Pega aquí el guion (da igual si al grabar cambiaste alguna palabra: la IA lo encuentra igualmente)…" />
+      <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Indicaciones (opcional)</label>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 60, marginBottom: 10 }} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Ej.: enseña el proyecto de Rivas, tono directo, que empiece con un plano de obra…" />
       {error && <div className="ap-error" style={{ marginBottom: 8 }}>{error}</div>}
       <button className="ap-btn ap-btn-primary" disabled={((tipo === 'base' || origen === 'drive') ? !base.length : !file) || !fmt || prog !== null} onClick={enviar}>{prog !== null ? <><Loader2 size={14} /> Subiendo {prog}%</> : <><Wand2 size={14} /> Editar vídeo</>}</button>
@@ -705,7 +705,7 @@ function Formatos({ formatos, onCambio }) {
 export function SectionRedes() {
   const [seccion, setSeccion] = useState('ideas');
   return (
-    <div className="ev-root" style={{ maxWidth: 820 }}>
+    <div className="ev-root" style={{ maxWidth: 1100, margin: '0 auto' }}>
       <style>{ESTILO_SELECT}</style>
       <h1 className="ap-page-title" style={{ marginBottom: 6 }}>Departamento de redes</h1>
       <p style={{ ...mut, marginBottom: 16 }}>Ideas de contenido con gancho y guion, calendario de publicaciones y las reglas de marca de Ranuse. Para producir los vídeos usa el Estudio de vídeo.</p>
@@ -737,7 +737,7 @@ export function SectionEstudioVideo() {
   const hayActivos = (trabajos || []).some(t => t.estado === 'pendiente' || t.estado === 'procesando');
   useEffect(() => { if (!hayActivos) return; const i = setInterval(cargarT, 3000); return () => clearInterval(i); }, [hayActivos, cargarT]);
   return (
-    <div className="ev-root" style={{ maxWidth: 820 }}>
+    <div className="ev-root" style={{ maxWidth: 1100, margin: '0 auto' }}>
       <style>{ESTILO_SELECT}</style>
       <h1 className="ap-page-title" style={{ marginBottom: 6 }}>Estudio de vídeo</h1>
       <p style={{ ...mut, marginBottom: 16 }}>Sube una voz en off (audio o vídeo) o un vídeo en bruto, elige un formato y la IA lo edita con las escenas de la biblioteca. Cada formato guarda el estilo para que todos los vídeos salgan igual. Si no te gusta algo, pide cambios sobre el propio vídeo.</p>
