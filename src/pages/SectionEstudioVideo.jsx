@@ -172,7 +172,7 @@ function medirPartes(partes, trans) {
   return partes.map((_, k) => { if (ini[k] === null) return null; let fin = kept.length; for (let j = k + 1; j < partes.length; j++) if (ini[j] !== null) { fin = ini[j]; break; } let s = 0; for (let i = ini[k]; i < fin; i++) { s += kept[i].a - kept[i].de + (i > ini[k] ? Math.min(0.45, Math.max(0, kept[i].de - kept[i - 1].a)) : 0); } return s; });
 }
 function Desglose({ guion, asig, setAsig, trans }) {
-  const [abierto, setAbierto] = useState(false);
+  const [abierto, setAbierto] = useState(false), [forzar, setForzar] = useState({});
   const partes = partesDeGuion(guion); if (!partes.length) return null;
   const medidas = medirPartes(partes, trans);
   const n = partes.filter((_, i) => (asig[i] || []).length).length;
@@ -182,7 +182,12 @@ function Desglose({ guion, asig, setAsig, trans }) {
       {abierto && (
         <div style={{ marginTop: 10 }}>
           <div style={{ ...mut, marginBottom: 8 }}>Tu guion está dividido en partes (una por párrafo). En cada una elige los vídeos de Drive que quieres que se vean mientras se dice esa parte. Las que dejes sin vídeos las monta la IA como siempre.</div>
-          {partes.map((p, i) => (
+          {partes.map((p, i) => medidas && medidas[i] == null && !forzar[i] && !(asig[i] || []).length ? (
+            <div key={i} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.08)', opacity: 0.6 }}>
+              <div style={{ fontSize: '0.85rem' }}><strong>Parte {i + 1}:</strong> {p}</div>
+              <div style={mut}>No aparece en tu audio: no hace falta elegir clips. <button type="button" className="ap-btn ap-btn-sm" onClick={() => setForzar({ ...forzar, [i]: true })}>Sí aparece, mostrar</button></div>
+            </div>
+          ) : (
             <div key={i} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
               <div style={{ fontSize: '0.85rem', marginBottom: 6 }}><strong>Parte {i + 1}:</strong> {p}</div>
               {(() => { const pal = p.split(/\s+/).filter(Boolean).length, real = medidas && medidas[i] != null, seg = real ? Math.max(1, Math.round(medidas[i])) : Math.max(1, Math.round(pal / 2.9)), clips = Math.max(1, Math.round(seg / 2.5)); return <div style={{ ...mut, marginBottom: 6 }}>{real ? 'En tu audio dura' : 'Dura unos'} <strong>{seg} s</strong> {real ? '(medido)' : 'hablada'}: necesita unos <strong>{clips} clip{clips > 1 ? 's' : ''}</strong> de ~2,5 s (o menos clips, más largos).{(asig[i] || []).length ? ' Has elegido ' + (asig[i] || []).length + '.' : ''}</div>; })()}
