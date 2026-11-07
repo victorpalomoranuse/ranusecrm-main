@@ -188,6 +188,23 @@ export function recomponeVoz({ palabras, quitar, wav48, salida, pausa = 0.45 }) 
 
 // Versión final del discurso: la IA decide qué tramos CONSERVAR (en vez de qué borrar). Así cada idea queda una sola vez, con su mejor toma, y nada se pisa.
 // Devuelve el conjunto de índices a QUITAR (todo lo que no está en los tramos conservados) o null si no se ha podido.
+// Corrige en la transcripción las palabras mal oídas usando el guion: alinea ambos textos y, donde la palabra oída y la del guion se parecen
+// (pero no son iguales), pone la del guion (ortografía, nombres, tildes). Si el hablante cambió una palabra por otra distinta, se deja la que dijo.
+export function ajustaAlGuion(palabras, guion) {
+  if (!guion || !palabras.length) return 0;
+  const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  const lev = (a, b) => { const m = a.length, n = b.length; let p = Array.from({ length: n + 1 }, (_, j) => j); for (let i = 1; i <= m; i++) { const c = [i]; for (let j = 1; j <= n; j++) c[j] = Math.min(p[j] + 1, c[j - 1] + 1, p[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); p = c; } return p[n]; };
+  const G = String(guion).split(/\s+/).filter(Boolean).map(w => ({ w, n: norm(w) })).filter(x => x.n);
+  const A = palabras.map(w => norm(w.t)); const m = A.length, n = G.length; if (!n || m * n > 6e6) return 0;
+  const parecidas = (a, b) => { if (!a || !b) return 0; if (a === b) return 2; const d = lev(a, b); return d <= (Math.max(a.length, b.length) >= 6 ? 2 : 1) && Math.min(a.length, b.length) >= 3 ? 1 : 0; };
+  const pts = (p) => p === 2 ? 2 : p === 1 ? 1 : -1;
+  const S = Array.from({ length: m + 1 }, () => new Int16Array(n + 1)); for (let i = 1; i <= m; i++) S[i][0] = -i; for (let j = 1; j <= n; j++) S[0][j] = -j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) S[i][j] = Math.max(S[i - 1][j - 1] + pts(parecidas(A[i - 1], G[j - 1].n)), S[i - 1][j] - 1, S[i][j - 1] - 1);
+  let i = m, j = n, cambios = 0;
+  while (i > 0 && j > 0) { const p = parecidas(A[i - 1], G[j - 1].n); if (S[i][j] === S[i - 1][j - 1] + pts(p)) { if (p === 1) { palabras[i - 1].t = G[j - 1].w.replace(/^[^A-Za-zÀ-ÿ0-9]+/, ''); cambios++; } i--; j--; } else if (S[i][j] === S[i - 1][j] - 1) i--; else j--; }
+  return cambios;
+}
+
 export async function guionLimpio(palabras, apiKey, notas = '', entrevista = false) {
   if (entrevista) notas = (notas ? notas + '. ' : '') + 'ES UNA ENTREVISTA con varias personas. Los marcadores <<P>> indican que habla quien PREGUNTA (el entrevistador) y <<R>> quien RESPONDE. La PREGUNTA forma parte del mensaje: CONSÉRVALA entera, con su mejor formulación (si el entrevistador la corrige o repite, quédate con la versión bien dicha) y SIEMPRE antes de la respuesta; quita sus muletillas (vale), los ¿me repites? y los comentarios sueltos; elimina solo sus interrupciones o comentarios sueltos. Quita los tropiezos, repeticiones y correcciones de quien responde y deja solo la mejor toma. Quita también los arranques y vocativos antes de la pregunta (vale, a ver, Víctor,) y cualquier palabra suelta repetida (y y, ahí ahí).';
   const et = etiquetasHablantes(palabras); const guion = palabras.map((w, i) => (et[i] && et[i] !== (et[i - 1] || '') ? '<<' + et[i] + '>> ' : '') + i + ':' + w.t).join(' ');
@@ -196,6 +213,7 @@ export async function guionLimpio(palabras, apiKey, notas = '', entrevista = fal
     '2) Elimina falsos comienzos, palabras a medias, correcciones, comentarios a sí mismo o a otras personas ("¿cómo era?", "es que queda mal", "vale", "ya", "¿el sector ha dicho? sí", exclamaciones y charla fuera del guion) y muletillas.\n' +
     '3) NO pierdas ninguna idea del mensaje: la apertura, todo el desarrollo, cada parte de la historia que cuenta y el cierre o llamada a la acción final. Si una idea solo aparece en una toma imperfecta, conserva lo mejor de ella.\n' +
     '4) Mantén el orden original: los tramos conservados van en orden creciente de índice y sin solaparse. Cada tramo empieza al principio de una frase o idea y acaba al final de otra; puedes saltarte palabras sueltas dentro quitando un tramo y abriendo otro.\n' +
+    (process.env.GUION ? 'GUION DE REFERENCIA (lo que la persona quería decir; al grabar puede haber variado alguna palabra): ' + process.env.GUION.slice(0, 12000) + '\nCon el guion: conserva la mejor toma de CADA frase del guion y en el orden del guion; descarta lo que no esté en el guion (comentarios, pruebas, tomas fallidas), salvo variaciones de palabras que dicen lo mismo.\n' : '') +
     (notas ? 'Indicaciones de la persona: ' + notas + '\n' : '') +
     '\nResponde SOLO con JSON: {"conservar":[[desde,hasta],[desde,hasta]]} con índices inclusivos.\n\nTRANSCRIPCIÓN:\n' + guion.slice(0, 150000);
   for (let intento = 0; intento < 2; intento++) {

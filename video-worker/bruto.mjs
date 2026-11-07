@@ -10,7 +10,7 @@ import * as drive from './drive.mjs';
 import { ENV } from './entorno.mjs';
 import { ARGS_VIDEO } from './codec.mjs';
 import { transcribe } from './transcribir.mjs';
-import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, guionLimpio, envolvente, etiquetasHablantes } from './voz.mjs';
+import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, guionLimpio, ajustaAlGuion, envolvente, etiquetasHablantes } from './voz.mjs';
 
 const [ENTRADA, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!ENTRADA || !SALIDA) { console.log('Uso: node bruto.mjs "<bruto>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -57,6 +57,7 @@ const wj = path.join(work, 'palabras');
 await transcribe(wav, wj, { alinear: true });
 const palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription.map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000, ...(s.spk !== undefined ? { spk: s.spk } : {}) })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
 if (!palabras.length) { console.log('FALLO: no se oye voz en el vídeo'); process.exit(1); }
+if (process.env.GUION) console.log('Palabras corregidas con el guion:', ajustaAlGuion(palabras, process.env.GUION));
 palabras.forEach((w, i) => { w.i = i; });
 const trabones = corrigeTrabones(palabras, wav); if (trabones) console.log('Tropiezos recortados:', trabones);
 

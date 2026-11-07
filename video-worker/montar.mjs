@@ -14,7 +14,7 @@ import { ARGS_VIDEO } from './codec.mjs';
 import { transcribe } from './transcribir.mjs';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
-import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, rangosAQuitar, guionLimpio, recomponeVoz, muletillasSueltas, huecosConSonido, tomasRepetidas, elegirMejoresTomas } from './voz.mjs';
+import { CADENA_VOZ, copiaModelo, corrigeTrabones, repetidasInmediatas, rangosAQuitar, guionLimpio, ajustaAlGuion, recomponeVoz, muletillasSueltas, huecosConSonido, tomasRepetidas, elegirMejoresTomas } from './voz.mjs';
 
 const [VOZ, INDICE, SALIDA, NOTAS = ''] = process.argv.slice(2);
 if (!VOZ || !INDICE || !SALIDA) { console.log('Uso: node montar.mjs "<voz>" "<indice.json>" "<salida.mp4>" ["indicaciones"]'); process.exit(1); }
@@ -68,6 +68,7 @@ const wj = path.join(work, 'palabras');
 console.log('Transcripcion con:', await transcribe(wav, wj, { alinear: true }));
 let palabras = JSON.parse(fs.readFileSync(wj + '.json', 'utf8').replace(/^\uFEFF/, '')).transcription
   .map(s => ({ t: s.text.trim(), de: s.offsets.from / 1000, a: s.offsets.to / 1000 })).filter(w => w.t && !/^\[.*\]$/.test(w.t));
+if (process.env.GUION) console.log('Palabras corregidas con el guion:', ajustaAlGuion(palabras, process.env.GUION));
 palabras.forEach((w, i) => { w.i = i; });
 { const nA = acotaPorEnergia(palabras, wav); if (nA) console.log('Palabras estiradas sobre un silencio, acortadas:', nA); }
 console.log('Palabras:', palabras.length);
