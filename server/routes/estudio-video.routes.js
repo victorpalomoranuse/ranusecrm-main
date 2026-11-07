@@ -117,6 +117,20 @@ router.put('/ideas/:id', async (req, res) => {
   } catch { res.status(500).json({ error: 'No se pudo guardar' }); }
 });
 router.delete('/ideas/:id', async (req, res) => { try { const lista = (await leerIdeas()).filter(i => i.id !== req.params.id); await guardarJson(RUTA_IDEAS, { lista }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo borrar' }); } });
+// Guionizador: escribe el guion completo de un reel o de una historia con el manual de redes y las reglas de marca
+router.post('/guionizador', async (req, res) => {
+  try {
+    const b = req.body || {}; const tema = limpia(b.tema, 600); if (!tema) return res.status(400).json({ error: 'Escribe de qué va el vídeo' });
+    const tipo = b.tipo === 'historia' ? 'historia' : 'reel'; const seg = Math.max(10, Math.min(120, parseInt(b.duracion) || (tipo === 'historia' ? 60 : 30)));
+    const modo = ['entrevista', 'camara', 'voz', 'midia'].includes(b.modo) ? b.modo : 'camara'; const reglas = await textoReglas();
+    const modos = { entrevista: 'entrevista pregunta-respuesta entre Dani (pregunta) y Víctor (responde)', camara: 'Víctor hablando a cámara', voz: 'voz en off sobre imágenes de obra y proyectos', midia: 'vídeo tipo "mi día / acompáñame" con voz en off y escenas del día' };
+    const sistema = 'Eres el guionista de redes de Ranuse Design (diseño y montaje de gimnasios y espacios deportivos). Escribes guiones de ' + (tipo === 'historia' ? 'HISTORIAS (narración con arco: situación, conflicto, giro, cierre; real, con detalle de obra)' : 'REELS (gancho en 1-3 s, una sola idea, bucles abiertos, remate y una llamada a la acción)') + '. ' + MANUAL_REDES + '\n\nREGLAS DE MARCA (obligatorias):\n' + reglas;
+    const usuario = 'Escribe el guion de un ' + tipo + ' de unos ' + seg + ' segundos, formato: ' + modos[modo] + '. Tema: ' + tema + '. Habla en español de España, frases cortas y naturales, sin inventar datos ni cifras que no te haya dado (si hace falta una cifra, deja [CIFRA]). Responde SOLO JSON: {"titulo":"...","gancho":"texto en pantalla de los primeros 3 s","hablado":"SOLO el texto que se dice, de corrido, listo para pegar como guion (en entrevista: líneas P: pregunta / R: respuesta)","escenas":[{"seg":"0-3","que_se_ve":"...","texto_pantalla":"...","dice":"..."}],"que_grabar":"lista de tomas necesarias","cierre":"llamada a la acción"}';
+    const r = await callClaude({ system: sistema, messages: [{ role: 'user', content: usuario }], maxTokens: 3500 });
+    const txt = (r.content || []).map(x => x.text || '').join(''); const j = JSON.parse(/\{[\s\S]*\}/.exec(txt)[0]);
+    res.json({ titulo: limpia(j.titulo, 140), gancho: limpia(j.gancho, 300), hablado: limpia(j.hablado, 5000), escenas: (Array.isArray(j.escenas) ? j.escenas : []).slice(0, 14).map(e => ({ seg: limpia(e.seg, 20), que_se_ve: limpia(e.que_se_ve, 300), texto_pantalla: limpia(e.texto_pantalla, 200), dice: limpia(e.dice, 500) })), que_grabar: limpia(j.que_grabar, 800), cierre: limpia(j.cierre, 300) });
+  } catch (e) { res.status(500).json({ error: 'No se pudo escribir el guion: ' + String(e.message || '').slice(0, 160) }); }
+});
 router.get('/formatos', async (req, res) => { try { res.json({ formatos: await formatos() }); } catch { res.status(500).json({ error: 'No se pudieron leer los formatos' }); } });
 router.post('/formatos', async (req, res) => {
   try {

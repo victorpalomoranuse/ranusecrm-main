@@ -470,6 +470,40 @@ function Campo({ etiqueta, children }) { return <label style={{ display: 'block'
 
 // ---------- Ideas de contenido y calendario (departamento de redes) ----------
 const ESTADOS_IDEA = { idea: 'Idea', grabar: 'A grabar', editando: 'Editando', publicado: 'Publicado', descartada: 'Descartada' };
+function Guionizador() {
+  const [tema, setTema] = useState(''), [tipo, setTipo] = useState('reel'), [modo, setModo] = useState('camara'), [dur, setDur] = useState(30), [cargando, setCargando] = useState(false), [res, setRes] = useState(null), [err, setErr] = useState(''), [copiado, setCopiado] = useState(false);
+  const generar = async () => { setErr(''); setCargando(true); setRes(null); try { const r = await api.post('/estudio-video/guionizador', { tema, tipo, modo, duracion: dur }); setRes(r.data); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo escribir el guion'); } setCargando(false); };
+  const copia = (txt) => { try { navigator.clipboard.writeText(txt); setCopiado(true); setTimeout(() => setCopiado(false), 1800); } catch { /* sin portapapeles */ } };
+  return (
+    <div>
+      <div style={card}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Guionizador de reels e historias</div>
+        <div style={{ ...mut, marginBottom: 8 }}>Dile de qué va y escribe el guion completo con el manual de redes y tus reglas de marca. El texto «hablado» lo copias y lo pegas en la caja Guion del Estudio de vídeo.</div>
+        <textarea className="ap-field-input" style={{ width: '100%', minHeight: 60, marginBottom: 8 }} value={tema} onChange={e => setTema(e.target.value)} placeholder="Ej.: error común al elegir máquinas para un gimnasio pequeño, o: la obra de Rivas de principio a fin" />
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          <select className="ap-field-input" value={tipo} onChange={e => setTipo(e.target.value)}><option value="reel">Reel</option><option value="historia">Historia (con arco)</option></select>
+          <select className="ap-field-input" value={modo} onChange={e => setModo(e.target.value)}><option value="camara">Víctor a cámara</option><option value="entrevista">Entrevista Dani y Víctor</option><option value="voz">Voz en off sobre obra</option><option value="midia">Acompáñame / mi día</option></select>
+          <select className="ap-field-input" value={dur} onChange={e => setDur(Number(e.target.value))}>{[15, 30, 45, 60, 90].map(n => <option key={n} value={n}>{n} s</option>)}</select>
+        </div>
+        <button className="ap-btn ap-btn-primary" disabled={!tema.trim() || cargando} onClick={generar}>{cargando ? <><Loader2 size={14} /> Escribiendo…</> : <><Wand2 size={14} /> Escribir guion</>}</button>
+        {err && <div style={{ color: '#ff8a80', marginTop: 8 }}>{err}</div>}
+      </div>
+      {res && (
+        <div style={{ ...card, marginTop: 12 }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{res.titulo}</div>
+          {res.gancho && <div style={{ marginBottom: 8 }}><span style={mut}>Gancho en pantalla: </span><strong>{res.gancho}</strong></div>}
+          <div style={{ ...mut, marginBottom: 4 }}>Texto hablado (para pegar como guion)</div>
+          <div style={{ whiteSpace: 'pre-wrap', padding: 10, borderRadius: 8, background: 'rgba(255,255,255,0.05)', marginBottom: 8 }}>{res.hablado}</div>
+          <button className="ap-btn ap-btn-sm" onClick={() => copia(res.hablado)}>{copiado ? <><Check size={13} /> Copiado</> : 'Copiar guion hablado'}</button>
+          {(res.escenas || []).length > 0 && <div style={{ marginTop: 12 }}><div style={{ ...mut, marginBottom: 4 }}>Escena por escena</div>{res.escenas.map((e, i) => <div key={i} style={{ fontSize: '0.85rem', marginBottom: 6 }}><strong>{e.seg} s</strong> · {e.que_se_ve}{e.texto_pantalla ? <> · <em>pantalla: {e.texto_pantalla}</em></> : null}{e.dice ? <div style={mut}>“{e.dice}”</div> : null}</div>)}</div>}
+          {res.que_grabar && <div style={{ marginTop: 8 }}><span style={mut}>Qué grabar: </span>{res.que_grabar}</div>}
+          {res.cierre && <div style={{ marginTop: 6 }}><span style={mut}>Cierre: </span>{res.cierre}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PestanaIdeas() {
   const [ideas, setIdeas] = useState(null), [tema, setTema] = useState(''), [cant, setCant] = useState(6), [gen, setGen] = useState(false), [err, setErr] = useState(''), [abierta, setAbierta] = useState(null), [filtro, setFiltro] = useState('activas');
   const cargar = useCallback(() => api.get('/estudio-video/ideas').then(r => setIdeas(r.data.ideas || [])).catch(() => setIdeas([])), []);
@@ -621,10 +655,12 @@ export function SectionRedes() {
       <p style={{ ...mut, marginBottom: 16 }}>Ideas de contenido con gancho y guion, calendario de publicaciones y las reglas de marca de Ranuse. Para producir los vídeos usa el Estudio de vídeo.</p>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
         <button className={'ap-btn ap-btn-sm' + (seccion === 'ideas' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('ideas')}><Wand2 size={13} /> Ideas y calendario</button>
+        <button className={'ap-btn ap-btn-sm' + (seccion === 'guion' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('guion')}><Music size={13} /> Guionizador</button>
         <button className={'ap-btn ap-btn-sm' + (seccion === 'marca' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('marca')}><Settings2 size={13} /> Voz y reglas de marca</button>
         <button className={'ap-btn ap-btn-sm' + (seccion === 'medir' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('medir')}><Film size={13} /> Publicar y medir</button>
       </div>
       {seccion === 'ideas' && <PestanaIdeas />}
+      {seccion === 'guion' && <Guionizador />}
       {seccion === 'marca' && <div style={card}><CajaReglas /><div style={mut}>Estas reglas las usa la IA al proponer ideas y al editar los vídeos del Estudio.</div></div>}
       {seccion === 'medir' && (
         <div style={card}>
