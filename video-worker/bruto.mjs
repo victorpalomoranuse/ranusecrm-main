@@ -279,7 +279,7 @@ ins.forEach((x, k) => {
 });
 graf.forEach((g, k) => {
   entradas.push('-loop', '1', '-framerate', '30', '-t', (g.d + 0.1).toFixed(2), '-i', g.f);
-  const yFin = 150, a = g.a.toFixed(3), b2 = (g.a + g.d).toFixed(3);
+  const yFin = (process.env.PREGUNTA_PANTALLA && g.a < 5.8) ? 520 : 300, a = g.a.toFixed(3), b2 = (g.a + g.d).toFixed(3);
   filtros.push('[' + (ins.length + k + 1) + ':v]format=rgba,fade=t=in:st=0:d=0.22:alpha=1,fade=t=out:st=' + (g.d - 0.25).toFixed(2) + ':d=0.25:alpha=1,setpts=PTS+' + a + '/TB[g' + k + ']');
   filtros.push('[' + prev + '][g' + k + ']overlay=x=\'(W-w)/2\':y=\'' + yFin + '-70*pow(max(0\\,1-(t-' + a + ')/0.32)\\,3)\':enable=\'between(t\\,' + a + '\\,' + b2 + ')\':eof_action=pass[o' + k + ']');
   prev = 'o' + k;
