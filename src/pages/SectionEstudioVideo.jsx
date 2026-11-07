@@ -148,7 +148,63 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
   );
 }
 
-function Trabajo({ t, formatos, onCambio }) {
+// Tarjeta de un vídeo viral analizado: muestra cómo está editado, crea el formato con la marca de Ranuse y enseña una muestra real
+function TarjetaReferencia({ t, onCambio }) {
+  const [nuevo, setNuevo] = useState(null), [listos, setListos] = useState(null), [elegido, setElegido] = useState(''), [msg, setMsg] = useState(''), [ocupado, setOcupado] = useState(false);
+  const a = t.analisis;
+  const crear = async () => { setOcupado(true); setMsg(''); try { const { data } = await api.post('/estudio-video/formatos/desde-referencia', { id: t.id }); setNuevo(data.formato); const l = await api.get('/estudio-video/trabajos'); setListos((l.data.trabajos || []).filter(x => x.estado === 'listo' && x.resultado && ['voz', 'bruto'].includes(x.tipo))); onCambio(); } catch (e) { setMsg(e?.response?.data?.error || 'No se pudo crear el formato'); } setOcupado(false); };
+  const muestra = async () => { if (!elegido) return; setOcupado(true); setMsg(''); try { await api.post('/estudio-video/trabajos/' + elegido + '/rehacer', { formato: nuevo.id }); setMsg('Montando la muestra: aparecerá arriba en Vídeos con este formato (unos minutos).'); onCambio(); } catch (e) { setMsg(e?.response?.data?.error || 'No se pudo lanzar la muestra'); } setOcupado(false); };
+  const borrar = async () => { if (!window.confirm('¿Borrar este análisis?')) return; try { await api.delete('/estudio-video/trabajos/' + t.id); onCambio(); } catch { /* sin borrar */ } };
+  return (
+    <div style={{ ...card, marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ fontWeight: 600 }}>Vídeo viral analizado: {t.nombre_archivo}</div>
+        <button className="ap-btn ap-btn-sm" onClick={borrar}><Trash2 size={13} /></button>
+      </div>
+      {t.estado === 'error' && <div style={{ color: '#ff8a80', marginTop: 6 }}>{t.error}</div>}
+      {(t.estado === 'pendiente' || t.estado === 'procesando') && <div style={{ ...mut, marginTop: 6 }}><Loader2 size={13} /> {t.progreso || 'En cola'}</div>}
+      {t.estado === 'listo' && a && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontWeight: 600 }}>{a.nombre}</div>
+          <div style={{ ...mut, margin: '4px 0' }}>{a.descripcion}</div>
+          <div style={{ fontSize: '0.85rem', marginBottom: 6 }}>{a.planos} planos en {Math.round(a.dur)} s · plano medio {a.plano_medio} s{a.palabras_por_min ? ' · ' + a.palabras_por_min + ' palabras/min' : ''}</div>
+          {(a.estructura || []).map((x, i) => <div key={i} style={{ fontSize: '0.85rem' }}>• {x}</div>)}
+          {a.parecido_a_nuestros_formatos && <div style={{ ...mut, marginTop: 6 }}>Se parece a: {a.parecido_a_nuestros_formatos}</div>}
+          {!nuevo ? <button className="ap-btn ap-btn-primary ap-btn-sm" style={{ marginTop: 10 }} disabled={ocupado} onClick={crear}>{ocupado ? <Loader2 size={13} /> : <Wand2 size={13} />} Crear formato con este estilo (adaptado a mi marca)</button> : (
+            <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: 'rgba(255,255,255,0.05)' }}>
+              <div style={{ marginBottom: 6 }}><Check size={13} /> Formato «{nuevo.nombre}» creado (ritmo y estructura de la referencia; colores, fuente y minúsculas de Ranuse). Lo tienes en la lista de formatos para ajustarlo.</div>
+              <div style={{ ...mut, marginBottom: 4 }}>Para ver cómo queda de verdad, aplícalo a uno de tus vídeos ya hechos:</div>
+              <select className="ap-field-input" value={elegido} onChange={e => setElegido(e.target.value)} style={{ maxWidth: '100%' }}>
+                <option value="">Elige un vídeo…</option>
+                {(listos || []).map(x => <option key={x.id} value={x.id}>{(x.nombre_archivo || x.id) + ' · ' + (x.formato_nombre || '')}</option>)}
+              </select>
+              <button className="ap-btn ap-btn-sm" style={{ marginLeft: 8 }} disabled={!elegido || ocupado} onClick={muestra}><Play size={13} /> Ver muestra real</button>
+            </div>
+          )}
+          {msg && <div style={{ ...mut, marginTop: 6 }}>{msg}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Subir un vídeo viral para que la IA aprenda cómo está editado
+function AprenderReferencia({ formatos, onCambio }) {
+  const [prog, setProg] = useState(null), [err, setErr] = useState(''), inp = useRef(null);
+  const subir = async (file) => { if (!file) return; setErr(''); try { const ruta = await subirArchivo(file, setProg); await api.post('/estudio-video/trabajos', { tipo: 'referencia', formato: formatos[0]?.id, archivo: ruta, nombre_archivo: file.name }); setProg(null); if (inp.current) inp.current.value = ''; onCambio(); } catch (e) { setProg(null); setErr(e?.response?.data?.error || e.message || 'No se pudo subir'); } };
+  return (
+    <div style={{ ...card, marginBottom: 12 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>Aprender de un vídeo viral</div>
+      <div style={{ ...mut, marginBottom: 8 }}>Sube un vídeo que te guste de otra cuenta (el archivo; los enlaces de TikTok o Instagram no siempre se pueden descargar). La IA mide su ritmo de cortes, zooms, texto y estructura, crea un formato igual y lo adapta a tu marca. Después puedes ver una muestra real con tus propios vídeos.</div>
+      <input ref={inp} type="file" accept="video/*" disabled={prog !== null} onChange={e => subir(e.target.files?.[0])} />
+      {prog !== null && <div style={{ ...mut, marginTop: 6 }}><Loader2 size={13} /> Subiendo {prog}%</div>}
+      {err && <div style={{ color: '#ff8a80', marginTop: 6 }}>{err}</div>}
+    </div>
+  );
+}
+
+function Trabajo(props) { return props.t.tipo === 'referencia' ? <TarjetaReferencia t={props.t} onCambio={props.onCambio} /> : <TrabajoNormal {...props} />; }
+function TrabajoNormal({ t, formatos, onCambio }) {
   const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [guionReg, setGuionReg] = useState(t.guion || ''), [editando, setEditando] = useState(false), [editTexto, setEditTexto] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
   const [txt, color] = ESTADOS[t.estado] || ESTADOS.pendiente;
   const vref = useRef(null);
@@ -691,7 +747,7 @@ export function SectionEstudioVideo() {
         <button className={'ap-btn ap-btn-sm' + (tab === 'musica' ? ' ap-btn-primary' : '')} onClick={() => setTab('musica')}><Music size={13} /> Música</button>
       </div>
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
-      {tab === 'formatos' ? <Formatos formatos={formatos} onCambio={cargarF} /> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
+      {tab === 'formatos' ? <><AprenderReferencia formatos={formatos} onCambio={cargarT} /><Formatos formatos={formatos} onCambio={cargarF} /></> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Nuevo formatos={formatos} musica={pistas} carpetas={carpetas} onCreado={cargarT} />
           {trabajos === null ? <div className="ap-loading">Cargando…</div> : trabajos.length === 0 ? <div style={mut}>Todavía no hay vídeos. Sube el primero arriba.</div> : trabajos.map(t => <Trabajo key={t.id} t={t} formatos={formatos} onCambio={cargarT} />)}

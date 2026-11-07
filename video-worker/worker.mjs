@@ -3,6 +3,7 @@
 import fs from 'fs';
 import crypto from 'crypto';
 import { hfDisponible, componeHF } from './hf.mjs';
+import { analizaReferencia } from './referencia.mjs';
 import path from 'path';
 import { createRequire } from 'module';
 import { spawnSync, spawn } from 'child_process';
@@ -234,6 +235,11 @@ async function procesa(t) {
   await paso(t, t.tipo === 'voz' ? 'La IA está eligiendo escenas y montando…' : t.tipo === 'base' ? 'Montando sobre el vídeo base y superponiendo escenas…' : 'Quitando pausas y poniendo subtítulos…');
   try { await sincronizaMusica(); } catch (e) { console.log('Música sin sincronizar:', e.message); }
   if (t.tipo === 'clips') { await procesaClips(t, entrada, dir); return; }
+  if (t.tipo === 'referencia') {
+    await paso(t, 'Analizando el vídeo de referencia…', { pct: 30 });
+    const analisis = await analizaReferencia(entrada, path.join(dir, '_ref'), (m) => console.log(m));
+    await paso(t, 'Análisis listo', { analisis, pct: 100, estado: 'listo', terminado: new Date().toISOString(), error: null }); return;
+  }
   if (t.edicion_texto && t.tipo !== 'edicion') {
     const wk = path.join(dir, '_trabajo_salida'); fs.mkdirSync(wk, { recursive: true });
     try { const u = await st.createSignedUrl('artefactos/' + t.origen + '/palabras_bruto.json', 300); if (u.data?.signedUrl) fs.writeFileSync(path.join(wk, 'palabras.json'), Buffer.from(await (await fetch(u.data.signedUrl)).arrayBuffer())); } catch (e) { console.log('Sin la transcripción anterior (se volverá a transcribir):', e.message); }

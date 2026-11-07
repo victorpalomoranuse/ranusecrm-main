@@ -131,6 +131,20 @@ router.post('/guionizador', async (req, res) => {
     res.json({ titulo: limpia(j.titulo, 140), gancho: limpia(j.gancho, 300), hablado: limpia(j.hablado, 5000), escenas: (Array.isArray(j.escenas) ? j.escenas : []).slice(0, 14).map(e => ({ seg: limpia(e.seg, 20), que_se_ve: limpia(e.que_se_ve, 300), texto_pantalla: limpia(e.texto_pantalla, 200), dice: limpia(e.dice, 500) })), que_grabar: limpia(j.que_grabar, 800), cierre: limpia(j.cierre, 300) });
   } catch (e) { res.status(500).json({ error: 'No se pudo escribir el guion: ' + String(e.message || '').slice(0, 160) }); }
 });
+// Crea un formato nuevo a partir del análisis de un vídeo viral: copia el ritmo y la estructura, y adapta el aspecto a la marca de Ranuse
+router.post('/formatos/desde-referencia', async (req, res) => {
+  try {
+    const o = await leerTrabajo(limpia(req.body?.id, 20)); const a = o?.analisis; if (!a?.receta) return res.status(404).json({ error: 'Ese análisis no está listo' });
+    const lista = await formatos(); const num = (v, d, mn, mx) => { const n = Number(v); return Number.isFinite(n) ? Math.max(mn, Math.min(mx, n)) : d; };
+    const r0 = a.receta || {}, base = JSON.parse(JSON.stringify(FORMATO_BASE.receta || {}));
+    const receta = { ...base, corte: { min: num(r0.corte?.min, 1.8, 0.6, 6), max: num(r0.corte?.max, 3.5, 1, 10) }, zoomFinal: num(r0.zoomFinal, 1, 1, 1.4), whoosh: num(r0.whoosh, 0, 0, 1), flash: !!r0.flash, introLetras: !!r0.introLetras, collage: !!r0.collage, estiloSubs: r0.estiloSubs === 'karaoke' ? 'karaoke' : 'normal', titulo: !!r0.titulo, barra: !!r0.barra, resaltar: !!r0.resaltar, horas: !!r0.horas,
+      subs: { palabrasPorBloque: Math.round(num(r0.subs?.palabrasPorBloque, 2, 1, 4)), tam: Math.round(num(r0.subs?.tam, 86, 60, 110)), margenV: Math.round(num(r0.subs?.margenV, 820, 300, 900)) }, musica: { volumen: num(r0.musica?.volumen, -15, -26, -8) },
+      // ADAPTACIÓN A LA MARCA: se copia el ritmo, no el aspecto (colores, fuente y minúsculas de Ranuse; subtítulos sin borde negro)
+      acento: '#E3D2B8', fuente: 'Montserrat', mayusculas: false };
+    const nuevo = { id: crypto.randomUUID().slice(0, 8), nombre: limpia(req.body?.nombre, 60) || limpia(a.nombre, 60) || 'Formato de referencia', receta, notas: limpia(a.criterio, 1500), referencia: { descripcion: limpia(a.descripcion, 500), estructura: (Array.isArray(a.estructura) ? a.estructura : []).slice(0, 6).map(x => limpia(x, 200)), origen: limpia(o.nombre_archivo, 120) } };
+    await guardarJson(RUTA_FORMATOS, { ...(await leerJson(RUTA_FORMATOS, {})), lista: [...lista, nuevo] }); res.status(201).json({ formato: nuevo });
+  } catch (e) { res.status(500).json({ error: 'No se pudo crear el formato: ' + String(e.message || '').slice(0, 160) }); }
+});
 router.get('/formatos', async (req, res) => { try { res.json({ formatos: await formatos() }); } catch { res.status(500).json({ error: 'No se pudieron leer los formatos' }); } });
 router.post('/formatos', async (req, res) => {
   try {
@@ -215,9 +229,9 @@ router.get('/carpetas', async (req, res) => {
 router.post('/trabajos', async (req, res) => {
   try {
     await bucket();
-    const b = req.body || {}; const lista = await formatos(); const fmt = lista.find(x => x.id === b.formato);
+    const b = req.body || {}; const lista = await formatos(); const fmt = b.tipo === 'referencia' ? lista[0] : lista.find(x => x.id === b.formato);
     if (!fmt) return res.status(400).json({ error: 'Elige un formato' });
-    if (!['voz', 'bruto', 'base', 'clips'].includes(b.tipo)) return res.status(400).json({ error: 'Indica si subes una voz en off, un bruto o eliges un vídeo base' });
+    if (!['voz', 'bruto', 'base', 'clips', 'referencia'].includes(b.tipo)) return res.status(400).json({ error: 'Indica si subes una voz en off, un bruto o eliges un vídeo base' });
     if (b.tipo === 'base' || b.base?.id) { if (!/^[\w-]{10,60}$/.test(b.base?.id || '')) return res.status(400).json({ error: 'Elige el archivo de Drive' }); }
     else if (!/^entradas\//.test(b.archivo || '')) return res.status(400).json({ error: 'Falta el archivo subido' });
     const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, reglas: await textoReglas(), tipo: b.tipo, ...(b.tipo === 'clips' ? { num_clips: Math.max(0, Math.min(12, parseInt(b.num_clips) || 0)), dur_min: Math.max(10, Math.min(120, parseInt(b.dur_min) || 25)), dur_max: Math.max(15, Math.min(180, parseInt(b.dur_max) || 70)) } : {}), archivo: b.base?.id ? null : b.archivo, base: b.base?.id ? { id: limpia(b.base.id, 80), nombre: limpia(b.base.nombre, 160), ruta: limpia(b.base.ruta, 400) } : null, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: fmt.receta, notas_formato: fmt.notas || '', indicaciones: limpia(b.indicaciones, 800), guion: limpia(b.guion, 20000), musica: limpia(b.musica, 150) || 'auto', carpetas: (Array.isArray(b.carpetas) ? b.carpetas : []).slice(0, 30).map(c => limpia(c, 200)).filter(Boolean), recursos: (Array.isArray(b.recursos) ? b.recursos : []).slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
