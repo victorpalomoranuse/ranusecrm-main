@@ -136,13 +136,27 @@ function buscaEnDriveLocal(nombre, bytes) {
 // Entrevista larga -> varios clips: cada momento elegido por la IA se convierte en un trabajo normal de "bruto" y se monta con el formato elegido
 async function procesaClips(t, entrada, dir) {
   const clips = await import('./clips.mjs');
+  let sel;
+  if (t.clips_manual?.length) {
+    // clips que el usuario ha armado a mano sobre la transcripción: no se vuelve a transcribir ni a elegir
+    sel = t.clips_manual.map(m => { const tr = m.tramos.map(([a, b]) => [Number(a), Number(b)]).filter(([a, b]) => b > a); return { tramos: tr, ini: Math.min(...tr.map(x => x[0])), fin: Math.max(...tr.map(x => x[1])), titulo: m.titulo || 'Clip', pregunta: m.pregunta || '', gancho: '', score: null, sub: null, motivo: 'Armado a mano' }; }).filter(c => c.tramos.length);
+    await paso(t, 'Montando los ' + sel.length + ' clips que has armado…', { pct: 30 });
+  } else {
   await paso(t, 'Transcribiendo la entrevista…', { pct: 8 });
   const { palabras, dur } = await clips.transcribeLargo(entrada, path.join(dir, '_clips'), (f) => { t.pct = 8 + Math.round(f * 20); });
   if (palabras.length < 30) throw new Error('No se oye suficiente voz en ese vídeo para sacar clips. Elige la entrevista donde se os oye hablar.');
+  if (t.fase === 'transcribir') {
+    // fase 1 del método manual: solo se transcribe y se guarda el texto con sus tiempos para que el usuario elija los tramos
+    const { etiquetasHablantes } = await import('./voz.mjs'); const et = etiquetasHablantes(palabras);
+    const p = palabras.map((w, i) => [w.t, Math.round(w.de * 100) / 100, Math.round(w.a * 100) / 100, et[i] || '']);
+    const up = await st.upload('artefactos/' + t.id + '/palabras_largo.json', Buffer.from(JSON.stringify({ dur, p })), { contentType: 'application/json', upsert: true, cacheControl: '0' }); if (up.error) throw new Error('No se pudo guardar la transcripción: ' + up.error.message);
+    await paso(t, 'Transcripción lista', { pct: 100, estado: 'listo', palabras_n: p.length, dur_total: Math.round(dur), terminado: new Date().toISOString(), error: null }); return;
+  }
   await paso(t, 'Buscando los mejores momentos…', { pct: 30 });
-  const sel = await clips.eligeClips(palabras, dur, { n: t.num_clips || 0, min: t.dur_min || 25, max: t.dur_max || 70, notas: t.indicaciones || '', guion: t.guion || '', reglas: t.reglas || '' });
+  sel = await clips.eligeClips(palabras, dur, { n: t.num_clips || 0, min: t.dur_min || 25, max: t.dur_max || 70, notas: t.indicaciones || '', guion: t.guion || '', reglas: t.reglas || '' });
   if (!sel.length) throw new Error('No he encontrado momentos que funcionen solos como clip. Prueba con indicaciones más concretas.');
   sel.sort((x, y) => (y.score ?? 0) - (x.score ?? 0)); // los de mayor puntuación primero
+  }
   const hijos = [];
   for (let i = 0; i < sel.length; i++) {
     const c = sel[i], id = crypto.randomUUID().slice(0, 8), f = path.join(dir, 'clip_' + id + '.mp4');

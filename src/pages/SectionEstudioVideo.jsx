@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import api from '../services/api';
 import { Film, Upload, Mic, Video, Trash2, RefreshCw, Download, Plus, Check, Wand2, Settings2, Loader2, Music, Folder, ArrowLeft, Image as ImagenIcono, Play, X, Scissors } from 'lucide-react';
 
@@ -84,13 +84,13 @@ function Explorador({ seleccion, onCambio, titulo = 'Recursos (de dónde salen l
 }
 
 function Nuevo({ formatos, musica, carpetas, onCreado }) {
-  const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [asig, setAsig] = useState({}), [prog, setProg] = useState(null), [error, setError] = useState('');
+  const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [soloTr, setSoloTr] = useState(false), [asig, setAsig] = useState({}), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
   useEffect(() => { if (tipo === 'clips' && formatos.some(f => f.id === 'clips-dopaminicos')) setFmt('clips-dopaminicos'); }, [tipo, formatos]);
   const enviar = async () => {
     const extra = tipo === 'clips' ? { num_clips: numClips, dur_min: Number(durClip.split('-')[0]), dur_max: Number(durClip.split('-')[1]) } : {};
-    const dDrive = tipo === 'base' || origen === 'drive';
+    const dDrive = tipo === 'base' || origen === 'drive'; if (tipo === 'clips' && soloTr) extra.fase = 'transcribir';
     if ((dDrive ? !base.length : !(files.length || file)) || !fmt) return; setError(''); setProg(0);
     try {
       const partesG = partesDeGuion(guion); const reparto = tipo !== 'clips' ? partesG.map((texto, i) => ({ texto, clips: (asig[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, ruta: x.ruta })) })).filter(p => p.clips.length) : [];
@@ -128,6 +128,7 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       <input ref={inp} type="file" accept={tipo === 'voz' ? 'audio/*,video/*' : 'video/*'} multiple={tipo === 'clips'} onChange={e => { setFile(e.target.files?.[0] || null); setFiles(Array.from(e.target.files || [])); }} className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} />
       </>)}
       </>)}
+      {tipo === 'clips' && <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, fontSize: '0.9rem' }}><input type="checkbox" checked={soloTr} onChange={e => setSoloTr(e.target.checked)} /> Primero solo transcribir: yo elijo en el texto los tramos de cada clip</label>}
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Formato</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
       {formatos.find(f => f.id === fmt)?.descripcion && <div style={{ ...mut, marginTop: -4, marginBottom: 10 }}>{formatos.find(f => f.id === fmt).descripcion}</div>}
@@ -178,6 +179,56 @@ function Desglose({ guion, asig, setAsig }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Método manual para entrevistas largas: se lee la transcripción entera y se eligen los tramos de cada clip
+const COLORES_CLIP = ['#E3D2B8', '#7fb3d5', '#a9cf9a', '#e6a57a', '#c3a1d9', '#e0c35f'];
+const mmss = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+function ConstructorClips({ t, onCambio }) {
+  const [pal, setPal] = useState(null), [err, setErr] = useState(''), [sel, setSel] = useState(null), [clips, setClips] = useState([{ titulo: '', pregunta: '', tramos: [] }]), [actual, setActual] = useState(0), [env, setEnv] = useState(false);
+  useEffect(() => { let vivo = true; api.get('/estudio-video/trabajos/' + t.id + '/palabras').then(r => fetch(r.data.url)).then(r => r.json()).then(j => { if (vivo) setPal(j.p || []); }).catch(() => { if (vivo) setErr('No se pudo leer la transcripción'); }); return () => { vivo = false; }; }, [t.id]);
+  const parrafos = useMemo(() => { if (!pal) return []; const out = []; let cur = null; pal.forEach((w, i) => { const gap = cur ? w[1] - pal[i - 1][2] : 0; if (!cur || (w[3] && w[3] !== cur.spk) || gap > 1.5 || cur.idx.length >= 70) { cur = { spk: w[3] || '', ini: w[1], idx: [] }; out.push(cur); } cur.idx.push(i); }); return out; }, [pal]);
+  const dueno = useMemo(() => { const m = new Map(); clips.forEach((c, k) => c.tramos.forEach(({ a, b }) => { for (let i = a; i <= b; i++) m.set(i, k); })); return m; }, [clips]);
+  const tiempos = (x) => ({ ini: Math.max(0, pal[x.a][1] - 0.05), fin: pal[x.b][2] + 0.1 });
+  const durClip = (c) => c.tramos.reduce((s, x) => { const q = tiempos(x); return s + q.fin - q.ini; }, 0);
+  const alSoltar = () => { const s = window.getSelection(); if (!s || s.isCollapsed || !s.rangeCount) return; const r = s.getRangeAt(0); const f = (n) => { const el = (n.nodeType === 3 ? n.parentElement : n)?.closest?.('[data-i]'); return el ? Number(el.dataset.i) : null; }; let a = f(r.startContainer), b = f(r.endContainer); if (a === null || b === null) return; if (a > b) [a, b] = [b, a]; setSel({ a, b }); };
+  const alClic = (e, i) => { if (e.shiftKey && sel) setSel({ a: Math.min(sel.a, i), b: Math.max(sel.b, i) }); else if (window.getSelection().isCollapsed) setSel({ a: i, b: i }); };
+  const anadir = () => { if (!sel) return; setClips(l => l.map((c, k) => (k === actual ? { ...c, tramos: [...c.tramos, sel].sort((x, y) => x.a - y.a) } : c))); setSel(null); try { window.getSelection().removeAllRanges(); } catch { /* sin selección */ } };
+  const montar = async () => { setEnv(true); setErr(''); try { await api.post('/estudio-video/trabajos/' + t.id + '/montar-clips', { clips: clips.filter(c => c.tramos.length).map(c => ({ titulo: c.titulo, pregunta: c.pregunta, tramos: c.tramos.map(x => { const q = tiempos(x); return [Math.round(q.ini * 100) / 100, Math.round(q.fin * 100) / 100]; }) })) }); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo lanzar'); setEnv(false); } };
+  if (err && !pal) return <div style={{ color: '#ff8a80' }}>{err}</div>;
+  if (!pal) return <div style={mut}><Loader2 size={14} /> Cargando la transcripción…</div>;
+  const nListos = clips.filter(c => c.tramos.length).length;
+  return (
+    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      <div style={{ flex: '1 1 520px', minWidth: 300 }}>
+        <div style={{ ...mut, marginBottom: 8 }}>Lee la transcripción y <strong>selecciona con el ratón</strong> un fragmento (o haz clic en una palabra y Mayús+clic en otra). Luego pulsa «Añadir al clip». Puedes juntar varios fragmentos en un mismo clip.</div>
+        <div onMouseUp={alSoltar} style={{ lineHeight: 1.75, fontSize: '0.95rem' }}>
+          {parrafos.map((p, k) => (
+            <div key={k} style={{ marginBottom: 12 }}>
+              <div style={{ ...mut, fontSize: '0.75rem' }}>{mmss(p.ini)}{p.spk ? ' · ' + (p.spk === 'P' ? 'pregunta' : 'respuesta') : ''}</div>
+              <div>{p.idx.map(i => { const k2 = dueno.get(i), en = sel && i >= sel.a && i <= sel.b; return <span key={i} data-i={i} onClick={(e) => alClic(e, i)} style={{ cursor: 'pointer', padding: '1px 0', background: en ? 'rgba(255,255,255,0.28)' : k2 !== undefined ? COLORES_CLIP[k2 % COLORES_CLIP.length] + '44' : 'transparent', borderBottom: k2 !== undefined ? '2px solid ' + COLORES_CLIP[k2 % COLORES_CLIP.length] : 'none' }}>{pal[i][0]} </span>; })}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ flex: '0 0 340px', maxWidth: '100%', position: 'sticky', top: 56 }}>
+        <div style={{ ...card, marginBottom: 10 }}>
+          {sel ? <div><div style={{ marginBottom: 6 }}>Seleccionado: <strong>{mmss(pal[sel.a][1])}–{mmss(pal[sel.b][2])}</strong> ({Math.round(pal[sel.b][2] - pal[sel.a][1])} s)</div><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={anadir}><Plus size={13} /> Añadir al clip {actual + 1}</button> <button className="ap-btn ap-btn-sm" onClick={() => setSel(null)}>Quitar selección</button></div> : <div style={mut}>Selecciona un fragmento del texto.</div>}
+        </div>
+        {clips.map((c, k) => (
+          <div key={k} onClick={() => setActual(k)} style={{ ...card, marginBottom: 8, borderColor: k === actual ? COLORES_CLIP[k % COLORES_CLIP.length] : undefined, cursor: 'pointer' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 6 }}><strong style={{ color: COLORES_CLIP[k % COLORES_CLIP.length] }}>Clip {k + 1}</strong><span style={mut}>{c.tramos.length ? Math.round(durClip(c)) + ' s en ' + c.tramos.length + ' tramo' + (c.tramos.length > 1 ? 's' : '') : 'vacío'}</span></div>
+            <input className="ap-field-input" style={{ width: '100%', marginBottom: 6 }} placeholder="Título del clip" value={c.titulo} onChange={e => setClips(l => l.map((x, j) => (j === k ? { ...x, titulo: e.target.value } : x)))} />
+            <input className="ap-field-input" style={{ width: '100%', marginBottom: 6 }} placeholder="Pregunta en pantalla (opcional)" value={c.pregunta} onChange={e => setClips(l => l.map((x, j) => (j === k ? { ...x, pregunta: e.target.value } : x)))} />
+            {c.tramos.map((x, j) => <div key={j} style={{ fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 2 }}><span>{mmss(pal[x.a][1])}–{mmss(pal[x.b][2])} · «{pal.slice(x.a, Math.min(x.b + 1, x.a + 6)).map(w => w[0]).join(' ')}…»</span><button className="ap-btn ap-btn-sm" onClick={(e) => { e.stopPropagation(); setClips(l => l.map((y, i2) => (i2 === k ? { ...y, tramos: y.tramos.filter((_, j2) => j2 !== j) } : y))); }}><X size={11} /></button></div>)}
+          </div>
+        ))}
+        <button className="ap-btn ap-btn-sm" onClick={() => { setClips(l => [...l, { titulo: '', pregunta: '', tramos: [] }]); setActual(clips.length); }}><Plus size={13} /> Nuevo clip</button>
+        <div style={{ marginTop: 12 }}><button className="ap-btn ap-btn-primary" disabled={!nListos || env} onClick={montar}>{env ? <Loader2 size={14} /> : <Wand2 size={14} />} Montar {nListos || ''} clip{nListos === 1 ? '' : 's'}</button></div>
+        {err && <div style={{ color: '#ff8a80', marginTop: 8 }}>{err}</div>}
+      </div>
     </div>
   );
 }
@@ -264,7 +315,7 @@ function AprenderReferencia({ formatos, onCambio }) {
 
 function Trabajo(props) { return props.t.tipo === 'referencia' ? <TarjetaReferencia t={props.t} onCambio={props.onCambio} /> : <TrabajoNormal {...props} />; }
 function TrabajoNormal({ t, formatos, onCambio }) {
-  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [guionReg, setGuionReg] = useState(t.guion || ''), [editando, setEditando] = useState(false), [editTexto, setEditTexto] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
+  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [guionReg, setGuionReg] = useState(t.guion || ''), [constructor, setConstructor] = useState(false), [editando, setEditando] = useState(false), [editTexto, setEditTexto] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
   const [txt, color] = ESTADOS[t.estado] || ESTADOS.pendiente;
   const vref = useRef(null);
   const regenerar = async () => { try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { formato: t.formato, recursos: recs, guion: guionReg, ...(baseSel[0] ? { base: baseSel[0] } : {}) }); setPanelReg(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
@@ -285,6 +336,13 @@ function TrabajoNormal({ t, formatos, onCambio }) {
       )}
       {t.estado === 'error' && <div className="ap-error" style={{ marginTop: 8 }}>{t.error || 'Ha fallado el montaje.'}</div>}
       {t.indicaciones && <div style={{ ...mut, marginTop: 6, whiteSpace: 'pre-wrap' }}>“{t.indicaciones}”</div>}
+      {t.estado === 'listo' && t.fase === 'transcribir' && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ marginBottom: 8 }}>Transcripción lista: {t.palabras_n} palabras ({Math.round((t.dur_total || 0) / 60)} min). Ahora eliges tú en el texto qué tramos forman cada clip.</div>
+          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setConstructor(true)}><Scissors size={13} /> Elegir los clips en la transcripción</button>
+        </div>
+      )}
+      {constructor && <PantallaCompleta titulo={'Elegir clips · ' + (t.nombre_archivo || 'entrevista')} onCerrar={() => setConstructor(false)}><ConstructorClips t={t} onCambio={() => { setConstructor(false); onCambio(); }} /></PantallaCompleta>}
       {t.estado === 'listo' && t.url && (
         <div style={{ marginTop: 10 }}>
           <video ref={vref} src={t.url_movil || t.url} controls playsInline style={{ width: '100%', maxWidth: 300, borderRadius: 10, background: '#000', display: 'block' }} />
