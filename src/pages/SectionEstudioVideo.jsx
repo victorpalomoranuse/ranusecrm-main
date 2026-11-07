@@ -196,12 +196,12 @@ function medirPartes(partes, trans) {
   const N = kept.map(w => w.n); let desde = 0; const ini = [];
   // cada parte se localiza por las palabras con contenido que comparte con el audio (aunque la frase esté dicha con otras palabras)
   partes.forEach((p) => {
-    const pw = [...new Set(p.split(/\s+/).map(norm).filter(x => x.length >= 4 && !VACIAS.has(x)))]; const total = p.split(/\s+/).filter(Boolean).length;
+    const pw = [...new Set(p.split(/\s+/).map(norm).filter(x => x.length >= 4 && !VACIAS.has(x)).map(x => x.slice(0, 5)))]; const total = p.split(/\s+/).filter(Boolean).length;
     if (!pw.length) { ini.push(null); return; }
     const W = Math.max(8, Math.ceil(total * 1.6)); let mejor = -1, ms = 0;
-    for (let i = desde; i < N.length; i++) { const ven = new Set(); for (let j = i; j < Math.min(N.length, i + W); j++) if (pw.includes(N[j])) ven.add(N[j]); if (ven.size > ms) { ms = ven.size; mejor = i; } }
-    if (mejor < 0 || ms < Math.max(2, Math.ceil(pw.length * 0.4))) { ini.push(null); return; }
-    let s = mejor; while (s < N.length && !pw.includes(N[s])) s++; // primer token que coincide
+    for (let i = desde; i < N.length; i++) { const ven = new Set(); for (let j = i; j < Math.min(N.length, i + W); j++) if (pw.includes(N[j].slice(0, 5))) ven.add(N[j].slice(0, 5)); if (ven.size > ms) { ms = ven.size; mejor = i; } }
+    if (mejor < 0 || ms < (pw.length <= 3 ? 1 : Math.max(2, Math.ceil(pw.length * 0.4)))) { ini.push(null); return; }
+    let s = mejor; while (s < N.length && !pw.includes(N[s].slice(0, 5))) s++; // primer token que coincide
     // si la ventana empieza justo antes (palabras de enlace como "y" o "ahora"), no importa: se toma desde la primera coincidencia
     ini.push(s); desde = s + 1;
   });
