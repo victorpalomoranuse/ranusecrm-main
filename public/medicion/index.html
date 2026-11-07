@@ -3900,6 +3900,18 @@ function scene0(C,k,view,o){
       var q=rcPoly(rc);if(!q||q.len<1)return;
       var slr=sel&&sel.t==='rc'&&sel.id===rc.id,colr=slr?C.accent:(view==='interv'?C.nw:C.ink);
       h+='<polygon points="'+q.pts.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ')+'" style="fill:'+colr+';fill-opacity:.22;stroke:'+colr+';stroke-width:'+f2((slr?2.6:1.3)*px)+'"/>';
+      /* cotas del recrecido: su largo y los huecos hasta el recrecido anterior (o el principio del muro) y hasta el final del muro */
+      (function(){
+        var gq=wg(q.w),o2=q.w.t/2+(rc.t||10);
+        function PP(s,d){return {x:gq.a.x+gq.ux*s+q.nx*d,y:gq.a.y+gq.uy*s+q.ny*d}}
+        var a1=PP(Math.max(0,Math.min(gq.l,rc.s0)),o2+26*px),b1=PP(Math.max(0,Math.min(gq.l,rc.s1)),o2+26*px);
+        h+=dimLine(C,px,a1.x,a1.y,b1.x,b1.y,fmtU(q.len)+' '+UNL(),colr,colr);
+        var mismos=(v.rc||[]).filter(function(o){return o.id!==rc.id&&o.wall===rc.wall&&(o.sd||'p')===(rc.sd||'p')});
+        var prevEnd=0;mismos.forEach(function(o){if(o.s1<=rc.s0+0.01&&o.s1>prevEnd)prevEnd=o.s1});
+        var haySig=mismos.some(function(o){return o.s0>=rc.s1-0.01});
+        if(rc.s0-prevEnd>0.5){var c0=PP(prevEnd,o2+46*px),c1=PP(rc.s0,o2+46*px);h+=dimLine(C,px,c0.x,c0.y,c1.x,c1.y,fmtU(rc.s0-prevEnd)+' '+UNL(),C.dim,C.dim)}
+        if(!haySig&&gq.l-rc.s1>0.5){var d0=PP(rc.s1,o2+46*px),d1=PP(gq.l,o2+46*px);h+=dimLine(C,px,d0.x,d0.y,d1.x,d1.y,fmtU(gq.l-rc.s1)+' '+UNL(),C.dim,C.dim)}
+      })();
       if(slr){[[q.pts[0],q.pts[3]],[q.pts[1],q.pts[2]]].forEach(function(e2){h+='<circle cx="'+f2((e2[0].x+e2[1].x)/2)+'" cy="'+f2((e2[0].y+e2[1].y)/2)+'" r="'+f2(6*px)+'" style="fill:#fff;stroke:'+colr+';stroke-width:'+f2(2*px)+'"/>'})}
       zlab+=txt(C,px,q.mid.x+q.nx*13*px,q.mid.y+q.ny*13*px+4*px,'Recrecido '+fmtU(rc.t||10)+' '+UNL()+(rc.mat?' · '+rc.mat:''),colr,10,600);
     });
