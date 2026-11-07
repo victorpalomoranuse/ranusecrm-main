@@ -260,7 +260,7 @@ router.get('/trabajos', async (req, res) => {
     const { data } = await st().list('trabajos', { limit: 60, sortBy: { column: 'created_at', order: 'desc' } });
     const out = (await Promise.all((data || []).filter(f => /\.json$/.test(f.name)).map(f => leerTrabajo(f.name.replace(/\.json$/, ''))))).filter(Boolean);
     for (const t of out) if (t.resultado_audio) { const u = await st().createSignedUrl(t.resultado_audio, 3600); t.url_audio = u.data?.signedUrl || null; }
-    for (const t of out) if (t.resultado) { const u = await st().createSignedUrl(t.resultado, 3600); t.url = u.data?.signedUrl || null; const m = t.resultado_movil && await st().createSignedUrl(t.resultado_movil, 3600); t.url_movil = m?.data?.signedUrl || null; }
+    for (const t of out) if (t.resultado) { try { const nom = 'ranuse-' + String((t.plan && t.plan.titulo) || t.nombre_archivo || t.id).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) + '-' + t.id + '.mp4'; const d = await st().createSignedUrl(t.resultado, 3600, { download: nom }); t.url_descarga = d.data?.signedUrl || null; } catch { /* sin enlace de descarga */ } const u = await st().createSignedUrl(t.resultado, 3600); t.url = u.data?.signedUrl || null; const m = t.resultado_movil && await st().createSignedUrl(t.resultado_movil, 3600); t.url_movil = m?.data?.signedUrl || null; }
     out.sort((a, b) => String(b.creado).localeCompare(String(a.creado)));
     res.json({ trabajos: out.filter(x => x.estado !== 'borrado' && x.tipo !== 'muestra') });
   } catch { res.status(500).json({ error: 'No se pudo leer la lista' }); }
