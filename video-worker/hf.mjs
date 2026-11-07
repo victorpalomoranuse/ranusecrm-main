@@ -60,14 +60,14 @@ function eventoAHtml(ev, est, id) {
   let fsUso = fs0; if (ev.estilo === 'Intro' && pos) { const nCar = inner.replace(/<[^>]+>/g, '').length || 1; fsUso = Math.min(fs0, 940 / (nCar * 0.72)); const ancho = nCar * fsUso * 0.72; pos[1] = String(Math.max(ancho / 2 + 30, Math.min(1050 - ancho / 2, Number(pos[1])))); }
   // el texto nunca se sale del encuadre: si la línea más larga no cabe en 920 px se reduce el tamaño; HF_ESCALA lo reduce más si la revisión lo pide
   if (ev.estilo !== 'Intro' && !caja0(est)) { const lineas = inner.replace(/<br>/g, '\n').replace(/<[^>]+>/g, '').split('\n'); const mx = Math.max(...lineas.map(s => s.length), 1); fsUso = Math.min(fsUso, 900 / (mx * 0.66)); }
-  fsUso = Math.round(fsUso * Number(process.env.HF_ESCALA || 1));
+  if (ev.estilo !== 'Intro') fsUso = Math.round(fsUso * Number(process.env.HF_ESCALA || 1));
   const mL = Number(est?.MarginL || 50), mR = Number(est?.MarginR || 50), mV = Number(est?.MarginV || 0); const caja = est?.BorderStyle === '3';
   let posCss = '';
   if (pos) { const x = Number(pos[1]), y = Number(pos[2]); const tx = an === 5 || an === 8 || an === 2 ? '-50%' : '0'; const ty = an <= 3 ? '-100%' : an <= 6 ? '-50%' : '0'; posCss = `left:${x}px;top:${y}px;transform:translate(${tx},${ty});`; }
   else if (an <= 3) posCss = `left:${mL}px;right:${mR}px;bottom:${1920 - (1920 - mV)}px;`.replace(/bottom:\d+px/, 'bottom:' + mV + 'px');
   else if (an <= 6) posCss = `left:${mL}px;right:${mR}px;top:50%;transform:translateY(-50%);`;
   else posCss = `left:${mL}px;right:${mR}px;top:${mV}px;`;
-  const sombra = caja ? 'box-shadow:0 14px 40px rgba(0,0,0,.35);' : 'text-shadow:0 4px 16px rgba(0,0,0,.55);';
+  const sombra = caja ? 'box-shadow:0 14px 40px rgba(0,0,0,.35);' : (ev.estilo === 'Intro' ? 'text-shadow:0 6px 28px rgba(0,0,0,.8),0 0 4px rgba(0,0,0,.45);' : 'text-shadow:0 4px 16px rgba(0,0,0,.55);');
   const cajaCss = caja ? `display:block;margin:0 auto;width:fit-content;max-width:920px;padding:${Math.round(fs0 * 0.62)}px ${Math.round(fs0 * 0.9)}px;border-radius:${Math.round(fs0 * 0.7)}px;background:rgba(18,18,18,.84);` : '';
   css = `${posCss}font-family:${fuente},sans-serif;font-weight:${negrita};font-size:${fsUso}px;line-height:1.15;white-space:nowrap;text-align:center;color:${colorBase};${sombra}${cajaCss}z-index:${z};`;
   // animación: entrada (fundido y/o crecimiento) y salida

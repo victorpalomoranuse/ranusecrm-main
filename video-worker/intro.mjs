@@ -20,12 +20,12 @@ export function introLetras(palabras, tAss, limpia, { maxPalabras = 9, maxSeg = 
     const finG = gi < grupos.length - 1 ? palabras[grupos[gi + 1][0]].de : fin;
     const txts = gr.map(j => limpia(palabras[j].t).toLowerCase().replace(/[.,;:¿¡?!]+$/, '')).filter(Boolean); if (!txts.length) return;
     // un solo tamaño para todo el grupo: el que cabe la palabra más larga (con margen a los lados), y las líneas apiladas sin tocarse
-    const largo = Math.max(...txts.map(x => x.length)); const fs = Math.round(Math.min(200, 820 / (largo * 0.68)));
-    const alto = fs * 1.18, y0 = 900 - (txts.length - 1) * alto / 2;
-    let k2 = 0;
+    // cada palabra ocupa el ancho disponible (las cortas salen enormes, las largas se ajustan) y se apilan centradas sin tocarse
+    const tams = txts.map(x => Math.round(Math.min(230, 900 / (x.length * 0.62)))); const total = tams.reduce((s, v) => s + v * 1.12, 0);
+    let yAcum = 900 - total / 2, k2 = 0;
     gr.forEach((j) => {
       const w = palabras[j], txt = limpia(w.t).toLowerCase().replace(/[.,;:¿¡?!]+$/, ''); if (!txt) return;
-      const y = Math.round(y0 + k2 * alto); k2++;
+      const fs = tams[k2], y = Math.round(yAcum + fs * 0.56); yAcum += fs * 1.12; k2++;
       ev.push('Dialogue: 5,' + tAss(w.de) + ',' + tAss(Math.max(w.de + 0.2, finG - 0.02)) + ',Intro,,0,0,0,,{\\an5\\pos(540,' + y + ')\\fs' + fs + '\\fscx60\\fscy60\\t(0,140,\\fscx100\\fscy100)}' + txt);
     });
   });
