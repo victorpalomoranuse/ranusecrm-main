@@ -172,6 +172,7 @@ function Desglose({ guion, asig, setAsig }) {
           {partes.map((p, i) => (
             <div key={i} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
               <div style={{ fontSize: '0.85rem', marginBottom: 6 }}><strong>Parte {i + 1}:</strong> {p}</div>
+              {(() => { const pal = p.split(/s+/).filter(Boolean).length, seg = Math.max(1, Math.round(pal / 2.9)), clips = Math.max(1, Math.round(seg / 2.5)); return <div style={{ ...mut, marginBottom: 6 }}>Dura unos <strong>{seg} s</strong> hablada: necesita unos <strong>{clips} clip{clips > 1 ? 's' : ''}</strong> de ~2,5 s (o menos clips, más largos).{(asig[i] || []).length ? ' Has elegido ' + (asig[i] || []).length + '.' : ''}</div>; })()}
               <Explorador seleccion={asig[i] || []} onCambio={(s) => setAsig({ ...asig, [i]: s })} max={8} titulo="Vídeos para esta parte" vacio="Elegir vídeos de Drive" />
             </div>
           ))}
