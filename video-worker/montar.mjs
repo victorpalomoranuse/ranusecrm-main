@@ -178,7 +178,7 @@ try {
       if (!pw.length) return; const W = Math.max(8, Math.ceil(total * 1.6)); let mejor = -1, ms = 0;
       for (let i = desde; i < N.length; i++) { const ven = new Set(); for (let j = i; j < Math.min(N.length, i + W); j++) if (pw.includes(N[j])) ven.add(N[j]); if (ven.size > ms) { ms = ven.size; mejor = i; } }
       if (mejor < 0 || ms < Math.max(2, Math.ceil(pw.length * 0.4))) { console.log('Parte del guion no encontrada en el audio:', p.texto.slice(0, 50)); return; }
-      let s = mejor; while (s < N.length && !pw.includes(N[s])) s++; hallados.push({ ini: s, texto: p.texto, clips: p.clips }); desde = s + 1;
+      let s = mejor; while (s < N.length && !pw.includes(N[s])) s++; let b = s; for (let q = s - 1; q >= Math.max(desde, s - 10, 0); q--) { if (/[.!?]$/.test(palabras[q].t)) { b = q + 1; break; } } hallados.push({ ini: b, texto: p.texto, clips: p.clips }); desde = s + 1;
     });
     hallados.forEach((r, k) => { r.fin = k + 1 < hallados.length ? hallados[k + 1].ini : palabras.length; r.vids = [...new Set(r.clips.map(c => idx.find(x => x.drive_id === c.id)?.id).filter(Boolean))]; });
     repartoIdx = hallados.filter(r => r.vids.length);
