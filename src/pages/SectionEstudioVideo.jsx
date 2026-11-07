@@ -192,6 +192,17 @@ function Trabajo({ t, formatos, onCambio }) {
           {t.clip.motivo && <div style={{ ...mut, marginTop: 6 }}>{t.clip.motivo}</div>}
         </div>
       )}
+      {t.estado === 'listo' && t.autorevision && typeof t.autorevision === 'object' && t.autorevision.puntuacion != null && (
+        <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 700, fontSize: '1.2rem' }}>{t.autorevision.puntuacion}<span style={mut}>/100</span></span>
+            <span style={mut}>Revisión de la IA{t.autorevision.corregidoPorIA ? ' · versión corregida automáticamente (antes ' + t.autorevision.antes + ')' : ''}</span>
+          </div>
+          {t.autorevision.resumen && <div style={{ ...mut, marginTop: 4 }}>{t.autorevision.resumen}</div>}
+          {(t.autorevision.problemas || []).map((p, i) => <div key={i} style={{ fontSize: '0.82rem', marginTop: 3 }}>• <strong>{p.tipo}:</strong> {p.detalle}</div>)}
+          {t.autorevision.intento && <div style={{ ...mut, marginTop: 6 }}>{t.autorevision.intento}</div>}
+        </div>
+      )}
       {t.estado === 'listo' && (t.faltan || []).length > 0 && (
         <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(242,196,109,0.5)', background: 'rgba(242,196,109,0.08)' }}>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>La IA echa en falta clips</div>

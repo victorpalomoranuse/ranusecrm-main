@@ -36,6 +36,19 @@ function lanzaMotor(t, script, opciones) {
     p.stdout.on('data', d => { const x = d.toString(); out += x; buf += x; let i; while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1); const m = /^##PCT (\d+) (.*)$/.exec(l); if (m) pct(t, Number(m[1]), m[2]); const k = /^OK (\d+)\/(\d+)/.exec(l); if (k && opciones.fase === 'indexado') pct(t, 6 + Math.round(18 * Number(k[1]) / Math.max(1, Number(k[2]))), 'Indexando los vídeos de la carpeta elegida (' + k[1] + ' de ' + k[2] + ')'); } });
     p.stderr.on('data', d => { err += d.toString(); }); p.on('close', () => res({ stdout: out, stderr: err })); });
 }
+// AUTOCRÍTICA: la IA ve el vídeo terminado (12 fotogramas) y lo evalúa como un editor jefe: puntuación, fallos concretos e instrucciones para rehacerlo
+async function criticaVideo(t, video) {
+  const key = ENV.ANTHROPIC_API_KEY; if (!key) throw new Error('sin clave');
+  const dur = Number(run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', video]).stdout) || 0; if (!dur) throw new Error('sin duración');
+  const dir = path.dirname(video), cont = []; const N = 12;
+  for (let i = 0; i < N; i++) { const jpg = path.join(dir, 'crit_' + i + '.jpg'), seg = dur * (i + 0.5) / N; run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', seg.toFixed(2), '-i', video, '-frames:v', '1', '-vf', 'scale=300:-2', jpg]); if (fs.existsSync(jpg)) { cont.push({ type: 'text', text: 'Fotograma ' + (i + 1) + ' (segundo ' + seg.toFixed(1) + '):' }); cont.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: fs.readFileSync(jpg).toString('base64') } }); fs.rmSync(jpg, { force: true }); } }
+  const ctx = 'Vídeo vertical de Ranuse Design (diseño de gimnasios) para Instagram/TikTok, de ' + dur.toFixed(0) + ' s. Tipo: ' + t.tipo + '. Formato: ' + (t.formato_nombre || t.formato) + '.' + (t.indicaciones ? ' Indicaciones de la persona: ' + t.indicaciones + '.' : '') + (t.guion ? ' Guion: ' + t.guion.slice(0, 3000) + '.' : '') + (t.reglas ? ' Reglas de marca: ' + t.reglas.slice(0, 2500) + '.' : '');
+  cont.push({ type: 'text', text: ctx + '\n\nEres el editor jefe y vas a dar feedback sobre este vídeo a partir de los 12 fotogramas repartidos por él. Evalúa: letras (legibles, no cortadas, no tapan la cara, no se solapan), claridad del mensaje, saltos bruscos de contexto o de iluminación entre escenas, escenas repetidas, planos demasiado largos o estáticos, orientación de los clips, que no falte apertura (gancho) ni cierre, y el estilo oscuro y cuidado de la marca. Solo señala fallos que SE VEAN en las imágenes (no inventes). Después escribe "instrucciones": cambios CONCRETOS y ejecutables por el montador automático (por ejemplo: "no repitas el clip de la furgoneta, usa más escenas distintas", "planos de máximo 2,5 s", "subtítulos más pequeños y fuera de la cara", "termina con un plano de cierre de la obra terminada"). Responde SOLO JSON: {"puntuacion":0-100,"resumen":"una frase","problemas":[{"tipo":"letras|contexto|repetido|ritmo|orientacion|iluminacion|apertura|cierre|otro","detalle":"..."}],"instrucciones":"texto o vacío si no hace falta rehacer"}' });
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 1200, temperature: 0, messages: [{ role: 'user', content: cont }] }) });
+  const j = await r.json(); const d = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b2 => b2.text || '').join(''))[0]);
+  return { puntuacion: Math.max(0, Math.min(100, Number(d.puntuacion) || 0)), resumen: String(d.resumen || '').slice(0, 300), problemas: (Array.isArray(d.problemas) ? d.problemas : []).slice(0, 8).map(p => ({ tipo: String(p.tipo || 'otro').slice(0, 20), detalle: String(p.detalle || '').slice(0, 240) })), instrucciones: String(d.instrucciones || '').slice(0, 700) };
+}
+
 // La IA mira 8 fotogramas del vídeo ya hecho y dice si hay letras cortadas por el borde, solapadas, ilegibles o encima de la cara
 async function revisaTextos(video, dir) {
   const key = ENV.ANTHROPIC_API_KEY; if (!key) throw new Error('sin clave');
@@ -250,8 +263,8 @@ async function procesa(t) {
         // autorevisión: la IA mira fotogramas del resultado; si ve letras cortadas o solapadas, se vuelve a dibujar con letra más pequeña
         try {
           const prob = await revisaTextos(conTextos, dir);
-          if (prob.length) { console.log('Autorevisión: problemas →', prob.join('; ')); await paso(t, 'Corrigiendo letras (autorevisión)…', { pct: 91 }); process.env.HF_ESCALA = '0.8'; try { componeHF({ base, subsAss: subs, fuentes: fuentesHF, salida: conTextos, dir }); const prob2 = await revisaTextos(conTextos, dir); console.log('Autorevisión tras corregir:', prob2.length ? prob2.join('; ') : 'sin problemas'); t.autorevision = prob2.length ? 'Quedan detalles: ' + prob2.join('; ') : 'Corregido: ' + prob.join('; '); } finally { delete process.env.HF_ESCALA; } }
-          else { console.log('Autorevisión: sin problemas'); t.autorevision = 'Sin problemas de texto'; }
+          if (prob.length) { console.log('Autorevisión: problemas →', prob.join('; ')); await paso(t, 'Corrigiendo letras (autorevisión)…', { pct: 91 }); process.env.HF_ESCALA = '0.8'; try { componeHF({ base, subsAss: subs, fuentes: fuentesHF, salida: conTextos, dir }); const prob2 = await revisaTextos(conTextos, dir); console.log('Autorevisión tras corregir:', prob2.length ? prob2.join('; ') : 'sin problemas'); t.nota_letras = prob2.length ? 'Quedan detalles: ' + prob2.join('; ') : 'Corregido: ' + prob.join('; '); } finally { delete process.env.HF_ESCALA; } }
+          else { console.log('Autorevisión: sin problemas'); t.nota_letras = 'Sin problemas de texto'; }
         } catch (e) { console.log('Autorevisión no disponible:', e.message); }
         fs.copyFileSync(conTextos, salida); }
       catch (e) {
@@ -272,6 +285,7 @@ async function procesa(t) {
     if (fs.existsSync(final) && fs.statSync(final).size <= 49 * 1024 * 1024) break; kbps = Math.floor(kbps * 0.8);
   }
   run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', salida, '-vf', 'scale=720:1280', '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact', '-metadata:s:v:0', 'encoder=', '-metadata:s:a:0', 'encoder=', '-c:v', 'libx264', '-bsf:v', 'filter_units=remove_types=6', '-crf', '23', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', movil]);
+  if (!t.padre || t.tipo === 'bruto') { try { await paso(t, 'La IA revisa el vídeo como editor jefe…', { pct: 96 }); const c = await criticaVideo(t, movil); t.autorevision = { ...(t.autorevision && typeof t.autorevision === 'object' ? t.autorevision : {}), ...c }; console.log('Autocrítica:', c.puntuacion, '|', c.resumen, '|', c.problemas.map(p => p.tipo).join(',')); } catch (e) { console.log('Autocrítica no disponible:', e.message); } }
   await paso(t, 'Subiendo el resultado…', { pct: 97 });
   const sube = async (ruta, f) => { try { await reintenta(() => st.upload(ruta, fs.readFileSync(f), { contentType: 'video/mp4', upsert: true }), 6); } catch (e) { throw new Error('No se pudo subir ' + ruta + ' tras varios intentos: ' + e.message); } };
   await sube('salidas/' + t.id + '.mp4', final); await sube('salidas/' + t.id + '_movil.mp4', movil);
@@ -286,6 +300,20 @@ async function procesa(t) {
   await paso(t, 'Listo', { faltan, pct: 100, estado: 'listo', resultado: 'salidas/' + t.id + '.mp4', resultado_movil: 'salidas/' + t.id + '_movil.mp4', plan, terminado: new Date().toISOString(), error: null });
 }
 
+// Si la autocrítica da menos de 75 y trae instrucciones, la IA rehace el vídeo UNA vez con esos cambios, vuelve a puntuarlo y se queda con la mejor versión
+async function autoCorrige(t) {
+  const a = t.autorevision; if (!a || t.autocorregido || t.estado !== 'listo' || !['voz', 'bruto'].includes(t.tipo) || a.puntuacion >= 75 || !a.instrucciones || process.env.SIN_AUTOCORRECCION === '1') return;
+  console.log('Autocorrección: puntuación', a.puntuacion, '→ se rehace con:', a.instrucciones);
+  const id = Math.random().toString(36).slice(2, 10);
+  const h = { ...t, id, creado: new Date().toISOString(), origen: t.id, version: (t.version || 1) + 1, autocorregido: t.id, indicaciones: (t.indicaciones ? t.indicaciones + '\n' : '') + 'CAMBIOS PEDIDOS (autorevisión de la IA): ' + a.instrucciones, estado: 'pendiente', progreso: 'En cola', pct: 0, resultado: null, resultado_movil: null, error: null, plan: null, cortes: undefined, artefactos: undefined, faltan: undefined, empezado: undefined, terminado: undefined, transcripcion: undefined, autorevision: undefined, nota_letras: undefined };
+  await guardar(h);
+  try { await procesa(h); } catch (e) { console.log('Autocorrección fallida:', e.message); await st.remove(['trabajos/' + id + '.json']).catch(() => {}); t.autorevision = { ...a, intento: 'No se pudo rehacer: ' + String(e.message).slice(0, 120) }; await guardar(t); return; }
+  const b = h.autorevision?.puntuacion ?? 0;
+  if (b > a.puntuacion) { h.autorevision = { ...h.autorevision, antes: a.puntuacion, corregidoPorIA: true }; await guardar(h); t.autorevision = { ...a, intento: 'Versión corregida (' + a.puntuacion + ' → ' + b + '): aparece arriba.', mejorada: id }; }
+  else { await st.remove(['trabajos/' + id + '.json', 'salidas/' + id + '.mp4', 'salidas/' + id + '_movil.mp4']).catch(() => {}); t.autorevision = { ...a, intento: 'Probé a rehacerlo (' + b + ' puntos) y no mejoraba; se queda esta versión.' }; }
+  await guardar(t);
+}
+
 // Modo servidor en la nube: se ejecuta UN trabajo (JOB_ID) y se apaga
 if (process.env.JOB_ID) {
   const id = process.env.JOB_ID; console.log('Servidor de vídeo: trabajo', id);
@@ -293,7 +321,7 @@ if (process.env.JOB_ID) {
   if (!t) { console.log('No existe el trabajo', id); process.exit(1); }
   if (t.estado === 'listo' || t.estado === 'procesando' && Date.now() - new Date(t.empezado || 0) < 3 * 3600000) { console.log('Trabajo ya hecho o en marcha por otro ejecutor'); process.exit(0); }
   t.ejecutor = 'nube';
-  try { await procesa(t); } catch (e) { console.log('[' + id + '] ERROR', e.message); if (e.bloqueado) { t.ejecutor = 'pc'; await paso(t, 'Drive limita ese archivo: lo hará el ordenador de la oficina', { estado: 'pendiente', pct: 2 }); process.exit(0); } await paso(t, 'Error', { estado: 'error', error: String(e.message).slice(0, 400) }); }
+  try { await procesa(t); await autoCorrige(t); } catch (e) { console.log('[' + id + '] ERROR', e.message); if (e.bloqueado) { t.ejecutor = 'pc'; await paso(t, 'Drive limita ese archivo: lo hará el ordenador de la oficina', { estado: 'pendiente', pct: 2 }); process.exit(0); } await paso(t, 'Error', { estado: 'error', error: String(e.message).slice(0, 400) }); }
   try { await subeIndices(['drive-seleccion/indice.json', 'drive-imagenes/indice.json']); } catch { /* el índice de sueltos se rehará la próxima vez */ }
   process.exit(0);
 }
