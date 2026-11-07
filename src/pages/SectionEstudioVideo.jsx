@@ -83,7 +83,7 @@ function Explorador({ seleccion, onCambio, titulo = 'Recursos (de dónde salen l
   );
 }
 
-function Nuevo({ formatos, musica, carpetas, onCreado }) {
+function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
   const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [soloTr, setSoloTr] = useState(false), [soloAudio, setSoloAudio] = useState(false), [asig, setAsig] = useState({}), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
@@ -143,6 +143,7 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       {tipo === 'base' && <Explorador seleccion={base} onCambio={setBase} max={1} titulo="Vídeo base (el que se ve de fondo, con su voz)" vacio="Elegir el vídeo base" />}
       <Explorador seleccion={recursos} onCambio={setRecursos} titulo={tipo === 'voz' ? 'Recursos (de dónde salen las escenas)' : 'Recursos para superponer en momentos clave (opcional)'} vacio={tipo === 'voz' ? 'Todo Drive indexado' : 'Todo Drive indexado / elegir recursos'} />
       <SubirRecursos onSubidos={(n) => setRecursos(r => [...r, ...n])} />
+      <CopiarSeleccion trabajos={trabajos} onCopiar={(x) => { setRecursos(x.recursos || []); if (x.guion && !guion.trim()) setGuion(x.guion); setAsig(asigDesdeReparto(x, x.guion && !guion.trim() ? x.guion : guion)); }} />
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Música de fondo</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={mus} onChange={e => setMus(e.target.value)}><option value="auto">Automática (la IA elige la que mejor encaje)</option><option value="ninguna">Sin música</option>{musica.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.bpm ? ' · ' + Math.round(p.bpm) + ' bpm' : ''}</option>)}</select>
       <div style={{ ...mut, marginBottom: 4 }}>Guion del vídeo (opcional): pégalo aquí. En una entrevista, pon las preguntas o temas que quieres sacar; en una voz en off o un bruto, el texto que quieres que se diga.</div>
@@ -157,11 +158,28 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
 }
 
 // Reconstruye la selección por parte (índice → vídeos) a partir del reparto guardado en el trabajo
-function asigDesdeReparto(t) {
+function asigDesdeReparto(t, guionDestino) {
   const out = {}; const rep = Array.isArray(t.reparto) ? t.reparto : []; if (!rep.length) return out;
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  partesDeGuion(t.guion || '').forEach((p, i) => { const r = rep.find(x => norm(x.texto) === norm(p)); if (r && (r.clips || []).length) out[i] = r.clips; });
+  const partes = partesDeGuion(guionDestino != null ? guionDestino : (t.guion || ''));
+  partes.forEach((p, i) => { const r = rep.find(x => norm(x.texto) === norm(p)); if (r && (r.clips || []).length) { out[i] = r.clips; if (r.extra) out['x' + i] = r.extra; } });
+  // otro guion: si no casa ningún texto pero hay las mismas partes, se copian por orden
+  if (!Object.keys(out).length && guionDestino != null && partes.length === rep.length) rep.forEach((r, i) => { if ((r.clips || []).length) { out[i] = r.clips; if (r.extra) out['x' + i] = r.extra; } });
   return out;
+}
+// Copiar la selección (recursos y vídeos por parte) de un vídeo anterior, para no tener que volver a elegirlos
+function CopiarSeleccion({ trabajos, onCopiar }) {
+  const cand = (trabajos || []).filter(x => (x.reparto && x.reparto.length) || (x.recursos && x.recursos.length)).slice(0, 25);
+  if (!cand.length) return null;
+  return (
+    <div style={{ margin: '4px 0 10px' }}>
+      <span style={mut}>¿Misma selección que otro vídeo? </span>
+      <select className="ap-field-input" style={{ width: 'auto', maxWidth: '100%' }} value="" onChange={e => { const x = cand.find(c => c.id === e.target.value); if (x) onCopiar(x); }}>
+        <option value="">Copiar la selección de…</option>
+        {cand.map(x => <option key={x.id} value={x.id}>{(x.nombre_archivo || x.id) + ' · v' + (x.version || 1) + ' · ' + (x.reparto?.length ? x.reparto.length + ' partes con clips' : (x.recursos || []).length + ' recursos')}</option>)}
+      </select>
+    </div>
+  );
 }
 // Desglose del guion: el usuario indica qué vídeos van en cada parte y el montaje lo respeta
 function partesDeGuion(g) {
@@ -363,7 +381,7 @@ function AprenderReferencia({ formatos, onCambio }) {
 }
 
 const Trabajo = memo(function Trabajo(props) { return props.t.tipo === 'referencia' ? <TarjetaReferencia t={props.t} onCambio={props.onCambio} /> : <TrabajoNormal {...props} />; });
-function TrabajoNormal({ t, formatos, onCambio, musica = [] }) {
+function TrabajoNormal({ t, formatos, onCambio, musica = [], trabajosTodos = [] }) {
   const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [guionReg, setGuionReg] = useState(t.guion || ''), [asigR, setAsigR] = useState(() => asigDesdeReparto(t)), [musR, setMusR] = useState(t.musica || 'auto'), [ritmoA, setRitmoA] = useState(t.audio_ritmo || 0), [dinR, setDinR] = useState(0), [rehaciendoA, setRehaciendoA] = useState(false), [constructor, setConstructor] = useState(false), [panelAudio, setPanelAudio] = useState(() => !!(t.reparto && t.reparto.length && t.fase === 'audio')), [asigA, setAsigA] = useState(() => asigDesdeReparto(t)), [guionA, setGuionA] = useState(t.guion || ''), [editando, setEditando] = useState(false), [editTexto, setEditTexto] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
   const [txt, color] = ESTADOS[t.estado] || ESTADOS.pendiente;
   const vref = useRef(null);
@@ -402,6 +420,7 @@ function TrabajoNormal({ t, formatos, onCambio, musica = [] }) {
             <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)' }}>
               <div style={{ ...mut, marginBottom: 4 }}>Guion (se divide en partes; en cada una eliges los vídeos que se ven mientras se dice).</div>
               <textarea className="ap-field-input" style={{ width: '100%', minHeight: 80, marginBottom: 8 }} value={guionA} onChange={e => setGuionA(e.target.value)} />
+              <CopiarSeleccion trabajos={trabajosTodos} onCopiar={(x) => { const a = asigDesdeReparto(x, guionA); setAsigA(a); try { const partes = partesDeGuion(guionA); const reparto = partes.map((texto, i) => ({ texto, extra: Number(a['x' + i]) || 0, clips: (a[i] || []).map(y => ({ id: y.id, nombre: y.nombre, tipo: y.tipo, duracion: y.duracion || null, ruta: y.ruta })) })).filter(p => p.clips.length); api.post('/estudio-video/trabajos/' + t.id + '/reparto', { reparto, guion: guionA }).catch(() => {}); } catch { /* sin guardar */ } }} />
               <Desglose guion={guionA} asig={asigA} setAsig={(a) => { setAsigA(a); try { const partes = partesDeGuion(guionA); const reparto = partes.map((texto, i) => ({ texto, clips: (a[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, duracion: x.duracion || null, ruta: x.ruta })) })).filter(p => p.clips.length); clearTimeout(window.__guardaReparto); window.__guardaReparto = setTimeout(() => { api.post('/estudio-video/trabajos/' + t.id + '/reparto', { reparto, guion: guionA }).catch(() => {}); }, 700); } catch { /* sin guardar */ } }} trans={t.transcripcion} />
               <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={async () => { try { const partes = partesDeGuion(guionA); const reparto = partes.map((texto, i) => ({ texto, clips: (asigA[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, ruta: x.ruta })) })).filter(p => p.clips.length); const vistos = new Map(); for (const p of reparto) for (const c of p.clips) vistos.set(c.id, c); await api.post('/estudio-video/trabajos/' + t.id + '/montar-con-audio', { reparto, guion: guionA, recursos: [...vistos.values()].length ? [...vistos.values()] : undefined }); setPanelAudio(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo montar'); } }}><Wand2 size={13} /> Montar el vídeo con este audio</button>
             </div>
@@ -471,6 +490,7 @@ function TrabajoNormal({ t, formatos, onCambio, musica = [] }) {
           <SubirRecursos onSubidos={(n) => setRecs(r => [...r, ...n])} />
           <div style={{ ...mut, marginBottom: 4 }}>Guion (opcional): pégalo o cámbialo aquí.</div>
           <textarea className="ap-field-input" style={{ width: '100%', minHeight: 80, marginBottom: 8 }} value={guionReg} onChange={e => setGuionReg(e.target.value)} placeholder="Guion del vídeo o preguntas de la entrevista" />
+          {t.tipo !== 'clips' && <CopiarSeleccion trabajos={trabajosTodos} onCopiar={(x) => { setAsigR(asigDesdeReparto(x, guionReg)); if (x.recursos && x.recursos.length) setRecs(x.recursos); }} />}
           {t.tipo !== 'clips' && <Desglose guion={guionReg} asig={asigR} setAsig={setAsigR} trans={t.transcripcion} />}
           <div style={{ ...mut, marginBottom: 4 }}>Dinamismo (cortes más rápidos, zooms y efectos de sonido)</div>
           <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={dinR} onChange={e => setDinR(Number(e.target.value))}><option value={0}>Como el formato</option><option value={1}>Dinámico</option><option value={2}>Muy dinámico (generar dopamina)</option></select>
@@ -958,8 +978,8 @@ export function SectionEstudioVideo() {
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
       {tab === 'formatos' ? <><AprenderReferencia formatos={formatos} onCambio={cargarT} /><Formatos formatos={formatos} onCambio={cargarF} /></> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Nuevo formatos={formatos} musica={pistas} carpetas={carpetas} onCreado={cargarT} />
-          {trabajos === null ? <div className="ap-loading">Cargando…</div> : trabajos.length === 0 ? <div style={mut}>Todavía no hay vídeos. Sube el primero arriba.</div> : trabajos.map(t => <Trabajo key={t.id} t={t} formatos={formatos} musica={pistas} onCambio={cargarT} />)}
+          <Nuevo formatos={formatos} musica={pistas} carpetas={carpetas} trabajos={trabajos} onCreado={cargarT} />
+          {trabajos === null ? <div className="ap-loading">Cargando…</div> : trabajos.length === 0 ? <div style={mut}>Todavía no hay vídeos. Sube el primero arriba.</div> : trabajos.map(t => <Trabajo key={t.id} t={t} formatos={formatos} musica={pistas} trabajosTodos={trabajos} onCambio={cargarT} />)}
         </div>
       )}
     </div>
