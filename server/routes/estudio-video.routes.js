@@ -263,6 +263,16 @@ router.get('/trabajos', async (req, res) => {
     res.json({ trabajos: out.filter(x => x.estado !== 'borrado') });
   } catch { res.status(500).json({ error: 'No se pudo leer la lista' }); }
 });
+// Guarda el reparto de vídeos por parte del guion (y el guion) en el propio trabajo, para que no haya que volver a elegirlos
+router.post('/trabajos/:id/reparto', async (req, res) => {
+  try {
+    const o = await leerTrabajo(limpia(req.params.id, 20)); if (!o || o.estado === 'borrado') return res.status(404).json({ error: 'No existe ese trabajo' });
+    const b = req.body || {};
+    o.reparto = (Array.isArray(b.reparto) ? b.reparto : []).slice(0, 40).map(p => ({ texto: limpia(p?.texto, 700), clips: (Array.isArray(p?.clips) ? p.clips : []).slice(0, 10).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['video', 'imagen', 'carpeta'].includes(x?.tipo) ? x.tipo : 'video', duracion: Number(x?.duracion) || null, ruta: limpia(x?.ruta, 400) })).filter(x => /^[\w-]{10,60}$/.test(x.id)) })).filter(p => p.texto && p.clips.length);
+    if (typeof b.guion === 'string') o.guion = limpia(b.guion, 20000);
+    await guardarTrabajo(o); res.json({ ok: true, partes: o.reparto.length });
+  } catch { res.status(500).json({ error: 'No se pudo guardar la selección' }); }
+});
 // Paso 2 del método en dos pasos: con el audio ya ajustado (paso 1), se eligen los clips y se monta el vídeo SIN volver a tocar el audio
 router.post('/trabajos/:id/montar-con-audio', async (req, res) => {
   try {
@@ -271,7 +281,7 @@ router.post('/trabajos/:id/montar-con-audio', async (req, res) => {
     const cp = await st().copy(o.resultado_audio, 'entradas/' + id + '.mp3'); if (cp.error) return res.status(500).json({ error: 'No se pudo preparar el audio: ' + cp.error.message });
     const recs = Array.isArray(b.recursos) ? b.recursos.slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen', 'subido'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id) : (o.recursos || []);
     const reparto = (Array.isArray(b.reparto) ? b.reparto : []).slice(0, 40).map(p => ({ texto: limpia(p?.texto, 700), clips: (Array.isArray(p?.clips) ? p.clips : []).slice(0, 10).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['video', 'imagen', 'carpeta'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => /^[\w-]{10,60}$/.test(x.id)) })).filter(p => p.texto && p.clips.length);
-    const t = { ...o, reglas: await textoReglas(), id, creado: new Date().toISOString(), origen: o.id, version: 1, fase: undefined, sin_limpieza: true, archivo: 'entradas/' + id + '.mp3', base: null, nombre_archivo: (o.nombre_archivo || 'audio') + ' (audio ajustado)', recursos: recs, ...(reparto.length ? { reparto } : { reparto: undefined }), guion: typeof b.guion === 'string' ? limpia(b.guion, 20000) : o.guion, edicion_texto: undefined, transcripcion: undefined, resultado_audio: undefined, url_audio: undefined, dur_audio: undefined, estado: 'pendiente', progreso: 'En cola', pct: 0, resultado: null, resultado_movil: null, error: null, plan: null, empezado: undefined, terminado: undefined, autorevision: undefined };
+    const t = { ...o, reglas: await textoReglas(), id, creado: new Date().toISOString(), origen: o.id, version: 1, fase: undefined, sin_limpieza: true, archivo: 'entradas/' + id + '.mp3', base: null, nombre_archivo: (o.nombre_archivo || 'audio') + ' (audio ajustado)', recursos: recs, ...(reparto.length ? { reparto } : { reparto: o.reparto && o.reparto.length ? o.reparto : undefined }), guion: typeof b.guion === 'string' ? limpia(b.guion, 20000) : o.guion, edicion_texto: undefined, transcripcion: undefined, resultado_audio: undefined, url_audio: undefined, dur_audio: undefined, estado: 'pendiente', progreso: 'En cola', pct: 0, resultado: null, resultado_movil: null, error: null, plan: null, empezado: undefined, terminado: undefined, autorevision: undefined };
     t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
     if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); }
     res.status(201).json({ trabajo: t });

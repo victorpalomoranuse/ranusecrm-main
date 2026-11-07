@@ -156,6 +156,13 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
   );
 }
 
+// Reconstruye la selección por parte (índice → vídeos) a partir del reparto guardado en el trabajo
+function asigDesdeReparto(t) {
+  const out = {}; const rep = Array.isArray(t.reparto) ? t.reparto : []; if (!rep.length) return out;
+  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  partesDeGuion(t.guion || '').forEach((p, i) => { const r = rep.find(x => norm(x.texto) === norm(p)); if (r && (r.clips || []).length) out[i] = r.clips; });
+  return out;
+}
 // Desglose del guion: el usuario indica qué vídeos van en cada parte y el montaje lo respeta
 function partesDeGuion(g) {
   const bloques = String(g || '').split(/\n\s*\n/).map(x => x.trim()).filter(Boolean);
@@ -357,7 +364,7 @@ function AprenderReferencia({ formatos, onCambio }) {
 
 const Trabajo = memo(function Trabajo(props) { return props.t.tipo === 'referencia' ? <TarjetaReferencia t={props.t} onCambio={props.onCambio} /> : <TrabajoNormal {...props} />; });
 function TrabajoNormal({ t, formatos, onCambio }) {
-  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [guionReg, setGuionReg] = useState(t.guion || ''), [constructor, setConstructor] = useState(false), [panelAudio, setPanelAudio] = useState(false), [asigA, setAsigA] = useState({}), [guionA, setGuionA] = useState(t.guion || ''), [editando, setEditando] = useState(false), [editTexto, setEditTexto] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
+  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [guionReg, setGuionReg] = useState(t.guion || ''), [constructor, setConstructor] = useState(false), [panelAudio, setPanelAudio] = useState(() => !!(t.reparto && t.reparto.length && t.fase === 'audio')), [asigA, setAsigA] = useState(() => asigDesdeReparto(t)), [guionA, setGuionA] = useState(t.guion || ''), [editando, setEditando] = useState(false), [editTexto, setEditTexto] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
   const [txt, color] = ESTADOS[t.estado] || ESTADOS.pendiente;
   const vref = useRef(null);
   const regenerar = async () => { try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { formato: t.formato, recursos: recs, guion: guionReg, ...(baseSel[0] ? { base: baseSel[0] } : {}) }); setPanelReg(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
@@ -390,7 +397,7 @@ function TrabajoNormal({ t, formatos, onCambio }) {
             <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)' }}>
               <div style={{ ...mut, marginBottom: 4 }}>Guion (se divide en partes; en cada una eliges los vídeos que se ven mientras se dice).</div>
               <textarea className="ap-field-input" style={{ width: '100%', minHeight: 80, marginBottom: 8 }} value={guionA} onChange={e => setGuionA(e.target.value)} />
-              <Desglose guion={guionA} asig={asigA} setAsig={setAsigA} trans={t.transcripcion} />
+              <Desglose guion={guionA} asig={asigA} setAsig={(a) => { setAsigA(a); try { const partes = partesDeGuion(guionA); const reparto = partes.map((texto, i) => ({ texto, clips: (a[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, duracion: x.duracion || null, ruta: x.ruta })) })).filter(p => p.clips.length); clearTimeout(window.__guardaReparto); window.__guardaReparto = setTimeout(() => { api.post('/estudio-video/trabajos/' + t.id + '/reparto', { reparto, guion: guionA }).catch(() => {}); }, 700); } catch { /* sin guardar */ } }} trans={t.transcripcion} />
               <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={async () => { try { const partes = partesDeGuion(guionA); const reparto = partes.map((texto, i) => ({ texto, clips: (asigA[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, ruta: x.ruta })) })).filter(p => p.clips.length); const vistos = new Map(); for (const p of reparto) for (const c of p.clips) vistos.set(c.id, c); await api.post('/estudio-video/trabajos/' + t.id + '/montar-con-audio', { reparto, guion: guionA, recursos: [...vistos.values()].length ? [...vistos.values()] : undefined }); setPanelAudio(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo montar'); } }}><Wand2 size={13} /> Montar el vídeo con este audio</button>
             </div>
           )}
