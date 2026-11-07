@@ -349,6 +349,7 @@ if (process.env.MUSICA_DIR && elegida !== 'ninguna') {
   const lib = bibliotecaLocal(process.env.MUSICA_DIR);
   if (lib.length) {
     pista = lib.find(p => p.nombre === elegida) || null;
+    if (!pista && elegida === 'animada') pista = [...lib].sort((a, b) => (b.bpm || 0) - (a.bpm || 0))[0];
     if (!pista) { if (lib.length === 1) pista = lib[0]; else try { const rr = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 200, messages: [{ role: 'user', content: 'Elige la pista de música instrumental para un vídeo de Ranuse Design (gimnasios, serio y elegante) titulado "' + plan.titulo + '", montado con cortes rápidos de escenas. Indicaciones: ' + (NOTAS || 'ninguna') + '. Pistas: ' + JSON.stringify(lib.map(p => ({ nombre: p.nombre, bpm: p.bpm, energia: p.energia, dur: p.dur }))) + '. Responde SOLO JSON {"nombre":"..."}' }] }) }); const jj = await rr.json(); const nm = JSON.parse(/{[sS]*}/.exec(jj.content.map(b => b.text || '').join(''))[0]).nombre; pista = lib.find(p => p.nombre === nm) || lib[0]; } catch { pista = lib[0]; } }
   }
   console.log('Música:', pista ? pista.nombre + ' (' + pista.bpm + ' bpm)' : 'ninguna');
