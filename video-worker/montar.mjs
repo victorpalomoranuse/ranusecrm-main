@@ -285,15 +285,16 @@ if (process.env.EDICION !== '1') try {
       // fuera de las partes con vídeos asignados: no se usan los vídeos que el usuario reservó para otra parte
       if (asignados.has(c.video)) { const alt = idx.find(v => !asignados.has(v.id) && !v.es_imagen && !v.hablando_a_camara && v.duracion >= 2); if (alt) { c.video = alt.id; c.desde = 0; c._cont = false; forz++; } }
     });
-    // clips demasiado cortos: si un vídeo no da para todos sus cortes, los que sobran pasan al clip de la parte siguiente (o de la anterior) en vez de repetirse
+    // clips demasiado cortos: cada corte va a un clip de SU parte que tenga metraje libre (sin repetir tramos); si ninguno cabe, pasa al clip de la parte siguiente (o la anterior)
     let pasados = 0;
     repartoIdx.forEach((r, ri) => {
       const sig = repartoIdx[ri + 1] || null, ant = repartoIdx[ri - 1] || null;
-      r.vids.forEach(vid => {
-        const v = idx.find(x => x.id === vid); if (!v || v.es_imagen) return;
-        let usado = 0;
-        cs.forEach((c, k) => { if (!(c.de >= r.ini && c.de < r.fin && c.video === vid)) return; const L = durCorte(c, k);
-          if (usado + L > (v.duracion || 0) - 0.3) { const dest = (sig && sig.vids.find(x => x !== vid)) || (ant && ant.vids.find(x => x !== vid)); if (dest) { c.video = dest; c.desde = 0; c._cont = false; pasados++; } } else usado += L + 0.1; });
+      const cap = new Map(r.vids.map(vid => { const v = idx.find(x => x.id === vid); return [vid, v ? (v.es_imagen ? 1e6 : (v.duracion || 0) - 0.3) : 0]; }));
+      cs.forEach((c, k) => {
+        if (!(c.de >= r.ini && c.de < r.fin)) return; const L = durCorte(c, k);
+        const vid = (r.vids.includes(c.video) && cap.get(c.video) >= L) ? c.video : r.vids.find(v => cap.get(v) >= L);
+        if (vid) { if (c.video !== vid) { c.video = vid; c.desde = 0; c._cont = false; } cap.set(vid, cap.get(vid) - L - 0.1); return; }
+        const dest = (sig && sig.vids[0]) || (ant && ant.vids[ant.vids.length - 1]); if (dest) { c.video = dest; c.desde = 0; c._cont = false; pasados++; }
       });
     });
     if (pasados) console.log('Cortes que no cabían en un clip corto y pasan al clip vecino:', pasados);
