@@ -162,9 +162,19 @@ function partesDeGuion(g) {
   if (bloques.length > 1) return bloques.slice(0, 40);
   return String(g || '').split(/(?<=[.!?])\s+/).map(x => x.trim()).filter(Boolean).slice(0, 40);
 }
-function Desglose({ guion, asig, setAsig }) {
+// Duración REAL de cada parte del guion medida en el audio ya preparado (solo las palabras que se quedan, con pausas cortas)
+function medirPartes(partes, trans) {
+  if (!Array.isArray(trans) || !trans.length) return null;
+  const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  const kept = []; trans.forEach((w, i) => { if (!w[3]) kept.push({ n: norm(w[0]), de: w[1], a: w[2] }); });
+  const N = kept.map(w => w.n); let desde = 0; const ini = [];
+  partes.forEach((p) => { const pw = p.split(/\s+/).map(norm).filter(Boolean); let mejor = -1, mp = 0; for (let i = desde; i < N.length; i++) { let ok = 0; for (let j = 0; j < Math.min(4, pw.length); j++) if (N[i + j] === pw[j]) ok++; if (ok > mp) { mp = ok; mejor = i; if (ok === Math.min(4, pw.length)) break; } } if (mp >= Math.min(3, pw.length) && mejor >= 0) { ini.push(mejor); desde = mejor + 1; } else ini.push(null); });
+  return partes.map((_, k) => { if (ini[k] === null) return null; let fin = kept.length; for (let j = k + 1; j < partes.length; j++) if (ini[j] !== null) { fin = ini[j]; break; } let s = 0; for (let i = ini[k]; i < fin; i++) { s += kept[i].a - kept[i].de + (i > ini[k] ? Math.min(0.45, Math.max(0, kept[i].de - kept[i - 1].a)) : 0); } return s; });
+}
+function Desglose({ guion, asig, setAsig, trans }) {
   const [abierto, setAbierto] = useState(false);
   const partes = partesDeGuion(guion); if (!partes.length) return null;
+  const medidas = medirPartes(partes, trans);
   const n = partes.filter((_, i) => (asig[i] || []).length).length;
   return (
     <div style={{ ...card, marginBottom: 10 }}>
@@ -175,7 +185,7 @@ function Desglose({ guion, asig, setAsig }) {
           {partes.map((p, i) => (
             <div key={i} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
               <div style={{ fontSize: '0.85rem', marginBottom: 6 }}><strong>Parte {i + 1}:</strong> {p}</div>
-              {(() => { const pal = p.split(/s+/).filter(Boolean).length, seg = Math.max(1, Math.round(pal / 2.9)), clips = Math.max(1, Math.round(seg / 2.5)); return <div style={{ ...mut, marginBottom: 6 }}>Dura unos <strong>{seg} s</strong> hablada: necesita unos <strong>{clips} clip{clips > 1 ? 's' : ''}</strong> de ~2,5 s (o menos clips, más largos).{(asig[i] || []).length ? ' Has elegido ' + (asig[i] || []).length + '.' : ''}</div>; })()}
+              {(() => { const pal = p.split(/\s+/).filter(Boolean).length, real = medidas && medidas[i] != null, seg = real ? Math.max(1, Math.round(medidas[i])) : Math.max(1, Math.round(pal / 2.9)), clips = Math.max(1, Math.round(seg / 2.5)); return <div style={{ ...mut, marginBottom: 6 }}>{real ? 'En tu audio dura' : 'Dura unos'} <strong>{seg} s</strong> {real ? '(medido)' : 'hablada'}: necesita unos <strong>{clips} clip{clips > 1 ? 's' : ''}</strong> de ~2,5 s (o menos clips, más largos).{(asig[i] || []).length ? ' Has elegido ' + (asig[i] || []).length + '.' : ''}</div>; })()}
               <Explorador seleccion={asig[i] || []} onCambio={(s) => setAsig({ ...asig, [i]: s })} max={8} titulo="Vídeos para esta parte" vacio="Elegir vídeos de Drive" />
             </div>
           ))}
@@ -364,7 +374,7 @@ function TrabajoNormal({ t, formatos, onCambio }) {
             <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)' }}>
               <div style={{ ...mut, marginBottom: 4 }}>Guion (se divide en partes; en cada una eliges los vídeos que se ven mientras se dice).</div>
               <textarea className="ap-field-input" style={{ width: '100%', minHeight: 80, marginBottom: 8 }} value={guionA} onChange={e => setGuionA(e.target.value)} />
-              <Desglose guion={guionA} asig={asigA} setAsig={setAsigA} />
+              <Desglose guion={guionA} asig={asigA} setAsig={setAsigA} trans={t.transcripcion} />
               <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={async () => { try { const partes = partesDeGuion(guionA); const reparto = partes.map((texto, i) => ({ texto, clips: (asigA[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, ruta: x.ruta })) })).filter(p => p.clips.length); const vistos = new Map(); for (const p of reparto) for (const c of p.clips) vistos.set(c.id, c); await api.post('/estudio-video/trabajos/' + t.id + '/montar-con-audio', { reparto, guion: guionA, recursos: [...vistos.values()].length ? [...vistos.values()] : undefined }); setPanelAudio(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo montar'); } }}><Wand2 size={13} /> Montar el vídeo con este audio</button>
             </div>
           )}
