@@ -16,7 +16,8 @@ export function aperturaAHtml(ap, duracion) {
   #ap .c img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   #ap .p { position: absolute; left: 0; width: 1080px; top: 1180px; text-align: center; font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 32px; letter-spacing: 8px; text-transform: uppercase; color: #f3efe9; }
   #ap .v { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 35%, rgba(0,0,0,0) 30%, rgba(0,0,0,.6) 100%); }`;
-  const html = `<div id="ap" class="clip" data-start="0" data-duration="${(t1 + 0.9).toFixed(2)}" data-track-index="6"><div class="g"></div><div class="k">${esc(ap.kicker)}</div><div class="t1"><span>${esc(ap.titulo)}<i id="apsr"></i></span></div><div class="t2">${esc(ap.frase)}</div><div id="apA" class="c" style="left:120px">${imgs(fa, 'apa')}</div><div id="apB" class="c" style="left:580px">${imgs(fb, 'apb')}</div><div id="appal" class="p">${esc((ap.palabras || [])[0] || '')}</div><div class="v"></div></div>
+  const fsT = Math.max(26, Math.min(43, Math.floor(940 / (String(ap.titulo || '').length * 0.74))));
+  const html = `<div id="ap" class="clip" data-start="0" data-duration="${(t1 + 0.9).toFixed(2)}" data-track-index="6"><div class="g"></div><div class="k">${esc(ap.kicker)}</div><div class="t1" style="font-size:${fsT}px"><span>${esc(ap.titulo)}<i id="apsr"></i></span></div><div class="t2">${esc(ap.frase)}</div><div id="apA" class="c" style="left:120px">${imgs(fa, 'apa')}</div><div id="apB" class="c" style="left:580px">${imgs(fb, 'apb')}</div><div id="appal" class="p">${esc((ap.palabras || [])[0] || '')}</div><div class="v"></div></div>
 `;
   const pal = JSON.stringify(ap.palabras || []);
   const js = `
