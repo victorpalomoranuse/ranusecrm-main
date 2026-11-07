@@ -265,6 +265,42 @@ router.get('/trabajos', async (req, res) => {
     res.json({ trabajos: out.filter(x => x.estado !== 'borrado' && x.tipo !== 'muestra') });
   } catch { res.status(500).json({ error: 'No se pudo leer la lista' }); }
 });
+// Catálogo de efectos de HyperFrames con su vídeo de muestra
+const EFECTOS_CAT = [
+  ['pin-ubicacion', 'Ubicación con pin', 'Un pin cae sobre el mapa y aparece el lugar (Barcelona · obra). Ideal para «mi día».'],
+  ['nombre-cargo', 'Nombre y cargo', 'Rótulo que entra de lado con el nombre y el cargo de quien habla (entrevistas).'],
+  ['antes-despues', 'Antes y después', 'Una barra se desliza entre el antes y el después (render frente a obra terminada).'],
+  ['medidas', 'Medidas que se dibujan', 'Un recuadro con líneas de cota que se dibujan y cifras que aparecen.'],
+  ['checklist', 'Checklist', 'Lista de lo que incluye un proyecto con ticks que se van marcando.'],
+  ['linea-tiempo', 'Línea de tiempo de obra', 'Pasos del proyecto (diseño, licencia, obra, entrega) que avanzan uno a uno.'],
+  ['maquina-escribir', 'Máquina de escribir', 'El texto se escribe letra a letra con cursor parpadeante.'],
+  ['marcador', 'Marcador sobre la palabra clave', 'Una franja de color se dibuja detrás de la palabra importante.'],
+  ['cortina-circular', 'Transición: cortina circular', 'Un círculo se abre y revela la escena siguiente.'],
+  ['persiana', 'Transición: persiana', 'Franjas que se cierran y se abren para cambiar de escena.'],
+  ['zoom-desenfoque', 'Transición: zoom con desenfoque', 'La imagen se acerca desenfocándose y entra la siguiente.'],
+  ['cierre-seguir', 'Cierre con botón de seguir', 'Botón «seguir» que se pulsa, con la arroba y una línea que se dibuja.'],
+];
+router.get('/efectos', async (req, res) => {
+  try {
+    const lista = await Promise.all(EFECTOS_CAT.map(async ([id, nombre, descripcion]) => {
+      let url = null; try { const u = await st().createSignedUrl('efectos/' + id + '.mp4', 3600); if (u.data?.signedUrl) { const h = await fetch(u.data.signedUrl, { method: 'HEAD' }); if (h.ok) url = u.data.signedUrl; } } catch { /* sin muestra */ }
+      return { id, nombre, descripcion, url };
+    }));
+    res.json({ efectos: lista });
+  } catch { res.status(500).json({ error: 'No se pudo leer el catálogo' }); }
+});
+router.post('/efectos/muestra', async (req, res) => {
+  try {
+    await bucket(); const ids = (Array.isArray(req.body?.ids) ? req.body.ids : [req.body?.id]).map(x => limpia(x, 30)).filter(id => EFECTOS_CAT.some(e => e[0] === id)).slice(0, 12);
+    if (!ids.length) return res.status(400).json({ error: 'Efecto no válido' });
+    for (const id of ids) {
+      const t = { id: 'm' + crypto.randomUUID().slice(0, 7), creado: new Date().toISOString(), por: 'sistema', tipo: 'muestra', muestra: { efecto: id }, nombre_archivo: 'Efecto ' + id, estado: 'pendiente', progreso: 'En cola', version: 1 };
+      t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
+      if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); }
+    }
+    res.status(201).json({ ok: true, creados: ids.length });
+  } catch { res.status(500).json({ error: 'No se pudo crear la muestra' }); }
+});
 // Muestras en vídeo de los estilos de subtítulos (estilo + tipografía): ver si existe y pedir que se cree
 const slugMuestra = (estilo, fuente) => String(estilo) + '__' + String(fuente).replace(/\s+/g, '-');
 router.get('/estilos/muestra', async (req, res) => {

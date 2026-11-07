@@ -6,6 +6,7 @@ import { hfDisponible, componeHF } from './hf.mjs';
 import { analizaReferencia } from './referencia.mjs';
 import { indexaSubidos } from './subidos.mjs';
 import { creaMuestra } from './muestras.mjs';
+import { creaEfecto } from './efectos.mjs';
 import path from 'path';
 import { createRequire } from 'module';
 import { spawnSync, spawn } from 'child_process';
@@ -194,7 +195,14 @@ async function procesaClips(t, entrada, dir) {
 }
 // Vídeo de muestra de un estilo de subtítulos con una tipografía (se guarda en estilos/ para verlo en Formatos)
 async function procesaMuestra(t, dir) {
-  const m = t.muestra || {}; await paso(t, 'Dibujando la muestra del estilo…', { estado: 'procesando', empezado: new Date().toISOString(), pct: 20 });
+  const m = t.muestra || {};
+  if (m.efecto) {
+    await paso(t, 'Dibujando el efecto…', { estado: 'procesando', empezado: new Date().toISOString(), pct: 20 });
+    const fe = creaEfecto(m.efecto, m.params || {}, path.join(dir, '_efecto'));
+    const upe = await st.upload('efectos/' + m.efecto + '.mp4', fs.readFileSync(fe), { contentType: 'video/mp4', upsert: true, cacheControl: '60' }); if (upe.error) throw new Error('No se pudo subir el efecto: ' + upe.error.message);
+    await paso(t, 'Efecto listo', { pct: 100, estado: 'listo', muestra_ruta: 'efectos/' + m.efecto + '.mp4', terminado: new Date().toISOString(), error: null }); return;
+  }
+  await paso(t, 'Dibujando la muestra del estilo…', { estado: 'procesando', empezado: new Date().toISOString(), pct: 20 });
   const f = creaMuestra({ estilo: m.estilo || 'normal', fuente: m.fuente || 'Montserrat', acento: m.acento || '#E3D2B8', dir: path.join(dir, '_muestra') });
   const slug = String(m.estilo || 'normal') + '__' + String(m.fuente || 'Montserrat').replace(/\s+/g, '-');
   const up = await st.upload('estilos/' + slug + '.mp4', fs.readFileSync(f), { contentType: 'video/mp4', upsert: true, cacheControl: '60' }); if (up.error) throw new Error('No se pudo subir la muestra: ' + up.error.message);

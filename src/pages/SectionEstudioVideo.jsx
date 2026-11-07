@@ -286,6 +286,34 @@ function ConstructorClips({ t, onCambio }) {
   );
 }
 
+// Catálogo de efectos de HyperFrames: cada uno con su vídeo de muestra
+function PestanaEfectos() {
+  const [lista, setLista] = useState(null), [pidiendo, setPidiendo] = useState({}), [msg, setMsg] = useState('');
+  const cargar = useCallback(() => api.get('/estudio-video/efectos').then(r => setLista(r.data.efectos || [])).catch(() => setLista([])), []);
+  useEffect(() => { cargar(); }, [cargar]);
+  const faltan = (lista || []).filter(e => !e.url);
+  useEffect(() => { if (!Object.keys(pidiendo).length) return; const i = setInterval(cargar, 6000); return () => clearInterval(i); }, [pidiendo, cargar]);
+  useEffect(() => { if (!lista) return; setPidiendo(p => { const n = { ...p }; let cambio = false; Object.keys(n).forEach(id => { if (lista.find(e => e.id === id)?.url) { delete n[id]; cambio = true; } }); return cambio ? n : p; }); }, [lista]);
+  const pedir = async (ids) => { setMsg(''); try { await api.post('/estudio-video/efectos/muestra', { ids }); setPidiendo(p => { const n = { ...p }; ids.forEach(id => { n[id] = true; }); return n; }); } catch (e) { setMsg(e?.response?.data?.error || 'No se pudo crear'); } };
+  if (lista === null) return <div className="ap-loading">Cargando…</div>;
+  return (
+    <div>
+      <div style={{ ...mut, marginBottom: 10 }}>Efectos y animaciones profesionales hechos con HyperFrames, con los colores de Ranuse. Mira cómo quedan; los que te gusten los vamos conectando a los montajes.</div>
+      {faltan.length > 0 && <button className="ap-btn ap-btn-sm" style={{ marginBottom: 12 }} disabled={faltan.every(e => pidiendo[e.id])} onClick={() => pedir(faltan.filter(e => !pidiendo[e.id]).map(e => e.id))}><Play size={13} /> Crear las {faltan.length} muestras que faltan (unos 2-3 min)</button>}
+      {msg && <div style={{ color: '#ff8a80', marginBottom: 8 }}>{msg}</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12 }}>
+        {lista.map(e => (
+          <div key={e.id} style={card}>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>{e.nombre}</div>
+            <div style={{ ...mut, marginBottom: 8, minHeight: 54 }}>{e.descripcion}</div>
+            {e.url ? <video src={e.url} controls loop muted playsInline preload="metadata" style={{ width: '100%', borderRadius: 10, background: '#000', display: 'block' }} /> : pidiendo[e.id] ? <div style={mut}><Loader2 size={13} /> Creando la muestra…</div> : <button className="ap-btn ap-btn-sm" onClick={() => pedir([e.id])}><Play size={13} /> Crear muestra</button>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Vídeo de muestra del estilo de subtítulos y la tipografía elegidos
 function MuestraEstilo({ estilo, fuente, acento }) {
   const [url, setUrl] = useState(undefined), [creando, setCreando] = useState(false), [msg, setMsg] = useState('');
@@ -992,9 +1020,10 @@ export function SectionEstudioVideo() {
         <button className={'ap-btn ap-btn-sm' + (tab === 'videos' ? ' ap-btn-primary' : '')} onClick={() => setTab('videos')}><Film size={13} /> Vídeos</button>
         <button className={'ap-btn ap-btn-sm' + (tab === 'formatos' ? ' ap-btn-primary' : '')} onClick={() => setTab('formatos')}><Settings2 size={13} /> Formatos</button>
         <button className={'ap-btn ap-btn-sm' + (tab === 'musica' ? ' ap-btn-primary' : '')} onClick={() => setTab('musica')}><Music size={13} /> Música</button>
+        <button className={'ap-btn ap-btn-sm' + (tab === 'efectos' ? ' ap-btn-primary' : '')} onClick={() => setTab('efectos')}><Wand2 size={13} /> Efectos</button>
       </div>
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
-      {tab === 'formatos' ? <><AprenderReferencia formatos={formatos} onCambio={cargarT} /><Formatos formatos={formatos} onCambio={cargarF} /></> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
+      {tab === 'efectos' ? <PestanaEfectos /> : tab === 'formatos' ? <><AprenderReferencia formatos={formatos} onCambio={cargarT} /><Formatos formatos={formatos} onCambio={cargarF} /></> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Nuevo formatos={formatos} musica={pistas} carpetas={carpetas} trabajos={trabajos} onCreado={cargarT} />
           {trabajos === null ? <div className="ap-loading">Cargando…</div> : trabajos.length === 0 ? <div style={mut}>Todavía no hay vídeos. Sube el primero arriba.</div> : trabajos.map(t => <Trabajo key={t.id} t={t} formatos={formatos} musica={pistas} trabajosTodos={trabajos} onCambio={cargarT} />)}
