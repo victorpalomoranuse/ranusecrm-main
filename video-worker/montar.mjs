@@ -395,7 +395,18 @@ async function detectaGiros() {
         await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...hdr, '-ss', t.toFixed(2), '-i', src, '-frames:v', '1', '-vf', 'scale=640:-2', base + '.jpg']);
         if (fs.existsSync(base + '.jpg')) res.push(await pregunta(base + '.jpg', base));
       }
-      const k = res.length === 2 && res[0] === res[1] ? res[0] : 'A';
+      let k = res.length === 2 && res[0] === res[1] ? res[0] : 'A';
+      if (k !== 'A') {
+        // comprobación: se gira de verdad un fotograma y se pregunta si queda derecho; si la IA duda, no se gira
+        try {
+          const f = (VARIANTES.find(x => x[0] === k) || ['A', ''])[1], base2 = path.join(work, 'giro_' + v.id.replace(/\W/g, '') + 'v'), D2 = v.duracion || 4, { src: s2, hdr: h2 } = fuenteDe(v);
+          await ejecuta(['-hide_banner', '-loglevel', 'error', '-y', ...h2, '-ss', Math.min(Math.max(0.5, D2 * 0.5), Math.max(0, D2 - 0.3)).toFixed(2), '-i', s2, '-frames:v', '1', '-vf', f + 'scale=384:-2', base2 + '.jpg']);
+          if (fs.existsSync(base2 + '.jpg')) {
+            const rr = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 30, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: fs.readFileSync(base2 + '.jpg').toString('base64') } }, { type: 'text', text: '¿Esta imagen está DERECHA (cielo o techo arriba, suelo abajo, personas de pie, texto legible) y NO girada de lado ni del revés? Responde SOLO JSON {"derecha":true|false}.' }] }] }) });
+            const jj = await rr.json(); const ok = JSON.parse(/\{[\s\S]*\}/.exec(jj.content.map(b => b.text || '').join(''))[0]).derecha === true; if (!ok) { console.log('Giro descartado (no queda derecho):', v.nombre, k); k = 'A'; }
+          }
+        } catch { k = 'A'; }
+      }
       giroDe[v.id] = (VARIANTES.find(x => x[0] === k) || ['A', ''])[1];
       if (giroDe[v.id]) console.log('Girado:', v.nombre, '→', k, '(' + res.join(',') + ')');
     } catch (e) { console.log('Sin comprobar giro de', v.nombre, e.message); }
@@ -503,7 +514,7 @@ ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durVoz) + ',Kicker,,0,0,0,,{\\an7\
 if (RECETA.horas) for (const h of (plan.horas || [])) { const w = palabras[h.de]; if (!w || !h.texto) continue; ev.push('Dialogue: 2,' + tAss(w.de) + ',' + tAss(Math.min(durVoz, w.de + 1.8)) + ',Hora,,0,0,0,,{\\fad(80,150)\\fscx80\\fscy80\\t(0,130,\\fscx100\\fscy100)}' + limpiaT(h.texto)); }
 const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920', 'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '', '[V4+ Styles]',
   'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',
-  'Style: Sub,' + RECETA.fuente + ',' + RECETA.subs.tam + ',&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,' + (RECETA.mayusculas === true && RECETA.subs.tam > 70 ? '9,4' : '1,2') + ',2,50,50,' + RECETA.subs.margenV + ',1',
+  'Style: Sub,' + RECETA.fuente + ',' + (RECETA.subs.tam >= 70 ? Math.round(RECETA.subs.tam * 0.75) : RECETA.subs.tam) + ',&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,' + (RECETA.mayusculas === true && RECETA.subs.tam > 70 ? '9,4' : '1,2') + ',2,50,50,' + RECETA.subs.margenV + ',1',
   ESTILO_INTRO,
   'Style: Kicker,Montserrat,34,' + RECETA.acento.replace('&H', '&H00').replace(/&$/, '') + ',&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,80,80,300,1',
   'Style: Hora,' + RECETA.fuente + ',118,&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,2,3,8,60,60,500,1',
