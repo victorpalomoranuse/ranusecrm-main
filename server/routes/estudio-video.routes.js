@@ -76,6 +76,8 @@ async function formatos() {
   if (!f.motionV1) { const x = f.lista.find(z => z.id === 'mi-dia-voz'); if (x?.receta) { x.receta.motion = true; x.receta.flash = false; x.receta.introLetras = false; x.receta.subs = { ...(x.receta.subs || {}), tam: 72 }; } f.motionV1 = true; await guardarJson(RUTA_FORMATOS, f); }
   // Mi día: limpio pero dinámico (sin tarjetas, etiquetas ni destellos; cortes ágiles, movimiento variado y un sonido sutil en cada corte)
   if (!f.diaV4) { const x = f.lista.find(z => z.id === 'mi-dia-voz'); if (x?.receta) { Object.assign(x.receta, { corte: { min: 1.4, max: 2.8 }, zoomFinal: 1.14, whoosh: 0.1, flash: false, motion: true, etiquetas: false, aperturaPremium: false, introLetras: false, estiloSubs: 'normal' }); } f.diaV4 = true; await guardarJson(RUTA_FORMATOS, f); }
+  // Mi día: cambio de plano cada ~3 s
+  if (!f.diaV5) { const x = f.lista.find(z => z.id === 'mi-dia-voz'); if (x?.receta) x.receta.corte = { min: 2.0, max: 3.2 }; f.diaV5 = true; await guardarJson(RUTA_FORMATOS, f); }
   if (!f.clipsV3) { const x = f.lista.find(z => z.id === 'clips-dopaminicos'); if (x?.receta) { x.receta.estiloSubs = 'karaoke'; x.receta.subs = { ...(x.receta.subs || {}), palabrasPorBloque: 3 }; } f.clipsV3 = true; await guardarJson(RUTA_FORMATOS, f); }
   if (!f.clipsV2) { const x = f.lista.find(z => z.id === FORMATO_CLIPS.id); if (x) x.receta = JSON.parse(JSON.stringify(FORMATO_CLIPS.receta)); f.clipsV2 = true; await guardarJson(RUTA_FORMATOS, f); }
   // formatos nuevos de fábrica se añaden una sola vez (si luego los borras, no vuelven)

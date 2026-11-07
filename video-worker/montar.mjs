@@ -289,10 +289,26 @@ if (process.env.EDICION !== '1') try {
     repartoIdx.forEach(r => { let pos = 0; cs.forEach((c, k) => { if (c.de >= r.ini && c.de < r.fin && r.vids.includes(c.video)) { const v = idx.find(x => x.id === c.video); const L = durCorte(c, k); if (v && !v.es_imagen) { c.desde = Math.max(0, Math.min(pos, Math.max(0, (v.duracion || 0) - L - 0.1))); pos = c.desde + L; } } }); });
     console.log('Cortes colocados según el reparto del usuario:', forz);
   }
+  // CAMBIO DE PLANO: cuando un mismo vídeo (largo) sirve para varios cortes, cada corte toma un momento DISTINTO del vídeo, repartido por toda su duración, en vez de seguir de corrido
+  { const grupos = new Map(); cs.forEach((c, k) => { const v = idx.find(z => z.id === c.video); if (!v || v.es_imagen || (v.duracion || 0) < 8) return; if (!grupos.has(v.id)) grupos.set(v.id, { v, lista: [] }); grupos.get(v.id).lista.push([c, k]); });
+    let rep = 0;
+    for (const { v, lista } of grupos.values()) {
+      if (lista.length < 2) continue; const D = v.duracion, n = lista.length, seg = D / n, usados = [];
+      const inicios = (v.planos || []).map(p => Number(p.t)).filter(x => Number.isFinite(x));
+      lista.forEach(([c, k], i) => {
+        const L = durCorte(c, k), ideal = i * seg + Math.max(0, (seg - L) / 2); let s = ideal;
+        // si el índice conoce dónde empiezan los planos del vídeo, se arranca en el inicio de plano más cercano que no se haya usado
+        const cand = inicios.filter(x => x + L <= D - 0.2 && !usados.some(u => Math.abs(u - x) < L * 0.9)).sort((x, y) => Math.abs(x - ideal) - Math.abs(y - ideal))[0];
+        if (cand !== undefined && Math.abs(cand - ideal) <= seg * 0.6) s = cand;
+        s = Math.max(0, Math.min(s, D - L - 0.2)); c.desde = Math.round(s * 10) / 10; c._cont = false; c._spread = true; usados.push(s); rep++;
+      });
+    }
+    if (rep) console.log('Cortes que cambian de momento dentro del mismo vídeo largo:', rep);
+  }
   // cortes seguidos del mismo vídeo que no se han podido cambiar: continúan donde acabó el corte anterior (un solo plano seguido)
   let enlazados = 0;
   for (let k = 1; k < cs.length; k++) {
-    if (cs[k].video !== cs[k - 1].video) continue;
+    if (cs[k].video !== cs[k - 1].video || cs[k]._spread) continue;
     const v = idx.find(z => z.id === cs[k].video); if (!v || v.es_imagen) continue;
     const fin = (Number(cs[k - 1].desde) || 0) + durCorte(cs[k - 1], k - 1);
     if (fin + durCorte(cs[k], k) + 0.2 <= (v.duracion || 0)) { cs[k].desde = Math.round(fin * 10) / 10; cs[k]._cont = true; enlazados++; }
