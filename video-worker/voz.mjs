@@ -156,7 +156,7 @@ export function elegirMejoresTomas(palabras, grupos, wav16, mostrar = false) {
 }
 
 // Recompone la voz sin lo eliminado ni las pausas largas, y devuelve las palabras con sus tiempos nuevos.
-export function recomponeVoz({ palabras, quitar, wav48, salida, pausa = 0.45 }) {
+export function recomponeVoz({ palabras, quitar, wav48, salida, pausa = 0.45, margen = 0.3 }) {
   const dur = Number(spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', wav48], { encoding: 'utf8' }).stdout) || 0;
   const kept = palabras.filter(w => !quitar.has(w.i)); const trozos = [];
   for (const w of kept) { const u = trozos[trozos.length - 1]; const contiguo = u && w.i === u.ult + 1; if (u && !w.corte && (contiguo || w.de - u.fin < 0.12) && w.de - u.fin < pausa) { u.fin = w.a; u.ult = w.i; u.ws.push(w); } else trozos.push({ ini: w.de, fin: w.a, ult: w.i, ws: [w] }); }
@@ -173,8 +173,8 @@ export function recomponeVoz({ palabras, quitar, wav48, salida, pausa = 0.45 }) 
   let t0 = 0; const partes = []; const fx = []; let ultB = 0;
   trozos.forEach((t, k) => {
     const prevFin = k > 0 ? trozos[k - 1].fin : 0, sigIni = k < trozos.length - 1 ? trozos[k + 1].ini : dur;
-    let a = valle(Math.max(prevFin + 0.02, t.ini - 0.3), t.ini + 0.01); if (a === null) a = Math.max(0, t.ini - 0.12);
-    let b = valle(t.fin - 0.01, Math.min(sigIni - 0.02, t.fin + 0.3)); if (b === null) b = Math.min(dur, t.fin + 0.15);
+    let a = valle(Math.max(prevFin + 0.02, t.ini - margen), t.ini + 0.01); if (a === null) a = Math.max(0, t.ini - Math.min(0.12, margen));
+    let b = valle(t.fin - 0.01, Math.min(sigIni - 0.02, t.fin + margen)); if (b === null) b = Math.min(dur, t.fin + Math.min(0.15, margen));
     a = Math.max(a, ultB); b = Math.min(dur, Math.max(b, t.fin)); if (b <= a) { a = Math.max(0, t.ini - 0.06); b = Math.min(dur, t.fin + 0.1); }
     ultB = b;
     partes.push({ a, b, t0, ws: t.ws }); fx.push('[0:a]atrim=' + a.toFixed(3) + ':' + b.toFixed(3) + ',asetpts=PTS-STARTPTS,afade=t=in:d=0.012,afade=t=out:st=' + Math.max(0, b - a - 0.02).toFixed(3) + ':d=0.02[p' + k + ']'); t0 += b - a;
