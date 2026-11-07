@@ -24,6 +24,7 @@ export function parseAss(texto) {
   return { estilos, eventos };
 }
 
+const caja0 = (est) => est?.BorderStyle === '3';
 // Una línea de evento -> elemento HTML + animación GSAP
 function eventoAHtml(ev, est, id) {
   const T = ev.texto; const bloques = [...T.matchAll(/\{([^}]*)\}/g)];
@@ -57,6 +58,9 @@ function eventoAHtml(ev, est, id) {
   if (!inner.replace(/<[^>]+>/g, '').trim()) return null;
   const fuente = est?.Fontname === 'Rubik' ? 'Rubik' : 'Montserrat'; const negrita = est?.Bold === '-1' || est?.Bold === '1' ? 800 : 500;
   let fsUso = fs0; if (ev.estilo === 'Intro' && pos) { const nCar = inner.replace(/<[^>]+>/g, '').length || 1; fsUso = Math.min(fs0, 940 / (nCar * 0.72)); const ancho = nCar * fsUso * 0.72; pos[1] = String(Math.max(ancho / 2 + 30, Math.min(1050 - ancho / 2, Number(pos[1])))); }
+  // el texto nunca se sale del encuadre: si la línea más larga no cabe en 920 px se reduce el tamaño; HF_ESCALA lo reduce más si la revisión lo pide
+  if (ev.estilo !== 'Intro' && !caja0(est)) { const lineas = inner.replace(/<br>/g, '\n').replace(/<[^>]+>/g, '').split('\n'); const mx = Math.max(...lineas.map(s => s.length), 1); fsUso = Math.min(fsUso, 900 / (mx * 0.66)); }
+  fsUso = Math.round(fsUso * Number(process.env.HF_ESCALA || 1));
   const mL = Number(est?.MarginL || 50), mR = Number(est?.MarginR || 50), mV = Number(est?.MarginV || 0); const caja = est?.BorderStyle === '3';
   let posCss = '';
   if (pos) { const x = Number(pos[1]), y = Number(pos[2]); const tx = an === 5 || an === 8 || an === 2 ? '-50%' : '0'; const ty = an <= 3 ? '-100%' : an <= 6 ? '-50%' : '0'; posCss = `left:${x}px;top:${y}px;transform:translate(${tx},${ty});`; }

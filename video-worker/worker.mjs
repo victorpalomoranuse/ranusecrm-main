@@ -36,6 +36,18 @@ function lanzaMotor(t, script, opciones) {
     p.stdout.on('data', d => { const x = d.toString(); out += x; buf += x; let i; while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1); const m = /^##PCT (\d+) (.*)$/.exec(l); if (m) pct(t, Number(m[1]), m[2]); const k = /^OK (\d+)\/(\d+)/.exec(l); if (k && opciones.fase === 'indexado') pct(t, 6 + Math.round(18 * Number(k[1]) / Math.max(1, Number(k[2]))), 'Indexando los vídeos de la carpeta elegida (' + k[1] + ' de ' + k[2] + ')'); } });
     p.stderr.on('data', d => { err += d.toString(); }); p.on('close', () => res({ stdout: out, stderr: err })); });
 }
+// La IA mira 8 fotogramas del vídeo ya hecho y dice si hay letras cortadas por el borde, solapadas, ilegibles o encima de la cara
+async function revisaTextos(video, dir) {
+  const key = ENV.ANTHROPIC_API_KEY; if (!key) throw new Error('sin clave');
+  const dur = Number(run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', video]).stdout) || 0; if (!dur) throw new Error('sin duración');
+  const cont = [];
+  for (let i = 0; i < 8; i++) { const jpg = path.join(dir, 'rev_' + i + '.jpg'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', (dur * (i + 0.5) / 8).toFixed(2), '-i', video, '-frames:v', '1', '-vf', 'scale=360:-2', jpg]); if (fs.existsSync(jpg)) { cont.push({ type: 'text', text: 'Imagen ' + (i + 1) + ':' }); cont.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: fs.readFileSync(jpg).toString('base64') } }); } }
+  cont.push({ type: 'text', text: 'Son fotogramas de un vídeo vertical con texto superpuesto. Busca SOLO fallos claros de las letras: "cortado" (una palabra se sale del borde de la pantalla), "solapado" (dos textos se pisan y no se leen), "ilegible" (texto demasiado pequeño o sin contraste). Responde SOLO JSON: {"problemas":["cortado en imagen 3", ...]} o {"problemas":[]} si todo está bien.' });
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 400, messages: [{ role: 'user', content: cont }] }) });
+  const j = await r.json(); const d = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b2 => b2.text || '').join(''))[0]);
+  for (let i = 0; i < 8; i++) fs.rmSync(path.join(dir, 'rev_' + i + '.jpg'), { force: true });
+  return Array.isArray(d.problemas) ? d.problemas.map(String) : [];
+}
 async function paso(t, texto, extra = {}) { Object.assign(t, { progreso: texto }, extra); console.log('[' + t.id + '] ' + texto); await guardar(t); }
 
 const MUSICA_LOCAL = new URL('./datos/musica-crm/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -232,7 +244,16 @@ async function procesa(t) {
     if (subs) {
       await paso(t, 'Dibujando subtítulos y gráficos (capa visual)…', { pct: 90 });
       const base = salida, conTextos = path.join(dir, 'con_textos.mp4'), wk = path.dirname(subs);
-      try { componeHF({ base, subsAss: subs, fuentes: [path.join(wk, 'fonts', 'Montserrat-Bold.ttf'), path.join(wk, 'fonts', 'Rubik-Bold.ttf')], salida: conTextos, dir }); fs.copyFileSync(conTextos, salida); console.log('Capa visual HyperFrames aplicada'); }
+      try {
+        const fuentesHF = [path.join(wk, 'fonts', 'Montserrat-Bold.ttf'), path.join(wk, 'fonts', 'Rubik-Bold.ttf')];
+        componeHF({ base, subsAss: subs, fuentes: fuentesHF, salida: conTextos, dir }); console.log('Capa visual HyperFrames aplicada');
+        // autorevisión: la IA mira fotogramas del resultado; si ve letras cortadas o solapadas, se vuelve a dibujar con letra más pequeña
+        try {
+          const prob = await revisaTextos(conTextos, dir);
+          if (prob.length) { console.log('Autorevisión: problemas →', prob.join('; ')); await paso(t, 'Corrigiendo letras (autorevisión)…', { pct: 91 }); process.env.HF_ESCALA = '0.8'; try { componeHF({ base, subsAss: subs, fuentes: fuentesHF, salida: conTextos, dir }); const prob2 = await revisaTextos(conTextos, dir); console.log('Autorevisión tras corregir:', prob2.length ? prob2.join('; ') : 'sin problemas'); t.autorevision = prob2.length ? 'Quedan detalles: ' + prob2.join('; ') : 'Corregido: ' + prob.join('; '); } finally { delete process.env.HF_ESCALA; } }
+          else { console.log('Autorevisión: sin problemas'); t.autorevision = 'Sin problemas de texto'; }
+        } catch (e) { console.log('Autorevisión no disponible:', e.message); }
+        fs.copyFileSync(conTextos, salida); }
       catch (e) {
         console.log('HyperFrames falló, se queman los textos con ffmpeg:', e.message.slice(0, 300));
         const r2 = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', base, '-vf', 'ass=subs.ass:fontsdir=fonts', ...['-c:v', 'libx264', '-crf', '17', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-c:a', 'copy'], conTextos], { cwd: wk });
