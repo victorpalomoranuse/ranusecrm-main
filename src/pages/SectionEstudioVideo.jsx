@@ -84,13 +84,13 @@ function Explorador({ seleccion, onCambio, titulo = 'Recursos (de dónde salen l
 }
 
 function Nuevo({ formatos, musica, carpetas, onCreado }) {
-  const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [soloTr, setSoloTr] = useState(false), [asig, setAsig] = useState({}), [prog, setProg] = useState(null), [error, setError] = useState('');
+  const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [soloTr, setSoloTr] = useState(false), [soloAudio, setSoloAudio] = useState(false), [asig, setAsig] = useState({}), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
   useEffect(() => { if (tipo === 'clips' && formatos.some(f => f.id === 'clips-dopaminicos')) setFmt('clips-dopaminicos'); }, [tipo, formatos]);
   const enviar = async () => {
     const extra = tipo === 'clips' ? { num_clips: numClips, dur_min: Number(durClip.split('-')[0]), dur_max: Number(durClip.split('-')[1]) } : {};
-    const dDrive = tipo === 'base' || origen === 'drive'; if (tipo === 'clips' && soloTr) extra.fase = 'transcribir';
+    const dDrive = tipo === 'base' || origen === 'drive'; if (tipo === 'clips' && soloTr) extra.fase = 'transcribir'; if (tipo === 'voz' && soloAudio) extra.fase = 'audio';
     if ((dDrive ? !base.length : !(files.length || file)) || !fmt) return; setError(''); setProg(0);
     try {
       const partesG = partesDeGuion(guion); const reparto = tipo !== 'clips' ? partesG.map((texto, i) => ({ texto, clips: (asig[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, ruta: x.ruta })) })).filter(p => p.clips.length) : [];
@@ -98,7 +98,7 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       // varias entrevistas a la vez: un trabajo por cada una, todos con el mismo guion (cada uno saca los clips que aparecen en su vídeo)
       if (dDrive) { for (const b of (tipo === 'clips' ? base : base.slice(0, 1))) await api.post('/estudio-video/trabajos', { tipo, formato: fmt, base: b, nombre_archivo: b.nombre, indicaciones: notas, guion, musica: mus, recursos, ...extra }); }
       else { for (const fl of (tipo === 'clips' && files.length ? files : [file])) { const ruta = await subirArchivo(fl, setProg); await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: fl.name, indicaciones: notas, guion, musica: mus, recursos, ...extra }); } }
-      setFile(null); setFiles([]); setBase([]); setNotas(''); setGuion(''); setAsig({}); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
+      setFile(null); setFiles([]); setBase([]); setNotas(''); setGuion(''); setAsig({}); setSoloAudio(false); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
     } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo enviar'); setProg(null); }
   };
   const opcion = (id, Icono, titulo, sub) => (
@@ -128,6 +128,7 @@ function Nuevo({ formatos, musica, carpetas, onCreado }) {
       <input ref={inp} type="file" accept={tipo === 'voz' ? 'audio/*,video/*' : 'video/*'} multiple={tipo === 'clips'} onChange={e => { setFile(e.target.files?.[0] || null); setFiles(Array.from(e.target.files || [])); }} className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} />
       </>)}
       </>)}
+      {tipo === 'voz' && <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, fontSize: '0.9rem' }}><input type="checkbox" checked={soloAudio} onChange={e => setSoloAudio(e.target.checked)} /> Por pasos: primero solo preparo el audio (lo ajusto con el guion) y después elijo los clips</label>}
       {tipo === 'clips' && <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, fontSize: '0.9rem' }}><input type="checkbox" checked={soloTr} onChange={e => setSoloTr(e.target.checked)} /> Primero solo transcribir: yo elijo en el texto los tramos de cada clip</label>}
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Formato</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
@@ -315,7 +316,7 @@ function AprenderReferencia({ formatos, onCambio }) {
 
 const Trabajo = memo(function Trabajo(props) { return props.t.tipo === 'referencia' ? <TarjetaReferencia t={props.t} onCambio={props.onCambio} /> : <TrabajoNormal {...props} />; });
 function TrabajoNormal({ t, formatos, onCambio }) {
-  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [guionReg, setGuionReg] = useState(t.guion || ''), [constructor, setConstructor] = useState(false), [editando, setEditando] = useState(false), [editTexto, setEditTexto] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
+  const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [guionReg, setGuionReg] = useState(t.guion || ''), [constructor, setConstructor] = useState(false), [panelAudio, setPanelAudio] = useState(false), [asigA, setAsigA] = useState({}), [guionA, setGuionA] = useState(t.guion || ''), [editando, setEditando] = useState(false), [editTexto, setEditTexto] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
   const [txt, color] = ESTADOS[t.estado] || ESTADOS.pendiente;
   const vref = useRef(null);
   const regenerar = async () => { try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { formato: t.formato, recursos: recs, guion: guionReg, ...(baseSel[0] ? { base: baseSel[0] } : {}) }); setPanelReg(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
@@ -336,6 +337,24 @@ function TrabajoNormal({ t, formatos, onCambio }) {
       )}
       {t.estado === 'error' && <div className="ap-error" style={{ marginTop: 8 }}>{t.error || 'Ha fallado el montaje.'}</div>}
       {t.indicaciones && <div style={{ ...mut, marginTop: 6, whiteSpace: 'pre-wrap' }}>“{t.indicaciones}”</div>}
+      {t.estado === 'listo' && t.fase === 'audio' && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ ...mut, marginBottom: 6 }}>Paso 1 · Audio preparado{t.dur_audio ? ' (' + Math.round(t.dur_audio) + ' s)' : ''}. Escúchalo; si no está exacto, quita palabras o frases leyendo el texto. Cuando esté como quieres, pasa al paso 2.</div>
+          {t.url_audio && <audio src={t.url_audio} controls style={{ width: '100%', maxWidth: 420, display: 'block', marginBottom: 8 }} />}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {(t.transcripcion || []).length > 0 && <button className="ap-btn ap-btn-sm" onClick={() => setEditTexto(!editTexto)}><Scissors size={13} /> Ajustar el texto del audio</button>}
+            <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setPanelAudio(!panelAudio)}><Film size={13} /> Paso 2: elegir los clips</button>
+          </div>
+          {panelAudio && (
+            <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)' }}>
+              <div style={{ ...mut, marginBottom: 4 }}>Guion (se divide en partes; en cada una eliges los vídeos que se ven mientras se dice).</div>
+              <textarea className="ap-field-input" style={{ width: '100%', minHeight: 80, marginBottom: 8 }} value={guionA} onChange={e => setGuionA(e.target.value)} />
+              <Desglose guion={guionA} asig={asigA} setAsig={setAsigA} />
+              <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={async () => { try { const partes = partesDeGuion(guionA); const reparto = partes.map((texto, i) => ({ texto, clips: (asigA[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, ruta: x.ruta })) })).filter(p => p.clips.length); const vistos = new Map(); for (const p of reparto) for (const c of p.clips) vistos.set(c.id, c); await api.post('/estudio-video/trabajos/' + t.id + '/montar-con-audio', { reparto, guion: guionA, recursos: [...vistos.values()].length ? [...vistos.values()] : undefined }); setPanelAudio(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo montar'); } }}><Wand2 size={13} /> Montar el vídeo con este audio</button>
+            </div>
+          )}
+        </div>
+      )}
       {t.estado === 'listo' && t.fase === 'transcribir' && (
         <div style={{ marginTop: 10 }}>
           <div style={{ marginBottom: 8 }}>Transcripción lista: {t.palabras_n} palabras ({Math.round((t.dur_total || 0) / 60)} min). Ahora eliges tú en el texto qué tramos forman cada clip.</div>

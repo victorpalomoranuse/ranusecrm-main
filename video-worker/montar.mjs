@@ -95,9 +95,14 @@ if (process.env.SIN_LIMPIEZA !== '1') {
   for (const i of aQuitar) if (!protegidas.has(i)) quitar.add(i);
   for (const i of porTomas) quitar.add(i);
   console.log('Tropiezos recortados:', trab, '| palabras quitadas:', quitar.size, [...quitar].slice(0, 30).map(i => palabras[i]?.t).join(' '));
+  if (process.env.FUERA_JSON) { try { const man = JSON.parse(fs.readFileSync(process.env.FUERA_JSON, 'utf8')); quitar.clear(); for (const i of man) if (Number.isInteger(i)) quitar.add(i); console.log('Texto editado a mano: se quitan', quitar.size, 'palabras'); } catch (e) { console.log('Edición de texto no válida:', e.message); } }
+  if (process.env.SOLO_VOZ === '1') fs.writeFileSync(path.join(work, 'audio_palabras.json'), JSON.stringify({ palabras: palabras.map(w => [w.t, Math.round(w.de * 100) / 100, Math.round(w.a * 100) / 100]), fuera: [...quitar] }));
   const r = recomponeVoz({ palabras, quitar, wav48: path.join(work, 'voz48_orig.wav'), salida: path.join(work, 'voz48.wav') });
   palabras = r.palabras; console.log('Voz limpia:', durVoz.toFixed(1), 's ->', r.durVoz.toFixed(1), 's'); durVoz = r.durVoz;
 } else { fs.copyFileSync(path.join(work, 'voz48_orig.wav'), path.join(work, 'voz48.wav')); }
+
+// Paso 1 del método en dos pasos: solo se prepara el audio limpio (el usuario lo ajusta y luego elige los clips)
+if (process.env.SOLO_VOZ === '1') { console.log('Audio preparado (' + durVoz.toFixed(1) + ' s)'); process.exit(0); }
 
 // 3) la IA monta
 let idx = JSON.parse(fs.readFileSync(INDICE, 'utf8')).videos.filter(v => v.duracion >= 1.5);
