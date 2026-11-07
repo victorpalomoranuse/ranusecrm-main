@@ -184,7 +184,7 @@ router.put('/formatos/:id', async (req, res) => {
     if (r.flash !== undefined) f.receta.flash = !!r.flash;
     for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'subsBajoCara', 'graficos', 'horas', 'preguntaSoloEscrita', 'collage', 'motion']) if (r[k] !== undefined) f.receta[k] = !!r[k];
     if (['Montserrat', 'Rubik'].includes(r.fuente)) f.receta.fuente = r.fuente;
-    if (['normal', 'karaoke'].includes(r.estiloSubs)) f.receta.estiloSubs = r.estiloSubs;
+    if (['normal', 'karaoke', 'caja', 'palabra'].includes(r.estiloSubs)) f.receta.estiloSubs = r.estiloSubs;
     if (r.musica === false) f.receta.musica = false; else if (r.musica && Number.isFinite(Number(r.musica.volumen))) f.receta.musica = { volumen: num(r.musica.volumen, -40, -6, -19) };
     if (r.encuadreZoom !== undefined) f.receta.encuadreZoom = num(r.encuadreZoom, 1, 2, 1.3);
     if (r.pausa !== undefined) f.receta.pausa = num(r.pausa, 0.1, 1.2, 0.4);
@@ -262,8 +262,28 @@ router.get('/trabajos', async (req, res) => {
     for (const t of out) if (t.resultado_audio) { const u = await st().createSignedUrl(t.resultado_audio, 3600); t.url_audio = u.data?.signedUrl || null; }
     for (const t of out) if (t.resultado) { const u = await st().createSignedUrl(t.resultado, 3600); t.url = u.data?.signedUrl || null; const m = t.resultado_movil && await st().createSignedUrl(t.resultado_movil, 3600); t.url_movil = m?.data?.signedUrl || null; }
     out.sort((a, b) => String(b.creado).localeCompare(String(a.creado)));
-    res.json({ trabajos: out.filter(x => x.estado !== 'borrado') });
+    res.json({ trabajos: out.filter(x => x.estado !== 'borrado' && x.tipo !== 'muestra') });
   } catch { res.status(500).json({ error: 'No se pudo leer la lista' }); }
+});
+// Muestras en vídeo de los estilos de subtítulos (estilo + tipografía): ver si existe y pedir que se cree
+const slugMuestra = (estilo, fuente) => String(estilo) + '__' + String(fuente).replace(/\s+/g, '-');
+router.get('/estilos/muestra', async (req, res) => {
+  try {
+    const estilo = limpia(req.query.estilo, 20), fuente = limpia(req.query.fuente, 40); if (!/^[a-z]+$/.test(estilo) || !/^[\w ]+$/.test(fuente)) return res.status(400).json({ error: 'Datos no válidos' });
+    const u = await st().createSignedUrl('estilos/' + slugMuestra(estilo, fuente) + '.mp4', 3600); if (!u.data?.signedUrl) return res.json({ url: null });
+    // createSignedUrl no falla si el archivo no existe: se comprueba
+    const h = await fetch(u.data.signedUrl, { method: 'HEAD' }); res.json({ url: h.ok ? u.data.signedUrl : null });
+  } catch { res.json({ url: null }); }
+});
+router.post('/estilos/muestra', async (req, res) => {
+  try {
+    await bucket(); const estilo = limpia(req.body?.estilo, 20), fuente = limpia(req.body?.fuente, 40);
+    if (!['normal', 'karaoke', 'caja', 'palabra'].includes(estilo) || !/^[\w ]+$/.test(fuente)) return res.status(400).json({ error: 'Estilo o tipografía no válidos' });
+    const t = { id: 'm' + crypto.randomUUID().slice(0, 7), creado: new Date().toISOString(), por: 'sistema', tipo: 'muestra', muestra: { estilo, fuente, acento: limpia(req.body?.acento, 9) || '#E3D2B8' }, nombre_archivo: 'Muestra ' + estilo + ' · ' + fuente, estado: 'pendiente', progreso: 'En cola', version: 1 };
+    t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
+    if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); }
+    res.status(201).json({ ok: true, id: t.id });
+  } catch (e) { res.status(500).json({ error: 'No se pudo crear la muestra' }); }
 });
 // Guarda el reparto de vídeos por parte del guion (y el guion) en el propio trabajo, para que no haya que volver a elegirlos
 router.post('/trabajos/:id/reparto', async (req, res) => {

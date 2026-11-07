@@ -286,6 +286,23 @@ function ConstructorClips({ t, onCambio }) {
   );
 }
 
+// Vídeo de muestra del estilo de subtítulos y la tipografía elegidos
+function MuestraEstilo({ estilo, fuente, acento }) {
+  const [url, setUrl] = useState(undefined), [creando, setCreando] = useState(false), [msg, setMsg] = useState('');
+  const mira = useCallback(() => api.get('/estudio-video/estilos/muestra', { params: { estilo, fuente } }).then(r => { setUrl(r.data.url || null); return r.data.url; }).catch(() => { setUrl(null); return null; }), [estilo, fuente]);
+  useEffect(() => { setUrl(undefined); setMsg(''); setCreando(false); mira(); }, [mira]);
+  const crear = async () => { setCreando(true); setMsg(''); try { await api.post('/estudio-video/estilos/muestra', { estilo, fuente, acento }); for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 5000)); const u = await mira(); if (u) { setCreando(false); return; } } setMsg('Tarda más de lo normal; vuelve a mirar en un minuto.'); } catch (e) { setMsg(e?.response?.data?.error || 'No se pudo crear la muestra'); } setCreando(false); };
+  return (
+    <div style={{ margin: '8px 0 12px' }}>
+      <div style={{ ...mut, marginBottom: 4 }}>Muestra: «{estilo}» con {fuente}</div>
+      {url ? <video key={url} src={url} controls loop muted playsInline style={{ width: '100%', maxWidth: 220, borderRadius: 10, background: '#000', display: 'block' }} /> : url === undefined ? <div style={mut}><Loader2 size={13} /> Mirando…</div> : (
+        <button className="ap-btn ap-btn-sm" disabled={creando} onClick={crear}>{creando ? <><Loader2 size={13} /> Creando la muestra (1-2 min)…</> : <><Play size={13} /> Ver cómo queda (crear muestra)</>}</button>
+      )}
+      {msg && <div style={{ ...mut, marginTop: 4 }}>{msg}</div>}
+    </div>
+  );
+}
+
 // Subir clips o fotos desde el dispositivo para usarlos como escenas
 function SubirRecursos({ onSubidos }) {
   const [prog, setProg] = useState(null), [err, setErr] = useState(''), inp = useRef(null);
@@ -896,8 +913,9 @@ function Formatos({ formatos, onCambio }) {
         <Campo etiqueta="Palabras por subtítulo">{num(r.subs?.palabrasPorBloque, v => setS('palabrasPorBloque', v))}</Campo>
         <Campo etiqueta="Tamaño subtítulo">{num(r.subs?.tam, v => setS('tam', v))}</Campo>
         <Campo etiqueta="Altura subtítulo">{num(r.subs?.margenV, v => setS('margenV', v))}</Campo>
-        <Campo etiqueta="Estilo de subtítulos"><select className="ap-field-input" style={{ width: '100%' }} value={r.estiloSubs || 'normal'} onChange={e => setR('estiloSubs', e.target.value)}><option value="normal">Normal (aparecen por frases)</option><option value="karaoke">Karaoke (se resalta la palabra que suena)</option></select></Campo>
-        <Campo etiqueta="Tipografía de subtítulos"><select className="ap-field-input" style={{ width: '100%' }} value={r.fuente || 'Montserrat'} onChange={e => setR('fuente', e.target.value)}><option>Montserrat</option><option>Rubik</option></select></Campo>
+        <Campo etiqueta="Estilo de subtítulos"><select className="ap-field-input" style={{ width: '100%' }} value={r.estiloSubs || 'normal'} onChange={e => setR('estiloSubs', e.target.value)}><option value="normal">Normal (aparecen por frases)</option><option value="karaoke">Karaoke (se resalta la palabra que suena)</option><option value="caja">Caja (texto sobre una tarjeta oscura)</option><option value="palabra">Palabra a palabra (una cada vez, con rebote)</option></select></Campo>
+        <MuestraEstilo estilo={r.estiloSubs || 'normal'} fuente={r.fuente || 'Montserrat'} acento={r.acento || '#E3D2B8'} />
+        <Campo etiqueta="Tipografía de subtítulos"><select className="ap-field-input" style={{ width: '100%' }} value={r.fuente || 'Montserrat'} onChange={e => setR('fuente', e.target.value)}>{['Montserrat', 'Rubik', 'Anton', 'Bebas Neue', 'Archivo Black', 'Oswald', 'Staatliches', 'Russo One', 'Righteous', 'Playfair Display', 'Abril Fatface', 'Cinzel'].map(n => <option key={n}>{n}</option>)}</select></Campo>
         <Campo etiqueta="Volumen música (dB, -19 típico)">{num(r.musica?.volumen ?? -19, v => setR('musica', { volumen: v }))}</Campo>
         <Campo etiqueta="Zoom de encuadre (1 = sin)">{num(r.encuadreZoom, v => setR('encuadreZoom', v))}</Campo>
         <Campo etiqueta="Pausa que se corta (s)">{num(r.pausa, v => setR('pausa', v))}</Campo>

@@ -4,6 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
+import { FUENTES } from './fuentes.mjs';
 
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const tseg = (s) => { const m = /^(\d+):(\d+):(\d+(?:\.\d+)?)$/.exec(String(s).trim()); return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : 0; };
@@ -56,7 +57,7 @@ function eventoAHtml(ev, est, id) {
   const resto = T.slice(ult); if (resto) trozos.push([resto, col]);
   inner = trozos.map(([t, c]) => { const t2 = esc(t).replace(/\\N/g, '<br>'); return c.toLowerCase() === colorBase.toLowerCase() ? t2 : `<span style="color:${c}">${t2}</span>`; }).join('');
   if (!inner.replace(/<[^>]+>/g, '').trim()) return null;
-  const fuente = est?.Fontname === 'Rubik' ? 'Rubik' : 'Montserrat'; const negrita = est?.Bold === '-1' || est?.Bold === '1' ? 800 : 500;
+  const fuente = est?.Fontname && FUENTES[est.Fontname] ? est.Fontname : 'Montserrat'; const negrita = est?.Bold === '-1' || est?.Bold === '1' ? 800 : 500;
   let fsUso = fs0; if (ev.estilo === 'Intro' && pos) { const nCar = inner.replace(/<[^>]+>/g, '').length || 1; fsUso = Math.min(fs0, 980 / (nCar * 0.66)); const ancho = nCar * fsUso * 0.66; pos[1] = String(Math.max(ancho / 2 + 30, Math.min(1050 - ancho / 2, Number(pos[1])))); }
   // el texto nunca se sale del encuadre: si la línea más larga no cabe en 920 px se reduce el tamaño; HF_ESCALA lo reduce más si la revisión lo pide
   if (ev.estilo !== 'Intro' && !caja0(est)) { const lineas = inner.replace(/<br>/g, '\n').replace(/<[^>]+>/g, '').split('\n'); const mx = Math.max(...lineas.map(s => s.length), 1); fsUso = Math.min(fsUso, 900 / (mx * 0.66)); }
@@ -86,8 +87,7 @@ export function construyeComposicion(ass, duracion, nombreVideo) {
 <html lang="es"><head><meta charset="UTF-8" /><meta name="viewport" content="width=1080, height=1920" />
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
 <style>
-  @font-face { font-family: 'Montserrat'; font-weight: 100 900; src: url('assets/Montserrat-Bold.ttf'); }
-  @font-face { font-family: 'Rubik'; font-weight: 100 900; src: url('assets/Rubik-Bold.ttf'); }
+${Object.entries(FUENTES).map(([fam, arch]) => "@font-face { font-family: '" + fam + "'; font-weight: 100 900; src: url('assets/" + arch + "'); }").join('\n  ')}
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 1080px; height: 1920px; overflow: hidden; background: #000; }
   #root { position: relative; width: 1080px; height: 1920px; overflow: hidden; }

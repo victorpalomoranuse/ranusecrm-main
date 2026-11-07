@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { tarjetaPNG, NOMBRES_ICONOS } from './iconos.mjs';
+import { copiaFuentes } from './fuentes.mjs';
 import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
 import * as drive from './drive.mjs';
 import { ENV } from './entorno.mjs';
@@ -182,7 +183,7 @@ console.log('Duración final:', durFinal.toFixed(1), 's (', piezas.length, 'troz
 
 // ---- subtítulos: siempre minúscula, Montserrat negrita con sombra leve ----
 const ev = []; const bl = []; let b = [];
-palabras.forEach((w) => { if (fuera.has(w.i)) return; const d = mapea((w.de + w.a) / 2); if (d === null) return; b.push({ ...w, d }); if (b.length >= R.subs.palabrasPorBloque || /[.?!,]$/.test(w.t)) { bl.push(b); b = []; } }); if (b.length) bl.push(b);
+palabras.forEach((w) => { if (fuera.has(w.i)) return; const d = mapea((w.de + w.a) / 2); if (d === null) return; b.push({ ...w, d }); if (b.length >= (R.estiloSubs === 'palabra' ? 1 : R.subs.palabrasPorBloque) || /[.?!,]$/.test(w.t)) { bl.push(b); b = []; } }); if (b.length) bl.push(b);
 const posSub = subTop ? '\\an8\\pos(540,' + subTop + ')' : '';
 bl.forEach((g, k) => {
   const ini = mapea(g[0].de) ?? g[0].d, fin = k < bl.length - 1 ? Math.max(mapea(bl[k + 1][0].de) ?? bl[k + 1][0].d, ini + 0.25) : ini + 0.6;
@@ -193,7 +194,7 @@ bl.forEach((g, k) => {
       const tx = g.map((x, q) => { const s0 = limpiaT(x.t).replace(/[.,;:]+$/, '').replace(/[¿¡]/g, ''), sx = R.mayusculas === true ? s0.toUpperCase() : s0.toLowerCase(); return q === j ? '{\\c' + ACENTO + '\\fscx112\\fscy112}' + sx + '{\\c&HFFFFFF&\\fscx100\\fscy100}' : sx; }).join(' ');
       if (t1 > t0) ev.push('Dialogue: 1,' + tAss(t0) + ',' + tAss(Math.min(t1, durFinal)) + ',Sub,,0,0,0,,{' + posSub + '\\fad(' + (j === 0 ? 30 : 0) + ',0)}' + tx);
     });
-  } else ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(Math.min(fin, durFinal)) + ',Sub,,0,0,0,,{' + posSub + '\\fscx90\\fscy90\\t(0,100,\\fscx100\\fscy100)\\fad(30,0)}' + txt);
+  } else ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(Math.min(fin, durFinal)) + ',' + (R.estiloSubs === 'caja' ? 'SubCaja' : 'Sub') + ',,0,0,0,,{' + posSub + (R.estiloSubs === 'palabra' ? '\\fscx55\\fscy55\\t(0,150,\\fscx100\\fscy100)\\fad(30,0)' : '\\fscx90\\fscy90\\t(0,100,\\fscx100\\fscy100)\\fad(30,0)') + '}' + txt);
 });
 const tf = Math.min(durFinal, 3.2);
 if (R.titulo !== false && plan.titulo) {
@@ -212,12 +213,14 @@ if (R.barra === true) ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durFinal) + 
 const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920', 'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '', '[V4+ Styles]',
   'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',
   'Style: Sub,' + R.fuente + ',' + (R.subs.tam >= 70 ? Math.round(R.subs.tam * 0.64) : R.subs.tam) + ',&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,' + GROSOR + ',2,50,50,' + R.subs.margenV + ',1',
+  'Style: SubCaja,' + R.fuente + ',' + (R.subs.tam >= 70 ? Math.round(R.subs.tam * 0.64) : R.subs.tam) + ',&H00FFFFFF,&H000000FF,&HC0141414,&HC0141414,-1,0,0,0,100,100,0,0,3,14,0,2,50,50,' + R.subs.margenV + ',1',
   'Style: Kicker,Montserrat,34,' + ACENTO.replace('&H', '&H00').replace(/&$/, '') + ',&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,80,80,300,1',
   'Style: Titulo,Montserrat,60,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,2,4,8,90,90,385,1', 'Style: Pregunta,Montserrat,50,&H00FFFFFF,&H000000FF,&HC0141414,&HC0141414,-1,0,0,0,100,100,0,0,3,18,0,8,80,80,270,1', '', '[Events]', 'Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text'].concat(ev).join('\n');
 fs.writeFileSync(path.join(work, 'subs.ass'), '\uFEFF' + ass, 'utf8');
 copiaModelo(work);
 fs.mkdirSync(path.join(work, 'fonts'), { recursive: true }); fs.copyFileSync(FONT, path.join(work, 'fonts', 'Montserrat-Bold.ttf'));
 for (const f of ['Rubik-Bold.ttf', 'Rubik-Regular.ttf']) { const o = new URL('./fonts/' + f, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'); if (fs.existsSync(o)) fs.copyFileSync(o, path.join(work, 'fonts', f)); }
+copiaFuentes(path.join(work, 'fonts'), ['Montserrat', 'Rubik', R.fuente]);
 
 // ---- escenas superpuestas en momentos clave ----
 const ins = [], dr = {};

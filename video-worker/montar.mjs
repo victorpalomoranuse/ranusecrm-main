@@ -8,6 +8,7 @@ import { bibliotecaLocal, alPulso, mezcla } from './musica.mjs';
 import * as drive from './drive.mjs';
 import { ENV } from './entorno.mjs';
 import { introLetras, ESTILO_INTRO } from './intro.mjs';
+import { copiaFuentes } from './fuentes.mjs';
 import { acotaPorEnergia } from './voz.mjs';
 import { PLAYBOOK_REDES } from './clips.mjs';
 import { ARGS_VIDEO } from './codec.mjs';
@@ -493,7 +494,8 @@ const ev = []; const bloques = []; let b = [];
 const intro = { eventos: [], ultima: -1, fin: 0 }; // el título de apertura va como un subtítulo más, igual que todos
 ev.push(...intro.eventos);
 const enf = new Set(plan.enfasis || []);
-palabras.forEach((w, i) => { w.i = i; if (i <= intro.ultima) return; b.push(w); if (b.length >= RECETA.subs.palabrasPorBloque || /[.?!,]$/.test(w.t)) { bloques.push(b); b = []; } }); if (b.length) bloques.push(b);
+const ppb = RECETA.estiloSubs === 'palabra' ? 1 : RECETA.subs.palabrasPorBloque;
+palabras.forEach((w, i) => { w.i = i; if (i <= intro.ultima) return; b.push(w); if (b.length >= ppb || /[.?!,]$/.test(w.t)) { bloques.push(b); b = []; } }); if (b.length) bloques.push(b);
 bloques.forEach((bl, k) => {
   const ini = bl[0].de, fin = k < bloques.length - 1 ? Math.max(bloques[k + 1][0].de, ini + 0.25) : Math.max(bl[bl.length - 1].a, ini + 0.4);
   const txt = bl.map(w => { const fuerte = enf.has(w.i) || /\d/.test(w.t); const s = (RECETA.mayusculas === true ? limpiaT(w.t).toUpperCase() : limpiaT(w.t).toLowerCase()).replace(/[.,;:¿¡]+$/, ''); return fuerte ? '{\\c' + RECETA.acento + '}' + s + '{\\c&HFFFFFF&}' : s; }).join(' ');
@@ -507,7 +509,7 @@ bloques.forEach((bl, k) => {
       const tx = bl.map((x, q) => { const sx = (RECETA.mayusculas === true ? limpiaT(x.t).toUpperCase() : limpiaT(x.t).toLowerCase()).replace(/[.,;:¿¡]+$/, ''); return q === j ? '{\\c' + RECETA.acento + '\\fscx112\\fscy112}' + sx + '{\\c&HFFFFFF&\\fscx100\\fscy100}' : sx; }).join(' ');
       ev.push('Dialogue: 1,' + tAss(t0) + ',' + tAss(t1) + ',Sub,,0,0,0,,{' + pos + '\\fad(' + (j === 0 ? 40 : 0) + ',0)}' + tx);
     });
-  } else ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(fin) + ',Sub,,0,0,0,,{' + pos + '\\fscx82\\fscy82\\t(0,110,\\fscx100\\fscy100)\\fad(40,0)}' + txt);
+  } else ev.push('Dialogue: 1,' + tAss(ini) + ',' + tAss(fin) + ',' + (RECETA.estiloSubs === 'caja' ? 'SubCaja' : 'Sub') + ',,0,0,0,,{' + pos + (RECETA.estiloSubs === 'palabra' ? '\\fscx55\\fscy55\\t(0,150,\\fscx100\\fscy100)\\fad(30,0)' : '\\fscx82\\fscy82\\t(0,110,\\fscx100\\fscy100)\\fad(40,0)') + '}' + txt);
 });
 if (RECETA.motion) { try {
   const lista = palabras.map((w, i) => i + ':' + w.t + '@' + w.de.toFixed(1)).join(' ').slice(0, 20000);
@@ -531,6 +533,7 @@ const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY:
   'Style: Sub,' + RECETA.fuente + ',' + (RECETA.subs.tam >= 70 ? Math.round(RECETA.subs.tam * 0.64) : RECETA.subs.tam) + ',&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,' + (RECETA.mayusculas === true && RECETA.subs.tam > 70 ? '9,4' : '1,2') + ',2,50,50,' + RECETA.subs.margenV + ',1',
   ESTILO_INTRO,
   'Style: Kicker,Montserrat,34,' + RECETA.acento.replace('&H', '&H00').replace(/&$/, '') + ',&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,80,80,300,1',
+  'Style: SubCaja,' + RECETA.fuente + ',' + (RECETA.subs.tam >= 70 ? Math.round(RECETA.subs.tam * 0.64) : RECETA.subs.tam) + ',&H00FFFFFF,&H000000FF,&HC0141414,&HC0141414,-1,0,0,0,100,100,0,0,3,14,0,2,50,50,' + RECETA.subs.margenV + ',1',
   'Style: Etiqueta,Montserrat,48,&H00FFFFFF,&H000000FF,&HC0141414,&HC0141414,-1,0,0,0,100,100,0,0,3,16,0,8,80,80,300,1',
   'Style: Hora,' + RECETA.fuente + ',118,&H00FFFFFF,&H000000FF,&H00101010,&H88000000,-1,0,0,0,100,100,0,0,1,2,3,8,60,60,500,1',
   'Style: Titulo,Montserrat,60,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,3,5,8,90,90,385,1', '', '[Events]', 'Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text'].concat(ev).join('\n');
@@ -538,6 +541,7 @@ fs.writeFileSync(path.join(work, 'subs.ass'), '\uFEFF' + ass, 'utf8');
 copiaModelo(work);
 fs.mkdirSync(path.join(work, 'fonts'), { recursive: true }); fs.copyFileSync(FONT, path.join(work, 'fonts', 'Montserrat-Bold.ttf'));
 for (const f of ['Rubik-Bold.ttf', 'Rubik-Regular.ttf']) { const o = new URL('./fonts/' + f, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'); if (fs.existsSync(o)) fs.copyFileSync(o, path.join(work, 'fonts', f)); }
+copiaFuentes(path.join(work, 'fonts'), ['Montserrat', 'Rubik', RECETA.fuente]);
 
 marca(88, 'Montando el vídeo final con música y subtítulos');
 // 7) audio: voz limpia + whoosh sutil en cada corte

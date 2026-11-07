@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { hfDisponible, componeHF } from './hf.mjs';
 import { analizaReferencia } from './referencia.mjs';
 import { indexaSubidos } from './subidos.mjs';
+import { creaMuestra } from './muestras.mjs';
 import path from 'path';
 import { createRequire } from 'module';
 import { spawnSync, spawn } from 'child_process';
@@ -191,8 +192,18 @@ async function procesaClips(t, entrada, dir) {
   }));
   await paso(t, hijos.length + ' clips creados (aparecen abajo, cada uno con su vídeo)', { pct: 100, estado: 'listo', terminado: new Date().toISOString(), error: null });
 }
+// Vídeo de muestra de un estilo de subtítulos con una tipografía (se guarda en estilos/ para verlo en Formatos)
+async function procesaMuestra(t, dir) {
+  const m = t.muestra || {}; await paso(t, 'Dibujando la muestra del estilo…', { estado: 'procesando', empezado: new Date().toISOString(), pct: 20 });
+  const f = creaMuestra({ estilo: m.estilo || 'normal', fuente: m.fuente || 'Montserrat', acento: m.acento || '#E3D2B8', dir: path.join(dir, '_muestra') });
+  const slug = String(m.estilo || 'normal') + '__' + String(m.fuente || 'Montserrat').replace(/\s+/g, '-');
+  const up = await st.upload('estilos/' + slug + '.mp4', fs.readFileSync(f), { contentType: 'video/mp4', upsert: true, cacheControl: '60' }); if (up.error) throw new Error('No se pudo subir la muestra: ' + up.error.message);
+  await paso(t, 'Muestra lista', { pct: 100, estado: 'listo', muestra_ruta: 'estilos/' + slug + '.mp4', terminado: new Date().toISOString(), error: null });
+}
+
 async function procesa(t) {
   const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
+  if (t.tipo === 'muestra') { await procesaMuestra(t, dir); return; }
   await paso(t, 'Descargando el archivo…', { estado: 'procesando', empezado: new Date().toISOString(), pct: 2 });
   let entrada, indiceEdicion = null, seleccionEdicion = null;
   if (t.tipo === 'edicion') {
@@ -309,7 +320,7 @@ async function procesa(t) {
       await paso(t, 'Dibujando subtítulos y gráficos (capa visual)…', { pct: 90 });
       const base = salida, conTextos = path.join(dir, 'con_textos.mp4'), wk = path.dirname(subs);
       try {
-        const fuentesHF = [path.join(wk, 'fonts', 'Montserrat-Bold.ttf'), path.join(wk, 'fonts', 'Rubik-Bold.ttf')];
+        const fuentesHF = (() => { try { return fs.readdirSync(path.join(wk, 'fonts')).filter(x => /\.ttf$/i.test(x)).map(x => path.join(wk, 'fonts', x)); } catch { return [path.join(wk, 'fonts', 'Montserrat-Bold.ttf')]; } })();
         componeHF({ base, subsAss: subs, fuentes: fuentesHF, salida: conTextos, dir }); restauraAudio(conTextos, base, dir); console.log('Capa visual HyperFrames aplicada');
         // autorevisión: la IA mira fotogramas del resultado; si ve letras cortadas o solapadas, se vuelve a dibujar con letra más pequeña
         try {
