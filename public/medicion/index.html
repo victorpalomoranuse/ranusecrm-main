@@ -435,6 +435,7 @@ body.crm .top .brand{display:none}
         <button data-tool="select" title="Seleccionar y mover"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l12 8-5.5 1.5L10 18z"/></svg><span class="lb">Seleccionar</span></button>
         <button data-tool="brush" title="Pincel: copia las propiedades de un elemento (muro, puerta, ventana, máquina, suelo…) y las pega en otros del mismo tipo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 3l3 3-9 9-3-3z"/><path d="M9 12c-2.5 0-4 1.5-4 4 0 1.5-1 3-2 3 4 1 9 0 9-4"/></svg><span class="lb">Pincel</span></button>
         <button data-tool="door" title="Puerta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20V4h12v16"/><path d="M4 20h16"/><path d="M15 12h.01"/></svg><span class="lb">Puerta</span></button>
+        <button data-tool="rc" title="Recrecido: trasdosado de pladur decorativo pegado a un muro. Arrastra a lo largo del muro para dibujarlo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18"/><rect x="5" y="9" width="14" height="5" fill="currentColor" fill-opacity=".35"/><path d="M5 9v5M19 9v5"/></svg><span class="lb">Recrecido</span></button>
         <button data-tool="win" title="Ventana"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14"/><path d="M12 5v14M4 12h16"/></svg><span class="lb">Ventana</span></button>
         <button data-tool="pillar" title="Pilar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" fill="currentColor"/></svg><span class="lb">Pilar</span></button>
         <button data-tool="diag" title="Cotas: arrastra de un punto a otro (se pegan a esquinas, caras de muros y zonas) y mide la distancia"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18"/><path d="M3 14v8M21 14v8"/><path d="M7 11l-3 3 3 3M17 11l3 3-3 3" transform="translate(0 -5)"/></svg><span class="lb">Cotas</span></button>
@@ -3899,6 +3900,7 @@ function scene0(C,k,view,o){
       var q=rcPoly(rc);if(!q||q.len<1)return;
       var slr=sel&&sel.t==='rc'&&sel.id===rc.id,colr=slr?C.accent:(view==='interv'?C.nw:C.ink);
       h+='<polygon points="'+q.pts.map(function(p){return f2(p.x)+','+f2(p.y)}).join(' ')+'" style="fill:'+colr+';fill-opacity:.22;stroke:'+colr+';stroke-width:'+f2((slr?2.6:1.3)*px)+'"/>';
+      if(slr){[[q.pts[0],q.pts[3]],[q.pts[1],q.pts[2]]].forEach(function(e2){h+='<circle cx="'+f2((e2[0].x+e2[1].x)/2)+'" cy="'+f2((e2[0].y+e2[1].y)/2)+'" r="'+f2(6*px)+'" style="fill:#fff;stroke:'+colr+';stroke-width:'+f2(2*px)+'"/>'})}
       zlab+=txt(C,px,q.mid.x+q.nx*13*px,q.mid.y+q.ny*13*px+4*px,'Recrecido '+fmtU(rc.t||10)+' '+UNL()+(rc.mat?' · '+rc.mat:''),colr,10,600);
     });
   }
@@ -5094,8 +5096,26 @@ svg.addEventListener('pointerdown',function(e){
       panelSel();render();return;
     }
   }
+  if(st.tool==='rc'&&!pan){
+    var wrc=toW(p),nrw=nearestWallPos(wrc,60/st.k);
+    if(!nrw){toast('Empieza junto a un muro: el recrecido se pega a su cara');return}
+    var grc=nrw.g,sdr=((wrc.x-grc.a.x)*(-grc.uy)+(wrc.y-grc.a.y)*grc.ux)>=0?'p':'m',s0r=Math.max(0,Math.min(grc.l,rd5(nrw.s)));
+    snap();
+    var nrc2={id:uid('c'),wall:nrw.w.id,sd:sdr,s0:s0r,s1:s0r,t:10,mat:'',s:'new'};
+    st.v.rc.push(nrc2);st.sel={t:'rc',id:nrc2.id};
+    if(!rcVis(st.view)){st.view='interv';toolbar()}
+    gesture={type:'rcdraw',id:e.pointerId,rc:nrc2,a:s0r,moved:false};render();return;
+  }
   if((st.tool==='select'||st.tool==='door'||st.tool==='win'||st.tool==='pillar')&&!pan){
     var wo=toW(p),ho=pick(wo,Math.max(16/st.k,6),st.view);
+    if(ho&&ho.t==='rc'&&st.tool==='select'){
+      var rcc=by(st.v.rc,ho.id),qq=rcc&&rcPoly(rcc);
+      if(rcc&&qq){
+        var gw=wg(qq.w),sc=(wo.x-gw.a.x)*gw.ux+(wo.y-gw.a.y)*gw.uy,tolE=14/st.k;
+        var modoR=(qq.len>tolE*2.5&&Math.abs(sc-rcc.s0)<tolE)?'s0':(qq.len>tolE*2.5&&Math.abs(sc-rcc.s1)<tolE)?'s1':'mv';
+        snap();st.sel=ho;gesture={type:'dragRc',id:e.pointerId,rc:rcc,modo:modoR,off:sc-rcc.s0,moved:false,sx:p.x,sy:p.y};panelSel();render();return;
+      }
+    }
     if(ho&&(ho.t==='op'||ho.t==='pil')&&dimHitEn(wo))ho=null; /* el número de una cota manda: un toque lo edita */
     if(ho&&ho.t==='op'){
       var oo=opn(ho.id);
@@ -5232,6 +5252,21 @@ svg.addEventListener('pointermove',function(e){
     gesture.moved=true;
     var wmm=toW(p),tx=rd5((wmm.x-gesture.p0.x)),ty=rd5((wmm.y-gesture.p0.y)),ddx=tx-gesture.tot.x,ddy=ty-gesture.tot.y;
     if(ddx||ddy){moverMulti(ddx,ddy);gesture.tot={x:tx,y:ty};req()}
+  }else if(gesture.type==='rcdraw'&&gesture.id===e.pointerId){
+    var wd=toW(p),rr=gesture.rc,wq2=wl(rr.wall),gq2=wg(wq2),sq2=Math.max(0,Math.min(gq2.l,rd5((wd.x-gq2.a.x)*gq2.ux+(wd.y-gq2.a.y)*gq2.uy)));
+    rr.s0=f2(Math.min(gesture.a,sq2));rr.s1=f2(Math.max(gesture.a,sq2));gesture.moved=true;req();
+  }else if(gesture.type==='dragRc'&&gesture.id===e.pointerId){
+    if(!gesture.moved&&Math.hypot(p.x-gesture.sx,p.y-gesture.sy)<6)return;
+    gesture.moved=true;
+    var wr=toW(p),rcm=gesture.rc,Lr=rcm.s1-rcm.s0;
+    if(gesture.modo==='mv'){
+      var nr=nearestWallPos(wr,45/st.k);
+      if(nr){var gg=nr.g,Lc=Math.min(Lr,gg.l),ns0=Math.max(0,Math.min(gg.l-Lc,rd5(nr.s-gesture.off)));rcm.wall=nr.w.id;rcm.sd=((wr.x-gg.a.x)*(-gg.uy)+(wr.y-gg.a.y)*gg.ux)>=0?'p':'m';rcm.s0=f2(ns0);rcm.s1=f2(ns0+Lc)}
+    }else{
+      var wq3=wl(rcm.wall),gq3=wq3&&wg(wq3);
+      if(gq3){var sx3=Math.max(0,Math.min(gq3.l,rd5((wr.x-gq3.a.x)*gq3.ux+(wr.y-gq3.a.y)*gq3.uy)));if(gesture.modo==='s0')rcm.s0=f2(Math.min(sx3,rcm.s1-5));else rcm.s1=f2(Math.max(sx3,rcm.s0+5))}
+    }
+    req();
   }else if(gesture.type==='dragOp'&&gesture.id===e.pointerId){
     if(!gesture.moved&&Math.hypot(p.x-gesture.sx,p.y-gesture.sy)<6)return;
     gesture.moved=true;
@@ -5393,6 +5428,16 @@ function endPtr(e){
     gesture=null;
     if(!g.moved){hist.pop();return}
     commit();
+  }
+  else if(g.type==='dragRc'&&g.id===e.pointerId){
+    gesture=null;
+    if(!g.moved){hist.pop();return}
+    commit();panelSel();
+  }
+  else if(g.type==='rcdraw'&&g.id===e.pointerId){
+    gesture=null;
+    if(Math.abs(g.rc.s1-g.rc.s0)<5){st.v.rc=st.v.rc.filter(function(q){return q.id!==g.rc.id});hist.pop();st.sel=null;render();panelSel();toast('Arrastra a lo largo del muro para dibujar el recrecido');return}
+    st.tool='select';commit();toolbar();hint();panelSel();toast('Recrecido dibujado. Arrástralo para moverlo, tira de los extremos para alargarlo; el espesor y el material, en el panel.');
   }
   else if(g.type==='dragOp'&&g.id===e.pointerId){
     gesture=null;
@@ -6442,6 +6487,7 @@ function fit(){
 var HINTS={
   brush:'Pincel: toca el elemento del que quieres copiar las propiedades (estado, grosor, tipo, acabados, material…) y luego toca los que quieras cambiar. Para elegir otro original, vuelve a tocar el primero.',
   draw:'Dibujo libre: arrastra para dibujar líneas, rectángulos, círculos, flechas, cotas y nubes; en la polilínea y el texto, toca. Tócalo con «Seleccionar» para moverlo, cambiarlo o borrarlo.',
+  rc:'Recrecido: pulsa junto a un muro y arrastra a lo largo de él; se pega a esa cara. Luego, con «Seleccionar», arrástralo para moverlo (cambia de muro y de cara si lo llevas a otro), o tira de sus extremos para alargarlo o acortarlo. El espesor y el material los cambias en el panel.',
   mm:'Toca junto a un muro para pegarle el elemento de obra a medida (mueble, panelado, retroiluminado u hornacina). Luego ajusta sus medidas en el panel.',
   pen:'Los muros salen a 90° (usa «Libre» para diagonales). Dibuja el contorno de la sala a mano alzada: se ve el muro ya recto y se endereza solo al soltar. Con «Curva» activada, un trazo curvo se convierte en un arco. Después toca cada muro y escribe su medida.',
   paint:'Elige un material y toca dentro de una sala (o sobre un muro en Acabados). En Alzados puedes pintar toda la pared, un trozo (arrastrando) o una franja.',
@@ -7758,6 +7804,7 @@ $('tools').addEventListener('click',function(e){
   if(t==='diag'){st.cotasT=true;st.tool='draw';st.drK='dim';st.drPoly=null;st.dg=null;toolbar();hint();render();flyClose();return}
   st.cotasT=false;
   st.tool=t;st.dg=null;
+  if(t==='rc'&&!rcVis(st.view)){st.view='interv';save()} /* los recrecidos y trasdosados van en Implantación */
   if(t==='equip'&&st.view==='alz'&&placeVista==='planta')placeVista='alzado'; /* en Alzados, los bloques van en el alzado */
   if(t==='equip'&&st.view!=='distrib'&&st.view!=='actual'&&!(placeVista!=='planta'&&st.view==='alz')){st.view='distrib';placeVista='planta';save()}
   toolbar();render();
