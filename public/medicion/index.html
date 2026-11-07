@@ -3906,6 +3906,7 @@ function scene0(C,k,view,o){
         function PP(s,d){return {x:gq.a.x+gq.ux*s+q.nx*d,y:gq.a.y+gq.uy*s+q.ny*d}}
         var a1=PP(Math.max(0,Math.min(gq.l,rc.s0)),o2+26*px),b1=PP(Math.max(0,Math.min(gq.l,rc.s1)),o2+26*px);
         h+=dimLine(C,px,a1.x,a1.y,b1.x,b1.y,fmtU(q.len)+' '+UNL(),colr,colr);
+        var f0=PP(Math.min(gq.l,rc.s1)+10*px,q.w.t/2),f1=PP(Math.min(gq.l,rc.s1)+10*px,o2); h+=dimLine(C,px,f0.x,f0.y,f1.x,f1.y,fmtU(rc.t||10)+' '+UNL(),colr,colr);
         var mismos=(v.rc||[]).filter(function(o){return o.id!==rc.id&&o.wall===rc.wall&&(o.sd||'p')===(rc.sd||'p')});
         var prevEnd=0;mismos.forEach(function(o){if(o.s1<=rc.s0+0.01&&o.s1>prevEnd)prevEnd=o.s1});
         var haySig=mismos.some(function(o){return o.s0>=rc.s1-0.01});
@@ -3913,7 +3914,7 @@ function scene0(C,k,view,o){
         if(!haySig&&gq.l-rc.s1>0.5){var d0=PP(rc.s1,o2+46*px),d1=PP(gq.l,o2+46*px);h+=dimLine(C,px,d0.x,d0.y,d1.x,d1.y,fmtU(gq.l-rc.s1)+' '+UNL(),C.dim,C.dim)}
       })();
       if(slr){[[q.pts[0],q.pts[3]],[q.pts[1],q.pts[2]]].forEach(function(e2){h+='<circle cx="'+f2((e2[0].x+e2[1].x)/2)+'" cy="'+f2((e2[0].y+e2[1].y)/2)+'" r="'+f2(6*px)+'" style="fill:#fff;stroke:'+colr+';stroke-width:'+f2(2*px)+'"/>'})}
-      zlab+=txt(C,px,q.mid.x+q.nx*13*px,q.mid.y+q.ny*13*px+4*px,'Recrecido '+fmtU(rc.t||10)+' '+UNL()+(rc.mat?' · '+rc.mat:''),colr,10,600);
+      if(rc.mat)zlab+=txt(C,px,q.mid.x+q.nx*70*px,q.mid.y+q.ny*70*px+4*px,'Recrecido · '+rc.mat,colr,10,600);
     });
   }
   if(view==='demol'){
@@ -6930,7 +6931,7 @@ function panelSel(focus){
     h+='<div class="rowh"><strong>Recrecido en pared</strong><span class="muted">'+(rcq?fmt(rcq.len)+' cm de largo':'')+'</span></div>';
     h+='<p class="note">Capa nueva pegada al muro (trasdosado, aislante, recrecido de mortero…). Elige en qué cara va, el tramo y el espesor.</p>';
     if(rcw)h+='<div class="seg3">'+['p','m'].map(function(sd){return '<button data-a="rcside" data-s="'+sd+'" aria-pressed="'+(rcs.sd===sd)+'">'+faceName(rcw,sd)+'</button>'}).join('')+'</div>';
-    h+=fld('rc_s0','Desde el inicio del muro (cm)',rcs.s0)+fld('rc_s1','Hasta (cm)',rcs.s1)+fld('rc_t','Espesor (cm)',rcs.t);
+    h+=fld('rc_ancho','Ancho, a lo largo del muro ('+UNL()+')',f2(rcs.s1-rcs.s0))+fld('rc_t','Fondo, hacia dentro de la sala ('+UNL()+')',rcs.t)+fld('rc_s0','Posición: desde el inicio del muro ('+UNL()+')',rcs.s0)+fld('rc_s1','Posición: hasta ('+UNL()+')',rcs.s1);
     h+='<label class="fld"><span>Solución de trasdosado</span><select data-t="rc_sol"><option value="">Otra / a mano</option>'+TRDS.map(function(k){return '<option value="'+k+'"'+(rcs.sol===k?' selected':'')+'>'+esc(DLIB[k].n)+'</option>'}).join('')+'</select></label>'+cuandoHtml(rcs.sol);
     h+='<label class="fld"><span>Material (opcional)</span><input data-t="rc_mat" value="'+esc(rcs.mat||'')+'" placeholder="Placa de yeso laminado, aislante…" autocomplete="off"></label>';
     h+='<div class="btns"><button class="danger" data-a="del">Borrar recrecido</button></div>';
@@ -7254,7 +7255,7 @@ function applyField(key,val,adv,raw){
     var qrc=by(st.v.rc,s.id);if(!qrc)return;
     if(!(n>=0&&n<=5000)){toast('Escribe una medida válida');return}
     snap();
-    if(key==='rc_t')qrc.t=Math.max(1,Math.min(100,n));else qrc[key.slice(3)]=n;
+    if(key==='rc_t')qrc.t=Math.max(1,Math.min(100,n));else if(key==='rc_ancho'){if(n<1){toast('El ancho tiene que ser mayor que 0');hist.pop();return}var gw2=wl(qrc.wall),gl2=gw2?wg(gw2).l:1e9;qrc.s1=Math.min(gl2,qrc.s0+n)}else qrc[key.slice(3)]=n;
     if(qrc.s1<qrc.s0){var tt0=qrc.s0;qrc.s0=qrc.s1;qrc.s1=tt0}
     commit(false);
   }else if(s.t==='sp'&&/^sp_/.test(key)){
