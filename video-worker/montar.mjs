@@ -427,7 +427,7 @@ async function cortar(c, i) {
   const nf = Math.max(2, Math.round(c.dur * 30)), z1 = RECETA.zoomFinal, dir = i % 2 ? 1 : -1;
   let gamma = 1; if (!v.es_imagen && RECETA.autoLuz !== false) { const { src, hdr } = fuenteDe(v); const m = await lumaMedia(src, hdr, desde + c.dur / 2); if (m && m > 8 && m < 245) { const g = Math.log(m / 255) / Math.log(105 / 255); gamma = Math.max(0.88, Math.min(1.7, g)); if (Math.abs(gamma - 1) < 0.08) gamma = 1; } }
   const luz = gamma !== 1 ? 'eq=gamma=' + gamma.toFixed(2) + ',' : '';
-  const vf = (giroDe[v.id] || '') + 'scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,' + luz + 'zoompan=z=\'' + (dir > 0 ? '1+' + (z1 - 1) + '*on/' + nf : z1 + '-' + (z1 - 1) + '*on/' + nf) + '\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=1080x1920:fps=30,' + RECETA.color + ',setsar=1,format=yuv420p';
+  const vf = (giroDe[v.id] || '') + 'scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,' + luz + 'zoompan=z=\'' + (dir > 0 ? '1+' + (z1 - 1) + '*on/' + nf : z1 + '-' + (z1 - 1) + '*on/' + nf) + '\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=1080x1920:fps=30,' + RECETA.color + ',setsar=1,format=yuv420p,tpad=stop_mode=clone:stop_duration=3';
   const loop = v.es_imagen ? ['-loop', '1', '-framerate', '30'] : (v.duracion < c.dur + 0.2 ? ['-stream_loop', '-1'] : []);
   // Collage: en los cortes pares se ven DOS clips a la vez (uno arriba y otro abajo) mientras habla la voz
   let args2 = null;
@@ -535,6 +535,6 @@ if (RECETA.whoosh > 0 && marcas.length > 1) {
   fa += ';[2:a]asplit=' + n + marcas.slice(1).map((_, k) => '[w' + k + ']').join('') + ';' + marcas.slice(1).map((m, k) => '[w' + k + ']adelay=' + Math.max(0, Math.round((m - 0.2) * 1000)) + ':all=1[d' + k + ']').join(';') + ';[voz]' + marcas.slice(1).map((_, k) => '[d' + k + ']').join('') + 'amix=inputs=' + (n + 1) + ':normalize=0:duration=first,alimiter=limit=0.95[va]';
 } else fa += ';[voz]anull[va]';
 if (pista) { args.push('-stream_loop', '-1', '-i', pista.ruta); fa += ';' + mezcla({ entradaIdx: args.filter(x => x === '-i').length - 1, voz: 'va', durTotal: durVoz, db: Number(RECETA.musica.volumen) || -19, salida: 'a' }); } else fa += ';[va]anull[a]';
-args.push('-filter_complex', '[0:v]' + (process.env.SIN_ASS === '1' ? 'null' : 'ass=subs.ass:fontsdir=fonts') + '[v];' + fa, '-map', '[v]', '-map', '[a]', ...ARGS_VIDEO(23), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-shortest', '-movflags', '+faststart', path.resolve(SALIDA));
+args.push('-filter_complex', '[0:v]tpad=stop_mode=clone:stop_duration=8,' + (process.env.SIN_ASS === '1' ? 'null' : 'ass=subs.ass:fontsdir=fonts') + '[v];' + fa, '-map', '[v]', '-map', '[a]', ...ARGS_VIDEO(23), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-t', durVoz.toFixed(3), '-movflags', '+faststart', path.resolve(SALIDA));
 const fin = run('ffmpeg', args, { cwd: work });
 console.log(fs.existsSync(SALIDA) ? 'OK ' + SALIDA + ' · ' + (fs.statSync(SALIDA).size / 1048576).toFixed(1) + ' MB' : 'FALLO ' + (fin.stderr || '').slice(0, 800));
