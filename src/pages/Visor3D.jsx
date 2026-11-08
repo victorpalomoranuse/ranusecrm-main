@@ -1730,6 +1730,7 @@ export default function Visor3D({ cliente = false }) {
   }, [refinar, estado]); // eslint-disable-line react-hooks/exhaustive-deps
   const [pestanaRender, setPestanaRender] = useState('ambiente');
   const [modoAmb, setModoAmb] = useState(null); // geo | custom | hdri (si no se ha elegido, se deduce del entorno)
+  const [aristas, setAristas] = useState(() => { try { return localStorage.getItem('visor3dAristas') === '1'; } catch { return false; } });
   const [tono, setTono] = useState(() => { try { return localStorage.getItem('visor3dTono') || 'aces'; } catch { return 'aces'; } });
   useEffect(() => {
     try { localStorage.setItem('visor3dTono', tono); } catch { /* sin almacenamiento */ }
@@ -4555,6 +4556,26 @@ export default function Visor3D({ cliente = false }) {
   const bTop = { background: '#34302c', color: '#fff', border: '1px solid #4f4842', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' };
   const bOn = { background: '#6b6159', borderColor: '#6b6159' };
   const sepTop = { width: 1, height: 22, background: '#444', margin: '0 2px', flex: 'none' };
+  // Vista con aristas (como en SketchUp): un trazo oscuro en los cantos de muros, máquinas, modelos y cajas. Se rehace cuando cambia la escena.
+  useEffect(() => {
+    try { localStorage.setItem('visor3dAristas', aristas ? '1' : '0'); } catch { /* sin almacenamiento */ }
+    const a = api3d.current; if (!a.scene || estado === 'cargando') return undefined;
+    const quita = () => { const viejos = []; a.scene.traverse(x => { if (x.userData?.arista) viejos.push(x); }); viejos.forEach(x => { x.parent?.remove(x); x.geometry?.dispose(); }); };
+    quita();
+    if (aristas) {
+      const mat = new THREE.LineBasicMaterial({ color: 0x1c1c1c });
+      let total = 0;
+      const poner = (raiz) => raiz?.traverse(x => {
+        if (!x.isMesh || x.userData.arista || x.userData.hit || x.userData.overlay || !x.geometry || x.material?.visible === false) return;
+        const mt = Array.isArray(x.material) ? x.material[0] : x.material; if (mt?.transparent && mt.opacity < 0.5) return;
+        const n = x.geometry.attributes?.position?.count || 0; if (!n || n > 60000 || total > 600000) return; total += n;
+        const e = new THREE.LineSegments(new THREE.EdgesGeometry(x.geometry, 28), mat); e.userData.arista = true; e.raycast = () => {}; e.renderOrder = 2; x.add(e);
+      });
+      poner(a.raiz); poner(a.esc);
+    }
+    a.despertar?.();
+    return undefined;
+  }, [aristas, rev, objs, estado, modosEq, biblioteca, mtick, ocultas, acab, texturas]); // eslint-disable-line react-hooks/exhaustive-deps
   const itemMenu = { padding: '6px 8px', cursor: 'pointer', borderRadius: 4 };
   const railBtn = (activo, icono, etiqueta, titulo, onClick, color) => (
     <button key={etiqueta} title={titulo} onClick={onClick} style={{ width: 54, padding: '3px 0 2px', background: activo ? (color || '#2f6fa8') : 'transparent', color: activo && color === '#c9a21a' ? '#111' : '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
@@ -4776,6 +4797,7 @@ export default function Visor3D({ cliente = false }) {
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">Ambiente</button>
         <button style={{ ...bTop, ...(renderAbierto ? bOn : { background: '#8c8076' }), fontWeight: 700 }} onClick={() => { setRenderAbierto(v => !v); setSelObj(null); setSeleccion(null); }} title="Panel de render: luz, color, efectos y calidad de la imagen final">Render</button>
         <span style={{ flex: 1, minWidth: 8 }} />
+        <button style={{ ...bTop, ...(aristas ? { background: '#6b6159' } : {}) }} onClick={() => setAristas(v => !v)} title="Dibuja las aristas (los cantos) de muros, máquinas y objetos, como en SketchUp">Aristas</button>
         <button style={{ ...bTop, ...(realista ? { background: '#6b6159' } : {}) }} onClick={() => setRealista(v => !v)} title="Reflejos, sombras de contacto y bordes suaves. Si va lento, apágalo">Realista</button>
         <select style={bTop} value={calidad} onChange={e => setCalidad(e.target.value)} title="Si va lento, baja la calidad"><option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option></select>
         {menuTop2('Salida', 'salida', [
