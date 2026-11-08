@@ -10552,6 +10552,7 @@ function buildModelo3d1(){
   });
   out.cielos=(v.sp||[]).filter(function(r){return r.k==='t'&&num(r.h)>0}).map(function(r){var p=spPts(r),m=matOf('techos',r.mat);return p?{id:r.id,nombre:r.nm||'',h:num(r.h),pts:p.map(function(q){return [f2(q.x),f2(q.y)]}),c:(m&&m.c)||'#f6f4f1'}:null}).filter(Boolean);
   out.a_medida=(v.mm||[]).filter(function(m){return m.k!=='hor'}).map(function(m){var q=mmPoly(m);return q?{id:m.id,nombre:mmNombre(m),pts:q.pts.map(function(p){return [f2(p.x),f2(p.y)]}),z0:f2(m.y0||0),z1:f2((m.y0||0)+m.h),luz:!!m.luz}:null}).filter(Boolean);
+  out.recrecidos=(v.rc||[]).map(function(rc){var q=rcPoly(rc);if(!q||q.len<2)return null;return {id:rc.id,muro:rc.wall,pts:q.pts.map(function(p){return [f2(p.x),f2(p.y)]}),t:rc.t||10,h:wh(q.w),material:rc.mat||'',estado:rc.s||'new'}}).filter(Boolean);
   v.pil.forEach(function(p){pilCells(p).forEach(function(c,ci){out.pilares.push({id:p.id+'-'+ci,cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,estado:p.s||'ex'})})});
   v.eq.forEach(function(e){
     if(e.rol==='llega')return; /* la llegada de una escalera es la misma escalera: no se modela dos veces */

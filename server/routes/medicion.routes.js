@@ -541,7 +541,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna'];
 const BUCKET_TEX = 'project-documents';
 // Las luminarias que se ponen solo en el 3D (focos y colgantes de un carril, y objetos con nombre de lámpara) también se escriben en el plano,
 // en su capa de iluminación. Llevan un id que empieza por «l3_»: cada vez que se guarda la escena 3D se vuelven a calcular.
@@ -603,6 +603,19 @@ router.put('/:id/escena3d', async (req, res) => {
       bloqueado: o.bloqueado === true ? true : undefined,
       ocultosPartes: Array.isArray(o.ocultosPartes) && o.ocultosPartes.length ? o.ocultosPartes.slice(0, 60).map(x => String(x).slice(0, 80)) : undefined,
       partes: o.partes && typeof o.partes === 'object' ? Object.fromEntries(Object.entries(o.partes).slice(0, 40).map(([k, v]) => [String(k).slice(0, 60), acab(v)]).filter(([, v]) => v)) : undefined,
+      sauna: o.tipo === 'sauna' && o.sauna && typeof o.sauna === 'object' ? (() => {
+        const s = o.sauna, e = s.estufa || {}, ir = s.ir || {}, fr = s.frente || {};
+        const precios = {}; if (s.precios && typeof s.precios === 'object') Object.keys(s.precios).slice(0, 30).forEach(k => { if (/^[a-z]{2,20}$/.test(k)) precios[k] = Math.max(0, Math.min(1e6, num(s.precios[k], 0))); });
+        return {
+          tipo: ['tradicional', 'hibrida', 'infrarrojos'].includes(s.tipo) ? s.tipo : 'tradicional',
+          madera: ['abeto', 'aspen', 'cedro', 'hemlock', 'termo'].includes(s.madera) ? s.madera : 'abeto',
+          niveles: Math.max(1, Math.min(3, Math.round(num(s.niveles, 2)))), forma: s.forma === 'L' ? 'L' : 'recto',
+          estufa: { tipo: e.tipo === 'lena' ? 'lena' : 'electrica', lado: e.lado === 'izq' ? 'izq' : 'der', kw: Math.max(0, Math.min(30, num(e.kw, 0))) },
+          ir: { fondo: Math.max(0, Math.min(6, Math.round(num(ir.fondo, 0)))), lateral: Math.max(0, Math.min(4, Math.round(num(ir.lateral, 0)))), bajoBanco: !!ir.bajoBanco },
+          frente: { tipo: fr.tipo === 'madera' ? 'madera' : 'cristal', puerta: Math.max(55, Math.min(120, num(fr.puerta, 70))), lado: fr.lado === 'der' ? 'der' : 'izq', ventana: !!fr.ventana },
+          techo: s.techo !== false, luz: s.luz !== false, respaldos: s.respaldos !== false, precios,
+        };
+      })() : undefined,
       mueble: o.tipo === 'mueble' && o.mueble ? {
         hBase: Number(o.mueble.hBase) > 0 ? Math.min(300, Number(o.mueble.hBase)) : undefined, esp: Math.max(1, Math.min(5, num(o.mueble.esp, 1.8))), zocalo: Math.max(0, Math.min(30, num(o.mueble.zocalo, 10))), tirador: ['barra', 'asa', 'pomo', 'pomoplano', 'unero', 'gola', 'push', 'ninguno'].includes(o.mueble.tirador) ? o.mueble.tirador : 'barra', tiradorColor: acab(o.mueble.tiradorColor) || undefined, costados: o.mueble.costados && typeof o.mueble.costados === 'object' ? { izq: !!o.mueble.costados.izq, der: !!o.mueble.costados.der, esp: Math.max(1, Math.min(6, num(o.mueble.costados.esp, 1.8))) } : undefined, uneroColor: o.mueble.uneroColor === 'inox' ? 'inox' : (acab(o.mueble.uneroColor) || undefined),
         encimera: o.mueble.encimera && typeof o.mueble.encimera === 'object' ? { on: !!o.mueble.encimera.on, esp: Math.max(1, Math.min(12, num(o.mueble.encimera.esp, 3))), vuelo: Math.max(0, Math.min(15, num(o.mueble.encimera.vuelo, 2))), color: acab(o.mueble.encimera.color) || undefined } : undefined,

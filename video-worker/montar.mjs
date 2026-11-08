@@ -411,7 +411,7 @@ const dr = {}; for (const c of valido) { const v = idx.find(z => z.id === c.vide
     try { console.log('Bajando a local (' + Math.round(v.bytes / 1e6) + ' MB) porque se usa ' + usos[id] + ' veces…'); let rs; for (let k = 0; k < 4; k++) { rs = await fetch(r.url, { headers: r.cabeceras }); if (rs.ok) break; await new Promise(z => setTimeout(z, 3000 * (k + 1))); } if (!rs.ok) throw new Error('HTTP ' + rs.status); await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(f)); dr[id] = { local: f }; }
     catch (e) { console.log('No se pudo bajar, se lee por red:', e.message); } } }
 const hechos = new Array(valido.length).fill(null);
-const ejecuta = (args) => new Promise(res => { const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] }); let err = ''; p.stderr.on('data', d => { err += d; }); p.on('close', () => res(err)); });
+const ejecuta = (args) => new Promise(res => { const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] }); let err = ''; p.stderr.on('data', d => { err += d; }); p.on('error', e => res('spawn: ' + e.message)); p.on('close', (code, sig) => res(err || (code ? '(ffmpeg terminó con código ' + code + (sig ? ' señal ' + sig : '') + ')' : ''))); });
 // Orientación: de cada vídeo se saca un fotograma, se generan sus 4 rotaciones (0, 90 horario, 180, 90 antihorario) y la IA elige en cuál se ve derecho
 // (suelo abajo, personas de pie, texto legible). Así no salen planos girados aunque el archivo venga mal grabado o sin marca de giro.
 const giroDe = {};
@@ -499,7 +499,12 @@ async function cortar(c, i) {
 let hechosN = 0;
 // varios cortes a la vez: el ordenador tiene de sobra para 3 procesos de ffmpeg
 { const cola = valido.map((_, i) => i), POOL = Number(process.env.CORTES_EN_PARALELO || 3);
-  await Promise.all(Array.from({ length: POOL }, async () => { while (cola.length) { const i = cola.shift(); await cortar(valido[i], i); } })); }
+  await Promise.all(Array.from({ length: POOL }, async () => { while (cola.length) { const i = cola.shift(); await cortar(valido[i], i); } }));
+  // si algún corte no salió (ffmpeg muere sin mensaje cuando coinciden varios en memoria), se rehace UNO A UNO con todo el ordenador para él solo
+  for (let i = 0; i < valido.length; i++) if (!hechos[i]) { console.log('corte', i, 'intento a solas'); const vv = idx.find(z => z.id === valido[i].video), r0 = dr[valido[i].video];
+    // si leer el archivo por red no funciona, se baja entero (los clips de móvil son pequeños) y se corta en local
+    if (vv && r0?.url && !r0.local && (vv.bytes || 0) < 1.5e9) { try { const fl = path.join(work, 'fuente_' + vv.id + (path.extname(vv.nombre || '') || '.mp4')); const rs = await fetch(r0.url, { headers: r0.cabeceras }); if (!rs.ok) throw new Error('HTTP ' + rs.status); await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(fl)); dr[vv.id] = { local: fl }; console.log('corte', i, 'fuente bajada a local'); } catch (e) { console.log('corte', i, 'no se pudo bajar:', e.message); } }
+    await cortar(valido[i], i); } }
 // Si algún corte no se pudo sacar (p. ej. Drive limitó la lectura de un archivo), se rellena con el de un vecino para no descuadrar el vídeo con la voz
 for (let i = 0; i < valido.length; i++) {
   if (hechos[i]) continue;
@@ -584,7 +589,7 @@ ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Titulo,,0,0,0,,{\\fad(250,
 ev.push('Dialogue: 3,' + tAss(0.1) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\an8\\pos(540,360)\\p1\\c' + RECETA.acento + '\\fad(200,300)\\t(0,500,\\fscx100)\\fscx0}m -45 0 l 45 0 45 4 -45 4{\\p0}');
 }
 if (RECETA.flash) marcas.slice(1).forEach(m => ev.push('Dialogue: 4,' + tAss(m) + ',' + tAss(m + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c&HFFFFFF&\\alpha&H9C&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
-ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durVoz) + ',Kicker,,0,0,0,,{\\an7\\pos(0,1896)\\p1\\c' + RECETA.acento + '\\fscx0\\t(0,' + Math.round(durVoz * 1000) + ',\\fscx100)}m 0 0 l 1080 0 1080 7 0 7{\\p0}');
+// (sin barra de progreso inferior: Víctor no la quiere)
 // etiquetas de hora grandes ("9:00") justo sobre los subtítulos, como en los vídeos de "mi día"
 if (RECETA.horas) for (const h of (plan.horas || [])) { const w = palabras[h.de]; if (!w || !h.texto) continue; ev.push('Dialogue: 2,' + tAss(w.de) + ',' + tAss(Math.min(durVoz, w.de + 1.8)) + ',Hora,,0,0,0,,{\\fad(80,150)\\fscx80\\fscy80\\t(0,130,\\fscx100\\fscy100)}' + limpiaT(h.texto)); }
 const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920', 'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '', '[V4+ Styles]',

@@ -10,6 +10,7 @@ import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
 import EstudioIdeas from '../components/EstudioIdeas';
+import { construirSauna, saunaPorDefecto, normalizaSauna, calculosSauna, textoMateriales, MADERAS, TIPOS_SAUNA } from '../components/sauna3d';
 import EditorRender from '../components/EditorRender';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -1003,6 +1004,7 @@ const ICONOS = {
   muro: 'M3 6h18v12H3z M3 12h18 M9 6v6 M15 12v6', rect: 'M4 6h16v12H4z', circ: 'M12 4a8 8 0 100 16 8 8 0 000-16z', poli: 'M12 3l8 6-3 11H7L4 9z',
   empujar: 'M12 20V10 M8 13l4-4 4 4 M4 8l8-4 8 4', zona: 'M4 5h16v14H4z M4 12l8-7 M4 19L19 5 M12 19l7-7', sigue: 'M3 19c6 0 4-14 9-14s3 14 9 14',
   catalogo: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8', biblioteca: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
+  sauna: 'M4 4h16v16H4z M4 12h9 M4 16h14 M15 7c0-2 2-2 2-4 M11 7c0-2 2-2 2-4',
   mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4', texto: 'M5 6h14 M12 6v13 M9 19h6', imagen: 'M4 5h16v14H4z M8 10a1.5 1.5 0 1 0 0-.01 M4 17l5-5 4 4 3-3 4 4', ideas: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z',
   luz: 'M9 18h6 M10 21h4 M12 3a6 6 0 00-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0012 3z',
   cinta: 'M3 16L16 3l5 5L8 21z M8 11l2 2 M11 8l2 2 M14 5l2 2', capas: 'M12 3l9 5-9 5-9-5z M3 13l9 5 9-5',
@@ -1614,6 +1616,14 @@ export function planta(m, z0) {
     const x = new THREE.Mesh(new THREE.BoxGeometry(p.w * CM, h, p.d * CM), new THREE.MeshStandardMaterial({ color: 0xd8d4cf, roughness: 0.9 }));
     x.position.set(p.cx * CM, h / 2, p.cy * CM); x.castShadow = x.receiveShadow = true; x.userData.capa = 'pilares'; x.userData.pilarId = p.id; g.add(x);
   });
+  (m.recrecidos || []).forEach(rc => {
+    if (!Array.isArray(rc.pts) || rc.pts.length < 3) return;
+    const h = (rc.h || m.altura || 260) * CM;
+    const sh = new THREE.Shape(rc.pts.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM)));
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: h, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
+    const x = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: rc.estado === 'new' ? 0xf1ece6 : 0xe4e0db, roughness: 0.95 }));
+    x.castShadow = x.receiveShadow = true; x.userData.capa = 'recrecidos'; x.userData.recrecidoId = rc.id; g.add(x);
+  });
   (m.equipos || []).forEach(e => g.add(maquina(e)));
   return g;
 }
@@ -2034,7 +2044,7 @@ export default function Visor3D({ cliente = false }) {
       setTitulo(pl?.nombre || 'Plano');
       if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); setModosEq(pl?.escena3d?.modelosEq || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       // el 3D enseña el estado de DISTRIBUCIÓN: lo marcado para demoler (muros, huecos, pilares, máquinas) ya no está
-      const sinDem = (p) => ({ ...p, muros: (p.muros || []).filter(w => w.estado !== 'dem').map(w => ({ ...w, ab: (w.ab || []).filter(o => o.estado !== 'dem') })), pilares: (p.pilares || []).filter(x => x.estado !== 'dem'), equipos: (p.equipos || []).filter(x => x.estado !== 'dem') });
+      const sinDem = (p) => ({ ...p, muros: (p.muros || []).filter(w => w.estado !== 'dem').map(w => ({ ...w, ab: (w.ab || []).filter(o => o.estado !== 'dem') })), pilares: (p.pilares || []).filter(x => x.estado !== 'dem'), equipos: (p.equipos || []).filter(x => x.estado !== 'dem'), recrecidos: (p.recrecidos || []).filter(x => x.estado !== 'dem') });
       const modelo0 = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       const modelo = modelo0.plantas ? { ...modelo0, plantas: modelo0.plantas.map(sinDem) } : sinDem(modelo0);
       // se rehace el modelo con los datos nuevos, sin mover la cámara
@@ -3312,6 +3322,17 @@ export default function Visor3D({ cliente = false }) {
         a.esc.add(gf);
         return;
       }
+      if (o.tipo === 'sauna') {
+        const gs = new THREE.Group();
+        const cont = construirSauna(o); cont.position.y = (o.z0 || 0) * CM; gs.add(cont);
+        const hit = new THREE.Mesh(new THREE.BoxGeometry(o.w * CM, o.alto * CM, o.d * CM), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.y = (o.alto * CM) / 2 + (o.z0 || 0) * CM; hit.userData.hit = true; gs.add(hit);
+        if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); gs.add(l); }
+        gs.position.set(o.cx * CM, 0, o.cy * CM); gs.rotation.y = -(o.rot || 0) * Math.PI / 180;
+        gs.userData.oid = o.id; gs.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(gs);
+        return;
+      }
       if (o.tipo === 'mueble') {
         const gm = new THREE.Group();
         const cont = construirMueble(o, texturas); cont.position.y = (o.z0 || 0) * CM; gm.add(cont);
@@ -3579,6 +3600,7 @@ export default function Visor3D({ cliente = false }) {
     } catch (e) { setGuardado(e.response?.data?.error || 'No se pudo usar la textura'); }
   };
   const [muebleMenu, setMuebleMenu] = useState(false);
+  const [saunaMenu, setSaunaMenu] = useState(false);
   const PLANTILLAS_MUEBLE = {
     'Bajo de cocina (3 módulos)': { d: 60, alto: 90, zocalo: 10, modulos: [{ t: 'puertas', w: 60, n: 1, nb: 1 }, { t: 'cajones', w: 60, n: 3 }, { t: 'puertas', w: 60, n: 2, nb: 1 }] },
     'Bajo de cocina con nevera y encimera': { d: 60, alto: 90, zocalo: 10, encimera: { on: true, esp: 3, vuelo: 2 }, modulos: [{ t: 'puertas', w: 60, n: 1, nb: 1 }, { t: 'nevera', w: 60 }, { t: 'cajones', w: 60, n: 3 }, { t: 'puertas', w: 60, n: 2, nb: 1 }] },
@@ -3593,6 +3615,12 @@ export default function Visor3D({ cliente = false }) {
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'mueble', nombre: nombre.replace(/ \(.*\)/, ''), etiqueta: 'Muebles a medida', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.modulos.reduce((s, m) => s + m.w, 0), d: p.d, alto: p.alto, z0: 0, color: '#e8e2d8', colorFrente: '#f4f1ec', mueble: { esp: 1.8, zocalo: p.zocalo, tirador: 'barra', ...(p.encimera ? { encimera: { ...p.encimera } } : {}), modulos: p.modulos.map(m => ({ ...m })) } };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setMuebleMenu(false);
   };
+  const crearSauna = (tipo) => {
+    const { ctrl } = api3d.current, p = saunaPorDefecto(tipo);
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'sauna', nombre: 'Sauna ' + (tipo === 'infrarrojos' ? 'de infrarrojos' : tipo === 'hibrida' ? 'híbrida' : 'tradicional'), etiqueta: 'Saunas', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.w, d: p.d, alto: p.alto, z0: 0, sauna: p.sauna };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setSaunaMenu(false);
+  };
+  const cambiarSauna = (idObj, fn) => setObjs(prev => prev.map(o => { if (o.id !== idObj) return o; const S0 = normalizaSauna(o), S1 = fn(JSON.parse(JSON.stringify(S0))); return { ...o, sauna: S1 }; }));
   const cambiarModulos = (idObj, fn, extra) => setObjs(prev => prev.map(o => {
     if (o.id !== idObj) return o;
     const M0 = o.mueble || {}, hBase = M0.hBase > 0 ? M0.hBase : o.alto, mods = fn((M0.modulos || []).map(m => ({ ...m }))), w = mods.reduce((s, m) => s + (parseFloat(m.w) || 0), 0);
@@ -4798,6 +4826,9 @@ export default function Visor3D({ cliente = false }) {
           railBtn(b3dAbierta, 'biblioteca', 'Biblioteca', 'Mis modelos, muebles y texturas gratuitos', () => setB3dAbierta(v => !v)),
           menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, 'mueble', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
             {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
+          </>), 250),
+          menuRail(saunaMenu, setSaunaMenu, railBtn(saunaMenu, 'sauna', 'Sauna', 'Diseñar una sauna: tradicional, híbrida o de infrarrojos', () => setSaunaMenu(v => !v)), (<>
+            {Object.entries(TIPOS_SAUNA).map(([k, v]) => <div key={k} onClick={() => crearSauna(k)} style={itemMenu}>{v.n}</div>)}
           </>), 250),
           railBtn(ideasAbierto, 'ideas', 'Ideas', 'Chat con ChatGPT: comparte una imagen o la vista actual, pide una idea (un mural, un ambiente…) y descarga solo la imagen', () => setIdeasAbierto(v => !v)),
           railBtn(false, 'imagen', 'Imagen', 'Sube una imagen (PNG con transparencia, o con fondo liso que se quita) y se coloca en el 3D como en SketchUp; después la escalas', () => imagenInput.current?.click()),
@@ -6206,6 +6237,59 @@ export default function Visor3D({ cliente = false }) {
               </div>
             </div>
           )}
+          {objSel.tipo === 'sauna' && (() => {
+            const S = normalizaSauna(objSel), C = calculosSauna(objSel);
+            const fila = (txt, ctl) => <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 92, opacity: 0.7 }}>{txt}</span>{ctl}</label>;
+            const sel = (v, op, fn) => <select value={v} onChange={e => fn(e.target.value)} style={{ ...btn, flex: 1, padding: '3px 4px' }}>{op.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>;
+            const numIn = (v, fn, min = 0, max = 999, w = 70) => <input type="number" min={min} max={max} value={v} onChange={e => fn(Math.max(min, Math.min(max, parseFloat(e.target.value) || 0)))} style={{ ...btn, width: w, padding: '3px 4px' }} />;
+            const conEstufa = S.tipo !== 'infrarrojos', conIR = S.tipo !== 'tradicional';
+            const f1 = v => Number(v).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Diseño de sauna</div>
+                {fila('Tipo', sel(S.tipo, Object.entries(TIPOS_SAUNA).map(([k, v]) => [k, v.n]), v => { if (!window.confirm('Cambiar el tipo reinicia las medidas y los equipos a los valores de ' + TIPOS_SAUNA[v].n + '. ¿Seguir?')) return; const p = saunaPorDefecto(v); cambiar(objSel.id, { w: p.w, d: p.d, alto: p.alto, sauna: { ...p.sauna, madera: S.madera, precios: S.precios } }); }))}
+                {fila('Madera', sel(S.madera, Object.entries(MADERAS).map(([k, v]) => [k, v.n]), v => cambiarSauna(objSel.id, s => { s.madera = v; return s; })))}
+                {fila('Niveles de banco', sel(String(S.niveles), [['1', '1 banco'], ['2', '2 niveles'], ['3', '3 niveles']], v => cambiarSauna(objSel.id, s => { s.niveles = Number(v); return s; })))}
+                {fila('Forma de banco', sel(S.forma, [['recto', 'Recto (fondo)'], ['L', 'En L (fondo + lateral)']], v => cambiarSauna(objSel.id, s => { s.forma = v; return s; })))}
+                {conEstufa && (<>
+                  {fila('Estufa', sel(S.estufa.tipo, [['electrica', 'Eléctrica'], ['lena', 'De leña']], v => cambiarSauna(objSel.id, s => { s.estufa.tipo = v; return s; })))}
+                  {fila('Lado estufa', sel(S.estufa.lado, [['der', 'Derecha'], ['izq', 'Izquierda']], v => cambiarSauna(objSel.id, s => { s.estufa.lado = v; return s; })))}
+                  {S.estufa.tipo === 'electrica' && fila('Potencia kW', <><span style={{ opacity: 0.7, fontSize: 12 }}>0 = automática</span>{numIn(S.estufa.kw, v => cambiarSauna(objSel.id, s => { s.estufa.kw = v; return s; }), 0, 18, 56)}</>)}
+                </>)}
+                {conIR && (<>
+                  {fila('IR en el fondo', numIn(S.ir.fondo, v => cambiarSauna(objSel.id, s => { s.ir.fondo = Math.round(v); return s; }), 0, 5, 56))}
+                  {fila('IR laterales', numIn(S.ir.lateral, v => cambiarSauna(objSel.id, s => { s.ir.lateral = Math.round(v); return s; }), 0, 3, 56))}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={!!S.ir.bajoBanco} onChange={e => cambiarSauna(objSel.id, s => { s.ir.bajoBanco = e.target.checked; return s; })} /> Panel para las piernas bajo el banco</label>
+                </>)}
+                {fila('Frente', sel(S.frente.tipo, [['cristal', 'Todo de cristal'], ['madera', 'Madera + puerta de cristal']], v => cambiarSauna(objSel.id, s => { s.frente.tipo = v; return s; })))}
+                {fila('Puerta cm', numIn(S.frente.puerta, v => cambiarSauna(objSel.id, s => { s.frente.puerta = Math.round(v); return s; }), 55, 120, 60))}
+                {fila('Bisagra', sel(S.frente.lado, [['izq', 'Izquierda'], ['der', 'Derecha']], v => cambiarSauna(objSel.id, s => { s.frente.lado = v; return s; })))}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 6, fontSize: 12 }}>
+                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!S.frente.ventana} onChange={e => cambiarSauna(objSel.id, s => { s.frente.ventana = e.target.checked; return s; })} /> Ventana lateral</label>
+                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!S.techo} onChange={e => cambiarSauna(objSel.id, s => { s.techo = e.target.checked; return s; })} /> Techo (quítalo para ver dentro)</label>
+                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!S.luz} onChange={e => cambiarSauna(objSel.id, s => { s.luz = e.target.checked; return s; })} /> LED bajo bancos</label>
+                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!S.respaldos} onChange={e => cambiarSauna(objSel.id, s => { s.respaldos = e.target.checked; return s; })} /> Respaldo</label>
+                </div>
+                <div style={{ background: '#2a2a2a', borderRadius: 6, padding: 8, marginBottom: 6, fontSize: 12, lineHeight: 1.5 }}>
+                  <div><b>{f1(C.vol)} m³</b> interiores · caben unas <b>{C.personas}</b> persona(s) sentadas</div>
+                  {conEstufa && <div>Estufa recomendada: <b>{S.estufa.kw > 0 ? f1(S.estufa.kw) : f1(C.kwEstufa)} kW</b>{S.estufa.tipo === 'electrica' ? ' · piedras ' + C.kgPiedras + ' kg' : ''}{S.estufa.kw > 0 ? '' : ' (automática, contando el cristal)'}</div>}
+                  {conIR && <div>Infrarrojos: <b>{C.nIR} panel(es)</b>, unos <b>{C.wIR} W</b> en total</div>}
+                  <div>Potencia total: <b>{f1(C.potenciaTotalW)} W</b> · {C.fase} (≈ {C.amp} A)</div>
+                  <div>Cristal: {f1(C.vidrioM2)} m² · Ventilación: entrada baja junto a la estufa y salida alta en diagonal</div>
+                </div>
+                {C.avisos.map((a, i) => <div key={i} style={{ fontSize: 11.5, opacity: 0.85, marginBottom: 4, color: i < C.avisos.length - 1 ? '#f2c46d' : undefined }}>{i < C.avisos.length - 1 ? '⚠ ' : 'ℹ '}{a}</div>)}
+                <div style={{ fontWeight: 700, margin: '8px 0 4px' }}>Lista de materiales y presupuesto</div>
+                {C.lista.map(([k, n, q, u]) => (
+                  <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: 12 }}>
+                    <span style={{ flex: 1 }}>{n}</span><span style={{ opacity: 0.8, whiteSpace: 'nowrap' }}>{f1(q)} {u}</span>
+                    <input type="number" min="0" step="0.01" placeholder="€/" title={'Precio por ' + u + ' (euros)'} value={S.precios[k] ?? ''} onChange={e => cambiarSauna(objSel.id, s => { s.precios[k] = parseFloat(e.target.value) || 0; return s; })} style={{ ...btn, width: 64, padding: '2px 4px' }} />
+                  </div>
+                ))}
+                {C.total > 0 && <div style={{ fontWeight: 700, margin: '4px 0' }}>Total: {f1(C.total)} €</div>}
+                <button style={{ ...btn, marginTop: 4 }} onClick={() => { try { navigator.clipboard.writeText(textoMateriales(objSel)); setSubiendo('Lista de materiales copiada'); } catch { /* sin portapapeles */ } }}>Copiar lista de materiales</button>
+              </div>
+            );
+          })()}
           {objSel.tipo === 'mueble' && (() => {
             const M = objSel.mueble || { modulos: [] }, desp = despieceMueble(objSel);
             const tipos = [['puertas', 'Puertas'], ['cajones', 'Cajones'], ['abierto', 'Abierto'], ['hueco', 'Hueco'], ['nevera', 'Nevera'], ['regleta', 'Regleta']];
