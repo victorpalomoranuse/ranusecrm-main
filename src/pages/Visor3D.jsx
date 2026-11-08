@@ -1783,6 +1783,7 @@ export default function Visor3D({ cliente = false }) {
   const [texturasBase, setTexturas] = useState([]);
   const texturas = useMemo(() => [...ESPEJOS, ...texturasBase], [texturasBase]);
   const [b3dAbierta, setB3dAbierta] = useState(false);
+  const [elegirMod, setElegirMod] = useState(false), [elegirFiltro, setElegirFiltro] = useState('');
   const [b3d, setB3d] = useState(null);           // índice de la biblioteca 3D gratuita
   const [b3dTab, setB3dTab] = useState('modelos');
   const [b3dFiltro, setB3dFiltro] = useState('');
@@ -6457,7 +6458,36 @@ export default function Visor3D({ cliente = false }) {
                 <label style={{ ...btn, display: 'inline-block' }}>{mod ? 'Reemplazar por mi archivo…' : 'Subir mi modelo 3D…'}
                   <input type="file" accept=".glb,.gltf,.obj,.dae,.zip,.skp" style={{ display: 'none' }} onChange={e => { asignarModeloEq(e.target.files?.[0]); e.target.value = ''; }} />
                 </label>
+                <button style={{ ...btn, marginLeft: 6 }} onClick={() => { setElegirMod(v => !v); if (!b3d) api.get('/biblioteca3d').then(r => { const d = r.data || { modelos: [], texturas: [] }; setB3d({ ...d, mistex: d.texturasMias || [] }); }).catch(() => setB3d({ modelos: [], texturas: [], error: true })); }} title="Coge un modelo que ya tienes en «Mis modelos» y se lo asigna a este producto, para todas las máquinas iguales">📂 Elegir de mis modelos</button>
                 {mod && <button style={{ ...btn, marginLeft: 6 }} onClick={quitarModeloEq}>Quitar</button>}
+                {elegirMod && (() => {
+                  const mios = (b3d?.mios || []).filter(m => !elegirFiltro || (m.nombre + ' ' + (m.categoria || '')).toLowerCase().includes(elegirFiltro.toLowerCase()));
+                  const asignar = async (m) => {
+                    if (!window.confirm('¿Asignar «' + m.nombre + '» como modelo 3D de este producto?\n\nSe verá así en todas las máquinas iguales de todos los planos. Tu modelo de «Mis modelos» no se toca.')) return;
+                    setSubiendo('Asignando el modelo al producto…');
+                    try {
+                      const r = await api.post('/catalog/products/' + seleccion.cid + '/modelo3d/desde-biblioteca', { url: m.url, tipo: m.tipo, carpeta: m.carpeta, nombre: m.nombre }), nuevo = r.data?.modelo3d;
+                      const mod2 = { url: nuevo.url, tipo: nuevo.tipo, rot: nuevo.rot };
+                      setBiblioteca(prev => { const p0 = prev || []; return p0.some(x => x.id === seleccion.cid) ? p0.map(x => (x.id === seleccion.cid ? { ...x, modelo3d: mod2 } : x)) : [...p0, { id: seleccion.cid, n: seleccion.cid, w: 1, d: 1, generico: true, modelo3d: mod2 }]; });
+                      refrescarModelosEq(); setElegirMod(false); setSubiendo('Modelo «' + m.nombre + '» asignado y guardado en el producto ✓');
+                    } catch (er) { setSubiendo(er.response?.data?.error || 'No se pudo asignar el modelo'); }
+                  };
+                  return (
+                    <div style={{ marginTop: 8, background: '#2a2a2a', borderRadius: 6, padding: 8 }}>
+                      <input value={elegirFiltro} onChange={e => setElegirFiltro(e.target.value)} placeholder="Buscar en mis modelos…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 6 }} />
+                      {!b3d && <div style={{ opacity: 0.6 }}>Cargando…</div>}
+                      {b3d && !mios.length && <div style={{ opacity: 0.6, fontSize: 12 }}>No hay modelos en «Mis modelos»{elegirFiltro ? ' con ese nombre' : ''}. Súbelos desde Biblioteca → Mis modelos.</div>}
+                      <div style={{ maxHeight: 260, overflow: 'auto', display: 'grid', gap: 4 }}>
+                        {mios.map(m => (
+                          <div key={m.id} onClick={() => asignar(m)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 4, borderRadius: 6, cursor: 'pointer', background: '#333' }}>
+                            <Miniatura mod={{ url: m.url, tipo: m.tipo, rot: 0 }} size={48} />
+                            <div style={{ flex: 1, fontSize: 12 }}><div style={{ fontWeight: 600 }}>{m.nombre}</div><div style={{ opacity: 0.55, fontSize: 11 }}>{m.categoria}{m.w ? ' · ' + Math.round(m.w) + '×' + Math.round(m.d) + '×' + Math.round(m.alto) + ' cm' : ''}</div></div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {mod && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }} title="Gira el modelo solo en esta máquina"><span style={{ opacity: 0.7 }}>Giro del modelo (solo esta)</span><select value={modosEq[seleccion.id]?.rotM || 0} onChange={e => { const v = parseInt(e.target.value, 10); refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], rotM: v } })); }} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select><button type="button" style={{ ...btn, padding: '3px 8px' }} title="Gira el modelo 90° (si el frente está de lado)" onClick={e => { e.preventDefault(); const v = ((modosEq[seleccion.id]?.rotM || 0) + 90) % 360; refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], rotM: v } })); }}>↻ 90°</button></label>}
                 {mod && biblioteca?.find(m => m.id === seleccion.cid)?.bloque?.planta && <div style={{ marginTop: 6 }}><button style={{ ...btn, background: '#6b6159' }} onClick={() => alinearConPlano(false)} title="Compara el modelo con el dibujo de la planta de Planos y lo gira para que coincidan">🧭 Alinear con el plano</button><button style={{ ...btn, marginLeft: 6 }} onClick={() => alinearConPlano(true)} title="Lo mismo en todas las máquinas de este producto">en todas las iguales</button>{alinMsg && <div style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>{alinMsg}</div>}</div>}
                 {mod && <details style={{ marginTop: 4, fontSize: 11 }}><summary style={{ cursor: 'pointer', opacity: 0.7 }}>Giro base del producto</summary><div style={{ opacity: 0.6, margin: '4px 0' }}>Afecta a TODAS las máquinas iguales. Úsalo solo si el archivo viene girado de origen.</div><select value={mod.rot || 0} onChange={e => girarModeloEq(parseInt(e.target.value, 10))} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select></details>}

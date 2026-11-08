@@ -570,6 +570,34 @@ router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, asy
     res.status(500).json({ error: 'No se pudo guardar el modelo 3D' + (err?.message ? ': ' + String(err.message).slice(0, 160) : '') });
   }
 });
+router.post('/products/:id/modelo3d/desde-biblioteca', async (req, res) => {
+  try {
+    const pr = await productoOBib(req.params.id);
+    if (!pr) return res.status(404).json({ error: 'Producto no encontrado' });
+    const url0 = String(req.body?.url || ''), carpeta0 = req.body?.carpeta ? String(req.body.carpeta) : null;
+    const ruta0 = rutaDeUrl(url0), ok = (r) => typeof r === 'string' && r.startsWith('modelos-3d/libres/') && !r.includes('..');
+    if (!ok(ruta0) || (carpeta0 && !ok(carpeta0 + '/x'))) return res.status(400).json({ error: 'Ese modelo no es de «Mis modelos»' });
+    const base = `modelos-3d/${req.params.id}-${Date.now()}`;
+    let url, carpeta = null;
+    if (carpeta0) {
+      const lista = await listarRecursivo(carpeta0); if (!lista.length) return res.status(404).json({ error: 'No se encuentran los archivos del modelo' });
+      for (const r of lista) { const { error } = await supabase.storage.from(BUCKET_SKP).copy(r, base + r.slice(carpeta0.length)); if (error && r === ruta0) throw error; }
+      url = supabase.storage.from(BUCKET_SKP).getPublicUrl(base + ruta0.slice(carpeta0.length)).data.publicUrl; carpeta = base;
+    } else {
+      const ext = (ruta0.split('.').pop() || 'glb').toLowerCase(), dest = `${base}.${ext}`;
+      const { error } = await supabase.storage.from(BUCKET_SKP).copy(ruta0, dest); if (error) throw error;
+      url = supabase.storage.from(BUCKET_SKP).getPublicUrl(dest).data.publicUrl;
+    }
+    const antiguo = pr.bloques?.modelo3d, tipo = String(req.body?.tipo || ruta0.split('.').pop() || 'glb').toLowerCase().slice(0, 5);
+    const modelo3d = { url, tipo, ...(carpeta ? { carpeta } : {}), rot: Number(antiguo?.rot) || 0, nombre: String(req.body?.nombre || 'Modelo').slice(0, 80), origen: 'mis-modelos', actualizado: new Date().toISOString() };
+    const { error } = await guardaModelo(req.params.id, pr, modelo3d); if (error) throw error;
+    if (antiguo) await quitarModelo3dArchivos(antiguo);
+    res.status(201).json({ modelo3d });
+  } catch (err) {
+    console.error('catalog modelo3d desde biblioteca:', err);
+    res.status(500).json({ error: 'No se pudo asignar el modelo' + (err?.message ? ': ' + String(err.message).slice(0, 160) : '') });
+  }
+});
 router.put('/products/:id/modelo3d', async (req, res) => {
   try {
     const rot = ((Number(req.body?.rot) % 360) + 360) % 360;
