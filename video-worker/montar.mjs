@@ -274,12 +274,21 @@ if (process.env.EDICION !== '1') try {
   }
   // REPARTO DEL USUARIO (manda sobre todo lo anterior): en cada parte del guion solo salen sus vídeos, y esos vídeos no salen en ninguna otra parte
   if (repartoIdx.length) {
+    repartoIdx.forEach(r => { const k = cs.findIndex((c, i) => c.de < r.ini && (cs[i + 1]?.de ?? palabras.length) > r.ini); if (k >= 0 && r.ini - cs[k].de >= 2 && (cs[k + 1]?.de ?? palabras.length) - r.ini >= 2) cs.splice(k + 1, 0, { ...cs[k], de: r.ini, _cont: false, desde: 0 }); });
     let forz = 0; const turno = new Map(), asignados = new Set(); repartoIdx.forEach(r => r.vids.forEach(v => asignados.add(v)));
     cs.forEach((c) => {
       const r = repartoIdx.find(x => c.de >= x.ini && c.de < x.fin);
       if (r) { if (r.vids.includes(c.video)) return; const k = turno.get(r) || 0; turno.set(r, k + 1); c.video = r.vids[k % r.vids.length]; c.desde = 0; c._cont = false; forz++; return; }
       // fuera de las partes con vídeos asignados: no se usan los vídeos que el usuario reservó para otra parte
       if (asignados.has(c.video)) { const alt = idx.find(v => !asignados.has(v.id) && !v.es_imagen && !v.hablando_a_camara && v.duracion >= 2); if (alt) { c.video = alt.id; c.desde = 0; c._cont = false; forz++; } }
+    });
+    repartoIdx.forEach(r => {
+      const mios = () => cs.map((c, k) => [c, k]).filter(([c]) => c.de >= r.ini && c.de < r.fin);
+      while (mios().length < r.vids.length) {
+        let mejor = null, ml = 0; for (const [c, k] of mios()) { const sig = cs[k + 1]?.de ?? palabras.length, span = Math.min(sig, r.fin) - c.de, d = durCorte(c, k); if (span >= 5 && d >= 2.6 && d > ml) { ml = d; mejor = [c, k]; } }
+        if (!mejor) break; const [c, k] = mejor, sig = cs[k + 1]?.de ?? palabras.length, mid = c.de + Math.floor((Math.min(sig, r.fin) - c.de) / 2); cs.splice(k + 1, 0, { ...c, de: mid, _cont: false, desde: 0 });
+      }
+      const m = mios(); if (r.vids.length >= 2 && m.length >= 2) m.forEach(([c], i) => { const v = r.vids[i % r.vids.length]; if (c.video !== v) { c.video = v; c.desde = 0; c._cont = false; } });
     });
     // clips demasiado cortos: cada corte va a un clip de SU parte que tenga metraje libre (sin repetir tramos); si ninguno cabe, pasa al clip de la parte siguiente (o la anterior)
     let pasados = 0;
