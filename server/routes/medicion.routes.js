@@ -612,7 +612,8 @@ router.put('/:id/escena3d', async (req, res) => {
           niveles: Math.max(1, Math.min(3, Math.round(num(s.niveles, 2)))), forma: s.forma === 'L' ? 'L' : 'recto',
           estufa: { tipo: e.tipo === 'lena' ? 'lena' : 'electrica', lado: e.lado === 'izq' ? 'izq' : 'der', kw: Math.max(0, Math.min(30, num(e.kw, 0))) },
           ir: { fondo: Math.max(0, Math.min(6, Math.round(num(ir.fondo, 0)))), lateral: Math.max(0, Math.min(4, Math.round(num(ir.lateral, 0)))), bajoBanco: !!ir.bajoBanco },
-          frente: { tipo: fr.tipo === 'madera' ? 'madera' : 'cristal', puerta: Math.max(55, Math.min(120, num(fr.puerta, 70))), lado: fr.lado === 'der' ? 'der' : 'izq', ventana: !!fr.ventana },
+          estilo: s.estilo === 'cabina' ? 'cabina' : 'estandar',
+          frente: { tipo: fr.tipo === 'madera' ? 'madera' : 'cristal', puerta: Math.max(55, Math.min(120, num(fr.puerta, 70))), lado: fr.lado === 'der' ? 'der' : 'izq', pos: ['izq', 'centro', 'der'].includes(fr.pos) ? fr.pos : (fr.lado === 'der' ? 'der' : 'izq'), marco: !!fr.marco, asa: fr.asa === 'madera' ? 'madera' : 'barra', ventana: !!fr.ventana },
           techo: s.techo !== false, luz: s.luz !== false, respaldos: s.respaldos !== false, precios,
         };
       })() : undefined,

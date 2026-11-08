@@ -6286,8 +6286,12 @@ export default function Visor3D({ cliente = false }) {
                 </>)}
                 {fila('Frente', sel(S.frente.tipo, [['cristal', 'Todo de cristal'], ['madera', 'Madera + puerta de cristal']], v => cambiarSauna(objSel.id, s => { s.frente.tipo = v; return s; })))}
                 {fila('Puerta cm', numIn(S.frente.puerta, v => cambiarSauna(objSel.id, s => { s.frente.puerta = Math.round(v); return s; }), 55, 120, 60))}
+                {fila('Posición puerta', sel(S.frente.pos || S.frente.lado || 'izq', [['izq', 'A la izquierda (+ fijo)'], ['centro', 'En el centro (fijo + puerta + fijo)'], ['der', 'A la derecha (+ fijo)']], v => cambiarSauna(objSel.id, s => { s.frente.pos = v; return s; })))}
                 {fila('Bisagra', sel(S.frente.lado, [['izq', 'Izquierda'], ['der', 'Derecha']], v => cambiarSauna(objSel.id, s => { s.frente.lado = v; return s; })))}
+                {fila('Tirador', sel(S.frente.asa || 'barra', [['barra', 'Barra de acero'], ['madera', 'Madera vertical']], v => cambiarSauna(objSel.id, s => { s.frente.asa = v; return s; })))}
+                {fila('Estilo', sel(S.estilo || 'estandar', [['estandar', 'Estándar'], ['cabina', 'Cabina (como la foto de referencia)']], v => cambiarSauna(objSel.id, s => { s.estilo = v; return s; })))}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 6, fontSize: 12 }}>
+                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!S.frente.marco} onChange={e => cambiarSauna(objSel.id, s => { s.frente.marco = e.target.checked; return s; })} /> Marco de madera en el frente</label>
                   <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!S.frente.ventana} onChange={e => cambiarSauna(objSel.id, s => { s.frente.ventana = e.target.checked; return s; })} /> Ventana lateral</label>
                   <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!S.techo} onChange={e => cambiarSauna(objSel.id, s => { s.techo = e.target.checked; return s; })} /> Techo (quítalo para ver dentro)</label>
                   <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!S.luz} onChange={e => cambiarSauna(objSel.id, s => { s.luz = e.target.checked; return s; })} /> LED bajo bancos</label>

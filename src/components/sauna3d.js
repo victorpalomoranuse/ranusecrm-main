@@ -13,7 +13,7 @@ export const MADERAS = {
 export const TIPOS_SAUNA = {
   tradicional: { n: 'Tradicional (estufa de piedras)', w: 200, d: 180, alto: 210 },
   hibrida: { n: 'Híbrida (estufa + infrarrojos)', w: 190, d: 170, alto: 210 },
-  infrarrojos: { n: 'Infrarrojos', w: 130, d: 110, alto: 200 },
+  infrarrojos: { n: 'Infrarrojos (cabina)', w: 150, d: 105, alto: 190 },
 };
 
 // Valores de partida de cada tipo
@@ -22,8 +22,9 @@ export function saunaPorDefecto(tipo = 'tradicional') {
   const S = {
     tipo, madera: tipo === 'infrarrojos' ? 'hemlock' : 'abeto', niveles: tipo === 'infrarrojos' ? 1 : 2, forma: 'recto',
     estufa: { tipo: 'electrica', lado: 'der', kw: 0 },
-    ir: { fondo: tipo === 'tradicional' ? 0 : tipo === 'hibrida' ? 2 : 3, lateral: tipo === 'tradicional' ? 0 : tipo === 'hibrida' ? 1 : 1, bajoBanco: tipo === 'infrarrojos' },
-    frente: { tipo: 'cristal', puerta: 70, lado: 'izq', ventana: false },
+    estilo: tipo === 'infrarrojos' ? 'cabina' : 'estandar',
+    ir: { fondo: tipo === 'tradicional' ? 0 : tipo === 'hibrida' ? 2 : 3, lateral: tipo === 'tradicional' ? 0 : tipo === 'hibrida' ? 1 : 2, bajoBanco: tipo === 'infrarrojos' },
+    frente: tipo === 'infrarrojos' ? { tipo: 'cristal', puerta: 62, lado: 'izq', pos: 'centro', marco: true, asa: 'madera', ventana: false } : { tipo: 'cristal', puerta: 70, lado: 'izq', pos: 'izq', marco: false, asa: 'barra', ventana: false },
     techo: true, luz: true, respaldos: true, precios: {},
   };
   return { w: t.w, d: t.d, alto: t.alto, sauna: S };
@@ -106,6 +107,7 @@ export function textoMateriales(o) {
 export function construirSauna(o) {
   const S = normalizaSauna(o), m = medidas(o, S), { T, W, D, H, iw, id, ih, prof, alturas } = m;
   const g = new THREE.Group();
+  const cab = S.estilo === 'cabina';
   const col = /^#[0-9a-fA-F]{6}$/.test(o.color || '') ? o.color : MADERAS[S.madera]?.c || '#d9bb8c';
   const base = new THREE.Color(col);
   const mat = (c, r = 0.75, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0, ...extra });
@@ -114,6 +116,8 @@ export function construirSauna(o) {
   const frameM = mat('#1d1d1d', 0.4, { metalness: 0.5 }), steel = mat('#3a3a3a', 0.35, { metalness: 0.7 }), stone = mat('#6f6f73', 0.95);
   const irM = mat('#5a2a22', 0.6, { emissive: new THREE.Color('#ff3a14'), emissiveIntensity: 0.55 });
   const led = mat('#ffcf8a', 0.4, { emissive: new THREE.Color('#ffb25a'), emissiveIntensity: 1.2 });
+  const rojo = mat('#ff4a2a', 0.4, { emissive: new THREE.Color('#ff2a10'), emissiveIntensity: 1.5 }), naranja = mat('#ffb25a', 0.4, { emissive: new THREE.Color('#ff9a3c'), emissiveIntensity: 1.7 }), rejillaM = mat('#1f1b19', 0.85);
+  const ledBanco = cab ? rojo : led;
   // caja(ancho, alto, fondo, x, y, z) en cm; (x,z) = centro, y = base
   const caja = (w, h, d, x, y, z, mt = wood, padre = g) => {
     const b = new THREE.Mesh(new THREE.BoxGeometry(Math.max(w, 0.1) * CM, Math.max(h, 0.1) * CM, Math.max(d, 0.1) * CM), mt);
@@ -121,35 +125,51 @@ export function construirSauna(o) {
   };
   const x0 = -W / 2, x1 = W / 2, zB = -D / 2, zF = D / 2;
   // suelo (tarima) y paredes
-  caja(iw, 5, id, 0, 0, 0, woodDark);
+  if (cab) { caja(iw, 2, id, 0, 0, 0, mat('#2a2522', 0.9)); const ns = Math.max(6, Math.round(iw / 9)), aw = iw / ns; for (let i = 0; i < ns; i++) caja(aw - 1.4, 3.2, id - 1, -iw / 2 + aw * (i + 0.5), 2, 0, woodLight); } else caja(iw, 5, id, 0, 0, 0, woodDark);
   caja(W, ih + 5 + T, T, 0, 0, zB + T / 2, wood); // fondo
   caja(T, ih + 5 + T, D, x0 + T / 2, 0, 0, wood); // izquierda
   caja(T, ih + 5 + T, D, x1 - T / 2, 0, 0, wood); // derecha
   if (S.techo) caja(W, T, D, 0, H - T, 0, woodLight);
   // listones verticales (relieve) en el fondo y los costados
-  for (let i = 0; i < Math.floor(iw / 14); i++) caja(0.5, ih, 0.5, -iw / 2 + 7 + i * 14, 5, zB + T + 0.25, woodDark);
-  // ── frente: cristal y puerta ──
+  { const sp = cab ? 9 : 14; for (let i = 0; i < Math.floor(iw / sp); i++) caja(0.4, ih, 0.4, -iw / 2 + sp / 2 + i * sp, 5, zB + T + 0.2, woodDark); if (cab) for (let i = 0; i < Math.floor(id / sp); i++) { const zz = zB + T + sp / 2 + i * sp; caja(0.4, ih, 0.4, -iw / 2 + 0.2, 5, zz, woodDark); caja(0.4, ih, 0.4, iw / 2 - 0.2, 5, zz, woodDark); } }
+  // ── frente: fijo de cristal + puerta + fijo de cristal (la puerta puede ir a la izquierda, en el centro o a la derecha) ──
   const frente = new THREE.Group(); g.add(frente);
-  const pw = Math.max(55, Math.min(S.frente.puerta, iw - 30)), ph = Math.min(ih - 6, 195), lado = S.frente.lado === 'der' ? 1 : -1;
-  const pcx = lado * (iw / 2 - pw / 2 - 1);
-  const panel = (w, h, x, y, grosor = 0.8) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w * CM, h * CM, grosor * CM), glass); b.position.set(x * CM, (y + h / 2) * CM, (zF - T / 2) * CM); frente.add(b); return b; };
-  if (S.frente.tipo === 'cristal') {
-    const wf = iw - pw - 2; if (wf > 5) panel(wf, ih, -lado * (pw / 2 + 1) + 0, 5); // cristal fijo
-    if (wf > 5) { const xf = -lado * (pw / 2 + 1); caja(wf + 2, 2, 2, xf, 5 + ih, zF - T / 2, frameM, frente); caja(wf + 2, 2, 2, xf, 3, zF - T / 2, frameM, frente); }
-    // sobre-puerta de cristal fijo
-    if (ih - ph - 5 > 6) panel(pw, ih - ph - 5, pcx, 5 + ph);
-  } else {
-    // frente de madera con hueco para la puerta y ventana opcional
-    const wR = iw - pw - 2; caja(wR, ih + T, T, -lado * (pw / 2 + 1), 0, zF - T / 2, wood, frente);
-    caja(pw, ih - ph - 5 + T, T, pcx, 5 + ph, zF - T / 2, wood, frente);
+  const pw = Math.max(55, Math.min(S.frente.puerta, iw - 30)), ph = Math.min(ih - 6, 195);
+  const posP = S.frente.pos || S.frente.lado || 'izq';
+  const pcx = posP === 'centro' ? 0 : (posP === 'der' ? 1 : -1) * (iw / 2 - pw / 2 - 1);
+  const zFr = zF - T / 2;
+  const panel = (w, h, x, y, grosor = 0.8) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w * CM, h * CM, grosor * CM), glass); b.position.set(x * CM, (y + h / 2) * CM, zFr * CM); frente.add(b); return b; };
+  // tramos fijos a cada lado de la puerta
+  const tramos = [[-iw / 2, pcx - pw / 2 - 1], [pcx + pw / 2 + 1, iw / 2]].filter(([a, b]) => b - a > 6);
+  tramos.forEach(([a, b]) => {
+    const w = b - a, xc = (a + b) / 2;
+    if (S.frente.tipo === 'cristal') {
+      panel(w, ih, xc, 5);
+      if (!cab) { [[w + 2, 2, 5 + ih], [w + 2, 2, 3]].forEach(([ww, hh, yy]) => caja(ww, hh, 2, xc, yy, zFr, frameM, frente)); [a, b].forEach(x => caja(2, ih, 2, x, 5, zFr, frameM, frente)); }
+    } else caja(w, ih + T, T, xc, 0, zFr, wood, frente);
+  });
+  // sobre-puerta fijo
+  if (ih - ph - 5 > 6) { if (S.frente.tipo === 'cristal') panel(pw, ih - ph - 5, pcx, 5 + ph); else caja(pw, ih - ph - 5 + T, T, pcx, 5 + ph, zFr, wood, frente); }
+  // marco de madera alrededor del frente de cristal (como en las cabinas de infrarrojos)
+  if (S.frente.marco) { caja(8, H, T + 1, -W / 2 + 4, 0, zFr, wood, frente); caja(8, H, T + 1, W / 2 - 4, 0, zFr, wood, frente); caja(W, 9, T + 1, 0, H - 9, zFr, wood, frente); caja(W, 8, T + 1, 0, 0, zFr, wood, frente); }
+  // hoja de la puerta: cristal; bisagra en el lado elegido y tirador en el contrario
+  const hs = S.frente.lado === 'der' ? 1 : -1, dir = -hs; // hs = lado de la bisagra; la hoja se extiende hacia dir
+  const hoja = new THREE.Group(); hoja.position.set((pcx + hs * pw / 2) * CM, 0, (zF - T / 2 + 1.5) * CM);
+  const hojaW = pw - 2; const hg = new THREE.Mesh(new THREE.BoxGeometry(hojaW * CM, ph * CM, 0.8 * CM), glass); hg.position.set(dir * hojaW / 2 * CM, (5 + ph / 2) * CM, 0); hoja.add(hg);
+  if (!cab) {
+    [5 + ph - 1, 6].forEach(y => { const b = new THREE.Mesh(new THREE.BoxGeometry(hojaW * CM, 2 * CM, 1.4 * CM), frameM); b.position.set(dir * hojaW / 2 * CM, y * CM, 0); hoja.add(b); });
+    [0, hojaW].forEach(x => { const b = new THREE.Mesh(new THREE.BoxGeometry(2 * CM, ph * CM, 1.4 * CM), frameM); b.position.set(dir * x * CM, (5 + ph / 2) * CM, 0); hoja.add(b); });
   }
-  // puerta (hoja de cristal con marco y tirador de barra del lado contrario a la bisagra)
-  const hoja = new THREE.Group(); hoja.position.set((pcx - lado * pw / 2) * CM, 0, (zF - T / 2 + 1.5) * CM); // eje en el lado de la bisagra
-  const hojaW = pw - 2; const hg = new THREE.Mesh(new THREE.BoxGeometry(hojaW * CM, ph * CM, 0.8 * CM), glass); hg.position.set(lado * hojaW / 2 * CM, (5 + ph / 2) * CM, 0); hoja.add(hg);
-  [[hojaW, 2, 0, 5 + ph - 1], [hojaW, 2, 0, 6]].forEach(([w, h, x, y]) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w * CM, h * CM, 1.4 * CM), frameM); b.position.set((lado * hojaW / 2 + x) * CM, y * CM, 0); hoja.add(b); });
-  [0, hojaW].forEach(x => { const b = new THREE.Mesh(new THREE.BoxGeometry(2 * CM, ph * CM, 1.4 * CM), frameM); b.position.set(lado * x * CM, (5 + ph / 2) * CM, 0); hoja.add(b); });
-  const asa = new THREE.Mesh(new THREE.CylinderGeometry(0.9 * CM, 0.9 * CM, 90 * CM, 12), steel); asa.position.set(lado * (hojaW - 6) * CM, (5 + ph / 2) * CM, 5 * CM); hoja.add(asa);
-  [-35, 35].forEach(dz => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.9 * CM, 0.9 * CM, 5 * CM, 10), steel); p.rotation.x = Math.PI / 2; p.position.set(lado * (hojaW - 6) * CM, (5 + ph / 2 + dz) * CM, 2.5 * CM); hoja.add(p); });
+  if (S.frente.asa === 'madera') {
+    // tirador vertical de madera, largo, a media altura (como en la foto de referencia)
+    const asaM = new THREE.Mesh(new THREE.BoxGeometry(4 * CM, 85 * CM, 3 * CM), woodLight); asaM.position.set(dir * (hojaW - 7) * CM, (5 + ph * 0.5) * CM, 5.5 * CM); hoja.add(asaM);
+    [-30, 30].forEach(dy => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.8 * CM, 0.8 * CM, 5 * CM, 10), steel); p.rotation.x = Math.PI / 2; p.position.set(dir * (hojaW - 7) * CM, (5 + ph * 0.5 + dy) * CM, 2.5 * CM); hoja.add(p); });
+  } else {
+    const asa = new THREE.Mesh(new THREE.CylinderGeometry(0.9 * CM, 0.9 * CM, 90 * CM, 12), steel); asa.position.set(dir * (hojaW - 6) * CM, (5 + ph / 2) * CM, 5 * CM); hoja.add(asa);
+    [-35, 35].forEach(dz => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.9 * CM, 0.9 * CM, 5 * CM, 10), steel); p.rotation.x = Math.PI / 2; p.position.set(dir * (hojaW - 6) * CM, (5 + ph / 2 + dz) * CM, 2.5 * CM); hoja.add(p); });
+  }
+  const cromo = mat('#c9ccd0', 0.25, { metalness: 0.9 });
+  [12, ph - 22].forEach(y => { const b = new THREE.Mesh(new THREE.BoxGeometry(4 * CM, 9 * CM, 2.4 * CM), cromo); b.position.set(0, (5 + y + 4.5) * CM, 0); hoja.add(b); }); // bisagras cromadas
   g.add(hoja);
   // ventana lateral de cristal (pared derecha o izquierda según el lado contrario a la estufa)
   if (S.frente.ventana) { const ladoV = S.estufa.lado === 'der' ? -1 : 1, wv = Math.min(70, id - 40), hv = 80, b = new THREE.Mesh(new THREE.BoxGeometry(0.8 * CM, hv * CM, wv * CM), glass); b.position.set(ladoV * (W / 2 - T / 2) * CM, (110 + hv / 2) * CM, (zB + T + wv / 2 + 20) * CM); g.add(b); [[2, hv, wv + 2, 0], [2, 2, wv + 2, hv / 2 - 1], [2, 2, wv + 2, -hv / 2 + 1]].forEach(([w, h, d, dy]) => { caja(w, h, d, ladoV * (W / 2 - T / 2), 110 + hv / 2 + dy - h / 2, zB + T + wv / 2 + 20, frameM); }); }
@@ -160,10 +180,10 @@ export function construirSauna(o) {
     const largo = iw - (S.forma === 'L' ? prof : 0), xc = (S.forma === 'L' ? prof / 2 : 0);
     const lis = Math.round(prof / 7);
     for (let k = 0; k < lis; k++) caja(largo, 2.6, 5.4, xc, hSeat - 2.6, zc - prof / 2 + 3.5 + k * (prof / lis), wood); // listones
-    caja(largo, hSeat - 5 - 2.6, 3, xc, 5, zc + prof / 2 - 2, woodDark); // frente del banco (cenefa)
-    [-largo / 2 + 3, 0, largo / 2 - 3].forEach(x => caja(4, hSeat - 5 - 2.6, prof - 8, xc + x, 5, zc, woodDark)); // soportes
-    if (S.luz) caja(largo - 6, 0.8, 1, xc, hSeat - 5.5, zc + prof / 2 - 1, led);
-    if (S.respaldos && i === alturas.length - 1) { const r = new THREE.Mesh(new THREE.BoxGeometry((largo - 10) * CM, 14 * CM, 2.6 * CM), wood); r.position.set(xc * CM, (hSeat + 32) * CM, (zB + T + 2) * CM); r.rotation.x = -0.18; r.castShadow = true; g.add(r); }
+    if (!cab) caja(largo, hSeat - 5 - 2.6, 3, xc, 5, zc + prof / 2 - 2, woodDark); // frente del banco (cenefa)
+    (cab ? [-largo / 2 + 3, largo / 2 - 3] : [-largo / 2 + 3, 0, largo / 2 - 3]).forEach(x => caja(4, hSeat - 5 - 2.6, prof - 8, xc + x, 5, zc, woodDark)); // soportes
+    if (S.luz) caja(largo - 6, 0.8, 1, xc, hSeat - 5.5, zc + prof / 2 - 1, ledBanco);
+    if (S.respaldos && !cab && i === alturas.length - 1) { const r = new THREE.Mesh(new THREE.BoxGeometry((largo - 10) * CM, 14 * CM, 2.6 * CM), wood); r.position.set(xc * CM, (hSeat + 32) * CM, (zB + T + 2) * CM); r.rotation.x = -0.18; r.castShadow = true; g.add(r); }
     return { zc, largo, xc };
   };
   const niv = alturas.map((_, i) => bancoNivel(i));
@@ -187,7 +207,7 @@ export function construirSauna(o) {
     for (let k = 0; k < 4; k++) caja(pw2, 2.4, 1.4, cxp, 20 + k * 14, czp + pd / 2, wood);
   }
   // ── paneles de infrarrojos ──
-  if (S.tipo !== 'tradicional') {
+  if (S.tipo !== 'tradicional' && !cab) {
     const pan = (w, h, x, y, z, ry = 0) => { const gp = new THREE.Group(); const b = new THREE.Mesh(new THREE.BoxGeometry(w * CM, h * CM, 2.2 * CM), irM); gp.add(b); const mk = new THREE.Mesh(new THREE.BoxGeometry((w + 1.4) * CM, (h + 1.4) * CM, 1.6 * CM), woodDark); mk.position.z = -0.7 * CM; gp.add(mk); gp.position.set(x * CM, y * CM, z * CM); gp.rotation.y = ry; g.add(gp); };
     const nF = S.ir.fondo; for (let i = 0; i < nF; i++) pan(Math.min(40, (iw - 10) / nF - 3), 80, -iw / 2 + (iw / nF) * (i + 0.5), (alturas[alturas.length - 1] + 55), zB + T + 1.2);
     const nL = S.ir.lateral;
@@ -197,6 +217,33 @@ export function construirSauna(o) {
       pan(pw3, ph3, -iw / 2 + 1.2, yy, zz, Math.PI / 2); pan(pw3, ph3, iw / 2 - 1.2, yy, zz, -Math.PI / 2);
     }
     if (S.ir.bajoBanco) pan(Math.min(100, iw - 20), 30, 0, 22, zB + T + prof * alturas.length - 0.5, 0);
+  }
+  // ── cabina de infrarrojos (réplica del modelo de referencia): calentadores con marco de madera, celosía de listones, tarima con ranuras, LED rojo ──
+  if (cab) {
+    const calentador = (w, h, x, y, z, ry) => {
+      const gp = new THREE.Group(); gp.position.set(x * CM, y * CM, z * CM); gp.rotation.y = ry;
+      const mk = (ww, hh, dd, xx, yy, zz, mt) => { const q = new THREE.Mesh(new THREE.BoxGeometry(ww * CM, hh * CM, dd * CM), mt); q.position.set(xx * CM, yy * CM, zz * CM); gp.add(q); };
+      mk(w, h, 1.4, 0, h / 2, 0.7, woodLight); // marco de madera
+      mk(w - 5, h - 5, 1.8, 0, h / 2, 1.1, rejillaM); // hueco oscuro con rejilla
+      const nn = w > 60 ? 4 : 2; for (let k = 0; k < nn; k++) mk(Math.max(1.5, (w - 8) / (nn * 3)), h - 9, 2, ((k + 0.5) / nn - 0.5) * (w - 9), h / 2, 1.4, naranja); // resistencias encendidas
+      g.add(gp);
+    };
+    const nF = S.ir.fondo, y0 = alturas[0] + 28;
+    for (let i = 0; i < nF; i++) calentador(Math.min(26, iw / nF - 10), 88, -iw / 2 + (iw * (i + 0.5)) / nF, y0, zB + T, 0);
+    if (nF > 0) { // celosía de listones horizontales por delante de los calentadores
+      for (let k = 0; k < 5; k++) caja(iw - 14, 3, 2.2, 0, y0 + 22 + k * 8.5, zB + T + 3.6, wood);
+      for (let i = 0; i <= nF; i++) caja(3.4, 44, 2.4, -iw / 2 + 7 + ((iw - 14) * i) / nF, y0 + 20, zB + T + 3.4, woodLight);
+    }
+    const nL = S.ir.lateral;
+    for (let i = 0; i < nL; i++) { const zz = zB + T + 22 + (nL > 1 ? (i * (id - 52)) / (nL - 1) : (id - 44) / 2), alta = i % 2 === 0; calentador(10, alta ? 100 : 62, -iw / 2 + 0.2, alta ? alturas[0] + 18 : alturas[0] - 8 + 6, zz, Math.PI / 2); calentador(10, alta ? 100 : 62, iw / 2 - 0.2, alta ? alturas[0] + 18 : alturas[0] - 8 + 6, zz, -Math.PI / 2); }
+    if (S.ir.bajoBanco) calentador(Math.min(100, iw - 36), 24, 0, 14, zB + T, 0); // calentador para las piernas bajo el banco
+    if (S.techo && S.luz) { // tiras LED rojas en el perímetro del techo, altavoces, panel de control y lámpara
+      caja(iw - 6, 1.2, 1.4, 0, H - T - 1.4, zB + T + 1, rojo); caja(iw - 6, 1.2, 1.4, 0, H - T - 1.4, zF - T - 1, rojo);
+      caja(1.4, 1.2, id - 6, -iw / 2 + 1, H - T - 1.4, 0, rojo); caja(1.4, 1.2, id - 6, iw / 2 - 1, H - T - 1.4, 0, rojo);
+      [-1, 1].forEach(s => { const sp = new THREE.Mesh(new THREE.CylinderGeometry(4.5 * CM, 4.5 * CM, 1 * CM, 20), mat('#222', 0.7)); sp.position.set(s * iw * 0.27 * CM, (H - T - 0.5) * CM, (zB + T + 20) * CM); g.add(sp); });
+      caja(18, 0.6, 5, 0, H - T - 0.6, zB + T + id * 0.5, rojo);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(6 * CM, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat('#c9ccd0', 0.3, { metalness: 0.8 })); lamp.rotation.x = Math.PI; lamp.position.set((-iw / 2 + 12) * CM, (H - T - 6) * CM, (zB + T + 12) * CM); g.add(lamp);
+    }
   }
   // rejillas de ventilación
   caja(14, 1.2, 1.4, (S.estufa.lado === 'der' ? 1 : -1) * (iw / 2 - 28), 8, zB + T + 0.7, frameM); // admisión (zona estufa, a ras de suelo)
