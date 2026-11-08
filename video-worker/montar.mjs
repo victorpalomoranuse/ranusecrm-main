@@ -274,7 +274,12 @@ if (process.env.EDICION !== '1') try {
   }
   // REPARTO DEL USUARIO (manda sobre todo lo anterior): en cada parte del guion solo salen sus vídeos, y esos vídeos no salen en ninguna otra parte
   if (repartoIdx.length) {
-    repartoIdx.forEach(r => { const k = cs.findIndex((c, i) => c.de < r.ini && (cs[i + 1]?.de ?? palabras.length) > r.ini); if (k >= 0 && r.ini - cs[k].de >= 2 && (cs[k + 1]?.de ?? palabras.length) - r.ini >= 2) cs.splice(k + 1, 0, { ...cs[k], de: r.ini, _cont: false, desde: 0 }); });
+    // cada parte del guion empieza en un corte propio: si un corte cruza el inicio de una parte, el límite se corre (sin crear cortes de menos de ~1,5 s, que luego se fusionan)
+    repartoIdx.forEach(r => {
+      const k = cs.findIndex((c, i) => c.de < r.ini && (cs[i + 1]?.de ?? palabras.length) > r.ini); if (k < 0) return; const c = cs[k], sig = cs[k + 1];
+      const previo = (palabras[r.ini]?.de ?? 0) - (palabras[c.de]?.de ?? 0);
+      if (previo < 1.6) c.de = r.ini; else if (sig && sig.de < r.fin) sig.de = r.ini; else cs.splice(k + 1, 0, { ...c, de: r.ini, _cont: false, desde: 0 });
+    });
     let forz = 0; const turno = new Map(), asignados = new Set(); repartoIdx.forEach(r => r.vids.forEach(v => asignados.add(v)));
     cs.forEach((c) => {
       const r = repartoIdx.find(x => c.de >= x.ini && c.de < x.fin);
