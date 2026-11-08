@@ -9,6 +9,7 @@ import * as drive from './drive.mjs';
 import { ENV } from './entorno.mjs';
 import { introLetras, ESTILO_INTRO } from './intro.mjs';
 import { copiaFuentes } from './fuentes.mjs';
+import { localizaPartes } from './localiza.mjs';
 import { acotaPorEnergia } from './voz.mjs';
 import { PLAYBOOK_REDES } from './clips.mjs';
 import { ARGS_VIDEO } from './codec.mjs';
@@ -174,14 +175,9 @@ try {
   if (rep.length) {
     const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
     const VACIAS = new Set(['para', 'pero', 'porque', 'como', 'esta', 'este', 'esto', 'estos', 'tiene', 'tenemos', 'desde', 'entre', 'sobre', 'cuando', 'donde', 'todo', 'toda', 'todos', 'muy', 'mas', 'nada']);
-    const N = palabras.map(w => norm(w.t)); let desde = 0; const hallados = [];
-    rep.forEach((p) => {
-      const pw = [...new Set(p.texto.split(/\s+/).map(norm).filter(x => x.length >= 4 && !VACIAS.has(x)).map(x => x.slice(0, 5)))]; const total = p.texto.split(/\s+/).filter(Boolean).length;
-      if (!pw.length) return; const W = Math.max(8, Math.ceil(total * 1.6)); let mejor = -1, ms = 0;
-      for (let i = desde; i < N.length; i++) { const ven = new Set(); for (let j = i; j < Math.min(N.length, i + W); j++) if (pw.includes(N[j].slice(0, 5))) ven.add(N[j].slice(0, 5)); if (ven.size > ms) { ms = ven.size; mejor = i; } }
-      if (mejor < 0 || ms < (pw.length <= 3 ? 1 : Math.max(2, Math.ceil(pw.length * 0.4)))) { console.log('Parte del guion no encontrada en el audio:', p.texto.slice(0, 50)); return; }
-      let s = mejor; while (s < N.length && !pw.includes(N[s].slice(0, 5))) s++; let b = s; for (let q = s - 1; q >= Math.max(desde, s - 10, 0); q--) { if (/[.!?]$/.test(palabras[q].t)) { b = q + 1; break; } } hallados.push({ ini: b, texto: p.texto, clips: p.clips }); desde = s + 1;
-    });
+    // cada parte del guion se localiza por programación dinámica: la voz se reparte en tramos consecutivos (cortando en la puntuación) y se eligen los cortes que mejor encajan
+    const rr = localizaPartes(palabras, rep.map(p => p.texto), { VACIAS, norm }); const hallados = [];
+    rr.forEach((x, k) => { if (!x) { console.log('Parte del guion no encontrada en el audio:', rep[k].texto.slice(0, 50)); return; } hallados.push({ ini: x.a, texto: rep[k].texto, clips: rep[k].clips, extra: Math.max(0, Math.min(4, Number(rep[k].extra) || 0)) }); });
     hallados.forEach((r, k) => { r.fin = k + 1 < hallados.length ? hallados[k + 1].ini : palabras.length; r.vids = [...new Set(r.clips.map(c => idx.find(x => x.drive_id === c.id)?.id).filter(Boolean))]; });
     repartoIdx = hallados.filter(r => r.vids.length);
     console.log('Reparto del usuario:', repartoIdx.map(r => r.ini + '-' + r.fin + ' → ' + r.vids.length + ' vídeo(s)').join(', ') || 'ninguno (sus vídeos no están indexados)');
