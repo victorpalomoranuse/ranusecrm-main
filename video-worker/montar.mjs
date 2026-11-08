@@ -490,10 +490,10 @@ async function cortar(c, i) {
   for (let intento = 0; intento < 4; intento++) {
     rr = { stderr: await ejecuta(args2 || ['-hide_banner', '-loglevel', 'error', '-y', ...loop, ...(dr[v.id]?.cabeceras ? ['-headers', 'Authorization: ' + dr[v.id].cabeceras.Authorization + '\r\n'] : []), '-ss', desde.toFixed(2), '-i', dr[v.id] ? (dr[v.id].local || dr[v.id].url) : v.ruta, '-t', c.dur.toFixed(3), '-an', '-vf', vf, ...ARGS_VIDEO(23), out]) };
     if (fs.existsSync(out) && fs.statSync(out).size > 1000) break;
-    if (!/403|429|5\d\d|timed out|Connection/i.test(rr.stderr || '')) break;
+    console.log('corte', i, 'intento', intento + 1, 'sin salida válida:', (rr.stderr || '(sin mensaje)').slice(0, 220));
     await new Promise(r => setTimeout(r, 2500 * (intento + 1)));
   }
-  if (!fs.existsSync(out)) { console.log('corte', i, 'falló', (rr.stderr || '').slice(0, 200)); return; }
+  if (!fs.existsSync(out) || fs.statSync(out).size <= 1000) { console.log('corte', i, 'falló', (rr.stderr || '').slice(0, 200)); return; }
   hechos[i] = { out, ini: c.ini }; hechosN++; marca(48 + Math.round(38 * hechosN / valido.length), 'Cortando escenas ' + hechosN + ' de ' + valido.length);
 }
 let hechosN = 0;

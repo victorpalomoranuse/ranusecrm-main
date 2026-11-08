@@ -703,8 +703,15 @@ function LineaTiempo({ t, vref, onCambio, grande = false }) {
   const iniciaBorde = (k, e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); guarda(); arrastra.current = { k, x0: e.clientX, b0: bloques[k + 1].t0 }; };
   const muevelBorde = (e) => { const a = arrastra.current; if (!a) return; const k = a.k, minB = bloques[k].t0 + 0.6, maxB = (k + 2 < n ? bloques[k + 2].t0 : total) - 0.6; const nb = Math.max(minB, Math.min(maxB, a.b0 + (e.clientX - a.x0) / pps)); setBloques(bs => bs.map((b, i) => (i === k + 1 ? { ...b, t0: Math.round(nb * 20) / 20 } : b))); };
   const sueltaBorde = () => { arrastra.current = null; };
+  const cambia2 = (A, B) => { guarda(); setBloques(bs => bs.map((b, i) => { const o = i === A ? bs[B] : i === B ? bs[A] : null; return o ? { ...b, videoInt: o.videoInt, driveId: o.driveId, nombre: o.nombre, esImagen: o.esImagen, durClip: o.durClip, desde: o.desde, nuevo: o.nuevo } : b; })); };
+  const lienzo = useRef(null), dragB = useRef(null), acabaArrastrar = useRef(false); const [destino, setDestino] = useState(null);
+  const bloqueEn = (x) => { const r = lienzo.current?.getBoundingClientRect(); if (!r) return null; const s = (x - r.left) / pps; let k = 0; bloques.forEach((b2, i) => { if (s >= b2.t0) k = i; }); return k; };
+  const iniciaArrastre = (k, e) => { if (e.button > 0) return; dragB.current = { k, x0: e.clientX, mov: false }; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* sin captura */ } };
+  const muevenArrastre = (e) => { const a = dragB.current; if (!a) return; if (!a.mov && Math.abs(e.clientX - a.x0) > 8) a.mov = true; if (a.mov) setDestino(bloqueEn(e.clientX)); };
+  const sueltaArrastre = (e) => { const a = dragB.current; dragB.current = null; if (!a || !a.mov) { setDestino(null); return; } const B = bloqueEn(e.clientX); setDestino(null); acabaArrastrar.current = true; setTimeout(() => { acabaArrastrar.current = false; }, 0); if (B !== null && B !== a.k) { cambia2(a.k, B); setSel(B); } };
   const clicBloque = (k) => {
-    if (intercambio !== null && intercambio !== k) { guarda(); const A = intercambio, B = k; setBloques(bs => bs.map((b, i) => { const o = i === A ? bs[B] : i === B ? bs[A] : null; return o ? { ...b, videoInt: o.videoInt, driveId: o.driveId, nombre: o.nombre, esImagen: o.esImagen, durClip: o.durClip, desde: o.desde, nuevo: o.nuevo } : b; })); setIntercambio(null); setSel(k); return; }
+    if (acabaArrastrar.current) return;
+    if (intercambio !== null && intercambio !== k) { cambia2(intercambio, k); setIntercambio(null); setSel(k); return; }
     setSel(k); ir(bloques[k].t0);
   };
   const b = bloques[sel];
@@ -727,19 +734,19 @@ function LineaTiempo({ t, vref, onCambio, grande = false }) {
         <label style={{ ...mut, display: 'flex', alignItems: 'center', gap: 6 }}>Zoom<input type="range" min="20" max="220" value={pps} onChange={e => setPps(Number(e.target.value))} /></label>
         <button className="ap-btn ap-btn-sm" disabled={!hist.length} onClick={deshacer}>Deshacer</button>
       </div>
-      <div style={{ ...mut, marginBottom: 8 }}>Pulsa un bloque para elegirlo. Arrastra el borde derecho de un bloque para alargarlo o acortarlo. La línea roja es el vídeo: pulsa en la regla o reproduce para moverla, y "Dividir" corta el bloque en ese punto.</div>
+      <div style={{ ...mut, marginBottom: 8 }}>Pulsa un bloque para elegirlo; arrástralo encima de otro para intercambiarlos. Arrastra el borde derecho de un bloque para alargarlo o acortarlo. La línea roja es el vídeo: pulsa en la regla o reproduce para moverla, y "Dividir" corta el bloque en ese punto.</div>
       <div style={{ overflowX: 'auto', paddingBottom: 6 }}>
-        <div style={{ position: 'relative', width: W, height: grande ? 190 : 130, userSelect: 'none' }}>
+        <div ref={lienzo} style={{ position: 'relative', width: W, height: grande ? 190 : 130, userSelect: 'none' }}>
           <div onClick={e => { const r = e.currentTarget.getBoundingClientRect(); ir(Math.max(0, Math.min(total, (e.clientX - r.left) / pps))); }} style={{ position: 'absolute', left: 0, top: 0, width: W, height: 22, cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
             {marcas.map(m => <div key={m} style={{ position: 'absolute', left: m * pps, top: 0, height: 22, borderLeft: '1px solid rgba(255,255,255,0.25)', paddingLeft: 3, fontSize: 10, color: 'rgba(255,255,255,0.55)' }}>{fmtDur(Math.round(m))}</div>)}
           </div>
           {bloques.map((x, k) => {
             const w = Math.max(10, (fin(k) - x.t0) * pps - 2), activo = k === sel, id = x.nuevo?.id || x.driveId;
             return (
-              <div key={x.id} onClick={() => clicBloque(k)} style={{ position: 'absolute', left: x.t0 * pps, top: 28, width: w, height: grande ? 150 : 92, borderRadius: 8, overflow: 'hidden', cursor: 'pointer', background: '#1d1b19', border: '2px solid ' + (activo ? '#f2c46d' : intercambio === k ? '#7ccf8f' : 'rgba(255,255,255,0.18)'), boxSizing: 'border-box' }}>
+              <div key={x.id} onClick={() => clicBloque(k)} onPointerDown={e => iniciaArrastre(k, e)} onPointerMove={muevenArrastre} onPointerUp={sueltaArrastre} title="Arrastra el bloque sobre otro para intercambiarlos" style={{ position: 'absolute', left: x.t0 * pps, top: 28, width: w, height: grande ? 150 : 92, borderRadius: 8, overflow: 'hidden', cursor: 'grab', touchAction: 'pan-x', background: '#1d1b19', border: '2px solid ' + (destino === k && dragB.current && dragB.current.k !== k ? '#7ccf8f' : activo ? '#f2c46d' : intercambio === k ? '#7ccf8f' : 'rgba(255,255,255,0.18)'), boxSizing: 'border-box' }}>
                 {id && <img src={urlMiniatura(id)} alt="" loading="lazy" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.55 }} onError={e => { e.currentTarget.style.visibility = 'hidden'; }} />}
                 <div style={{ position: 'relative', padding: '3px 5px', fontSize: 10, lineHeight: 1.25, textShadow: '0 1px 2px #000' }}><strong>{k + 1}</strong>{w > 70 ? ' · ' + (x.nuevo ? x.nuevo.nombre : x.nombre || 'clip') : ''}{w > 110 && <div style={{ opacity: 0.85 }}>{(fin(k) - x.t0).toFixed(1)} s</div>}</div>
-                {k < n - 1 && <div onPointerDown={e => iniciaBorde(k, e)} onPointerMove={muevelBorde} onPointerUp={sueltaBorde} onClick={e => e.stopPropagation()} title="Arrastra para alargar o acortar" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 9, cursor: 'col-resize', background: 'rgba(242,196,109,0.7)' }} />}
+                {k < n - 1 && <div onPointerDown={e => { e.stopPropagation(); iniciaBorde(k, e); }} onPointerMove={muevelBorde} onPointerUp={sueltaBorde} onClick={e => e.stopPropagation()} title="Arrastra para alargar o acortar" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 9, cursor: 'col-resize', background: 'rgba(242,196,109,0.7)' }} />}
               </div>
             );
           })}
