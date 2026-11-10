@@ -1000,6 +1000,51 @@ function CajaReglas() {
   );
 }
 
+// Chat directo con el editor: aprende de lo que Víctor le dice y lo aplica solo en los vídeos siguientes
+function PestanaEditor({ trabajos }) {
+  const [mensajes, setMensajes] = useState([]), [hechos, setHechos] = useState([]), [texto, setTexto] = useState(''), [trabajo, setTrabajo] = useState(''), [trabaja, setTrabaja] = useState(false), [error, setError] = useState('');
+  const fin = useRef(null);
+  useEffect(() => { api.get('/estudio-video/editor').then(r => { setHechos(r.data.hechos || []); setMensajes((r.data.charla || []).map(m => ({ rol: m.rol, texto: m.texto, cambios: m.cambios || [] }))); }).catch(() => {}); }, []);
+  useEffect(() => { fin.current?.scrollIntoView({ block: 'end' }); }, [mensajes, trabaja]);
+  const enviar = async () => {
+    const m = texto.trim(); if (!m || trabaja) return; setTexto(''); setError(''); setTrabaja(true); setMensajes(l => [...l, { rol: 'yo', texto: m }]);
+    try { const r = await api.post('/estudio-video/editor/chat', { mensaje: m, trabajo: trabajo || undefined }, { timeout: 120000 }); setMensajes(l => [...l, { rol: 'ia', texto: r.data.respuesta, cambios: r.data.cambios || [] }]); setHechos(r.data.hechos || []); }
+    catch (e) { setError(e.response?.data?.error || 'No se pudo hablar con el editor'); } finally { setTrabaja(false); }
+  };
+  const olvida = async (id) => { try { const r = await api.delete('/estudio-video/editor/hechos/' + id); setHechos(r.data.hechos || []); } catch { setError('No se pudo borrar'); } };
+  const recientes = (trabajos || []).filter(t => t.estado === 'listo').slice(0, 25);
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 12 }}>
+      <div style={card}>
+        <div style={{ fontWeight: 700, marginBottom: 2 }}>💬 Habla con el editor</div>
+        <div style={{ ...mut, marginBottom: 8 }}>Dile lo que te gusta y lo que no, pídele que cambie un estilo o pregúntale por un vídeo. Lo que le cuentes lo aprende y lo aplica solo en los vídeos siguientes, sin tocar nada más.</div>
+        <select className="ap-field-input" style={{ width: '100%', marginBottom: 8 }} value={trabajo} onChange={e => setTrabajo(e.target.value)}><option value="">Hablar en general</option>{recientes.map(t => <option key={t.id} value={t.id}>Sobre: {(t.nombre_archivo || t.id).slice(0, 60)}</option>)}</select>
+        <div style={{ maxHeight: 360, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
+          {!mensajes.length && <div style={mut}>Prueba: «los flashes solo en el remate», «me encanta cuando pone la cifra en grande», «los reels de Dani tienen que empezar con la pregunta» o «¿qué le falta a este vídeo?».</div>}
+          {mensajes.map((m, i) => (
+            <div key={i} style={{ alignSelf: m.rol === 'yo' ? 'flex-end' : 'flex-start', maxWidth: '92%', background: m.rol === 'yo' ? 'rgba(205,187,167,0.18)' : 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '6px 10px', fontSize: '0.88rem', whiteSpace: 'pre-wrap' }}>
+              {m.texto}
+              {(m.cambios || []).map((c, k) => <div key={k} style={{ ...mut, marginTop: 4, color: '#7ccf8f' }}>✓ {c}</div>)}
+            </div>
+          ))}
+          {trabaja && <div style={mut}>El editor está pensando…</div>}
+          <div ref={fin} />
+        </div>
+        {error && <div className="ap-error" style={{ marginBottom: 6 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 6 }}>
+          <textarea className="ap-field-input" rows={2} style={{ flex: 1 }} value={texto} placeholder="Escríbele al editor… (Intro envía)" onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
+          <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={trabaja || !texto.trim()} onClick={enviar}>Enviar</button>
+        </div>
+      </div>
+      <div style={card}>
+        <div style={{ fontWeight: 700, marginBottom: 2 }}>🧠 Lo que el editor ha aprendido de ti</div>
+        <div style={{ ...mut, marginBottom: 8 }}>Son tus preferencias; las usa en cada vídeo nuevo. Borra las que ya no valgan.</div>
+        {!hechos.length && <div style={mut}>Todavía nada. Cuéntale cómo quieres tus vídeos.</div>}
+        {hechos.map(h => <div key={h.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '5px 0', borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: '0.86rem' }}><span style={{ flex: 1 }}>{h.texto}<span style={{ ...mut, marginLeft: 6 }}>{h.fecha}</span></span><button className="ap-btn ap-btn-sm" title="Olvidar" onClick={() => olvida(h.id)}><Trash2 size={12} /></button></div>)}
+      </div>
+    </div>
+  );
+}
 function EstilosPestana() { const [estilos, recarga] = useEstilos(); return estilos.length ? <div style={{ marginTop: 12 }}><Estilos estilos={estilos} onCambio={recarga} /></div> : null; }
 function Formatos({ formatos, onCambio }) {
   const [estilos] = useEstilos();
@@ -1140,9 +1185,10 @@ export function SectionEstudioVideo() {
         <button className={'ap-btn ap-btn-sm' + (tab === 'formatos' ? ' ap-btn-primary' : '')} onClick={() => setTab('formatos')}><Settings2 size={13} /> Formatos</button>
         <button className={'ap-btn ap-btn-sm' + (tab === 'musica' ? ' ap-btn-primary' : '')} onClick={() => setTab('musica')}><Music size={13} /> Música</button>
         <button className={'ap-btn ap-btn-sm' + (tab === 'efectos' ? ' ap-btn-primary' : '')} onClick={() => setTab('efectos')}><Wand2 size={13} /> Efectos</button>
+        <button className={'ap-btn ap-btn-sm' + (tab === 'editor' ? ' ap-btn-primary' : '')} onClick={() => setTab('editor')}>💬 Editor</button>
       </div>
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
-      {tab === 'efectos' ? <PestanaEfectos /> : tab === 'formatos' ? <><AprenderReferencia formatos={formatos} onCambio={cargarT} /><Formatos formatos={formatos} onCambio={cargarF} /><EstilosPestana /></> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
+      {tab === 'editor' ? <PestanaEditor trabajos={trabajos || []} /> : tab === 'efectos' ? <PestanaEfectos /> : tab === 'formatos' ? <><AprenderReferencia formatos={formatos} onCambio={cargarT} /><Formatos formatos={formatos} onCambio={cargarF} /><EstilosPestana /></> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Nuevo formatos={formatos} musica={pistas} carpetas={carpetas} trabajos={trabajos} onCreado={cargarT} />
           {trabajos === null ? <div className="ap-loading">Cargando…</div> : trabajos.length === 0 ? <div style={mut}>Todavía no hay vídeos. Sube el primero arriba.</div> : trabajos.map(t => <Trabajo key={t.id} t={t} formatos={formatos} musica={pistas} trabajosTodos={trabajos} onCambio={cargarT} />)}
