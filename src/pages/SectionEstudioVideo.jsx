@@ -1467,17 +1467,18 @@ function TendenciasPlan({ items }) {
     {ej && <TallerIdeas idea={ej} onCerrar={() => setEj(null)} />}
   </>;
 }
+const eleccionCuentas = (cs) => ['nicho', 'adyacente', 'estilo'].flatMap(tp => cs.filter(x => (x.tipo || 'nicho') === tp).slice(0, 3)).map(x => x.usuario).join(', ');
 function CuentasNicho({ ig, onUsar }) {
   const [d, setD] = useState(null), [trab, setTrab] = useState(false), [msg, setMsg] = useState('');
-  useEffect(() => { api.get('/redes/nicho/cuentas').then(r => { setD(r.data); if ((r.data.cuentas || []).length) onUsar(r.data.cuentas.slice(0, 8).map(x => x.usuario).join(', ')); }).catch(() => {}); /* eslint-disable-next-line */ }, []);
-  const busca = async () => { setTrab(true); setMsg(''); try { const r = await api.post('/redes/nicho/descubrir', {}, { timeout: 200000 }); setD(r.data); onUsar((r.data.cuentas || []).slice(0, 8).map(x => x.usuario).join(', ')); setMsg(r.data.nuevas + ' cuentas nuevas comprobadas (de ' + r.data.propuestas + ' propuestas).'); } catch (e) { setMsg(e.response?.data?.error || 'No se pudo'); } setTrab(false); };
-  const quita = async (u) => { try { const r = await api.post('/redes/nicho/cuentas/quitar', { usuario: u }); setD(r.data); onUsar((r.data.cuentas || []).slice(0, 8).map(x => x.usuario).join(', ')); } catch { /* se queda */ } };
+  useEffect(() => { api.get('/redes/nicho/cuentas').then(r => { setD(r.data); if ((r.data.cuentas || []).length) onUsar(eleccionCuentas(r.data.cuentas)); }).catch(() => {}); /* eslint-disable-next-line */ }, []);
+  const busca = async () => { setTrab(true); setMsg(''); try { const r = await api.post('/redes/nicho/descubrir', {}, { timeout: 200000 }); setD(r.data); onUsar(eleccionCuentas(r.data.cuentas || [])); setMsg(r.data.nuevas + ' cuentas nuevas comprobadas (de ' + r.data.propuestas + ' propuestas).'); } catch (e) { setMsg(e.response?.data?.error || 'No se pudo'); } setTrab(false); };
+  const quita = async (u) => { try { const r = await api.post('/redes/nicho/cuentas/quitar', { usuario: u }); setD(r.data); onUsar(eleccionCuentas(r.data.cuentas || [])); } catch { /* se queda */ } };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ ...mut, fontSize: '0.84rem' }}>Tu nicho: diseño y montaje de gimnasios y espacios deportivos. La IA busca cuentas de ese mundo y comprueba que existan y sean públicas.</div>
+      <div style={{ ...mut, fontSize: '0.84rem' }}>Tu nicho: diseño y montaje de gimnasios y espacios deportivos. La IA busca tres tipos de cuentas y comprueba que existan y sean públicas: 🏋️ de tu nicho, 🏠 de nichos cercanos (interiorismo, reformas, fitness, negocios) y 🎬 de estilo (cualquier tema, pero con una forma de ser, comunicar o grabar que te podría funcionar). Pasa el ratón por una para ver qué se puede aprender.</div>
       <div><button className="rd-btn pri" disabled={!ig || trab} onClick={busca}>{trab ? 'Buscando y comprobando…' : (d?.cuentas || []).length ? '🔎 Buscar más cuentas' : '🔎 Encontrar cuentas de mi nicho'}</button></div>
       {msg && <div style={{ ...mut, fontSize: '0.82rem' }}>{msg}</div>}
-      {(d?.cuentas || []).length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{d.cuentas.map(x => <span key={x.usuario} className="rd-chip">@{x.usuario} · {fmt(x.seguidores)} <button onClick={() => quita(x.usuario)} title="Quitar esta cuenta" style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button></span>)}</div>}
+      {(d?.cuentas || []).length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{d.cuentas.map(x => <span key={x.usuario} className="rd-chip" title={x.aprender || ''} style={{ color: { nicho: '#8fdba0', adyacente: '#f2c46d', estilo: '#9db8ff' }[x.tipo] || undefined }}>{{ nicho: '🏋️', adyacente: '🏠', estilo: '🎬' }[x.tipo] || ''} @{x.usuario} · {fmt(x.seguidores)} <button onClick={() => quita(x.usuario)} title="Quitar esta cuenta" style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button></span>)}</div>}
     </div>
   );
 }
