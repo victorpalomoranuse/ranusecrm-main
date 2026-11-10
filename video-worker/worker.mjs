@@ -221,8 +221,12 @@ async function procesa(t) {
       const v = lista[i]; await paso(t, 'Analizando vídeo ' + (i + 1) + ' de ' + lista.length + '…', { pct: 5 + Math.round(90 * i / Math.max(1, lista.length)) });
       const f = path.join(dir, 'v' + i + '.mp4');
       try {
-        const rs = await fetch(v.url); if (!rs.ok) throw new Error('descarga ' + rs.status);
-        await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(f));
+        if (v.ruta) {
+          if (!(await drive.cacheBaja(v.ruta, f).catch(() => false))) { const u = await st.createSignedUrl(v.ruta, 600); if (!u.data?.signedUrl) throw new Error('no encuentro el vídeo subido'); const rs = await fetch(u.data.signedUrl); if (!rs.ok) throw new Error('descarga ' + rs.status); await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(f)); }
+        } else {
+          const rs = await fetch(v.url); if (!rs.ok) throw new Error('descarga ' + rs.status);
+          await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(f));
+        }
         const a = await analizaReferencia(f, path.join(dir, '_v' + i), () => {});
         out.push({ id: v.id, enlace: v.enlace, pie: v.pie, puntuacion: v.puntuacion, analisis: a });
       } catch (e) { console.log('[' + t.id + '] vídeo ' + v.id + ' sin analizar:', e.message); out.push({ id: v.id, enlace: v.enlace, pie: v.pie, puntuacion: v.puntuacion, error: String(e.message).slice(0, 120) }); }
