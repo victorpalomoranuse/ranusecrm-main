@@ -6333,12 +6333,12 @@ export default function Visor3D({ cliente = false }) {
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Módulos · ancho total {Math.round(objSel.w)} cm</div>
                 {M.modulos.map((m, i) => (
                   <div key={i} style={{ background: '#2a2a2a', borderRadius: 6, padding: 6, marginBottom: 5 }}>
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                       <select value={m.t} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].t = e.target.value; if (e.target.value === 'columna' && !ms[i].h) ms[i].h = 220; return ms; })} style={{ ...btn, flex: 1, padding: '3px 4px' }}>{[...tipos, ['columna', 'Columna (secciones)']].map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select>
                       <input type="number" value={m.w} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].w = parseFloat(e.target.value) || 0; return ms; })} style={{ ...btn, width: 56, padding: '3px 4px' }} title="Ancho (cm)" />
                       <span onClick={() => cambiarModulos(objSel.id, ms => { if (i > 0) [ms[i - 1], ms[i]] = [ms[i], ms[i - 1]]; return ms; })} style={{ cursor: 'pointer', padding: '0 3px' }} title="Mover a la izquierda">◀</span>
                       <span onClick={() => cambiarModulos(objSel.id, ms => { if (i < ms.length - 1) [ms[i + 1], ms[i]] = [ms[i], ms[i + 1]]; return ms; })} style={{ cursor: 'pointer', padding: '0 3px' }} title="Mover a la derecha">▶</span>
-                      <span onClick={() => cambiarModulos(objSel.id, ms => ms.filter((_, j) => j !== i))} style={{ cursor: 'pointer', padding: '0 3px', opacity: 0.7 }} title="Quitar módulo">✕</span>
+                      <span onClick={() => cambiarModulos(objSel.id, ms => ms.filter((_, j) => j !== i))} style={{ cursor: 'pointer', padding: '2px 8px', borderRadius: 5, background: '#a33', fontSize: 12, whiteSpace: 'nowrap' }} title="Quitar este módulo">🗑 Quitar</span>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, fontSize: 12 }}>
                       {m.t === 'puertas' && <label>Hojas <select value={m.n === 2 ? 2 : 1} onChange={e => cambiarModulos(objSel.id, ms => { ms[i].n = parseInt(e.target.value, 10); return ms; })} style={{ ...btn, padding: '2px' }}><option value={1}>1</option><option value={2}>2</option></select></label>}
