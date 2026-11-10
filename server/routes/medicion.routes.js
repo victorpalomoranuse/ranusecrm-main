@@ -541,7 +541,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest', 'cubierta'];
 const BUCKET_TEX = 'project-documents';
 // Las luminarias que se ponen solo en el 3D (focos y colgantes de un carril, y objetos con nombre de lámpara) también se escriben en el plano,
 // en su capa de iluminación. Llevan un id que empieza por «l3_»: cada vez que se guarda la escena 3D se vuelven a calcular.
@@ -628,6 +628,18 @@ router.put('/:id/escena3d', async (req, res) => {
           estilo: s.estilo === 'cabina' ? 'cabina' : 'estandar',
           frente: { tipo: fr.tipo === 'madera' ? 'madera' : 'cristal', puerta: Math.max(55, Math.min(120, num(fr.puerta, 70))), lado: fr.lado === 'der' ? 'der' : 'izq', pos: ['izq', 'centro', 'der'].includes(fr.pos) ? fr.pos : (fr.lado === 'der' ? 'der' : 'izq'), marco: !!fr.marco, asa: fr.asa === 'madera' ? 'madera' : 'barra', ventana: !!fr.ventana },
           techo: s.techo !== false, luz: s.luz !== false, respaldos: s.respaldos !== false, precios,
+        };
+      })() : undefined,
+      cubierta: o.tipo === 'cubierta' && o.cubierta && typeof o.cubierta === 'object' ? (() => {
+        const c = o.cubierta, pa = c.panel || {}, es = c.estructura || {}, ca = c.cargas || {}, su = c.suelo || {};
+        const precios = {}; if (c.precios && typeof c.precios === 'object') Object.keys(c.precios).slice(0, 30).forEach(k => { if (/^[a-z]{2,20}$/.test(k)) precios[k] = Math.max(0, Math.min(1e6, num(c.precios[k], 0))); });
+        return {
+          tipo: ['dosaguas', 'unaagua', 'cuatroaguas', 'plana', 'marquesina'].includes(c.tipo) ? c.tipo : 'dosaguas',
+          pend: Math.max(1, Math.min(60, num(c.pend, 15))), hAlero: Math.max(100, Math.min(1500, num(c.hAlero, 400))), vuelo: Math.max(0, Math.min(150, num(c.vuelo, 30))), sentido: c.sentido === 'w' ? 'w' : 'd',
+          panel: { esp: [30, 40, 50, 60, 80, 100].includes(Number(pa.esp)) ? Number(pa.esp) : 40, color: /^#[0-9a-fA-F]{6}$/.test(pa.color || '') ? pa.color : '#e9e9e6' },
+          estructura: { pilares: es.pilares !== false, zapatas: es.zapatas !== false, sepPorticos: Math.max(200, Math.min(1000, num(es.sepPorticos, 500))), sepCorreas: Math.max(0, Math.min(400, num(es.sepCorreas, 0))), verEstructura: es.verEstructura !== false, verPanel: es.verPanel !== false },
+          cargas: { nieve: Math.max(0, Math.min(5, num(ca.nieve, 0.5))), estructura: Math.max(0, Math.min(1, num(ca.estructura, 0.12))) },
+          suelo: { sigAdm: Math.max(50, Math.min(600, num(su.sigAdm, 200))) }, precios,
         };
       })() : undefined,
       mueble: o.tipo === 'mueble' && o.mueble ? {
