@@ -541,7 +541,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest'];
 const BUCKET_TEX = 'project-documents';
 // Las luminarias que se ponen solo en el 3D (focos y colgantes de un carril, y objetos con nombre de lámpara) también se escriben en el plano,
 // en su capa de iluminación. Llevan un id que empieza por «l3_»: cada vez que se guarda la escena 3D se vuelven a calcular.
@@ -603,6 +603,19 @@ router.put('/:id/escena3d', async (req, res) => {
       bloqueado: o.bloqueado === true ? true : undefined,
       ocultosPartes: Array.isArray(o.ocultosPartes) && o.ocultosPartes.length ? o.ocultosPartes.slice(0, 60).map(x => String(x).slice(0, 80)) : undefined,
       partes: o.partes && typeof o.partes === 'object' ? Object.fromEntries(Object.entries(o.partes).slice(0, 40).map(([k, v]) => [String(k).slice(0, 60), acab(v)]).filter(([, v]) => v)) : undefined,
+      revest: o.tipo === 'revest' && o.revest && typeof o.revest === 'object' ? (() => {
+        const r = o.revest, p = r.p && typeof r.p === 'object' ? r.p : {}, n = (v, d, mn, mx) => Math.max(mn, Math.min(mx, num(v, d)));
+        return {
+          id: String(r.id || '').replace(/[^a-z0-9-]/g, '').slice(0, 24), tipo: ['lamas', 'cuadros', 'paneles', 'moldura', 'relieve'].includes(r.tipo) ? r.tipo : 'lamas',
+          muroId: String(r.muroId || '').slice(0, 40), lado: r.lado < 0 ? -1 : 1, s0: n(r.s0, 0, 0, 100000), s1: n(r.s1, 100, 0, 100000),
+          p: {
+            dir: p.dir === 'h' ? 'h' : 'v', ancho: n(p.ancho, 4, 0.5, 300), grueso: n(p.grueso, 2.5, 0.2, 30), sep: n(p.sep, 2, 0, 100), forma: ['rect', 'redondo', 'piramide', 'hexa', 'cubos', 'triangulo'].includes(p.forma) ? p.forma : 'rect',
+            fondo: ['oscuro', 'fieltro', 'ninguno'].includes(p.fondo) ? p.fondo : 'oscuro', filas: Math.round(n(p.filas, 1, 1, 6)), moldura: n(p.moldura, 4, 1, 20), relieve: n(p.relieve, 1.8, 0.3, 10), zocalo: n(p.zocalo, 0, 0, 200),
+            alto: n(p.alto, 120, 10, 400), junta: n(p.junta, 0.6, 0, 10), perfil: String(p.perfil || '').slice(0, 40), pos: ['suelo', 'media', 'techo'].includes(p.pos) ? p.pos : 'suelo', altura: n(p.altura, 90, 0, 400), celda: n(p.celda, 12, 3, 60),
+          },
+          huecos: (Array.isArray(r.huecos) ? r.huecos : []).slice(0, 40).map(h => ({ x0: n(h?.x0, 0, -1e5, 1e5), x1: n(h?.x1, 0, -1e5, 1e5), y0: n(h?.y0, 0, -1e5, 1e5), y1: n(h?.y1, 0, -1e5, 1e5) })),
+        };
+      })() : undefined,
       sauna: o.tipo === 'sauna' && o.sauna && typeof o.sauna === 'object' ? (() => {
         const s = o.sauna, e = s.estufa || {}, ir = s.ir || {}, fr = s.frente || {};
         const precios = {}; if (s.precios && typeof s.precios === 'object') Object.keys(s.precios).slice(0, 30).forEach(k => { if (/^[a-z]{2,20}$/.test(k)) precios[k] = Math.max(0, Math.min(1e6, num(s.precios[k], 0))); });

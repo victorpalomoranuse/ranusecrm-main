@@ -10,6 +10,7 @@ import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
 import EstudioIdeas from '../components/EstudioIdeas';
+import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
 import { construirSauna, saunaPorDefecto, normalizaSauna, calculosSauna, textoMateriales, MADERAS, TIPOS_SAUNA } from '../components/sauna3d';
 import EditorRender from '../components/EditorRender';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
@@ -500,6 +501,16 @@ function miniaturaModelo(m) {
   }).catch(() => null));
   cacheMini.set(k, p);
   return p;
+}
+function MiniRev({ p }) {
+  const c = p.color || '#ccc', osc = '#3a3633', s = 64;
+  let dentro = null;
+  if (p.tipo === 'lamas') { const n = p.p.dir === 'h' ? 8 : Math.round(60 / (p.p.ancho + p.p.sep + 2)); const pas = 60 / Math.max(4, Math.min(14, n)); dentro = Array.from({ length: Math.max(4, Math.min(14, n)) }, (_, i) => p.p.dir === 'h' ? <rect key={i} x="2" y={2 + i * pas} width="60" height={pas * 0.6} fill={c} /> : <rect key={i} x={2 + i * pas} y="2" width={pas * 0.62} height="60" rx={p.p.forma === 'redondo' ? 2 : 0} fill={c} />); }
+  else if (p.tipo === 'cuadros') dentro = [0, 1].flatMap(i => (p.p.filas > 1 ? [0, 1] : [0]).map(j => <rect key={i + '-' + j} x={6 + i * 29} y={p.p.filas > 1 ? 6 + j * 29 : 8} width="24" height={p.p.filas > 1 ? 24 : 48} fill="none" stroke={c} strokeWidth="3" />));
+  else if (p.tipo === 'paneles') dentro = [0, 1].flatMap(i => [0, 1].map(j => <rect key={i + '-' + j} x={3 + i * 30} y={3 + j * 30} width="28" height="28" fill={c} />));
+  else if (p.tipo === 'relieve') dentro = [0, 1, 2, 3].flatMap(i => [0, 1, 2, 3].map(j => p.p.forma === 'hexa' ? <circle key={i + '-' + j} cx={10 + i * 15 + (j % 2) * 5} cy={10 + j * 15} r="6" fill={c} /> : p.p.forma === 'triangulo' ? <polygon key={i + '-' + j} points={((i + j) % 2) ? (6 + i * 15) + ',' + (18 + j * 15) + ' ' + (18 + i * 15) + ',' + (18 + j * 15) + ' ' + (12 + i * 15) + ',' + (6 + j * 15) : (6 + i * 15) + ',' + (6 + j * 15) + ' ' + (18 + i * 15) + ',' + (6 + j * 15) + ' ' + (12 + i * 15) + ',' + (18 + j * 15)} fill={c} /> : <rect key={i + '-' + j} x={4 + i * 15} y={4 + j * 15} width="12" height="12" fill={c} opacity={p.p.forma === 'cubos' ? 0.5 + ((i * 7 + j * 13) % 3) * 0.25 : 1} />));
+  else { const pf = PERFILES_MOLDURA[p.p.perfil] || [], mx = Math.max(1, ...pf.map(q => q[0])), my = Math.max(1, ...pf.map(q => q[1])), k = 50 / Math.max(mx, my); dentro = <polygon points={pf.map(q => (8 + q[0] * k) + ',' + (56 - q[1] * k)).join(' ')} fill={c} />; }
+  return <svg width={s} height={s} viewBox="0 0 64 64" style={{ background: osc, borderRadius: 4 }}>{dentro}</svg>;
 }
 function Miniatura({ mod, foto, size = 56 }) {
   const [src, setSrc] = useState(() => (mod && cacheMini.get(mod.url)?.__v) || null);
@@ -1008,6 +1019,7 @@ const ICONOS = {
   muro: 'M3 6h18v12H3z M3 12h18 M9 6v6 M15 12v6', rect: 'M4 6h16v12H4z', circ: 'M12 4a8 8 0 100 16 8 8 0 000-16z', poli: 'M12 3l8 6-3 11H7L4 9z',
   empujar: 'M12 20V10 M8 13l4-4 4 4 M4 8l8-4 8 4', zona: 'M4 5h16v14H4z M4 12l8-7 M4 19L19 5 M12 19l7-7', sigue: 'M3 19c6 0 4-14 9-14s3 14 9 14',
   catalogo: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8', biblioteca: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
+  revest: 'M4 4h16v16H4z M8 4v16 M12 4v16 M16 4v16',
   alzado: 'M4 4h16v16H4z M4 15h16 M9 4v11 M15 4v11', planta: 'M4 4h16v16H4z M4 10h9 M13 4v16', techo: 'M4 4h16v16H4z M8 8h8v8H8z',
   textura: 'M4 4h16v16H4z M4 9h16 M4 14h16 M9 4v16 M14 4v16', modelos: 'M12 3l8 4v10l-8 4-8-4V7z M4 7l8 4 8-4 M12 11v10',
   sauna: 'M4 4h16v16H4z M4 12h9 M4 16h14 M15 7c0-2 2-2 2-4 M11 7c0-2 2-2 2-4',
@@ -2117,6 +2129,20 @@ export default function Visor3D({ cliente = false }) {
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       rayo.setFromCamera(p2, cam);
       const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
+      if (herrRef.current === 'revest') {
+        const pr = presetRevest(revSelRef.current); if (!pr) return;
+        const h = rayo.intersectObjects(raiz.children, true).find(x => x.object.isMesh && !x.object.userData.hit && !x.object.userData.overlay && x.object.userData.muroId && !String(x.object.userData.muroId).startsWith('rc-') && visible(x.object));
+        if (!h || !h.face) { setAviso('Pulsa sobre la cara de un muro'); return; }
+        const mod = api3d.current.modelo, mu = (mod?.plantas || [mod]).flatMap(p => p?.muros || []).find(m => m.id === h.object.userData.muroId); if (!mu) return;
+        const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L;
+        const nW = h.face.normal.clone().transformDirection(h.object.matrixWorld), dot = nW.x * -uy + nW.z * ux;
+        if (Math.abs(dot) < 0.5) { setAviso('Pulsa en la cara del muro, no en el canto ni arriba'); return; }
+        const lado = dot > 0 ? 1 : -1, H = mu.h || mod?.altura || 260, c = colocaEnMuro(mu, lado, 0, L);
+        const base = { w: c.w, alto: H, revest: { id: pr.id, tipo: pr.tipo } };
+        const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'revest', nombre: pr.nombre, etiqueta: 'Revestimientos', cx: c.cx, cy: c.cy, rot: c.rot, w: c.w, d: espesorRevest(base), alto: H, z0: 0, color: pr.color, revest: { id: pr.id, tipo: pr.tipo, muroId: mu.id, lado, s0: 0, s1: L, p: { ...pr.p }, huecos: c.huecos } };
+        setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); if (!e.shiftKey) setHerr('sel');
+        return;
+      }
       if (['vistaM', 'vistaS', 'vistaT'].includes(herrRef.current)) {
         const h = rayo.intersectObjects(raiz.children, true).find(x => x.object.isMesh && !x.object.userData.hit && !x.object.userData.overlay && visible(x.object)), u = h?.object?.userData || {}, k = herrRef.current;
         if (k === 'vistaM' && u.muroId) { setHerr('sel'); entrarAlzadoRef.current?.('muro', u.muroId); }
@@ -3341,6 +3367,17 @@ export default function Visor3D({ cliente = false }) {
         a.esc.add(gf);
         return;
       }
+      if (o.tipo === 'revest') {
+        const gr = new THREE.Group(), cj = cajaRevest(o), esp = espesorRevest(o);
+        const cont = construirRevest(o); cont.position.y = (o.z0 || 0) * CM; gr.add(cont);
+        const hit = new THREE.Mesh(new THREE.BoxGeometry(o.w * CM, Math.max(2, cj.y1 - cj.y0) * CM, esp * CM), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.set(0, (cj.y0 + (cj.y1 - cj.y0) / 2 + (o.z0 || 0)) * CM, (esp / 2) * CM); hit.userData.hit = true; gr.add(hit);
+        if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); gr.add(l); }
+        gr.position.set(o.cx * CM, 0, o.cy * CM); gr.rotation.y = -(o.rot || 0) * Math.PI / 180;
+        gr.userData.oid = o.id; gr.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(gr);
+        return;
+      }
       if (o.tipo === 'sauna') {
         const gs = new THREE.Group();
         const cont = construirSauna(o); cont.position.y = (o.z0 || 0) * CM; gs.add(cont);
@@ -3426,10 +3463,10 @@ export default function Visor3D({ cliente = false }) {
 
   // Los paneles de la izquierda (catálogo, biblioteca 3D, capas, materiales) no se solapan: abrir uno cierra los demás; igual con los de la derecha
   useEffect(() => {
-    const cur = { cat: bibAbierta, b3d: b3dAbierta, capas: capasAbierto, mat: matAbierto }, nuevo = Object.keys(cur).find(k => cur[k] && !panPrev.current[k]);
+    const cur = { cat: bibAbierta, b3d: b3dAbierta, capas: capasAbierto, mat: matAbierto, rev: revAbierto }, nuevo = Object.keys(cur).find(k => cur[k] && !panPrev.current[k]);
     panPrev.current = cur;
-    if (nuevo) { if (nuevo !== 'cat') setBibAbierta(false); if (nuevo !== 'b3d') setB3dAbierta(false); if (nuevo !== 'capas') setCapasAbierto(false); if (nuevo !== 'mat') setMatAbierto(false); }
-  }, [bibAbierta, b3dAbierta, capasAbierto, matAbierto]);
+    if (nuevo) { if (nuevo !== 'cat') setBibAbierta(false); if (nuevo !== 'b3d') setB3dAbierta(false); if (nuevo !== 'capas') setCapasAbierto(false); if (nuevo !== 'mat') setMatAbierto(false); if (nuevo !== 'rev') setRevAbierto(false); }
+  }, [bibAbierta, b3dAbierta, capasAbierto, matAbierto, revAbierto]);
   useEffect(() => {
     const cur = { gal: galAbierta, esc: escAbierta }, nuevo = Object.keys(cur).find(k => cur[k] && !derPrev.current[k]);
     derPrev.current = cur;
@@ -3620,6 +3657,8 @@ export default function Visor3D({ cliente = false }) {
   };
   const [muebleMenu, setMuebleMenu] = useState(false);
   const [saunaMenu, setSaunaMenu] = useState(false);
+  const [revAbierto, setRevAbierto] = useState(false), [revSel, setRevSel] = useState(null);
+  const revSelRef = useRef(null); revSelRef.current = revSel;
   const PLANTILLAS_MUEBLE = {
     'Bajo de cocina (3 módulos)': { d: 60, alto: 90, zocalo: 10, modulos: [{ t: 'puertas', w: 60, n: 1, nb: 1 }, { t: 'cajones', w: 60, n: 3 }, { t: 'puertas', w: 60, n: 2, nb: 1 }] },
     'Bajo de cocina con nevera y encimera': { d: 60, alto: 90, zocalo: 10, encimera: { on: true, esp: 3, vuelo: 2 }, modulos: [{ t: 'puertas', w: 60, n: 1, nb: 1 }, { t: 'nevera', w: 60 }, { t: 'cajones', w: 60, n: 3 }, { t: 'puertas', w: 60, n: 2, nb: 1 }] },
@@ -4689,6 +4728,7 @@ export default function Visor3D({ cliente = false }) {
     sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo'], poli: ['Dibujar forma', 'Rectángulo y círculo: arrastra · Polígono: clic a clic, Enter cierra · después tira hacia arriba para darle altura'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de la forma para darle altura'],
     muro: ['Muro', 'Clic para empezar y cada punto; Mayús = recto; Enter termina'], zonaS: ['Zona en suelo', 'Clic punto a punto; Enter cierra'], zonaT: ['Zona en techo', 'Clic punto a punto; Enter cierra'], zonaP: ['Zona en pared', 'Clic punto a punto sobre una pared; Enter cierra'],
     vistaM: ['Alzado de un muro', 'Pulsa el muro del que quieres ver el alzado (vista de frente) para dibujar y colocar materiales'], vistaS: ['Planta de un suelo', 'Pulsa el suelo del que quieres ver la planta (vista desde arriba)'], vistaT: ['Planta de un techo', 'Pulsa el suelo de la sala de la que quieres ver el techo desde abajo'],
+    revest: ['Revestimiento', 'Pulsa el muro donde lo quieres (Mayús = seguir poniéndolo en más muros). Después ajustas las medidas en la ficha'],
     sigue: ['Sígueme', 'Dibuja el camino por donde pasará el perfil; Enter termina'], carril: ['Carril', 'Dibuja el recorrido; Enter termina'], led: ['Tira LED', 'Dibuja el recorrido; Enter termina'], focoC: ['Focos', 'Clic en el carril para colocar; Esc sale'],
     luz: ['Luz', 'Clic en el suelo para colocar la luminaria en el plano'], guia: ['Cinta métrica', 'Clic en dos puntos para crear una línea guía'], pincel: ['Pincel', 'Clic en lo que quieras pintar · Mayús = todo el elemento · Alt = copiar material'], gotero: ['Cuentagotas', 'Clic en lo que quieras copiar'],
   };
@@ -4789,7 +4829,7 @@ export default function Visor3D({ cliente = false }) {
               );
             })();
   // Pestañita de la vista (como la de D5): selector de material y pintura
-  const panelIzqAbierto = bibAbierta || b3dAbierta || capasAbierto || matAbierto;
+  const panelIzqAbierto = bibAbierta || b3dAbierta || capasAbierto || matAbierto || revAbierto;
   const pildora = (
     <div style={{ position: 'absolute', left: railW + 12 + (panelIzqAbierto ? 290 : 0), top: 58, zIndex: 6, display: 'flex', gap: 3, background: 'rgba(22,20,18,0.88)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 9, padding: 3 }}>
       {[['gotero', 'Selector de material (I): haz clic en una superficie y su material sale en el Inspector', () => setHerr(herr === 'gotero' ? 'sel' : 'gotero')], ['pintar', 'Pintura (B): pinta con el material elegido', () => { setMatAbierto(true); setHerr('pincel'); }]].map(([ic, tit, fn]) => {
@@ -4956,6 +4996,7 @@ export default function Visor3D({ cliente = false }) {
           </>), 250),
         ], false, 'Componentes')}
         {grupoRail([
+          railBtn(revAbierto || herr === 'revest', 'revest', 'Revestimientos', 'Palillería, lamas acústicas, panelados, paneles 3D y molduras: eliges un modelo y pulsas el muro', () => { setRevAbierto(v => !v); if (revAbierto && herr === 'revest') setHerr('sel'); }),
           railBtn(ideasAbierto, 'ideas', 'Ideas', 'Chat con ChatGPT: comparte una imagen o la vista actual, pide una idea (un mural, un ambiente…) y descarga solo la imagen', () => setIdeasAbierto(v => !v)),
           railBtn(false, 'imagen', 'Imagen', 'Sube una imagen (PNG con transparencia, o con fondo liso que se quita) y se coloca en el 3D como en SketchUp; después la escalas', () => imagenInput.current?.click()),
           railBtn(false, 'texto', 'Texto 3D', 'Escribe una palabra y elige la fuente: se convierte en letras 3D', () => setTextoDlg({ texto: '', fuente: 'Montserrat-Regular', disp: 'horizontal' })),
@@ -5990,6 +6031,28 @@ export default function Visor3D({ cliente = false }) {
           </div>
         );
       })()}
+      {revAbierto && (() => {
+        const cats = [...new Set(PRESETS_REVEST.map(p => p.cat))];
+        return (
+          <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 290, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}><b style={{ flex: 1 }}>🧱 Revestimientos</b><span onClick={() => { setRevAbierto(false); if (herr === 'revest') setHerr('sel'); }} style={{ cursor: 'pointer', opacity: 0.6 }}>✕</span></div>
+            <div style={{ fontSize: 11.5, opacity: 0.75, margin: '6px 0 8px', lineHeight: 1.45 }}><b>1.</b> Elige un modelo · <b>2.</b> Pulsa el muro · <b>3.</b> Ajusta medidas y color en su ficha.{revSel ? <div style={{ marginTop: 4, color: '#f2c46d' }}>Elegido: {presetRevest(revSel)?.nombre}. Ahora pulsa un muro.</div> : null}</div>
+            {cats.map(cat => (
+              <div key={cat} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>{cat}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  {PRESETS_REVEST.filter(p => p.cat === cat).map(p => (
+                    <div key={p.id} onClick={() => { setRevSel(p.id); setHerr('revest'); }} title={p.desc} style={{ cursor: 'pointer', borderRadius: 6, padding: 6, background: revSel === p.id ? '#3a342f' : '#2a2a2a', border: '1px solid ' + (revSel === p.id ? '#f2c46d' : '#444'), textAlign: 'center' }}>
+                      <MiniRev p={p} />
+                      <div style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.2 }}>{p.nombre}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
       {b3dAbierta && (() => {
         const lista = (b3d?.[b3dTab] || []).filter(m => (!b3dCat || m.categoria === b3dCat) && (!b3dFiltro || (m.nombre + ' ' + m.categoria).toLowerCase().includes(b3dFiltro.toLowerCase())));
         const cats = [...new Set([...(b3dTab === 'mios' ? (b3d?.catsMios || []) : []), ...(b3d?.[b3dTab] || []).map(m => m.categoria)])].sort();
@@ -6391,6 +6454,59 @@ export default function Visor3D({ cliente = false }) {
               </div>
             </div>
           )}
+          {objSel.tipo === 'revest' && (() => {
+            const R = normalizaRevest(objSel), P = R.p, mod0 = api3d.current.modelo, mu = (mod0?.plantas || [mod0]).flatMap(pp => pp?.muros || []).find(m => m.id === R.muroId);
+            const L = mu ? Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) : (R.s1 || 100);
+            const cambiaP = campos => cambiar(objSel.id, { revest: { ...R, p: { ...P, ...campos } } });
+            const recoloca = (s0, s1) => { if (!mu) return; const c = colocaEnMuro(mu, R.lado, s0, s1); cambiar(objSel.id, { cx: c.cx, cy: c.cy, rot: c.rot, w: c.w, revest: { ...R, s0: Math.min(s0, s1), s1: Math.max(s0, s1), huecos: c.huecos } }); };
+            const num = (txt, v, fn, mn = 0, mx = 999, st = 1, w = 64) => <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 118, opacity: 0.7 }}>{txt}</span><input type="number" step={st} min={mn} max={mx} value={v} onChange={e => { const x = parseFloat(e.target.value); if (Number.isFinite(x)) fn(Math.max(mn, Math.min(mx, x))); }} style={{ ...btn, width: w, padding: '3px 4px' }} /></label>;
+            const sel = (txt, v, ops, fn) => <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 118, opacity: 0.7 }}>{txt}</span><select value={v} onChange={e => fn(e.target.value)} style={{ ...btn, flex: 1, padding: '3px 4px' }}>{ops.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></label>;
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>🧱 {objSel.nombre}</div>
+                {sel('Modelo', R.id, PRESETS_REVEST.map(p => [p.id, p.cat + ' · ' + p.nombre]), v => { const pr = presetRevest(v); if (pr) cambiar(objSel.id, { nombre: pr.nombre, color: pr.color, d: espesorRevest({ w: objSel.w, alto: objSel.alto, revest: { id: pr.id, tipo: pr.tipo, p: pr.p } }), revest: { ...R, id: pr.id, tipo: pr.tipo, p: { ...pr.p } } }); })}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 118, opacity: 0.7 }}>Color</span><input type="color" value={/^#[0-9a-fA-F]{6}$/.test(objSel.color || '') ? objSel.color : (R.color || '#cccccc')} onChange={e => cambiar(objSel.id, { color: e.target.value })} style={{ width: 44, height: 28, border: 'none', background: 'none' }} /></label>
+                <div style={{ opacity: 0.6, fontSize: 11, margin: '4px 0' }}>Dónde va en el muro (cm desde el principio del muro, que mide {Math.round(L)} cm)</div>
+                {num('Desde', Math.round(R.s0 || 0), v => recoloca(v, R.s1 ?? L), 0, Math.round(L))}
+                {num('Hasta', Math.round(R.s1 ?? L), v => recoloca(R.s0 || 0, v), 0, Math.round(L))}
+                {num('Alto del revestimiento', Math.round(objSel.alto), v => cambiar(objSel.id, { alto: v }), 5, 600)}
+                {num('Elevación (desde el suelo)', Math.round(objSel.z0 || 0), v => cambiar(objSel.id, { z0: v }), 0, 400)}
+                {R.tipo === 'lamas' && (<>
+                  {sel('Dirección', P.dir, [['v', 'Vertical'], ['h', 'Horizontal']], v => cambiaP({ dir: v }))}
+                  {sel('Forma', P.forma, [['rect', 'Listón recto'], ['redondo', 'Media caña']], v => cambiaP({ forma: v }))}
+                  {num('Ancho del listón', P.ancho, v => cambiaP({ ancho: v }), 0.5, 40, 0.5)}
+                  {num('Grosor', P.grueso, v => cambiaP({ grueso: v }), 0.5, 15, 0.5)}
+                  {num('Separación', P.sep, v => cambiaP({ sep: v }), 0, 30, 0.5)}
+                  {sel('Fondo', P.fondo, [['oscuro', 'Oscuro'], ['fieltro', 'Fieltro (acústico)'], ['ninguno', 'Sin fondo']], v => cambiaP({ fondo: v }))}
+                </>)}
+                {R.tipo === 'cuadros' && (<>
+                  {num('Ancho del cuadro', P.ancho, v => cambiaP({ ancho: v }), 20, 200)}
+                  {num('Filas', P.filas, v => cambiaP({ filas: Math.round(v) }), 1, 4)}
+                  {num('Separación', P.sep, v => cambiaP({ sep: v }), 2, 40)}
+                  {num('Ancho de la moldura', P.moldura, v => cambiaP({ moldura: v }), 1, 12, 0.5)}
+                  {num('Relieve', P.relieve, v => cambiaP({ relieve: v }), 0.5, 6, 0.5)}
+                  {num('Zócalo (alto)', P.zocalo, v => cambiaP({ zocalo: v }), 0, 150)}
+                </>)}
+                {R.tipo === 'paneles' && (<>
+                  {num('Ancho del panel', P.ancho, v => cambiaP({ ancho: v }), 10, 300)}
+                  {num('Alto del panel', P.alto, v => cambiaP({ alto: v }), 10, 400)}
+                  {num('Junta', P.junta, v => cambiaP({ junta: v }), 0, 5, 0.2)}
+                  {num('Grosor', P.grueso, v => cambiaP({ grueso: v }), 0.4, 6, 0.2)}
+                </>)}
+                {R.tipo === 'relieve' && (<>
+                  {sel('Dibujo', P.forma, [['piramide', 'Pirámides'], ['hexa', 'Hexágonos'], ['cubos', 'Cubos'], ['triangulo', 'Triángulos']], v => cambiaP({ forma: v }))}
+                  {num('Tamaño de cada pieza', P.celda, v => cambiaP({ celda: v }), 4, 40)}
+                  {num('Altura del relieve', P.altura, v => cambiaP({ altura: v }), 1, 15, 0.5)}
+                </>)}
+                {R.tipo === 'moldura' && (<>
+                  {sel('Perfil', P.perfil, Object.keys(PERFILES_MOLDURA).map(k => [k, k]), v => cambiaP({ perfil: v }))}
+                  {sel('Dónde va', P.pos, [['suelo', 'Abajo (zócalo)'], ['media', 'A media altura'], ['techo', 'Arriba (cornisa)']], v => cambiaP({ pos: v }))}
+                  {P.pos === 'media' && num('Altura desde el suelo', P.altura, v => cambiaP({ altura: v }), 0, 400)}
+                </>)}
+                <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>Se respetan las puertas y ventanas del muro. Para quitarlo: Supr.</div>
+              </div>
+            );
+          })()}
           {objSel.tipo === 'sauna' && (() => {
             const S = normalizaSauna(objSel), C = calculosSauna(objSel);
             const fila = (txt, ctl) => <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 92, opacity: 0.7 }}>{txt}</span>{ctl}</label>;
