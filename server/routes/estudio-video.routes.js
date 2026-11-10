@@ -489,6 +489,21 @@ router.get('/trabajos/:id/palabras', async (req, res) => {
   try { const id = limpia(req.params.id, 20); if (!/^[\w-]{4,20}$/.test(id)) return res.status(400).json({ error: 'Id no válido' }); const u = await st().createSignedUrl('artefactos/' + id + '/palabras_largo.json', 600); if (!u.data?.signedUrl) return res.status(404).json({ error: 'Todavía no hay transcripción' }); res.json({ url: u.data.signedUrl }); }
   catch { res.status(500).json({ error: 'No se pudo leer la transcripción' }); }
 });
+// Paquete para publicar: la IA de redes escribe, con la voz de Víctor y lo que funciona en su cuenta, el texto de cada vídeo ya editado
+router.post('/trabajos/:id/paquete-redes', async (req, res) => {
+  try {
+    const id = limpia(req.params.id, 20); if (!/^[\w-]{4,20}$/.test(id)) return res.status(400).json({ error: 'Id no válido' });
+    let j = null; for (const nombre of ['palabras_bruto.json', 'palabras_largo.json']) { const u = await st().createSignedUrl('artefactos/' + id + '/' + nombre, 120); if (u.data?.signedUrl) { const r = await fetch(u.data.signedUrl); if (r.ok) { j = await r.json(); break; } } }
+    if (!j) return res.status(404).json({ error: 'Este vídeo no tiene transcripción guardada (solo los vídeos con voz la tienen).' });
+    const arr = Array.isArray(j) ? j : (j.p || j.palabras || []), texto = arr.map(w => Array.isArray(w) ? w[0] : (w.t || w.text || w.word || '')).join(' ').replace(/\s+/g, ' ').trim().slice(0, 12000);
+    if (texto.length < 30) return res.status(422).json({ error: 'No hay suficiente texto hablado.' });
+    const dr = await direccionRedes(), [mn, mx] = await duracionIdeal();
+    const r = await callClaude({ system: 'Eres el estratega de redes de Víctor Palomo (Ranuse Design, diseño de gimnasios). Te paso lo que se dice en un vídeo ya editado y escribes TODO lo necesario para publicarlo, con SU voz (primera persona, cercana, directa, sin jerga de marketing) y aplicando lo que se ha aprendido de su cuenta y del nicho (abajo). Se publica el mismo vídeo vertical a la vez en Reels, TikTok y YouTube Shorts desde Metricool, con prioridad en Instagram. Devuelves SOLO JSON {"gancho_pantalla":"texto corto para los 2 primeros segundos","ganchos_alternativos":["2 opciones más"],"caption":"texto del post, con salto de línea y CTA","cta":"llamada a la acción acorde a conseguir comentarios/contactos","hashtags":["8 como máximo, sin repetir lo obvio"],"titulo_shorts":"título para YouTube Shorts (máx 70 car.)","mejor_momento":"día y hora para publicar en Instagram según lo aprendido, o \"sin datos\"","si_lo_rehaces":["1-3 mejoras concretas de edición o gancho"]}.\n\n' + dr.notas, messages: [{ role: 'user', content: 'LO QUE SE DICE EN EL VÍDEO:\n' + texto }], maxTokens: 2500 });
+    const txt = (r.content || []).map(b => b.text || '').join(''), p = JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
+    const L = (a, n, m) => (Array.isArray(a) ? a : []).slice(0, n).map(x => limpia(x, m));
+    res.json({ gancho_pantalla: limpia(p.gancho_pantalla, 120), ganchos_alternativos: L(p.ganchos_alternativos, 3, 120), caption: limpia(p.caption, 1500), cta: limpia(p.cta, 200), hashtags: L(p.hashtags, 8, 40), titulo_shorts: limpia(p.titulo_shorts, 90), mejor_momento: limpia(p.mejor_momento, 160), si_lo_rehaces: L(p.si_lo_rehaces, 3, 200) });
+  } catch (e) { res.status(500).json({ error: 'No se pudo preparar el texto: ' + String(e.message || e).slice(0, 140) }); }
+});
 router.post('/trabajos/:id/proponer-clips', async (req, res) => {
   try {
     const id = limpia(req.params.id, 20); if (!/^[\w-]{4,20}$/.test(id)) return res.status(400).json({ error: 'Id no válido' });

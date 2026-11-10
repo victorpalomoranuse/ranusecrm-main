@@ -603,6 +603,7 @@ function TrabajoNormal({ t, formatos, onCambio, musica = [], trabajosTodos = [] 
       {t.estado === 'listo' && t.url && (
         <div style={{ marginTop: 10 }}>
           <video ref={vref} src={t.url_movil || t.url} controls playsInline style={{ width: '100%', maxWidth: 300, borderRadius: 10, background: '#000', display: 'block' }} />
+          <PaqueteRedes t={t} />
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <a className="ap-btn ap-btn-sm" href={t.url_descarga || t.url} download rel="noreferrer"><Download size={13} /> Descargar</a>
             <button className="ap-btn ap-btn-sm" title="Elige qué recursos usar y vuelve a montarlo" onClick={() => setPanelReg(!panelReg)}><Wand2 size={13} /> Regenerar</button>
@@ -1481,6 +1482,27 @@ function CuentasNicho({ ig, onUsar }) {
       <div><button className="rd-btn pri" disabled={!ig || trab} onClick={busca}>{trab ? 'Buscando y comprobando…' : (d?.cuentas || []).length ? '🔎 Buscar más cuentas' : '🔎 Encontrar cuentas de mi nicho'}</button></div>
       {msg && <div style={{ ...mut, fontSize: '0.82rem' }}>{msg}</div>}
       {(d?.cuentas || []).length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{d.cuentas.map(x => <span key={x.usuario} className="rd-chip" title={x.aprender || ''} style={{ color: { nicho: '#8fdba0', adyacente: '#f2c46d', estilo: '#9db8ff' }[x.tipo] || undefined }}>{{ nicho: '🏋️', adyacente: '🏠', estilo: '🎬' }[x.tipo] || ''} @{x.usuario} · {fmt(x.seguidores)} <button onClick={() => quita(x.usuario)} title="Quitar esta cuenta" style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button></span>)}</div>}
+    </div>
+  );
+}
+function PaqueteRedes({ t }) {
+  const [p, setP] = useState(null), [trab, setTrab] = useState(false), [err, setErr] = useState(''), [copiado, setCopiado] = useState('');
+  const pide = async () => { setTrab(true); setErr(''); try { const r = await api.post('/estudio-video/trabajos/' + t.id + '/paquete-redes', {}, { timeout: 150000 }); setP(r.data); } catch (e) { setErr(e.response?.data?.error || 'No se pudo'); } setTrab(false); };
+  const copia = (k, txt) => { try { navigator.clipboard.writeText(txt); setCopiado(k); setTimeout(() => setCopiado(''), 1500); } catch { /* sin portapapeles */ } };
+  const bloque = (k, titulo, txt) => txt ? <div style={{ padding: 10, border: '1px solid rgba(255,255,255,.12)', borderRadius: 10 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><b style={{ fontSize: '0.8rem' }}>{titulo}</b><button className="ap-btn ap-btn-sm" onClick={() => copia(k, txt)}>{copiado === k ? '✔ Copiado' : 'Copiar'}</button></div><div style={{ whiteSpace: 'pre-wrap', fontSize: '0.88rem', marginTop: 4 }}>{txt}</div></div> : null;
+  return (
+    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <button className="ap-btn ap-btn-sm" disabled={trab} onClick={pide}>{trab ? '📝 Escribiendo…' : '📝 Texto para publicar (IA de redes)'}</button>
+      {err && <div style={{ color: '#ff9b9b', fontSize: '0.84rem' }}>{err}</div>}
+      {p && <>
+        {bloque('g', '🪝 Gancho en pantalla', p.gancho_pantalla)}
+        {bloque('c', '✍️ Texto del post', p.caption)}
+        {bloque('h', '# Hashtags', (p.hashtags || []).map(x => '#' + String(x).replace(/^#/, '')).join(' '))}
+        {bloque('t', '▶ Título para Shorts', p.titulo_shorts)}
+        {p.mejor_momento && <div style={{ ...mut, fontSize: '0.82rem' }}>🕒 {p.mejor_momento}</div>}
+        {(p.ganchos_alternativos || []).length > 0 && <div style={{ ...mut, fontSize: '0.82rem' }}>Otros ganchos: {p.ganchos_alternativos.join(' · ')}</div>}
+        {(p.si_lo_rehaces || []).length > 0 && <div style={{ fontSize: '0.82rem' }}><b>Si lo rehaces:</b><Lista items={p.si_lo_rehaces} /></div>}
+      </>}
     </div>
   );
 }
