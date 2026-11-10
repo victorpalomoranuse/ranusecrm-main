@@ -1200,12 +1200,13 @@ function Estilos({ estilos: formatos, onCambio }) {
 
 
 // Analizador de redes: Instagram conectado (sin copiar claves), aprende de tus publicaciones y busca ideas ganadoras en el nicho (Instagram y YouTube)
-function Lista({ items, color, max = 3 }) {
-  const [todo, setTodo] = useState(false);
+function Lista({ items, color, max = 3, ejemplo = false }) {
+  const [todo, setTodo] = useState(false), [ej, setEj] = useState(null);
   if (!items || !items.length) return null;
   const ver = todo ? items : items.slice(0, max);
   return <>
-    <ul className="rd-lista" style={color ? { '--pt': color } : undefined}>{ver.map((x, i) => <li key={i}>{x}</li>)}</ul>
+    <ul className="rd-lista" style={color ? { '--pt': color } : undefined}>{ver.map((x, i) => <li key={i} style={ejemplo ? { cursor: 'pointer' } : undefined} onClick={ejemplo ? () => setEj({ idea: String(x), formato: '', gancho: '', origen: '' }) : undefined} title={ejemplo ? 'Pulsa para ver un ejemplo' : undefined}>{x}{ejemplo && <span style={{ display: 'block', fontSize: '0.74rem', color: '#8fdba0' }}>🎬 Ver ejemplo →</span>}</li>)}</ul>
+    {ej && <TallerIdeas idea={ej} onCerrar={() => setEj(null)} />}
     {items.length > max && <button className="rd-btn" style={{ alignSelf: 'flex-start', padding: '3px 10px', fontSize: '0.76rem' }} onClick={() => setTodo(v => !v)}>{todo ? 'Ver menos' : 'Ver ' + (items.length - max) + ' más'}</button>}
   </>;
 }
@@ -1272,9 +1273,9 @@ function ResultadoNicho({ n }) {
       {(n.fallos || []).length > 0 && <div style={{ ...mut, color: '#f2c46d' }}>No he podido leer: {n.fallos.join(' · ')}</div>}
       {(n.top || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>{n.top.slice(0, 8).map((p, i) => <a key={i} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: yt ? '16/11' : '4/5' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{yt ? (p.vistas >= 1e6 ? (p.vistas / 1e6).toFixed(1).replace('.', ',') + ' M' : p.vistas >= 1e3 ? Math.round(p.vistas / 1e3) + ' k' : p.vistas) : p.puntuacion}</span><div className="vel"><b>{p.titulo || p.gancho || p.pie || 'ver'}</b><div style={{ opacity: 0.7 }}>{p.canal || (p.cuenta ? '@' + p.cuenta : '')}{p.vistas ? ' · ' + p.vistas.toLocaleString('es-ES') + ' vistas' : p.me_gusta != null ? ' · ' + p.me_gusta + ' me gusta' : ''}</div></div></a>)}</div>}
       <div className="rd-grid2">
-        {(n.patrones || []).length > 0 && <Tarjeta titulo="Lo que funciona"><Lista items={n.patrones} color="#8fdba0" /></Tarjeta>}
-        {(n.ganchos || []).length > 0 && <Tarjeta titulo="Ganchos que enganchan"><Lista items={n.ganchos} /></Tarjeta>}
-        {(n.formatos || []).length > 0 && <Tarjeta titulo="Formatos ganadores"><Lista items={n.formatos} color="#f2c46d" /></Tarjeta>}
+        {(n.patrones || []).length > 0 && <Tarjeta titulo="Lo que funciona"><Lista ejemplo items={n.patrones} color="#8fdba0" /></Tarjeta>}
+        {(n.ganchos || []).length > 0 && <Tarjeta titulo="Ganchos que enganchan"><Lista ejemplo items={n.ganchos} /></Tarjeta>}
+        {(n.formatos || []).length > 0 && <Tarjeta titulo="Formatos ganadores"><Lista ejemplo items={n.formatos} color="#f2c46d" /></Tarjeta>}
       </div>
       {(n.ideas || []).length > 0 && <div><h3 style={{ margin: '4px 0 10px' }}>💡 Ideas para ti</h3><IdeasTarjetas ideas={n.ideas} /></div>}
     </div>
@@ -1308,7 +1309,7 @@ function SaludCuenta() {
           {d.mejoras.length > 0 && <Tarjeta titulo="✅ Has mejorado" color="#8fdba0"><Lista items={d.mejoras} color="#8fdba0" /></Tarjeta>}
           {d.alertas.length > 0 && <Tarjeta titulo="⚠️ Si sigues así…" color="#ff9b9b"><Lista items={d.alertas} color="#ff9b9b" /></Tarjeta>}
         </div>
-        {d.acciones.length > 0 && <Tarjeta titulo="🎯 Qué hacer"><Lista items={d.acciones} /></Tarjeta>}
+        {d.acciones.length > 0 && <Tarjeta titulo="🎯 Qué hacer"><Lista ejemplo items={d.acciones} /></Tarjeta>}
         {d.fiabilidad && <div style={{ ...mut, fontSize: '0.78rem' }}>Fiabilidad: {d.fiabilidad}</div>}
       </>}
       <PreferenciasRedes />
@@ -1426,6 +1427,45 @@ function BuscaReel({ ig, onAnadido }) {
       {r && <div style={{ fontSize: '0.86rem', color: r.encontrado ? '#8fdba0' : '#f2c46d' }}>{r.encontrado ? 'Encontrado y añadido' + (r.vistas != null ? ' (' + fmt(r.vistas) + ' vistas)' : '') + '. Ya cuenta en el ranking.' : r.aviso}</div>}
     </div>
   );
+}
+// Plan de publicación en PDF muy visual: se abre una hoja preparada para imprimir y se elige «Guardar como PDF»
+const escH = (s) => String(s == null ? '' : typeof s === 'object' ? Object.values(s).join(' — ') : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function exportaPlanPDF(pl, usuario) {
+  const v = pl.volumen || {}, dias = pl.semana_tipo || [], col = ['#E3D2B8', '#9db8ff', '#8fdba0', '#f2c46d', '#ff9b9b', '#c9a7ff', '#7fd6d6'];
+  const kpi = [[v.reels_semana, 'reels por semana', '🎬'], [v.carruseles_semana, 'carruseles por semana', '🖼'], [v.historias_dia, 'historias al día', '📱'], [v.youtube_mes, 'YouTube al mes', '▶']].filter(k => k[0] != null);
+  const html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Plan de publicación</title><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet"><style>' +
+    '@page{size:A4;margin:0}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{margin:0;font-family:Montserrat,Arial,sans-serif;color:#1b1b1f;background:#fff}' +
+    '.pag{width:210mm;min-height:297mm;padding:14mm 13mm;page-break-after:always;position:relative}.pag:last-child{page-break-after:auto}' +
+    '.hero{background:#111216;color:#fff;border-radius:18px;padding:22px 26px;margin-bottom:18px}.hero small{color:#E3D2B8;letter-spacing:.18em;font-size:10px;font-weight:600}.hero h1{margin:6px 0 4px;font-size:30px;font-weight:800;line-height:1.1}.hero p{margin:0;color:#b9b9c0;font-size:11.5px}' +
+    '.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}.kpi{border-radius:14px;padding:14px 10px;text-align:center;background:#f4efe7}.kpi b{display:block;font-size:34px;font-weight:800;line-height:1}.kpi span{font-size:10px;color:#555;display:block;margin-top:6px}.kpi i{font-style:normal;font-size:16px;display:block;margin-bottom:4px}' +
+    'h2{font-size:15px;margin:18px 0 8px;font-weight:800}.nota{font-size:11px;line-height:1.55;color:#333;background:#f7f7f9;border-left:4px solid #E3D2B8;padding:10px 12px;border-radius:8px}' +
+    '.sem{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}.dia{border-radius:12px;padding:9px 7px;min-height:150px;color:#111;font-size:8.6px;line-height:1.4}.dia b{display:block;font-size:10px;letter-spacing:.06em;margin-bottom:6px;text-transform:uppercase}' +
+    '.tend{display:grid;grid-template-columns:1fr 1fr;gap:8px}.card{border:1px solid #e6e6ea;border-radius:12px;padding:10px 12px;font-size:10.5px;line-height:1.45;break-inside:avoid}.card b{display:block;font-size:11.5px;margin-bottom:3px}.chip{display:inline-block;background:#111216;color:#E3D2B8;border-radius:20px;padding:1px 8px;font-size:8.5px;margin-left:4px}' +
+    'ul{margin:4px 0 0;padding-left:16px;font-size:10.5px;line-height:1.5}li{margin-bottom:3px}.pie{position:absolute;bottom:8mm;left:13mm;right:13mm;font-size:8.5px;color:#999;display:flex;justify-content:space-between}' +
+    '.aviso{position:fixed;top:8px;right:8px;background:#111;color:#fff;padding:8px 12px;border-radius:8px;font:12px Arial}@media print{.aviso{display:none}}</style></head><body>' +
+    '<div class="aviso">Pulsa Ctrl+P y elige «Guardar como PDF»</div>' +
+    '<div class="pag"><div class="hero"><small>RANUSE DESIGN · REDES</small><h1>Plan de publicación</h1><p>' + escH(usuario ? '@' + usuario + ' · ' : '') + 'Generado el ' + new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) + '</p></div>' +
+    '<div class="kpis">' + kpi.map(k => '<div class="kpi"><i>' + k[2] + '</i><b>' + escH(k[0]) + '</b><span>' + k[1] + '</span></div>').join('') + '</div>' +
+    (v.por_que ? '<div class="nota">' + escH(v.por_que) + '</div>' : '') +
+    (pl.dias_horas ? '<h2>🕒 Mejores días y horas</h2><div class="nota">' + escH(pl.dias_horas) + '</div>' : '') +
+    (dias.length ? '<h2>🗓 Tu semana tipo</h2><div class="sem">' + dias.map((d, i) => '<div class="dia" style="background:' + col[i % col.length] + '"><b>' + escH(String(d.dia).slice(0, 3)) + '</b>' + escH(d.que) + '</div>').join('') + '</div>' : '') +
+    '<div class="pie"><span>Ranuse Design</span><span>Plan de publicación</span></div></div>' +
+    '<div class="pag">' +
+    ((pl.tendencias || []).length ? '<h2>🔥 Tendencias y cómo aprovecharlas</h2><div class="tend">' + pl.tendencias.map(x => '<div class="card"><b>' + escH(x.tendencia) + (x.fuente ? '<span class="chip">' + escH(x.fuente) + '</span>' : '') + '</b>' + escH(x.como_aprovecharla) + '</div>').join('') + '</div>' : '') +
+    ((pl.experimentos || []).length ? '<h2>🧪 Pruebas para las próximas 2 semanas</h2><div class="tend">' + pl.experimentos.map((x, i) => '<div class="card"><b>Prueba ' + (i + 1) + '</b>' + escH(x) + '</div>').join('') + '</div>' : '') +
+    ((pl.riesgos || []).length ? '<h2>⚠ Ojo con</h2><div class="card"><ul>' + pl.riesgos.map(x => '<li>' + escH(x) + '</li>').join('') + '</ul></div>' : '') +
+    ((pl.faltan_datos || []).length ? '<h2>Lo que aún no sé</h2><div class="card"><ul>' + pl.faltan_datos.map(x => '<li>' + escH(x) + '</li>').join('') + '</ul></div>' : '') +
+    '<div class="pie"><span>Ranuse Design</span><span>Plan de publicación</span></div></div>' +
+    '<script>window.onload=function(){setTimeout(function(){window.print()},700)}</script></body></html>';
+  const w = window.open('', '_blank'); if (!w) { alert('El navegador ha bloqueado la ventana. Permite las ventanas emergentes para esta web y vuelve a pulsar.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+function TendenciasPlan({ items }) {
+  const [ej, setEj] = useState(null);
+  return <>
+    <ul className="rd-lista">{items.map((x, i) => <li key={i} style={{ cursor: 'pointer' }} title="Pulsa para ver un ejemplo" onClick={() => setEj({ idea: x.tendencia + (x.como_aprovecharla ? ': ' + x.como_aprovecharla : ''), formato: '', gancho: '', origen: '' })}><b>{x.tendencia}</b> <span className="rd-chip">{x.fuente}</span><div style={mut}>{x.como_aprovecharla}</div><div style={{ fontSize: '0.74rem', color: '#8fdba0' }}>🎬 Ver ejemplo →</div></li>)}</ul>
+    {ej && <TallerIdeas idea={ej} onCerrar={() => setEj(null)} />}
+  </>;
 }
 function SemanaTipo({ dias }) {
   const [ab, setAb] = useState(null), [taller, setTaller] = useState(null);
@@ -1606,7 +1646,7 @@ function PestanaAnalizador() {
                   <Tarjeta titulo="A favor" color="#8fdba0"><Lista items={pred.a_favor} color="#8fdba0" /></Tarjeta>
                   <Tarjeta titulo="En contra" color="#f2c46d"><Lista items={pred.en_contra} color="#f2c46d" /></Tarjeta>
                 </div>
-                {(pred.mejoras || []).length > 0 && <Tarjeta titulo="Cómo mejorarlo"><Lista items={pred.mejoras.map(x => x.cambio + (x.efecto ? ' → ' + x.efecto : ''))} /></Tarjeta>}
+                {(pred.mejoras || []).length > 0 && <Tarjeta titulo="Cómo mejorarlo"><Lista ejemplo items={pred.mejoras.map(x => x.cambio + (x.efecto ? ' → ' + x.efecto : ''))} /></Tarjeta>}
                 {pred.version_mejorada?.gancho && <Tarjeta titulo="Versión mejorada"><div className="rd-gancho">“{pred.version_mejorada.gancho}”</div>{pred.version_mejorada.estructura && <div style={{ fontSize: '0.88rem' }}>{pred.version_mejorada.estructura}</div>}{pred.version_mejorada.cta && <div style={mut}>CTA: {pred.version_mejorada.cta}</div>}</Tarjeta>}
                 {(pred.dejar_de_hacer || []).length > 0 && <Tarjeta titulo="Quítalo" color="#f29a9a"><Lista items={pred.dejar_de_hacer} color="#f29a9a" /></Tarjeta>}
                 <div style={mut}>Es una estimación sobre tus publicaciones, no una promesa.</div>
@@ -1619,9 +1659,9 @@ function PestanaAnalizador() {
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}><h3 style={{ margin: 0, fontSize: '1.2rem' }}>🧠 Lo que funciona en tu Instagram</h3><span style={mut}>{String(ap.fecha).slice(0, 10)} · {ap.n} publicaciones</span></div>
             {ap.resumen && <div style={{ fontSize: '1rem', lineHeight: 1.5 }}>{ap.resumen}</div>}
             <div className="rd-grid2">
-              <Tarjeta titulo="✓ Funciona" color="#8fdba0"><Lista items={ap.lo_que_funciona} color="#8fdba0" /></Tarjeta>
+              <Tarjeta titulo="✓ Funciona" color="#8fdba0"><Lista ejemplo items={ap.lo_que_funciona} color="#8fdba0" /></Tarjeta>
               <Tarjeta titulo="✕ No funciona" color="#f2c46d"><Lista items={ap.lo_que_no} color="#f2c46d" /></Tarjeta>
-              {(ap.ganchos_ganadores || []).length > 0 && <Tarjeta titulo="Ganchos ganadores"><Lista items={ap.ganchos_ganadores} /></Tarjeta>}
+              {(ap.ganchos_ganadores || []).length > 0 && <Tarjeta titulo="Ganchos ganadores"><Lista ejemplo items={ap.ganchos_ganadores} /></Tarjeta>}
               {(ap.para_el_editor || []).length > 0 && <Tarjeta titulo="🎬 Para el editor"><Lista items={ap.para_el_editor} /></Tarjeta>}
               {(ap.para_historias || []).length > 0 && <Tarjeta titulo="📲 Para las historias"><Lista items={ap.para_historias} /></Tarjeta>}
               {ap.horarios && <Tarjeta titulo="🕒 Mejores horas"><div style={{ fontSize: '0.9rem', lineHeight: 1.5 }}>{ap.horarios}</div></Tarjeta>}
@@ -1686,7 +1726,7 @@ function PestanaAnalizador() {
       {plat === 'plan' && (<>
         <div className="rd-card" style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
           <div style={{ flex: '1 1 300px' }}><h3>📈 Plan de publicación</h3><div style={{ ...mut, fontSize: '0.84rem', marginTop: 4 }}>Cuántas veces publicar y qué, según tus datos de Instagram y YouTube y lo que se ve en el nicho.</div></div>
-          <button className="rd-btn pri" disabled={!!trabaja || (!ig && !mc)} onClick={plan}>{trabaja === 'plan' ? 'Preparando…' : pl ? '↻ Rehacer el plan' : 'Preparar mi plan'}</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{pl && <button className="rd-btn" onClick={() => exportaPlanPDF(pl, ig?.usuario)}>📄 Descargar PDF</button>}<button className="rd-btn pri" disabled={!!trabaja || (!ig && !mc)} onClick={plan}>{trabaja === 'plan' ? 'Preparando…' : pl ? '↻ Rehacer el plan' : 'Preparar mi plan'}</button></div>
         </div>
         {!ig && !mc && <div style={mut}>Conecta Instagram o añade tu canal de YouTube primero.</div>}
         {pl && (<>
@@ -1700,8 +1740,8 @@ function PestanaAnalizador() {
           {pl.dias_horas && <Tarjeta titulo="🕒 Mejores días y horas"><div style={{ fontSize: '0.92rem', lineHeight: 1.5 }}>{pl.dias_horas}</div></Tarjeta>}
           {(pl.semana_tipo || []).length > 0 && <div><h3 style={{ margin: '4px 0 10px' }}>🗓 Tu semana tipo</h3><SemanaTipo dias={pl.semana_tipo} /></div>}
           <div className="rd-grid2">
-            {(pl.tendencias || []).length > 0 && <Tarjeta titulo="🔥 Tendencias y cómo aprovecharlas"><ul className="rd-lista">{pl.tendencias.map((x, i) => <li key={i}><b>{x.tendencia}</b> <span className="rd-chip">{x.fuente}</span><div style={mut}>{x.como_aprovecharla}</div></li>)}</ul></Tarjeta>}
-            {(pl.experimentos || []).length > 0 && <Tarjeta titulo="🧪 Pruebas para las próximas 2 semanas"><Lista items={pl.experimentos} /></Tarjeta>}
+            {(pl.tendencias || []).length > 0 && <Tarjeta titulo="🔥 Tendencias y cómo aprovecharlas"><TendenciasPlan items={pl.tendencias} /></Tarjeta>}
+            {(pl.experimentos || []).length > 0 && <Tarjeta titulo="🧪 Pruebas para las próximas 2 semanas"><Lista ejemplo items={pl.experimentos} /></Tarjeta>}
             {(pl.riesgos || []).length > 0 && <Tarjeta titulo="⚠ Ojo con" color="#f2c46d"><Lista items={pl.riesgos} color="#f2c46d" /></Tarjeta>}
             {(pl.faltan_datos || []).length > 0 && <Tarjeta titulo="Lo que aún no sé"><Lista items={pl.faltan_datos} /></Tarjeta>}
           </div>
