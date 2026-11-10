@@ -347,6 +347,7 @@ body.crm .top .brand{display:none}
           <div class="mdrop" id="menu-archivo" hidden>
             <button data-do="datos">Datos del proyecto (nombre, dirección, cliente…)</button>
             <button data-do="info">Qué información enseñar en las láminas…</button>
+            <button data-do="planofondo" title="Pone un PDF o una foto de plano de fondo para que lo calques tú a mano, sin inteligencia artificial. Después lo ajustas a su medida real">Poner un plano (PDF o imagen) de fondo para calcarlo yo…</button>
             <button data-do="planoia" title="Sube el plano que te da el cliente (PDF o foto) y la IA dibuja el estado actual para que lo ajustes">Importar plano del cliente (PDF o imagen)…</button>
             <button data-do="fondo-ver" id="mi-fondo" hidden>Plano del cliente de fondo: visible</button>
             <button data-do="fondo-op" id="mi-fondo-op" hidden>Plano del cliente: cambiar transparencia</button>
@@ -11013,7 +11014,7 @@ function pisoFantasmaSvg(view){
 function pisosUi(){
   var el=$('pisos');if(!el)return;
   var on=pisosOn(),h='';
-  if(on)st.v.pisos.forEach(function(p){h+='<button data-pisox="ir" data-piso="'+esc(p.id)+'"'+(p.id===st.v.piso?' class="on"':'')+' title="Ver y dibujar esta planta (dos pulsaciones = cambiar el nombre)">'+esc(p.nombre||'Planta')+'</button>'});
+  if(on)st.v.pisos.forEach(function(p){h+='<button data-pisox="ir" data-piso="'+esc(p.id)+'"'+(p.id===st.v.piso?' class="on"':'')+' title="Ver y dibujar esta planta (dos pulsaciones = cambiar el nombre)">'+esc(p.nombre||'Planta')+(p.id===st.v.piso?' <span data-pisox="borrar" title="Borrar esta planta (pide confirmación)" style="margin-left:6px;opacity:.75;font-weight:700">✕</span>':'')+'</button>'});
   h+='<button data-pisox="nuevo" class="add" title="'+(on?'Añadir otra planta encima':'Este plano tiene una sola planta. Añade otra para modelarlas juntas en SketchUp')+'">'+(on?'＋':'＋ Planta')+'</button>';
   el.innerHTML=h;
   var pn=$('pisos-pnl');if(!pn)return;
@@ -11081,6 +11082,52 @@ function fondoMenu(){
   var b0=document.getElementById('mi-fondo');if(b0&&hay)b0.textContent='Plano del cliente de fondo: '+(f.on===false?'oculto (mostrar)':'visible (ocultar)');
 }
 /* ajustar el plano de fondo a una medida real: dos puntos + la distancia verdadera (escala el fondo alrededor del primer punto); o moverlo de un punto a otro */
+/* poner un PDF o una imagen de fondo SIN inteligencia artificial: tú lo calcas a mano. Se renderiza con buena resolución y se escala después con una medida real */
+function fondoSinIAAbrir(){
+  var inp=document.getElementById('fsia-file');
+  if(!inp){inp=document.createElement('input');inp.type='file';inp.id='fsia-file';inp.accept='application/pdf,image/*';inp.hidden=true;document.body.appendChild(inp);
+    inp.addEventListener('change',function(){var fl=inp.files&&inp.files[0];inp.value='';if(fl)fondoSinIAArchivo(fl)})}
+  inp.click();
+}
+function fondoSinIACanvas(cv){
+  var q=[0.82,0.7,0.58,0.45],u='',i;
+  for(i=0;i<q.length;i++){u=cv.toDataURL('image/jpeg',q[i]);if(u.length<3.4*1024*1024)break}
+  return u;
+}
+function fondoSinIAArchivo(fl){
+  if(fl.size>60*1024*1024){toast('Ese archivo pesa demasiado (máx. 60 MB)');return}
+  var esPdf=/pdf/i.test(fl.type)||/\.pdf$/i.test(fl.name),MAXL=3000;
+  planoIAOcupado(true,'Preparando el plano de fondo…');
+  var obtener=esPdf
+    ?cargaPdfJs().then(function(lib){return fl.arrayBuffer().then(function(b){return lib.getDocument({data:b}).promise})}).then(function(doc){
+        var n=doc.numPages,pg=1;
+        if(n>1){var r=window.prompt('Este PDF tiene '+n+' páginas. ¿Qué página quieres de fondo? (1-'+n+')','1');if(r===null)return Promise.reject(null);pg=Math.max(1,Math.min(n,parseInt(r,10)||1))}
+        return doc.getPage(pg).then(function(p){
+          var v0=p.getViewport({scale:1}),vp=p.getViewport({scale:MAXL/Math.max(v0.width,v0.height)}),cv=document.createElement('canvas');
+          cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+          var cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);
+          return p.render({canvasContext:cx,viewport:vp}).promise.then(function(){return cv});
+        });
+      })
+    :new Promise(function(ok,ko){
+        var url=URL.createObjectURL(fl),im=new Image();
+        im.onload=function(){var sc=Math.min(1,MAXL/Math.max(im.naturalWidth,im.naturalHeight)),cv=document.createElement('canvas');cv.width=Math.round(im.naturalWidth*sc);cv.height=Math.round(im.naturalHeight*sc);var cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.drawImage(im,0,0,cv.width,cv.height);URL.revokeObjectURL(url);ok(cv)};
+        im.onerror=function(){URL.revokeObjectURL(url);ko(new Error('No se pudo abrir esa imagen'))};
+        im.src=url;
+      });
+  obtener.then(function(cv){
+    planoIAFin();
+    if(st.v.fondo&&st.v.fondo.id&&!window.confirm('Ya hay un plano de fondo. ¿Sustituirlo por este? (lo dibujado se queda)'))return;
+    var url=fondoSinIACanvas(cv),fid='f'+Date.now().toString(36)+Math.floor(Math.random()*1e4);
+    try{localStorage.setItem('ranuse-plano-fondo-'+fid,url)}catch(e){toast('El navegador no deja guardar un plano tan pesado: prueba con un PDF más ligero o una sola página');return}
+    try{var b0=atob(url.split(',')[1]),u0=new Uint8Array(b0.length);for(var i=0;i<b0.length;i++)u0[i]=b0.charCodeAt(i);fondoMem[fid]=URL.createObjectURL(new Blob([u0],{type:'image/jpeg'}))}catch(e){}
+    var k=2000/Math.max(cv.width,cv.height); /* de partida mide 20 m de lado largo: lo ajustas después con una medida real */
+    snap();st.v.fondo={id:fid,x:0,y:0,w:f2(cv.width*k),h:f2(cv.height*k),op:0.6,on:true};
+    commit(false);try{fit()}catch(e){}try{fondoMenu()}catch(e){}
+    toast('Plano puesto de fondo. Ahora ajústalo: pulsa los dos extremos de una medida que conozcas');
+    setTimeout(function(){fondoCalIniciar('esc')},900);
+  }).catch(function(e){planoIAFin();if(e)toast((e&&e.message)||'No se pudo poner el plano')});
+}
 function fondoCalIniciar(modo){
   var f=st.v.fondo;if(!f||!f.id){toast('No hay plano de fondo');return}
   if(f.on===false){f.on=true}
@@ -11489,6 +11536,7 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
       else if(id==='info')abrirInfoLam();
       else if(id==='listados')enviarListados();
       else if(id==='planoia')planoIAAbrir();
+      else if(id==='planofondo')fondoSinIAAbrir();
       else if(id==='fondo-ver'||id==='fondo-op'||id==='fondo-q'||id==='fondo-esc'||id==='fondo-mov')fondoAccion(id);
       else if(id==='cotamuros')alternarCotaMuros();
       else if(id==='ubicacion'){st.verUbic=!st.verUbic;var bu=document.getElementById('mi-ubic');if(bu)bu.textContent='Ubicación del equipamiento en pantalla: '+(st.verUbic?'visible':'oculta');if(st.view!=='distrib'){st.view='distrib';toolbar()}render();toast(st.verUbic?'Se ven las distancias de cada pieza a los muros (en Distribución)':'Plano limpio: las distancias salen al seleccionar una pieza')}
