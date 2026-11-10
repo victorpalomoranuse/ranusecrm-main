@@ -1032,6 +1032,38 @@ const ICONOS = {
 function Ic({ n }) {
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>{(ICONOS[n] || '').split(' M').map((d, i) => <path key={i} d={(i ? 'M' : '') + d} />)}</svg>;
 }
+// Quita los «picos»: puntos que van lejos y vuelven por el mismo camino (salen al trazar suelos con muros curvos) y que en 3D se ven como triángulos larguísimos
+export function quitarPicos(pts) {
+  let p = (pts || []).filter(q => Array.isArray(q) && isFinite(q[0]) && isFinite(q[1])), cambio = true, vueltas = 0;
+  while (cambio && p.length > 3 && vueltas++ < 200) {
+    cambio = false;
+    for (let i = 0; i < p.length; i++) {
+      const a = p[(i + p.length - 1) % p.length], b = p[i], c = p[(i + 1) % p.length];
+      const u = [b[0] - a[0], b[1] - a[1]], v = [c[0] - b[0], c[1] - b[1]], lu = Math.hypot(u[0], u[1]), lv = Math.hypot(v[0], v[1]);
+      if (lu < 0.01 || lv < 0.01) { p.splice(i, 1); cambio = true; break; }
+      if ((u[0] * v[0] + u[1] * v[1]) / (lu * lv) < -0.985) { p.splice(i, 1); cambio = true; break; } // da la vuelta casi entera: es un pico
+    }
+  }
+  return p;
+}
+// Cada planta se dibuja en su sitio del lienzo, y no siempre coinciden: se busca el desplazamiento que hace encajar sus muros con los de la planta de abajo (si no hay encaje, esquina con esquina)
+export function alinearPlantas(plantas) {
+  const nodos = pl => (pl.muros || []).flatMap(w => [w.a, w.b]);
+  const caja = pl => { const n = nodos(pl); return n.length ? [Math.min(...n.map(q => q[0])), Math.min(...n.map(q => q[1]))] : [0, 0]; };
+  const offs = [[0, 0]];
+  for (let k = 1; k < plantas.length; k++) {
+    const ref = nodos(plantas[k - 1]).map(q => [q[0] + offs[k - 1][0], q[1] + offs[k - 1][1]]), mio = nodos(plantas[k]);
+    const votos = new Map();
+    for (const q of mio) for (const r of ref) {
+      const dx = r[0] - q[0], dy = r[1] - q[1], clave = Math.round(dx / 6) + ',' + Math.round(dy / 6), e = votos.get(clave) || { n: 0, sx: 0, sy: 0 };
+      e.n++; e.sx += dx; e.sy += dy; votos.set(clave, e);
+    }
+    let mejor = null; for (const e of votos.values()) if (!mejor || e.n > mejor.n) mejor = e;
+    if (mejor && mejor.n >= 6) offs.push([mejor.sx / mejor.n, mejor.sy / mejor.n]);
+    else { const c0 = caja(plantas[k - 1]), c1 = caja(plantas[k]); offs.push([c0[0] + offs[k - 1][0] - c1[0], c0[1] + offs[k - 1][1] - c1[1]]); }
+  }
+  return offs;
+}
 export function MenuRail({ abierto, boton, ancho, children }) {
   const ref = useRef(null), mref = useRef(null), [pos, setPos] = useState(null);
   useLayoutEffect(() => {
@@ -2071,14 +2103,15 @@ export default function Visor3D({ cliente = false }) {
       setTitulo(pl?.nombre || 'Plano');
       if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); setModosEq(pl?.escena3d?.modelosEq || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       // el 3D enseña el estado de DISTRIBUCIÓN: lo marcado para demoler (muros, huecos, pilares, máquinas) ya no está
-      const sinDem = (p) => ({ ...p, muros: (p.muros || []).filter(w => w.estado !== 'dem').map(w => ({ ...w, ab: (w.ab || []).filter(o => o.estado !== 'dem') })), pilares: (p.pilares || []).filter(x => x.estado !== 'dem'), equipos: (p.equipos || []).filter(x => x.estado !== 'dem'), recrecidos: (p.recrecidos || []).filter(x => x.estado !== 'dem') });
+      const sinDem = (p) => ({ ...p, muros: (p.muros || []).filter(w => w.estado !== 'dem').map(w => ({ ...w, ab: (w.ab || []).filter(o => o.estado !== 'dem') })), salas: (p.salas || []).map(s => ({ ...s, pts: quitarPicos(s.pts) })), pilares: (p.pilares || []).filter(x => x.estado !== 'dem'), equipos: (p.equipos || []).filter(x => x.estado !== 'dem'), recrecidos: (p.recrecidos || []).filter(x => x.estado !== 'dem') });
       const modelo0 = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
       const modelo = modelo0.plantas ? { ...modelo0, plantas: modelo0.plantas.map(sinDem) } : sinDem(modelo0);
       // se rehace el modelo con los datos nuevos, sin mover la cámara
       sel = null; setSeleccion(null);
       while (raiz.children.length) { const o = raiz.children[0]; raiz.remove(o); o.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
       const plantas = modelo.plantas || [modelo];
-      plantas.forEach(p => raiz.add(planta(p, p.z)));
+      const offsPl = alinearPlantas(plantas); api3d.current.offsPl = offsPl;
+      plantas.forEach((p, i) => { const gp = planta(p, p.z); gp.position.x += offsPl[i][0] * CM; gp.position.z += offsPl[i][1] * CM; raiz.add(gp); });
       if (primera) {
         const caja3 = new THREE.Box3().setFromObject(raiz);
         const vacio = caja3.isEmpty();
@@ -2100,10 +2133,10 @@ export default function Visor3D({ cliente = false }) {
         setLucesPl((pl?.pts || []).filter(p => p.v === 'ilum' && p.s !== 'dem' && nodos[p.n] && !String(p.id).startsWith('l3_')).map(p => ({ id: p.id, kid: p.k, lid: p.lid || null, h: p.h, lm: p.lm > 0 ? p.lm : null, ap: p.ap > 0 ? p.ap : null, a: p.a || 0, w: p.w > 0 ? p.w : null, x: nodos[p.n].x + p.dx, y: nodos[p.n].y + p.dy,
           vs: ['carril', 'led', 'lineal', 'linealc'].includes(p.k) ? ((p.vx && p.vx.length >= 2) ? p.vx.map(v => [nodos[p.n].x + v.x, nodos[p.n].y + v.y]) : [[nodos[p.n].x + p.dx, nodos[p.n].y + p.dy], [nodos[p.n].x + (p.dx2 ?? p.dx), nodos[p.n].y + (p.dy2 ?? p.dy)]]) : null })));
       }
-      puntosSnapRef.current = (modelo.plantas || [modelo]).flatMap(pl => [
-        ...(pl.muros || []).flatMap(m => [{ x: m.a[0], y: m.a[1] }, { x: m.b[0], y: m.b[1] }]),
-        ...(pl.salas || []).flatMap(s => (s.pts || []).map(p => ({ x: p[0], y: p[1] }))),
-      ]);
+      puntosSnapRef.current = (modelo.plantas || [modelo]).flatMap((pl, ip) => { const [ox, oy] = (offsPl[ip] || [0, 0]); return [
+        ...(pl.muros || []).flatMap(m => [{ x: m.a[0] + ox, y: m.a[1] + oy }, { x: m.b[0] + ox, y: m.b[1] + oy }]),
+        ...(pl.salas || []).flatMap(s => (s.pts || []).map(p => ({ x: p[0] + ox, y: p[1] + oy }))),
+      ]; });
       setRev(v => v + 1);
       primera = false;
     }).catch(() => { if (vivo && primera) setEstado('error'); });
@@ -4958,6 +4991,26 @@ export default function Visor3D({ cliente = false }) {
         <button style={{ ...bTop, ...(ayudaAbierta ? bOn : {}) }} onClick={() => setAyudaAbierta(v => !v)} title="Tutorial, preguntar cómo se hace algo y lista de atajos">? Ayuda</button>
       </div>
 
+      {/* ── Plantas: ver / ocultar cada una (siempre a la vista cuando hay más de una) ── */}
+      {estado === 'listo' && (api3d.current.modelo?.plantas || []).length > 1 && (() => {
+        const pls = api3d.current.modelo.plantas, vis = i => !ocultas.includes('planta:' + i);
+        const alterna = i => setOcultas(o => (o.includes('planta:' + i) ? o.filter(x => x !== 'planta:' + i) : [...o, 'planta:' + i]));
+        const solo = i => setOcultas(o => [...o.filter(x => !x.startsWith('planta:')), ...pls.map((_, j) => j).filter(j => j !== i).map(j => 'planta:' + j)]);
+        const todas = () => setOcultas(o => o.filter(x => !x.startsWith('planta:')));
+        return (
+          <div style={{ position: 'absolute', right: 12, bottom: 40, zIndex: 7, display: 'flex', flexDirection: 'column', gap: 4, background: 'rgba(22,20,18,0.92)', color: '#fff', borderRadius: 10, padding: '6px 8px', fontSize: 12, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+            <div style={{ opacity: 0.6, fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Plantas</div>
+            {[...pls.keys()].reverse().map(i => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button onClick={() => alterna(i)} title={vis(i) ? 'Ocultar esta planta' : 'Mostrar esta planta'} style={{ flex: 1, textAlign: 'left', background: vis(i) ? '#2f6fa8' : '#3a3633', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', opacity: vis(i) ? 1 : 0.55 }}>{vis(i) ? '👁' : '🚫'} {pls[i].nombre || 'Planta ' + (i + 1)}</button>
+                <button onClick={() => solo(i)} title="Ver solo esta planta" style={{ background: 'transparent', color: '#d4c9bb', border: '1px solid #4f4842', borderRadius: 6, padding: '3px 6px', cursor: 'pointer', fontSize: 11 }}>solo</button>
+              </div>
+            ))}
+            <button onClick={todas} style={{ background: 'transparent', color: '#d4c9bb', border: '1px solid #4f4842', borderRadius: 6, padding: '3px 6px', cursor: 'pointer', fontSize: 11 }}>Ver todas</button>
+          </div>
+        );
+      })()}
+
       {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
       <div ref={railRef} style={{ position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: railCols, columnGap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 78px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
         {grupoRail([
@@ -4970,17 +5023,17 @@ export default function Visor3D({ cliente = false }) {
           railBtn(herr === 'poli' && formaDib === 'oval', 'circ', 'Círculo', 'Dibuja un círculo o elipse sobre el suelo (y tira hacia arriba) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('oval'); setHerr('poli'); }),
           railBtn(herr === 'poli' && formaDib === 'poli', 'poli', 'Polígono', 'Clic punto a punto; cierra con Enter. Luego tira hacia arriba para darle altura', () => { setFormaDib('poli'); setHerr('poli'); }),
           railBtn(herr === 'empujar', 'empujar', 'Empujar', 'Arrastra la cara de arriba de una forma para darle o cambiarle la altura', () => setHerr('empujar')),
-        ], false, 'Dibujar')}
+          menuRail(sigueMenu, setSigueMenu, railBtn(herr === 'sigue' || sigueMenu, 'sigue', 'Sígueme', 'Un perfil recorre un camino: rodapiés, molduras, tubos, bandejas…', () => setSigueMenu(v => !v)), (<>
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige el perfil y dibuja el camino en el suelo (Enter termina; volver al primer punto cierra en lazo)</div>
+            {Object.keys(PERFILES).map(n => <div key={n} onClick={() => { setPerfilSel(n); setHerr('sigue'); setSigueMenu(false); }} style={{ ...itemMenu, background: perfilSel === n ? '#3a342f' : 'transparent' }}>{n}</div>)}
+          </>)),
+        ], false, 'Modelar')}
         {grupoRail([
           railBtn(herr === 'muro', 'muro', 'Muro', 'Dibuja muros: clic para empezar y cada punto; Mayús = recto. Se crean también en Planos', () => setHerr('muro')),
           menuRail(zonaMenu, setZonaMenu, railBtn(['zonaS', 'zonaT', 'zonaP'].includes(herr) || zonaMenu, 'zona', 'Zonas', 'Dibuja una forma sobre un suelo, techo o pared y dale su propio material', () => setZonaMenu(v => !v)), (<>
             {[['zonaS', 'En el suelo'], ['zonaT', 'En el techo'], ['zonaP', 'En una pared (o media pared)']].map(([h, n]) => <div key={h} onClick={() => { setHerr(h); setZonaMenu(false); }} style={itemMenu}>{n}</div>)}
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderTop: '1px solid #333', cursor: 'pointer' }}><input type="checkbox" checked={curvo} onChange={e => setCurvo(e.target.checked)} /> Contorno curvo (suave)</label>
             <div style={{ opacity: 0.55, fontSize: 11, padding: '0 8px 4px' }}>Clic punto a punto; cierra con Enter o volviendo al primer punto.</div>
-          </>)),
-          menuRail(sigueMenu, setSigueMenu, railBtn(herr === 'sigue' || sigueMenu, 'sigue', 'Sígueme', 'Un perfil recorre un camino: rodapiés, molduras, tubos, bandejas…', () => setSigueMenu(v => !v)), (<>
-            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige el perfil y dibuja el camino en el suelo (Enter termina; volver al primer punto cierra en lazo)</div>
-            {Object.keys(PERFILES).map(n => <div key={n} onClick={() => { setPerfilSel(n); setHerr('sigue'); setSigueMenu(false); }} style={{ ...itemMenu, background: perfilSel === n ? '#3a342f' : 'transparent' }}>{n}</div>)}
           </>)),
         ], false, 'Construir')}
         {grupoRail([
