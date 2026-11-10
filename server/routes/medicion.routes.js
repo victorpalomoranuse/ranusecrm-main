@@ -814,6 +814,8 @@ router.patch('/:id/textura/:tid', async (req, res) => {
       t.color = hx; t.url = 'data:image/png;base64,' + png.toString('base64'); t.nombre = 'Color ' + hx.toUpperCase();
     }
     if (Number.isFinite(parseFloat(req.body?.tam))) t.tam = Math.max(5, Math.min(1000, parseFloat(req.body.tam)));
+    // formato no cuadrado: alto real de la imagen en cm (si no se pone, la imagen es cuadrada: alto = ancho)
+    if (req.body && 'tamH' in req.body) { const v = parseFloat(req.body.tamH); if (Number.isFinite(v) && v >= 5) t.tamH = Math.min(1000, v); else delete t.tamH; }
     // propiedades del material: rugosidad, metal y relieve (0–1)
     if (req.body && 'pbr' in req.body) {
       const pb = req.body.pbr, q = v => Math.max(0, Math.min(1, Number(v) || 0));

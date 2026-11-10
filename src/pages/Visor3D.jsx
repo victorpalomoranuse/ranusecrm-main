@@ -206,9 +206,9 @@ function dibujaDesp(cx, img, t, j) {
   }
 }
 function texturaDe(t, uvEnCm) {
-  const k = uvEnCm ? 1 / t.tam : 1 / (t.tam * CM), j = t.junta && t.junta.mm > 0 ? t.junta : null;
+  const k = uvEnCm ? 1 / t.tam : 1 / (t.tam * CM), kH = t.tamH > 0 ? (uvEnCm ? 1 / t.tamH : 1 / (t.tamH * CM)) : k, j = t.junta && t.junta.mm > 0 ? t.junta : null;
   if (t.espejo || t.pbr || t.maps) espejoSucio = true;
-  const clave = t.url.slice(0, 200) + '|' + k + '|' + (t.rot || 0) + '|' + (t.ox || 0) + '|' + (t.oy || 0) + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '') + (t.pbr ? JSON.stringify(t.pbr) : '') + (t.maps ? JSON.stringify(t.maps) : '') + (KTX2L && t.ktx ? 'k' : '');
+  const clave = t.url.slice(0, 200) + '|' + k + '|' + kH + '|' + (t.rot || 0) + '|' + (t.ox || 0) + '|' + (t.oy || 0) + '|' + (j ? j.hex + j.mm : '') + (t.desp ? JSON.stringify(t.desp) : '') + (t.espejo || '') + (t.pbr ? JSON.stringify(t.pbr) : '') + (t.maps ? JSON.stringify(t.maps) : '') + (KTX2L && t.ktx ? 'k' : '');
   let x = cacheTex.get(clave);
   if (!x) {
     if (t.espejo) {
@@ -230,10 +230,10 @@ function texturaDe(t, uvEnCm) {
       img.onload = () => { const m = Math.min(0.4, j.mm / 10 / t.tam) * 512 / 2; cx.drawImage(img, m, m, 512 - 2 * m, 512 - 2 * m); x.needsUpdate = true; try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } };
       img.src = t.url;
     } else x = new THREE.TextureLoader().load(t.url, () => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } });
-    x.wrapS = x.wrapT = THREE.RepeatWrapping; x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 4; x.repeat.set(k, k);
+    x.wrapS = x.wrapT = THREE.RepeatWrapping; x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 4; x.repeat.set(k, kH);
     if (t.pbr) x.userData.pbr = t.pbr;
     if (t.maps) { x.userData.mapsUrl = KTX2L && t.ktx ? { ...t.maps, ...Object.fromEntries(Object.entries(t.ktx).filter(([k]) => ['normal', 'rough', 'ao'].includes(k))) } : t.maps; x.userData.mapsAlt = t.maps; }
-    if (t.rot || t.ox || t.oy) { x.center.set(0.5, 0.5); x.rotation = (t.rot || 0) * Math.PI / 180; x.offset.set((t.ox || 0) / t.tam, (t.oy || 0) / t.tam); }
+    if (t.rot || t.ox || t.oy) { x.center.set(0.5, 0.5); x.rotation = (t.rot || 0) * Math.PI / 180; x.offset.set((t.ox || 0) / t.tam, (t.oy || 0) / (t.tamH || t.tam)); }
     cacheTex.set(clave, x);
   }
   return x;
@@ -245,7 +245,7 @@ function pintar(mesh, valor, texturas, uvEnCm, repBox) {
   const t = valor && String(valor).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === valor) : null;
   if (t) {
     let mp = texturaDe(t, uvEnCm);
-    if (repBox) { mp = mp.clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, repBox[0] / t.tam), Math.max(0.2, repBox[1] / t.tam)); }
+    if (repBox) { mp = mp.clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, repBox[0] / t.tam), Math.max(0.2, repBox[1] / (t.tamH || t.tam))); }
     mesh.material.map = mp; mesh.material.color.setHex(0xffffff);
   }
   else { mesh.material.map = null; mesh.material.color.setHex(valor && /^#/.test(valor) ? parseInt(valor.slice(1), 16) : u.col0); }
@@ -261,7 +261,7 @@ function aplicarValorMat(m, val, texturas, o) {
   if (!val) return;
   if (String(val).startsWith('tinte:')) { if (/^#[0-9a-f]{6}$/i.test(val.slice(6))) { m.color.set(val.slice(6)); m.needsUpdate = true; } return; } // tinte: se mantiene el mapa del modelo
   const t = String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
-  if (t) { const mp = texturaDe(t, true).clone(); mp.needsUpdate = true; const r = Math.max(1, (o?.w || 100) / t.tam); mp.repeat.set(r, r); m.map = mp; m.color.setHex(0xffffff); }
+  if (t) { const mp = texturaDe(t, true).clone(); mp.needsUpdate = true; const r = Math.max(1, (o?.w || 100) / t.tam); mp.repeat.set(r, t.tamH ? Math.max(1, (o?.w || 100) / t.tamH) : r); m.map = mp; m.color.setHex(0xffffff); }
   else if (/^#/.test(val)) { m.map = null; m.color.setHex(parseInt(val.slice(1), 16)); ledEm(m, val); }
   m.needsUpdate = true;
 }
@@ -522,7 +522,7 @@ function Miniatura({ mod, foto, size = 56 }) {
 function matMueble(valor, defHex, texturas, w, h) {
   const m = new THREE.MeshStandardMaterial({ color: color(/^#/.test(valor || '') ? valor : null, defHex), roughness: 0.6, metalness: 0 });
   const t = valor && String(valor).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === valor) : null;
-  if (t) { const mp = texturaDe(t, true).clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, w / t.tam), Math.max(0.2, h / t.tam)); m.map = mp; m.color.setHex(0xffffff); }
+  if (t) { const mp = texturaDe(t, true).clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, w / t.tam), Math.max(0.2, h / (t.tamH || t.tam))); m.map = mp; m.color.setHex(0xffffff); }
   ledEm(m, valor);
   return m;
 }
@@ -3372,7 +3372,7 @@ export default function Visor3D({ cliente = false }) {
         const val = (o.caras && o.caras[i]) || o.color;
         const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, liso ? '#9aa3ad' : '#2f6fa8'), roughness: 0.55, metalness: liso ? 0 : 0.15, emissive: selIdsRef.current.has(o.id) ? 0x335577 : 0x000000, transparent: !!mod, opacity: mod ? 0.18 : 1 });
         const tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
-        if (tx) { const mp = texturaDe(tx, true).clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, o.w / tx.tam), Math.max(0.2, o.alto / tx.tam)); mt.map = mp; mt.color.setHex(0xffffff); }
+        if (tx) { const mp = texturaDe(tx, true).clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, o.w / tx.tam), Math.max(0.2, o.alto / (tx.tamH || tx.tam))); mt.map = mp; mt.color.setHex(0xffffff); }
         ledEm(mt, val);
         return mt;
       });
@@ -4661,6 +4661,15 @@ export default function Visor3D({ cliente = false }) {
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Giro °</span><input key={'rt' + t.id + (t.rot || 0)} id="tx-rot" type="number" step="15" defaultValue={t.rot || 0} style={{ ...btn, width: 60 }} /><button style={btn} onClick={() => guarda(t.junta || null, t.tam, t.desp, { rot: ((t.rot || 0) + 90) % 360 })}>+90°</button></label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Mover cm</span><span>x</span><input key={'ox' + t.id + (t.ox || 0)} id="tx-ox" type="number" defaultValue={t.ox || 0} style={{ ...btn, width: 56 }} /><span>y</span><input key={'oy' + t.id + (t.oy || 0)} id="tx-oy" type="number" defaultValue={t.oy || 0} style={{ ...btn, width: 56 }} /></label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Tamaño real cm</span><input key={'tam' + t.id + t.tam} id="tx-tam" type="number" defaultValue={t.tam} style={{ ...btn, width: 70 }} /></label>
+                  <div style={{ background: '#2a2a2a', borderRadius: 6, padding: '6px 8px', marginBottom: 6, fontSize: 12 }}>
+                    <div style={{ opacity: 0.75, marginBottom: 4 }}>Formato de la imagen (lo que mide en la realidad)</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <input key={'fa' + t.id + t.tam} id="tx-fa" type="number" min="5" defaultValue={t.tam} style={{ ...btn, width: 64 }} title="Ancho en cm" /><span>×</span>
+                      <input key={'fh' + t.id + (t.tamH || t.tam)} id="tx-fh" type="number" min="5" defaultValue={t.tamH || t.tam} style={{ ...btn, width: 64 }} title="Alto en cm" /><span style={{ opacity: 0.7 }}>cm</span>
+                      <button style={{ ...btn, background: '#6b6159' }} onClick={() => { const a = parseFloat(document.getElementById('tx-fa').value), h = parseFloat(document.getElementById('tx-fh').value); if (!(a >= 5) || !(h >= 5)) return; guarda(t.junta || null, a, t.desp, { tamH: h === a ? 0 : h }); }}>Aplicar formato</button>
+                    </div>
+                    <div style={{ opacity: 0.5, fontSize: 11, marginTop: 3 }}>Ejemplos: 100 × 100 (baldosa), 60 × 120 (porcelánico), 20 × 240 (lama). La imagen se estira a ese tamaño real.</div>
+                  </div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (color)</span><input key={'jc' + t.id + (t.junta?.hex || '')} id="tx-jc" type="color" defaultValue={t.junta?.hex || '#bdbdbd'} /></label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><span style={{ width: 90, opacity: 0.7 }}>Junta (mm)</span><input key={'jm' + t.id + (t.junta?.mm || 0)} id="tx-jm" type="number" step="0.5" defaultValue={t.junta?.mm || 0} style={{ ...btn, width: 70 }} /></label>
                   <div style={{ display: 'flex', gap: 6 }}>
