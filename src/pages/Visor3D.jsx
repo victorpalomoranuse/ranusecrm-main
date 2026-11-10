@@ -1827,8 +1827,11 @@ export default function Visor3D({ cliente = false }) {
   const [vistaTool, setVistaTool] = useState(null), [vistaPrev, setVistaPrev] = useState(null), [alzMas, setAlzMas] = useState(false);
   const vistaToolRef = useRef(null); vistaToolRef.current = vistaTool;
   const [zForm, setZForm] = useState({ x: 0, y: 90, w: 100, h: 100, forma: 'rect' });
-  const [railCols, setRailCols] = useState(() => (typeof window !== 'undefined' && window.innerHeight < 1000 ? 2 : 1));
-  useEffect(() => { const f = () => setRailCols(window.innerHeight < 1000 ? 2 : 1); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
+  // la barra de herramientas usa 1 columna y, solo si no cabe en la altura de la ventana, pasa a 2 (se mide, no se adivina por la altura)
+  const [railCols, setRailCols] = useState(1), [railTick, setRailTick] = useState(0);
+  const railRef = useRef(null);
+  useEffect(() => { const f = () => { setRailCols(1); setRailTick(t => t + 1); }; window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
+  useLayoutEffect(() => { const el = railRef.current; if (el && railCols < 4 && (el.scrollHeight > el.clientHeight + 2 || el.scrollWidth > el.clientWidth + 2)) setRailCols(c => c + 1); }, [railCols, railTick, estado]);
   const railW = railCols * 56 + 10;
   const [camAbierta, setCamAbierta] = useState(false);
   const [camInfo, setCamInfo] = useState(null);
@@ -4723,7 +4726,7 @@ export default function Visor3D({ cliente = false }) {
       </>}
     </span>
   );
-  const grupoRail = (hijos, ultimo, titulo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{titulo && <span style={{ fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.45, padding: '2px 0' }}>{titulo}</span>}{hijos}</div>;
+  const grupoRail = (hijos, ultimo, titulo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, breakInside: 'avoid', borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{titulo && <span style={{ fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.45, padding: '2px 0' }}>{titulo}</span>}{hijos}</div>;
   const menuRail = (abierto, setAbierto, boton, contenido, ancho) => <MenuRail key={'m' + (boton.key || '')} abierto={abierto} ancho={ancho} boton={boton}>{contenido}</MenuRail>;
   const AYUDA_HERR = {
     sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo'], poli: ['Dibujar forma', 'Rectángulo y círculo: arrastra · Polígono: clic a clic, Enter cierra · después tira hacia arriba para darle altura'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de la forma para darle altura'],
@@ -4956,7 +4959,7 @@ export default function Visor3D({ cliente = false }) {
       </div>
 
       {/* ── Carril de herramientas (izquierda), agrupadas por tarea ── */}
-      <div style={{ position: 'absolute', top: 54, left: 8, display: 'flex', flexDirection: 'column', flexWrap: 'wrap', alignContent: 'flex-start', gap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 62px)', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+      <div ref={railRef} style={{ position: 'absolute', top: 54, left: 8, boxSizing: 'content-box', columnCount: railCols, columnGap: 0, width: railCols * 54, maxHeight: 'calc(100vh - 78px)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', background: 'rgba(22,20,18,0.95)', borderRadius: 12, padding: '4px 2px', zIndex: 7, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
         {grupoRail([
           railBtn(herr === 'sel', 'sel', 'Seleccionar', 'Seleccionar y mover objetos (Espacio)', () => setHerr('sel')),
           railBtn(false, 'ocultar', 'Ocultar', 'Oculta lo seleccionado sin borrarlo (H)', ocultarSel),
