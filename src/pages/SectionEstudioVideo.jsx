@@ -1311,6 +1311,7 @@ function SaludCuenta() {
         {d.acciones.length > 0 && <Tarjeta titulo="🎯 Qué hacer"><Lista items={d.acciones} /></Tarjeta>}
         {d.fiabilidad && <div style={{ ...mut, fontSize: '0.78rem' }}>Fiabilidad: {d.fiabilidad}</div>}
       </>}
+      <PreferenciasRedes />
     </div>
   );
 }
@@ -1351,6 +1352,7 @@ function InicioRedes({ ir }) {
         {ideas.length > 0 ? <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))' }}>{ideas.map((x, i) => <div key={i} className="rd-card" style={{ cursor: 'pointer' }} onClick={() => setAbierta(x)}><span className="rd-chip arena" style={{ alignSelf: 'flex-start' }}>{x.formato || 'idea'}</span><div className="rd-gancho">{x.idea}</div><div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Crear guion →</div></div>)}</div> : <div style={mut}>Cuando analices tus reels, aquí saldrán ideas listas para grabar.</div>}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="rd-btn" onClick={() => ir('plan')}>Plan de publicación</button><button className="rd-btn" onClick={() => ir('musica')}>🎵 Música</button></div>
       </div>
+      <PreferenciasRedes />
       {abierta && <TallerIdeas idea={abierta} onCerrar={() => setAbierta(null)} />}
     </div>
   );
@@ -1393,6 +1395,25 @@ function DetalleReels({ lista }) {
         {r.enlace && <a href={r.enlace} target="_blank" rel="noreferrer" style={{ color: '#8fdba0' }}>Ver el reel →</a>}
       </div></details>)}
   </div>;
+}
+function PreferenciasRedes() {
+  const [p, setP] = useState(null), [texto, setTexto] = useState(''), [tipo, setTipo] = useState('no');
+  useEffect(() => { api.get('/redes/preferencias').then(r => setP(r.data)).catch(() => setP({ reglas: [] })); }, []);
+  const anade = async () => { if (texto.trim().length < 3) return; try { const r = await api.post('/redes/preferencias', { texto, tipo }); setP(r.data); setTexto(''); } catch { /* se queda */ } };
+  const quita = async (id) => { try { const r = await api.post('/redes/preferencias', { borrar: id }); setP(r.data); } catch { /* se queda */ } };
+  const l = p?.reglas || [], ico = { no: '🚫', si: '✅', transmitir: '💬' }, col = { no: '#ff9b9b', si: '#8fdba0', transmitir: '#9db8ff' };
+  return (
+    <div className="rd-card" style={{ gap: 10 }}>
+      <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>✋ TUS PREFERENCIAS · la IA las respeta siempre</div>
+      <div style={{ ...mut, fontSize: '0.84rem' }}>Dile lo que no quieres, lo que sí y qué quieres transmitir. Vale para consejos, ideas, planes, guiones y el asistente. Vuelve a analizar para que lo aplique.</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <select className="ap-field-input" value={tipo} onChange={e => setTipo(e.target.value)}><option value="no">🚫 No quiero</option><option value="si">✅ Quiero</option><option value="transmitir">💬 Quiero transmitir</option></select>
+        <input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') anade(); }} placeholder="Ej.: no mencionar futbolistas · transmitir cercanía y criterio de obra real" />
+        <button className="rd-btn pri" onClick={anade}>Añadir</button>
+      </div>
+      {l.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{l.map(r => <span key={r.id} className="rd-chip" style={{ color: col[r.tipo] }}>{ico[r.tipo]} {r.texto} <button onClick={() => quita(r.id)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button></span>)}</div>}
+    </div>
+  );
 }
 function SemanaTipo({ dias }) {
   const [ab, setAb] = useState(null), [taller, setTaller] = useState(null);
