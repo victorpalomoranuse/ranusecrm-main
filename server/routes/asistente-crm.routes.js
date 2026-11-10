@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requireAdminSuperior } from '../middleware/auth.middleware.js';
 import { leerJson, guardarJson, RUTA_RECORD, RUTA_DIARIO } from '../utils/asistente-personal.js';
+import { ejecutarHistorias, ensenarVoz } from '../utils/historias-asistente.js';
 import { RUTA_PERFIL, RUTA_PLAN, RUTA_REGISTRO, RUTA_MARCAS, ejecutarSalud } from '../utils/salud-asistente.js';
 
 // Lo que el asistente personal sabe y hace, visible y editable desde el CRM (sección "Asistente personal").
@@ -78,8 +79,47 @@ router.delete('/conversacion', async (req, res) => {
 
 // Historias de Instagram preparadas por el asistente
 router.get('/historias', async (req, res) => {
-  try { const h = await leerJson('crm/asistente/historias.json', { planes: [] }); const v = await leerJson('crm/asistente/voz.json', { muestras: [], rasgos: [] }); res.json({ planes: (h.planes || []).slice().reverse(), voz: { rasgos: v.rasgos || [], muestras: (v.muestras || []).length } }); }
+  try { const h = await leerJson('crm/asistente/historias.json', { planes: [] }); const v = await leerJson('crm/asistente/voz.json', { muestras: [], rasgos: [] }); const l = await leerJson('crm/asistente/historias_lecciones.json', { lecciones: [] }), ide = await leerJson('crm/asistente/ig_ideas.json', { ideas: [] }), est = await leerJson('crm/asistente/ig_estrategia.json', { reglas: [] }), pub = await leerJson('crm/asistente/ig_publicadas.json', { historias: [] }); res.json({ ideas: (ide.ideas || []).slice().reverse(), estrategia: est.reglas || [], publicadas: (pub.historias || []).slice(-12).reverse(), planes: (h.planes || []).slice().reverse(), voz: { rasgos: v.rasgos || [], muestras: (v.muestras || []).length }, lecciones: (l.lecciones || []).slice().reverse() }); }
   catch { res.status(500).json({ error: 'No se pudieron leer las historias' }); }
+});
+// pedir una secuencia desde el propio CRM (hace lo mismo que cuando se lo pides por WhatsApp)
+router.post('/historias/generar', async (req, res) => {
+  try {
+    const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+    const r = await ejecutarHistorias('crear_secuencia_historias', { objetivo: String(req.body?.objetivo || 'engagement').slice(0, 160), tema: String(req.body?.tema || '').slice(0, 300), dias: req.body?.dias, num_historias: req.body?.num_historias, fecha: req.body?.fecha, indicaciones: String(req.body?.indicaciones || '').slice(0, 500) }, { fecha: hoy });
+    if (r.error) return res.status(422).json({ error: r.error }); res.json({ ok: true, id: r.id });
+  } catch (e) { res.status(500).json({ error: 'No se pudo preparar la secuencia: ' + String(e.message || '').slice(0, 160) }); }
+});
+router.post('/historias/:id/resultado', async (req, res) => {
+  try {
+    const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+    const r = await ejecutarHistorias('resultado_historias', { id: req.params.id, resultado: String(req.body?.resultado || '') }, { fecha: hoy });
+    if (r.error) return res.status(422).json({ error: r.error }); res.json(r);
+  } catch { res.status(500).json({ error: 'No se pudo apuntar' }); }
+});
+router.post('/voz', async (req, res) => {
+  try { const r = await ensenarVoz(req.body?.texto); if (r.error) return res.status(422).json({ error: r.error }); res.json(r); }
+  catch (e) { res.status(500).json({ error: 'No se pudo aprender de ese texto' }); }
+});
+router.delete('/historias/ideas/:id', async (req, res) => {
+  try { const d = await leerJson('crm/asistente/ig_ideas.json', { ideas: [] }); d.ideas = (d.ideas || []).filter(x => x.id !== req.params.id); await guardarJson('crm/asistente/ig_ideas.json', d); res.json({ ok: true }); }
+  catch { res.status(500).json({ error: 'No se pudo borrar' }); }
+});
+router.post('/historias/ideas', async (req, res) => {
+  try { const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date()); const r = await ejecutarHistorias('guardar_idea_historia', { texto: String(req.body?.texto || ''), tipo: String(req.body?.tipo || 'otro') }, { fecha: hoy }); if (r.error) return res.status(422).json({ error: r.error }); res.json(r); }
+  catch { res.status(500).json({ error: 'No se pudo guardar' }); }
+});
+router.delete('/historias/estrategia/:id', async (req, res) => {
+  try { const d = await leerJson('crm/asistente/ig_estrategia.json', { reglas: [] }); d.reglas = (d.reglas || []).filter(x => x.id !== req.params.id); await guardarJson('crm/asistente/ig_estrategia.json', d); res.json({ ok: true }); }
+  catch { res.status(500).json({ error: 'No se pudo borrar' }); }
+});
+router.post('/historias/estrategia', async (req, res) => {
+  try { const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date()); const r = await ejecutarHistorias('guardar_estrategia_instagram', { regla: String(req.body?.regla || '') }, { fecha: hoy }); if (r.error) return res.status(422).json({ error: r.error }); res.json(r); }
+  catch { res.status(500).json({ error: 'No se pudo guardar' }); }
+});
+router.delete('/historias/lecciones/:id', async (req, res) => {
+  try { const l = await leerJson('crm/asistente/historias_lecciones.json', { lecciones: [] }); l.lecciones = (l.lecciones || []).filter(x => x.id !== req.params.id); await guardarJson('crm/asistente/historias_lecciones.json', l); res.json({ ok: true }); }
+  catch { res.status(500).json({ error: 'No se pudo borrar' }); }
 });
 router.delete('/historias/:id', async (req, res) => {
   try { const h = await leerJson('crm/asistente/historias.json', { planes: [] }); h.planes = (h.planes || []).filter(p => p.id !== req.params.id); await guardarJson('crm/asistente/historias.json', h); res.json({ ok: true }); }

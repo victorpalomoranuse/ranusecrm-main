@@ -71,19 +71,62 @@ function Recordatorios() {
 }
 
 function Historias() {
-  const [d, setD] = useState(null);
-  const cargar = useCallback(() => api.get('/asistente-personal/historias').then(r => setD(r.data)).catch(() => setD({ planes: [], voz: { rasgos: [], muestras: 0 } })), []);
+  const [nuevaIdea, setNuevaIdea] = useState(''), [nuevaRegla, setNuevaRegla] = useState('');
+  const [d, setD] = useState(null), [objetivo, setObjetivo] = useState('vender'), [tema, setTema] = useState(''), [dias, setDias] = useState(1), [trabaja, setTrabaja] = useState(false), [error, setError] = useState(''), [voz, setVoz] = useState(''), [msgVoz, setMsgVoz] = useState('');
+  const cargar = useCallback(() => api.get('/asistente-personal/historias').then(r => setD(r.data)).catch(() => setD({ planes: [], voz: { rasgos: [], muestras: 0 }, lecciones: [] })), []);
   useEffect(() => { cargar(); }, [cargar]);
   const borrar = async (id) => { if (!window.confirm('¿Borrar esta secuencia?')) return; try { await api.delete('/asistente-personal/historias/' + id); cargar(); } catch { /* se queda */ } };
+  const generar = async () => { setTrabaja(true); setError(''); try { await api.post('/asistente-personal/historias/generar', { objetivo, tema, dias }, { timeout: 240000 }); setTema(''); await cargar(); } catch (e) { setError(e.response?.data?.error || 'No se pudo preparar la secuencia'); } finally { setTrabaja(false); } };
+  const ensenar = async () => { setMsgVoz('Aprendiendo…'); try { const r = await api.post('/asistente-personal/voz', { texto: voz }, { timeout: 120000 }); setMsgVoz('Aprendido: ' + r.data.muestras + ' frases y ' + (r.data.rasgos || []).length + ' rasgos'); setVoz(''); cargar(); } catch (e) { setMsgVoz(e.response?.data?.error || 'No se pudo'); } };
+  const resultado = async (id, texto) => { if (!texto.trim()) return; try { await api.post('/asistente-personal/historias/' + id + '/resultado', { resultado: texto }); cargar(); } catch { /* se queda */ } };
+  const textoPlan = (p) => [p.titulo + ' · ' + p.objetivo + (p.marco ? ' · ' + p.marco : ''), ...(p.dias || []).flatMap(dia => [dia.fecha, ...(dia.historias || []).map(h => h.n + '. ' + h.formato + ' — ' + h.grabar + (h.texto ? '\n   Texto: ' + h.texto : '') + (h.hablado ? '\n   Dices: ' + h.hablado : '') + (h.sticker ? '\n   Sticker: ' + h.sticker : ''))])].join('\n');
+  const accion = async (fn) => { try { await fn(); await cargar(); } catch { /* se queda */ } };
   if (!d) return <div className="ap-loading">Cargando…</div>;
   return (
     <div>
-      <div style={{ ...mut, marginBottom: 10 }}>Pídele al asistente por WhatsApp «dame historias para vender el diseño de gimnasios» o «qué subo mañana»: prepara la secuencia con lo que haces de verdad y con tu voz, y queda guardada aquí. {d.voz?.muestras ? 'Ya conoce ' + d.voz.muestras + ' frases tuyas' : 'Aún no conoce tu forma de hablar: cuanto más le cuentes, mejor imita tu voz'}{(d.voz?.rasgos || []).length ? ' y estos rasgos: ' + d.voz.rasgos.join('; ') + '.' : '.'}</div>
+      <div style={{ ...card, marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>🎯 Estrategia de Instagram <span style={mut}>· manda sobre todo lo que propone</span></div>
+        {(d.estrategia || []).map(r => <div key={r.id} style={{ display: 'flex', gap: 8, padding: '4px 0', borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: '0.86rem' }}><span style={{ flex: 1 }}>{r.texto}</span>{r.id && <button className="ap-btn ap-btn-sm" onClick={() => accion(() => api.delete('/asistente-personal/historias/estrategia/' + r.id))}>✕</button>}</div>)}
+        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}><input className="ap-field-input" style={{ flex: 1 }} value={nuevaRegla} onChange={e => setNuevaRegla(e.target.value)} placeholder="Añade una regla (ej.: los domingos solo vida personal)" /><button className="ap-btn ap-btn-sm" disabled={!nuevaRegla.trim()} onClick={() => accion(async () => { await api.post('/asistente-personal/historias/estrategia', { regla: nuevaRegla }); setNuevaRegla(''); })}>Añadir</button></div>
+      </div>
+      <details style={{ ...card, marginBottom: 12 }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700 }}>💡 Banco de ideas <span style={mut}>· {(d.ideas || []).filter(i => !(i.usadas || []).length).length} sin usar · pídele «qué subo hoy» y las recupera cuando encajan</span></summary>
+        <div style={{ display: 'flex', gap: 6, margin: '8px 0' }}><input className="ap-field-input" style={{ flex: 1 }} value={nuevaIdea} onChange={e => setNuevaIdea(e.target.value)} placeholder="Una idea para una historia (de trabajo o de tu vida)…" /><button className="ap-btn ap-btn-sm" disabled={!nuevaIdea.trim()} onClick={() => accion(async () => { await api.post('/asistente-personal/historias/ideas', { texto: nuevaIdea }); setNuevaIdea(''); })}>Guardar</button></div>
+        {!(d.ideas || []).length && <div style={mut}>Todavía no hay ideas. También puedes contárselas por WhatsApp («apunta esta idea para una historia…»).</div>}
+        {(d.ideas || []).map(i => <div key={i.id} style={{ display: 'flex', gap: 8, padding: '4px 0', borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: '0.86rem' }}><span style={{ flex: 1 }}>{i.texto} <span style={mut}>· {i.tipo} · {i.creada}{(i.usadas || []).length ? ' · usada' : ''}</span></span><button className="ap-btn ap-btn-sm" onClick={() => accion(() => api.delete('/asistente-personal/historias/ideas/' + i.id))}>✕</button></div>)}
+      </details>
+      {(d.publicadas || []).length > 0 && <details style={{ ...card, marginBottom: 12 }}><summary style={{ cursor: 'pointer', fontWeight: 700 }}>📌 Lo último que has subido</summary>{d.publicadas.map(h => <div key={h.id} style={{ padding: '4px 0', borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: '0.86rem' }}>{h.fecha} · [{h.tipo}] {h.resumen}{h.resultado ? ' → ' + h.resultado : ''}</div>)}</details>}
+      <div style={{ ...card, marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>📲 Pídele una secuencia</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          <select className="ap-field-input" value={objetivo} onChange={e => setObjetivo(e.target.value)}>{[['vender', 'Vender'], ['engagement', 'Engagement (que respondan)'], ['autoridad', 'Autoridad (criterio de experto)'], ['bastidores', 'Bastidores de obra y diseño'], ['lanzamiento', 'Lanzamiento']].map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>
+          <select className="ap-field-input" value={dias} onChange={e => setDias(Number(e.target.value))}><option value={1}>1 día</option><option value={3}>3 días</option><option value={5}>5 días</option><option value={7}>Una semana</option></select>
+          <input className="ap-field-input" style={{ flex: 1, minWidth: 200 }} value={tema} onChange={e => setTema(e.target.value)} placeholder="De qué va (vacío = lo deduce de tu día)" />
+          <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={trabaja} onClick={generar}>{trabaja ? 'Preparando… (1-2 min)' : 'Preparar secuencia'}</button>
+        </div>
+        {error && <div className="ap-error">{error}</div>}
+        <div style={mut}>También se lo puedes pedir por WhatsApp («qué subo mañana»). Lo prepara con lo que haces de verdad, con tu voz, y un editor jefe lo revisa y lo repara antes de dártelo.</div>
+      </div>
+      <details style={{ ...card, marginBottom: 12 }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700 }}>🗣 Tu voz <span style={mut}>· conoce {d.voz?.muestras || 0} frases tuyas</span></summary>
+        {(d.voz?.rasgos || []).length > 0 && <div style={{ ...mut, margin: '8px 0' }}>Rasgos que ha deducido: {d.voz.rasgos.join(' · ')}</div>}
+        <div style={{ ...mut, margin: '8px 0' }}>Pega aquí guiones, transcripciones de tus vídeos o mensajes tuyos: cuanto más natural y tuyo sea el texto, mejor imitará cómo hablas.</div>
+        <textarea className="ap-field-input" rows={5} style={{ width: '100%' }} value={voz} onChange={e => setVoz(e.target.value)} placeholder="Pega un texto tuyo…" />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 6 }}><button className="ap-btn ap-btn-sm" disabled={voz.trim().length < 80} onClick={ensenar}>Que aprenda de este texto</button><span style={mut}>{msgVoz}</span></div>
+      </details>
+      {(d.lecciones || []).length > 0 && (
+        <details style={{ ...card, marginBottom: 12 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 700 }}>🧠 Lo que ha aprendido de tus resultados <span style={mut}>· {d.lecciones.length}</span></summary>
+          {d.lecciones.map(l => <div key={l.id} style={{ padding: '5px 0', borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: '0.86rem' }}>{l.texto} <span style={mut}>{l.fecha}</span></div>)}
+        </details>
+      )}
       {!d.planes.length && <div style={mut}>Todavía no hay secuencias.</div>}
       {d.planes.map(p => (
         <details key={p.id} style={{ ...card, marginBottom: 10 }}>
-          <summary style={{ cursor: 'pointer' }}><strong>{p.titulo}</strong> <span style={mut}>· {p.objetivo} · {p.cuando}{p.mejor_hora ? ' · ' + p.mejor_hora : ''}</span></summary>
+          <summary style={{ cursor: 'pointer' }}><strong>{p.titulo}</strong> <span style={mut}>· {p.objetivo} · {p.cuando}{p.mejor_hora ? ' · ' + p.mejor_hora : ''}{p.revision?.nota != null ? ' · revisión ' + p.revision.nota + '/100' + (p.revision.reparada ? ' (reparada)' : '') : ''}</span></summary>
+          {p.marco && <div style={{ ...mut, margin: '6px 0' }}>Marco: {p.marco}</div>}
           {p.resumen && <div style={{ ...mut, margin: '6px 0' }}>{p.resumen}</div>}
+          {p.revision && (p.revision.problemas || []).length > 0 && <div style={{ ...mut, margin: '6px 0', color: '#f2c46d' }}>El editor jefe aún ve: {p.revision.problemas.map(x => x.que).join(' · ')}</div>}
           {(p.dias || []).map((dia, k) => (
             <div key={k} style={{ marginTop: 8 }}>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>{dia.fecha}</div>
@@ -94,12 +137,18 @@ function Historias() {
                   {h.hablado && <div style={mut}>Lo dices: «{h.hablado}»</div>}
                   {h.sticker && <div style={mut}>Sticker: {h.sticker}</div>}
                   {h.para_que && <div style={{ ...mut, fontStyle: 'italic' }}>Para qué: {h.para_que}</div>}
+                  {h.alternativa && <div style={mut}>Si no puedes grabarlo: {h.alternativa}</div>}
                 </div>
               ))}
             </div>
           ))}
           {(p.consejos || []).length > 0 && <div style={{ ...mut, marginTop: 8 }}>{p.consejos.map((c, i) => <div key={i}>→ {c}</div>)}</div>}
-          <button className="ap-btn ap-btn-sm" style={{ marginTop: 8 }} onClick={() => borrar(p.id)}>Borrar</button>
+          {(p.resultados || []).length > 0 && <div style={{ marginTop: 8, fontSize: '0.84rem' }}><strong>Resultados:</strong>{p.resultados.map((r, i) => <div key={i} style={mut}>{r.fecha}: {r.texto}</div>)}</div>}
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+            <input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} placeholder="¿Cómo le fue? (respuestas, mensajes, qué se cayó…) y Enter" onKeyDown={e => { if (e.key === 'Enter') { resultado(p.id, e.target.value); e.target.value = ''; } }} />
+            <button className="ap-btn ap-btn-sm" onClick={() => { try { navigator.clipboard.writeText(textoPlan(p)); } catch { /* sin portapapeles */ } }}>Copiar</button>
+            <button className="ap-btn ap-btn-sm" onClick={() => borrar(p.id)}>Borrar</button>
+          </div>
         </details>
       ))}
     </div>
