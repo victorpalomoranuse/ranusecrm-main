@@ -4,6 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { hfDisponible, componeHF } from './hf.mjs';
 import { analizaReferencia } from './referencia.mjs';
+import { abreConGancho } from './reordena.mjs';
 import { indexaSubidos } from './subidos.mjs';
 import { creaMuestra } from './muestras.mjs';
 import { creaEfecto } from './efectos.mjs';
@@ -301,6 +302,10 @@ async function procesa(t) {
   const salida = path.join(dir, 'salida.mp4');
   await paso(t, t.tipo === 'voz' ? 'La IA está eligiendo escenas y montando…' : t.tipo === 'base' ? 'Montando sobre el vídeo base y superponiendo escenas…' : 'Quitando pausas y poniendo subtítulos…');
   try { await sincronizaMusica(); } catch (e) { console.log('Música sin sincronizar:', e.message); }
+  if (t.tipo === 'bruto' && t.formato === 'auto-redes' && !t.edicion_texto && !t.sin_gancho) {
+    try { await paso(t, 'La IA de redes está buscando el mejor gancho…', { pct: 12 }); const g = await abreConGancho(entrada, dir, t.notas_formato, (m) => console.log(m)); if (g?.archivo) { entrada = g.archivo; await paso(t, 'Gancho puesto al principio', { gancho_info: { frase: g.frase, por_que: g.por_que, desde: g.inicio }, pct: 18 }); } }
+    catch (e) { console.log('Sin reordenar el vídeo:', e.message); }
+  }
   if (t.tipo === 'clips') { await procesaClips(t, entrada, dir); return; }
   if (t.tipo === 'referencia') {
     await paso(t, 'Analizando el vídeo de referencia…', { pct: 30 });

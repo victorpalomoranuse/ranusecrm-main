@@ -1610,7 +1610,9 @@ function PestanaAnalizador() {
   useEffect(() => { api.get('/redes/objetivos').then(r => setObjs(r.data)).catch(() => {}); }, []);
   const cambiaObjetivo = async (id) => { try { await api.post('/redes/objetivo', { id }); setObjs(o => ({ ...o, actual: id })); await cargaPubs(); await cargar(); } catch { /* se queda */ } };
   const objAct = objs ? objs.objetivos.find(o => o.id === objs.actual) : null;
-  const [vid, setVid] = useState(null);
+  const [vid, setVid] = useState(null), [vis2, setVis2] = useState({});
+  useEffect(() => { setVis2(v => (v[plat] ? v : { ...v, [plat]: true })); }, [plat]);
+  const mont2 = (k, el) => ((vis2[k] || plat === k) ? <div style={{ display: plat === k ? 'block' : 'none' }}>{el}</div> : null);
   const cargaVid = useCallback(() => api.get('/redes/instagram/videos').then(r => setVid(r.data)).catch(() => {}), []);
   useEffect(() => { cargaVid(); }, [cargaVid]);
   useEffect(() => { if (vid?.estado !== 'procesando') return undefined; const x = setInterval(cargaVid, 8000); return () => clearInterval(x); }, [vid?.estado, cargaVid]);
@@ -1801,9 +1803,9 @@ function PestanaAnalizador() {
         </div>
       </>)}
 
-      {plat === 'inicio' && <InicioRedes ir={setPlat} />}
-      {plat === 'musica' && <MusicaTendencia />}
-      {plat === 'salud' && <SaludCuenta />}
+      {mont2('inicio', <InicioRedes ir={setPlat} />)}
+      {mont2('musica', <MusicaTendencia />)}
+      {mont2('salud', <SaludCuenta />)}
       {plat === 'plan' && (<>
         <div className="rd-card" style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
           <div style={{ flex: '1 1 300px' }}><h3>📈 Plan de publicación</h3><div style={{ ...mut, fontSize: '0.84rem', marginTop: 4 }}>Cuántas veces publicar y qué, según tus datos de Instagram y YouTube y lo que se ve en el nicho.</div></div>
@@ -1835,7 +1837,10 @@ function PestanaAnalizador() {
 
 // Departamento de redes: ideas, calendario y las reglas de marca (se irá ampliando con publicar y medir)
 export function SectionRedes() {
+  const [vistas, setVistas] = useState({});
   const [seccion, setSeccion] = useState(() => { try { return new URLSearchParams(window.location.search).get('redes') ? 'medir' : 'medir'; } catch { return 'medir'; } });
+  useEffect(() => { setVistas(v => (v[seccion] ? v : { ...v, [seccion]: true })); }, [seccion]);
+  const mont = (k, el) => ((vistas[k] || seccion === k) ? <div style={{ display: seccion === k ? 'block' : 'none' }}>{el}</div> : null);
   const TABS = [['medir', Film, 'Analizador'], ['ideas', Wand2, 'Ideas y calendario'], ['guion', Music, 'Guionizador'], ['marca', Settings2, 'Voz de marca']];
   return (
     <div className="ev-root rd-wrap">
@@ -1844,10 +1849,10 @@ export function SectionRedes() {
         <div><h1 className="rd-title">Departamento de redes</h1><div className="rd-sub">Ideas, guiones y lo que de verdad te funciona.</div></div>
         <div className="rd-tabs">{TABS.map(([k, Icono, n]) => <button key={k} className={'rd-tab' + (seccion === k ? ' on' : '')} onClick={() => setSeccion(k)}><Icono size={15} /> {n}</button>)}</div>
       </div>
-      {seccion === 'ideas' && <PestanaIdeas />}
-      {seccion === 'guion' && <Guionizador />}
-      {seccion === 'marca' && <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}><VozMarca /><div className="rd-card"><CajaReglas /></div></div>}
-      {seccion === 'medir' && <PestanaAnalizador />}
+      {mont('ideas', <PestanaIdeas />)}
+      {mont('guion', <Guionizador />)}
+      {mont('marca', <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}><VozMarca /><div className="rd-card"><CajaReglas /></div></div>)}
+      {mont('medir', <PestanaAnalizador />)}
     </div>
   );
 }
