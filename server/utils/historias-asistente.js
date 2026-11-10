@@ -161,7 +161,7 @@ export async function ejecutarHistorias(nombre, input, { fecha }) {
     } catch { return { apuntado: true }; }
   }
   if (nombre === 'videos_editados') {
-    const { videosTerminados } = await import('../routes/estudio-video.routes.js'); const l = await videosTerminados({ max: Math.max(1, Math.min(6, Math.round(Number(input.cuantos)) || 3)) });
+    const { videosTerminados } = await import('../routes/estudio-video.routes.js'); const l = await videosTerminados({ max: Math.max(1, Math.min(6, Math.round(Number(input.cuantos)) || 1)) });
     if (!l.length) return { videos: [], nota: 'No hay vídeos terminados todavía (puede que sigan procesándose; se ven en el Estudio de vídeo).' };
     return { videos: l.map(v => ({ nombre: v.nombre, estado: v.estado === 'listo' ? 'listo' : 'falló: ' + (v.error || ''), terminado: v.terminado, enlace: v.enlace })), nota: 'Mándale el enlace tal cual (dura 2 días). Si el más reciente falló, díselo.' };
   }

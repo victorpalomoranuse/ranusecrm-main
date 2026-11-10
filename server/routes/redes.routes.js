@@ -111,10 +111,14 @@ export async function sincronizarInstagram(max = 300) {
   await guardarJson(RUTA_IG, { ...c, media, seguidores: perfil.followers_count ?? c.seguidores, publicaciones: perfil.media_count ?? c.publicaciones, ultima_sync: new Date().toISOString() });
   return media;
 }
+const SYNC = { en_curso: false, inicio: 0, error: null, fin: 0, n: 0 };
 router.post('/instagram/sincronizar', async (req, res) => {
-  try { const m = await sincronizarInstagram(Math.min(400, Number(req.body?.max) || 300)); res.json({ ok: true, publicaciones: m.length }); }
-  catch (e) { res.status(e.codigo === 190 ? 401 : 500).json({ error: e.codigo === 190 ? 'La conexión con Instagram caducó: vuelve a conectarla.' : 'No se pudieron leer tus publicaciones: ' + String(e.message).slice(0, 200) }); }
+  if (SYNC.en_curso && Date.now() - SYNC.inicio < 6 * 60 * 1000) return res.json({ ok: true, en_curso: true });
+  Object.assign(SYNC, { en_curso: true, inicio: Date.now(), error: null, n: 0 });
+  sincronizarInstagram(Math.min(400, Number(req.body?.max) || 300)).then(m => { SYNC.n = m.length; SYNC.fin = Date.now(); }).catch(e => { SYNC.error = e.codigo === 190 ? 'La conexión con Instagram caducó: vuelve a conectarla.' : 'No se pudieron leer tus publicaciones: ' + String(e.message).slice(0, 200); }).finally(() => { SYNC.en_curso = false; });
+  res.json({ ok: true, en_curso: true });
 });
+router.get('/instagram/sincronizar', (req, res) => res.json({ en_curso: SYNC.en_curso, error: SYNC.error, n: SYNC.n, fin: SYNC.fin }));
 
 // ── 3) Aprender de lo tuyo
 const interaccion = (m) => (Number(m.me_gusta) || 0) + (Number(m.comentarios) || 0) * 3 + (Number(m.saved) || 0) * 4 + (Number(m.shares) || 0) * 5;
@@ -140,8 +144,9 @@ export async function refrescaPrefs() {
   return PREFS_TXT;
 }
 // Realidad fija de su negocio: los proyectos con famosos o clientes concretos son ocasionales, no se pueden repetir a demanda
-const BASE_REALIDAD = 'REALIDAD DE SU NEGOCIO (siempre): no siempre hay proyectos con famosos ni clientes llamativos disponibles. NO propongas series ni ideas que dependan de que exista un cliente famoso o un proyecto concreto; prioriza contenido que pueda hacer cualquier semana (explicar procesos, errores típicos, comparativas, cifras reales de obra, detrás de cámaras, reutilizar material que ya tiene, él solo con el móvil). Si una idea aprovecha un proyecto o cliente concreto, márcala como "oportunista: solo si hay proyecto".\nCÓMO PUBLICA: sube el MISMO vídeo vertical a la vez a Instagram (Reels), TikTok y YouTube Shorts desde Metricool. Por tanto el plan es UNA sola agenda: un único calendario con día y hora pensados para Instagram, sin días ni horas separados por plataforma, y sin contenido pensado solo para YouTube o TikTok. Instagram es la prioridad; el resto se beneficia del mismo vídeo. Las historias son solo de Instagram.\n';
-const textoPrefs = () => BASE_REALIDAD + PREFS_TXT;
+const BASE_REALIDAD = 'Su cuenta tiene contenido ANTIGUO o que ya no representa su marca (p. ej. decoración del hogar o consejos genéricos que se hicieron virales); Ranuse Design es ahora diseño y montaje de gimnasios y espacios deportivos. No imites ni recomiendes copiar vídeos que se desvíen de esa marca, aunque tengan muchas vistas: si un reel con muchas vistas parece fuera de marca, dilo en vez de usarlo como modelo. ';
+const BASE_REALIDAD_2 = 'REALIDAD DE SU NEGOCIO (siempre): no siempre hay proyectos con famosos ni clientes llamativos disponibles. NO propongas series ni ideas que dependan de que exista un cliente famoso o un proyecto concreto; prioriza contenido que pueda hacer cualquier semana (explicar procesos, errores típicos, comparativas, cifras reales de obra, detrás de cámaras, reutilizar material que ya tiene, él solo con el móvil). Si una idea aprovecha un proyecto o cliente concreto, márcala como "oportunista: solo si hay proyecto".\nCÓMO PUBLICA: sube el MISMO vídeo vertical a la vez a Instagram (Reels), TikTok y YouTube Shorts desde Metricool. Por tanto el plan es UNA sola agenda: un único calendario con día y hora pensados para Instagram, sin días ni horas separados por plataforma, y sin contenido pensado solo para YouTube o TikTok. Instagram es la prioridad; el resto se beneficia del mismo vídeo. Las historias son solo de Instagram.\n';
+const textoPrefs = () => BASE_REALIDAD + BASE_REALIDAD_2 + PREFS_TXT;
 const RUTA_OBJETIVO = 'crm/redes/objetivo.json';
 const objetivoActual = async () => { await refrescaPrefs(); const o = await leerJson(RUTA_OBJETIVO, null); return OBJETIVOS[o?.id] ? o.id : 'crecimiento'; };
 const redondea = (x) => Math.round(x * 10) / 10;
@@ -149,9 +154,11 @@ const puntua = (m, seg, obj = 'crecimiento') => (OBJETIVOS[obj] || OBJETIVOS.cre
 const textoObjetivo = (obj) => { const o = OBJETIVOS[obj] || OBJETIVOS.crecimiento; return textoPrefs() + 'OBJETIVO ELEGIDO: «' + o.nombre + '» — ' + o.que + ' Se mide así: ' + o.formula + ' Juzga "lo que funciona" SOLO con ese criterio.'; };
 // Un reel de prueba es el que casi no se ha mostrado a nadie (alcance muy por debajo de lo habitual de la cuenta). Se detecta solo y se puede corregir a mano.
 const RUTA_PRUEBAS = 'crm/redes/pruebas.json';
-async function marcaPruebas(media) {
+const RUTA_PERIODO = 'crm/redes/periodo.json';
+async function marcaPruebas(media, { ignoraPeriodo = false } = {}) {
+  const per = ignoraPeriodo ? { dias: 0 } : await leerJson(RUTA_PERIODO, { dias: 0 }), corte = Number(per.dias) > 0 ? Date.now() - Number(per.dias) * 86400000 : 0;
   const ov = await leerJson(RUTA_PRUEBAS, { si: [], no: [] }), v = media.map(vistasDe).filter(Number.isFinite), med = mediana(v) || 0, umbral = Math.max(150, med * 0.04);
-  return media.map(m => { const auto = (vistasDe(m) ?? 0) < umbral; const prueba = ov.si.includes(m.id) ? true : ov.no.includes(m.id) ? false : auto; return { ...m, prueba, prueba_auto: auto }; });
+  return media.map(m => { if (corte && new Date(m.fecha).getTime() < corte) return { ...m, prueba: true, prueba_auto: false, motivo: 'periodo' }; const auto = (vistasDe(m) ?? 0) < umbral; const prueba = ov.si.includes(m.id) ? true : ov.no.includes(m.id) ? false : auto; return { ...m, prueba, prueba_auto: auto, motivo: prueba ? (ov.motivo?.[m.id] || (auto && !ov.si.includes(m.id) ? 'pocas_vistas' : 'prueba')) : null }; });
 }
 // ── TALLER DE IDEAS: de una idea a un guion por escenas (con micro, qué grabar, qué renderizar, música) y un chat para pulirlo
 const RUTA_GUIONES = 'crm/redes/guiones.json';
@@ -247,7 +254,7 @@ router.post('/cuenta/salud', async (req, res) => {
     let serie = []; try { const j = await graph('/' + c.ig_id + '/insights', { metric: 'follower_count', period: 'day', since: seg(29), until: seg(0) }, c.token); serie = (j.data?.[0]?.values || []).map(v => ({ dia: String(v.end_time).slice(0, 10), neto: Number(v.value) || 0 })); } catch { /* métrica no disponible */ }
     const total = async (metric, desde, hasta) => { try { const j = await graph('/' + c.ig_id + '/insights', { metric, period: 'day', metric_type: 'total_value', since: seg(desde), until: seg(hasta) }, c.token); return j.data?.[0]?.total_value?.value ?? null; } catch { return null; } };
     const metricas = {}; for (const m of ['reach', 'views', 'accounts_engaged', 'total_interactions', 'profile_views']) metricas[m] = { ahora: await total(m, 28, 0), antes: await total(m, 56, 28) };
-    const media = await marcaPruebas(c.media || []), reales = media.filter(m => !m.prueba);
+    const media = await marcaPruebas(c.media || [], { ignoraPeriodo: true }), reales = media.filter(m => !m.prueba);
     const ahoraP = sumaPeriodo(reales, ahora - 30 * DIA, ahora + DIA), antesP = sumaPeriodo(reales, ahora - 60 * DIA, ahora - 30 * DIA);
     const netoMes = serie.reduce((a, x) => a + x.neto, 0), ultimaSemana = serie.slice(-7).reduce((a, x) => a + x.neto, 0), semanaAnt = serie.slice(-14, -7).reduce((a, x) => a + x.neto, 0);
     const obj = await objetivoActual(), ap = await leerJson(RUTA_APRENDIZAJE, null);
@@ -262,18 +269,27 @@ router.get('/cuenta/salud', async (req, res) => { try { res.json(await leerJson(
 router.post('/video/analizar', async (req, res) => {
   try {
     const ruta = String(req.body?.ruta || ''); if (!/^entradas\//.test(ruta)) return res.status(400).json({ error: 'Falta el vídeo subido' });
-    const t = await creaTrabajoSistema({ id: 'p' + crypto.randomUUID().slice(0, 7), creado: new Date().toISOString(), por: 'sistema', tipo: 'analisis_redes', videos: [{ id: 'subido', ruta, pie: limpia(req.body?.nombre, 100) }], nombre_archivo: 'Vídeo para predecir', estado: 'pendiente', progreso: 'En cola', version: 1 });
+    const t = await creaTrabajoSistema({ id: 'p' + crypto.randomUUID().slice(0, 7), creado: new Date().toISOString(), por: 'sistema', tipo: 'analisis_redes', ...(req.body?.predecir ? { pred: { propuesta: limpia(req.body?.propuesta, 2000), formato: limpia(req.body?.formato, 40) } } : {}), videos: [{ id: 'subido', ruta, pie: limpia(req.body?.nombre, 100) }], nombre_archivo: 'Vídeo para predecir', estado: 'pendiente', progreso: 'En cola', version: 1 });
     res.json({ ok: true, id: t.id });
   } catch (e) { res.status(500).json({ error: 'No se pudo analizar el vídeo: ' + String(e.message || e).slice(0, 140) }); }
 });
+const textoVideo = (a) => 'VÍDEO YA EDITADO (medido por la IA): dura ' + Math.round(a.dur) + ' s, ' + a.planos + ' planos (plano medio ' + a.plano_medio + ' s), ' + (a.palabras_por_min ? a.palabras_por_min + ' palabras por minuto' : 'sin voz hablada') + '. ' + limpia(a.descripcion, 400) + ' Estructura: ' + (a.estructura || []).map(x => limpia(x, 160)).join(' | ');
+export async function prediccionDeTrabajo(t) {
+  if (t.pred_resultado) return t.pred_resultado;
+  const a = t.analisis_videos?.[0]?.analisis; if (!a || !t.pred) return null;
+  const base = t.pred.propuesta && t.pred.propuesta.length >= 15 ? t.pred.propuesta : 'Vídeo ya editado, sin más descripción.';
+  const out = await calculaPrediccion(base + '\n\n' + textoVideo(a), t.pred.formato || 'reel');
+  const { guardaTrabajoSistema } = await import('./estudio-video.routes.js'); await guardaTrabajoSistema({ ...t, pred_resultado: out });
+  return out;
+}
 router.get('/video/:id', async (req, res) => {
   try {
     const t = await leeTrabajoSistema(String(req.params.id).replace(/[^\w-]/g, '')); if (!t) return res.status(404).json({ error: 'No existe' });
     if (t.estado === 'error') return res.json({ estado: 'error', error: t.error });
     if (t.estado !== 'listo') return res.json({ estado: 'procesando', progreso: t.progreso, pct: t.pct || 0 });
     const a = t.analisis_videos?.[0]?.analisis; if (!a) return res.json({ estado: 'error', error: t.analisis_videos?.[0]?.error || 'No he podido leer el vídeo' });
-    const texto = 'VÍDEO YA EDITADO (medido por la IA): dura ' + Math.round(a.dur) + ' s, ' + a.planos + ' planos (plano medio ' + a.plano_medio + ' s), ' + (a.palabras_por_min ? a.palabras_por_min + ' palabras por minuto' : 'sin voz hablada') + '. ' + limpia(a.descripcion, 400) + ' Estructura: ' + (a.estructura || []).map(x => limpia(x, 160)).join(' | ');
-    res.json({ estado: 'listo', texto, dur: a.dur, planos: a.planos, plano_medio: a.plano_medio, detalle: a.detalle || null, descripcion: limpia(a.descripcion, 400), estructura: a.estructura || [] });
+    const texto = textoVideo(a); let prediccion = null; if (t.pred) { try { prediccion = await prediccionDeTrabajo(t); } catch (e) { return res.json({ estado: 'error', error: 'El vídeo se analizó, pero falló la estimación: ' + String(e.message).slice(0, 120) }); } }
+    res.json({ estado: 'listo', prediccion, texto, dur: a.dur, planos: a.planos, plano_medio: a.plano_medio, detalle: a.detalle || null, descripcion: limpia(a.descripcion, 400), estructura: a.estructura || [] });
   } catch (e) { res.status(500).json({ error: 'No se pudo leer el análisis' }); }
 });
 // ── HISTORIAS: Instagram solo deja leer las historias mientras están activas (24 h), así que se guardan solas cada pocas horas con sus números
@@ -368,10 +384,12 @@ router.post('/referencias', async (req, res) => {
   } catch { res.status(500).json({ error: 'No se pudo guardar' }); }
 });
 router.get('/referencias', async (req, res) => { try { res.json(await leerJson('crm/redes/referencias.json', { lista: [] })); } catch { res.status(500).json({ error: 'No se pudo leer' }); } });
+router.get('/periodo', async (req, res) => { try { res.json(await leerJson(RUTA_PERIODO, { dias: 0 })); } catch { res.status(500).json({ error: 'No se pudo leer' }); } });
+router.post('/periodo', async (req, res) => { try { const dias = [0, 30, 90, 180, 365].includes(Number(req.body?.dias)) ? Number(req.body.dias) : 0; await guardarJson(RUTA_PERIODO, { dias }); res.json({ dias }); } catch { res.status(500).json({ error: 'No se pudo guardar' }); } });
 router.get('/objetivos', async (req, res) => { try { const id = await objetivoActual(); res.json({ actual: id, objetivos: Object.entries(OBJETIVOS).map(([k, o]) => ({ id: k, nombre: o.nombre, icono: o.icono, que: o.que, formula: o.formula, unidad: o.unidad })) }); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
 router.post('/objetivo', async (req, res) => { try { const id = String(req.body?.id || ''); if (!OBJETIVOS[id]) return res.status(400).json({ error: 'Objetivo no válido' }); await guardarJson(RUTA_OBJETIVO, { id }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo guardar' }); } });
 router.post('/instagram/prueba', async (req, res) => {
-  try { const id = String(req.body?.id || ''); const ov = await leerJson(RUTA_PRUEBAS, { si: [], no: [] }); ov.si = ov.si.filter(x => x !== id); ov.no = ov.no.filter(x => x !== id); (req.body?.prueba ? ov.si : ov.no).push(id); await guardarJson(RUTA_PRUEBAS, ov); res.json({ ok: true }); }
+  try { const id = String(req.body?.id || ''); const ov = await leerJson(RUTA_PRUEBAS, { si: [], no: [] }); ov.si = ov.si.filter(x => x !== id); ov.no = ov.no.filter(x => x !== id); ov.motivo = ov.motivo || {}; (req.body?.prueba ? ov.si : ov.no).push(id); if (req.body?.prueba && ['prueba', 'repetido', 'marca'].includes(req.body?.motivo)) ov.motivo[id] = req.body.motivo; else delete ov.motivo[id]; await guardarJson(RUTA_PRUEBAS, ov); res.json({ ok: true }); }
   catch { res.status(500).json({ error: 'No se pudo guardar' }); }
 });
 router.get('/instagram/publicaciones', async (req, res) => {
@@ -411,19 +429,24 @@ function estadisticas(media) {
   const out = {}; for (const [k, l] of Object.entries(por)) { const v = l.map(vistasDe); out[k] = { n: l.length, mediana: mediana(v), p25: cuantil(v, 0.25), p75: cuantil(v, 0.75), max: Math.max(...v.filter(Number.isFinite), 0) || null, guardados_mediana: mediana(l.map(x => Number(x.saved))), compartidos_mediana: mediana(l.map(x => Number(x.shares))) }; }
   return out;
 }
-router.post('/instagram/predecir', async (req, res) => {
-  try {
-    const c = await conexion(); if (!c) return res.status(404).json({ error: 'Conecta primero tu Instagram' });
-    const propuesta = limpia(req.body?.propuesta, 2500); if (propuesta.length < 15) return res.status(400).json({ error: 'Cuéntame el vídeo: de qué va, el gancho y el formato.' });
+export async function calculaPrediccion(propuesta, formato) {
+  {
+    const c = await conexion(); if (!c) throw new Error('Conecta primero tu Instagram');
     let media = c.media || []; if (media.length < 8) media = await sincronizarInstagram(300);
     media = (await marcaPruebas(media)).filter(m => !m.prueba);
     const obj = await objetivoActual(), est = estadisticas(media), top = media.map(m => ({ m, p: puntua(m, c.seguidores, obj) })).sort((a, b) => b.p - a.p);
     const ficha = (x) => ({ tipo: x.m.tipo, gancho: x.m.pie.split(/[\n.!?]/)[0].slice(0, 140), vistas: vistasDe(x.m), guardados: x.m.saved ?? null, compartidos: x.m.shares ?? null, dia: new Date(x.m.fecha).toLocaleDateString('es-ES', { weekday: 'long', timeZone: 'Europe/Madrid' }) });
     const aprend = await leerJson(RUTA_APRENDIZAJE, null);
     const r = json(await callClaude({ system: textoObjetivo(obj) + ' Eres analista de rendimiento de Instagram. Vas a ESTIMAR cuántas visualizaciones (alcance) tendría un vídeo propuesto por Víctor Palomo (Ranuse Design, diseño de gimnasios) y cómo mejorarlo. Reglas: parte SIEMPRE de sus números reales por formato (mediana y percentiles), no de cifras genéricas; ajusta hacia arriba o abajo solo con motivos concretos (gancho, tema, formato, día, parecido con sus mejores o peores) y di cuánto aporta cada factor; da un rango (bajo, medio, alto) y NUNCA una cifra exacta; si tiene pocas publicaciones de ese formato, dilo y baja la confianza. Una estimación no es una promesa: explica la incertidumbre. Devuelves SOLO JSON {"estimacion":{"bajo":0,"medio":0,"alto":0,"metrica":"visualizaciones o alcance"},"confianza":"baja|media|alta","por_que":"2-3 frases","a_favor":["factor"],"en_contra":["factor"],"mejoras":[{"cambio":"qué cambiar, concreto","efecto":"cuánto podría mover (por ejemplo +30 % de alcance) y por qué"}],"version_mejorada":{"gancho":"","estructura":"3-5 pasos cortos","cta":""},"dejar_de_hacer":["algo de la propuesta que conviene quitar"]}', messages: [{ role: 'user', content: 'SUS NÚMEROS POR FORMATO (visualizaciones/alcance):\n' + JSON.stringify(est) + '\n\nSEGUIDORES: ' + (c.seguidores ?? '?') + '\n\nSUS MEJORES PUBLICACIONES:\n' + JSON.stringify(top.slice(0, 6).map(ficha)) + '\n\nLAS PEORES:\n' + JSON.stringify(top.slice(-4).map(ficha)) + (aprend ? '\n\nLO QUE YA SE SABE QUE FUNCIONA EN SU CUENTA: ' + JSON.stringify({ funciona: aprend.lo_que_funciona, no: aprend.lo_que_no, horarios: aprend.horarios }) : '') + '\n\nVÍDEO PROPUESTO (' + (limpia(req.body?.formato, 40) || 'formato sin indicar') + (req.body?.fecha ? ', para el ' + limpia(req.body.fecha, 12) : '') + '):\n' + propuesta }], maxTokens: 2500 }));
-    const out = { fecha: new Date().toISOString(), propuesta: propuesta.slice(0, 300), formato: limpia(req.body?.formato, 40), estimacion: { bajo: Math.round(Number(r.estimacion?.bajo) || 0), medio: Math.round(Number(r.estimacion?.medio) || 0), alto: Math.round(Number(r.estimacion?.alto) || 0), metrica: limpia(r.estimacion?.metrica, 30) || 'visualizaciones' }, confianza: limpia(r.confianza, 10), por_que: limpia(r.por_que, 500), a_favor: (r.a_favor || []).slice(0, 5).map(x => limpia(x, 200)), en_contra: (r.en_contra || []).slice(0, 5).map(x => limpia(x, 200)), mejoras: (r.mejoras || []).slice(0, 6).map(x => ({ cambio: limpia(x?.cambio, 240), efecto: limpia(x?.efecto, 200) })), version_mejorada: { gancho: limpia(r.version_mejorada?.gancho, 240), estructura: limpia(r.version_mejorada?.estructura, 400), cta: limpia(r.version_mejorada?.cta, 200) }, dejar_de_hacer: (r.dejar_de_hacer || []).slice(0, 4).map(x => limpia(x, 200)), base: est };
+    const out = { fecha: new Date().toISOString(), propuesta: propuesta.slice(0, 300), formato: limpia(formato, 40), estimacion: { bajo: Math.round(Number(r.estimacion?.bajo) || 0), medio: Math.round(Number(r.estimacion?.medio) || 0), alto: Math.round(Number(r.estimacion?.alto) || 0), metrica: limpia(r.estimacion?.metrica, 30) || 'visualizaciones' }, confianza: limpia(r.confianza, 10), por_que: limpia(r.por_que, 500), a_favor: (r.a_favor || []).slice(0, 5).map(x => limpia(x, 200)), en_contra: (r.en_contra || []).slice(0, 5).map(x => limpia(x, 200)), mejoras: (r.mejoras || []).slice(0, 6).map(x => ({ cambio: limpia(x?.cambio, 240), efecto: limpia(x?.efecto, 200) })), version_mejorada: { gancho: limpia(r.version_mejorada?.gancho, 240), estructura: limpia(r.version_mejorada?.estructura, 400), cta: limpia(r.version_mejorada?.cta, 200) }, dejar_de_hacer: (r.dejar_de_hacer || []).slice(0, 4).map(x => limpia(x, 200)), base: est };
     const h = await leerJson('crm/redes/predicciones.json', { lista: [] }); h.lista = [...(h.lista || []), { fecha: out.fecha, propuesta: out.propuesta, formato: out.formato, estimacion: out.estimacion, confianza: out.confianza }].slice(-60); await guardarJson('crm/redes/predicciones.json', h);
-    res.json({ ok: true, prediccion: out });
+    return out;
+  }
+}
+router.post('/instagram/predecir', async (req, res) => {
+  try {
+    const propuesta = limpia(req.body?.propuesta, 2500); if (propuesta.length < 15) return res.status(400).json({ error: 'Cuéntame el vídeo: de qué va, el gancho y el formato.' });
+    res.json({ ok: true, prediccion: await calculaPrediccion(propuesta, req.body?.formato) });
   } catch (e) { console.error('redes predecir', e.message); res.status(500).json({ error: 'No se pudo estimar: ' + String(e.message).slice(0, 200) }); }
 });
 router.post('/instagram/autopsia', async (req, res) => {

@@ -609,11 +609,19 @@ export async function videosTerminados({ soloSinAvisar = false, max = 6 } = {}) 
   for (const f of (data || []).filter(x => /\.json$/.test(x.name))) {
     const t = await leerTrabajo(f.name.replace(/\.json$/, '')); if (!t || !TIPOS_VIDEO.includes(t.tipo)) continue;
     if (t.estado !== 'listo' && t.estado !== 'error') continue;
+    if (t.autocorregido || t.por === 'sistema') continue;
     if (soloSinAvisar && (t.avisado || Date.now() - new Date(t.terminado || t.creado).getTime() > 3 * 86400000)) continue;
     let enlace = null; if (t.estado === 'listo' && t.resultado_movil) { const u = await st().createSignedUrl(t.resultado_movil, 172800); enlace = u.data?.signedUrl || null; }
     out.push({ id: t.id, nombre: t.nombre_archivo || t.id, estado: t.estado, error: t.error || null, terminado: t.terminado || t.creado, enlace });
     if (out.length >= max) break;
   }
+  return out;
+}
+export const guardaTrabajoSistema = (t) => guardarTrabajo(t);
+// Predicciones con vídeo pendientes de avisar (se calculan y se mandan por el asistente cuando terminan)
+export async function prediccionesPendientes() {
+  await bucket(); const { data } = await st().list('trabajos', { limit: 30, sortBy: { column: 'created_at', order: 'desc' } }); const out = [];
+  for (const f of (data || []).filter(x => /\.json$/.test(x.name))) { const t = await leerTrabajo(f.name.replace(/\.json$/, '')); if (t && t.tipo === 'analisis_redes' && t.pred && !t.avisado && t.estado === 'listo' && Date.now() - new Date(t.terminado || t.creado).getTime() < 3 * 86400000) out.push(t); }
   return out;
 }
 export async function marcaVideoAvisado(id) { const t = await leerTrabajo(id); if (t) { t.avisado = new Date().toISOString(); await guardarTrabajo(t); } }

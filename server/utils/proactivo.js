@@ -35,9 +35,18 @@ async function entrega(c, out) {
 async function avisaVideos(estado) {
   const c = elegir(estado); if (!c) return;
   const { videosTerminados, marcaVideoAvisado } = await import('../routes/estudio-video.routes.js');
-  for (const v of await videosTerminados({ soloSinAvisar: true })) {
+  // Solo los ÚLTIMOS que ha pedido (máx. 3 y de las últimas 24 h, con su enlace); lo antiguo se da por visto en silencio para no inundarle
+  const todos = await videosTerminados({ soloSinAvisar: true, max: 20 }), recientes = todos.filter(v => Date.now() - new Date(v.terminado).getTime() < 24 * 3600 * 1000).slice(0, 3);
+  for (const v of recientes) {
     await c.enviar(v.estado === 'listo' ? '✅ Tu vídeo «' + v.nombre + '» ya está editado.' + (v.enlace ? '\nDescárgalo (el enlace dura 2 días): ' + v.enlace : '') : '⚠️ Ha fallado la edición de «' + v.nombre + '»' + (v.error ? ': ' + String(v.error).slice(0, 160) : '') + '. Míralo en el Estudio de vídeo.');
-    await marcaVideoAvisado(v.id);
+  }
+  for (const v of todos) await marcaVideoAvisado(v.id);
+  if (todos.length > recientes.length) await c.enviar('Tienes ' + (todos.length - recientes.length) + ' vídeos más terminados; dime «pásame el anterior» si quieres alguno.');
+  // predicciones con vídeo
+  const { prediccionesPendientes } = await import('../routes/estudio-video.routes.js'), { prediccionDeTrabajo } = await import('../routes/redes.routes.js');
+  for (const j of await prediccionesPendientes()) {
+    try { const p = await prediccionDeTrabajo(j); if (p) { const e = p.estimacion || {}; await c.enviar('🔮 Predicción de «' + (j.analisis_videos?.[0]?.pie || 'tu vídeo') + '»:' + NL + 'Lo más probable: ' + (e.medio || '?') + ' ' + (e.metrica || 'vistas') + ' (entre ' + (e.bajo || '?') + ' y ' + (e.alto || '?') + ', confianza ' + (p.confianza || '?') + ').' + NL + String(p.por_que || '').slice(0, 400) + ((p.mejoras || []).length ? NL + 'Para mejorarlo: ' + p.mejoras.slice(0, 2).map(m => m.cambio).join(' · ') : '')); } } catch (e) { console.log('Aviso de predicción:', e.message); }
+    await marcaVideoAvisado(j.id);
   }
 }
 async function tick() {
