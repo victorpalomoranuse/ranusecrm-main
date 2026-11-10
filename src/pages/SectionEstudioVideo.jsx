@@ -1275,6 +1275,19 @@ function ResultadoNicho({ n }) {
     </div>
   );
 }
+function MusicaTendencia() {
+  const [d, setD] = useState(null), [err, setErr] = useState(''), [cargando, setCargando] = useState(false);
+  const carga = useCallback((refrescar) => { setCargando(true); setErr(''); api.get('/redes/musica/tendencias', { params: refrescar ? { refrescar: 1 } : {} }).then(r => setD(r.data)).catch(e => setErr(e.response?.data?.error || 'No se pudo leer')).finally(() => setCargando(false)); }, []);
+  useEffect(() => { carga(false); }, [carga]);
+  return (
+    <div className="rd-card"><h3>🎵 Música en tendencia (España)</h3>
+      <div style={{ ...mut, fontSize: '0.84rem', lineHeight: 1.5 }}>Lo más escuchado ahora en España. <b>Cómo usarlo:</b> al publicar el reel en Instagram, busca esa canción en «Audio» (y mira la flecha ↗ de «En tendencia» que sale ahí). Instagram no deja descargar sus audios ni usarlos en un montaje externo, así que el editor deja el vídeo con tu voz (y música tuya suave si quieres) y el audio de moda lo añades tú al subirlo.</div>
+      {err && <div style={{ color: '#ff9b9b' }}>{err}</div>}
+      <div><button className="rd-btn" disabled={cargando} onClick={() => carga(true)}>{cargando ? 'Leyendo…' : '🔄 Actualizar'}</button>{d && <span style={{ ...mut, marginLeft: 10 }}>{String(d.fecha).slice(0, 16).replace('T', ' ')}</span>}</div>
+      {d && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))' }}>{d.lista.map(c => <a key={c.puesto} href={c.enlace} target="_blank" rel="noreferrer" className="rd-card" style={{ textDecoration: 'none', color: 'inherit', gap: 6 }}>{c.miniatura && <img src={c.miniatura} alt="" loading="lazy" style={{ width: '100%', borderRadius: 8, aspectRatio: '16/9', objectFit: 'cover' }} />}<div style={{ fontSize: '0.88rem' }}><b>#{c.puesto}</b> {c.titulo}</div><div style={{ ...mut, fontSize: '0.76rem' }}>{c.artista} · {fmt(c.vistas)} vistas</div></a>)}</div>}
+    </div>
+  );
+}
 function PestanaAnalizador() {
   const [e, setE] = useState(null), [msg, setMsg] = useState(''), [error, setError] = useState(''), [trabaja, setTrabaja] = useState(''), [pubs, setPubs] = useState(null), [cuentas, setCuentas] = useState(''), [consulta, setConsulta] = useState('diseño de gimnasios'), [nicho, setNicho] = useState(null), [ayuda, setAyuda] = useState(null);
   const [plat, setPlat] = useState('ig'), [canal, setCanal] = useState(''), [cfgId, setCfgId] = useState(''), [prop, setProp] = useState(''), [propFmt, setPropFmt] = useState('reel'), [pred, setPred] = useState(null), [autopsias, setAutopsias] = useState({});
@@ -1318,6 +1331,7 @@ function PestanaAnalizador() {
       <div className="rd-tabs" style={{ alignSelf: 'flex-start' }}>
         <button className={'rd-tab' + (plat === 'ig' ? ' on' : '')} onClick={() => setPlat('ig')}>📸 Instagram</button>
         <button className={'rd-tab' + (plat === 'yt' ? ' on' : '')} onClick={() => setPlat('yt')}>▶ YouTube</button>
+        <button className={'rd-tab' + (plat === 'musica' ? ' on' : '')} onClick={() => setPlat('musica')}>🎵 Música en tendencia</button>
         <button className={'rd-tab' + (plat === 'plan' ? ' on' : '')} onClick={() => setPlat('plan')}>📈 Plan de publicación</button>
       </div>
       {error && <div className="ap-error">{error}</div>}
@@ -1485,6 +1499,7 @@ function PestanaAnalizador() {
         </div>
       </>)}
 
+      {plat === 'musica' && <MusicaTendencia />}
       {plat === 'plan' && (<>
         <div className="rd-card" style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
           <div style={{ flex: '1 1 300px' }}><h3>📈 Plan de publicación</h3><div style={{ ...mut, fontSize: '0.84rem', marginTop: 4 }}>Cuántas veces publicar y qué, según tus datos de Instagram y YouTube y lo que se ve en el nicho.</div></div>

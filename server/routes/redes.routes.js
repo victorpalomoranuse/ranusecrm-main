@@ -206,6 +206,18 @@ router.get('/instagram/videos', async (req, res) => {
     await guardarJson(RUTA_VIDEOS, out); res.json({ estado: 'listo', analisis: out });
   } catch (e) { res.status(500).json({ error: 'No se pudo leer el análisis: ' + String(e.message || e).slice(0, 140) }); }
 });
+// Música en tendencia: lista de lo más escuchado hoy en España (YouTube Música). Sirve de pista para buscar ese audio dentro de Instagram al publicar; los audios de Instagram en sí no tienen API pública.
+const RUTA_MUSICA = 'crm/redes/musica_tendencia.json';
+router.get('/musica/tendencias', async (req, res) => {
+  try {
+    const guardado = await leerJson(RUTA_MUSICA, null), region = String(req.query.region || 'ES').toUpperCase().slice(0, 2);
+    if (guardado && guardado.region === region && !req.query.refrescar && Date.now() - new Date(guardado.fecha).getTime() < 6 * 3600e3) return res.json(guardado);
+    const cfg = await leerJson(RUTA_CONFIG, {}), clave = cfg.youtube_key || process.env.YOUTUBE_API_KEY; if (!clave) return res.status(400).json({ error: 'Falta la clave de YouTube.' });
+    const j = await ytLlamada(clave, 'videos', { part: 'snippet,statistics', chart: 'mostPopular', videoCategoryId: '10', regionCode: region, maxResults: '30' });
+    const lista = (j.items || []).map((v, i) => ({ puesto: i + 1, titulo: limpia(v.snippet?.title, 120), artista: limpia(v.snippet?.channelTitle, 80), vistas: Number(v.statistics?.viewCount) || 0, enlace: 'https://www.youtube.com/watch?v=' + v.id, miniatura: v.snippet?.thumbnails?.medium?.url || '' }));
+    const out = { fecha: new Date().toISOString(), region, lista }; await guardarJson(RUTA_MUSICA, out); res.json(out);
+  } catch (e) { res.status(500).json({ error: 'No se pudo leer la música en tendencia: ' + String(e.message || e).slice(0, 140) }); }
+});
 router.get('/objetivos', async (req, res) => { try { const id = await objetivoActual(); res.json({ actual: id, objetivos: Object.entries(OBJETIVOS).map(([k, o]) => ({ id: k, nombre: o.nombre, icono: o.icono, que: o.que, formula: o.formula, unidad: o.unidad })) }); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
 router.post('/objetivo', async (req, res) => { try { const id = String(req.body?.id || ''); if (!OBJETIVOS[id]) return res.status(400).json({ error: 'Objetivo no válido' }); await guardarJson(RUTA_OBJETIVO, { id }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo guardar' }); } });
 router.post('/instagram/prueba', async (req, res) => {
