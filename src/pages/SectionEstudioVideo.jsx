@@ -1415,6 +1415,18 @@ function PreferenciasRedes() {
     </div>
   );
 }
+function BuscaReel({ ig, onAnadido }) {
+  const [enlace, setEnlace] = useState(''), [r, setR] = useState(null), [trab, setTrab] = useState(false);
+  const busca = async () => { setTrab(true); setR(null); try { const x = await api.post('/redes/instagram/buscar', { enlace }, { timeout: 120000 }); setR(x.data); if (x.data.encontrado) onAnadido(); } catch (e) { setR({ aviso: e.response?.data?.error || 'No se pudo buscar' }); } setTrab(false); };
+  return (
+    <div className="rd-card" style={{ gap: 8 }}>
+      <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>¿FALTA ALGÚN REEL?</div>
+      <div style={{ fontSize: '0.88rem' }}>He leído <b>{fmt(ig?.n_media)}</b> de las <b>{fmt(ig?.publicaciones)}</b> publicaciones de tu perfil{ig?.ultima_sync ? ' (última lectura: ' + String(ig.ultima_sync).slice(0, 10) + ')' : ''}. {Number(ig?.n_media) < Number(ig?.publicaciones) ? 'Pulsa «Leer publicaciones» para leerlas todas.' : ''}</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} value={enlace} onChange={e => setEnlace(e.target.value)} placeholder="Pega aquí el enlace del reel que no sale" /><button className="rd-btn pri" disabled={trab || enlace.length < 10} onClick={busca}>{trab ? 'Buscando…' : 'Buscarlo'}</button></div>
+      {r && <div style={{ fontSize: '0.86rem', color: r.encontrado ? '#8fdba0' : '#f2c46d' }}>{r.encontrado ? 'Encontrado y añadido' + (r.vistas != null ? ' (' + fmt(r.vistas) + ' vistas)' : '') + '. Ya cuenta en el ranking.' : r.aviso}</div>}
+    </div>
+  );
+}
 function SemanaTipo({ dias }) {
   const [ab, setAb] = useState(null), [taller, setTaller] = useState(null);
   return <>
@@ -1569,6 +1581,7 @@ function PestanaAnalizador() {
             </div>}
           </div>
           {pruebas.length > 0 && <div className="rd-card"><h3>🧪 Posibles reels de prueba <span className="rd-chip">{pruebas.length}</span></h3><div style={{ ...mut, fontSize: '0.82rem' }}>Casi no se mostraron a nadie, así que no cuentan para el análisis. Si alguno no es una prueba, márcalo.</div>{pruebas.map(p => <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderTop: '1px solid rgba(255,255,255,.07)', fontSize: '0.84rem' }}><a href={p.enlace} target="_blank" rel="noreferrer" style={{ flex: 1, color: 'inherit' }}>{(p.pie || '(sin texto)').slice(0, 80)}<div style={mut}>{String(p.fecha).slice(0, 10)} · {fmt(p.views ?? p.reach ?? 0)} vistas</div></a><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} onClick={() => marca(p.id, false)}>No es una prueba</button></div>)}</div>}
+          <BuscaReel ig={ig} onAnadido={() => { cargaPubs(); cargar(); }} />
           {top.length > 0 && <div className="rd-card"><h3>Ranking y autopsia</h3>{top.slice(0, 10).map(p => <div key={p.id}><div className="rd-bar"><span style={{ width: 150, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(p.pie || p.tipo).slice(0, 26)}</span><i style={{ width: Math.max(4, (p.puntuacion || 0) / maxP * 100) + '%' }} /><b>{p.puntuacion}</b><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} disabled={!!trabaja} onClick={() => autopsia(p.id)}>{trabaja === 'aut' + p.id ? '…' : '¿Por qué?'}</button><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} title="Márcalo si fue una prueba y no debe contar" onClick={() => marca(p.id, true)}>🧪</button></div>{autopsias[p.id] && <div style={{ margin: '4px 0 10px 0', padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,.05)', fontSize: '0.85rem', lineHeight: 1.5 }}><span className={'rd-chip ' + (autopsias[p.id].veredicto === 'repetir' ? 'verde' : autopsias[p.id].veredicto === 'dejar' ? 'rojo' : 'ambar')}>{autopsias[p.id].veredicto}</span> {autopsias[p.id].resumen}<Lista items={autopsias[p.id].por_que} />{(autopsias[p.id].que_haria_distinto || []).length > 0 && <div style={{ marginTop: 6 }}><b>Yo haría distinto:</b><Lista items={autopsias[p.id].que_haria_distinto} color="#f2c46d" /></div>}{autopsias[p.id].como_repetirlo && <div style={{ marginTop: 6, ...mut }}>Cómo repetirlo: {autopsias[p.id].como_repetirlo}</div>}</div>}</div>)}</div>}
           <div className="rd-card">
             <h3>🔮 Predice un vídeo antes de hacerlo</h3>

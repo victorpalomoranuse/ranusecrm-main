@@ -317,6 +317,21 @@ router.post('/preferencias', async (req, res) => {
     p.reglas = p.reglas.slice(-40); await guardarJson(RUTA_PREFS, p); await refrescaPrefs(); res.json(p);
   } catch { res.status(500).json({ error: 'No se pudo guardar' }); }
 });
+// ¿Falta un reel? Se busca por su enlace en TODA tu cuenta y se añade con sus números. Si no aparece, es que Instagram no lo da por la API (p. ej. una colaboración publicada desde otra cuenta).
+router.post('/instagram/buscar', async (req, res) => {
+  try {
+    const c = await conexion(); if (!c) return res.status(400).json({ error: 'Conecta Instagram primero' });
+    const cod = (String(req.body?.enlace || '').match(//(?:reel|reels|p|tv)/([w-]{5,})/) || [])[1]; if (!cod) return res.status(400).json({ error: 'Pega el enlace del reel (instagram.com/reel/…)' });
+    const campos = 'id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count,thumbnail_url';
+    let j = await graph('/' + c.ig_id + '/media', { fields: campos, limit: 100 }, c.token), vistas = 0, hallado = null;
+    for (;;) { vistas += (j.data || []).length; hallado = (j.data || []).find(m => String(m.permalink || '').includes('/' + cod)); if (hallado || !j.paging?.next || vistas > 2000) break; j = await graph('/' + c.ig_id + '/media', { fields: campos, limit: 100, after: j.paging.cursors.after }, c.token); }
+    if (!hallado) return res.json({ encontrado: false, revisadas: vistas, aviso: 'No está entre las ' + vistas + ' publicaciones que Instagram me deja leer de tu cuenta. Suele pasar con colaboraciones publicadas desde otra cuenta, o con vídeos de otra cuenta tuya.' });
+    const ins = await insightsDe(hallado, c.token).catch(() => ({})), m = hallado;
+    const rec = { id: m.id, tipo: m.media_product_type || m.media_type, formato: m.media_type, enlace: m.permalink, fecha: m.timestamp, pie: limpia(m.caption, 600), me_gusta: m.like_count ?? ins.likes ?? null, comentarios: m.comments_count ?? ins.comments ?? null, miniatura: m.thumbnail_url || '', ...ins };
+    c.media = [...(c.media || []).filter(x => x.id !== rec.id), rec]; await guardarJson(RUTA_IG, c);
+    res.json({ encontrado: true, vistas: rec.views ?? rec.reach ?? null, revisadas: vistas });
+  } catch (e) { res.status(500).json({ error: 'No se pudo buscar: ' + String(e.message || e).slice(0, 140) }); }
+});
 router.get('/objetivos', async (req, res) => { try { const id = await objetivoActual(); res.json({ actual: id, objetivos: Object.entries(OBJETIVOS).map(([k, o]) => ({ id: k, nombre: o.nombre, icono: o.icono, que: o.que, formula: o.formula, unidad: o.unidad })) }); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
 router.post('/objetivo', async (req, res) => { try { const id = String(req.body?.id || ''); if (!OBJETIVOS[id]) return res.status(400).json({ error: 'Objetivo no válido' }); await guardarJson(RUTA_OBJETIVO, { id }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo guardar' }); } });
 router.post('/instagram/prueba', async (req, res) => {
