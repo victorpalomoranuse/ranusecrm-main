@@ -1322,6 +1322,7 @@ function InicioRedes({ ir }) {
     api.get('/redes/estado').then(r => setEst(r.data)).catch(() => setEst({}));
     api.get('/redes/objetivos').then(r => setObjs(r.data)).catch(() => {});
   }, []);
+  const cambia = async (id) => { try { await api.post('/redes/objetivo', { id }); setObjs(o => ({ ...o, actual: id })); const r = await api.get('/redes/instagram/publicaciones'); setPubs(r.data.publicaciones || []); } catch { /* se queda */ } };
   const analiza = async () => { setTrab(true); try { const r = await api.post('/redes/cuenta/salud', {}, { timeout: 200000 }); setS(r.data); } catch { /* se queda como estaba */ } setTrab(false); };
   const top = (pubs || []).filter(p => !p.prueba).slice(0, 3), ideas = (est?.aprendizaje?.ideas_ganadoras || []).slice(0, 3), obj = objs ? objs.objetivos.find(o => o.id === objs.actual) : null;
   const flecha = { sube: ['📈', '#8fdba0', 'Subes'], estable: ['➖', '#f2c46d', 'Estable'], baja: ['📉', '#ff9b9b', 'Bajas'] }[s?.tendencia] || null;
@@ -1339,6 +1340,8 @@ function InicioRedes({ ir }) {
       </div>
       <div className="rd-card" style={{ gap: 10 }}>
         <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>2 · LO QUE MEJOR FUNCIONA{obj ? ' · ' + obj.icono + ' ' + obj.nombre.toUpperCase() : ''}</div>
+        {objs && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{objs.objetivos.map(o => <button key={o.id} className={'rd-btn' + (objs.actual === o.id ? ' pri' : '')} style={{ padding: '4px 10px', fontSize: '0.76rem' }} title={o.que + ' — ' + o.formula} onClick={() => cambia(o.id)}>{o.icono} {o.nombre}</button>)}</div>}
+        {obj && <div style={{ ...mut, fontSize: '0.8rem' }}>El número de cada reel = {obj.formula}</div>}
         {top.length > 0 ? <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))' }}>{top.map((p, i) => <a key={p.id} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: '4/5' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{p.puntuacion}</span><div className="vel"><b>#{i + 1}</b> {fmt(p.views ?? p.reach ?? 0)} vistas</div></a>)}</div> : <div style={mut}>{conectado ? 'Pulsa «Leer publicaciones» en Instagram.' : '—'}</div>}
         <div><button className="rd-btn" onClick={() => ir('ig')}>Ver todo el ranking y analizar</button></div>
       </div>
