@@ -168,14 +168,37 @@ try {
 } catch (e) { console.log('Sin ajustar los cortes a los silencios:', e.message); }
 console.log('Trozos de voz que se conservan:', trozos.map(t => t.ini.toFixed(1) + '-' + t.fin.toFixed(1)).join(' '));
 const piezas = []; let acum = 0;
-for (const t of trozos) {
-  const ini = Math.max(0, t.ini - (t.sa ? 0.02 : 0.07)), fin = Math.min(dur, t.fin + (t.sb ? 0.03 : 0.12)), largo = fin - ini, n = Math.max(1, Math.round(largo / (Number(R.cambioCada) > 0.8 ? Number(R.cambioCada) : 3.6)));
-  let corte = ini;
-  for (let k = 1; k <= n; k++) {
-    let fk = k === n ? fin : ini + largo * k / n;
-    if (k < n && pista) { const sal = alPulso(acum + (fk - ini), pista.beats, 0.3), aj = ini + (sal - acum); if (aj > corte + 1.2 && aj < fin - 1.2) fk = aj; }
-    piezas.push({ ini: corte, fin: fk, t0: acum + (corte - ini) }); corte = fk;
+// Un cambio de plano (zoom) que cae EN MITAD de una frase se nota y cansa; uno que cae donde la persona respira (final de frase, coma, micro-pausa) pasa desapercibido y ayuda al ritmo.
+// Se buscan esos puntos naturales cerca del ritmo pedido (cambioCada) y no se fuerza ningún cambio donde no los hay.
+const nominal = Number(R.cambioCada) > 0.8 ? Number(R.cambioCada) : 3.6, porFrases = R.cambiosEnFrases !== false;
+const conservadas = palabras.filter(w => !fuera.has(w.i));
+const puntosNaturales = (ini, fin) => {
+  const r = [];
+  for (let k = 0; k < conservadas.length - 1; k++) {
+    const w = conservadas[k], s = conservadas[k + 1]; if (w.a < ini + 1 || w.a > fin - 1) continue;
+    const hueco = s.de - w.a, punto = /[.?!]$/.test(w.t), coma = /[,;:]$/.test(w.t);
+    if (!(punto || coma || hueco >= 0.12)) continue;
+    r.push({ t: Math.min(s.de - 0.03, w.a + Math.max(0.03, hueco * 0.5)), fuerza: (punto ? 3 : coma ? 2 : 1) + Math.min(1, hueco) });
   }
+  return r;
+};
+for (const t of trozos) {
+  const ini = Math.max(0, t.ini - (t.sa ? 0.02 : 0.07)), fin = Math.min(dur, t.fin + (t.sb ? 0.03 : 0.12)), largo = fin - ini;
+  const cortes = [];
+  if (porFrases) {
+    const cand = puntosNaturales(ini, fin); let ult = ini;
+    while (fin - ult > nominal * 1.5) {
+      const ventana = cand.filter(c => c.t > ult + nominal * 0.6 && c.t < ult + nominal * 1.6 && c.t < fin - 1.1);
+      if (!ventana.length) { if (fin - ult > nominal * 2.4) { cortes.push(ult + nominal * 1.2); ult += nominal * 1.2; continue; } break; } // tramo largo sin respiros: un corte a mitad, solo si hace falta
+      const mejor = ventana.reduce((m, c) => { const pm = m.fuerza * 1.2 - Math.abs(m.t - (ult + nominal)) / nominal, pc = c.fuerza * 1.2 - Math.abs(c.t - (ult + nominal)) / nominal; return pc > pm ? c : m; });
+      cortes.push(mejor.t); ult = mejor.t;
+    }
+  } else {
+    const n = Math.max(1, Math.round(largo / nominal));
+    for (let k = 1; k < n; k++) { let fk = ini + largo * k / n; if (pista) { const sal = alPulso(acum + (fk - ini), pista.beats, 0.3), aj = ini + (sal - acum); if (aj > (cortes[cortes.length - 1] ?? ini) + 1.2 && aj < fin - 1.2) fk = aj; } cortes.push(fk); }
+  }
+  let corte = ini;
+  for (const fk of [...cortes, fin]) { piezas.push({ ini: corte, fin: fk, t0: acum + (corte - ini) }); corte = fk; }
   acum += largo;
 }
 let acum2 = 0; piezas.forEach(p => { p.t0 = acum2; acum2 += p.fin - p.ini; }); const durFinal = acum2;
@@ -209,7 +232,7 @@ if (process.env.TITULO_PANTALLA || process.env.PREGUNTA_PANTALLA) {
   else ev.push('Dialogue: 6,' + tAss(0) + ',' + tAss(Math.min(durFinal, 4.2)) + ',Titulo,,0,0,0,,{\\an8\\pos(540,290)\\bord0\\shad4\\fs64\\fad(150,300)}' + parte(process.env.TITULO_PANTALLA, 22));
 }
 // destello blanco muy breve en cada cambio de plano
-if (R.flash === true) piezas.slice(1).forEach(p => ev.push('Dialogue: 4,' + tAss(p.t0) + ',' + tAss(p.t0 + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c&HFFFFFF&\\alpha&H9C&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
+if (R.flash === 'si') piezas.slice(1).forEach(p => ev.push('Dialogue: 4,' + tAss(p.t0) + ',' + tAss(p.t0 + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c&HFFFFFF&\\alpha&H9C&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
 if (R.barra === true) ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durFinal) + ',Kicker,,0,0,0,,{\\an7\\pos(0,1896)\\p1\\c' + ACENTO + '\\fscx0\\t(0,' + Math.round(durFinal * 1000) + ',\\fscx100)}m 0 0 l 1080 0 1080 7 0 7{\\p0}');
 const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920', 'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '', '[V4+ Styles]',
   'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',

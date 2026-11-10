@@ -78,6 +78,8 @@ async function formatos() {
   if (!f.diaV4) { const x = f.lista.find(z => z.id === 'mi-dia-voz'); if (x?.receta) { Object.assign(x.receta, { corte: { min: 1.4, max: 2.8 }, zoomFinal: 1.14, whoosh: 0.1, flash: false, motion: true, etiquetas: false, aperturaPremium: false, introLetras: false, estiloSubs: 'normal' }); } f.diaV4 = true; await guardarJson(RUTA_FORMATOS, f); }
   // Mi día: cambio de plano cada ~3 s
   if (!f.diaV5) { const x = f.lista.find(z => z.id === 'mi-dia-voz'); if (x?.receta) x.receta.corte = { min: 2.0, max: 3.2 }; f.diaV5 = true; await guardarJson(RUTA_FORMATOS, f); }
+  // Sin destellos blancos en los cortes (Víctor: «hace todo el rato flashes, no tiene sentido») y cambios de plano al ritmo del habla
+  if (!f.sinFlashV1) { for (const x of f.lista) { const r = x.receta || (x.receta = {}); r.flash = false; if (x.id === 'clips-dopaminicos' || x.id === 'entrevista-dinamica') { r.cambiosEnFrases = true; r.cambioCada = Math.max(Number(r.cambioCada) || 0, 4.2); } } f.sinFlashV1 = true; await guardarJson(RUTA_FORMATOS, f); }
   if (!f.clipsV3) { const x = f.lista.find(z => z.id === 'clips-dopaminicos'); if (x?.receta) { x.receta.estiloSubs = 'karaoke'; x.receta.subs = { ...(x.receta.subs || {}), palabrasPorBloque: 3 }; } f.clipsV3 = true; await guardarJson(RUTA_FORMATOS, f); }
   if (!f.clipsV2) { const x = f.lista.find(z => z.id === FORMATO_CLIPS.id); if (x) x.receta = JSON.parse(JSON.stringify(FORMATO_CLIPS.receta)); f.clipsV2 = true; await guardarJson(RUTA_FORMATOS, f); }
   // formatos nuevos de fábrica se añaden una sola vez (si luego los borras, no vuelven)

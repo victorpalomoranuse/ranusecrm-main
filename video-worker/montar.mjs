@@ -32,7 +32,7 @@ const RECETA = {
   mayusculas: false, fuente: 'Montserrat', musica: { volumen: -19 },
   zoomFinal: 1.14,                      // cada plano hace un empujón lento hacia dentro
   whoosh: 0.16,                         // volumen de los whoosh en cada corte (0 = sin)
-  flash: true,                          // destello blanco muy breve en cada corte
+  flash: false,                         // destello blanco en cada corte: apagado (solo si la receta pone flash: 'si')
   subs: { palabrasPorBloque: 2, tam: 104, margenV: 600 },
   voz: CADENA_VOZ,
   color: 'eq=contrast=1.08:saturation=1.12:gamma=0.97,vignette=PI/6',
@@ -588,7 +588,7 @@ ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\fad(200,
 ev.push('Dialogue: 3,' + tAss(0) + ',' + tAss(tf) + ',Titulo,,0,0,0,,{\\fad(250,350)}' + limpiaT(plan.titulo || '').toLowerCase());
 ev.push('Dialogue: 3,' + tAss(0.1) + ',' + tAss(tf) + ',Kicker,,0,0,0,,{\\an8\\pos(540,360)\\p1\\c' + RECETA.acento + '\\fad(200,300)\\t(0,500,\\fscx100)\\fscx0}m -45 0 l 45 0 45 4 -45 4{\\p0}');
 }
-if (RECETA.flash) marcas.slice(1).forEach(m => ev.push('Dialogue: 4,' + tAss(m) + ',' + tAss(m + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c&HFFFFFF&\\alpha&H9C&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
+if (RECETA.flash === 'si') marcas.slice(1).forEach(m => ev.push('Dialogue: 4,' + tAss(m) + ',' + tAss(m + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c&HFFFFFF&\\alpha&H9C&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
 // (sin barra de progreso inferior: Víctor no la quiere)
 // etiquetas de hora grandes ("9:00") justo sobre los subtítulos, como en los vídeos de "mi día"
 if (RECETA.horas) for (const h of (plan.horas || [])) { const w = palabras[h.de]; if (!w || !h.texto) continue; ev.push('Dialogue: 2,' + tAss(w.de) + ',' + tAss(Math.min(durVoz, w.de + 1.8)) + ',Hora,,0,0,0,,{\\fad(80,150)\\fscx80\\fscy80\\t(0,130,\\fscx100\\fscy100)}' + limpiaT(h.texto)); }
