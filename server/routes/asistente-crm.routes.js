@@ -76,6 +76,15 @@ router.delete('/conversacion', async (req, res) => {
   } catch { res.status(500).json({ error: 'No se pudo borrar la conversación' }); }
 });
 
+// Historias de Instagram preparadas por el asistente
+router.get('/historias', async (req, res) => {
+  try { const h = await leerJson('crm/asistente/historias.json', { planes: [] }); const v = await leerJson('crm/asistente/voz.json', { muestras: [], rasgos: [] }); res.json({ planes: (h.planes || []).slice().reverse(), voz: { rasgos: v.rasgos || [], muestras: (v.muestras || []).length } }); }
+  catch { res.status(500).json({ error: 'No se pudieron leer las historias' }); }
+});
+router.delete('/historias/:id', async (req, res) => {
+  try { const h = await leerJson('crm/asistente/historias.json', { planes: [] }); h.planes = (h.planes || []).filter(p => p.id !== req.params.id); await guardarJson('crm/asistente/historias.json', h); res.json({ ok: true }); }
+  catch { res.status(500).json({ error: 'No se pudo borrar' }); }
+});
 router.get('/diario', async (req, res) => {
   try { const d = await leerJson(RUTA_DIARIO, { entradas: [] }); res.json({ entradas: (d.entradas || []).slice().reverse() }); }
   catch { res.status(500).json({ error: 'No se pudo leer el diario' }); }

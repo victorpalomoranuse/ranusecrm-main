@@ -8,6 +8,7 @@ import { infoPdf, paginaAImagen, escalaDe, construirPlano, registroPlano } from 
 import { alzadoPNG } from './alzado-imagen.js';
 import { computeCatalogPricing } from './pricing.js';
 import { crearInformePdf } from './pdf-informe.js';
+import { TOOLS_HISTORIAS, HISTORIAS_NOMBRES, ejecutarHistorias, ponAlmacenHistorias } from './historias-asistente.js';
 import { TOOLS_SALUD, SALUD_NOMBRES, ejecutarSalud, bloqueSaludSistema, ponAlmacen } from './salud-asistente.js';
 
 // Cerebro del asistente personal de Víctor (lo usan WhatsApp y Telegram).
@@ -170,8 +171,9 @@ const TOOLS = [
   { name: 'marcar_conversacion_privada', description: 'Llámala cuando Víctor te hable de algo personal: así esta parte de la conversación no aparece en el CRM. No crees tareas, eventos ni notas de proyecto sobre temas personales salvo que él lo pida expresamente.', input_schema: { type: 'object', properties: {} } },
   { name: 'olvidar', description: 'Borra un recuerdo de tu memoria por su id.', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
 ];
-TOOLS.push(...TOOLS_SALUD);
+TOOLS.push(...TOOLS_SALUD, ...TOOLS_HISTORIAS);
 ponAlmacen(leerJson, guardarJson);
+ponAlmacenHistorias(leerJson, guardarJson, (n, i) => ejecutar(n, i, { adjuntos: [], salida: [], textoUsuario: '' }));
 
 // Palabras clave de un texto (sin tildes, sin palabras cortas ni de relleno) para detectar cosas ya apuntadas que se parecen
 const RELLENO = new Set(['para', 'hacer', 'tengo', 'tiene', 'esto', 'este', 'esta', 'sobre', 'cosa', 'tarea', 'revisar', 'hablar', 'llamar', 'enviar', 'mandar', 'preparar', 'terminar']);
@@ -270,6 +272,7 @@ async function formPor(pid) {
 }
 async function ejecutar(nombre, input, ctx = {}) {
   const { fecha } = madrid();
+  if (HISTORIAS_NOMBRES.has(nombre)) { try { return await ejecutarHistorias(nombre, input || {}, { fecha }); } catch (e) { return { error: 'No se pudo hacer: ' + String(e.message || '').slice(0, 160) }; } }
   if (SALUD_NOMBRES.has(nombre)) { try { return await ejecutarSalud(nombre, input || {}); } catch (e) { return { error: 'No se pudo hacer: ' + String(e.message || '').slice(0, 160) }; } }
   if (input && typeof input.proyecto === 'string' && input.proyecto.trim() && !UUID.test(input.proyecto.trim()) && nombre !== 'guardar_alias') {
     const r = await resolverProyecto(input.proyecto);
@@ -757,6 +760,7 @@ function sistema(mem, priv, acc, resumenCharla) {
     '- PRESUPUESTOS (preferente): para ver, completar o crear un presupuesto usa TÚ las herramientas ver_presupuesto y anadir_lineas_presupuesto (valen para uno ya empezado, por número o proyecto, o para uno nuevo; mezclan productos del catálogo y líneas libres que no están en el catálogo, con precio 0 si no hay) y manda siempre el PDF. Si Víctor te pasa una lista de equipos, conviértela en líneas con cantidades; lo que no esté en el catálogo va como línea libre, no lo descartes. El compañero de presupuestos solo sirve para recomendaciones por niveles y ese tipo de análisis. Para crear uno NUEVO con el compañero, pásale al compañero de presupuestos instrucciones explícitas ("crea un presupuesto nuevo para el proyecto X con estos productos, cantidades y precios, y genera el PDF"); él solo crea presupuestos nuevos, no edita los que ya existen. Para mandar el PDF de uno existente usa presupuesto_pdf. Nunca digas que el presupuesto está listo si no te ha devuelto un PDF o un número de presupuesto: cuenta con franqueza qué se hizo y qué falta.\n' +
     '- PRESUPUESTOS (seguridad): nunca inventes ni copies un número de presupuesto; si Víctor no lo dice, búscalo con buscar_presupuestos por cliente o nombre. Cada vez que mandes un PDF di en una frase: número, nombre, nº de líneas, total y los avisos de la ficha (líneas a 0 €, descuento global…). Si Víctor pide cambios, aplícalos y manda un PDF NUEVO; nunca reenvíes uno anterior. Si no lo encuentras o hay varios, pregunta cuál en vez de adivinar. Un presupuesto NUEVO solo si Víctor lo pide expresamente (crear_nuevo=true).\n' +
     '- NOMBRES: Víctor llama a clientes y proyectos de formas distintas (apodo, ciudad, apellido). Si una herramienta devuelve candidatos o dice que hay varios, pregúntale cuál (nombra las opciones) y cuando lo confirme guarda el apodo con guardar_alias. No asumas.\n' +
+    '- INSTAGRAM, HISTORIAS Y SU VOZ: además de asistente eres su ESTRATEGA DE INSTAGRAM. Cuando pida historias, una secuencia, qué subir hoy o mañana, o cómo vender algo por Instagram, usa crear_secuencia_historias (objetivo vender, engagement, autoridad, bastidores o lanzamiento): construye la secuencia con lo que de verdad hace (agenda, obras, proyectos, diario) y con SU voz. Respóndele con UNA LÍNEA por historia (qué foto o vídeo sacar y el texto) y ofrécele el guion hablado o el PDF. Anticípate: si ves en su agenda algo contable (visita a obra, reunión con cliente, entrega, render, instalación), propónle sin que lo pida qué historias sacar ese día («mañana tienes X: 1) foto de…, 2) vídeo de…»). En el repaso de la mañana cierra con 2-3 ideas de historias para hoy si hay material. Aprende cómo habla: cuando notes una frase o un rasgo suyo representativo, o cuando corrija un guion, guárdalo con guardar_mi_voz. Escribe siempre en primera persona como habla él, nunca con tono de marketing genérico, y no inventes resultados, clientes ni cifras.\n' +
     '- Puedes crear proyectos nuevos con crear_proyecto (nombre, cliente y tipo comercial u home_gym; deduce lo que puedas y no preguntes más de lo imprescindible). Nunca digas que no puedes crear proyectos.\n' +
     '- UNA COSA, UNA TAREA (REGLA DURA): Víctor nombra las tareas de memoria, con otras palabras, apodos o abreviado. Abajo tienes TAREAS PENDIENTES con su id corto. Antes de crear NADA, comprueba esa lista (y buscar_tarea si dudas): si lo que dice es el mismo asunto aunque lo diga distinto («mandar presu a Adil» = «Presupuesto Adil Gym»), es LA MISMA tarea: actualízala o complétala, no hagas otra. Para tocar una tarea usa el id corto de la lista o su nombre aproximado. Si dudas entre dos, pregunta «¿te refieres a «título exacto»?» con una pregunta corta. Nunca le exijas el nombre tal cual.\n' +
     '- AVÍSALE DE LO YA APUNTADO: cuando Víctor te diga que tiene que hacer algo, antes de crear nada mira si ya hay algo relacionado (listar_tareas) y, si lo hay, recuérdaselo: "ya tenías apuntado X para el día Y, ¿lo cambio o lo sumo?". Si una herramienta te devuelve posible_duplicado, no insistas en crearlo: cuéntale lo que ya había y pregúntale.\n' +
@@ -818,6 +822,8 @@ function resumenAccion(n, i, r) {
     crear_proveedor: () => 'creado proveedor ' + (r.nombre || ''),
     anadir_lineas_presupuesto: () => 'presupuesto ' + (r.presupuesto || '') + ': añadidas ' + (r.lineas_anadidas || []).length + ' líneas' + (r.creado_nuevo ? ' (presupuesto nuevo)' : ''),
     crear_plano: () => 'creado plano "' + (r.donde || '') + '" (' + (r.muros || 0) + ' muros)',
+    crear_secuencia_historias: () => 'preparada secuencia de historias "' + (r.titulo || '') + '"',
+    guardar_mi_voz: () => 'aprendido un rasgo de cómo habla Víctor',
     crear_proyecto: () => 'creado proyecto "' + (r.proyecto || '') + '" (cliente ' + (r.cliente || '') + ')',
   }[n];
   return f ? f() : null;

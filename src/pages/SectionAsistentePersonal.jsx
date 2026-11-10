@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
-import { Trash2, Plus, Pencil, Check, X, FileText, Brain, Bell, MessageSquare, BookOpen, Dumbbell } from 'lucide-react';
+import { Trash2, Plus, Pencil, Check, X, FileText, Brain, Bell, MessageSquare, BookOpen, Dumbbell, Film } from 'lucide-react';
 
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '0.85rem 1rem' };
 const mut = { color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem' };
@@ -70,6 +70,41 @@ function Recordatorios() {
   );
 }
 
+function Historias() {
+  const [d, setD] = useState(null);
+  const cargar = useCallback(() => api.get('/asistente-personal/historias').then(r => setD(r.data)).catch(() => setD({ planes: [], voz: { rasgos: [], muestras: 0 } })), []);
+  useEffect(() => { cargar(); }, [cargar]);
+  const borrar = async (id) => { if (!window.confirm('¿Borrar esta secuencia?')) return; try { await api.delete('/asistente-personal/historias/' + id); cargar(); } catch { /* se queda */ } };
+  if (!d) return <div className="ap-loading">Cargando…</div>;
+  return (
+    <div>
+      <div style={{ ...mut, marginBottom: 10 }}>Pídele al asistente por WhatsApp «dame historias para vender el diseño de gimnasios» o «qué subo mañana»: prepara la secuencia con lo que haces de verdad y con tu voz, y queda guardada aquí. {d.voz?.muestras ? 'Ya conoce ' + d.voz.muestras + ' frases tuyas' : 'Aún no conoce tu forma de hablar: cuanto más le cuentes, mejor imita tu voz'}{(d.voz?.rasgos || []).length ? ' y estos rasgos: ' + d.voz.rasgos.join('; ') + '.' : '.'}</div>
+      {!d.planes.length && <div style={mut}>Todavía no hay secuencias.</div>}
+      {d.planes.map(p => (
+        <details key={p.id} style={{ ...card, marginBottom: 10 }}>
+          <summary style={{ cursor: 'pointer' }}><strong>{p.titulo}</strong> <span style={mut}>· {p.objetivo} · {p.cuando}{p.mejor_hora ? ' · ' + p.mejor_hora : ''}</span></summary>
+          {p.resumen && <div style={{ ...mut, margin: '6px 0' }}>{p.resumen}</div>}
+          {(p.dias || []).map((dia, k) => (
+            <div key={k} style={{ marginTop: 8 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{dia.fecha}</div>
+              {(dia.historias || []).map(h => (
+                <div key={h.n} style={{ padding: '6px 0', borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: '0.86rem', lineHeight: 1.45 }}>
+                  <strong>{h.n}. {h.formato}</strong> — {h.grabar}
+                  {h.texto && <div style={mut}>Texto en pantalla: «{h.texto}»</div>}
+                  {h.hablado && <div style={mut}>Lo dices: «{h.hablado}»</div>}
+                  {h.sticker && <div style={mut}>Sticker: {h.sticker}</div>}
+                  {h.para_que && <div style={{ ...mut, fontStyle: 'italic' }}>Para qué: {h.para_que}</div>}
+                </div>
+              ))}
+            </div>
+          ))}
+          {(p.consejos || []).length > 0 && <div style={{ ...mut, marginTop: 8 }}>{p.consejos.map((c, i) => <div key={i}>→ {c}</div>)}</div>}
+          <button className="ap-btn ap-btn-sm" style={{ marginTop: 8 }} onClick={() => borrar(p.id)}>Borrar</button>
+        </details>
+      ))}
+    </div>
+  );
+}
 function Diario() {
   const [lista, setLista] = useState(null);
   const cargar = useCallback(() => api.get('/asistente-personal/diario').then(r => setLista(r.data.entradas || [])).catch(() => setLista([])), []);
@@ -188,7 +223,7 @@ function Salud() {
   );
 }
 
-const PESTANAS = [['salud', 'Salud', Dumbbell], ['memoria', 'Memoria', Brain], ['recordatorios', 'Recordatorios', Bell], ['diario', 'Diario', BookOpen], ['informes', 'Informes', FileText], ['conversacion', 'Conversación', MessageSquare]];
+const PESTANAS = [['salud', 'Salud', Dumbbell], ['memoria', 'Memoria', Brain], ['recordatorios', 'Recordatorios', Bell], ['diario', 'Diario', BookOpen], ['historias', 'Historias', Film], ['informes', 'Informes', FileText], ['conversacion', 'Conversación', MessageSquare]];
 export function SectionAsistentePersonal() {
   const [tab, setTab] = useState('memoria');
   return (
@@ -198,7 +233,7 @@ export function SectionAsistentePersonal() {
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
         {PESTANAS.map(([id, nombre, Icono]) => <button key={id} className={'ap-btn ap-btn-sm' + (tab === id ? ' ap-btn-primary' : '')} onClick={() => setTab(id)}><Icono size={13} /> {nombre}</button>)}
       </div>
-      {tab === 'salud' && <Salud />}{tab === 'memoria' && <Memoria />}{tab === 'recordatorios' && <Recordatorios />}{tab === 'diario' && <Diario />}{tab === 'informes' && <Informes />}{tab === 'conversacion' && <Conversacion />}
+      {tab === 'salud' && <Salud />}{tab === 'memoria' && <Memoria />}{tab === 'recordatorios' && <Recordatorios />}{tab === 'historias' && <Historias />}{tab === 'diario' && <Diario />}{tab === 'informes' && <Informes />}{tab === 'conversacion' && <Conversacion />}
     </div>
   );
 }
