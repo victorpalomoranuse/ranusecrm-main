@@ -138,7 +138,9 @@ export async function refrescaPrefs() {
   } catch { PREFS_TXT = ''; }
   return PREFS_TXT;
 }
-const textoPrefs = () => PREFS_TXT;
+// Realidad fija de su negocio: los proyectos con famosos o clientes concretos son ocasionales, no se pueden repetir a demanda
+const BASE_REALIDAD = 'REALIDAD DE SU NEGOCIO (siempre): no siempre hay proyectos con famosos ni clientes llamativos disponibles. NO propongas series ni ideas que dependan de que exista un cliente famoso o un proyecto concreto; prioriza contenido que pueda hacer cualquier semana (explicar procesos, errores típicos, comparativas, cifras reales de obra, detrás de cámaras, reutilizar material que ya tiene, él solo con el móvil). Si una idea aprovecha un proyecto o cliente concreto, márcala como "oportunista: solo si hay proyecto".\n';
+const textoPrefs = () => BASE_REALIDAD + PREFS_TXT;
 const RUTA_OBJETIVO = 'crm/redes/objetivo.json';
 const objetivoActual = async () => { await refrescaPrefs(); const o = await leerJson(RUTA_OBJETIVO, null); return OBJETIVOS[o?.id] ? o.id : 'crecimiento'; };
 const redondea = (x) => Math.round(x * 10) / 10;
