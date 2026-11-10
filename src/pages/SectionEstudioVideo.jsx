@@ -1712,7 +1712,7 @@ function PestanaAnalizador() {
               <select className="ap-field-input" value={propFmt} onChange={ev => setPropFmt(ev.target.value)}><option value="reel">Reel</option><option value="carrusel">Carrusel</option><option value="foto">Foto</option><option value="historia">Historia</option></select>
               <label className="rd-btn" style={{ cursor: 'pointer' }}>{vPred ? '🎞 ' + vPred.name.slice(0, 24) : '🎞 Subir el vídeo ya editado'}<input type="file" accept="video/*" style={{ display: 'none' }} onChange={ev => setVPred(ev.target.files?.[0] || null)} /></label>
               {vPred && <button className="rd-btn" onClick={() => setVPred(null)}>✕</button>}
-              <button className="rd-btn pri" disabled={!!trabaja || (prop.trim().length < 15 && !vPred)} onClick={predice}>{trabaja === 'pred' ? (vEstado || 'Calculando…') : 'Estimar'}</button>
+              <button className="rd-btn pri" disabled={trabaja === 'pred' || (prop.trim().length < 15 && !vPred)} onClick={predice} title={trabaja && trabaja !== 'pred' ? 'Hay otra tarea en marcha, pero puedes estimar igualmente' : ''}>{trabaja === 'pred' ? (vEstado || 'Calculando…') : 'Estimar'}</button>
             </div>
             {pred && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 6 }}>
