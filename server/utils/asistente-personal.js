@@ -66,6 +66,18 @@ function madrid() {
   const g = (t) => p.find(x => x.type === t)?.value;
   return { fecha: g('year') + '-' + g('month') + '-' + g('day'), hora: g('hour') + ':' + g('minute'), dia: new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long' }).format(new Date()) };
 }
+// «martes, 10 de noviembre de 2026, 18:42 (hora de Madrid, CET)»: el reloj de verdad, para que nunca tenga que adivinar el día
+function ahoraLargo() {
+  const d = new Date(), larga = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(d);
+  const hh = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+  const zona = (new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', timeZoneName: 'short' }).formatToParts(d).find(p => p.type === 'timeZoneName') || {}).value || '';
+  return larga + ', ' + hh + ' (hora de Madrid' + (zona ? ', ' + zona : '') + ')';
+}
+// «mar 10 nov, 18:32» para etiquetar cuándo se dijo cada mensaje de la conversación
+function marcaTiempo(ms) {
+  const d = new Date(ms), f = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', weekday: 'short', day: 'numeric', month: 'short' }).format(d), h = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+  return f.replace(/\./g, '') + ', ' + h;
+}
 // fecha de Madrid (AAAA-MM-DD) dentro de n días
 function fechaMadridMas(n) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + n * 86400000)); }
 function calendario() {
@@ -130,11 +142,12 @@ const TOOLS = [
   { name: 'crear_subtareas', description: 'Crea de una vez los pasos de un desglose como tareas del proyecto (hasta 12). Cada paso: titulo (concreto y empezando por un verbo), fecha opcional AAAA-MM-DD, prioridad opcional, asignada_a opcional. Úsala SOLO cuando Víctor haya aceptado el desglose. Salta las que ya existen.', input_schema: { type: 'object', properties: { proyecto: { type: 'string' }, fase: { type: 'number' }, pasos: { type: 'array', items: { type: 'object', properties: { titulo: { type: 'string' }, fecha: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, asignada_a: { type: 'string' } }, required: ['titulo'] } } }, required: ['proyecto', 'pasos'] } },
   { name: 'listar_eventos', description: 'Eventos y citas del calendario de los próximos días (por defecto 14), con fecha y hora. busqueda filtra por texto. Úsala para saber qué tiene Víctor apuntado en la agenda y ANTES de decir que no tienes algo.', input_schema: { type: 'object', properties: { dias: { type: 'number' }, busqueda: { type: 'string' } } } },
   { name: 'listar_tareas', description: 'Lista TODAS las tareas pendientes (con fecha y sin fecha), ordenadas: atrasadas, de hoy, próximas y sin fecha. Cada una con id, título, fecha, prioridad, a quién está asignada y de qué proyecto (con su urgencia). de = nombre de una persona para filtrar; proyecto = para filtrar por proyecto. Úsala siempre que Víctor pida sus tareas, lo que tiene pendiente o ayuda para organizarse.', input_schema: { type: 'object', properties: { de: { type: 'string' }, proyecto: { type: 'string' } } } },
-  { name: 'actualizar_tarea', description: 'Cambia una tarea existente: fecha (AAAA-MM-DD), prioridad, título o a quién se asigna. Úsala para organizar el día de Víctor cuando él te lo pida o acepte tu plan (por ejemplo, ponerle fecha de hoy a las tareas que acordéis).', input_schema: { type: 'object', properties: { id: { type: 'string' }, fecha: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, titulo: { type: 'string' }, asignada_a: { type: 'string' } }, required: ['id'] } },
+  { name: 'buscar_tarea', description: 'Busca entre las tareas pendientes la que Víctor menciona, aunque la nombre con otras palabras o apodos. Devuelve las más parecidas con su id y su título exacto. Úsala SIEMPRE antes de crear una tarea nueva si puede que ya exista, y cuando Víctor se refiera a una tarea sin decir su título exacto.', input_schema: { type: 'object', properties: { texto: { type: 'string' } }, required: ['texto'] } },
+  { name: 'actualizar_tarea', description: 'Cambia una tarea existente (id, las primeras letras del id o su nombre aproximado tal como Víctor la nombre): fecha (AAAA-MM-DD), prioridad, título o a quién se asigna. Úsala para organizar el día de Víctor cuando él te lo pida o acepte tu plan (por ejemplo, ponerle fecha de hoy a las tareas que acordéis).', input_schema: { type: 'object', properties: { id: { type: 'string', description: 'id, primeras letras del id o el nombre de la tarea tal como la dice Víctor' }, fecha: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, titulo: { type: 'string' }, asignada_a: { type: 'string' } }, required: ['id'] } },
   { name: 'listar_proyectos', description: 'Proyectos en marcha (nombre, cliente, fase). Con "busqueda" filtra por nombre o cliente.', input_schema: { type: 'object', properties: { busqueda: { type: 'string' } } } },
   { name: 'ver_proyecto', description: 'Ficha de un proyecto: fase, urgencia y tareas pendientes. "proyecto" puede ser parte del nombre, del cliente o el id.', input_schema: { type: 'object', properties: { proyecto: { type: 'string' } }, required: ['proyecto'] } },
   { name: 'crear_tarea', description: 'Crea una tarea en el CRM. fecha en formato AAAA-MM-DD (resuelve "mañana", "el viernes"… con la fecha de hoy). proyecto y asignada_a son opcionales (nombre parcial).', input_schema: { type: 'object', properties: { titulo: { type: 'string' }, fecha: { type: 'string' }, proyecto: { type: 'string' }, prioridad: { type: 'string', enum: ['baja', 'normal', 'alta'] }, asignada_a: { type: 'string' }, descripcion: { type: 'string' }, forzar: { type: 'boolean', description: 'true solo si Víctor ya ha confirmado que quiere crearla aunque exista algo parecido' } }, required: ['titulo'] } },
-  { name: 'completar_tarea', description: 'Marca una tarea como hecha (usa el id que devolvió agenda_de_hoy o ver_proyecto).', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
+  { name: 'completar_tarea', description: 'Marca una tarea como hecha. id puede ser el id, las primeras letras del id o el nombre aproximado de la tarea tal como la dice Víctor.', input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
   { name: 'crear_evento', description: 'Crea un evento en el calendario del CRM.', input_schema: { type: 'object', properties: { titulo: { type: 'string' }, fecha: { type: 'string', description: 'AAAA-MM-DD' }, hora: { type: 'string', description: 'HH:MM, opcional' }, descripcion: { type: 'string' }, forzar: { type: 'boolean', description: 'true solo si Víctor ya ha confirmado que quiere crearlo aunque haya algo parecido ese día' } }, required: ['titulo', 'fecha'] } },
   { name: 'guardar_adjunto', description: 'Guarda una foto o documento que Víctor te acaba de mandar (adjunto con su id, p. ej. "a1"). destino: "necesidades" = fotos del programa de necesidades del proyecto; "obra" = fotos de una visita a obra; "documento" = archivo en los Documentos del proyecto; "referencia" = imagen de inspiración (sin proyecto, tablero general de referencias). Para todo menos "referencia" hace falta el proyecto. Si no está claro el proyecto o el destino, pregunta antes de guardar.', input_schema: { type: 'object', properties: { adjunto: { type: 'string' }, destino: { type: 'string', enum: ['necesidades', 'obra', 'documento', 'referencia'] }, proyecto: { type: 'string' }, titulo: { type: 'string', description: 'título o pie de foto breve' }, nota: { type: 'string', description: 'detalle: qué se ve, qué te gusta, qué hay que tener en cuenta' }, categoria: { type: 'string', description: 'solo referencias: tipo de espacio o estilo' } }, required: ['adjunto', 'destino'] } },
   { name: 'guardar_nota_proyecto', description: 'Guarda una nota en los Documentos de un proyecto: acta de reunión, resumen de visita a obra, transcripción, decisiones. Escribe un resumen ordenado (acuerdos, medidas, decisiones, pendientes). Con incluir_original=true se adjunta además, tal cual, el mensaje completo de Víctor (útil para transcripciones largas: no las copies tú).', input_schema: { type: 'object', properties: { proyecto: { type: 'string' }, titulo: { type: 'string' }, tipo: { type: 'string', enum: ['reunion', 'obra', 'nota'] }, resumen: { type: 'string' }, incluir_original: { type: 'boolean' } }, required: ['proyecto', 'titulo', 'resumen'] } },
@@ -163,10 +176,37 @@ ponAlmacen(leerJson, guardarJson);
 // Palabras clave de un texto (sin tildes, sin palabras cortas ni de relleno) para detectar cosas ya apuntadas que se parecen
 const RELLENO = new Set(['para', 'hacer', 'tengo', 'tiene', 'esto', 'este', 'esta', 'sobre', 'cosa', 'tarea', 'revisar', 'hablar', 'llamar', 'enviar', 'mandar', 'preparar', 'terminar']);
 const palabras = (t) => new Set(String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3 && !RELLENO.has(w)));
-const seParecen = (a, b) => { const A = palabras(a), B = palabras(b); if (!A.size || !B.size) return false; let c = 0; A.forEach(w => { if (B.has(w)) c++; }); return (c >= 2 && c / Math.min(A.size, B.size) >= 0.67) || c >= 3; };
+const STOPW = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'e', 'o', 'u', 'con', 'sin', 'para', 'por', 'a', 'al', 'en', 'un', 'una', 'unos', 'unas', 'que', 'se', 'su', 'sus', 'mi', 'mis', 'le', 'lo', 'es', 'ya', 'como', 'mas', 'hay', 'tema', 'cosa', 'tarea', 'sobre', 'esto', 'esta', 'este', 'hacer', 'tengo', 'tiene', 'tenemos', 'quiero', 'toca', 'falta', 'poner']);
+const SINON = { llamar: 'contactar', llamada: 'contactar', telefonear: 'contactar', hablar: 'contactar', escribir: 'contactar', avisar: 'contactar', contactar: 'contactar', mandar: 'enviar', remitir: 'enviar', pasar: 'enviar', compartir: 'enviar', enviar: 'enviar', repasar: 'revisar', comprobar: 'revisar', mirar: 'revisar', chequear: 'revisar', validar: 'revisar', revisar: 'revisar', elaborar: 'preparar', redactar: 'preparar', montar: 'preparar', armar: 'preparar', preparar: 'preparar', crear: 'preparar', disenar: 'disenar', diseno: 'disenar', presu: 'presupuesto', ppto: 'presupuesto', oferta: 'presupuesto', cotizacion: 'presupuesto', propuesta: 'presupuesto', presupuesto: 'presupuesto', cliente: 'cliente', clientes: 'cliente', planos: 'plano', plano: 'plano', renders: 'render', render: 'render', visita: 'visita', reunion: 'reunion', cita: 'reunion', quedada: 'reunion', pedir: 'pedir', solicitar: 'pedir', encargar: 'pedir', pedido: 'pedir', comprar: 'pedir' };
+const raiz = (w) => { w = w.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9ñ]/g, ''); if (SINON[w]) return SINON[w]; if (w.length > 5) w = w.replace(/(aciones|amientos|acion|amiento|iendo|ando|aron|ados|adas|ado|ada|idos|idas|ido|ida|ar|er|ir|es|os|as|s)$/, ''); return SINON[w] || w; };
+const fichas = (t) => new Set(String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9ñ]+/).filter(w => w.length > 2 && !STOPW.has(w)).map(raiz).filter(w => w.length > 1));
+const bigramas = (s) => { const x = norm(s).replace(/ /g, ''); const m = new Map(); for (let i = 0; i < x.length - 1; i++) { const g = x.slice(i, i + 2); m.set(g, (m.get(g) || 0) + 1); } return m; };
+function dice(a, b) { const A = bigramas(a), B = bigramas(b); let ta = 0, tb = 0, c = 0; A.forEach(v => { ta += v; }); B.forEach(v => { tb += v; }); A.forEach((v, k) => { c += Math.min(v, B.get(k) || 0); }); return ta + tb ? (2 * c) / (ta + tb) : 0; }
+// 0..1: cuánto se parecen dos textos de tarea aunque estén dichos de otra manera
+function parecido(a, b) {
+  const A = fichas(a), B = fichas(b); if (!A.size || !B.size) return 0;
+  let c = 0; A.forEach(w => { if (B.has(w)) c++; });
+  const ratio = c / Math.min(A.size, B.size), amplio = c / Math.max(A.size, B.size);
+  const porPalabras = c === 0 ? 0 : Math.min(1, 0.55 * ratio + 0.35 * amplio + (c >= 2 ? 0.1 : 0));
+  return Math.max(porPalabras, dice(a, b) * 0.9);
+}
+const seParecen = (a, b) => parecido(a, b) >= 0.62;
+const seParecenViejo = (a, b) => { const A = palabras(a), B = palabras(b); if (!A.size || !B.size) return false; let c = 0; A.forEach(w => { if (B.has(w)) c++; }); return (c >= 2 && c / Math.min(A.size, B.size) >= 0.67) || c >= 3; };
 async function tareasParecidas(titulo, projectId) {
   const { data } = await supabase.from('tasks').select('id, title, due_date, priority, project:client_projects(client_name, project_name)').eq('done', false).limit(500);
-  return (data || []).filter(t => seParecen(titulo, t.title)).slice(0, 5).map(t => ({ id: t.id, titulo: t.title, fecha: t.due_date, proyecto: t.project ? (t.project.project_name || t.project.client_name) : null }));
+  return (data || []).map(t => ({ t, s: parecido(titulo, t.title) })).filter(x => x.s >= 0.62).sort((a, b) => b.s - a.s).slice(0, 5).map(({ t }) => ({ id: t.id, titulo: t.title, fecha: t.due_date, proyecto: t.project ? (t.project.project_name || t.project.client_name) : null }));
+}
+// Encuentra UNA tarea pendiente por su id (completo o las primeras letras) o por cómo la nombre Víctor (otras palabras, plurales, apodos…). Si hay duda devuelve las candidatas.
+async function resolverTarea(ref) {
+  const r = String(ref || '').trim(); if (!r) return { error: 'Dime qué tarea (su id o su nombre).' };
+  const { data } = await supabase.from('tasks').select('id, title, due_date, priority, project:client_projects(client_name, project_name)').eq('done', false).limit(600);
+  const todas = data || [], ficha = x => ({ id: x.id, titulo: x.title, fecha: x.due_date, proyecto: x.project ? (x.project.project_name || x.project.client_name) : null });
+  if (UUID.test(r)) { const x = todas.find(y => y.id === r); return x ? { tarea: x } : { error: 'No encuentro esa tarea entre las pendientes (¿ya está hecha?).' }; }
+  if (/^[0-9a-f]{6,12}$/i.test(r)) { const m = todas.filter(y => y.id.toLowerCase().startsWith(r.toLowerCase())); if (m.length === 1) return { tarea: m[0] }; if (m.length > 1) return { ambiguo: true, candidatas: m.slice(0, 5).map(ficha) }; }
+  const pun = todas.map(x => ({ x, s: Math.max(parecido(r, x.title), norm(x.title).includes(norm(r)) && norm(r).length >= 4 ? 0.9 : 0, x.project ? parecido(r, x.title + ' ' + (x.project.project_name || '') + ' ' + (x.project.client_name || '')) * 0.95 : 0) })).filter(y => y.s >= 0.4).sort((a, b) => b.s - a.s);
+  if (!pun.length) return { error: 'No encuentro ninguna tarea pendiente que se parezca a "' + r + '". Mira listar_tareas.' };
+  if (pun[0].s >= 0.75 && (!pun[1] || pun[0].s - pun[1].s >= 0.15)) return { tarea: pun[0].x };
+  return { ambiguo: true, candidatas: pun.slice(0, 5).map(y => ficha(y.x)) };
 }
 // ── presupuestos: buscar uno existente, buscar productos del catálogo y generar el PDF ──
 const PRODUCT_SELECT = 'id, name, brand, price, category_id, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, purchase_dto, default_margin_pct, pricing_unit, included_accessories, category:catalog_categories!catalog_products_category_id_fkey(type)';
@@ -437,8 +477,15 @@ async function ejecutar(nombre, input, ctx = {}) {
     const todas = (ts || []).slice().sort(orden);
     return { hoy: fecha, total_pendientes: todas.length, atrasadas: todas.filter(x => x.due_date && x.due_date < fecha).map(f), de_hoy: todas.filter(x => x.due_date === fecha).map(f), proximas: todas.filter(x => x.due_date && x.due_date > fecha).slice(0, 30).map(f), sin_fecha: todas.filter(x => !x.due_date).slice(0, 60).map(f) };
   }
+  if (nombre === 'buscar_tarea') {
+    const q = String(input.texto || '').trim(); if (!q) return { error: 'Dime qué tarea buscas.' };
+    const { data } = await supabase.from('tasks').select('id, title, due_date, priority, project:client_projects(client_name, project_name)').eq('done', false).limit(600);
+    const r = (data || []).map(x => ({ x, s: Math.max(parecido(q, x.title), norm(x.title).includes(norm(q)) && norm(q).length >= 4 ? 0.9 : 0, x.project ? parecido(q, x.title + ' ' + (x.project.project_name || '') + ' ' + (x.project.client_name || '')) * 0.95 : 0) })).filter(y => y.s >= 0.35).sort((a, b) => b.s - a.s).slice(0, 6);
+    return r.length ? { coincidencias: r.map(y => ({ id: y.x.id, titulo: y.x.title, fecha: y.x.due_date, proyecto: y.x.project ? (y.x.project.project_name || y.x.project.client_name) : null, parecido: Math.round(y.s * 100) + '%' })), nota: 'Si la primera se parece mucho, es la misma tarea: no crees otra.' } : { coincidencias: [], nota: 'No hay nada parecido apuntado: puedes crearla.' };
+  }
   if (nombre === 'actualizar_tarea') {
-    if (!UUID.test(String(input.id || ''))) return { error: 'Id de tarea no válido.' };
+    const rs = await resolverTarea(input.id); if (rs.error) return rs; if (rs.ambiguo) return { ambiguo: true, candidatas: rs.candidatas, nota: 'Hay varias que encajan: pregúntale a Víctor cuál (con sus títulos).' };
+    input.id = rs.tarea.id;
     const cambios = {}; if (input.fecha !== undefined) { if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fecha)) return { error: 'La fecha debe ser AAAA-MM-DD.' }; cambios.due_date = input.fecha; }
     if (input.prioridad) cambios.priority = input.prioridad; if (input.titulo) cambios.title = String(input.titulo).trim().slice(0, 200);
     if (input.asignada_a) { const e = await empleadoPor(input.asignada_a); if (!e) return { error: 'No encuentro a "' + input.asignada_a + '".' }; cambios.assigned_to = e.id; }
@@ -469,7 +516,8 @@ async function ejecutar(nombre, input, ctx = {}) {
     return { creada: true, id: data.id, titulo: data.title, fecha: data.due_date, proyecto: proyecto ? (proyecto.project_name || proyecto.client_name) : null };
   }
   if (nombre === 'completar_tarea') {
-    if (!UUID.test(String(input.id || ''))) return { error: 'Id de tarea no válido.' };
+    const rs = await resolverTarea(input.id); if (rs.error) return rs; if (rs.ambiguo) return { ambiguo: true, candidatas: rs.candidatas, nota: 'Hay varias que encajan: pregúntale a Víctor cuál (con sus títulos).' };
+    input.id = rs.tarea.id;
     const { data, error } = await supabase.from('tasks').update({ done: true }).eq('id', input.id).select('id, title').maybeSingle();
     if (error || !data) return { error: 'No he podido marcarla.' };
     return { hecha: true, titulo: data.title };
@@ -693,7 +741,8 @@ async function ejecutar(nombre, input, ctx = {}) {
 function sistema(mem, priv, acc, resumenCharla) {
   const { fecha, hora, dia } = madrid();
   const hechos = (mem.hechos || []).slice(-120).map(h => '- [' + h.id + '] ' + (h.etiqueta ? '(' + h.etiqueta + ') ' : '') + h.texto + ' (' + h.fecha + ')').join('\n') || '(todavía no hay recuerdos guardados)';
-  return 'Eres el asistente personal de Víctor Palomo, fundador de Ranuse Design (diseño de espacios deportivos y gimnasios). Hablas con él por mensajería, desde el móvil. Ahora es ' + dia + ' ' + fecha + ', ' + hora + ' (hora de Madrid).\n' +
+  return 'Eres el asistente personal de Víctor Palomo, fundador de Ranuse Design (diseño de espacios deportivos y gimnasios). Hablas con él por mensajería, desde el móvil. AHORA MISMO es ' + ahoraLargo() + ' (' + dia + ' ' + fecha + ', ' + hora + '). Este es TU RELOJ: es la fecha y la hora reales, en Madrid, España. Nunca preguntes qué día es ni te bases en otra fecha.\n' +
+    'FECHAS EN LA CONVERSACIÓN: los mensajes antiguos de Víctor llevan entre corchetes cuándo los escribió (ej. [lun 9 nov, 18:32]). Cuando dijera «hoy», «mañana» o «el viernes», se refería a ESA fecha, no a la de ahora: traduce siempre con el calendario de abajo.\n' +
     'CALENDARIO (úsalo tal cual para resolver "mañana", "el viernes", "el lunes que viene"; NUNCA calcules de cabeza el día de la semana):\n' + calendario() + '\n' +
     '- Español, tono cercano y directo, como un compañero de confianza. Sin markdown (solo *negrita* con un asterisco si hace falta). Víctor no es técnico: sin jerga.\n' +
     '- BREVEDAD, REGLA DURA: Víctor NO lee mensajes largos. Responde en 1 a 4 líneas (unas 50 palabras) por defecto. Primero la respuesta o la acción hecha, sin saludos ni rodeos ni resúmenes de lo que acabas de hacer. Listas de 5 elementos como máximo y cada uno en una línea. Si hay mucho que contar, da lo esencial y pregunta "¿quieres el detalle?", o ofrécelo en PDF con crear_pdf. Haz como máximo UNA pregunta por mensaje. Si pide explícitamente algo largo (informe, guion, análisis), entonces sí, pero en PDF o en trozos que se lean en 20 segundos.\n' +
@@ -709,6 +758,7 @@ function sistema(mem, priv, acc, resumenCharla) {
     '- PRESUPUESTOS (seguridad): nunca inventes ni copies un número de presupuesto; si Víctor no lo dice, búscalo con buscar_presupuestos por cliente o nombre. Cada vez que mandes un PDF di en una frase: número, nombre, nº de líneas, total y los avisos de la ficha (líneas a 0 €, descuento global…). Si Víctor pide cambios, aplícalos y manda un PDF NUEVO; nunca reenvíes uno anterior. Si no lo encuentras o hay varios, pregunta cuál en vez de adivinar. Un presupuesto NUEVO solo si Víctor lo pide expresamente (crear_nuevo=true).\n' +
     '- NOMBRES: Víctor llama a clientes y proyectos de formas distintas (apodo, ciudad, apellido). Si una herramienta devuelve candidatos o dice que hay varios, pregúntale cuál (nombra las opciones) y cuando lo confirme guarda el apodo con guardar_alias. No asumas.\n' +
     '- Puedes crear proyectos nuevos con crear_proyecto (nombre, cliente y tipo comercial u home_gym; deduce lo que puedas y no preguntes más de lo imprescindible). Nunca digas que no puedes crear proyectos.\n' +
+    '- UNA COSA, UNA TAREA (REGLA DURA): Víctor nombra las tareas de memoria, con otras palabras, apodos o abreviado. Abajo tienes TAREAS PENDIENTES con su id corto. Antes de crear NADA, comprueba esa lista (y buscar_tarea si dudas): si lo que dice es el mismo asunto aunque lo diga distinto («mandar presu a Adil» = «Presupuesto Adil Gym»), es LA MISMA tarea: actualízala o complétala, no hagas otra. Para tocar una tarea usa el id corto de la lista o su nombre aproximado. Si dudas entre dos, pregunta «¿te refieres a «título exacto»?» con una pregunta corta. Nunca le exijas el nombre tal cual.\n' +
     '- AVÍSALE DE LO YA APUNTADO: cuando Víctor te diga que tiene que hacer algo, antes de crear nada mira si ya hay algo relacionado (listar_tareas) y, si lo hay, recuérdaselo: "ya tenías apuntado X para el día Y, ¿lo cambio o lo sumo?". Si una herramienta te devuelve posible_duplicado, no insistas en crearlo: cuéntale lo que ya había y pregúntale.\n' +
     '- TAREAS Y ORGANIZACIÓN: cuando pida sus tareas, lo pendiente o ayuda para organizarse, usa listar_tareas y dale TODAS, no un resumen: agrupadas (atrasadas, hoy, próximas, sin fecha), una línea por tarea con su proyecto; si son más de 15, agrúpalas por proyecto con el número y ofrécele el listado completo en PDF. Después, SIEMPRE, propón su plan: las 3 prioridades de hoy en orden ("1. … 2. … 3. …") justificadas en una frase cada una (plazos, urgencia del proyecto, lo que desbloquea a otros) y pregunta si le pones fecha de hoy a esas tareas; si dice que sí, usa actualizar_tarea. Ve guiándole: cuando termine algo, ofrécele lo siguiente.\n' +
     '- Cuando Víctor salude por la mañana o pregunte por su día, llama a agenda_de_hoy y dáselo ordenado: primero lo atrasado y urgente, luego lo de hoy, y los eventos con hora. Termina con una sugerencia breve de por dónde empezar.\n' +
@@ -729,6 +779,16 @@ function sistema(mem, priv, acc, resumenCharla) {
     '\n\nRecuerdos PERSONALES de Víctor (privados; úsalos para ayudarle pero no los muestres ni los saques si no viene a cuento):\n' + ((priv.hechos || []).slice(-60).map(h => '- [' + h.id + '] ' + h.texto).join('\n') || '(ninguno)') +
     (resumenCharla ? '\n\nRESUMEN de lo que habéis hablado antes (más antiguo que los mensajes que ves; úsalo como memoria de la conversación):\n' + resumenCharla : '') +
     '\n\nLO QUE HAS HECHO TÚ en el CRM últimamente (no lo olvides ni lo repitas; si Víctor dice que ya te lo dijo, créele y compruébalo aquí y en la conversación):\n' + (((acc && acc.l) || []).slice(-25).map(a => '- ' + a.t + ' · ' + a.x).join('\n') || '(nada todavía)');
+}
+
+// Las tareas pendientes, siempre a la vista del asistente (id corto · título · fecha · proyecto), para que reconozca de qué habla Víctor sin duplicar
+async function bloqueTareasPendientes() {
+  const { fecha } = madrid();
+  const { data } = await supabase.from('tasks').select('id, title, due_date, project:client_projects(client_name, project_name)').eq('done', false).limit(500);
+  const l = (data || []).slice().sort((a, b) => (a.due_date && b.due_date ? a.due_date.localeCompare(b.due_date) : a.due_date ? -1 : b.due_date ? 1 : 0));
+  if (!l.length) return '\n\nTAREAS PENDIENTES: ninguna.';
+  const fmt = x => '[' + x.id.slice(0, 8) + '] ' + String(x.title).slice(0, 90) + (x.due_date ? ' · ' + (x.due_date < fecha ? 'ATRASADA ' : '') + x.due_date : ' · sin fecha') + (x.project ? ' · ' + (x.project.project_name || x.project.client_name) : '');
+  return '\n\nTAREAS PENDIENTES (' + l.length + ' en total; id corto · título · fecha · proyecto). Es lo que ya está apuntado: compara con esto antes de crear nada' + (l.length > 90 ? ' (aquí van las 90 más urgentes; usa buscar_tarea para el resto)' : '') + ':\n' + l.slice(0, 90).map(fmt).join('\n');
 }
 
 async function resumir(previo, mensajes) {
@@ -778,7 +838,7 @@ async function aContenido(r) {
 export async function responderAsistente({ chatId, texto, adjuntos = [], avisar = null }) {
   const [mem, charla, priv, acc] = await Promise.all([leerJson(RUTA_MEM, { hechos: [] }), leerJson(RUTA_CHARLA, {}), leerJson(RUTA_PRIV, { hechos: [] }), leerJson(RUTA_ACC, { l: [] })]);
   if (!Array.isArray(acc.l)) acc.l = [];
-  const previoCrudo = (charla[chatId] || []).slice(-40), previo = previoCrudo.map(m => ({ role: m.role, content: m.content }));
+  const previoCrudo = (charla[chatId] || []).slice(-40), previo = previoCrudo.map(m => ({ role: m.role, content: (m.role === 'user' && m.t && typeof m.content === 'string') ? '[' + marcaTiempo(m.t) + '] ' + m.content : m.content }));
   const ahoraMs = Date.now(), previos = (recientes.get(chatId) || []).filter(r => ahoraMs - r.t < 60 * 60 * 1000 && !adjuntos.find(a => a.id === r.id));
   const ctx = { adjuntos: [...adjuntos, ...previos], textoUsuario: texto, salida: [], avisar };
   const txtRecientes = previos.length ? '\n\nARCHIVOS que Víctor te mandó hace poco y SIGUES teniendo disponibles (puedes usarlos con sus herramientas, p. ej. guardar_adjunto, crear_plano, editar_foto): ' + previos.map(r => { let det = r.mime; if (r.mime === 'application/pdf') { try { det = 'PDF de ' + infoPdf(r.buffer).paginas + ' páginas'; } catch { det = 'PDF'; } } return r.id + ' (' + det + (r.nombre ? ', "' + r.nombre + '"' : '') + ', hace ' + Math.round((ahoraMs - r.t) / 60000) + ' min)'; }).join('; ') : '';
@@ -788,7 +848,7 @@ export async function responderAsistente({ chatId, texto, adjuntos = [], avisar 
     { type: 'text', text: texto + '\n\n[Adjuntos recibidos: ' + adjuntos.map(a => a.id + ' (' + a.mime + (a.nombre ? ', ' + a.nombre : '') + ')').join('; ') + ']' },
   ] : texto;
   const mensajes = [...previo, { role: 'user', content: bloquesUsuario }];
-  const salud = await bloqueSaludSistema().catch(() => '');
+  const salud = (await bloqueSaludSistema().catch(() => '')) + (await bloqueTareasPendientes().catch(() => ''));
   let respuesta = '';
   for (let vuelta = 0; vuelta < 7; vuelta++) {
     const out = await callClaude({ system: sistema(mem, priv, acc, charla['_resumen:' + chatId]) + salud + txtRecientes, messages: mensajes, tools: TOOLS, maxTokens: 2500 });
@@ -801,7 +861,7 @@ export async function responderAsistente({ chatId, texto, adjuntos = [], avisar 
     mensajes.push({ role: 'user', content: resultados });
   }
   if (!respuesta) respuesta = 'Me he liado un poco con eso. ¿Me lo repites con otras palabras?';
-  let nuevaCharla = ctx.borrarCharla ? [] : [...(charla[chatId] || []), { role: 'user', content: texto + (adjuntos.length ? ' [adjuntó ' + adjuntos.length + ' archivo(s)]' : ''), ...(ctx.privado ? { privado: true } : {}) }, { role: 'assistant', content: respuesta, ...(ctx.privado ? { privado: true } : {}) }];
+  let nuevaCharla = ctx.borrarCharla ? [] : [...(charla[chatId] || []), { role: 'user', t: ahoraMs, content: texto + (adjuntos.length ? ' [adjuntó ' + adjuntos.length + ' archivo(s)]' : ''), ...(ctx.privado ? { privado: true } : {}) }, { role: 'assistant', t: Date.now(), content: respuesta, ...(ctx.privado ? { privado: true } : {}) }];
   if (ctx.borrarCharla) delete charla['_resumen:' + chatId];
   else if (nuevaCharla.length > 60) { const viejos = nuevaCharla.slice(0, nuevaCharla.length - 40); nuevaCharla = nuevaCharla.slice(-40); charla['_resumen:' + chatId] = await resumir(charla['_resumen:' + chatId], viejos); }
   charla[chatId] = nuevaCharla;
