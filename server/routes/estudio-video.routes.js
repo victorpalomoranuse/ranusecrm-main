@@ -121,7 +121,8 @@ const textoReglasCompleto = async () => {
   const ap = m.hechos.slice(-60).map(h => '- ' + h.texto).join('\n');
   let redes = ''; try {
     const a = await leerJson('crm/redes/aprendizaje.json', null), v = await leerJson('crm/redes/analisis_videos.json', null);
-    const l = [...(a?.para_el_editor || []), ...(a?.ganchos_ganadores || []).map(x => 'Gancho que le funciona: ' + x), ...(v?.reglas_edicion || [])].slice(0, 16);
+    const vz = await leerJson('crm/redes/voz_marca.json', null); const vozL = vz ? ['Su voz real: ' + vz.resumen, ...(vz.evitar || []).map(x => 'No suena a él: ' + x)] : [];
+    const l = [...vozL, ...(a?.para_el_editor || []), ...(a?.ganchos_ganadores || []).map(x => 'Gancho que le funciona: ' + x), ...(v?.reglas_edicion || [])].slice(0, 16);
     if (l.length) redes = '\n\nLO APRENDIDO DE SUS REDES (de sus reels reales y de su nicho; úsalo como criterio de edición y de gancho salvo que choque con sus preferencias):\n' + l.map(x => '- ' + x).join('\n');
   } catch { /* sin datos de redes */ }
   return base + redes + (ap ? '\n\nPREFERENCIAS QUE EL EDITOR HA APRENDIDO DE VÍCTOR (las ha ido aprendiendo hablando con él; son obligatorias, por encima de lo anterior si chocan):\n' + ap : '');

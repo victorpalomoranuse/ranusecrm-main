@@ -1351,6 +1351,45 @@ function InicioRedes({ ir }) {
     </div>
   );
 }
+function VozMarca() {
+  const [v, setV] = useState(null), [err, setErr] = useState(''), [trab, setTrab] = useState(false);
+  useEffect(() => { api.get('/redes/voz').then(r => setV(r.data)).catch(() => {}); }, []);
+  const saca = async () => { setTrab(true); setErr(''); try { const r = await api.post('/redes/voz/sacar', {}, { timeout: 120000 }); setV(r.data); } catch (e) { setErr(e.response?.data?.error || 'No se pudo sacar la voz'); } setTrab(false); };
+  return (
+    <div className="rd-card" style={{ gap: 12 }}>
+      <h3>🗣 Tu voz real</h3>
+      <div style={{ ...mut, fontSize: '0.84rem' }}>La IA lee lo que dices y escribes de verdad y saca cómo hablas. Los guiones, el asistente de WhatsApp y el editor la usan.</div>
+      <div><button className="rd-btn pri" disabled={trab} onClick={saca}>{trab ? 'Escuchándote…' : v?.fecha ? '🔄 Volver a sacarla' : '🗣 Sacar mi voz de mis reels'}</button></div>
+      {err && <div style={{ color: '#ff9b9b' }}>{err}</div>}
+      {v?.resumen && <>
+        <div style={{ fontSize: '1rem', lineHeight: 1.5 }}>{v.resumen}</div>
+        <span className="rd-chip" style={{ alignSelf: 'flex-start' }}>Sacada de {v.fuente}</span>
+        {(v.muletillas || []).length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{v.muletillas.map((x, i) => <span key={i} className="rd-chip arena">«{x}»</span>)}</div>}
+        <div className="rd-grid2">
+          {(v.rasgos || []).length > 0 && <Tarjeta titulo="Cómo hablas"><Lista items={v.rasgos} /></Tarjeta>}
+          {(v.como_abre || []).length > 0 && <Tarjeta titulo="Cómo abres"><Lista items={v.como_abre} /></Tarjeta>}
+          {(v.como_cierra || []).length > 0 && <Tarjeta titulo="Cómo cierras"><Lista items={v.como_cierra} /></Tarjeta>}
+          {(v.evitar || []).length > 0 && <Tarjeta titulo="No suena a ti" color="#f29a9a"><Lista items={v.evitar} color="#f29a9a" /></Tarjeta>}
+        </div>
+      </>}
+    </div>
+  );
+}
+const SECC_DET = [['gancho', '🪝 Cómo arranca'], ['grabacion', '🎥 Cómo está grabado'], ['presencia', '🙋 Tu presencia y gestos'], ['edicion', '✂️ Edición'], ['audio', '🔊 Audio'], ['narrativa', '📖 Historia']];
+const verVal = (v) => Array.isArray(v) ? v.map(x => typeof x === 'object' ? Object.values(x).join(' · ') : String(x)).join(' | ') : (v && typeof v === 'object') ? Object.entries(v).map(([k, x]) => k.replace(/_/g, ' ') + ': ' + verVal(x)).join(' — ') : String(v ?? '');
+function DetalleReels({ lista }) {
+  if (!lista || !lista.length) return null;
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><b>🔬 Análisis a fondo de cada reel</b>
+    {lista.map(r => <details key={r.id} className="rd-more"><summary>{(r.pie || '(sin texto)').slice(0, 70)} · {r.puntuacion}</summary>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0', fontSize: '0.86rem', lineHeight: 1.5 }}>
+        {SECC_DET.filter(([k]) => r.detalle[k]).map(([k, n]) => <div key={k}><b>{n}</b><div style={mut}>{verVal(r.detalle[k])}</div></div>)}
+        {(r.detalle.momentos_clave || []).length > 0 && <div><b>⏱ Momentos clave</b><div style={mut}>{r.detalle.momentos_clave.map(m => 's' + m.segundo + ': ' + m.que_pasa + ' → ' + m.por_que_funciona).join(' | ')}</div></div>}
+        {(r.detalle.replicar || []).length > 0 && <div><b>✅ Para copiar</b><Lista items={r.detalle.replicar} color="#8fdba0" /></div>}
+        {(r.detalle.mejorar || []).length > 0 && <div><b>🔧 Para mejorar</b><Lista items={r.detalle.mejorar} color="#f2c46d" /></div>}
+        {r.enlace && <a href={r.enlace} target="_blank" rel="noreferrer" style={{ color: '#8fdba0' }}>Ver el reel →</a>}
+      </div></details>)}
+  </div>;
+}
 function SemanaTipo({ dias }) {
   const [ab, setAb] = useState(null), [taller, setTaller] = useState(null);
   return <>
@@ -1501,6 +1540,7 @@ function PestanaAnalizador() {
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{vid.analisis.duracion_ideal_s && <span className="rd-chip">⏱ Duración ideal: {vid.analisis.duracion_ideal_s}</span>}{vid.analisis.ritmo_ideal && <span className="rd-chip">✂️ Plano medio: {vid.analisis.ritmo_ideal}</span>}<span className="rd-chip">{vid.analisis.n} reels analizados</span></div>
               {(vid.analisis.reglas_edicion || []).length > 0 && <div><b>🤖 Reglas que ya usa el editor</b><Lista items={vid.analisis.reglas_edicion} /></div>}
+              <DetalleReels lista={vid.analisis.detalle_reels} />
               {vid.analisis.fiabilidad && <div style={{ ...mut, fontSize: '0.78rem' }}>Fiabilidad: {vid.analisis.fiabilidad}</div>}
             </div>}
           </div>
@@ -1648,7 +1688,7 @@ export function SectionRedes() {
       </div>
       {seccion === 'ideas' && <PestanaIdeas />}
       {seccion === 'guion' && <Guionizador />}
-      {seccion === 'marca' && <div className="rd-card"><CajaReglas /></div>}
+      {seccion === 'marca' && <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}><VozMarca /><div className="rd-card"><CajaReglas /></div></div>}
       {seccion === 'medir' && <PestanaAnalizador />}
     </div>
   );
