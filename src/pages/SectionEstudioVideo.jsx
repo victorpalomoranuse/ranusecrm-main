@@ -1055,7 +1055,7 @@ function CajaReglas() {
         <div style={{ fontWeight: 600, flex: 1 }}>Voz y reglas de marca (para todos los vídeos)</div>
         <button className="ap-btn ap-btn-sm" onClick={() => setAbierto(!abierto)}>{abierto ? 'Cerrar' : 'Ver y editar'}</button>
       </div>
-      <div style={{ ...mut, marginTop: 4 }}>Cómo habla Ranuse, qué quiere transmitir y qué evitar. La IA lo tiene en cuenta al elegir y titular. Añade tus propias normas.</div>
+      <div style={{ ...mut, marginTop: 4 }}>Es un texto base que escribimos al montar la herramienta (tono, qué evitar), más lo que tú añadas aquí. Todavía NO se ha sacado de tus vídeos. La IA lo tiene en cuenta al elegir y titular.</div>
       {abierto && (<>
         <textarea className="ap-field-input" style={{ width: '100%', minHeight: 190, marginTop: 8 }} value={texto} onChange={e => setTexto(e.target.value)} />
         <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1597,8 +1597,8 @@ function PestanaAnalizador() {
 
 // Departamento de redes: ideas, calendario y las reglas de marca (se irá ampliando con publicar y medir)
 export function SectionRedes() {
-  const [seccion, setSeccion] = useState(() => { try { return new URLSearchParams(window.location.search).get('redes') ? 'medir' : 'ideas'; } catch { return 'ideas'; } });
-  const TABS = [['ideas', Wand2, 'Ideas y calendario'], ['guion', Music, 'Guionizador'], ['marca', Settings2, 'Voz de marca'], ['medir', Film, 'Analizador']];
+  const [seccion, setSeccion] = useState(() => { try { return new URLSearchParams(window.location.search).get('redes') ? 'medir' : 'medir'; } catch { return 'medir'; } });
+  const TABS = [['medir', Film, 'Analizador'], ['ideas', Wand2, 'Ideas y calendario'], ['guion', Music, 'Guionizador'], ['marca', Settings2, 'Voz de marca']];
   return (
     <div className="ev-root rd-wrap">
       <style>{ESTILO_SELECT + ESTILO_REDES}</style>
