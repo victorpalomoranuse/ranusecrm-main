@@ -353,6 +353,7 @@ function aplicarRegiones(raizObj, prefijo, regiones, texturas) {
 
 // Modelos 3D asignados a los productos: se descargan una vez y se reutilizan (se clonan) en cada copia
 const cacheModelos = new Map();
+const cacheAristas = new WeakMap(); // geometría → sus aristas (se calculan una sola vez)
 // Registro de modelos pesados: mientras la cámara se mueve, los que se ven pequeños o lejanos se simplifican (ver el bucle del visor)
 export function registraLod(a, mm, prox) {
   const r = new THREE.Box3().setFromObject(mm).getSize(new THREE.Vector3()).length() / 2;
@@ -4557,25 +4558,30 @@ export default function Visor3D({ cliente = false }) {
   const bTop = { background: '#34302c', color: '#fff', border: '1px solid #4f4842', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' };
   const bOn = { background: '#6b6159', borderColor: '#6b6159' };
   const sepTop = { width: 1, height: 22, background: '#444', margin: '0 2px', flex: 'none' };
-  // Vista con aristas (como en SketchUp): un trazo oscuro en los cantos de muros, máquinas, modelos y cajas. Se rehace cuando cambia la escena.
+  // Vista con aristas (como en SketchUp): un trazo oscuro en los cantos de muros, máquinas, modelos y cajas.
+  // Es lo más pesado del visor: se espera un momento a que la escena deje de cambiar, las aristas de una malla se calculan UNA vez (se reutilizan en todas las copias) y los modelos muy densos se saltan.
   useEffect(() => {
     try { localStorage.setItem('visor3dAristas', aristas ? '1' : '0'); } catch { /* sin almacenamiento */ }
     const a = api3d.current; if (!a.scene || estado === 'cargando') return undefined;
-    const quita = () => { const viejos = []; a.scene.traverse(x => { if (x.userData?.arista) viejos.push(x); }); viejos.forEach(x => { x.parent?.remove(x); x.geometry?.dispose(); }); };
-    quita();
-    if (aristas) {
-      const mat = new THREE.LineBasicMaterial({ color: 0x1c1c1c });
-      let total = 0;
-      const poner = (raiz) => raiz?.traverse(x => {
-        if (!x.isMesh || x.userData.arista || x.userData.hit || x.userData.overlay || !x.geometry || x.material?.visible === false) return;
-        const mt = Array.isArray(x.material) ? x.material[0] : x.material; if (mt?.transparent && mt.opacity < 0.5) return;
-        const n = x.geometry.attributes?.position?.count || 0; if (!n || n > 60000 || total > 600000) return; total += n;
-        const e = new THREE.LineSegments(new THREE.EdgesGeometry(x.geometry, 28), mat); e.userData.arista = true; e.raycast = () => {}; e.renderOrder = 2; x.add(e);
-      });
-      poner(a.raiz); poner(a.esc);
-    }
-    a.despertar?.();
-    return undefined;
+    if (!aristas && !a.hayAristas) return undefined;
+    const tm = setTimeout(() => {
+      const viejos = []; a.scene.traverse(x => { if (x.userData?.arista) viejos.push(x); }); viejos.forEach(x => x.parent?.remove(x));
+      if (aristas) {
+        a.matArista = a.matArista || new THREE.LineBasicMaterial({ color: 0x1c1c1c });
+        let total = 0;
+        const poner = (raiz) => raiz?.traverse(x => {
+          if (!x.isMesh || x.userData.arista || x.userData.hit || x.userData.overlay || !x.geometry || x.material?.visible === false) return;
+          const mt = Array.isArray(x.material) ? x.material[0] : x.material; if (mt?.transparent && mt.opacity < 0.5) return;
+          const n = x.geometry.attributes?.position?.count || 0; if (!n || n > 40000) return;
+          let eg = cacheAristas.get(x.geometry);
+          if (!eg) { if (total + n > 300000) return; total += n; eg = new THREE.EdgesGeometry(x.geometry, 28); cacheAristas.set(x.geometry, eg); }
+          const e = new THREE.LineSegments(eg, a.matArista); e.userData.arista = true; e.raycast = () => {}; e.renderOrder = 2; x.add(e);
+        });
+        poner(a.raiz); poner(a.esc);
+      }
+      a.hayAristas = aristas; a.despertar?.();
+    }, 350);
+    return () => clearTimeout(tm);
   }, [aristas, rev, objs, estado, modosEq, biblioteca, mtick, ocultas, acab, texturas]); // eslint-disable-line react-hooks/exhaustive-deps
   const itemMenu = { padding: '6px 8px', cursor: 'pointer', borderRadius: 4 };
   const railBtn = (activo, icono, etiqueta, titulo, onClick, color) => (
