@@ -1298,11 +1298,11 @@ function PestanaAnalizador() {
   const predice = () => hace('pred', async () => { const r = await api.post('/redes/instagram/predecir', { propuesta: prop, formato: propFmt }, { timeout: 200000 }); setPred(r.data.prediccion); });
   const autopsia = (id) => hace('aut' + id, async () => { const r = await api.post('/redes/instagram/autopsia', { id }, { timeout: 200000 }); setAutopsias(a => ({ ...a, [id]: r.data.autopsia })); });
   const desconecta = async () => { if (!window.confirm('¿Desconectar Instagram?')) return; await hace('des', () => api.delete('/redes/instagram')); setPubs(null); };
-  if (!e) return <div className="ap-loading">Cargando…</div>;
   const [orden, setOrden] = useState('puntuacion'), [objs, setObjs] = useState(null);
   useEffect(() => { api.get('/redes/objetivos').then(r => setObjs(r.data)).catch(() => {}); }, []);
   const cambiaObjetivo = async (id) => { try { await api.post('/redes/objetivo', { id }); setObjs(o => ({ ...o, actual: id })); await cargaPubs(); await cargar(); } catch { /* se queda */ } };
   const objAct = objs ? objs.objetivos.find(o => o.id === objs.actual) : null;
+  if (!e) return <div className="ap-loading">Cargando…</div>;
   const reales = (pubs || []).filter(p => !p.prueba), pruebas = (pubs || []).filter(p => p.prueba);
   const marca = async (id, v) => { try { await api.post('/redes/instagram/prueba', { id, prueba: v }); await cargaPubs(); } catch { /* se queda */ } };
   const ig = e.instagram, ap = e.aprendizaje, mc = e.mi_canal, pl = e.plan, top = reales.slice().sort((a, b) => orden === 'vistas' ? (b.views || b.reach || 0) - (a.views || a.reach || 0) : (b.puntuacion || 0) - (a.puntuacion || 0)).slice(0, 12), maxP = Math.max(1, ...(top.map(p => p.puntuacion || 0)));
