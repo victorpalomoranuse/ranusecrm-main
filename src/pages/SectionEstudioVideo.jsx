@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import api from '../services/api';
 import { Film, Upload, Mic, Video, Trash2, RefreshCw, Download, Plus, Check, Wand2, Settings2, Loader2, Music, Folder, ArrowLeft, Image as ImagenIcono, Play, X, Scissors } from 'lucide-react';
 
-const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '0.85rem 1rem' };
+const card = { background: 'linear-gradient(160deg,rgba(255,255,255,.055),rgba(255,255,255,.02))', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 18, padding: '1.2rem 1.3rem' };
 const mut = { color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem' };
 const ESTILO_REDES = `
 .rd-wrap{padding:28px 40px 70px;max-width:1360px;margin:0 auto;box-sizing:border-box;width:100%}
@@ -39,6 +39,23 @@ const ESTILO_REDES = `
 .rd-bar{display:flex;align-items:center;gap:10px;font-size:.82rem;margin:5px 0}.rd-bar i{display:block;height:9px;border-radius:5px;background:linear-gradient(90deg,#b9a98f,#e3d2b8)}
 .rd-lista{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px;font-size:.88rem;line-height:1.4}
 .rd-lista li{padding-left:16px;position:relative}.rd-lista li:before{content:'';position:absolute;left:0;top:.55em;width:7px;height:7px;border-radius:50%;background:var(--pt,#e3d2b8)}
+.ev-root .ap-btn{background:rgba(255,255,255,.07);color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:10px;font-weight:600;font-family:inherit}
+.ev-root .ap-btn:hover:not(:disabled){background:rgba(255,255,255,.13)}
+.ev-root .ap-btn-primary{background:#e3d2b8;color:#161513;border-color:#e3d2b8}.ev-root .ap-btn-primary:hover:not(:disabled){background:#f0e3cf}
+.ev-root .ap-field-input{border-radius:12px;padding:11px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#fff;font-family:inherit;box-sizing:border-box}
+.ev-root .ap-field-input:focus{outline:none;border-color:#e3d2b8}
+.rd-tipos{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));margin-bottom:16px}
+.rd-tipo{cursor:pointer;padding:16px;border-radius:16px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);transition:border-color .15s,background .15s,transform .15s}
+.rd-tipo:hover{border-color:rgba(227,210,184,.5);transform:translateY(-1px)}
+.rd-tipo.on{border-color:#e3d2b8;background:rgba(227,210,184,.1);box-shadow:0 0 0 1px rgba(227,210,184,.25)}
+.rd-tipo .ico{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);margin-bottom:10px}.rd-tipo.on .ico{background:#e3d2b8;color:#161513}
+.rd-tipo .tt{font-weight:700;font-size:.98rem}.rd-tipo .ss{color:rgba(255,255,255,.52);font-size:.8rem;line-height:1.4;margin-top:4px}
+.rd-seg{display:inline-flex;padding:3px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);margin-bottom:12px}
+.rd-seg button{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border:0;border-radius:9px;background:transparent;color:rgba(255,255,255,.65);font-weight:600;font-size:.86rem;cursor:pointer;font-family:inherit}.rd-seg button.on{background:#e3d2b8;color:#161513}
+.rd-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:30px 16px;border:2px dashed rgba(255,255,255,.18);border-radius:16px;cursor:pointer;text-align:center;background:rgba(255,255,255,.025);margin-bottom:14px;transition:border-color .15s,background .15s}
+.rd-drop:hover{border-color:#e3d2b8;background:rgba(227,210,184,.06)}.rd-drop b{font-size:1rem;word-break:break-word}
+.rd-more{border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:2px 16px;margin:12px 0;background:rgba(255,255,255,.02)}.rd-more>summary{cursor:pointer;padding:12px 0;font-weight:600;font-size:.92rem}
+.rd-form2{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
 @media(max-width:700px){.rd-wrap{padding:18px 14px 60px}}
 `;
 const ESTILO_SELECT = '.ev-root select option { background:#1a1a1a; color:#fff; } .ev-root select { color-scheme: dark; }';
@@ -193,38 +210,43 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
     } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo enviar'); setProg(null); }
   };
   const opcion = (id, Icono, titulo, sub) => (
-    <div key={id} role="button" tabIndex={0} onClick={() => setTipo(id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setTipo(id); }}
-      style={{ flex: '1 1 220px', boxSizing: 'border-box', cursor: 'pointer', textAlign: 'left', padding: '0.75rem 0.9rem', borderRadius: 10, color: '#fff', whiteSpace: 'normal', lineHeight: 1.35, border: '1px solid ' + (tipo === id ? 'rgba(242,196,109,0.8)' : 'rgba(255,255,255,0.12)'), background: tipo === id ? 'rgba(242,196,109,0.09)' : 'rgba(255,255,255,0.03)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: '0.9rem' }}><Icono size={15} /> {titulo}</div>
-      <div style={{ ...mut, marginTop: 4, fontWeight: 400 }}>{sub}</div>
+    <div key={id} role="button" tabIndex={0} className={'rd-tipo' + (tipo === id ? ' on' : '')} onClick={() => setTipo(id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setTipo(id); }}>
+      <div className="ico"><Icono size={20} /></div><div className="tt">{titulo}</div><div className="ss">{sub}</div>
     </div>
   );
   return (
     <div style={card}>
-      <div style={{ fontWeight: 600, marginBottom: 10 }}>Nuevo vídeo</div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+      <h3 style={{ margin: '0 0 14px', fontSize: '1.3rem', fontWeight: 800 }}>Nuevo vídeo</h3>
+      <div className="rd-tipos">
         {opcion('voz', Mic, 'Tengo la voz en off', 'Audio o vídeo hablando. La IA monta las escenas encima.')}
         {opcion('bruto', Video, 'Subo el bruto', 'Vídeo grabado hablando a cámara: corta pausas y pone subtítulos.')}
         {opcion('clips', Scissors, 'Entrevista larga → varios clips', 'Subes una entrevista o charla larga y la IA saca los mejores momentos como clips cortos con edición dopamínica.')}
         {opcion('base', Film, 'Vídeo de Drive como base', 'Eliges un vídeo de Drive y la IA superpone clips e imágenes del resto en los momentos clave.')}
       </div>
       {tipo !== 'base' && (<>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        <button type="button" className={'ap-btn ap-btn-sm' + (origen === 'dispositivo' ? ' ap-btn-primary' : '')} onClick={() => setOrigen('dispositivo')}><Upload size={12} /> Desde el dispositivo</button>
-        <button type="button" className={'ap-btn ap-btn-sm' + (origen === 'drive' ? ' ap-btn-primary' : '')} onClick={() => setOrigen('drive')}><Folder size={12} /> Desde Drive</button>
+      <div className="rd-seg">
+        <button type="button" className={origen === 'dispositivo' ? 'on' : ''} onClick={() => setOrigen('dispositivo')}><Upload size={14} /> Desde el dispositivo</button>
+        <button type="button" className={origen === 'drive' ? 'on' : ''} onClick={() => setOrigen('drive')}><Folder size={14} /> Desde Drive</button>
       </div>
       {origen === 'drive' && <Explorador seleccion={base} onCambio={setBase} max={tipo === 'clips' ? 6 : 1} titulo={tipo === 'voz' ? 'Audio o vídeo con la voz (de Drive)' : tipo === 'clips' ? 'Entrevistas (de Drive; puedes elegir varias)' : 'Vídeo en bruto (de Drive)'} vacio="Elegir archivo de Drive" />}
       {origen !== 'drive' && (<>
-      <label style={{ ...mut, display: 'block', marginBottom: 4 }}>{tipo === 'voz' ? 'Audio o vídeo con la voz' : tipo === 'clips' ? 'Entrevistas o charlas largas (puedes elegir varias)' : 'Vídeo en bruto'}</label>
-      <input ref={inp} type="file" accept={tipo === 'voz' ? 'audio/*,video/*' : 'video/*'} multiple={tipo === 'clips'} onChange={e => { setFile(e.target.files?.[0] || null); setFiles(Array.from(e.target.files || [])); }} className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} />
+      <label className="rd-drop">
+        <Upload size={26} />
+        <b>{files.length > 1 ? files.length + ' archivos: ' + files.map(x => x.name).join(', ') : file ? file.name : 'Elige el archivo o arrástralo aquí'}</b>
+        <span style={mut}>{tipo === 'voz' ? 'Audio o vídeo con la voz' : tipo === 'clips' ? 'Entrevistas o charlas largas (puedes elegir varias)' : 'Vídeo en bruto'} · aguanta vídeos pesados y reanuda si se corta</span>
+        <input ref={inp} type="file" accept={tipo === 'voz' ? 'audio/*,video/*' : 'video/*'} multiple={tipo === 'clips'} onChange={e => { setFile(e.target.files?.[0] || null); setFiles(Array.from(e.target.files || [])); }} style={{ display: 'none' }} />
+      </label>
       </>)}
       </>)}
       {tipo === 'voz' && <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, fontSize: '0.9rem' }}><input type="checkbox" checked={soloAudio} onChange={e => setSoloAudio(e.target.checked)} /> Por pasos: primero solo preparo el audio (lo ajusto con el guion) y después elijo los clips</label>}
       {tipo === 'clips' && <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, fontSize: '0.9rem' }}><input type="checkbox" checked={soloTr} onChange={e => setSoloTr(e.target.checked)} /> Primero solo transcribir: yo elijo en el texto los tramos de cada clip</label>}
-      <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Formato</label>
-      <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
-      {formatos.find(f => f.id === fmt)?.descripcion && <div style={{ ...mut, marginTop: -4, marginBottom: 10 }}>{formatos.find(f => f.id === fmt).descripcion}</div>}
-      <SelectorEstilo estilos={estilos} formato={formatos.find(f => f.id === fmt)} valor={estilo} onCambio={setEstilo} />
+      <div className="rd-form2" style={{ marginBottom: 6 }}>
+        <label style={{ ...mut, display: 'block' }}>Formato (qué tipo de vídeo)
+          <select className="ap-field-input" style={{ width: '100%', marginTop: 5 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
+        </label>
+        <SelectorEstilo estilos={estilos} formato={formatos.find(f => f.id === fmt)} valor={estilo} onCambio={setEstilo} etiqueta="Estilo de edición (cómo se ve y se mueve)" />
+      </div>
+      {formatos.find(f => f.id === fmt)?.descripcion && <div style={{ ...mut, marginBottom: 12 }}>{formatos.find(f => f.id === fmt).descripcion}</div>}
       <EjemploFormato fmt={fmt} onCambio={onCreado} />
       {tipo === 'clips' && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -233,16 +255,20 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
         </div>
       )}
       {tipo === 'base' && <Explorador seleccion={base} onCambio={setBase} max={1} titulo="Vídeo base (el que se ve de fondo, con su voz)" vacio="Elegir el vídeo base" />}
+      <details className="rd-more"><summary>🎞 Escenas y recursos (opcional)</summary>
       <Explorador seleccion={recursos} onCambio={setRecursos} titulo={tipo === 'voz' ? 'Recursos (de dónde salen las escenas)' : 'Recursos para superponer en momentos clave (opcional)'} vacio={tipo === 'voz' ? 'Todo Drive indexado' : 'Todo Drive indexado / elegir recursos'} />
       <SubirRecursos onSubidos={(n) => setRecursos(r => [...r, ...n])} />
       <CopiarSeleccion trabajos={trabajos} onCopiar={(x) => { setRecursos(x.recursos || []); if (x.guion && !guion.trim()) setGuion(x.guion); setAsig(asigDesdeReparto(x, x.guion && !guion.trim() ? x.guion : guion)); }} />
+      </details>
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Música de fondo</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={mus} onChange={e => setMus(e.target.value)}><option value="auto">Automática (la IA elige la que mejor encaje)</option><option value="ninguna">Sin música</option>{musica.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.bpm ? ' · ' + Math.round(p.bpm) + ' bpm' : ''}</option>)}</select>
+      <details className="rd-more" open={!!(guion || notas)}><summary>📝 Guion e indicaciones (opcional)</summary>
       <div style={{ ...mut, marginBottom: 4 }}>Guion del vídeo (opcional): pégalo aquí. En una entrevista, pon las preguntas o temas que quieres sacar; en una voz en off o un bruto, el texto que quieres que se diga.</div>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 90, marginBottom: 10 }} value={guion} onChange={e => setGuion(e.target.value)} placeholder="Pega aquí el guion (da igual si al grabar cambiaste alguna palabra: la IA lo encuentra igualmente)…" />
       {tipo !== 'clips' && !(tipo === 'voz' && soloAudio) && <Desglose guion={guion} asig={asig} setAsig={setAsig} />}
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Indicaciones (opcional)</label>
       <textarea className="ap-field-input" style={{ width: '100%', minHeight: 60, marginBottom: 10 }} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Ej.: enseña el proyecto de Rivas, tono directo, que empiece con un plano de obra…" />
+      </details>
       {error && <div className="ap-error" style={{ marginBottom: 8 }}>{error}</div>}
       <button className="ap-btn ap-btn-primary" disabled={((tipo === 'base' || origen === 'drive') ? !base.length : !file) || !fmt || prog !== null} onClick={enviar}>{prog !== null ? <><Loader2 size={14} /> Subiendo {prog}%</> : <><Wand2 size={14} /> Editar vídeo</>}</button>
     </div>
@@ -1339,16 +1365,13 @@ export function SectionEstudioVideo() {
   const hayActivos = (trabajos || []).some(t => t.estado === 'pendiente' || t.estado === 'procesando');
   useEffect(() => { if (!hayActivos) return; const i = setInterval(cargarT, 5000); return () => clearInterval(i); }, [hayActivos, cargarT]);
   return (
-    <div className="ev-root" style={{ width: '100%', maxWidth: '100%' }}>
-      <style>{ESTILO_SELECT}</style>
-      <h1 className="ap-page-title" style={{ marginBottom: 6 }}>Estudio de vídeo</h1>
-      <p style={{ ...mut, marginBottom: 16 }}>Sube una voz en off (audio o vídeo) o un vídeo en bruto, elige un formato y la IA lo edita con las escenas de la biblioteca. Cada formato guarda el estilo para que todos los vídeos salgan igual. Si no te gusta algo, pide cambios sobre el propio vídeo.</p>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        <button className={'ap-btn ap-btn-sm' + (tab === 'videos' ? ' ap-btn-primary' : '')} onClick={() => setTab('videos')}><Film size={13} /> Vídeos</button>
-        <button className={'ap-btn ap-btn-sm' + (tab === 'formatos' ? ' ap-btn-primary' : '')} onClick={() => setTab('formatos')}><Settings2 size={13} /> Formatos</button>
-        <button className={'ap-btn ap-btn-sm' + (tab === 'musica' ? ' ap-btn-primary' : '')} onClick={() => setTab('musica')}><Music size={13} /> Música</button>
-        <button className={'ap-btn ap-btn-sm' + (tab === 'efectos' ? ' ap-btn-primary' : '')} onClick={() => setTab('efectos')}><Wand2 size={13} /> Efectos</button>
-        <button className={'ap-btn ap-btn-sm' + (tab === 'editor' ? ' ap-btn-primary' : '')} onClick={() => setTab('editor')}>💬 Editor</button>
+    <div className="ev-root rd-wrap">
+      <style>{ESTILO_SELECT + ESTILO_REDES}</style>
+      <div className="rd-head">
+        <div><h1 className="rd-title">Estudio de vídeo</h1><div className="rd-sub">Sube el material, elige formato y estilo, y el editor lo monta.</div></div>
+        <div className="rd-tabs">
+          {[['videos', Film, 'Vídeos'], ['formatos', Settings2, 'Formatos y estilos'], ['musica', Music, 'Música'], ['efectos', Wand2, 'Efectos'], ['editor', Mic, 'Habla con el editor']].map(([k, Icono, n]) => <button key={k} className={'rd-tab' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}><Icono size={15} /> {n}</button>)}
+        </div>
       </div>
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
       {tab === 'editor' ? <PestanaEditor trabajos={trabajos || []} /> : tab === 'efectos' ? <PestanaEfectos /> : tab === 'formatos' ? <><AprenderReferencia formatos={formatos} onCambio={cargarT} /><Formatos formatos={formatos} onCambio={cargarF} /><EstilosPestana /></> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
