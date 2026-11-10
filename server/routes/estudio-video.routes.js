@@ -179,7 +179,9 @@ async function direccionRedes() {
   for (const x of (ap?.ganchos_ganadores || []).slice(0, 4)) l.push('- Gancho que le funciona: ' + x);
   for (const r of (ref?.lista || []).slice(-6)) for (const x of (r.replicar || []).slice(0, 2)) l.push('- De un referente (' + r.nombre + '): ' + x);
   if (voz) l.push('Su voz: ' + voz.resumen + (voz.muletillas?.length ? ' Muletillas reales: ' + voz.muletillas.join(', ') + '.' : ''));
-  const no = (prefs.reglas || []).filter(r => r.tipo === 'no').map(r => r.texto); if (no.length) l.push('NO quiere: ' + no.join('; '));
+  const pf = (tp) => (prefs.reglas || []).filter(r => r.tipo === tp).map(r => r.texto), no = pf('no'), si = pf('si'), tr = pf('transmitir'), sa = pf('saber'), rb = await leerJson('crm/redes/rumbo.json', null);
+  if (rb && (rb.enfoque || rb.ya_no)) l.push('RUMBO ACTUAL (manda sobre el historial): se dirige a ' + (rb.enfoque || '—') + (rb.ya_no ? '; ya NO se dirige a ' + rb.ya_no : '') + '.');
+  if (no.length) l.push('NO quiere: ' + no.join('; ')); if (si.length) l.push('Quiere: ' + si.join('; ')); if (tr.length) l.push('Quiere transmitir: ' + tr.join('; ')); if (sa.length) l.push('Contexto de su negocio: ' + sa.join('; '));
   return { receta, notas: 'DIRIGIDO POR LA IA DE REDES: decide el montaje (ritmo, gancho, qué se queda, énfasis) aplicando esto, que se ha aprendido de su cuenta y del nicho; no sigas un molde fijo.\n' + l.join('\n') };
 }
 const duracionIdeal = async () => { try { const v = await leerJson('crm/redes/analisis_videos.json', null); const n = String(v?.duracion_ideal_s || '').match(/d+/g)?.map(Number) || []; if (n.length >= 2 && n[0] < n[1]) return [Math.max(10, n[0]), Math.min(120, Math.max(n[1], n[0] + 10))]; if (n.length === 1) return [Math.max(10, n[0] - 8), Math.min(120, n[0] + 12)]; } catch { /* sin análisis */ } return [20, 50]; };
@@ -220,7 +222,7 @@ router.post('/guionizador', async (req, res) => {
   try {
     const b = req.body || {}; const tema = limpia(b.tema, 600); if (!tema) return res.status(400).json({ error: 'Escribe de qué va el vídeo' });
     const tipo = b.tipo === 'historia' ? 'historia' : 'reel'; const seg = Math.max(10, Math.min(120, parseInt(b.duracion) || (tipo === 'historia' ? 60 : 30)));
-    const modo = ['entrevista', 'camara', 'voz', 'midia'].includes(b.modo) ? b.modo : 'camara'; const reglas = await textoReglas();
+    const modo = ['entrevista', 'camara', 'voz', 'midia'].includes(b.modo) ? b.modo : 'camara'; const reglas = (await textoReglasCompleto()) + '\n\n' + (await direccionRedes()).notas;
     const modos = { entrevista: 'entrevista pregunta-respuesta (quién pregunta y quién responde se decide al grabar; no pongas nombres propios en las preguntas)', camara: 'Víctor hablando a cámara', voz: 'voz en off sobre imágenes de obra y proyectos', midia: 'vídeo tipo "mi día / acompáñame" con voz en off y escenas del día' };
     const sistema = 'Eres el guionista de redes de Ranuse Design (diseño y montaje de gimnasios y espacios deportivos). Escribes guiones de ' + (tipo === 'historia' ? 'HISTORIAS (narración con arco: situación, conflicto, giro, cierre; real, con detalle de obra)' : 'REELS (gancho en 1-3 s, una sola idea, bucles abiertos, remate y una llamada a la acción)') + '. ' + MANUAL_REDES + '\n\nREGLAS DE MARCA (obligatorias):\n' + reglas;
     const usuario = 'Escribe el guion de un ' + tipo + ' de unos ' + seg + ' segundos, formato: ' + modos[modo] + '. Tema: ' + tema + '. Habla en español de España, frases cortas y naturales, sin inventar datos ni cifras que no te haya dado (si hace falta una cifra, deja [CIFRA]). Responde SOLO JSON: {"titulo":"...","gancho":"texto en pantalla de los primeros 3 s","hablado":"SOLO el texto que se dice, de corrido, listo para pegar como guion (en entrevista: líneas P: pregunta / R: respuesta)","escenas":[{"seg":"0-3","que_se_ve":"...","texto_pantalla":"...","dice":"..."}],"que_grabar":"lista de tomas necesarias","cierre":"llamada a la acción"}';
