@@ -1550,6 +1550,17 @@ function EstudiaReferente() {
     </div>
   );
 }
+function RealPrediccion({ pred }) {
+  const [real, setReal] = useState(''), [ok, setOk] = useState(false);
+  const guarda = async () => { const n = Number(String(real).replace(/[^0-9]/g, '')); if (!n || !pred?.estimacion?.medio) return; try { await api.post('/redes/prediccion/real', { estimado: pred.estimacion.medio, real: n, nota: pred.propuesta }); setOk(true); } catch { /* se queda */ } };
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+      <span style={{ ...mut, fontSize: '0.8rem' }}>¿Ya lo has publicado? Espera unos 7 días (un reel sigue sumando vistas varios días) y dime cuántas lleva: la próxima estimación será más certera:</span>
+      <input className="ap-field-input" style={{ width: 130 }} value={real} onChange={e => setReal(e.target.value)} placeholder="Ej.: 6000" />
+      <button className="rd-btn" disabled={ok || !real} onClick={guarda}>{ok ? '✔ Anotado' : 'Anotar'}</button>
+    </div>
+  );
+}
 function YoutubeAInstagram() {
   const [d, setD] = useState(null), [trab, setTrab] = useState(false), [err, setErr] = useState(''), [ej, setEj] = useState(null);
   useEffect(() => { api.get('/redes/youtube/a-instagram').then(r => setD(r.data)).catch(() => {}); }, []);
@@ -1799,6 +1810,7 @@ function PestanaAnalizador() {
                   <Tarjeta titulo="En contra" color="#f2c46d"><Lista items={pred.en_contra} color="#f2c46d" /></Tarjeta>
                 </div>
                 {(pred.mejoras || []).length > 0 && <Tarjeta titulo="Cómo mejorarlo"><Lista ejemplo items={pred.mejoras.map(x => x.cambio + (x.efecto ? ' → ' + x.efecto : ''))} /></Tarjeta>}
+                <RealPrediccion pred={pred} />
                 {pred.version_mejorada?.gancho && <Tarjeta titulo="Versión mejorada"><div className="rd-gancho">“{pred.version_mejorada.gancho}”</div>{pred.version_mejorada.estructura && <div style={{ fontSize: '0.88rem' }}>{pred.version_mejorada.estructura}</div>}{pred.version_mejorada.cta && <div style={mut}>CTA: {pred.version_mejorada.cta}</div>}</Tarjeta>}
                 {(pred.dejar_de_hacer || []).length > 0 && <Tarjeta titulo="Quítalo" color="#f29a9a"><Lista items={pred.dejar_de_hacer} color="#f29a9a" /></Tarjeta>}
                 <div style={mut}>Es una estimación sobre tus publicaciones, no una promesa.</div>
