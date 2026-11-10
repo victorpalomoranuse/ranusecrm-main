@@ -1864,6 +1864,7 @@ export default function Visor3D({ cliente = false }) {
   // la barra de herramientas usa 1 columna y, solo si no cabe en la altura de la ventana, pasa a 2 (se mide, no se adivina por la altura)
   const [railCols, setRailCols] = useState(1), [railTick, setRailTick] = useState(0);
   const railRef = useRef(null);
+  const ultTab = useRef({ mat: 'pintura', comp: 'catalogo' }); // última pestaña usada de cada bloque (Materiales / Componentes)
   useEffect(() => { const f = () => { setRailCols(1); setRailTick(t => t + 1); }; window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   useLayoutEffect(() => { const el = railRef.current; if (el && railCols < 4 && (el.scrollHeight > el.clientHeight + 2 || el.scrollWidth > el.clientWidth + 2)) setRailCols(c => c + 1); }, [railCols, railTick, estado]);
   const railW = railCols * 56 + 10;
@@ -3629,7 +3630,7 @@ export default function Visor3D({ cliente = false }) {
   // Biblioteca de materiales de Ranuse (PBR): se cargan al abrir el panel de materiales
   const [matsRanuse, setMatsRanuse] = useState(null);
   const [catRanuse, setCatRanuse] = useState('');
-  useEffect(() => { if (matAbierto && matsRanuse === null) api.get('/medicion/materiales-ranuse').then(r => setMatsRanuse(r.data?.materiales || [])).catch(() => setMatsRanuse([])); }, [matAbierto, matsRanuse]);
+  useEffect(() => { if ((matAbierto || (b3dAbierta && b3dTab === 'texturas')) && matsRanuse === null) api.get('/medicion/materiales-ranuse').then(r => setMatsRanuse(r.data?.materiales || [])).catch(() => setMatsRanuse([])); }, [matAbierto, matsRanuse]);
   // Colores NCS del Combinador de colores de Ranuse (los de public/combinador) y los propios del estudio; se aplican en el acabado elegido (pintura lisa, metal…)
   const [combiColores, setCombiColores] = useState(null);
   const [acabadoCombi, setAcabadoCombi] = useState('lisa');
@@ -4795,6 +4796,24 @@ export default function Visor3D({ cliente = false }) {
     </span>
   );
   const grupoRail = (hijos, ultimo, titulo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, breakInside: 'avoid', borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{titulo && <span style={{ fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.45, padding: '2px 0' }}>{titulo}</span>}{hijos}</div>;
+  // Un solo bloque «Materiales» (Pintura · Texturas · Mis texturas) y un solo bloque «Componentes» (Catálogo · Muebles · Mis modelos)
+  const enMat = matAbierto || (b3dAbierta && (b3dTab === 'texturas' || b3dTab === 'mistex')), enComp = bibAbierta || (b3dAbierta && (b3dTab === 'modelos' || b3dTab === 'mios'));
+  const irTab = (k) => {
+    if (k === 'pintura') { ultTab.current.mat = k; setMatAbierto(true); }
+    else if (k === 'catalogo') { ultTab.current.comp = k; setBibAbierta(true); }
+    else { ultTab.current[k === 'texturas' || k === 'mistex' ? 'mat' : 'comp'] = k; setB3dTab(k); setB3dCat(''); setB3dAbierta(true); }
+  };
+  const cierraBloque = () => { setMatAbierto(false); setBibAbierta(false); setB3dAbierta(false); if (herr === 'pincel') setHerr('sel'); };
+  const tabsGrupo = (grupo) => {
+    const defs = grupo === 'mat' ? [['pintura', '🎨 Pintura'], ['texturas', 'Texturas'], ['mistex', 'Mis texturas' + ((b3d?.mistex || []).length ? ' (' + b3d.mistex.length + ')' : '')]] : [['catalogo', 'Catálogo'], ['modelos', 'Muebles'], ['mios', 'Mis modelos']];
+    const act = grupo === 'mat' ? (matAbierto ? 'pintura' : b3dTab) : (bibAbierta ? 'catalogo' : b3dTab);
+    return (
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}><b style={{ flex: 1 }}>{grupo === 'mat' ? '🎨 Materiales' : '🧰 Componentes'}</b><span onClick={cierraBloque} title="Cerrar" style={{ cursor: 'pointer', opacity: 0.6, padding: '0 4px' }}>✕</span></div>
+        <div style={{ display: 'flex', gap: 4 }}>{defs.map(([k, n]) => <button key={k} style={{ ...btn, flex: 1, padding: '4px 2px', fontSize: 12, ...(act === k ? { background: '#6b6159' } : {}) }} onClick={() => irTab(k)}>{n}</button>)}</div>
+      </div>
+    );
+  };
   const menuRail = (abierto, setAbierto, boton, contenido, ancho) => <MenuRail key={'m' + (boton.key || '')} abierto={abierto} ancho={ancho} boton={boton}>{contenido}</MenuRail>;
   const AYUDA_HERR = {
     sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo'], poli: ['Dibujar forma', 'Rectángulo y círculo: arrastra · Polígono: clic a clic, Enter cierra · después tira hacia arriba para darle altura'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de la forma para darle altura'],
@@ -5072,14 +5091,10 @@ export default function Visor3D({ cliente = false }) {
           </>)),
         ], false, 'Construir')}
         {grupoRail([
-          railBtn(herr === 'pincel' || matAbierto, 'pintar', 'Pintura', 'Colores, texturas y LED: elige y pinta (cara, pieza o entero)', () => { setMatAbierto(v => !v); if (matAbierto && herr === 'pincel') setHerr('sel'); }),
-          railBtn(b3dAbierta && b3dTab === 'texturas', 'textura', 'Texturas', 'Texturas gratuitas para pintar muros, suelos y objetos', () => { const ya = b3dAbierta && b3dTab === 'texturas'; setB3dTab('texturas'); setB3dCat(''); setB3dAbierta(!ya); }),
-          railBtn(b3dAbierta && b3dTab === 'mistex', 'textura', 'Mis texturas' + ((b3d?.mistex || []).length ? ' (' + b3d.mistex.length + ')' : ''), 'Tus propias texturas', () => { const ya = b3dAbierta && b3dTab === 'mistex'; setB3dTab('mistex'); setB3dCat(''); setB3dAbierta(!ya); }),
-        ], false, 'Materiales')}
+          railBtn(enMat || herr === 'pincel', 'pintar', 'Materiales', 'Pintura (mate, satinada, esmalte…), texturas y tus texturas, todo en un mismo sitio', () => { if (enMat) cierraBloque(); else irTab(ultTab.current.mat); }),
+        ], false)}
         {grupoRail([
-          railBtn(bibAbierta, 'catalogo', 'Catálogo', 'Tus productos del catálogo de Ranuse (máquinas y equipamiento)', () => setBibAbierta(v => !v)),
-          railBtn(b3dAbierta && b3dTab === 'modelos', 'biblioteca', 'Muebles', 'Muebles y objetos gratuitos de la biblioteca', () => { const ya = b3dAbierta && b3dTab === 'modelos'; setB3dTab('modelos'); setB3dCat(''); setB3dAbierta(!ya); }),
-          railBtn(b3dAbierta && b3dTab === 'mios', 'modelos', 'Mis modelos', 'Los modelos 3D que has subido tú', () => { const ya = b3dAbierta && b3dTab === 'mios'; setB3dTab('mios'); setB3dCat(''); setB3dAbierta(!ya); }),
+          railBtn(enComp, 'catalogo', 'Biblioteca', 'Catálogo de Ranuse, muebles y tus modelos 3D, todo en un mismo sitio', () => { if (enComp) cierraBloque(); else irTab(ultTab.current.comp); }),
           menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, 'mueble', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
             {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
           </>), 250),
@@ -5975,9 +5990,9 @@ export default function Visor3D({ cliente = false }) {
           try { await api.delete('/medicion/' + id + '/textura/' + t.id); setTexturas(x => x.filter(y => y.id !== t.id)); if (matSel?.id === t.id) setMatSel(null); } catch { setGuardado('No se pudo quitar'); }
         };
         return (
-          <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
-            <div style={{ fontWeight: 700, marginBottom: 2 }}>🎨 Materiales (pincel)</div>
-            <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 6 }}>Elige un material y haz clic en lo que quieras pintar. Alt + clic copia el material de lo que toques (gotero).</div>
+          <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 300, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, overflow: 'auto', fontSize: 13, zIndex: 3 }}>
+            {tabsGrupo('mat')}
+            <div style={{ opacity: 0.65, fontSize: 11, marginBottom: 6 }}>Elige un acabado y color y haz clic en lo que quieras pintar. Alt + clic copia el material de lo que toques (gotero).</div>
             <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
               {[['cara', 'Cara'], ['pieza', 'Pieza'], ['todo', 'Entero']].map(([v, n]) => <button key={v} style={{ ...btn, flex: 1, ...(modoPincel === v ? { background: '#6b6159' } : {}) }} onClick={() => setModoPincel(v)}>{n}</button>)}
             </div>
@@ -5991,17 +6006,7 @@ export default function Visor3D({ cliente = false }) {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
               {base.map(c => <span key={c} onClick={() => elegir({ hex: c })} title={c} style={{ width: 24, height: 24, background: c, borderRadius: 4, cursor: 'pointer', border: esSel({ hex: c }) ? '2px solid #baafa5' : '1px solid #555' }} />)}
             </div>
-            <div style={{ opacity: 0.7, marginBottom: 4 }}>💡 Luz LED (material emisivo)</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 4 }}>
-              {[['#ffa757', '2700 K cálida'], ['#ffb16e', '3000 K'], ['#ffcb9f', '4000 K neutra'], ['#ffe4ce', '5000 K'], ['#fff9fd', '6500 K fría'], ['#ff2a2a', 'Rojo'], ['#22ff66', 'Verde'], ['#2a5bff', 'Azul'], ['#ff2ad4', 'Magenta'], ['#2affea', 'Cian']].map(([h, n]) => <span key={h} onClick={() => elegir({ hex: h + '!' })} title={'LED ' + n} style={{ width: 24, height: 24, background: h, borderRadius: 12, cursor: 'pointer', boxShadow: '0 0 8px ' + h, border: esSel({ hex: h + '!' }) ? '2px solid #baafa5' : '1px solid #555' }} />)}
-            </div>
-            <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>Pinta con ellos una cara, una caja o una zona y se ilumina. Una <b>caja</b> o una <b>zona</b> LED además alumbra la sala.</div>
-            <div style={{ opacity: 0.7, marginBottom: 4 }}>NCS y RAL habituales</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 4 }}>
-              {NCS_PRE.map(cod => { const h = codigoHex(cod); return h && <span key={cod} onClick={() => { elegir({ hex: h }); setPaleta(x => (x.some(p => p.nombre === cod) ? x : [...x, { nombre: cod, hex: h }])); }} title={cod + ' · ' + h} style={{ width: 24, height: 24, background: h, borderRadius: 4, cursor: 'pointer', border: esSel({ hex: h }) ? '2px solid #baafa5' : '1px solid #555' }} />; })}
-            </div>
-            <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>Al pulsar uno se elige y se guarda en tu paleta con su código. Los colores NCS son <b>aproximados en pantalla</b>; el real lo da el abanico NCS. Escribe cualquier código abajo (NCS S 0502-Y, RAL 9010…) y el color se calcula solo.</div>
-            <div style={{ opacity: 0.85, marginBottom: 4, fontWeight: 700 }}>🎨 Colores NCS del Combinador</div>
+            <div style={{ opacity: 0.85, marginBottom: 4, fontWeight: 700 }}>Pintura: elige el acabado y luego el color</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
               {Object.entries(ACABADOS_COMBI).map(([k, [n]]) => <span key={k} onClick={() => setAcabadoCombi(k)} style={{ padding: '2px 8px', borderRadius: 10, cursor: 'pointer', fontSize: 11, border: '1px solid #4f4842', background: acabadoCombi === k ? '#6b6159' : 'transparent' }}>{n}</span>)}
             </div>
@@ -6034,49 +6039,6 @@ export default function Visor3D({ cliente = false }) {
               <input id="mat-hex" type="color" defaultValue="#d9cfc0" style={{ width: 34, height: 30, padding: 0, border: 'none', background: 'none' }} />
               <button style={btn} onClick={anadirColor}>+</button>
             </div>
-            {matsRanuse?.length > 0 && <>
-              <div style={{ opacity: 0.7, marginBottom: 4 }}>Materiales de Ranuse <span style={{ opacity: 0.55, fontSize: 11 }}>(PBR: normales, rugosidad y AO)</span></div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
-                {['', ...new Set(matsRanuse.map(m => m.categoria))].map(cat => <span key={cat || 'todas'} onClick={() => setCatRanuse(cat)} style={{ padding: '2px 8px', borderRadius: 10, cursor: 'pointer', fontSize: 11, border: '1px solid #4f4842', background: catRanuse === cat ? '#6b6159' : 'transparent' }}>{cat || 'Todos'}</span>)}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
-                {matsRanuse.filter(m => !catRanuse || m.categoria === catRanuse).map(m => (
-                  <div key={m.id} onClick={() => usarMatRanuse(m)} title={m.nombre + ' · ' + m.categoria + ' · ' + (m.fuente || '')} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
-                    <img src={m.url} alt={m.nombre} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
-                    <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.nombre}</div>
-                  </div>
-                ))}
-              </div>
-            </>}
-            {matsCat.length > 0 && <>
-              <div style={{ opacity: 0.7, marginBottom: 4 }}>Del catálogo de Ranuse</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
-                {matsCat.slice(0, 60).map(mc => (
-                  <div key={mc.id} onClick={() => usarMatCatalogo(mc)} title={mc.n + ' · ' + (mc.cat || '')} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
-                    <img src={mc.url} alt={mc.n} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
-                    <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mc.n}</div>
-                  </div>
-                ))}
-              </div>
-            </>}
-            <div style={{ opacity: 0.7, marginBottom: 4 }}>Texturas</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
-              {texturas.map(t => (
-                <div key={t.id} onClick={() => elegir({ id: t.id })} title={t.nombre + ' · ' + t.tam + ' cm'} style={{ position: 'relative', cursor: 'pointer', border: esSel({ id: t.id }) ? '2px solid #baafa5' : '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
-                  <img src={t.url} alt={t.nombre} style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
-                  <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.nombre}</div>
-                  {!t.fijo && <span onClick={e => { e.stopPropagation(); quitarTex(t); }} style={{ position: 'absolute', top: 1, right: 3, background: '#000a', borderRadius: 3, padding: '0 4px', fontSize: 11 }}>✕</span>}
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <label style={{ ...btn, display: 'inline-block' }}>Subir textura…
-                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { subir(e.target.files?.[0]); e.target.value = ''; }} />
-              </label>
-              <span style={{ opacity: 0.7 }}>tamaño real</span>
-              <input id="mat-tam" type="number" defaultValue={60} style={{ ...btn, width: 56 }} /><span style={{ opacity: 0.7 }}>cm</span>
-            </div>
-            <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>«Tamaño real» es lo que mide en la vida real el lado de la foto (ej. una loseta de 60 cm), para que no salga gigante.</div>
             {matSel?.id && !(renderAbierto && pestanaRender === 'inspector') && editorTextura()}
             {herr === 'pincel' && <button style={{ ...btn, marginTop: 10, width: '100%' }} onClick={() => { setHerr('sel'); }}>Terminar pincel</button>}
           </div>
@@ -6155,17 +6117,9 @@ export default function Visor3D({ cliente = false }) {
         const lista = (b3d?.[b3dTab] || []).filter(m => (!b3dCat || m.categoria === b3dCat) && (!b3dFiltro || (m.nombre + ' ' + m.categoria).toLowerCase().includes(b3dFiltro.toLowerCase())));
         const cats = [...new Set([...(b3dTab === 'mios' ? (b3d?.catsMios || []) : []), ...(b3d?.[b3dTab] || []).map(m => m.categoria)])].sort();
         return (
-          <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
-            <div style={{ fontWeight: 700 }}>{b3dTab === 'modelos' || b3dTab === 'mios' ? '🧰 Componentes · ' + (b3dTab === 'mios' ? 'Mis modelos' : 'Muebles') : '🎨 Materiales · ' + (b3dTab === 'mistex' ? 'Mis texturas' : 'Texturas')} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>{b3dTab === 'mios' || b3dTab === 'mistex' ? 'tuyos' : 'gratis · CC0'}</span></div>
-            <div style={{ display: 'flex', gap: 6, margin: '6px 0', flexWrap: 'wrap' }}>
-              {(b3dTab === 'modelos' || b3dTab === 'mios') ? (<>
-                <button style={{ ...btn, flex: 1, ...(b3dTab === 'modelos' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('modelos'); setB3dCat(''); }}>Muebles</button>
-                <button style={{ ...btn, flex: 1, ...(b3dTab === 'mios' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('mios'); setB3dCat(''); }}>Mis modelos</button>
-              </>) : (<>
-                <button style={{ ...btn, flex: 1, ...(b3dTab === 'texturas' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('texturas'); setB3dCat(''); }}>Texturas</button>
-                <button style={{ ...btn, flex: 1, ...(b3dTab === 'mistex' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('mistex'); setB3dCat(''); }}>Mis texturas{(b3d?.mistex || []).length ? ' (' + b3d.mistex.length + ')' : ''}</button>
-              </>)}
-            </div>
+          <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 300, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
+            {tabsGrupo(b3dTab === 'modelos' || b3dTab === 'mios' ? 'comp' : 'mat')}
+            <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 4 }}>{b3dTab === 'mios' || b3dTab === 'mistex' ? 'tuyos' : 'gratis · CC0'}</div>
             <input value={b3dFiltro} onChange={e => setB3dFiltro(e.target.value)} placeholder="Buscar…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 6 }} />
             <select value={b3dCat} onChange={e => setB3dCat(e.target.value)} style={{ ...btn, marginBottom: 8 }}>
               <option value="">Todas las categorías</option>{cats.map(c => <option key={c} value={c}>{c}</option>)}
@@ -6227,6 +6181,31 @@ export default function Visor3D({ cliente = false }) {
               ))}
               {(b3dTab === 'texturas' || b3dTab === 'mistex') && (
                 <>
+            {matsRanuse?.length > 0 && <>
+              <div style={{ opacity: 0.7, marginBottom: 4 }}>Materiales de Ranuse <span style={{ opacity: 0.55, fontSize: 11 }}>(PBR: normales, rugosidad y AO)</span></div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                {['', ...new Set(matsRanuse.map(m => m.categoria))].map(cat => <span key={cat || 'todas'} onClick={() => setCatRanuse(cat)} style={{ padding: '2px 8px', borderRadius: 10, cursor: 'pointer', fontSize: 11, border: '1px solid #4f4842', background: catRanuse === cat ? '#6b6159' : 'transparent' }}>{cat || 'Todos'}</span>)}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
+                {matsRanuse.filter(m => !catRanuse || m.categoria === catRanuse).map(m => (
+                  <div key={m.id} onClick={() => usarMatRanuse(m)} title={m.nombre + ' · ' + m.categoria + ' · ' + (m.fuente || '')} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
+                    <img src={m.url} alt={m.nombre} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
+                    <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.nombre}</div>
+                  </div>
+                ))}
+              </div>
+            </>}
+            {matsCat.length > 0 && <>
+              <div style={{ opacity: 0.7, marginBottom: 4 }}>Del catálogo de Ranuse</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
+                {matsCat.slice(0, 60).map(mc => (
+                  <div key={mc.id} onClick={() => usarMatCatalogo(mc)} title={mc.n + ' · ' + (mc.cat || '')} style={{ cursor: 'pointer', border: '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
+                    <img src={mc.url} alt={mc.n} loading="lazy" style={{ width: '100%', height: 56, objectFit: 'cover', display: 'block' }} />
+                    <div style={{ fontSize: 10, padding: '1px 3px', background: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mc.n}</div>
+                  </div>
+                ))}
+              </div>
+            </>}
                   {b3dTab === 'texturas' && <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>Tus propias imágenes están en la pestaña <b>Mis texturas</b>.</div>}
                   {b3dTab === 'mistex' && <div style={{ marginBottom: 8 }}>
                     <label style={{ ...btn, display: 'block', textAlign: 'center', background: '#6b6159', cursor: 'pointer' }}>⬆ Subir mis texturas (imágenes)
@@ -6255,7 +6234,8 @@ export default function Visor3D({ cliente = false }) {
         );
       })()}
       {bibAbierta && (
-        <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 310, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
+        <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 300, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13 }}>
+          {tabsGrupo('comp')}
           <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Buscar en el catálogo…" style={{ ...btn, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} />
           <div style={{ overflow: 'auto', flex: 1 }}>
             {!biblioteca && <p style={{ opacity: 0.6 }}>Cargando catálogo…</p>}
