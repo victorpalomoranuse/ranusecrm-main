@@ -979,7 +979,7 @@ function PestanaIdeas() {
   const [ideas, setIdeas] = useState(null), [tema, setTema] = useState(''), [cant, setCant] = useState(6), [gen, setGen] = useState(false), [err, setErr] = useState(''), [abierta, setAbierta] = useState(null), [filtro, setFiltro] = useState('activas');
   const cargar = useCallback(() => api.get('/estudio-video/ideas').then(r => setIdeas(r.data.ideas || [])).catch(() => setIdeas([])), []);
   useEffect(() => { cargar(); }, [cargar]);
-  const generar = async () => { setErr(''); setGen(true); try { const r = await api.post('/estudio-video/ideas/generar', { tema, cantidad: cant }); setIdeas(r.data.ideas || []); } catch (e) { setErr(e?.response?.data?.error || 'No se pudieron generar'); } setGen(false); };
+  const generar = async () => { setErr(''); setGen(true); try { const r = await api.post('/estudio-video/ideas/generar', { tema, cantidad: cant }, { timeout: 240000 }); setIdeas(r.data.ideas || []); } catch (e) { setErr(e?.response?.data?.error || (e?.code === 'ECONNABORTED' ? 'Ha tardado demasiado, prueba con menos ideas.' : 'No se pudieron generar (' + (e?.message || 'sin conexión con el servidor') + ')')); } setGen(false); };
   const cambia = async (x, parche) => { setIdeas(l => l.map(i => (i.id === x.id ? { ...i, ...parche } : i))); try { await api.put('/estudio-video/ideas/' + x.id, parche); } catch { cargar(); } };
   const borra = async (x) => { if (!window.confirm('¿Borrar esta idea?')) return; setIdeas(l => l.filter(i => i.id !== x.id)); try { await api.delete('/estudio-video/ideas/' + x.id); } catch { cargar(); } };
   const copia = (txt) => { try { navigator.clipboard.writeText(txt); } catch { /* sin portapapeles */ } };
