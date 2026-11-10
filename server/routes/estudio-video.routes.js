@@ -160,6 +160,8 @@ router.post('/editor/chat', async (req, res) => {
     res.json({ respuesta, cambios, hechos: mem.hechos });
   } catch (e) { console.error('editor/chat', e); res.status(500).json({ error: 'El editor no ha podido contestar: ' + String(e.message || '').slice(0, 160) }); }
 });
+// Duración de los clips que ayuda a crecer: sale del análisis de edición de sus reels (si existe); si no, un rango habitual para reels que crecen
+const duracionIdeal = async () => { try { const v = await leerJson('crm/redes/analisis_videos.json', null); const n = String(v?.duracion_ideal_s || '').match(/d+/g)?.map(Number) || []; if (n.length >= 2 && n[0] < n[1]) return [Math.max(10, n[0]), Math.min(120, Math.max(n[1], n[0] + 10))]; if (n.length === 1) return [Math.max(10, n[0] - 8), Math.min(120, n[0] + 12)]; } catch { /* sin análisis */ } return [20, 50]; };
 router.get('/reglas', async (req, res) => { try { res.json({ texto: await textoReglas(), base: REGLAS_BASE }); } catch { res.status(500).json({ error: 'No se pudieron leer las reglas' }); } });
 router.put('/reglas', async (req, res) => { try { await guardarJson(RUTA_REGLAS, { texto: limpia(req.body?.texto, 3500), actualizado: new Date().toISOString() }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudieron guardar las reglas' }); } });
 // ---------- Ideas de contenido y calendario (departamento de redes) ----------
@@ -347,7 +349,8 @@ router.get('/carpetas', async (req, res) => {
 router.post('/trabajos', async (req, res) => {
   try {
     await bucket();
-    const b = req.body || {}; const lista = await formatos(); const fmt = b.tipo === 'referencia' ? lista[0] : lista.find(x => x.id === b.formato);
+    const b = req.body || {}; if (b.dur_auto) { const [mn, mx] = await duracionIdeal(); b.dur_min = mn; b.dur_max = mx; }
+    const lista = await formatos(); const fmt = b.tipo === 'referencia' ? lista[0] : lista.find(x => x.id === b.formato);
     if (!fmt) return res.status(400).json({ error: 'Elige un formato' });
     if (!['voz', 'bruto', 'base', 'clips', 'referencia'].includes(b.tipo)) return res.status(400).json({ error: 'Indica si subes una voz en off, un bruto o eliges un vídeo base' });
     if (b.tipo === 'base' || b.base?.id) { if (!/^[\w-]{10,60}$/.test(b.base?.id || '')) return res.status(400).json({ error: 'Elige el archivo de Drive' }); }

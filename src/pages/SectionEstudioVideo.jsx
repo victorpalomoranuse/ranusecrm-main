@@ -192,13 +192,13 @@ function SelectorEstilo({ estilos, formato, valor, onCambio, etiqueta = 'Estilo 
 }
 function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
   const [estilos] = useEstilos(); const [estilo, setEstilo] = useState('');
-  const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [soloTr, setSoloTr] = useState(false), [soloAudio, setSoloAudio] = useState(false), [asig, setAsig] = useState({}), [prog, setProg] = useState(null), [error, setError] = useState('');
+  const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('auto'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [soloTr, setSoloTr] = useState(false), [soloAudio, setSoloAudio] = useState(false), [asig, setAsig] = useState({}), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
   useEffect(() => { try { const p = JSON.parse(localStorage.getItem('estudioPendiente') || 'null'); if (p) { if (p.guion) setGuion(p.guion); if (p.notas) setNotas(p.notas); localStorage.removeItem('estudioPendiente'); } } catch { /* nada pendiente */ } }, []);
   useEffect(() => { if (tipo === 'clips' && formatos.some(f => f.id === 'clips-dopaminicos')) setFmt('clips-dopaminicos'); }, [tipo, formatos]);
   const enviar = async () => {
-    const extra = tipo === 'clips' ? { num_clips: numClips, dur_min: Number(durClip.split('-')[0]), dur_max: Number(durClip.split('-')[1]) } : {};
+    const extra = tipo === 'clips' ? { num_clips: numClips, ...(durClip === 'auto' ? { dur_auto: true } : { dur_min: Number(durClip.split('-')[0]), dur_max: Number(durClip.split('-')[1]) }) } : {};
     const dDrive = tipo === 'base' || origen === 'drive'; if (tipo === 'clips' && soloTr) extra.fase = 'transcribir'; if (tipo === 'voz' && soloAudio) extra.fase = 'audio';
     if ((dDrive ? !base.length : !(files.length || file)) || !fmt) return; setError(''); setProg(0);
     try {
@@ -252,7 +252,7 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
       {tipo === 'clips' && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
           <label style={{ ...mut, flex: '1 1 160px' }}>Cuántos clips<select className="ap-field-input" style={{ width: '100%', marginTop: 4 }} value={numClips} onChange={e => setNumClips(Number(e.target.value))}><option value={0}>Los que merezcan la pena</option>{[1, 2, 3, 4, 5, 6, 8, 10].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
-          <label style={{ ...mut, flex: '1 1 160px' }}>Duración de cada clip<select className="ap-field-input" style={{ width: '100%', marginTop: 4 }} value={durClip} onChange={e => setDurClip(e.target.value)}><option value="15-35">Cortos (15–35 s)</option><option value="25-70">Medios (25–70 s)</option><option value="50-110">Largos (50–110 s)</option></select></label>
+          <label style={{ ...mut, flex: '1 1 160px' }}>Duración de cada clip<select className="ap-field-input" style={{ width: '100%', marginTop: 4 }} value={durClip} onChange={e => setDurClip(e.target.value)}><option value="auto">Automática: la que te ayuda a crecer</option><option value="15-35">Cortos (15–35 s)</option><option value="25-70">Medios (25–70 s)</option><option value="50-110">Largos (50–110 s)</option></select>{durClip === 'auto' && <span style={{ fontSize: '0.74rem' }}>Usa la duración que mejor te funciona según tus reels analizados (si aún no los has analizado, 20–50 s).</span>}</label>
         </div>
       )}
       {tipo === 'base' && <Explorador seleccion={base} onCambio={setBase} max={1} titulo="Vídeo base (el que se ve de fondo, con su voz)" vacio="Elegir el vídeo base" />}
