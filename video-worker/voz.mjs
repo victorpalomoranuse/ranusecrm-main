@@ -242,6 +242,8 @@ export async function guionLimpio(palabras, apiKey, notas = '', entrevista = fal
 
 // Quién habla en cada palabra: 'R' = quien responde (el que más habla) y 'P' = quien pregunta. Devuelve un array paralelo a palabras ('' si no hay separación de voces).
 export function etiquetasHablantes(palabras) {
+  // si ya se sabe quién es quién (la IA lo ha deducido leyendo las voces), se usa eso
+  if (palabras.some(w => w.rol)) return palabras.map(w => w.rol || '');
   const cuenta = {}; for (const w of palabras) if (w.spk !== undefined && w.spk !== null) cuenta[w.spk] = (cuenta[w.spk] || 0) + 1;
   const ks = Object.keys(cuenta); if (ks.length < 2) return palabras.map(() => '');
   const resp = ks.sort((a, b) => cuenta[b] - cuenta[a])[0];

@@ -362,6 +362,7 @@ async function procesa(t) {
   await paso(t, 'Subiendo el resultado…', { pct: 97 });
   const sube = async (ruta, f) => { try { await reintenta(() => st.upload(ruta, fs.readFileSync(f), { contentType: 'video/mp4', upsert: true }), 6); } catch (e) { throw new Error('No se pudo subir ' + ruta + ' tras varios intentos: ' + e.message); } };
   await sube('salidas/' + t.id + '.mp4', final); await sube('salidas/' + t.id + '_movil.mp4', movil);
+  try { const af = path.join(dir, '_trabajo_salida', 'analisis_edicion.json'); if (fs.existsSync(af)) t.analisis_edicion = JSON.parse(fs.readFileSync(af, 'utf8')); } catch { /* sin análisis del editor */ }
   let plan = null; const pf = path.join(dir, '_trabajo_salida', 'plan.json'); if (fs.existsSync(pf)) { try { const p = JSON.parse(fs.readFileSync(pf, 'utf8')); plan = { kicker: p.kicker, titulo: p.titulo, cortes: p.cortes?.length }; } catch { /* sin plan */ } }
   if (t.tipo === 'voz' || t.tipo === 'edicion') { try { await subeArtefactos(t, dir); } catch (e) { console.log('Sin guardar los datos para editar cortes:', e.message); } }
   if (t.tipo === 'bruto') { try {

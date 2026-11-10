@@ -5,6 +5,7 @@ import { spawnSync } from 'child_process';
 import { transcribe } from './transcribir.mjs';
 import { ENV } from './entorno.mjs';
 import { etiquetasHablantes } from './voz.mjs';
+import { claudeJSON, suavizaHablantes, asignaRoles, limpiaTramosPorVoz, juzgaClips } from './entrevista.mjs';
 
 // Lo que hace que un vídeo corto funcione en redes (se usa al elegir los momentos y al montar)
 export const PLAYBOOK_REDES = `CONOCIMIENTO DE REDES SOCIALES (aplícalo siempre):
@@ -46,6 +47,8 @@ export async function transcribeLargo(entrada, dir, avisa = () => {}) {
 
 // La IA lee la entrevista y ARMA clips: cada clip es una secuencia de tramos [ini,fin] que pueden venir de partes distintas (gancho, pregunta, mejor toma de la respuesta)
 export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, notas = '', reglas = '', guion = '' } = {}) {
+  // quién habla (corrige saltos de voz y deduce quién es el experto y quién el entrevistador) ANTES de elegir nada
+  suavizaHablantes(palabras); await asignaRoles(palabras, notas);
   const et = etiquetasHablantes(palabras), conVoces = et.some(e => e);
   const lineas = []; let cur = [], ini = 0, act = '';
   const cierra = () => { if (cur.length) { lineas.push('[' + ini.toFixed(1) + ' s]' + (conVoces && act ? ' ' + act + ':' : '') + ' ' + cur.join(' ')); cur = []; } };
@@ -62,13 +65,12 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
     '6) Prefiere clips de 20-45 s y empieza cada uno con la frase más potente (gancho en los 3 primeros segundos, entendible sin sonido); excluye intros, saludos, patrocinios y charla fuera de tema. Cada clip trata una idea distinta; reparte por TODA la entrevista; los clips no deben repetir los mismos tramos.\n\n' +
     (conVoces ? 'Cada línea empieza con P: (el entrevistador, que PREGUNTA) o R: (quien RESPONDE). Un clip de pregunta-respuesta incluye la pregunta P (su mejor formulación; si la repite o la corrige, la versión bien dicha) justo antes de la mejor toma de la respuesta R; descarta los "vale", "¿me repites?" y comentarios sueltos de P. ' : '') + 'Lee la transcripción (con el segundo de inicio de cada línea) y ' + cuantos + '. Ordénalos del mejor al peor.' + (guion ? ' GUION: la persona tiene estos guiones o preguntas, cada uno es un vídeo que quiere sacar de la entrevista: ' + guion.slice(0, 12000) + ' — Busca en la entrevista el momento de CADA guion o pregunta (aunque en la grabación se diga con otras palabras o varíe alguna) y haz un clip por cada uno, en el orden del guion; usa como pregunta del clip la formulación del guion si la grabada es peor; si alguno no aparece en la entrevista, no inventes un clip. ' : '') + (notas ? ' INDICACIONES DE LA PERSONA (obligatorias): ' + notas : '') +
     (reglas ? '\n\nVOZ Y REGLAS DE MARCA DE RANUSE (obligatorias):\n' + reglas : '') +
+    (conVoces ? '\n\nREGLAS DE LAS VOCES (muy importantes): en estas grabaciones el entrevistador (P) a veces SUGIERE al experto cómo decir algo («díselo en tres bloques», «para mí depende del gimnasio…»), repite o completa lo que dice el experto, o dice «vale», «sigue», «otra vez»: son indicaciones de grabación, NO contenido. NUNCA metas en un clip palabras de P que no sean LA PREGUNTA que abre el clip, y no mezcles en la respuesta frases de P. Si el experto repite la respuesta varias veces (tomas), usa UNA sola toma completa y bien dicha, con sus propias palabras. El mensaje debe sonar como el experto hablando solo, de principio a fin, sin que se oiga a nadie sugerirle nada. Si una idea solo se entiende con lo que dijo P, ponla como pregunta inicial clara o no la uses. ' : '') + ' EL CLIP DEBE CONTAR UNA HISTORIA que se entienda sin contexto: arranca con una promesa o pregunta que engancha, desarrolla con un dato o ejemplo concreto y cierra con un remate o conclusión (nunca cortado a mitad de idea). Piensa en quién se lo reenviaría a quién y por qué. Si en toda la entrevista no hay material para el número de clips pedido, da menos: cada clip debe valer la pena.' +
     '\n\nResponde SOLO con JSON: {"clips":[{"tramos":[[ini,fin],[ini,fin]], "titulo": "título gancho en pantalla, que provoque curiosidad o prometa algo (máx 9 palabras, en español, sin comillas)", "pregunta": "si es de pregunta y respuesta, la pregunta resumida; si no, vacío", "gancho": "la frase de apertura", "score": 0-100 potencial viral (sé exigente y honesto: 90+ excepcional, la mayoría entre 55 y 85), "sub": {"gancho": 0-100, "flujo": 0-100, "valor": 0-100, "tendencia": 0-100}, "motivo": "en una frase, por qué funciona o qué le falta"}]}\n\nTRANSCRIPCIÓN:\n' + lineas.join('\n');
   let d = null;
   for (let intento = 0; intento < 2 && !d; intento++) {
     try {
-      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 8000, messages: [{ role: 'user', content: prompt }] }) });
-      const j = await r.json(); if (!r.ok) throw new Error('Claude ' + r.status);
-      d = JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]);
+      d = await claudeJSON(prompt, { max: 8000 });
     } catch (e) { console.log('Elección de clips, reintento:', e.message); }
   }
   if (!d?.clips?.length) throw new Error('La IA no ha podido elegir los momentos de la entrevista');
@@ -82,6 +84,7 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
   const arma = (c, estricto) => {
     const crudos = (Array.isArray(c.tramos) && c.tramos.length ? c.tramos : (Number.isFinite(c.ini) ? [[c.ini, c.fin]] : [])).filter(t => Array.isArray(t) && Number(t[1]) > Number(t[0]));
     let tr = crudos.map(t => alinea(Number(t[0]), Number(t[1]))).filter(t => t && t[1] - t[0] >= 0.8);
+    if (conVoces) tr = limpiaTramosPorVoz(tr, palabras);
     if (!tr.length) return null;
     let total = tr.reduce((x, t) => x + (t[1] - t[0]), 0); const tope = Math.max(max * 2.2, 90);
     while (total > tope && tr.length > 1) { const u = tr.pop(); total -= u[1] - u[0]; }
@@ -93,6 +96,14 @@ export async function eligeClips(palabras, dur, { n = 0, min = 25, max = 70, not
   const solapa = (x, y) => { let comun = 0; for (const a of x.tramos) for (const b of y.tramos) comun += Math.max(0, Math.min(a[1], b[1]) - Math.max(a[0], b[0])); return comun > 0.5 * Math.min(x.total, y.total); };
   for (const c of d.clips) { const x = arma(c, true); if (!x) { console.log('Clip descartado (sin tramos válidos o demasiado corto)'); continue; } if (hechos.some(o => solapa(x, o))) { console.log('Clip descartado por repetir tramos de otro'); continue; } hechos.push(x); if (n > 0 && hechos.length >= n) break; }
   if (!hechos.length) for (const c of d.clips.slice(0, n > 0 ? n : 3)) { const x = arma(c, false); if (x) hechos.push(x); }
+  // el editor jefe lee cada clip montado, tal como se oirá, y tira o arregla lo que no se puede publicar
+  if (hechos.length) {
+    await juzgaClips(hechos, palabras, { reglas });
+    console.log('Editor jefe:', hechos.map(c => (c.juicio ? c.juicio.nota + ' ' + c.juicio.veredicto + (c.juicio.problemas?.length ? ' (' + c.juicio.problemas.join('; ') + ')' : '') : '—')).join(' | '));
+    const buenos = hechos.filter(c => !c.juicio || !(c.juicio.veredicto === 'descartar' || (c.juicio.mezcla && (c.juicio.nota ?? 100) < 60) || (c.juicio.nota ?? 100) < 45));
+    const mejor = hechos.slice().sort((x, y) => (y.juicio?.nota ?? y.score ?? 0) - (x.juicio?.nota ?? x.score ?? 0))[0];
+    const final = buenos.length ? buenos : [mejor]; hechos.length = 0; hechos.push(...final);
+  }
   return hechos;
 }
 

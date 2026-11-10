@@ -8,15 +8,50 @@ const ESTILO_SELECT = '.ev-root select option { background:#1a1a1a; color:#fff; 
 const ESTADOS = { pendiente: ['En cola', '#bba'], procesando: ['Montando…', '#f2c46d'], listo: ['Listo', '#7ccf8f'], error: ['Error', '#ef7b7b'] };
 const fmtFecha = (iso) => { try { return new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' }); } catch { return ''; } };
 
-async function subirArchivo(file, onProgreso, tipo) {
+// Subida por TROZOS con reintentos y reanudación: un vídeo de varios GB no se pierde si se corta la conexión (se retoma desde donde llegó)
+const TROZO_SUBIDA = 16 * 1024 * 1024; // múltiplo de 256 KiB, como exige la nube
+const espera = (ms) => new Promise(r => setTimeout(r, ms));
+function putTrozo(url, cuerpo, rango, onBytes) {
+  return new Promise((ok, ko) => {
+    const x = new XMLHttpRequest(); x.open('PUT', url); x.setRequestHeader('Content-Range', rango);
+    if (onBytes) x.upload.onprogress = (e) => { if (e.lengthComputable) onBytes(e.loaded); };
+    x.onload = () => ok({ status: x.status, range: x.getResponseHeader('Range') });
+    x.onerror = () => ko(new Error('Sin conexión durante la subida')); x.ontimeout = () => ko(new Error('La subida tardó demasiado')); x.timeout = 10 * 60 * 1000;
+    x.send(cuerpo);
+  });
+}
+async function subirATrozos(file, url, onProgreso, onAviso) {
+  const total = file.size; let pos = 0, fallos = 0;
+  if (!total) throw new Error('El archivo está vacío');
+  const consulta = async () => { const r = await putTrozo(url, null, 'bytes */' + total); if (r.status === 200 || r.status === 201) return total; if (r.status === 308) return r.range ? parseInt(r.range.split('-')[1], 10) + 1 : 0; throw new Error('La nube respondió ' + r.status); };
+  while (pos < total) {
+    const fin = Math.min(pos + TROZO_SUBIDA, total), ini = pos;
+    try {
+      const r = await putTrozo(url, file.slice(ini, fin), 'bytes ' + ini + '-' + (fin - 1) + '/' + total, (b) => onProgreso(Math.min(99, Math.round((ini + b) / total * 100))));
+      if (r.status === 200 || r.status === 201) { pos = total; }
+      else if (r.status === 308) { pos = r.range ? parseInt(r.range.split('-')[1], 10) + 1 : fin; }
+      else if (r.status >= 500 || r.status === 429 || r.status === 408) throw new Error('La nube respondió ' + r.status);
+      else throw Object.assign(new Error('La subida falló (' + r.status + ')'), { fatal: true });
+      fallos = 0; onAviso && onAviso('');
+    } catch (e) {
+      if (e.fatal || ++fallos > 12) throw e;
+      onAviso && onAviso('Conexión inestable: reintentando la subida (' + fallos + '/12)…');
+      await espera(Math.min(30000, 1500 * 2 ** (fallos - 1)));
+      try { pos = await consulta(); } catch { /* se reintenta el mismo trozo */ }
+    }
+  }
+  onProgreso(100);
+}
+async function subirArchivo(file, onProgreso, tipo, onAviso) {
   const { data } = await api.post('/estudio-video/subida', { nombre: file.name, tipo });
+  if (data.gcs) { await subirATrozos(file, data.url, onProgreso, onAviso); return data.ruta; }
   const cuerpo = new FormData(); cuerpo.append('cacheControl', '3600'); cuerpo.append('', file);
   await new Promise((ok, ko) => {
-    const x = new XMLHttpRequest(); x.open('PUT', data.url); if (data.gcs) x.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    const x = new XMLHttpRequest(); x.open('PUT', data.url);
     x.upload.onprogress = (e) => { if (e.lengthComputable) onProgreso(Math.round(e.loaded / e.total * 100)); };
     x.onload = () => (x.status < 300 ? ok() : ko(new Error('La subida falló (' + x.status + ')')));
     x.onerror = () => ko(new Error('Sin conexión durante la subida'));
-    x.send(data.gcs ? file : cuerpo);
+    x.send(cuerpo);
   });
   return data.ruta;
 }
@@ -538,6 +573,28 @@ function TrabajoNormal({ t, formatos, onCambio, musica = [], trabajosTodos = [] 
           {t.autorevision.intento && <div style={{ ...mut, marginTop: 6 }}>{t.autorevision.intento}</div>}
         </div>
       )}
+      {t.estado === 'listo' && t.analisis_edicion?.analisis && (() => {
+        const an = t.analisis_edicion.analisis, ef = t.analisis_edicion.efectos || [], il = t.analisis_edicion.ilustraciones || [];
+        return (
+          <details style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(205,187,167,0.35)', background: 'rgba(205,187,167,0.05)' }}>
+            <summary style={{ cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700, fontSize: '1.2rem' }}>{an.potencial ?? '—'}<span style={mut}>/100 potencial viral</span></span>
+              <span style={mut}>🎬 Lo que piensa el editor</span>
+            </summary>
+            <div style={{ marginTop: 8, fontSize: '0.85rem', lineHeight: 1.5 }}>
+              {an.tema && <div><strong>De qué va:</strong> {an.tema}</div>}
+              {an.gancho && <div style={{ marginTop: 3 }}><strong>Gancho:</strong> {an.gancho}</div>}
+              {an.por_que && <div style={{ marginTop: 3 }}><strong>Por qué esa nota:</strong> {an.por_que}</div>}
+              {(an.puntos_fuertes || []).length > 0 && <div style={{ marginTop: 6 }}><strong style={{ color: '#7ccf8f' }}>Puntos fuertes</strong>{an.puntos_fuertes.map((p, i) => <div key={i}>+ {p}</div>)}</div>}
+              {(an.puntos_flojos || []).length > 0 && <div style={{ marginTop: 6 }}><strong style={{ color: '#f2c46d' }}>Puntos flojos</strong>{an.puntos_flojos.map((p, i) => <div key={i}>– {p}</div>)}</div>}
+              {(an.mejoras || []).length > 0 && <div style={{ marginTop: 6 }}><strong>Qué mejoraría</strong>{an.mejoras.map((p, i) => <div key={i}>→ {p}</div>)}</div>}
+              {(an.arco || []).length > 0 && <div style={{ marginTop: 6 }}><strong>Historia:</strong> {an.arco.map(a => a.momento).join(' → ')}</div>}
+              {ef.length > 0 && <div style={{ marginTop: 6 }}><strong>Efectos elegidos ({t.analisis_edicion.intensidad || 'media'}):</strong>{ef.map((e, i) => <div key={i} style={mut}>{e.t}s · {e.tipo}{e.texto ? ' «' + e.texto + '»' : ''} — {e.motivo}</div>)}</div>}
+              {il.length > 0 && <div style={{ marginTop: 6 }}><strong>Ilustraciones:</strong>{il.map((e, i) => <div key={i} style={mut}>{e.t}s · {e.motivo}</div>)}</div>}
+            </div>
+          </details>
+        );
+      })()}
       {t.estado === 'listo' && (t.faltan || []).length > 0 && (
         <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(242,196,109,0.5)', background: 'rgba(242,196,109,0.08)' }}>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>La IA echa en falta clips</div>

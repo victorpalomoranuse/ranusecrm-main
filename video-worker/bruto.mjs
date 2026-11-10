@@ -49,7 +49,7 @@ const claudeMejor = async (content, max = 2500) => {
   let ultimo = null;
   for (const modelo of MODELOS_DIRECTOR) {
     try {
-      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: modelo, max_tokens: max, messages: [{ role: 'user', content }] }) });
+      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: modelo, max_tokens: Math.max(max, 3000), messages: [{ role: 'user', content }] }) });
       const j = await r.json(); if (!r.ok) throw new Error('Claude ' + r.status + ' ' + (j.error?.message || '').slice(0, 80));
       return JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]);
     } catch (e) { ultimo = e; console.log('Director de edición (' + modelo + '):', e.message); }
