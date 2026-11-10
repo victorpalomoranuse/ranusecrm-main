@@ -1005,6 +1005,7 @@ const ICONOS = {
   muro: 'M3 6h18v12H3z M3 12h18 M9 6v6 M15 12v6', rect: 'M4 6h16v12H4z', circ: 'M12 4a8 8 0 100 16 8 8 0 000-16z', poli: 'M12 3l8 6-3 11H7L4 9z',
   empujar: 'M12 20V10 M8 13l4-4 4 4 M4 8l8-4 8 4', zona: 'M4 5h16v14H4z M4 12l8-7 M4 19L19 5 M12 19l7-7', sigue: 'M3 19c6 0 4-14 9-14s3 14 9 14',
   catalogo: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8', biblioteca: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
+  alzado: 'M4 4h16v16H4z M4 15h16 M9 4v11 M15 4v11', planta: 'M4 4h16v16H4z M4 10h9 M13 4v16', techo: 'M4 4h16v16H4z M8 8h8v8H8z',
   textura: 'M4 4h16v16H4z M4 9h16 M4 14h16 M9 4v16 M14 4v16', modelos: 'M12 3l8 4v10l-8 4-8-4V7z M4 7l8 4 8-4 M12 11v10',
   sauna: 'M4 4h16v16H4z M4 12h9 M4 16h14 M15 7c0-2 2-2 2-4 M11 7c0-2 2-2 2-4',
   mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4', texto: 'M5 6h14 M12 6v13 M9 19h6', imagen: 'M4 5h16v14H4z M8 10a1.5 1.5 0 1 0 0-.01 M4 17l5-5 4 4 3-3 4 4', ideas: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z',
@@ -1661,6 +1662,7 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => { api3d.current.despertar?.(); }); // cualquier cambio en la pantalla (estado de React) vuelve a dibujar un momento
   const [herr, setHerr] = useState('sel');         // 'sel' | 'caja'
   const herrRef = useRef('sel');
+  const entrarAlzadoRef = useRef(null);
   const [bibAbierta, setBibAbierta] = useState(false);
   const [biblioteca, setBiblioteca] = useState(null);
   const [filtro, setFiltro] = useState('');
@@ -2110,6 +2112,13 @@ export default function Visor3D({ cliente = false }) {
       p2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       rayo.setFromCamera(p2, cam);
       const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
+      if (['vistaM', 'vistaS', 'vistaT'].includes(herrRef.current)) {
+        const h = rayo.intersectObjects(raiz.children, true).find(x => x.object.isMesh && !x.object.userData.hit && !x.object.userData.overlay && visible(x.object)), u = h?.object?.userData || {}, k = herrRef.current;
+        if (k === 'vistaM' && u.muroId) { setHerr('sel'); entrarAlzadoRef.current?.('muro', u.muroId); }
+        else if (k === 'vistaS' && u.salaKey) { setHerr('sel'); entrarAlzadoRef.current?.('suelo', u.salaKey); }
+        else if (k === 'vistaT' && (u.salaKey || u.techoKey)) { setHerr('sel'); entrarAlzadoRef.current?.('techo', u.salaKey || u.techoKey); }
+        return;
+      }
       if (herrRef.current === 'pincel' || herrRef.current === 'gotero') {
         const h = rayo.intersectObjects([...raiz.children, ...esc.children], true).find(x => x.object.isMesh && !x.object.userData.hit && visible(x.object));
         if (h) { if (herrRef.current === 'gotero' || e.altKey) tomarMaterial(h); else aplicarPincel(h, e.shiftKey || modoPincelRef.current === 'todo'); }
@@ -2132,7 +2141,7 @@ export default function Visor3D({ cliente = false }) {
         setSeleccion(null);
         const u = primero?.object?.userData || {};
         if (u.muroId) { setSelAcab({ tipo: 'muro', id: u.muroId }); setSelObj(null); }
-        else if (u.salaKey) { setSelAcab({ tipo: 'suelo', id: u.salaKey }); setSelObj(null); }
+        else if (u.salaKey) { setSelAcab(null); setSelObj(null); }
         else setSelAcab(null);
       }
     };
@@ -4238,6 +4247,7 @@ export default function Visor3D({ cliente = false }) {
     a.scene.background = new THREE.Color(0xffffff); if (a.base) a.base.visible = false;
     setSelAcab(null); setSelObj(null); setAlz({ tipo, id: idObj, lado });
   };
+  entrarAlzadoRef.current = entrarAlzado;
   const salirAlzado = () => {
     const a = api3d.current, p = a.alzPrev;
     if (p) { a.cam.fov = p.fov; a.shiftY = p.shift; a.cam.updateProjectionMatrix(); a.cam.position.copy(p.pos); a.ctrl.target.copy(p.target); a.scene.background = p.bg; }
@@ -4607,6 +4617,7 @@ export default function Visor3D({ cliente = false }) {
   const AYUDA_HERR = {
     sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo'], poli: ['Dibujar forma', 'Rectángulo y círculo: arrastra · Polígono: clic a clic, Enter cierra · después tira hacia arriba para darle altura'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de la forma para darle altura'],
     muro: ['Muro', 'Clic para empezar y cada punto; Mayús = recto; Enter termina'], zonaS: ['Zona en suelo', 'Clic punto a punto; Enter cierra'], zonaT: ['Zona en techo', 'Clic punto a punto; Enter cierra'], zonaP: ['Zona en pared', 'Clic punto a punto sobre una pared; Enter cierra'],
+    vistaM: ['Alzado de un muro', 'Pulsa el muro del que quieres ver el alzado (vista de frente) para dibujar y colocar materiales'], vistaS: ['Planta de un suelo', 'Pulsa el suelo del que quieres ver la planta (vista desde arriba)'], vistaT: ['Planta de un techo', 'Pulsa el suelo de la sala de la que quieres ver el techo desde abajo'],
     sigue: ['Sígueme', 'Dibuja el camino por donde pasará el perfil; Enter termina'], carril: ['Carril', 'Dibuja el recorrido; Enter termina'], led: ['Tira LED', 'Dibuja el recorrido; Enter termina'], focoC: ['Focos', 'Clic en el carril para colocar; Esc sale'],
     luz: ['Luz', 'Clic en el suelo para colocar la luminaria en el plano'], guia: ['Cinta métrica', 'Clic en dos puntos para crear una línea guía'], pincel: ['Pincel', 'Clic en lo que quieras pintar · Mayús = todo el elemento · Alt = copiar material'], gotero: ['Cuentagotas', 'Clic en lo que quieras copiar'],
   };
@@ -4881,6 +4892,11 @@ export default function Visor3D({ cliente = false }) {
             {[['magnetico', 'Carril magnético (48 V, ultrafino)'], ['trifasico', 'Carril trifásico (230 V)']].map(([v, n]) => <div key={v} onClick={() => { setCarrilSis(v); setHerr('carril'); setCarrilMenu(false); }} style={itemMenu}>{n}</div>)}
           </>), 270),
         ], false, 'Luz')}
+        {grupoRail([
+          railBtn(herr === 'vistaM', 'alzado', 'Alzado', 'Pulsa un muro: vista de frente de ese muro para dibujar y colocar materiales con medidas', () => setHerr('vistaM')),
+          railBtn(herr === 'vistaS', 'planta', 'Planta suelo', 'Pulsa un suelo: vista desde arriba para dibujar y colocar materiales con medidas', () => setHerr('vistaS')),
+          railBtn(herr === 'vistaT', 'techo', 'Planta techo', 'Pulsa el suelo de una sala: vista del techo desde abajo', () => setHerr('vistaT')),
+        ], false, 'Detallar')}
         {grupoRail([
           railBtn(herr === 'guia', 'cinta', 'Cinta', 'Cinta métrica: clic en dos puntos para crear una línea guía; el dibujo se imanta a ellas', () => setHerr('guia')),
           railBtn(capasAbierto, 'capas', 'Capas', 'Mostrar u ocultar muros, suelos, techos, plantas y etiquetas', () => setCapasAbierto(v => !v)),
