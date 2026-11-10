@@ -1328,7 +1328,7 @@ function InicioRedes({ ir }) {
   }, []);
   const cambia = async (id) => { try { await api.post('/redes/objetivo', { id }); setObjs(o => ({ ...o, actual: id })); const r = await api.get('/redes/instagram/publicaciones'); setPubs(r.data.publicaciones || []); } catch { /* se queda */ } };
   const analiza = async () => { setTrab(true); try { const r = await api.post('/redes/cuenta/salud', {}, { timeout: 200000 }); setS(r.data); } catch { /* se queda como estaba */ } setTrab(false); };
-  const top = (pubs || []).filter(p => !p.prueba).slice(0, 3), ideas = (est?.aprendizaje?.ideas_ganadoras || []).slice(0, 3), obj = objs ? objs.objetivos.find(o => o.id === objs.actual) : null;
+  const top = (pubs || []).filter(p => !p.prueba && p.rumbo !== 'fuera').slice(0, 3), ideas = (est?.aprendizaje?.ideas_ganadoras || []).slice(0, 3), obj = objs ? objs.objetivos.find(o => o.id === objs.actual) : null;
   const flecha = { sube: ['📈', '#8fdba0', 'Subes'], estable: ['➖', '#f2c46d', 'Estable'], baja: ['📉', '#ff9b9b', 'Bajas'] }[s?.tendencia] || null;
   const conectado = !!est?.instagram;
   return (
@@ -1355,6 +1355,7 @@ function InicioRedes({ ir }) {
         {ideas.length > 0 ? <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))' }}>{ideas.map((x, i) => <div key={i} className="rd-card" style={{ cursor: 'pointer' }} onClick={() => setAbierta(x)}><span className="rd-chip arena" style={{ alignSelf: 'flex-start' }}>{x.formato || 'idea'}</span><div className="rd-gancho">{x.idea}</div><div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Crear guion →</div></div>)}</div> : <div style={mut}>Cuando analices tus reels, aquí saldrán ideas listas para grabar.</div>}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="rd-btn" onClick={() => ir('plan')}>Plan de publicación</button><button className="rd-btn" onClick={() => ir('musica')}>🎵 Música</button></div>
       </div>
+      <RumboRedes />
       <PreferenciasRedes />
       {abierta && <TallerIdeas idea={abierta} onCerrar={() => setAbierta(null)} />}
     </div>
@@ -1546,6 +1547,21 @@ function EstudiaReferente() {
     </div>
   );
 }
+function RumboRedes({ onCambio }) {
+  const [r, setR] = useState(null), [enfoque, setEnfoque] = useState(''), [yaNo, setYaNo] = useState(''), [trab, setTrab] = useState(false), [msg, setMsg] = useState('');
+  useEffect(() => { api.get('/redes/rumbo').then(x => { setR(x.data); setEnfoque(x.data.enfoque || ''); setYaNo(x.data.ya_no || ''); }).catch(() => {}); }, []);
+  const guarda = async () => { setTrab(true); setMsg(''); try { const x = await api.post('/redes/rumbo', { enfoque, ya_no: yaNo }, { timeout: 150000 }); setR(v => ({ ...(v || {}), ...x.data, enfoque, ya_no: yaNo })); setMsg(x.data.clasificados ? 'Guardado. He clasificado ' + x.data.clasificados + ' reels: ' + x.data.encaja + ' encajan, ' + x.data.formato + ' solo de formato, ' + x.data.fuera + ' fuera de tu rumbo.' : 'Guardado.'); if (onCambio) onCambio(); } catch (e) { setMsg(e.response?.data?.error || 'No se pudo guardar'); } setTrab(false); };
+  return (
+    <div className="rd-card" style={{ gap: 10 }}>
+      <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>🧭 HACIA DÓNDE VOY AHORA · manda sobre tu historial</div>
+      <div style={{ ...mut, fontSize: '0.84rem' }}>Que lo que funcionó hace tiempo no te arrastre a lo antiguo. La IA clasifica tus reels según tu rumbo: los que ya no encajan dejan de ser modelo de tema; de los que sirven solo de forma, aprende el formato solo si es útil.</div>
+      <textarea className="ap-field-input" rows={2} value={enfoque} onChange={e => setEnfoque(e.target.value)} placeholder="Ahora me dirijo a… (ej.: diseño de gimnasios boutique y home gyms premium para…)" />
+      <textarea className="ap-field-input" rows={2} value={yaNo} onChange={e => setYaNo(e.target.value)} placeholder="Ya NO me dirijo a… (ej.: campos de fútbol, decoración de casas)" />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><button className="rd-btn pri" disabled={trab || enfoque.trim().length < 5} onClick={guarda}>{trab ? 'Clasificando tus reels… (1-2 min)' : '💾 Guardar y clasificar mis reels'}</button>{r?.clasificados > 0 && !msg && <span style={{ ...mut, fontSize: '0.8rem' }}>{r.encaja} encajan · {r.formato} de formato · {r.fuera} fuera de rumbo</span>}</div>
+      {msg && <div style={{ ...mut, fontSize: '0.84rem' }}>{msg}</div>}
+    </div>
+  );
+}
 function SemanaTipo({ dias }) {
   const [ab, setAb] = useState(null), [taller, setTaller] = useState(null);
   return <>
@@ -1614,7 +1630,7 @@ function PestanaAnalizador() {
   useEffect(() => { api.get('/redes/objetivos').then(r => setObjs(r.data)).catch(() => {}); }, []);
   const cambiaObjetivo = async (id) => { try { await api.post('/redes/objetivo', { id }); setObjs(o => ({ ...o, actual: id })); await cargaPubs(); await cargar(); } catch { /* se queda */ } };
   const objAct = objs ? objs.objetivos.find(o => o.id === objs.actual) : null;
-  const [vid, setVid] = useState(null), [vis2, setVis2] = useState({}), [periodo, setPeriodo] = useState(0);
+  const [vid, setVid] = useState(null), [vis2, setVis2] = useState({}), [periodo, setPeriodo] = useState(0), [verFuera, setVerFuera] = useState(false);
   useEffect(() => { api.get('/redes/periodo').then(r => setPeriodo(r.data.dias || 0)).catch(() => {}); }, []);
   const cambiaPeriodo = async (dias) => { try { await api.post('/redes/periodo', { dias }); setPeriodo(dias); await cargaPubs(); } catch { /* se queda */ } };
   useEffect(() => { setVis2(v => (v[plat] ? v : { ...v, [plat]: true })); }, [plat]);
@@ -1626,7 +1642,7 @@ function PestanaAnalizador() {
   if (!e) return <div className="ap-loading">Cargando…</div>;
   const reales = (pubs || []).filter(p => !p.prueba), pruebas = (pubs || []).filter(p => p.prueba && p.motivo !== 'periodo'), fueraPeriodo = (pubs || []).filter(p => p.motivo === 'periodo').length;
   const marca = async (id, v, motivo) => { try { await api.post('/redes/instagram/prueba', { id, prueba: v, motivo }); await cargaPubs(); } catch { /* se queda */ } };
-  const ig = e.instagram, ap = e.aprendizaje, mc = e.mi_canal, pl = e.plan, top = reales.slice().sort((a, b) => orden === 'vistas' ? (b.views || b.reach || 0) - (a.views || a.reach || 0) : (b.puntuacion || 0) - (a.puntuacion || 0)).slice(0, 12), maxP = Math.max(1, ...(top.map(p => p.puntuacion || 0)));
+  const ig = e.instagram, ap = e.aprendizaje, mc = e.mi_canal, pl = e.plan, top = reales.filter(p => verFuera || p.rumbo !== 'fuera').sort((a, b) => orden === 'vistas' ? (b.views || b.reach || 0) - (a.views || a.reach || 0) : (b.puntuacion || 0) - (a.puntuacion || 0)).slice(0, 12), maxP = Math.max(1, ...(top.map(p => p.puntuacion || 0)));
   const k = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1).replace('.', ',') + ' M' : n >= 1e3 ? Math.round(n / 1e3) + ' k' : String(n));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -1684,9 +1700,9 @@ function PestanaAnalizador() {
           </div>
           {top.length > 0 && (
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '0 0 10px' }}><h3 style={{ margin: 0 }}>🏆 Lo que mejor te ha funcionado{objAct ? ' · ' + objAct.icono + ' ' + objAct.nombre : ''}</h3><div className="rd-tabs" title="Qué publicaciones cuentan para el ranking, el análisis y las predicciones">{[[0, 'Desde siempre'], [365, '12 meses'], [180, '6 meses'], [90, '3 meses'], [30, '30 días']].map(([d, n]) => <button key={d} className={'rd-tab' + (periodo === d ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => cambiaPeriodo(d)}>{n}</button>)}</div><div className="rd-tabs"><button className={'rd-tab' + (orden === 'puntuacion' ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => setOrden('puntuacion')} title={objAct ? 'Puntuación = ' + objAct.formula : ''}>Por puntuación</button><button className={'rd-tab' + (orden === 'vistas' ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => setOrden('vistas')}>Por vistas</button></div></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '0 0 10px' }}><h3 style={{ margin: 0 }}>🏆 Lo que mejor te ha funcionado{objAct ? ' · ' + objAct.icono + ' ' + objAct.nombre : ''}</h3><div className="rd-tabs" title="Qué publicaciones cuentan para el ranking, el análisis y las predicciones">{[[0, 'Desde siempre'], [365, '12 meses'], [180, '6 meses'], [90, '3 meses'], [30, '30 días']].map(([d, n]) => <button key={d} className={'rd-tab' + (periodo === d ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => cambiaPeriodo(d)}>{n}</button>)}</div>{(pubs || []).some(p => p.rumbo === 'fuera') && <button className={'rd-btn' + (verFuera ? ' pri' : '')} style={{ padding: '5px 12px', fontSize: '0.76rem' }} onClick={() => setVerFuera(v => !v)} title='Mostrar también lo que está fuera de tu rumbo actual'>{verFuera ? 'Ocultar fuera de rumbo' : 'Ver también fuera de rumbo'}</button>}<div className="rd-tabs"><button className={'rd-tab' + (orden === 'puntuacion' ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => setOrden('puntuacion')} title={objAct ? 'Puntuación = ' + objAct.formula : ''}>Por puntuación</button><button className={'rd-tab' + (orden === 'vistas' ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => setOrden('vistas')}>Por vistas</button></div></div>
               <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>
-                {top.slice(0, 8).map(p => <a key={p.id} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt" title={objAct ? objAct.unidad : ''}>{p.puntuacion}</span><div style={{ position: 'absolute', top: 8, right: 8, zIndex: 3, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>{[['marca', '🏷 Ya no es mi marca', 'Es un vídeo antiguo o que ya no representa tu marca: que no cuente ni se imite'], ['repetido', '🔁 Repetido', 'Es el mismo vídeo que otro: que no cuente dos veces'], ['prueba', '🧪 Prueba', 'Fue una prueba: que no cuente']].map(([m, n, tt]) => <button key={m} title={tt} onClick={ev => { ev.preventDefault(); ev.stopPropagation(); marca(p.id, true, m); }} style={{ padding: '2px 8px', fontSize: '0.68rem', borderRadius: 14, border: '1px solid rgba(255,255,255,.25)', background: 'rgba(0,0,0,.6)', color: '#fff', cursor: 'pointer' }}>{n}</button>)}</div><div className="vel"><b>{(p.pie || '(sin texto)').slice(0, 70)}</b><div style={{ opacity: 0.75 }}>{p.views != null ? k(p.views) + ' vistas' : p.reach != null ? 'alcance ' + fmt(p.reach) : p.tipo}{p.saved != null ? ' · ' + p.saved + ' guardados' : ''}</div></div></a>)}
+                {top.slice(0, 8).map(p => <a key={p.id} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt" title={objAct ? objAct.unidad : ''}>{p.puntuacion}</span>{p.rumbo && p.rumbo !== 'encaja' && <span style={{ position: 'absolute', left: 8, top: 40, zIndex: 3, fontSize: '0.66rem', padding: '2px 8px', borderRadius: 12, background: 'rgba(0,0,0,.65)', color: p.rumbo === 'fuera' ? '#ff9b9b' : '#f2c46d' }}>{p.rumbo === 'fuera' ? '↩ fuera de rumbo' : '◐ solo el formato'}</span>}<div style={{ position: 'absolute', top: 8, right: 8, zIndex: 3, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>{[['marca', '🏷 Ya no es mi marca', 'Es un vídeo antiguo o que ya no representa tu marca: que no cuente ni se imite'], ['repetido', '🔁 Repetido', 'Es el mismo vídeo que otro: que no cuente dos veces'], ['prueba', '🧪 Prueba', 'Fue una prueba: que no cuente']].map(([m, n, tt]) => <button key={m} title={tt} onClick={ev => { ev.preventDefault(); ev.stopPropagation(); marca(p.id, true, m); }} style={{ padding: '2px 8px', fontSize: '0.68rem', borderRadius: 14, border: '1px solid rgba(255,255,255,.25)', background: 'rgba(0,0,0,.6)', color: '#fff', cursor: 'pointer' }}>{n}</button>)}</div><div className="vel"><b>{(p.pie || '(sin texto)').slice(0, 70)}</b><div style={{ opacity: 0.75 }}>{p.views != null ? k(p.views) + ' vistas' : p.reach != null ? 'alcance ' + fmt(p.reach) : p.tipo}{p.saved != null ? ' · ' + p.saved + ' guardados' : ''}</div></div></a>)}
               </div>
             </div>
           )}
