@@ -1632,7 +1632,7 @@ export function planta(m, z0) {
   (m.pilares || []).forEach(p => {
     const h = (m.altura || 260) * CM;
     const x = new THREE.Mesh(new THREE.BoxGeometry(p.w * CM, h, p.d * CM), new THREE.MeshStandardMaterial({ color: 0xd8d4cf, roughness: 0.9 }));
-    x.position.set(p.cx * CM, h / 2, p.cy * CM); x.castShadow = x.receiveShadow = true; x.userData.capa = 'pilares'; x.userData.pilarId = p.id; g.add(x);
+    x.position.set(p.cx * CM, h / 2, p.cy * CM); x.rotation.y = -(p.rot || 0) * Math.PI / 180; x.castShadow = x.receiveShadow = true; x.userData.capa = 'pilares'; x.userData.pilarId = p.id; g.add(x);
   });
   (m.recrecidos || []).forEach(rc => {
     if (!Array.isArray(rc.pts) || rc.pts.length < 3) return;
