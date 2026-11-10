@@ -626,6 +626,7 @@ router.put('/:id/escena3d', async (req, res) => {
         })),
       } : undefined,
       plano: ['suelo', 'techo', 'pared', 'vertical', 'horizontal'].includes(o.plano) ? o.plano : undefined,
+      guia: o.tipo === 'zona' && o.guia && typeof o.guia === 'object' ? { eje: o.guia.eje === 'v' ? 'v' : 'h', v: num(o.guia.v) } : undefined,
       perfilNombre: o.tipo === 'barrido' ? String(o.perfilNombre || '').slice(0, 40) : undefined,
       perfil: o.tipo === 'barrido' && Array.isArray(o.perfil) ? o.perfil.slice(0, 40).map(p => [Math.max(-200, Math.min(200, num(p?.[0]))), Math.max(-200, Math.min(200, num(p?.[1])))]) : undefined,
       esc: o.tipo === 'barrido' ? Math.max(0.1, Math.min(20, num(o.esc, 1))) : undefined,

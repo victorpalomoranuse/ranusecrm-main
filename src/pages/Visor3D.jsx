@@ -907,6 +907,7 @@ export function construirAlzadoMuro(mu, lado, hCm, zonas, rejilla) {
   const g = new THREE.Group(), L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) * CM, H = hCm * CM, t = (mu.t || 12) * CM, z = lado * (t / 2 + 0.03), k = Math.max(0.6, Math.max(L, H) / 6);
   g.position.set(mu.a[0] * CM, 0, mu.a[1] * CM); g.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
   const lineMat = new THREE.LineBasicMaterial({ color: 0x111111, depthTest: false }), cotaMat = new THREE.LineBasicMaterial({ color: 0x0b3d91, depthTest: false }), rej = new THREE.LineBasicMaterial({ color: 0xd2d2d2, depthTest: false });
+  const guiaMat = new THREE.LineBasicMaterial({ color: 0xe11d9a, depthTest: false });
   const linea = (pts, mat) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p[0], p[1], z))), mat); l.renderOrder = 997; g.add(l); };
   const txt = (s, x, y) => { if (!s) return; const sp = cartel(s); sp.scale.multiplyScalar(k); sp.position.set(x, y, z + lado * 0.02); g.add(sp); };
   const dimH = (x0, x1, y, s) => { linea([[x0, y], [x1, y]], cotaMat); linea([[x0, y - 0.06 * k], [x0, y + 0.06 * k]], cotaMat); linea([[x1, y - 0.06 * k], [x1, y + 0.06 * k]], cotaMat); txt(s, (x0 + x1) / 2, y + 0.13 * k); };
@@ -926,6 +927,7 @@ export function construirAlzadoMuro(mu, lado, hCm, zonas, rejilla) {
     dimV(y0, y1, x1 + 0.18 * k + (y0 > 0.005 ? 0 : 0), '');
   });
   zonas.forEach(zn => {
+    if (zn.guia) { const gx = zn.pts.map(p => p[0] * CM), gy = zn.pts.map(p => p[1] * CM); linea(zn.guia.eje === 'h' ? [[Math.min(...gx), zn.guia.v * CM], [Math.max(...gx), zn.guia.v * CM]] : [[zn.guia.v * CM, Math.min(...gy)], [zn.guia.v * CM, Math.max(...gy)]], guiaMat); return; }
     const xs = zn.pts.map(p => p[0] * CM), ys = zn.pts.map(p => p[1] * CM), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
     linea([[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]], cotaMat); txt(cm0(x1 - x0) + ' × ' + cm0(y1 - y0), (x0 + x1) / 2, (y0 + y1) / 2);
     dimH(x0, x1, y0 - 0.12 * k, ''); dimV(0, y0, x0 - 0.12 * k, cm0(y0));
@@ -956,6 +958,7 @@ export function construirAlzadoPlanta(sala, yMundo, zonas, rejilla) {
   const area = Math.abs(pts.reduce((s, p, i) => s + p[0] * pts[(i + 1) % pts.length][1] - pts[(i + 1) % pts.length][0] * p[1], 0) / 2) / 1e4;
   txt(area.toFixed(2).replace('.', ',') + ' m²', cx, cy);
   zonas.forEach(zn => {
+    if (zn.guia) { const gx = zn.pts.map(p => p[0] + zn.cx), gy = zn.pts.map(p => p[1] + zn.cy); linea(zn.guia.eje === 'h' ? [[Math.min(...gx), zn.guia.v], [Math.max(...gx), zn.guia.v]] : [[zn.guia.v, Math.min(...gy)], [zn.guia.v, Math.max(...gy)]], new THREE.LineBasicMaterial({ color: 0xe11d9a, depthTest: false })); return; }
     const zx = zn.pts.map(p => p[0] + zn.cx), zy = zn.pts.map(p => p[1] + zn.cy), x0 = Math.min(...zx), x1 = Math.max(...zx), y0 = Math.min(...zy), y1 = Math.max(...zy);
     linea([[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]], cotaMat); txt(String(Math.round(x1 - x0)) + ' × ' + Math.round(y1 - y0), (x0 + x1) / 2, (y0 + y1) / 2);
   });
@@ -1808,6 +1811,8 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => { formaRef.current = formaDib; }, [formaDib]);
   const [alz, setAlz] = useState(null);                  // detalle abierto: { tipo: 'muro' | 'suelo' | 'techo', id, lado }
   const [profAlz, setProfAlz] = useState(120);
+  const [vistaTool, setVistaTool] = useState(null), [vistaPrev, setVistaPrev] = useState(null), [alzMas, setAlzMas] = useState(false);
+  const vistaToolRef = useRef(null); vistaToolRef.current = vistaTool;
   const [zForm, setZForm] = useState({ x: 0, y: 90, w: 100, h: 100, forma: 'rect' });
   const [railCols, setRailCols] = useState(() => (typeof window !== 'undefined' && window.innerHeight < 1000 ? 2 : 1));
   useEffect(() => { const f = () => setRailCols(window.innerHeight < 1000 ? 2 : 1); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
@@ -3229,6 +3234,7 @@ export default function Visor3D({ cliente = false }) {
     const presup = { n: 0 };
     const todosMuros = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []);
     objs.forEach(o => {
+      if (o.guia) return; // las guías solo se ven en el alzado o la planta
       if (o.tipo === 'zona' && Array.isArray(o.pts) && o.pts.length >= 3) {
         const gz = new THREE.Group();
         const val = o.color, tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
@@ -3790,7 +3796,7 @@ export default function Visor3D({ cliente = false }) {
       const cmdTecla = comandos().find(x => x.t === k);
       if (cmdTecla) { e.preventDefault(); cmdTecla.f(); }
       else if (k === 'escape' && cmdPal) setCmdPal(null);
-      else if (k === 'escape' && alz) { salirAlzado(); }
+      else if (k === 'escape' && alz) { if (vistaToolRef.current) setVistaTool(null); else salirAlzado(); }
       else if (k === 'escape') { setSelObj(null); setSelAcab(null); setSelHueco(null); setLuzSel(null); setSeleccion(null); api3d.current.limpiarSel?.(); }
       else if (k === ' ') { e.preventDefault(); document.activeElement?.blur?.(); setHerr('sel'); }
     };
@@ -4249,6 +4255,7 @@ export default function Visor3D({ cliente = false }) {
   };
   entrarAlzadoRef.current = entrarAlzado;
   const salirAlzado = () => {
+    setVistaTool(null); setVistaPrev(null);
     const a = api3d.current, p = a.alzPrev;
     if (p) { a.cam.fov = p.fov; a.shiftY = p.shift; a.cam.updateProjectionMatrix(); a.cam.position.copy(p.pos); a.ctrl.target.copy(p.target); a.scene.background = p.bg; }
     a.ctrl.enableRotate = true; a.ctrl.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE; if (a.base) a.base.visible = true; a.renderer.clippingPlanes = []; a.alzPrev = null; setAlz(null); a.ctrl.update();
@@ -4593,6 +4600,70 @@ export default function Visor3D({ cliente = false }) {
     }, 350);
     return () => clearTimeout(tm);
   }, [aristas, rev, objs, estado, modosEq, biblioteca, mtick, ocultas, acab, texturas]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Dibujo sencillo sobre un alzado o una planta: rectángulo, línea recta y guías. Todo se hace arrastrando o pulsando sobre la propia vista.
+  useEffect(() => {
+    const a = api3d.current; if (!alz || !vistaTool || !a.renderer || !a.cam) return undefined;
+    const m = a.modelo, pl0 = m && (m.plantas || [m])[0]; if (!pl0) return undefined;
+    const dom = a.renderer.domElement, host = dom.parentElement || dom, cam = a.cam, rayo = new THREE.Raycaster(), v2 = new THREE.Vector2();
+    let plano, aVista, ext;
+    if (alz.tipo === 'muro') {
+      const mu = (pl0.muros || []).find(x => x.id === alz.id); if (!mu) return undefined;
+      const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, nx = -uy * alz.lado, ny = ux * alz.lado, off = (mu.t || 12) / 2, H = mu.h || pl0.altura || 260;
+      plano = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(nx, 0, ny), new THREE.Vector3((mu.a[0] + nx * off) * CM, 0, (mu.a[1] + ny * off) * CM));
+      aVista = P => [(P.x / CM - mu.a[0]) * ux + (P.z / CM - mu.a[1]) * uy, P.y / CM]; ext = [0, L, 0, H];
+    } else {
+      const sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === alz.id); if (!sala) return undefined;
+      const xs = sala.pts.map(p => p[0]), ys = sala.pts.map(p => p[1]), Hh = pl0.altura || 260;
+      plano = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(alz.tipo === 'techo' ? Hh * CM : 0));
+      aVista = P => [P.x / CM, P.z / CM]; ext = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    }
+    const guias = () => objsRef.current.filter(o => o.tipo === 'zona' && o.guia && (alz.tipo === 'muro' ? (o.plano === 'pared' && o.muroId === alz.id) : o.plano === alz.tipo));
+    const punto = e => {
+      const r = dom.getBoundingClientRect(); v2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); rayo.setFromCamera(v2, cam);
+      const P = new THREE.Vector3(); if (!rayo.ray.intersectPlane(plano, P)) return null;
+      let [u, v] = aVista(P); const g = gridRef.current || 5; u = Math.round(u / g) * g; v = Math.round(v / g) * g;
+      if (imanRef.current) guias().forEach(o => { const q = o.guia; if (q.eje === 'h' && Math.abs(q.v - v) < 6) v = q.v; if (q.eje === 'v' && Math.abs(q.v - u) < 6) u = q.v; });
+      return [u, v];
+    };
+    const idN = () => 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    const mkZona = (pts, nombre, color, extra) => {
+      const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      if (alz.tipo === 'muro') return { id: idN(), tipo: 'zona', plano: 'pared', muroId: alz.id, lado: alz.lado, nombre, etiqueta: 'Zonas', cx: 0, cy: 0, rot: 0, w: x1 - x0, d: 1, alto: y1 - y0, z0: 0, color, pts, ...extra };
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      return { id: idN(), tipo: 'zona', plano: alz.tipo, h: alz.tipo === 'techo' ? (pl0.altura || 260) : undefined, nombre, etiqueta: 'Zonas', cx, cy, rot: 0, w: x1 - x0, d: y1 - y0, alto: 1, z0: 0, color, pts: pts.map(p => [p[0] - cx, p[1] - cy]), ...extra };
+    };
+    const colorMat = () => (matSelRef.current?.id ? 'tex:' + matSelRef.current.id : (matSelRef.current?.hex || null));
+    const crea = (z) => { setObjs(prev => [...prev, z]); };
+    let ini = null, fin = null;
+    const abajo = e => {
+      if (e.button !== 0 || e.target !== dom) return;
+      const p = punto(e); if (!p) return;
+      e.stopPropagation(); e.preventDefault();
+      if (vistaToolRef.current === 'guiaH') { crea(mkZona([[ext[0], p[1] - 0.3], [ext[1], p[1] - 0.3], [ext[1], p[1] + 0.3], [ext[0], p[1] + 0.3]], 'Guía horizontal', '#e11d9a', { guia: { eje: 'h', v: p[1] } })); return; }
+      if (vistaToolRef.current === 'guiaV') { crea(mkZona([[p[0] - 0.3, ext[2]], [p[0] + 0.3, ext[2]], [p[0] + 0.3, ext[3]], [p[0] - 0.3, ext[3]]], 'Guía vertical', '#e11d9a', { guia: { eje: 'v', v: p[0] } })); return; }
+      ini = { p, cx: e.clientX, cy: e.clientY }; fin = p; a.ctrl.enabled = false;
+      setVistaPrev({ x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, medida: '' });
+    };
+    const mueve = e => {
+      if (!ini) return; const p = punto(e); if (!p) return; fin = p;
+      const du = Math.abs(p[0] - ini.p[0]), dv = Math.abs(p[1] - ini.p[1]);
+      setVistaPrev({ x0: ini.cx, y0: ini.cy, x1: e.clientX, y1: e.clientY, medida: vistaToolRef.current === 'linea' ? Math.round(Math.hypot(du, dv)) + ' cm' : Math.round(du) + ' × ' + Math.round(dv) + ' cm' });
+    };
+    const arriba = () => {
+      if (!ini) return; const p0 = ini.p, p1 = fin || ini.p; ini = null; a.ctrl.enabled = true; setVistaPrev(null);
+      const du = p1[0] - p0[0], dv = p1[1] - p0[1];
+      if (vistaToolRef.current === 'rect') {
+        if (Math.abs(du) < 2 || Math.abs(dv) < 2) return;
+        crea(mkZona([[Math.min(p0[0], p1[0]), Math.min(p0[1], p1[1])], [Math.max(p0[0], p1[0]), Math.min(p0[1], p1[1])], [Math.max(p0[0], p1[0]), Math.max(p0[1], p1[1])], [Math.min(p0[0], p1[0]), Math.max(p0[1], p1[1])]], 'Rectángulo', colorMat() || '#c9b9a0'));
+      } else if (vistaToolRef.current === 'linea') {
+        const Ln = Math.hypot(du, dv); if (Ln < 2) return; const gr = 1, nx = (-dv / Ln) * gr / 2, ny = (du / Ln) * gr / 2;
+        crea(mkZona([[p0[0] + nx, p0[1] + ny], [p1[0] + nx, p1[1] + ny], [p1[0] - nx, p1[1] - ny], [p0[0] - nx, p0[1] - ny]], 'Línea', colorMat() || '#1c1c1c'));
+      }
+    };
+    host.addEventListener('pointerdown', abajo, true); window.addEventListener('pointermove', mueve); window.addEventListener('pointerup', arriba);
+    dom.style.cursor = 'crosshair';
+    return () => { host.removeEventListener('pointerdown', abajo, true); window.removeEventListener('pointermove', mueve); window.removeEventListener('pointerup', arriba); dom.style.cursor = ''; a.ctrl.enabled = true; setVistaPrev(null); };
+  }, [alz, vistaTool]); // eslint-disable-line react-hooks/exhaustive-deps
   const itemMenu = { padding: '6px 8px', cursor: 'pointer', borderRadius: 4 };
   const railBtn = (activo, icono, etiqueta, titulo, onClick, color) => (
     <button key={etiqueta} title={titulo} onClick={onClick} style={{ width: 54, padding: '3px 0 2px', background: activo ? (color || '#2f6fa8') : 'transparent', color: activo && color === '#c9a21a' ? '#111' : '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
@@ -5302,8 +5373,21 @@ export default function Visor3D({ cliente = false }) {
       )}
       {alz && (
         <div style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12, zIndex: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.35)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', maxWidth: '96vw' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }} title="Cuadrícula de 50 cm sobre el alzado o la planta"><input type="checkbox" checked={rejAlz} onChange={e => setRejAlz(e.target.checked)} /> Cuadrícula</label>
           <b style={{ fontSize: 13 }}>📐 {alz.tipo === 'muro' ? 'Alzado del muro' : alz.tipo === 'suelo' ? 'Planta del suelo' : 'Planta del techo'}</b>
+          <span style={{ width: 1, height: 22, background: '#444' }} />
+          {[['rect', '▭ Rectángulo', 'Arrastra de una esquina a la opuesta'], ['linea', '╱ Línea recta', 'Arrastra del punto de inicio al final'], ['guiaH', '↔ Guía horizontal', 'Pulsa donde quieras la guía'], ['guiaV', '↕ Guía vertical', 'Pulsa donde quieras la guía']].map(([k, n, ayuda]) => (
+            <button key={k} style={{ ...btn, padding: '5px 10px', fontWeight: 600, ...(vistaTool === k ? { background: '#2f6fa8' } : {}) }} onClick={() => setVistaTool(v => (v === k ? null : k))} title={ayuda}>{n}</button>
+          ))}
+          {(() => { const ms = matSel, tx = ms?.id ? texturas.find(x => x.id === ms.id) : null; return (
+            <button style={{ ...btn, display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px' }} onClick={() => setMatAbierto(true)} title="Elige el material con el que se rellenan los rectángulos y líneas">
+              <span style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid #666', background: tx ? 'url(' + tx.url + ') center/cover' : (ms?.hex || '#c9b9a0') }} />
+              <span style={{ textAlign: 'left', lineHeight: 1.15 }}><span style={{ display: 'block', fontSize: 11 }}>Material</span><span style={{ opacity: 0.7, fontSize: 10 }}>{tx ? tx.nombre.slice(0, 18) + ' · ' + tx.tam + (tx.tamH ? '×' + tx.tamH : '×' + tx.tam) : ms?.hex || 'beige (elige otro)'}</span></span>
+            </button>); })()}
+          <button style={btn} onClick={() => setAlzMas(v => !v)} title="Cuadrícula, imán, zona por medidas, lámina…">{alzMas ? '▾ Menos' : '⚙ Más'}</button>
+          <button style={{ ...btn, background: '#7a2b2b' }} onClick={salirAlzado}>Salir (Esc)</button>
+          <div style={{ flexBasis: '100%', opacity: 0.7, fontSize: 11 }}>{vistaTool === 'rect' ? 'Arrastra de una esquina a la opuesta. Se rellena con el material de arriba.' : vistaTool === 'linea' ? 'Arrastra del inicio al final de la línea (se ven los cm mientras arrastras).' : vistaTool === 'guiaH' || vistaTool === 'guiaV' ? 'Pulsa donde quieras la guía. Lo que dibujes después se pega a ella.' : 'Elige una herramienta y dibuja directamente sobre la vista. Esc para dejarla. Rueda = acercar · botón central = mover.'}</div>
+          {alzMas && (<div style={{ flexBasis: '100%', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid #333', paddingTop: 6 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }} title="Cuadrícula de 50 cm sobre el alzado o la planta"><input type="checkbox" checked={rejAlz} onChange={e => setRejAlz(e.target.checked)} /> Cuadrícula</label>
           <label title={alz.tipo === 'muro' ? 'Hasta qué distancia delante del muro se ven los objetos (muebles, máquinas…)' : alz.tipo === 'suelo' ? 'Altura del corte horizontal' : 'Hasta cuántos cm bajo el techo se ve'}>Corte <input type="number" value={profAlz} onChange={e => setProfAlz(parseFloat(e.target.value) || 100)} style={{ ...btn, width: 62, padding: '2px 6px' }} /> cm</label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} title="Atrae el dibujo a esquinas, bordes de huecos y vértices. Desmárcalo para dibujar libre"><input type="checkbox" checked={imanActivo} onChange={e => setImanActivo(e.target.checked)} /> Imán</label>
           <select value={gridCm} onChange={e => setGridCm(parseFloat(e.target.value))} style={{ ...btn, padding: '2px 6px' }} title="Salto de la rejilla"><option value={1}>1 cm</option><option value={5}>5 cm</option><option value={10}>10 cm</option></select>
@@ -5314,8 +5398,15 @@ export default function Visor3D({ cliente = false }) {
           <button style={{ ...btn, background: '#6b6159' }} onClick={crearZonaMedidas} title="Crea la zona con el material que tengas elegido en 🎨 Materiales (o beige si no hay ninguno)">＋ Crear zona</button>
           <span style={{ width: 1, height: 20, background: '#444' }} />
           <button style={btn} onClick={async () => { try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-' + alz.tipo + '-' + alz.id + '.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar la lámina: ' + (e.message || 'error')); } }} title="Guarda esta vista con todas sus cotas como imagen">⬇ Lámina</button>
-          <button style={{ ...btn, background: '#7a2b2b' }} onClick={salirAlzado}>Salir (Esc)</button>
-          <div style={{ flexBasis: '100%', opacity: 0.55, fontSize: 11 }}>Medidas en cm. Dibuja con las herramientas normales (▨ Zonas, 🎨 pincel…): al ser una vista de frente, todo cae exactamente donde haces clic. Rueda para acercar, arrastrar con el botón central o derecho para desplazarte.</div>
+          </div>)}
+        </div>
+      )}
+      {vistaPrev && (
+        <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9 }}>
+          {vistaTool === 'linea'
+            ? <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}><line x1={vistaPrev.x0} y1={vistaPrev.y0} x2={vistaPrev.x1} y2={vistaPrev.y1} stroke="#2f6fa8" strokeWidth="2" strokeDasharray="6 4" /></svg>
+            : <div style={{ position: 'absolute', left: Math.min(vistaPrev.x0, vistaPrev.x1), top: Math.min(vistaPrev.y0, vistaPrev.y1), width: Math.abs(vistaPrev.x1 - vistaPrev.x0), height: Math.abs(vistaPrev.y1 - vistaPrev.y0), border: '2px dashed #2f6fa8', background: 'rgba(47,111,168,0.15)' }} />}
+          <div style={{ position: 'absolute', left: vistaPrev.x1 + 12, top: vistaPrev.y1 + 12, background: '#111', color: '#fff', borderRadius: 6, padding: '2px 8px', fontSize: 12 }}>{vistaPrev.medida}</div>
         </div>
       )}
       {camAbierta && camInfo && (
