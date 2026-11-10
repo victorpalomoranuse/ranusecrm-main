@@ -1004,6 +1004,7 @@ const ICONOS = {
   muro: 'M3 6h18v12H3z M3 12h18 M9 6v6 M15 12v6', rect: 'M4 6h16v12H4z', circ: 'M12 4a8 8 0 100 16 8 8 0 000-16z', poli: 'M12 3l8 6-3 11H7L4 9z',
   empujar: 'M12 20V10 M8 13l4-4 4 4 M4 8l8-4 8 4', zona: 'M4 5h16v14H4z M4 12l8-7 M4 19L19 5 M12 19l7-7', sigue: 'M3 19c6 0 4-14 9-14s3 14 9 14',
   catalogo: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8', biblioteca: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
+  textura: 'M4 4h16v16H4z M4 9h16 M4 14h16 M9 4v16 M14 4v16', modelos: 'M12 3l8 4v10l-8 4-8-4V7z M4 7l8 4 8-4 M12 11v10',
   sauna: 'M4 4h16v16H4z M4 12h9 M4 16h14 M15 7c0-2 2-2 2-4 M11 7c0-2 2-2 2-4',
   mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4', texto: 'M5 6h14 M12 6v13 M9 19h6', imagen: 'M4 5h16v14H4z M8 10a1.5 1.5 0 1 0 0-.01 M4 17l5-5 4 4 3-3 4 4', ideas: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z',
   luz: 'M9 18h6 M10 21h4 M12 3a6 6 0 00-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0012 3z',
@@ -4843,16 +4844,21 @@ export default function Visor3D({ cliente = false }) {
         ], false, 'Construir')}
         {grupoRail([
           railBtn(herr === 'pincel' || matAbierto, 'pintar', 'Pintura', 'Colores, texturas y LED: elige y pinta (cara, pieza o entero)', () => { setMatAbierto(v => !v); if (matAbierto && herr === 'pincel') setHerr('sel'); }),
-        ], false, 'Pintar')}
+          railBtn(b3dAbierta && b3dTab === 'texturas', 'textura', 'Texturas', 'Texturas gratuitas para pintar muros, suelos y objetos', () => { const ya = b3dAbierta && b3dTab === 'texturas'; setB3dTab('texturas'); setB3dCat(''); setB3dAbierta(!ya); }),
+          railBtn(b3dAbierta && b3dTab === 'mistex', 'textura', 'Mis texturas' + ((b3d?.mistex || []).length ? ' (' + b3d.mistex.length + ')' : ''), 'Tus propias texturas', () => { const ya = b3dAbierta && b3dTab === 'mistex'; setB3dTab('mistex'); setB3dCat(''); setB3dAbierta(!ya); }),
+        ], false, 'Materiales')}
         {grupoRail([
-          railBtn(bibAbierta, 'catalogo', 'Catálogo', 'Tus productos del catálogo de Ranuse', () => setBibAbierta(v => !v)),
-          railBtn(b3dAbierta, 'biblioteca', 'Biblioteca', 'Mis modelos, muebles y texturas gratuitos', () => setB3dAbierta(v => !v)),
+          railBtn(bibAbierta, 'catalogo', 'Catálogo', 'Tus productos del catálogo de Ranuse (máquinas y equipamiento)', () => setBibAbierta(v => !v)),
+          railBtn(b3dAbierta && b3dTab === 'modelos', 'biblioteca', 'Muebles', 'Muebles y objetos gratuitos de la biblioteca', () => { const ya = b3dAbierta && b3dTab === 'modelos'; setB3dTab('modelos'); setB3dCat(''); setB3dAbierta(!ya); }),
+          railBtn(b3dAbierta && b3dTab === 'mios', 'modelos', 'Mis modelos', 'Los modelos 3D que has subido tú', () => { const ya = b3dAbierta && b3dTab === 'mios'; setB3dTab('mios'); setB3dCat(''); setB3dAbierta(!ya); }),
           menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, 'mueble', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
             {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
           </>), 250),
           menuRail(saunaMenu, setSaunaMenu, railBtn(saunaMenu, 'sauna', 'Sauna', 'Diseñar una sauna: tradicional, híbrida o de infrarrojos', () => setSaunaMenu(v => !v)), (<>
             {Object.entries(TIPOS_SAUNA).map(([k, v]) => <div key={k} onClick={() => crearSauna(k)} style={itemMenu}>{v.n}</div>)}
           </>), 250),
+        ], false, 'Componentes')}
+        {grupoRail([
           railBtn(ideasAbierto, 'ideas', 'Ideas', 'Chat con ChatGPT: comparte una imagen o la vista actual, pide una idea (un mural, un ambiente…) y descarga solo la imagen', () => setIdeasAbierto(v => !v)),
           railBtn(false, 'imagen', 'Imagen', 'Sube una imagen (PNG con transparencia, o con fondo liso que se quita) y se coloca en el 3D como en SketchUp; después la escalas', () => imagenInput.current?.click()),
           railBtn(false, 'texto', 'Texto 3D', 'Escribe una palabra y elige la fuente: se convierte en letras 3D', () => setTextoDlg({ texto: '', fuente: 'Montserrat-Regular', disp: 'horizontal' })),
@@ -5867,12 +5873,15 @@ export default function Visor3D({ cliente = false }) {
         const cats = [...new Set([...(b3dTab === 'mios' ? (b3d?.catsMios || []) : []), ...(b3d?.[b3dTab] || []).map(m => m.categoria)])].sort();
         return (
           <div style={{ position: 'absolute', left: railW, top: 56, bottom: 12, width: 270, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', fontSize: 13, zIndex: 3 }}>
-            <div style={{ fontWeight: 700 }}>🧰 Biblioteca 3D <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>gratis · CC0</span></div>
+            <div style={{ fontWeight: 700 }}>{b3dTab === 'modelos' || b3dTab === 'mios' ? '🧰 Componentes · ' + (b3dTab === 'mios' ? 'Mis modelos' : 'Muebles') : '🎨 Materiales · ' + (b3dTab === 'mistex' ? 'Mis texturas' : 'Texturas')} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>{b3dTab === 'mios' || b3dTab === 'mistex' ? 'tuyos' : 'gratis · CC0'}</span></div>
             <div style={{ display: 'flex', gap: 6, margin: '6px 0', flexWrap: 'wrap' }}>
-              <button style={{ ...btn, flex: 1, ...(b3dTab === 'modelos' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('modelos'); setB3dCat(''); }}>Muebles</button>
-              <button style={{ ...btn, flex: 1, ...(b3dTab === 'mios' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('mios'); setB3dCat(''); }}>Mis modelos</button>
-              <button style={{ ...btn, flex: 1, ...(b3dTab === 'texturas' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('texturas'); setB3dCat(''); }}>Texturas</button>
-              <button style={{ ...btn, flex: '1 1 100%', ...(b3dTab === 'mistex' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('mistex'); setB3dCat(''); }}>Mis texturas{(b3d?.mistex || []).length ? ' (' + b3d.mistex.length + ')' : ''}</button>
+              {(b3dTab === 'modelos' || b3dTab === 'mios') ? (<>
+                <button style={{ ...btn, flex: 1, ...(b3dTab === 'modelos' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('modelos'); setB3dCat(''); }}>Muebles</button>
+                <button style={{ ...btn, flex: 1, ...(b3dTab === 'mios' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('mios'); setB3dCat(''); }}>Mis modelos</button>
+              </>) : (<>
+                <button style={{ ...btn, flex: 1, ...(b3dTab === 'texturas' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('texturas'); setB3dCat(''); }}>Texturas</button>
+                <button style={{ ...btn, flex: 1, ...(b3dTab === 'mistex' ? { background: '#6b6159' } : {}) }} onClick={() => { setB3dTab('mistex'); setB3dCat(''); }}>Mis texturas{(b3d?.mistex || []).length ? ' (' + b3d.mistex.length + ')' : ''}</button>
+              </>)}
             </div>
             <input value={b3dFiltro} onChange={e => setB3dFiltro(e.target.value)} placeholder="Buscar…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 6 }} />
             <select value={b3dCat} onChange={e => setB3dCat(e.target.value)} style={{ ...btn, marginBottom: 8 }}>
