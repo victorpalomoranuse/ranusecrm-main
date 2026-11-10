@@ -1401,14 +1401,14 @@ function PreferenciasRedes() {
   useEffect(() => { api.get('/redes/preferencias').then(r => setP(r.data)).catch(() => setP({ reglas: [] })); }, []);
   const anade = async () => { if (texto.trim().length < 3) return; try { const r = await api.post('/redes/preferencias', { texto, tipo }); setP(r.data); setTexto(''); } catch { /* se queda */ } };
   const quita = async (id) => { try { const r = await api.post('/redes/preferencias', { borrar: id }); setP(r.data); } catch { /* se queda */ } };
-  const l = p?.reglas || [], ico = { no: '🚫', si: '✅', transmitir: '💬' }, col = { no: '#ff9b9b', si: '#8fdba0', transmitir: '#9db8ff' };
+  const l = p?.reglas || [], ico = { no: '🚫', si: '✅', transmitir: '💬', saber: '🧠' }, col = { no: '#ff9b9b', si: '#8fdba0', transmitir: '#9db8ff', saber: '#f2c46d' };
   return (
     <div className="rd-card" style={{ gap: 10 }}>
       <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>✋ TUS PREFERENCIAS · la IA las respeta siempre</div>
-      <div style={{ ...mut, fontSize: '0.84rem' }}>Dile lo que no quieres, lo que sí y qué quieres transmitir. Vale para consejos, ideas, planes, guiones y el asistente. Vuelve a analizar para que lo aplique.</div>
+      <div style={{ ...mut, fontSize: '0.84rem' }}>Dile lo que no quieres, lo que sí, qué quieres transmitir y lo que debe saber de tu negocio (clientes, proyectos…). Vale para consejos, ideas, planes, guiones y el asistente. Vuelve a analizar para que lo aplique.</div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <select className="ap-field-input" value={tipo} onChange={e => setTipo(e.target.value)}><option value="no">🚫 No quiero</option><option value="si">✅ Quiero</option><option value="transmitir">💬 Quiero transmitir</option></select>
-        <input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') anade(); }} placeholder="Ej.: no mencionar futbolistas · transmitir cercanía y criterio de obra real" />
+        <select className="ap-field-input" value={tipo} onChange={e => setTipo(e.target.value)}><option value="no">🚫 No quiero</option><option value="si">✅ Quiero</option><option value="transmitir">💬 Quiero transmitir</option><option value="saber">🧠 Debes saber</option></select>
+        <input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') anade(); }} placeholder="Ej.: no mencionar futbolistas · Juan Lebron es cliente mío y su reel debería rendir más" />
         <button className="rd-btn pri" onClick={anade}>Añadir</button>
       </div>
       {l.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{l.map(r => <span key={r.id} className="rd-chip" style={{ color: col[r.tipo] }}>{ico[r.tipo]} {r.texto} <button onClick={() => quita(r.id)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button></span>)}</div>}

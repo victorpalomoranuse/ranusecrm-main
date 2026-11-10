@@ -133,8 +133,8 @@ export const OBJETIVOS = {
 const RUTA_PREFS = 'crm/redes/preferencias.json';
 let PREFS_TXT = '';
 export async function refrescaPrefs() {
-  try { const p = await leerJson(RUTA_PREFS, { reglas: [] }), no = (p.reglas || []).filter(r => r.tipo === 'no').map(r => '- ' + r.texto), si = (p.reglas || []).filter(r => r.tipo === 'si').map(r => '- ' + r.texto), tr = (p.reglas || []).filter(r => r.tipo === 'transmitir').map(r => '- ' + r.texto);
-    PREFS_TXT = no.length || si.length || tr.length ? 'PREFERENCIAS DE VÍCTOR (OBLIGATORIAS: nunca las incumplas ni propongas nada que las contradiga, ni en ideas, ni en acciones, ni en guiones, ni en el plan)' + (no.length ? '\nNO QUIERE:\n' + no.join('\n') : '') + (si.length ? '\nQUIERE:\n' + si.join('\n') : '') + (tr.length ? '\nQUIERE TRANSMITIR (imagen y mensaje de marca; todo lo que propongas debe reforzarlo):\n' + tr.join('\n') : '') + '\n' : '';
+  try { const p = await leerJson(RUTA_PREFS, { reglas: [] }), no = (p.reglas || []).filter(r => r.tipo === 'no').map(r => '- ' + r.texto), si = (p.reglas || []).filter(r => r.tipo === 'si').map(r => '- ' + r.texto), tr = (p.reglas || []).filter(r => r.tipo === 'transmitir').map(r => '- ' + r.texto), sa = (p.reglas || []).filter(r => r.tipo === 'saber').map(r => '- ' + r.texto);
+    PREFS_TXT = no.length || si.length || tr.length || sa.length ? 'PREFERENCIAS DE VÍCTOR (OBLIGATORIAS: nunca las incumplas ni propongas nada que las contradiga, ni en ideas, ni en acciones, ni en guiones, ni en el plan)' + (no.length ? '\nNO QUIERE:\n' + no.join('\n') : '') + (si.length ? '\nQUIERE:\n' + si.join('\n') : '') + (tr.length ? '\nQUIERE TRANSMITIR (imagen y mensaje de marca; todo lo que propongas debe reforzarlo):\n' + tr.join('\n') : '') + (sa.length ? '\nCONTEXTO QUE DEBES SABER (hechos reales de su negocio; úsalos para interpretar bien los datos, por ejemplo qué publicaciones son de clientes y cuáles deberían rendir más):\n' + sa.join('\n') : '') + '\n' : '';
   } catch { PREFS_TXT = ''; }
   return PREFS_TXT;
 }
@@ -313,7 +313,7 @@ router.post('/preferencias', async (req, res) => {
   try {
     const p = await leerJson(RUTA_PREFS, { reglas: [] }); p.reglas = p.reglas || [];
     if (req.body?.borrar) p.reglas = p.reglas.filter(r => r.id !== req.body.borrar);
-    else { const texto = limpia(req.body?.texto, 220), tipo = ['si', 'transmitir'].includes(req.body?.tipo) ? req.body.tipo : 'no'; if (texto.length < 3) return res.status(400).json({ error: 'Escribe la preferencia' }); if (!p.reglas.some(r => r.texto.toLowerCase() === texto.toLowerCase())) p.reglas.push({ id: crypto.randomUUID().slice(0, 6), tipo, texto }); }
+    else { const texto = limpia(req.body?.texto, 220), tipo = ['si', 'transmitir', 'saber'].includes(req.body?.tipo) ? req.body.tipo : 'no'; if (texto.length < 3) return res.status(400).json({ error: 'Escribe la preferencia' }); if (!p.reglas.some(r => r.texto.toLowerCase() === texto.toLowerCase())) p.reglas.push({ id: crypto.randomUUID().slice(0, 6), tipo, texto }); }
     p.reglas = p.reglas.slice(-40); await guardarJson(RUTA_PREFS, p); await refrescaPrefs(); res.json(p);
   } catch { res.status(500).json({ error: 'No se pudo guardar' }); }
 });
