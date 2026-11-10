@@ -1215,7 +1215,7 @@ function ResultadoNicho({ n }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 6 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span className="rd-chip arena">{yt ? '▶ YouTube · ' + n.consulta : '📸 ' + (n.cuentas || []).map(c => '@' + c.usuario).join(', ')}</span><span style={mut}>{String(n.fecha).slice(0, 10)}</span>{n.fiabilidad && <span className="rd-chip" title={n.fiabilidad}>Fiabilidad: {String(n.fiabilidad).split(/[.,:]/)[0].slice(0, 30)}</span>}</div>
       {(n.fallos || []).length > 0 && <div style={{ ...mut, color: '#f2c46d' }}>No he podido leer: {n.fallos.join(' · ')}</div>}
-      {(n.top || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>{n.top.slice(0, 8).map((p, i) => <a key={i} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: yt ? '16/11' : '4/5' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{yt ? (p.vistas_por_suscriptor != null ? p.vistas_por_suscriptor + '×' : '') : p.puntuacion}</span><div className="vel"><b>{p.titulo || p.gancho || p.pie || 'ver'}</b><div style={{ opacity: 0.7 }}>{p.canal || (p.cuenta ? '@' + p.cuenta : '')}{p.vistas ? ' · ' + p.vistas.toLocaleString('es-ES') + ' vistas' : p.me_gusta != null ? ' · ' + p.me_gusta + ' me gusta' : ''}</div></div></a>)}</div>}
+      {(n.top || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>{n.top.slice(0, 8).map((p, i) => <a key={i} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: yt ? '16/11' : '4/5' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{yt ? (p.vistas >= 1e6 ? (p.vistas / 1e6).toFixed(1).replace('.', ',') + ' M' : p.vistas >= 1e3 ? Math.round(p.vistas / 1e3) + ' k' : p.vistas) : p.puntuacion}</span><div className="vel"><b>{p.titulo || p.gancho || p.pie || 'ver'}</b><div style={{ opacity: 0.7 }}>{p.canal || (p.cuenta ? '@' + p.cuenta : '')}{p.vistas ? ' · ' + p.vistas.toLocaleString('es-ES') + ' vistas' : p.me_gusta != null ? ' · ' + p.me_gusta + ' me gusta' : ''}</div></div></a>)}</div>}
       <div className="rd-grid2">
         {(n.patrones || []).length > 0 && <Tarjeta titulo="Lo que funciona"><Lista items={n.patrones} color="#8fdba0" /></Tarjeta>}
         {(n.ganchos || []).length > 0 && <Tarjeta titulo="Ganchos que enganchan"><Lista items={n.ganchos} /></Tarjeta>}
@@ -1227,103 +1227,207 @@ function ResultadoNicho({ n }) {
 }
 function PestanaAnalizador() {
   const [e, setE] = useState(null), [msg, setMsg] = useState(''), [error, setError] = useState(''), [trabaja, setTrabaja] = useState(''), [pubs, setPubs] = useState(null), [cuentas, setCuentas] = useState(''), [consulta, setConsulta] = useState('diseño de gimnasios'), [nicho, setNicho] = useState(null), [ayuda, setAyuda] = useState(null);
+  const [plat, setPlat] = useState('ig'), [canal, setCanal] = useState(''), [cfgId, setCfgId] = useState(''), [prop, setProp] = useState(''), [propFmt, setPropFmt] = useState('reel'), [pred, setPred] = useState(null), [autopsias, setAutopsias] = useState({});
   const cargar = useCallback(() => api.get('/redes/estado').then(r => setE(r.data)).catch(() => setE({ instagram: null })), []);
   const cargaPubs = useCallback(() => api.get('/redes/instagram/publicaciones').then(r => setPubs(r.data.publicaciones)).catch(() => {}), []);
   useEffect(() => {
     cargar(); api.get('/redes/nicho').then(r => setNicho(r.data)).catch(() => {});
-    try { const p = new URLSearchParams(window.location.search); if (p.get('redes') === 'conectado') setMsg('Instagram conectado. Ahora pulsa «Leer mis publicaciones».'); else if (p.get('redes') === 'error') setError(p.get('msg') || 'No se pudo conectar.'); } catch { /* sin parámetros */ }
+    try { const p = new URLSearchParams(window.location.search); if (p.get('redes') === 'conectado') setMsg('Instagram conectado. Ahora pulsa «Leer publicaciones».'); else if (p.get('redes') === 'error') setError(p.get('msg') || 'No se pudo conectar.'); } catch { /* sin parámetros */ }
   }, [cargar]);
   useEffect(() => { if (e?.instagram?.n_media) cargaPubs(); }, [e?.instagram?.n_media, cargaPubs]);
-  const [cfgId, setCfgId] = useState('');
+  useEffect(() => { if (e?.canal_url && !canal) setCanal(e.canal_url); }, [e?.canal_url]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hace = async (clave, fn) => { setTrabaja(clave); setError(''); setMsg(''); try { await fn(); await cargar(); } catch (x) { setError(x.response?.data?.error || 'No se pudo'); } finally { setTrabaja(''); } };
   const guardaCfg = async () => { setError(''); try { await api.post('/redes/config', { config_id: cfgId.trim() }); setMsg('ID guardado. Ahora pulsa «Conectar Instagram».'); setCfgId(''); await cargar(); } catch (x) { setError(x.response?.data?.error || 'No se pudo guardar'); } };
   const conecta = async () => { setError(''); try { const r = await api.get('/redes/instagram/conectar', { params: { origen: window.location.origin } }); setAyuda(r.data.redirect_uri); window.location.href = r.data.url; } catch (x) { setError(x.response?.data?.error || 'No se pudo iniciar la conexión'); } };
-  const hace = async (clave, fn) => { setTrabaja(clave); setError(''); setMsg(''); try { await fn(); await cargar(); } catch (x) { setError(x.response?.data?.error || 'No se pudo'); } finally { setTrabaja(''); } };
   const sync = () => hace('sync', async () => { const r = await api.post('/redes/instagram/sincronizar', {}, { timeout: 280000 }); setMsg('Leídas ' + r.data.publicaciones + ' publicaciones'); await cargaPubs(); });
   const analiza = () => hace('analiza', async () => { await api.post('/redes/instagram/analizar', {}, { timeout: 280000 }); setMsg('Hecho: lo aprendido ya llega al editor y al asistente.'); });
   const nichoIg = () => hace('nig', async () => { const r = await api.post('/redes/nicho/instagram', { cuentas }, { timeout: 280000 }); setNicho(n => ({ ...(n || {}), instagram: r.data.nicho })); });
   const nichoYt = () => hace('nyt', async () => { const r = await api.post('/redes/nicho/youtube', { consulta }, { timeout: 280000 }); setNicho(n => ({ ...(n || {}), youtube: r.data.nicho })); });
+  const miCanal = () => hace('canal', async () => { await api.post('/redes/youtube/mi-canal', { canal }, { timeout: 280000 }); setMsg('Canal leído y analizado.'); });
+  const plan = () => hace('plan', async () => { await api.post('/redes/plan', {}, { timeout: 280000 }); setMsg('Plan de publicación preparado.'); });
+  const predice = () => hace('pred', async () => { const r = await api.post('/redes/instagram/predecir', { propuesta: prop, formato: propFmt }, { timeout: 200000 }); setPred(r.data.prediccion); });
+  const autopsia = (id) => hace('aut' + id, async () => { const r = await api.post('/redes/instagram/autopsia', { id }, { timeout: 200000 }); setAutopsias(a => ({ ...a, [id]: r.data.autopsia })); });
   const desconecta = async () => { if (!window.confirm('¿Desconectar Instagram?')) return; await hace('des', () => api.delete('/redes/instagram')); setPubs(null); };
   if (!e) return <div className="ap-loading">Cargando…</div>;
-  const ig = e.instagram, ap = e.aprendizaje, top = (pubs || []).slice(0, 12), maxP = Math.max(1, ...(top.map(p => p.puntuacion || 0)));
+  const [orden, setOrden] = useState('puntuacion');
+  const reales = (pubs || []).filter(p => !p.prueba), pruebas = (pubs || []).filter(p => p.prueba);
+  const marca = async (id, v) => { try { await api.post('/redes/instagram/prueba', { id, prueba: v }); await cargaPubs(); } catch { /* se queda */ } };
+  const ig = e.instagram, ap = e.aprendizaje, mc = e.mi_canal, pl = e.plan, top = reales.slice().sort((a, b) => orden === 'vistas' ? (b.views || b.reach || 0) - (a.views || a.reach || 0) : (b.puntuacion || 0) - (a.puntuacion || 0)).slice(0, 12), maxP = Math.max(1, ...(top.map(p => p.puntuacion || 0)));
   const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('es-ES'));
+  const k = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1).replace('.', ',') + ' M' : n >= 1e3 ? Math.round(n / 1e3) + ' k' : String(n));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div className="rd-tabs" style={{ alignSelf: 'flex-start' }}>
+        <button className={'rd-tab' + (plat === 'ig' ? ' on' : '')} onClick={() => setPlat('ig')}>📸 Instagram</button>
+        <button className={'rd-tab' + (plat === 'yt' ? ' on' : '')} onClick={() => setPlat('yt')}>▶ YouTube</button>
+        <button className={'rd-tab' + (plat === 'plan' ? ' on' : '')} onClick={() => setPlat('plan')}>📈 Plan de publicación</button>
+      </div>
       {error && <div className="ap-error">{error}</div>}
       {msg && <div className="rd-card" style={{ borderColor: 'rgba(124,207,143,0.5)', padding: 14 }}>✓ {msg}</div>}
-      {!ig ? (
-        <div className="rd-card" style={{ alignItems: 'center', textAlign: 'center', padding: 40, gap: 14 }}>
-          <div style={{ fontSize: '2.6rem' }}>📸</div>
-          <h3 style={{ fontSize: '1.3rem' }}>Conecta tu Instagram</h3>
-          <div style={{ ...mut, maxWidth: 460 }}>Un clic: eliges tu cuenta en Facebook y aceptas solo permisos de lectura. No se publica nada.</div>
-          <button className="rd-btn pri" onClick={conecta}>Conectar Instagram</button>
-          {!e.config && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 560 }}><input className="ap-field-input" style={{ flex: '1 1 240px' }} value={cfgId} onChange={ev => setCfgId(ev.target.value)} placeholder="ID de configuración de Meta (solo números)" /><button className="rd-btn" disabled={!cfgId.trim()} onClick={guardaCfg}>Guardar ID</button></div>}
-          {e.config && <span className="rd-chip verde">ID de configuración guardado</span>}
-          <details style={{ textAlign: 'left', maxWidth: 560 }}>
-            <summary style={{ cursor: 'pointer', ...mut }}>Si Meta da error (solo la primera vez)</summary>
-            <ol style={{ fontSize: '0.86rem', lineHeight: 1.6, paddingLeft: 18 }}>
-              <li>developers.facebook.com → Mis apps → <b>Ranuse Asistente</b>.</li>
-              <li>Añadir producto → <b>Inicio de sesión con Facebook</b> → Configurar.</li>
-              <li>Configuración → <b>URI de redireccionamiento de OAuth válidos</b>: <code style={{ wordBreak: 'break-all' }}>{ayuda || 'https://ranusecrm-main-production.up.railway.app/api/redes/instagram/callback'}</code></li>
-              <li>Guarda y vuelve a pulsar «Conectar Instagram».</li>
-            </ol>
-          </details>
-        </div>
-      ) : (<>
-        <div className="rd-card" style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-          {ig.foto ? <img src={ig.foto} alt="" style={{ width: 64, height: 64, borderRadius: 32, objectFit: 'cover' }} /> : <div style={{ width: 64, height: 64, borderRadius: 32, background: 'rgba(255,255,255,.1)' }} />}
-          <div style={{ flex: '1 1 200px' }}><div style={{ fontSize: '1.3rem', fontWeight: 800 }}>@{ig.usuario}</div><div style={mut}>{ig.ultima_sync ? 'Leído el ' + String(ig.ultima_sync).slice(0, 10) : 'Aún sin leer'} · conexión: {ig.expira_dias} días</div></div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="rd-btn" disabled={!!trabaja} onClick={sync}>{trabaja === 'sync' ? 'Leyendo…' : '↻ Leer publicaciones'}</button>
-            <button className="rd-btn pri" disabled={!!trabaja || !ig.n_media} onClick={analiza}>{trabaja === 'analiza' ? 'Analizando…' : '🧠 Aprender de lo que funciona'}</button>
-            <button className="rd-btn" disabled={!!trabaja} onClick={desconecta} title="Desconectar">✕</button>
+
+      {plat === 'ig' && (<>
+        {!ig ? (
+          <div className="rd-card" style={{ alignItems: 'center', textAlign: 'center', padding: 40, gap: 14 }}>
+            <div style={{ fontSize: '2.6rem' }}>📸</div>
+            <h3 style={{ fontSize: '1.3rem' }}>Conecta tu Instagram</h3>
+            <div style={{ ...mut, maxWidth: 460 }}>Un clic: eliges tu cuenta en Facebook y aceptas solo permisos de lectura. No se publica nada.</div>
+            <button className="rd-btn pri" onClick={conecta}>Conectar Instagram</button>
+            {!e.config && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 560 }}><input className="ap-field-input" style={{ flex: '1 1 240px' }} value={cfgId} onChange={ev => setCfgId(ev.target.value)} placeholder="ID de configuración de Meta (solo números)" /><button className="rd-btn" disabled={!cfgId.trim()} onClick={guardaCfg}>Guardar ID</button></div>}
+            {e.config && <span className="rd-chip verde">ID de configuración guardado</span>}
+            <details style={{ textAlign: 'left', maxWidth: 560 }}>
+              <summary style={{ cursor: 'pointer', ...mut }}>Si Meta da error (solo la primera vez)</summary>
+              <ol style={{ fontSize: '0.86rem', lineHeight: 1.6, paddingLeft: 18 }}>
+                <li>developers.facebook.com → Mis apps → <b>Ranuse Asistente</b>.</li>
+                <li>Dominios de la app y URI de redireccionamiento: <code style={{ wordBreak: 'break-all' }}>{ayuda || 'https://ranusecrm-main-production.up.railway.app/api/redes/instagram/callback'}</code></li>
+              </ol>
+            </details>
           </div>
-        </div>
-        <div className="rd-kpis">
-          <div className="rd-kpi"><b>{fmt(ig.seguidores)}</b><span>seguidores</span></div>
-          <div className="rd-kpi"><b>{fmt(ig.publicaciones)}</b><span>publicaciones en total</span></div>
-          <div className="rd-kpi"><b>{fmt(ig.n_media)}</b><span>publicaciones leídas</span></div>
-          <div className="rd-kpi"><b>{top[0] ? top[0].puntuacion : '—'}</b><span>mejor puntuación</span></div>
-        </div>
-        {top.length > 0 && (
-          <div>
-            <h3 style={{ margin: '0 0 10px' }}>🏆 Lo que mejor te ha funcionado</h3>
-            <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>
-              {top.slice(0, 8).map(p => <a key={p.id} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{p.puntuacion}</span><div className="vel"><b>{(p.pie || '(sin texto)').slice(0, 70)}</b><div style={{ opacity: 0.75 }}>{p.tipo}{p.reach != null ? ' · alcance ' + fmt(p.reach) : ''}{p.saved != null ? ' · ' + p.saved + ' guardados' : ''}</div></div></a>)}
+        ) : (<>
+          <div className="rd-card" style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+            {ig.foto ? <img src={ig.foto} alt="" style={{ width: 64, height: 64, borderRadius: 32, objectFit: 'cover' }} /> : <div style={{ width: 64, height: 64, borderRadius: 32, background: 'rgba(255,255,255,.1)' }} />}
+            <div style={{ flex: '1 1 200px' }}><div style={{ fontSize: '1.3rem', fontWeight: 800 }}>@{ig.usuario}</div><div style={mut}>{ig.ultima_sync ? 'Leído el ' + String(ig.ultima_sync).slice(0, 10) : 'Aún sin leer'} · conexión: {ig.expira_dias} días</div></div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="rd-btn" disabled={!!trabaja} onClick={sync}>{trabaja === 'sync' ? 'Leyendo…' : '↻ Leer publicaciones'}</button>
+              <button className="rd-btn pri" disabled={!!trabaja || !ig.n_media} onClick={analiza}>{trabaja === 'analiza' ? 'Analizando…' : '🧠 Aprender de lo que funciona'}</button>
+              <button className="rd-btn" disabled={!!trabaja} onClick={desconecta} title="Desconectar">✕</button>
             </div>
           </div>
-        )}
-        {top.length > 0 && <div className="rd-card"><h3>Ranking</h3>{top.slice(0, 8).map(p => <div key={p.id} className="rd-bar"><span style={{ width: 150, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(p.pie || p.tipo).slice(0, 26)}</span><i style={{ width: Math.max(4, (p.puntuacion || 0) / maxP * 100) + '%' }} /><b>{p.puntuacion}</b></div>)}</div>}
-      </>)}
-      {ap && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}><h3 style={{ margin: 0, fontSize: '1.2rem' }}>🧠 Lo que funciona en tu cuenta</h3><span style={mut}>{String(ap.fecha).slice(0, 10)} · {ap.n} publicaciones</span></div>
-          {ap.resumen && <div style={{ fontSize: '1rem', lineHeight: 1.5 }}>{ap.resumen}</div>}
-          <div className="rd-grid2">
-            <Tarjeta titulo="✓ Funciona" color="#8fdba0"><Lista items={ap.lo_que_funciona} color="#8fdba0" /></Tarjeta>
-            <Tarjeta titulo="✕ No funciona" color="#f2c46d"><Lista items={ap.lo_que_no} color="#f2c46d" /></Tarjeta>
-            {(ap.ganchos_ganadores || []).length > 0 && <Tarjeta titulo="Ganchos ganadores"><Lista items={ap.ganchos_ganadores} /></Tarjeta>}
-            {(ap.para_el_editor || []).length > 0 && <Tarjeta titulo="🎬 Para el editor"><Lista items={ap.para_el_editor} /></Tarjeta>}
-            {(ap.para_historias || []).length > 0 && <Tarjeta titulo="📲 Para las historias"><Lista items={ap.para_historias} /></Tarjeta>}
-            {ap.horarios && <Tarjeta titulo="🕒 Mejores horas"><div style={{ fontSize: '0.9rem', lineHeight: 1.5 }}>{ap.horarios}</div></Tarjeta>}
+          <div className="rd-kpis">
+            <div className="rd-kpi"><b>{fmt(ig.seguidores)}</b><span>seguidores</span></div>
+            <div className="rd-kpi"><b>{fmt(ig.publicaciones)}</b><span>publicaciones en total</span></div>
+            <div className="rd-kpi"><b>{fmt(ig.n_media)}</b><span>publicaciones leídas</span></div>
+            <div className="rd-kpi"><b>{top[0] ? top[0].puntuacion : '—'}</b><span>mejor puntuación</span></div>
           </div>
-          {(ap.ideas_ganadoras || []).length > 0 && <div><h3 style={{ margin: '4px 0 10px' }}>💡 Ideas ganadoras para ti</h3><IdeasTarjetas ideas={ap.ideas_ganadoras} /></div>}
-          {ap.fiabilidad && <div style={mut}>Fiabilidad: {ap.fiabilidad}</div>}
+          {top.length > 0 && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '0 0 10px' }}><h3 style={{ margin: 0 }}>🏆 Lo que mejor te ha funcionado</h3><div className="rd-tabs"><button className={'rd-tab' + (orden === 'puntuacion' ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => setOrden('puntuacion')} title="Interacciones (comentarios, guardados y compartidos pesan más) en relación con el alcance">Por puntuación</button><button className={'rd-tab' + (orden === 'vistas' ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => setOrden('vistas')}>Por vistas</button></div></div>
+              <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>
+                {top.slice(0, 8).map(p => <a key={p.id} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{p.puntuacion}</span><div className="vel"><b>{(p.pie || '(sin texto)').slice(0, 70)}</b><div style={{ opacity: 0.75 }}>{p.views != null ? k(p.views) + ' vistas' : p.reach != null ? 'alcance ' + fmt(p.reach) : p.tipo}{p.saved != null ? ' · ' + p.saved + ' guardados' : ''}</div></div></a>)}
+              </div>
+            </div>
+          )}
+          {pruebas.length > 0 && <div className="rd-card"><h3>🧪 Posibles reels de prueba <span className="rd-chip">{pruebas.length}</span></h3><div style={{ ...mut, fontSize: '0.82rem' }}>Casi no se mostraron a nadie, así que no cuentan para el análisis. Si alguno no es una prueba, márcalo.</div>{pruebas.map(p => <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderTop: '1px solid rgba(255,255,255,.07)', fontSize: '0.84rem' }}><a href={p.enlace} target="_blank" rel="noreferrer" style={{ flex: 1, color: 'inherit' }}>{(p.pie || '(sin texto)').slice(0, 80)}<div style={mut}>{String(p.fecha).slice(0, 10)} · {fmt(p.views ?? p.reach ?? 0)} vistas</div></a><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} onClick={() => marca(p.id, false)}>No es una prueba</button></div>)}</div>}
+          {top.length > 0 && <div className="rd-card"><h3>Ranking y autopsia</h3>{top.slice(0, 10).map(p => <div key={p.id}><div className="rd-bar"><span style={{ width: 150, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(p.pie || p.tipo).slice(0, 26)}</span><i style={{ width: Math.max(4, (p.puntuacion || 0) / maxP * 100) + '%' }} /><b>{p.puntuacion}</b><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} disabled={!!trabaja} onClick={() => autopsia(p.id)}>{trabaja === 'aut' + p.id ? '…' : '¿Por qué?'}</button><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} title="Márcalo si fue una prueba y no debe contar" onClick={() => marca(p.id, true)}>🧪</button></div>{autopsias[p.id] && <div style={{ margin: '4px 0 10px 0', padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,.05)', fontSize: '0.85rem', lineHeight: 1.5 }}><span className={'rd-chip ' + (autopsias[p.id].veredicto === 'repetir' ? 'verde' : autopsias[p.id].veredicto === 'dejar' ? 'rojo' : 'ambar')}>{autopsias[p.id].veredicto}</span> {autopsias[p.id].resumen}<Lista items={autopsias[p.id].por_que} />{(autopsias[p.id].que_haria_distinto || []).length > 0 && <div style={{ marginTop: 6 }}><b>Yo haría distinto:</b><Lista items={autopsias[p.id].que_haria_distinto} color="#f2c46d" /></div>}{autopsias[p.id].como_repetirlo && <div style={{ marginTop: 6, ...mut }}>Cómo repetirlo: {autopsias[p.id].como_repetirlo}</div>}</div>}</div>)}</div>}
+          <div className="rd-card">
+            <h3>🔮 Predice un vídeo antes de hacerlo</h3>
+            <div style={{ ...mut, fontSize: '0.84rem' }}>Cuéntame la idea y te digo cuántas visualizaciones podría tener, según TUS números, y cómo mejorarla.</div>
+            <textarea className="ap-field-input" rows={3} value={prop} onChange={ev => setProp(ev.target.value)} placeholder="Ej.: Reel de 30 s en obra: «El error que te cuesta 5.000 € al montar un gimnasio», con un antes y después del suelo…" />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <select className="ap-field-input" value={propFmt} onChange={ev => setPropFmt(ev.target.value)}><option value="reel">Reel</option><option value="carrusel">Carrusel</option><option value="foto">Foto</option><option value="historia">Historia</option></select>
+              <button className="rd-btn pri" disabled={!!trabaja || prop.trim().length < 15} onClick={predice}>{trabaja === 'pred' ? 'Calculando…' : 'Estimar'}</button>
+            </div>
+            {pred && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 6 }}>
+                <div className="rd-kpis" style={{ marginBottom: 0 }}>
+                  <div className="rd-kpi"><b>{fmt(pred.estimacion.bajo)}</b><span>pesimista</span></div>
+                  <div className="rd-kpi" style={{ borderColor: '#e3d2b8' }}><b>{fmt(pred.estimacion.medio)}</b><span>lo más probable · {pred.estimacion.metrica}</span></div>
+                  <div className="rd-kpi"><b>{fmt(pred.estimacion.alto)}</b><span>optimista</span></div>
+                  <div className="rd-kpi"><b style={{ fontSize: '1.3rem' }}>{pred.confianza}</b><span>confianza</span></div>
+                </div>
+                <div style={{ fontSize: '0.92rem', lineHeight: 1.5 }}>{pred.por_que}</div>
+                <div className="rd-grid2">
+                  <Tarjeta titulo="A favor" color="#8fdba0"><Lista items={pred.a_favor} color="#8fdba0" /></Tarjeta>
+                  <Tarjeta titulo="En contra" color="#f2c46d"><Lista items={pred.en_contra} color="#f2c46d" /></Tarjeta>
+                </div>
+                {(pred.mejoras || []).length > 0 && <Tarjeta titulo="Cómo mejorarlo"><Lista items={pred.mejoras.map(x => x.cambio + (x.efecto ? ' → ' + x.efecto : ''))} /></Tarjeta>}
+                {pred.version_mejorada?.gancho && <Tarjeta titulo="Versión mejorada"><div className="rd-gancho">“{pred.version_mejorada.gancho}”</div>{pred.version_mejorada.estructura && <div style={{ fontSize: '0.88rem' }}>{pred.version_mejorada.estructura}</div>}{pred.version_mejorada.cta && <div style={mut}>CTA: {pred.version_mejorada.cta}</div>}</Tarjeta>}
+                {(pred.dejar_de_hacer || []).length > 0 && <Tarjeta titulo="Quítalo" color="#f29a9a"><Lista items={pred.dejar_de_hacer} color="#f29a9a" /></Tarjeta>}
+                <div style={mut}>Es una estimación sobre tus publicaciones, no una promesa.</div>
+              </div>
+            )}
+          </div>
+        </>)}
+        {ap && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}><h3 style={{ margin: 0, fontSize: '1.2rem' }}>🧠 Lo que funciona en tu Instagram</h3><span style={mut}>{String(ap.fecha).slice(0, 10)} · {ap.n} publicaciones</span></div>
+            {ap.resumen && <div style={{ fontSize: '1rem', lineHeight: 1.5 }}>{ap.resumen}</div>}
+            <div className="rd-grid2">
+              <Tarjeta titulo="✓ Funciona" color="#8fdba0"><Lista items={ap.lo_que_funciona} color="#8fdba0" /></Tarjeta>
+              <Tarjeta titulo="✕ No funciona" color="#f2c46d"><Lista items={ap.lo_que_no} color="#f2c46d" /></Tarjeta>
+              {(ap.ganchos_ganadores || []).length > 0 && <Tarjeta titulo="Ganchos ganadores"><Lista items={ap.ganchos_ganadores} /></Tarjeta>}
+              {(ap.para_el_editor || []).length > 0 && <Tarjeta titulo="🎬 Para el editor"><Lista items={ap.para_el_editor} /></Tarjeta>}
+              {(ap.para_historias || []).length > 0 && <Tarjeta titulo="📲 Para las historias"><Lista items={ap.para_historias} /></Tarjeta>}
+              {ap.horarios && <Tarjeta titulo="🕒 Mejores horas"><div style={{ fontSize: '0.9rem', lineHeight: 1.5 }}>{ap.horarios}</div></Tarjeta>}
+            </div>
+            {(ap.ideas_ganadoras || []).length > 0 && <div><h3 style={{ margin: '4px 0 10px' }}>💡 Ideas ganadoras para ti</h3><IdeasTarjetas ideas={ap.ideas_ganadoras} /></div>}
+            {ap.fiabilidad && <div style={mut}>Fiabilidad: {ap.fiabilidad}</div>}
+          </div>
+        )}
+        <div className="rd-card">
+          <h3>🔎 Ideas ganadoras en tu nicho · Instagram</h3>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input className="ap-field-input" style={{ flex: '1 1 260px' }} value={cuentas} onChange={ev => setCuentas(ev.target.value)} placeholder="Cuentas del nicho separadas por comas (ej.: gymcompany_es)" disabled={!ig} />
+            <button className="rd-btn pri" disabled={!ig || !cuentas.trim() || !!trabaja} onClick={nichoIg}>{trabaja === 'nig' ? 'Analizando…' : 'Analizar cuentas'}</button>
+          </div>
+          <div style={{ ...mut, fontSize: '0.8rem' }}>De otras cuentas solo se ve lo público (texto, me gusta y comentarios), y solo de cuentas profesionales.</div>
+          <ResultadoNicho n={nicho?.instagram} />
         </div>
-      )}
-      <div className="rd-card">
-        <h3>🔎 Ideas ganadoras en tu nicho</h3>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input className="ap-field-input" style={{ flex: '1 1 260px' }} value={cuentas} onChange={ev => setCuentas(ev.target.value)} placeholder="Instagram: cuentas del nicho separadas por comas" disabled={!ig} />
-          <button className="rd-btn" disabled={!ig || !cuentas.trim() || !!trabaja} onClick={nichoIg}>{trabaja === 'nig' ? 'Analizando…' : '📸 Analizar'}</button>
+      </>)}
+
+      {plat === 'yt' && (<>
+        <div className="rd-card">
+          <h3>▶ Tu canal de YouTube</h3>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input className="ap-field-input" style={{ flex: '1 1 300px' }} value={canal} onChange={ev => setCanal(ev.target.value)} placeholder="youtube.com/@tuCanal" disabled={!e.youtube} />
+            <button className="rd-btn pri" disabled={!e.youtube || !canal.trim() || !!trabaja} onClick={miCanal}>{trabaja === 'canal' ? 'Leyendo…' : mc ? '↻ Actualizar y analizar' : 'Leer y analizar mi canal'}</button>
+          </div>
+          {mc && (<>
+            <div className="rd-kpis" style={{ marginBottom: 0 }}>
+              <div className="rd-kpi"><b>{fmt(mc.suscriptores)}</b><span>suscriptores</span></div>
+              <div className="rd-kpi"><b>{fmt(mc.videos_total)}</b><span>vídeos</span></div>
+              <div className="rd-kpi"><b>{k(mc.vistas_total || 0)}</b><span>vistas totales</span></div>
+              <div className="rd-kpi"><b>{k(Math.max(0, ...(mc.videos || []).map(v => v.vistas)))}</b><span>vídeo más visto</span></div>
+            </div>
+            {(mc.videos || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))' }}>{mc.videos.slice().sort((a, b) => b.vistas - a.vistas).slice(0, 8).map(v => <a key={v.id} href={v.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: '16/11' }}>{v.miniatura && <img src={v.miniatura} alt="" loading="lazy" />}<span className="pt">{k(v.vistas)}</span><div className="vel"><b>{v.titulo}</b><div style={{ opacity: 0.75 }}>{v.tipo} · {v.fecha}</div></div></a>)}</div>}
+            {mc.analisis && (<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {mc.analisis.resumen && <div style={{ lineHeight: 1.5 }}>{mc.analisis.resumen}</div>}
+              <div className="rd-grid2">
+                <Tarjeta titulo="✓ Funciona" color="#8fdba0"><Lista items={mc.analisis.funciona} color="#8fdba0" /></Tarjeta>
+                <Tarjeta titulo="✕ No funciona" color="#f2c46d"><Lista items={mc.analisis.no_funciona} color="#f2c46d" /></Tarjeta>
+                {mc.analisis.formato && <Tarjeta titulo="Shorts o largos"><div style={{ fontSize: '0.9rem', lineHeight: 1.5 }}>{mc.analisis.formato}</div></Tarjeta>}
+                {(mc.analisis.titulos || []).length > 0 && <Tarjeta titulo="Títulos que te funcionan"><Lista items={mc.analisis.titulos} /></Tarjeta>}
+                {mc.analisis.cadencia && <Tarjeta titulo="🗓 Cadencia"><div style={{ fontSize: '0.9rem', lineHeight: 1.5 }}>{mc.analisis.cadencia}</div></Tarjeta>}
+              </div>
+              {(mc.analisis.ideas || []).length > 0 && <div><h3 style={{ margin: '4px 0 10px' }}>💡 Ideas para tu canal</h3><IdeasTarjetas ideas={mc.analisis.ideas} /></div>}
+              {mc.analisis.fiabilidad && <div style={mut}>Fiabilidad: {mc.analisis.fiabilidad} (sin retención ni tráfico: eso solo lo da YouTube Studio)</div>}
+            </div>)}
+          </>)}
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input className="ap-field-input" style={{ flex: '1 1 260px' }} value={consulta} onChange={ev => setConsulta(ev.target.value)} placeholder="YouTube: qué buscar" disabled={!e.youtube} />
-          <button className="rd-btn" disabled={!e.youtube || !consulta.trim() || !!trabaja} onClick={nichoYt}>{trabaja === 'nyt' ? 'Analizando…' : '▶ Analizar'}</button>
+        <div className="rd-card">
+          <h3>🔎 Ideas ganadoras en tu nicho · YouTube</h3>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input className="ap-field-input" style={{ flex: '1 1 260px' }} value={consulta} onChange={ev => setConsulta(ev.target.value)} placeholder="Qué buscar en YouTube" disabled={!e.youtube} />
+            <button className="rd-btn pri" disabled={!e.youtube || !consulta.trim() || !!trabaja} onClick={nichoYt}>{trabaja === 'nyt' ? 'Analizando…' : 'Buscar y analizar'}</button>
+          </div>
+          <ResultadoNicho n={nicho?.youtube} />
         </div>
-        <div style={{ ...mut, fontSize: '0.8rem' }}>De otras cuentas solo se ve lo público.</div>
-        <ResultadoNicho n={nicho?.instagram} />
-        <ResultadoNicho n={nicho?.youtube} />
-      </div>
+      </>)}
+
+      {plat === 'plan' && (<>
+        <div className="rd-card" style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
+          <div style={{ flex: '1 1 300px' }}><h3>📈 Plan de publicación</h3><div style={{ ...mut, fontSize: '0.84rem', marginTop: 4 }}>Cuántas veces publicar y qué, según tus datos de Instagram y YouTube y lo que se ve en el nicho.</div></div>
+          <button className="rd-btn pri" disabled={!!trabaja || (!ig && !mc)} onClick={plan}>{trabaja === 'plan' ? 'Preparando…' : pl ? '↻ Rehacer el plan' : 'Preparar mi plan'}</button>
+        </div>
+        {!ig && !mc && <div style={mut}>Conecta Instagram o añade tu canal de YouTube primero.</div>}
+        {pl && (<>
+          <div className="rd-kpis">
+            <div className="rd-kpi"><b>{pl.volumen.reels_semana}</b><span>reels por semana</span></div>
+            <div className="rd-kpi"><b>{pl.volumen.carruseles_semana}</b><span>carruseles por semana</span></div>
+            <div className="rd-kpi"><b>{pl.volumen.historias_dia}</b><span>historias al día</span></div>
+            <div className="rd-kpi"><b>{pl.volumen.youtube_mes}</b><span>vídeos de YouTube al mes</span></div>
+          </div>
+          {pl.volumen.por_que && <div style={{ lineHeight: 1.5 }}>{pl.volumen.por_que}</div>}
+          {pl.dias_horas && <Tarjeta titulo="🕒 Mejores días y horas"><div style={{ fontSize: '0.92rem', lineHeight: 1.5 }}>{pl.dias_horas}</div></Tarjeta>}
+          {(pl.semana_tipo || []).length > 0 && <div><h3 style={{ margin: '4px 0 10px' }}>🗓 Tu semana tipo</h3><div className="rd-days">{pl.semana_tipo.map((d, i) => <div key={i} className="rd-day" style={{ flexBasis: 170 }}><div className="d">{d.dia}</div><div className="t" style={{ WebkitLineClamp: 5, marginTop: 8 }}>{d.que}</div></div>)}</div></div>}
+          <div className="rd-grid2">
+            {(pl.tendencias || []).length > 0 && <Tarjeta titulo="🔥 Tendencias y cómo aprovecharlas"><ul className="rd-lista">{pl.tendencias.map((x, i) => <li key={i}><b>{x.tendencia}</b> <span className="rd-chip">{x.fuente}</span><div style={mut}>{x.como_aprovecharla}</div></li>)}</ul></Tarjeta>}
+            {(pl.experimentos || []).length > 0 && <Tarjeta titulo="🧪 Pruebas para las próximas 2 semanas"><Lista items={pl.experimentos} /></Tarjeta>}
+            {(pl.riesgos || []).length > 0 && <Tarjeta titulo="⚠ Ojo con" color="#f2c46d"><Lista items={pl.riesgos} color="#f2c46d" /></Tarjeta>}
+            {(pl.faltan_datos || []).length > 0 && <Tarjeta titulo="Lo que aún no sé"><Lista items={pl.faltan_datos} /></Tarjeta>}
+          </div>
+          <div style={mut}>De las tendencias de la plataforma (audios, formatos del momento) Instagram no da datos oficiales: se deducen de tus números, del nicho y de lo que sé en general.</div>
+        </>)}
+      </>)}
     </div>
   );
 }

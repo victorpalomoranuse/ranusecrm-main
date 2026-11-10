@@ -30,7 +30,16 @@ async function graph(ruta, params = {}, token) {
   if (!r.ok || j.error) { const e = new Error(j.error?.message || ('Meta ' + r.status)); e.codigo = j.error?.code; e.meta = j.error; throw e; }
   return j;
 }
-const json = (r) => { const txt = (r.content || []).filter(b => b.type === 'text').map(b => b.text).join(''); return JSON.parse(/\{[\s\S]*\}/.exec(txt)[0]); };
+const json = (r) => {
+  const txt = (r.content || []).filter(b => b.type === 'text').map(b => b.text).join(''), i = txt.indexOf('{'); if (i < 0) throw new Error('la IA no ha devuelto datos');
+  const s = txt.slice(i);
+  for (let e = s.lastIndexOf('}'); e > 0; e = s.lastIndexOf('}', e - 1)) { try { return JSON.parse(s.slice(0, e + 1)); } catch { /* se prueba con un cierre anterior */ } }
+  // respuesta cortada: se cierran las llaves y corchetes que falten
+  let cierre = '', pila = [], dentro = false, esc = false; for (const ch of s) { if (esc) { esc = false; continue; } if (ch === '\\') { esc = true; continue; } if (ch === '"') dentro = !dentro; if (dentro) continue; if (ch === '{' || ch === '[') pila.push(ch); if (ch === '}' || ch === ']') pila.pop(); }
+  for (const p of pila.reverse()) cierre += p === '{' ? '}' : ']';
+  for (const corte of [s.length, s.lastIndexOf(','), s.lastIndexOf('{')]) { if (corte <= 0) continue; try { let base = s.slice(0, corte).replace(/,\s*$/, ''); let q = '', pl = [], d = false, es = false; for (const ch of base) { if (es) { es = false; continue; } if (ch === '\\') { es = true; continue; } if (ch === '"') d = !d; if (d) continue; if (ch === '{' || ch === '[') pl.push(ch); if (ch === '}' || ch === ']') pl.pop(); } if (d) base += '"'; for (const p of pl.reverse()) q += p === '{' ? '}' : ']'; return JSON.parse(base + q); } catch { /* siguiente corte */ } }
+  throw new Error('respuesta de la IA incompleta');
+};
 const limpia = (s, n) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 // ── 1) Conexión con Instagram (el callback lo abre el navegador de Víctor, sin cabecera de sesión: se protege con un estado firmado)
@@ -60,7 +69,7 @@ const conexion = async () => { const c = await leerJson(RUTA_IG, null); return c
 router.get('/estado', async (req, res) => {
   try {
     const c = await conexion(), a = await leerJson(RUTA_APRENDIZAJE, null), cfg = await leerJson(RUTA_CONFIG, {}), n = await leerJson(RUTA_NICHO, { cuentas: [] });
-    res.json({ instagram: c ? { usuario: c.usuario, nombre: c.nombre, seguidores: c.seguidores, publicaciones: c.publicaciones, foto: c.foto, conectado: c.conectado, ultima_sync: c.ultima_sync || null, n_media: (c.media || []).length, expira_dias: Math.round((c.expira - Date.now()) / 86400000) } : null, aprendizaje: a || null, youtube: !!(cfg.youtube_key || process.env.YOUTUBE_API_KEY), config: !!(cfg.fb_config_id || process.env.FB_CONFIG_ID), nicho: n.cuentas || [] });
+    res.json({ instagram: c ? { usuario: c.usuario, nombre: c.nombre, seguidores: c.seguidores, publicaciones: c.publicaciones, foto: c.foto, conectado: c.conectado, ultima_sync: c.ultima_sync || null, n_media: (c.media || []).length, expira_dias: Math.round((c.expira - Date.now()) / 86400000) } : null, aprendizaje: a || null, youtube: !!(cfg.youtube_key || process.env.YOUTUBE_API_KEY), mi_canal: await leerJson('crm/redes/youtube_canal.json', null), canal_url: cfg.youtube_canal || '', plan: await leerJson('crm/redes/plan.json', null), config: !!(cfg.fb_config_id || process.env.FB_CONFIG_ID), nicho: n.cuentas || [] });
   } catch (e) { res.status(500).json({ error: 'No se pudo leer el estado' }); }
 });
 
@@ -103,15 +112,27 @@ router.post('/instagram/sincronizar', async (req, res) => {
 
 // ── 3) Aprender de lo tuyo
 const interaccion = (m) => (Number(m.me_gusta) || 0) + (Number(m.comentarios) || 0) * 3 + (Number(m.saved) || 0) * 4 + (Number(m.shares) || 0) * 5;
-const puntua = (m, seg) => { const base = Number(m.reach) || Number(m.views) || seg || 1; return interaccion(m) / base; };
+// interacciones ponderadas / alcance, SUAVIZADO: con muy poco alcance un par de me gusta no puede disparar la nota (se suma un alcance de 400 de partida)
+const puntua = (m, seg) => { const base = Number(m.reach) || Number(m.views) || 0; return interaccion(m) / (base + 400); };
+// Un reel de prueba es el que casi no se ha mostrado a nadie (alcance muy por debajo de lo habitual de la cuenta). Se detecta solo y se puede corregir a mano.
+const RUTA_PRUEBAS = 'crm/redes/pruebas.json';
+async function marcaPruebas(media) {
+  const ov = await leerJson(RUTA_PRUEBAS, { si: [], no: [] }), v = media.map(vistasDe).filter(Number.isFinite), med = mediana(v) || 0, umbral = Math.max(150, med * 0.04);
+  return media.map(m => { const auto = (vistasDe(m) ?? 0) < umbral; const prueba = ov.si.includes(m.id) ? true : ov.no.includes(m.id) ? false : auto; return { ...m, prueba, prueba_auto: auto }; });
+}
+router.post('/instagram/prueba', async (req, res) => {
+  try { const id = String(req.body?.id || ''); const ov = await leerJson(RUTA_PRUEBAS, { si: [], no: [] }); ov.si = ov.si.filter(x => x !== id); ov.no = ov.no.filter(x => x !== id); (req.body?.prueba ? ov.si : ov.no).push(id); await guardarJson(RUTA_PRUEBAS, ov); res.json({ ok: true }); }
+  catch { res.status(500).json({ error: 'No se pudo guardar' }); }
+});
 router.get('/instagram/publicaciones', async (req, res) => {
-  try { const c = await conexion(); if (!c) return res.status(404).json({ error: 'Instagram no está conectado' }); const l = (c.media || []).map(m => ({ ...m, puntuacion: Math.round(puntua(m, c.seguidores) * 1000) / 10 })).sort((a, b) => b.puntuacion - a.puntuacion); res.json({ publicaciones: l }); }
+  try { const c = await conexion(); if (!c) return res.status(404).json({ error: 'Instagram no está conectado' }); const l = (await marcaPruebas(c.media || [])).map(m => ({ ...m, puntuacion: Math.round(puntua(m, c.seguidores) * 1000) / 10 })).sort((a, b) => b.puntuacion - a.puntuacion); res.json({ publicaciones: l }); }
   catch { res.status(500).json({ error: 'No se pudieron leer' }); }
 });
 router.post('/instagram/analizar', async (req, res) => {
   try {
     const c = await conexion(); if (!c) return res.status(404).json({ error: 'Instagram no está conectado' });
     let media = c.media || []; if (media.length < 8) { media = await sincronizarInstagram(60); }
+    const nPruebas = (await marcaPruebas(media)).filter(m => m.prueba).length; media = (await marcaPruebas(media)).filter(m => !m.prueba);
     if (media.length < 8) return res.status(422).json({ error: 'Hay muy pocas publicaciones para sacar conclusiones fiables (' + media.length + ').' });
     const orden = media.map(m => ({ m, p: puntua(m, c.seguidores) })).sort((a, b) => b.p - a.p), n = Math.max(3, Math.round(orden.length / 4));
     const ficha = (x) => ({ tipo: x.m.tipo, fecha: String(x.m.fecha).slice(0, 16), dia_hora: new Date(x.m.fecha).toLocaleString('es-ES', { weekday: 'long', hour: '2-digit', timeZone: 'Europe/Madrid' }), gancho: x.m.pie.split(/[\n.!?]/)[0].slice(0, 160), pie: x.m.pie.slice(0, 300), alcance: x.m.reach ?? x.m.views ?? null, me_gusta: x.m.me_gusta, comentarios: x.m.comentarios, guardados: x.m.saved ?? null, compartidos: x.m.shares ?? null, tiempo_visto: x.m.ig_reels_avg_watch_time ?? null, puntuacion: Math.round(x.p * 1000) / 10 });
@@ -122,13 +143,48 @@ LAS QUE MEJOR FUNCIONARON (puntuación = interacciones ponderadas / alcance):\
 \
 LAS QUE PEOR:\
 ' + JSON.stringify(orden.slice(-n).map(ficha)) }], maxTokens: 4000 }));
-    const a = { fecha: new Date().toISOString(), cuenta: c.usuario, n: media.length, resumen: limpia(r.resumen, 500), lo_que_funciona: (r.lo_que_funciona || []).slice(0, 8).map(x => limpia(x, 240)), lo_que_no: (r.lo_que_no || []).slice(0, 8).map(x => limpia(x, 240)), ganchos_ganadores: (r.ganchos_ganadores || []).slice(0, 8).map(x => limpia(x, 240)), ideas_ganadoras: (r.ideas_ganadoras || []).slice(0, 8).map(x => ({ idea: limpia(x?.idea, 240), formato: limpia(x?.formato, 20), gancho: limpia(x?.gancho, 200) })), para_el_editor: (r.para_el_editor || []).slice(0, 6).map(x => limpia(x, 220)), para_historias: (r.para_historias || []).slice(0, 6).map(x => limpia(x, 220)), horarios: limpia(r.horarios, 240), fiabilidad: limpia(r.fiabilidad, 240) };
+    const a = { fecha: new Date().toISOString(), cuenta: c.usuario, n: media.length, pruebas_excluidas: nPruebas, resumen: limpia(r.resumen, 500), lo_que_funciona: (r.lo_que_funciona || []).slice(0, 8).map(x => limpia(x, 240)), lo_que_no: (r.lo_que_no || []).slice(0, 8).map(x => limpia(x, 240)), ganchos_ganadores: (r.ganchos_ganadores || []).slice(0, 8).map(x => limpia(x, 240)), ideas_ganadoras: (r.ideas_ganadoras || []).slice(0, 8).map(x => ({ idea: limpia(x?.idea, 240), formato: limpia(x?.formato, 20), gancho: limpia(x?.gancho, 200) })), para_el_editor: (r.para_el_editor || []).slice(0, 6).map(x => limpia(x, 220)), para_historias: (r.para_historias || []).slice(0, 6).map(x => limpia(x, 220)), horarios: limpia(r.horarios, 240), fiabilidad: limpia(r.fiabilidad, 240) };
     await guardarJson(RUTA_APRENDIZAJE, a);
     // lo aprendido llega al editor de vídeo y al asistente (historias), marcado con su origen
     try { const e = await leerJson('crm/estudio-video/editor.json', { hechos: [], charla: [] }); for (const t of a.para_el_editor) { const x = 'De tus resultados en Instagram: ' + t; if (!e.hechos.some(h => h.texto === x)) e.hechos.push({ id: crypto.randomUUID().slice(0, 6), texto: x, fecha: new Date().toISOString().slice(0, 10) }); } e.hechos = e.hechos.slice(-80); await guardarJson('crm/estudio-video/editor.json', e); } catch { /* sin editor */ }
     try { const l = await leerJson('crm/asistente/historias_lecciones.json', { lecciones: [] }); const hoy = new Date().toISOString().slice(0, 10); for (const t of a.para_historias) { const x = 'Según tus datos de Instagram: ' + t; if (!l.lecciones.some(y => y.texto === x)) l.lecciones.push({ id: crypto.randomUUID().slice(0, 6), fecha: hoy, texto: x }); } l.lecciones = l.lecciones.slice(-60); await guardarJson('crm/asistente/historias_lecciones.json', l); } catch { /* sin lecciones */ }
     res.json({ ok: true, aprendizaje: a });
   } catch (e) { console.error('redes analizar', e.message); res.status(500).json({ error: 'No se pudo analizar: ' + String(e.message).slice(0, 200) }); }
+});
+
+// ── 3b) Predecir un vídeo antes de hacerlo y «autopsia» de uno ya publicado (todo anclado a TUS números reales)
+const mediana = (a) => { const v = a.filter(x => Number.isFinite(x)).sort((p, q) => p - q); return v.length ? v[Math.floor(v.length / 2)] : null; };
+const cuantil = (a, q) => { const v = a.filter(x => Number.isFinite(x)).sort((p, r) => p - r); return v.length ? v[Math.min(v.length - 1, Math.floor(v.length * q))] : null; };
+const vistasDe = (m) => Number(m.views) || Number(m.reach) || null;
+function estadisticas(media) {
+  const por = {}; for (const m of media) { const k = m.tipo === 'REELS' ? 'reel' : m.tipo === 'STORY' ? 'historia' : (m.formato === 'CAROUSEL_ALBUM' ? 'carrusel' : m.formato === 'VIDEO' ? 'vídeo' : 'foto'); (por[k] = por[k] || []).push(m); }
+  const out = {}; for (const [k, l] of Object.entries(por)) { const v = l.map(vistasDe); out[k] = { n: l.length, mediana: mediana(v), p25: cuantil(v, 0.25), p75: cuantil(v, 0.75), max: Math.max(...v.filter(Number.isFinite), 0) || null, guardados_mediana: mediana(l.map(x => Number(x.saved))), compartidos_mediana: mediana(l.map(x => Number(x.shares))) }; }
+  return out;
+}
+router.post('/instagram/predecir', async (req, res) => {
+  try {
+    const c = await conexion(); if (!c) return res.status(404).json({ error: 'Conecta primero tu Instagram' });
+    const propuesta = limpia(req.body?.propuesta, 2500); if (propuesta.length < 15) return res.status(400).json({ error: 'Cuéntame el vídeo: de qué va, el gancho y el formato.' });
+    let media = c.media || []; if (media.length < 8) media = await sincronizarInstagram(60);
+    media = (await marcaPruebas(media)).filter(m => !m.prueba);
+    const est = estadisticas(media), top = media.map(m => ({ m, p: puntua(m, c.seguidores) })).sort((a, b) => b.p - a.p);
+    const ficha = (x) => ({ tipo: x.m.tipo, gancho: x.m.pie.split(/[\n.!?]/)[0].slice(0, 140), vistas: vistasDe(x.m), guardados: x.m.saved ?? null, compartidos: x.m.shares ?? null, dia: new Date(x.m.fecha).toLocaleDateString('es-ES', { weekday: 'long', timeZone: 'Europe/Madrid' }) });
+    const aprend = await leerJson(RUTA_APRENDIZAJE, null);
+    const r = json(await callClaude({ system: 'Eres analista de rendimiento de Instagram. Vas a ESTIMAR cuántas visualizaciones (alcance) tendría un vídeo propuesto por Víctor Palomo (Ranuse Design, diseño de gimnasios) y cómo mejorarlo. Reglas: parte SIEMPRE de sus números reales por formato (mediana y percentiles), no de cifras genéricas; ajusta hacia arriba o abajo solo con motivos concretos (gancho, tema, formato, día, parecido con sus mejores o peores) y di cuánto aporta cada factor; da un rango (bajo, medio, alto) y NUNCA una cifra exacta; si tiene pocas publicaciones de ese formato, dilo y baja la confianza. Una estimación no es una promesa: explica la incertidumbre. Devuelves SOLO JSON {"estimacion":{"bajo":0,"medio":0,"alto":0,"metrica":"visualizaciones o alcance"},"confianza":"baja|media|alta","por_que":"2-3 frases","a_favor":["factor"],"en_contra":["factor"],"mejoras":[{"cambio":"qué cambiar, concreto","efecto":"cuánto podría mover (por ejemplo +30 % de alcance) y por qué"}],"version_mejorada":{"gancho":"","estructura":"3-5 pasos cortos","cta":""},"dejar_de_hacer":["algo de la propuesta que conviene quitar"]}', messages: [{ role: 'user', content: 'SUS NÚMEROS POR FORMATO (visualizaciones/alcance):\n' + JSON.stringify(est) + '\n\nSEGUIDORES: ' + (c.seguidores ?? '?') + '\n\nSUS MEJORES PUBLICACIONES:\n' + JSON.stringify(top.slice(0, 6).map(ficha)) + '\n\nLAS PEORES:\n' + JSON.stringify(top.slice(-4).map(ficha)) + (aprend ? '\n\nLO QUE YA SE SABE QUE FUNCIONA EN SU CUENTA: ' + JSON.stringify({ funciona: aprend.lo_que_funciona, no: aprend.lo_que_no, horarios: aprend.horarios }) : '') + '\n\nVÍDEO PROPUESTO (' + (limpia(req.body?.formato, 40) || 'formato sin indicar') + (req.body?.fecha ? ', para el ' + limpia(req.body.fecha, 12) : '') + '):\n' + propuesta }], maxTokens: 2500 }));
+    const out = { fecha: new Date().toISOString(), propuesta: propuesta.slice(0, 300), formato: limpia(req.body?.formato, 40), estimacion: { bajo: Math.round(Number(r.estimacion?.bajo) || 0), medio: Math.round(Number(r.estimacion?.medio) || 0), alto: Math.round(Number(r.estimacion?.alto) || 0), metrica: limpia(r.estimacion?.metrica, 30) || 'visualizaciones' }, confianza: limpia(r.confianza, 10), por_que: limpia(r.por_que, 500), a_favor: (r.a_favor || []).slice(0, 5).map(x => limpia(x, 200)), en_contra: (r.en_contra || []).slice(0, 5).map(x => limpia(x, 200)), mejoras: (r.mejoras || []).slice(0, 6).map(x => ({ cambio: limpia(x?.cambio, 240), efecto: limpia(x?.efecto, 200) })), version_mejorada: { gancho: limpia(r.version_mejorada?.gancho, 240), estructura: limpia(r.version_mejorada?.estructura, 400), cta: limpia(r.version_mejorada?.cta, 200) }, dejar_de_hacer: (r.dejar_de_hacer || []).slice(0, 4).map(x => limpia(x, 200)), base: est };
+    const h = await leerJson('crm/redes/predicciones.json', { lista: [] }); h.lista = [...(h.lista || []), { fecha: out.fecha, propuesta: out.propuesta, formato: out.formato, estimacion: out.estimacion, confianza: out.confianza }].slice(-60); await guardarJson('crm/redes/predicciones.json', h);
+    res.json({ ok: true, prediccion: out });
+  } catch (e) { console.error('redes predecir', e.message); res.status(500).json({ error: 'No se pudo estimar: ' + String(e.message).slice(0, 200) }); }
+});
+router.post('/instagram/autopsia', async (req, res) => {
+  try {
+    const c = await conexion(); if (!c) return res.status(404).json({ error: 'Conecta primero tu Instagram' });
+    const todas = await marcaPruebas(c.media || []), media = todas.filter(x => !x.prueba || x.id === req.body?.id), m = media.find(x => x.id === req.body?.id); if (!m) return res.status(404).json({ error: 'No encuentro esa publicación' });
+    const est = estadisticas(media), otros = media.filter(x => x.id !== m.id).map(x => ({ m: x, p: puntua(x, c.seguidores) })).sort((a, b) => b.p - a.p);
+    const ficha = (x) => ({ tipo: x.tipo, fecha: String(x.fecha).slice(0, 10), dia: new Date(x.fecha).toLocaleString('es-ES', { weekday: 'long', hour: '2-digit', timeZone: 'Europe/Madrid' }), pie: x.pie.slice(0, 350), vistas: vistasDe(x), alcance: x.reach ?? null, me_gusta: x.me_gusta, comentarios: x.comentarios, guardados: x.saved ?? null, compartidos: x.shares ?? null, tiempo_visto: x.ig_reels_avg_watch_time ?? null });
+    const r = json(await callClaude({ system: 'Eres el analista de contenido de Víctor Palomo (Ranuse Design, diseño de gimnasios). Haces la AUTOPSIA de una publicación: por qué funcionó o no comparada con SUS PROPIOS números, y qué hacer con ese tipo de contenido. Solo con los datos que ves (no tienes el vídeo ni su transcripción: si algo depende de ello, dilo). Directo, con criterio, sin rodeos. Devuelves SOLO JSON {"veredicto":"repetir|ajustar|dejar","resumen":"1-2 frases","por_que":["motivo concreto basado en los datos"],"que_haria_distinto":["cambio concreto"],"como_repetirlo":"si funcionó, cómo sacarle partido sin copiarse"}', messages: [{ role: 'user', content: 'SUS NÚMEROS POR FORMATO:\n' + JSON.stringify(est) + '\n\nPUBLICACIÓN A ANALIZAR:\n' + JSON.stringify(ficha(m)) + '\n\nSUS MEJORES:\n' + JSON.stringify(otros.slice(0, 4).map(x => ficha(x.m))) + '\n\nSUS PEORES:\n' + JSON.stringify(otros.slice(-3).map(x => ficha(x.m))) }], maxTokens: 1500 }));
+    res.json({ ok: true, autopsia: { veredicto: limpia(r.veredicto, 10), resumen: limpia(r.resumen, 300), por_que: (r.por_que || []).slice(0, 5).map(x => limpia(x, 220)), que_haria_distinto: (r.que_haria_distinto || []).slice(0, 5).map(x => limpia(x, 220)), como_repetirlo: limpia(r.como_repetirlo, 300) } });
+  } catch (e) { console.error('redes autopsia', e.message); res.status(500).json({ error: 'No se pudo analizar esa publicación: ' + String(e.message).slice(0, 200) }); }
 });
 
 // ── 4) Ideas ganadoras en tu nicho (cuentas profesionales públicas de Instagram)
@@ -165,13 +221,51 @@ router.post('/nicho/youtube', async (req, res) => {
     const canales = [...new Set((v.items || []).map(x => x.snippet.channelId))]; const cs = await yt('channels', { part: 'statistics,snippet', id: canales.slice(0, 50).join(',') });
     const subs = Object.fromEntries((cs.items || []).map(c => [c.id, Number(c.statistics?.subscriberCount) || 0]));
     const dur = (iso) => { const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(iso || ''); return m ? (Number(m[1] || 0) * 3600 + Number(m[2] || 0) * 60 + Number(m[3] || 0)) : 0; };
-    const lista = (v.items || []).map(x => { const vistas = Number(x.statistics?.viewCount) || 0, s = subs[x.snippet.channelId] || 0; return { miniatura: x.snippet.thumbnails?.medium?.url || '', titulo: x.snippet.title, canal: x.snippet.channelTitle, fecha: x.snippet.publishedAt.slice(0, 10), segundos: dur(x.contentDetails?.duration), vistas, me_gusta: Number(x.statistics?.likeCount) || 0, comentarios: Number(x.statistics?.commentCount) || 0, suscriptores: s, vistas_por_suscriptor: s ? Math.round(vistas / s * 100) / 100 : null, enlace: 'https://www.youtube.com/watch?v=' + x.id }; }).sort((a, b) => (b.vistas_por_suscriptor ?? 0) - (a.vistas_por_suscriptor ?? 0));
+    const lista = (v.items || []).map(x => { const vistas = Number(x.statistics?.viewCount) || 0, s = subs[x.snippet.channelId] || 0; return { miniatura: x.snippet.thumbnails?.medium?.url || '', titulo: x.snippet.title, canal: x.snippet.channelTitle, fecha: x.snippet.publishedAt.slice(0, 10), segundos: dur(x.contentDetails?.duration), vistas, me_gusta: Number(x.statistics?.likeCount) || 0, comentarios: Number(x.statistics?.commentCount) || 0, suscriptores: s, vistas_por_suscriptor: Math.round(vistas / Math.max(s, 1000) * 100) / 100, enlace: 'https://www.youtube.com/watch?v=' + x.id }; }).sort((a, b) => (b.vistas_por_suscriptor ?? 0) - (a.vistas_por_suscriptor ?? 0));
     const r = json(await callClaude({ system: 'Eres analista de contenido de YouTube. Te paso vídeos públicos de un nicho (diseño y equipamiento de gimnasios) ordenados por vistas relativas al tamaño del canal (los que más rinden por encima de su audiencia son los «ganadores»). Saca qué títulos/ganchos, formatos y temas funcionan y propón ideas para Víctor Palomo (Ranuse Design, diseño de gimnasios), adaptadas a su marca. Solo datos públicos. Devuelves SOLO JSON {"patrones":["..."],"ganchos_titulos":["fórmula con ejemplo"],"formatos":["..."],"ideas_para_victor":[{"idea":"","formato":"short|vídeo largo","gancho":"","por_que":""}],"fiabilidad":"..."}', messages: [{ role: 'user', content: 'Búsqueda: ' + consulta + '\
 ' + JSON.stringify(lista.slice(0, 20)) }], maxTokens: 3000 }));
     const out = { fecha: new Date().toISOString(), plataforma: 'youtube', consulta, top: lista.slice(0, 12), patrones: (r.patrones || []).slice(0, 8).map(x => limpia(x, 240)), ganchos: (r.ganchos_titulos || []).slice(0, 8).map(x => limpia(x, 240)), formatos: (r.formatos || []).slice(0, 6).map(x => limpia(x, 240)), ideas: (r.ideas_para_victor || []).slice(0, 8).map(x => ({ idea: limpia(x?.idea, 240), formato: limpia(x?.formato, 20), gancho: limpia(x?.gancho, 200), por_que: limpia(x?.por_que, 200) })), fiabilidad: limpia(r.fiabilidad, 240) };
     const prev = await leerJson(RUTA_NICHO, { cuentas: [] }); await guardarJson(RUTA_NICHO, { ...prev, youtube: out });
     res.json({ ok: true, nicho: out });
   } catch (e) { console.error('redes youtube', e.message); res.status(500).json({ error: 'No se pudo analizar YouTube: ' + String(e.message).slice(0, 200) }); }
+});
+// ── 5b) Tu canal de YouTube (datos públicos con la clave de YouTube)
+const ytLlamada = async (clave, ruta, p) => { const u = new URL('https://www.googleapis.com/youtube/v3/' + ruta); for (const [k, v] of Object.entries(p)) u.searchParams.set(k, v); u.searchParams.set('key', clave); const r = await fetch(u, { signal: AbortSignal.timeout(30000) }); const j = await r.json(); if (!r.ok) throw new Error(j.error?.message || ('YouTube ' + r.status)); return j; };
+const duracionS = (iso) => { const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(iso || ''); return m ? (Number(m[1] || 0) * 3600 + Number(m[2] || 0) * 60 + Number(m[3] || 0)) : 0; };
+router.post('/youtube/mi-canal', async (req, res) => {
+  try {
+    const cfg = await leerJson(RUTA_CONFIG, {}), clave = cfg.youtube_key || process.env.YOUTUBE_API_KEY; if (!clave) return res.status(503).json({ error: 'Falta la clave de la API de YouTube.' });
+    let entrada = String(req.body?.canal || cfg.youtube_canal || ''); try { entrada = decodeURIComponent(entrada); } catch { /* tal cual */ }
+    const h = /@([^/?#\s]+)/.exec(entrada)?.[1], idc = /channel\/(UC[\w-]{20,})/.exec(entrada)?.[1];
+    if (!h && !idc) return res.status(400).json({ error: 'Pega el enlace de tu canal (youtube.com/@tuCanal).' });
+    const ch = await ytLlamada(clave, 'channels', { part: 'snippet,statistics,contentDetails', ...(idc ? { id: idc } : { forHandle: '@' + h }) });
+    const c = ch.items?.[0]; if (!c) return res.status(404).json({ error: 'No encuentro ese canal. Revisa el enlace.' });
+    if (req.body?.canal) { cfg.youtube_canal = String(req.body.canal).slice(0, 300); await guardarJson(RUTA_CONFIG, cfg); }
+    const lista = await ytLlamada(clave, 'playlistItems', { part: 'contentDetails', playlistId: c.contentDetails.relatedPlaylists.uploads, maxResults: '50' });
+    const ids = (lista.items || []).map(i => i.contentDetails.videoId); let vids = [];
+    if (ids.length) { const v = await ytLlamada(clave, 'videos', { part: 'snippet,statistics,contentDetails', id: ids.join(',') }); vids = (v.items || []).map(x => ({ id: x.id, titulo: x.snippet.title, fecha: x.snippet.publishedAt.slice(0, 10), segundos: duracionS(x.contentDetails?.duration), vistas: Number(x.statistics?.viewCount) || 0, me_gusta: Number(x.statistics?.likeCount) || 0, comentarios: Number(x.statistics?.commentCount) || 0, miniatura: x.snippet.thumbnails?.medium?.url || '', enlace: 'https://www.youtube.com/watch?v=' + x.id, tipo: duracionS(x.contentDetails?.duration) <= 60 ? 'short' : 'largo' })); }
+    const orden = vids.slice().sort((a, b) => b.vistas - a.vistas), subs = Number(c.statistics?.subscriberCount) || 0;
+    const base = { canal: c.snippet.title, handle: h ? '@' + h : '', suscriptores: subs, videos_total: Number(c.statistics?.videoCount) || 0, vistas_total: Number(c.statistics?.viewCount) || 0, foto: c.snippet.thumbnails?.default?.url || '', videos: vids, fecha: new Date().toISOString() };
+    if (vids.length < 4) { await guardarJson('crm/redes/youtube_canal.json', base); return res.json({ ok: true, canal: base, aviso: 'Tiene muy pocos vídeos para sacar patrones.' }); }
+    const r = json(await callClaude({ system: 'Eres analista de YouTube para un canal personal de diseño de gimnasios (Víctor Palomo, Ranuse Design). Comparas sus vídeos que mejor y peor funcionaron (vistas, me gusta, comentarios, duración, shorts frente a largos, título/gancho, fecha) y sacas patrones REALES, la cadencia de publicación y qué haría para crecer. Solo lo que se ve en los datos; no tienes retención ni tráfico (lo dices). Devuelves SOLO JSON {"resumen":"2-3 frases","funciona":["patrón"],"no_funciona":["patrón"],"formato":"shorts o largos: qué le rinde más y por qué","titulos":["fórmula de título que le funcionó"],"cadencia":"cuánto publica ahora y qué recomiendas","ideas":[{"idea":"","formato":"short|vídeo largo","gancho":"","por_que":""}],"fiabilidad":"..."}', messages: [{ role: 'user', content: 'Canal: ' + base.canal + ' · ' + subs + ' suscriptores · ' + base.videos_total + ' vídeos.\nMEJORES:\n' + JSON.stringify(orden.slice(0, 8).map(v => ({ titulo: v.titulo, tipo: v.tipo, segundos: v.segundos, vistas: v.vistas, me_gusta: v.me_gusta, comentarios: v.comentarios, fecha: v.fecha }))) + '\nPEORES:\n' + JSON.stringify(orden.slice(-6).map(v => ({ titulo: v.titulo, tipo: v.tipo, segundos: v.segundos, vistas: v.vistas, fecha: v.fecha }))) + '\nFECHAS DE TODOS: ' + vids.map(v => v.fecha).join(',') }], maxTokens: 3000 }));
+    const out = { ...base, analisis: { resumen: limpia(r.resumen, 500), funciona: (r.funciona || []).slice(0, 8).map(x => limpia(x, 240)), no_funciona: (r.no_funciona || []).slice(0, 8).map(x => limpia(x, 240)), formato: limpia(r.formato, 300), titulos: (r.titulos || []).slice(0, 6).map(x => limpia(x, 200)), cadencia: limpia(r.cadencia, 300), ideas: (r.ideas || []).slice(0, 8).map(x => ({ idea: limpia(x?.idea, 240), formato: limpia(x?.formato, 20), gancho: limpia(x?.gancho, 200), por_que: limpia(x?.por_que, 200) })), fiabilidad: limpia(r.fiabilidad, 240) } };
+    await guardarJson('crm/redes/youtube_canal.json', out); res.json({ ok: true, canal: out });
+  } catch (e) { console.error('redes mi canal', e.message); res.status(500).json({ error: 'No se pudo leer tu canal: ' + String(e.message).slice(0, 200) }); }
+});
+
+// ── 5c) Plan de publicación: volumen, formatos, días y horas, y tendencias del nicho (a partir de TUS datos, los del canal de YouTube y las cuentas del nicho)
+router.post('/plan', async (req, res) => {
+  try {
+    const c = await conexion(); const yt = await leerJson('crm/redes/youtube_canal.json', null), nicho = await leerJson(RUTA_NICHO, {}), apr = await leerJson(RUTA_APRENDIZAJE, null);
+    if (!c && !yt) return res.status(404).json({ error: 'Conecta tu Instagram o añade tu canal de YouTube primero.' });
+    const media = (c?.media || []).slice().sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+    const semanas = {}; for (const m of media) { const d = new Date(m.fecha); const lun = new Date(d); lun.setDate(d.getDate() - ((d.getDay() + 6) % 7)); const k = lun.toISOString().slice(0, 10); (semanas[k] = semanas[k] || []).push(m); }
+    const porSemana = Object.entries(semanas).slice(-14).map(([k, l]) => ({ semana: k, publicaciones: l.length, vistas_media: Math.round(l.reduce((s, x) => s + (vistasDe(x) || 0), 0) / l.length), vistas_totales: l.reduce((s, x) => s + (vistasDe(x) || 0), 0) }));
+    const cadenciaNicho = (nicho.instagram?.cuentas || []).length ? (() => { const out = []; for (const d of (nicho.instagram?.top || [])) out.push(d.fecha); return out.length; })() : null;
+    const r = json(await callClaude({ system: 'Eres estratega de contenido de Instagram y YouTube. Recomiendas un PLAN DE PUBLICACIÓN realista y basado en datos para Víctor Palomo (Ranuse Design, diseño de gimnasios; persona sola que además diseña y atiende clientes). Usa SUS números por semana (volumen frente a rendimiento), sus mejores formatos, días y horas, y lo que se ve en el nicho. Sé honesto: de las tendencias de la plataforma (audios, formatos del momento) NO tienes datos oficiales; solo lo que se ve en las cuentas del nicho y en tus conocimientos generales, y lo marcas como tal. Devuelves SOLO JSON {"volumen":{"reels_semana":0,"carruseles_semana":0,"historias_dia":0,"youtube_mes":0,"por_que":"basado en sus datos"},"dias_horas":"mejores momentos","semana_tipo":[{"dia":"lunes","que":"qué publicar"}],"tendencias":[{"tendencia":"","fuente":"datos propios|nicho|conocimiento general","como_aprovecharla":""}],"riesgos":["cosas a evitar (saturar, bajar calidad…)"],"experimentos":["prueba concreta de 2 semanas para aprender más"],"faltan_datos":["qué dato no tienes y cómo conseguirlo"]}', messages: [{ role: 'user', content: 'INSTAGRAM (@' + (c?.usuario || '—') + ', ' + (c?.seguidores ?? '?') + ' seguidores): publicaciones y vistas por semana (últimas 14):\n' + JSON.stringify(porSemana) + '\n\nLO QUE YA SE SABE QUE FUNCIONA: ' + JSON.stringify(apr ? { funciona: apr.lo_que_funciona, no: apr.lo_que_no, horarios: apr.horarios } : 'sin análisis') + '\n\nYOUTUBE: ' + JSON.stringify(yt ? { suscriptores: yt.suscriptores, videos: yt.videos_total, cadencia: yt.analisis?.cadencia, formato: yt.analisis?.formato } : 'sin canal') + '\n\nNICHO (instagram): ' + JSON.stringify(nicho.instagram ? { patrones: nicho.instagram.patrones, formatos: nicho.instagram.formatos } : 'sin analizar') + '\nNICHO (youtube): ' + JSON.stringify(nicho.youtube ? { patrones: nicho.youtube.patrones, formatos: nicho.youtube.formatos } : 'sin analizar') }], maxTokens: 6500 }));
+    const out = { fecha: new Date().toISOString(), por_semana: porSemana, volumen: { reels_semana: Number(r.volumen?.reels_semana) || 0, carruseles_semana: Number(r.volumen?.carruseles_semana) || 0, historias_dia: Number(r.volumen?.historias_dia) || 0, youtube_mes: Number(r.volumen?.youtube_mes) || 0, por_que: limpia(r.volumen?.por_que, 500) }, dias_horas: limpia(r.dias_horas, 300), semana_tipo: (r.semana_tipo || []).slice(0, 7).map(x => ({ dia: limpia(x?.dia, 12), que: limpia(x?.que, 200) })), tendencias: (r.tendencias || []).slice(0, 8).map(x => ({ tendencia: limpia(x?.tendencia, 200), fuente: limpia(x?.fuente, 30), como_aprovecharla: limpia(x?.como_aprovecharla, 220) })), riesgos: (r.riesgos || []).slice(0, 5).map(x => limpia(x, 200)), experimentos: (r.experimentos || []).slice(0, 4).map(x => limpia(x, 240)), faltan_datos: (r.faltan_datos || []).slice(0, 4).map(x => limpia(x, 200)) };
+    await guardarJson('crm/redes/plan.json', out); res.json({ ok: true, plan: out });
+  } catch (e) { console.error('redes plan', e.message); res.status(500).json({ error: 'No se pudo preparar el plan: ' + String(e.message).slice(0, 200) }); }
 });
 router.get('/nicho', async (req, res) => { try { res.json(await leerJson(RUTA_NICHO, { cuentas: [] })); } catch { res.status(500).json({ error: 'No se pudo leer' }); } });
 
