@@ -1131,6 +1131,114 @@ function Estilos({ estilos: formatos, onCambio }) {
 }
 
 
+// Analizador de redes: Instagram conectado (sin copiar claves), aprende de tus publicaciones y busca ideas ganadoras en el nicho (Instagram y YouTube)
+function ListaPuntos({ titulo, items, color }) {
+  if (!items || !items.length) return null;
+  return <div style={{ marginTop: 8 }}><strong style={color ? { color } : undefined}>{titulo}</strong>{items.map((x, i) => <div key={i} style={{ fontSize: '0.86rem', lineHeight: 1.45 }}>• {x}</div>)}</div>;
+}
+function ResultadoNicho({ n }) {
+  if (!n) return null;
+  return (
+    <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(205,187,167,0.3)' }}>
+      <div style={mut}>{n.plataforma === 'youtube' ? 'YouTube · «' + n.consulta + '»' : 'Instagram · ' + (n.cuentas || []).map(c => '@' + c.usuario).join(', ')} · {String(n.fecha).slice(0, 10)}</div>
+      {(n.fallos || []).length > 0 && <div style={{ ...mut, color: '#f2c46d' }}>No he podido leer: {n.fallos.join(' · ')}</div>}
+      <ListaPuntos titulo="Patrones que funcionan" items={n.patrones} />
+      <ListaPuntos titulo="Ganchos" items={n.ganchos} />
+      <ListaPuntos titulo="Formatos" items={n.formatos} />
+      {(n.ideas || []).length > 0 && <div style={{ marginTop: 8 }}><strong>💡 Ideas para ti</strong>{n.ideas.map((x, i) => <div key={i} style={{ fontSize: '0.86rem', marginTop: 3 }}><b>{x.idea}</b> <span style={mut}>({x.formato})</span>{x.gancho && <div style={mut}>Gancho: «{x.gancho}»</div>}{x.por_que && <div style={mut}>{x.por_que}</div>}</div>)}</div>}
+      {(n.top || []).length > 0 && <details style={{ marginTop: 8 }}><summary style={{ cursor: 'pointer', ...mut }}>Las publicaciones que más rinden</summary>{n.top.map((p, i) => <div key={i} style={{ fontSize: '0.82rem', padding: '3px 0' }}><a href={p.enlace} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{p.titulo || p.gancho || p.pie || 'ver'}</a> <span style={mut}>{p.cuenta ? '@' + p.cuenta + ' · ' : p.canal ? p.canal + ' · ' : ''}{p.vistas ? p.vistas.toLocaleString('es-ES') + ' vistas · ' : ''}{p.me_gusta != null ? p.me_gusta + ' me gusta' : ''}</span></div>)}</details>}
+      {n.fiabilidad && <div style={{ ...mut, marginTop: 6 }}>Fiabilidad: {n.fiabilidad}</div>}
+    </div>
+  );
+}
+function PestanaAnalizador() {
+  const [e, setE] = useState(null), [msg, setMsg] = useState(''), [error, setError] = useState(''), [trabaja, setTrabaja] = useState(''), [pubs, setPubs] = useState(null), [cuentas, setCuentas] = useState(''), [consulta, setConsulta] = useState('diseño de gimnasios'), [nicho, setNicho] = useState(null), [ayuda, setAyuda] = useState(null);
+  const cargar = useCallback(() => api.get('/redes/estado').then(r => setE(r.data)).catch(() => setE({ instagram: null })), []);
+  useEffect(() => {
+    cargar(); api.get('/redes/nicho').then(r => setNicho(r.data)).catch(() => {});
+    try { const p = new URLSearchParams(window.location.search); if (p.get('redes') === 'conectado') setMsg('✓ Instagram conectado. Ahora pulsa «Leer mis publicaciones».'); else if (p.get('redes') === 'error') setError(p.get('msg') || 'No se pudo conectar.'); } catch { /* sin parámetros */ }
+  }, [cargar]);
+  const conecta = async () => { setError(''); try { const r = await api.get('/redes/instagram/conectar', { params: { origen: window.location.origin } }); setAyuda(r.data.redirect_uri); window.location.href = r.data.url; } catch (x) { setError(x.response?.data?.error || 'No se pudo iniciar la conexión'); } };
+  const hace = async (clave, fn) => { setTrabaja(clave); setError(''); setMsg(''); try { await fn(); await cargar(); } catch (x) { setError(x.response?.data?.error || 'No se pudo'); } finally { setTrabaja(''); } };
+  const sync = () => hace('sync', async () => { const r = await api.post('/redes/instagram/sincronizar', {}, { timeout: 280000 }); setMsg('Leídas ' + r.data.publicaciones + ' publicaciones'); const l = await api.get('/redes/instagram/publicaciones'); setPubs(l.data.publicaciones); });
+  const analiza = () => hace('analiza', async () => { await api.post('/redes/instagram/analizar', {}, { timeout: 280000 }); setMsg('Análisis hecho: lo aprendido ya llega al editor y al asistente.'); });
+  const verPubs = () => hace('pubs', async () => { const l = await api.get('/redes/instagram/publicaciones'); setPubs(l.data.publicaciones); });
+  const nichoIg = () => hace('nig', async () => { const r = await api.post('/redes/nicho/instagram', { cuentas }, { timeout: 280000 }); setNicho(n => ({ ...(n || {}), instagram: r.data.nicho })); });
+  const nichoYt = () => hace('nyt', async () => { const r = await api.post('/redes/nicho/youtube', { consulta }, { timeout: 280000 }); setNicho(n => ({ ...(n || {}), youtube: r.data.nicho })); });
+  const desconecta = async () => { if (!window.confirm('¿Desconectar Instagram?')) return; await hace('des', () => api.delete('/redes/instagram')); setPubs(null); };
+  if (!e) return <div className="ap-loading">Cargando…</div>;
+  const ig = e.instagram, ap = e.aprendizaje;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {error && <div className="ap-error">{error}</div>}
+      {msg && <div style={{ ...card, borderColor: 'rgba(124,207,143,0.5)' }}>{msg}</div>}
+      <div style={card}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>📸 Tu Instagram</div>
+        {!ig && (<>
+          <div style={{ ...mut, marginBottom: 8 }}>Conéctalo con un clic: se abre Facebook, eliges tu cuenta profesional y aceptas los permisos de lectura. No se copia ninguna clave ni se publica nada.</div>
+          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={conecta}>Conectar Instagram</button>
+          <details style={{ marginTop: 10 }}>
+            <summary style={{ cursor: 'pointer', ...mut }}>Si Meta da un error al conectar (solo la primera vez)</summary>
+            <div style={{ fontSize: '0.84rem', lineHeight: 1.5, marginTop: 6 }}>
+              1. Entra en <b>developers.facebook.com → Mis apps → Ranuse Asistente</b>.<br />
+              2. En el menú izquierdo: <b>Añadir producto → Inicio de sesión con Facebook (Facebook Login)</b> → Configurar.<br />
+              3. Dentro: <b>Configuración → URI de redireccionamiento de OAuth válidos</b> y pega esta dirección: <code style={{ wordBreak: 'break-all' }}>{ayuda || 'https://ranusecrm-main-production.up.railway.app/api/redes/instagram/callback'}</code> y guarda.<br />
+              4. Vuelve aquí y pulsa «Conectar Instagram».
+            </div>
+          </details>
+        </>)}
+        {ig && (<>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            {ig.foto && <img src={ig.foto} alt="" style={{ width: 44, height: 44, borderRadius: 22 }} />}
+            <div><b>@{ig.usuario}</b> <span style={mut}>· {ig.seguidores ?? '?'} seguidores · {ig.publicaciones ?? '?'} publicaciones</span><div style={mut}>{ig.ultima_sync ? 'Última lectura: ' + String(ig.ultima_sync).slice(0, 16).replace('T', ' ') + ' (' + ig.n_media + ' publicaciones)' : 'Aún no se han leído las publicaciones'} · la conexión dura {ig.expira_dias} días más</div></div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+            <button className="ap-btn ap-btn-sm" disabled={!!trabaja} onClick={sync}>{trabaja === 'sync' ? 'Leyendo… (1-2 min)' : 'Leer mis publicaciones'}</button>
+            <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={!!trabaja || !ig.n_media} onClick={analiza}>{trabaja === 'analiza' ? 'Analizando…' : '🧠 Aprender de lo que me funciona'}</button>
+            {ig.n_media > 0 && <button className="ap-btn ap-btn-sm" disabled={!!trabaja} onClick={verPubs}>Ver ranking</button>}
+            <button className="ap-btn ap-btn-sm" disabled={!!trabaja} onClick={desconecta}>Desconectar</button>
+          </div>
+          <div style={{ ...mut, marginTop: 8 }}>Lee tus publicaciones y su rendimiento (alcance, guardados, compartidos…) sin descargar ningún vídeo. Lo que aprende llega solo al editor de vídeo y al asistente de historias.</div>
+        </>)}
+      </div>
+      {ap && (
+        <div style={card}>
+          <div style={{ fontWeight: 700 }}>🧠 Lo que funciona en tu cuenta <span style={mut}>· {String(ap.fecha).slice(0, 10)} · {ap.n} publicaciones</span></div>
+          {ap.resumen && <div style={{ ...mut, margin: '6px 0' }}>{ap.resumen}</div>}
+          <ListaPuntos titulo="Funciona" items={ap.lo_que_funciona} color="#7ccf8f" />
+          <ListaPuntos titulo="No funciona" items={ap.lo_que_no} color="#f2c46d" />
+          <ListaPuntos titulo="Ganchos ganadores" items={ap.ganchos_ganadores} />
+          {(ap.ideas_ganadoras || []).length > 0 && <div style={{ marginTop: 8 }}><strong>💡 Ideas ganadoras para ti</strong>{ap.ideas_ganadoras.map((x, i) => <div key={i} style={{ fontSize: '0.86rem', marginTop: 3 }}><b>{x.idea}</b> <span style={mut}>({x.formato})</span>{x.gancho && <div style={mut}>Gancho: «{x.gancho}»</div>}</div>)}</div>}
+          <ListaPuntos titulo="Para el editor de vídeo" items={ap.para_el_editor} />
+          <ListaPuntos titulo="Para las historias" items={ap.para_historias} />
+          {ap.horarios && <div style={{ ...mut, marginTop: 6 }}>Horarios: {ap.horarios}</div>}
+          {ap.fiabilidad && <div style={{ ...mut, marginTop: 4 }}>Fiabilidad: {ap.fiabilidad}</div>}
+        </div>
+      )}
+      {pubs && (
+        <details open style={card}>
+          <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Ranking de tus publicaciones</summary>
+          {pubs.slice(0, 25).map(p => <div key={p.id} style={{ display: 'flex', gap: 8, padding: '5px 0', borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: '0.84rem' }}><span style={{ width: 44, fontWeight: 700 }}>{p.puntuacion}</span><span style={{ flex: 1 }}><a href={p.enlace} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{p.pie ? p.pie.slice(0, 90) : '(sin texto)'}</a><div style={mut}>{p.tipo} · {String(p.fecha).slice(0, 10)}{p.reach != null ? ' · alcance ' + p.reach : ''}{p.saved != null ? ' · guardados ' + p.saved : ''}{p.shares != null ? ' · compartidos ' + p.shares : ''} · {p.me_gusta ?? 0} me gusta · {p.comentarios ?? 0} comentarios</div></span></div>)}
+        </details>
+      )}
+      <div style={card}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>🔎 Ideas ganadoras en tu nicho</div>
+        <div style={{ ...mut, marginBottom: 8 }}>Mira qué funciona en cuentas parecidas a la tuya y te propone ideas adaptadas a ti. De otras cuentas solo se ve lo público (textos y me gusta), no su alcance real ni sus vídeos.</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          <input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} value={cuentas} onChange={ev => setCuentas(ev.target.value)} placeholder="Cuentas de Instagram del nicho (separadas por comas): gymcompany_es, ..." disabled={!ig} />
+          <button className="ap-btn ap-btn-sm" disabled={!ig || !cuentas.trim() || !!trabaja} onClick={nichoIg}>{trabaja === 'nig' ? 'Analizando…' : 'Analizar Instagram'}</button>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} value={consulta} onChange={ev => setConsulta(ev.target.value)} placeholder="Qué buscar en YouTube" disabled={!e.youtube} />
+          <button className="ap-btn ap-btn-sm" disabled={!e.youtube || !consulta.trim() || !!trabaja} onClick={nichoYt}>{trabaja === 'nyt' ? 'Analizando…' : 'Analizar YouTube'}</button>
+        </div>
+        <ResultadoNicho n={nicho?.instagram} />
+        <ResultadoNicho n={nicho?.youtube} />
+      </div>
+    </div>
+  );
+}
+
 // Departamento de redes: ideas, calendario y las reglas de marca (se irá ampliando con publicar y medir)
 export function SectionRedes() {
   const [seccion, setSeccion] = useState('ideas');
@@ -1143,17 +1251,12 @@ export function SectionRedes() {
         <button className={'ap-btn ap-btn-sm' + (seccion === 'ideas' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('ideas')}><Wand2 size={13} /> Ideas y calendario</button>
         <button className={'ap-btn ap-btn-sm' + (seccion === 'guion' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('guion')}><Music size={13} /> Guionizador</button>
         <button className={'ap-btn ap-btn-sm' + (seccion === 'marca' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('marca')}><Settings2 size={13} /> Voz y reglas de marca</button>
-        <button className={'ap-btn ap-btn-sm' + (seccion === 'medir' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('medir')}><Film size={13} /> Publicar y medir</button>
+        <button className={'ap-btn ap-btn-sm' + (seccion === 'medir' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('medir')}><Film size={13} /> Analizador</button>
       </div>
       {seccion === 'ideas' && <PestanaIdeas />}
       {seccion === 'guion' && <Guionizador />}
       {seccion === 'marca' && <div style={card}><CajaReglas /><div style={mut}>Estas reglas las usa la IA al proponer ideas y al editar los vídeos del Estudio.</div></div>}
-      {seccion === 'medir' && (
-        <div style={card}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Publicar y medir (próximamente)</div>
-          <div style={mut}>Aquí irá programar las publicaciones y leer las estadísticas de cada vídeo (Instagram y TikTok) para decir qué funciona y por qué. Necesita conectar las cuentas; lo montamos en la siguiente fase.</div>
-        </div>
-      )}
+      {seccion === 'medir' && <PestanaAnalizador />}
     </div>
   );
 }
