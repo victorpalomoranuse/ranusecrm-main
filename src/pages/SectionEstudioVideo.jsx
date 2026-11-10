@@ -1280,6 +1280,7 @@ function ResultadoNicho({ n }) {
     </div>
   );
 }
+const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('es-ES'));
 const delta = (a, b) => (a == null || b == null || b === 0 ? null : Math.round((a - b) / b * 100));
 function SaludCuenta() {
   const [d, setD] = useState(null), [err, setErr] = useState(''), [trab, setTrab] = useState(false);
@@ -1463,7 +1464,6 @@ function PestanaAnalizador() {
   const reales = (pubs || []).filter(p => !p.prueba), pruebas = (pubs || []).filter(p => p.prueba);
   const marca = async (id, v) => { try { await api.post('/redes/instagram/prueba', { id, prueba: v }); await cargaPubs(); } catch { /* se queda */ } };
   const ig = e.instagram, ap = e.aprendizaje, mc = e.mi_canal, pl = e.plan, top = reales.slice().sort((a, b) => orden === 'vistas' ? (b.views || b.reach || 0) - (a.views || a.reach || 0) : (b.puntuacion || 0) - (a.puntuacion || 0)).slice(0, 12), maxP = Math.max(1, ...(top.map(p => p.puntuacion || 0)));
-  const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('es-ES'));
   const k = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1).replace('.', ',') + ' M' : n >= 1e3 ? Math.round(n / 1e3) + ' k' : String(n));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
