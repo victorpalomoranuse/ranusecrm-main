@@ -170,7 +170,7 @@ async function procesaClips(t, entrada, dir) {
     await paso(t, 'Transcripción lista', { pct: 100, estado: 'listo', palabras_n: p.length, dur_total: Math.round(dur), terminado: new Date().toISOString(), error: null }); return;
   }
   await paso(t, 'Buscando los mejores momentos…', { pct: 30 });
-  sel = await clips.eligeClips(palabras, dur, { n: t.num_clips || 0, min: t.dur_min || 25, max: t.dur_max || 70, notas: t.indicaciones || '', guion: t.guion || '', reglas: t.reglas || '' });
+  sel = await clips.eligeClips(palabras, dur, { n: t.num_clips || 0, min: t.dur_min || 25, max: t.dur_max || 70, notas: [t.indicaciones, t.formato === 'auto-redes' ? t.notas_formato : ''].filter(Boolean).join('\n'), guion: t.guion || '', reglas: t.reglas || '' });
   if (!sel.length) throw new Error('No he encontrado momentos que funcionen solos como clip. Prueba con indicaciones más concretas.');
   sel.sort((x, y) => (y.score ?? 0) - (x.score ?? 0)); // los de mayor puntuación primero
   }

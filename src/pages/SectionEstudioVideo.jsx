@@ -196,7 +196,7 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
   useEffect(() => { try { const p = JSON.parse(localStorage.getItem('estudioPendiente') || 'null'); if (p) { if (p.guion) setGuion(p.guion); if (p.notas) setNotas(p.notas); localStorage.removeItem('estudioPendiente'); } } catch { /* nada pendiente */ } }, []);
-  useEffect(() => { if (tipo === 'clips' && formatos.some(f => f.id === 'clips-dopaminicos')) setFmt('clips-dopaminicos'); }, [tipo, formatos]);
+  useEffect(() => { if (tipo === 'clips') { const a = formatos.find(f => f.id === 'auto-redes') || formatos.find(f => f.id === 'clips-dopaminicos'); if (a) setFmt(a.id); } }, [tipo, formatos]);
   const enviar = async () => {
     const extra = tipo === 'clips' ? { num_clips: numClips, ...(durClip === 'auto' ? { dur_auto: true } : { dur_min: Number(durClip.split('-')[0]), dur_max: Number(durClip.split('-')[1]) }) } : {};
     const dDrive = tipo === 'base' || origen === 'drive'; if (tipo === 'clips' && soloTr) extra.fase = 'transcribir'; if (tipo === 'voz' && soloAudio) extra.fase = 'audio';
