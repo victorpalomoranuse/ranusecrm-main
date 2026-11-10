@@ -41,7 +41,8 @@ const json = (r) => {
   for (const corte of [s.length, s.lastIndexOf(','), s.lastIndexOf('{')]) { if (corte <= 0) continue; try { let base = s.slice(0, corte).replace(/,\s*$/, ''); let q = '', pl = [], d = false, es = false; for (const ch of base) { if (es) { es = false; continue; } if (ch === '\\') { es = true; continue; } if (ch === '"') d = !d; if (d) continue; if (ch === '{' || ch === '[') pl.push(ch); if (ch === '}' || ch === ']') pl.pop(); } if (d) base += '"'; for (const p of pl.reverse()) q += p === '{' ? '}' : ']'; return JSON.parse(base + q); } catch { /* siguiente corte */ } }
   throw new Error('respuesta de la IA incompleta');
 };
-const limpia = (s, n) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
+const aTexto = (s) => (s && typeof s === 'object' ? (Array.isArray(s) ? s.map(aTexto).join(' · ') : Object.values(s).map(aTexto).filter(Boolean).join(' — ')) : s);
+const limpia = (s, n) => String(aTexto(s) || '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 // ── 1) Conexión con Instagram (el callback lo abre el navegador de Víctor, sin cabecera de sesión: se protege con un estado firmado)
 router.get('/instagram/callback', async (req, res) => {
