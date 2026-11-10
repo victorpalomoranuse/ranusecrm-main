@@ -1313,6 +1313,44 @@ function SaludCuenta() {
     </div>
   );
 }
+function InicioRedes({ ir }) {
+  const [s, setS] = useState(null), [pubs, setPubs] = useState(null), [est, setEst] = useState(null), [objs, setObjs] = useState(null), [trab, setTrab] = useState(false), [abierta, setAbierta] = useState(null);
+  useEffect(() => {
+    api.get('/redes/cuenta/salud').then(r => setS(r.data)).catch(() => setS({}));
+    api.get('/redes/instagram/publicaciones').then(r => setPubs(r.data.publicaciones || [])).catch(() => setPubs([]));
+    api.get('/redes/estado').then(r => setEst(r.data)).catch(() => setEst({}));
+    api.get('/redes/objetivos').then(r => setObjs(r.data)).catch(() => {});
+  }, []);
+  const analiza = async () => { setTrab(true); try { const r = await api.post('/redes/cuenta/salud', {}, { timeout: 200000 }); setS(r.data); } catch { /* se queda como estaba */ } setTrab(false); };
+  const top = (pubs || []).filter(p => !p.prueba).slice(0, 3), ideas = (est?.aprendizaje?.ideas_ganadoras || []).slice(0, 3), obj = objs ? objs.objetivos.find(o => o.id === objs.actual) : null;
+  const flecha = { sube: ['📈', '#8fdba0', 'Subes'], estable: ['➖', '#f2c46d', 'Estable'], baja: ['📉', '#ff9b9b', 'Bajas'] }[s?.tendencia] || null;
+  const conectado = !!est?.instagram;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {est && !conectado && <div className="rd-card"><b>Aún no has conectado Instagram.</b><div><button className="rd-btn pri" onClick={() => ir('ig')}>Conectar Instagram</button></div></div>}
+      <div className="rd-card" style={{ borderLeft: '4px solid ' + (flecha ? flecha[1] : '#555'), gap: 10 }}>
+        <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>1 · CÓMO VA LA CUENTA</div>
+        {flecha ? <>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}><span style={{ fontSize: '2.2rem' }}>{flecha[0]}</span><b style={{ fontSize: '1.8rem', color: flecha[1] }}>{flecha[2]}</b>{s.neto_30d != null && <span style={{ fontSize: '1.3rem' }}>{s.neto_30d >= 0 ? '+' : ''}{s.neto_30d} seguidores en 30 días</span>}</div>
+          <div style={{ fontSize: '0.95rem' }}>{s.titular}</div>
+        </> : <div style={mut}>Todavía no he analizado tu cuenta.</div>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="rd-btn pri" disabled={trab || !conectado} onClick={analiza}>{trab ? 'Analizando…' : flecha ? '🔄 Actualizar' : '🔍 Analizar mi cuenta'}</button>{flecha && <button className="rd-btn" onClick={() => ir('salud')}>Ver el detalle</button>}</div>
+      </div>
+      <div className="rd-card" style={{ gap: 10 }}>
+        <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>2 · LO QUE MEJOR FUNCIONA{obj ? ' · ' + obj.icono + ' ' + obj.nombre.toUpperCase() : ''}</div>
+        {top.length > 0 ? <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))' }}>{top.map((p, i) => <a key={p.id} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: '4/5' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{p.puntuacion}</span><div className="vel"><b>#{i + 1}</b> {fmt(p.views ?? p.reach ?? 0)} vistas</div></a>)}</div> : <div style={mut}>{conectado ? 'Pulsa «Leer publicaciones» en Instagram.' : '—'}</div>}
+        <div><button className="rd-btn" onClick={() => ir('ig')}>Ver todo el ranking y analizar</button></div>
+      </div>
+      <div className="rd-card" style={{ gap: 10 }}>
+        <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>3 · QUÉ HACER AHORA</div>
+        {s?.acciones?.[0] && <div style={{ fontSize: '1rem', lineHeight: 1.5 }}>🎯 {s.acciones[0]}</div>}
+        {ideas.length > 0 ? <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))' }}>{ideas.map((x, i) => <div key={i} className="rd-card" style={{ cursor: 'pointer' }} onClick={() => setAbierta(x)}><span className="rd-chip arena" style={{ alignSelf: 'flex-start' }}>{x.formato || 'idea'}</span><div className="rd-gancho">{x.idea}</div><div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Crear guion →</div></div>)}</div> : <div style={mut}>Cuando analices tus reels, aquí saldrán ideas listas para grabar.</div>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="rd-btn" onClick={() => ir('plan')}>Plan de publicación</button><button className="rd-btn" onClick={() => ir('musica')}>🎵 Música</button></div>
+      </div>
+      {abierta && <TallerIdeas idea={abierta} onCerrar={() => setAbierta(null)} />}
+    </div>
+  );
+}
 function SemanaTipo({ dias }) {
   const [ab, setAb] = useState(null), [taller, setTaller] = useState(null);
   return <>
@@ -1342,7 +1380,7 @@ function MusicaTendencia() {
 }
 function PestanaAnalizador() {
   const [e, setE] = useState(null), [msg, setMsg] = useState(''), [error, setError] = useState(''), [trabaja, setTrabaja] = useState(''), [pubs, setPubs] = useState(null), [cuentas, setCuentas] = useState(''), [consulta, setConsulta] = useState('diseño de gimnasios'), [nicho, setNicho] = useState(null), [ayuda, setAyuda] = useState(null);
-  const [plat, setPlat] = useState('ig'), [canal, setCanal] = useState(''), [cfgId, setCfgId] = useState(''), [prop, setProp] = useState(''), [propFmt, setPropFmt] = useState('reel'), [pred, setPred] = useState(null), [autopsias, setAutopsias] = useState({});
+  const [plat, setPlat] = useState('inicio'), [canal, setCanal] = useState(''), [cfgId, setCfgId] = useState(''), [prop, setProp] = useState(''), [propFmt, setPropFmt] = useState('reel'), [pred, setPred] = useState(null), [autopsias, setAutopsias] = useState({});
   const cargar = useCallback(() => api.get('/redes/estado').then(r => setE(r.data)).catch(() => setE({ instagram: null })), []);
   const cargaPubs = useCallback(() => api.get('/redes/instagram/publicaciones').then(r => setPubs(r.data.publicaciones)).catch(() => {}), []);
   useEffect(() => {
@@ -1391,6 +1429,7 @@ function PestanaAnalizador() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div className="rd-tabs" style={{ alignSelf: 'flex-start' }}>
+        <button className={'rd-tab' + (plat === 'inicio' ? ' on' : '')} onClick={() => setPlat('inicio')}>🏠 Hoy</button>
         <button className={'rd-tab' + (plat === 'ig' ? ' on' : '')} onClick={() => setPlat('ig')}>📸 Instagram</button>
         <button className={'rd-tab' + (plat === 'yt' ? ' on' : '')} onClick={() => setPlat('yt')}>▶ YouTube</button>
         <button className={'rd-tab' + (plat === 'salud' ? ' on' : '')} onClick={() => setPlat('salud')}>📊 Salud de la cuenta</button>
@@ -1564,6 +1603,7 @@ function PestanaAnalizador() {
         </div>
       </>)}
 
+      {plat === 'inicio' && <InicioRedes ir={setPlat} />}
       {plat === 'musica' && <MusicaTendencia />}
       {plat === 'salud' && <SaludCuenta />}
       {plat === 'plan' && (<>
