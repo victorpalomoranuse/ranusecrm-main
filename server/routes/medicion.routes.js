@@ -541,7 +541,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest', 'cubierta'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest', 'cubierta', 'cesped'];
 const BUCKET_TEX = 'project-documents';
 // Las luminarias que se ponen solo en el 3D (focos y colgantes de un carril, y objetos con nombre de lámpara) también se escriben en el plano,
 // en su capa de iluminación. Llevan un id que empieza por «l3_»: cada vez que se guarda la escena 3D se vuelven a calcular.
@@ -640,6 +640,15 @@ router.put('/:id/escena3d', async (req, res) => {
           estructura: { pilares: es.pilares !== false, zapatas: es.zapatas !== false, sepPorticos: Math.max(200, Math.min(1000, num(es.sepPorticos, 500))), sepCorreas: Math.max(0, Math.min(400, num(es.sepCorreas, 0))), verEstructura: es.verEstructura !== false, verPanel: es.verPanel !== false },
           cargas: { nieve: Math.max(0, Math.min(5, num(ca.nieve, 0.5))), estructura: Math.max(0, Math.min(1, num(ca.estructura, 0.12))) },
           suelo: { sigAdm: Math.max(50, Math.min(600, num(su.sigAdm, 200))) }, precios,
+        };
+      })() : undefined,
+      cesped: o.tipo === 'cesped' && o.cesped && typeof o.cesped === 'object' ? (() => {
+        const c = o.cesped, hx = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : d);
+        const precios = {}; if (c.precios && typeof c.precios === 'object') Object.keys(c.precios).slice(0, 20).forEach(k => { if (/^[a-z]{2,20}$/.test(k)) precios[k] = Math.max(0, Math.min(1e6, num(c.precios[k], 0))); });
+        return {
+          cesped: hx(c.cesped, '#d8d9d4'), linea: hx(c.linea, '#111111'), carriles: Math.max(1, Math.min(8, Math.round(num(c.carriles, 1)))), anchoCarril: Math.max(60, Math.min(400, num(c.anchoCarril, 200))),
+          sep: Math.max(100, Math.min(5000, num(c.sep, 500))), grosorLinea: Math.max(2, Math.min(40, num(c.grosorLinea, 10))), numeros: c.numeros !== false, salida: c.salida !== false, lineasCarril: c.lineasCarril !== false, borde: c.borde !== false,
+          grosor: Math.max(1, Math.min(8, num(c.grosor, 2.5))), precios,
         };
       })() : undefined,
       mueble: o.tipo === 'mueble' && o.mueble ? {

@@ -11,6 +11,7 @@ import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
 import EstudioIdeas from '../components/EstudioIdeas';
 import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
+import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
 import { construirCubierta, cubiertaPorDefecto, normalizaCubierta, calculosCubierta, textoCubierta, altoCubierta, TIPOS_CUBIERTA, PANELES, COLORES_PANEL } from '../components/cubierta3d';
 import { construirSauna, saunaPorDefecto, normalizaSauna, calculosSauna, textoMateriales, MADERAS, TIPOS_SAUNA } from '../components/sauna3d';
 import EditorRender from '../components/EditorRender';
@@ -1023,6 +1024,7 @@ const ICONOS = {
   revest: 'M4 4h16v16H4z M8 4v16 M12 4v16 M16 4v16',
   alzado: 'M4 4h16v16H4z M4 15h16 M9 4v11 M15 4v11', planta: 'M4 4h16v16H4z M4 10h9 M13 4v16', techo: 'M4 4h16v16H4z M8 8h8v8H8z',
   textura: 'M4 4h16v16H4z M4 9h16 M4 14h16 M9 4v16 M14 4v16', modelos: 'M12 3l8 4v10l-8 4-8-4V7z M4 7l8 4 8-4 M12 11v10',
+  cesped: 'M3 18h18 M3 13h18 M3 8h18 M7 6v14 M13 6v14 M19 6v14',
   cubierta: 'M2 14l10-8 10 8 M5 13v7 M19 13v7 M2 14h20',
   sauna: 'M4 4h16v16H4z M4 12h9 M4 16h14 M15 7c0-2 2-2 2-4 M11 7c0-2 2-2 2-4',
   mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4', texto: 'M5 6h14 M12 6v13 M9 19h6', imagen: 'M4 5h16v14H4z M8 10a1.5 1.5 0 1 0 0-.01 M4 17l5-5 4 4 3-3 4 4', ideas: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z',
@@ -3418,6 +3420,17 @@ export default function Visor3D({ cliente = false }) {
         a.esc.add(gr);
         return;
       }
+      if (o.tipo === 'cesped') {
+        const gce = new THREE.Group(), gr = normalizaCesped(o).grosor;
+        const cont = construirCesped(o); cont.position.y = (o.z0 || 0) * CM; gce.add(cont);
+        const hit = new THREE.Mesh(new THREE.BoxGeometry(o.w * CM, Math.max(0.05, gr * CM), o.d * CM), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.y = (gr * CM) / 2 + (o.z0 || 0) * CM; hit.userData.hit = true; gce.add(hit);
+        if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); gce.add(l); }
+        gce.position.set(o.cx * CM, 0, o.cy * CM); gce.rotation.y = -(o.rot || 0) * Math.PI / 180;
+        gce.userData.oid = o.id; gce.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(gce);
+        return;
+      }
       if (o.tipo === 'cubierta') {
         const gc = new THREE.Group(), vu = normalizaCubierta(o).vuelo;
         const cont = construirCubierta(o); cont.position.y = (o.z0 || 0) * CM; gc.add(cont);
@@ -3709,6 +3722,7 @@ export default function Visor3D({ cliente = false }) {
   const [muebleMenu, setMuebleMenu] = useState(false);
   const [saunaMenu, setSaunaMenu] = useState(false);
   const [cubiertaMenu, setCubiertaMenu] = useState(false);
+  const [cespedMenu, setCespedMenu] = useState(false);
   const [revSel, setRevSel] = useState(null);
   const revSelRef = useRef(null); revSelRef.current = revSel;
   const PLANTILLAS_MUEBLE = {
@@ -3738,6 +3752,13 @@ export default function Visor3D({ cliente = false }) {
     nuevo.alto = altoCubierta(nuevo);
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setCubiertaMenu(false);
   };
+  // Césped de arrastres: se coloca en el centro de la vista; medidas, colores y marcas se ajustan en el panel
+  const crearCesped = (preset) => {
+    const { ctrl } = api3d.current, p = cespedPorDefecto(preset);
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'cesped', nombre: 'Césped de arrastres', etiqueta: 'Céspedes', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.w, d: p.d, alto: p.alto, z0: 0, cesped: p.cesped };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setCespedMenu(false);
+  };
+  const cambiarCesped = (idObj, fn) => setObjs(prev => prev.map(o => { if (o.id !== idObj) return o; const C1 = fn(JSON.parse(JSON.stringify(normalizaCesped(o)))); return { ...o, cesped: C1, d: C1.carriles * C1.anchoCarril, alto: C1.grosor }; }));
   const huellasSalas = () => {
     const m = api3d.current.modelo, offs = api3d.current.offsPl || [], out = [];
     (m?.plantas || (m ? [m] : [])).forEach((pl, ip) => {
@@ -4795,7 +4816,7 @@ export default function Visor3D({ cliente = false }) {
       </>}
     </span>
   );
-  const grupoRail = (hijos, ultimo, titulo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, breakInside: 'avoid', borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{titulo && <span style={{ fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.45, padding: '2px 0' }}>{titulo}</span>}{hijos}</div>;
+  const grupoRail = (hijos, ultimo, titulo) => <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '2px 0 4px', marginBottom: ultimo ? 0 : 4, breakInside: 'avoid', borderBottom: ultimo ? 'none' : '1px solid #3a3a3a' }}>{titulo && <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', opacity: 0.8, color: '#d4c9bb', padding: '2px 0', width: '100%', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}>{titulo}</span>}{hijos}</div>;
   // Un solo bloque «Materiales» (Pintura · Texturas · Mis texturas) y un solo bloque «Componentes» (Catálogo · Muebles · Mis modelos)
   const enMat = matAbierto || (b3dAbierta && (b3dTab === 'texturas' || b3dTab === 'mistex')), enComp = bibAbierta || (b3dAbierta && (b3dTab === 'modelos' || b3dTab === 'mios'));
   const irTab = (k) => {
@@ -5073,6 +5094,12 @@ export default function Visor3D({ cliente = false }) {
           nOcultos > 0 && railBtn(false, 'mostrar', 'Mostrar (' + nOcultos + ')', 'Vuelve a mostrar todo lo que ocultaste', mostrarTodo),
         ].filter(Boolean))}
         {grupoRail([
+          railBtn(herr === 'muro', 'muro', 'Muro', 'Dibuja muros: clic para empezar y cada punto; Mayús = recto. Se crean también en Planos', () => setHerr('muro')),
+          menuRail(zonaMenu, setZonaMenu, railBtn(['zonaS', 'zonaT', 'zonaP'].includes(herr) || zonaMenu, 'zona', 'Zonas', 'Dibuja una forma sobre un suelo, techo o pared y dale su propio material', () => setZonaMenu(v => !v)), (<>
+            {[['zonaS', 'En el suelo'], ['zonaT', 'En el techo'], ['zonaP', 'En una pared (o media pared)']].map(([h, n]) => <div key={h} onClick={() => { setHerr(h); setZonaMenu(false); }} style={itemMenu}>{n}</div>)}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderTop: '1px solid #333', cursor: 'pointer' }}><input type="checkbox" checked={curvo} onChange={e => setCurvo(e.target.checked)} /> Contorno curvo (suave)</label>
+            <div style={{ opacity: 0.55, fontSize: 11, padding: '0 8px 4px' }}>Clic punto a punto; cierra con Enter o volviendo al primer punto.</div>
+          </>)),
           railBtn(herr === 'poli' && formaDib === 'rect', 'rect', 'Rectángulo', 'Dibuja un rectángulo sobre el suelo (y tira hacia arriba para darle altura) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('rect'); setHerr('poli'); }),
           railBtn(herr === 'poli' && formaDib === 'oval', 'circ', 'Círculo', 'Dibuja un círculo o elipse sobre el suelo (y tira hacia arriba) o sobre una pared: haz el primer clic en la pared', () => { setFormaDib('oval'); setHerr('poli'); }),
           railBtn(herr === 'poli' && formaDib === 'poli', 'poli', 'Polígono', 'Clic punto a punto; cierra con Enter. Luego tira hacia arriba para darle altura', () => { setFormaDib('poli'); setHerr('poli'); }),
@@ -5083,14 +5110,6 @@ export default function Visor3D({ cliente = false }) {
           </>)),
         ], false, 'Modelar')}
         {grupoRail([
-          railBtn(herr === 'muro', 'muro', 'Muro', 'Dibuja muros: clic para empezar y cada punto; Mayús = recto. Se crean también en Planos', () => setHerr('muro')),
-          menuRail(zonaMenu, setZonaMenu, railBtn(['zonaS', 'zonaT', 'zonaP'].includes(herr) || zonaMenu, 'zona', 'Zonas', 'Dibuja una forma sobre un suelo, techo o pared y dale su propio material', () => setZonaMenu(v => !v)), (<>
-            {[['zonaS', 'En el suelo'], ['zonaT', 'En el techo'], ['zonaP', 'En una pared (o media pared)']].map(([h, n]) => <div key={h} onClick={() => { setHerr(h); setZonaMenu(false); }} style={itemMenu}>{n}</div>)}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderTop: '1px solid #333', cursor: 'pointer' }}><input type="checkbox" checked={curvo} onChange={e => setCurvo(e.target.checked)} /> Contorno curvo (suave)</label>
-            <div style={{ opacity: 0.55, fontSize: 11, padding: '0 8px 4px' }}>Clic punto a punto; cierra con Enter o volviendo al primer punto.</div>
-          </>)),
-        ], false, 'Construir')}
-        {grupoRail([
           railBtn(enMat || herr === 'pincel', 'pintar', 'Materiales', 'Pintura (mate, satinada, esmalte…), texturas y tus texturas, todo en un mismo sitio', () => { if (enMat) cierraBloque(); else irTab(ultTab.current.mat); }),
         ], false)}
         {grupoRail([
@@ -5098,6 +5117,10 @@ export default function Visor3D({ cliente = false }) {
           menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, 'mueble', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
             {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
           </>), 250),
+          menuRail(cespedMenu, setCespedMenu, railBtn(cespedMenu, 'cesped', 'Césped', 'Césped para pistas de arrastre y trineo: colores a elegir, líneas, metros y carriles', () => setCespedMenu(v => !v)), (<>
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige un color de partida; luego cambias medidas, colores y marcas en el panel</div>
+            {Object.entries(PRESETS_CESPED).map(([k, v]) => <div key={k} onClick={() => crearCesped(k)} style={{ ...itemMenu, display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 18, height: 18, borderRadius: 4, background: v.cesped, border: '1px solid #777', flex: 'none' }} />{v.n}</div>)}
+          </>), 290),
           menuRail(cubiertaMenu, setCubiertaMenu, railBtn(cubiertaMenu, 'cubierta', 'Cubierta', 'Techos de panel sándwich con su estructura (correas, vigas y pilares) y la lista de materiales', () => setCubiertaMenu(v => !v)), (<>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Se coloca en el centro de la vista; luego ajustas medidas y estructura en el panel</div>
             {Object.entries(TIPOS_CUBIERTA).map(([k, v]) => <div key={k} onClick={() => crearCubierta(k)} style={itemMenu}>{v.n}</div>)}
@@ -5107,7 +5130,7 @@ export default function Visor3D({ cliente = false }) {
           menuRail(saunaMenu, setSaunaMenu, railBtn(saunaMenu, 'sauna', 'Sauna', 'Diseñar una sauna: tradicional, híbrida o de infrarrojos', () => setSaunaMenu(v => !v)), (<>
             {Object.entries(TIPOS_SAUNA).map(([k, v]) => <div key={k} onClick={() => crearSauna(k)} style={itemMenu}>{v.n}</div>)}
           </>), 250),
-        ], false, 'Componentes')}
+        ], false, 'Objetos')}
         {grupoRail([
           railBtn(revAbierto || herr === 'revest', 'revest', 'Revestimientos', 'Palillería, lamas acústicas, panelados, paneles 3D y molduras: eliges un modelo y pulsas el muro', () => { setRevAbierto(v => !v); if (revAbierto && herr === 'revest') setHerr('sel'); }),
           railBtn(ideasAbierto, 'ideas', 'Ideas', 'Chat con ChatGPT: comparte una imagen o la vista actual, pide una idea (un mural, un ambiente…) y descarga solo la imagen', () => setIdeasAbierto(v => !v)),
@@ -5134,7 +5157,7 @@ export default function Visor3D({ cliente = false }) {
         {grupoRail([
           railBtn(herr === 'guia', 'cinta', 'Cinta', 'Cinta métrica: clic en dos puntos para crear una línea guía; el dibujo se imanta a ellas', () => setHerr('guia')),
           railBtn(capasAbierto, 'capas', 'Capas', 'Mostrar u ocultar muros, suelos, techos, plantas y etiquetas', () => setCapasAbierto(v => !v)),
-        ], true, 'Medir y ver')}
+        ], true, 'Medir')}
         <input ref={imagenInput} type="file" accept="image/png,image/webp,image/jpeg" style={{ display: 'none' }} onChange={e => { importarImagen(e.target.files?.[0]); e.target.value = ''; }} />
         <input ref={logoInput} type="file" accept=".svg,.dxf" style={{ display: 'none' }} onChange={e => { importarLogo(e.target.files?.[0]); e.target.value = ''; }} />
       </div>
@@ -6181,7 +6204,7 @@ export default function Visor3D({ cliente = false }) {
               ))}
               {(b3dTab === 'texturas' || b3dTab === 'mistex') && (
                 <>
-            {matsRanuse?.length > 0 && <>
+            {b3dTab === 'texturas' && matsRanuse?.length > 0 && <>
               <div style={{ opacity: 0.7, marginBottom: 4 }}>Materiales de Ranuse <span style={{ opacity: 0.55, fontSize: 11 }}>(PBR: normales, rugosidad y AO)</span></div>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
                 {['', ...new Set(matsRanuse.map(m => m.categoria))].map(cat => <span key={cat || 'todas'} onClick={() => setCatRanuse(cat)} style={{ padding: '2px 8px', borderRadius: 10, cursor: 'pointer', fontSize: 11, border: '1px solid #4f4842', background: catRanuse === cat ? '#6b6159' : 'transparent' }}>{cat || 'Todos'}</span>)}
@@ -6195,7 +6218,7 @@ export default function Visor3D({ cliente = false }) {
                 ))}
               </div>
             </>}
-            {matsCat.length > 0 && <>
+            {b3dTab === 'texturas' && matsCat.length > 0 && <>
               <div style={{ opacity: 0.7, marginBottom: 4 }}>Del catálogo de Ranuse</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
                 {matsCat.slice(0, 60).map(mc => (
@@ -6639,6 +6662,53 @@ export default function Visor3D({ cliente = false }) {
                 ))}
                 {C.total > 0 && <div style={{ fontWeight: 700, margin: '4px 0' }}>Total: {f1(C.total)} €</div>}
                 <button style={{ ...btn, marginTop: 4 }} onClick={() => { try { navigator.clipboard.writeText(textoMateriales(objSel)); setSubiendo('Lista de materiales copiada'); } catch { /* sin portapapeles */ } }}>Copiar lista de materiales</button>
+              </div>
+            );
+          })()}
+          {objSel.tipo === 'cesped' && (() => {
+            const C = normalizaCesped(objSel), R = calculosCesped(objSel), id = objSel.id;
+            const fila = (txt, ctl) => <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 104, opacity: 0.7 }}>{txt}</span>{ctl}</label>;
+            const numIn = (v, fn, min = 0, max = 99999, w = 70, paso = 1) => <input type="number" min={min} max={max} step={paso} value={v} onChange={e => fn(Math.max(min, Math.min(max, parseFloat(e.target.value) || 0)))} style={{ ...btn, width: w, padding: '3px 4px' }} />;
+            const f1 = v => Number(v).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+            const colores = (mapa, actual, fn) => (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center', marginBottom: 6 }}>
+                {Object.entries(mapa).map(([h, n]) => <span key={h} title={n} onClick={() => fn(h)} style={{ width: 24, height: 24, borderRadius: 12, background: h, cursor: 'pointer', border: actual.toLowerCase() === h ? '2px solid #fff' : '1px solid #666' }} />)}
+                <input type="color" value={actual} onChange={e => fn(e.target.value)} title="Otro color" style={{ width: 30, height: 26, padding: 0, border: 'none', background: 'none' }} />
+              </div>
+            );
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Césped de arrastres</div>
+                <div style={{ opacity: 0.7, marginBottom: 2 }}>Color del césped</div>
+                {colores(COLORES_CESPED, C.cesped, v => cambiarCesped(id, c => { c.cesped = v; return c; }))}
+                <div style={{ opacity: 0.7, marginBottom: 2 }}>Color de las líneas</div>
+                {colores(COLORES_LINEA, C.linea, v => cambiarCesped(id, c => { c.linea = v; return c; }))}
+                {fila('Largo (cm)', numIn(Math.round(objSel.w), v => cambiar(id, { w: Math.max(200, Math.round(v)) }), 200, 10000, 80))}
+                {fila('Carriles', numIn(C.carriles, v => cambiarCesped(id, c => { c.carriles = Math.round(v); return c; }), 1, 8, 60))}
+                {fila('Ancho de carril cm', numIn(Math.round(C.anchoCarril), v => cambiarCesped(id, c => { c.anchoCarril = v; return c; }), 60, 400, 70))}
+                {fila('Marca cada (cm)', numIn(Math.round(C.sep), v => cambiarCesped(id, c => { c.sep = v; return c; }), 100, 5000, 80))}
+                {fila('Grosor línea cm', numIn(C.grosorLinea, v => cambiarCesped(id, c => { c.grosorLinea = v; return c; }), 2, 40, 60))}
+                {fila('Grosor césped cm', numIn(C.grosor, v => cambiarCesped(id, c => { c.grosor = v; return c; }), 1, 8, 60, 0.5))}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', margin: '4px 0 6px' }}>
+                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={C.numeros} onChange={e => cambiarCesped(id, c => { c.numeros = e.target.checked; return c; })} /> Números (metros)</label>
+                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={C.salida} onChange={e => cambiarCesped(id, c => { c.salida = e.target.checked; return c; })} /> Salida y llegada</label>
+                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={C.lineasCarril} onChange={e => cambiarCesped(id, c => { c.lineasCarril = e.target.checked; return c; })} /> Líneas de carril</label>
+                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={C.borde} onChange={e => cambiarCesped(id, c => { c.borde = e.target.checked; return c; })} /> Borde</label>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: '6px 8px', margin: '6px 0', fontSize: 12.5, lineHeight: 1.5 }}>
+                  <div>Superficie: <b>{f1(R.m2)} m²</b> · {R.C.carriles} carril{R.C.carriles > 1 ? 'es' : ''} de {f1(R.C.anchoCarril / 100)} m · {R.tiras} tira{R.tiras > 1 ? 's' : ''} de rollo de 2 m</div>
+                  <div>Marcaje: <b>{f1(R.mLin)} m</b> de línea</div>
+                </div>
+                {R.avisos.map((a, i) => <div key={i} style={{ fontSize: 11.5, opacity: 0.85, marginBottom: 4, color: i < R.avisos.length - 1 ? '#f2c46d' : undefined }}>{i < R.avisos.length - 1 ? '⚠ ' : 'ℹ '}{a}</div>)}
+                <div style={{ fontWeight: 700, margin: '8px 0 4px' }}>Lista de materiales y presupuesto</div>
+                {R.lista.map(([k, n, q, u]) => (
+                  <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: 12 }}>
+                    <span style={{ flex: 1 }}>{n}</span><span style={{ opacity: 0.8, whiteSpace: 'nowrap' }}>{f1(q)} {u}</span>
+                    <input type="number" min="0" step="0.01" placeholder="€/" title={'Precio por ' + u + ' (euros)'} value={C.precios[k] ?? ''} onChange={e => cambiarCesped(id, c => { c.precios[k] = parseFloat(e.target.value) || 0; return c; })} style={{ ...btn, width: 64, padding: '2px 4px' }} />
+                  </div>
+                ))}
+                {R.total > 0 && <div style={{ fontWeight: 700, margin: '4px 0' }}>Total: {f1(R.total)} €</div>}
+                <button style={{ ...btn, marginTop: 4 }} onClick={() => { try { navigator.clipboard.writeText(textoCesped(objSel)); setSubiendo('Lista de materiales copiada'); } catch { /* sin portapapeles */ } }}>Copiar lista de materiales</button>
               </div>
             );
           })()}
