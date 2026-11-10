@@ -1275,6 +1275,39 @@ function ResultadoNicho({ n }) {
     </div>
   );
 }
+const delta = (a, b) => (a == null || b == null || b === 0 ? null : Math.round((a - b) / b * 100));
+function SaludCuenta() {
+  const [d, setD] = useState(null), [err, setErr] = useState(''), [trab, setTrab] = useState(false);
+  useEffect(() => { api.get('/redes/cuenta/salud').then(r => setD(r.data)).catch(() => {}); }, []);
+  const analiza = async () => { setTrab(true); setErr(''); try { const r = await api.post('/redes/cuenta/salud', {}, { timeout: 200000 }); setD(r.data); } catch (e) { setErr(e.response?.data?.error || 'No se pudo analizar'); } setTrab(false); };
+  const col = { sube: '#8fdba0', estable: '#f2c46d', baja: '#ff9b9b' };
+  const filas = d?.metricas ? [['Alcance', d.metricas.reach], ['Visualizaciones', d.metricas.views], ['Cuentas que interactuaron', d.metricas.accounts_engaged], ['Interacciones', d.metricas.total_interactions], ['Visitas al perfil', d.metricas.profile_views]].filter(x => x[1] && x[1].ahora != null) : [];
+  const max = d?.serie?.length ? Math.max(1, ...d.serie.map(Math.abs)) : 1;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="rd-card"><h3>📊 Salud de tu cuenta</h3>
+        <div style={{ ...mut, fontSize: '0.84rem' }}>Compara los últimos 30 días con los 30 anteriores y te dice claro si creces o pierdes, por qué es lo más probable y qué hacer.</div>
+        <div><button className="rd-btn pri" disabled={trab} onClick={analiza}>{trab ? 'Analizando…' : d?.fecha ? '🔄 Analizar de nuevo' : '🔍 Analizar mi cuenta'}</button></div>
+        {err && <div style={{ color: '#ff9b9b' }}>{err}</div>}
+      </div>
+      {d?.titular && <>
+        <div className="rd-card" style={{ borderLeft: '4px solid ' + col[d.tendencia] }}>
+          <div style={{ fontSize: '1.05rem', fontWeight: 600 }}>{d.tendencia === 'sube' ? '📈' : d.tendencia === 'baja' ? '📉' : '➖'} {d.titular}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><span className="rd-chip">{fmt(d.seguidores)} seguidores</span>{d.neto_30d != null && <span className="rd-chip" style={{ color: d.neto_30d >= 0 ? '#8fdba0' : '#ff9b9b' }}>{d.neto_30d >= 0 ? '+' : ''}{d.neto_30d} en 30 días</span>}{d.neto_semana != null && <span className="rd-chip">Esta semana {d.neto_semana >= 0 ? '+' : ''}{d.neto_semana} (antes {d.neto_semana_anterior >= 0 ? '+' : ''}{d.neto_semana_anterior})</span>}</div>
+          {d.serie?.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 56 }}>{d.serie.map((v, i) => <div key={i} title={v + ' seguidores netos'} style={{ flex: 1, height: Math.max(3, Math.abs(v) / max * 52), background: v >= 0 ? '#8fdba0' : '#ff9b9b', borderRadius: 2, alignSelf: v >= 0 ? 'flex-end' : 'flex-start' }} />)}</div>}
+        </div>
+        {filas.length > 0 && <div className="rd-card"><h3>Ahora frente a los 28 días anteriores</h3><div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))' }}>{filas.map(([n, m]) => { const p = delta(m.ahora, m.antes); return <div key={n} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={mut}>{n}</span><b style={{ fontSize: '1.3rem' }}>{fmt(m.ahora)}</b>{p != null && <span style={{ color: p >= 0 ? '#8fdba0' : '#ff9b9b', fontSize: '0.82rem' }}>{p >= 0 ? '▲' : '▼'} {Math.abs(p)}% (antes {fmt(m.antes)})</span>}</div>; })}</div></div>}
+        <div className="rd-card"><h3>Tu actividad: últimos 30 días frente a los anteriores</h3><div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))' }}>{[['Publicaciones', 'publicaciones'], ['Reels', 'reels'], ['Vistas medias', 'vistas_medias'], ['Comentarios', 'comentarios'], ['Compartidos', 'compartidos'], ['Guardados', 'guardados']].map(([n, k]) => { const p = delta(d.ahora[k], d.antes[k]); return <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={mut}>{n}</span><b style={{ fontSize: '1.3rem' }}>{fmt(d.ahora[k])}</b><span style={{ ...mut, fontSize: '0.8rem' }}>antes {fmt(d.antes[k])}{p != null && <span style={{ color: p >= 0 ? '#8fdba0' : '#ff9b9b' }}> · {p >= 0 ? '▲' : '▼'}{Math.abs(p)}%</span>}</span></div>; })}</div></div>
+        <div className="rd-grid2">
+          {d.mejoras.length > 0 && <Tarjeta titulo="✅ Has mejorado" color="#8fdba0"><Lista items={d.mejoras} color="#8fdba0" /></Tarjeta>}
+          {d.alertas.length > 0 && <Tarjeta titulo="⚠️ Si sigues así…" color="#ff9b9b"><Lista items={d.alertas} color="#ff9b9b" /></Tarjeta>}
+        </div>
+        {d.acciones.length > 0 && <Tarjeta titulo="🎯 Qué hacer"><Lista items={d.acciones} /></Tarjeta>}
+        {d.fiabilidad && <div style={{ ...mut, fontSize: '0.78rem' }}>Fiabilidad: {d.fiabilidad}</div>}
+      </>}
+    </div>
+  );
+}
 function MusicaTendencia() {
   const [d, setD] = useState(null), [err, setErr] = useState(''), [cargando, setCargando] = useState(false);
   const carga = useCallback((refrescar) => { setCargando(true); setErr(''); api.get('/redes/musica/tendencias', { params: refrescar ? { refrescar: 1 } : {} }).then(r => setD(r.data)).catch(e => setErr(e.response?.data?.error || 'No se pudo leer')).finally(() => setCargando(false)); }, []);
@@ -1331,6 +1364,7 @@ function PestanaAnalizador() {
       <div className="rd-tabs" style={{ alignSelf: 'flex-start' }}>
         <button className={'rd-tab' + (plat === 'ig' ? ' on' : '')} onClick={() => setPlat('ig')}>📸 Instagram</button>
         <button className={'rd-tab' + (plat === 'yt' ? ' on' : '')} onClick={() => setPlat('yt')}>▶ YouTube</button>
+        <button className={'rd-tab' + (plat === 'salud' ? ' on' : '')} onClick={() => setPlat('salud')}>📊 Salud de la cuenta</button>
         <button className={'rd-tab' + (plat === 'musica' ? ' on' : '')} onClick={() => setPlat('musica')}>🎵 Música en tendencia</button>
         <button className={'rd-tab' + (plat === 'plan' ? ' on' : '')} onClick={() => setPlat('plan')}>📈 Plan de publicación</button>
       </div>
@@ -1500,6 +1534,7 @@ function PestanaAnalizador() {
       </>)}
 
       {plat === 'musica' && <MusicaTendencia />}
+      {plat === 'salud' && <SaludCuenta />}
       {plat === 'plan' && (<>
         <div className="rd-card" style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
           <div style={{ flex: '1 1 300px' }}><h3>📈 Plan de publicación</h3><div style={{ ...mut, fontSize: '0.84rem', marginTop: 4 }}>Cuántas veces publicar y qué, según tus datos de Instagram y YouTube y lo que se ve en el nicho.</div></div>
