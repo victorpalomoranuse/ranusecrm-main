@@ -1679,6 +1679,7 @@ export default function Visor3D({ cliente = false }) {
   const herrRef = useRef('sel');
   const entrarAlzadoRef = useRef(null);
   const [bibAbierta, setBibAbierta] = useState(false);
+  const [revAbierto, setRevAbierto] = useState(false); // panel de revestimientos (se declara aquí porque el efecto de paneles de más abajo ya lo lee)
   const [biblioteca, setBiblioteca] = useState(null);
   const [filtro, setFiltro] = useState('');
   const [solo3d, setSolo3d] = useState(true);
@@ -3657,7 +3658,7 @@ export default function Visor3D({ cliente = false }) {
   };
   const [muebleMenu, setMuebleMenu] = useState(false);
   const [saunaMenu, setSaunaMenu] = useState(false);
-  const [revAbierto, setRevAbierto] = useState(false), [revSel, setRevSel] = useState(null);
+  const [revSel, setRevSel] = useState(null);
   const revSelRef = useRef(null); revSelRef.current = revSel;
   const PLANTILLAS_MUEBLE = {
     'Bajo de cocina (3 módulos)': { d: 60, alto: 90, zocalo: 10, modulos: [{ t: 'puertas', w: 60, n: 1, nb: 1 }, { t: 'cajones', w: 60, n: 3 }, { t: 'puertas', w: 60, n: 2, nb: 1 }] },
