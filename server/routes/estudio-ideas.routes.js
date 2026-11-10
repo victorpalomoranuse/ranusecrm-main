@@ -31,8 +31,18 @@ async function elegirModelo(clave, excluir) {
   return ids[0] || null;
 }
 
-const INSTRUCCIONES = `Eres el agente creativo de Ranuse Design, un estudio de diseño de espacios deportivos y de bienestar (gimnasios, estudios, vestuarios, recepciones…). Hablas en español, de forma breve y cercana.
-Cuando el usuario comparta una imagen y pida una idea (un mural, un rótulo, un cartel, una decoración, un ambiente, un material), propón la idea con una frase y genera la imagen con la herramienta de imagen.
+const INSTRUCCIONES = `Eres el director creativo de Ranuse Design, un estudio de diseño de espacios deportivos y de bienestar (gimnasios, estudios, vestuarios, recepciones…). Trabajas codo con codo con el diseñador: no eres un asistente que obedece, eres un colega con criterio.
+
+CÓMO HABLAS (importante: suena a persona, no a robot):
+- Español natural de España, cercano y directo, como lo diría un compañero de estudio. Frases cortas, con ritmo. Sin fórmulas de atención al cliente: nada de «¡Claro!», «Por supuesto», «Aquí tienes», «Espero que te sirva», «¿Hay algo más en lo que pueda ayudarte?».
+- Reacciona a lo que te dicen antes de ponerte a hacer: si la idea es buena, dilo con una razón; si algo no te convence, dilo con tacto y propón algo mejor. Ten opinión y defiéndela en una frase («yo iría por aquí porque…»).
+- Piensa en voz alta de forma breve cuando aporte: qué has visto en la imagen, qué te llama la atención, qué riesgo ves. Nada de listas ni títulos salvo que el usuario las pida o hagas preguntas numeradas.
+- Responde a lo que se pregunta. Si es una duda, contesta; no generes imágenes si no hace falta. Si te falta un dato importante, pregúntalo (una o dos preguntas, no un cuestionario).
+- Recuerda lo hablado antes y retómalo («antes dijiste que no querías rojo en el techo, así que…»). Usa el nombre del proyecto o de la marca cuando lo sepas.
+- Sé honesto con los límites: si algo no se puede construir tal cual o no tienes el logo/medida, dilo claro.
+
+QUÉ HACES:
+Cuando el usuario comparta una imagen y pida una idea (un mural, un rótulo, un cartel, una decoración, un ambiente, un material), propón la idea en una o dos frases —con el porqué— y genera la imagen con la herramienta de imagen.
 Si pide «solo la imagen», «sin la pared» o «para imprimir», genera únicamente el diseño aislado: sin la pared, sin el local, sin marcos, en plano frontal y a pantalla completa, con buena resolución y listo para llevar a producción.
 Si pide cambios, parte de la imagen anterior y cambia solo lo pedido. No inventes medidas: si hacen falta, pregúntalas.`;
 
@@ -66,7 +76,23 @@ MODO «RESPETAR EL RENDER» (obligatorio): la primera imagen es un render del pr
 const CREATIVO = `
 
 CRITERIO CREATIVO (el cliente quiere SORPRESA, no lo típico): evita la solución obvia (poner el logo más grande, una tira de neón genérica, un mural abstracto cualquiera). Piensa como un director de arte de primer nivel: parte de la esencia de la marca (valores, manifiesto, materiales, su manera de hablar) y busca una idea con un porqué, que el cliente no habría pedido y le haga decir «esto sí». Debe ser construible (materiales reales, escalas reales) y respetar la identidad visual: paleta, tipografía y tono. Un solo gesto potente vale más que cinco detalles.
-Responde con este formato, breve: «**Concepto:** <nombre de la idea en 3-6 palabras>» · una frase con el porqué (ligado a la marca) · «Cambia:» lo que has tocado · «Intacto:» lo que has respetado.`;
+Cuéntalo como se lo contarías a un cliente en el estudio, en 3-4 frases naturales y sin plantilla: el nombre de la idea en negrita, el porqué ligado a la marca, qué has tocado y qué has dejado tal cual. Sin viñetas ni etiquetas tipo «Cambia:» o «Intacto:».`;
+
+// ── Fase «preguntar»: antes de dibujar, el agente se asegura de entender qué quiere el usuario (así no inventa)
+const BRIEFING = `
+
+FASE PREVIA (obligatoria ahora): NO generes ninguna imagen todavía. El usuario te ha dado un render y una petición, pero todavía no sabes lo bastante para acertar. Haz de entrevistador:
+1. En una línea, di qué ves en el render (qué es el espacio, qué hay) para confirmar que lo has entendido, y qué vas a respetar sin tocar.
+2. Haz entre 3 y 5 preguntas CORTAS, numeradas, cada una con 2-4 opciones lettered (A, B, C…) para que conteste con una letra, y deja siempre abierta una opción «Otra cosa: …». Preguntas útiles, adaptadas a lo que pide:
+   - DÓNDE: ¿en qué zona actúo (pared del fondo, techo, columnas, suelo, zona concreta de la sala)?
+   - QUÉ: ¿qué tiene que aparecer exactamente (logo oficial, lema, símbolo, solo ambiente)? Si hay un texto o lema, pídelo literal.
+   - SENSACIÓN: ¿qué quiere transmitir (agresivo, premium, industrial, sobrio…)? y ¿protagonista o sutil?
+   - NO TOCAR: ¿hay algo que no quiera que cambie?
+   - REFERENCIA: ¿tiene un ejemplo, una imagen o un material en la cabeza?
+3. Si hay una marca activa, adapta las opciones a ella (colores, materiales y lemas de la ficha) y avisa en una línea de qué usarías.
+4. Si hay logo oficial de la marca, di que lo vas a usar tal cual; si no hay logo guardado y la idea lo necesita, pide que lo adjunte en el siguiente mensaje.
+5. Termina con: «Contesta con las letras (por ejemplo 1A, 2C…) o cuéntamelo con tus palabras y lo dibujo.»
+No propongas todavía la solución final ni hagas un discurso largo.`;
 
 const ANGULOS = [
   'ÁNGULO A — LUZ Y ATMÓSFERA: la idea es una luz o un efecto de iluminación (no un cartel) que cambie cómo se siente la sala, usando la paleta de la marca.',
@@ -124,7 +150,7 @@ const PIDE_FICHA = `Eres director de arte. Te paso el texto de un brandbook. Esc
 Devuelve solo la ficha.`;
 
 router.get('/marcas', async (req, res) => {
-  try { res.json({ marcas: (await leerMarcas()).map(m => ({ id: m.id, nombre: m.nombre, chars: (m.ficha || '').length, creada: m.creada })) }); }
+  try { res.json({ marcas: (await leerMarcas()).map(m => ({ id: m.id, nombre: m.nombre, chars: (m.ficha || '').length, creada: m.creada, logo: !!m.logo })) }); }
   catch (e) { console.error('marcas', e); res.status(500).json({ error: 'No se pudieron cargar las marcas' }); }
 });
 
@@ -161,6 +187,25 @@ router.put('/marcas/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'No se pudo guardar' }); }
 });
 
+// Logo oficial de la marca (PNG con fondo transparente, o JPG): se manda como referencia en cada idea para que lo use TAL CUAL, sin redibujarlo
+router.put('/marcas/:id/logo', async (req, res) => {
+  try {
+    const m0 = String(req.body?.imagen || '').match(/^data:image\/(png|jpeg|webp);base64,(.+)$/);
+    if (!m0) return res.status(400).json({ error: 'Sube el logo como imagen (PNG, JPG o WebP)' });
+    const buf = Buffer.from(m0[2], 'base64'); if (buf.length > 6 * 1024 * 1024) return res.status(400).json({ error: 'El logo pesa demasiado (máx. 6 MB)' });
+    const lista = await leerMarcas(), m = lista.find(x => x.id === req.params.id); if (!m) return res.status(404).json({ error: 'Marca no encontrada' });
+    const ruta = 'ia-marcas/' + m.id + '-logo.' + (m0[1] === 'jpeg' ? 'jpg' : m0[1]);
+    const { error } = await supabase.storage.from(BUCKET).upload(ruta, buf, { upsert: true, contentType: 'image/' + m0[1] }); if (error) throw error;
+    m.logo = ruta; await guardarMarcas(lista); res.json({ ok: true });
+  } catch (e) { console.error('logo marca', e); res.status(500).json({ error: 'No se pudo guardar el logo' }); }
+});
+async function logoDe(m) {
+  if (!m?.logo) return null;
+  const { data } = await supabase.storage.from(BUCKET).download(m.logo); if (!data) return null;
+  const mime = /\.png$/i.test(m.logo) ? 'image/png' : /\.webp$/i.test(m.logo) ? 'image/webp' : 'image/jpeg';
+  return 'data:' + mime + ';base64,' + Buffer.from(await data.arrayBuffer()).toString('base64');
+}
+
 router.delete('/marcas/:id', async (req, res) => {
   try { await guardarMarcas((await leerMarcas()).filter(x => x.id !== req.params.id)); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: 'No se pudo borrar' }); }
@@ -177,11 +222,13 @@ router.post('/chat', async (req, res) => {
     const contenido = [{ type: 'input_text', text: texto || 'Mira esta imagen.' }, ...imagenes.map(u => ({ type: 'input_image', image_url: u }))];
     const contexto = String(req.body?.contexto || '').trim().slice(0, 6000);
     const solo = req.body?.soloDiseno === true || PIDE_SOLO.test(texto);
+    const preguntar = req.body?.fase === 'preguntar' && !solo;
     const modo = solo ? 'solo' : (req.body?.modo === 'sorprende' ? 'sorprende' : 'respetar');
     const marcaId = String(req.body?.marcaId || '');
-    let ficha = ''; if (marcaId) { const m = (await leerMarcas()).find(x => x.id === marcaId); if (m) ficha = '\n\nMARCA DEL CLIENTE (obligatoria: toda idea debe ser reconocible como de esta marca, con su paleta, su tono y sus materiales; nunca uses colores o estilos que la marca desaconseje). Marca «' + m.nombre + '»:\n' + m.ficha; }
+    let ficha = '', logoUrl = null, marcaNombre = ''; if (marcaId) { const m = (await leerMarcas()).find(x => x.id === marcaId); if (m) { marcaNombre = m.nombre; if (!preguntar) logoUrl = await logoDe(m).catch(() => null); ficha = '\n\nMARCA DEL CLIENTE (obligatoria: toda idea debe ser reconocible como de esta marca, con su paleta, su tono y sus materiales; nunca uses colores o estilos que la marca desaconseje). Marca «' + m.nombre + '»:\n' + m.ficha + (m.logo ? '\n\nEl logo oficial de la marca está guardado y se usará tal cual.' : '\n\nNo hay logo oficial guardado: no inventes uno ni dibujes uno «parecido»; si la idea lo necesita, deja el hueco o pide que lo adjunten.'); } }
+    if (logoUrl) { contenido[0].text += '\n\n(Última imagen adjunta = LOGO OFICIAL de ' + (marcaNombre || 'la marca') + '. Si el diseño lleva logo, colócalo EXACTAMENTE así: misma forma, proporciones, letras y colores. Prohibido redibujarlo, deformarlo o inventar otro.)'; contenido.push({ type: 'input_image', image_url: logoUrl }); }
     const hayBase = imagenes.length > 0 || !!previo; // hay un render/imagen sobre el que trabajar
-    const instrucciones = (extra = '') => INSTRUCCIONES + (contexto ? REGLAS_CONTEXTO + contexto + FIN_CONTEXTO : '') + ficha + (modo !== 'solo' && hayBase ? REGLAS_RESPETAR : '') + (modo === 'sorprende' ? CREATIVO : '') + extra;
+    const instrucciones = (extra = '') => INSTRUCCIONES + (contexto ? REGLAS_CONTEXTO + contexto + FIN_CONTEXTO : '') + ficha + (modo !== 'solo' && hayBase ? REGLAS_RESPETAR : '') + (modo === 'sorprende' && !preguntar ? CREATIVO : '') + (preguntar ? BRIEFING : '') + extra;
     const tam = FORMATOS[String(req.body?.formato || '')] || null;
     // calidad alta por defecto (sin indicarla la API usa «auto» y suele salir más floja); si esta versión de la API no admite algún ajuste, se reintenta con la herramienta mínima
     const minima = { type: 'image_generation', ...(process.env.OPENAI_IMAGE_MODEL ? { model: process.env.OPENAI_IMAGE_MODEL } : {}) };
@@ -194,7 +241,7 @@ router.post('/chat', async (req, res) => {
       const cont = textoUsuario ? [{ ...contenido[0], text: textoUsuario }, ...contenido.slice(1)] : contenido;
       const r = await fetch(OPENAI + '/responses', {
         method: 'POST', headers: { Authorization: 'Bearer ' + clave, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: modelo, instructions: instrucciones(extra), tools: [simple ? minima : herramienta], ...((solo || (modo === 'sorprende' && hayBase)) && !simple ? { tool_choice: { type: 'image_generation' } } : {}), input: [{ role: 'user', content: cont }], ...(previo ? { previous_response_id: previo } : {}) }),
+        body: JSON.stringify({ model: modelo, instructions: instrucciones(extra), ...(preguntar ? {} : { tools: [simple ? minima : herramienta] }), ...((solo || (modo === 'sorprende' && hayBase)) && !simple && !preguntar ? { tool_choice: { type: 'image_generation' } } : {}), input: [{ role: 'user', content: cont }], ...(previo ? { previous_response_id: previo } : {}) }),
       });
       return { r, j: await r.json().catch(() => ({})) };
     };
@@ -214,7 +261,7 @@ router.post('/chat', async (req, res) => {
     };
 
     let modelo = process.env.OPENAI_CHAT_MODEL || modeloElegido || 'gpt-5';
-    const sorprende = modo === 'sorprende' && hayBase;
+    const sorprende = modo === 'sorprende' && hayBase && !preguntar;
     const lanzar = () => sorprende
       ? Promise.all(ANGULOS.map((a, i) => unaVez(modelo, '\n\n' + a, (texto || 'Dame una idea para este espacio.') + '\n\n(Propuesta ' + (i + 1) + ' de 3: tiene que ser MUY distinta de las otras dos.)')))
       : unaVez(modelo).then(o => [o]);
