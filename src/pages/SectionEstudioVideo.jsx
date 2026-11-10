@@ -195,6 +195,7 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
   const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [soloTr, setSoloTr] = useState(false), [soloAudio, setSoloAudio] = useState(false), [asig, setAsig] = useState({}), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
+  useEffect(() => { try { const p = JSON.parse(localStorage.getItem('estudioPendiente') || 'null'); if (p) { if (p.guion) setGuion(p.guion); if (p.notas) setNotas(p.notas); localStorage.removeItem('estudioPendiente'); } } catch { /* nada pendiente */ } }, []);
   useEffect(() => { if (tipo === 'clips' && formatos.some(f => f.id === 'clips-dopaminicos')) setFmt('clips-dopaminicos'); }, [tipo, formatos]);
   const enviar = async () => {
     const extra = tipo === 'clips' ? { num_clips: numClips, dur_min: Number(durClip.split('-')[0]), dur_max: Number(durClip.split('-')[1]) } : {};
@@ -1204,9 +1205,58 @@ function Lista({ items, color }) {
   return <ul className="rd-lista" style={color ? { '--pt': color } : undefined}>{items.map((x, i) => <li key={i}>{x}</li>)}</ul>;
 }
 function Tarjeta({ titulo, color, children }) { return <div className="rd-card"><h3 style={color ? { color } : undefined}>{titulo}</h3>{children}</div>; }
+const ORIGEN_IDEA = { 'tus datos': ['📊 Tus datos', '#8fdba0'], nicho: ['🌍 Nicho', '#f2c46d'], exploracion: ['🧭 Exploración', '#9db8ff'] };
+const TIPO_ESCENA = { a_camara: ['🎤 A cámara', 'Hablas con micro'], voz_en_off: ['🎙 Voz en off', 'Grabas la voz con micro'], broll: ['🎞 Imagen / b-roll', 'Solo imagen, sin micro'], render: ['🖥 Render 3D', 'Se renderiza'], pantalla: ['📱 Pantalla / texto', 'Gráfico o captura'] };
+function TallerIdeas({ idea, onCerrar }) {
+  const [g, setG] = useState(null), [error, setError] = useState(''), [extra, setExtra] = useState(''), [msg, setMsg] = useState(''), [hist, setHist] = useState([]), [trab, setTrab] = useState(false);
+  const generar = async () => { setTrab(true); setError(''); try { const r = await api.post('/redes/guion/generar', { ...idea, extra }); setG(r.data.guion); } catch (e) { setError(e.response?.data?.error || 'No se pudo crear el guion.'); } setTrab(false); };
+  const enviar = async () => { if (!msg.trim() || !g) return; const m = msg; setMsg(''); setTrab(true); setHist(h => [...h, { yo: true, t: m }]); try { const r = await api.post('/redes/guion/chat', { guion: g, mensaje: m }); setG(r.data.guion); setHist(h => [...h, { t: r.data.respuesta || 'Hecho.' }]); } catch (e) { setHist(h => [...h, { t: e.response?.data?.error || 'No pude aplicarlo.' }]); } setTrab(false); };
+  const alEstudio = () => { try { const texto = g.escenas.filter(s => s.hablado).map(s => s.hablado).join('\n'); const ind = ['Guion: ' + g.titulo, ...g.escenas.map(s => 'Escena ' + s.n + ' (' + s.tipo + ', ' + s.segundos + ' s): ' + s.que_hacer + (s.texto_pantalla ? ' · Texto: ' + s.texto_pantalla : '') + (s.edicion ? ' · Edición: ' + s.edicion : '')), 'Música: ' + [g.musica.estilo, g.musica.bpm && g.musica.bpm + ' bpm', g.musica.ambiente].filter(Boolean).join(', '), g.para_el_editor].filter(Boolean).join('\n'); localStorage.setItem('estudioPendiente', JSON.stringify({ guion: texto, notas: ind })); alert('Listo. Ve a la pestaña «Nuevo» del Estudio: el guion y las indicaciones ya están puestos. Sube ahí tu vídeo.'); } catch { /* sin almacenamiento */ } };
+  const o = ORIGEN_IDEA[idea.origen];
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflowY: 'auto', padding: '4vh 12px' }} onClick={onCerrar}>
+      <div className="rd-card" style={{ maxWidth: 820, width: '100%', background: '#15171c', gap: 14 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><h3 style={{ margin: 0, flex: 1 }}>🎬 Taller de ideas</h3>{o && <span className="rd-chip" style={{ color: o[1] }}>{o[0]}</span>}<span className="rd-chip arena">{idea.formato || 'idea'}</span><button className="rd-btn" onClick={onCerrar}>Cerrar</button></div>
+        <div className="rd-gancho">{idea.gancho ? '“' + idea.gancho + '”' : idea.idea}</div>
+        <div style={{ fontSize: '0.9rem' }}>{idea.idea}</div>
+        {!g && <>
+          <textarea className="ap-field-input" style={{ width: '100%', minHeight: 56 }} value={extra} onChange={e => setExtra(e.target.value)} placeholder="Opcional: algo que ya sepas (qué proyecto, qué tienes grabado, cuánto quieres que dure…)" />
+          <button className="rd-btn pri" disabled={trab} onClick={generar}>{trab ? 'Escribiendo el guion…' : '✍️ Crear guion por escenas'}</button>
+        </>}
+        {error && <div style={{ color: '#ff9b9b' }}>{error}</div>}
+        {g && <>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span className="rd-chip">{g.formato}</span><span className="rd-chip">⏱ {g.duracion_seg || g.escenas.reduce((s, x) => s + x.segundos, 0)} s</span>
+            <span className="rd-chip" style={{ color: g.necesita_micro ? '#f2c46d' : '#8fdba0' }}>{g.necesita_micro ? '🎤 Necesitas micro' : 'Sin micro'}</span>
+            {(g.equipo || []).map((x, i) => <span key={i} className="rd-chip">{x}</span>)}
+          </div>
+          {g.escenas.map(s => { const tp = TIPO_ESCENA[s.tipo] || TIPO_ESCENA.broll; return (
+            <div key={s.n} style={{ borderLeft: '3px solid ' + (s.micro ? '#f2c46d' : s.tipo === 'render' ? '#9db8ff' : '#444'), paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: '0.78rem', ...mut }}><b>Escena {s.n}</b> · {tp[0]} · {s.segundos} s{s.micro ? ' · 🎤 micro' : ''}</div>
+              <div style={{ fontSize: '0.9rem' }}>{s.que_hacer}</div>
+              {s.hablado && <div style={{ fontSize: '0.92rem', fontStyle: 'italic' }}>🗣 «{s.hablado}»</div>}
+              {s.texto_pantalla && <div style={{ fontSize: '0.82rem' }}>🔤 En pantalla: <b>{s.texto_pantalla}</b></div>}
+              {s.edicion && <div style={{ ...mut, fontSize: '0.8rem' }}>✂️ {s.edicion}</div>}
+            </div>); })}
+          {g.cta && <div><b>📣 CTA:</b> {g.cta}</div>}
+          {(g.ganchos_alternativos || []).length > 0 && <div><b>🪝 Otros ganchos para probar</b><Lista items={g.ganchos_alternativos} /></div>}
+          <div><b>🎵 Música:</b> {[g.musica.estilo, g.musica.bpm && g.musica.bpm + ' bpm', g.musica.ambiente].filter(Boolean).join(' · ') || '—'}<div style={{ ...mut, fontSize: '0.78rem' }}>{g.musica.nota}</div></div>
+          {(g.preguntas || []).length > 0 && <div style={{ background: 'rgba(242,196,109,.08)', padding: 10, borderRadius: 8 }}><b>❓ Para afinarlo necesito saber</b><Lista items={g.preguntas} color="#f2c46d" /></div>}
+          {hist.map((h, i) => <div key={i} style={{ alignSelf: h.yo ? 'flex-end' : 'flex-start', background: h.yo ? 'rgba(143,219,160,.12)' : 'rgba(255,255,255,.06)', padding: '6px 10px', borderRadius: 8, fontSize: '0.86rem', maxWidth: '88%' }}>{h.t}</div>)}
+          <div style={{ display: 'flex', gap: 8 }}><input className="ap-field-input" style={{ flex: 1 }} value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') enviar(); }} placeholder="Pide cambios o contesta a las preguntas: «hazlo más corto», «quita la escena 3»…" /><button className="rd-btn pri" disabled={trab} onClick={enviar}>{trab ? '…' : 'Enviar'}</button></div>
+          <button className="rd-btn" onClick={alEstudio}>➡️ Mandar al Estudio de vídeo</button>
+        </>}
+      </div>
+    </div>
+  );
+}
 function IdeasTarjetas({ ideas }) {
+  const [abierta, setAbierta] = useState(null);
   if (!ideas || !ideas.length) return null;
-  return <div className="rd-grid">{ideas.map((x, i) => <div key={i} className="rd-card"><span className="rd-chip arena" style={{ alignSelf: 'flex-start' }}>{x.formato || 'idea'}</span><div className="rd-gancho">{x.gancho ? '“' + x.gancho + '”' : x.idea}</div>{x.gancho && <div style={{ fontSize: '0.88rem' }}>{x.idea}</div>}{x.por_que && <div style={{ ...mut, fontSize: '0.8rem' }}>{x.por_que}</div>}</div>)}</div>;
+  return <>
+    <div className="rd-grid">{ideas.map((x, i) => { const o = ORIGEN_IDEA[x.origen]; return <div key={i} className="rd-card" style={{ cursor: 'pointer' }} onClick={() => setAbierta(x)} title="Pulsa para abrir el guion"><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><span className="rd-chip arena">{x.formato || 'idea'}</span>{o && <span className="rd-chip" style={{ color: o[1] }}>{o[0]}</span>}</div><div className="rd-gancho">{x.idea}</div>{x.gancho && <div style={{ fontSize: '0.86rem', ...mut }}>“{x.gancho}”</div>}{x.por_que && <div style={{ ...mut, fontSize: '0.8rem' }}>{x.por_que}</div>}<div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Abrir taller y crear guion →</div></div>; })}</div>
+    {abierta && <TallerIdeas idea={abierta} onCerrar={() => setAbierta(null)} />}
+  </>;
 }
 function ResultadoNicho({ n }) {
   if (!n) return null;
@@ -1249,7 +1299,10 @@ function PestanaAnalizador() {
   const autopsia = (id) => hace('aut' + id, async () => { const r = await api.post('/redes/instagram/autopsia', { id }, { timeout: 200000 }); setAutopsias(a => ({ ...a, [id]: r.data.autopsia })); });
   const desconecta = async () => { if (!window.confirm('¿Desconectar Instagram?')) return; await hace('des', () => api.delete('/redes/instagram')); setPubs(null); };
   if (!e) return <div className="ap-loading">Cargando…</div>;
-  const [orden, setOrden] = useState('puntuacion');
+  const [orden, setOrden] = useState('puntuacion'), [objs, setObjs] = useState(null);
+  useEffect(() => { api.get('/redes/objetivos').then(r => setObjs(r.data)).catch(() => {}); }, []);
+  const cambiaObjetivo = async (id) => { try { await api.post('/redes/objetivo', { id }); setObjs(o => ({ ...o, actual: id })); await cargaPubs(); await cargar(); } catch { /* se queda */ } };
+  const objAct = objs ? objs.objetivos.find(o => o.id === objs.actual) : null;
   const reales = (pubs || []).filter(p => !p.prueba), pruebas = (pubs || []).filter(p => p.prueba);
   const marca = async (id, v) => { try { await api.post('/redes/instagram/prueba', { id, prueba: v }); await cargaPubs(); } catch { /* se queda */ } };
   const ig = e.instagram, ap = e.aprendizaje, mc = e.mi_canal, pl = e.plan, top = reales.slice().sort((a, b) => orden === 'vistas' ? (b.views || b.reach || 0) - (a.views || a.reach || 0) : (b.puntuacion || 0) - (a.puntuacion || 0)).slice(0, 12), maxP = Math.max(1, ...(top.map(p => p.puntuacion || 0)));
@@ -1266,6 +1319,14 @@ function PestanaAnalizador() {
       {msg && <div className="rd-card" style={{ borderColor: 'rgba(124,207,143,0.5)', padding: 14 }}>✓ {msg}</div>}
 
       {plat === 'ig' && (<>
+        {objs && ig && (
+          <div className="rd-card">
+            <h3>🎯 ¿Qué quieres conseguir?</h3>
+            <div style={{ ...mut, fontSize: '0.84rem' }}>«Lo que mejor funciona» depende de tu objetivo. Elígelo y la puntuación, el análisis y las ideas se calculan para eso.</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{objs.objetivos.map(o => <button key={o.id} className={'rd-btn' + (objs.actual === o.id ? ' pri' : '')} title={o.que} onClick={() => cambiaObjetivo(o.id)}>{o.icono} {o.nombre}</button>)}</div>
+            {objAct && <div style={{ fontSize: '0.88rem', lineHeight: 1.5 }}><b>{objAct.nombre}:</b> {objAct.que}<div style={mut}>Puntuación = {objAct.formula}</div></div>}
+          </div>
+        )}
         {!ig ? (
           <div className="rd-card" style={{ alignItems: 'center', textAlign: 'center', padding: 40, gap: 14 }}>
             <div style={{ fontSize: '2.6rem' }}>📸</div>
@@ -1300,9 +1361,9 @@ function PestanaAnalizador() {
           </div>
           {top.length > 0 && (
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '0 0 10px' }}><h3 style={{ margin: 0 }}>🏆 Lo que mejor te ha funcionado</h3><div className="rd-tabs"><button className={'rd-tab' + (orden === 'puntuacion' ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => setOrden('puntuacion')} title="Interacciones (comentarios, guardados y compartidos pesan más) en relación con el alcance">Por puntuación</button><button className={'rd-tab' + (orden === 'vistas' ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => setOrden('vistas')}>Por vistas</button></div></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '0 0 10px' }}><h3 style={{ margin: 0 }}>🏆 Lo que mejor te ha funcionado{objAct ? ' · ' + objAct.icono + ' ' + objAct.nombre : ''}</h3><div className="rd-tabs"><button className={'rd-tab' + (orden === 'puntuacion' ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => setOrden('puntuacion')} title={objAct ? 'Puntuación = ' + objAct.formula : ''}>Por puntuación</button><button className={'rd-tab' + (orden === 'vistas' ? ' on' : '')} style={{ padding: '5px 12px' }} onClick={() => setOrden('vistas')}>Por vistas</button></div></div>
               <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>
-                {top.slice(0, 8).map(p => <a key={p.id} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{p.puntuacion}</span><div className="vel"><b>{(p.pie || '(sin texto)').slice(0, 70)}</b><div style={{ opacity: 0.75 }}>{p.views != null ? k(p.views) + ' vistas' : p.reach != null ? 'alcance ' + fmt(p.reach) : p.tipo}{p.saved != null ? ' · ' + p.saved + ' guardados' : ''}</div></div></a>)}
+                {top.slice(0, 8).map(p => <a key={p.id} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt" title={objAct ? objAct.unidad : ''}>{p.puntuacion}</span><div className="vel"><b>{(p.pie || '(sin texto)').slice(0, 70)}</b><div style={{ opacity: 0.75 }}>{p.views != null ? k(p.views) + ' vistas' : p.reach != null ? 'alcance ' + fmt(p.reach) : p.tipo}{p.saved != null ? ' · ' + p.saved + ' guardados' : ''}</div></div></a>)}
               </div>
             </div>
           )}
