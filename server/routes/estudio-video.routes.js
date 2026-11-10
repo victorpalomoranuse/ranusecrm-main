@@ -119,7 +119,12 @@ const guardaEditor = (m) => guardarJson(RUTA_EDITOR, { hechos: m.hechos.slice(-8
 const textoReglasCompleto = async () => {
   const base = await textoReglas(); let m = { hechos: [] }; try { m = await memoriaEditor(); } catch { /* sin memoria */ }
   const ap = m.hechos.slice(-60).map(h => '- ' + h.texto).join('\n');
-  return base + (ap ? '\n\nPREFERENCIAS QUE EL EDITOR HA APRENDIDO DE VÍCTOR (las ha ido aprendiendo hablando con él; son obligatorias, por encima de lo anterior si chocan):\n' + ap : '');
+  let redes = ''; try {
+    const a = await leerJson('crm/redes/aprendizaje.json', null), v = await leerJson('crm/redes/analisis_videos.json', null);
+    const l = [...(a?.para_el_editor || []), ...(a?.ganchos_ganadores || []).map(x => 'Gancho que le funciona: ' + x), ...(v?.reglas_edicion || [])].slice(0, 16);
+    if (l.length) redes = '\n\nLO APRENDIDO DE SUS REDES (de sus reels reales y de su nicho; úsalo como criterio de edición y de gancho salvo que choque con sus preferencias):\n' + l.map(x => '- ' + x).join('\n');
+  } catch { /* sin datos de redes */ }
+  return base + redes + (ap ? '\n\nPREFERENCIAS QUE EL EDITOR HA APRENDIDO DE VÍCTOR (las ha ido aprendiendo hablando con él; son obligatorias, por encima de lo anterior si chocan):\n' + ap : '');
 };
 const normE = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 router.get('/editor', async (req, res) => { try { const m = await memoriaEditor(); res.json({ hechos: m.hechos, charla: m.charla.slice(-30) }); } catch { res.status(500).json({ error: 'No se pudo leer la memoria del editor' }); } });
@@ -539,4 +544,6 @@ router.delete('/trabajos/:id', async (req, res) => {
   catch (e) { res.status(500).json({ error: 'No se pudo borrar: ' + String(e.message || '').slice(0, 140) }); }
 });
 
+export async function creaTrabajoSistema(t) { await bucket(); t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t); if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); } return t; }
+export const leeTrabajoSistema = (id) => leerTrabajo(id);
 export default router;

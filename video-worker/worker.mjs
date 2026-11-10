@@ -214,6 +214,22 @@ async function procesaMuestra(t, dir) {
 async function procesa(t) {
   const dir = path.join(BASE, t.id); fs.mkdirSync(dir, { recursive: true });
   if (t.tipo === 'muestra') { await procesaMuestra(t, dir); return; }
+  if (t.tipo === 'analisis_redes') {
+    await paso(t, 'Preparando el análisis de vídeos…', { estado: 'procesando', empezado: new Date().toISOString(), pct: 2 });
+    const out = []; const lista = (t.videos || []).slice(0, 14);
+    for (let i = 0; i < lista.length; i++) {
+      const v = lista[i]; await paso(t, 'Analizando vídeo ' + (i + 1) + ' de ' + lista.length + '…', { pct: 5 + Math.round(90 * i / Math.max(1, lista.length)) });
+      const f = path.join(dir, 'v' + i + '.mp4');
+      try {
+        const rs = await fetch(v.url); if (!rs.ok) throw new Error('descarga ' + rs.status);
+        await pipeline(Readable.fromWeb(rs.body), fs.createWriteStream(f));
+        const a = await analizaReferencia(f, path.join(dir, '_v' + i), () => {});
+        out.push({ id: v.id, enlace: v.enlace, pie: v.pie, puntuacion: v.puntuacion, analisis: a });
+      } catch (e) { console.log('[' + t.id + '] vídeo ' + v.id + ' sin analizar:', e.message); out.push({ id: v.id, enlace: v.enlace, pie: v.pie, puntuacion: v.puntuacion, error: String(e.message).slice(0, 120) }); }
+      try { fs.rmSync(f, { force: true }); fs.rmSync(path.join(dir, '_v' + i), { recursive: true, force: true }); } catch { /* limpieza */ }
+    }
+    await paso(t, 'Análisis listo', { analisis_videos: out, pct: 100, estado: 'listo', terminado: new Date().toISOString(), error: null }); return;
+  }
   await paso(t, 'Descargando el archivo…', { estado: 'procesando', empezado: new Date().toISOString(), pct: 2 });
   let entrada, indiceEdicion = null, seleccionEdicion = null;
   if (t.tipo === 'edicion') {

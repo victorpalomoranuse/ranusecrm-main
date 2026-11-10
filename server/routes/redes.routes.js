@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 import { leerJson, guardarJson } from '../utils/asistente-personal.js';
 import { callClaude } from '../utils/anthropic.js';
+import { creaTrabajoSistema, leeTrabajoSistema } from './estudio-video.routes.js';
 
 // Analizador de redes: conecta la cuenta de Instagram de Víctor (inicio de sesión con Facebook, sin copiar ninguna clave), lee sus publicaciones y su rendimiento SIN descargar los vídeos,
 // aprende qué ganchos, formatos y temas le funcionan, y busca ideas ganadoras en su nicho (cuentas profesionales públicas de Instagram y vídeos públicos de YouTube).
@@ -119,8 +120,9 @@ export const OBJETIVOS = {
   visibilidad: { nombre: 'Visibilidad', icono: '👁', que: 'Llegar a más gente: lo más visto.', formula: 'Visualizaciones, en miles.', unidad: 'miles de vistas', f: (m) => (n0(m.views) || n0(m.reach)) / 1000 },
   conversacion: { nombre: 'Comentarios y conversación', icono: '💬', que: 'Que la gente escriba, pregunte y responda.', formula: 'Comentarios por cada 1.000 personas alcanzadas.', unidad: 'comentarios / 1.000', f: (m) => n0(m.comentarios) * 1000 / (base0(m) + K) },
   guardados: { nombre: 'Guardados (valor útil)', icono: '🔖', que: 'Contenido que la gente quiere conservar porque le sirve.', formula: 'Guardados por cada 1.000 personas alcanzadas.', unidad: 'guardados / 1.000', f: (m) => n0(m.saved) * 1000 / (base0(m) + K) },
-  compartidos: { nombre: 'Compartidos (viralidad)', icono: '🚀', que: 'Que se lo manden a otros: la forma de crecer sin pagar.', formula: 'Compartidos por cada 1.000 personas alcanzadas.', unidad: 'compartidos / 1.000', f: (m) => n0(m.shares) * 1000 / (base0(m) + K) },
+  compartidos: { nombre: 'Compartidos (crecer con gente nueva)', icono: '🚀', que: 'Que se lo manden a otros por mensaje: es la señal que más empuja un reel a gente que no te sigue.', formula: 'Compartidos por cada 1.000 personas alcanzadas.', unidad: 'compartidos / 1.000', f: (m) => n0(m.shares) * 1000 / (base0(m) + K) },
   contactos: { nombre: 'Contactos y clientes (leads)', icono: '🎯', que: 'Que te escriban o pidan tu recurso: comentarios con palabra clave, guardados y compartidos.', formula: 'Comentarios ×5 + guardados ×2 + compartidos ×2, por cada 1.000 personas alcanzadas.', unidad: 'puntos de interés comercial', f: (m) => (n0(m.comentarios) * 5 + n0(m.saved) * 2 + n0(m.shares) * 2) * 1000 / (base0(m) + K) },
+  viral: { nombre: 'Viral (compartidos + retención)', icono: '🔥', que: 'Lo que Instagram empuja a desconocidos: que se lo manden a otros y que se vea entero.', formula: 'Compartidos por cada 1.000 alcanzados ×10, más los segundos medios vistos.', unidad: 'puntos virales', f: (m) => n0(m.shares) * 10000 / (base0(m) + K) + n0(m.ig_reels_avg_watch_time) / 1000 },
   retencion: { nombre: 'Retención (que lo vean entero)', icono: '⏱', que: 'Que la gente se quede viendo el vídeo.', formula: 'Tiempo medio que se ve cada reel, en segundos.', unidad: 'segundos vistos', f: (m) => n0(m.ig_reels_avg_watch_time) / 1000 },
 };
 const RUTA_OBJETIVO = 'crm/redes/objetivo.json';
@@ -168,6 +170,37 @@ router.post('/guion/chat', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'No se pudo ajustar el guion: ' + String(err.message || err).slice(0, 160) }); }
 });
 router.get('/guiones', async (req, res) => { try { res.json({ guiones: await leerJson(RUTA_GUIONES, []) }); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
+// ── ANÁLISIS DE VÍDEOS: el worker mira cómo están editados tus reels (ritmo, planos, gancho, voz) sin guardarlos, y se cruza con lo que rindieron
+const RUTA_VIDEOS = 'crm/redes/analisis_videos.json', RUTA_VIDEOS_JOB = 'crm/redes/analisis_videos_job.json';
+router.post('/instagram/videos/analizar', async (req, res) => {
+  try {
+    const c = await leerJson(RUTA_IG, null); if (!c?.token) return res.status(400).json({ error: 'Conecta Instagram primero' });
+    const obj = await objetivoActual(), reales = (await marcaPruebas(c.media || [])).filter(m => !m.prueba && /VIDEO|REELS/i.test((m.tipo || '') + ' ' + (m.formato || '')));
+    if (reales.length < 6) return res.status(422).json({ error: 'Hacen falta al menos 6 reels leídos (pulsa «Leer publicaciones»).' });
+    const orden = reales.map(m => ({ m, p: puntua(m, c.seguidores, obj) })).sort((a, b) => b.p - a.p), cuantos = Math.min(14, orden.length), nTop = Math.ceil(cuantos * 0.65);
+    const elegidos = [...orden.slice(0, nTop), ...orden.slice(-(cuantos - nTop))];
+    const videos = [];
+    for (const x of elegidos) { try { const j = await graph('/' + x.m.id, { fields: 'media_url' }, c.token); if (j.media_url) videos.push({ id: x.m.id, url: j.media_url, enlace: x.m.enlace, pie: limpia(x.m.pie, 140), puntuacion: redondea(x.p) }); } catch { /* sin url */ } }
+    if (!videos.length) return res.status(502).json({ error: 'Instagram no ha dado acceso a los vídeos.' });
+    const t = await creaTrabajoSistema({ id: 'a' + crypto.randomUUID().slice(0, 7), creado: new Date().toISOString(), por: 'sistema', tipo: 'analisis_redes', objetivo: obj, videos, nombre_archivo: 'Análisis de tus reels', estado: 'pendiente', progreso: 'En cola', version: 1 });
+    await guardarJson(RUTA_VIDEOS_JOB, { id: t.id, objetivo: obj, fecha: new Date().toISOString() }); res.json({ ok: true, id: t.id, n: videos.length });
+  } catch (e) { res.status(500).json({ error: 'No se pudo lanzar el análisis: ' + String(e.message || e).slice(0, 140) }); }
+});
+router.get('/instagram/videos', async (req, res) => {
+  try {
+    const job = await leerJson(RUTA_VIDEOS_JOB, null), prev = await leerJson(RUTA_VIDEOS, null); if (!job) return res.json({ estado: 'ninguno', analisis: prev });
+    if (prev && prev.job === job.id) return res.json({ estado: 'listo', analisis: prev });
+    const t = await leeTrabajoSistema(job.id); if (!t) return res.json({ estado: 'ninguno', analisis: prev });
+    if (t.estado === 'error') return res.json({ estado: 'error', error: t.error, analisis: prev });
+    if (t.estado !== 'listo') return res.json({ estado: 'procesando', progreso: t.progreso, pct: t.pct || 0, analisis: prev });
+    const ok = (t.analisis_videos || []).filter(v => v.analisis);
+    if (ok.length < 3) return res.json({ estado: 'error', error: 'No se han podido analizar suficientes vídeos (' + ok.length + ').', analisis: prev });
+    const ficha = (v) => ({ pie: v.pie, puntuacion: v.puntuacion, duracion: v.analisis.dur, planos: v.analisis.planos, plano_medio_s: v.analisis.plano_medio, palabras_por_min: v.analisis.palabras_por_min, descripcion: v.analisis.descripcion, estructura: v.analisis.estructura, receta: v.analisis.receta });
+    const r = json(await callClaude({ system: textoObjetivo(job.objetivo || 'equilibrado') + ' Eres analista de edición de vídeo corto para Víctor Palomo (Ranuse Design). Te paso el análisis técnico de cómo están EDITADOS sus reels, con la puntuación que sacó cada uno (mayor = funcionó mejor según su objetivo). Compara los que mejor y peor funcionaron y deduce QUÉ DE LA EDICIÓN marca la diferencia (duración, ritmo de planos, gancho, voz, estructura). No inventes: si no se ve diferencia clara, dilo. Devuelves SOLO JSON {"resumen":"2-3 frases","gana":["rasgo de edición de los que funcionan"],"pierde":["rasgo de los que no"],"duracion_ideal_s":"rango","ritmo_ideal":"plano medio en segundos","reglas_edicion":["regla corta e imperativa para el editor automático"],"fiabilidad":"alta|media|baja y por qué"}', messages: [{ role: 'user', content: JSON.stringify(ok.sort((a, b) => b.puntuacion - a.puntuacion).map(ficha)) }], maxTokens: 3500 }));
+    const out = { job: job.id, fecha: new Date().toISOString(), objetivo: job.objetivo, n: ok.length, videos: ok.map(v => ({ id: v.id, enlace: v.enlace, pie: v.pie, puntuacion: v.puntuacion, dur: v.analisis.dur, planos: v.analisis.planos, plano_medio: v.analisis.plano_medio, palabras_por_min: v.analisis.palabras_por_min, descripcion: limpia(v.analisis.descripcion, 300) })), resumen: limpia(r.resumen, 500), gana: (r.gana || []).slice(0, 8).map(x => limpia(x, 240)), pierde: (r.pierde || []).slice(0, 8).map(x => limpia(x, 240)), duracion_ideal_s: limpia(r.duracion_ideal_s, 40), ritmo_ideal: limpia(r.ritmo_ideal, 60), reglas_edicion: (r.reglas_edicion || []).slice(0, 8).map(x => limpia(x, 220)), fiabilidad: limpia(r.fiabilidad, 240) };
+    await guardarJson(RUTA_VIDEOS, out); res.json({ estado: 'listo', analisis: out });
+  } catch (e) { res.status(500).json({ error: 'No se pudo leer el análisis: ' + String(e.message || e).slice(0, 140) }); }
+});
 router.get('/objetivos', async (req, res) => { try { const id = await objetivoActual(); res.json({ actual: id, objetivos: Object.entries(OBJETIVOS).map(([k, o]) => ({ id: k, nombre: o.nombre, icono: o.icono, que: o.que, formula: o.formula, unidad: o.unidad })) }); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
 router.post('/objetivo', async (req, res) => { try { const id = String(req.body?.id || ''); if (!OBJETIVOS[id]) return res.status(400).json({ error: 'Objetivo no válido' }); await guardarJson(RUTA_OBJETIVO, { id }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo guardar' }); } });
 router.post('/instagram/prueba', async (req, res) => {

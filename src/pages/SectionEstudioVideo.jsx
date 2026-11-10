@@ -1302,6 +1302,11 @@ function PestanaAnalizador() {
   useEffect(() => { api.get('/redes/objetivos').then(r => setObjs(r.data)).catch(() => {}); }, []);
   const cambiaObjetivo = async (id) => { try { await api.post('/redes/objetivo', { id }); setObjs(o => ({ ...o, actual: id })); await cargaPubs(); await cargar(); } catch { /* se queda */ } };
   const objAct = objs ? objs.objetivos.find(o => o.id === objs.actual) : null;
+  const [vid, setVid] = useState(null);
+  const cargaVid = useCallback(() => api.get('/redes/instagram/videos').then(r => setVid(r.data)).catch(() => {}), []);
+  useEffect(() => { cargaVid(); }, [cargaVid]);
+  useEffect(() => { if (vid?.estado !== 'procesando') return undefined; const x = setInterval(cargaVid, 8000); return () => clearInterval(x); }, [vid?.estado, cargaVid]);
+  const lanzaVid = async () => { try { await api.post('/redes/instagram/videos/analizar'); setVid({ estado: 'procesando', progreso: 'En cola…', pct: 0 }); } catch (er) { setVid(v => ({ ...(v || {}), estado: 'error', error: er.response?.data?.error || 'No se pudo lanzar' })); } };
   if (!e) return <div className="ap-loading">Cargando…</div>;
   const reales = (pubs || []).filter(p => !p.prueba), pruebas = (pubs || []).filter(p => p.prueba);
   const marca = async (id, v) => { try { await api.post('/redes/instagram/prueba', { id, prueba: v }); await cargaPubs(); } catch { /* se queda */ } };
@@ -1367,6 +1372,22 @@ function PestanaAnalizador() {
               </div>
             </div>
           )}
+          <div className="rd-card"><h3>🎞 Cómo están editados tus reels</h3>
+            <div style={{ ...mut, fontSize: '0.84rem' }}>La IA mira tus mejores y peores reels (ritmo de planos, duración, gancho, voz), sin guardarlos, y deduce qué de la edición marca la diferencia. Lo que aprende pasa solo al editor de vídeo.</div>
+            {vid?.estado === 'procesando' && <div><div style={{ height: 6, background: 'rgba(255,255,255,.1)', borderRadius: 4 }}><div style={{ width: (vid.pct || 3) + '%', height: 6, background: '#8fdba0', borderRadius: 4 }} /></div><div style={mut}>{vid.progreso || 'Analizando…'} (tarda unos minutos)</div></div>}
+            {vid?.estado === 'error' && <div style={{ color: '#ff9b9b' }}>{vid.error}</div>}
+            {vid?.estado !== 'procesando' && <div><button className="rd-btn pri" onClick={lanzaVid}>{vid?.analisis ? '🔄 Analizar otra vez' : '🔍 Analizar mis reels'}</button></div>}
+            {vid?.analisis && <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: '0.9rem' }}>{vid.analisis.resumen}</div>
+              <div className="rd-grid2">
+                {(vid.analisis.gana || []).length > 0 && <Tarjeta titulo="En los que funcionan" color="#8fdba0"><Lista items={vid.analisis.gana} color="#8fdba0" /></Tarjeta>}
+                {(vid.analisis.pierde || []).length > 0 && <Tarjeta titulo="En los que no" color="#ff9b9b"><Lista items={vid.analisis.pierde} color="#ff9b9b" /></Tarjeta>}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{vid.analisis.duracion_ideal_s && <span className="rd-chip">⏱ Duración ideal: {vid.analisis.duracion_ideal_s}</span>}{vid.analisis.ritmo_ideal && <span className="rd-chip">✂️ Plano medio: {vid.analisis.ritmo_ideal}</span>}<span className="rd-chip">{vid.analisis.n} reels analizados</span></div>
+              {(vid.analisis.reglas_edicion || []).length > 0 && <div><b>🤖 Reglas que ya usa el editor</b><Lista items={vid.analisis.reglas_edicion} /></div>}
+              {vid.analisis.fiabilidad && <div style={{ ...mut, fontSize: '0.78rem' }}>Fiabilidad: {vid.analisis.fiabilidad}</div>}
+            </div>}
+          </div>
           {pruebas.length > 0 && <div className="rd-card"><h3>🧪 Posibles reels de prueba <span className="rd-chip">{pruebas.length}</span></h3><div style={{ ...mut, fontSize: '0.82rem' }}>Casi no se mostraron a nadie, así que no cuentan para el análisis. Si alguno no es una prueba, márcalo.</div>{pruebas.map(p => <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderTop: '1px solid rgba(255,255,255,.07)', fontSize: '0.84rem' }}><a href={p.enlace} target="_blank" rel="noreferrer" style={{ flex: 1, color: 'inherit' }}>{(p.pie || '(sin texto)').slice(0, 80)}<div style={mut}>{String(p.fecha).slice(0, 10)} · {fmt(p.views ?? p.reach ?? 0)} vistas</div></a><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} onClick={() => marca(p.id, false)}>No es una prueba</button></div>)}</div>}
           {top.length > 0 && <div className="rd-card"><h3>Ranking y autopsia</h3>{top.slice(0, 10).map(p => <div key={p.id}><div className="rd-bar"><span style={{ width: 150, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(p.pie || p.tipo).slice(0, 26)}</span><i style={{ width: Math.max(4, (p.puntuacion || 0) / maxP * 100) + '%' }} /><b>{p.puntuacion}</b><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} disabled={!!trabaja} onClick={() => autopsia(p.id)}>{trabaja === 'aut' + p.id ? '…' : '¿Por qué?'}</button><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} title="Márcalo si fue una prueba y no debe contar" onClick={() => marca(p.id, true)}>🧪</button></div>{autopsias[p.id] && <div style={{ margin: '4px 0 10px 0', padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,.05)', fontSize: '0.85rem', lineHeight: 1.5 }}><span className={'rd-chip ' + (autopsias[p.id].veredicto === 'repetir' ? 'verde' : autopsias[p.id].veredicto === 'dejar' ? 'rojo' : 'ambar')}>{autopsias[p.id].veredicto}</span> {autopsias[p.id].resumen}<Lista items={autopsias[p.id].por_que} />{(autopsias[p.id].que_haria_distinto || []).length > 0 && <div style={{ marginTop: 6 }}><b>Yo haría distinto:</b><Lista items={autopsias[p.id].que_haria_distinto} color="#f2c46d" /></div>}{autopsias[p.id].como_repetirlo && <div style={{ marginTop: 6, ...mut }}>Cómo repetirlo: {autopsias[p.id].como_repetirlo}</div>}</div>}</div>)}</div>}
           <div className="rd-card">
