@@ -83,7 +83,26 @@ function Explorador({ seleccion, onCambio, titulo = 'Recursos (de dónde salen l
   );
 }
 
+// Estilos de edición (cómo se ve y se mueve un vídeo): se eligen aparte del formato
+function useEstilos() {
+  const [estilos, setEstilos] = useState([]);
+  const recarga = useCallback(() => api.get('/estudio-video/estilos').then(r => setEstilos(r.data.estilos || [])).catch(() => {}), []);
+  useEffect(() => { recarga(); }, [recarga]);
+  return [estilos, recarga];
+}
+function SelectorEstilo({ estilos, formato, valor, onCambio, etiqueta = 'Estilo de edición (cómo se ve y se mueve)' }) {
+  const e0 = estilos.find(x => x.id === (formato?.estilo || formato?.id));
+  return (
+    <label style={{ ...mut, display: 'block', marginBottom: 10 }}>{etiqueta}
+      <select className="ap-field-input" style={{ width: '100%', marginTop: 4 }} value={valor} onChange={e => onCambio(e.target.value)}>
+        <option value="">El del formato{e0 ? ' (' + e0.nombre + ')' : ''}</option>
+        {estilos.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+      </select>
+    </label>
+  );
+}
 function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
+  const [estilos] = useEstilos(); const [estilo, setEstilo] = useState('');
   const [origen, setOrigen] = useState('dispositivo'), [base, setBase] = useState([]), [recursos, setRecursos] = useState([]), [mus, setMus] = useState('auto'), [tipo, setTipo] = useState('voz'), [numClips, setNumClips] = useState(0), [durClip, setDurClip] = useState('25-70'), [fmt, setFmt] = useState(''), [file, setFile] = useState(null), [notas, setNotas] = useState(''), [guion, setGuion] = useState(''), [files, setFiles] = useState([]), [soloTr, setSoloTr] = useState(false), [soloAudio, setSoloAudio] = useState(false), [asig, setAsig] = useState({}), [prog, setProg] = useState(null), [error, setError] = useState('');
   const inp = useRef(null);
   useEffect(() => { if (!fmt && formatos[0]) setFmt(formatos[0].id); }, [formatos, fmt]);
@@ -96,8 +115,8 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
       const partesG = partesDeGuion(guion); const reparto = tipo !== 'clips' ? partesG.map((texto, i) => ({ texto, clips: (asig[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, ruta: x.ruta })) })).filter(p => p.clips.length) : [];
       if (reparto.length) { const ya = new Set(recursos.map(r => r.id)); for (const p of reparto) for (const c of p.clips) if (!ya.has(c.id)) { ya.add(c.id); recursos.push(c); } extra.reparto = reparto; }
       // varias entrevistas a la vez: un trabajo por cada una, todos con el mismo guion (cada uno saca los clips que aparecen en su vídeo)
-      if (dDrive) { for (const b of (tipo === 'clips' ? base : base.slice(0, 1))) await api.post('/estudio-video/trabajos', { tipo, formato: fmt, base: b, nombre_archivo: b.nombre, indicaciones: notas, guion, musica: mus, recursos, ...extra }); }
-      else { for (const fl of (tipo === 'clips' && files.length ? files : [file])) { const ruta = await subirArchivo(fl, setProg); await api.post('/estudio-video/trabajos', { tipo, formato: fmt, archivo: ruta, nombre_archivo: fl.name, indicaciones: notas, guion, musica: mus, recursos, ...extra }); } }
+      if (dDrive) { for (const b of (tipo === 'clips' ? base : base.slice(0, 1))) await api.post('/estudio-video/trabajos', { tipo, formato: fmt, estilo: estilo || undefined, base: b, nombre_archivo: b.nombre, indicaciones: notas, guion, musica: mus, recursos, ...extra }); }
+      else { for (const fl of (tipo === 'clips' && files.length ? files : [file])) { const ruta = await subirArchivo(fl, setProg); await api.post('/estudio-video/trabajos', { tipo, formato: fmt, estilo: estilo || undefined, archivo: ruta, nombre_archivo: fl.name, indicaciones: notas, guion, musica: mus, recursos, ...extra }); } }
       setFile(null); setFiles([]); setBase([]); setNotas(''); setGuion(''); setAsig({}); setSoloAudio(false); setProg(null); if (inp.current) inp.current.value = ''; onCreado();
     } catch (e) { setError(e?.response?.data?.error || e.message || 'No se pudo enviar'); setProg(null); }
   };
@@ -133,6 +152,7 @@ function Nuevo({ formatos, musica, carpetas, trabajos, onCreado }) {
       <label style={{ ...mut, display: 'block', marginBottom: 4 }}>Formato</label>
       <select className="ap-field-input" style={{ width: '100%', marginBottom: 10 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
       {formatos.find(f => f.id === fmt)?.descripcion && <div style={{ ...mut, marginTop: -4, marginBottom: 10 }}>{formatos.find(f => f.id === fmt).descripcion}</div>}
+      <SelectorEstilo estilos={estilos} formato={formatos.find(f => f.id === fmt)} valor={estilo} onCambio={setEstilo} />
       <EjemploFormato fmt={fmt} onCambio={onCreado} />
       {tipo === 'clips' && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -427,11 +447,12 @@ function AprenderReferencia({ formatos, onCambio }) {
 
 const Trabajo = memo(function Trabajo(props) { return props.t.tipo === 'referencia' ? <TarjetaReferencia t={props.t} onCambio={props.onCambio} /> : <TrabajoNormal {...props} />; });
 function TrabajoNormal({ t, formatos, onCambio, musica = [], trabajosTodos = [] }) {
+  const [estilosR] = useEstilos(); const [estiloR, setEstiloR] = useState('');
   const [cambios, setCambios] = useState(''), [abierto, setAbierto] = useState(false), [fmt, setFmt] = useState(t.formato), [err, setErr] = useState(''), [panelReg, setPanelReg] = useState(false), [guionReg, setGuionReg] = useState(t.guion || ''), [asigR, setAsigR] = useState(() => asigDesdeReparto(t)), [musR, setMusR] = useState(t.musica || 'auto'), [ritmoA, setRitmoA] = useState(t.audio_ritmo || 0), [dinR, setDinR] = useState(0), [rehaciendoA, setRehaciendoA] = useState(false), [constructor, setConstructor] = useState(false), [panelAudio, setPanelAudio] = useState(() => !!(t.reparto && t.reparto.length && t.fase === 'audio')), [asigA, setAsigA] = useState(() => asigDesdeReparto(t)), [guionA, setGuionA] = useState(t.guion || ''), [editando, setEditando] = useState(false), [editTexto, setEditTexto] = useState(false), [recs, setRecs] = useState(selInicial(t)), [baseSel, setBaseSel] = useState(t.base?.id ? [{ id: t.base.id, nombre: t.base.nombre, tipo: 'video', ruta: t.base.ruta || '' }] : []);
   const [txt, color] = ESTADOS[t.estado] || ESTADOS.pendiente;
   const vref = useRef(null);
   const regenerar = async () => { try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { formato: t.formato, musica: musR, dinamismo: dinR, recursos: (() => { const ya = new Set(recs.map(r => r.id)); const extra = []; Object.values(asigR).forEach(l => (l || []).forEach(c => { if (!ya.has(c.id)) { ya.add(c.id); extra.push(c); } })); return [...recs, ...extra]; })(), guion: guionReg, reparto: partesDeGuion(guionReg).map((texto, i) => ({ texto, clips: (asigR[i] || []).map(x => ({ id: x.id, nombre: x.nombre, tipo: x.tipo, duracion: x.duracion || null, ruta: x.ruta })) })).filter(p => p.clips.length), ...(baseSel[0] ? { base: baseSel[0] } : {}) }); setPanelReg(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
-  const rehacer = async () => { if (!cambios.trim()) return; try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { indicaciones: cambios, formato: fmt }); setCambios(''); setAbierto(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
+  const rehacer = async () => { if (!cambios.trim()) return; try { await api.post('/estudio-video/trabajos/' + t.id + '/rehacer', { indicaciones: cambios, formato: fmt, estilo: estiloR || undefined }); setCambios(''); setAbierto(false); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo'); } };
   const borrar = async () => { if (!window.confirm('¿Borrar este vídeo?')) return; try { await api.delete('/estudio-video/trabajos/' + t.id); onCambio(); } catch (e) { setErr(e?.response?.data?.error || 'No se pudo borrar'); } };
   return (
     <div style={card}>
@@ -551,6 +572,7 @@ function TrabajoNormal({ t, formatos, onCambio, musica = [], trabajosTodos = [] 
         <div style={{ marginTop: 10 }}>
           <textarea className="ap-field-input" style={{ width: '100%', minHeight: 60, marginBottom: 8 }} value={cambios} onChange={e => setCambios(e.target.value)} placeholder="Qué cambiar: más rápido, otra escena en el segundo 10, título más corto, subtítulos más pequeños…" />
           <select className="ap-field-input" style={{ width: '100%', marginBottom: 8 }} value={fmt} onChange={e => setFmt(e.target.value)}>{formatos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}</select>
+          <SelectorEstilo estilos={estilosR} formato={formatos.find(f => f.id === fmt)} valor={estiloR} onCambio={setEstiloR} />
           <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={!cambios.trim()} onClick={rehacer}><Wand2 size={13} /> Rehacer con estos cambios</button>
         </div>
       )}
@@ -921,25 +943,57 @@ function CajaReglas() {
   );
 }
 
+function EstilosPestana() { const [estilos, recarga] = useEstilos(); return estilos.length ? <div style={{ marginTop: 12 }}><Estilos estilos={estilos} onCambio={recarga} /></div> : null; }
 function Formatos({ formatos, onCambio }) {
+  const [estilos] = useEstilos();
   const [sel, setSel] = useState(null), [f, setF] = useState(null), [msg, setMsg] = useState('');
   useEffect(() => { const x = formatos.find(y => y.id === (sel || formatos[0]?.id)); if (x) { setF(JSON.parse(JSON.stringify(x))); setSel(x.id); } }, [formatos, sel]);
   if (!f) return null;
-  const r = f.receta || {}; const setR = (k, v) => setF({ ...f, receta: { ...r, [k]: v } }); const setS = (k, v) => setF({ ...f, receta: { ...r, subs: { ...(r.subs || {}), [k]: v } } });
+  const r = f.receta || {}; const setR = (k, v) => setF({ ...f, receta: { ...r, [k]: v } });
   const guardar = async () => { try { await api.put('/estudio-video/formatos/' + f.id, f); setMsg('Guardado'); onCambio(); setTimeout(() => setMsg(''), 1500); } catch (e) { setMsg(e?.response?.data?.error || 'No se pudo guardar'); } };
   const duplicar = async () => { const n = window.prompt('Nombre del nuevo formato'); if (!n) return; try { const { data } = await api.post('/estudio-video/formatos', { nombre: n, copiar_de: f.id }); setSel(data.formato.id); onCambio(); } catch { setMsg('No se pudo crear'); } };
   const borrar = async () => { if (!window.confirm('¿Borrar el formato "' + f.nombre + '"?')) return; try { await api.delete('/estudio-video/formatos/' + f.id); setSel(null); onCambio(); } catch (e) { setMsg(e?.response?.data?.error || 'No se pudo borrar'); } };
-  const num = (v, fn) => <input className="ap-field-input" type="number" step="any" style={{ width: '100%' }} value={v ?? ''} onChange={e => fn(e.target.value === '' ? '' : Number(e.target.value))} />;
   return (
     <div style={card}>
       <CajaReglas />
+      <div style={{ fontWeight: 700, marginBottom: 2 }}>Formatos</div>
+      <div style={{ ...mut, marginBottom: 10 }}>El formato es EL TIPO de vídeo: qué se hace con el material (entrevista larga → varios reels, voz en off con tus clips, una toma limpia…). Cómo se ve y se mueve lo decide el estilo de edición, que eliges aquí o al crear cada vídeo.</div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <select className="ap-field-input" style={{ flex: 1, minWidth: 160 }} value={f.id} onChange={e => setSel(e.target.value)}>{formatos.map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>
         <button className="ap-btn ap-btn-sm" onClick={duplicar}><Plus size={13} /> Duplicar como nuevo</button><button className="ap-btn ap-btn-sm" onClick={borrar}><Trash2 size={13} /></button>
       </div>
       <Campo etiqueta="Nombre"><input className="ap-field-input" style={{ width: '100%' }} value={f.nombre} onChange={e => setF({ ...f, nombre: e.target.value })} /></Campo>
       <Campo etiqueta="Descripción"><textarea className="ap-field-input" style={{ width: '100%', minHeight: 50 }} value={f.descripcion || ''} onChange={e => setF({ ...f, descripcion: e.target.value })} /></Campo>
+      <Campo etiqueta="Estilo de edición por defecto"><select className="ap-field-input" style={{ width: '100%' }} value={f.estilo || f.id} onChange={e => setF({ ...f, estilo: e.target.value })}>{estilos.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}</select></Campo>
       <Campo etiqueta="Criterio de montaje para la IA (cómo debe pensar este formato)"><textarea className="ap-field-input" style={{ width: '100%', minHeight: 70 }} value={f.notas || ''} onChange={e => setF({ ...f, notas: e.target.value })} placeholder="Ej.: serio, sin humor; empieza siempre con un plano potente; enseña producto en detalle cuando se hable de máquinas…" /></Campo>
+      <div style={{ display: 'flex', gap: 16, margin: '4px 0 12px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
+        <label><input type="checkbox" checked={!!r.preguntaSoloEscrita} onChange={e => setR('preguntaSoloEscrita', e.target.checked)} /> Entrevistas: la pregunta solo sale escrita (no se oye al entrevistador)</label>
+        <label><input type="checkbox" checked={!!r.collage} onChange={e => setR('collage', e.target.checked)} /> Collage: en cortes alternos, dos clips a la vez (uno arriba y otro abajo)</label>
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={guardar}><Check size={13} /> Guardar formato</button><span style={mut}>{msg}</span></div>
+    </div>
+  );
+}
+
+function Estilos({ estilos: formatos, onCambio }) {
+  const [sel, setSel] = useState(null), [f, setF] = useState(null), [msg, setMsg] = useState('');
+  useEffect(() => { const x = formatos.find(y => y.id === (sel || formatos[0]?.id)); if (x) { setF(JSON.parse(JSON.stringify(x))); setSel(x.id); } }, [formatos, sel]);
+  if (!f) return null;
+  const r = f.receta || {}; const setR = (k, v) => setF({ ...f, receta: { ...r, [k]: v } }); const setS = (k, v) => setF({ ...f, receta: { ...r, subs: { ...(r.subs || {}), [k]: v } } });
+  const guardar = async () => { try { await api.put('/estudio-video/estilos/' + f.id, f); setMsg('Guardado'); onCambio(); setTimeout(() => setMsg(''), 1500); } catch (e) { setMsg(e?.response?.data?.error || 'No se pudo guardar'); } };
+  const duplicar = async () => { const n = window.prompt('Nombre del nuevo estilo'); if (!n) return; try { const { data } = await api.post('/estudio-video/estilos', { nombre: n, copiar_de: f.id }); setSel(data.estilo.id); onCambio(); } catch { setMsg('No se pudo crear'); } };
+  const borrar = async () => { if (!window.confirm('¿Borrar el estilo "' + f.nombre + '"?')) return; try { await api.delete('/estudio-video/estilos/' + f.id); setSel(null); onCambio(); } catch (e) { setMsg(e?.response?.data?.error || 'No se pudo borrar'); } };
+  const num = (v, fn) => <input className="ap-field-input" type="number" step="any" style={{ width: '100%' }} value={v ?? ''} onChange={e => fn(e.target.value === '' ? '' : Number(e.target.value))} />;
+  return (
+    <div style={card}>
+      <div style={{ fontWeight: 700, marginBottom: 2 }}>Estilos de edición</div>
+      <div style={{ ...mut, marginBottom: 10 }}>Cómo se ve y se mueve un vídeo: ritmo de cortes, zooms, subtítulos, música… Cualquier formato puede usar cualquier estilo. Pon el nombre que quieras y duplícalo para probar variantes.</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <select className="ap-field-input" style={{ flex: 1, minWidth: 160 }} value={f.id} onChange={e => setSel(e.target.value)}>{formatos.map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>
+        <button className="ap-btn ap-btn-sm" onClick={duplicar}><Plus size={13} /> Duplicar como nuevo</button><button className="ap-btn ap-btn-sm" onClick={borrar}><Trash2 size={13} /></button>
+      </div>
+      <Campo etiqueta="Nombre"><input className="ap-field-input" style={{ width: '100%' }} value={f.nombre} onChange={e => setF({ ...f, nombre: e.target.value })} /></Campo>
+      <Campo etiqueta="Descripción"><textarea className="ap-field-input" style={{ width: '100%', minHeight: 50 }} value={f.descripcion || ''} onChange={e => setF({ ...f, descripcion: e.target.value })} /></Campo>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 10 }}>
         <Campo etiqueta="Corte mínimo (s)">{num(r.corte?.min, v => setR('corte', { ...r.corte, min: v }))}</Campo>
         <Campo etiqueta="Corte máximo (s)">{num(r.corte?.max, v => setR('corte', { ...r.corte, max: v }))}</Campo>
@@ -957,7 +1011,7 @@ function Formatos({ formatos, onCambio }) {
         <Campo etiqueta="Color de acento"><input type="color" value={r.acento || '#F2C46D'} onChange={e => setR('acento', e.target.value)} style={{ width: '100%', height: 34, background: 'none', border: 'none' }} /></Campo>
       </div>
       <div style={{ display: 'flex', gap: 16, margin: '4px 0 12px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
-        <label><input type="checkbox" checked={!!r.flash} onChange={e => setR('flash', e.target.checked)} /> Destello en cada corte</label>
+        <label><input type="checkbox" checked={!!r.flash} onChange={e => setR('flash', e.target.checked)} /> Destello blanco en cada corte (no recomendado)</label>
         <label><input type="checkbox" checked={r.titulo !== false} onChange={e => setR('titulo', e.target.checked)} /> Título arriba</label>
         <label><input type="checkbox" checked={r.barra !== false} onChange={e => setR('barra', e.target.checked)} /> Barra de progreso</label>
         <label><input type="checkbox" checked={r.mayusculas !== false} onChange={e => setR('mayusculas', e.target.checked)} /> Subtítulos en mayúsculas</label>
@@ -966,15 +1020,14 @@ function Formatos({ formatos, onCambio }) {
         <label><input type="checkbox" checked={!!r.subsBajoCara} onChange={e => setR('subsBajoCara', e.target.checked)} /> Subtítulos bajo la cara</label>
         <label><input type="checkbox" checked={!!r.graficos} onChange={e => setR('graficos', e.target.checked)} /> Gráficos animados (cifras)</label>
         <label><input type="checkbox" checked={!!r.horas} onChange={e => setR('horas', e.target.checked)} /> Etiquetas de hora (9:00…)</label>
-        <label><input type="checkbox" checked={!!r.preguntaSoloEscrita} onChange={e => setR('preguntaSoloEscrita', e.target.checked)} /> Entrevistas: la pregunta solo sale escrita (no se oye al entrevistador)</label>
-        <label><input type="checkbox" checked={!!r.collage} onChange={e => setR('collage', e.target.checked)} /> Collage: en cortes alternos, dos clips a la vez (uno arriba y otro abajo)</label>
         <label><input type="checkbox" checked={!!r.motion} onChange={e => setR('motion', e.target.checked)} /> Movimiento variado en los planos (acercar, alejar y barridos)</label>
         <label><input type="checkbox" checked={!!r.etiquetas} onChange={e => setR('etiquetas', e.target.checked)} /> Etiquetas animadas con palabras clave (desactivado por defecto)</label>
       </div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={guardar}><Check size={13} /> Guardar formato</button><span style={mut}>{msg}</span></div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={guardar}><Check size={13} /> Guardar estilo</button><span style={mut}>{msg}</span></div>
     </div>
   );
 }
+
 
 // Departamento de redes: ideas, calendario y las reglas de marca (se irá ampliando con publicar y medir)
 export function SectionRedes() {
@@ -1032,7 +1085,7 @@ export function SectionEstudioVideo() {
         <button className={'ap-btn ap-btn-sm' + (tab === 'efectos' ? ' ap-btn-primary' : '')} onClick={() => setTab('efectos')}><Wand2 size={13} /> Efectos</button>
       </div>
       {error && <div className="ap-error" style={{ marginBottom: 10 }}>{error}</div>}
-      {tab === 'efectos' ? <PestanaEfectos /> : tab === 'formatos' ? <><AprenderReferencia formatos={formatos} onCambio={cargarT} /><Formatos formatos={formatos} onCambio={cargarF} /></> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
+      {tab === 'efectos' ? <PestanaEfectos /> : tab === 'formatos' ? <><AprenderReferencia formatos={formatos} onCambio={cargarT} /><Formatos formatos={formatos} onCambio={cargarF} /><EstilosPestana /></> : tab === 'ideas' ? <PestanaIdeas /> : tab === 'musica' ? <PestanaMusica pistas={pistas} onCambio={cargarM} /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Nuevo formatos={formatos} musica={pistas} carpetas={carpetas} trabajos={trabajos} onCreado={cargarT} />
           {trabajos === null ? <div className="ap-loading">Cargando…</div> : trabajos.length === 0 ? <div style={mut}>Todavía no hay vídeos. Sube el primero arriba.</div> : trabajos.map(t => <Trabajo key={t.id} t={t} formatos={formatos} musica={pistas} trabajosTodos={trabajos} onCambio={cargarT} />)}

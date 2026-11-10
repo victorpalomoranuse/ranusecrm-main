@@ -65,6 +65,24 @@ export const FORMATO_COLLAGE = {
   receta: { collage: true, introLetras: true, corte: { min: 1.8, max: 3.5 }, acento: '#FFFFFF', zoomFinal: 1, whoosh: 0, flash: false, subs: { palabrasPorBloque: 2, tam: 86, margenV: 820 }, titulo: false, barra: false, mayusculas: false, resaltar: false, horas: false, fuente: 'Montserrat', musica: { volumen: -15 } },
   notas: 'Cuenta la historia en orden con los clips elegidos. Cada clip literal a lo que se dice. Ritmo ágil, cortes secos, sin efectos.',
 };
+// ── Estilos de edición: la parte «cómo se ve y se mueve» (cortes, zooms, subtítulos, música…). Un FORMATO es el tipo de vídeo (entrevista → reels, voz en off, un solo plano…)
+// y elige un estilo; dos formatos distintos pueden compartir estilo.
+const RUTA_ESTILOS = 'crm/estudio-video/estilos.json';
+const ESTRUCTURALES = ['collage', 'preguntaSoloEscrita', 'layout', 'inserciones'];
+const sinEstructura = (r) => { const o = JSON.parse(JSON.stringify(r || {})); for (const k of ESTRUCTURALES) delete o[k]; return o; };
+async function estilos() {
+  const e = await leerJson(RUTA_ESTILOS, null);
+  if (e?.lista?.length) return e.lista;
+  const fl = await formatos(); const lista = fl.map(f => ({ id: f.id, nombre: f.nombre, descripcion: f.descripcion || '', receta: sinEstructura(f.receta) }));
+  await guardarJson(RUTA_ESTILOS, { lista }); return lista;
+}
+const guardarEstilos = (lista) => guardarJson(RUTA_ESTILOS, { lista });
+// La receta con la que se monta un vídeo = la del formato (parte estructural) + la del estilo elegido (parte visual)
+async function recetaFinal(fmt, estiloId) {
+  const base = JSON.parse(JSON.stringify(fmt?.receta || {})), id = estiloId || fmt?.estilo || fmt?.id;
+  const e = id ? (await estilos()).find(x => x.id === id) : null;
+  return { receta: e ? { ...base, ...JSON.parse(JSON.stringify(e.receta || {})) } : base, estilo: e ? { id: e.id, nombre: e.nombre } : null };
+}
 const SEMBRADOS = [FORMATO_BASE, FORMATO_LIMPIO, FORMATO_DINAMICO, FORMATO_DIA, FORMATO_CLIPS, FORMATO_ONETAKE, FORMATO_COLLAGE];
 async function formatos() {
   const f = await leerJson(RUTA_FORMATOS, null);
@@ -165,6 +183,23 @@ router.get('/formatos/ejemplos', async (req, res) => {
     res.json({ ejemplos, candidato: base ? { id: base.id, nombre: base.nombre_archivo || '' } : null });
   } catch { res.status(500).json({ error: 'No se pudieron leer los ejemplos' }); }
 });
+// Valida y aplica los cambios de una receta (la usan los formatos y los estilos de edición)
+function aplicaReceta(f, r) {
+  const num = (v, a, z, d) => Number.isFinite(Number(v)) ? Math.min(z, Math.max(a, Number(v))) : d;
+  f.receta = f.receta || {};
+  if (r.corte) f.receta.corte = { min: num(r.corte.min, 0.4, 6, f.receta.corte?.min ?? 0.9), max: num(r.corte.max, 0.8, 10, f.receta.corte?.max ?? 2.3) };
+  if (r.acento && /^#[0-9a-fA-F]{6}$/.test(r.acento)) f.receta.acento = r.acento;
+  if (r.zoomFinal !== undefined) f.receta.zoomFinal = num(r.zoomFinal, 1, 1.4, 1.14);
+  if (r.whoosh !== undefined) f.receta.whoosh = num(r.whoosh, 0, 0.5, 0.16);
+  if (r.flash !== undefined) f.receta.flash = r.flash ? 'si' : false; /* el destello solo se pinta si es 'si' */
+  for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'subsBajoCara', 'graficos', 'horas', 'preguntaSoloEscrita', 'collage', 'motion', 'etiquetas', 'aperturaPremium']) if (r[k] !== undefined) f.receta[k] = !!r[k];
+  if (['Montserrat', 'Rubik'].includes(r.fuente)) f.receta.fuente = r.fuente;
+  if (['normal', 'karaoke', 'caja', 'palabra'].includes(r.estiloSubs)) f.receta.estiloSubs = r.estiloSubs;
+  if (r.musica === false) f.receta.musica = false; else if (r.musica && Number.isFinite(Number(r.musica.volumen))) f.receta.musica = { volumen: num(r.musica.volumen, -40, -6, -19) };
+  if (r.encuadreZoom !== undefined) f.receta.encuadreZoom = num(r.encuadreZoom, 1, 2, 1.3);
+  if (r.pausa !== undefined) f.receta.pausa = num(r.pausa, 0.1, 1.2, 0.4);
+  if (r.subs) f.receta.subs = { palabrasPorBloque: Math.round(num(r.subs.palabrasPorBloque, 1, 5, 2)), tam: Math.round(num(r.subs.tam, 50, 160, 104)), margenV: Math.round(num(r.subs.margenV, 200, 900, 600)) };
+}
 router.get('/formatos', async (req, res) => { try { res.json({ formatos: await formatos() }); } catch { res.status(500).json({ error: 'No se pudieron leer los formatos' }); } });
 router.post('/formatos', async (req, res) => {
   try {
@@ -181,22 +216,33 @@ router.put('/formatos/:id', async (req, res) => {
     if (b.nombre !== undefined) f.nombre = limpia(b.nombre, 60) || f.nombre;
     if (b.descripcion !== undefined) f.descripcion = limpia(b.descripcion, 400);
     if (b.notas !== undefined) f.notas = limpia(b.notas, 1500);
-    const num = (v, a, z, d) => Number.isFinite(Number(v)) ? Math.min(z, Math.max(a, Number(v))) : d;
-    f.receta = f.receta || {};
-    if (r.corte) f.receta.corte = { min: num(r.corte.min, 0.4, 6, f.receta.corte?.min ?? 0.9), max: num(r.corte.max, 0.8, 10, f.receta.corte?.max ?? 2.3) };
-    if (r.acento && /^#[0-9a-fA-F]{6}$/.test(r.acento)) f.receta.acento = r.acento;
-    if (r.zoomFinal !== undefined) f.receta.zoomFinal = num(r.zoomFinal, 1, 1.4, 1.14);
-    if (r.whoosh !== undefined) f.receta.whoosh = num(r.whoosh, 0, 0.5, 0.16);
-    if (r.flash !== undefined) f.receta.flash = !!r.flash;
-    for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'subsBajoCara', 'graficos', 'horas', 'preguntaSoloEscrita', 'collage', 'motion', 'etiquetas', 'aperturaPremium']) if (r[k] !== undefined) f.receta[k] = !!r[k];
-    if (['Montserrat', 'Rubik'].includes(r.fuente)) f.receta.fuente = r.fuente;
-    if (['normal', 'karaoke', 'caja', 'palabra'].includes(r.estiloSubs)) f.receta.estiloSubs = r.estiloSubs;
-    if (r.musica === false) f.receta.musica = false; else if (r.musica && Number.isFinite(Number(r.musica.volumen))) f.receta.musica = { volumen: num(r.musica.volumen, -40, -6, -19) };
-    if (r.encuadreZoom !== undefined) f.receta.encuadreZoom = num(r.encuadreZoom, 1, 2, 1.3);
-    if (r.pausa !== undefined) f.receta.pausa = num(r.pausa, 0.1, 1.2, 0.4);
-    if (r.subs) f.receta.subs = { palabrasPorBloque: Math.round(num(r.subs.palabrasPorBloque, 1, 5, 2)), tam: Math.round(num(r.subs.tam, 50, 160, 104)), margenV: Math.round(num(r.subs.margenV, 200, 900, 600)) };
+    aplicaReceta(f, r);
+    if (typeof b.estilo === 'string') f.estilo = limpia(b.estilo, 40);
     await guardarFormatos(lista); res.json({ formato: f });
   } catch { res.status(500).json({ error: 'No se pudo guardar' }); }
+});
+router.get('/estilos', async (req, res) => { try { res.json({ estilos: await estilos() }); } catch { res.status(500).json({ error: 'No se pudieron leer los estilos' }); } });
+router.post('/estilos', async (req, res) => {
+  try {
+    const lista = await estilos(); const base = lista.find(x => x.id === req.body?.copiar_de) || lista[0];
+    const nombre = limpia(req.body?.nombre, 60); if (!nombre) return res.status(400).json({ error: 'Ponle un nombre al estilo' });
+    const nuevo = { ...JSON.parse(JSON.stringify(base)), id: crypto.randomUUID().slice(0, 8), nombre };
+    lista.push(nuevo); await guardarEstilos(lista); res.status(201).json({ estilo: nuevo });
+  } catch { res.status(500).json({ error: 'No se pudo crear' }); }
+});
+router.put('/estilos/:id', async (req, res) => {
+  try {
+    const lista = await estilos(); const e = lista.find(x => x.id === req.params.id); if (!e) return res.status(404).json({ error: 'No existe ese estilo' });
+    const b = req.body || {};
+    if (b.nombre !== undefined) e.nombre = limpia(b.nombre, 60) || e.nombre;
+    if (b.descripcion !== undefined) e.descripcion = limpia(b.descripcion, 400);
+    e.receta = e.receta || {}; aplicaReceta(e, b.receta || {});
+    await guardarEstilos(lista); res.json({ estilo: e });
+  } catch { res.status(500).json({ error: 'No se pudo guardar' }); }
+});
+router.delete('/estilos/:id', async (req, res) => {
+  try { const lista = await estilos(); if (lista.length <= 1) return res.status(400).json({ error: 'Debe quedar al menos un estilo' }); await guardarEstilos(lista.filter(x => x.id !== req.params.id)); res.json({ ok: true }); }
+  catch { res.status(500).json({ error: 'No se pudo borrar' }); }
 });
 router.delete('/formatos/:id', async (req, res) => {
   try { const lista = await formatos(); if (lista.length <= 1) return res.status(400).json({ error: 'Debe quedar al menos un formato' }); await guardarFormatos(lista.filter(x => x.id !== req.params.id)); res.json({ ok: true }); }
@@ -254,7 +300,8 @@ router.post('/trabajos', async (req, res) => {
     if (!['voz', 'bruto', 'base', 'clips', 'referencia'].includes(b.tipo)) return res.status(400).json({ error: 'Indica si subes una voz en off, un bruto o eliges un vídeo base' });
     if (b.tipo === 'base' || b.base?.id) { if (!/^[\w-]{10,60}$/.test(b.base?.id || '')) return res.status(400).json({ error: 'Elige el archivo de Drive' }); }
     else if (!/^entradas\//.test(b.archivo || '')) return res.status(400).json({ error: 'Falta el archivo subido' });
-    const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, reglas: await textoReglas(), tipo: b.tipo, ...(b.tipo === 'clips' ? { num_clips: Math.max(0, Math.min(12, parseInt(b.num_clips) || 0)), dur_min: Math.max(10, Math.min(120, parseInt(b.dur_min) || 25)), dur_max: Math.max(15, Math.min(180, parseInt(b.dur_max) || 70)) } : {}), archivo: b.base?.id ? null : b.archivo, base: b.base?.id ? { id: limpia(b.base.id, 80), nombre: limpia(b.base.nombre, 160), ruta: limpia(b.base.ruta, 400) } : null, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: fmt.receta, notas_formato: fmt.notas || '', indicaciones: limpia(b.indicaciones, 800), guion: limpia(b.guion, 20000), ...(b.fase === 'transcribir' && b.tipo === 'clips' ? { fase: 'transcribir' } : {}), ...(b.fase === 'audio' && b.tipo === 'voz' ? { fase: 'audio' } : {}), ...(Array.isArray(b.reparto) && b.reparto.length ? { reparto: b.reparto.slice(0, 40).map(p => ({ texto: limpia(p?.texto, 700), clips: (Array.isArray(p?.clips) ? p.clips : []).slice(0, 10).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['video', 'imagen', 'carpeta'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => /^[\w-]{10,60}$/.test(x.id)) })).filter(p => p.texto && p.clips.length) } : {}), musica: limpia(b.musica, 150) || 'auto', carpetas: (Array.isArray(b.carpetas) ? b.carpetas : []).slice(0, 30).map(c => limpia(c, 200)).filter(Boolean), recursos: (Array.isArray(b.recursos) ? b.recursos : []).slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen', 'subido'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
+    const recFin = await recetaFinal(fmt, b.estilo);
+    const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, reglas: await textoReglas(), tipo: b.tipo, ...(b.tipo === 'clips' ? { num_clips: Math.max(0, Math.min(12, parseInt(b.num_clips) || 0)), dur_min: Math.max(10, Math.min(120, parseInt(b.dur_min) || 25)), dur_max: Math.max(15, Math.min(180, parseInt(b.dur_max) || 70)) } : {}), archivo: b.base?.id ? null : b.archivo, base: b.base?.id ? { id: limpia(b.base.id, 80), nombre: limpia(b.base.nombre, 160), ruta: limpia(b.base.ruta, 400) } : null, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: recFin.receta, estilo: recFin.estilo?.id || null, estilo_nombre: recFin.estilo?.nombre || null, notas_formato: fmt.notas || '', indicaciones: limpia(b.indicaciones, 800), guion: limpia(b.guion, 20000), ...(b.fase === 'transcribir' && b.tipo === 'clips' ? { fase: 'transcribir' } : {}), ...(b.fase === 'audio' && b.tipo === 'voz' ? { fase: 'audio' } : {}), ...(Array.isArray(b.reparto) && b.reparto.length ? { reparto: b.reparto.slice(0, 40).map(p => ({ texto: limpia(p?.texto, 700), clips: (Array.isArray(p?.clips) ? p.clips : []).slice(0, 10).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['video', 'imagen', 'carpeta'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => /^[\w-]{10,60}$/.test(x.id)) })).filter(p => p.texto && p.clips.length) } : {}), musica: limpia(b.musica, 150) || 'auto', carpetas: (Array.isArray(b.carpetas) ? b.carpetas : []).slice(0, 30).map(c => limpia(c, 200)).filter(Boolean), recursos: (Array.isArray(b.recursos) ? b.recursos : []).slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen', 'subido'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
     t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
     if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); } // si Google no arranca, lo hace el PC
     res.status(201).json({ trabajo: t });
@@ -385,7 +432,7 @@ router.post('/trabajos/:id/rehacer', async (req, res) => {
     const lista = await formatos(); const fmt = lista.find(x => x.id === (req.body?.formato || o.formato)) || { id: o.formato, nombre: o.formato_nombre, receta: o.receta, notas: o.notas_formato };
     const recNuevos = Array.isArray(req.body?.recursos) ? req.body.recursos.slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen', 'subido'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id) : null;
     const b0 = req.body?.base; const baseNueva = b0?.id && /^[\w-]{10,60}$/.test(b0.id) && b0.id !== o.base?.id ? { id: limpia(b0.id, 80), nombre: limpia(b0.nombre, 160), ruta: limpia(b0.ruta, 400) } : null;
-    const dinam = Math.max(0, Math.min(2, parseInt(req.body?.dinamismo) || 0)); const recetaDin = (() => { const r = JSON.parse(JSON.stringify(fmt.receta || {})); if (!dinam) return r; const c = r.corte || { min: 1.5, max: 3.5 }; r.corte = dinam === 1 ? { min: Math.min(c.min, 1.4), max: Math.min(c.max, 2.6) } : { min: Math.min(c.min, 1.0), max: Math.min(c.max, 2.0) }; r.zoomFinal = Math.max(Number(r.zoomFinal) || 1, dinam === 1 ? 1.12 : 1.18); r.whoosh = Math.max(Number(r.whoosh) || 0, dinam === 1 ? 0.1 : 0.16); r.flash = false; r.motion = true; if (dinam === 2) r.barra = true; return r; })();
+    const recFin = await recetaFinal(fmt, req.body?.estilo || (fmt.id === o.formato ? o.estilo : undefined)); const dinam = Math.max(0, Math.min(2, parseInt(req.body?.dinamismo) || 0)); const recetaDin = (() => { const r = JSON.parse(JSON.stringify(recFin.receta || {})); if (!dinam) return r; const c = r.corte || { min: 1.5, max: 3.5 }; r.corte = dinam === 1 ? { min: Math.min(c.min, 1.4), max: Math.min(c.max, 2.6) } : { min: Math.min(c.min, 1.0), max: Math.min(c.max, 2.0) }; r.zoomFinal = Math.max(Number(r.zoomFinal) || 1, dinam === 1 ? 1.12 : 1.18); r.whoosh = Math.max(Number(r.whoosh) || 0, dinam === 1 ? 0.1 : 0.16); r.flash = false; r.motion = true; if (dinam === 2) r.barra = true; return r; })();
     const t = { ...o, reglas: await textoReglas(), ...(recNuevos ? { recursos: recNuevos } : {}), ...(baseNueva ? { base: baseNueva, archivo: null, nombre_archivo: baseNueva.nombre } : {}), ...(typeof req.body?.guion === 'string' ? { guion: limpia(req.body.guion, 20000) } : {}), ...(typeof req.body?.musica === 'string' ? { musica: limpia(req.body.musica, 150) || 'auto' } : {}), ...(Array.isArray(req.body?.reparto) ? { reparto: req.body.reparto.slice(0, 40).map(p => ({ texto: limpia(p?.texto, 700), clips: (Array.isArray(p?.clips) ? p.clips : []).slice(0, 10).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['video', 'imagen', 'carpeta'].includes(x?.tipo) ? x.tipo : 'video', duracion: Number(x?.duracion) || null, ruta: limpia(x?.ruta, 400) })).filter(x => /^[\w-]{10,60}$/.test(x.id)) })).filter(p => p.texto && p.clips.length) } : {}), id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), formato: fmt.id, formato_nombre: fmt.nombre, receta: recetaDin, notas_formato: fmt.notas || '', indicaciones: cambios ? (o.indicaciones ? o.indicaciones + '\nCAMBIOS PEDIDOS: ' : 'CAMBIOS PEDIDOS: ') + cambios : ((o.indicaciones ? o.indicaciones + '\n' : '') + 'REGENERAR: monta una versión distinta con los mismos recursos (otra elección y orden de planos, otro ritmo).'), estado: 'pendiente', progreso: 'En cola', version: (o.version || 1) + 1, origen: o.id, resultado: null, resultado_movil: null, error: null, plan: null };
     t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
     if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); } // si Google no arranca, lo hace el PC
