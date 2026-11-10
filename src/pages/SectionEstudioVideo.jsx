@@ -1308,6 +1308,20 @@ function SaludCuenta() {
     </div>
   );
 }
+function SemanaTipo({ dias }) {
+  const [ab, setAb] = useState(null), [taller, setTaller] = useState(null);
+  return <>
+    <div className="rd-days">{dias.map((d, i) => <div key={i} className="rd-day" style={{ flexBasis: 170, cursor: 'pointer' }} onClick={() => setAb(d)} title="Pulsa para ver el detalle"><div className="d">{d.dia}</div><div className="t" style={{ WebkitLineClamp: 5, marginTop: 8 }}>{d.que}</div></div>)}</div>
+    {ab && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 9998, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 12 }} onClick={() => setAb(null)}>
+      <div className="rd-card" style={{ maxWidth: 560, width: '100%', background: '#15171c', gap: 12 }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: 0 }}>🗓 {ab.dia}</h3>
+        <div style={{ fontSize: '0.95rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{ab.que}</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="rd-btn pri" onClick={() => { setTaller({ idea: ab.dia + ': ' + ab.que, formato: '', gancho: '', origen: '' }); setAb(null); }}>🎬 Crear el guion de esto</button><button className="rd-btn" onClick={() => setAb(null)}>Cerrar</button></div>
+      </div>
+    </div>}
+    {taller && <TallerIdeas idea={taller} onCerrar={() => setTaller(null)} />}
+  </>;
+}
 function MusicaTendencia() {
   const [d, setD] = useState(null), [err, setErr] = useState(''), [cargando, setCargando] = useState(false);
   const carga = useCallback((refrescar) => { setCargando(true); setErr(''); api.get('/redes/musica/tendencias', { params: refrescar ? { refrescar: 1 } : {} }).then(r => setD(r.data)).catch(e => setErr(e.response?.data?.error || 'No se pudo leer')).finally(() => setCargando(false)); }, []);
@@ -1562,7 +1576,7 @@ function PestanaAnalizador() {
           </div>
           {pl.volumen.por_que && <div style={{ lineHeight: 1.5 }}>{pl.volumen.por_que}</div>}
           {pl.dias_horas && <Tarjeta titulo="🕒 Mejores días y horas"><div style={{ fontSize: '0.92rem', lineHeight: 1.5 }}>{pl.dias_horas}</div></Tarjeta>}
-          {(pl.semana_tipo || []).length > 0 && <div><h3 style={{ margin: '4px 0 10px' }}>🗓 Tu semana tipo</h3><div className="rd-days">{pl.semana_tipo.map((d, i) => <div key={i} className="rd-day" style={{ flexBasis: 170 }}><div className="d">{d.dia}</div><div className="t" style={{ WebkitLineClamp: 5, marginTop: 8 }}>{d.que}</div></div>)}</div></div>}
+          {(pl.semana_tipo || []).length > 0 && <div><h3 style={{ margin: '4px 0 10px' }}>🗓 Tu semana tipo</h3><SemanaTipo dias={pl.semana_tipo} /></div>}
           <div className="rd-grid2">
             {(pl.tendencias || []).length > 0 && <Tarjeta titulo="🔥 Tendencias y cómo aprovecharlas"><ul className="rd-lista">{pl.tendencias.map((x, i) => <li key={i}><b>{x.tendencia}</b> <span className="rd-chip">{x.fuente}</span><div style={mut}>{x.como_aprovecharla}</div></li>)}</ul></Tarjeta>}
             {(pl.experimentos || []).length > 0 && <Tarjeta titulo="🧪 Pruebas para las próximas 2 semanas"><Lista items={pl.experimentos} /></Tarjeta>}
