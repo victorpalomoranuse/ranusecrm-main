@@ -350,6 +350,8 @@ body.crm .top .brand{display:none}
             <button data-do="planoia" title="Sube el plano que te da el cliente (PDF o foto) y la IA dibuja el estado actual para que lo ajustes">Importar plano del cliente (PDF o imagen)…</button>
             <button data-do="fondo-ver" id="mi-fondo" hidden>Plano del cliente de fondo: visible</button>
             <button data-do="fondo-op" id="mi-fondo-op" hidden>Plano del cliente: cambiar transparencia</button>
+            <button data-do="fondo-esc" id="mi-fondo-esc" hidden title="Pulsas dos puntos del plano de fondo, dices cuánto miden en la realidad y el plano se escala solo">Plano del cliente: ajustar a una medida real…</button>
+            <button data-do="fondo-mov" id="mi-fondo-mov" hidden title="Pulsas un punto del plano de fondo y luego el sitio donde debe quedar">Plano del cliente: mover…</button>
             <button data-do="fondo-q" id="mi-fondo-q" hidden>Quitar el plano del cliente de fondo</button>
             <button data-do="b-cloud" id="mi-cloud" hidden>Guardar ahora</button>
             <button data-do="b-pdf">PDF de esta lámina</button>
@@ -1580,7 +1582,7 @@ function ctxAbre(x,y,items){
   m.style.left=Math.max(4,Math.min(x,window.innerWidth-r.width-8))+'px';m.style.top=Math.max(4,Math.min(y,window.innerHeight-r.height-8))+'px';
 }
 document.addEventListener('mousedown',function(e){if(ctxM&&!ctxM.contains(e.target))ctxCierra()},true);
-document.addEventListener('keydown',function(e){if(e.key==='Escape')ctxCierra()},true);
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){ctxCierra();if(typeof st!=='undefined'&&st&&st.fondoCal){st.fondoCal=null;try{render()}catch(x){}}}},true);
 function drMenu(e){
   var p=loc(e),w=toW(p),hit=pickDr(w,Math.max(16/st.k,6),st.view);
   if(!hit){ctxCierra();return false}
@@ -5657,6 +5659,7 @@ function pincelTap(w,tol){
 }
 function tap(w){
   st.multi=[];
+  if(st.fondoCal){fondoCalTap(w);return}
   var tol=18/st.k;
   if(st.cotasAdj){st.adjSel=null;panelSel();render();return}
   if(st.tool==='brush'){pincelTap(w,tol);return}
@@ -11042,14 +11045,40 @@ function fondoSrc(){
 function fondoSvg(view){
   var f=st.v.fondo;if(!f||f.on===false||view==='alz')return '';
   var src=fondoSrc();if(!src)return '';
-  return '<image href="'+src+'" x="'+f2(f.x)+'" y="'+f2(f.y)+'" width="'+f2(f.w)+'" height="'+f2(f.h)+'" preserveAspectRatio="none" opacity="'+(f.op||0.45)+'" style="pointer-events:none"/>';
+  var marca=(st.fondoCal&&st.fondoCal.a)?'<circle cx="'+f2(st.fondoCal.a.x)+'" cy="'+f2(st.fondoCal.a.y)+'" r="'+f2(8/st.k)+'" style="fill:#e11d48;stroke:#fff;stroke-width:'+f2(2/st.k)+'px;pointer-events:none"/>':'';
+  return '<image href="'+src+'" x="'+f2(f.x)+'" y="'+f2(f.y)+'" width="'+f2(f.w)+'" height="'+f2(f.h)+'" preserveAspectRatio="none" opacity="'+(f.op||0.45)+'" style="pointer-events:none"/>'+marca;
 }
 function fondoMenu(){
   var f=st.v&&st.v.fondo,hay=!!(f&&f.id&&fondoSrc());
-  ['mi-fondo','mi-fondo-op','mi-fondo-q'].forEach(function(id){var b=document.getElementById(id);if(b)b.hidden=!hay});
+  ['mi-fondo','mi-fondo-op','mi-fondo-esc','mi-fondo-mov','mi-fondo-q'].forEach(function(id){var b=document.getElementById(id);if(b)b.hidden=!hay});
   var b0=document.getElementById('mi-fondo');if(b0&&hay)b0.textContent='Plano del cliente de fondo: '+(f.on===false?'oculto (mostrar)':'visible (ocultar)');
 }
+/* ajustar el plano de fondo a una medida real: dos puntos + la distancia verdadera (escala el fondo alrededor del primer punto); o moverlo de un punto a otro */
+function fondoCalIniciar(modo){
+  var f=st.v.fondo;if(!f||!f.id){toast('No hay plano de fondo');return}
+  if(f.on===false){f.on=true}
+  st.tool='select';st.fondoCal={modo:modo,a:null};st.sel=null;
+  toast(modo==='esc'?'Paso 1 de 2: pulsa el primer extremo de una medida que conozcas (por ejemplo, un muro con su cota)':'Paso 1 de 2: pulsa el punto del plano de fondo que quieres mover');
+  try{toolbar()}catch(e){}render();
+}
+function fondoCalTap(w){
+  var c=st.fondoCal,f=st.v.fondo;if(!c||!f){st.fondoCal=null;return}
+  if(!c.a){c.a={x:w.x,y:w.y};toast(c.modo==='esc'?'Paso 2 de 2: pulsa el otro extremo de esa medida':'Paso 2 de 2: pulsa el sitio donde debe quedar ese punto');render();return}
+  if(c.modo==='mov'){
+    snap();f.x=f2(f.x+(w.x-c.a.x));f.y=f2(f.y+(w.y-c.a.y));st.fondoCal=null;commit();toast('Plano de fondo movido');return;
+  }
+  var d=Math.hypot(w.x-c.a.x,w.y-c.a.y);
+  if(d<5){toast('Los dos puntos están demasiado juntos: pulsa otro extremo');return}
+  var txt=window.prompt('¿Cuánto mide en la realidad esa distancia? Escribe los centímetros (ahora en el plano mide '+Math.round(d)+' cm).\nEjemplo: 1424 para 14,24 m',String(Math.round(d)));
+  if(txt===null){st.fondoCal=null;render();return}
+  var real=parseFloat(String(txt).replace(',','.'));
+  if(!(real>5)||real>200000){toast('Escribe una medida en centímetros (por ejemplo 1424)');return}
+  var s=real/d;snap();
+  f.x=f2(c.a.x+(f.x-c.a.x)*s);f.y=f2(c.a.y+(f.y-c.a.y)*s);f.w=f2(f.w*s);f.h=f2(f.h*s);
+  st.fondoCal=null;commit();toast('Plano de fondo escalado ×'+(Math.round(s*1000)/1000)+'. Si hace falta, muévelo con «Plano del cliente: mover…»');
+}
 function fondoAccion(id){
+  if(id==='fondo-esc'||id==='fondo-mov'){fondoCalIniciar(id==='fondo-esc'?'esc':'mov');return}
   var f=st.v.fondo;if(!f)return;
   if(id==='fondo-q'){if(!window.confirm('¿Quitar el plano del cliente que está de fondo? Los muros dibujados se quedan.'))return;snap();delete st.v.fondo;commit();return}
   snap();
@@ -11433,7 +11462,7 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
       else if(id==='info')abrirInfoLam();
       else if(id==='listados')enviarListados();
       else if(id==='planoia')planoIAAbrir();
-      else if(id==='fondo-ver'||id==='fondo-op'||id==='fondo-q')fondoAccion(id);
+      else if(id==='fondo-ver'||id==='fondo-op'||id==='fondo-q'||id==='fondo-esc'||id==='fondo-mov')fondoAccion(id);
       else if(id==='cotamuros')alternarCotaMuros();
       else if(id==='ubicacion'){st.verUbic=!st.verUbic;var bu=document.getElementById('mi-ubic');if(bu)bu.textContent='Ubicación del equipamiento en pantalla: '+(st.verUbic?'visible':'oculta');if(st.view!=='distrib'){st.view='distrib';toolbar()}render();toast(st.verUbic?'Se ven las distancias de cada pieza a los muros (en Distribución)':'Plano limpio: las distancias salen al seleccionar una pieza')}
       else if(id==='cmdp')cmdAbrir('');
