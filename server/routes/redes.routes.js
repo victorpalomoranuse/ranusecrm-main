@@ -244,6 +244,24 @@ router.post('/cuenta/salud', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'No se pudo analizar la cuenta: ' + String(e.message || e).slice(0, 160) }); }
 });
 router.get('/cuenta/salud', async (req, res) => { try { res.json(await leerJson(RUTA_SALUD, null) || {}); } catch { res.status(500).json({ error: 'No se pudo leer' }); } });
+// Predecir con un vídeo YA EDITADO: se sube, el worker mide cómo está montado (ritmo, gancho, voz, duración) y eso se añade a la predicción
+router.post('/video/analizar', async (req, res) => {
+  try {
+    const ruta = String(req.body?.ruta || ''); if (!/^entradas\//.test(ruta)) return res.status(400).json({ error: 'Falta el vídeo subido' });
+    const t = await creaTrabajoSistema({ id: 'p' + crypto.randomUUID().slice(0, 7), creado: new Date().toISOString(), por: 'sistema', tipo: 'analisis_redes', videos: [{ id: 'subido', ruta, pie: limpia(req.body?.nombre, 100) }], nombre_archivo: 'Vídeo para predecir', estado: 'pendiente', progreso: 'En cola', version: 1 });
+    res.json({ ok: true, id: t.id });
+  } catch (e) { res.status(500).json({ error: 'No se pudo analizar el vídeo: ' + String(e.message || e).slice(0, 140) }); }
+});
+router.get('/video/:id', async (req, res) => {
+  try {
+    const t = await leeTrabajoSistema(String(req.params.id).replace(/[^\w-]/g, '')); if (!t) return res.status(404).json({ error: 'No existe' });
+    if (t.estado === 'error') return res.json({ estado: 'error', error: t.error });
+    if (t.estado !== 'listo') return res.json({ estado: 'procesando', progreso: t.progreso, pct: t.pct || 0 });
+    const a = t.analisis_videos?.[0]?.analisis; if (!a) return res.json({ estado: 'error', error: t.analisis_videos?.[0]?.error || 'No he podido leer el vídeo' });
+    const texto = 'VÍDEO YA EDITADO (medido por la IA): dura ' + Math.round(a.dur) + ' s, ' + a.planos + ' planos (plano medio ' + a.plano_medio + ' s), ' + (a.palabras_por_min ? a.palabras_por_min + ' palabras por minuto' : 'sin voz hablada') + '. ' + limpia(a.descripcion, 400) + ' Estructura: ' + (a.estructura || []).map(x => limpia(x, 160)).join(' | ');
+    res.json({ estado: 'listo', texto, dur: a.dur, planos: a.planos, plano_medio: a.plano_medio });
+  } catch (e) { res.status(500).json({ error: 'No se pudo leer el análisis' }); }
+});
 router.get('/objetivos', async (req, res) => { try { const id = await objetivoActual(); res.json({ actual: id, objetivos: Object.entries(OBJETIVOS).map(([k, o]) => ({ id: k, nombre: o.nombre, icono: o.icono, que: o.que, formula: o.formula, unidad: o.unidad })) }); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
 router.post('/objetivo', async (req, res) => { try { const id = String(req.body?.id || ''); if (!OBJETIVOS[id]) return res.status(400).json({ error: 'Objetivo no válido' }); await guardarJson(RUTA_OBJETIVO, { id }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo guardar' }); } });
 router.post('/instagram/prueba', async (req, res) => {

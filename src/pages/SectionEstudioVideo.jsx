@@ -1332,7 +1332,7 @@ function PestanaAnalizador() {
   }, [cargar]);
   useEffect(() => { if (e?.instagram?.n_media) cargaPubs(); }, [e?.instagram?.n_media, cargaPubs]);
   useEffect(() => { if (e?.canal_url && !canal) setCanal(e.canal_url); }, [e?.canal_url]); // eslint-disable-line react-hooks/exhaustive-deps
-  const hace = async (clave, fn) => { setTrabaja(clave); setError(''); setMsg(''); try { await fn(); await cargar(); } catch (x) { setError(x.response?.data?.error || 'No se pudo'); } finally { setTrabaja(''); } };
+  const hace = async (clave, fn) => { setTrabaja(clave); setError(''); setMsg(''); try { await fn(); await cargar(); } catch (x) { setError(x.response?.data?.error || x.message || 'No se pudo'); } finally { setTrabaja(''); } };
   const guardaCfg = async () => { setError(''); try { await api.post('/redes/config', { config_id: cfgId.trim() }); setMsg('ID guardado. Ahora pulsa «Conectar Instagram».'); setCfgId(''); await cargar(); } catch (x) { setError(x.response?.data?.error || 'No se pudo guardar'); } };
   const conecta = async () => { setError(''); try { const r = await api.get('/redes/instagram/conectar', { params: { origen: window.location.origin } }); setAyuda(r.data.redirect_uri); window.location.href = r.data.url; } catch (x) { setError(x.response?.data?.error || 'No se pudo iniciar la conexión'); } };
   const sync = () => hace('sync', async () => { const r = await api.post('/redes/instagram/sincronizar', {}, { timeout: 280000 }); setMsg('Leídas ' + r.data.publicaciones + ' publicaciones'); await cargaPubs(); });
@@ -1341,7 +1341,17 @@ function PestanaAnalizador() {
   const nichoYt = () => hace('nyt', async () => { const r = await api.post('/redes/nicho/youtube', { consulta }, { timeout: 280000 }); setNicho(n => ({ ...(n || {}), youtube: r.data.nicho })); });
   const miCanal = () => hace('canal', async () => { await api.post('/redes/youtube/mi-canal', { canal }, { timeout: 280000 }); setMsg('Canal leído y analizado.'); });
   const plan = () => hace('plan', async () => { await api.post('/redes/plan', {}, { timeout: 280000 }); setMsg('Plan de publicación preparado.'); });
-  const predice = () => hace('pred', async () => { const r = await api.post('/redes/instagram/predecir', { propuesta: prop, formato: propFmt }, { timeout: 200000 }); setPred(r.data.prediccion); });
+  const [vPred, setVPred] = useState(null), [vEstado, setVEstado] = useState('');
+  const predice = () => hace('pred', async () => {
+    let extra = '';
+    if (vPred) {
+      setVEstado('Subiendo el vídeo…'); const ruta = await subirArchivo(vPred, () => {});
+      setVEstado('La IA está mirando cómo está editado…'); const { data: j } = await api.post('/redes/video/analizar', { ruta, nombre: vPred.name });
+      for (let i = 0; i < 90; i++) { await new Promise(r => setTimeout(r, 6000)); const { data: s } = await api.get('/redes/video/' + j.id); if (s.estado === 'listo') { extra = '\n\n' + s.texto; break; } if (s.estado === 'error') { setVEstado(''); throw new Error(s.error || 'No se pudo analizar el vídeo'); } setVEstado((s.progreso || 'Analizando…') + ' ' + (s.pct || 0) + '%'); }
+      setVEstado('');
+    }
+    const r = await api.post('/redes/instagram/predecir', { propuesta: (prop.trim().length >= 15 ? prop : 'Vídeo ya editado, sin más descripción.') + extra, formato: propFmt }, { timeout: 200000 }); setPred(r.data.prediccion);
+  });
   const autopsia = (id) => hace('aut' + id, async () => { const r = await api.post('/redes/instagram/autopsia', { id }, { timeout: 200000 }); setAutopsias(a => ({ ...a, [id]: r.data.autopsia })); });
   const desconecta = async () => { if (!window.confirm('¿Desconectar Instagram?')) return; await hace('des', () => api.delete('/redes/instagram')); setPubs(null); };
   const [orden, setOrden] = useState('puntuacion'), [objs, setObjs] = useState(null);
@@ -1444,7 +1454,9 @@ function PestanaAnalizador() {
             <textarea className="ap-field-input" rows={3} value={prop} onChange={ev => setProp(ev.target.value)} placeholder="Ej.: Reel de 30 s en obra: «El error que te cuesta 5.000 € al montar un gimnasio», con un antes y después del suelo…" />
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <select className="ap-field-input" value={propFmt} onChange={ev => setPropFmt(ev.target.value)}><option value="reel">Reel</option><option value="carrusel">Carrusel</option><option value="foto">Foto</option><option value="historia">Historia</option></select>
-              <button className="rd-btn pri" disabled={!!trabaja || prop.trim().length < 15} onClick={predice}>{trabaja === 'pred' ? 'Calculando…' : 'Estimar'}</button>
+              <label className="rd-btn" style={{ cursor: 'pointer' }}>{vPred ? '🎞 ' + vPred.name.slice(0, 24) : '🎞 Subir el vídeo ya editado'}<input type="file" accept="video/*" style={{ display: 'none' }} onChange={ev => setVPred(ev.target.files?.[0] || null)} /></label>
+              {vPred && <button className="rd-btn" onClick={() => setVPred(null)}>✕</button>}
+              <button className="rd-btn pri" disabled={!!trabaja || (prop.trim().length < 15 && !vPred)} onClick={predice}>{trabaja === 'pred' ? (vEstado || 'Calculando…') : 'Estimar'}</button>
             </div>
             {pred && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 6 }}>
