@@ -430,6 +430,20 @@ router.post('/historias/hoy', async (req, res) => {
     res.json({ fecha, tipo_del_dia: out.tipo_del_dia, por_que: out.por_que, historias: out.estructurado || [], herramienta: out.herramienta_sugerida || null });
   } catch (e) { res.status(500).json({ error: 'No se pudo preparar: ' + String(e.message || e).slice(0, 140) }); }
 });
+// De YouTube a Instagram: los Shorts que mejor han funcionado en su canal se prueban en Instagram (adaptados)
+const RUTA_YT_IG = 'crm/redes/yt_a_ig.json';
+router.get('/youtube/a-instagram', async (req, res) => { try { res.json(await leerJson(RUTA_YT_IG, null) || {}); } catch { res.status(500).json({ error: 'No se pudo leer' }); } });
+router.post('/youtube/a-instagram', async (req, res) => {
+  try {
+    const yt = await leerJson('crm/redes/youtube_canal.json', null); if (!yt?.videos?.length) return res.status(422).json({ error: 'Primero añade tu canal de YouTube y léelo (pestaña YouTube).' });
+    await refrescaPrefs();
+    const cortos = yt.videos.filter(v => v.segundos != null && v.segundos <= 90), base = cortos.length >= 3 ? cortos : yt.videos, mediana = base.map(v => v.vistas).sort((a, b) => a - b)[Math.floor(base.length / 2)] || 1;
+    const mejores = base.slice().sort((a, b) => b.vistas - a.vistas).slice(0, 8).map(v => ({ titulo: v.titulo, fecha: v.fecha, segundos: v.segundos, vistas: v.vistas, veces_la_mediana: Math.round(v.vistas / mediana * 10) / 10, me_gusta: v.me_gusta, comentarios: v.comentarios }));
+    const r = json(await callClaude({ system: textoPrefs() + 'Víctor Palomo (Ranuse Design) publica el mismo vídeo en YouTube Shorts, Reels y TikTok, pero su cuenta principal es Instagram. Te paso los vídeos de su canal de YouTube que MEJOR han funcionado. Para cada uno que merezca la pena, di por qué crees que funcionó en YouTube (solo con los datos que ves: título, duración, vistas) y cómo PROBARLO en Instagram: qué gancho usar, qué cambiar porque en Instagram se consume distinto (primeros segundos, texto en pantalla, CTA de comentar/guardar/compartir), y qué riesgo tiene. No inventes lo que hay dentro del vídeo: solo lo que se deduce del título y los números; si algo no se sabe, dilo. Descarta los que no encajen con su rumbo actual. Devuelves SOLO JSON {"resumen":"1-2 frases","ideas":[{"video":"título del original","por_que_funciono":"","gancho_instagram":"primera frase","formato":"reel|carrusel|historia","adaptar":"qué cambiar para Instagram","riesgo":""}],"aprendizaje":["patrón que se ve en los Shorts que funcionan y vale para Instagram"]}', messages: [{ role: 'user', content: 'SUS MEJORES VÍDEOS EN YOUTUBE (' + (cortos.length >= 3 ? 'Shorts' : 'todos, hay pocos cortos') + '):' + String.fromCharCode(92) + 'n' + JSON.stringify(mejores) }], maxTokens: 3500 }));
+    const out = { fecha: new Date().toISOString(), resumen: limpia(r.resumen, 300), ideas: (r.ideas || []).slice(0, 6).map(x => ({ video: limpia(x?.video, 120), por_que_funciono: limpia(x?.por_que_funciono, 260), gancho: limpia(x?.gancho_instagram, 200), formato: limpia(x?.formato, 20), adaptar: limpia(x?.adaptar, 300), riesgo: limpia(x?.riesgo, 200) })), aprendizaje: (r.aprendizaje || []).slice(0, 5).map(x => limpia(x, 240)) };
+    await guardarJson(RUTA_YT_IG, out); res.json(out);
+  } catch (e) { res.status(500).json({ error: 'No se pudo preparar: ' + String(e.message || e).slice(0, 140) }); }
+});
 router.get('/objetivos', async (req, res) => { try { const id = await objetivoActual(); res.json({ actual: id, objetivos: Object.entries(OBJETIVOS).map(([k, o]) => ({ id: k, nombre: o.nombre, icono: o.icono, que: o.que, formula: o.formula, unidad: o.unidad })) }); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
 router.post('/objetivo', async (req, res) => { try { const id = String(req.body?.id || ''); if (!OBJETIVOS[id]) return res.status(400).json({ error: 'Objetivo no válido' }); await guardarJson(RUTA_OBJETIVO, { id }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo guardar' }); } });
 router.post('/instagram/prueba', async (req, res) => {

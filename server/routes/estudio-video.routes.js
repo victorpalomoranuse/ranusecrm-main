@@ -177,6 +177,7 @@ async function direccionRedes() {
   if (vid?.resumen) l.push('Lo que marca la diferencia en SUS reels (analizado de verdad): ' + vid.resumen);
   for (const x of [...(vid?.reglas_edicion || []), ...(ap?.para_el_editor || [])].slice(0, 10)) l.push('- ' + x);
   for (const x of (ap?.ganchos_ganadores || []).slice(0, 4)) l.push('- Gancho que le funciona: ' + x);
+  try { const yi = await leerJson('crm/redes/yt_a_ig.json', null); for (const x of (yi?.aprendizaje || []).slice(0, 3)) l.push('- De sus Shorts que funcionaron en YouTube (probar en Instagram): ' + x); } catch { /* sin datos de YouTube */ }
   for (const r of (ref?.lista || []).slice(-6)) for (const x of (r.replicar || []).slice(0, 2)) l.push('- De un referente (' + r.nombre + '): ' + x);
   if (voz) l.push('Su voz: ' + voz.resumen + (voz.muletillas?.length ? ' Muletillas reales: ' + voz.muletillas.join(', ') + '.' : ''));
   const pf = (tp) => (prefs.reglas || []).filter(r => r.tipo === tp).map(r => r.texto), no = pf('no'), si = pf('si'), tr = pf('transmitir'), sa = pf('saber'), rb = await leerJson('crm/redes/rumbo.json', null);

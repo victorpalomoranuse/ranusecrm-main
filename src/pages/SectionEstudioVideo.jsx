@@ -1357,6 +1357,7 @@ function InicioRedes({ ir }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="rd-btn" onClick={() => ir('plan')}>Plan de publicación</button><button className="rd-btn" onClick={() => ir('musica')}>🎵 Música</button></div>
       </div>
       <HistoriasHoy />
+      <YoutubeAInstagram />
       <RumboRedes />
       <PreferenciasRedes />
       {abierta && <TallerIdeas idea={abierta} onCerrar={() => setAbierta(null)} />}
@@ -1546,6 +1547,23 @@ function EstudiaReferente() {
         <div><button className="rd-btn pri" disabled={ok} onClick={guarda}>{ok ? '✔ Guardado: el editor ya lo usa' : '💾 Guardar como referente para el editor'}</button></div>
       </div>}
       {lista.length > 0 && <div style={{ ...mut, fontSize: '0.8rem' }}>Referentes guardados: {lista.map(x => x.nombre).join(' · ')}</div>}
+    </div>
+  );
+}
+function YoutubeAInstagram() {
+  const [d, setD] = useState(null), [trab, setTrab] = useState(false), [err, setErr] = useState(''), [ej, setEj] = useState(null);
+  useEffect(() => { api.get('/redes/youtube/a-instagram').then(r => setD(r.data)).catch(() => {}); }, []);
+  const genera = async () => { setTrab(true); setErr(''); try { const r = await api.post('/redes/youtube/a-instagram', {}, { timeout: 150000 }); setD(r.data); } catch (e) { setErr(e.response?.data?.error || 'No se pudo'); } setTrab(false); };
+  return (
+    <div className="rd-card" style={{ gap: 10 }}>
+      <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>🔁 DE YOUTUBE A INSTAGRAM · tus Shorts que funcionaron</div>
+      <div style={{ ...mut, fontSize: '0.84rem' }}>Mira tus vídeos que mejor han funcionado en YouTube y te dice cuáles probar en Instagram y cómo adaptarlos. Lo que aprende también llega al editor.</div>
+      <div><button className="rd-btn pri" disabled={trab} onClick={genera}>{trab ? 'Pensando…' : d?.fecha ? '🔄 Volver a mirar' : '🔁 Ver qué probar en Instagram'}</button></div>
+      {err && <div style={{ color: '#ff9b9b' }}>{err}</div>}
+      {d?.resumen && <div style={{ fontSize: '0.9rem' }}>{d.resumen}</div>}
+      {(d?.ideas || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(250px,1fr))' }}>{d.ideas.map((x, i) => <div key={i} className="rd-card" style={{ cursor: 'pointer' }} onClick={() => setEj({ idea: 'Adaptar a Instagram mi Short de YouTube «' + x.video + '»: ' + x.adaptar, formato: x.formato || 'reel', gancho: x.gancho, origen: 'tus datos' })}><span className="rd-chip" style={{ alignSelf: 'flex-start' }}>▶ {x.video.slice(0, 40)}</span><div className="rd-gancho">“{x.gancho}”</div><div style={{ fontSize: '0.84rem' }}>{x.adaptar}</div>{x.riesgo && <div style={{ ...mut, fontSize: '0.78rem' }}>⚠ {x.riesgo}</div>}<div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Crear guion →</div></div>)}</div>}
+      {(d?.aprendizaje || []).length > 0 && <div><b>Lo que se ve que funciona</b><Lista items={d.aprendizaje} /></div>}
+      {ej && <TallerIdeas idea={ej} onCerrar={() => setEj(null)} />}
     </div>
   );
 }
