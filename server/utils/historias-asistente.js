@@ -73,6 +73,14 @@ const hace = (f, hoy) => { const d = Math.round((Date.parse(hoy) - Date.parse(St
 async function contextoEstratega(hoy) {
   const [reglas, ideas, pub] = await Promise.all([estrategia(), leer(RUTA_IDEAS, { ideas: [] }), leer(RUTA_PUBLICADAS, { historias: [] })]);
   const piezas = ['ESTRATEGIA DE INSTAGRAM DE VÍCTOR (obligatoria):\n' + reglas.map(r => '- ' + r.texto).join('\n')];
+  try {
+    const real = await leer('crm/redes/historias_ig.json', { historias: [] }), hs = (real.historias || []).filter(h => (Date.now() - new Date(h.fecha).getTime()) < 21 * 86400000);
+    if (hs.length >= 3) {
+      const med = (k) => { const v = hs.map(h => Number(h[k]) || 0).sort((a, b) => a - b); return v[Math.floor(v.length / 2)] || 0; };
+      const mejores = hs.slice().sort((a, b) => ((b.replies || 0) * 5 + (b.shares || 0) * 4 + (b.reach || 0) / 50) - ((a.replies || 0) * 5 + (a.shares || 0) * 4 + (a.reach || 0) / 50)).slice(0, 5);
+      piezas.push('HISTORIAS REALES DE INSTAGRAM (últimas 3 semanas, leídas automáticamente; ' + hs.length + ' historias; alcance mediano ' + med('reach') + ', respuestas medianas ' + med('replies') + '). LAS QUE MEJOR FUNCIONARON (conecta con lo que él dice que subió para saber de qué iban):\n' + mejores.map(h => '- ' + String(h.fecha).slice(0, 10) + ' ' + String(h.fecha).slice(11, 16) + ' UTC · ' + h.tipo + ' · alcance ' + (h.reach ?? '?') + ' · respuestas ' + (h.replies ?? 0) + ' · compartidos ' + (h.shares ?? 0) + (h.navegacion ? ' · salidas ' + (h.navegacion.tap_exit || 0) : '')).join('\n'));
+    }
+  } catch { /* sin historias reales todavía */ }
   const ult = (pub.historias || []).slice(-14); piezas.push('LO QUE HA SUBIDO ÚLTIMAMENTE (para no repetirse):\n' + (ult.map(h => '- ' + h.fecha + ' (' + hace(h.fecha, hoy) + ') [' + h.tipo + '] ' + h.resumen + (h.resultado ? ' → ' + h.resultado : '')).join('\n') || '(no me ha contado que haya subido nada reciente)'));
   const libres = (ideas.ideas || []).filter(i => !(i.usadas || []).length), usadas = (ideas.ideas || []).filter(i => (i.usadas || []).length);
   piezas.push('SU BANCO DE IDEAS (id · tipo · cuándo me la contó · mejor momento):\n' + (libres.slice(-25).map(i => '- [' + i.id + '] ' + i.tipo + ' · ' + hace(i.creada, hoy) + (i.mejor_momento ? ' · encaja: ' + i.mejor_momento : '') + ' · ' + i.texto).join('\n') || '(vacío)') + (usadas.length ? '\n(Ya usadas: ' + usadas.slice(-8).map(i => i.texto.slice(0, 50)).join(' | ') + ')' : ''));

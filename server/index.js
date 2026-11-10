@@ -188,6 +188,7 @@ enviarRecordatoriosLlamadas(); // primera pasada al arrancar, no hace falta espe
 // de disponibilidad recurrente — una vez al día basta (los huecos ya
 // generados no se tocan), más una pasada al arrancar.
 setInterval(generarSlotsDesdeReglas, 24 * 60 * 60 * 1000);
+import('./routes/redes.routes.js').then(m => { const tick = () => m.sincronizarHistoriasIG().catch(() => {}); setTimeout(tick, 60 * 1000); setInterval(tick, 3 * 60 * 60 * 1000); }).catch(() => {});
 generarSlotsDesdeReglas();
 
 export default app;

@@ -262,6 +262,23 @@ router.get('/video/:id', async (req, res) => {
     res.json({ estado: 'listo', texto, dur: a.dur, planos: a.planos, plano_medio: a.plano_medio });
   } catch (e) { res.status(500).json({ error: 'No se pudo leer el análisis' }); }
 });
+// ── HISTORIAS: Instagram solo deja leer las historias mientras están activas (24 h), así que se guardan solas cada pocas horas con sus números
+const RUTA_HISTORIAS_IG = 'crm/redes/historias_ig.json';
+export async function sincronizarHistoriasIG() {
+  const c = await conexion(); if (!c) return { n: 0 };
+  let j; try { j = await graph('/' + c.ig_id + '/stories', { fields: 'id,media_type,permalink,timestamp,thumbnail_url' }, c.token); } catch (e) { return { n: 0, error: String(e.message).slice(0, 120) }; }
+  const d = await leerJson(RUTA_HISTORIAS_IG, { historias: [] }), por = new Map((d.historias || []).map(h => [h.id, h]));
+  for (const s of (j.data || [])) {
+    const h = por.get(s.id) || { id: s.id, fecha: s.timestamp, tipo: s.media_type, enlace: s.permalink };
+    for (const m of ['reach', 'replies', 'shares', 'total_interactions', 'views', 'follows', 'profile_visits']) { try { const r = await graph('/' + s.id + '/insights', { metric: m }, c.token); const x = r.data?.[0]; const v = x?.values?.[0]?.value ?? x?.total_value?.value; if (v != null) h[m] = Number(v) || 0; } catch { /* métrica no disponible para esta historia */ } }
+    try { const r = await graph('/' + s.id + '/insights', { metric: 'navigation', breakdown: 'story_navigation_action_type' }, c.token); const res = r.data?.[0]?.total_value?.breakdowns?.[0]?.results || []; h.navegacion = Object.fromEntries(res.map(x => [String(x.dimension_values?.[0] || '').toLowerCase(), Number(x.value) || 0])); } catch { /* sin navegación */ }
+    h.actualizada = new Date().toISOString(); por.set(s.id, h);
+  }
+  const lista = [...por.values()].sort((a, b) => new Date(a.fecha) - new Date(b.fecha)).slice(-500);
+  await guardarJson(RUTA_HISTORIAS_IG, { historias: lista, ultima_sync: new Date().toISOString() }); return { n: (j.data || []).length, total: lista.length };
+}
+router.post('/historias/sincronizar', async (req, res) => { try { res.json({ ok: true, ...(await sincronizarHistoriasIG()) }); } catch (e) { res.status(500).json({ error: 'No se pudieron leer las historias' }); } });
+router.get('/historias', async (req, res) => { try { res.json(await leerJson(RUTA_HISTORIAS_IG, { historias: [] })); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
 router.get('/objetivos', async (req, res) => { try { const id = await objetivoActual(); res.json({ actual: id, objetivos: Object.entries(OBJETIVOS).map(([k, o]) => ({ id: k, nombre: o.nombre, icono: o.icono, que: o.que, formula: o.formula, unidad: o.unidad })) }); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
 router.post('/objetivo', async (req, res) => { try { const id = String(req.body?.id || ''); if (!OBJETIVOS[id]) return res.status(400).json({ error: 'Objetivo no válido' }); await guardarJson(RUTA_OBJETIVO, { id }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo guardar' }); } });
 router.post('/instagram/prueba', async (req, res) => {
