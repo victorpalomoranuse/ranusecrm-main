@@ -97,17 +97,21 @@ async function insightsDe(media, token) {
   for (const m of lista) { try { const j = await graph('/' + media.id + '/insights', { metric: m }, token); const x = j.data?.[0]; out[m] = x?.values?.[0]?.value ?? x?.total_value?.value ?? null; } catch { /* métrica no disponible */ } }
   return out;
 }
-export async function sincronizarInstagram(max = 60) {
+export async function sincronizarInstagram(max = 300) {
   const c = await conexion(); if (!c) throw new Error('Instagram no está conectado');
-  const j = await graph('/' + c.ig_id + '/media', { fields: 'id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count,thumbnail_url', limit: Math.min(max, 100) }, c.token);
-  const media = [];
-  for (const m of (j.data || []).slice(0, max)) { const ins = await insightsDe(m, c.token); media.push({ id: m.id, tipo: m.media_product_type || m.media_type, formato: m.media_type, enlace: m.permalink, fecha: m.timestamp, pie: limpia(m.caption, 600), me_gusta: m.like_count ?? ins.likes ?? null, comentarios: m.comments_count ?? ins.comments ?? null, miniatura: m.thumbnail_url || '', ...ins }); }
+  // se leen TODAS las publicaciones (páginas de 100), no solo las últimas: así entra también ese vídeo antiguo que se hizo viral
+  let j = await graph('/' + c.ig_id + '/media', { fields: 'id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count,thumbnail_url', limit: 100 }, c.token);
+  const crudas = [...(j.data || [])];
+  while (crudas.length < max && j.paging?.cursors?.after && j.paging?.next) { try { j = await graph('/' + c.ig_id + '/media', { fields: 'id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count,thumbnail_url', limit: 100, after: j.paging.cursors.after }, c.token); } catch { break; } crudas.push(...(j.data || [])); }
+  const media = [], inicio = Date.now(), lote = crudas.slice(0, max), conIns = [];
+  for (let i = 0; i < lote.length; i += 8) { if (Date.now() - inicio > 230000) { for (const m of lote.slice(i)) conIns.push([m, {}]); break; } const gr = lote.slice(i, i + 8); const rs = await Promise.all(gr.map(m => insightsDe(m, c.token).catch(() => ({})))); gr.forEach((m, k) => conIns.push([m, rs[k]])); }
+  for (const [m, ins] of conIns) { media.push({ id: m.id, tipo: m.media_product_type || m.media_type, formato: m.media_type, enlace: m.permalink, fecha: m.timestamp, pie: limpia(m.caption, 600), me_gusta: m.like_count ?? ins.likes ?? null, comentarios: m.comments_count ?? ins.comments ?? null, miniatura: m.thumbnail_url || '', ...ins }); }
   let perfil = {}; try { perfil = await graph('/' + c.ig_id, { fields: 'followers_count,media_count,username' }, c.token); } catch { /* sin perfil */ }
   await guardarJson(RUTA_IG, { ...c, media, seguidores: perfil.followers_count ?? c.seguidores, publicaciones: perfil.media_count ?? c.publicaciones, ultima_sync: new Date().toISOString() });
   return media;
 }
 router.post('/instagram/sincronizar', async (req, res) => {
-  try { const m = await sincronizarInstagram(Math.min(100, Number(req.body?.max) || 60)); res.json({ ok: true, publicaciones: m.length }); }
+  try { const m = await sincronizarInstagram(Math.min(400, Number(req.body?.max) || 300)); res.json({ ok: true, publicaciones: m.length }); }
   catch (e) { res.status(e.codigo === 190 ? 401 : 500).json({ error: e.codigo === 190 ? 'La conexión con Instagram caducó: vuelve a conectarla.' : 'No se pudieron leer tus publicaciones: ' + String(e.message).slice(0, 200) }); }
 });
 
@@ -215,7 +219,7 @@ router.get('/instagram/publicaciones', async (req, res) => {
 router.post('/instagram/analizar', async (req, res) => {
   try {
     const c = await conexion(); if (!c) return res.status(404).json({ error: 'Instagram no está conectado' });
-    let media = c.media || []; if (media.length < 8) { media = await sincronizarInstagram(60); }
+    let media = c.media || []; if (media.length < 8) { media = await sincronizarInstagram(300); }
     const nPruebas = (await marcaPruebas(media)).filter(m => m.prueba).length; media = (await marcaPruebas(media)).filter(m => !m.prueba);
     if (media.length < 8) return res.status(422).json({ error: 'Hay muy pocas publicaciones para sacar conclusiones fiables (' + media.length + ').' });
     const obj = await objetivoActual(), orden = media.map(m => ({ m, p: puntua(m, c.seguidores, obj) })).sort((a, b) => b.p - a.p), n = Math.max(3, Math.round(orden.length / 4));
@@ -249,7 +253,7 @@ router.post('/instagram/predecir', async (req, res) => {
   try {
     const c = await conexion(); if (!c) return res.status(404).json({ error: 'Conecta primero tu Instagram' });
     const propuesta = limpia(req.body?.propuesta, 2500); if (propuesta.length < 15) return res.status(400).json({ error: 'Cuéntame el vídeo: de qué va, el gancho y el formato.' });
-    let media = c.media || []; if (media.length < 8) media = await sincronizarInstagram(60);
+    let media = c.media || []; if (media.length < 8) media = await sincronizarInstagram(300);
     media = (await marcaPruebas(media)).filter(m => !m.prueba);
     const obj = await objetivoActual(), est = estadisticas(media), top = media.map(m => ({ m, p: puntua(m, c.seguidores, obj) })).sort((a, b) => b.p - a.p);
     const ficha = (x) => ({ tipo: x.m.tipo, gancho: x.m.pie.split(/[\n.!?]/)[0].slice(0, 140), vistas: vistasDe(x.m), guardados: x.m.saved ?? null, compartidos: x.m.shares ?? null, dia: new Date(x.m.fecha).toLocaleDateString('es-ES', { weekday: 'long', timeZone: 'Europe/Madrid' }) });
