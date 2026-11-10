@@ -1467,6 +1467,20 @@ function TendenciasPlan({ items }) {
     {ej && <TallerIdeas idea={ej} onCerrar={() => setEj(null)} />}
   </>;
 }
+function CuentasNicho({ ig, onUsar }) {
+  const [d, setD] = useState(null), [trab, setTrab] = useState(false), [msg, setMsg] = useState('');
+  useEffect(() => { api.get('/redes/nicho/cuentas').then(r => { setD(r.data); if ((r.data.cuentas || []).length) onUsar(r.data.cuentas.slice(0, 8).map(x => x.usuario).join(', ')); }).catch(() => {}); /* eslint-disable-next-line */ }, []);
+  const busca = async () => { setTrab(true); setMsg(''); try { const r = await api.post('/redes/nicho/descubrir', {}, { timeout: 200000 }); setD(r.data); onUsar((r.data.cuentas || []).slice(0, 8).map(x => x.usuario).join(', ')); setMsg(r.data.nuevas + ' cuentas nuevas comprobadas (de ' + r.data.propuestas + ' propuestas).'); } catch (e) { setMsg(e.response?.data?.error || 'No se pudo'); } setTrab(false); };
+  const quita = async (u) => { try { const r = await api.post('/redes/nicho/cuentas/quitar', { usuario: u }); setD(r.data); onUsar((r.data.cuentas || []).slice(0, 8).map(x => x.usuario).join(', ')); } catch { /* se queda */ } };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ ...mut, fontSize: '0.84rem' }}>Tu nicho: diseño y montaje de gimnasios y espacios deportivos. La IA busca cuentas de ese mundo y comprueba que existan y sean públicas.</div>
+      <div><button className="rd-btn pri" disabled={!ig || trab} onClick={busca}>{trab ? 'Buscando y comprobando…' : (d?.cuentas || []).length ? '🔎 Buscar más cuentas' : '🔎 Encontrar cuentas de mi nicho'}</button></div>
+      {msg && <div style={{ ...mut, fontSize: '0.82rem' }}>{msg}</div>}
+      {(d?.cuentas || []).length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{d.cuentas.map(x => <span key={x.usuario} className="rd-chip">@{x.usuario} · {fmt(x.seguidores)} <button onClick={() => quita(x.usuario)} title="Quitar esta cuenta" style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button></span>)}</div>}
+    </div>
+  );
+}
 function SemanaTipo({ dias }) {
   const [ab, setAb] = useState(null), [taller, setTaller] = useState(null);
   return <>
@@ -1535,7 +1549,7 @@ function PestanaAnalizador() {
   const cargaVid = useCallback(() => api.get('/redes/instagram/videos').then(r => setVid(r.data)).catch(() => {}), []);
   useEffect(() => { cargaVid(); }, [cargaVid]);
   useEffect(() => { if (vid?.estado !== 'procesando') return undefined; const x = setInterval(cargaVid, 8000); return () => clearInterval(x); }, [vid?.estado, cargaVid]);
-  const lanzaVid = async () => { try { await api.post('/redes/instagram/videos/analizar'); setVid({ estado: 'procesando', progreso: 'En cola…', pct: 0 }); } catch (er) { setVid(v => ({ ...(v || {}), estado: 'error', error: er.response?.data?.error || 'No se pudo lanzar' })); } };
+  const lanzaVid = async () => { try { await api.post('/redes/instagram/videos/analizar', {}, { timeout: 150000 }); setVid({ estado: 'procesando', progreso: 'En cola…', pct: 0 }); } catch (er) { setVid(v => ({ ...(v || {}), estado: 'error', error: er.response?.data?.error || ('No se pudo lanzar (' + (er.response ? 'error ' + er.response.status : er.message || 'sin respuesta del servidor') + ')') })); } };
   if (!e) return <div className="ap-loading">Cargando…</div>;
   const reales = (pubs || []).filter(p => !p.prueba), pruebas = (pubs || []).filter(p => p.prueba);
   const marca = async (id, v) => { try { await api.post('/redes/instagram/prueba', { id, prueba: v }); await cargaPubs(); } catch { /* se queda */ } };
@@ -1672,6 +1686,7 @@ function PestanaAnalizador() {
         )}
         <div className="rd-card">
           <h3>🔎 Ideas ganadoras en tu nicho · Instagram</h3>
+          <CuentasNicho ig={ig} onUsar={(u) => setCuentas(u)} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <input className="ap-field-input" style={{ flex: '1 1 260px' }} value={cuentas} onChange={ev => setCuentas(ev.target.value)} placeholder="Cuentas del nicho separadas por comas (ej.: gymcompany_es)" disabled={!ig} />
             <button className="rd-btn pri" disabled={!ig || !cuentas.trim() || !!trabaja} onClick={nichoIg}>{trabaja === 'nig' ? 'Analizando…' : 'Analizar cuentas'}</button>

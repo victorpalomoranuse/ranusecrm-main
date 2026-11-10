@@ -197,7 +197,8 @@ router.post('/instagram/videos/analizar', async (req, res) => {
     const orden = reales.map(m => ({ m, p: puntua(m, c.seguidores, obj) })).sort((a, b) => b.p - a.p), cuantos = Math.min(14, orden.length), nTop = Math.ceil(cuantos * 0.65);
     const elegidos = [...orden.slice(0, nTop), ...orden.slice(-(cuantos - nTop))];
     const videos = [];
-    for (const x of elegidos) { try { const j = await graph('/' + x.m.id, { fields: 'media_url' }, c.token); if (j.media_url) videos.push({ id: x.m.id, url: j.media_url, enlace: x.m.enlace, pie: limpia(x.m.pie, 140), puntuacion: redondea(x.p) }); } catch { /* sin url */ } }
+    const urls = await Promise.all(elegidos.map(async x => { try { const j = await graph('/' + x.m.id, { fields: 'media_url' }, c.token); return j.media_url ? { id: x.m.id, url: j.media_url, enlace: x.m.enlace, pie: limpia(x.m.pie, 140), puntuacion: redondea(x.p) } : null; } catch { return null; } }));
+    for (const v of urls) if (v) videos.push(v);
     if (!videos.length) return res.status(502).json({ error: 'Instagram no ha dado acceso a los vídeos.' });
     const t = await creaTrabajoSistema({ id: 'a' + crypto.randomUUID().slice(0, 7), creado: new Date().toISOString(), por: 'sistema', tipo: 'analisis_redes', objetivo: obj, videos, nombre_archivo: 'Análisis de tus reels', estado: 'pendiente', progreso: 'En cola', version: 1 });
     await guardarJson(RUTA_VIDEOS_JOB, { id: t.id, objetivo: obj, fecha: new Date().toISOString() }); res.json({ ok: true, id: t.id, n: videos.length });
@@ -335,6 +336,28 @@ router.post('/instagram/buscar', async (req, res) => {
     res.json({ encontrado: true, vistas: rec.views ?? rec.reach ?? null, revisadas: vistas });
   } catch (e) { res.status(500).json({ error: 'No se pudo buscar: ' + String(e.message || e).slice(0, 140) }); }
 });
+// ── CUENTAS DE SU NICHO: Instagram no deja buscar cuentas por tema, así que la IA propone candidatas y se COMPRUEBAN una a una (que existan y sean profesionales públicas)
+const RUTA_CUENTAS_NICHO = 'crm/redes/cuentas_nicho.json';
+router.get('/nicho/cuentas', async (req, res) => { try { res.json(await leerJson(RUTA_CUENTAS_NICHO, { cuentas: [] })); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
+router.post('/nicho/descubrir', async (req, res) => {
+  try {
+    const c = await conexion(); if (!c) return res.status(404).json({ error: 'Conecta primero tu Instagram' });
+    await refrescaPrefs();
+    const previas = await leerJson(RUTA_CUENTAS_NICHO, { cuentas: [], descartadas: [] }), ya = new Set([...(previas.cuentas || []).map(x => x.usuario), ...(previas.descartadas || [])]);
+    const r = json(await callClaude({ system: textoPrefs() + 'Conoces el panorama de Instagram en el nicho de DISEÑO Y MONTAJE DE GIMNASIOS (gimnasios comerciales, boutique y home gyms, equipamiento fitness, interiorismo deportivo, reformas de gimnasios, fabricantes y estudios de diseño de espacios deportivos). Propón nombres de usuario de Instagram de cuentas REALES y activas de ese nicho que Víctor Palomo (Ranuse Design, España) debería estudiar: empresas y creadores de España y Latinoamérica primero, y algunas internacionales referentes. Solo usuarios que estés seguro de que existen; si dudas, no lo pongas (se van a comprobar). Devuelves SOLO JSON {"cuentas":["usuario_sin_arroba"]} con hasta 30.', messages: [{ role: 'user', content: 'Ya estudiadas o descartadas (no repetir): ' + ([...ya].join(', ') || 'ninguna') + '. Su cuenta: @' + (c.usuario || '') }], maxTokens: 1500 }));
+    const cand = [...new Set((r.cuentas || []).map(x => String(x).replace(/^@/, '').trim().toLowerCase()).filter(x => /^[a-z0-9._]{2,30}$/.test(x) && x !== String(c.usuario).toLowerCase() && !ya.has(x)))].slice(0, 30);
+    const ok = [], malas = [];
+    for (let i = 0; i < cand.length; i += 6) {
+      const lote = cand.slice(i, i + 6);
+      const rs = await Promise.all(lote.map(async u => { try { const j = await graph('/' + c.ig_id, { fields: 'business_discovery.username(' + u + '){username,followers_count,media_count}' }, c.token); const b = j.business_discovery; return b?.username ? { usuario: b.username, seguidores: b.followers_count || 0, posts: b.media_count || 0 } : null; } catch { return null; } }));
+      rs.forEach((x, k) => { if (x && x.posts >= 12) ok.push(x); else malas.push(lote[k]); });
+    }
+    ok.sort((a, b) => b.seguidores - a.seguidores);
+    const out = { fecha: new Date().toISOString(), cuentas: [...(previas.cuentas || []), ...ok].slice(0, 40), descartadas: [...(previas.descartadas || []), ...malas].slice(-120) };
+    await guardarJson(RUTA_CUENTAS_NICHO, out); res.json({ ...out, nuevas: ok.length, propuestas: cand.length });
+  } catch (e) { res.status(500).json({ error: 'No se pudieron encontrar cuentas: ' + String(e.message || e).slice(0, 140) }); }
+});
+router.post('/nicho/cuentas/quitar', async (req, res) => { try { const d = await leerJson(RUTA_CUENTAS_NICHO, { cuentas: [], descartadas: [] }), u = String(req.body?.usuario || '').toLowerCase(); d.cuentas = (d.cuentas || []).filter(x => x.usuario.toLowerCase() !== u); d.descartadas = [...(d.descartadas || []), u]; await guardarJson(RUTA_CUENTAS_NICHO, d); res.json(d); } catch { res.status(500).json({ error: 'No se pudo quitar' }); } });
 router.get('/objetivos', async (req, res) => { try { const id = await objetivoActual(); res.json({ actual: id, objetivos: Object.entries(OBJETIVOS).map(([k, o]) => ({ id: k, nombre: o.nombre, icono: o.icono, que: o.que, formula: o.formula, unidad: o.unidad })) }); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
 router.post('/objetivo', async (req, res) => { try { const id = String(req.body?.id || ''); if (!OBJETIVOS[id]) return res.status(400).json({ error: 'Objetivo no válido' }); await guardarJson(RUTA_OBJETIVO, { id }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo guardar' }); } });
 router.post('/instagram/prueba', async (req, res) => {
