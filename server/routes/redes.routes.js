@@ -116,7 +116,8 @@ const interaccion = (m) => (Number(m.me_gusta) || 0) + (Number(m.comentarios) ||
 // ¿Qué es «lo que mejor funciona»? Depende de lo que quieras conseguir. Cada objetivo tiene su propia puntuación (siempre suavizada: con muy poco alcance, un par de me gusta no puede disparar la nota).
 const n0 = (x) => Number(x) || 0, base0 = (m) => n0(m.reach) || n0(m.views), K = 400;
 export const OBJETIVOS = {
-  equilibrado: { nombre: 'Equilibrado', icono: '⚖️', que: 'Lo que más reacción provoca en quien lo ve.', formula: 'Interacciones ponderadas (me gusta ×1, comentarios ×3, guardados ×4, compartidos ×5) entre el alcance.', unidad: 'puntos', f: (m) => (n0(m.me_gusta) + n0(m.comentarios) * 3 + n0(m.saved) * 4 + n0(m.shares) * 5) / (base0(m) + K) * 100 },
+  crecimiento: { nombre: 'Crecer y vender (mezcla)', icono: '📈', que: 'El mix que buscas: llegar a más gente, que te sigan, que comenten y conversen, y que te contacten.', formula: 'Mezcla de alcance (vistas), compartidos (traen gente nueva), comentarios (conversación y contactos), guardados y tiempo visto. Compartidos y comentarios pesan más.', unidad: 'puntos de crecimiento', f: (m) => 8 * Math.log10((n0(m.views) || n0(m.reach)) + 10) + (n0(m.shares) * 4 + n0(m.comentarios) * 3 + n0(m.saved) * 2) * 1000 / (base0(m) + K) / 10 + n0(m.ig_reels_avg_watch_time) / 1000 * 1.5 },
+  equilibrado: { nombre: 'Interacción', icono: '⚖️', que: 'Lo que más reacción provoca en quien lo ve.', formula: 'Interacciones ponderadas (me gusta ×1, comentarios ×3, guardados ×4, compartidos ×5) entre el alcance.', unidad: 'puntos', f: (m) => (n0(m.me_gusta) + n0(m.comentarios) * 3 + n0(m.saved) * 4 + n0(m.shares) * 5) / (base0(m) + K) * 100 },
   visibilidad: { nombre: 'Visibilidad', icono: '👁', que: 'Llegar a más gente: lo más visto.', formula: 'Visualizaciones, en miles.', unidad: 'miles de vistas', f: (m) => (n0(m.views) || n0(m.reach)) / 1000 },
   conversacion: { nombre: 'Comentarios y conversación', icono: '💬', que: 'Que la gente escriba, pregunte y responda.', formula: 'Comentarios por cada 1.000 personas alcanzadas.', unidad: 'comentarios / 1.000', f: (m) => n0(m.comentarios) * 1000 / (base0(m) + K) },
   guardados: { nombre: 'Guardados (valor útil)', icono: '🔖', que: 'Contenido que la gente quiere conservar porque le sirve.', formula: 'Guardados por cada 1.000 personas alcanzadas.', unidad: 'guardados / 1.000', f: (m) => n0(m.saved) * 1000 / (base0(m) + K) },
@@ -126,10 +127,10 @@ export const OBJETIVOS = {
   retencion: { nombre: 'Retención (que lo vean entero)', icono: '⏱', que: 'Que la gente se quede viendo el vídeo.', formula: 'Tiempo medio que se ve cada reel, en segundos.', unidad: 'segundos vistos', f: (m) => n0(m.ig_reels_avg_watch_time) / 1000 },
 };
 const RUTA_OBJETIVO = 'crm/redes/objetivo.json';
-const objetivoActual = async () => { const o = await leerJson(RUTA_OBJETIVO, null); return OBJETIVOS[o?.id] ? o.id : 'equilibrado'; };
+const objetivoActual = async () => { const o = await leerJson(RUTA_OBJETIVO, null); return OBJETIVOS[o?.id] ? o.id : 'crecimiento'; };
 const redondea = (x) => Math.round(x * 10) / 10;
-const puntua = (m, seg, obj = 'equilibrado') => (OBJETIVOS[obj] || OBJETIVOS.equilibrado).f(m);
-const textoObjetivo = (obj) => { const o = OBJETIVOS[obj] || OBJETIVOS.equilibrado; return 'OBJETIVO ELEGIDO: «' + o.nombre + '» — ' + o.que + ' Se mide así: ' + o.formula + ' Juzga "lo que funciona" SOLO con ese criterio.'; };
+const puntua = (m, seg, obj = 'crecimiento') => (OBJETIVOS[obj] || OBJETIVOS.crecimiento).f(m);
+const textoObjetivo = (obj) => { const o = OBJETIVOS[obj] || OBJETIVOS.crecimiento; return 'OBJETIVO ELEGIDO: «' + o.nombre + '» — ' + o.que + ' Se mide así: ' + o.formula + ' Juzga "lo que funciona" SOLO con ese criterio.'; };
 // Un reel de prueba es el que casi no se ha mostrado a nadie (alcance muy por debajo de lo habitual de la cuenta). Se detecta solo y se puede corregir a mano.
 const RUTA_PRUEBAS = 'crm/redes/pruebas.json';
 async function marcaPruebas(media) {
