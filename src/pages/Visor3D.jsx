@@ -1619,11 +1619,11 @@ export function planta(m, z0) {
   });
   (m.recrecidos || []).forEach(rc => {
     if (!Array.isArray(rc.pts) || rc.pts.length < 3) return;
-    const h = (rc.h || m.altura || 260) * CM;
-    const sh = new THREE.Shape(rc.pts.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM)));
-    const geo = new THREE.ExtrudeGeometry(sh, { depth: h, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
+    const hCm = rc.h || m.altura || 260; // en cm y luego a metros: así las texturas (que van en cm) se pintan a su escala
+    const sh = new THREE.Shape(rc.pts.map(p => new THREE.Vector2(p[0], -p[1])));
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: hCm, bevelEnabled: false }); geo.rotateX(-Math.PI / 2); geo.scale(CM, CM, CM);
     const x = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: rc.estado === 'new' ? 0xf1ece6 : 0xe4e0db, roughness: 0.95 }));
-    x.castShadow = x.receiveShadow = true; x.userData.capa = 'recrecidos'; x.userData.recrecidoId = rc.id; g.add(x);
+    x.castShadow = x.receiveShadow = true; x.userData = { capa: 'muros', muroId: 'rc-' + rc.id, recrecidoId: rc.id }; g.add(x); // pintable como un muro (su color se guarda con la clave rc-…)
   });
   (m.equipos || []).forEach(e => g.add(maquina(e)));
   return g;
