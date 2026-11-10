@@ -32,6 +32,7 @@ async function entrega(c, out) {
   for (const f of out.archivos || []) if (c.enviarArchivo) await c.enviarArchivo(f);
 }
 
+const intentosPred = {};
 async function avisaVideos(estado) {
   const c = elegir(estado); if (!c) return;
   const { videosTerminados, marcaVideoAvisado } = await import('../routes/estudio-video.routes.js');
@@ -45,7 +46,7 @@ async function avisaVideos(estado) {
   // predicciones con vídeo
   const { prediccionesPendientes } = await import('../routes/estudio-video.routes.js'), { prediccionDeTrabajo } = await import('../routes/redes.routes.js');
   for (const j of await prediccionesPendientes()) {
-    try { const p = await prediccionDeTrabajo(j); if (p) { const e = p.estimacion || {}; await c.enviar('🔮 Predicción de «' + (j.analisis_videos?.[0]?.pie || 'tu vídeo') + '»:' + NL + 'Lo más probable: ' + (e.medio || '?') + ' ' + (e.metrica || 'vistas') + ' (entre ' + (e.bajo || '?') + ' y ' + (e.alto || '?') + ', confianza ' + (p.confianza || '?') + ').' + NL + String(p.por_que || '').slice(0, 400) + ((p.mejoras || []).length ? NL + 'Para mejorarlo: ' + p.mejoras.slice(0, 2).map(m => m.cambio).join(' · ') : '')); } } catch (e) { console.log('Aviso de predicción:', e.message); }
+    try { const p = await prediccionDeTrabajo(j); if (p) { const e = p.estimacion || {}; await c.enviar('🔮 Predicción de «' + (j.analisis_videos?.[0]?.pie || 'tu vídeo') + '»:' + NL + 'Lo más probable: ' + (e.medio || '?') + ' ' + (e.metrica || 'vistas') + ' (entre ' + (e.bajo || '?') + ' y ' + (e.alto || '?') + ', confianza ' + (p.confianza || '?') + ').' + NL + String(p.por_que || '').slice(0, 400) + ((p.mejoras || []).length ? NL + 'Para mejorarlo: ' + p.mejoras.slice(0, 2).map(m => m.cambio).join(' · ') : '')); } } catch (e) { console.log('Aviso de predicción:', e.message); intentosPred[j.id] = (intentosPred[j.id] || 0) + 1; if (intentosPred[j.id] < 3) continue; }
     await marcaVideoAvisado(j.id);
   }
 }
