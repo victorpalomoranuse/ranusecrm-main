@@ -4,6 +4,43 @@ import { Film, Upload, Mic, Video, Trash2, RefreshCw, Download, Plus, Check, Wan
 
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '0.85rem 1rem' };
 const mut = { color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem' };
+const ESTILO_REDES = `
+.rd-wrap{padding:28px 40px 70px;max-width:1360px;margin:0 auto;box-sizing:border-box;width:100%}
+.rd-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
+.rd-title{font-size:2rem;font-weight:800;letter-spacing:-.025em;margin:0;line-height:1.1}
+.rd-sub{color:rgba(255,255,255,.5);font-size:.92rem;margin-top:6px}
+.rd-tabs{display:inline-flex;gap:4px;padding:4px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:14px;flex-wrap:wrap}
+.rd-tab{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:10px;border:0;background:transparent;color:rgba(255,255,255,.62);font-weight:600;font-size:.9rem;cursor:pointer;font-family:inherit;transition:background .15s,color .15s}
+.rd-tab:hover{color:#fff;background:rgba(255,255,255,.07)}
+.rd-tab.on{background:#e3d2b8;color:#161513}
+.rd-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(310px,1fr))}
+.rd-grid2{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.rd-card{background:linear-gradient(160deg,rgba(255,255,255,.055),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.09);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px;min-width:0;box-sizing:border-box}
+.rd-card h3{margin:0;font-size:1.02rem;font-weight:700}
+.rd-kpis{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:18px}
+.rd-kpi{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px 18px}
+.rd-kpi b{display:block;font-size:2rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.rd-kpi span{color:rgba(255,255,255,.5);font-size:.8rem}
+.rd-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.08);font-size:.74rem;color:rgba(255,255,255,.75);white-space:nowrap}
+.rd-chip.verde{background:rgba(124,207,143,.16);color:#8fdba0}.rd-chip.ambar{background:rgba(242,196,109,.16);color:#f2c46d}.rd-chip.rojo{background:rgba(239,123,123,.16);color:#f29a9a}.rd-chip.arena{background:rgba(227,210,184,.16);color:#e3d2b8}
+.rd-gancho{font-size:1.12rem;font-weight:700;line-height:1.35;letter-spacing:-.01em}
+.rd-btn{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-weight:600;font-size:.84rem;cursor:pointer;font-family:inherit}
+.rd-btn:hover:not(:disabled){background:rgba(255,255,255,.12)}.rd-btn:disabled{opacity:.45;cursor:not-allowed}
+.rd-btn.pri{background:#e3d2b8;color:#161513;border-color:#e3d2b8}.rd-btn.pri:hover:not(:disabled){background:#f0e3cf}
+.rd-days{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px}
+.rd-day{flex:0 0 118px;border-radius:14px;padding:11px 12px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08)}
+.rd-day.hoy{border-color:#e3d2b8;background:rgba(227,210,184,.1)}.rd-day.vacio{opacity:.45}
+.rd-day .n{font-size:1.35rem;font-weight:800;line-height:1}.rd-day .d{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.5)}
+.rd-day .t{font-size:.74rem;line-height:1.3;margin-top:6px;color:rgba(255,255,255,.82);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rd-post{position:relative;border-radius:14px;overflow:hidden;background:#1b1a18;border:1px solid rgba(255,255,255,.09);aspect-ratio:4/5;display:flex;align-items:flex-end}
+.rd-post img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.rd-post .vel{position:relative;width:100%;padding:34px 10px 10px;background:linear-gradient(transparent,rgba(0,0,0,.88));font-size:.76rem;line-height:1.3}
+.rd-post .pt{position:absolute;top:8px;left:8px;background:#e3d2b8;color:#161513;font-weight:800;font-size:.8rem;padding:3px 9px;border-radius:999px}
+.rd-bar{display:flex;align-items:center;gap:10px;font-size:.82rem;margin:5px 0}.rd-bar i{display:block;height:9px;border-radius:5px;background:linear-gradient(90deg,#b9a98f,#e3d2b8)}
+.rd-lista{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px;font-size:.88rem;line-height:1.4}
+.rd-lista li{padding-left:16px;position:relative}.rd-lista li:before{content:'';position:absolute;left:0;top:.55em;width:7px;height:7px;border-radius:50%;background:var(--pt,#e3d2b8)}
+@media(max-width:700px){.rd-wrap{padding:18px 14px 60px}}
+`;
 const ESTILO_SELECT = '.ev-root select option { background:#1a1a1a; color:#fff; } .ev-root select { color-scheme: dark; }';
 const ESTADOS = { pendiente: ['En cola', '#bba'], procesando: ['Montando…', '#f2c46d'], listo: ['Listo', '#7ccf8f'], error: ['Error', '#ef7b7b'] };
 const fmtFecha = (iso) => { try { return new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' }); } catch { return ''; } };
@@ -921,56 +958,60 @@ function PestanaIdeas() {
   const copia = (txt) => { try { navigator.clipboard.writeText(txt); } catch { /* sin portapapeles */ } };
   if (ideas === null) return <div style={mut}>Cargando…</div>;
   const hoy = new Date().toISOString().slice(0, 10);
-  const agenda = ideas.filter(i => i.fecha && i.estado !== 'descartada' && i.estado !== 'publicado').sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const agenda = ideas.filter(i => i.fecha && i.estado !== 'descartada' && i.estado !== 'publicado');
   const lista = ideas.filter(i => (filtro === 'activas' ? !['descartada', 'publicado'].includes(i.estado) : filtro === 'todas' ? true : i.estado === filtro)).slice().reverse();
+  const dias = Array.from({ length: 14 }, (_, k) => { const d = new Date(Date.now() + k * 86400000); const iso = d.toISOString().slice(0, 10); return { iso, n: d.getDate(), nombre: d.toLocaleDateString('es-ES', { weekday: 'short' }), items: agenda.filter(x => x.fecha === iso) }; });
+  const atrasadas = agenda.filter(x => x.fecha < hoy);
+  const colorEstado = { grabar: 'ambar', editando: 'arena', publicado: 'verde', descartada: 'rojo' };
   return (
-    <div>
-      <div style={card}>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>Ideas de contenido</div>
-        <div style={{ ...mut, marginBottom: 8 }}>La IA propone vídeos con gancho, guion y qué grabar, siguiendo el manual de redes y las reglas de marca de Ranuse. Ponles fecha para verlas en el calendario.</div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input className="ap-field-input" style={{ flex: 1, minWidth: 200 }} placeholder="Tema o proyecto (opcional): ej. home gym en Rivas, suelos…" value={tema} onChange={e => setTema(e.target.value)} />
-          <select className="ap-field-input" value={cant} onChange={e => setCant(Number(e.target.value))}>{[3, 6, 10].map(n => <option key={n} value={n}>{n} ideas</option>)}</select>
-          <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={gen} onClick={generar}><Wand2 size={13} /> {gen ? 'Pensando…' : 'Generar ideas'}</button>
-        </div>
-        {err && <div className="ap-error" style={{ marginTop: 8 }}>{err}</div>}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div className="rd-card" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ flex: '1 1 320px' }}><h3>✨ Ideas con gancho</h3><div className="rd-sub" style={{ marginTop: 2 }}>Dime un tema o déjalo en blanco.</div></div>
+        <input className="ap-field-input" style={{ flex: '2 1 280px' }} placeholder="Tema o proyecto: home gym en Rivas, suelos…" value={tema} onChange={e => setTema(e.target.value)} />
+        <select className="ap-field-input" value={cant} onChange={e => setCant(Number(e.target.value))}>{[3, 6, 10].map(n => <option key={n} value={n}>{n} ideas</option>)}</select>
+        <button className="rd-btn pri" disabled={gen} onClick={generar}><Wand2 size={15} /> {gen ? 'Pensando…' : 'Generar ideas'}</button>
+        {err && <div className="ap-error" style={{ flexBasis: '100%' }}>{err}</div>}
       </div>
-      {agenda.length > 0 && (
-        <div style={card}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Calendario</div>
-          {agenda.map(i => <div key={i.id} style={{ display: 'flex', gap: 10, fontSize: '0.85rem', padding: '3px 0', color: i.fecha < hoy ? '#ef7b7b' : 'inherit' }}><span style={{ width: 84, flex: 'none' }}>{i.fecha.slice(8, 10)}/{i.fecha.slice(5, 7)}{i.fecha === hoy ? ' · hoy' : ''}</span><span style={{ flex: 1 }}>{i.titulo}</span><span style={mut}>{ESTADOS_IDEA[i.estado]}</span></div>)}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}><h3 style={{ margin: 0 }}>📅 Próximos 14 días</h3>{atrasadas.length > 0 && <span className="rd-chip rojo">{atrasadas.length} atrasada{atrasadas.length > 1 ? 's' : ''}</span>}</div>
+        <div className="rd-days">
+          {dias.map(d => <div key={d.iso} className={'rd-day' + (d.iso === hoy ? ' hoy' : '') + (!d.items.length ? ' vacio' : '')}><div className="d">{d.nombre}{d.iso === hoy ? ' · hoy' : ''}</div><div className="n">{d.n}</div>{d.items.slice(0, 2).map(x => <div key={x.id} className="t">{x.titulo}</div>)}{d.items.length > 2 && <div className="t" style={{ opacity: 0.6 }}>+{d.items.length - 2} más</div>}</div>)}
         </div>
-      )}
-      <div style={{ display: 'flex', gap: 6, margin: '4px 0 10px', flexWrap: 'wrap' }}>
-        {['activas', 'grabar', 'editando', 'publicado', 'descartada', 'todas'].map(f => <button key={f} className={'ap-btn ap-btn-sm' + (filtro === f ? ' ap-btn-primary' : '')} onClick={() => setFiltro(f)}>{f === 'activas' ? 'Activas' : f === 'todas' ? 'Todas' : ESTADOS_IDEA[f]}</button>)}
       </div>
-      {lista.length === 0 && <div style={mut}>No hay ideas en esta vista. Pulsa "Generar ideas".</div>}
-      {lista.map(i => (
-        <div key={i.id} style={card}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontWeight: 600 }}>{i.titulo}</div>
-              <div style={{ ...mut, marginTop: 2 }}>{i.formato}{i.plataforma ? ' · ' + i.plataforma : ''}</div>
+      <div className="rd-tabs" style={{ alignSelf: 'flex-start' }}>
+        {['activas', 'grabar', 'editando', 'publicado', 'descartada', 'todas'].map(fl => <button key={fl} className={'rd-tab' + (filtro === fl ? ' on' : '')} style={{ padding: '7px 14px' }} onClick={() => setFiltro(fl)}>{fl === 'activas' ? 'Activas' : fl === 'todas' ? 'Todas' : ESTADOS_IDEA[fl]}</button>)}
+      </div>
+      {lista.length === 0 && <div className="rd-card" style={{ alignItems: 'center', textAlign: 'center', padding: 36 }}><div style={{ fontSize: '2rem' }}>💡</div><div style={mut}>Aún no hay ideas aquí. Pulsa «Generar ideas».</div></div>}
+      <div className="rd-grid">
+        {lista.map(i => (
+          <div key={i.id} className="rd-card">
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span className={'rd-chip ' + (colorEstado[i.estado] || '')}>{ESTADOS_IDEA[i.estado]}</span>
+              {i.formato && <span className="rd-chip">{i.formato}</span>}
+              {i.plataforma && <span className="rd-chip">{i.plataforma}</span>}
             </div>
-            <select className="ap-field-input" value={i.estado} onChange={e => cambia(i, { estado: e.target.value })}>{Object.entries(ESTADOS_IDEA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-            <input className="ap-field-input" type="date" value={i.fecha || ''} onChange={e => cambia(i, { fecha: e.target.value || null })} />
-          </div>
-          <div style={{ marginTop: 8, fontSize: '0.9rem' }}><strong>Gancho:</strong> “{i.gancho}”</div>
-          {i.razon && <div style={{ ...mut, marginTop: 4 }}>{i.razon}</div>}
-          {abierta === i.id && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', padding: 8, borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>{i.guion}</div>
-              {i.que_grabar && <div style={{ ...mut, marginTop: 6 }}><strong>Qué grabar:</strong> {i.que_grabar}</div>}
-              <textarea className="ap-field-input" style={{ width: '100%', minHeight: 50, marginTop: 8 }} placeholder="Notas" defaultValue={i.notas || ''} onBlur={e => { if (e.target.value !== (i.notas || '')) cambia(i, { notas: e.target.value }); }} />
+            <div className="rd-gancho">“{i.gancho || i.titulo}”</div>
+            {i.gancho && <div style={{ ...mut, fontSize: '0.84rem' }}>{i.titulo}</div>}
+            {abierta === i.id && (
+              <div>
+                <div style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', padding: 10, borderRadius: 10, background: 'rgba(255,255,255,0.05)', lineHeight: 1.5 }}>{i.guion}</div>
+                {i.que_grabar && <div style={{ ...mut, marginTop: 6 }}><strong>Qué grabar:</strong> {i.que_grabar}</div>}
+                {i.razon && <div style={{ ...mut, marginTop: 6 }}>{i.razon}</div>}
+                <textarea className="ap-field-input" style={{ width: '100%', minHeight: 50, marginTop: 8 }} placeholder="Notas" defaultValue={i.notas || ''} onBlur={e => { if (e.target.value !== (i.notas || '')) cambia(i, { notas: e.target.value }); }} />
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 'auto' }}>
+              <select className="ap-field-input" style={{ flex: '1 1 110px' }} value={i.estado} onChange={e => cambia(i, { estado: e.target.value })}>{Object.entries(ESTADOS_IDEA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+              <input className="ap-field-input" style={{ flex: '1 1 130px' }} type="date" value={i.fecha || ''} onChange={e => cambia(i, { fecha: e.target.value || null })} />
             </div>
-          )}
-          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-            <button className="ap-btn ap-btn-sm" onClick={() => setAbierta(abierta === i.id ? null : i.id)}>{abierta === i.id ? 'Ocultar guion' : 'Ver guion'}</button>
-            <button className="ap-btn ap-btn-sm" onClick={() => copia(i.titulo + '\n\n' + i.gancho + '\n\n' + i.guion)}>Copiar guion</button>
-            <button className="ap-btn ap-btn-sm" onClick={() => borra(i)}><Trash2 size={13} /></button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="rd-btn" onClick={() => setAbierta(abierta === i.id ? null : i.id)}>{abierta === i.id ? 'Ocultar guion' : 'Ver guion'}</button>
+              <button className="rd-btn" onClick={() => copia(i.titulo + '\n\n' + i.gancho + '\n\n' + i.guion)}>Copiar</button>
+              <button className="rd-btn" onClick={() => borra(i)} title="Borrar"><Trash2 size={14} /></button>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -1132,106 +1173,128 @@ function Estilos({ estilos: formatos, onCambio }) {
 
 
 // Analizador de redes: Instagram conectado (sin copiar claves), aprende de tus publicaciones y busca ideas ganadoras en el nicho (Instagram y YouTube)
-function ListaPuntos({ titulo, items, color }) {
+function Lista({ items, color }) {
   if (!items || !items.length) return null;
-  return <div style={{ marginTop: 8 }}><strong style={color ? { color } : undefined}>{titulo}</strong>{items.map((x, i) => <div key={i} style={{ fontSize: '0.86rem', lineHeight: 1.45 }}>• {x}</div>)}</div>;
+  return <ul className="rd-lista" style={color ? { '--pt': color } : undefined}>{items.map((x, i) => <li key={i}>{x}</li>)}</ul>;
+}
+function Tarjeta({ titulo, color, children }) { return <div className="rd-card"><h3 style={color ? { color } : undefined}>{titulo}</h3>{children}</div>; }
+function IdeasTarjetas({ ideas }) {
+  if (!ideas || !ideas.length) return null;
+  return <div className="rd-grid">{ideas.map((x, i) => <div key={i} className="rd-card"><span className="rd-chip arena" style={{ alignSelf: 'flex-start' }}>{x.formato || 'idea'}</span><div className="rd-gancho">{x.gancho ? '“' + x.gancho + '”' : x.idea}</div>{x.gancho && <div style={{ fontSize: '0.88rem' }}>{x.idea}</div>}{x.por_que && <div style={{ ...mut, fontSize: '0.8rem' }}>{x.por_que}</div>}</div>)}</div>;
 }
 function ResultadoNicho({ n }) {
   if (!n) return null;
+  const yt = n.plataforma === 'youtube';
   return (
-    <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid rgba(205,187,167,0.3)' }}>
-      <div style={mut}>{n.plataforma === 'youtube' ? 'YouTube · «' + n.consulta + '»' : 'Instagram · ' + (n.cuentas || []).map(c => '@' + c.usuario).join(', ')} · {String(n.fecha).slice(0, 10)}</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 6 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span className="rd-chip arena">{yt ? '▶ YouTube · ' + n.consulta : '📸 ' + (n.cuentas || []).map(c => '@' + c.usuario).join(', ')}</span><span style={mut}>{String(n.fecha).slice(0, 10)}</span>{n.fiabilidad && <span className="rd-chip" title={n.fiabilidad}>Fiabilidad: {String(n.fiabilidad).split(/[.,:]/)[0].slice(0, 30)}</span>}</div>
       {(n.fallos || []).length > 0 && <div style={{ ...mut, color: '#f2c46d' }}>No he podido leer: {n.fallos.join(' · ')}</div>}
-      <ListaPuntos titulo="Patrones que funcionan" items={n.patrones} />
-      <ListaPuntos titulo="Ganchos" items={n.ganchos} />
-      <ListaPuntos titulo="Formatos" items={n.formatos} />
-      {(n.ideas || []).length > 0 && <div style={{ marginTop: 8 }}><strong>💡 Ideas para ti</strong>{n.ideas.map((x, i) => <div key={i} style={{ fontSize: '0.86rem', marginTop: 3 }}><b>{x.idea}</b> <span style={mut}>({x.formato})</span>{x.gancho && <div style={mut}>Gancho: «{x.gancho}»</div>}{x.por_que && <div style={mut}>{x.por_que}</div>}</div>)}</div>}
-      {(n.top || []).length > 0 && <details style={{ marginTop: 8 }}><summary style={{ cursor: 'pointer', ...mut }}>Las publicaciones que más rinden</summary>{n.top.map((p, i) => <div key={i} style={{ fontSize: '0.82rem', padding: '3px 0' }}><a href={p.enlace} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{p.titulo || p.gancho || p.pie || 'ver'}</a> <span style={mut}>{p.cuenta ? '@' + p.cuenta + ' · ' : p.canal ? p.canal + ' · ' : ''}{p.vistas ? p.vistas.toLocaleString('es-ES') + ' vistas · ' : ''}{p.me_gusta != null ? p.me_gusta + ' me gusta' : ''}</span></div>)}</details>}
-      {n.fiabilidad && <div style={{ ...mut, marginTop: 6 }}>Fiabilidad: {n.fiabilidad}</div>}
+      {(n.top || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>{n.top.slice(0, 8).map((p, i) => <a key={i} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: yt ? '16/11' : '4/5' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{yt ? (p.vistas_por_suscriptor != null ? p.vistas_por_suscriptor + '×' : '') : p.puntuacion}</span><div className="vel"><b>{p.titulo || p.gancho || p.pie || 'ver'}</b><div style={{ opacity: 0.7 }}>{p.canal || (p.cuenta ? '@' + p.cuenta : '')}{p.vistas ? ' · ' + p.vistas.toLocaleString('es-ES') + ' vistas' : p.me_gusta != null ? ' · ' + p.me_gusta + ' me gusta' : ''}</div></div></a>)}</div>}
+      <div className="rd-grid2">
+        {(n.patrones || []).length > 0 && <Tarjeta titulo="Lo que funciona"><Lista items={n.patrones} color="#8fdba0" /></Tarjeta>}
+        {(n.ganchos || []).length > 0 && <Tarjeta titulo="Ganchos que enganchan"><Lista items={n.ganchos} /></Tarjeta>}
+        {(n.formatos || []).length > 0 && <Tarjeta titulo="Formatos ganadores"><Lista items={n.formatos} color="#f2c46d" /></Tarjeta>}
+      </div>
+      {(n.ideas || []).length > 0 && <div><h3 style={{ margin: '4px 0 10px' }}>💡 Ideas para ti</h3><IdeasTarjetas ideas={n.ideas} /></div>}
     </div>
   );
 }
 function PestanaAnalizador() {
   const [e, setE] = useState(null), [msg, setMsg] = useState(''), [error, setError] = useState(''), [trabaja, setTrabaja] = useState(''), [pubs, setPubs] = useState(null), [cuentas, setCuentas] = useState(''), [consulta, setConsulta] = useState('diseño de gimnasios'), [nicho, setNicho] = useState(null), [ayuda, setAyuda] = useState(null);
   const cargar = useCallback(() => api.get('/redes/estado').then(r => setE(r.data)).catch(() => setE({ instagram: null })), []);
+  const cargaPubs = useCallback(() => api.get('/redes/instagram/publicaciones').then(r => setPubs(r.data.publicaciones)).catch(() => {}), []);
   useEffect(() => {
     cargar(); api.get('/redes/nicho').then(r => setNicho(r.data)).catch(() => {});
-    try { const p = new URLSearchParams(window.location.search); if (p.get('redes') === 'conectado') setMsg('✓ Instagram conectado. Ahora pulsa «Leer mis publicaciones».'); else if (p.get('redes') === 'error') setError(p.get('msg') || 'No se pudo conectar.'); } catch { /* sin parámetros */ }
+    try { const p = new URLSearchParams(window.location.search); if (p.get('redes') === 'conectado') setMsg('Instagram conectado. Ahora pulsa «Leer mis publicaciones».'); else if (p.get('redes') === 'error') setError(p.get('msg') || 'No se pudo conectar.'); } catch { /* sin parámetros */ }
   }, [cargar]);
+  useEffect(() => { if (e?.instagram?.n_media) cargaPubs(); }, [e?.instagram?.n_media, cargaPubs]);
+  const [cfgId, setCfgId] = useState('');
+  const guardaCfg = async () => { setError(''); try { await api.post('/redes/config', { config_id: cfgId.trim() }); setMsg('ID guardado. Ahora pulsa «Conectar Instagram».'); setCfgId(''); await cargar(); } catch (x) { setError(x.response?.data?.error || 'No se pudo guardar'); } };
   const conecta = async () => { setError(''); try { const r = await api.get('/redes/instagram/conectar', { params: { origen: window.location.origin } }); setAyuda(r.data.redirect_uri); window.location.href = r.data.url; } catch (x) { setError(x.response?.data?.error || 'No se pudo iniciar la conexión'); } };
   const hace = async (clave, fn) => { setTrabaja(clave); setError(''); setMsg(''); try { await fn(); await cargar(); } catch (x) { setError(x.response?.data?.error || 'No se pudo'); } finally { setTrabaja(''); } };
-  const sync = () => hace('sync', async () => { const r = await api.post('/redes/instagram/sincronizar', {}, { timeout: 280000 }); setMsg('Leídas ' + r.data.publicaciones + ' publicaciones'); const l = await api.get('/redes/instagram/publicaciones'); setPubs(l.data.publicaciones); });
-  const analiza = () => hace('analiza', async () => { await api.post('/redes/instagram/analizar', {}, { timeout: 280000 }); setMsg('Análisis hecho: lo aprendido ya llega al editor y al asistente.'); });
-  const verPubs = () => hace('pubs', async () => { const l = await api.get('/redes/instagram/publicaciones'); setPubs(l.data.publicaciones); });
+  const sync = () => hace('sync', async () => { const r = await api.post('/redes/instagram/sincronizar', {}, { timeout: 280000 }); setMsg('Leídas ' + r.data.publicaciones + ' publicaciones'); await cargaPubs(); });
+  const analiza = () => hace('analiza', async () => { await api.post('/redes/instagram/analizar', {}, { timeout: 280000 }); setMsg('Hecho: lo aprendido ya llega al editor y al asistente.'); });
   const nichoIg = () => hace('nig', async () => { const r = await api.post('/redes/nicho/instagram', { cuentas }, { timeout: 280000 }); setNicho(n => ({ ...(n || {}), instagram: r.data.nicho })); });
   const nichoYt = () => hace('nyt', async () => { const r = await api.post('/redes/nicho/youtube', { consulta }, { timeout: 280000 }); setNicho(n => ({ ...(n || {}), youtube: r.data.nicho })); });
   const desconecta = async () => { if (!window.confirm('¿Desconectar Instagram?')) return; await hace('des', () => api.delete('/redes/instagram')); setPubs(null); };
   if (!e) return <div className="ap-loading">Cargando…</div>;
-  const ig = e.instagram, ap = e.aprendizaje;
+  const ig = e.instagram, ap = e.aprendizaje, top = (pubs || []).slice(0, 12), maxP = Math.max(1, ...(top.map(p => p.puntuacion || 0)));
+  const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('es-ES'));
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {error && <div className="ap-error">{error}</div>}
-      {msg && <div style={{ ...card, borderColor: 'rgba(124,207,143,0.5)' }}>{msg}</div>}
-      <div style={card}>
-        <div style={{ fontWeight: 700, marginBottom: 4 }}>📸 Tu Instagram</div>
-        {!ig && (<>
-          <div style={{ ...mut, marginBottom: 8 }}>Conéctalo con un clic: se abre Facebook, eliges tu cuenta profesional y aceptas los permisos de lectura. No se copia ninguna clave ni se publica nada.</div>
-          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={conecta}>Conectar Instagram</button>
-          <details style={{ marginTop: 10 }}>
-            <summary style={{ cursor: 'pointer', ...mut }}>Si Meta da un error al conectar (solo la primera vez)</summary>
-            <div style={{ fontSize: '0.84rem', lineHeight: 1.5, marginTop: 6 }}>
-              1. Entra en <b>developers.facebook.com → Mis apps → Ranuse Asistente</b>.<br />
-              2. En el menú izquierdo: <b>Añadir producto → Inicio de sesión con Facebook (Facebook Login)</b> → Configurar.<br />
-              3. Dentro: <b>Configuración → URI de redireccionamiento de OAuth válidos</b> y pega esta dirección: <code style={{ wordBreak: 'break-all' }}>{ayuda || 'https://ranusecrm-main-production.up.railway.app/api/redes/instagram/callback'}</code> y guarda.<br />
-              4. Vuelve aquí y pulsa «Conectar Instagram».
-            </div>
+      {msg && <div className="rd-card" style={{ borderColor: 'rgba(124,207,143,0.5)', padding: 14 }}>✓ {msg}</div>}
+      {!ig ? (
+        <div className="rd-card" style={{ alignItems: 'center', textAlign: 'center', padding: 40, gap: 14 }}>
+          <div style={{ fontSize: '2.6rem' }}>📸</div>
+          <h3 style={{ fontSize: '1.3rem' }}>Conecta tu Instagram</h3>
+          <div style={{ ...mut, maxWidth: 460 }}>Un clic: eliges tu cuenta en Facebook y aceptas solo permisos de lectura. No se publica nada.</div>
+          <button className="rd-btn pri" onClick={conecta}>Conectar Instagram</button>
+          {!e.config && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 560 }}><input className="ap-field-input" style={{ flex: '1 1 240px' }} value={cfgId} onChange={ev => setCfgId(ev.target.value)} placeholder="ID de configuración de Meta (solo números)" /><button className="rd-btn" disabled={!cfgId.trim()} onClick={guardaCfg}>Guardar ID</button></div>}
+          {e.config && <span className="rd-chip verde">ID de configuración guardado</span>}
+          <details style={{ textAlign: 'left', maxWidth: 560 }}>
+            <summary style={{ cursor: 'pointer', ...mut }}>Si Meta da error (solo la primera vez)</summary>
+            <ol style={{ fontSize: '0.86rem', lineHeight: 1.6, paddingLeft: 18 }}>
+              <li>developers.facebook.com → Mis apps → <b>Ranuse Asistente</b>.</li>
+              <li>Añadir producto → <b>Inicio de sesión con Facebook</b> → Configurar.</li>
+              <li>Configuración → <b>URI de redireccionamiento de OAuth válidos</b>: <code style={{ wordBreak: 'break-all' }}>{ayuda || 'https://ranusecrm-main-production.up.railway.app/api/redes/instagram/callback'}</code></li>
+              <li>Guarda y vuelve a pulsar «Conectar Instagram».</li>
+            </ol>
           </details>
-        </>)}
-        {ig && (<>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            {ig.foto && <img src={ig.foto} alt="" style={{ width: 44, height: 44, borderRadius: 22 }} />}
-            <div><b>@{ig.usuario}</b> <span style={mut}>· {ig.seguidores ?? '?'} seguidores · {ig.publicaciones ?? '?'} publicaciones</span><div style={mut}>{ig.ultima_sync ? 'Última lectura: ' + String(ig.ultima_sync).slice(0, 16).replace('T', ' ') + ' (' + ig.n_media + ' publicaciones)' : 'Aún no se han leído las publicaciones'} · la conexión dura {ig.expira_dias} días más</div></div>
+        </div>
+      ) : (<>
+        <div className="rd-card" style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+          {ig.foto ? <img src={ig.foto} alt="" style={{ width: 64, height: 64, borderRadius: 32, objectFit: 'cover' }} /> : <div style={{ width: 64, height: 64, borderRadius: 32, background: 'rgba(255,255,255,.1)' }} />}
+          <div style={{ flex: '1 1 200px' }}><div style={{ fontSize: '1.3rem', fontWeight: 800 }}>@{ig.usuario}</div><div style={mut}>{ig.ultima_sync ? 'Leído el ' + String(ig.ultima_sync).slice(0, 10) : 'Aún sin leer'} · conexión: {ig.expira_dias} días</div></div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="rd-btn" disabled={!!trabaja} onClick={sync}>{trabaja === 'sync' ? 'Leyendo…' : '↻ Leer publicaciones'}</button>
+            <button className="rd-btn pri" disabled={!!trabaja || !ig.n_media} onClick={analiza}>{trabaja === 'analiza' ? 'Analizando…' : '🧠 Aprender de lo que funciona'}</button>
+            <button className="rd-btn" disabled={!!trabaja} onClick={desconecta} title="Desconectar">✕</button>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-            <button className="ap-btn ap-btn-sm" disabled={!!trabaja} onClick={sync}>{trabaja === 'sync' ? 'Leyendo… (1-2 min)' : 'Leer mis publicaciones'}</button>
-            <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={!!trabaja || !ig.n_media} onClick={analiza}>{trabaja === 'analiza' ? 'Analizando…' : '🧠 Aprender de lo que me funciona'}</button>
-            {ig.n_media > 0 && <button className="ap-btn ap-btn-sm" disabled={!!trabaja} onClick={verPubs}>Ver ranking</button>}
-            <button className="ap-btn ap-btn-sm" disabled={!!trabaja} onClick={desconecta}>Desconectar</button>
+        </div>
+        <div className="rd-kpis">
+          <div className="rd-kpi"><b>{fmt(ig.seguidores)}</b><span>seguidores</span></div>
+          <div className="rd-kpi"><b>{fmt(ig.publicaciones)}</b><span>publicaciones en total</span></div>
+          <div className="rd-kpi"><b>{fmt(ig.n_media)}</b><span>publicaciones leídas</span></div>
+          <div className="rd-kpi"><b>{top[0] ? top[0].puntuacion : '—'}</b><span>mejor puntuación</span></div>
+        </div>
+        {top.length > 0 && (
+          <div>
+            <h3 style={{ margin: '0 0 10px' }}>🏆 Lo que mejor te ha funcionado</h3>
+            <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>
+              {top.slice(0, 8).map(p => <a key={p.id} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{p.puntuacion}</span><div className="vel"><b>{(p.pie || '(sin texto)').slice(0, 70)}</b><div style={{ opacity: 0.75 }}>{p.tipo}{p.reach != null ? ' · alcance ' + fmt(p.reach) : ''}{p.saved != null ? ' · ' + p.saved + ' guardados' : ''}</div></div></a>)}
+            </div>
           </div>
-          <div style={{ ...mut, marginTop: 8 }}>Lee tus publicaciones y su rendimiento (alcance, guardados, compartidos…) sin descargar ningún vídeo. Lo que aprende llega solo al editor de vídeo y al asistente de historias.</div>
-        </>)}
-      </div>
+        )}
+        {top.length > 0 && <div className="rd-card"><h3>Ranking</h3>{top.slice(0, 8).map(p => <div key={p.id} className="rd-bar"><span style={{ width: 150, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(p.pie || p.tipo).slice(0, 26)}</span><i style={{ width: Math.max(4, (p.puntuacion || 0) / maxP * 100) + '%' }} /><b>{p.puntuacion}</b></div>)}</div>}
+      </>)}
       {ap && (
-        <div style={card}>
-          <div style={{ fontWeight: 700 }}>🧠 Lo que funciona en tu cuenta <span style={mut}>· {String(ap.fecha).slice(0, 10)} · {ap.n} publicaciones</span></div>
-          {ap.resumen && <div style={{ ...mut, margin: '6px 0' }}>{ap.resumen}</div>}
-          <ListaPuntos titulo="Funciona" items={ap.lo_que_funciona} color="#7ccf8f" />
-          <ListaPuntos titulo="No funciona" items={ap.lo_que_no} color="#f2c46d" />
-          <ListaPuntos titulo="Ganchos ganadores" items={ap.ganchos_ganadores} />
-          {(ap.ideas_ganadoras || []).length > 0 && <div style={{ marginTop: 8 }}><strong>💡 Ideas ganadoras para ti</strong>{ap.ideas_ganadoras.map((x, i) => <div key={i} style={{ fontSize: '0.86rem', marginTop: 3 }}><b>{x.idea}</b> <span style={mut}>({x.formato})</span>{x.gancho && <div style={mut}>Gancho: «{x.gancho}»</div>}</div>)}</div>}
-          <ListaPuntos titulo="Para el editor de vídeo" items={ap.para_el_editor} />
-          <ListaPuntos titulo="Para las historias" items={ap.para_historias} />
-          {ap.horarios && <div style={{ ...mut, marginTop: 6 }}>Horarios: {ap.horarios}</div>}
-          {ap.fiabilidad && <div style={{ ...mut, marginTop: 4 }}>Fiabilidad: {ap.fiabilidad}</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}><h3 style={{ margin: 0, fontSize: '1.2rem' }}>🧠 Lo que funciona en tu cuenta</h3><span style={mut}>{String(ap.fecha).slice(0, 10)} · {ap.n} publicaciones</span></div>
+          {ap.resumen && <div style={{ fontSize: '1rem', lineHeight: 1.5 }}>{ap.resumen}</div>}
+          <div className="rd-grid2">
+            <Tarjeta titulo="✓ Funciona" color="#8fdba0"><Lista items={ap.lo_que_funciona} color="#8fdba0" /></Tarjeta>
+            <Tarjeta titulo="✕ No funciona" color="#f2c46d"><Lista items={ap.lo_que_no} color="#f2c46d" /></Tarjeta>
+            {(ap.ganchos_ganadores || []).length > 0 && <Tarjeta titulo="Ganchos ganadores"><Lista items={ap.ganchos_ganadores} /></Tarjeta>}
+            {(ap.para_el_editor || []).length > 0 && <Tarjeta titulo="🎬 Para el editor"><Lista items={ap.para_el_editor} /></Tarjeta>}
+            {(ap.para_historias || []).length > 0 && <Tarjeta titulo="📲 Para las historias"><Lista items={ap.para_historias} /></Tarjeta>}
+            {ap.horarios && <Tarjeta titulo="🕒 Mejores horas"><div style={{ fontSize: '0.9rem', lineHeight: 1.5 }}>{ap.horarios}</div></Tarjeta>}
+          </div>
+          {(ap.ideas_ganadoras || []).length > 0 && <div><h3 style={{ margin: '4px 0 10px' }}>💡 Ideas ganadoras para ti</h3><IdeasTarjetas ideas={ap.ideas_ganadoras} /></div>}
+          {ap.fiabilidad && <div style={mut}>Fiabilidad: {ap.fiabilidad}</div>}
         </div>
       )}
-      {pubs && (
-        <details open style={card}>
-          <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Ranking de tus publicaciones</summary>
-          {pubs.slice(0, 25).map(p => <div key={p.id} style={{ display: 'flex', gap: 8, padding: '5px 0', borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: '0.84rem' }}><span style={{ width: 44, fontWeight: 700 }}>{p.puntuacion}</span><span style={{ flex: 1 }}><a href={p.enlace} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{p.pie ? p.pie.slice(0, 90) : '(sin texto)'}</a><div style={mut}>{p.tipo} · {String(p.fecha).slice(0, 10)}{p.reach != null ? ' · alcance ' + p.reach : ''}{p.saved != null ? ' · guardados ' + p.saved : ''}{p.shares != null ? ' · compartidos ' + p.shares : ''} · {p.me_gusta ?? 0} me gusta · {p.comentarios ?? 0} comentarios</div></span></div>)}
-        </details>
-      )}
-      <div style={card}>
-        <div style={{ fontWeight: 700, marginBottom: 4 }}>🔎 Ideas ganadoras en tu nicho</div>
-        <div style={{ ...mut, marginBottom: 8 }}>Mira qué funciona en cuentas parecidas a la tuya y te propone ideas adaptadas a ti. De otras cuentas solo se ve lo público (textos y me gusta), no su alcance real ni sus vídeos.</div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-          <input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} value={cuentas} onChange={ev => setCuentas(ev.target.value)} placeholder="Cuentas de Instagram del nicho (separadas por comas): gymcompany_es, ..." disabled={!ig} />
-          <button className="ap-btn ap-btn-sm" disabled={!ig || !cuentas.trim() || !!trabaja} onClick={nichoIg}>{trabaja === 'nig' ? 'Analizando…' : 'Analizar Instagram'}</button>
+      <div className="rd-card">
+        <h3>🔎 Ideas ganadoras en tu nicho</h3>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input className="ap-field-input" style={{ flex: '1 1 260px' }} value={cuentas} onChange={ev => setCuentas(ev.target.value)} placeholder="Instagram: cuentas del nicho separadas por comas" disabled={!ig} />
+          <button className="rd-btn" disabled={!ig || !cuentas.trim() || !!trabaja} onClick={nichoIg}>{trabaja === 'nig' ? 'Analizando…' : '📸 Analizar'}</button>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} value={consulta} onChange={ev => setConsulta(ev.target.value)} placeholder="Qué buscar en YouTube" disabled={!e.youtube} />
-          <button className="ap-btn ap-btn-sm" disabled={!e.youtube || !consulta.trim() || !!trabaja} onClick={nichoYt}>{trabaja === 'nyt' ? 'Analizando…' : 'Analizar YouTube'}</button>
+          <input className="ap-field-input" style={{ flex: '1 1 260px' }} value={consulta} onChange={ev => setConsulta(ev.target.value)} placeholder="YouTube: qué buscar" disabled={!e.youtube} />
+          <button className="rd-btn" disabled={!e.youtube || !consulta.trim() || !!trabaja} onClick={nichoYt}>{trabaja === 'nyt' ? 'Analizando…' : '▶ Analizar'}</button>
         </div>
+        <div style={{ ...mut, fontSize: '0.8rem' }}>De otras cuentas solo se ve lo público.</div>
         <ResultadoNicho n={nicho?.instagram} />
         <ResultadoNicho n={nicho?.youtube} />
       </div>
@@ -1241,21 +1304,18 @@ function PestanaAnalizador() {
 
 // Departamento de redes: ideas, calendario y las reglas de marca (se irá ampliando con publicar y medir)
 export function SectionRedes() {
-  const [seccion, setSeccion] = useState('ideas');
+  const [seccion, setSeccion] = useState(() => { try { return new URLSearchParams(window.location.search).get('redes') ? 'medir' : 'ideas'; } catch { return 'ideas'; } });
+  const TABS = [['ideas', Wand2, 'Ideas y calendario'], ['guion', Music, 'Guionizador'], ['marca', Settings2, 'Voz de marca'], ['medir', Film, 'Analizador']];
   return (
-    <div className="ev-root" style={{ width: '100%', maxWidth: '100%' }}>
-      <style>{ESTILO_SELECT}</style>
-      <h1 className="ap-page-title" style={{ marginBottom: 6 }}>Departamento de redes</h1>
-      <p style={{ ...mut, marginBottom: 16 }}>Ideas de contenido con gancho y guion, calendario de publicaciones y las reglas de marca de Ranuse. Para producir los vídeos usa el Estudio de vídeo.</p>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-        <button className={'ap-btn ap-btn-sm' + (seccion === 'ideas' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('ideas')}><Wand2 size={13} /> Ideas y calendario</button>
-        <button className={'ap-btn ap-btn-sm' + (seccion === 'guion' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('guion')}><Music size={13} /> Guionizador</button>
-        <button className={'ap-btn ap-btn-sm' + (seccion === 'marca' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('marca')}><Settings2 size={13} /> Voz y reglas de marca</button>
-        <button className={'ap-btn ap-btn-sm' + (seccion === 'medir' ? ' ap-btn-primary' : '')} onClick={() => setSeccion('medir')}><Film size={13} /> Analizador</button>
+    <div className="ev-root rd-wrap">
+      <style>{ESTILO_SELECT + ESTILO_REDES}</style>
+      <div className="rd-head">
+        <div><h1 className="rd-title">Departamento de redes</h1><div className="rd-sub">Ideas, guiones y lo que de verdad te funciona.</div></div>
+        <div className="rd-tabs">{TABS.map(([k, Icono, n]) => <button key={k} className={'rd-tab' + (seccion === k ? ' on' : '')} onClick={() => setSeccion(k)}><Icono size={15} /> {n}</button>)}</div>
       </div>
       {seccion === 'ideas' && <PestanaIdeas />}
       {seccion === 'guion' && <Guionizador />}
-      {seccion === 'marca' && <div style={card}><CajaReglas /><div style={mut}>Estas reglas las usa la IA al proponer ideas y al editar los vídeos del Estudio.</div></div>}
+      {seccion === 'marca' && <div className="rd-card"><CajaReglas /></div>}
       {seccion === 'medir' && <PestanaAnalizador />}
     </div>
   );

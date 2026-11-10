@@ -60,15 +60,20 @@ const conexion = async () => { const c = await leerJson(RUTA_IG, null); return c
 router.get('/estado', async (req, res) => {
   try {
     const c = await conexion(), a = await leerJson(RUTA_APRENDIZAJE, null), cfg = await leerJson(RUTA_CONFIG, {}), n = await leerJson(RUTA_NICHO, { cuentas: [] });
-    res.json({ instagram: c ? { usuario: c.usuario, nombre: c.nombre, seguidores: c.seguidores, publicaciones: c.publicaciones, foto: c.foto, conectado: c.conectado, ultima_sync: c.ultima_sync || null, n_media: (c.media || []).length, expira_dias: Math.round((c.expira - Date.now()) / 86400000) } : null, aprendizaje: a || null, youtube: !!(cfg.youtube_key || process.env.YOUTUBE_API_KEY), nicho: n.cuentas || [] });
+    res.json({ instagram: c ? { usuario: c.usuario, nombre: c.nombre, seguidores: c.seguidores, publicaciones: c.publicaciones, foto: c.foto, conectado: c.conectado, ultima_sync: c.ultima_sync || null, n_media: (c.media || []).length, expira_dias: Math.round((c.expira - Date.now()) / 86400000) } : null, aprendizaje: a || null, youtube: !!(cfg.youtube_key || process.env.YOUTUBE_API_KEY), config: !!(cfg.fb_config_id || process.env.FB_CONFIG_ID), nicho: n.cuentas || [] });
   } catch (e) { res.status(500).json({ error: 'No se pudo leer el estado' }); }
 });
 
-router.get('/instagram/conectar', (req, res) => {
+router.get('/instagram/conectar', async (req, res) => {
   if (!APP_SECRET()) return res.status(503).json({ error: 'Falta la clave de la app de Meta en el servidor (WA_ASIST_APP_SECRET o FB_APP_SECRET).' });
   const origen = ORIGENES.includes(req.query.origen) ? req.query.origen : ORIGENES[0];
-  const url = 'https://www.facebook.com/v21.0/dialog/oauth?client_id=' + APP_ID() + '&redirect_uri=' + encodeURIComponent(REDIRECT) + '&state=' + encodeURIComponent(creaEstado(origen)) + '&scope=' + SCOPES + '&response_type=code';
-  res.json({ url, redirect_uri: REDIRECT });
+  const cfg = await leerJson(RUTA_CONFIG, {}), config = cfg.fb_config_id || process.env.FB_CONFIG_ID || '';
+  const url = 'https://www.facebook.com/v21.0/dialog/oauth?client_id=' + APP_ID() + '&redirect_uri=' + encodeURIComponent(REDIRECT) + '&state=' + encodeURIComponent(creaEstado(origen)) + (config ? '&config_id=' + encodeURIComponent(config) + '&response_type=code&override_default_response_type=true' : '&scope=' + SCOPES + '&response_type=code');
+  res.json({ url, redirect_uri: REDIRECT, con_configuracion: !!config });
+});
+router.post('/config', async (req, res) => {
+  try { const id = String(req.body?.config_id || '').trim(); if (!/^\d{8,25}$/.test(id)) return res.status(400).json({ error: 'El ID de configuración son solo números (unos 15 dígitos).' }); const cfg = await leerJson(RUTA_CONFIG, {}); cfg.fb_config_id = id; await guardarJson(RUTA_CONFIG, cfg); res.json({ ok: true }); }
+  catch { res.status(500).json({ error: 'No se pudo guardar' }); }
 });
 router.delete('/instagram', async (req, res) => { try { await guardarJson(RUTA_IG, {}); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo desconectar' }); } });
 
@@ -160,7 +165,7 @@ router.post('/nicho/youtube', async (req, res) => {
     const canales = [...new Set((v.items || []).map(x => x.snippet.channelId))]; const cs = await yt('channels', { part: 'statistics,snippet', id: canales.slice(0, 50).join(',') });
     const subs = Object.fromEntries((cs.items || []).map(c => [c.id, Number(c.statistics?.subscriberCount) || 0]));
     const dur = (iso) => { const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(iso || ''); return m ? (Number(m[1] || 0) * 3600 + Number(m[2] || 0) * 60 + Number(m[3] || 0)) : 0; };
-    const lista = (v.items || []).map(x => { const vistas = Number(x.statistics?.viewCount) || 0, s = subs[x.snippet.channelId] || 0; return { titulo: x.snippet.title, canal: x.snippet.channelTitle, fecha: x.snippet.publishedAt.slice(0, 10), segundos: dur(x.contentDetails?.duration), vistas, me_gusta: Number(x.statistics?.likeCount) || 0, comentarios: Number(x.statistics?.commentCount) || 0, suscriptores: s, vistas_por_suscriptor: s ? Math.round(vistas / s * 100) / 100 : null, enlace: 'https://www.youtube.com/watch?v=' + x.id }; }).sort((a, b) => (b.vistas_por_suscriptor ?? 0) - (a.vistas_por_suscriptor ?? 0));
+    const lista = (v.items || []).map(x => { const vistas = Number(x.statistics?.viewCount) || 0, s = subs[x.snippet.channelId] || 0; return { miniatura: x.snippet.thumbnails?.medium?.url || '', titulo: x.snippet.title, canal: x.snippet.channelTitle, fecha: x.snippet.publishedAt.slice(0, 10), segundos: dur(x.contentDetails?.duration), vistas, me_gusta: Number(x.statistics?.likeCount) || 0, comentarios: Number(x.statistics?.commentCount) || 0, suscriptores: s, vistas_por_suscriptor: s ? Math.round(vistas / s * 100) / 100 : null, enlace: 'https://www.youtube.com/watch?v=' + x.id }; }).sort((a, b) => (b.vistas_por_suscriptor ?? 0) - (a.vistas_por_suscriptor ?? 0));
     const r = json(await callClaude({ system: 'Eres analista de contenido de YouTube. Te paso vídeos públicos de un nicho (diseño y equipamiento de gimnasios) ordenados por vistas relativas al tamaño del canal (los que más rinden por encima de su audiencia son los «ganadores»). Saca qué títulos/ganchos, formatos y temas funcionan y propón ideas para Víctor Palomo (Ranuse Design, diseño de gimnasios), adaptadas a su marca. Solo datos públicos. Devuelves SOLO JSON {"patrones":["..."],"ganchos_titulos":["fórmula con ejemplo"],"formatos":["..."],"ideas_para_victor":[{"idea":"","formato":"short|vídeo largo","gancho":"","por_que":""}],"fiabilidad":"..."}', messages: [{ role: 'user', content: 'Búsqueda: ' + consulta + '\
 ' + JSON.stringify(lista.slice(0, 20)) }], maxTokens: 3000 }));
     const out = { fecha: new Date().toISOString(), plataforma: 'youtube', consulta, top: lista.slice(0, 12), patrones: (r.patrones || []).slice(0, 8).map(x => limpia(x, 240)), ganchos: (r.ganchos_titulos || []).slice(0, 8).map(x => limpia(x, 240)), formatos: (r.formatos || []).slice(0, 6).map(x => limpia(x, 240)), ideas: (r.ideas_para_victor || []).slice(0, 8).map(x => ({ idea: limpia(x?.idea, 240), formato: limpia(x?.formato, 20), gancho: limpia(x?.gancho, 200), por_que: limpia(x?.por_que, 200) })), fiabilidad: limpia(r.fiabilidad, 240) };
