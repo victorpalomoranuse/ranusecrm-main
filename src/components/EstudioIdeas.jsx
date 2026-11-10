@@ -6,6 +6,7 @@ import './EstudioIdeas.css';
 // Se usa en la sección propia del CRM y dentro del visor 3D (capturarVista = imagen de la vista actual).
 
 const ATAJOS = [
+  'Dame una idea para este espacio',
   'Dame una idea de mural para esta pared',
   { texto: 'Ahora dame solo el mural, sin la pared ni nada más, para imprimir', solo: true },
   'Haz una variante con otros colores',
@@ -44,7 +45,32 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
   const [transparente, setTransparente] = useState(true);
   const [usarContexto, setUsarContexto] = useState(true);   // con el visor 3D: el agente conoce el modelo en cada mensaje
   const [verContexto, setVerContexto] = useState('');
-  const fin = useRef(null), fichero = useRef(null);
+  const [marcas, setMarcas] = useState([]);
+  const [marcaId, setMarcaId] = useState(() => { try { return localStorage.getItem('ideasMarca') || ''; } catch { return ''; } });
+  const [modo, setModo] = useState(() => { try { return localStorage.getItem('ideasModo') || 'sorprende'; } catch { return 'sorprende'; } });
+  const [subiendoMarca, setSubiendoMarca] = useState(false);
+  const [ficha, setFicha] = useState(null);
+  const fin = useRef(null), fichero = useRef(null), ficheroMarca = useRef(null);
+
+  useEffect(() => { api.get('/estudio-ideas/marcas').then(r => setMarcas(r.data?.marcas || [])).catch(() => {}); }, []);
+  useEffect(() => { try { localStorage.setItem('ideasMarca', marcaId); localStorage.setItem('ideasModo', modo); } catch { /* sin almacenamiento */ } }, [marcaId, modo]);
+  const subirMarca = async (fl) => {
+    if (!fl) return;
+    setSubiendoMarca(true); setError('');
+    try {
+      const fd = new FormData(); fd.append('file', fl);
+      const r = await api.post('/estudio-ideas/marcas', fd, { timeout: 280000 });
+      setMarcas(m => [...m, { id: r.data.id, nombre: r.data.nombre }]); setMarcaId(r.data.id); setFicha({ nombre: r.data.nombre, texto: r.data.ficha });
+    } catch (e) { setError(e.response?.data?.error || 'No se pudo leer el brandbook'); } finally { setSubiendoMarca(false); }
+  };
+  const verFicha = async () => {
+    if (ficha) { setFicha(null); return; }
+    try { const r = await api.get('/estudio-ideas/marcas/' + marcaId); setFicha({ nombre: r.data.nombre, texto: r.data.ficha }); } catch { setError('No se pudo leer la ficha'); }
+  };
+  const borrarMarca = async () => {
+    const m = marcas.find(x => x.id === marcaId); if (!m || !window.confirm('¿Borrar la marca «' + m.nombre + '»? (Se puede volver a subir el brandbook)')) return;
+    try { await api.delete('/estudio-ideas/marcas/' + marcaId); setMarcas(l => l.filter(x => x.id !== marcaId)); setMarcaId(''); setFicha(null); } catch { setError('No se pudo borrar la marca'); }
+  };
 
   useEffect(() => { fin.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [mensajes, trabajando]);
   useEffect(() => {
@@ -76,9 +102,14 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
     setTexto(''); setAdjuntas([]); setError(''); setTrabajando(true);
     try {
       let contexto; if (obtenerContexto && usarContexto) { try { contexto = (await obtenerContexto())?.texto; } catch { contexto = undefined; } }
-      const r = await api.post('/estudio-ideas/chat', { texto: msg, imagenes: imgs, previousResponseId: previo, soloDiseno: forzarSolo || soloDiseno, formato, transparente, contexto }, { timeout: 280000 });
-      setPrevio(r.data.id);
-      setMensajes(m => [...m, { rol: 'ia', texto: r.data.texto, imagenes: r.data.imagenes || [], modelo: r.data.modelo }]);
+      const r = await api.post('/estudio-ideas/chat', { texto: msg, imagenes: imgs, previousResponseId: previo, soloDiseno: forzarSolo || soloDiseno, formato, transparente, contexto, marcaId: marcaId || undefined, modo }, { timeout: 290000 });
+      if (r.data.propuestas?.length) {
+        setPrevio(r.data.propuestas[0].id);
+        setMensajes(m => [...m, ...r.data.propuestas.map((p, i) => ({ rol: 'ia', texto: p.texto, imagenes: p.imagenes || [], modelo: p.modelo, idResp: p.id, propuesta: i + 1, de: r.data.propuestas.length }))]);
+      } else {
+        setPrevio(r.data.id);
+        setMensajes(m => [...m, { rol: 'ia', texto: r.data.texto, imagenes: r.data.imagenes || [], modelo: r.data.modelo, idResp: r.data.id }]);
+      }
     } catch (e) {
       setError(e.response?.data?.error || 'No se pudo contestar. Prueba otra vez.');
     } finally { setTrabajando(false); }
@@ -102,6 +133,25 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
         </div>
       )}
       {verContexto && <pre style={{ margin: '0 14px 6px', padding: 8, maxHeight: 160, overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 11, background: 'rgba(0,0,0,0.08)', borderRadius: 6 }}>{verContexto}</pre>}
+      <div className="ei-opciones" style={{ paddingTop: 6, flexWrap: 'wrap' }}>
+        <label title="El agente aplica la ficha de la marca (colores, tono, materiales y lo que hay que evitar) a todas sus ideas">🏷 Marca
+          <select value={marcaId} onChange={e => { setMarcaId(e.target.value); setFicha(null); }} style={{ marginLeft: 4 }}>
+            <option value="">Sin marca</option>
+            {marcas.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+          </select>
+        </label>
+        <input ref={ficheroMarca} type="file" accept="application/pdf" hidden onChange={e => { subirMarca(e.target.files?.[0]); e.target.value = ''; }} />
+        <button type="button" className="ei-btn" disabled={subiendoMarca} onClick={() => ficheroMarca.current?.click()} title="Sube el brandbook en PDF: se lee una vez y se guarda como ficha de la marca">{subiendoMarca ? 'Leyendo el brandbook…' : '＋ Añadir brandbook (PDF)'}</button>
+        {marcaId && <button type="button" className="ei-btn" onClick={verFicha}>{ficha ? 'Ocultar ficha' : 'Ver ficha'}</button>}
+        {marcaId && <button type="button" className="ei-btn" onClick={borrarMarca} title="Quita esta marca de la lista">🗑</button>}
+        <label title="Sorpréndeme: 3 propuestas muy distintas, siempre dentro de la marca y sin tocar lo que ya está. Una sola: hace exactamente lo que pides">Modo
+          <select value={modo} onChange={e => setModo(e.target.value)} style={{ marginLeft: 4 }}>
+            <option value="sorprende">✨ Sorpréndeme (3 propuestas)</option>
+            <option value="respetar">🎯 Una sola, exacta a lo que pido</option>
+          </select>
+        </label>
+      </div>
+      {ficha && <pre style={{ margin: '0 14px 6px', padding: 8, maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 11, background: 'rgba(0,0,0,0.08)', borderRadius: 6 }}><b>{ficha.nombre}</b>{'\n'}{ficha.texto}</pre>}
       <div className="ei-chat">
         {!mensajes.length && !trabajando && (
           <div className="ei-vacio">
@@ -114,6 +164,7 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
         )}
         {mensajes.map((m, i) => (
           <div key={i} className={'ei-msg ei-' + m.rol}>
+            {m.propuesta && <small className="ei-modelo" style={{ fontWeight: 700 }}>Propuesta {m.propuesta} de {m.de}</small>}
             {m.texto && <p>{m.texto}</p>}
             {m.imagenes?.length > 0 && (
               <div className="ei-imgs">
@@ -130,10 +181,11 @@ export default function EstudioIdeas({ oscuro = false, capturarVista = null, onC
                 ))}
               </div>
             )}
+            {m.propuesta && m.idResp && <button type="button" className="ei-btn" disabled={previo === m.idResp} onClick={() => setPrevio(m.idResp)} title="Sigue la conversación desde esta propuesta: lo que escribas ahora la retocará a ella">{previo === m.idResp ? '✓ Siguiendo con esta' : 'Seguir con esta idea'}</button>}
             {m.rol === 'ia' && m.modelo && <small className="ei-modelo">Hecho con {m.modelo}</small>}
           </div>
         ))}
-        {trabajando && <div className="ei-msg ei-ia ei-pensando">ChatGPT está trabajando… las imágenes pueden tardar un minuto o dos.</div>}
+        {trabajando && <div className="ei-msg ei-ia ei-pensando">ChatGPT está trabajando… {modo === 'sorprende' ? 'son 3 propuestas, pueden tardar dos o tres minutos.' : 'las imágenes pueden tardar un minuto o dos.'}</div>}
         {error && <div className="ei-error">{error}</div>}
         <div ref={fin} />
       </div>
