@@ -4,6 +4,7 @@ import { authenticateToken } from '../middleware/auth.middleware.js';
 import { leerJson, guardarJson } from '../utils/asistente-personal.js';
 import { callClaude } from '../utils/anthropic.js';
 import { creaTrabajoSistema, leeTrabajoSistema } from './estudio-video.routes.js';
+import { ejecutarHistorias } from '../utils/historias-asistente.js';
 
 // Analizador de redes: conecta la cuenta de Instagram de Víctor (inicio de sesión con Facebook, sin copiar ninguna clave), lee sus publicaciones y su rendimiento SIN descargar los vídeos,
 // aprende qué ganchos, formatos y temas le funcionan, y busca ideas ganadoras en su nicho (cuentas profesionales públicas de Instagram y vídeos públicos de YouTube).
@@ -416,6 +417,18 @@ router.post('/rumbo', async (req, res) => {
     const mapa = {}; for (const [id, v] of Object.entries(r.r || {})) if (['encaja', 'formato', 'fuera'].includes(v)) mapa[id] = v;
     await guardarJson(RUTA_RUMBO_POSTS, mapa); const v = Object.values(mapa); res.json({ ok: true, clasificados: v.length, encaja: v.filter(x => x === 'encaja').length, formato: v.filter(x => x === 'formato').length, fuera: v.filter(x => x === 'fuera').length });
   } catch (e) { res.status(500).json({ error: 'No se pudo guardar el rumbo: ' + String(e.message || e).slice(0, 140) }); }
+});
+// Qué subir a historias, con guion exacto y con su voz (usa lo mismo que el asistente: voz, plan, rumbo, preferencias, historias reales y su agenda)
+router.post('/historias/hoy', async (req, res) => {
+  try {
+    await refrescaPrefs();
+    const madrid = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d), manana = req.body?.dia === 'manana';
+    const fecha = madrid(new Date(Date.now() + (manana ? 86400000 : 0)));
+    const contexto = [manana ? 'Es para MAÑANA (' + fecha + ').' : '', limpia(req.body?.contexto, 500)].filter(Boolean).join(' ');
+    const out = await ejecutarHistorias('que_subo_hoy', { contexto, hoy_no_quiero: limpia(req.body?.no_quiero, 250) }, { fecha });
+    if (out.error) return res.status(422).json({ error: out.error });
+    res.json({ fecha, tipo_del_dia: out.tipo_del_dia, por_que: out.por_que, historias: out.estructurado || [], herramienta: out.herramienta_sugerida || null });
+  } catch (e) { res.status(500).json({ error: 'No se pudo preparar: ' + String(e.message || e).slice(0, 140) }); }
 });
 router.get('/objetivos', async (req, res) => { try { const id = await objetivoActual(); res.json({ actual: id, objetivos: Object.entries(OBJETIVOS).map(([k, o]) => ({ id: k, nombre: o.nombre, icono: o.icono, que: o.que, formula: o.formula, unidad: o.unidad })) }); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
 router.post('/objetivo', async (req, res) => { try { const id = String(req.body?.id || ''); if (!OBJETIVOS[id]) return res.status(400).json({ error: 'Objetivo no válido' }); await guardarJson(RUTA_OBJETIVO, { id }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo guardar' }); } });

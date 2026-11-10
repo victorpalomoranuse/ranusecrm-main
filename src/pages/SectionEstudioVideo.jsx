@@ -1356,6 +1356,7 @@ function InicioRedes({ ir }) {
         {ideas.length > 0 ? <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))' }}>{ideas.map((x, i) => <div key={i} className="rd-card" style={{ cursor: 'pointer' }} onClick={() => setAbierta(x)}><span className="rd-chip arena" style={{ alignSelf: 'flex-start' }}>{x.formato || 'idea'}</span><div className="rd-gancho">{x.idea}</div><div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Crear guion →</div></div>)}</div> : <div style={mut}>Cuando analices tus reels, aquí saldrán ideas listas para grabar.</div>}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="rd-btn" onClick={() => ir('plan')}>Plan de publicación</button><button className="rd-btn" onClick={() => ir('musica')}>🎵 Música</button></div>
       </div>
+      <HistoriasHoy />
       <RumboRedes />
       <PreferenciasRedes />
       {abierta && <TallerIdeas idea={abierta} onCerrar={() => setAbierta(null)} />}
@@ -1545,6 +1546,35 @@ function EstudiaReferente() {
         <div><button className="rd-btn pri" disabled={ok} onClick={guarda}>{ok ? '✔ Guardado: el editor ya lo usa' : '💾 Guardar como referente para el editor'}</button></div>
       </div>}
       {lista.length > 0 && <div style={{ ...mut, fontSize: '0.8rem' }}>Referentes guardados: {lista.map(x => x.nombre).join(' · ')}</div>}
+    </div>
+  );
+}
+function HistoriasHoy() {
+  const [d, setD] = useState(null), [dia, setDia] = useState('hoy'), [ctx, setCtx] = useState(''), [trab, setTrab] = useState(false), [err, setErr] = useState(''), [cop, setCop] = useState('');
+  const genera = async () => { setTrab(true); setErr(''); try { const r = await api.post('/redes/historias/hoy', { dia, contexto: ctx }, { timeout: 150000 }); setD(r.data); } catch (e) { setErr(e.response?.data?.error || 'No se pudo preparar'); } setTrab(false); };
+  const copia = (k, txt) => { try { navigator.clipboard.writeText(txt); setCop(k); setTimeout(() => setCop(''), 1500); } catch { /* sin portapapeles */ } };
+  return (
+    <div className="rd-card" style={{ gap: 12 }}>
+      <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>📲 QUÉ SUBIR A HISTORIAS · guion exacto con tu voz</div>
+      <div style={{ ...mut, fontSize: '0.84rem' }}>Mira lo que ya has subido, tu agenda y tus tareas del día, tu plan, tu rumbo y tu voz, y te dice qué subir, cómo grabarlo y qué decir, palabra por palabra.</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <select className="ap-field-input" value={dia} onChange={e => setDia(e.target.value)}><option value="hoy">Hoy</option><option value="manana">Mañana</option></select>
+        <input className="ap-field-input" style={{ flex: 1, minWidth: 200 }} value={ctx} onChange={e => setCtx(e.target.value)} placeholder="Cuéntame algo de tu día (opcional): visita a obra, llamada, algo personal…" />
+        <button className="rd-btn pri" disabled={trab} onClick={genera}>{trab ? 'Pensando… (30-60 s)' : d ? '🔄 Otra propuesta' : '📲 Dime qué subir'}</button>
+      </div>
+      {err && <div style={{ color: '#ff9b9b' }}>{err}</div>}
+      {d && <>
+        <div style={{ fontSize: '0.92rem' }}><b>{d.tipo_del_dia ? d.tipo_del_dia.toUpperCase() + ' · ' : ''}</b>{d.por_que}</div>
+        {d.historias.map(h => (
+          <div key={h.n} style={{ border: '1px solid rgba(255,255,255,.12)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span className="rd-chip arena">Historia {h.n}</span><span className="rd-chip">{h.formato}</span></div>
+            <div style={{ fontSize: '0.9rem' }}><b>🎥 Cómo grabarla:</b> {h.grabar}</div>
+            {h.texto && <div style={{ fontSize: '0.88rem' }}><b>🔤 Texto en pantalla:</b> {h.texto}</div>}
+            {h.hablado && <div style={{ background: 'rgba(143,219,160,.08)', padding: 10, borderRadius: 8 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><b style={{ fontSize: '0.8rem' }}>🗣 Lo que dices</b><button className="rd-btn" style={{ padding: '2px 10px', fontSize: '0.72rem' }} onClick={() => copia(h.n, h.hablado)}>{cop === h.n ? '✔ Copiado' : 'Copiar'}</button></div><div style={{ fontStyle: 'italic', marginTop: 4 }}>«{h.hablado}»</div></div>}
+            {h.sticker && <div style={{ fontSize: '0.84rem' }}><b>📌 Pegatina:</b> {h.sticker}</div>}
+          </div>
+        ))}
+      </>}
     </div>
   );
 }
