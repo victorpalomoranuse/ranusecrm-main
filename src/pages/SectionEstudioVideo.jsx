@@ -184,9 +184,10 @@ function SelectorEstilo({ estilos, formato, valor, onCambio, etiqueta = 'Estilo 
   return (
     <label style={{ ...mut, display: 'block', marginBottom: 10 }}>{etiqueta}
       <select className="ap-field-input" style={{ width: '100%', marginTop: 4 }} value={valor} onChange={e => onCambio(e.target.value)}>
-        <option value="">El del formato{e0 ? ' (' + e0.nombre + ')' : ''}</option>
-        {estilos.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+        <option value="">{formato?.id === 'auto-redes' ? '🤖 Lo decide la IA de redes (recomendado)' : 'El del formato' + (e0 ? ' (' + e0.nombre + ')' : '')}</option>
+        {estilos.map(e => <option key={e.id} value={e.id}>{(formato?.id === 'auto-redes' ? 'Forzar: ' : '') + e.nombre}</option>)}
       </select>
+      {formato?.id === 'auto-redes' && <span style={{ display: 'block', fontSize: '0.76rem', marginTop: 4 }}>Con el formato automático no hace falta elegir nada aquí: la IA decide cómo se ve y se mueve según lo que te funciona. Solo elige uno de abajo si quieres obligarla a usar un estilo concreto.</span>}
     </label>
   );
 }
