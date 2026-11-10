@@ -26,21 +26,21 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
     fullRef.current = fullscreen;
     frameRef.current?.contentWindow?.postMessage({ src: 'ranuse-crm', type: 'modo', fullscreen }, window.location.origin);
   }, [fullscreen]);
-  const nombreProyecto = proyecto.nombre || '';
-  const nombreCliente = proyecto.cliente || '';
-  const direccionProyecto = proyecto.direccion || '';
+  // los datos del proyecto van por una referencia: si cambian (por ejemplo al guardar), NO se vuelve a inicializar el editor y se pierde lo que se estaba dibujando
+  const proyRef = useRef({ nombre: '', cliente: '', direccion: '' });
+  proyRef.current = { nombre: proyecto.nombre || '', cliente: proyecto.cliente || '', direccion: proyecto.direccion || '' };
 
   const enviarInit = useCallback(() => {
     const d = datos.current;
     if (!d.lista || !d.visitas || !d.catalogos || !frameRef.current?.contentWindow) return;
     frameRef.current.contentWindow.postMessage({
       src: 'ranuse-crm', type: 'init', tema: 'dark', abrir, nuevo, fullscreen: fullRef.current,
-      proyecto: { nombre: nombreProyecto, cliente: nombreCliente, direccion: direccionProyecto },
+      proyecto: proyRef.current,
       admin: !!d.catalogos.admin,
       visitas: d.visitas, maquinas: d.catalogos.maquinas || [], luminarias: d.catalogos.luminarias || [], materiales: d.catalogos.materiales || [],
     }, window.location.origin);
     setCargando(false);
-  }, [abrir, nuevo, nombreProyecto, nombreCliente, direccionProyecto]);
+  }, [abrir, nuevo]);
 
   useEffect(() => {
     let vivo = true;

@@ -11395,6 +11395,7 @@ function crmPrefill(){
   if(!st.v.nombre)st.v.nombre=crmProy.nombre||'';
   if(!st.v.cliente)st.v.cliente=crmProy.cliente||'';
 }
+var crmYaInit=false;
 if(CRM){
   document.body.classList.add('crm');
   var dets=document.querySelectorAll('details.addcat');
@@ -11415,6 +11416,9 @@ if(CRM){
         TXLIB.push({id:t.id,n:t.n,c:t.c||'#cccccc',uri:t.uri,tw:t.tw||60,w:t.pw,h:t.ph,cat:true,grupo:t.cat||''});
       });
       refreshAcab();
+      /* si «init» llega por segunda vez (el CRM lo reenvía cuando cambia algo de la ficha del proyecto), NO se toca el plano que se está editando: antes se volvía a la última versión guardada y, con «nuevo», se creaba otro plano */
+      if(crmYaInit&&st.v&&st.v.id){try{drawCat();drawLum();drawCloud()}catch(e){}return}
+      crmYaInit=true;
       crmReady=true;crmSkip=Date.now()+1500;
       $('b-cloud').hidden=false;$('mi-sk').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('mi-listados').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
       var elegido=null;
