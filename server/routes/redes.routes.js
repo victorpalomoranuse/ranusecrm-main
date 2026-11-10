@@ -321,7 +321,7 @@ router.post('/preferencias', async (req, res) => {
 router.post('/instagram/buscar', async (req, res) => {
   try {
     const c = await conexion(); if (!c) return res.status(400).json({ error: 'Conecta Instagram primero' });
-    const cod = (String(req.body?.enlace || '').match(//(?:reel|reels|p|tv)/([w-]{5,})/) || [])[1]; if (!cod) return res.status(400).json({ error: 'Pega el enlace del reel (instagram.com/reel/…)' });
+    const cod = (String(req.body?.enlace || '').match(/\/(?:reel|reels|p|tv)\/([\w-]{5,})/) || [])[1]; if (!cod) return res.status(400).json({ error: 'Pega el enlace del reel (instagram.com/reel/…)' });
     const campos = 'id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count,thumbnail_url';
     let j = await graph('/' + c.ig_id + '/media', { fields: campos, limit: 100 }, c.token), vistas = 0, hallado = null;
     for (;;) { vistas += (j.data || []).length; hallado = (j.data || []).find(m => String(m.permalink || '').includes('/' + cod)); if (hallado || !j.paging?.next || vistas > 2000) break; j = await graph('/' + c.ig_id + '/media', { fields: campos, limit: 100, after: j.paging.cursors.after }, c.token); }
