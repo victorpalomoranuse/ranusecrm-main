@@ -32,10 +32,19 @@ async function entrega(c, out) {
   for (const f of out.archivos || []) if (c.enviarArchivo) await c.enviarArchivo(f);
 }
 
+async function avisaVideos(estado) {
+  const c = elegir(estado); if (!c) return;
+  const { videosTerminados, marcaVideoAvisado } = await import('../routes/estudio-video.routes.js');
+  for (const v of await videosTerminados({ soloSinAvisar: true })) {
+    await c.enviar(v.estado === 'listo' ? '✅ Tu vídeo «' + v.nombre + '» ya está editado.' + (v.enlace ? '\nDescárgalo (el enlace dura 2 días): ' + v.enlace : '') : '⚠️ Ha fallado la edición de «' + v.nombre + '»' + (v.error ? ': ' + String(v.error).slice(0, 160) : '') + '. Míralo en el Estudio de vídeo.');
+    await marcaVideoAvisado(v.id);
+  }
+}
 async function tick() {
   if (ocupado) return; ocupado = true;
   try {
     const ahora = madrid(), estado = await leerJson(RUTA_ESTADO, {});
+    try { await avisaVideos(estado); } catch (e) { console.log('Aviso de vídeos:', e.message); }
     // recordatorios
     const lista = await leerJson(RUTA_RECORD, []); let cambio = false;
     for (const r of lista) {

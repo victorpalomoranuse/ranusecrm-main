@@ -548,6 +548,23 @@ router.delete('/trabajos/:id', async (req, res) => {
   catch (e) { res.status(500).json({ error: 'No se pudo borrar: ' + String(e.message || '').slice(0, 140) }); }
 });
 
+// Vídeos terminados (para avisar por WhatsApp y para que el asistente los pase cuando se lo pidan)
+const TIPOS_VIDEO = ['voz', 'bruto', 'base', 'clips', 'edicion'];
+export async function videosTerminados({ soloSinAvisar = false, max = 6 } = {}) {
+  await bucket();
+  const { data } = await st().list('trabajos', { limit: 40, sortBy: { column: 'created_at', order: 'desc' } });
+  const out = [];
+  for (const f of (data || []).filter(x => /\.json$/.test(x.name))) {
+    const t = await leerTrabajo(f.name.replace(/\.json$/, '')); if (!t || !TIPOS_VIDEO.includes(t.tipo)) continue;
+    if (t.estado !== 'listo' && t.estado !== 'error') continue;
+    if (soloSinAvisar && (t.avisado || Date.now() - new Date(t.terminado || t.creado).getTime() > 3 * 86400000)) continue;
+    let enlace = null; if (t.estado === 'listo' && t.resultado_movil) { const u = await st().createSignedUrl(t.resultado_movil, 172800); enlace = u.data?.signedUrl || null; }
+    out.push({ id: t.id, nombre: t.nombre_archivo || t.id, estado: t.estado, error: t.error || null, terminado: t.terminado || t.creado, enlace });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+export async function marcaVideoAvisado(id) { const t = await leerTrabajo(id); if (t) { t.avisado = new Date().toISOString(); await guardarTrabajo(t); } }
 export async function creaTrabajoSistema(t) { await bucket(); t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t); if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); } return t; }
 export const leeTrabajoSistema = (id) => leerTrabajo(id);
 export default router;
