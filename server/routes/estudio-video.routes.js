@@ -83,6 +83,11 @@ async function recetaFinal(fmt, estiloId) {
   const e = id ? (await estilos()).find(x => x.id === id) : null;
   return { receta: e ? { ...base, ...JSON.parse(JSON.stringify(e.receta || {})) } : base, estilo: e ? { id: e.id, nombre: e.nombre } : null };
 }
+export const FORMATO_AUTO = {
+  id: 'auto-redes', nombre: '🤖 Dirigido por la IA de redes (automático)', descripcion: 'No es un formato fijo: la IA de redes decide cómo montarlo según lo que mejor te funciona en tu cuenta y en el nicho, tu voz y tus preferencias. Se va afinando solo con lo que aprende.',
+  receta: { corte: { min: 1.2, max: 3 }, acento: '#E3D2B8', zoomFinal: 1.12, whoosh: 0.1, flash: false, subs: { palabrasPorBloque: 3, tam: 84, margenV: 600 }, estiloSubs: 'karaoke', titulo: false, barra: false, mayusculas: false, resaltar: true, director: true, cambiosEnFrases: true },
+  notas: '',
+};
 const SEMBRADOS = [FORMATO_BASE, FORMATO_LIMPIO, FORMATO_DINAMICO, FORMATO_DIA, FORMATO_CLIPS, FORMATO_ONETAKE, FORMATO_COLLAGE];
 async function formatos() {
   const f = await leerJson(RUTA_FORMATOS, null);
@@ -101,6 +106,7 @@ async function formatos() {
   if (!f.directorV1) { for (const x of f.lista) { const r = x.receta || (x.receta = {}); r.director = true; r.cambiosEnFrases = true; if (['dopaminico-serio', 'clips-dopaminicos', 'entrevista-dinamica'].includes(x.id)) r.flash = true; } f.directorV1 = true; await guardarJson(RUTA_FORMATOS, f); const e = await leerJson(RUTA_ESTILOS, null); if (e?.lista) { for (const s of e.lista) { const r = s.receta || (s.receta = {}); r.director = true; r.cambiosEnFrases = true; if (['dopaminico-serio', 'clips-dopaminicos', 'entrevista-dinamica'].includes(s.id)) r.flash = true; } await guardarJson(RUTA_ESTILOS, e); } }
   if (!f.clipsV3) { const x = f.lista.find(z => z.id === 'clips-dopaminicos'); if (x?.receta) { x.receta.estiloSubs = 'karaoke'; x.receta.subs = { ...(x.receta.subs || {}), palabrasPorBloque: 3 }; } f.clipsV3 = true; await guardarJson(RUTA_FORMATOS, f); }
   if (!f.clipsV2) { const x = f.lista.find(z => z.id === FORMATO_CLIPS.id); if (x) x.receta = JSON.parse(JSON.stringify(FORMATO_CLIPS.receta)); f.clipsV2 = true; await guardarJson(RUTA_FORMATOS, f); }
+  if (!f.autoV1) { if (!f.lista.some(x => x.id === FORMATO_AUTO.id)) f.lista.unshift(JSON.parse(JSON.stringify(FORMATO_AUTO))); f.autoV1 = true; f.sembrados = [...(f.sembrados || []), FORMATO_AUTO.id]; await guardarJson(RUTA_FORMATOS, f); }
   // formatos nuevos de fábrica se añaden una sola vez (si luego los borras, no vuelven)
   const ya = new Set(f.sembrados || [FORMATO_BASE.id]); const nuevos = SEMBRADOS.filter(x => !ya.has(x.id));
   if (nuevos.length) { f.lista.push(...nuevos.map(x => JSON.parse(JSON.stringify(x)))); f.sembrados = [...ya, ...nuevos.map(x => x.id)]; await guardarJson(RUTA_FORMATOS, f); }
@@ -122,7 +128,8 @@ const textoReglasCompleto = async () => {
   let redes = ''; try {
     const a = await leerJson('crm/redes/aprendizaje.json', null), v = await leerJson('crm/redes/analisis_videos.json', null);
     const vz = await leerJson('crm/redes/voz_marca.json', null); const vozL = vz ? ['Su voz real: ' + vz.resumen, ...(vz.evitar || []).map(x => 'No suena a él: ' + x)] : [];
-    const l = [...vozL, ...(a?.para_el_editor || []), ...(a?.ganchos_ganadores || []).map(x => 'Gancho que le funciona: ' + x), ...(v?.reglas_edicion || [])].slice(0, 16);
+    const refs = await leerJson('crm/redes/referencias.json', { lista: [] }); const refL = (refs.lista || []).slice(-6).flatMap(r => (r.replicar || []).slice(0, 2).map(x => 'De un referente (' + r.nombre + '): ' + x));
+    const l = [...vozL, ...refL, ...(a?.para_el_editor || []), ...(a?.ganchos_ganadores || []).map(x => 'Gancho que le funciona: ' + x), ...(v?.reglas_edicion || [])].slice(0, 16);
     if (l.length) redes = '\n\nLO APRENDIDO DE SUS REDES (de sus reels reales y de su nicho; úsalo como criterio de edición y de gancho salvo que choque con sus preferencias):\n' + l.map(x => '- ' + x).join('\n');
   } catch { /* sin datos de redes */ }
   return base + redes + (ap ? '\n\nPREFERENCIAS QUE EL EDITOR HA APRENDIDO DE VÍCTOR (las ha ido aprendiendo hablando con él; son obligatorias, por encima de lo anterior si chocan):\n' + ap : '');
@@ -162,6 +169,19 @@ router.post('/editor/chat', async (req, res) => {
   } catch (e) { console.error('editor/chat', e); res.status(500).json({ error: 'El editor no ha podido contestar: ' + String(e.message || '').slice(0, 160) }); }
 });
 // Duración de los clips que ayuda a crecer: sale del análisis de edición de sus reels (si existe); si no, un rango habitual para reels que crecen
+async function direccionRedes() {
+  const [vid, ap, voz, prefs, ref] = await Promise.all([leerJson('crm/redes/analisis_videos.json', null), leerJson('crm/redes/aprendizaje.json', null), leerJson('crm/redes/voz_marca.json', null), leerJson('crm/redes/preferencias.json', { reglas: [] }), leerJson('crm/redes/referencias.json', { lista: [] })]);
+  const receta = {}; const ritmo = Number(String(vid?.ritmo_ideal || '').match(/[0-9]+([.,][0-9]+)?/)?.[0]?.replace(',', '.'));
+  if (Number.isFinite(ritmo) && ritmo >= 0.6 && ritmo <= 8) receta.corte = { min: Math.max(0.6, Math.round(ritmo * 0.7 * 10) / 10), max: Math.round(ritmo * 1.6 * 10) / 10 };
+  const l = [];
+  if (vid?.resumen) l.push('Lo que marca la diferencia en SUS reels (analizado de verdad): ' + vid.resumen);
+  for (const x of [...(vid?.reglas_edicion || []), ...(ap?.para_el_editor || [])].slice(0, 10)) l.push('- ' + x);
+  for (const x of (ap?.ganchos_ganadores || []).slice(0, 4)) l.push('- Gancho que le funciona: ' + x);
+  for (const r of (ref?.lista || []).slice(-6)) for (const x of (r.replicar || []).slice(0, 2)) l.push('- De un referente (' + r.nombre + '): ' + x);
+  if (voz) l.push('Su voz: ' + voz.resumen + (voz.muletillas?.length ? ' Muletillas reales: ' + voz.muletillas.join(', ') + '.' : ''));
+  const no = (prefs.reglas || []).filter(r => r.tipo === 'no').map(r => r.texto); if (no.length) l.push('NO quiere: ' + no.join('; '));
+  return { receta, notas: 'DIRIGIDO POR LA IA DE REDES: decide el montaje (ritmo, gancho, qué se queda, énfasis) aplicando esto, que se ha aprendido de su cuenta y del nicho; no sigas un molde fijo.\n' + l.join('\n') };
+}
 const duracionIdeal = async () => { try { const v = await leerJson('crm/redes/analisis_videos.json', null); const n = String(v?.duracion_ideal_s || '').match(/d+/g)?.map(Number) || []; if (n.length >= 2 && n[0] < n[1]) return [Math.max(10, n[0]), Math.min(120, Math.max(n[1], n[0] + 10))]; if (n.length === 1) return [Math.max(10, n[0] - 8), Math.min(120, n[0] + 12)]; } catch { /* sin análisis */ } return [20, 50]; };
 router.get('/reglas', async (req, res) => { try { res.json({ texto: await textoReglas(), base: REGLAS_BASE }); } catch { res.status(500).json({ error: 'No se pudieron leer las reglas' }); } });
 router.put('/reglas', async (req, res) => { try { await guardarJson(RUTA_REGLAS, { texto: limpia(req.body?.texto, 3500), actualizado: new Date().toISOString() }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudieron guardar las reglas' }); } });
@@ -356,8 +376,9 @@ router.post('/trabajos', async (req, res) => {
     if (!['voz', 'bruto', 'base', 'clips', 'referencia'].includes(b.tipo)) return res.status(400).json({ error: 'Indica si subes una voz en off, un bruto o eliges un vídeo base' });
     if (b.tipo === 'base' || b.base?.id) { if (!/^[\w-]{10,60}$/.test(b.base?.id || '')) return res.status(400).json({ error: 'Elige el archivo de Drive' }); }
     else if (!/^entradas\//.test(b.archivo || '')) return res.status(400).json({ error: 'Falta el archivo subido' });
-    const recFin = await recetaFinal(fmt, b.estilo);
-    const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, reglas: await textoReglasCompleto(), tipo: b.tipo, ...(b.tipo === 'clips' ? { num_clips: Math.max(0, Math.min(12, parseInt(b.num_clips) || 0)), dur_min: Math.max(10, Math.min(120, parseInt(b.dur_min) || 25)), dur_max: Math.max(15, Math.min(180, parseInt(b.dur_max) || 70)) } : {}), archivo: b.base?.id ? null : b.archivo, base: b.base?.id ? { id: limpia(b.base.id, 80), nombre: limpia(b.base.nombre, 160), ruta: limpia(b.base.ruta, 400) } : null, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: recFin.receta, estilo: recFin.estilo?.id || null, estilo_nombre: recFin.estilo?.nombre || null, notas_formato: fmt.notas || '', indicaciones: limpia(b.indicaciones, 800), guion: limpia(b.guion, 20000), ...(b.fase === 'transcribir' && b.tipo === 'clips' ? { fase: 'transcribir' } : {}), ...(b.fase === 'audio' && b.tipo === 'voz' ? { fase: 'audio' } : {}), ...(Array.isArray(b.reparto) && b.reparto.length ? { reparto: b.reparto.slice(0, 40).map(p => ({ texto: limpia(p?.texto, 700), clips: (Array.isArray(p?.clips) ? p.clips : []).slice(0, 10).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['video', 'imagen', 'carpeta'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => /^[\w-]{10,60}$/.test(x.id)) })).filter(p => p.texto && p.clips.length) } : {}), musica: limpia(b.musica, 150) || 'auto', carpetas: (Array.isArray(b.carpetas) ? b.carpetas : []).slice(0, 30).map(c => limpia(c, 200)).filter(Boolean), recursos: (Array.isArray(b.recursos) ? b.recursos : []).slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen', 'subido'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
+    const recFin = await recetaFinal(fmt, b.estilo); let notasFmt = fmt.notas || '';
+    if (fmt.id === 'auto-redes') { const dr = await direccionRedes(); recFin.receta = { ...recFin.receta, ...dr.receta }; notasFmt = dr.notas; }
+    const t = { id: crypto.randomUUID().slice(0, 8), creado: new Date().toISOString(), por: req.user?.name || req.user?.email || null, reglas: await textoReglasCompleto(), tipo: b.tipo, ...(b.tipo === 'clips' ? { num_clips: Math.max(0, Math.min(12, parseInt(b.num_clips) || 0)), dur_min: Math.max(10, Math.min(120, parseInt(b.dur_min) || 25)), dur_max: Math.max(15, Math.min(180, parseInt(b.dur_max) || 70)) } : {}), archivo: b.base?.id ? null : b.archivo, base: b.base?.id ? { id: limpia(b.base.id, 80), nombre: limpia(b.base.nombre, 160), ruta: limpia(b.base.ruta, 400) } : null, nombre_archivo: limpia(b.nombre_archivo, 120), formato: fmt.id, formato_nombre: fmt.nombre, receta: recFin.receta, estilo: recFin.estilo?.id || null, estilo_nombre: recFin.estilo?.nombre || null, notas_formato: notasFmt, indicaciones: limpia(b.indicaciones, 800), guion: limpia(b.guion, 20000), ...(b.fase === 'transcribir' && b.tipo === 'clips' ? { fase: 'transcribir' } : {}), ...(b.fase === 'audio' && b.tipo === 'voz' ? { fase: 'audio' } : {}), ...(Array.isArray(b.reparto) && b.reparto.length ? { reparto: b.reparto.slice(0, 40).map(p => ({ texto: limpia(p?.texto, 700), clips: (Array.isArray(p?.clips) ? p.clips : []).slice(0, 10).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['video', 'imagen', 'carpeta'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => /^[\w-]{10,60}$/.test(x.id)) })).filter(p => p.texto && p.clips.length) } : {}), musica: limpia(b.musica, 150) || 'auto', carpetas: (Array.isArray(b.carpetas) ? b.carpetas : []).slice(0, 30).map(c => limpia(c, 200)).filter(Boolean), recursos: (Array.isArray(b.recursos) ? b.recursos : []).slice(0, 60).map(x => ({ id: limpia(x?.id, 80), nombre: limpia(x?.nombre, 160), tipo: ['carpeta', 'video', 'imagen', 'subido'].includes(x?.tipo) ? x.tipo : 'video', ruta: limpia(x?.ruta, 400) })).filter(x => x.id), estado: 'pendiente', progreso: 'En cola', version: 1, origen: b.origen || null };
     t.ejecutor = (await nubeActiva()) ? 'nube' : 'pc'; await guardarTrabajo(t);
     if (t.ejecutor === 'nube' && !(await lanzarNube(t.id))) { t.ejecutor = 'pc'; await guardarTrabajo(t); } // si Google no arranca, lo hace el PC
     res.status(201).json({ trabajo: t });
@@ -467,6 +488,22 @@ router.post('/trabajos/:id/puntuar', async (req, res) => {
 router.get('/trabajos/:id/palabras', async (req, res) => {
   try { const id = limpia(req.params.id, 20); if (!/^[\w-]{4,20}$/.test(id)) return res.status(400).json({ error: 'Id no válido' }); const u = await st().createSignedUrl('artefactos/' + id + '/palabras_largo.json', 600); if (!u.data?.signedUrl) return res.status(404).json({ error: 'Todavía no hay transcripción' }); res.json({ url: u.data.signedUrl }); }
   catch { res.status(500).json({ error: 'No se pudo leer la transcripción' }); }
+});
+router.post('/trabajos/:id/proponer-clips', async (req, res) => {
+  try {
+    const id = limpia(req.params.id, 20); if (!/^[\w-]{4,20}$/.test(id)) return res.status(400).json({ error: 'Id no válido' });
+    const u = await st().createSignedUrl('artefactos/' + id + '/palabras_largo.json', 300); if (!u.data?.signedUrl) return res.status(404).json({ error: 'Todavía no hay transcripción' });
+    const pal = (await (await fetch(u.data.signedUrl)).json()).p || []; if (pal.length < 30) return res.status(422).json({ error: 'La transcripción es demasiado corta' });
+    const lineas = []; let cur = null; pal.forEach((w, i) => { if (!cur || cur.n >= 22 || (i && w[1] - pal[i - 1][2] > 1.2)) { cur = { ini: w[1], n: 0, txt: [] }; lineas.push(cur); } cur.n++; cur.txt.push(w[0]); });
+    const texto = lineas.map(x => '[' + x.ini.toFixed(1) + 's] ' + x.txt.join(' ')).join('\n').slice(0, 60000);
+    const [mn, mx] = await duracionIdeal(), dr = await direccionRedes(), n = Math.max(2, Math.min(10, parseInt(req.body?.cuantos) || 5));
+    const r = await callClaude({ system: 'Eres el estratega de contenido de Víctor Palomo (Ranuse Design, diseño de gimnasios) y le sacas clips de una entrevista o vídeo largo para Reels. Eliges los ' + n + ' mejores momentos usando lo que se ha aprendido de qué funciona en su cuenta y en el nicho (abajo). Cada clip: un gancho potente en los primeros 2 segundos, una sola idea, sentido completo y duración entre ' + mn + ' y ' + mx + ' segundos (puede juntar 2-3 tramos si queda natural). Prioriza lo que genera comentarios, guardados o compartidos. Usa los tiempos de la transcripción (en segundos) para los tramos. Devuelves SOLO JSON {"clips":[{"titulo":"título corto","gancho":"primera frase del clip","por_que":"por qué funcionaría, en 1 frase","tramos":[[inicio_s,fin_s]]}]}.\n\n' + dr.notas, messages: [{ role: 'user', content: 'TRANSCRIPCIÓN con tiempos:\n' + texto }], maxTokens: 5000 });
+    const txt = (r.content || []).map(b => b.text || '').join(''), j = JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
+    const ajusta = (a, b) => { let i = pal.findIndex(w => w[2] >= a); if (i < 0) i = 0; let k = i; for (let q = i; q < pal.length && pal[q][1] <= b; q++) k = q; return [Math.max(0, +(pal[i][1] - 0.05).toFixed(2)), +(pal[k][2] + 0.1).toFixed(2)]; };
+    const clips = (j.clips || []).slice(0, n).map(c => ({ titulo: limpia(c.titulo, 100), gancho: limpia(c.gancho, 200), por_que: limpia(c.por_que, 220), tramos: (c.tramos || []).slice(0, 6).map(x => ajusta(Number(x[0]) || 0, Number(x[1]) || 0)).filter(x => x[1] - x[0] > 2) })).filter(c => c.tramos.length);
+    if (!clips.length) return res.status(422).json({ error: 'La IA no ha encontrado clips claros, prueba otra vez.' });
+    res.json({ clips });
+  } catch (e) { res.status(500).json({ error: 'No se pudieron proponer los clips: ' + String(e.message || e).slice(0, 140) }); }
 });
 // Crea los clips con los tramos que el usuario ha elegido sobre la transcripción (no vuelve a transcribir ni a elegir)
 router.post('/trabajos/:id/montar-clips', async (req, res) => {

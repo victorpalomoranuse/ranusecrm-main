@@ -595,7 +595,8 @@ function TrabajoNormal({ t, formatos, onCambio, musica = [], trabajosTodos = [] 
       {t.estado === 'listo' && t.fase === 'transcribir' && (
         <div style={{ marginTop: 10 }}>
           <div style={{ marginBottom: 8 }}>Transcripción lista: {t.palabras_n} palabras ({Math.round((t.dur_total || 0) / 60)} min). Ahora eliges tú en el texto qué tramos forman cada clip.</div>
-          <button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setConstructor(true)}><Scissors size={13} /> Elegir los clips en la transcripción</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="ap-btn ap-btn-primary ap-btn-sm" onClick={() => setConstructor(true)}><Scissors size={13} /> Elegir los clips en la transcripción</button></div>
+          <ProponeClips t={t} onCambio={onCambio} />
         </div>
       )}
       {constructor && <PantallaCompleta titulo={'Elegir clips · ' + (t.nombre_archivo || 'entrevista')} onCerrar={() => setConstructor(false)}><ConstructorClips t={t} onCambio={() => { setConstructor(false); onCambio(); }} /></PantallaCompleta>}
@@ -1416,13 +1417,14 @@ function PreferenciasRedes() {
     </div>
   );
 }
-function BuscaReel({ ig, onAnadido }) {
+function BuscaReel({ ig, onAnadido, onLeer, leyendo }) {
   const [enlace, setEnlace] = useState(''), [r, setR] = useState(null), [trab, setTrab] = useState(false);
   const busca = async () => { setTrab(true); setR(null); try { const x = await api.post('/redes/instagram/buscar', { enlace }, { timeout: 120000 }); setR(x.data); if (x.data.encontrado) onAnadido(); } catch (e) { setR({ aviso: e.response?.data?.error || 'No se pudo buscar' }); } setTrab(false); };
   return (
     <div className="rd-card" style={{ gap: 8 }}>
       <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>¿FALTA ALGÚN REEL?</div>
-      <div style={{ fontSize: '0.88rem' }}>He leído <b>{fmt(ig?.n_media)}</b> de las <b>{fmt(ig?.publicaciones)}</b> publicaciones de tu perfil{ig?.ultima_sync ? ' (última lectura: ' + String(ig.ultima_sync).slice(0, 10) + ')' : ''}. {Number(ig?.n_media) < Number(ig?.publicaciones) ? 'Pulsa «Leer publicaciones» para leerlas todas.' : ''}</div>
+      <div style={{ fontSize: '0.88rem' }}>He leído <b>{fmt(ig?.n_media)}</b> de las <b>{fmt(ig?.publicaciones)}</b> publicaciones de tu perfil{ig?.ultima_sync ? ' (última lectura: ' + String(ig.ultima_sync).slice(0, 10) + ')' : ''}. {Number(ig?.n_media) < Number(ig?.publicaciones) ? 'Faltan por leer ' + (Number(ig.publicaciones) - Number(ig.n_media)) + '.' : 'Están todas.'}</div>
+      {Number(ig?.n_media) < Number(ig?.publicaciones) && <div><button className="rd-btn pri" disabled={leyendo} onClick={onLeer}>{leyendo ? 'Leyendo tus publicaciones… (1-3 min)' : '📥 Leer las ' + fmt(ig?.publicaciones) + ' publicaciones'}</button></div>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><input className="ap-field-input" style={{ flex: 1, minWidth: 220 }} value={enlace} onChange={e => setEnlace(e.target.value)} placeholder="Pega aquí el enlace del reel que no sale" /><button className="rd-btn pri" disabled={trab || enlace.length < 10} onClick={busca}>{trab ? 'Buscando…' : 'Buscarlo'}</button></div>
       {r && <div style={{ fontSize: '0.86rem', color: r.encontrado ? '#8fdba0' : '#f2c46d' }}>{r.encontrado ? 'Encontrado y añadido' + (r.vistas != null ? ' (' + fmt(r.vistas) + ' vistas)' : '') + '. Ya cuenta en el ranking.' : r.aviso}</div>}
     </div>
@@ -1479,6 +1481,46 @@ function CuentasNicho({ ig, onUsar }) {
       <div><button className="rd-btn pri" disabled={!ig || trab} onClick={busca}>{trab ? 'Buscando y comprobando…' : (d?.cuentas || []).length ? '🔎 Buscar más cuentas' : '🔎 Encontrar cuentas de mi nicho'}</button></div>
       {msg && <div style={{ ...mut, fontSize: '0.82rem' }}>{msg}</div>}
       {(d?.cuentas || []).length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{d.cuentas.map(x => <span key={x.usuario} className="rd-chip" title={x.aprender || ''} style={{ color: { nicho: '#8fdba0', adyacente: '#f2c46d', estilo: '#9db8ff' }[x.tipo] || undefined }}>{{ nicho: '🏋️', adyacente: '🏠', estilo: '🎬' }[x.tipo] || ''} @{x.usuario} · {fmt(x.seguidores)} <button onClick={() => quita(x.usuario)} title="Quitar esta cuenta" style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button></span>)}</div>}
+    </div>
+  );
+}
+function ProponeClips({ t, onCambio }) {
+  const [p, setP] = useState(null), [trab, setTrab] = useState(false), [err, setErr] = useState(''), [sel, setSel] = useState({}), [env, setEnv] = useState(false);
+  const pide = async () => { setTrab(true); setErr(''); try { const r = await api.post('/estudio-video/trabajos/' + t.id + '/proponer-clips', {}, { timeout: 200000 }); setP(r.data.clips); setSel(Object.fromEntries(r.data.clips.map((_, i) => [i, true]))); } catch (e) { setErr(e.response?.data?.error || 'No se pudo'); } setTrab(false); };
+  const crea = async () => { setEnv(true); try { await api.post('/estudio-video/trabajos/' + t.id + '/montar-clips', { clips: p.filter((_, i) => sel[i]).map(c => ({ titulo: c.titulo, pregunta: c.gancho, tramos: c.tramos })) }); setP(null); onCambio(); } catch (e) { setErr(e.response?.data?.error || 'No se pudieron crear'); } setEnv(false); };
+  return (
+    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <button className="ap-btn ap-btn-sm" disabled={trab} onClick={pide}>{trab ? '🧠 Pensando los clips…' : '🧠 Que la IA de redes proponga los clips'}</button>
+      <div style={{ ...mut, fontSize: '0.78rem' }}>Usa lo aprendido de tu cuenta y del nicho, tu voz y la duración que mejor te funciona.</div>
+      {err && <div style={{ color: '#ff9b9b' }}>{err}</div>}
+      {p && <>{p.map((c, i) => <label key={i} style={{ display: 'flex', gap: 10, padding: 10, border: '1px solid rgba(255,255,255,.12)', borderRadius: 10, cursor: 'pointer' }}><input type="checkbox" checked={!!sel[i]} onChange={e => setSel(s => ({ ...s, [i]: e.target.checked }))} /><div><b>{c.titulo}</b><div style={{ fontStyle: 'italic' }}>“{c.gancho}”</div><div style={{ ...mut, fontSize: '0.8rem' }}>{c.por_que} · {Math.round(c.tramos.reduce((s, x) => s + x[1] - x[0], 0))} s</div></div></label>)}
+        <button className="ap-btn ap-btn-primary ap-btn-sm" disabled={env || !Object.values(sel).some(Boolean)} onClick={crea}>{env ? 'Creando…' : 'Crear los clips marcados'}</button></>}
+    </div>
+  );
+}
+function EstudiaReferente() {
+  const [f, setF] = useState(null), [nombre, setNombre] = useState(''), [est, setEst] = useState(''), [r, setR] = useState(null), [lista, setLista] = useState([]), [ok, setOk] = useState(false);
+  useEffect(() => { api.get('/redes/referencias').then(x => setLista(x.data.lista || [])).catch(() => {}); }, []);
+  const estudia = async () => { setR(null); setOk(false); try { setEst('Subiendo el vídeo…'); const ruta = await subirArchivo(f, () => {}); const { data: j } = await api.post('/redes/video/analizar', { ruta, nombre: nombre || f.name }); for (let i = 0; i < 100; i++) { await new Promise(z => setTimeout(z, 6000)); const { data: s } = await api.get('/redes/video/' + j.id); if (s.estado === 'listo') { setR(s); setEst(''); return; } if (s.estado === 'error') throw new Error(s.error || 'No se pudo analizar'); setEst((s.progreso || 'Analizando…') + ' ' + (s.pct || 0) + '%'); } throw new Error('Tarda demasiado, vuelve a mirarlo luego'); } catch (e) { setEst(e.response?.data?.error || e.message || 'No se pudo'); } };
+  const guarda = async () => { try { const x = await api.post('/redes/referencias', { nombre: nombre || f?.name, descripcion: r.descripcion, detalle: r.detalle }); setLista(x.data.lista || []); setOk(true); } catch { setEst('No se pudo guardar'); } };
+  return (
+    <div className="rd-card" style={{ gap: 10 }}>
+      <h3>🎞 Estudiar el vídeo de otro creador</h3>
+      <div style={{ ...mut, fontSize: '0.84rem' }}>Sube un vídeo que te guste (de otro creador). La IA lo analiza a fondo (cómo está grabado, gestos, edición, audio) y lo que aprende pasa al editor.</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input className="ap-field-input" style={{ flex: '1 1 160px' }} value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre o cuenta (opcional)" />
+        <label className="rd-btn" style={{ cursor: 'pointer' }}>{f ? '🎞 ' + f.name.slice(0, 22) : 'Elegir el vídeo'}<input type="file" accept="video/*" style={{ display: 'none' }} onChange={e => setF(e.target.files?.[0] || null)} /></label>
+        <button className="rd-btn pri" disabled={!f || (est && !r && !/No se|Tarda|error/i.test(est))} onClick={estudia}>Estudiarlo</button>
+      </div>
+      {est && <div style={mut}>{est}</div>}
+      {r && <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: '0.9rem' }}>{r.descripcion}</div>
+        {r.detalle?.grabacion && <div style={{ fontSize: '0.84rem' }}><b>🎥 Grabación:</b> <span style={mut}>{verVal(r.detalle.grabacion)}</span></div>}
+        {r.detalle?.presencia && <div style={{ fontSize: '0.84rem' }}><b>🙋 Presencia:</b> <span style={mut}>{verVal(r.detalle.presencia)}</span></div>}
+        {(r.detalle?.replicar || []).length > 0 && <div><b>✅ Para copiar</b><Lista items={r.detalle.replicar} color="#8fdba0" /></div>}
+        <div><button className="rd-btn pri" disabled={ok} onClick={guarda}>{ok ? '✔ Guardado: el editor ya lo usa' : '💾 Guardar como referente para el editor'}</button></div>
+      </div>}
+      {lista.length > 0 && <div style={{ ...mut, fontSize: '0.8rem' }}>Referentes guardados: {lista.map(x => x.nombre).join(' · ')}</div>}
     </div>
   );
 }
@@ -1636,7 +1678,7 @@ function PestanaAnalizador() {
             </div>}
           </div>
           {pruebas.length > 0 && <div className="rd-card"><h3>🧪 Posibles reels de prueba <span className="rd-chip">{pruebas.length}</span></h3><div style={{ ...mut, fontSize: '0.82rem' }}>Casi no se mostraron a nadie, así que no cuentan para el análisis. Si alguno no es una prueba, márcalo.</div>{pruebas.map(p => <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderTop: '1px solid rgba(255,255,255,.07)', fontSize: '0.84rem' }}><a href={p.enlace} target="_blank" rel="noreferrer" style={{ flex: 1, color: 'inherit' }}>{(p.pie || '(sin texto)').slice(0, 80)}<div style={mut}>{String(p.fecha).slice(0, 10)} · {fmt(p.views ?? p.reach ?? 0)} vistas</div></a><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} onClick={() => marca(p.id, false)}>No es una prueba</button></div>)}</div>}
-          <BuscaReel ig={ig} onAnadido={() => { cargaPubs(); cargar(); }} />
+          <BuscaReel ig={ig} leyendo={trabaja === 'sync'} onLeer={sync} onAnadido={() => { cargaPubs(); cargar(); }} />
           {top.length > 0 && <div className="rd-card"><h3>Ranking y autopsia</h3>{top.slice(0, 10).map(p => <div key={p.id}><div className="rd-bar"><span style={{ width: 150, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(p.pie || p.tipo).slice(0, 26)}</span><i style={{ width: Math.max(4, (p.puntuacion || 0) / maxP * 100) + '%' }} /><b>{p.puntuacion}</b><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} disabled={!!trabaja} onClick={() => autopsia(p.id)}>{trabaja === 'aut' + p.id ? '…' : '¿Por qué?'}</button><button className="rd-btn" style={{ padding: '4px 10px', fontSize: '0.74rem' }} title="Márcalo si fue una prueba y no debe contar" onClick={() => marca(p.id, true)}>🧪</button></div>{autopsias[p.id] && <div style={{ margin: '4px 0 10px 0', padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,.05)', fontSize: '0.85rem', lineHeight: 1.5 }}><span className={'rd-chip ' + (autopsias[p.id].veredicto === 'repetir' ? 'verde' : autopsias[p.id].veredicto === 'dejar' ? 'rojo' : 'ambar')}>{autopsias[p.id].veredicto}</span> {autopsias[p.id].resumen}<Lista items={autopsias[p.id].por_que} />{(autopsias[p.id].que_haria_distinto || []).length > 0 && <div style={{ marginTop: 6 }}><b>Yo haría distinto:</b><Lista items={autopsias[p.id].que_haria_distinto} color="#f2c46d" /></div>}{autopsias[p.id].como_repetirlo && <div style={{ marginTop: 6, ...mut }}>Cómo repetirlo: {autopsias[p.id].como_repetirlo}</div>}</div>}</div>)}</div>}
           <div className="rd-card">
             <h3>🔮 Predice un vídeo antes de hacerlo</h3>
@@ -1694,6 +1736,7 @@ function PestanaAnalizador() {
           </div>
           <div style={{ ...mut, fontSize: '0.8rem' }}>De otras cuentas solo se ve lo público (texto, me gusta y comentarios), y solo de cuentas profesionales.</div>
           <ResultadoNicho n={nicho?.instagram} />
+          <EstudiaReferente />
         </div>
       </>)}
 

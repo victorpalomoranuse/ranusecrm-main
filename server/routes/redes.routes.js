@@ -273,7 +273,7 @@ router.get('/video/:id', async (req, res) => {
     if (t.estado !== 'listo') return res.json({ estado: 'procesando', progreso: t.progreso, pct: t.pct || 0 });
     const a = t.analisis_videos?.[0]?.analisis; if (!a) return res.json({ estado: 'error', error: t.analisis_videos?.[0]?.error || 'No he podido leer el vídeo' });
     const texto = 'VÍDEO YA EDITADO (medido por la IA): dura ' + Math.round(a.dur) + ' s, ' + a.planos + ' planos (plano medio ' + a.plano_medio + ' s), ' + (a.palabras_por_min ? a.palabras_por_min + ' palabras por minuto' : 'sin voz hablada') + '. ' + limpia(a.descripcion, 400) + ' Estructura: ' + (a.estructura || []).map(x => limpia(x, 160)).join(' | ');
-    res.json({ estado: 'listo', texto, dur: a.dur, planos: a.planos, plano_medio: a.plano_medio });
+    res.json({ estado: 'listo', texto, dur: a.dur, planos: a.planos, plano_medio: a.plano_medio, detalle: a.detalle || null, descripcion: limpia(a.descripcion, 400), estructura: a.estructura || [] });
   } catch (e) { res.status(500).json({ error: 'No se pudo leer el análisis' }); }
 });
 // ── HISTORIAS: Instagram solo deja leer las historias mientras están activas (24 h), así que se guardan solas cada pocas horas con sus números
@@ -359,6 +359,15 @@ router.post('/nicho/descubrir', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'No se pudieron encontrar cuentas: ' + String(e.message || e).slice(0, 140) }); }
 });
 router.post('/nicho/cuentas/quitar', async (req, res) => { try { const d = await leerJson(RUTA_CUENTAS_NICHO, { cuentas: [], descartadas: [] }), u = String(req.body?.usuario || '').toLowerCase(); d.cuentas = (d.cuentas || []).filter(x => x.usuario.toLowerCase() !== u); d.descartadas = [...(d.descartadas || []), u]; await guardarJson(RUTA_CUENTAS_NICHO, d); res.json(d); } catch { res.status(500).json({ error: 'No se pudo quitar' }); } });
+// Referentes: vídeos de otros creadores que Víctor pasa para que el editor aprenda cómo están hechos
+router.post('/referencias', async (req, res) => {
+  try {
+    const nombre = limpia(req.body?.nombre, 80) || 'Referente', d = req.body?.detalle || {};
+    const x = { id: crypto.randomUUID().slice(0, 6), fecha: new Date().toISOString().slice(0, 10), nombre, descripcion: limpia(req.body?.descripcion, 400), replicar: (d.replicar || []).slice(0, 6).map(y => limpia(y, 200)), mejorar: (d.mejorar || []).slice(0, 4).map(y => limpia(y, 200)), grabacion: limpia(d.grabacion, 400), presencia: limpia(d.presencia, 400) };
+    const r = await leerJson('crm/redes/referencias.json', { lista: [] }); r.lista = [...(r.lista || []), x].slice(-30); await guardarJson('crm/redes/referencias.json', r); res.json(r);
+  } catch { res.status(500).json({ error: 'No se pudo guardar' }); }
+});
+router.get('/referencias', async (req, res) => { try { res.json(await leerJson('crm/redes/referencias.json', { lista: [] })); } catch { res.status(500).json({ error: 'No se pudo leer' }); } });
 router.get('/objetivos', async (req, res) => { try { const id = await objetivoActual(); res.json({ actual: id, objetivos: Object.entries(OBJETIVOS).map(([k, o]) => ({ id: k, nombre: o.nombre, icono: o.icono, que: o.que, formula: o.formula, unidad: o.unidad })) }); } catch { res.status(500).json({ error: 'No se pudieron leer' }); } });
 router.post('/objetivo', async (req, res) => { try { const id = String(req.body?.id || ''); if (!OBJETIVOS[id]) return res.status(400).json({ error: 'Objetivo no válido' }); await guardarJson(RUTA_OBJETIVO, { id }); res.json({ ok: true }); } catch { res.status(500).json({ error: 'No se pudo guardar' }); } });
 router.post('/instagram/prueba', async (req, res) => {
