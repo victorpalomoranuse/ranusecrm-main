@@ -300,12 +300,27 @@ router.get('/video/:id', async (req, res) => {
 const RUTA_HISTORIAS_IG = 'crm/redes/historias_ig.json';
 export async function sincronizarHistoriasIG() {
   const c = await conexion(); if (!c) return { n: 0 };
-  let j; try { j = await graph('/' + c.ig_id + '/stories', { fields: 'id,media_type,permalink,timestamp,thumbnail_url' }, c.token); } catch (e) { return { n: 0, error: String(e.message).slice(0, 120) }; }
+  let j; try { j = await graph('/' + c.ig_id + '/stories', { fields: 'id,media_type,permalink,timestamp,thumbnail_url,media_url' }, c.token); } catch (e) { return { n: 0, error: String(e.message).slice(0, 120) }; }
   const d = await leerJson(RUTA_HISTORIAS_IG, { historias: [] }), por = new Map((d.historias || []).map(h => [h.id, h]));
   for (const s of (j.data || [])) {
     const h = por.get(s.id) || { id: s.id, fecha: s.timestamp, tipo: s.media_type, enlace: s.permalink };
     for (const m of ['reach', 'replies', 'shares', 'total_interactions', 'views', 'follows', 'profile_visits']) { try { const r = await graph('/' + s.id + '/insights', { metric: m }, c.token); const x = r.data?.[0]; const v = x?.values?.[0]?.value ?? x?.total_value?.value; if (v != null) h[m] = Number(v) || 0; } catch { /* métrica no disponible para esta historia */ } }
     try { const r = await graph('/' + s.id + '/insights', { metric: 'navigation', breakdown: 'story_navigation_action_type' }, c.token); const res = r.data?.[0]?.total_value?.breakdowns?.[0]?.results || []; h.navegacion = Object.fromEntries(res.map(x => [String(x.dimension_values?.[0] || '').toLowerCase(), Number(x.value) || 0])); } catch { /* sin navegación */ }
+    if (!h.descripcion) {
+      try {
+        const url = s.media_type === 'VIDEO' ? s.thumbnail_url : (s.media_url || s.thumbnail_url);
+        if (url) {
+          const rf = await fetch(url, { signal: AbortSignal.timeout(25000) }); const tipoImg = (rf.headers.get('content-type') || 'image/jpeg').split(';')[0];
+          if (rf.ok && /^image\//.test(tipoImg)) {
+            const buf = Buffer.from(await rf.arrayBuffer());
+            if (buf.length < 4.5e6) {
+              const r = json(await callClaude({ system: 'Miras UNA historia de Instagram de Víctor Palomo (Ranuse Design, diseño y montaje de gimnasios) y la describes para que su asistente sepa qué ha subido. Sé concreto y breve. Devuelves SOLO JSON {"resumen":"qué se ve y de qué va, en una frase","tipo":"personal|trabajo|autoridad|bastidores|cta|herramienta|otro","texto_en_pantalla":"texto legible o vacío","pegatina":"encuesta/pregunta/enlace u otra, si se ve, o vacío"}', messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: tipoImg, data: buf.toString('base64') } }, { type: 'text', text: 'Describe esta historia.' }] }], maxTokens: 500 }));
+              h.descripcion = limpia(r.resumen, 220); h.tipo_contenido = limpia(r.tipo, 20); h.texto_pantalla = limpia(r.texto_en_pantalla, 160); h.pegatina = limpia(r.pegatina, 80);
+            }
+          }
+        }
+      } catch { /* si no se puede mirar, se queda solo con los números */ }
+    }
     h.actualizada = new Date().toISOString(); por.set(s.id, h);
   }
   const lista = [...por.values()].sort((a, b) => new Date(a.fecha) - new Date(b.fecha)).slice(-500);

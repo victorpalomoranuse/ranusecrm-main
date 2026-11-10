@@ -76,6 +76,8 @@ async function contextoEstratega(hoy) {
   const piezas = ['ESTRATEGIA DE INSTAGRAM DE VÍCTOR (obligatoria):\n' + reglas.map(r => '- ' + r.texto).join('\n')];
   try {
     const real = await leer('crm/redes/historias_ig.json', { historias: [] }), hs = (real.historias || []).filter(h => (Date.now() - new Date(h.fecha).getTime()) < 21 * 86400000);
+    const conDesc = hs.filter(h => h.descripcion).slice(-10);
+    if (conDesc.length) piezas.push('LO QUE HA SUBIDO A HISTORIAS (visto por ti en Instagram, de verdad; más reciente al final):\n' + conDesc.map(h => '- ' + String(h.fecha).slice(0, 10) + ' ' + String(h.fecha).slice(11, 16) + ' UTC [' + (h.tipo_contenido || h.tipo) + '] ' + h.descripcion + (h.texto_pantalla ? ' · texto: «' + h.texto_pantalla + '»' : '') + (h.pegatina ? ' · ' + h.pegatina : '') + ' → alcance ' + (h.reach ?? '?') + ', respuestas ' + (h.replies ?? 0) + ', compartidos ' + (h.shares ?? 0)).join('\n') + '\nUsa esto para no repetirte y para saber qué le funciona; no hace falta que te lo cuente.');
     if (hs.length >= 3) {
       const med = (k) => { const v = hs.map(h => Number(h[k]) || 0).sort((a, b) => a - b); return v[Math.floor(v.length / 2)] || 0; };
       const mejores = hs.slice().sort((a, b) => ((b.replies || 0) * 5 + (b.shares || 0) * 4 + (b.reach || 0) / 50) - ((a.replies || 0) * 5 + (a.shares || 0) * 4 + (a.reach || 0) / 50)).slice(0, 5);
