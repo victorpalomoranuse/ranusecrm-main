@@ -1200,9 +1200,14 @@ function Estilos({ estilos: formatos, onCambio }) {
 
 
 // Analizador de redes: Instagram conectado (sin copiar claves), aprende de tus publicaciones y busca ideas ganadoras en el nicho (Instagram y YouTube)
-function Lista({ items, color }) {
+function Lista({ items, color, max = 3 }) {
+  const [todo, setTodo] = useState(false);
   if (!items || !items.length) return null;
-  return <ul className="rd-lista" style={color ? { '--pt': color } : undefined}>{items.map((x, i) => <li key={i}>{x}</li>)}</ul>;
+  const ver = todo ? items : items.slice(0, max);
+  return <>
+    <ul className="rd-lista" style={color ? { '--pt': color } : undefined}>{ver.map((x, i) => <li key={i}>{x}</li>)}</ul>
+    {items.length > max && <button className="rd-btn" style={{ alignSelf: 'flex-start', padding: '3px 10px', fontSize: '0.76rem' }} onClick={() => setTodo(v => !v)}>{todo ? 'Ver menos' : 'Ver ' + (items.length - max) + ' más'}</button>}
+  </>;
 }
 function Tarjeta({ titulo, color, children }) { return <div className="rd-card"><h3 style={color ? { color } : undefined}>{titulo}</h3>{children}</div>; }
 const ORIGEN_IDEA = { 'tus datos': ['📊 Tus datos', '#8fdba0'], nicho: ['🌍 Nicho', '#f2c46d'], exploracion: ['🧭 Exploración', '#9db8ff'] };
