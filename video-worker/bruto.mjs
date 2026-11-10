@@ -24,7 +24,7 @@ const R = { acento: '#CDBBA7', titulo: true, pausa: 0.4, subs: { palabrasPorBloq
 if (process.env.INSERCIONES === '1') R.inserciones = true;
 if (process.env.RECETA_JSON) {
   const o = JSON.parse(fs.readFileSync(process.env.RECETA_JSON, 'utf8'));
-  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente', 'whoosh', 'flash', 'cambioCada', 'estiloSubs', 'preguntaSoloEscrita']) if (o[k] !== undefined) R[k] = o[k];
+  for (const k of ['acento', 'titulo', 'zoomFinal', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'encuadreZoom', 'subsBajoCara', 'graficos', 'pausa', 'limpiar', 'fuente', 'whoosh', 'flash', 'cambioCada', 'director', 'cambiosEnFrases', 'intensidad', 'ilustraciones', 'estiloSubs', 'preguntaSoloEscrita']) if (o[k] !== undefined) R[k] = o[k];
   if (o.subs) R.subs = { ...R.subs, ...o.subs }; if (o.musica && typeof o.musica === 'object') R.musica = { ...R.musica, ...o.musica };
 }
 if (!/^#[0-9a-f]{6}$/i.test(R.acento)) R.acento = '#CDBBA7';
@@ -41,6 +41,20 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const claude = async (content, max = 1500) => {
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: max, messages: [{ role: 'user', content }] }) });
   const j = await r.json(); if (!r.ok) throw new Error('Claude ' + r.status); return JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]);
+};
+
+// Director de edición: el modelo más capaz que tenga la cuenta (si uno no existe, se prueba el siguiente)
+const MODELOS_DIRECTOR = [ENV.EDITOR_MODEL, 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-sonnet-4-5-20250929'].filter(Boolean);
+const claudeMejor = async (content, max = 2500) => {
+  let ultimo = null;
+  for (const modelo of MODELOS_DIRECTOR) {
+    try {
+      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: modelo, max_tokens: max, messages: [{ role: 'user', content }] }) });
+      const j = await r.json(); if (!r.ok) throw new Error('Claude ' + r.status + ' ' + (j.error?.message || '').slice(0, 80));
+      return JSON.parse(/\{[\s\S]*\}/.exec(j.content.map(b => b.text || '').join(''))[0]);
+    } catch (e) { ultimo = e; console.log('Director de edición (' + modelo + '):', e.message); }
+  }
+  throw ultimo || new Error('sin modelo');
 };
 
 // ---- datos del vídeo ----
@@ -168,10 +182,64 @@ try {
 } catch (e) { console.log('Sin ajustar los cortes a los silencios:', e.message); }
 console.log('Trozos de voz que se conservan:', trozos.map(t => t.ini.toFixed(1) + '-' + t.fin.toFixed(1)).join(' '));
 const piezas = []; let acum = 0;
-// Un cambio de plano (zoom) que cae EN MITAD de una frase se nota y cansa; uno que cae donde la persona respira (final de frase, coma, micro-pausa) pasa desapercibido y ayuda al ritmo.
-// Se buscan esos puntos naturales cerca del ritmo pedido (cambioCada) y no se fuerza ningún cambio donde no los hay.
-const nominal = Number(R.cambioCada) > 0.8 ? Number(R.cambioCada) : 3.6, porFrases = R.cambiosEnFrases !== false;
+// ── DIRECTOR DE EDICIÓN ──
+// Un editor profesional no pone un efecto cada X segundos: cada zoom, flash o golpe de sonido tiene una razón en lo que se dice (la idea clave, una cifra, un giro, el remate).
+// La IA lee el texto final y decide DÓNDE va cada efecto y de qué tipo; el motor los coloca. Si no hay IA, quedan cortes limpios en las pausas y un movimiento muy suave.
+const FLASH_OK = R.flash === true || R.flash === 'si';
 const conservadas = palabras.filter(w => !fuera.has(w.i));
+const INTENSIDAD = ['sobria', 'media', 'alta'].includes(R.intensidad) ? R.intensidad : 'media';
+const TIPOS_EFECTO = ['zoom', 'zoomFuerte', 'abierto', 'empuje', 'temblor', 'glitch', 'blancoNegro', 'vineta', 'apagon', 'barrido', 'calido', 'palabra', ...(FLASH_OK ? ['flash', 'flashColor', 'impacto'] : [])];
+const ESTILO_IMG = 'Imagen vertical 9:16 para superponer en un vídeo de Instagram de Ranuse Design (diseño de gimnasios). Estilo: fotografía/render realista y elegante, iluminación cinematográfica, paleta oscura (negros, grises, marrones cálidos) con un acento arena. SIN texto, SIN logotipos, SIN marcas y SIN personas reconocibles. Escena: ';
+const QUIERE_IMG = R.ilustraciones !== false && !!ENV.OPENAI_API_KEY;
+let efectos = []; /* { i, t (tiempo original), tipo, texto, motivo } */
+let ilustraciones = []; /* { i, t, dur, prompt, motivo } */
+let analisis = null;
+if (R.director !== false && conservadas.length > 12) {
+  try {
+    let tf = 0; const tiempoFinal = new Map(); // segundos aproximados en el vídeo final (antes de cortes de plano)
+    for (const tr of trozos) { for (const w of conservadas) if (w.de >= tr.ini - 0.01 && w.a <= tr.fin + 0.12) tiempoFinal.set(w.i, tf + (w.de - tr.ini)); tf += (tr.fin - tr.ini) + 0.19; }
+    const texto = conservadas.map(w => w.i + ':' + w.t + (tiempoFinal.has(w.i) && /[.?!]$/.test(w.t) ? ' [' + tiempoFinal.get(w.i).toFixed(1) + 's]' : '')).join(' ');
+    const dens = { sobria: 'un efecto cada 8-12 s, solo de cámara y alguna palabra en pantalla', media: 'un efecto cada 5-8 s', alta: 'un efecto cada 3-5 s, usando variedad' }[INTENSIDAD];
+    const r = await claudeMejor('Eres un editor de vídeo profesional y un guionista especializado en redes sociales (Reels, TikTok, Shorts) y diseño, con ojo para lo que se hace viral. Trabajas para Ranuse Design (diseño de gimnasios y espacios deportivos). Este es un vídeo vertical de alguien hablando a cámara; abajo tienes el texto FINAL ya limpio (índice:palabra; entre corchetes, los segundos aproximados en el vídeo al acabar una frase). Dura unos ' + durFinalEstimada().toFixed(0) + ' s.\n\n' + texto.slice(0, 14000) + '\n\n' +
+      'TU TRABAJO TIENE TRES PARTES:\n' +
+      '1) ANÁLISIS DE LA HISTORIA como lo haría un editor jefe: de qué va, cómo es el gancho actual (¿para el scroll?), el arco (gancho → planteamiento → nudo/giro → remate → cierre) señalando en qué palabra (índice) arranca cada momento, qué puntos son FUERTES, cuáles FLOJOS o donde se cae la retención, un potencial viral de 0 a 100 con el porqué y qué mejorarías (en el texto, el ritmo o lo visual).\n' +
+      '2) EFECTOS dirigidos con criterio, uno por razón narrativa (nunca por rutina). Repertorio:\n' +
+      '- "zoom": acercamiento suave sobre una idea clave o un dato.   - "zoomFuerte": golpe de zoom en el gancho, un remate o una frase contundente.\n' +
+      '- "abierto": plano más abierto para respirar tras algo intenso o al cambiar de tema.   - "empuje": acercamiento LENTO y continuo durante todo el plano (tensión creciente, explicación importante de 4 s o más).\n' +
+      '- "temblor": sacudida breve de cámara para un golpe (cifra enorme, un "boom").   - "glitch": fallo digital breve (error, caos, "ojo", cambio brusco).\n' +
+      '- "blancoNegro": el plano en blanco y negro para lo negativo, el problema o el "antes" (vuelve a color en el siguiente plano).   - "vineta": oscurece los bordes para dar foco a una frase importante o íntima.\n' +
+      '- "apagon": entrada desde negro (pausa dramática o cambio de capítulo antes del remate).   - "barrido": transición con desenfoque rápido (cambio de tema con energía).   - "calido": tono cálido para algo humano, positivo o de resultado.\n' +
+      '- "palabra": una palabra o cifra clave GRANDE en pantalla con rebote (campo "texto": 1-3 palabras, en MAYÚSCULAS; que no repita lo que ya se lee en el subtítulo salvo para subrayar).\n' +
+      (FLASH_OK ? '- "flash": destello blanco breve en un impacto real (frase gancho, cifra que sorprende, giro «pero…», remate); máx. 1 cada 10 s.   - "flashColor": destello del color de la marca, más sutil.   - "impacto": flash + subida y golpe de sonido; solo para el momento más fuerte; máximo 2 en todo el vídeo.\n' : '- (En este estilo NO se usan flashes.)\n') +
+      'REGLAS: intensidad "' + INTENSIDAD + '": ' + dens + '; separados al menos 2,8 s (una "palabra" puede ir a ≥1,5 s de otro efecto); el primero cae en los primeros 2,5 s si hay frase potente (el gancho decide el scroll); elige la palabra donde ARRANCA la idea (no muletillas ni mitad de frase); VARÍA mucho los tipos, no repitas el mismo dos veces seguidas; explicación tranquila = menos efectos; construye hacia el remate y deja respirar el final.\n' +
+      (QUIERE_IMG ? '3) ILUSTRACIONES: de 0 a ' + (INTENSIDAD === 'alta' ? 4 : 3) + ' imágenes a pantalla completa (1,6-3 s) que se superponen mientras sigue sonando la voz, cuando lo que se dice se puede VER y ayuda a contarlo o a sorprender (un espacio, un material, un objeto, una escena, una metáfora visual). Cada una: "de" (índice de palabra donde entra), "dur" (segundos), "prompt" (qué se ve, concreto y visual, en español, SIN personas, SIN texto y SIN logotipos) y "motivo". Separadas ≥3 s entre sí y del gancho inicial. Si no aportan, no pongas ninguna.\n' : '3) (No se generan ilustraciones en este vídeo: deja "ilustraciones" vacío.)\n') +
+      'Responde SOLO JSON: {"analisis":{"tema":"","gancho":"","arco":[{"momento":"gancho|planteamiento|nudo|giro|remate|cierre","de":0,"resumen":""}],"puntos_fuertes":[""],"puntos_flojos":[""],"potencial":0,"por_que":"","mejoras":[""]},"efectos":[{"de":0,"tipo":"","texto":"","motivo":"4-8 palabras"}],"ilustraciones":[{"de":0,"dur":2,"prompt":"","motivo":""}],"idea_de_ritmo":"una frase"}', 6000);
+    analisis = r.analisis || null;
+    const tipos = new Set(TIPOS_EFECTO), porIdx = new Map(conservadas.map(w => [w.i, w]));
+    let ult = -9, ultP = -9, nImp = 0; const ocupado = [];
+    for (const e of (r.efectos || []).slice().sort((x, y) => (x.de || 0) - (y.de || 0))) {
+      const w = porIdx.get(e.de); if (!w || !tipos.has(e.tipo)) continue;
+      const tfin = tiempoFinal.get(w.i); if (tfin === undefined || tfin > durFinalEstimada() - 1.2) continue;
+      if (e.tipo === 'palabra') { const txt = String(e.texto || '').replace(/[{}\\]/g, '').trim().toUpperCase().split(/\s+/).slice(0, 3).join(' '); if (!txt || tfin < ultP + 3 || ocupado.some(o => Math.abs(o - tfin) < 1.5)) continue; efectos.push({ i: w.i, t: w.de, tipo: 'palabra', texto: txt, motivo: String(e.motivo || '').slice(0, 60) }); ultP = tfin; continue; }
+      if (e.tipo === 'impacto' && ++nImp > 2) continue;
+      if (tfin < ult + 2.8) continue;
+      efectos.push({ i: w.i, t: w.de, tipo: e.tipo, motivo: String(e.motivo || '').slice(0, 60) }); ult = tfin; ocupado.push(tfin);
+    }
+    for (const g of (QUIERE_IMG ? (r.ilustraciones || []) : []).slice(0, INTENSIDAD === 'alta' ? 4 : 3)) {
+      const w = porIdx.get(g.de); if (!w || !String(g.prompt || '').trim()) continue; const tfin = tiempoFinal.get(w.i); if (tfin === undefined || tfin < 1 || tfin > durFinalEstimada() - 2.2) continue;
+      if (ilustraciones.some(x => Math.abs(x.tf - tfin) < 3.2)) continue;
+      ilustraciones.push({ i: w.i, t: w.de, tf: tfin, dur: Math.max(1.4, Math.min(3.2, Number(g.dur) || 2.2)), prompt: String(g.prompt).slice(0, 400), motivo: String(g.motivo || '').slice(0, 80) });
+    }
+    console.log('Director de edición:', efectos.length, 'efectos,', ilustraciones.length, 'ilustraciones —', r.idea_de_ritmo || '', '\n  ' + efectos.map(e => e.tipo + (e.texto ? '«' + e.texto + '»' : '') + '@' + (tiempoFinal.get(e.i) || 0).toFixed(1) + 's (' + e.motivo + ')').join('\n  '));
+    if (analisis) console.log('Análisis del editor: potencial', analisis.potencial, '—', String(analisis.por_que || '').slice(0, 200));
+    fs.writeFileSync(path.join(work, 'analisis_edicion.json'), JSON.stringify({ analisis, efectos: efectos.map(e => ({ tipo: e.tipo, texto: e.texto, t: Math.round((tiempoFinal.get(e.i) || 0) * 10) / 10, motivo: e.motivo })), ilustraciones: ilustraciones.map(g => ({ t: Math.round(g.tf * 10) / 10, dur: g.dur, motivo: g.motivo, prompt: g.prompt })), ritmo: r.idea_de_ritmo || '', intensidad: INTENSIDAD }, null, 1));
+  } catch (e) { console.log('Sin director de edición (cortes limpios y movimiento suave):', e.message); efectos = []; ilustraciones = []; }
+}
+const DIRECTOR = efectos.length > 0;
+const efCortes = efectos.filter(e => e.tipo !== 'palabra'); /* la palabra en pantalla no cambia de plano */
+function durFinalEstimada() { return trozos.reduce((s, x) => s + (x.fin - x.ini) + 0.19, 0); }
+// Un cambio de plano (zoom) que cae EN MITAD de una frase se nota y cansa; uno que cae donde la persona respira (final de frase, coma, micro-pausa) pasa desapercibido y ayuda al ritmo.
+const nominal = Number(R.cambioCada) > 0.8 ? Number(R.cambioCada) : 3.6, porFrases = R.cambiosEnFrases !== false;
 const puntosNaturales = (ini, fin) => {
   const r = [];
   for (let k = 0; k < conservadas.length - 1; k++) {
@@ -184,22 +252,45 @@ const puntosNaturales = (ini, fin) => {
 };
 for (const t of trozos) {
   const ini = Math.max(0, t.ini - (t.sa ? 0.02 : 0.07)), fin = Math.min(dur, t.fin + (t.sb ? 0.03 : 0.12)), largo = fin - ini;
-  const cortes = [];
+  const cortes = [], efCorte = new Map();
+  // 1) los efectos dirigidos mandan: cada uno es un cambio de plano en la palabra elegida
+  const mios = efCortes.filter(e => e.t > ini + 0.15 && e.t < fin - 0.5).sort((x, y) => x.t - y.t);
+  const primero = efCortes.find(e => e.t >= ini - 0.05 && e.t <= ini + 0.35); if (primero) efCorte.set('ini', primero.tipo);
+  for (const e of mios) { const tc = Math.max(ini + 0.3, e.t - 0.04); cortes.push(tc); efCorte.set(tc, e.tipo); }
+  // 2) entre efectos, cortes limpios donde el habla respira (solo si hace falta romper un plano muy largo)
   if (porFrases) {
+    const maxPlano = DIRECTOR ? nominal * 1.6 : nominal;
     const cand = puntosNaturales(ini, fin); let ult = ini;
-    while (fin - ult > nominal * 1.5) {
-      const ventana = cand.filter(c => c.t > ult + nominal * 0.6 && c.t < ult + nominal * 1.6 && c.t < fin - 1.1);
-      if (!ventana.length) { if (fin - ult > nominal * 2.4) { cortes.push(ult + nominal * 1.2); ult += nominal * 1.2; continue; } break; } // tramo largo sin respiros: un corte a mitad, solo si hace falta
-      const mejor = ventana.reduce((m, c) => { const pm = m.fuerza * 1.2 - Math.abs(m.t - (ult + nominal)) / nominal, pc = c.fuerza * 1.2 - Math.abs(c.t - (ult + nominal)) / nominal; return pc > pm ? c : m; });
-      cortes.push(mejor.t); ult = mejor.t;
+    const fijos = cortes.slice().sort((x, y) => x - y);
+    const siguiente = () => fijos.find(c => c > ult + 0.01);
+    while (true) {
+      const sig = siguiente(), limite = sig !== undefined ? sig : fin;
+      if (limite - ult <= maxPlano * 1.5) { if (sig === undefined) break; ult = sig; continue; }
+      const ventana = cand.filter(c => c.t > ult + maxPlano * 0.6 && c.t < Math.min(ult + maxPlano * 1.6, limite - 1.1));
+      if (!ventana.length) { if (limite - ult > maxPlano * 2.4) { const pc = ult + maxPlano * 1.2; cortes.push(pc); fijos.push(pc); fijos.sort((x, y) => x - y); ult = pc; continue; } if (sig === undefined) break; ult = sig; continue; }
+      const mejor = ventana.reduce((m, c) => { const pm = m.fuerza * 1.2 - Math.abs(m.t - (ult + maxPlano)) / maxPlano, pc = c.fuerza * 1.2 - Math.abs(c.t - (ult + maxPlano)) / maxPlano; return pc > pm ? c : m; });
+      cortes.push(mejor.t); fijos.push(mejor.t); fijos.sort((x, y) => x - y); ult = mejor.t;
     }
-  } else {
+  } else if (!DIRECTOR) {
     const n = Math.max(1, Math.round(largo / nominal));
     for (let k = 1; k < n; k++) { let fk = ini + largo * k / n; if (pista) { const sal = alPulso(acum + (fk - ini), pista.beats, 0.3), aj = ini + (sal - acum); if (aj > (cortes[cortes.length - 1] ?? ini) + 1.2 && aj < fin - 1.2) fk = aj; } cortes.push(fk); }
   }
-  let corte = ini;
-  for (const fk of [...cortes, fin]) { piezas.push({ ini: corte, fin: fk, t0: acum + (corte - ini) }); corte = fk; }
+  cortes.sort((x, y) => x - y);
+  let corte = ini, k0 = 0;
+  for (const fk of [...cortes, fin]) { piezas.push({ ini: corte, fin: fk, t0: acum + (corte - ini), efecto: k0 === 0 ? efCorte.get('ini') : efCorte.get(corte) }); corte = fk; k0++; }
   acum += largo;
+}
+// zoom de cada plano: el que pide el efecto; si no, un movimiento muy suave que esconde los saltos sin cansar
+{
+  const sutil = [1.0, 1.08, 1.0, 1.05]; let base = 0, previoPunch = false;
+  piezas.forEach((p, i) => {
+    if (R.zoomFinal <= 1) { p.z = 1.0; return; }
+    const zf0 = Math.max(1.05, R.zoomFinal), Z = { zoom: Math.max(1.16, zf0), zoomFuerte: Math.max(1.3, zf0 + 0.12), impacto: Math.max(1.3, zf0 + 0.12), abierto: 0.94, flash: Math.max(1.12, zf0), flashColor: Math.max(1.1, zf0), temblor: 1.12, glitch: 1.1, empuje: 1.0, barrido: 1.1, apagon: 1.0, blancoNegro: 1.06, vineta: 1.04, calido: 1.04 };
+    if (p.efecto && Z[p.efecto] !== undefined) { p.z = Z[p.efecto]; previoPunch = Z[p.efecto] > 1.1; }
+    else if (DIRECTOR) { p.z = previoPunch ? 1.0 : sutil[base++ % sutil.length]; previoPunch = false; }
+    /* sin director: queda el ciclo de siempre */
+  });
+  piezas.forEach((p, i) => { if (p.efecto === 'barrido' && i > 0) piezas[i - 1].blurFin = true; });
 }
 let acum2 = 0; piezas.forEach(p => { p.t0 = acum2; acum2 += p.fin - p.ini; }); const durFinal = acum2;
 const mapea = (t) => { for (const p of piezas) if (t >= p.ini && t <= p.fin) return p.t0 + (t - p.ini); return null; };
@@ -232,7 +323,9 @@ if (process.env.TITULO_PANTALLA || process.env.PREGUNTA_PANTALLA) {
   else ev.push('Dialogue: 6,' + tAss(0) + ',' + tAss(Math.min(durFinal, 4.2)) + ',Titulo,,0,0,0,,{\\an8\\pos(540,290)\\bord0\\shad4\\fs64\\fad(150,300)}' + parte(process.env.TITULO_PANTALLA, 22));
 }
 // destello blanco muy breve en cada cambio de plano
-if (R.flash === 'si') piezas.slice(1).forEach(p => ev.push('Dialogue: 4,' + tAss(p.t0) + ',' + tAss(p.t0 + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c&HFFFFFF&\\alpha&H9C&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
+if (FLASH_OK) piezas.slice(1).filter(p => ['flash', 'impacto', 'flashColor'].includes(p.efecto)).forEach(p => ev.push('Dialogue: 4,' + tAss(p.t0) + ',' + tAss(p.t0 + 0.09) + ',Kicker,,0,0,0,,{\\an7\\pos(0,0)\\p1\\c' + (p.efecto === 'flashColor' ? ACENTO : '&HFFFFFF&') + '\\alpha&H' + (p.efecto === 'flashColor' ? 'B8' : '9C') + '&\\fad(0,80)}m 0 0 l 1080 0 1080 1920 0 1920{\\p0}'));
+const tarjetasT = R.graficos ? (plan.graficos || []).map(g => { const w = palabras[g.de]; return w ? mapea(w.de) : null; }).filter(x => x !== null) : []; /* si ya sale una tarjeta de dato, la palabra grande no se pone encima */
+efectos.filter(e => e.tipo === 'palabra').forEach(e => { const t0 = mapea(e.t); if (t0 === null || t0 > durFinal - 0.6 || tarjetasT.some(x => t0 > x - 0.7 && t0 < x + 2.8)) return; ev.push('Dialogue: 5,' + tAss(t0) + ',' + tAss(Math.min(durFinal, t0 + 1.0)) + ',Titulo,,0,0,0,,{\\an5\\pos(540,500)\\fs130\\bord0\\shad6\\c' + ACENTO + '\\fscx45\\fscy45\\alpha&HFF&\\t(0,110,\\fscx118\\fscy118\\alpha&H00&)\\t(110,210,\\fscx100\\fscy100)\\fad(0,170)}' + limpiaT(e.texto)); });
 if (R.barra === true) ev.push('Dialogue: 4,' + tAss(0) + ',' + tAss(durFinal) + ',Kicker,,0,0,0,,{\\an7\\pos(0,1896)\\p1\\c' + ACENTO + '\\fscx0\\t(0,' + Math.round(durFinal * 1000) + ',\\fscx100)}m 0 0 l 1080 0 1080 7 0 7{\\p0}');
 const ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920', 'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '', '[V4+ Styles]',
   'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',
@@ -247,7 +340,7 @@ for (const f of ['Rubik-Bold.ttf', 'Rubik-Regular.ttf']) { const o = new URL('./
 copiaFuentes(path.join(work, 'fonts'), ['Montserrat', 'Rubik', R.fuente]);
 
 // ---- escenas superpuestas en momentos clave ----
-const ins = [], dr = {};
+const ins = [], dr = {}, imgs = [];
 if (catalogo.length) {
   let ult = -9;
   for (const g of (plan.inserciones || []).slice(0, 10)) {
@@ -275,24 +368,67 @@ if (R.graficos) {
 marca(60, 'Montando el vídeo: cortes, subtítulos y gráficos');
 // ---- un solo ffmpeg ----
 const zf = Math.max(1.05, R.zoomFinal), ZOOMS = R.zoomFinal <= 1 ? [1.0] : [1.0, zf, 0.92, zf + 0.1]; // acercar y alejar
-// whoosh sutil en cada cambio de plano (se mezcla por debajo de la voz)
-let WHOOSH_WAV = null;
-const marcasCorte = piezas.slice(1).map(p => p.t0);
-if (Number(R.whoosh) > 0 && marcasCorte.length) {
-  WHOOSH_WAV = path.join(work, 'whoosh.wav');
-  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'anoisesrc=d=0.4:c=pink:a=0.6:r=48000', '-af', 'highpass=f=500,lowpass=f=6000,afade=t=in:st=0:d=0.22,afade=t=out:st=0.2:d=0.2,volume=' + Number(R.whoosh), WHOOSH_WAV]);
-  if (!fs.existsSync(WHOOSH_WAV)) WHOOSH_WAV = null;
+// ── Sonidos de efectos: cada efecto lleva el suyo (golpe grave, subida, "pop", whoosh, ruido digital), sintetizados aquí; el volumen lo fija la receta (whoosh, 0 = sin sonidos)
+const VOL_SFX = Math.min(0.5, Math.max(0, Number(R.whoosh) || 0));
+const SFX_CMD = {
+  whoosh: ['-f', 'lavfi', '-i', 'anoisesrc=d=0.4:c=pink:a=0.6:r=48000', '-af', 'highpass=f=500,lowpass=f=6000,afade=t=in:st=0:d=0.22,afade=t=out:st=0.2:d=0.2'],
+  boom: ['-f', 'lavfi', '-i', 'sine=f=52:d=0.9:r=48000', '-f', 'lavfi', '-i', 'anoisesrc=d=0.35:c=brown:r=48000', '-filter_complex', '[0:a]afade=t=out:st=0.05:d=0.85,volume=2.0[s];[1:a]lowpass=f=260,afade=t=out:d=0.35[n];[s][n]amix=inputs=2:normalize=0,aformat=channel_layouts=mono'],
+  subida: ['-f', 'lavfi', '-i', 'anoisesrc=d=0.7:c=white:r=48000', '-af', 'highpass=f=700,lowpass=f=9000,afade=t=in:st=0:d=0.7,volume=0.9'],
+  pop: ['-f', 'lavfi', '-i', 'sine=f=1500:d=0.09:r=48000', '-af', 'afade=t=out:st=0.01:d=0.08,volume=1.4'],
+  glitch: ['-f', 'lavfi', '-i', 'anoisesrc=d=0.2:c=white:r=48000', '-af', 'bandpass=f=3000:w=2500,tremolo=f=45:d=0.9,afade=t=out:d=0.2'],
+};
+const GANANCIA = { whoosh: 1, boom: 1.5, subida: 0.9, pop: 1, glitch: 1 };
+const sfxWav = {};
+function sfx(tipo) {
+  if (sfxWav[tipo] !== undefined) return sfxWav[tipo];
+  const f = path.join(work, 'sfx_' + tipo + '.wav');
+  run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...SFX_CMD[tipo], '-ac', '2', '-ar', '48000', f]);
+  return (sfxWav[tipo] = fs.existsSync(f) && fs.statSync(f).size > 500 ? f : null);
 }
-function whooshFiltro(entrada, salida, idx) {
-  if (!WHOOSH_WAV) return ['[' + entrada + ']anull[' + salida + ']'];
-  const n = marcasCorte.length;
-  return ['[' + idx + ':a]asplit=' + n + marcasCorte.map((_, k) => '[w' + k + ']').join(''), ...marcasCorte.map((m, k) => '[w' + k + ']adelay=' + Math.max(0, Math.round((m - 0.2) * 1000)) + ':all=1[d' + k + ']'), '[' + entrada + ']' + marcasCorte.map((_, k) => '[d' + k + ']').join('') + 'amix=inputs=' + (n + 1) + ':normalize=0:duration=first,alimiter=limit=0.95[' + salida + ']'];
+const sfxEventos = [];
+if (VOL_SFX > 0) {
+  const MAPA = { impacto: [['subida', -0.55], ['boom', 0]], flash: [['pop', 0]], flashColor: [['pop', 0]], zoomFuerte: [['whoosh', -0.15]], temblor: [['boom', 0]], glitch: [['glitch', 0]], barrido: [['whoosh', -0.2]], apagon: [['boom', 0]] };
+  if (DIRECTOR) {
+    piezas.forEach((p, i) => { if (i > 0) for (const [s, d] of (MAPA[p.efecto] || [])) sfxEventos.push({ s, t: Math.max(0, p.t0 + d) }); });
+    efectos.filter(e => e.tipo === 'palabra').forEach(e => { const t0 = mapea(e.t); if (t0 !== null) sfxEventos.push({ s: 'pop', t: Math.max(0, t0 - 0.02) }); });
+  } else piezas.slice(1).forEach(p => sfxEventos.push({ s: 'whoosh', t: Math.max(0, p.t0 - 0.2) })); /* sin director: un whoosh suave en cada corte, como antes */
+}
+// una sola pista con todos los sonidos en su sitio (se mezcla luego por debajo de la voz)
+let SFX_TRACK = null;
+{
+  const ev = sfxEventos.filter(e => sfx(e.s)).slice(0, 40);
+  if (ev.length) {
+    const ent = [], fl = [];
+    ev.forEach((e, k) => { ent.push('-i', sfx(e.s)); fl.push('[' + k + ':a]adelay=' + Math.round(e.t * 1000) + ':all=1,volume=' + (VOL_SFX * (GANANCIA[e.s] || 1)).toFixed(3) + '[x' + k + ']'); });
+    fl.push(ev.map((_, k) => '[x' + k + ']').join('') + 'amix=inputs=' + ev.length + ':normalize=0:duration=longest,apad,atrim=0:' + durFinal.toFixed(2) + '[sfx]');
+    const o = path.join(work, 'sfx_pista.wav');
+    run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...ent, '-filter_complex', fl.join(';'), '-map', '[sfx]', '-ar', '48000', '-ac', '2', o]);
+    if (fs.existsSync(o) && fs.statSync(o).size > 2000) SFX_TRACK = o;
+  }
+  console.log('Sonidos de efectos:', ev.length ? ev.map(e => e.s + '@' + e.t.toFixed(1)).join(' ') : 'ninguno');
+}
+const BLUR = "boxblur=luma_radius=20:luma_power=2:chroma_radius=10:chroma_power=2";
+function extraEfecto(p) {
+  const D = Math.max(0.3, p.fin - p.ini), f = [];
+  switch (p.efecto) {
+    case 'empuje': f.push("scale=w='1080*(1+0.2*min(t\\," + D.toFixed(2) + ")/" + D.toFixed(2) + ")':h='1920*(1+0.2*min(t\\," + D.toFixed(2) + ")/" + D.toFixed(2) + ")':eval=frame", 'crop=1080:1920'); break;
+    case 'temblor': f.push('scale=1152:2048', "crop=1080:1920:x='36+16*sin(70*t)*exp(-7*t)':y='64+16*cos(61*t)*exp(-7*t)'"); break;
+    case 'glitch': f.push("rgbashift=rh=-14:bh=14:gv=5:enable='lt(t\\,0.24)'", "noise=alls=24:allf=t:enable='lt(t\\,0.24)'"); break;
+    case 'blancoNegro': f.push('hue=s=0', 'eq=contrast=1.12'); break;
+    case 'vineta': f.push('vignette=angle=0.9', 'eq=brightness=-0.03'); break;
+    case 'apagon': f.push('fade=t=in:st=0:d=0.22:color=black'); break;
+    case 'barrido': f.push(BLUR + ":enable='lt(t\\,0.14)'"); break;
+    case 'calido': f.push('colorbalance=rs=0.08:gs=0.02:bs=-0.08:rm=0.06:bm=-0.06'); break;
+    default: break;
+  }
+  if (p.blurFin) f.push(BLUR + ":enable='gt(t\\," + Math.max(0, D - 0.12).toFixed(2) + ")'");
+  return f.length ? ',' + f.join(',') : '';
 }
 const partes = [], pa = [];
 piezas.forEach((p, i) => {
-  const v = ventana(ZOOMS[i % ZOOMS.length]);
+  const v = ventana(p.z ?? ZOOMS[i % ZOOMS.length]);
   if (ANCHO) partes.push('[0:v]trim=' + p.ini.toFixed(3) + ':' + p.fin.toFixed(3) + ',setpts=PTS-STARTPTS,split=2[bg' + i + '][fg' + i + '];[bg' + i + ']scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=36:6,eq=brightness=-0.15[bgb' + i + '];[fg' + i + ']scale=1080:-2[fgs' + i + '];[bgb' + i + '][fgs' + i + ']overlay=0:(H-h)/2-90,fps=30,setsar=1[v' + i + ']');
-  else partes.push('[0:v]trim=' + p.ini.toFixed(3) + ':' + p.fin.toFixed(3) + ',setpts=PTS-STARTPTS,crop=' + v.wc + ':' + v.hc + ':' + v.x0 + ':' + v.y0 + ',scale=1080:1920,fps=30,setsar=1[v' + i + ']');
+  else partes.push('[0:v]trim=' + p.ini.toFixed(3) + ':' + p.fin.toFixed(3) + ',setpts=PTS-STARTPTS,crop=' + v.wc + ':' + v.hc + ':' + v.x0 + ':' + v.y0 + ',scale=1080:1920,fps=30,setsar=1' + extraEfecto(p) + '[v' + i + ']');
   pa.push('[0:a]atrim=' + p.ini.toFixed(3) + ':' + p.fin.toFixed(3) + ',asetpts=PTS-STARTPTS[a' + i + ']');
 });
 const cat = piezas.map((_, i) => '[v' + i + '][a' + i + ']').join('') + 'concat=n=' + piezas.length + ':v=1:a=1[vc][ac]';
@@ -311,13 +447,37 @@ graf.forEach((g, k) => {
   filtros.push('[' + prev + '][g' + k + ']overlay=x=\'(W-w)/2\':y=\'' + yFin + '-70*pow(max(0\\,1-(t-' + a + ')/0.32)\\,3)\':enable=\'between(t\\,' + a + '\\,' + b2 + ')\':eof_action=pass[o' + k + ']');
   prev = 'o' + k;
 });
+// ilustraciones generadas con IA: se superponen a pantalla completa mientras la voz sigue (los subtítulos quedan por encima)
+if (ilustraciones.length) {
+  const gen = async (g, f) => {
+    const r = await fetch('https://api.openai.com/v1/images/generations', { method: 'POST', headers: { Authorization: 'Bearer ' + ENV.OPENAI_API_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: ENV.OPENAI_IMAGE_MODEL || 'gpt-image-1', prompt: ESTILO_IMG + g.prompt, size: '1024x1536', quality: 'medium', n: 1 }), signal: AbortSignal.timeout(120000) });
+    const j = await r.json(); const b64 = j.data?.[0]?.b64_json; if (!r.ok || !b64) throw new Error('OpenAI ' + r.status + ' ' + (j.error?.message || '').slice(0, 100));
+    fs.writeFileSync(f, Buffer.from(b64, 'base64'));
+  };
+  const hechas = await Promise.all(ilustraciones.map(async (g, k) => { const f = path.join(work, 'ilustracion' + k + '.png'); try { await gen(g, f); return { ...g, f }; } catch (e) { console.log('Ilustración ' + (k + 1) + ' sin generar:', e.message); return null; } }));
+  const ocupa = [...ins.map(x => [x.a, x.a + x.d]), ...graf.map(x => [x.a, x.a + x.d])];
+  hechas.filter(Boolean).forEach(g => {
+    const a0 = mapea(g.t); if (a0 === null || a0 > durFinal - 1) return; const d = Math.min(g.dur, durFinal - a0 - 0.3);
+    if (ocupa.some(([x, y]) => a0 < y + 0.3 && a0 + d > x - 0.3)) return;
+    imgs.push({ f: g.f, a: a0, d, motivo: g.motivo }); ocupa.push([a0, a0 + d]);
+  });
+  console.log('Ilustraciones superpuestas:', imgs.map(x => x.a.toFixed(1) + 's (' + x.motivo + ')').join(' | ') || 'ninguna');
+}
+imgs.forEach((g, k) => {
+  const ix = entradas.filter(x => x === '-i').length, a = g.a.toFixed(3), b2 = (g.a + g.d).toFixed(3);
+  entradas.push('-loop', '1', '-framerate', '30', '-t', (g.d + 0.1).toFixed(2), '-i', g.f);
+  filtros.push('[' + ix + ':v]scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,fps=30,setsar=1,format=yuva420p,scale=w=\'1080*(1+0.06*min(t\\,' + g.d.toFixed(2) + ')/' + g.d.toFixed(2) + ')\':h=\'1920*(1+0.06*min(t\\,' + g.d.toFixed(2) + ')/' + g.d.toFixed(2) + ')\':eval=frame,crop=1080:1920,fade=t=in:st=0:d=0.16:alpha=1,fade=t=out:st=' + Math.max(0, g.d - 0.16).toFixed(2) + ':d=0.16:alpha=1,setpts=PTS+' + a + '/TB[im' + k + ']');
+  filtros.push('[' + prev + '][im' + k + ']overlay=x=0:y=0:enable=\'between(t\\,' + a + '\\,' + b2 + ')\':eof_action=pass[oim' + k + ']'); prev = 'oim' + k;
+});
 filtros.push('[' + prev + ']' + (process.env.SIN_ASS === '1' ? 'null' : 'ass=subs.ass:fontsdir=fonts') + '[v]');
+// audio: voz limpia + (música por debajo) + sonidos de efectos
+filtros.push('[ac]' + AUDIO + '[voz0]');
+let audioEntrada = 'voz0';
+if (SFX_TRACK) { const ix = entradas.filter(x => x === '-i').length; entradas.push('-i', SFX_TRACK); filtros.push('[voz0][' + ix + ':a]amix=inputs=2:normalize=0:duration=first[vozfx]'); audioEntrada = 'vozfx'; }
 if (pista) {
-  entradas.push('-stream_loop', '-1', '-i', pista.ruta);
-  filtros.push('[ac]' + AUDIO + '[voz0]'); filtros.push(...whooshFiltro('voz0', 'voz', 2 + ins.length + graf.length));
-  filtros.push(mezcla({ entradaIdx: 1 + ins.length + graf.length, voz: 'voz', durTotal: durFinal, db: Number(R.musica.volumen) || -19, salida: 'a' }));
-} else { filtros.push('[ac]' + AUDIO + '[voz0]'); filtros.push(...whooshFiltro('voz0', 'a', 1 + ins.length + graf.length)); }
-if (WHOOSH_WAV) entradas.push('-i', WHOOSH_WAV);
+  const ix = entradas.filter(x => x === '-i').length; entradas.push('-stream_loop', '-1', '-i', pista.ruta);
+  filtros.push(mezcla({ entradaIdx: ix, voz: audioEntrada, durTotal: durFinal, db: Number(R.musica.volumen) || -19, salida: 'a' }));
+} else filtros.push('[' + audioEntrada + ']anull[a]');
 fs.writeFileSync(path.join(work, 'grafo.txt'), filtros.join(';\n'));
 const rr = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...entradas, '-/filter_complex', 'grafo.txt', '-map', '[v]', '-map', '[a]', '-t', durFinal.toFixed(2), ...ARGS_VIDEO(21), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', path.resolve(SALIDA)], { cwd: work });
 console.log(fs.existsSync(SALIDA) ? 'OK ' + SALIDA + ' · ' + (fs.statSync(SALIDA).size / 1048576).toFixed(1) + ' MB' : 'FALLO ' + (rr.stderr || '').slice(0, 900));

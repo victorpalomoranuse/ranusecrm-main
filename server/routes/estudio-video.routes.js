@@ -98,6 +98,7 @@ async function formatos() {
   if (!f.diaV5) { const x = f.lista.find(z => z.id === 'mi-dia-voz'); if (x?.receta) x.receta.corte = { min: 2.0, max: 3.2 }; f.diaV5 = true; await guardarJson(RUTA_FORMATOS, f); }
   // Sin destellos blancos en los cortes (Víctor: «hace todo el rato flashes, no tiene sentido») y cambios de plano al ritmo del habla
   if (!f.sinFlashV1) { for (const x of f.lista) { const r = x.receta || (x.receta = {}); r.flash = false; if (x.id === 'clips-dopaminicos' || x.id === 'entrevista-dinamica') { r.cambiosEnFrases = true; r.cambioCada = Math.max(Number(r.cambioCada) || 0, 4.2); } } f.sinFlashV1 = true; await guardarJson(RUTA_FORMATOS, f); }
+  if (!f.directorV1) { for (const x of f.lista) { const r = x.receta || (x.receta = {}); r.director = true; r.cambiosEnFrases = true; if (['dopaminico-serio', 'clips-dopaminicos', 'entrevista-dinamica'].includes(x.id)) r.flash = true; } f.directorV1 = true; await guardarJson(RUTA_FORMATOS, f); const e = await leerJson(RUTA_ESTILOS, null); if (e?.lista) { for (const s of e.lista) { const r = s.receta || (s.receta = {}); r.director = true; r.cambiosEnFrases = true; if (['dopaminico-serio', 'clips-dopaminicos', 'entrevista-dinamica'].includes(s.id)) r.flash = true; } await guardarJson(RUTA_ESTILOS, e); } }
   if (!f.clipsV3) { const x = f.lista.find(z => z.id === 'clips-dopaminicos'); if (x?.receta) { x.receta.estiloSubs = 'karaoke'; x.receta.subs = { ...(x.receta.subs || {}), palabrasPorBloque: 3 }; } f.clipsV3 = true; await guardarJson(RUTA_FORMATOS, f); }
   if (!f.clipsV2) { const x = f.lista.find(z => z.id === FORMATO_CLIPS.id); if (x) x.receta = JSON.parse(JSON.stringify(FORMATO_CLIPS.receta)); f.clipsV2 = true; await guardarJson(RUTA_FORMATOS, f); }
   // formatos nuevos de fábrica se añaden una sola vez (si luego los borras, no vuelven)
@@ -191,7 +192,7 @@ function aplicaReceta(f, r) {
   if (r.acento && /^#[0-9a-fA-F]{6}$/.test(r.acento)) f.receta.acento = r.acento;
   if (r.zoomFinal !== undefined) f.receta.zoomFinal = num(r.zoomFinal, 1, 1.4, 1.14);
   if (r.whoosh !== undefined) f.receta.whoosh = num(r.whoosh, 0, 0.5, 0.16);
-  if (r.flash !== undefined) f.receta.flash = r.flash ? 'si' : false; /* el destello solo se pinta si es 'si' */
+  if (r.flash !== undefined) f.receta.flash = !!r.flash; /* permiso: el director de edición decide dónde va cada destello */
   for (const k of ['titulo', 'barra', 'mayusculas', 'resaltar', 'encuadre', 'subsBajoCara', 'graficos', 'horas', 'preguntaSoloEscrita', 'collage', 'motion', 'etiquetas', 'aperturaPremium']) if (r[k] !== undefined) f.receta[k] = !!r[k];
   if (['Montserrat', 'Rubik'].includes(r.fuente)) f.receta.fuente = r.fuente;
   if (['normal', 'karaoke', 'caja', 'palabra'].includes(r.estiloSubs)) f.receta.estiloSubs = r.estiloSubs;
