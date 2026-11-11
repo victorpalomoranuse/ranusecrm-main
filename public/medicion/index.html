@@ -10757,7 +10757,7 @@ function cespedPlanta(L,T){
 function cespedRapido(){
   var m=document.getElementById('cesmod');if(m)m.remove();
   m=document.createElement('div');m.id='cesmod';m.className='dxfmod';
-  var DIS=[['lineas_metros','Líneas y metros'],['lineas_sin_numeros','Solo líneas (sin números)'],['discontinuas','Líneas discontinuas'],['solo_numeros','Solo números (sin líneas)'],['flechas','Flechas de avance'],['puntos','Puntos de referencia'],['frase','Una frase repetida'],['numeracion','Numeración 1, 2, 3…'],['logo_inicio','Logo al inicio'],['sin_marcas','Sin marcas']];
+  var DIS=[['pista_sprint','Pista de sprint (marcas en bordes y 01, 02…)'],['marcas_borde','Marcas cortas en los bordes'],['lineas_metros','Líneas y metros'],['lineas_sin_numeros','Solo líneas (sin números)'],['discontinuas','Líneas discontinuas'],['solo_numeros','Solo números (sin líneas)'],['flechas','Flechas de avance'],['puntos','Puntos de referencia'],['frase','Una frase repetida'],['numeracion','Numeración 1, 2, 3…'],['logo_inicio','Logo al inicio'],['sin_marcas','Sin marcas']];
   var PRE=[['gris','Gris claro con líneas negras'],['negro','Negro con líneas blancas'],['verde','Verde con líneas blancas'],['terracota','Terracota con líneas blancas'],['azul','Azul con líneas blancas']];
   m.innerHTML='<div class="dxfbox" style="max-width:520px"><header><h3>Césped / carril</h3><p class="note" style="margin:0">Se coloca en el plano como un bloque (muévelo, gíralo y cambia sus medidas como cualquier otro) y en el 3D aparece como césped de verdad. Las líneas, los colores y los carriles se ajustan en el 3D.</p></header>'+
     '<div style="padding:12px 16px;display:grid;gap:10px">'+

@@ -28,16 +28,18 @@ export const PRESETS_MARCAJE = {
   frase: { n: 'Frase repetida', distancia: 'ninguna', separador: 'ninguno', elementos: [{ tipo: 'texto', texto: 'TU FRASE', pos: 'cada', cada: 1000, tam: 45, color: '#ffffff', carril: 0, rot: 0 }] },
   numeracion: { n: 'Numeración 1, 2, 3…', distancia: 'ninguna', separador: 'linea', elementos: [{ tipo: 'numeracion', texto: '', pos: 'cada', cada: 500, tam: 50, color: '#ffffff', carril: 0, rot: 0 }] },
   logo_inicio: { n: 'Logo al inicio', distancia: 'ninguna', separador: 'linea', elementos: [{ tipo: 'logo', texto: '', pos: 'inicio', cada: 1000, tam: 90, color: '#ffffff', carril: 0, rot: 0 }] },
+  pista_sprint: { n: 'Pista de sprint (marcas en los bordes y 01, 02…)', distancia: 'indice', separador: 'marca_borde', elementos: [], salida: false, grosorLinea: 14, sep: 100 },
+  marcas_borde: { n: 'Marcas cortas en los bordes (sin números)', distancia: 'ninguna', separador: 'marca_borde', elementos: [], salida: false, grosorLinea: 14, sep: 100 },
   sin_marcas: { n: 'Sin marcas', distancia: 'ninguna', separador: 'ninguno', elementos: [] },
 };
-const SEPARADORES = ['linea', 'discontinua', 'flecha', 'punto', 'ninguno'], DISTANCIAS = ['metros', 'numero', 'ninguna'];
+const SEPARADORES = ['linea', 'discontinua', 'flecha', 'punto', 'marca_borde', 'ninguno'], DISTANCIAS = ['metros', 'numero', 'indice', 'ninguna'];
 function normElemento(e, i) {
   const x = e && typeof e === 'object' ? e : {};
   return { id: String(x.id || 'm' + i).replace(/[^a-z0-9_-]/gi, '').slice(0, 14) || 'm' + i, tipo: ['texto', 'numeracion', 'logo'].includes(x.tipo) ? x.tipo : 'texto', texto: String(x.texto || '').slice(0, 60), tam: num(x.tam, 40, 8, 250), color: hex(x.color, '#ffffff'), pos: ['inicio', 'fin', 'centro', 'cada'].includes(x.pos) ? x.pos : 'cada', cada: num(x.cada, 1000, 100, 5000), carril: Math.round(num(x.carril, 0, 0, 8)), rot: [0, 90, 180, 270].includes(Number(x.rot)) ? Number(x.rot) : 0, logo: String(x.logo || '').slice(0, 60) };
 }
 export function aplicaPresetMarcaje(c, clave) {
   const p = PRESETS_MARCAJE[clave]; if (!p) return c;
-  c.distancia = p.distancia; c.separador = p.separador; c.numeros = p.distancia !== 'ninguna';
+  c.distancia = p.distancia; c.separador = p.separador; c.numeros = p.distancia !== 'ninguna'; if (p.salida !== undefined) c.salida = p.salida; if (p.grosorLinea) c.grosorLinea = p.grosorLinea; if (p.sep) c.sep = p.sep;
   c.elementos = p.elementos.map((e, i) => normElemento({ ...e, id: 'm' + Date.now().toString(36) + i }, i));
   return c;
 }
@@ -75,7 +77,8 @@ export function lienzoCesped(o) {
   const aw = C.anchoCarril * px;
   for (let x = C.sep; x < L - 1 && C.separador !== 'ninguno'; x += C.sep) {
     const xp = Math.round(x * px);
-    if (C.separador === 'linea') g.fillRect(Math.round(xp - lw / 2), 0, lw, ch);
+    if (C.separador === 'marca_borde') { const l1 = Math.round(aw * 0.16), l2 = Math.round(aw * 0.08), lh = Math.max(2, Math.round(lw * 0.7)); g.fillRect(Math.round(xp - lh / 2), 0, lh, l1); g.fillRect(Math.round(xp - lh / 2), ch - l1, lh, l1); const xm = Math.round((x - C.sep / 2) * px); g.fillRect(Math.round(xm - lh / 2), 0, lh, l2); g.fillRect(Math.round(xm - lh / 2), ch - l2, lh, l2); }
+    else if (C.separador === 'linea') g.fillRect(Math.round(xp - lw / 2), 0, lw, ch);
     else if (C.separador === 'discontinua') { const d = Math.max(6, Math.round(aw * 0.18)); for (let y = 0; y < ch; y += d * 2) g.fillRect(Math.round(xp - lw / 2), y, lw, Math.min(d, ch - y)); }
     else for (let k = 0; k < C.carriles; k++) {
       const yc = (k + 0.5) * aw;
@@ -85,8 +88,8 @@ export function lienzoCesped(o) {
   }
   if (C.lineasCarril) for (let k = 1; k < C.carriles; k++) g.fillRect(0, Math.round(k * C.anchoCarril * px - lw / 2), cw, lw);
   if (C.distancia !== 'ninguna') {
-    const fs = Math.max(10, Math.round(Math.min(C.anchoCarril * 0.22, C.sep * 0.18) * px)); g.font = '700 ' + fs + 'px Montserrat, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = C.linea;
-    for (let k = 0; k < C.carriles; k++) for (let x = C.sep; x < L - 1; x += C.sep) { const m = (x / 100).toLocaleString('es-ES', { maximumFractionDigits: 1 }); g.fillText(C.distancia === 'numero' ? m : m + ' m', Math.round((x + C.sep * 0.16) * px), Math.round((k + 0.5) * C.anchoCarril * px)); }
+    const fs = Math.max(10, Math.round(Math.min(C.anchoCarril * (C.distancia === 'indice' ? 0.2 : 0.22), C.sep * (C.distancia === 'indice' ? 0.3 : 0.18)) * px)); g.font = '700 ' + fs + 'px Montserrat, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = C.linea;
+    for (let k = 0; k < C.carriles; k++) for (let x = C.sep; x < L - 1; x += C.sep) { const m = (x / 100).toLocaleString('es-ES', { maximumFractionDigits: 1 }), idx = String(Math.round(x / C.sep)).padStart(2, '0'); g.fillText(C.distancia === 'indice' ? idx : C.distancia === 'numero' ? m : m + ' m', Math.round((x + (C.distancia === 'indice' ? 0 : C.sep * 0.16)) * px), Math.round((k + 0.5) * C.anchoCarril * px)); }
   }
   // frases, numeración y logos
   const logos = [];
@@ -121,7 +124,7 @@ export function construirCesped(o) {
 
 export function calculosCesped(o) {
   const C = normalizaCesped(o), L = o.w, A = o.d, m2 = L * A / 1e4, merma = 1.1;
-  const nLin = ['linea', 'discontinua'].includes(C.separador) ? Math.max(0, Math.ceil((L - 1) / C.sep) - 1) : 0, mLin = (nLin * A + (C.lineasCarril ? (C.carriles - 1) * L : 0) + (C.borde ? 2 * (L + A) : 0) + (C.salida ? 2 * A : 0)) / 100;
+  const nLin = ['linea', 'discontinua'].includes(C.separador) ? Math.max(0, Math.ceil((L - 1) / C.sep) - 1) : C.separador === 'marca_borde' ? Math.max(0, Math.ceil((L - 1) / C.sep) - 1) * 0.5 : 0, mLin = (nLin * A + (C.lineasCarril ? (C.carriles - 1) * L : 0) + (C.borde ? 2 * (L + A) : 0) + (C.salida ? 2 * A : 0)) / 100;
   const tiras = Math.ceil(A / 200), mUnion = Math.max(0, tiras - 1) * L / 100; // rollos de 2 m de ancho
   const lista = [
     ['cesped', 'Césped artificial (con 10 % de recortes)', Math.round(m2 * merma * 10) / 10, 'm²'],
