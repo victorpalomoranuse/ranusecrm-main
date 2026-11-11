@@ -564,7 +564,10 @@ async function generaModelo3DPieza(id, body) {
       const dim = [Number(body?.largo) || Number(pr.longitud), Number(body?.fondo) || Number(pr.ancho), Number(pr.altura)];
       const medidas = dim.every(x => x > 0) ? 'largo ' + dim[0] + ' cm, fondo ' + dim[1] + ' cm, alto ' + dim[2] + ' cm' : '';
       glb = await glbConChatGPT(fotosGpt, String(pr.name || body?.nombre || 'Producto').slice(0, 80), medidas); metodo = 'ChatGPT (modelado por piezas)'; usadas = fotosGpt.length;
-    } catch (e) { console.error('3D con ChatGPT falló, se usa Hunyuan:', String(e.message || e).slice(0, 200)); glb = null; }
+    } catch (e) {
+      console.error('3D con ChatGPT falló' + (body?.soloChatGPT ? '' : ', se usa Hunyuan') + ':', String(e.message || e).slice(0, 200)); glb = null;
+      if (body?.soloChatGPT) throw new ErrorAmable(502, /credit|billing|quota/i.test(String(e.message || '')) ? 'Sin crédito en OpenAI: añade saldo en platform.openai.com → Billing' : 'ChatGPT no ha podido: ' + String(e.message || e).slice(0, 120)); // en lote no se sustituye lo que hay por un modelo peor
+    }
   }
   if (!glb) { const r3 = await glbDesdeFotos(todas); glb = r3.glb; metodo = r3.metodo; usadas = r3.usadas; }
   if (!glb || glb.length < 1000) throw new ErrorAmable(502, 'El servicio 3D no devolvió un modelo');
@@ -602,12 +605,14 @@ router.post('/modelo3d-ia/lote', async (req, res) => {
   if (!ids.length) return res.status(400).json({ error: 'No hay piezas que regenerar' });
   const jobs = ids.map(id => ({ id, job: 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }));
   jobs.forEach(j => TRABAJOS_3D.set(j.job, { estado: 'procesando', t: Date.now(), pieza: j.id }));
-  let i = 0;
+  let i = 0, sinSaldo = false;
   const obrero = async () => {
     while (i < jobs.length) {
       const { id, job } = jobs[i++];
-      try { const m = await generaModelo3DPieza(id, { reusar: true }); TRABAJOS_3D.set(job, { estado: 'listo', t: Date.now(), pieza: id, modelo3d: m }); }
-      catch (err) { console.error('catalog modelo3d-ia (lote):', id, String(err.message || err).slice(0, 200)); TRABAJOS_3D.set(job, { estado: 'error', t: Date.now(), pieza: id, error: err.estado ? err.message : 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 110) + ')' }); }
+      if (sinSaldo) { TRABAJOS_3D.set(job, { estado: 'error', t: Date.now(), pieza: id, error: 'Sin crédito en OpenAI: añade saldo en platform.openai.com → Billing y vuelve a lanzarlo' }); continue; }
+      try { const m = await generaModelo3DPieza(id, { reusar: true, soloChatGPT: true }); TRABAJOS_3D.set(job, { estado: 'listo', t: Date.now(), pieza: id, modelo3d: m }); }
+      catch (err) {
+        if (/Sin crédito/i.test(String(err.message || ''))) sinSaldo = true; console.error('catalog modelo3d-ia (lote):', id, String(err.message || err).slice(0, 200)); TRABAJOS_3D.set(job, { estado: 'error', t: Date.now(), pieza: id, error: err.estado ? err.message : 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 110) + ')' }); }
     }
   };
   obrero(); obrero();
