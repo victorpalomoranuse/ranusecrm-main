@@ -1319,22 +1319,29 @@ function EstudiaNicho({ p }) {
       throw new Error('Tarda demasiado');
     } catch (e) { setEst(e.response?.data?.error || e.message || 'No se pudo'); }
   };
-  return <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 3, maxWidth: '80%' }}><button onClick={go} disabled={ok || (est && !/No se|Instagram|Tarda|Faltan/.test(est))} title="La IA analiza a fondo cómo está hecho este vídeo y el editor aprende de él" style={{ padding: '3px 9px', fontSize: '0.68rem', borderRadius: 14, border: '1px solid rgba(255,255,255,.25)', background: 'rgba(0,0,0,.65)', color: '#fff', cursor: 'pointer' }}>{est || '🔬 Estudiarlo a fondo'}</button></div>;
+  return <div><button onClick={go} disabled={ok || (est && !/No se|Instagram|Tarda|Faltan/.test(est))} title="La IA analiza a fondo cómo está hecho este vídeo y el editor aprende de él" style={{ padding: '3px 9px', fontSize: '0.68rem', borderRadius: 14, border: '1px solid rgba(255,255,255,.25)', background: 'rgba(0,0,0,.65)', color: '#fff', cursor: 'pointer' }}>{est || '🔬 Estudiarlo a fondo'}</button></div>;
+}
+function AccionesVideoNicho({ p, yt, onReplica }) {
+  const titulo = p.titulo || p.gancho || p.pie || 'este vídeo', quien = p.canal || (p.cuenta ? '@' + p.cuenta : 'otro creador');
+  const replica = (ev) => { ev.preventDefault(); ev.stopPropagation(); onReplica({ idea: 'Replicar en MI Instagram (adaptado a mi marca y a mi voz) el ' + (yt ? 'vídeo de YouTube' : 'reel') + ' «' + titulo + '» de ' + quien + (p.vistas ? ' (' + Number(p.vistas).toLocaleString('es-ES') + ' vistas)' : '') + ': mantén lo que lo hace funcionar (su gancho, su estructura y su ritmo) y cámbialo para que sea mío y sobre mi rumbo, sin copiarlo.', formato: 'reel', gancho: String(titulo).slice(0, 140), origen: 'nicho' }); };
+  return <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 3, maxWidth: '85%', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}><button onClick={replica} title="Te hace el guion para hacer algo así en tu Instagram" style={{ padding: '3px 9px', fontSize: '0.68rem', borderRadius: 14, border: '1px solid rgba(143,219,160,.6)', background: 'rgba(0,0,0,.7)', color: '#8fdba0', cursor: 'pointer' }}>♻ Replicar en mi Instagram</button>{!yt && p.cuenta && p.enlace && /reel/.test(p.enlace) && <EstudiaNicho p={p} />}</div>;
 }
 function ResultadoNicho({ n }) {
+  const [replica, setReplica] = useState(null);
   if (!n) return null;
   const yt = n.plataforma === 'youtube';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 6 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span className="rd-chip arena">{yt ? '▶ YouTube · ' + n.consulta : '📸 ' + (n.cuentas || []).map(c => '@' + c.usuario).join(', ')}</span><span style={mut}>{String(n.fecha).slice(0, 10)}</span>{n.fiabilidad && <span className="rd-chip" title={n.fiabilidad}>Fiabilidad: {String(n.fiabilidad).split(/[.,:]/)[0].slice(0, 30)}</span>}</div>
       {(n.fallos || []).length > 0 && <div style={{ ...mut, color: '#f2c46d' }}>No he podido leer: {n.fallos.join(' · ')}</div>}
-      {(n.top || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>{n.top.slice(0, 10).map((p, i) => <a key={i} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: yt ? '16/11' : '4/5' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{(yt || p.vistas) ? (p.vistas >= 1e6 ? (p.vistas / 1e6).toFixed(1).replace('.', ',') + ' M' : p.vistas >= 1e3 ? Math.round(p.vistas / 1e3) + ' k' : p.vistas) : p.puntuacion}</span>{!yt && p.cuenta && p.enlace && /reel/.test(p.enlace) && <EstudiaNicho p={p} />}<div className="vel"><b>{p.titulo || p.gancho || p.pie || 'ver'}</b><div style={{ opacity: 0.7 }}>{p.canal || (p.cuenta ? '@' + p.cuenta : '')}{p.vistas ? ' · ' + p.vistas.toLocaleString('es-ES') + ' vistas' : p.me_gusta != null ? ' · ' + p.me_gusta + ' me gusta' : ''}</div></div></a>)}</div>}
+      {(n.top || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>{n.top.slice(0, 10).map((p, i) => <a key={i} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: yt ? '16/11' : '4/5' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{(yt || p.vistas) ? (p.vistas >= 1e6 ? (p.vistas / 1e6).toFixed(1).replace('.', ',') + ' M' : p.vistas >= 1e3 ? Math.round(p.vistas / 1e3) + ' k' : p.vistas) : p.puntuacion}</span><AccionesVideoNicho p={p} yt={yt} onReplica={setReplica} /><div className="vel"><b>{p.titulo || p.gancho || p.pie || 'ver'}</b><div style={{ opacity: 0.7 }}>{p.canal || (p.cuenta ? '@' + p.cuenta : '')}{p.vistas ? ' · ' + p.vistas.toLocaleString('es-ES') + ' vistas' : p.me_gusta != null ? ' · ' + p.me_gusta + ' me gusta' : ''}</div></div></a>)}</div>}
       <div className="rd-grid2">
         {(n.patrones || []).length > 0 && <Tarjeta titulo="Lo que funciona"><Lista ejemplo items={n.patrones} color="#8fdba0" /></Tarjeta>}
         {(n.ganchos || []).length > 0 && <Tarjeta titulo="Ganchos que enganchan"><Lista ejemplo items={n.ganchos} /></Tarjeta>}
         {(n.formatos || []).length > 0 && <Tarjeta titulo="Formatos ganadores"><Lista ejemplo items={n.formatos} color="#f2c46d" /></Tarjeta>}
       </div>
       {(n.ideas || []).length > 0 && <div><h3 style={{ margin: '4px 0 10px' }}>💡 Ideas para ti</h3><IdeasTarjetas ideas={n.ideas} /></div>}
+      {replica && <TallerIdeas idea={replica} onCerrar={() => setReplica(null)} />}
     </div>
   );
 }
