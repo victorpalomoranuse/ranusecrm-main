@@ -774,9 +774,26 @@ function autoAlinear(cid, raw, prod, mod) {
 // El modelo se escala (sin deformarlo) para que quepa en las medidas del objeto y se apoya en el suelo, centrado
 // modo: 'caber' (mantiene proporciones y cabe en las medidas), 'estirar' (se deforma hasta las medidas exactas), 'nativo' (tamaño del archivo, en metros)
 // o 'auto' (tamaño original si es razonable; si no, cabe). Sin modo = 'caber'.
+// Caja del modelo sin piezas sueltas lejanas (los modelos generados por IA a veces traen fragmentos perdidos que descentran todo)
+function cajaRobusta(g) {
+  const completa = new THREE.Box3().setFromObject(g);
+  const xs = [], ys = [], zs = [], v = new THREE.Vector3();
+  g.updateMatrixWorld(true);
+  g.traverse(o => { const p = o.isMesh && o.geometry?.attributes?.position; if (!p) return; const paso = Math.max(1, Math.floor(p.count / 4000)); for (let i = 0; i < p.count; i += paso) { v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld); xs.push(v.x); ys.push(v.y); zs.push(v.z); } });
+  if (xs.length < 50) return completa;
+  const q = (arr, f) => { const s = Float32Array.from(arr).sort(); return s[Math.min(s.length - 1, Math.max(0, Math.floor(f * (s.length - 1))))]; };
+  const rec = new THREE.Box3(new THREE.Vector3(q(xs, 0.01), q(ys, 0.01), q(zs, 0.01)), new THREE.Vector3(q(xs, 0.99), q(ys, 0.99), q(zs, 0.99)));
+  const sc = completa.getSize(new THREE.Vector3()), sr = rec.getSize(new THREE.Vector3());
+  // solo si la caja completa es claramente mayor que el cuerpo principal en algún eje
+  if (!(sc.x > sr.x * 1.35 || sc.y > sr.y * 1.35 || sc.z > sr.z * 1.35)) return completa;
+  const m = rec.getSize(new THREE.Vector3()).multiplyScalar(0.08); rec.min.sub(m); rec.max.add(m);
+  g.traverse(o => { if (!o.isMesh) return; const b = new THREE.Box3().setFromObject(o); if (!b.intersectsBox(rec)) o.visible = false; });
+  return new THREE.Box3().setFromObject(g, true).isEmpty() ? completa : (() => { const bb = new THREE.Box3(); g.traverse(o => { if (o.isMesh && o.visible) bb.union(new THREE.Box3().setFromObject(o)); }); return bb.isEmpty() ? completa : bb; })();
+}
+
 function ajustarModelo(raw, w, d, h, modo) {
   const g = raw.clone(true);
-  const caja = new THREE.Box3().setFromObject(g);
+  const caja = cajaRobusta(g);
   const s = caja.getSize(new THREE.Vector3());
   if (!(s.x > 0 && s.y > 0 && s.z > 0)) return null;
   const mayor = Math.max(s.x, s.y, s.z) * 100;
