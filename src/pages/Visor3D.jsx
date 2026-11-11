@@ -487,6 +487,13 @@ function cargarModelo(m) {
   cacheModelos.set(m.url, p);
   return p;
 }
+// Triángulos de un modelo (una vez por modelo): sirve para no pasar de un total que la tarjeta gráfica pueda dibujar con fluidez
+const cacheTri = new WeakMap();
+function triangulosDe(raw) {
+  if (cacheTri.has(raw)) return cacheTri.get(raw);
+  let n = 0; raw.traverse(o => { const g = o.isMesh && o.geometry; if (g) n += (g.index ? g.index.count : g.attributes?.position?.count || 0) / 3; });
+  cacheTri.set(raw, n); return n;
+}
 // Cola de carga de los modelos de las máquinas del plano: de uno en uno (y los más ligeros primero) para que la página no se quede colgada
 // descargando y procesando decenas de modelos pesados a la vez; entre uno y otro se deja respirar al navegador.
 const colaCarga = { pend: [], activa: false };
@@ -1987,6 +1994,8 @@ export default function Visor3D({ cliente = false }) {
   const estirarAlAplicar = true; // las medidas escritas siempre mandan: el modelo se ajusta a ellas
   const [cargarPesados, setCargarPesados] = useState(false); // los modelos muy pesados (más de 12 MB) no se cargan solos: bloquean la página
   const [pesadosN, setPesadosN] = useState(0);
+  const [limiteTri, setLimiteTri] = useState(5e6); // máximo de triángulos de modelos de máquinas en pantalla; el resto se queda como caja
+  const [limitadasN, setLimitadasN] = useState(0);
   const [cargarModelos, setCargarModelos] = useState(false); // con muchas máquinas distintas, los modelos no se cargan solos al abrir (la página se quedaba colgada): botón «Cargar modelos»
   const [pendientesN, setPendientesN] = useState(0);
   const [modosEq, setModosEq] = useState({});               // cómo se ajusta el modelo 3D de cada máquina del plano
@@ -3222,6 +3231,11 @@ export default function Visor3D({ cliente = false }) {
         const rotE = (mod.rot || 0) + (modosEq[e.id]?.rotM || 0) + (!mod.rot && !modosEq[e.id]?.rotM && !modosEq[e.id]?.alin ? giroAuto(raw, e.w || e.largo, e.d || e.fondo) : 0), giroE = (rotE % 180) !== 0;
         const mm = ajustarModelo(raw, (giroE ? (e.d || e.fondo) : (e.w || e.largo)) * CM, (giroE ? (e.w || e.largo) : (e.d || e.fondo)) * CM, (e.alto || 110) * CM, modosEq[e.id]?.modo || 'estirar'); if (!mm) return;
         mm.userData.girado = giroE;
+        // presupuesto de triángulos: si con este modelo se pasa del límite, la máquina se queda como caja (salvo la seleccionada)
+        const triMm = triangulosDe(raw);
+        let usados = 0; a.raiz?.traverse(g3 => { g3.children.forEach(c3 => { if (c3.userData.modeloEq) usados += c3.userData.tri || 0; }); });
+        if (usados + triMm > limiteTri && seleccion?.id !== e.id) { g.userData.modeloCargado = true; g.userData.limitada = true; setLimitadasN(n => n + 1); return; }
+        mm.userData.tri = triMm;
         setMtick(v => v + 1);
         sobrescribirModelo(mm, {}, texturas); mm.userData.modeloEq = true; mm.rotation.y = -(rotE * Math.PI) / 180; g.add(mm);
         if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
@@ -3230,7 +3244,8 @@ export default function Visor3D({ cliente = false }) {
       }).catch(() => { g.userData.modeloCargado = false; });
     });
     setPesadosN(pesados.size); setPendientesN(pendientes.size);
-  }, [rev, biblioteca, estado, modosEq, cargarPesados, cargarModelos]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (a.limiteVisto !== limiteTri) { a.limiteVisto = limiteTri; a.raiz.traverse(g4 => { if (g4.userData.limitada) { g4.userData.limitada = false; g4.userData.modeloCargado = false; } }); setLimitadasN(0); }
+  }, [rev, biblioteca, estado, modosEq, cargarPesados, cargarModelos, limiteTri]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Caras pintadas en muros y en las máquinas del plano
   useEffect(() => {
@@ -5092,6 +5107,12 @@ export default function Visor3D({ cliente = false }) {
       {barra2d}
       {barraAxo}
       <div ref={caja} data-vista="1" style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
+      {!cliente && limitadasN > 0 && limiteTri < 1e9 && (
+        <div style={{ position: 'absolute', left: '50%', bottom: 14, transform: 'translateX(-50%)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(22,20,18,0.92)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12.5, boxShadow: '0 4px 16px rgba(0,0,0,0.4)', maxWidth: '92%' }}>
+          <span>⚡ {limitadasN} máquina{limitadasN > 1 ? 's' : ''} se han dejado como caja para que la página vaya fluida (demasiados detalles a la vez). Seleccionar una máquina carga su modelo.</span>
+          <button style={{ ...btn, background: '#8a6f55', fontWeight: 700 }} onClick={() => { if (window.confirm('Cargar todos los modelos puede dejar la página muy lenta o bloqueada unos segundos. ¿Seguir?')) setLimiteTri(1e12); }}>Cargarlas todas</button>
+        </div>
+      )}
       {!cliente && ((pendientesN > 0 && !cargarModelos) || (pesadosN > 0 && !cargarPesados && (pendientesN === 0 || cargarModelos))) && (
         <div style={{ position: 'absolute', left: '50%', top: 56, transform: 'translateX(-50%)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(22,20,18,0.92)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12.5, boxShadow: '0 4px 16px rgba(0,0,0,0.4)', maxWidth: '90%' }}>
           {pendientesN > 0 && !cargarModelos
