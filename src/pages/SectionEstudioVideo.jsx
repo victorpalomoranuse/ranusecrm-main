@@ -1241,10 +1241,20 @@ function TallerIdeas({ idea, onCerrar }) {
             <span className="rd-chip" style={{ color: g.necesita_micro ? '#f2c46d' : '#8fdba0' }}>{g.necesita_micro ? '🎤 Necesitas micro' : 'Sin micro'}</span>
             {(g.equipo || []).map((x, i) => <span key={i} className="rd-chip">{x}</span>)}
           </div>
+          {g.formato_grabacion && <div style={{ border: '1px solid rgba(143,219,160,.35)', background: 'rgba(143,219,160,.06)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ ...mut, fontSize: '0.78rem', letterSpacing: '.06em' }}>🎥 CÓMO GRABARLO</div>
+            <div style={{ fontSize: '1.02rem' }}><b>{g.formato_grabacion.tipo}</b></div>
+            {g.formato_grabacion.por_que && <div style={{ ...mut, fontSize: '0.84rem' }}>{g.formato_grabacion.por_que}</div>}
+            <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: 8 }}>{[['📱 Con', [g.formato_grabacion.dispositivo, g.formato_grabacion.orientacion].filter(Boolean).join(' · ')], ['📏 Distancia y ángulo', g.formato_grabacion.distancia_y_angulo], ['📍 Dónde te pones', g.formato_grabacion.donde_te_pones], ['💡 Luz', g.formato_grabacion.luz], ['🎙 Sonido', g.formato_grabacion.sonido], ['⚙️ Ajustes', g.formato_grabacion.ajustes]].filter(x => x[1]).map(([k, v]) => <div key={k} style={{ fontSize: '0.82rem' }}><b>{k}</b><div style={mut}>{v}</div></div>)}</div>
+            {(g.formato_grabacion.tomas || []).length > 0 && <div><b style={{ fontSize: '0.84rem' }}>Las tomas, en orden</b><ol style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: '0.84rem', lineHeight: 1.5 }}>{g.formato_grabacion.tomas.map((x, i) => <li key={i}>{x}</li>)}</ol></div>}
+            {g.formato_grabacion.como_se_monta && <div style={{ fontSize: '0.84rem' }}><b>✂️ Cómo se monta:</b> <span style={mut}>{g.formato_grabacion.como_se_monta}</span></div>}
+            {(g.formato_grabacion.antes_de_grabar || []).length > 0 && <div><b style={{ fontSize: '0.82rem' }}>Antes de grabar</b><Lista items={g.formato_grabacion.antes_de_grabar} color="#8fdba0" /></div>}
+            {(g.formato_grabacion.errores_a_evitar || []).length > 0 && <div><b style={{ fontSize: '0.82rem' }}>Evita</b><Lista items={g.formato_grabacion.errores_a_evitar} color="#ff9b9b" /></div>}
+          </div>}
           {g.escenas.map(s => { const tp = TIPO_ESCENA[s.tipo] || TIPO_ESCENA.broll; return (
             <div key={s.n} style={{ borderLeft: '3px solid ' + (s.micro ? '#f2c46d' : s.tipo === 'render' ? '#9db8ff' : '#444'), paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ fontSize: '0.78rem', ...mut }}><b>Escena {s.n}</b> · {tp[0]} · {s.segundos} s{s.micro ? ' · 🎤 micro' : ''}</div>
-              <div style={{ fontSize: '0.9rem' }}>{s.que_hacer}</div>
+              <div style={{ fontSize: '0.9rem' }}>{s.que_hacer}</div>{s.como_grabar && <div style={{ fontSize: '0.84rem' }}>🎥 <b>Cómo grabarla:</b> <span style={mut}>{s.como_grabar}</span></div>}
               {s.hablado && <div style={{ fontSize: '0.92rem', fontStyle: 'italic' }}>🗣 «{s.hablado}»</div>}
               {s.texto_pantalla && <div style={{ fontSize: '0.82rem' }}>🔤 En pantalla: <b>{s.texto_pantalla}</b></div>}
               {s.edicion && <div style={{ ...mut, fontSize: '0.8rem' }}>✂️ {s.edicion}</div>}
