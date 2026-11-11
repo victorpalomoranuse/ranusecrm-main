@@ -1347,6 +1347,26 @@ function ResultadoNicho({ n }) {
 }
 const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('es-ES'));
 const delta = (a, b) => (a == null || b == null || b === 0 ? null : Math.round((a - b) / b * 100));
+function HuecosCuenta() {
+  const [d, setD] = useState(null), [trab, setTrab] = useState(false), [err, setErr] = useState('');
+  useEffect(() => { api.get('/redes/cuenta/huecos').then(r => setD(r.data)).catch(() => {}); }, []);
+  const mide = async () => { setTrab(true); setErr(''); try { const r = await api.post('/redes/cuenta/huecos', {}, { timeout: 150000 }); setD(r.data); } catch (e) { setErr(e.response?.data?.error || 'No se pudo medir'); } setTrab(false); };
+  const f = d?.formatos;
+  return (
+    <div className="rd-card" style={{ gap: 10 }}>
+      <h3>🔎 Lo que antes no sabías (ya medido)</h3>
+      <div style={{ ...mut, fontSize: '0.84rem' }}>Mide lo que se puede medir y te dice claramente lo que no.</div>
+      <div><button className="rd-btn pri" disabled={trab} onClick={mide}>{trab ? 'Midiendo…' : d?.fecha ? '🔄 Volver a medir' : '🔎 Medir ahora'}</button></div>
+      {err && <div style={{ color: '#ff9b9b' }}>{err}</div>}
+      {f && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))' }}>{[['🎬 Reels', f.reels], ['🖼 Carruseles', f.carruseles], ['📷 Fotos', f.fotos]].map(([n, g]) => <div key={n} style={{ border: '1px solid rgba(255,255,255,.12)', borderRadius: 10, padding: 10 }}><b>{n}</b> <span style={mut}>({g.n})</span><div style={{ fontSize: '1.2rem' }}>{fmt(g.mediana_alcance)}</div><div style={{ ...mut, fontSize: '0.76rem' }}>alcance típico · guardados {fmt(g.mediana_guardados)} · compartidos {fmt(g.mediana_compartidos)}</div></div>)}</div>}
+      {(d?.lecturas || []).length > 0 && <div><b>Qué dice</b><Lista items={d.lecturas} /></div>}
+      {(d?.retencion || []).length > 0 && <div><b>Retención media de tus reels analizados</b><div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>{d.retencion.slice(0, 6).map((x, i) => <a key={i} href={x.enlace} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.82rem' }}><span className="rd-chip" style={{ marginRight: 6 }}>{x.retencion_pct}%</span>{x.pie} <span style={mut}>· ve {x.visto_s}s de {x.duracion_s}s</span></a>)}</div></div>}
+      {(d?.mejores_dias || []).length > 0 && <div><b>Días en que más seguidores ganaste, y qué subiste cerca</b><Lista items={d.mejores_dias.map(x => x.dia + ': ' + (x.seguidores_netos >= 0 ? '+' : '') + x.seguidores_netos + (x.reel_cercano ? ' · «' + x.reel_cercano.pie + '» (' + fmt(x.reel_cercano.vistas) + ' vistas)' : ''))} /></div>}
+      {(d?.no_se_puede || []).length > 0 && <details className="rd-more"><summary>Lo que NO se puede medir (y por qué)</summary><div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 6 }}>{d.no_se_puede.map((x, i) => <div key={i} style={{ fontSize: '0.84rem' }}><b>{x.dato}</b><div style={mut}>{x.por_que} {x.como}</div></div>)}</div></details>}
+      {d?.fiabilidad && <div style={{ ...mut, fontSize: '0.78rem' }}>Fiabilidad: {d.fiabilidad}</div>}
+    </div>
+  );
+}
 function SaludCuenta() {
   const [d, setD] = useState(null), [err, setErr] = useState(''), [trab, setTrab] = useState(false);
   useEffect(() => { api.get('/redes/cuenta/salud').then(r => setD(r.data)).catch(() => {}); }, []);
@@ -1376,6 +1396,7 @@ function SaludCuenta() {
         {d.acciones.length > 0 && <Tarjeta titulo="🎯 Qué hacer"><Lista ejemplo items={d.acciones} /></Tarjeta>}
         {d.fiabilidad && <div style={{ ...mut, fontSize: '0.78rem' }}>Fiabilidad: {d.fiabilidad}</div>}
       </>}
+      <HuecosCuenta />
       <PreferenciasRedes />
     </div>
   );
