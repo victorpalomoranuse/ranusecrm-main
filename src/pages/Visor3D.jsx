@@ -1996,6 +1996,7 @@ export default function Visor3D({ cliente = false }) {
   const [pesadosN, setPesadosN] = useState(0);
   const [limiteTri, setLimiteTri] = useState(5e6); // máximo de triángulos de modelos de máquinas en pantalla; el resto se queda como caja
   const [limitadasN, setLimitadasN] = useState(0);
+  const [cargaN, setCargaN] = useState(0); // cuántos modelos distintos (los más cercanos a la cámara) se han pedido cargar: de 3 en 3
   const [cargarModelos, setCargarModelos] = useState(false); // con muchas máquinas distintas, los modelos no se cargan solos al abrir (la página se quedaba colgada): botón «Cargar modelos»
   const [pendientesN, setPendientesN] = useState(0);
   const [modosEq, setModosEq] = useState({});               // cómo se ajusta el modelo 3D de cada máquina del plano
@@ -3200,6 +3201,13 @@ export default function Visor3D({ cliente = false }) {
     const bibPorId = new Map(biblioteca.map(m => [m.id, m])), pesados = new Set(), pendientes = new Set(), conModelo = new Set();
     a.raiz.traverse(g => { const e0 = g.userData.equipo; if (e0 && e0.cid && bibPorId.get(e0.cid)?.modelo3d) conModelo.add(e0.cid); });
     const limitar = conModelo.size > 8 && !cargarModelos;
+    // los modelos se piden de 3 en 3, empezando por las máquinas más cercanas al punto que se está mirando
+    const permitidos = new Set();
+    if (limitar && cargaN > 0) {
+      const tg = a.ctrl?.target, dist = new Map();
+      a.raiz.traverse(g => { const e0 = g.userData.equipo; if (!e0 || !conModelo.has(e0.cid)) return; const d = tg ? Math.hypot(g.position.x - tg.x, g.position.z - tg.z) : 0; if (!dist.has(e0.cid) || d < dist.get(e0.cid)) dist.set(e0.cid, d); });
+      [...dist.entries()].sort((x, y) => x[1] - y[1]).slice(0, cargaN).forEach(([c]) => permitidos.add(c));
+    }
     a.raiz.traverse(g => {
       const e = g.userData.equipo; if (!e || !e.cid) return;
       const me0 = modosEq[e.id] || {}, firma = (me0.v3 || '') + '|' + (me0.mod3?.url || '');
@@ -3212,7 +3220,7 @@ export default function Visor3D({ cliente = false }) {
       if (g.userData.modeloCargado) return;
       if (me0.v3 === 'caja') return;
       const mod = (me0.v3 === 'otro' && me0.mod3?.url) ? me0.mod3 : bibPorId.get(e.cid)?.modelo3d; if (!mod) return;
-      if (limitar && seleccion?.id !== e.id) { pendientes.add(e.cid); return; }
+      if (limitar && !permitidos.has(e.cid) && seleccion?.id !== e.id) { pendientes.add(e.cid); return; }
       if ((Number(mod.bytes) || 0) > 12e6 && !cargarPesados && seleccion?.id !== e.id) { pesados.add(e.cid); return; }
       g.userData.modeloCargado = true;
       cargarModeloEnCola(mod).then(raw => {
@@ -3245,7 +3253,7 @@ export default function Visor3D({ cliente = false }) {
     });
     setPesadosN(pesados.size); setPendientesN(pendientes.size);
     if (a.limiteVisto !== limiteTri) { a.limiteVisto = limiteTri; a.raiz.traverse(g4 => { if (g4.userData.limitada) { g4.userData.limitada = false; g4.userData.modeloCargado = false; } }); setLimitadasN(0); }
-  }, [rev, biblioteca, estado, modosEq, cargarPesados, cargarModelos, limiteTri]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rev, biblioteca, estado, modosEq, cargarPesados, cargarModelos, limiteTri, cargaN]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Caras pintadas en muros y en las máquinas del plano
   useEffect(() => {
@@ -5116,7 +5124,7 @@ export default function Visor3D({ cliente = false }) {
       {!cliente && ((pendientesN > 0 && !cargarModelos) || (pesadosN > 0 && !cargarPesados && (pendientesN === 0 || cargarModelos))) && (
         <div style={{ position: 'absolute', left: '50%', top: 56, transform: 'translateX(-50%)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(22,20,18,0.92)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12.5, boxShadow: '0 4px 16px rgba(0,0,0,0.4)', maxWidth: '90%' }}>
           {pendientesN > 0 && !cargarModelos
-            ? <><span>🧊 Las máquinas se ven como <b>cajas</b>: hay {pendientesN} modelos distintos y se cargan a pedido para que la página no se cuelgue.</span><button style={{ ...btn, background: '#8a6f55', fontWeight: 700 }} onClick={() => setCargarModelos(true)}>Cargar los modelos ({pendientesN})</button></>
+            ? <><span>🧊 Las máquinas se ven como <b>cajas</b>: hay {pendientesN} modelos sin cargar. Cárgalos de 3 en 3 y para cuando note lento.</span><button style={{ ...btn, background: '#8a6f55', fontWeight: 700 }} onClick={() => setCargaN(n => n + 3)}>Cargar 3 más</button><button style={{ ...btn }} title="Todos a la vez: puede bloquear la página" onClick={() => { if (window.confirm('Cargar todos de golpe puede dejar la página bloqueada un buen rato. ¿Seguir?')) setCargarModelos(true); }}>Todos</button></>
             : <><span>🧊 {pesadosN} modelo{pesadosN > 1 ? 's' : ''} muy pesado{pesadosN > 1 ? 's' : ''} sin cargar (más de 12 MB): pueden bloquear la página unos segundos.</span><button style={{ ...btn, background: '#8a6f55', fontWeight: 700 }} onClick={() => setCargarPesados(true)}>Cargar también esos</button></>}
         </div>
       )}
@@ -5185,7 +5193,7 @@ export default function Visor3D({ cliente = false }) {
           ['Planta', () => vista('planta'), false, false, 'Vista desde arriba', '9'],
           ['Axonométrica', () => (axo ? salirAxo() : entrarAxo()), !!axo, estado !== 'listo' || !!alz || !!planta2d, 'Vista isométrica, sin perspectiva', '8'],
           ['Planta 2D', () => (planta2d ? salirPlanta2d() : entrarPlanta2d()), !!planta2d, estado !== 'listo' || !!alz || !!axo, 'Vista desde arriba en 2D para dibujar zonas y pintar salas', '7'],
-          ...(pendientesN > 0 && !cargarModelos ? [['Cargar los modelos 3D de las máquinas (' + pendientesN + ')', () => setCargarModelos(true), false, false, 'Hay muchas máquinas distintas: los modelos no se cargan solos al abrir para que la página no se quede colgada. Hasta entonces se ven como cajas. Pueden tardar un poco, se van poniendo de uno en uno', '']] : []),
+          ...(pendientesN > 0 && !cargarModelos ? [['Cargar 3 modelos más (' + pendientesN + ' sin cargar)', () => setCargaN(n => n + 3), false, false, 'Hay muchas máquinas distintas: los modelos no se cargan solos al abrir para que la página no se quede colgada. Hasta entonces se ven como cajas. Pueden tardar un poco, se van poniendo de uno en uno', '']] : []),
           ...(pesadosN > 0 && !cargarPesados ? [['Cargar modelos pesados (' + pesadosN + ')', () => setCargarPesados(true), false, false, 'Modelos de más de 12 MB: tardan y pueden bloquear la página unos segundos. Hasta entonces esas máquinas se ven como cajas', '']] : []),
           ['Recorrer (persona)', () => setPersona(v => !v), persona, false, 'Dentro del espacio a la altura de los ojos; W A S D para andar', '6'],
           ['Altura de los ojos', () => { const { cam, ctrl } = api3d.current; const yO = api3d.current.persona ? (api3d.current.basePl || 0) + alturaOjos : 1.6, dy = yO - cam.position.y; cam.position.y = yO; ctrl.target.y += dy; ctrl.update(); }, false, false, 'Cámara a 1,60 m', '5'],
