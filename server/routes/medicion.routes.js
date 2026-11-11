@@ -14,7 +14,8 @@ import { leerTexturasMias } from './biblioteca3d.routes.js';
 import { uploadProjectRender } from '../utils/storage.js';
 import { uploadReferenceImageFile, uploadHdriFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { indiceBiblioteca3d } from './biblioteca3d.routes.js';
-import { leerModelosBib } from '../utils/modelos-bib.js';
+import { leerModelosBib, guardarModeloBib } from '../utils/modelos-bib.js';
+import { mallaDesdeFoto } from '../utils/bloques-3d.js';
 
 // Herramienta de medición en obra: guarda los planos por proyecto y le sirve el
 // catálogo del CRM (máquinas y luminarias) para colocarlas en el plano.
@@ -94,6 +95,36 @@ const ES_MATERIAL = /suelo|pavimento|c[eé]sped|madera|pintura|revestimiento|tec
 
 // ── Crear un bloque a partir de una imagen pegada en el plano ──────────────
 // No guarda nada: devuelve planta, alzado y lateral para que se revisen y se guarden en la biblioteca.
+// Modelo 3D del bloque a partir de la foto (Hunyuan3D). Se guarda el .glb y se devuelve su ficha; al guardar el bloque en la biblioteca se asocia a él.
+const BUCKET_MODELOS = 'project-documents';
+function cajaGlb(buf) { // caja de la malla (x, y, z) leída de los accesores POSITION del .glb
+  try {
+    const jl = buf.readUInt32LE(12), json = JSON.parse(buf.slice(20, 20 + jl).toString()), mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9]; let hay = false;
+    for (const me of (json.meshes || [])) for (const p of (me.primitives || [])) { const a = json.accessors?.[p.attributes?.POSITION]; if (a?.min && a?.max) { hay = true; for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], a.min[i]); mx[i] = Math.max(mx[i], a.max[i]); } } }
+    return hay ? { x: mx[0] - mn[0], y: mx[1] - mn[1], z: mx[2] - mn[2] } : null;
+  } catch { return null; }
+}
+router.post('/bloque-ia-3d', async (req, res) => {
+  try {
+    const lista = [req.body?.imagen, ...(Array.isArray(req.body?.imagenes) ? req.body.imagenes : [])].filter(Boolean);
+    let buf = null;
+    for (const d of lista) { const mm = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(d)); if (mm) { const b = Buffer.from(mm[2], 'base64'); if (b.length <= 12 * 1024 * 1024) { buf = b; break; } } }
+    if (!buf) return res.status(400).json({ error: 'La imagen no es válida' });
+    const jpg = await sharp(buf).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 88 }).toBuffer();
+    const glb = await mallaDesdeFoto(jpg);
+    if (!glb || glb.length < 1000) return res.status(502).json({ error: 'El servicio 3D no devolvió un modelo' });
+    const largo = Number(req.body?.largo), fondo = Number(req.body?.fondo), c = cajaGlb(glb);
+    let rot = 0; if (c && largo > 0 && fondo > 0 && Math.abs(Math.log((c.x / Math.max(1e-6, c.z)) / (largo / fondo))) > 0.35 && ((c.x > c.z) !== (largo > fondo))) rot = 90; // el eje largo de la malla no coincide con el largo del bloque
+    const ruta = 'modelos-3d/gen-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) + '.glb';
+    const { error: eUp } = await supabase.storage.from(BUCKET_MODELOS).upload(ruta, glb, { contentType: 'model/gltf-binary', upsert: true });
+    if (eUp) throw eUp;
+    const { data: { publicUrl } } = supabase.storage.from(BUCKET_MODELOS).getPublicUrl(ruta);
+    res.json({ modelo3d: { url: publicUrl, tipo: 'glb', rot, nombre: 'Generado desde fotos', bytes: glb.length, actualizado: new Date().toISOString() } });
+  } catch (err) {
+    console.error('medicion bloque-ia-3d:', err);
+    res.status(500).json({ error: 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 120) + ')' });
+  }
+});
 router.post('/bloque-ia', async (req, res) => {
   try {
     const m = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.imagen || ''));
@@ -232,7 +263,7 @@ async function cargarBiblioteca() {
 router.post('/biblioteca', async (req, res) => {
   try {
     const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 60) : [];
-    const filas = [];
+    const filas = [], modelos = [];
     for (const it of items) {
       const nombre = String(it?.nombre || '').trim().slice(0, 120);
       const largo = Number(it?.largo), fondo = Number(it?.fondo);
@@ -245,10 +276,12 @@ router.post('/biblioteca', async (req, res) => {
         planta: it.planta || null, alzado: it.alzado || null, lado: it.lateral || null,
         origen: String(it.origen || 'Biblioteca propia').slice(0, 80), created_by: req.user?.id || null,
       });
+      const m3 = it.modelo3d; modelos.push(m3 && typeof m3.url === 'string' && /\/storage\/v1\/object\/public\/project-documents\/modelos-3d\/gen-[\w.-]+\.glb$/.test(m3.url) ? { url: m3.url, tipo: 'glb', rot: Number(m3.rot) || 0, nombre: String(m3.nombre || 'Generado desde fotos').slice(0, 80), actualizado: new Date().toISOString() } : null);
     }
     if (!filas.length) return res.status(400).json({ error: 'No hay bloques válidos que guardar' });
     const { data, error } = await supabase.from('biblioteca_bloques').insert(filas).select(COLS_BIB);
     if (error) throw error;
+    for (let i = 0; i < (data || []).length; i++) { if (modelos[i]) { try { await guardarModeloBib('bib-' + data[i].id, modelos[i]); } catch (e3) { console.error('modelo 3D de la biblioteca:', e3.message); } } }
     res.json({ items: (data || []).map(r => ({ ...itemBiblioteca(r), completo: { largo: Number(r.largo), fondo: Number(r.fondo), alto: Number(r.alto), svg: { planta: r.planta || '', alzado: r.alzado || '', lateral: r.lado || '' } } })) });
   } catch (err) {
     console.error('medicion biblioteca:', err);

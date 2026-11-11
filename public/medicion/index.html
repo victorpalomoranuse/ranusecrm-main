@@ -6278,12 +6278,14 @@ function abrirModalImg(dataUrl){
       var L=fromU(num($('img-l').value)),F=fromU(num($('img-f').value)),A=fromU(num($('img-a').value));
       if(!(L>0&&F>0&&A>0)){L=0;F=0;A=0}
       $('img-gen').disabled=true;$('img-msg').textContent='Generando… puede tardar uno o dos minutos. No cierres esta ventana.';
+      imgGen.m3=null;imgGen.m3est='pendiente';
       crmPost({type:'generarBloque',imagen:imgGen.dataUrl,imagenes:imgGen.imgs.slice(),largo:L,fondo:F,alto:A,nombre:($('img-nom').value||'').trim()});
+      crmPost({type:'generarModelo3D',imagen:imgGen.dataUrl,imagenes:imgGen.imgs.slice(),largo:L,fondo:F});
     });
     $('img-save').addEventListener('click',function(){
       var r=imgGen.res;if(!r)return;
       var nombre=($('img-nom').value||'').trim()||'Bloque desde imagen',cat=($('img-cat').value||'').split(',').map(function(x){return x.trim()}).filter(Boolean).join(' | ')||'Mi biblioteca';
-      crmPost({type:'guardarBiblioteca',items:[{nombre:nombre,categoria:cat,largo:r.largo,fondo:r.fondo,alto:r.alto,planta:r.svg.planta,alzado:r.svg.alzado||null,lateral:r.svg.lateral||null,origen:'Generado desde imagen'}]});
+      crmPost({type:'guardarBiblioteca',items:[{nombre:nombre,categoria:cat,largo:r.largo,fondo:r.fondo,alto:r.alto,planta:r.svg.planta,alzado:r.svg.alzado||null,lateral:r.svg.lateral||null,origen:'Generado desde imagen',modelo3d:imgGen.m3||undefined}]});
       toast('Guardando el bloque en la biblioteca…');cerrarModalImg();
     });
   }
@@ -6304,6 +6306,14 @@ function bloqueGenerado(res,err){
   $('img-res').innerHTML=h;
   $('img-msg').textContent='Listo. Revisa el dibujo'+(res.estimadas?' y las medidas, que ha estimado la IA ('+fmtU(res.largo)+' × '+fmtU(res.fondo)+' × '+fmtU(res.alto)+' '+UNL()+')':'')+(res.metodo==='piezas'?' (método básico: puede ser menos fiel)':'')+' y guárdalo si te sirve.';
   $('img-save').hidden=false;$('img-gen').hidden=true;
+  estado3DBloque();
+}
+function estado3DBloque(){
+  if(!imgGen||!$('imgmod')||!imgGen.res)return;
+  var s=$('img-save'),msg=$('img-msg'),base=msg.getAttribute('data-base')||msg.textContent;msg.setAttribute('data-base',base);
+  if(imgGen.m3est==='pendiente'){s.disabled=true;s.textContent='Esperando el modelo 3D…';msg.textContent=base+' · Generando también el modelo 3D (1-3 min): no cierres esta ventana.'}
+  else if(imgGen.m3est==='listo'){s.disabled=false;s.textContent='Guardar en la biblioteca (con su 3D)';msg.textContent=base+' · ✔ Modelo 3D listo: se guardará con el bloque.'}
+  else{s.disabled=false;s.textContent='Guardar en la biblioteca';msg.textContent=base+' · No se ha podido generar el 3D ('+(imgGen.m3err||'error')+'): el bloque se guarda igualmente con sus dibujos.'}
 }
 $('fly-img').addEventListener('click',function(){flyClose();abrirModalImg(null)});
 var pvFlag=false,pvT=null;
@@ -11515,6 +11525,8 @@ if(CRM){
     }else if(m.type==='planoIAError'){planoIAError(m.message);
     }else if(m.type==='bloqueGenerado'){bloqueGenerado(m.bloque,null);
     }else if(m.type==='bloqueError'){bloqueGenerado(null,m.message);
+    }else if(m.type==='modelo3DGenerado'){if(imgGen){imgGen.m3=m.modelo3d||null;imgGen.m3est=m.modelo3d?'listo':'error';estado3DBloque()}
+    }else if(m.type==='modelo3DError'){if(imgGen){imgGen.m3=null;imgGen.m3est='error';imgGen.m3err=String(m.message||'').slice(0,90);estado3DBloque()}
     }else if(m.type==='biblioteca'){
       var nuevos=(m.items||[]).filter(function(c){return c&&c.id&&c.nombre&&c.w>0&&c.d>0});
       nuevos.forEach(function(c){if(c.completo){bloquesFull[c.id]=c.completo;delete c.completo}});
