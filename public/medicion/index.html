@@ -12198,7 +12198,7 @@ function elementosEn(r,cruce){
   v.ops.forEach(function(o){if(!opVis(o,view))return;var q=og(o);if(dentroR({x:(q.x1+q.x2)/2,y:(q.y1+q.y2)/2},r))out.push({t:'op',id:o.id})});
   v.pil.forEach(function(p){if(!stVis(p.s,view))return;var c=pc(p),b={x0:c.x-pilW(p)/2,y0:c.y-pilD(p)/2,x1:c.x+pilW(p)/2,y1:c.y+pilD(p)/2};
     if(cruce?!(b.x1<r.x0||b.x0>r.x1||b.y1<r.y0||b.y0>r.y1):(dentroR({x:b.x0,y:b.y0},r)&&dentroR({x:b.x1,y:b.y1},r)))out.push({t:'pil',id:p.id})});
-  if(view==='distrib')v.eq.forEach(function(e){var b=eqRect(e);
+  if(view==='distrib'||view==='actual'||view==='demol')v.eq.forEach(function(e){if(!eqVis(e,view))return;var b=eqRect(e);
     if(cruce?!(b.x1<r.x0||b.x0>r.x1||b.y1<r.y0||b.y0>r.y1):(dentroR({x:b.x0,y:b.y0},r)&&dentroR({x:b.x1,y:b.y1},r)))out.push({t:'eq',id:e.id})});
   if(view==='ilum'||view==='elec')v.pts.forEach(function(q){if(q.v!==view||q.s==='dem')return;if(dentroR(ptPos(q),r))out.push({t:'pt',id:q.id})});
   var gs={};
