@@ -1218,6 +1218,25 @@ function Lista({ items, color, max = 3, ejemplo = false }) {
 function Tarjeta({ titulo, color, children }) { return <div className="rd-card"><h3 style={color ? { color } : undefined}>{titulo}</h3>{children}</div>; }
 const ORIGEN_IDEA = { 'tus datos': ['📊 Tus datos', '#8fdba0'], nicho: ['🌍 Nicho', '#f2c46d'], exploracion: ['🧭 Exploración', '#9db8ff'] };
 const TIPO_ESCENA = { a_camara: ['🎤 A cámara', 'Hablas con micro'], voz_en_off: ['🎙 Voz en off', 'Grabas la voz con micro'], broll: ['🎞 Imagen / b-roll', 'Solo imagen, sin micro'], render: ['🖥 Render 3D', 'Se renderiza'], pantalla: ['📱 Pantalla / texto', 'Gráfico o captura'] };
+function LeadMagnetBloque({ lm, idea }) {
+  const [trab, setTrab] = useState(false), [err, setErr] = useState(''), [cop, setCop] = useState(false);
+  const crea = async () => { setTrab(true); setErr(''); try { const r = await api.post('/redes/guion/lead-magnet', { lead_magnet: lm, idea }, { timeout: 150000 }); exportaLeadMagnetPDF(r.data); } catch (e) { setErr(e.response?.data?.error || 'No se pudo crear'); } setTrab(false); };
+  const copia = () => { try { navigator.clipboard.writeText(lm.mensaje_dm); setCop(true); setTimeout(() => setCop(false), 1500); } catch { /* sin portapapeles */ } };
+  const generable = /gu[ií]a|checklist|plantilla|pdf|auditor|mood/i.test(lm.tipo + ' ' + lm.quien_lo_crea) && !/construir/i.test(lm.quien_lo_crea);
+  return (
+    <div style={{ border: '1px solid rgba(242,196,109,.4)', background: 'rgba(242,196,109,.06)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ ...mut, fontSize: '0.78rem', letterSpacing: '.06em' }}>🧲 LEAD MAGNET PARA ENTREGAR</div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><b style={{ fontSize: '1rem' }}>{lm.nombre}</b><span className="rd-chip">{lm.tipo}</span><span className="rd-chip" style={{ color: '#f2c46d' }}>Comenta «{lm.palabra_clave}»</span><span className="rd-chip">esfuerzo {lm.esfuerzo}</span></div>
+      <div style={{ fontSize: '0.88rem' }}>{lm.promesa}</div>
+      {(lm.contenido || []).length > 0 && <Lista items={lm.contenido} />}
+      {lm.por_que_convierte && <div style={{ ...mut, fontSize: '0.8rem' }}>Por qué convierte: {lm.por_que_convierte}</div>}
+      {lm.mensaje_dm && <div style={{ background: 'rgba(255,255,255,.05)', padding: 8, borderRadius: 8 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><b style={{ fontSize: '0.78rem' }}>💬 Mensaje que se envía por DM</b><button className="rd-btn" style={{ padding: '2px 10px', fontSize: '0.72rem' }} onClick={copia}>{cop ? '✔ Copiado' : 'Copiar'}</button></div><div style={{ fontSize: '0.84rem', fontStyle: 'italic', marginTop: 4 }}>«{lm.mensaje_dm}»</div></div>}
+      <div style={{ ...mut, fontSize: '0.8rem' }}>🛠 {lm.quien_lo_crea}</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{generable ? <button className="rd-btn pri" disabled={trab} onClick={crea}>{trab ? 'Escribiéndolo…' : '📄 Crear el PDF de este lead magnet'}</button> : <span style={{ ...mut, fontSize: '0.8rem' }}>Este es de los que hay que construir aparte (cuéntamelo y lo montamos).</span>}</div>
+      {err && <div style={{ color: '#ff9b9b', fontSize: '0.84rem' }}>{err}</div>}
+    </div>
+  );
+}
 function TallerIdeas({ idea, onCerrar }) {
   const [g, setG] = useState(null), [error, setError] = useState(''), [extra, setExtra] = useState(''), [msg, setMsg] = useState(''), [hist, setHist] = useState([]), [trab, setTrab] = useState(false);
   const generar = async () => { setTrab(true); setError(''); try { const r = await api.post('/redes/guion/generar', { ...idea, extra }); setG(r.data.guion); } catch (e) { setError(e.response?.data?.error || 'No se pudo crear el guion.'); } setTrab(false); };
@@ -1241,6 +1260,8 @@ function TallerIdeas({ idea, onCerrar }) {
             <span className="rd-chip" style={{ color: g.necesita_micro ? '#f2c46d' : '#8fdba0' }}>{g.necesita_micro ? '🎤 Necesitas micro' : 'Sin micro'}</span>
             {(g.equipo || []).map((x, i) => <span key={i} className="rd-chip">{x}</span>)}
           </div>
+          {g.proyecto_y_fase && <div style={{ fontSize: '0.86rem' }}>📍 <b>Proyecto y fase:</b> <span style={mut}>{g.proyecto_y_fase}</span></div>}
+          {g.lead_magnet && <LeadMagnetBloque lm={g.lead_magnet} idea={idea.idea || g.titulo} />}
           {g.formato_grabacion && <div style={{ border: '1px solid rgba(143,219,160,.35)', background: 'rgba(143,219,160,.06)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ ...mut, fontSize: '0.78rem', letterSpacing: '.06em' }}>🎥 CÓMO GRABARLO</div>
             <div style={{ fontSize: '1.02rem' }}><b>{g.formato_grabacion.tipo}</b></div>
@@ -1254,7 +1275,7 @@ function TallerIdeas({ idea, onCerrar }) {
           {g.escenas.map(s => { const tp = TIPO_ESCENA[s.tipo] || TIPO_ESCENA.broll; return (
             <div key={s.n} style={{ borderLeft: '3px solid ' + (s.micro ? '#f2c46d' : s.tipo === 'render' ? '#9db8ff' : '#444'), paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ fontSize: '0.78rem', ...mut }}><b>Escena {s.n}</b> · {tp[0]} · {s.segundos} s{s.micro ? ' · 🎤 micro' : ''}</div>
-              <div style={{ fontSize: '0.9rem' }}>{s.que_hacer}</div>{s.como_grabar && <div style={{ fontSize: '0.84rem' }}>🎥 <b>Cómo grabarla:</b> <span style={mut}>{s.como_grabar}</span></div>}
+              <div style={{ fontSize: '0.9rem' }}>{s.que_hacer}</div>{s.como_grabar && <div style={{ fontSize: '0.84rem' }}>🎥 <b>Cómo grabarla:</b> <span style={mut}>{s.como_grabar}</span></div>}{s.recurso && <div style={{ fontSize: '0.82rem' }}>🗂 <b>Material:</b> <span style={mut}>{s.recurso}</span></div>}
               {s.hablado && <div style={{ fontSize: '0.92rem', fontStyle: 'italic' }}>🗣 «{s.hablado}»</div>}
               {s.texto_pantalla && <div style={{ fontSize: '0.82rem' }}>🔤 En pantalla: <b>{s.texto_pantalla}</b></div>}
               {s.edicion && <div style={{ ...mut, fontSize: '0.8rem' }}>✂️ {s.edicion}</div>}
@@ -1278,6 +1299,14 @@ function IdeasTarjetas({ ideas }) {
     <div className="rd-grid">{ideas.map((x, i) => { const o = ORIGEN_IDEA[x.origen]; return <div key={i} className="rd-card" style={{ cursor: 'pointer' }} onClick={() => setAbierta(x)} title="Pulsa para abrir el guion"><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><span className="rd-chip arena">{x.formato || 'idea'}</span>{o && <span className="rd-chip" style={{ color: o[1] }}>{o[0]}</span>}</div><div className="rd-gancho">{x.idea}</div>{x.gancho && <div style={{ fontSize: '0.86rem', ...mut }}>“{x.gancho}”</div>}{x.por_que && <div style={{ ...mut, fontSize: '0.8rem' }}>{x.por_que}</div>}{(x.refs || []).length > 0 && <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><div style={{ ...mut, fontSize: '0.72rem' }}>▶ Vídeos que lo respaldan:</div><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{x.refs.map((rf, k) => rf.miniatura ? <a key={k} href={rf.enlace} target="_blank" rel="noreferrer" title={(rf.pie || '') + (rf.vistas ? ' · ' + fmt(rf.vistas) + ' vistas' : '')} style={{ position: 'relative', width: 62, height: 78, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,.15)' }}><img src={rf.miniatura} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" /><span style={{ position: 'absolute', bottom: 2, left: 2, right: 2, fontSize: '0.6rem', background: 'rgba(0,0,0,.65)', borderRadius: 4, textAlign: 'center' }}>{fmt(rf.vistas)}</span></a> : <a key={k} href={rf.enlace} target="_blank" rel="noreferrer" className="rd-chip" title={rf.pie} style={{ textDecoration: 'none', fontSize: '0.7rem' }}>@{rf.cuenta} · ♥ {fmt(rf.me_gusta)} ↗</a>)}</div></div>}<div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Abrir taller y crear guion →</div></div>; })}</div>
     {abierta && <TallerIdeas idea={abierta} onCerrar={() => setAbierta(null)} />}
   </>;
+}
+function exportaLeadMagnetPDF(c) {
+  const col = ['#E3D2B8', '#9db8ff', '#8fdba0', '#f2c46d', '#ff9b9b', '#c9a7ff'];
+  const html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + escH(c.titulo) + '</title><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet"><style>@page{size:A4;margin:0}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{margin:0;font-family:Montserrat,Arial,sans-serif;color:#1b1b1f}.pag{width:210mm;min-height:297mm;padding:14mm 14mm;position:relative}.hero{background:#111216;color:#fff;border-radius:18px;padding:26px 28px;margin-bottom:16px}.hero small{color:#E3D2B8;letter-spacing:.18em;font-size:10px;font-weight:600}.hero h1{margin:8px 0 6px;font-size:30px;font-weight:800;line-height:1.1}.hero p{margin:0;color:#c3c3ca;font-size:12.5px;line-height:1.5}.intro{font-size:12px;line-height:1.6;margin:0 0 14px}.sec{border-radius:14px;padding:12px 14px;margin-bottom:10px;break-inside:avoid}.sec h2{margin:0 0 6px;font-size:14px;font-weight:800}.sec ul{margin:0;padding-left:18px;font-size:11.5px;line-height:1.55}.fin{background:#111216;color:#fff;border-radius:14px;padding:14px 16px;font-size:12px;line-height:1.55;margin-top:12px}.fin b{color:#E3D2B8}.pie{margin-top:14px;font-size:9px;color:#999;display:flex;justify-content:space-between}.aviso{position:fixed;top:8px;right:8px;background:#111;color:#fff;padding:8px 12px;border-radius:8px;font:12px Arial}@media print{.aviso{display:none}}</style></head><body><div class="aviso">Ctrl+P → «Guardar como PDF»</div><div class="pag"><div class="hero"><small>RANUSE DESIGN</small><h1>' + escH(c.titulo) + '</h1><p>' + escH(c.subtitulo) + '</p></div>' + (c.intro ? '<p class="intro">' + escH(c.intro) + '</p>' : '') +
+    (c.secciones || []).map((s, i) => '<div class="sec" style="background:' + col[i % col.length] + '33;border-left:5px solid ' + col[i % col.length] + '"><h2>' + escH(s.titulo) + '</h2><ul>' + (s.puntos || []).map(x => '<li>' + escH(x) + '</li>').join('') + '</ul></div>').join('') +
+    (c.consejo_final ? '<div class="sec" style="background:#f4efe7"><h2>💡 Consejo final</h2><div style="font-size:11.5px;line-height:1.55">' + escH(c.consejo_final) + '</div></div>' : '') + (c.cta ? '<div class="fin"><b>¿Hablamos?</b> ' + escH(c.cta) + '</div>' : '') + '<div class="pie"><span>Ranuse Design · @victoreldisenador</span><span>' + escH(c.titulo) + '</span></div></div><script>window.onload=function(){setTimeout(function(){window.print()},700)}</script></body></html>';
+  const w = window.open('', '_blank'); if (!w) { alert('El navegador ha bloqueado la ventana. Permite las ventanas emergentes para esta web y vuelve a pulsar.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
 }
 function EstudiaNicho({ p }) {
   const [est, setEst] = useState(''), [ok, setOk] = useState(false);
