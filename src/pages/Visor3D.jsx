@@ -790,8 +790,11 @@ async function alinearConBloque(raw, planta, L, F) {
 }
 // Alineado automático: una sola vez por producto y modelo. Si el parecido es bajo (<50 %) no se toca nada
 const autoAlinCache = new Map();
+let autoAlinCuenta = 0; // el alineado es pesado: solo se hace solo con los primeros modelos; los demás se colocan sin alinear (se pueden girar a mano)
 function autoAlinear(cid, raw, prod, mod) {
   const k = cid + '|' + mod.url;
+  if (!autoAlinCache.has(k) && autoAlinCuenta >= 5) return Promise.resolve(null);
+  if (!autoAlinCache.has(k)) autoAlinCuenta++;
   if (!autoAlinCache.has(k)) autoAlinCache.set(k, alinearConBloque(raw, prod.bloque.planta, prod.bloque.largo || prod.w, prod.bloque.fondo || prod.d).then(r => (r && r.parecido >= 0.5 && r.claro ? r : null)).catch(() => null));
   return autoAlinCache.get(k);
 }
