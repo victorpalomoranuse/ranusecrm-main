@@ -1269,6 +1269,18 @@ function IdeasTarjetas({ ideas }) {
     {abierta && <TallerIdeas idea={abierta} onCerrar={() => setAbierta(null)} />}
   </>;
 }
+function EstudiaNicho({ p }) {
+  const [est, setEst] = useState(''), [ok, setOk] = useState(false);
+  const go = async (ev) => {
+    ev.preventDefault(); ev.stopPropagation(); setEst('Preparando…');
+    try {
+      const { data: j } = await api.post('/redes/nicho/estudiar', { cuenta: p.cuenta, enlace: p.enlace }, { timeout: 60000 });
+      for (let i = 0; i < 100; i++) { await new Promise(z => setTimeout(z, 6000)); const { data: s } = await api.get('/redes/video/' + j.id, { timeout: 60000 }); if (s.estado === 'listo') { await api.post('/redes/referencias', { nombre: '@' + p.cuenta, descripcion: s.descripcion, detalle: s.detalle }); setOk(true); setEst('✔ Estudiado: el editor ya lo usa'); return; } if (s.estado === 'error') throw new Error(s.error || 'No se pudo analizar'); setEst((s.progreso || 'Analizando…') + ' ' + (s.pct || 0) + '%'); }
+      throw new Error('Tarda demasiado');
+    } catch (e) { setEst(e.response?.data?.error || e.message || 'No se pudo'); }
+  };
+  return <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 3, maxWidth: '80%' }}><button onClick={go} disabled={ok || (est && !/No se|Instagram|Tarda|Faltan/.test(est))} title="La IA analiza a fondo cómo está hecho este vídeo y el editor aprende de él" style={{ padding: '3px 9px', fontSize: '0.68rem', borderRadius: 14, border: '1px solid rgba(255,255,255,.25)', background: 'rgba(0,0,0,.65)', color: '#fff', cursor: 'pointer' }}>{est || '🔬 Estudiarlo a fondo'}</button></div>;
+}
 function ResultadoNicho({ n }) {
   if (!n) return null;
   const yt = n.plataforma === 'youtube';
@@ -1276,7 +1288,7 @@ function ResultadoNicho({ n }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 6 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span className="rd-chip arena">{yt ? '▶ YouTube · ' + n.consulta : '📸 ' + (n.cuentas || []).map(c => '@' + c.usuario).join(', ')}</span><span style={mut}>{String(n.fecha).slice(0, 10)}</span>{n.fiabilidad && <span className="rd-chip" title={n.fiabilidad}>Fiabilidad: {String(n.fiabilidad).split(/[.,:]/)[0].slice(0, 30)}</span>}</div>
       {(n.fallos || []).length > 0 && <div style={{ ...mut, color: '#f2c46d' }}>No he podido leer: {n.fallos.join(' · ')}</div>}
-      {(n.top || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>{n.top.slice(0, 8).map((p, i) => <a key={i} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: yt ? '16/11' : '4/5' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{yt ? (p.vistas >= 1e6 ? (p.vistas / 1e6).toFixed(1).replace('.', ',') + ' M' : p.vistas >= 1e3 ? Math.round(p.vistas / 1e3) + ' k' : p.vistas) : p.puntuacion}</span><div className="vel"><b>{p.titulo || p.gancho || p.pie || 'ver'}</b><div style={{ opacity: 0.7 }}>{p.canal || (p.cuenta ? '@' + p.cuenta : '')}{p.vistas ? ' · ' + p.vistas.toLocaleString('es-ES') + ' vistas' : p.me_gusta != null ? ' · ' + p.me_gusta + ' me gusta' : ''}</div></div></a>)}</div>}
+      {(n.top || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))' }}>{n.top.slice(0, 10).map((p, i) => <a key={i} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: yt ? '16/11' : '4/5' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">{(yt || p.vistas) ? (p.vistas >= 1e6 ? (p.vistas / 1e6).toFixed(1).replace('.', ',') + ' M' : p.vistas >= 1e3 ? Math.round(p.vistas / 1e3) + ' k' : p.vistas) : p.puntuacion}</span>{!yt && p.cuenta && p.enlace && /reel/.test(p.enlace) && <EstudiaNicho p={p} />}<div className="vel"><b>{p.titulo || p.gancho || p.pie || 'ver'}</b><div style={{ opacity: 0.7 }}>{p.canal || (p.cuenta ? '@' + p.cuenta : '')}{p.vistas ? ' · ' + p.vistas.toLocaleString('es-ES') + ' vistas' : p.me_gusta != null ? ' · ' + p.me_gusta + ' me gusta' : ''}</div></div></a>)}</div>}
       <div className="rd-grid2">
         {(n.patrones || []).length > 0 && <Tarjeta titulo="Lo que funciona"><Lista ejemplo items={n.patrones} color="#8fdba0" /></Tarjeta>}
         {(n.ganchos || []).length > 0 && <Tarjeta titulo="Ganchos que enganchan"><Lista ejemplo items={n.ganchos} /></Tarjeta>}
