@@ -1118,7 +1118,8 @@ router.delete('/:id/textura/:tid', async (req, res) => {
 
 // Cambios hechos en el visor 3D sobre elementos del plano 2D (puertas, ventanas y máquinas): se escriben en el propio plano
 // y en su modelo 3D guardado, así el 2D y el 3D siempre dicen lo mismo.
-const contenedoresPlano = (d) => [d, ...(Array.isArray(d.pisos) ? d.pisos : [])];
+// una planta que no es la activa guarda su contenido completo en piso.b: sus máquinas y huecos también hay que encontrarlos ahí
+const contenedoresPlano = (d) => [d, ...(Array.isArray(d.pisos) ? d.pisos.flatMap(p => [p, p && p.b && typeof p.b === 'object' ? p.b : null].filter(Boolean)) : [])];
 const acota = (v, a, b) => Math.max(a, Math.min(b, parseFloat(v)));
 router.patch('/:id/hueco', async (req, res) => {
   try {

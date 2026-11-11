@@ -4451,6 +4451,50 @@ export default function Visor3D({ cliente = false }) {
       setGenerandoParada(false);
     }, 60);
   };
+  // Tour automático: reparte las paradas por todas las salas visibles (cuadrícula, lejos de muros y máquinas) y las genera de una vez
+  const tourAuto = async () => {
+    const a = api3d.current, m = a.modelo; if (!m || generandoParada) return;
+    const pls = m.plantas || [m], offs = a.offsPl || [];
+    const distSeg = (p, u, v) => { const dx = v[0] - u[0], dy = v[1] - u[1], l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((p[0] - u[0]) * dx + (p[1] - u[1]) * dy) / l2)); return Math.hypot(p[0] - u[0] - t * dx, p[1] - u[1] - t * dy); };
+    const reparte = (paso) => {
+      const out = [];
+      pls.forEach((pl, ip) => {
+        if ((ocultas || []).includes('planta:' + ip)) return;
+        const [ox, oy] = offs[ip] || [0, 0], eqs = (pl.equipos || []).filter(e => !e.cesped).map(e => ({ x: e.cx, y: e.cy, r: Math.hypot(e.w || 60, e.d || 60) / 2 + 35 }));
+        (pl.salas || []).forEach(sa => {
+          const pts = sa.pts; if (!pts || pts.length < 3) return;
+          const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+          const nx = Math.max(1, Math.round((x1 - x0) / paso)), ny = Math.max(1, Math.round((y1 - y0) / paso)), cand = [];
+          for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+            const p = [x0 + (i + 0.5) * (x1 - x0) / nx, y0 + (j + 0.5) * (y1 - y0) / ny];
+            if (!puntoEnPoligono(p, pts)) continue;
+            if (pts.some((q, k) => distSeg(p, q, pts[(k + 1) % pts.length]) < 70)) continue;
+            if (eqs.some(e => Math.hypot(p[0] - e.x, p[1] - e.y) < e.r)) continue;
+            cand.push(p);
+          }
+          if (!cand.length) { const c = [xs.reduce((u, v) => u + v, 0) / xs.length, ys.reduce((u, v) => u + v, 0) / ys.length]; let area = 0; pts.forEach((q, k) => { const r2 = pts[(k + 1) % pts.length]; area += q[0] * r2[1] - r2[0] * q[1]; }); if (Math.abs(area) / 2 > 60000 && puntoEnPoligono(c, pts)) cand.push(c); }
+          cand.forEach((p, k) => out.push({ nombre: (sa.nombre || 'Sala') + (cand.length > 1 ? ' ' + (k + 1) : ''), x: (p[0] + ox) * CM, z: (p[1] + oy) * CM, y: (pl.z || 0) * CM + alturaOjos }));
+        });
+      });
+      return out;
+    };
+    let paso = 380, pts = reparte(paso); while (pts.length > 30 && paso < 1200) { paso = Math.round(paso * 1.2); pts = reparte(paso); }
+    if (!pts.length) { setAviso('No he encontrado salas donde colocar paradas.'); return; }
+    if (!window.confirm('Voy a generar ' + pts.length + ' paradas repartidas por las salas (una cada ' + (paso / 100).toFixed(1).replace('.', ',') + ' m, lejos de paredes y máquinas). Tarda un par de minutos y no hay que tocar nada. ¿Seguimos?')) return;
+    setGenerandoParada(true);
+    let hechas = 0;
+    for (const p of pts) {
+      setAviso('Tour automático: parada ' + (hechas + 1) + ' de ' + pts.length + ' («' + p.nombre + '»)…');
+      await new Promise(r => setTimeout(r, 120));
+      try {
+        const url = capturarEquirect(a.renderer, a.scene, new THREE.Vector3(p.x, p.y, p.z), 0, 2048, [a.gizmoG, a.cotasG, a.nodoG, a.guiaG]);
+        const meta = { camara: { px: p.x, py: p.y, pz: p.z, tx: p.x, ty: p.y, tz: p.z + 1, fov: 75 }, shift: 0, hora, exposicion: ambiente.exposicion, luces: ambiente.luces, auto: true };
+        const r = await api.post('/medicion/' + id + '/render', { imagen: url, tipo: '360', nombre: p.nombre, nota: '', tour: true, meta }, { timeout: 120000 });
+        setRenders(x => [r.data.render, ...x]); hechas++;
+      } catch (e) { setAviso('Se paró en la parada ' + (hechas + 1) + ': ' + (e.response?.data?.error || e.message || 'error')); break; }
+    }
+    setGenerandoParada(false); if (hechas === pts.length) setAviso('Tour automático listo: ' + hechas + ' paradas ✓ Copia el enlace del tour para el cliente.');
+  };
   const copiarEnlaceTour = async (libre = false) => {
     if (!libre && !renders.some(r => r.tour)) { setAviso('Primero añade alguna parada del tour (menú Salida → Parada del tour).'); return; }
     try {
@@ -5229,6 +5273,7 @@ export default function Visor3D({ cliente = false }) {
           ['Render con IA', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'La IA convierte esta vista en una foto realista'],
           [generando360 ? 'Generando 360°…' : 'Panorama 360°', hacer360, false, generando360 || estado !== 'listo', 'Panorama 360° desde la cámara'],
           [generandoParada ? 'Creando parada…' : 'Parada del tour (360°)', paradaTour, false, generandoParada || generando360 || estado !== 'listo', 'Guarda una panorámica 360° de aquí como parada del tour del cliente'],
+          [generandoParada ? 'Creando paradas…' : 'Tour automático (todas las salas)', tourAuto, false, generandoParada || generando360 || estado !== 'listo', 'Reparte paradas 360° por todas las salas, lejos de paredes y máquinas, y las genera de una vez'],
           ['Copiar enlace del recorrido libre', () => copiarEnlaceTour(true), false, false, 'Enlace público (solo lectura): el cliente anda por el espacio; si su equipo es flojo se le ofrece el tour de panorámicas'],
           ['Copiar enlace del tour', () => copiarEnlaceTour(false), false, false, 'Enlace público (solo lectura) del tour 360° para el cliente'],
           [panoIA ? 'Panorama con IA…' : 'Panorama 360° con IA (prueba)', hacer360IA, false, panoIA || generando360 || estado !== 'listo', 'Manda la panorámica a ChatGPT para hacerla fotorrealista'],
