@@ -3120,6 +3120,7 @@ export default function Visor3D({ cliente = false }) {
   // Las máquinas del plano se ven con su modelo 3D del catálogo si lo tienen (así se pueden pintar por partes)
   useEffect(() => {
     const a = api3d.current; if (!a.raiz || !biblioteca) return;
+    const bibPorId = new Map(biblioteca.map(m => [m.id, m]));
     a.raiz.traverse(g => {
       const e = g.userData.equipo; if (!e || !e.cid) return;
       const me0 = modosEq[e.id] || {}, firma = (me0.v3 || '') + '|' + (me0.mod3?.url || '');
@@ -3131,7 +3132,7 @@ export default function Visor3D({ cliente = false }) {
       g.userData.v3Firma = firma;
       if (g.userData.modeloCargado) return;
       if (me0.v3 === 'caja') return;
-      const mod = (me0.v3 === 'otro' && me0.mod3?.url) ? me0.mod3 : biblioteca.find(m => m.id === e.cid)?.modelo3d; if (!mod) return;
+      const mod = (me0.v3 === 'otro' && me0.mod3?.url) ? me0.mod3 : bibPorId.get(e.cid)?.modelo3d; if (!mod) return;
       g.userData.modeloCargado = true;
       cargarModelo(mod).then(raw => {
         if (!g.parent) return;

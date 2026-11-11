@@ -1048,15 +1048,18 @@ function catalogBase(){
   catBase={custom:custom,nC:custom.length,cloud:cloudCat,nK:cloudCat.length,out:out,idx:idx};
   return catBase;
 }
+var catMemo={ex:null,b:null,out:null};
 function catalog(){
   var b=catalogBase(),ex=escCats();
   if(!ex.length)return b.out; /* sin bloques propios dentro del plano, es la misma lista de siempre (no se modifica) */
+  if(catMemo.ex===ex&&catMemo.b===b)return catMemo.out;
   var out=b.out.slice(),pos={};
   ex.forEach(function(c){var i=b.idx[c.id]!==undefined?b.idx[c.id]:pos[c.id];if(i!==undefined)out[i]=c;else{pos[c.id]=out.length;out.push(c)}});
+  catMemo={ex:ex,b:b,out:out};
   return out;
 }
 function catById(id){
-  var ex=escCats();for(var j=ex.length-1;j>=0;j--)if(ex[j].id===id)return ex[j];
+  var ex=escCats();if(ex.length&&escMemo.map[id])return escMemo.map[id];
   var b=catalogBase(),i=b.idx[id];return i===undefined?null:b.out[i];
 }
 function eqRect(e){
@@ -10890,11 +10893,17 @@ function enviarListados(){
   crmSaveNow(true,true);
 }
 /* ══ Escalera: se calcula sola a partir de la altura que hay que salvar ══ */
+var escMemo={sig:null,l:[],map:{}};
 function escCats(){
+  var eqs=(st.v&&st.v.eq)||[],h=eqs.length,i,e;
+  for(i=0;i<eqs.length;i++){e=eqs[i];if(e.bl&&e.cid)h=(h*31+e.cid.length*7+(e.nm||'').length+(e.bl.largo||0)*3+(e.bl.fondo||0)*5+(e.bl.alto||0)+(e.bl.planta?e.bl.planta.length:0)+(e.bl.esc?1:0))%1000000007}
+  if(escMemo.sig===h&&escMemo.eqs===eqs)return escMemo.l;
   var l=[];
-  ((st.v&&st.v.eq)||[]).forEach(function(e){
+  eqs.forEach(function(e){
     if(e.bl&&e.cid)l.push({id:e.cid,nombre:e.nm,tipo:'gen',w:e.bl.largo,d:e.bl.fondo,alto:e.bl.alto,categoria:e.bl.categoria||'Escaleras',ref:'',vistas:['planta'],bloque:{planta:e.bl.planta,largo:e.bl.largo,fondo:e.bl.fondo},esc:e.bl.esc,oculto:true});
   });
+  var mp={};l.forEach(function(c){mp[c.id]=c});
+  escMemo={sig:h,eqs:eqs,l:l,map:mp};
   return l;
 }
 var ESC_USO={comercial:{cMax:17.5,gMin:28,aMin:100,nom:'uso público / comercial'},vivienda:{cMax:20,gMin:22,aMin:80,nom:'vivienda'}};
