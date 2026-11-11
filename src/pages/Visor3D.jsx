@@ -764,7 +764,7 @@ async function alinearConBloque(raw, planta, L, F) {
   raw.updateMatrixWorld(true); const tr = []; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; const v = new THREE.Vector3();
   raw.traverse(m => {
     if (!m.isMesh || !m.geometry?.attributes?.position) return;
-    const P = m.geometry.attributes.position, I = m.geometry.index, n = I ? I.count : P.count, paso = Math.max(1, Math.floor(n / 3 / 30000)) * 3;
+    const P = m.geometry.attributes.position, I = m.geometry.index, n = I ? I.count : P.count, paso = Math.max(1, Math.floor(n / 3 / 7000)) * 3;
     const get = k => { const j = I ? I.getX(k) : k; v.fromBufferAttribute(P, j).applyMatrix4(m.matrixWorld); return [v.x, v.z]; };
     for (let k = 0; k + 2 < n; k += paso) { const a = get(k), b = get(k + 1), c = get(k + 2); tr.push(a, b, c); for (const p of [a, b, c]) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); z0 = Math.min(z0, p[1]); z1 = Math.max(z1, p[1]); } }
   });
@@ -797,25 +797,35 @@ function autoAlinear(cid, raw, prod, mod) {
 // modo: 'caber' (mantiene proporciones y cabe en las medidas), 'estirar' (se deforma hasta las medidas exactas), 'nativo' (tamaño del archivo, en metros)
 // o 'auto' (tamaño original si es razonable; si no, cabe). Sin modo = 'caber'.
 // Caja del modelo sin piezas sueltas lejanas (los modelos generados por IA a veces traen fragmentos perdidos que descentran todo)
-function cajaRobusta(g) {
-  const completa = new THREE.Box3().setFromObject(g);
+// El análisis se hace UNA vez por modelo (no por cada copia colocada): con decenas de máquinas iguales o modelos pesados era lo que colgaba la página
+const cacheCajas = new WeakMap();
+function cajaRobusta(g, raw) {
+  const llave = raw || g;
+  let info = cacheCajas.get(llave);
+  if (!info) { info = analizaCaja(g); cacheCajas.set(llave, info); }
+  if (info.ocultas && info.ocultas.length) { let i = 0; const set = new Set(info.ocultas); g.traverse(o => { if (!o.isMesh) return; if (set.has(i)) o.visible = false; i++; }); }
+  return info.caja.clone();
+}
+function analizaCaja(g) {
+  const completa = new THREE.Box3().setFromObject(g), sin = { caja: completa, ocultas: null };
   const xs = [], ys = [], zs = [], v = new THREE.Vector3();
   g.updateMatrixWorld(true);
-  g.traverse(o => { const p = o.isMesh && o.geometry?.attributes?.position; if (!p) return; const paso = Math.max(1, Math.floor(p.count / 4000)); for (let i = 0; i < p.count; i += paso) { v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld); xs.push(v.x); ys.push(v.y); zs.push(v.z); } });
-  if (xs.length < 50) return completa;
+  g.traverse(o => { const p = o.isMesh && o.geometry?.attributes?.position; if (!p) return; const paso = Math.max(1, Math.floor(p.count / 600)); for (let i = 0; i < p.count; i += paso) { v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld); xs.push(v.x); ys.push(v.y); zs.push(v.z); } });
+  if (xs.length < 50) return sin;
   const q = (arr, f) => { const s = Float32Array.from(arr).sort(); return s[Math.min(s.length - 1, Math.max(0, Math.floor(f * (s.length - 1))))]; };
   const rec = new THREE.Box3(new THREE.Vector3(q(xs, 0.01), q(ys, 0.01), q(zs, 0.01)), new THREE.Vector3(q(xs, 0.99), q(ys, 0.99), q(zs, 0.99)));
   const sc = completa.getSize(new THREE.Vector3()), sr = rec.getSize(new THREE.Vector3());
   // solo si la caja completa es claramente mayor que el cuerpo principal en algún eje
-  if (!(sc.x > sr.x * 1.35 || sc.y > sr.y * 1.35 || sc.z > sr.z * 1.35)) return completa;
+  if (!(sc.x > sr.x * 1.35 || sc.y > sr.y * 1.35 || sc.z > sr.z * 1.35)) return sin;
   const m = rec.getSize(new THREE.Vector3()).multiplyScalar(0.08); rec.min.sub(m); rec.max.add(m);
-  g.traverse(o => { if (!o.isMesh) return; const b = new THREE.Box3().setFromObject(o); if (!b.intersectsBox(rec)) o.visible = false; });
-  return new THREE.Box3().setFromObject(g, true).isEmpty() ? completa : (() => { const bb = new THREE.Box3(); g.traverse(o => { if (o.isMesh && o.visible) bb.union(new THREE.Box3().setFromObject(o)); }); return bb.isEmpty() ? completa : bb; })();
+  const ocultas = [], bb = new THREE.Box3(); let i = 0;
+  g.traverse(o => { if (!o.isMesh) return; const b = new THREE.Box3().setFromObject(o); if (b.intersectsBox(rec)) bb.union(b); else ocultas.push(i); i++; });
+  return bb.isEmpty() ? sin : { caja: bb, ocultas };
 }
 
 function ajustarModelo(raw, w, d, h, modo) {
   const g = raw.clone(true);
-  const caja = cajaRobusta(g);
+  const caja = cajaRobusta(g, raw);
   const s = caja.getSize(new THREE.Vector3());
   if (!(s.x > 0 && s.y > 0 && s.z > 0)) return null;
   const mayor = Math.max(s.x, s.y, s.z) * 100;
