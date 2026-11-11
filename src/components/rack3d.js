@@ -106,7 +106,11 @@ export function construirRack(o) {
     xs.forEach(x => { g.add(caja(p, p, D, mL, x, H - p / 2, 0)); g.add(caja(p, p, D, mL, x, p / 2, 0)); });
   } else if (pared) {
     g.add(caja(W, p, p, mL, 0, H - p / 2, zr));
-    xs.forEach(x => { g.add(caja(p, p, D, mL, x, p / 2, -D / 2 + D / 2)); g.add(caja(p + 4, 8, 1, mD, x, H - 30, -D / 2 - 0.5)); g.add(caja(p + 4, 8, 1, mD, x, 40, -D / 2 - 0.5)); });
+    // a pared no lleva bases en el suelo: se sujeta al muro con placas de anclaje (arriba, en medio y abajo) y solo apoya en una pequeña placa
+    xs.forEach(x => {
+      g.add(caja(p + 6, 1, p + 6, mD, x, 0.5, zr));
+      [30, H / 2, H - 30].forEach(y => { g.add(caja(p + 8, 16, 0.8, mD, x, y, -D / 2 + 0.4)); [-1, 1].forEach(s => g.add(cil(0.9, 1.4, mM, x + s * (p / 2 + 1.5), y + 5, -D / 2 + 1.1, 'z'))); });
+    });
   } else {
     g.add(caja(W, p * 0.6, p * 0.6, mL, 0, H - p * 0.3, zr)); g.add(caja(W, p * 0.6, p * 0.6, mL, 0, H - p * 0.3, zf));
   }
@@ -158,7 +162,7 @@ export function calculosRack(o) {
   const add = (k, nombre, q, u) => { if (q > 0) lista.push([k, nombre, q, u]); };
   add('postes', 'Postes perforados ' + R.perfil + ' mm × ' + R.alto + ' cm (agujeros cada ' + R.agujeros + ' cm)', postes, 'ud');
   if (R.tipo === 'jaula') { add('travesanos', 'Travesaños superiores en largo (' + Math.round(n * R.anchoBahia + p) + ' cm)', 2, 'ud'); add('laterales', 'Travesaños laterales y bases (' + R.fondo + ' cm)', (n + 1) * 2, 'ud'); }
-  if (pared) { add('travesanos', 'Travesaño superior (' + Math.round(n * R.anchoBahia + p) + ' cm)', 1, 'ud'); add('anclajes', 'Placas de anclaje a muro', (n + 1) * 2, 'ud'); add('bases', 'Pies de apoyo (' + R.fondo + ' cm)', n + 1, 'ud'); }
+  if (pared) { add('travesanos', 'Travesaño superior (' + Math.round(n * R.anchoBahia + p) + ' cm)', 1, 'ud'); add('anclajes', 'Placas de anclaje a muro (arriba, en medio y abajo de cada poste) con sus tornillos', (n + 1) * 3, 'ud'); }
   if (R.tipo === 'estanteria') add('travesanos', 'Travesaños superiores en largo', 2, 'ud');
   let jc = 0, seg = 0, barras = 0, dom = 0, bal = 0, smith = 0, pol = 0; const acc = { kb: 0, mancuernas: 0, wallballs: 0, discos: 0, balones: 0 };
   R.bahias.forEach(b => {

@@ -10805,29 +10805,46 @@ function rkNorm(r){
 function rkDim(R){var p=R.perfil/10;return {w:Math.round((R.bahias.length*R.anchoBahia+p)*10)/10,d:R.fondo,alto:R.alto}}
 /* dibujo de la planta (desde arriba): postes macizos, travesaños y un símbolo por bahía; el frente queda abajo */
 function rackPlanta(R){
-  var p=R.perfil/10,n=R.bahias.length,W=n*R.anchoBahia+p,D=R.fondo,pared=R.tipo==='pared',A=' stroke="#000000" stroke-width="1" fill="none" stroke-linecap="round"',B=' stroke="#000000" stroke-width="0.5" fill="none" stroke-linecap="round"',o='';
+  var p=R.perfil/10,n=R.bahias.length,W=n*R.anchoBahia+p,D=R.fondo,pared=R.tipo==='pared',ps=Math.max(p,9);
+  var K='#000000',L=' stroke="'+K+'" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"',F=' stroke="'+K+'" stroke-width="0.9" fill="none" stroke-linecap="round"',G=' fill="'+K+'" fill-opacity="0.07" stroke="none"',o='';
   var xs=[],i;for(i=0;i<=n;i++)xs.push(p/2+i*R.anchoBahia);
   var yr=p/2,yf=D-p/2;
-  if(R.tipo!=='estanteria'||true){o+='<line x1="'+f2(xs[0])+'" y1="'+f2(yr)+'" x2="'+f2(xs[n])+'" y2="'+f2(yr)+'"'+A+'/>';if(!pared)o+='<line x1="'+f2(xs[0])+'" y1="'+f2(yf)+'" x2="'+f2(xs[n])+'" y2="'+f2(yf)+'"'+A+'/>'}
-  if(!pared)xs.forEach(function(x){o+='<line x1="'+f2(x)+'" y1="'+f2(yr)+'" x2="'+f2(x)+'" y2="'+f2(yf)+'"'+B+'/>'});
+  /* huella: el rack se lee como un bloque, con su contorno y las bahías sombreadas */
+  o+='<rect x="0" y="0" width="'+f2(W)+'" height="'+f2(D)+'"'+G+'/>';
+  o+='<rect x="0.8" y="0.8" width="'+f2(W-1.6)+'" height="'+f2(D-1.6)+'"'+L.replace('1.6','2.2')+'/>';
+  if(!pared)xs.forEach(function(x){o+='<line x1="'+f2(x)+'" y1="'+f2(yr)+'" x2="'+f2(x)+'" y2="'+f2(yf)+'"'+F+'/>'});
   R.bahias.forEach(function(b,k){
-    var x1=xs[k],x2=xs[k+1],xc=(x1+x2)/2,bw=R.anchoBahia-p;
+    var x1=xs[k],x2=xs[k+1],xc=(x1+x2)/2,bw=R.anchoBahia-p,xi=x1+ps/2+1,xd=x2-ps/2-1;
     if(b.tipo==='libre'){
-      var yy=pared?yr+p/2+3:yf-p/2-3,dir=pared?1:-1;
-      [x1+p/2+2,x2-p/2-2].forEach(function(x){o+='<line x1="'+f2(x)+'" y1="'+f2(yy)+'" x2="'+f2(x)+'" y2="'+f2(yy+dir*(pared?36:8))+'"'+A+'/>'});
-      if(!pared)[x1+p/2+2,x2-p/2-2].forEach(function(x){o+='<line x1="'+f2(x)+'" y1="'+f2(yr)+'" x2="'+f2(x)+'" y2="'+f2(yf)+'"'+B+'/>'});
-      if(b.barra)o+='<line x1="'+f2(xc-bw/2-30)+'" y1="'+f2(yy)+'" x2="'+f2(xc+bw/2+30)+'" y2="'+f2(yy)+'"'+A+'/>';
+      var yj=pared?yr+ps/2+4:yf-ps/2-4,dir=pared?1:-1;
+      [xi,xd].forEach(function(x){
+        o+='<rect x="'+f2(x-3)+'" y="'+f2(yj-5)+'" width="6" height="10" fill="'+K+'" stroke="'+K+'" stroke-width="0.6"/>';
+        o+='<line x1="'+f2(x)+'" y1="'+f2(yj)+'" x2="'+f2(x)+'" y2="'+f2(pared?yj+dir*34:yr+ps/2)+'"'+F+'/>';
+      });
+      o+='<line x1="'+f2(xi-28)+'" y1="'+f2(yj)+'" x2="'+f2(xd+28)+'" y2="'+f2(yj)+'"'+L+'/>';
+      [xi-28,xd+28].forEach(function(x){o+='<rect x="'+f2(x-2.5)+'" y="'+f2(yj-22)+'" width="5" height="44" fill="'+K+'" fill-opacity="0.8" stroke="'+K+'" stroke-width="0.5"/>'});
     }else if(b.tipo==='dominadas'){
-      var yd=pared?yr+p/2+30:yf;o+='<line x1="'+f2(x1+p/2)+'" y1="'+f2(yd)+'" x2="'+f2(x2-p/2)+'" y2="'+f2(yd)+'" stroke="#000000" stroke-width="1" stroke-dasharray="4 3" fill="none"/>';
+      var yd=pared?yr+ps/2+30:yf;
+      o+='<line x1="'+f2(x1+ps/2)+'" y1="'+f2(yd)+'" x2="'+f2(x2-ps/2)+'" y2="'+f2(yd)+'" stroke="'+K+'" stroke-width="2.2" stroke-dasharray="7 4" fill="none"/>';
+      [xi+8,xd-8].forEach(function(x){o+='<circle cx="'+f2(x)+'" cy="'+f2(yd)+'" r="3.2" fill="'+K+'"/>'});
     }else if(b.tipo==='estanteria'){
-      var py=pared?yr+p/2:yr+p/2,ph=pared?36:D-p*2;o+='<rect x="'+f2(x1+p/2)+'" y="'+f2(py)+'" width="'+f2(bw)+'" height="'+f2(ph)+'"'+B+'/><line x1="'+f2(x1+p/2)+'" y1="'+f2(py)+'" x2="'+f2(x2-p/2)+'" y2="'+f2(py+ph)+'"'+B+'/>';
+      var py=yr+ps/2+1,ph=pared?34:D-ps-2,h;
+      o+='<rect x="'+f2(xi)+'" y="'+f2(py)+'" width="'+f2(xd-xi)+'" height="'+f2(ph)+'"'+F+'/>';
+      for(h=-ph;h<xd-xi;h+=14){var xa=Math.max(0,h),ya=h<0?-h:0,xb=Math.min(xd-xi,h+ph),yb=(h+ph>xd-xi)?(xd-xi-h):ph;if(xb>xa)o+='<line x1="'+f2(xi+xa)+'" y1="'+f2(py+ya)+'" x2="'+f2(xi+xb)+'" y2="'+f2(py+yb)+'" stroke="'+K+'" stroke-width="0.6"/>'}
     }else if(b.tipo==='smith'){
-      var ys=pared?yr+p/2+12:D/2,sp=Math.min(bw/2-8,60);[-sp,sp].forEach(function(s){o+='<circle cx="'+f2(xc+s)+'" cy="'+f2(ys)+'" r="2.2"'+A+'/>'});o+='<line x1="'+f2(xc-sp-15)+'" y1="'+f2(ys)+'" x2="'+f2(xc+sp+15)+'" y2="'+f2(ys)+'"'+B+'/>';
+      var ys=pared?yr+ps/2+14:D/2,sp=Math.min((xd-xi)/2-4,60);
+      [-sp,sp].forEach(function(s){o+='<circle cx="'+f2(xc+s)+'" cy="'+f2(ys)+'" r="4.5" fill="#ffffff" stroke="'+K+'" stroke-width="1.6"/><circle cx="'+f2(xc+s)+'" cy="'+f2(ys)+'" r="1.4" fill="'+K+'"/>'});
+      o+='<line x1="'+f2(xc-sp-14)+'" y1="'+f2(ys)+'" x2="'+f2(xc+sp+14)+'" y2="'+f2(ys)+'"'+L+'/>';
     }else if(b.tipo==='poleas'){
-      var sp2=Math.min(bw/2-12,42);[-sp2,sp2].forEach(function(s){o+='<rect x="'+f2(xc+s-11)+'" y="'+f2(yr+p/2)+'" width="22" height="19" fill="#000000" fill-opacity="0.35"'+A.replace(' fill="none"','')+'/>'});
+      var sp2=Math.min((xd-xi)/2-14,42);
+      [-sp2,sp2].forEach(function(s){
+        o+='<rect x="'+f2(xc+s-12)+'" y="'+f2(yr+ps/2+1)+'" width="24" height="22" fill="'+K+'" fill-opacity="0.35" stroke="'+K+'" stroke-width="1.4"/>';
+        o+='<circle cx="'+f2(xc+s)+'" cy="'+f2(yr+ps/2+34)+'" r="4" fill="#ffffff" stroke="'+K+'" stroke-width="1.3"/>';
+      });
     }
   });
-  xs.forEach(function(x){[yr].concat(pared?[]:[yf]).forEach(function(y){o+='<rect x="'+f2(x-p/2)+'" y="'+f2(y-p/2)+'" width="'+f2(p)+'" height="'+f2(p)+'" fill="#000000" stroke="#000000" stroke-width="0.5"/>'})});
+  xs.forEach(function(x){[yr].concat(pared?[]:[yf]).forEach(function(y){o+='<rect x="'+f2(x-ps/2)+'" y="'+f2(y-ps/2)+'" width="'+f2(ps)+'" height="'+f2(ps)+'" fill="'+K+'" stroke="'+K+'" stroke-width="0.6"/>'})});
+  if(pared)o+='<line x1="0" y1="-1.5" x2="'+f2(W)+'" y2="-1.5" stroke="'+K+'" stroke-width="3" fill="none"/>';
   return o;
 }
 function rackRapido(edit){
