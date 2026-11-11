@@ -1442,6 +1442,7 @@ function InicioRedes({ ir }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{ideas.length > 0 && <button className="rd-btn pri" disabled={regen} title="Cambia las ideas que no has fijado por otras nuevas" onClick={otras}>{regen ? 'Pensando…' : '🔄 Otras ideas (las fijadas se quedan)'}</button>}<button className="rd-btn" onClick={() => ir('plan')}>Plan de publicación</button><button className="rd-btn" onClick={() => ir('musica')}>🎵 Música</button></div>
       </div>
       <HistoriasHoy />
+      <MercadoInstagram />
       <YoutubeAInstagram />
       <RumboRedes />
       <PreferenciasRedes />
@@ -1648,6 +1649,27 @@ function RealPrediccion({ pred }) {
     </div>
   );
 }
+// Vídeos que son tendencia en todo Instagram (por hashtags amplios), no solo de las cuentas del nicho
+function MercadoInstagram() {
+  const [d, setD] = useState(null), [tags, setTags] = useState('gimnasio crossfit homegym gymmotivation fitnessmotivation reformas interiordesign antesydespues'), [trab, setTrab] = useState(false), [err, setErr] = useState(''), [ej, setEj] = useState(null);
+  useEffect(() => { api.get('/redes/mercado').then(r => { if (r.data && !r.data.vacio) { setD(r.data); if (r.data.hashtags) setTags(r.data.hashtags.join(' ')); } }).catch(() => {}); }, []);
+  const busca = async () => { setTrab(true); setErr(''); try { const r = await api.post('/redes/mercado/instagram', { hashtags: tags }, { timeout: 200000 }); setD(r.data.mercado); } catch (e) { setErr(e.response?.data?.error || 'No se pudo'); } setTrab(false); };
+  return (
+    <div className="rd-card" style={{ gap: 10 }}>
+      <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>🌍 TENDENCIAS DEL MERCADO · vídeos que están petando en todo Instagram</div>
+      <div style={{ ...mut, fontSize: '0.84rem' }}>Busca por hashtags amplios (no solo tus cuentas del nicho): fitness, gimnasio, hogar, reformas, diseño… Te dice qué fórmulas están funcionando y cómo adaptarlas a ti.</div>
+      <input className="ap-field-input" value={tags} onChange={e => setTags(e.target.value)} placeholder="hashtags separados por espacio" />
+      <div><button className="rd-btn pri" disabled={trab} onClick={busca}>{trab ? 'Buscando…' : d?.fecha ? '🔄 Buscar de nuevo' : '🌍 Buscar tendencias'}</button></div>
+      {err && <div style={{ color: '#ff9b9b' }}>{err}</div>}
+      {(d?.fallos || []).length > 0 && <div style={{ ...mut, fontSize: '0.78rem' }}>⚠ {d.fallos.join(' · ')}</div>}
+      {(d?.top || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))' }}>{d.top.slice(0, 12).map((p, i) => <a key={i} href={p.enlace} target="_blank" rel="noreferrer" className="rd-post" style={{ textDecoration: 'none', color: 'inherit', aspectRatio: '4/5', padding: 8, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>{p.miniatura && <img src={p.miniatura} alt="" loading="lazy" />}<span className="pt">#{p.hashtag}</span><div className="vel" style={{ fontSize: '0.74rem' }}>{(p.gancho || p.pie || '').slice(0, 70)}<br />❤ {p.me_gusta} · 💬 {p.comentarios} · ▶ Ver ↗</div></a>)}</div>}
+      {(d?.patrones || []).length > 0 && <div><b>Lo que los hace virales</b><Lista items={d.patrones} /></div>}
+      {(d?.ideas || []).length > 0 && <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(250px,1fr))' }}>{d.ideas.map((x, i) => <div key={i} className="rd-card" style={{ cursor: 'pointer' }} onClick={() => setEj(x)}><span className="rd-chip">{x.formato || 'idea'}</span><div className="rd-gancho">{x.idea}</div><div style={{ fontSize: '0.84rem' }}>“{x.gancho}”</div>{x.por_que && <div style={{ ...mut, fontSize: '0.78rem' }}>{x.por_que}</div>}<div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Crear guion →</div></div>)}</div>}
+      {ej && <TallerIdeas idea={ej} onCerrar={() => setEj(null)} />}
+    </div>
+  );
+}
+
 function YoutubeAInstagram() {
   const [d, setD] = useState(null), [trab, setTrab] = useState(false), [err, setErr] = useState(''), [ej, setEj] = useState(null);
   useEffect(() => { api.get('/redes/youtube/a-instagram').then(r => setD(r.data)).catch(() => {}); }, []);

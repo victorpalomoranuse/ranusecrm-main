@@ -559,6 +559,36 @@ LAS QUE PEOR:\
   } catch (e) { console.error('redes analizar', e.message); res.status(500).json({ error: 'No se pudo analizar: ' + String(e.message).slice(0, 200) }); }
 });
 
+// ── Mercado: vídeos que son tendencia en todo Instagram (búsqueda por hashtag, no solo cuentas del nicho)
+const RUTA_MERCADO = 'crm/redes/mercado.json';
+const HASHTAGS_MERCADO = ['gimnasio', 'crossfit', 'homegym', 'gymmotivation', 'fitnessmotivation', 'reformas', 'interiordesign', 'antesydespues'];
+router.get('/mercado', async (req, res) => { try { res.json(await leerJson(RUTA_MERCADO, null) || { vacio: true, hashtags: HASHTAGS_MERCADO }); } catch { res.status(500).json({ error: 'No se pudo leer' }); } });
+router.post('/mercado/instagram', async (req, res) => {
+  try {
+    const c = await conexion(); if (!c) return res.status(404).json({ error: 'Conecta primero tu Instagram' });
+    const tags = [...new Set(String(req.body?.hashtags || HASHTAGS_MERCADO.join(' ')).split(/[\s,;#]+/).map(x => x.trim().toLowerCase().replace(/[^a-z0-9_áéíóúñü]/g, '')).filter(x => x.length >= 2))].slice(0, 8);
+    const todos = [], fallos = [];
+    for (const t of tags) {
+      try {
+        const h = await graph('/ig_hashtag_search', { user_id: c.ig_id, q: t }, c.token), id = h.data?.[0]?.id; if (!id) { fallos.push('#' + t + ': no encontrado'); continue; }
+        const j = await graph('/' + id + '/top_media', { user_id: c.ig_id, fields: 'id,caption,media_type,media_url,permalink,like_count,comments_count,timestamp', limit: 30 }, c.token);
+        for (const m of (j.data || [])) todos.push({ hashtag: t, tipo: m.media_type, fecha: m.timestamp, pie: limpia(m.caption, 300), gancho: limpia(String(m.caption || '').split(/[\n.!?]/)[0], 160), me_gusta: Number(m.like_count) || 0, comentarios: Number(m.comments_count) || 0, enlace: m.permalink, miniatura: m.media_type === 'IMAGE' ? (m.media_url || '') : '' , _id: m.id });
+      } catch (e) { fallos.push('#' + t + ': ' + (/permission|capability|(#10)|(#200)|Public Content/i.test(e.message) ? 'Instagram no deja buscar por hashtag con esta conexión (hace falta el permiso «Instagram Public Content Access» en la app de Meta)' : String(e.message).slice(0, 120))); }
+    }
+    if (!todos.length) return res.status(422).json({ error: 'No he podido traer vídeos del mercado. ' + [...new Set(fallos)].join(' · ') });
+    const vistos = new Set(), unicos = todos.filter(m => m.enlace && !vistos.has(m._id) && vistos.add(m._id));
+    const hace = (m) => Math.max(1, (Date.now() - new Date(m.fecha).getTime()) / 86400000);
+    const videos = unicos.filter(m => m.tipo === 'VIDEO').sort((a, b) => (b.me_gusta + b.comentarios * 5) / hace(b) - (a.me_gusta + a.comentarios * 5) / hace(a));
+    const mejores = (videos.length >= 6 ? videos : unicos.sort((a, b) => b.me_gusta - a.me_gusta)).slice(0, 24);
+    await refrescaPrefs();
+    const ctxProy = await contextoProyectos();
+    const r = json(await callClaude({ system: textoPrefs() + ctxProy + 'Eres analista de contenido de Instagram. Te paso los vídeos con más tracción de todo Instagram en hashtags amplios (fitness, gimnasio, hogar, reformas, diseño): MERCADO GENERAL, no solo su nicho. Saca qué los hace virales (gancho, formato, ritmo, tema, emoción) y propón ideas para Víctor Palomo (Ranuse Design, diseño de gimnasios) adaptando esas fórmulas a su caso, realistas de grabar él solo con el móvil. Devuelves SOLO JSON {"patrones":["..."],"ganchos":["fórmula de gancho"],"ideas":[{"idea":"","formato":"reel|carrusel|foto","gancho":"","por_que":"","refs":[numero de vídeo 1-based]}]}', messages: [{ role: 'user', content: JSON.stringify(mejores.map((m, i) => ({ n: i + 1, hashtag: m.hashtag, gancho: m.gancho, pie: m.pie, me_gusta: m.me_gusta, comentarios: m.comentarios }))) }], maxTokens: 3000 }));
+    const out = { fecha: new Date().toISOString(), hashtags: tags, fallos: [...new Set(fallos)], top: mejores.map(({ _id, ...m }) => m), patrones: (r.patrones || []).slice(0, 8).map(x => limpia(x, 240)), ganchos: (r.ganchos || []).slice(0, 8).map(x => limpia(x, 240)), ideas: (r.ideas || []).slice(0, 8).map(x => ({ idea: limpia(x?.idea, 240), formato: limpia(x?.formato, 30), gancho: limpia(x?.gancho, 200), por_que: limpia(x?.por_que, 200), origen: 'mercado', refs: (Array.isArray(x?.refs) ? x.refs : []).slice(0, 3).map(n => mejores[Number(n) - 1]).filter(Boolean).map(({ _id, ...p }) => ({ cuenta: '#' + p.hashtag, enlace: p.enlace, pie: limpia(p.gancho || p.pie, 90), me_gusta: p.me_gusta, comentarios: p.comentarios, miniatura: p.miniatura })) })) };
+    await guardarJson(RUTA_MERCADO, out);
+    res.json({ ok: true, mercado: out });
+  } catch (e) { console.error('redes mercado', e.message); res.status(500).json({ error: 'No se pudo analizar el mercado: ' + String(e.message).slice(0, 200) }); }
+});
+
 // Ideas ganadoras: descartar las que no gustan y pedir otras nuevas manteniendo las elegidas
 router.post('/instagram/ideas/regenerar', async (req, res) => {
   try {
