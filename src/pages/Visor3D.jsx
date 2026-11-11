@@ -4868,14 +4868,16 @@ export default function Visor3D({ cliente = false }) {
       const viejos = []; a.scene.traverse(x => { if (x.userData?.arista) viejos.push(x); }); viejos.forEach(x => x.parent?.remove(x));
       if (aristas) {
         a.matArista = a.matArista || new THREE.LineBasicMaterial({ color: 0x1c1c1c });
-        let total = 0;
+        let total = 0, nLineas = 0; // los modelos de máquinas (cientos de piezas cada uno) no llevan aristas: multiplicaban las llamadas de dibujo y la vista iba a 8 fps
+        const enModelo = (x) => { for (let p = x.parent; p; p = p.parent) if (p.userData?.modeloEq) return true; return false; };
         const poner = (raiz) => raiz?.traverse(x => {
+          if (nLineas > 1500 || (x.isMesh && enModelo(x))) return;
           if (!x.isMesh || x.userData.arista || x.userData.hit || x.userData.overlay || !x.geometry || x.material?.visible === false) return;
           const mt = Array.isArray(x.material) ? x.material[0] : x.material; if (mt?.transparent && mt.opacity < 0.5) return;
           const n = x.geometry.attributes?.position?.count || 0; if (!n || n > 40000) return;
           let eg = cacheAristas.get(x.geometry);
           if (!eg) { if (total + n > 300000) return; total += n; eg = new THREE.EdgesGeometry(x.geometry, 28); cacheAristas.set(x.geometry, eg); }
-          const e = new THREE.LineSegments(eg, a.matArista); e.userData.arista = true; e.raycast = () => {}; e.renderOrder = 2; x.add(e);
+          const e = new THREE.LineSegments(eg, a.matArista); e.userData.arista = true; e.raycast = () => {}; e.renderOrder = 2; x.add(e); nLineas++;
         });
         poner(a.raiz); poner(a.esc);
       }
