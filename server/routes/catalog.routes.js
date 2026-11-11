@@ -452,7 +452,7 @@ router.post('/products/:id/fotos', async (req, res) => {
 // medidas del producto. No guarda nada: el editor de bloques lo muestra para revisarlo.
 router.post('/products/:id/bloques/generar', async (req, res) => {
   try {
-    const { data: p, error } = await supabase.from('catalog_products').select('id, name, photo_url, longitud, ancho, altura, bloques').eq('id', req.params.id).maybeSingle();
+    const { data: p, error } = await supabase.from('catalog_products').select('id, name, photo_url, longitud, ancho, altura, bloques, link').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!p) return res.status(404).json({ error: 'Producto no encontrado' });
     if (!p.photo_url) return res.status(400).json({ error: 'El producto necesita una foto para generar los bloques' });
@@ -466,6 +466,8 @@ router.post('/products/:id/bloques/generar', async (req, res) => {
     for (const u of (Array.isArray(p.bloques?.fotos) ? p.bloques.fotos : []).slice(0, 3)) {
       try { const rr = await fetch(u); if (rr.ok) imagenes.push(Buffer.from(await rr.arrayBuffer())); } catch { /* sin esa foto */ }
     }
+    // si hay pocas fotos, se completan con las de la ficha del proveedor (otras vistas del mismo producto)
+    if (imagenes.length < 4 && /^https?:\/\//i.test(p.link || '')) { try { for (const b of await imagenesDeEnlace(p.link, 5)) { if (imagenes.length >= 5) break; if (!imagenes.some(x => x.length === b.length)) imagenes.push(b); } } catch { /* sin enlace utilizable */ } }
     // 1) modelo 3D a partir de la foto, proyectado a las tres vistas; 2) si el servicio 3D no responde, ensamblaje de piezas con IA
     const b = await generarBloquesAuto({ imagen, imagenes, largo, fondo, alto, nombre: p.name });
     res.json({ bloque: { largo: b.largo, fondo: b.fondo, alto: b.alto, shapes: b.shapes, svg: b.svg, nota: b.nota, metodo: b.metodo } });
