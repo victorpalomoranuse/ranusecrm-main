@@ -812,9 +812,7 @@ router.post('/products/desde-pieza', async (req, res) => {
     if (!name) return res.status(400).json({ error: 'Falta el nombre' });
     const num = v => (Number(v) > 0 ? Number(v) : null);
     let cat = null;
-    const cod = /^s*(E.?s?d{1,2})/i.exec(String(b.categoria || ''));
     const { data: cats } = await supabase.from('catalog_categories').select('id, name').eq('type', 'mobiliario');
-    if (cod) { const k = cod[1].replace(/[.s]/g, '').toUpperCase(); cat = (cats || []).find(c => String(c.name).replace(/^(E).?s?(d+).*/i, (_, a2, n) => 'E' + n).toUpperCase() === k); }
     if (!cat) cat = (cats || []).find(c => /por clasificar/i.test(c.name));
     if (!cat) { const { data: nueva, error: eC } = await supabase.from('catalog_categories').insert({ name: 'Por clasificar', type: 'mobiliario', display_order: 999 }).select('id, name').single(); if (eC) throw eC; cat = nueva; }
     const { data: maxRow } = await supabase.from('catalog_products').select('display_order').order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
