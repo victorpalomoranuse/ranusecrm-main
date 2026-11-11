@@ -5092,6 +5092,13 @@ export default function Visor3D({ cliente = false }) {
       {barra2d}
       {barraAxo}
       <div ref={caja} data-vista="1" style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
+      {!cliente && ((pendientesN > 0 && !cargarModelos) || (pesadosN > 0 && !cargarPesados && (pendientesN === 0 || cargarModelos))) && (
+        <div style={{ position: 'absolute', left: '50%', top: 56, transform: 'translateX(-50%)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(22,20,18,0.92)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12.5, boxShadow: '0 4px 16px rgba(0,0,0,0.4)', maxWidth: '90%' }}>
+          {pendientesN > 0 && !cargarModelos
+            ? <><span>🧊 Las máquinas se ven como <b>cajas</b>: hay {pendientesN} modelos distintos y se cargan a pedido para que la página no se cuelgue.</span><button style={{ ...btn, background: '#8a6f55', fontWeight: 700 }} onClick={() => setCargarModelos(true)}>Cargar los modelos ({pendientesN})</button></>
+            : <><span>🧊 {pesadosN} modelo{pesadosN > 1 ? 's' : ''} muy pesado{pesadosN > 1 ? 's' : ''} sin cargar (más de 12 MB): pueden bloquear la página unos segundos.</span><button style={{ ...btn, background: '#8a6f55', fontWeight: 700 }} onClick={() => setCargarPesados(true)}>Cargar también esos</button></>}
+        </div>
+      )}
       {persona && !cliente && (
         <div style={{ position: 'absolute', left: '50%', bottom: 16, transform: 'translateX(-50%)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(22,20,18,0.9)', color: '#fff', borderRadius: 20, padding: '6px 14px', fontSize: 12 }} title="Velocidad al andar con W A S D. Con Shift va 2,5 veces más rápido">
           {(api3d.current.modelo?.plantas || []).length > 1 && <><span>Planta</span><select value={plantaPers ?? 0} onChange={e => setPlantaPers(parseInt(e.target.value))} style={{ ...btn, padding: '1px 6px' }} title="Planta en la que estás: la cámara se coloca a la altura de su suelo">{(api3d.current.modelo?.plantas || []).map((p, i) => <option key={i} value={i}>{p.nombre || 'Planta ' + (i + 1)}</option>)}</select></>}
