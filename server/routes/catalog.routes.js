@@ -15,7 +15,7 @@ import { imagenesDeEnlace } from '../utils/imagenes-enlace.js';
 // Las piezas de la biblioteca propia (ids «bib-…») guardan su modelo 3D en un archivo aparte, no en catalog_products
 const esBib = (id) => /^(bib|lib)-/.test(String(id)); // lib-… = bloques genéricos de Planos (sin fila en la base de datos)
 async function productoOBib(id) {
-  if (!esBib(id)) { const { data, error } = await supabase.from('catalog_products').select('id, bloques').eq('id', id).maybeSingle(); if (error) throw error; return data; }
+  if (!esBib(id)) { const { data, error } = await supabase.from('catalog_products').select('id, bloques, photo_url').eq('id', id).maybeSingle(); if (error) throw error; return data; }
   if (String(id).startsWith('lib-')) return { id, bloques: { modelo3d: (await leerModelosBib())[id] } };
   const { data: b, error } = await supabase.from('biblioteca_bloques').select('id').eq('id', id.slice(4)).maybeSingle();
   if (error) throw error;
@@ -551,6 +551,8 @@ async function generaModelo3DPieza(id, body) {
   const enlace = String(body?.enlace || '').trim().slice(0, 500);
   if (enlace) { try { bufs.push(...await imagenesDeEnlace(enlace, 6)); } catch (e) { if (!bufs.length) throw new ErrorAmable(422, 'No he podido leer ese enlace: ' + String(e.message || e).slice(0, 100) + '. Prueba subiendo o pegando una foto.'); } }
   const previas = Array.isArray(pr.bloques?.modelo3d?.fotos) ? pr.bloques.modelo3d.fotos.filter(u => typeof u === 'string').slice(0, 6) : [], nNuevas = bufs.length, todas = [...bufs];
+  // las fotos que ya tiene el producto (la principal y las extra que se subieron para su bloque) también sirven para el 3D
+  if (body?.reusar !== false) { const delProd = [pr.photo_url, ...(Array.isArray(pr.bloques?.fotos) ? pr.bloques.fotos : [])].filter(u => typeof u === 'string' && /^https?:\/\//.test(u)).slice(0, 5); for (const u of delProd) { try { const r0 = await fetch(u); if (r0.ok && todas.length < 8) { const b0 = Buffer.from(await r0.arrayBuffer()); if (!todas.some(x => x.length === b0.length)) todas.push(b0); } } catch { /* esa foto ya no está */ } } }
   if (body?.reusar !== false) for (const u of previas) { try { const r0 = await fetch(u); if (r0.ok && todas.length < 8) todas.push(Buffer.from(await r0.arrayBuffer())); } catch { /* esa foto ya no está */ } }
   if (!todas.length) throw new ErrorAmable(400, 'Pega o sube una foto, o pon el enlace del producto');
   const { glb, metodo, usadas } = await glbDesdeFotos(todas);

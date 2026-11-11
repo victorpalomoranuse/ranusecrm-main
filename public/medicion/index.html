@@ -10820,13 +10820,14 @@ function fotosProdVentana(c,inicial){
 }
 /* ══ 3D de una pieza que ya existe: fotos (pegadas, arrastradas o subidas) y/o el enlace de su página ══ */
 var p3d=null;
+function fotosGuard(c){var o=[];[c.foto].concat(c.fotos||[],(c.modelo3d&&c.modelo3d.fotos)||[]).forEach(function(u){if(typeof u==='string'&&/^https?:/.test(u)&&o.indexOf(u)<0)o.push(u)});return o}
 function pieza3DVentana(c){
   if(!CRM){toast('Esto solo funciona dentro del CRM');return}
   var m0=document.getElementById('p3dmod');if(m0)m0.remove();
   var m=document.createElement('div');m.id='p3dmod';m.className='dxfmod';
   m.innerHTML='<div class="dxfbox" style="max-width:640px"><header><h3>Modelo 3D de «'+esc(c.nombre||'la pieza')+'»</h3><p class="note" style="margin:0">Pega fotos (Ctrl+V, una detrás de otra), arrástralas o súbelas; o pon el enlace de la página del producto y se coge su foto. <b>Cuantas más vistas, mejor sale el 3D</b>: de frente, de lado y por detrás, con el objeto entero y fondo despejado. Se guardan en la pieza: puedes volver y añadir más.</p></header>'+
     '<div style="padding:12px 16px;display:grid;gap:10px"><div id="p3-drop" tabindex="0" style="border:1.5px dashed var(--line);border-radius:10px;min-height:110px;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;cursor:pointer"><span class="note" style="margin:0">Pega aquí las fotos (Ctrl+V), arrástralas o pulsa para subirlas (hasta 6 cada vez)</span></div><input type="file" id="p3-file" accept="image/*" multiple hidden>'+
-    (c.modelo3d&&c.modelo3d.fotos&&c.modelo3d.fotos.length?'<div><div class="note" style="margin:0 0 4px">Fotos guardadas en la pieza ('+c.modelo3d.fotos.length+'):</div><div style="display:flex;gap:5px;flex-wrap:wrap">'+c.modelo3d.fotos.map(function(u){return '<img src="'+esc(u)+'" style="height:56px;border-radius:5px;background:#fff">'}).join('')+'</div><label class="fld" style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="p3-reus" checked><span>Usar también estas fotos al generar (máximo 8 en total)</span></label></div>':'')+
+    (fotosGuard(c).length?'<div><div class="note" style="margin:0 0 4px">Fotos que ya tiene esta pieza ('+fotosGuard(c).length+'): se usan solas, no hace falta subirlas otra vez.</div><div style="display:flex;gap:5px;flex-wrap:wrap">'+fotosGuard(c).map(function(u){return '<img src="'+esc(u)+'" style="height:56px;border-radius:5px;background:#fff">'}).join('')+'</div><label class="fld" style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="p3-reus" checked><span>Usar también estas fotos al generar (máximo 8 en total)</span></label></div>':'')+
     '<label class="fld"><span>Enlace del producto (opcional)</span><input id="p3-url" type="url" placeholder="https://…" autocomplete="off" value="'+esc(c.enlace||'')+'"></label>'+
     '<p class="note" id="p3-msg" style="margin:0"></p></div>'+
     '<footer><span style="flex:1"></span><button id="p3-x">Cerrar</button><button class="pri" id="p3-go">Generar el 3D</button></footer></div>';
@@ -10852,7 +10853,7 @@ function pieza3DVentana(c){
   g('p3-x').addEventListener('click',cerrar);m.addEventListener('mousedown',function(e){if(e.target===m)cerrar()});
   g('p3-go').addEventListener('click',function(){
     var url=(g('p3-url').value||'').trim();
-    var reus=!g('p3-reus')||g('p3-reus').checked,hayPrev=!!(c.modelo3d&&c.modelo3d.fotos&&c.modelo3d.fotos.length&&reus);
+    var reus=!g('p3-reus')||g('p3-reus').checked,hayPrev=!!(fotosGuard(c).length&&reus);
     if(!p3d.imgs.length&&!url&&!hayPrev){g('p3-msg').textContent='Pega o sube una foto, o pon el enlace del producto.';return}
     g('p3-go').disabled=true;g('p3-msg').textContent='Enviando…';
     p3d.nombre=c.nombre;crmPost({type:'generarModelo3DPieza',id:p3d.id,imagenes:p3d.imgs.slice(),enlace:url,largo:p3d.w,fondo:p3d.d,reusar:reus,nombre:c.nombre});
