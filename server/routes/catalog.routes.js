@@ -701,7 +701,7 @@ router.put('/products/:id/modelo3d', async (req, res) => {
     const rot = ((Number(req.body?.rot) % 360) + 360) % 360;
     const pr = await productoOBib(req.params.id);
     if (!pr?.bloques?.modelo3d) return res.status(404).json({ error: 'Este producto no tiene modelo 3D' });
-    const modelo3d = { ...pr.bloques.modelo3d, rot };
+    const modelo3d = { ...pr.bloques.modelo3d, rot, ...(req.body?.alineado ? { alineado: true } : {}) }; // «alineado»: el visor ya calculó cómo girarlo y no lo repite cada vez que se abre
     const { error } = await guardaModelo(req.params.id, pr, modelo3d);
     if (error) throw error;
     res.json({ modelo3d });

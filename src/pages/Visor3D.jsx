@@ -799,6 +799,13 @@ async function alinearConBloque(raw, planta, L, F) {
 // Alineado automático: una sola vez por producto y modelo. Si el parecido es bajo (<50 %) no se toca nada
 const autoAlinCache = new Map();
 // El alineado con el dibujo de planta es pesado: se hace de uno en uno, dejando respirar a la página entre uno y otro (y con pocos triángulos)
+const alinGuardado = new Set();
+// El resultado del alineado se guarda en el producto: la próxima vez que se abra el visor no se vuelve a calcular
+function guardaAlineado(cid, rot) {
+  if (alinGuardado.has(cid) || !/^([0-9a-f]{8}-|bib-)/.test(String(cid))) return;
+  alinGuardado.add(cid);
+  api.put('/catalog/products/' + encodeURIComponent(cid) + '/modelo3d', { rot, alineado: true }).catch(() => {});
+}
 let colaAlin = Promise.resolve();
 function autoAlinear(cid, raw, prod, mod) {
   const k = cid + '|' + mod.url;
@@ -3227,8 +3234,9 @@ export default function Visor3D({ cliente = false }) {
         if (!g.parent) return;
         // si nadie lo ha girado a mano, se alinea solo con el dibujo de la planta del producto (y se guarda para todas las máquinas iguales)
         const prod = biblioteca.find(m => m.id === e.cid), me = modosEq[e.id];
-        if (me?.v3 !== 'otro' && prod?.bloque?.planta && !me?.alin && !me?.rotM && !mod.rot && !autoAlinCache.get('x|' + e.cid)) {
+        if (me?.v3 !== 'otro' && prod?.bloque?.planta && !me?.alin && !me?.rotM && !mod.rot && !mod.alineado && !autoAlinCache.get('x|' + e.cid)) {
           autoAlinear(e.cid, raw, prod, mod).then(r => {
+            guardaAlineado(e.cid, r ? r.rot % 360 : 0);
             if (!r) { autoAlinCache.set('x|' + e.cid, true); g.userData.modeloCargado = false; setModosEq(m => ({ ...m })); return; }
             const ids = (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(pl => pl?.equipos || []).filter(x => x.cid === e.cid).map(x => x.id);
             a.raiz?.traverse(g2 => { if (g2.userData.equipo?.cid !== e.cid) return; g2.children.filter(c => c.userData.modeloEq).forEach(c => { g2.remove(c); c.traverse(x => { x.geometry?.dispose(); }); }); g2.userData.modeloCargado = false; if (g2.userData.cuerpo) { g2.userData.cuerpo.material.visible = true; g2.userData.cuerpo.castShadow = true; } });
@@ -3236,7 +3244,7 @@ export default function Visor3D({ cliente = false }) {
           });
           return;
         }
-        const rotE = (mod.rot || 0) + (modosEq[e.id]?.rotM || 0) + (!mod.rot && !modosEq[e.id]?.rotM && !modosEq[e.id]?.alin ? giroAuto(raw, e.w || e.largo, e.d || e.fondo) : 0), giroE = (rotE % 180) !== 0;
+        const rotE = (mod.rot || 0) + (modosEq[e.id]?.rotM || 0) + (!mod.rot && !mod.alineado && !modosEq[e.id]?.rotM && !modosEq[e.id]?.alin ? giroAuto(raw, e.w || e.largo, e.d || e.fondo) : 0), giroE = (rotE % 180) !== 0;
         const mm = ajustarModelo(raw, (giroE ? (e.d || e.fondo) : (e.w || e.largo)) * CM, (giroE ? (e.w || e.largo) : (e.d || e.fondo)) * CM, (e.alto || 110) * CM, modosEq[e.id]?.modo || 'estirar'); if (!mm) return;
         mm.userData.girado = giroE;
         // presupuesto de triángulos: si con este modelo se pasa del límite, la máquina se queda como caja (salvo la seleccionada)

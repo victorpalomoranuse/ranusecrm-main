@@ -250,7 +250,7 @@ async function pedirBiblioteca(columnas) {
 }
 async function cargarBiblioteca() {
   const mb = await leerModelosBib().catch(() => ({}));
-  const conModelo = (it) => (mb[it.id]?.url ? { ...it, modelo3d: { url: mb[it.id].url, tipo: mb[it.id].tipo || 'glb', rot: Number(mb[it.id].rot) || 0, fotos: Array.isArray(mb[it.id].fotos) ? mb[it.id].fotos.filter(u => typeof u === 'string').slice(0, 8) : [] } } : it);
+  const conModelo = (it) => (mb[it.id]?.url ? { ...it, modelo3d: { url: mb[it.id].url, tipo: mb[it.id].tipo || 'glb', rot: Number(mb[it.id].rot) || 0, alineado: !!mb[it.id].alineado, fotos: Array.isArray(mb[it.id].fotos) ? mb[it.id].fotos.filter(u => typeof u === 'string').slice(0, 8) : [] } } : it);
   // En el catálogo solo viaja la planta; el alzado y el lateral se piden al colocarlos (/bloque/:id)
   const { data, error } = await pedirBiblioteca('id, nombre, categoria, largo, fondo, alto, planta, origen, alzado, lado');
   if (error) { // si la tabla aún no tiene las columnas de vistas (v73), se sigue con la planta
@@ -406,7 +406,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
           paso: p.bloques?.paso || null,
           enlace: /^https?:\/\//i.test(p.link || '') ? p.link : null,
           skp: p.bloques?.skp?.url ? { url: p.bloques.skp.url, rot: Number(p.bloques.skp.rot) || 0 } : null,
-          modelo3d: p.bloques?.modelo3d?.url ? { url: p.bloques.modelo3d.url, tipo: p.bloques.modelo3d.tipo || 'glb', rot: Number(p.bloques.modelo3d.rot) || 0, bytes: Number(p.bloques.modelo3d.bytes) || 0, fotos: Array.isArray(p.bloques.modelo3d.fotos) ? p.bloques.modelo3d.fotos.filter(u => typeof u === 'string').slice(0, 8) : [] } : null,
+          modelo3d: p.bloques?.modelo3d?.url ? { url: p.bloques.modelo3d.url, tipo: p.bloques.modelo3d.tipo || 'glb', rot: Number(p.bloques.modelo3d.rot) || 0, alineado: !!p.bloques.modelo3d.alineado, bytes: Number(p.bloques.modelo3d.bytes) || 0, fotos: Array.isArray(p.bloques.modelo3d.fotos) ? p.bloques.modelo3d.fotos.filter(u => typeof u === 'string').slice(0, 8) : [] } : null,
           alto: Number(p.altura) > 0 ? Number(p.altura) : null,
           ...(p.bloques?.svg?.planta ? {
             bloque: { planta: p.bloques.svg.planta, largo: p.bloques.largo, fondo: p.bloques.fondo },
