@@ -406,7 +406,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
           paso: p.bloques?.paso || null,
           enlace: /^https?:\/\//i.test(p.link || '') ? p.link : null,
           skp: p.bloques?.skp?.url ? { url: p.bloques.skp.url, rot: Number(p.bloques.skp.rot) || 0 } : null,
-          modelo3d: p.bloques?.modelo3d?.url ? { url: p.bloques.modelo3d.url, tipo: p.bloques.modelo3d.tipo || 'glb', rot: Number(p.bloques.modelo3d.rot) || 0, fotos: Array.isArray(p.bloques.modelo3d.fotos) ? p.bloques.modelo3d.fotos.filter(u => typeof u === 'string').slice(0, 8) : [] } : null,
+          modelo3d: p.bloques?.modelo3d?.url ? { url: p.bloques.modelo3d.url, tipo: p.bloques.modelo3d.tipo || 'glb', rot: Number(p.bloques.modelo3d.rot) || 0, bytes: Number(p.bloques.modelo3d.bytes) || 0, fotos: Array.isArray(p.bloques.modelo3d.fotos) ? p.bloques.modelo3d.fotos.filter(u => typeof u === 'string').slice(0, 8) : [] } : null,
           alto: Number(p.altura) > 0 ? Number(p.altura) : null,
           ...(p.bloques?.svg?.planta ? {
             bloque: { planta: p.bloques.svg.planta, largo: p.bloques.largo, fondo: p.bloques.fondo },

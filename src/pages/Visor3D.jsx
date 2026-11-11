@@ -484,6 +484,19 @@ function cargarModelo(m) {
   cacheModelos.set(m.url, p);
   return p;
 }
+// Cola de carga de los modelos de las máquinas del plano: de uno en uno (y los más ligeros primero) para que la página no se quede colgada
+// descargando y procesando decenas de modelos pesados a la vez; entre uno y otro se deja respirar al navegador.
+const colaCarga = { pend: [], activa: false };
+function cargarModeloEnCola(m) {
+  if (cacheModelos.has(m.url)) return cacheModelos.get(m.url);
+  return new Promise((ok, mal) => { colaCarga.pend.push({ m, peso: Number(m.bytes) || 5e6, ok, mal }); siguienteCarga(); });
+}
+function siguienteCarga() {
+  if (colaCarga.activa || !colaCarga.pend.length) return;
+  colaCarga.pend.sort((a, b) => a.peso - b.peso);
+  const it = colaCarga.pend.shift(); colaCarga.activa = true;
+  cargarModelo(it.m).then(it.ok, it.mal).finally(() => setTimeout(() => { colaCarga.activa = false; siguienteCarga(); }, 60));
+}
 // Miniaturas de los modelos 3D (para verlos antes de importarlos): un solo visor pequeño, una a una, y se guardan en memoria
 const cacheMini = new Map();
 let miniR = null, colaMini = Promise.resolve();
@@ -3160,7 +3173,7 @@ export default function Visor3D({ cliente = false }) {
       if (me0.v3 === 'caja') return;
       const mod = (me0.v3 === 'otro' && me0.mod3?.url) ? me0.mod3 : bibPorId.get(e.cid)?.modelo3d; if (!mod) return;
       g.userData.modeloCargado = true;
-      cargarModelo(mod).then(raw => {
+      cargarModeloEnCola(mod).then(raw => {
         if (!g.parent) return;
         // si nadie lo ha girado a mano, se alinea solo con el dibujo de la planta del producto (y se guarda para todas las máquinas iguales)
         const prod = biblioteca.find(m => m.id === e.cid), me = modosEq[e.id];
@@ -3180,7 +3193,7 @@ export default function Visor3D({ cliente = false }) {
         sobrescribirModelo(mm, {}, texturas); mm.userData.modeloEq = true; mm.rotation.y = -(rotE * Math.PI) / 180; g.add(mm);
         if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
         registraLod(a, mm, v => { if (g.userData.cuerpo) g.userData.cuerpo.material.visible = v; });
-        const ov = aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov);
+        try { const ov = aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov); } catch { /* un acabado que falla no debe deshacer el modelo ya puesto */ }
       }).catch(() => { g.userData.modeloCargado = false; });
     });
   }, [rev, biblioteca, estado, modosEq]);
