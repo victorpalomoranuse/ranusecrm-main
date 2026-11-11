@@ -581,6 +581,10 @@ router.post('/products/:id/modelo3d-ia', async (req, res) => {
   try { res.json({ modelo3d: await generaModelo3DPieza(id, req.body) }); }
   catch (err) { console.error('catalog modelo3d-ia:', err); res.status(err.estado || 500).json({ error: err.estado ? err.message : 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 110) + ')' }); }
 });
+router.get('/products/:id/modelo3d', async (req, res) => {
+  try { const pr = await productoOBib(req.params.id); const m = pr?.bloques?.modelo3d; res.json({ modelo3d: m?.url ? { url: m.url, tipo: m.tipo || 'glb', rot: Number(m.rot) || 0, fotos: Array.isArray(m.fotos) ? m.fotos.filter(u => typeof u === 'string').slice(0, 8) : [] } : null }); }
+  catch { res.json({ modelo3d: null }); }
+});
 router.get('/modelo3d-ia/estado/:job', (req, res) => { const j = TRABAJOS_3D.get(req.params.job); if (!j) return res.json({ estado: 'perdido' }); res.json({ estado: j.estado, pieza: j.pieza, modelo3d: j.modelo3d || null, error: j.error || null }); });
 router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, async (req, res) => {
   try {

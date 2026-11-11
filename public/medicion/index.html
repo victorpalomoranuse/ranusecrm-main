@@ -6793,6 +6793,7 @@ function panelSel(focus){
     h+=fld('eq_rot','Ángulo exacto (°)',((e.rot||0)%360+360)%360)+'<div class="btns tr"><button data-a="eqrotl5" title="Girar 5° a la izquierda">⟲ 5°</button><button data-a="eqrot5" title="Girar 5° a la derecha">⟳ 5°</button><button data-a="eqrot0" title="Dejarla sin girar">0°</button></div>';
     h+=previewEq(e);
     var ce0=catById(e.cid);
+    if(ce0&&!ce0.modelo3d&&!ce0._m3chk){ce0._m3chk=true;crmPost({type:'pedirModelo3DPieza',id:ce0.id})}
     if(ce0&&ce0.biblioteca){
       var cats0={};catalog().forEach(function(c){if(c.biblioteca)cats0[c.categoria||'Mi biblioteca']=1});
       var puedeEd=!CRM||crmAdmin;
@@ -11612,6 +11613,7 @@ if(CRM){
     }else if(m.type==='modelo3DGenerado'){if(imgGen){imgGen.m3=m.modelo3d||null;imgGen.m3est=m.modelo3d?'listo':'error';estado3DBloque()}
     }else if(m.type==='modelo3DPiezaIniciada'){pieza3DIniciada(m.id,m.job,(p3d&&p3d.nombre)||(catById(m.id)||{}).nombre);
     }else if(m.type==='estadoModelo3DPieza'){pieza3DEstado(m);
+    }else if(m.type==='modelo3DActual'){var cA=catById(m.id);if(cA&&m.modelo3d&&m.modelo3d.url&&!cA.modelo3d){cA.modelo3d=m.modelo3d;try{panelSel()}catch(e){}}
     }else if(m.type==='modelo3DPieza'){pieza3DResultado(m.id,m.modelo3d,null);
     }else if(m.type==='modelo3DPiezaError'){pieza3DResultado(m.id,null,m.message);
     }else if(m.type==='modelo3DError'){if(imgGen){imgGen.m3=null;imgGen.m3est='error';imgGen.m3err=String(m.message||'').slice(0,90);estado3DBloque()}
