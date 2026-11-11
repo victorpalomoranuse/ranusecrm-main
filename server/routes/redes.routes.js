@@ -589,24 +589,31 @@ router.post('/mercado/instagram', async (req, res) => {
   } catch (e) { console.error('redes mercado', e.message); res.status(500).json({ error: 'No se pudo analizar el mercado: ' + String(e.message).slice(0, 200) }); }
 });
 
-// Ideas ganadoras: descartar las que no gustan y pedir otras nuevas manteniendo las elegidas
+// Ideas (ganadoras, del nicho de Instagram o de YouTube): descartar las que no gustan y pedir otras nuevas manteniendo las elegidas
 router.post('/instagram/ideas/regenerar', async (req, res) => {
   try {
-    const a = await leerJson(RUTA_APRENDIZAJE, null); if (!a || !Array.isArray(a.ideas_ganadoras)) return res.status(404).json({ error: 'Primero analiza tu cuenta' });
+    const fuente = ['aprendizaje', 'nicho_instagram', 'nicho_youtube'].includes(req.body?.fuente) ? req.body.fuente : 'aprendizaje';
+    const ruta = fuente === 'aprendizaje' ? RUTA_APRENDIZAJE : RUTA_NICHO, clave = fuente === 'nicho_youtube' ? 'youtube' : 'instagram';
+    const a = await leerJson(ruta, null); const cont = fuente === 'aprendizaje' ? a : a?.[clave];
+    if (!cont) return res.status(404).json({ error: 'Primero analiza' });
+    const campo = fuente === 'aprendizaje' ? 'ideas_ganadoras' : 'ideas'; if (!Array.isArray(cont[campo])) return res.status(404).json({ error: 'Primero analiza' });
     const lim = (l) => (Array.isArray(l) ? l : []).map(x => String(x || '').slice(0, 240)).slice(0, 30);
     const mantener = lim(req.body?.mantener), descartar = lim(req.body?.descartar), cantidad = Math.max(0, Math.min(6, Number(req.body?.cantidad) || 0));
-    a.ideas_descartadas = [...(a.ideas_descartadas || []), ...descartar].slice(-40);
-    const quedan = a.ideas_ganadoras.filter(x => !descartar.includes(x.idea));
+    cont.ideas_descartadas = [...(cont.ideas_descartadas || []), ...descartar].slice(-40);
+    const quedan = cont[campo].filter(x => !descartar.includes(x.idea));
     const fijas = quedan.filter(x => mantener.includes(x.idea)), otras = quedan.filter(x => !mantener.includes(x.idea));
     let nuevas = [];
     if (cantidad > 0) {
       const obj = await objetivoActual(), ctxProy = await contextoProyectos();
-      const r = json(await callClaude({ system: textoObjetivo(obj) + ' ' + ctxProy + textoPrefs() + ' Eres estratega de contenido de Instagram para Víctor Palomo (Ranuse Design, diseño de gimnasios). Te paso lo que se ha aprendido de su cuenta y las ideas que YA tiene (para no repetirlas) y las que DESCARTÓ (no le gustan: no propongas nada parecido). Propón ideas NUEVAS y distintas, realistas de grabar él solo con el móvil, sin depender de clientes famosos. Cada idea lleva "origen": "tus datos", "nicho" o "exploracion". Devuelves SOLO JSON {"ideas":[{"idea":"","formato":"reel|carrusel|foto|historia","gancho":"primera frase","origen":""}]}', messages: [{ role: 'user', content: 'Resumen: ' + (a.resumen || '') + '\nLo que funciona: ' + JSON.stringify(a.lo_que_funciona || []) + '\nLo que no: ' + JSON.stringify(a.lo_que_no || []) + '\nGanchos ganadores: ' + JSON.stringify(a.ganchos_ganadores || []) + '\nIdeas que ya tiene: ' + JSON.stringify(quedan.map(x => x.idea)) + '\nIdeas DESCARTADAS (no repetir ni parecidas): ' + JSON.stringify(a.ideas_descartadas) + '\nDame ' + cantidad + ' ideas nuevas.' }], maxTokens: 2500 }));
+      const base = fuente === 'aprendizaje' ? 'Resumen: ' + (cont.resumen || '') + '\nLo que funciona: ' + JSON.stringify(cont.lo_que_funciona || []) + '\nLo que no: ' + JSON.stringify(cont.lo_que_no || []) + '\nGanchos ganadores: ' + JSON.stringify(cont.ganchos_ganadores || [])
+        : 'Patrones de las cuentas del nicho: ' + JSON.stringify(cont.patrones || []) + '\nGanchos: ' + JSON.stringify(cont.ganchos || []) + '\nFormatos: ' + JSON.stringify(cont.formatos || []);
+      const r = json(await callClaude({ system: textoObjetivo(obj) + ' ' + ctxProy + textoPrefs() + ' Eres estratega de contenido de Instagram para Víctor Palomo (Ranuse Design, diseño de gimnasios). Te paso lo que se ha aprendido y las ideas que YA tiene (para no repetirlas) y las que DESCARTÓ (no le gustan: no propongas nada parecido). Propón ideas NUEVAS y distintas, realistas de grabar él solo con el móvil, sin depender de clientes famosos. Cada idea lleva "origen": "tus datos", "nicho" o "exploracion". Devuelves SOLO JSON {"ideas":[{"idea":"","formato":"reel|carrusel|foto|historia","gancho":"primera frase","origen":""}]}', messages: [{ role: 'user', content: base + '\nIdeas que ya tiene: ' + JSON.stringify(quedan.map(x => x.idea)) + '\nIdeas DESCARTADAS (no repetir ni parecidas): ' + JSON.stringify(cont.ideas_descartadas) + '\nDame ' + cantidad + ' ideas nuevas.' }], maxTokens: 2500 }));
       nuevas = (r.ideas || []).slice(0, cantidad).map(x => ({ idea: limpia(x?.idea, 240), formato: limpia(x?.formato, 30), gancho: limpia(x?.gancho, 200), origen: limpia(x?.origen, 20), refs: [] })).filter(x => x.idea);
     }
-    a.ideas_ganadoras = [...fijas, ...nuevas, ...(cantidad > 0 ? [] : otras)].slice(0, 10);
-    await guardarJson(RUTA_APRENDIZAJE, a);
-    res.json({ ok: true, ideas: a.ideas_ganadoras });
+    cont[campo] = [...fijas, ...nuevas, ...(cantidad > 0 ? [] : otras)].slice(0, 10);
+    if (fuente !== 'aprendizaje') a[clave] = cont;
+    await guardarJson(ruta, a);
+    res.json({ ok: true, ideas: cont[campo] });
   } catch (e) { console.error('redes ideas regenerar', e.message); res.status(500).json({ error: 'No se pudieron regenerar: ' + String(e.message).slice(0, 200) }); }
 });
 
