@@ -1987,6 +1987,8 @@ export default function Visor3D({ cliente = false }) {
   const estirarAlAplicar = true; // las medidas escritas siempre mandan: el modelo se ajusta a ellas
   const [cargarPesados, setCargarPesados] = useState(false); // los modelos muy pesados (más de 12 MB) no se cargan solos: bloquean la página
   const [pesadosN, setPesadosN] = useState(0);
+  const [cargarModelos, setCargarModelos] = useState(false); // con muchas máquinas distintas, los modelos no se cargan solos al abrir (la página se quedaba colgada): botón «Cargar modelos»
+  const [pendientesN, setPendientesN] = useState(0);
   const [modosEq, setModosEq] = useState({});               // cómo se ajusta el modelo 3D de cada máquina del plano
   const [mtick, setMtick] = useState(0);
   const [huecosCfg, setHuecosCfg] = useState({});          // apertura, bisagra y sentido de cada puerta y ventana (solo 3D)
@@ -3186,7 +3188,9 @@ export default function Visor3D({ cliente = false }) {
   // Las máquinas del plano se ven con su modelo 3D del catálogo si lo tienen (así se pueden pintar por partes)
   useEffect(() => {
     const a = api3d.current; if (!a.raiz || !biblioteca) return;
-    const bibPorId = new Map(biblioteca.map(m => [m.id, m])), pesados = new Set();
+    const bibPorId = new Map(biblioteca.map(m => [m.id, m])), pesados = new Set(), pendientes = new Set(), conModelo = new Set();
+    a.raiz.traverse(g => { const e0 = g.userData.equipo; if (e0 && e0.cid && bibPorId.get(e0.cid)?.modelo3d) conModelo.add(e0.cid); });
+    const limitar = conModelo.size > 8 && !cargarModelos;
     a.raiz.traverse(g => {
       const e = g.userData.equipo; if (!e || !e.cid) return;
       const me0 = modosEq[e.id] || {}, firma = (me0.v3 || '') + '|' + (me0.mod3?.url || '');
@@ -3199,6 +3203,7 @@ export default function Visor3D({ cliente = false }) {
       if (g.userData.modeloCargado) return;
       if (me0.v3 === 'caja') return;
       const mod = (me0.v3 === 'otro' && me0.mod3?.url) ? me0.mod3 : bibPorId.get(e.cid)?.modelo3d; if (!mod) return;
+      if (limitar && seleccion?.id !== e.id) { pendientes.add(e.cid); return; }
       if ((Number(mod.bytes) || 0) > 12e6 && !cargarPesados && seleccion?.id !== e.id) { pesados.add(e.cid); return; }
       g.userData.modeloCargado = true;
       cargarModeloEnCola(mod).then(raw => {
@@ -3224,8 +3229,8 @@ export default function Visor3D({ cliente = false }) {
         try { const ov = aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov); } catch { /* un acabado que falla no debe deshacer el modelo ya puesto */ }
       }).catch(() => { g.userData.modeloCargado = false; });
     });
-    setPesadosN(pesados.size);
-  }, [rev, biblioteca, estado, modosEq, cargarPesados]); // eslint-disable-line react-hooks/exhaustive-deps
+    setPesadosN(pesados.size); setPendientesN(pendientes.size);
+  }, [rev, biblioteca, estado, modosEq, cargarPesados, cargarModelos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Caras pintadas en muros y en las máquinas del plano
   useEffect(() => {
@@ -5152,6 +5157,7 @@ export default function Visor3D({ cliente = false }) {
           ['Planta', () => vista('planta'), false, false, 'Vista desde arriba', '9'],
           ['Axonométrica', () => (axo ? salirAxo() : entrarAxo()), !!axo, estado !== 'listo' || !!alz || !!planta2d, 'Vista isométrica, sin perspectiva', '8'],
           ['Planta 2D', () => (planta2d ? salirPlanta2d() : entrarPlanta2d()), !!planta2d, estado !== 'listo' || !!alz || !!axo, 'Vista desde arriba en 2D para dibujar zonas y pintar salas', '7'],
+          ...(pendientesN > 0 && !cargarModelos ? [['Cargar los modelos 3D de las máquinas (' + pendientesN + ')', () => setCargarModelos(true), false, false, 'Hay muchas máquinas distintas: los modelos no se cargan solos al abrir para que la página no se quede colgada. Hasta entonces se ven como cajas. Pueden tardar un poco, se van poniendo de uno en uno', '']] : []),
           ...(pesadosN > 0 && !cargarPesados ? [['Cargar modelos pesados (' + pesadosN + ')', () => setCargarPesados(true), false, false, 'Modelos de más de 12 MB: tardan y pueden bloquear la página unos segundos. Hasta entonces esas máquinas se ven como cajas', '']] : []),
           ['Recorrer (persona)', () => setPersona(v => !v), persona, false, 'Dentro del espacio a la altura de los ojos; W A S D para andar', '6'],
           ['Altura de los ojos', () => { const { cam, ctrl } = api3d.current; const yO = api3d.current.persona ? (api3d.current.basePl || 0) + alturaOjos : 1.6, dy = yO - cam.position.y; cam.position.y = yO; ctrl.target.y += dy; ctrl.update(); }, false, false, 'Cámara a 1,60 m', '5'],
