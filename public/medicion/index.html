@@ -12537,38 +12537,48 @@ function borrarMulti(){
   v.cn=(v.cn||[]).filter(function(c){return !pd[c.a]&&!pd[c.b]});
   var n=st.multi.length;st.multi=[];st.sel=null;cleanNodes();commit();toast(n+' elemento'+(n===1?'':'s')+' borrado'+(n===1?'':'s'));
 }
+/* de qué plano/planta se copió: al pegar en OTRA, las piezas ancladas a un nodo se vuelven a anclar al nodo más cercano de la planta de destino (los nodos de una planta no existen en la otra) */
+function origenActual(){return (st.v.id||'')+'|'+(st.v.piso||'')}
+function conAbs(o){var n=nd(o.n);if(n){o._ax=f2(n.x+o.dx);o._ay=f2(n.y+o.dy)}return o}
 function copiarMulti(){
   var v=st.v,d={walls:[],ops:[],eq:[],pil:[],pts:[],dr:[],nodes:{}},wd={};
   st.multi.forEach(function(m){
     if(m.t==='wall'){var w=wl(m.id);if(!w)return;wd[w.id]=1;d.walls.push(JSON.parse(JSON.stringify(w)));[w.a,w.b].forEach(function(id){var n=nd(id);if(n)d.nodes[id]={x:n.x,y:n.y}})}
-    else if(m.t==='eq'){var e=by(v.eq,m.id);if(e)d.eq.push(JSON.parse(JSON.stringify(e)))}
-    else if(m.t==='pil'){var p=pl(m.id);if(p)d.pil.push(JSON.parse(JSON.stringify(p)))}
+    else if(m.t==='eq'){var e=by(v.eq,m.id);if(e)d.eq.push(conAbs(JSON.parse(JSON.stringify(e))))}
+    else if(m.t==='pil'){var p=pl(m.id);if(p)d.pil.push(conAbs(JSON.parse(JSON.stringify(p))))}
     else if(m.t==='dr'){var dq=by(v.dr,m.id);if(dq)d.dr.push(JSON.parse(JSON.stringify(dq)))}
-    else if(m.t==='pt'){var q=by(v.pts,m.id);if(q)d.pts.push(JSON.parse(JSON.stringify(q)))}
+    else if(m.t==='pt'){var q=by(v.pts,m.id);if(q)d.pts.push(conAbs(JSON.parse(JSON.stringify(q))))}
     else if(m.t==='op'){var o=opn(m.id);if(o&&!wd[o.wall])d.ops.push(JSON.parse(JSON.stringify(o)))}
   });
   v.ops.forEach(function(o){if(wd[o.wall]&&!d.ops.some(function(x){return x.id===o.id}))d.ops.push(JSON.parse(JSON.stringify(o)))});
   if(!(d.walls.length+d.eq.length+d.pil.length+d.pts.length+d.ops.length+d.dr.length))return false;
-  clip={t:'multi',d:d};toast('Copiados '+st.multi.length+' elementos');return true;
+  clip={t:'multi',d:d,origen:origenActual()};toast('Copiados '+st.multi.length+' elementos');return true;
 }
 function pegarMulti(enCursor){
-  var d=clip.d,v=st.v,ox=30,oy=30;
+  var d=clip.d,v=st.v,ox=30,oy=30,fuera=clip.origen!==origenActual();
+  if(fuera){ox=0;oy=0;enCursor=true} /* en otra planta, lo copiado cae donde está el cursor */
+  var pos=function(o){if(o._ax!=null)return {x:o._ax,y:o._ay};var n=nd(o.n);return n?{x:n.x+o.dx,y:n.y+o.dy}:null};
   if(enCursor){ // el centro de lo copiado va al cursor
     var xs=[],ys=[];
     Object.keys(d.nodes).forEach(function(id){xs.push(d.nodes[id].x);ys.push(d.nodes[id].y)});
-    d.eq.forEach(function(e){var n=nd(e.n);if(n){xs.push(n.x+e.dx);ys.push(n.y+e.dy)}});
-    d.pil.forEach(function(p){var n=nd(p.n);if(n){xs.push(n.x+p.dx);ys.push(n.y+p.dy)}});
+    d.eq.forEach(function(e){var q=pos(e);if(q){xs.push(q.x);ys.push(q.y)}});
+    d.pil.forEach(function(p){var q=pos(p);if(q){xs.push(q.x);ys.push(q.y)}});
+    d.pts.forEach(function(p){var q=fuera&&pos(p);if(q){xs.push(q.x);ys.push(q.y)}});
+    (d.dr||[]).forEach(function(o){if(fuera)(o.pts||[]).forEach(function(r){xs.push(r.x);ys.push(r.y)})});
     if(xs.length){ox=Math.round((curW.x-(Math.min.apply(null,xs)+Math.max.apply(null,xs))/2)/5)*5;oy=Math.round((curW.y-(Math.min.apply(null,ys)+Math.max.apply(null,ys))/2)/5)*5}
   }
   snap();
   var map={},wmap={},nm=[];
   Object.keys(d.nodes).forEach(function(id){var n={id:uid('n'),x:f2(d.nodes[id].x+ox),y:f2(d.nodes[id].y+oy)};v.nodes.push(n);map[id]=n.id});
   d.walls.forEach(function(w){var c=JSON.parse(JSON.stringify(w)),old=c.id;c.id=uid('w');c.a=map[c.a];c.b=map[c.b];v.walls.push(c);wmap[old]=c.id;nm.push({t:'wall',id:c.id})});
-  d.ops.forEach(function(o){var c=JSON.parse(JSON.stringify(o));c.id=uid('o');if(wmap[c.wall])c.wall=wmap[c.wall];else c.p=f2(c.p+60);v.ops.push(c);nm.push({t:'op',id:c.id})});
+  d.ops.forEach(function(o){var c=JSON.parse(JSON.stringify(o));c.id=uid('o');if(wmap[c.wall])c.wall=wmap[c.wall];else if(fuera)return;else c.p=f2(c.p+60);v.ops.push(c);nm.push({t:'op',id:c.id})});
   [['eq','e'],['pil','p'],['pts','l']].forEach(function(par){
     d[par[0]].forEach(function(o){
       var c=JSON.parse(JSON.stringify(o));c.id=uid(par[1]);
-      if(map[c.n])c.n=map[c.n];else ptShift(c,ox,oy);
+      if(map[c.n])c.n=map[c.n];
+      else if(fuera&&o._ax!=null){var tx=o._ax+ox,ty=o._ay+oy,nq=nearNode(tx,ty,1e9,null);if(!nq)return;var ndx=f2(tx-nq.x),ndy=f2(ty-nq.y);ptShift(c,f2(ndx-c.dx),f2(ndy-c.dy));c.n=nq.id}
+      else ptShift(c,ox,oy);
+      delete c._ax;delete c._ay;
       (par[0]==='pts'?v.pts:v[par[0]]).push(c);nm.push({t:par[0]==='pts'?'pt':par[0],id:c.id});
     });
   });
@@ -12603,10 +12613,11 @@ function copiarSel(silencio){
   if(s.t==='pt'){st.multi=[{t:'pt',id:s.id}];var okp=copiarMulti();st.multi=[];return okp}
   var v=st.v,item=null;
   if(s.t==='eq')item=by(v.eq,s.id);else if(s.t==='op')item=opn(s.id);else if(s.t==='pil')item=pl(s.id);
+  if(item&&(s.t==='eq'||s.t==='pil')){item=JSON.parse(JSON.stringify(item));conAbs(item)}
   else if(s.t==='eqa')item=by(v.eqa||[],s.id);
   else if(s.t==='wall'){var w=wl(s.id);if(w){var g=wg(w);item=JSON.parse(JSON.stringify(w));item._a={x:g.a.x,y:g.a.y};item._b={x:g.b.x,y:g.b.y}}}
   if(!item){toast('Eso no se puede copiar');return false}
-  clip={t:s.t,d:JSON.parse(JSON.stringify(item))};
+  clip={t:s.t,d:JSON.parse(JSON.stringify(item)),origen:origenActual()};
   if(!silencio)toast('Copiado');
   return true;
 }
@@ -12614,12 +12625,15 @@ function pegar(enCursor){
   if(!clip){toast('No hay nada copiado');return}
   if(clip.t==='multi'){pegarMulti(enCursor);return}
   var v=st.v,d=JSON.parse(JSON.stringify(clip.d)),tol=Math.max(16/st.k,6),dx=30,dy=30;
-  var p=enCursor?curW:null;
+  var fuera1=clip.origen!==origenActual(),p=(enCursor||fuera1)?curW:null;
+  if(fuera1&&clip.t==='op'&&!nearestWallPos(curW,60/st.k)){toast('Pon el cursor sobre un muro de esta planta para pegar el hueco');return}
+if(fuera1&&(clip.t==='eq'||clip.t==='pil')&&!st.v.nodes.length){toast('Dibuja primero el contorno de la sala');return}
   snap();
   if(clip.t==='eq'||clip.t==='pil'){
     d.id=uid(clip.t==='eq'?'e':'p');
     if(p){var nq=nearNode(p.x,p.y,1e9,null);if(nq){d.n=nq.id;d.dx=f2(rd5((p.x-nq.x)));d.dy=f2(rd5((p.y-nq.y)))}}
     else{d.dx=f2(d.dx+dx);d.dy=f2(d.dy+dy)}
+    delete d._ax;delete d._ay;
     (clip.t==='eq'?v.eq:v.pil).push(d);st.sel={t:clip.t,id:d.id};
   }else if(clip.t==='op'){
     d.id=uid('o');
