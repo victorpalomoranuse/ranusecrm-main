@@ -9,6 +9,8 @@ import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
 import JSZip from 'jszip';
 import { leerModelosBib, guardarModeloBib } from '../utils/modelos-bib.js';
+import { mallaDesdeFoto } from '../utils/bloques-3d.js';
+import { imagenesDeEnlace } from '../utils/imagenes-enlace.js';
 
 // Las piezas de la biblioteca propia (ids «bib-…») guardan su modelo 3D en un archivo aparte, no en catalog_products
 const esBib = (id) => /^(bib|lib)-/.test(String(id)); // lib-… = bloques genéricos de Planos (sin fila en la base de datos)
@@ -530,6 +532,43 @@ async function quitarModelo3dArchivos(m) {
     else { const r = rutaDeUrl(m?.url); if (r) await supabase.storage.from(BUCKET_SKP).remove([r]); }
   } catch { /* sin limpiar: no es grave */ }
 }
+function cajaGlb3(buf) {
+  try {
+    const jl = buf.readUInt32LE(12), json = JSON.parse(buf.slice(20, 20 + jl).toString()), mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9]; let hay = false;
+    for (const me of (json.meshes || [])) for (const p of (me.primitives || [])) { const a = json.accessors?.[p.attributes?.POSITION]; if (a?.min && a?.max) { hay = true; for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], a.min[i]); mx[i] = Math.max(mx[i], a.max[i]); } } }
+    return hay ? { x: mx[0] - mn[0], y: mx[1] - mn[1], z: mx[2] - mn[2] } : null;
+  } catch { return null; }
+}
+// Genera el modelo 3D de una pieza ya creada a partir de fotos (pegadas o subidas) y/o del enlace de su página
+router.post('/products/:id/modelo3d-ia', async (req, res) => {
+  try {
+    const pr = await productoOBib(req.params.id);
+    if (!pr) return res.status(404).json({ error: 'Pieza no encontrada' });
+    const bufs = [];
+    for (const d of (Array.isArray(req.body?.imagenes) ? req.body.imagenes.slice(0, 4) : [])) { const m = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(d || '')); if (m) { const b = Buffer.from(m[2], 'base64'); if (b.length <= 12 * 1024 * 1024) bufs.push(b); } }
+    const enlace = String(req.body?.enlace || '').trim().slice(0, 500);
+    if (!bufs.length && enlace) { try { bufs.push(...await imagenesDeEnlace(enlace, 2)); } catch (e) { return res.status(422).json({ error: 'No he podido leer ese enlace: ' + String(e.message || e).slice(0, 100) + '. Prueba subiendo o pegando una foto.' }); } if (!bufs.length) return res.status(422).json({ error: 'Esa página no tiene una foto que pueda usar. Sube o pega una foto del producto.' }); }
+    if (!bufs.length) return res.status(400).json({ error: 'Pega o sube una foto, o pon el enlace del producto' });
+    const jpg = await sharp(bufs[0]).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 88 }).toBuffer();
+    const glb = await mallaDesdeFoto(jpg);
+    if (!glb || glb.length < 1000) return res.status(502).json({ error: 'El servicio 3D no devolvió un modelo' });
+    const largo = Number(req.body?.largo), fondo = Number(req.body?.fondo), c = cajaGlb3(glb);
+    let rot = 0; if (c && largo > 0 && fondo > 0 && Math.abs(Math.log((c.x / Math.max(1e-6, c.z)) / (largo / fondo))) > 0.35 && ((c.x > c.z) !== (largo > fondo))) rot = 90;
+    const ruta = 'modelos-3d/' + req.params.id + '-' + Date.now() + '.glb';
+    const { error: eUp } = await supabase.storage.from(BUCKET_SKP).upload(ruta, glb, { contentType: 'model/gltf-binary', upsert: true });
+    if (eUp) throw eUp;
+    const url = supabase.storage.from(BUCKET_SKP).getPublicUrl(ruta).data.publicUrl, antiguo = pr.bloques?.modelo3d;
+    const modelo3d = { url, tipo: 'glb', rot, nombre: 'Generado desde ' + (req.body?.imagenes?.length ? 'fotos' : 'el enlace'), bytes: glb.length, actualizado: new Date().toISOString() };
+    const { error } = await guardaModelo(req.params.id, pr, modelo3d);
+    if (error) throw error;
+    if (antiguo) { try { await quitarModelo3dArchivos(antiguo); } catch { /* el archivo antiguo se queda */ } }
+    vaciaCacheAlEscribir?.();
+    res.json({ modelo3d });
+  } catch (err) {
+    console.error('catalog modelo3d-ia:', err);
+    res.status(500).json({ error: 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 110) + ')' });
+  }
+});
 router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Falta el archivo del modelo' });

@@ -6805,6 +6805,9 @@ function panelSel(focus){
       }
     }else if(ce0&&!ce0.generico)h+='<p class="note">La categoría de un producto del catálogo se cambia desde su ficha en el CRM.</p>';
     if(ce0&&ce0.enlace)h+='<p class="note" style="margin:0 0 8px"><a href="'+esc(ce0.enlace)+'" target="_blank" rel="noopener noreferrer">Ver este producto en la web del proveedor ↗</a></p>';
+    if(CRM&&crmAdmin&&ce0&&!ce0.generico&&(ce0.biblioteca||/^(bib|lib)-/.test(String(ce0.id))||/^[0-9a-f]{8}-/.test(String(ce0.id)))){
+      h+='<div class="lab">Modelo 3D de esta pieza</div><p class="note" style="margin:0 0 6px">'+(ce0.modelo3d?'✔ Tiene modelo 3D.':'Sin modelo 3D: en el 3D sale como una caja.')+' Pega o sube fotos y/o pon el enlace del producto y la IA genera el 3D.</p><div class="btns"><button data-a="pieza3d">🧊 '+(ce0.modelo3d?'Volver a generar el 3D…':'Generar el 3D…')+'</button></div>';
+    }
     if(CRM&&ce0&&!ce0.biblioteca&&!ce0.generico&&/^[0-9a-f]{8}-/.test(String(ce0.id))){
       var gen0=genProd[ce0.id];
       h+='<div class="lab">Bloque de este producto</div><p class="note" style="margin:0 0 6px">'+(ce0.bloque?'Tiene bloque propio: se dibuja así en el plano y en SketchUp.':'Aún no tiene bloque propio: ahora sale un símbolo genérico.')+' Lo que hagas aquí se guarda en el producto, para todos los planos.</p>';
@@ -7490,6 +7493,10 @@ function doAction(a,el){
     toast('Toca el alzado de la pared donde quieres colocar su '+(sv==='alzado'?'frente':'lateral'));return;
   }
   if(a==='wstate'){var w=wl(s.id);snap();var old=w.s;w.s=sv;st.v.ops.forEach(function(o){if(o.wall===w.id&&o.s===old)o.s=sv});commit();return}
+  if(a==='pieza3d'){
+    var ep3=st.sel&&st.sel.t==='eq'&&by(st.v.eq,st.sel.id),cp3=ep3&&catById(ep3.cid);if(cp3)pieza3DVentana(cp3);
+    return;
+  }
   if(a==='bibdel'){
     var eb=st.sel&&st.sel.t==='eq'&&by(st.v.eq,st.sel.id),cb2=eb&&catById(eb.cid);
     if(cb2&&cb2.biblioteca&&window.confirm('¿Quitar «'+cb2.nombre+'» de la biblioteca? Los planos que ya la usan la mostrarán como un recuadro genérico.'))crmPost({type:'borrarBiblioteca',id:cb2.id});
@@ -10766,6 +10773,53 @@ function cespedRapido(){
   });
   prev();setTimeout(function(){var el=g('ce-nm');if(el)el.focus()},50);
 }
+/* ══ 3D de una pieza que ya existe: fotos (pegadas, arrastradas o subidas) y/o el enlace de su página ══ */
+var p3d=null;
+function pieza3DVentana(c){
+  if(!CRM){toast('Esto solo funciona dentro del CRM');return}
+  var m0=document.getElementById('p3dmod');if(m0)m0.remove();
+  var m=document.createElement('div');m.id='p3dmod';m.className='dxfmod';
+  m.innerHTML='<div class="dxfbox" style="max-width:640px"><header><h3>Modelo 3D de «'+esc(c.nombre||'la pieza')+'»</h3><p class="note" style="margin:0">Pega fotos (Ctrl+V, una detrás de otra), arrástralas o súbelas; o pon el enlace de la página del producto y se coge su foto. La IA genera el 3D y se guarda en la pieza para todos los planos. Mejor una foto limpia: el objeto entero, con fondo despejado.</p></header>'+
+    '<div style="padding:12px 16px;display:grid;gap:10px"><div id="p3-drop" tabindex="0" style="border:1.5px dashed var(--line);border-radius:10px;min-height:110px;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;cursor:pointer"><span class="note" style="margin:0">Pega aquí las fotos (Ctrl+V), arrástralas o pulsa para subirlas (hasta 4)</span></div><input type="file" id="p3-file" accept="image/*" multiple hidden>'+
+    '<label class="fld"><span>Enlace del producto (opcional)</span><input id="p3-url" type="url" placeholder="https://…" autocomplete="off" value="'+esc(c.enlace||'')+'"></label>'+
+    '<p class="note" id="p3-msg" style="margin:0"></p></div>'+
+    '<footer><span style="flex:1"></span><button id="p3-x">Cerrar</button><button class="pri" id="p3-go">Generar el 3D</button></footer></div>';
+  document.body.appendChild(m);
+  var g=function(i){return document.getElementById(i)};
+  p3d={id:c.id,imgs:[],w:c.w,d:c.d};
+  function pinta(){
+    if(!p3d.imgs.length){g('p3-drop').innerHTML='<span class="note" style="margin:0">Pega aquí las fotos (Ctrl+V), arrástralas o pulsa para subirlas (hasta 4)</span>';return}
+    g('p3-drop').innerHTML='<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">'+p3d.imgs.map(function(d){return '<img src="'+d+'" style="height:90px;border-radius:6px;background:#fff">'}).join('')+'</div>';
+  }
+  function pon(d){if(p3d.imgs.length>=4){toast('Ya hay 4 fotos (el máximo)');return}p3d.imgs.push(d);pinta()}
+  function conFiles(fl){[].slice.call(fl||[],0,4).forEach(function(x){if(x&&/^image\//.test(x.type))reducirImagen(x,pon)})}
+  g('p3-drop').addEventListener('click',function(){g('p3-file').click()});
+  g('p3-file').addEventListener('change',function(e){conFiles(e.target.files);e.target.value=''});
+  g('p3-drop').addEventListener('dragover',function(e){e.preventDefault()});
+  g('p3-drop').addEventListener('drop',function(e){e.preventDefault();conFiles(e.dataTransfer&&e.dataTransfer.files)});
+  m.addEventListener('paste',function(e){
+    var its=(e.clipboardData&&e.clipboardData.items)||[],hay=false,i;
+    for(i=0;i<its.length;i++)if(its[i].kind==='file'&&/^image\//.test(its[i].type)){var ff=its[i].getAsFile();if(ff){hay=true;reducirImagen(ff,pon)}}
+    if(hay){e.preventDefault();e.stopPropagation()}
+  });
+  function cerrar(){m.remove();p3d=null}
+  g('p3-x').addEventListener('click',cerrar);m.addEventListener('mousedown',function(e){if(e.target===m)cerrar()});
+  g('p3-go').addEventListener('click',function(){
+    var url=(g('p3-url').value||'').trim();
+    if(!p3d.imgs.length&&!url){g('p3-msg').textContent='Pega o sube una foto, o pon el enlace del producto.';return}
+    g('p3-go').disabled=true;g('p3-msg').textContent='Generando el modelo 3D… puede tardar entre 1 y 3 minutos. No cierres esta ventana.';
+    crmPost({type:'generarModelo3DPieza',id:p3d.id,imagenes:p3d.imgs.slice(),enlace:url,largo:p3d.w,fondo:p3d.d});
+  });
+}
+function pieza3DResultado(id,m3,err){
+  var msg=document.getElementById('p3-msg'),go=document.getElementById('p3-go');
+  if(go)go.disabled=false;
+  if(err||!m3){if(msg)msg.textContent=err||'No se pudo generar el 3D';return}
+  var c=catById(id);if(c)c.modelo3d={url:m3.url,tipo:m3.tipo,rot:m3.rot};
+  var mm=document.getElementById('p3dmod');if(mm)mm.remove();p3d=null;
+  try{panelSel()}catch(e){}
+  toast('✔ Modelo 3D generado y guardado en la pieza. Ya sale en el 3D de todos los planos.');
+}
 function enviarListados(){
   if(!CRM){toast('Esto funciona dentro del CRM, con el plano vinculado a un proyecto');return}
   toast('Guardando el plano y abriendo el listado…');
@@ -11526,6 +11580,8 @@ if(CRM){
     }else if(m.type==='bloqueGenerado'){bloqueGenerado(m.bloque,null);
     }else if(m.type==='bloqueError'){bloqueGenerado(null,m.message);
     }else if(m.type==='modelo3DGenerado'){if(imgGen){imgGen.m3=m.modelo3d||null;imgGen.m3est=m.modelo3d?'listo':'error';estado3DBloque()}
+    }else if(m.type==='modelo3DPieza'){pieza3DResultado(m.id,m.modelo3d,null);
+    }else if(m.type==='modelo3DPiezaError'){pieza3DResultado(m.id,null,m.message);
     }else if(m.type==='modelo3DError'){if(imgGen){imgGen.m3=null;imgGen.m3est='error';imgGen.m3err=String(m.message||'').slice(0,90);estado3DBloque()}
     }else if(m.type==='biblioteca'){
       var nuevos=(m.items||[]).filter(function(c){return c&&c.id&&c.nombre&&c.w>0&&c.d>0});
