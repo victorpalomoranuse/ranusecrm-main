@@ -6339,6 +6339,8 @@ document.addEventListener('paste',function(e){
   var ae=document.activeElement,enCampo=ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
   /* con una luminaria seleccionada, la foto pegada va a su ficha (leyenda), no al generador de bloques */
   if(f&&!enCampo&&!$('imgmod')&&st.sel&&st.sel.t==='pt'){var ql0=by(st.v.pts,st.sel.id);if(ql0&&ql0.v==='ilum'){e.preventDefault();ponFotoLum(ql0.id,f);return}}
+  /* con una máquina del catálogo seleccionada, la foto pegada se guarda como foto de ese producto */
+  if(f&&!enCampo&&CRM&&!$('imgmod')&&!document.getElementById('fpmod')&&!document.getElementById('p3dmod')&&st.sel&&st.sel.t==='eq'){var qe0=by(st.v.eq,st.sel.id),qc0=qe0&&qe0.cid&&catById(qe0.cid);if(qc0&&!qe0.bl){e.preventDefault();reducirImagen(f,function(d){fotosProdVentana(qc0,d)});return}}
   if(!f){
     if(!enCampo&&!$('imgmod')&&typeof clip!=='undefined'&&clip){e.preventDefault();pegar(true)}
     return;
@@ -6825,7 +6827,7 @@ function panelSel(focus){
     if(CRM&&ce0&&!ce0.biblioteca&&!ce0.generico&&/^[0-9a-f]{8}-/.test(String(ce0.id))){
       var gen0=genProd[ce0.id];
       h+='<div class="lab">Bloque de este producto</div><p class="note" style="margin:0 0 6px">'+(ce0.bloque?'Tiene bloque propio: se dibuja así en el plano y en SketchUp.':'Aún no tiene bloque propio: ahora sale un símbolo genérico.')+' Lo que hagas aquí se guarda en el producto, para todos los planos.</p>';
-      h+='<div class="btns"><button data-a="prodgen"'+(gen0?' disabled':'')+'>'+(gen0?'Generando… (unos minutos)':(ce0.bloque?'✨ Volver a generar con IA':'✨ Generar con IA (desde la foto)'))+'</button><button data-a="prodfoto" title="Sube una o varias fotos (de frente, de lado, en perspectiva): se quedan en el producto del catálogo y se usan para generar su bloque">📷 Subir fotos del producto…</button><button data-a="prodsubir">Subir bloque (DXF de Rayon…)</button><button data-a="prodbib">Usar un bloque de mi biblioteca…</button></div>';
+      h+='<div class="btns"><button data-a="prodgen"'+(gen0?' disabled':'')+'>'+(gen0?'Generando… (unos minutos)':(ce0.bloque?'✨ Volver a generar con IA':'✨ Generar con IA (desde la foto)'))+'</button><button data-a="prodfoto" title="Sube una o varias fotos (de frente, de lado, en perspectiva): se quedan en el producto del catálogo y se usan para generar su bloque">📷 Subir fotos del producto…</button><button data-a="prodsubir">Subir bloque (DXF de Rayon…)</button><button data-a="prodbib">Usar un bloque de mi biblioteca…</button></div><p class="note" style="margin:4px 0 0">Consejo: con esta máquina seleccionada, pega una foto con <b>Ctrl+V</b> y se guarda como foto del producto.</p>';
       if(!ce0.foto)h+='<p class="note">Para generarlo con IA el producto necesita foto y medidas en el catálogo: puedes subir las fotos aquí mismo.</p>';
     }
     if(ce0&&ce0.generico){
@@ -10778,7 +10780,7 @@ function cespedRapido(){
   prev();setTimeout(function(){var el=g('ce-nm');if(el)el.focus()},50);
 }
 /* ══ Fotos del producto: pegadas (Ctrl+V), arrastradas o subidas ══ */
-function fotosProdVentana(c){
+function fotosProdVentana(c,inicial){
   var m0=document.getElementById('fpmod');if(m0)m0.remove();
   var m=document.createElement('div');m.id='fpmod';m.className='dxfmod';
   m.innerHTML='<div class="dxfbox" style="max-width:560px"><header><h3>Fotos de «'+esc(c.nombre||'el producto')+'»</h3><p class="note" style="margin:0">Pega las fotos con <b>Ctrl+V</b> (una detrás de otra), arrástralas o súbelas. Se quedan en el producto y se usan para generar su bloque y su 3D. Mejor de frente, de lado y por detrás.</p></header>'+
@@ -10794,6 +10796,7 @@ function fotosProdVentana(c){
   }
   function pon(d){if(imgs.length>=4){toast('Máximo 4 fotos cada vez: guarda estas y añade más');return}imgs.push(d);pinta()}
   function conFiles(fl){[].slice.call(fl||[],0,4).forEach(function(x){if(x&&/^image\//.test(x.type))reducirImagen(x,pon)})}
+  if(inicial)imgs.push(inicial);
   pinta();
   g('fp-drop').addEventListener('click',function(){g('fp-file').click()});
   g('fp-file').addEventListener('change',function(e){conFiles(e.target.files);e.target.value=''});
