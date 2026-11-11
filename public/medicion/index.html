@@ -6830,6 +6830,9 @@ function panelSel(focus){
       h+='<div class="btns"><button data-a="prodgen"'+(gen0?' disabled':'')+'>'+(gen0?'Generando… (unos minutos)':(ce0.bloque?'✨ Volver a generar con IA':'✨ Generar con IA (desde la foto)'))+'</button><button data-a="prodfoto" title="Sube una o varias fotos (de frente, de lado, en perspectiva): se quedan en el producto del catálogo y se usan para generar su bloque">📷 Subir fotos del producto…</button><button data-a="prodsubir">Subir bloque (DXF de Rayon…)</button><button data-a="prodbib">Usar un bloque de mi biblioteca…</button></div><p class="note" style="margin:4px 0 0">Consejo: con esta máquina seleccionada, pega una foto con <b>Ctrl+V</b> y se guarda como foto del producto.</p>';
       if(!ce0.foto)h+='<p class="note">Para generarlo con IA el producto necesita foto y medidas en el catálogo: puedes subir las fotos aquí mismo.</p>';
     }
+    if(CRM&&crmAdmin&&e.bl&&e.cid&&!/^[0-9a-f]{8}-/.test(String(e.cid))&&!/^(bib|lib)-/.test(String(e.cid))){
+      h+='<div class="lab">Esta pieza solo existe en este plano</div><p class="note" style="margin:0 0 6px">No tiene ficha de producto, por eso no puede tener fotos, bloque ni modelo 3D propios. Crea su ficha y se podrán generar (con las medidas que tiene aquí; puedes cambiarlas después).</p><div class="btns"><button data-a="crearficha">📋 Crear ficha de producto…</button></div>';
+    }
     if(ce0&&ce0.generico){
       var reales=catalog().filter(function(c){return !c.generico&&c.id!==e.cid});
       h+='<p class="note"><b>Pieza genérica</b> de la biblioteca: sirve para distribuir y medir, sin referencia ni precio.</p>';
@@ -7614,6 +7617,12 @@ function doAction(a,el){
     var pef=by(st.v.eq,s.id),pcf=pef&&catById(pef.cid);if(!pcf)return;
     if(!CRM){toast('Esto solo funciona dentro del CRM');return}
     fotosProdVentana(pcf);return;
+  }
+  if(a==='crearficha'&&s.t==='eq'){
+    var pq=by(st.v.eq,s.id);if(!pq||!pq.bl)return;
+    var mismas=st.v.eq.filter(function(x){return x.bl&&(pq.lst?x.lst===pq.lst:x.cid===pq.cid)}).map(function(x){return x.id});
+    crmPost({type:'crearProductoDePieza',nombre:pq.nm,marca:pq.ref||'',largo:pq.w,fondo:pq.d,alto:(pq.bl&&pq.bl.alto)||100,categoria:pq.nm,piezas:mismas});
+    toast('Creando la ficha de «'+pq.nm+'»…');return;
   }
   if(a==='prodsubir'&&s.t==='eq'){var pe2=by(st.v.eq,s.id);if(!pe2)return;subirProd=catById(pe2.cid);if(!subirProd)return;$('prod-dxf').click();return}
   if(a==='eqcat'){var q3=by(st.v.eq,s.id);saveCat({id:q3.cid||('c'+Date.now().toString(36)),nombre:q3.nm,tipo:q3.ty,w:q3.w,d:q3.d,ref:q3.ref||''});toast('Medidas guardadas en el catálogo');return}
@@ -10919,6 +10928,15 @@ function listadoAlPlano(items){
   commit();try{drawCat()}catch(e){}
   toast('✔ '+n+' piezas colocadas a la derecha de la sala: '+conBloque+' con su bloque y '+gen+' como rectángulo con aspa (medidas provisionales 100 × 80). Cuando crees el bloque bueno, cámbialo.');
 }
+/* La pieza suelta pasa a ser un producto del catálogo: todas las del mismo listado se enlazan a él y ya tienen fotos, bloque y 3D */
+function fichaCreada(m){
+  var p=m.producto;if(!p||!p.id)return;
+  var ent={id:p.id,nombre:p.name,tipo:'gen',w:p.longitud||100,d:p.ancho||80,alto:p.altura||100,categoria:m.categoria||'Por clasificar',ref:p.brand||'',marca:p.brand||'',vistas:['planta'],sinMedidas:!(p.longitud&&p.ancho)};
+  cloudCat.push(ent);catBase=null;
+  var n=0;(m.piezas||[]).forEach(function(id){var e=by(st.v.eq,id);if(e&&e.bl){e.cid=p.id;delete e.bl;n++}});
+  commit();try{drawCat()}catch(x){}
+  toast('✔ Ficha creada ('+(m.categoria||'catálogo')+'): '+n+' pieza'+(n===1?'':'s')+' enlazada'+(n===1?'':'s')+'. Ya puedes subir fotos y generar su bloque y su 3D.');
+}
 function enviarListados(){
   if(!CRM){toast('Esto funciona dentro del CRM, con el plano vinculado a un proyecto');return}
   toast('Guardando el plano y abriendo el listado…');
@@ -11688,6 +11706,7 @@ if(CRM){
     }else if(m.type==='modelo3DPiezaIniciada'){pieza3DIniciada(m.id,m.job,(p3d&&p3d.nombre)||(catById(m.id)||{}).nombre);
     }else if(m.type==='estadoModelo3DPieza'){pieza3DEstado(m);
     }else if(m.type==='listadoEquipo'){listadoAlPlano(m.items||[]);
+    }else if(m.type==='productoDePieza'){fichaCreada(m);
     }else if(m.type==='modelo3DActual'){var cA=catById(m.id);if(cA&&m.modelo3d&&m.modelo3d.url&&!cA.modelo3d){cA.modelo3d=m.modelo3d;try{panelSel()}catch(e){}}
     }else if(m.type==='modelo3DPieza'){pieza3DResultado(m.id,m.modelo3d,null);
     }else if(m.type==='modelo3DPiezaError'){pieza3DResultado(m.id,null,m.message);

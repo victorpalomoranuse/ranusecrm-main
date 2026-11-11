@@ -805,6 +805,27 @@ router.delete('/products/:id/textura', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Ficha de producto a partir de una pieza suelta del plano (las que salen del listado sin producto del catálogo): así se le pueden generar fotos, bloque y 3D
+router.post('/products/desde-pieza', async (req, res) => {
+  try {
+    const b = req.body || {}, name = String(b.nombre || '').trim().slice(0, 200);
+    if (!name) return res.status(400).json({ error: 'Falta el nombre' });
+    const num = v => (Number(v) > 0 ? Number(v) : null);
+    let cat = null;
+    const cod = /^s*(E.?s?d{1,2})/i.exec(String(b.categoria || ''));
+    const { data: cats } = await supabase.from('catalog_categories').select('id, name').eq('type', 'mobiliario');
+    if (cod) { const k = cod[1].replace(/[.s]/g, '').toUpperCase(); cat = (cats || []).find(c => String(c.name).replace(/^(E).?s?(d+).*/i, (_, a2, n) => 'E' + n).toUpperCase() === k); }
+    if (!cat) cat = (cats || []).find(c => /por clasificar/i.test(c.name));
+    if (!cat) { const { data: nueva, error: eC } = await supabase.from('catalog_categories').insert({ name: 'Por clasificar', type: 'mobiliario', display_order: 999 }).select('id, name').single(); if (eC) throw eC; cat = nueva; }
+    const { data: maxRow } = await supabase.from('catalog_products').select('display_order').order('display_order', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+    const { data, error } = await supabase.from('catalog_products').insert({ category_id: cat.id, name, brand: String(b.marca || '').trim().slice(0, 120) || null, longitud: num(b.largo), ancho: num(b.fondo), altura: num(b.alto), display_order: (maxRow?.display_order ?? -1) + 1 }).select('id, name, brand, longitud, ancho, altura, category_id').single();
+    if (error) throw error;
+    res.status(201).json({ producto: data, categoria: cat.name });
+  } catch (err) {
+    console.error('catalog desde-pieza:', err);
+    res.status(500).json({ error: 'No se pudo crear la ficha del producto' });
+  }
+});
 router.post('/products', uploadCatalogPhotoFile, handleMulterError, async (req, res) => {
   try {
     const { category_id, name, brand, price, link, notes, longitud, ancho, altura, color_bastidor, color_acolchado, tipo_acolchado, lumens, watts, color_temperature, color, purchase_dto, default_margin_pct, pricing_unit, included_accessories, nivel_uso, search_keywords, extra_category_ids, complement_ids } = req.body;
