@@ -11,6 +11,7 @@ import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
 import EstudioIdeas from '../components/EstudioIdeas';
 import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
+import { construirRack, rackPorDefecto, normalizaRack, calculosRack, textoRack, dimRack, TIPOS_RACK, TIPOS_BAHIA, ACCESORIOS, PERFILES_RACK, COLORES_RACK, bahiaPorDefecto } from '../components/rack3d';
 import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, PRESETS_MARCAJE, aplicaPresetMarcaje, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
 import { construirCubierta, cubiertaPorDefecto, normalizaCubierta, calculosCubierta, textoCubierta, altoCubierta, TIPOS_CUBIERTA, PANELES, COLORES_PANEL } from '../components/cubierta3d';
 import { construirSauna, saunaPorDefecto, normalizaSauna, calculosSauna, textoMateriales, MADERAS, TIPOS_SAUNA } from '../components/sauna3d';
@@ -1078,6 +1079,7 @@ const ICONOS = {
   alzado: 'M4 4h16v16H4z M4 15h16 M9 4v11 M15 4v11', planta: 'M4 4h16v16H4z M4 10h9 M13 4v16', techo: 'M4 4h16v16H4z M8 8h8v8H8z',
   textura: 'M4 4h16v16H4z M4 9h16 M4 14h16 M9 4v16 M14 4v16', modelos: 'M12 3l8 4v10l-8 4-8-4V7z M4 7l8 4 8-4 M12 11v10',
   cesped: 'M3 18h18 M3 13h18 M3 8h18 M7 6v14 M13 6v14 M19 6v14',
+  rack: 'M5 3v18 M19 3v18 M5 7h14 M5 13h14 M5 19h14 M9 7v6 M15 13v6',
   cubierta: 'M2 14l10-8 10 8 M5 13v7 M19 13v7 M2 14h20',
   sauna: 'M4 4h16v16H4z M4 12h9 M4 16h14 M15 7c0-2 2-2 2-4 M11 7c0-2 2-2 2-4',
   mueble: 'M7 4h10v7H7z M5 11h14v3H5z M7 14v6 M17 14v6', logo: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4', texto: 'M5 6h14 M12 6v13 M9 19h6', imagen: 'M4 5h16v14H4z M8 10a1.5 1.5 0 1 0 0-.01 M4 17l5-5 4 4 3-3 4 4', ideas: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z',
@@ -3525,6 +3527,17 @@ export default function Visor3D({ cliente = false }) {
         a.esc.add(gc);
         return;
       }
+      if (o.tipo === 'rack') {
+        const gk = new THREE.Group();
+        const cont = construirRack(o); cont.position.y = (o.z0 || 0) * CM; gk.add(cont);
+        const hit = new THREE.Mesh(new THREE.BoxGeometry(o.w * CM, o.alto * CM, o.d * CM), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.y = (o.alto * CM) / 2 + (o.z0 || 0) * CM; hit.userData.hit = true; gk.add(hit);
+        if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); gk.add(l); }
+        gk.position.set(o.cx * CM, 0, o.cy * CM); gk.rotation.y = -(o.rot || 0) * Math.PI / 180;
+        gk.userData.oid = o.id; gk.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
+        a.esc.add(gk);
+        return;
+      }
       if (o.tipo === 'sauna') {
         const gs = new THREE.Group();
         const cont = construirSauna(o); cont.position.y = (o.z0 || 0) * CM; gs.add(cont);
@@ -3806,6 +3819,7 @@ export default function Visor3D({ cliente = false }) {
   const [saunaMenu, setSaunaMenu] = useState(false);
   const [cubiertaMenu, setCubiertaMenu] = useState(false);
   const [cespedMenu, setCespedMenu] = useState(false);
+  const [rackMenu, setRackMenu] = useState(false);
   const [revSel, setRevSel] = useState(null);
   const revSelRef = useRef(null); revSelRef.current = revSel;
   const PLANTILLAS_MUEBLE = {
@@ -3841,6 +3855,13 @@ export default function Visor3D({ cliente = false }) {
     const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'cesped', nombre: 'Césped de arrastres', etiqueta: 'Céspedes', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.w, d: p.d, alto: p.alto, z0: 0, cesped: p.cesped };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setCespedMenu(false);
   };
+  // Racks modulares: se colocan en el centro de la vista; tipo, bahías y accesorios se ajustan en el panel
+  const crearRack = (tipo) => {
+    const { ctrl } = api3d.current, p = rackPorDefecto(tipo);
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'rack', nombre: TIPOS_RACK[tipo].n, etiqueta: 'Racks', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: p.w, d: p.d, alto: p.alto, z0: 0, rack: p.rack };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setRackMenu(false);
+  };
+  const cambiarRack = (idObj, fn) => setObjs(prev => prev.map(o => { if (o.id !== idObj) return o; const R1 = fn(JSON.parse(JSON.stringify(normalizaRack(o)))); return { ...o, rack: R1, ...dimRack(R1) }; }));
   const cambiarCesped = (idObj, fn) => setObjs(prev => prev.map(o => { if (o.id !== idObj) return o; const C1 = fn(JSON.parse(JSON.stringify(normalizaCesped(o)))); return { ...o, cesped: C1, d: C1.carriles * C1.anchoCarril, alto: C1.grosor }; }));
   const huellasSalas = () => {
     const m = api3d.current.modelo, offs = api3d.current.offsPl || [], out = [];
@@ -5218,6 +5239,10 @@ export default function Visor3D({ cliente = false }) {
           menuRail(saunaMenu, setSaunaMenu, railBtn(saunaMenu, 'sauna', 'Sauna', 'Diseñar una sauna: tradicional, híbrida o de infrarrojos', () => setSaunaMenu(v => !v)), (<>
             {Object.entries(TIPOS_SAUNA).map(([k, v]) => <div key={k} onClick={() => crearSauna(k)} style={itemMenu}>{v.n}</div>)}
           </>), 250),
+          menuRail(rackMenu, setRackMenu, railBtn(rackMenu, 'rack', 'Racks', 'Estructuras modulares de gimnasio: jaula de 4 patas, media jaula a pared o solo estantería, con bahías de peso libre, dominadas, estantería con accesorios, Smith y poleas', () => setRackMenu(v => !v)), (<>
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Elige la base; luego añades bahías y accesorios en el panel</div>
+            {Object.entries(TIPOS_RACK).map(([k, v]) => <div key={k} onClick={() => crearRack(k)} style={itemMenu}>{v.n}</div>)}
+          </>), 290),
         ], false, 'Objetos')}
         {grupoRail([
           railBtn(revAbierto || herr === 'revest', 'revest', 'Revestimientos', 'Palillería, lamas acústicas, panelados, paneles 3D y molduras: eliges un modelo y pulsas el muro', () => { setRevAbierto(v => !v); if (revAbierto && herr === 'revest') setHerr('sel'); }),
@@ -6818,6 +6843,67 @@ export default function Visor3D({ cliente = false }) {
                 ))}
                 {R.total > 0 && <div style={{ fontWeight: 700, margin: '4px 0' }}>Total: {f1(R.total)} €</div>}
                 <button style={{ ...btn, marginTop: 4 }} onClick={() => { try { navigator.clipboard.writeText(textoCesped(objSel)); setSubiendo('Lista de materiales copiada'); } catch { /* sin portapapeles */ } }}>Copiar lista de materiales</button>
+              </div>
+            );
+          })()}
+          {objSel.tipo === 'rack' && (() => {
+            const R = normalizaRack(objSel), K = calculosRack(objSel), id = objSel.id;
+            const fila = (txt, ctl) => <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 104, opacity: 0.7 }}>{txt}</span>{ctl}</label>;
+            const sel = (v, op, fn) => <select value={v} onChange={e => fn(e.target.value)} style={{ ...btn, flex: 1, padding: '3px 4px' }}>{op.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>;
+            const numIn = (v, fn, min = 0, max = 99999, w = 70, paso = 1) => <input type="number" min={min} max={max} step={paso} value={v} onChange={e => fn(Math.max(min, Math.min(max, parseFloat(e.target.value) || 0)))} style={{ ...btn, width: w, padding: '3px 4px' }} />;
+            const f1 = v => Number(v).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+            return (
+              <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Rack modular</div>
+                {fila('Tipo', sel(R.tipo, Object.entries(TIPOS_RACK).map(([k, v]) => [k, v.n]), v => cambiarRack(id, r => { r.tipo = v; r.fondo = TIPOS_RACK[v].fondo; r.alto = TIPOS_RACK[v].alto; return r; })))}
+                {fila('Perfil', sel(String(R.perfil), Object.entries(PERFILES_RACK), v => cambiarRack(id, r => { r.perfil = Number(v); return r; })))}
+                <div style={{ opacity: 0.7, marginBottom: 2 }}>Color</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center', marginBottom: 6 }}>
+                  {Object.entries(COLORES_RACK).map(([h, n]) => <span key={h} title={n} onClick={() => cambiarRack(id, r => { r.color = h; return r; })} style={{ width: 24, height: 24, borderRadius: 12, background: h, cursor: 'pointer', border: R.color.toLowerCase() === h ? '2px solid #fff' : '1px solid #666' }} />)}
+                  <input type="color" value={R.color} onChange={e => cambiarRack(id, r => { r.color = e.target.value; return r; })} title="Otro color" style={{ width: 30, height: 26, padding: 0, border: 'none', background: 'none' }} />
+                </div>
+                {fila('Ancho bahía cm', numIn(Math.round(R.anchoBahia), v => cambiarRack(id, r => { r.anchoBahia = v; return r; }), 60, 250, 70))}
+                {fila('Fondo cm', numIn(Math.round(R.fondo), v => cambiarRack(id, r => { r.fondo = v; return r; }), 25, 250, 70))}
+                {fila('Alto cm', numIn(Math.round(R.alto), v => cambiarRack(id, r => { r.alto = v; return r; }), 120, 320, 70))}
+                {fila('Agujeros cada', sel(String(R.agujeros), [['5', '5 cm'], ['2.5', '2,5 cm']], v => cambiarRack(id, r => { r.agujeros = Number(v); return r; })))}
+                <div style={{ fontWeight: 700, margin: '8px 0 4px' }}>Bahías ({R.bahias.length})</div>
+                {R.bahias.map((b, i) => (
+                  <div key={i} style={{ border: '1px solid #333', borderRadius: 8, padding: '6px 8px', marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                      <b style={{ fontSize: 12 }}>{i + 1}</b>
+                      {sel(b.tipo, Object.entries(TIPOS_BAHIA), v => cambiarRack(id, r => { r.bahias[i] = { ...bahiaPorDefecto(v), accesorios: r.bahias[i].accesorios }; return r; }))}
+                      <button style={{ ...btn, padding: '2px 6px' }} disabled={i === 0} title="Mover a la izquierda" onClick={() => cambiarRack(id, r => { const x = r.bahias.splice(i, 1)[0]; r.bahias.splice(i - 1, 0, x); return r; })}>◀</button>
+                      <button style={{ ...btn, padding: '2px 6px' }} disabled={i === R.bahias.length - 1} title="Mover a la derecha" onClick={() => cambiarRack(id, r => { const x = r.bahias.splice(i, 1)[0]; r.bahias.splice(i + 1, 0, x); return r; })}>▶</button>
+                      <button style={{ ...btn, padding: '2px 6px' }} disabled={R.bahias.length <= 1} title="Quitar esta bahía" onClick={() => cambiarRack(id, r => { r.bahias.splice(i, 1); return r; })}>✕</button>
+                    </div>
+                    {b.tipo === 'libre' && <>
+                      {fila('J-cups a cm', numIn(Math.round(b.altJ), v => cambiarRack(id, r => { r.bahias[i].altJ = v; return r; }), 60, 200, 60))}
+                      {fila('Seguridad a cm', numIn(Math.round(b.altSeg), v => cambiarRack(id, r => { r.bahias[i].altSeg = v; return r; }), 30, 160, 60))}
+                      <label style={{ cursor: 'pointer', fontSize: 12 }}><input type="checkbox" checked={b.barra} onChange={e => cambiarRack(id, r => { r.bahias[i].barra = e.target.checked; return r; })} /> Barra olímpica con discos</label>
+                    </>}
+                    {b.tipo === 'estanteria' && <>
+                      {fila('Niveles', numIn(b.niveles, v => cambiarRack(id, r => { r.bahias[i].niveles = Math.round(v); return r; }), 2, 6, 60))}
+                      {Array.from({ length: b.niveles }, (_, j) => <div key={j}>{fila('Nivel ' + (j + 1), sel(b.accesorios[j], Object.entries(ACCESORIOS), v => cambiarRack(id, r => { r.bahias[i].accesorios[j] = v; return r; })))}</div>)}
+                    </>}
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 8 }}>
+                  <select id="rack-nueva" defaultValue="libre" style={{ ...btn, flex: 1, padding: '3px 4px' }}>{Object.entries(TIPOS_BAHIA).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>
+                  <button style={{ ...btn, padding: '3px 8px' }} disabled={R.bahias.length >= 8} onClick={() => { const v = document.getElementById('rack-nueva')?.value || 'libre'; cambiarRack(id, r => { r.bahias.push(bahiaPorDefecto(v)); return r; }); }}>+ Añadir bahía</button>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '6px 8px', marginBottom: 6 }}>
+                  <div>Medidas: <b>{f1(K.w)} × {f1(K.d)} × {f1(K.alto)} cm</b></div>
+                </div>
+                {K.avisos.map((a, i) => <div key={i} style={{ fontSize: 11.5, opacity: 0.85, marginBottom: 4, color: i < K.avisos.length - 1 ? '#f2c46d' : undefined }}>{i < K.avisos.length - 1 ? '⚠ ' : 'ℹ '}{a}</div>)}
+                <div style={{ fontWeight: 700, margin: '8px 0 4px' }}>Lista de piezas y presupuesto</div>
+                {K.lista.map(([k, n, q, u]) => (
+                  <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: 12 }}>
+                    <span style={{ flex: 1 }}>{n}</span><span style={{ opacity: 0.8, whiteSpace: 'nowrap' }}>{f1(q)} {u}</span>
+                    <input type="number" min="0" step="0.01" placeholder="€/" title={'Precio por ' + u + ' (euros)'} value={R.precios[k] ?? ''} onChange={e => cambiarRack(id, r => { r.precios[k] = parseFloat(e.target.value) || 0; return r; })} style={{ ...btn, width: 64, padding: '2px 4px' }} />
+                  </div>
+                ))}
+                {K.total > 0 && <div style={{ fontWeight: 700, margin: '4px 0' }}>Total: {f1(K.total)} €</div>}
+                <button style={{ ...btn, marginTop: 4 }} onClick={() => { try { navigator.clipboard.writeText(textoRack(objSel)); setSubiendo('Lista de piezas copiada'); } catch { /* sin portapapeles */ } }}>Copiar lista de piezas</button>
               </div>
             );
           })()}

@@ -574,7 +574,7 @@ router.put('/:id', async (req, res) => {
 
 // Escena 3D de un plano: objetos que se colocan y modelan en el visor 3D (bloques de la biblioteca y cajas).
 // Se guarda aparte del dibujo 2D para que ninguno de los dos editores pise al otro.
-const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest', 'cubierta', 'cesped'];
+const TIPOS_OBJ3D = ['bloque', 'caja', 'luz', 'escalera', 'puerta', 'ventana', 'prisma', 'mueble', 'zona', 'falsotecho', 'barrido', 'logo', 'carril', 'led', 'imagen', 'sauna', 'revest', 'cubierta', 'cesped', 'rack'];
 const BUCKET_TEX = 'project-documents';
 // Las luminarias que se ponen solo en el 3D (focos y colgantes de un carril, y objetos con nombre de lámpara) también se escriben en el plano,
 // en su capa de iluminación. Llevan un id que empieza por «l3_»: cada vez que se guarda la escena 3D se vuelven a calcular.
@@ -673,6 +673,16 @@ router.put('/:id/escena3d', async (req, res) => {
           estructura: { pilares: es.pilares !== false, zapatas: es.zapatas !== false, sepPorticos: Math.max(200, Math.min(1000, num(es.sepPorticos, 500))), sepCorreas: Math.max(0, Math.min(400, num(es.sepCorreas, 0))), verEstructura: es.verEstructura !== false, verPanel: es.verPanel !== false },
           cargas: { nieve: Math.max(0, Math.min(5, num(ca.nieve, 0.5))), estructura: Math.max(0, Math.min(1, num(ca.estructura, 0.12))) },
           suelo: { sigAdm: Math.max(50, Math.min(600, num(su.sigAdm, 200))) }, precios,
+        };
+      })() : undefined,
+      rack: o.tipo === 'rack' && o.rack && typeof o.rack === 'object' ? (() => {
+        const r = o.rack, hx = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : d), n = (v, d, mn, mx) => Math.max(mn, Math.min(mx, num(v, d)));
+        const precios = {}; if (r.precios && typeof r.precios === 'object') Object.keys(r.precios).slice(0, 30).forEach(k => { if (/^[a-z]{2,20}$/.test(k)) precios[k] = n(r.precios[k], 0, 0, 1e6); });
+        const TB = ['libre', 'dominadas', 'estanteria', 'smith', 'poleas', 'vacia'], AC = ['kb', 'mancuernas', 'wallballs', 'discos', 'balones', 'vacio'];
+        return {
+          tipo: ['jaula', 'pared', 'estanteria'].includes(r.tipo) ? r.tipo : 'jaula', perfil: [50, 75, 100].includes(Number(r.perfil)) ? Number(r.perfil) : 75, color: hx(r.color, '#111111'), agujeros: Number(r.agujeros) === 2.5 ? 2.5 : 5,
+          anchoBahia: n(r.anchoBahia, 125, 60, 250), fondo: n(r.fondo, 120, 25, 250), alto: n(r.alto, 230, 120, 320), precios,
+          bahias: (Array.isArray(r.bahias) ? r.bahias : []).slice(0, 8).map(b => ({ tipo: TB.includes(b?.tipo) ? b.tipo : 'libre', niveles: Math.round(n(b?.niveles, 3, 2, 6)), altJ: n(b?.altJ, 130, 60, 200), altSeg: n(b?.altSeg, 75, 30, 160), barra: !!b?.barra, accesorios: (Array.isArray(b?.accesorios) ? b.accesorios : []).slice(0, 6).map(a => (AC.includes(a) ? a : 'kb')) })),
         };
       })() : undefined,
       cesped: o.tipo === 'cesped' && o.cesped && typeof o.cesped === 'object' ? (() => {
