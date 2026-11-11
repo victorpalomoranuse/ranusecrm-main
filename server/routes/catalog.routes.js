@@ -622,6 +622,11 @@ router.get('/products/:id/modelo3d', async (req, res) => {
   try { const pr = await productoOBib(req.params.id); const m = pr?.bloques?.modelo3d; res.json({ modelo3d: m?.url ? { url: m.url, tipo: m.tipo || 'glb', rot: Number(m.rot) || 0, fotos: Array.isArray(m.fotos) ? m.fotos.filter(u => typeof u === 'string').slice(0, 8) : [] } : null }); }
   catch { res.json({ modelo3d: null }); }
 });
+// Motivos de los últimos errores al generar 3D (para saber por qué falla un lote)
+router.get('/modelo3d-ia/errores', (req, res) => {
+  const out = [...TRABAJOS_3D.values()].filter(j => j.estado === 'error').sort((a, b) => b.t - a.t).slice(0, 40).map(j => ({ pieza: j.pieza, error: String(j.error || '').slice(0, 300), hace: Math.round((Date.now() - j.t) / 1000) }));
+  res.json({ errores: out });
+});
 router.get('/modelo3d-ia/estado/:job', (req, res) => { const j = TRABAJOS_3D.get(req.params.job); if (!j) return res.json({ estado: 'perdido' }); res.json({ estado: j.estado, pieza: j.pieza, modelo3d: j.modelo3d || null, error: j.error || null }); });
 router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, async (req, res) => {
   try {

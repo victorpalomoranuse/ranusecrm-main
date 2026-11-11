@@ -108,6 +108,9 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           responder({ type: 'modelo3DPiezaIniciada', id: m.id, job: data.job });
         } catch (err) { responder({ type: 'modelo3DPiezaError', id: m.id, message: err.response?.data?.error || 'No se pudo generar el modelo 3D' }); }
       }
+      else if (m.type === 'pedirErrores3D') {
+        try { const { data } = await api.get('/catalog/modelo3d-ia/errores'); responder({ type: 'errores3D', errores: data.errores || [] }); } catch { responder({ type: 'errores3D', errores: [] }); }
+      }
       else if (m.type === 'generarModelo3DLote' && Array.isArray(m.ids)) {
         catCache = { t: 0, data: null };
         try { const { data } = await api.post('/catalog/modelo3d-ia/lote', { ids: m.ids.slice(0, 40) }, { timeout: 60000 }); responder({ type: 'modelo3DLoteIniciado', jobs: data.jobs || [] }); }
@@ -237,7 +240,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
       <iframe
         ref={frameRef}
         title="Planos"
-        src="/medicion/index.html?v=cesped15"
+        src="/medicion/index.html?v=cesped16"
         style={fullscreen ? { width: '100%', height: '100%', border: 0, display: 'block', background: '#07090c' } : { width: '100%', height: altura, minHeight: 620, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, background: '#151311' }}
       />
     </div>
