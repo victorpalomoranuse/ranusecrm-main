@@ -266,10 +266,11 @@ html,body{height:100%;overflow:hidden}
 .menu{position:relative}
 .mbtn{min-height:38px;padding:0 12px;border:0;background:transparent;font-size:13px;border-radius:8px}
 .mbtn:hover,.mbtn[aria-expanded="true"]{background:var(--bg)}
-.mdrop{position:absolute;top:calc(100% + 4px);left:0;z-index:40;min-width:230px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.mdrop{max-height:80vh;overflow:auto;position:absolute;top:calc(100% + 4px);left:0;z-index:40;min-width:230px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
 .mdrop button{display:block;width:100%;text-align:left;border:0;background:transparent;min-height:40px;padding:0 12px;font-size:13px;border-radius:7px}
 .mdrop button:hover{background:var(--bg)}
 .mdrop hr{border:0;border-top:1px solid var(--line);margin:5px 0}
+.mdrop details.mg{border-radius:7px}.mdrop details.mg>summary{list-style:none;cursor:pointer;min-height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:13px;font-weight:600;border-radius:7px}.mdrop details.mg>summary::-webkit-details-marker{display:none}.mdrop details.mg>summary::after{content:'▸';color:var(--muted)}.mdrop details.mg[open]>summary::after{content:'▾'}.mdrop details.mg>summary:hover{background:var(--bg)}.mdrop details.mg[open]{background:rgba(127,127,127,.08)}.mdrop details.mg button{padding-left:22px;font-weight:400}
 .mdrop .mh{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:6px 12px 2px}
 .top #views{flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:thin;border-radius:10px;background:var(--bg)}
 .top #views button{flex:none;min-height:38px;padding:0 12px;font-size:13px;white-space:nowrap}
@@ -347,27 +348,36 @@ body.crm .top .brand{display:none}
           <div class="mdrop" id="menu-archivo" hidden>
             <button data-do="datos">Datos del proyecto (nombre, dirección, cliente…)</button>
             <button data-do="info">Qué información enseñar en las láminas…</button>
-            <button data-do="planofondo" title="Pone un PDF o una foto de plano de fondo para que lo calques tú a mano, sin inteligencia artificial. Después lo ajustas a su medida real">Poner un plano (PDF o imagen) de fondo para calcarlo yo…</button>
-            <button data-do="planoia" title="Sube el plano que te da el cliente (PDF o foto) y la IA dibuja el estado actual para que lo ajustes">Importar plano del cliente (PDF o imagen)…</button>
-            <button data-do="fondo-ver" id="mi-fondo" hidden>Plano del cliente de fondo: visible</button>
-            <button data-do="fondo-op" id="mi-fondo-op" hidden>Plano del cliente: cambiar transparencia</button>
-            <button data-do="fondo-esc" id="mi-fondo-esc" hidden title="Pulsas dos puntos del plano de fondo, dices cuánto miden en la realidad y el plano se escala solo">Plano del cliente: ajustar a una medida real…</button>
-            <button data-do="fondo-mov" id="mi-fondo-mov" hidden title="Pulsas un punto del plano de fondo y luego el sitio donde debe quedar">Plano del cliente: mover…</button>
-            <button data-do="fondo-q" id="mi-fondo-q" hidden>Quitar el plano del cliente de fondo</button>
             <button data-do="b-cloud" id="mi-cloud" hidden>Guardar ahora</button>
-            <button data-do="b-pdf">PDF de esta lámina</button>
-            <button data-do="b-pdfall">PDF con todas las láminas</button>
-            <button data-do="b-lams">Elegir láminas del PDF…</button>
-            <button data-do="b-prev">Vista previa de las láminas</button>
-            <button data-do="b-pdfproj" id="mi-proj" hidden>PDF con todas las plantas del proyecto</button>
-            <button data-do="b-pdfdoc" id="mi-docs" hidden>Subir lámina a Documentos</button>
-            <button data-do="listados" id="mi-listados" hidden title="Lo que hay en el plano (bloques, luminarias, materiales) pasa al listado del proyecto, que es lo que ve el cliente">Enviar a Listados del proyecto…</button>
             <hr>
-            <button data-do="b-svg">Plano SVG</button>
-            <button data-do="b-json">Datos JSON</button>
-            <button data-do="b-pdfcarp">Memoria de carpinterías (PDF)</button>
-            <button data-do="b-pdfcal">Memoria de calidades (PDF)</button>
-            <button data-do="sketchup" id="mi-sk" hidden>Modelar en SketchUp…</button>
+            <details class="mg"><summary>Plano del cliente de fondo</summary>
+              <button data-do="planofondo" title="Pone un PDF o una foto de plano de fondo para que lo calques tú a mano, sin inteligencia artificial. Después lo ajustas a su medida real">Poner un plano (PDF o imagen) de fondo para calcarlo yo…</button>
+              <button data-do="planoia" title="Sube el plano que te da el cliente (PDF o foto) y la IA dibuja el estado actual para que lo ajustes">Importar plano del cliente (PDF o imagen)…</button>
+              <button data-do="fondo-ver" id="mi-fondo" hidden>Plano del cliente de fondo: visible</button>
+              <button data-do="fondo-op" id="mi-fondo-op" hidden>Plano del cliente: cambiar transparencia</button>
+              <button data-do="fondo-esc" id="mi-fondo-esc" hidden title="Pulsas dos puntos del plano de fondo, dices cuánto miden en la realidad y el plano se escala solo">Plano del cliente: ajustar a una medida real…</button>
+              <button data-do="fondo-mov" id="mi-fondo-mov" hidden title="Pulsas un punto del plano de fondo y luego el sitio donde debe quedar">Plano del cliente: mover…</button>
+              <button data-do="fondo-q" id="mi-fondo-q" hidden>Quitar el plano del cliente de fondo</button>
+            </details>
+            <details class="mg"><summary>Descargar PDF</summary>
+              <button data-do="b-pdf">PDF de esta lámina</button>
+              <button data-do="b-pdfall">PDF con todas las láminas</button>
+              <button data-do="b-lams">Elegir láminas del PDF…</button>
+              <button data-do="b-prev">Vista previa de las láminas</button>
+              <button data-do="b-pdfproj" id="mi-proj" hidden>PDF con todas las plantas del proyecto</button>
+              <button data-do="b-pdfcarp">Memoria de carpinterías (PDF)</button>
+              <button data-do="b-pdfcal">Memoria de calidades (PDF)</button>
+            </details>
+            <details class="mg"><summary>Otros formatos</summary>
+              <button data-do="b-svg">Plano SVG</button>
+              <button data-do="b-json">Datos JSON</button>
+              <button data-do="sketchup" id="mi-sk" hidden>Modelar en SketchUp…</button>
+            </details>
+            <details class="mg"><summary>Listado y documentos del proyecto</summary>
+              <button data-do="lstplano" id="mi-lstplano" hidden title="Coloca en el plano una pieza por cada producto del listado del proyecto, para verlo todo a la vez">Colocar el listado del proyecto en el plano</button>
+              <button data-do="listados" id="mi-listados" hidden title="Lo que hay en el plano (bloques, luminarias, materiales) pasa al listado del proyecto, que es lo que ve el cliente">Enviar a Listados del proyecto…</button>
+              <button data-do="b-pdfdoc" id="mi-docs" hidden>Subir lámina a Documentos</button>
+            </details>
             <hr>
             <button data-do="b-new">Plano nuevo en blanco</button>
           </div></div>
@@ -376,7 +386,6 @@ body.crm .top .brand{display:none}
             <button data-do="z-fit">Encajar el plano</button>
             <button data-do="marcas" id="mi-marcas">Etiquetas de alzado: ocultas</button>
             <button data-do="cotamuros" id="mi-cotamuros">Cotas de los muros al trabajar: ocultas</button>
-            <button data-do="lstplano" id="mi-lstplano" hidden title="Coloca en el plano una pieza por cada producto del listado del proyecto, para verlo todo a la vez">Colocar el listado del proyecto en el plano</button>
             <button data-do="ubicacion" id="mi-ubic">Ubicación del equipamiento en pantalla: oculta</button>
             <button data-do="z-in">Acercar</button>
             <button data-do="z-out">Alejar</button>
