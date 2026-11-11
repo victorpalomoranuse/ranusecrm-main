@@ -15,7 +15,7 @@ import { uploadProjectRender } from '../utils/storage.js';
 import { uploadReferenceImageFile, uploadHdriFile, handleMulterError } from '../middleware/upload.middleware.js';
 import { indiceBiblioteca3d } from './biblioteca3d.routes.js';
 import { leerModelosBib, guardarModeloBib } from '../utils/modelos-bib.js';
-import { mallaDesdeFoto } from '../utils/bloques-3d.js';
+import { glbDesdeFotos } from '../utils/modelo3d-fotos.js';
 
 // Herramienta de medición en obra: guarda los planos por proyecto y le sirve el
 // catálogo del CRM (máquinas y luminarias) para colocarlas en el plano.
@@ -107,11 +107,10 @@ function cajaGlb(buf) { // caja de la malla (x, y, z) leída de los accesores PO
 router.post('/bloque-ia-3d', async (req, res) => {
   try {
     const lista = [req.body?.imagen, ...(Array.isArray(req.body?.imagenes) ? req.body.imagenes : [])].filter(Boolean);
-    let buf = null;
-    for (const d of lista) { const mm = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(d)); if (mm) { const b = Buffer.from(mm[2], 'base64'); if (b.length <= 12 * 1024 * 1024) { buf = b; break; } } }
-    if (!buf) return res.status(400).json({ error: 'La imagen no es válida' });
-    const jpg = await sharp(buf).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 88 }).toBuffer();
-    const glb = await mallaDesdeFoto(jpg);
+    const bufs = [];
+    for (const d of lista) { const mm = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(d)); if (mm) { const b = Buffer.from(mm[2], 'base64'); if (b.length <= 12 * 1024 * 1024 && !bufs.some(x => x.length === b.length && x.equals(b))) bufs.push(b); } }
+    if (!bufs.length) return res.status(400).json({ error: 'La imagen no es válida' });
+    const { glb, metodo, usadas } = await glbDesdeFotos(bufs);
     if (!glb || glb.length < 1000) return res.status(502).json({ error: 'El servicio 3D no devolvió un modelo' });
     const largo = Number(req.body?.largo), fondo = Number(req.body?.fondo), c = cajaGlb(glb);
     let rot = 0; if (c && largo > 0 && fondo > 0 && Math.abs(Math.log((c.x / Math.max(1e-6, c.z)) / (largo / fondo))) > 0.35 && ((c.x > c.z) !== (largo > fondo))) rot = 90; // el eje largo de la malla no coincide con el largo del bloque
@@ -119,7 +118,7 @@ router.post('/bloque-ia-3d', async (req, res) => {
     const { error: eUp } = await supabase.storage.from(BUCKET_MODELOS).upload(ruta, glb, { contentType: 'model/gltf-binary', upsert: true });
     if (eUp) throw eUp;
     const { data: { publicUrl } } = supabase.storage.from(BUCKET_MODELOS).getPublicUrl(ruta);
-    res.json({ modelo3d: { url: publicUrl, tipo: 'glb', rot, nombre: 'Generado desde fotos', bytes: glb.length, actualizado: new Date().toISOString() } });
+    res.json({ modelo3d: { url: publicUrl, tipo: 'glb', rot, nombre: 'Generado desde ' + bufs.length + ' foto' + (bufs.length > 1 ? 's' : ''), metodo, usadas, bytes: glb.length, actualizado: new Date().toISOString() } });
   } catch (err) {
     console.error('medicion bloque-ia-3d:', err);
     res.status(500).json({ error: 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 120) + ')' });
@@ -251,7 +250,7 @@ async function pedirBiblioteca(columnas) {
 }
 async function cargarBiblioteca() {
   const mb = await leerModelosBib().catch(() => ({}));
-  const conModelo = (it) => (mb[it.id]?.url ? { ...it, modelo3d: { url: mb[it.id].url, tipo: mb[it.id].tipo || 'glb', rot: Number(mb[it.id].rot) || 0 } } : it);
+  const conModelo = (it) => (mb[it.id]?.url ? { ...it, modelo3d: { url: mb[it.id].url, tipo: mb[it.id].tipo || 'glb', rot: Number(mb[it.id].rot) || 0, fotos: Array.isArray(mb[it.id].fotos) ? mb[it.id].fotos.filter(u => typeof u === 'string').slice(0, 8) : [] } } : it);
   // En el catálogo solo viaja la planta; el alzado y el lateral se piden al colocarlos (/bloque/:id)
   const { data, error } = await pedirBiblioteca('id, nombre, categoria, largo, fondo, alto, planta, origen, alzado, lado');
   if (error) { // si la tabla aún no tiene las columnas de vistas (v73), se sigue con la planta
@@ -406,7 +405,7 @@ router.get('/catalogos', compression(), async (req, res) => { // comprimido: la 
           paso: p.bloques?.paso || null,
           enlace: /^https?:\/\//i.test(p.link || '') ? p.link : null,
           skp: p.bloques?.skp?.url ? { url: p.bloques.skp.url, rot: Number(p.bloques.skp.rot) || 0 } : null,
-          modelo3d: p.bloques?.modelo3d?.url ? { url: p.bloques.modelo3d.url, tipo: p.bloques.modelo3d.tipo || 'glb', rot: Number(p.bloques.modelo3d.rot) || 0 } : null,
+          modelo3d: p.bloques?.modelo3d?.url ? { url: p.bloques.modelo3d.url, tipo: p.bloques.modelo3d.tipo || 'glb', rot: Number(p.bloques.modelo3d.rot) || 0, fotos: Array.isArray(p.bloques.modelo3d.fotos) ? p.bloques.modelo3d.fotos.filter(u => typeof u === 'string').slice(0, 8) : [] } : null,
           alto: Number(p.altura) > 0 ? Number(p.altura) : null,
           ...(p.bloques?.svg?.planta ? {
             bloque: { planta: p.bloques.svg.planta, largo: p.bloques.largo, fondo: p.bloques.fondo },

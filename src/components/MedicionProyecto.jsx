@@ -89,7 +89,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
       else if (m.type === 'generarModelo3DPieza' && m.id) {
         catCache = { t: 0, data: null };
         try {
-          const { data } = await api.post('/catalog/products/' + encodeURIComponent(m.id) + '/modelo3d-ia', { imagenes: Array.isArray(m.imagenes) ? m.imagenes.slice(0, 4) : [], enlace: m.enlace || '', largo: m.largo, fondo: m.fondo }, { timeout: 420000 });
+          const { data } = await api.post('/catalog/products/' + encodeURIComponent(m.id) + '/modelo3d-ia', { imagenes: Array.isArray(m.imagenes) ? m.imagenes.slice(0, 4) : [], enlace: m.enlace || '', largo: m.largo, fondo: m.fondo, reusar: m.reusar !== false }, { timeout: 420000 });
           responder({ type: 'modelo3DPieza', id: m.id, modelo3d: data.modelo3d });
         } catch (err) { responder({ type: 'modelo3DPiezaError', id: m.id, message: err.response?.data?.error || 'No se pudo generar el modelo 3D' }); }
       }

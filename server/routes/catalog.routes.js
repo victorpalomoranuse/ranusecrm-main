@@ -9,7 +9,7 @@ import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
 import JSZip from 'jszip';
 import { leerModelosBib, guardarModeloBib } from '../utils/modelos-bib.js';
-import { mallaDesdeFoto } from '../utils/bloques-3d.js';
+import { glbDesdeFotos } from '../utils/modelo3d-fotos.js';
 import { imagenesDeEnlace } from '../utils/imagenes-enlace.js';
 
 // Las piezas de la biblioteca propia (ids «bib-…») guardan su modelo 3D en un archivo aparte, no en catalog_products
@@ -547,18 +547,24 @@ router.post('/products/:id/modelo3d-ia', async (req, res) => {
     const bufs = [];
     for (const d of (Array.isArray(req.body?.imagenes) ? req.body.imagenes.slice(0, 4) : [])) { const m = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(d || '')); if (m) { const b = Buffer.from(m[2], 'base64'); if (b.length <= 12 * 1024 * 1024) bufs.push(b); } }
     const enlace = String(req.body?.enlace || '').trim().slice(0, 500);
-    if (!bufs.length && enlace) { try { bufs.push(...await imagenesDeEnlace(enlace, 2)); } catch (e) { return res.status(422).json({ error: 'No he podido leer ese enlace: ' + String(e.message || e).slice(0, 100) + '. Prueba subiendo o pegando una foto.' }); } if (!bufs.length) return res.status(422).json({ error: 'Esa página no tiene una foto que pueda usar. Sube o pega una foto del producto.' }); }
-    if (!bufs.length) return res.status(400).json({ error: 'Pega o sube una foto, o pon el enlace del producto' });
-    const jpg = await sharp(bufs[0]).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 88 }).toBuffer();
-    const glb = await mallaDesdeFoto(jpg);
+    if (enlace) { try { bufs.push(...await imagenesDeEnlace(enlace, 2)); } catch (e) { if (!bufs.length) return res.status(422).json({ error: 'No he podido leer ese enlace: ' + String(e.message || e).slice(0, 100) + '. Prueba subiendo o pegando una foto.' }); } }
+    const previas = Array.isArray(pr.bloques?.modelo3d?.fotos) ? pr.bloques.modelo3d.fotos.filter(u => typeof u === 'string').slice(0, 6) : [], nNuevas = bufs.length;
+    const todas = [...bufs];
+    if (req.body?.reusar !== false) for (const u of previas) { try { const r0 = await fetch(u); if (r0.ok && todas.length < 8) todas.push(Buffer.from(await r0.arrayBuffer())); } catch { /* esa foto ya no está */ } }
+    if (!todas.length) return res.status(400).json({ error: 'Pega o sube una foto, o pon el enlace del producto' });
+    const { glb, metodo, usadas } = await glbDesdeFotos(todas);
     if (!glb || glb.length < 1000) return res.status(502).json({ error: 'El servicio 3D no devolvió un modelo' });
+    // las fotos nuevas se guardan con la pieza (hasta 8) para poder seguir añadiendo más
+    const fotosNuevas = [];
+    for (let i = 0; i < nNuevas; i++) { try { const jpg = await sharp(bufs[i]).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer(); const rf = 'modelos-3d/fotos/' + String(req.params.id).replace(/[^a-zA-Z0-9-]/g, '').slice(0, 60) + '-' + Date.now() + '-' + i + '.jpg'; const { error: eF } = await supabase.storage.from(BUCKET_SKP).upload(rf, jpg, { contentType: 'image/jpeg', upsert: true }); if (!eF) fotosNuevas.push(supabase.storage.from(BUCKET_SKP).getPublicUrl(rf).data.publicUrl); } catch { /* esa foto no se guarda */ } }
+    const fotos = [...previas, ...fotosNuevas].slice(-8);
     const largo = Number(req.body?.largo), fondo = Number(req.body?.fondo), c = cajaGlb3(glb);
     let rot = 0; if (c && largo > 0 && fondo > 0 && Math.abs(Math.log((c.x / Math.max(1e-6, c.z)) / (largo / fondo))) > 0.35 && ((c.x > c.z) !== (largo > fondo))) rot = 90;
     const ruta = 'modelos-3d/' + req.params.id + '-' + Date.now() + '.glb';
     const { error: eUp } = await supabase.storage.from(BUCKET_SKP).upload(ruta, glb, { contentType: 'model/gltf-binary', upsert: true });
     if (eUp) throw eUp;
     const url = supabase.storage.from(BUCKET_SKP).getPublicUrl(ruta).data.publicUrl, antiguo = pr.bloques?.modelo3d;
-    const modelo3d = { url, tipo: 'glb', rot, nombre: 'Generado desde ' + (req.body?.imagenes?.length ? 'fotos' : 'el enlace'), bytes: glb.length, actualizado: new Date().toISOString() };
+    const modelo3d = { url, tipo: 'glb', rot, nombre: 'Generado desde ' + (todas.length > 1 ? todas.length + ' fotos' : '1 foto'), metodo, usadas, fotos, bytes: glb.length, actualizado: new Date().toISOString() };
     const { error } = await guardaModelo(req.params.id, pr, modelo3d);
     if (error) throw error;
     if (antiguo) { try { await quitarModelo3dArchivos(antiguo); } catch { /* el archivo antiguo se queda */ } }
