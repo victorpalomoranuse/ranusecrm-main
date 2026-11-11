@@ -546,6 +546,27 @@ LAS QUE PEOR:\
   } catch (e) { console.error('redes analizar', e.message); res.status(500).json({ error: 'No se pudo analizar: ' + String(e.message).slice(0, 200) }); }
 });
 
+// Ideas ganadoras: descartar las que no gustan y pedir otras nuevas manteniendo las elegidas
+router.post('/instagram/ideas/regenerar', async (req, res) => {
+  try {
+    const a = await leerJson(RUTA_APRENDIZAJE, null); if (!a || !Array.isArray(a.ideas_ganadoras)) return res.status(404).json({ error: 'Primero analiza tu cuenta' });
+    const lim = (l) => (Array.isArray(l) ? l : []).map(x => String(x || '').slice(0, 240)).slice(0, 30);
+    const mantener = lim(req.body?.mantener), descartar = lim(req.body?.descartar), cantidad = Math.max(0, Math.min(6, Number(req.body?.cantidad) || 0));
+    a.ideas_descartadas = [...(a.ideas_descartadas || []), ...descartar].slice(-40);
+    const quedan = a.ideas_ganadoras.filter(x => !descartar.includes(x.idea));
+    const fijas = quedan.filter(x => mantener.includes(x.idea)), otras = quedan.filter(x => !mantener.includes(x.idea));
+    let nuevas = [];
+    if (cantidad > 0) {
+      const obj = await objetivoActual();
+      const r = json(await callClaude({ system: textoObjetivo(obj) + ' ' + textoPrefs() + ' Eres estratega de contenido de Instagram para Víctor Palomo (Ranuse Design, diseño de gimnasios). Te paso lo que se ha aprendido de su cuenta y las ideas que YA tiene (para no repetirlas) y las que DESCARTÓ (no le gustan: no propongas nada parecido). Propón ideas NUEVAS y distintas, realistas de grabar él solo con el móvil, sin depender de clientes famosos. Cada idea lleva "origen": "tus datos", "nicho" o "exploracion". Devuelves SOLO JSON {"ideas":[{"idea":"","formato":"reel|carrusel|foto|historia","gancho":"primera frase","origen":""}]}', messages: [{ role: 'user', content: 'Resumen: ' + (a.resumen || '') + '\nLo que funciona: ' + JSON.stringify(a.lo_que_funciona || []) + '\nLo que no: ' + JSON.stringify(a.lo_que_no || []) + '\nGanchos ganadores: ' + JSON.stringify(a.ganchos_ganadores || []) + '\nIdeas que ya tiene: ' + JSON.stringify(quedan.map(x => x.idea)) + '\nIdeas DESCARTADAS (no repetir ni parecidas): ' + JSON.stringify(a.ideas_descartadas) + '\nDame ' + cantidad + ' ideas nuevas.' }], maxTokens: 2500 }));
+      nuevas = (r.ideas || []).slice(0, cantidad).map(x => ({ idea: limpia(x?.idea, 240), formato: limpia(x?.formato, 30), gancho: limpia(x?.gancho, 200), origen: limpia(x?.origen, 20), refs: [] })).filter(x => x.idea);
+    }
+    a.ideas_ganadoras = [...fijas, ...nuevas, ...(cantidad > 0 ? [] : otras)].slice(0, 10);
+    await guardarJson(RUTA_APRENDIZAJE, a);
+    res.json({ ok: true, ideas: a.ideas_ganadoras });
+  } catch (e) { console.error('redes ideas regenerar', e.message); res.status(500).json({ error: 'No se pudieron regenerar: ' + String(e.message).slice(0, 200) }); }
+});
+
 // ── 3b) Predecir un vídeo antes de hacerlo y «autopsia» de uno ya publicado (todo anclado a TUS números reales)
 const mediana = (a) => { const v = a.filter(x => Number.isFinite(x)).sort((p, q) => p - q); return v.length ? v[Math.floor(v.length / 2)] : null; };
 const cuantil = (a, q) => { const v = a.filter(x => Number.isFinite(x)).sort((p, r) => p - r); return v.length ? v[Math.min(v.length - 1, Math.floor(v.length * q))] : null; };

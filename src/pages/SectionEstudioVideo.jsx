@@ -1402,7 +1402,7 @@ function SaludCuenta() {
   );
 }
 function InicioRedes({ ir }) {
-  const [s, setS] = useState(null), [pubs, setPubs] = useState(null), [est, setEst] = useState(null), [objs, setObjs] = useState(null), [trab, setTrab] = useState(false), [abierta, setAbierta] = useState(null);
+  const [s, setS] = useState(null), [pubs, setPubs] = useState(null), [est, setEst] = useState(null), [objs, setObjs] = useState(null), [trab, setTrab] = useState(false), [abierta, setAbierta] = useState(null), [fijas, setFijas] = useState([]), [regen, setRegen] = useState(false);
   useEffect(() => {
     api.get('/redes/cuenta/salud').then(r => setS(r.data)).catch(() => setS({}));
     api.get('/redes/instagram/publicaciones').then(r => setPubs(r.data.publicaciones || [])).catch(() => setPubs([]));
@@ -1411,6 +1411,9 @@ function InicioRedes({ ir }) {
   }, []);
   const cambia = async (id) => { try { await api.post('/redes/objetivo', { id }); setObjs(o => ({ ...o, actual: id })); const r = await api.get('/redes/instagram/publicaciones'); setPubs(r.data.publicaciones || []); } catch { /* se queda */ } };
   const analiza = async () => { setTrab(true); try { const r = await api.post('/redes/cuenta/salud', {}, { timeout: 200000 }); setS(r.data); } catch { /* se queda como estaba */ } setTrab(false); };
+  const ponIdeas = (l) => setEst(e => ({ ...e, aprendizaje: { ...(e?.aprendizaje || {}), ideas_ganadoras: l } }));
+  const descarta = async (x) => { setFijas(f => f.filter(t => t !== x.idea)); try { const r = await api.post('/redes/instagram/ideas/regenerar', { descartar: [x.idea], mantener: [], cantidad: 0 }); ponIdeas(r.data.ideas); } catch { /* se queda */ } };
+  const otras = async () => { setRegen(true); try { const mostradas = (est?.aprendizaje?.ideas_ganadoras || []).slice(0, 3), mant = mostradas.filter(x => fijas.includes(x.idea)).map(x => x.idea), desc = mostradas.filter(x => !fijas.includes(x.idea)).map(x => x.idea); const r = await api.post('/redes/instagram/ideas/regenerar', { mantener: mant, descartar: desc, cantidad: 3 - mant.length || 0 }, { timeout: 150000 }); ponIdeas(r.data.ideas); setFijas(mant); } catch { /* se queda */ } setRegen(false); };
   const top = (pubs || []).filter(p => !p.prueba && p.rumbo !== 'fuera').slice(0, 3), ideas = (est?.aprendizaje?.ideas_ganadoras || []).slice(0, 3), obj = objs ? objs.objetivos.find(o => o.id === objs.actual) : null;
   const flecha = { sube: ['📈', '#8fdba0', 'Subes'], estable: ['➖', '#f2c46d', 'Estable'], baja: ['📉', '#ff9b9b', 'Bajas'] }[s?.tendencia] || null;
   const conectado = !!est?.instagram;
@@ -1435,8 +1438,8 @@ function InicioRedes({ ir }) {
       <div className="rd-card" style={{ gap: 10 }}>
         <div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>3 · QUÉ HACER AHORA</div>
         {s?.acciones?.[0] && <div style={{ fontSize: '1rem', lineHeight: 1.5 }}>🎯 {s.acciones[0]}</div>}
-        {ideas.length > 0 ? <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))' }}>{ideas.map((x, i) => <div key={i} className="rd-card" style={{ cursor: 'pointer' }} onClick={() => setAbierta(x)}><span className="rd-chip arena" style={{ alignSelf: 'flex-start' }}>{x.formato || 'idea'}</span><div className="rd-gancho">{x.idea}</div><div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Crear guion →</div></div>)}</div> : <div style={mut}>Cuando analices tus reels, aquí saldrán ideas listas para grabar.</div>}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="rd-btn" onClick={() => ir('plan')}>Plan de publicación</button><button className="rd-btn" onClick={() => ir('musica')}>🎵 Música</button></div>
+        {ideas.length > 0 ? <div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))' }}>{ideas.map((x, i) => <div key={x.idea} className="rd-card" style={{ cursor: 'pointer', outline: fijas.includes(x.idea) ? '2px solid #8fdba0' : 'none' }} onClick={() => setAbierta(x)}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span className="rd-chip arena" style={{ alignSelf: 'flex-start' }}>{x.formato || 'idea'}</span><span style={{ flex: 1 }} /><button className="rd-btn" style={{ padding: '2px 8px', fontSize: '0.74rem' }} title="Me quedo con esta: no se cambia al pedir otras" onClick={(ev) => { ev.stopPropagation(); setFijas(f => (f.includes(x.idea) ? f.filter(t => t !== x.idea) : [...f, x.idea])); }}>{fijas.includes(x.idea) ? '📌 Fijada' : '📌 Quedarme'}</button><button className="rd-btn" style={{ padding: '2px 8px', fontSize: '0.74rem' }} title="Descartar: no vuelve a salir algo parecido" onClick={(ev) => { ev.stopPropagation(); descarta(x); }}>✕</button></div><div className="rd-gancho">{x.idea}</div><div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Crear guion →</div></div>)}</div> : <div style={mut}>Cuando analices tus reels, aquí saldrán ideas listas para grabar.</div>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{ideas.length > 0 && <button className="rd-btn pri" disabled={regen} title="Cambia las ideas que no has fijado por otras nuevas" onClick={otras}>{regen ? 'Pensando…' : '🔄 Otras ideas (las fijadas se quedan)'}</button>}<button className="rd-btn" onClick={() => ir('plan')}>Plan de publicación</button><button className="rd-btn" onClick={() => ir('musica')}>🎵 Música</button></div>
       </div>
       <HistoriasHoy />
       <YoutubeAInstagram />
