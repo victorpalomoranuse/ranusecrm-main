@@ -423,6 +423,7 @@ body.crm .top .brand{display:none}
           <select id="fly-ord" aria-label="Ordenar por"><option value="nombre">Nombre (A–Z)</option><option value="tam">Tamaño: de mayor a menor</option><option value="tam-a">Tamaño: de menor a mayor</option><option value="bloque">Con dibujo o foto primero</option></select>
           <div class="seg3" id="fly-vista" hidden style="margin:8px 0"></div>
           <button id="fly-img" style="width:100%;margin:6px 0" title="Pega o sube una foto de un objeto y la herramienta dibuja su planta, alzado y lateral a escala">✨ Crear bloque desde una imagen…</button>
+          <button id="fly-ces" style="width:100%;margin:0 0 6px" title="Dibuja un carril o una zona de césped (arrastres, trineo). Sale en el 3D como césped de verdad, con sus líneas y colores">＋ Césped / carril (conectado al 3D)…</button>
           <button id="fly-rap" style="width:100%;margin:0 0 6px" title="Crea un bloque con su nombre y medidas al momento, sin tener que crear antes el producto en el catálogo. Luego sale en Listados y, si quieres, lo enlazas con un producto del catálogo">＋ Bloque rápido (sin catálogo)…</button>
           <button id="fly-esc" style="width:100%;margin:0 0 6px" title="Escribe la altura que hay que salvar y la escalera se calcula sola: peldaños, huella y contrahuella según normativa. Recta, en L o en U">🪜 Crear escalera (se calcula sola)…</button>
           <button id="fly-dxf" style="width:100%;margin:0 0 6px" title="Sube un archivo DXF con uno o varios bloques (de un fabricante, de tus bibliotecas o de tus planos): verás cada uno dibujado y eliges cuáles guardar en tu biblioteca">⬆ Subir bloques (DXF)…</button>
@@ -6099,6 +6100,7 @@ function cargarDXF(cb){
 $('fly-dxf').addEventListener('click',function(){$('dxf-file').click()});
 $('fly-esc').addEventListener('click',function(){flyClose();escModal(null)});
 $('fly-rap').addEventListener('click',function(){flyClose();bloqueRapido()});
+$('fly-ces').addEventListener('click',function(){flyClose();cespedRapido()});
 /* el estado de la subida también sale como aviso (el panel donde está el texto puede estar cerrado) */
 try{new MutationObserver(function(){var t=$('dxf-st').textContent;if(t)toast(t)}).observe($('dxf-st'),{childList:true,characterData:true,subtree:true})}catch(e){}
 $('dxf-file').addEventListener('change',function(e){
@@ -10567,7 +10569,7 @@ function buildModelo3d1(){
   v.eq.forEach(function(e){
     if(e.rol==='llega')return; /* la llegada de una escalera es la misma escalera: no se modela dos veces */
     var c=pc(e),cat=catById(e.cid);
-    out.equipos.push({id:e.id,estado:e.s||'new',cid:e.cid||'',nombre:e.nm,cx:f2(c.x),cy:f2(c.y),w:e.w,d:e.d,rot:e.rot||0,z0:(e.z0>0?e.z0:0),fx:!!e.fx,fy:!!e.fy,alto:(e.alto>0?e.alto:(cat&&cat.alto)||110),
+    out.equipos.push({id:e.id,estado:e.s||'new',cid:e.cid||'',nombre:e.nm,cesped:e.cesped||null,cx:f2(c.x),cy:f2(c.y),w:e.w,d:e.d,rot:e.rot||0,z0:(e.z0>0?e.z0:0),fx:!!e.fx,fy:!!e.fy,alto:(e.alto>0?e.alto:(cat&&cat.alto)||110),
       skp:(cat&&cat.skp)?{url:cat.skp.url,rot:cat.skp.rot||0}:null,
       escalera:(cat&&cat.esc)?escPeldanos3d(cat.esc,e,(cat.bloque&&cat.bloque.largo)||e.w,(cat.bloque&&cat.bloque.fondo)||e.d):null,
       hueco:(cat&&cat.esc&&cat.esc.hueco!==false)?escHueco(e,c):null,
@@ -10684,6 +10686,49 @@ function bloqueRapido(){
     commit();cerrar();toast('«'+v.nm+'» colocado. Sale en Listados cuando lo envíes (Archivo → Enviar a Listados).');
   });
   prev();setTimeout(function(){var el=g('rp-nm');if(el)el.focus()},50);
+}
+/* ══ Césped / carril: un bloque con medidas que en el 3D es césped (las líneas y los colores se ajustan allí) ══ */
+function cespedPlanta(L,T){
+  var A=' stroke="#000000" stroke-width="1" fill="none" stroke-linecap="round"',o='<rect x="0.5" y="0.5" width="'+f2(L-1)+'" height="'+f2(T-1)+'"'+A+'/>',B=A.replace('stroke-width="1"','stroke-width="0.4"');
+  for(var k=-T;k<L;k+=40){var x0=Math.max(0,k),y0=k<0?-k:0,x1=Math.min(L,k+T),y1=(k+T>L)?(L-k):T;if(x1>x0)o+='<line x1="'+f2(x0)+'" y1="'+f2(y0)+'" x2="'+f2(x1)+'" y2="'+f2(y1)+'"'+B+'/>'}
+  return o;
+}
+function cespedRapido(){
+  var m=document.getElementById('cesmod');if(m)m.remove();
+  m=document.createElement('div');m.id='cesmod';m.className='dxfmod';
+  var PRE=[['gris','Gris claro con líneas negras'],['negro','Negro con líneas blancas'],['verde','Verde con líneas blancas'],['terracota','Terracota con líneas blancas'],['azul','Azul con líneas blancas']];
+  m.innerHTML='<div class="dxfbox" style="max-width:520px"><header><h3>Césped / carril</h3><p class="note" style="margin:0">Se coloca en el plano como un bloque (muévelo, gíralo y cambia sus medidas como cualquier otro) y en el 3D aparece como césped de verdad. Las líneas, los colores y los carriles se ajustan en el 3D.</p></header>'+
+    '<div style="padding:12px 16px;display:grid;gap:10px">'+
+    '<label class="fld"><span>Nombre</span><input id="ce-nm" value="Carril de césped" maxlength="120"></label>'+
+    '<div style="display:flex;gap:8px"><label class="fld" style="flex:1"><span>Largo (cm)</span><input id="ce-l" inputmode="decimal" value="1200"></label><label class="fld" style="flex:1"><span>Ancho (cm)</span><input id="ce-t" inputmode="decimal" value="120"></label></div>'+
+    '<label class="fld"><span>Color</span><select id="ce-p">'+PRE.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>'}).join('')+'</select></label>'+
+    '<div id="ce-prev" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;display:grid;place-items:center;min-height:80px"></div></div>'+
+    '<footer><button class="pri" id="ce-ok">Colocar en el plano</button><button id="ce-x">Cancelar</button></footer></div>';
+  document.body.appendChild(m);
+  var g=function(i){return document.getElementById(i)};
+  function vals(){return {nm:g('ce-nm').value.trim()||'Césped',L:num(g('ce-l').value),T:num(g('ce-t').value),p:g('ce-p').value}}
+  function prev(){
+    var v=vals(),ok=v.L>=50&&v.L<=5000&&v.T>=60&&v.T<=3000;g('ce-ok').disabled=!ok;
+    if(!ok){g('ce-prev').innerHTML='<span class="note">Largo entre 50 y 5000 cm y ancho entre 60 y 3000 cm</span>';return}
+    var sc=Math.min(420/v.L,70/v.T),p=6;
+    g('ce-prev').innerHTML='<svg viewBox="'+(-p)+' '+(-p)+' '+(v.L+2*p)+' '+(v.T+2*p)+'" width="'+Math.round((v.L+2*p)*sc)+'" height="'+Math.round((v.T+2*p)*sc)+'" style="color:var(--ink)">'+cespedPlanta(v.L,v.T)+'</svg>';
+  }
+  ['ce-l','ce-t'].forEach(function(i){g(i).addEventListener('input',prev)});
+  function cerrar(){m.remove()}
+  g('ce-x').addEventListener('click',cerrar);m.addEventListener('click',function(e){if(e.target===m)cerrar()});
+  g('ce-ok').addEventListener('click',function(){
+    var v=vals();if(!(v.L>=50&&v.T>=60))return;
+    var cx=(W/2-st.tx)/st.k,cy=(H/2-st.ty)/st.k,nq=nearNode(cx,cy,1e9,null);
+    if(!nq){toast('Dibuja primero el contorno de la sala');return}
+    var L=Math.round(v.L*10)/10,T=Math.round(v.T*10)/10;snap();
+    var ne={id:uid('e'),n:nq.id,dx:f2(cx-nq.x),dy:f2(cy-nq.y),w:L,d:T,rot:0,nm:v.nm,ty:'gen',ref:'',cesped:{preset:v.p}};
+    if(st.view==='actual')ne.s='ex';
+    ne.cid=uid('bq');ne.bl={planta:cespedPlanta(L,T),largo:L,fondo:T,alto:2,categoria:'Césped'};
+    st.v.eq.push(ne);st.sel={t:'eq',id:ne.id};st.multi=[];
+    if(st.view==='demol'||st.view==='interv'||st.view==='alz'||st.view==='actual'){st.view='distrib';try{toolbar()}catch(e2){}}
+    commit();cerrar();toast('«'+v.nm+'» colocado. En el 3D aparece como césped; allí cambias las líneas y los colores.');
+  });
+  prev();setTimeout(function(){var el=g('ce-nm');if(el)el.focus()},50);
 }
 function enviarListados(){
   if(!CRM){toast('Esto funciona dentro del CRM, con el plano vinculado a un proyecto');return}
