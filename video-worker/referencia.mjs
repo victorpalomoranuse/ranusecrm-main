@@ -19,12 +19,38 @@ const estad = (v) => { if (!v.length) return { media: 0, mediana: 0, min: 0, max
 
 // Análisis A FONDO de un vídeo: 24 fotogramas a buena resolución (el gancho casi fotograma a fotograma) + datos medidos.
 // Describe cómo está grabado, la presencia de la persona (mirada, gestos, energía), la edición, el audio y la narrativa, con segundos concretos.
-export async function analisisProfundo(video, dir, { dur, cortes, hablado, ppm, mean }, avisa = () => {}) {
+export function rasgosAudio(wav, palabras, dur) {
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-nostats', '-loglevel', 'error', '-i', wav, '-af', 'asetnsamples=n=4000:p=0,astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file=-', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 28 });
+  const lv = [...String(r.stdout || '').matchAll(/RMS_level=(-?[0-9.]+|-inf)/g)].map(m => (m[1] === '-inf' ? -90 : Number(m[1])));
+  if (lv.length < 12) return null;
+  const orden = [...lv].sort((a, b) => a - b), pc = (q) => orden[Math.min(orden.length - 1, Math.floor(orden.length * q))];
+  const p10 = pc(0.1), p50 = pc(0.5), p90 = pc(0.9), ventana = 0.25;
+  const hablada = new Array(lv.length).fill(false); for (const w of palabras || []) { const i = Math.floor(w.de / ventana); if (i >= 0 && i < hablada.length) hablada[i] = true; }
+  const voz = lv.filter((_, i) => hablada[i]), hueco = lv.filter((_, i) => !hablada[i] && i > 2 && i < lv.length - 2);
+  const media = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+  const vozM = media(voz), huecoM = media(hueco);
+  // pausas largas (ventanas seguidas muy por debajo de la voz)
+  const umbral = (vozM ?? p90) - 18; let racha = 0, larga = 0, nPausas = 0, silencio = 0; for (const x of lv) { if (x < umbral) { racha++; silencio++; if (racha === 3) nPausas++; larga = Math.max(larga, racha); } else racha = 0; }
+  // ritmo del habla por tramos de 5 s
+  const wpm = []; if (palabras && palabras.length) for (let s = 0; s < dur; s += 5) { const n = palabras.filter(w => w.de >= s && w.de < s + 5).length; wpm.push(Math.round(n * 12)); }
+  const hab = wpm.filter(x => x > 0);
+  const txt = (palabras || []).map(w => String(w.t).toLowerCase().replace(/[^a-záéíóúñ]/g, ''));
+  const muletillas = txt.filter(x => ['eh', 'ehh', 'em', 'emm', 'mm', 'mmm', 'ee', 'eee'].includes(x)).length + (txt.join(' ').split(' o sea ').length - 1);
+  const fondo = huecoM !== null && vozM !== null ? vozM - huecoM : null; // cuánto más bajo está el fondo que la voz
+  return {
+    nivel_voz_db: vozM !== null ? Math.round(vozM) : null, rango_dinamico_db: Math.round(p90 - p10),
+    variacion_energia: p90 - p10 > 22 ? 'muy variada (la voz sube y baja mucho)' : p90 - p10 > 14 ? 'variada' : 'plana (energía casi constante)',
+    picos_de_energia: lv.filter((x, i) => hablada[i] && x > p50 + 6).length, pausas_largas: nPausas, pausa_mas_larga_s: Math.round(larga * ventana * 10) / 10, silencio_pct: Math.round(silencio / lv.length * 100),
+    ritmo_habla_ppm: hab.length ? { medio: Math.round(hab.reduce((a, b) => a + b, 0) / hab.length), minimo: Math.min(...hab), maximo: Math.max(...hab) } : null,
+    muletillas, fondo: fondo === null ? 'no se puede saber' : fondo < 14 ? 'hay música o ruido de fondo constante entre frases' : fondo < 28 ? 'ambiente o música muy baja entre frases' : 'fondo limpio (casi silencio entre frases)',
+  };
+}
+export async function analisisProfundo(video, dir, { dur, cortes, hablado, ppm, mean, audio }, avisa = () => {}) {
   avisa('Mirando el vídeo a fondo…');
   const segs = [0.2, 0.6, 1.0, 1.5, 2.1, 2.8]; const resto = 18; for (let i = 0; i < resto; i++) segs.push(3 + (Math.max(dur - 3.5, 1) * i) / Math.max(resto - 1, 1));
   const cont = []; const usados = [];
   segs.forEach((s, i) => { const t0 = Math.min(Math.max(dur - 0.15, 0.05), s); const jpg = path.join(dir, 'prof_' + i + '.jpg'); run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', t0.toFixed(2), '-i', video, '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '4', jpg]); if (fs.existsSync(jpg)) { cont.push({ type: 'text', text: 'Segundo ' + t0.toFixed(1) + (i < 6 ? ' (gancho)' : '') + ':' }); cont.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: fs.readFileSync(jpg).toString('base64') } }); usados.push(t0); fs.rmSync(jpg, { force: true }); } });
-  const datos = 'DATOS MEDIDOS: dura ' + dur.toFixed(1) + ' s; cortes (cambios de plano) en los segundos: ' + (cortes || []).slice(0, 40).map(c => c.toFixed(1)).join(', ') + '; ' + (ppm ? ppm + ' palabras por minuto' : 'sin voz hablada') + '; volumen medio ' + (mean ?? '?') + ' dB. ' + (hablado ? 'Lo que se dice: "' + hablado.slice(0, 2000) + '".' : '');
+  const datos = 'DATOS MEDIDOS: dura ' + dur.toFixed(1) + ' s; cortes (cambios de plano) en los segundos: ' + (cortes || []).slice(0, 40).map(c => c.toFixed(1)).join(', ') + '; ' + (ppm ? ppm + ' palabras por minuto' : 'sin voz hablada') + '; volumen medio ' + (mean ?? '?') + ' dB. ' + (hablado ? 'Lo que se dice: "' + hablado.slice(0, 2000) + '".' : '') + (audio ? ' AUDIO MEDIDO (no es una impresión, son mediciones): ' + JSON.stringify(audio) + '. Úsalo para el campo audio y la presencia: energía de la voz, pausas, ritmo, muletillas y si hay música o ruido de fondo.' : '');
   const prompt = datos + '\n\nEres un director de fotografía y editor de vídeo corto (Reels) con ojo clínico. Analiza este vídeo HASTA EL FONDO, como si tuvieras que reproducirlo plano a plano. Sé concreto y específico (qué se ve, en qué segundo), no genérico. Solo lo que se ve u oye en los datos y fotogramas; si algo no se puede saber, pon "no se aprecia". Devuelve SOLO JSON con esta forma exacta:\n{"gancho":{"que_se_ve":"los primeros 3 s fotograma a fotograma","gesto_o_accion":"qué hace la persona en el arranque","frase":"primera frase o texto","texto_en_pantalla":"","por_que_engancha":""},"grabacion":{"plano_predominante":"primer plano|plano medio|plano general|detalle","angulo":"a la altura de los ojos|picado|contrapicado","movimiento_camara":"fija|en mano|gimbal|travelling|zoom","encuadre_persona":"dónde está en el cuadro y cuánto ocupa","iluminacion":"natural|artificial|contraluz… y calidad","lugar_y_fondo":"dónde está grabado y qué hay detrás","calidad_imagen":"nítido|ruido|…","audio_captado":"micro de solapa|ambiente|reverb…","como_se_grabo":"deducción de cómo se grabó (quién sujeta la cámara, trípode, selfie…)"},"presencia":{"contacto_visual":"mira a cámara o no, cuánto","expresion":"","energia":"baja|media|alta y cómo cambia","gestos":[{"segundo":0,"gesto":"gesto o movimiento concreto (manos, cabeza, cejas, señalar…)","efecto":"para qué sirve en el vídeo"}],"postura_y_ropa":"","naturalidad":"cuánto parece guion y cuánto espontáneo"},"edicion":{"ritmo":"","tipos_de_plano_b_roll":["qué imágenes de apoyo usa"],"zooms_y_movimientos":"","texto_y_subtitulos":"estilo, tamaño, posición, animación","transiciones_y_efectos":"","color_y_look":""},"audio":{"musica":"hay o no, género, volumen frente a la voz","voz":"tono, velocidad, pausas","efectos_sonido":""},"narrativa":{"estructura":"gancho → desarrollo → cierre con segundos","giro_o_sorpresa":"","cierre_y_cta":"","emocion":"qué hace sentir"},"momentos_clave":[{"segundo":0,"que_pasa":"","por_que_funciona":""}],"replicar":["detalle concreto que merece copiarse"],"mejorar":["qué haría mejor el vídeo"]}';
   cont.push({ type: 'text', text: prompt });
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 5000, temperature: 0, messages: [{ role: 'user', content: cont }] }) });
@@ -58,6 +84,7 @@ export async function analizaReferencia(video, dir, avisa = () => {}) {
   cont.push({ type: 'text', text: prompt });
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 2000, temperature: 0, messages: [{ role: 'user', content: cont }] }) });
   const j = await r.json(); const d = JSON.parse(/\{[\s\S]*\}/.exec((j.content || []).map(b => b.text || '').join(''))[0]);
-  let detalle = null; try { detalle = await analisisProfundo(video, dir, { dur, cortes, hablado, ppm, mean }, avisa); } catch (e) { avisa('Sin análisis a fondo: ' + e.message); }
-  return { detalle, hablado: hablado.slice(0, 3000), dur, planos: tramos.length, plano_medio: Number(est.media.toFixed(2)), plano_mediana: Number(est.mediana.toFixed(2)), palabras_por_min: ppm, ...d };
+  let detalle = null, audio = null; try { const w = path.join(dir, 'ref.wav'); if (fs.existsSync(w)) audio = rasgosAudio(w, palabras, dur); } catch (e) { avisa('Sin medir el audio: ' + e.message); }
+  try { detalle = await analisisProfundo(video, dir, { dur, cortes, hablado, ppm, mean, audio }, avisa); } catch (e) { avisa('Sin análisis a fondo: ' + e.message); }
+  return { audio_medido: audio, detalle, hablado: hablado.slice(0, 3000), dur, planos: tramos.length, plano_medio: Number(est.media.toFixed(2)), plano_mediana: Number(est.mediana.toFixed(2)), palabras_por_min: ppm, ...d };
 }
