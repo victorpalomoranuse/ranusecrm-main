@@ -3207,7 +3207,8 @@ export default function Visor3D({ cliente = false }) {
     const a = api3d.current; if (!a.raiz || !biblioteca) return;
     const bibPorId = new Map(biblioteca.map(m => [m.id, m])), pesados = new Set(), pendientes = new Set(), conModelo = new Set();
     a.raiz.traverse(g => { const e0 = g.userData.equipo; if (e0 && e0.cid && bibPorId.get(e0.cid)?.modelo3d) conModelo.add(e0.cid); });
-    const limitar = conModelo.size > 8 && !cargarModelos;
+    let kbTotal = 0; conModelo.forEach(c => { const b = Number(bibPorId.get(c)?.modelo3d?.bytes) || 0; if (b <= 12e6) kbTotal += b; });
+    const limitar = conModelo.size > 8 && kbTotal > 45e6 && !cargarModelos; // solo se frena si los modelos pesan de verdad mucho: con los aligerados cargan todos solos
     // los modelos se piden de 3 en 3, empezando por las máquinas más cercanas al punto que se está mirando
     const permitidos = new Set();
     if (limitar && cargaN > 0) {
