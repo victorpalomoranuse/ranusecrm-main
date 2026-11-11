@@ -24,6 +24,8 @@ export async function clasificaVistas(jpgs) {
   } catch { return []; }
 }
 
+// El servicio gratuito a veces está ocupado: se reintenta una vez antes de rendirse
+async function reintenta(fn, veces = 2) { let ult; for (let i = 0; i < veces; i++) { try { return await fn(); } catch (e) { ult = e; await new Promise(r => setTimeout(r, 6000)); } } throw ult; }
 function mejor(cl, vistas) { return cl.filter(x => vistas.includes(x.vista)).sort((a, b) => (b.calidad || 0) - (a.calidad || 0))[0]; }
 
 async function mallaMultivista(sel) {
@@ -49,11 +51,11 @@ export async function glbDesdeFotos(bufs) {
       sel.front = jpgs[fr.i];
       for (const [slot, vistas] of [['back', ['trasera']], ['left', ['izquierda']], ['right', ['derecha']]]) { const m = mejor(cl.filter(x => x.i !== fr.i), vistas); if (m) sel[slot] = jpgs[m.i]; }
       if (Object.keys(sel).length >= 2) {
-        try { return { glb: await mallaMultivista(sel), metodo: 'multivista', usadas: Object.keys(sel).length }; }
+        try { return { glb: await reintenta(() => mallaMultivista(sel)), metodo: 'multivista', usadas: Object.keys(sel).length }; }
         catch (e) { console.error('3D multivista falló, se usa una sola foto:', e.message); }
       }
-      return { glb: await mallaDesdeFoto(jpgs[fr.i]), metodo: 'una foto (' + (cl.length) + ' fotos sin vistas suficientes)', usadas: 1 };
+      return { glb: await reintenta(() => mallaDesdeFoto(jpgs[fr.i])), metodo: 'una foto (' + (cl.length) + ' fotos sin vistas suficientes)', usadas: 1 };
     }
   }
-  return { glb: await mallaDesdeFoto(jpgs[0]), metodo: 'una foto', usadas: 1 };
+  return { glb: await reintenta(() => mallaDesdeFoto(jpgs[0])), metodo: 'una foto', usadas: 1 };
 }

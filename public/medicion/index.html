@@ -10809,9 +10809,37 @@ function pieza3DVentana(c){
     var url=(g('p3-url').value||'').trim();
     var reus=!g('p3-reus')||g('p3-reus').checked,hayPrev=!!(c.modelo3d&&c.modelo3d.fotos&&c.modelo3d.fotos.length&&reus);
     if(!p3d.imgs.length&&!url&&!hayPrev){g('p3-msg').textContent='Pega o sube una foto, o pon el enlace del producto.';return}
-    g('p3-go').disabled=true;g('p3-msg').textContent='Generando el modelo 3D… puede tardar entre 1 y 3 minutos. No cierres esta ventana.';
-    crmPost({type:'generarModelo3DPieza',id:p3d.id,imagenes:p3d.imgs.slice(),enlace:url,largo:p3d.w,fondo:p3d.d,reusar:reus});
+    g('p3-go').disabled=true;g('p3-msg').textContent='Enviando…';
+    p3d.nombre=c.nombre;crmPost({type:'generarModelo3DPieza',id:p3d.id,imagenes:p3d.imgs.slice(),enlace:url,largo:p3d.w,fondo:p3d.d,reusar:reus,nombre:c.nombre});
   });
+}
+/* trabajos de 3D en segundo plano: se pueden cerrar la ventana y seguir trabajando; este avisador cuenta cómo van */
+var jobs3d={};
+function avisador3D(){
+  var b=document.getElementById('av3d');
+  if(!b){b=document.createElement('div');b.id='av3d';b.style.cssText='position:fixed;left:12px;bottom:46px;z-index:9998;display:flex;flex-direction:column;gap:6px;max-width:320px';document.body.appendChild(b)}
+  b.innerHTML=Object.keys(jobs3d).map(function(k){var j=jobs3d[k];return '<div style="background:#1f1d1a;color:#fff;border-radius:10px;padding:8px 12px;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.35)">'+(j.estado==='listo'?'✔ ':j.estado==='error'?'⚠ ':'🧊 ')+esc(j.texto)+(j.estado!=='procesando'?' <button data-av="'+esc(k)+'" style="margin-left:6px;border:none;background:#444;color:#fff;border-radius:6px;padding:1px 7px;cursor:pointer">✕</button>':'')+'</div>'}).join('');
+  [].slice.call(b.querySelectorAll('button[data-av]')).forEach(function(x){x.addEventListener('click',function(){delete jobs3d[x.getAttribute('data-av')];avisador3D()})});
+  if(!Object.keys(jobs3d).length)b.remove();
+}
+function sondea3D(){
+  var vivos=Object.keys(jobs3d).filter(function(k){return jobs3d[k].estado==='procesando'});
+  vivos.forEach(function(k){crmPost({type:'estadoModelo3DPieza',job:k})});
+  if(vivos.length)setTimeout(sondea3D,7000);
+}
+function pieza3DIniciada(id,job,nombre){
+  jobs3d[job]={estado:'procesando',id:id,texto:'Generando el 3D de «'+(nombre||'la pieza')+'»… puedes seguir trabajando'};
+  var mm=document.getElementById('p3dmod');if(mm)mm.remove();p3d=null;avisador3D();
+  toast('El 3D se está generando en segundo plano. Verás un aviso cuando esté listo.');
+  setTimeout(sondea3D,7000);
+}
+function pieza3DEstado(m){
+  var j=jobs3d[m.job];if(!j||j.estado!=='procesando')return;
+  if(m.estado==='listo'&&m.modelo3d){
+    var c=catById(j.id);if(c)c.modelo3d={url:m.modelo3d.url,tipo:m.modelo3d.tipo,rot:m.modelo3d.rot,fotos:m.modelo3d.fotos||[]};
+    j.estado='listo';j.texto='3D de «'+((c&&c.nombre)||'la pieza')+'» listo'+(m.modelo3d.metodo?' ('+m.modelo3d.metodo+')':'')+'. Ya sale en el 3D de todos los planos.';avisador3D();try{panelSel()}catch(e){}
+  }else if(m.estado==='error'){j.estado='error';j.texto=m.message||'No se pudo generar el 3D';avisador3D()}
+  else if(m.estado==='perdido'){j.estado='error';j.texto='Se ha perdido el trabajo (el servidor se reinició). Vuelve a generarlo: las fotos guardadas se reutilizan.';avisador3D()}
 }
 function pieza3DResultado(id,m3,err){
   var msg=document.getElementById('p3-msg'),go=document.getElementById('p3-go');
@@ -11582,6 +11610,8 @@ if(CRM){
     }else if(m.type==='bloqueGenerado'){bloqueGenerado(m.bloque,null);
     }else if(m.type==='bloqueError'){bloqueGenerado(null,m.message);
     }else if(m.type==='modelo3DGenerado'){if(imgGen){imgGen.m3=m.modelo3d||null;imgGen.m3est=m.modelo3d?'listo':'error';estado3DBloque()}
+    }else if(m.type==='modelo3DPiezaIniciada'){pieza3DIniciada(m.id,m.job,(p3d&&p3d.nombre)||(catById(m.id)||{}).nombre);
+    }else if(m.type==='estadoModelo3DPieza'){pieza3DEstado(m);
     }else if(m.type==='modelo3DPieza'){pieza3DResultado(m.id,m.modelo3d,null);
     }else if(m.type==='modelo3DPiezaError'){pieza3DResultado(m.id,null,m.message);
     }else if(m.type==='modelo3DError'){if(imgGen){imgGen.m3=null;imgGen.m3est='error';imgGen.m3err=String(m.message||'').slice(0,90);estado3DBloque()}

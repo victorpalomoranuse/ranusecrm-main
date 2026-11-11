@@ -86,11 +86,15 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           responder({ type: 'bloqueGenerado', bloque: data.bloque });
         } catch (err) { responder({ type: 'bloqueError', message: err.response?.data?.error || 'No se pudo generar el bloque' }); }
       }
+      else if (m.type === 'estadoModelo3DPieza' && m.job) {
+        try { const { data } = await api.get('/catalog/modelo3d-ia/estado/' + encodeURIComponent(m.job)); catCache = { t: 0, data: null }; responder({ type: 'estadoModelo3DPieza', job: m.job, estado: data.estado, id: data.pieza, modelo3d: data.modelo3d, message: data.error }); }
+        catch { responder({ type: 'estadoModelo3DPieza', job: m.job, estado: 'sinconexion' }); }
+      }
       else if (m.type === 'generarModelo3DPieza' && m.id) {
         catCache = { t: 0, data: null };
         try {
-          const { data } = await api.post('/catalog/products/' + encodeURIComponent(m.id) + '/modelo3d-ia', { imagenes: Array.isArray(m.imagenes) ? m.imagenes.slice(0, 4) : [], enlace: m.enlace || '', largo: m.largo, fondo: m.fondo, reusar: m.reusar !== false }, { timeout: 420000 });
-          responder({ type: 'modelo3DPieza', id: m.id, modelo3d: data.modelo3d });
+          const { data } = await api.post('/catalog/products/' + encodeURIComponent(m.id) + '/modelo3d-ia', { imagenes: Array.isArray(m.imagenes) ? m.imagenes.slice(0, 4) : [], enlace: m.enlace || '', largo: m.largo, fondo: m.fondo, reusar: m.reusar !== false, segundoPlano: true }, { timeout: 60000 });
+          responder({ type: 'modelo3DPiezaIniciada', id: m.id, job: data.job });
         } catch (err) { responder({ type: 'modelo3DPiezaError', id: m.id, message: err.response?.data?.error || 'No se pudo generar el modelo 3D' }); }
       }
       else if (m.type === 'generarModelo3D' && typeof m.imagen === 'string') {

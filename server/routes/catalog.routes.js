@@ -539,42 +539,49 @@ function cajaGlb3(buf) {
     return hay ? { x: mx[0] - mn[0], y: mx[1] - mn[1], z: mx[2] - mn[2] } : null;
   } catch { return null; }
 }
-// Genera el modelo 3D de una pieza ya creada a partir de fotos (pegadas o subidas) y/o del enlace de su página
+// Generar el 3D de una pieza ya creada (biblioteca o producto) con fotos pegadas/subidas, las ya guardadas y/o el enlace de su página
+class ErrorAmable extends Error { constructor(estado, msg) { super(msg); this.estado = estado; } }
+async function generaModelo3DPieza(id, body) {
+  const pr = await productoOBib(id);
+  if (!pr) throw new ErrorAmable(404, 'Pieza no encontrada');
+  const bufs = [];
+  for (const d of (Array.isArray(body?.imagenes) ? body.imagenes.slice(0, 6) : [])) { const m = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(d || '')); if (m) { const b = Buffer.from(m[2], 'base64'); if (b.length <= 12 * 1024 * 1024) bufs.push(b); } }
+  const enlace = String(body?.enlace || '').trim().slice(0, 500);
+  if (enlace) { try { bufs.push(...await imagenesDeEnlace(enlace, 2)); } catch (e) { if (!bufs.length) throw new ErrorAmable(422, 'No he podido leer ese enlace: ' + String(e.message || e).slice(0, 100) + '. Prueba subiendo o pegando una foto.'); } }
+  const previas = Array.isArray(pr.bloques?.modelo3d?.fotos) ? pr.bloques.modelo3d.fotos.filter(u => typeof u === 'string').slice(0, 6) : [], nNuevas = bufs.length, todas = [...bufs];
+  if (body?.reusar !== false) for (const u of previas) { try { const r0 = await fetch(u); if (r0.ok && todas.length < 8) todas.push(Buffer.from(await r0.arrayBuffer())); } catch { /* esa foto ya no está */ } }
+  if (!todas.length) throw new ErrorAmable(400, 'Pega o sube una foto, o pon el enlace del producto');
+  const { glb, metodo, usadas } = await glbDesdeFotos(todas);
+  if (!glb || glb.length < 1000) throw new ErrorAmable(502, 'El servicio 3D no devolvió un modelo');
+  // las fotos nuevas se guardan con la pieza (hasta 8) para poder seguir añadiendo más después
+  const fotosNuevas = [];
+  for (let i = 0; i < nNuevas; i++) { try { const jpg = await sharp(bufs[i]).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer(); const rf = 'modelos-3d/fotos/' + String(id).replace(/[^a-zA-Z0-9-]/g, '').slice(0, 60) + '-' + Date.now() + '-' + i + '.jpg'; const { error: eF } = await supabase.storage.from(BUCKET_SKP).upload(rf, jpg, { contentType: 'image/jpeg', upsert: true }); if (!eF) fotosNuevas.push(supabase.storage.from(BUCKET_SKP).getPublicUrl(rf).data.publicUrl); } catch { /* esa foto no se guarda */ } }
+  const largo = Number(body?.largo), fondo = Number(body?.fondo), c = cajaGlb3(glb);
+  let rot = 0; if (c && largo > 0 && fondo > 0 && Math.abs(Math.log((c.x / Math.max(1e-6, c.z)) / (largo / fondo))) > 0.35 && ((c.x > c.z) !== (largo > fondo))) rot = 90;
+  const ruta = 'modelos-3d/' + id + '-' + Date.now() + '.glb';
+  const { error: eUp } = await supabase.storage.from(BUCKET_SKP).upload(ruta, glb, { contentType: 'model/gltf-binary', upsert: true });
+  if (eUp) throw eUp;
+  const url = supabase.storage.from(BUCKET_SKP).getPublicUrl(ruta).data.publicUrl, antiguo = pr.bloques?.modelo3d;
+  const modelo3d = { url, tipo: 'glb', rot, nombre: 'Generado desde ' + (todas.length > 1 ? todas.length + ' fotos' : '1 foto'), metodo, usadas, fotos: [...previas, ...fotosNuevas].slice(-8), bytes: glb.length, actualizado: new Date().toISOString() };
+  const { error } = await guardaModelo(id, pr, modelo3d);
+  if (error) throw error;
+  if (antiguo) { try { await quitarModelo3dArchivos(antiguo); } catch { /* el archivo antiguo se queda */ } }
+  return modelo3d;
+}
+const TRABAJOS_3D = new Map();
 router.post('/products/:id/modelo3d-ia', async (req, res) => {
-  try {
-    const pr = await productoOBib(req.params.id);
-    if (!pr) return res.status(404).json({ error: 'Pieza no encontrada' });
-    const bufs = [];
-    for (const d of (Array.isArray(req.body?.imagenes) ? req.body.imagenes.slice(0, 4) : [])) { const m = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(d || '')); if (m) { const b = Buffer.from(m[2], 'base64'); if (b.length <= 12 * 1024 * 1024) bufs.push(b); } }
-    const enlace = String(req.body?.enlace || '').trim().slice(0, 500);
-    if (enlace) { try { bufs.push(...await imagenesDeEnlace(enlace, 2)); } catch (e) { if (!bufs.length) return res.status(422).json({ error: 'No he podido leer ese enlace: ' + String(e.message || e).slice(0, 100) + '. Prueba subiendo o pegando una foto.' }); } }
-    const previas = Array.isArray(pr.bloques?.modelo3d?.fotos) ? pr.bloques.modelo3d.fotos.filter(u => typeof u === 'string').slice(0, 6) : [], nNuevas = bufs.length;
-    const todas = [...bufs];
-    if (req.body?.reusar !== false) for (const u of previas) { try { const r0 = await fetch(u); if (r0.ok && todas.length < 8) todas.push(Buffer.from(await r0.arrayBuffer())); } catch { /* esa foto ya no está */ } }
-    if (!todas.length) return res.status(400).json({ error: 'Pega o sube una foto, o pon el enlace del producto' });
-    const { glb, metodo, usadas } = await glbDesdeFotos(todas);
-    if (!glb || glb.length < 1000) return res.status(502).json({ error: 'El servicio 3D no devolvió un modelo' });
-    // las fotos nuevas se guardan con la pieza (hasta 8) para poder seguir añadiendo más
-    const fotosNuevas = [];
-    for (let i = 0; i < nNuevas; i++) { try { const jpg = await sharp(bufs[i]).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer(); const rf = 'modelos-3d/fotos/' + String(req.params.id).replace(/[^a-zA-Z0-9-]/g, '').slice(0, 60) + '-' + Date.now() + '-' + i + '.jpg'; const { error: eF } = await supabase.storage.from(BUCKET_SKP).upload(rf, jpg, { contentType: 'image/jpeg', upsert: true }); if (!eF) fotosNuevas.push(supabase.storage.from(BUCKET_SKP).getPublicUrl(rf).data.publicUrl); } catch { /* esa foto no se guarda */ } }
-    const fotos = [...previas, ...fotosNuevas].slice(-8);
-    const largo = Number(req.body?.largo), fondo = Number(req.body?.fondo), c = cajaGlb3(glb);
-    let rot = 0; if (c && largo > 0 && fondo > 0 && Math.abs(Math.log((c.x / Math.max(1e-6, c.z)) / (largo / fondo))) > 0.35 && ((c.x > c.z) !== (largo > fondo))) rot = 90;
-    const ruta = 'modelos-3d/' + req.params.id + '-' + Date.now() + '.glb';
-    const { error: eUp } = await supabase.storage.from(BUCKET_SKP).upload(ruta, glb, { contentType: 'model/gltf-binary', upsert: true });
-    if (eUp) throw eUp;
-    const url = supabase.storage.from(BUCKET_SKP).getPublicUrl(ruta).data.publicUrl, antiguo = pr.bloques?.modelo3d;
-    const modelo3d = { url, tipo: 'glb', rot, nombre: 'Generado desde ' + (todas.length > 1 ? todas.length + ' fotos' : '1 foto'), metodo, usadas, fotos, bytes: glb.length, actualizado: new Date().toISOString() };
-    const { error } = await guardaModelo(req.params.id, pr, modelo3d);
-    if (error) throw error;
-    if (antiguo) { try { await quitarModelo3dArchivos(antiguo); } catch { /* el archivo antiguo se queda */ } }
-    vaciaCacheAlEscribir?.();
-    res.json({ modelo3d });
-  } catch (err) {
-    console.error('catalog modelo3d-ia:', err);
-    res.status(500).json({ error: 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 110) + ')' });
+  for (const [k, v] of TRABAJOS_3D) if (Date.now() - v.t > 3 * 3600 * 1000) TRABAJOS_3D.delete(k);
+  const id = req.params.id;
+  if (req.body?.segundoPlano) {
+    const job = 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    TRABAJOS_3D.set(job, { estado: 'procesando', t: Date.now(), pieza: id });
+    generaModelo3DPieza(id, req.body).then(m => TRABAJOS_3D.set(job, { estado: 'listo', t: Date.now(), pieza: id, modelo3d: m })).catch(err => { console.error('catalog modelo3d-ia (2º plano):', err); TRABAJOS_3D.set(job, { estado: 'error', t: Date.now(), pieza: id, error: err.estado ? err.message : 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 110) + ')' }); });
+    return res.status(202).json({ job });
   }
+  try { res.json({ modelo3d: await generaModelo3DPieza(id, req.body) }); }
+  catch (err) { console.error('catalog modelo3d-ia:', err); res.status(err.estado || 500).json({ error: err.estado ? err.message : 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 110) + ')' }); }
 });
+router.get('/modelo3d-ia/estado/:job', (req, res) => { const j = TRABAJOS_3D.get(req.params.job); if (!j) return res.json({ estado: 'perdido' }); res.json({ estado: j.estado, pieza: j.pieza, modelo3d: j.modelo3d || null, error: j.error || null }); });
 router.post('/products/:id/modelo3d', uploadModelo3dFile, handleMulterError, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Falta el archivo del modelo' });
