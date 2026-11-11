@@ -704,6 +704,7 @@ router.put('/:id/escena3d', async (req, res) => {
           w: Math.max(m?.t === 'regleta' ? 2 : 10, Math.min(300, num(m?.w, 60))), n: Math.max(0, Math.min(10, Math.round(num(m?.n, 1)))), nb: Math.max(0, Math.min(10, Math.round(num(m?.nb, 1)))), abierto: !!m?.abierto,
         })),
       } : undefined,
+      src2d: typeof o.src2d === 'string' && String(o.id).startsWith('r2d-') ? o.src2d.slice(0, 6000) : undefined,
       plano: ['suelo', 'techo', 'pared', 'vertical', 'horizontal'].includes(o.plano) ? o.plano : undefined,
       guia: o.tipo === 'zona' && o.guia && typeof o.guia === 'object' ? { eje: o.guia.eje === 'v' ? 'v' : 'h', v: num(o.guia.v) } : undefined,
       perfilNombre: o.tipo === 'barrido' ? String(o.perfilNombre || '').slice(0, 40) : undefined,

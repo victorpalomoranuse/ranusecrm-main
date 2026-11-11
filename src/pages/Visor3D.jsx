@@ -1733,7 +1733,7 @@ export function planta(m, z0) {
     const x = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: rc.estado === 'new' ? 0xf1ece6 : 0xe4e0db, roughness: 0.95 }));
     x.castShadow = x.receiveShadow = true; x.userData = { capa: 'muros', muroId: 'rc-' + rc.id, recrecidoId: rc.id }; g.add(x); // pintable como un muro (su color se guarda con la clave rc-…)
   });
-  (m.equipos || []).filter(e => !e.cesped).forEach(e => g.add(maquina(e)));
+  (m.equipos || []).filter(e => !e.cesped && !e.rack).forEach(e => g.add(maquina(e)));
   return g;
 }
 
@@ -2177,6 +2177,15 @@ export default function Visor3D({ cliente = false }) {
       const offsPl = alinearPlantas(plantas); api3d.current.offsPl = offsPl;
       // césped dibujado en el plano 2D: el plano manda en la posición y las medidas; el 3D, en el aspecto (líneas, colores, carriles)
       const ces2d = []; plantas.forEach((p, i) => (p.equipos || []).filter(e => e.cesped && e.estado !== 'dem').forEach(e => ces2d.push({ ...e, ox: offsPl[i][0], oy: offsPl[i][1] })));
+      // racks dibujados en el plano 2D: el plano manda en la posición y las medidas; el 3D guarda los cambios que se hagan allí hasta que el rack se edite en el plano
+      const rk2d = []; plantas.forEach((p, i) => (p.equipos || []).filter(e => e.rack && e.estado !== 'dem').forEach(e => rk2d.push({ ...e, ox: offsPl[i][0], oy: offsPl[i][1] })));
+      setObjs(prev => {
+        const rids = new Set(rk2d.map(e => 'r2d-' + e.id)), prev2 = prev.filter(o => !(String(o.id).startsWith('r2d-') && !rids.has(o.id)));
+        const prev3 = prev2.map(o => { const e = rk2d.find(x => 'r2d-' + x.id === o.id); if (!e) return o; const sig = JSON.stringify(e.rack), R1 = sig === o.src2d ? normalizaRack(o) : normalizaRack({ rack: e.rack }), dm = dimRack(R1); return { ...o, cx: Math.round((e.cx + e.ox) * 10) / 10, cy: Math.round((e.cy + e.oy) * 10) / 10, rot: e.rot || 0, nombre: e.nombre || o.nombre, rack: R1, src2d: sig, ...dm }; });
+        for (const e of rk2d) if (!prev3.some(o => o.id === 'r2d-' + e.id)) { const R1 = normalizaRack({ rack: e.rack }), dm = dimRack(R1); prev3.push({ id: 'r2d-' + e.id, tipo: 'rack', nombre: e.nombre || 'Rack modular', etiqueta: 'Racks', cx: Math.round((e.cx + e.ox) * 10) / 10, cy: Math.round((e.cy + e.oy) * 10) / 10, rot: e.rot || 0, z0: 0, rack: R1, src2d: JSON.stringify(e.rack), ...dm }); }
+        prev = JSON.stringify(prev3) === JSON.stringify(prev) ? prev : prev3;
+        return prev;
+      });
       setObjs(prev => {
         const ids = new Set(ces2d.map(e => 'c2d-' + e.id)), base = prev.filter(o => !(String(o.id).startsWith('c2d-') && !ids.has(o.id)));
         const out = base.map(o => { const e = ces2d.find(x => 'c2d-' + x.id === o.id); if (!e) return o; const C = normalizaCesped(o); C.carriles = Math.max(1, Math.min(8, Math.ceil(e.d / 400))); C.anchoCarril = Math.max(60, Math.min(400, e.d / C.carriles)); return { ...o, cx: Math.round((e.cx + e.ox) * 10) / 10, cy: Math.round((e.cy + e.oy) * 10) / 10, rot: e.rot || 0, w: e.w, d: e.d, nombre: e.nombre || o.nombre, cesped: C, alto: C.grosor }; });
