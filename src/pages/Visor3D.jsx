@@ -441,6 +441,8 @@ function repararMateriales0(raiz) {
       if (!mt || vistos.has(mt.uuid)) return; vistos.add(mt.uuid);
       if (mt.side === THREE.FrontSide) mt.side = THREE.DoubleSide;
       if (mt.color && !mt.map && !mt.vertexColors && mt.color.r + mt.color.g + mt.color.b < 0.02 && !mt.emissiveMap && !(mt.emissive && mt.emissive.getHex() > 0)) mt.color.setRGB(0.12, 0.12, 0.12);
+      // los modelos generados desde fotos sin color vienen blancos y 100 % metálicos: sin reflejos del entorno salían negros
+      if (mt.color && !mt.map && !mt.metalnessMap && mt.metalness > 0.7 && mt.color.r + mt.color.g + mt.color.b > 2.4) { mt.metalness = 0.1; mt.roughness = Math.max(mt.roughness ?? 0.5, 0.6); mt.color.setRGB(0.74, 0.74, 0.74); }
       mt.needsUpdate = true;
     });
   });
