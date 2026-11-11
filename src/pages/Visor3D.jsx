@@ -55,6 +55,15 @@ function dentroDelEspacio(modelo, x, z) {
   for (const pl of plantas) for (const mu of (pl.muros || [])) for (const q of [mu.a, mu.b]) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); z0 = Math.min(z0, q[1]); z1 = Math.max(z1, q[1]); }
   return x0 === Infinity || (x / CM >= x0 - 40 && x / CM <= x1 + 40 && z / CM >= z0 - 40 && z / CM <= z1 + 40);
 }
+// Recorrido a pie: en qué planta está la cámara (la que tiene sala bajo sus pies; si hay varias, la más alta que quede por debajo de la cámara) y a qué cota (m) está su suelo
+function plantaDeCamara(modelo, offs, ocultas, x, z, y) {
+  const pls = modelo.plantas || [modelo], vis = pls.map((_, i) => i).filter(i => !(ocultas || []).includes('planta:' + i));
+  const dentro = vis.filter(i => { const [ox, oy] = (offs || [])[i] || [0, 0], p = [x / CM - ox, z / CM - oy]; return (pls[i].salas || []).some(sa => sa.pts && sa.pts.length >= 3 && puntoEnPoligono(p, sa.pts)); });
+  const pool = dentro.length ? dentro : vis.length ? vis : pls.map((_, i) => i);
+  const cota = i => (pls[i].z || 0) * CM;
+  const debajo = pool.filter(i => cota(i) <= y + 0.6).sort((a, b) => cota(b) - cota(a));
+  return debajo.length ? debajo[0] : pool.slice().sort((a, b) => cota(a) - cota(b))[0];
+}
 function frenaMuros(modelo, pos, mov) {
   if (!modelo) return mov;
   const choca = (x, z) => {
@@ -1740,6 +1749,8 @@ export default function Visor3D({ cliente = false }) {
   const [marcaSel, setMarcaSel] = useState('');
   const [cargaSel, setCargaSel] = useState('');
   const [persona, setPersona] = useState(false);
+  const [alturaOjos, setAlturaOjos] = useState(() => { try { const v = parseFloat(localStorage.getItem('visor3dAlturaOjos')); return v >= 1.2 && v <= 2.3 ? v : 1.6; } catch { return 1.6; } }); // altura de la cámara en el recorrido a pie (m)
+  const [plantaPers, setPlantaPers] = useState(null); // planta elegida a mano para el recorrido (null = la de la cámara)
   // Proporciones enlazadas (la cadenita de siempre): al cambiar largo, fondo o alto, los otros dos cambian en la misma proporción. Se parte de las medidas que había al entrar en el campo
   const [proporcional, setProporcional] = useState(() => { try { return localStorage.getItem('visor3dProp') === '1'; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem('visor3dProp', proporcional ? '1' : '0'); } catch { /* sin almacenamiento */ } }, [proporcional]);
@@ -2988,13 +2999,28 @@ export default function Visor3D({ cliente = false }) {
     }
     a.persona = true; a.fov0 = a.fov0 || cam.fov;
     const d = new THREE.Vector3(); cam.getWorldDirection(d); d.y = 0; if (d.lengthSq() < 1e-6) d.set(0, 0, -1); d.normalize();
-    cam.position.y = 1.6; ctrl.minDistance = ctrl.maxDistance = 0.05; ctrl.target.copy(cam.position).addScaledVector(d, 0.05);
+    { const m = a.modelo, ip = m ? plantaDeCamara(m, a.offsPl, ocultas, cam.position.x, cam.position.z, cam.position.y) : 0; a.basePl = ((m?.plantas || [m])[ip]?.z || 0) * CM; setPlantaPers(ip); cam.position.y = a.basePl + alturaOjos; }
+    ctrl.minDistance = ctrl.maxDistance = 0.05; ctrl.target.copy(cam.position).addScaledVector(d, 0.05);
     ctrl.enablePan = false; ctrl.enableZoom = false; ctrl.rotateSpeed = 0.45; ctrl.dampingFactor = 0.2; ctrl.minPolarAngle = Math.PI * 0.12; ctrl.maxPolarAngle = Math.PI * 0.88;
     cam.fov = 62; cam.updateProjectionMatrix(); ctrl.update();
     const rueda = e => { e.preventDefault(); cam.fov = Math.max(28, Math.min(85, cam.fov + (e.deltaY > 0 ? 3 : -3))); cam.updateProjectionMatrix(); };
     el.addEventListener('wheel', rueda, { passive: false });
     return () => el.removeEventListener('wheel', rueda);
   }, [persona, estado]);
+  // Recorrido a pie: cambiar la altura de los ojos o de planta recoloca la cámara (el suelo de cada planta está a su cota)
+  useEffect(() => {
+    const a = api3d.current; if (!persona || !a.persona || !a.cam || !a.modelo || plantaPers == null) return;
+    try { localStorage.setItem('visor3dAlturaOjos', String(alturaOjos)); } catch { /* sin almacenamiento */ }
+    const { cam, ctrl } = a, pls = a.modelo.plantas || [a.modelo], pl = pls[plantaPers]; if (!pl) return;
+    a.basePl = (pl.z || 0) * CM;
+    const dy = a.basePl + alturaOjos - cam.position.y;
+    cam.position.y += dy; ctrl.target.y += dy;
+    // si se cambia de planta y la cámara no queda sobre ninguna sala de esa planta, se lleva a su primera sala
+    const [ox, oy] = (a.offsPl || [])[plantaPers] || [0, 0], p = [cam.position.x / CM - ox, cam.position.z / CM - oy];
+    const dentro = (pl.salas || []).some(sa => sa.pts && sa.pts.length >= 3 && puntoEnPoligono(p, sa.pts));
+    if (!dentro) { const sa = (pl.salas || []).find(s => s.pts && s.pts.length >= 3); if (sa) { const cx = sa.pts.reduce((s, q) => s + q[0], 0) / sa.pts.length + ox, cy = sa.pts.reduce((s, q) => s + q[1], 0) / sa.pts.length + oy, d = new THREE.Vector3(); cam.getWorldDirection(d); cam.position.x = cx * CM; cam.position.z = cy * CM; ctrl.target.set(cam.position.x + d.x * 0.05, cam.position.y + d.y * 0.05, cam.position.z + d.z * 0.05); } }
+    ctrl.update();
+  }, [alturaOjos, plantaPers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Modo realista: reflejos de un entorno de estudio, oclusión ambiental (sombras de contacto) y bordes suavizados. Es opcional: en equipos flojos se deja apagado.
   useEffect(() => {
@@ -3988,7 +4014,7 @@ export default function Visor3D({ cliente = false }) {
     { g: 'Vista', n: 'Axonométrica', k: '8', t: '8', f: () => (axo ? salirAxo() : entrarAxo()) },
     { g: 'Vista', n: 'Planta 2D', k: '7', t: '7', f: () => (planta2d ? salirPlanta2d() : entrarPlanta2d()) },
     { g: 'Vista', n: 'Recorrer (persona)', k: '6', t: '6', f: () => setPersona(v => !v) },
-    { g: 'Vista', n: 'Altura de los ojos', k: '5', t: '5', f: () => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); } },
+    { g: 'Vista', n: 'Altura de los ojos', k: '5', t: '5', f: () => { const { cam, ctrl } = api3d.current; const yO = api3d.current.persona ? (api3d.current.basePl || 0) + alturaOjos : 1.6, dy = yO - cam.position.y; cam.position.y = yO; ctrl.target.y += dy; ctrl.update(); } },
     { g: 'Vista', n: 'Cámara (altura, focal)', k: '4', t: '4', f: () => setCamAbierta(v => !v) },
     { g: 'Vista', n: 'Escenas guardadas', k: '3', t: '3', f: () => setEscAbierta(v => !v) },
     { g: 'Panel', n: 'Abrir este plano en Planos', k: 'O', t: 'o', f: () => abrirEnPlanos() },
@@ -5002,6 +5028,10 @@ export default function Visor3D({ cliente = false }) {
       <div ref={caja} data-vista="1" style={{ position: 'absolute', inset: 0, cursor: ['pincel', 'poli', 'caja', 'empujar', 'guia', 'luz', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'muro', 'carril', 'focoC', 'gotero', 'led'].includes(herr) ? 'crosshair' : 'default' }} />
       {persona && !cliente && (
         <div style={{ position: 'absolute', left: '50%', bottom: 16, transform: 'translateX(-50%)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(22,20,18,0.9)', color: '#fff', borderRadius: 20, padding: '6px 14px', fontSize: 12 }} title="Velocidad al andar con W A S D. Con Shift va 2,5 veces más rápido">
+          {(api3d.current.modelo?.plantas || []).length > 1 && <><span>Planta</span><select value={plantaPers ?? 0} onChange={e => setPlantaPers(parseInt(e.target.value))} style={{ ...btn, padding: '1px 6px' }} title="Planta en la que estás: la cámara se coloca a la altura de su suelo">{(api3d.current.modelo?.plantas || []).map((p, i) => <option key={i} value={i}>{p.nombre || 'Planta ' + (i + 1)}</option>)}</select></>}
+          <span title="Altura de la cámara sobre el suelo de la planta">👁 Ojos</span>
+          <input type="range" min="1.2" max="2.3" step="0.05" value={alturaOjos} onChange={e => setAlturaOjos(parseFloat(e.target.value))} style={{ width: 90 }} />
+          <b style={{ minWidth: 40 }}>{alturaOjos.toFixed(2)} m</b>
           <span>🚶 Velocidad</span>
           <input type="range" min="0.2" max="6" step="0.1" value={velPersona} onChange={e => setVelPersona(parseFloat(e.target.value))} style={{ width: 130 }} />
           <b style={{ minWidth: 52 }}>{velPersona.toFixed(1)} m/s</b>
@@ -5062,7 +5092,7 @@ export default function Visor3D({ cliente = false }) {
           ['Axonométrica', () => (axo ? salirAxo() : entrarAxo()), !!axo, estado !== 'listo' || !!alz || !!planta2d, 'Vista isométrica, sin perspectiva', '8'],
           ['Planta 2D', () => (planta2d ? salirPlanta2d() : entrarPlanta2d()), !!planta2d, estado !== 'listo' || !!alz || !!axo, 'Vista desde arriba en 2D para dibujar zonas y pintar salas', '7'],
           ['Recorrer (persona)', () => setPersona(v => !v), persona, false, 'Dentro del espacio a la altura de los ojos; W A S D para andar', '6'],
-          ['Altura de los ojos', () => { const { cam, ctrl } = api3d.current; const dy = 1.6 - cam.position.y; cam.position.y = 1.6; ctrl.target.y += dy; ctrl.update(); }, false, false, 'Cámara a 1,60 m', '5'],
+          ['Altura de los ojos', () => { const { cam, ctrl } = api3d.current; const yO = api3d.current.persona ? (api3d.current.basePl || 0) + alturaOjos : 1.6, dy = yO - cam.position.y; cam.position.y = yO; ctrl.target.y += dy; ctrl.update(); }, false, false, 'Cámara a 1,60 m', '5'],
           ['Cámara…', () => setCamAbierta(v => !v), camAbierta, false, 'Altura, nivelar, focal y verticales rectas', '4'],
           ['Escenas' + (escenas.length ? ' (' + escenas.length + ')' : ''), () => setEscAbierta(v => !v), escAbierta, false, 'Vistas guardadas', '3'],
         ])}
