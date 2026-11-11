@@ -10,12 +10,13 @@ import { vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
 import JSZip from 'jszip';
 import { leerModelosBib, guardarModeloBib } from '../utils/modelos-bib.js';
 import { glbDesdeFotos } from '../utils/modelo3d-fotos.js';
+import { glbConChatGPT, hayOpenAI } from '../utils/modelo3d-openai.js';
 import { imagenesDeEnlace } from '../utils/imagenes-enlace.js';
 
 // Las piezas de la biblioteca propia (ids «bib-…») guardan su modelo 3D en un archivo aparte, no en catalog_products
 const esBib = (id) => /^(bib|lib)-/.test(String(id)); // lib-… = bloques genéricos de Planos (sin fila en la base de datos)
 async function productoOBib(id) {
-  if (!esBib(id)) { const { data, error } = await supabase.from('catalog_products').select('id, bloques, photo_url').eq('id', id).maybeSingle(); if (error) throw error; return data; }
+  if (!esBib(id)) { const { data, error } = await supabase.from('catalog_products').select('id, name, longitud, ancho, altura, bloques, photo_url').eq('id', id).maybeSingle(); if (error) throw error; return data; }
   if (String(id).startsWith('lib-')) return { id, bloques: { modelo3d: (await leerModelosBib())[id] } };
   const { data: b, error } = await supabase.from('biblioteca_bloques').select('id').eq('id', id.slice(4)).maybeSingle();
   if (error) throw error;
@@ -555,7 +556,17 @@ async function generaModelo3DPieza(id, body) {
   if (body?.reusar !== false) { const delProd = [pr.photo_url, ...(Array.isArray(pr.bloques?.fotos) ? pr.bloques.fotos : [])].filter(u => typeof u === 'string' && /^https?:\/\//.test(u)).slice(0, 5); for (const u of delProd) { try { const r0 = await fetch(u); if (r0.ok && todas.length < 8) { const b0 = Buffer.from(await r0.arrayBuffer()); if (!todas.some(x => x.length === b0.length)) todas.push(b0); } } catch { /* esa foto ya no está */ } } }
   if (body?.reusar !== false) for (const u of previas) { try { const r0 = await fetch(u); if (r0.ok && todas.length < 8) todas.push(Buffer.from(await r0.arrayBuffer())); } catch { /* esa foto ya no está */ } }
   if (!todas.length) throw new ErrorAmable(400, 'Pega o sube una foto, o pon el enlace del producto');
-  const { glb, metodo, usadas } = await glbDesdeFotos(todas);
+  // 1) ChatGPT construye el modelo pieza a pieza (más preciso y detallado); 2) si no está disponible o falla, Hunyuan3D a partir de las fotos
+  let glb = null, metodo = '', usadas = 1;
+  if (hayOpenAI() && body?.motor !== 'hunyuan') {
+    try {
+      const fotosGpt = []; for (const b of todas.slice(0, 6)) { try { fotosGpt.push({ buffer: await sharp(b).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 85 }).toBuffer(), mimetype: 'image/jpeg' }); } catch { /* foto no válida */ } }
+      const dim = [Number(body?.largo) || Number(pr.longitud), Number(body?.fondo) || Number(pr.ancho), Number(pr.altura)];
+      const medidas = dim.every(x => x > 0) ? 'largo ' + dim[0] + ' cm, fondo ' + dim[1] + ' cm, alto ' + dim[2] + ' cm' : '';
+      glb = await glbConChatGPT(fotosGpt, String(pr.name || body?.nombre || 'Producto').slice(0, 80), medidas); metodo = 'ChatGPT (modelado por piezas)'; usadas = fotosGpt.length;
+    } catch (e) { console.error('3D con ChatGPT falló, se usa Hunyuan:', String(e.message || e).slice(0, 200)); glb = null; }
+  }
+  if (!glb) { const r3 = await glbDesdeFotos(todas); glb = r3.glb; metodo = r3.metodo; usadas = r3.usadas; }
   if (!glb || glb.length < 1000) throw new ErrorAmable(502, 'El servicio 3D no devolvió un modelo');
   // las fotos nuevas se guardan con la pieza (hasta 8) para poder seguir añadiendo más después
   const fotosNuevas = [];
