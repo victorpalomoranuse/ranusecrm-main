@@ -3146,7 +3146,7 @@ export default function Visor3D({ cliente = false }) {
     ['gizmoG', 'cotasG'].forEach(k => { if (a[k]) { a.scene.remove(a[k]); a[k].traverse(x => { x.geometry?.dispose(); x.material?.map?.dispose?.(); x.material?.dispose?.(); }); a[k] = null; } });
     const ob = objs.find(x => x.id === selObj);
     // una máquina de otra planta está desplazada (alineación de plantas): el gizmo y las cotas se colocan donde está de verdad, no en sus coordenadas sueltas
-    let offE = [0, 0]; if (!ob && seleccion) { a.raiz?.updateMatrixWorld(true); a.raiz?.traverse(g => { if (g.userData.equipo?.id === seleccion.id && g.userData.equipo?.cid !== undefined && !g.parent?.userData?.equipo) { const w = new THREE.Vector3(); g.getWorldPosition(w); offE = [w.x / CM - seleccion.cx, w.z / CM - seleccion.cy]; } }); if (Math.abs(offE[0]) < 0.5 && Math.abs(offE[1]) < 0.5) offE = [0, 0]; }
+    let offE = [0, 0, 0]; if (!ob && seleccion) { a.raiz?.updateMatrixWorld(true); a.raiz?.traverse(g => { if (g.userData.equipo?.id === seleccion.id && g.userData.equipo?.cid !== undefined && !g.parent?.userData?.equipo) { const w = new THREE.Vector3(); g.getWorldPosition(w); offE = [w.x / CM - seleccion.cx, w.z / CM - seleccion.cy, w.y / CM - (seleccion.z0 || 0)]; } }); if (Math.abs(offE[0]) < 0.5 && Math.abs(offE[1]) < 0.5 && Math.abs(offE[2]) < 0.5) offE = [0, 0, 0]; }
     let mmE = null; if (!ob && seleccion) a.raiz?.traverse(g => { if (g.userData.equipo?.id === seleccion.id) g.children.forEach(c => { if (c.userData.modeloEq) mmE = c; }); });
     const m0 = mmE?.userData?.mostrado, mos = m0 && (mmE.userData.girado ? [m0[1], m0[0], m0[2]] : m0);
     const bb = ob && ob.tipo === 'prisma' && Array.isArray(ob.pts) && ob.pts.length >= 3 ? [Math.max(...ob.pts.map(p => p[0])) - Math.min(...ob.pts.map(p => p[0])), Math.max(...ob.pts.map(p => p[1])) - Math.min(...ob.pts.map(p => p[1]))] : null; // un volumen dibujado: las cotas son las de su contorno
@@ -3155,7 +3155,7 @@ export default function Visor3D({ cliente = false }) {
     if (!d) return;
     if (!['zona', 'falsotecho', 'barrido', 'carril', 'led'].includes(d.tipo)) {
       const W = d.w * CM, D = d.d * CM, H = d.alto * CM, off = 0.14, g = new THREE.Group();
-      g.position.set((d.cx + (ob ? 0 : offE[0])) * CM, d.z0 * CM, (d.cy + (ob ? 0 : offE[1])) * CM); g.rotation.y = -d.rot * Math.PI / 180;
+      g.position.set((d.cx + (ob ? 0 : offE[0])) * CM, (d.z0 + (ob ? 0 : offE[2])) * CM, (d.cy + (ob ? 0 : offE[1])) * CM); g.rotation.y = -d.rot * Math.PI / 180;
       const mat = new THREE.LineBasicMaterial({ color: 0xffc400, depthTest: false });
       const lin = (p, q) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...p), new THREE.Vector3(...q)]), mat); l.renderOrder = 998; g.add(l); };
       const txt = (t, p) => { const s = cartel(t); s.position.set(...p); g.add(s); };
@@ -3169,7 +3169,7 @@ export default function Visor3D({ cliente = false }) {
     }
     const gz = ob || (seleccion ? { cx: seleccion.cx, cy: seleccion.cy, z0: 0, alto: seleccion.alto || 110, w: seleccion.w || seleccion.largo, d: seleccion.d || seleccion.fondo, plan: true } : null);
     if (gz && !(gz.tipo === 'zona' && gz.plano === 'pared') && gz.tipo !== 'falsotecho') {
-      const G = new THREE.Group(); G.position.set((gz.cx + (ob ? 0 : offE[0])) * CM, (gz.z0 || 0) * CM + (gz.alto * CM) / 2, (gz.cy + (ob ? 0 : offE[1])) * CM);
+      const G = new THREE.Group(); G.position.set((gz.cx + (ob ? 0 : offE[0])) * CM, ((gz.z0 || 0) + (ob ? 0 : offE[2])) * CM + (gz.alto * CM) / 2, (gz.cy + (ob ? 0 : offE[1])) * CM);
       const L = Math.max(0.5, Math.max(gz.w, gz.d, gz.alto) * CM * 0.6 + 0.25);
       const flecha = (col, eje) => {
         const g = new THREE.Group(), m = new THREE.MeshBasicMaterial({ color: col, depthTest: false });
