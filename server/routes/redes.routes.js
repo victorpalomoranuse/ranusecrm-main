@@ -279,7 +279,7 @@ router.post('/video/analizar', async (req, res) => {
     res.json({ ok: true, id: t.id });
   } catch (e) { res.status(500).json({ error: 'No se pudo analizar el vídeo: ' + String(e.message || e).slice(0, 140) }); }
 });
-const textoVideo = (a) => 'VÍDEO YA EDITADO (medido por la IA): dura ' + Math.round(a.dur) + ' s, ' + a.planos + ' planos (plano medio ' + a.plano_medio + ' s), ' + (a.palabras_por_min ? a.palabras_por_min + ' palabras por minuto' : 'sin voz hablada') + '. ' + limpia(a.descripcion, 400) + ' Estructura: ' + (a.estructura || []).map(x => limpia(x, 160)).join(' | ');
+const textoVideo = (a) => 'VÍDEO YA EDITADO (medido por la IA): dura ' + Math.round(a.dur) + ' s, ' + a.planos + ' planos (plano medio ' + a.plano_medio + ' s), ' + (a.palabras_por_min ? a.palabras_por_min + ' palabras por minuto' : 'sin voz hablada') + '. ' + limpia(a.descripcion, 400) + ' Estructura: ' + (a.estructura || []).map(x => limpia(x, 160)).join(' | ') + (a.detalle ? ' ANÁLISIS A FONDO (visto fotograma a fotograma): ' + JSON.stringify({ gancho: a.detalle.gancho, grabacion: a.detalle.grabacion, presencia: a.detalle.presencia, edicion: a.detalle.edicion, narrativa: a.detalle.narrativa }).slice(0, 2800) : '');
 export async function prediccionDeTrabajo(t) {
   if (t.pred_resultado) return t.pred_resultado;
   const a = t.analisis_videos?.[0]?.analisis; if (!a || !t.pred) return null;
