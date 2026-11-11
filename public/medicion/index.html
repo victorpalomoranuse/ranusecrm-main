@@ -375,6 +375,7 @@ body.crm .top .brand{display:none}
             </details>
             <details class="mg"><summary>Listado y documentos del proyecto</summary>
               <button data-do="lstplano" id="mi-lstplano" hidden title="Coloca en el plano una pieza por cada producto del listado del proyecto, para verlo todo a la vez">Colocar el listado del proyecto en el plano</button>
+              <button data-do="regen3d" id="mi-regen3d" hidden title="Genera con ChatGPT, con colores y por partes, el modelo 3D de todas las máquinas de este plano">Regenerar los modelos 3D de este plano (ChatGPT)…</button>
               <button data-do="listados" id="mi-listados" hidden title="Lo que hay en el plano (bloques, luminarias, materiales) pasa al listado del proyecto, que es lo que ve el cliente">Enviar a Listados del proyecto…</button>
               <button data-do="b-pdfdoc" id="mi-docs" hidden>Subir lámina a Documentos</button>
             </details>
@@ -10870,9 +10871,41 @@ function pieza3DVentana(c){
 }
 /* trabajos de 3D en segundo plano: se pueden cerrar la ventana y seguir trabajando; este avisador cuenta cómo van */
 var jobs3d={};
+/* Regenerar el 3D de todas las máquinas del plano con ChatGPT: las que no tienen modelo o lo tienen sin color (hecho con el servicio antiguo) y tienen alguna foto */
+function regenerar3DTodos(){
+  if(!CRM||!crmAdmin){toast('Solo el administrador puede lanzar esto');return}
+  var vistos={},lista=[],eqs=(st.v.eq||[]).slice();
+  (st.v.pisos||[]).forEach(function(p){if(p.id!==st.v.piso&&p.b&&p.b.eq)eqs=eqs.concat(p.b.eq)});
+  eqs.forEach(function(e){
+    if(!e.cid||vistos[e.cid])return;vistos[e.cid]=1;
+    var c=catById(e.cid);if(!c||!(/^[0-9a-f]{8}-/.test(String(c.id))||/^bib-/.test(String(c.id))))return;
+    if(c.modelo3d&&/chatgpt/i.test(c.modelo3d.metodo||''))return;
+    if(!(c.foto||(c.fotos&&c.fotos.length)||(c.modelo3d&&c.modelo3d.fotos&&c.modelo3d.fotos.length)||c.enlace))return;
+    lista.push(c);
+  });
+  if(!lista.length){toast('No hay máquinas por regenerar: o ya tienen su modelo con ChatGPT o no tienen ninguna foto');return}
+  var conMod=lista.filter(function(c){return c.modelo3d}).length;
+  if(!window.confirm('Se van a generar '+lista.length+' modelos 3D con ChatGPT ('+conMod+' sustituyen a uno que ya tienen, sin color).\n\nVan de 2 en 2 y cada uno tarda varios minutos (puedes seguir trabajando). Gasta crédito de OpenAI por cada modelo.\n\n¿Seguir?'))return;
+  var nombres={};lista.forEach(function(c){nombres[c.id]=c.nombre});
+  regen3dNombres=nombres;
+  crmPost({type:'generarModelo3DLote',ids:lista.map(function(c){return c.id})});
+  toast('Lanzando '+lista.length+' modelos…');
+}
+var regen3dNombres={};
+function regenLoteIniciado(jobs){
+  (jobs||[]).forEach(function(j){jobs3d[j.job]={estado:'procesando',id:j.id,texto:'Generando el 3D de «'+(regen3dNombres[j.id]||'la pieza')+'»'}});
+  avisador3D();toast('✔ Trabajos lanzados en segundo plano. Los verás aparecer en el 3D según terminen.');setTimeout(sondea3D,8000);
+}
 function avisador3D(){
   var b=document.getElementById('av3d');
   if(!b){b=document.createElement('div');b.id='av3d';b.style.cssText='position:fixed;left:12px;bottom:46px;z-index:9998;display:flex;flex-direction:column;gap:6px;max-width:320px';document.body.appendChild(b)}
+  var ks=Object.keys(jobs3d);
+  if(ks.length>4){
+    var ok=ks.filter(function(k){return jobs3d[k].estado==='listo'}).length,er=ks.filter(function(k){return jobs3d[k].estado==='error'}).length,pr=ks.length-ok-er;
+    b.innerHTML='<div style="background:#1f1d1a;color:#fff;border-radius:10px;padding:8px 12px;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.35)">🧊 Modelos 3D: <b>'+ok+'</b> listos · <b>'+pr+'</b> en marcha'+(er?' · <b>'+er+'</b> con error':'')+(pr?'':' <button data-avx="1" style="margin-left:6px;border:none;background:#444;color:#fff;border-radius:6px;padding:1px 7px;cursor:pointer">✕</button>')+'</div>';
+    var bx=b.querySelector('button[data-avx]');if(bx)bx.addEventListener('click',function(){jobs3d={};avisador3D()});
+    return;
+  }
   b.innerHTML=Object.keys(jobs3d).map(function(k){var j=jobs3d[k];return '<div style="background:#1f1d1a;color:#fff;border-radius:10px;padding:8px 12px;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.35)">'+(j.estado==='listo'?'✔ ':j.estado==='error'?'⚠ ':'🧊 ')+esc(j.texto)+(j.estado!=='procesando'?' <button data-av="'+esc(k)+'" style="margin-left:6px;border:none;background:#444;color:#fff;border-radius:6px;padding:1px 7px;cursor:pointer">✕</button>':'')+'</div>'}).join('');
   [].slice.call(b.querySelectorAll('button[data-av]')).forEach(function(x){x.addEventListener('click',function(){delete jobs3d[x.getAttribute('data-av')];avisador3D()})});
   if(!Object.keys(jobs3d).length)b.remove();
@@ -11680,7 +11713,7 @@ if(CRM){
       if(crmYaInit&&st.v&&st.v.id){try{drawCat();drawLum();drawCloud()}catch(e){}return}
       crmYaInit=true;
       crmReady=true;crmSkip=Date.now()+1500;
-      $('b-cloud').hidden=false;$('mi-sk').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('mi-listados').hidden=false;$('mi-lstplano').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
+      $('b-cloud').hidden=false;$('mi-sk').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('mi-listados').hidden=false;$('mi-lstplano').hidden=false;$('mi-regen3d').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
       var elegido=null;
       if(!m.nuevo){elegido=m.abrir?cloud.filter(function(c){return c.id===m.abrir})[0]:cloud[0]}
       if(elegido){st.v=norm(JSON.parse(JSON.stringify(elegido)));crmPrefill()}
@@ -11707,6 +11740,7 @@ if(CRM){
     }else if(m.type==='estadoModelo3DPieza'){pieza3DEstado(m);
     }else if(m.type==='listadoEquipo'){listadoAlPlano(m.items||[]);
     }else if(m.type==='productoDePieza'){fichaCreada(m);
+    }else if(m.type==='modelo3DLoteIniciado'){regenLoteIniciado(m.jobs);
     }else if(m.type==='modelo3DActual'){var cA=catById(m.id);if(cA&&m.modelo3d&&m.modelo3d.url&&!cA.modelo3d){cA.modelo3d=m.modelo3d;try{panelSel()}catch(e){}}
     }else if(m.type==='modelo3DPieza'){pieza3DResultado(m.id,m.modelo3d,null);
     }else if(m.type==='modelo3DPiezaError'){pieza3DResultado(m.id,null,m.message);
@@ -11808,6 +11842,7 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
       else if(id==='datos')abrirDatos();
       else if(id==='info')abrirInfoLam();
       else if(id==='listados')enviarListados();
+      else if(id==='regen3d')regenerar3DTodos();
       else if(id==='lstplano'){if(!CRM){toast('Esto funciona dentro del CRM');return}toast('Leyendo el listado del proyecto…');crmPost({type:'pedirListadoEquipo'})}
       else if(id==='planoia')planoIAAbrir();
       else if(id==='planofondo')fondoSinIAAbrir();

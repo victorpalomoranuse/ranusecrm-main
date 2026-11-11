@@ -571,7 +571,7 @@ async function generaModelo3DPieza(id, body) {
   // las fotos nuevas se guardan con la pieza (hasta 8) para poder seguir añadiendo más después
   const fotosNuevas = [];
   for (let i = 0; i < nNuevas; i++) { try { const jpg = await sharp(bufs[i]).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer(); const rf = 'modelos-3d/fotos/' + String(id).replace(/[^a-zA-Z0-9-]/g, '').slice(0, 60) + '-' + Date.now() + '-' + i + '.jpg'; const { error: eF } = await supabase.storage.from(BUCKET_SKP).upload(rf, jpg, { contentType: 'image/jpeg', upsert: true }); if (!eF) fotosNuevas.push(supabase.storage.from(BUCKET_SKP).getPublicUrl(rf).data.publicUrl); } catch { /* esa foto no se guarda */ } }
-  const largo = Number(body?.largo), fondo = Number(body?.fondo), c = cajaGlb3(glb);
+  const largo = Number(body?.largo) || Number(pr.longitud), fondo = Number(body?.fondo) || Number(pr.ancho), c = cajaGlb3(glb);
   let rot = 0; if (c && largo > 0 && fondo > 0 && Math.abs(Math.log((c.x / Math.max(1e-6, c.z)) / (largo / fondo))) > 0.35 && ((c.x > c.z) !== (largo > fondo))) rot = 90;
   const ruta = 'modelos-3d/' + id + '-' + Date.now() + '.glb';
   const { error: eUp } = await supabase.storage.from(BUCKET_SKP).upload(ruta, glb, { contentType: 'model/gltf-binary', upsert: true });
@@ -595,6 +595,23 @@ router.post('/products/:id/modelo3d-ia', async (req, res) => {
   }
   try { res.json({ modelo3d: await generaModelo3DPieza(id, req.body) }); }
   catch (err) { console.error('catalog modelo3d-ia:', err); res.status(err.estado || 500).json({ error: err.estado ? err.message : 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 110) + ')' }); }
+});
+// Varias piezas de golpe (todas las máquinas de un plano): una cola de 2 en 2 para no saturar la API; cada pieza tiene su trabajo y se consulta igual que uno suelto
+router.post('/modelo3d-ia/lote', async (req, res) => {
+  const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).filter(x => typeof x === 'string' && x.length < 80))].slice(0, 40);
+  if (!ids.length) return res.status(400).json({ error: 'No hay piezas que regenerar' });
+  const jobs = ids.map(id => ({ id, job: 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }));
+  jobs.forEach(j => TRABAJOS_3D.set(j.job, { estado: 'procesando', t: Date.now(), pieza: j.id }));
+  let i = 0;
+  const obrero = async () => {
+    while (i < jobs.length) {
+      const { id, job } = jobs[i++];
+      try { const m = await generaModelo3DPieza(id, { reusar: true }); TRABAJOS_3D.set(job, { estado: 'listo', t: Date.now(), pieza: id, modelo3d: m }); }
+      catch (err) { console.error('catalog modelo3d-ia (lote):', id, String(err.message || err).slice(0, 200)); TRABAJOS_3D.set(job, { estado: 'error', t: Date.now(), pieza: id, error: err.estado ? err.message : 'No se pudo generar el modelo 3D (' + String(err.message || err).slice(0, 110) + ')' }); }
+    }
+  };
+  obrero(); obrero();
+  res.status(202).json({ jobs });
 });
 router.get('/products/:id/modelo3d', async (req, res) => {
   try { const pr = await productoOBib(req.params.id); const m = pr?.bloques?.modelo3d; res.json({ modelo3d: m?.url ? { url: m.url, tipo: m.tipo || 'glb', rot: Number(m.rot) || 0, fotos: Array.isArray(m.fotos) ? m.fotos.filter(u => typeof u === 'string').slice(0, 8) : [] } : null }); }
