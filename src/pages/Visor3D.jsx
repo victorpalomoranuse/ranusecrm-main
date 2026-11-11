@@ -11,7 +11,7 @@ import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
 import EstudioIdeas from '../components/EstudioIdeas';
 import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
-import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
+import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, PRESETS_MARCAJE, aplicaPresetMarcaje, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
 import { construirCubierta, cubiertaPorDefecto, normalizaCubierta, calculosCubierta, textoCubierta, altoCubierta, TIPOS_CUBIERTA, PANELES, COLORES_PANEL } from '../components/cubierta3d';
 import { construirSauna, saunaPorDefecto, normalizaSauna, calculosSauna, textoMateriales, MADERAS, TIPOS_SAUNA } from '../components/sauna3d';
 import EditorRender from '../components/EditorRender';
@@ -2121,7 +2121,7 @@ export default function Visor3D({ cliente = false }) {
       setObjs(prev => {
         const ids = new Set(ces2d.map(e => 'c2d-' + e.id)), base = prev.filter(o => !(String(o.id).startsWith('c2d-') && !ids.has(o.id)));
         const out = base.map(o => { const e = ces2d.find(x => 'c2d-' + x.id === o.id); if (!e) return o; const C = normalizaCesped(o); C.carriles = Math.max(1, Math.min(8, Math.ceil(e.d / 400))); C.anchoCarril = Math.max(60, Math.min(400, e.d / C.carriles)); return { ...o, cx: Math.round((e.cx + e.ox) * 10) / 10, cy: Math.round((e.cy + e.oy) * 10) / 10, rot: e.rot || 0, w: e.w, d: e.d, nombre: e.nombre || o.nombre, cesped: C, alto: C.grosor }; });
-        for (const e of ces2d) if (!out.some(o => o.id === 'c2d-' + e.id)) { const p = cespedPorDefecto(e.cesped.preset || 'gris'), C = p.cesped; C.carriles = Math.max(1, Math.min(8, Math.ceil(e.d / 400))); C.anchoCarril = Math.max(60, Math.min(400, e.d / C.carriles)); out.push({ id: 'c2d-' + e.id, tipo: 'cesped', nombre: e.nombre || 'Césped', etiqueta: 'Céspedes', cx: Math.round((e.cx + e.ox) * 10) / 10, cy: Math.round((e.cy + e.oy) * 10) / 10, rot: e.rot || 0, w: e.w, d: e.d, alto: C.grosor, z0: 0, cesped: C }); }
+        for (const e of ces2d) if (!out.some(o => o.id === 'c2d-' + e.id)) { const p = cespedPorDefecto(e.cesped.preset || 'gris'), C = p.cesped; if (e.cesped.diseno) aplicaPresetMarcaje(C, e.cesped.diseno); C.carriles = Math.max(1, Math.min(8, Math.ceil(e.d / 400))); C.anchoCarril = Math.max(60, Math.min(400, e.d / C.carriles)); out.push({ id: 'c2d-' + e.id, tipo: 'cesped', nombre: e.nombre || 'Césped', etiqueta: 'Céspedes', cx: Math.round((e.cx + e.ox) * 10) / 10, cy: Math.round((e.cy + e.oy) * 10) / 10, rot: e.rot || 0, w: e.w, d: e.d, alto: C.grosor, z0: 0, cesped: C }); }
         return JSON.stringify(out) === JSON.stringify(prev) ? prev : out;
       });
       plantas.forEach((p, i) => { const gp = planta(p, p.z); gp.position.x += offsPl[i][0] * CM; gp.position.z += offsPl[i][1] * CM; raiz.add(gp); });
@@ -3430,7 +3430,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (o.tipo === 'cesped') {
         const gce = new THREE.Group(), gr = normalizaCesped(o).grosor;
-        const cont = construirCesped(o); cont.position.y = (o.z0 || 0) * CM; gce.add(cont);
+        const cont = construirCesped({ ...o, _tex: texturas }); cont.position.y = (o.z0 || 0) * CM; gce.add(cont);
         const hit = new THREE.Mesh(new THREE.BoxGeometry(o.w * CM, Math.max(0.05, gr * CM), o.d * CM), new THREE.MeshBasicMaterial({ visible: false }));
         hit.position.y = (gr * CM) / 2 + (o.z0 || 0) * CM; hit.userData.hit = true; gce.add(hit);
         if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(hit.geometry), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(hit.position); gce.add(l); }
@@ -6697,9 +6697,30 @@ export default function Visor3D({ cliente = false }) {
                 {fila('Marca cada (cm)', numIn(Math.round(C.sep), v => cambiarCesped(id, c => { c.sep = v; return c; }), 100, 5000, 80))}
                 {fila('Grosor línea cm', numIn(C.grosorLinea, v => cambiarCesped(id, c => { c.grosorLinea = v; return c; }), 2, 40, 60))}
                 {fila('Grosor césped cm', numIn(C.grosor, v => cambiarCesped(id, c => { c.grosor = v; return c; }), 1, 8, 60, 0.5))}
+                <div style={{ fontWeight: 700, margin: '8px 0 4px' }}>Diseño del marcaje</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>{Object.entries(PRESETS_MARCAJE).map(([k, v]) => <button key={k} style={{ ...btn, padding: '3px 7px', fontSize: 11.5 }} onClick={() => cambiarCesped(id, c => aplicaPresetMarcaje(c, k))}>{v.n}</button>)}</div>
+                {fila('Marca cada', <select value={C.distancia} onChange={e => cambiarCesped(id, c => { c.distancia = e.target.value; c.numeros = c.distancia !== 'ninguna'; return c; })} style={{ ...btn, padding: '3px 4px' }}><option value="metros">Números con «m» (5 m)</option><option value="numero">Solo el número (5)</option><option value="ninguna">Sin números</option></select>)}
+                {fila('Tipo de marca', <select value={C.separador} onChange={e => cambiarCesped(id, c => { c.separador = e.target.value; return c; })} style={{ ...btn, padding: '3px 4px' }}><option value="linea">Línea</option><option value="discontinua">Línea discontinua</option><option value="flecha">Flecha</option><option value="punto">Punto</option><option value="ninguno">Ninguna</option></select>)}
+                {C.elementos.map((e, i) => (
+                  <div key={e.id} style={{ border: '1px solid #444', borderRadius: 6, padding: '5px 6px', margin: '4px 0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}><b style={{ fontSize: 12 }}>{e.tipo === 'texto' ? '🔤 Frase' : e.tipo === 'numeracion' ? '🔢 Numeración' : '🖼 Logo'}</b><button style={{ ...btn, padding: '1px 6px' }} onClick={() => cambiarCesped(id, c => { c.elementos = c.elementos.filter(x => x.id !== e.id); return c; })}>✕</button></div>
+                    {e.tipo === 'texto' && fila('Texto', <input value={e.texto} maxLength={60} onChange={ev => cambiarCesped(id, c => { c.elementos[i].texto = ev.target.value; return c; })} style={{ ...btn, flex: 1, padding: '3px 4px' }} />)}
+                    {e.tipo === 'logo' && fila('Imagen', <select value={e.logo} onChange={ev => cambiarCesped(id, c => { c.elementos[i].logo = ev.target.value; return c; })} style={{ ...btn, padding: '3px 4px', flex: 1 }}><option value="">Elige una de «Mis texturas»…</option>{texturas.filter(x => x.url && !x.espejo).map(x => <option key={x.id} value={x.id}>{x.nombre || x.id}</option>)}</select>)}
+                    {fila('Tamaño cm', numIn(Math.round(e.tam), v => cambiarCesped(id, c => { c.elementos[i].tam = v; return c; }), 8, 250, 70))}
+                    {fila('Dónde', <select value={e.pos} onChange={ev => cambiarCesped(id, c => { c.elementos[i].pos = ev.target.value; return c; })} style={{ ...btn, padding: '3px 4px' }}><option value="inicio">Al inicio</option><option value="fin">Al final</option><option value="centro">En el centro</option><option value="cada">Repetido cada…</option></select>)}
+                    {e.pos === 'cada' && fila('Cada (cm)', numIn(Math.round(e.cada), v => cambiarCesped(id, c => { c.elementos[i].cada = v; return c; }), 100, 5000, 80))}
+                    {fila('Carril', <select value={e.carril} onChange={ev => cambiarCesped(id, c => { c.elementos[i].carril = Number(ev.target.value); return c; })} style={{ ...btn, padding: '3px 4px' }}><option value={0}>Todos</option>{Array.from({ length: C.carriles }, (_, k) => <option key={k} value={k + 1}>Carril {k + 1}</option>)}</select>)}
+                    {fila('Giro', <select value={e.rot} onChange={ev => cambiarCesped(id, c => { c.elementos[i].rot = Number(ev.target.value); return c; })} style={{ ...btn, padding: '3px 4px' }}><option value={0}>Normal</option><option value={90}>90°</option><option value={180}>180°</option><option value={270}>270°</option></select>)}
+                    {e.tipo !== 'logo' && colores(COLORES_LINEA, e.color, v => cambiarCesped(id, c => { c.elementos[i].color = v; return c; }))}
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                  <button style={{ ...btn, padding: '3px 7px' }} onClick={() => cambiarCesped(id, c => { c.elementos.push({ id: 'm' + Date.now().toString(36), tipo: 'texto', texto: 'TU FRASE', tam: 45, color: '#ffffff', pos: 'cada', cada: 1000, carril: 0, rot: 0, logo: '' }); return c; })}>+ Frase</button>
+                  <button style={{ ...btn, padding: '3px 7px' }} onClick={() => cambiarCesped(id, c => { c.elementos.push({ id: 'm' + Date.now().toString(36), tipo: 'numeracion', texto: '', tam: 50, color: '#ffffff', pos: 'cada', cada: 500, carril: 0, rot: 0, logo: '' }); return c; })}>+ Numeración</button>
+                  <button style={{ ...btn, padding: '3px 7px' }} onClick={() => cambiarCesped(id, c => { c.elementos.push({ id: 'm' + Date.now().toString(36), tipo: 'logo', texto: '', tam: 90, color: '#ffffff', pos: 'inicio', cada: 1000, carril: 0, rot: 0, logo: '' }); return c; })}>+ Logo</button>
+                </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', margin: '4px 0 6px' }}>
-                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={C.numeros} onChange={e => cambiarCesped(id, c => { c.numeros = e.target.checked; return c; })} /> Números (metros)</label>
-                  <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={C.salida} onChange={e => cambiarCesped(id, c => { c.salida = e.target.checked; return c; })} /> Salida y llegada</label>
+                                    <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={C.salida} onChange={e => cambiarCesped(id, c => { c.salida = e.target.checked; return c; })} /> Salida y llegada</label>
                   <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={C.lineasCarril} onChange={e => cambiarCesped(id, c => { c.lineasCarril = e.target.checked; return c; })} /> Líneas de carril</label>
                   <label style={{ cursor: 'pointer' }}><input type="checkbox" checked={C.borde} onChange={e => cambiarCesped(id, c => { c.borde = e.target.checked; return c; })} /> Borde</label>
                 </div>

@@ -10609,6 +10609,7 @@ function bloqueRapido(){
   var dxf=null; /* pieza elegida de un DXF */
   m.innerHTML='<div class="dxfbox" style="max-width:700px"><header><h3>Bloque rápido</h3><p class="note" style="margin:0">Ponle nombre y medidas, o sube un DXF con el dibujo, y se coloca al momento. No hace falta crear un producto en el catálogo: sale igualmente en Listados y, si quieres, más tarde lo enlazas con uno.</p></header>'+
     '<div style="padding:12px 16px;overflow:auto;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))"><div>'+
+    '<div id="rp-foto" tabindex="0" style="border:1.5px dashed var(--line);border-radius:10px;padding:10px;text-align:center;cursor:pointer;margin-bottom:8px"><span class="note" style="margin:0">📸 ¿Tienes fotos del objeto? <b>Pégalas aquí con Ctrl+V</b> (puedes pegar varias, una detrás de otra), arrástralas o pulsa para subirlas: la IA dibuja su planta, alzado y lateral a escala. Mejor 2-4 fotos (de frente, de lado y de arriba).</span></div><input type="file" id="rp-fotof" accept="image/*" multiple hidden>'+
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><button type="button" id="rp-dxf">⬆ Usar un dibujo DXF…</button><input type="file" id="rp-dxff" accept=".dxf" hidden><span class="note" id="rp-dxfs" style="margin:0"></span></div>'+
     '<label class="fld" id="rp-pz-w" hidden><span>Pieza del DXF</span><select id="rp-pz"></select></label>'+
     '<label class="fld"><span>Nombre</span><input id="rp-nm" placeholder="Mueble recepción, espejo grande, nevera…" maxlength="120"></label>'+
@@ -10639,6 +10640,27 @@ function bloqueRapido(){
     if(b.categoria&&(g('rp-c').value==='Mobiliario'||!g('rp-c').value))g('rp-c').value=b.categoria;
     g('rp-f-w').hidden=true;prev();
   }
+  /* fotos: se pasa al generador de bloques con IA (el mismo de «✨ Crear bloque desde una imagen»), llevándose el nombre y las medidas ya escritos */
+  function conFotos(fl){
+    fl=[].slice.call(fl||[],0,4).filter(function(x){return x&&/^image\//.test(x.type)});if(!fl.length)return;
+    var ds=[],nm=g('rp-nm').value.trim(),L0=num(g('rp-l').value),T0=num(g('rp-t').value),A0=num(g('rp-a').value);
+    g('rp-foto').firstChild.textContent='Preparando las fotos…';
+    fl.forEach(function(x){reducirImagen(x,function(d){
+      ds.push(d);if(ds.length<fl.length)return;
+      m.remove();abrirModalImg(ds[0]);for(var i=1;i<ds.length;i++)imgGen.ponImg(ds[i]);
+      try{if(nm)$('img-nom').value=nm;if(L0>0&&T0>0&&A0>0&&(L0!==100||T0!==60||A0!==90)){$('img-l').value=toU(L0);$('img-f').value=toU(T0);$('img-a').value=toU(A0)}}catch(e2){}
+    })});
+  }
+  g('rp-foto').addEventListener('click',function(){g('rp-fotof').click()});
+  g('rp-fotof').addEventListener('change',function(e){conFotos(e.target.files);e.target.value=''});
+  g('rp-foto').addEventListener('dragover',function(e){e.preventDefault()});
+  g('rp-foto').addEventListener('drop',function(e){e.preventDefault();conFotos(e.dataTransfer&&e.dataTransfer.files)});
+  m.addEventListener('paste',function(e){
+    var its=(e.clipboardData&&e.clipboardData.items)||[],fs=[],i;
+    for(i=0;i<its.length;i++)if(its[i].kind==='file'&&/^image\//.test(its[i].type)){var ff=its[i].getAsFile();if(ff)fs.push(ff)}
+    if(!fs.length)return;
+    e.preventDefault();e.stopPropagation();conFotos(fs);
+  });
   g('rp-dxf').addEventListener('click',function(){g('rp-dxff').click()});
   g('rp-dxff').addEventListener('change',function(e){
     var fl=e.target.files&&e.target.files[0];if(!fl)return;
@@ -10698,17 +10720,19 @@ function cespedPlanta(L,T){
 function cespedRapido(){
   var m=document.getElementById('cesmod');if(m)m.remove();
   m=document.createElement('div');m.id='cesmod';m.className='dxfmod';
+  var DIS=[['lineas_metros','Líneas y metros'],['lineas_sin_numeros','Solo líneas (sin números)'],['discontinuas','Líneas discontinuas'],['solo_numeros','Solo números (sin líneas)'],['flechas','Flechas de avance'],['puntos','Puntos de referencia'],['frase','Una frase repetida'],['numeracion','Numeración 1, 2, 3…'],['logo_inicio','Logo al inicio'],['sin_marcas','Sin marcas']];
   var PRE=[['gris','Gris claro con líneas negras'],['negro','Negro con líneas blancas'],['verde','Verde con líneas blancas'],['terracota','Terracota con líneas blancas'],['azul','Azul con líneas blancas']];
   m.innerHTML='<div class="dxfbox" style="max-width:520px"><header><h3>Césped / carril</h3><p class="note" style="margin:0">Se coloca en el plano como un bloque (muévelo, gíralo y cambia sus medidas como cualquier otro) y en el 3D aparece como césped de verdad. Las líneas, los colores y los carriles se ajustan en el 3D.</p></header>'+
     '<div style="padding:12px 16px;display:grid;gap:10px">'+
     '<label class="fld"><span>Nombre</span><input id="ce-nm" value="Carril de césped" maxlength="120"></label>'+
     '<div style="display:flex;gap:8px"><label class="fld" style="flex:1"><span>Largo (cm)</span><input id="ce-l" inputmode="decimal" value="1200"></label><label class="fld" style="flex:1"><span>Ancho (cm)</span><input id="ce-t" inputmode="decimal" value="120"></label></div>'+
     '<label class="fld"><span>Color</span><select id="ce-p">'+PRE.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>'}).join('')+'</select></label>'+
+    '<label class="fld"><span>Diseño del marcaje (luego se ajusta en el 3D: frases, logos, números…)</span><select id="ce-d">'+DIS.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>'}).join('')+'</select></label>'+
     '<div id="ce-prev" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;display:grid;place-items:center;min-height:80px"></div></div>'+
     '<footer><button class="pri" id="ce-ok">Colocar en el plano</button><button id="ce-x">Cancelar</button></footer></div>';
   document.body.appendChild(m);
   var g=function(i){return document.getElementById(i)};
-  function vals(){return {nm:g('ce-nm').value.trim()||'Césped',L:num(g('ce-l').value),T:num(g('ce-t').value),p:g('ce-p').value}}
+  function vals(){return {nm:g('ce-nm').value.trim()||'Césped',L:num(g('ce-l').value),T:num(g('ce-t').value),p:g('ce-p').value,d:g('ce-d').value}}
   function prev(){
     var v=vals(),ok=v.L>=50&&v.L<=5000&&v.T>=60&&v.T<=3000;g('ce-ok').disabled=!ok;
     if(!ok){g('ce-prev').innerHTML='<span class="note">Largo entre 50 y 5000 cm y ancho entre 60 y 3000 cm</span>';return}
@@ -10723,7 +10747,7 @@ function cespedRapido(){
     var cx=(W/2-st.tx)/st.k,cy=(H/2-st.ty)/st.k,nq=nearNode(cx,cy,1e9,null);
     if(!nq){toast('Dibuja primero el contorno de la sala');return}
     var L=Math.round(v.L*10)/10,T=Math.round(v.T*10)/10;snap();
-    var ne={id:uid('e'),n:nq.id,dx:f2(cx-nq.x),dy:f2(cy-nq.y),w:L,d:T,rot:0,nm:v.nm,ty:'gen',ref:'',cesped:{preset:v.p}};
+    var ne={id:uid('e'),n:nq.id,dx:f2(cx-nq.x),dy:f2(cy-nq.y),w:L,d:T,rot:0,nm:v.nm,ty:'gen',ref:'',cesped:{preset:v.p,diseno:v.d}};
     if(st.view==='actual')ne.s='ex';
     ne.cid=uid('bq');ne.bl={planta:cespedPlanta(L,T),largo:L,fondo:T,alto:2,categoria:'Césped'};
     st.v.eq.push(ne);st.sel={t:'eq',id:ne.id};st.multi=[];

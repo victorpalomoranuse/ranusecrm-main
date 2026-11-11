@@ -649,6 +649,8 @@ router.put('/:id/escena3d', async (req, res) => {
           cesped: hx(c.cesped, '#d8d9d4'), linea: hx(c.linea, '#111111'), carriles: Math.max(1, Math.min(8, Math.round(num(c.carriles, 1)))), anchoCarril: Math.max(60, Math.min(400, num(c.anchoCarril, 200))),
           sep: Math.max(100, Math.min(5000, num(c.sep, 500))), grosorLinea: Math.max(2, Math.min(40, num(c.grosorLinea, 10))), numeros: c.numeros !== false, salida: c.salida !== false, lineasCarril: c.lineasCarril !== false, borde: c.borde !== false,
           grosor: Math.max(1, Math.min(8, num(c.grosor, 2.5))), precios,
+          distancia: ['metros', 'numero', 'ninguna'].includes(c.distancia) ? c.distancia : (c.numeros === false ? 'ninguna' : 'metros'), separador: ['linea', 'discontinua', 'flecha', 'punto', 'ninguno'].includes(c.separador) ? c.separador : 'linea',
+          elementos: (Array.isArray(c.elementos) ? c.elementos : []).slice(0, 12).map((e, i) => ({ id: String(e?.id || 'm' + i).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 14) || 'm' + i, tipo: ['texto', 'numeracion', 'logo'].includes(e?.tipo) ? e.tipo : 'texto', texto: String(e?.texto || '').slice(0, 60), tam: Math.max(8, Math.min(250, num(e?.tam, 40))), color: hx(e?.color, '#ffffff'), pos: ['inicio', 'fin', 'centro', 'cada'].includes(e?.pos) ? e.pos : 'cada', cada: Math.max(100, Math.min(5000, num(e?.cada, 1000))), carril: Math.max(0, Math.min(8, Math.round(num(e?.carril, 0)))), rot: [0, 90, 180, 270].includes(Number(e?.rot)) ? Number(e.rot) : 0, logo: String(e?.logo || '').slice(0, 60) })),
         };
       })() : undefined,
       mueble: o.tipo === 'mueble' && o.mueble ? {
