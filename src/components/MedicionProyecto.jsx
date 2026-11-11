@@ -86,6 +86,10 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
           responder({ type: 'bloqueGenerado', bloque: data.bloque });
         } catch (err) { responder({ type: 'bloqueError', message: err.response?.data?.error || 'No se pudo generar el bloque' }); }
       }
+      else if (m.type === 'pedirListadoEquipo') {
+        try { const { data } = await api.get(`/client-projects/${projectId}/equipment`); responder({ type: 'listadoEquipo', items: (data.equipment || []).map(x => ({ id: x.id, name: x.name, brand: x.brand || '', qty: Math.max(1, Math.min(30, parseInt(x.quantity) || 1)), cid: x.catalog_product_id || null, tipo: x.category_type || '' })) }); }
+        catch { responder({ type: 'error', message: 'No se pudo leer el listado del proyecto' }); }
+      }
       else if (m.type === 'pedirModelo3DPieza' && m.id) {
         try { const { data } = await api.get('/catalog/products/' + encodeURIComponent(m.id) + '/modelo3d'); responder({ type: 'modelo3DActual', id: m.id, modelo3d: data.modelo3d }); } catch { /* sin conexión */ }
       }
@@ -224,7 +228,7 @@ export function MedicionEditor({ projectId = null, proyecto = {}, abrir = null, 
       <iframe
         ref={frameRef}
         title="Planos"
-        src="/medicion/index.html?v=cesped2"
+        src="/medicion/index.html?v=cesped3"
         style={fullscreen ? { width: '100%', height: '100%', border: 0, display: 'block', background: '#07090c' } : { width: '100%', height: altura, minHeight: 620, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, background: '#151311' }}
       />
     </div>

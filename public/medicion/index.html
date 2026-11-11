@@ -376,6 +376,7 @@ body.crm .top .brand{display:none}
             <button data-do="z-fit">Encajar el plano</button>
             <button data-do="marcas" id="mi-marcas">Etiquetas de alzado: ocultas</button>
             <button data-do="cotamuros" id="mi-cotamuros">Cotas de los muros al trabajar: ocultas</button>
+            <button data-do="lstplano" id="mi-lstplano" hidden title="Coloca en el plano una pieza por cada producto del listado del proyecto, para verlo todo a la vez">Colocar el listado del proyecto en el plano</button>
             <button data-do="ubicacion" id="mi-ubic">Ubicación del equipamiento en pantalla: oculta</button>
             <button data-do="z-in">Acercar</button>
             <button data-do="z-out">Alejar</button>
@@ -10851,6 +10852,29 @@ function pieza3DResultado(id,m3,err){
   try{panelSel()}catch(e){}
   toast('✔ Modelo 3D generado'+(m3.metodo?' ('+m3.metodo+')':'')+' y guardado en la pieza. Ya sale en el 3D de todos los planos.');
 }
+/* Coloca en el plano una pieza por cada unidad del listado del proyecto (con su bloque si lo tiene; si no, un rectángulo con su nombre) para ver todo a la vez */
+function listadoAlPlano(items){
+  if(!st.v||!st.v.nodes||!st.v.nodes.length){toast('Dibuja primero el contorno de la sala');return}
+  var ya={};(st.v.eq||[]).forEach(function(e){if(e.lst)ya[e.lst]=(ya[e.lst]||0)+1});
+  var xs=st.v.nodes.map(function(n){return n.x}),ys=st.v.nodes.map(function(n){return n.y});
+  var x0=Math.max.apply(null,xs)+150,y0=Math.min.apply(null,ys),ancla=st.v.nodes[0],x=x0,y=y0,fila=0,n=0,gen=0,conBloque=0,saltadas=0;
+  snap();
+  items.forEach(function(it){
+    var ent=it.cid?catById(it.cid):null;
+    for(var k=(ya[it.id]||0);k<it.qty;k++){
+      var w=ent?ent.w:100,d=ent?ent.d:80;
+      if(x>x0&&x+w>x0+1600){x=x0;y+=fila+40;fila=0}
+      var ne={id:uid('e'),n:ancla.id,dx:f2(x-ancla.x),dy:f2(y-ancla.y),w:w,d:d,rot:0,nm:it.name,ty:'gen',ref:it.brand||'',lst:it.id};
+      if(ent){ne.cid=ent.id;ne.ty=ent.tipo||'gen';ne.ref=ent.ref||ne.ref;if(ent.paso){['I','D','F','T'].forEach(function(S){if(ent.paso[S]!=null)ne['pm'+S]=ent.paso[S]})}conBloque++}
+      else{ne.cid=uid('bq');ne.bl={planta:bloqueRapidoPlanta('cruz',w,d),largo:w,fondo:d,alto:100,categoria:'Máquinas y equipamiento'};gen++}
+      if(st.view==='actual')ne.s='ex';
+      st.v.eq.push(ne);x+=w+30;fila=Math.max(fila,d);n++;
+    }
+  });
+  if(!n){toast('Todo el listado ya está colocado en el plano');return}
+  commit();try{drawCat()}catch(e){}
+  toast('✔ '+n+' piezas colocadas a la derecha de la sala: '+conBloque+' con su bloque y '+gen+' como rectángulo con aspa (medidas provisionales 100 × 80). Cuando crees el bloque bueno, cámbialo.');
+}
 function enviarListados(){
   if(!CRM){toast('Esto funciona dentro del CRM, con el plano vinculado a un proyecto');return}
   toast('Guardando el plano y abriendo el listado…');
@@ -11588,7 +11612,7 @@ if(CRM){
       if(crmYaInit&&st.v&&st.v.id){try{drawCat();drawLum();drawCloud()}catch(e){}return}
       crmYaInit=true;
       crmReady=true;crmSkip=Date.now()+1500;
-      $('b-cloud').hidden=false;$('mi-sk').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('mi-listados').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
+      $('b-cloud').hidden=false;$('mi-sk').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('mi-listados').hidden=false;$('mi-lstplano').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
       var elegido=null;
       if(!m.nuevo){elegido=m.abrir?cloud.filter(function(c){return c.id===m.abrir})[0]:cloud[0]}
       if(elegido){st.v=norm(JSON.parse(JSON.stringify(elegido)));crmPrefill()}
@@ -11613,6 +11637,7 @@ if(CRM){
     }else if(m.type==='modelo3DGenerado'){if(imgGen){imgGen.m3=m.modelo3d||null;imgGen.m3est=m.modelo3d?'listo':'error';estado3DBloque()}
     }else if(m.type==='modelo3DPiezaIniciada'){pieza3DIniciada(m.id,m.job,(p3d&&p3d.nombre)||(catById(m.id)||{}).nombre);
     }else if(m.type==='estadoModelo3DPieza'){pieza3DEstado(m);
+    }else if(m.type==='listadoEquipo'){listadoAlPlano(m.items||[]);
     }else if(m.type==='modelo3DActual'){var cA=catById(m.id);if(cA&&m.modelo3d&&m.modelo3d.url&&!cA.modelo3d){cA.modelo3d=m.modelo3d;try{panelSel()}catch(e){}}
     }else if(m.type==='modelo3DPieza'){pieza3DResultado(m.id,m.modelo3d,null);
     }else if(m.type==='modelo3DPiezaError'){pieza3DResultado(m.id,null,m.message);
@@ -11714,6 +11739,7 @@ $('b-side-close').addEventListener('click',function(){document.body.classList.re
       else if(id==='datos')abrirDatos();
       else if(id==='info')abrirInfoLam();
       else if(id==='listados')enviarListados();
+      else if(id==='lstplano'){if(!CRM){toast('Esto funciona dentro del CRM');return}toast('Leyendo el listado del proyecto…');crmPost({type:'pedirListadoEquipo'})}
       else if(id==='planoia')planoIAAbrir();
       else if(id==='planofondo')fondoSinIAAbrir();
       else if(id==='fondo-ver'||id==='fondo-op'||id==='fondo-q'||id==='fondo-esc'||id==='fondo-mov')fondoAccion(id);
