@@ -979,14 +979,15 @@ function Guionizador() {
 }
 
 function PestanaIdeas() {
-  const [ideas, setIdeas] = useState(null), [tema, setTema] = useState(''), [cant, setCant] = useState(6), [gen, setGen] = useState(false), [err, setErr] = useState(''), [abierta, setAbierta] = useState(null), [filtro, setFiltro] = useState('activas');
-  const cargar = useCallback(() => api.get('/estudio-video/ideas').then(r => setIdeas(r.data.ideas || [])).catch(() => setIdeas([])), []);
+  const [ideas, setIdeas] = useState(null), [tema, setTema] = useState(''), [cant, setCant] = useState(6), [gen, setGen] = useState(false), [err, setErr] = useState(''), [abierta, setAbierta] = useState(null), [filtro, setFiltro] = useState('activas'), [estr, setEstr] = useState(null);
+  const cargar = useCallback(() => api.get('/estudio-video/ideas').then(r => { setIdeas(r.data.ideas || []); setEstr(r.data.estrategia || null); }).catch(() => setIdeas([])), []);
   useEffect(() => { cargar(); }, [cargar]);
-  const generar = async () => { setErr(''); setGen(true); try { const r = await api.post('/estudio-video/ideas/generar', { tema, cantidad: cant }, { timeout: 240000 }); setIdeas(r.data.ideas || []); } catch (e) { setErr(e?.response?.data?.error || (e?.code === 'ECONNABORTED' ? 'Ha tardado demasiado, prueba con menos ideas.' : 'No se pudieron generar (' + (e?.message || 'sin conexión con el servidor') + ')')); } setGen(false); };
+  const generar = async () => { setErr(''); setGen(true); try { const r = await api.post('/estudio-video/ideas/generar', { tema, cantidad: cant }, { timeout: 240000 }); setIdeas(r.data.ideas || []); if (r.data.estrategia) setEstr(r.data.estrategia); } catch (e) { setErr(e?.response?.data?.error || (e?.code === 'ECONNABORTED' ? 'Ha tardado demasiado, prueba con menos ideas.' : 'No se pudieron generar (' + (e?.message || 'sin conexión con el servidor') + ')')); } setGen(false); };
   const cambia = async (x, parche) => { setIdeas(l => l.map(i => (i.id === x.id ? { ...i, ...parche } : i))); try { await api.put('/estudio-video/ideas/' + x.id, parche); } catch { cargar(); } };
   const borra = async (x) => { if (!window.confirm('¿Borrar esta idea?')) return; setIdeas(l => l.filter(i => i.id !== x.id)); try { await api.delete('/estudio-video/ideas/' + x.id); } catch { cargar(); } };
   const copia = (txt) => { try { navigator.clipboard.writeText(txt); } catch { /* sin portapapeles */ } };
   if (ideas === null) return <div style={mut}>Cargando…</div>;
+  const tarjetaEstrategia = estr ? <div className="rd-card" style={{ gap: 8, marginBottom: 14 }}><div style={{ ...mut, fontSize: '0.8rem', letterSpacing: '.06em' }}>🧠 LA ESTRATEGIA DETRÁS DE ESTAS IDEAS</div>{estr.logica && <div style={{ fontSize: '0.92rem', lineHeight: 1.5 }}>{estr.logica}</div>}<div className="rd-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))' }}>{(estr.pilares || []).map((p, i) => <div key={i} style={{ border: '1px solid rgba(255,255,255,.12)', borderRadius: 10, padding: 10 }}><b>{p.nombre}</b>{p.peso && <span className="rd-chip" style={{ marginLeft: 6 }}>{p.peso}</span>}<div style={{ ...mut, fontSize: '0.8rem' }}>{p.para_que}</div></div>)}</div></div> : null;
   const hoy = new Date().toISOString().slice(0, 10);
   const agenda = ideas.filter(i => i.fecha && i.estado !== 'descartada' && i.estado !== 'publicado');
   const lista = ideas.filter(i => (filtro === 'activas' ? !['descartada', 'publicado'].includes(i.estado) : filtro === 'todas' ? true : i.estado === filtro)).slice().reverse();
@@ -1002,6 +1003,7 @@ function PestanaIdeas() {
         <button className="rd-btn pri" disabled={gen} onClick={generar}><Wand2 size={15} /> {gen ? 'Pensando…' : 'Generar ideas'}</button>
         {err && <div className="ap-error" style={{ flexBasis: '100%' }}>{err}</div>}
       </div>
+      {tarjetaEstrategia}
       <div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}><h3 style={{ margin: 0 }}>📅 Próximos 14 días</h3>{atrasadas.length > 0 && <span className="rd-chip rojo">{atrasadas.length} atrasada{atrasadas.length > 1 ? 's' : ''}</span>}</div>
         <div className="rd-days">
@@ -1208,7 +1210,7 @@ function Lista({ items, color, max = 3, ejemplo = false }) {
   if (!items || !items.length) return null;
   const ver = todo ? items : items.slice(0, max);
   return <>
-    <ul className="rd-lista" style={color ? { '--pt': color } : undefined}>{ver.map((x, i) => <li key={i} style={ejemplo ? { cursor: 'pointer' } : undefined} onClick={ejemplo ? () => setEj({ idea: String(x), formato: '', gancho: '', origen: '' }) : undefined} title={ejemplo ? 'Pulsa para ver un ejemplo' : undefined}>{x}{ejemplo && <span style={{ display: 'block', fontSize: '0.74rem', color: '#8fdba0' }}>🎬 Ver ejemplo →</span>}</li>)}</ul>
+    <ul className="rd-lista" style={color ? { '--pt': color } : undefined}>{ver.map((x0, i) => { const x = (x0 && typeof x0 === 'object') ? Object.values(x0).filter(Boolean).join(' — ') : x0; return <li key={i} style={ejemplo ? { cursor: 'pointer' } : undefined} onClick={ejemplo ? () => setEj({ idea: String(x), formato: '', gancho: '', origen: '' }) : undefined} title={ejemplo ? 'Pulsa para ver un ejemplo' : undefined}>{x}{ejemplo && <span style={{ display: 'block', fontSize: '0.74rem', color: '#8fdba0' }}>🎬 Ver ejemplo →</span>}</li>; })}</ul>
     {ej && <TallerIdeas idea={ej} onCerrar={() => setEj(null)} />}
     {items.length > max && <button className="rd-btn" style={{ alignSelf: 'flex-start', padding: '3px 10px', fontSize: '0.76rem' }} onClick={() => setTodo(v => !v)}>{todo ? 'Ver menos' : 'Ver ' + (items.length - max) + ' más'}</button>}
   </>;
@@ -1263,7 +1265,7 @@ function IdeasTarjetas({ ideas }) {
   const [abierta, setAbierta] = useState(null);
   if (!ideas || !ideas.length) return null;
   return <>
-    <div className="rd-grid">{ideas.map((x, i) => { const o = ORIGEN_IDEA[x.origen]; return <div key={i} className="rd-card" style={{ cursor: 'pointer' }} onClick={() => setAbierta(x)} title="Pulsa para abrir el guion"><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><span className="rd-chip arena">{x.formato || 'idea'}</span>{o && <span className="rd-chip" style={{ color: o[1] }}>{o[0]}</span>}</div><div className="rd-gancho">{x.idea}</div>{x.gancho && <div style={{ fontSize: '0.86rem', ...mut }}>“{x.gancho}”</div>}{x.por_que && <div style={{ ...mut, fontSize: '0.8rem' }}>{x.por_que}</div>}<div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Abrir taller y crear guion →</div></div>; })}</div>
+    <div className="rd-grid">{ideas.map((x, i) => { const o = ORIGEN_IDEA[x.origen]; return <div key={i} className="rd-card" style={{ cursor: 'pointer' }} onClick={() => setAbierta(x)} title="Pulsa para abrir el guion"><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><span className="rd-chip arena">{x.formato || 'idea'}</span>{o && <span className="rd-chip" style={{ color: o[1] }}>{o[0]}</span>}</div><div className="rd-gancho">{x.idea}</div>{x.gancho && <div style={{ fontSize: '0.86rem', ...mut }}>“{x.gancho}”</div>}{x.por_que && <div style={{ ...mut, fontSize: '0.8rem' }}>{x.por_que}</div>}{(x.refs || []).length > 0 && <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><div style={{ ...mut, fontSize: '0.72rem' }}>▶ Vídeos que lo respaldan:</div><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{x.refs.map((rf, k) => rf.miniatura ? <a key={k} href={rf.enlace} target="_blank" rel="noreferrer" title={(rf.pie || '') + (rf.vistas ? ' · ' + fmt(rf.vistas) + ' vistas' : '')} style={{ position: 'relative', width: 62, height: 78, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,.15)' }}><img src={rf.miniatura} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" /><span style={{ position: 'absolute', bottom: 2, left: 2, right: 2, fontSize: '0.6rem', background: 'rgba(0,0,0,.65)', borderRadius: 4, textAlign: 'center' }}>{fmt(rf.vistas)}</span></a> : <a key={k} href={rf.enlace} target="_blank" rel="noreferrer" className="rd-chip" title={rf.pie} style={{ textDecoration: 'none', fontSize: '0.7rem' }}>@{rf.cuenta} · ♥ {fmt(rf.me_gusta)} ↗</a>)}</div></div>}<div style={{ fontSize: '0.78rem', color: '#8fdba0' }}>🎬 Abrir taller y crear guion →</div></div>; })}</div>
     {abierta && <TallerIdeas idea={abierta} onCerrar={() => setAbierta(null)} />}
   </>;
 }
