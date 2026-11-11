@@ -547,7 +547,7 @@ async function generaModelo3DPieza(id, body) {
   const bufs = [];
   for (const d of (Array.isArray(body?.imagenes) ? body.imagenes.slice(0, 6) : [])) { const m = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(d || '')); if (m) { const b = Buffer.from(m[2], 'base64'); if (b.length <= 12 * 1024 * 1024) bufs.push(b); } }
   const enlace = String(body?.enlace || '').trim().slice(0, 500);
-  if (enlace) { try { bufs.push(...await imagenesDeEnlace(enlace, 2)); } catch (e) { if (!bufs.length) throw new ErrorAmable(422, 'No he podido leer ese enlace: ' + String(e.message || e).slice(0, 100) + '. Prueba subiendo o pegando una foto.'); } }
+  if (enlace) { try { bufs.push(...await imagenesDeEnlace(enlace, 6)); } catch (e) { if (!bufs.length) throw new ErrorAmable(422, 'No he podido leer ese enlace: ' + String(e.message || e).slice(0, 100) + '. Prueba subiendo o pegando una foto.'); } }
   const previas = Array.isArray(pr.bloques?.modelo3d?.fotos) ? pr.bloques.modelo3d.fotos.filter(u => typeof u === 'string').slice(0, 6) : [], nNuevas = bufs.length, todas = [...bufs];
   if (body?.reusar !== false) for (const u of previas) { try { const r0 = await fetch(u); if (r0.ok && todas.length < 8) todas.push(Buffer.from(await r0.arrayBuffer())); } catch { /* esa foto ya no está */ } }
   if (!todas.length) throw new ErrorAmable(400, 'Pega o sube una foto, o pon el enlace del producto');

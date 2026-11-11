@@ -2,6 +2,7 @@
 // Solo páginas públicas por http/https: nunca direcciones internas (protección contra peticiones a la red local).
 import dns from 'dns/promises';
 import net from 'net';
+import sharp from 'sharp';
 
 const privada = (ip) => {
   if (net.isIPv4(ip)) { const [a, b] = ip.split('.').map(Number); return a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127); }
@@ -39,7 +40,22 @@ export async function imagenesDeEnlace(enlace, max = 2) {
   for (const m of html.matchAll(/<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image|twitter:image)["']/gi)) cand.push(m[1]);
   for (const m of html.matchAll(/<link[^>]+rel=["']image_src["'][^>]*href=["']([^"']+)["']/gi)) cand.push(m[1]);
   for (const m of html.matchAll(/"image"\s*:\s*(\[[^\]]{0,800}\]|"[^"]+")/g)) { try { const v = JSON.parse(m[1]); (Array.isArray(v) ? v : [v]).forEach(x => cand.push(typeof x === 'string' ? x : x?.url)); } catch { /* sin datos */ } }
-  const vistas = new Set(), out = [];
-  for (const c of cand) { const a = c && abs(c, url); if (!a || vistas.has(a)) continue; vistas.add(a); try { const r = await traer(a, { max: 8e6, tipo: 'imagen' }); out.push(r.buf); } catch { /* la siguiente */ } if (out.length >= max) break; }
+  // galería de la ficha: otras fotos del producto (de frente, de lado, detalle…)
+  const galeria = [];
+  for (const m of html.matchAll(/<img[^>]+?(?:data-zoom-image|data-large[_-]image|data-src|data-lazy-src|src)=["']([^"']+.(?:jpe?g|png|webp)[^"']*)["']/gi)) { if (!/logo|icon|sprite|avatar|flag|payment|badge|banner|placeholder|loader|pixel|thumb-?small|social/i.test(m[1])) galeria.push(m[1]); }
+  const vistas = new Set(), out = [], hashes = new Set();
+  let intentos = 0;
+  for (const c of [...cand, ...galeria]) {
+    const a = c && abs(c, url); if (!a || vistas.has(a)) continue; vistas.add(a);
+    if (++intentos > 24) break;
+    try {
+      const r = await traer(a, { max: 8e6, tipo: 'imagen' });
+      if (r.buf.length < 12000) continue; // iconos y miniaturas
+      const meta = await sharp(r.buf).metadata().catch(() => null); if (!meta || (meta.width || 0) < 400 || (meta.height || 0) < 300) continue;
+      const h = r.buf.length + ':' + (meta.width || 0); if (hashes.has(h)) continue; hashes.add(h);
+      out.push(r.buf);
+    } catch { /* la siguiente */ }
+    if (out.length >= max) break;
+  }
   return out;
 }
