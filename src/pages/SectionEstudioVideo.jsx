@@ -1260,6 +1260,7 @@ function TallerIdeas({ idea, onCerrar }) {
             <span className="rd-chip" style={{ color: g.necesita_micro ? '#f2c46d' : '#8fdba0' }}>{g.necesita_micro ? '🎤 Necesitas micro' : 'Sin micro'}</span>
             {(g.equipo || []).map((x, i) => <span key={i} className="rd-chip">{x}</span>)}
           </div>
+          {g.si_no_puedes_hoy && <div style={{ border: '1px solid rgba(255,155,155,.4)', background: 'rgba(255,155,155,.06)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}><div style={{ ...mut, fontSize: '0.78rem', letterSpacing: '.06em' }}>🚧 HOY NO SE PUEDE HACER TAL CUAL</div><div style={{ fontSize: '0.88rem' }}><b>Falta:</b> {g.si_no_puedes_hoy.que_falta}</div>{(g.si_no_puedes_hoy.como_conseguirlo || []).length > 0 && <div><b style={{ fontSize: '0.84rem' }}>Cómo conseguirlo</b><Lista items={g.si_no_puedes_hoy.como_conseguirlo} color="#ff9b9b" /></div>}{g.si_no_puedes_hoy.alternativa_hoy && <div style={{ fontSize: '0.88rem' }}><b>✅ Versión que sí puedes grabar hoy:</b> <span style={mut}>{g.si_no_puedes_hoy.alternativa_hoy}</span></div>}</div>}
           {g.proyecto_y_fase && <div style={{ fontSize: '0.86rem' }}>📍 <b>Proyecto y fase:</b> <span style={mut}>{g.proyecto_y_fase}</span></div>}
           {g.lead_magnet && <LeadMagnetBloque lm={g.lead_magnet} idea={idea.idea || g.titulo} />}
           {g.formato_grabacion && <div style={{ border: '1px solid rgba(143,219,160,.35)', background: 'rgba(143,219,160,.06)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
