@@ -7611,17 +7611,7 @@ function doAction(a,el){
   if(a==='prodfoto'&&s.t==='eq'){
     var pef=by(st.v.eq,s.id),pcf=pef&&catById(pef.cid);if(!pcf)return;
     if(!CRM){toast('Esto solo funciona dentro del CRM');return}
-    var inpf=document.createElement('input');inpf.type='file';inpf.accept='image/*';inpf.multiple=true;
-    inpf.addEventListener('change',function(){
-      var fs0=[].slice.call(inpf.files||[],0,4);if(!fs0.length)return;
-      var principal=!pcf.foto||window.confirm('¿Usar la primera foto como foto principal del producto? (sustituye a la actual; Cancelar la deja y la añade como foto extra)');
-      var out=[],n=0;
-      fs0.forEach(function(fl,i){reducirImagen(fl,function(d){out[i]=d;if(++n===fs0.length){
-        crmPost({type:'subirFotosProducto',id:pcf.id,imagenes:out.filter(Boolean),principal:principal});
-        toast('Subiendo '+out.length+' foto'+(out.length>1?'s':'')+' al producto…');
-      }})});
-    });
-    inpf.click();return;
+    fotosProdVentana(pcf);return;
   }
   if(a==='prodsubir'&&s.t==='eq'){var pe2=by(st.v.eq,s.id);if(!pe2)return;subirProd=catById(pe2.cid);if(!subirProd)return;$('prod-dxf').click();return}
   if(a==='eqcat'){var q3=by(st.v.eq,s.id);saveCat({id:q3.cid||('c'+Date.now().toString(36)),nombre:q3.nm,tipo:q3.ty,w:q3.w,d:q3.d,ref:q3.ref||''});toast('Medidas guardadas en el catálogo');return}
@@ -10786,6 +10776,44 @@ function cespedRapido(){
     commit();cerrar();toast('«'+v.nm+'» colocado. En el 3D aparece como césped; allí cambias las líneas y los colores.');
   });
   prev();setTimeout(function(){var el=g('ce-nm');if(el)el.focus()},50);
+}
+/* ══ Fotos del producto: pegadas (Ctrl+V), arrastradas o subidas ══ */
+function fotosProdVentana(c){
+  var m0=document.getElementById('fpmod');if(m0)m0.remove();
+  var m=document.createElement('div');m.id='fpmod';m.className='dxfmod';
+  m.innerHTML='<div class="dxfbox" style="max-width:560px"><header><h3>Fotos de «'+esc(c.nombre||'el producto')+'»</h3><p class="note" style="margin:0">Pega las fotos con <b>Ctrl+V</b> (una detrás de otra), arrástralas o súbelas. Se quedan en el producto y se usan para generar su bloque y su 3D. Mejor de frente, de lado y por detrás.</p></header>'+
+    '<div style="padding:12px 16px;display:grid;gap:10px"><div id="fp-drop" tabindex="0" style="border:1.5px dashed var(--line);border-radius:10px;min-height:120px;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;cursor:pointer"></div><input type="file" id="fp-file" accept="image/*" multiple hidden>'+
+    '<label class="fld" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="fp-pri"'+(c.foto?'':' checked')+'><span>La primera foto será la principal del producto'+(c.foto?' (sustituye a la actual)':'')+'</span></label>'+
+    '<p class="note" id="fp-msg" style="margin:0"></p></div>'+
+    '<footer><span style="flex:1"></span><button id="fp-x">Cerrar</button><button class="pri" id="fp-go">Guardar fotos</button></footer></div>';
+  document.body.appendChild(m);
+  var g=function(i){return document.getElementById(i)},imgs=[];
+  function pinta(){
+    if(!imgs.length){g('fp-drop').innerHTML='<span class="note" style="margin:0">Pega aquí las fotos (Ctrl+V), arrástralas o pulsa para subirlas (hasta 4 cada vez)</span>';return}
+    g('fp-drop').innerHTML='<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">'+imgs.map(function(d){return '<img src="'+d+'" style="height:96px;border-radius:6px;background:#fff">'}).join('')+'</div>';
+  }
+  function pon(d){if(imgs.length>=4){toast('Máximo 4 fotos cada vez: guarda estas y añade más');return}imgs.push(d);pinta()}
+  function conFiles(fl){[].slice.call(fl||[],0,4).forEach(function(x){if(x&&/^image\//.test(x.type))reducirImagen(x,pon)})}
+  pinta();
+  g('fp-drop').addEventListener('click',function(){g('fp-file').click()});
+  g('fp-file').addEventListener('change',function(e){conFiles(e.target.files);e.target.value=''});
+  g('fp-drop').addEventListener('dragover',function(e){e.preventDefault()});
+  g('fp-drop').addEventListener('drop',function(e){e.preventDefault();conFiles(e.dataTransfer&&e.dataTransfer.files)});
+  function pega(e){
+    var its=(e.clipboardData&&e.clipboardData.items)||[],hay=false,i;
+    for(i=0;i<its.length;i++)if(its[i].kind==='file'&&/^image\//.test(its[i].type)){var ff=its[i].getAsFile();if(ff){hay=true;reducirImagen(ff,pon)}}
+    if(hay){e.preventDefault();e.stopPropagation()}
+  }
+  m.addEventListener('paste',pega);
+  setTimeout(function(){try{g('fp-drop').focus()}catch(e){}},30);
+  function cerrar(){m.remove()}
+  g('fp-x').addEventListener('click',cerrar);m.addEventListener('mousedown',function(e){if(e.target===m)cerrar()});
+  g('fp-go').addEventListener('click',function(){
+    if(!imgs.length){g('fp-msg').textContent='Pega o sube al menos una foto.';return}
+    g('fp-go').disabled=true;g('fp-msg').textContent='Guardando…';
+    crmPost({type:'subirFotosProducto',id:c.id,imagenes:imgs.slice(),principal:!!g('fp-pri').checked});
+    toast('Subiendo '+imgs.length+' foto'+(imgs.length>1?'s':'')+' al producto…');cerrar();
+  });
 }
 /* ══ 3D de una pieza que ya existe: fotos (pegadas, arrastradas o subidas) y/o el enlace de su página ══ */
 var p3d=null;
