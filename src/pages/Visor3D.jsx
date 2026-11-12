@@ -3304,7 +3304,8 @@ export default function Visor3D({ cliente = false }) {
     ctrl.minDistance = ctrl.maxDistance = 0.05; ctrl.target.copy(cam.position).addScaledVector(d, 0.05);
     ctrl.enablePan = false; ctrl.enableZoom = false; ctrl.rotateSpeed = 0.45; ctrl.dampingFactor = 0.2; ctrl.minPolarAngle = Math.PI * 0.12; ctrl.maxPolarAngle = Math.PI * 0.88;
     cam.fov = 62; cam.updateProjectionMatrix(); ctrl.update();
-    const rueda = e => { e.preventDefault(); cam.fov = Math.max(28, Math.min(85, cam.fov + (e.deltaY > 0 ? 3 : -3))); cam.updateProjectionMatrix(); };
+    // para el cliente la óptica es siempre la misma (sin zoom con la rueda): la imagen no se deforma; el diseñador sí puede variarla
+    const rueda = e => { e.preventDefault(); if (cliente) return; cam.fov = Math.max(28, Math.min(85, cam.fov + (e.deltaY > 0 ? 3 : -3))); cam.updateProjectionMatrix(); };
     el.addEventListener('wheel', rueda, { passive: false });
     return () => el.removeEventListener('wheel', rueda);
   }, [persona, estado]);
