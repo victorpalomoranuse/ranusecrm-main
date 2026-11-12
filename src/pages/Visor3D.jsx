@@ -11,7 +11,7 @@ import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import opentype from 'opentype.js';
 import EstudioIdeas from '../components/EstudioIdeas';
 import { PRESETS_REVEST, PERFILES_MOLDURA, construirRevest, colocaEnMuro, normalizaRevest, preset as presetRevest, cajaRevest, espesorRevest } from '../components/revestimientos';
-import { construirDeco, KINDS_DECO, MEDIDAS_DECO, KINDS_PERSONAS } from '../components/deco3d';
+import { construirDeco, KINDS_DECO, MEDIDAS_DECO, KINDS_PERSONAS, KINDS_MOBILIARIO } from '../components/deco3d';
 import { construirRack, rackPorDefecto, normalizaRack, calculosRack, textoRack, dimRack, TIPOS_RACK, TIPOS_BAHIA, ACCESORIOS, PERFILES_RACK, COLORES_RACK, bahiaPorDefecto } from '../components/rack3d';
 import { construirCesped, cespedPorDefecto, normalizaCesped, calculosCesped, textoCesped, PRESETS_CESPED, PRESETS_MARCAJE, aplicaPresetMarcaje, COLORES_CESPED, COLORES_LINEA } from '../components/cesped3d';
 import { construirCubierta, cubiertaPorDefecto, normalizaCubierta, calculosCubierta, textoCubierta, altoCubierta, TIPOS_CUBIERTA, PANELES, COLORES_PANEL } from '../components/cubierta3d';
@@ -4253,7 +4253,14 @@ export default function Visor3D({ cliente = false }) {
   const [saunaMenu, setSaunaMenu] = useState(false);
   const [cubiertaMenu, setCubiertaMenu] = useState(false);
   const [cespedMenu, setCespedMenu] = useState(false);
-  const [personasMenu, setPersonasMenu] = useState(false);
+  const [personasMenu, setPersonasMenu] = useState(false), [mobiliarioMenu, setMobiliarioMenu] = useState(false);
+  // Mobiliario moderno de la casa (sofás, mesas, recepción, taquillas, espejos, lámparas…): ligero, con medidas y colores editables
+  const crearMobiliario = (kind) => {
+    const { ctrl } = api3d.current, M = MEDIDAS_DECO[kind] || [100, 60, 75], colores = { taquillas: '#2b2f36', mostrador_recepcion: '#1f1f21', banco_vestuario: '#b88a5a', panel_lamas: '#a9774a', alfombra: '#cfc7bb', espejo_pie: '#dcdcdc', espejo_pared: '#dcdcdc', lampara_pie: '#f1e6d0', lampara_colgante: '#ffe2b0' };
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'deco', deco: { kind, color2: kind === 'mostrador_recepcion' ? '#c9a46c' : '#222226' }, color: colores[kind] || '#8a8f98', nombre: KINDS_DECO[kind], etiqueta: 'Mobiliario', cx: Math.round(ctrl.target.x / CM / 5) * 5, cy: Math.round(ctrl.target.z / CM / 5) * 5, rot: 0, w: M[0], d: M[1], alto: M[2], z0: kind === 'lampara_colgante' ? Math.max(0, (api3d.current.modelo?.altura || 260) - M[2] - 10) : 0 };
+    setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setHerr('sel'); setMobiliarioMenu(false);
+    setAviso('«' + KINDS_DECO[kind] + '» colocado en el centro de la vista. Cambia su color, sus medidas y el color de las patas en el panel.');
+  };
   const [rackMenu, setRackMenu] = useState(false);
   const [revSel, setRevSel] = useState(null);
   const revSelRef = useRef(null); revSelRef.current = revSel;
@@ -6004,6 +6011,10 @@ export default function Visor3D({ cliente = false }) {
           menuRail(muebleMenu, setMuebleMenu, railBtn(muebleMenu, 'mueble', 'A medida', 'Muebles a medida por módulos', () => setMuebleMenu(v => !v)), (<>
             {Object.keys(PLANTILLAS_MUEBLE).map(n => <div key={n} onClick={() => crearMueble(n)} style={itemMenu}>{n}</div>)}
           </>), 250),
+          menuRail(mobiliarioMenu, setMobiliarioMenu, railBtn(mobiliarioMenu, 'mueble', 'Mobiliario', 'Sofás, mesas, recepción, taquillas, espejos, lámparas, paneles…: piezas modernas ligeras con medidas y colores editables', () => setMobiliarioMenu(v => !v)), (<>
+            <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Se colocan en el centro de la vista. Después cambias color, medidas y patas</div>
+            {KINDS_MOBILIARIO.map(k => <div key={k} onClick={() => crearMobiliario(k)} style={itemMenu}>{KINDS_DECO[k]}</div>)}
+          </>), 270),
           menuRail(personasMenu, setPersonasMenu, railBtn(personasMenu, 'persona', 'Personas', 'Personas haciendo deporte, andando o hablando: dan vida y escala al espacio', () => setPersonasMenu(v => !v)), (<>
             <div style={{ opacity: 0.6, fontSize: 11, padding: '2px 8px' }}>Se colocan en el centro de la vista. Dan escala; el render con IA les da el realismo</div>
             {KINDS_PERSONAS.map(k => <div key={k} onClick={() => crearPersona(k)} style={itemMenu}>🧍 {KINDS_DECO[k]}</div>)}
