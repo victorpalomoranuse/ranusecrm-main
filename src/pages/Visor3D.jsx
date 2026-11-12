@@ -6179,6 +6179,7 @@ export default function Visor3D({ cliente = false }) {
               <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>{new Date(t.creado).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })} · {t.paradas} parada{t.paradas === 1 ? '' : 's'}</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {t.paradas > 0 && <button style={btn} onClick={() => copiaEnlaceV(t.tid, false)} title="Tour 360°: imágenes ya renderizadas, se ven igual de bien en cualquier dispositivo">📋 Tour 360°</button>}
+                {t.libre && <button style={btn} onClick={() => copiaEnlaceV(t.tid, true)} title="Recorrido libre por el espacio (depende del dispositivo del cliente)">📋 Recorrido libre</button>}
                 <button style={{ ...btn, background: '#7a2b2b' }} onClick={() => borraTourV(t)}>🗑</button>
               </div>
             </div>
