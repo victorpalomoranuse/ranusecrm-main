@@ -2115,11 +2115,12 @@ export default function Visor3D({ cliente = false }) {
   const guardaFav = (fv) => setFavs(l => { const n = [...l.filter(q => !(q.tipo === fv.tipo && q.titulo === fv.titulo && (q.muroId || q.salaKey) === (fv.muroId || fv.salaKey))), { ...fv, id: Date.now().toString(36) }].slice(-40); try { localStorage.setItem('visor3dFavoritas:' + id, JSON.stringify(n)); } catch { /* sin almacenamiento */ } return n; });
   const quitaFav = (fid) => setFavs(l => { const n = l.filter(q => q.id !== fid); try { localStorage.setItem('visor3dFavoritas:' + id, JSON.stringify(n)); } catch { /* sin almacenamiento */ } return n; });
   const revierteCapa = (k, snap) => {
-    const coincide = k === 'deco' ? (o => String(o.ia || '').startsWith('d:')) : ({ patron: ':pat', franja: ':techo', luces: ':luz', revest: ':rev', rotulo: ':rot' }[k] ? (o => String(o.ia || '').includes({ patron: ':pat', franja: ':techo', luces: ':luz', revest: ':rev', rotulo: ':rot' }[k])) : null);
+    const coincide = k === 'pilares' ? (o => String(o.ia || '').startsWith('p:')) : k === 'deco' ? (o => String(o.ia || '').startsWith('d:')) : ({ patron: ':pat', franja: ':techo', luces: ':luz', revest: ':rev', rotulo: ':rot' }[k] ? (o => String(o.ia || '').includes({ patron: ':pat', franja: ':techo', luces: ':luz', revest: ':rev', rotulo: ':rot' }[k])) : null);
     if (coincide) setObjs(cur => [...cur.filter(o => !coincide(o)), ...snap.objs.filter(coincide)]);
     else if (k === 'pintura') setAcab(a => ({ ...a, muros: snap.acab.muros, regiones: snap.acab.regiones }));
     else if (k === 'suelo') setAcab(a => ({ ...a, salas: snap.acab.salas }));
     else if (k === 'techoColor') setAcab(a => ({ ...a, techos: snap.acab.techos }));
+    if (k === 'pilares') setAcab(a => ({ ...a, pilares: snap.acab.pilares }));
   };
   const cierraPrevia = (quedarse) => {
     const p = previaRef.current; if (!p) return;
@@ -6708,11 +6709,44 @@ export default function Visor3D({ cliente = false }) {
                   const area = Math.abs(pts.reduce((q, p, i) => { const r2 = pts[(i + 1) % pts.length]; return q + (p[0] * r2[1] - r2[0] * p[1]); }, 0)) / 2 / 1e4;
                   const { piezas, todas } = await cargaPiezas(), mds = murosDeSala(sel), ms = mds.tramos, zonas = zonasDeMaquinas(sel, mds.tramosRaw), ctx = (await contextoModelo()).texto;
                   const nPuertas = (sel.pl.muros || []).reduce((q, mu) => q + (mu.ab || []).filter(o => /puerta/i.test((o.nm || '') + ' ' + (o.tip || ''))).length, 0);
-                  const r = await api.post('/estudio-ideas/sala', { medicionId: id, objetivo: ideasAmbBrief, sala: { nombre: sel.sa.nombre || '', area: Math.round(area * 10) / 10, largo: Math.max(...xs) - Math.min(...xs), ancho: Math.max(...ys) - Math.min(...ys), maquinas: (sel.pl.equipos || []).length, puertas: nPuertas }, muros: ms, zonas: zonas.map(({ cx, cy, ...q }) => q), piezas, suelos: SUELOS_TEC.map(t => ({ id: 'tex:' + t.id, nombre: t.nombre })), contexto: ctx, previas: ideasSala.map(q => q.titulo) }, { timeout: 240000 });
+                  const pilaresSala = pilaresDeSala(sel).map(p => ({ id: p.id, nombre: p.nm || '', w: Math.round(p.w), d: Math.round(p.d), alto: Math.round(api3d.current.modelo?.altura || 260), cerca: p.cerca }));
+                  const r = await api.post('/estudio-ideas/sala', { medicionId: id, objetivo: ideasAmbBrief, pilares: pilaresSala, sala: { nombre: sel.sa.nombre || '', area: Math.round(area * 10) / 10, largo: Math.max(...xs) - Math.min(...xs), ancho: Math.max(...ys) - Math.min(...ys), maquinas: (sel.pl.equipos || []).length, puertas: nPuertas }, muros: ms, zonas: zonas.map(({ cx, cy, ...q }) => q), piezas, suelos: SUELOS_TEC.map(t => ({ id: 'tex:' + t.id, nombre: t.nombre })), contexto: ctx, previas: ideasSala.map(q => q.titulo) }, { timeout: 240000 });
                   const mapa = new Map(todas.map(m => [m.id, m]));
                   setIdeasSala((r.data.ideas || []).map(q => ({ ...q, decoracion: (q.decoracion || []).map(e => ({ ...e, modelo: e.libre ? libreModelo(e) : mapa.get(e.id) })).filter(e => e.modelo) })));
                 } catch (e) { setIdeasSalaErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
                 setIdeasSalaCarga(false);
+              };
+              // Pilares de una sala (los que caen dentro) y su pared más cercana
+              const pilaresDeSala = (sel) => ((sel.pl.pilares || []).filter(p => p.estado !== 'dem' && puntoEnPoligono([p.cx, p.cy], sel.sa.pts))).map(p => {
+                let cerca = '', dm = 1e9; for (const mu of sel.pl.muros || []) { const dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((p.cx - mu.a[0]) * dx + (p.cy - mu.a[1]) * dy) / L2)), d = Math.hypot(mu.a[0] + t * dx - p.cx, mu.a[1] + t * dy - p.cy); if (d < dm) { dm = d; cerca = dm < 40 ? 'pegado a una pared' : 'exento en la sala, a ' + Math.round(dm) + ' cm de la pared más cercana'; } }
+                return { ...p, cerca };
+              });
+              // Tratamiento de pilares: color, revestimiento en sus 4 caras (como paneles sobre un muro) y tira LED en anillo
+              const aplicaPilares = (lista, sel) => {
+                const H = api3d.current.modelo?.altura || 260, ip = Math.max(0, (api3d.current.modelo?.plantas || [api3d.current.modelo]).indexOf(sel.pl)), [ox, oy] = (api3d.current.offsPl || [])[ip] || [0, 0], z = sel.pl.z || 0, pils = sel.pl.pilares || [];
+                let n = 0;
+                for (const q of lista || []) {
+                  const p = pils.find(x => x.id === q.id); if (!p) continue; n++;
+                  const r = (p.rot || 0) * Math.PI / 180, co = Math.cos(r), si = Math.sin(r), hw = p.w / 2, hd = p.d / 2;
+                  const esq = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([x, y]) => [p.cx + x * co - y * si, p.cy + x * si + y * co]);
+                  if (q.color) setAcab(a => ({ ...a, pilares: { ...(a.pilares || {}), [p.id]: q.color } }));
+                  const nuevos = [];
+                  if (q.revestimiento) {
+                    const pr = presetRevest(q.revestimiento);
+                    if (pr) for (let k = 0; k < 4; k++) {
+                      const A = esq[k], B = esq[(k + 1) % 4], mu = { a: A, b: B, t: 0, ab: [] }, L = Math.hypot(B[0] - A[0], B[1] - A[1]);
+                      const nx = -(B[1] - A[1]) / L, ny = (B[0] - A[0]) / L, mx = (A[0] + B[0]) / 2 - p.cx, my = (A[1] + B[1]) / 2 - p.cy, lado = nx * mx + ny * my >= 0 ? 1 : -1;
+                      const c = colocaEnMuro(mu, lado, 0, L), base = { w: c.w, alto: H, revest: { id: pr.id, tipo: pr.tipo } };
+                      nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + k, tipo: 'revest', nombre: pr.nombre + ' (pilar)', etiqueta: 'Revestimientos', cx: c.cx + ox, cy: c.cy + oy, rot: c.rot, w: c.w, d: espesorRevest(base), alto: H, z0: z, color: q.colorRev || pr.color, revest: { id: pr.id, tipo: pr.tipo, muroId: null, lado, s0: 0, s1: Math.round(L), p: { ...pr.p }, huecos: [] } });
+                    }
+                  }
+                  if (q.led) {
+                    const m = 4, pts = [[-hw - m, -hd - m], [hw + m, -hd - m], [hw + m, hd + m], [-hw - m, hd + m]].map(([x, y]) => [p.cx + x * co - y * si - p.cx, p.cy + x * si + y * co - p.cy]);
+                    nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + 'l', tipo: 'led', nombre: 'LED del pilar', etiqueta: 'Iluminación', cx: p.cx + ox, cy: p.cy + oy, rot: 0, w: Math.round(p.w + 2 * m), d: Math.round(p.d + 2 * m), alto: 2, z0: z + 14, pts: pts.map(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10]), led: { ancho: 1.5, k: 3000, lm: 800, dir: 'arriba', cerrado: true }, ...(q.colorRev ? { color: q.colorRev } : {}) });
+                  }
+                  if (nuevos.length) ponIA(nuevos, 'p:' + p.id);
+                }
+                return n;
               };
               const aplicaSalaDirecto = async (q, i) => {
                 const sel = salaSel(); if (!sel) return {};
@@ -6729,6 +6763,7 @@ export default function Visor3D({ cliente = false }) {
                   if (h.pintura) capas.pintura = 'Color de las paredes'; if (h.patron) capas.patron = 'Patrones pintados'; if (h.techo) capas.franja = 'Franja de techo'; if (h.luces) capas.luces = 'Luces LED'; if (h.revest) capas.revest = 'Revestimientos'; if (h.rotulo) capas.rotulo = 'Rótulos';
                 }
                 if (nM) hechas.push(nM + ' pared' + (nM === 1 ? '' : 'es'));
+                if ((q.pilares || []).length) { const nP = aplicaPilares(q.pilares, sel); if (nP) { hechas.push(nP + ' pilar' + (nP === 1 ? '' : 'es')); capas.pilares = 'Pilares'; } }
                 if ((q.decoracion || []).length) { aplicaDeco({ titulo: q.titulo, elementos: q.decoracion }, 'sala' + i); hechas.push('decoración'); capas.deco = 'Decoración'; }
                 setIdeasSalaAplic(a => ({ ...a, [i]: hechas }));
                 // la idea queda anotada para el render con IA: ahí es donde las piezas sencillas (plantas, esculturas…) ganan todo su detalle
