@@ -1386,6 +1386,15 @@ router.post('/:id/sketchup', async (req, res) => {
   }
 });
 
+// Solo la fecha de la última modificación: el visor 3D la mira cada pocos segundos y solo descarga el plano entero si ha cambiado
+router.get('/:id/version', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('mediciones').select('updated_at').eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Plano no encontrado' });
+    res.json({ updated: new Date(data.updated_at).getTime() });
+  } catch { res.status(500).json({ error: 'No se pudo comprobar' }); }
+});
 router.get('/:id', async (req, res) => {
   try {
     const { data, error } = await supabase.from('mediciones').select('id, project_id, data, updated_at').eq('id', req.params.id).maybeSingle();

@@ -2246,7 +2246,8 @@ export default function Visor3D({ cliente = false }) {
     cargar();
     api3d.current.recargar = () => { ultima = null; return cargar(); };
     // El plano se edita en otra pestaña: se mira si ha cambiado cada pocos segundos
-    const reloj = cliente ? null : setInterval(() => { if (!document.hidden) cargar(); }, 6000);
+    // (antes se descargaba el plano entero cada 6 s; ahora solo su fecha, y el plano entero únicamente si ha cambiado)
+    const reloj = cliente ? null : setInterval(() => { if (document.hidden) return; api.get('/medicion/' + id + '/version').then(r => { if (vivo && r.data?.updated !== ultima) cargar(); }).catch(() => {}); }, 8000);
 
     // Clic en una máquina: se resalta y se enseña su ficha
     let sel = null;
