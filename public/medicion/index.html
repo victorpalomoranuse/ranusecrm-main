@@ -10467,7 +10467,7 @@ function drawCloud(){
     d.appendChild(b);d.appendChild(sm);
     var bt=document.createElement('button');bt.textContent='Abrir';
     bt.addEventListener('click',function(){
-      snap();st.v=norm(JSON.parse(JSON.stringify(c)));st.sel=null;st.dg=null;fields();commit();fit();toast('Visita abierta');
+      snap();st.v=norm(JSON.parse(JSON.stringify(c)));st.v.srvBase=c.updated||0;st.sel=null;st.dg=null;fields();commit();fit();toast('Visita abierta');
     });
     row.appendChild(d);row.appendChild(bt);if(CRM){var bx=document.createElement('button');bx.textContent='Borrar';bx.className='danger';bx.addEventListener('click',function(){if(window.confirm('¿Borrar este plano del proyecto?'))crmPost({type:'delete',id:c.id})});row.appendChild(bx)}el.appendChild(row);
   });
@@ -11830,7 +11830,7 @@ if(CRM){
       $('b-cloud').hidden=false;$('mi-sk').hidden=false;$('mi-cloud').hidden=false;$('mi-docs').hidden=false;$('mi-listados').hidden=false;$('mi-lstplano').hidden=false;$('mi-regen3d').hidden=false;$('crm-pdf').hidden=false;$('b-cloud').textContent='Guardar ahora';$('cloudblk').hidden=false;
       var elegido=null;
       if(!m.nuevo){elegido=m.abrir?cloud.filter(function(c){return c.id===m.abrir})[0]:cloud[0]}
-      if(elegido){st.v=norm(JSON.parse(JSON.stringify(elegido)));crmPrefill()}
+      if(elegido){st.v=norm(JSON.parse(JSON.stringify(elegido)));st.v.srvBase=elegido.updated||0;crmPrefill()} /* srvBase: versión del servidor que se ha cargado; lo hecho en el 3D después se vuelve a poner al guardar */
       else{st.v=newVisit();crmPrefill()}
       ensureLums();st.sel=null;st.dg=null;hist.length=0;redo.length=0;
       fields();drawCat();drawLum();drawCloud();commit();fit();

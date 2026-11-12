@@ -2,6 +2,7 @@ import express from 'express';
 import sharp from 'sharp';
 import compression from 'compression';
 import { supabase } from '../config/supabase.js';
+import { registraOps3d, reaplicaOps3d } from '../utils/cambios3d.js';
 import { authenticateToken, requirePermission, requireAdminSuperior } from '../middleware/auth.middleware.js';
 import { cantidadesDePlano, filasEscena3d } from '../utils/planos.js';
 import { disenadorDe, proyectoEsDe, proyectosDe } from '../utils/asignados.js';
@@ -558,6 +559,7 @@ router.put('/:id', async (req, res) => {
     if (previa?.data?.escena3d) data.escena3d = previa.data.escena3d; // el editor 2D no la toca: no se pierde al guardar
     else delete data.escena3d;
     const cam3 = previa?.data?.cambios3d, baseSrv = Number(data.srvBase) || 0;
+    reaplicaOps3d(data, previa?.data?.ops3d, baseSrv); // lo hecho en el 3D después de cargar este Planos se vuelve a poner encima
     if (cam3 && typeof cam3 === 'object') {
       for (const [eqId, c] of Object.entries(cam3)) if (c && c.t > baseSrv) aplicaCambioEquipo(data, eqId, c);
       data.cambios3d = cam3;
@@ -1148,7 +1150,7 @@ router.patch('/:id/hueco', async (req, res) => {
     }
     const ahora = new Date().toISOString();
     data.updated = Date.now();
-    const { error } = await supabase.from('mediciones').update({ data, updated_at: ahora }).eq('id', req.params.id);
+    const { error } = await guardaPlano(req.params.id, data);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
@@ -1167,7 +1169,12 @@ const nodoUsado = (data, nid, exceptoMuro) => {
   return false;
 };
 const idCorto = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 4);
-const guardaPlano = async (id, data) => { data.updated = Date.now(); return supabase.from('mediciones').update({ data, updated_at: new Date().toISOString() }).eq('id', id); };
+// Toda escritura hecha desde el 3D pasa por aquí: se anota qué cambió para que un Planos con una copia vieja no lo deshaga al guardar
+const guardaPlano = async (id, data) => {
+  data.updated = Date.now();
+  try { const { data: prev } = await supabase.from('mediciones').select('data').eq('id', id).maybeSingle(); if (prev?.data) registraOps3d(prev.data, data); } catch (e) { console.error('ops3d:', e.message); }
+  return supabase.from('mediciones').update({ data, updated_at: new Date().toISOString() }).eq('id', id);
+};
 const muros3dDe = (data) => { const m3 = data.modelo3d; return m3 ? (m3.plantas || [m3])[0] : null; };
 router.post('/:id/muro', async (req, res) => {
   try {
@@ -1257,7 +1264,7 @@ router.post('/:id/luminaria', async (req, res) => {
     if (lid) pt.lid = String(lid).slice(0, 80);
     (data.pts = Array.isArray(data.pts) ? data.pts : []).push(pt);
     data.updated = Date.now();
-    const { error } = await supabase.from('mediciones').update({ data, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    const { error } = await guardaPlano(req.params.id, data);
     if (error) throw error;
     res.status(201).json({ ok: true, id: pt.id });
   } catch (err) {
@@ -1278,7 +1285,7 @@ router.patch('/:id/luminaria/:ptId', async (req, res) => {
       pt.dx = Math.round((parseFloat(req.body.x) - n.x) * 10) / 10; pt.dy = Math.round((parseFloat(req.body.y) - n.y) * 10) / 10;
     }
     data.updated = Date.now();
-    const { error } = await supabase.from('mediciones').update({ data, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    const { error } = await guardaPlano(req.params.id, data);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
@@ -1292,7 +1299,7 @@ router.delete('/:id/luminaria/:ptId', async (req, res) => {
     const data = fila.data || {};
     data.pts = (data.pts || []).filter(p => p.id !== req.params.ptId);
     data.updated = Date.now();
-    const { error } = await supabase.from('mediciones').update({ data, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    const { error } = await guardaPlano(req.params.id, data);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
@@ -1312,7 +1319,7 @@ router.delete('/:id/equipo/:eqId', async (req, res) => {
     if (m3) for (const pl of (m3.plantas || [m3])) if (Array.isArray(pl.equipos)) pl.equipos = pl.equipos.filter(e => e.id !== eqId);
     if (data.escena3d?.modelosEq) delete data.escena3d.modelosEq[eqId];
     data.updated = Date.now();
-    const { error } = await supabase.from('mediciones').update({ data, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    const { error } = await guardaPlano(req.params.id, data);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
@@ -1366,7 +1373,7 @@ router.patch('/:id/equipo', async (req, res) => {
     const ahora = new Date().toISOString();
     data.updated = Date.now();
     data.cambios3d = Object.fromEntries(Object.entries({ ...(data.cambios3d || {}), [eqId]: { vals: { ...((data.cambios3d || {})[eqId]?.vals || {}), ...vals }, ...(muevo ? { px, py } : ((data.cambios3d || {})[eqId]?.px != null ? { px: data.cambios3d[eqId].px, py: data.cambios3d[eqId].py } : {})), t: Date.parse(ahora) } }).filter(([, c]) => c && c.t > Date.now() - 7 * 864e5).slice(-200));
-    const { error } = await supabase.from('mediciones').update({ data, updated_at: ahora }).eq('id', req.params.id);
+    const { error } = await guardaPlano(req.params.id, data);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
