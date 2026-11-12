@@ -2363,6 +2363,8 @@ export default function Visor3D({ cliente = false }) {
         if (a0.ptLento > 90) a0.ptDesactivar?.('Tu gráfica va justa para el trazado de rayos: lo he desactivado.');
       } else if (a0.composer) {
         const sz = renderer.getSize(vR2); if (a0.compW !== sz.x || a0.compH !== sz.y || a0.compPr !== renderer.getPixelRatio()) { a0.compW = sz.x; a0.compH = sz.y; a0.compPr = renderer.getPixelRatio(); a0.composer.setPixelRatio(a0.compPr); a0.composer.setSize(sz.x, sz.y); }
+        // calidad progresiva (como D5): mientras te mueves se dibuja sin oclusión ambiental ni resplandor, que son lo que más pesa; al parar vuelven y la imagen se completa
+        if (a0.aoPass) a0.aoPass.enabled = !movi; if (a0.bloomPass) a0.bloomPass.enabled = !movi;
         a0.composer.render();
       } else renderer.render(scene, cam);
       if (a0.pedirFoto) { const cb = a0.pedirFoto; a0.pedirFoto = null; let u = null; try { u = renderer.domElement.toDataURL('image/jpeg', 0.9); } catch { /* sin imagen */ } cb(u); } // foto del fotograma recién dibujado, tal como se ve
@@ -3376,7 +3378,7 @@ export default function Visor3D({ cliente = false }) {
     if (a.composer) { a.composer.dispose?.(); a.composer = null; }
     if (a.envTex) { a.envTex.dispose(); a.envTex = null; }
     a.scene.environment = null;
-    a.gradeU = null; a.bloomPass = null;
+    a.gradeU = null; a.bloomPass = null; a.aoPass = null;
     if (!realista && !fxActivo) return;
     try {
       if (realista) {
@@ -3409,7 +3411,7 @@ export default function Visor3D({ cliente = false }) {
         const ao = new GTAOPass(a.scene, a.cam, sz.x, sz.y);
         ao.updateGtaoMaterial({ radius: 0.3, distanceExponent: 1.5, thickness: 1, scale: 1.2, samples: 12 });
         ao.blendIntensity = 0.9;
-        comp.addPass(ao);
+        comp.addPass(ao); a.aoPass = ao;
       }
       if (fx.bloom > 0) { const bp = new UnrealBloomPass(new THREE.Vector2(sz.x, sz.y), fx.bloom, 0.6, 0.85); comp.addPass(bp); a.bloomPass = bp; }
       comp.addPass(new OutputPass());
