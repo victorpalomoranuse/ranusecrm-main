@@ -2084,6 +2084,25 @@ export default function Visor3D({ cliente = false }) {
     r.onend = () => { vozRef.current = null; setEscuchando(false); };
     try { r.start(); setEscuchando(true); } catch { vozRef.current = null; setEscuchando(false); }
   };
+  // Probar una propuesta: se ve en el 3D pero NO se guarda hasta que decides quedártela (entera o por capas); si no, se descarta y todo vuelve a como estaba
+  const [previa, setPrevia] = useState(null); const previaRef = useRef(null);
+  const [favs, setFavs] = useState(() => { try { return JSON.parse(localStorage.getItem('visor3dFavoritas:' + id) || '[]'); } catch { return []; } });
+  const guardaFav = (fv) => setFavs(l => { const n = [...l.filter(q => !(q.tipo === fv.tipo && q.titulo === fv.titulo && (q.muroId || q.salaKey) === (fv.muroId || fv.salaKey))), { ...fv, id: Date.now().toString(36) }].slice(-40); try { localStorage.setItem('visor3dFavoritas:' + id, JSON.stringify(n)); } catch { /* sin almacenamiento */ } return n; });
+  const quitaFav = (fid) => setFavs(l => { const n = l.filter(q => q.id !== fid); try { localStorage.setItem('visor3dFavoritas:' + id, JSON.stringify(n)); } catch { /* sin almacenamiento */ } return n; });
+  const revierteCapa = (k, snap) => {
+    const coincide = k === 'deco' ? (o => String(o.ia || '').startsWith('d:')) : ({ patron: ':pat', franja: ':techo', luces: ':luz', revest: ':rev', rotulo: ':rot' }[k] ? (o => String(o.ia || '').includes({ patron: ':pat', franja: ':techo', luces: ':luz', revest: ':rev', rotulo: ':rot' }[k])) : null);
+    if (coincide) setObjs(cur => [...cur.filter(o => !coincide(o)), ...snap.objs.filter(coincide)]);
+    else if (k === 'pintura') setAcab(a => ({ ...a, muros: snap.acab.muros, regiones: snap.acab.regiones }));
+    else if (k === 'suelo') setAcab(a => ({ ...a, salas: snap.acab.salas }));
+    else if (k === 'techoColor') setAcab(a => ({ ...a, techos: snap.acab.techos }));
+  };
+  const cierraPrevia = (quedarse) => {
+    const p = previaRef.current; if (!p) return;
+    if (!quedarse) { setAcab(p.snap.acab); setObjs(p.snap.objs); }
+    else for (const k of Object.keys(p.capas)) if (previa && previa.marcadas[k] === false) revierteCapa(k, p.snap);
+    previaRef.current = null; setPrevia(null);
+    setAviso(quedarse ? 'Propuesta guardada en el modelo ✓' : 'Propuesta descartada: todo vuelve a como estaba');
+  };
   const [ideasSala, setIdeasSala] = useState([]), [ideasSalaCarga, setIdeasSalaCarga] = useState(false), [ideasSalaErr, setIdeasSalaErr] = useState(''), [ideasSalaAplic, setIdeasSalaAplic] = useState({});
   const [ideasDeco, setIdeasDeco] = useState([]), [ideasDecoCarga, setIdeasDecoCarga] = useState(false), [ideasDecoErr, setIdeasDecoErr] = useState(''), [ideasDecoAplic, setIdeasDecoAplic] = useState({});
   const [ideasMuro, setIdeasMuro] = useState([]), [ideasMuroCarga, setIdeasMuroCarga] = useState(false), [ideasMuroErr, setIdeasMuroErr] = useState(''), [ideasMuroAplic, setIdeasMuroAplic] = useState({});
@@ -3789,12 +3808,13 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => {
     if (!cargadaEscena.current || estado !== 'listo') return;
     if (guardado === 'inicial') { setGuardado(''); return; }
+    if (previaRef.current) { setGuardado('Probando una propuesta (sin guardar)'); return; }
     setGuardado('Guardando…');
     const t = setTimeout(() => {
       api.put('/medicion/' + id + '/escena3d', { objetos: objs, acabados: acab, paleta, rodapie, guias, luces: lucesAj, hora, escenas, tapetas, huecosCfg, modelosEq: modosEq }).then(() => setGuardado('Guardado ✓')).catch(() => setGuardado('No se pudo guardar'));
     }, 1200);
     return () => clearTimeout(t);
-  }, [objs, acab, paleta, rodapie, guias, lucesAj, hora, escenas, tapetas, huecosCfg, modosEq]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objs, acab, paleta, rodapie, guias, lucesAj, hora, escenas, tapetas, huecosCfg, modosEq, previa]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Los paneles de la izquierda (catálogo, biblioteca 3D, capas, materiales) no se solapan: abrir uno cierra los demás; igual con los de la derecha
   useEffect(() => {
@@ -6511,7 +6531,8 @@ export default function Visor3D({ cliente = false }) {
                 try {
                   const ctx = (await contextoModelo()).texto, nom = h => (h ? h : 'sin color definido'), L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]);
                   let marcaId = ''; try { marcaId = localStorage.getItem('ideasMarca') || ''; } catch { /* sin marca */ }
-                  const r = await api.post('/estudio-ideas/interiorismo', { medicionId: id, objetivo: ideasAmbBrief, muro: { largo: Math.round(L), alto: Math.round(mu.h || api3d.current.modelo?.altura || 260), sala: salaDelMuro(mu).nombre }, actual: nom(actual), otras: 'muros ' + nom(acab.todosMuros) + ', suelos ' + nom(acab.todosSuelos) + ', techos ' + nom(acab.todosTechos), contexto: ctx, previas: ideasMuro.map(x => x.titulo), marcaId }, { timeout: 180000 });
+                  const selZ = salaSel(), mdsZ = selZ ? murosDeSala(selZ) : null, tramoZ = mdsZ?.tramosRaw.find(t => t.segs.some(sg => sg.mu.id === mu.id)), zonasCerca = selZ && tramoZ ? zonasDeMaquinas(selZ, mdsZ.tramosRaw).filter(z => z.paredCercana === tramoZ.segs[0].mu.id).map(({ cx, cy, ...q }) => q) : [];
+                  const r = await api.post('/estudio-ideas/interiorismo', { medicionId: id, objetivo: ideasAmbBrief, zonasCerca, muro: { largo: Math.round(L), alto: Math.round(mu.h || api3d.current.modelo?.altura || 260), sala: salaDelMuro(mu).nombre }, actual: nom(actual), otras: 'muros ' + nom(acab.todosMuros) + ', suelos ' + nom(acab.todosSuelos) + ', techos ' + nom(acab.todosTechos), contexto: ctx, previas: ideasMuro.map(x => x.titulo), marcaId }, { timeout: 180000 });
                   setIdeasMuro((r.data.ideas || []).map(q => ({ ...q, revestimientos: q.revestimientos || [] })));
                 } catch (e) { setIdeasMuroErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
                 setIdeasMuroCarga(false);
@@ -6578,6 +6599,24 @@ export default function Visor3D({ cliente = false }) {
                 setAviso(nuevos.length ? '«' + x.titulo + '»: ' + nuevos.length + ' pieza' + (nuevos.length === 1 ? '' : 's') + ' colocada' + (nuevos.length === 1 ? '' : 's') + ' en la sala ✓' + (sinSitio ? ' (' + sinSitio + ' sin sitio libre)' : '') : 'No he encontrado sitio libre para esas piezas en esta sala.');
               };
               // ── Concepto completo de la sala: suelo + techo + cada pared con su papel + luces + decoración
+              // Zonas de máquinas: grupos de máquinas de la misma categoría (glúteo, pierna, discos…) que están juntas; además, las zonas de suelo que hayas dibujado y nombrado
+              const zonasDeMaquinas = (sel, tramos) => {
+                const pls = api3d.current.modelo?.plantas || [api3d.current.modelo], ip = Math.max(0, pls.indexOf(sel.pl)), [ox, oy] = (api3d.current.offsPl || [])[ip] || [0, 0];
+                const eqs = (sel.pl.equipos || []).filter(e => !e.cesped && puntoEnPoligono([e.cx, e.cy], sel.sa.pts));
+                const cat = e => (biblioteca?.find(m => m.id === e.cid)?.categoria || '').trim();
+                const padre = eqs.map((_, i) => i), raiz = i => { while (padre[i] !== i) { padre[i] = padre[padre[i]]; i = padre[i]; } return i; };
+                for (let i = 0; i < eqs.length; i++) for (let j = i + 1; j < eqs.length; j++) if (cat(eqs[i]) && cat(eqs[i]) === cat(eqs[j]) && Math.hypot(eqs[i].cx - eqs[j].cx, eqs[i].cy - eqs[j].cy) < 380) padre[raiz(i)] = raiz(j);
+                const grupos = new Map(); eqs.forEach((e, i) => { const r = raiz(i); if (!grupos.has(r)) grupos.set(r, []); grupos.get(r).push(e); });
+                const tramoCerca = (x, y) => { let mejor = null, dm = 1e9; for (const tr of tramos || []) for (const sg of tr.segs) { const mx = (sg.mu.a[0] + sg.mu.b[0]) / 2, my = (sg.mu.a[1] + sg.mu.b[1]) / 2, d = Math.hypot(mx - x, my - y); if (d < dm) { dm = d; mejor = { id: tr.segs[0].mu.id, lado: tr.lado }; } } return mejor; };
+                const out = [];
+                grupos.forEach(g => { if (g.length < 2) return; const cx = g.reduce((q, e) => q + e.cx, 0) / g.length, cy = g.reduce((q, e) => q + e.cy, 0) / g.length, pc = tramoCerca(cx, cy); out.push({ nombre: 'Zona de ' + (cat(g[0]) || 'máquinas'), categoria: cat(g[0]), n: g.length, ejemplos: g.slice(0, 3).map(e => e.nombre || e.nm || '').filter(Boolean), paredCercana: pc?.id || '', lado: pc?.lado || '', cx, cy }); });
+                objs.filter(o => o.tipo === 'zona' && o.plano !== 'pared' && o.plano !== 'techo' && Array.isArray(o.pts) && o.nombre && !/^Zona de (suelo|techo|pared)$/i.test(o.nombre)).forEach(o => {
+                  const poli = o.pts.map(p => [p[0] + o.cx - ox, p[1] + o.cy - oy]); if (!poli.some(p => puntoEnPoligono(p, sel.sa.pts))) return;
+                  const dentro = eqs.filter(e => puntoEnPoligono([e.cx, e.cy], poli)), cx = poli.reduce((q, p) => q + p[0], 0) / poli.length, cy = poli.reduce((q, p) => q + p[1], 0) / poli.length, pc = tramoCerca(cx, cy);
+                  out.push({ nombre: o.nombre, categoria: '', n: dentro.length, ejemplos: dentro.slice(0, 3).map(e => e.nombre || e.nm || '').filter(Boolean), paredCercana: pc?.id || '', lado: pc?.lado || '', cx, cy });
+                });
+                return out.slice(0, 12);
+              };
               const murosDeSala = (sel) => {
                 const pts = sel.sa.pts, n = pts.length, cx = pts.reduce((q, p) => q + p[0], 0) / n, cy = pts.reduce((q, p) => q + p[1], 0) / n, propios = [];
                 for (const mu of sel.pl.muros || []) {
@@ -6586,11 +6625,11 @@ export default function Visor3D({ cliente = false }) {
                   if (dmin <= (mu.t || 12) / 2 + 30) propios.push(mu);
                 }
                 const tramos = tramosDeMuros(propios).filter(t => t.L >= 80);
-                return { propios, tramos: tramos.slice(0, 14).map(tr => {
+                return { propios, tramosRaw: tramos, tramos: tramos.slice(0, 14).map(tr => {
                   const m1 = tr.segs[0].mu, mid = tr.segs[Math.floor(tr.segs.length / 2)].mu, mx = (mid.a[0] + mid.b[0]) / 2, my = (mid.a[1] + mid.b[1]) / 2, ang = Math.atan2(my - cy, mx - cx);
                   const lado = Math.abs(Math.cos(ang)) > Math.abs(Math.sin(ang)) ? (Math.cos(ang) > 0 ? 'este' : 'oeste') : (Math.sin(ang) > 0 ? 'sur' : 'norte');
                   const cerca = (sel.pl.equipos || []).filter(e => !e.cesped && Math.hypot(e.cx - mx, e.cy - my) < 260).slice(0, 3).map(e => e.nombre || e.nm || '').filter(Boolean);
-                  return { id: m1.id, largo: Math.round(tr.L), alto: Math.round(m1.h || api3d.current.modelo?.altura || 260), lado, aberturas: tr.segs.reduce((q, sg) => q + (sg.mu.ab || []).length, 0), cerca, curva: tr.curvo };
+                  tr.lado = lado; return { id: m1.id, largo: Math.round(tr.L), alto: Math.round(m1.h || api3d.current.modelo?.altura || 260), lado, aberturas: tr.segs.reduce((q, sg) => q + (sg.mu.ab || []).length, 0), cerca, curva: tr.curvo };
                 }) };
               };
               const cargaPiezas = async () => { const d = (await api.get('/biblioteca3d')).data || {}, todas = [...(d.modelos || []), ...(d.mios || [])]; return { piezas: todas.filter(m => m.url && m.w > 0 && m.d > 0 && !/^Camas$/i.test(m.categoria || '')).map(m => ({ id: m.id, nombre: m.nombre, categoria: m.categoria || '', w: m.w, d: m.d, alto: m.alto })), todas }; };
@@ -6600,33 +6639,35 @@ export default function Visor3D({ cliente = false }) {
                 try {
                   const pts = sel.sa.pts, xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
                   const area = Math.abs(pts.reduce((q, p, i) => { const r2 = pts[(i + 1) % pts.length]; return q + (p[0] * r2[1] - r2[0] * p[1]); }, 0)) / 2 / 1e4;
-                  const { piezas, todas } = await cargaPiezas(), ms = murosDeSala(sel).tramos, ctx = (await contextoModelo()).texto;
+                  const { piezas, todas } = await cargaPiezas(), mds = murosDeSala(sel), ms = mds.tramos, zonas = zonasDeMaquinas(sel, mds.tramosRaw), ctx = (await contextoModelo()).texto;
                   const nPuertas = (sel.pl.muros || []).reduce((q, mu) => q + (mu.ab || []).filter(o => /puerta/i.test((o.nm || '') + ' ' + (o.tip || ''))).length, 0);
-                  const r = await api.post('/estudio-ideas/sala', { medicionId: id, objetivo: ideasAmbBrief, sala: { nombre: sel.sa.nombre || '', area: Math.round(area * 10) / 10, largo: Math.max(...xs) - Math.min(...xs), ancho: Math.max(...ys) - Math.min(...ys), maquinas: (sel.pl.equipos || []).length, puertas: nPuertas }, muros: ms, piezas, suelos: SUELOS_TEC.map(t => ({ id: 'tex:' + t.id, nombre: t.nombre })), contexto: ctx, previas: ideasSala.map(q => q.titulo) }, { timeout: 240000 });
+                  const r = await api.post('/estudio-ideas/sala', { medicionId: id, objetivo: ideasAmbBrief, sala: { nombre: sel.sa.nombre || '', area: Math.round(area * 10) / 10, largo: Math.max(...xs) - Math.min(...xs), ancho: Math.max(...ys) - Math.min(...ys), maquinas: (sel.pl.equipos || []).length, puertas: nPuertas }, muros: ms, zonas: zonas.map(({ cx, cy, ...q }) => q), piezas, suelos: SUELOS_TEC.map(t => ({ id: 'tex:' + t.id, nombre: t.nombre })), contexto: ctx, previas: ideasSala.map(q => q.titulo) }, { timeout: 240000 });
                   const mapa = new Map(todas.map(m => [m.id, m]));
                   setIdeasSala((r.data.ideas || []).map(q => ({ ...q, decoracion: (q.decoracion || []).map(e => ({ ...e, modelo: e.libre ? libreModelo(e) : mapa.get(e.id) })).filter(e => e.modelo) })));
                 } catch (e) { setIdeasSalaErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
                 setIdeasSalaCarga(false);
               };
-              const aplicaSala = async (q, i) => {
-                const sel = salaSel(); if (!sel) return;
-                const hechas = []; const ipS = Math.max(0, (sel.pl.salas || []).indexOf(sel.sa)), claveS = sel.sa.idS || ('s' + ipS), claveT = sel.sa.idT || ('s' + ipS);
-                if (q.suelo) { const v = q.suelo.id || q.suelo.color; if (v) { setAcab(a => ({ ...a, salas: { ...a.salas, [claveS]: v } })); hechas.push('suelo'); } }
-                if (q.techo) { setAcab(a => ({ ...a, techos: { ...a.techos, [claveT]: q.techo.color } })); hechas.push('techo'); }
+              const aplicaSalaDirecto = async (q, i) => {
+                const sel = salaSel(); if (!sel) return {};
+                const capas = {}, hechas = []; const ipS = Math.max(0, (sel.pl.salas || []).indexOf(sel.sa)), claveS = sel.sa.idS || ('s' + ipS), claveT = sel.sa.idT || ('s' + ipS);
+                if (q.suelo) { const v = q.suelo.id || q.suelo.color; if (v) { setAcab(a => ({ ...a, salas: { ...a.salas, [claveS]: v } })); hechas.push('suelo'); capas.suelo = 'Suelo'; } }
+                if (q.techo) { setAcab(a => ({ ...a, techos: { ...a.techos, [claveT]: q.techo.color } })); hechas.push('techo'); capas.techoColor = 'Color del techo'; }
                 const todasMuros = (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(p => p?.muros || []);
                 let nM = 0;
                 // color base: todas las paredes de la sala (curvas incluidas) antes de dar el gesto a cada una
-                if (q.paredes) { const { propios } = murosDeSala(sel); setAcab(a => ({ ...a, muros: { ...a.muros, ...Object.fromEntries(propios.map(mu => [mu.id, q.paredes])) }, regiones: quitaRegiones(a.regiones, propios.map(mu => 'm:' + mu.id + ':')) })); hechas.push('todas las paredes'); }
+                if (q.paredes) { const { propios } = murosDeSala(sel); setAcab(a => ({ ...a, muros: { ...a.muros, ...Object.fromEntries(propios.map(mu => [mu.id, q.paredes])) }, regiones: quitaRegiones(a.regiones, propios.map(mu => 'm:' + mu.id + ':')) })); hechas.push('todas las paredes'); capas.pintura = 'Color de las paredes'; }
                 for (const m of q.muros || []) {
                   const mu = todasMuros.find(w => w.id === m.id); if (!mu) continue;
                   const h = await aplicaCapasTramo(m, mu, null); if (Object.keys(h).length) nM++;
+                  if (h.pintura) capas.pintura = 'Color de las paredes'; if (h.patron) capas.patron = 'Patrones pintados'; if (h.techo) capas.franja = 'Franja de techo'; if (h.luces) capas.luces = 'Luces LED'; if (h.revest) capas.revest = 'Revestimientos'; if (h.rotulo) capas.rotulo = 'Rótulos';
                 }
                 if (nM) hechas.push(nM + ' pared' + (nM === 1 ? '' : 'es'));
-                if ((q.decoracion || []).length) { aplicaDeco({ titulo: q.titulo, elementos: q.decoracion }, 'sala' + i); hechas.push('decoración'); }
+                if ((q.decoracion || []).length) { aplicaDeco({ titulo: q.titulo, elementos: q.decoracion }, 'sala' + i); hechas.push('decoración'); capas.deco = 'Decoración'; }
                 setIdeasSalaAplic(a => ({ ...a, [i]: hechas }));
                 // la idea queda anotada para el render con IA: ahí es donde las piezas sencillas (plantas, esculturas…) ganan todo su detalle
                 setIaTxt(t => ({ ...t, estancia: t.estancia || sel.sa.nombre || '', extra: ((t.extra ? t.extra + ' ' : '') + 'Idea de la sala «' + q.titulo + '»: ' + (q.idea || '') + ' ' + (q.descripcion || '') + ' Las plantas, esculturas, bancos y columnas de luz son piezas sencillas del modelo: dales detalle y materiales realistas.').slice(0, 900) }));
-                setAviso('«' + q.titulo + '» aplicado en esta sala: ' + hechas.join(', ') + ' ✓ (se guarda en el modelo)');
+                setAviso('Probando «' + q.titulo + '»: ' + hechas.join(', ') + '. Decide abajo si te lo quedas.');
+                return capas;
               };
               const aplicaPintura = (x) => { const mu = muroSel(); if (mu && x.pintura) setAcab(a => ({ ...a, muros: { ...a.muros, [mu.id]: x.pintura }, regiones: quitaRegiones(a.regiones, ['m:' + mu.id + ':']) })); };
               // lo que crea la IA lleva una etiqueta: al volver a aplicar, sustituye lo anterior de la misma pared en vez de acumularse encima
@@ -6722,14 +6763,28 @@ export default function Visor3D({ cliente = false }) {
                 const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', tv: 2, nombre: 'Rótulo «' + ro.texto.slice(0, 24) + '»', etiqueta: 'Textos', cx: r.cx + pmR.ox, cy: r.cy + pmR.oy, rot: r.rot, w: ancho, d: 2, alto, ratio: norm.alto / 100, z0: Math.max(0, Math.round(ro.alturaCentro - alto / 2)) + pmR.z, plano: 'vertical', color: ro.neon ? ro.color + '!' : ro.color, formas: norm.formas, texto: ro.texto, fuente: ro.fuente };
                 ponIA(nuevo, 'm:' + mu.id + ':rot'); return true;
               };
-              const aplicaIdea = async (x, i, partes) => {
-                const mu0 = muroSel(); if (!mu0) return;
-                const h = await aplicaCapasTramo(x, mu0, partes), hechas = [];
-                if (h.pintura) hechas.push('pintura'); if (h.patron) hechas.push('patrón pintado'); if (h.techo) hechas.push(x.techo?.led ? 'franja de techo luminosa' : 'franja de techo');
-                if (h.luces) hechas.push(x.luces?.length > 1 ? 'tiras LED' : 'tira LED'); if (h.revest) hechas.push(x.revestimientos?.length > 1 ? 'revestimientos' : 'revestimiento'); if (h.rotulo) hechas.push('rótulo');
-                setIdeasMuroAplic(a => ({ ...a, [i]: [...(a[i] || []), ...hechas] }));
-                if (hechas.length) setAviso('«' + x.titulo + '»: ' + hechas.join(', ') + ' aplicado en el 3D ✓' + (tramoDe(mu0.id)?.segs.length > 1 ? ' (a toda la pared, siguiendo su línea)' : '') + ' · se guarda en el modelo');
+              // ── probar: se aplica para VER cómo queda; se decide después si se guarda (todo o por capas) o se descarta
+              const probar = async (titulo, fn, fav) => {
+                const previa0 = previaRef.current, base = previa0 ? previa0.snap : { acab, objs };
+                if (previa0) { setAcab(base.acab); setObjs(base.objs); }
+                previaRef.current = { titulo, snap: base, capas: {}, fav }; setPrevia({ titulo, capas: {}, marcadas: {}, fav });
+                const capas = await fn() || {};
+                if (!Object.keys(capas).length) { previaRef.current = null; setPrevia(null); setAviso('Esa propuesta no ha cambiado nada en esta pared/sala.'); return; }
+                previaRef.current.capas = capas; setPrevia({ titulo, capas, marcadas: Object.fromEntries(Object.keys(capas).map(k => [k, true])), fav });
               };
+              const aplicaIdea = (x, i, partes) => probar(x.titulo, async () => {
+                const mu0 = muroSel(); if (!mu0) return {};
+                const h = await aplicaCapasTramo(x, mu0, partes), capas = {};
+                if (h.pintura) capas.pintura = 'Color de la pared'; if (h.patron) capas.patron = 'Patrón pintado'; if (h.techo) capas.franja = x.techo?.led ? 'Franja de techo luminosa' : 'Franja de techo';
+                if (h.luces) capas.luces = 'Luces LED'; if (h.revest) capas.revest = 'Revestimiento'; if (h.rotulo) capas.rotulo = 'Rótulo';
+                setIdeasMuroAplic(a => ({ ...a, [i]: Object.values(capas) }));
+                return capas;
+              }, { tipo: 'muro', titulo: x.titulo, idea: x, muroId: selAcab?.id });
+              const claveSalaActual = () => { const sel = salaSel(); return sel ? (sel.sa.idS || ('s' + Math.max(0, (sel.pl.salas || []).indexOf(sel.sa)))) : ''; };
+              const probarSala = (q, i) => probar(q.titulo, () => aplicaSalaDirecto(q, i), { tipo: 'sala', titulo: q.titulo, idea: q, salaKey: claveSalaActual() });
+              const probarDeco = (x, i) => probar(x.titulo, async () => { aplicaDeco(x, i); return { deco: 'Decoración' }; }, { tipo: 'deco', titulo: x.titulo, idea: x, salaKey: claveSalaActual() });
+              // propuestas guardadas para comparar: se pueden volver a probar cuando estés en esa misma pared o sala
+              const probarFav = (fv) => { if (fv.tipo === 'muro') aplicaIdea(fv.idea, 'fav', null); else if (fv.tipo === 'sala') probarSala(fv.idea, 'fav'); else if (fv.tipo === 'deco') probarDeco(fv.idea, 'fav'); };
               const aplicaGlobal = (x) => setAcab(a => ({ ...a, muros: x.muros ? {} : a.muros, todosMuros: x.muros || a.todosMuros, salas: x.suelo ? {} : a.salas, todosSuelos: x.suelo || a.todosSuelos, techos: x.techo ? {} : a.techos, todosTechos: x.techo || a.todosTechos }));
               return (
                 <div style={{ borderBottom: '1px solid #333', marginBottom: 8, paddingBottom: 8 }}>
@@ -6744,6 +6799,22 @@ export default function Visor3D({ cliente = false }) {
                     {!esMuro && <button style={{ ...btn, background: '#6b6159' }} disabled={ideasAmbCarga} onClick={() => pideIdeas('suelo')}>{ideasAmbCarga && ideasAmbTipo !== 'global' ? 'Pensando…' : 'Ideas para este suelo'}</button>}
                     <button style={{ ...btn, background: '#8c8076', fontWeight: 700 }} disabled={ideasSalaCarga} onClick={pideIdeasSala} title="Un concepto completo SOLO para esta sala: suelo, techo, cada pared con su papel (una focal), luces y decoración, con una idea diferencial">{ideasSalaCarga ? 'Pensando… (puede tardar un minuto)' : '🎯 Concepto completo de esta sala'}</button>
                   </div>
+                  {(() => {
+                    const sk = claveSalaActual(), lista = favs.filter(fv => (fv.tipo === 'muro' ? esMuro && fv.muroId === selAcab.id : fv.salaKey === sk));
+                    if (!lista.length) return null;
+                    return (
+                      <div style={{ background: '#2f2a22', border: '1px solid #8c7a4f', borderRadius: 6, padding: 8, marginTop: 6 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>⭐ Mis propuestas ({lista.length}) <span style={{ fontWeight: 400, opacity: 0.6 }}>· para comparar</span></div>
+                        {lista.map(fv => (
+                          <div key={fv.id} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
+                            <span style={{ flex: 1, fontSize: 11.5 }}>{{ muro: '🧱', sala: '🎯', deco: '🪴' }[fv.tipo]} {fv.titulo}</span>
+                            <button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => probarFav(fv)}>👁 Probar</button>
+                            <button style={{ ...btn, padding: '2px 8px', fontSize: 11 }} onClick={() => quitaFav(fv.id)}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   {ideasSalaErr && <div style={{ color: '#ff9b9b', fontSize: 11, marginTop: 4 }}>{ideasSalaErr}</div>}
                   {!ideasSalaCarga && ideasSala.map((q, i) => (
                     <div key={'s' + i} style={{ background: '#2a2a2a', borderRadius: 6, padding: 8, marginTop: 6, border: '1px solid #6b6159' }}>
@@ -6761,7 +6832,7 @@ export default function Visor3D({ cliente = false }) {
                         {(q.muros || []).map((m, k) => <div key={k}>🧱 Pared {m.rol === 'focal' ? '★ focal' : m.rol === 'neutro' ? 'neutra' : 'de apoyo'}: {[m.pintura && 'pintura ' + m.pintura, m.patron?.length && 'patrón', m.revestimientos?.length && m.revestimientos.map(r => r.nombre).join(' + '), m.rotulo && '«' + m.rotulo.texto + '»' + (m.rotulo.neon ? ' neón' : ''), m.techo && 'franja de techo' + (m.techo.led ? ' luminosa' : ''), m.luces?.length && 'luz LED'].filter(Boolean).join(' · ')}</div>)}
                         {(q.decoracion || []).length > 0 && <div>🪴 {q.decoracion.map(e => (e.cantidad > 1 ? e.cantidad + '× ' : '') + e.nombre).join(', ')}</div>}
                       </div>
-                      <button style={{ ...btn, background: '#8c8076' }} onClick={() => aplicaSala(q, i)}>Aplicar concepto a la sala</button>
+                      <button style={{ ...btn, background: '#8c8076' }} onClick={() => probarSala(q, i)}>👁 Probar en la sala</button> <button style={btn} onClick={() => { guardaFav({ tipo: 'sala', titulo: q.titulo, idea: q, salaKey: claveSalaActual() }); setAviso('Guardada para comparar: «' + q.titulo + '»'); }}>⭐ Guardar para comparar</button>
                       {(ideasSalaAplic[i] || []).length > 0 && <div style={{ fontSize: 11, color: '#8fdba0', marginTop: 4 }}>Aplicado: {ideasSalaAplic[i].join(', ')}. Ctrl+Z deshace los objetos; los colores se quitan con «Quitar color».</div>}
                     </div>
                   ))}
@@ -6772,7 +6843,7 @@ export default function Visor3D({ cliente = false }) {
                       <div style={{ fontSize: 11.5, opacity: 0.88, lineHeight: 1.4, marginBottom: 4 }}>{x.descripcion}</div>
                       {x.referencia && <div style={{ fontSize: 11, opacity: 0.6, lineHeight: 1.35, marginBottom: 4 }}>📌 {x.referencia}</div>}
                       <div style={{ fontSize: 11.5, lineHeight: 1.5, marginBottom: 6 }}>{x.elementos.map((e, k) => <div key={k}>{e.cantidad > 1 ? e.cantidad + '× ' : ''}{e.nombre} · {{ esquina: 'en esquina', pared: 'en la pared', entrada: 'junto a la puerta', centro: 'en el centro' }[e.ubicacion]}</div>)}</div>
-                      <button style={{ ...btn, background: '#8c8076' }} onClick={() => aplicaDeco(x, i)}>Colocar en la sala</button>
+                      <button style={{ ...btn, background: '#8c8076' }} onClick={() => probarDeco(x, i)}>👁 Probar en la sala</button> <button style={btn} onClick={() => { guardaFav({ tipo: 'deco', titulo: x.titulo, idea: x, salaKey: claveSalaActual() }); setAviso('Guardada para comparar: «' + x.titulo + '»'); }}>⭐ Guardar para comparar</button>
                       {ideasDecoAplic[i] && <div style={{ fontSize: 11, color: '#8fdba0', marginTop: 4 }}>Colocadas {ideasDecoAplic[i].n}{ideasDecoAplic[i].sin ? ' (' + ideasDecoAplic[i].sin + ' sin sitio)' : ''}. Cada pieza se puede mover o borrar; Ctrl+Z lo deshace.</div>}
                     </div>
                   ))}
@@ -6794,13 +6865,14 @@ export default function Visor3D({ cliente = false }) {
                         {x.rotulo && <div>✍️ «{x.rotulo.texto}» · {x.rotulo.fuente}{x.rotulo.neon ? ' · neón' : ''}</div>}
                       </div>
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        <button style={{ ...btn, background: '#8c8076' }} onClick={() => aplicaIdea(x, i, ['pintura', 'patron', 'techo', 'luces', 'revest', 'rotulo'])}>Aplicar idea completa</button>
+                        <button style={{ ...btn, background: '#8c8076' }} onClick={() => aplicaIdea(x, i, ['pintura', 'patron', 'techo', 'luces', 'revest', 'rotulo'])}>👁 Probar idea completa</button>
                         {x.pintura && <button style={btn} onClick={() => aplicaIdea(x, i, ['pintura'])}>Solo color</button>}
                         {x.patron?.length > 0 && <button style={btn} onClick={() => aplicaIdea(x, i, ['patron'])}>Solo patrón</button>}
                         {x.techo && <button style={btn} onClick={() => aplicaIdea(x, i, ['techo'])}>Solo techo</button>}
                         {x.luces?.length > 0 && <button style={btn} onClick={() => aplicaIdea(x, i, ['luces'])}>Solo luces</button>}
                         {x.revestimientos?.length > 0 && <button style={btn} onClick={() => aplicaIdea(x, i, ['revest'])}>Solo revestimiento</button>}
                         {x.rotulo && <button style={btn} onClick={() => aplicaIdea(x, i, ['rotulo'])}>Solo rótulo</button>}
+                        <button style={btn} onClick={() => { guardaFav({ tipo: 'muro', titulo: x.titulo, idea: x, muroId: selAcab?.id }); setAviso('Guardada para comparar: «' + x.titulo + '»'); }}>⭐ Guardar para comparar</button>
                       </div>
                       {(ideasMuroAplic[i] || []).length > 0 && <div style={{ fontSize: 11, color: '#8fdba0', marginTop: 4 }}>Aplicado: {[...new Set(ideasMuroAplic[i])].join(', ')}. Se puede deshacer con Ctrl+Z o borrando el objeto.</div>}
                     </div>
@@ -7904,6 +7976,20 @@ export default function Visor3D({ cliente = false }) {
           })()}
           <div>Estado: {seleccion.estado === 'ex' ? 'existente' : 'nuevo'}</div>
           <button style={{ ...btn, marginTop: 8 }} onClick={() => setSeleccion(null)}>Cerrar</button>
+        </div>
+      )}
+      {previa && (
+        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 18, zIndex: 25, background: 'rgba(24,21,18,0.97)', color: '#fff', border: '1px solid #8c8076', borderRadius: 12, padding: '10px 14px', maxWidth: 'min(720px, calc(100vw - 40px))', boxShadow: '0 8px 30px rgba(0,0,0,0.5)', fontSize: 13 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>👁 Probando «{previa.titulo}» <span style={{ fontWeight: 400, opacity: 0.65 }}>· todavía no está guardado</span></div>
+          {Object.keys(previa.capas).length > 0 && <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+            {Object.entries(previa.capas).map(([k, et]) => <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, cursor: 'pointer' }}><input type="checkbox" checked={previa.marcadas[k] !== false} onChange={e => setPrevia(p => ({ ...p, marcadas: { ...p.marcadas, [k]: e.target.checked } }))} /> {et}</label>)}
+          </div>}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button style={{ ...btn, background: '#4f8a4f', fontWeight: 700 }} onClick={() => cierraPrevia(true)}>✓ Quedarme con lo marcado</button>
+            <button style={{ ...btn, background: '#7a2b2b' }} onClick={() => cierraPrevia(false)}>✕ Descartar todo</button>
+            {previa.fav && <button style={btn} onClick={() => { guardaFav(previa.fav); setAviso('Guardada para comparar: «' + previa.titulo + '»'); }}>⭐ Guardar para comparar</button>}
+          </div>
+          <div style={{ opacity: 0.55, fontSize: 11, marginTop: 5 }}>Desmarca lo que no te guste y pulsa «Quedarme con lo marcado»: solo se guarda lo marcado. Puedes probar otra propuesta y la actual se descarta.</div>
         </div>
       )}
       {estado === 'cargando' && <p style={{ position: 'absolute', top: '45%', width: '100%', textAlign: 'center', color: '#555' }}>Cargando…</p>}
