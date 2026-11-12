@@ -538,6 +538,16 @@ export async function medirModelo(m) {
 function repararMateriales(raiz) {
   try { return repararMateriales0(raiz); } catch (e) { console.warn('repararMateriales', e); return raiz; }
 }
+const TEX_MAX = 1024;
+const reduceTextura = (t) => {
+  try {
+    const im = t?.image; if (!im || t.userData?.reducida) return; const w = im.width || im.naturalWidth || 0, h = im.height || im.naturalHeight || 0;
+    if (Math.max(w, h) <= TEX_MAX || t.isCompressedTexture || t.isCubeTexture) return;
+    const k = TEX_MAX / Math.max(w, h), cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(w * k)); cv.height = Math.max(1, Math.round(h * k));
+    const cx = cv.getContext('2d'); cx.imageSmoothingQuality = 'high'; cx.drawImage(im, 0, 0, cv.width, cv.height);
+    t.image = cv; t.userData.reducida = true; t.needsUpdate = true;
+  } catch { /* se deja como estaba */ }
+};
 function repararMateriales0(raiz) {
   const vistos = new Set();
   raiz.traverse(o => {
@@ -548,6 +558,7 @@ function repararMateriales0(raiz) {
       if (mt.color && !mt.map && !mt.vertexColors && mt.color.r + mt.color.g + mt.color.b < 0.02 && !mt.emissiveMap && !(mt.emissive && mt.emissive.getHex() > 0)) mt.color.setRGB(0.12, 0.12, 0.12);
       // los modelos generados desde fotos sin color vienen blancos y 100 % metálicos: sin reflejos del entorno salían negros
       if (mt.color && !mt.map && !mt.metalnessMap && mt.metalness > 0.7 && mt.color.r + mt.color.g + mt.color.b > 2.4) { mt.metalness = 0.1; mt.roughness = Math.max(mt.roughness ?? 0.5, 0.6); mt.color.setRGB(0.74, 0.74, 0.74); }
+      ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'].forEach(k => { if (mt[k]) reduceTextura(mt[k]); });
       mt.needsUpdate = true;
     });
   });
@@ -2283,7 +2294,23 @@ export default function Visor3D({ cliente = false }) {
     };
     const vR2 = new THREE.Vector2(); const teclas = new Set(); let ultimoT = performance.now(), ultSombra = 0, ultMov = 0, ultLod = 0, enMov = false, ema = 16, escala = 1, ultGob = performance.now(), sinSombras = false;
     let gpuNombre = ''; try { const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); const bruto = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : ''); GL_SOFTWARE = /basic render|swiftshader|llvmpipe|software/i.test(bruto); gpuNombre = bruto.replace(/ANGLE (|)$/g, '').replace(/Direct3D.*|vs_.*|(0x[0-9a-f]+)/gi, '').slice(0, 42); } catch { /* sin datos */ }
-    const hud = document.createElement('div'); hud.style.cssText = 'position:absolute;left:8px;bottom:8px;font:11px monospace;color:#fff;background:rgba(0,0,0,0.45);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:5'; el.appendChild(hud); if (cliente) hud.style.display = 'none';
+    const hud = document.createElement('div'); hud.style.cssText = 'position:absolute;left:8px;bottom:8px;font:11px monospace;color:#fff;background:rgba(0,0,0,0.45);padding:2px 6px;border-radius:4px;pointer-events:auto;cursor:pointer;z-index:5'; hud.title = 'Pulsa para ver qué es lo que más pesa en la escena'; el.appendChild(hud); if (cliente) hud.style.display = 'none';
+    const det = document.createElement('div'); det.style.cssText = 'position:absolute;left:8px;bottom:34px;font:11px monospace;color:#fff;background:rgba(0,0,0,0.78);padding:6px 9px;border-radius:6px;z-index:6;white-space:pre;display:none;max-width:90%;cursor:pointer'; el.appendChild(det); det.onclick = () => { det.style.display = 'none'; };
+    hud.onclick = () => {
+      if (det.style.display === 'block') { det.style.display = 'none'; return; }
+      const cuenta = new Map(); let llamadas = 0, tri = 0; const mats = new Set();
+      const visible = (o) => { for (let q = o; q; q = q.parent) if (!q.visible) return false; return true; };
+      scene.traverse(o => {
+        if (!o.isMesh || !o.visible || !visible(o)) return;
+        let q = o, cap = ''; while (q) { cap = q.userData?.capa || (q.userData?.equipo ? 'equipos' : '') || (q.userData?.oid ? 'objetos' : '') || cap; q = q.parent; if (cap) break; }
+        const mm = Array.isArray(o.material) ? o.material.length : 1, tr = o.geometry?.index ? o.geometry.index.count / 3 : (o.geometry?.attributes?.position?.count || 0) / 3;
+        const e = cuenta.get(cap || 'otros') || { m: 0, t: 0 }; e.m += mm; e.t += tr; cuenta.set(cap || 'otros', e); llamadas += mm; tri += tr;
+        (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m && mats.add(m.uuid));
+      });
+      const inf = renderer.info, filas = [...cuenta.entries()].sort((a, b) => b[1].m - a[1].m).map(([k, v]) => k.padEnd(12) + String(v.m).padStart(6) + ' piezas ' + String(Math.round(v.t / 1000)).padStart(6) + 'k triáng.').join('\n');
+      det.textContent = 'QUÉ PESA (lo que se ve ahora)\n' + filas + '\nTotal: ' + llamadas + ' piezas · ' + Math.round(tri / 1000) + 'k triángulos · ' + mats.size + ' materiales\nEn la tarjeta: ' + inf.memory.textures + ' texturas · ' + inf.memory.geometries + ' geometrías' + '\nPulsa para cerrar';
+      det.style.display = 'block';
+    };
     const vF = new THREE.Vector3(), vR = new THREE.Vector3(), vM = new THREE.Vector3(), ARRIBA = new THREE.Vector3(0, 1, 0);
     const bucle = () => {
       if (!vivo) return; raf = requestAnimationFrame(bucle);
