@@ -2065,6 +2065,12 @@ export default function Visor3D({ cliente = false }) {
   useEffect(() => { selAcabRef.current = selAcab; }, [selAcab]);
   useEffect(() => { objsRef.current = objs; }, [objs]);
   useEffect(() => { herrRef.current = herr; }, [herr]);
+  // Como en SketchUp: con una herramienta de dibujo activa, arrastrar con el botón izquierdo DIBUJA (no gira la vista); para girar se pulsa la rueda y se mueve el ratón
+  useEffect(() => {
+    const a = api3d.current; if (!a.ctrl) return;
+    const dibuja = ['poli', 'zonaS', 'zonaT', 'zonaP', 'muro', 'caja', 'guia', 'sigue', 'carril', 'led', 'empujar'].includes(herr);
+    a.ctrl.mouseButtons.LEFT = dibuja ? null : THREE.MOUSE.ROTATE;
+  }, [herr, estado]);
   const seleccionRef = useRef(null);
   const acabRef = useRef(null);
   const rodapieRef = useRef({});
@@ -5171,7 +5177,7 @@ export default function Visor3D({ cliente = false }) {
   };
   const menuRail = (abierto, setAbierto, boton, contenido, ancho) => <MenuRail key={'m' + (boton.key || '')} abierto={abierto} ancho={ancho} boton={boton}>{contenido}</MenuRail>;
   const AYUDA_HERR = {
-    sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo'], poli: ['Dibujar forma', 'Rectángulo y círculo: arrastra · Polígono: clic a clic, Enter cierra · después tira hacia arriba para darle altura'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de la forma para darle altura'],
+    sel: null, caja: ['Caja', 'Arrastra sobre el suelo para dibujar el rectángulo · Para girar la vista: pulsa la rueda y muévelo'], poli: ['Dibujar forma', 'Rectángulo y círculo: arrastra · Polígono: clic a clic, Enter cierra · después tira hacia arriba para darle altura'], empujar: ['Empujar/Tirar', 'Arrastra la cara de arriba de la forma para darle altura'],
     muro: ['Muro', 'Clic para empezar y cada punto; Mayús = recto; Enter termina'], zonaS: ['Zona en suelo', 'Clic punto a punto; Enter cierra'], zonaT: ['Zona en techo', 'Clic punto a punto; Enter cierra'], zonaP: ['Zona en pared', 'Clic punto a punto sobre una pared; Enter cierra'],
     vistaM: ['Alzado de un muro', 'Pulsa el muro del que quieres ver el alzado (vista de frente) para dibujar y colocar materiales'], vistaS: ['Planta de un suelo', 'Pulsa el suelo del que quieres ver la planta (vista desde arriba)'], vistaT: ['Planta de un techo', 'Pulsa el suelo de la sala de la que quieres ver el techo desde abajo'],
     revest: ['Revestimiento', 'Pulsa el muro donde lo quieres (Mayús = seguir poniéndolo en más muros). Después ajustas las medidas en la ficha'],
@@ -5524,7 +5530,7 @@ export default function Visor3D({ cliente = false }) {
       {AYUDA_HERR[herr] && (
         <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', background: 'rgba(22,20,18,0.95)', color: '#fff', borderRadius: 18, padding: '5px 14px', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', zIndex: 6, maxWidth: '70vw', boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
           <b>{AYUDA_HERR[herr][0]}</b><span style={{ opacity: 0.75 }}>{AYUDA_HERR[herr][1]}</span>
-          {['poli', 'zonaS', 'zonaT', 'sigue', 'carril', 'led'].includes(herr) && <><span style={{ opacity: 0.6 }}>Mayús = recto · escribe una medida y Enter · Retroceso borra el último punto</span>{medidaMuro && <b style={{ color: '#d4c9bb' }}>{medidaMuro}</b>}</>}
+          {['poli', 'zonaS', 'zonaT', 'sigue', 'carril', 'led'].includes(herr) && <><span style={{ opacity: 0.6 }}>Mayús = recto · escribe una medida y Enter · Retroceso borra el último punto · Para girar la vista: pulsa la rueda del ratón y muévelo</span>{medidaMuro && <b style={{ color: '#d4c9bb' }}>{medidaMuro}</b>}</>}
           {herr === 'muro' && <><select value={grosorMuro} onChange={e => setGrosorMuro(parseInt(e.target.value, 10))} style={bTop} title="Grosor del muro">{[7, 10, 12, 15, 20, 25, 30].map(g => <option key={g} value={g}>{g} cm</option>)}</select>{medidaMuro && <b style={{ color: '#d4c9bb' }}>{medidaMuro}</b>}</>}
           {herr === 'luz' && <select value={kindLuz} onChange={e => setKindLuz(e.target.value)} style={bTop}><option value="foco">Foco empotrado</option><option value="spot">Spot orientable</option><option value="plaf">Plafón</option><option value="colg">Colgante</option><option value="aplq">Aplique</option><option value="pie">Lámpara de pie</option><option value="suel">Empotrado de suelo</option></select>}
           {herr === 'focoC' && <select value={kindFoco} onChange={e => setKindFoco(e.target.value)} style={bTop}>{Object.entries(TIPOS_FOCO).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>}
