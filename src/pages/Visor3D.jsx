@@ -1965,6 +1965,23 @@ export default function Visor3D({ cliente = false }) {
   }, [refinar, estado]); // eslint-disable-line react-hooks/exhaustive-deps
   const [pestanaRender, setPestanaRender] = useState('ambiente');
   const [modoAmb, setModoAmb] = useState(null); // geo | custom | hdri (si no se ha elegido, se deduce del entorno)
+  // Modo edición ligero: calidad baja, sin efectos ni aristas y solo la planta que estás mirando; al apagarlo vuelve todo a como estaba
+  const [ligero, setLigero] = useState(false); const antesLigero = useRef(null);
+  const alternaLigero = () => {
+    const A = api3d.current;
+    if (!ligero) {
+      const m = A.modelo, pls = m?.plantas || (m ? [m] : []), c = A.ctrl?.target;
+      const ip = m && c ? plantaDeCamara(m, A.offsPl, [], c.x, c.z, c.y) : 0;
+      antesLigero.current = { realista, calidad, aristas, refinar, ocultas: ocultas.filter(x => x.startsWith('planta:')) };
+      setRealista(false); setCalidad('baja'); setAristas(false); setRefinar(false);
+      if (pls.length > 1) setOcultas(o => [...o.filter(x => !x.startsWith('planta:')), ...pls.map((_, j) => j).filter(j => j !== ip).map(j => 'planta:' + j)]);
+      setLigero(true); setAviso('Modo ligero: calidad baja, sin efectos ni aristas' + (pls.length > 1 ? ' y solo la planta que estás mirando' : '') + '. Pulsa «Ligero» otra vez para volver a como estaba.');
+    } else {
+      const p = antesLigero.current; antesLigero.current = null;
+      if (p) { setRealista(p.realista); setCalidad(p.calidad); setAristas(p.aristas); setRefinar(p.refinar); setOcultas(o => [...o.filter(x => !x.startsWith('planta:')), ...p.ocultas]); }
+      setLigero(false); setAviso('Modo ligero apagado: todo vuelve a como estaba.');
+    }
+  };
   const [aristas, setAristas] = useState(() => { try { return localStorage.getItem('visor3dAristas') === '1'; } catch { return false; } });
   const [tono, setTono] = useState(() => { try { return localStorage.getItem('visor3dTono') || 'aces'; } catch { return 'aces'; } });
   useEffect(() => {
@@ -5517,6 +5534,7 @@ export default function Visor3D({ cliente = false }) {
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">Ambiente</button>
         <button style={{ ...bTop, ...(renderAbierto ? bOn : { background: '#8c8076' }), fontWeight: 700 }} onClick={() => { setRenderAbierto(v => !v); setSelObj(null); setSeleccion(null); }} title="Panel de render: luz, color, efectos y calidad de la imagen final">Render</button>
         <span style={{ flex: 1, minWidth: 8 }} />
+        <button style={{ ...bTop, ...(ligero ? { background: '#3f7d3a' } : {}) }} onClick={alternaLigero} title="Para editar sin que se ralentice: calidad baja, sin efectos ni aristas y solo la planta que estás mirando. Púlsalo otra vez para volver a como estaba">⚡ Ligero</button>
         <button style={{ ...bTop, ...(aristas ? { background: '#6b6159' } : {}) }} onClick={() => setAristas(v => !v)} title="Dibuja las aristas (los cantos) de muros, máquinas y objetos, como en SketchUp">Aristas</button>
         <button style={{ ...bTop, ...(realista ? { background: '#6b6159' } : {}) }} onClick={() => setRealista(v => !v)} title="Reflejos, sombras de contacto y bordes suaves. Si va lento, apágalo">Realista</button>
         <select style={bTop} value={calidad} onChange={e => setCalidad(e.target.value)} title="Si va lento, baja la calidad"><option value="baja">Calidad baja</option><option value="media">Calidad media</option><option value="alta">Calidad alta</option></select>
