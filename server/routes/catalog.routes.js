@@ -566,8 +566,8 @@ async function generaModelo3DPieza(id, body) {
       const medidas = dim.every(x => x > 0) ? 'largo ' + dim[0] + ' cm, fondo ' + dim[1] + ' cm, alto ' + dim[2] + ' cm' : '';
       glb = await glbConChatGPT(fotosGpt, String(pr.name || body?.nombre || 'Producto').slice(0, 80), medidas); metodo = 'ChatGPT (modelado por piezas)'; usadas = fotosGpt.length;
     } catch (e) {
-      console.error('3D con ChatGPT falló' + (body?.soloChatGPT ? '' : ', se usa Hunyuan') + ':', String(e.message || e).slice(0, 200)); glb = null;
-      if (body?.soloChatGPT) throw new ErrorAmable(502, /credit|billing|quota/i.test(String(e.message || '')) ? 'Sin crédito en OpenAI: añade saldo en platform.openai.com → Billing' : 'ChatGPT no ha podido: ' + String(e.message || e).slice(0, 120)); // en lote no se sustituye lo que hay por un modelo peor
+      console.error('3D con ChatGPT falló' + (body?.soloChatGPT === false ? ', se usa Hunyuan' : '') + ':', String(e.message || e).slice(0, 200)); glb = null;
+      if (body?.soloChatGPT !== false) throw new ErrorAmable(502, /credit|billing|quota/i.test(String(e.message || '')) ? 'Sin crédito en OpenAI: añade saldo en platform.openai.com → Billing' : 'ChatGPT no ha podido: ' + String(e.message || e).slice(0, 120)); // en lote no se sustituye lo que hay por un modelo peor
     }
   }
   if (!glb) { const r3 = await glbDesdeFotos(todas); glb = r3.glb; metodo = r3.metodo; usadas = r3.usadas; }
