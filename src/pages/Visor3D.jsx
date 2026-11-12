@@ -772,9 +772,12 @@ async function alinearConBloque(raw, planta, L, F) {
   if (area < 20) return null;
   // 2) triángulos del modelo en planta (x, z)
   raw.updateMatrixWorld(true); const tr = []; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; const v = new THREE.Vector3();
+  // el límite de triángulos es del modelo ENTERO (antes era por pieza: un modelo con cientos de piezas, como los de SketchUp, tardaba decenas de segundos y colgaba la página)
+  let triTotal = 0; raw.traverse(m => { if (m.isMesh && m.geometry?.attributes?.position) triTotal += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; });
+  const pasoGlobal = Math.max(1, Math.floor(triTotal / 6000)) * 3;
   raw.traverse(m => {
     if (!m.isMesh || !m.geometry?.attributes?.position) return;
-    const P = m.geometry.attributes.position, I = m.geometry.index, n = I ? I.count : P.count, paso = Math.max(1, Math.floor(n / 3 / 7000)) * 3;
+    const P = m.geometry.attributes.position, I = m.geometry.index, n = I ? I.count : P.count, paso = pasoGlobal;
     const get = k => { const j = I ? I.getX(k) : k; v.fromBufferAttribute(P, j).applyMatrix4(m.matrixWorld); return [v.x, v.z]; };
     for (let k = 0; k + 2 < n; k += paso) { const a = get(k), b = get(k + 1), c = get(k + 2); tr.push(a, b, c); for (const p of [a, b, c]) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); z0 = Math.min(z0, p[1]); z1 = Math.max(z1, p[1]); } }
   });
