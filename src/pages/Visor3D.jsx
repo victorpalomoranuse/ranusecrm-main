@@ -2117,9 +2117,9 @@ export default function Visor3D({ cliente = false }) {
   // Como en SketchUp: con una herramienta de dibujo activa, arrastrar con el botón izquierdo DIBUJA (no gira la vista); para girar se pulsa la rueda y se mueve el ratón
   useEffect(() => {
     const a = api3d.current; if (!a.ctrl) return;
-    const dibuja = ['poli', 'zonaS', 'zonaT', 'zonaP', 'muro', 'caja', 'guia', 'sigue', 'carril', 'led', 'empujar'].includes(herr);
+    const dibuja = ['poli', 'zonaS', 'zonaT'].includes(herr) && formaDib !== 'poli';
     a.ctrl.mouseButtons.LEFT = dibuja ? null : THREE.MOUSE.ROTATE;
-  }, [herr, estado]);
+  }, [herr, estado, formaDib]);
   const seleccionRef = useRef(null);
   const acabRef = useRef(null);
   const rodapieRef = useRef({});
@@ -2948,7 +2948,13 @@ export default function Visor3D({ cliente = false }) {
         return;
       }
       if (poliAbajo) {
-        const d0 = Math.hypot(e.clientX - poliAbajo[0], e.clientY - poliAbajo[1]); poliAbajo = null;
+        const ini0 = poliAbajo, d0 = Math.hypot(e.clientX - poliAbajo[0], e.clientY - poliAbajo[1]); poliAbajo = null;
+        // arrastrar con el izquierdo dibuja el rectángulo u óvalo de una vez (de donde se pulsa a donde se suelta)
+        if (d0 >= 4 && ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli') {
+          const p1 = puntoSuelo(e), p0 = poli.length === 1 ? poli[0] : puntoSuelo({ clientX: ini0[0], clientY: ini0[1] });
+          if (p0 && p1 && Math.hypot(p1.x - p0.x, p1.y - p0.y) > 5) { poli = puntosForma(formaRef.current, p0.x, p0.y, p1.x, p1.y).map(([x, y]) => ({ x, y })); cerrarPoli(); }
+          return;
+        }
         if (d0 < 4) {
           // Rectángulo, círculo y polígono: si el primer clic cae en una pared, la forma se dibuja sobre esa pared (como en SketchUp); en el suelo sigue creando el volumen
           if (herrRef.current === 'poli' && poli.length === 0) {
