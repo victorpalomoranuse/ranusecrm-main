@@ -8,6 +8,8 @@ import api from '../services/api';
 // (yaw); el azimut del mundo θ = atan2(x, z) se corresponde con la longitud del visor lon = π + yaw − θ (comprobado con una escena de prueba).
 const OSCURO = '#141210', ORO = '#c9a46c';
 const LAT_FLECHA = -0.3;
+// Visor fijo, sin deformaciones: apertura constante (no hay zoom), mirada limitada para no llegar a los polos de la panorámica (donde se estira) y transición de «caminar»
+const LAT_MAX = 0.5, HFOV = 80 * Math.PI / 180;
 
 export function TourPublico() {
   const { id, firma } = useParams();
@@ -33,8 +35,8 @@ export function TourPublico() {
     const c = datos.paradas[actualRef.current], p = datos.paradas[i];
     // al avanzar se mira hacia donde se camina; al saltar desde el minimapa o la barra, hacia el frente de la panorámica
     const lon = desde ? Math.PI + p.yaw - Math.atan2(p.x - c.x, p.z - c.z) : Math.PI;
-    actualRef.current = i; setActual(i); setCargando(true);
-    vis.current.mostrar?.(i, lon).then(() => setCargando(false));
+    const de = actualRef.current; actualRef.current = i; setActual(i); setCargando(true);
+    vis.current.mostrar?.(i, lon, desde ? { caminar: true, lonA: Math.PI + c.yaw - Math.atan2(p.x - c.x, p.z - c.z), de } : { caminar: false, de }).then(() => setCargando(false));
   };
 
   useEffect(() => {
@@ -46,27 +48,48 @@ export function TourPublico() {
     const sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera(75, w0 / h0, 0.1, 1100);
     const g = new THREE.SphereGeometry(500, 64, 40); g.scale(-1, 1, 1);
     const mat = new THREE.MeshBasicMaterial({ color: 0x000000 }); sc.add(new THREE.Mesh(g, mat));
+    const matB = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }), esferaB = new THREE.Mesh(g, matB); esferaB.scale.setScalar(0.99); esferaB.renderOrder = 1; esferaB.visible = false; sc.add(esferaB);
+    const fovFijo = () => { const asp = Math.max(0.3, cam.aspect || 1.6), v = 2 * Math.atan(Math.tan(HFOV / 2) / asp); return Math.max(45, Math.min(78, v * 180 / Math.PI)); };
+    cam.fov = fovFijo(); cam.updateProjectionMatrix();
     const cache = new Map();
     const cargaTex = url => {
       if (!cache.has(url)) cache.set(url, new Promise((ok, ko) => new THREE.TextureLoader().load(url, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; ok(t); }, undefined, ko)));
       return cache.get(url);
     };
     let lon = Math.PI, lat = 0, drag = null, vivo = true, seq = 0;
-    vis.current.mostrar = async (i, lonIni) => {
+    let animando = false;
+    const anima = (ms, fn) => new Promise(ok => { const t0 = performance.now(); const paso = () => { if (!vivo) return ok(); const k = Math.min(1, (performance.now() - t0) / ms); fn(k * k * (3 - 2 * k)); if (k < 1) requestAnimationFrame(paso); else ok(); }; paso(); });
+    const difAng = (a, b) => { let d = (b - a) % (2 * Math.PI); if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI; return d; };
+    // viaje: { caminar: true } = se gira hacia donde se va y se avanza (zoom suave + fundido); si no, fundido simple. En los dos casos el visor vuelve a su apertura fija al terminar
+    vis.current.mostrar = async (i, lonIni, viaje) => {
       const mia = ++seq, canvas = r.domElement;
-      canvas.style.opacity = '0';
-      const [t] = await Promise.all([cargaTex(datos.paradas[i].url).catch(() => null), new Promise(ok => setTimeout(ok, 320))]);
-      if (mia !== seq || !vivo) return;
-      if (t) { mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true; }
-      lon = lonIni; lat = 0; canvas.style.opacity = '1';
+      if (!viaje) {
+        canvas.style.opacity = '0';
+        const [t] = await Promise.all([cargaTex(datos.paradas[i].url).catch(() => null), new Promise(ok => setTimeout(ok, 320))]);
+        if (mia !== seq || !vivo) return;
+        if (t) { mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true; }
+        lon = lonIni; lat = 0; canvas.style.opacity = '1';
+      } else {
+        const t = await cargaTex(datos.paradas[i].url).catch(() => null);
+        if (mia !== seq || !vivo) return;
+        if (!t) { actualRef.current = viaje.de; return; }
+        animando = true; const fov0 = fovFijo();
+        if (viaje.caminar) { const l0 = lon, dl = difAng(l0, viaje.lonA), lat0 = lat; await anima(380, e => { lon = l0 + dl * e; lat = lat0 * (1 - e); }); }
+        const lonA = lon;
+        matB.map = t; matB.needsUpdate = true; matB.opacity = 0; esferaB.rotation.y = lonIni - lonA; esferaB.visible = true;
+        await anima(viaje.caminar ? 900 : 550, e => { matB.opacity = e; if (viaje.caminar) { cam.fov = fov0 * (1 - 0.32 * e); cam.updateProjectionMatrix(); } });
+        mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true; esferaB.visible = false; esferaB.rotation.y = 0; matB.opacity = 0;
+        lon = lonIni; lat = 0; cam.fov = fov0; cam.updateProjectionMatrix(); animando = false;
+        if (mia !== seq) return;
+      }
       // se van descargando ya las paradas de al lado para que el salto sea inmediato
       const c = datos.paradas[i];
       datos.paradas.map((p, k) => ({ p, k, d: Math.hypot(p.x - c.x, p.z - c.z) })).filter(v => v.k !== i).sort((a, b) => a.d - b.d).slice(0, 3).forEach(v => cargaTex(v.p.url).catch(() => {}));
     };
     const dn = e => { drag = [e.clientX, e.clientY]; r.domElement.style.cursor = 'grabbing'; };
-    const mv = e => { if (!drag) return; const k = 0.2 * (Math.PI / 180) * (cam.fov / 75); lon -= (e.clientX - drag[0]) * k; lat = Math.max(-1.45, Math.min(1.45, lat + (e.clientY - drag[1]) * k)); drag = [e.clientX, e.clientY]; };
+    const mv = e => { if (!drag || animando) return; const k = 0.2 * (Math.PI / 180) * (cam.fov / 75); lon -= (e.clientX - drag[0]) * k; lat = Math.max(-LAT_MAX, Math.min(LAT_MAX, lat + (e.clientY - drag[1]) * k)); drag = [e.clientX, e.clientY]; };
     const up = () => { drag = null; r.domElement.style.cursor = 'grab'; };
-    const wh = e => { e.preventDefault(); cam.fov = Math.max(25, Math.min(100, cam.fov + e.deltaY * 0.05)); cam.updateProjectionMatrix(); };
+    const wh = e => { e.preventDefault(); }; // sin zoom: la apertura es fija para que la imagen no se deforme
     r.domElement.addEventListener('pointerdown', dn); window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); r.domElement.addEventListener('wheel', wh, { passive: false });
     const v = new THREE.Vector3();
     const bucle = () => {
@@ -83,7 +106,7 @@ export function TourPublico() {
       if (cono.current) { const th = Math.PI + c.yaw - lon; cono.current.setAttribute('x2', (Math.sin(th) * 14).toFixed(1)); cono.current.setAttribute('y2', (Math.cos(th) * 14).toFixed(1)); }
     };
     bucle();
-    const ajusta = () => { const W = el.clientWidth, H = el.clientHeight; if (W && H) { r.setSize(W, H); cam.aspect = W / H; cam.updateProjectionMatrix(); } };
+    const ajusta = () => { const W = el.clientWidth, H = el.clientHeight; if (W && H) { r.setSize(W, H); cam.aspect = W / H; if (!animando) cam.fov = fovFijo(); cam.updateProjectionMatrix(); } };
     window.addEventListener('resize', ajusta);
     vis.current.mostrar(0, Math.PI).then(() => setCargando(false));
     return () => { vivo = false; window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('resize', ajusta); r.dispose(); g.dispose(); cache.forEach(p => p.then(t => t.dispose()).catch(() => {})); if (r.domElement.parentNode) r.domElement.parentNode.removeChild(r.domElement); };
