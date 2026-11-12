@@ -19,6 +19,7 @@ import { construirSauna, saunaPorDefecto, normalizaSauna, calculosSauna, textoMa
 import EditorRender from '../components/EditorRender';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import EditorPlanta2D from '../components/EditorPlanta2D';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
@@ -4954,8 +4955,11 @@ export default function Visor3D({ cliente = false }) {
     setPersona(false);
   };
   // Entrar en un alzado (muro) o en una planta de detalle (suelo / techo): cámara casi ortogonal fija, fondo blanco, corte para ver solo esa parte y cotas
+  const [edPlanta, setEdPlanta] = useState(null); // editor 2D ligero de la planta del techo / del suelo de una sala
   const entrarAlzado = (tipo, idObj) => {
-    const a = api3d.current, m = a.modelo; if (!m) return; liberarCamara();
+    const a = api3d.current, m = a.modelo; if (!m) return;
+    if (tipo === 'techo' || tipo === 'suelo') { const ipN = plantaAlz(m, 'sala', idObj); setSelAcab(null); setSelObj(null); setEdPlanta({ tipo, salaKey: idObj, ip: ipN }); return; }
+    liberarCamara();
     const ipE = plantaAlz(m, tipo, idObj), pl0 = (m.plantas || [m])[ipE], [oxE, oyE] = (a.offsPl || [])[ipE] || [0, 0], zE = (pl0.z || 0) * CM, asp = a.cam.aspect || 1.6, VIS = 0.0873;
     let target, pos, lado = 1;
     if (tipo === 'muro') {
@@ -6364,6 +6368,11 @@ export default function Visor3D({ cliente = false }) {
           </div>
         </div>
       )}
+      {edPlanta && (() => {
+        const mod = api3d.current.modelo, pls = mod?.plantas || [mod], pl = pls[edPlanta.ip], sala = pl && (pl.salas || []).find((sa, i) => (sa.idS || ('s' + i)) === edPlanta.salaKey);
+        if (!sala) return null;
+        return <EditorPlanta2D key={edPlanta.tipo + edPlanta.salaKey} tipo={edPlanta.tipo} sala={sala} planta={pl} off={(api3d.current.offsPl || [])[edPlanta.ip] || [0, 0]} objs={objs} setObjs={setObjs} texturas={texturas} colorPincel={matSel?.hex ? matSel.hex.slice(0, 7) : null} onClose={() => setEdPlanta(null)} btn={btn} />;
+      })()}
       {alz && (
         <div style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12, zIndex: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.35)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', maxWidth: '96vw' }}>
           <b style={{ fontSize: 13 }}>📐 {alz.tipo === 'muro' ? 'Alzado del muro' : alz.tipo === 'suelo' ? 'Planta del suelo' : 'Planta del techo'}</b>
