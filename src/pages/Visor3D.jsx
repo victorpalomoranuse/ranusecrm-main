@@ -3836,6 +3836,20 @@ export default function Visor3D({ cliente = false }) {
     });
     a.esc.children.forEach(gr => aplicarRegiones(gr, 'o:' + gr.userData.oid + ':', acab.regiones, texturas));
   }, [objs, selObj, selExtraKey, estado, biblioteca, ocultas, texturas, rev, ambiente.luces, ambiente.kLuces, acab.regiones]);
+  // Lo que pones en una planta (ideas de IA, ventanas, césped, decoración…) se oculta con ella: la planta de un objeto se deduce de su altura y de dónde cae
+  useEffect(() => {
+    const A = api3d.current; if (!A.esc || !A.modelo) return;
+    const ocP = ocultas.filter(x => x.startsWith('planta:')).map(x => Number(x.slice(7))); if (!ocP.length) return;
+    const pls = A.modelo.plantas || [A.modelo], offs = A.offsPl || [];
+    const caja = (pl, i) => { const [ox, oy] = offs[i] || [0, 0]; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; (pl.muros || []).forEach(m => [m.a, m.b].forEach(p => { if (!p) return; x0 = Math.min(x0, p[0] + ox); x1 = Math.max(x1, p[0] + ox); y0 = Math.min(y0, p[1] + oy); y1 = Math.max(y1, p[1] + oy); })); return [x0 - 60, y0 - 60, x1 + 60, y1 + 60]; };
+    const cajas = pls.map(caja);
+    const plantaDe = o => {
+      const z0 = o.z0 || 0, c = pls.map((p, i) => i).filter(i => (pls[i].z || 0) <= z0 + 1); if (!c.length) return 0;
+      const zm = Math.max(...c.map(i => pls[i].z || 0)), top = c.filter(i => (pls[i].z || 0) >= zm - 1); if (top.length === 1) return top[0];
+      return top.find(i => o.cx >= cajas[i][0] && o.cx <= cajas[i][2] && o.cy >= cajas[i][1] && o.cy <= cajas[i][3]) ?? top[0];
+    };
+    A.esc.children.forEach(g => { const o = objsRef.current.find(x => x.id === g.userData.oid); if (o && ocP.includes(plantaDe(o))) g.visible = false; });
+  }, [objs, estado, ocultas, rev, biblioteca]);
 
   // Guardado automático de la escena (sin pisar el dibujo del plano 2D)
   useEffect(() => {
