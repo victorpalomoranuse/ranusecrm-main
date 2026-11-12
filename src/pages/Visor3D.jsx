@@ -189,8 +189,8 @@ const swatchLoseta = (hex) => { try { const cv = document.createElement('canvas'
 const SUELOS_TEC = [
   ...[['loseta-negra', 'Loseta 1×1 negra', '#1d1d1f'], ['loseta-gris', 'Loseta 1×1 gris', '#7c7f83'], ['loseta-camel', 'Loseta 1×1 camel', '#b3845a']].map(([id, nombre, hex]) => ({ id, nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.06 }, url: swatchLoseta(hex), grupo: 'Losetas lisas' })),
   ...[['marble-sand-03', 'Marble arena'], ['mpearl-3', 'Marble perla'], ['mhaya-3', 'Marble haya'], ['mgrey-3', 'Marble gris'], ['mcastanyo-3', 'Marble castaño'], ['mwengue-3', 'Marble wengué'], ['mcarbono-3', 'Marble carbono']]
-    .map(([slug, nombre]) => ({ id: 'pavi-' + slug, nombre: 'Paviflex · ' + nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.1, crop: 0.6, puzzle: true }, url: SB_PUBLICO + 'biblioteca3d/paviflex/' + slug + '.jpg', grupo: 'Paviflex (aguas / mármol)' })),
-  { id: 'pavi-taupe-03', nombre: 'Paviflex · Taupe liso', tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.07, puzzle: true }, url: SB_PUBLICO + 'biblioteca3d/paviflex/taupe-03.jpg', grupo: 'Paviflex (lisos)' },
+    .map(([slug, nombre]) => ({ id: 'pavi-' + slug, nombre: 'Paviflex · ' + nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: false, tono: 0.05, crop: 0.6 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/' + slug + '.jpg', grupo: 'Paviflex (aguas / mármol)' })),
+  { id: 'pavi-taupe-03', nombre: 'Paviflex · Taupe liso', tam: 100, fijo: true, suelo: { antirep: true, junta: false, tono: 0.04 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/taupe-03.jpg', grupo: 'Paviflex (lisos)' },
   ...[['blackblue-03', 'Negro + azul'], ['blacklightblue-03', 'Negro + celeste'], ['carbon-black-04', 'Carbón negro + blanco'], ['carbon-blackred-03', 'Carbón negro + rojo'], ['eco-viola-03', 'Eco negro + violeta'], ['darkgrey-03', 'Gris oscuro'], ['eco-grey-03', 'Eco gris'], ['granite-red-03', 'Granito gris + rojo'], ['granite-03', 'Granito gris'], ['brownstone-04', 'Terracota'], ['terra-03', 'Arena'], ['chocolate-3', 'Chocolate']]
     .map(([slug, nombre]) => ({ id: 'pavi-' + slug, nombre: 'Paviflex · ' + nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: false, tono: 0.03 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/' + slug + '.jpg', grupo: 'Paviflex (moteados)' })),
 ];
@@ -344,7 +344,7 @@ function texturaDe(t, uvEnCm) {
   return x;
 }
 // Aplica un color (#hex) o una textura ('tex:ID') a una malla; si no hay valor, vuelve a su color de origen
-const MODOS_SUELO = { moteado: { antirep: true, junta: false, tono: 0.03 }, aguas: { antirep: true, junta: true, tono: 0.1, crop: 0.6, puzzle: true }, liso: { antirep: true, junta: true, tono: 0.07, puzzle: true } };
+const MODOS_SUELO = { moteado: { antirep: true, junta: false, tono: 0.03 }, aguas: { antirep: true, junta: false, tono: 0.05, crop: 0.6 }, liso: { antirep: true, junta: false, tono: 0.04 } };
 function pintar(mesh, valor, texturas, uvEnCm, repBox, modoSuelo) {
   const u = mesh.userData;
   if (u.col0 === undefined) u.col0 = mesh.material.color.getHex();
