@@ -3467,6 +3467,8 @@ export default function Visor3D({ cliente = false }) {
     while (a.esc.children.length) { const o = a.esc.children[0]; a.esc.remove(o); o.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); }
     const presup = { n: 0 };
     const todosMuros = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []);
+    // cada muro pertenece a una planta que puede estar desplazada y a otra altura: lo que se pega a un muro tiene que ir con ella
+    const plantaDelMuro = (muId) => { const pls = api3d.current.modelo?.plantas || [api3d.current.modelo], ip = pls.findIndex(p => (p?.muros || []).some(m => m.id === muId)); const [ox, oy] = (api3d.current.offsPl || [])[Math.max(0, ip)] || [0, 0]; return { ox, oy, z: (pls[Math.max(0, ip)]?.z || 0) * CM }; };
     objs.forEach(o => {
       if (o.guia) return; // las guías solo se ven en el alzado o la planta
       if (o.tipo === 'zona' && Array.isArray(o.pts) && o.pts.length >= 3) {
@@ -3479,7 +3481,7 @@ export default function Visor3D({ cliente = false }) {
         const mesh = new THREE.Mesh(geo, mt); mesh.receiveShadow = true;
         if (o.plano === 'pared') {
           const mu = todosMuros.find(m => m.id === o.muroId); if (!mu) return;
-          const holder = new THREE.Group(); holder.position.set(mu.a[0] * CM, 0, mu.a[1] * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
+          const pm = plantaDelMuro(mu.id), holder = new THREE.Group(); holder.position.set((mu.a[0] + pm.ox) * CM, pm.z, (mu.a[1] + pm.oy) * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
           mesh.position.z = (o.lado || 1) * (((mu.t || 12) / 2) * CM + 0.004); holder.add(mesh); gz.add(holder);
           gz.userData.sinArrastre = true;
         } else {
@@ -3488,7 +3490,7 @@ export default function Visor3D({ cliente = false }) {
         }
         if (esLed(o.color)) {
           const xs = o.pts.map(p => p[0]), ys = o.pts.map(p => p[1]), bw = (Math.max(...xs) - Math.min(...xs)) * CM, bh = (Math.max(...ys) - Math.min(...ys)) * CM, mx = ((Math.max(...xs) + Math.min(...xs)) / 2) * CM, my = ((Math.max(...ys) + Math.min(...ys)) / 2) * CM, colL = new THREE.Color(o.color.slice(0, 7));
-          if (o.plano === 'pared') { const mu = todosMuros.find(m => m.id === o.muroId); if (mu) { const hld = new THREE.Group(); hld.position.set(mu.a[0] * CM, 0, mu.a[1] * CM); hld.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]); luzArea(hld, new THREE.Vector3(mx, my, (o.lado || 1) * (((mu.t || 12) / 2) * CM + 0.01)), new THREE.Vector3(0, 0, o.lado || 1), bw, bh, colL, 8 * ambiente.luces, presup); gz.add(hld); } }
+          if (o.plano === 'pared') { const mu = todosMuros.find(m => m.id === o.muroId); if (mu) { const pm2 = plantaDelMuro(mu.id), hld = new THREE.Group(); hld.position.set((mu.a[0] + pm2.ox) * CM, pm2.z, (mu.a[1] + pm2.oy) * CM); hld.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]); luzArea(hld, new THREE.Vector3(mx, my, (o.lado || 1) * (((mu.t || 12) / 2) * CM + 0.01)), new THREE.Vector3(0, 0, o.lado || 1), bw, bh, colL, 8 * ambiente.luces, presup); gz.add(hld); } }
           else luzArea(gz, new THREE.Vector3(o.cx * CM + (0), o.plano === 'techo' ? (o.h || 260) * CM - 0.01 : 0.01, o.cy * CM), new THREE.Vector3(0, o.plano === 'techo' ? -1 : 1, 0), bw, bh, colL, 8 * ambiente.luces, presup);
         }
         gz.userData.oid = o.id; gz.userData.tipoObj = 'zona'; gz.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
@@ -3543,9 +3545,10 @@ export default function Visor3D({ cliente = false }) {
         const geo = geos.length > 1 ? mergeGeometries(geos) : geos[0];
         if (o.plano === 'horizontal') geo.rotateX(-Math.PI / 2);
         const val = o.color, tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
-        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#222222'), roughness: 0.5, metalness: 0.1, emissive: selIdsRef.current.has(o.id) ? 0x335577 : 0x000000 });
+        const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val.slice(0, 7) : null, '#222222'), roughness: 0.5, metalness: 0.1, emissive: selIdsRef.current.has(o.id) ? 0x335577 : 0x000000 });
         if (tx) { mt.map = texturaDe(tx, false); mt.color.setHex(0xffffff); }
-        const mesh = new THREE.Mesh(geo, mt); mesh.castShadow = mesh.receiveShadow = true; mesh.position.y = (o.z0 || 0) * CM;
+        else if (!selIdsRef.current.has(o.id)) ledEm(mt, val); // un color con «!» al final es un neón: brilla
+        const mesh = new THREE.Mesh(geo, mt); mesh.castShadow = mesh.receiveShadow = !esLed(val); mesh.position.y = (o.z0 || 0) * CM;
         const gl = new THREE.Group(); gl.position.set(o.cx * CM, 0, o.cy * CM); gl.rotation.y = -(o.rot || 0) * Math.PI / 180; gl.add(mesh);
         gl.userData.oid = o.id; gl.visible = !ocultas.includes('obj:' + (o.etiqueta || ''));
         a.esc.add(gl);
@@ -6408,6 +6411,8 @@ export default function Visor3D({ cliente = false }) {
               // Ideas completas de pared: pintura + revestimiento + rótulo. Cada capa se puede aplicar sola o todas juntas.
               const salaDelMuro = (mu) => { const pls = api3d.current.modelo?.plantas || [api3d.current.modelo]; const dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1, mx = (mu.a[0] + mu.b[0]) / 2, my = (mu.a[1] + mu.b[1]) / 2; for (const sg of [1, -1]) { const p = [mx - dy / L * 30 * sg, my + dx / L * 30 * sg]; for (const pl of pls) for (const sa of (pl?.salas || [])) if (sa.pts?.length >= 3 && puntoEnPoligono(p, sa.pts)) return { lado: sg, nombre: sa.nombre || '' }; } return { lado: 1, nombre: '' }; };
               const muroSel = () => (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(p => p?.muros || []).find(m => m.id === selAcab.id);
+              // la planta del muro puede estar desplazada y a otra altura (como la de arriba): todo lo que se coloque va con ese desplazamiento y esa altura
+              const plantaDeMuro = (mu) => { const a0 = api3d.current, pls = a0.modelo?.plantas || [a0.modelo], ip = Math.max(0, pls.findIndex(p => (p?.muros || []).some(m => m.id === mu.id))); const [ox, oy] = (a0.offsPl || [])[ip] || [0, 0]; return { ox, oy, z: pls[ip]?.z || 0 }; };
               const pideIdeasMuro = async (_) => {
                 const mu = muroSel(); if (!mu) return;
                 setIdeasMuroCarga(true); setIdeasMuroErr(''); setIdeasMuroAplic({});
@@ -6444,9 +6449,10 @@ export default function Visor3D({ cliente = false }) {
               };
               const aplicaDeco = (x, i) => {
                 const sel = salaSel(); if (!sel) return;
+                const plsD = api3d.current.modelo?.plantas || [api3d.current.modelo], ipD = Math.max(0, plsD.indexOf(sel.pl)), pmD = { ox: ((api3d.current.offsPl || [])[ipD] || [0, 0])[0], oy: ((api3d.current.offsPl || [])[ipD] || [0, 0])[1], z: sel.pl?.z || 0 };
                 const pts = sel.sa.pts, n = pts.length, cx0 = pts.reduce((s, p) => s + p[0], 0) / n, cy0 = pts.reduce((s, p) => s + p[1], 0) / n;
                 const dentro = (px, py) => puntoEnPoligono([px, py], pts);
-                const obst = [...(sel.pl.equipos || []).filter(e => !e.cesped).map(e => ({ x: e.cx, y: e.cy, r: Math.hypot(e.w || 60, e.d || 60) / 2 })), ...objsRef.current.filter(o => ['bloque', 'caja', 'mueble', 'rack', 'sauna'].includes(o.tipo)).map(o => ({ x: o.cx, y: o.cy, r: Math.hypot(o.w || 60, o.d || 60) / 2 }))];
+                const obst = [...(sel.pl.equipos || []).filter(e => !e.cesped).map(e => ({ x: e.cx, y: e.cy, r: Math.hypot(e.w || 60, e.d || 60) / 2 })), ...objsRef.current.filter(o => ['bloque', 'caja', 'mueble', 'rack', 'sauna'].includes(o.tipo)).map(o => ({ x: o.cx - pmD.ox, y: o.cy - pmD.oy, r: Math.hypot(o.w || 60, o.d || 60) / 2 }))];
                 const libre = (px, py, r) => dentro(px, py) && obst.every(o => Math.hypot(px - o.x, py - o.y) >= o.r + r + 15);
                 const centroide = [cx0, cy0];
                 const aristas = pts.map((p, k) => { const q = pts[(k + 1) % n], dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1; let nx = -dy / L, ny = dx / L; if (!dentro(p[0] + dx / 2 + nx * 20, p[1] + dy / 2 + ny * 20)) { nx = -nx; ny = -ny; } return { p, q, L, dx, dy, nx, ny }; }).sort((a, b) => b.L - a.L);
@@ -6468,7 +6474,7 @@ export default function Visor3D({ cliente = false }) {
                     const cand = candidatos(e.ubicacion === 'entrada' && !puertas.length ? 'esquina' : e.ubicacion, w, d), sitio = cand.find(q => (q.pared ? dentro(q.x, q.y) && obst.every(o => Math.hypot(q.x - o.x, q.y - o.y) >= o.r + r * 0.6 + 8) : libre(q.x, q.y, r)));
                     if (!sitio) { sinSitio++; continue; }
                     const colgado = /cuadro|espejo/i.test(m.categoria || '');
-                    nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'bloque', cid: null, nombre: m.nombre, etiqueta: m.categoria || 'Decoración', cx: Math.round(sitio.x * 10) / 10, cy: Math.round(sitio.y * 10) / 10, rot: sitio.rot, w, d, alto, z0: colgado ? 110 : 0, color: null, mod: { url: m.url, tipo: m.tipo || 'gltf', rot: 0 } });
+                    nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'bloque', cid: null, nombre: m.nombre, etiqueta: m.categoria || 'Decoración', cx: Math.round((sitio.x + pmD.ox) * 10) / 10, cy: Math.round((sitio.y + pmD.oy) * 10) / 10, rot: sitio.rot, w, d, alto, z0: (colgado ? 110 : 0) + pmD.z, color: null, mod: { url: m.url, tipo: m.tipo || 'gltf', rot: 0 } });
                     obst.push({ x: sitio.x, y: sitio.y, r: sitio.pared ? r * 0.6 : r });
                   }
                 }
@@ -6491,24 +6497,34 @@ export default function Visor3D({ cliente = false }) {
                 }
                 setObjs(prev => [...prev, ...nuevos]); return nuevos.length > 0;
               };
+              // Tiras LED sobre el muro: «alta» lava la pared hacia abajo desde arriba; «baja» deja una luz flotante junto al suelo
+              const aplicaLuces = (x) => {
+                const mu = muroSel(); if (!mu || !x.luces?.length) return false;
+                const dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, lado = salaDelMuro(mu).lado, nx = -uy * lado, ny = ux * lado, pm = plantaDeMuro(mu), H = mu.h || api3d.current.modelo?.altura || 260, nuevos = [];
+                const mx = (mu.a[0] + mu.b[0]) / 2 + nx * ((mu.t || 12) / 2 + 6) + pm.ox, my = (mu.a[1] + mu.b[1]) / 2 + ny * ((mu.t || 12) / 2 + 6) + pm.oy;
+                for (const l of x.luces) {
+                  nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'led', nombre: 'Tira LED ' + (l.donde === 'alta' ? 'alta' : 'baja'), etiqueta: 'Iluminación', cx: Math.round(mx * 10) / 10, cy: Math.round(my * 10) / 10, rot: 0, w: Math.round(L), d: 4, alto: 2, z0: (l.donde === 'alta' ? Math.max(50, H - 10) : 12) + pm.z, pts: [[-ux * L / 2, -uy * L / 2], [ux * L / 2, uy * L / 2]], led: { ancho: 1.5, k: l.k, lm: 800, dir: l.donde === 'alta' ? 'abajo' : 'arriba', cerrado: false }, ...(l.color ? { color: l.color } : {}) });
+                }
+                setObjs(prev => [...prev, ...nuevos]); return true;
+              };
               // Franja pintada en el techo, paralela a la pared
               const aplicaTecho = (x) => {
-                const mu = muroSel(), t = x.techo; if (!mu || !t) return false;
+                const mu = muroSel(), t = x.techo; if (!mu || !t) return false; const pmT = plantaDeMuro(mu);
                 const dx = mu.b[0] - mu.a[0], dy = mu.b[1] - mu.a[1], L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, lado = salaDelMuro(mu).lado, nx = -uy * lado, ny = ux * lado, d0 = (mu.t || 12) / 2 + t.distancia, d1 = d0 + t.ancho;
                 const P = [[mu.a[0] + nx * d0, mu.a[1] + ny * d0], [mu.b[0] + nx * d0, mu.b[1] + ny * d0], [mu.b[0] + nx * d1, mu.b[1] + ny * d1], [mu.a[0] + nx * d1, mu.a[1] + ny * d1]];
                 const cx = P.reduce((s, p) => s + p[0], 0) / 4, cy = P.reduce((s, p) => s + p[1], 0) / 4, xs = P.map(p => p[0]), ys = P.map(p => p[1]);
-                const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'zona', plano: 'techo', h: mu.h || api3d.current.modelo?.altura || 260, nombre: 'Franja de techo', etiqueta: 'Zonas', cx: Math.round(cx * 10) / 10, cy: Math.round(cy * 10) / 10, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, color: t.color, pts: P.map(p => [Math.round((p[0] - cx) * 10) / 10, Math.round((p[1] - cy) * 10) / 10]) };
+                const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'zona', plano: 'techo', h: (mu.h || api3d.current.modelo?.altura || 260) + pmT.z, nombre: 'Franja de techo', etiqueta: 'Zonas', cx: Math.round((cx + pmT.ox) * 10) / 10, cy: Math.round((cy + pmT.oy) * 10) / 10, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, color: t.led ? t.color + '!' : t.color, pts: P.map(p => [Math.round((p[0] - cx) * 10) / 10, Math.round((p[1] - cy) * 10) / 10]) };
                 setObjs(prev => [...prev, nuevo]); return true;
               };
               // Revestimientos creativos: cada uno ocupa un tramo del muro (desde/hasta) y una banda de altura, no tiene por qué ser la pared entera
               const aplicaRevest = (x) => {
                 const mu = muroSel(); if (!mu || !x.revestimientos?.length) return false;
-                const mod = api3d.current.modelo, L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, H = mu.h || mod?.altura || 260, lado = salaDelMuro(mu).lado, nuevos = [];
+                const mod = api3d.current.modelo, L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, H = mu.h || mod?.altura || 260, lado = salaDelMuro(mu).lado, nuevos = [], pm = plantaDeMuro(mu);
                 for (const rv of x.revestimientos) {
                   const pr = presetRevest(rv.id); if (!pr) continue;
                   const s0 = Math.round(rv.desde * L), s1 = Math.round(rv.hasta * L), z0 = Math.max(0, Math.round(rv.alturaDesde)), alto = Math.max(20, Math.min(H, Math.round(rv.alturaHasta)) - z0);
                   const c = colocaEnMuro(mu, lado, s0, s1), base = { w: c.w, alto, revest: { id: pr.id, tipo: pr.tipo } };
-                  nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'revest', nombre: pr.nombre, etiqueta: 'Revestimientos', cx: c.cx, cy: c.cy, rot: c.rot, w: c.w, d: espesorRevest(base), alto, z0, color: rv.color || pr.color, revest: { id: pr.id, tipo: pr.tipo, muroId: mu.id, lado, s0, s1, p: { ...pr.p }, huecos: c.huecos } });
+                  nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'revest', nombre: pr.nombre, etiqueta: 'Revestimientos', cx: c.cx + pm.ox, cy: c.cy + pm.oy, rot: c.rot, w: c.w, d: espesorRevest(base), alto, z0: z0 + pm.z, color: rv.color || pr.color, revest: { id: pr.id, tipo: pr.tipo, muroId: mu.id, lado, s0, s1, p: { ...pr.p }, huecos: c.huecos } });
                 }
                 if (nuevos.length) setObjs(prev => [...prev, ...nuevos]); return nuevos.length > 0;
               };
@@ -6517,15 +6533,16 @@ export default function Visor3D({ cliente = false }) {
                 const norm = await formasDeTexto(ro.texto, ro.fuente, 'horizontal'); if (!norm) { setAviso('No he podido dibujar «' + ro.texto + '» con esa fuente.'); return false; }
                 const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ancho = Math.max(30, Math.min(L * 0.8, ro.ancho)), alto = Math.round(norm.alto * ancho / 100), lado = salaDelMuro(mu).lado, t = Math.max(0.1, Math.min(0.9, ro.posicion));
                 const px = mu.a[0] + (mu.b[0] - mu.a[0]) * t, py = mu.a[1] + (mu.b[1] - mu.a[1]) * t, nx = -(mu.b[1] - mu.a[1]) / L * lado, ny = (mu.b[0] - mu.a[0]) / L * lado;
-                const r = pegarCalc([mu], { d: 2 }, px + nx * 30, py + ny * 30); if (!r) return false;
-                const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', tv: 2, nombre: 'Rótulo «' + ro.texto.slice(0, 24) + '»', etiqueta: 'Textos', cx: r.cx, cy: r.cy, rot: r.rot, w: ancho, d: 2, alto, ratio: norm.alto / 100, z0: Math.max(0, Math.round(ro.alturaCentro - alto / 2)), plano: 'vertical', color: ro.color, formas: norm.formas, texto: ro.texto, fuente: ro.fuente };
+                const r = pegarCalc([mu], { d: 2 }, px + nx * 30, py + ny * 30); if (!r) return false; const pmR = plantaDeMuro(mu);
+                const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', tv: 2, nombre: 'Rótulo «' + ro.texto.slice(0, 24) + '»', etiqueta: 'Textos', cx: r.cx + pmR.ox, cy: r.cy + pmR.oy, rot: r.rot, w: ancho, d: 2, alto, ratio: norm.alto / 100, z0: Math.max(0, Math.round(ro.alturaCentro - alto / 2)) + pmR.z, plano: 'vertical', color: ro.neon ? ro.color + '!' : ro.color, formas: norm.formas, texto: ro.texto, fuente: ro.fuente };
                 setObjs(prev => [...prev, nuevo]); return true;
               };
               const aplicaIdea = async (x, i, partes) => {
                 const hechas = [];
                 if (partes.includes('pintura') && x.pintura) { aplicaPintura(x); hechas.push('pintura'); }
                 if (partes.includes('patron') && x.patron?.length && aplicaPatron(x)) hechas.push('patrón pintado');
-                if (partes.includes('techo') && x.techo && aplicaTecho(x)) hechas.push('franja de techo');
+                if (partes.includes('techo') && x.techo && aplicaTecho(x)) hechas.push(x.techo.led ? 'franja de techo luminosa' : 'franja de techo');
+                if (partes.includes('luces') && x.luces?.length && aplicaLuces(x)) hechas.push(x.luces.length > 1 ? 'tiras LED' : 'tira LED');
                 if (partes.includes('revest') && x.revestimientos?.length && aplicaRevest(x)) hechas.push(x.revestimientos.length > 1 ? 'revestimientos' : 'revestimiento');
                 if (partes.includes('rotulo') && x.rotulo && await aplicaRotulo(x)) hechas.push('rótulo');
                 setIdeasMuroAplic(a => ({ ...a, [i]: [...(a[i] || []), ...hechas] }));
@@ -6568,15 +6585,17 @@ export default function Visor3D({ cliente = false }) {
                       <div style={{ fontSize: 11.5, lineHeight: 1.5, marginBottom: 6 }}>
                         {x.pintura && <div>🎨 Pintura <b>{x.pintura}</b></div>}
                         {x.patron?.length > 0 && <div>🖌️ Patrón: {x.patron.map(p => ({ franja: 'franja', bloque: 'bloque de color', rayas: 'rayas', arco: 'arco' }[p.forma])).join(' + ')}</div>}
-                        {x.techo && <div>⬜ Franja en el techo ({x.techo.ancho} cm)</div>}
+                        {x.techo && <div>⬜ Franja en el techo ({x.techo.ancho} cm){x.techo.led ? ' · luminosa' : ''}</div>}
+                        {x.luces?.length > 0 && <div>💡 {x.luces.map(l => 'Tira LED ' + (l.donde === 'alta' ? 'alta' : 'baja') + ' ' + l.k + ' K').join(' + ')}</div>}
                         {(x.revestimientos || []).map((q, k) => <div key={k}>🧱 {q.nombre}{q.alturaDesde > 0 || q.alturaHasta < 250 || q.desde > 0 || q.hasta < 1 ? ' (' + (q.desde > 0 || q.hasta < 1 ? 'tramo' : 'toda la pared') + (q.alturaDesde > 0 || q.alturaHasta < 250 ? ', de ' + Math.round(q.alturaDesde) + ' a ' + Math.round(q.alturaHasta) + ' cm' : '') + ')' : ''}{q.porque ? ' · ' + q.porque : ''}</div>)}
-                        {x.rotulo && <div>✍️ «{x.rotulo.texto}» · {x.rotulo.fuente}</div>}
+                        {x.rotulo && <div>✍️ «{x.rotulo.texto}» · {x.rotulo.fuente}{x.rotulo.neon ? ' · neón' : ''}</div>}
                       </div>
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        <button style={{ ...btn, background: '#8c8076' }} onClick={() => aplicaIdea(x, i, ['pintura', 'patron', 'techo', 'revest', 'rotulo'])}>Aplicar idea completa</button>
+                        <button style={{ ...btn, background: '#8c8076' }} onClick={() => aplicaIdea(x, i, ['pintura', 'patron', 'techo', 'luces', 'revest', 'rotulo'])}>Aplicar idea completa</button>
                         {x.pintura && <button style={btn} onClick={() => aplicaIdea(x, i, ['pintura'])}>Solo color</button>}
                         {x.patron?.length > 0 && <button style={btn} onClick={() => aplicaIdea(x, i, ['patron'])}>Solo patrón</button>}
                         {x.techo && <button style={btn} onClick={() => aplicaIdea(x, i, ['techo'])}>Solo techo</button>}
+                        {x.luces?.length > 0 && <button style={btn} onClick={() => aplicaIdea(x, i, ['luces'])}>Solo luces</button>}
                         {x.revestimientos?.length > 0 && <button style={btn} onClick={() => aplicaIdea(x, i, ['revest'])}>Solo revestimiento</button>}
                         {x.rotulo && <button style={btn} onClick={() => aplicaIdea(x, i, ['rotulo'])}>Solo rótulo</button>}
                       </div>
