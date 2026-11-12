@@ -6750,7 +6750,7 @@ export default function Visor3D({ cliente = false }) {
               };
               const aplicaSalaDirecto = async (q, i) => {
                 const sel = salaSel(); if (!sel) return {};
-                const capas = {}, hechas = []; const ipS = Math.max(0, (sel.pl.salas || []).indexOf(sel.sa)), claveS = sel.sa.idS || ('s' + ipS), claveT = sel.sa.idT || ('s' + ipS);
+                const capas = {}, hechas = []; { const ipV = Math.max(0, (api3d.current.modelo?.plantas || [api3d.current.modelo]).indexOf(sel.pl)); setOcultas(o => (o.includes('planta:' + ipV) ? o.filter(x => x !== 'planta:' + ipV) : o)); } const ipS = Math.max(0, (sel.pl.salas || []).indexOf(sel.sa)), claveS = sel.sa.idS || ('s' + ipS), claveT = sel.sa.idT || ('s' + ipS);
                 if (q.suelo) { const v = q.suelo.id || q.suelo.color; if (v) { setAcab(a => ({ ...a, salas: { ...a.salas, [claveS]: v } })); hechas.push('suelo'); capas.suelo = 'Suelo'; } }
                 if (q.techo) { setAcab(a => ({ ...a, techos: { ...a.techos, [claveT]: q.techo.color } })); hechas.push('techo'); capas.techoColor = 'Color del techo'; }
                 const todasMuros = (api3d.current.modelo?.plantas || [api3d.current.modelo]).flatMap(p => p?.muros || []);
