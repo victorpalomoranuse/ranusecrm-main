@@ -4250,6 +4250,8 @@ export default function Visor3D({ cliente = false }) {
     catch (e) { setAviso(e.response?.data?.error || 'No se pudo eliminar la máquina'); }
   };
   const girarEquipo180 = async () => {
+    // con modelo 3D se gira solo el modelo de esta copia: el bloque y el plano se quedan como están
+    if (biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d) { const v = (((modosEq[seleccion.id]?.rotM || 0) + 180) % 360); refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], rotM: v } })); setGuardado('Modelo girado 180° ✓ (el bloque del plano no cambia)'); return; }
     try { await api.patch('/medicion/' + id + '/equipo', { eqId: seleccion.id, cambios: { rot: ((seleccion.rot || 0) + 180) % 360 } }); setSeleccion(null); setAviso('Máquina girada 180° en el plano ✓'); api3d.current.recargar?.(); }
     catch (e) { setAviso(e.response?.data?.error || 'No se pudo girar'); }
   };
@@ -7248,7 +7250,7 @@ export default function Visor3D({ cliente = false }) {
           </div>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
             <button style={btn} onClick={pegarEquipo} title="La apoya contra el muro más cercano, con la parte de atrás hacia el muro, y lo escribe en el plano">▐ Pegar a la pared</button>
-            <button style={btn} onClick={girarEquipo180} title="Por si queda mirando hacia el muro">⟲ Girar 180°</button>
+            <button style={btn} onClick={girarEquipo180} title="Gira el modelo 180° (el bloque del plano no cambia). Si no tiene modelo, gira la caja en el plano">⟲ Girar 180°</button>
             <button style={{ ...btn, background: '#a33' }} onClick={eliminarEquipo} title="Quita la máquina del plano (también en Planos). Tecla Supr">🗑 Eliminar</button>
           </div>
           {seleccion.cid && (() => {
