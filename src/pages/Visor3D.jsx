@@ -175,10 +175,13 @@ vec4 sueloPieza(sampler2D s, vec2 uv, float crop) {
 }`;
 function sueloShader(fl) {
   return (shader) => {
+    // «puzzle»: las juntas de las losetas de Paviflex no son rectas, hacen ondas; el suelo se deforma un poco antes de repartir las baldosas para que la junta y el cambio de dibujo coincidan
+    const uv = fl.puzzle ? 'suUV' : 'vMapUv';
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + GLSL_SUELO).replace('#include <map_fragment>',
-      '#ifdef USE_MAP\n vec4 sampledDiffuseColor = ' + (fl.crop ? 'sueloPieza(map, vMapUv, ' + fl.crop.toFixed(3) + ')' : fl.antirep ? 'sueloMuestra(map, vMapUv)' : 'texture2D(map, vMapUv)') + ';\n diffuseColor *= sampledDiffuseColor;\n'
-      + ' vec4 suH = sueloCelda(floor(vMapUv)); diffuseColor.rgb *= 1.0 + (suH.x - 0.5) * ' + (fl.tono || 0).toFixed(3) + ';\n'
-      + (fl.junta ? ' vec2 suF = fract(vMapUv), suE = min(suF, 1.0 - suF); float suW = max(0.0022, fwidth(vMapUv.x) * 1.1); float suJ = 1.0 - smoothstep(suW * 0.4, suW * 1.4, min(suE.x, suE.y)); diffuseColor.rgb *= mix(1.0, 0.4, suJ);\n' : '')
+      '#ifdef USE_MAP\n' + (fl.puzzle ? ' vec2 suUV = vMapUv + 0.022 * vec2(sin(18.85 * vMapUv.y), sin(18.85 * vMapUv.x));\n' : '')
+      + ' vec4 sampledDiffuseColor = ' + (fl.crop ? 'sueloPieza(map, ' + uv + ', ' + fl.crop.toFixed(3) + ')' : fl.antirep ? 'sueloMuestra(map, ' + uv + ')' : 'texture2D(map, ' + uv + ')') + ';\n diffuseColor *= sampledDiffuseColor;\n'
+      + ' vec4 suH = sueloCelda(floor(' + uv + ')); diffuseColor.rgb *= 1.0 + (suH.x - 0.5) * ' + (fl.tono || 0).toFixed(3) + ';\n'
+      + (fl.junta ? ' vec2 suF = fract(' + uv + '), suE = min(suF, 1.0 - suF); float suW = max(0.0035, fwidth(vMapUv.x) * 1.25); float suJ = 1.0 - smoothstep(suW * 0.4, suW * 1.5, min(suE.x, suE.y)); diffuseColor.rgb *= mix(1.0, 0.42, suJ);\n' : '')
       + '#endif');
   };
 }
@@ -186,8 +189,8 @@ const swatchLoseta = (hex) => { try { const cv = document.createElement('canvas'
 const SUELOS_TEC = [
   ...[['loseta-negra', 'Loseta 1×1 negra', '#1d1d1f'], ['loseta-gris', 'Loseta 1×1 gris', '#7c7f83'], ['loseta-camel', 'Loseta 1×1 camel', '#b3845a']].map(([id, nombre, hex]) => ({ id, nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.06 }, url: swatchLoseta(hex), grupo: 'Losetas lisas' })),
   ...[['marble-sand-03', 'Marble arena'], ['mpearl-3', 'Marble perla'], ['mhaya-3', 'Marble haya'], ['mgrey-3', 'Marble gris'], ['mcastanyo-3', 'Marble castaño'], ['mwengue-3', 'Marble wengué'], ['mcarbono-3', 'Marble carbono']]
-    .map(([slug, nombre]) => ({ id: 'pavi-' + slug, nombre: 'Paviflex · ' + nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.04, crop: 0.6 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/' + slug + '.jpg', grupo: 'Paviflex (aguas / mármol)' })),
-  { id: 'pavi-taupe-03', nombre: 'Paviflex · Taupe liso', tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.05 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/taupe-03.jpg', grupo: 'Paviflex (lisos)' },
+    .map(([slug, nombre]) => ({ id: 'pavi-' + slug, nombre: 'Paviflex · ' + nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.1, crop: 0.6, puzzle: true }, url: SB_PUBLICO + 'biblioteca3d/paviflex/' + slug + '.jpg', grupo: 'Paviflex (aguas / mármol)' })),
+  { id: 'pavi-taupe-03', nombre: 'Paviflex · Taupe liso', tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.07, puzzle: true }, url: SB_PUBLICO + 'biblioteca3d/paviflex/taupe-03.jpg', grupo: 'Paviflex (lisos)' },
   ...[['blackblue-03', 'Negro + azul'], ['blacklightblue-03', 'Negro + celeste'], ['carbon-black-04', 'Carbón negro + blanco'], ['carbon-blackred-03', 'Carbón negro + rojo'], ['eco-viola-03', 'Eco negro + violeta'], ['darkgrey-03', 'Gris oscuro'], ['eco-grey-03', 'Eco gris'], ['granite-red-03', 'Granito gris + rojo'], ['granite-03', 'Granito gris'], ['brownstone-04', 'Terracota'], ['terra-03', 'Arena'], ['chocolate-3', 'Chocolate']]
     .map(([slug, nombre]) => ({ id: 'pavi-' + slug, nombre: 'Paviflex · ' + nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: false, tono: 0.03 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/' + slug + '.jpg', grupo: 'Paviflex (moteados)' })),
 ];
@@ -341,7 +344,7 @@ function texturaDe(t, uvEnCm) {
   return x;
 }
 // Aplica un color (#hex) o una textura ('tex:ID') a una malla; si no hay valor, vuelve a su color de origen
-const MODOS_SUELO = { moteado: { antirep: true, junta: false, tono: 0.03 }, aguas: { antirep: true, junta: true, tono: 0.05, crop: 0.6 }, liso: { antirep: true, junta: true, tono: 0.05 } };
+const MODOS_SUELO = { moteado: { antirep: true, junta: false, tono: 0.03 }, aguas: { antirep: true, junta: true, tono: 0.1, crop: 0.6, puzzle: true }, liso: { antirep: true, junta: true, tono: 0.07, puzzle: true } };
 function pintar(mesh, valor, texturas, uvEnCm, repBox, modoSuelo) {
   const u = mesh.userData;
   if (u.col0 === undefined) u.col0 = mesh.material.color.getHex();
@@ -351,7 +354,7 @@ function pintar(mesh, valor, texturas, uvEnCm, repBox, modoSuelo) {
     if (repBox) { mp = mp.clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, repBox[0] / t.tam), Math.max(0.2, repBox[1] / (t.tamH || t.tam))); }
     mesh.material.map = mp; mesh.material.color.setHex(0xffffff);
     const fl = t.suelo || MODOS_SUELO[modoSuelo] || null, M = mesh.material;
-    if (fl) { const key = 'suelo' + (fl.antirep ? 1 : 0) + (fl.junta ? 1 : 0) + (fl.tono || 0) + (fl.crop || 0); if (M.userData.sueloKey !== key) { M.userData.sueloKey = key; M.onBeforeCompile = sueloShader(fl); M.customProgramCacheKey = () => key; M.roughness = 0.92; M.metalness = 0; } }
+    if (fl) { const key = 'suelo' + (fl.antirep ? 1 : 0) + (fl.junta ? 1 : 0) + (fl.puzzle ? 1 : 0) + (fl.tono || 0) + (fl.crop || 0); if (M.userData.sueloKey !== key) { M.userData.sueloKey = key; M.onBeforeCompile = sueloShader(fl); M.customProgramCacheKey = () => key; M.roughness = 0.92; M.metalness = 0; } }
     else if (M.userData.sueloKey) { delete M.userData.sueloKey; M.onBeforeCompile = () => {}; M.customProgramCacheKey = () => ''; }
   }
   else {
