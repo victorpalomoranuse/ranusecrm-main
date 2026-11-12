@@ -2421,6 +2421,30 @@ document.addEventListener('keydown',function(e){
   else if(e.key==='Enter'){spCerrar()}
 });
 /* editar el contorno de una zona de suelo/techo: arrastrar puntos, añadir puntos, quitarlos y mover la zona entera */
+/* contorno paralelo a otro, a distancia d (cm): d>0 hacia fuera, d<0 hacia dentro. Las esquinas se resuelven cortando las rectas paralelas. */
+function polyOffset(pts,d){
+  var n=pts.length,a=0,i,sg;if(n<3)return null;
+  for(i=0;i<n;i++){var p0=pts[i],p1=pts[(i+1)%n];a+=p0.x*p1.y-p1.x*p0.y}
+  sg=a>0?1:-1;
+  var L=pts.map(function(p,i){var q=pts[(i+1)%n],dx=q.x-p.x,dy=q.y-p.y,l=Math.hypot(dx,dy)||1,nx=sg*dy/l,ny=-sg*dx/l;return {x:p.x+nx*d,y:p.y+ny*d,ux:dx/l,uy:dy/l}});
+  var out=[];
+  for(i=0;i<n;i++){
+    var A=L[(i+n-1)%n],B=L[i],den=A.ux*B.uy-A.uy*B.ux;
+    if(Math.abs(den)<1e-6){out.push({x:B.x,y:B.y});continue}
+    var t=((B.x-A.x)*B.uy-(B.y-A.y)*B.ux)/den;
+    out.push({x:A.x+A.ux*t,y:A.y+A.uy*t});
+  }
+  return out;
+}
+function spOffset(sp,d){
+  var pts=spPts(sp),n0=nd(sp.n);if(!pts||!n0)return null;
+  var q=polyOffset(pts,d);if(!q)return null;
+  var a0=polyArea(pts),a1=polyArea(q);
+  if(!(a1>0)||(d<0&&a1>=a0)||(d>0&&a1<=a0)){toast('Ese desplazamiento no cabe: la forma se invierte o desaparece');return null}
+  var nsp={id:uid('q'),k:sp.k,n:sp.n,dx:0,dy:0,pts:q.map(function(p){return {x:f2(p.x-n0.x),y:f2(p.y-n0.y)}}),mat:sp.mat,sis:sp.sis,nm:(sp.nm?sp.nm+' · ':'')+'offset'};
+  if(sp.h!=null)nsp.h=sp.h;if(sp.sm)nsp.sm=true;
+  return nsp;
+}
 function spAPoly(sp){
   if(sp.pts)return;
   var pp=spPts(sp),n=nd(sp.n);
@@ -6993,13 +7017,16 @@ function panelSel(focus){
     else h+='<p class="note">Zona dibujada con '+sp.pts.length+' puntos.</p>';
     h+='<p class="note">Para cambiar el contorno (en «Seleccionar»): arrastra un punto grande para moverlo, arrastra una <b>línea</b> para moverla entera (o toca su medida y escríbela), o arrastra el interior para mover toda la zona. Se pegan a las esquinas de la sala y a las otras zonas.</p>';
     h+='<div class="btns"><button data-a="spendereza" title="Los lados que van casi rectos se dejan exactamente horizontales o verticales">Enderezar el contorno</button></div>';
+    h+='<div class="rowh" style="gap:6px;align-items:center;flex-wrap:wrap"><button data-a="spoffset" title="Crea una copia paralela de esta forma a esa distancia (como Offset en AutoCAD): para candilejas, foseados y bordes">⇲ Offset</button><input id="sp-off" type="text" inputmode="decimal" autocomplete="off" value="'+esc(String(st.spOff!=null?st.spOff:-10))+'" style="width:70px"><span class="muted">cm · negativo = hacia dentro, positivo = hacia fuera</span></div>';
     h+='<div class="btns"><button data-a="spadd" aria-pressed="'+!!st.spAdd+'">Añadir puntos: '+(st.spAdd?'sí (toca un lado)':'no')+'</button><button data-a="spancla" title="Al escribir una medida de un lado, qué extremo se mueve. Automático: el que no está pegado a un muro.">Al cambiar una medida: '+({auto:'automático',fin:'se mueve el final (derecha/abajo)',ini:'se mueve el principio (izquierda/arriba)',centro:'se reparte a los dos lados'})[st.spAncla||'auto']+'</button><button data-a="sppega" title="Corrige los puntos que quedan a unos pocos cm de la cara de un muro (dentro o fuera) y los pega a ella">Pegar a los muros</button></div>';
     if(st.spVsel&&st.spVsel.id===sp.id&&sp.pts&&sp.pts.length>3)h+='<div class="btns"><button data-a="spdelv">Quitar el punto seleccionado</button></div>';
     if(sq&&sbx&&!sp.pts)h+=fld('sp_x','Distancia desde la esquina izquierda (cm)',sq.x0-sbx.x0)+fld('sp_y','Distancia desde la esquina de arriba (cm)',sq.y0-sbx.y0);
     h+='<label class="fld chk"><input type="checkbox" data-t="sp_sm"'+(sp.sm?' checked':'')+'><span>Solo para modelar en 3D: no cuenta en mediciones ni en el presupuesto (por si ya lo dibujaste otra vez para pintar)</span></label>';
     h+='<label class="fld chk"><input type="checkbox" data-t="sp_ex"'+(sp.ex?' checked':'')+'><span>Existente: se mantiene (no se mide ni se pide)</span></label>';
     var spp=spPts(sp);if(sp.k==='t'&&spp&&spp.length>2){ /* una parte dibujada de techo (p. ej. una entreplanta) también tiene altura propia y puede llevar estructura */
-      h+=fld('zn_h','Altura libre bajo esta parte (cm)',sp.h,String(fmt(num(st.v.altura)||260)));
+      h+=fld('zn_h','Altura desde el suelo (cm) · más que el techo = sube · menos = baja',sp.h,String(fmt(num(st.v.altura)||260)));
+      h+='<label class="fld chk"><input type="checkbox" data-t="sp_luz"'+(sp.luz?' checked':'')+'><span>Luz LED en el borde (candileja)</span></label>';
+      if(sp.luz){var spl=sp.lados||{};h+='<div class="rowh" style="gap:10px;flex-wrap:wrap">'+[['N','Arriba'],['S','Abajo'],['O','Izquierda'],['E','Derecha']].map(function(q){return '<label class="chk" style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-t="sp_l'+q[0]+'"'+(spl[q[0]]===false?'':' checked')+'>'+q[1]+'</label>'}).join('')+'</div><p class="note">El color de la luz y de la forma se elige en el modelo 3D. Lados como se ven en el plano.</p>'}
       h+=techoPanel(sp,techoFaceDe(sp));
     }
     h+=colocHtml(sp,spPts(sp));
@@ -7568,6 +7595,13 @@ function doAction(a,el){
     for(ii2=1;ii2<ve.length;ii2++){var pr=ne[ii2-1],ddx=ve[ii2].x-ve[ii2-1].x,ddy=ve[ii2].y-ve[ii2-1].y,ll=Math.hypot(ddx,ddy);ne.push(Math.abs(ddx)>=Math.abs(ddy)?{x:pr.x+(ddx<0?-ll:ll),y:pr.y}:{x:pr.x,y:pr.y+(ddy<0?-ll:ll)})}
     snap();ptSetVerts(qe,ne);commit();panelSel();toast('Enderezado');return;
   }
+  if(a==='spoffset'&&s.t==='sp'){
+    var so=by(st.v.sp,s.id);if(!so)return;
+    var inpO=$('sp-off'),dO=inpO?parseFloat(String(inpO.value).replace(',','.')):NaN;
+    if(!isFinite(dO)||dO===0){toast('Escribe la distancia en cm (negativa = hacia dentro)');return}
+    st.spOff=dO;snap();var nso=spOffset(so,dO);if(!nso)return;
+    st.v.sp.push(nso);st.sel={t:'sp',id:nso.id};commit();panelSel();render();toast('Offset creado a '+dO+' cm. Puedes ponerle su propia altura.');return;
+  }
   if(a==='spendereza'&&s.t==='sp'){
     var se=by(st.v.sp,s.id);if(!se)return;
     snap();spAPoly(se);
@@ -7780,6 +7814,7 @@ $('side').addEventListener('change',function(e){
     }
     commit(false);panelSel();return;
   }
+  if((t==='sp_luz'||/^sp_l[NSOE]$/.test(t))&&st.sel&&st.sel.t==='sp'){var ql=by(st.v.sp,st.sel.id);if(ql){snap();if(t==='sp_luz'){if(e.target.checked)ql.luz=true;else{delete ql.luz;delete ql.lados}}else{ql.lados=ql.lados||{};if(e.target.checked)delete ql.lados[t.slice(4)];else ql.lados[t.slice(4)]=false;if(!Object.keys(ql.lados).length)delete ql.lados}commit(false);panelSel()}return}
   if((t==='zn_sm'&&st.sel&&st.sel.t==='zn')||(t==='sp_sm'&&st.sel&&st.sel.t==='sp')){var qm=t==='zn_sm'?by(st.v.zn,st.sel.id):by(st.v.sp,st.sel.id);if(qm){snap();if(e.target.checked)qm.sm=true;else delete qm.sm;commit(false);panelSel()}return}
   if((t==='zn_ex'&&st.sel&&st.sel.t==='zn')||(t==='sp_ex'&&st.sel&&st.sel.t==='sp')){var qz=t==='zn_ex'?by(st.v.zn,st.sel.id):by(st.v.sp,st.sel.id);if(qz){snap();if(e.target.checked)qz.ex=true;else delete qz.ex;commit(false);panelSel()}return}
   if(t==='pt_pf'&&st.sel&&st.sel.t==='pt'){var qp2=by(st.v.pts,st.sel.id);if(qp2){snap();if(e.target.value)qp2.pf=e.target.value;else delete qp2.pf;commit(false);panelSel()}return}
@@ -10601,7 +10636,7 @@ function buildModelo3d1(){
       ha:z.ha!=null?z.ha:(z.h!=null?z.h:H),hc:z.hc!=null?z.hc:H+150,x0:f2(b.x0),y0:f2(b.y0),x1:f2(b.x1),y1:f2(b.y1),
       vg:z.vg?{s:z.vg.s||60,w:z.vg.w||10,h:z.vg.h||20,d:z.vg.d==='v'?'v':'h',mv:z.vg.mv||{},del:z.vg.del||{}}:null,cr:z.cr?{s:z.cr.s||100,mv:z.cr.mv||{},del:z.cr.del||{}}:null,c:m?m.c:'#f6f4f1',tl:(z.tl||[]).map(function(t){return {x:f2(t.x),y:f2(t.y),w:t.w,d:t.d}})});
   });
-  out.cielos=(v.sp||[]).filter(function(r){return r.k==='t'&&num(r.h)>0}).map(function(r){var p=spPts(r),m=matOf('techos',r.mat);return p?{id:r.id,nombre:r.nm||'',h:num(r.h),pts:p.map(function(q){return [f2(q.x),f2(q.y)]}),c:(m&&m.c)||'#f6f4f1'}:null}).filter(Boolean);
+  out.cielos=(v.sp||[]).filter(function(r){return r.k==='t'&&num(r.h)>0}).map(function(r){var p=spPts(r),m=matOf('techos',r.mat);return p?{id:r.id,nombre:r.nm||'',h:num(r.h),pts:p.map(function(q){return [f2(q.x),f2(q.y)]}),c:(m&&m.c)||'#f6f4f1',luz:!!r.luz,lados:r.lados||null}:null}).filter(Boolean);
   out.a_medida=(v.mm||[]).filter(function(m){return m.k!=='hor'}).map(function(m){var q=mmPoly(m);return q?{id:m.id,nombre:mmNombre(m),pts:q.pts.map(function(p){return [f2(p.x),f2(p.y)]}),z0:f2(m.y0||0),z1:f2((m.y0||0)+m.h),luz:!!m.luz}:null}).filter(Boolean);
   out.recrecidos=(v.rc||[]).map(function(rc){var q=rcPoly(rc);if(!q||q.len<2)return null;return {id:rc.id,muro:rc.wall,pts:q.pts.map(function(p){return [f2(p.x),f2(p.y)]}),t:rc.t||10,h:wh(q.w),material:rc.mat||'',estado:rc.s||'new'}}).filter(Boolean);
   v.pil.forEach(function(p){pilCells(p).forEach(function(c,ci){out.pilares.push({id:p.id+'-'+ci,cx:f2(c.x),cy:f2(c.y),w:p.w,d:p.d,rot:p.rot||0,estado:p.s||'ex'})})});

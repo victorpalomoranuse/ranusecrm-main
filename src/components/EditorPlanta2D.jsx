@@ -43,6 +43,8 @@ export default function EditorPlanta2D({ tipo, sala, planta, off, objs, setObjs,
     && o.cx - ox >= bb.x0 - 120 && o.cx - ox <= bb.x1 + 120 && o.cy - oy >= bb.y0 - 120 && o.cy - oy <= bb.y1 + 120), [objs, esTecho, z, ox, oy, bb]);
   const abs = o => o.pts.map(p => [p[0] + o.cx - ox, p[1] + o.cy - oy]);
   const sel = items.find(o => o.id === selId) || null;
+  const dePlanos = o => !!o && String(o.id).startsWith('ci:'); // formas dibujadas en Planos: altura, contorno y luz se cambian allí; aquí solo se pintan
+  const bloq = dePlanos(sel);
 
   const aCm = e => { const r = svgRef.current.getBoundingClientRect(); return [V.x + ((e.clientX - r.left) / r.width) * V.w, V.y + ((e.clientY - r.top) / r.height) * V.h]; };
   const ajusta = v => (iman ? Math.round(v / paso) * paso : Math.round(v * 10) / 10);
@@ -81,7 +83,7 @@ export default function EditorPlanta2D({ tipo, sala, planta, off, objs, setObjs,
   };
   const abajoForma = (e, o) => {
     if (herr !== 'sel' || e.button !== 0) return;
-    e.stopPropagation(); setSelId(o.id);
+    e.stopPropagation(); setSelId(o.id); if (dePlanos(o)) return;
     accion.current = { tipo: 'mueve', id: o.id, p0: aCm(e), cx0: o.cx, cy0: o.cy }; svgRef.current.setPointerCapture(e.pointerId);
   };
   const abajoAsa = (e, ix, iy) => { // asas: iy/ix ∈ {0, .5, 1} = posición dentro de la caja
@@ -124,7 +126,7 @@ export default function EditorPlanta2D({ tipo, sala, planta, off, objs, setObjs,
       const t = (e.target?.tagName || '').toLowerCase(); if (t === 'input' || t === 'textarea' || t === 'select') return;
       if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); if (dib) setDib(null); else if (herr !== 'sel') setHerr('sel'); else if (selId) setSelId(null); else onClose(); }
       else if (e.key === 'Enter' && herr === 'poli' && dib?.pts) { e.stopImmediatePropagation(); cierraPoli(dib.pts); }
-      else if ((e.key === 'Delete' || e.key === 'Backspace') && selId && !dib) { e.stopImmediatePropagation(); e.preventDefault(); borra(selId); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && selId && !dib && !String(selId).startsWith('ci:')) { e.stopImmediatePropagation(); e.preventDefault(); borra(selId); }
       else if (e.key === 'Backspace' && dib?.pts) { e.stopImmediatePropagation(); e.preventDefault(); setDib(d => (d.pts.length > 1 ? { ...d, pts: d.pts.slice(0, -1) } : null)); }
     };
     window.addEventListener('keydown', k, true); return () => window.removeEventListener('keydown', k, true);
@@ -183,7 +185,7 @@ export default function EditorPlanta2D({ tipo, sala, planta, off, objs, setObjs,
             {dib?.a && (herr === 'oval' ? <polygon points={oval(dib.a, dib.b).map(p => p.join(',')).join(' ')} fill={AZUL} fillOpacity=".15" stroke={AZUL} strokeWidth={sz(2)} /> : <polygon points={rect(dib.a, dib.b).map(p => p.join(',')).join(' ')} fill={AZUL} fillOpacity=".15" stroke={AZUL} strokeWidth={sz(2)} />)}
             {dib?.a && <text x={(dib.a[0] + dib.b[0]) / 2} y={Math.min(dib.a[1], dib.b[1]) - sz(8)} fontSize={sz(13)} textAnchor="middle" fill="#0b3d91" stroke="#fff" strokeWidth={sz(3)} paintOrder="stroke">{medidaDib}</text>}
             {dib?.pts && <><polyline points={[...dib.pts, dib.cur || dib.pts[dib.pts.length - 1]].map(p => p.join(',')).join(' ')} fill="none" stroke={AZUL} strokeWidth={sz(2)} />{dib.pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r={sz(i === 0 ? 6 : 4)} fill={i === 0 ? '#fff' : AZUL} stroke={AZUL} strokeWidth={sz(1.5)} />)}</>}
-            {sel && herr === 'sel' && asas.map((a, i) => <rect key={i} x={a.x - sz(5)} y={a.y - sz(5)} width={sz(10)} height={sz(10)} fill="#fff" stroke={AZUL} strokeWidth={sz(1.5)} style={{ cursor: (a.ix == null ? 'ns' : a.iy == null ? 'ew' : (a.ix === a.iy ? 'nwse' : 'nesw')) + '-resize' }} onPointerDown={e => abajoAsa(e, a.ix, a.iy)} />)}
+            {sel && herr === 'sel' && !bloq && asas.map((a, i) => <rect key={i} x={a.x - sz(5)} y={a.y - sz(5)} width={sz(10)} height={sz(10)} fill="#fff" stroke={AZUL} strokeWidth={sz(1.5)} style={{ cursor: (a.ix == null ? 'ns' : a.iy == null ? 'ew' : (a.ix === a.iy ? 'nwse' : 'nesw')) + '-resize' }} onPointerDown={e => abajoAsa(e, a.ix, a.iy)} />)}
           </svg>
           <div style={{ position: 'absolute', left: 10, bottom: 8, fontSize: 12, background: 'rgba(255,255,255,0.85)', borderRadius: 8, padding: '4px 10px', pointerEvents: 'none', color: '#333' }}>
             {herr === 'sel' ? 'Pulsa una forma para elegirla · arrástrala para moverla · tira de los cuadritos para el tamaño · Supr la borra' : herr === 'poli' ? 'Clic en cada esquina · Enter o clic en el primer punto cierra · Retroceso borra el último' : herr === 'mano' ? 'Arrastra para mover el plano' : 'Arrastra de una esquina a la opuesta'} · Rueda = zoom
@@ -200,22 +202,23 @@ export default function EditorPlanta2D({ tipo, sala, planta, off, objs, setObjs,
           ) : esTecho ? (
             <>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{sel.nombre || 'Forma de techo'}</div>
+              {bloq && <div style={{ background: '#2a3a52', borderRadius: 6, padding: '6px 8px', fontSize: 12, lineHeight: 1.4, marginBottom: 8 }}>Esta forma viene de <b>Planos</b>: su contorno, su altura y su luz (sí/no y lados) se cambian allí. Aquí puedes pintarla y elegir el color de la luz.</div>}
               <div style={lbl}>Altura respecto al techo (cm)</div>
               <div style={fila}>
-                <button style={btn} onClick={() => cambia(sel.id, o => ({ ft: { ...o.ft, descenso: (o.ft?.descenso ?? 10) + 5 } }))} title="Baja 5 cm">▼ 5</button>
-                <input type="number" step="1" value={-(sel.ft?.descenso ?? 10)} onChange={e => cambia(sel.id, o => ({ ft: { ...o.ft, descenso: -(parseFloat(e.target.value) || 0) } }))} style={{ ...btn, width: 70, textAlign: 'center' }} />
-                <button style={btn} onClick={() => cambia(sel.id, o => ({ ft: { ...o.ft, descenso: (o.ft?.descenso ?? 10) - 5 } }))} title="Sube 5 cm">▲ 5</button>
+                <button style={btn} disabled={bloq} onClick={() => cambia(sel.id, o => ({ ft: { ...o.ft, descenso: (o.ft?.descenso ?? 10) + 5 } }))} title="Baja 5 cm">▼ 5</button>
+                <input type="number" step="1" disabled={bloq} value={-(sel.ft?.descenso ?? 10)} onChange={e => cambia(sel.id, o => ({ ft: { ...o.ft, descenso: -(parseFloat(e.target.value) || 0) } }))} style={{ ...btn, width: 70, textAlign: 'center' }} />
+                <button style={btn} disabled={bloq} onClick={() => cambia(sel.id, o => ({ ft: { ...o.ft, descenso: (o.ft?.descenso ?? 10) - 5 } }))} title="Sube 5 cm">▲ 5</button>
               </div>
               <div style={{ opacity: 0.6, fontSize: 12, marginBottom: 10 }}>{(sel.ft?.descenso ?? 10) > 0 ? (sel.ft?.descenso ?? 10) + ' cm por DEBAJO del techo' : (sel.ft?.descenso ?? 10) < 0 ? -(sel.ft?.descenso ?? 10) + ' cm por ENCIMA del techo (el techo se abre y sube)' : 'a la altura del techo'}</div>
               <div style={lbl}>Color</div>
               <div style={fila}><input type="color" value={hexOk(sel.color) ? sel.color : '#f6f4f1'} onChange={e => cambia(sel.id, { color: e.target.value })} style={{ width: 44, height: 30, padding: 0, border: '1px solid #666', borderRadius: 4 }} />
                 {['#ffffff', '#f6f4f1', '#9a9a9a', '#2b2b2b', '#7a1f1f', '#1f3a5c'].map(h => <span key={h} onClick={() => cambia(sel.id, { color: h })} style={{ width: 22, height: 22, borderRadius: 11, background: h, border: '2px solid ' + (sel.color === h ? '#fff' : '#555'), cursor: 'pointer' }} />)}</div>
-              <label style={{ ...fila, cursor: 'pointer' }}><input type="checkbox" checked={sel.ft?.luz !== false} onChange={e => cambia(sel.id, o => ({ ft: { ...o.ft, luz: e.target.checked } }))} /><b>Luz en el borde</b></label>
+              <label style={{ ...fila, cursor: 'pointer' }}><input type="checkbox" disabled={bloq} checked={sel.ft?.luz !== false} onChange={e => cambia(sel.id, o => ({ ft: { ...o.ft, luz: e.target.checked } }))} /><b>Luz en el borde</b></label>
               {sel.ft?.luz !== false && (
                 <div style={{ marginLeft: 4, marginBottom: 8 }}>
                   <div style={lbl}>En qué lados (como se ve en el plano)</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 6 }}>
-                    {[['n', '↑ Arriba'], ['s', '↓ Abajo'], ['o', '← Izquierda'], ['e', '→ Derecha']].map(([k, n]) => <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={(sel.ft?.lados || {})[k] !== false} onChange={e => cambia(sel.id, o => ({ ft: { ...o.ft, lados: { n: true, s: true, e: true, o: true, ...(o.ft?.lados || {}), [k]: e.target.checked } } }))} />{n}</label>)}
+                    {[['n', '↑ Arriba'], ['s', '↓ Abajo'], ['o', '← Izquierda'], ['e', '→ Derecha']].map(([k, n]) => <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" disabled={bloq} checked={(sel.ft?.lados || {})[k] !== false} onChange={e => cambia(sel.id, o => ({ ft: { ...o.ft, lados: { n: true, s: true, e: true, o: true, ...(o.ft?.lados || {}), [k]: e.target.checked } } }))} />{n}</label>)}
                   </div>
                   <div style={fila}><span style={{ width: 90 }}>Color de la luz</span><input type="color" value={hexOk(sel.ft?.colorLuz) ? sel.ft.colorLuz : '#ffd9a0'} onChange={e => cambia(sel.id, o => ({ ft: { ...o.ft, colorLuz: e.target.value } }))} style={{ width: 40, height: 26, padding: 0, border: '1px solid #666', borderRadius: 4 }} />
                     <span onClick={() => cambia(sel.id, o => { const { colorLuz, ...r } = o.ft || {}; return { ft: r }; })} style={{ cursor: 'pointer', opacity: 0.65, fontSize: 11 }}>blanca</span></div>
@@ -223,7 +226,7 @@ export default function EditorPlanta2D({ tipo, sala, planta, off, objs, setObjs,
                 </div>
               )}
               <div style={{ ...lbl, marginTop: 6 }}>Medidas: {Math.round(sel.w)} × {Math.round(sel.d)} cm</div>
-              <button style={{ ...btn, background: '#7a2b2b', width: '100%', marginTop: 8 }} onClick={() => borra(sel.id)}>🗑 Borrar esta forma</button>
+              {!bloq && <button style={{ ...btn, background: '#7a2b2b', width: '100%', marginTop: 8 }} onClick={() => borra(sel.id)}>🗑 Borrar esta forma</button>}
               <button style={{ ...btn, width: '100%', marginTop: 6 }} onClick={() => setSelId(null)}>← Volver a la lista</button>
             </>
           ) : (

@@ -3108,6 +3108,29 @@ export default function Visor3D({ cliente = false }) {
     });
   }, [acab, rev, estado, texturas]);
 
+  // Partes de techo dibujadas en Planos («cielos»): se crean/actualizan solas como formas de techo. La geometría y la luz las manda el plano; el color se pinta aquí y se conserva.
+  useEffect(() => {
+    const A = api3d.current, m = A.modelo; if (!m || estado === 'cargando') return;
+    const pls = m.plantas || [m], offs = A.offsPl || [], deseadas = [];
+    pls.forEach((pl, ip) => (pl.cielos || []).forEach(c => {
+      if (!Array.isArray(c.pts) || c.pts.length < 3 || !(c.h > 0)) return;
+      const [ox, oy] = offs[ip] || [0, 0], H = pl.altura || m.altura || 260, xs = c.pts.map(p => p[0]), ys = c.pts.map(p => p[1]);
+      const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+      deseadas.push({ id: 'ci:' + ip + ':' + c.id, base: { nombre: c.nombre || 'Techo de Planos', cx: Math.round((cx + ox) * 10) / 10, cy: Math.round((cy + oy) * 10) / 10, w: Math.round(Math.max(...xs) - Math.min(...xs)), d: Math.round(Math.max(...ys) - Math.min(...ys)), z0: pl.z || 0, h: H, pts: c.pts.map(p => [Math.round((p[0] - cx) * 10) / 10, Math.round((p[1] - cy) * 10) / 10]) }, desc: Math.round((H - c.h) * 10) / 10, luz: !!c.luz, lados: c.lados || null, c: c.c }); }));
+    setObjs(prev => {
+      const propios = prev.filter(o => String(o.id).startsWith('ci:'));
+      let cambia = propios.length !== deseadas.length; const nuevos = [];
+      deseadas.forEach(d => {
+        const ant = propios.find(o => o.id === d.id), ladosN = d.lados ? { n: d.lados.N !== false, s: d.lados.S !== false, e: d.lados.E !== false, o: d.lados.O !== false } : undefined;
+        const ft = { gap: 3, k: 3000, ...(ant?.ft || {}), descenso: d.desc, luz: d.luz }; if (ladosN) ft.lados = ladosN; else delete ft.lados;
+        const o = { id: d.id, tipo: 'falsotecho', etiqueta: 'Techos', rot: 0, alto: 1, ...d.base, color: ant?.color || d.c || '#f6f4f1', ft, ia: ant?.ia };
+        if (!ant || JSON.stringify([ant.cx, ant.cy, ant.w, ant.d, ant.z0, ant.h, ant.pts, ant.nombre, ant.ft]) !== JSON.stringify([o.cx, o.cy, o.w, o.d, o.z0, o.h, o.pts, o.nombre, o.ft])) cambia = true;
+        nuevos.push(o);
+      });
+      return cambia ? [...prev.filter(o => !String(o.id).startsWith('ci:')), ...nuevos] : prev;
+    });
+  }, [rev, estado]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Techo con huecos: donde una forma de techo «sube», el techo de la sala se abre (el hueco se ve desde dentro y desde abajo)
   useEffect(() => {
     const A = api3d.current; if (!A.raiz) return;
