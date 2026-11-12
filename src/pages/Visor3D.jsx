@@ -125,10 +125,8 @@ vec4 sueloMuestra(sampler2D s, vec2 uv) {
 }
 vec4 sueloPieza(sampler2D s, vec2 uv, float crop) {
   vec2 c = floor(uv), f = fract(uv); vec4 h = sueloCelda(c);
-  vec2 g = f - 0.5; float k = floor(h.z * 4.0);
-  if (k == 1.0) g = vec2(-g.y, g.x); else if (k == 2.0) g = -g; else if (k == 3.0) g = vec2(g.y, -g.x);
-  if (h.w > 0.5) g.x = -g.x;
-  return textureGrad(s, (g + 0.5) * crop + h.xy * (1.0 - crop), dFdx(uv) * crop, dFdy(uv) * crop);
+  float cr = crop * (0.88 + 0.24 * h.z); // sin girar ni voltear: la veta va siempre en la misma dirección
+  return textureGrad(s, f * cr + h.xy * (1.0 - cr), dFdx(uv) * cr, dFdy(uv) * cr);
 }`;
 function sueloShader(fl) {
   return (shader) => {
@@ -142,7 +140,10 @@ function sueloShader(fl) {
 const swatchLoseta = (hex) => { try { const cv = document.createElement('canvas'); cv.width = cv.height = 256; const cx = cv.getContext('2d'); cx.fillStyle = hex; cx.fillRect(0, 0, 256, 256); let sd = 7; const r = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; }; for (let i = 0; i < 9000; i++) { cx.fillStyle = r() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.07)'; cx.fillRect(r() * 256, r() * 256, 1 + r() * 1.6, 1 + r() * 1.6); } return cv.toDataURL('image/png'); } catch { return ''; } };
 const SUELOS_TEC = [
   ...[['loseta-negra', 'Loseta 1×1 negra', '#1d1d1f'], ['loseta-gris', 'Loseta 1×1 gris', '#7c7f83'], ['loseta-camel', 'Loseta 1×1 camel', '#b3845a']].map(([id, nombre, hex]) => ({ id, nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.06 }, url: swatchLoseta(hex), grupo: 'Losetas lisas' })),
-  ...[['blackblue-03', 'Negro + azul'], ['blacklightblue-03', 'Negro + celeste'], ['carbon-black-04', 'Carbón negro + blanco'], ['carbon-blackred-03', 'Carbón negro + rojo'], ['eco-viola-03', 'Eco negro + violeta'], ['darkgrey-03', 'Gris oscuro'], ['eco-grey-03', 'Eco gris'], ['granite-red-03', 'Granito gris + rojo'], ['brownstone-04', 'Terracota'], ['chocolate-3', 'Chocolate']]
+  ...[['marble-sand-03', 'Marble arena'], ['mpearl-3', 'Marble perla'], ['mhaya-3', 'Marble haya'], ['mgrey-3', 'Marble gris'], ['mcastanyo-3', 'Marble castaño'], ['mwengue-3', 'Marble wengué'], ['mcarbono-3', 'Marble carbono']]
+    .map(([slug, nombre]) => ({ id: 'pavi-' + slug, nombre: 'Paviflex · ' + nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.04, crop: 0.6 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/' + slug + '.jpg', grupo: 'Paviflex (aguas / mármol)' })),
+  { id: 'pavi-taupe-03', nombre: 'Paviflex · Taupe liso', tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.05 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/taupe-03.jpg', grupo: 'Paviflex (lisos)' },
+  ...[['blackblue-03', 'Negro + azul'], ['blacklightblue-03', 'Negro + celeste'], ['carbon-black-04', 'Carbón negro + blanco'], ['carbon-blackred-03', 'Carbón negro + rojo'], ['eco-viola-03', 'Eco negro + violeta'], ['darkgrey-03', 'Gris oscuro'], ['eco-grey-03', 'Eco gris'], ['granite-red-03', 'Granito gris + rojo'], ['granite-03', 'Granito gris'], ['brownstone-04', 'Terracota'], ['terra-03', 'Arena'], ['chocolate-3', 'Chocolate']]
     .map(([slug, nombre]) => ({ id: 'pavi-' + slug, nombre: 'Paviflex · ' + nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: false, tono: 0.03 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/' + slug + '.jpg', grupo: 'Paviflex (moteados)' })),
 ];
 let envEsp = null, espejoSucio = false, GL_SOFTWARE = false;
@@ -6764,14 +6765,14 @@ export default function Visor3D({ cliente = false }) {
             })()}
             {!esMuro && (
               <div style={{ borderBottom: '1px solid #333', marginBottom: 8, paddingBottom: 8 }}>
-                {['Losetas lisas', 'Paviflex (moteados)'].map(g => (
+                {['Losetas lisas', 'Paviflex (lisos)', 'Paviflex (moteados)', 'Paviflex (aguas / mármol)'].map(g => (
                   <div key={g} style={{ marginBottom: 6 }}>
-                    <div style={{ fontWeight: 700, marginBottom: 4 }}>{g === 'Losetas lisas' ? '▦ ' : '🟫 '}{g}</div>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>{g === 'Losetas lisas' ? '▦ ' : g.includes('mármol') ? '🪨 ' : '🟫 '}{g}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
                       {SUELOS_TEC.filter(t => t.grupo === g).map(t => (
                         <div key={t.id} onClick={() => poner('tex:' + t.id)} title={t.nombre} style={{ cursor: 'pointer', border: actual === 'tex:' + t.id ? '2px solid #d4af37' : '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
                           <img src={t.url} alt={t.nombre} loading="lazy" style={{ width: '100%', height: 40, objectFit: 'cover', display: 'block' }} />
-                          <div style={{ fontSize: 9.5, padding: '1px 3px', background: '#111', lineHeight: 1.2, minHeight: 22 }}>{t.nombre.replace('Paviflex · ', '').replace('Loseta 1×1 ', '')}</div>
+                          <div style={{ fontSize: 9.5, padding: '1px 3px', background: '#111', lineHeight: 1.2, minHeight: 22 }}>{t.nombre.replace('Paviflex · ', '').replace('Loseta 1×1 ', '').replace('Marble ', '')}</div>
                         </div>
                       ))}
                     </div>
@@ -6902,14 +6903,14 @@ export default function Visor3D({ cliente = false }) {
               <div style={{ border: '1px solid #4f4842', borderRadius: 6, padding: 8, marginBottom: 10, background: '#26221f' }}>
                 <div style={{ fontWeight: 700, marginBottom: 2 }}>▦ Suelos de gimnasio</div>
                 <div style={{ fontSize: 11, opacity: 0.65, marginBottom: 6 }}>Pulsa uno y luego haz clic en el suelo. Losetas lisas de 1×1 con junta y Paviflex moteados que no se repiten.</div>
-                {['Losetas lisas', 'Paviflex (moteados)'].map(g => (
+                {['Losetas lisas', 'Paviflex (lisos)', 'Paviflex (moteados)', 'Paviflex (aguas / mármol)'].map(g => (
                   <div key={g} style={{ marginBottom: 6 }}>
                     <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 3 }}>{g}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
                       {SUELOS_TEC.filter(t => t.grupo === g).map(t => (
                         <div key={t.id} onClick={() => { setMatSel({ id: t.id }); setHerr('pincel'); setGuardado('«' + t.nombre + '» listo: haz clic en el suelo'); }} title={t.nombre} style={{ cursor: 'pointer', border: matSel?.id === t.id ? '2px solid #d4af37' : '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
                           <img src={t.url} alt={t.nombre} loading="lazy" style={{ width: '100%', height: 44, objectFit: 'cover', display: 'block' }} />
-                          <div style={{ fontSize: 9.5, padding: '1px 3px', background: '#111', lineHeight: 1.2, minHeight: 22 }}>{t.nombre.replace('Paviflex · ', '').replace('Loseta 1×1 ', '')}</div>
+                          <div style={{ fontSize: 9.5, padding: '1px 3px', background: '#111', lineHeight: 1.2, minHeight: 22 }}>{t.nombre.replace('Paviflex · ', '').replace('Loseta 1×1 ', '').replace('Marble ', '')}</div>
                         </div>
                       ))}
                     </div>
