@@ -2370,6 +2370,7 @@ export default function Visor3D({ cliente = false }) {
       if (ahora - ultGob > 1000) {
         ultGob = ahora; const base = a0.prBase || 1;
         if (ema > 42 && escala > 0.5) { escala = Math.max(0.5, escala - 0.15); renderer.setPixelRatio(base * escala); }
+        else if (ema > 42 && !a0.sinSombrasMaq) { a0.sinSombrasMaq = true; scene.traverse(o => { if (o.isMesh && o.castShadow && o.parent?.userData?.modeloEq) o.castShadow = false; else if (o.isMesh && o.castShadow) { let q = o.parent, esMaq = false; while (q) { if (q.userData?.modeloEq) { esMaq = true; break; } q = q.parent; } if (esMaq) o.castShadow = false; } }); } // primero se quitan las sombras de las máquinas (lo que más pesa); las del local se mantienen
         else if (ema > 42 && !sinSombras) { sinSombras = true; renderer.shadowMap.enabled = false; sol.castShadow = false; scene.traverse(o => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.needsUpdate = true; }); } }); }
         else if (ema < 22 && escala < 1) { escala = Math.min(1, escala + 0.1); renderer.setPixelRatio(base * escala); }
         hud.textContent = Math.round(1000 / Math.max(1, ema)) + ' fps · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triáng. · ' + renderer.info.render.calls + ' llamadas' + (escala < 1 ? ' · res ' + Math.round(escala * 100) + '%' : '') + (sinSombras ? ' · sin sombras' : '') + (a0.composer ? ' · con efectos' : '') + (a0.pt && a0.ptReady ? ' · refinado ' + a0.pt.samples + '/' + (a0.ptMax || 200) : '') + ' · ' + (gpuNombre || 'gpu ?') + ' · px ' + renderer.getPixelRatio().toFixed(1);
@@ -3552,6 +3553,7 @@ export default function Visor3D({ cliente = false }) {
           if (me2.pos || me2.zM) { const dxw = me2.pos ? (me2.pos.x - e.cx) * CM : 0, dzw = me2.pos ? (me2.pos.y - e.cy) * CM : 0; mm.position.x += dxw * Math.cos(phi) - dzw * Math.sin(phi); mm.position.z += dxw * Math.sin(phi) + dzw * Math.cos(phi); mm.position.y += (me2.zM || 0) * CM; }
           if (me2.espejo) { const sobreX = (me2.espejo === 'z') === giroE; mm.scale[sobreX ? 'x' : 'z'] *= -1; } // se voltea respecto a los ejes del bloque, tenga el giro que tenga
         }
+        if (api3d.current.sinSombrasMaq) mm.traverse(x => { if (x.isMesh) x.castShadow = false; });
         g.add(mm);
         if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
         registraLod(a, mm, v => { if (g.userData.cuerpo) g.userData.cuerpo.material.visible = v; });
@@ -5327,6 +5329,13 @@ export default function Visor3D({ cliente = false }) {
       setIa({ estado: 'listo', imagen: r.data.imagen, original: imagen, meta: metaActual(), guardado: false });
     } catch (e) { setIa({ estado: 'error', mensaje: e.response?.data?.error || 'No se ha podido mejorar la imagen' }); }
   };
+  // Vista bonita (1 clic): Realista + calidad alta, sin aristas ni modo ligero. Es lo contrario del modo Ligero: para ver, mostrar y sacar renders.
+  const poneBonita = () => { setLigero(false); antesLigero.current = null; setRealista(true); setCalidad('alta'); setAristas(false); setAviso('Vista bonita: modo Realista y calidad alta. Para trabajar más fluido, pulsa Ligero.'); };
+  // Render rápido (1 clic): estilo revista, fiel al modelo, con la luz del proyecto; sin abrir el formulario
+  const renderRapido = () => {
+    if ((ligero || !realista || calidad !== 'alta') && !window.confirm('Ahora tienes ' + [ligero ? 'el modo Ligero' : '', !realista ? 'el modo Realista apagado' : '', calidad !== 'alta' ? 'la calidad en «' + calidad + '»' : ''].filter(Boolean).join(', ') + ': el render saldría con menos calidad.\n\nMejor pulsa «✨ Bonita» antes de generarlo.\n\n¿Generarlo igualmente?')) return;
+    renderIA({ ...iaTxt, estancia: iaTxt.estancia || salaBajoCamara(), estilo: iaTxt.estilo || '', extra: iaTxt.extra || '', libertad: 'fiel', aspecto: 'revista', proveedor: iaTxt.proveedor || 'openai' });
+  };
   const renderIA = async (ov, opc = {}) => {
     const { renderer, scene, cam } = api3d.current, txt = ov && ov.estilo !== undefined ? ov : iaTxt;
     setIaForm(false); setIa({ estado: 'trabajando' });
@@ -5891,6 +5900,7 @@ export default function Visor3D({ cliente = false }) {
         <button style={{ ...bTop, ...(ambAbierto ? bOn : {}) }} onClick={() => setAmbAbierto(v => !v)} title="Hora del sol, exposición e intensidad de las luces">Ambiente</button>
         <button style={{ ...bTop, ...(renderAbierto ? bOn : { background: '#8c8076' }), fontWeight: 700 }} onClick={() => { setRenderAbierto(v => !v); setSelObj(null); setSeleccion(null); }} title="Panel de render: luz, color, efectos y calidad de la imagen final">Render</button>
         <span style={{ flex: 1, minWidth: 8 }} />
+        <button style={{ ...bTop, ...(realista && calidad === 'alta' && !ligero ? { background: '#8c6a2f' } : {}) }} onClick={poneBonita} title="Vista bonita en un clic: modo Realista y calidad alta. Para mostrar el modelo y sacar renders">✨ Bonita</button>
         <button style={{ ...bTop, ...(ligero ? { background: '#3f7d3a' } : {}) }} onClick={alternaLigero} title="Para editar sin que se ralentice: calidad baja, sin efectos ni aristas y solo la planta que estás mirando. Púlsalo otra vez para volver a como estaba">⚡ Ligero</button>
         <button style={{ ...bTop, ...(aristas ? { background: '#6b6159' } : {}) }} onClick={() => setAristas(v => !v)} title="Dibuja las aristas (los cantos) de muros, máquinas y objetos, como en SketchUp">Aristas</button>
         <button style={{ ...bTop, ...(realista ? { background: '#6b6159' } : {}) }} onClick={() => setRealista(v => !v)} title="Reflejos, sombras de contacto y bordes suaves. Si va lento, apágalo">Realista</button>
@@ -5898,7 +5908,8 @@ export default function Visor3D({ cliente = false }) {
         {menuTop2('Salida', 'salida', [
           ['Captura de la vista', captura, false, false, 'Guarda la vista actual como imagen'],
           [renderizando ? 'Renderizando…' : 'Render HD', async () => { setRenderizando(true); try { const u = await renderHDurl(); const el = document.createElement('a'); el.href = u; el.download = (titulo || 'plano') + '-render.jpg'; el.click(); } catch (e) { setAviso('No se ha podido generar el render: ' + (e.message || 'error')); } setRenderizando(false); }, false, renderizando || estado !== 'listo', 'Render HD limpio con sombras suaves'],
-          ['Render con IA', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'La IA convierte esta vista en una foto realista'],
+          ['⚡ Render rápido con IA (1 clic)', renderRapido, false, estado !== 'listo' || ia?.estado === 'trabajando', 'Estilo revista, fiel al modelo y con la iluminación del proyecto: lo que ves ahora, convertido en foto, sin formularios'],
+          ['Render con IA (con ajustes)', abrirFormIA, false, estado !== 'listo' || ia?.estado === 'trabajando', 'La IA convierte esta vista en una foto realista'],
           [generando360 ? 'Generando 360°…' : 'Panorama 360°', hacer360, false, generando360 || estado !== 'listo', 'Panorama 360° desde la cámara'],
           [generandoParada ? 'Creando parada…' : 'Parada del tour (360°)', paradaTour, false, generandoParada || generando360 || estado !== 'listo', 'Guarda una panorámica 360° de aquí como parada del tour del cliente'],
           [generandoParada ? 'Creando paradas…' : 'Tour automático (elegir salas, con IA opcional)', abreTourAuto, false, generandoParada || generando360 || estado !== 'listo', 'Reparte paradas 360° por todas las salas, lejos de paredes y máquinas, y las genera de una vez'],
