@@ -3261,7 +3261,13 @@ export default function Visor3D({ cliente = false }) {
         if (usados + triMm > limiteTri && seleccion?.id !== e.id) { g.userData.modeloCargado = true; g.userData.limitada = true; setLimitadasN(n => n + 1); return; }
         mm.userData.tri = triMm;
         setMtick(v => v + 1);
-        sobrescribirModelo(mm, {}, texturas); mm.userData.modeloEq = true; mm.rotation.y = -(rotE * Math.PI) / 180; g.add(mm);
+        sobrescribirModelo(mm, {}, texturas); mm.userData.modeloEq = true; mm.rotation.y = -(rotE * Math.PI) / 180;
+        { // posición, elevación y espejo propios del modelo (solo esta copia): el bloque del plano no se mueve
+          const me2 = modosEq[e.id] || {}, phi = g.rotation.y;
+          if (me2.pos || me2.zM) { const dxw = me2.pos ? (me2.pos.x - e.cx) * CM : 0, dzw = me2.pos ? (me2.pos.y - e.cy) * CM : 0; mm.position.x += dxw * Math.cos(phi) - dzw * Math.sin(phi); mm.position.z += dxw * Math.sin(phi) + dzw * Math.cos(phi); mm.position.y += (me2.zM || 0) * CM; }
+          if (me2.espejo) { const sobreX = (me2.espejo === 'z') === giroE; mm.scale[sobreX ? 'x' : 'z'] *= -1; } // se voltea respecto a los ejes del bloque, tenga el giro que tenga
+        }
+        g.add(mm);
         if (g.userData.cuerpo) { g.userData.cuerpo.material.visible = false; g.userData.cuerpo.castShadow = false; }
         registraLod(a, mm, v => { if (g.userData.cuerpo) g.userData.cuerpo.material.visible = v; });
         try { const ov = aplicarRegiones(mm, 'e:' + e.id + ':', acabRef.current?.regiones, texturas); (a.overlaysRaiz = a.overlaysRaiz || []).push(...ov); } catch { /* un acabado que falla no debe deshacer el modelo ya puesto */ }
@@ -3738,7 +3744,6 @@ export default function Visor3D({ cliente = false }) {
   const [foto3dEstado, setFoto3dEstado] = useState('');
   const [fotos3d, setFotos3d] = useState([]); // fotos del producto (elegidas o pegadas con Ctrl+V)
   // Generar el modelo 3D de la máquina seleccionada con fotos (como en los bloques de Planos): se guarda en el producto y se ve igual en todos los planos
-  useEffect(() => { const me = seleccion && modosEq[seleccion.id]?.medidas; if (me) setEqNuevo(q => (q ? { ...q, w: me.w, d: me.d, alto: me.alto } : q)); }, [seleccion?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [fotosMaq, setFotosMaq] = useState([]), [enlaceMaq, setEnlaceMaq] = useState(''), [estadoMaq, setEstadoMaq] = useState(''), [genMaq, setGenMaq] = useState(false), [abrirGenMaq, setAbrirGenMaq] = useState(false);
   const anadirFotosMaq = fs2 => setFotosMaq(a => [...a, ...Array.from(fs2 || []).filter(x => String(x.type).startsWith('image'))].slice(0, 6));
   const fotoADataUrl = (file) => new Promise((ok, ko) => { const img = new Image(), url = URL.createObjectURL(file); img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)), cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url); ok(cv.toDataURL('image/jpeg', 0.9)); }; img.onerror = () => { URL.revokeObjectURL(url); ko(new Error('No se pudo leer una foto')); }; img.src = url; });
@@ -4331,7 +4336,8 @@ export default function Visor3D({ cliente = false }) {
   // Con modelo 3D, largo / fondo / alto del panel cambian SOLO el modelo de esta copia (el bloque y el plano no se tocan); posición, giro y elevación sí van al plano
   const medidasModelo = () => { const me = modosEq[seleccion?.id]?.medidas; return { w: me?.w || seleccion?.w || seleccion?.largo, d: me?.d || seleccion?.d || seleccion?.fondo, alto: me?.alto || seleccion?.alto || 110 }; };
   const separaMedidas = (cambios) => {
-    if (!seleccion || !biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d) return cambios;
+    return cambios; // las casillas del bloque escriben siempre en el plano; el modelo tiene su propio grupo de casillas
+    // eslint-disable-next-line no-unreachable
     const med = {}, resto = { ...cambios }, base = medidasModelo();
     for (const k of ['w', 'd', 'alto']) if (cambios[k] != null) { const n = parseFloat(cambios[k]); if (Number.isFinite(n) && n >= 5 && Math.abs(n - base[k]) >= 0.05) med[k] = n; delete resto[k]; }
     if (Object.keys(med).length) { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], medidas: { ...base, ...med } } })); setGuardado('Medidas del modelo cambiadas ✓ (el bloque del plano se queda como está)'); }
@@ -4358,8 +4364,7 @@ export default function Visor3D({ cliente = false }) {
   // Al escribir en la ficha de una máquina o de una puerta/ventana se aplica solo, sin pulsar «Aplicar al plano»
   useEffect(() => {
     if (!seleccion || !eqNuevo) return;
-    const mm0 = biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d ? medidasModelo() : null;
-    const act = { x: seleccion.cx, y: seleccion.cy, w: mm0 ? mm0.w : (seleccion.w || seleccion.largo), d: mm0 ? mm0.d : (seleccion.d || seleccion.fondo), alto: mm0 ? mm0.alto : (seleccion.alto || 110), rot: seleccion.rot || 0, z0: seleccion.z0 || 0 };
+    const act = { x: seleccion.cx, y: seleccion.cy, w: seleccion.w || seleccion.largo, d: seleccion.d || seleccion.fondo, alto: seleccion.alto || 110, rot: seleccion.rot || 0, z0: seleccion.z0 || 0 };
     const dif = {}; let hay = false;
     for (const k of Object.keys(act)) { const v = parseFloat(eqNuevo[k]); if (Number.isFinite(v) && Math.abs(v - (Number(act[k]) || 0)) >= 0.9) { dif[k] = v; hay = true; } }
     if (!hay) return;
@@ -7228,6 +7233,36 @@ export default function Visor3D({ cliente = false }) {
             <button style={{ ...btn, background: '#6b6159', padding: '4px 10px' }} onClick={aplicarEquipo}>Aplicar al plano</button>
             <button style={btn} onClick={() => setSeleccion(null)}>✕</button>
           </div>
+          {seleccion.cid && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d && (() => {
+            const mo = modosEq[seleccion.id] || {}, base = { x: seleccion.cx, y: seleccion.cy, w: seleccion.w || seleccion.largo, d: seleccion.d || seleccion.fondo, alto: seleccion.alto || 110 };
+            const val = { x: mo.pos?.x ?? base.x, y: mo.pos?.y ?? base.y, w: mo.medidas?.w ?? base.w, d: mo.medidas?.d ?? base.d, alto: mo.medidas?.alto ?? base.alto, z: mo.zM ?? 0 };
+            const fijaM = (patch) => { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], ...patch } })); };
+            const ponM = (k, txt) => { const n = parseFloat(String(txt).replace(',', '.')); if (!Number.isFinite(n) || Math.abs(n - val[k]) < 0.05) return; if (k === 'x' || k === 'y') fijaM({ pos: { x: val.x, y: val.y, [k]: n } }); else if (k === 'z') fijaM({ zM: Math.max(-500, Math.min(1000, n)) }); else if (n >= 5 && n <= 2000) fijaM({ medidas: { w: val.w, d: val.d, alto: val.alto, [k]: n } }); };
+            const cambiado = !!(mo.pos || mo.medidas || mo.zM || mo.espejo);
+            return (
+              <div style={{ background: '#2a2a2a', borderRadius: 6, padding: 8, marginBottom: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 2 }}>Modelo 3D · solo esta copia</div>
+                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 6 }}>Posición, medidas y giro del modelo. El bloque y el plano no cambian (sus medidas están debajo).</div>
+                {[['x', 'Posición X'], ['y', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z', 'Elevación (z)']].map(([k, et]) => (
+                  <label key={k + '|' + val[k]} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <span style={{ width: 70, opacity: 0.7 }}>{et}</span>
+                    <input type="number" defaultValue={Math.round(val[k] * 10) / 10} onBlur={e => ponM(k, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} style={{ ...btn, width: 90 }} />
+                  </label>
+                ))}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <span style={{ width: 70, opacity: 0.7 }}>Giro °</span>
+                  <select value={mo.rotM || 0} onChange={e => fijaM({ rotM: parseInt(e.target.value, 10) })} style={btn}>{[0, 90, 180, 270].map(g => <option key={g} value={g}>{g}°</option>)}</select>
+                  <button type="button" style={{ ...btn, padding: '3px 8px' }} title="Gira el modelo 90° (si el frente está de lado)" onClick={() => fijaM({ rotM: ((mo.rotM || 0) + 90) % 360 })}>↻ 90°</button>
+                </label>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+                  <button type="button" style={{ ...btn, padding: '3px 8px', ...(mo.espejo === 'x' ? { background: '#8c8076' } : {}) }} title="Espejo: voltea el modelo a lo largo del bloque (izquierda ↔ derecha)" onClick={() => fijaM({ espejo: mo.espejo === 'x' ? undefined : 'x' })}>⇋ Espejo</button>
+                  <button type="button" style={{ ...btn, padding: '3px 8px', ...(mo.espejo === 'z' ? { background: '#8c8076' } : {}) }} title="Espejo: voltea el modelo a lo ancho del bloque (delante ↔ detrás)" onClick={() => fijaM({ espejo: mo.espejo === 'z' ? undefined : 'z' })}>⇅ Espejo</button>
+                  {cambiado && <button type="button" style={{ ...btn, padding: '3px 8px' }} title="Quita posición, medidas, elevación y espejo propios del modelo: vuelve a ocupar el bloque" onClick={() => fijaM({ pos: undefined, medidas: undefined, zM: undefined, espejo: undefined })}>Volver al bloque</button>}
+                </div>
+              </div>
+            );
+          })()}
+          {eqNuevo && seleccion.cid && biblioteca?.find(m => m.id === seleccion.cid)?.modelo3d && <div style={{ fontWeight: 700, fontSize: 12, margin: '4px 0 4px' }}>Plano · bloque</div>}
           {eqNuevo && botonProp()}
           {eqNuevo && [['x', 'Posición X'], ['y', 'Posición Y'], ['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto'], ['z0', 'Elevación (z)'], ['rot', 'Giro °']].map(([k, et]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -7354,20 +7389,6 @@ export default function Visor3D({ cliente = false }) {
               <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Tamaño del modelo</div>
                 {nat ? <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6, lineHeight: 1.5 }}>El archivo mide <b>{fm(nat[0])} × {fm(nat[1])} × {fm(nat[2])} cm</b> (largo × fondo × alto).<br />En el plano pone {fm(seleccion.w || seleccion.largo)} × {fm(seleccion.d || seleccion.fondo)} × {fm(seleccion.alto || 110)} cm.<br />Ahora se ve a <b>{fm(mos[0])} × {fm(mos[1])} × {fm(mos[2])} cm</b>.</div> : <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 6 }}>Cargando el modelo…</div>}
-                {(() => {
-                  const me = modosEq[seleccion.id]?.medidas, v0 = { w: me?.w || seleccion.w || seleccion.largo, d: me?.d || seleccion.d || seleccion.fondo, alto: me?.alto || seleccion.alto || 110 };
-                  const poner = (k, txt) => { const n = parseFloat(String(txt).replace(',', '.')); if (!(n >= 5 && n <= 2000) || Math.abs(n - v0[k]) < 0.05) return; refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { modo: 'estirar', ...m[seleccion.id], medidas: { ...v0, [k]: n } } })); };
-                  return (
-                    <div style={{ background: '#2a2a2a', borderRadius: 6, padding: 8, marginBottom: 6 }}>
-                      <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>Medidas del modelo (solo en el 3D de esta copia)</div>
-                      <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 6 }}>Cambian el modelo sin tocar el bloque ni el plano.</div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {[['w', 'Largo'], ['d', 'Fondo'], ['alto', 'Alto']].map(([k, et]) => <label key={k + (me ? 'm' : 'p') + Math.round(v0[k])} style={{ flex: 1, fontSize: 11, opacity: 0.9 }}>{et}<input type="number" defaultValue={Math.round(v0[k] * 10) / 10} onBlur={e => poner(k, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} style={{ ...btn, width: '100%', boxSizing: 'border-box' }} /></label>)}
-                      </div>
-                      {me && <button style={{ ...btn, marginTop: 6, fontSize: 11 }} onClick={() => { refrescarModelosEq(); setModosEq(m => { const x = { ...m[seleccion.id] }; delete x.medidas; return { ...m, [seleccion.id]: x }; }); }}>Volver a las medidas del plano</button>}
-                    </div>
-                  );
-                })()}
                 <select value={modo} onChange={e => { refrescarModelosEq(); setModosEq(m => ({ ...m, [seleccion.id]: { ...m[seleccion.id], modo: e.target.value } })); }} style={{ ...btn, width: '100%', marginBottom: 6 }}>
                   <option value="auto">Automático (tamaño del archivo si es razonable)</option>
                   <option value="nativo">Tamaño original del archivo</option>
