@@ -15,10 +15,11 @@ import { aligeraGlb } from '../utils/aligerar-glb.js';
 import { imagenesDeEnlace } from '../utils/imagenes-enlace.js';
 
 // Las piezas de la biblioteca propia (ids «bib-…») guardan su modelo 3D en un archivo aparte, no en catalog_products
-const esBib = (id) => /^(bib|lib)-/.test(String(id)); // lib-… = bloques genéricos de Planos (sin fila en la base de datos)
+const esUuid = (id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id));
+const esBib = (id) => /^(bib|lib)-/.test(String(id)) || !esUuid(id); // cualquier id que no sea uuid (p. ej. «bq727», bloques propios de Planos) tampoco tiene fila en catalog_products // lib-… = bloques genéricos de Planos (sin fila en la base de datos)
 async function productoOBib(id) {
   if (!esBib(id)) { const { data, error } = await supabase.from('catalog_products').select('id, name, longitud, ancho, altura, bloques, photo_url').eq('id', id).maybeSingle(); if (error) throw error; return data; }
-  if (String(id).startsWith('lib-')) return { id, bloques: { modelo3d: (await leerModelosBib())[id] } };
+  if (!String(id).startsWith('bib-')) return { id, bloques: { modelo3d: (await leerModelosBib())[id] } };
   const { data: b, error } = await supabase.from('biblioteca_bloques').select('id').eq('id', id.slice(4)).maybeSingle();
   if (error) throw error;
   return b ? { id, bloques: { modelo3d: (await leerModelosBib())[id] } } : null;
