@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { supabase } from '../config/supabase.js';
 import { authenticateToken, requirePermission } from '../middleware/auth.middleware.js';
+import { callClaude } from '../utils/anthropic.js';
 
 // «Estudio de ideas»: un agente creativo con ChatGPT (API de OpenAI, Responses). Se le comparte una imagen (una pared, un local, una vista 3D),
 // se le pide una idea (un mural, un rótulo, un ambiente) y genera la imagen; se sigue hablando para retocarla y, al final, se le pide solo la imagen.
@@ -149,6 +150,29 @@ const PIDE_FICHA = `Eres director de arte. Te paso el texto de un brandbook. Esc
 6. EVITAR: lo que la marca prohíbe o desaconseja.
 Devuelve solo la ficha.`;
 
+// Ideas de ambiente para el modelo 3D: la IA propone colores concretos para una pared, un suelo o todo el espacio, y el visor los aplica al modelo con un clic
+router.post('/ambiente', async (req, res) => {
+  try {
+    const tipo = ['muro', 'suelo', 'global'].includes(req.body?.tipo) ? req.body.tipo : 'global';
+    const objetivo = String(req.body?.objetivo || '').slice(0, 400), contexto = String(req.body?.contexto || '').slice(0, 4500), actual = String(req.body?.actual || '').slice(0, 300), otras = String(req.body?.otras || '').slice(0, 400);
+    const forma = tipo === 'global'
+      ? '{"ideas":[{"titulo":"nombre corto","descripcion":"2 frases: el ambiente, por qué funciona en un gimnasio y qué sensación da","muros":"#RRGGBB","suelo":"#RRGGBB","techo":"#RRGGBB","acento":"#RRGGBB"}]}'
+      : '{"ideas":[{"titulo":"nombre corto","descripcion":"2 frases: cómo queda, por qué funciona y con qué se combina","principal":"#RRGGBB","acento":"#RRGGBB"}]}';
+    const r = await callClaude({
+      system: 'Eres interiorista de Ranuse Design, especialista en gimnasios, boxes de crossfit y espacios deportivos. Propones ideas de ambiente CONCRETAS y realizables para un modelo 3D: colores exactos (hex) para pintar o revestir. Piensa en iluminación, suelo oscuro de caucho, máquinas negras o grises, y en que el espacio se vea premium y con carácter; evita colores sosos o todos iguales y haz que las 4 ideas sean claramente distintas entre sí (por ejemplo una oscura e industrial, una cálida de madera y tierra, una limpia y luminosa, una atrevida con un color de marca). Responde SOLO JSON con esta forma: ' + forma + '. Exactamente 4 ideas. Los hex deben ser válidos de 6 dígitos.',
+      messages: [{ role: 'user', content: 'Qué quiero decorar: ' + (tipo === 'muro' ? 'UNA pared' : tipo === 'suelo' ? 'UN suelo' : 'TODO el espacio (muros, suelo y techo)') + '.\n' + (objetivo ? 'Lo que busco: ' + objetivo + '\n' : '') + (actual ? 'Color actual: ' + actual + '\n' : '') + (otras ? 'Cómo están las demás superficies: ' + otras + '\n' : '') + 'Datos del proyecto:\n' + contexto }],
+      maxTokens: 1800,
+    });
+    const txt = (r.content || []).map(b => b.text || '').join(''), j = JSON.parse(/\{[\s\S]*\}/.exec(txt)[0]);
+    const hex = v => (/^#[0-9a-fA-F]{6}$/.test(String(v || '').trim()) ? String(v).trim().toLowerCase() : null);
+    const ideas = (Array.isArray(j.ideas) ? j.ideas : []).slice(0, 4).map(x => ({
+      titulo: String(x?.titulo || 'Idea').slice(0, 60), descripcion: String(x?.descripcion || '').slice(0, 400),
+      principal: hex(x?.principal), acento: hex(x?.acento), muros: hex(x?.muros), suelo: hex(x?.suelo), techo: hex(x?.techo),
+    })).filter(x => (tipo === 'global' ? x.muros || x.suelo : x.principal));
+    if (!ideas.length) return res.status(502).json({ error: 'La IA no devolvió ideas válidas. Inténtalo otra vez.' });
+    res.json({ ideas });
+  } catch (e) { console.error('estudio-ideas ambiente:', e.message); res.status(500).json({ error: 'No se pudieron generar las ideas: ' + String(e.message).slice(0, 150) }); }
+});
 router.get('/marcas', async (req, res) => {
   try { res.json({ marcas: (await leerMarcas()).map(m => ({ id: m.id, nombre: m.nombre, chars: (m.ficha || '').length, creada: m.creada, logo: !!m.logo })) }); }
   catch (e) { console.error('marcas', e); res.status(500).json({ error: 'No se pudieron cargar las marcas' }); }

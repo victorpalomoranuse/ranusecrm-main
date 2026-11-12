@@ -1997,6 +1997,7 @@ export default function Visor3D({ cliente = false }) {
   const matSelRef = useRef(null);
   useEffect(() => { matSelRef.current = matSel; }, [matSel]);
   const [selAcab, setSelAcab] = useState(null);  // { tipo: 'muro' | 'suelo', id }
+  const [ideasAmb, setIdeasAmb] = useState(null), [ideasAmbBrief, setIdeasAmbBrief] = useState(''), [ideasAmbCarga, setIdeasAmbCarga] = useState(false), [ideasAmbErr, setIdeasAmbErr] = useState(''), [ideasAmbTipo, setIdeasAmbTipo] = useState('');
   const [rev, setRev] = useState(0);             // sube cada vez que se rehace el plano 3D
   const [capasAbierto, setCapasAbierto] = useState(false);
   const [ocultas, setOcultas] = useState(() => { try { return JSON.parse(localStorage.getItem('visor3dOcultas:' + id) || '[]'); } catch { return []; } });
@@ -6374,6 +6375,49 @@ export default function Visor3D({ cliente = false }) {
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 80, opacity: 0.7 }}>Alto cm</span><input key={'h' + mu.id + rev} type="number" defaultValue={Math.round(mu.h || api3d.current.modelo?.altura || 260)} onBlur={e => parche({ h: e.target.value })} style={{ ...btn, width: 70 }} /></label>
                   <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 6 }}>Largo: {Math.round(Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]))} cm. Arrastra las bolas azules de los extremos para moverlo (mueve también los muros conectados).</div>
                   <button style={{ ...btn, background: '#7a2b2b' }} onClick={() => { if (window.confirm('¿Borrar este muro del plano? Sus puertas y ventanas también se quitan.')) api.delete('/medicion/' + id + '/muro/' + mu.id).then(() => { setSelAcab(null); setAviso('Muro borrado del plano ✓. Si tienes Planos abierto, recárgalo.'); api3d.current.recargar?.(); }).catch(er => setAviso(er.response?.data?.error || 'No se pudo borrar')); }}>Borrar muro</button>
+                </div>
+              );
+            })()}
+            {(() => {
+              // Ideas de la IA: propone colores concretos para esta superficie (o para todo el espacio) y se aplican al modelo con un clic
+              const pideIdeas = async (tipo) => {
+                setIdeasAmbCarga(true); setIdeasAmbErr(''); setIdeasAmbTipo(tipo);
+                try {
+                  const ctx = (await contextoModelo()).texto, nom = h => (h ? h : 'sin color definido');
+                  const otras = 'muros ' + nom(acab.todosMuros) + ', suelos ' + nom(acab.todosSuelos) + ', techos ' + nom(acab.todosTechos);
+                  const r = await api.post('/estudio-ideas/ambiente', { tipo, objetivo: ideasAmbBrief, actual: nom(actual), otras, contexto: ctx }, { timeout: 90000 });
+                  setIdeasAmb(r.data.ideas || []);
+                } catch (e) { setIdeasAmbErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
+                setIdeasAmbCarga(false);
+              };
+              const aplicaGlobal = (x) => setAcab(a => ({ ...a, muros: x.muros ? {} : a.muros, todosMuros: x.muros || a.todosMuros, salas: x.suelo ? {} : a.salas, todosSuelos: x.suelo || a.todosSuelos, techos: x.techo ? {} : a.techos, todosTechos: x.techo || a.todosTechos }));
+              return (
+                <div style={{ borderBottom: '1px solid #333', marginBottom: 8, paddingBottom: 8 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ Ideas de la IA</div>
+                  <input value={ideasAmbBrief} onChange={e => setIdeasAmbBrief(e.target.value)} placeholder="Qué busco: industrial, cálido, premium…" style={{ ...btn, width: '100%', boxSizing: 'border-box', marginBottom: 4 }} />
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    <button style={{ ...btn, background: '#6b6159' }} disabled={ideasAmbCarga} onClick={() => pideIdeas(esMuro ? 'muro' : 'suelo')}>{ideasAmbCarga && ideasAmbTipo !== 'global' ? 'Pensando…' : 'Ideas para ' + (esMuro ? 'este muro' : 'este suelo')}</button>
+                    <button style={{ ...btn, background: '#6b6159' }} disabled={ideasAmbCarga} onClick={() => pideIdeas('global')}>{ideasAmbCarga && ideasAmbTipo === 'global' ? 'Pensando…' : 'Ambiente de todo el espacio'}</button>
+                  </div>
+                  {ideasAmbErr && <div style={{ color: '#ff9b9b', fontSize: 11, marginTop: 4 }}>{ideasAmbErr}</div>}
+                  {!ideasAmbCarga && ideasAmb && ideasAmb.map((x, i) => {
+                    const global = ideasAmbTipo === 'global';
+                    return (
+                      <div key={i} style={{ background: '#2a2a2a', borderRadius: 6, padding: 8, marginTop: 6 }}>
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }}>
+                          {(global ? [x.muros, x.suelo, x.techo, x.acento] : [x.principal, x.acento]).filter(Boolean).map((c, k) => <span key={k} title={c} style={{ width: 22, height: 22, background: c, border: '1px solid #666', borderRadius: 4 }} />)}
+                          <b style={{ marginLeft: 4, fontSize: 12.5 }}>{x.titulo}</b>
+                        </div>
+                        <div style={{ fontSize: 11.5, opacity: 0.85, lineHeight: 1.4, marginBottom: 6 }}>{x.descripcion}</div>
+                        {global
+                          ? <button style={{ ...btn, background: '#8c8076' }} onClick={() => { aplicaGlobal(x); setAviso('Ambiente «' + x.titulo + '» aplicado ✓ (se guarda en el modelo)'); }}>Aplicar a todo</button>
+                          : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            <button style={{ ...btn, background: '#8c8076' }} onClick={() => { poner(x.principal); setAviso('Color de «' + x.titulo + '» aplicado ✓ (se guarda en el modelo)'); }}>Aplicar aquí</button>
+                            <button style={btn} onClick={() => { todos(x.principal); setAviso('Color aplicado a todos ✓'); }}>{esMuro ? 'A todos los muros' : 'A todos los suelos'}</button>
+                          </div>}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })()}
