@@ -2596,7 +2596,16 @@ export default function Visor3D({ cliente = false }) {
     let arrastre = null, trazo = null, previa = null;
     let poli = [], poliLinea = null, poliAbajo = null, poliIniDown = false, empuje = null, escrito = '', ultCur = null;
     // Mayús = recto (sigue el eje más cercano al último punto), salvo en rectángulos y círculos
-    const ortoPoli = (p, e) => { if (!e.shiftKey || !poli.length) return p; const a = poli[poli.length - 1]; return Math.abs(p.x - a.x) >= Math.abs(p.y - a.y) ? { x: p.x, y: a.y } : { x: a.x, y: p.y }; };
+    // Flechas (como SketchUp): → bloquea al eje rojo (X), ← al verde (Y), ↓ lo libera. Volver a pulsar la misma flecha también lo libera.
+    let ejeBloq = null;
+    const ortoPoli = (p, e) => {
+      if (!poli.length) return p; const a = poli[poli.length - 1];
+      if (ejeBloq === 'x') return { x: p.x, y: a.y };
+      if (ejeBloq === 'y') return { x: a.x, y: p.y };
+      if (!e.shiftKey) return p;
+      return Math.abs(p.x - a.x) >= Math.abs(p.y - a.y) ? { x: p.x, y: a.y } : { x: a.x, y: p.y };
+    };
+    const textoEje = () => (ejeBloq === 'x' ? '  · eje rojo' : ejeBloq === 'y' ? '  · eje verde' : '');
     let guiaA = null, guiaAbajo = null, guiaMarca = null, luzAbajo = null, eje3 = null;
     let muroA = null, muroAbajo = null, muroLinea = null, nodoDrag = null, vertDrag = null;
     const quitarMuroLinea = () => { if (muroLinea) { scene.remove(muroLinea); muroLinea.geometry.dispose(); muroLinea = null; } };
@@ -2656,7 +2665,7 @@ export default function Visor3D({ cliente = false }) {
       const ptsF = cursor && poli.length === 1 && ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli' ? puntosForma(formaRef.current, poli[0].x, poli[0].y, cursor.x, cursor.y).map(([x, y]) => ({ x, y })) : null;
       const pts = ptsF ? [...ptsF, ptsF[0]] : (cursor ? [...poli, cursor] : poli);
       if (pts.length < 2) return;
-      poliLinea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x * CM, 0.03, p.y * CM))), new THREE.LineBasicMaterial({ color: 0x1b6dd6 }));
+      poliLinea = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x * CM, 0.03, p.y * CM))), new THREE.LineBasicMaterial({ color: ejeBloq === 'x' ? 0xe03131 : ejeBloq === 'y' ? 0x2f9e44 : 0x1b6dd6 }));
       scene.add(poliLinea);
     };
     const cerrarPoli = () => {
@@ -2698,6 +2707,14 @@ export default function Visor3D({ cliente = false }) {
       if (!esPoli(herrRef.current) || enCampo(e)) return;
       const formaT = ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli';
       // escribir una medida (cm) y Enter: pone el siguiente punto a esa distancia, en la dirección del ratón
+      if (!formaT && poli.length && ['ArrowRight', 'ArrowLeft', 'ArrowDown'].includes(e.key)) {
+        e.preventDefault();
+        const nuevo = e.key === 'ArrowRight' ? 'x' : e.key === 'ArrowLeft' ? 'y' : null;
+        ejeBloq = nuevo && nuevo === ejeBloq ? null : nuevo;
+        setMedidaMuro(ejeBloq ? (ejeBloq === 'x' ? 'Bloqueado al eje rojo (X)' : 'Bloqueado al eje verde (Y)') : 'Dirección libre');
+        if (ultCur) { const q = ortoPoli(ultCur, { shiftKey: false }); ultCur = q; dibujarPoli(q); }
+        return;
+      }
       if (!formaT && poli.length && /^[0-9.,]$/.test(e.key)) { escrito += e.key === ',' ? '.' : e.key; setMedidaMuro(escrito + ' cm  ↵'); return; }
       if (e.key === 'Backspace') {
         e.preventDefault();
@@ -2710,7 +2727,7 @@ export default function Visor3D({ cliente = false }) {
         if (escrito && L > 0 && poli.length && ultCur) { const a = poli[poli.length - 1], dx = ultCur.x - a.x, dy = ultCur.y - a.y, n = Math.hypot(dx, dy) || 1; poli.push({ x: a.x + dx / n * L, y: a.y + dy / n * L }); escrito = ''; setMedidaMuro(''); dibujarPoli(null); return; }
         escrito = ''; cerrarPoli();
       }
-      if (e.key === 'Escape') { poli = []; escrito = ''; setMedidaMuro(''); dibujarPoli(null); setHerr('sel'); }
+      if (e.key === 'Escape') { poli = []; escrito = ''; ejeBloq = null; setMedidaMuro(''); dibujarPoli(null); setHerr('sel'); }
     };
     if (!cliente) window.addEventListener('keydown', onTecla);
     const aplicarPincel = (hit, todos) => {
@@ -2918,7 +2935,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (esPoli(herrRef.current) && poli.length) {
         let p = puntoSuelo(e);
-        if (p) { const formaT = ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli'; if (!formaT) p = ortoPoli(p, e); ultCur = p; const a = poli[poli.length - 1]; if (!escrito) setMedidaMuro(Math.round(Math.hypot(p.x - a.x, p.y - a.y)) + ' cm'); dibujarPoli(p); }
+        if (p) { const formaT = ['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli'; if (!formaT) p = ortoPoli(p, e); ultCur = p; const a = poli[poli.length - 1]; if (!escrito) setMedidaMuro(Math.round(Math.hypot(p.x - a.x, p.y - a.y)) + ' cm' + textoEje()); dibujarPoli(p); }
         return;
       }
       if (herrRef.current === 'zonaP' && poliP) { const g = golpePared(e); if (g && g.id === poliP.id) dibujarPared(new THREE.Vector3(...aMundoPared(g.mu, g.s, g.y, poliP.lado).toArray())); return; }
@@ -3064,7 +3081,7 @@ export default function Visor3D({ cliente = false }) {
             if (!formaTool) p = ortoPoli(p, e);
             if (formaTool && poli.length === 1) { poli = puntosForma(formaRef.current, poli[0].x, poli[0].y, p.x, p.y).map(([x, y]) => ({ x, y })); cerrarPoli(); }
             else if (poli.length >= 3 && Math.hypot(p.x - poli[0].x, p.y - poli[0].y) < 15) { cierraLazo = true; cerrarPoli(); cierraLazo = false; }
-            else { poli.push(p); dibujarPoli(null); }
+            else { poli.push(p); ejeBloq = null; dibujarPoli(null); }
           }
         }
         return;
@@ -4384,6 +4401,36 @@ export default function Visor3D({ cliente = false }) {
     const n = { ...o, id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), cx: o.cx + 30, cy: o.cy + 30 };
     setObjs(prev => [...prev, n]); setSelObj(n.id);
   };
+  // Espejo, Escala y Equidistancia (como SketchUp) para objetos dibujados con puntos (volúmenes, zonas, tiras...)
+  const objSelPts = () => { const o = objs.find(x => x.id === selObj); if (!o) { setAviso('Selecciona primero un objeto'); return null; } if (o.bloqueado) { setAviso('Está bloqueado 🔒'); return null; } return o; };
+  const cajaDe = pts => { const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]); return { w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys) }; };
+  const espejoSel = eje => {
+    const o = objSelPts(); if (!o) return;
+    if (!o.pts) { setAviso('El espejo sirve para objetos dibujados con puntos. Para una máquina o bloque, gíralo con R.'); return; }
+    cambiar(o.id, { pts: o.pts.map(p => (eje === 'x' ? [-p[0], p[1]] : [p[0], -p[1]])) });
+  };
+  const escalarSel = () => {
+    const o = objSelPts(); if (!o) return;
+    const t = window.prompt('Escala (por ejemplo 2 = el doble, 0.5 = la mitad):', '1'); const f = parseFloat((t || '').replace(',', '.'));
+    if (!f || f <= 0 || f === 1) return;
+    cambiar(o.id, { w: (o.w || 1) * f, d: (o.d || 1) * f, alto: (o.alto || 1) * f, ...(o.pts ? { pts: o.pts.map(p => [p[0] * f, p[1] * f]) } : {}) });
+  };
+  const equidistanciaSel = () => {
+    const o = objSelPts(); if (!o) return;
+    if (!o.pts || o.pts.length < 3) { setAviso('La equidistancia necesita una forma cerrada dibujada con puntos'); return; }
+    const t = window.prompt('Equidistancia en cm (positivo = hacia fuera, negativo = hacia dentro):', '10'); const d = parseFloat((t || '').replace(',', '.'));
+    if (!d) return;
+    const P = o.pts, n = P.length; let ar = 0; for (let i = 0; i < n; i++) { const a = P[i], b = P[(i + 1) % n]; ar += a[0] * b[1] - b[0] * a[1]; }
+    const sg = ar >= 0 ? 1 : -1, nuevo = [];
+    for (let i = 0; i < n; i++) {
+      const a = P[(i + n - 1) % n], b = P[i], c = P[(i + 1) % n];
+      const u1 = [b[0] - a[0], b[1] - a[1]], u2 = [c[0] - b[0], c[1] - b[1]], l1 = Math.hypot(...u1) || 1, l2 = Math.hypot(...u2) || 1;
+      const n1 = [sg * u1[1] / l1, -sg * u1[0] / l1], n2 = [sg * u2[1] / l2, -sg * u2[0] / l2], k = d / Math.max(0.2, 1 + n1[0] * n2[0] + n1[1] * n2[1]);
+      nuevo.push([b[0] + (n1[0] + n2[0]) * k, b[1] + (n1[1] + n2[1]) * k]);
+    }
+    const nu = { ...o, id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), pts: nuevo, ...cajaDe(nuevo) };
+    setObjs(prev => [...prev, nu]); setSelObj(nu.id);
+  };
   const idsSel = [selObj, ...selExtra].filter(Boolean);
   // Ocultar lo seleccionado (objetos, máquinas del plano o muros): se oculta en la vista, no se borra. «Mostrar todo» lo devuelve
   const nOcultos = ocultas.filter(k => k.startsWith('id:')).length + Object.values(modosEq).filter(v => v?.v3 === 'oculto').length;
@@ -4427,7 +4474,8 @@ export default function Visor3D({ cliente = false }) {
       if (ctrl && k === 'z' && !e.shiftKey) { e.preventDefault(); deshacer(); return; }
       if (ctrl && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); rehacer(); return; }
       if (ctrl && k === 'd' && selObj) { e.preventDefault(); if (selExtra.length) duplicarSel(); else duplicar(selObj); return; }
-      if (['poli', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'carril', 'led', 'muro'].includes(herr) && (k === 'enter' || k === 'escape' || k === 'backspace' || /^[0-9.,]$/.test(k))) return; // lo gestiona la propia herramienta
+      if (['poli', 'zonaS', 'zonaT', 'zonaP', 'sigue', 'carril', 'led', 'muro'].includes(herr) && (k === 'enter' || k === 'escape' || k === 'backspace' || /^[0-9.,]$/.test(k))) return;
+      if (['poli', 'zonaS', 'zonaT', 'sigue', 'carril', 'led'].includes(herr) && ['arrowleft', 'arrowright', 'arrowdown'].includes(k)) { e.preventDefault(); return; } // las flechas bloquean el eje al dibujar, no mueven el objeto // lo gestiona la propia herramienta
       if (k === 'h' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); ocultarRef.current?.(); return; }
       if ((k === 'delete' || k === 'backspace') && !selObj && seleccion) { e.preventDefault(); eliminarEquipo(); return; }
       if ((k === 'delete' || k === 'backspace') && selObj) { e.preventDefault(); if ([selObj, ...selExtra].some(i => objs.find(x => x.id === i)?.bloqueado)) { setAviso('Hay objetos bloqueados 🔒: desbloquéalos en su ficha para borrarlos.'); return; } if (selExtra.length) borrarSel(); else borrar(selObj); return; }
@@ -4476,6 +4524,10 @@ export default function Visor3D({ cliente = false }) {
     { g: 'Edición', n: 'Deshacer', k: 'Ctrl+Z', f: () => deshacer() },
     { g: 'Edición', n: 'Rehacer', k: 'Ctrl+Y', f: () => rehacer() },
     { g: 'Edición', n: 'Girar 90° lo seleccionado', k: 'R (con algo seleccionado)', f: () => { const o = objs.find(x => x.id === selObj); if (o) cambiar(selObj, { rot: ((o.rot || 0) + 90) % 360 }); } },
+    { g: 'Edición', n: 'Espejo izquierda-derecha', k: '', f: () => espejoSel('x') },
+    { g: 'Edición', n: 'Espejo delante-detrás', k: '', f: () => espejoSel('y') },
+    { g: 'Edición', n: 'Escala', k: '', f: () => escalarSel() },
+    { g: 'Edición', n: 'Equidistancia (copia el contorno)', k: '', f: () => equidistanciaSel() },
     { g: 'Edición', n: 'Duplicar', k: 'Ctrl+D', f: () => { if (selObj) duplicar(selObj); } },
     { g: 'Edición', n: 'Borrar', k: 'Supr', f: () => { if (selObj) borrar(selObj); } },
     { g: 'Vista', n: 'Perspectiva', k: '0', t: '0', f: () => vista('persp') },
