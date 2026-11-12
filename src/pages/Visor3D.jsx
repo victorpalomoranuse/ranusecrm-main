@@ -183,6 +183,11 @@ function sueloShader(fl) {
       + ' vec4 suH = sueloCelda(floor(' + uv + ')); diffuseColor.rgb *= 1.0 + (suH.x - 0.5) * ' + (fl.tono || 0).toFixed(3) + ';\n'
       + (fl.junta ? ' vec2 suF = fract(' + uv + '), suE = min(suF, 1.0 - suF); float suW = max(0.0012, fwidth(vMapUv.x) * 0.7); float suJ = 1.0 - smoothstep(suW * 0.4, suW * 1.5, min(suE.x, suE.y)); diffuseColor.rgb *= mix(1.0, 0.82, suJ);\n' : '')
       + '#endif');
+    // Las losetas tienen ~1 cm de grosor: en cada junta el borde se «achaflana» tocando la normal, así la luz marca el canto y el suelo no se ve plano
+    if (fl.junta) shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n#ifdef USE_MAP\n'
+      + ' { vec2 bF = fract(vMapUv); float bW = 0.014; float bH = smoothstep(0.0, bW, bF.x) * smoothstep(0.0, bW, 1.0 - bF.x) * smoothstep(0.0, bW, bF.y) * smoothstep(0.0, bW, 1.0 - bF.y);\n'
+      + '  vec3 bq0 = dFdx(-vViewPosition), bq1 = dFdy(-vViewPosition); vec3 bR1 = cross(bq1, normal), bR2 = cross(normal, bq0); float bDet = dot(bq0, bR1);\n'
+      + '  float bk = 0.006 * (1.0 - smoothstep(4.0, 12.0, length(vViewPosition))); vec3 bG = sign(bDet) * (dFdx(bH) * bR1 + dFdy(bH) * bR2); normal = normalize(abs(bDet) * normal - bk * bG); }\n#endif');
   };
 }
 const swatchLoseta = (hex) => { try { const cv = document.createElement('canvas'); cv.width = cv.height = 256; const cx = cv.getContext('2d'); cx.fillStyle = hex; cx.fillRect(0, 0, 256, 256); let sd = 7; const r = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; }; for (let i = 0; i < 9000; i++) { cx.fillStyle = r() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.07)'; cx.fillRect(r() * 256, r() * 256, 1 + r() * 1.6, 1 + r() * 1.6); } return cv.toDataURL('image/png'); } catch { return ''; } };
