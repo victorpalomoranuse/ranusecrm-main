@@ -75,7 +75,7 @@ router.get('/:id/:firma/catalogo', async (req, res) => {
     const mb = await leerModelosBib().catch(() => ({})), modelosGen = {};
     for (const [k, v] of Object.entries(mb)) {
       if (!v?.url) continue;
-      if (k.startsWith('lib-')) modelosGen[k] = { url: v.url, tipo: v.tipo || 'glb', rot: Number(v.rot) || 0 };
+      if (!k.startsWith('bib-')) modelosGen[k] = { url: v.url, tipo: v.tipo || 'glb', rot: Number(v.rot) || 0 };
       else if (k.startsWith('bib-') && cids.has(k)) maquinas.push({ id: k, nombre: v.nombre || k, w: 100, d: 80, alto: null, modelo3d: { url: v.url, tipo: v.tipo || 'glb', rot: Number(v.rot) || 0, alineado: !!v.alineado, bytes: Number(v.bytes) || 0 } });
     }
     res.set('Cache-Control', 'no-store');
