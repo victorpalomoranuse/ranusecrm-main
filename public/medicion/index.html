@@ -5219,7 +5219,7 @@ svg.addEventListener('pointerdown',function(e){
     dimHits.forEach(function(hh){if((hh.kind==='spe'||hh.kind==='spg')&&((hh.rot||hh.ux===0)?(Math.abs((wdd.x-hh.x)*st.k)<14&&Math.abs((wdd.y-hh.y)*st.k)<26):(Math.abs((wdd.x-hh.x)*st.k)<24&&Math.abs((wdd.y-hh.y)*st.k)<11)))dsp2=hh});
     if(dsp2&&!(st.spPoly&&st.spPoly.length)){gesture={type:'sptapdim',id:e.pointerId,hit:dsp2};return}
   }
-  if(st.tool==='paint'&&(st.view==='suelos'||st.view==='techos')&&st.sueloModo==='parte'&&!pan){gesture={type:'spdrag',id:e.pointerId,x0:p.x,y0:p.y,x1:p.x,y1:p.y,moved:false};return}
+  if(st.tool==='paint'&&(st.view==='suelos'||st.view==='techos')&&(st.sueloModo==='parte'||st.sueloModo==='oval')&&!pan){gesture={type:'spdrag',id:e.pointerId,x0:p.x,y0:p.y,x1:p.x,y1:p.y,moved:false};return}
   if(st.tool==='paint'&&st.view==='demol'&&st.demModo==='parte'&&st.pal.demol!=='fr'&&!pan){gesture={type:'rzdrag',id:e.pointerId,x0:p.x,y0:p.y,x1:p.x,y1:p.y,moved:false};return}
   if(st.tool==='paint'&&st.view==='alz'&&st.alzModo==='trozo'&&!pan){gesture={type:'fzdrag',id:e.pointerId,x0:p.x,y0:p.y,x1:p.x,y1:p.y,moved:false};return}
   var drawOk=st.tool==='pen'&&!pan&&(e.pointerType==='pen'||(e.pointerType==='mouse')||(e.pointerType==='touch'&&st.fingerDraws));
@@ -5446,6 +5446,11 @@ function endPtr(e){
     var snq=nearNode((sx0+sx1)/2,(sy0+sy1)/2,1e9,null);if(!snq)return;
     snap();
     var nsp={id:uid('q'),k:zkind(st.view),n:snq.id,dx:f2((sx0+sx1)/2-snq.x),dy:f2((sy0+sy1)/2-snq.y),bw:f2(sx1-sx0),bh:f2(sy1-sy0),mat:palAcab(st.view),sis:palSis(st.view),nm:''};
+    if(st.sueloModo==='oval'){
+      var ocx=(sx0+sx1)/2,ocy=(sy0+sy1)/2,orx=(sx1-sx0)/2,ory=(sy1-sy0)/2,opp=[],oi;
+      for(oi=0;oi<40;oi++){var oa=oi/40*2*Math.PI;opp.push({x:f2(ocx+orx*Math.cos(oa)-snq.x),y:f2(ocy+ory*Math.sin(oa)-snq.y)})}
+      delete nsp.bw;delete nsp.bh;nsp.dx=0;nsp.dy=0;nsp.pts=opp;nsp.nm='Redonda';
+    }
     st.v.sp.push(nsp);st.sel={t:'sp',id:nsp.id};commit();
   }
   else if(g.type==='rzdrag'&&g.id===e.pointerId){
@@ -5741,7 +5746,7 @@ function tap(w){
     var pv=st.view;
     if((pv==='suelos'||pv==='techos')&&st.sueloModo==='poli'){spTap(w);return}
     if(pv==='suelos'||pv==='techos'){
-      if(st.sueloModo==='parte'){toast('Arrastra un rectángulo dentro de la sala: solo esa parte llevará este material');return}
+      if(st.sueloModo==='parte'||st.sueloModo==='oval'){toast(st.sueloModo==='oval'?'Arrastra un recuadro dentro de la sala: la zona saldrá redonda':'Arrastra un rectángulo dentro de la sala: solo esa parte llevará este material');return}
       var fc=faceAt(w,pv);
       if(!fc){toast('Toca dentro de una sala cerrada por muros');return}
       var pzk=zkind(pv),zz=zoneIn(fc,pzk);
@@ -6656,8 +6661,9 @@ function drawPal(){
     $('alz-modo').hidden=v!=='alz'&&v!=='suelos'&&v!=='techos';
     if(v==='suelos'||v==='techos'){
       st.sueloModo=st.sueloModo||'sala';
-      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Rectángulo (arrastra)'],['poli','Dibujar la zona (puntos)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('')+(v==='suelos'||v==='techos'?'<button data-sm="medzonas" aria-pressed="'+(st.verMedZonas!==false)+'" title="Enseña el largo de cada lado de las zonas y a cuánto está cada lado del muro">Medidas de las zonas: '+(st.verMedZonas!==false?'sí':'no')+'</button>':'')+('<button data-sm="cotamuros" aria-pressed="'+!!st.verCotasMuros+'" title="Enseña también las cotas de los muros">Cotas de los muros: '+(st.verCotasMuros?'sí':'no')+'</button>')+(v==='suelos'?'<button data-sm="equipo" aria-pressed="'+(st.verEqSuelo!==false)+'" title="Enseña las máquinas y el mobiliario sobre el suelo">Ver equipamiento: '+(st.verEqSuelo!==false?'sí':'no')+'</button>':'')+(v==='suelos'?'<button data-sm="rodapie" aria-pressed="'+infoOn('rodapie')+'" title="Si el rodapié ya existe o no lo vas a tocar, quítalo: no sale en la lámina de suelos">Rodapié en la lámina: '+(infoOn('rodapie')?'sí':'no')+'</button>':'')+(st.sueloModo==='poli'?'<button data-sm="libre" aria-pressed="'+!st.spLibre+'" title="Con las líneas rectas, cada tramo sale horizontal o vertical y se pega a las esquinas de la sala">Líneas rectas: '+(st.spLibre?'no':'sí')+'</button>':'')+(st.sueloModo==='poli'&&st.spPoly&&st.spPoly.length>=3?'<button data-sm="cerrar" class="pri">Cerrar la zona</button>':'');
+      $('alz-modo').innerHTML=[['sala','Toda la sala'],['parte','Rectángulo (arrastra)'],['oval','Óvalo / círculo (arrastra)'],['poli','Dibujar la zona (puntos)']].map(function(x){return '<button data-sm="'+x[0]+'" aria-pressed="'+(st.sueloModo===x[0])+'">'+x[1]+'</button>'}).join('')+(v==='suelos'||v==='techos'?'<button data-sm="medzonas" aria-pressed="'+(st.verMedZonas!==false)+'" title="Enseña el largo de cada lado de las zonas y a cuánto está cada lado del muro">Medidas de las zonas: '+(st.verMedZonas!==false?'sí':'no')+'</button>':'')+('<button data-sm="cotamuros" aria-pressed="'+!!st.verCotasMuros+'" title="Enseña también las cotas de los muros">Cotas de los muros: '+(st.verCotasMuros?'sí':'no')+'</button>')+(v==='suelos'?'<button data-sm="equipo" aria-pressed="'+(st.verEqSuelo!==false)+'" title="Enseña las máquinas y el mobiliario sobre el suelo">Ver equipamiento: '+(st.verEqSuelo!==false?'sí':'no')+'</button>':'')+(v==='suelos'?'<button data-sm="rodapie" aria-pressed="'+infoOn('rodapie')+'" title="Si el rodapié ya existe o no lo vas a tocar, quítalo: no sale en la lámina de suelos">Rodapié en la lámina: '+(infoOn('rodapie')?'sí':'no')+'</button>':'')+(st.sueloModo==='poli'?'<button data-sm="libre" aria-pressed="'+!st.spLibre+'" title="Con las líneas rectas, cada tramo sale horizontal o vertical y se pega a las esquinas de la sala">Líneas rectas: '+(st.spLibre?'no':'sí')+'</button>':'')+(st.sueloModo==='poli'&&st.spPoly&&st.spPoly.length>=3?'<button data-sm="cerrar" class="pri">Cerrar la zona</button>':'');
       if(st.sueloModo==='poli')$('pal-n').textContent='Elige el material y toca los puntos del contorno de la zona (una esquina tras otra). Los tramos salen rectos (horizontal o vertical) y se pegan a las esquinas de la sala; con «Líneas rectas: no» dibujas libre. Para cerrarla, toca el primer punto o pulsa «Cerrar la zona». Solo esa zona llevará ese material.';
+      if(st.sueloModo==='oval')$('pal-n').textContent='Elige el material y ARRASTRA un recuadro dentro de la sala: la zona saldrá redonda (círculo si el recuadro es cuadrado, óvalo si no). Luego ajusta su altura, su luz y sus puntos en el panel.';
       if(st.sueloModo==='parte')$('pal-n').textContent='Elige el material y ARRASTRA un rectángulo dentro de la sala: solo esa parte llevará ese material (el resto conserva el suyo). Luego ajusta sus medidas en el panel.';
     }
     if(v==='suelos'||v==='techos')pintaListaZonas(v);
