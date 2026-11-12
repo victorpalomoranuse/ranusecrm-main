@@ -354,6 +354,7 @@ function texturaDe(t, uvEnCm) {
       img.src = t.url;
     } else x = new THREE.TextureLoader().load(t.url, () => { try { window.dispatchEvent(new Event('visor3d-tex')); } catch { /* sin ventana */ } });
     x.wrapS = x.wrapT = THREE.RepeatWrapping; x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 4; x.repeat.set(k, kH);
+    x.userData.texId = t.id;
     if (t.pbr) x.userData.pbr = t.pbr;
     if (t.maps) { x.userData.mapsUrl = KTX2L && t.ktx ? { ...t.maps, ...Object.fromEntries(Object.entries(t.ktx).filter(([k]) => ['normal', 'rough', 'ao'].includes(k))) } : t.maps; x.userData.mapsAlt = t.maps; }
     if (t.rot || t.ox || t.oy) { x.center.set(0.5, 0.5); x.rotation = (t.rot || 0) * Math.PI / 180; x.offset.set((t.ox || 0) / t.tam, (t.oy || 0) / (t.tamH || t.tam)); }
@@ -5592,7 +5593,7 @@ export default function Visor3D({ cliente = false }) {
               const lee = () => { const tp = document.getElementById('tx-dt').value; if (tp === 'none') return null; return { tipo: tp, w: parseFloat(document.getElementById('tx-dw').value) || 60, h: parseFloat(document.getElementById('tx-dh').value) || 30, corte: document.getElementById('tx-dc').value, var: parseFloat(document.getElementById('tx-dv').value) || 0 }; };
               const guarda = (junta, tam, desp, extra) => api.patch('/medicion/' + id + '/textura/' + t.id, { junta, tam, desp: desp || null, rot: t.rot || 0, ox: t.ox || 0, oy: t.oy || 0, pbr: t.pbr || null, ...(extra || {}) }).then(r => setTexturas(xs => xs.map(x => (x.id === t.id ? r.data.textura : x)))).catch(() => setGuardado('No se pudo cambiar la textura'));
               const aplicarTodo = () => { const dsp = lee(); guarda(t.junta && !document.getElementById('tx-jm') ? t.junta : (parseFloat(document.getElementById('tx-jm').value) > 0 ? { hex: document.getElementById('tx-jc').value, mm: parseFloat(document.getElementById('tx-jm').value) } : null), dsp ? periodoDesp(dsp).S : (parseFloat(document.getElementById('tx-tam').value) || t.tam), dsp, { rot: parseFloat(document.getElementById('tx-rot').value) || 0, ox: parseFloat(document.getElementById('tx-ox').value) || 0, oy: parseFloat(document.getElementById('tx-oy').value) || 0, ...(t.color ? { color: document.getElementById('tx-cb')?.value } : {}), pbr: (() => { const v = id2 => parseFloat(document.getElementById(id2)?.value); const en = v('tx-en'), cc = v('tx-cc'), em = v('tx-em'), op = v('tx-op'), cb = document.getElementById('tx-cb')?.value; return { rough: v('tx-ro'), metal: v('tx-me'), relieve: v('tx-re'), normal: v('tx-no'), opac: op < 1 ? op : undefined, tinte: !t.color && cb && cb !== '#ffffff' ? cb : undefined, env: en !== 1 ? en : undefined, clearcoat: cc > 0 ? cc : undefined, emis: em > 0 ? em : undefined, emisHex: em > 0 ? document.getElementById('tx-eh')?.value : undefined, bri: v('tx-br') || undefined, con: v('tx-ct') !== 1 ? v('tx-ct') : undefined, sat: v('tx-sa') !== 1 ? v('tx-sa') : undefined, hue: v('tx-hu') || undefined }; })() }); };
-              const diferido = () => { clearTimeout(window.__txT); window.__txT = setTimeout(aplicarTodo, 700); };
+              const diferido = () => { clearTimeout(window.__txT); window.__txT = setTimeout(aplicarTodo, 250); };
               return (
                 <div style={{ borderTop: '1px solid #333', marginTop: 10, paddingTop: 8 }} onChange={diferido}>
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>Textura elegida: {t.nombre} <span style={{ fontWeight: 400, opacity: 0.55, fontSize: 11 }}>(se aplica solo al cambiar)</span></div>
@@ -5660,7 +5661,17 @@ export default function Visor3D({ cliente = false }) {
     const t = texturasRef.current.find(x => x.id === tid); if (!t) return;
     api.patch('/medicion/' + id + '/textura/' + tid, { junta: t.junta || null, tam: t.tam, tamH: t.tamH || null, rot: t.rot || 0, ox: t.ox || 0, oy: t.oy || 0, desp: t.desp || null, pbr: t.pbr || null, ...(t.color ? { color: t.color } : {}) }).catch(() => setGuardado('No se pudo guardar el material'));
   };
+  // cambio en caliente de las propiedades del material (rugosidad, metálico, emisivo, vidrio…): se ve en el siguiente fotograma, mientras arrastras la barra
+  const aplicaPbrEnCaliente = (tid, pbr) => {
+    try {
+      cacheTex.forEach(x => { if (x?.userData?.texId === tid) x.userData.pbr = pbr; });
+      const sc = api3d.current.scene; if (!sc) return;
+      sc.traverse(o => { if (!o.isMesh) return; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m?.map?.userData?.texId === tid) m.map.userData.pbr = pbr; }); });
+      aplicaEspejos(sc); api3d.current.despertar?.();
+    } catch { /* si algo falla, el repintado normal lo aplica igualmente */ }
+  };
   const ajustaMat = (tid, cambios) => {
+    if (cambios.pbr) { const ant = texturasRef.current.find(x => x.id === tid), p = { ...(ant?.pbr || {}), ...cambios.pbr }; Object.keys(p).forEach(k => { if (p[k] === null) delete p[k]; }); aplicaPbrEnCaliente(tid, Object.keys(p).length ? p : undefined); }
     setTexturas(xs => xs.map(x => {
       if (x.id !== tid) return x; const n = { ...x, ...cambios };
       if (cambios.pbr) { const p = { ...(x.pbr || {}), ...cambios.pbr }; Object.keys(p).forEach(k => { if (p[k] === null) delete p[k]; }); if (Object.keys(p).length) n.pbr = p; else delete n.pbr; }
