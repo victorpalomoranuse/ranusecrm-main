@@ -2524,7 +2524,7 @@ export default function Visor3D({ cliente = false }) {
       return o && o.visible ? o : null;
     };
     let arrastre = null, trazo = null, previa = null;
-    let poli = [], poliLinea = null, poliAbajo = null, empuje = null, escrito = '', ultCur = null;
+    let poli = [], poliLinea = null, poliAbajo = null, poliIniDown = false, empuje = null, escrito = '', ultCur = null;
     // Mayús = recto (sigue el eje más cercano al último punto), salvo en rectángulos y círculos
     const ortoPoli = (p, e) => { if (!e.shiftKey || !poli.length) return p; const a = poli[poli.length - 1]; return Math.abs(p.x - a.x) >= Math.abs(p.y - a.y) ? { x: p.x, y: a.y } : { x: a.x, y: p.y }; };
     let guiaA = null, guiaAbajo = null, guiaMarca = null, luzAbajo = null, eje3 = null;
@@ -2710,7 +2710,12 @@ export default function Visor3D({ cliente = false }) {
     const onDownD = e => {
       if (e.button !== 0) return;
       if (herrRef.current === 'pincel' || herrRef.current === 'gotero') return;
-      if (esPoli(herrRef.current)) { poliAbajo = [e.clientX, e.clientY]; return; }
+      if (esPoli(herrRef.current)) {
+        poliAbajo = [e.clientX, e.clientY]; poliIniDown = false;
+        // rectángulo/óvalo: al pulsar ya queda fijada la primera esquina y la forma se ve crecer mientras arrastras
+        if (['zonaS', 'zonaT', 'poli'].includes(herrRef.current) && formaRef.current !== 'poli' && poli.length === 0 && !(herrRef.current === 'poli' && golpePared(e))) { const p0 = puntoSuelo(e); if (p0) { poli = [p0]; poliIniDown = true; dibujarPoli(null); } }
+        return;
+      }
       if (herrRef.current === 'zonaP') { pAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'guia') { guiaAbajo = [e.clientX, e.clientY]; return; }
       if (herrRef.current === 'luz') { luzAbajo = [e.clientX, e.clientY]; return; }
@@ -2975,6 +2980,8 @@ export default function Visor3D({ cliente = false }) {
           if (p0 && p1 && Math.hypot(p1.x - p0.x, p1.y - p0.y) > 5) { poli = puntosForma(formaRef.current, p0.x, p0.y, p1.x, p1.y).map(([x, y]) => ({ x, y })); cerrarPoli(); }
           return;
         }
+        if (d0 < 4 && poliIniDown) { poliIniDown = false; return; }
+        poliIniDown = false;
         if (d0 < 4) {
           // Rectángulo, círculo y polígono: si el primer clic cae en una pared, la forma se dibuja sobre esa pared (como en SketchUp); en el suelo sigue creando el volumen
           if (herrRef.current === 'poli' && poli.length === 0) {
