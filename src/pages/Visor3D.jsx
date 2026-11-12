@@ -108,6 +108,34 @@ const ESPEJOS = [
   { id: 'espejo', nombre: 'Espejo', hex: '#e9f0f4' }, { id: 'espejo-bronce', nombre: 'Espejo bronce', hex: '#b08d6a' },
   { id: 'espejo-ahumado', nombre: 'Espejo ahumado', hex: '#4a5258' }, { id: 'cromo', nombre: 'Cromo', hex: '#ffffff' },
 ].map(e => ({ id: e.id, nombre: e.nombre, tam: 100, espejo: e.hex, fijo: true, url: (() => { try { const cv = document.createElement('canvas'); cv.width = 96; cv.height = 56; const cx = cv.getContext('2d'), g = cx.createLinearGradient(0, 0, 96, 56); g.addColorStop(0, '#fff'); g.addColorStop(0.45, e.hex); g.addColorStop(0.55, '#fff'); g.addColorStop(1, e.hex); cx.fillStyle = g; cx.fillRect(0, 0, 96, 56); return cv.toDataURL(); } catch { return ''; } })() }));
+// ── Suelos técnicos de gimnasio ──────────────────────────────────────────────
+// Losetas lisas de 1×1 m (negra, gris, camel) con junta fina y un tono algo distinto en cada una, y suelos Paviflex hechos con tu foto
+// pero SIN repetirse: cada metro cuadrado coge un trozo distinto de la foto (girado y volteado), así no se ve el mismo dibujo una y otra vez.
+const SB_PUBLICO = 'https://guumqvvaalifyluxmidz.supabase.co/storage/v1/object/public/project-documents/';
+const GLSL_SUELO = `
+vec4 sueloCelda(vec2 c) { return fract(sin(vec4(dot(c, vec2(127.1, 311.7)), dot(c, vec2(269.5, 183.3)), dot(c, vec2(419.2, 371.9)), dot(c, vec2(57.3, 91.7)))) * 43758.5453); }
+vec4 sueloMuestra(sampler2D s, vec2 uv) {
+  vec2 c = floor(uv), f = fract(uv); vec4 h = sueloCelda(c);
+  vec2 g = f - 0.5; float k = floor(h.z * 4.0);
+  if (k == 1.0) g = vec2(-g.y, g.x); else if (k == 2.0) g = -g; else if (k == 3.0) g = vec2(g.y, -g.x);
+  if (h.w > 0.5) g.x = -g.x;
+  return textureGrad(s, g + 0.5 + h.xy, dFdx(uv), dFdy(uv));
+}`;
+function sueloShader(fl) {
+  return (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + GLSL_SUELO).replace('#include <map_fragment>',
+      '#ifdef USE_MAP\n vec4 sampledDiffuseColor = ' + (fl.antirep ? 'sueloMuestra(map, vMapUv)' : 'texture2D(map, vMapUv)') + ';\n diffuseColor *= sampledDiffuseColor;\n'
+      + ' vec4 suH = sueloCelda(floor(vMapUv)); diffuseColor.rgb *= 1.0 + (suH.x - 0.5) * ' + (fl.tono || 0).toFixed(3) + ';\n'
+      + (fl.junta ? ' vec2 suF = fract(vMapUv), suE = min(suF, 1.0 - suF); float suW = max(0.0022, fwidth(vMapUv.x) * 1.1); float suJ = 1.0 - smoothstep(suW * 0.4, suW * 1.4, min(suE.x, suE.y)); diffuseColor.rgb *= mix(1.0, 0.4, suJ);\n' : '')
+      + '#endif');
+  };
+}
+const swatchLoseta = (hex) => { try { const cv = document.createElement('canvas'); cv.width = cv.height = 256; const cx = cv.getContext('2d'); cx.fillStyle = hex; cx.fillRect(0, 0, 256, 256); let sd = 7; const r = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; }; for (let i = 0; i < 9000; i++) { cx.fillStyle = r() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.07)'; cx.fillRect(r() * 256, r() * 256, 1 + r() * 1.6, 1 + r() * 1.6); } return cv.toDataURL('image/png'); } catch { return ''; } };
+const SUELOS_TEC = [
+  ...[['loseta-negra', 'Loseta 1×1 negra', '#1d1d1f'], ['loseta-gris', 'Loseta 1×1 gris', '#7c7f83'], ['loseta-camel', 'Loseta 1×1 camel', '#b3845a']].map(([id, nombre, hex]) => ({ id, nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: true, tono: 0.06 }, url: swatchLoseta(hex), grupo: 'Losetas lisas' })),
+  ...[['blackblue-03', 'Negro + azul'], ['blacklightblue-03', 'Negro + celeste'], ['carbon-black-04', 'Carbón negro + blanco'], ['carbon-blackred-03', 'Carbón negro + rojo'], ['eco-viola-03', 'Eco negro + violeta'], ['darkgrey-03', 'Gris oscuro'], ['eco-grey-03', 'Eco gris'], ['granite-red-03', 'Granito gris + rojo'], ['brownstone-04', 'Terracota'], ['chocolate-3', 'Chocolate']]
+    .map(([slug, nombre]) => ({ id: 'pavi-' + slug, nombre: 'Paviflex · ' + nombre, tam: 100, fijo: true, suelo: { antirep: true, junta: false, tono: 0.03 }, url: SB_PUBLICO + 'biblioteca3d/paviflex/' + slug + '.jpg', grupo: 'Paviflex (moteados)' })),
+];
 let envEsp = null, espejoSucio = false, GL_SOFTWARE = false;
 // Mapas PBR sueltos (normales, rugosidad, AO): se descargan una vez y cada material usa una copia con el mismo tiling, giro y desplazamiento que su textura base
 const cacheMapas = new Map(); // url → { tex, listo }
@@ -258,7 +286,7 @@ function texturaDe(t, uvEnCm) {
   return x;
 }
 // Aplica un color (#hex) o una textura ('tex:ID') a una malla; si no hay valor, vuelve a su color de origen
-function pintar(mesh, valor, texturas, uvEnCm, repBox) {
+function pintar(mesh, valor, texturas, uvEnCm, repBox, forzarAntirep) {
   const u = mesh.userData;
   if (u.col0 === undefined) u.col0 = mesh.material.color.getHex();
   const t = valor && String(valor).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === valor) : null;
@@ -266,8 +294,14 @@ function pintar(mesh, valor, texturas, uvEnCm, repBox) {
     let mp = texturaDe(t, uvEnCm);
     if (repBox) { mp = mp.clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, repBox[0] / t.tam), Math.max(0.2, repBox[1] / (t.tamH || t.tam))); }
     mesh.material.map = mp; mesh.material.color.setHex(0xffffff);
+    const fl = t.suelo || (forzarAntirep ? { antirep: true, junta: false, tono: 0.03 } : null), M = mesh.material;
+    if (fl) { const key = 'suelo' + (fl.antirep ? 1 : 0) + (fl.junta ? 1 : 0) + (fl.tono || 0); if (M.userData.sueloKey !== key) { M.userData.sueloKey = key; M.onBeforeCompile = sueloShader(fl); M.customProgramCacheKey = () => key; M.roughness = 0.92; M.metalness = 0; } }
+    else if (M.userData.sueloKey) { delete M.userData.sueloKey; M.onBeforeCompile = () => {}; M.customProgramCacheKey = () => ''; }
   }
-  else { mesh.material.map = null; mesh.material.color.setHex(valor && /^#/.test(valor) ? parseInt(valor.slice(1), 16) : u.col0); }
+  else {
+    if (mesh.material.userData.sueloKey) { delete mesh.material.userData.sueloKey; mesh.material.onBeforeCompile = () => {}; mesh.material.customProgramCacheKey = () => ''; }
+    mesh.material.map = null; mesh.material.color.setHex(valor && /^#/.test(valor) ? parseInt(valor.slice(1), 16) : u.col0);
+  }
   espejoSucio = true;
   if (mesh.material.emissive && !Array.isArray(mesh.material)) {
     if (esLed(valor)) { mesh.material.emissive.set(valor.slice(0, 7)); mesh.material.emissiveIntensity = 1.8; u.ledAplicado = true; }
@@ -1918,7 +1952,7 @@ export default function Visor3D({ cliente = false }) {
   const cargadaEscena = useRef(false);
   const [acab, setAcab] = useState({ muros: {}, salas: {}, techos: {}, equipos: {}, pilares: {}, huecos: {}, regiones: {}, todosMuros: null, todosSuelos: null, todosTechos: null, todosPilares: null });
   const [texturasBase, setTexturas] = useState([]);
-  const texturas = useMemo(() => [...ESPEJOS, ...texturasBase], [texturasBase]);
+  const texturas = useMemo(() => [...ESPEJOS, ...SUELOS_TEC, ...texturasBase], [texturasBase]);
   const [b3dAbierta, setB3dAbierta] = useState(false);
   const [elegirMod, setElegirMod] = useState(false), [elegirFiltro, setElegirFiltro] = useState('');
   const [b3d, setB3d] = useState(null);           // índice de la biblioteca 3D gratuita
@@ -2209,7 +2243,7 @@ export default function Visor3D({ cliente = false }) {
       ultima = pl?.updated;
       if (cliente && primera && esMovil() && (pl?.escena3d?.renders || []).some(r => r.tipo === '360' && r.tour)) { navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma), { replace: true }); return; }
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); setModosEq(pl?.escena3d?.modelosEq || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null, antirepSuelos: ac.antirepSuelos === true }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); setModosEq(pl?.escena3d?.modelosEq || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       // el 3D enseña el estado de DISTRIBUCIÓN: lo marcado para demoler (muros, huecos, pilares, máquinas) ya no está
       const sinDem = (p) => ({ ...p, muros: (p.muros || []).filter(w => w.estado !== 'dem').map(w => ({ ...w, ab: (w.ab || []).filter(o => o.estado !== 'dem') })), salas: (p.salas || []).map(s => ({ ...s, pts: quitarPicos(s.pts) })), pilares: (p.pilares || []).filter(x => x.estado !== 'dem'), equipos: (p.equipos || []).filter(x => x.estado !== 'dem'), recrecidos: (p.recrecidos || []).filter(x => x.estado !== 'dem') });
       const modelo0 = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
@@ -2902,7 +2936,7 @@ export default function Visor3D({ cliente = false }) {
       if (u.pilarId) { pintar(o, acab.pilares?.[u.pilarId] || acab.todosPilares, texturas, true, u.dimBox || [30, 260]); return; }
       if (u.hueco && (u.zona === 'marco' || u.zona === 'hoja' || u.zona === 'tapeta')) { const hh = u.hueco; pintar(o, acab.huecos?.[hh.id || (hh.muroId + ':' + hh.p)]?.[u.zona], texturas, true, [hh.w || 90, hh.h || 210]); return; }
       if (u.muroId) pintar(o, acab.muros[u.muroId] || acab.todosMuros, texturas, true);
-      else if (u.salaKey) pintar(o, acab.salas[u.salaKey] || acab.todosSuelos, texturas, false);
+      else if (u.salaKey) pintar(o, acab.salas[u.salaKey] || acab.todosSuelos, texturas, false, undefined, acab.antirepSuelos);
       else if (u.techoKey) pintar(o, acab.techos[u.techoKey] || acab.todosTechos, texturas, false);
     });
   }, [acab, rev, estado, texturas]);
@@ -6624,6 +6658,25 @@ export default function Visor3D({ cliente = false }) {
                 </div>
               );
             })()}
+            {!esMuro && (
+              <div style={{ borderBottom: '1px solid #333', marginBottom: 8, paddingBottom: 8 }}>
+                {['Losetas lisas', 'Paviflex (moteados)'].map(g => (
+                  <div key={g} style={{ marginBottom: 6 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>{g === 'Losetas lisas' ? '▦ ' : '🟫 '}{g}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
+                      {SUELOS_TEC.filter(t => t.grupo === g).map(t => (
+                        <div key={t.id} onClick={() => poner('tex:' + t.id)} title={t.nombre} style={{ cursor: 'pointer', border: actual === 'tex:' + t.id ? '2px solid #d4af37' : '1px solid #555', borderRadius: 4, overflow: 'hidden' }}>
+                          <img src={t.url} alt={t.nombre} loading="lazy" style={{ width: '100%', height: 40, objectFit: 'cover', display: 'block' }} />
+                          <div style={{ fontSize: 9.5, padding: '1px 3px', background: '#111', lineHeight: 1.2, minHeight: 22 }}>{t.nombre.replace('Paviflex · ', '').replace('Loseta 1×1 ', '')}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>Las losetas llevan junta fina cada metro y un tono algo distinto cada una. Los Paviflex cogen un trozo distinto de la foto en cada metro cuadrado, así no se repite el dibujo.</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }} title="Para fotos de suelos moteados que subas tú: evita que se vea el mismo dibujo repetido"><input type="checkbox" checked={!!acab.antirepSuelos} onChange={e => setAcab(a => ({ ...a, antirepSuelos: e.target.checked }))} /> No repetir el dibujo en mis texturas de suelo</label>
+              </div>
+            )}
             <div style={{ fontWeight: 700, marginBottom: 6 }}>{esMuro ? 'Muro' : 'Suelo'}: color</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
               {paleta.map(c => <span key={c} onClick={() => poner(c)} title={c} style={{ width: 24, height: 24, background: c, border: '1px solid #555', borderRadius: 4, cursor: 'pointer' }} />)}
