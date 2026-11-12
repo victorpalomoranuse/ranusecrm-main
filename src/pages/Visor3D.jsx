@@ -5287,8 +5287,15 @@ export default function Visor3D({ cliente = false }) {
       const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
       if (alz.tipo === 'muro') return { id: idN(), tipo: 'zona', plano: 'pared', muroId: alz.id, lado: alz.lado, nombre, etiqueta: 'Zonas', cx: 0, cy: 0, rot: 0, w: x1 - x0, d: 1, alto: y1 - y0, z0: 0, color, pts, ...extra };
       const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-      return { id: idN(), tipo: 'zona', plano: alz.tipo, h: alz.tipo === 'techo' ? (pl0.altura || 260) : undefined, nombre, etiqueta: 'Zonas', cx, cy, rot: 0, w: x1 - x0, d: y1 - y0, alto: 1, z0: 0, color, pts: pts.map(p => [p[0] - cx, p[1] - cy]), ...extra };
+      return { id: idN(), tipo: 'zona', plano: alz.tipo, h: alz.tipo === 'techo' ? (pl0.altura || 260) + (pl0.z || 0) : undefined, nombre, etiqueta: 'Zonas', cx: cx + oxD, cy: cy + oyD, rot: 0, w: x1 - x0, d: y1 - y0, alto: 1, z0: alz.tipo === 'suelo' ? (pl0.z || 0) : 0, color, pts: pts.map(p => [p[0] - cx, p[1] - cy]), ...extra };
     };
+    // forma del techo: queda por debajo (o por encima) del resto del techo, con su color y, si se quiere, luz en el borde
+    const mkFalsoTecho = (pts, nombre) => {
+      const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      const cm = matSelRef.current?.hex ? matSelRef.current.hex.slice(0, 7) : '#f6f4f1';
+      return { id: idN(), tipo: 'falsotecho', nombre, etiqueta: 'Techos', cx: cx + oxD, cy: cy + oyD, rot: 0, w: x1 - x0, d: y1 - y0, alto: 1, z0: pl0.z || 0, h: pl0.altura || 260, color: /^#[0-9a-fA-F]{6}$/.test(cm) ? cm : '#f6f4f1', pts: pts.map(p => [p[0] - cx, p[1] - cy]), ft: { descenso: 10, gap: 3, luz: false, k: 3000 } };
+    };
+    const ovaloPts = (xa, ya, xb, yb) => Array.from({ length: 48 }, (_, i) => [(xa + xb) / 2 + (Math.abs(xb - xa) / 2) * Math.cos((i / 48) * 2 * Math.PI), (ya + yb) / 2 + (Math.abs(yb - ya) / 2) * Math.sin((i / 48) * 2 * Math.PI)]);
     const colorMat = () => (matSelRef.current?.id ? 'tex:' + matSelRef.current.id : (matSelRef.current?.hex || null));
     const crea = (z) => { setObjs(prev => [...prev, z]); };
     let ini = null, fin = null;
@@ -5309,8 +5316,13 @@ export default function Visor3D({ cliente = false }) {
     const arriba = () => {
       if (!ini) return; const p0 = ini.p, p1 = fin || ini.p; ini = null; a.ctrl.enabled = true; setVistaPrev(null);
       const du = p1[0] - p0[0], dv = p1[1] - p0[1];
-      if (vistaToolRef.current === 'rect') {
+      if (vistaToolRef.current === 'ovalo') {
         if (Math.abs(du) < 2 || Math.abs(dv) < 2) return;
+        const pts = ovaloPts(p0[0], p0[1], p1[0], p1[1]);
+        if (alz.tipo === 'techo') { const nf = mkFalsoTecho(pts, 'Falso techo redondo'); crea(nf); setSelObj(nf.id); } else crea(mkZona(pts, 'Óvalo', colorMat() || '#c9b9a0'));
+      } else if (vistaToolRef.current === 'rect') {
+        if (Math.abs(du) < 2 || Math.abs(dv) < 2) return;
+        if (alz.tipo === 'techo') { const nf = mkFalsoTecho([[Math.min(p0[0], p1[0]), Math.min(p0[1], p1[1])], [Math.max(p0[0], p1[0]), Math.min(p0[1], p1[1])], [Math.max(p0[0], p1[0]), Math.max(p0[1], p1[1])], [Math.min(p0[0], p1[0]), Math.max(p0[1], p1[1])]], 'Falso techo'); crea(nf); setSelObj(nf.id); return; }
         crea(mkZona([[Math.min(p0[0], p1[0]), Math.min(p0[1], p1[1])], [Math.max(p0[0], p1[0]), Math.min(p0[1], p1[1])], [Math.max(p0[0], p1[0]), Math.max(p0[1], p1[1])], [Math.min(p0[0], p1[0]), Math.max(p0[1], p1[1])]], 'Rectángulo', colorMat() || '#c9b9a0'));
       } else if (vistaToolRef.current === 'linea') {
         const Ln = Math.hypot(du, dv); if (Ln < 2) return; const gr = 1, nx = (-dv / Ln) * gr / 2, ny = (du / Ln) * gr / 2;
@@ -6241,7 +6253,7 @@ export default function Visor3D({ cliente = false }) {
         <div style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', background: 'rgba(24,24,24,0.96)', color: '#fff', borderRadius: 12, padding: '8px 14px', fontSize: 12, zIndex: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.35)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', maxWidth: '96vw' }}>
           <b style={{ fontSize: 13 }}>📐 {alz.tipo === 'muro' ? 'Alzado del muro' : alz.tipo === 'suelo' ? 'Planta del suelo' : 'Planta del techo'}</b>
           <span style={{ width: 1, height: 22, background: '#444' }} />
-          {[['rect', '▭ Rectángulo', 'Arrastra de una esquina a la opuesta'], ['linea', '╱ Línea recta', 'Arrastra del punto de inicio al final'], ['guiaH', '↔ Guía horizontal', 'Pulsa donde quieras la guía'], ['guiaV', '↕ Guía vertical', 'Pulsa donde quieras la guía']].map(([k, n, ayuda]) => (
+          {[['rect', '▭ Rectángulo', alz.tipo === 'techo' ? 'Arrastra de una esquina a la opuesta: crea una forma en el techo' : 'Arrastra de una esquina a la opuesta'], ['ovalo', '◯ Óvalo', 'Arrastra de una esquina a la opuesta: crea un óvalo o un círculo'], ['linea', '╱ Línea recta', 'Arrastra del punto de inicio al final'], ['guiaH', '↔ Guía horizontal', 'Pulsa donde quieras la guía'], ['guiaV', '↕ Guía vertical', 'Pulsa donde quieras la guía']].map(([k, n, ayuda]) => (
             <button key={k} style={{ ...btn, padding: '5px 10px', fontWeight: 600, ...(vistaTool === k ? { background: '#2f6fa8' } : {}) }} onClick={() => setVistaTool(v => (v === k ? null : k))} title={ayuda}>{n}</button>
           ))}
           {(() => { const ms = matSel, tx = ms?.id ? texturas.find(x => x.id === ms.id) : null; return (
@@ -6252,6 +6264,33 @@ export default function Visor3D({ cliente = false }) {
           <button style={btn} onClick={() => setAlzMas(v => !v)} title="Cuadrícula, imán, zona por medidas, lámina…">{alzMas ? '▾ Menos' : '⚙ Más'}</button>
           <button style={{ ...btn, background: '#7a2b2b' }} onClick={salirAlzado}>Salir (Esc)</button>
           <div style={{ flexBasis: '100%', opacity: 0.7, fontSize: 11 }}>{vistaTool === 'rect' ? 'Arrastra de una esquina a la opuesta. Se rellena con el material de arriba.' : vistaTool === 'linea' ? 'Arrastra del inicio al final de la línea (se ven los cm mientras arrastras).' : vistaTool === 'guiaH' || vistaTool === 'guiaV' ? 'Pulsa donde quieras la guía. Lo que dibujes después se pega a ella.' : 'Elige una herramienta y dibuja directamente sobre la vista. Esc para dejarla. Rueda = acercar · botón central = mover.'}</div>
+          {alz.tipo === 'techo' && objSel?.tipo === 'falsotecho' && (() => {
+            const F = objSel.ft || {}, set = c => cambiar(objSel.id, { ft: { ...F, ...c } }), LD = F.lados || {};
+            const marca = (k, txt) => <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}><input type="checkbox" checked={LD[k] !== false} onChange={e => set({ lados: { n: true, s: true, e: true, o: true, ...LD, [k]: e.target.checked } })} />{txt}</label>;
+            return (
+              <div style={{ flexBasis: '100%', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid #333', paddingTop: 6 }}>
+                <b>Forma del techo</b>
+                <label title="Positivo = sube por encima del resto del techo · negativo = baja" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>Altura (cm)<input type="number" step="1" value={-(F.descenso ?? 10)} onChange={e => set({ descenso: -(parseFloat(e.target.value) || 0) })} style={{ ...btn, width: 62, padding: '2px 4px' }} /></label>
+                <span style={{ opacity: 0.6, fontSize: 11 }}>{(F.descenso ?? 10) > 0 ? (F.descenso ?? 10) + ' cm por debajo del techo' : (F.descenso ?? 10) < 0 ? -(F.descenso ?? 10) + ' cm por encima del techo' : 'a la altura del techo'}</span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>Color<input type="color" value={/^#[0-9a-fA-F]{6}$/.test(objSel.color || '') ? objSel.color : '#f6f4f1'} onChange={e => cambiar(objSel.id, { color: e.target.value })} style={{ width: 34, height: 24, padding: 0, border: '1px solid #666', borderRadius: 4 }} /></label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={F.luz !== false} onChange={e => set({ luz: e.target.checked })} />Luz</label>
+                {F.luz !== false && <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>Color luz<input type="color" value={/^#[0-9a-fA-F]{6}$/.test(F.colorLuz || '') ? F.colorLuz : '#ffd9a0'} onChange={e => set({ colorLuz: e.target.value })} style={{ width: 34, height: 24, padding: 0, border: '1px solid #666', borderRadius: 4 }} /></label>
+                  {marca('n', '↑')}{marca('s', '↓')}{marca('o', '←')}{marca('e', '→')}
+                </>}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="Hueco entre el borde de la forma y el techo, por donde sale la luz">Foseado (cm)<input type="number" step="1" min="2" value={F.gap ?? 3} onChange={e => set({ gap: Math.max(2, parseFloat(e.target.value) || 3) })} style={{ ...btn, width: 52, padding: '2px 4px' }} /></label>
+                <button style={{ ...btn, background: '#7a2b2b' }} onClick={() => { const id0 = objSel.id; setSelObj(null); setObjs(prev => prev.filter(x => x.id !== id0)); }}>🗑 Borrar esta forma</button>
+              </div>
+            );
+          })()}
+          {(() => {
+            const mod = api3d.current.modelo, ipL = mod ? plantaAlz(mod, alz.tipo, alz.id) : 0, plL = (mod?.plantas || [mod])[ipL] || {}, [oxL, oyL] = (api3d.current.offsPl || [])[ipL] || [0, 0];
+            const xs = (plL.muros || []).flatMap(m => [m.a?.[0], m.b?.[0]]).filter(Number.isFinite), ys = (plL.muros || []).flatMap(m => [m.a?.[1], m.b?.[1]]).filter(Number.isFinite);
+            const dentro = o => xs.length && o.cx >= Math.min(...xs) + oxL - 80 && o.cx <= Math.max(...xs) + oxL + 80 && o.cy >= Math.min(...ys) + oyL - 80 && o.cy <= Math.max(...ys) + oyL + 80;
+            const sobran = o => o.tipo === 'zona' && o.plano === alz.tipo && (o.guia || /^(Línea|Guía|Rectángulo|Óvalo)/.test(o.nombre || '')) && dentro(o);
+            const n = objs.filter(sobran).length; if (!n) return null;
+            return <button style={{ ...btn, background: '#6b3a3a' }} title="Borra las líneas, guías y rectángulos sueltos que se dibujaron en esta vista (no toca las formas de techo ni la luz). Ctrl+Z lo deshace" onClick={() => setObjs(prev => prev.filter(o => !sobran(o)))}>🗑 Borrar líneas y guías ({n})</button>;
+          })()}
           {alzMas && (<div style={{ flexBasis: '100%', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid #333', paddingTop: 6 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }} title="Cuadrícula de 50 cm sobre el alzado o la planta"><input type="checkbox" checked={rejAlz} onChange={e => setRejAlz(e.target.checked)} /> Cuadrícula</label>
           <label title={alz.tipo === 'muro' ? 'Hasta qué distancia delante del muro se ven los objetos (muebles, máquinas…)' : alz.tipo === 'suelo' ? 'Altura del corte horizontal' : 'Hasta cuántos cm bajo el techo se ve'}>Corte <input type="number" value={profAlz} onChange={e => setProfAlz(parseFloat(e.target.value) || 100)} style={{ ...btn, width: 62, padding: '2px 6px' }} /> cm</label>
