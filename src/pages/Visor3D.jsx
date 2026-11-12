@@ -39,16 +39,20 @@ const esMovil = () => { try { return window.matchMedia('(pointer: coarse)').matc
 // Recorrido a pie: los muros frenan al visitante (se desliza por ellos), se pasa por los huecos de suelo a techo (puertas) y no se sale del interior:
 // solo se anda dentro de las salas (con medio metro de margen para cruzar puertas) o, si el plano no tiene salas, dentro del contorno de los muros
 const RADIO_PERSONA = 0.28, MARGEN_SALA = 40;
-function dentroDelEspacio(modelo, x, z) {
+function dentroDelEspacio(modelo, x, z, offs, soloPlanta) {
   const plantas = modelo.plantas || [modelo];
   let hay = false;
-  for (const pl of plantas) for (const sa of (pl.salas || [])) {
-    const pts = sa.pts; if (!pts || pts.length < 3) continue; hay = true;
-    if (puntoEnPoligono([x / CM, z / CM], pts)) return true;
-    for (let i = 0; i < pts.length; i++) {
-      const p = pts[i], q = pts[(i + 1) % pts.length], dx = q[0] - p[0], dy = q[1] - p[1], l2 = dx * dx + dy * dy;
-      const t = l2 ? Math.max(0, Math.min(1, ((x / CM - p[0]) * dx + (z / CM - p[1]) * dy) / l2)) : 0;
-      if (Math.hypot(x / CM - (p[0] + t * dx), z / CM - (p[1] + t * dy)) < MARGEN_SALA) return true;
+  for (let ip = 0; ip < plantas.length; ip++) {
+    if (soloPlanta != null && ip !== soloPlanta) continue; // solo la planta donde está el visitante (las otras están a otra altura)
+    const pl = plantas[ip], [ox, oy] = (offs || [])[ip] || [0, 0], X = x / CM - ox, Z = z / CM - oy;
+    for (const sa of (pl.salas || [])) {
+      const pts = sa.pts; if (!pts || pts.length < 3) continue; hay = true;
+      if (puntoEnPoligono([X, Z], pts)) return true;
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i], q = pts[(i + 1) % pts.length], dx = q[0] - p[0], dy = q[1] - p[1], l2 = dx * dx + dy * dy;
+        const t = l2 ? Math.max(0, Math.min(1, ((X - p[0]) * dx + (Z - p[1]) * dy) / l2)) : 0;
+        if (Math.hypot(X - (p[0] + t * dx), Z - (p[1] + t * dy)) < MARGEN_SALA) return true;
+      }
     }
   }
   if (hay) return false;
@@ -65,12 +69,13 @@ function plantaDeCamara(modelo, offs, ocultas, x, z, y) {
   const debajo = pool.filter(i => cota(i) <= y + 0.6).sort((a, b) => cota(b) - cota(a));
   return debajo.length ? debajo[0] : pool.slice().sort((a, b) => cota(a) - cota(b))[0];
 }
-function frenaMuros(modelo, pos, mov) {
+function frenaMuros(modelo, pos, mov, offs) {
   if (!modelo) return mov;
+  const plantas = modelo.plantas || [modelo], ip = plantaDeCamara(modelo, offs, [], pos.x, pos.z, pos.y), [ox, oy] = (offs || [])[ip] || [0, 0];
   const choca = (x, z) => {
-    if (!dentroDelEspacio(modelo, x, z)) return true;
-    for (const pl of (modelo.plantas || [modelo])) for (const mu of (pl.muros || [])) {
-      const ax = mu.a[0] * CM, az = mu.a[1] * CM, dx = mu.b[0] * CM - ax, dz = mu.b[1] * CM - az, l2 = dx * dx + dz * dz; if (l2 < 1e-9) continue;
+    if (!dentroDelEspacio(modelo, x, z, offs, ip)) return true;
+    for (const mu of (plantas[ip]?.muros || [])) {
+      const ax = (mu.a[0] + ox) * CM, az = (mu.a[1] + oy) * CM, dx = (mu.b[0] + ox) * CM - ax, dz = (mu.b[1] + oy) * CM - az, l2 = dx * dx + dz * dz; if (l2 < 1e-9) continue;
       const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), d = Math.hypot(x - (ax + t * dx), z - (az + t * dz));
       if (d >= RADIO_PERSONA + ((mu.t || 12) * CM) / 2) continue;
       const sCm = (t * Math.sqrt(l2)) / CM;
@@ -2129,7 +2134,7 @@ export default function Visor3D({ cliente = false }) {
         if (teclas.has('w')) vM.add(vF); if (teclas.has('s')) vM.sub(vF); if (teclas.has('d')) vM.add(vR); if (teclas.has('a')) vM.sub(vR);
         { const jy = api3d.current.joy; if (jy) { vM.addScaledVector(vF, -jy.y); vM.addScaledVector(vR, jy.x); } }
         if (api3d.current.persona) vM.y = 0; else { if (teclas.has('e')) vM.y += 1; if (teclas.has('q')) vM.y -= 1; }
-        if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (api3d.current.persona ? (api3d.current.velPersona || 1.3) * (teclas.has('shift') ? 2.5 : 1) : (teclas.has('shift') ? 9 : 3))); if (api3d.current.persona && cliente) frenaMuros(api3d.current.modelo, cam.position, vM); cam.position.add(vM); ctrl.target.add(vM); }
+        if (vM.lengthSq()) { vM.normalize().multiplyScalar(dt * (api3d.current.persona ? (api3d.current.velPersona || 1.3) * (teclas.has('shift') ? 2.5 : 1) : (teclas.has('shift') ? 9 : 3))); if (api3d.current.persona && cliente) frenaMuros(api3d.current.modelo, cam.position, vM, api3d.current.offsPl); cam.position.add(vM); ctrl.target.add(vM); }
       }
       // mientras la cámara se mueve se dibuja a menor resolución y al parar vuelve a la normal: el movimiento va fluido aunque haya muchos modelos
       const movi = teclas.size > 0 || !!api3d.current.joy || ahora - ultMov < 180;
