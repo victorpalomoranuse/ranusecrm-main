@@ -11,7 +11,7 @@ export const TIPOS_RACK = {
   estanteria: { n: 'Solo estantería', fondo: 50, alto: 200 },
 };
 export const TIPOS_BAHIA = { libre: 'Peso libre (J-cups y seguridad)', dominadas: 'Dominadas', estanteria: 'Estantería con accesorios', smith: 'Smith', poleas: 'Poleas con pesas', vacia: 'Vacía (solo estructura)' };
-export const ACCESORIOS = { kb: 'Kettlebells', mancuernas: 'Mancuernas', wallballs: 'Wall balls', discos: 'Discos', balones: 'Balones medicinales', vacio: 'Vacío' };
+export const ACCESORIOS = { kb: 'Kettlebells', mancuernas: 'Mancuernas', wallballs: 'Wall balls', discos: 'Discos', balones: 'Balones medicinales', sacos: 'Sacos de arena', vacio: 'Vacío' };
 
 const num = (v, d, mn, mx) => { const n = Number(v); return Math.max(mn, Math.min(mx, Number.isFinite(n) ? n : d)); };
 const hx = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : d);
@@ -66,7 +66,7 @@ const cil = (r, largo, m, x, y, z, eje = 'y') => {
 };
 const esfera = (r, m, x, y, z) => { const o = new THREE.Mesh(new THREE.SphereGeometry(r * CM, 18, 12), m); o.position.set(x * CM, y * CM, z * CM); o.castShadow = o.receiveShadow = true; return o; };
 
-export const nAccesorios = (tipo, bw) => Math.max(0, tipo === 'kb' ? Math.floor((bw - 4) / 26) : tipo === 'mancuernas' ? Math.floor((bw - 4) / 13) : tipo === 'wallballs' ? Math.floor((bw - 4) / 36) : tipo === 'discos' ? Math.floor((bw - 6) / 5) : tipo === 'balones' ? Math.floor((bw - 4) / 26) : 0);
+export const nAccesorios = (tipo, bw) => Math.max(0, tipo === 'kb' ? Math.floor((bw - 4) / 26) : tipo === 'mancuernas' ? Math.floor((bw - 4) / 13) : tipo === 'wallballs' ? Math.floor((bw - 4) / 36) : tipo === 'discos' ? Math.floor((bw - 6) / 5) : tipo === 'balones' ? Math.floor((bw - 4) / 26) : tipo === 'sacos' ? Math.floor((bw - 4) / 27) : 0);
 
 function accesorios(g, tipo, xc, yTab, zc, bw, prof, colAcc = '#1c1c1e') {
   const n = nAccesorios(tipo, bw); if (!n) return;
@@ -91,6 +91,13 @@ function accesorios(g, tipo, xc, yTab, zc, bw, prof, colAcc = '#1c1c1e') {
       g.add(esfera(16, mat(colAcc, { roughness: 0.9, metalness: 0 }), x, yTab + 16, zc)); costuras(16, x, yTab + 16, zc, oscuro);
     } else if (tipo === 'discos') {
       g.add(cil(22.5, 3.5, mat(colAcc, { roughness: 0.6, metalness: 0.3 }), x, yTab + 22.5, zc, 'z'));
+    } else if (tipo === 'sacos') {
+      // saco de arena (sandbag): cilindro de lona con los extremos redondeados, tumbado de delante hacia atrás, con dos asas y una costura
+      const rad = 10.5, largo = Math.min(prof - 10, 44), mS = mat(colAcc, { roughness: 0.96, metalness: 0 });
+      const cuerpo = new THREE.Mesh(new THREE.CapsuleGeometry(rad * CM, Math.max(4, largo - 2 * rad) * CM, 6, 16), mS); cuerpo.rotation.x = Math.PI / 2; cuerpo.scale.set(1, 1, 0.85); cuerpo.position.set(x * CM, (yTab + rad * 0.85) * CM, zc * CM); cuerpo.castShadow = cuerpo.receiveShadow = true; g.add(cuerpo);
+      const asa = new THREE.Mesh(new THREE.TorusGeometry(rad * 0.5 * CM, 0.9 * CM, 6, 14, Math.PI), mat(oscuro, { roughness: 0.9, metalness: 0 })); asa.position.set(x * CM, (yTab + rad * 1.6) * CM, (zc - largo * 0.22) * CM); g.add(asa);
+      const asa2 = asa.clone(); asa2.position.z = (zc + largo * 0.22) * CM; g.add(asa2);
+      for (const dz of [-0.5, 0.5]) { const c = new THREE.Mesh(new THREE.TorusGeometry(rad * 0.99 * CM, 0.5 * CM, 5, 18), mat(oscuro, { roughness: 0.9, metalness: 0 })); c.position.set(x * CM, (yTab + rad * 0.85) * CM, (zc + dz * (largo - 2 * rad) * 0.9) * CM); c.scale.set(1, 0.85, 1); g.add(c); }
     } else if (tipo === 'balones') {
       g.add(esfera(11, mat(colAcc, { roughness: 0.9, metalness: 0 }), x, yTab + 11, zc)); costuras(11, x, yTab + 11, zc, oscuro);
     }
@@ -176,7 +183,7 @@ export function calculosRack(o) {
   if (R.tipo === 'jaula') { add('travesanos', 'Travesaños superiores en largo (' + Math.round(n * R.anchoBahia + p) + ' cm)', 2, 'ud'); add('laterales', 'Travesaños laterales y bases (' + R.fondo + ' cm)', (n + 1) * 2, 'ud'); }
   if (pared) { add('travesanos', 'Travesaño superior (' + Math.round(n * R.anchoBahia + p) + ' cm)', 1, 'ud'); add('anclajes', 'Placas de anclaje a muro (arriba, en medio y abajo de cada poste) con sus tornillos', (n + 1) * 3, 'ud'); }
   if (R.tipo === 'estanteria') add('travesanos', 'Travesaños superiores en largo', 2, 'ud');
-  let jc = 0, seg = 0, barras = 0, dom = 0, bal = 0, smith = 0, pol = 0; const acc = { kb: 0, mancuernas: 0, wallballs: 0, discos: 0, balones: 0 };
+  let jc = 0, seg = 0, barras = 0, dom = 0, bal = 0, smith = 0, pol = 0; const acc = { kb: 0, mancuernas: 0, wallballs: 0, discos: 0, balones: 0, sacos: 0 };
   R.bahias.forEach(b => {
     if (b.tipo === 'libre') { jc++; seg++; if (b.barra) barras++; } else if (b.tipo === 'dominadas') dom++;
     else if (b.tipo === 'estanteria') { bal += b.niveles; for (let j = 0; j < b.niveles; j++) { const a = b.accesorios[j]; if (acc[a] !== undefined) acc[a] += nAccesorios(a, R.anchoBahia - p); } }
@@ -184,7 +191,7 @@ export function calculosRack(o) {
   });
   add('jcups', 'Pares de J-cups', jc, 'par'); add('seguridad', pared ? 'Pares de brazos de seguridad' : 'Pares de barras de seguridad', seg, 'par'); add('dominadas', 'Barras de dominadas', dom, 'ud');
   add('baldas', 'Baldas de estantería (' + Math.round(R.anchoBahia - p) + ' cm)', bal, 'ud'); add('smith', 'Máquinas Smith (guías y barra)', smith, 'ud'); add('poleas', 'Torres de poleas con pila de pesas', pol, 'ud'); add('barra', 'Barras olímpicas con discos', barras, 'ud');
-  add('kb', 'Kettlebells', acc.kb, 'ud'); add('manc', 'Mancuernas (unidades)', acc.mancuernas * 2, 'ud'); add('wall', 'Wall balls', acc.wallballs, 'ud'); add('discos', 'Discos', acc.discos, 'ud'); add('balones', 'Balones medicinales', acc.balones, 'ud');
+  add('kb', 'Kettlebells', acc.kb, 'ud'); add('sacos', 'Sacos de arena', acc.sacos, 'ud'); add('manc', 'Mancuernas (unidades)', acc.mancuernas * 2, 'ud'); add('wall', 'Wall balls', acc.wallballs, 'ud'); add('discos', 'Discos', acc.discos, 'ud'); add('balones', 'Balones medicinales', acc.balones, 'ud');
   let total = 0; lista.forEach(([k, , q]) => { total += (R.precios[k] || 0) * q; });
   if (pared) avisos.push('A pared: comprueba que el muro aguanta los anclajes (hormigón o bloque macizo).');
   if (R.alto > 260) avisos.push('Con más de 260 cm de alto, comprueba la altura libre de la sala.');

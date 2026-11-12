@@ -689,7 +689,7 @@ router.put('/:id/escena3d', async (req, res) => {
       rack: o.tipo === 'rack' && o.rack && typeof o.rack === 'object' ? (() => {
         const r = o.rack, hx = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : d), n = (v, d, mn, mx) => Math.max(mn, Math.min(mx, num(v, d)));
         const precios = {}; if (r.precios && typeof r.precios === 'object') Object.keys(r.precios).slice(0, 30).forEach(k => { if (/^[a-z]{2,20}$/.test(k)) precios[k] = n(r.precios[k], 0, 0, 1e6); });
-        const TB = ['libre', 'dominadas', 'estanteria', 'smith', 'poleas', 'vacia'], AC = ['kb', 'mancuernas', 'wallballs', 'discos', 'balones', 'vacio'];
+        const TB = ['libre', 'dominadas', 'estanteria', 'smith', 'poleas', 'vacia'], AC = ['kb', 'mancuernas', 'wallballs', 'discos', 'balones', 'sacos', 'vacio'];
         return {
           tipo: ['jaula', 'pared', 'estanteria'].includes(r.tipo) ? r.tipo : 'jaula', perfil: [50, 75, 100].includes(Number(r.perfil)) ? Number(r.perfil) : 75, color: hx(r.color, '#111111'), colorAcc: hx(r.colorAcc, '#1c1c1e'), agujeros: Number(r.agujeros) === 2.5 ? 2.5 : 5,
           anchoBahia: n(r.anchoBahia, 125, 60, 250), fondo: n(r.fondo, 120, 25, 250), alto: n(r.alto, 230, 120, 320), precios,

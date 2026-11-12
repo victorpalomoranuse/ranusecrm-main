@@ -63,6 +63,8 @@ function dentroDelEspacio(modelo, x, z, offs, soloPlanta) {
   return x0 === Infinity || (x / CM >= x0 - 40 && x / CM <= x1 + 40 && z / CM >= z0 - 40 && z / CM <= z1 + 40);
 }
 // Recorrido a pie: en qué planta está la cámara (la que tiene sala bajo sus pies; si hay varias, la más alta que quede por debajo de la cámara) y a qué cota (m) está su suelo
+// Planta de techo y de suelo: bloqueadas por ahora (el techo y el suelo se definen en Planos y aquí solo se pintan). Poner a true para volver a activarlas.
+const VISTAS_PLANTA_ACTIVAS = false;
 function plantaAlz(m, tipo, id) {
   const pls = m?.plantas || [m];
   for (let ip = 0; ip < pls.length; ip++) { const p = pls[ip] || {}; if (tipo === 'muro' ? (p.muros || []).some(x => x.id === id) : (p.salas || []).some((sa, i) => (sa.idS || ('s' + i)) === id)) return ip; }
@@ -4981,6 +4983,7 @@ export default function Visor3D({ cliente = false }) {
   const [edPlanta, setEdPlanta] = useState(null); // editor 2D ligero de la planta del techo / del suelo de una sala
   const entrarAlzado = (tipo, idObj) => {
     const a = api3d.current, m = a.modelo; if (!m) return;
+    if ((tipo === 'techo' || tipo === 'suelo') && !VISTAS_PLANTA_ACTIVAS) { setHerr('sel'); setAviso('La planta de ' + tipo + ' está desactivada por ahora: el ' + tipo + ' se dibuja en Planos y aquí solo se pinta.'); return; }
     if (tipo === 'techo' || tipo === 'suelo') { const ipN = plantaAlz(m, 'sala', idObj); setSelAcab(null); setSelObj(null); setEdPlanta({ tipo, salaKey: idObj, ip: ipN }); return; }
     liberarCamara();
     const ipE = plantaAlz(m, tipo, idObj), pl0 = (m.plantas || [m])[ipE], [oxE, oyE] = (a.offsPl || [])[ipE] || [0, 0], zE = (pl0.z || 0) * CM, asp = a.cam.aspect || 1.6, VIS = 0.0873;
@@ -5952,8 +5955,8 @@ export default function Visor3D({ cliente = false }) {
         ], false, 'Luz')}
         {grupoRail([
           railBtn(herr === 'vistaM', 'alzado', 'Alzado', 'Pulsa un muro: vista de frente de ese muro para dibujar y colocar materiales con medidas', () => setHerr('vistaM')),
-          railBtn(herr === 'vistaS', 'planta', 'Planta suelo', 'Pulsa un suelo: vista desde arriba para dibujar y colocar materiales con medidas', () => setHerr('vistaS')),
-          railBtn(herr === 'vistaT', 'techo', 'Planta techo', 'Pulsa el suelo de una sala: vista del techo desde abajo', () => setHerr('vistaT')),
+          railBtn(herr === 'vistaS', 'planta', VISTAS_PLANTA_ACTIVAS ? 'Planta suelo' : '🔒 Pl. suelo', VISTAS_PLANTA_ACTIVAS ? 'Pulsa un suelo: vista desde arriba para dibujar y colocar materiales con medidas' : 'Desactivado por ahora: el suelo se define en Planos y aquí solo se pinta', () => (VISTAS_PLANTA_ACTIVAS ? setHerr('vistaS') : setAviso('La planta de suelo está desactivada por ahora: el suelo se define en Planos y aquí solo se pinta.'))),
+          railBtn(herr === 'vistaT', 'techo', VISTAS_PLANTA_ACTIVAS ? 'Planta techo' : '🔒 Pl. techo', VISTAS_PLANTA_ACTIVAS ? 'Pulsa el suelo de una sala: vista del techo desde abajo' : 'Desactivado por ahora: el techo se define en Planos y aquí solo se pinta', () => (VISTAS_PLANTA_ACTIVAS ? setHerr('vistaT') : setAviso('La planta de techo está desactivada por ahora: el techo se define en Planos y aquí solo se pinta.'))),
         ], false, 'Detallar')}
         {grupoRail([
           railBtn(herr === 'guia', 'cinta', 'Cinta', 'Cinta métrica: clic en dos puntos para crear una línea guía; el dibujo se imanta a ellas', () => setHerr('guia')),
