@@ -13,7 +13,7 @@ const puntos = (doc) => doc.getRoot().listMeshes().reduce((n, m) => n + m.listPr
 const tris = (doc) => Math.round(doc.getRoot().listMeshes().reduce((n, m) => n + m.listPrimitives().reduce((k, p) => k + (p.getIndices()?.getCount() ?? p.getAttribute('POSITION')?.getCount() ?? 0) / 3, 0), 0));
 const verts = (doc) => puntos(doc);
 const sube = async (doc, maxTri, errores) => { for (const err of errores) { const t = tris(doc); if (t <= maxTri * 1.15) break; await doc.transform(simplify({ simplifier: MeshoptSimplifier, ratio: Math.max(0.02, Math.min(1, maxTri / t)), error: err, lockBorder: false })); } };
-export async function aligeraGlb(buf, maxTri = 12000) {
+export async function aligeraGlb(buf, maxTri = 12000, suave = false) {
   try {
     await MeshoptSimplifier.ready;
     const doc = await io.readBinary(new Uint8Array(buf));
@@ -21,8 +21,8 @@ export async function aligeraGlb(buf, maxTri = 12000) {
     if (antes <= maxTri * 1.15) return { glb: buf, antes, despues: antes, igual: true };
     await doc.transform(weld({ tolerance: 0.0001 }));
     try { await doc.transform(join({ keepMeshes: false, keepNamed: false })); } catch { /* sin unir piezas */ }
-    await sube(doc, maxTri, [0.03, 0.08, 0.2, 0.5]);
-    if (tris(doc) > maxTri * 1.5 && doc.getRoot().listTextures().length === 0) { // atascado por los cantos duros: sin normales los vértices se pueden juntar y el visor sombrea plano
+    await sube(doc, maxTri, suave ? [0.01, 0.02, 0.04] : [0.03, 0.08, 0.2, 0.5]); // «suave»: modelos hechos por IA desde fotos, que se rompen si se simplifica de más
+    if (!suave && tris(doc) > maxTri * 1.5 && doc.getRoot().listTextures().length === 0) { // atascado por los cantos duros: sin normales los vértices se pueden juntar y el visor sombrea plano
       for (const m of doc.getRoot().listMeshes()) for (const p of m.listPrimitives()) p.setAttribute('NORMAL', null);
       await doc.transform(weld({ tolerance: 0.0001 }));
       try { await doc.transform(join({ keepMeshes: false, keepNamed: false })); } catch { /* sin unir piezas */ }

@@ -49,6 +49,7 @@ export function normalizaCesped(o) {
     distancia, separador: SEPARADORES.includes(c.separador) ? c.separador : 'linea', elementos: (Array.isArray(c.elementos) ? c.elementos : []).slice(0, 12).map(normElemento),
     cesped: hex(c.cesped, '#d8d9d4'), linea: hex(c.linea, '#111111'),
     carriles: Math.round(num(c.carriles, 1, 1, 8)), anchoCarril: num(c.anchoCarril, 200, 60, 400), sep: num(c.sep, 500, 100, 5000), grosorLinea: num(c.grosorLinea, 10, 2, 40),
+    rotNum: [0, 90, 180, 270].includes(Number(c.rotNum)) ? Number(c.rotNum) : 90, // giro de los números: con 90° se leen de frente mirando a lo largo de la pista
     numeros: distancia !== 'ninguna', salida: c.salida !== false, lineasCarril: c.lineasCarril !== false, borde: c.borde !== false, grosor: num(c.grosor, 2.5, 1, 8),
     precios: (c.precios && typeof c.precios === 'object') ? c.precios : {},
   };
@@ -89,7 +90,11 @@ export function lienzoCesped(o) {
   if (C.lineasCarril) for (let k = 1; k < C.carriles; k++) g.fillRect(0, Math.round(k * C.anchoCarril * px - lw / 2), cw, lw);
   if (C.distancia !== 'ninguna') {
     const fs = Math.max(10, Math.round(Math.min(C.anchoCarril * (C.distancia === 'indice' ? 0.2 : 0.22), C.sep * (C.distancia === 'indice' ? 0.3 : 0.18)) * px)); g.font = '700 ' + fs + 'px Montserrat, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = C.linea;
-    for (let k = 0; k < C.carriles; k++) for (let x = C.sep; x < L - 1; x += C.sep) { const m = (x / 100).toLocaleString('es-ES', { maximumFractionDigits: 1 }), idx = String(Math.round(x / C.sep)).padStart(2, '0'); g.fillText(C.distancia === 'indice' ? idx : C.distancia === 'numero' ? m : m + ' m', Math.round((x + (C.distancia === 'indice' ? 0 : C.sep * 0.16)) * px), Math.round((k + 0.5) * C.anchoCarril * px)); }
+    for (let k = 0; k < C.carriles; k++) for (let x = C.sep; x < L - 1; x += C.sep) {
+      const m = (x / 100).toLocaleString('es-ES', { maximumFractionDigits: 1 }), idx = String(Math.round(x / C.sep)).padStart(2, '0');
+      g.save(); g.translate(Math.round((x + (C.distancia === 'indice' ? 0 : C.sep * 0.16)) * px), Math.round((k + 0.5) * C.anchoCarril * px)); g.rotate(C.rotNum * Math.PI / 180);
+      g.fillText(C.distancia === 'indice' ? idx : C.distancia === 'numero' ? m : m + ' m', 0, 0); g.restore();
+    }
   }
   // frases, numeración y logos
   const logos = [];

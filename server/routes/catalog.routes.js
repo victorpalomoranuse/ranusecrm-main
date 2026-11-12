@@ -572,7 +572,7 @@ async function generaModelo3DPieza(id, body) {
   }
   if (!glb) { const r3 = await glbDesdeFotos(todas); glb = r3.glb; metodo = r3.metodo; usadas = r3.usadas; }
   if (!glb || glb.length < 1000) throw new ErrorAmable(502, 'El servicio 3D no devolvió un modelo');
-  glb = (await aligeraGlb(glb, 12000)).glb; // los modelos de las fotos traen 150.000 puntos o más: se aligeran para que el visor 3D no se cuelgue
+  glb = (await aligeraGlb(glb, 45000, true)).glb; // los modelos de las fotos traen 150.000 puntos o más: se aligeran para que el visor 3D no se cuelgue
   // las fotos nuevas se guardan con la pieza (hasta 8) para poder seguir añadiendo más después
   const fotosNuevas = [];
   for (let i = 0; i < nNuevas; i++) { try { const jpg = await sharp(bufs[i]).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer(); const rf = 'modelos-3d/fotos/' + String(id).replace(/[^a-zA-Z0-9-]/g, '').slice(0, 60) + '-' + Date.now() + '-' + i + '.jpg'; const { error: eF } = await supabase.storage.from(BUCKET_SKP).upload(rf, jpg, { contentType: 'image/jpeg', upsert: true }); if (!eF) fotosNuevas.push(supabase.storage.from(BUCKET_SKP).getPublicUrl(rf).data.publicUrl); } catch { /* esa foto no se guarda */ } }

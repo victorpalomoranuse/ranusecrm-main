@@ -6959,6 +6959,7 @@ export default function Visor3D({ cliente = false }) {
                 {fila('Ancho de carril cm', numIn(Math.round(C.anchoCarril), v => cambiarCesped(id, c => { c.anchoCarril = v; return c; }), 60, 400, 70))}
                 {fila('Marca cada (cm)', numIn(Math.round(C.sep), v => cambiarCesped(id, c => { c.sep = v; return c; }), 100, 5000, 80))}
                 {fila('Grosor línea cm', numIn(C.grosorLinea, v => cambiarCesped(id, c => { c.grosorLinea = v; return c; }), 2, 40, 60))}
+                {fila('Giro de los números', <select value={C.rotNum} onChange={e => { const v = parseInt(e.target.value, 10); cambiarCesped(id, c => { c.rotNum = v; return c; }); }} style={btn}>{[[90, 'De frente desde la salida'], [270, 'De frente desde la llegada'], [0, 'Tumbados (0°)'], [180, 'Al revés (180°)']].map(([g, n]) => <option key={g} value={g}>{n}</option>)}</select>)}
                 {fila('Grosor césped cm', numIn(C.grosor, v => cambiarCesped(id, c => { c.grosor = v; return c; }), 1, 8, 60, 0.5))}
                 <div style={{ fontWeight: 700, margin: '8px 0 4px' }}>Diseño del marcaje</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>{Object.entries(PRESETS_MARCAJE).map(([k, v]) => <button key={k} style={{ ...btn, padding: '3px 7px', fontSize: 11.5 }} onClick={() => cambiarCesped(id, c => aplicaPresetMarcaje(c, k))}>{v.n}</button>)}</div>
