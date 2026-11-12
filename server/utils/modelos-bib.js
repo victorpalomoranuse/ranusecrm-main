@@ -9,9 +9,11 @@ let cache = null, cacheT = 0;
 export async function leerModelosBib() {
   if (cache && Date.now() - cacheT < 30 * 1000) return cache;
   try {
-    const { data, error } = await supabase.storage.from(BUCKET).download(RUTA);
-    if (error || !data) { cache = cache || {}; }
-    else { const j = JSON.parse(await data.text()); cache = j && typeof j === 'object' ? j : {}; }
+    // download() puede devolver la versión anterior del archivo (caché del almacenamiento) y entonces dos guardados seguidos se pisan: se lee la URL pública saltándose la caché
+    const url = supabase.storage.from(BUCKET).getPublicUrl(RUTA).data.publicUrl;
+    const r = await fetch(url + '?t=' + Date.now(), { headers: { 'cache-control': 'no-cache' } });
+    if (r.ok) { const j = await r.json(); cache = j && typeof j === 'object' ? j : {}; }
+    else { const { data, error } = await supabase.storage.from(BUCKET).download(RUTA); if (error || !data) { cache = cache || {}; } else { const j = JSON.parse(await data.text()); cache = j && typeof j === 'object' ? j : {}; } }
   } catch { cache = cache || {}; }
   cacheT = Date.now();
   return cache;
