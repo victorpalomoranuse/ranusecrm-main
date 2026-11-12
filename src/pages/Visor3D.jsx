@@ -181,7 +181,7 @@ function sueloShader(fl) {
       '#ifdef USE_MAP\n' + (fl.puzzle ? ' vec2 suUV = vMapUv + 0.022 * vec2(sin(18.85 * vMapUv.y), sin(18.85 * vMapUv.x));\n' : '')
       + ' vec4 sampledDiffuseColor = ' + (fl.crop ? 'sueloPieza(map, ' + uv + ', ' + fl.crop.toFixed(3) + ')' : fl.antirep ? 'sueloMuestra(map, ' + uv + ')' : 'texture2D(map, ' + uv + ')') + ';\n diffuseColor *= sampledDiffuseColor;\n'
       + ' vec4 suH = sueloCelda(floor(' + uv + ')); diffuseColor.rgb *= 1.0 + (suH.x - 0.5) * ' + (fl.tono || 0).toFixed(3) + ';\n'
-      + (fl.junta ? ' vec2 suF = fract(' + uv + '), suE = min(suF, 1.0 - suF); float suW = max(0.0035, fwidth(vMapUv.x) * 1.25); float suJ = 1.0 - smoothstep(suW * 0.4, suW * 1.5, min(suE.x, suE.y)); diffuseColor.rgb *= mix(1.0, 0.42, suJ);\n' : '')
+      + (fl.junta ? ' vec2 suF = fract(' + uv + '), suE = min(suF, 1.0 - suF); float suW = max(0.0012, fwidth(vMapUv.x) * 0.7); float suJ = 1.0 - smoothstep(suW * 0.4, suW * 1.5, min(suE.x, suE.y)); diffuseColor.rgb *= mix(1.0, 0.82, suJ);\n' : '')
       + '#endif');
   };
 }
