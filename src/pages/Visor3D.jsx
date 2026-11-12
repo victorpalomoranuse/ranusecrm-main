@@ -140,6 +140,22 @@ function tramosDeMuros(muros) {
   return out;
 }
 // Pintar una pared entera con un color: las zonas que se hubieran pintado a mano sobre sus caras (regiones) taparían el color nuevo y la pared quedaría a trozos; se quitan
+// Huecos (puertas y ventanas) de un muro en su propio marco (x a lo largo, y en altura) y resta de rectángulos: lo que pone la IA nunca va encima de una ventana o una puerta
+const huecosDeMuro = (mu, margen = 4) => (mu.ab || []).map(o => ({ x0: o.p - margen, x1: o.p + o.w + margen, y0: Math.max(0, (o.sill || 0) - margen), y1: (o.sill || 0) + o.h + margen }));
+function restaRects(r, huecos) {
+  let piezas = [r];
+  for (const h of huecos) {
+    const sig = [];
+    for (const q of piezas) {
+      if (h.x1 <= q.x0 || h.x0 >= q.x1 || h.y1 <= q.y0 || h.y0 >= q.y1) { sig.push(q); continue; }
+      if (h.x0 > q.x0) sig.push({ ...q, x1: h.x0 }); if (h.x1 < q.x1) sig.push({ ...q, x0: h.x1 });
+      const a = Math.max(q.x0, h.x0), b = Math.min(q.x1, h.x1);
+      if (h.y0 > q.y0) sig.push({ x0: a, x1: b, y0: q.y0, y1: h.y0 }); if (h.y1 < q.y1) sig.push({ x0: a, x1: b, y0: h.y1, y1: q.y1 });
+    }
+    piezas = sig;
+  }
+  return piezas.filter(q => q.x1 - q.x0 > 3 && q.y1 - q.y0 > 3);
+}
 const quitaRegiones = (reg, prefijos) => { if (!reg) return reg; const ks = Object.keys(reg).filter(k => prefijos.some(p => k.startsWith(p))); if (!ks.length) return reg; const out = { ...reg }; ks.forEach(k => { delete out[k]; }); return out; };
 const libreModelo = (e) => { const M = MEDIDAS_DECO[e.libre] || [60, 60, 100]; return { libre: e.libre, nombre: e.nombre || KINDS_DECO[e.libre] || 'Decoración', categoria: e.libre === 'cuadro' ? 'Cuadros y espejos' : 'Decoración', w: e.ancho || M[0], d: M[1], alto: e.altoCm || M[2] }; };
 const SB_PUBLICO = 'https://guumqvvaalifyluxmidz.supabase.co/storage/v1/object/public/project-documents/';
@@ -6576,6 +6592,9 @@ export default function Visor3D({ cliente = false }) {
                 const centroide = [cx0, cy0];
                 const aristas = pts.map((p, k) => { const q = pts[(k + 1) % n], dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1; let nx = -dy / L, ny = dx / L; if (!dentro(p[0] + dx / 2 + nx * 20, p[1] + dy / 2 + ny * 20)) { nx = -nx; ny = -ny; } return { p, q, L, dx, dy, nx, ny }; }).sort((a, b) => b.L - a.L);
                 const puertas = []; (sel.pl.muros || []).forEach(mu => (mu.ab || []).forEach(o => { if (!/puerta/i.test((o.nm || '') + ' ' + (o.tip || ''))) return; const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, s = o.p + o.w / 2, px = mu.a[0] + ux * s, py = mu.a[1] + uy * s; let nx = -uy, ny = ux; if (!dentro(px + nx * 40, py + ny * 40)) { nx = -nx; ny = -ny; } if (dentro(px + nx * 40, py + ny * 40)) puertas.push({ px, py, nx, ny, ux, uy, w: o.w }); }));
+                // un cuadro o una pieza pegada a la pared no va delante de una ventana ni de una puerta
+                const aberturas = []; (sel.pl.muros || []).forEach(mu => (mu.ab || []).forEach(o => { const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L; aberturas.push({ a: [mu.a[0] + ux * o.p, mu.a[1] + uy * o.p], b: [mu.a[0] + ux * (o.p + o.w), mu.a[1] + uy * (o.p + o.w)] }); }));
+                const cercaDeAbertura = (x2, y2, margen) => aberturas.some(ab => { const ex = ab.b[0] - ab.a[0], ey = ab.b[1] - ab.a[1], l2 = ex * ex + ey * ey || 1, t = Math.max(0, Math.min(1, ((x2 - ab.a[0]) * ex + (y2 - ab.a[1]) * ey) / l2)); return Math.hypot(x2 - ab.a[0] - t * ex, y2 - ab.a[1] - t * ey) < margen; });
                 const rotHacia = (nx, ny) => (Math.round((Math.atan2(-nx, ny) * 180) / Math.PI) + 360) % 360;
                 const nuevos = []; let sinSitio = 0;
                 const candidatos = (ub, w, d) => {
@@ -6591,7 +6610,7 @@ export default function Visor3D({ cliente = false }) {
                   for (let c = 0; c < e.cantidad; c++) {
                     const altoSala = (api3d.current.modelo?.altura || 260) - 12, kEsc = (m.alto || 100) * e.escala > altoSala && !/cuadro|espejo/i.test(m.categoria || '') ? altoSala / ((m.alto || 100) * e.escala) : 1; // nada pasa del techo
                     const w = Math.round(m.w * e.escala * kEsc), d = Math.round(m.d * e.escala * kEsc), alto = Math.round((m.alto || 100) * e.escala * kEsc), r = Math.hypot(w, d) / 2;
-                    const cand = candidatos(e.ubicacion === 'entrada' && !puertas.length ? 'esquina' : e.ubicacion, w, d), sitio = cand.find(q => (q.pared ? dentro(q.x, q.y) && obst.every(o => Math.hypot(q.x - o.x, q.y - o.y) >= o.r + r * 0.6 + 8) : libre(q.x, q.y, r)));
+                    const cand = candidatos(e.ubicacion === 'entrada' && !puertas.length ? 'esquina' : e.ubicacion, w, d), sitio = cand.find(q => (q.pared ? dentro(q.x, q.y) && !cercaDeAbertura(q.x, q.y, Math.max(w, d) / 2 + 25) && obst.every(o => Math.hypot(q.x - o.x, q.y - o.y) >= o.r + r * 0.6 + 8) : libre(q.x, q.y, r)));
                     if (!sitio) { sinSitio++; continue; }
                     const colgado = /cuadro|espejo/i.test(m.categoria || '');
                     nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'bloque', cid: null, nombre: m.nombre, etiqueta: m.categoria || 'Decoración', cx: Math.round((sitio.x + pmD.ox) * 10) / 10, cy: Math.round((sitio.y + pmD.oy) * 10) / 10, rot: sitio.rot, w, d, alto, z0: (colgado ? 110 : 0) + pmD.z, color: null, ...(m.libre ? { tipo: 'deco', deco: { kind: m.libre, ...(e.color2 ? { color2: e.color2 } : {}) }, color: e.color || null, cid: undefined } : { mod: { url: m.url, tipo: m.tipo || 'gltf', rot: 0 } }) });
@@ -6687,12 +6706,33 @@ export default function Visor3D({ cliente = false }) {
               };
               const aplicaLucesTramo = (x, tr) => {
                 if (!x.luces?.length) return false;
-                const primero = tr.segs[0], lado = salaDelMuro(primero.mu).lado, pm = plantaDeMuro(primero.mu), H = primero.mu.h || api3d.current.modelo?.altura || 260;
-                const pts = [], normales = [];
-                tr.segs.forEach((sg, k) => { const a = sg.inv ? sg.mu.b : sg.mu.a, b = sg.inv ? sg.mu.a : sg.mu.b, dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, nx = -dy / L * lado * (sg.inv ? -1 : 1), ny = dx / L * lado * (sg.inv ? -1 : 1); if (k === 0) { pts.push(a); normales.push([nx, ny]); } pts.push(b); normales.push([nx, ny]); });
-                const off = (primero.mu.t || 12) / 2 + 6, ptsW = pts.map((p, k) => { const n0 = normales[k], n1 = normales[Math.min(k + 1, normales.length - 1)], nx = n0[0] + n1[0], ny = n0[1] + n1[1], nl = Math.hypot(nx, ny) || 1; return [p[0] + nx / nl * off + pm.ox, p[1] + ny / nl * off + pm.oy]; });
-                const cx = ptsW.reduce((q, p) => q + p[0], 0) / ptsW.length, cy = ptsW.reduce((q, p) => q + p[1], 0) / ptsW.length, xs = ptsW.map(p => p[0]), ys = ptsW.map(p => p[1]);
-                const nuevos = x.luces.map((l, k) => ({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + k, tipo: 'led', nombre: 'Tira LED ' + (l.donde === 'alta' ? 'alta' : 'baja'), etiqueta: 'Iluminación', cx: Math.round(cx * 10) / 10, cy: Math.round(cy * 10) / 10, rot: 0, w: Math.round(Math.max(...xs) - Math.min(...xs)), d: Math.round(Math.max(...ys) - Math.min(...ys)) + 4, alto: 2, z0: (l.donde === 'alta' ? Math.max(50, H - 10) : 12) + pm.z, pts: ptsW.map(p => [Math.round((p[0] - cx) * 10) / 10, Math.round((p[1] - cy) * 10) / 10]), led: { ancho: 1.5, k: l.k, lm: 800, dir: l.donde === 'alta' ? 'abajo' : 'arriba', cerrado: false }, ...(l.color ? { color: l.color } : {}), ia: 'm:' + primero.mu.id + ':luz:' + l.donde }));
+                const primero = tr.segs[0], lado = salaDelMuro(primero.mu).lado, pm = plantaDeMuro(primero.mu), H = primero.mu.h || api3d.current.modelo?.altura || 260, off = (primero.mu.t || 12) / 2 + 6;
+                const nuevos = [];
+                for (const l of x.luces) {
+                  const zAlt = l.donde === 'alta' ? Math.max(50, H - 10) : 12;
+                  // tramos libres: cada muro pequeño se recorta quitando lo que cruza una abertura a la altura de la luz
+                  const corridas = []; let actual = [];
+                  const cierra = () => { if (actual.length >= 2) corridas.push(actual); actual = []; };
+                  tr.segs.forEach(sg => {
+                    const a = sg.inv ? sg.mu.b : sg.mu.a, b = sg.inv ? sg.mu.a : sg.mu.b, dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, nx = -dy / L * lado, ny = dx / L * lado;
+                    const bloqueos = (sg.mu.ab || []).filter(o => zAlt >= (o.sill || 0) - 8 && zAlt <= (o.sill || 0) + o.h + 8).map(o => { const t0 = sg.inv ? (L - (o.p + o.w)) / L : o.p / L, t1 = sg.inv ? (L - o.p) / L : (o.p + o.w) / L; return [Math.max(0, t0 - 6 / L), Math.min(1, t1 + 6 / L)]; }).sort((q, r2) => q[0] - r2[0]);
+                    let cur = 0; const libres = [];
+                    bloqueos.forEach(([b0, b1]) => { if (b0 > cur) libres.push([cur, b0]); cur = Math.max(cur, b1); }); if (cur < 1) libres.push([cur, 1]);
+                    libres.forEach(([t0, t1], k) => {
+                      if (k > 0 || t0 > 0) cierra();
+                      if (t1 - t0 < 0.02) return;
+                      const p0 = [a[0] + dx * t0 + nx * off + pm.ox, a[1] + dy * t0 + ny * off + pm.oy], p1 = [a[0] + dx * t1 + nx * off + pm.ox, a[1] + dy * t1 + ny * off + pm.oy];
+                      if (!actual.length) actual.push(p0); actual.push(p1);
+                      if (t1 < 1) cierra();
+                    });
+                  });
+                  cierra();
+                  corridas.forEach((pts, k) => {
+                    const cx = pts.reduce((q, p) => q + p[0], 0) / pts.length, cy = pts.reduce((q, p) => q + p[1], 0) / pts.length, xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+                    nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'led', nombre: 'Tira LED ' + (l.donde === 'alta' ? 'alta' : 'baja'), etiqueta: 'Iluminación', cx: Math.round(cx * 10) / 10, cy: Math.round(cy * 10) / 10, rot: 0, w: Math.round(Math.max(...xs) - Math.min(...xs)), d: Math.round(Math.max(...ys) - Math.min(...ys)) + 4, alto: 2, z0: zAlt + pm.z, pts: pts.map(p => [Math.round((p[0] - cx) * 10) / 10, Math.round((p[1] - cy) * 10) / 10]), led: { ancho: 1.5, k: l.k, lm: 800, dir: l.donde === 'alta' ? 'abajo' : 'arriba', cerrado: false }, ...(l.color ? { color: l.color } : {}), ia: 'm:' + primero.mu.id + ':luz:' + l.donde + ':' + k });
+                  });
+                }
+                if (!nuevos.length) return false;
                 setObjs(prev => [...prev.filter(o => !String(o.ia || '').startsWith('m:' + primero.mu.id + ':luz')), ...nuevos]); return true;
               };
               // Aplica las capas de una idea a TODA la pared (el tramo continuo, curva incluida): cada pequeño muro recibe su parte
@@ -6720,12 +6760,13 @@ export default function Visor3D({ cliente = false }) {
                 const mu = muroSel(); if (!mu || !x.patron?.length) return false;
                 const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, lado = salaDelMuro(mu).lado, nuevos = [];
                 const zona = (pts, color, nombre) => nuevos.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + nuevos.length, tipo: 'zona', plano: 'pared', muroId: mu.id, lado, nombre, etiqueta: 'Zonas', cx: 0, cy: 0, rot: 0, w: 1, d: 1, alto: 1, z0: 0, color, pts: pts.map(p => [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]) });
+                const hu = huecosDeMuro(mu), rect = (x0, y0, x1, y1, color, nombre) => restaRects({ x0, x1, y0, y1 }, hu).forEach(q => zona([[q.x0, q.y0], [q.x1, q.y0], [q.x1, q.y1], [q.x0, q.y1]], color, nombre));
                 for (const p of x.patron) {
                   const s0 = p.desde * L, s1 = p.hasta * L, y0 = p.alturaDesde, y1 = p.alturaHasta;
-                  if (p.forma === 'franja') zona([[0, y0], [L, y0], [L, y1], [0, y1]], p.color, 'Franja pintada');
-                  else if (p.forma === 'bloque') zona([[s0, y0], [s1, y0], [s1, y1], [s0, y1]], p.color, 'Bloque de color');
-                  else if (p.forma === 'rayas') { const n = Math.max(2, p.n), w = (s1 - s0) / (n * 2 - 1); for (let k = 0; k < n; k++) zona([[s0 + 2 * k * w, y0], [s0 + (2 * k + 1) * w, y0], [s0 + (2 * k + 1) * w, y1], [s0 + 2 * k * w, y1]], p.color, 'Raya pintada'); }
-                  else if (p.forma === 'arco') { const r = (s1 - s0) / 2, cxm = (s0 + s1) / 2, base = Math.max(y0, y1 - r); const pts = [[s0, y0], [s1, y0], [s1, base]]; for (let k = 1; k < 24; k++) { const th = (k / 24) * Math.PI; pts.push([cxm + r * Math.cos(th), base + Math.min(r, y1 - base) * Math.sin(th)]); } pts.push([s0, base]); zona(pts, p.color, 'Arco pintado'); }
+                  if (p.forma === 'franja') rect(0, y0, L, y1, p.color, 'Franja pintada');
+                  else if (p.forma === 'bloque') rect(s0, y0, s1, y1, p.color, 'Bloque de color');
+                  else if (p.forma === 'rayas') { const n = Math.max(2, p.n), w = (s1 - s0) / (n * 2 - 1); for (let k = 0; k < n; k++) rect(s0 + 2 * k * w, y0, s0 + (2 * k + 1) * w, y1, p.color, 'Raya pintada'); }
+                  else if (p.forma === 'arco') { if (hu.some(h => !(h.x1 <= s0 || h.x0 >= s1 || h.y1 <= y0 || h.y0 >= y1))) continue; const r = (s1 - s0) / 2, cxm = (s0 + s1) / 2, base = Math.max(y0, y1 - r); const pts = [[s0, y0], [s1, y0], [s1, base]]; for (let k = 1; k < 24; k++) { const th = (k / 24) * Math.PI; pts.push([cxm + r * Math.cos(th), base + Math.min(r, y1 - base) * Math.sin(th)]); } pts.push([s0, base]); zona(pts, p.color, 'Arco pintado'); }
                 }
                 ponIA(nuevos, 'm:' + mu.id + ':pat'); return nuevos.length > 0;
               };
@@ -6764,9 +6805,14 @@ export default function Visor3D({ cliente = false }) {
                 const mu = muroSel(), ro = x.rotulo; if (!mu || !ro) return false;
                 const norm = await formasDeTexto(ro.texto, ro.fuente, 'horizontal'); if (!norm) { setAviso('No he podido dibujar «' + ro.texto + '» con esa fuente.'); return false; }
                 const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ancho = Math.max(30, Math.min(L * 0.8, ro.ancho)), alto = Math.round(norm.alto * ancho / 100), lado = salaDelMuro(mu).lado, t = Math.max(0.1, Math.min(0.9, ro.posicion));
-                const px = mu.a[0] + (mu.b[0] - mu.a[0]) * t, py = mu.a[1] + (mu.b[1] - mu.a[1]) * t, nx = -(mu.b[1] - mu.a[1]) / L * lado, ny = (mu.b[0] - mu.a[0]) / L * lado;
+                // el rótulo no va encima de ventanas ni puertas: si el sitio elegido las pisa, se busca el hueco libre más cercano de la pared
+                const hu = huecosDeMuro(mu, 10), yc = ro.alturaCentro, pisa = (sc, anc, al) => hu.some(h => !(sc + anc / 2 <= h.x0 || sc - anc / 2 >= h.x1 || yc + al / 2 <= h.y0 || yc - al / 2 >= h.y1));
+                let sc = t * L, ancho2 = ancho, alto2 = alto, hallado = !pisa(sc, ancho2, alto2);
+                for (const k of [1, 0.8, 0.62]) { if (hallado) break; ancho2 = ancho * k; alto2 = alto * k; for (let d = 10; d < L && !hallado; d += 15) for (const sg of [1, -1]) { const c2 = sc + sg * d; if (c2 - ancho2 / 2 >= 10 && c2 + ancho2 / 2 <= L - 10 && !pisa(c2, ancho2, alto2)) { sc = c2; hallado = true; break; } } if (!hallado) sc = t * L; }
+                if (!hallado) { setAviso('El rótulo «' + ro.texto + '» no cabe en esta pared sin tapar ventanas o puertas: no lo he puesto.'); return false; }
+                const tt = sc / L, px = mu.a[0] + (mu.b[0] - mu.a[0]) * tt, py = mu.a[1] + (mu.b[1] - mu.a[1]) * tt, nx = -(mu.b[1] - mu.a[1]) / L * lado, ny = (mu.b[0] - mu.a[0]) / L * lado;
                 const r = pegarCalc([mu], { d: 2 }, px + nx * 30, py + ny * 30); if (!r) return false; const pmR = plantaDeMuro(mu);
-                const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', tv: 2, nombre: 'Rótulo «' + ro.texto.slice(0, 24) + '»', etiqueta: 'Textos', cx: r.cx + pmR.ox, cy: r.cy + pmR.oy, rot: r.rot, w: ancho, d: 2, alto, ratio: norm.alto / 100, z0: Math.max(0, Math.round(ro.alturaCentro - alto / 2)) + pmR.z, plano: 'vertical', color: ro.neon ? ro.color + '!' : ro.color, formas: norm.formas, texto: ro.texto, fuente: ro.fuente };
+                const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'logo', tv: 2, nombre: 'Rótulo «' + ro.texto.slice(0, 24) + '»', etiqueta: 'Textos', cx: r.cx + pmR.ox, cy: r.cy + pmR.oy, rot: r.rot, w: ancho2, d: 2, alto: Math.round(alto2), ratio: norm.alto / 100, z0: Math.max(0, Math.round(ro.alturaCentro - alto2 / 2)) + pmR.z, plano: 'vertical', color: ro.neon ? ro.color + '!' : ro.color, formas: norm.formas, texto: ro.texto, fuente: ro.fuente };
                 ponIA(nuevo, 'm:' + mu.id + ':rot'); return true;
               };
               // ── probar: se aplica para VER cómo queda; se decide después si se guarda (todo o por capas) o se descarta
