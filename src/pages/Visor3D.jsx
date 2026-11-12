@@ -62,6 +62,11 @@ function dentroDelEspacio(modelo, x, z, offs, soloPlanta) {
   return x0 === Infinity || (x / CM >= x0 - 40 && x / CM <= x1 + 40 && z / CM >= z0 - 40 && z / CM <= z1 + 40);
 }
 // Recorrido a pie: en qué planta está la cámara (la que tiene sala bajo sus pies; si hay varias, la más alta que quede por debajo de la cámara) y a qué cota (m) está su suelo
+function plantaAlz(m, tipo, id) {
+  const pls = m?.plantas || [m];
+  for (let ip = 0; ip < pls.length; ip++) { const p = pls[ip] || {}; if (tipo === 'muro' ? (p.muros || []).some(x => x.id === id) : (p.salas || []).some((sa, i) => (sa.idS || ('s' + i)) === id)) return ip; }
+  return 0;
+}
 function plantaDeCamara(modelo, offs, ocultas, x, z, y) {
   const pls = modelo.plantas || [modelo], vis = pls.map((_, i) => i).filter(i => !(ocultas || []).includes('planta:' + i));
   const dentro = vis.filter(i => { const [ox, oy] = (offs || [])[i] || [0, 0], p = [x / CM - ox, z / CM - oy]; return (pls[i].salas || []).some(sa => sa.pts && sa.pts.length >= 3 && puntoEnPoligono(p, sa.pts)); });
@@ -3555,18 +3560,19 @@ export default function Visor3D({ cliente = false }) {
     const a = api3d.current; if (!a.scene) return;
     if (a.alzG) { a.scene.remove(a.alzG); a.alzG.traverse(x => { x.geometry?.dispose(); x.material?.map?.dispose?.(); x.material?.dispose?.(); }); a.alzG = null; }
     if (!alz || !a.modelo) { if (a.renderer) a.renderer.clippingPlanes = []; return; }
-    const pl0 = (a.modelo.plantas || [a.modelo])[0], H = pl0.altura || 260, prof = (profAlz || 100) * CM;
+    const ipA = plantaAlz(a.modelo, alz.tipo, alz.id), pl0 = (a.modelo.plantas || [a.modelo])[ipA], H = pl0.altura || 260, prof = (profAlz || 100) * CM, [oxA, oyA] = (a.offsPl || [])[ipA] || [0, 0], zA = (pl0.z || 0) * CM;
     if (alz.tipo === 'muro') {
       const mu = (pl0.muros || []).find(x => x.id === alz.id); if (!mu) return;
-      const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]), ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, n = new THREE.Vector3(-uy * alz.lado, 0, ux * alz.lado), c = new THREE.Vector3((mu.a[0] + ux * L / 2) * CM, 0, (mu.a[1] + uy * L / 2) * CM), t = ((mu.t || 12) / 2) * CM;
+      const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]), ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, n = new THREE.Vector3(-uy * alz.lado, 0, ux * alz.lado), c = new THREE.Vector3((mu.a[0] + ux * L / 2 + oxA) * CM, 0, (mu.a[1] + uy * L / 2 + oyA) * CM), t = ((mu.t || 12) / 2) * CM;
       a.renderer.clippingPlanes = [new THREE.Plane().setFromNormalAndCoplanarPoint(n.clone().negate(), c.clone().add(n.clone().multiplyScalar(t + prof))), new THREE.Plane().setFromNormalAndCoplanarPoint(n.clone(), c.clone().sub(n.clone().multiplyScalar(t + 0.05)))];
       a.alzG = construirAlzadoMuro(mu, alz.lado, mu.h || H, objs.filter(o => o.tipo === 'zona' && o.plano === 'pared' && o.muroId === mu.id), rejAlz);
     } else {
       const sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === alz.id); if (!sala) return;
       const y = alz.tipo === 'techo' ? H * CM - 0.02 : 0.02;
-      a.renderer.clippingPlanes = [alz.tipo === 'techo' ? new THREE.Plane(new THREE.Vector3(0, 1, 0), -(H * CM - prof)) : new THREE.Plane(new THREE.Vector3(0, -1, 0), prof)];
+      a.renderer.clippingPlanes = [alz.tipo === 'techo' ? new THREE.Plane(new THREE.Vector3(0, 1, 0), -(zA + H * CM - prof)) : new THREE.Plane(new THREE.Vector3(0, -1, 0), zA + prof)];
       a.alzG = construirAlzadoPlanta(sala, y, objs.filter(o => o.tipo === 'zona' && o.plano === alz.tipo), rejAlz);
     }
+    if (a.alzG) a.alzG.position.set(oxA * CM, zA, oyA * CM);
     a.scene.add(a.alzG);
   }, [alz, objs, rev, estado, profAlz, rejAlz]);
 
@@ -4241,10 +4247,10 @@ export default function Visor3D({ cliente = false }) {
   };
   const crearFalsoTecho = (salaKey) => {
     const modelo = api3d.current.modelo; if (!modelo) return;
-    const pl0 = (modelo.plantas || [modelo])[0], sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === salaKey);
+    const ipF = plantaAlz(modelo, 'sala', salaKey), pl0 = (modelo.plantas || [modelo])[ipF], [oxF, oyF] = (api3d.current.offsPl || [])[ipF] || [0, 0], sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === salaKey);
     if (!sala) return;
     const xs = sala.pts.map(p => p[0]), ys = sala.pts.map(p => p[1]), cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'falsotecho', nombre: 'Falso techo con foseado', etiqueta: 'Techos', cx, cy, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: 0, h: pl0.altura || 260, color: '#f6f4f1', pts: sala.pts.map(p => [p[0] - cx, p[1] - cy]), ft: { descenso: 15, gap: 12, luz: true, k: 3000 } };
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'falsotecho', nombre: 'Falso techo con foseado', etiqueta: 'Techos', cx: cx + oxF, cy: cy + oyF, rot: 0, w: Math.max(...xs) - Math.min(...xs), d: Math.max(...ys) - Math.min(...ys), alto: 1, z0: pl0.z || 0, h: pl0.altura || 260, color: '#f6f4f1', pts: sala.pts.map(p => [p[0] - cx, p[1] - cy]), ft: { descenso: 15, gap: 12, luz: true, k: 3000 } };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setSelAcab(null);
   };
   const imagenInput = useRef(null);
@@ -4293,12 +4299,12 @@ export default function Visor3D({ cliente = false }) {
   };
   const moldurasSala = (salaKey) => {
     const modelo = api3d.current.modelo; if (!modelo) return;
-    const pl0 = (modelo.plantas || [modelo])[0], sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === salaKey); if (!sala) return;
+    const ipM = plantaAlz(modelo, 'sala', salaKey), pl0 = (modelo.plantas || [modelo])[ipM], [oxM, oyM] = (api3d.current.offsPl || [])[ipM] || [0, 0], sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === salaKey); if (!sala) return;
     const xs = sala.pts.map(p => p[0]), ys = sala.pts.map(p => p[1]), cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
     const a = sala.pts[0], b = sala.pts[1], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / L, ny = (b[0] - a[0]) / L;
     const lado = puntoEnPoligono([(a[0] + b[0]) / 2 + nx * 5, (a[1] + b[1]) / 2 + ny * 5], sala.pts) ? 1 : -1;
     const nombre = perfilSelRef.current;
-    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'barrido', nombre, perfilNombre: nombre, etiqueta: 'Molduras', cx, cy, rot: 0, w: 1, d: 1, alto: 1, z0: 0, color: '#ffffff', pts: sala.pts.map(p => [p[0] - cx, p[1] - cy]), perfil: PERFILES[nombre], esc: 1, cerrado: true, lado };
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'barrido', nombre, perfilNombre: nombre, etiqueta: 'Molduras', cx: cx + oxM, cy: cy + oyM, rot: 0, w: 1, d: 1, alto: 1, z0: pl0.z || 0, color: '#ffffff', pts: sala.pts.map(p => [p[0] - cx, p[1] - cy]), perfil: PERFILES[nombre], esc: 1, cerrado: true, lado };
     setObjs(prev => [...prev, nuevo]); setSelObj(nuevo.id); setSelAcab(null);
   };
   const anadirBloque = m => {
@@ -4879,20 +4885,20 @@ export default function Visor3D({ cliente = false }) {
   // Entrar en un alzado (muro) o en una planta de detalle (suelo / techo): cámara casi ortogonal fija, fondo blanco, corte para ver solo esa parte y cotas
   const entrarAlzado = (tipo, idObj) => {
     const a = api3d.current, m = a.modelo; if (!m) return; liberarCamara();
-    const pl0 = (m.plantas || [m])[0], asp = a.cam.aspect || 1.6, VIS = 0.0873;
+    const ipE = plantaAlz(m, tipo, idObj), pl0 = (m.plantas || [m])[ipE], [oxE, oyE] = (a.offsPl || [])[ipE] || [0, 0], zE = (pl0.z || 0) * CM, asp = a.cam.aspect || 1.6, VIS = 0.0873;
     let target, pos, lado = 1;
     if (tipo === 'muro') {
       const mu = (pl0.muros || []).find(x => x.id === idObj); if (!mu) return;
       const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]), ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, H = mu.h || pl0.altura || 260;
-      lado = ((a.cam.position.x / CM - mu.a[0]) * -uy + (a.cam.position.z / CM - mu.a[1]) * ux) >= 0 ? 1 : -1;
-      target = new THREE.Vector3(((mu.a[0] + ux * L / 2)) * CM, (H / 2) * CM, ((mu.a[1] + uy * L / 2)) * CM);
+      lado = ((a.cam.position.x / CM - mu.a[0] - oxE) * -uy + (a.cam.position.z / CM - mu.a[1] - oyE) * ux) >= 0 ? 1 : -1;
+      target = new THREE.Vector3(((mu.a[0] + ux * L / 2 + oxE)) * CM, zE + (H / 2) * CM, ((mu.a[1] + uy * L / 2 + oyE)) * CM);
       const dist = Math.max(H * CM * 1.45, L * CM * 1.25 / asp) / VIS;
       pos = target.clone().add(new THREE.Vector3(-uy * lado, 0, ux * lado).multiplyScalar(dist));
       setProfAlz(120);
     } else {
       const sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === idObj); if (!sala) return;
       const xs = sala.pts.map(p => p[0]), ys = sala.pts.map(p => p[1]), W = Math.max(...xs) - Math.min(...xs), D = Math.max(...ys) - Math.min(...ys), H = pl0.altura || 260;
-      target = new THREE.Vector3(((Math.min(...xs) + Math.max(...xs)) / 2) * CM, tipo === 'techo' ? H * CM : 0, ((Math.min(...ys) + Math.max(...ys)) / 2) * CM);
+      target = new THREE.Vector3(((Math.min(...xs) + Math.max(...xs)) / 2 + oxE) * CM, zE + (tipo === 'techo' ? H * CM : 0), ((Math.min(...ys) + Math.max(...ys)) / 2 + oyE) * CM);
       const dist = Math.max(D * CM * 1.45, W * CM * 1.25 / asp) / VIS;
       pos = target.clone().add(new THREE.Vector3(0, tipo === 'techo' ? -dist : dist, 0.0001));
       setProfAlz(tipo === 'suelo' ? 100 : 60);
@@ -4962,7 +4968,7 @@ export default function Visor3D({ cliente = false }) {
   };
   // Zona por medidas: se escriben posición y tamaño exactos (cm) y se crea sobre el muro, el suelo o el techo que se está viendo
   const crearZonaMedidas = () => {
-    const a = api3d.current, m = a.modelo, pl0 = m && (m.plantas || [m])[0]; if (!alz || !pl0) return;
+    const a = api3d.current, m = a.modelo, ipZ = m && alz ? plantaAlz(m, alz.tipo, alz.id) : 0, pl0 = m && (m.plantas || [m])[ipZ], [oxZ, oyZ] = (a.offsPl || [])[ipZ] || [0, 0]; if (!alz || !pl0) return;
     const X = parseFloat(zForm.x) || 0, Y = parseFloat(zForm.y) || 0, W = Math.max(1, parseFloat(zForm.w) || 100), Hh = Math.max(1, parseFloat(zForm.h) || 100);
     const col = matSel?.hex || (matSel?.id ? 'tex:' + matSel.id : '#c9b9a0');
     const forma = (cx0, cy0) => (zForm.forma === 'oval' ? Array.from({ length: 48 }, (_, i) => [cx0 + (W / 2) * Math.cos((i / 48) * 2 * Math.PI), cy0 + (Hh / 2) * Math.sin((i / 48) * 2 * Math.PI)]) : [[cx0 - W / 2, cy0 - Hh / 2], [cx0 + W / 2, cy0 - Hh / 2], [cx0 + W / 2, cy0 + Hh / 2], [cx0 - W / 2, cy0 + Hh / 2]]);
@@ -4971,8 +4977,8 @@ export default function Visor3D({ cliente = false }) {
       setObjs(prev => [...prev, { id: id2, tipo: 'zona', plano: 'pared', muroId: alz.id, lado: alz.lado, nombre: 'Zona de pared', etiqueta: 'Zonas', cx: 0, cy: 0, rot: 0, w: W, d: 1, alto: Hh, z0: 0, color: col, pts: forma(X + W / 2, Y + Hh / 2) }]);
     } else {
       const sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === alz.id); if (!sala) return;
-      const bx0 = Math.min(...sala.pts.map(p => p[0])), by0 = Math.min(...sala.pts.map(p => p[1])), cx = bx0 + X + W / 2, cy = by0 + Y + Hh / 2;
-      setObjs(prev => [...prev, { id: id2, tipo: 'zona', plano: alz.tipo, h: alz.tipo === 'techo' ? (pl0.altura || 260) : undefined, nombre: alz.tipo === 'techo' ? 'Zona de techo' : 'Zona de suelo', etiqueta: 'Zonas', cx, cy, rot: 0, w: W, d: Hh, alto: 1, z0: 0, color: col, pts: forma(0, 0) }]);
+      const bx0 = Math.min(...sala.pts.map(p => p[0])), by0 = Math.min(...sala.pts.map(p => p[1])), cx = bx0 + X + W / 2 + oxZ, cy = by0 + Y + Hh / 2 + oyZ;
+      setObjs(prev => [...prev, { id: id2, tipo: 'zona', plano: alz.tipo, h: alz.tipo === 'techo' ? (pl0.altura || 260) + (pl0.z || 0) : undefined, nombre: alz.tipo === 'techo' ? 'Zona de techo' : 'Zona de suelo', etiqueta: 'Zonas', cx, cy, rot: 0, w: W, d: Hh, alto: 1, z0: alz.tipo === 'suelo' ? (pl0.z || 0) : 0, color: col, pts: forma(0, 0) }]);
     }
     setSelObj(id2);
   };
@@ -5254,19 +5260,19 @@ export default function Visor3D({ cliente = false }) {
   // Dibujo sencillo sobre un alzado o una planta: rectángulo, línea recta y guías. Todo se hace arrastrando o pulsando sobre la propia vista.
   useEffect(() => {
     const a = api3d.current; if (!alz || !vistaTool || !a.renderer || !a.cam) return undefined;
-    const m = a.modelo, pl0 = m && (m.plantas || [m])[0]; if (!pl0) return undefined;
+    const m = a.modelo, ipD = m && alz ? plantaAlz(m, alz.tipo, alz.id) : 0, pl0 = m && (m.plantas || [m])[ipD], [oxD, oyD] = (a.offsPl || [])[ipD] || [0, 0], zD = (pl0?.z || 0) * CM; if (!pl0) return undefined;
     const dom = a.renderer.domElement, host = dom.parentElement || dom, cam = a.cam, rayo = new THREE.Raycaster(), v2 = new THREE.Vector2();
     let plano, aVista, ext;
     if (alz.tipo === 'muro') {
       const mu = (pl0.muros || []).find(x => x.id === alz.id); if (!mu) return undefined;
       const L = Math.hypot(mu.b[0] - mu.a[0], mu.b[1] - mu.a[1]) || 1, ux = (mu.b[0] - mu.a[0]) / L, uy = (mu.b[1] - mu.a[1]) / L, nx = -uy * alz.lado, ny = ux * alz.lado, off = (mu.t || 12) / 2, H = mu.h || pl0.altura || 260;
-      plano = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(nx, 0, ny), new THREE.Vector3((mu.a[0] + nx * off) * CM, 0, (mu.a[1] + ny * off) * CM));
-      aVista = P => [(P.x / CM - mu.a[0]) * ux + (P.z / CM - mu.a[1]) * uy, P.y / CM]; ext = [0, L, 0, H];
+      plano = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(nx, 0, ny), new THREE.Vector3((mu.a[0] + nx * off + oxD) * CM, 0, (mu.a[1] + ny * off + oyD) * CM));
+      aVista = P => [(P.x / CM - oxD - mu.a[0]) * ux + (P.z / CM - oyD - mu.a[1]) * uy, P.y / CM - zD / CM]; ext = [0, L, 0, H];
     } else {
       const sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === alz.id); if (!sala) return undefined;
       const xs = sala.pts.map(p => p[0]), ys = sala.pts.map(p => p[1]), Hh = pl0.altura || 260;
-      plano = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(alz.tipo === 'techo' ? Hh * CM : 0));
-      aVista = P => [P.x / CM, P.z / CM]; ext = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+      plano = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(zD + (alz.tipo === 'techo' ? Hh * CM : 0)));
+      aVista = P => [P.x / CM - oxD, P.z / CM - oyD]; ext = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
     }
     const guias = () => objsRef.current.filter(o => o.tipo === 'zona' && o.guia && (alz.tipo === 'muro' ? (o.plano === 'pared' && o.muroId === alz.id) : o.plano === alz.tipo));
     const punto = e => {
