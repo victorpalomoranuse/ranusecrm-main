@@ -1,25 +1,25 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { AdminAuthProvider, useAdminAuth } from './auth/AdminAuthContext';
 import { EquipoAuthProvider, useEquipoAuth } from './auth/EquipoAuthContext';
 import { ClienteAuthProvider, useClienteAuth } from './auth/ClienteAuthContext';
 import { Home } from './pages/Home';
 import { Privacidad } from './pages/Privacidad';
-import { Proyectos } from './pages/Proyectos';
-import { ProjectGallery } from './pages/ProjectGallery';
+const Proyectos = lazy(() => import('./pages/Proyectos').then(m => ({ default: m.Proyectos })));
+const ProjectGallery = lazy(() => import('./pages/ProjectGallery').then(m => ({ default: m.ProjectGallery })));
 import { AdminLogin } from './pages/AdminLogin';
-import { AdminPanel } from './pages/AdminPanel';
+const AdminPanel = lazy(() => import('./pages/AdminPanel').then(m => ({ default: m.AdminPanel })));
 import { EquipoLogin } from './pages/EquipoLogin';
-import { EquipoPanel } from './pages/EquipoPanel';
-import { MiProyecto } from './pages/MiProyecto';
+const EquipoPanel = lazy(() => import('./pages/EquipoPanel').then(m => ({ default: m.EquipoPanel })));
+const MiProyecto = lazy(() => import('./pages/MiProyecto').then(m => ({ default: m.MiProyecto })));
 import { ClienteLogin } from './pages/ClienteLogin';
-import { ClientePanel } from './pages/ClientePanel';
+const ClientePanel = lazy(() => import('./pages/ClientePanel').then(m => ({ default: m.ClientePanel })));
 import { RestablecerContrasena } from './pages/RestablecerContrasena';
-import { PlanosEditor } from './pages/PlanosEditor';
-import Visor3D from './pages/Visor3D';
-import { SubirFotos } from './pages/SubirFotos';
-import { Rapido } from './pages/Rapido';
-import { TourPublico } from './pages/TourPublico';
+const PlanosEditor = lazy(() => import('./pages/PlanosEditor').then(m => ({ default: m.PlanosEditor })));
+const Visor3D = lazy(() => import('./pages/Visor3D')); // el visor 3D es lo más pesado: solo se descarga al abrirlo
+const SubirFotos = lazy(() => import('./pages/SubirFotos').then(m => ({ default: m.SubirFotos })));
+const Rapido = lazy(() => import('./pages/Rapido').then(m => ({ default: m.Rapido })));
+const TourPublico = lazy(() => import('./pages/TourPublico').then(m => ({ default: m.TourPublico })));
 import './App.css';
 
 function AdminGuard({ children }) {
@@ -66,6 +66,7 @@ function App() {
       <AdminAuthProvider>
         <EquipoAuthProvider>
           <ClienteAuthProvider>
+            <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#141210', color: '#c9a46c', display: 'grid', placeItems: 'center', fontFamily: 'system-ui, sans-serif', fontSize: 14 }}>Cargando…</div>}>
             <Routes>
               {/* Web pública */}
               <Route path="/" element={<Home />} />
@@ -115,6 +116,7 @@ function App() {
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </Suspense>
           </ClienteAuthProvider>
         </EquipoAuthProvider>
       </AdminAuthProvider>
