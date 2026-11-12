@@ -1997,6 +1997,7 @@ export default function Visor3D({ cliente = false }) {
   const matSelRef = useRef(null);
   useEffect(() => { matSelRef.current = matSel; }, [matSel]);
   const [selAcab, setSelAcab] = useState(null);  // { tipo: 'muro' | 'suelo', id }
+  const [plantasPlegado, setPlantasPlegado] = useState(() => { try { return localStorage.getItem('visor3dPlantasPlegado') === '1'; } catch { return false; } });
   const [ideasDeco, setIdeasDeco] = useState([]), [ideasDecoCarga, setIdeasDecoCarga] = useState(false), [ideasDecoErr, setIdeasDecoErr] = useState(''), [ideasDecoAplic, setIdeasDecoAplic] = useState({});
   const [ideasMuro, setIdeasMuro] = useState([]), [ideasMuroCarga, setIdeasMuroCarga] = useState(false), [ideasMuroErr, setIdeasMuroErr] = useState(''), [ideasMuroAplic, setIdeasMuroAplic] = useState({});
   const [ideasAmb, setIdeasAmb] = useState(null), [ideasAmbBrief, setIdeasAmbBrief] = useState(''), [ideasAmbCarga, setIdeasAmbCarga] = useState(false), [ideasAmbErr, setIdeasAmbErr] = useState(''), [ideasAmbTipo, setIdeasAmbTipo] = useState('');
@@ -5357,14 +5358,14 @@ export default function Visor3D({ cliente = false }) {
         const todas = () => setOcultas(o => o.filter(x => !x.startsWith('planta:')));
         return (
           <div style={{ position: 'absolute', right: 12, bottom: 40, zIndex: 7, display: 'flex', flexDirection: 'column', gap: 4, background: 'rgba(22,20,18,0.92)', color: '#fff', borderRadius: 10, padding: '6px 8px', fontSize: 12, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
-            <div style={{ opacity: 0.6, fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Plantas</div>
-            {[...pls.keys()].reverse().map(i => (
+            <div onClick={() => setPlantasPlegado(v => { const n = !v; try { localStorage.setItem('visor3dPlantasPlegado', n ? '1' : '0'); } catch { /* sin almacenamiento */ } return n; })} title={plantasPlegado ? 'Mostrar el selector de plantas' : 'Ocultar el selector de plantas'} style={{ opacity: 0.8, fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Plantas</span><span>{plantasPlegado ? '▸' : '▾'}</span></div>
+            {!plantasPlegado && [...pls.keys()].reverse().map(i => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button onClick={() => alterna(i)} title={vis(i) ? 'Ocultar esta planta' : 'Mostrar esta planta'} style={{ flex: 1, textAlign: 'left', background: vis(i) ? '#2f6fa8' : '#3a3633', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', opacity: vis(i) ? 1 : 0.55 }}>{vis(i) ? '👁' : '🚫'} {pls[i].nombre || 'Planta ' + (i + 1)}</button>
                 <button onClick={() => solo(i)} title="Ver solo esta planta" style={{ background: 'transparent', color: '#d4c9bb', border: '1px solid #4f4842', borderRadius: 6, padding: '3px 6px', cursor: 'pointer', fontSize: 11 }}>solo</button>
               </div>
             ))}
-            <button onClick={todas} style={{ background: 'transparent', color: '#d4c9bb', border: '1px solid #4f4842', borderRadius: 6, padding: '3px 6px', cursor: 'pointer', fontSize: 11 }}>Ver todas</button>
+            {!plantasPlegado && <button onClick={todas} style={{ background: 'transparent', color: '#d4c9bb', border: '1px solid #4f4842', borderRadius: 6, padding: '3px 6px', cursor: 'pointer', fontSize: 11 }}>Ver todas</button>}
           </div>
         );
       })()}
@@ -6365,7 +6366,7 @@ export default function Visor3D({ cliente = false }) {
         });
         const paleta = ['#ffffff', '#f4f1ec', '#e8e2d8', '#d9cfc0', '#c9b9a0', '#b8a58c', '#a9b5a1', '#8fa3a8', '#7d8e9c', '#9d9a96', '#6e6a66', '#3a3a3c', '#c9a77c', '#8a6a4a', '#d9a7a0', '#b5695e'];
         return (
-          <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+          <div style={{ position: 'absolute', right: 12, top: 56, width: 250, maxHeight: 'calc(100% - 70px)', overflowY: 'auto', background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
             {esMuro && (() => {
               const mu = (api3d.current.modelo?.plantas || (api3d.current.modelo ? [api3d.current.modelo] : [])).flatMap(p => p.muros || []).find(m => m.id === selAcab.id);
               if (!mu) return null;
@@ -6805,7 +6806,7 @@ export default function Visor3D({ cliente = false }) {
         </div>
       )}
       {selExtra.length > 0 && (
-        <div style={{ position: 'absolute', right: 12, top: 56, width: 250, background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
+        <div style={{ position: 'absolute', right: 12, top: 56, width: 250, maxHeight: 'calc(100% - 70px)', overflowY: 'auto', background: 'rgba(22,20,18,0.94)', color: '#fff', borderRadius: 8, padding: '12px 14px', fontSize: 13 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>{idsSel.length} objetos seleccionados</div>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             <button style={{ ...btn, background: '#6b6159' }} onClick={agrupar} title="Al pulsar uno del grupo se seleccionan todos y se mueven juntos">Agrupar</button>
