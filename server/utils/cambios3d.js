@@ -1,7 +1,7 @@
 // Cambios hechos desde el visor 3D en el plano (mover o girar una máquina, tocar un muro, un hueco, una luminaria…).
 // Se guardan como una lista de operaciones sencillas por elemento (con su id). Cuando Planos guarda su copia —que puede ser más vieja que lo hecho en el 3D—
 // el servidor vuelve a aplicar esas operaciones encima, y así lo hecho en el 3D no se deshace.
-const COLS = ['walls', 'ops', 'eq', 'pts', 'nodes'];
+const COLS = ['walls', 'ops', 'eq', 'pts', 'nodes', 'muros', 'equipos']; // las dos últimas son las del modelo 3D que genera Planos (modelo3d.plantas[i])
 const MAX_ENTRADAS = 200, VIDA_MS = 14 * 86400000;
 
 // contenedores del plano: la raíz, cada planta y el contenido completo de las plantas que no son la activa (piso.b)
@@ -12,6 +12,8 @@ function contenedores(d) {
     out.push(['piso:' + p.id, p]);
     if (p.b && typeof p.b === 'object') out.push(['pisob:' + p.id, p.b]);
   }
+  const m3 = d?.modelo3d;
+  if (m3 && typeof m3 === 'object') { if (Array.isArray(m3.plantas)) m3.plantas.forEach((p, i) => { if (p && typeof p === 'object') out.push(['m3:' + i, p]); }); else out.push(['m3', m3]); }
   return out;
 }
 const lista = (c, col) => (Array.isArray(c?.[col]) ? c[col].filter(x => x && typeof x === 'object' && x.id != null) : []);
