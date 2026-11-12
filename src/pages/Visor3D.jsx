@@ -120,11 +120,18 @@ vec4 sueloMuestra(sampler2D s, vec2 uv) {
   if (k == 1.0) g = vec2(-g.y, g.x); else if (k == 2.0) g = -g; else if (k == 3.0) g = vec2(g.y, -g.x);
   if (h.w > 0.5) g.x = -g.x;
   return textureGrad(s, g + 0.5 + h.xy, dFdx(uv), dFdy(uv));
+}
+vec4 sueloPieza(sampler2D s, vec2 uv, float crop) {
+  vec2 c = floor(uv), f = fract(uv); vec4 h = sueloCelda(c);
+  vec2 g = f - 0.5; float k = floor(h.z * 4.0);
+  if (k == 1.0) g = vec2(-g.y, g.x); else if (k == 2.0) g = -g; else if (k == 3.0) g = vec2(g.y, -g.x);
+  if (h.w > 0.5) g.x = -g.x;
+  return textureGrad(s, (g + 0.5) * crop + h.xy * (1.0 - crop), dFdx(uv) * crop, dFdy(uv) * crop);
 }`;
 function sueloShader(fl) {
   return (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + GLSL_SUELO).replace('#include <map_fragment>',
-      '#ifdef USE_MAP\n vec4 sampledDiffuseColor = ' + (fl.antirep ? 'sueloMuestra(map, vMapUv)' : 'texture2D(map, vMapUv)') + ';\n diffuseColor *= sampledDiffuseColor;\n'
+      '#ifdef USE_MAP\n vec4 sampledDiffuseColor = ' + (fl.crop ? 'sueloPieza(map, vMapUv, ' + fl.crop.toFixed(3) + ')' : fl.antirep ? 'sueloMuestra(map, vMapUv)' : 'texture2D(map, vMapUv)') + ';\n diffuseColor *= sampledDiffuseColor;\n'
       + ' vec4 suH = sueloCelda(floor(vMapUv)); diffuseColor.rgb *= 1.0 + (suH.x - 0.5) * ' + (fl.tono || 0).toFixed(3) + ';\n'
       + (fl.junta ? ' vec2 suF = fract(vMapUv), suE = min(suF, 1.0 - suF); float suW = max(0.0022, fwidth(vMapUv.x) * 1.1); float suJ = 1.0 - smoothstep(suW * 0.4, suW * 1.4, min(suE.x, suE.y)); diffuseColor.rgb *= mix(1.0, 0.4, suJ);\n' : '')
       + '#endif');
@@ -286,7 +293,8 @@ function texturaDe(t, uvEnCm) {
   return x;
 }
 // Aplica un color (#hex) o una textura ('tex:ID') a una malla; si no hay valor, vuelve a su color de origen
-function pintar(mesh, valor, texturas, uvEnCm, repBox, forzarAntirep) {
+const MODOS_SUELO = { moteado: { antirep: true, junta: false, tono: 0.03 }, aguas: { antirep: true, junta: true, tono: 0.05, crop: 0.6 }, liso: { antirep: true, junta: true, tono: 0.05 } };
+function pintar(mesh, valor, texturas, uvEnCm, repBox, modoSuelo) {
   const u = mesh.userData;
   if (u.col0 === undefined) u.col0 = mesh.material.color.getHex();
   const t = valor && String(valor).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === valor) : null;
@@ -294,8 +302,8 @@ function pintar(mesh, valor, texturas, uvEnCm, repBox, forzarAntirep) {
     let mp = texturaDe(t, uvEnCm);
     if (repBox) { mp = mp.clone(); mp.needsUpdate = true; mp.repeat.set(Math.max(0.2, repBox[0] / t.tam), Math.max(0.2, repBox[1] / (t.tamH || t.tam))); }
     mesh.material.map = mp; mesh.material.color.setHex(0xffffff);
-    const fl = t.suelo || (forzarAntirep ? { antirep: true, junta: false, tono: 0.03 } : null), M = mesh.material;
-    if (fl) { const key = 'suelo' + (fl.antirep ? 1 : 0) + (fl.junta ? 1 : 0) + (fl.tono || 0); if (M.userData.sueloKey !== key) { M.userData.sueloKey = key; M.onBeforeCompile = sueloShader(fl); M.customProgramCacheKey = () => key; M.roughness = 0.92; M.metalness = 0; } }
+    const fl = t.suelo || MODOS_SUELO[modoSuelo] || null, M = mesh.material;
+    if (fl) { const key = 'suelo' + (fl.antirep ? 1 : 0) + (fl.junta ? 1 : 0) + (fl.tono || 0) + (fl.crop || 0); if (M.userData.sueloKey !== key) { M.userData.sueloKey = key; M.onBeforeCompile = sueloShader(fl); M.customProgramCacheKey = () => key; M.roughness = 0.92; M.metalness = 0; } }
     else if (M.userData.sueloKey) { delete M.userData.sueloKey; M.onBeforeCompile = () => {}; M.customProgramCacheKey = () => ''; }
   }
   else {
@@ -2243,7 +2251,7 @@ export default function Visor3D({ cliente = false }) {
       ultima = pl?.updated;
       if (cliente && primera && esMovil() && (pl?.escena3d?.renders || []).some(r => r.tipo === '360' && r.tour)) { navigate('/tour/' + encodeURIComponent(id) + '/' + encodeURIComponent(firma), { replace: true }); return; }
       setTitulo(pl?.nombre || 'Plano');
-      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null, antirepSuelos: ac.antirepSuelos === true }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); setModosEq(pl?.escena3d?.modelosEq || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
+      if (primera && !cargadaEscena.current) { cargadaEscena.current = true; setGuardado('inicial'); setObjs(pl?.escena3d?.objetos || []); const ac = pl?.escena3d?.acabados; if (ac) setAcab({ muros: ac.muros || {}, salas: ac.salas || {}, techos: ac.techos || {}, equipos: ac.equipos || {}, pilares: ac.pilares || {}, huecos: ac.huecos || {}, regiones: ac.regiones || {}, todosMuros: ac.todosMuros || null, todosSuelos: ac.todosSuelos || null, todosTechos: ac.todosTechos || null, todosPilares: ac.todosPilares || null, antirepSuelos: ac.antirepSuelos === true, modoSuelo: ['moteado', 'aguas', 'liso'].includes(ac.modoSuelo) ? ac.modoSuelo : (ac.antirepSuelos === true ? 'moteado' : '') }); setTexturas(pl?.escena3d?.texturas || []); setPaleta(pl?.escena3d?.paleta || []); if (pl?.escena3d?.rodapie) setRodapie(pl.escena3d.rodapie); setGuias(pl?.escena3d?.guias || []); setLucesAj(pl?.escena3d?.luces || {}); setRenders(pl?.escena3d?.renders || []); setEscenas(pl?.escena3d?.escenas || []); setTapetas(pl?.escena3d?.tapetas || {}); setHuecosCfg(pl?.escena3d?.huecosCfg || {}); setModosEq(pl?.escena3d?.modelosEq || {}); if (pl?.escena3d?.iaPrefs) setIaTxt(t => ({ ...t, ...Object.fromEntries(Object.entries(pl.escena3d.iaPrefs).filter(([, v]) => v)) })); if (pl?.escena3d?.hora != null) setHora(pl.escena3d.hora); saltoRef.current = true; }
       // el 3D enseña el estado de DISTRIBUCIÓN: lo marcado para demoler (muros, huecos, pilares, máquinas) ya no está
       const sinDem = (p) => ({ ...p, muros: (p.muros || []).filter(w => w.estado !== 'dem').map(w => ({ ...w, ab: (w.ab || []).filter(o => o.estado !== 'dem') })), salas: (p.salas || []).map(s => ({ ...s, pts: quitarPicos(s.pts) })), pilares: (p.pilares || []).filter(x => x.estado !== 'dem'), equipos: (p.equipos || []).filter(x => x.estado !== 'dem'), recrecidos: (p.recrecidos || []).filter(x => x.estado !== 'dem') });
       const modelo0 = pl?.modelo3d || { muros: [], salas: [], pilares: [], equipos: [], altura: 260 };
@@ -2936,7 +2944,7 @@ export default function Visor3D({ cliente = false }) {
       if (u.pilarId) { pintar(o, acab.pilares?.[u.pilarId] || acab.todosPilares, texturas, true, u.dimBox || [30, 260]); return; }
       if (u.hueco && (u.zona === 'marco' || u.zona === 'hoja' || u.zona === 'tapeta')) { const hh = u.hueco; pintar(o, acab.huecos?.[hh.id || (hh.muroId + ':' + hh.p)]?.[u.zona], texturas, true, [hh.w || 90, hh.h || 210]); return; }
       if (u.muroId) pintar(o, acab.muros[u.muroId] || acab.todosMuros, texturas, true);
-      else if (u.salaKey) pintar(o, acab.salas[u.salaKey] || acab.todosSuelos, texturas, false, undefined, acab.antirepSuelos);
+      else if (u.salaKey) pintar(o, acab.salas[u.salaKey] || acab.todosSuelos, texturas, false, undefined, acab.modoSuelo || (acab.antirepSuelos ? 'moteado' : ''));
       else if (u.techoKey) pintar(o, acab.techos[u.techoKey] || acab.todosTechos, texturas, false);
     });
   }, [acab, rev, estado, texturas]);
@@ -3350,9 +3358,9 @@ export default function Visor3D({ cliente = false }) {
     if (a.hojaG) { a.raiz.remove(a.hojaG); a.hojaG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); a.hojaG = null; }
     const modelo = a.modelo; if (!modelo) return;
     const g = new THREE.Group();
-    (modelo.plantas || [modelo]).forEach(pl => (pl.muros || []).forEach(mu => (mu.ab || []).forEach(o => {
-      const key = o.id || (mu.id + ':' + o.p), holder = new THREE.Group();
-      holder.position.set(mu.a[0] * CM, (pl.z || 0) * CM, mu.a[1] * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
+    (modelo.plantas || [modelo]).forEach((pl, ipH) => (pl.muros || []).forEach(mu => (mu.ab || []).forEach(o => {
+      const key = o.id || (mu.id + ':' + o.p), holder = new THREE.Group(), [oxH, oyH] = (a.offsPl || [])[ipH] || [0, 0];
+      holder.position.set((mu.a[0] + oxH) * CM, (pl.z || 0) * CM, (mu.a[1] + oyH) * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
       holder.add(construirHoja(o, mu, huecosCfg[key] || {}, acab.huecos?.[key]?.hoja, texturas)); g.add(holder);
     })));
     a.raiz.add(g); a.hojaG = g;
@@ -3364,10 +3372,10 @@ export default function Visor3D({ cliente = false }) {
     if (a.tapG) { a.raiz.remove(a.tapG); a.tapG.traverse(x => { x.geometry?.dispose(); x.material?.dispose?.(); }); a.tapG = null; }
     const modelo = a.modelo; if (!modelo || !Object.keys(tapetas).length) return;
     const g = new THREE.Group();
-    (modelo.plantas || [modelo]).forEach(pl => (pl.muros || []).forEach(mu => (mu.ab || []).forEach(o => {
-      const key = o.id || (mu.id + ':' + o.p), c = tapetas[key]; if (!c || !c.on) return;
+    (modelo.plantas || [modelo]).forEach((pl, ipT) => (pl.muros || []).forEach(mu => (mu.ab || []).forEach(o => {
+      const key = o.id || (mu.id + ':' + o.p), c = tapetas[key]; if (!c || !c.on) return; const [oxT, oyT] = (a.offsPl || [])[ipT] || [0, 0];
       const val = acab.huecos?.[key]?.tapeta, ancho = (c.ancho || 7) * CM, vuelo = (c.vuelo || 1.2) * CM, t = (mu.t || 12) * CM;
-      const holder = new THREE.Group(); holder.position.set(mu.a[0] * CM, (pl.z || 0) * CM, mu.a[1] * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
+      const holder = new THREE.Group(); holder.position.set((mu.a[0] + oxT) * CM, (pl.z || 0) * CM, (mu.a[1] + oyT) * CM); holder.rotation.y = -Math.atan2(mu.b[1] - mu.a[1], mu.b[0] - mu.a[0]);
       const x0 = o.p * CM, x1 = (o.p + o.w) * CM, y0 = (o.sill || 0) * CM, y1 = y0 + o.h * CM, w = x1 - x0;
       (c.lados === 'a' ? [1] : c.lados === 'b' ? [-1] : [1, -1]).forEach(s => {
         const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#ffffff'), roughness: 0.55 });
@@ -6674,7 +6682,13 @@ export default function Visor3D({ cliente = false }) {
                   </div>
                 ))}
                 <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>Las losetas llevan junta fina cada metro y un tono algo distinto cada una. Los Paviflex cogen un trozo distinto de la foto en cada metro cuadrado, así no se repite el dibujo.</div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }} title="Para fotos de suelos moteados que subas tú: evita que se vea el mismo dibujo repetido"><input type="checkbox" checked={!!acab.antirepSuelos} onChange={e => setAcab(a => ({ ...a, antirepSuelos: e.target.checked }))} /> No repetir el dibujo en mis texturas de suelo</label>
+                <label style={{ display: 'block', fontSize: 12 }} title="Para las fotos de suelo que subas tú (Mis texturas): elige cómo se reparten por el suelo"><span style={{ opacity: 0.75 }}>Mis fotos de suelo (Mis texturas):</span>
+                  <select value={acab.modoSuelo || (acab.antirepSuelos ? 'moteado' : '')} onChange={e => setAcab(a => ({ ...a, modoSuelo: e.target.value, antirepSuelos: undefined }))} style={{ ...btn, width: '100%', marginTop: 3 }}>
+                    <option value="">Normal (la foto se repite)</option>
+                    <option value="moteado">Moteado: sin repetir el dibujo</option>
+                    <option value="aguas">Aguas / mármol: cada metro distinto, con juntas</option>
+                    <option value="liso">Liso: baldosas de 1 m con juntas</option>
+                  </select></label>
               </div>
             )}
             <div style={{ fontWeight: 700, marginBottom: 6 }}>{esMuro ? 'Muro' : 'Suelo'}: color</div>
