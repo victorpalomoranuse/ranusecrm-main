@@ -1824,7 +1824,7 @@ function techo(s, i, alto) {
   const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: color(s.techo?.c, '#f6f4f1'), roughness: 0.95, side: THREE.FrontSide }));
   mesh.position.y = h;
   mesh.receiveShadow = true;
-  mesh.userData = { capa: 'techos', techoKey: s.idT || ('s' + i) };
+  mesh.userData = { capa: 'techos', techoKey: s.idT || ('s' + i), ptsSala: pts.map(p => [p.x / CM, p.y / CM]), hSala: h / CM };
   return mesh;
 }
 
@@ -1849,7 +1849,7 @@ function maquina(e) {
 export function planta(m, z0) {
   const g = new THREE.Group();
   g.position.y = (z0 || 0) * CM;
-  (m.salas || []).forEach((s, i) => { const x = suelo(s, i); if (x) g.add(x); const t = techo(s, i, m.altura); if (t) g.add(t); });
+  (m.salas || []).forEach((s, i) => { const x = suelo(s, i); if (x) g.add(x); const t = techo(s, i, m.altura); if (t) { t.userData.plz = z0 || 0; g.add(t); } });
   const ms = m.muros || [];
   ms.forEach((w, i) => {
     const rel = [];
@@ -3105,6 +3105,23 @@ export default function Visor3D({ cliente = false }) {
     });
   }, [acab, rev, estado, texturas]);
 
+  // Techo con huecos: donde una forma de techo «sube», el techo de la sala se abre (el hueco se ve desde dentro y desde abajo)
+  useEffect(() => {
+    const A = api3d.current; if (!A.raiz) return;
+    const sube = objs.filter(o => o.tipo === 'falsotecho' && Array.isArray(o.pts) && o.pts.length >= 3 && (o.ft?.descenso ?? 15) < 0);
+    A.raiz.traverse(m => {
+      if (!m.isMesh || m.userData.techoKey === undefined || !m.userData.ptsSala) return;
+      const gp = m.parent, ox = gp ? gp.position.x / CM : 0, oy = gp ? gp.position.z / CM : 0, plz = m.userData.plz || 0, P = m.userData.ptsSala;
+      const mios = sube.filter(o => Math.abs((o.z0 || 0) - plz) < 1 && puntoEnPoligono([o.cx - ox, o.cy - oy], P));
+      const clave = JSON.stringify(mios.map(o => [o.cx, o.cy, o.pts])) + ox + ',' + oy;
+      if ((m.userData.hKey || '') === (mios.length ? clave : '')) return;
+      m.userData.hKey = mios.length ? clave : '';
+      const sh = new THREE.Shape(P.map(p => new THREE.Vector2(p[0] * CM, p[1] * CM)));
+      mios.forEach(o => sh.holes.push(new THREE.Path(o.pts.map(p => new THREE.Vector2((p[0] + o.cx - ox) * CM, (p[1] + o.cy - oy) * CM)))));
+      const g2 = new THREE.ShapeGeometry(sh); g2.rotateX(Math.PI / 2); m.geometry.dispose(); m.geometry = g2;
+    });
+  }, [objs, estado, rev]);
+
   // Capas (etiquetas): se ven u ocultan grupos de elementos
   useEffect(() => {
     const a = api3d.current; if (!a.raiz) return;
@@ -3687,7 +3704,7 @@ export default function Visor3D({ cliente = false }) {
           gz.userData.sinArrastre = true;
         } else {
           geo.rotateX(Math.PI / 2);
-          mesh.position.set(o.cx * CM, o.plano === 'techo' ? (o.h || 260) * CM - 0.004 : 0.005, o.cy * CM); gz.add(mesh);
+          if (mesh.material) { mesh.material.polygonOffset = true; mesh.material.polygonOffsetFactor = -2; mesh.material.polygonOffsetUnits = -2; } mesh.position.set(o.cx * CM, o.plano === 'techo' ? (o.h || 260) * CM - 0.012 : 0.012, o.cy * CM); gz.add(mesh);
         }
         if (esLed(o.color)) {
           const xs = o.pts.map(p => p[0]), ys = o.pts.map(p => p[1]), bw = (Math.max(...xs) - Math.min(...xs)) * CM, bh = (Math.max(...ys) - Math.min(...ys)) * CM, mx = ((Math.max(...xs) + Math.min(...xs)) / 2) * CM, my = ((Math.max(...ys) + Math.min(...ys)) / 2) * CM, colL = new THREE.Color(o.color.slice(0, 7));
@@ -3762,18 +3779,29 @@ export default function Visor3D({ cliente = false }) {
         const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#f6f4f1'), roughness: 0.9, emissive: selIdsRef.current.has(o.id) ? 0x335577 : 0x000000 });
         if (tx) { mt.map = texturaDe(tx, false); mt.color.setHex(0xffffff); }
         const prof = Math.max(0.01, Math.abs(D) * CM);
-        const geo = new THREE.ExtrudeGeometry(new THREE.Shape(inner.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM))), { depth: prof, bevelEnabled: false });
-        geo.rotateX(-Math.PI / 2);
-        const losa = new THREE.Mesh(geo, mt); losa.position.y = D >= 0 ? H - prof : H; losa.castShadow = losa.receiveShadow = true; gf.add(losa);
+        const sube = D < 0; // candileja hacia arriba: el techo se abre y sube
+        let geo;
+        if (sube) {
+          mt.side = THREE.DoubleSide;
+          geo = new THREE.ShapeGeometry(new THREE.Shape(o.pts.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM)))); geo.rotateX(-Math.PI / 2);
+          const pos = [], n0 = o.pts.length;
+          for (let i = 0; i < n0; i++) { const p = o.pts[i], q = o.pts[(i + 1) % n0], x1 = p[0] * CM, z1 = p[1] * CM, x2 = q[0] * CM, z2 = q[1] * CM; pos.push(x1, H, z1, x2, H, z2, x2, H + prof, z2, x1, H, z1, x2, H + prof, z2, x1, H + prof, z1); }
+          const gw = new THREE.BufferGeometry(); gw.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gw.computeVertexNormals();
+          const paredes = new THREE.Mesh(gw, mt); paredes.receiveShadow = true; gf.add(paredes);
+        } else {
+          geo = new THREE.ExtrudeGeometry(new THREE.Shape(inner.map(p => new THREE.Vector2(p[0] * CM, -p[1] * CM))), { depth: prof, bevelEnabled: false });
+          geo.rotateX(-Math.PI / 2);
+        }
+        const losa = new THREE.Mesh(geo, mt); losa.position.y = sube ? H + prof : (D >= 0 ? H - prof : H); losa.castShadow = losa.receiveShadow = true; gf.add(losa);
         if (ft.luz !== false) {
           const K = ft.k || 3000, colL = /^#[0-9a-fA-F]{6}$/.test(ft.colorLuz || '') ? new THREE.Color(ft.colorLuz) : colorK(K), led = new THREE.MeshBasicMaterial({ color: colL });
           const cen = inner.reduce((q, p) => [q[0] + p[0] / inner.length, q[1] + p[1] / inner.length], [0, 0]);
           for (let i = 0; i < inner.length; i++) {
             const p = inner[i], q = inner[(i + 1) % inner.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]); if (L < 2) continue;
             { const dx = (p[0] + q[0]) / 2 - cen[0], dy = (p[1] + q[1]) / 2 - cen[1], lado = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'e' : 'o') : (dy > 0 ? 's' : 'n'); if (ft.lados && ft.lados[lado] === false) continue; }
-            luzArea(gf, new THREE.Vector3(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.012 : H + prof + 0.012), ((p[1] + q[1]) / 2) * CM), new THREE.Vector3(0, 1, 0), L * CM, 0.06, colL, 6 * ambiente.luces, presup, new THREE.Vector3((q[0] - p[0]) / L, 0, (q[1] - p[1]) / L));
+            luzArea(gf, new THREE.Vector3(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.012 : H + prof - 0.012), ((p[1] + q[1]) / 2) * CM), new THREE.Vector3(0, D >= 0 ? 1 : -1, 0), L * CM, 0.06, colL, 6 * ambiente.luces, presup, new THREE.Vector3((q[0] - p[0]) / L, 0, (q[1] - p[1]) / L));
             const b = new THREE.Mesh(new THREE.BoxGeometry(L * CM, 0.01, 0.02), led);
-            b.position.set(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.005 : H + prof + 0.005), ((p[1] + q[1]) / 2) * CM); b.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); gf.add(b);
+            b.position.set(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.005 : H + prof - 0.005), ((p[1] + q[1]) / 2) * CM); b.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); gf.add(b);
           }
         }
         if (selIdsRef.current.has(o.id)) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x1b6dd6 })); l.position.copy(losa.position); gf.add(l); }
