@@ -733,7 +733,7 @@ router.put('/:id/escena3d', async (req, res) => {
       muroId: o.muroId ? String(o.muroId).slice(0, 40) : undefined,
       lado: o.lado === -1 ? -1 : 1,
       h: Number.isFinite(parseFloat(o.h)) ? Math.max(0, Math.min(1000, parseFloat(o.h))) : undefined,
-      ft: o.tipo === 'falsotecho' && o.ft ? { descenso: Math.max(-100, Math.min(100, num(o.ft.descenso, 15))), gap: Math.max(2, Math.min(60, num(o.ft.gap, 12))), luz: o.ft.luz !== false, k: Math.max(1500, Math.min(10000, num(o.ft.k, 3000))) } : undefined,
+      ft: o.tipo === 'falsotecho' && o.ft ? { descenso: Math.max(-100, Math.min(100, num(o.ft.descenso, 15))), gap: Math.max(2, Math.min(60, num(o.ft.gap, 12))), luz: o.ft.luz !== false, k: Math.max(1500, Math.min(10000, num(o.ft.k, 3000))), ...(o.ft.lados && typeof o.ft.lados === 'object' ? { lados: { n: o.ft.lados.n !== false, s: o.ft.lados.s !== false, e: o.ft.lados.e !== false, o: o.ft.lados.o !== false } } : {}), ...(/^#[0-9a-fA-F]{6}$/.test(o.ft.colorLuz || '') ? { colorLuz: o.ft.colorLuz } : {}) } : undefined,
       ajuste: ['caber', 'estirar', 'nativo'].includes(o.ajuste) ? o.ajuste : undefined,
       ledDir: ['abajo', 'arriba', 'frente', 'atras', 'izq', 'der'].includes(o.ledDir) ? o.ledDir : undefined,
       led: o.tipo === 'led' ? { ancho: Math.max(0.3, Math.min(10, num(o.led?.ancho, 1.2))), k: Math.max(1500, Math.min(10000, num(o.led?.k, 3000))), lm: Math.max(50, Math.min(3000, num(o.led?.lm, 800))), dir: ['abajo', 'arriba', 'izq', 'der'].includes(o.led?.dir) ? o.led.dir : 'abajo', cerrado: !!o.led?.cerrado } : undefined,

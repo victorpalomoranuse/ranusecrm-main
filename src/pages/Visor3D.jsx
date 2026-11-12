@@ -3743,7 +3743,7 @@ export default function Visor3D({ cliente = false }) {
       }
       if (o.tipo === 'falsotecho' && Array.isArray(o.pts) && o.pts.length >= 3) {
         const ft = o.ft || {}, D = ft.descenso ?? 15, H = (o.h || 260) * CM, inner = insetPoligono(o.pts, ft.gap ?? 12);
-        const gf = new THREE.Group(); gf.position.set(o.cx * CM, 0, o.cy * CM);
+        const gf = new THREE.Group(); gf.position.set(o.cx * CM, (o.z0 || 0) * CM, o.cy * CM);
         const val = o.color, tx = val && String(val).startsWith('tex:') ? texturas.find(x => 'tex:' + x.id === val) : null;
         const mt = new THREE.MeshStandardMaterial({ color: color(/^#/.test(val || '') ? val : null, '#f6f4f1'), roughness: 0.9, emissive: selIdsRef.current.has(o.id) ? 0x335577 : 0x000000 });
         if (tx) { mt.map = texturaDe(tx, false); mt.color.setHex(0xffffff); }
@@ -3752,10 +3752,12 @@ export default function Visor3D({ cliente = false }) {
         geo.rotateX(-Math.PI / 2);
         const losa = new THREE.Mesh(geo, mt); losa.position.y = D >= 0 ? H - prof : H; losa.castShadow = losa.receiveShadow = true; gf.add(losa);
         if (ft.luz !== false) {
-          const K = ft.k || 3000, led = new THREE.MeshBasicMaterial({ color: colorK(K) });
+          const K = ft.k || 3000, colL = /^#[0-9a-fA-F]{6}$/.test(ft.colorLuz || '') ? new THREE.Color(ft.colorLuz) : colorK(K), led = new THREE.MeshBasicMaterial({ color: colL });
+          const cen = inner.reduce((q, p) => [q[0] + p[0] / inner.length, q[1] + p[1] / inner.length], [0, 0]);
           for (let i = 0; i < inner.length; i++) {
             const p = inner[i], q = inner[(i + 1) % inner.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]); if (L < 2) continue;
-            luzArea(gf, new THREE.Vector3(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.012 : H + prof + 0.012), ((p[1] + q[1]) / 2) * CM), new THREE.Vector3(0, 1, 0), L * CM, 0.06, colorK(K), 6 * ambiente.luces, presup, new THREE.Vector3((q[0] - p[0]) / L, 0, (q[1] - p[1]) / L));
+            { const dx = (p[0] + q[0]) / 2 - cen[0], dy = (p[1] + q[1]) / 2 - cen[1], lado = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'e' : 'o') : (dy > 0 ? 's' : 'n'); if (ft.lados && ft.lados[lado] === false) continue; }
+            luzArea(gf, new THREE.Vector3(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.012 : H + prof + 0.012), ((p[1] + q[1]) / 2) * CM), new THREE.Vector3(0, 1, 0), L * CM, 0.06, colL, 6 * ambiente.luces, presup, new THREE.Vector3((q[0] - p[0]) / L, 0, (q[1] - p[1]) / L));
             const b = new THREE.Mesh(new THREE.BoxGeometry(L * CM, 0.01, 0.02), led);
             b.position.set(((p[0] + q[0]) / 2) * CM, (D >= 0 ? H - 0.005 : H + prof + 0.005), ((p[1] + q[1]) / 2) * CM); b.rotation.y = -Math.atan2(q[1] - p[1], q[0] - p[0]); gf.add(b);
           }
@@ -4220,6 +4222,15 @@ export default function Visor3D({ cliente = false }) {
     const M1 = { ...M0, modulos: mods, ...(extra || {}) }; if (altos) M1.hBase = hBase; else delete M1.hBase;
     return { ...o, alto: altos ? top : hBase, mueble: M1, w };
   }));
+  // Convierte una forma dibujada (rectángulo, óvalo, polígono…) en un falso techo con foseado luminoso, a la altura de su planta: sirve para candilejas, islas y techos escalonados
+  const formaAFalsoTecho = (idObj) => {
+    const o = objs.find(x => x.id === idObj); if (!o || !Array.isArray(o.pts) || o.pts.length < 3) return;
+    const mod = api3d.current.modelo, pls = mod?.plantas || [mod], z0o = o.plano === 'techo' ? (o.h || 260) - 1 : (o.z0 || 0);
+    const cand = pls.map((p, i) => i).filter(i => (pls[i].z || 0) <= z0o + 1), ip = cand.length ? cand.reduce((a, b) => ((pls[b].z || 0) >= (pls[a].z || 0) ? b : a)) : 0, pl = pls[ip] || {};
+    const nuevo = { id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo: 'falsotecho', nombre: 'Falso techo ' + (o.pts.length > 12 ? 'redondo' : 'con foseado'), etiqueta: 'Techos', cx: o.cx, cy: o.cy, rot: 0, w: o.w, d: o.d, alto: 1, z0: pl.z || 0, h: pl.altura || mod?.altura || 260, color: '#f6f4f1', pts: o.pts.map(p => [p[0], p[1]]), ft: { descenso: 20, gap: 6, luz: true, k: 3000 } };
+    setObjs(prev => [...prev.filter(x => x.id !== idObj), nuevo]); setSelObj(nuevo.id); setSelAcab(null);
+    setAviso('Convertido en falso techo. Ajusta el descenso (uno más bajo que otro), los lados con luz y la pintura en el panel de la derecha. Ctrl+Z lo deshace.');
+  };
   const crearFalsoTecho = (salaKey) => {
     const modelo = api3d.current.modelo; if (!modelo) return;
     const pl0 = (modelo.plantas || [modelo])[0], sala = (pl0.salas || []).find((s, i) => (s.idS || ('s' + i)) === salaKey);
@@ -7557,6 +7568,11 @@ export default function Visor3D({ cliente = false }) {
               <div style={{ opacity: 0.5, fontSize: 11 }}>Alto resultante: {Math.round(objSel.alto)} cm. Para pegarlo a una pared, muévelo hasta ella y gíralo; la elevación es la altura del borde inferior.</div>
             </div>
           )}
+          {['zona', 'prisma'].includes(objSel.tipo) && objSel.plano !== 'pared' && Array.isArray(objSel.pts) && objSel.pts.length >= 3 && (
+            <div style={{ borderTop: '1px solid #333', margin: '6px 0', paddingTop: 6 }}>
+              <button style={{ ...btn, width: '100%' }} onClick={() => formaAFalsoTecho(objSel.id)} title="Convierte esta forma en un falso techo con luz en el borde: candilejas, islas, foseados redondos u ovalados">💡 Convertir en falso techo con luz</button>
+            </div>
+          )}
           {objSel.tipo === 'falsotecho' && (() => {
             const F = objSel.ft || { descenso: 15, gap: 12, luz: true, k: 3000 }, set = c => cambiar(objSel.id, { ft: { ...F, ...c } });
             return (
@@ -7567,7 +7583,21 @@ export default function Visor3D({ cliente = false }) {
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.7 }}>Altura del techo</span><input type="number" value={objSel.h || 260} onChange={e => cambiar(objSel.id, { h: parseFloat(e.target.value) || 260 })} style={{ ...btn, width: 70 }} /></label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}><input type="checkbox" checked={F.luz !== false} onChange={e => set({ luz: e.target.checked })} /> Luz LED en el foseado</label>
                 {F.luz !== false && <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><span style={{ width: 110, opacity: 0.7 }}>Temperatura</span><select value={F.k || 3000} onChange={e => set({ k: parseInt(e.target.value, 10) })} style={btn}><option value={2700}>2700 K cálida</option><option value={3000}>3000 K</option><option value={4000}>4000 K neutra</option><option value={6000}>6000 K fría</option></select></label>}
-                <div style={{ opacity: 0.5, fontSize: 11 }}>Descenso negativo = el techo sube (relieve). El foseado es el hueco entre la pared y el falso techo.</div>
+                {F.luz !== false && (() => { const LD = F.lados || {}, marca = (k, txt) => <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={LD[k] !== false} onChange={e => set({ lados: { n: true, s: true, e: true, o: true, ...LD, [k]: e.target.checked } })} />{txt}</label>; return (
+                  <div style={{ marginBottom: 4 }}>
+                    <div style={{ opacity: 0.7, marginBottom: 2 }}>Luz en estos lados (como se ve en el plano)</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, marginBottom: 4 }}>{marca('n', '↑ Arriba')}{marca('s', '↓ Abajo')}{marca('o', '← Izquierda')}{marca('e', '→ Derecha')}</div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 110, opacity: 0.7 }}>Color de la luz</span><input type="color" value={/^#[0-9a-fA-F]{6}$/.test(F.colorLuz || '') ? F.colorLuz : '#ffd9a0'} onChange={e => set({ colorLuz: e.target.value })} /><span onClick={() => { const { colorLuz, ...r } = F; cambiar(objSel.id, { ft: r }); }} style={{ cursor: 'pointer', opacity: 0.7, fontSize: 11 }}>usar temperatura</span></label>
+                  </div>); })()}
+                <div style={{ opacity: 0.7, margin: '6px 0 2px' }}>Pintura del falso techo</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginBottom: 6 }}>
+                  {texturas.map(t => <img key={t.id} src={t.url} alt={t.nombre} title={t.nombre} onClick={() => cambiar(objSel.id, { color: 'tex:' + t.id })} style={{ width: '100%', height: 30, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: objSel.color === 'tex:' + t.id ? '2px solid #1b6dd6' : '2px solid transparent' }} />)}
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+                  <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(objSel.color || '') ? objSel.color : '#f6f4f1'} onChange={e => cambiar(objSel.id, { color: e.target.value })} title="Un color liso" />
+                  <span style={{ opacity: 0.6, fontSize: 11 }}>o un color liso</span>
+                </div>
+                <div style={{ opacity: 0.5, fontSize: 11 }}>Descenso negativo = el techo sube (relieve). Cada falso techo tiene su propio descenso: así uno queda más bajo que otro. El foseado es el hueco entre el borde y el falso techo.</div>
               </div>
             );
           })()}
