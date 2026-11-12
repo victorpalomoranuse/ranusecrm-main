@@ -10,7 +10,8 @@ import { generarBloquesAuto } from '../utils/bloques-auto.js';
 import { catalogoEnCache, guardaCatalogo, vaciaCacheAlEscribir } from '../utils/cache-catalogos.js';
 import { callClaude } from '../utils/anthropic.js';
 import { urlSketchup } from './medicion-sketchup.routes.js';
-import { firmaTour } from './tour-publico.routes.js';
+import { firmaTour, paradasDeTour, catalogoDePlano } from './tour-publico.routes.js';
+import { crearVersion, listarVersiones, borrarVersion } from '../utils/tour-version.js';
 import { leerTexturasMias } from './biblioteca3d.routes.js';
 import { uploadProjectRender } from '../utils/storage.js';
 import { uploadReferenceImageFile, uploadHdriFile, handleMulterError } from '../middleware/upload.middleware.js';
@@ -985,6 +986,29 @@ router.post('/:id/render', async (req, res) => {
 });
 // Firma del enlace público del tour 360° (el visor arma la dirección con el dominio de la web)
 router.get('/:id/tour-firma', (req, res) => res.json({ firma: firmaTour(req.params.id) }));
+// Versiones fijas del tour: una copia congelada con su propio enlace; no cambia aunque luego se edite el modelo
+router.get('/:id/tour-versiones', async (req, res) => {
+  try { res.json({ versiones: await listarVersiones(req.params.id) }); }
+  catch (err) { console.error('tour-versiones:', err); res.status(500).json({ error: 'No se pudieron cargar las versiones del tour' }); }
+});
+router.post('/:id/tour-version', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('mediciones').select('nombre, data').eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Plano no encontrado' });
+    const d = data.data || {}, paradas = paradasDeTour(d.escena3d);
+    const { renders: _r, ...escSinRenders } = d.escena3d || {};
+    const plano = { nombre: data.nombre || d.nombre || 'Tour', modelo3d: d.modelo3d || null, escena3d: d.escena3d ? escSinRenders : null, nodes: d.nodes || [], pts: (d.pts || []).filter(p => p.v === 'ilum'), id: req.params.id };
+    if (!paradas.length && !plano.modelo3d) return res.status(400).json({ error: 'Todavía no hay paradas ni modelo 3D para generar el tour' });
+    const nombre = String(req.body?.nombre || '').trim().slice(0, 60) || ('Versión del ' + new Date().toLocaleDateString('es-ES'));
+    const meta = await crearVersion(req.params.id, nombre, { paradas, plano, catalogo: await catalogoDePlano(d), titulo: data.nombre || 'Tour' });
+    res.status(201).json({ version: meta, firma: 'v-' + meta.tid });
+  } catch (err) { console.error('tour-version:', err); res.status(500).json({ error: 'No se pudo generar el tour' }); }
+});
+router.delete('/:id/tour-version/:tid', async (req, res) => {
+  try { await borrarVersion(req.params.id, req.params.tid); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: 'No se pudo borrar la versión' }); }
+});
 // ── Publicar un render en la historia del cliente (el portal del proyecto). El visor pide los capítulos, el diseñador elige uno y confirma.
 router.get('/:id/historia', async (req, res) => {
   try {

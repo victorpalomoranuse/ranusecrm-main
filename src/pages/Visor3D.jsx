@@ -2209,6 +2209,7 @@ export default function Visor3D({ cliente = false }) {
   const panPrev = useRef({});
   const derPrev = useRef({});
   const [renders, setRenders] = useState([]);           // galería de renders y panoramas del plano
+  const [toursV, setToursV] = useState(null), [toursAbierto, setToursAbierto] = useState(false), [generandoTour, setGenerandoTour] = useState(false); // versiones fijas del tour
   const [galAbierta, setGalAbierta] = useState(false);
   const [pano, setPano] = useState(null);                  // { url, guardado, meta } visor 360 abierto
   const [generando360, setGenerando360] = useState(false);
@@ -4849,6 +4850,27 @@ export default function Visor3D({ cliente = false }) {
     }
     setGenerandoParada(false); if (hechas === pts.length) setAviso('Tour automático listo: ' + hechas + ' paradas ✓ Copia el enlace del tour para el cliente.');
   };
+  // Versiones fijas del tour: se congela el modelo, la escena y las paradas; el enlace no cambia aunque luego se edite el modelo
+  const cargaToursV = async () => { try { setToursV((await api.get('/medicion/' + id + '/tour-versiones')).data.versiones || []); } catch { setToursV([]); } };
+  const generaTourFijo = async () => {
+    const nombre = window.prompt('Nombre de este tour (por ejemplo «Propuesta 1»):', 'Propuesta ' + ((toursV?.length || 0) + 1));
+    if (nombre === null) return;
+    setGenerandoTour(true); setAviso('Generando el tour fijo… (copia las panorámicas y congela el modelo; puede tardar un minuto)');
+    try {
+      const r2 = await api.post('/medicion/' + id + '/tour-version', { nombre }, { timeout: 180000 });
+      setToursV(v => [r2.data.version, ...(v || [])]); setToursAbierto(true);
+      setAviso('Tour «' + r2.data.version.nombre + '» generado ✓ Ya puedes copiar su enlace; no cambiará aunque sigas editando.');
+    } catch (e) { setAviso(e.response?.data?.error || 'No se pudo generar el tour'); }
+    setGenerandoTour(false);
+  };
+  const copiaEnlaceV = async (tid, libre) => {
+    const u = window.location.origin + (libre ? '/recorrido/' : '/tour/') + encodeURIComponent(id) + '/v-' + tid;
+    try { await navigator.clipboard.writeText(u); setAviso('Enlace copiado: ' + u); } catch { window.prompt('Copia el enlace:', u); }
+  };
+  const borraTourV = async (t) => {
+    if (!window.confirm('¿Borrar el tour «' + t.nombre + '»? Su enlace dejará de funcionar y no se puede recuperar.')) return;
+    try { await api.delete('/medicion/' + id + '/tour-version/' + t.tid); setToursV(v => (v || []).filter(x => x.tid !== t.tid)); } catch { setAviso('No se pudo borrar el tour'); }
+  };
   const copiarEnlaceTour = async (libre = false) => {
     if (!libre && !renders.some(r => r.tour)) { setAviso('Primero añade alguna parada del tour (menú Salida → Parada del tour).'); return; }
     try {
@@ -5777,6 +5799,8 @@ export default function Visor3D({ cliente = false }) {
           [generando360 ? 'Generando 360°…' : 'Panorama 360°', hacer360, false, generando360 || estado !== 'listo', 'Panorama 360° desde la cámara'],
           [generandoParada ? 'Creando parada…' : 'Parada del tour (360°)', paradaTour, false, generandoParada || generando360 || estado !== 'listo', 'Guarda una panorámica 360° de aquí como parada del tour del cliente'],
           [generandoParada ? 'Creando paradas…' : 'Tour automático (todas las salas)', tourAuto, false, generandoParada || generando360 || estado !== 'listo', 'Reparte paradas 360° por todas las salas, lejos de paredes y máquinas, y las genera de una vez'],
+          [generandoTour ? 'Generando el tour…' : '⭐ Generar tour fijo (enlace que no cambia)', generaTourFijo, false, generandoTour || estado !== 'listo', 'Congela el modelo y las paradas de ahora en una copia con su propio enlace: si luego cambias el modelo, ese tour no se toca hasta que generes otro'],
+          ['Mis tours generados' + (toursV?.length ? ' (' + toursV.length + ')' : ''), () => { setToursAbierto(v => !v); cargaToursV(); }, toursAbierto, false, 'Enlaces de los tours ya generados: copiar o borrar'],
           ['Copiar enlace del recorrido libre', () => copiarEnlaceTour(true), false, false, 'Enlace público (solo lectura): el cliente anda por el espacio; si su equipo es flojo se le ofrece el tour de panorámicas'],
           ['Copiar enlace del tour', () => copiarEnlaceTour(false), false, false, 'Enlace público (solo lectura) del tour 360° para el cliente'],
           [panoIA ? 'Panorama con IA…' : 'Panorama 360° con IA (prueba)', hacer360IA, false, panoIA || generando360 || estado !== 'listo', 'Manda la panorámica a ChatGPT para hacerla fotorrealista'],
@@ -6138,6 +6162,26 @@ export default function Visor3D({ cliente = false }) {
           </div>
         );
       })()}
+      {toursAbierto && (
+        <div style={{ position: 'absolute', right: 12, top: 56, width: 330, maxHeight: '70vh', overflowY: 'auto', background: 'rgba(24,24,24,0.97)', color: '#fff', borderRadius: 12, padding: 12, zIndex: 12, fontSize: 12, boxShadow: '0 6px 24px rgba(0,0,0,0.45)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}><b style={{ flex: 1, fontSize: 13 }}>Tours generados</b><span onClick={() => setToursAbierto(false)} style={{ cursor: 'pointer', opacity: 0.7 }}>✕</span></div>
+          <div style={{ opacity: 0.65, marginBottom: 8, lineHeight: 1.4 }}>Cada tour es una copia congelada: aunque cambies el modelo, su enlace sigue igual. Para actualizarlo, genera uno nuevo.</div>
+          <button style={{ ...btn, width: '100%', marginBottom: 8, background: '#3f7d3a' }} disabled={generandoTour || estado !== 'listo'} onClick={generaTourFijo}>{generandoTour ? 'Generando…' : '⭐ Generar tour nuevo con lo de ahora'}</button>
+          {toursV === null && <div style={{ opacity: 0.6 }}>Cargando…</div>}
+          {toursV && !toursV.length && <div style={{ opacity: 0.6 }}>Todavía no has generado ninguno.</div>}
+          {(toursV || []).map(t => (
+            <div key={t.tid} style={{ border: '1px solid #3a3a3a', borderRadius: 8, padding: 8, marginBottom: 6 }}>
+              <div style={{ fontWeight: 700 }}>{t.nombre}</div>
+              <div style={{ opacity: 0.6, fontSize: 11, marginBottom: 6 }}>{new Date(t.creado).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })} · {t.paradas} parada{t.paradas === 1 ? '' : 's'}</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {t.paradas > 0 && <button style={btn} onClick={() => copiaEnlaceV(t.tid, false)} title="Tour 360°: imágenes ya renderizadas, se ven igual de bien en cualquier dispositivo">📋 Tour 360°</button>}
+                {t.libre && <button style={btn} onClick={() => copiaEnlaceV(t.tid, true)} title="Recorrido libre por el espacio (depende del dispositivo del cliente)">📋 Recorrido libre</button>}
+                <button style={{ ...btn, background: '#7a2b2b' }} onClick={() => borraTourV(t)}>🗑</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {pano && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 10, display: 'flex', flexDirection: 'column', padding: 12, gap: 8 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#fff', flexWrap: 'wrap' }}>
