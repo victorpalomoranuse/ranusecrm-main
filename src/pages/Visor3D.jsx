@@ -7152,7 +7152,7 @@ export default function Visor3D({ cliente = false }) {
                 }) };
               };
               const cargaPiezas = async () => { const d = (await api.get('/biblioteca3d')).data || {}, todas = [...(d.modelos || []), ...(d.mios || [])]; return { piezas: todas.filter(m => m.url && m.w > 0 && m.d > 0 && !/^Camas$/i.test(m.categoria || '')).map(m => ({ id: m.id, nombre: m.nombre, categoria: m.categoria || '', w: m.w, d: m.d, alto: m.alto })), todas }; };
-              const pideIdeasSala = async () => {
+              const pideIdeasSala = async (auto) => {
                 const sel = salaSel(); if (!sel) { setIdeasSalaErr('No encuentro la sala de esta superficie.'); return; }
                 setIdeasSalaCarga(true); setIdeasSalaErr(''); setIdeasSalaAplic({});
                 try {
@@ -7163,7 +7163,9 @@ export default function Visor3D({ cliente = false }) {
                   const pilaresSala = pilaresDeSala(sel).map(p => ({ id: p.id, nombre: p.nm || '', w: Math.round(p.w), d: Math.round(p.d), alto: Math.round(api3d.current.modelo?.altura || 260), cerca: p.cerca }));
                   const r = await api.post('/estudio-ideas/sala', { medicionId: id, objetivo: ideasAmbBrief, pilares: pilaresSala, sala: { nombre: sel.sa.nombre || '', area: Math.round(area * 10) / 10, largo: Math.max(...xs) - Math.min(...xs), ancho: Math.max(...ys) - Math.min(...ys), maquinas: (sel.pl.equipos || []).length, puertas: nPuertas }, muros: ms, zonas: zonas.map(({ cx, cy, ...q }) => q), piezas, suelos: SUELOS_TEC.map(t => ({ id: 'tex:' + t.id, nombre: t.nombre })), contexto: ctx, previas: ideasSala.map(q => q.titulo) }, { timeout: 240000 });
                   const mapa = new Map(todas.map(m => [m.id, m]));
-                  setIdeasSala((r.data.ideas || []).map(q => ({ ...q, decoracion: (q.decoracion || []).map(e => ({ ...e, modelo: e.libre ? libreModelo(e) : mapa.get(e.id) })).filter(e => e.modelo) })));
+                  const listaS = (r.data.ideas || []).map(q => ({ ...q, decoracion: (q.decoracion || []).map(e => ({ ...e, modelo: e.libre ? libreModelo(e) : mapa.get(e.id) })).filter(e => e.modelo) }));
+                  setIdeasSala(listaS);
+                  if (auto === true && listaS[0]) setTimeout(() => probarSala(listaS[0], 0), 60); // 1 clic: se prueba la primera propuesta; abajo decides si te la quedas, la descartas o pruebas otra
                 } catch (e) { setIdeasSalaErr(e.response?.data?.error || 'No se pudieron generar las ideas'); }
                 setIdeasSalaCarga(false);
               };
@@ -7377,7 +7379,8 @@ export default function Visor3D({ cliente = false }) {
                     {esMuro && <button style={{ ...btn, background: '#8c8076', fontWeight: 700 }} disabled={ideasMuroCarga} onClick={() => pideIdeasMuro(false)} title="Pintura + revestimiento + rótulo, con las tendencias de ahora. Si lo dejas en blanco, la IA te sorprende">{ideasMuroCarga ? 'Pensando… (puede tardar un poco)' : '✨ Ideas completas para este muro'}</button>}
                     <button style={{ ...btn, background: '#8c8076', fontWeight: 700 }} disabled={ideasDecoCarga} onClick={pideIdeasDeco} title="Plantas, esculturas, cuadros, lámparas… elegidos de tu biblioteca 3D y colocados donde caben, sin chocar con las máquinas">{ideasDecoCarga ? 'Pensando… (puede tardar un poco)' : '🪴 Decorar esta sala'}</button>
                     {!esMuro && <button style={{ ...btn, background: '#6b6159' }} disabled={ideasAmbCarga} onClick={() => pideIdeas('suelo')}>{ideasAmbCarga && ideasAmbTipo !== 'global' ? 'Pensando…' : 'Ideas para este suelo'}</button>}
-                    <button style={{ ...btn, background: '#8c8076', fontWeight: 700 }} disabled={ideasSalaCarga} onClick={pideIdeasSala} title="Un concepto completo SOLO para esta sala: suelo, techo, cada pared con su papel (una focal), luces y decoración, con una idea diferencial">{ideasSalaCarga ? 'Pensando… (puede tardar un minuto)' : '🎯 Concepto completo de esta sala'}</button>
+                    {!esMuro && <button style={{ ...btn, background: '#3f7d3a', fontWeight: 700 }} disabled={ideasSalaCarga} onClick={() => pideIdeasSala(true)} title="Un clic: la IA diseña la sala entera (suelo, paredes, techo, luz y decoración) y te la enseña puesta. Luego te quedas con ella, la descartas o pruebas otra">{ideasSalaCarga ? 'Diseñando… (hasta un minuto)' : '⚡ Diseñar esta sala (1 clic)'}</button>}
+                    <button style={{ ...btn, background: '#8c8076', fontWeight: 700 }} disabled={ideasSalaCarga} onClick={() => pideIdeasSala()} title="Un concepto completo SOLO para esta sala: suelo, techo, cada pared con su papel (una focal), luces y decoración, con una idea diferencial">{ideasSalaCarga ? 'Pensando… (puede tardar un minuto)' : '🎯 Concepto completo de esta sala'}</button>
                   </div>
                   {(() => {
                     const sk = claveSalaActual(), lista = favs.filter(fv => (fv.tipo === 'muro' ? esMuro && fv.muroId === selAcab.id : fv.salaKey === sk));
